@@ -12,7 +12,8 @@ function setMetric(element, value) {
 
 async function loadDashboard() {
   try {
-    await requirePrivatePage();
+    const session = await requirePrivatePage();
+    if (!session?.token) return;
     const summary = await callRatewareApi("dashboard_summary");
     setMetric(metricUploads, summary.raw_uploads);
     setMetric(metricPending, summary.pending_review);

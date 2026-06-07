@@ -40,7 +40,9 @@ export async function getKindeClient() {
       domain: KINDE_DOMAIN,
       redirect_uri: getAppUrl(),
       logout_uri: window.location.origin,
-      on_redirect_callback: () => {}
+      on_redirect_callback: () => {
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
     });
   }
 
@@ -84,6 +86,11 @@ export async function getAccessContext() {
 
 export async function requirePrivatePage() {
   const kinde = await getKindeClient();
+
+  if (new URLSearchParams(window.location.search).has("code")) {
+    await new Promise((resolve) => window.setTimeout(resolve, 250));
+  }
+
   const signedIn = await kinde.isAuthenticated();
 
   if (!signedIn) {
