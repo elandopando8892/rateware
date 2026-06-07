@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Rateware Upload History</title>
+    <link rel="stylesheet" href="./src/styles.css" />
+  </head>
+  <body>
+    <header class="app-shell">
+      <nav class="top-nav" aria-label="Rateware">
+        <a class="brand" href="./index.html">Rateware</a>
+        <div class="nav-links">
+          <a href="./index.html">Upload Center</a>
+          <a aria-current="page" href="./upload-history.html">Upload History</a>
+          <a href="./staging-review.html">Staging Review</a>
+        </div>
+      </nav>
+      <form id="auth-form" class="auth-strip">
+        <label>
+          Email
+          <input id="auth-email" type="email" autocomplete="email" placeholder="name@company.com" />
+        </label>
+        <button id="auth-button" type="submit">Send sign-in link</button>
+        <button id="sign-out-button" type="button" class="secondary hidden">Sign out</button>
+        <p id="auth-status" role="status"></p>
+      </form>
+    </header>
+
+    <main class="app-shell history-layout">
+      <section class="workspace-panel">
+        <div class="section-heading">
+          <p class="eyebrow">Source archive</p>
+          <h1>Upload History</h1>
+        </div>
+
+        <div class="toolbar">
+          <label>
+            Status
+            <select id="status-filter">
+              <option value="">All</option>
+              <option value="uploaded">Uploaded</option>
+              <option value="staged">Staged</option>
+              <option value="failed">Failed</option>
+            </select>
+          </label>
+          <button id="refresh-button" type="button">Refresh</button>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Uploaded</th>
+                <th>File</th>
+                <th>Type</th>
+                <th>Vendor</th>
+                <th>RFx</th>
+                <th>Status</th>
+                <th>Storage</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="history-body">
+              <tr>
+                <td colspan="8">Loading uploads...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <script type="module" src="./src/upload-history.js"></script>
+  </body>
+</html>

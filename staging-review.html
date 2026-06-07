@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Rateware Staging Review</title>
+    <link rel="stylesheet" href="./src/styles.css" />
+  </head>
+  <body>
+    <header class="app-shell">
+      <nav class="top-nav" aria-label="Rateware">
+        <a class="brand" href="./index.html">Rateware</a>
+        <div class="nav-links">
+          <a href="./index.html">Upload Center</a>
+          <a href="./upload-history.html">Upload History</a>
+          <a aria-current="page" href="./staging-review.html">Staging Review</a>
+        </div>
+      </nav>
+      <form id="auth-form" class="auth-strip">
+        <label>
+          Email
+          <input id="auth-email" type="email" autocomplete="email" placeholder="name@company.com" />
+        </label>
+        <button id="auth-button" type="submit">Send sign-in link</button>
+        <button id="sign-out-button" type="button" class="secondary hidden">Sign out</button>
+        <p id="auth-status" role="status"></p>
+      </form>
+    </header>
+
+    <main class="app-shell history-layout">
+      <section class="workspace-panel">
+        <div class="section-heading">
+          <p class="eyebrow">Human approval required</p>
+          <h1>Staging Review</h1>
+        </div>
+
+        <div class="toolbar">
+          <label>
+            Status
+            <select id="staging-status-filter">
+              <option value="pending_review">Pending review</option>
+              <option value="approved">Approved</option>
+              <option value="rejected">Rejected</option>
+              <option value="">All</option>
+            </select>
+          </label>
+          <button id="refresh-staging-button" type="button">Refresh</button>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Vendor</th>
+                <th>RFx</th>
+                <th>Lane</th>
+                <th>Equipment</th>
+                <th>Service</th>
+                <th>All-in</th>
+                <th>Currency</th>
+                <th>Capacity</th>
+                <th>Confidence</th>
+                <th>Status</th>
+                <th>Review</th>
+              </tr>
+            </thead>
+            <tbody id="staging-body">
+              <tr>
+                <td colspan="11">Loading staging rows...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <script type="module" src="./src/staging-review.js"></script>
+  </body>
+</html>

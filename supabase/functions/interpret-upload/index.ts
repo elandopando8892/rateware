@@ -1,0 +1,335 @@
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import * as XLSX from "https://esm.sh/xlsx@0.18.5";
+
+const OPENAI_MODEL = Deno.env.get("OPENAI_MODEL");
+const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
+const SUPABASE_ANON_KEY = Deno.env.get("RATEWARE_SUPABASE_ANON_KEY");
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("RATEWARE_SUPABASE_SERVICE_ROLE_KEY");
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type"
+};
+
+const RATEWARE_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["rows", "summary"],
+  properties: {
+    summary: {
+      type: "object",
+      additionalProperties: false,
+      required: ["vendor_domain", "rfx_id", "document_notes"],
+      properties: {
+        vendor_domain: { type: ["string", "null"] },
+        rfx_id: { type: ["string", "null"] },
+        document_notes: { type: ["string", "null"] }
+      }
+    },
+    rows: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "vendor_domain",
+          "rfx_id",
+          "row_id",
+          "origin",
+          "destination",
+          "equipment",
+          "trailer",
+          "config",
+          "operation",
+          "service",
+          "driver",
+          "mx_border_crossing_point",
+          "us_border_crossing_point",
+          "mx_linehaul",
+          "us_linehaul",
+          "us_miles",
+          "fsc",
+          "fuel",
+          "border_crossing_fee",
+          "flat_rate",
+          "all_in_rate",
+          "currency",
+          "weekly_capacity",
+          "notes",
+          "accessorials",
+          "confidence",
+          "extraction_warnings"
+        ],
+        properties: {
+          vendor_domain: { type: ["string", "null"] },
+          rfx_id: { type: ["string", "null"] },
+          row_id: { type: ["string", "null"] },
+          origin: { type: ["string", "null"] },
+          destination: { type: ["string", "null"] },
+          equipment: { type: ["string", "null"] },
+          trailer: { type: ["string", "null"] },
+          config: { type: ["string", "null"] },
+          operation: { type: ["string", "null"] },
+          service: { type: ["string", "null"] },
+          driver: { type: ["string", "null"] },
+          mx_border_crossing_point: { type: ["string", "null"] },
+          us_border_crossing_point: { type: ["string", "null"] },
+          mx_linehaul: { type: ["string", "null"] },
+          us_linehaul: { type: ["string", "null"] },
+          us_miles: { type: ["string", "null"] },
+          fsc: { type: ["string", "null"] },
+          fuel: { type: ["string", "null"] },
+          border_crossing_fee: { type: ["string", "null"] },
+          flat_rate: { type: ["string", "null"] },
+          all_in_rate: { type: ["string", "null"] },
+          currency: { type: ["string", "null"] },
+          weekly_capacity: { type: ["string", "null"] },
+          notes: { type: ["string", "null"] },
+          accessorials: { type: ["string", "null"] },
+          confidence: { type: "number", minimum: 0, maximum: 1 },
+          extraction_warnings: { type: "array", items: { type: "string" } }
+        }
+      }
+    }
+  }
+};
+
+function jsonResponse(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" }
+  });
+}
+
+function isInvalidRateValue(value: unknown) {
+  if (value === null || value === undefined) return true;
+  const normalized = String(value).trim();
+  return !normalized || /^x$/i.test(normalized) || /^n\/?a$/i.test(normalized) || /^please estimate$/i.test(normalized) || /^tier\s*[123]$/i.test(normalized);
+}
+
+function cleanRateValue(value: unknown) {
+  return isInvalidRateValue(value) ? null : String(value).trim();
+}
+
+function cleanText(value: unknown) {
+  if (value === null || value === undefined) return null;
+  const text = String(value).trim();
+  return text ? text : null;
+}
+
+function buildKeys(row: Record<string, unknown>) {
+  const routeParts = [
+    row.origin,
+    row.destination,
+    row.equipment,
+    row.trailer,
+    row.config,
+    row.operation,
+    row.service,
+    row.driver,
+    row.mx_border_crossing_point && row.us_border_crossing_point
+      ? `${row.mx_border_crossing_point}/${row.us_border_crossing_point}`
+      : row.mx_border_crossing_point || row.us_border_crossing_point
+  ].filter(Boolean);
+
+  const routeKey = routeParts.join(" ");
+  const rfxKey = [row.rfx_id, row.row_id].filter(Boolean).join("-");
+
+  return {
+    rfx_key: rfxKey || null,
+    route_key: routeKey || null,
+    business_key: [rfxKey, routeKey].filter(Boolean).join(" ") || null
+  };
+}
+
+function normalizeRow(row: Record<string, unknown>, rawUploadId: string, jobId: string) {
+  const base = {
+    raw_upload_id: rawUploadId,
+    interpretation_job_id: jobId,
+    status: "pending_review",
+    vendor_domain: cleanText(row.vendor_domain),
+    rfx_id: cleanText(row.rfx_id),
+    row_id: cleanText(row.row_id),
+    origin: cleanText(row.origin),
+    destination: cleanText(row.destination),
+    equipment: cleanText(row.equipment),
+    trailer: cleanText(row.trailer),
+    config: cleanText(row.config),
+    operation: cleanText(row.operation),
+    service: cleanText(row.service),
+    driver: cleanText(row.driver),
+    mx_border_crossing_point: cleanText(row.mx_border_crossing_point),
+    us_border_crossing_point: cleanText(row.us_border_crossing_point),
+    mx_linehaul: cleanRateValue(row.mx_linehaul),
+    us_linehaul: cleanRateValue(row.us_linehaul),
+    us_miles: cleanRateValue(row.us_miles),
+    fsc: cleanRateValue(row.fsc),
+    fuel: cleanRateValue(row.fuel),
+    border_crossing_fee: cleanRateValue(row.border_crossing_fee),
+    flat_rate: cleanRateValue(row.flat_rate),
+    all_in_rate: cleanRateValue(row.all_in_rate),
+    currency: cleanText(row.currency),
+    weekly_capacity: cleanText(row.weekly_capacity),
+    notes: cleanText(row.notes),
+    accessorials: cleanText(row.accessorials),
+    confidence: Math.max(0, Math.min(1, Number(row.confidence) || 0)),
+    extraction_warnings: Array.isArray(row.extraction_warnings) ? row.extraction_warnings.map(String) : [],
+    extracted_payload: row
+  };
+
+  return { ...base, ...buildKeys(base) };
+}
+
+async function extractXlsxText(file: Blob) {
+  const workbook = XLSX.read(await file.arrayBuffer(), { type: "array" });
+  return workbook.SheetNames.map((name) => {
+    const rows = XLSX.utils.sheet_to_json(workbook.Sheets[name], { header: 1, blankrows: false });
+    return `Sheet: ${name}\n${rows.slice(0, 250).map((row) => (row as unknown[]).join("\t")).join("\n")}`;
+  }).join("\n\n");
+}
+
+async function uploadOpenAIFile(file: Blob, filename: string) {
+  const formData = new FormData();
+  formData.append("purpose", "user_data");
+  formData.append("file", file, filename);
+
+  const response = await fetch("https://api.openai.com/v1/files", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${OPENAI_API_KEY}` },
+    body: formData
+  });
+
+  if (!response.ok) throw new Error(`OpenAI file upload failed: ${await response.text()}`);
+  return await response.json();
+}
+
+async function interpretWithModel(rawUpload: Record<string, string>, file: Blob) {
+  const systemPrompt = [
+    "You are Rateware AI, a senior freight procurement analyst.",
+    "Interpret carrier quotations and normalize them into Rateware staging rows.",
+    "Detect vendor, RFx, origin, destination, equipment, operation, service, linehaul, border fee, FSC, all-in rate, and weekly capacity.",
+    "Never use Tier 1, Tier 2, or Tier 3 as carrier rates.",
+    "Ignore X, N/A, and Please Estimate as rates.",
+    "If a quote is all-in without breakdown, put the value in all_in_rate or flat_rate and explain in notes.",
+    "Return only rows that represent carrier rates or capacity responses.",
+    "Use null when a value is missing. Do not invent rates."
+  ].join("\n");
+
+  const userContent: Record<string, unknown>[] = [
+    {
+      type: "input_text",
+      text: `Source filename: ${rawUpload.original_filename}\nVendor hint: ${rawUpload.vendor_hint || ""}\nRFx hint: ${rawUpload.rfx_hint || ""}\nDocument type: ${rawUpload.document_type}`
+    }
+  ];
+
+  if (rawUpload.document_type === "xlsx") {
+    userContent.push({ type: "input_text", text: await extractXlsxText(file) });
+  } else if (rawUpload.document_type === "email") {
+    userContent.push({ type: "input_text", text: await file.text() });
+  } else {
+    const openAIFile = await uploadOpenAIFile(file, rawUpload.original_filename);
+    userContent.push({ type: "input_file", file_id: openAIFile.id });
+  }
+
+  const response = await fetch("https://api.openai.com/v1/responses", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${OPENAI_API_KEY}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      model: OPENAI_MODEL,
+      input: [
+        { role: "system", content: [{ type: "input_text", text: systemPrompt }] },
+        { role: "user", content: userContent }
+      ],
+      text: {
+        format: {
+          type: "json_schema",
+          name: "rateware_interpretation",
+          strict: true,
+          schema: RATEWARE_SCHEMA
+        }
+      }
+    })
+  });
+
+  if (!response.ok) throw new Error(`OpenAI interpretation failed: ${await response.text()}`);
+
+  const payload = await response.json();
+  const outputText = payload.output_text ?? payload.output?.flatMap((item: Record<string, unknown>) => item.content ?? [])
+    .find((content: Record<string, unknown>) => content.type === "output_text")?.text;
+
+  if (!outputText) throw new Error("OpenAI returned no structured interpretation.");
+  return JSON.parse(outputText);
+}
+
+Deno.serve(async (request) => {
+  if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+
+  if (!OPENAI_MODEL || !OPENAI_API_KEY || !SUPABASE_URL || !SUPABASE_ANON_KEY || !SUPABASE_SERVICE_ROLE_KEY) {
+    return jsonResponse({ error: "Missing OPENAI_MODEL, OPENAI_API_KEY, SUPABASE_URL, RATEWARE_SUPABASE_ANON_KEY, or RATEWARE_SUPABASE_SERVICE_ROLE_KEY." }, 500);
+  }
+
+  const authorization = request.headers.get("Authorization") || "";
+  const userClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    global: { headers: { Authorization: authorization } }
+  });
+  const user = await userClient.auth.getUser();
+  if (user.error || !user.data.user) return jsonResponse({ error: "Authentication required." }, 401);
+
+  const { raw_upload_id } = await request.json();
+  if (!raw_upload_id) return jsonResponse({ error: "raw_upload_id is required." }, 400);
+
+  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+  const job = await supabase.from("interpretation_jobs").insert({
+    raw_upload_id,
+    model: OPENAI_MODEL
+  }).select().single();
+
+  if (job.error) return jsonResponse({ error: job.error.message }, 500);
+
+  try {
+    const uploadResult = await supabase.from("raw_uploads").select("*").eq("id", raw_upload_id).single();
+    if (uploadResult.error) throw uploadResult.error;
+
+    const rawUpload = uploadResult.data;
+    const download = await supabase.storage.from(rawUpload.storage_bucket).download(rawUpload.storage_path);
+    if (download.error) throw download.error;
+
+    const interpretation = await interpretWithModel(rawUpload, download.data);
+    const rows = interpretation.rows.map((row: Record<string, unknown>) => normalizeRow(row, raw_upload_id, job.data.id));
+
+    if (rows.length) {
+      const insert = await supabase.from("rate_staging").insert(rows);
+      if (insert.error) throw insert.error;
+    }
+
+    await supabase.from("interpretation_jobs").update({
+      status: "completed",
+      completed_at: new Date().toISOString(),
+      extracted_rows: rows.length
+    }).eq("id", job.data.id);
+
+    await supabase.from("raw_uploads").update({
+      status: "staged",
+      interpreted_at: new Date().toISOString()
+    }).eq("id", raw_upload_id);
+
+    return jsonResponse({ job_id: job.data.id, staged_rows: rows.length });
+  } catch (error) {
+    await supabase.from("interpretation_jobs").update({
+      status: "failed",
+      completed_at: new Date().toISOString(),
+      error_message: error.message
+    }).eq("id", job.data.id);
+
+    await supabase.from("raw_uploads").update({
+      status: "failed",
+      error_message: error.message
+    }).eq("id", raw_upload_id);
+
+    return jsonResponse({ error: error.message }, 500);
+  }
+});
