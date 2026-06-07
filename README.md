@@ -36,8 +36,8 @@ Create a Kinde application with type `Front-end and mobile`.
 Allowed callback URLs:
 
 ```text
-http://127.0.0.1:3000/app.html
-https://your-vercel-app.vercel.app/app.html
+http://127.0.0.1:3000
+https://your-vercel-app.vercel.app
 ```
 
 Allowed logout redirect URLs:
