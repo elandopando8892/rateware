@@ -3,92 +3,76 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Rateware Dashboard</title>
+    <title>Rateware | Freight Procurement Intelligence</title>
     <link rel="stylesheet" href="./src/styles.css" />
   </head>
-  <body>
-    <div class="shell-layout">
-      <aside class="side-nav" aria-label="Rateware modules">
-        <a class="brand-mark" href="./index.html">Rateware</a>
-        <nav>
-          <a aria-current="page" href="./index.html">Dashboard</a>
-          <a href="./upload-center.html">Upload Center</a>
-          <a href="./upload-history.html">Upload History</a>
-          <a href="./staging-review.html">Staging Review</a>
-          <a class="disabled-link" href="#" aria-disabled="true">Vendors</a>
-          <a class="disabled-link" href="#" aria-disabled="true">RFx Events</a>
-        </nav>
-      </aside>
+  <body class="landing-page">
+    <header class="landing-nav">
+      <a class="brand-mark" href="./index.html">Rateware</a>
+      <form id="auth-form" class="landing-auth">
+        <button id="auth-button" type="submit">Log in</button>
+        <button id="sign-out-button" type="button" class="secondary hidden">Open app</button>
+        <p id="auth-status" role="status"></p>
+      </form>
+    </header>
 
-      <div class="page-frame">
-        <header class="page-header">
-          <div>
-            <p class="eyebrow">Procurement command center</p>
-            <h1>Dashboard</h1>
+    <main>
+      <section class="landing-hero">
+        <div class="landing-copy">
+          <p class="eyebrow">Freight procurement SaaS</p>
+          <h1>Turn carrier quotes into governed Rateware rows.</h1>
+          <p>
+            Upload emails, PDFs, spreadsheets, and images. Rateware preserves the source,
+            interprets carrier responses, stages rates for review, and keeps procurement teams in control.
+          </p>
+          <div class="landing-actions">
+            <form id="hero-auth-form">
+              <button id="hero-auth-button" type="submit">Start with Kinde</button>
+            </form>
+            <a class="secondary-link" href="./app.html">Open dashboard</a>
           </div>
-          <form id="auth-form" class="auth-strip">
-            <button id="auth-button" type="submit">Sign in with Kinde</button>
-            <button id="sign-out-button" type="button" class="secondary hidden">Sign out</button>
-            <p id="auth-status" role="status"></p>
-          </form>
-        </header>
+        </div>
 
-        <main class="dashboard-layout">
-          <section class="metric-grid" aria-label="Rateware status">
-            <article class="metric-card">
-              <span>Raw uploads</span>
-              <strong id="metric-uploads">-</strong>
-            </article>
-            <article class="metric-card">
-              <span>Pending review</span>
-              <strong id="metric-pending">-</strong>
-            </article>
-            <article class="metric-card">
-              <span>Approved rows</span>
-              <strong id="metric-approved">-</strong>
-            </article>
-            <article class="metric-card">
-              <span>Failed jobs</span>
-              <strong id="metric-failed">-</strong>
-            </article>
-          </section>
+        <div class="landing-panel" aria-label="Rateware workflow">
+          <div>
+            <span>01</span>
+            <strong>Invite</strong>
+            <p>Select vendors and launch RFx participation.</p>
+          </div>
+          <div>
+            <span>02</span>
+            <strong>Collect</strong>
+            <p>Capture quotes from portal, email, upload, or future WhatsApp channels.</p>
+          </div>
+          <div>
+            <span>03</span>
+            <strong>Normalize</strong>
+            <p>AI converts messy submissions into structured staging rows.</p>
+          </div>
+          <div>
+            <span>04</span>
+            <strong>Approve</strong>
+            <p>Review, correct, approve, and export Rateware-ready rates.</p>
+          </div>
+        </div>
+      </section>
 
-          <section class="workspace-panel">
-            <div class="section-heading compact">
-              <p class="eyebrow">Next actions</p>
-              <h2>Operations Queue</h2>
-            </div>
-            <div class="action-grid">
-              <a class="action-tile" href="./upload-center.html">
-                <strong>Upload source files</strong>
-                <span>Capture carrier quotes, emails, PDFs, images, and spreadsheets.</span>
-              </a>
-              <a class="action-tile" href="./upload-history.html">
-                <strong>Interpret uploads</strong>
-                <span>Move preserved source files into AI extraction and staging.</span>
-              </a>
-              <a class="action-tile" href="./staging-review.html">
-                <strong>Review staged rates</strong>
-                <span>Approve, reject, and prepare normalized Rateware rows.</span>
-              </a>
-            </div>
-          </section>
+      <section class="landing-band">
+        <article>
+          <strong>Vendor CRM</strong>
+          <p>Build a carrier master and link every bid to a known vendor.</p>
+        </article>
+        <article>
+          <strong>RFx orchestration</strong>
+          <p>Upload spot books, invite participants, and track bid coverage.</p>
+        </article>
+        <article>
+          <strong>Human review</strong>
+          <p>Keep production inserts gated behind analyst approval.</p>
+        </article>
+      </section>
+    </main>
 
-          <section class="workspace-panel">
-            <div class="section-heading compact">
-              <p class="eyebrow">MVP roadmap</p>
-              <h2>Sprint 1 Scope</h2>
-            </div>
-            <ol class="roadmap-list">
-              <li><span>Done</span> SaaS shell, dashboard, Kinde access, and module navigation.</li>
-              <li><span>Next</span> Vendor CRM for carrier master data and imports.</li>
-              <li><span>Next</span> RFx/Spot Book upload and lane extraction.</li>
-            </ol>
-          </section>
-        </main>
-      </div>
-    </div>
-
-    <script type="module" src="./src/dashboard.js"></script>
+    <script type="module" src="./src/landing.js"></script>
   </body>
 </html>

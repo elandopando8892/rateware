@@ -28,6 +28,128 @@ a {
   text-decoration: none;
 }
 
+.landing-page {
+  background: #f4f7f6;
+}
+
+.landing-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: min(1180px, calc(100vw - 32px));
+  margin: 0 auto;
+  min-height: 78px;
+}
+
+.landing-auth {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.landing-auth p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.landing-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(360px, 0.95fr);
+  gap: 34px;
+  align-items: center;
+  width: min(1180px, calc(100vw - 32px));
+  min-height: calc(100vh - 190px);
+  margin: 0 auto;
+  padding: 28px 0 42px;
+}
+
+.landing-copy {
+  display: grid;
+  gap: 18px;
+}
+
+.landing-copy h1 {
+  max-width: 760px;
+  font-size: clamp(3rem, 7vw, 5.8rem);
+  line-height: 0.96;
+}
+
+.landing-copy p:not(.eyebrow) {
+  max-width: 640px;
+  margin: 0;
+  color: #4b5864;
+  font-size: 1.15rem;
+  line-height: 1.6;
+}
+
+.landing-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.secondary-link {
+  color: var(--accent-dark);
+  font-weight: 850;
+}
+
+.landing-panel {
+  display: grid;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 18px;
+}
+
+.landing-panel div {
+  display: grid;
+  grid-template-columns: 48px 1fr;
+  gap: 4px 12px;
+  border-bottom: 1px solid var(--line);
+  padding: 10px 0 14px;
+}
+
+.landing-panel div:last-child {
+  border-bottom: 0;
+}
+
+.landing-panel span {
+  grid-row: span 2;
+  color: var(--accent-dark);
+  font-weight: 850;
+}
+
+.landing-panel strong {
+  font-size: 1.02rem;
+}
+
+.landing-panel p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.landing-band {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  width: min(1180px, calc(100vw - 32px));
+  margin: 0 auto 36px;
+}
+
+.landing-band article {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 16px;
+}
+
+.landing-band p {
+  margin-bottom: 0;
+  color: var(--muted);
+}
+
 .app-shell {
   width: min(1180px, calc(100vw - 32px));
   margin: 0 auto;
@@ -467,6 +589,22 @@ th {
 }
 
 @media (max-width: 860px) {
+  .landing-nav,
+  .landing-auth,
+  .landing-actions {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .landing-hero,
+  .landing-band {
+    grid-template-columns: 1fr;
+  }
+
+  .landing-copy h1 {
+    font-size: 3rem;
+  }
+
   .shell-layout {
     grid-template-columns: 1fr;
   }
