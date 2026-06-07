@@ -4,7 +4,8 @@ import { KINDE_CLIENT_ID, KINDE_DOMAIN } from "./config.js";
 let kindePromise;
 
 function getAppUrl() {
-  return `${window.location.origin}/app.html`;
+  const localHosts = new Set(["localhost", "127.0.0.1"]);
+  return `${window.location.origin}${localHosts.has(window.location.hostname) ? "/app.html" : "/app"}`;
 }
 
 function normalizeRole(role) {

@@ -37,6 +37,7 @@ Allowed callback URLs:
 
 ```text
 http://127.0.0.1:3000/app.html
+https://your-vercel-app.vercel.app/app
 https://your-vercel-app.vercel.app/app.html
 ```
 
