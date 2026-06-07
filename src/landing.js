@@ -9,7 +9,7 @@ heroForm?.addEventListener("submit", async (event) => {
 
   try {
     const kinde = await getKindeClient();
-    await kinde.login({ app_state: { redirectTo: "/app.html" } });
+    await kinde.login();
   } catch (error) {
     heroButton.disabled = false;
     heroButton.textContent = error.message;

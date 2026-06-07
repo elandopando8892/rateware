@@ -3,6 +3,10 @@ import { KINDE_CLIENT_ID, KINDE_DOMAIN } from "./config.js";
 
 let kindePromise;
 
+function getAppUrl() {
+  return `${window.location.origin}/app.html`;
+}
+
 function normalizeRole(role) {
   if (!role) return "";
   if (typeof role === "string") return role.toLowerCase();
@@ -34,13 +38,9 @@ export async function getKindeClient() {
     kindePromise = createKindeClient({
       client_id: KINDE_CLIENT_ID,
       domain: KINDE_DOMAIN,
-      redirect_uri: window.location.origin,
+      redirect_uri: getAppUrl(),
       logout_uri: window.location.origin,
-      on_redirect_callback: (_user, appState) => {
-        if (appState?.redirectTo && window.location.pathname !== appState.redirectTo) {
-          window.location.assign(appState.redirectTo);
-        }
-      }
+      on_redirect_callback: () => {}
     });
   }
 
@@ -161,7 +161,7 @@ export function initAuthControls() {
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     const kinde = await getKindeClient();
-    await kinde.login({ app_state: { redirectTo: "/app.html" } });
+    await kinde.login();
   });
 
   signOutButton.addEventListener("click", async () => {
