@@ -1,4 +1,4 @@
-import { ensureSignedIn, initAuthControls } from "./auth.js";
+import { applyPermissionState, ensureSignedIn, initAuthControls, requirePrivatePage } from "./auth.js";
 import { fetchUploadHistory, interpretUpload } from "./upload-service.js";
 
 const historyBody = document.querySelector("#history-body");
@@ -23,7 +23,8 @@ function formatDate(value) {
 
 function renderRows(rows) {
   if (!rows.length) {
-    historyBody.innerHTML = '<tr><td colspan="8">No uploads found.</td></tr>';
+    historyBody.innerHTML =
+      '<tr><td colspan="8"><div class="empty-state"><strong>No uploads yet</strong><span>Upload carrier source files before running interpretation.</span><a href="./upload-center.html">Upload source files</a></div></td></tr>';
     return;
   }
 
@@ -50,9 +51,10 @@ async function loadHistory() {
   refreshButton.disabled = true;
 
   try {
-    await ensureSignedIn();
+    await requirePrivatePage();
     const rows = await fetchUploadHistory({ status: statusFilter.value });
     renderRows(rows);
+    await applyPermissionState("[data-interpret-id]", "uploads:interpret");
   } catch (error) {
     historyBody.innerHTML = `<tr><td colspan="8">Could not load upload history. ${escapeHtml(error.message)}</td></tr>`;
   } finally {
@@ -61,6 +63,7 @@ async function loadHistory() {
 }
 
 initAuthControls();
+requirePrivatePage().catch(() => {});
 refreshButton.addEventListener("click", loadHistory);
 statusFilter.addEventListener("change", loadHistory);
 historyBody.addEventListener("click", async (event) => {
@@ -72,6 +75,9 @@ historyBody.addEventListener("click", async (event) => {
 
   try {
     await ensureSignedIn();
+    if (!(await applyPermissionState("[data-interpret-id]", "uploads:interpret"))) {
+      throw new Error("Your role does not allow interpretation.");
+    }
     const result = await interpretUpload(button.dataset.interpretId);
     button.textContent = `${result.staged_rows} staged`;
   } catch (error) {

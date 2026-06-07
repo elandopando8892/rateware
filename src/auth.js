@@ -7,6 +7,12 @@ function getAppUrl() {
   return `${window.location.origin}/app.html`;
 }
 
+function normalizeRole(role) {
+  if (!role) return "";
+  if (typeof role === "string") return role.toLowerCase();
+  return String(role.key || role.name || "").toLowerCase();
+}
+
 function parseJwt(token) {
   const [, payload] = token.split(".");
   if (!payload) return {};
@@ -75,6 +81,45 @@ export async function getAccessContext() {
   };
 }
 
+export async function requirePrivatePage() {
+  const kinde = await getKindeClient();
+  const signedIn = await kinde.isAuthenticated();
+
+  if (!signedIn) {
+    window.location.replace("./index.html");
+    throw new Error("Authentication required.");
+  }
+
+  return ensureSignedIn();
+}
+
+export async function canUse(action) {
+  const access = await getAccessContext();
+  const roles = access.roles.map(normalizeRole);
+  const permissions = access.permissions.map((permission) => String(permission).toLowerCase());
+
+  if (roles.includes("admin") || permissions.includes(action)) return true;
+
+  const roleRules = {
+    "uploads:create": ["analyst"],
+    "uploads:interpret": ["analyst"],
+    "staging:review": ["reviewer", "analyst"],
+    "staging:approve": ["reviewer"],
+    "dashboard:read": ["admin", "analyst", "reviewer", "viewer"]
+  };
+
+  return (roleRules[action] || []).some((role) => roles.includes(role));
+}
+
+export async function applyPermissionState(selector, action) {
+  const allowed = await canUse(action);
+  document.querySelectorAll(selector).forEach((element) => {
+    element.disabled = !allowed;
+    element.title = allowed ? "" : "Your role does not allow this action.";
+  });
+  return allowed;
+}
+
 export function initAuthControls() {
   const form = document.querySelector("#auth-form");
   const authButton = document.querySelector("#auth-button");
@@ -119,6 +164,11 @@ export function initAuthControls() {
   });
 
   signOutButton.addEventListener("click", async () => {
+    if (signOutButton.dataset.openApp !== undefined) {
+      window.location.href = "./app.html";
+      return;
+    }
+
     const kinde = await getKindeClient();
     if (await kinde.isAuthenticated()) {
       await kinde.logout();

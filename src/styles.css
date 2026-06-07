@@ -588,6 +588,26 @@ th {
   flex-wrap: wrap;
 }
 
+.empty-state {
+  display: grid;
+  justify-items: start;
+  gap: 6px;
+  padding: 18px 4px;
+}
+
+.empty-state strong {
+  color: var(--text);
+}
+
+.empty-state span {
+  color: var(--muted);
+}
+
+.empty-state a {
+  color: var(--accent-dark);
+  font-weight: 850;
+}
+
 @media (max-width: 860px) {
   .landing-nav,
   .landing-auth,

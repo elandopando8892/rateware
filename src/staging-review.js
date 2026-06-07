@@ -1,4 +1,4 @@
-import { ensureSignedIn, initAuthControls } from "./auth.js";
+import { applyPermissionState, ensureSignedIn, initAuthControls, requirePrivatePage } from "./auth.js";
 import { fetchStagingRows, updateStagingRow } from "./staging-service.js";
 
 const body = document.querySelector("#staging-body");
@@ -19,7 +19,8 @@ function lane(row) {
 
 function renderRows(rows) {
   if (!rows.length) {
-    body.innerHTML = '<tr><td colspan="11">No staging rows found.</td></tr>';
+    body.innerHTML =
+      '<tr><td colspan="11"><div class="empty-state"><strong>No staging rows found</strong><span>Interpret uploaded quotes to create rows for review.</span><a href="./upload-history.html">Open upload history</a></div></td></tr>';
     return;
   }
 
@@ -52,8 +53,9 @@ async function loadRows() {
   refreshButton.disabled = true;
 
   try {
-    await ensureSignedIn();
+    await requirePrivatePage();
     renderRows(await fetchStagingRows({ status: statusFilter.value }));
+    await applyPermissionState("[data-approve-id], [data-reject-id]", "staging:approve");
   } catch (error) {
     body.innerHTML = `<tr><td colspan="11">Could not load staging rows. ${escapeHtml(error.message)}</td></tr>`;
   } finally {
@@ -72,6 +74,9 @@ body.addEventListener("click", async (event) => {
 
   try {
     await ensureSignedIn();
+    if (!(await applyPermissionState("[data-approve-id], [data-reject-id]", "staging:approve"))) {
+      throw new Error("Your role does not allow staging approval.");
+    }
     await updateStagingRow(id, { status: approve ? "approved" : "rejected" });
     await loadRows();
   } catch (error) {
@@ -84,4 +89,5 @@ refreshButton.addEventListener("click", loadRows);
 statusFilter.addEventListener("change", loadRows);
 
 initAuthControls();
+requirePrivatePage().catch(() => {});
 loadRows();

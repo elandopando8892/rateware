@@ -1,4 +1,4 @@
-import { ensureSignedIn, initAuthControls } from "./auth.js";
+import { applyPermissionState, ensureSignedIn, initAuthControls, requirePrivatePage } from "./auth.js";
 import { isAllowedFile } from "./file-rules.js";
 import { uploadRawFile } from "./upload-service.js";
 
@@ -100,6 +100,9 @@ form.addEventListener("submit", async (event) => {
 
   try {
     await ensureSignedIn();
+    if (!(await applyPermissionState("#upload-button", "uploads:create"))) {
+      throw new Error("Your role does not allow uploads.");
+    }
   } catch (error) {
     uploadButton.disabled = false;
     setStatus(error.message, "error");
@@ -132,4 +135,7 @@ form.addEventListener("submit", async (event) => {
 });
 
 initAuthControls();
+requirePrivatePage()
+  .then(() => applyPermissionState("#upload-button", "uploads:create"))
+  .catch(() => {});
 renderFiles();

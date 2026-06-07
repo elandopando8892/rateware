@@ -1,4 +1,4 @@
-import { ensureSignedIn, initAuthControls } from "./auth.js";
+import { initAuthControls, requirePrivatePage } from "./auth.js";
 import { callRatewareApi } from "./rateware-api.js";
 
 const metricUploads = document.querySelector("#metric-uploads");
@@ -12,7 +12,7 @@ function setMetric(element, value) {
 
 async function loadDashboard() {
   try {
-    await ensureSignedIn();
+    await requirePrivatePage();
     const summary = await callRatewareApi("dashboard_summary");
     setMetric(metricUploads, summary.raw_uploads);
     setMetric(metricPending, summary.pending_review);
