@@ -40,7 +40,7 @@ function renderFiles() {
         <li class="${allowed ? "" : "rejected"}">
           <span>
             <strong>${file.name}</strong>
-            <small>${formatBytes(file.size)} · ${file.type || "unknown type"}</small>
+            <small>${formatBytes(file.size)} &middot; ${file.type || "unknown type"}</small>
           </span>
           <em>${state}</em>
         </li>

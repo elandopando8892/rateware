@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Rateware Upload Center</title>
+    <link rel="stylesheet" href="./src/styles.css" />
+  </head>
+  <body>
+    <div class="shell-layout">
+      <aside class="side-nav" aria-label="Rateware modules">
+        <a class="brand-mark" href="./index.html">Rateware</a>
+        <nav>
+          <a href="./index.html">Dashboard</a>
+          <a aria-current="page" href="./upload-center.html">Upload Center</a>
+          <a href="./upload-history.html">Upload History</a>
+          <a href="./staging-review.html">Staging Review</a>
+          <a class="disabled-link" href="#" aria-disabled="true">Vendors</a>
+          <a class="disabled-link" href="#" aria-disabled="true">RFx Events</a>
+        </nav>
+      </aside>
+
+      <div class="page-frame">
+        <header class="page-header">
+          <div>
+            <p class="eyebrow">Source intake</p>
+            <h1>Upload Center</h1>
+          </div>
+          <form id="auth-form" class="auth-strip">
+            <button id="auth-button" type="submit">Sign in with Kinde</button>
+            <button id="sign-out-button" type="button" class="secondary hidden">Sign out</button>
+            <p id="auth-status" role="status"></p>
+          </form>
+        </header>
+
+        <main class="upload-layout">
+          <section class="workspace-panel">
+            <form id="upload-form" class="upload-form">
+              <label
+                id="drop-zone"
+                class="drop-zone"
+                for="file-input"
+                tabindex="0"
+                aria-describedby="file-help"
+              >
+                <span class="drop-icon" aria-hidden="true">+</span>
+                <span class="drop-title">Drop quotation files here</span>
+                <span id="file-help" class="drop-help">XLSX, PDF, images, EML email files</span>
+                <input
+                  id="file-input"
+                  name="files"
+                  type="file"
+                  multiple
+                  accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.pdf,application/pdf,image/*,.eml,message/rfc822"
+                />
+              </label>
+
+              <div class="form-grid">
+                <label>
+                  RFx
+                  <input id="rfx-input" name="rfx" type="text" placeholder="Optional RFx name or number" />
+                </label>
+                <label>
+                  Vendor
+                  <input id="vendor-input" name="vendor" type="text" placeholder="Optional carrier/vendor" />
+                </label>
+              </div>
+
+              <div class="action-row">
+                <button id="upload-button" type="submit">Upload originals</button>
+                <p id="status-message" class="status-message" role="status"></p>
+              </div>
+            </form>
+          </section>
+
+          <aside class="queue-panel" aria-label="Selected files">
+            <div class="section-heading compact">
+              <p class="eyebrow">Queue</p>
+              <h2>Files</h2>
+            </div>
+            <ul id="file-list" class="file-list empty">
+              <li>No files selected</li>
+            </ul>
+          </aside>
+        </main>
+      </div>
+    </div>
+
+    <script type="module" src="./src/upload-center.js"></script>
+  </body>
+</html>

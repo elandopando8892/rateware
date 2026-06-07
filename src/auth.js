@@ -3,6 +3,18 @@ import { KINDE_CLIENT_ID, KINDE_DOMAIN } from "./config.js";
 
 let kindePromise;
 
+function parseJwt(token) {
+  const [, payload] = token.split(".");
+  if (!payload) return {};
+
+  try {
+    const normalized = payload.replace(/-/g, "+").replace(/_/g, "/");
+    return JSON.parse(atob(normalized));
+  } catch {
+    return {};
+  }
+}
+
 function hasKindeConfig() {
   return KINDE_DOMAIN && KINDE_CLIENT_ID && !KINDE_DOMAIN.includes("YOUR_SUBDOMAIN") && !KINDE_CLIENT_ID.includes("YOUR_KINDE");
 }
@@ -41,7 +53,21 @@ export async function ensureSignedIn() {
 
   return {
     token: await getKindeToken(),
-    user: kinde.getUser()
+    user: kinde.getUser(),
+    access: await getAccessContext()
+  };
+}
+
+export async function getAccessContext() {
+  const token = await getKindeToken();
+  const claims = parseJwt(token);
+  const roles = claims.roles || claims["https://kinde.com/roles"] || [];
+  const permissions = claims.permissions || claims["https://kinde.com/permissions"] || [];
+
+  return {
+    claims,
+    roles: Array.isArray(roles) ? roles : [],
+    permissions: Array.isArray(permissions) ? permissions : []
   };
 }
 
@@ -57,16 +83,25 @@ export function initAuthControls() {
     status.textContent = message;
   }
 
-  function renderSession(signedIn, user = null) {
+  async function renderSession(signedIn, user = null) {
     authButton.classList.toggle("hidden", signedIn);
     signOutButton.classList.toggle("hidden", !signedIn);
-    setStatus(signedIn ? `Signed in as ${user?.email || "Kinde user"}` : "Sign in to upload and view source files.");
+
+    if (!signedIn) {
+      setStatus("Sign in to upload and view source files.");
+      return;
+    }
+
+    const access = await getAccessContext();
+    const role = access.roles[0]?.name || access.roles[0]?.key || access.roles[0] || "user";
+    document.body.dataset.role = role;
+    setStatus(`${user?.email || "Kinde user"} | ${role}`);
   }
 
   getKindeClient()
     .then(async (kinde) => {
       const signedIn = await kinde.isAuthenticated();
-      renderSession(signedIn, signedIn ? kinde.getUser() : null);
+      await renderSession(signedIn, signedIn ? kinde.getUser() : null);
     })
     .catch((error) => {
       authButton.disabled = true;
