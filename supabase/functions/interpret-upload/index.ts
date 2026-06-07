@@ -1,10 +1,10 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import * as XLSX from "https://esm.sh/xlsx@0.18.5";
+import { requireKindeUser } from "../_shared/kinde.ts";
 
 const OPENAI_MODEL = Deno.env.get("OPENAI_MODEL");
 const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
-const SUPABASE_ANON_KEY = Deno.env.get("RATEWARE_SUPABASE_ANON_KEY");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("RATEWARE_SUPABASE_SERVICE_ROLE_KEY");
 
 const corsHeaders = {
@@ -268,16 +268,15 @@ async function interpretWithModel(rawUpload: Record<string, string>, file: Blob)
 Deno.serve(async (request) => {
   if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
-  if (!OPENAI_MODEL || !OPENAI_API_KEY || !SUPABASE_URL || !SUPABASE_ANON_KEY || !SUPABASE_SERVICE_ROLE_KEY) {
-    return jsonResponse({ error: "Missing OPENAI_MODEL, OPENAI_API_KEY, SUPABASE_URL, RATEWARE_SUPABASE_ANON_KEY, or RATEWARE_SUPABASE_SERVICE_ROLE_KEY." }, 500);
+  if (!OPENAI_MODEL || !OPENAI_API_KEY || !SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+    return jsonResponse({ error: "Missing OPENAI_MODEL, OPENAI_API_KEY, SUPABASE_URL, or RATEWARE_SUPABASE_SERVICE_ROLE_KEY." }, 500);
   }
 
-  const authorization = request.headers.get("Authorization") || "";
-  const userClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-    global: { headers: { Authorization: authorization } }
-  });
-  const user = await userClient.auth.getUser();
-  if (user.error || !user.data.user) return jsonResponse({ error: "Authentication required." }, 401);
+  try {
+    await requireKindeUser(request);
+  } catch (error) {
+    return jsonResponse({ error: error.message }, 401);
+  }
 
   const { raw_upload_id } = await request.json();
   if (!raw_upload_id) return jsonResponse({ error: "raw_upload_id is required." }, 400);

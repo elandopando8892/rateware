@@ -17,13 +17,37 @@ Static Upload Center module for preserving carrier quotation source files before
 1. Run `supabase/raw_uploads.sql` in Supabase SQL Editor.
 2. Copy `src/config.example.js` values into `src/config.js`.
 3. Replace the project URL and anon key in `src/config.js`.
-4. Confirm Supabase email OTP authentication is enabled.
-5. Deploy `supabase/functions/interpret-upload`.
+4. Configure Kinde as a front-end/mobile application.
+5. Deploy Supabase functions: `create-raw-upload`, `rateware-api`, and `interpret-upload`.
 6. Set Supabase function secrets:
    - `OPENAI_API_KEY`
    - `OPENAI_MODEL`
-   - `SUPABASE_ANON_KEY`
-7. Open `index.html`, or run `npm run dev` and use the served URL.
+   - `KINDE_DOMAIN`
+   - optional `KINDE_AUDIENCE`
+   - `RATEWARE_SUPABASE_ANON_KEY`
+   - `RATEWARE_SUPABASE_SERVICE_ROLE_KEY`
+7. Configure `KINDE_DOMAIN` and `KINDE_CLIENT_ID` in `src/config.js`.
+8. Open `index.html`, or run `npm run dev` and use the served URL.
+
+## Kinde
+
+Create a Kinde application with type `Front-end and mobile`.
+
+Allowed callback URLs:
+
+```text
+http://127.0.0.1:3000
+https://your-vercel-app.vercel.app
+```
+
+Allowed logout redirect URLs:
+
+```text
+http://127.0.0.1:3000
+https://your-vercel-app.vercel.app
+```
+
+Copy the Kinde application `Domain` and `Client ID` into `src/config.js`. JavaScript SPA apps do not use a client secret.
 
 ## GitHub and Vercel
 
@@ -36,7 +60,7 @@ Recommended Vercel settings:
 - Output directory: `.`
 - Install command: leave empty or `npm install`
 
-After the Vercel URL is created, add it in Supabase Auth redirect URLs:
+After the Vercel URL is created, add it in Kinde callback and logout redirect URLs:
 
 ```text
 https://your-vercel-app.vercel.app

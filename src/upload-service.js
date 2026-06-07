@@ -1,69 +1,64 @@
-import { RAW_UPLOADS_BUCKET, requireSupabase } from "./supabase-client.js";
-import { buildStoragePath, detectDocumentType } from "./file-rules.js";
+import { getKindeToken } from "./auth.js";
+import { SUPABASE_URL } from "./config.js";
+import { detectDocumentType } from "./file-rules.js";
+
+async function callRatewareApi(action, payload = {}) {
+  const token = await getKindeToken();
+  const response = await fetch(`${SUPABASE_URL}/functions/v1/rateware-api`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ action, ...payload })
+  });
+
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || "Rateware API request failed.");
+  return data;
+}
 
 export async function uploadRawFile(file, { vendor = "", rfx = "" } = {}) {
-  const client = requireSupabase();
   const documentType = detectDocumentType(file);
 
   if (documentType === "unsupported") {
     throw new Error(`${file.name} is not an accepted source type.`);
   }
 
-  const { uploadId, path } = buildStoragePath(file);
-  const storageResult = await client.storage.from(RAW_UPLOADS_BUCKET).upload(path, file, {
-    cacheControl: "3600",
-    contentType: file.type || undefined,
-    upsert: false
+  const token = await getKindeToken();
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("vendor", vendor);
+  formData.append("rfx", rfx);
+  formData.append("document_type", documentType);
+
+  const response = await fetch(`${SUPABASE_URL}/functions/v1/create-raw-upload`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: formData
   });
 
-  if (storageResult.error) {
-    throw storageResult.error;
-  }
-
-  const rawUpload = {
-    id: uploadId,
-    original_filename: file.name,
-    storage_bucket: RAW_UPLOADS_BUCKET,
-    storage_path: path,
-    mime_type: file.type || null,
-    file_size_bytes: file.size,
-    document_type: documentType,
-    vendor_hint: vendor.trim() || null,
-    rfx_hint: rfx.trim() || null,
-    status: "uploaded",
-    staging_target: "rate_staging"
-  };
-
-  const insertResult = await client.from("raw_uploads").insert(rawUpload).select().single();
-
-  if (insertResult.error) {
-    await client.storage.from(RAW_UPLOADS_BUCKET).remove([path]);
-    throw insertResult.error;
-  }
-
-  return insertResult.data;
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || "Upload failed.");
+  return data.raw_upload;
 }
 
 export async function fetchUploadHistory({ status = "" } = {}) {
-  const client = requireSupabase();
-  let query = client.from("raw_uploads").select("*").order("created_at", { ascending: false }).limit(100);
-
-  if (status) {
-    query = query.eq("status", status);
-  }
-
-  const result = await query;
-  if (result.error) throw result.error;
-
-  return result.data;
+  return (await callRatewareApi("list_uploads", { status })).rows;
 }
 
 export async function interpretUpload(rawUploadId) {
-  const client = requireSupabase();
-  const result = await client.functions.invoke("interpret-upload", {
-    body: { raw_upload_id: rawUploadId }
+  const token = await getKindeToken();
+  const response = await fetch(`${SUPABASE_URL}/functions/v1/interpret-upload`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ raw_upload_id: rawUploadId })
   });
 
-  if (result.error) throw result.error;
-  return result.data;
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || "Interpretation failed.");
+  return data;
 }
