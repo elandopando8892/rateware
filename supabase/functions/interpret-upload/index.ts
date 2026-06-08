@@ -351,29 +351,86 @@ function buildLocationIndex(locations: Record<string, unknown>[]) {
   return index;
 }
 
+function locationCandidate(location: Record<string, unknown>, score: number, reason: string) {
+  return {
+    score,
+    reason,
+    country: location.country || null,
+    zip_prefix: location.zip_prefix || null,
+    city: location.city || null,
+    state: location.state_code || location.state_name || null,
+    metro_city: location.metro_city || null,
+    market: location.market || null,
+    region: location.region || null,
+    raw_value: location.raw_value || null
+  };
+}
+
 function locationMatch(index: Map<string, Record<string, unknown>>, value: unknown) {
   const lookup = catalogKey(value);
   if (!lookup) return null;
 
   const direct = index.get(lookup);
-  if (direct) return direct;
+  if (direct) {
+    return {
+      location: direct,
+      score: 100,
+      reason: "exact catalog match",
+      candidates: [locationCandidate(direct, 100, "exact catalog match")]
+    };
+  }
 
   const zip = lookup.match(/\b\d{3,5}\b/)?.[0]?.slice(0, 3);
-  if (zip && index.get(zip)) return index.get(zip)!;
+  if (zip && index.get(zip)) {
+    const zipMatch = index.get(zip)!;
+    return {
+      location: zipMatch,
+      score: 92,
+      reason: `zip prefix ${zip} match`,
+      candidates: [locationCandidate(zipMatch, 92, `zip prefix ${zip} match`)]
+    };
+  }
 
-  let best: { location: Record<string, unknown>; score: number } | null = null;
+  const candidates: Array<{ location: Record<string, unknown>; score: number; reason: string }> = [];
   for (const [candidateKey, location] of index) {
     if (!candidateKey || candidateKey.length < 3) continue;
     let score = 0;
-    if (lookup.includes(candidateKey) || candidateKey.includes(lookup)) score += Math.min(candidateKey.length, lookup.length);
+    const reasons: string[] = [];
+    if (lookup.includes(candidateKey) || candidateKey.includes(lookup)) {
+      score += Math.min(candidateKey.length, lookup.length);
+      reasons.push("text overlap");
+    }
     const state = catalogKey(location.state_code);
-    if (state && lookup.includes(state)) score += 12;
+    if (state && lookup.includes(state)) {
+      score += 12;
+      reasons.push("state match");
+    }
     const city = catalogKey(location.city);
-    if (city && lookup.includes(city)) score += 18;
-    if (score > (best?.score || 0)) best = { location, score };
+    if (city && lookup.includes(city)) {
+      score += 18;
+      reasons.push("city match");
+    }
+    if (score >= 12) candidates.push({ location, score, reason: reasons.join(", ") || "weak text match" });
   }
 
-  return best && best.score >= 18 ? best.location : null;
+  candidates.sort((a, b) => b.score - a.score);
+  const top = candidates.slice(0, 5).map((candidate) => locationCandidate(candidate.location, candidate.score, candidate.reason));
+  const best = candidates[0] || null;
+  if (!best || best.score < 18) {
+    return {
+      location: null,
+      score: best?.score || 0,
+      reason: best ? "below auto-match threshold" : "no catalog candidate",
+      candidates: top
+    };
+  }
+
+  return {
+    location: best.location,
+    score: best.score,
+    reason: best.reason,
+    candidates: top
+  };
 }
 
 function applyLocation(row: Record<string, unknown>, prefix: "origin" | "destination", location: Record<string, unknown> | null) {
@@ -479,8 +536,10 @@ function normalizeWithCatalog(rows: Record<string, unknown>[], catalogItems: Rec
   const mileage = new Map(laneMileage.map((lane) => [catalogKey(lane.route_key), lane]));
 
   return rows.map((row) => {
-    const originLocation = locationMatch(locationIndex, row.origin);
-    const destinationLocation = locationMatch(locationIndex, row.destination);
+    const originResolution = locationMatch(locationIndex, row.origin);
+    const destinationResolution = locationMatch(locationIndex, row.destination);
+    const originLocation = originResolution?.location || null;
+    const destinationLocation = destinationResolution?.location || null;
     const originMatch = originLocation || catalogMatch(catalog, ["zip_market", "mx_production"], row.origin);
     const destinationMatch = destinationLocation || catalogMatch(catalog, ["zip_market", "mx_production"], row.destination);
     const equipmentMatch = catalogMatch(catalog, ["equipment"], row.equipment);
@@ -498,6 +557,10 @@ function normalizeWithCatalog(rows: Record<string, unknown>[], catalogItems: Rec
       destination_market: (destinationLocation?.market as string) || ((destinationMatch?.metadata as Record<string, unknown>)?.market as string) || null,
       ...applyLocation(row, "origin", originLocation),
       ...applyLocation(row, "destination", destinationLocation),
+      origin_match_reason: originResolution?.reason || null,
+      destination_match_reason: destinationResolution?.reason || null,
+      origin_location_candidates: originResolution?.candidates || [],
+      destination_location_candidates: destinationResolution?.candidates || [],
       normalized_equipment: (equipmentMatch?.normalized_value as string) || null,
       normalized_trailer: (trailerMatch?.normalized_value as string) || null,
       normalized_config: (configMatch?.normalized_value as string) || null,

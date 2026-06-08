@@ -130,12 +130,14 @@ function normalizeStagingPatch(input: Record<string, unknown>) {
     "origin_city",
     "origin_state",
     "origin_region",
+    "origin_match_reason",
     "destination_market",
     "destination_country",
     "destination_zip_prefix",
     "destination_city",
     "destination_state",
     "destination_region",
+    "destination_match_reason",
     "normalized_equipment",
     "normalized_trailer",
     "normalized_config",
@@ -171,6 +173,8 @@ function normalizeStagingPatch(input: Record<string, unknown>) {
   if (input.fuel_delta !== undefined) patch.fuel_delta = Number(input.fuel_delta) || null;
   if (input.normalized_all_in_rate !== undefined) patch.normalized_all_in_rate = Number(input.normalized_all_in_rate) || null;
   if (input.fuel_index_date !== undefined) patch.fuel_index_date = cleanDate(input.fuel_index_date);
+  if (input.origin_location_candidates !== undefined) patch.origin_location_candidates = Array.isArray(input.origin_location_candidates) ? input.origin_location_candidates : [];
+  if (input.destination_location_candidates !== undefined) patch.destination_location_candidates = Array.isArray(input.destination_location_candidates) ? input.destination_location_candidates : [];
 
   const routeParts = [
     patch.origin,
