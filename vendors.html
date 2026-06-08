@@ -34,7 +34,38 @@
         </header>
 
         <main class="vendors-layout">
-          <section class="workspace-panel wide-section">
+          <section class="vendor-metrics wide-section" aria-label="Vendor health">
+            <article>
+              <span>Total vendors</span>
+              <strong id="vendor-metric-total">0</strong>
+            </article>
+            <article>
+              <span>RFx ready</span>
+              <strong id="vendor-metric-ready">0</strong>
+            </article>
+            <article>
+              <span>Missing contact</span>
+              <strong id="vendor-metric-missing-contact">0</strong>
+            </article>
+            <article>
+              <span>Possible duplicates</span>
+              <strong id="vendor-metric-duplicates">0</strong>
+            </article>
+            <article>
+              <span>WhatsApp enabled</span>
+              <strong id="vendor-metric-whatsapp">0</strong>
+            </article>
+          </section>
+
+          <section class="vendor-tabs wide-section" aria-label="Vendor workflows">
+            <button class="vendor-tab is-active" type="button" data-vendor-tab="directory">Directory</button>
+            <button class="vendor-tab" type="button" data-vendor-tab="wizard">Wizard</button>
+            <button class="vendor-tab" type="button" data-vendor-tab="create">Quick Create</button>
+            <button class="vendor-tab" type="button" data-vendor-tab="import">Import</button>
+            <button class="vendor-tab" type="button" data-vendor-tab="segments">Segments</button>
+          </section>
+
+          <section class="workspace-panel wide-section hidden" data-tab-panel="wizard">
             <div class="section-heading compact">
               <p class="eyebrow">Guided setup</p>
               <h2>Vendor Wizard</h2>
@@ -110,7 +141,7 @@
             </div>
           </section>
 
-          <section class="workspace-panel">
+          <section class="workspace-panel wide-section hidden" data-tab-panel="create">
             <div class="section-heading compact">
               <p class="eyebrow">Add vendor</p>
               <h2>Carrier profile</h2>
@@ -163,7 +194,7 @@
             </form>
           </section>
 
-          <section class="queue-panel">
+          <section class="queue-panel wide-section hidden" data-tab-panel="import">
             <div class="section-heading compact">
               <p class="eyebrow">Import</p>
               <h2>CSV / XLSX</h2>
@@ -177,7 +208,7 @@
             <p id="import-status" class="status-message" role="status"></p>
           </section>
 
-          <section class="queue-panel">
+          <section class="queue-panel wide-section hidden" data-tab-panel="segments">
             <div class="section-heading compact">
               <p class="eyebrow">Segments</p>
               <h2>Saved vendor lists</h2>
@@ -216,7 +247,7 @@
             <div id="segments-list" class="segment-list"></div>
           </section>
 
-          <section id="import-preview-panel" class="workspace-panel wide-section hidden">
+          <section id="import-preview-panel" class="workspace-panel wide-section hidden" data-tab-panel="import">
             <div class="section-heading compact">
               <p class="eyebrow">Import review</p>
               <h2>Vendor file preview</h2>
@@ -248,7 +279,7 @@
             </div>
           </section>
 
-          <section class="workspace-panel wide-section">
+          <section class="workspace-panel wide-section" data-tab-panel="directory">
             <div class="toolbar">
               <label>
                 Search
@@ -266,7 +297,16 @@
               </label>
               <button id="refresh-vendors-button" type="button">Refresh</button>
             </div>
-            <div class="bulk-toolbar">
+            <div class="quick-filter-row" aria-label="Quick vendor filters">
+              <button class="quick-filter is-active" type="button" data-quick-filter="all">All</button>
+              <button class="quick-filter" type="button" data-quick-filter="ready">RFx ready</button>
+              <button class="quick-filter" type="button" data-quick-filter="missing-contact">Missing contact</button>
+              <button class="quick-filter" type="button" data-quick-filter="duplicates">Duplicates</button>
+              <button class="quick-filter" type="button" data-quick-filter="whatsapp">WhatsApp</button>
+              <button class="quick-filter" type="button" data-quick-filter="cross-border">Cross-border</button>
+            </div>
+            <div id="bulk-toolbar" class="bulk-toolbar hidden">
+              <strong id="bulk-selection-count">0 selected</strong>
               <label>
                 Bulk status
                 <select id="bulk-status">

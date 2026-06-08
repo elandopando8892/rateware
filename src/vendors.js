@@ -11,6 +11,13 @@ import {
 } from "./vendor-service.js";
 
 const form = document.querySelector("#vendor-form");
+const vendorTabs = document.querySelectorAll(".vendor-tab");
+const tabPanels = document.querySelectorAll("[data-tab-panel]");
+const vendorMetricTotal = document.querySelector("#vendor-metric-total");
+const vendorMetricReady = document.querySelector("#vendor-metric-ready");
+const vendorMetricMissingContact = document.querySelector("#vendor-metric-missing-contact");
+const vendorMetricDuplicates = document.querySelector("#vendor-metric-duplicates");
+const vendorMetricWhatsapp = document.querySelector("#vendor-metric-whatsapp");
 const wizardForm = document.querySelector("#vendor-wizard-form");
 const wizardStepButtons = document.querySelectorAll(".wizard-step");
 const wizardPanels = document.querySelectorAll("[data-step-panel]");
@@ -33,6 +40,9 @@ const vendorsBody = document.querySelector("#vendors-body");
 const searchInput = document.querySelector("#vendor-search");
 const statusFilter = document.querySelector("#vendor-status-filter");
 const refreshButton = document.querySelector("#refresh-vendors-button");
+const quickFilterButtons = document.querySelectorAll(".quick-filter");
+const bulkToolbar = document.querySelector("#bulk-toolbar");
+const bulkSelectionCount = document.querySelector("#bulk-selection-count");
 const bulkStatus = document.querySelector("#bulk-status");
 const bulkTags = document.querySelector("#bulk-tags");
 const bulkButton = document.querySelector("#bulk-update-button");
@@ -42,11 +52,13 @@ const segmentStatusMessage = document.querySelector("#segment-status-message");
 const segmentsList = document.querySelector("#segments-list");
 const drawer = document.querySelector("#vendor-drawer");
 const closeDrawerButton = document.querySelector("#close-vendor-drawer");
+let allVendors = [];
 let currentVendors = [];
 let selectedVendorIds = new Set();
 let pendingImportRows = [];
 let savedSegments = [];
 let wizardStep = 0;
+let activeQuickFilter = "all";
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -151,6 +163,54 @@ function scoreVendor(row) {
   return Math.round((fields.filter(Boolean).length / fields.length) * 100);
 }
 
+function isRfxReady(row) {
+  return scoreVendor(row) >= 80 && row.primary_email && splitTags(row.tags).length;
+}
+
+function hasMissingContact(row) {
+  return !row.primary_email && !row.whatsapp_phone;
+}
+
+function activateVendorTab(tabName) {
+  vendorTabs.forEach((button) => button.classList.toggle("is-active", button.dataset.vendorTab === tabName));
+  tabPanels.forEach((panel) => {
+    const shouldShow = panel.dataset.tabPanel === tabName;
+    const isEmptyImportPreview = panel.id === "import-preview-panel" && !pendingImportRows.length;
+    panel.classList.toggle("hidden", !shouldShow || isEmptyImportPreview);
+  });
+}
+
+function updateBulkState() {
+  const count = selectedVendorIds.size;
+  bulkToolbar.classList.toggle("hidden", count === 0);
+  bulkSelectionCount.textContent = `${count} selected`;
+}
+
+function updateVendorMetrics() {
+  const rows = allVendors;
+  vendorMetricTotal.textContent = rows.length;
+  vendorMetricReady.textContent = rows.filter(isRfxReady).length;
+  vendorMetricMissingContact.textContent = rows.filter(hasMissingContact).length;
+  vendorMetricDuplicates.textContent = rows.filter((row) => duplicateSignals(row, rows).length).length;
+  vendorMetricWhatsapp.textContent = rows.filter((row) => row.whatsapp_phone || row.preferred_channel === "whatsapp").length;
+}
+
+function applyQuickFilter(filter) {
+  activeQuickFilter = filter;
+  quickFilterButtons.forEach((button) => button.classList.toggle("is-active", button.dataset.quickFilter === filter));
+
+  const rows = allVendors.filter((row) => {
+    if (filter === "ready") return isRfxReady(row);
+    if (filter === "missing-contact") return hasMissingContact(row);
+    if (filter === "duplicates") return duplicateSignals(row, allVendors).length > 0;
+    if (filter === "whatsapp") return row.whatsapp_phone || row.preferred_channel === "whatsapp";
+    if (filter === "cross-border") return splitTags(row.tags).includes("cross-border") || String(row.coverage_notes || "").toLowerCase().includes("cross-border");
+    return true;
+  });
+
+  renderVendors(rows);
+}
+
 function readWizard() {
   return {
     vendor_name: document.querySelector("#wizard-vendor-name").value,
@@ -244,6 +304,8 @@ function readForm() {
 
 function renderVendors(rows) {
   currentVendors = rows;
+  updateVendorMetrics();
+  updateBulkState();
   renderSegments();
 
   if (!rows.length) {
@@ -332,7 +394,8 @@ async function loadVendors() {
       search: searchInput.value,
       status: statusFilter.value
     });
-    renderVendors(rows);
+    allVendors = rows;
+    applyQuickFilter(activeQuickFilter);
   } catch (error) {
     vendorsBody.innerHTML = `<tr><td colspan="9">Could not load vendors. ${escapeHtml(error.message)}</td></tr>`;
   } finally {
@@ -400,6 +463,7 @@ function renderImportPreview() {
 
   confirmImportButton.disabled = !validRows.length;
   importPreviewPanel.classList.remove("hidden");
+  activateVendorTab("import");
 }
 
 function setDrawerValue(selector, value) {
@@ -604,7 +668,7 @@ segmentsList.addEventListener("click", async (event) => {
     if (!segment) return;
     searchInput.value = splitTags(segment.tags).join(", ");
     statusFilter.value = segment.status || "";
-    renderVendors(currentVendors.filter((vendor) => segmentMatches(segment, vendor)));
+    renderVendors(allVendors.filter((vendor) => segmentMatches(segment, vendor)));
   }
 
   if (deleteButton) {
@@ -622,6 +686,12 @@ segmentsList.addEventListener("click", async (event) => {
 
 refreshButton.addEventListener("click", loadVendors);
 statusFilter.addEventListener("change", loadVendors);
+vendorTabs.forEach((button) => {
+  button.addEventListener("click", () => activateVendorTab(button.dataset.vendorTab));
+});
+quickFilterButtons.forEach((button) => {
+  button.addEventListener("click", () => applyQuickFilter(button.dataset.quickFilter));
+});
 searchInput.addEventListener("input", () => {
   window.clearTimeout(searchInput._timer);
   searchInput._timer = window.setTimeout(loadVendors, 300);
@@ -636,6 +706,7 @@ vendorsBody.addEventListener("change", (event) => {
   if (!checkbox) return;
   if (checkbox.checked) selectedVendorIds.add(checkbox.dataset.vendorId);
   else selectedVendorIds.delete(checkbox.dataset.vendorId);
+  updateBulkState();
 });
 closeDrawerButton.addEventListener("click", () => drawer.classList.add("hidden"));
 
@@ -644,5 +715,7 @@ requirePrivatePage()
   .then(() => applyPermissionState("#save-vendor-button, #wizard-save-button, #vendor-import, #bulk-update-button, #confirm-import-button, #save-segment-button", "vendors:manage"))
   .catch(() => {});
 renderWizard();
+activateVendorTab("directory");
+updateBulkState();
 loadSegments();
 loadVendors();
