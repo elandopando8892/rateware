@@ -12,7 +12,7 @@ const approveDrawerButton = document.querySelector("#approve-staging-button");
 const rejectDrawerButton = document.querySelector("#reject-staging-button");
 let currentRows = [];
 let activeRowId = null;
-const STAGING_COLSPAN = 27;
+const STAGING_COLSPAN = 33;
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -34,7 +34,7 @@ function inputCell(row, field, options = {}) {
   const widthClass = options.wide ? "wide-input" : options.money ? "money-input" : options.short ? "short-input" : "";
   const value = field === "confidence"
     ? Math.round(Number(row[field] || 0) * 100)
-    : field === "quote_date"
+    : options.type === "date"
       ? dateValue(row[field])
       : row[field] || "";
   return `<input class="staging-input ${widthClass}" data-field="${field}" type="${options.type || "text"}" value="${escapeHtml(value)}" ${options.min ? `min="${escapeHtml(options.min)}"` : ""} ${options.max ? `max="${escapeHtml(options.max)}"` : ""} ${options.step ? `step="${escapeHtml(options.step)}"` : ""} />`;
@@ -87,10 +87,16 @@ function renderRows(rows) {
           <td>${inputCell(row, "calculated_miles", { money: true })}</td>
           <td>${inputCell(row, "catalog_match_status", { short: true })}</td>
           <td>${inputCell(row, "fsc", { money: true })}</td>
+          <td>${inputCell(row, "fuel_region", { short: true })}</td>
+          <td>${inputCell(row, "fuel_index_date", { type: "date", short: true })}</td>
+          <td>${inputCell(row, "normalized_fsc_per_mile", { money: true })}</td>
+          <td>${inputCell(row, "normalized_fsc_total", { money: true })}</td>
+          <td>${inputCell(row, "fuel_delta", { money: true })}</td>
           <td>${inputCell(row, "fuel", { money: true })}</td>
           <td>${inputCell(row, "border_crossing_fee", { money: true })}</td>
           <td>${inputCell(row, "flat_rate", { money: true })}</td>
           <td>${inputCell(row, "all_in_rate", { money: true })}</td>
+          <td>${inputCell(row, "normalized_all_in_rate", { money: true })}</td>
           <td>${inputCell(row, "currency", { short: true })}</td>
           <td>${inputCell(row, "weekly_capacity", { short: true })}</td>
           <td>${inputCell(row, "confidence", { type: "number", min: "0", max: "100", step: "1", short: true })}</td>

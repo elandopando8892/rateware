@@ -133,7 +133,9 @@ function normalizeStagingPatch(input: Record<string, unknown>) {
     "normalized_service",
     "normalized_driver",
     "catalog_match_status",
-    "mileage_source"
+    "mileage_source",
+    "fuel_region",
+    "fuel_source"
   ];
 
   for (const field of textFields) {
@@ -151,6 +153,13 @@ function normalizeStagingPatch(input: Record<string, unknown>) {
 
   if (input.calculated_miles !== undefined) patch.calculated_miles = Number(input.calculated_miles) || null;
   if (input.calculated_km !== undefined) patch.calculated_km = Number(input.calculated_km) || null;
+  if (input.carrier_fsc_per_mile !== undefined) patch.carrier_fsc_per_mile = Number(input.carrier_fsc_per_mile) || null;
+  if (input.normalized_fsc_per_mile !== undefined) patch.normalized_fsc_per_mile = Number(input.normalized_fsc_per_mile) || null;
+  if (input.normalized_fsc_total !== undefined) patch.normalized_fsc_total = Number(input.normalized_fsc_total) || null;
+  if (input.fuel_diesel_per_gallon !== undefined) patch.fuel_diesel_per_gallon = Number(input.fuel_diesel_per_gallon) || null;
+  if (input.fuel_delta !== undefined) patch.fuel_delta = Number(input.fuel_delta) || null;
+  if (input.normalized_all_in_rate !== undefined) patch.normalized_all_in_rate = Number(input.normalized_all_in_rate) || null;
+  if (input.fuel_index_date !== undefined) patch.fuel_index_date = cleanDate(input.fuel_index_date);
 
   const routeParts = [
     patch.origin,

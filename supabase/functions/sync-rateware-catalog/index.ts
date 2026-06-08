@@ -26,6 +26,27 @@ function cleanNumber(value: unknown) {
   return Number.isFinite(number) ? number : null;
 }
 
+function cleanDate(value: unknown) {
+  const text = cleanText(value);
+  if (!text) return null;
+
+  const isoMatch = text.match(/^(\d{4})-(\d{2})(?:-(\d{2}))?$/);
+  if (isoMatch) return `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3] || "01"}`;
+
+  const slashMatch = text.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})$/);
+  if (slashMatch) {
+    const month = Number(slashMatch[1]);
+    const day = Number(slashMatch[2]);
+    const year = Number(slashMatch[3].length === 2 ? `20${slashMatch[3]}` : slashMatch[3]);
+    if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+      return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    }
+  }
+
+  const parsed = new Date(text);
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString().slice(0, 10);
+}
+
 function key(value: unknown) {
   return String(value ?? "")
     .trim()
@@ -241,6 +262,66 @@ function parseProd(rows: string[][], source: string, countryScope: "us" | "mx") 
   }).filter(Boolean);
 }
 
+function parseFuelRegions(rows: string[][]) {
+  const [, ...data] = rows;
+  return data.map((row) => {
+    const stateCode = cleanText(row[0])?.toUpperCase();
+    const fuelRegion = cleanText(row[1]);
+    if (!stateCode || !fuelRegion) return null;
+
+    return {
+      state_code: stateCode,
+      fuel_region: fuelRegion,
+      diesel_per_gallon: cleanNumber(row[2]),
+      fsc_per_mile: cleanNumber(row[3]),
+      source: "usaFuel",
+      active: true,
+      updated_at: new Date().toISOString()
+    };
+  }).filter(Boolean);
+}
+
+function parseFscTrend(rows: string[][]) {
+  const [, ...data] = rows;
+  return data.map((row) => {
+    const indexDate = cleanDate(row[2]);
+    const fuelRegion = cleanText(row[1]);
+    const diesel = cleanNumber(row[3]);
+    const fsc = cleanNumber(row[4]);
+    if (!indexDate || !fuelRegion || diesel === null || fsc === null) return null;
+
+    return {
+      source: "usaFSCtrend",
+      api_fetch: cleanText(row[0]),
+      fuel_region: fuelRegion,
+      index_date: indexDate,
+      diesel_per_gallon: diesel,
+      fsc_per_mile: fsc,
+      active: true,
+      updated_at: new Date().toISOString()
+    };
+  }).filter(Boolean);
+}
+
+function parseFscIndex(rows: string[][]) {
+  return rows.slice(2).map((row) => {
+    const dieselFrom = cleanNumber(row[0]);
+    const dieselTo = cleanNumber(row[1]);
+    const truckloadPerMile = cleanNumber(row[3]);
+    if (dieselFrom === null || dieselTo === null || truckloadPerMile === null) return null;
+
+    return {
+      source: "usaFSCindex",
+      diesel_from: dieselFrom,
+      diesel_to: dieselTo,
+      ltl_percent: cleanNumber(row[2]),
+      truckload_per_mile: truckloadPerMile,
+      active: true,
+      updated_at: new Date().toISOString()
+    };
+  }).filter(Boolean);
+}
+
 async function upsertInBatches(supabase: ReturnType<typeof createClient>, table: string, rows: Record<string, unknown>[], onConflict: string) {
   const batchSize = 500;
   for (let index = 0; index < rows.length; index += batchSize) {
@@ -259,12 +340,15 @@ Deno.serve(async (request) => {
     const sheetId = cleanText(body.sheet_id) || Deno.env.get("RATEWARE_CATALOG_SHEET_ID") || DEFAULT_SHEET_ID;
     const supabase = getClient();
 
-    const [cusCatalog, usaLaneData, mexLaneData, usaLaneProd, mexLaneProd] = await Promise.all([
+    const [cusCatalog, usaLaneData, mexLaneData, usaLaneProd, mexLaneProd, usaFuel, usaFSCtrend, usaFSCindex] = await Promise.all([
       fetchSheet(sheetId, "cusCatalog"),
       fetchSheet(sheetId, "usaLaneData"),
       fetchSheet(sheetId, "mexLaneData"),
       fetchSheet(sheetId, "usaLaneProd"),
-      fetchSheet(sheetId, "mexLaneProd")
+      fetchSheet(sheetId, "mexLaneProd"),
+      fetchSheet(sheetId, "usaFuel"),
+      fetchSheet(sheetId, "usaFSCtrend"),
+      fetchSheet(sheetId, "usaFSCindex")
     ]);
 
     const catalogItems = parseCusCatalog(cusCatalog);
@@ -278,11 +362,21 @@ Deno.serve(async (request) => {
 
     await upsertInBatches(supabase, "rateware_catalog_items", uniqueCatalogItems, "source,category,raw_value,normalized_value");
     await upsertInBatches(supabase, "rateware_lane_mileage", laneMileage, "source,route_key");
+    const fuelRegions = parseFuelRegions(usaFuel) as Record<string, unknown>[];
+    const fscTrend = parseFscTrend(usaFSCtrend) as Record<string, unknown>[];
+    const fscIndex = parseFscIndex(usaFSCindex) as Record<string, unknown>[];
+
+    await upsertInBatches(supabase, "rateware_fuel_regions", fuelRegions, "state_code,source");
+    await upsertInBatches(supabase, "rateware_fsc_trend", fscTrend, "source,fuel_region,index_date,api_fetch");
+    await upsertInBatches(supabase, "rateware_fsc_index", fscIndex, "source,diesel_from,diesel_to");
 
     return jsonResponse({
       sheet_id: sheetId,
       catalog_items: uniqueCatalogItems.length,
-      lane_mileage: laneMileage.length
+      lane_mileage: laneMileage.length,
+      fuel_regions: fuelRegions.length,
+      fsc_trend: fscTrend.length,
+      fsc_index: fscIndex.length
     });
   } catch (error) {
     return jsonResponse({ error: error.message }, 500);
