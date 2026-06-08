@@ -139,6 +139,11 @@ function cleanText(value: unknown) {
   return text ? text : null;
 }
 
+function isInternalMarksmanDomain(value: unknown) {
+  const normalized = normalizeMatchText(value);
+  return normalized.includes("heymarksman.com") || normalized.includes("marksmanxbf.com") || normalized.includes("marksman");
+}
+
 function normalizeMatchText(value: unknown) {
   return String(value || "")
     .toLowerCase()
@@ -244,6 +249,12 @@ function normalizeRow(row: Record<string, unknown>, rawUploadId: string, jobId: 
   return { ...base, ...buildKeys(base) };
 }
 
+function isCarrierRateRow(row: Record<string, unknown>) {
+  if (isInternalMarksmanDomain(row.vendor_domain)) return false;
+  if (isInternalMarksmanDomain(row.primary_email)) return false;
+  return true;
+}
+
 async function extractXlsxText(file: Blob) {
   const workbook = XLSX.read(await file.arrayBuffer(), { type: "array" });
   return workbook.SheetNames.map((name) => {
@@ -274,6 +285,8 @@ async function interpretWithModel(rawUpload: Record<string, string>, file: Blob)
     "Detect vendor, RFx, origin, destination, equipment, operation, service, linehaul, border fee, FSC, all-in rate, and weekly capacity.",
     "Never use Tier 1, Tier 2, or Tier 3 as carrier rates.",
     "Ignore X, N/A, and Please Estimate as rates.",
+    "Ignore Marksman, heymarksman.com, or marksmanxbf.com template/layout/proposal rows. Those are the shipper's requested template, not the carrier response.",
+    "Only capture the carrier's submitted proposal/rates. If the document contains both Marksman template values and carrier response values, return only the carrier response values.",
     "If a quote is all-in without breakdown, put the value in all_in_rate or flat_rate and explain in notes.",
     "Return only rows that represent carrier rates or capacity responses.",
     "Use null when a value is missing. Do not invent rates."
@@ -363,7 +376,9 @@ Deno.serve(async (request) => {
     const interpretation = await interpretWithModel(rawUpload, download.data);
     const vendorMatch = await findBestVendor(supabase, rawUpload, interpretation);
     const vendorId = vendorMatch?.vendor?.id || rawUpload.vendor_id || null;
-    const rows = interpretation.rows.map((row: Record<string, unknown>) => normalizeRow(row, raw_upload_id, job.data.id, vendorId));
+    const rows = interpretation.rows
+      .filter((row: Record<string, unknown>) => isCarrierRateRow(row))
+      .map((row: Record<string, unknown>) => normalizeRow(row, raw_upload_id, job.data.id, vendorId));
 
     if (rows.length) {
       const insert = await supabase.from("rate_staging").insert(rows);

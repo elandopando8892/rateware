@@ -94,6 +94,69 @@ function normalizeSegment(input: Record<string, unknown>) {
   };
 }
 
+function normalizeStagingPatch(input: Record<string, unknown>) {
+  const patch: Record<string, unknown> = {};
+  const textFields = [
+    "vendor_domain",
+    "rfx_id",
+    "row_id",
+    "origin",
+    "destination",
+    "equipment",
+    "trailer",
+    "config",
+    "operation",
+    "service",
+    "driver",
+    "mx_border_crossing_point",
+    "us_border_crossing_point",
+    "mx_linehaul",
+    "us_linehaul",
+    "us_miles",
+    "fsc",
+    "fuel",
+    "border_crossing_fee",
+    "flat_rate",
+    "all_in_rate",
+    "currency",
+    "weekly_capacity",
+    "notes",
+    "accessorials"
+  ];
+
+  for (const field of textFields) {
+    if (input[field] !== undefined) patch[field] = cleanText(input[field]);
+  }
+
+  const status = cleanText(input.status)?.toLowerCase();
+  if (status && ["pending_review", "approved", "rejected"].includes(status)) patch.status = status;
+
+  if (input.confidence !== undefined) {
+    patch.confidence = Math.max(0, Math.min(1, Number(input.confidence) || 0));
+  }
+
+  const routeParts = [
+    patch.origin,
+    patch.destination,
+    patch.equipment,
+    patch.trailer,
+    patch.config,
+    patch.operation,
+    patch.service,
+    patch.driver,
+    patch.mx_border_crossing_point && patch.us_border_crossing_point
+      ? `${patch.mx_border_crossing_point}/${patch.us_border_crossing_point}`
+      : patch.mx_border_crossing_point || patch.us_border_crossing_point
+  ].filter(Boolean);
+  const rfxKey = [patch.rfx_id, patch.row_id].filter(Boolean).join("-");
+
+  if (routeParts.length) patch.route_key = routeParts.join(" ");
+  if (rfxKey) patch.rfx_key = rfxKey;
+  if (routeParts.length || rfxKey) patch.business_key = [rfxKey, routeParts.join(" ")].filter(Boolean).join(" ");
+
+  return patch;
+}
+
 Deno.serve(async (request) => {
   if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders() });
 
@@ -235,12 +298,8 @@ Deno.serve(async (request) => {
     }
 
     if (body.action === "update_staging") {
-      const allowedStatus = ["pending_review", "approved", "rejected"];
-      const patch = {
-        status: allowedStatus.includes(body.patch?.status) ? body.patch.status : undefined
-      };
-
-      if (!patch.status) return jsonResponse({ error: "Only staging status updates are supported." }, 400);
+      const patch = normalizeStagingPatch(body.patch || {});
+      if (!Object.keys(patch).length) return jsonResponse({ error: "No staging updates provided." }, 400);
 
       const result = await supabase.from("rate_staging").update(patch).eq("id", body.id).select().single();
       if (result.error) throw result.error;

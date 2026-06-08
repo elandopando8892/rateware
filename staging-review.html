@@ -73,6 +73,75 @@
               </table>
             </div>
           </section>
+          <aside id="staging-drawer" class="profile-drawer hidden" aria-live="polite">
+            <div class="drawer-header">
+              <div>
+                <p class="eyebrow">Edit staging</p>
+                <h2 id="staging-drawer-title">Rate row</h2>
+              </div>
+              <button id="close-staging-drawer" class="secondary small-button" type="button">Close</button>
+            </div>
+            <form id="staging-edit-form" class="drawer-edit-form">
+              <label>
+                Vendor domain
+                <input id="edit-vendor-domain" />
+              </label>
+              <label>
+                RFx
+                <input id="edit-rfx-id" />
+              </label>
+              <label>
+                Origin
+                <input id="edit-origin" />
+              </label>
+              <label>
+                Destination
+                <input id="edit-destination" />
+              </label>
+              <label>
+                Equipment
+                <input id="edit-equipment" />
+              </label>
+              <label>
+                Trailer / Config
+                <input id="edit-trailer-config" />
+              </label>
+              <label>
+                Operation
+                <input id="edit-operation" />
+              </label>
+              <label>
+                Service
+                <input id="edit-service" />
+              </label>
+              <label>
+                All-in rate
+                <input id="edit-all-in-rate" />
+              </label>
+              <label>
+                Currency
+                <input id="edit-currency" />
+              </label>
+              <label>
+                Weekly capacity
+                <input id="edit-weekly-capacity" />
+              </label>
+              <label>
+                Confidence
+                <input id="edit-confidence" type="number" min="0" max="100" step="1" />
+              </label>
+              <label>
+                Notes
+                <textarea id="edit-notes" rows="3"></textarea>
+              </label>
+              <div class="action-row">
+                <button id="save-staging-button" type="submit">Save changes</button>
+                <button id="approve-staging-button" type="button">Approve</button>
+                <button id="reject-staging-button" class="danger" type="button">Reject</button>
+                <p id="staging-edit-status" class="status-message" role="status"></p>
+              </div>
+            </form>
+          </aside>
         </main>
       </div>
     </div>
