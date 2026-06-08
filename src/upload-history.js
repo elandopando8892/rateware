@@ -35,7 +35,10 @@ function renderRows(rows) {
           <td>${escapeHtml(formatDate(row.created_at))}</td>
           <td>${escapeHtml(row.original_filename)}</td>
           <td>${escapeHtml(row.document_type)}</td>
-          <td>${escapeHtml(row.vendor_hint || "")}</td>
+          <td>
+            ${escapeHtml(row.vendors?.vendor_name || row.vendor_hint || "")}
+            ${row.vendors?.vendor_name ? '<span class="match-pill">Matched</span>' : ""}
+          </td>
           <td>${escapeHtml(row.rfx_hint || "")}</td>
           <td><span class="status-pill">${escapeHtml(row.status)}</span></td>
           <td>${escapeHtml(row.storage_path)}</td>

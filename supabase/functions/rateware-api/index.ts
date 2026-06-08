@@ -55,6 +55,19 @@ function normalizeVendor(input: Record<string, unknown>, source = "manual") {
   };
 }
 
+function normalizeVendorPatch(input: Record<string, unknown>) {
+  const patch: Record<string, unknown> = {};
+  const status = cleanText(input.status)?.toLowerCase();
+  if (status && ["active", "invited", "blocked", "inactive"].includes(status)) patch.status = status;
+  if (input.tags !== undefined) patch.tags = normalizeTags(input.tags);
+  if (input.preferred_channel !== undefined) {
+    const preferred = cleanText(input.preferred_channel)?.toLowerCase();
+    if (preferred && ["email", "whatsapp", "portal"].includes(preferred)) patch.preferred_channel = preferred;
+  }
+  patch.updated_at = new Date().toISOString();
+  return patch;
+}
+
 Deno.serve(async (request) => {
   if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders() });
 
@@ -98,6 +111,36 @@ Deno.serve(async (request) => {
       return jsonResponse({ inserted: result.data.length, rows: result.data });
     }
 
+    if (body.action === "bulk_update_vendors") {
+      const ids = Array.isArray(body.ids) ? body.ids.filter(Boolean) : [];
+      if (!ids.length) return jsonResponse({ updated: 0, rows: [] });
+
+      const patch = normalizeVendorPatch(body.patch || {});
+      const addTags = normalizeTags(body.patch?.add_tags);
+
+      if (addTags.length) {
+        const current = await supabase.from("vendors").select("id,tags").in("id", ids);
+        if (current.error) throw current.error;
+
+        const updates = await Promise.all(
+          current.data.map((vendor) => {
+            const mergedTags = Array.from(new Set([...normalizeTags(vendor.tags), ...addTags]));
+            return supabase.from("vendors").update({ ...patch, tags: mergedTags }).eq("id", vendor.id).select().single();
+          })
+        );
+
+        for (const update of updates) {
+          if (update.error) throw update.error;
+        }
+
+        return jsonResponse({ updated: updates.length, rows: updates.map((update) => update.data) });
+      }
+
+      const result = await supabase.from("vendors").update(patch).in("id", ids).select();
+      if (result.error) throw result.error;
+      return jsonResponse({ updated: result.data.length, rows: result.data });
+    }
+
     if (body.action === "dashboard_summary") {
       const [uploads, vendors, pending, approved, failed] = await Promise.all([
         supabase.from("raw_uploads").select("id", { count: "exact", head: true }),
@@ -121,7 +164,7 @@ Deno.serve(async (request) => {
     }
 
     if (body.action === "list_uploads") {
-      let query = supabase.from("raw_uploads").select("*").order("created_at", { ascending: false }).limit(100);
+      let query = supabase.from("raw_uploads").select("*, vendors(vendor_name, domain)").order("created_at", { ascending: false }).limit(100);
       if (body.status) query = query.eq("status", body.status);
       const result = await query;
       if (result.error) throw result.error;
@@ -129,7 +172,7 @@ Deno.serve(async (request) => {
     }
 
     if (body.action === "list_staging") {
-      let query = supabase.from("rate_staging").select("*").order("created_at", { ascending: false }).limit(200);
+      let query = supabase.from("rate_staging").select("*, vendors(vendor_name, domain)").order("created_at", { ascending: false }).limit(200);
       if (body.status) query = query.eq("status", body.status);
       const result = await query;
       if (result.error) throw result.error;

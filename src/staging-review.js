@@ -28,7 +28,10 @@ function renderRows(rows) {
     .map(
       (row) => `
         <tr>
-          <td>${escapeHtml(row.vendor_domain)}</td>
+          <td>
+            ${escapeHtml(row.vendors?.vendor_name || row.vendor_domain)}
+            ${row.vendors?.vendor_name ? '<span class="match-pill">Matched</span>' : ""}
+          </td>
           <td>${escapeHtml(row.rfx_id)}</td>
           <td>${escapeHtml(lane(row))}</td>
           <td>${escapeHtml([row.equipment, row.trailer, row.config].filter(Boolean).join(" / "))}</td>

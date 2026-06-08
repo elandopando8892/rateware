@@ -1,6 +1,6 @@
 import * as XLSX from "https://esm.sh/xlsx@0.18.5";
 import { applyPermissionState, initAuthControls, requirePrivatePage } from "./auth.js";
-import { createVendor, fetchVendors, importVendors } from "./vendor-service.js";
+import { bulkUpdateVendors, createVendor, fetchVendors, importVendors } from "./vendor-service.js";
 
 const form = document.querySelector("#vendor-form");
 const statusMessage = document.querySelector("#vendor-status");
@@ -10,9 +10,14 @@ const vendorsBody = document.querySelector("#vendors-body");
 const searchInput = document.querySelector("#vendor-search");
 const statusFilter = document.querySelector("#vendor-status-filter");
 const refreshButton = document.querySelector("#refresh-vendors-button");
+const bulkStatus = document.querySelector("#bulk-status");
+const bulkTags = document.querySelector("#bulk-tags");
+const bulkButton = document.querySelector("#bulk-update-button");
+const bulkStatusMessage = document.querySelector("#bulk-status-message");
 const drawer = document.querySelector("#vendor-drawer");
 const closeDrawerButton = document.querySelector("#close-vendor-drawer");
 let currentVendors = [];
+let selectedVendorIds = new Set();
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -82,10 +87,11 @@ function renderTags(tags) {
 function renderCompleteness(row) {
   const score = scoreVendor(row);
   const duplicates = duplicateSignals(row);
-  const tone = score >= 80 ? "strong" : score >= 55 ? "medium" : "weak";
+  const ready = score >= 80 && row.primary_email && splitTags(row.tags).length;
+  const tone = ready ? "strong" : score >= 55 ? "medium" : "weak";
   return `
     <div class="fit-stack">
-      <span class="score-pill ${tone}">${score}%</span>
+      <span class="score-pill ${tone}">${ready ? "RFx ready" : `${score}%`}</span>
       ${duplicates.length ? '<span class="warning-pill">Duplicate?</span>' : ""}
     </div>
   `;
@@ -110,7 +116,7 @@ function renderVendors(rows) {
 
   if (!rows.length) {
     vendorsBody.innerHTML =
-      '<tr><td colspan="8"><div class="empty-state"><strong>No vendors yet</strong><span>Add a vendor manually or import your carrier list.</span></div></td></tr>';
+      '<tr><td colspan="9"><div class="empty-state"><strong>No vendors yet</strong><span>Add a vendor manually or import your carrier list.</span></div></td></tr>';
     return;
   }
 
@@ -118,6 +124,7 @@ function renderVendors(rows) {
     .map(
       (row) => `
         <tr>
+          <td><input class="vendor-select" type="checkbox" data-vendor-id="${escapeHtml(row.id)}" ${selectedVendorIds.has(row.id) ? "checked" : ""} /></td>
           <td>
             <button class="link-button vendor-profile-button" type="button" data-vendor-id="${escapeHtml(row.id)}">
               ${escapeHtml(row.vendor_name)}
@@ -137,7 +144,7 @@ function renderVendors(rows) {
 }
 
 async function loadVendors() {
-  vendorsBody.innerHTML = '<tr><td colspan="8">Loading vendors...</td></tr>';
+  vendorsBody.innerHTML = '<tr><td colspan="9">Loading vendors...</td></tr>';
   refreshButton.disabled = true;
 
   try {
@@ -148,7 +155,7 @@ async function loadVendors() {
     });
     renderVendors(rows);
   } catch (error) {
-    vendorsBody.innerHTML = `<tr><td colspan="8">Could not load vendors. ${escapeHtml(error.message)}</td></tr>`;
+    vendorsBody.innerHTML = `<tr><td colspan="9">Could not load vendors. ${escapeHtml(error.message)}</td></tr>`;
   } finally {
     refreshButton.disabled = false;
   }
@@ -235,6 +242,42 @@ importInput.addEventListener("change", async () => {
   }
 });
 
+bulkButton.addEventListener("click", async () => {
+  const ids = Array.from(selectedVendorIds);
+  const patch = {};
+  if (bulkStatus.value) patch.status = bulkStatus.value;
+  if (bulkTags.value.trim()) {
+    patch.add_tags = splitTags(bulkTags.value);
+  }
+
+  if (!ids.length) {
+    setStatus(bulkStatusMessage, "Select at least one vendor.", "error");
+    return;
+  }
+
+  if (!Object.keys(patch).length) {
+    setStatus(bulkStatusMessage, "Choose a status or tags to apply.", "error");
+    return;
+  }
+
+  bulkButton.disabled = true;
+  setStatus(bulkStatusMessage, "Updating vendors...");
+
+  try {
+    await requirePrivatePage();
+    const result = await bulkUpdateVendors(ids, patch);
+    selectedVendorIds = new Set();
+    bulkStatus.value = "";
+    bulkTags.value = "";
+    setStatus(bulkStatusMessage, `${result.updated} vendor(s) updated.`, "success");
+    await loadVendors();
+  } catch (error) {
+    setStatus(bulkStatusMessage, error.message, "error");
+  } finally {
+    bulkButton.disabled = false;
+  }
+});
+
 refreshButton.addEventListener("click", loadVendors);
 statusFilter.addEventListener("change", loadVendors);
 searchInput.addEventListener("input", () => {
@@ -246,10 +289,16 @@ vendorsBody.addEventListener("click", (event) => {
   if (!button) return;
   openVendorDrawer(button.dataset.vendorId);
 });
+vendorsBody.addEventListener("change", (event) => {
+  const checkbox = event.target.closest(".vendor-select");
+  if (!checkbox) return;
+  if (checkbox.checked) selectedVendorIds.add(checkbox.dataset.vendorId);
+  else selectedVendorIds.delete(checkbox.dataset.vendorId);
+});
 closeDrawerButton.addEventListener("click", () => drawer.classList.add("hidden"));
 
 initAuthControls();
 requirePrivatePage()
-  .then(() => applyPermissionState("#save-vendor-button, #vendor-import", "vendors:manage"))
+  .then(() => applyPermissionState("#save-vendor-button, #vendor-import, #bulk-update-button", "vendors:manage"))
   .catch(() => {});
 loadVendors();

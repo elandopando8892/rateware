@@ -118,6 +118,47 @@ function cleanText(value: unknown) {
   return text ? text : null;
 }
 
+function normalizeMatchText(value: unknown) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/^https?:\/\//, "")
+    .replace(/^www\./, "")
+    .replace(/[^a-z0-9@.]/g, "");
+}
+
+function scoreVendorMatch(vendor: Record<string, unknown>, rawUpload: Record<string, string>, interpretation: Record<string, unknown>) {
+  const haystack = [
+    rawUpload.vendor_hint,
+    rawUpload.original_filename,
+    interpretation.summary && (interpretation.summary as Record<string, unknown>).vendor_domain,
+    ...(Array.isArray(interpretation.rows) ? interpretation.rows.map((row: Record<string, unknown>) => row.vendor_domain) : [])
+  ].map(normalizeMatchText).join(" ");
+
+  const vendorName = normalizeMatchText(vendor.vendor_name);
+  const domain = normalizeMatchText(vendor.domain);
+  const email = normalizeMatchText(vendor.primary_email);
+
+  let score = 0;
+  if (domain && haystack.includes(domain)) score += 70;
+  if (email && haystack.includes(email)) score += 40;
+  if (vendorName && haystack.includes(vendorName)) score += 55;
+
+  const words = String(vendor.vendor_name || "").toLowerCase().split(/\s+/).filter((word) => word.length > 3);
+  score += Math.min(30, words.filter((word) => haystack.includes(normalizeMatchText(word))).length * 10);
+  return score;
+}
+
+async function findBestVendor(supabase: ReturnType<typeof createClient>, rawUpload: Record<string, string>, interpretation: Record<string, unknown>) {
+  const result = await supabase.from("vendors").select("id,vendor_name,domain,primary_email,status").eq("status", "active").limit(500);
+  if (result.error || !result.data?.length) return null;
+
+  const ranked = result.data
+    .map((vendor) => ({ vendor, score: scoreVendorMatch(vendor, rawUpload, interpretation) }))
+    .sort((a, b) => b.score - a.score);
+
+  return ranked[0]?.score >= 55 ? ranked[0] : null;
+}
+
 function buildKeys(row: Record<string, unknown>) {
   const routeParts = [
     row.origin,
@@ -143,10 +184,11 @@ function buildKeys(row: Record<string, unknown>) {
   };
 }
 
-function normalizeRow(row: Record<string, unknown>, rawUploadId: string, jobId: string) {
+function normalizeRow(row: Record<string, unknown>, rawUploadId: string, jobId: string, vendorId: string | null = null) {
   const base = {
     raw_upload_id: rawUploadId,
     interpretation_job_id: jobId,
+    vendor_id: vendorId,
     status: "pending_review",
     vendor_domain: cleanText(row.vendor_domain),
     rfx_id: cleanText(row.rfx_id),
@@ -298,7 +340,9 @@ Deno.serve(async (request) => {
     if (download.error) throw download.error;
 
     const interpretation = await interpretWithModel(rawUpload, download.data);
-    const rows = interpretation.rows.map((row: Record<string, unknown>) => normalizeRow(row, raw_upload_id, job.data.id));
+    const vendorMatch = await findBestVendor(supabase, rawUpload, interpretation);
+    const vendorId = vendorMatch?.vendor?.id || rawUpload.vendor_id || null;
+    const rows = interpretation.rows.map((row: Record<string, unknown>) => normalizeRow(row, raw_upload_id, job.data.id, vendorId));
 
     if (rows.length) {
       const insert = await supabase.from("rate_staging").insert(rows);
@@ -312,6 +356,7 @@ Deno.serve(async (request) => {
     }).eq("id", job.data.id);
 
     await supabase.from("raw_uploads").update({
+      vendor_id: vendorId,
       status: "staged",
       interpreted_at: new Date().toISOString()
     }).eq("id", raw_upload_id);

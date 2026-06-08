@@ -11,3 +11,7 @@ export async function createVendor(vendor) {
 export async function importVendors(vendors) {
   return await callRatewareApi("import_vendors", { vendors });
 }
+
+export async function bulkUpdateVendors(ids, patch) {
+  return await callRatewareApi("bulk_update_vendors", { ids, patch });
+}

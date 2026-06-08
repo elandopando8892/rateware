@@ -496,6 +496,16 @@ small,
   gap: 14px;
 }
 
+.bulk-toolbar {
+  display: grid;
+  grid-template-columns: minmax(160px, 220px) minmax(220px, 1fr) auto minmax(180px, 1fr);
+  gap: 12px;
+  align-items: end;
+  border-top: 1px solid var(--line);
+  margin-top: 16px;
+  padding-top: 16px;
+}
+
 label {
   display: grid;
   gap: 6px;
@@ -645,6 +655,19 @@ th {
   padding: 3px 9px;
   font-weight: 800;
   font-size: 0.8rem;
+}
+
+.match-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  border-radius: 999px;
+  background: #eef8f6;
+  color: var(--accent-dark);
+  margin-left: 6px;
+  padding: 2px 7px;
+  font-size: 0.74rem;
+  font-weight: 850;
 }
 
 .tag-list {
@@ -820,6 +843,7 @@ th {
   .form-grid,
   .vendor-form,
   .toolbar,
+  .bulk-toolbar,
   .auth-strip {
     grid-template-columns: 1fr;
   }

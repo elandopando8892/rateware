@@ -118,11 +118,30 @@
               </label>
               <button id="refresh-vendors-button" type="button">Refresh</button>
             </div>
+            <div class="bulk-toolbar">
+              <label>
+                Bulk status
+                <select id="bulk-status">
+                  <option value="">Keep status</option>
+                  <option value="active">Active</option>
+                  <option value="invited">Invited</option>
+                  <option value="blocked">Blocked</option>
+                  <option value="inactive">Inactive</option>
+                </select>
+              </label>
+              <label>
+                Add tags
+                <input id="bulk-tags" placeholder="preferred, mx, ftl" />
+              </label>
+              <button id="bulk-update-button" type="button">Apply to selected</button>
+              <p id="bulk-status-message" class="status-message" role="status"></p>
+            </div>
 
             <div class="table-wrap">
               <table>
                 <thead>
                   <tr>
+                    <th>Select</th>
                     <th>Vendor</th>
                     <th>Domain</th>
                     <th>Contact</th>
@@ -135,7 +154,7 @@
                 </thead>
                 <tbody id="vendors-body">
                   <tr>
-                    <td colspan="8">Loading vendors...</td>
+                    <td colspan="9">Loading vendors...</td>
                   </tr>
                 </tbody>
               </table>
