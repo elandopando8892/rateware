@@ -56,6 +56,8 @@ https://your-vercel-app.vercel.app
 
 Copy the Kinde application `Domain` and `Client ID` into `src/config.js`. JavaScript SPA apps do not use a client secret.
 
+For the current MVP, Kinde is used only for sign-in/session. All authenticated users have full access to every Rateware module; role and permission enforcement is intentionally deferred.
+
 This static multipage app enables Kinde refresh-token persistence with local storage so users remain signed in while navigating between modules. For a later enterprise hardening sprint, replace this with Kinde custom-domain/httpOnly refresh cookies or a backend-for-frontend session.
 
 ## GitHub and Vercel

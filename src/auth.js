@@ -8,18 +8,6 @@ function getAppUrl() {
   return `${window.location.origin}${localHosts.has(window.location.hostname) ? "/app.html" : "/app"}`;
 }
 
-function normalizeRole(role) {
-  if (!role) return "";
-  if (typeof role === "string") return role.toLowerCase();
-  return String(role.key || role.name || "").toLowerCase();
-}
-
-function normalizePermission(permission) {
-  if (!permission) return "";
-  if (typeof permission === "string") return permission.toLowerCase();
-  return String(permission.key || permission.name || permission.id || "").toLowerCase();
-}
-
 function parseJwt(token) {
   const [, payload] = token.split(".");
   if (!payload) return {};
@@ -109,30 +97,16 @@ export async function requirePrivatePage() {
   return ensureSignedIn();
 }
 
-export async function canUse(action) {
-  const access = await getAccessContext();
-  const roles = access.roles.map(normalizeRole);
-  const permissions = access.permissions.map(normalizePermission);
-
-  if (roles.includes("admin") || permissions.includes(action)) return true;
-
-  const roleRules = {
-    "uploads:create": ["analyst"],
-    "uploads:interpret": ["analyst"],
-    "vendors:manage": ["analyst"],
-    "staging:review": ["reviewer", "analyst"],
-    "staging:approve": ["reviewer"],
-    "dashboard:read": ["admin", "analyst", "reviewer", "viewer"]
-  };
-
-  return (roleRules[action] || []).some((role) => roles.includes(role));
+export async function canUse() {
+  await ensureSignedIn();
+  return true;
 }
 
 export async function applyPermissionState(selector, action) {
   const allowed = await canUse(action);
   document.querySelectorAll(selector).forEach((element) => {
     element.disabled = !allowed;
-    element.title = allowed ? "" : "Your role does not allow this action.";
+    element.title = allowed ? "" : "Sign in to use this action.";
     element.classList.toggle("permission-disabled", !allowed);
   });
   return allowed;
@@ -159,10 +133,8 @@ export function initAuthControls() {
       return;
     }
 
-    const access = await getAccessContext();
-    const role = access.roles[0]?.name || access.roles[0]?.key || access.roles[0] || "user";
-    document.body.dataset.role = role;
-    setStatus(`${user?.email || "Kinde user"} | ${role}`);
+    document.body.dataset.role = "full-access";
+    setStatus(`${user?.email || "Kinde user"} | full access`);
   }
 
   getKindeClient()
