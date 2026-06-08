@@ -41,6 +41,7 @@ export async function getKindeClient() {
       domain: KINDE_DOMAIN,
       redirect_uri: getAppUrl(),
       logout_uri: window.location.origin,
+      is_dangerously_use_local_storage: true,
       on_redirect_callback: () => {
         window.history.replaceState({}, document.title, window.location.pathname);
       }
