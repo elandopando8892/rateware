@@ -1,4 +1,5 @@
 import { initAuthControls, requirePrivatePage } from "./auth.js";
+import { syncRatewareCatalog } from "./catalog-service.js";
 import { callRatewareApi } from "./rateware-api.js";
 
 const metricUploads = document.querySelector("#metric-uploads");
@@ -6,6 +7,8 @@ const metricVendors = document.querySelector("#metric-vendors");
 const metricPending = document.querySelector("#metric-pending");
 const metricApproved = document.querySelector("#metric-approved");
 const diagnostics = document.querySelector("#access-diagnostics");
+const syncCatalogButton = document.querySelector("#sync-catalog-button");
+const catalogSyncStatus = document.querySelector("#catalog-sync-status");
 
 function setMetric(element, value) {
   element.textContent = new Intl.NumberFormat().format(Number(value || 0));
@@ -51,3 +54,20 @@ async function loadDashboard() {
 
 initAuthControls();
 loadDashboard();
+
+syncCatalogButton?.addEventListener("click", async () => {
+  syncCatalogButton.disabled = true;
+  catalogSyncStatus.textContent = "Syncing catalog...";
+  catalogSyncStatus.dataset.tone = "neutral";
+
+  try {
+    const result = await syncRatewareCatalog();
+    catalogSyncStatus.textContent = `Catalog synced: ${result.catalog_items} items, ${result.lane_mileage} lanes.`;
+    catalogSyncStatus.dataset.tone = "success";
+  } catch (error) {
+    catalogSyncStatus.textContent = error.message;
+    catalogSyncStatus.dataset.tone = "error";
+  } finally {
+    syncCatalogButton.disabled = false;
+  }
+});

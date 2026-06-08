@@ -121,7 +121,19 @@ function normalizeStagingPatch(input: Record<string, unknown>) {
     "currency",
     "weekly_capacity",
     "notes",
-    "accessorials"
+    "accessorials",
+    "normalized_origin",
+    "normalized_destination",
+    "origin_market",
+    "destination_market",
+    "normalized_equipment",
+    "normalized_trailer",
+    "normalized_config",
+    "normalized_operation",
+    "normalized_service",
+    "normalized_driver",
+    "catalog_match_status",
+    "mileage_source"
   ];
 
   for (const field of textFields) {
@@ -136,6 +148,9 @@ function normalizeStagingPatch(input: Record<string, unknown>) {
   if (input.confidence !== undefined) {
     patch.confidence = Math.max(0, Math.min(1, Number(input.confidence) || 0));
   }
+
+  if (input.calculated_miles !== undefined) patch.calculated_miles = Number(input.calculated_miles) || null;
+  if (input.calculated_km !== undefined) patch.calculated_km = Number(input.calculated_km) || null;
 
   const routeParts = [
     patch.origin,

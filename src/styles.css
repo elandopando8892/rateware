@@ -442,6 +442,13 @@ a {
   margin-bottom: 12px;
 }
 
+.split-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .eyebrow {
   margin: 0 0 4px;
   color: var(--accent-dark);
@@ -873,7 +880,7 @@ table {
 }
 
 .staging-table {
-  min-width: 2600px;
+  min-width: 2780px;
 }
 
 .staging-table th,

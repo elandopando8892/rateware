@@ -178,6 +178,17 @@ function normalizeMatchText(value: unknown) {
     .replace(/[^a-z0-9@.]/g, "");
 }
 
+function catalogKey(value: unknown) {
+  return String(value || "")
+    .trim()
+    .toUpperCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^A-Z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function scoreVendorMatch(vendor: Record<string, unknown>, rawUpload: Record<string, string>, interpretation: Record<string, unknown>) {
   const haystack = [
     rawUpload.vendor_hint,
@@ -274,6 +285,99 @@ function normalizeRow(row: Record<string, unknown>, rawUploadId: string, jobId: 
   };
 
   return { ...base, ...buildKeys(base) };
+}
+
+function buildCatalogIndex(items: Record<string, unknown>[]) {
+  const index = new Map<string, Map<string, Record<string, unknown>>>();
+
+  for (const item of items) {
+    const category = String(item.category);
+    if (!index.has(category)) index.set(category, new Map());
+    const bucket = index.get(category)!;
+    bucket.set(catalogKey(item.raw_value), item);
+    bucket.set(catalogKey(item.normalized_value), item);
+    if (item.code) bucket.set(catalogKey(item.code), item);
+  }
+
+  return index;
+}
+
+function catalogMatch(index: Map<string, Map<string, Record<string, unknown>>>, categories: string[], value: unknown) {
+  const lookup = catalogKey(value);
+  if (!lookup) return null;
+
+  for (const category of categories) {
+    const direct = index.get(category)?.get(lookup);
+    if (direct) return direct;
+  }
+
+  for (const category of categories) {
+    for (const [candidateKey, item] of index.get(category) || []) {
+      if (candidateKey && (lookup.includes(candidateKey) || candidateKey.includes(lookup))) return item;
+    }
+  }
+
+  return null;
+}
+
+function normalizeWithCatalog(rows: Record<string, unknown>[], catalogItems: Record<string, unknown>[], laneMileage: Record<string, unknown>[]) {
+  if (!catalogItems.length && !laneMileage.length) return rows;
+
+  const catalog = buildCatalogIndex(catalogItems);
+  const mileage = new Map(laneMileage.map((lane) => [catalogKey(lane.route_key), lane]));
+
+  return rows.map((row) => {
+    const originMatch = catalogMatch(catalog, ["zip_market", "mx_production"], row.origin);
+    const destinationMatch = catalogMatch(catalog, ["zip_market", "mx_production"], row.destination);
+    const equipmentMatch = catalogMatch(catalog, ["equipment"], row.equipment);
+    const trailerMatch = catalogMatch(catalog, ["trailer"], row.trailer);
+    const configMatch = catalogMatch(catalog, ["config"], row.config);
+    const operationMatch = catalogMatch(catalog, ["operation"], row.operation);
+    const serviceMatch = catalogMatch(catalog, ["service"], row.service);
+    const driverMatch = catalogMatch(catalog, ["driver"], row.driver);
+
+    const normalized: Record<string, unknown> = {
+      ...row,
+      normalized_origin: (originMatch?.normalized_value as string) || null,
+      normalized_destination: (destinationMatch?.normalized_value as string) || null,
+      origin_market: ((originMatch?.metadata as Record<string, unknown>)?.market as string) || null,
+      destination_market: ((destinationMatch?.metadata as Record<string, unknown>)?.market as string) || null,
+      normalized_equipment: (equipmentMatch?.normalized_value as string) || null,
+      normalized_trailer: (trailerMatch?.normalized_value as string) || null,
+      normalized_config: (configMatch?.normalized_value as string) || null,
+      normalized_operation: (operationMatch?.normalized_value as string) || null,
+      normalized_service: (serviceMatch?.normalized_value as string) || null,
+      normalized_driver: (driverMatch?.normalized_value as string) || null
+    };
+
+    const matchCount = [
+      originMatch,
+      destinationMatch,
+      equipmentMatch,
+      trailerMatch,
+      configMatch,
+      operationMatch,
+      serviceMatch,
+      driverMatch
+    ].filter(Boolean).length;
+
+    const routeCandidates = [
+      [normalized.normalized_origin || row.origin, normalized.normalized_destination || row.destination, normalized.normalized_equipment || row.equipment, normalized.normalized_trailer || row.trailer, normalized.normalized_config || row.config, normalized.normalized_operation || row.operation, normalized.normalized_service || row.service, normalized.normalized_driver || row.driver],
+      [normalized.normalized_origin || row.origin, normalized.normalized_destination || row.destination, normalized.normalized_equipment || row.equipment],
+      [row.route_key]
+    ].map((parts) => catalogKey(Array.isArray(parts) ? parts.filter(Boolean).join(" ") : parts));
+
+    const lane = routeCandidates.map((candidate) => mileage.get(candidate)).find(Boolean);
+    if (lane) {
+      normalized.calculated_miles = lane.miles || null;
+      normalized.calculated_km = lane.km || null;
+      normalized.mileage_source = String(lane.source || "catalog");
+      if (!normalized.us_miles && lane.miles) normalized.us_miles = String(lane.miles);
+    }
+
+    normalized.catalog_match_status = matchCount >= 5 ? "matched" : matchCount >= 2 ? "partial" : "unmatched";
+    return normalized;
+  });
 }
 
 function isCarrierRateRow(row: Record<string, unknown>) {
@@ -404,9 +508,13 @@ Deno.serve(async (request) => {
     const interpretation = await interpretWithModel(rawUpload, download.data);
     const vendorMatch = await findBestVendor(supabase, rawUpload, interpretation);
     const vendorId = vendorMatch?.vendor?.id || rawUpload.vendor_id || null;
-    const rows = interpretation.rows
+    const catalogResult = await supabase.from("rateware_catalog_items").select("category,raw_value,normalized_value,code,metadata").eq("active", true).limit(20000);
+    const mileageResult = await supabase.from("rateware_lane_mileage").select("source,route_key,miles,km").eq("active", true).limit(20000);
+    const catalogItems = catalogResult.error ? [] : catalogResult.data || [];
+    const laneMileage = mileageResult.error ? [] : mileageResult.data || [];
+    const rows = normalizeWithCatalog(interpretation.rows
       .filter((row: Record<string, unknown>) => isCarrierRateRow(row))
-      .map((row: Record<string, unknown>) => normalizeRow(row, raw_upload_id, job.data.id, vendorId));
+      .map((row: Record<string, unknown>) => normalizeRow(row, raw_upload_id, job.data.id, vendorId)), catalogItems, laneMileage);
 
     if (rows.length) {
       const insert = await supabase.from("rate_staging").insert(rows);
