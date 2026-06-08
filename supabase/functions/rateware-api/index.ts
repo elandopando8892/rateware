@@ -128,6 +128,8 @@ function normalizeStagingPatch(input: Record<string, unknown>) {
     if (input[field] !== undefined) patch[field] = cleanText(input[field]);
   }
 
+  if (input.quote_date !== undefined) patch.quote_date = cleanDate(input.quote_date);
+
   const status = cleanText(input.status)?.toLowerCase();
   if (status && ["pending_review", "approved", "rejected"].includes(status)) patch.status = status;
 
@@ -155,6 +157,29 @@ function normalizeStagingPatch(input: Record<string, unknown>) {
   if (routeParts.length || rfxKey) patch.business_key = [rfxKey, routeParts.join(" ")].filter(Boolean).join(" ");
 
   return patch;
+}
+
+function cleanDate(value: unknown) {
+  const text = cleanText(value);
+  if (!text) return null;
+
+  const isoMatch = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (isoMatch) return `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`;
+
+  const slashMatch = text.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})$/);
+  if (slashMatch) {
+    const first = Number(slashMatch[1]);
+    const second = Number(slashMatch[2]);
+    const year = Number(slashMatch[3].length === 2 ? `20${slashMatch[3]}` : slashMatch[3]);
+    const month = first > 12 ? second : first;
+    const day = first > 12 ? first : second;
+    if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+      return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    }
+  }
+
+  const parsed = new Date(text);
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString().slice(0, 10);
 }
 
 Deno.serve(async (request) => {

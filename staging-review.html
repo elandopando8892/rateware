@@ -49,25 +49,40 @@
             </div>
 
             <div class="table-wrap">
-              <table>
+              <table class="staging-table">
                 <thead>
                   <tr>
                     <th>Vendor</th>
+                    <th>Quote date</th>
                     <th>RFx</th>
-                    <th>Lane</th>
+                    <th>Origin</th>
+                    <th>Destination</th>
                     <th>Equipment</th>
+                    <th>Trailer</th>
+                    <th>Config</th>
+                    <th>Operation</th>
                     <th>Service</th>
+                    <th>Driver</th>
+                    <th>MX crossing</th>
+                    <th>US crossing</th>
+                    <th>MX linehaul</th>
+                    <th>US linehaul</th>
+                    <th>US miles</th>
+                    <th>FSC</th>
+                    <th>Fuel</th>
+                    <th>Border fee</th>
+                    <th>Flat rate</th>
                     <th>All-in</th>
                     <th>Currency</th>
                     <th>Capacity</th>
                     <th>Confidence</th>
                     <th>Status</th>
-                    <th>Review</th>
+                    <th>Actions</th>
                   </tr>
                 </thead>
                 <tbody id="staging-body">
                   <tr>
-                    <td colspan="11">Loading staging rows...</td>
+                    <td colspan="25">Loading staging rows...</td>
                   </tr>
                 </tbody>
               </table>
@@ -89,6 +104,10 @@
               <label>
                 RFx
                 <input id="edit-rfx-id" />
+              </label>
+              <label>
+                Quote date
+                <input id="edit-quote-date" type="date" />
               </label>
               <label>
                 Origin

@@ -20,10 +20,11 @@ const RATEWARE_SCHEMA = {
     summary: {
       type: "object",
       additionalProperties: false,
-      required: ["vendor_domain", "rfx_id", "document_notes"],
+      required: ["vendor_domain", "rfx_id", "quote_date", "document_notes"],
       properties: {
         vendor_domain: { type: ["string", "null"] },
         rfx_id: { type: ["string", "null"] },
+        quote_date: { type: ["string", "null"] },
         document_notes: { type: ["string", "null"] }
       }
     },
@@ -35,6 +36,7 @@ const RATEWARE_SCHEMA = {
         required: [
           "vendor_domain",
           "rfx_id",
+          "quote_date",
           "row_id",
           "origin",
           "destination",
@@ -64,6 +66,7 @@ const RATEWARE_SCHEMA = {
         properties: {
           vendor_domain: { type: ["string", "null"] },
           rfx_id: { type: ["string", "null"] },
+          quote_date: { type: ["string", "null"] },
           row_id: { type: ["string", "null"] },
           origin: { type: ["string", "null"] },
           destination: { type: ["string", "null"] },
@@ -137,6 +140,29 @@ function cleanText(value: unknown) {
   if (value === null || value === undefined) return null;
   const text = String(value).trim();
   return text ? text : null;
+}
+
+function cleanDate(value: unknown) {
+  const text = cleanText(value);
+  if (!text) return null;
+
+  const isoMatch = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (isoMatch) return `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`;
+
+  const slashMatch = text.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})$/);
+  if (slashMatch) {
+    const first = Number(slashMatch[1]);
+    const second = Number(slashMatch[2]);
+    const year = Number(slashMatch[3].length === 2 ? `20${slashMatch[3]}` : slashMatch[3]);
+    const month = first > 12 ? second : first;
+    const day = first > 12 ? first : second;
+    if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+      return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    }
+  }
+
+  const parsed = new Date(text);
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString().slice(0, 10);
 }
 
 function isInternalMarksmanDomain(value: unknown) {
@@ -218,6 +244,7 @@ function normalizeRow(row: Record<string, unknown>, rawUploadId: string, jobId: 
     status: "pending_review",
     vendor_domain: cleanText(row.vendor_domain),
     rfx_id: cleanText(row.rfx_id),
+    quote_date: cleanDate(row.quote_date),
     row_id: cleanText(row.row_id),
     origin: cleanText(row.origin),
     destination: cleanText(row.destination),
@@ -282,7 +309,8 @@ async function interpretWithModel(rawUpload: Record<string, string>, file: Blob)
   const systemPrompt = [
     "You are Rateware AI, a senior freight procurement analyst.",
     "Interpret carrier quotations and normalize them into Rateware staging rows.",
-    "Detect vendor, RFx, origin, destination, equipment, operation, service, linehaul, border fee, FSC, all-in rate, and weekly capacity.",
+    "Detect vendor, RFx, quotation date, origin, destination, equipment, operation, service, linehaul, border fee, FSC, all-in rate, and weekly capacity.",
+    "Set quote_date to the carrier quotation date, bid date, offer date, email sent date, or document issue date when explicitly present. Use YYYY-MM-DD when possible.",
     "Never use Tier 1, Tier 2, or Tier 3 as carrier rates.",
     "Ignore X, N/A, and Please Estimate as rates.",
     "Ignore Marksman, heymarksman.com, or marksmanxbf.com template/layout/proposal rows. Those are the shipper's requested template, not the carrier response.",

@@ -872,6 +872,10 @@ table {
   min-width: 840px;
 }
 
+.staging-table {
+  min-width: 2600px;
+}
+
 th,
 td {
   padding: 12px;
@@ -991,6 +995,62 @@ tbody tr:hover {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+  min-width: 250px;
+}
+
+.vendor-review-cell {
+  min-width: 220px;
+}
+
+.vendor-review-cell strong {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--text);
+}
+
+.staging-input {
+  width: 136px;
+  min-height: 34px;
+  border: 1px solid #c7d2da;
+  border-radius: 6px;
+  background: #fff;
+  color: var(--text);
+  padding: 6px 8px;
+  font: inherit;
+  font-size: 0.84rem;
+}
+
+.staging-input:focus {
+  outline: 2px solid rgba(0, 124, 114, 0.18);
+  border-color: var(--accent);
+}
+
+.staging-input.wide-input {
+  width: 220px;
+}
+
+.staging-input.short-input {
+  width: 112px;
+}
+
+.staging-input.money-input {
+  width: 104px;
+}
+
+.row-save-status {
+  flex-basis: 100%;
+  min-height: 16px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 760;
+}
+
+.row-save-status[data-tone="success"] {
+  color: var(--accent-dark);
+}
+
+.row-save-status[data-tone="error"] {
+  color: var(--danger);
 }
 
 .empty-state {
