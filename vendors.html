@@ -92,12 +92,45 @@
               <p class="eyebrow">Import</p>
               <h2>CSV / XLSX</h2>
             </div>
+            <button id="download-template-button" class="secondary" type="button">Download template</button>
             <label class="import-zone" for="vendor-import">
               <span>Choose vendor file</span>
-              <small>Columns: vendor_name, domain, contact_name, email, whatsapp_phone</small>
+              <small>Columns: vendor_name, legal_name, domain, contact_name, primary_email, whatsapp_phone, preferred_channel, tags, coverage_notes, notes</small>
               <input id="vendor-import" type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
             </label>
             <p id="import-status" class="status-message" role="status"></p>
+          </section>
+
+          <section id="import-preview-panel" class="workspace-panel wide-section hidden">
+            <div class="section-heading compact">
+              <p class="eyebrow">Import review</p>
+              <h2>Vendor file preview</h2>
+            </div>
+            <div class="preview-summary" id="import-preview-summary"></div>
+            <div class="action-row">
+              <button id="confirm-import-button" type="button">Import valid rows</button>
+              <button id="cancel-import-button" class="secondary" type="button">Cancel import</button>
+              <p id="confirm-import-status" class="status-message" role="status"></p>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Row</th>
+                    <th>Vendor</th>
+                    <th>Email</th>
+                    <th>Domain</th>
+                    <th>Tags</th>
+                    <th>Review</th>
+                  </tr>
+                </thead>
+                <tbody id="import-preview-body">
+                  <tr>
+                    <td colspan="6">No file selected.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </section>
 
           <section class="workspace-panel wide-section">

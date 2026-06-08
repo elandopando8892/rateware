@@ -506,6 +506,32 @@ small,
   padding-top: 16px;
 }
 
+.preview-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.preview-summary article {
+  display: grid;
+  gap: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfc;
+  padding: 14px;
+}
+
+.preview-summary strong {
+  font-size: 1.8rem;
+  line-height: 1;
+}
+
+.preview-summary span {
+  color: var(--muted);
+  font-weight: 760;
+}
+
 label {
   display: grid;
   gap: 6px;
@@ -844,6 +870,7 @@ th {
   .vendor-form,
   .toolbar,
   .bulk-toolbar,
+  .preview-summary,
   .auth-strip {
     grid-template-columns: 1fr;
   }
