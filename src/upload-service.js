@@ -3,7 +3,7 @@ import { SUPABASE_URL } from "./config.js";
 import { detectDocumentType } from "./file-rules.js";
 import { callRatewareApi } from "./rateware-api.js";
 
-export async function uploadRawFile(file, { vendor = "", rfx = "" } = {}) {
+export async function uploadRawFile(file, { vendorId = "", vendor = "", rfx = "" } = {}) {
   const documentType = detectDocumentType(file);
 
   if (documentType === "unsupported") {
@@ -13,6 +13,7 @@ export async function uploadRawFile(file, { vendor = "", rfx = "" } = {}) {
   const token = await getKindeToken();
   const formData = new FormData();
   formData.append("file", file);
+  formData.append("vendor_id", vendorId);
   formData.append("vendor", vendor);
   formData.append("rfx", rfx);
   formData.append("document_type", documentType);

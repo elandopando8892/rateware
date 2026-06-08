@@ -1,6 +1,7 @@
 import { applyPermissionState, ensureSignedIn, initAuthControls, requirePrivatePage } from "./auth.js";
 import { isAllowedFile } from "./file-rules.js";
 import { uploadRawFile } from "./upload-service.js";
+import { fetchVendors } from "./vendor-service.js";
 
 const dropZone = document.querySelector("#drop-zone");
 const fileInput = document.querySelector("#file-input");
@@ -8,6 +9,7 @@ const fileList = document.querySelector("#file-list");
 const form = document.querySelector("#upload-form");
 const statusMessage = document.querySelector("#status-message");
 const uploadButton = document.querySelector("#upload-button");
+const vendorSelect = document.querySelector("#vendor-select");
 const vendorInput = document.querySelector("#vendor-input");
 const rfxInput = document.querySelector("#rfx-input");
 
@@ -47,6 +49,27 @@ function renderFiles() {
       `;
     })
     .join("");
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+async function loadVendorOptions() {
+  try {
+    const vendors = await fetchVendors({ status: "active" });
+    vendorSelect.innerHTML = [
+      '<option value="">Auto-detect vendor</option>',
+      ...vendors.map((vendor) => `<option value="${escapeHtml(vendor.id)}">${escapeHtml(vendor.vendor_name)}</option>`)
+    ].join("");
+  } catch (error) {
+    vendorSelect.innerHTML = '<option value="">Auto-detect vendor</option>';
+    vendorSelect.title = error.message;
+  }
 }
 
 function addFiles(files) {
@@ -112,6 +135,7 @@ form.addEventListener("submit", async (event) => {
   for (const file of uploadableFiles) {
     try {
       await uploadRawFile(file, {
+        vendorId: vendorSelect.value,
         vendor: vendorInput.value,
         rfx: rfxInput.value
       });
@@ -136,6 +160,9 @@ form.addEventListener("submit", async (event) => {
 
 initAuthControls();
 requirePrivatePage()
-  .then(() => applyPermissionState("#upload-button", "uploads:create"))
+  .then(async () => {
+    await loadVendorOptions();
+    await applyPermissionState("#upload-button", "uploads:create");
+  })
   .catch(() => {});
 renderFiles();

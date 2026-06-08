@@ -21,6 +21,12 @@ function formatDate(value) {
   }).format(new Date(value));
 }
 
+function matchLabel(row) {
+  if (row.vendor_match_source === "manual") return '<span class="match-pill">Manual</span>';
+  if (row.vendor_match_source === "auto") return '<span class="match-pill">Auto-matched</span>';
+  return "";
+}
+
 function renderRows(rows) {
   if (!rows.length) {
     historyBody.innerHTML =
@@ -37,7 +43,7 @@ function renderRows(rows) {
           <td>${escapeHtml(row.document_type)}</td>
           <td>
             ${escapeHtml(row.vendors?.vendor_name || row.vendor_hint || "")}
-            ${row.vendors?.vendor_name ? '<span class="match-pill">Matched</span>' : ""}
+            ${row.vendors?.vendor_name ? matchLabel(row) : ""}
           </td>
           <td>${escapeHtml(row.rfx_hint || "")}</td>
           <td><span class="status-pill">${escapeHtml(row.status)}</span></td>

@@ -378,6 +378,7 @@ Deno.serve(async (request) => {
 
     await supabase.from("raw_uploads").update({
       vendor_id: vendorId,
+      vendor_match_source: rawUpload.vendor_id ? "manual" : vendorMatch?.vendor?.id ? "auto" : rawUpload.vendor_match_source || null,
       status: "staged",
       interpreted_at: new Date().toISOString()
     }).eq("id", raw_upload_id);

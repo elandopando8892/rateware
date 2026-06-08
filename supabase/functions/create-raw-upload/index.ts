@@ -44,6 +44,7 @@ Deno.serve(async (request) => {
     }
 
     const vendor = String(formData.get("vendor") || "").trim();
+    const vendorId = String(formData.get("vendor_id") || "").trim();
     const rfx = String(formData.get("rfx") || "").trim();
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     const { uploadId, path } = buildStoragePath(file);
@@ -64,7 +65,9 @@ Deno.serve(async (request) => {
       mime_type: file.type || null,
       file_size_bytes: file.size,
       document_type: documentType,
+      vendor_id: vendorId || null,
       vendor_hint: vendor || null,
+      vendor_match_source: vendorId ? "manual" : null,
       rfx_hint: rfx || null,
       status: "uploaded",
       staging_target: "rate_staging"
