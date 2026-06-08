@@ -68,6 +68,24 @@ function normalizeVendorPatch(input: Record<string, unknown>) {
   return patch;
 }
 
+function normalizeSegment(input: Record<string, unknown>) {
+  const segmentName = cleanText(input.segment_name || input.name);
+  if (!segmentName) throw new Error("Segment name is required.");
+
+  const status = cleanText(input.status)?.toLowerCase() || null;
+  const preferredChannel = cleanText(input.preferred_channel)?.toLowerCase() || null;
+
+  return {
+    segment_name: segmentName,
+    description: cleanText(input.description),
+    tags: normalizeTags(input.tags),
+    status: status && ["active", "invited", "blocked", "inactive"].includes(status) ? status : null,
+    preferred_channel: preferredChannel && ["email", "whatsapp", "portal"].includes(preferredChannel) ? preferredChannel : null,
+    notes: cleanText(input.notes),
+    updated_at: new Date().toISOString()
+  };
+}
+
 Deno.serve(async (request) => {
   if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders() });
 
@@ -139,6 +157,26 @@ Deno.serve(async (request) => {
       const result = await supabase.from("vendors").update(patch).in("id", ids).select();
       if (result.error) throw result.error;
       return jsonResponse({ updated: result.data.length, rows: result.data });
+    }
+
+    if (body.action === "list_vendor_segments") {
+      const result = await supabase.from("vendor_segments").select("*").order("created_at", { ascending: false }).limit(100);
+      if (result.error) throw result.error;
+      return jsonResponse({ rows: result.data });
+    }
+
+    if (body.action === "create_vendor_segment") {
+      const row = normalizeSegment(body.segment || {});
+      const result = await supabase.from("vendor_segments").insert(row).select().single();
+      if (result.error) throw result.error;
+      return jsonResponse({ row: result.data });
+    }
+
+    if (body.action === "delete_vendor_segment") {
+      if (!body.id) return jsonResponse({ error: "Segment id is required." }, 400);
+      const result = await supabase.from("vendor_segments").delete().eq("id", body.id).select().single();
+      if (result.error) throw result.error;
+      return jsonResponse({ row: result.data });
     }
 
     if (body.action === "dashboard_summary") {

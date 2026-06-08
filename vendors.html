@@ -34,6 +34,82 @@
         </header>
 
         <main class="vendors-layout">
+          <section class="workspace-panel wide-section">
+            <div class="section-heading compact">
+              <p class="eyebrow">Guided setup</p>
+              <h2>Vendor Wizard</h2>
+            </div>
+            <div class="wizard-shell">
+              <div class="wizard-steps" aria-label="Vendor wizard steps">
+                <button class="wizard-step is-active" type="button" data-wizard-step="0">Company</button>
+                <button class="wizard-step" type="button" data-wizard-step="1">Contacts</button>
+                <button class="wizard-step" type="button" data-wizard-step="2">Coverage</button>
+                <button class="wizard-step" type="button" data-wizard-step="3">Review</button>
+              </div>
+              <form id="vendor-wizard-form" class="wizard-form">
+                <section class="wizard-panel" data-step-panel="0">
+                  <label>
+                    Vendor name
+                    <input id="wizard-vendor-name" required placeholder="Carrier or brokerage name" />
+                  </label>
+                  <label>
+                    Legal name
+                    <input id="wizard-legal-name" placeholder="Legal entity" />
+                  </label>
+                  <label>
+                    Domain
+                    <input id="wizard-domain" placeholder="carrier.com" />
+                  </label>
+                </section>
+                <section class="wizard-panel hidden" data-step-panel="1">
+                  <label>
+                    Contact name
+                    <input id="wizard-contact-name" placeholder="Pricing contact" />
+                  </label>
+                  <label>
+                    Email
+                    <input id="wizard-primary-email" type="email" placeholder="pricing@carrier.com" />
+                  </label>
+                  <label>
+                    WhatsApp
+                    <input id="wizard-whatsapp-phone" placeholder="+52..." />
+                  </label>
+                  <label>
+                    Preferred channel
+                    <select id="wizard-preferred-channel">
+                      <option value="email">Email</option>
+                      <option value="whatsapp">WhatsApp</option>
+                      <option value="portal">Portal</option>
+                    </select>
+                  </label>
+                </section>
+                <section class="wizard-panel hidden" data-step-panel="2">
+                  <label>
+                    Equipment / services
+                    <input id="wizard-tags" placeholder="mx, cross-border, ftl, reefer" />
+                  </label>
+                  <label>
+                    Coverage
+                    <textarea id="wizard-coverage-notes" rows="3" placeholder="Regions, lanes, border crossings, equipment"></textarea>
+                  </label>
+                </section>
+                <section class="wizard-panel hidden" data-step-panel="3">
+                  <div id="wizard-review" class="review-card"></div>
+                  <label>
+                    Notes
+                    <textarea id="wizard-notes" rows="3" placeholder="Relationship notes, exceptions, escalation details"></textarea>
+                  </label>
+                </section>
+                <div class="action-row">
+                  <button id="wizard-back-button" class="secondary" type="button">Back</button>
+                  <button id="wizard-next-button" type="button">Next</button>
+                  <button id="wizard-save-button" class="hidden" type="submit">Save vendor</button>
+                  <p id="wizard-status" class="status-message" role="status"></p>
+                </div>
+              </form>
+            </div>
+          </section>
+
           <section class="workspace-panel">
             <div class="section-heading compact">
               <p class="eyebrow">Add vendor</p>
@@ -99,6 +175,45 @@
               <input id="vendor-import" type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
             </label>
             <p id="import-status" class="status-message" role="status"></p>
+          </section>
+
+          <section class="queue-panel">
+            <div class="section-heading compact">
+              <p class="eyebrow">Segments</p>
+              <h2>Saved vendor lists</h2>
+            </div>
+            <form id="segment-form" class="segment-form">
+              <label>
+                Segment name
+                <input id="segment-name" required placeholder="Cross-border FTL MX-US" />
+              </label>
+              <label>
+                Required tags
+                <input id="segment-tags" placeholder="cross-border, ftl" />
+              </label>
+              <label>
+                Status
+                <select id="segment-status">
+                  <option value="">Any</option>
+                  <option value="active">Active</option>
+                  <option value="invited">Invited</option>
+                  <option value="blocked">Blocked</option>
+                  <option value="inactive">Inactive</option>
+                </select>
+              </label>
+              <label>
+                Channel
+                <select id="segment-channel">
+                  <option value="">Any</option>
+                  <option value="email">Email</option>
+                  <option value="whatsapp">WhatsApp</option>
+                  <option value="portal">Portal</option>
+                </select>
+              </label>
+              <button id="save-segment-button" type="submit">Save segment</button>
+              <p id="segment-status-message" class="status-message" role="status"></p>
+            </form>
+            <div id="segments-list" class="segment-list"></div>
           </section>
 
           <section id="import-preview-panel" class="workspace-panel wide-section hidden">

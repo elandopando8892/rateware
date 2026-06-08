@@ -1,8 +1,24 @@
 import * as XLSX from "https://esm.sh/xlsx@0.18.5";
 import { applyPermissionState, initAuthControls, requirePrivatePage } from "./auth.js";
-import { bulkUpdateVendors, createVendor, fetchVendors, importVendors } from "./vendor-service.js";
+import {
+  bulkUpdateVendors,
+  createVendor,
+  createVendorSegment,
+  deleteVendorSegment,
+  fetchVendorSegments,
+  fetchVendors,
+  importVendors
+} from "./vendor-service.js";
 
 const form = document.querySelector("#vendor-form");
+const wizardForm = document.querySelector("#vendor-wizard-form");
+const wizardStepButtons = document.querySelectorAll(".wizard-step");
+const wizardPanels = document.querySelectorAll("[data-step-panel]");
+const wizardBackButton = document.querySelector("#wizard-back-button");
+const wizardNextButton = document.querySelector("#wizard-next-button");
+const wizardSaveButton = document.querySelector("#wizard-save-button");
+const wizardStatus = document.querySelector("#wizard-status");
+const wizardReview = document.querySelector("#wizard-review");
 const statusMessage = document.querySelector("#vendor-status");
 const importInput = document.querySelector("#vendor-import");
 const importStatus = document.querySelector("#import-status");
@@ -21,11 +37,16 @@ const bulkStatus = document.querySelector("#bulk-status");
 const bulkTags = document.querySelector("#bulk-tags");
 const bulkButton = document.querySelector("#bulk-update-button");
 const bulkStatusMessage = document.querySelector("#bulk-status-message");
+const segmentForm = document.querySelector("#segment-form");
+const segmentStatusMessage = document.querySelector("#segment-status-message");
+const segmentsList = document.querySelector("#segments-list");
 const drawer = document.querySelector("#vendor-drawer");
 const closeDrawerButton = document.querySelector("#close-vendor-drawer");
 let currentVendors = [];
 let selectedVendorIds = new Set();
 let pendingImportRows = [];
+let savedSegments = [];
+let wizardStep = 0;
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -130,6 +151,46 @@ function scoreVendor(row) {
   return Math.round((fields.filter(Boolean).length / fields.length) * 100);
 }
 
+function readWizard() {
+  return {
+    vendor_name: document.querySelector("#wizard-vendor-name").value,
+    legal_name: document.querySelector("#wizard-legal-name").value,
+    domain: document.querySelector("#wizard-domain").value,
+    contact_name: document.querySelector("#wizard-contact-name").value,
+    primary_email: document.querySelector("#wizard-primary-email").value,
+    whatsapp_phone: document.querySelector("#wizard-whatsapp-phone").value,
+    preferred_channel: document.querySelector("#wizard-preferred-channel").value,
+    tags: splitTags(document.querySelector("#wizard-tags").value),
+    coverage_notes: document.querySelector("#wizard-coverage-notes").value,
+    notes: document.querySelector("#wizard-notes").value
+  };
+}
+
+function renderWizard() {
+  wizardStepButtons.forEach((button) => button.classList.toggle("is-active", Number(button.dataset.wizardStep) === wizardStep));
+  wizardPanels.forEach((panel) => panel.classList.toggle("hidden", Number(panel.dataset.stepPanel) !== wizardStep));
+  wizardBackButton.disabled = wizardStep === 0;
+  wizardNextButton.classList.toggle("hidden", wizardStep === wizardPanels.length - 1);
+  wizardSaveButton.classList.toggle("hidden", wizardStep !== wizardPanels.length - 1);
+
+  if (wizardStep === wizardPanels.length - 1) {
+    const vendor = readWizard();
+    wizardReview.innerHTML = `
+      <div><strong>${escapeHtml(vendor.vendor_name || "Unnamed vendor")}</strong><span>${escapeHtml(vendor.domain || "No domain")}</span></div>
+      <div><strong>Contact</strong><span>${escapeHtml([vendor.contact_name, vendor.primary_email, vendor.whatsapp_phone].filter(Boolean).join(" | ") || "Missing contact")}</span></div>
+      <div><strong>Coverage</strong><span>${escapeHtml(vendor.coverage_notes || "No coverage captured")}</span></div>
+      <div><strong>Tags</strong><span>${renderTags(vendor.tags)}</span></div>
+      <div><strong>Readiness</strong><span>${scoreVendor(vendor)}% complete</span></div>
+    `;
+  }
+}
+
+function resetWizard() {
+  wizardForm.reset();
+  wizardStep = 0;
+  renderWizard();
+}
+
 function duplicateSignals(row, rows = currentVendors) {
   const nameKey = normalizeKey(row.vendor_name);
   const domain = String(row.domain || "").toLowerCase();
@@ -183,6 +244,7 @@ function readForm() {
 
 function renderVendors(rows) {
   currentVendors = rows;
+  renderSegments();
 
   if (!rows.length) {
     vendorsBody.innerHTML =
@@ -213,6 +275,53 @@ function renderVendors(rows) {
     .join("");
 }
 
+function segmentMatches(segment, vendor) {
+  const vendorTags = splitTags(vendor.tags);
+  const requiredTags = splitTags(segment.tags);
+  const hasTags = requiredTags.every((tag) => vendorTags.includes(tag));
+  const hasStatus = !segment.status || vendor.status === segment.status;
+  const hasChannel = !segment.preferred_channel || vendor.preferred_channel === segment.preferred_channel;
+  return hasTags && hasStatus && hasChannel;
+}
+
+function renderSegments() {
+  if (!segmentsList) return;
+
+  if (!savedSegments.length) {
+    segmentsList.innerHTML = '<div class="empty-state"><strong>No saved segments</strong><span>Create lists from tags, status, and channel.</span></div>';
+    return;
+  }
+
+  segmentsList.innerHTML = savedSegments
+    .map((segment) => {
+      const matches = currentVendors.filter((vendor) => segmentMatches(segment, vendor));
+      return `
+        <article class="segment-card">
+          <div>
+            <strong>${escapeHtml(segment.segment_name)}</strong>
+            <span>${matches.length} vendor(s)</span>
+          </div>
+          <div class="tag-list">${renderTags(segment.tags)}</div>
+          <small>${escapeHtml([segment.status, segment.preferred_channel].filter(Boolean).join(" | ") || "Any active filter")}</small>
+          <div class="action-row">
+            <button class="small-button" type="button" data-segment-filter="${escapeHtml(segment.id)}">Apply</button>
+            <button class="small-button danger" type="button" data-segment-delete="${escapeHtml(segment.id)}">Delete</button>
+          </div>
+        </article>
+      `;
+    })
+    .join("");
+}
+
+async function loadSegments() {
+  try {
+    savedSegments = await fetchVendorSegments();
+    renderSegments();
+  } catch (error) {
+    segmentsList.innerHTML = `<div class="empty-state"><strong>Could not load segments</strong><span>${escapeHtml(error.message)}</span></div>`;
+  }
+}
+
 async function loadVendors() {
   vendorsBody.innerHTML = '<tr><td colspan="9">Loading vendors...</td></tr>';
   refreshButton.disabled = true;
@@ -229,6 +338,15 @@ async function loadVendors() {
   } finally {
     refreshButton.disabled = false;
   }
+}
+
+function readSegmentForm() {
+  return {
+    segment_name: document.querySelector("#segment-name").value,
+    tags: splitTags(document.querySelector("#segment-tags").value),
+    status: document.querySelector("#segment-status").value,
+    preferred_channel: document.querySelector("#segment-channel").value
+  };
 }
 
 function normalizeImportedRow(row) {
@@ -332,6 +450,46 @@ form.addEventListener("submit", async (event) => {
   }
 });
 
+wizardStepButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    wizardStep = Number(button.dataset.wizardStep);
+    renderWizard();
+  });
+});
+
+wizardBackButton.addEventListener("click", () => {
+  wizardStep = Math.max(0, wizardStep - 1);
+  renderWizard();
+});
+
+wizardNextButton.addEventListener("click", () => {
+  if (wizardStep === 0 && !document.querySelector("#wizard-vendor-name").value.trim()) {
+    setStatus(wizardStatus, "Vendor name is required.", "error");
+    return;
+  }
+  setStatus(wizardStatus, "");
+  wizardStep = Math.min(wizardPanels.length - 1, wizardStep + 1);
+  renderWizard();
+});
+
+wizardForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  wizardSaveButton.disabled = true;
+  setStatus(wizardStatus, "Saving vendor...");
+
+  try {
+    await requirePrivatePage();
+    await createVendor(readWizard());
+    resetWizard();
+    setStatus(wizardStatus, "Vendor saved.", "success");
+    await loadVendors();
+  } catch (error) {
+    setStatus(wizardStatus, error.message, "error");
+  } finally {
+    wizardSaveButton.disabled = false;
+  }
+});
+
 importInput.addEventListener("change", async () => {
   const [file] = importInput.files;
   if (!file) return;
@@ -418,6 +576,50 @@ bulkButton.addEventListener("click", async () => {
   }
 });
 
+segmentForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const button = document.querySelector("#save-segment-button");
+  button.disabled = true;
+  setStatus(segmentStatusMessage, "Saving segment...");
+
+  try {
+    await requirePrivatePage();
+    await createVendorSegment(readSegmentForm());
+    segmentForm.reset();
+    setStatus(segmentStatusMessage, "Segment saved.", "success");
+    await loadSegments();
+  } catch (error) {
+    setStatus(segmentStatusMessage, error.message, "error");
+  } finally {
+    button.disabled = false;
+  }
+});
+
+segmentsList.addEventListener("click", async (event) => {
+  const filterButton = event.target.closest("[data-segment-filter]");
+  const deleteButton = event.target.closest("[data-segment-delete]");
+
+  if (filterButton) {
+    const segment = savedSegments.find((item) => item.id === filterButton.dataset.segmentFilter);
+    if (!segment) return;
+    searchInput.value = splitTags(segment.tags).join(", ");
+    statusFilter.value = segment.status || "";
+    renderVendors(currentVendors.filter((vendor) => segmentMatches(segment, vendor)));
+  }
+
+  if (deleteButton) {
+    deleteButton.disabled = true;
+    try {
+      await requirePrivatePage();
+      await deleteVendorSegment(deleteButton.dataset.segmentDelete);
+      await loadSegments();
+    } catch (error) {
+      deleteButton.title = error.message;
+      deleteButton.disabled = false;
+    }
+  }
+});
+
 refreshButton.addEventListener("click", loadVendors);
 statusFilter.addEventListener("change", loadVendors);
 searchInput.addEventListener("input", () => {
@@ -439,6 +641,8 @@ closeDrawerButton.addEventListener("click", () => drawer.classList.add("hidden")
 
 initAuthControls();
 requirePrivatePage()
-  .then(() => applyPermissionState("#save-vendor-button, #vendor-import, #bulk-update-button, #confirm-import-button", "vendors:manage"))
+  .then(() => applyPermissionState("#save-vendor-button, #wizard-save-button, #vendor-import, #bulk-update-button, #confirm-import-button, #save-segment-button", "vendors:manage"))
   .catch(() => {});
+renderWizard();
+loadSegments();
 loadVendors();

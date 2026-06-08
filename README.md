@@ -14,6 +14,7 @@ Static Upload Center module for preserving carrier quotation source files before
 - Provides a Vendor CRM page for carrier master data, import, tags, completeness scoring, duplicate signals, and profile review.
 - Provides a downloadable vendor import template and validates imports before saving valid rows.
 - Links interpreted uploads and staged rate rows to the best matching vendor when a confident match is found.
+- Provides a guided Vendor Wizard and saved vendor segments for reusable RFx lists.
 
 ## Setup
 

@@ -256,7 +256,7 @@ a {
 }
 
 .hidden {
-  display: none;
+  display: none !important;
 }
 
 .upload-layout {
@@ -412,6 +412,85 @@ h2 {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
+}
+
+.wizard-shell,
+.wizard-form,
+.segment-form,
+.segment-list {
+  display: grid;
+  gap: 14px;
+}
+
+.wizard-steps {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.wizard-step {
+  background: #e8edf1;
+  color: #34404a;
+}
+
+.wizard-step.is-active {
+  background: var(--accent);
+  color: #ffffff;
+}
+
+.wizard-panel {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.wizard-panel textarea,
+.wizard-panel label:has(textarea) {
+  grid-column: 1 / -1;
+}
+
+.review-card {
+  display: grid;
+  gap: 10px;
+  grid-column: 1 / -1;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfc;
+  padding: 14px;
+}
+
+.review-card div {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr);
+  gap: 12px;
+}
+
+.review-card span {
+  color: var(--muted);
+}
+
+.segment-form {
+  margin-bottom: 16px;
+}
+
+.segment-card {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfc;
+  padding: 12px;
+}
+
+.segment-card div:first-child {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.segment-card span,
+.segment-card small {
+  color: var(--muted);
 }
 
 .wide-field {
@@ -868,6 +947,8 @@ th {
   .action-grid,
   .form-grid,
   .vendor-form,
+  .wizard-steps,
+  .wizard-panel,
   .toolbar,
   .bulk-toolbar,
   .preview-summary,

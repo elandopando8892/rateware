@@ -15,3 +15,15 @@ export async function importVendors(vendors) {
 export async function bulkUpdateVendors(ids, patch) {
   return await callRatewareApi("bulk_update_vendors", { ids, patch });
 }
+
+export async function fetchVendorSegments() {
+  return (await callRatewareApi("list_vendor_segments")).rows;
+}
+
+export async function createVendorSegment(segment) {
+  return (await callRatewareApi("create_vendor_segment", { segment })).row;
+}
+
+export async function deleteVendorSegment(id) {
+  return (await callRatewareApi("delete_vendor_segment", { id })).row;
+}
