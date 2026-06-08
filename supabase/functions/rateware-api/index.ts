@@ -24,6 +24,14 @@ function normalizeDomain(value: unknown) {
   return text.toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").split("/")[0];
 }
 
+function normalizeTags(value: unknown) {
+  const source = Array.isArray(value) ? value : String(value || "").split(/[;,]/);
+  return source
+    .map((tag) => String(tag).trim().toLowerCase())
+    .filter(Boolean)
+    .slice(0, 20);
+}
+
 function normalizeVendor(input: Record<string, unknown>, source = "manual") {
   const vendorName = cleanText(input.vendor_name || input.name || input.carrier || input.vendor);
   if (!vendorName) throw new Error("Vendor name is required.");
@@ -40,6 +48,8 @@ function normalizeVendor(input: Record<string, unknown>, source = "manual") {
     whatsapp_phone: cleanText(input.whatsapp_phone || input.phone || input.whatsapp),
     preferred_channel: ["email", "whatsapp", "portal"].includes(preferred) ? preferred : "email",
     status: ["active", "invited", "blocked", "inactive"].includes(status) ? status : "active",
+    tags: normalizeTags(input.tags || input.tag || input.services || input.equipment || input.coverage),
+    coverage_notes: cleanText(input.coverage_notes || input.coverage || input.lanes),
     notes: cleanText(input.notes),
     source
   };

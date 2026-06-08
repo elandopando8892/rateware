@@ -11,7 +11,7 @@ Static Upload Center module for preserving carrier quotation source files before
 - Provides an Upload History page for recent source intake.
 - Interprets uploaded files into `rate_staging` through the `interpret-upload` Supabase function.
 - Provides a Staging Review page for human approval before production.
-- Provides a Vendor CRM page for carrier master data and import.
+- Provides a Vendor CRM page for carrier master data, import, tags, completeness scoring, duplicate signals, and profile review.
 
 ## Setup
 

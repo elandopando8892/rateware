@@ -69,6 +69,14 @@
                 </select>
               </label>
               <label class="wide-field">
+                Tags
+                <input id="vendor-tags" placeholder="mx, cross-border, ftl, reefer" />
+              </label>
+              <label class="wide-field">
+                Coverage
+                <textarea id="coverage-notes" rows="2" placeholder="Regions, lanes, equipment, service notes"></textarea>
+              </label>
+              <label class="wide-field">
                 Notes
                 <textarea id="vendor-notes" rows="3" placeholder="Coverage, equipment, relationship notes"></textarea>
               </label>
@@ -119,19 +127,60 @@
                     <th>Domain</th>
                     <th>Contact</th>
                     <th>Email</th>
-                    <th>WhatsApp</th>
+                    <th>Fit</th>
+                    <th>Tags</th>
                     <th>Channel</th>
                     <th>Status</th>
                   </tr>
                 </thead>
                 <tbody id="vendors-body">
                   <tr>
-                    <td colspan="7">Loading vendors...</td>
+                    <td colspan="8">Loading vendors...</td>
                   </tr>
                 </tbody>
               </table>
             </div>
           </section>
+
+          <aside id="vendor-drawer" class="profile-drawer hidden" aria-live="polite">
+            <div class="drawer-header">
+              <div>
+                <p class="eyebrow">Vendor profile</p>
+                <h2 id="drawer-vendor-name">Vendor</h2>
+              </div>
+              <button id="close-vendor-drawer" class="secondary small-button" type="button">Close</button>
+            </div>
+            <dl class="diagnostic-list">
+              <div>
+                <dt>Completeness</dt>
+                <dd id="drawer-completeness">-</dd>
+              </div>
+              <div>
+                <dt>Contact</dt>
+                <dd id="drawer-contact">-</dd>
+              </div>
+              <div>
+                <dt>Channel</dt>
+                <dd id="drawer-channel">-</dd>
+              </div>
+              <div>
+                <dt>Tags</dt>
+                <dd id="drawer-tags">-</dd>
+              </div>
+              <div>
+                <dt>Coverage</dt>
+                <dd id="drawer-coverage">-</dd>
+              </div>
+              <div>
+                <dt>Duplicate signals</dt>
+                <dd id="drawer-duplicates">-</dd>
+              </div>
+              <div>
+                <dt>Notes</dt>
+                <dd id="drawer-notes">-</dd>
+              </div>
+            </dl>
+          </aside>
         </main>
       </div>
     </div>

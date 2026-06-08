@@ -287,6 +287,22 @@ a {
   grid-column: 1 / -1;
 }
 
+.profile-drawer {
+  grid-column: 1 / -1;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 20px;
+}
+
+.drawer-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
 .metric-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -629,6 +645,78 @@ th {
   padding: 3px 9px;
   font-weight: 800;
   font-size: 0.8rem;
+}
+
+.tag-list {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  border: 1px solid #c7d2da;
+  border-radius: 999px;
+  background: #f8fafb;
+  color: #34404a;
+  padding: 3px 8px;
+  font-size: 0.8rem;
+  font-weight: 760;
+}
+
+.fit-stack {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.score-pill,
+.warning-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  border-radius: 999px;
+  padding: 3px 9px;
+  font-size: 0.8rem;
+  font-weight: 850;
+}
+
+.score-pill.strong {
+  background: #dcefed;
+  color: var(--accent-dark);
+}
+
+.score-pill.medium {
+  background: #fff4d8;
+  color: #7a4d00;
+}
+
+.score-pill.weak,
+.warning-pill {
+  background: #fde7e4;
+  color: var(--danger);
+}
+
+.muted-text {
+  color: var(--muted);
+}
+
+.link-button {
+  min-height: 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent-dark);
+  padding: 0;
+  text-align: left;
+  font-weight: 850;
+}
+
+.link-button:hover {
+  background: transparent;
+  text-decoration: underline;
 }
 
 .review-actions {
