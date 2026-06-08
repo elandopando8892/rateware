@@ -814,6 +814,14 @@ button.danger {
   color: var(--success);
 }
 
+.error-detail {
+  display: block;
+  max-width: 360px;
+  color: var(--danger);
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
 .file-list {
   list-style: none;
   display: grid;

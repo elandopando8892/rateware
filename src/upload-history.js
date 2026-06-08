@@ -42,7 +42,10 @@ function renderRows(rows) {
           <td>${escapeHtml(row.rfx_hint || "")}</td>
           <td><span class="status-pill">${escapeHtml(row.status)}</span></td>
           <td>${escapeHtml(row.storage_path)}</td>
-          <td><button type="button" class="small-button" data-interpret-id="${escapeHtml(row.id)}">Interpret</button></td>
+          <td>
+            <button type="button" class="small-button" data-interpret-id="${escapeHtml(row.id)}">Interpret</button>
+            ${row.error_message ? `<small class="error-detail">${escapeHtml(row.error_message)}</small>` : ""}
+          </td>
         </tr>
       `
     )
@@ -86,6 +89,7 @@ historyBody.addEventListener("click", async (event) => {
   } catch (error) {
     button.textContent = "Failed";
     button.title = error.message;
+    button.insertAdjacentHTML("afterend", `<small class="error-detail">${escapeHtml(error.message)}</small>`);
   }
 });
 

@@ -102,6 +102,27 @@ function jsonResponse(body: unknown, status = 200) {
   });
 }
 
+async function openAIErrorMessage(response: Response, label: string) {
+  const body = await response.text();
+
+  try {
+    const parsed = JSON.parse(body);
+    const code = parsed?.error?.code || parsed?.error?.type;
+
+    if (code === "insufficient_quota") {
+      return "OpenAI quota is not available for this project. Add billing/credits in OpenAI or update OPENAI_API_KEY to a project with available quota.";
+    }
+
+    if (parsed?.error?.message) {
+      return `${label}: ${parsed.error.message}`;
+    }
+  } catch {
+    // Fall through to the raw body below.
+  }
+
+  return `${label}: ${body}`;
+}
+
 function isInvalidRateValue(value: unknown) {
   if (value === null || value === undefined) return true;
   const normalized = String(value).trim();
@@ -242,7 +263,7 @@ async function uploadOpenAIFile(file: Blob, filename: string) {
     body: formData
   });
 
-  if (!response.ok) throw new Error(`OpenAI file upload failed: ${await response.text()}`);
+  if (!response.ok) throw new Error(await openAIErrorMessage(response, "OpenAI file upload failed"));
   return await response.json();
 }
 
@@ -297,7 +318,7 @@ async function interpretWithModel(rawUpload: Record<string, string>, file: Blob)
     })
   });
 
-  if (!response.ok) throw new Error(`OpenAI interpretation failed: ${await response.text()}`);
+  if (!response.ok) throw new Error(await openAIErrorMessage(response, "OpenAI interpretation failed"));
 
   const payload = await response.json();
   const outputText = payload.output_text ?? payload.output?.flatMap((item: Record<string, unknown>) => item.content ?? [])
