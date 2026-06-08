@@ -14,6 +14,12 @@ function normalizeRole(role) {
   return String(role.key || role.name || "").toLowerCase();
 }
 
+function normalizePermission(permission) {
+  if (!permission) return "";
+  if (typeof permission === "string") return permission.toLowerCase();
+  return String(permission.key || permission.name || permission.id || "").toLowerCase();
+}
+
 function parseJwt(token) {
   const [, payload] = token.split(".");
   if (!payload) return {};
@@ -106,13 +112,14 @@ export async function requirePrivatePage() {
 export async function canUse(action) {
   const access = await getAccessContext();
   const roles = access.roles.map(normalizeRole);
-  const permissions = access.permissions.map((permission) => String(permission).toLowerCase());
+  const permissions = access.permissions.map(normalizePermission);
 
   if (roles.includes("admin") || permissions.includes(action)) return true;
 
   const roleRules = {
     "uploads:create": ["analyst"],
     "uploads:interpret": ["analyst"],
+    "vendors:manage": ["analyst"],
     "staging:review": ["reviewer", "analyst"],
     "staging:approve": ["reviewer"],
     "dashboard:read": ["admin", "analyst", "reviewer", "viewer"]

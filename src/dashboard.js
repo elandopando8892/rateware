@@ -2,9 +2,9 @@ import { getAccessContext, initAuthControls, requirePrivatePage } from "./auth.j
 import { callRatewareApi } from "./rateware-api.js";
 
 const metricUploads = document.querySelector("#metric-uploads");
+const metricVendors = document.querySelector("#metric-vendors");
 const metricPending = document.querySelector("#metric-pending");
 const metricApproved = document.querySelector("#metric-approved");
-const metricFailed = document.querySelector("#metric-failed");
 const diagnostics = document.querySelector("#access-diagnostics");
 
 function setMetric(element, value) {
@@ -51,14 +51,14 @@ async function loadDashboard() {
     await loadAccessDiagnostics(session);
     const summary = await callRatewareApi("dashboard_summary");
     setMetric(metricUploads, summary.raw_uploads);
+    setMetric(metricVendors, summary.vendors);
     setMetric(metricPending, summary.pending_review);
     setMetric(metricApproved, summary.approved_rows);
-    setMetric(metricFailed, summary.failed_uploads);
   } catch (error) {
     metricUploads.textContent = "-";
+    metricVendors.textContent = "-";
     metricPending.textContent = "-";
     metricApproved.textContent = "-";
-    metricFailed.textContent = "-";
   }
 }
 

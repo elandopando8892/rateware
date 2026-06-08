@@ -276,6 +276,17 @@ a {
   padding-bottom: 40px;
 }
 
+.vendors-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 18px;
+  padding-bottom: 40px;
+}
+
+.wide-section {
+  grid-column: 1 / -1;
+}
+
 .metric-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -379,6 +390,40 @@ h2 {
 .upload-form {
   display: grid;
   gap: 18px;
+}
+
+.vendor-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.wide-field {
+  grid-column: 1 / -1;
+}
+
+textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 9px 10px;
+  color: var(--text);
+  font: inherit;
+  resize: vertical;
+}
+
+.import-zone {
+  display: grid;
+  gap: 8px;
+  border: 1px dashed #a8b3bd;
+  border-radius: 8px;
+  background: #fbfcfc;
+  padding: 16px;
+  cursor: pointer;
+}
+
+.import-zone input {
+  margin-top: 8px;
 }
 
 .drop-zone {
@@ -681,9 +726,11 @@ th {
   }
 
   .upload-layout,
+  .vendors-layout,
   .metric-grid,
   .action-grid,
   .form-grid,
+  .vendor-form,
   .toolbar,
   .auth-strip {
     grid-template-columns: 1fr;

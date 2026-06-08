@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Rateware Vendors</title>
+    <link rel="stylesheet" href="./src/styles.css" />
+  </head>
+  <body>
+    <div class="shell-layout">
+      <aside class="side-nav" aria-label="Rateware modules">
+        <a class="brand-mark" href="./app.html">Rateware</a>
+        <nav>
+          <a href="./app.html">Dashboard</a>
+          <a href="./upload-center.html">Upload Center</a>
+          <a href="./upload-history.html">Upload History</a>
+          <a href="./staging-review.html">Staging Review</a>
+          <a aria-current="page" href="./vendors.html">Vendors</a>
+          <a class="disabled-link" href="#" aria-disabled="true">RFx Events</a>
+        </nav>
+      </aside>
+
+      <div class="page-frame">
+        <header class="page-header">
+          <div>
+            <p class="eyebrow">Carrier master</p>
+            <h1>Vendors</h1>
+          </div>
+          <form id="auth-form" class="auth-strip">
+            <button id="auth-button" type="submit">Sign in with Kinde</button>
+            <button id="sign-out-button" type="button" class="secondary hidden">Sign out</button>
+            <p id="auth-status" role="status"></p>
+          </form>
+        </header>
+
+        <main class="vendors-layout">
+          <section class="workspace-panel">
+            <div class="section-heading compact">
+              <p class="eyebrow">Add vendor</p>
+              <h2>Carrier profile</h2>
+            </div>
+            <form id="vendor-form" class="vendor-form">
+              <label>
+                Vendor name
+                <input id="vendor-name" required placeholder="Carrier or brokerage name" />
+              </label>
+              <label>
+                Domain
+                <input id="vendor-domain" placeholder="carrier.com" />
+              </label>
+              <label>
+                Contact name
+                <input id="contact-name" placeholder="Primary contact" />
+              </label>
+              <label>
+                Email
+                <input id="primary-email" type="email" placeholder="contact@carrier.com" />
+              </label>
+              <label>
+                WhatsApp
+                <input id="whatsapp-phone" placeholder="+52..." />
+              </label>
+              <label>
+                Preferred channel
+                <select id="preferred-channel">
+                  <option value="email">Email</option>
+                  <option value="whatsapp">WhatsApp</option>
+                  <option value="portal">Portal</option>
+                </select>
+              </label>
+              <label class="wide-field">
+                Notes
+                <textarea id="vendor-notes" rows="3" placeholder="Coverage, equipment, relationship notes"></textarea>
+              </label>
+              <div class="action-row wide-field">
+                <button id="save-vendor-button" type="submit">Save vendor</button>
+                <p id="vendor-status" class="status-message" role="status"></p>
+              </div>
+            </form>
+          </section>
+
+          <section class="queue-panel">
+            <div class="section-heading compact">
+              <p class="eyebrow">Import</p>
+              <h2>CSV / XLSX</h2>
+            </div>
+            <label class="import-zone" for="vendor-import">
+              <span>Choose vendor file</span>
+              <small>Columns: vendor_name, domain, contact_name, email, whatsapp_phone</small>
+              <input id="vendor-import" type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
+            </label>
+            <p id="import-status" class="status-message" role="status"></p>
+          </section>
+
+          <section class="workspace-panel wide-section">
+            <div class="toolbar">
+              <label>
+                Search
+                <input id="vendor-search" placeholder="Name, domain, email" />
+              </label>
+              <label>
+                Status
+                <select id="vendor-status-filter">
+                  <option value="">All</option>
+                  <option value="active">Active</option>
+                  <option value="invited">Invited</option>
+                  <option value="blocked">Blocked</option>
+                  <option value="inactive">Inactive</option>
+                </select>
+              </label>
+              <button id="refresh-vendors-button" type="button">Refresh</button>
+            </div>
+
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Vendor</th>
+                    <th>Domain</th>
+                    <th>Contact</th>
+                    <th>Email</th>
+                    <th>WhatsApp</th>
+                    <th>Channel</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody id="vendors-body">
+                  <tr>
+                    <td colspan="7">Loading vendors...</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </main>
+      </div>
+    </div>
+
+    <script type="module" src="./src/vendors.js"></script>
+  </body>
+</html>
