@@ -128,8 +128,101 @@ function routeKey(parts: unknown[]) {
   return parts.map(key).filter(Boolean).join(" ");
 }
 
+const MX_STATE_NAMES: Record<string, string> = {
+  AG: "Aguascalientes",
+  BN: "Baja California",
+  BS: "Baja California Sur",
+  CM: "Campeche",
+  CU: "Coahuila",
+  CL: "Colima",
+  CS: "Chiapas",
+  CH: "Chihuahua",
+  DF: "Mexico, DF",
+  DU: "Durango",
+  GJ: "Guanajuato",
+  GR: "Guerrero",
+  HG: "Hidalgo",
+  JA: "Jalisco",
+  MX: "Mexico",
+  MC: "Michoacan",
+  MR: "Morelos",
+  NA: "Nayarit",
+  NL: "Nuevo Leon",
+  OA: "Oaxaca",
+  PB: "Puebla",
+  QE: "Queretaro",
+  QR: "Quintana Roo",
+  SL: "San Luis Potosi",
+  SI: "Sinaloa",
+  SO: "Sonora",
+  TB: "Tabasco",
+  TM: "Tamaulipas",
+  TL: "Tlaxcala",
+  VE: "Veracruz",
+  YU: "Yucatan",
+  ZA: "Zacatecas"
+};
+
+const CANADIAN_PROVINCES = new Set(["AB", "BC", "MB", "NB", "NF", "NS", "NT", "NU", "ON", "PE", "PQ", "QC", "SK", "YT"]);
+const US_STATES = new Set([
+  "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA", "HI", "IA", "ID", "IL", "IN", "KS", "KY", "LA", "MA", "MD", "ME", "MI", "MN", "MO", "MS", "MT", "NC", "ND", "NE", "NH", "NJ", "NM", "NV", "NY", "OH", "OK", "OR", "PA", "RI", "SC", "SD", "TN", "TX", "UT", "VA", "VT", "WA", "WI", "WV", "WY", "DC"
+]);
+
+function splitCityState(value: unknown) {
+  const text = cleanText(value);
+  if (!text) return { city: null, stateCode: null };
+  const parts = text.split(",").map((part) => part.trim()).filter(Boolean);
+  return {
+    city: parts[0] || text,
+    stateCode: parts[1]?.toUpperCase() || null
+  };
+}
+
+function countryFromState(stateCode: string | null, zipPrefix: string | null) {
+  if (stateCode && US_STATES.has(stateCode)) return "US";
+  if (stateCode && CANADIAN_PROVINCES.has(stateCode)) return "CA";
+  if (stateCode && MX_STATE_NAMES[stateCode]) return "MX";
+  if (zipPrefix && /^\d{3}/.test(zipPrefix)) return "US";
+  return "UNKNOWN";
+}
+
+function locationRecord(input: {
+  rawValue: unknown;
+  zipPrefix?: unknown;
+  metroCity?: unknown;
+  market?: unknown;
+  region?: unknown;
+  source?: string;
+}) {
+  const rawValue = cleanText(input.rawValue);
+  const metroCity = cleanText(input.metroCity || rawValue);
+  if (!rawValue || !metroCity) return null;
+
+  const zipPrefix = cleanText(input.zipPrefix);
+  const { city, stateCode } = splitCityState(metroCity);
+  const country = countryFromState(stateCode, zipPrefix);
+
+  return {
+    source: input.source || "cusCatalog",
+    country,
+    location_key: key([zipPrefix, metroCity, input.market].filter(Boolean).join(" ")),
+    raw_value: rawValue,
+    zip_prefix: zipPrefix,
+    city,
+    state_code: stateCode,
+    state_name: country === "MX" && stateCode ? MX_STATE_NAMES[stateCode] || stateCode : stateCode,
+    metro_city: metroCity,
+    market: cleanText(input.market),
+    region: cleanText(input.region),
+    metadata: {},
+    active: true,
+    updated_at: new Date().toISOString()
+  };
+}
+
 function parseCusCatalog(rows: string[][]) {
   const items: Record<string, unknown>[] = [];
+  const locations: Record<string, unknown>[] = [];
   const [header, ...data] = rows;
   const categories: Array<[string, number]> = [
     ["equipment", 13],
@@ -153,6 +246,21 @@ function parseCusCatalog(rows: string[][]) {
 
     if (zipPrefix && metroCity) {
       items.push(catalogItem("zip_market", zipPrefix, metroCity, { market_zip: marketZip, market }, zipPrefix)!);
+      const location = locationRecord({ rawValue: marketZip || zipPrefix, zipPrefix, metroCity, market, source: "cusCatalog" });
+      if (location) locations.push(location);
+    }
+
+    const mxProduction = cleanText(row[23]);
+    const homologation = cleanText(row[24]);
+    if (mxProduction) {
+      const location = locationRecord({
+        rawValue: mxProduction,
+        zipPrefix: String(mxProduction).match(/^(\d{3})-/)?.[1] || null,
+        metroCity: mxProduction.replace(/^\d{3}-/, ""),
+        market: homologation,
+        source: "cusCatalog"
+      });
+      if (location) locations.push(location);
     }
 
     for (const [category, index] of categories) {
@@ -164,7 +272,10 @@ function parseCusCatalog(rows: string[][]) {
     }
   }
 
-  return items.filter(Boolean);
+  return {
+    items: items.filter(Boolean),
+    locations
+  };
 }
 
 function parseUsaLaneData(rows: string[][]) {
@@ -351,8 +462,9 @@ Deno.serve(async (request) => {
       fetchSheet(sheetId, "usaFSCindex")
     ]);
 
-    const catalogItems = parseCusCatalog(cusCatalog);
-    const uniqueCatalogItems = [...new Map(catalogItems.map((item) => [`${item.category}|${item.raw_value}|${item.normalized_value}`, item])).values()];
+    const catalog = parseCusCatalog(cusCatalog);
+    const uniqueCatalogItems = [...new Map(catalog.items.map((item) => [`${item.category}|${item.raw_value}|${item.normalized_value}`, item])).values()];
+    const uniqueLocations = [...new Map(catalog.locations.map((item) => [item.location_key, item])).values()];
     const laneMileage = [
       ...parseUsaLaneData(usaLaneData),
       ...parseMexLaneData(mexLaneData),
@@ -361,6 +473,7 @@ Deno.serve(async (request) => {
     ] as Record<string, unknown>[];
 
     await upsertInBatches(supabase, "rateware_catalog_items", uniqueCatalogItems, "source,category,raw_value,normalized_value");
+    await upsertInBatches(supabase, "rateware_locations", uniqueLocations, "source,location_key");
     await upsertInBatches(supabase, "rateware_lane_mileage", laneMileage, "source,route_key");
     const fuelRegions = parseFuelRegions(usaFuel) as Record<string, unknown>[];
     const fscTrend = parseFscTrend(usaFSCtrend) as Record<string, unknown>[];
@@ -373,6 +486,7 @@ Deno.serve(async (request) => {
     return jsonResponse({
       sheet_id: sheetId,
       catalog_items: uniqueCatalogItems.length,
+      locations: uniqueLocations.length,
       lane_mileage: laneMileage.length,
       fuel_regions: fuelRegions.length,
       fsc_trend: fscTrend.length,

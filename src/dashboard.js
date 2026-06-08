@@ -62,7 +62,7 @@ syncCatalogButton?.addEventListener("click", async () => {
 
   try {
     const result = await syncRatewareCatalog();
-    catalogSyncStatus.textContent = `Catalog synced: ${result.catalog_items} items, ${result.lane_mileage} lanes, ${result.fsc_trend || 0} fuel/FSC rows.`;
+    catalogSyncStatus.textContent = `Catalog synced: ${result.catalog_items} items, ${result.locations || 0} locations, ${result.lane_mileage} lanes, ${result.fsc_trend || 0} fuel/FSC rows.`;
     catalogSyncStatus.dataset.tone = "success";
   } catch (error) {
     catalogSyncStatus.textContent = error.message;

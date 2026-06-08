@@ -328,6 +328,67 @@ function catalogMatch(index: Map<string, Map<string, Record<string, unknown>>>, 
   return null;
 }
 
+function buildLocationIndex(locations: Record<string, unknown>[]) {
+  const index = new Map<string, Record<string, unknown>>();
+
+  for (const location of locations) {
+    const keys = [
+      location.location_key,
+      location.raw_value,
+      location.zip_prefix,
+      location.city,
+      location.metro_city,
+      location.market,
+      [location.city, location.state_code].filter(Boolean).join(", "),
+      [location.city, location.state_name].filter(Boolean).join(", ")
+    ].map(catalogKey).filter(Boolean);
+
+    for (const key of keys) {
+      if (!index.has(key)) index.set(key, location);
+    }
+  }
+
+  return index;
+}
+
+function locationMatch(index: Map<string, Record<string, unknown>>, value: unknown) {
+  const lookup = catalogKey(value);
+  if (!lookup) return null;
+
+  const direct = index.get(lookup);
+  if (direct) return direct;
+
+  const zip = lookup.match(/\b\d{3,5}\b/)?.[0]?.slice(0, 3);
+  if (zip && index.get(zip)) return index.get(zip)!;
+
+  let best: { location: Record<string, unknown>; score: number } | null = null;
+  for (const [candidateKey, location] of index) {
+    if (!candidateKey || candidateKey.length < 3) continue;
+    let score = 0;
+    if (lookup.includes(candidateKey) || candidateKey.includes(lookup)) score += Math.min(candidateKey.length, lookup.length);
+    const state = catalogKey(location.state_code);
+    if (state && lookup.includes(state)) score += 12;
+    const city = catalogKey(location.city);
+    if (city && lookup.includes(city)) score += 18;
+    if (score > (best?.score || 0)) best = { location, score };
+  }
+
+  return best && best.score >= 18 ? best.location : null;
+}
+
+function applyLocation(row: Record<string, unknown>, prefix: "origin" | "destination", location: Record<string, unknown> | null) {
+  if (!location) return {};
+  return {
+    [`normalized_${prefix}`]: location.metro_city || location.city || row[prefix],
+    [`${prefix}_country`]: location.country || null,
+    [`${prefix}_zip_prefix`]: location.zip_prefix || null,
+    [`${prefix}_city`]: location.city || null,
+    [`${prefix}_state`]: location.state_code || location.state_name || null,
+    [`${prefix}_market`]: location.market || null,
+    [`${prefix}_region`]: location.region || null
+  };
+}
+
 const US_STATES = new Set([
   "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA", "HI", "IA", "ID", "IL", "IN", "KS", "KY", "LA", "MA", "MD", "ME", "MI", "MN", "MO", "MS", "MT", "NC", "ND", "NE", "NH", "NJ", "NM", "NV", "NY", "OH", "OK", "OR", "PA", "RI", "SC", "SD", "TN", "TX", "UT", "VA", "VT", "WA", "WI", "WV", "WY", "DC"
 ]);
@@ -378,7 +439,7 @@ function addFuelAudit(row: Record<string, unknown>, fuelRegionItems: Record<stri
     items.sort((a, b) => String(b.index_date).localeCompare(String(a.index_date)));
   }
 
-  const regionMatch = findFuelRegion(row, fuelRegions);
+  const regionMatch = row.destination_state ? fuelRegions.get(String(row.destination_state)) || findFuelRegion(row, fuelRegions) : findFuelRegion(row, fuelRegions);
   const fuelRegion = (regionMatch?.fuel_region as string) || null;
   const trend = findFscTrend(fuelRegion, row.quote_date, trendByRegion);
   if (!trend) return row;
@@ -410,15 +471,18 @@ function addFuelAudit(row: Record<string, unknown>, fuelRegionItems: Record<stri
   };
 }
 
-function normalizeWithCatalog(rows: Record<string, unknown>[], catalogItems: Record<string, unknown>[], laneMileage: Record<string, unknown>[], fuelRegions: Record<string, unknown>[] = [], fscTrend: Record<string, unknown>[] = []) {
+function normalizeWithCatalog(rows: Record<string, unknown>[], catalogItems: Record<string, unknown>[], laneMileage: Record<string, unknown>[], locations: Record<string, unknown>[] = [], fuelRegions: Record<string, unknown>[] = [], fscTrend: Record<string, unknown>[] = []) {
   if (!catalogItems.length && !laneMileage.length && !fuelRegions.length && !fscTrend.length) return rows;
 
   const catalog = buildCatalogIndex(catalogItems);
+  const locationIndex = buildLocationIndex(locations);
   const mileage = new Map(laneMileage.map((lane) => [catalogKey(lane.route_key), lane]));
 
   return rows.map((row) => {
-    const originMatch = catalogMatch(catalog, ["zip_market", "mx_production"], row.origin);
-    const destinationMatch = catalogMatch(catalog, ["zip_market", "mx_production"], row.destination);
+    const originLocation = locationMatch(locationIndex, row.origin);
+    const destinationLocation = locationMatch(locationIndex, row.destination);
+    const originMatch = originLocation || catalogMatch(catalog, ["zip_market", "mx_production"], row.origin);
+    const destinationMatch = destinationLocation || catalogMatch(catalog, ["zip_market", "mx_production"], row.destination);
     const equipmentMatch = catalogMatch(catalog, ["equipment"], row.equipment);
     const trailerMatch = catalogMatch(catalog, ["trailer"], row.trailer);
     const configMatch = catalogMatch(catalog, ["config"], row.config);
@@ -428,10 +492,12 @@ function normalizeWithCatalog(rows: Record<string, unknown>[], catalogItems: Rec
 
     const normalized: Record<string, unknown> = {
       ...row,
-      normalized_origin: (originMatch?.normalized_value as string) || null,
-      normalized_destination: (destinationMatch?.normalized_value as string) || null,
-      origin_market: ((originMatch?.metadata as Record<string, unknown>)?.market as string) || null,
-      destination_market: ((destinationMatch?.metadata as Record<string, unknown>)?.market as string) || null,
+      normalized_origin: (originLocation?.metro_city as string) || (originMatch?.normalized_value as string) || null,
+      normalized_destination: (destinationLocation?.metro_city as string) || (destinationMatch?.normalized_value as string) || null,
+      origin_market: (originLocation?.market as string) || ((originMatch?.metadata as Record<string, unknown>)?.market as string) || null,
+      destination_market: (destinationLocation?.market as string) || ((destinationMatch?.metadata as Record<string, unknown>)?.market as string) || null,
+      ...applyLocation(row, "origin", originLocation),
+      ...applyLocation(row, "destination", destinationLocation),
       normalized_equipment: (equipmentMatch?.normalized_value as string) || null,
       normalized_trailer: (trailerMatch?.normalized_value as string) || null,
       normalized_config: (configMatch?.normalized_value as string) || null,
@@ -466,6 +532,7 @@ function normalizeWithCatalog(rows: Record<string, unknown>[], catalogItems: Rec
     }
 
     normalized.catalog_match_status = matchCount >= 5 ? "matched" : matchCount >= 2 ? "partial" : "unmatched";
+    normalized.location_match_status = originLocation && destinationLocation ? "matched" : originLocation || destinationLocation ? "partial" : "unmatched";
     return addFuelAudit(normalized, fuelRegions, fscTrend);
   });
 }
@@ -600,15 +667,17 @@ Deno.serve(async (request) => {
     const vendorId = vendorMatch?.vendor?.id || rawUpload.vendor_id || null;
     const catalogResult = await supabase.from("rateware_catalog_items").select("category,raw_value,normalized_value,code,metadata").eq("active", true).limit(20000);
     const mileageResult = await supabase.from("rateware_lane_mileage").select("source,route_key,miles,km").eq("active", true).limit(20000);
+    const locationResult = await supabase.from("rateware_locations").select("country,location_key,raw_value,zip_prefix,city,state_code,state_name,metro_city,market,region").eq("active", true).limit(20000);
     const fuelRegionResult = await supabase.from("rateware_fuel_regions").select("state_code,fuel_region,diesel_per_gallon,fsc_per_mile").eq("active", true).limit(200);
     const fscTrendResult = await supabase.from("rateware_fsc_trend").select("source,api_fetch,fuel_region,index_date,diesel_per_gallon,fsc_per_mile").eq("active", true).limit(20000);
     const catalogItems = catalogResult.error ? [] : catalogResult.data || [];
     const laneMileage = mileageResult.error ? [] : mileageResult.data || [];
+    const locations = locationResult.error ? [] : locationResult.data || [];
     const fuelRegions = fuelRegionResult.error ? [] : fuelRegionResult.data || [];
     const fscTrend = fscTrendResult.error ? [] : fscTrendResult.data || [];
     const rows = normalizeWithCatalog(interpretation.rows
       .filter((row: Record<string, unknown>) => isCarrierRateRow(row))
-      .map((row: Record<string, unknown>) => normalizeRow(row, raw_upload_id, job.data.id, vendorId)), catalogItems, laneMileage, fuelRegions, fscTrend);
+      .map((row: Record<string, unknown>) => normalizeRow(row, raw_upload_id, job.data.id, vendorId)), catalogItems, laneMileage, locations, fuelRegions, fscTrend);
 
     if (rows.length) {
       const insert = await supabase.from("rate_staging").insert(rows);
