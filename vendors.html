@@ -63,6 +63,7 @@
             <button class="vendor-tab" type="button" data-vendor-tab="create">Quick Create</button>
             <button class="vendor-tab" type="button" data-vendor-tab="import">Import</button>
             <button class="vendor-tab" type="button" data-vendor-tab="segments">Segments</button>
+            <button class="vendor-tab" type="button" data-vendor-tab="duplicates">Duplicates</button>
           </section>
 
           <section class="workspace-panel wide-section hidden" data-tab-panel="wizard">
@@ -247,6 +248,14 @@
             <div id="segments-list" class="segment-list"></div>
           </section>
 
+          <section class="workspace-panel wide-section hidden" data-tab-panel="duplicates">
+            <div class="section-heading compact">
+              <p class="eyebrow">Duplicate review</p>
+              <h2>Possible duplicate vendors</h2>
+            </div>
+            <div id="duplicate-review-list" class="duplicate-list"></div>
+          </section>
+
           <section id="import-preview-panel" class="workspace-panel wide-section hidden" data-tab-panel="import">
             <div class="section-heading compact">
               <p class="eyebrow">Import review</p>
@@ -387,6 +396,66 @@
                 <dd id="drawer-notes">-</dd>
               </div>
             </dl>
+            <form id="drawer-edit-form" class="drawer-edit-form">
+              <div class="section-heading compact">
+                <p class="eyebrow">Edit</p>
+                <h2>Vendor details</h2>
+              </div>
+              <label>
+                Vendor name
+                <input id="drawer-edit-name" required />
+              </label>
+              <label>
+                Domain
+                <input id="drawer-edit-domain" />
+              </label>
+              <label>
+                Contact name
+                <input id="drawer-edit-contact" />
+              </label>
+              <label>
+                Email
+                <input id="drawer-edit-email" type="email" />
+              </label>
+              <label>
+                WhatsApp
+                <input id="drawer-edit-whatsapp" />
+              </label>
+              <label>
+                Preferred channel
+                <select id="drawer-edit-channel">
+                  <option value="email">Email</option>
+                  <option value="whatsapp">WhatsApp</option>
+                  <option value="portal">Portal</option>
+                </select>
+              </label>
+              <label>
+                Status
+                <select id="drawer-edit-status">
+                  <option value="active">Active</option>
+                  <option value="invited">Invited</option>
+                  <option value="blocked">Blocked</option>
+                  <option value="inactive">Inactive</option>
+                </select>
+              </label>
+              <label>
+                Tags
+                <input id="drawer-edit-tags" />
+              </label>
+              <label>
+                Coverage
+                <textarea id="drawer-edit-coverage" rows="3"></textarea>
+              </label>
+              <label>
+                Notes
+                <textarea id="drawer-edit-notes" rows="3"></textarea>
+              </label>
+              <div class="action-row">
+                <button id="drawer-save-button" type="submit">Save changes</button>
+                <button id="drawer-archive-button" class="secondary" type="button">Mark inactive</button>
+                <p id="drawer-edit-status-message" class="status-message" role="status"></p>
+              </div>
+            </form>
           </aside>
         </main>
       </div>

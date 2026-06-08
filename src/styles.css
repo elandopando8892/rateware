@@ -309,6 +309,14 @@ a {
   margin-bottom: 12px;
 }
 
+.drawer-edit-form {
+  display: grid;
+  gap: 12px;
+  border-top: 1px solid var(--line);
+  margin-top: 18px;
+  padding-top: 18px;
+}
+
 .metric-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -545,6 +553,38 @@ h2 {
 .segment-card span,
 .segment-card small {
   color: var(--muted);
+}
+
+.duplicate-list {
+  display: grid;
+  gap: 14px;
+}
+
+.duplicate-card {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfc;
+  padding: 14px;
+}
+
+.duplicate-heading,
+.duplicate-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.duplicate-heading span,
+.duplicate-row span {
+  color: var(--muted);
+}
+
+.duplicate-row {
+  align-items: center;
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
 }
 
 .wide-field {

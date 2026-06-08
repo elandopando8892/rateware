@@ -7,7 +7,8 @@ import {
   deleteVendorSegment,
   fetchVendorSegments,
   fetchVendors,
-  importVendors
+  importVendors,
+  updateVendor
 } from "./vendor-service.js";
 
 const form = document.querySelector("#vendor-form");
@@ -50,8 +51,12 @@ const bulkStatusMessage = document.querySelector("#bulk-status-message");
 const segmentForm = document.querySelector("#segment-form");
 const segmentStatusMessage = document.querySelector("#segment-status-message");
 const segmentsList = document.querySelector("#segments-list");
+const duplicateReviewList = document.querySelector("#duplicate-review-list");
 const drawer = document.querySelector("#vendor-drawer");
 const closeDrawerButton = document.querySelector("#close-vendor-drawer");
+const drawerEditForm = document.querySelector("#drawer-edit-form");
+const drawerArchiveButton = document.querySelector("#drawer-archive-button");
+const drawerEditStatus = document.querySelector("#drawer-edit-status-message");
 let allVendors = [];
 let currentVendors = [];
 let selectedVendorIds = new Set();
@@ -59,6 +64,7 @@ let pendingImportRows = [];
 let savedSegments = [];
 let wizardStep = 0;
 let activeQuickFilter = "all";
+let activeDrawerVendorId = null;
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -195,6 +201,59 @@ function updateVendorMetrics() {
   vendorMetricWhatsapp.textContent = rows.filter((row) => row.whatsapp_phone || row.preferred_channel === "whatsapp").length;
 }
 
+function duplicateGroups(rows = allVendors) {
+  const seen = new Set();
+  return rows
+    .map((vendor) => {
+      if (seen.has(vendor.id)) return null;
+      const matches = rows.filter((candidate) => candidate.id !== vendor.id && duplicateSignals(vendor, rows).includes(candidate.vendor_name));
+      if (!matches.length) return null;
+      seen.add(vendor.id);
+      matches.forEach((match) => seen.add(match.id));
+      return [vendor, ...matches];
+    })
+    .filter(Boolean);
+}
+
+function renderDuplicateReview() {
+  const groups = duplicateGroups();
+
+  if (!groups.length) {
+    duplicateReviewList.innerHTML =
+      '<div class="empty-state"><strong>No obvious duplicates</strong><span>Duplicate signals will appear here when names, domains, or emails overlap.</span></div>';
+    return;
+  }
+
+  duplicateReviewList.innerHTML = groups
+    .map(
+      (group, groupIndex) => `
+        <article class="duplicate-card">
+          <div class="duplicate-heading">
+            <strong>Duplicate set ${groupIndex + 1}</strong>
+            <span>${group.length} vendors</span>
+          </div>
+          ${group
+            .map(
+              (vendor) => `
+                <div class="duplicate-row">
+                  <div>
+                    <strong>${escapeHtml(vendor.vendor_name)}</strong>
+                    <span>${escapeHtml([vendor.domain, vendor.primary_email, vendor.status].filter(Boolean).join(" | "))}</span>
+                  </div>
+                  <div class="action-row">
+                    <button class="small-button" type="button" data-duplicate-open="${escapeHtml(vendor.id)}">Open</button>
+                    <button class="small-button secondary" type="button" data-duplicate-inactive="${escapeHtml(vendor.id)}">Mark inactive</button>
+                  </div>
+                </div>
+              `
+            )
+            .join("")}
+        </article>
+      `
+    )
+    .join("");
+}
+
 function applyQuickFilter(filter) {
   activeQuickFilter = filter;
   quickFilterButtons.forEach((button) => button.classList.toggle("is-active", button.dataset.quickFilter === filter));
@@ -307,6 +366,7 @@ function renderVendors(rows) {
   updateVendorMetrics();
   updateBulkState();
   renderSegments();
+  renderDuplicateReview();
 
   if (!rows.length) {
     vendorsBody.innerHTML =
@@ -471,9 +531,10 @@ function setDrawerValue(selector, value) {
 }
 
 function openVendorDrawer(vendorId) {
-  const vendor = currentVendors.find((row) => row.id === vendorId);
+  const vendor = allVendors.find((row) => row.id === vendorId) || currentVendors.find((row) => row.id === vendorId);
   if (!vendor) return;
 
+  activeDrawerVendorId = vendor.id;
   const duplicates = duplicateSignals(vendor);
   document.querySelector("#drawer-vendor-name").textContent = vendor.vendor_name || "Vendor";
   setDrawerValue("#drawer-completeness", `${scoreVendor(vendor)}% complete`);
@@ -486,7 +547,33 @@ function openVendorDrawer(vendorId) {
   setDrawerValue("#drawer-coverage", escapeHtml(vendor.coverage_notes));
   setDrawerValue("#drawer-duplicates", duplicates.length ? duplicates.map(escapeHtml).join("<br>") : "No obvious duplicates");
   setDrawerValue("#drawer-notes", escapeHtml(vendor.notes));
+  document.querySelector("#drawer-edit-name").value = vendor.vendor_name || "";
+  document.querySelector("#drawer-edit-domain").value = vendor.domain || "";
+  document.querySelector("#drawer-edit-contact").value = vendor.contact_name || "";
+  document.querySelector("#drawer-edit-email").value = vendor.primary_email || "";
+  document.querySelector("#drawer-edit-whatsapp").value = vendor.whatsapp_phone || "";
+  document.querySelector("#drawer-edit-channel").value = vendor.preferred_channel || "email";
+  document.querySelector("#drawer-edit-status").value = vendor.status || "active";
+  document.querySelector("#drawer-edit-tags").value = splitTags(vendor.tags).join(", ");
+  document.querySelector("#drawer-edit-coverage").value = vendor.coverage_notes || "";
+  document.querySelector("#drawer-edit-notes").value = vendor.notes || "";
+  setStatus(drawerEditStatus, "");
   drawer.classList.remove("hidden");
+}
+
+function readDrawerPatch() {
+  return {
+    vendor_name: document.querySelector("#drawer-edit-name").value,
+    domain: document.querySelector("#drawer-edit-domain").value,
+    contact_name: document.querySelector("#drawer-edit-contact").value,
+    primary_email: document.querySelector("#drawer-edit-email").value,
+    whatsapp_phone: document.querySelector("#drawer-edit-whatsapp").value,
+    preferred_channel: document.querySelector("#drawer-edit-channel").value,
+    status: document.querySelector("#drawer-edit-status").value,
+    tags: splitTags(document.querySelector("#drawer-edit-tags").value),
+    coverage_notes: document.querySelector("#drawer-edit-coverage").value,
+    notes: document.querySelector("#drawer-edit-notes").value
+  };
 }
 
 async function parseVendorFile(file) {
@@ -684,6 +771,28 @@ segmentsList.addEventListener("click", async (event) => {
   }
 });
 
+duplicateReviewList.addEventListener("click", async (event) => {
+  const openButton = event.target.closest("[data-duplicate-open]");
+  const inactiveButton = event.target.closest("[data-duplicate-inactive]");
+
+  if (openButton) {
+    openVendorDrawer(openButton.dataset.duplicateOpen);
+    return;
+  }
+
+  if (inactiveButton) {
+    inactiveButton.disabled = true;
+    try {
+      await requirePrivatePage();
+      await updateVendor(inactiveButton.dataset.duplicateInactive, { status: "inactive" });
+      await loadVendors();
+    } catch (error) {
+      inactiveButton.title = error.message;
+      inactiveButton.disabled = false;
+    }
+  }
+});
+
 refreshButton.addEventListener("click", loadVendors);
 statusFilter.addEventListener("change", loadVendors);
 vendorTabs.forEach((button) => {
@@ -709,10 +818,51 @@ vendorsBody.addEventListener("change", (event) => {
   updateBulkState();
 });
 closeDrawerButton.addEventListener("click", () => drawer.classList.add("hidden"));
+drawerEditForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!activeDrawerVendorId) return;
+  const button = document.querySelector("#drawer-save-button");
+  button.disabled = true;
+  setStatus(drawerEditStatus, "Saving vendor...");
+
+  try {
+    await requirePrivatePage();
+    const updated = await updateVendor(activeDrawerVendorId, readDrawerPatch());
+    setStatus(drawerEditStatus, "Vendor updated.", "success");
+    await loadVendors();
+    openVendorDrawer(updated.id);
+  } catch (error) {
+    setStatus(drawerEditStatus, error.message, "error");
+  } finally {
+    button.disabled = false;
+  }
+});
+drawerArchiveButton.addEventListener("click", async () => {
+  if (!activeDrawerVendorId) return;
+  drawerArchiveButton.disabled = true;
+  setStatus(drawerEditStatus, "Marking inactive...");
+
+  try {
+    await requirePrivatePage();
+    const updated = await updateVendor(activeDrawerVendorId, { status: "inactive" });
+    setStatus(drawerEditStatus, "Vendor marked inactive.", "success");
+    await loadVendors();
+    openVendorDrawer(updated.id);
+  } catch (error) {
+    setStatus(drawerEditStatus, error.message, "error");
+  } finally {
+    drawerArchiveButton.disabled = false;
+  }
+});
 
 initAuthControls();
 requirePrivatePage()
-  .then(() => applyPermissionState("#save-vendor-button, #wizard-save-button, #vendor-import, #bulk-update-button, #confirm-import-button, #save-segment-button", "vendors:manage"))
+  .then(() =>
+    applyPermissionState(
+      "#save-vendor-button, #wizard-save-button, #vendor-import, #bulk-update-button, #confirm-import-button, #save-segment-button, #drawer-save-button, #drawer-archive-button, [data-duplicate-inactive]",
+      "vendors:manage"
+    )
+  )
   .catch(() => {});
 renderWizard();
 activateVendorTab("directory");

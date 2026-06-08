@@ -16,6 +16,7 @@ Static Upload Center module for preserving carrier quotation source files before
 - Links interpreted uploads and staged rate rows to the best matching vendor when a confident match is found.
 - Provides a guided Vendor Wizard and saved vendor segments for reusable RFx lists.
 - Uses vendor tabs, health metrics, quick filters, and a side profile drawer to keep the carrier directory operational.
+- Supports editing vendors from the drawer and reviewing duplicate candidates without deleting source records.
 
 ## Setup
 

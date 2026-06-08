@@ -57,6 +57,14 @@ function normalizeVendor(input: Record<string, unknown>, source = "manual") {
 
 function normalizeVendorPatch(input: Record<string, unknown>) {
   const patch: Record<string, unknown> = {};
+  if (input.vendor_name !== undefined) patch.vendor_name = cleanText(input.vendor_name);
+  if (input.legal_name !== undefined) patch.legal_name = cleanText(input.legal_name);
+  if (input.domain !== undefined) patch.domain = normalizeDomain(input.domain);
+  if (input.contact_name !== undefined) patch.contact_name = cleanText(input.contact_name);
+  if (input.primary_email !== undefined) patch.primary_email = cleanText(input.primary_email);
+  if (input.whatsapp_phone !== undefined) patch.whatsapp_phone = cleanText(input.whatsapp_phone);
+  if (input.coverage_notes !== undefined) patch.coverage_notes = cleanText(input.coverage_notes);
+  if (input.notes !== undefined) patch.notes = cleanText(input.notes);
   const status = cleanText(input.status)?.toLowerCase();
   if (status && ["active", "invited", "blocked", "inactive"].includes(status)) patch.status = status;
   if (input.tags !== undefined) patch.tags = normalizeTags(input.tags);
@@ -157,6 +165,15 @@ Deno.serve(async (request) => {
       const result = await supabase.from("vendors").update(patch).in("id", ids).select();
       if (result.error) throw result.error;
       return jsonResponse({ updated: result.data.length, rows: result.data });
+    }
+
+    if (body.action === "update_vendor") {
+      if (!body.id) return jsonResponse({ error: "Vendor id is required." }, 400);
+      const patch = normalizeVendorPatch(body.patch || {});
+      if (patch.vendor_name === null) return jsonResponse({ error: "Vendor name is required." }, 400);
+      const result = await supabase.from("vendors").update(patch).eq("id", body.id).select().single();
+      if (result.error) throw result.error;
+      return jsonResponse({ row: result.data });
     }
 
     if (body.action === "list_vendor_segments") {

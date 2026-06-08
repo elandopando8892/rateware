@@ -8,6 +8,10 @@ export async function createVendor(vendor) {
   return (await callRatewareApi("create_vendor", { vendor })).row;
 }
 
+export async function updateVendor(id, patch) {
+  return (await callRatewareApi("update_vendor", { id, patch })).row;
+}
+
 export async function importVendors(vendors) {
   return await callRatewareApi("import_vendors", { vendors });
 }
