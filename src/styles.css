@@ -876,6 +876,17 @@ table {
   min-width: 2600px;
 }
 
+.staging-table th,
+.staging-table td {
+  padding: 6px 8px;
+  vertical-align: middle;
+}
+
+.staging-table th {
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
 th,
 td {
   padding: 12px;
@@ -993,9 +1004,11 @@ tbody tr:hover {
 
 .review-actions {
   display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  min-width: 250px;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: nowrap;
+  min-width: 205px;
+  white-space: nowrap;
 }
 
 .vendor-review-cell {
@@ -1010,14 +1023,14 @@ tbody tr:hover {
 
 .staging-input {
   width: 136px;
-  min-height: 34px;
+  min-height: 26px;
   border: 1px solid #c7d2da;
-  border-radius: 6px;
+  border-radius: 5px;
   background: #fff;
   color: var(--text);
-  padding: 6px 8px;
+  padding: 3px 6px;
   font: inherit;
-  font-size: 0.84rem;
+  font-size: 0.78rem;
 }
 
 .staging-input:focus {
@@ -1038,11 +1051,19 @@ tbody tr:hover {
 }
 
 .row-save-status {
-  flex-basis: 100%;
-  min-height: 16px;
+  min-width: 12px;
+  min-height: 12px;
   color: var(--muted);
-  font-size: 0.78rem;
+  font-size: 0.72rem;
   font-weight: 760;
+}
+
+.staging-table button.small-button {
+  min-height: 26px;
+  padding: 4px 7px;
+  border-radius: 5px;
+  font-size: 0.72rem;
+  line-height: 1;
 }
 
 .row-save-status[data-tone="success"] {

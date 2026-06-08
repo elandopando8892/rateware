@@ -95,7 +95,7 @@ function renderRows(rows) {
           <td>${statusSelect(row)}</td>
           <td class="review-actions">
             <button type="button" class="small-button secondary" data-save-id="${escapeHtml(row.id)}">Save</button>
-            <button type="button" class="small-button" data-approve-id="${escapeHtml(row.id)}">Approve staging</button>
+            <button type="button" class="small-button" data-approve-id="${escapeHtml(row.id)}">Approve</button>
             <button type="button" class="small-button danger" data-reject-id="${escapeHtml(row.id)}">Reject</button>
             <span class="row-save-status" data-row-status="${escapeHtml(row.id)}"></span>
           </td>
