@@ -147,6 +147,9 @@ function normalizeStagingPatch(input: Record<string, unknown>) {
     "catalog_match_status",
     "location_match_status",
     "mileage_source",
+    "lane_type",
+    "leg_status",
+    "leg_summary",
     "fuel_region",
     "fuel_source"
   ];
@@ -354,7 +357,7 @@ Deno.serve(async (request) => {
     }
 
     if (body.action === "list_staging") {
-      let query = supabase.from("rate_staging").select("*, vendors(vendor_name, domain)").order("created_at", { ascending: false }).limit(200);
+      let query = supabase.from("rate_staging").select("*, vendors(vendor_name, domain), rateware_lane_legs(*)").order("created_at", { ascending: false }).limit(200);
       if (body.status) query = query.eq("status", body.status);
       const result = await query;
       if (result.error) throw result.error;

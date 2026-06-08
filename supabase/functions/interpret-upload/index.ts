@@ -528,6 +528,145 @@ function addFuelAudit(row: Record<string, unknown>, fuelRegionItems: Record<stri
   };
 }
 
+function findBorderPair(row: Record<string, unknown>, pairs: Record<string, unknown>[]) {
+  const mxHint = catalogKey([row.mx_border_crossing_point, row.origin_city, row.destination_city].filter(Boolean).join(" "));
+  const usHint = catalogKey([row.us_border_crossing_point, row.origin_city, row.destination_city].filter(Boolean).join(" "));
+
+  const scored = pairs.map((pair) => {
+    let score = 0;
+    if (mxHint.includes(catalogKey(pair.mx_city))) score += 35;
+    if (mxHint.includes(catalogKey(pair.mx_state))) score += 15;
+    if (usHint.includes(catalogKey(pair.us_city))) score += 35;
+    if (usHint.includes(catalogKey(pair.us_state))) score += 15;
+    score += Math.max(0, 20 - Number(pair.default_rank || 100) / 5);
+    return { pair, score };
+  }).sort((a, b) => b.score - a.score);
+
+  return scored[0]?.pair || pairs.sort((a, b) => Number(a.default_rank || 100) - Number(b.default_rank || 100))[0] || null;
+}
+
+function legRow(row: Record<string, unknown>, sequence: number, type: string, origin: unknown, destination: unknown, originCountry: unknown, destinationCountry: unknown, extras: Record<string, unknown> = {}) {
+  const miles = cleanNumber(extras.miles);
+  const km = cleanNumber(extras.km);
+  return {
+    rate_staging_id: row.id,
+    leg_sequence: sequence,
+    leg_type: type,
+    origin: cleanText(origin),
+    destination: cleanText(destination),
+    origin_country: cleanText(originCountry),
+    destination_country: cleanText(destinationCountry),
+    border_pair_id: extras.border_pair_id || null,
+    miles,
+    km,
+    mileage_source: cleanText(extras.mileage_source),
+    fuel_region: cleanText(extras.fuel_region),
+    fsc_per_mile: cleanNumber(extras.fsc_per_mile),
+    fsc_total: cleanNumber(extras.fsc_total),
+    confidence: Math.max(0, Math.min(1, Number(extras.confidence) || 0)),
+    status: miles || km || type === "border_crossing" ? "ready" : "needs_mileage",
+    metadata: extras.metadata || {}
+  };
+}
+
+function buildLanePlan(row: Record<string, unknown>, borderPairs: Record<string, unknown>[]) {
+  const originCountry = cleanText(row.origin_country);
+  const destinationCountry = cleanText(row.destination_country);
+  const origin = row.normalized_origin || row.origin;
+  const destination = row.normalized_destination || row.destination;
+  const usMiles = cleanNumber(row.us_miles) || cleanNumber(row.calculated_miles);
+  const hasUs = originCountry === "US" || destinationCountry === "US" || originCountry === "CA" || destinationCountry === "CA";
+  const hasMx = originCountry === "MX" || destinationCountry === "MX";
+  const isCrossBorder = hasUs && hasMx;
+
+  if (!originCountry || !destinationCountry) {
+    return {
+      lane_type: "needs_review",
+      leg_status: "needs_review",
+      leg_summary: "Location country missing",
+      legs: [legRow(row, 1, "needs_review", origin, destination, originCountry, destinationCountry, { metadata: { reason: "location country missing" } })]
+    };
+  }
+
+  if (!isCrossBorder) {
+    const leg = legRow(row, 1, "domestic", origin, destination, originCountry, destinationCountry, {
+      miles: hasUs ? usMiles : row.calculated_miles,
+      km: hasMx ? row.calculated_km : null,
+      mileage_source: row.mileage_source || "catalog",
+      fuel_region: row.fuel_region,
+      fsc_per_mile: row.normalized_fsc_per_mile,
+      fsc_total: row.normalized_fsc_total,
+      confidence: row.catalog_match_status === "matched" ? 0.9 : 0.55
+    });
+    return {
+      lane_type: originCountry === destinationCountry ? `${originCountry.toLowerCase()}_domestic` : "international_domestic",
+      leg_status: leg.status === "ready" ? "ready" : "needs_mileage",
+      leg_summary: `${originCountry} domestic: ${origin} -> ${destination}`,
+      legs: [leg]
+    };
+  }
+
+  const pair = findBorderPair(row, borderPairs);
+  const mxBorder = pair ? `${pair.mx_city}, ${pair.mx_state}` : row.mx_border_crossing_point || "MX border";
+  const usBorder = pair ? `${pair.us_city}, ${pair.us_state}` : row.us_border_crossing_point || "US border";
+  const exportDirection = originCountry === "MX";
+  const mxOrigin = exportDirection ? origin : mxBorder;
+  const mxDestination = exportDirection ? mxBorder : destination;
+  const usOrigin = exportDirection ? usBorder : origin;
+  const usDestination = exportDirection ? destination : usBorder;
+  const legs = [
+    legRow(row, 1, "mx_linehaul", mxOrigin, mxDestination, "MX", "MX", {
+      km: row.calculated_km,
+      mileage_source: row.mileage_source,
+      confidence: row.catalog_match_status === "matched" ? 0.75 : 0.45
+    }),
+    legRow(row, 2, "border_crossing", mxBorder, usBorder, "MX", "US", {
+      border_pair_id: pair?.id || null,
+      mileage_source: "border_pair",
+      confidence: pair ? 0.9 : 0.4,
+      metadata: { crossing_name: pair?.crossing_name || null }
+    }),
+    legRow(row, 3, "us_linehaul", usOrigin, usDestination, "US", "US", {
+      miles: usMiles,
+      mileage_source: row.mileage_source || "catalog",
+      fuel_region: row.fuel_region,
+      fsc_per_mile: row.normalized_fsc_per_mile,
+      fsc_total: row.normalized_fsc_total,
+      confidence: usMiles ? 0.8 : 0.4
+    })
+  ];
+
+  return {
+    lane_type: "cross_border",
+    leg_status: legs.every((leg) => leg.status === "ready") ? "ready" : "needs_mileage",
+    leg_summary: `${mxBorder} / ${usBorder} | ${legs.length} legs`,
+    legs
+  };
+}
+
+async function persistLanePlans(supabase: ReturnType<typeof createClient>, rows: Record<string, unknown>[], borderPairs: Record<string, unknown>[]) {
+  const legs: Record<string, unknown>[] = [];
+  const updates = rows.map((row) => {
+    const plan = buildLanePlan(row, borderPairs);
+    legs.push(...plan.legs);
+    return supabase.from("rate_staging").update({
+      lane_type: plan.lane_type,
+      leg_status: plan.leg_status,
+      leg_summary: plan.leg_summary
+    }).eq("id", row.id);
+  });
+
+  const results = await Promise.all(updates);
+  for (const result of results) {
+    if (result.error) throw result.error;
+  }
+
+  if (legs.length) {
+    const insert = await supabase.from("rateware_lane_legs").upsert(legs, { onConflict: "rate_staging_id,leg_sequence" });
+    if (insert.error) throw insert.error;
+  }
+}
+
 function normalizeWithCatalog(rows: Record<string, unknown>[], catalogItems: Record<string, unknown>[], laneMileage: Record<string, unknown>[], locations: Record<string, unknown>[] = [], fuelRegions: Record<string, unknown>[] = [], fscTrend: Record<string, unknown>[] = []) {
   if (!catalogItems.length && !laneMileage.length && !fuelRegions.length && !fscTrend.length) return rows;
 
@@ -733,18 +872,21 @@ Deno.serve(async (request) => {
     const locationResult = await supabase.from("rateware_locations").select("country,location_key,raw_value,zip_prefix,city,state_code,state_name,metro_city,market,region").eq("active", true).limit(20000);
     const fuelRegionResult = await supabase.from("rateware_fuel_regions").select("state_code,fuel_region,diesel_per_gallon,fsc_per_mile").eq("active", true).limit(200);
     const fscTrendResult = await supabase.from("rateware_fsc_trend").select("source,api_fetch,fuel_region,index_date,diesel_per_gallon,fsc_per_mile").eq("active", true).limit(20000);
+    const borderPairResult = await supabase.from("border_crossing_pairs").select("id,mx_city,mx_state,us_city,us_state,crossing_name,default_rank").eq("active", true).limit(200);
     const catalogItems = catalogResult.error ? [] : catalogResult.data || [];
     const laneMileage = mileageResult.error ? [] : mileageResult.data || [];
     const locations = locationResult.error ? [] : locationResult.data || [];
     const fuelRegions = fuelRegionResult.error ? [] : fuelRegionResult.data || [];
     const fscTrend = fscTrendResult.error ? [] : fscTrendResult.data || [];
+    const borderPairs = borderPairResult.error ? [] : borderPairResult.data || [];
     const rows = normalizeWithCatalog(interpretation.rows
       .filter((row: Record<string, unknown>) => isCarrierRateRow(row))
       .map((row: Record<string, unknown>) => normalizeRow(row, raw_upload_id, job.data.id, vendorId)), catalogItems, laneMileage, locations, fuelRegions, fscTrend);
 
     if (rows.length) {
-      const insert = await supabase.from("rate_staging").insert(rows);
+      const insert = await supabase.from("rate_staging").insert(rows).select("*");
       if (insert.error) throw insert.error;
+      await persistLanePlans(supabase, insert.data || [], borderPairs);
     }
 
     await supabase.from("interpretation_jobs").update({

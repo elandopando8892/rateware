@@ -12,7 +12,7 @@ const approveDrawerButton = document.querySelector("#approve-staging-button");
 const rejectDrawerButton = document.querySelector("#reject-staging-button");
 let currentRows = [];
 let activeRowId = null;
-const STAGING_COLSPAN = 39;
+const STAGING_COLSPAN = 42;
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -92,6 +92,9 @@ function renderRows(rows) {
           <td>${inputCell(row, "us_miles", { money: true })}</td>
           <td>${inputCell(row, "calculated_miles", { money: true })}</td>
           <td>${inputCell(row, "catalog_match_status", { short: true })}</td>
+          <td>${inputCell(row, "lane_type", { short: true })}</td>
+          <td>${inputCell(row, "leg_summary", { wide: true })}</td>
+          <td>${inputCell(row, "leg_status", { short: true })}</td>
           <td>${inputCell(row, "fsc", { money: true })}</td>
           <td>${inputCell(row, "fuel_region", { short: true })}</td>
           <td>${inputCell(row, "fuel_index_date", { type: "date", short: true })}</td>
