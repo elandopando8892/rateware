@@ -473,6 +473,10 @@ button:disabled {
   opacity: 0.58;
 }
 
+.permission-disabled {
+  background: #7b8794;
+}
+
 button.secondary {
   background: #34404a;
 }
@@ -606,6 +610,34 @@ th {
 .empty-state a {
   color: var(--accent-dark);
   font-weight: 850;
+}
+
+.diagnostic-list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+}
+
+.diagnostic-list div {
+  display: grid;
+  grid-template-columns: 140px minmax(0, 1fr);
+  gap: 12px;
+  border-bottom: 1px solid var(--line);
+  padding: 10px 0;
+}
+
+.diagnostic-list div:last-child {
+  border-bottom: 0;
+}
+
+.diagnostic-list dt {
+  color: var(--muted);
+  font-weight: 850;
+}
+
+.diagnostic-list dd {
+  margin: 0;
+  overflow-wrap: anywhere;
 }
 
 @media (max-width: 860px) {

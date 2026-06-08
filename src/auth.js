@@ -126,6 +126,7 @@ export async function applyPermissionState(selector, action) {
   document.querySelectorAll(selector).forEach((element) => {
     element.disabled = !allowed;
     element.title = allowed ? "" : "Your role does not allow this action.";
+    element.classList.toggle("permission-disabled", !allowed);
   });
   return allowed;
 }
