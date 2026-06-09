@@ -229,6 +229,7 @@ function locationRecord(input: {
 }
 
 function parseCusCatalog(rows: string[][]) {
+  if (!rows.length) return { items: [], locations: [] };
   const items: Record<string, unknown>[] = [];
   const locations: Record<string, unknown>[] = [];
   const [header, ...data] = rows;
@@ -287,6 +288,7 @@ function parseCusCatalog(rows: string[][]) {
 }
 
 function parseUsaLaneData(rows: string[][]) {
+  if (!rows.length) return [];
   const [, ...data] = rows;
   return data.map((row) => {
     const route = cleanText(row[0]);
@@ -311,6 +313,7 @@ function parseUsaLaneData(rows: string[][]) {
 }
 
 function parseMexLaneData(rows: string[][]) {
+  if (!rows.length) return [];
   const [, ...data] = rows;
   return data.map((row) => {
     const route = cleanText(row[0]);
@@ -337,6 +340,7 @@ function parseMexLaneData(rows: string[][]) {
 }
 
 function parseProd(rows: string[][], source: string, countryScope: "us" | "mx") {
+  if (!rows.length) return [];
   const [header, ...data] = rows;
   const index = Object.fromEntries(header.map((name, position) => [key(name), position]));
   const at = (row: string[], name: string) => row[index[key(name)]];
@@ -382,6 +386,7 @@ function parseProd(rows: string[][], source: string, countryScope: "us" | "mx") 
 }
 
 function parseFuelRegions(rows: string[][]) {
+  if (!rows.length) return [];
   const [, ...data] = rows;
   return data.map((row) => {
     const stateCode = cleanText(row[0])?.toUpperCase();
@@ -401,6 +406,7 @@ function parseFuelRegions(rows: string[][]) {
 }
 
 function parseFscTrend(rows: string[][]) {
+  if (!rows.length) return [];
   const [, ...data] = rows;
   return data.map((row) => {
     const indexDate = cleanDate(row[2]);
@@ -423,6 +429,7 @@ function parseFscTrend(rows: string[][]) {
 }
 
 function parseFscIndex(rows: string[][]) {
+  if (!rows.length) return [];
   return rows.slice(2).map((row) => {
     const dieselFrom = cleanNumber(row[0]);
     const dieselTo = cleanNumber(row[1]);
@@ -555,14 +562,14 @@ Deno.serve(async (request) => {
     const supabase = getClient();
 
     const [cusCatalog, usaLaneData, mexLaneData, usaLaneProd, mexLaneProd, usaFuel, usaFSCtrend, usaFSCindex, assumptionsSheet, factorsSheet] = await Promise.all([
-      fetchSheet(sheetId, "cusCatalog"),
-      fetchSheet(sheetId, "usaLaneData"),
-      fetchSheet(sheetId, "mexLaneData"),
-      fetchSheet(sheetId, "usaLaneProd"),
-      fetchSheet(sheetId, "mexLaneProd"),
-      fetchSheet(sheetId, "usaFuel"),
-      fetchSheet(sheetId, "usaFSCtrend"),
-      fetchSheet(sheetId, "usaFSCindex"),
+      fetchOptionalSheet(sheetId, "cusCatalog"),
+      fetchOptionalSheet(sheetId, "usaLaneData"),
+      fetchOptionalSheet(sheetId, "mexLaneData"),
+      fetchOptionalSheet(sheetId, "usaLaneProd"),
+      fetchOptionalSheet(sheetId, "mexLaneProd"),
+      fetchOptionalSheet(sheetId, "usaFuel"),
+      fetchOptionalSheet(sheetId, "usaFSCtrend"),
+      fetchOptionalSheet(sheetId, "usaFSCindex"),
       fetchOptionalSheet(sheetId, "Assumptions"),
       fetchOptionalSheet(sheetId, "Factors")
     ]);
