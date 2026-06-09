@@ -11,9 +11,16 @@ const editStatus = document.querySelector("#staging-edit-status");
 const approveDrawerButton = document.querySelector("#approve-staging-button");
 const rejectDrawerButton = document.querySelector("#reject-staging-button");
 const rowDetail = document.querySelector("#staging-row-detail");
+const selectAllCheckbox = document.querySelector("#select-all-staging");
+const bulkSelectionCount = document.querySelector("#bulk-selection-count");
+const bulkSaveButton = document.querySelector("#bulk-save-button");
+const bulkApproveButton = document.querySelector("#bulk-approve-button");
+const bulkRejectButton = document.querySelector("#bulk-reject-button");
+const bulkActionStatus = document.querySelector("#bulk-action-status");
 let currentRows = [];
 let activeRowId = null;
-const STAGING_COLSPAN = 22;
+const selectedRowIds = new Set();
+const STAGING_COLSPAN = 24;
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -50,6 +57,31 @@ function statusSelect(row) {
       <option value="rejected" ${status === "rejected" ? "selected" : ""}>rejected</option>
     </select>
   `;
+}
+
+function selectedRows() {
+  return [...body.querySelectorAll("[data-row-id]")].filter((row) => {
+    const checkbox = row.querySelector("[data-select-row]");
+    return checkbox?.checked;
+  });
+}
+
+function setBulkStatus(message, tone = "neutral") {
+  bulkActionStatus.textContent = message;
+  bulkActionStatus.dataset.tone = tone;
+}
+
+function updateBulkControls() {
+  const selectedCount = selectedRows().length;
+  const totalRows = body.querySelectorAll("[data-row-id]").length;
+  bulkSelectionCount.textContent = `${selectedCount} selected`;
+  bulkSaveButton.disabled = selectedCount === 0;
+  bulkApproveButton.disabled = selectedCount === 0;
+  bulkRejectButton.disabled = selectedCount === 0;
+  if (selectAllCheckbox) {
+    selectAllCheckbox.checked = selectedCount > 0 && selectedCount === totalRows;
+    selectAllCheckbox.indeterminate = selectedCount > 0 && selectedCount < totalRows;
+  }
 }
 
 function detailLine(label, value) {
@@ -126,6 +158,7 @@ function renderRows(rows) {
   if (!rows.length) {
     body.innerHTML =
       `<tr><td colspan="${STAGING_COLSPAN}"><div class="empty-state"><strong>No staging rows found</strong><span>Interpret uploaded quotes to create rows for review.</span><a href="./upload-history.html">Open upload history</a></div></td></tr>`;
+    updateBulkControls();
     return;
   }
 
@@ -133,6 +166,9 @@ function renderRows(rows) {
     .map(
       (row) => `
         <tr data-row-id="${escapeHtml(row.id)}">
+          <td class="select-column">
+            <input data-select-row="${escapeHtml(row.id)}" type="checkbox" aria-label="Select staging row" ${selectedRowIds.has(row.id) ? "checked" : ""} />
+          </td>
           <td class="vendor-review-cell">
             ${row.vendors?.vendor_name ? `<strong>${escapeHtml(row.vendors.vendor_name)}</strong>` : ""}
             ${inputCell(row, "vendor_domain", { wide: true })}
@@ -170,6 +206,7 @@ function renderRows(rows) {
       `
     )
     .join("");
+  updateBulkControls();
 }
 
 function setStatus(message, tone = "neutral") {
@@ -223,6 +260,33 @@ function setRowStatus(id, message, tone = "neutral") {
   status.dataset.tone = tone;
 }
 
+async function runBulkAction(status = null) {
+  const rows = selectedRows();
+  if (!rows.length) return;
+
+  const label = status ? status.replace("_", " ") : "save";
+  setBulkStatus(`Processing ${rows.length} rows...`);
+  bulkSaveButton.disabled = true;
+  bulkApproveButton.disabled = true;
+  bulkRejectButton.disabled = true;
+
+  try {
+    await ensureSignedIn();
+    await Promise.all(rows.map(async (tableRow) => {
+      const id = tableRow.dataset.rowId;
+      setRowStatus(id, status ? `Marking ${label}...` : "Saving...");
+      await updateStagingRow(id, readInlinePatch(tableRow, status));
+      setRowStatus(id, status ? `Marked ${label}` : "Saved", "success");
+      selectedRowIds.delete(id);
+    }));
+    setBulkStatus(`${rows.length} rows updated.`, "success");
+    await loadRows();
+  } catch (error) {
+    setBulkStatus(error.message, "error");
+    updateBulkControls();
+  }
+}
+
 function readPatch(status = null) {
   const trailerConfig = document.querySelector("#edit-trailer-config").value.split("/");
   const patch = {
@@ -269,7 +333,7 @@ async function loadRows() {
   try {
     await requirePrivatePage();
     renderRows(await fetchStagingRows({ status: statusFilter.value }));
-    await applyPermissionState("[data-save-id], [data-approve-id], [data-reject-id], #save-staging-button, #approve-staging-button, #reject-staging-button", "staging:approve");
+    await applyPermissionState("[data-save-id], [data-approve-id], [data-reject-id], #save-staging-button, #approve-staging-button, #reject-staging-button, #bulk-save-button, #bulk-approve-button, #bulk-reject-button", "staging:approve");
   } catch (error) {
     body.innerHTML = `<tr><td colspan="${STAGING_COLSPAN}">Could not load staging rows. ${escapeHtml(error.message)}</td></tr>`;
   } finally {
@@ -328,8 +392,39 @@ body.addEventListener("click", async (event) => {
   }
 });
 
+body.addEventListener("change", (event) => {
+  const checkbox = event.target.closest("[data-select-row]");
+  if (!checkbox) return;
+  if (checkbox.checked) {
+    selectedRowIds.add(checkbox.dataset.selectRow);
+  } else {
+    selectedRowIds.delete(checkbox.dataset.selectRow);
+  }
+  setBulkStatus("");
+  updateBulkControls();
+});
+
 refreshButton.addEventListener("click", loadRows);
-statusFilter.addEventListener("change", loadRows);
+statusFilter.addEventListener("change", () => {
+  selectedRowIds.clear();
+  setBulkStatus("");
+  loadRows();
+});
+selectAllCheckbox?.addEventListener("change", () => {
+  body.querySelectorAll("[data-select-row]").forEach((checkbox) => {
+    checkbox.checked = selectAllCheckbox.checked;
+    if (checkbox.checked) {
+      selectedRowIds.add(checkbox.dataset.selectRow);
+    } else {
+      selectedRowIds.delete(checkbox.dataset.selectRow);
+    }
+  });
+  setBulkStatus("");
+  updateBulkControls();
+});
+bulkSaveButton?.addEventListener("click", () => runBulkAction());
+bulkApproveButton?.addEventListener("click", () => runBulkAction("approved"));
+bulkRejectButton?.addEventListener("click", () => runBulkAction("rejected"));
 closeDrawerButton.addEventListener("click", () => drawer.classList.add("hidden"));
 editForm.addEventListener("submit", async (event) => {
   event.preventDefault();

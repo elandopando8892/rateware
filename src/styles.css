@@ -870,7 +870,7 @@ button.danger {
   overflow-x: auto;
   border: 1px solid var(--line);
   border-radius: 8px;
-  margin-top: 18px;
+  margin-top: 10px;
 }
 
 table {
@@ -880,7 +880,7 @@ table {
 }
 
 .staging-table {
-  min-width: 2480px;
+  min-width: 2520px;
 }
 
 .staging-table th,
@@ -892,6 +892,43 @@ table {
 .staging-table th {
   font-size: 0.72rem;
   white-space: nowrap;
+}
+
+.select-column {
+  width: 34px;
+  min-width: 34px;
+  text-align: center;
+}
+
+.select-column input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+}
+
+.bulk-action-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfc;
+  margin-top: 12px;
+  padding: 7px 9px;
+}
+
+.bulk-action-bar span:first-child {
+  min-width: 84px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 850;
+}
+
+.bulk-action-bar .small-button {
+  min-height: 26px;
+  padding: 4px 8px;
+  font-size: 0.74rem;
 }
 
 th,

@@ -48,10 +48,21 @@
               <button id="refresh-staging-button" type="button">Refresh</button>
             </div>
 
+            <div class="bulk-action-bar" aria-live="polite">
+              <span id="bulk-selection-count">0 selected</span>
+              <button id="bulk-save-button" type="button" class="secondary small-button" disabled>Save selected</button>
+              <button id="bulk-approve-button" type="button" class="small-button" disabled>Approve selected</button>
+              <button id="bulk-reject-button" type="button" class="danger small-button" disabled>Reject selected</button>
+              <span id="bulk-action-status" class="row-save-status"></span>
+            </div>
+
             <div class="table-wrap">
               <table class="staging-table">
                 <thead>
                   <tr>
+                    <th class="select-column">
+                      <input id="select-all-staging" type="checkbox" aria-label="Select all visible staging rows" />
+                    </th>
                     <th>Vendor</th>
                     <th>Quote date</th>
                     <th>RFx</th>
@@ -79,15 +90,15 @@
                 </thead>
                 <tbody id="staging-body">
                   <tr>
-                    <td colspan="22">Loading staging rows...</td>
+                    <td colspan="24">Loading staging rows...</td>
                   </tr>
                 </tbody>
               </table>
             </div>
           </section>
           <aside id="staging-drawer" class="profile-drawer hidden" aria-live="polite">
-              <div class="drawer-header">
-                <div>
+            <div class="drawer-header">
+              <div>
                 <p class="eyebrow">Rateware row</p>
                 <h2 id="staging-drawer-title">Rate row</h2>
               </div>
