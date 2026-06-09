@@ -372,6 +372,66 @@ Deno.serve(async (request) => {
       return jsonResponse({ rows: result.data });
     }
 
+    if (body.action === "list_staging_options") {
+      const [catalog, locations, borderPairs] = await Promise.all([
+        supabase
+          .from("rateware_catalog_items")
+          .select("category,normalized_value,raw_value,code")
+          .in("category", ["equipment", "trailer", "config", "operation", "service", "driver", "border_crossing"])
+          .eq("active", true)
+          .limit(5000),
+        supabase
+          .from("rateware_locations")
+          .select("raw_value,metro_city,city,state_code,country,market")
+          .eq("active", true)
+          .limit(5000),
+        supabase
+          .from("border_crossing_pairs")
+          .select("mx_city,mx_state,us_city,us_state,crossing_name")
+          .eq("active", true)
+          .order("default_rank", { ascending: true })
+          .limit(200)
+      ]);
+
+      for (const result of [catalog, locations, borderPairs]) {
+        if (result.error) throw result.error;
+      }
+
+      const categories: Record<string, string[]> = {};
+      for (const item of catalog.data || []) {
+        const category = String(item.category);
+        const value = cleanText(item.normalized_value || item.raw_value || item.code);
+        if (!value) continue;
+        if (!categories[category]) categories[category] = [];
+        categories[category].push(value);
+      }
+
+      for (const category of Object.keys(categories)) {
+        categories[category] = Array.from(new Set(categories[category])).sort((a, b) => a.localeCompare(b));
+      }
+
+      const locationOptions = Array.from(new Set((locations.data || [])
+        .map((location) => cleanText(location.metro_city || location.raw_value || [location.city, location.state_code].filter(Boolean).join(", ")))
+        .filter(Boolean) as string[])).sort((a, b) => a.localeCompare(b)).slice(0, 2000);
+
+      const mxCrossings = Array.from(new Set([
+        ...(categories.border_crossing || []),
+        ...(borderPairs.data || []).map((pair) => [pair.mx_city, pair.mx_state].filter(Boolean).join(", "))
+      ].filter(Boolean))).sort((a, b) => a.localeCompare(b));
+
+      const usCrossings = Array.from(new Set((borderPairs.data || [])
+        .map((pair) => [pair.us_city, pair.us_state].filter(Boolean).join(", "))
+        .filter(Boolean))).sort((a, b) => a.localeCompare(b));
+
+      return jsonResponse({
+        categories,
+        locations: locationOptions,
+        mx_crossings: mxCrossings,
+        us_crossings: usCrossings,
+        currencies: ["USD", "MXN", "CAD"]
+      });
+    }
+
     if (body.action === "update_staging") {
       const patch = normalizeStagingPatch(body.patch || {});
       if (!Object.keys(patch).length) return jsonResponse({ error: "No staging updates provided." }, 400);

@@ -1,5 +1,5 @@
 import { applyPermissionState, ensureSignedIn, initAuthControls, requirePrivatePage } from "./auth.js";
-import { fetchStagingRows, updateStagingRow } from "./staging-service.js";
+import { fetchStagingOptions, fetchStagingRows, updateStagingRow } from "./staging-service.js";
 
 const body = document.querySelector("#staging-body");
 const refreshButton = document.querySelector("#refresh-staging-button");
@@ -20,6 +20,13 @@ const bulkActionStatus = document.querySelector("#bulk-action-status");
 let currentRows = [];
 let activeRowId = null;
 const selectedRowIds = new Set();
+let stagingOptions = {
+  categories: {},
+  locations: [],
+  mx_crossings: [],
+  us_crossings: [],
+  currencies: ["USD", "MXN", "CAD"]
+};
 const STAGING_COLSPAN = 24;
 
 function escapeHtml(value) {
@@ -48,6 +55,28 @@ function inputCell(row, field, options = {}) {
   return `<input class="staging-input ${widthClass}" data-field="${field}" type="${options.type || "text"}" value="${escapeHtml(value)}" ${options.min ? `min="${escapeHtml(options.min)}"` : ""} ${options.max ? `max="${escapeHtml(options.max)}"` : ""} ${options.step ? `step="${escapeHtml(options.step)}"` : ""} />`;
 }
 
+function optionList(values = [], currentValue = "") {
+  const normalized = String(currentValue || "").trim();
+  const options = normalized && !values.includes(normalized) ? [normalized, ...values] : values;
+  return options.map((value) => `<option value="${escapeHtml(value)}" ${value === normalized ? "selected" : ""}>${escapeHtml(value)}</option>`).join("");
+}
+
+function selectCell(row, field, values = [], options = {}) {
+  const widthClass = options.wide ? "wide-input" : options.money ? "money-input" : options.short ? "short-input" : "";
+  return `
+    <select class="staging-input ${widthClass}" data-field="${field}">
+      <option value=""></option>
+      ${optionList(values, row[field] || "")}
+    </select>
+  `;
+}
+
+function datalistCell(row, field, values = [], options = {}) {
+  const widthClass = options.wide ? "wide-input" : options.money ? "money-input" : options.short ? "short-input" : "";
+  const listId = `staging-${field}-options`;
+  return `<input class="staging-input ${widthClass}" data-field="${field}" list="${listId}" value="${escapeHtml(row[field] || "")}" />`;
+}
+
 function statusSelect(row) {
   const status = row.status || "pending_review";
   return `
@@ -57,6 +86,19 @@ function statusSelect(row) {
       <option value="rejected" ${status === "rejected" ? "selected" : ""}>rejected</option>
     </select>
   `;
+}
+
+function renderDatalists() {
+  const existing = document.querySelector("#staging-datalists");
+  existing?.remove();
+  const container = document.createElement("div");
+  container.id = "staging-datalists";
+  container.hidden = true;
+  container.innerHTML = `
+    <datalist id="staging-origin-options">${stagingOptions.locations.map((value) => `<option value="${escapeHtml(value)}"></option>`).join("")}</datalist>
+    <datalist id="staging-destination-options">${stagingOptions.locations.map((value) => `<option value="${escapeHtml(value)}"></option>`).join("")}</datalist>
+  `;
+  document.body.appendChild(container);
 }
 
 function selectedRows() {
@@ -154,6 +196,7 @@ function renderRowDetail(row) {
 
 function renderRows(rows) {
   currentRows = rows;
+  renderDatalists();
 
   if (!rows.length) {
     body.innerHTML =
@@ -176,22 +219,22 @@ function renderRows(rows) {
           </td>
           <td>${inputCell(row, "quote_date", { type: "date", short: true })}</td>
           <td>${inputCell(row, "rfx_id", { short: true })}</td>
-          <td>${inputCell(row, "origin", { wide: true })}</td>
-          <td>${inputCell(row, "destination", { wide: true })}</td>
-          <td>${inputCell(row, "equipment", { short: true })}</td>
-          <td>${inputCell(row, "trailer", { short: true })}</td>
-          <td>${inputCell(row, "config", { short: true })}</td>
-          <td>${inputCell(row, "operation", { short: true })}</td>
-          <td>${inputCell(row, "service", { short: true })}</td>
-          <td>${inputCell(row, "mx_border_crossing_point", { short: true })}</td>
-          <td>${inputCell(row, "us_border_crossing_point", { short: true })}</td>
+          <td>${datalistCell(row, "origin", stagingOptions.locations, { wide: true })}</td>
+          <td>${datalistCell(row, "destination", stagingOptions.locations, { wide: true })}</td>
+          <td>${selectCell(row, "equipment", stagingOptions.categories.equipment || [], { short: true })}</td>
+          <td>${selectCell(row, "trailer", stagingOptions.categories.trailer || [], { short: true })}</td>
+          <td>${selectCell(row, "config", stagingOptions.categories.config || [], { short: true })}</td>
+          <td>${selectCell(row, "operation", stagingOptions.categories.operation || [], { short: true })}</td>
+          <td>${selectCell(row, "service", stagingOptions.categories.service || [], { short: true })}</td>
+          <td>${selectCell(row, "mx_border_crossing_point", stagingOptions.mx_crossings || [], { short: true })}</td>
+          <td>${selectCell(row, "us_border_crossing_point", stagingOptions.us_crossings || [], { short: true })}</td>
           <td>${inputCell(row, "mx_linehaul", { money: true })}</td>
           <td>${inputCell(row, "us_linehaul", { money: true })}</td>
           <td>${inputCell(row, "fsc", { money: true })}</td>
           <td>${inputCell(row, "border_crossing_fee", { money: true })}</td>
           <td>${inputCell(row, "all_in_rate", { money: true })}</td>
           <td>${inputCell(row, "normalized_all_in_rate", { money: true })}</td>
-          <td>${inputCell(row, "currency", { short: true })}</td>
+          <td>${selectCell(row, "currency", stagingOptions.currencies || ["USD", "MXN", "CAD"], { short: true })}</td>
           <td>${inputCell(row, "weekly_capacity", { short: true })}</td>
           <td>${inputCell(row, "confidence", { type: "number", min: "0", max: "100", step: "1", short: true })}</td>
           <td>${statusSelect(row)}</td>
@@ -332,7 +375,18 @@ async function loadRows() {
 
   try {
     await requirePrivatePage();
-    renderRows(await fetchStagingRows({ status: statusFilter.value }));
+    const [options, rows] = await Promise.all([
+      fetchStagingOptions().catch(() => stagingOptions),
+      fetchStagingRows({ status: statusFilter.value })
+    ]);
+    stagingOptions = {
+      categories: options.categories || {},
+      locations: options.locations || [],
+      mx_crossings: options.mx_crossings || [],
+      us_crossings: options.us_crossings || [],
+      currencies: options.currencies || ["USD", "MXN", "CAD"]
+    };
+    renderRows(rows);
     await applyPermissionState("[data-save-id], [data-approve-id], [data-reject-id], #save-staging-button, #approve-staging-button, #reject-staging-button, #bulk-save-button, #bulk-approve-button, #bulk-reject-button", "staging:approve");
   } catch (error) {
     body.innerHTML = `<tr><td colspan="${STAGING_COLSPAN}">Could not load staging rows. ${escapeHtml(error.message)}</td></tr>`;
