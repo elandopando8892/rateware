@@ -1023,10 +1023,53 @@ async function uploadOpenAIFile(file: Blob, filename: string) {
   return await response.json();
 }
 
+async function requestRatewareInterpretation(systemPrompt: string, userContent: Record<string, unknown>[]) {
+  const response = await fetch("https://api.openai.com/v1/responses", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${OPENAI_API_KEY}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      model: OPENAI_MODEL,
+      input: [
+        { role: "system", content: [{ type: "input_text", text: systemPrompt }] },
+        { role: "user", content: userContent }
+      ],
+      text: {
+        format: {
+          type: "json_schema",
+          name: "rateware_interpretation",
+          strict: true,
+          schema: RATEWARE_SCHEMA
+        }
+      }
+    })
+  });
+
+  if (!response.ok) throw new Error(await openAIErrorMessage(response, "OpenAI interpretation failed"));
+
+  const payload = await response.json();
+  const outputText = payload.output_text ?? payload.output?.flatMap((item: Record<string, unknown>) => item.content ?? [])
+    .find((content: Record<string, unknown>) => content.type === "output_text")?.text;
+
+  if (!outputText) throw new Error("OpenAI returned no structured interpretation.");
+  return JSON.parse(outputText);
+}
+
+function shouldAuditSparseInterpretation(rawUpload: Record<string, string>, interpretation: Record<string, unknown>) {
+  const rows = Array.isArray(interpretation.rows) ? interpretation.rows : [];
+  return ["pdf", "image"].includes(rawUpload.document_type) && rows.length > 0 && rows.length <= 3;
+}
+
 async function interpretWithModel(rawUpload: Record<string, string>, file: Blob) {
   const systemPrompt = [
     "You are Rateware AI, a senior freight procurement analyst.",
     "Interpret carrier quotations and normalize them into Rateware staging rows.",
+    "Be exhaustive. Do not summarize a route table into one row per destination or one row per state.",
+    "Create one row per unique rated lane and service combination. If a matrix has multiple destinations and multiple service columns, each priced cell is its own row.",
+    "For example, 3 destinations with One Way and Roundtrip prices means 6 rows when all six cells have carrier rates.",
+    "If a quote includes outbound and return lanes, include both directions when each has a carrier price.",
     "Detect vendor, RFx, quotation date, origin, destination, equipment, operation, service, linehaul, border fee, FSC, all-in rate, and weekly capacity.",
     "Set quote_date to the carrier quotation date, bid date, offer date, email sent date, or document issue date when explicitly present. Use YYYY-MM-DD when possible.",
     "Never use Tier 1, Tier 2, or Tier 3 as carrier rates.",
@@ -1064,37 +1107,31 @@ async function interpretWithModel(rawUpload: Record<string, string>, file: Blob)
     userContent.push({ type: "input_file", file_id: openAIFile.id });
   }
 
-  const response = await fetch("https://api.openai.com/v1/responses", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${OPENAI_API_KEY}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      model: OPENAI_MODEL,
-      input: [
-        { role: "system", content: [{ type: "input_text", text: systemPrompt }] },
-        { role: "user", content: userContent }
-      ],
-      text: {
-        format: {
-          type: "json_schema",
-          name: "rateware_interpretation",
-          strict: true,
-          schema: RATEWARE_SCHEMA
-        }
-      }
-    })
-  });
+  const firstInterpretation = await requestRatewareInterpretation(systemPrompt, userContent);
+  if (!shouldAuditSparseInterpretation(rawUpload, firstInterpretation)) return firstInterpretation;
 
-  if (!response.ok) throw new Error(await openAIErrorMessage(response, "OpenAI interpretation failed"));
+  const auditPrompt = [
+    systemPrompt,
+    "",
+    "Completeness audit required: the first pass returned three or fewer rows from a PDF/image.",
+    "Re-read every page and every rate table. The prior result is probably incomplete if the document has a destination matrix, multiple service columns, or separate outbound/return sections.",
+    "Expand every carrier-priced cell into its own row. Preserve all valid prior rows, but add missing lanes and service combinations.",
+    "Do not return only the first three routes. Do not collapse KY/MS/TN or other states into a summary.",
+    "If a cell is X, N/A, blank, Tier 1/2/3, or Please Estimate, ignore only that cell."
+  ].join("\n");
 
-  const payload = await response.json();
-  const outputText = payload.output_text ?? payload.output?.flatMap((item: Record<string, unknown>) => item.content ?? [])
-    .find((content: Record<string, unknown>) => content.type === "output_text")?.text;
+  const firstRows = Array.isArray(firstInterpretation.rows) ? firstInterpretation.rows : [];
+  const auditContent = [
+    ...userContent,
+    {
+      type: "input_text",
+      text: `First-pass interpretation returned ${firstRows.length} rows. Audit and return the complete set.\n${JSON.stringify(firstInterpretation)}`
+    }
+  ];
 
-  if (!outputText) throw new Error("OpenAI returned no structured interpretation.");
-  return JSON.parse(outputText);
+  const auditedInterpretation = await requestRatewareInterpretation(auditPrompt, auditContent);
+  const auditedRows = Array.isArray(auditedInterpretation.rows) ? auditedInterpretation.rows : [];
+  return auditedRows.length >= firstRows.length ? auditedInterpretation : firstInterpretation;
 }
 
 Deno.serve(async (request) => {
@@ -1159,6 +1196,13 @@ Deno.serve(async (request) => {
       .map((row: Record<string, unknown>) => normalizeRow(row, raw_upload_id, job.data.id, vendorId)), catalogItems, laneMileage, locations, fuelRegions, fscTrend);
 
     if (rows.length) {
+      const archivePrevious = await supabase
+        .from("rate_staging")
+        .update({ status: "archived" })
+        .eq("raw_upload_id", raw_upload_id)
+        .neq("status", "archived");
+      if (archivePrevious.error) throw archivePrevious.error;
+
       const insert = await supabase.from("rate_staging").insert(rows).select("*");
       if (insert.error) throw insert.error;
       await persistLanePlans(supabase, insert.data || [], borderPairs, mxFuelContext);
