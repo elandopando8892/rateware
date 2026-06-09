@@ -206,6 +206,40 @@ function serviceFromText(value: unknown) {
   return null;
 }
 
+function serviceEvidenceFromRow(row: Record<string, unknown>) {
+  return serviceFromText([
+    row.service,
+    row.notes,
+    row.accessorials,
+    row.extracted_payload && typeof row.extracted_payload === "object"
+      ? (row.extracted_payload as Record<string, unknown>).service
+      : null
+  ].filter(Boolean).join(" "));
+}
+
+function normalizeServiceSafety(row: Record<string, unknown>) {
+  const explicit = serviceEvidenceFromRow(row);
+  if (explicit) return { ...row, service: explicit, normalized_service: explicit };
+
+  const serviceKey = rawKey(row.service || row.normalized_service);
+  const operationKey = rawKey(row.operation || row.normalized_operation);
+  const hasOneDirection = operationKey.includes("D2D") || operationKey.includes("NORTHBOUND") || operationKey.includes("SOUTHBOUND");
+  if (serviceKey.includes("ROUNDTRIP") || serviceKey.includes("ROUND TRIP")) {
+    return {
+      ...row,
+      service: hasOneDirection ? "One Way" : row.service,
+      normalized_service: hasOneDirection ? "One Way" : row.normalized_service,
+      notes: [
+        row.notes,
+        hasOneDirection ? "Service corrected to One Way because no explicit RT/Round Trip marker was found in the carrier quote." : null
+      ].filter(Boolean).join(" | ")
+    };
+  }
+
+  if (!serviceKey && hasOneDirection) return { ...row, service: "One Way", normalized_service: "One Way" };
+  return row;
+}
+
 function normalizeRatewareAliases(row: Record<string, unknown>) {
   const normalized = { ...row };
   const equipmentText = [normalized.equipment, normalized.trailer, normalized.config, normalized.notes, normalized.accessorials].filter(Boolean).join(" ");
@@ -1117,6 +1151,7 @@ function normalizeWithCatalog(rows: Record<string, unknown>[], catalogItems: Rec
       normalized.operation = directionOperation;
     }
     Object.assign(normalized, normalizeBorderCities(normalized));
+    Object.assign(normalized, normalizeServiceSafety(normalized));
 
     const matchCount = [
       originMatch,
@@ -1309,6 +1344,7 @@ async function interpretWithModel(rawUpload: Record<string, string>, file: Blob)
     "Set hazmat true only when the carrier quote explicitly says Hazmat, hazardous material, or equivalent. Set temperature_controlled true only when it explicitly says reefer, refrigerated, temperature controlled, or equivalent.",
     "Separate operation from service. Import, Export, Northbound, and Southbound define operation. OW, One Way, RT, Round Trip, and Backhaul define service.",
     "Normalize service to catalog language from the quote's service marker: OW or One Way means One Way; RT, Round Trip, or Roundtrip means Roundtrip; Backhaul means Backhaul. Do not infer One Way just because the operation is Import or Export.",
+    "Never infer Roundtrip from a border crossing, D2D route, all-in amount, or two-country movement. Roundtrip requires an explicit RT/Round Trip marker or an explicit carrier statement that the same rate covers the round trip.",
     "Normalize operation from the Mexico operating perspective, not the US perspective. MX to US/CA is D2D Export. US/CA to MX is D2D Import.",
     "For Mexican border legs, MX interior to Mexican border is MX Northbound; Mexican border to MX interior is MX Southbound.",
     "For US/CA border legs, US border to US/CA interior is US Northbound; US/CA interior to US border is US Southbound.",
