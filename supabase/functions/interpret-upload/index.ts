@@ -42,6 +42,8 @@ const RATEWARE_SCHEMA = {
           "destination",
           "equipment",
           "trailer",
+          "hazmat",
+          "temperature_controlled",
           "config",
           "operation",
           "service",
@@ -72,6 +74,8 @@ const RATEWARE_SCHEMA = {
           destination: { type: ["string", "null"] },
           equipment: { type: ["string", "null"] },
           trailer: { type: ["string", "null"] },
+          hazmat: { type: ["boolean", "null"] },
+          temperature_controlled: { type: ["boolean", "null"] },
           config: { type: ["string", "null"] },
           operation: { type: ["string", "null"] },
           service: { type: ["string", "null"] },
@@ -149,6 +153,34 @@ function cleanText(value: unknown) {
   return text ? text : null;
 }
 
+function cleanBoolean(value: unknown) {
+  if (typeof value === "boolean") return value;
+  const text = String(value ?? "").trim().toLowerCase();
+  return ["true", "1", "yes", "y", "on", "checked"].includes(text);
+}
+
+function baseTrailerName(value: unknown) {
+  const text = cleanText(value) || "Dry Van";
+  const cleaned = text
+    .replace(/\s*-\s*hazmat\s*reefer\s*$/i, "")
+    .replace(/\s*-\s*hazmat\s*$/i, "")
+    .replace(/\s*-\s*reefer\s*$/i, "")
+    .replace(/\s+hazmat\s+reefer\s*$/i, "")
+    .replace(/\s+hazmat\s*$/i, "")
+    .replace(/\s+reefer\s*$/i, "")
+    .trim();
+  return cleaned || "Dry Van";
+}
+
+function trailerWithFlags(trailer: unknown, hazmat: unknown, temperatureControlled: unknown) {
+  const suffix = [
+    cleanBoolean(hazmat) ? "Hazmat" : null,
+    cleanBoolean(temperatureControlled) ? "Reefer" : null
+  ].filter(Boolean).join(" ");
+  const base = baseTrailerName(trailer);
+  return suffix ? `${base} - ${suffix}` : base;
+}
+
 function rawKey(value: unknown) {
   return catalogKey(value);
 }
@@ -176,10 +208,12 @@ function serviceFromText(value: unknown) {
 
 function normalizeRatewareAliases(row: Record<string, unknown>) {
   const normalized = { ...row };
-  const equipmentText = [normalized.equipment, normalized.trailer, normalized.config].filter(Boolean).join(" ");
+  const equipmentText = [normalized.equipment, normalized.trailer, normalized.config, normalized.notes, normalized.accessorials].filter(Boolean).join(" ");
   const operationText = [normalized.operation, normalized.notes].filter(Boolean).join(" ");
   const serviceText = [normalized.service, normalized.operation, normalized.notes].filter(Boolean).join(" ");
   const resolvedService = serviceFromText(serviceText);
+  if (includesAny(equipmentText, ["hazmat", "hazardous"])) normalized.hazmat = true;
+  if (includesAny(equipmentText, ["reefer", "refrigerated", "temperature controlled", "temp controlled"])) normalized.temperature_controlled = true;
 
   if (includesAny(equipmentText, ["DV53", "53 ft", "53FT", "53'", "dry van 53", "dryvan"])) {
     normalized.equipment = "Truck Trailer";
@@ -486,6 +520,9 @@ function buildKeys(row: Record<string, unknown>) {
 
 function normalizeRow(row: Record<string, unknown>, rawUploadId: string, jobId: string, vendorId: string | null = null) {
   const interpreted = normalizeRatewareAliases(row);
+  const hazmat = cleanBoolean(interpreted.hazmat);
+  const temperatureControlled = cleanBoolean(interpreted.temperature_controlled);
+  const trailer = trailerWithFlags(cleanText(interpreted.trailer), hazmat, temperatureControlled);
   const base = {
     raw_upload_id: rawUploadId,
     interpretation_job_id: jobId,
@@ -498,7 +535,9 @@ function normalizeRow(row: Record<string, unknown>, rawUploadId: string, jobId: 
     origin: cleanText(interpreted.origin),
     destination: cleanText(interpreted.destination),
     equipment: cleanText(interpreted.equipment),
-    trailer: cleanText(interpreted.trailer),
+    trailer,
+    hazmat,
+    temperature_controlled: temperatureControlled,
     config: cleanText(interpreted.config),
     operation: cleanText(interpreted.operation),
     service: cleanText(interpreted.service),
@@ -1267,6 +1306,7 @@ async function interpretWithModel(rawUpload: Record<string, string>, file: Blob)
     "Ignore Marksman, heymarksman.com, or marksmanxbf.com template/layout/proposal rows. Those are the shipper's requested template, not the carrier response.",
     "Only capture the carrier's submitted proposal/rates. If the document contains both Marksman template values and carrier response values, return only the carrier response values.",
     "Normalize commercial fields to Rateware catalog language. For a 53 dry van trailer, use equipment Truck Trailer, trailer Dry Van, config Single. Do not return raw carrier shortcuts such as DV53, 53 ft, OW Impo, OW Export, RT, or Truckload as final values.",
+    "Set hazmat true only when the carrier quote explicitly says Hazmat, hazardous material, or equivalent. Set temperature_controlled true only when it explicitly says reefer, refrigerated, temperature controlled, or equivalent.",
     "Separate operation from service. Import, Export, Northbound, and Southbound define operation. OW, One Way, RT, Round Trip, and Backhaul define service.",
     "Normalize service to catalog language from the quote's service marker: OW or One Way means One Way; RT, Round Trip, or Roundtrip means Roundtrip; Backhaul means Backhaul. Do not infer One Way just because the operation is Import or Export.",
     "Normalize operation from the Mexico operating perspective, not the US perspective. MX to US/CA is D2D Export. US/CA to MX is D2D Import.",

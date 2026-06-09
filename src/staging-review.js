@@ -29,7 +29,7 @@ let stagingOptions = {
   us_crossings: [],
   currencies: ["USD", "MXN", "CAD"]
 };
-const STAGING_COLSPAN = 26;
+const STAGING_COLSPAN = 28;
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -75,6 +75,14 @@ function datalistCell(row, field, values = [], options = {}) {
   const widthClass = options.wide ? "wide-input" : options.money ? "money-input" : options.short ? "short-input" : "";
   const listId = `staging-${field}-options`;
   return `<input class="staging-input ${widthClass}" data-field="${field}" list="${listId}" value="${escapeHtml(row[field] || "")}" />`;
+}
+
+function checkboxCell(row, field, label) {
+  return `
+    <label class="table-checkbox" title="${escapeHtml(label)}">
+      <input class="staging-input" data-field="${field}" type="checkbox" ${row[field] ? "checked" : ""} />
+    </label>
+  `;
 }
 
 function locationOptionValue(option) {
@@ -272,6 +280,8 @@ function renderRows(rows) {
           <td>${compactMarketCell(row, "destination")}</td>
           <td>${selectCell(row, "equipment", stagingOptions.categories.equipment || [], { short: true })}</td>
           <td>${selectCell(row, "trailer", stagingOptions.categories.trailer || [], { short: true })}</td>
+          <td>${checkboxCell(row, "hazmat", "Hazmat")}</td>
+          <td>${checkboxCell(row, "temperature_controlled", "Temperature controlled")}</td>
           <td>${selectCell(row, "config", stagingOptions.categories.config || [], { short: true })}</td>
           <td>${selectCell(row, "operation", stagingOptions.categories.operation || [], { short: true })}</td>
           <td>${selectCell(row, "service", stagingOptions.categories.service || [], { short: true })}</td>
@@ -321,6 +331,8 @@ function openEditDrawer(id) {
   document.querySelector("#edit-destination").value = row.destination || "";
   document.querySelector("#edit-equipment").value = row.equipment || "";
   document.querySelector("#edit-trailer-config").value = [row.trailer, row.config].filter(Boolean).join(" / ");
+  document.querySelector("#edit-hazmat").checked = Boolean(row.hazmat);
+  document.querySelector("#edit-temperature-controlled").checked = Boolean(row.temperature_controlled);
   document.querySelector("#edit-operation").value = row.operation || "";
   document.querySelector("#edit-service").value = row.service || "";
   document.querySelector("#edit-all-in-rate").value = row.all_in_rate || "";
@@ -335,7 +347,7 @@ function openEditDrawer(id) {
 function readInlinePatch(tableRow, status = null) {
   const patch = {};
   tableRow.querySelectorAll("[data-field]").forEach((input) => {
-    patch[input.dataset.field] = input.value;
+    patch[input.dataset.field] = input.type === "checkbox" ? input.checked : input.value;
   });
   if (patch.confidence !== undefined) patch.confidence = Number(patch.confidence || 0) / 100;
   if (status) patch.status = status;
@@ -432,6 +444,8 @@ function readPatch(status = null) {
     destination: document.querySelector("#edit-destination").value,
     equipment: document.querySelector("#edit-equipment").value,
     trailer: trailerConfig[0]?.trim() || "",
+    hazmat: document.querySelector("#edit-hazmat").checked,
+    temperature_controlled: document.querySelector("#edit-temperature-controlled").checked,
     config: trailerConfig.slice(1).join("/").trim(),
     operation: document.querySelector("#edit-operation").value,
     service: document.querySelector("#edit-service").value,

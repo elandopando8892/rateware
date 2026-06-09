@@ -317,6 +317,13 @@ a {
   padding-top: 18px;
 }
 
+.checkbox-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 800;
+}
+
 .metric-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -903,6 +910,19 @@ table {
 .select-column input {
   width: 16px;
   height: 16px;
+  accent-color: var(--accent);
+}
+
+.table-checkbox {
+  display: grid;
+  place-items: center;
+  min-width: 38px;
+  min-height: 24px;
+}
+
+.table-checkbox input {
+  width: 15px;
+  height: 15px;
   accent-color: var(--accent);
 }
 

@@ -113,6 +113,34 @@ function normalizeSegment(input: Record<string, unknown>) {
   };
 }
 
+function cleanBoolean(value: unknown) {
+  if (typeof value === "boolean") return value;
+  const text = String(value ?? "").trim().toLowerCase();
+  return ["true", "1", "yes", "y", "on", "checked"].includes(text);
+}
+
+function baseTrailerName(value: unknown) {
+  const text = cleanText(value) || "Dry Van";
+  const cleaned = text
+    .replace(/\s*-\s*hazmat\s*reefer\s*$/i, "")
+    .replace(/\s*-\s*hazmat\s*$/i, "")
+    .replace(/\s*-\s*reefer\s*$/i, "")
+    .replace(/\s+hazmat\s+reefer\s*$/i, "")
+    .replace(/\s+hazmat\s*$/i, "")
+    .replace(/\s+reefer\s*$/i, "")
+    .trim();
+  return cleaned || "Dry Van";
+}
+
+function trailerWithFlags(trailer: unknown, hazmat: unknown, temperatureControlled: unknown) {
+  const suffix = [
+    cleanBoolean(hazmat) ? "Hazmat" : null,
+    cleanBoolean(temperatureControlled) ? "Reefer" : null
+  ].filter(Boolean).join(" ");
+  const base = baseTrailerName(trailer);
+  return suffix ? `${base} - ${suffix}` : base;
+}
+
 function normalizeStagingPatch(input: Record<string, unknown>) {
   const patch: Record<string, unknown> = {};
   const textFields = [
@@ -180,6 +208,17 @@ function normalizeStagingPatch(input: Record<string, unknown>) {
   }
 
   if (input.quote_date !== undefined) patch.quote_date = cleanDate(input.quote_date);
+  if (input.hazmat !== undefined) patch.hazmat = cleanBoolean(input.hazmat);
+  if (input.temperature_controlled !== undefined) patch.temperature_controlled = cleanBoolean(input.temperature_controlled);
+
+  if (input.trailer !== undefined || input.hazmat !== undefined || input.temperature_controlled !== undefined) {
+    patch.trailer = trailerWithFlags(
+      input.trailer !== undefined ? input.trailer : patch.trailer,
+      input.hazmat,
+      input.temperature_controlled
+    );
+    patch.normalized_trailer = patch.trailer;
+  }
 
   const status = cleanText(input.status)?.toLowerCase();
   if (status && ["pending_review", "approved", "rejected", "archived"].includes(status)) patch.status = status;

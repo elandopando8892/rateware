@@ -78,6 +78,8 @@
                     <th>D market</th>
                     <th>Equipment</th>
                     <th>Trailer</th>
+                    <th>Hazmat</th>
+                    <th>Temp ctrl</th>
                     <th>Config</th>
                     <th>Operation</th>
                     <th>Service</th>
@@ -96,7 +98,7 @@
                 </thead>
                 <tbody id="staging-body">
                   <tr>
-                    <td colspan="26">Loading staging rows...</td>
+                    <td colspan="28">Loading staging rows...</td>
                   </tr>
                 </tbody>
               </table>
@@ -139,6 +141,14 @@
               <label>
                 Trailer / Config
                 <input id="edit-trailer-config" />
+              </label>
+              <label class="checkbox-label">
+                <input id="edit-hazmat" type="checkbox" />
+                Hazmat
+              </label>
+              <label class="checkbox-label">
+                <input id="edit-temperature-controlled" type="checkbox" />
+                Temperature controlled
               </label>
               <label>
                 Operation
