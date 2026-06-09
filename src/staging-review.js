@@ -1,5 +1,5 @@
 import { applyPermissionState, ensureSignedIn, initAuthControls, requirePrivatePage } from "./auth.js";
-import { fetchStagingOptions, fetchStagingRows, updateStagingRow } from "./staging-service.js";
+import { archiveStagingRows, fetchStagingOptions, fetchStagingRows, removeStagingRows, updateStagingRow } from "./staging-service.js";
 
 const body = document.querySelector("#staging-body");
 const refreshButton = document.querySelector("#refresh-staging-button");
@@ -16,6 +16,8 @@ const bulkSelectionCount = document.querySelector("#bulk-selection-count");
 const bulkSaveButton = document.querySelector("#bulk-save-button");
 const bulkApproveButton = document.querySelector("#bulk-approve-button");
 const bulkRejectButton = document.querySelector("#bulk-reject-button");
+const bulkArchiveButton = document.querySelector("#bulk-archive-button");
+const bulkRemoveButton = document.querySelector("#bulk-remove-button");
 const bulkActionStatus = document.querySelector("#bulk-action-status");
 let currentRows = [];
 let activeRowId = null;
@@ -90,6 +92,7 @@ function statusSelect(row) {
       <option value="pending_review" ${status === "pending_review" ? "selected" : ""}>pending</option>
       <option value="approved" ${status === "approved" ? "selected" : ""}>approved</option>
       <option value="rejected" ${status === "rejected" ? "selected" : ""}>rejected</option>
+      <option value="archived" ${status === "archived" ? "selected" : ""}>archived</option>
     </select>
   `;
 }
@@ -152,6 +155,8 @@ function updateBulkControls() {
   bulkSaveButton.disabled = selectedCount === 0;
   bulkApproveButton.disabled = selectedCount === 0;
   bulkRejectButton.disabled = selectedCount === 0;
+  bulkArchiveButton.disabled = selectedCount === 0;
+  bulkRemoveButton.disabled = selectedCount === 0;
   if (selectAllCheckbox) {
     selectAllCheckbox.checked = selectedCount > 0 && selectedCount === totalRows;
     selectAllCheckbox.indeterminate = selectedCount > 0 && selectedCount < totalRows;
@@ -353,6 +358,8 @@ async function runBulkAction(status = null) {
   bulkSaveButton.disabled = true;
   bulkApproveButton.disabled = true;
   bulkRejectButton.disabled = true;
+  bulkArchiveButton.disabled = true;
+  bulkRemoveButton.disabled = true;
 
   try {
     await ensureSignedIn();
@@ -364,6 +371,50 @@ async function runBulkAction(status = null) {
       selectedRowIds.delete(id);
     }));
     setBulkStatus(`${rows.length} rows updated.`, "success");
+    await loadRows();
+  } catch (error) {
+    setBulkStatus(error.message, "error");
+    updateBulkControls();
+  }
+}
+
+async function runBulkArchive() {
+  const rows = selectedRows();
+  if (!rows.length) return;
+  const ids = rows.map((row) => row.dataset.rowId);
+
+  setBulkStatus(`Archiving ${ids.length} rows...`);
+  bulkArchiveButton.disabled = true;
+  bulkRemoveButton.disabled = true;
+
+  try {
+    await ensureSignedIn();
+    const result = await archiveStagingRows(ids);
+    ids.forEach((id) => selectedRowIds.delete(id));
+    setBulkStatus(`${result.updated || ids.length} rows archived.`, "success");
+    await loadRows();
+  } catch (error) {
+    setBulkStatus(error.message, "error");
+    updateBulkControls();
+  }
+}
+
+async function runBulkRemove() {
+  const rows = selectedRows();
+  if (!rows.length) return;
+  const ids = rows.map((row) => row.dataset.rowId);
+  const confirmed = window.confirm(`Remove ${ids.length} staging rows? This cannot be undone.`);
+  if (!confirmed) return;
+
+  setBulkStatus(`Removing ${ids.length} rows...`);
+  bulkArchiveButton.disabled = true;
+  bulkRemoveButton.disabled = true;
+
+  try {
+    await ensureSignedIn();
+    const result = await removeStagingRows(ids);
+    ids.forEach((id) => selectedRowIds.delete(id));
+    setBulkStatus(`${result.removed || ids.length} rows removed.`, "success");
     await loadRows();
   } catch (error) {
     setBulkStatus(error.message, "error");
@@ -427,7 +478,7 @@ async function loadRows() {
       currencies: options.currencies || ["USD", "MXN", "CAD"]
     };
     renderRows(rows);
-    await applyPermissionState("[data-save-id], [data-approve-id], [data-reject-id], #save-staging-button, #approve-staging-button, #reject-staging-button, #bulk-save-button, #bulk-approve-button, #bulk-reject-button", "staging:approve");
+    await applyPermissionState("[data-save-id], [data-approve-id], [data-reject-id], #save-staging-button, #approve-staging-button, #reject-staging-button, #bulk-save-button, #bulk-approve-button, #bulk-reject-button, #bulk-archive-button, #bulk-remove-button", "staging:approve");
   } catch (error) {
     body.innerHTML = `<tr><td colspan="${STAGING_COLSPAN}">Could not load staging rows. ${escapeHtml(error.message)}</td></tr>`;
   } finally {
@@ -519,6 +570,8 @@ selectAllCheckbox?.addEventListener("change", () => {
 bulkSaveButton?.addEventListener("click", () => runBulkAction());
 bulkApproveButton?.addEventListener("click", () => runBulkAction("approved"));
 bulkRejectButton?.addEventListener("click", () => runBulkAction("rejected"));
+bulkArchiveButton?.addEventListener("click", runBulkArchive);
+bulkRemoveButton?.addEventListener("click", runBulkRemove);
 closeDrawerButton.addEventListener("click", () => drawer.classList.add("hidden"));
 editForm.addEventListener("submit", async (event) => {
   event.preventDefault();

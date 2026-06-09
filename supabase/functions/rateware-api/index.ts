@@ -170,7 +170,7 @@ function normalizeStagingPatch(input: Record<string, unknown>) {
   if (input.quote_date !== undefined) patch.quote_date = cleanDate(input.quote_date);
 
   const status = cleanText(input.status)?.toLowerCase();
-  if (status && ["pending_review", "approved", "rejected"].includes(status)) patch.status = status;
+  if (status && ["pending_review", "approved", "rejected", "archived"].includes(status)) patch.status = status;
 
   if (input.confidence !== undefined) {
     patch.confidence = Math.max(0, Math.min(1, Number(input.confidence) || 0));
@@ -455,6 +455,32 @@ Deno.serve(async (request) => {
         .select("id");
       if (result.error) throw result.error;
       return jsonResponse({ updated: result.data?.length || 0, rows: result.data || [] });
+    }
+
+    if (body.action === "archive_staging") {
+      const ids = Array.isArray(body.ids) ? body.ids.map(String).filter(Boolean).slice(0, 500) : [];
+      if (!ids.length) return jsonResponse({ error: "At least one staging row id is required." }, 400);
+
+      const result = await supabase
+        .from("rate_staging")
+        .update({ status: "archived" })
+        .in("id", ids)
+        .select("id");
+      if (result.error) throw result.error;
+      return jsonResponse({ updated: result.data?.length || 0, rows: result.data || [] });
+    }
+
+    if (body.action === "remove_staging") {
+      const ids = Array.isArray(body.ids) ? body.ids.map(String).filter(Boolean).slice(0, 500) : [];
+      if (!ids.length) return jsonResponse({ error: "At least one staging row id is required." }, 400);
+
+      const result = await supabase
+        .from("rate_staging")
+        .delete()
+        .in("id", ids)
+        .select("id");
+      if (result.error) throw result.error;
+      return jsonResponse({ removed: result.data?.length || 0, rows: result.data || [] });
     }
 
     if (body.action === "list_staging_options") {

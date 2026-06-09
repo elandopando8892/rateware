@@ -11,3 +11,11 @@ export async function fetchStagingOptions() {
 export async function updateStagingRow(id, patch) {
   return (await callRatewareApi("update_staging", { id, patch })).row;
 }
+
+export async function archiveStagingRows(ids = []) {
+  return await callRatewareApi("archive_staging", { ids });
+}
+
+export async function removeStagingRows(ids = []) {
+  return await callRatewareApi("remove_staging", { ids });
+}

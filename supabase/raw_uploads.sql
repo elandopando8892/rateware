@@ -67,7 +67,7 @@ create table if not exists public.rate_staging (
   created_at timestamptz not null default now(),
   raw_upload_id uuid not null references public.raw_uploads(id) on delete cascade,
   interpretation_job_id uuid references public.interpretation_jobs(id) on delete set null,
-  status text not null default 'pending_review' check (status in ('pending_review', 'approved', 'rejected')),
+  status text not null default 'pending_review' check (status in ('pending_review', 'approved', 'rejected', 'archived')),
   vendor_domain text,
   rfx_id text,
   row_id text,
@@ -171,7 +171,7 @@ create policy "authenticated users can review rate staging"
   on public.rate_staging for update
   to authenticated
   using (true)
-  with check (status in ('pending_review', 'approved', 'rejected'));
+  with check (status in ('pending_review', 'approved', 'rejected', 'archived'));
 
 insert into storage.buckets (id, name, public)
 values ('raw-uploads', 'raw-uploads', false)
