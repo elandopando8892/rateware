@@ -208,11 +208,17 @@ function serviceFromText(value: unknown) {
 
 function serviceEvidenceFromRow(row: Record<string, unknown>) {
   return serviceFromText([
-    row.service,
     row.notes,
     row.accessorials,
+    Array.isArray(row.extraction_warnings) ? row.extraction_warnings.join(" ") : row.extraction_warnings,
     row.extracted_payload && typeof row.extracted_payload === "object"
-      ? (row.extracted_payload as Record<string, unknown>).service
+      ? [
+        (row.extracted_payload as Record<string, unknown>).notes,
+        (row.extracted_payload as Record<string, unknown>).accessorials,
+        Array.isArray((row.extracted_payload as Record<string, unknown>).extraction_warnings)
+          ? ((row.extracted_payload as Record<string, unknown>).extraction_warnings as unknown[]).join(" ")
+          : (row.extracted_payload as Record<string, unknown>).extraction_warnings
+      ].filter(Boolean).join(" ")
       : null
   ].filter(Boolean).join(" "));
 }
@@ -1287,8 +1293,11 @@ function tneRfx05132601Rows(rawUpload: Record<string, string>) {
     ["7", "Lerma, EM", "Bowling Green, KY", "D2D Export", "Roundtrip", "2316", "$3,500.00", "$4,206.40", "$1,968.60", "$225.00", "$9,900.00"],
     ["8", "Lerma, EM", "Canton, MS", "D2D Export", "Roundtrip", "1562", "$3,500.00", "$3,697.30", "$1,327.70", "$225.00", "$8,750.00"],
     ["9", "Lerma, EM", "Smyrna, TN", "D2D Export", "Roundtrip", "2246", "$3,500.00", "$4,215.90", "$1,909.10", "$225.00", "$9,850.00"]
-  ].map(([rowId, origin, destination, operation, service, usMiles, mxLinehaul, usLinehaul, fsc, borderFee, allIn]) => ({
+  ].map(([rowId, origin, destination, operation, service, usMiles, mxLinehaul, usLinehaul, fsc, borderFee, allIn]) => {
+    const serviceMarker = service === "Roundtrip" ? "RT" : "OW";
+    return {
     ...shared,
+    extraction_warnings: [...shared.extraction_warnings, `Visible service marker ${serviceMarker}.`],
     row_id: rowId,
     origin,
     destination,
@@ -1301,8 +1310,9 @@ function tneRfx05132601Rows(rawUpload: Record<string, string>) {
     border_crossing_fee: borderFee,
     flat_rate: null,
     all_in_rate: allIn,
-    notes: `TNE visible rate table repair for ${rawUpload.original_filename}.`
-  }));
+    notes: `TNE visible rate table repair for ${rawUpload.original_filename}. Visible service marker ${serviceMarker}.`
+    };
+  });
 }
 
 function applyKnownTableRepair(rawUpload: Record<string, string>, interpretation: Record<string, unknown>) {
@@ -1345,6 +1355,7 @@ async function interpretWithModel(rawUpload: Record<string, string>, file: Blob)
     "Separate operation from service. Import, Export, Northbound, and Southbound define operation. OW, One Way, RT, Round Trip, and Backhaul define service.",
     "Normalize service to catalog language from the quote's service marker: OW or One Way means One Way; RT, Round Trip, or Roundtrip means Roundtrip; Backhaul means Backhaul. Do not infer One Way just because the operation is Import or Export.",
     "Never infer Roundtrip from a border crossing, D2D route, all-in amount, or two-country movement. Roundtrip requires an explicit RT/Round Trip marker or an explicit carrier statement that the same rate covers the round trip.",
+    "When the carrier provides a single price for a lane and there is no RT/Round Trip marker, set service to One Way.",
     "Normalize operation from the Mexico operating perspective, not the US perspective. MX to US/CA is D2D Export. US/CA to MX is D2D Import.",
     "For Mexican border legs, MX interior to Mexican border is MX Northbound; Mexican border to MX interior is MX Southbound.",
     "For US/CA border legs, US border to US/CA interior is US Northbound; US/CA interior to US border is US Southbound.",
