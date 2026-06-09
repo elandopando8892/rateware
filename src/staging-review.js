@@ -52,7 +52,9 @@ function inputCell(row, field, options = {}) {
   const value = options.type === "date"
       ? dateValue(row[field])
       : row[field] || "";
-  return `<input class="staging-input ${widthClass}" data-field="${field}" type="${options.type || "text"}" value="${escapeHtml(value)}" ${options.min ? `min="${escapeHtml(options.min)}"` : ""} ${options.max ? `max="${escapeHtml(options.max)}"` : ""} ${options.step ? `step="${escapeHtml(options.step)}"` : ""} />`;
+  const inputType = options.type || (options.money ? "number" : "text");
+  const step = options.step || (options.money ? "0.01" : "");
+  return `<input class="staging-input ${widthClass}" data-field="${field}" type="${inputType}" value="${escapeHtml(value)}" ${options.min ? `min="${escapeHtml(options.min)}"` : ""} ${options.max ? `max="${escapeHtml(options.max)}"` : ""} ${step ? `step="${escapeHtml(step)}"` : ""} ${options.money ? 'inputmode="decimal"' : ""} />`;
 }
 
 function optionList(values = [], currentValue = "") {
