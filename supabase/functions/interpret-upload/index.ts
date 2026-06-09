@@ -208,8 +208,51 @@ function isD2DCrossBorder(row: Record<string, unknown>) {
 function operationFromCrossBorderDirection(row: Record<string, unknown>) {
   const originCountry = String(row.origin_country || "");
   const destinationCountry = String(row.destination_country || "");
-  if (originCountry === "MX" && (destinationCountry === "US" || destinationCountry === "CA")) return "D2D Import";
-  if (destinationCountry === "MX" && (originCountry === "US" || originCountry === "CA")) return "D2D Export";
+  if (originCountry === "MX" && (destinationCountry === "US" || destinationCountry === "CA")) return "D2D Export";
+  if (destinationCountry === "MX" && (originCountry === "US" || originCountry === "CA")) return "D2D Import";
+  return null;
+}
+
+function isMxBorderLocation(row: Record<string, unknown>, prefix: "origin" | "destination") {
+  return includesAny([row[`${prefix}_city`], row[prefix], row[`${prefix}_market`]].filter(Boolean).join(" "), [
+    "Nuevo Laredo",
+    "Reynosa",
+    "Matamoros",
+    "Piedras Negras",
+    "Ciudad Juarez",
+    "Tijuana",
+    "Nogales"
+  ]);
+}
+
+function isUsBorderLocation(row: Record<string, unknown>, prefix: "origin" | "destination") {
+  return includesAny([row[`${prefix}_city`], row[prefix], row[`${prefix}_market`]].filter(Boolean).join(" "), [
+    "Laredo",
+    "Pharr",
+    "Brownsville",
+    "Eagle Pass",
+    "El Paso",
+    "San Diego",
+    "Nogales"
+  ]);
+}
+
+function operationFromLaneDirection(row: Record<string, unknown>) {
+  const crossBorderOperation = operationFromCrossBorderDirection(row);
+  if (crossBorderOperation) return crossBorderOperation;
+
+  const originCountry = String(row.origin_country || "");
+  const destinationCountry = String(row.destination_country || "");
+  if (originCountry === "MX" && destinationCountry === "MX") {
+    if (isMxBorderLocation(row, "destination")) return "MX Northbound";
+    if (isMxBorderLocation(row, "origin")) return "MX Southbound";
+  }
+
+  if ((originCountry === "US" || originCountry === "CA") && (destinationCountry === "US" || destinationCountry === "CA")) {
+    if (isUsBorderLocation(row, "origin")) return "US Northbound";
+    if (isUsBorderLocation(row, "destination")) return "US Southbound";
+  }
+
   return null;
 }
 
@@ -899,8 +942,8 @@ function normalizeWithCatalog(rows: Record<string, unknown>[], catalogItems: Rec
     if (normalized.normalized_service) normalized.service = normalized.normalized_service;
     if (normalized.normalized_driver) normalized.driver = normalized.normalized_driver;
 
-    const directionOperation = operationFromCrossBorderDirection(normalized);
-    if (isD2DCrossBorder(normalized) && directionOperation) {
+    const directionOperation = operationFromLaneDirection(normalized);
+    if (directionOperation) {
       normalized.operation = directionOperation;
     }
     Object.assign(normalized, normalizeBorderCities(normalized));
@@ -978,7 +1021,9 @@ async function interpretWithModel(rawUpload: Record<string, string>, file: Blob)
     "Only capture the carrier's submitted proposal/rates. If the document contains both Marksman template values and carrier response values, return only the carrier response values.",
     "Normalize commercial fields to Rateware catalog language. For a 53 dry van trailer, use equipment Truck Trailer, trailer Dry Van, config Single. Do not return raw carrier shortcuts such as DV53, 53 ft, OW Impo, OW Export, RT, or Truckload as final values.",
     "Normalize service to catalog language: one-way moves are One Way, round trips are Roundtrip, backhauls are Backhaul.",
-    "Normalize D2D cross-border operation by route direction, not by ambiguous carrier shorthand. MX to US/CA is D2D Import. US/CA to MX is D2D Export.",
+    "Normalize operation from the Mexico operating perspective, not the US perspective. MX to US/CA is D2D Export. US/CA to MX is D2D Import.",
+    "For Mexican border legs, MX interior to Mexican border is MX Northbound; Mexican border to MX interior is MX Southbound.",
+    "For US/CA border legs, US border to US/CA interior is US Northbound; US/CA interior to US border is US Southbound.",
     "Border crossing fields are border cities, not bridge or customs-port names. Do not output Puente Internacional or bridge names as crossings.",
     "For D2D cross-border rows, if the carrier does not explicitly state border cities, default mx_border_crossing_point to Nuevo Laredo, TM and us_border_crossing_point to Laredo, TX.",
     "Populate mx_linehaul, us_linehaul, fsc, fuel, and border_crossing_fee only when the carrier explicitly itemizes those charges in the quote.",
