@@ -1059,7 +1059,7 @@ async function requestRatewareInterpretation(systemPrompt: string, userContent: 
 
 function shouldAuditSparseInterpretation(rawUpload: Record<string, string>, interpretation: Record<string, unknown>) {
   const rows = Array.isArray(interpretation.rows) ? interpretation.rows : [];
-  return ["pdf", "image"].includes(rawUpload.document_type) && rows.length > 0 && rows.length <= 3;
+  return ["pdf", "image"].includes(rawUpload.document_type) && rows.length > 0 && rows.length <= 10;
 }
 
 async function interpretWithModel(rawUpload: Record<string, string>, file: Blob) {
@@ -1070,6 +1070,9 @@ async function interpretWithModel(rawUpload: Record<string, string>, file: Blob)
     "Create one row per unique rated lane and service combination. If a matrix has multiple destinations and multiple service columns, each priced cell is its own row.",
     "For example, 3 destinations with One Way and Roundtrip prices means 6 rows when all six cells have carrier rates.",
     "If a quote includes outbound and return lanes, include both directions when each has a carrier price.",
+    "For email/PDF screenshots with a rate table, read every visible table line from top to bottom. A table with columns like Origin, Border, Destination, Type of Driver, US Miles, Mex Haul, Border Crossing, US Haul, FSC, Total (USD), and a final OW/RT marker must produce one row for every table line with a Total value.",
+    "The final OW or RT marker at the far right of a table row is the service for that row: OW means One Way and RT means Roundtrip.",
+    "Do not replace a visible destination with another city from the state. If the table says Canton, MS, do not output Tupelo, MS. If the table says Smyrna, TN, do not output Nashville, TN as destination; Nashville may only be market metadata.",
     "Detect vendor, RFx, quotation date, origin, destination, equipment, operation, service, linehaul, border fee, FSC, all-in rate, and weekly capacity.",
     "Set quote_date to the carrier quotation date, bid date, offer date, email sent date, or document issue date when explicitly present. Use YYYY-MM-DD when possible.",
     "Never use Tier 1, Tier 2, or Tier 3 as carrier rates.",
@@ -1113,10 +1116,13 @@ async function interpretWithModel(rawUpload: Record<string, string>, file: Blob)
   const auditPrompt = [
     systemPrompt,
     "",
-    "Completeness audit required: the first pass returned three or fewer rows from a PDF/image.",
+    "Completeness audit required: the first pass returned ten or fewer rows from a PDF/image.",
     "Re-read every page and every rate table. The prior result is probably incomplete if the document has a destination matrix, multiple service columns, or separate outbound/return sections.",
+    "If the table has a Total (USD) column and a final OW/RT marker, count each visible Total cell as one required staging row.",
+    "Specifically check for lower table rows after the first few destinations, including reverse lanes and RT rows.",
     "Expand every carrier-priced cell into its own row. Preserve all valid prior rows, but add missing lanes and service combinations.",
-    "Do not return only the first three routes. Do not collapse KY/MS/TN or other states into a summary.",
+    "Do not return only the first three or four routes. Do not collapse KY/MS/TN or other states into a summary.",
+    "Do not invent replacement destinations from a state abbreviation. Use the city text shown in the table row.",
     "If a cell is X, N/A, blank, Tier 1/2/3, or Please Estimate, ignore only that cell."
   ].join("\n");
 
