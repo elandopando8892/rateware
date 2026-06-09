@@ -158,10 +158,28 @@ function includesAny(value: unknown, tokens: string[]) {
   return tokens.some((token) => key.includes(rawKey(token)));
 }
 
+function hasCatalogToken(value: unknown, token: string) {
+  const key = rawKey(value);
+  const lookup = rawKey(token);
+  if (!key || !lookup) return false;
+  return new RegExp(`(^| )${lookup}( |$)`).test(key);
+}
+
+function serviceFromText(value: unknown) {
+  const key = rawKey(value);
+  if (!key) return null;
+  if (hasCatalogToken(key, "RT") || key.includes("ROUND TRIP") || key.includes("ROUNDTRIP")) return "Roundtrip";
+  if (key.includes("BACKHAUL")) return "Backhaul";
+  if (hasCatalogToken(key, "OW") || key.includes("ONE WAY") || key.includes("ONEWAY")) return "One Way";
+  return null;
+}
+
 function normalizeRatewareAliases(row: Record<string, unknown>) {
   const normalized = { ...row };
   const equipmentText = [normalized.equipment, normalized.trailer, normalized.config].filter(Boolean).join(" ");
-  const operationText = [normalized.operation, normalized.service, normalized.notes].filter(Boolean).join(" ");
+  const operationText = [normalized.operation, normalized.notes].filter(Boolean).join(" ");
+  const serviceText = [normalized.service, normalized.operation, normalized.notes].filter(Boolean).join(" ");
+  const resolvedService = serviceFromText(serviceText);
 
   if (includesAny(equipmentText, ["DV53", "53 ft", "53FT", "53'", "dry van 53", "dryvan"])) {
     normalized.equipment = "Truck Trailer";
@@ -175,15 +193,11 @@ function normalizeRatewareAliases(row: Record<string, unknown>) {
 
   if (includesAny(operationText, ["OW Impo", "OW Import", "Import"])) {
     normalized.operation = "D2D Import";
-    normalized.service = "One Way";
   } else if (includesAny(operationText, ["OW Expo", "OW Export", "Export"])) {
     normalized.operation = "D2D Export";
-    normalized.service = "One Way";
-  } else if (includesAny(operationText, ["RT", "Round Trip", "Roundtrip"])) {
-    normalized.service = "Roundtrip";
-  } else if (includesAny(operationText, ["One Way", "OW"])) {
-    normalized.service = "One Way";
   }
+
+  if (resolvedService) normalized.service = resolvedService;
 
   if (includesAny(operationText, ["Cross-border", "Cross border", "Crossborder"]) && !includesAny(normalized.operation, ["D2D", "Northbound", "Southbound"])) {
     normalized.operation = "D2D Import";
@@ -1020,7 +1034,8 @@ async function interpretWithModel(rawUpload: Record<string, string>, file: Blob)
     "Ignore Marksman, heymarksman.com, or marksmanxbf.com template/layout/proposal rows. Those are the shipper's requested template, not the carrier response.",
     "Only capture the carrier's submitted proposal/rates. If the document contains both Marksman template values and carrier response values, return only the carrier response values.",
     "Normalize commercial fields to Rateware catalog language. For a 53 dry van trailer, use equipment Truck Trailer, trailer Dry Van, config Single. Do not return raw carrier shortcuts such as DV53, 53 ft, OW Impo, OW Export, RT, or Truckload as final values.",
-    "Normalize service to catalog language: one-way moves are One Way, round trips are Roundtrip, backhauls are Backhaul.",
+    "Separate operation from service. Import, Export, Northbound, and Southbound define operation. OW, One Way, RT, Round Trip, and Backhaul define service.",
+    "Normalize service to catalog language from the quote's service marker: OW or One Way means One Way; RT, Round Trip, or Roundtrip means Roundtrip; Backhaul means Backhaul. Do not infer One Way just because the operation is Import or Export.",
     "Normalize operation from the Mexico operating perspective, not the US perspective. MX to US/CA is D2D Export. US/CA to MX is D2D Import.",
     "For Mexican border legs, MX interior to Mexican border is MX Northbound; Mexican border to MX interior is MX Southbound.",
     "For US/CA border legs, US border to US/CA interior is US Northbound; US/CA interior to US border is US Southbound.",
