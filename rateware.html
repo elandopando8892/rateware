@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Rateware Upload History</title>
+    <title>Rateware Approved Rates</title>
     <link rel="stylesheet" href="./src/styles.css" />
   </head>
   <body>
@@ -13,9 +13,9 @@
         <nav>
           <a href="./app.html">Dashboard</a>
           <a href="./upload-center.html">Upload Center</a>
-          <a aria-current="page" href="./upload-history.html">Upload History</a>
+          <a href="./upload-history.html">Upload History</a>
           <a href="./staging-review.html">Staging Review</a>
-          <a href="./rateware.html">Rateware</a>
+          <a aria-current="page" href="./rateware.html">Rateware</a>
           <a href="./vendors.html">Vendors</a>
           <a class="disabled-link" href="#" aria-disabled="true">RFx Events</a>
         </nav>
@@ -24,8 +24,8 @@
       <div class="page-frame">
         <header class="page-header">
           <div>
-            <p class="eyebrow">Source archive</p>
-            <h1>Upload History</h1>
+            <p class="eyebrow">Approved rate book</p>
+            <h1>Rateware</h1>
           </div>
           <form id="auth-form" class="auth-strip">
             <button id="auth-button" type="submit">Sign in with Kinde</button>
@@ -36,38 +36,48 @@
 
         <main class="history-layout">
           <section class="workspace-panel">
-            <div class="toolbar">
+            <div class="toolbar rateware-toolbar">
               <label>
-                Status
-                <select id="status-filter">
-                  <option value="current">Current</option>
-                  <option value="uploaded">Uploaded</option>
-                  <option value="staged">Staged</option>
-                  <option value="failed">Failed</option>
-                  <option value="archived">Archived</option>
+                Search
+                <input id="rateware-search" placeholder="Vendor, RFx, city, market..." />
+              </label>
+              <label>
+                Operation
+                <select id="rateware-operation-filter">
                   <option value="">All</option>
                 </select>
               </label>
-              <button id="refresh-button" type="button">Refresh</button>
+              <label>
+                Service
+                <select id="rateware-service-filter">
+                  <option value="">All</option>
+                </select>
+              </label>
+              <button id="refresh-rateware-button" type="button">Refresh</button>
             </div>
 
             <div class="table-wrap">
-              <table>
+              <table class="rateware-table">
                 <thead>
                   <tr>
-                    <th>Uploaded</th>
-                    <th>File</th>
-                    <th>Type</th>
                     <th>Vendor</th>
+                    <th>Quote date</th>
                     <th>RFx</th>
-                    <th>Status</th>
-                    <th>Storage</th>
-                    <th>Action</th>
+                    <th>Origin</th>
+                    <th>Destination</th>
+                    <th>Operation</th>
+                    <th>Service</th>
+                    <th>Equipment</th>
+                    <th>All-in</th>
+                    <th>Currency</th>
+                    <th>Capacity</th>
+                    <th>Border</th>
+                    <th>Source</th>
                   </tr>
                 </thead>
-                <tbody id="history-body">
+                <tbody id="rateware-body">
                   <tr>
-                    <td colspan="8">Loading uploads...</td>
+                    <td colspan="13">Loading approved rates...</td>
                   </tr>
                 </tbody>
               </table>
@@ -77,6 +87,6 @@
       </div>
     </div>
 
-    <script type="module" src="./src/upload-history.js"></script>
+    <script type="module" src="./src/rateware.js"></script>
   </body>
 </html>

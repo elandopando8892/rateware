@@ -1102,6 +1102,32 @@ tbody tr:hover {
   min-width: 230px;
 }
 
+.rateware-toolbar {
+  grid-template-columns: minmax(240px, 1fr) minmax(150px, 220px) minmax(150px, 220px) auto;
+}
+
+.rateware-table {
+  min-width: 1680px;
+}
+
+.rateware-table th,
+.rateware-table td {
+  padding: 8px 10px;
+  vertical-align: middle;
+}
+
+.rateware-table td span,
+.rateware-location-cell span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.75rem;
+  margin-top: 3px;
+}
+
+.rateware-location-cell {
+  min-width: 190px;
+}
+
 .vendor-review-cell {
   min-width: 180px;
 }

@@ -411,6 +411,38 @@ Deno.serve(async (request) => {
       return jsonResponse({ rows: result.data });
     }
 
+    if (body.action === "list_rateware") {
+      let query = supabase
+        .from("rate_staging")
+        .select("*, vendors(vendor_name, domain)")
+        .eq("status", "approved")
+        .order("quote_date", { ascending: false, nullsFirst: false })
+        .order("created_at", { ascending: false })
+        .limit(500);
+
+      if (body.operation) query = query.eq("operation", body.operation);
+      if (body.service) query = query.eq("service", body.service);
+      if (body.search) {
+        const term = String(body.search).trim();
+        if (term) {
+          query = query.or([
+            `vendor_domain.ilike.%${term}%`,
+            `rfx_id.ilike.%${term}%`,
+            `origin.ilike.%${term}%`,
+            `destination.ilike.%${term}%`,
+            `normalized_origin.ilike.%${term}%`,
+            `normalized_destination.ilike.%${term}%`,
+            `origin_market.ilike.%${term}%`,
+            `destination_market.ilike.%${term}%`
+          ].join(","));
+        }
+      }
+
+      const result = await query;
+      if (result.error) throw result.error;
+      return jsonResponse({ rows: result.data });
+    }
+
     if (body.action === "list_staging_options") {
       const [catalog, locations, borderPairs] = await Promise.all([
         supabase
