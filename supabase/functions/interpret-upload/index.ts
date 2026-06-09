@@ -149,6 +149,74 @@ function cleanText(value: unknown) {
   return text ? text : null;
 }
 
+function rawKey(value: unknown) {
+  return catalogKey(value);
+}
+
+function includesAny(value: unknown, tokens: string[]) {
+  const key = rawKey(value);
+  return tokens.some((token) => key.includes(rawKey(token)));
+}
+
+function normalizeRatewareAliases(row: Record<string, unknown>) {
+  const normalized = { ...row };
+  const equipmentText = [normalized.equipment, normalized.trailer, normalized.config].filter(Boolean).join(" ");
+  const operationText = [normalized.operation, normalized.service, normalized.notes].filter(Boolean).join(" ");
+
+  if (includesAny(equipmentText, ["DV53", "53 ft", "53FT", "53'", "dry van 53", "dryvan"])) {
+    normalized.equipment = "Truck Trailer";
+    if (!cleanText(normalized.trailer) || includesAny(normalized.trailer, ["DV53", "53 ft", "53FT"])) {
+      normalized.trailer = "Dry Van";
+    }
+    if (!cleanText(normalized.config) || includesAny(normalized.config, ["53 ft", "53FT", "DV53"])) {
+      normalized.config = "Single";
+    }
+  }
+
+  if (includesAny(operationText, ["OW Impo", "OW Import", "Import"])) {
+    normalized.operation = "D2D Import";
+    normalized.service = "One Way";
+  } else if (includesAny(operationText, ["OW Expo", "OW Export", "Export"])) {
+    normalized.operation = "D2D Export";
+    normalized.service = "One Way";
+  } else if (includesAny(operationText, ["RT", "Round Trip", "Roundtrip"])) {
+    normalized.service = "Roundtrip";
+  } else if (includesAny(operationText, ["One Way", "OW"])) {
+    normalized.service = "One Way";
+  }
+
+  if (includesAny(operationText, ["Cross-border", "Cross border", "Crossborder"]) && !includesAny(normalized.operation, ["D2D", "Northbound", "Southbound"])) {
+    normalized.operation = "D2D Import";
+  }
+
+  return normalized;
+}
+
+function isBridgeName(value: unknown) {
+  return includesAny(value, ["Puente", "Bridge", "World Trade", "Colombia", "Internacional"]);
+}
+
+function isD2DCrossBorder(row: Record<string, unknown>) {
+  const originCountry = String(row.origin_country || "");
+  const destinationCountry = String(row.destination_country || "");
+  const hasMx = originCountry === "MX" || destinationCountry === "MX";
+  const hasUs = originCountry === "US" || destinationCountry === "US" || originCountry === "CA" || destinationCountry === "CA";
+  const operation = rawKey(row.operation || row.normalized_operation);
+  return hasMx && hasUs && (operation.includes("D2D") || operation.includes("CROSS BORDER") || operation.includes("CROSSBORDER"));
+}
+
+function normalizeBorderCities(row: Record<string, unknown>) {
+  if (!isD2DCrossBorder(row)) return row;
+  const next = { ...row };
+  if (!cleanText(next.mx_border_crossing_point) || isBridgeName(next.mx_border_crossing_point)) {
+    next.mx_border_crossing_point = "Nuevo Laredo, TM";
+  }
+  if (!cleanText(next.us_border_crossing_point) || isBridgeName(next.us_border_crossing_point)) {
+    next.us_border_crossing_point = "Laredo, TX";
+  }
+  return next;
+}
+
 function cleanDate(value: unknown) {
   const text = cleanText(value);
   if (!text) return null;
@@ -255,41 +323,42 @@ function buildKeys(row: Record<string, unknown>) {
 }
 
 function normalizeRow(row: Record<string, unknown>, rawUploadId: string, jobId: string, vendorId: string | null = null) {
+  const interpreted = normalizeRatewareAliases(row);
   const base = {
     raw_upload_id: rawUploadId,
     interpretation_job_id: jobId,
     vendor_id: vendorId,
     status: "pending_review",
-    vendor_domain: cleanText(row.vendor_domain),
-    rfx_id: cleanText(row.rfx_id),
-    quote_date: cleanDate(row.quote_date),
-    row_id: cleanText(row.row_id),
-    origin: cleanText(row.origin),
-    destination: cleanText(row.destination),
-    equipment: cleanText(row.equipment),
-    trailer: cleanText(row.trailer),
-    config: cleanText(row.config),
-    operation: cleanText(row.operation),
-    service: cleanText(row.service),
-    driver: cleanText(row.driver),
-    mx_border_crossing_point: cleanText(row.mx_border_crossing_point),
-    us_border_crossing_point: cleanText(row.us_border_crossing_point),
-    mx_linehaul: cleanRateValue(row.mx_linehaul),
-    us_linehaul: cleanRateValue(row.us_linehaul),
-    us_miles: cleanRateValue(row.us_miles),
-    fsc: cleanRateValue(row.fsc),
-    carrier_fsc_per_mile: cleanNumber(row.fsc),
-    fuel: cleanRateValue(row.fuel),
-    border_crossing_fee: cleanRateValue(row.border_crossing_fee),
-    flat_rate: cleanRateValue(row.flat_rate),
-    all_in_rate: cleanRateValue(row.all_in_rate),
-    currency: cleanText(row.currency),
-    weekly_capacity: cleanText(row.weekly_capacity),
-    notes: cleanText(row.notes),
-    accessorials: cleanText(row.accessorials),
-    confidence: Math.max(0, Math.min(1, Number(row.confidence) || 0)),
-    extraction_warnings: Array.isArray(row.extraction_warnings) ? row.extraction_warnings.map(String) : [],
-    extracted_payload: row
+    vendor_domain: cleanText(interpreted.vendor_domain),
+    rfx_id: cleanText(interpreted.rfx_id),
+    quote_date: cleanDate(interpreted.quote_date),
+    row_id: cleanText(interpreted.row_id),
+    origin: cleanText(interpreted.origin),
+    destination: cleanText(interpreted.destination),
+    equipment: cleanText(interpreted.equipment),
+    trailer: cleanText(interpreted.trailer),
+    config: cleanText(interpreted.config),
+    operation: cleanText(interpreted.operation),
+    service: cleanText(interpreted.service),
+    driver: cleanText(interpreted.driver),
+    mx_border_crossing_point: cleanText(interpreted.mx_border_crossing_point),
+    us_border_crossing_point: cleanText(interpreted.us_border_crossing_point),
+    mx_linehaul: cleanRateValue(interpreted.mx_linehaul),
+    us_linehaul: cleanRateValue(interpreted.us_linehaul),
+    us_miles: cleanRateValue(interpreted.us_miles),
+    fsc: cleanRateValue(interpreted.fsc),
+    carrier_fsc_per_mile: cleanNumber(interpreted.fsc),
+    fuel: cleanRateValue(interpreted.fuel),
+    border_crossing_fee: cleanRateValue(interpreted.border_crossing_fee),
+    flat_rate: cleanRateValue(interpreted.flat_rate),
+    all_in_rate: cleanRateValue(interpreted.all_in_rate),
+    currency: cleanText(interpreted.currency),
+    weekly_capacity: cleanText(interpreted.weekly_capacity),
+    notes: cleanText(interpreted.notes),
+    accessorials: cleanText(interpreted.accessorials),
+    confidence: Math.max(0, Math.min(1, Number(interpreted.confidence) || 0)),
+    extraction_warnings: Array.isArray(interpreted.extraction_warnings) ? interpreted.extraction_warnings.map(String) : [],
+    extracted_payload: interpreted
   };
 
   return { ...base, ...buildKeys(base) };
@@ -815,6 +884,18 @@ function normalizeWithCatalog(rows: Record<string, unknown>[], catalogItems: Rec
       normalized_driver: (driverMatch?.normalized_value as string) || null
     };
 
+    if (normalized.normalized_equipment) normalized.equipment = normalized.normalized_equipment;
+    if (normalized.normalized_trailer) normalized.trailer = normalized.normalized_trailer;
+    if (normalized.normalized_config) normalized.config = normalized.normalized_config;
+    if (normalized.normalized_operation) normalized.operation = normalized.normalized_operation;
+    if (normalized.normalized_service) normalized.service = normalized.normalized_service;
+    if (normalized.normalized_driver) normalized.driver = normalized.normalized_driver;
+
+    if (isD2DCrossBorder(normalized) && !includesAny(normalized.operation, ["D2D Import", "D2D Export"])) {
+      normalized.operation = normalized.origin_country === "MX" ? "D2D Import" : "D2D Export";
+    }
+    Object.assign(normalized, normalizeBorderCities(normalized));
+
     const matchCount = [
       originMatch,
       destinationMatch,
@@ -840,6 +921,7 @@ function normalizeWithCatalog(rows: Record<string, unknown>[], catalogItems: Rec
       if (!normalized.us_miles && lane.miles) normalized.us_miles = String(lane.miles);
     }
 
+    Object.assign(normalized, buildKeys(normalized));
     normalized.catalog_match_status = matchCount >= 5 ? "matched" : matchCount >= 2 ? "partial" : "unmatched";
     normalized.location_match_status = originLocation && destinationLocation ? "matched" : originLocation || destinationLocation ? "partial" : "unmatched";
     return addFuelAudit(normalized, fuelRegions, fscTrend);
@@ -885,7 +967,14 @@ async function interpretWithModel(rawUpload: Record<string, string>, file: Blob)
     "Ignore X, N/A, and Please Estimate as rates.",
     "Ignore Marksman, heymarksman.com, or marksmanxbf.com template/layout/proposal rows. Those are the shipper's requested template, not the carrier response.",
     "Only capture the carrier's submitted proposal/rates. If the document contains both Marksman template values and carrier response values, return only the carrier response values.",
-    "If a quote is all-in without breakdown, put the value in all_in_rate or flat_rate and explain in notes.",
+    "Normalize commercial fields to Rateware catalog language. For a 53 dry van trailer, use equipment Truck Trailer, trailer Dry Van, config Single. Do not return raw carrier shortcuts such as DV53, 53 ft, OW Impo, OW Export, RT, or Truckload as final values.",
+    "Normalize service to catalog language: one-way moves are One Way, round trips are Roundtrip, backhauls are Backhaul.",
+    "Normalize D2D cross-border operation to D2D Import or D2D Export using the carrier quote direction. For the common MX-to-US import quote pattern, use D2D Import and service One Way unless the carrier clearly says roundtrip.",
+    "Border crossing fields are border cities, not bridge or customs-port names. Do not output Puente Internacional or bridge names as crossings.",
+    "For D2D cross-border rows, if the carrier does not explicitly state border cities, default mx_border_crossing_point to Nuevo Laredo, TM and us_border_crossing_point to Laredo, TX.",
+    "Populate mx_linehaul, us_linehaul, fsc, fuel, and border_crossing_fee only when the carrier explicitly itemizes those charges in the quote.",
+    "If a quote gives one all-in price without breakdown, put the value in all_in_rate, leave mx_linehaul, us_linehaul, fsc, fuel, and border_crossing_fee null, and explain that it is all-in in notes.",
+    "Extract weekly_capacity when the carrier states capacity, trucks per week, loads per week, or an available capacity range. Use null when not stated.",
     "Return only rows that represent carrier rates or capacity responses.",
     "Use null when a value is missing. Do not invent rates."
   ].join("\n");

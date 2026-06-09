@@ -456,7 +456,6 @@ Deno.serve(async (request) => {
         .slice(0, 5000);
 
       const mxCrossings = Array.from(new Set([
-        ...(categories.border_crossing || []),
         ...(borderPairs.data || []).map((pair) => [pair.mx_city, pair.mx_state].filter(Boolean).join(", "))
       ].filter(Boolean))).sort((a, b) => a.localeCompare(b));
 

@@ -27,7 +27,7 @@ let stagingOptions = {
   us_crossings: [],
   currencies: ["USD", "MXN", "CAD"]
 };
-const STAGING_COLSPAN = 29;
+const STAGING_COLSPAN = 26;
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -47,9 +47,7 @@ function dateValue(value) {
 
 function inputCell(row, field, options = {}) {
   const widthClass = options.wide ? "wide-input" : options.money ? "money-input" : options.short ? "short-input" : "";
-  const value = field === "confidence"
-    ? Math.round(Number(row[field] || 0) * 100)
-    : options.type === "date"
+  const value = options.type === "date"
       ? dateValue(row[field])
       : row[field] || "";
   return `<input class="staging-input ${widthClass}" data-field="${field}" type="${options.type || "text"}" value="${escapeHtml(value)}" ${options.min ? `min="${escapeHtml(options.min)}"` : ""} ${options.max ? `max="${escapeHtml(options.max)}"` : ""} ${options.step ? `step="${escapeHtml(options.step)}"` : ""} />`;
@@ -120,14 +118,6 @@ function compactMarketCell(row, prefix) {
   const region = row[`${prefix}_region`] || "";
   const title = [market && `Market: ${market}`, region && `Region: ${region}`].filter(Boolean).join(" | ");
   return `<span class="location-text" title="${escapeHtml(title)}">${escapeHtml(market || "-")}</span>`;
-}
-
-function compactBorderCell(row) {
-  const mx = row.mx_border_crossing_point || "";
-  const us = row.us_border_crossing_point || "";
-  const summary = row.leg_summary || "";
-  const text = [mx, us].filter(Boolean).join(" / ") || "-";
-  return `<span class="location-text border-pair-text" title="${escapeHtml(summary || text)}">${escapeHtml(text)}</span>`;
 }
 
 function renderDatalists() {
@@ -282,16 +272,13 @@ function renderRows(rows) {
           <td>${selectCell(row, "service", stagingOptions.categories.service || [], { short: true })}</td>
           <td>${selectCell(row, "mx_border_crossing_point", stagingOptions.mx_crossings || [], { short: true })}</td>
           <td>${selectCell(row, "us_border_crossing_point", stagingOptions.us_crossings || [], { short: true })}</td>
-          <td>${compactBorderCell(row)}</td>
           <td>${inputCell(row, "mx_linehaul", { money: true })}</td>
           <td>${inputCell(row, "us_linehaul", { money: true })}</td>
           <td>${inputCell(row, "fsc", { money: true })}</td>
           <td>${inputCell(row, "border_crossing_fee", { money: true })}</td>
           <td>${inputCell(row, "all_in_rate", { money: true })}</td>
-          <td>${inputCell(row, "normalized_all_in_rate", { money: true })}</td>
           <td>${selectCell(row, "currency", stagingOptions.currencies || ["USD", "MXN", "CAD"], { short: true })}</td>
           <td>${inputCell(row, "weekly_capacity", { short: true })}</td>
-          <td>${inputCell(row, "confidence", { type: "number", min: "0", max: "100", step: "1", short: true })}</td>
           <td>${statusSelect(row)}</td>
           <td class="review-actions">
             <button type="button" class="small-button secondary" data-detail-id="${escapeHtml(row.id)}">Details</button>
@@ -334,7 +321,6 @@ function openEditDrawer(id) {
   document.querySelector("#edit-all-in-rate").value = row.all_in_rate || "";
   document.querySelector("#edit-currency").value = row.currency || "";
   document.querySelector("#edit-weekly-capacity").value = row.weekly_capacity || "";
-  document.querySelector("#edit-confidence").value = Math.round(Number(row.confidence || 0) * 100);
   document.querySelector("#edit-notes").value = row.notes || "";
   renderRowDetail(row);
   setStatus("");
@@ -346,7 +332,7 @@ function readInlinePatch(tableRow, status = null) {
   tableRow.querySelectorAll("[data-field]").forEach((input) => {
     patch[input.dataset.field] = input.value;
   });
-  patch.confidence = Number(patch.confidence || 0) / 100;
+  if (patch.confidence !== undefined) patch.confidence = Number(patch.confidence || 0) / 100;
   if (status) patch.status = status;
   return patch;
 }
@@ -401,7 +387,6 @@ function readPatch(status = null) {
     all_in_rate: document.querySelector("#edit-all-in-rate").value,
     currency: document.querySelector("#edit-currency").value,
     weekly_capacity: document.querySelector("#edit-weekly-capacity").value,
-    confidence: Number(document.querySelector("#edit-confidence").value || 0) / 100,
     notes: document.querySelector("#edit-notes").value
   };
 
