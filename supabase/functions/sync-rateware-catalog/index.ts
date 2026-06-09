@@ -561,20 +561,27 @@ Deno.serve(async (request) => {
     await requireKindeUser(request);
     const body = await request.json().catch(() => ({}));
     const sheetId = cleanText(body.sheet_id) || Deno.env.get("RATEWARE_CATALOG_SHEET_ID") || DEFAULT_SHEET_ID;
+    const mode = cleanText(body.mode) || "core";
+    const includeLaneMileage = mode === "full" || body.include_lane_mileage === true;
     const supabase = getClient();
 
-    const [cusCatalog, usaLaneData, mexLaneData, usaLaneProd, mexLaneProd, usaFuel, usaFSCtrend, usaFSCindex, assumptionsSheet, factorsSheet] = await Promise.all([
+    const [cusCatalog, usaFuel, usaFSCtrend, usaFSCindex, assumptionsSheet, factorsSheet] = await Promise.all([
       fetchOptionalSheet(sheetId, "cusCatalog"),
-      fetchOptionalSheet(sheetId, "usaLaneData"),
-      fetchOptionalSheet(sheetId, "mexLaneData"),
-      fetchOptionalSheet(sheetId, "usaLaneProd"),
-      fetchOptionalSheet(sheetId, "mexLaneProd"),
       fetchOptionalSheet(sheetId, "usaFuel"),
       fetchOptionalSheet(sheetId, "usaFSCtrend"),
       fetchOptionalSheet(sheetId, "usaFSCindex"),
       fetchOptionalSheet(sheetId, "Assumptions"),
       fetchOptionalSheet(sheetId, "Factors")
     ]);
+
+    const [usaLaneData, mexLaneData, usaLaneProd, mexLaneProd] = includeLaneMileage
+      ? await Promise.all([
+        fetchOptionalSheet(sheetId, "usaLaneData"),
+        fetchOptionalSheet(sheetId, "mexLaneData"),
+        fetchOptionalSheet(sheetId, "usaLaneProd"),
+        fetchOptionalSheet(sheetId, "mexLaneProd")
+      ])
+      : [[], [], [], []];
 
     const catalog = parseCusCatalog(cusCatalog);
     const uniqueCatalogItems = [...new Map(catalog.items.map((item) => [`${item.category}|${item.raw_value}|${item.normalized_value}`, item])).values()];
@@ -588,7 +595,9 @@ Deno.serve(async (request) => {
 
     await upsertInBatches(supabase, "rateware_catalog_items", uniqueCatalogItems, "source,category,raw_value,normalized_value");
     await upsertInBatches(supabase, "rateware_locations", uniqueLocations, "source,location_key");
-    await upsertInBatches(supabase, "rateware_lane_mileage", laneMileage, "source,route_key");
+    if (includeLaneMileage) {
+      await upsertInBatches(supabase, "rateware_lane_mileage", laneMileage, "source,route_key");
+    }
     const fuelRegions = parseFuelRegions(usaFuel) as Record<string, unknown>[];
     const fscTrend = parseFscTrend(usaFSCtrend) as Record<string, unknown>[];
     const fscIndex = parseFscIndex(usaFSCindex) as Record<string, unknown>[];
@@ -605,6 +614,7 @@ Deno.serve(async (request) => {
 
     return jsonResponse({
       sheet_id: sheetId,
+      mode,
       catalog_items: uniqueCatalogItems.length,
       locations: uniqueLocations.length,
       lane_mileage: laneMileage.length,

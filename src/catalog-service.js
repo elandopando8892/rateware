@@ -1,7 +1,7 @@
 import { getKindeToken } from "./auth.js";
 import { SUPABASE_URL } from "./config.js";
 
-export async function syncRatewareCatalog() {
+export async function syncRatewareCatalog(mode = "core") {
   const token = await getKindeToken();
   const response = await fetch(`${SUPABASE_URL}/functions/v1/sync-rateware-catalog`, {
     method: "POST",
@@ -9,7 +9,7 @@ export async function syncRatewareCatalog() {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json"
     },
-    body: JSON.stringify({})
+    body: JSON.stringify({ mode })
   });
 
   const text = await response.text();
