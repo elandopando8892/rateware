@@ -1,5 +1,5 @@
 import { applyPermissionState, ensureSignedIn, initAuthControls, requirePrivatePage } from "./auth.js";
-import { fetchUploadHistory, interpretUpload } from "./upload-service.js";
+import { archiveUpload, fetchUploadHistory, interpretUpload, removeUpload } from "./upload-service.js";
 
 const historyBody = document.querySelector("#history-body");
 const refreshButton = document.querySelector("#refresh-button");
@@ -48,9 +48,12 @@ function renderRows(rows) {
           <td>${escapeHtml(row.rfx_hint || "")}</td>
           <td><span class="status-pill">${escapeHtml(row.status)}</span></td>
           <td>${escapeHtml(row.storage_path)}</td>
-          <td>
-            <button type="button" class="small-button" data-interpret-id="${escapeHtml(row.id)}">Interpret</button>
+          <td class="history-actions">
+            ${row.status === "archived" ? "" : `<button type="button" class="small-button" data-interpret-id="${escapeHtml(row.id)}">Interpret</button>`}
+            ${row.status === "archived" ? "" : `<button type="button" class="small-button secondary" data-archive-id="${escapeHtml(row.id)}">Archive</button>`}
+            <button type="button" class="small-button danger" data-remove-id="${escapeHtml(row.id)}">Remove</button>
             ${row.error_message ? `<small class="error-detail">${escapeHtml(row.error_message)}</small>` : ""}
+            <small class="row-save-status" data-upload-status="${escapeHtml(row.id)}"></small>
           </td>
         </tr>
       `
@@ -66,7 +69,7 @@ async function loadHistory() {
     await requirePrivatePage();
     const rows = await fetchUploadHistory({ status: statusFilter.value });
     renderRows(rows);
-    await applyPermissionState("[data-interpret-id]", "uploads:interpret");
+    await applyPermissionState("[data-interpret-id], [data-archive-id], [data-remove-id]", "uploads:interpret");
   } catch (error) {
     historyBody.innerHTML = `<tr><td colspan="8">Could not load upload history. ${escapeHtml(error.message)}</td></tr>`;
   } finally {
@@ -79,19 +82,50 @@ requirePrivatePage().catch(() => {});
 refreshButton.addEventListener("click", loadHistory);
 statusFilter.addEventListener("change", loadHistory);
 historyBody.addEventListener("click", async (event) => {
-  const button = event.target.closest("[data-interpret-id]");
+  const interpretButton = event.target.closest("[data-interpret-id]");
+  const archiveButton = event.target.closest("[data-archive-id]");
+  const removeButton = event.target.closest("[data-remove-id]");
+  const button = interpretButton || archiveButton || removeButton;
   if (!button) return;
 
   button.disabled = true;
-  button.textContent = "Interpreting...";
+  const rowId = interpretButton?.dataset.interpretId || archiveButton?.dataset.archiveId || removeButton?.dataset.removeId;
+  const status = historyBody.querySelector(`[data-upload-status="${CSS.escape(rowId)}"]`);
 
   try {
     await ensureSignedIn();
-    if (!(await applyPermissionState("[data-interpret-id]", "uploads:interpret"))) {
-      throw new Error("Your role does not allow interpretation.");
+    if (!(await applyPermissionState("[data-interpret-id], [data-archive-id], [data-remove-id]", "uploads:interpret"))) {
+      throw new Error("Your role does not allow upload actions.");
     }
-    const result = await interpretUpload(button.dataset.interpretId);
-    button.textContent = `${result.staged_rows} staged`;
+
+    if (interpretButton) {
+      button.textContent = "Interpreting...";
+      const result = await interpretUpload(rowId);
+      button.textContent = `${result.staged_rows} staged`;
+      return;
+    }
+
+    if (archiveButton) {
+      button.textContent = "Archiving...";
+      await archiveUpload(rowId);
+      if (status) {
+        status.textContent = "Archived";
+        status.dataset.tone = "success";
+      }
+      await loadHistory();
+      return;
+    }
+
+    if (removeButton) {
+      const confirmed = window.confirm("Remove this upload version and its staged rows? This cannot be undone.");
+      if (!confirmed) {
+        button.disabled = false;
+        return;
+      }
+      button.textContent = "Removing...";
+      await removeUpload(rowId);
+      await loadHistory();
+    }
   } catch (error) {
     button.textContent = "Failed";
     button.title = error.message;

@@ -343,7 +343,7 @@ Deno.serve(async (request) => {
 
     if (body.action === "dashboard_summary") {
       const [uploads, vendors, pending, approved, failed] = await Promise.all([
-        supabase.from("raw_uploads").select("id", { count: "exact", head: true }),
+        supabase.from("raw_uploads").select("id", { count: "exact", head: true }).neq("status", "archived"),
         supabase.from("vendors").select("id", { count: "exact", head: true }),
         supabase.from("rate_staging").select("id", { count: "exact", head: true }).eq("status", "pending_review"),
         supabase.from("rate_staging").select("id", { count: "exact", head: true }).eq("status", "approved"),
@@ -365,10 +365,42 @@ Deno.serve(async (request) => {
 
     if (body.action === "list_uploads") {
       let query = supabase.from("raw_uploads").select("*, vendors(vendor_name, domain)").order("created_at", { ascending: false }).limit(100);
-      if (body.status) query = query.eq("status", body.status);
+      if (body.status === "current" || body.status === undefined) query = query.neq("status", "archived");
+      else if (body.status) query = query.eq("status", body.status);
       const result = await query;
       if (result.error) throw result.error;
       return jsonResponse({ rows: result.data });
+    }
+
+    if (body.action === "archive_upload") {
+      if (!body.id) return jsonResponse({ error: "Upload id is required." }, 400);
+      const result = await supabase
+        .from("raw_uploads")
+        .update({ status: "archived" })
+        .eq("id", body.id)
+        .select("*, vendors(vendor_name, domain)")
+        .single();
+      if (result.error) throw result.error;
+      return jsonResponse({ row: result.data });
+    }
+
+    if (body.action === "remove_upload") {
+      if (!body.id) return jsonResponse({ error: "Upload id is required." }, 400);
+      const upload = await supabase
+        .from("raw_uploads")
+        .select("id,storage_bucket,storage_path")
+        .eq("id", body.id)
+        .single();
+      if (upload.error) throw upload.error;
+
+      if (upload.data?.storage_bucket && upload.data?.storage_path) {
+        const storage = await supabase.storage.from(upload.data.storage_bucket).remove([upload.data.storage_path]);
+        if (storage.error) throw storage.error;
+      }
+
+      const result = await supabase.from("raw_uploads").delete().eq("id", body.id).select("id").single();
+      if (result.error) throw result.error;
+      return jsonResponse({ removed: result.data });
     }
 
     if (body.action === "list_staging") {

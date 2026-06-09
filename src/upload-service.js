@@ -33,6 +33,14 @@ export async function fetchUploadHistory({ status = "" } = {}) {
   return (await callRatewareApi("list_uploads", { status })).rows;
 }
 
+export async function archiveUpload(rawUploadId) {
+  return (await callRatewareApi("archive_upload", { id: rawUploadId })).row;
+}
+
+export async function removeUpload(rawUploadId) {
+  return (await callRatewareApi("remove_upload", { id: rawUploadId })).removed;
+}
+
 export async function interpretUpload(rawUploadId) {
   const token = await getKindeToken();
   const response = await fetch(`${SUPABASE_URL}/functions/v1/interpret-upload`, {

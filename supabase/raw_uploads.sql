@@ -11,7 +11,7 @@ create table if not exists public.raw_uploads (
   document_type text not null check (document_type in ('xlsx', 'pdf', 'image', 'email')),
   vendor_hint text,
   rfx_hint text,
-  status text not null default 'uploaded' check (status in ('uploaded', 'staged', 'failed')),
+  status text not null default 'uploaded' check (status in ('uploaded', 'staged', 'failed', 'archived')),
   staging_target text not null default 'rate_staging',
   interpreted_at timestamptz,
   error_message text,
