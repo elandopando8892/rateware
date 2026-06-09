@@ -282,6 +282,94 @@ function normalizeBorderCities(row: Record<string, unknown>) {
   return next;
 }
 
+function sameD2DContext(left: Record<string, unknown>, right: Record<string, unknown>) {
+  const fields = ["vendor_domain", "rfx_id", "quote_date", "equipment", "trailer", "config", "service"];
+  return fields.every((field) => catalogKey(left[field]) === catalogKey(right[field]));
+}
+
+function isLaredoLocation(row: Record<string, unknown>, prefix: "origin" | "destination") {
+  return includesAny([row[prefix], row[`${prefix}_city`], row[`${prefix}_market`]].filter(Boolean).join(" "), ["Laredo"]);
+}
+
+function contextSupportsD2DAllIn(row: Record<string, unknown>, contextText: string) {
+  const text = [contextText, row.vendor_domain, row.notes, row.extraction_warnings].filter(Boolean).join(" ");
+  return includesAny(text, ["intra-solution", "cruce incluido", "all in", "all-in", "d2d"]) && !includesAny(text, ["transbordo", "transload"]);
+}
+
+function mergeConnectedD2DAllInRows(rows: Record<string, unknown>[], contextText: string) {
+  const used = new Set<number>();
+  const merged: Record<string, unknown>[] = [];
+
+  for (let index = 0; index < rows.length; index += 1) {
+    if (used.has(index)) continue;
+    const mxLeg = rows[index];
+    const mxAmount = cleanNumber(mxLeg.all_in_rate) ?? cleanNumber(mxLeg.flat_rate) ?? cleanNumber(mxLeg.mx_linehaul);
+    const mxToBorder = mxLeg.origin_country === "MX"
+      && mxLeg.destination_country === "US"
+      && isLaredoLocation(mxLeg, "destination");
+
+    if (!mxToBorder || mxAmount === null || !contextSupportsD2DAllIn(mxLeg, contextText)) {
+      merged.push(mxLeg);
+      continue;
+    }
+
+    const matchIndex = rows.findIndex((candidate, candidateIndex) => {
+      if (candidateIndex === index || used.has(candidateIndex)) return false;
+      const usAmount = cleanNumber(candidate.all_in_rate) ?? cleanNumber(candidate.flat_rate) ?? cleanNumber(candidate.us_linehaul);
+      return usAmount !== null
+        && sameD2DContext(mxLeg, candidate)
+        && candidate.origin_country === "US"
+        && candidate.destination_country === "US"
+        && isLaredoLocation(candidate, "origin");
+    });
+
+    if (matchIndex === -1) {
+      merged.push(mxLeg);
+      continue;
+    }
+
+    const usLeg = rows[matchIndex];
+    const usAmount = cleanNumber(usLeg.all_in_rate) ?? cleanNumber(usLeg.flat_rate) ?? cleanNumber(usLeg.us_linehaul) ?? 0;
+    used.add(index);
+    used.add(matchIndex);
+    merged.push(normalizeBorderCities({
+      ...mxLeg,
+      row_id: [mxLeg.row_id, usLeg.row_id].filter(Boolean).join("+") || mxLeg.row_id,
+      destination: usLeg.destination,
+      normalized_destination: usLeg.normalized_destination,
+      destination_country: usLeg.destination_country,
+      destination_zip_prefix: usLeg.destination_zip_prefix,
+      destination_city: usLeg.destination_city,
+      destination_state: usLeg.destination_state,
+      destination_market: usLeg.destination_market,
+      destination_region: usLeg.destination_region,
+      destination_match_reason: usLeg.destination_match_reason,
+      destination_location_candidates: usLeg.destination_location_candidates,
+      operation: "D2D Export",
+      normalized_operation: "D2D Export",
+      service: mxLeg.service || usLeg.service || "One Way",
+      normalized_service: mxLeg.normalized_service || usLeg.normalized_service || "One Way",
+      mx_linehaul: null,
+      us_linehaul: null,
+      fsc: null,
+      fuel: null,
+      border_crossing_fee: null,
+      flat_rate: null,
+      all_in_rate: String(Number((mxAmount + usAmount).toFixed(2))),
+      mx_border_crossing_point: "Nuevo Laredo, TM",
+      us_border_crossing_point: "Laredo, TX",
+      notes: [
+        mxLeg.notes,
+        usLeg.notes,
+        `Connected D2D all-in: ${mxLeg.origin} to ${mxLeg.destination} ${mxAmount} + ${usLeg.origin} to ${usLeg.destination} ${usAmount}; quote context indicates crossing included and no transload.`
+      ].filter(Boolean).join(" | "),
+      location_match_status: "matched"
+    }));
+  }
+
+  return merged;
+}
+
 function cleanDate(value: unknown) {
   const text = cleanText(value);
   if (!text) return null;
@@ -1287,9 +1375,15 @@ Deno.serve(async (request) => {
       mxDiesel: mxDieselResult.error ? [] : mxDieselResult.data || [],
       fxRates: fxResult.error ? [] : fxResult.data || []
     });
-    const rows = normalizeWithCatalog(interpretation.rows
+    const normalizedRows = normalizeWithCatalog(interpretation.rows
       .filter((row: Record<string, unknown>) => isCarrierRateRow(row))
       .map((row: Record<string, unknown>) => normalizeRow(row, raw_upload_id, job.data.id, vendorId)), catalogItems, laneMileage, locations, fuelRegions, fscTrend);
+    const rows = mergeConnectedD2DAllInRows(normalizedRows, [
+      rawUpload.original_filename,
+      rawUpload.vendor_hint,
+      rawUpload.rfx_hint,
+      typeof interpretation.summary === "object" && interpretation.summary ? (interpretation.summary as Record<string, unknown>).document_notes : null
+    ].filter(Boolean).join(" "));
 
     if (rows.length) {
       const archivePrevious = await supabase

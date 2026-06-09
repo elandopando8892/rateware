@@ -507,7 +507,9 @@ Deno.serve(async (request) => {
           .from("rateware_locations")
           .select("source,raw_value,zip_prefix,metro_city,city,state_code,state_name,country,market,region")
           .eq("active", true)
-          .limit(5000),
+          .order("country", { ascending: false })
+          .order("market", { ascending: true })
+          .limit(20000),
         supabase
           .from("border_crossing_pairs")
           .select("mx_city,mx_state,us_city,us_state,crossing_name")

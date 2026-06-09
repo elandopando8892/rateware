@@ -241,6 +241,34 @@ const MX_LOCATION_ALIASES = [
     metroCity: "Toluca, Estado de Mexico",
     market: "Toluca Market",
     region: "Central Mexico"
+  },
+  {
+    rawValue: "Apodaca, NL",
+    zipPrefix: "640",
+    metroCity: "Apodaca, Nuevo Leon",
+    market: "Monterrey Market",
+    region: "Northeast Mexico"
+  },
+  {
+    rawValue: "Monterrey, NL",
+    zipPrefix: "640",
+    metroCity: "Monterrey, Nuevo Leon",
+    market: "Monterrey Market",
+    region: "Northeast Mexico"
+  },
+  {
+    rawValue: "Dallas, TX",
+    zipPrefix: "750",
+    metroCity: "Dallas, TX",
+    market: "Dallas Mkt (TX)",
+    region: "Texas"
+  },
+  {
+    rawValue: "Laredo, TX",
+    zipPrefix: "780",
+    metroCity: "Laredo, TX",
+    market: "Laredo Mkt (TX)",
+    region: "Texas"
   }
 ];
 
