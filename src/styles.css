@@ -880,17 +880,17 @@ table {
 }
 
 .staging-table {
-  min-width: 5120px;
+  min-width: 2480px;
 }
 
 .staging-table th,
 .staging-table td {
-  padding: 6px 8px;
+  padding: 4px 6px;
   vertical-align: middle;
 }
 
 .staging-table th {
-  font-size: 0.78rem;
+  font-size: 0.72rem;
   white-space: nowrap;
 }
 
@@ -1012,14 +1012,14 @@ tbody tr:hover {
 .review-actions {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 4px;
   flex-wrap: nowrap;
-  min-width: 205px;
+  min-width: 245px;
   white-space: nowrap;
 }
 
 .vendor-review-cell {
-  min-width: 220px;
+  min-width: 180px;
 }
 
 .vendor-review-cell strong {
@@ -1029,15 +1029,15 @@ tbody tr:hover {
 }
 
 .staging-input {
-  width: 136px;
-  min-height: 26px;
+  width: 118px;
+  min-height: 24px;
   border: 1px solid #c7d2da;
   border-radius: 5px;
   background: #fff;
   color: var(--text);
-  padding: 3px 6px;
+  padding: 2px 5px;
   font: inherit;
-  font-size: 0.78rem;
+  font-size: 0.74rem;
 }
 
 .staging-input:focus {
@@ -1046,15 +1046,15 @@ tbody tr:hover {
 }
 
 .staging-input.wide-input {
-  width: 220px;
+  width: 170px;
 }
 
 .staging-input.short-input {
-  width: 112px;
+  width: 92px;
 }
 
 .staging-input.money-input {
-  width: 104px;
+  width: 86px;
 }
 
 .row-save-status {
@@ -1066,11 +1066,73 @@ tbody tr:hover {
 }
 
 .staging-table button.small-button {
-  min-height: 26px;
-  padding: 4px 7px;
+  min-height: 24px;
+  padding: 3px 6px;
   border-radius: 5px;
   font-size: 0.72rem;
   line-height: 1;
+}
+
+.staging-row-detail {
+  display: grid;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.staging-row-detail section {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  background: #fbfcfc;
+}
+
+.staging-row-detail h3 {
+  margin: 0 0 8px;
+  font-size: 0.86rem;
+}
+
+.staging-row-detail dl {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr);
+  gap: 7px 10px;
+  margin: 0;
+}
+
+.staging-row-detail div {
+  display: contents;
+}
+
+.staging-row-detail dt {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 780;
+}
+
+.staging-row-detail dd {
+  margin: 0;
+  color: var(--text);
+  font-size: 0.78rem;
+  overflow-wrap: anywhere;
+}
+
+.leg-list {
+  display: grid;
+  gap: 8px;
+}
+
+.leg-card {
+  display: grid;
+  gap: 3px;
+  border: 1px solid #d6dee4;
+  border-radius: 6px;
+  background: #fff;
+  padding: 8px;
+  font-size: 0.78rem;
+}
+
+.leg-card small {
+  color: var(--muted);
+  font-weight: 760;
 }
 
 .row-save-status[data-tone="success"] {

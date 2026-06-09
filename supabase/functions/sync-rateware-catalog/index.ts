@@ -107,6 +107,14 @@ async function fetchSheet(sheetId: string, sheetName: string) {
   return parseCsv(await response.text());
 }
 
+async function fetchOptionalSheet(sheetId: string, sheetName: string) {
+  try {
+    return await fetchSheet(sheetId, sheetName);
+  } catch {
+    return [];
+  }
+}
+
 function catalogItem(category: string, rawValue: unknown, normalizedValue = rawValue, metadata: Record<string, unknown> = {}, code: unknown = null) {
   const raw = cleanText(rawValue);
   const normalized = cleanText(normalizedValue);
@@ -440,6 +448,7 @@ function previousPeriodMonth() {
 }
 
 function parseAssumptions(rows: string[][]) {
+  if (!rows.length) return { assumptions: [], mxDieselIndex: [], fxRates: [] };
   const [header, ...data] = rows;
   const index = Object.fromEntries(header.map((name, position) => [key(name), position]));
   const at = (row: string[], name: string) => row[index[key(name)]];
@@ -497,6 +506,7 @@ function parseAssumptions(rows: string[][]) {
 }
 
 function parseFactors(rows: string[][]) {
+  if (!rows.length) return [];
   const [header, ...data] = rows;
   const index = Object.fromEntries(header.map((name, position) => [key(name), position]));
   const at = (row: string[], name: string) => row[index[key(name)]];
@@ -553,8 +563,8 @@ Deno.serve(async (request) => {
       fetchSheet(sheetId, "usaFuel"),
       fetchSheet(sheetId, "usaFSCtrend"),
       fetchSheet(sheetId, "usaFSCindex"),
-      fetchSheet(sheetId, "Assumptions"),
-      fetchSheet(sheetId, "Factors")
+      fetchOptionalSheet(sheetId, "Assumptions"),
+      fetchOptionalSheet(sheetId, "Factors")
     ]);
 
     const catalog = parseCusCatalog(cusCatalog);

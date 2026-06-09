@@ -10,9 +10,10 @@ const editForm = document.querySelector("#staging-edit-form");
 const editStatus = document.querySelector("#staging-edit-status");
 const approveDrawerButton = document.querySelector("#approve-staging-button");
 const rejectDrawerButton = document.querySelector("#reject-staging-button");
+const rowDetail = document.querySelector("#staging-row-detail");
 let currentRows = [];
 let activeRowId = null;
-const STAGING_COLSPAN = 49;
+const STAGING_COLSPAN = 22;
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -51,6 +52,74 @@ function statusSelect(row) {
   `;
 }
 
+function detailLine(label, value) {
+  return `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value || "-")}</dd></div>`;
+}
+
+function moneyValue(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return value || "-";
+  return new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(number);
+}
+
+function renderRowDetail(row) {
+  const legs = Array.isArray(row.rateware_lane_legs)
+    ? row.rateware_lane_legs.slice().sort((a, b) => Number(a.leg_sequence || 0) - Number(b.leg_sequence || 0))
+    : [];
+
+  rowDetail.innerHTML = `
+    <section>
+      <h3>Location normalization</h3>
+      <dl>
+        ${detailLine("Origin market", row.origin_market)}
+        ${detailLine("Origin ZIP", row.origin_zip_prefix)}
+        ${detailLine("Origin match", row.origin_match_reason)}
+        ${detailLine("Destination market", row.destination_market)}
+        ${detailLine("Destination ZIP", row.destination_zip_prefix)}
+        ${detailLine("Destination match", row.destination_match_reason)}
+      </dl>
+    </section>
+    <section>
+      <h3>Lane and mileage</h3>
+      <dl>
+        ${detailLine("Lane type", row.lane_type)}
+        ${detailLine("Leg status", row.leg_status)}
+        ${detailLine("Leg summary", row.leg_summary)}
+        ${detailLine("MX km", moneyValue(row.calculated_km))}
+        ${detailLine("US miles", moneyValue(row.us_miles || row.calculated_miles))}
+        ${detailLine("Mileage source", row.mileage_source)}
+      </dl>
+    </section>
+    <section>
+      <h3>Fuel and FX normalization</h3>
+      <dl>
+        ${detailLine("MX diesel MXN/L", moneyValue(row.mx_diesel_mxn_per_liter))}
+        ${detailLine("MX diesel USD/L", moneyValue(row.mx_diesel_usd_per_liter))}
+        ${detailLine("FX MXN/USD", moneyValue(row.fx_rate_mxn_usd))}
+        ${detailLine("MX diesel factor", moneyValue(row.mx_fuel_factor))}
+        ${detailLine("MX fuel USD", moneyValue(row.mx_fuel_cost_usd))}
+        ${detailLine("US fuel region", row.fuel_region)}
+        ${detailLine("US fuel date", dateValue(row.fuel_index_date))}
+        ${detailLine("Rateware FSC", moneyValue(row.normalized_fsc_per_mile))}
+        ${detailLine("FSC total", moneyValue(row.normalized_fsc_total))}
+        ${detailLine("FSC delta", moneyValue(row.fuel_delta))}
+      </dl>
+    </section>
+    <section>
+      <h3>Legs</h3>
+      <div class="leg-list">
+        ${legs.length ? legs.map((leg) => `
+          <div class="leg-card">
+            <strong>${escapeHtml(leg.leg_sequence)}. ${escapeHtml(leg.leg_type)}</strong>
+            <span>${escapeHtml(leg.origin || "-")} -> ${escapeHtml(leg.destination || "-")}</span>
+            <small>${escapeHtml([leg.km ? `${moneyValue(leg.km)} km` : "", leg.miles ? `${moneyValue(leg.miles)} mi` : "", leg.fuel_cost_usd ? `Fuel $${moneyValue(leg.fuel_cost_usd)}` : ""].filter(Boolean).join(" | ") || leg.status || "-")}</small>
+          </div>
+        `).join("") : '<p class="muted-text">No legs built yet.</p>'}
+      </div>
+    </section>
+  `;
+}
+
 function renderRows(rows) {
   currentRows = rows;
 
@@ -72,44 +141,18 @@ function renderRows(rows) {
           <td>${inputCell(row, "quote_date", { type: "date", short: true })}</td>
           <td>${inputCell(row, "rfx_id", { short: true })}</td>
           <td>${inputCell(row, "origin", { wide: true })}</td>
-          <td>${inputCell(row, "origin_market", { short: true })}</td>
-          <td>${inputCell(row, "origin_zip_prefix", { short: true })}</td>
-          <td>${inputCell(row, "origin_match_reason", { short: true })}</td>
           <td>${inputCell(row, "destination", { wide: true })}</td>
-          <td>${inputCell(row, "destination_market", { short: true })}</td>
-          <td>${inputCell(row, "destination_zip_prefix", { short: true })}</td>
-          <td>${inputCell(row, "destination_match_reason", { short: true })}</td>
           <td>${inputCell(row, "equipment", { short: true })}</td>
           <td>${inputCell(row, "trailer", { short: true })}</td>
           <td>${inputCell(row, "config", { short: true })}</td>
           <td>${inputCell(row, "operation", { short: true })}</td>
           <td>${inputCell(row, "service", { short: true })}</td>
-          <td>${inputCell(row, "driver", { short: true })}</td>
           <td>${inputCell(row, "mx_border_crossing_point", { short: true })}</td>
           <td>${inputCell(row, "us_border_crossing_point", { short: true })}</td>
           <td>${inputCell(row, "mx_linehaul", { money: true })}</td>
-          <td>${inputCell(row, "calculated_km", { money: true })}</td>
-          <td>${inputCell(row, "mx_diesel_mxn_per_liter", { money: true })}</td>
-          <td>${inputCell(row, "mx_diesel_usd_per_liter", { money: true })}</td>
-          <td>${inputCell(row, "fx_rate_mxn_usd", { money: true })}</td>
-          <td>${inputCell(row, "mx_fuel_factor", { money: true })}</td>
-          <td>${inputCell(row, "mx_fuel_cost_usd", { money: true })}</td>
           <td>${inputCell(row, "us_linehaul", { money: true })}</td>
-          <td>${inputCell(row, "us_miles", { money: true })}</td>
-          <td>${inputCell(row, "calculated_miles", { money: true })}</td>
-          <td>${inputCell(row, "catalog_match_status", { short: true })}</td>
-          <td>${inputCell(row, "lane_type", { short: true })}</td>
-          <td>${inputCell(row, "leg_summary", { wide: true })}</td>
-          <td>${inputCell(row, "leg_status", { short: true })}</td>
           <td>${inputCell(row, "fsc", { money: true })}</td>
-          <td>${inputCell(row, "fuel_region", { short: true })}</td>
-          <td>${inputCell(row, "fuel_index_date", { type: "date", short: true })}</td>
-          <td>${inputCell(row, "normalized_fsc_per_mile", { money: true })}</td>
-          <td>${inputCell(row, "normalized_fsc_total", { money: true })}</td>
-          <td>${inputCell(row, "fuel_delta", { money: true })}</td>
-          <td>${inputCell(row, "fuel", { money: true })}</td>
           <td>${inputCell(row, "border_crossing_fee", { money: true })}</td>
-          <td>${inputCell(row, "flat_rate", { money: true })}</td>
           <td>${inputCell(row, "all_in_rate", { money: true })}</td>
           <td>${inputCell(row, "normalized_all_in_rate", { money: true })}</td>
           <td>${inputCell(row, "currency", { short: true })}</td>
@@ -117,6 +160,7 @@ function renderRows(rows) {
           <td>${inputCell(row, "confidence", { type: "number", min: "0", max: "100", step: "1", short: true })}</td>
           <td>${statusSelect(row)}</td>
           <td class="review-actions">
+            <button type="button" class="small-button secondary" data-detail-id="${escapeHtml(row.id)}">Details</button>
             <button type="button" class="small-button secondary" data-save-id="${escapeHtml(row.id)}">Save</button>
             <button type="button" class="small-button" data-approve-id="${escapeHtml(row.id)}">Approve</button>
             <button type="button" class="small-button danger" data-reject-id="${escapeHtml(row.id)}">Reject</button>
@@ -157,6 +201,7 @@ function openEditDrawer(id) {
   document.querySelector("#edit-weekly-capacity").value = row.weekly_capacity || "";
   document.querySelector("#edit-confidence").value = Math.round(Number(row.confidence || 0) * 100);
   document.querySelector("#edit-notes").value = row.notes || "";
+  renderRowDetail(row);
   setStatus("");
   drawer.classList.remove("hidden");
 }
@@ -233,9 +278,15 @@ async function loadRows() {
 }
 
 body.addEventListener("click", async (event) => {
+  const detail = event.target.closest("[data-detail-id]");
   const save = event.target.closest("[data-save-id]");
   const approve = event.target.closest("[data-approve-id]");
   const reject = event.target.closest("[data-reject-id]");
+
+  if (detail) {
+    openEditDrawer(detail.dataset.detailId);
+    return;
+  }
 
   if (save) {
     const id = save.dataset.saveId;

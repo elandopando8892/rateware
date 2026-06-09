@@ -56,44 +56,18 @@
                     <th>Quote date</th>
                     <th>RFx</th>
                     <th>Origin</th>
-                    <th>Origin market</th>
-                    <th>Origin ZIP</th>
-                    <th>Origin match</th>
                     <th>Destination</th>
-                    <th>Dest market</th>
-                    <th>Dest ZIP</th>
-                    <th>Dest match</th>
                     <th>Equipment</th>
                     <th>Trailer</th>
                     <th>Config</th>
                     <th>Operation</th>
                     <th>Service</th>
-                    <th>Driver</th>
                     <th>MX crossing</th>
                     <th>US crossing</th>
                     <th>MX linehaul</th>
-                    <th>MX km</th>
-                    <th>MX diesel MXN/L</th>
-                    <th>MX diesel USD/L</th>
-                    <th>FX MXN/USD</th>
-                    <th>MX diesel factor</th>
-                    <th>MX fuel USD</th>
                     <th>US linehaul</th>
-                    <th>US miles</th>
-                    <th>Catalog miles</th>
-                    <th>Catalog</th>
-                    <th>Lane type</th>
-                    <th>Legs</th>
-                    <th>Leg status</th>
                     <th>FSC</th>
-                    <th>Fuel region</th>
-                    <th>Fuel date</th>
-                    <th>Rateware FSC</th>
-                    <th>FSC total</th>
-                    <th>FSC delta</th>
-                    <th>Fuel</th>
                     <th>Border fee</th>
-                    <th>Flat rate</th>
                     <th>All-in</th>
                     <th>Norm all-in</th>
                     <th>Currency</th>
@@ -105,20 +79,21 @@
                 </thead>
                 <tbody id="staging-body">
                   <tr>
-                    <td colspan="49">Loading staging rows...</td>
+                    <td colspan="22">Loading staging rows...</td>
                   </tr>
                 </tbody>
               </table>
             </div>
           </section>
           <aside id="staging-drawer" class="profile-drawer hidden" aria-live="polite">
-            <div class="drawer-header">
-              <div>
-                <p class="eyebrow">Edit staging</p>
+              <div class="drawer-header">
+                <div>
+                <p class="eyebrow">Rateware row</p>
                 <h2 id="staging-drawer-title">Rate row</h2>
               </div>
               <button id="close-staging-drawer" class="secondary small-button" type="button">Close</button>
             </div>
+            <div id="staging-row-detail" class="staging-row-detail"></div>
             <form id="staging-edit-form" class="drawer-edit-form">
               <label>
                 Vendor domain
