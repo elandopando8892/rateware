@@ -291,9 +291,18 @@ function isLaredoLocation(row: Record<string, unknown>, prefix: "origin" | "dest
   return includesAny([row[prefix], row[`${prefix}_city`], row[`${prefix}_market`]].filter(Boolean).join(" "), ["Laredo"]);
 }
 
-function contextSupportsD2DAllIn(row: Record<string, unknown>, contextText: string) {
-  const text = [contextText, row.vendor_domain, row.notes, row.extraction_warnings].filter(Boolean).join(" ");
-  return includesAny(text, ["intra-solution", "cruce incluido", "all in", "all-in", "d2d"]) && !includesAny(text, ["transbordo", "transload"]);
+function contextSupportsD2DAllIn(mxLeg: Record<string, unknown>, usLeg: Record<string, unknown>, contextText: string) {
+  const text = [contextText, mxLeg.notes, usLeg.notes, mxLeg.extraction_warnings, usLeg.extraction_warnings].filter(Boolean).join(" ");
+  if (includesAny(text, ["transbordo", "transload", "cross dock", "cross-dock"])) return false;
+  if (includesAny(text, ["cruce incluido", "all in", "all-in", "d2d", "door to door", "door-to-door", "servicio directo", "directo"])) return true;
+
+  return sameD2DContext(mxLeg, usLeg)
+    && mxLeg.origin_country === "MX"
+    && mxLeg.destination_country === "US"
+    && usLeg.origin_country === "US"
+    && usLeg.destination_country === "US"
+    && isLaredoLocation(mxLeg, "destination")
+    && isLaredoLocation(usLeg, "origin");
 }
 
 function mergeConnectedD2DAllInRows(rows: Record<string, unknown>[], contextText: string) {
@@ -308,7 +317,7 @@ function mergeConnectedD2DAllInRows(rows: Record<string, unknown>[], contextText
       && mxLeg.destination_country === "US"
       && isLaredoLocation(mxLeg, "destination");
 
-    if (!mxToBorder || mxAmount === null || !contextSupportsD2DAllIn(mxLeg, contextText)) {
+    if (!mxToBorder || mxAmount === null) {
       merged.push(mxLeg);
       continue;
     }
@@ -323,7 +332,7 @@ function mergeConnectedD2DAllInRows(rows: Record<string, unknown>[], contextText
         && isLaredoLocation(candidate, "origin");
     });
 
-    if (matchIndex === -1) {
+    if (matchIndex === -1 || !contextSupportsD2DAllIn(mxLeg, rows[matchIndex], contextText)) {
       merged.push(mxLeg);
       continue;
     }
@@ -1267,6 +1276,8 @@ async function interpretWithModel(rawUpload: Record<string, string>, file: Blob)
     "For D2D cross-border rows, if the carrier does not explicitly state border cities, default mx_border_crossing_point to Nuevo Laredo, TM and us_border_crossing_point to Laredo, TX.",
     "Populate mx_linehaul, us_linehaul, fsc, fuel, and border_crossing_fee only when the carrier explicitly itemizes those charges in the quote.",
     "If a quote gives one all-in price without breakdown, put the value in all_in_rate, leave mx_linehaul, us_linehaul, fsc, fuel, and border_crossing_fee null, and explain that it is all-in in notes.",
+    "If a carrier quotes connected door-to-door portions through a border city, such as MX origin to Laredo plus Laredo to US destination, and the quote says crossing included, all-in, D2D, direct service, or does not state transload/transbordo, consolidate it as one D2D all-in lane using the sum of the connected portions.",
+    "Do not classify a connected D2D quote as transbordo just because the carrier lists the Mexican and US portions separately. Only use transload/transbordo when the carrier explicitly says it.",
     "Extract weekly_capacity when the carrier states capacity, trucks per week, loads per week, or an available capacity range. Use null when not stated.",
     "Return only rows that represent carrier rates or capacity responses.",
     "Use null when a value is missing. Do not invent rates."
