@@ -80,7 +80,7 @@ function datalistCell(row, field, values = [], options = {}) {
 function checkboxCell(row, field, label) {
   return `
     <label class="table-checkbox" title="${escapeHtml(label)}">
-      <input class="staging-input" data-field="${field}" type="checkbox" ${row[field] ? "checked" : ""} />
+      <input class="staging-input" data-field="${field}" type="checkbox" value="true" ${row[field] ? "checked" : ""} />
     </label>
   `;
 }
@@ -347,7 +347,7 @@ function openEditDrawer(id) {
 function readInlinePatch(tableRow, status = null) {
   const patch = {};
   tableRow.querySelectorAll("[data-field]").forEach((input) => {
-    patch[input.dataset.field] = input.type === "checkbox" ? input.checked : input.value;
+    patch[input.dataset.field] = input.matches('input[type="checkbox"]') ? input.checked : input.value;
   });
   if (patch.confidence !== undefined) patch.confidence = Number(patch.confidence || 0) / 100;
   if (status) patch.status = status;
@@ -378,7 +378,9 @@ async function runBulkAction(status = null) {
     await Promise.all(rows.map(async (tableRow) => {
       const id = tableRow.dataset.rowId;
       setRowStatus(id, status ? `Marking ${label}...` : "Saving...");
-      await updateStagingRow(id, readInlinePatch(tableRow, status));
+      const updated = await updateStagingRow(id, readInlinePatch(tableRow, status));
+      const rowIndex = currentRows.findIndex((row) => row.id === id);
+      if (rowIndex >= 0) currentRows[rowIndex] = { ...currentRows[rowIndex], ...updated };
       setRowStatus(id, status ? `Marked ${label}` : "Saved", "success");
       selectedRowIds.delete(id);
     }));
@@ -520,7 +522,9 @@ body.addEventListener("click", async (event) => {
 
     try {
       await ensureSignedIn();
-      await updateStagingRow(id, readInlinePatch(tableRow));
+      const updated = await updateStagingRow(id, readInlinePatch(tableRow));
+      const rowIndex = currentRows.findIndex((row) => row.id === id);
+      if (rowIndex >= 0) currentRows[rowIndex] = { ...currentRows[rowIndex], ...updated };
       setRowStatus(id, "Saved", "success");
     } catch (error) {
       setRowStatus(id, error.message, "error");

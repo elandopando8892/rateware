@@ -141,7 +141,7 @@ function trailerWithFlags(trailer: unknown, hazmat: unknown, temperatureControll
   return suffix ? `${base} - ${suffix}` : base;
 }
 
-function normalizeStagingPatch(input: Record<string, unknown>) {
+function normalizeStagingPatch(input: Record<string, unknown>, current: Record<string, unknown> = {}) {
   const patch: Record<string, unknown> = {};
   const textFields = [
     "vendor_domain",
@@ -212,12 +212,16 @@ function normalizeStagingPatch(input: Record<string, unknown>) {
   if (input.temperature_controlled !== undefined) patch.temperature_controlled = cleanBoolean(input.temperature_controlled);
 
   if (input.trailer !== undefined || input.hazmat !== undefined || input.temperature_controlled !== undefined) {
+    const nextHazmat = input.hazmat !== undefined ? input.hazmat : current.hazmat;
+    const nextTemperatureControlled = input.temperature_controlled !== undefined ? input.temperature_controlled : current.temperature_controlled;
     patch.trailer = trailerWithFlags(
-      input.trailer !== undefined ? input.trailer : patch.trailer,
-      input.hazmat,
-      input.temperature_controlled
+      input.trailer !== undefined ? input.trailer : current.trailer,
+      nextHazmat,
+      nextTemperatureControlled
     );
     patch.normalized_trailer = patch.trailer;
+    patch.hazmat = cleanBoolean(nextHazmat);
+    patch.temperature_controlled = cleanBoolean(nextTemperatureControlled);
   }
 
   const status = cleanText(input.status)?.toLowerCase();
@@ -629,7 +633,14 @@ Deno.serve(async (request) => {
     }
 
     if (body.action === "update_staging") {
-      const patch = normalizeStagingPatch(body.patch || {});
+      const currentResult = await supabase
+        .from("rate_staging")
+        .select("trailer,hazmat,temperature_controlled")
+        .eq("id", body.id)
+        .single();
+      if (currentResult.error) throw currentResult.error;
+
+      const patch = normalizeStagingPatch(body.patch || {}, currentResult.data || {});
       if (!Object.keys(patch).length) return jsonResponse({ error: "No staging updates provided." }, 400);
 
       const result = await supabase.from("rate_staging").update(patch).eq("id", body.id).select().single();
