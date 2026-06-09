@@ -443,6 +443,20 @@ Deno.serve(async (request) => {
       return jsonResponse({ rows: result.data });
     }
 
+    if (body.action === "return_rateware_to_staging") {
+      const ids = Array.isArray(body.ids) ? body.ids.map(String).filter(Boolean).slice(0, 500) : [];
+      if (!ids.length) return jsonResponse({ error: "At least one approved rate id is required." }, 400);
+
+      const result = await supabase
+        .from("rate_staging")
+        .update({ status: "pending_review" })
+        .in("id", ids)
+        .eq("status", "approved")
+        .select("id");
+      if (result.error) throw result.error;
+      return jsonResponse({ updated: result.data?.length || 0, rows: result.data || [] });
+    }
+
     if (body.action === "list_staging_options") {
       const [catalog, locations, borderPairs] = await Promise.all([
         supabase
