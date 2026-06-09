@@ -545,6 +545,68 @@ function findBorderPair(row: Record<string, unknown>, pairs: Record<string, unkn
   return scored[0]?.pair || pairs.sort((a, b) => Number(a.default_rank || 100) - Number(b.default_rank || 100))[0] || null;
 }
 
+function assumptionNumber(items: Record<string, unknown>[], field: string, fallback: number) {
+  const match = items.find((item) => catalogKey(item.field) === catalogKey(field));
+  const value = Number(match?.recommended_value);
+  return Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
+function factorNumber(items: Record<string, unknown>[], group: string, name: unknown, fallback = 1) {
+  const target = catalogKey([group, name].filter(Boolean).join(" "));
+  const match = items.find((item) => catalogKey(item.lookup_key) === target || catalogKey([item.factor_group, item.factor_name].join(" ")) === target);
+  const value = Number(match?.recommended_value);
+  return Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
+function latestByPeriod(items: Record<string, unknown>[]) {
+  return [...items].sort((a, b) => String(b.period_month || "").localeCompare(String(a.period_month || "")))[0] || null;
+}
+
+function buildMxFuelContext(input: {
+  assumptions: Record<string, unknown>[];
+  factors: Record<string, unknown>[];
+  mxDiesel: Record<string, unknown>[];
+  fxRates: Record<string, unknown>[];
+}) {
+  const loadedEfficiency = assumptionNumber(input.assumptions, "Rendimiento Cargado", 2.8);
+  const fuelBuffer = assumptionNumber(input.assumptions, "Fuel Escalation Buffer", 0.05);
+  const diesel = latestByPeriod(input.mxDiesel);
+  const fx = latestByPeriod(input.fxRates);
+
+  return {
+    loadedEfficiency,
+    fuelBuffer,
+    diesel,
+    fx,
+    factors: input.factors
+  };
+}
+
+function mxFuelAudit(row: Record<string, unknown>, kmValue: unknown, context: ReturnType<typeof buildMxFuelContext>) {
+  const km = cleanNumber(kmValue);
+  const dieselMxn = cleanNumber(context.diesel?.diesel_mxn_per_liter);
+  const fxRate = cleanNumber(context.fx?.rate);
+  if (!km || !dieselMxn || !fxRate) return {};
+
+  const equipmentFactor = factorNumber(context.factors, "Equipment", row.normalized_equipment || row.equipment, 1);
+  const fuelEfficiency = context.loadedEfficiency * equipmentFactor;
+  const dieselUsd = dieselMxn / fxRate;
+  const fuelFactor = context.fuelBuffer;
+  const baseFuelCost = km / fuelEfficiency * dieselUsd;
+  const fuelCostUsd = baseFuelCost * (1 + fuelFactor);
+
+  return {
+    diesel_price_mxn_per_liter: Number(dieselMxn.toFixed(4)),
+    diesel_price_usd_per_liter: Number(dieselUsd.toFixed(4)),
+    fx_rate_mxn_usd: Number(fxRate.toFixed(4)),
+    fuel_efficiency_km_per_liter: Number(fuelEfficiency.toFixed(4)),
+    fuel_factor: Number(fuelFactor.toFixed(4)),
+    fuel_cost_usd: Number(fuelCostUsd.toFixed(2)),
+    fuel_source: String(context.diesel?.source || "rateware_assumptions"),
+    fx_source: String(context.fx?.source || "rateware_assumptions")
+  };
+}
+
 function legRow(row: Record<string, unknown>, sequence: number, type: string, origin: unknown, destination: unknown, originCountry: unknown, destinationCountry: unknown, extras: Record<string, unknown> = {}) {
   const miles = cleanNumber(extras.miles);
   const km = cleanNumber(extras.km);
@@ -563,13 +625,21 @@ function legRow(row: Record<string, unknown>, sequence: number, type: string, or
     fuel_region: cleanText(extras.fuel_region),
     fsc_per_mile: cleanNumber(extras.fsc_per_mile),
     fsc_total: cleanNumber(extras.fsc_total),
+    diesel_price_mxn_per_liter: cleanNumber(extras.diesel_price_mxn_per_liter),
+    diesel_price_usd_per_liter: cleanNumber(extras.diesel_price_usd_per_liter),
+    fx_rate_mxn_usd: cleanNumber(extras.fx_rate_mxn_usd),
+    fuel_efficiency_km_per_liter: cleanNumber(extras.fuel_efficiency_km_per_liter),
+    fuel_factor: cleanNumber(extras.fuel_factor),
+    fuel_cost_usd: cleanNumber(extras.fuel_cost_usd),
+    fuel_source: cleanText(extras.fuel_source),
+    fx_source: cleanText(extras.fx_source),
     confidence: Math.max(0, Math.min(1, Number(extras.confidence) || 0)),
     status: miles || km || type === "border_crossing" ? "ready" : "needs_mileage",
     metadata: extras.metadata || {}
   };
 }
 
-function buildLanePlan(row: Record<string, unknown>, borderPairs: Record<string, unknown>[]) {
+function buildLanePlan(row: Record<string, unknown>, borderPairs: Record<string, unknown>[], mxFuelContext: ReturnType<typeof buildMxFuelContext>) {
   const originCountry = cleanText(row.origin_country);
   const destinationCountry = cleanText(row.destination_country);
   const origin = row.normalized_origin || row.origin;
@@ -589,13 +659,15 @@ function buildLanePlan(row: Record<string, unknown>, borderPairs: Record<string,
   }
 
   if (!isCrossBorder) {
+    const domesticKm = hasMx ? row.calculated_km : null;
     const leg = legRow(row, 1, "domestic", origin, destination, originCountry, destinationCountry, {
       miles: hasUs ? usMiles : row.calculated_miles,
-      km: hasMx ? row.calculated_km : null,
+      km: domesticKm,
       mileage_source: row.mileage_source || "catalog",
       fuel_region: row.fuel_region,
       fsc_per_mile: row.normalized_fsc_per_mile,
       fsc_total: row.normalized_fsc_total,
+      ...(hasMx ? mxFuelAudit(row, domesticKm, mxFuelContext) : {}),
       confidence: row.catalog_match_status === "matched" ? 0.9 : 0.55
     });
     return {
@@ -618,6 +690,7 @@ function buildLanePlan(row: Record<string, unknown>, borderPairs: Record<string,
     legRow(row, 1, "mx_linehaul", mxOrigin, mxDestination, "MX", "MX", {
       km: row.calculated_km,
       mileage_source: row.mileage_source,
+      ...mxFuelAudit(row, row.calculated_km, mxFuelContext),
       confidence: row.catalog_match_status === "matched" ? 0.75 : 0.45
     }),
     legRow(row, 2, "border_crossing", mxBorder, usBorder, "MX", "US", {
@@ -644,15 +717,26 @@ function buildLanePlan(row: Record<string, unknown>, borderPairs: Record<string,
   };
 }
 
-async function persistLanePlans(supabase: ReturnType<typeof createClient>, rows: Record<string, unknown>[], borderPairs: Record<string, unknown>[]) {
+async function persistLanePlans(supabase: ReturnType<typeof createClient>, rows: Record<string, unknown>[], borderPairs: Record<string, unknown>[], mxFuelContext: ReturnType<typeof buildMxFuelContext>) {
   const legs: Record<string, unknown>[] = [];
   const updates = rows.map((row) => {
-    const plan = buildLanePlan(row, borderPairs);
+    const plan = buildLanePlan(row, borderPairs, mxFuelContext);
     legs.push(...plan.legs);
+    const mxFuelLegs = plan.legs.filter((leg) => leg.origin_country === "MX" && leg.destination_country === "MX");
+    const mxFuelCost = mxFuelLegs.reduce((total, leg) => total + (cleanNumber(leg.fuel_cost_usd) || 0), 0);
+    const firstMxFuel = mxFuelLegs.find((leg) => leg.fuel_cost_usd);
     return supabase.from("rate_staging").update({
       lane_type: plan.lane_type,
       leg_status: plan.leg_status,
-      leg_summary: plan.leg_summary
+      leg_summary: plan.leg_summary,
+      mx_diesel_mxn_per_liter: firstMxFuel?.diesel_price_mxn_per_liter || null,
+      mx_diesel_usd_per_liter: firstMxFuel?.diesel_price_usd_per_liter || null,
+      fx_rate_mxn_usd: firstMxFuel?.fx_rate_mxn_usd || null,
+      mx_fuel_efficiency_km_per_liter: firstMxFuel?.fuel_efficiency_km_per_liter || null,
+      mx_fuel_factor: firstMxFuel?.fuel_factor || null,
+      mx_fuel_cost_usd: mxFuelCost ? Number(mxFuelCost.toFixed(2)) : null,
+      mx_fuel_source: firstMxFuel?.fuel_source || null,
+      fx_source: firstMxFuel?.fx_source || null
     }).eq("id", row.id);
   });
 
@@ -873,12 +957,22 @@ Deno.serve(async (request) => {
     const fuelRegionResult = await supabase.from("rateware_fuel_regions").select("state_code,fuel_region,diesel_per_gallon,fsc_per_mile").eq("active", true).limit(200);
     const fscTrendResult = await supabase.from("rateware_fsc_trend").select("source,api_fetch,fuel_region,index_date,diesel_per_gallon,fsc_per_mile").eq("active", true).limit(20000);
     const borderPairResult = await supabase.from("border_crossing_pairs").select("id,mx_city,mx_state,us_city,us_state,crossing_name,default_rank").eq("active", true).limit(200);
+    const assumptionsResult = await supabase.from("rateware_assumptions").select("field,recommended_value,raw_value,unit").eq("active", true).limit(500);
+    const factorsResult = await supabase.from("rateware_factor_items").select("factor_group,factor_name,recommended_value,lookup_key").eq("active", true).limit(1000);
+    const mxDieselResult = await supabase.from("rateware_mx_diesel_index").select("source,period_month,market_key,diesel_mxn_per_liter").eq("active", true).order("period_month", { ascending: false }).limit(50);
+    const fxResult = await supabase.from("rateware_fx_rates").select("source,period_month,currency_pair,rate").eq("active", true).eq("currency_pair", "MXN/USD").order("period_month", { ascending: false }).limit(50);
     const catalogItems = catalogResult.error ? [] : catalogResult.data || [];
     const laneMileage = mileageResult.error ? [] : mileageResult.data || [];
     const locations = locationResult.error ? [] : locationResult.data || [];
     const fuelRegions = fuelRegionResult.error ? [] : fuelRegionResult.data || [];
     const fscTrend = fscTrendResult.error ? [] : fscTrendResult.data || [];
     const borderPairs = borderPairResult.error ? [] : borderPairResult.data || [];
+    const mxFuelContext = buildMxFuelContext({
+      assumptions: assumptionsResult.error ? [] : assumptionsResult.data || [],
+      factors: factorsResult.error ? [] : factorsResult.data || [],
+      mxDiesel: mxDieselResult.error ? [] : mxDieselResult.data || [],
+      fxRates: fxResult.error ? [] : fxResult.data || []
+    });
     const rows = normalizeWithCatalog(interpretation.rows
       .filter((row: Record<string, unknown>) => isCarrierRateRow(row))
       .map((row: Record<string, unknown>) => normalizeRow(row, raw_upload_id, job.data.id, vendorId)), catalogItems, laneMileage, locations, fuelRegions, fscTrend);
@@ -886,7 +980,7 @@ Deno.serve(async (request) => {
     if (rows.length) {
       const insert = await supabase.from("rate_staging").insert(rows).select("*");
       if (insert.error) throw insert.error;
-      await persistLanePlans(supabase, insert.data || [], borderPairs);
+      await persistLanePlans(supabase, insert.data || [], borderPairs, mxFuelContext);
     }
 
     await supabase.from("interpretation_jobs").update({

@@ -12,7 +12,7 @@ const approveDrawerButton = document.querySelector("#approve-staging-button");
 const rejectDrawerButton = document.querySelector("#reject-staging-button");
 let currentRows = [];
 let activeRowId = null;
-const STAGING_COLSPAN = 42;
+const STAGING_COLSPAN = 49;
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -88,6 +88,12 @@ function renderRows(rows) {
           <td>${inputCell(row, "mx_border_crossing_point", { short: true })}</td>
           <td>${inputCell(row, "us_border_crossing_point", { short: true })}</td>
           <td>${inputCell(row, "mx_linehaul", { money: true })}</td>
+          <td>${inputCell(row, "calculated_km", { money: true })}</td>
+          <td>${inputCell(row, "mx_diesel_mxn_per_liter", { money: true })}</td>
+          <td>${inputCell(row, "mx_diesel_usd_per_liter", { money: true })}</td>
+          <td>${inputCell(row, "fx_rate_mxn_usd", { money: true })}</td>
+          <td>${inputCell(row, "mx_fuel_factor", { money: true })}</td>
+          <td>${inputCell(row, "mx_fuel_cost_usd", { money: true })}</td>
           <td>${inputCell(row, "us_linehaul", { money: true })}</td>
           <td>${inputCell(row, "us_miles", { money: true })}</td>
           <td>${inputCell(row, "calculated_miles", { money: true })}</td>

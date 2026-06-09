@@ -433,6 +433,98 @@ function parseFscIndex(rows: string[][]) {
   }).filter(Boolean);
 }
 
+function currentPeriodMonth() {
+  const now = new Date();
+  return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}-01`;
+}
+
+function parseAssumptions(rows: string[][]) {
+  const [header, ...data] = rows;
+  const index = Object.fromEntries(header.map((name, position) => [key(name), position]));
+  const at = (row: string[], name: string) => row[index[key(name)]];
+  const assumptions = data.map((row) => {
+    const field = cleanText(at(row, "Field") || row[2]);
+    if (!field) return null;
+    const recommended = cleanText(at(row, "Recommended Value") || row[5]);
+
+    return {
+      source: SOURCE,
+      section: cleanText(at(row, "Section") || row[1]),
+      field,
+      recommended_value: cleanNumber(recommended),
+      raw_value: recommended,
+      unit: cleanText(at(row, "Unit") || row[6]),
+      refresh_frequency: cleanText(at(row, "Refresh Frequency") || row[8]),
+      metadata: {
+        source_tab: "Assumptions",
+        source_name: cleanText(at(row, "Source") || row[0]),
+        purpose: cleanText(at(row, "Purpose") || row[11]),
+        owner: cleanText(at(row, "Owner") || row[12])
+      },
+      active: true,
+      updated_at: new Date().toISOString()
+    };
+  }).filter(Boolean) as Record<string, unknown>[];
+
+  const periodMonth = currentPeriodMonth();
+  const dieselMx = assumptions.find((item) => key(item.field) === "DIESEL MX");
+  const fx = assumptions.find((item) => key(item.field) === "TIPO DE CAMBIO");
+
+  const mxDieselIndex = dieselMx?.recommended_value ? [{
+    source: "rateware_assumptions",
+    period_month: periodMonth,
+    country: "MX",
+    market_key: "MX_NATIONAL",
+    market: "Mexico national",
+    diesel_mxn_per_liter: dieselMx.recommended_value,
+    source_note: "Assumptions sheet Diesel MX",
+    active: true,
+    updated_at: new Date().toISOString()
+  }] : [];
+
+  const fxRates = fx?.recommended_value ? [{
+    source: "rateware_assumptions",
+    period_month: periodMonth,
+    currency_pair: "MXN/USD",
+    rate: fx.recommended_value,
+    source_note: "Assumptions sheet Tipo de Cambio",
+    active: true,
+    updated_at: new Date().toISOString()
+  }] : [];
+
+  return { assumptions, mxDieselIndex, fxRates };
+}
+
+function parseFactors(rows: string[][]) {
+  const [header, ...data] = rows;
+  const index = Object.fromEntries(header.map((name, position) => [key(name), position]));
+  const at = (row: string[], name: string) => row[index[key(name)]];
+
+  return data.map((row) => {
+    const factorGroup = cleanText(at(row, "Factor Group") || at(row, "Group") || row[0]);
+    const factorName = cleanText(at(row, "Factor Name") || at(row, "Name") || row[1]);
+    if (!factorGroup || !factorName) return null;
+    const recommended = cleanText(at(row, "Recommended Value") || at(row, "Value") || row[2]);
+
+    return {
+      source: SOURCE,
+      factor_group: factorGroup,
+      factor_name: factorName,
+      recommended_value: cleanNumber(recommended),
+      raw_value: recommended,
+      unit: cleanText(at(row, "Unit") || row[3]),
+      notes: cleanText(at(row, "Notes") || row[5]),
+      lookup_key: key([factorGroup, factorName].join(" ")),
+      metadata: {
+        source_tab: "Factors",
+        applies_to: cleanText(at(row, "Applies To") || row[4])
+      },
+      active: true,
+      updated_at: new Date().toISOString()
+    };
+  }).filter(Boolean) as Record<string, unknown>[];
+}
+
 async function upsertInBatches(supabase: ReturnType<typeof createClient>, table: string, rows: Record<string, unknown>[], onConflict: string) {
   const batchSize = 500;
   for (let index = 0; index < rows.length; index += batchSize) {
@@ -451,7 +543,7 @@ Deno.serve(async (request) => {
     const sheetId = cleanText(body.sheet_id) || Deno.env.get("RATEWARE_CATALOG_SHEET_ID") || DEFAULT_SHEET_ID;
     const supabase = getClient();
 
-    const [cusCatalog, usaLaneData, mexLaneData, usaLaneProd, mexLaneProd, usaFuel, usaFSCtrend, usaFSCindex] = await Promise.all([
+    const [cusCatalog, usaLaneData, mexLaneData, usaLaneProd, mexLaneProd, usaFuel, usaFSCtrend, usaFSCindex, assumptionsSheet, factorsSheet] = await Promise.all([
       fetchSheet(sheetId, "cusCatalog"),
       fetchSheet(sheetId, "usaLaneData"),
       fetchSheet(sheetId, "mexLaneData"),
@@ -459,7 +551,9 @@ Deno.serve(async (request) => {
       fetchSheet(sheetId, "mexLaneProd"),
       fetchSheet(sheetId, "usaFuel"),
       fetchSheet(sheetId, "usaFSCtrend"),
-      fetchSheet(sheetId, "usaFSCindex")
+      fetchSheet(sheetId, "usaFSCindex"),
+      fetchSheet(sheetId, "Assumptions"),
+      fetchSheet(sheetId, "Factors")
     ]);
 
     const catalog = parseCusCatalog(cusCatalog);
@@ -478,10 +572,16 @@ Deno.serve(async (request) => {
     const fuelRegions = parseFuelRegions(usaFuel) as Record<string, unknown>[];
     const fscTrend = parseFscTrend(usaFSCtrend) as Record<string, unknown>[];
     const fscIndex = parseFscIndex(usaFSCindex) as Record<string, unknown>[];
+    const assumptions = parseAssumptions(assumptionsSheet);
+    const factors = parseFactors(factorsSheet);
 
     await upsertInBatches(supabase, "rateware_fuel_regions", fuelRegions, "state_code,source");
     await upsertInBatches(supabase, "rateware_fsc_trend", fscTrend, "source,fuel_region,index_date,api_fetch");
     await upsertInBatches(supabase, "rateware_fsc_index", fscIndex, "source,diesel_from,diesel_to");
+    await upsertInBatches(supabase, "rateware_assumptions", assumptions.assumptions, "source,field");
+    await upsertInBatches(supabase, "rateware_mx_diesel_index", assumptions.mxDieselIndex, "source,period_month,market_key");
+    await upsertInBatches(supabase, "rateware_fx_rates", assumptions.fxRates, "source,period_month,currency_pair");
+    await upsertInBatches(supabase, "rateware_factor_items", factors, "source,lookup_key");
 
     return jsonResponse({
       sheet_id: sheetId,
@@ -490,7 +590,11 @@ Deno.serve(async (request) => {
       lane_mileage: laneMileage.length,
       fuel_regions: fuelRegions.length,
       fsc_trend: fscTrend.length,
-      fsc_index: fscIndex.length
+      fsc_index: fscIndex.length,
+      assumptions: assumptions.assumptions.length,
+      mx_diesel_index: assumptions.mxDieselIndex.length,
+      fx_rates: assumptions.fxRates.length,
+      factors: factors.length
     });
   } catch (error) {
     return jsonResponse({ error: error.message }, 500);
