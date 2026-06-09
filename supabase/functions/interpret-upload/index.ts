@@ -479,11 +479,31 @@ function buildLocationIndex(locations: Record<string, unknown>[]) {
     ].map(catalogKey).filter(Boolean);
 
     for (const key of keys) {
-      if (!index.has(key)) index.set(key, location);
+      const existing = index.get(key);
+      if (!existing || locationQuality(location) > locationQuality(existing)) index.set(key, location);
     }
   }
 
   return index;
+}
+
+function sourceRank(source: unknown) {
+  const text = String(source || "");
+  if (text === "rateware_manual_catalog") return 0;
+  if (text === "rateware_google_catalog" || text === "cusCatalog") return 1;
+  if (text === "rateware_seed") return 3;
+  return 2;
+}
+
+function locationQuality(location: Record<string, unknown>) {
+  let score = 0;
+  if (location.country && location.country !== "UNKNOWN") score += 30;
+  if (location.zip_prefix) score += 20;
+  if (location.market) score += 15;
+  if (location.region) score += 10;
+  if (location.state_code || location.state_name) score += 8;
+  score += Math.max(0, 10 - sourceRank(location.source));
+  return score;
 }
 
 function locationCandidate(location: Record<string, unknown>, score: number, reason: string) {
@@ -1247,7 +1267,7 @@ Deno.serve(async (request) => {
     const vendorId = vendorMatch?.vendor?.id || rawUpload.vendor_id || null;
     const catalogResult = await supabase.from("rateware_catalog_items").select("category,raw_value,normalized_value,code,metadata").eq("active", true).limit(20000);
     const mileageResult = await supabase.from("rateware_lane_mileage").select("source,route_key,miles,km").eq("active", true).limit(20000);
-    const locationResult = await supabase.from("rateware_locations").select("country,location_key,raw_value,zip_prefix,city,state_code,state_name,metro_city,market,region").eq("active", true).limit(20000);
+    const locationResult = await supabase.from("rateware_locations").select("source,country,location_key,raw_value,zip_prefix,city,state_code,state_name,metro_city,market,region").eq("active", true).limit(20000);
     const fuelRegionResult = await supabase.from("rateware_fuel_regions").select("state_code,fuel_region,diesel_per_gallon,fsc_per_mile").eq("active", true).limit(200);
     const fscTrendResult = await supabase.from("rateware_fsc_trend").select("source,api_fetch,fuel_region,index_date,diesel_per_gallon,fsc_per_mile").eq("active", true).limit(20000);
     const borderPairResult = await supabase.from("border_crossing_pairs").select("id,mx_city,mx_state,us_city,us_state,crossing_name,default_rank").eq("active", true).limit(200);

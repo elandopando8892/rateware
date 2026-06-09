@@ -20,9 +20,21 @@ function cleanText(value: unknown) {
 
 function sourceRank(source: unknown) {
   const text = String(source || "");
+  if (text === "rateware_manual_catalog") return 0;
   if (text === "rateware_google_catalog" || text === "cusCatalog") return 1;
   if (text === "rateware_seed") return 3;
   return 2;
+}
+
+function optionQuality(location: Record<string, unknown>) {
+  let score = 0;
+  if (location.country && location.country !== "UNKNOWN") score += 30;
+  if (location.zip_prefix) score += 20;
+  if (location.market) score += 15;
+  if (location.region) score += 10;
+  if (location.state_code || location.state_name) score += 8;
+  score += Math.max(0, 10 - sourceRank(location.source));
+  return score;
 }
 
 function normalizeDomain(value: unknown) {
@@ -531,19 +543,18 @@ Deno.serve(async (request) => {
       for (const location of locations.data || []) {
         const value = cleanText(location.raw_value || location.metro_city || [location.city, location.state_code].filter(Boolean).join(", "));
         if (!value) continue;
-        const key = `${location.country || ""}|${location.zip_prefix || ""}|${location.metro_city || value}|${location.market || ""}`;
+        const cityKey = String(location.city || location.metro_city || value).trim().toUpperCase();
+        const stateKey = String(location.state_code || location.state_name || "").trim().toUpperCase();
+        const key = `${cityKey}|${stateKey}|${location.market || ""}`;
         const existing = locationMap.get(key);
-        if (!existing || sourceRank(location.source) < sourceRank(existing.source)) {
+        if (!existing || optionQuality(location) > optionQuality(existing)) {
+          const geography = [location.zip_prefix, location.market, location.region, location.country]
+            .filter(Boolean)
+            .join(" | ");
           locationMap.set(key, {
             source: location.source,
             value,
-            label: [
-              location.zip_prefix,
-              location.metro_city || value,
-              location.market,
-              location.region,
-              location.country
-            ].filter(Boolean).join(" | "),
+            label: [location.metro_city || value, geography].filter(Boolean).join(" | "),
             zip_prefix: location.zip_prefix,
             city: location.city,
             state_code: location.state_code,

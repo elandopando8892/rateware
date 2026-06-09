@@ -151,7 +151,8 @@ const MX_STATE_NAMES: Record<string, string> = {
   GR: "Guerrero",
   HG: "Hidalgo",
   JA: "Jalisco",
-  MX: "Mexico",
+  EM: "Estado de Mexico",
+  MX: "Estado de Mexico",
   MC: "Michoacan",
   MR: "Morelos",
   NA: "Nayarit",
@@ -171,6 +172,78 @@ const MX_STATE_NAMES: Record<string, string> = {
   ZA: "Zacatecas"
 };
 
+const MX_STATE_CODE_BY_NAME: Record<string, string> = Object.fromEntries(
+  Object.entries(MX_STATE_NAMES).map(([code, name]) => [key(name), code])
+);
+
+Object.assign(MX_STATE_CODE_BY_NAME, {
+  "BAJA CALIFORNIA NORTE": "BN",
+  "CDMX": "DF",
+  "CIUDAD DE MEXICO": "DF",
+  "DISTRITO FEDERAL": "DF",
+  "EDO MEX": "EM",
+  "EDO. MEX": "EM",
+  "ESTADO DE MEXICO": "EM",
+  "MEXICO": "EM",
+  "MICHOACAN DE OCAMPO": "MC",
+  "NUEVO LEON": "NL",
+  "QUERETARO DE ARTEAGA": "QE",
+  "SAN LUIS POTOSI": "SL",
+  "VERACRUZ DE IGNACIO DE LA LLAVE": "VE"
+});
+
+const MX_MARKET_REGIONS: Record<string, string> = {
+  "ACUNA MARKET": "Northeast Mexico",
+  "ALTAMIRA MARKET": "Northeast Mexico",
+  "CHIHUAHUA MARKET": "North Mexico",
+  "CIUDAD VICTORIA MARKET": "Northeast Mexico",
+  "GUADALAJARA MARKET": "West Mexico",
+  "JUAREZ MARKET": "North Mexico",
+  "LEON MARKET": "Bajio",
+  "MEXICALI MARKET": "Northwest Mexico",
+  "MEXICO MARKET": "Central Mexico",
+  "MONTERREY MARKET": "Northeast Mexico",
+  "NUEVO LAREDO MARKET": "Northeast Mexico",
+  "PUEBLA MARKET": "Central Mexico",
+  "QUERETARO MARKET": "Bajio",
+  "REYNOSA MARKET": "Northeast Mexico",
+  "SALTILLO MARKET": "Northeast Mexico",
+  "SAN LUIS POTOSI MARKET": "Bajio",
+  "TOLUCA MARKET": "Central Mexico",
+  "TIJUANA MARKET": "Northwest Mexico"
+};
+
+const MX_LOCATION_ALIASES = [
+  {
+    rawValue: "Lerma, EM",
+    zipPrefix: "500",
+    metroCity: "Lerma, Estado de Mexico",
+    market: "Toluca Market",
+    region: "Central Mexico"
+  },
+  {
+    rawValue: "Lerma, Edo Mex, MX",
+    zipPrefix: "500",
+    metroCity: "Lerma, Estado de Mexico",
+    market: "Toluca Market",
+    region: "Central Mexico"
+  },
+  {
+    rawValue: "Lerma, Mexico",
+    zipPrefix: "500",
+    metroCity: "Lerma, Estado de Mexico",
+    market: "Toluca Market",
+    region: "Central Mexico"
+  },
+  {
+    rawValue: "Toluca, MX",
+    zipPrefix: "500",
+    metroCity: "Toluca, Estado de Mexico",
+    market: "Toluca Market",
+    region: "Central Mexico"
+  }
+];
+
 const CANADIAN_PROVINCES = new Set(["AB", "BC", "MB", "NB", "NF", "NS", "NT", "NU", "ON", "PE", "PQ", "QC", "SK", "YT"]);
 const US_STATES = new Set([
   "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA", "HI", "IA", "ID", "IL", "IN", "KS", "KY", "LA", "MA", "MD", "ME", "MI", "MN", "MO", "MS", "MT", "NC", "ND", "NE", "NH", "NJ", "NM", "NV", "NY", "OH", "OK", "OR", "PA", "RI", "SC", "SD", "TN", "TX", "UT", "VA", "VT", "WA", "WI", "WV", "WY", "DC"
@@ -178,18 +251,24 @@ const US_STATES = new Set([
 
 function splitCityState(value: unknown) {
   const text = cleanText(value);
-  if (!text) return { city: null, stateCode: null };
+  if (!text) return { city: null, stateCode: null, stateName: null };
   const parts = text.split(",").map((part) => part.trim()).filter(Boolean);
+  const statePart = cleanText(parts[1]);
+  const stateKey = key(statePart);
+  const mxStateCode = stateKey ? MX_STATE_CODE_BY_NAME[stateKey] : null;
+  const stateCode = mxStateCode || (statePart && statePart.length <= 3 ? statePart.toUpperCase() : null);
   return {
     city: parts[0] || text,
-    stateCode: parts[1]?.toUpperCase() || null
+    stateCode,
+    stateName: mxStateCode ? MX_STATE_NAMES[mxStateCode] : statePart
   };
 }
 
-function countryFromState(stateCode: string | null, zipPrefix: string | null) {
+function countryFromState(stateCode: string | null, zipPrefix: string | null, market?: unknown) {
   if (stateCode && US_STATES.has(stateCode)) return "US";
   if (stateCode && CANADIAN_PROVINCES.has(stateCode)) return "CA";
   if (stateCode && MX_STATE_NAMES[stateCode]) return "MX";
+  if (market && key(market).includes("MARKET") && zipPrefix && /^\d{3}/.test(zipPrefix) && Number(zipPrefix) >= 10) return "MX";
   if (zipPrefix && /^\d{3}/.test(zipPrefix)) return "US";
   return "UNKNOWN";
 }
@@ -207,8 +286,9 @@ function locationRecord(input: {
   if (!rawValue || !metroCity) return null;
 
   const zipPrefix = cleanText(input.zipPrefix);
-  const { city, stateCode } = splitCityState(metroCity);
-  const country = countryFromState(stateCode, zipPrefix);
+  const { city, stateCode, stateName } = splitCityState(metroCity);
+  const country = countryFromState(stateCode, zipPrefix, input.market);
+  const market = cleanText(input.market);
 
   return {
     source: input.source || "cusCatalog",
@@ -218,10 +298,10 @@ function locationRecord(input: {
     zip_prefix: zipPrefix,
     city,
     state_code: stateCode,
-    state_name: country === "MX" && stateCode ? MX_STATE_NAMES[stateCode] || stateCode : stateCode,
+    state_name: country === "MX" && stateCode ? MX_STATE_NAMES[stateCode] || stateName : stateName || stateCode,
     metro_city: metroCity,
-    market: cleanText(input.market),
-    region: cleanText(input.region),
+    market,
+    region: cleanText(input.region) || (country === "MX" && market ? MX_MARKET_REGIONS[key(market)] || null : null),
     metadata: {},
     active: true,
     updated_at: new Date().toISOString()
@@ -281,6 +361,11 @@ function parseCusCatalog(rows: string[][]) {
       });
       if (item) items.push(item);
     }
+  }
+
+  for (const alias of MX_LOCATION_ALIASES) {
+    const location = locationRecord({ ...alias, source: "rateware_manual_catalog" });
+    if (location) locations.push(location);
   }
 
   return {
