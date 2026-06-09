@@ -433,9 +433,10 @@ function parseFscIndex(rows: string[][]) {
   }).filter(Boolean);
 }
 
-function currentPeriodMonth() {
+function previousPeriodMonth() {
   const now = new Date();
-  return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}-01`;
+  const previous = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
+  return `${previous.getUTCFullYear()}-${String(previous.getUTCMonth() + 1).padStart(2, "0")}-01`;
 }
 
 function parseAssumptions(rows: string[][]) {
@@ -466,7 +467,7 @@ function parseAssumptions(rows: string[][]) {
     };
   }).filter(Boolean) as Record<string, unknown>[];
 
-  const periodMonth = currentPeriodMonth();
+  const periodMonth = previousPeriodMonth();
   const dieselMx = assumptions.find((item) => key(item.field) === "DIESEL MX");
   const fx = assumptions.find((item) => key(item.field) === "TIPO DE CAMBIO");
 

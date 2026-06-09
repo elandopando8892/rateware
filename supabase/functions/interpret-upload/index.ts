@@ -558,8 +558,16 @@ function factorNumber(items: Record<string, unknown>[], group: string, name: unk
   return Number.isFinite(value) && value > 0 ? value : fallback;
 }
 
-function latestByPeriod(items: Record<string, unknown>[]) {
-  return [...items].sort((a, b) => String(b.period_month || "").localeCompare(String(a.period_month || "")))[0] || null;
+function previousMonthForDate(value: unknown) {
+  const date = toDate(value) || new Date();
+  const previous = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() - 1, 1));
+  return `${previous.getUTCFullYear()}-${String(previous.getUTCMonth() + 1).padStart(2, "0")}-01`;
+}
+
+function indexForQuoteDate(items: Record<string, unknown>[], quoteDate: unknown) {
+  const targetPeriod = previousMonthForDate(quoteDate);
+  const sorted = [...items].sort((a, b) => String(b.period_month || "").localeCompare(String(a.period_month || "")));
+  return sorted.find((item) => String(item.period_month || "") <= targetPeriod) || sorted[0] || null;
 }
 
 function buildMxFuelContext(input: {
@@ -570,22 +578,22 @@ function buildMxFuelContext(input: {
 }) {
   const loadedEfficiency = assumptionNumber(input.assumptions, "Rendimiento Cargado", 2.8);
   const fuelBuffer = assumptionNumber(input.assumptions, "Fuel Escalation Buffer", 0.05);
-  const diesel = latestByPeriod(input.mxDiesel);
-  const fx = latestByPeriod(input.fxRates);
 
   return {
     loadedEfficiency,
     fuelBuffer,
-    diesel,
-    fx,
+    mxDiesel: [...input.mxDiesel],
+    fxRates: [...input.fxRates],
     factors: input.factors
   };
 }
 
 function mxFuelAudit(row: Record<string, unknown>, kmValue: unknown, context: ReturnType<typeof buildMxFuelContext>) {
   const km = cleanNumber(kmValue);
-  const dieselMxn = cleanNumber(context.diesel?.diesel_mxn_per_liter);
-  const fxRate = cleanNumber(context.fx?.rate);
+  const diesel = indexForQuoteDate(context.mxDiesel, row.quote_date);
+  const fx = indexForQuoteDate(context.fxRates, row.quote_date);
+  const dieselMxn = cleanNumber(diesel?.diesel_mxn_per_liter);
+  const fxRate = cleanNumber(fx?.rate);
   if (!km || !dieselMxn || !fxRate) return {};
 
   const equipmentFactor = factorNumber(context.factors, "Equipment", row.normalized_equipment || row.equipment, 1);
@@ -602,8 +610,8 @@ function mxFuelAudit(row: Record<string, unknown>, kmValue: unknown, context: Re
     fuel_efficiency_km_per_liter: Number(fuelEfficiency.toFixed(4)),
     fuel_factor: Number(fuelFactor.toFixed(4)),
     fuel_cost_usd: Number(fuelCostUsd.toFixed(2)),
-    fuel_source: String(context.diesel?.source || "rateware_assumptions"),
-    fx_source: String(context.fx?.source || "rateware_assumptions")
+    fuel_source: String(diesel?.source || "rateware_assumptions"),
+    fx_source: String(fx?.source || "rateware_assumptions")
   };
 }
 
