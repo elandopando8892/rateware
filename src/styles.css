@@ -880,7 +880,7 @@ table {
 }
 
 .staging-table {
-  min-width: 2520px;
+  min-width: 3050px;
 }
 
 .staging-table th,
@@ -972,6 +972,45 @@ tbody tr:hover {
   padding: 2px 7px;
   font-size: 0.74rem;
   font-weight: 850;
+}
+
+.location-chip {
+  display: inline-flex;
+  align-items: center;
+  max-width: 96px;
+  min-height: 22px;
+  border-radius: 999px;
+  padding: 2px 7px;
+  font-size: 0.72rem;
+  font-weight: 850;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.location-chip.strong {
+  background: #dcefed;
+  color: var(--accent-dark);
+}
+
+.location-chip.weak {
+  background: #fde7e4;
+  color: var(--danger);
+}
+
+.location-text {
+  display: inline-block;
+  max-width: 140px;
+  color: #27323a;
+  font-size: 0.74rem;
+  font-weight: 760;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.border-pair-text {
+  max-width: 150px;
 }
 
 .tag-list {

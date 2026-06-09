@@ -27,7 +27,7 @@ let stagingOptions = {
   us_crossings: [],
   currencies: ["USD", "MXN", "CAD"]
 };
-const STAGING_COLSPAN = 24;
+const STAGING_COLSPAN = 29;
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -94,6 +94,40 @@ function statusSelect(row) {
       <option value="rejected" ${status === "rejected" ? "selected" : ""}>rejected</option>
     </select>
   `;
+}
+
+function compactLocationCell(row, prefix) {
+  const zip = row[`${prefix}_zip_prefix`] || "";
+  const state = row[`${prefix}_state`] || "";
+  const country = row[`${prefix}_country`] || "";
+  const city = row[`${prefix}_city`] || "";
+  const region = row[`${prefix}_region`] || "";
+  const reason = row[`${prefix}_match_reason`] || "";
+  const text = [zip, state || country].filter(Boolean).join(" / ") || "-";
+  const title = [
+    city && `City: ${city}`,
+    state && `State: ${state}`,
+    country && `Country: ${country}`,
+    region && `Region: ${region}`,
+    reason && `Match: ${reason}`
+  ].filter(Boolean).join(" | ");
+  const tone = zip || state || city ? "strong" : "weak";
+  return `<span class="location-chip ${tone}" title="${escapeHtml(title)}">${escapeHtml(text)}</span>`;
+}
+
+function compactMarketCell(row, prefix) {
+  const market = row[`${prefix}_market`] || "";
+  const region = row[`${prefix}_region`] || "";
+  const title = [market && `Market: ${market}`, region && `Region: ${region}`].filter(Boolean).join(" | ");
+  return `<span class="location-text" title="${escapeHtml(title)}">${escapeHtml(market || "-")}</span>`;
+}
+
+function compactBorderCell(row) {
+  const mx = row.mx_border_crossing_point || "";
+  const us = row.us_border_crossing_point || "";
+  const summary = row.leg_summary || "";
+  const text = [mx, us].filter(Boolean).join(" / ") || "-";
+  return `<span class="location-text border-pair-text" title="${escapeHtml(summary || text)}">${escapeHtml(text)}</span>`;
 }
 
 function renderDatalists() {
@@ -236,7 +270,11 @@ function renderRows(rows) {
           <td>${inputCell(row, "quote_date", { type: "date", short: true })}</td>
           <td>${inputCell(row, "rfx_id", { short: true })}</td>
           <td>${datalistCell(row, "origin", stagingOptions.locations, { wide: true })}</td>
+          <td>${compactLocationCell(row, "origin")}</td>
+          <td>${compactMarketCell(row, "origin")}</td>
           <td>${datalistCell(row, "destination", stagingOptions.locations, { wide: true })}</td>
+          <td>${compactLocationCell(row, "destination")}</td>
+          <td>${compactMarketCell(row, "destination")}</td>
           <td>${selectCell(row, "equipment", stagingOptions.categories.equipment || [], { short: true })}</td>
           <td>${selectCell(row, "trailer", stagingOptions.categories.trailer || [], { short: true })}</td>
           <td>${selectCell(row, "config", stagingOptions.categories.config || [], { short: true })}</td>
@@ -244,6 +282,7 @@ function renderRows(rows) {
           <td>${selectCell(row, "service", stagingOptions.categories.service || [], { short: true })}</td>
           <td>${selectCell(row, "mx_border_crossing_point", stagingOptions.mx_crossings || [], { short: true })}</td>
           <td>${selectCell(row, "us_border_crossing_point", stagingOptions.us_crossings || [], { short: true })}</td>
+          <td>${compactBorderCell(row)}</td>
           <td>${inputCell(row, "mx_linehaul", { money: true })}</td>
           <td>${inputCell(row, "us_linehaul", { money: true })}</td>
           <td>${inputCell(row, "fsc", { money: true })}</td>
