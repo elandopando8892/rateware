@@ -137,7 +137,13 @@ function isInvalidRateValue(value: unknown) {
 }
 
 function cleanRateValue(value: unknown) {
-  return isInvalidRateValue(value) ? null : String(value).trim();
+  if (isInvalidRateValue(value)) return null;
+  const text = String(value)
+    .replace(/\b(USD|US\$|DLLS?|DOLLARS?|MXN|MX\$|PESOS?|CAD|CAN\$)\b/gi, "")
+    .replace(/[$,]/g, "")
+    .trim();
+  const match = text.match(/-?\d+(?:\.\d+)?/);
+  return match ? match[0] : null;
 }
 
 function cleanNumber(value: unknown) {
@@ -200,7 +206,8 @@ function hasCatalogToken(value: unknown, token: string) {
 function serviceFromText(value: unknown) {
   const key = rawKey(value);
   if (!key) return null;
-  if (hasCatalogToken(key, "RT") || key.includes("ROUND TRIP") || key.includes("ROUNDTRIP")) return "Roundtrip";
+  if (key.includes("NO EXPLICIT") || key.includes("CORRECTED TO ONE WAY")) return null;
+  if (hasCatalogToken(key, "RT") || key.includes("ROUND TRIP") || key.includes("ROUNDTRIP") || key.includes("ROUND TRIP")) return "Roundtrip";
   if (key.includes("BACKHAUL")) return "Backhaul";
   if (hasCatalogToken(key, "OW") || key.includes("ONE WAY") || key.includes("ONEWAY")) return "One Way";
   return null;
@@ -237,7 +244,7 @@ function normalizeServiceSafety(row: Record<string, unknown>) {
       normalized_service: hasOneDirection ? "One Way" : row.normalized_service,
       notes: [
         row.notes,
-        hasOneDirection ? "Service corrected to One Way because no explicit RT/Round Trip marker was found in the carrier quote." : null
+        hasOneDirection ? "Service corrected to One Way because no explicit roundtrip marker was found in the carrier quote." : null
       ].filter(Boolean).join(" | ")
     };
   }

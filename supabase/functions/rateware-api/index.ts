@@ -18,6 +18,17 @@ function cleanText(value: unknown) {
   return text ? text : null;
 }
 
+function cleanRateText(value: unknown) {
+  const text = cleanText(value);
+  if (!text || /^x$/i.test(text) || /^n\/?a$/i.test(text) || /^please estimate$/i.test(text) || /^tier\s*[123]$/i.test(text)) return null;
+  const cleaned = text
+    .replace(/\b(USD|US\$|DLLS?|DOLLARS?|MXN|MX\$|PESOS?|CAD|CAN\$)\b/gi, "")
+    .replace(/[$,]/g, "")
+    .trim();
+  const match = cleaned.match(/-?\d+(?:\.\d+)?/);
+  return match ? match[0] : null;
+}
+
 function sourceRank(source: unknown) {
   const text = String(source || "");
   if (text === "rateware_manual_catalog") return 0;
@@ -205,6 +216,10 @@ function normalizeStagingPatch(input: Record<string, unknown>, current: Record<s
 
   for (const field of textFields) {
     if (input[field] !== undefined) patch[field] = cleanText(input[field]);
+  }
+
+  for (const field of ["mx_linehaul", "us_linehaul", "us_miles", "fsc", "fuel", "border_crossing_fee", "flat_rate", "all_in_rate"]) {
+    if (input[field] !== undefined) patch[field] = cleanRateText(input[field]);
   }
 
   if (input.quote_date !== undefined) patch.quote_date = cleanDate(input.quote_date);
