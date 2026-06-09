@@ -233,6 +233,8 @@ function parseCusCatalog(rows: string[][]) {
   const items: Record<string, unknown>[] = [];
   const locations: Record<string, unknown>[] = [];
   const [header, ...data] = rows;
+  const index = Object.fromEntries(header.map((name, position) => [key(name), position]));
+  const at = (row: string[], name: string, fallbackIndex: number) => row[index[key(name)] ?? fallbackIndex];
   const categories: Array<[string, number]> = [
     ["equipment", 13],
     ["trailer", 14],
@@ -248,10 +250,10 @@ function parseCusCatalog(rows: string[][]) {
   ];
 
   for (const row of data) {
-    const zipPrefix = cleanText(row[2]);
-    const marketZip = cleanText(row[3]);
-    const metroCity = cleanText(row[4]);
-    const market = cleanText(row[5]);
+    const zipPrefix = cleanText(at(row, "Zip Code", 2));
+    const marketZip = cleanText(at(row, "(M) ZIp Code", 3));
+    const metroCity = cleanText(at(row, "Metro City", 4));
+    const market = cleanText(at(row, "Market", 5));
 
     if (zipPrefix && metroCity) {
       items.push(catalogItem("zip_market", zipPrefix, metroCity, { market_zip: marketZip, market }, zipPrefix)!);
@@ -259,8 +261,8 @@ function parseCusCatalog(rows: string[][]) {
       if (location) locations.push(location);
     }
 
-    const mxProduction = cleanText(row[23]);
-    const homologation = cleanText(row[24]);
+    const mxProduction = cleanText(at(row, "MEX Production", 23));
+    const homologation = cleanText(at(row, "Homolgation", 24));
     if (mxProduction) {
       const location = locationRecord({
         rawValue: mxProduction,

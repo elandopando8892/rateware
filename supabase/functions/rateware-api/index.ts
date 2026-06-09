@@ -18,6 +18,13 @@ function cleanText(value: unknown) {
   return text ? text : null;
 }
 
+function sourceRank(source: unknown) {
+  const text = String(source || "");
+  if (text === "rateware_google_catalog" || text === "cusCatalog") return 1;
+  if (text === "rateware_seed") return 3;
+  return 2;
+}
+
 function normalizeDomain(value: unknown) {
   const text = cleanText(value);
   if (!text) return null;
@@ -376,13 +383,13 @@ Deno.serve(async (request) => {
       const [catalog, locations, borderPairs] = await Promise.all([
         supabase
           .from("rateware_catalog_items")
-          .select("category,normalized_value,raw_value,code")
+          .select("source,category,normalized_value,raw_value,code")
           .in("category", ["equipment", "trailer", "config", "operation", "service", "driver", "border_crossing"])
           .eq("active", true)
           .limit(5000),
         supabase
           .from("rateware_locations")
-          .select("raw_value,metro_city,city,state_code,country,market")
+          .select("source,raw_value,zip_prefix,metro_city,city,state_code,state_name,country,market,region")
           .eq("active", true)
           .limit(5000),
         supabase
@@ -397,22 +404,56 @@ Deno.serve(async (request) => {
         if (result.error) throw result.error;
       }
 
-      const categories: Record<string, string[]> = {};
+      const categoryMaps: Record<string, Map<string, { value: string; source: string }>> = {};
       for (const item of catalog.data || []) {
         const category = String(item.category);
         const value = cleanText(item.normalized_value || item.raw_value || item.code);
         if (!value) continue;
-        if (!categories[category]) categories[category] = [];
-        categories[category].push(value);
+        if (!categoryMaps[category]) categoryMaps[category] = new Map();
+        const existing = categoryMaps[category].get(value);
+        if (!existing || sourceRank(item.source) < sourceRank(existing.source)) {
+          categoryMaps[category].set(value, { value, source: String(item.source || "") });
+        }
       }
 
-      for (const category of Object.keys(categories)) {
-        categories[category] = Array.from(new Set(categories[category])).sort((a, b) => a.localeCompare(b));
+      const categories: Record<string, string[]> = {};
+      for (const category of Object.keys(categoryMaps)) {
+        categories[category] = [...categoryMaps[category].values()]
+          .map((item) => item.value)
+          .sort((a, b) => a.localeCompare(b));
       }
 
-      const locationOptions = Array.from(new Set((locations.data || [])
-        .map((location) => cleanText(location.metro_city || location.raw_value || [location.city, location.state_code].filter(Boolean).join(", ")))
-        .filter(Boolean) as string[])).sort((a, b) => a.localeCompare(b)).slice(0, 2000);
+      const locationMap = new Map<string, Record<string, unknown>>();
+      for (const location of locations.data || []) {
+        const value = cleanText(location.raw_value || location.metro_city || [location.city, location.state_code].filter(Boolean).join(", "));
+        if (!value) continue;
+        const key = `${location.country || ""}|${location.zip_prefix || ""}|${location.metro_city || value}|${location.market || ""}`;
+        const existing = locationMap.get(key);
+        if (!existing || sourceRank(location.source) < sourceRank(existing.source)) {
+          locationMap.set(key, {
+            source: location.source,
+            value,
+            label: [
+              location.zip_prefix,
+              location.metro_city || value,
+              location.market,
+              location.region,
+              location.country
+            ].filter(Boolean).join(" | "),
+            zip_prefix: location.zip_prefix,
+            city: location.city,
+            state_code: location.state_code,
+            state_name: location.state_name,
+            country: location.country,
+            market: location.market,
+            region: location.region
+          });
+        }
+      }
+
+      const locationOptions = [...locationMap.values()]
+        .sort((a, b) => String(a.label || a.value).localeCompare(String(b.label || b.value)))
+        .slice(0, 5000);
 
       const mxCrossings = Array.from(new Set([
         ...(categories.border_crossing || []),

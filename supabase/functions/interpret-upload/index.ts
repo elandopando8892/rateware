@@ -339,6 +339,7 @@ function buildLocationIndex(locations: Record<string, unknown>[]) {
       location.city,
       location.metro_city,
       location.market,
+      location.region,
       [location.city, location.state_code].filter(Boolean).join(", "),
       [location.city, location.state_name].filter(Boolean).join(", ")
     ].map(catalogKey).filter(Boolean);
@@ -380,9 +381,10 @@ function locationMatch(index: Map<string, Record<string, unknown>>, value: unkno
     };
   }
 
-  const zip = lookup.match(/\b\d{3,5}\b/)?.[0]?.slice(0, 3);
-  if (zip && index.get(zip)) {
-    const zipMatch = index.get(zip)!;
+  const zipToken = lookup.match(/\b[A-Z]\d[A-Z]|\b\d{3,5}\b/)?.[0] || null;
+  const zip = zipToken && /^\d/.test(zipToken) ? zipToken.slice(0, 3) : zipToken;
+  if (zip && index.get(catalogKey(zip))) {
+    const zipMatch = index.get(catalogKey(zip))!;
     return {
       location: zipMatch,
       score: 92,
@@ -392,31 +394,44 @@ function locationMatch(index: Map<string, Record<string, unknown>>, value: unkno
   }
 
   const candidates: Array<{ location: Record<string, unknown>; score: number; reason: string }> = [];
-  for (const [candidateKey, location] of index) {
-    if (!candidateKey || candidateKey.length < 3) continue;
+  const seen = new Set<Record<string, unknown>>();
+  for (const [, location] of index) {
+    if (seen.has(location)) continue;
+    seen.add(location);
     let score = 0;
     const reasons: string[] = [];
-    if (lookup.includes(candidateKey) || candidateKey.includes(lookup)) {
-      score += Math.min(candidateKey.length, lookup.length);
-      reasons.push("text overlap");
+    const zipPrefix = catalogKey(location.zip_prefix);
+    if (zipPrefix && lookup.includes(zipPrefix)) {
+      score += 45;
+      reasons.push("zip prefix");
     }
     const state = catalogKey(location.state_code);
     if (state && lookup.includes(state)) {
-      score += 12;
+      score += 25;
       reasons.push("state match");
     }
     const city = catalogKey(location.city);
     if (city && lookup.includes(city)) {
-      score += 18;
+      score += 35;
       reasons.push("city match");
     }
-    if (score >= 12) candidates.push({ location, score, reason: reasons.join(", ") || "weak text match" });
+    const metro = catalogKey(location.metro_city);
+    if (metro && (lookup.includes(metro) || metro.includes(lookup))) {
+      score += 30;
+      reasons.push("metro match");
+    }
+    const market = catalogKey(location.market);
+    if (market && (lookup.includes(market) || market.includes(lookup))) {
+      score += 18;
+      reasons.push("market match");
+    }
+    if (score >= 25) candidates.push({ location, score, reason: reasons.join(", ") || "catalog match" });
   }
 
   candidates.sort((a, b) => b.score - a.score);
   const top = candidates.slice(0, 5).map((candidate) => locationCandidate(candidate.location, candidate.score, candidate.reason));
   const best = candidates[0] || null;
-  if (!best || best.score < 18) {
+  if (!best || best.score < 35) {
     return {
       location: null,
       score: best?.score || 0,

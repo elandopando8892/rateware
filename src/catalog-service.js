@@ -12,7 +12,16 @@ export async function syncRatewareCatalog() {
     body: JSON.stringify({})
   });
 
-  const data = await response.json();
-  if (!response.ok) throw new Error(data.error || "Catalog sync failed.");
+  const text = await response.text();
+  let data = {};
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch {
+    data = { error: text };
+  }
+
+  if (!response.ok) {
+    throw new Error(data.error || `Catalog sync failed with HTTP ${response.status}.`);
+  }
   return data;
 }

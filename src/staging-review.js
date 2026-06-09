@@ -77,6 +77,14 @@ function datalistCell(row, field, values = [], options = {}) {
   return `<input class="staging-input ${widthClass}" data-field="${field}" list="${listId}" value="${escapeHtml(row[field] || "")}" />`;
 }
 
+function locationOptionValue(option) {
+  return typeof option === "string" ? option : option.value || option.label || "";
+}
+
+function locationOptionLabel(option) {
+  return typeof option === "string" ? "" : option.label || "";
+}
+
 function statusSelect(row) {
   const status = row.status || "pending_review";
   return `
@@ -95,8 +103,8 @@ function renderDatalists() {
   container.id = "staging-datalists";
   container.hidden = true;
   container.innerHTML = `
-    <datalist id="staging-origin-options">${stagingOptions.locations.map((value) => `<option value="${escapeHtml(value)}"></option>`).join("")}</datalist>
-    <datalist id="staging-destination-options">${stagingOptions.locations.map((value) => `<option value="${escapeHtml(value)}"></option>`).join("")}</datalist>
+    <datalist id="staging-origin-options">${stagingOptions.locations.map((option) => `<option value="${escapeHtml(locationOptionValue(option))}" label="${escapeHtml(locationOptionLabel(option))}"></option>`).join("")}</datalist>
+    <datalist id="staging-destination-options">${stagingOptions.locations.map((option) => `<option value="${escapeHtml(locationOptionValue(option))}" label="${escapeHtml(locationOptionLabel(option))}"></option>`).join("")}</datalist>
   `;
   document.body.appendChild(container);
 }
@@ -147,9 +155,17 @@ function renderRowDetail(row) {
       <dl>
         ${detailLine("Origin market", row.origin_market)}
         ${detailLine("Origin ZIP", row.origin_zip_prefix)}
+        ${detailLine("Origin city", row.origin_city)}
+        ${detailLine("Origin state", row.origin_state)}
+        ${detailLine("Origin country", row.origin_country)}
+        ${detailLine("Origin region", row.origin_region)}
         ${detailLine("Origin match", row.origin_match_reason)}
         ${detailLine("Destination market", row.destination_market)}
         ${detailLine("Destination ZIP", row.destination_zip_prefix)}
+        ${detailLine("Destination city", row.destination_city)}
+        ${detailLine("Destination state", row.destination_state)}
+        ${detailLine("Destination country", row.destination_country)}
+        ${detailLine("Destination region", row.destination_region)}
         ${detailLine("Destination match", row.destination_match_reason)}
       </dl>
     </section>
