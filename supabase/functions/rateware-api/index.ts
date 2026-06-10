@@ -62,12 +62,116 @@ function normalizeTags(value: unknown) {
     .slice(0, 20);
 }
 
+function key(value: unknown) {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "");
+}
+
+function parseCsv(text: string) {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let cell = "";
+  let quoted = false;
+
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    const next = text[index + 1];
+    if (quoted && char === '"' && next === '"') {
+      cell += '"';
+      index += 1;
+      continue;
+    }
+    if (char === '"') {
+      quoted = !quoted;
+      continue;
+    }
+    if (!quoted && char === ",") {
+      row.push(cell);
+      cell = "";
+      continue;
+    }
+    if (!quoted && (char === "\n" || char === "\r")) {
+      if (char === "\r" && next === "\n") index += 1;
+      row.push(cell);
+      if (row.some((value) => value.trim())) rows.push(row);
+      row = [];
+      cell = "";
+      continue;
+    }
+    cell += char;
+  }
+  row.push(cell);
+  if (row.some((value) => value.trim())) rows.push(row);
+  return rows;
+}
+
+function sheetInfoFromUrl(url: string) {
+  const id = url.match(/\/spreadsheets\/d\/([^/]+)/)?.[1] || url.match(/[?&]id=([^&]+)/)?.[1] || null;
+  const gid = url.match(/[?&#]gid=(\d+)/)?.[1] || "0";
+  if (!id) throw new Error("Google Sheet URL must include a spreadsheet id.");
+  return { id, gid };
+}
+
+async function fetchGoogleSheetRows(url: string) {
+  const { id, gid } = sheetInfoFromUrl(url);
+  const csvUrl = `https://docs.google.com/spreadsheets/d/${id}/gviz/tq?tqx=out:csv&gid=${gid}`;
+  const response = await fetch(csvUrl);
+  if (!response.ok) {
+    throw new Error(`Could not read Google Sheet (${response.status}). Share it as Anyone with the link can view.`);
+  }
+  const rows = parseCsv(await response.text());
+  if (!rows.length) return { id, gid, rows: [] as Record<string, unknown>[] };
+  const [headers, ...data] = rows;
+  return {
+    id,
+    gid,
+    rows: data.map((row, index) => {
+      const record: Record<string, unknown> = { source_row_number: index + 2 };
+      headers.forEach((header, position) => {
+        record[header || `Column ${position + 1}`] = row[position] || "";
+      });
+      return record;
+    })
+  };
+}
+
+function firstValue(row: Record<string, unknown>, names: string[]) {
+  const lookup = new Map(Object.keys(row).map((name) => [key(name), row[name]]));
+  for (const name of names) {
+    const value = cleanText(lookup.get(key(name)));
+    if (value) return value;
+  }
+  return null;
+}
+
+function normalizeImportedVendor(row: Record<string, unknown>, source = "google_sheet") {
+  return {
+    vendor_name: firstValue(row, ["vendor_name", "vendor", "carrier", "carrier name", "company", "company name", "nombre", "transportista", "proveedor", "name"]),
+    legal_name: firstValue(row, ["legal_name", "legal name", "razon social", "legal entity"]),
+    domain: firstValue(row, ["domain", "website", "web", "site", "vendor_domain"]),
+    contact_name: firstValue(row, ["contact_name", "contact", "contacto", "pricing contact", "sales rep", "representative"]),
+    primary_email: firstValue(row, ["primary_email", "email", "mail", "correo", "e-mail", "pricing email"]),
+    whatsapp_phone: firstValue(row, ["whatsapp_phone", "whatsapp", "phone", "telefono", "mobile", "cell"]),
+    preferred_channel: firstValue(row, ["preferred_channel", "channel", "canal"]) || "email",
+    tags: firstValue(row, ["tags", "tag", "services", "service", "equipment", "equipos", "coverage type", "tipo"]),
+    coverage_notes: firstValue(row, ["coverage_notes", "coverage", "lanes", "rutas", "regions", "region", "markets", "mercados", "notes coverage"]),
+    notes: firstValue(row, ["notes", "notas", "comments", "comentarios", "observations", "observaciones"]),
+    base_stage: firstValue(row, ["base_stage", "base", "stage"]) || "sourcing",
+    source
+  };
+}
+
 function normalizeVendor(input: Record<string, unknown>, source = "manual") {
   const vendorName = cleanText(input.vendor_name || input.name || input.carrier || input.vendor);
   if (!vendorName) throw new Error("Vendor name is required.");
 
   const preferred = cleanText(input.preferred_channel)?.toLowerCase() || "email";
   const status = cleanText(input.status)?.toLowerCase() || "active";
+  const baseStage = cleanText(input.base_stage)?.toLowerCase() || "sourcing";
 
   return {
     vendor_name: vendorName,
@@ -81,6 +185,15 @@ function normalizeVendor(input: Record<string, unknown>, source = "manual") {
     tags: normalizeTags(input.tags || input.tag || input.services || input.equipment || input.coverage),
     coverage_notes: cleanText(input.coverage_notes || input.coverage || input.lanes),
     notes: cleanText(input.notes),
+    base_stage: ["sourcing", "procurement", "archived"].includes(baseStage) ? baseStage : "sourcing",
+    source_spreadsheet_url: cleanText(input.source_spreadsheet_url),
+    source_spreadsheet_id: cleanText(input.source_spreadsheet_id),
+    source_sheet_gid: cleanText(input.source_sheet_gid),
+    source_sheet_name: cleanText(input.source_sheet_name),
+    source_row_number: input.source_row_number ? Number(input.source_row_number) : null,
+    source_row_hash: cleanText(input.source_row_hash),
+    last_synced_at: input.last_synced_at || null,
+    sync_notes: cleanText(input.sync_notes),
     source
   };
 }
@@ -97,6 +210,11 @@ function normalizeVendorPatch(input: Record<string, unknown>) {
   if (input.notes !== undefined) patch.notes = cleanText(input.notes);
   const status = cleanText(input.status)?.toLowerCase();
   if (status && ["active", "invited", "blocked", "inactive"].includes(status)) patch.status = status;
+  const baseStage = cleanText(input.base_stage)?.toLowerCase();
+  if (baseStage && ["sourcing", "procurement", "archived"].includes(baseStage)) {
+    patch.base_stage = baseStage;
+    patch.archived_at = baseStage === "archived" ? new Date().toISOString() : null;
+  }
   if (input.tags !== undefined) patch.tags = normalizeTags(input.tags);
   if (input.preferred_channel !== undefined) {
     const preferred = cleanText(input.preferred_channel)?.toLowerCase();
@@ -321,6 +439,7 @@ Deno.serve(async (request) => {
       let query = supabase.from("vendors").select("*").order("created_at", { ascending: false }).limit(250);
 
       if (body.status) query = query.eq("status", body.status);
+      if (body.base_stage) query = query.eq("base_stage", body.base_stage);
       if (body.search) {
         const term = String(body.search).trim();
         query = query.or(`vendor_name.ilike.%${term}%,domain.ilike.%${term}%,primary_email.ilike.%${term}%`);
@@ -352,6 +471,33 @@ Deno.serve(async (request) => {
       return jsonResponse({ inserted: result.data.length, rows: result.data });
     }
 
+    if (body.action === "import_vendors_google_sheet") {
+      const url = cleanText(body.url);
+      if (!url) return jsonResponse({ error: "Google Sheet URL is required." }, 400);
+      const sheet = await fetchGoogleSheetRows(url);
+      const rows = sheet.rows.map((raw: Record<string, unknown>) => {
+        const normalized = normalizeImportedVendor(raw, "google_sheet");
+        return normalizeVendor({
+          ...normalized,
+          source_spreadsheet_url: url,
+          source_spreadsheet_id: sheet.id,
+          source_sheet_gid: sheet.gid,
+          source_row_number: raw.source_row_number,
+          source_row_hash: JSON.stringify(raw),
+          last_synced_at: new Date().toISOString()
+        }, "google_sheet");
+      });
+      const validRows = rows.filter((row) => row.vendor_name);
+      if (!validRows.length) return jsonResponse({ inserted: 0, rows: [], total_rows: sheet.rows.length });
+
+      const result = await supabase.from("vendors").upsert(validRows, {
+        onConflict: "vendor_name,domain",
+        ignoreDuplicates: false
+      }).select();
+      if (result.error) throw result.error;
+      return jsonResponse({ inserted: result.data.length, rows: result.data, total_rows: sheet.rows.length });
+    }
+
     if (body.action === "bulk_update_vendors") {
       const ids = Array.isArray(body.ids) ? body.ids.filter(Boolean) : [];
       if (!ids.length) return jsonResponse({ updated: 0, rows: [] });
@@ -380,6 +526,14 @@ Deno.serve(async (request) => {
       const result = await supabase.from("vendors").update(patch).in("id", ids).select();
       if (result.error) throw result.error;
       return jsonResponse({ updated: result.data.length, rows: result.data });
+    }
+
+    if (body.action === "remove_vendors") {
+      const ids = Array.isArray(body.ids) ? body.ids.filter(Boolean) : [];
+      if (!ids.length) return jsonResponse({ removed: 0, rows: [] });
+      const result = await supabase.from("vendors").delete().in("id", ids).select("id");
+      if (result.error) throw result.error;
+      return jsonResponse({ removed: result.data.length, rows: result.data });
     }
 
     if (body.action === "update_vendor") {

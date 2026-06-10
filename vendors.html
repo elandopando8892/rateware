@@ -59,7 +59,8 @@
           </section>
 
           <section class="vendor-tabs wide-section" aria-label="Vendor workflows">
-            <button class="vendor-tab is-active" type="button" data-vendor-tab="directory">Directory</button>
+            <button class="vendor-tab is-active" type="button" data-vendor-tab="sourcing">Sourcing Base</button>
+            <button class="vendor-tab" type="button" data-vendor-tab="procurement">Procurement Base</button>
             <button class="vendor-tab" type="button" data-vendor-tab="wizard">Wizard</button>
             <button class="vendor-tab" type="button" data-vendor-tab="create">Quick Create</button>
             <button class="vendor-tab" type="button" data-vendor-tab="import">Import</button>
@@ -199,7 +200,17 @@
           <section class="queue-panel wide-section hidden" data-tab-panel="import">
             <div class="section-heading compact">
               <p class="eyebrow">Import</p>
-              <h2>CSV / XLSX</h2>
+              <h2>CSV / XLSX / Google Sheet</h2>
+            </div>
+            <div class="vendor-form">
+              <label class="wide-field">
+                Google Sheet URL
+                <input id="google-sheet-url" placeholder="https://docs.google.com/spreadsheets/d/.../edit?gid=..." />
+              </label>
+              <div class="action-row wide-field">
+                <button id="import-google-sheet-button" type="button">Import Google Sheet</button>
+                <p id="google-import-status" class="status-message" role="status"></p>
+              </div>
             </div>
             <button id="download-template-button" class="secondary" type="button">Download template</button>
             <label class="import-zone" for="vendor-import">
@@ -289,7 +300,7 @@
             </div>
           </section>
 
-          <section class="workspace-panel wide-section" data-tab-panel="directory">
+          <section class="workspace-panel wide-section" data-tab-panel="sourcing">
             <div class="toolbar">
               <label>
                 Search
@@ -328,10 +339,22 @@
                 </select>
               </label>
               <label>
+                Move to
+                <select id="bulk-base-stage">
+                  <option value="">Keep base</option>
+                  <option value="sourcing">Sourcing Base</option>
+                  <option value="procurement">Procurement Base</option>
+                  <option value="archived">Archive</option>
+                </select>
+              </label>
+              <label>
                 Add tags
                 <input id="bulk-tags" placeholder="preferred, mx, ftl" />
               </label>
-              <button id="bulk-update-button" type="button">Apply to selected</button>
+              <button id="bulk-update-button" type="button">Save selected</button>
+              <button id="bulk-procurement-button" type="button">Send to Procurement</button>
+              <button id="bulk-archive-vendors-button" class="secondary" type="button">Archive</button>
+              <button id="bulk-remove-vendors-button" class="danger" type="button">Remove</button>
               <p id="bulk-status-message" class="status-message" role="status"></p>
             </div>
 
@@ -347,12 +370,13 @@
                     <th>Fit</th>
                     <th>Tags</th>
                     <th>Channel</th>
+                    <th>Base</th>
                     <th>Status</th>
                   </tr>
                 </thead>
                 <tbody id="vendors-body">
                   <tr>
-                    <td colspan="9">Loading vendors...</td>
+                    <td colspan="10">Loading vendors...</td>
                   </tr>
                 </tbody>
               </table>

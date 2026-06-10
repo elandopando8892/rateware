@@ -7,7 +7,9 @@ import {
   deleteVendorSegment,
   fetchVendorSegments,
   fetchVendors,
+  importVendorsFromGoogleSheet,
   importVendors,
+  removeVendors,
   updateVendor
 } from "./vendor-service.js";
 
@@ -30,6 +32,9 @@ const wizardReview = document.querySelector("#wizard-review");
 const statusMessage = document.querySelector("#vendor-status");
 const importInput = document.querySelector("#vendor-import");
 const importStatus = document.querySelector("#import-status");
+const googleSheetUrlInput = document.querySelector("#google-sheet-url");
+const googleImportButton = document.querySelector("#import-google-sheet-button");
+const googleImportStatus = document.querySelector("#google-import-status");
 const templateButton = document.querySelector("#download-template-button");
 const importPreviewPanel = document.querySelector("#import-preview-panel");
 const importPreviewSummary = document.querySelector("#import-preview-summary");
@@ -45,8 +50,12 @@ const quickFilterButtons = document.querySelectorAll(".quick-filter");
 const bulkToolbar = document.querySelector("#bulk-toolbar");
 const bulkSelectionCount = document.querySelector("#bulk-selection-count");
 const bulkStatus = document.querySelector("#bulk-status");
+const bulkBaseStage = document.querySelector("#bulk-base-stage");
 const bulkTags = document.querySelector("#bulk-tags");
 const bulkButton = document.querySelector("#bulk-update-button");
+const bulkProcurementButton = document.querySelector("#bulk-procurement-button");
+const bulkArchiveVendorsButton = document.querySelector("#bulk-archive-vendors-button");
+const bulkRemoveVendorsButton = document.querySelector("#bulk-remove-vendors-button");
 const bulkStatusMessage = document.querySelector("#bulk-status-message");
 const segmentForm = document.querySelector("#segment-form");
 const segmentStatusMessage = document.querySelector("#segment-status-message");
@@ -64,6 +73,7 @@ let pendingImportRows = [];
 let savedSegments = [];
 let wizardStep = 0;
 let activeQuickFilter = "all";
+let activeBaseStage = "sourcing";
 let activeDrawerVendorId = null;
 
 function escapeHtml(value) {
@@ -178,12 +188,14 @@ function hasMissingContact(row) {
 }
 
 function activateVendorTab(tabName) {
+  if (["sourcing", "procurement"].includes(tabName)) activeBaseStage = tabName;
   vendorTabs.forEach((button) => button.classList.toggle("is-active", button.dataset.vendorTab === tabName));
   tabPanels.forEach((panel) => {
-    const shouldShow = panel.dataset.tabPanel === tabName;
+    const shouldShow = panel.dataset.tabPanel === tabName || (["sourcing", "procurement"].includes(tabName) && panel.dataset.tabPanel === "sourcing");
     const isEmptyImportPreview = panel.id === "import-preview-panel" && !pendingImportRows.length;
     panel.classList.toggle("hidden", !shouldShow || isEmptyImportPreview);
   });
+  if (["sourcing", "procurement"].includes(tabName)) loadVendors();
 }
 
 function updateBulkState() {
@@ -370,7 +382,7 @@ function renderVendors(rows) {
 
   if (!rows.length) {
     vendorsBody.innerHTML =
-      '<tr><td colspan="9"><div class="empty-state"><strong>No vendors yet</strong><span>Add a vendor manually or import your carrier list.</span></div></td></tr>';
+      '<tr><td colspan="10"><div class="empty-state"><strong>No vendors yet</strong><span>Add a vendor manually or import your carrier list.</span></div></td></tr>';
     return;
   }
 
@@ -390,6 +402,7 @@ function renderVendors(rows) {
           <td>${renderCompleteness(row)}</td>
           <td><div class="tag-list">${renderTags(row.tags)}</div></td>
           <td>${escapeHtml(row.preferred_channel)}</td>
+          <td><span class="status-pill">${escapeHtml(row.base_stage || "sourcing")}</span></td>
           <td><span class="status-pill">${escapeHtml(row.status)}</span></td>
         </tr>
       `
@@ -445,19 +458,20 @@ async function loadSegments() {
 }
 
 async function loadVendors() {
-  vendorsBody.innerHTML = '<tr><td colspan="9">Loading vendors...</td></tr>';
+  vendorsBody.innerHTML = '<tr><td colspan="10">Loading vendors...</td></tr>';
   refreshButton.disabled = true;
 
   try {
     await requirePrivatePage();
     const rows = await fetchVendors({
       search: searchInput.value,
-      status: statusFilter.value
+      status: statusFilter.value,
+      base_stage: activeBaseStage
     });
     allVendors = rows;
     applyQuickFilter(activeQuickFilter);
   } catch (error) {
-    vendorsBody.innerHTML = `<tr><td colspan="9">Could not load vendors. ${escapeHtml(error.message)}</td></tr>`;
+    vendorsBody.innerHTML = `<tr><td colspan="10">Could not load vendors. ${escapeHtml(error.message)}</td></tr>`;
   } finally {
     refreshButton.disabled = false;
   }
@@ -483,7 +497,8 @@ function normalizeImportedRow(row) {
     preferred_channel: row.preferred_channel || row.channel || row["Channel"] || "email",
     tags: row.tags || row.tag || row.services || row.equipment || row.coverage || row["Tags"] || row["Equipment"],
     coverage_notes: row.coverage_notes || row.coverage || row.lanes || row["Coverage"] || row["Lanes"],
-    notes: row.notes || row["Notes"]
+    notes: row.notes || row["Notes"],
+    base_stage: row.base_stage || row.base || row["Base"] || row["Stage"]
   };
 }
 
@@ -664,6 +679,28 @@ importInput.addEventListener("change", async () => {
 
 templateButton.addEventListener("click", downloadVendorTemplate);
 
+googleImportButton?.addEventListener("click", async () => {
+  const url = googleSheetUrlInput.value.trim();
+  if (!url) {
+    setStatus(googleImportStatus, "Paste a Google Sheet URL.", "error");
+    return;
+  }
+
+  googleImportButton.disabled = true;
+  setStatus(googleImportStatus, "Importing Google Sheet...");
+
+  try {
+    await requirePrivatePage();
+    const result = await importVendorsFromGoogleSheet(url);
+    setStatus(googleImportStatus, `${result.inserted} vendor(s) imported from ${result.total_rows} sheet row(s).`, "success");
+    await loadVendors();
+  } catch (error) {
+    setStatus(googleImportStatus, error.message, "error");
+  } finally {
+    googleImportButton.disabled = false;
+  }
+});
+
 confirmImportButton.addEventListener("click", async () => {
   const vendors = validImportRows();
   confirmImportButton.disabled = true;
@@ -695,6 +732,7 @@ bulkButton.addEventListener("click", async () => {
   const ids = Array.from(selectedVendorIds);
   const patch = {};
   if (bulkStatus.value) patch.status = bulkStatus.value;
+  if (bulkBaseStage.value) patch.base_stage = bulkBaseStage.value;
   if (bulkTags.value.trim()) {
     patch.add_tags = splitTags(bulkTags.value);
   }
@@ -705,7 +743,7 @@ bulkButton.addEventListener("click", async () => {
   }
 
   if (!Object.keys(patch).length) {
-    setStatus(bulkStatusMessage, "Choose a status or tags to apply.", "error");
+    setStatus(bulkStatusMessage, "Choose a status, base, or tags to apply.", "error");
     return;
   }
 
@@ -717,6 +755,7 @@ bulkButton.addEventListener("click", async () => {
     const result = await bulkUpdateVendors(ids, patch);
     selectedVendorIds = new Set();
     bulkStatus.value = "";
+    bulkBaseStage.value = "";
     bulkTags.value = "";
     setStatus(bulkStatusMessage, `${result.updated} vendor(s) updated.`, "success");
     await loadVendors();
@@ -724,6 +763,45 @@ bulkButton.addEventListener("click", async () => {
     setStatus(bulkStatusMessage, error.message, "error");
   } finally {
     bulkButton.disabled = false;
+  }
+});
+
+async function runBulkBaseAction(baseStage, label) {
+  const ids = Array.from(selectedVendorIds);
+  if (!ids.length) {
+    setStatus(bulkStatusMessage, "Select at least one vendor.", "error");
+    return;
+  }
+  setStatus(bulkStatusMessage, `${label}...`);
+  try {
+    await requirePrivatePage();
+    const result = await bulkUpdateVendors(ids, { base_stage: baseStage });
+    selectedVendorIds = new Set();
+    setStatus(bulkStatusMessage, `${result.updated} vendor(s) updated.`, "success");
+    await loadVendors();
+  } catch (error) {
+    setStatus(bulkStatusMessage, error.message, "error");
+  }
+}
+
+bulkProcurementButton?.addEventListener("click", () => runBulkBaseAction("procurement", "Sending to Procurement Base"));
+bulkArchiveVendorsButton?.addEventListener("click", () => runBulkBaseAction("archived", "Archiving vendors"));
+bulkRemoveVendorsButton?.addEventListener("click", async () => {
+  const ids = Array.from(selectedVendorIds);
+  if (!ids.length) {
+    setStatus(bulkStatusMessage, "Select at least one vendor.", "error");
+    return;
+  }
+  if (!window.confirm(`Remove ${ids.length} vendor(s)? This deletes them from Rateware.`)) return;
+  setStatus(bulkStatusMessage, "Removing vendors...");
+  try {
+    await requirePrivatePage();
+    const result = await removeVendors(ids);
+    selectedVendorIds = new Set();
+    setStatus(bulkStatusMessage, `${result.removed} vendor(s) removed.`, "success");
+    await loadVendors();
+  } catch (error) {
+    setStatus(bulkStatusMessage, error.message, "error");
   }
 });
 
@@ -859,13 +937,13 @@ initAuthControls();
 requirePrivatePage()
   .then(() =>
     applyPermissionState(
-      "#save-vendor-button, #wizard-save-button, #vendor-import, #bulk-update-button, #confirm-import-button, #save-segment-button, #drawer-save-button, #drawer-archive-button, [data-duplicate-inactive]",
+      "#save-vendor-button, #wizard-save-button, #vendor-import, #import-google-sheet-button, #bulk-update-button, #bulk-procurement-button, #bulk-archive-vendors-button, #bulk-remove-vendors-button, #confirm-import-button, #save-segment-button, #drawer-save-button, #drawer-archive-button, [data-duplicate-inactive]",
       "vendors:manage"
     )
   )
   .catch(() => {});
 renderWizard();
-activateVendorTab("directory");
+activateVendorTab("sourcing");
 updateBulkState();
 loadSegments();
 loadVendors();

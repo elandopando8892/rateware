@@ -1,7 +1,7 @@
 import { callRatewareApi } from "./rateware-api.js";
 
-export async function fetchVendors({ search = "", status = "" } = {}) {
-  return (await callRatewareApi("list_vendors", { search, status })).rows;
+export async function fetchVendors({ search = "", status = "", base_stage = "" } = {}) {
+  return (await callRatewareApi("list_vendors", { search, status, base_stage })).rows;
 }
 
 export async function createVendor(vendor) {
@@ -16,8 +16,16 @@ export async function importVendors(vendors) {
   return await callRatewareApi("import_vendors", { vendors });
 }
 
+export async function importVendorsFromGoogleSheet(url) {
+  return await callRatewareApi("import_vendors_google_sheet", { url });
+}
+
 export async function bulkUpdateVendors(ids, patch) {
   return await callRatewareApi("bulk_update_vendors", { ids, patch });
+}
+
+export async function removeVendors(ids) {
+  return await callRatewareApi("remove_vendors", { ids });
 }
 
 export async function fetchVendorSegments() {
