@@ -454,7 +454,8 @@ Deno.serve(async (request) => {
     const body = await request.json();
 
     if (body.action === "list_vendors") {
-      let query = supabase.from("vendors").select("*").eq("owner_email", user.owner_email).order("created_at", { ascending: false }).limit(250);
+      const limit = Math.min(Math.max(Number(body.limit) || 75, 1), 250);
+      let query = supabase.from("vendors").select("*").eq("owner_email", user.owner_email).order("created_at", { ascending: false }).limit(limit);
 
       if (body.status) query = query.eq("status", body.status);
       if (body.base_stage) query = query.eq("base_stage", body.base_stage);

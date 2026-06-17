@@ -74,7 +74,9 @@ let savedSegments = [];
 let wizardStep = 0;
 let activeQuickFilter = "all";
 let activeBaseStage = "sourcing";
+let activeVendorTab = "sourcing";
 let activeDrawerVendorId = null;
+const VENDOR_PAGE_SIZE = 75;
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -188,6 +190,7 @@ function hasMissingContact(row) {
 }
 
 function activateVendorTab(tabName) {
+  activeVendorTab = tabName;
   if (["sourcing", "procurement"].includes(tabName)) activeBaseStage = tabName;
   vendorTabs.forEach((button) => button.classList.toggle("is-active", button.dataset.vendorTab === tabName));
   tabPanels.forEach((panel) => {
@@ -195,6 +198,7 @@ function activateVendorTab(tabName) {
     const isEmptyImportPreview = panel.id === "import-preview-panel" && !pendingImportRows.length;
     panel.classList.toggle("hidden", !shouldShow || isEmptyImportPreview);
   });
+  if (tabName === "duplicates") renderDuplicateReview();
   if (["sourcing", "procurement"].includes(tabName)) loadVendors();
 }
 
@@ -348,13 +352,11 @@ function renderTags(tags) {
 
 function renderCompleteness(row) {
   const score = scoreVendor(row);
-  const duplicates = duplicateSignals(row);
   const ready = score >= 80 && row.primary_email && splitTags(row.tags).length;
   const tone = ready ? "strong" : score >= 55 ? "medium" : "weak";
   return `
     <div class="fit-stack">
       <span class="score-pill ${tone}">${ready ? "RFx ready" : `${score}%`}</span>
-      ${duplicates.length ? '<span class="warning-pill">Duplicate?</span>' : ""}
     </div>
   `;
 }
@@ -378,7 +380,7 @@ function renderVendors(rows) {
   updateVendorMetrics();
   updateBulkState();
   renderSegments();
-  renderDuplicateReview();
+  if (activeVendorTab === "duplicates" || activeQuickFilter === "duplicates") renderDuplicateReview();
 
   if (!rows.length) {
     vendorsBody.innerHTML =
@@ -408,6 +410,13 @@ function renderVendors(rows) {
       `
     )
     .join("");
+
+  if (allVendors.length >= VENDOR_PAGE_SIZE && !searchInput.value.trim()) {
+    vendorsBody.insertAdjacentHTML(
+      "beforeend",
+      `<tr><td colspan="10"><div class="empty-state"><strong>Showing first ${VENDOR_PAGE_SIZE} vendors</strong><span>Use search, filters, or segments to narrow the Sourcing Base.</span></div></td></tr>`
+    );
+  }
 }
 
 function segmentMatches(segment, vendor) {
@@ -466,7 +475,8 @@ async function loadVendors() {
     const rows = await fetchVendors({
       search: searchInput.value,
       status: statusFilter.value,
-      base_stage: activeBaseStage
+      base_stage: activeBaseStage,
+      limit: VENDOR_PAGE_SIZE
     });
     allVendors = rows;
     applyQuickFilter(activeQuickFilter);
