@@ -12,6 +12,24 @@ function getClient() {
   return createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 }
 
+function userContext(payload: Record<string, unknown>) {
+  const email = cleanText(payload.email || payload.preferred_email || payload["https://kinde.com/email"])?.toLowerCase();
+  const id = cleanText(payload.sub || payload.id || email);
+  if (!id && !email) throw new Error("Authenticated user is missing an id or email.");
+  return {
+    owner_user_id: id || email,
+    owner_email: email || id
+  };
+}
+
+function withOwner(row: Record<string, unknown>, user: { owner_user_id: string | null; owner_email: string | null }) {
+  return {
+    ...row,
+    owner_user_id: user.owner_user_id,
+    owner_email: user.owner_email
+  };
+}
+
 function cleanText(value: unknown) {
   if (value === null || value === undefined) return null;
   const text = String(value).trim();
@@ -431,12 +449,12 @@ Deno.serve(async (request) => {
   if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders() });
 
   try {
-    await requireKindeUser(request);
+    const user = userContext(await requireKindeUser(request));
     const supabase = getClient();
     const body = await request.json();
 
     if (body.action === "list_vendors") {
-      let query = supabase.from("vendors").select("*").order("created_at", { ascending: false }).limit(250);
+      let query = supabase.from("vendors").select("*").eq("owner_email", user.owner_email).order("created_at", { ascending: false }).limit(250);
 
       if (body.status) query = query.eq("status", body.status);
       if (body.base_stage) query = query.eq("base_stage", body.base_stage);
@@ -451,7 +469,7 @@ Deno.serve(async (request) => {
     }
 
     if (body.action === "create_vendor") {
-      const row = normalizeVendor(body.vendor || {}, "manual");
+      const row = withOwner(normalizeVendor(body.vendor || {}, "manual"), user);
       const result = await supabase.from("vendors").insert(row).select().single();
       if (result.error) throw result.error;
       return jsonResponse({ row: result.data });
@@ -459,13 +477,10 @@ Deno.serve(async (request) => {
 
     if (body.action === "import_vendors") {
       const vendors = Array.isArray(body.vendors) ? body.vendors : [];
-      const rows = vendors.map((vendor: Record<string, unknown>) => normalizeVendor(vendor, "import"));
+      const rows = vendors.map((vendor: Record<string, unknown>) => withOwner(normalizeVendor(vendor, "import"), user));
       if (!rows.length) return jsonResponse({ inserted: 0, rows: [] });
 
-      const result = await supabase.from("vendors").upsert(rows, {
-        onConflict: "vendor_name,domain",
-        ignoreDuplicates: false
-      }).select();
+      const result = await supabase.from("vendors").insert(rows).select();
 
       if (result.error) throw result.error;
       return jsonResponse({ inserted: result.data.length, rows: result.data });
@@ -477,7 +492,7 @@ Deno.serve(async (request) => {
       const sheet = await fetchGoogleSheetRows(url);
       const rows = sheet.rows.map((raw: Record<string, unknown>) => {
         const normalized = normalizeImportedVendor(raw, "google_sheet");
-        return normalizeVendor({
+        return withOwner(normalizeVendor({
           ...normalized,
           source_spreadsheet_url: url,
           source_spreadsheet_id: sheet.id,
@@ -485,15 +500,20 @@ Deno.serve(async (request) => {
           source_row_number: raw.source_row_number,
           source_row_hash: JSON.stringify(raw),
           last_synced_at: new Date().toISOString()
-        }, "google_sheet");
+        }, "google_sheet"), user);
       });
       const validRows = rows.filter((row) => row.vendor_name);
       if (!validRows.length) return jsonResponse({ inserted: 0, rows: [], total_rows: sheet.rows.length });
 
-      const result = await supabase.from("vendors").upsert(validRows, {
-        onConflict: "vendor_name,domain",
-        ignoreDuplicates: false
-      }).select();
+      const previous = await supabase
+        .from("vendors")
+        .delete()
+        .eq("owner_email", user.owner_email)
+        .eq("source_spreadsheet_id", sheet.id)
+        .eq("source_sheet_gid", sheet.gid);
+      if (previous.error) throw previous.error;
+
+      const result = await supabase.from("vendors").insert(validRows).select();
       if (result.error) throw result.error;
       return jsonResponse({ inserted: result.data.length, rows: result.data, total_rows: sheet.rows.length });
     }
@@ -506,13 +526,13 @@ Deno.serve(async (request) => {
       const addTags = normalizeTags(body.patch?.add_tags);
 
       if (addTags.length) {
-        const current = await supabase.from("vendors").select("id,tags").in("id", ids);
+        const current = await supabase.from("vendors").select("id,tags").eq("owner_email", user.owner_email).in("id", ids);
         if (current.error) throw current.error;
 
         const updates = await Promise.all(
           current.data.map((vendor) => {
             const mergedTags = Array.from(new Set([...normalizeTags(vendor.tags), ...addTags]));
-            return supabase.from("vendors").update({ ...patch, tags: mergedTags }).eq("id", vendor.id).select().single();
+            return supabase.from("vendors").update({ ...patch, tags: mergedTags }).eq("owner_email", user.owner_email).eq("id", vendor.id).select().single();
           })
         );
 
@@ -523,7 +543,7 @@ Deno.serve(async (request) => {
         return jsonResponse({ updated: updates.length, rows: updates.map((update) => update.data) });
       }
 
-      const result = await supabase.from("vendors").update(patch).in("id", ids).select();
+      const result = await supabase.from("vendors").update(patch).eq("owner_email", user.owner_email).in("id", ids).select();
       if (result.error) throw result.error;
       return jsonResponse({ updated: result.data.length, rows: result.data });
     }
@@ -531,7 +551,7 @@ Deno.serve(async (request) => {
     if (body.action === "remove_vendors") {
       const ids = Array.isArray(body.ids) ? body.ids.filter(Boolean) : [];
       if (!ids.length) return jsonResponse({ removed: 0, rows: [] });
-      const result = await supabase.from("vendors").delete().in("id", ids).select("id");
+      const result = await supabase.from("vendors").delete().eq("owner_email", user.owner_email).in("id", ids).select("id");
       if (result.error) throw result.error;
       return jsonResponse({ removed: result.data.length, rows: result.data });
     }
@@ -540,7 +560,7 @@ Deno.serve(async (request) => {
       if (!body.id) return jsonResponse({ error: "Vendor id is required." }, 400);
       const patch = normalizeVendorPatch(body.patch || {});
       if (patch.vendor_name === null) return jsonResponse({ error: "Vendor name is required." }, 400);
-      const result = await supabase.from("vendors").update(patch).eq("id", body.id).select().single();
+      const result = await supabase.from("vendors").update(patch).eq("owner_email", user.owner_email).eq("id", body.id).select().single();
       if (result.error) throw result.error;
       return jsonResponse({ row: result.data });
     }
