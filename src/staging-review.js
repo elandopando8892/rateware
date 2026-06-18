@@ -3,6 +3,7 @@ import { archiveStagingRows, fetchStagingOptions, fetchStagingRows, removeStagin
 
 const body = document.querySelector("#staging-body");
 const refreshButton = document.querySelector("#refresh-staging-button");
+const clearFiltersButton = document.querySelector("#clear-staging-filters");
 const statusFilter = document.querySelector("#staging-status-filter");
 const drawer = document.querySelector("#staging-drawer");
 const closeDrawerButton = document.querySelector("#close-staging-drawer");
@@ -777,6 +778,15 @@ async function loadRows() {
   }
 }
 
+async function clearStagingFilters() {
+  statusFilter.value = "pending_review";
+  activeReviewFilter = "all";
+  selectedRowIds.clear();
+  setBulkStatus("");
+  drawer.classList.add("hidden");
+  await loadRows();
+}
+
 body.addEventListener("click", async (event) => {
   const detail = event.target.closest("[data-detail-id]");
   const save = event.target.closest("[data-save-id]");
@@ -851,6 +861,7 @@ body.addEventListener("change", (event) => {
 });
 
 refreshButton.addEventListener("click", loadRows);
+clearFiltersButton?.addEventListener("click", clearStagingFilters);
 statusFilter.addEventListener("change", () => {
   selectedRowIds.clear();
   activeReviewFilter = "all";
