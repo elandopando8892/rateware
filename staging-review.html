@@ -86,6 +86,7 @@
               <button id="bulk-save-button" type="button" class="secondary small-button" disabled>Save selected</button>
               <button id="bulk-approve-button" type="button" class="small-button" disabled>Approve selected</button>
               <button id="bulk-reject-button" type="button" class="danger small-button" disabled>Reject selected</button>
+              <button id="bulk-enrich-zips-button" type="button" class="secondary small-button" disabled>Find missing ZIPs</button>
               <button id="bulk-renormalize-button" type="button" class="secondary small-button" disabled>Re-normalize selected</button>
               <button id="bulk-archive-button" type="button" class="secondary small-button" disabled>Archive selected</button>
               <button id="bulk-remove-button" type="button" class="danger small-button" disabled>Remove selected</button>
@@ -115,11 +116,15 @@
                     <th>Quote date</th>
                     <th>RFx</th>
                     <th>Origin</th>
-                    <th>O ZIP/ST</th>
+                    <th>O ZIP</th>
+                    <th>O ST</th>
                     <th>O market</th>
+                    <th>O region</th>
                     <th>Destination</th>
-                    <th>D ZIP/ST</th>
+                    <th>D ZIP</th>
+                    <th>D ST</th>
                     <th>D market</th>
+                    <th>D region</th>
                     <th>Equipment</th>
                     <th>Trailer</th>
                     <th>Hazmat</th>
@@ -142,7 +147,7 @@
                 </thead>
                 <tbody id="staging-body">
                   <tr>
-                    <td colspan="28">Loading staging rows...</td>
+                    <td colspan="32">Loading staging rows...</td>
                   </tr>
                 </tbody>
               </table>

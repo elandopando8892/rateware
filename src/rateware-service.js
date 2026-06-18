@@ -16,6 +16,10 @@ export async function renormalizeApprovedRatewareRows(ids = []) {
   return await callRatewareApi("renormalize_rate_rows", { ids, status: "approved" });
 }
 
+export async function enrichApprovedRatewareLocationZips(ids = []) {
+  return await callRatewareApi("enrich_missing_location_zips", { ids, status: "approved" });
+}
+
 export async function returnApprovedRatesToStaging(ids = []) {
   return await callRatewareApi("return_rateware_to_staging", { ids });
 }

@@ -1,5 +1,5 @@
 import { initAuthControls, requirePrivatePage } from "./auth.js";
-import { renormalizeApprovedRatewareRows, fetchApprovedRateware, fetchRatewareOptions, returnApprovedRatesToStaging, updateApprovedRatewareRow } from "./rateware-service.js";
+import { enrichApprovedRatewareLocationZips, renormalizeApprovedRatewareRows, fetchApprovedRateware, fetchRatewareOptions, returnApprovedRatesToStaging, updateApprovedRatewareRow } from "./rateware-service.js";
 import { installSpreadsheetGrid } from "./spreadsheet-grid.js";
 
 const body = document.querySelector("#rateware-body");
@@ -11,6 +11,7 @@ const clearFiltersButton = document.querySelector("#clear-rateware-filters");
 const selectAllCheckbox = document.querySelector("#select-all-rateware");
 const selectionCount = document.querySelector("#rateware-selection-count");
 const saveSelectedButton = document.querySelector("#save-selected-rateware");
+const enrichSelectedZipsButton = document.querySelector("#enrich-selected-zips-rateware");
 const renormalizeSelectedButton = document.querySelector("#renormalize-selected-rateware");
 const returnSelectedButton = document.querySelector("#return-selected-button");
 const exportSelectedButton = document.querySelector("#export-selected-button");
@@ -28,7 +29,7 @@ const closeDrawerButton = document.querySelector("#close-rateware-drawer");
 const drawerTitle = document.querySelector("#rateware-drawer-title");
 const ratewareDetail = document.querySelector("#rateware-detail");
 
-const RATEWARE_COLSPAN = 27;
+const RATEWARE_COLSPAN = 31;
 let currentRows = [];
 let loadedRows = [];
 let activeQuickFilter = "all";
@@ -144,32 +145,6 @@ function compactLocation(row, prefix) {
     <strong>${escapeHtml(normalized || raw || "-")}</strong>
     <span>${escapeHtml([market, zip, state].filter(Boolean).join(" | "))}</span>
   `;
-}
-
-function compactLocationChip(row, prefix) {
-  const zip = row[`${prefix}_zip_prefix`] || "";
-  const state = row[`${prefix}_state`] || "";
-  const country = row[`${prefix}_country`] || "";
-  const city = row[`${prefix}_city`] || "";
-  const region = row[`${prefix}_region`] || "";
-  const reason = row[`${prefix}_match_reason`] || "";
-  const text = [zip, state || country].filter(Boolean).join(" / ") || "-";
-  const title = [
-    city && `City: ${city}`,
-    state && `State: ${state}`,
-    country && `Country: ${country}`,
-    region && `Region: ${region}`,
-    reason && `Match: ${reason}`
-  ].filter(Boolean).join(" | ");
-  const tone = zip || state || city ? "strong" : "weak";
-  return `<span class="location-chip ${tone}" title="${escapeHtml(title)}">${escapeHtml(text)}</span>`;
-}
-
-function compactMarketCell(row, prefix) {
-  const market = row[`${prefix}_market`] || "";
-  const region = row[`${prefix}_region`] || "";
-  const title = [market && `Market: ${market}`, region && `Region: ${region}`].filter(Boolean).join(" | ");
-  return `<span class="location-text" title="${escapeHtml(title)}">${escapeHtml(market || "-")}</span>`;
 }
 
 function borderValue(row) {
@@ -380,11 +355,15 @@ function renderRows(rows) {
       <td>${inputCell(row, "quote_date", { type: "date", short: true })}</td>
       <td>${inputCell(row, "rfx_id", { short: true })}</td>
       <td>${datalistCell(row, "origin", "rateware-origin-options", { wide: true })}</td>
-      <td>${compactLocationChip(row, "origin")}</td>
-      <td>${compactMarketCell(row, "origin")}</td>
+      <td>${inputCell(row, "origin_zip_prefix", { short: true })}</td>
+      <td>${inputCell(row, "origin_state", { short: true })}</td>
+      <td>${inputCell(row, "origin_market", { wide: true })}</td>
+      <td>${inputCell(row, "origin_region", { wide: true })}</td>
       <td>${datalistCell(row, "destination", "rateware-destination-options", { wide: true })}</td>
-      <td>${compactLocationChip(row, "destination")}</td>
-      <td>${compactMarketCell(row, "destination")}</td>
+      <td>${inputCell(row, "destination_zip_prefix", { short: true })}</td>
+      <td>${inputCell(row, "destination_state", { short: true })}</td>
+      <td>${inputCell(row, "destination_market", { wide: true })}</td>
+      <td>${inputCell(row, "destination_region", { wide: true })}</td>
       <td>${selectCell(row, "equipment", ratewareOptions.categories.equipment || [], { short: true })}</td>
       <td>${selectCell(row, "trailer", ratewareOptions.categories.trailer || [], { short: true })}</td>
       <td>${checkboxCell(row, "hazmat", "Hazmat")}</td>
@@ -460,6 +439,7 @@ function updateBulkControls() {
   const totalRows = body.querySelectorAll("[data-rateware-id]").length;
   selectionCount.textContent = `${selectedCount} selected`;
   saveSelectedButton.disabled = selectedCount === 0;
+  if (enrichSelectedZipsButton) enrichSelectedZipsButton.disabled = selectedCount === 0;
   if (renormalizeSelectedButton) renormalizeSelectedButton.disabled = selectedCount === 0;
   returnSelectedButton.disabled = selectedCount === 0;
   if (exportSelectedButton) exportSelectedButton.disabled = selectedCount === 0;
@@ -691,6 +671,25 @@ async function renormalizeSelectedRateware() {
   }
 }
 
+async function enrichSelectedRatewareZips() {
+  const ids = selectedVisibleIds();
+  if (!ids.length) return;
+
+  if (enrichSelectedZipsButton) enrichSelectedZipsButton.disabled = true;
+  setActionStatus(`Finding missing ZIPs for ${ids.length} approved rate(s)...`);
+
+  try {
+    await requirePrivatePage();
+    const result = await enrichApprovedRatewareLocationZips(ids);
+    ids.forEach((id) => selectedRowIds.delete(id));
+    setActionStatus(`${result.enriched || 0} location(s) enriched. ${result.updated || ids.length} approved rate(s) checked.`, "success");
+    await loadRateware();
+  } catch (error) {
+    setActionStatus(error.message, "error");
+    updateBulkControls();
+  }
+}
+
 function debounce(fn, wait = 250) {
   let timeout;
   return (...args) => {
@@ -758,6 +757,7 @@ clearColumnFiltersButton?.addEventListener("click", () => {
 });
 returnSelectedButton.addEventListener("click", returnSelectedToStaging);
 saveSelectedButton?.addEventListener("click", saveSelectedRatewareRows);
+enrichSelectedZipsButton?.addEventListener("click", enrichSelectedRatewareZips);
 renormalizeSelectedButton?.addEventListener("click", renormalizeSelectedRateware);
 exportSelectedButton?.addEventListener("click", exportSelectedCsv);
 exportVisibleButton?.addEventListener("click", exportVisibleCsv);

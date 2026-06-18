@@ -1,6 +1,6 @@
 import { applyPermissionState, ensureSignedIn, initAuthControls, requirePrivatePage } from "./auth.js";
 import { installSpreadsheetGrid } from "./spreadsheet-grid.js";
-import { archiveStagingRows, fetchStagingOptions, fetchStagingRows, removeStagingRows, renormalizeStagingRows, updateStagingRow } from "./staging-service.js";
+import { archiveStagingRows, enrichStagingLocationZips, fetchStagingOptions, fetchStagingRows, removeStagingRows, renormalizeStagingRows, updateStagingRow } from "./staging-service.js";
 
 const body = document.querySelector("#staging-body");
 const refreshButton = document.querySelector("#refresh-staging-button");
@@ -18,6 +18,7 @@ const bulkSelectionCount = document.querySelector("#bulk-selection-count");
 const bulkSaveButton = document.querySelector("#bulk-save-button");
 const bulkApproveButton = document.querySelector("#bulk-approve-button");
 const bulkRejectButton = document.querySelector("#bulk-reject-button");
+const bulkEnrichZipsButton = document.querySelector("#bulk-enrich-zips-button");
 const bulkRenormalizeButton = document.querySelector("#bulk-renormalize-button");
 const bulkArchiveButton = document.querySelector("#bulk-archive-button");
 const bulkRemoveButton = document.querySelector("#bulk-remove-button");
@@ -42,7 +43,7 @@ let stagingOptions = {
   us_crossings: [],
   currencies: ["USD", "MXN", "CAD"]
 };
-const STAGING_COLSPAN = 28;
+const STAGING_COLSPAN = 32;
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -120,32 +121,6 @@ function statusSelect(row) {
   `;
 }
 
-function compactLocationCell(row, prefix) {
-  const zip = row[`${prefix}_zip_prefix`] || "";
-  const state = row[`${prefix}_state`] || "";
-  const country = row[`${prefix}_country`] || "";
-  const city = row[`${prefix}_city`] || "";
-  const region = row[`${prefix}_region`] || "";
-  const reason = row[`${prefix}_match_reason`] || "";
-  const text = [zip, state || country].filter(Boolean).join(" / ") || "-";
-  const title = [
-    city && `City: ${city}`,
-    state && `State: ${state}`,
-    country && `Country: ${country}`,
-    region && `Region: ${region}`,
-    reason && `Match: ${reason}`
-  ].filter(Boolean).join(" | ");
-  const tone = zip || state || city ? "strong" : "weak";
-  return `<span class="location-chip ${tone}" title="${escapeHtml(title)}">${escapeHtml(text)}</span>`;
-}
-
-function compactMarketCell(row, prefix) {
-  const market = row[`${prefix}_market`] || "";
-  const region = row[`${prefix}_region`] || "";
-  const title = [market && `Market: ${market}`, region && `Region: ${region}`].filter(Boolean).join(" | ");
-  return `<span class="location-text" title="${escapeHtml(title)}">${escapeHtml(market || "-")}</span>`;
-}
-
 function renderDatalists() {
   const existing = document.querySelector("#staging-datalists");
   existing?.remove();
@@ -179,6 +154,7 @@ function updateBulkControls() {
   bulkSaveButton.disabled = selectedCount === 0;
   bulkApproveButton.disabled = selectedCount === 0;
   bulkRejectButton.disabled = selectedCount === 0;
+  if (bulkEnrichZipsButton) bulkEnrichZipsButton.disabled = selectedCount === 0;
   if (bulkRenormalizeButton) bulkRenormalizeButton.disabled = selectedCount === 0;
   bulkArchiveButton.disabled = selectedCount === 0;
   bulkRemoveButton.disabled = selectedCount === 0;
@@ -568,11 +544,15 @@ function renderRows(rows) {
           <td>${inputCell(row, "quote_date", { type: "date", short: true })}</td>
           <td>${inputCell(row, "rfx_id", { short: true })}</td>
           <td>${datalistCell(row, "origin", stagingOptions.locations, { wide: true })}</td>
-          <td>${compactLocationCell(row, "origin")}</td>
-          <td>${compactMarketCell(row, "origin")}</td>
+          <td>${inputCell(row, "origin_zip_prefix", { short: true })}</td>
+          <td>${inputCell(row, "origin_state", { short: true })}</td>
+          <td>${inputCell(row, "origin_market", { wide: true })}</td>
+          <td>${inputCell(row, "origin_region", { wide: true })}</td>
           <td>${datalistCell(row, "destination", stagingOptions.locations, { wide: true })}</td>
-          <td>${compactLocationCell(row, "destination")}</td>
-          <td>${compactMarketCell(row, "destination")}</td>
+          <td>${inputCell(row, "destination_zip_prefix", { short: true })}</td>
+          <td>${inputCell(row, "destination_state", { short: true })}</td>
+          <td>${inputCell(row, "destination_market", { wide: true })}</td>
+          <td>${inputCell(row, "destination_region", { wide: true })}</td>
           <td>${selectCell(row, "equipment", stagingOptions.categories.equipment || [], { short: true })}</td>
           <td>${selectCell(row, "trailer", stagingOptions.categories.trailer || [], { short: true })}</td>
           <td>${checkboxCell(row, "hazmat", "Hazmat")}</td>
@@ -737,6 +717,7 @@ async function runBulkAction(status = null) {
   bulkSaveButton.disabled = true;
   bulkApproveButton.disabled = true;
   bulkRejectButton.disabled = true;
+  if (bulkEnrichZipsButton) bulkEnrichZipsButton.disabled = true;
   if (bulkRenormalizeButton) bulkRenormalizeButton.disabled = true;
   bulkArchiveButton.disabled = true;
   bulkRemoveButton.disabled = true;
@@ -820,6 +801,26 @@ async function runBulkRenormalize() {
   }
 }
 
+async function runBulkEnrichZips() {
+  const rows = selectedRows();
+  if (!rows.length) return;
+  const ids = rows.map((row) => row.dataset.rowId);
+
+  setBulkStatus(`Finding missing ZIPs for ${ids.length} rows...`);
+  if (bulkEnrichZipsButton) bulkEnrichZipsButton.disabled = true;
+
+  try {
+    await ensureSignedIn();
+    const result = await enrichStagingLocationZips(ids);
+    ids.forEach((id) => selectedRowIds.delete(id));
+    setBulkStatus(`${result.enriched || 0} location(s) enriched. ${result.updated || ids.length} rows checked.`, "success");
+    await loadRows();
+  } catch (error) {
+    setBulkStatus(error.message, "error");
+    updateBulkControls();
+  }
+}
+
 function readPatch(status = null) {
   const trailerConfig = document.querySelector("#edit-trailer-config").value.split("/");
   const patch = {
@@ -889,7 +890,7 @@ async function loadRows() {
     };
     loadedRows = rows;
     renderRows(visibleStagingRows());
-    await applyPermissionState("[data-save-id], [data-approve-id], [data-reject-id], #save-staging-button, #approve-staging-button, #reject-staging-button, #bulk-save-button, #bulk-approve-button, #bulk-reject-button, #bulk-renormalize-button, #bulk-archive-button, #bulk-remove-button", "staging:approve");
+    await applyPermissionState("[data-save-id], [data-approve-id], [data-reject-id], #save-staging-button, #approve-staging-button, #reject-staging-button, #bulk-save-button, #bulk-approve-button, #bulk-reject-button, #bulk-enrich-zips-button, #bulk-renormalize-button, #bulk-archive-button, #bulk-remove-button", "staging:approve");
   } catch (error) {
     body.innerHTML = `<tr><td colspan="${STAGING_COLSPAN}">Could not load staging rows. ${escapeHtml(error.message)}</td></tr>`;
   } finally {
@@ -1051,6 +1052,7 @@ selectAllCheckbox?.addEventListener("change", () => {
 bulkSaveButton?.addEventListener("click", () => runBulkAction());
 bulkApproveButton?.addEventListener("click", () => runBulkAction("approved"));
 bulkRejectButton?.addEventListener("click", () => runBulkAction("rejected"));
+bulkEnrichZipsButton?.addEventListener("click", runBulkEnrichZips);
 bulkRenormalizeButton?.addEventListener("click", runBulkRenormalize);
 bulkArchiveButton?.addEventListener("click", runBulkArchive);
 bulkRemoveButton?.addEventListener("click", runBulkRemove);

@@ -754,6 +754,131 @@ function normalizeRowWithCurrentCatalog(row: Record<string, unknown>, catalog: M
   return patch;
 }
 
+const US_STATE_CODES = new Set([
+  "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA", "HI", "IA", "ID", "IL", "IN", "KS", "KY", "LA", "MA", "MD", "ME", "MI", "MN", "MO", "MS", "MT", "NC", "ND", "NE", "NH", "NJ", "NM", "NV", "NY", "OH", "OK", "OR", "PA", "RI", "SC", "SD", "TN", "TX", "UT", "VA", "VT", "WA", "WI", "WV", "WY", "DC"
+]);
+
+function stateToken(value: unknown) {
+  const text = String(value || "").toUpperCase();
+  const direct = text.match(/\b[A-Z]{2}\b/)?.[0] || null;
+  return direct || null;
+}
+
+function locationParts(value: unknown, fallbackState: unknown = null, fallbackCountry: unknown = null) {
+  const text = cleanText(value);
+  if (!text) return null;
+  const parts = text.split(",").map((part) => part.trim()).filter(Boolean);
+  const state = stateToken(fallbackState) || stateToken(parts.slice(1).join(" "));
+  const city = parts[0]?.replace(/\b[A-Z]{2}\b/g, "").trim();
+  const country = cleanText(fallbackCountry) || (state && US_STATE_CODES.has(state) ? "US" : null);
+  if (!city || !state || !country) return null;
+  return { city, state, country: country === "USA" ? "US" : country };
+}
+
+async function lookupPostalPrefix(value: unknown, fallbackState: unknown = null, fallbackCountry: unknown = null) {
+  const parsed = locationParts(value, fallbackState, fallbackCountry);
+  if (!parsed || !["US", "CA"].includes(parsed.country)) return null;
+
+  const countryPath = parsed.country.toLowerCase();
+  const url = `https://api.zippopotam.us/${countryPath}/${encodeURIComponent(parsed.state)}/${encodeURIComponent(parsed.city)}`;
+
+  try {
+    const response = await fetch(url);
+    if (!response.ok) return null;
+    const payload = await response.json();
+    const place = Array.isArray(payload.places) ? payload.places[0] : null;
+    const postalCode = cleanText(place?.["post code"]);
+    if (!postalCode) return null;
+    return {
+      zip_prefix: postalCode.slice(0, parsed.country === "US" ? 3 : 3).toUpperCase(),
+      city: cleanText(place?.["place name"]) || parsed.city,
+      state: cleanText(place?.["state abbreviation"]) || parsed.state,
+      country: parsed.country,
+      source: "zippopotam.us"
+    };
+  } catch {
+    return null;
+  }
+}
+
+function patchLookupLocation(prefix: "origin" | "destination", lookup: Record<string, unknown> | null, locationIndex: Map<string, Record<string, unknown>>) {
+  if (!lookup) return {};
+  const catalogResolution = locationMatch(locationIndex, lookup.zip_prefix);
+  const catalogLocation = catalogResolution?.location || null;
+  const patch: Record<string, unknown> = {
+    [`${prefix}_zip_prefix`]: lookup.zip_prefix,
+    [`${prefix}_city`]: lookup.city,
+    [`${prefix}_state`]: lookup.state,
+    [`${prefix}_country`]: lookup.country,
+    [`${prefix}_match_reason`]: `external ZIP lookup via ${lookup.source}`,
+    [`${prefix}_location_candidates`]: catalogResolution?.candidates || []
+  };
+
+  if (catalogLocation) {
+    Object.assign(patch, applyLocation({}, prefix, catalogLocation));
+    patch[`${prefix}_match_reason`] = `external ZIP lookup, then ${catalogResolution?.reason || "catalog match"}`;
+  }
+  return patch;
+}
+
+async function enrichMissingLocationZips(supabase: ReturnType<typeof createClient>, ids: string[], status: string | null = null) {
+  if (!ids.length) throw new Error("At least one rate row id is required.");
+
+  let rowQuery = supabase.from("rate_staging").select("*").in("id", ids).limit(250);
+  if (status) rowQuery = rowQuery.eq("status", status);
+
+  const [rowsResult, locationsResult] = await Promise.all([
+    rowQuery,
+    supabase
+      .from("rateware_locations")
+      .select("source,location_key,raw_value,zip_prefix,metro_city,city,state_code,state_name,country,market,region")
+      .eq("active", true)
+      .limit(20000)
+  ]);
+
+  for (const result of [rowsResult, locationsResult]) {
+    if (result.error) throw result.error;
+  }
+
+  const locationIndex = buildLocationIndex(locationsResult.data || []);
+  const updatedRows = [];
+  let enriched = 0;
+
+  for (const row of rowsResult.data || []) {
+    const patch: Record<string, unknown> = {};
+    if (!row.origin_zip_prefix) {
+      const lookup = await lookupPostalPrefix(row.origin || row.normalized_origin, row.origin_state, row.origin_country);
+      const lookupPatch = patchLookupLocation("origin", lookup, locationIndex);
+      if (Object.keys(lookupPatch).length) enriched += 1;
+      Object.assign(patch, lookupPatch);
+    }
+    if (!row.destination_zip_prefix) {
+      const lookup = await lookupPostalPrefix(row.destination || row.normalized_destination, row.destination_state, row.destination_country);
+      const lookupPatch = patchLookupLocation("destination", lookup, locationIndex);
+      if (Object.keys(lookupPatch).length) enriched += 1;
+      Object.assign(patch, lookupPatch);
+    }
+
+    if (!Object.keys(patch).length) continue;
+    patch.location_match_status = [
+      patch.origin_zip_prefix || row.origin_zip_prefix,
+      patch.destination_zip_prefix || row.destination_zip_prefix
+    ].every(Boolean) ? "matched" : "partial";
+    Object.assign(patch, buildRowKeys({ ...row, ...patch }));
+
+    const result = await supabase
+      .from("rate_staging")
+      .update(patch)
+      .eq("id", row.id)
+      .select("*, vendors(vendor_name, domain)")
+      .single();
+    if (result.error) throw result.error;
+    updatedRows.push(result.data);
+  }
+
+  return { rows: updatedRows, enriched };
+}
+
 async function renormalizeRateRows(supabase: ReturnType<typeof createClient>, ids: string[], status: string | null = null) {
   if (!ids.length) throw new Error("At least one rate row id is required.");
 
@@ -1091,6 +1216,13 @@ Deno.serve(async (request) => {
       const status = cleanText(body.status);
       const rows = await renormalizeRateRows(supabase, ids, status);
       return jsonResponse({ updated: rows.length, rows });
+    }
+
+    if (body.action === "enrich_missing_location_zips") {
+      const ids = Array.isArray(body.ids) ? body.ids.map(String).filter(Boolean).slice(0, 250) : [];
+      const status = cleanText(body.status);
+      const result = await enrichMissingLocationZips(supabase, ids, status);
+      return jsonResponse({ updated: result.rows.length, enriched: result.enriched, rows: result.rows });
     }
 
     if (body.action === "update_rateware") {

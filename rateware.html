@@ -90,6 +90,7 @@
             <div class="bulk-action-bar" aria-live="polite">
               <span id="rateware-selection-count">0 selected</span>
               <button id="save-selected-rateware" type="button" class="small-button" disabled>Save selected</button>
+              <button id="enrich-selected-zips-rateware" type="button" class="secondary small-button" disabled>Find missing ZIPs</button>
               <button id="renormalize-selected-rateware" type="button" class="secondary small-button" disabled>Re-normalize selected</button>
               <button id="return-selected-button" type="button" class="secondary small-button" disabled>Return to staging</button>
               <button id="export-selected-button" type="button" class="secondary small-button" disabled>Export selected CSV</button>
@@ -120,11 +121,15 @@
                     <th>Quote date</th>
                     <th>RFx</th>
                     <th>Origin</th>
-                    <th>O ZIP/ST</th>
+                    <th>O ZIP</th>
+                    <th>O ST</th>
                     <th>O market</th>
+                    <th>O region</th>
                     <th>Destination</th>
-                    <th>D ZIP/ST</th>
+                    <th>D ZIP</th>
+                    <th>D ST</th>
                     <th>D market</th>
+                    <th>D region</th>
                     <th>Equipment</th>
                     <th>Trailer</th>
                     <th>Hazmat</th>
@@ -146,7 +151,7 @@
                 </thead>
                 <tbody id="rateware-body">
                   <tr>
-                    <td colspan="27">Loading approved rates...</td>
+                    <td colspan="31">Loading approved rates...</td>
                   </tr>
                 </tbody>
               </table>
