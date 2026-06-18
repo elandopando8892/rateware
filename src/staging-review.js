@@ -246,6 +246,28 @@ function rowQualityClass(row) {
   return "";
 }
 
+function validationRow(baseRow = {}, patch = {}) {
+  return { ...baseRow, ...patch };
+}
+
+function approvalBlockers(row) {
+  const blockers = [];
+  if (needsNumericRate(row)) blockers.push("numeric rate");
+  if (needsLocationMatch(row)) blockers.push("location match");
+  return blockers;
+}
+
+function approvalBlockerMessage(blockers) {
+  if (!blockers.length) return "";
+  return `Fix ${blockers.join(" and ")} before approving.`;
+}
+
+function rowFromTablePatch(tableRow, patch = {}) {
+  const id = tableRow?.dataset.rowId;
+  const baseRow = rowById(id) || {};
+  return validationRow(baseRow, patch);
+}
+
 function applyReviewFilter(rows = loadedRows) {
   if (activeReviewFilter === "needs-location") return rows.filter(needsLocationMatch);
   if (activeReviewFilter === "needs-rate") return rows.filter(needsNumericRate);
@@ -512,6 +534,24 @@ async function runBulkAction(status = null) {
   const rows = selectedRows();
   if (!rows.length) return;
 
+  if (status === "approved") {
+    const blockedRows = rows
+      .map((tableRow) => {
+        const patch = readInlinePatch(tableRow, status);
+        return { tableRow, blockers: approvalBlockers(rowFromTablePatch(tableRow, patch)) };
+      })
+      .filter((item) => item.blockers.length);
+
+    if (blockedRows.length) {
+      blockedRows.forEach(({ tableRow, blockers }) => {
+        setRowStatus(tableRow.dataset.rowId, approvalBlockerMessage(blockers), "error");
+      });
+      setBulkStatus(`${blockedRows.length} selected row(s) need correction before approval.`, "error");
+      updateBulkControls();
+      return;
+    }
+  }
+
   const label = status ? status.replace("_", " ") : "save";
   setBulkStatus(`Processing ${rows.length} rows...`);
   bulkSaveButton.disabled = true;
@@ -610,11 +650,21 @@ function readPatch(status = null) {
 
 async function saveActiveRow(status = null) {
   if (!activeRowId) return;
+  const patch = readPatch(status);
+
+  if (status === "approved") {
+    const blockers = approvalBlockers(validationRow(rowById(activeRowId), patch));
+    if (blockers.length) {
+      setStatus(approvalBlockerMessage(blockers), "error");
+      return;
+    }
+  }
+
   setStatus(status ? `Saving and marking ${status}...` : "Saving changes...");
 
   try {
     await ensureSignedIn();
-    await updateStagingRow(activeRowId, readPatch(status));
+    await updateStagingRow(activeRowId, patch);
     setStatus(status ? `Row marked ${status}.` : "Changes saved.", "success");
     await loadRows();
     if (status) drawer.classList.add("hidden");
@@ -687,6 +737,14 @@ body.addEventListener("click", async (event) => {
 
   const button = approve || reject;
   const tableRow = button.closest("[data-row-id]");
+  const patch = tableRow ? readInlinePatch(tableRow, approve ? "approved" : "rejected") : { status: approve ? "approved" : "rejected" };
+  if (approve && tableRow) {
+    const blockers = approvalBlockers(rowFromTablePatch(tableRow, patch));
+    if (blockers.length) {
+      setRowStatus(id, approvalBlockerMessage(blockers), "error");
+      return;
+    }
+  }
   button.disabled = true;
   setRowStatus(id, approve ? "Approving..." : "Rejecting...");
 
@@ -695,7 +753,7 @@ body.addEventListener("click", async (event) => {
     if (!(await applyPermissionState("[data-approve-id], [data-reject-id]", "staging:approve"))) {
       throw new Error("Your role does not allow staging approval.");
     }
-    await updateStagingRow(id, tableRow ? readInlinePatch(tableRow, approve ? "approved" : "rejected") : { status: approve ? "approved" : "rejected" });
+    await updateStagingRow(id, patch);
     await loadRows();
   } catch (error) {
     button.disabled = false;
