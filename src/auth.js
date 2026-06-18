@@ -112,6 +112,98 @@ export async function applyPermissionState(selector, action) {
   return allowed;
 }
 
+function getUserInitials(user) {
+  const source = user?.given_name || user?.name || user?.email || "RW";
+  return source
+    .split(/[\s@._-]+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part.charAt(0).toUpperCase())
+    .join("") || "RW";
+}
+
+function getUserLabel(user) {
+  const email = user?.email || "Kinde user";
+  const [name] = email.split("@");
+  return name || email;
+}
+
+function initProxyActions() {
+  document.querySelectorAll("[data-click-target]").forEach((button) => {
+    if (button.dataset.proxyReady === "true") return;
+    button.dataset.proxyReady = "true";
+    button.addEventListener("click", () => {
+      const target = document.querySelector(button.dataset.clickTarget);
+      if (!target) return;
+      target.click();
+      if (typeof target.focus === "function") target.focus({ preventScroll: true });
+    });
+  });
+}
+
+function createUserMenu(form, signOutButton) {
+  if (!form.classList.contains("auth-strip")) return null;
+
+  let menu = form.querySelector(".user-menu");
+  if (!menu) {
+    menu = document.createElement("div");
+    menu.className = "user-menu hidden";
+    menu.innerHTML = `
+      <button id="user-menu-button" class="user-menu-button" type="button" aria-haspopup="true" aria-expanded="false">
+        <span id="user-menu-initials" class="user-avatar">RW</span>
+        <span id="user-menu-label">User</span>
+      </button>
+      <div id="user-menu-panel" class="user-menu-panel hidden" role="menu">
+        <div class="user-menu-summary">
+          <strong id="user-menu-email">-</strong>
+          <span id="user-menu-access">Full access</span>
+        </div>
+        <a href="./settings.html" role="menuitem">Settings</a>
+        <div data-sign-out-slot></div>
+      </div>
+    `;
+    form.appendChild(menu);
+  }
+
+  const signOutSlot = menu.querySelector("[data-sign-out-slot]");
+  if (signOutSlot && !signOutSlot.contains(signOutButton)) {
+    signOutSlot.appendChild(signOutButton);
+  }
+
+  signOutButton.classList.add("user-menu-sign-out");
+
+  const button = menu.querySelector("#user-menu-button");
+  const panel = menu.querySelector("#user-menu-panel");
+
+  function closeMenu() {
+    panel.classList.add("hidden");
+    button.setAttribute("aria-expanded", "false");
+  }
+
+  if (button.dataset.menuReady !== "true") {
+    button.dataset.menuReady = "true";
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const open = panel.classList.toggle("hidden");
+      button.setAttribute("aria-expanded", String(!open));
+    });
+    document.addEventListener("click", (event) => {
+      if (!menu.contains(event.target)) closeMenu();
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") closeMenu();
+    });
+  }
+
+  return {
+    menu,
+    label: menu.querySelector("#user-menu-label"),
+    initials: menu.querySelector("#user-menu-initials"),
+    email: menu.querySelector("#user-menu-email"),
+    access: menu.querySelector("#user-menu-access")
+  };
+}
+
 export function initAuthControls() {
   const form = document.querySelector("#auth-form");
   const authButton = document.querySelector("#auth-button");
@@ -120,6 +212,9 @@ export function initAuthControls() {
 
   if (!form || !authButton || !signOutButton || !status) return;
 
+  initProxyActions();
+  const userMenu = createUserMenu(form, signOutButton);
+
   function setStatus(message) {
     status.textContent = message;
   }
@@ -127,6 +222,7 @@ export function initAuthControls() {
   async function renderSession(signedIn, user = null) {
     authButton.classList.toggle("hidden", signedIn);
     signOutButton.classList.toggle("hidden", !signedIn);
+    userMenu?.menu.classList.toggle("hidden", !signedIn);
 
     if (!signedIn) {
       setStatus("Sign in to upload and view source files.");
@@ -134,6 +230,13 @@ export function initAuthControls() {
     }
 
     document.body.dataset.role = "full-access";
+    if (userMenu) {
+      const email = user?.email || "Kinde user";
+      userMenu.initials.textContent = getUserInitials(user);
+      userMenu.label.textContent = getUserLabel(user);
+      userMenu.email.textContent = email;
+      userMenu.access.textContent = "Full access";
+    }
     setStatus(`${user?.email || "Kinde user"} | full access`);
   }
 

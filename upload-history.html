@@ -10,17 +10,29 @@
     <div class="shell-layout">
       <aside class="side-nav" aria-label="Rateware modules">
         <a class="brand-mark" href="./app.html">Rateware</a>
-        <nav>
-          <a href="./app.html">Dashboard</a>
-          <a href="./business-intelligence.html">AI Analyst</a>
-          <a href="./upload-center.html">Upload Center</a>
-          <a aria-current="page" href="./upload-history.html">Upload History</a>
-          <a href="./staging-review.html">Staging Review</a>
-          <a href="./rateware.html">Rateware</a>
-          <a href="./vendors.html">Vendors</a>
-          <a href="./rfx-events.html">RFx Events</a>
-          <a href="./outreach.html">Outreach</a>
-          <a href="./settings.html">Settings</a>
+        <nav class="nav-groups">
+          <section class="nav-group">
+            <p>Operate</p>
+            <a href="./app.html">Dashboard</a>
+            <a href="./upload-center.html">Upload Center</a>
+            <a aria-current="page" href="./upload-history.html">Upload History</a>
+            <a href="./staging-review.html">Staging Review</a>
+            <a href="./rateware.html">Rateware</a>
+          </section>
+          <section class="nav-group">
+            <p>Analyze</p>
+            <a href="./business-intelligence.html">AI Analyst</a>
+          </section>
+          <section class="nav-group">
+            <p>Source</p>
+            <a href="./vendors.html">Vendors</a>
+            <a href="./rfx-events.html">RFx Events</a>
+            <a href="./outreach.html">Outreach</a>
+          </section>
+          <section class="nav-group">
+            <p>Admin</p>
+            <a href="./settings.html">Settings</a>
+          </section>
         </nav>
       </aside>
 
@@ -35,11 +47,14 @@
               <span>Upload History</span>
             </nav>
           </div>
-          <form id="auth-form" class="auth-strip">
-            <button id="auth-button" type="submit">Sign in with Kinde</button>
-            <button id="sign-out-button" type="button" class="secondary hidden">Sign out</button>
-            <p id="auth-status" role="status"></p>
-          </form>
+          <div class="page-header-actions">
+            <button class="page-primary-action" type="button" data-click-target="#reprocess-selected-uploads">Reprocess</button>
+            <form id="auth-form" class="auth-strip">
+              <button id="auth-button" type="submit">Sign in with Kinde</button>
+              <button id="sign-out-button" type="button" class="secondary hidden">Sign out</button>
+              <p id="auth-status" role="status"></p>
+            </form>
+          </div>
         </header>
 
         <main class="history-layout">
