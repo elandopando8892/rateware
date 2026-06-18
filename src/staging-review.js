@@ -1,5 +1,6 @@
 import { applyPermissionState, ensureSignedIn, initAuthControls, requirePrivatePage } from "./auth.js";
-import { archiveStagingRows, fetchStagingOptions, fetchStagingRows, removeStagingRows, updateStagingRow } from "./staging-service.js";
+import { installSpreadsheetGrid } from "./spreadsheet-grid.js";
+import { archiveStagingRows, fetchStagingOptions, fetchStagingRows, removeStagingRows, renormalizeStagingRows, updateStagingRow } from "./staging-service.js";
 
 const body = document.querySelector("#staging-body");
 const refreshButton = document.querySelector("#refresh-staging-button");
@@ -17,9 +18,12 @@ const bulkSelectionCount = document.querySelector("#bulk-selection-count");
 const bulkSaveButton = document.querySelector("#bulk-save-button");
 const bulkApproveButton = document.querySelector("#bulk-approve-button");
 const bulkRejectButton = document.querySelector("#bulk-reject-button");
+const bulkRenormalizeButton = document.querySelector("#bulk-renormalize-button");
 const bulkArchiveButton = document.querySelector("#bulk-archive-button");
 const bulkRemoveButton = document.querySelector("#bulk-remove-button");
 const bulkActionStatus = document.querySelector("#bulk-action-status");
+const columnFilterInputs = document.querySelectorAll("[data-staging-column-filter]");
+const clearColumnFiltersButton = document.querySelector("#clear-staging-column-filters");
 const stagingMetricVisible = document.querySelector("#staging-metric-visible");
 const stagingMetricLocation = document.querySelector("#staging-metric-location");
 const stagingMetricRate = document.querySelector("#staging-metric-rate");
@@ -30,6 +34,7 @@ let loadedRows = [];
 let activeRowId = null;
 const selectedRowIds = new Set();
 let activeReviewFilter = "all";
+const autoSaveTimers = new Map();
 let stagingOptions = {
   categories: {},
   locations: [],
@@ -174,6 +179,7 @@ function updateBulkControls() {
   bulkSaveButton.disabled = selectedCount === 0;
   bulkApproveButton.disabled = selectedCount === 0;
   bulkRejectButton.disabled = selectedCount === 0;
+  if (bulkRenormalizeButton) bulkRenormalizeButton.disabled = selectedCount === 0;
   bulkArchiveButton.disabled = selectedCount === 0;
   bulkRemoveButton.disabled = selectedCount === 0;
   if (selectAllCheckbox) {
@@ -275,6 +281,48 @@ function applyReviewFilter(rows = loadedRows) {
   if (activeReviewFilter === "all-in") return rows.filter((row) => hasNumericValue(row.all_in_rate));
   if (activeReviewFilter === "split-rate") return rows.filter(hasSplitRate);
   return rows;
+}
+
+function columnFilterText(row, field) {
+  if (field === "vendor") return [row.vendors?.vendor_name, row.vendor_domain, row.vendors?.domain].filter(Boolean).join(" ");
+  if (field === "origin") {
+    return [
+      row.origin,
+      row.normalized_origin,
+      row.origin_city,
+      row.origin_state,
+      row.origin_zip_prefix,
+      row.origin_market,
+      row.origin_region,
+      row.origin_country
+    ].filter(Boolean).join(" ");
+  }
+  if (field === "destination") {
+    return [
+      row.destination,
+      row.normalized_destination,
+      row.destination_city,
+      row.destination_state,
+      row.destination_zip_prefix,
+      row.destination_market,
+      row.destination_region,
+      row.destination_country
+    ].filter(Boolean).join(" ");
+  }
+  return String(row[field] ?? "");
+}
+
+function applyColumnFilters(rows = loadedRows) {
+  const filters = [...columnFilterInputs]
+    .map((input) => [input.dataset.stagingColumnFilter, String(input.value || "").trim().toLowerCase()])
+    .filter(([, value]) => value);
+
+  if (!filters.length) return rows;
+  return rows.filter((row) => filters.every(([field, value]) => columnFilterText(row, field).toLowerCase().includes(value)));
+}
+
+function visibleStagingRows() {
+  return applyColumnFilters(applyReviewFilter(loadedRows));
 }
 
 function updateReviewFilters() {
@@ -608,6 +656,60 @@ function setRowStatus(id, message, tone = "neutral") {
   status.dataset.tone = tone;
 }
 
+function clearAutoSaveTimer(id) {
+  window.clearTimeout(autoSaveTimers.get(id));
+  autoSaveTimers.delete(id);
+}
+
+function replaceStoredRow(updatedRow) {
+  loadedRows = loadedRows.map((row) => row.id === updatedRow.id ? { ...row, ...updatedRow } : row);
+  currentRows = currentRows.map((row) => row.id === updatedRow.id ? { ...row, ...updatedRow } : row);
+}
+
+function markStagingRowDirty(tableRow) {
+  const id = tableRow?.dataset.rowId;
+  if (!id) return;
+  tableRow.classList.add("dirty-row");
+  setRowStatus(id, "Autosaves in 1s", "warning");
+  setBulkStatus("");
+}
+
+async function saveStagingTableRow(tableRow, status = null) {
+  const id = tableRow?.dataset.rowId;
+  if (!id) return null;
+  clearAutoSaveTimer(id);
+  const button = tableRow.querySelector(`[data-save-id="${CSS.escape(id)}"]`);
+  if (button) button.disabled = true;
+  setRowStatus(id, "Saving...");
+
+  try {
+    await ensureSignedIn();
+    const updated = await updateStagingRow(id, readInlinePatch(tableRow, status));
+    replaceStoredRow(updated);
+    tableRow.classList.remove("dirty-row");
+    setRowStatus(id, status ? `Marked ${status.replace("_", " ")}` : "Saved", "success");
+    return updated;
+  } catch (error) {
+    setRowStatus(id, error.message, "error");
+    throw error;
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
+
+function scheduleStagingAutoSave(tableRow, wait = 1000) {
+  const id = tableRow?.dataset.rowId;
+  if (!id) return;
+  clearAutoSaveTimer(id);
+  autoSaveTimers.set(id, window.setTimeout(async () => {
+    try {
+      await saveStagingTableRow(tableRow);
+    } catch {
+      updateBulkControls();
+    }
+  }, wait));
+}
+
 async function runBulkAction(status = null) {
   const rows = selectedRows();
   if (!rows.length) return;
@@ -635,18 +737,15 @@ async function runBulkAction(status = null) {
   bulkSaveButton.disabled = true;
   bulkApproveButton.disabled = true;
   bulkRejectButton.disabled = true;
+  if (bulkRenormalizeButton) bulkRenormalizeButton.disabled = true;
   bulkArchiveButton.disabled = true;
   bulkRemoveButton.disabled = true;
 
   try {
-    await ensureSignedIn();
     await Promise.all(rows.map(async (tableRow) => {
       const id = tableRow.dataset.rowId;
       setRowStatus(id, status ? `Marking ${label}...` : "Saving...");
-      const updated = await updateStagingRow(id, readInlinePatch(tableRow, status));
-      const rowIndex = currentRows.findIndex((row) => row.id === id);
-      if (rowIndex >= 0) currentRows[rowIndex] = { ...currentRows[rowIndex], ...updated };
-      setRowStatus(id, status ? `Marked ${label}` : "Saved", "success");
+      await saveStagingTableRow(tableRow, status);
       selectedRowIds.delete(id);
     }));
     setBulkStatus(`${rows.length} rows updated.`, "success");
@@ -694,6 +793,26 @@ async function runBulkRemove() {
     const result = await removeStagingRows(ids);
     ids.forEach((id) => selectedRowIds.delete(id));
     setBulkStatus(`${result.removed || ids.length} rows removed.`, "success");
+    await loadRows();
+  } catch (error) {
+    setBulkStatus(error.message, "error");
+    updateBulkControls();
+  }
+}
+
+async function runBulkRenormalize() {
+  const rows = selectedRows();
+  if (!rows.length) return;
+  const ids = rows.map((row) => row.dataset.rowId);
+
+  setBulkStatus(`Re-normalizing ${ids.length} rows...`);
+  if (bulkRenormalizeButton) bulkRenormalizeButton.disabled = true;
+
+  try {
+    await ensureSignedIn();
+    const result = await renormalizeStagingRows(ids);
+    ids.forEach((id) => selectedRowIds.delete(id));
+    setBulkStatus(`${result.updated || ids.length} rows re-normalized with the current catalog.`, "success");
     await loadRows();
   } catch (error) {
     setBulkStatus(error.message, "error");
@@ -769,8 +888,8 @@ async function loadRows() {
       currencies: options.currencies || ["USD", "MXN", "CAD"]
     };
     loadedRows = rows;
-    renderRows(applyReviewFilter(rows));
-    await applyPermissionState("[data-save-id], [data-approve-id], [data-reject-id], #save-staging-button, #approve-staging-button, #reject-staging-button, #bulk-save-button, #bulk-approve-button, #bulk-reject-button, #bulk-archive-button, #bulk-remove-button", "staging:approve");
+    renderRows(visibleStagingRows());
+    await applyPermissionState("[data-save-id], [data-approve-id], [data-reject-id], #save-staging-button, #approve-staging-button, #reject-staging-button, #bulk-save-button, #bulk-approve-button, #bulk-reject-button, #bulk-renormalize-button, #bulk-archive-button, #bulk-remove-button", "staging:approve");
   } catch (error) {
     body.innerHTML = `<tr><td colspan="${STAGING_COLSPAN}">Could not load staging rows. ${escapeHtml(error.message)}</td></tr>`;
   } finally {
@@ -781,6 +900,9 @@ async function loadRows() {
 async function clearStagingFilters() {
   statusFilter.value = "pending_review";
   activeReviewFilter = "all";
+  columnFilterInputs.forEach((input) => {
+    input.value = "";
+  });
   selectedRowIds.clear();
   setBulkStatus("");
   drawer.classList.add("hidden");
@@ -802,19 +924,11 @@ body.addEventListener("click", async (event) => {
     const id = save.dataset.saveId;
     const tableRow = save.closest("[data-row-id]");
     if (!tableRow) return;
-    save.disabled = true;
-    setRowStatus(id, "Saving...");
 
     try {
-      await ensureSignedIn();
-      const updated = await updateStagingRow(id, readInlinePatch(tableRow));
-      const rowIndex = currentRows.findIndex((row) => row.id === id);
-      if (rowIndex >= 0) currentRows[rowIndex] = { ...currentRows[rowIndex], ...updated };
-      setRowStatus(id, "Saved", "success");
+      await saveStagingTableRow(tableRow);
     } catch (error) {
       setRowStatus(id, error.message, "error");
-    } finally {
-      save.disabled = false;
     }
     return;
   }
@@ -833,6 +947,7 @@ body.addEventListener("click", async (event) => {
     }
   }
   button.disabled = true;
+  clearAutoSaveTimer(id);
   setRowStatus(id, approve ? "Approving..." : "Rejecting...");
 
   try {
@@ -848,7 +963,23 @@ body.addEventListener("click", async (event) => {
   }
 });
 
+body.addEventListener("input", (event) => {
+  const field = event.target.closest("[data-field]");
+  if (!field) return;
+  const tableRow = field.closest("[data-row-id]");
+  markStagingRowDirty(tableRow);
+  scheduleStagingAutoSave(tableRow);
+});
+
 body.addEventListener("change", (event) => {
+  const field = event.target.closest("[data-field]");
+  if (field) {
+    const tableRow = field.closest("[data-row-id]");
+    markStagingRowDirty(tableRow);
+    scheduleStagingAutoSave(tableRow);
+    return;
+  }
+
   const checkbox = event.target.closest("[data-select-row]");
   if (!checkbox) return;
   if (checkbox.checked) {
@@ -858,6 +989,20 @@ body.addEventListener("change", (event) => {
   }
   setBulkStatus("");
   updateBulkControls();
+});
+
+body.addEventListener("focusout", (event) => {
+  const field = event.target.closest("[data-field]");
+  if (!field) return;
+  scheduleStagingAutoSave(field.closest("[data-row-id]"), 200);
+});
+
+installSpreadsheetGrid({
+  container: body,
+  rowSelector: "[data-row-id]",
+  cellSelector: "[data-field]",
+  saveRow: saveStagingTableRow,
+  onRowsChanged: (rows) => rows.forEach((row) => scheduleStagingAutoSave(row, 1000))
 });
 
 refreshButton.addEventListener("click", loadRows);
@@ -873,8 +1018,23 @@ reviewFilterButtons.forEach((button) => {
     activeReviewFilter = button.dataset.stagingFilter || "all";
     selectedRowIds.clear();
     setBulkStatus("");
-    renderRows(applyReviewFilter());
+    renderRows(visibleStagingRows());
   });
+});
+columnFilterInputs.forEach((input) => {
+  input.addEventListener("input", () => {
+    selectedRowIds.clear();
+    setBulkStatus("");
+    renderRows(visibleStagingRows());
+  });
+});
+clearColumnFiltersButton?.addEventListener("click", () => {
+  columnFilterInputs.forEach((input) => {
+    input.value = "";
+  });
+  selectedRowIds.clear();
+  setBulkStatus("");
+  renderRows(visibleStagingRows());
 });
 selectAllCheckbox?.addEventListener("change", () => {
   body.querySelectorAll("[data-select-row]").forEach((checkbox) => {
@@ -891,6 +1051,7 @@ selectAllCheckbox?.addEventListener("change", () => {
 bulkSaveButton?.addEventListener("click", () => runBulkAction());
 bulkApproveButton?.addEventListener("click", () => runBulkAction("approved"));
 bulkRejectButton?.addEventListener("click", () => runBulkAction("rejected"));
+bulkRenormalizeButton?.addEventListener("click", runBulkRenormalize);
 bulkArchiveButton?.addEventListener("click", runBulkArchive);
 bulkRemoveButton?.addEventListener("click", runBulkRemove);
 closeDrawerButton.addEventListener("click", () => drawer.classList.add("hidden"));

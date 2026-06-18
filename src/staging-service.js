@@ -12,6 +12,10 @@ export async function updateStagingRow(id, patch) {
   return (await callRatewareApi("update_staging", { id, patch })).row;
 }
 
+export async function renormalizeStagingRows(ids = []) {
+  return await callRatewareApi("renormalize_rate_rows", { ids });
+}
+
 export async function archiveStagingRows(ids = []) {
   return await callRatewareApi("archive_staging", { ids });
 }

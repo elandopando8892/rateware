@@ -67,6 +67,194 @@ function optionQuality(location: Record<string, unknown>) {
   return score;
 }
 
+function catalogKey(value: unknown) {
+  return String(value || "")
+    .trim()
+    .toUpperCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^A-Z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function buildCatalogIndex(items: Record<string, unknown>[]) {
+  const index = new Map<string, Map<string, Record<string, unknown>>>();
+  for (const item of items) {
+    const category = String(item.category || "");
+    if (!category) continue;
+    if (!index.has(category)) index.set(category, new Map());
+    const bucket = index.get(category)!;
+    [item.raw_value, item.normalized_value, item.code].forEach((value) => {
+      const lookup = catalogKey(value);
+      if (!lookup) return;
+      const existing = bucket.get(lookup);
+      if (!existing || sourceRank(item.source) < sourceRank(existing.source)) bucket.set(lookup, item);
+    });
+  }
+  return index;
+}
+
+function catalogMatch(index: Map<string, Map<string, Record<string, unknown>>>, categories: string[], value: unknown) {
+  const lookup = catalogKey(value);
+  if (!lookup) return null;
+
+  for (const category of categories) {
+    const direct = index.get(category)?.get(lookup);
+    if (direct) return direct;
+  }
+
+  for (const category of categories) {
+    for (const [candidateKey, item] of index.get(category) || []) {
+      if (candidateKey && (lookup.includes(candidateKey) || candidateKey.includes(lookup))) return item;
+    }
+  }
+
+  return null;
+}
+
+function buildLocationIndex(locations: Record<string, unknown>[]) {
+  const index = new Map<string, Record<string, unknown>>();
+  for (const location of locations) {
+    const keys = [
+      location.location_key,
+      location.raw_value,
+      location.zip_prefix,
+      location.city,
+      location.metro_city,
+      location.market,
+      location.region,
+      [location.city, location.state_code].filter(Boolean).join(", "),
+      [location.city, location.state_name].filter(Boolean).join(", ")
+    ].map(catalogKey).filter(Boolean);
+
+    for (const lookup of keys) {
+      const existing = index.get(lookup);
+      if (!existing || optionQuality(location) > optionQuality(existing)) index.set(lookup, location);
+    }
+  }
+  return index;
+}
+
+function locationCandidate(location: Record<string, unknown>, score: number, reason: string) {
+  return {
+    score,
+    reason,
+    country: location.country || null,
+    zip_prefix: location.zip_prefix || null,
+    city: location.city || null,
+    state: location.state_code || location.state_name || null,
+    metro_city: location.metro_city || null,
+    market: location.market || null,
+    region: location.region || null,
+    raw_value: location.raw_value || null
+  };
+}
+
+function locationMatch(index: Map<string, Record<string, unknown>>, value: unknown) {
+  const lookup = catalogKey(value);
+  if (!lookup) return null;
+
+  const direct = index.get(lookup);
+  if (direct) {
+    return {
+      location: direct,
+      score: 100,
+      reason: "exact catalog match",
+      candidates: [locationCandidate(direct, 100, "exact catalog match")]
+    };
+  }
+
+  const zipToken = lookup.match(/\b[A-Z]\d[A-Z]|\b\d{3,5}\b/)?.[0] || null;
+  const zip = zipToken && /^\d/.test(zipToken) ? zipToken.slice(0, 3) : zipToken;
+  if (zip && index.get(catalogKey(zip))) {
+    const zipMatch = index.get(catalogKey(zip))!;
+    return {
+      location: zipMatch,
+      score: 92,
+      reason: `zip prefix ${zip} match`,
+      candidates: [locationCandidate(zipMatch, 92, `zip prefix ${zip} match`)]
+    };
+  }
+
+  const candidates: Array<{ location: Record<string, unknown>; score: number; reason: string }> = [];
+  const seen = new Set<Record<string, unknown>>();
+  for (const [, location] of index) {
+    if (seen.has(location)) continue;
+    seen.add(location);
+    let score = 0;
+    const reasons: string[] = [];
+    const zipPrefix = catalogKey(location.zip_prefix);
+    if (zipPrefix && lookup.includes(zipPrefix)) {
+      score += 45;
+      reasons.push("zip prefix");
+    }
+    const state = catalogKey(location.state_code);
+    if (state && lookup.includes(state)) {
+      score += 25;
+      reasons.push("state match");
+    }
+    const city = catalogKey(location.city);
+    if (city && lookup.includes(city)) {
+      score += 35;
+      reasons.push("city match");
+    }
+    const metro = catalogKey(location.metro_city);
+    if (metro && (lookup.includes(metro) || metro.includes(lookup))) {
+      score += 30;
+      reasons.push("metro match");
+    }
+    const market = catalogKey(location.market);
+    if (market && (lookup.includes(market) || market.includes(lookup))) {
+      score += 18;
+      reasons.push("market match");
+    }
+    if (score >= 25) candidates.push({ location, score, reason: reasons.join(", ") || "catalog match" });
+  }
+
+  candidates.sort((a, b) => b.score - a.score);
+  const top = candidates.slice(0, 5).map((candidate) => locationCandidate(candidate.location, candidate.score, candidate.reason));
+  const best = candidates[0] || null;
+  if (!best || best.score < 35) {
+    return {
+      location: null,
+      score: best?.score || 0,
+      reason: best ? "below auto-match threshold" : "no catalog candidate",
+      candidates: top
+    };
+  }
+
+  return {
+    location: best.location,
+    score: best.score,
+    reason: best.reason,
+    candidates: top
+  };
+}
+
+function applyLocation(row: Record<string, unknown>, prefix: "origin" | "destination", location: Record<string, unknown> | null) {
+  if (!location) {
+    return {
+      [`normalized_${prefix}`]: null,
+      [`${prefix}_country`]: null,
+      [`${prefix}_zip_prefix`]: null,
+      [`${prefix}_city`]: null,
+      [`${prefix}_state`]: null,
+      [`${prefix}_market`]: null,
+      [`${prefix}_region`]: null
+    };
+  }
+  return {
+    [`normalized_${prefix}`]: location.metro_city || location.city || row[prefix],
+    [`${prefix}_country`]: location.country || null,
+    [`${prefix}_zip_prefix`]: location.zip_prefix || null,
+    [`${prefix}_city`]: location.city || null,
+    [`${prefix}_state`]: location.state_code || location.state_name || null,
+    [`${prefix}_market`]: location.market || null,
+    [`${prefix}_region`]: location.region || null
+  };
+}
+
 function normalizeDomain(value: unknown) {
   const text = cleanText(value);
   if (!text) return null;
@@ -446,6 +634,175 @@ function cleanDate(value: unknown) {
   return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString().slice(0, 10);
 }
 
+function buildRowKeys(row: Record<string, unknown>) {
+  const routeParts = [
+    row.origin,
+    row.destination,
+    row.equipment,
+    row.trailer,
+    row.config,
+    row.operation,
+    row.service,
+    row.driver,
+    row.mx_border_crossing_point && row.us_border_crossing_point
+      ? `${row.mx_border_crossing_point}/${row.us_border_crossing_point}`
+      : row.mx_border_crossing_point || row.us_border_crossing_point
+  ].filter(Boolean);
+  const routeKey = routeParts.join(" ");
+  const rfxKey = [row.rfx_id, row.row_id].filter(Boolean).join("-");
+
+  return {
+    route_key: routeKey || null,
+    rfx_key: rfxKey || null,
+    business_key: [rfxKey, routeKey].filter(Boolean).join(" ") || null
+  };
+}
+
+function normalizeCatalogValues(row: Record<string, unknown>, catalog: Map<string, Map<string, Record<string, unknown>>>) {
+  const patch: Record<string, unknown> = {};
+  const fields: Array<[string, string, string[]]> = [
+    ["equipment", "normalized_equipment", ["equipment"]],
+    ["config", "normalized_config", ["config"]],
+    ["operation", "normalized_operation", ["operation"]],
+    ["service", "normalized_service", ["service"]],
+    ["driver", "normalized_driver", ["driver"]]
+  ];
+
+  let matchCount = 0;
+  for (const [field, normalizedField, categories] of fields) {
+    const match = catalogMatch(catalog, categories, row[field]);
+    if (!match?.normalized_value) {
+      patch[normalizedField] = null;
+      continue;
+    }
+    patch[normalizedField] = cleanText(match.normalized_value);
+    patch[field] = cleanText(match.normalized_value);
+    matchCount += 1;
+  }
+
+  const trailerMatch = catalogMatch(catalog, ["trailer"], row.trailer);
+  if (trailerMatch?.normalized_value) {
+    patch.normalized_trailer = trailerWithFlags(trailerMatch.normalized_value, row.hazmat, row.temperature_controlled);
+    patch.trailer = patch.normalized_trailer;
+    matchCount += 1;
+  } else if (row.trailer || row.hazmat || row.temperature_controlled) {
+    patch.trailer = trailerWithFlags(row.trailer, row.hazmat, row.temperature_controlled);
+    patch.normalized_trailer = patch.trailer;
+  }
+
+  return { patch, matchCount };
+}
+
+function normalizeLocations(row: Record<string, unknown>, locationIndex: Map<string, Record<string, unknown>>) {
+  const originResolution = locationMatch(locationIndex, row.origin || row.normalized_origin);
+  const destinationResolution = locationMatch(locationIndex, row.destination || row.normalized_destination);
+  const originLocation = originResolution?.location || null;
+  const destinationLocation = destinationResolution?.location || null;
+
+  return {
+    patch: {
+      ...applyLocation(row, "origin", originLocation),
+      ...applyLocation(row, "destination", destinationLocation),
+      origin_match_reason: originResolution?.reason || null,
+      destination_match_reason: destinationResolution?.reason || null,
+      origin_location_candidates: originResolution?.candidates || [],
+      destination_location_candidates: destinationResolution?.candidates || [],
+      location_match_status: originLocation && destinationLocation ? "matched" : originLocation || destinationLocation ? "partial" : "unmatched"
+    },
+    originLocation,
+    destinationLocation
+  };
+}
+
+function applyMileage(row: Record<string, unknown>, patch: Record<string, unknown>, mileage: Map<string, Record<string, unknown>>) {
+  const normalized = { ...row, ...patch };
+  const routeCandidates = [
+    [normalized.normalized_origin || normalized.origin, normalized.normalized_destination || normalized.destination, normalized.normalized_equipment || normalized.equipment, normalized.normalized_trailer || normalized.trailer, normalized.normalized_config || normalized.config, normalized.normalized_operation || normalized.operation, normalized.normalized_service || normalized.service, normalized.normalized_driver || normalized.driver],
+    [normalized.normalized_origin || normalized.origin, normalized.normalized_destination || normalized.destination, normalized.normalized_equipment || normalized.equipment],
+    [normalized.normalized_origin || normalized.origin, normalized.normalized_destination || normalized.destination],
+    [normalized.origin_market, normalized.destination_market, normalized.normalized_equipment || normalized.equipment],
+    [normalized.origin_market, normalized.destination_market],
+    [row.route_key]
+  ].map((parts) => catalogKey(Array.isArray(parts) ? parts.filter(Boolean).join(" ") : parts));
+
+  const lane = routeCandidates.map((candidate) => mileage.get(candidate)).find(Boolean);
+  if (!lane) return {};
+
+  const mileagePatch: Record<string, unknown> = {
+    calculated_miles: lane.miles ? Number(lane.miles) : null,
+    calculated_km: lane.km ? Number(lane.km) : null,
+    mileage_source: cleanText(lane.source || "catalog")
+  };
+  if (!row.us_miles && lane.miles) mileagePatch.us_miles = String(lane.miles);
+  return mileagePatch;
+}
+
+function normalizeRowWithCurrentCatalog(row: Record<string, unknown>, catalog: Map<string, Map<string, Record<string, unknown>>>, locationIndex: Map<string, Record<string, unknown>>, mileage: Map<string, Record<string, unknown>>) {
+  const categoryResult = normalizeCatalogValues(row, catalog);
+  const locationResult = normalizeLocations({ ...row, ...categoryResult.patch }, locationIndex);
+  const patch: Record<string, unknown> = {
+    ...categoryResult.patch,
+    ...locationResult.patch
+  };
+
+  Object.assign(patch, applyMileage(row, patch, mileage));
+  Object.assign(patch, buildRowKeys({ ...row, ...patch }));
+
+  const locationMatchCount = [locationResult.originLocation, locationResult.destinationLocation].filter(Boolean).length;
+  const matchCount = categoryResult.matchCount + locationMatchCount;
+  patch.catalog_match_status = matchCount >= 5 ? "matched" : matchCount >= 2 ? "partial" : "unmatched";
+  return patch;
+}
+
+async function renormalizeRateRows(supabase: ReturnType<typeof createClient>, ids: string[], status: string | null = null) {
+  if (!ids.length) throw new Error("At least one rate row id is required.");
+
+  let rowQuery = supabase.from("rate_staging").select("*").in("id", ids).limit(500);
+  if (status) rowQuery = rowQuery.eq("status", status);
+
+  const [rowsResult, catalogResult, locationsResult, mileageResult] = await Promise.all([
+    rowQuery,
+    supabase
+      .from("rateware_catalog_items")
+      .select("source,category,raw_value,normalized_value,code")
+      .eq("active", true)
+      .limit(10000),
+    supabase
+      .from("rateware_locations")
+      .select("source,location_key,raw_value,zip_prefix,metro_city,city,state_code,state_name,country,market,region")
+      .eq("active", true)
+      .limit(20000),
+    supabase
+      .from("rateware_lane_mileage")
+      .select("source,route_key,miles,km")
+      .eq("active", true)
+      .limit(20000)
+  ]);
+
+  for (const result of [rowsResult, catalogResult, locationsResult, mileageResult]) {
+    if (result.error) throw result.error;
+  }
+
+  const catalog = buildCatalogIndex(catalogResult.data || []);
+  const locationIndex = buildLocationIndex(locationsResult.data || []);
+  const mileage = new Map((mileageResult.data || []).map((lane) => [catalogKey(lane.route_key), lane]));
+
+  const updatedRows = [];
+  for (const row of rowsResult.data || []) {
+    const patch = normalizeRowWithCurrentCatalog(row, catalog, locationIndex, mileage);
+    const result = await supabase
+      .from("rate_staging")
+      .update(patch)
+      .eq("id", row.id)
+      .select("*, vendors(vendor_name, domain)")
+      .single();
+    if (result.error) throw result.error;
+    updatedRows.push(result.data);
+  }
+
+  return updatedRows;
+}
+
 Deno.serve(async (request) => {
   if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders() });
 
@@ -727,6 +1084,13 @@ Deno.serve(async (request) => {
       const result = await query;
       if (result.error) throw result.error;
       return jsonResponse({ rows: result.data });
+    }
+
+    if (body.action === "renormalize_rate_rows") {
+      const ids = Array.isArray(body.ids) ? body.ids.map(String).filter(Boolean).slice(0, 500) : [];
+      const status = cleanText(body.status);
+      const rows = await renormalizeRateRows(supabase, ids, status);
+      return jsonResponse({ updated: rows.length, rows });
     }
 
     if (body.action === "update_rateware") {

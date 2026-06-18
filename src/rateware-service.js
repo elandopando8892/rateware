@@ -12,6 +12,10 @@ export async function updateApprovedRatewareRow(id, patch) {
   return (await callRatewareApi("update_rateware", { id, patch })).row;
 }
 
+export async function renormalizeApprovedRatewareRows(ids = []) {
+  return await callRatewareApi("renormalize_rate_rows", { ids, status: "approved" });
+}
+
 export async function returnApprovedRatesToStaging(ids = []) {
   return await callRatewareApi("return_rateware_to_staging", { ids });
 }

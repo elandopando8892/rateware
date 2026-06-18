@@ -1,5 +1,6 @@
 import { initAuthControls, requirePrivatePage } from "./auth.js";
-import { fetchApprovedRateware, fetchRatewareOptions, returnApprovedRatesToStaging, updateApprovedRatewareRow } from "./rateware-service.js";
+import { renormalizeApprovedRatewareRows, fetchApprovedRateware, fetchRatewareOptions, returnApprovedRatesToStaging, updateApprovedRatewareRow } from "./rateware-service.js";
+import { installSpreadsheetGrid } from "./spreadsheet-grid.js";
 
 const body = document.querySelector("#rateware-body");
 const searchInput = document.querySelector("#rateware-search");
@@ -10,10 +11,13 @@ const clearFiltersButton = document.querySelector("#clear-rateware-filters");
 const selectAllCheckbox = document.querySelector("#select-all-rateware");
 const selectionCount = document.querySelector("#rateware-selection-count");
 const saveSelectedButton = document.querySelector("#save-selected-rateware");
+const renormalizeSelectedButton = document.querySelector("#renormalize-selected-rateware");
 const returnSelectedButton = document.querySelector("#return-selected-button");
 const exportSelectedButton = document.querySelector("#export-selected-button");
 const exportVisibleButton = document.querySelector("#export-visible-button");
 const actionStatus = document.querySelector("#rateware-action-status");
+const columnFilterInputs = document.querySelectorAll("[data-rateware-column-filter]");
+const clearColumnFiltersButton = document.querySelector("#clear-rateware-column-filters");
 const ratewareMetricTotal = document.querySelector("#rateware-metric-total");
 const ratewareMetricVendors = document.querySelector("#rateware-metric-vendors");
 const ratewareMetricMarkets = document.querySelector("#rateware-metric-markets");
@@ -28,6 +32,7 @@ const RATEWARE_COLSPAN = 27;
 let currentRows = [];
 let loadedRows = [];
 let activeQuickFilter = "all";
+const autoSaveTimers = new Map();
 let ratewareOptions = {
   categories: {},
   locations: [],
@@ -201,6 +206,48 @@ function applyQuickFilter(rows = loadedRows) {
   if (activeQuickFilter === "split-rate") return rows.filter(hasSplitRate);
   if (activeQuickFilter === "with-capacity") return rows.filter((row) => row.weekly_capacity);
   return rows;
+}
+
+function columnFilterText(row, field) {
+  if (field === "vendor") return [row.vendors?.vendor_name, row.vendor_domain, row.vendors?.domain].filter(Boolean).join(" ");
+  if (field === "origin") {
+    return [
+      row.origin,
+      row.normalized_origin,
+      row.origin_city,
+      row.origin_state,
+      row.origin_zip_prefix,
+      row.origin_market,
+      row.origin_region,
+      row.origin_country
+    ].filter(Boolean).join(" ");
+  }
+  if (field === "destination") {
+    return [
+      row.destination,
+      row.normalized_destination,
+      row.destination_city,
+      row.destination_state,
+      row.destination_zip_prefix,
+      row.destination_market,
+      row.destination_region,
+      row.destination_country
+    ].filter(Boolean).join(" ");
+  }
+  return String(row[field] ?? "");
+}
+
+function applyColumnFilters(rows = loadedRows) {
+  const filters = [...columnFilterInputs]
+    .map((input) => [input.dataset.ratewareColumnFilter, String(input.value || "").trim().toLowerCase()])
+    .filter(([, value]) => value);
+
+  if (!filters.length) return rows;
+  return rows.filter((row) => filters.every(([field, value]) => columnFilterText(row, field).toLowerCase().includes(value)));
+}
+
+function visibleRatewareRows() {
+  return applyColumnFilters(applyQuickFilter(loadedRows));
 }
 
 function updateQuickFilters() {
@@ -394,14 +441,16 @@ function replaceStoredRatewareRow(updatedRow) {
   currentRows = currentRows.map((row) => row.id === updatedRow.id ? updatedRow : row);
 }
 
+function clearAutoSaveTimer(id) {
+  window.clearTimeout(autoSaveTimers.get(id));
+  autoSaveTimers.delete(id);
+}
+
 function markRatewareRowDirty(tableRow) {
   const rowId = tableRow?.dataset.ratewareId;
   if (!rowId) return;
   tableRow.classList.add("dirty-row");
-  selectedRowIds.add(rowId);
-  const checkbox = tableRow.querySelector("[data-select-rateware]");
-  if (checkbox) checkbox.checked = true;
-  setRowStatus(rowId, "Unsaved", "warning");
+  setRowStatus(rowId, "Autosaves in 1s", "warning");
   setActionStatus("");
   updateBulkControls();
 }
@@ -411,6 +460,7 @@ function updateBulkControls() {
   const totalRows = body.querySelectorAll("[data-rateware-id]").length;
   selectionCount.textContent = `${selectedCount} selected`;
   saveSelectedButton.disabled = selectedCount === 0;
+  if (renormalizeSelectedButton) renormalizeSelectedButton.disabled = selectedCount === 0;
   returnSelectedButton.disabled = selectedCount === 0;
   if (exportSelectedButton) exportSelectedButton.disabled = selectedCount === 0;
   if (exportVisibleButton) exportVisibleButton.disabled = currentRows.length === 0;
@@ -423,6 +473,7 @@ function updateBulkControls() {
 async function saveRatewareTableRow(tableRow) {
   const rowId = tableRow?.dataset.ratewareId;
   if (!rowId) return null;
+  clearAutoSaveTimer(rowId);
   const button = tableRow.querySelector(`[data-save-rateware-id="${CSS.escape(rowId)}"]`);
   if (button) button.disabled = true;
   setRowStatus(rowId, "Saving...");
@@ -439,6 +490,19 @@ async function saveRatewareTableRow(tableRow) {
   } finally {
     if (button) button.disabled = false;
   }
+}
+
+function scheduleRatewareAutoSave(tableRow, wait = 1000) {
+  const rowId = tableRow?.dataset.ratewareId;
+  if (!rowId) return;
+  clearAutoSaveTimer(rowId);
+  autoSaveTimers.set(rowId, window.setTimeout(async () => {
+    try {
+      await saveRatewareTableRow(tableRow);
+    } catch {
+      updateBulkControls();
+    }
+  }, wait));
 }
 
 async function saveSelectedRatewareRows() {
@@ -558,6 +622,9 @@ async function clearRatewareFilters() {
   operationFilter.value = "";
   serviceFilter.value = "";
   activeQuickFilter = "all";
+  columnFilterInputs.forEach((input) => {
+    input.value = "";
+  });
   selectedRowIds.clear();
   setActionStatus("");
   await loadRateware();
@@ -578,7 +645,7 @@ async function loadRateware() {
       })
     ]);
     loadedRows = rows;
-    renderRows(applyQuickFilter(rows));
+    renderRows(visibleRatewareRows());
   } catch (error) {
     body.innerHTML = `<tr><td colspan="${RATEWARE_COLSPAN}">Could not load Rateware. ${escapeHtml(error.message)}</td></tr>`;
   } finally {
@@ -598,6 +665,25 @@ async function returnSelectedToStaging() {
     const result = await returnApprovedRatesToStaging(ids);
     ids.forEach((id) => selectedRowIds.delete(id));
     setActionStatus(`${result.updated || ids.length} rates returned to staging.`, "success");
+    await loadRateware();
+  } catch (error) {
+    setActionStatus(error.message, "error");
+    updateBulkControls();
+  }
+}
+
+async function renormalizeSelectedRateware() {
+  const ids = selectedVisibleIds();
+  if (!ids.length) return;
+
+  if (renormalizeSelectedButton) renormalizeSelectedButton.disabled = true;
+  setActionStatus(`Re-normalizing ${ids.length} approved rate(s)...`);
+
+  try {
+    await requirePrivatePage();
+    const result = await renormalizeApprovedRatewareRows(ids);
+    ids.forEach((id) => selectedRowIds.delete(id));
+    setActionStatus(`${result.updated || ids.length} approved rate(s) re-normalized with the current catalog.`, "success");
     await loadRateware();
   } catch (error) {
     setActionStatus(error.message, "error");
@@ -652,11 +738,27 @@ quickFilterButtons.forEach((button) => {
     activeQuickFilter = button.dataset.ratewareFilter || "all";
     selectedRowIds.clear();
     setActionStatus("");
-    renderRows(applyQuickFilter());
+    renderRows(visibleRatewareRows());
   });
+});
+columnFilterInputs.forEach((input) => {
+  input.addEventListener("input", () => {
+    selectedRowIds.clear();
+    setActionStatus("");
+    renderRows(visibleRatewareRows());
+  });
+});
+clearColumnFiltersButton?.addEventListener("click", () => {
+  columnFilterInputs.forEach((input) => {
+    input.value = "";
+  });
+  selectedRowIds.clear();
+  setActionStatus("");
+  renderRows(visibleRatewareRows());
 });
 returnSelectedButton.addEventListener("click", returnSelectedToStaging);
 saveSelectedButton?.addEventListener("click", saveSelectedRatewareRows);
+renormalizeSelectedButton?.addEventListener("click", renormalizeSelectedRateware);
 exportSelectedButton?.addEventListener("click", exportSelectedCsv);
 exportVisibleButton?.addEventListener("click", exportVisibleCsv);
 selectAllCheckbox?.addEventListener("change", () => {
@@ -671,12 +773,16 @@ selectAllCheckbox?.addEventListener("change", () => {
 body.addEventListener("input", (event) => {
   const field = event.target.closest("[data-rateware-field]");
   if (!field) return;
-  markRatewareRowDirty(field.closest("[data-rateware-id]"));
+  const tableRow = field.closest("[data-rateware-id]");
+  markRatewareRowDirty(tableRow);
+  scheduleRatewareAutoSave(tableRow);
 });
 body.addEventListener("change", (event) => {
   const field = event.target.closest("[data-rateware-field]");
   if (field) {
-    markRatewareRowDirty(field.closest("[data-rateware-id]"));
+    const tableRow = field.closest("[data-rateware-id]");
+    markRatewareRowDirty(tableRow);
+    scheduleRatewareAutoSave(tableRow);
     return;
   }
 
@@ -686,6 +792,18 @@ body.addEventListener("change", (event) => {
   else selectedRowIds.delete(checkbox.dataset.selectRateware);
   setActionStatus("");
   updateBulkControls();
+});
+body.addEventListener("focusout", (event) => {
+  const field = event.target.closest("[data-rateware-field]");
+  if (!field) return;
+  scheduleRatewareAutoSave(field.closest("[data-rateware-id]"), 200);
+});
+installSpreadsheetGrid({
+  container: body,
+  rowSelector: "[data-rateware-id]",
+  cellSelector: "[data-rateware-field]",
+  saveRow: saveRatewareTableRow,
+  onRowsChanged: (rows) => rows.forEach((row) => scheduleRatewareAutoSave(row, 1000))
 });
 body.addEventListener("click", async (event) => {
   const detailButton = event.target.closest("[data-rateware-detail]");

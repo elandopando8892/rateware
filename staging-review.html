@@ -86,9 +86,22 @@
               <button id="bulk-save-button" type="button" class="secondary small-button" disabled>Save selected</button>
               <button id="bulk-approve-button" type="button" class="small-button" disabled>Approve selected</button>
               <button id="bulk-reject-button" type="button" class="danger small-button" disabled>Reject selected</button>
+              <button id="bulk-renormalize-button" type="button" class="secondary small-button" disabled>Re-normalize selected</button>
               <button id="bulk-archive-button" type="button" class="secondary small-button" disabled>Archive selected</button>
               <button id="bulk-remove-button" type="button" class="danger small-button" disabled>Remove selected</button>
               <span id="bulk-action-status" class="row-save-status"></span>
+            </div>
+
+            <div class="column-filter-bar" aria-label="Staging column filters">
+              <input data-staging-column-filter="vendor" type="search" placeholder="Vendor" />
+              <input data-staging-column-filter="origin" type="search" placeholder="Origin / O market" />
+              <input data-staging-column-filter="destination" type="search" placeholder="Destination / D market" />
+              <input data-staging-column-filter="equipment" type="search" placeholder="Equipment" />
+              <input data-staging-column-filter="trailer" type="search" placeholder="Trailer" />
+              <input data-staging-column-filter="operation" type="search" placeholder="Operation" />
+              <input data-staging-column-filter="service" type="search" placeholder="Service" />
+              <input data-staging-column-filter="all_in_rate" type="search" placeholder="All-in" />
+              <button id="clear-staging-column-filters" class="secondary small-button" type="button">Clear columns</button>
             </div>
 
             <div class="table-wrap">

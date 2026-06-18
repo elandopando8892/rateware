@@ -90,10 +90,23 @@
             <div class="bulk-action-bar" aria-live="polite">
               <span id="rateware-selection-count">0 selected</span>
               <button id="save-selected-rateware" type="button" class="small-button" disabled>Save selected</button>
+              <button id="renormalize-selected-rateware" type="button" class="secondary small-button" disabled>Re-normalize selected</button>
               <button id="return-selected-button" type="button" class="secondary small-button" disabled>Return to staging</button>
               <button id="export-selected-button" type="button" class="secondary small-button" disabled>Export selected CSV</button>
               <button id="export-visible-button" type="button" class="secondary small-button">Export visible CSV</button>
               <span id="rateware-action-status" class="row-save-status"></span>
+            </div>
+
+            <div class="column-filter-bar" aria-label="Rateware column filters">
+              <input data-rateware-column-filter="vendor" type="search" placeholder="Vendor" />
+              <input data-rateware-column-filter="origin" type="search" placeholder="Origin / O market" />
+              <input data-rateware-column-filter="destination" type="search" placeholder="Destination / D market" />
+              <input data-rateware-column-filter="equipment" type="search" placeholder="Equipment" />
+              <input data-rateware-column-filter="trailer" type="search" placeholder="Trailer" />
+              <input data-rateware-column-filter="operation" type="search" placeholder="Operation" />
+              <input data-rateware-column-filter="service" type="search" placeholder="Service" />
+              <input data-rateware-column-filter="all_in_rate" type="search" placeholder="All-in" />
+              <button id="clear-rateware-column-filters" class="secondary small-button" type="button">Clear columns</button>
             </div>
 
             <div class="table-wrap">
