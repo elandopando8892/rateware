@@ -1,5 +1,5 @@
 import { initAuthControls, requirePrivatePage } from "./auth.js";
-import { enrichApprovedRatewareLocationZips, renormalizeApprovedRatewareRows, fetchApprovedRateware, fetchRatewareOptions, returnApprovedRatesToStaging, updateApprovedRatewareRow } from "./rateware-service.js";
+import { enrichApprovedRatewareLocationZips, matchApprovedRatewareVendors, renormalizeApprovedRatewareRows, fetchApprovedRateware, fetchRatewareOptions, returnApprovedRatesToStaging, updateApprovedRatewareRow } from "./rateware-service.js";
 import { installSpreadsheetGrid } from "./spreadsheet-grid.js";
 
 const body = document.querySelector("#rateware-body");
@@ -11,6 +11,7 @@ const clearFiltersButton = document.querySelector("#clear-rateware-filters");
 const selectAllCheckbox = document.querySelector("#select-all-rateware");
 const selectionCount = document.querySelector("#rateware-selection-count");
 const saveSelectedButton = document.querySelector("#save-selected-rateware");
+const matchSelectedVendorsButton = document.querySelector("#match-selected-vendors-rateware");
 const enrichSelectedZipsButton = document.querySelector("#enrich-selected-zips-rateware");
 const renormalizeSelectedButton = document.querySelector("#renormalize-selected-rateware");
 const returnSelectedButton = document.querySelector("#return-selected-button");
@@ -36,6 +37,7 @@ let activeQuickFilter = "all";
 const autoSaveTimers = new Map();
 let ratewareOptions = {
   categories: {},
+  vendors: [],
   locations: [],
   mx_crossings: [],
   us_crossings: [],
@@ -92,6 +94,14 @@ function locationOptionLabel(option) {
   return typeof option === "string" ? "" : option.label || "";
 }
 
+function genericOptionValue(option) {
+  return typeof option === "string" ? option : option.value || "";
+}
+
+function genericOptionLabel(option) {
+  return typeof option === "string" ? "" : option.label || "";
+}
+
 function uniqueLocationValues(field) {
   return Array.from(new Set(ratewareOptions.locations.map((option) => option?.[field]).filter(Boolean)))
     .sort((a, b) => String(a).localeCompare(String(b)));
@@ -130,6 +140,7 @@ function renderRatewareDatalists() {
   container.id = "rateware-datalists";
   container.hidden = true;
   container.innerHTML = `
+    <datalist id="rateware-vendor-options">${ratewareOptions.vendors.map((option) => `<option value="${escapeHtml(genericOptionValue(option))}" label="${escapeHtml(genericOptionLabel(option))}"></option>`).join("")}</datalist>
     <datalist id="rateware-origin-options">${ratewareOptions.locations.map((option) => `<option value="${escapeHtml(locationOptionValue(option))}" label="${escapeHtml(locationOptionLabel(option))}"></option>`).join("")}</datalist>
     <datalist id="rateware-destination-options">${ratewareOptions.locations.map((option) => `<option value="${escapeHtml(locationOptionValue(option))}" label="${escapeHtml(locationOptionLabel(option))}"></option>`).join("")}</datalist>
     <datalist id="rateware-zip-options">${datalistOptions(uniqueLocationValues("zip_prefix"))}</datalist>
@@ -434,7 +445,8 @@ function renderRows(rows) {
       </td>
       <td>
         <strong>${escapeHtml(row.vendors?.vendor_name || row.vendor_domain || "-")}</strong>
-        ${inputCell(row, "vendor_domain", { wide: true })}
+        ${inputCell(row, "vendor_domain", { wide: true, list: "rateware-vendor-options" })}
+        ${row.vendors?.vendor_name ? `<span class="match-pill">${escapeHtml(row.vendors.base_stage || "matched")}</span>` : ""}
       </td>
       <td>${inputCell(row, "quote_date", { type: "date", short: true })}</td>
       <td>${inputCell(row, "rfx_id", { short: true })}</td>
@@ -523,6 +535,7 @@ function updateBulkControls() {
   const totalRows = body.querySelectorAll("[data-rateware-id]").length;
   selectionCount.textContent = `${selectedCount} selected`;
   saveSelectedButton.disabled = selectedCount === 0;
+  if (matchSelectedVendorsButton) matchSelectedVendorsButton.disabled = selectedCount === 0;
   if (enrichSelectedZipsButton) enrichSelectedZipsButton.disabled = selectedCount === 0;
   if (renormalizeSelectedButton) renormalizeSelectedButton.disabled = selectedCount === 0;
   returnSelectedButton.disabled = selectedCount === 0;
@@ -755,6 +768,25 @@ async function renormalizeSelectedRateware() {
   }
 }
 
+async function matchSelectedRatewareVendors() {
+  const ids = selectedVisibleIds();
+  if (!ids.length) return;
+
+  if (matchSelectedVendorsButton) matchSelectedVendorsButton.disabled = true;
+  setActionStatus(`Matching vendors for ${ids.length} approved rate(s)...`);
+
+  try {
+    await requirePrivatePage();
+    const result = await matchApprovedRatewareVendors(ids);
+    ids.forEach((id) => selectedRowIds.delete(id));
+    setActionStatus(`${result.updated || 0} approved rate(s) linked to vendors.`, "success");
+    await loadRateware();
+  } catch (error) {
+    setActionStatus(error.message, "error");
+    updateBulkControls();
+  }
+}
+
 async function enrichSelectedRatewareZips() {
   const ids = selectedVisibleIds();
   if (!ids.length) return;
@@ -788,6 +820,7 @@ async function loadRatewareOptions() {
     const options = await fetchRatewareOptions();
     ratewareOptions = {
       categories: options.categories || {},
+      vendors: options.vendors || [],
       locations: options.locations || [],
       mx_crossings: options.mx_crossings || [],
       us_crossings: options.us_crossings || [],
@@ -796,6 +829,7 @@ async function loadRatewareOptions() {
   } catch {
     ratewareOptions = {
       categories: ratewareOptions.categories || {},
+      vendors: ratewareOptions.vendors || [],
       locations: ratewareOptions.locations || [],
       mx_crossings: ratewareOptions.mx_crossings || [],
       us_crossings: ratewareOptions.us_crossings || [],
@@ -841,6 +875,7 @@ clearColumnFiltersButton?.addEventListener("click", () => {
 });
 returnSelectedButton.addEventListener("click", returnSelectedToStaging);
 saveSelectedButton?.addEventListener("click", saveSelectedRatewareRows);
+matchSelectedVendorsButton?.addEventListener("click", matchSelectedRatewareVendors);
 enrichSelectedZipsButton?.addEventListener("click", enrichSelectedRatewareZips);
 renormalizeSelectedButton?.addEventListener("click", renormalizeSelectedRateware);
 exportSelectedButton?.addEventListener("click", exportSelectedCsv);

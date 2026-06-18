@@ -1,6 +1,6 @@
 import { applyPermissionState, ensureSignedIn, initAuthControls, requirePrivatePage } from "./auth.js";
 import { installSpreadsheetGrid } from "./spreadsheet-grid.js";
-import { archiveStagingRows, enrichStagingLocationZips, fetchStagingOptions, fetchStagingRows, removeStagingRows, renormalizeStagingRows, updateStagingRow } from "./staging-service.js";
+import { archiveStagingRows, enrichStagingLocationZips, fetchStagingOptions, fetchStagingRows, matchStagingVendors, removeStagingRows, renormalizeStagingRows, updateStagingRow } from "./staging-service.js";
 
 const body = document.querySelector("#staging-body");
 const refreshButton = document.querySelector("#refresh-staging-button");
@@ -16,6 +16,7 @@ const rowDetail = document.querySelector("#staging-row-detail");
 const selectAllCheckbox = document.querySelector("#select-all-staging");
 const bulkSelectionCount = document.querySelector("#bulk-selection-count");
 const bulkSaveButton = document.querySelector("#bulk-save-button");
+const bulkMatchVendorsButton = document.querySelector("#bulk-match-vendors-button");
 const bulkApproveButton = document.querySelector("#bulk-approve-button");
 const bulkRejectButton = document.querySelector("#bulk-reject-button");
 const bulkEnrichZipsButton = document.querySelector("#bulk-enrich-zips-button");
@@ -38,6 +39,7 @@ let activeReviewFilter = "all";
 const autoSaveTimers = new Map();
 let stagingOptions = {
   categories: {},
+  vendors: [],
   locations: [],
   mx_crossings: [],
   us_crossings: [],
@@ -109,6 +111,14 @@ function locationOptionLabel(option) {
   return typeof option === "string" ? "" : option.label || "";
 }
 
+function genericOptionValue(option) {
+  return typeof option === "string" ? option : option.value || "";
+}
+
+function genericOptionLabel(option) {
+  return typeof option === "string" ? "" : option.label || "";
+}
+
 function uniqueLocationValues(field) {
   return Array.from(new Set(stagingOptions.locations.map((option) => option?.[field]).filter(Boolean)))
     .sort((a, b) => String(a).localeCompare(String(b)));
@@ -146,6 +156,7 @@ function renderDatalists() {
   container.id = "staging-datalists";
   container.hidden = true;
   container.innerHTML = `
+    <datalist id="staging-vendor-options">${stagingOptions.vendors.map((option) => `<option value="${escapeHtml(genericOptionValue(option))}" label="${escapeHtml(genericOptionLabel(option))}"></option>`).join("")}</datalist>
     <datalist id="staging-origin-options">${stagingOptions.locations.map((option) => `<option value="${escapeHtml(locationOptionValue(option))}" label="${escapeHtml(locationOptionLabel(option))}"></option>`).join("")}</datalist>
     <datalist id="staging-destination-options">${stagingOptions.locations.map((option) => `<option value="${escapeHtml(locationOptionValue(option))}" label="${escapeHtml(locationOptionLabel(option))}"></option>`).join("")}</datalist>
     <datalist id="staging-zip-options">${datalistOptions(uniqueLocationValues("zip_prefix"))}</datalist>
@@ -236,6 +247,7 @@ function updateBulkControls() {
   bulkSelectionCount.textContent = `${selectedCount} selected`;
   if (stagingMetricSelected) stagingMetricSelected.textContent = String(selectedCount);
   bulkSaveButton.disabled = selectedCount === 0;
+  if (bulkMatchVendorsButton) bulkMatchVendorsButton.disabled = selectedCount === 0;
   bulkApproveButton.disabled = selectedCount === 0;
   bulkRejectButton.disabled = selectedCount === 0;
   if (bulkEnrichZipsButton) bulkEnrichZipsButton.disabled = selectedCount === 0;
@@ -621,8 +633,8 @@ function renderRows(rows) {
           </td>
           <td class="vendor-review-cell">
             ${row.vendors?.vendor_name ? `<strong>${escapeHtml(row.vendors.vendor_name)}</strong>` : ""}
-            ${inputCell(row, "vendor_domain", { wide: true })}
-            ${row.vendors?.vendor_name ? '<span class="match-pill">Matched</span>' : ""}
+            ${inputCell(row, "vendor_domain", { wide: true, list: "staging-vendor-options" })}
+            ${row.vendors?.vendor_name ? `<span class="match-pill">${escapeHtml(row.vendors.base_stage || "matched")}</span>` : ""}
             ${renderReviewChips(row)}
           </td>
           <td>${inputCell(row, "quote_date", { type: "date", short: true })}</td>
@@ -799,6 +811,7 @@ async function runBulkAction(status = null) {
   const label = status ? status.replace("_", " ") : "save";
   setBulkStatus(`Processing ${rows.length} rows...`);
   bulkSaveButton.disabled = true;
+  if (bulkMatchVendorsButton) bulkMatchVendorsButton.disabled = true;
   bulkApproveButton.disabled = true;
   bulkRejectButton.disabled = true;
   if (bulkEnrichZipsButton) bulkEnrichZipsButton.disabled = true;
@@ -878,6 +891,26 @@ async function runBulkRenormalize() {
     const result = await renormalizeStagingRows(ids);
     ids.forEach((id) => selectedRowIds.delete(id));
     setBulkStatus(`${result.updated || ids.length} rows re-normalized with the current catalog.`, "success");
+    await loadRows();
+  } catch (error) {
+    setBulkStatus(error.message, "error");
+    updateBulkControls();
+  }
+}
+
+async function runBulkMatchVendors() {
+  const rows = selectedRows();
+  if (!rows.length) return;
+  const ids = rows.map((row) => row.dataset.rowId);
+
+  setBulkStatus(`Matching vendors for ${ids.length} rows...`);
+  if (bulkMatchVendorsButton) bulkMatchVendorsButton.disabled = true;
+
+  try {
+    await ensureSignedIn();
+    const result = await matchStagingVendors(ids);
+    ids.forEach((id) => selectedRowIds.delete(id));
+    setBulkStatus(`${result.updated || 0} rows linked to vendors.`, "success");
     await loadRows();
   } catch (error) {
     setBulkStatus(error.message, "error");
@@ -967,6 +1000,7 @@ async function loadRows() {
     ]);
     stagingOptions = {
       categories: options.categories || {},
+      vendors: options.vendors || [],
       locations: options.locations || [],
       mx_crossings: options.mx_crossings || [],
       us_crossings: options.us_crossings || [],
@@ -974,7 +1008,7 @@ async function loadRows() {
     };
     loadedRows = rows;
     renderRows(visibleStagingRows());
-    await applyPermissionState("[data-save-id], [data-approve-id], [data-reject-id], #save-staging-button, #approve-staging-button, #reject-staging-button, #bulk-save-button, #bulk-approve-button, #bulk-reject-button, #bulk-enrich-zips-button, #bulk-renormalize-button, #bulk-archive-button, #bulk-remove-button", "staging:approve");
+    await applyPermissionState("[data-save-id], [data-approve-id], [data-reject-id], #save-staging-button, #approve-staging-button, #reject-staging-button, #bulk-save-button, #bulk-match-vendors-button, #bulk-approve-button, #bulk-reject-button, #bulk-enrich-zips-button, #bulk-renormalize-button, #bulk-archive-button, #bulk-remove-button", "staging:approve");
   } catch (error) {
     body.innerHTML = `<tr><td colspan="${STAGING_COLSPAN}">Could not load staging rows. ${escapeHtml(error.message)}</td></tr>`;
   } finally {
@@ -1136,6 +1170,7 @@ selectAllCheckbox?.addEventListener("change", () => {
   updateBulkControls();
 });
 bulkSaveButton?.addEventListener("click", () => runBulkAction());
+bulkMatchVendorsButton?.addEventListener("click", runBulkMatchVendors);
 bulkApproveButton?.addEventListener("click", () => runBulkAction("approved"));
 bulkRejectButton?.addEventListener("click", () => runBulkAction("rejected"));
 bulkEnrichZipsButton?.addEventListener("click", runBulkEnrichZips);

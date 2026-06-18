@@ -261,6 +261,110 @@ function normalizeDomain(value: unknown) {
   return text.toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").split("/")[0];
 }
 
+function normalizeEmail(value: unknown) {
+  const text = String(value || "").toLowerCase();
+  return text.match(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/)?.[0] || null;
+}
+
+function domainFromVendorReference(value: unknown) {
+  const email = normalizeEmail(value);
+  if (email) return normalizeDomain(email.split("@").pop());
+  const text = cleanText(value);
+  if (!text) return null;
+  return normalizeDomain(text.replace(/^@/, ""));
+}
+
+function vendorEmails(vendor: Record<string, unknown>) {
+  const secondary = Array.isArray(vendor.secondary_emails) ? vendor.secondary_emails : [];
+  return [vendor.primary_email, ...secondary]
+    .map(normalizeEmail)
+    .filter(Boolean) as string[];
+}
+
+function scoreVendorReference(vendor: Record<string, unknown>, reference: unknown) {
+  const email = normalizeEmail(reference);
+  const domain = domainFromVendorReference(reference);
+  if (!email && !domain) return { score: 0, source: null as string | null, domain: null as string | null, email: null as string | null };
+
+  const vendorDomain = normalizeDomain(vendor.domain);
+  const emails = vendorEmails(vendor);
+  let score = 0;
+  let source: string | null = null;
+
+  if (email && emails.includes(email)) {
+    score = 120;
+    source = "email";
+  } else if (domain && vendorDomain && vendorDomain === domain) {
+    score = 105;
+    source = "domain";
+  } else if (email && domain && vendorDomain === domain) {
+    score = 100;
+    source = "email_domain";
+  } else if (domain && emails.some((candidate) => candidate.endsWith(`@${domain}`))) {
+    score = 92;
+    source = "contact_email_domain";
+  } else if (domain && vendorDomain && (domain.endsWith(`.${vendorDomain}`) || vendorDomain.endsWith(`.${domain}`))) {
+    score = 78;
+    source = "domain_alias";
+  }
+
+  if (!score) return { score: 0, source: null, domain, email };
+
+  const status = cleanText(vendor.status)?.toLowerCase();
+  const baseStage = cleanText(vendor.base_stage)?.toLowerCase();
+  if (status === "active") score += 8;
+  if (status === "invited") score += 4;
+  if (status === "inactive") score -= 10;
+  if (status === "blocked") score -= 80;
+  if (baseStage === "procurement") score += 5;
+  if (baseStage === "sourcing") score += 3;
+  if (baseStage === "archived") score -= 20;
+
+  return { score, source, domain, email };
+}
+
+async function resolveVendorReference(supabase: ReturnType<typeof createClient>, user: { owner_email: string | null }, reference: unknown) {
+  const domain = domainFromVendorReference(reference);
+  const email = normalizeEmail(reference);
+  if (!domain && !email) return null;
+
+  const result = await supabase
+    .from("vendors")
+    .select("id,vendor_name,domain,primary_email,secondary_emails,status,base_stage")
+    .eq("owner_email", user.owner_email)
+    .limit(1000);
+  if (result.error) throw result.error;
+
+  const ranked = (result.data || [])
+    .map((vendor) => ({ vendor, ...scoreVendorReference(vendor, reference) }))
+    .filter((match) => match.score >= 75)
+    .sort((a, b) => b.score - a.score);
+
+  return ranked[0] || null;
+}
+
+async function vendorLinkPatch(supabase: ReturnType<typeof createClient>, user: { owner_email: string | null }, input: Record<string, unknown>, current: Record<string, unknown>) {
+  const explicitVendorUpdate = input.vendor_domain !== undefined;
+  const reference = explicitVendorUpdate ? input.vendor_domain : current.vendor_domain;
+  const hasExistingLink = Boolean(current.vendor_id);
+
+  if (!cleanText(reference)) {
+    return explicitVendorUpdate ? { vendor_id: null, vendor_domain: null } : {};
+  }
+  if (!explicitVendorUpdate && hasExistingLink) return {};
+
+  const match = await resolveVendorReference(supabase, user, reference);
+  const fallbackDomain = domainFromVendorReference(reference);
+  if (!match) {
+    return explicitVendorUpdate ? { vendor_id: null, vendor_domain: fallbackDomain || cleanText(reference) } : {};
+  }
+
+  return {
+    vendor_id: match.vendor.id,
+    vendor_domain: normalizeDomain(match.vendor.domain) || match.domain || fallbackDomain || cleanText(reference)
+  };
+}
+
 function normalizeTags(value: unknown) {
   const source = Array.isArray(value) ? value : String(value || "").split(/[;,]/);
   return source
@@ -879,6 +983,41 @@ async function enrichMissingLocationZips(supabase: ReturnType<typeof createClien
   return { rows: updatedRows, enriched };
 }
 
+async function matchRateVendorRows(supabase: ReturnType<typeof createClient>, user: { owner_email: string | null }, ids: string[], status: string | null = null) {
+  if (!ids.length) throw new Error("At least one rate row id is required.");
+
+  let rowQuery = supabase
+    .from("rate_staging")
+    .select("id,vendor_id,vendor_domain,status")
+    .in("id", ids)
+    .limit(500);
+  if (status) rowQuery = rowQuery.eq("status", status);
+
+  const rowsResult = await rowQuery;
+  if (rowsResult.error) throw rowsResult.error;
+
+  const updatedRows = [];
+  for (const row of rowsResult.data || []) {
+    if (!cleanText(row.vendor_domain)) continue;
+    const match = await resolveVendorReference(supabase, user, row.vendor_domain);
+    if (!match) continue;
+    const patch = {
+      vendor_id: match.vendor.id,
+      vendor_domain: normalizeDomain(match.vendor.domain) || match.domain || domainFromVendorReference(row.vendor_domain) || cleanText(row.vendor_domain)
+    };
+    const result = await supabase
+      .from("rate_staging")
+      .update(patch)
+      .eq("id", row.id)
+      .select("*, vendors(vendor_name, domain, primary_email, base_stage, status)")
+      .single();
+    if (result.error) throw result.error;
+    updatedRows.push(result.data);
+  }
+
+  return updatedRows;
+}
+
 async function renormalizeRateRows(supabase: ReturnType<typeof createClient>, ids: string[], status: string | null = null) {
   if (!ids.length) throw new Error("At least one rate row id is required.");
 
@@ -1132,7 +1271,7 @@ Deno.serve(async (request) => {
     }
 
     if (body.action === "list_uploads") {
-      let query = supabase.from("raw_uploads").select("*, vendors(vendor_name, domain)").order("created_at", { ascending: false }).limit(100);
+      let query = supabase.from("raw_uploads").select("*, vendors(vendor_name, domain, primary_email, base_stage, status)").order("created_at", { ascending: false }).limit(100);
       if (body.status === "current" || body.status === undefined) query = query.neq("status", "archived");
       else if (body.status) query = query.eq("status", body.status);
       const result = await query;
@@ -1172,7 +1311,7 @@ Deno.serve(async (request) => {
     }
 
     if (body.action === "list_staging") {
-      let query = supabase.from("rate_staging").select("*, vendors(vendor_name, domain), rateware_lane_legs(*)").order("created_at", { ascending: false }).limit(200);
+      let query = supabase.from("rate_staging").select("*, vendors(vendor_name, domain, primary_email, base_stage, status), rateware_lane_legs(*)").order("created_at", { ascending: false }).limit(200);
       if (body.status) query = query.eq("status", body.status);
       const result = await query;
       if (result.error) throw result.error;
@@ -1182,7 +1321,7 @@ Deno.serve(async (request) => {
     if (body.action === "list_rateware") {
       let query = supabase
         .from("rate_staging")
-        .select("*, vendors(vendor_name, domain)")
+        .select("*, vendors(vendor_name, domain, primary_email, base_stage, status)")
         .eq("status", "approved")
         .order("quote_date", { ascending: false, nullsFirst: false })
         .order("created_at", { ascending: false })
@@ -1218,6 +1357,13 @@ Deno.serve(async (request) => {
       return jsonResponse({ updated: rows.length, rows });
     }
 
+    if (body.action === "match_rate_vendors") {
+      const ids = Array.isArray(body.ids) ? body.ids.map(String).filter(Boolean).slice(0, 500) : [];
+      const status = cleanText(body.status);
+      const rows = await matchRateVendorRows(supabase, user, ids, status);
+      return jsonResponse({ updated: rows.length, rows });
+    }
+
     if (body.action === "enrich_missing_location_zips") {
       const ids = Array.isArray(body.ids) ? body.ids.map(String).filter(Boolean).slice(0, 250) : [];
       const status = cleanText(body.status);
@@ -1229,13 +1375,14 @@ Deno.serve(async (request) => {
       if (!body.id) return jsonResponse({ error: "Approved rate id is required." }, 400);
       const currentResult = await supabase
         .from("rate_staging")
-        .select("trailer,hazmat,temperature_controlled,status")
+        .select("trailer,hazmat,temperature_controlled,status,vendor_id,vendor_domain")
         .eq("id", body.id)
         .eq("status", "approved")
         .single();
       if (currentResult.error) throw currentResult.error;
 
       const patch = normalizeStagingPatch(body.patch || {}, currentResult.data || {});
+      Object.assign(patch, await vendorLinkPatch(supabase, user, body.patch || {}, currentResult.data || {}));
       delete patch.status;
       if (!Object.keys(patch).length) return jsonResponse({ error: "No approved rate updates provided." }, 400);
 
@@ -1244,7 +1391,7 @@ Deno.serve(async (request) => {
         .update(patch)
         .eq("id", body.id)
         .eq("status", "approved")
-        .select("*, vendors(vendor_name, domain)")
+        .select("*, vendors(vendor_name, domain, primary_email, base_stage, status)")
         .single();
       if (result.error) throw result.error;
       return jsonResponse({ row: result.data });
@@ -1291,7 +1438,7 @@ Deno.serve(async (request) => {
     }
 
     if (body.action === "list_staging_options") {
-      const [catalog, locations, borderPairs] = await Promise.all([
+      const [catalog, locations, borderPairs, vendors] = await Promise.all([
         supabase
           .from("rateware_catalog_items")
           .select("source,category,normalized_value,raw_value,code")
@@ -1310,10 +1457,15 @@ Deno.serve(async (request) => {
           .select("mx_city,mx_state,us_city,us_state,crossing_name")
           .eq("active", true)
           .order("default_rank", { ascending: true })
-          .limit(200)
+          .limit(200),
+        supabase
+          .from("vendors")
+          .select("vendor_name,domain,primary_email,base_stage,status")
+          .eq("owner_email", user.owner_email)
+          .limit(1000)
       ]);
 
-      for (const result of [catalog, locations, borderPairs]) {
+      for (const result of [catalog, locations, borderPairs, vendors]) {
         if (result.error) throw result.error;
       }
 
@@ -1375,9 +1527,18 @@ Deno.serve(async (request) => {
         .map((pair) => [pair.us_city, pair.us_state].filter(Boolean).join(", "))
         .filter(Boolean))).sort((a, b) => a.localeCompare(b));
 
+      const vendorOptions = (vendors.data || []).flatMap((vendor) => {
+        const label = [vendor.vendor_name, vendor.primary_email, vendor.base_stage, vendor.status].filter(Boolean).join(" | ");
+        return [
+          vendor.domain ? { value: vendor.domain, label } : null,
+          vendor.primary_email ? { value: vendor.primary_email, label } : null
+        ].filter(Boolean);
+      });
+
       return jsonResponse({
         categories,
         locations: locationOptions,
+        vendors: vendorOptions,
         mx_crossings: mxCrossings,
         us_crossings: usCrossings,
         currencies: ["USD", "MXN", "CAD"]
@@ -1387,15 +1548,21 @@ Deno.serve(async (request) => {
     if (body.action === "update_staging") {
       const currentResult = await supabase
         .from("rate_staging")
-        .select("trailer,hazmat,temperature_controlled")
+        .select("trailer,hazmat,temperature_controlled,vendor_id,vendor_domain")
         .eq("id", body.id)
         .single();
       if (currentResult.error) throw currentResult.error;
 
       const patch = normalizeStagingPatch(body.patch || {}, currentResult.data || {});
+      Object.assign(patch, await vendorLinkPatch(supabase, user, body.patch || {}, currentResult.data || {}));
       if (!Object.keys(patch).length) return jsonResponse({ error: "No staging updates provided." }, 400);
 
-      const result = await supabase.from("rate_staging").update(patch).eq("id", body.id).select().single();
+      const result = await supabase
+        .from("rate_staging")
+        .update(patch)
+        .eq("id", body.id)
+        .select("*, vendors(vendor_name, domain, primary_email, base_stage, status)")
+        .single();
       if (result.error) throw result.error;
       return jsonResponse({ row: result.data });
     }

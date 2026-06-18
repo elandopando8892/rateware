@@ -16,6 +16,10 @@ export async function renormalizeStagingRows(ids = []) {
   return await callRatewareApi("renormalize_rate_rows", { ids });
 }
 
+export async function matchStagingVendors(ids = []) {
+  return await callRatewareApi("match_rate_vendors", { ids });
+}
+
 export async function enrichStagingLocationZips(ids = []) {
   return await callRatewareApi("enrich_missing_location_zips", { ids });
 }
