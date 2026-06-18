@@ -1626,6 +1626,75 @@ select.staging-input {
   overflow-wrap: anywhere;
 }
 
+.drawer-brief {
+  display: grid;
+  gap: 12px;
+  background: #ffffff !important;
+}
+
+.drawer-brief h3 {
+  margin: 2px 0 3px;
+  font-size: 1.05rem;
+}
+
+.drawer-brief > div > span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 760;
+}
+
+.drawer-alert-row {
+  display: flex !important;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.drawer-brief-metrics,
+.rate-component-grid {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.drawer-brief-metrics article,
+.rate-component-grid div {
+  display: grid !important;
+  gap: 3px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--soft-panel);
+  padding: 9px;
+}
+
+.drawer-brief-metrics article.strong {
+  border-color: #b8d8d4;
+  background: #eef7f6;
+}
+
+.drawer-brief-metrics article.weak {
+  border-color: #f2bbb5;
+  background: #fffafa;
+}
+
+.drawer-brief-metrics span,
+.rate-component-grid span {
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 850;
+}
+
+.drawer-brief-metrics strong,
+.rate-component-grid strong {
+  color: var(--text);
+  font-size: 0.82rem;
+  overflow-wrap: anywhere;
+}
+
+.rate-component-grid div.has-value {
+  border-color: #d3e8e5;
+  background: #fbfefd;
+}
+
 .leg-list {
   display: grid;
   gap: 8px;

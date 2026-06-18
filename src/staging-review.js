@@ -267,12 +267,71 @@ function updateReviewMetrics() {
   if (stagingMetricSelected) stagingMetricSelected.textContent = String(selectedRows().length);
 }
 
+function briefMetric(label, value, tone = "") {
+  return `
+    <article class="${escapeHtml(tone)}">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(value || "-")}</strong>
+    </article>
+  `;
+}
+
+function rateComponent(label, value) {
+  const hasValue = hasNumericValue(value);
+  return `
+    <div class="${hasValue ? "has-value" : ""}">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(hasValue ? moneyValue(value) : "-")}</strong>
+    </div>
+  `;
+}
+
+function renderDrawerAlerts(row) {
+  const issues = rowReviewIssues(row);
+  if (!issues.length && rowRateMode(row).tone !== "danger") {
+    return '<div class="drawer-alert-row"><span class="review-chip success">Ready for review</span></div>';
+  }
+  return `<div class="drawer-alert-row">${[rowRateMode(row), ...issues]
+    .map((chip) => `<span class="review-chip ${escapeHtml(chip.tone)}">${escapeHtml(chip.label)}</span>`)
+    .join("")}</div>`;
+}
+
+function renderDrawerBrief(row) {
+  const vendor = row.vendors?.vendor_name || row.vendor_domain || "Unmatched vendor";
+  const equipment = [row.equipment, row.trailer, row.hazmat ? "Hazmat" : "", row.temperature_controlled ? "Temp controlled" : "", row.config]
+    .filter(Boolean)
+    .join(" / ");
+  return `
+    <section class="drawer-brief">
+      <div>
+        <p class="eyebrow">Review brief</p>
+        <h3>${escapeHtml(lane(row) || "Unresolved lane")}</h3>
+        <span>${escapeHtml([vendor, row.rfx_id, dateValue(row.quote_date)].filter(Boolean).join(" | "))}</span>
+      </div>
+      ${renderDrawerAlerts(row)}
+      <div class="drawer-brief-metrics">
+        ${briefMetric("All-in", moneyValue(row.all_in_rate), hasNumericValue(row.all_in_rate) ? "strong" : "weak")}
+        ${briefMetric("Operation", row.operation)}
+        ${briefMetric("Service", row.service)}
+        ${briefMetric("Equipment", equipment)}
+      </div>
+      <div class="rate-component-grid">
+        ${rateComponent("MX linehaul", row.mx_linehaul)}
+        ${rateComponent("US linehaul", row.us_linehaul)}
+        ${rateComponent("FSC", row.fsc)}
+        ${rateComponent("Border fee", row.border_crossing_fee)}
+      </div>
+    </section>
+  `;
+}
+
 function renderRowDetail(row) {
   const legs = Array.isArray(row.rateware_lane_legs)
     ? row.rateware_lane_legs.slice().sort((a, b) => Number(a.leg_sequence || 0) - Number(b.leg_sequence || 0))
     : [];
 
   rowDetail.innerHTML = `
+    ${renderDrawerBrief(row)}
     <section>
       <h3>Location normalization</h3>
       <dl>
