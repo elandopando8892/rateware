@@ -436,15 +436,21 @@ function carrierIntelligenceIntent(prompt: string) {
   const hazmat = /\b(hazmat|hazard|hazardous|peligroso|quimico)\b/i.test(text);
   const reefer = /\b(reefer|refrigerado|temperature|temperatura|temp)\b/i.test(text);
   const flatbed = /\b(flatbed|plana|plataforma)\b/i.test(text);
+  const costPerMile = /\b(cost|costo|rate|tarifa).{0,18}(mile|milla)|\b(per mile|por milla|\/mi)\b/i.test(text);
+  const costPerKm = /\b(cost|costo|rate|tarifa).{0,18}(km|kilometro|kilómetro)|\b(per km|por km|\/km)\b/i.test(text);
+  const border = /\b(frontera|border|crossing|cruce|laredo|nuevo laredo|reynosa|mcallen|juarez|el paso|nogales)\b/i.test(text);
   if (pareto) focus.push("pareto");
   if (crossborder) focus.push("cross-border");
   if (d2d) focus.push("d2d-import-export");
   if (mexico) focus.push("mexico");
+  if (border) focus.push("border-crossing");
   if (addTargets) focus.push("procurement-targets");
   if (hazmat) focus.push("hazmat");
   if (reefer) focus.push("reefer");
   if (flatbed) focus.push("flatbed");
-  return { crossborder, d2d, pareto, mexico, addTargets, hazmat, reefer, flatbed, focus: focus.length ? focus : ["general carrier fit"] };
+  if (costPerMile) focus.push("cost-per-mile");
+  if (costPerKm) focus.push("cost-per-km");
+  return { crossborder, d2d, pareto, mexico, addTargets, hazmat, reefer, flatbed, costPerMile, costPerKm, border, focus: focus.length ? focus : ["general carrier fit"] };
 }
 
 function rateText(row: Record<string, unknown>) {
@@ -515,14 +521,21 @@ function createVendorMetrics(vendor: Record<string, unknown>, rates: Record<stri
   const d2dImportExportRates = linkedRates.filter(isD2dImportExportRate);
   const mexicoRates = linkedRates.filter(isMexicoRate);
   const rateAmounts = linkedRates.map((row) => numericAmount(row.all_in_rate)).filter((value): value is number => typeof value === "number" && Number.isFinite(value));
+  const costPerMileValues = linkedRates.map((row) => biNumber(row, "cost_per_mile")).filter((value): value is number => typeof value === "number" && Number.isFinite(value));
+  const costPerKmValues = linkedRates.map((row) => biNumber(row, "cost_per_km")).filter((value): value is number => typeof value === "number" && Number.isFinite(value));
   const marketSet = new Set<string>();
   const laneSet = new Set<string>();
   const equipmentSet = new Set<string>();
+  const borderSet = new Set<string>();
   let lastQuoteDate: string | null = null;
 
   for (const row of linkedRates) {
     [row.origin_market, row.destination_market].map(cleanText).filter(Boolean).forEach((value) => marketSet.add(value as string));
     [row.equipment, row.trailer].map(cleanText).filter(Boolean).forEach((value) => equipmentSet.add(value as string));
+    [row.mx_border_crossing_point && row.us_border_crossing_point ? `${row.mx_border_crossing_point} / ${row.us_border_crossing_point}` : null]
+      .map(cleanText)
+      .filter(Boolean)
+      .forEach((value) => borderSet.add(value as string));
     const lane = [row.origin || row.normalized_origin, row.destination || row.normalized_destination].map(cleanText).filter(Boolean).join(" -> ");
     if (lane) laneSet.add(lane);
     const quoteDate = cleanText(row.quote_date);
@@ -537,9 +550,12 @@ function createVendorMetrics(vendor: Record<string, unknown>, rates: Record<stri
     d2d_import_export_rates: d2dImportExportRates.length,
     mexico_rates: mexicoRates.length,
     avg_all_in_rate: rateAmounts.length ? Math.round(rateAmounts.reduce((sum, value) => sum + value, 0) / rateAmounts.length) : null,
+    avg_cost_per_mile: costPerMileValues.length ? Math.round((costPerMileValues.reduce((sum, value) => sum + value, 0) / costPerMileValues.length) * 100) / 100 : null,
+    avg_cost_per_km: costPerKmValues.length ? Math.round((costPerKmValues.reduce((sum, value) => sum + value, 0) / costPerKmValues.length) * 100) / 100 : null,
     markets: [...marketSet].slice(0, 8),
     lanes: [...laneSet].slice(0, 6),
     equipment: [...equipmentSet].slice(0, 6),
+    border_pairs: [...borderSet].slice(0, 6),
     last_quote_date: lastQuoteDate
   };
 }
@@ -600,6 +616,18 @@ function scoreCarrierFit(vendor: Record<string, unknown>, metrics: Record<string
   if (metrics.last_quote_date) evidence.push(`Last quote ${metrics.last_quote_date}`);
   if (Array.isArray(metrics.markets) && metrics.markets.length) evidence.push(`Markets: ${metrics.markets.slice(0, 3).join(", ")}`);
   if (Array.isArray(metrics.equipment) && metrics.equipment.length) evidence.push(`Equipment: ${metrics.equipment.slice(0, 3).join(", ")}`);
+  if (intent.border && Array.isArray(metrics.border_pairs) && metrics.border_pairs.length) {
+    evidence.push(`Border pairs: ${metrics.border_pairs.slice(0, 3).join(", ")}`);
+    score += 8;
+  }
+  if (intent.costPerMile) {
+    if (metrics.avg_cost_per_mile) evidence.push(`Avg cost per mile: ${metrics.avg_cost_per_mile}`);
+    else gaps.push("Missing miles or all-in rate for cost per mile");
+  }
+  if (intent.costPerKm) {
+    if (metrics.avg_cost_per_km) evidence.push(`Avg cost per km: ${metrics.avg_cost_per_km}`);
+    else gaps.push("Missing km or all-in rate for cost per km");
+  }
 
   if (intent.crossborder) {
     if (textIncludesAny(text, ["cross-border", "crossborder", "usa", "united states", "laredo", "border", "internacional"]) || crossborderRates) {
@@ -740,9 +768,22 @@ function deterministicCarrierRecommendations(prompt: string, vendors: Record<str
   }
 
   const recommendations = scopedRecommendations
-    .sort((a, b) => intent.pareto
-      ? Number(b.metrics?.d2d_import_export_rates || b.metrics?.linked_rates || 0) - Number(a.metrics?.d2d_import_export_rates || a.metrics?.linked_rates || 0)
-      : b.fit_score - a.fit_score || String(a.vendor_name).localeCompare(String(b.vendor_name)))
+    .sort((a, b) => {
+      if (intent.pareto) {
+        return Number(b.metrics?.d2d_import_export_rates || b.metrics?.linked_rates || 0) - Number(a.metrics?.d2d_import_export_rates || a.metrics?.linked_rates || 0);
+      }
+      if (intent.costPerMile) {
+        const aCost = Number(a.metrics?.avg_cost_per_mile || Number.POSITIVE_INFINITY);
+        const bCost = Number(b.metrics?.avg_cost_per_mile || Number.POSITIVE_INFINITY);
+        return aCost - bCost || b.fit_score - a.fit_score;
+      }
+      if (intent.costPerKm) {
+        const aCost = Number(a.metrics?.avg_cost_per_km || Number.POSITIVE_INFINITY);
+        const bCost = Number(b.metrics?.avg_cost_per_km || Number.POSITIVE_INFINITY);
+        return aCost - bCost || b.fit_score - a.fit_score;
+      }
+      return b.fit_score - a.fit_score || String(a.vendor_name).localeCompare(String(b.vendor_name));
+    })
     .slice(0, limit)
     .map((item, index) => ({ ...item, rank: index + 1 }));
 
@@ -813,6 +854,8 @@ async function requestCarrierIntelligence(prompt: string, fallback: Record<strin
               "When deterministic_result.filters.focus includes pareto, preserve the Pareto ordering and explain the result as transaction concentration.",
               "For Pareto, do not replace transaction-share ranking with generic quality scoring.",
               "For D2D Import/Export cross-border questions, use d2d_import_export_rates as the primary transaction signal.",
+              "For route, corridor, market, state, equipment, operation, service, border crossing, cost per mile, or cost per km questions, explain which available facts support the answer and which facts are missing.",
+              "If the provided facts are not enough for the requested slice, say that the slice needs more linked quotes or normalized mileage before recommending carriers.",
               "If the user asks for carriers to onboard or dar de alta, prioritize strong Sourcing Base candidates, but include Procurement Base carriers when they are clearly relevant.",
               "Use concise Spanish unless the user writes in English."
             ].join("\n")
@@ -895,6 +938,260 @@ async function buildCarrierIntelligence(supabase: ReturnType<typeof createClient
 
   const fallback = deterministicCarrierRecommendations(instruction, vendorsResult.data || [], ratesResult.data || []);
   return await requestCarrierIntelligence(instruction, fallback);
+}
+
+const BI_DIMENSIONS = [
+  { key: "vendor", label: "Carrier" },
+  { key: "vendor_domain", label: "Carrier domain" },
+  { key: "vendor_stage", label: "Vendor base" },
+  { key: "vendor_status", label: "Vendor status" },
+  { key: "route", label: "Route" },
+  { key: "corridor", label: "Corridor" },
+  { key: "origin", label: "Origin" },
+  { key: "destination", label: "Destination" },
+  { key: "origin_market", label: "Origin market" },
+  { key: "destination_market", label: "Destination market" },
+  { key: "origin_state", label: "Origin state" },
+  { key: "destination_state", label: "Destination state" },
+  { key: "origin_country", label: "Origin country" },
+  { key: "destination_country", label: "Destination country" },
+  { key: "equipment", label: "Equipment" },
+  { key: "trailer", label: "Trailer" },
+  { key: "hazmat", label: "Hazmat" },
+  { key: "temperature_controlled", label: "Temperature controlled" },
+  { key: "operation", label: "Operation" },
+  { key: "service", label: "Service" },
+  { key: "mx_crossing", label: "MX crossing" },
+  { key: "us_crossing", label: "US crossing" },
+  { key: "border_pair", label: "Border pair" },
+  { key: "quote_month", label: "Quote month" },
+  { key: "currency", label: "Currency" },
+  { key: "rate_status", label: "Rate status" }
+];
+
+const BI_METRICS = [
+  { key: "transaction_count", label: "Transactions", default_aggregation: "count" },
+  { key: "distinct_carriers", label: "Distinct carriers", default_aggregation: "distinct" },
+  { key: "all_in_rate", label: "All-in rate", default_aggregation: "avg" },
+  { key: "cost_per_mile", label: "Cost per mile", default_aggregation: "avg" },
+  { key: "cost_per_km", label: "Cost per km", default_aggregation: "avg" },
+  { key: "calculated_miles", label: "Calculated miles", default_aggregation: "avg" },
+  { key: "calculated_km", label: "Calculated km", default_aggregation: "avg" },
+  { key: "us_miles", label: "US miles", default_aggregation: "avg" },
+  { key: "mx_linehaul", label: "MX linehaul", default_aggregation: "avg" },
+  { key: "us_linehaul", label: "US linehaul", default_aggregation: "avg" },
+  { key: "fsc", label: "FSC", default_aggregation: "avg" },
+  { key: "border_crossing_fee", label: "Border fee", default_aggregation: "avg" }
+];
+
+function biText(row: Record<string, unknown>) {
+  const vendor = typeof row.vendors === "object" && row.vendors ? row.vendors as Record<string, unknown> : {};
+  return [
+    vendor.vendor_name,
+    vendor.domain,
+    row.vendor_domain,
+    row.origin,
+    row.destination,
+    row.normalized_origin,
+    row.normalized_destination,
+    row.origin_market,
+    row.destination_market,
+    row.origin_state,
+    row.destination_state,
+    row.origin_country,
+    row.destination_country,
+    row.operation,
+    row.service,
+    row.equipment,
+    row.trailer,
+    row.mx_border_crossing_point,
+    row.us_border_crossing_point,
+    row.rfx_id
+  ].filter(Boolean).join(" ");
+}
+
+function biDimensionValue(row: Record<string, unknown>, keyName: string) {
+  const vendor = typeof row.vendors === "object" && row.vendors ? row.vendors as Record<string, unknown> : {};
+  const origin = cleanText(row.normalized_origin || row.origin) || "-";
+  const destination = cleanText(row.normalized_destination || row.destination) || "-";
+  const originMarket = cleanText(row.origin_market) || "-";
+  const destinationMarket = cleanText(row.destination_market) || "-";
+  const mxCrossing = cleanText(row.mx_border_crossing_point) || "-";
+  const usCrossing = cleanText(row.us_border_crossing_point) || "-";
+
+  const values: Record<string, unknown> = {
+    vendor: vendor.vendor_name || row.vendor_domain || "Unmatched carrier",
+    vendor_domain: row.vendor_domain || vendor.domain || "-",
+    vendor_stage: vendor.base_stage || "-",
+    vendor_status: vendor.status || "-",
+    route: `${origin} -> ${destination}`,
+    corridor: `${originMarket} -> ${destinationMarket}`,
+    origin,
+    destination,
+    origin_market: originMarket,
+    destination_market: destinationMarket,
+    origin_state: row.origin_state || "-",
+    destination_state: row.destination_state || "-",
+    origin_country: row.origin_country || "-",
+    destination_country: row.destination_country || "-",
+    equipment: row.equipment || "-",
+    trailer: row.trailer || "-",
+    hazmat: row.hazmat ? "Hazmat" : "Non-hazmat",
+    temperature_controlled: row.temperature_controlled ? "Temp controlled" : "Ambient",
+    operation: row.operation || "-",
+    service: row.service || "-",
+    mx_crossing: mxCrossing,
+    us_crossing: usCrossing,
+    border_pair: `${mxCrossing} / ${usCrossing}`,
+    quote_month: cleanText(row.quote_date)?.slice(0, 7) || "-",
+    currency: row.currency || "-",
+    rate_status: row.status || "-"
+  };
+  return cleanText(values[keyName]) || "-";
+}
+
+function biNumber(row: Record<string, unknown>, metric: string) {
+  if (metric === "all_in_rate") return numericAmount(row.all_in_rate);
+  if (metric === "us_miles") return numericAmount(row.us_miles);
+  if (["calculated_miles", "calculated_km"].includes(metric)) {
+    const value = Number(row[metric]);
+    return Number.isFinite(value) ? value : null;
+  }
+  if (["mx_linehaul", "us_linehaul", "fsc", "border_crossing_fee"].includes(metric)) return numericAmount(row[metric]);
+  if (metric === "cost_per_mile") {
+    const rate = numericAmount(row.all_in_rate);
+    const miles = Number(row.calculated_miles) || Number(numericAmount(row.us_miles));
+    return rate && miles ? rate / miles : null;
+  }
+  if (metric === "cost_per_km") {
+    const rate = numericAmount(row.all_in_rate);
+    const km = Number(row.calculated_km) || ((Number(row.calculated_miles) || Number(numericAmount(row.us_miles))) * 1.60934);
+    return rate && km ? rate / km : null;
+  }
+  return null;
+}
+
+function biMatchesFilter(row: Record<string, unknown>, keyName: string, value: unknown) {
+  const text = cleanText(value);
+  if (!text) return true;
+  if (keyName === "search") return catalogKey(biText(row)).includes(catalogKey(text));
+  if (keyName === "crossborder") return !value || isCrossBorderRate(row);
+  if (keyName === "d2d") return !value || isD2dImportExportRate(row);
+  const rowValue = biDimensionValue(row, keyName);
+  return catalogKey(rowValue).includes(catalogKey(text));
+}
+
+function filterBiRows(rows: Record<string, unknown>[], filters: Record<string, unknown>) {
+  return rows.filter((row) => Object.entries(filters || {}).every(([keyName, value]) => {
+    if (Array.isArray(value)) return value.length === 0 || value.some((item) => biMatchesFilter(row, keyName, item));
+    return biMatchesFilter(row, keyName, value);
+  }));
+}
+
+function aggregateBiRows(rows: Record<string, unknown>[], metric: string, aggregation: string) {
+  if (metric === "transaction_count" || aggregation === "count") return rows.length;
+  if (metric === "distinct_carriers" || aggregation === "distinct") {
+    return new Set(rows.map((row) => biDimensionValue(row, "vendor")).filter(Boolean)).size;
+  }
+
+  const values = rows
+    .map((row) => biNumber(row, metric))
+    .filter((value): value is number => typeof value === "number" && Number.isFinite(value));
+  if (!values.length) return null;
+  if (aggregation === "sum") return values.reduce((sum, value) => sum + value, 0);
+  if (aggregation === "min") return Math.min(...values);
+  if (aggregation === "max") return Math.max(...values);
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function formatBiValue(value: unknown, metric: string) {
+  if (value === null || value === undefined) return null;
+  const number = Number(value);
+  if (!Number.isFinite(number)) return value;
+  if (metric === "cost_per_mile" || metric === "cost_per_km") return Math.round(number * 100) / 100;
+  if (metric === "transaction_count" || metric === "distinct_carriers") return Math.round(number);
+  return Math.round(number * 100) / 100;
+}
+
+function buildBusinessIntelligencePivot(rows: Record<string, unknown>[], config: Record<string, unknown>) {
+  const rowDimensions = (Array.isArray(config.rows) ? config.rows : ["vendor"]).map(String).filter(Boolean).slice(0, 3);
+  const columnDimensions = (Array.isArray(config.columns) ? config.columns : ["operation"]).map(String).filter(Boolean).slice(0, 2);
+  const metric = cleanText(config.metric) || "transaction_count";
+  const defaultAggregation = BI_METRICS.find((item) => item.key === metric)?.default_aggregation || "avg";
+  const aggregation = cleanText(config.aggregation) || defaultAggregation;
+  const filters = typeof config.filters === "object" && config.filters ? config.filters as Record<string, unknown> : {};
+  const filteredRows = filterBiRows(rows, filters);
+  const columnLabels = new Set<string>();
+  const groups = new Map<string, { row_values: string[]; cells: Map<string, Record<string, unknown>[]>; source_rows: Record<string, unknown>[] }>();
+  const totalColumn = "Total";
+
+  for (const row of filteredRows) {
+    const rowValues = rowDimensions.map((dimension) => biDimensionValue(row, dimension));
+    const rowKey = rowValues.join(" | ") || totalColumn;
+    const columnValues = columnDimensions.length ? columnDimensions.map((dimension) => biDimensionValue(row, dimension)) : [totalColumn];
+    const columnKey = columnValues.join(" | ") || totalColumn;
+    columnLabels.add(columnKey);
+    if (!groups.has(rowKey)) groups.set(rowKey, { row_values: rowValues, cells: new Map(), source_rows: [] });
+    const group = groups.get(rowKey)!;
+    group.source_rows.push(row);
+    if (!group.cells.has(columnKey)) group.cells.set(columnKey, []);
+    group.cells.get(columnKey)!.push(row);
+  }
+
+  const columns = [...columnLabels].sort((a, b) => a.localeCompare(b)).slice(0, 80);
+  const matrixRows = [...groups.entries()]
+    .map(([rowKey, group]) => {
+      const cells: Record<string, unknown> = {};
+      for (const column of columns) {
+        cells[column] = formatBiValue(aggregateBiRows(group.cells.get(column) || [], metric, aggregation), metric);
+      }
+      return {
+        row_key: rowKey,
+        row_values: group.row_values,
+        cells,
+        total: formatBiValue(aggregateBiRows(group.source_rows, metric, aggregation), metric),
+        transactions: group.source_rows.length
+      };
+    })
+    .sort((a, b) => Number(b.transactions || 0) - Number(a.transactions || 0))
+    .slice(0, 300);
+
+  const carrierSet = new Set(filteredRows.map((row) => biDimensionValue(row, "vendor")).filter(Boolean));
+  const rateValues = filteredRows.map((row) => numericAmount(row.all_in_rate)).filter((value): value is number => typeof value === "number" && Number.isFinite(value));
+  return {
+    rows: matrixRows,
+    columns,
+    row_dimensions: rowDimensions,
+    column_dimensions: columnDimensions,
+    metric,
+    aggregation,
+    summary: {
+      transactions: filteredRows.length,
+      carriers: carrierSet.size,
+      avg_all_in_rate: formatBiValue(rateValues.length ? rateValues.reduce((sum, value) => sum + value, 0) / rateValues.length : null, "all_in_rate"),
+      min_all_in_rate: formatBiValue(rateValues.length ? Math.min(...rateValues) : null, "all_in_rate"),
+      max_all_in_rate: formatBiValue(rateValues.length ? Math.max(...rateValues) : null, "all_in_rate")
+    },
+    fields: {
+      dimensions: BI_DIMENSIONS,
+      metrics: BI_METRICS,
+      aggregations: ["count", "distinct", "avg", "sum", "min", "max"]
+    }
+  };
+}
+
+async function buildBusinessIntelligencePivotFromDb(supabase: ReturnType<typeof createClient>, user: { owner_email: string | null }, config: Record<string, unknown>) {
+  const result = await supabase
+    .from("rate_staging")
+    .select("*, vendors(vendor_name, domain, primary_email, base_stage, status, owner_email)")
+    .in("status", ["pending_review", "approved"])
+    .limit(5000);
+  if (result.error) throw result.error;
+  const scopedRows = (result.data || []).filter((row) => {
+    const vendor = typeof row.vendors === "object" && row.vendors ? row.vendors as Record<string, unknown> : null;
+    return !row.vendor_id || !vendor?.owner_email || vendor.owner_email === user.owner_email;
+  });
+  return buildBusinessIntelligencePivot(scopedRows, config);
 }
 
 function normalizeTags(value: unknown) {
@@ -1659,6 +1956,11 @@ Deno.serve(async (request) => {
 
     if (body.action === "carrier_intelligence_chat") {
       const result = await buildCarrierIntelligence(supabase, user, String(body.message || body.prompt || ""));
+      return jsonResponse(result);
+    }
+
+    if (body.action === "business_intelligence_pivot") {
+      const result = await buildBusinessIntelligencePivotFromDb(supabase, user, body.config || {});
       return jsonResponse(result);
     }
 

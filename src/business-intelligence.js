@@ -1,5 +1,5 @@
 import { applyPermissionState, initAuthControls, requirePrivatePage } from "./auth.js";
-import { askCarrierIntelligence, promoteCarrierRecommendations } from "./business-intelligence-service.js";
+import { askCarrierIntelligence, fetchBusinessIntelligencePivot, promoteCarrierRecommendations } from "./business-intelligence-service.js";
 
 const chatForm = document.querySelector("#bi-chat-form");
 const promptInput = document.querySelector("#bi-prompt");
@@ -16,9 +16,64 @@ const metricRecommendations = document.querySelector("#bi-metric-recommendations
 const metricCandidates = document.querySelector("#bi-metric-candidates");
 const metricRates = document.querySelector("#bi-metric-rates");
 const metricSelected = document.querySelector("#bi-metric-selected");
+const runPivotButton = document.querySelector("#bi-run-pivot");
+const copyPivotButton = document.querySelector("#bi-copy-pivot");
+const pivotHead = document.querySelector("#bi-pivot-head");
+const pivotBody = document.querySelector("#bi-pivot-body");
+const pivotStatus = document.querySelector("#bi-pivot-status");
+const pivotTransactions = document.querySelector("#bi-pivot-transactions");
+const pivotCarriers = document.querySelector("#bi-pivot-carriers");
+const pivotAvgRate = document.querySelector("#bi-pivot-avg-rate");
+const pivotRateRange = document.querySelector("#bi-pivot-rate-range");
 
 let currentRecommendations = [];
+let currentPivot = null;
 const selectedVendorIds = new Set();
+
+const PIVOT_DIMENSIONS = [
+  ["", "None"],
+  ["vendor", "Carrier"],
+  ["vendor_domain", "Carrier domain"],
+  ["vendor_stage", "Vendor base"],
+  ["vendor_status", "Vendor status"],
+  ["route", "Route"],
+  ["corridor", "Corridor"],
+  ["origin", "Origin"],
+  ["destination", "Destination"],
+  ["origin_market", "Origin market"],
+  ["destination_market", "Destination market"],
+  ["origin_state", "Origin state"],
+  ["destination_state", "Destination state"],
+  ["origin_country", "Origin country"],
+  ["destination_country", "Destination country"],
+  ["equipment", "Equipment"],
+  ["trailer", "Trailer"],
+  ["hazmat", "Hazmat"],
+  ["temperature_controlled", "Temperature controlled"],
+  ["operation", "Operation"],
+  ["service", "Service"],
+  ["mx_crossing", "MX crossing"],
+  ["us_crossing", "US crossing"],
+  ["border_pair", "Border pair"],
+  ["quote_month", "Quote month"],
+  ["currency", "Currency"],
+  ["rate_status", "Rate status"]
+];
+
+const PIVOT_METRICS = [
+  ["transaction_count", "Transactions"],
+  ["distinct_carriers", "Distinct carriers"],
+  ["all_in_rate", "All-in rate"],
+  ["cost_per_mile", "Cost per mile"],
+  ["cost_per_km", "Cost per km"],
+  ["calculated_miles", "Calculated miles"],
+  ["calculated_km", "Calculated km"],
+  ["us_miles", "US miles"],
+  ["mx_linehaul", "MX linehaul"],
+  ["us_linehaul", "US linehaul"],
+  ["fsc", "FSC"],
+  ["border_crossing_fee", "Border fee"]
+];
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -42,6 +97,154 @@ function setModelStatus(value, tone = "muted") {
   if (!modelStatus) return;
   modelStatus.textContent = value;
   modelStatus.className = `status-pill ${tone}`;
+}
+
+function setPivotStatus(message, tone = "neutral") {
+  if (!pivotStatus) return;
+  pivotStatus.textContent = message;
+  pivotStatus.dataset.tone = tone;
+}
+
+function moneyValue(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "-";
+  return new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(number);
+}
+
+function fillSelect(selector, options, value) {
+  const element = document.querySelector(selector);
+  if (!element) return;
+  element.innerHTML = options.map(([optionValue, label]) => `<option value="${escapeHtml(optionValue)}">${escapeHtml(label)}</option>`).join("");
+  element.value = value;
+}
+
+function setupPivotControls() {
+  fillSelect("#bi-pivot-row-1", PIVOT_DIMENSIONS, "vendor");
+  fillSelect("#bi-pivot-row-2", PIVOT_DIMENSIONS, "origin_market");
+  fillSelect("#bi-pivot-row-3", PIVOT_DIMENSIONS, "");
+  fillSelect("#bi-pivot-column-1", PIVOT_DIMENSIONS, "operation");
+  fillSelect("#bi-pivot-column-2", PIVOT_DIMENSIONS, "service");
+  fillSelect("#bi-pivot-metric", PIVOT_METRICS, "transaction_count");
+  document.querySelector("#bi-pivot-aggregation").value = "count";
+}
+
+function readValue(selector) {
+  return String(document.querySelector(selector)?.value || "").trim();
+}
+
+function readChecked(selector) {
+  return Boolean(document.querySelector(selector)?.checked);
+}
+
+function readPivotConfig() {
+  const rows = ["#bi-pivot-row-1", "#bi-pivot-row-2", "#bi-pivot-row-3"].map(readValue).filter(Boolean);
+  const columns = ["#bi-pivot-column-1", "#bi-pivot-column-2"].map(readValue).filter(Boolean);
+  const filters = {
+    search: readValue("#bi-filter-search"),
+    vendor: readValue("#bi-filter-vendor"),
+    route: readValue("#bi-filter-route"),
+    corridor: readValue("#bi-filter-corridor"),
+    origin_state: readValue("#bi-filter-origin-state"),
+    destination_state: readValue("#bi-filter-destination-state"),
+    equipment: readValue("#bi-filter-equipment"),
+    trailer: readValue("#bi-filter-trailer"),
+    operation: readValue("#bi-filter-operation"),
+    service: readValue("#bi-filter-service"),
+    mx_crossing: readValue("#bi-filter-mx-crossing"),
+    us_crossing: readValue("#bi-filter-us-crossing"),
+    crossborder: readChecked("#bi-filter-crossborder"),
+    d2d: readChecked("#bi-filter-d2d")
+  };
+
+  Object.keys(filters).forEach((key) => {
+    if (!filters[key]) delete filters[key];
+  });
+
+  return {
+    rows: rows.length ? rows : ["vendor"],
+    columns,
+    metric: readValue("#bi-pivot-metric") || "transaction_count",
+    aggregation: readValue("#bi-pivot-aggregation") || "count",
+    filters
+  };
+}
+
+function pivotMetricLabel(result) {
+  const metric = PIVOT_METRICS.find(([key]) => key === result.metric)?.[1] || result.metric;
+  return `${metric} (${result.aggregation})`;
+}
+
+function renderPivot(result) {
+  currentPivot = result;
+  const rowLabels = (result.row_dimensions || []).map((dimension) => PIVOT_DIMENSIONS.find(([key]) => key === dimension)?.[1] || dimension);
+  const columns = result.columns || [];
+  const metricLabel = pivotMetricLabel(result);
+
+  pivotTransactions.textContent = formatNumber(result.summary?.transactions);
+  pivotCarriers.textContent = formatNumber(result.summary?.carriers);
+  pivotAvgRate.textContent = moneyValue(result.summary?.avg_all_in_rate);
+  pivotRateRange.textContent = `${moneyValue(result.summary?.min_all_in_rate)} - ${moneyValue(result.summary?.max_all_in_rate)}`;
+  copyPivotButton.disabled = !(result.rows || []).length;
+
+  pivotHead.innerHTML = `
+    <tr>
+      ${rowLabels.map((label) => `<th>${escapeHtml(label)}</th>`).join("")}
+      ${columns.map((column) => `<th>${escapeHtml(column)}</th>`).join("")}
+      <th>Total ${escapeHtml(metricLabel)}</th>
+    </tr>
+  `;
+
+  if (!(result.rows || []).length) {
+    pivotBody.innerHTML = `
+      <tr>
+        <td colspan="${Math.max(2, rowLabels.length + columns.length + 1)}">
+          <div class="empty-state">
+            <strong>No matching rows</strong>
+            <span>Relax filters or choose a broader dimension.</span>
+          </div>
+        </td>
+      </tr>
+    `;
+    return;
+  }
+
+  pivotBody.innerHTML = result.rows.map((row) => `
+    <tr>
+      ${(row.row_values || []).map((value) => `<td>${escapeHtml(value)}</td>`).join("")}
+      ${columns.map((column) => `<td>${escapeHtml(row.cells?.[column] ?? "-")}</td>`).join("")}
+      <td><strong>${escapeHtml(row.total ?? "-")}</strong></td>
+    </tr>
+  `).join("");
+}
+
+async function runPivot() {
+  runPivotButton.disabled = true;
+  setPivotStatus("Building pivot...");
+
+  try {
+    await requirePrivatePage();
+    const result = await fetchBusinessIntelligencePivot(readPivotConfig());
+    renderPivot(result);
+    setPivotStatus(`${formatNumber(result.summary?.transactions)} transaction(s), ${formatNumber((result.rows || []).length)} pivot row(s).`, "success");
+  } catch (error) {
+    setPivotStatus(error.message, "error");
+  } finally {
+    runPivotButton.disabled = false;
+  }
+}
+
+async function copyPivot() {
+  if (!currentPivot) return;
+  const rowLabels = currentPivot.row_dimensions || [];
+  const columns = currentPivot.columns || [];
+  const header = [...rowLabels, ...columns, "total"].join("\t");
+  const lines = (currentPivot.rows || []).map((row) => [
+    ...(row.row_values || []),
+    ...columns.map((column) => row.cells?.[column] ?? ""),
+    row.total ?? ""
+  ].join("\t"));
+  await navigator.clipboard.writeText([header, ...lines].join("\n"));
+  setPivotStatus("Pivot copied.", "success");
 }
 
 function selectedRecommendations() {
@@ -194,8 +397,12 @@ async function copyRecommendations() {
 }
 
 initAuthControls();
+setupPivotControls();
 requirePrivatePage()
-  .then(() => applyPermissionState("#bi-submit-button, #bi-promote-selected, #bi-copy-list", "business-intelligence:use"))
+  .then(async () => {
+    await applyPermissionState("#bi-submit-button, #bi-promote-selected, #bi-copy-list, #bi-run-pivot, #bi-copy-pivot", "business-intelligence:use");
+    await runPivot();
+  })
   .catch((error) => setStatus(error.message, "error"));
 
 chatForm?.addEventListener("submit", (event) => {
@@ -231,3 +438,14 @@ selectAll?.addEventListener("change", () => {
 
 promoteSelectedButton?.addEventListener("click", promoteSelected);
 copyListButton?.addEventListener("click", copyRecommendations);
+runPivotButton?.addEventListener("click", runPivot);
+copyPivotButton?.addEventListener("click", copyPivot);
+
+document.querySelector("#bi-pivot-metric")?.addEventListener("change", () => {
+  const metric = readValue("#bi-pivot-metric");
+  const aggregation = document.querySelector("#bi-pivot-aggregation");
+  if (!aggregation) return;
+  if (metric === "transaction_count") aggregation.value = "count";
+  else if (metric === "distinct_carriers") aggregation.value = "distinct";
+  else if (["all_in_rate", "cost_per_mile", "cost_per_km", "calculated_miles", "calculated_km", "us_miles", "mx_linehaul", "us_linehaul", "fsc", "border_crossing_fee"].includes(metric)) aggregation.value = "avg";
+});

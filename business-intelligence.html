@@ -59,11 +59,149 @@
                 <button type="button" class="secondary small-button" data-bi-prompt="Dime el 20% de los carriers crossborder D2D Export / D2D Import que cotizan el 80% de las transacciones.">Pareto D2D 80/20</button>
                 <button type="button" class="secondary small-button" data-bi-prompt="Dime los 30 carriers crossborder que recomiendas para darlos de alta.">30 crossborder</button>
                 <button type="button" class="secondary small-button" data-bi-prompt="Dime los 50 carriers mexicanos que recomiendas para mi operacion.">50 mexicanos</button>
+                <button type="button" class="secondary small-button" data-bi-prompt="Que carriers tienen mejor costo por milla en rutas D2D Export por Laredo?">Cost / mile</button>
+                <button type="button" class="secondary small-button" data-bi-prompt="Que carriers recomiendas por corredor, mercado, estado, equipo, operacion y servicio?">Multi-slice</button>
                 <button type="button" class="secondary small-button" data-bi-prompt="Dame una lista de los 100 carriers que deberia dar de alta en Procurement Base.">100 targets</button>
                 <button id="bi-submit-button" type="submit">Ask AI</button>
               </div>
             </form>
             <p id="bi-status" class="status-message" role="status"></p>
+          </section>
+
+          <section class="workspace-panel bi-pivot-panel">
+            <div class="section-heading compact split-heading">
+              <div>
+                <p class="eyebrow">Analytics workspace</p>
+                <h2>Pivot builder</h2>
+              </div>
+              <div class="action-row">
+                <button id="bi-run-pivot" type="button">Run pivot</button>
+                <button id="bi-copy-pivot" type="button" class="secondary" disabled>Copy pivot</button>
+              </div>
+            </div>
+
+            <div class="bi-pivot-builder">
+              <section>
+                <strong>Rows</strong>
+                <select id="bi-pivot-row-1"></select>
+                <select id="bi-pivot-row-2"></select>
+                <select id="bi-pivot-row-3"></select>
+              </section>
+              <section>
+                <strong>Columns</strong>
+                <select id="bi-pivot-column-1"></select>
+                <select id="bi-pivot-column-2"></select>
+              </section>
+              <section>
+                <strong>Values</strong>
+                <select id="bi-pivot-metric"></select>
+                <select id="bi-pivot-aggregation">
+                  <option value="count">Count</option>
+                  <option value="distinct">Distinct</option>
+                  <option value="avg">Average</option>
+                  <option value="sum">Sum</option>
+                  <option value="min">Min</option>
+                  <option value="max">Max</option>
+                </select>
+              </section>
+            </div>
+
+            <div class="bi-filter-grid">
+              <label>
+                Search
+                <input id="bi-filter-search" placeholder="Carrier, route, RFx, market" />
+              </label>
+              <label>
+                Carrier
+                <input id="bi-filter-vendor" placeholder="tnexpress, intra..." />
+              </label>
+              <label>
+                Route
+                <input id="bi-filter-route" placeholder="Lerma -> Dallas" />
+              </label>
+              <label>
+                Corridor
+                <input id="bi-filter-corridor" placeholder="Monterrey -> Dallas Mkt" />
+              </label>
+              <label>
+                Origin state
+                <input id="bi-filter-origin-state" placeholder="NL, MX, TX" />
+              </label>
+              <label>
+                Destination state
+                <input id="bi-filter-destination-state" placeholder="TX, KY, MS" />
+              </label>
+              <label>
+                Equipment
+                <input id="bi-filter-equipment" placeholder="Truck Trailer" />
+              </label>
+              <label>
+                Trailer
+                <input id="bi-filter-trailer" placeholder="Dry Van, Flatbed" />
+              </label>
+              <label>
+                Operation
+                <input id="bi-filter-operation" placeholder="D2D Export" />
+              </label>
+              <label>
+                Service
+                <input id="bi-filter-service" placeholder="One Way, Roundtrip" />
+              </label>
+              <label>
+                MX crossing
+                <input id="bi-filter-mx-crossing" placeholder="Nuevo Laredo, TM" />
+              </label>
+              <label>
+                US crossing
+                <input id="bi-filter-us-crossing" placeholder="Laredo, TX" />
+              </label>
+            </div>
+
+            <div class="bi-toggle-row">
+              <label><input id="bi-filter-crossborder" type="checkbox" /> Crossborder only</label>
+              <label><input id="bi-filter-d2d" type="checkbox" /> D2D Import/Export only</label>
+            </div>
+
+            <div class="review-insight-grid bi-pivot-summary" aria-label="Pivot summary">
+              <article>
+                <span>Transactions</span>
+                <strong id="bi-pivot-transactions">0</strong>
+              </article>
+              <article>
+                <span>Carriers</span>
+                <strong id="bi-pivot-carriers">0</strong>
+              </article>
+              <article>
+                <span>Avg all-in</span>
+                <strong id="bi-pivot-avg-rate">-</strong>
+              </article>
+              <article>
+                <span>Range</span>
+                <strong id="bi-pivot-rate-range">-</strong>
+              </article>
+            </div>
+
+            <p id="bi-pivot-status" class="status-message" role="status"></p>
+            <div class="table-wrap">
+              <table class="bi-pivot-table">
+                <thead id="bi-pivot-head">
+                  <tr>
+                    <th>Rows</th>
+                    <th>Total</th>
+                  </tr>
+                </thead>
+                <tbody id="bi-pivot-body">
+                  <tr>
+                    <td colspan="2">
+                      <div class="empty-state">
+                        <strong>No pivot yet</strong>
+                        <span>Choose dimensions, filters, and a metric.</span>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </section>
 
           <section class="workspace-panel">
