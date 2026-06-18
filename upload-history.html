@@ -82,10 +82,20 @@
               <button id="refresh-button" type="button">Refresh</button>
             </div>
 
+            <div class="bulk-action-bar" aria-live="polite">
+              <span id="upload-selection-count">0 selected</span>
+              <button id="archive-selected-uploads" type="button" class="secondary small-button" disabled>Archive selected</button>
+              <button id="remove-selected-uploads" type="button" class="danger small-button" disabled>Remove selected</button>
+              <span id="upload-bulk-status" class="row-save-status"></span>
+            </div>
+
             <div class="table-wrap">
               <table>
                 <thead>
                   <tr>
+                    <th class="select-column">
+                      <input id="select-all-uploads" type="checkbox" aria-label="Select all visible uploads" />
+                    </th>
                     <th>Uploaded</th>
                     <th>File</th>
                     <th>Type</th>
@@ -98,7 +108,7 @@
                 </thead>
                 <tbody id="history-body">
                   <tr>
-                    <td colspan="8">Loading uploads...</td>
+                    <td colspan="9">Loading uploads...</td>
                   </tr>
                 </tbody>
               </table>

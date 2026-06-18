@@ -9,8 +9,15 @@ const uploadMetricStaged = document.querySelector("#upload-metric-staged");
 const uploadMetricFailed = document.querySelector("#upload-metric-failed");
 const uploadMetricArchived = document.querySelector("#upload-metric-archived");
 const quickFilterButtons = document.querySelectorAll("[data-upload-filter]");
+const selectAllUploads = document.querySelector("#select-all-uploads");
+const uploadSelectionCount = document.querySelector("#upload-selection-count");
+const archiveSelectedButton = document.querySelector("#archive-selected-uploads");
+const removeSelectedButton = document.querySelector("#remove-selected-uploads");
+const uploadBulkStatus = document.querySelector("#upload-bulk-status");
 let loadedRows = [];
+let currentRows = [];
 let activeQuickFilter = "all";
+const selectedUploadIds = new Set();
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -60,6 +67,27 @@ function updateUploadMetrics(rows) {
   uploadMetricArchived.textContent = String(rows.filter((row) => row.status === "archived").length);
 }
 
+function selectedVisibleIds() {
+  return [...historyBody.querySelectorAll("[data-select-upload]:checked")].map((input) => input.dataset.selectUpload);
+}
+
+function setBulkStatus(message, tone = "neutral") {
+  uploadBulkStatus.textContent = message;
+  uploadBulkStatus.dataset.tone = tone;
+}
+
+function updateBulkControls() {
+  const selectedCount = selectedVisibleIds().length;
+  const totalRows = historyBody.querySelectorAll("[data-upload-id]").length;
+  uploadSelectionCount.textContent = `${selectedCount} selected`;
+  archiveSelectedButton.disabled = selectedCount === 0;
+  removeSelectedButton.disabled = selectedCount === 0;
+  if (selectAllUploads) {
+    selectAllUploads.checked = selectedCount > 0 && selectedCount === totalRows;
+    selectAllUploads.indeterminate = selectedCount > 0 && selectedCount < totalRows;
+  }
+}
+
 function statusTone(status) {
   if (status === "failed") return "danger";
   if (status === "staged") return "success";
@@ -92,20 +120,25 @@ function emptyUploadMessage() {
 }
 
 function renderRows(rows) {
+  currentRows = rows;
   updateQuickFilters();
   updateUploadMetrics(rows);
 
   if (!rows.length) {
     const empty = emptyUploadMessage();
     historyBody.innerHTML =
-      `<tr><td colspan="8"><div class="empty-state"><strong>${escapeHtml(empty.title)}</strong><span>${escapeHtml(empty.detail)}</span><a href="./upload-center.html">Upload source files</a></div></td></tr>`;
+      `<tr><td colspan="9"><div class="empty-state"><strong>${escapeHtml(empty.title)}</strong><span>${escapeHtml(empty.detail)}</span><a href="./upload-center.html">Upload source files</a></div></td></tr>`;
+    updateBulkControls();
     return;
   }
 
   historyBody.innerHTML = rows
     .map(
       (row) => `
-        <tr>
+        <tr data-upload-id="${escapeHtml(row.id)}">
+          <td class="select-column">
+            <input data-select-upload="${escapeHtml(row.id)}" type="checkbox" aria-label="Select upload" ${selectedUploadIds.has(row.id) ? "checked" : ""} />
+          </td>
           <td>${escapeHtml(formatDate(row.created_at))}</td>
           <td>${escapeHtml(row.original_filename)}</td>
           <td>${escapeHtml(row.document_type)}</td>
@@ -128,10 +161,11 @@ function renderRows(rows) {
       `
     )
     .join("");
+  updateBulkControls();
 }
 
 async function loadHistory() {
-  historyBody.innerHTML = '<tr><td colspan="8">Loading uploads...</td></tr>';
+  historyBody.innerHTML = '<tr><td colspan="9">Loading uploads...</td></tr>';
   refreshButton.disabled = true;
 
   try {
@@ -139,11 +173,39 @@ async function loadHistory() {
     const rows = await fetchUploadHistory({ status: statusFilter.value });
     loadedRows = rows;
     renderRows(applyQuickFilter(rows));
-    await applyPermissionState("[data-interpret-id], [data-archive-id], [data-remove-id]", "uploads:interpret");
+    await applyPermissionState("[data-interpret-id], [data-archive-id], [data-remove-id], #archive-selected-uploads, #remove-selected-uploads", "uploads:interpret");
   } catch (error) {
-    historyBody.innerHTML = `<tr><td colspan="8">Could not load upload history. ${escapeHtml(error.message)}</td></tr>`;
+    historyBody.innerHTML = `<tr><td colspan="9">Could not load upload history. ${escapeHtml(error.message)}</td></tr>`;
   } finally {
     refreshButton.disabled = false;
+  }
+}
+
+async function runBulkUploadAction(action) {
+  const ids = selectedVisibleIds();
+  if (!ids.length) return;
+  if (action === "remove") {
+    const confirmed = window.confirm(`Remove ${ids.length} upload version(s) and their staged rows? This cannot be undone.`);
+    if (!confirmed) return;
+  }
+
+  archiveSelectedButton.disabled = true;
+  removeSelectedButton.disabled = true;
+  setBulkStatus(`${action === "archive" ? "Archiving" : "Removing"} ${ids.length} upload(s)...`);
+
+  try {
+    await ensureSignedIn();
+    if (!(await applyPermissionState("[data-interpret-id], [data-archive-id], [data-remove-id], #archive-selected-uploads, #remove-selected-uploads", "uploads:interpret"))) {
+      throw new Error("Your role does not allow upload actions.");
+    }
+    const fn = action === "archive" ? archiveUpload : removeUpload;
+    await Promise.all(ids.map((id) => fn(id)));
+    ids.forEach((id) => selectedUploadIds.delete(id));
+    setBulkStatus(`${ids.length} upload(s) ${action === "archive" ? "archived" : "removed"}.`, "success");
+    await loadHistory();
+  } catch (error) {
+    setBulkStatus(error.message, "error");
+    updateBulkControls();
   }
 }
 
@@ -152,13 +214,36 @@ requirePrivatePage().catch(() => {});
 refreshButton.addEventListener("click", loadHistory);
 statusFilter.addEventListener("change", () => {
   activeQuickFilter = "all";
+  selectedUploadIds.clear();
+  setBulkStatus("");
   loadHistory();
 });
 quickFilterButtons.forEach((button) => {
   button.addEventListener("click", () => {
     activeQuickFilter = button.dataset.uploadFilter || "all";
+    selectedUploadIds.clear();
+    setBulkStatus("");
     renderRows(applyQuickFilter());
   });
+});
+selectAllUploads?.addEventListener("change", () => {
+  historyBody.querySelectorAll("[data-select-upload]").forEach((checkbox) => {
+    checkbox.checked = selectAllUploads.checked;
+    if (checkbox.checked) selectedUploadIds.add(checkbox.dataset.selectUpload);
+    else selectedUploadIds.delete(checkbox.dataset.selectUpload);
+  });
+  setBulkStatus("");
+  updateBulkControls();
+});
+archiveSelectedButton?.addEventListener("click", () => runBulkUploadAction("archive"));
+removeSelectedButton?.addEventListener("click", () => runBulkUploadAction("remove"));
+historyBody.addEventListener("change", (event) => {
+  const checkbox = event.target.closest("[data-select-upload]");
+  if (!checkbox) return;
+  if (checkbox.checked) selectedUploadIds.add(checkbox.dataset.selectUpload);
+  else selectedUploadIds.delete(checkbox.dataset.selectUpload);
+  setBulkStatus("");
+  updateBulkControls();
 });
 historyBody.addEventListener("click", async (event) => {
   const interpretButton = event.target.closest("[data-interpret-id]");
