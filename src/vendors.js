@@ -529,6 +529,24 @@ function resetVendorPageAndLoad() {
   loadVendors();
 }
 
+function resetVendorWorkspace() {
+  searchInput.value = "";
+  statusFilter.value = "";
+  channelFilter.value = "";
+  tagFilter.value = "";
+  coverageFilter.value = "";
+  bulkStatus.value = "";
+  bulkBaseStage.value = "";
+  bulkTags.value = "";
+  activeQuickFilter = "all";
+  vendorPageOffset = 0;
+  selectedVendorIds = new Set();
+  quickFilterButtons.forEach((button) => button.classList.toggle("is-active", button.dataset.quickFilter === "all"));
+  setStatus(bulkStatusMessage, "");
+  drawer.classList.add("hidden");
+  activateVendorTab("sourcing");
+}
+
 function segmentMatches(segment, vendor) {
   const vendorTags = splitTags(vendor.tags);
   const requiredTags = splitTags(segment.tags);
@@ -1165,12 +1183,7 @@ channelFilter.addEventListener("change", resetVendorPageAndLoad);
 tagFilter.addEventListener("change", resetVendorPageAndLoad);
 coverageFilter.addEventListener("change", resetVendorPageAndLoad);
 clearVendorFiltersButton.addEventListener("click", () => {
-  searchInput.value = "";
-  statusFilter.value = "";
-  channelFilter.value = "";
-  tagFilter.value = "";
-  coverageFilter.value = "";
-  resetVendorPageAndLoad();
+  resetVendorWorkspace();
 });
 vendorPageSizeSelect.addEventListener("change", () => {
   vendorPageSize = Number(vendorPageSizeSelect.value) || 75;
