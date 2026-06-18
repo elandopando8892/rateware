@@ -215,6 +215,32 @@ a {
   margin-bottom: 18px;
 }
 
+.module-crumbs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 760;
+}
+
+.module-crumbs a {
+  color: var(--accent-dark);
+}
+
+.module-crumbs a:hover {
+  text-decoration: underline;
+}
+
+.module-crumbs a::after,
+.module-crumbs span:not(:last-child)::after {
+  content: ">";
+  color: #9aa4ad;
+  margin-left: 6px;
+}
+
 .top-nav {
   display: flex;
   align-items: center;
