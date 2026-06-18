@@ -1042,6 +1042,7 @@ button.danger {
 
 .file-list li {
   display: flex;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
   border: 1px solid var(--line);
@@ -1067,6 +1068,13 @@ button.danger {
 
 .file-list li.rejected em {
   color: var(--danger);
+}
+
+.file-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
 }
 
 .table-wrap {

@@ -36,6 +36,24 @@
 
         <main class="upload-layout">
           <section class="workspace-panel">
+            <div class="review-insight-grid" aria-label="Upload queue summary">
+              <article>
+                <span>Total files</span>
+                <strong id="upload-queue-total">0</strong>
+              </article>
+              <article>
+                <span>Ready</span>
+                <strong id="upload-queue-ready">0</strong>
+              </article>
+              <article>
+                <span>Rejected</span>
+                <strong id="upload-queue-rejected">0</strong>
+              </article>
+              <article>
+                <span>Total size</span>
+                <strong id="upload-queue-size">0 B</strong>
+              </article>
+            </div>
             <form id="upload-form" class="upload-form">
               <label
                 id="drop-zone"

@@ -1,5 +1,5 @@
 import { applyPermissionState, ensureSignedIn, initAuthControls, requirePrivatePage } from "./auth.js";
-import { isAllowedFile } from "./file-rules.js";
+import { detectDocumentType, isAllowedFile } from "./file-rules.js";
 import { uploadRawFile } from "./upload-service.js";
 import { fetchVendors } from "./vendor-service.js";
 
@@ -12,6 +12,10 @@ const uploadButton = document.querySelector("#upload-button");
 const vendorSelect = document.querySelector("#vendor-select");
 const vendorInput = document.querySelector("#vendor-input");
 const rfxInput = document.querySelector("#rfx-input");
+const queueMetricTotal = document.querySelector("#upload-queue-total");
+const queueMetricReady = document.querySelector("#upload-queue-ready");
+const queueMetricRejected = document.querySelector("#upload-queue-rejected");
+const queueMetricSize = document.querySelector("#upload-queue-size");
 
 let selectedFiles = [];
 
@@ -26,8 +30,18 @@ function formatBytes(bytes) {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
+function updateQueueMetrics() {
+  const ready = selectedFiles.filter((file) => isAllowedFile(file)).length;
+  const totalSize = selectedFiles.reduce((sum, file) => sum + Number(file.size || 0), 0);
+  queueMetricTotal.textContent = String(selectedFiles.length);
+  queueMetricReady.textContent = String(ready);
+  queueMetricRejected.textContent = String(selectedFiles.length - ready);
+  queueMetricSize.textContent = formatBytes(totalSize);
+}
+
 function renderFiles() {
   fileList.classList.toggle("empty", selectedFiles.length === 0);
+  updateQueueMetrics();
 
   if (selectedFiles.length === 0) {
     fileList.innerHTML = "<li>No files selected</li>";
@@ -35,16 +49,20 @@ function renderFiles() {
   }
 
   fileList.innerHTML = selectedFiles
-    .map((file) => {
+    .map((file, index) => {
       const allowed = isAllowedFile(file);
       const state = allowed ? "Ready" : "Rejected";
+      const documentType = detectDocumentType(file);
       return `
         <li class="${allowed ? "" : "rejected"}">
           <span>
-            <strong>${file.name}</strong>
-            <small>${formatBytes(file.size)} &middot; ${file.type || "unknown type"}</small>
+            <strong>${escapeHtml(file.name)}</strong>
+            <small>${escapeHtml(formatBytes(file.size))} &middot; ${escapeHtml(documentType)} &middot; ${escapeHtml(file.type || "unknown type")}</small>
           </span>
-          <em>${state}</em>
+          <span class="file-actions">
+            <em>${escapeHtml(state)}</em>
+            <button class="secondary small-button" type="button" data-remove-file-index="${index}">Remove</button>
+          </span>
         </li>
       `;
     })
@@ -78,6 +96,14 @@ function addFiles(files) {
   const rejected = selectedFiles.filter((file) => !isAllowedFile(file)).length;
   setStatus(rejected ? `${rejected} file type will be skipped.` : `${selectedFiles.length} file(s) ready.`);
 }
+
+fileList.addEventListener("click", (event) => {
+  const removeButton = event.target.closest("[data-remove-file-index]");
+  if (!removeButton) return;
+  selectedFiles.splice(Number(removeButton.dataset.removeFileIndex), 1);
+  renderFiles();
+  setStatus(selectedFiles.length ? `${selectedFiles.length} file(s) in queue.` : "Queue cleared.");
+});
 
 dropZone.addEventListener("dragover", (event) => {
   event.preventDefault();
