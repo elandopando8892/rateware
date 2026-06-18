@@ -712,6 +712,14 @@ small,
   margin-top: 14px;
 }
 
+.filter-bar {
+  display: grid;
+  grid-template-columns: minmax(120px, 160px) minmax(180px, 1fr) minmax(180px, 1fr) auto;
+  gap: 12px;
+  align-items: end;
+  margin-top: 12px;
+}
+
 .pagination-bar {
   display: flex;
   align-items: end;
@@ -1396,6 +1404,7 @@ select.staging-input {
   .wizard-steps,
   .wizard-panel,
   .toolbar,
+  .filter-bar,
   .bulk-toolbar,
   .preview-summary,
   .auth-strip {

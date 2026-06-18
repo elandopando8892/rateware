@@ -45,6 +45,10 @@ const confirmImportStatus = document.querySelector("#confirm-import-status");
 const vendorsBody = document.querySelector("#vendors-body");
 const searchInput = document.querySelector("#vendor-search");
 const statusFilter = document.querySelector("#vendor-status-filter");
+const channelFilter = document.querySelector("#vendor-channel-filter");
+const tagFilter = document.querySelector("#vendor-tag-filter");
+const coverageFilter = document.querySelector("#vendor-coverage-filter");
+const clearVendorFiltersButton = document.querySelector("#clear-vendor-filters");
 const refreshButton = document.querySelector("#refresh-vendors-button");
 const vendorPageStatus = document.querySelector("#vendor-page-status");
 const vendorPageSizeSelect = document.querySelector("#vendor-page-size");
@@ -433,6 +437,12 @@ function updatePaginationState() {
   vendorNextPageButton.disabled = vendorPageOffset + vendorPageSize >= vendorTotalCount;
 }
 
+function resetVendorPageAndLoad() {
+  vendorPageOffset = 0;
+  selectedVendorIds = new Set();
+  loadVendors();
+}
+
 function segmentMatches(segment, vendor) {
   const vendorTags = splitTags(vendor.tags);
   const requiredTags = splitTags(segment.tags);
@@ -493,6 +503,9 @@ async function loadVendors() {
       status: statusFilter.value,
       base_stage: activeBaseStage,
       view: activeQuickFilter,
+      channel: channelFilter.value,
+      tag: tagFilter.value,
+      coverage: coverageFilter.value,
       limit: vendorPageSize,
       offset: vendorPageOffset
     });
@@ -909,17 +922,25 @@ duplicateReviewList.addEventListener("click", async (event) => {
 
 refreshButton.addEventListener("click", loadVendors);
 statusFilter.addEventListener("change", () => {
-  vendorPageOffset = 0;
-  loadVendors();
+  resetVendorPageAndLoad();
 });
 searchInput.addEventListener("change", () => {
-  vendorPageOffset = 0;
-  loadVendors();
+  resetVendorPageAndLoad();
+});
+channelFilter.addEventListener("change", resetVendorPageAndLoad);
+tagFilter.addEventListener("change", resetVendorPageAndLoad);
+coverageFilter.addEventListener("change", resetVendorPageAndLoad);
+clearVendorFiltersButton.addEventListener("click", () => {
+  searchInput.value = "";
+  statusFilter.value = "";
+  channelFilter.value = "";
+  tagFilter.value = "";
+  coverageFilter.value = "";
+  resetVendorPageAndLoad();
 });
 vendorPageSizeSelect.addEventListener("change", () => {
   vendorPageSize = Number(vendorPageSizeSelect.value) || 75;
-  vendorPageOffset = 0;
-  loadVendors();
+  resetVendorPageAndLoad();
 });
 vendorPrevPageButton.addEventListener("click", () => {
   vendorPageOffset = Math.max(0, vendorPageOffset - vendorPageSize);

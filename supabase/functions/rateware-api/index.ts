@@ -482,6 +482,17 @@ Deno.serve(async (request) => {
       if (view === "procurement-ready") {
         query = query.not("primary_email", "is", null).not("domain", "is", null).not("coverage_notes", "is", null);
       }
+      if (body.channel) {
+        query = query.eq("preferred_channel", String(body.channel).trim().toLowerCase());
+      }
+      if (body.tag) {
+        const tag = String(body.tag).trim().toLowerCase();
+        if (tag) query = query.contains("tags", [tag]);
+      }
+      if (body.coverage) {
+        const coverage = String(body.coverage).trim();
+        if (coverage) query = query.or(`coverage_notes.ilike.%${coverage}%,notes.ilike.%${coverage}%`);
+      }
       if (body.search) {
         const term = String(body.search).trim();
         query = query.or(`vendor_name.ilike.%${term}%,domain.ilike.%${term}%,primary_email.ilike.%${term}%`);

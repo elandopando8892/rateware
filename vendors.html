@@ -327,6 +327,26 @@
               <button class="quick-filter" type="button" data-quick-filter="archived">Archived</button>
               <button class="quick-filter" type="button" data-quick-filter="duplicates">Duplicates</button>
             </div>
+            <div class="filter-bar" aria-label="Vendor filters">
+              <label>
+                Channel
+                <select id="vendor-channel-filter">
+                  <option value="">Any</option>
+                  <option value="email">Email</option>
+                  <option value="whatsapp">WhatsApp</option>
+                  <option value="portal">Portal</option>
+                </select>
+              </label>
+              <label>
+                Tag / equipment
+                <input id="vendor-tag-filter" placeholder="reefer, flatbed, hazmat" />
+              </label>
+              <label>
+                Coverage / market
+                <input id="vendor-coverage-filter" placeholder="Monterrey, Laredo, Bajio" />
+              </label>
+              <button id="clear-vendor-filters" class="secondary" type="button">Clear filters</button>
+            </div>
             <div class="pagination-bar" aria-label="Vendor pagination">
               <strong id="vendor-page-status">Showing 0 of 0</strong>
               <label>
