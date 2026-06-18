@@ -262,13 +262,41 @@ function duplicateGroups(rows = allVendors) {
   return rows
     .map((vendor) => {
       if (seen.has(vendor.id)) return null;
-      const matches = rows.filter((candidate) => candidate.id !== vendor.id && duplicateSignals(vendor, rows).includes(candidate.vendor_name));
+      const matches = rows
+        .filter((candidate) => candidate.id !== vendor.id)
+        .map((candidate) => ({ vendor: candidate, reasons: duplicateReasons(vendor, candidate) }))
+        .filter((match) => match.reasons.length);
       if (!matches.length) return null;
       seen.add(vendor.id);
-      matches.forEach((match) => seen.add(match.id));
-      return [vendor, ...matches];
+      matches.forEach((match) => seen.add(match.vendor.id));
+      return {
+        primary: vendor,
+        matches,
+        confidence: Math.min(100, Math.max(...matches.map((match) => duplicateConfidence(match.reasons))))
+      };
     })
     .filter(Boolean);
+}
+
+function duplicateReasons(row, candidate) {
+  const reasons = [];
+  const domain = String(row.domain || "").toLowerCase();
+  const email = String(row.primary_email || "").toLowerCase();
+  const nameKey = normalizeKey(row.vendor_name);
+  const candidateNameKey = normalizeKey(candidate.vendor_name);
+
+  if (domain && String(candidate.domain || "").toLowerCase() === domain) reasons.push("Same domain");
+  if (email && String(candidate.primary_email || "").toLowerCase() === email) reasons.push("Same email");
+  if (nameKey && candidateNameKey && (nameKey.includes(candidateNameKey) || candidateNameKey.includes(nameKey))) reasons.push("Similar name");
+  return reasons;
+}
+
+function duplicateConfidence(reasons) {
+  if (reasons.includes("Same domain") && reasons.includes("Same email")) return 98;
+  if (reasons.includes("Same domain")) return 92;
+  if (reasons.includes("Same email")) return 90;
+  if (reasons.includes("Similar name")) return 70;
+  return 50;
 }
 
 function renderDuplicateReview() {
@@ -286,22 +314,26 @@ function renderDuplicateReview() {
         <article class="duplicate-card">
           <div class="duplicate-heading">
             <strong>Duplicate set ${groupIndex + 1}</strong>
-            <span>${group.length} vendors</span>
+            <span>${group.matches.length + 1} vendors | ${group.confidence}% confidence</span>
           </div>
-          ${group
+          ${[group.primary, ...group.matches.map((match) => match.vendor)]
             .map(
-              (vendor) => `
+              (vendor, vendorIndex) => {
+                const reasons = vendorIndex === 0 ? ["Reference record"] : group.matches.find((match) => match.vendor.id === vendor.id)?.reasons || [];
+                return `
                 <div class="duplicate-row">
                   <div>
                     <strong>${escapeHtml(vendor.vendor_name)}</strong>
                     <span>${escapeHtml([vendor.domain, vendor.primary_email, vendor.status].filter(Boolean).join(" | "))}</span>
+                    <div class="duplicate-reasons">${reasons.map((reason) => `<span>${escapeHtml(reason)}</span>`).join("")}</div>
                   </div>
                   <div class="action-row">
                     <button class="small-button" type="button" data-duplicate-open="${escapeHtml(vendor.id)}">Open</button>
                     <button class="small-button secondary" type="button" data-duplicate-inactive="${escapeHtml(vendor.id)}">Mark inactive</button>
                   </div>
                 </div>
-              `
+              `;
+              }
             )
             .join("")}
         </article>
@@ -369,20 +401,9 @@ function resetWizard() {
 }
 
 function duplicateSignals(row, rows = currentVendors) {
-  const nameKey = normalizeKey(row.vendor_name);
-  const domain = String(row.domain || "").toLowerCase();
-  const email = String(row.primary_email || "").toLowerCase();
-
   return rows
     .filter((candidate) => candidate.id !== row.id)
-    .filter((candidate) => {
-      const candidateName = normalizeKey(candidate.vendor_name);
-      return (
-        (domain && String(candidate.domain || "").toLowerCase() === domain) ||
-        (email && String(candidate.primary_email || "").toLowerCase() === email) ||
-        (nameKey && candidateName && (nameKey.includes(candidateName) || candidateName.includes(nameKey)))
-      );
-    })
+    .filter((candidate) => duplicateReasons(row, candidate).length)
     .map((candidate) => candidate.vendor_name);
 }
 
@@ -669,12 +690,29 @@ function renderReadinessBreakdown(vendor) {
   `;
 }
 
+function renderDuplicateSignals(vendor) {
+  const matches = currentVendors
+    .filter((candidate) => candidate.id !== vendor.id)
+    .map((candidate) => ({ vendor: candidate, reasons: duplicateReasons(vendor, candidate) }))
+    .filter((match) => match.reasons.length);
+  if (!matches.length) return "No obvious duplicates";
+  return matches
+    .map(
+      (match) => `
+        <div class="duplicate-inline">
+          <strong>${escapeHtml(match.vendor.vendor_name)}</strong>
+          <span>${match.reasons.map(escapeHtml).join(" | ")}</span>
+        </div>
+      `
+    )
+    .join("");
+}
+
 function openVendorDrawer(vendorId) {
   const vendor = allVendors.find((row) => row.id === vendorId) || currentVendors.find((row) => row.id === vendorId);
   if (!vendor) return;
 
   activeDrawerVendorId = vendor.id;
-  const duplicates = duplicateSignals(vendor);
   document.querySelector("#drawer-vendor-name").textContent = vendor.vendor_name || "Vendor";
   document.querySelector("#drawer-badges").innerHTML = renderDrawerBadges(vendor);
   document.querySelector("#drawer-quick-actions").innerHTML = renderDrawerQuickActions(vendor);
@@ -688,7 +726,7 @@ function openVendorDrawer(vendorId) {
   setDrawerValue("#drawer-channel", escapeHtml(vendor.preferred_channel));
   setDrawerValue("#drawer-tags", `<div class="tag-list">${renderTags(vendor.tags)}</div>`);
   setDrawerValue("#drawer-coverage", escapeHtml(vendor.coverage_notes));
-  setDrawerValue("#drawer-duplicates", duplicates.length ? duplicates.map(escapeHtml).join("<br>") : "No obvious duplicates");
+  setDrawerValue("#drawer-duplicates", renderDuplicateSignals(vendor));
   setDrawerValue("#drawer-notes", escapeHtml(vendor.notes));
   document.querySelector("#drawer-edit-name").value = vendor.vendor_name || "";
   document.querySelector("#drawer-edit-domain").value = vendor.domain || "";

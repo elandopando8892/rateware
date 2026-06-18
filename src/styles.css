@@ -617,6 +617,37 @@ h2 {
   padding-top: 10px;
 }
 
+.duplicate-reasons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.duplicate-reasons span {
+  border-radius: 999px;
+  background: #eef3f5;
+  color: #44515a;
+  padding: 2px 7px;
+  font-size: 0.74rem;
+  font-weight: 800;
+}
+
+.duplicate-inline {
+  display: grid;
+  gap: 2px;
+  padding: 6px 0;
+}
+
+.duplicate-inline + .duplicate-inline {
+  border-top: 1px solid var(--line);
+}
+
+.duplicate-inline span {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
 .wide-field {
   grid-column: 1 / -1;
 }
