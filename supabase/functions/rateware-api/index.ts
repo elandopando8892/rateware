@@ -2114,6 +2114,286 @@ function cleanDate(value: unknown) {
   return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString().slice(0, 10);
 }
 
+function cleanNumber(value: unknown) {
+  if (value === null || value === undefined || value === "") return null;
+  const rateText = cleanRateText(value);
+  if (rateText) return Number(rateText);
+  const numberValue = Number(value);
+  return Number.isFinite(numberValue) ? numberValue : null;
+}
+
+function randomToken() {
+  const bytes = new Uint8Array(18);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function normalizeRfxEvent(input: Record<string, unknown>) {
+  const rfxId = cleanText(input.rfx_id || input.rfx || input.event_id) || `RFx-${new Date().toISOString().slice(0, 10)}`;
+  const eventType = cleanText(input.event_type || input.type)?.toLowerCase() || "spot";
+  const status = cleanText(input.status)?.toLowerCase() || "draft";
+  return {
+    rfx_id: rfxId,
+    name: cleanText(input.name || input.event_name || input.title) || rfxId,
+    customer: cleanText(input.customer || input.shipper || input.account),
+    event_type: ["spot", "rfx", "bid"].includes(eventType) ? eventType : "spot",
+    status: ["draft", "open", "closed", "awarded", "archived"].includes(status) ? status : "draft",
+    due_date: cleanDate(input.due_date || input.deadline),
+    notes: cleanText(input.notes || input.description),
+    updated_at: new Date().toISOString()
+  };
+}
+
+function normalizeRfxEventPatch(input: Record<string, unknown>) {
+  const patch: Record<string, unknown> = {};
+  if (input.rfx_id !== undefined || input.rfx !== undefined) patch.rfx_id = cleanText(input.rfx_id || input.rfx);
+  if (input.name !== undefined || input.event_name !== undefined || input.title !== undefined) patch.name = cleanText(input.name || input.event_name || input.title);
+  if (input.customer !== undefined || input.shipper !== undefined || input.account !== undefined) patch.customer = cleanText(input.customer || input.shipper || input.account);
+  if (input.event_type !== undefined || input.type !== undefined) {
+    const eventType = cleanText(input.event_type || input.type)?.toLowerCase();
+    if (eventType && ["spot", "rfx", "bid"].includes(eventType)) patch.event_type = eventType;
+  }
+  if (input.status !== undefined) {
+    const status = cleanText(input.status)?.toLowerCase();
+    if (status && ["draft", "open", "closed", "awarded", "archived"].includes(status)) patch.status = status;
+  }
+  if (input.due_date !== undefined || input.deadline !== undefined) patch.due_date = cleanDate(input.due_date || input.deadline);
+  if (input.notes !== undefined || input.description !== undefined) patch.notes = cleanText(input.notes || input.description);
+  patch.updated_at = new Date().toISOString();
+  return patch;
+}
+
+function normalizeRfxLane(input: Record<string, unknown>, index = 0) {
+  const origin = cleanText(input.origin || input.orig || input.origin_city || input.from);
+  const destination = cleanText(input.destination || input.dest || input.destination_city || input.to);
+  return {
+    lane_number: Number(input.lane_number || input.lane || input.seq || index + 1) || index + 1,
+    origin,
+    origin_city: cleanText(input.origin_city || input.o_city),
+    origin_state: cleanText(input.origin_state || input.o_state || input.origin_st || input.o_st),
+    origin_country: cleanText(input.origin_country || input.o_country),
+    origin_market: cleanText(input.origin_market || input.o_market),
+    origin_region: cleanText(input.origin_region || input.o_region),
+    destination,
+    destination_city: cleanText(input.destination_city || input.d_city),
+    destination_state: cleanText(input.destination_state || input.d_state || input.destination_st || input.d_st),
+    destination_country: cleanText(input.destination_country || input.d_country),
+    destination_market: cleanText(input.destination_market || input.d_market),
+    destination_region: cleanText(input.destination_region || input.d_region),
+    equipment: cleanText(input.equipment || input.equip),
+    trailer: cleanText(input.trailer || input.trailer_type),
+    config: cleanText(input.config || input.configuration),
+    operation: cleanText(input.operation),
+    service: cleanText(input.service),
+    weekly_volume: cleanNumber(input.weekly_volume || input.weekly_loads || input.loads_per_week || input.volume),
+    annual_volume: cleanNumber(input.annual_volume || input.annual_loads),
+    target_rate: cleanNumber(input.target_rate || input.target || input.budget),
+    currency: cleanText(input.currency)?.toUpperCase() || "USD",
+    incumbent_vendor: cleanText(input.incumbent_vendor || input.incumbent),
+    notes: cleanText(input.notes || input.lane_notes),
+    updated_at: new Date().toISOString()
+  };
+}
+
+function laneText(row: Record<string, unknown>) {
+  return [
+    row.origin,
+    row.origin_city,
+    row.origin_state,
+    row.origin_country,
+    row.origin_market,
+    row.origin_region,
+    row.destination,
+    row.destination_city,
+    row.destination_state,
+    row.destination_country,
+    row.destination_market,
+    row.destination_region,
+    row.equipment,
+    row.trailer,
+    row.config,
+    row.operation,
+    row.service
+  ].filter(Boolean).join(" ");
+}
+
+function stringMatchScore(left: unknown, right: unknown, weight: number) {
+  const a = catalogKey(left);
+  const b = catalogKey(right);
+  if (!a || !b) return 0;
+  if (a === b) return weight;
+  if (a.includes(b) || b.includes(a)) return Math.round(weight * 0.65);
+  return 0;
+}
+
+function sideMatchScore(lane: Record<string, unknown>, rate: Record<string, unknown>, prefix: "origin" | "destination") {
+  const normalizedField = prefix === "origin" ? "normalized_origin" : "normalized_destination";
+  let score = 0;
+  score += stringMatchScore(lane[`${prefix}_market`], rate[`${prefix}_market`], 30);
+  score += stringMatchScore(lane[`${prefix}_region`], rate[`${prefix}_region`], 14);
+  score += stringMatchScore(lane[`${prefix}_state`], rate[`${prefix}_state`], 14);
+  score += stringMatchScore(lane[`${prefix}_country`], rate[`${prefix}_country`], 10);
+  score += stringMatchScore(lane[prefix], rate[normalizedField] || rate[prefix], 22);
+  score += stringMatchScore(lane[`${prefix}_city`], rate[`${prefix}_city`] || rate[normalizedField] || rate[prefix], 18);
+  return Math.min(50, score);
+}
+
+function rateFitForLane(lane: Record<string, unknown>, rate: Record<string, unknown>) {
+  const score =
+    sideMatchScore(lane, rate, "origin") +
+    sideMatchScore(lane, rate, "destination") +
+    stringMatchScore(lane.equipment, rate.equipment || rate.normalized_equipment, 12) +
+    stringMatchScore(lane.trailer, rate.trailer || rate.normalized_trailer, 10) +
+    stringMatchScore(lane.config, rate.config || rate.normalized_config, 8) +
+    stringMatchScore(lane.operation, rate.operation || rate.normalized_operation, 12) +
+    stringMatchScore(lane.service, rate.service || rate.normalized_service, 10);
+  return Math.min(100, score);
+}
+
+function bestRatewareBenchmark(lane: Record<string, unknown>, rates: Record<string, unknown>[]) {
+  const matches = rates
+    .map((rate) => ({
+      rate,
+      score: rateFitForLane(lane, rate),
+      amount: numericAmount(rate.all_in_rate)
+    }))
+    .filter((item) => item.score >= 40 && item.amount !== null)
+    .sort((a, b) => b.score - a.score || Number(a.amount) - Number(b.amount));
+  const best = matches[0];
+  if (!best) return null;
+  return {
+    rate_id: best.rate.id,
+    score: best.score,
+    vendor: (best.rate.vendors as Record<string, unknown> | undefined)?.vendor_name || best.rate.vendor_domain || null,
+    vendor_domain: best.rate.vendor_domain || null,
+    all_in_rate: best.amount,
+    currency: best.rate.currency || "USD",
+    quote_date: best.rate.quote_date || null,
+    origin: best.rate.normalized_origin || best.rate.origin || null,
+    destination: best.rate.normalized_destination || best.rate.destination || null
+  };
+}
+
+function invitationWithComparison(invitation: Record<string, unknown>, benchmark: Record<string, unknown> | null) {
+  const bidRate = cleanNumber(invitation.bid_rate);
+  const benchmarkRate = cleanNumber(benchmark?.all_in_rate);
+  return {
+    ...invitation,
+    bid_delta: bidRate !== null && benchmarkRate !== null ? bidRate - benchmarkRate : null,
+    bid_delta_pct: bidRate !== null && benchmarkRate ? ((bidRate - benchmarkRate) / benchmarkRate) * 100 : null,
+    benchmark
+  };
+}
+
+function vendorOwnsRate(vendor: Record<string, unknown>, rate: Record<string, unknown>) {
+  if (vendor.id && rate.vendor_id && vendor.id === rate.vendor_id) return true;
+  const vendorDomain = normalizeDomain(vendor.domain);
+  const rateDomain = normalizeDomain(rate.vendor_domain);
+  if (vendorDomain && rateDomain && vendorDomain === rateDomain) return true;
+  const emails = vendorEmails(vendor);
+  return Boolean(rateDomain && emails.some((email) => email.endsWith(`@${rateDomain}`)));
+}
+
+function scoreVendorForLane(vendor: Record<string, unknown>, lane: Record<string, unknown>, rates: Record<string, unknown>[]) {
+  let score = 28;
+  const evidence: string[] = [];
+  const gaps: string[] = [];
+  const status = cleanText(vendor.status)?.toLowerCase();
+  const baseStage = cleanText(vendor.base_stage)?.toLowerCase();
+  if (status === "active") score += 12;
+  if (status === "blocked") {
+    score -= 80;
+    gaps.push("Blocked vendor");
+  }
+  if (status === "inactive") {
+    score -= 20;
+    gaps.push("Inactive vendor");
+  }
+  if (baseStage === "procurement") {
+    score += 18;
+    evidence.push("Procurement Base carrier");
+  } else if (baseStage === "sourcing") {
+    score += 8;
+    evidence.push("Available in Sourcing Base");
+  }
+  if (vendor.primary_email) score += 8;
+  else gaps.push("Missing email");
+  if (vendor.whatsapp_phone) score += 4;
+  const vendorText = catalogKey(vendorSearchText(vendor));
+  const laneTerms = [
+    lane.origin_market,
+    lane.destination_market,
+    lane.origin_region,
+    lane.destination_region,
+    lane.origin_state,
+    lane.destination_state,
+    lane.equipment,
+    lane.trailer,
+    lane.operation,
+    lane.service
+  ].map(catalogKey).filter(Boolean);
+  const textHits = laneTerms.filter((term) => vendorText.includes(term));
+  if (textHits.length) {
+    score += Math.min(18, textHits.length * 5);
+    evidence.push(`Vendor profile matches ${textHits.slice(0, 3).join(", ")}`);
+  }
+  const vendorRates = rates.filter((rate) => vendorOwnsRate(vendor, rate));
+  const bestRateScore = vendorRates.reduce((best, rate) => Math.max(best, rateFitForLane(lane, rate)), 0);
+  if (bestRateScore >= 40) {
+    score += Math.min(30, Math.round(bestRateScore / 3));
+    evidence.push(`Historical Rateware fit ${bestRateScore}/100`);
+  } else {
+    gaps.push("No strong historical Rateware lane match");
+  }
+  return {
+    vendor_id: vendor.id,
+    vendor_name: vendor.vendor_name,
+    domain: vendor.domain,
+    primary_email: vendor.primary_email,
+    base_stage: vendor.base_stage,
+    status: vendor.status,
+    fit_score: Math.max(0, Math.min(100, Math.round(score))),
+    evidence,
+    gaps
+  };
+}
+
+async function fetchApprovedRateRows(supabase: ReturnType<typeof createClient>) {
+  const result = await supabase
+    .from("rate_staging")
+    .select("*, vendors(vendor_name,domain,primary_email,base_stage,status)")
+    .eq("status", "approved")
+    .limit(2000);
+  if (result.error) throw result.error;
+  return result.data || [];
+}
+
+async function requireOwnedRfxEvent(supabase: ReturnType<typeof createClient>, user: { owner_email: string | null }, eventId: unknown) {
+  const id = cleanText(eventId);
+  if (!id) throw new Error("RFx event id is required.");
+  const result = await supabase
+    .from("rfx_events")
+    .select("*")
+    .eq("id", id)
+    .eq("owner_email", user.owner_email)
+    .single();
+  if (result.error) throw result.error;
+  return result.data;
+}
+
+async function requireOwnedRfxLane(supabase: ReturnType<typeof createClient>, user: { owner_email: string | null }, laneId: unknown) {
+  const id = cleanText(laneId);
+  if (!id) throw new Error("RFx lane id is required.");
+  const laneResult = await supabase
+    .from("rfx_lanes")
+    .select("*, rfx_events!inner(id,owner_email)")
+    .eq("id", id)
+    .eq("rfx_events.owner_email", user.owner_email)
+    .single();
+  if (laneResult.error) throw laneResult.error;
+  return laneResult.data;
+}
+
 function buildRowKeys(row: Record<string, unknown>) {
   const routeParts = [
     row.origin,
@@ -2695,8 +2975,264 @@ Deno.serve(async (request) => {
       return jsonResponse({ row: result.data });
     }
 
+    if (body.action === "list_rfx_events") {
+      const eventsResult = await supabase
+        .from("rfx_events")
+        .select("*")
+        .eq("owner_email", user.owner_email)
+        .neq("status", "archived")
+        .order("created_at", { ascending: false })
+        .limit(100);
+      if (eventsResult.error) throw eventsResult.error;
+
+      const eventIds = (eventsResult.data || []).map((event) => event.id);
+      const [lanesResult, invitationsResult] = eventIds.length
+        ? await Promise.all([
+            supabase.from("rfx_lanes").select("id,rfx_event_id").in("rfx_event_id", eventIds),
+            supabase.from("rfx_lane_vendors").select("id,rfx_event_id,invitation_status,bid_rate").in("rfx_event_id", eventIds)
+          ])
+        : [{ data: [], error: null }, { data: [], error: null }];
+      if (lanesResult.error) throw lanesResult.error;
+      if (invitationsResult.error) throw invitationsResult.error;
+
+      const laneCounts = new Map<string, number>();
+      for (const lane of lanesResult.data || []) laneCounts.set(lane.rfx_event_id, (laneCounts.get(lane.rfx_event_id) || 0) + 1);
+      const invitationCounts = new Map<string, number>();
+      const bidCounts = new Map<string, number>();
+      for (const invite of invitationsResult.data || []) {
+        invitationCounts.set(invite.rfx_event_id, (invitationCounts.get(invite.rfx_event_id) || 0) + 1);
+        if (invite.invitation_status === "bid_submitted" || invite.bid_rate !== null) {
+          bidCounts.set(invite.rfx_event_id, (bidCounts.get(invite.rfx_event_id) || 0) + 1);
+        }
+      }
+
+      return jsonResponse({
+        rows: (eventsResult.data || []).map((event) => ({
+          ...event,
+          lane_count: laneCounts.get(event.id) || 0,
+          invitation_count: invitationCounts.get(event.id) || 0,
+          bid_count: bidCounts.get(event.id) || 0
+        }))
+      });
+    }
+
+    if (body.action === "create_rfx_event") {
+      const row = withOwner(normalizeRfxEvent(body.event || body), user);
+      const result = await supabase.from("rfx_events").insert(row).select().single();
+      if (result.error) throw result.error;
+      return jsonResponse({ row: result.data });
+    }
+
+    if (body.action === "update_rfx_event") {
+      const eventId = cleanText(body.id || body.event_id);
+      if (!eventId) return jsonResponse({ error: "RFx event id is required." }, 400);
+      const patch = normalizeRfxEventPatch(body.patch || body.event || {});
+      const result = await supabase
+        .from("rfx_events")
+        .update(patch)
+        .eq("id", eventId)
+        .eq("owner_email", user.owner_email)
+        .select()
+        .single();
+      if (result.error) throw result.error;
+      return jsonResponse({ row: result.data });
+    }
+
+    if (body.action === "import_rfx_lanes") {
+      const event = await requireOwnedRfxEvent(supabase, user, body.event_id);
+      const rows = Array.isArray(body.rows) ? body.rows.slice(0, 1000) : [];
+      if (!rows.length) return jsonResponse({ inserted: 0, rows: [] });
+      const laneRows = rows
+        .map((row: Record<string, unknown>, index: number) => ({
+          ...normalizeRfxLane(row, index),
+          rfx_event_id: event.id
+        }))
+        .filter((row) => row.origin || row.destination);
+      if (!laneRows.length) return jsonResponse({ inserted: 0, rows: [] });
+      const result = await supabase
+        .from("rfx_lanes")
+        .insert(laneRows)
+        .select()
+        .order("lane_number", { ascending: true });
+      if (result.error) throw result.error;
+      return jsonResponse({ inserted: result.data?.length || 0, rows: result.data || [] });
+    }
+
+    if (body.action === "list_rfx_detail") {
+      const event = await requireOwnedRfxEvent(supabase, user, body.event_id || body.id);
+      const [lanesResult, invitationsResult, rates] = await Promise.all([
+        supabase
+          .from("rfx_lanes")
+          .select("*")
+          .eq("rfx_event_id", event.id)
+          .order("lane_number", { ascending: true }),
+        supabase
+          .from("rfx_lane_vendors")
+          .select("*, vendors(id,vendor_name,domain,primary_email,whatsapp_phone,preferred_channel,base_stage,status,tags,coverage_notes)")
+          .eq("rfx_event_id", event.id)
+          .order("created_at", { ascending: true }),
+        fetchApprovedRateRows(supabase)
+      ]);
+      if (lanesResult.error) throw lanesResult.error;
+      if (invitationsResult.error) throw invitationsResult.error;
+
+      const invitationsByLane = new Map<string, Record<string, unknown>[]>();
+      for (const invitation of invitationsResult.data || []) {
+        const bucket = invitationsByLane.get(invitation.rfx_lane_id) || [];
+        bucket.push(invitation);
+        invitationsByLane.set(invitation.rfx_lane_id, bucket);
+      }
+
+      const lanes = (lanesResult.data || []).map((lane) => {
+        const benchmark = bestRatewareBenchmark(lane, rates);
+        const invitations = (invitationsByLane.get(lane.id) || []).map((invitation) => invitationWithComparison(invitation, benchmark));
+        return {
+          ...lane,
+          benchmark,
+          invitations,
+          invitation_count: invitations.length,
+          bid_count: invitations.filter((invitation) => invitation.bid_rate !== null || invitation.invitation_status === "bid_submitted").length
+        };
+      });
+
+      return jsonResponse({ event, lanes });
+    }
+
+    if (body.action === "auto_shortlist_rfx_lane") {
+      const lane = await requireOwnedRfxLane(supabase, user, body.lane_id);
+      const limit = Math.min(Math.max(Number(body.limit) || 10, 1), 50);
+      const [vendorsResult, rates] = await Promise.all([
+        supabase
+          .from("vendors")
+          .select("id,vendor_name,domain,primary_email,secondary_emails,whatsapp_phone,preferred_channel,base_stage,status,tags,coverage_notes,notes")
+          .eq("owner_email", user.owner_email)
+          .neq("base_stage", "archived")
+          .limit(1000),
+        fetchApprovedRateRows(supabase)
+      ]);
+      if (vendorsResult.error) throw vendorsResult.error;
+      const ranked = (vendorsResult.data || [])
+        .map((vendor) => scoreVendorForLane(vendor, lane, rates))
+        .filter((row) => Number(row.fit_score || 0) >= 35)
+        .sort((a, b) => Number(b.fit_score || 0) - Number(a.fit_score || 0))
+        .slice(0, limit);
+      if (!ranked.length) return jsonResponse({ inserted: 0, rows: [], recommendations: [] });
+
+      const insertRows = ranked.map((row) => ({
+        rfx_event_id: lane.rfx_event_id,
+        rfx_lane_id: lane.id,
+        vendor_id: row.vendor_id,
+        invitation_status: "shortlisted",
+        invitation_token: randomToken(),
+        notes: [`Fit score ${row.fit_score}`, ...(row.evidence || [])].join("; ")
+      }));
+      const result = await supabase
+        .from("rfx_lane_vendors")
+        .upsert(insertRows, { onConflict: "rfx_lane_id,vendor_id", ignoreDuplicates: true })
+        .select("*, vendors(id,vendor_name,domain,primary_email,whatsapp_phone,preferred_channel,base_stage,status,tags,coverage_notes)");
+      if (result.error) throw result.error;
+      return jsonResponse({ inserted: result.data?.length || 0, rows: result.data || [], recommendations: ranked });
+    }
+
+    if (body.action === "shortlist_rfx_lane_vendors") {
+      const lane = await requireOwnedRfxLane(supabase, user, body.lane_id);
+      const vendorIds = Array.isArray(body.vendor_ids) ? body.vendor_ids.map(String).filter(Boolean).slice(0, 200) : [];
+      if (!vendorIds.length) return jsonResponse({ inserted: 0, rows: [] });
+      const vendorsResult = await supabase
+        .from("vendors")
+        .select("id")
+        .eq("owner_email", user.owner_email)
+        .in("id", vendorIds);
+      if (vendorsResult.error) throw vendorsResult.error;
+      const insertRows = (vendorsResult.data || []).map((vendor) => ({
+        rfx_event_id: lane.rfx_event_id,
+        rfx_lane_id: lane.id,
+        vendor_id: vendor.id,
+        invitation_status: "shortlisted",
+        invitation_token: randomToken()
+      }));
+      const result = await supabase
+        .from("rfx_lane_vendors")
+        .upsert(insertRows, { onConflict: "rfx_lane_id,vendor_id", ignoreDuplicates: true })
+        .select("*, vendors(id,vendor_name,domain,primary_email,whatsapp_phone,preferred_channel,base_stage,status,tags,coverage_notes)");
+      if (result.error) throw result.error;
+      return jsonResponse({ inserted: result.data?.length || 0, rows: result.data || [] });
+    }
+
+    if (body.action === "invite_rfx_lane_vendors") {
+      const ids = Array.isArray(body.ids) ? body.ids.map(String).filter(Boolean).slice(0, 500) : [];
+      if (!ids.length) return jsonResponse({ updated: 0, rows: [] });
+      const ownedResult = await supabase
+        .from("rfx_lane_vendors")
+        .select("id,rfx_events!inner(owner_email)")
+        .in("id", ids)
+        .eq("rfx_events.owner_email", user.owner_email);
+      if (ownedResult.error) throw ownedResult.error;
+      const ownedIds = (ownedResult.data || []).map((row) => row.id);
+      if (!ownedIds.length) return jsonResponse({ updated: 0, rows: [] });
+      const result = await supabase
+        .from("rfx_lane_vendors")
+        .update({ invitation_status: "invited", invited_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+        .in("id", ownedIds)
+        .select("*, vendors(id,vendor_name,domain,primary_email,whatsapp_phone,preferred_channel,base_stage,status)");
+      if (result.error) throw result.error;
+      return jsonResponse({ updated: result.data?.length || 0, rows: result.data || [] });
+    }
+
+    if (body.action === "update_rfx_bid") {
+      const id = cleanText(body.id);
+      if (!id) return jsonResponse({ error: "RFx invitation id is required." }, 400);
+      const ownedResult = await supabase
+        .from("rfx_lane_vendors")
+        .select("id,rfx_events!inner(owner_email)")
+        .eq("id", id)
+        .eq("rfx_events.owner_email", user.owner_email)
+        .single();
+      if (ownedResult.error) throw ownedResult.error;
+      const patchInput = body.patch || {};
+      const patch = {
+        bid_rate: cleanNumber(patchInput.bid_rate),
+        currency: cleanText(patchInput.currency)?.toUpperCase() || "USD",
+        weekly_capacity: cleanNumber(patchInput.weekly_capacity),
+        transit_days: cleanNumber(patchInput.transit_days),
+        notes: cleanText(patchInput.notes),
+        invitation_status: cleanNumber(patchInput.bid_rate) !== null ? "bid_submitted" : cleanText(patchInput.invitation_status) || "shortlisted",
+        responded_at: cleanNumber(patchInput.bid_rate) !== null ? new Date().toISOString() : null,
+        response_source: "rateware_admin",
+        updated_at: new Date().toISOString()
+      };
+      const result = await supabase
+        .from("rfx_lane_vendors")
+        .update(patch)
+        .eq("id", id)
+        .select("*, vendors(id,vendor_name,domain,primary_email,whatsapp_phone,preferred_channel,base_stage,status)")
+        .single();
+      if (result.error) throw result.error;
+      return jsonResponse({ row: result.data });
+    }
+
+    if (body.action === "archive_rfx_lane_vendors") {
+      const ids = Array.isArray(body.ids) ? body.ids.map(String).filter(Boolean).slice(0, 500) : [];
+      if (!ids.length) return jsonResponse({ updated: 0, rows: [] });
+      const ownedResult = await supabase
+        .from("rfx_lane_vendors")
+        .select("id,rfx_events!inner(owner_email)")
+        .in("id", ids)
+        .eq("rfx_events.owner_email", user.owner_email);
+      if (ownedResult.error) throw ownedResult.error;
+      const ownedIds = (ownedResult.data || []).map((row) => row.id);
+      if (!ownedIds.length) return jsonResponse({ updated: 0, rows: [] });
+      const result = await supabase
+        .from("rfx_lane_vendors")
+        .update({ invitation_status: "archived", updated_at: new Date().toISOString() })
+        .in("id", ownedIds)
+        .select("id");
+      if (result.error) throw result.error;
+      return jsonResponse({ updated: result.data?.length || 0, rows: result.data || [] });
+    }
+
     if (body.action === "dashboard_summary") {
-      const [uploads, vendors, sourcingVendors, procurementVendors, archivedVendors, pending, approved, failed] = await Promise.all([
+      const [uploads, vendors, sourcingVendors, procurementVendors, archivedVendors, pending, approved, failed, rfxEvents, rfxOpen, rfxBids] = await Promise.all([
         supabase.from("raw_uploads").select("id", { count: "exact", head: true }).neq("status", "archived"),
         supabase.from("vendors").select("id", { count: "exact", head: true }).eq("owner_email", user.owner_email),
         supabase.from("vendors").select("id", { count: "exact", head: true }).eq("owner_email", user.owner_email).eq("base_stage", "sourcing"),
@@ -2704,10 +3240,13 @@ Deno.serve(async (request) => {
         supabase.from("vendors").select("id", { count: "exact", head: true }).eq("owner_email", user.owner_email).eq("base_stage", "archived"),
         supabase.from("rate_staging").select("id", { count: "exact", head: true }).eq("status", "pending_review"),
         supabase.from("rate_staging").select("id", { count: "exact", head: true }).eq("status", "approved"),
-        supabase.from("raw_uploads").select("id", { count: "exact", head: true }).eq("status", "failed")
+        supabase.from("raw_uploads").select("id", { count: "exact", head: true }).eq("status", "failed"),
+        supabase.from("rfx_events").select("id", { count: "exact", head: true }).eq("owner_email", user.owner_email).neq("status", "archived"),
+        supabase.from("rfx_events").select("id", { count: "exact", head: true }).eq("owner_email", user.owner_email).eq("status", "open"),
+        supabase.from("rfx_lane_vendors").select("id,rfx_events!inner(owner_email)", { count: "exact", head: true }).eq("rfx_events.owner_email", user.owner_email).eq("invitation_status", "bid_submitted")
       ]);
 
-      for (const result of [uploads, vendors, sourcingVendors, procurementVendors, archivedVendors, pending, approved, failed]) {
+      for (const result of [uploads, vendors, sourcingVendors, procurementVendors, archivedVendors, pending, approved, failed, rfxEvents, rfxOpen, rfxBids]) {
         if (result.error) throw result.error;
       }
 
@@ -2719,7 +3258,10 @@ Deno.serve(async (request) => {
         archived_vendors: archivedVendors.count || 0,
         pending_review: pending.count || 0,
         approved_rows: approved.count || 0,
-        failed_uploads: failed.count || 0
+        failed_uploads: failed.count || 0,
+        rfx_events: rfxEvents.count || 0,
+        rfx_open_events: rfxOpen.count || 0,
+        rfx_bids: rfxBids.count || 0
       });
     }
 

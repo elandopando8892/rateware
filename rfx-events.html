@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Rateware RFx Events</title>
+    <link rel="stylesheet" href="./src/styles.css" />
+  </head>
+  <body>
+    <div class="shell-layout">
+      <aside class="side-nav" aria-label="Rateware modules">
+        <a class="brand-mark" href="./app.html">Rateware</a>
+        <nav>
+          <a href="./app.html">Dashboard</a>
+          <a href="./business-intelligence.html">Business Intelligence</a>
+          <a href="./upload-center.html">Upload Center</a>
+          <a href="./upload-history.html">Upload History</a>
+          <a href="./staging-review.html">Staging Review</a>
+          <a href="./rateware.html">Rateware</a>
+          <a href="./vendors.html">Vendors</a>
+          <a aria-current="page" href="./rfx-events.html">RFx Events</a>
+        </nav>
+      </aside>
+
+      <div class="page-frame">
+        <header class="page-header">
+          <div>
+            <p class="eyebrow">Spot book and carrier bids</p>
+            <h1>RFx Events</h1>
+            <nav class="module-crumbs" aria-label="Module context">
+              <a href="./app.html">Command Center</a>
+              <a href="./vendors.html">Procurement Base</a>
+              <span>RFx Events</span>
+            </nav>
+          </div>
+          <form id="auth-form" class="auth-strip">
+            <button id="auth-button" type="submit">Sign in with Kinde</button>
+            <button id="sign-out-button" type="button" class="secondary hidden">Sign out</button>
+            <p id="auth-status" role="status"></p>
+          </form>
+        </header>
+
+        <main class="rfx-layout">
+          <section class="review-insight-grid" aria-label="RFx summary">
+            <article>
+              <span>Events</span>
+              <strong id="rfx-metric-events">0</strong>
+            </article>
+            <article>
+              <span>Lanes</span>
+              <strong id="rfx-metric-lanes">0</strong>
+            </article>
+            <article>
+              <span>Invitations</span>
+              <strong id="rfx-metric-invites">0</strong>
+            </article>
+            <article>
+              <span>Bids</span>
+              <strong id="rfx-metric-bids">0</strong>
+            </article>
+          </section>
+
+          <section class="workspace-panel">
+            <div class="split-heading">
+              <div>
+                <p class="eyebrow">Create event</p>
+                <h2>RFx / Spot Book setup</h2>
+              </div>
+              <button id="refresh-rfx-events" class="secondary" type="button">Refresh</button>
+            </div>
+            <form id="rfx-event-form" class="rfx-event-form">
+              <label>
+                RFx ID
+                <input id="rfx-id" required placeholder="RFx-04302602" />
+              </label>
+              <label>
+                Name
+                <input id="rfx-name" required placeholder="Apodaca NL to Dallas TX spot book" />
+              </label>
+              <label>
+                Customer
+                <input id="rfx-customer" placeholder="Customer / shipper" />
+              </label>
+              <label>
+                Type
+                <select id="rfx-type">
+                  <option value="spot">Spot</option>
+                  <option value="rfx">RFx</option>
+                  <option value="bid">Bid</option>
+                </select>
+              </label>
+              <label>
+                Due date
+                <input id="rfx-due-date" type="date" />
+              </label>
+              <button type="submit">Create event</button>
+            </form>
+            <p id="rfx-event-status" class="status-message" role="status"></p>
+          </section>
+
+          <section class="rfx-workspace">
+            <aside class="workspace-panel rfx-event-list-panel">
+              <div class="section-heading compact">
+                <p class="eyebrow">Events</p>
+                <h2>Active books</h2>
+              </div>
+              <div id="rfx-event-list" class="rfx-event-list">
+                <article>Loading RFx events...</article>
+              </div>
+            </aside>
+
+            <section class="workspace-panel rfx-detail-panel">
+              <div class="split-heading">
+                <div>
+                  <p class="eyebrow">Selected event</p>
+                  <h2 id="rfx-detail-title">Select or create an event</h2>
+                </div>
+                <div class="action-row">
+                  <button id="open-rfx-button" class="secondary small-button" type="button" disabled>Mark open</button>
+                  <button id="close-rfx-button" class="secondary small-button" type="button" disabled>Close</button>
+                </div>
+              </div>
+
+              <section class="rfx-import-box">
+                <div>
+                  <p class="eyebrow">Lane upload</p>
+                  <h3>Paste lanes from Excel or CSV</h3>
+                </div>
+                <textarea id="rfx-lane-paste" rows="7" placeholder="origin,destination,equipment,trailer,operation,service,weekly_volume,target_rate,currency&#10;Apodaca, NL,Dallas, TX,Truck Trailer,Flatbed,D2D Export,One Way,10,2900,USD"></textarea>
+                <div class="action-row">
+                  <button id="import-rfx-lanes-button" type="button" disabled>Import lanes</button>
+                  <button id="clear-rfx-lanes-input" class="secondary" type="button">Clear</button>
+                  <span id="rfx-lane-import-status" class="status-message" role="status"></span>
+                </div>
+              </section>
+
+              <section class="rfx-shortlist-box">
+                <div>
+                  <p class="eyebrow">Manual shortlist</p>
+                  <h3>Add vendors to a lane</h3>
+                </div>
+                <label>
+                  Lane
+                  <select id="manual-shortlist-lane"></select>
+                </label>
+                <label>
+                  Vendor search
+                  <input id="manual-shortlist-search" placeholder="Carrier, domain, email, coverage..." />
+                </label>
+                <label>
+                  Vendors
+                  <select id="manual-shortlist-vendors" multiple size="5"></select>
+                </label>
+                <button id="manual-shortlist-button" class="secondary" type="button" disabled>Add vendors</button>
+                <p id="manual-shortlist-status" class="status-message" role="status"></p>
+              </section>
+
+              <div class="bulk-action-bar">
+                <span id="rfx-selection-count">0 selected</span>
+                <button id="auto-shortlist-selected" class="small-button" type="button" disabled>Auto shortlist</button>
+                <button id="invite-selected-rfx" class="secondary small-button" type="button" disabled>Invite selected vendors</button>
+                <button id="archive-selected-rfx" class="secondary small-button" type="button" disabled>Archive selected</button>
+                <span id="rfx-action-status" class="row-save-status"></span>
+              </div>
+
+              <div class="table-wrap">
+                <table class="rfx-table">
+                  <thead>
+                    <tr>
+                      <th>Select</th>
+                      <th>Lane</th>
+                      <th>Origin</th>
+                      <th>Destination</th>
+                      <th>Equipment</th>
+                      <th>Volume</th>
+                      <th>Benchmark</th>
+                      <th>Shortlist / bids</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody id="rfx-lanes-body">
+                    <tr>
+                      <td colspan="9">Select an event to load lanes.</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          </section>
+        </main>
+      </div>
+    </div>
+
+    <script type="module" src="./src/rfx-events.js"></script>
+  </body>
+</html>

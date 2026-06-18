@@ -11,6 +11,7 @@ const signalArchived = document.querySelector("#signal-archived");
 const signalFailed = document.querySelector("#signal-failed");
 const workflowSourcing = document.querySelector("#workflow-sourcing");
 const workflowProcurement = document.querySelector("#workflow-procurement");
+const workflowRfx = document.querySelector("#workflow-rfx");
 const workflowUploads = document.querySelector("#workflow-uploads");
 const workflowStaging = document.querySelector("#workflow-staging");
 const workflowRateware = document.querySelector("#workflow-rateware");
@@ -62,6 +63,14 @@ function priorityItems(summary) {
       detail: "Approve clean rows or correct missing rate/location issues before they enter Rateware.",
       href: "./staging-review.html",
       action: "Open staging"
+    },
+    {
+      tone: "neutral",
+      count: numberValue(summary.rfx_open_events),
+      title: "Manage open RFx events",
+      detail: "Review spot books, shortlists, invitations, and submitted bids.",
+      href: "./rfx-events.html",
+      action: "Open RFx"
     },
     {
       tone: "neutral",
@@ -149,6 +158,8 @@ function renderPipelineHealth(summary) {
   const rawUploads = numberValue(summary.raw_uploads);
   const procurementVendors = numberValue(summary.procurement_vendors);
   const sourcingVendors = numberValue(summary.sourcing_vendors);
+  const rfxEvents = numberValue(summary.rfx_events);
+  const openRfxEvents = numberValue(summary.rfx_open_events);
 
   const steps = [
     {
@@ -164,6 +175,13 @@ function renderPipelineHealth(summary) {
       issueCount: 0,
       detail: "Target carriers curated for sourcing events and quote matching.",
       href: "./vendors.html"
+    },
+    {
+      title: "RFx events",
+      count: rfxEvents,
+      issueCount: 0,
+      detail: openRfxEvents > 0 ? `${formatCount(openRfxEvents)} open event(s) collecting bids.` : "Spot books, shortlists, invitations, and bid portal.",
+      href: "./rfx-events.html"
     },
     {
       title: "Source archive",
@@ -244,6 +262,7 @@ async function loadDashboard() {
     setMetric(metricApproved, summary.approved_rows);
     setText(workflowSourcing, `${new Intl.NumberFormat().format(Number(summary.sourcing_vendors || 0))} vendors sourced`);
     setText(workflowProcurement, `${new Intl.NumberFormat().format(Number(summary.procurement_vendors || 0))} target carriers`);
+    setText(workflowRfx, `${new Intl.NumberFormat().format(Number(summary.rfx_events || 0))} RFx events`);
     setText(workflowUploads, `${new Intl.NumberFormat().format(Number(summary.raw_uploads || 0))} source files`);
     setText(workflowStaging, `${new Intl.NumberFormat().format(Number(summary.pending_review || 0))} pending review`);
     setText(workflowRateware, `${new Intl.NumberFormat().format(Number(summary.approved_rows || 0))} approved rows`);
