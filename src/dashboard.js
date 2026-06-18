@@ -16,6 +16,7 @@ const workflowOutreach = document.querySelector("#workflow-outreach");
 const workflowUploads = document.querySelector("#workflow-uploads");
 const workflowStaging = document.querySelector("#workflow-staging");
 const workflowRateware = document.querySelector("#workflow-rateware");
+const workflowSettings = document.querySelector("#workflow-settings");
 const diagnostics = document.querySelector("#access-diagnostics");
 const syncCatalogButton = document.querySelector("#sync-catalog-button");
 const catalogSyncStatus = document.querySelector("#catalog-sync-status");
@@ -284,6 +285,7 @@ async function loadDashboard() {
     setText(workflowUploads, `${new Intl.NumberFormat().format(Number(summary.raw_uploads || 0))} source files`);
     setText(workflowStaging, `${new Intl.NumberFormat().format(Number(summary.pending_review || 0))} pending review`);
     setText(workflowRateware, `${new Intl.NumberFormat().format(Number(summary.approved_rows || 0))} approved rows`);
+    setText(workflowSettings, "Full access and audit trail");
     setText(signalUploads, `${new Intl.NumberFormat().format(Number(summary.raw_uploads || 0))} source files`);
     setText(signalArchived, `${new Intl.NumberFormat().format(Number(summary.archived_vendors || 0))} archived vendors`);
     setText(signalFailed, `${new Intl.NumberFormat().format(Number(summary.failed_uploads || 0))} failed uploads`);

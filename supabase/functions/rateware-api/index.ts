@@ -74,6 +74,26 @@ function withOwner(row: Record<string, unknown>, user: { owner_user_id: string |
   };
 }
 
+async function writeAuditLog(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_user_id: string | null; owner_email: string | null },
+  action: string,
+  entityType: string,
+  entityId: unknown,
+  summary: string,
+  metadata: Record<string, unknown> = {}
+) {
+  const result = await supabase.from("saas_audit_log").insert(withOwner({
+    actor_email: user.owner_email,
+    action,
+    entity_type: entityType,
+    entity_id: cleanText(entityId),
+    summary,
+    metadata
+  }, user));
+  if (result.error) throw result.error;
+}
+
 function cleanText(value: unknown) {
   if (value === null || value === undefined) return null;
   const text = String(value).trim();
@@ -2542,6 +2562,185 @@ async function requireOwnedOutreachCampaign(supabase: ReturnType<typeof createCl
   return result.data;
 }
 
+function normalizeSaasProfile(input: Record<string, unknown>) {
+  const accessMode = cleanText(input.access_mode)?.toLowerCase() || "full_access";
+  return {
+    full_name: cleanText(input.full_name || input.name),
+    job_title: cleanText(input.job_title || input.title),
+    phone: cleanText(input.phone),
+    timezone: cleanText(input.timezone) || "America/Mexico_City",
+    preferred_language: cleanText(input.preferred_language || input.language) || "en",
+    access_mode: ["full_access", "roles_later"].includes(accessMode) ? accessMode : "full_access",
+    avatar_url: cleanText(input.avatar_url),
+    updated_at: new Date().toISOString()
+  };
+}
+
+function normalizeOrganization(input: Record<string, unknown>) {
+  return {
+    org_name: cleanText(input.org_name || input.name) || "Rateware workspace",
+    workspace_slug: cleanText(input.workspace_slug || input.slug),
+    website: cleanText(input.website),
+    industry: cleanText(input.industry) || "freight procurement",
+    timezone: cleanText(input.timezone) || "America/Mexico_City",
+    billing_email: cleanText(input.billing_email),
+    notes: cleanText(input.notes),
+    updated_at: new Date().toISOString()
+  };
+}
+
+async function ensureSaasProfile(supabase: ReturnType<typeof createClient>, user: { owner_user_id: string | null; owner_email: string | null }) {
+  const existing = await supabase
+    .from("user_profiles")
+    .select("*")
+    .eq("owner_email", user.owner_email)
+    .maybeSingle();
+  if (existing.error) throw existing.error;
+  if (existing.data) return existing.data;
+
+  const result = await supabase
+    .from("user_profiles")
+    .insert(withOwner({
+      owner_email: user.owner_email,
+      full_name: user.owner_email,
+      access_mode: "full_access"
+    }, user))
+    .select()
+    .single();
+  if (result.error) throw result.error;
+  return result.data;
+}
+
+async function ensureOrganization(supabase: ReturnType<typeof createClient>, user: { owner_user_id: string | null; owner_email: string | null }) {
+  const existing = await supabase
+    .from("organizations")
+    .select("*")
+    .eq("owner_email", user.owner_email)
+    .maybeSingle();
+  if (existing.error) throw existing.error;
+  if (existing.data) return existing.data;
+
+  const defaultName = user.owner_email?.includes("@")
+    ? `${user.owner_email.split("@").pop()?.split(".")[0] || "Rateware"} workspace`
+    : "Rateware workspace";
+  const result = await supabase
+    .from("organizations")
+    .insert(withOwner({
+      org_name: defaultName,
+      billing_email: user.owner_email
+    }, user))
+    .select()
+    .single();
+  if (result.error) throw result.error;
+  return result.data;
+}
+
+function onboardingDefinition(summary: Record<string, unknown>, profile: Record<string, unknown>, organization: Record<string, unknown>, manual: Map<string, Record<string, unknown>>) {
+  const definitions = [
+    {
+      key: "profile",
+      label: "Complete user profile",
+      detail: "Name, role, timezone, and contact data are configured.",
+      done: Boolean(profile.full_name && profile.job_title)
+    },
+    {
+      key: "organization",
+      label: "Set organization profile",
+      detail: "Workspace name, industry, website, and billing contact are set.",
+      done: Boolean(organization.org_name && organization.billing_email)
+    },
+    {
+      key: "vendors",
+      label: "Load vendor base",
+      detail: "Sourcing or procurement carriers exist in the workspace.",
+      done: Number(summary.vendors || 0) > 0
+    },
+    {
+      key: "rfx",
+      label: "Create first RFx event",
+      detail: "Spot book or RFx lane book has been created.",
+      done: Number(summary.rfx_events || 0) > 0
+    },
+    {
+      key: "outreach",
+      label: "Generate carrier outreach",
+      detail: "At least one Gmail or WhatsApp draft has been generated.",
+      done: Number(summary.outreach_messages || 0) > 0
+    },
+    {
+      key: "uploads",
+      label: "Upload source evidence",
+      detail: "Quotes, PDFs, images, emails, or spreadsheets are preserved.",
+      done: Number(summary.raw_uploads || 0) > 0
+    },
+    {
+      key: "rateware",
+      label: "Approve first Rateware row",
+      detail: "Human-approved rows are available in the final rate book.",
+      done: Number(summary.approved_rows || 0) > 0
+    },
+    {
+      key: "settings_reviewed",
+      label: "Review SaaS controls",
+      detail: "Confirm full access mode, audit visibility, and next role plan.",
+      done: Boolean(manual.get("settings_reviewed")?.completed)
+    }
+  ];
+
+  return definitions.map((item) => {
+    const manualRow = manual.get(item.key);
+    const completed = Boolean(item.done || manualRow?.completed);
+    return {
+      ...item,
+      completed,
+      completed_at: manualRow?.completed_at || (completed && item.done ? new Date().toISOString() : null),
+      manual: Boolean(manualRow?.completed)
+    };
+  });
+}
+
+async function buildSaasSettings(supabase: ReturnType<typeof createClient>, user: { owner_user_id: string | null; owner_email: string | null }) {
+  const [profile, organization, checklistResult, auditResult, uploads, vendors, pending, approved, rfxEvents, outreachMessages] = await Promise.all([
+    ensureSaasProfile(supabase, user),
+    ensureOrganization(supabase, user),
+    supabase.from("onboarding_checklist").select("*").eq("owner_email", user.owner_email),
+    supabase.from("saas_audit_log").select("*").eq("owner_email", user.owner_email).order("created_at", { ascending: false }).limit(80),
+    supabase.from("raw_uploads").select("id", { count: "exact", head: true }).neq("status", "archived"),
+    supabase.from("vendors").select("id", { count: "exact", head: true }).eq("owner_email", user.owner_email),
+    supabase.from("rate_staging").select("id", { count: "exact", head: true }).eq("status", "pending_review"),
+    supabase.from("rate_staging").select("id", { count: "exact", head: true }).eq("status", "approved"),
+    supabase.from("rfx_events").select("id", { count: "exact", head: true }).eq("owner_email", user.owner_email).neq("status", "archived"),
+    supabase.from("outreach_messages").select("id", { count: "exact", head: true }).eq("owner_email", user.owner_email).neq("status", "archived")
+  ]);
+
+  for (const result of [checklistResult, auditResult, uploads, vendors, pending, approved, rfxEvents, outreachMessages]) {
+    if (result.error) throw result.error;
+  }
+
+  const summary = {
+    raw_uploads: uploads.count || 0,
+    vendors: vendors.count || 0,
+    pending_review: pending.count || 0,
+    approved_rows: approved.count || 0,
+    rfx_events: rfxEvents.count || 0,
+    outreach_messages: outreachMessages.count || 0
+  };
+  const manual = new Map((checklistResult.data || []).map((row) => [row.task_key, row]));
+  const onboarding = onboardingDefinition(summary, profile, organization, manual);
+  return {
+    profile,
+    organization,
+    access: {
+      mode: "full_access",
+      label: "Full access enabled",
+      detail: "All authenticated users can use every Rateware module. Roles can be added later without blocking the current MVP."
+    },
+    summary,
+    onboarding,
+    audit: auditResult.data || []
+  };
+}
+
 function buildRowKeys(row: Record<string, unknown>) {
   const routeParts = [
     row.origin,
@@ -3650,6 +3849,82 @@ Deno.serve(async (request) => {
       if (body.vendor_id) query = query.eq("vendor_id", body.vendor_id);
       if (body.campaign_id) query = query.eq("campaign_id", body.campaign_id);
       if (body.rfx_event_id) query = query.eq("rfx_event_id", body.rfx_event_id);
+      const result = await query;
+      if (result.error) throw result.error;
+      return jsonResponse({ rows: result.data || [] });
+    }
+
+    if (body.action === "get_saas_settings") {
+      const settings = await buildSaasSettings(supabase, user);
+      return jsonResponse(settings);
+    }
+
+    if (body.action === "update_saas_profile") {
+      const patch = normalizeSaasProfile(body.profile || body.patch || {});
+      const current = await ensureSaasProfile(supabase, user);
+      const result = await supabase
+        .from("user_profiles")
+        .update(patch)
+        .eq("owner_email", user.owner_email)
+        .select()
+        .single();
+      if (result.error) throw result.error;
+      await writeAuditLog(supabase, user, "settings.profile.update", "user_profile", current.id, "Updated user profile", { changed_fields: Object.keys(patch) });
+      return jsonResponse({ profile: result.data });
+    }
+
+    if (body.action === "update_saas_organization") {
+      const patch = normalizeOrganization(body.organization || body.patch || {});
+      const current = await ensureOrganization(supabase, user);
+      const result = await supabase
+        .from("organizations")
+        .update(patch)
+        .eq("owner_email", user.owner_email)
+        .select()
+        .single();
+      if (result.error) throw result.error;
+      await writeAuditLog(supabase, user, "settings.organization.update", "organization", current.id, "Updated organization profile", { changed_fields: Object.keys(patch) });
+      return jsonResponse({ organization: result.data });
+    }
+
+    if (body.action === "update_onboarding_task") {
+      const taskKey = cleanText(body.task_key);
+      if (!taskKey) return jsonResponse({ error: "Onboarding task key is required." }, 400);
+      const completed = body.completed === undefined ? true : cleanBoolean(body.completed);
+      const row = withOwner({
+        task_key: taskKey,
+        completed,
+        completed_at: completed ? new Date().toISOString() : null,
+        notes: cleanText(body.notes),
+        updated_at: new Date().toISOString()
+      }, user);
+      const result = await supabase
+        .from("onboarding_checklist")
+        .upsert(row, { onConflict: "owner_email,task_key" })
+        .select()
+        .single();
+      if (result.error) throw result.error;
+      await writeAuditLog(
+        supabase,
+        user,
+        completed ? "onboarding.task.complete" : "onboarding.task.reopen",
+        "onboarding_task",
+        taskKey,
+        `${completed ? "Completed" : "Reopened"} onboarding task ${taskKey}`,
+        { task_key: taskKey }
+      );
+      const settings = await buildSaasSettings(supabase, user);
+      return jsonResponse({ row: result.data, onboarding: settings.onboarding, audit: settings.audit });
+    }
+
+    if (body.action === "list_saas_audit_log") {
+      let query = supabase
+        .from("saas_audit_log")
+        .select("*")
+        .eq("owner_email", user.owner_email)
+        .order("created_at", { ascending: false })
+        .limit(Math.min(Math.max(Number(body.limit) || 100, 1), 300));
+      if (body.action_filter) query = query.eq("action", body.action_filter);
       const result = await query;
       if (result.error) throw result.error;
       return jsonResponse({ rows: result.data || [] });

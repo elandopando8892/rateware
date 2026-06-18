@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Rateware Settings</title>
+    <link rel="stylesheet" href="./src/styles.css" />
+  </head>
+  <body>
+    <div class="shell-layout">
+      <aside class="side-nav" aria-label="Rateware modules">
+        <a class="brand-mark" href="./app.html">Rateware</a>
+        <nav>
+          <a href="./app.html">Dashboard</a>
+          <a href="./business-intelligence.html">Business Intelligence</a>
+          <a href="./upload-center.html">Upload Center</a>
+          <a href="./upload-history.html">Upload History</a>
+          <a href="./staging-review.html">Staging Review</a>
+          <a href="./rateware.html">Rateware</a>
+          <a href="./vendors.html">Vendors</a>
+          <a href="./rfx-events.html">RFx Events</a>
+          <a href="./outreach.html">Outreach</a>
+          <a aria-current="page" href="./settings.html">Settings</a>
+        </nav>
+      </aside>
+
+      <div class="page-frame">
+        <header class="page-header">
+          <div>
+            <p class="eyebrow">Admin and SaaS control</p>
+            <h1>Settings</h1>
+            <nav class="module-crumbs" aria-label="Module context">
+              <a href="./app.html">Command Center</a>
+              <span>Settings</span>
+            </nav>
+          </div>
+          <form id="auth-form" class="auth-strip">
+            <button id="auth-button" type="submit">Sign in with Kinde</button>
+            <button id="sign-out-button" type="button" class="secondary hidden">Sign out</button>
+            <p id="auth-status" role="status"></p>
+          </form>
+        </header>
+
+        <main class="settings-layout">
+          <section class="review-insight-grid" aria-label="SaaS control summary">
+            <article><span>Access mode</span><strong id="settings-access-mode">Full</strong></article>
+            <article><span>Onboarding</span><strong id="settings-onboarding-score">0%</strong></article>
+            <article><span>Audit events</span><strong id="settings-audit-count">0</strong></article>
+            <article><span>Workspace</span><strong id="settings-workspace-name">-</strong></article>
+          </section>
+
+          <section class="settings-grid">
+            <section class="workspace-panel">
+              <div class="section-heading compact">
+                <p class="eyebrow">Access model</p>
+                <h2>Full access now</h2>
+              </div>
+              <div id="settings-access-card" class="settings-access-card">
+                <strong>Full access enabled</strong>
+                <p>All authenticated users can use every Rateware module. Role-based control stays parked until the workflow is stable.</p>
+              </div>
+              <dl id="settings-session" class="diagnostic-list">
+                <div><dt>User</dt><dd>-</dd></div>
+                <div><dt>Mode</dt><dd>Full access</dd></div>
+                <div><dt>Roles</dt><dd>Disabled for MVP</dd></div>
+              </dl>
+            </section>
+
+            <section class="workspace-panel">
+              <div class="section-heading compact">
+                <p class="eyebrow">User profile</p>
+                <h2>Operator details</h2>
+              </div>
+              <form id="profile-form" class="settings-form">
+                <label>Full name <input id="profile-full-name" placeholder="Name" /></label>
+                <label>Job title <input id="profile-job-title" placeholder="Procurement lead" /></label>
+                <label>Phone <input id="profile-phone" placeholder="+52..." /></label>
+                <label>Timezone <input id="profile-timezone" placeholder="America/Mexico_City" /></label>
+                <label>Language <input id="profile-language" placeholder="en" /></label>
+                <button type="submit">Save profile</button>
+              </form>
+              <p id="profile-status" class="status-message" role="status"></p>
+            </section>
+
+            <section class="workspace-panel">
+              <div class="section-heading compact">
+                <p class="eyebrow">Organization</p>
+                <h2>Workspace profile</h2>
+              </div>
+              <form id="organization-form" class="settings-form">
+                <label>Workspace name <input id="org-name" placeholder="Marksman XBF" /></label>
+                <label>Slug <input id="org-slug" placeholder="marksman-xbf" /></label>
+                <label>Website <input id="org-website" placeholder="https://..." /></label>
+                <label>Industry <input id="org-industry" placeholder="Freight procurement" /></label>
+                <label>Billing email <input id="org-billing-email" type="email" placeholder="billing@company.com" /></label>
+                <label class="wide-field">Notes <textarea id="org-notes" rows="3" placeholder="Internal setup notes"></textarea></label>
+                <button type="submit">Save organization</button>
+              </form>
+              <p id="organization-status" class="status-message" role="status"></p>
+            </section>
+
+            <section class="workspace-panel">
+              <div class="section-heading compact">
+                <p class="eyebrow">Onboarding</p>
+                <h2>Launch checklist</h2>
+              </div>
+              <div id="onboarding-list" class="onboarding-list">
+                <article>Loading onboarding checklist...</article>
+              </div>
+            </section>
+          </section>
+
+          <section class="workspace-panel">
+            <div class="split-heading">
+              <div>
+                <p class="eyebrow">Audit log</p>
+                <h2>Workspace activity</h2>
+              </div>
+              <button id="refresh-settings-button" type="button" class="secondary">Refresh</button>
+            </div>
+            <div class="table-wrap">
+              <table class="settings-audit-table">
+                <thead>
+                  <tr>
+                    <th>Time</th>
+                    <th>Actor</th>
+                    <th>Action</th>
+                    <th>Entity</th>
+                    <th>Summary</th>
+                  </tr>
+                </thead>
+                <tbody id="audit-log-body">
+                  <tr><td colspan="5">Loading audit log...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </main>
+      </div>
+    </div>
+
+    <script type="module" src="./src/settings.js"></script>
+  </body>
+</html>
