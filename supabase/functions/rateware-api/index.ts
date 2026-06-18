@@ -419,7 +419,8 @@ function arrayValues(value: unknown) {
 }
 
 function extractRecommendationLimit(prompt: string) {
-  const explicit = prompt.match(/\b(\d{1,3})\b/)?.[1];
+  const withoutPercentages = prompt.replace(/\b\d{1,3}\s*%/g, "");
+  const explicit = withoutPercentages.match(/\b(\d{1,3})\b/)?.[1];
   if (!explicit) return 30;
   return Math.min(Math.max(Number(explicit) || 30, 1), 100);
 }
@@ -428,18 +429,22 @@ function carrierIntelligenceIntent(prompt: string) {
   const text = prompt.toLowerCase();
   const focus: string[] = [];
   const crossborder = /\b(cross.?border|crossborder|frontera|border|laredo|usa|us|u\.s\.|canada|canadian|ca)\b/i.test(text);
+  const d2d = /\b(d2d|door.?to.?door|puerta.?a.?puerta|import|export|importacion|exportacion)\b/i.test(text);
+  const pareto = /\b(80\/20|20\/80|pareto|80%|20%)\b/i.test(text) || /\b20\s*%.*80\s*%|\b80\s*%.*20\s*%/i.test(text);
   const mexico = /\b(mexican|mexicano|mexicana|mexico|mx|nacional|domestico|domestic|monterrey|nuevo leon|nl|bajio|norte|centro)\b/i.test(text);
   const addTargets = /\b(alta|dar de alta|onboard|registrar|prospect|target|objetivo|procurement)\b/i.test(text);
   const hazmat = /\b(hazmat|hazard|hazardous|peligroso|quimico)\b/i.test(text);
   const reefer = /\b(reefer|refrigerado|temperature|temperatura|temp)\b/i.test(text);
   const flatbed = /\b(flatbed|plana|plataforma)\b/i.test(text);
+  if (pareto) focus.push("pareto");
   if (crossborder) focus.push("cross-border");
+  if (d2d) focus.push("d2d-import-export");
   if (mexico) focus.push("mexico");
   if (addTargets) focus.push("procurement-targets");
   if (hazmat) focus.push("hazmat");
   if (reefer) focus.push("reefer");
   if (flatbed) focus.push("flatbed");
-  return { crossborder, mexico, addTargets, hazmat, reefer, flatbed, focus: focus.length ? focus : ["general carrier fit"] };
+  return { crossborder, d2d, pareto, mexico, addTargets, hazmat, reefer, flatbed, focus: focus.length ? focus : ["general carrier fit"] };
 }
 
 function rateText(row: Record<string, unknown>) {
@@ -466,6 +471,13 @@ function isCrossBorderRate(row: Record<string, unknown>) {
   const countries = [catalogKey(row.origin_country), catalogKey(row.destination_country)].filter(Boolean);
   return textIncludesAny(text, ["cross-border", "crossborder", "d2d import", "d2d export", "laredo", "nuevo laredo"]) ||
     (countries.includes("MX") && (countries.includes("US") || countries.includes("USA") || countries.includes("CA") || countries.includes("CANADA")));
+}
+
+function isD2dImportExportRate(row: Record<string, unknown>) {
+  const operation = catalogKey(row.operation);
+  const text = catalogKey(rateText(row));
+  return isCrossBorderRate(row) &&
+    (operation.includes("D2D EXPORT") || operation.includes("D2D IMPORT") || text.includes("D2D EXPORT") || text.includes("D2D IMPORT"));
 }
 
 function isMexicoRate(row: Record<string, unknown>) {
@@ -500,6 +512,7 @@ function createVendorMetrics(vendor: Record<string, unknown>, rates: Record<stri
   });
   const approvedRates = linkedRates.filter((row) => row.status === "approved");
   const crossborderRates = linkedRates.filter(isCrossBorderRate);
+  const d2dImportExportRates = linkedRates.filter(isD2dImportExportRate);
   const mexicoRates = linkedRates.filter(isMexicoRate);
   const rateAmounts = linkedRates.map((row) => numericAmount(row.all_in_rate)).filter((value): value is number => typeof value === "number" && Number.isFinite(value));
   const marketSet = new Set<string>();
@@ -521,6 +534,7 @@ function createVendorMetrics(vendor: Record<string, unknown>, rates: Record<stri
     approved_rates: approvedRates.length,
     pending_rates: linkedRates.filter((row) => row.status === "pending_review").length,
     crossborder_rates: crossborderRates.length,
+    d2d_import_export_rates: d2dImportExportRates.length,
     mexico_rates: mexicoRates.length,
     avg_all_in_rate: rateAmounts.length ? Math.round(rateAmounts.reduce((sum, value) => sum + value, 0) / rateAmounts.length) : null,
     markets: [...marketSet].slice(0, 8),
@@ -574,6 +588,7 @@ function scoreCarrierFit(vendor: Record<string, unknown>, metrics: Record<string
   const linkedRates = Number(metrics.linked_rates || 0);
   const approvedRates = Number(metrics.approved_rates || 0);
   const crossborderRates = Number(metrics.crossborder_rates || 0);
+  const d2dImportExportRates = Number(metrics.d2d_import_export_rates || 0);
   const mexicoRates = Number(metrics.mexico_rates || 0);
   if (approvedRates) {
     score += Math.min(24, approvedRates * 4);
@@ -593,6 +608,16 @@ function scoreCarrierFit(vendor: Record<string, unknown>, metrics: Record<string
     } else {
       score -= 18;
       gaps.push("No clear cross-border coverage signal");
+    }
+  }
+
+  if (intent.d2d) {
+    if (d2dImportExportRates) {
+      score += Math.min(25, d2dImportExportRates * 6);
+      evidence.push(`${d2dImportExportRates} D2D Import/Export quote transaction(s)`);
+    } else {
+      score -= 16;
+      gaps.push("No D2D Import/Export quote transactions");
     }
   }
 
@@ -626,10 +651,22 @@ function scoreCarrierFit(vendor: Record<string, unknown>, metrics: Record<string
   };
 }
 
+function paretoCoverageTarget(prompt: string) {
+  const explicit = prompt.match(/\b(\d{1,3})\s*%/g)?.map((value) => Number(value.replace(/\D/g, ""))) || [];
+  const highPercent = explicit.find((value) => value >= 50 && value <= 100);
+  return (highPercent || 80) / 100;
+}
+
+function paretoCarrierShare(prompt: string) {
+  const explicit = prompt.match(/\b(\d{1,3})\s*%/g)?.map((value) => Number(value.replace(/\D/g, ""))) || [];
+  const lowPercent = explicit.find((value) => value > 0 && value < 50);
+  return (lowPercent || 20) / 100;
+}
+
 function deterministicCarrierRecommendations(prompt: string, vendors: Record<string, unknown>[], rates: Record<string, unknown>[]) {
   const intent = carrierIntelligenceIntent(prompt);
-  const limit = extractRecommendationLimit(prompt);
-  const recommendations = vendors
+  const limit = intent.pareto ? 100 : extractRecommendationLimit(prompt);
+  const scoredRecommendations = vendors
     .map((vendor) => {
       const metrics = createVendorMetrics(vendor, rates);
       const fit = scoreCarrierFit(vendor, metrics, intent);
@@ -654,24 +691,74 @@ function deterministicCarrierRecommendations(prompt: string, vendors: Record<str
         metrics
       };
     })
-    .filter((item) => item.fit_score > 0)
-    .sort((a, b) => b.fit_score - a.fit_score || String(a.vendor_name).localeCompare(String(b.vendor_name)))
+    .filter((item) => item.fit_score > 0);
+
+  let scopedRecommendations = scoredRecommendations;
+  let dataScope = "User-scoped vendors, sourcing/procurement stages, linked staging rows, and approved Rateware rows.";
+  let answerPrefix = `I found carrier recommendation(s) from your vendor and Rateware data.`;
+
+  if (intent.pareto) {
+    const transactionMetric = intent.crossborder || intent.d2d ? "d2d_import_export_rates" : "linked_rates";
+    const paretoCandidates = scoredRecommendations
+      .filter((item) => Number(item.metrics?.[transactionMetric] || 0) > 0)
+      .sort((a, b) => Number(b.metrics?.[transactionMetric] || 0) - Number(a.metrics?.[transactionMetric] || 0) || b.fit_score - a.fit_score);
+    const totalTransactions = paretoCandidates.reduce((sum, item) => sum + Number(item.metrics?.[transactionMetric] || 0), 0);
+    const coverageTarget = paretoCoverageTarget(prompt);
+    const carrierShare = paretoCarrierShare(prompt);
+    const carrierLimit = Math.max(1, Math.ceil(paretoCandidates.length * carrierShare));
+    let accumulated = 0;
+    const selected: typeof paretoCandidates = [];
+
+    for (const item of paretoCandidates) {
+      if (selected.length >= Math.max(carrierLimit, limit)) break;
+      const transactions = Number(item.metrics?.[transactionMetric] || 0);
+      accumulated += transactions;
+      const transactionShare = totalTransactions ? transactions / totalTransactions : 0;
+      const cumulativeShare = totalTransactions ? accumulated / totalTransactions : 0;
+      selected.push({
+        ...item,
+        fit_score: Math.max(item.fit_score, Math.round(transactionShare * 100)),
+        why: `${transactions} quoted transaction(s); ${(cumulativeShare * 100).toFixed(1)}% cumulative coverage`,
+        evidence: [
+          `${transactions} ${intent.crossborder || intent.d2d ? "D2D Import/Export" : "linked"} quoted transaction(s)`,
+          `${(transactionShare * 100).toFixed(1)}% individual transaction share`,
+          `${(cumulativeShare * 100).toFixed(1)}% cumulative transaction coverage`,
+          ...(item.evidence || [])
+        ].slice(0, 6),
+        recommended_action: cumulativeShare <= coverageTarget
+          ? "Core Pareto carrier. Prioritize for Procurement Base and RFx invitations."
+          : item.recommended_action
+      });
+      if (cumulativeShare >= coverageTarget && selected.length >= carrierLimit) break;
+    }
+
+    scopedRecommendations = selected;
+    dataScope = `Pareto analysis on ${intent.crossborder || intent.d2d ? "D2D Import/Export cross-border" : "linked"} quote transactions. Transaction means one linked staging or approved Rateware row.`;
+    answerPrefix = selected.length
+      ? `Pareto cut found ${selected.length} carrier(s) covering approximately ${Math.min(100, (accumulated / Math.max(totalTransactions, 1)) * 100).toFixed(1)}% of quoted transactions.`
+      : "No carriers have enough linked D2D Import/Export quote transactions for Pareto analysis yet.";
+  }
+
+  const recommendations = scopedRecommendations
+    .sort((a, b) => intent.pareto
+      ? Number(b.metrics?.d2d_import_export_rates || b.metrics?.linked_rates || 0) - Number(a.metrics?.d2d_import_export_rates || a.metrics?.linked_rates || 0)
+      : b.fit_score - a.fit_score || String(a.vendor_name).localeCompare(String(b.vendor_name)))
     .slice(0, limit)
     .map((item, index) => ({ ...item, rank: index + 1 }));
 
   return {
     answer: recommendations.length
-      ? `I found ${recommendations.length} carrier recommendation(s) from your vendor and Rateware data.`
+      ? answerPrefix
       : "I could not find matching carriers in your vendor base yet.",
     filters: {
       limit,
       focus: intent.focus,
-      data_scope: "User-scoped vendors, sourcing/procurement stages, linked staging rows, and approved Rateware rows."
+      data_scope: dataScope
     },
     recommendations,
     next_actions: [
-      "Validate missing contacts before sending RFx invitations.",
-      "Promote high-fit sourcing carriers to Procurement Base.",
+      intent.pareto ? "Use this as a transaction concentration view, not a generic carrier quality list." : "Validate missing contacts before sending RFx invitations.",
+      intent.pareto ? "Review carriers outside the Pareto cut for niche lane coverage before excluding them." : "Promote high-fit sourcing carriers to Procurement Base.",
       "Keep uploading carrier quotes so Rateware can learn lane-level coverage from actual submissions."
     ],
     model_status: "deterministic",
@@ -723,6 +810,9 @@ async function requestCarrierIntelligence(prompt: string, fallback: Record<strin
               "Recommend carriers only from the provided user-scoped vendor facts.",
               "Do not invent carriers, emails, domains, certifications, lanes, or rates.",
               "Rank carriers by operational fit, coverage evidence, contact readiness, and Rateware lane signals.",
+              "When deterministic_result.filters.focus includes pareto, preserve the Pareto ordering and explain the result as transaction concentration.",
+              "For Pareto, do not replace transaction-share ranking with generic quality scoring.",
+              "For D2D Import/Export cross-border questions, use d2d_import_export_rates as the primary transaction signal.",
               "If the user asks for carriers to onboard or dar de alta, prioritize strong Sourcing Base candidates, but include Procurement Base carriers when they are clearly relevant.",
               "Use concise Spanish unless the user writes in English."
             ].join("\n")
