@@ -456,6 +456,7 @@ Deno.serve(async (request) => {
     if (body.action === "list_vendors") {
       const limit = Math.min(Math.max(Number(body.limit) || 75, 1), 250);
       const offset = Math.max(Number(body.offset) || 0, 0);
+      const view = cleanText(body.view)?.toLowerCase() || "all";
       let query = supabase
         .from("vendors")
         .select("*", { count: "exact" })
@@ -464,7 +465,23 @@ Deno.serve(async (request) => {
         .range(offset, offset + limit - 1);
 
       if (body.status) query = query.eq("status", body.status);
-      if (body.base_stage) query = query.eq("base_stage", body.base_stage);
+      if (view === "archived") {
+        query = query.eq("base_stage", "archived");
+      } else if (body.base_stage) {
+        query = query.eq("base_stage", body.base_stage);
+      }
+      if (view === "missing-contact") {
+        query = query.is("primary_email", null).is("whatsapp_phone", null);
+      }
+      if (view === "cross-border") {
+        query = query.or("coverage_notes.ilike.%Cross-border%,notes.ilike.%Cross-border%");
+      }
+      if (view === "high-confidence") {
+        query = query.contains("tags", ["alta"]);
+      }
+      if (view === "procurement-ready") {
+        query = query.not("primary_email", "is", null).not("domain", "is", null).not("coverage_notes", "is", null);
+      }
       if (body.search) {
         const term = String(body.search).trim();
         query = query.or(`vendor_name.ilike.%${term}%,domain.ilike.%${term}%,primary_email.ilike.%${term}%`);

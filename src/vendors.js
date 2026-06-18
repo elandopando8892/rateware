@@ -283,12 +283,14 @@ function applyQuickFilter(filter) {
   activeQuickFilter = filter;
   quickFilterButtons.forEach((button) => button.classList.toggle("is-active", button.dataset.quickFilter === filter));
 
+  if (filter !== "duplicates") {
+    vendorPageOffset = 0;
+    loadVendors();
+    return;
+  }
+
   const rows = allVendors.filter((row) => {
-    if (filter === "ready") return isRfxReady(row);
-    if (filter === "missing-contact") return hasMissingContact(row);
     if (filter === "duplicates") return duplicateSignals(row, allVendors).length > 0;
-    if (filter === "whatsapp") return row.whatsapp_phone || row.preferred_channel === "whatsapp";
-    if (filter === "cross-border") return splitTags(row.tags).includes("cross-border") || String(row.coverage_notes || "").toLowerCase().includes("cross-border");
     return true;
   });
 
@@ -490,13 +492,18 @@ async function loadVendors() {
       search: searchInput.value,
       status: statusFilter.value,
       base_stage: activeBaseStage,
+      view: activeQuickFilter,
       limit: vendorPageSize,
       offset: vendorPageOffset
     });
     const rows = result.rows || [];
     vendorTotalCount = result.total ?? rows.length;
     allVendors = rows;
-    applyQuickFilter(activeQuickFilter);
+    if (activeQuickFilter === "duplicates") {
+      applyQuickFilter("duplicates");
+    } else {
+      renderVendors(rows);
+    }
   } catch (error) {
     vendorsBody.innerHTML = `<tr><td colspan="10">Could not load vendors. ${escapeHtml(error.message)}</td></tr>`;
     vendorTotalCount = 0;
@@ -929,7 +936,9 @@ vendorTabs.forEach((button) => {
   button.addEventListener("click", () => activateVendorTab(button.dataset.vendorTab));
 });
 quickFilterButtons.forEach((button) => {
-  button.addEventListener("click", () => applyQuickFilter(button.dataset.quickFilter));
+  button.addEventListener("click", () => {
+    applyQuickFilter(button.dataset.quickFilter);
+  });
 });
 searchInput.addEventListener("input", () => {
   window.clearTimeout(searchInput._timer);
