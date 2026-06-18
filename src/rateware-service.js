@@ -12,6 +12,10 @@ export async function updateApprovedRatewareRow(id, patch) {
   return (await callRatewareApi("update_rateware", { id, patch })).row;
 }
 
+export async function bulkUpdateApprovedRatewareRows(ids = [], patch = {}) {
+  return await callRatewareApi("bulk_update_rateware", { ids, patch });
+}
+
 export async function renormalizeApprovedRatewareRows(ids = []) {
   return await callRatewareApi("renormalize_rate_rows", { ids, status: "approved" });
 }
@@ -26,4 +30,21 @@ export async function enrichApprovedRatewareLocationZips(ids = []) {
 
 export async function returnApprovedRatesToStaging(ids = []) {
   return await callRatewareApi("return_rateware_to_staging", { ids });
+}
+
+export async function fetchRatewareBookVersions() {
+  return (await callRatewareApi("list_rateware_versions")).rows;
+}
+
+export async function fetchRatewareBookVersion(id) {
+  return (await callRatewareApi("get_rateware_version", { id })).version;
+}
+
+export async function createRatewareBookVersion({ ids = [], name = "", description = "", filterSummary = {} } = {}) {
+  return (await callRatewareApi("create_rateware_version", {
+    ids,
+    name,
+    description,
+    filter_summary: filterSummary
+  })).version;
 }

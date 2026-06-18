@@ -2452,6 +2452,103 @@ Deno.serve(async (request) => {
       return jsonResponse({ rows: result.data });
     }
 
+    if (body.action === "bulk_update_rateware") {
+      const ids = Array.isArray(body.ids) ? body.ids.map(String).filter(Boolean).slice(0, 500) : [];
+      if (!ids.length) return jsonResponse({ error: "At least one approved rate id is required." }, 400);
+
+      const currentResult = await supabase
+        .from("rate_staging")
+        .select("id,trailer,hazmat,temperature_controlled,status,vendor_id,vendor_domain")
+        .in("id", ids)
+        .eq("status", "approved")
+        .limit(500);
+      if (currentResult.error) throw currentResult.error;
+
+      const updatedRows: Record<string, unknown>[] = [];
+      for (const current of currentResult.data || []) {
+        const patch = normalizeStagingPatch(body.patch || {}, current || {});
+        Object.assign(patch, await vendorLinkPatch(supabase, user, body.patch || {}, current || {}));
+        delete patch.status;
+        if (!Object.keys(patch).length) continue;
+
+        const result = await supabase
+          .from("rate_staging")
+          .update(patch)
+          .eq("id", current.id)
+          .eq("status", "approved")
+          .select("*, vendors(vendor_name, domain, primary_email, base_stage, status)")
+          .single();
+        if (result.error) throw result.error;
+        updatedRows.push(result.data);
+      }
+
+      return jsonResponse({ updated: updatedRows.length, rows: updatedRows });
+    }
+
+    if (body.action === "list_rateware_versions") {
+      let query = supabase
+        .from("rateware_book_versions")
+        .select("id,created_at,owner_email,name,description,filter_summary,row_count")
+        .order("created_at", { ascending: false })
+        .limit(20);
+      if (user.owner_email) query = query.eq("owner_email", user.owner_email);
+      const result = await query;
+      if (result.error) throw result.error;
+      return jsonResponse({ rows: result.data || [] });
+    }
+
+    if (body.action === "get_rateware_version") {
+      const id = cleanText(body.id);
+      if (!id) return jsonResponse({ error: "Rateware version id is required." }, 400);
+      let query = supabase
+        .from("rateware_book_versions")
+        .select("*")
+        .eq("id", id)
+        .single();
+      const result = await query;
+      if (result.error) throw result.error;
+      if (user.owner_email && result.data?.owner_email !== user.owner_email) {
+        return jsonResponse({ error: "Rateware version not found." }, 404);
+      }
+      return jsonResponse({ version: result.data });
+    }
+
+    if (body.action === "create_rateware_version") {
+      const ids = Array.isArray(body.ids) ? body.ids.map(String).filter(Boolean).slice(0, 1000) : [];
+      let query = supabase
+        .from("rate_staging")
+        .select("*, vendors(vendor_name, domain, primary_email, base_stage, status)")
+        .eq("status", "approved")
+        .order("quote_date", { ascending: false, nullsFirst: false })
+        .order("created_at", { ascending: false })
+        .limit(1000);
+      if (ids.length) query = query.in("id", ids);
+
+      const rowsResult = await query;
+      if (rowsResult.error) throw rowsResult.error;
+      const rows = rowsResult.data || [];
+      if (!rows.length) return jsonResponse({ error: "No approved Rateware rows found for this version." }, 400);
+
+      const name = cleanText(body.name) || `Rateware ${new Date().toISOString().slice(0, 10)}`;
+      const description = cleanText(body.description);
+      const filterSummary = typeof body.filter_summary === "object" && body.filter_summary !== null ? body.filter_summary : {};
+      const version = withOwner({
+        name,
+        description,
+        filter_summary: filterSummary,
+        row_count: rows.length,
+        rows_snapshot: rows
+      }, user);
+
+      const result = await supabase
+        .from("rateware_book_versions")
+        .insert(version)
+        .select("id,created_at,owner_email,name,description,filter_summary,row_count")
+        .single();
+      if (result.error) throw result.error;
+      return jsonResponse({ version: result.data });
+    }
+
     if (body.action === "renormalize_rate_rows") {
       const ids = Array.isArray(body.ids) ? body.ids.map(String).filter(Boolean).slice(0, 500) : [];
       const status = cleanText(body.status);

@@ -1,5 +1,5 @@
 import { initAuthControls, requirePrivatePage } from "./auth.js";
-import { enrichApprovedRatewareLocationZips, matchApprovedRatewareVendors, renormalizeApprovedRatewareRows, fetchApprovedRateware, fetchRatewareOptions, returnApprovedRatesToStaging, updateApprovedRatewareRow } from "./rateware-service.js";
+import { bulkUpdateApprovedRatewareRows, createRatewareBookVersion, enrichApprovedRatewareLocationZips, fetchRatewareBookVersion, fetchRatewareBookVersions, matchApprovedRatewareVendors, renormalizeApprovedRatewareRows, fetchApprovedRateware, fetchRatewareOptions, returnApprovedRatesToStaging, updateApprovedRatewareRow } from "./rateware-service.js";
 import { installSpreadsheetGrid } from "./spreadsheet-grid.js";
 
 const body = document.querySelector("#rateware-body");
@@ -29,6 +29,20 @@ const drawer = document.querySelector("#rateware-drawer");
 const closeDrawerButton = document.querySelector("#close-rateware-drawer");
 const drawerTitle = document.querySelector("#rateware-drawer-title");
 const ratewareDetail = document.querySelector("#rateware-detail");
+const bulkFieldSelect = document.querySelector("#rateware-bulk-field");
+const bulkValueInput = document.querySelector("#rateware-bulk-value");
+const bulkValueOptions = document.querySelector("#rateware-bulk-value-options");
+const applyBulkEditButton = document.querySelector("#apply-rateware-bulk-edit");
+const bulkStatus = document.querySelector("#rateware-bulk-status");
+const compareSelectedButton = document.querySelector("#compare-selected-rateware");
+const compareVisibleButton = document.querySelector("#compare-visible-rateware");
+const comparisonOutput = document.querySelector("#rateware-comparison-output");
+const versionNameInput = document.querySelector("#rateware-version-name");
+const versionNoteInput = document.querySelector("#rateware-version-note");
+const snapshotSelectedButton = document.querySelector("#snapshot-selected-rateware");
+const snapshotVisibleButton = document.querySelector("#snapshot-visible-rateware");
+const versionList = document.querySelector("#rateware-version-list");
+const versionStatus = document.querySelector("#rateware-version-status");
 
 const RATEWARE_COLSPAN = 31;
 let currentRows = [];
@@ -45,6 +59,20 @@ let ratewareOptions = {
 };
 let ratewareOptionsLoaded = false;
 const selectedRowIds = new Set();
+const BULK_EDIT_FIELDS = [
+  { field: "operation", label: "Operation", source: "operation" },
+  { field: "service", label: "Service", source: "service" },
+  { field: "equipment", label: "Equipment", source: "equipment" },
+  { field: "trailer", label: "Trailer", source: "trailer" },
+  { field: "hazmat", label: "Hazmat", type: "boolean" },
+  { field: "temperature_controlled", label: "Temp controlled", type: "boolean" },
+  { field: "config", label: "Config", source: "config" },
+  { field: "currency", label: "Currency", values: ["USD", "MXN", "CAD"] },
+  { field: "weekly_capacity", label: "Weekly capacity" },
+  { field: "mx_border_crossing_point", label: "MX crossing", source: "mx_crossings" },
+  { field: "us_border_crossing_point", label: "US crossing", source: "us_crossings" },
+  { field: "quote_date", label: "Quote date", type: "date" }
+];
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -149,6 +177,46 @@ function renderRatewareDatalists() {
     <datalist id="rateware-region-options">${datalistOptions(uniqueLocationValues("region"))}</datalist>
   `;
   document.body.appendChild(container);
+}
+
+function setInlineStatus(element, message, tone = "neutral") {
+  if (!element) return;
+  element.textContent = message;
+  element.dataset.tone = tone;
+}
+
+function fieldOptionValues(config) {
+  if (config.type === "boolean") return ["yes", "no"];
+  if (Array.isArray(config.values)) return config.values;
+  if (config.source === "mx_crossings") return ratewareOptions.mx_crossings || [];
+  if (config.source === "us_crossings") return ratewareOptions.us_crossings || [];
+  if (config.source) return ratewareOptions.categories?.[config.source] || [];
+  const values = currentRows.map((row) => row[config.field]).filter(Boolean);
+  return Array.from(new Set(values)).sort((a, b) => String(a).localeCompare(String(b)));
+}
+
+function updateBulkValueOptions() {
+  const config = BULK_EDIT_FIELDS.find((item) => item.field === bulkFieldSelect?.value) || BULK_EDIT_FIELDS[0];
+  if (!bulkValueInput || !bulkValueOptions || !config) return;
+  const values = fieldOptionValues(config);
+  bulkValueOptions.innerHTML = values.map((value) => `<option value="${escapeHtml(value)}"></option>`).join("");
+  bulkValueInput.type = config.type === "date" ? "date" : "text";
+  bulkValueInput.placeholder = config.type === "boolean" ? "yes / no" : "Set selected rows...";
+}
+
+function populateBulkEditControls() {
+  if (!bulkFieldSelect) return;
+  const selected = bulkFieldSelect.value || BULK_EDIT_FIELDS[0]?.field;
+  bulkFieldSelect.innerHTML = BULK_EDIT_FIELDS.map((item) => `<option value="${escapeHtml(item.field)}">${escapeHtml(item.label)}</option>`).join("");
+  bulkFieldSelect.value = BULK_EDIT_FIELDS.some((item) => item.field === selected) ? selected : BULK_EDIT_FIELDS[0]?.field;
+  updateBulkValueOptions();
+}
+
+function bulkPatchValue(field, rawValue) {
+  const config = BULK_EDIT_FIELDS.find((item) => item.field === field);
+  const value = String(rawValue ?? "").trim();
+  if (config?.type === "boolean") return ["1", "true", "yes", "y", "x", "si", "sí"].includes(value.toLowerCase());
+  return value;
 }
 
 function lookupKey(value) {
@@ -431,6 +499,7 @@ function renderRows(rows) {
   updateRatewareMetrics(rows);
   populateFilter(operationFilter, rows, "operation");
   populateFilter(serviceFilter, rows, "service");
+  updateBulkValueOptions();
 
   if (!rows.length) {
     body.innerHTML = `<tr><td colspan="${RATEWARE_COLSPAN}"><div class="empty-state"><strong>No approved rates yet</strong><span>Approve staging rows to build the Rateware.</span><a href="./staging-review.html">Open staging review</a></div></td></tr>`;
@@ -541,6 +610,11 @@ function updateBulkControls() {
   returnSelectedButton.disabled = selectedCount === 0;
   if (exportSelectedButton) exportSelectedButton.disabled = selectedCount === 0;
   if (exportVisibleButton) exportVisibleButton.disabled = currentRows.length === 0;
+  if (applyBulkEditButton) applyBulkEditButton.disabled = selectedCount === 0;
+  if (compareSelectedButton) compareSelectedButton.disabled = selectedCount === 0;
+  if (compareVisibleButton) compareVisibleButton.disabled = currentRows.length === 0;
+  if (snapshotSelectedButton) snapshotSelectedButton.disabled = selectedCount === 0;
+  if (snapshotVisibleButton) snapshotVisibleButton.disabled = currentRows.length === 0;
   if (selectAllCheckbox) {
     selectAllCheckbox.checked = selectedCount > 0 && selectedCount === totalRows;
     selectAllCheckbox.indeterminate = selectedCount > 0 && selectedCount < totalRows;
@@ -694,6 +768,224 @@ function exportSelectedCsv() {
   exportRowsCsv(currentRows.filter((row) => ids.has(row.id)), "selected");
 }
 
+function selectedRatewareRows() {
+  const ids = new Set(selectedVisibleIds());
+  return currentRows.filter((row) => ids.has(row.id));
+}
+
+function carrierLabel(row) {
+  return row.vendors?.vendor_name || row.vendor_domain || row.vendors?.domain || "-";
+}
+
+function comparisonKey(row) {
+  return [
+    row.normalized_origin || row.origin || "-",
+    row.normalized_destination || row.destination || "-",
+    row.operation || "-",
+    row.service || "-",
+    row.equipment || "-",
+    row.trailer || "-"
+  ].join(" | ");
+}
+
+function summarizeComparisonRows(rowsToCompare) {
+  const groups = new Map();
+  rowsToCompare.forEach((row) => {
+    const key = comparisonKey(row);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(row);
+  });
+
+  return [...groups.entries()].map(([key, rows]) => {
+    const priced = rows
+      .map((row) => ({ row, amount: numericValue(row.all_in_rate) }))
+      .filter((item) => item.amount !== null && item.amount > 0)
+      .sort((a, b) => a.amount - b.amount);
+    const carriers = new Set(rows.map(carrierLabel).filter(Boolean));
+    const best = priced[0];
+    const high = priced[priced.length - 1];
+    const average = priced.length ? priced.reduce((sum, item) => sum + item.amount, 0) / priced.length : null;
+    const [origin, destination, operation, service, equipment, trailer] = key.split(" | ");
+    return {
+      key,
+      origin,
+      destination,
+      operation,
+      service,
+      equipment,
+      trailer,
+      quotes: rows.length,
+      carriers: carriers.size,
+      bestCarrier: best ? carrierLabel(best.row) : "-",
+      bestRate: best?.amount ?? null,
+      average,
+      spread: best && high ? high.amount - best.amount : null
+    };
+  }).sort((a, b) => {
+    if (b.carriers !== a.carriers) return b.carriers - a.carriers;
+    return (a.bestRate ?? Number.MAX_VALUE) - (b.bestRate ?? Number.MAX_VALUE);
+  });
+}
+
+function renderLaneComparison(rowsToCompare, label) {
+  if (!comparisonOutput) return;
+  if (!rowsToCompare.length) {
+    comparisonOutput.innerHTML = "<span>No rows available for comparison.</span>";
+    return;
+  }
+
+  const summaries = summarizeComparisonRows(rowsToCompare);
+  const topSummaries = summaries.slice(0, 12);
+  comparisonOutput.innerHTML = `
+    <div class="comparison-summary">
+      <strong>${escapeHtml(rowsToCompare.length)} ${escapeHtml(label)} rate(s)</strong>
+      <span>${escapeHtml(summaries.length)} comparable lane group(s)</span>
+    </div>
+    <table class="comparison-table">
+      <thead>
+        <tr>
+          <th>Lane</th>
+          <th>Scope</th>
+          <th>Carriers</th>
+          <th>Best carrier</th>
+          <th>Best all-in</th>
+          <th>Avg</th>
+          <th>Spread</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${topSummaries.map((item) => `
+          <tr>
+            <td><strong>${escapeHtml(item.origin)} -> ${escapeHtml(item.destination)}</strong></td>
+            <td>${escapeHtml([item.operation, item.service, item.equipment, item.trailer].filter(Boolean).join(" / "))}</td>
+            <td>${escapeHtml(item.carriers)} / ${escapeHtml(item.quotes)} quotes</td>
+            <td>${escapeHtml(item.bestCarrier)}</td>
+            <td>${escapeHtml(item.bestRate === null ? "-" : moneyValue(item.bestRate))}</td>
+            <td>${escapeHtml(item.average === null ? "-" : moneyValue(item.average))}</td>
+            <td>${escapeHtml(item.spread === null ? "-" : moneyValue(item.spread))}</td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
+  `;
+}
+
+function activeFilterSummary(scope, ids) {
+  const columnFilters = {};
+  columnFilterInputs.forEach((input) => {
+    const value = String(input.value || "").trim();
+    if (value) columnFilters[input.dataset.ratewareColumnFilter] = value;
+  });
+  return {
+    scope,
+    ids_count: ids.length,
+    quick_filter: activeQuickFilter,
+    search: searchInput.value || "",
+    operation: operationFilter.value || "",
+    service: serviceFilter.value || "",
+    column_filters: columnFilters
+  };
+}
+
+function slug(value) {
+  return String(value || "rateware")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48) || "rateware";
+}
+
+function renderRatewareVersions(rows = []) {
+  if (!versionList) return;
+  if (!rows.length) {
+    versionList.innerHTML = "<span>No snapshots yet.</span>";
+    return;
+  }
+  versionList.innerHTML = rows.map((version) => `
+    <article>
+      <div>
+        <strong>${escapeHtml(version.name)}</strong>
+        <span>${escapeHtml([dateValue(version.created_at), `${version.row_count || 0} rows`].filter(Boolean).join(" | "))}</span>
+      </div>
+      <button class="secondary small-button" type="button" data-download-rateware-version="${escapeHtml(version.id)}">Export CSV</button>
+    </article>
+  `).join("");
+}
+
+async function loadRatewareVersions() {
+  try {
+    await requirePrivatePage();
+    const versions = await fetchRatewareBookVersions();
+    renderRatewareVersions(versions);
+  } catch (error) {
+    setInlineStatus(versionStatus, error.message, "error");
+  }
+}
+
+async function createRatewareVersion(scope) {
+  const rows = scope === "selected" ? selectedRatewareRows() : currentRows;
+  const ids = rows.map((row) => row.id).filter(Boolean);
+  if (!ids.length) {
+    setInlineStatus(versionStatus, `No ${scope} rows to snapshot.`, "error");
+    return;
+  }
+
+  const button = scope === "selected" ? snapshotSelectedButton : snapshotVisibleButton;
+  if (button) button.disabled = true;
+  setInlineStatus(versionStatus, `Creating ${scope} snapshot...`);
+
+  try {
+    await requirePrivatePage();
+    const version = await createRatewareBookVersion({
+      ids,
+      name: versionNameInput?.value || `Rateware ${scope} ${new Date().toISOString().slice(0, 10)}`,
+      description: versionNoteInput?.value || "",
+      filterSummary: activeFilterSummary(scope, ids)
+    });
+    setInlineStatus(versionStatus, `${version.row_count || ids.length} rate(s) saved in ${version.name}.`, "success");
+    await loadRatewareVersions();
+  } catch (error) {
+    setInlineStatus(versionStatus, error.message, "error");
+  } finally {
+    updateBulkControls();
+  }
+}
+
+async function downloadRatewareVersion(id) {
+  if (!id) return;
+  setInlineStatus(versionStatus, "Preparing version export...");
+  try {
+    await requirePrivatePage();
+    const version = await fetchRatewareBookVersion(id);
+    exportRowsCsv(version.rows_snapshot || [], `version-${slug(version.name)}`);
+    setInlineStatus(versionStatus, `${version.name} exported.`, "success");
+  } catch (error) {
+    setInlineStatus(versionStatus, error.message, "error");
+  }
+}
+
+async function applySelectedBulkEdit() {
+  const ids = selectedVisibleIds();
+  const field = bulkFieldSelect?.value;
+  if (!ids.length || !field) return;
+
+  const patch = { [field]: bulkPatchValue(field, bulkValueInput?.value) };
+  if (applyBulkEditButton) applyBulkEditButton.disabled = true;
+  setInlineStatus(bulkStatus, `Updating ${ids.length} selected rate(s)...`);
+
+  try {
+    await requirePrivatePage();
+    const result = await bulkUpdateApprovedRatewareRows(ids, patch);
+    ids.forEach((id) => selectedRowIds.delete(id));
+    setInlineStatus(bulkStatus, `${result.updated || 0} selected rate(s) updated.`, "success");
+    setActionStatus(`${result.updated || 0} selected rate(s) updated.`, "success");
+    await loadRateware();
+  } catch (error) {
+    setInlineStatus(bulkStatus, error.message, "error");
+    updateBulkControls();
+  }
+}
+
 async function clearRatewareFilters() {
   searchInput.value = "";
   operationFilter.value = "";
@@ -838,12 +1130,14 @@ async function loadRatewareOptions() {
   }
   ratewareOptionsLoaded = true;
   renderRatewareDatalists();
+  populateBulkEditControls();
   return ratewareOptions;
 }
 
 initAuthControls();
 requirePrivatePage().catch(() => {});
 loadRateware();
+loadRatewareVersions();
 
 refreshButton.addEventListener("click", loadRateware);
 clearFiltersButton?.addEventListener("click", clearRatewareFilters);
@@ -880,6 +1174,17 @@ enrichSelectedZipsButton?.addEventListener("click", enrichSelectedRatewareZips);
 renormalizeSelectedButton?.addEventListener("click", renormalizeSelectedRateware);
 exportSelectedButton?.addEventListener("click", exportSelectedCsv);
 exportVisibleButton?.addEventListener("click", exportVisibleCsv);
+bulkFieldSelect?.addEventListener("change", updateBulkValueOptions);
+applyBulkEditButton?.addEventListener("click", applySelectedBulkEdit);
+compareSelectedButton?.addEventListener("click", () => renderLaneComparison(selectedRatewareRows(), "selected"));
+compareVisibleButton?.addEventListener("click", () => renderLaneComparison(currentRows, "visible"));
+snapshotSelectedButton?.addEventListener("click", () => createRatewareVersion("selected"));
+snapshotVisibleButton?.addEventListener("click", () => createRatewareVersion("visible"));
+versionList?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-download-rateware-version]");
+  if (!button) return;
+  downloadRatewareVersion(button.dataset.downloadRatewareVersion);
+});
 selectAllCheckbox?.addEventListener("change", () => {
   body.querySelectorAll("[data-select-rateware]").forEach((checkbox) => {
     checkbox.checked = selectAllCheckbox.checked;
