@@ -601,6 +601,34 @@ a {
   pointer-events: none;
 }
 
+.next-step-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #ffffff;
+  margin-top: 12px;
+  padding: 10px 12px;
+}
+
+.next-step-strip span {
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 820;
+}
+
+.next-step-strip a {
+  color: var(--accent-dark);
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.next-step-strip a:hover {
+  text-decoration: underline;
+}
+
 .action-tile {
   display: grid;
   gap: 8px;
