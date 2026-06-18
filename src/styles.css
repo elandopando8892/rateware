@@ -1598,40 +1598,72 @@ tbody tr:hover {
   gap: 14px;
 }
 
-.rateware-detail-section {
+.rateware-detail-section,
+.upload-detail-section {
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: #ffffff;
   padding: 12px;
 }
 
-.rateware-detail-section h3 {
+.rateware-detail-section h3,
+.upload-detail-section h3 {
   margin: 0 0 8px;
   font-size: 0.9rem;
 }
 
-.rateware-detail-section dl {
+.rateware-detail-section dl,
+.upload-detail-section dl {
   display: grid;
   grid-template-columns: 150px minmax(0, 1fr);
   gap: 7px 10px;
   margin: 0 0 10px;
 }
 
-.rateware-detail-section dl div {
+.rateware-detail-section dl div,
+.upload-detail-section dl div {
   display: contents;
 }
 
-.rateware-detail-section dt {
+.rateware-detail-section dt,
+.upload-detail-section dt {
   color: var(--muted);
   font-size: 0.78rem;
   font-weight: 780;
 }
 
-.rateware-detail-section dd {
+.rateware-detail-section dd,
+.upload-detail-section dd {
   margin: 0;
   color: var(--text);
   font-size: 0.78rem;
   overflow-wrap: anywhere;
+}
+
+.upload-detail {
+  display: grid;
+  gap: 14px;
+}
+
+.upload-detail-section p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.upload-error-panel {
+  border-color: #f1b8b1;
+  background: #fff7f6;
+}
+
+.upload-error-panel p {
+  color: var(--danger);
+  overflow-wrap: anywhere;
+}
+
+.detail-note {
+  margin-bottom: 10px !important;
 }
 
 .vendor-review-cell {

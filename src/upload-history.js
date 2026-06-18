@@ -15,6 +15,10 @@ const uploadSelectionCount = document.querySelector("#upload-selection-count");
 const archiveSelectedButton = document.querySelector("#archive-selected-uploads");
 const removeSelectedButton = document.querySelector("#remove-selected-uploads");
 const uploadBulkStatus = document.querySelector("#upload-bulk-status");
+const uploadDrawer = document.querySelector("#upload-drawer");
+const closeUploadDrawerButton = document.querySelector("#close-upload-drawer");
+const uploadDrawerTitle = document.querySelector("#upload-drawer-title");
+const uploadDetail = document.querySelector("#upload-detail");
 let loadedRows = [];
 let currentRows = [];
 let activeQuickFilter = "all";
@@ -107,6 +111,75 @@ function uploadQualityChips(row) {
     .join("")}</div>`;
 }
 
+function detailItem(label, value) {
+  return `
+    <div>
+      <dt>${escapeHtml(label)}</dt>
+      <dd>${escapeHtml(value || "-")}</dd>
+    </div>
+  `;
+}
+
+function vendorDisplay(row) {
+  return row.vendors?.vendor_name || row.vendor_hint || "No vendor detected";
+}
+
+function openUploadDrawer(rowId) {
+  const row = currentRows.find((candidate) => candidate.id === rowId) || loadedRows.find((candidate) => candidate.id === rowId);
+  if (!row || !uploadDrawer || !uploadDetail) return;
+
+  uploadDrawerTitle.textContent = row.original_filename || "Upload detail";
+  uploadDetail.innerHTML = `
+    <section class="upload-detail-section">
+      <h3>Source summary</h3>
+      <div class="drawer-badges">
+        <span class="status-pill ${escapeHtml(statusTone(row.status))}">${escapeHtml(row.status || "unknown")}</span>
+        <span class="review-chip neutral">${escapeHtml(row.document_type || "unknown type")}</span>
+        ${matchLabel(row)}
+      </div>
+      <dl>
+        ${detailItem("Vendor", vendorDisplay(row))}
+        ${detailItem("RFx", row.rfx_hint)}
+        ${detailItem("Uploaded", formatDate(row.created_at))}
+        ${detailItem("Match source", row.vendor_match_source)}
+      </dl>
+    </section>
+
+    <section class="upload-detail-section">
+      <h3>Storage and traceability</h3>
+      <dl>
+        ${detailItem("File", row.original_filename)}
+        ${detailItem("Storage path", row.storage_path)}
+        ${detailItem("Upload ID", row.id)}
+      </dl>
+    </section>
+
+    ${
+      row.error_message
+        ? `<section class="upload-detail-section upload-error-panel">
+            <h3>Processing issue</h3>
+            <p>${escapeHtml(row.error_message)}</p>
+          </section>`
+        : ""
+    }
+
+    <section class="upload-detail-section">
+      <h3>Next action</h3>
+      <p class="detail-note">${escapeHtml(
+        row.status === "staged"
+          ? "Open Staging Review to validate the interpreted rows before approval."
+          : row.status === "uploaded"
+            ? "Run interpretation from the table action to create staging rows."
+            : row.status === "failed"
+              ? "Review the processing issue, then retry interpretation after the source or API issue is corrected."
+              : "This upload is archived or already processed."
+      )}</p>
+      <a class="small-button" href="./staging-review.html">Open staging</a>
+    </section>
+  `;
+  uploadDrawer.classList.remove("hidden");
+}
+
 function emptyUploadMessage() {
   if (activeQuickFilter === "all") {
     return {
@@ -152,6 +225,7 @@ function renderRows(rows) {
           <td><span class="status-pill ${escapeHtml(statusTone(row.status))}">${escapeHtml(row.status)}</span></td>
           <td>${escapeHtml(row.storage_path)}</td>
           <td class="history-actions">
+            <button type="button" class="small-button secondary" data-upload-detail="${escapeHtml(row.id)}">Details</button>
             ${row.status === "archived" ? "" : `<button type="button" class="small-button" data-interpret-id="${escapeHtml(row.id)}">Interpret</button>`}
             ${row.status === "archived" ? "" : `<button type="button" class="small-button secondary" data-archive-id="${escapeHtml(row.id)}">Archive</button>`}
             <button type="button" class="small-button danger" data-remove-id="${escapeHtml(row.id)}">Remove</button>
@@ -214,6 +288,7 @@ async function clearUploadFilters() {
   statusFilter.value = "current";
   activeQuickFilter = "all";
   selectedUploadIds.clear();
+  uploadDrawer?.classList.add("hidden");
   setBulkStatus("");
   await loadHistory();
 }
@@ -247,6 +322,7 @@ selectAllUploads?.addEventListener("change", () => {
 });
 archiveSelectedButton?.addEventListener("click", () => runBulkUploadAction("archive"));
 removeSelectedButton?.addEventListener("click", () => runBulkUploadAction("remove"));
+closeUploadDrawerButton?.addEventListener("click", () => uploadDrawer?.classList.add("hidden"));
 historyBody.addEventListener("change", (event) => {
   const checkbox = event.target.closest("[data-select-upload]");
   if (!checkbox) return;
@@ -256,6 +332,12 @@ historyBody.addEventListener("change", (event) => {
   updateBulkControls();
 });
 historyBody.addEventListener("click", async (event) => {
+  const detailButton = event.target.closest("[data-upload-detail]");
+  if (detailButton) {
+    openUploadDrawer(detailButton.dataset.uploadDetail);
+    return;
+  }
+
   const interpretButton = event.target.closest("[data-interpret-id]");
   const archiveButton = event.target.closest("[data-archive-id]");
   const removeButton = event.target.closest("[data-remove-id]");
