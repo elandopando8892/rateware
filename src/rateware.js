@@ -9,6 +9,7 @@ const refreshButton = document.querySelector("#refresh-rateware-button");
 const selectAllCheckbox = document.querySelector("#select-all-rateware");
 const selectionCount = document.querySelector("#rateware-selection-count");
 const returnSelectedButton = document.querySelector("#return-selected-button");
+const exportVisibleButton = document.querySelector("#export-visible-button");
 const actionStatus = document.querySelector("#rateware-action-status");
 const ratewareMetricTotal = document.querySelector("#rateware-metric-total");
 const ratewareMetricVendors = document.querySelector("#rateware-metric-vendors");
@@ -175,10 +176,89 @@ function updateBulkControls() {
   const totalRows = body.querySelectorAll("[data-rateware-id]").length;
   selectionCount.textContent = `${selectedCount} selected`;
   returnSelectedButton.disabled = selectedCount === 0;
+  if (exportVisibleButton) exportVisibleButton.disabled = currentRows.length === 0;
   if (selectAllCheckbox) {
     selectAllCheckbox.checked = selectedCount > 0 && selectedCount === totalRows;
     selectAllCheckbox.indeterminate = selectedCount > 0 && selectedCount < totalRows;
   }
+}
+
+function csvCell(value) {
+  const text = String(value ?? "");
+  return `"${text.replace(/"/g, '""')}"`;
+}
+
+function exportVisibleCsv() {
+  if (!currentRows.length) {
+    setActionStatus("No visible rates to export.", "error");
+    return;
+  }
+
+  const headers = [
+    "vendor",
+    "vendor_domain",
+    "quote_date",
+    "rfx",
+    "origin",
+    "origin_market",
+    "origin_zip",
+    "origin_state",
+    "destination",
+    "destination_market",
+    "destination_zip",
+    "destination_state",
+    "operation",
+    "service",
+    "equipment",
+    "trailer",
+    "config",
+    "mx_linehaul",
+    "us_linehaul",
+    "fsc",
+    "border_fee",
+    "all_in",
+    "currency",
+    "weekly_capacity",
+    "mx_crossing",
+    "us_crossing"
+  ];
+  const rows = currentRows.map((row) => [
+    row.vendors?.vendor_name || row.vendor_domain || "",
+    row.vendor_domain || row.vendors?.domain || "",
+    dateValue(row.quote_date),
+    row.rfx_id || "",
+    row.normalized_origin || row.origin || "",
+    row.origin_market || "",
+    row.origin_zip_prefix || "",
+    row.origin_state || "",
+    row.normalized_destination || row.destination || "",
+    row.destination_market || "",
+    row.destination_zip_prefix || "",
+    row.destination_state || "",
+    row.operation || "",
+    row.service || "",
+    row.equipment || "",
+    row.trailer || "",
+    row.config || "",
+    row.mx_linehaul || "",
+    row.us_linehaul || "",
+    row.fsc || "",
+    row.border_crossing_fee || "",
+    row.all_in_rate || "",
+    row.currency || "",
+    row.weekly_capacity || "",
+    row.mx_border_crossing_point || "",
+    row.us_border_crossing_point || ""
+  ]);
+
+  const csv = [headers, ...rows].map((row) => row.map(csvCell).join(",")).join("\n");
+  const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `rateware-approved-${new Date().toISOString().slice(0, 10)}.csv`;
+  link.click();
+  URL.revokeObjectURL(url);
+  setActionStatus(`${currentRows.length} visible rate(s) exported.`, "success");
 }
 
 async function loadRateware() {
@@ -245,6 +325,7 @@ quickFilterButtons.forEach((button) => {
   });
 });
 returnSelectedButton.addEventListener("click", returnSelectedToStaging);
+exportVisibleButton?.addEventListener("click", exportVisibleCsv);
 selectAllCheckbox?.addEventListener("change", () => {
   body.querySelectorAll("[data-select-rateware]").forEach((checkbox) => {
     checkbox.checked = selectAllCheckbox.checked;
