@@ -4,6 +4,14 @@ export async function fetchApprovedRateware({ search = "", operation = "", servi
   return (await callRatewareApi("list_rateware", { search, operation, service })).rows;
 }
 
+export async function fetchRatewareOptions() {
+  return await callRatewareApi("list_staging_options");
+}
+
+export async function updateApprovedRatewareRow(id, patch) {
+  return (await callRatewareApi("update_rateware", { id, patch })).row;
+}
+
 export async function returnApprovedRatesToStaging(ids = []) {
   return await callRatewareApi("return_rateware_to_staging", { ids });
 }

@@ -728,6 +728,31 @@ Deno.serve(async (request) => {
       return jsonResponse({ rows: result.data });
     }
 
+    if (body.action === "update_rateware") {
+      if (!body.id) return jsonResponse({ error: "Approved rate id is required." }, 400);
+      const currentResult = await supabase
+        .from("rate_staging")
+        .select("trailer,hazmat,temperature_controlled,status")
+        .eq("id", body.id)
+        .eq("status", "approved")
+        .single();
+      if (currentResult.error) throw currentResult.error;
+
+      const patch = normalizeStagingPatch(body.patch || {}, currentResult.data || {});
+      delete patch.status;
+      if (!Object.keys(patch).length) return jsonResponse({ error: "No approved rate updates provided." }, 400);
+
+      const result = await supabase
+        .from("rate_staging")
+        .update(patch)
+        .eq("id", body.id)
+        .eq("status", "approved")
+        .select("*, vendors(vendor_name, domain)")
+        .single();
+      if (result.error) throw result.error;
+      return jsonResponse({ row: result.data });
+    }
+
     if (body.action === "return_rateware_to_staging") {
       const ids = Array.isArray(body.ids) ? body.ids.map(String).filter(Boolean).slice(0, 500) : [];
       if (!ids.length) return jsonResponse({ error: "At least one approved rate id is required." }, 400);

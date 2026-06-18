@@ -1,5 +1,5 @@
 import { initAuthControls, requirePrivatePage } from "./auth.js";
-import { fetchApprovedRateware, returnApprovedRatesToStaging } from "./rateware-service.js";
+import { fetchApprovedRateware, fetchRatewareOptions, returnApprovedRatesToStaging, updateApprovedRatewareRow } from "./rateware-service.js";
 
 const body = document.querySelector("#rateware-body");
 const searchInput = document.querySelector("#rateware-search");
@@ -9,6 +9,7 @@ const refreshButton = document.querySelector("#refresh-rateware-button");
 const clearFiltersButton = document.querySelector("#clear-rateware-filters");
 const selectAllCheckbox = document.querySelector("#select-all-rateware");
 const selectionCount = document.querySelector("#rateware-selection-count");
+const saveSelectedButton = document.querySelector("#save-selected-rateware");
 const returnSelectedButton = document.querySelector("#return-selected-button");
 const exportSelectedButton = document.querySelector("#export-selected-button");
 const exportVisibleButton = document.querySelector("#export-visible-button");
@@ -23,9 +24,18 @@ const closeDrawerButton = document.querySelector("#close-rateware-drawer");
 const drawerTitle = document.querySelector("#rateware-drawer-title");
 const ratewareDetail = document.querySelector("#rateware-detail");
 
+const RATEWARE_COLSPAN = 27;
 let currentRows = [];
 let loadedRows = [];
 let activeQuickFilter = "all";
+let ratewareOptions = {
+  categories: {},
+  locations: [],
+  mx_crossings: [],
+  us_crossings: [],
+  currencies: ["USD", "MXN", "CAD"]
+};
+let ratewareOptionsLoaded = false;
 const selectedRowIds = new Set();
 
 function escapeHtml(value) {
@@ -38,6 +48,68 @@ function escapeHtml(value) {
 
 function dateValue(value) {
   return value ? String(value).slice(0, 10) : "";
+}
+
+function inputCell(row, field, options = {}) {
+  const widthClass = options.wide ? "wide-input" : options.money ? "money-input" : options.short ? "short-input" : "";
+  const value = options.type === "date"
+    ? dateValue(row[field])
+    : options.money
+      ? numericValue(row[field]) ?? ""
+      : row[field] || "";
+  const inputType = options.type || (options.money ? "number" : "text");
+  const step = options.step || (options.money ? "0.01" : "");
+  return `<input class="staging-input rateware-input ${widthClass}" data-rateware-field="${field}" type="${inputType}" value="${escapeHtml(value)}" ${step ? `step="${escapeHtml(step)}"` : ""} ${options.money ? 'inputmode="decimal"' : ""} />`;
+}
+
+function optionList(values = [], currentValue = "") {
+  const normalized = String(currentValue || "").trim();
+  const options = normalized && !values.includes(normalized) ? [normalized, ...values] : values;
+  return options.map((value) => `<option value="${escapeHtml(value)}" ${value === normalized ? "selected" : ""}>${escapeHtml(value)}</option>`).join("");
+}
+
+function selectCell(row, field, values = [], options = {}) {
+  const widthClass = options.wide ? "wide-input" : options.money ? "money-input" : options.short ? "short-input" : "";
+  return `
+    <select class="staging-input rateware-input ${widthClass}" data-rateware-field="${field}">
+      <option value=""></option>
+      ${optionList(values, row[field] || "")}
+    </select>
+  `;
+}
+
+function locationOptionValue(option) {
+  return typeof option === "string" ? option : option.value || option.label || "";
+}
+
+function locationOptionLabel(option) {
+  return typeof option === "string" ? "" : option.label || "";
+}
+
+function datalistCell(row, field, listName, options = {}) {
+  const widthClass = options.wide ? "wide-input" : options.short ? "short-input" : "";
+  return `<input class="staging-input rateware-input ${widthClass}" data-rateware-field="${field}" list="${listName}" value="${escapeHtml(row[field] || "")}" />`;
+}
+
+function checkboxCell(row, field, label) {
+  return `
+    <label class="table-checkbox" title="${escapeHtml(label)}">
+      <input class="staging-input rateware-input" data-rateware-field="${field}" type="checkbox" value="true" ${row[field] ? "checked" : ""} />
+    </label>
+  `;
+}
+
+function renderRatewareDatalists() {
+  const existing = document.querySelector("#rateware-datalists");
+  existing?.remove();
+  const container = document.createElement("div");
+  container.id = "rateware-datalists";
+  container.hidden = true;
+  container.innerHTML = `
+    <datalist id="rateware-origin-options">${ratewareOptions.locations.map((option) => `<option value="${escapeHtml(locationOptionValue(option))}" label="${escapeHtml(locationOptionLabel(option))}"></option>`).join("")}</datalist>
+    <datalist id="rateware-destination-options">${ratewareOptions.locations.map((option) => `<option value="${escapeHtml(locationOptionValue(option))}" label="${escapeHtml(locationOptionLabel(option))}"></option>`).join("")}</datalist>
+  `;
+  document.body.appendChild(container);
 }
 
 function moneyValue(value) {
@@ -67,6 +139,32 @@ function compactLocation(row, prefix) {
     <strong>${escapeHtml(normalized || raw || "-")}</strong>
     <span>${escapeHtml([market, zip, state].filter(Boolean).join(" | "))}</span>
   `;
+}
+
+function compactLocationChip(row, prefix) {
+  const zip = row[`${prefix}_zip_prefix`] || "";
+  const state = row[`${prefix}_state`] || "";
+  const country = row[`${prefix}_country`] || "";
+  const city = row[`${prefix}_city`] || "";
+  const region = row[`${prefix}_region`] || "";
+  const reason = row[`${prefix}_match_reason`] || "";
+  const text = [zip, state || country].filter(Boolean).join(" / ") || "-";
+  const title = [
+    city && `City: ${city}`,
+    state && `State: ${state}`,
+    country && `Country: ${country}`,
+    region && `Region: ${region}`,
+    reason && `Match: ${reason}`
+  ].filter(Boolean).join(" | ");
+  const tone = zip || state || city ? "strong" : "weak";
+  return `<span class="location-chip ${tone}" title="${escapeHtml(title)}">${escapeHtml(text)}</span>`;
+}
+
+function compactMarketCell(row, prefix) {
+  const market = row[`${prefix}_market`] || "";
+  const region = row[`${prefix}_region`] || "";
+  const title = [market && `Market: ${market}`, region && `Region: ${region}`].filter(Boolean).join(" | ");
+  return `<span class="location-text" title="${escapeHtml(title)}">${escapeHtml(market || "-")}</span>`;
 }
 
 function borderValue(row) {
@@ -218,7 +316,7 @@ function renderRows(rows) {
   populateFilter(serviceFilter, rows, "service");
 
   if (!rows.length) {
-    body.innerHTML = '<tr><td colspan="14"><div class="empty-state"><strong>No approved rates yet</strong><span>Approve staging rows to build the Rateware.</span><a href="./staging-review.html">Open staging review</a></div></td></tr>';
+    body.innerHTML = `<tr><td colspan="${RATEWARE_COLSPAN}"><div class="empty-state"><strong>No approved rates yet</strong><span>Approve staging rows to build the Rateware.</span><a href="./staging-review.html">Open staging review</a></div></td></tr>`;
     updateBulkControls();
     return;
   }
@@ -230,25 +328,37 @@ function renderRows(rows) {
       </td>
       <td>
         <strong>${escapeHtml(row.vendors?.vendor_name || row.vendor_domain || "-")}</strong>
-        <span>${escapeHtml(row.vendor_domain || row.vendors?.domain || "")}</span>
+        ${inputCell(row, "vendor_domain", { wide: true })}
       </td>
-      <td>${escapeHtml(dateValue(row.quote_date))}</td>
-      <td>${escapeHtml(row.rfx_id || "-")}</td>
-      <td class="rateware-location-cell">${compactLocation(row, "origin")}</td>
-      <td class="rateware-location-cell">${compactLocation(row, "destination")}</td>
-      <td>${escapeHtml(row.operation || "-")}</td>
-      <td>${escapeHtml(row.service || "-")}</td>
-      <td>${escapeHtml([row.equipment, row.trailer, row.config].filter(Boolean).join(" / ") || "-")}</td>
-      <td>
-        <strong>${escapeHtml(moneyValue(row.all_in_rate))}</strong>
-        <span>${escapeHtml(rateModeLabel(row))}</span>
-      </td>
-      <td>${escapeHtml(row.currency || "-")}</td>
-      <td>${escapeHtml(row.weekly_capacity || "-")}</td>
-      <td>${escapeHtml(borderValue(row))}</td>
-      <td class="history-actions">
+      <td>${inputCell(row, "quote_date", { type: "date", short: true })}</td>
+      <td>${inputCell(row, "rfx_id", { short: true })}</td>
+      <td>${datalistCell(row, "origin", "rateware-origin-options", { wide: true })}</td>
+      <td>${compactLocationChip(row, "origin")}</td>
+      <td>${compactMarketCell(row, "origin")}</td>
+      <td>${datalistCell(row, "destination", "rateware-destination-options", { wide: true })}</td>
+      <td>${compactLocationChip(row, "destination")}</td>
+      <td>${compactMarketCell(row, "destination")}</td>
+      <td>${selectCell(row, "equipment", ratewareOptions.categories.equipment || [], { short: true })}</td>
+      <td>${selectCell(row, "trailer", ratewareOptions.categories.trailer || [], { short: true })}</td>
+      <td>${checkboxCell(row, "hazmat", "Hazmat")}</td>
+      <td>${checkboxCell(row, "temperature_controlled", "Temperature controlled")}</td>
+      <td>${selectCell(row, "config", ratewareOptions.categories.config || [], { short: true })}</td>
+      <td>${selectCell(row, "operation", ratewareOptions.categories.operation || [], { short: true })}</td>
+      <td>${selectCell(row, "service", ratewareOptions.categories.service || [], { short: true })}</td>
+      <td>${selectCell(row, "mx_border_crossing_point", ratewareOptions.mx_crossings || [], { short: true })}</td>
+      <td>${selectCell(row, "us_border_crossing_point", ratewareOptions.us_crossings || [], { short: true })}</td>
+      <td>${inputCell(row, "mx_linehaul", { money: true })}</td>
+      <td>${inputCell(row, "us_linehaul", { money: true })}</td>
+      <td>${inputCell(row, "fsc", { money: true })}</td>
+      <td>${inputCell(row, "border_crossing_fee", { money: true })}</td>
+      <td>${inputCell(row, "all_in_rate", { money: true })}<span>${escapeHtml(rateModeLabel(row))}</span></td>
+      <td>${selectCell(row, "currency", ratewareOptions.currencies || ["USD", "MXN", "CAD"], { short: true })}</td>
+      <td>${inputCell(row, "weekly_capacity", { short: true })}</td>
+      <td class="history-actions rateware-row-actions">
         <button class="small-button secondary" type="button" data-rateware-detail="${escapeHtml(row.id)}">Details</button>
+        <button class="small-button" type="button" data-save-rateware-id="${escapeHtml(row.id)}">Save</button>
         <a class="link-button" href="./staging-review.html">Staging row</a>
+        <span class="row-save-status" data-rateware-row-status="${escapeHtml(row.id)}"></span>
       </td>
     </tr>
   `).join("");
@@ -264,16 +374,91 @@ function setActionStatus(message, tone = "neutral") {
   actionStatus.dataset.tone = tone;
 }
 
+function setRowStatus(id, message, tone = "neutral") {
+  const status = body.querySelector(`[data-rateware-row-status="${CSS.escape(id)}"]`);
+  if (!status) return;
+  status.textContent = message;
+  status.dataset.tone = tone;
+}
+
+function readRatewarePatch(tableRow) {
+  const patch = {};
+  tableRow.querySelectorAll("[data-rateware-field]").forEach((input) => {
+    patch[input.dataset.ratewareField] = input.matches('input[type="checkbox"]') ? input.checked : input.value;
+  });
+  return patch;
+}
+
+function replaceStoredRatewareRow(updatedRow) {
+  loadedRows = loadedRows.map((row) => row.id === updatedRow.id ? updatedRow : row);
+  currentRows = currentRows.map((row) => row.id === updatedRow.id ? updatedRow : row);
+}
+
+function markRatewareRowDirty(tableRow) {
+  const rowId = tableRow?.dataset.ratewareId;
+  if (!rowId) return;
+  tableRow.classList.add("dirty-row");
+  selectedRowIds.add(rowId);
+  const checkbox = tableRow.querySelector("[data-select-rateware]");
+  if (checkbox) checkbox.checked = true;
+  setRowStatus(rowId, "Unsaved", "warning");
+  setActionStatus("");
+  updateBulkControls();
+}
+
 function updateBulkControls() {
   const selectedCount = selectedVisibleIds().length;
   const totalRows = body.querySelectorAll("[data-rateware-id]").length;
   selectionCount.textContent = `${selectedCount} selected`;
+  saveSelectedButton.disabled = selectedCount === 0;
   returnSelectedButton.disabled = selectedCount === 0;
   if (exportSelectedButton) exportSelectedButton.disabled = selectedCount === 0;
   if (exportVisibleButton) exportVisibleButton.disabled = currentRows.length === 0;
   if (selectAllCheckbox) {
     selectAllCheckbox.checked = selectedCount > 0 && selectedCount === totalRows;
     selectAllCheckbox.indeterminate = selectedCount > 0 && selectedCount < totalRows;
+  }
+}
+
+async function saveRatewareTableRow(tableRow) {
+  const rowId = tableRow?.dataset.ratewareId;
+  if (!rowId) return null;
+  const button = tableRow.querySelector(`[data-save-rateware-id="${CSS.escape(rowId)}"]`);
+  if (button) button.disabled = true;
+  setRowStatus(rowId, "Saving...");
+
+  try {
+    const updatedRow = await updateApprovedRatewareRow(rowId, readRatewarePatch(tableRow));
+    replaceStoredRatewareRow(updatedRow);
+    tableRow.classList.remove("dirty-row");
+    setRowStatus(rowId, "Saved", "success");
+    return updatedRow;
+  } catch (error) {
+    setRowStatus(rowId, error.message, "error");
+    throw error;
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
+
+async function saveSelectedRatewareRows() {
+  const rows = selectedVisibleIds()
+    .map((id) => body.querySelector(`[data-rateware-id="${CSS.escape(id)}"]`))
+    .filter(Boolean);
+  if (!rows.length) return;
+
+  saveSelectedButton.disabled = true;
+  setActionStatus(`Saving ${rows.length} approved rate(s)...`);
+
+  try {
+    await requirePrivatePage();
+    await Promise.all(rows.map((row) => saveRatewareTableRow(row)));
+    selectedRowIds.clear();
+    setActionStatus(`${rows.length} approved rate(s) saved.`, "success");
+    await loadRateware();
+  } catch (error) {
+    setActionStatus(error.message, "error");
+    updateBulkControls();
   }
 }
 
@@ -305,6 +490,8 @@ function exportRowsCsv(rowsToExport, label) {
     "service",
     "equipment",
     "trailer",
+    "hazmat",
+    "temperature_controlled",
     "config",
     "mx_linehaul",
     "us_linehaul",
@@ -333,6 +520,8 @@ function exportRowsCsv(rowsToExport, label) {
     row.service || "",
     row.equipment || "",
     row.trailer || "",
+    row.hazmat ? "yes" : "",
+    row.temperature_controlled ? "yes" : "",
     row.config || "",
     row.mx_linehaul || "",
     row.us_linehaul || "",
@@ -375,20 +564,23 @@ async function clearRatewareFilters() {
 }
 
 async function loadRateware() {
-  body.innerHTML = '<tr><td colspan="14">Loading approved rates...</td></tr>';
+  body.innerHTML = `<tr><td colspan="${RATEWARE_COLSPAN}">Loading approved rates...</td></tr>`;
   refreshButton.disabled = true;
 
   try {
     await requirePrivatePage();
-    const rows = await fetchApprovedRateware({
-      search: searchInput.value,
-      operation: operationFilter.value,
-      service: serviceFilter.value
-    });
+    const [, rows] = await Promise.all([
+      loadRatewareOptions(),
+      fetchApprovedRateware({
+        search: searchInput.value,
+        operation: operationFilter.value,
+        service: serviceFilter.value
+      })
+    ]);
     loadedRows = rows;
     renderRows(applyQuickFilter(rows));
   } catch (error) {
-    body.innerHTML = `<tr><td colspan="14">Could not load Rateware. ${escapeHtml(error.message)}</td></tr>`;
+    body.innerHTML = `<tr><td colspan="${RATEWARE_COLSPAN}">Could not load Rateware. ${escapeHtml(error.message)}</td></tr>`;
   } finally {
     refreshButton.disabled = false;
   }
@@ -421,6 +613,31 @@ function debounce(fn, wait = 250) {
   };
 }
 
+async function loadRatewareOptions() {
+  if (ratewareOptionsLoaded) return ratewareOptions;
+  try {
+    const options = await fetchRatewareOptions();
+    ratewareOptions = {
+      categories: options.categories || {},
+      locations: options.locations || [],
+      mx_crossings: options.mx_crossings || [],
+      us_crossings: options.us_crossings || [],
+      currencies: options.currencies || ["USD", "MXN", "CAD"]
+    };
+  } catch {
+    ratewareOptions = {
+      categories: ratewareOptions.categories || {},
+      locations: ratewareOptions.locations || [],
+      mx_crossings: ratewareOptions.mx_crossings || [],
+      us_crossings: ratewareOptions.us_crossings || [],
+      currencies: ratewareOptions.currencies || ["USD", "MXN", "CAD"]
+    };
+  }
+  ratewareOptionsLoaded = true;
+  renderRatewareDatalists();
+  return ratewareOptions;
+}
+
 initAuthControls();
 requirePrivatePage().catch(() => {});
 loadRateware();
@@ -439,6 +656,7 @@ quickFilterButtons.forEach((button) => {
   });
 });
 returnSelectedButton.addEventListener("click", returnSelectedToStaging);
+saveSelectedButton?.addEventListener("click", saveSelectedRatewareRows);
 exportSelectedButton?.addEventListener("click", exportSelectedCsv);
 exportVisibleButton?.addEventListener("click", exportVisibleCsv);
 selectAllCheckbox?.addEventListener("change", () => {
@@ -450,7 +668,18 @@ selectAllCheckbox?.addEventListener("change", () => {
   setActionStatus("");
   updateBulkControls();
 });
+body.addEventListener("input", (event) => {
+  const field = event.target.closest("[data-rateware-field]");
+  if (!field) return;
+  markRatewareRowDirty(field.closest("[data-rateware-id]"));
+});
 body.addEventListener("change", (event) => {
+  const field = event.target.closest("[data-rateware-field]");
+  if (field) {
+    markRatewareRowDirty(field.closest("[data-rateware-id]"));
+    return;
+  }
+
   const checkbox = event.target.closest("[data-select-rateware]");
   if (!checkbox) return;
   if (checkbox.checked) selectedRowIds.add(checkbox.dataset.selectRateware);
@@ -458,9 +687,21 @@ body.addEventListener("change", (event) => {
   setActionStatus("");
   updateBulkControls();
 });
-body.addEventListener("click", (event) => {
+body.addEventListener("click", async (event) => {
   const detailButton = event.target.closest("[data-rateware-detail]");
-  if (!detailButton) return;
-  openRatewareDrawer(detailButton.dataset.ratewareDetail);
+  const saveButton = event.target.closest("[data-save-rateware-id]");
+  if (detailButton) {
+    openRatewareDrawer(detailButton.dataset.ratewareDetail);
+    return;
+  }
+  if (saveButton) {
+    try {
+      await requirePrivatePage();
+      await saveRatewareTableRow(saveButton.closest("[data-rateware-id]"));
+      setActionStatus("Approved rate saved.", "success");
+    } catch (error) {
+      setActionStatus(error.message, "error");
+    }
+  }
 });
 closeDrawerButton?.addEventListener("click", () => drawer.classList.add("hidden"));

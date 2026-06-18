@@ -89,6 +89,7 @@
 
             <div class="bulk-action-bar" aria-live="polite">
               <span id="rateware-selection-count">0 selected</span>
+              <button id="save-selected-rateware" type="button" class="small-button" disabled>Save selected</button>
               <button id="return-selected-button" type="button" class="secondary small-button" disabled>Return to staging</button>
               <button id="export-selected-button" type="button" class="secondary small-button" disabled>Export selected CSV</button>
               <button id="export-visible-button" type="button" class="secondary small-button">Export visible CSV</button>
@@ -106,20 +107,33 @@
                     <th>Quote date</th>
                     <th>RFx</th>
                     <th>Origin</th>
+                    <th>O ZIP/ST</th>
+                    <th>O market</th>
                     <th>Destination</th>
+                    <th>D ZIP/ST</th>
+                    <th>D market</th>
+                    <th>Equipment</th>
+                    <th>Trailer</th>
+                    <th>Hazmat</th>
+                    <th>Temp ctrl</th>
+                    <th>Config</th>
                     <th>Operation</th>
                     <th>Service</th>
-                    <th>Equipment</th>
+                    <th>MX crossing</th>
+                    <th>US crossing</th>
+                    <th>MX linehaul</th>
+                    <th>US linehaul</th>
+                    <th>FSC</th>
+                    <th>Border fee</th>
                     <th>All-in</th>
                     <th>Currency</th>
                     <th>Capacity</th>
-                    <th>Border</th>
                     <th>Actions</th>
                   </tr>
                 </thead>
                 <tbody id="rateware-body">
                   <tr>
-                    <td colspan="14">Loading approved rates...</td>
+                    <td colspan="27">Loading approved rates...</td>
                   </tr>
                 </tbody>
               </table>
