@@ -3,6 +3,7 @@ import { archiveUpload, fetchUploadHistory, interpretUpload, removeUpload } from
 
 const historyBody = document.querySelector("#history-body");
 const refreshButton = document.querySelector("#refresh-button");
+const clearFiltersButton = document.querySelector("#clear-upload-filters");
 const statusFilter = document.querySelector("#status-filter");
 const uploadMetricVisible = document.querySelector("#upload-metric-visible");
 const uploadMetricStaged = document.querySelector("#upload-metric-staged");
@@ -209,9 +210,18 @@ async function runBulkUploadAction(action) {
   }
 }
 
+async function clearUploadFilters() {
+  statusFilter.value = "current";
+  activeQuickFilter = "all";
+  selectedUploadIds.clear();
+  setBulkStatus("");
+  await loadHistory();
+}
+
 initAuthControls();
 requirePrivatePage().catch(() => {});
 refreshButton.addEventListener("click", loadHistory);
+clearFiltersButton?.addEventListener("click", clearUploadFilters);
 statusFilter.addEventListener("change", () => {
   activeQuickFilter = "all";
   selectedUploadIds.clear();
