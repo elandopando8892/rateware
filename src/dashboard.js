@@ -6,12 +6,21 @@ const metricUploads = document.querySelector("#metric-uploads");
 const metricVendors = document.querySelector("#metric-vendors");
 const metricPending = document.querySelector("#metric-pending");
 const metricApproved = document.querySelector("#metric-approved");
+const workflowSourcing = document.querySelector("#workflow-sourcing");
+const workflowProcurement = document.querySelector("#workflow-procurement");
+const workflowUploads = document.querySelector("#workflow-uploads");
+const workflowStaging = document.querySelector("#workflow-staging");
+const workflowRateware = document.querySelector("#workflow-rateware");
 const diagnostics = document.querySelector("#access-diagnostics");
 const syncCatalogButton = document.querySelector("#sync-catalog-button");
 const catalogSyncStatus = document.querySelector("#catalog-sync-status");
 
 function setMetric(element, value) {
   element.textContent = new Intl.NumberFormat().format(Number(value || 0));
+}
+
+function setText(element, value) {
+  if (element) element.textContent = value;
 }
 
 async function loadAccessDiagnostics(session) {
@@ -44,6 +53,11 @@ async function loadDashboard() {
     setMetric(metricVendors, summary.vendors);
     setMetric(metricPending, summary.pending_review);
     setMetric(metricApproved, summary.approved_rows);
+    setText(workflowSourcing, `${new Intl.NumberFormat().format(Number(summary.vendors || 0))} vendors sourced`);
+    setText(workflowProcurement, "Curated target carriers");
+    setText(workflowUploads, `${new Intl.NumberFormat().format(Number(summary.raw_uploads || 0))} source files`);
+    setText(workflowStaging, `${new Intl.NumberFormat().format(Number(summary.pending_review || 0))} pending review`);
+    setText(workflowRateware, `${new Intl.NumberFormat().format(Number(summary.approved_rows || 0))} approved rows`);
   } catch (error) {
     metricUploads.textContent = "-";
     metricVendors.textContent = "-";
