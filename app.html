@@ -37,21 +37,27 @@
         <main class="dashboard-layout">
           <section class="metric-grid" aria-label="Rateware status">
             <article class="metric-card">
-              <span>Raw uploads</span>
-              <strong id="metric-uploads">-</strong>
+              <span>Sourcing vendors</span>
+              <a href="./vendors.html"><strong id="metric-sourcing">-</strong></a>
             </article>
             <article class="metric-card">
-              <span>Vendors</span>
-              <strong id="metric-vendors">-</strong>
+              <span>Procurement targets</span>
+              <a href="./vendors.html"><strong id="metric-procurement">-</strong></a>
             </article>
             <article class="metric-card">
               <span>Pending review</span>
-              <strong id="metric-pending">-</strong>
+              <a href="./staging-review.html"><strong id="metric-pending">-</strong></a>
             </article>
             <article class="metric-card">
               <span>Approved rows</span>
               <a href="./rateware.html"><strong id="metric-approved">-</strong></a>
             </article>
+          </section>
+
+          <section class="dashboard-signals" aria-label="Operational signals">
+            <span id="signal-uploads">0 source files</span>
+            <span id="signal-archived">0 archived vendors</span>
+            <span id="signal-failed">0 failed uploads</span>
           </section>
 
           <section class="workspace-panel">

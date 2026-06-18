@@ -2,10 +2,13 @@ import { initAuthControls, requirePrivatePage } from "./auth.js";
 import { syncRatewareCatalog } from "./catalog-service.js";
 import { callRatewareApi } from "./rateware-api.js";
 
-const metricUploads = document.querySelector("#metric-uploads");
-const metricVendors = document.querySelector("#metric-vendors");
+const metricSourcing = document.querySelector("#metric-sourcing");
+const metricProcurement = document.querySelector("#metric-procurement");
 const metricPending = document.querySelector("#metric-pending");
 const metricApproved = document.querySelector("#metric-approved");
+const signalUploads = document.querySelector("#signal-uploads");
+const signalArchived = document.querySelector("#signal-archived");
+const signalFailed = document.querySelector("#signal-failed");
 const workflowSourcing = document.querySelector("#workflow-sourcing");
 const workflowProcurement = document.querySelector("#workflow-procurement");
 const workflowUploads = document.querySelector("#workflow-uploads");
@@ -49,18 +52,21 @@ async function loadDashboard() {
     if (!session?.token) return;
     await loadAccessDiagnostics(session);
     const summary = await callRatewareApi("dashboard_summary");
-    setMetric(metricUploads, summary.raw_uploads);
-    setMetric(metricVendors, summary.vendors);
+    setMetric(metricSourcing, summary.sourcing_vendors);
+    setMetric(metricProcurement, summary.procurement_vendors);
     setMetric(metricPending, summary.pending_review);
     setMetric(metricApproved, summary.approved_rows);
-    setText(workflowSourcing, `${new Intl.NumberFormat().format(Number(summary.vendors || 0))} vendors sourced`);
-    setText(workflowProcurement, "Curated target carriers");
+    setText(workflowSourcing, `${new Intl.NumberFormat().format(Number(summary.sourcing_vendors || 0))} vendors sourced`);
+    setText(workflowProcurement, `${new Intl.NumberFormat().format(Number(summary.procurement_vendors || 0))} target carriers`);
     setText(workflowUploads, `${new Intl.NumberFormat().format(Number(summary.raw_uploads || 0))} source files`);
     setText(workflowStaging, `${new Intl.NumberFormat().format(Number(summary.pending_review || 0))} pending review`);
     setText(workflowRateware, `${new Intl.NumberFormat().format(Number(summary.approved_rows || 0))} approved rows`);
+    setText(signalUploads, `${new Intl.NumberFormat().format(Number(summary.raw_uploads || 0))} source files`);
+    setText(signalArchived, `${new Intl.NumberFormat().format(Number(summary.archived_vendors || 0))} archived vendors`);
+    setText(signalFailed, `${new Intl.NumberFormat().format(Number(summary.failed_uploads || 0))} failed uploads`);
   } catch (error) {
-    metricUploads.textContent = "-";
-    metricVendors.textContent = "-";
+    metricSourcing.textContent = "-";
+    metricProcurement.textContent = "-";
     metricPending.textContent = "-";
     metricApproved.textContent = "-";
   }

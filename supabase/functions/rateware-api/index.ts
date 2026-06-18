@@ -621,21 +621,27 @@ Deno.serve(async (request) => {
     }
 
     if (body.action === "dashboard_summary") {
-      const [uploads, vendors, pending, approved, failed] = await Promise.all([
+      const [uploads, vendors, sourcingVendors, procurementVendors, archivedVendors, pending, approved, failed] = await Promise.all([
         supabase.from("raw_uploads").select("id", { count: "exact", head: true }).neq("status", "archived"),
-        supabase.from("vendors").select("id", { count: "exact", head: true }),
+        supabase.from("vendors").select("id", { count: "exact", head: true }).eq("owner_email", user.owner_email),
+        supabase.from("vendors").select("id", { count: "exact", head: true }).eq("owner_email", user.owner_email).eq("base_stage", "sourcing"),
+        supabase.from("vendors").select("id", { count: "exact", head: true }).eq("owner_email", user.owner_email).eq("base_stage", "procurement"),
+        supabase.from("vendors").select("id", { count: "exact", head: true }).eq("owner_email", user.owner_email).eq("base_stage", "archived"),
         supabase.from("rate_staging").select("id", { count: "exact", head: true }).eq("status", "pending_review"),
         supabase.from("rate_staging").select("id", { count: "exact", head: true }).eq("status", "approved"),
         supabase.from("raw_uploads").select("id", { count: "exact", head: true }).eq("status", "failed")
       ]);
 
-      for (const result of [uploads, vendors, pending, approved, failed]) {
+      for (const result of [uploads, vendors, sourcingVendors, procurementVendors, archivedVendors, pending, approved, failed]) {
         if (result.error) throw result.error;
       }
 
       return jsonResponse({
         raw_uploads: uploads.count || 0,
         vendors: vendors.count || 0,
+        sourcing_vendors: sourcingVendors.count || 0,
+        procurement_vendors: procurementVendors.count || 0,
+        archived_vendors: archivedVendors.count || 0,
         pending_review: pending.count || 0,
         approved_rows: approved.count || 0,
         failed_uploads: failed.count || 0

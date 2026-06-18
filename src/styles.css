@@ -399,6 +399,21 @@ a {
   line-height: 1;
 }
 
+.dashboard-signals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.dashboard-signals span {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #ffffff;
+  color: var(--muted);
+  padding: 6px 10px;
+  font-weight: 780;
+}
+
 .vendor-metrics {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
