@@ -68,6 +68,52 @@
             <p id="bi-status" class="status-message" role="status"></p>
           </section>
 
+          <section class="workspace-panel bi-recommendation-panel">
+            <div class="section-heading compact split-heading">
+              <div>
+                <p class="eyebrow">Recommendation engine</p>
+                <h2>Carrier ranking</h2>
+              </div>
+              <div class="action-row">
+                <button id="bi-run-recommendations" type="button">Run ranking</button>
+                <button id="bi-export-recommendations" type="button" class="secondary" disabled>Export CSV</button>
+              </div>
+            </div>
+
+            <div class="bi-template-row" aria-label="Recommendation templates">
+              <button type="button" class="secondary small-button" data-rec-template="fit-crossborder">Crossborder fit</button>
+              <button type="button" class="secondary small-button" data-rec-template="pareto-d2d">Pareto D2D</button>
+              <button type="button" class="secondary small-button" data-rec-template="cost-mile">Lowest cost / mile</button>
+              <button type="button" class="secondary small-button" data-rec-template="cost-km">Lowest cost / km</button>
+              <button type="button" class="secondary small-button" data-rec-template="border-laredo">Laredo border</button>
+              <button type="button" class="secondary small-button" data-rec-template="equipment-service">Equipment + service fit</button>
+            </div>
+
+            <div class="bi-recommendation-controls">
+              <label>
+                Ranking mode
+                <select id="bi-rec-ranking-mode">
+                  <option value="fit">Best fit score</option>
+                  <option value="transactions">Most quoted transactions</option>
+                  <option value="approved">Most approved rates</option>
+                  <option value="pareto">Pareto concentration</option>
+                  <option value="cost_per_mile">Lowest cost per mile</option>
+                  <option value="cost_per_km">Lowest cost per km</option>
+                </select>
+              </label>
+              <label>
+                Limit
+                <input id="bi-rec-limit" type="number" min="1" max="100" value="30" />
+              </label>
+              <label>
+                Min transactions
+                <input id="bi-rec-min-transactions" type="number" min="0" max="999" value="0" />
+              </label>
+              <span>Uses the current Pivot Builder filters.</span>
+            </div>
+            <p id="bi-rec-status" class="status-message" role="status">Ready to rank carriers.</p>
+          </section>
+
           <section class="workspace-panel bi-pivot-panel">
             <div class="section-heading compact split-heading">
               <div>

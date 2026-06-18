@@ -940,6 +940,200 @@ async function buildCarrierIntelligence(supabase: ReturnType<typeof createClient
   return await requestCarrierIntelligence(instruction, fallback);
 }
 
+function recommendationIntentFromConfig(config: Record<string, unknown>) {
+  const filters = typeof config.filters === "object" && config.filters ? config.filters as Record<string, unknown> : {};
+  const rankingMode = cleanText(config.ranking_mode) || "fit";
+  const focus = ["structured-recommendation", rankingMode];
+  const crossborder = Boolean(filters.crossborder);
+  const d2d = Boolean(filters.d2d);
+  const hazmat = Boolean(filters.hazmat);
+  const reefer = Boolean(filters.temperature_controlled);
+  const flatbed = textIncludesAny([filters.trailer, filters.equipment].filter(Boolean).join(" "), ["flatbed", "plana", "plataforma"]);
+  const border = Boolean(filters.mx_crossing || filters.us_crossing || filters.border_pair);
+  const costPerMile = rankingMode === "cost_per_mile";
+  const costPerKm = rankingMode === "cost_per_km";
+  const pareto = rankingMode === "pareto";
+  const mexico = textIncludesAny(Object.values(filters).join(" "), ["mexico", "mx", "monterrey", "nuevo leon", "bajio", "norte", "centro"]);
+  if (crossborder) focus.push("cross-border");
+  if (d2d) focus.push("d2d-import-export");
+  if (border) focus.push("border-crossing");
+  if (hazmat) focus.push("hazmat");
+  if (reefer) focus.push("reefer");
+  if (costPerMile) focus.push("cost-per-mile");
+  if (costPerKm) focus.push("cost-per-km");
+  if (pareto) focus.push("pareto");
+  return { crossborder, d2d, pareto, mexico, addTargets: true, hazmat, reefer, flatbed, costPerMile, costPerKm, border, focus };
+}
+
+function carrierScoreBreakdown(vendor: Record<string, unknown>, metrics: Record<string, unknown>, intent: ReturnType<typeof carrierIntelligenceIntent>, filters: Record<string, unknown>) {
+  const breakdown: Array<{ label: string; value: number; detail: string }> = [];
+  const status = cleanText(vendor.status)?.toLowerCase();
+  const baseStage = cleanText(vendor.base_stage)?.toLowerCase();
+  const linkedRates = Number(metrics.linked_rates || 0);
+  const approvedRates = Number(metrics.approved_rates || 0);
+  const crossborderRates = Number(metrics.crossborder_rates || 0);
+  const d2dRates = Number(metrics.d2d_import_export_rates || 0);
+  const contactReady = Boolean(vendor.primary_email || vendor.whatsapp_phone);
+  const sliceTerms = Object.entries(filters || {})
+    .filter(([, value]) => value !== true && value !== false && cleanText(value))
+    .map(([keyName, value]) => `${keyName}: ${value}`);
+
+  breakdown.push({
+    label: "Base",
+    value: baseStage === "procurement" ? 14 : baseStage === "sourcing" ? 10 : baseStage === "archived" ? -15 : 0,
+    detail: baseStage || "missing base stage"
+  });
+  breakdown.push({
+    label: "Status",
+    value: status === "active" ? 14 : status === "invited" ? 8 : status === "blocked" ? -60 : status === "inactive" ? -10 : 0,
+    detail: status || "missing status"
+  });
+  breakdown.push({
+    label: "Contact",
+    value: contactReady ? 10 : -8,
+    detail: contactReady ? "email or WhatsApp available" : "missing contact channel"
+  });
+  breakdown.push({
+    label: "Rate history",
+    value: Math.min(26, approvedRates * 5 + Math.max(0, linkedRates - approvedRates) * 2),
+    detail: `${approvedRates} approved / ${linkedRates} linked transaction(s)`
+  });
+  if (intent.crossborder || intent.d2d) {
+    breakdown.push({
+      label: "Crossborder fit",
+      value: Math.min(24, (intent.d2d ? d2dRates : crossborderRates) * 6),
+      detail: intent.d2d ? `${d2dRates} D2D Import/Export transaction(s)` : `${crossborderRates} crossborder transaction(s)`
+    });
+  }
+  if (intent.costPerMile) {
+    breakdown.push({
+      label: "Cost/mile readiness",
+      value: metrics.avg_cost_per_mile ? 10 : -12,
+      detail: metrics.avg_cost_per_mile ? `avg ${metrics.avg_cost_per_mile}` : "missing all-in or miles"
+    });
+  }
+  if (intent.costPerKm) {
+    breakdown.push({
+      label: "Cost/km readiness",
+      value: metrics.avg_cost_per_km ? 10 : -12,
+      detail: metrics.avg_cost_per_km ? `avg ${metrics.avg_cost_per_km}` : "missing all-in or km"
+    });
+  }
+  if (sliceTerms.length) {
+    breakdown.push({
+      label: "Requested slice",
+      value: linkedRates > 0 ? 12 : -18,
+      detail: linkedRates > 0 ? sliceTerms.slice(0, 3).join(" | ") : "no transactions in selected slice"
+    });
+  }
+  return breakdown;
+}
+
+function recommendationSortValue(row: Record<string, unknown>, rankingMode: string) {
+  const metrics = typeof row.metrics === "object" && row.metrics ? row.metrics as Record<string, unknown> : {};
+  if (rankingMode === "transactions") return -Number(metrics.linked_rates || 0);
+  if (rankingMode === "approved") return -Number(metrics.approved_rates || 0);
+  if (rankingMode === "pareto") return -Number(metrics.d2d_import_export_rates || metrics.crossborder_rates || metrics.linked_rates || 0);
+  if (rankingMode === "cost_per_mile") return Number(metrics.avg_cost_per_mile || Number.POSITIVE_INFINITY);
+  if (rankingMode === "cost_per_km") return Number(metrics.avg_cost_per_km || Number.POSITIVE_INFINITY);
+  return -Number(row.fit_score || 0);
+}
+
+async function buildCarrierRecommendations(supabase: ReturnType<typeof createClient>, user: { owner_email: string | null }, config: Record<string, unknown>) {
+  const filters = typeof config.filters === "object" && config.filters ? config.filters as Record<string, unknown> : {};
+  const rankingMode = cleanText(config.ranking_mode) || "fit";
+  const limit = Math.min(Math.max(Number(config.limit) || 30, 1), 100);
+  const minTransactions = Math.max(Number(config.min_transactions) || 0, 0);
+  const intent = recommendationIntentFromConfig(config);
+  const [vendorsResult, rates] = await Promise.all([
+    supabase
+      .from("vendors")
+      .select("id,vendor_name,legal_name,domain,primary_email,secondary_emails,whatsapp_phone,status,base_stage,tags,coverage_notes,notes,preferred_channel,created_at")
+      .eq("owner_email", user.owner_email)
+      .limit(1000),
+    fetchBusinessIntelligenceRows(supabase, user)
+  ]);
+  if (vendorsResult.error) throw vendorsResult.error;
+
+  const filteredRates = filterBiRows(rates, filters);
+  const vendorTerm = cleanText(filters.vendor);
+  const candidates = (vendorsResult.data || [])
+    .filter((vendor) => !vendorTerm || catalogKey(vendorSearchText(vendor)).includes(catalogKey(vendorTerm)))
+    .map((vendor) => {
+      const metrics = createVendorMetrics(vendor, filteredRates);
+      const fit = scoreCarrierFit(vendor, metrics, intent);
+      const breakdown = carrierScoreBreakdown(vendor, metrics, intent, filters);
+      const score = Math.max(0, Math.min(100, fit.score + Math.round(breakdown.reduce((sum, item) => sum + item.value, 0) / 8)));
+      const linkedRates = Number(metrics.linked_rates || 0);
+      return {
+        vendor_id: cleanText(vendor.id),
+        vendor_name: cleanText(vendor.vendor_name) || "Unnamed vendor",
+        domain: normalizeDomain(vendor.domain),
+        primary_email: normalizeEmail(vendor.primary_email),
+        base_stage: cleanText(vendor.base_stage),
+        status: cleanText(vendor.status),
+        fit_score: score,
+        why: fit.evidence.slice(0, 3).join("; "),
+        evidence: fit.evidence,
+        gaps: fit.gaps,
+        score_breakdown: breakdown,
+        recommended_action: cleanText(vendor.base_stage) === "procurement"
+          ? "Keep in Procurement Base and include in the next matching RFx."
+          : "Promote to Procurement Base if contact and coverage are valid.",
+        metrics,
+        _linked_rates: linkedRates
+      };
+    })
+    .filter((row) => Number(row._linked_rates || 0) >= minTransactions)
+    .filter((row) => rankingMode === "cost_per_mile" ? row.metrics.avg_cost_per_mile : true)
+    .filter((row) => rankingMode === "cost_per_km" ? row.metrics.avg_cost_per_km : true);
+
+  let ranked = candidates.sort((a, b) => recommendationSortValue(a, rankingMode) - recommendationSortValue(b, rankingMode) || b.fit_score - a.fit_score);
+  if (rankingMode === "pareto") {
+    const total = ranked.reduce((sum, row) => sum + Number(row.metrics.d2d_import_export_rates || row.metrics.crossborder_rates || row.metrics.linked_rates || 0), 0);
+    let cumulative = 0;
+    ranked = ranked.map((row) => {
+      const transactions = Number(row.metrics.d2d_import_export_rates || row.metrics.crossborder_rates || row.metrics.linked_rates || 0);
+      cumulative += transactions;
+      return {
+        ...row,
+        why: `${transactions} transaction(s); ${total ? ((cumulative / total) * 100).toFixed(1) : "0.0"}% cumulative`,
+        evidence: [
+          `${transactions} transaction(s) in selected slice`,
+          `${total ? ((transactions / total) * 100).toFixed(1) : "0.0"}% individual share`,
+          `${total ? ((cumulative / total) * 100).toFixed(1) : "0.0"}% cumulative share`,
+          ...(row.evidence || [])
+        ].slice(0, 6)
+      };
+    });
+  }
+
+  const recommendations = ranked.slice(0, limit).map((row, index) => {
+    const { _linked_rates, ...publicRow } = row;
+    return { ...publicRow, rank: index + 1 };
+  });
+
+  return {
+    answer: `${recommendations.length} carrier recommendation(s) ranked by ${rankingMode}.`,
+    filters: {
+      limit,
+      focus: intent.focus,
+      ranking_mode: rankingMode,
+      min_transactions: minTransactions,
+      data_scope: "Structured recommendation engine over user vendors and filtered staging/Rateware transactions."
+    },
+    recommendations,
+    next_actions: [
+      "Review score breakdown before promoting a carrier.",
+      "Use min transactions to avoid over-ranking carriers with one-off quotes.",
+      "Use the pivot drilldown to validate the underlying lanes before RFx outreach."
+    ],
+    candidate_count: vendorsResult.data?.length || 0,
+    rate_signal_count: filteredRates.length,
+    model_status: "deterministic"
+  };
+}
+
 const BI_DIMENSIONS = [
   { key: "vendor", label: "Carrier" },
   { key: "vendor_domain", label: "Carrier domain" },
@@ -2015,6 +2209,11 @@ Deno.serve(async (request) => {
 
     if (body.action === "carrier_intelligence_chat") {
       const result = await buildCarrierIntelligence(supabase, user, String(body.message || body.prompt || ""));
+      return jsonResponse(result);
+    }
+
+    if (body.action === "carrier_recommendations") {
+      const result = await buildCarrierRecommendations(supabase, user, body.config || {});
       return jsonResponse(result);
     }
 

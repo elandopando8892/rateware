@@ -2201,6 +2201,41 @@ select.staging-input {
   margin-bottom: 10px;
 }
 
+.bi-recommendation-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.bi-recommendation-controls {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(100px, 140px) minmax(120px, 160px) minmax(180px, 1fr);
+  gap: 10px;
+  align-items: end;
+}
+
+.bi-recommendation-controls span {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 750;
+  align-self: center;
+}
+
+.bi-score-breakdown {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.bi-score-breakdown span {
+  border-radius: 999px;
+  background: #eef3f5;
+  color: #43505a;
+  padding: 2px 7px;
+  font-size: 0.7rem;
+  font-weight: 800;
+}
+
 .bi-pivot-panel {
   display: grid;
   gap: 12px;

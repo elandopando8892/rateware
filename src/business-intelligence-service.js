@@ -4,6 +4,10 @@ export async function askCarrierIntelligence(message) {
   return await callRatewareApi("carrier_intelligence_chat", { message });
 }
 
+export async function fetchCarrierRecommendations(config) {
+  return await callRatewareApi("carrier_recommendations", { config });
+}
+
 export async function fetchBusinessIntelligencePivot(config) {
   return await callRatewareApi("business_intelligence_pivot", { config });
 }

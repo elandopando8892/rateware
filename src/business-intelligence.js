@@ -1,5 +1,5 @@
 import { applyPermissionState, initAuthControls, requirePrivatePage } from "./auth.js";
-import { askCarrierIntelligence, fetchBusinessIntelligenceDrilldown, fetchBusinessIntelligencePivot, promoteCarrierRecommendations } from "./business-intelligence-service.js";
+import { askCarrierIntelligence, fetchBusinessIntelligenceDrilldown, fetchBusinessIntelligencePivot, fetchCarrierRecommendations, promoteCarrierRecommendations } from "./business-intelligence-service.js";
 
 const chatForm = document.querySelector("#bi-chat-form");
 const promptInput = document.querySelector("#bi-prompt");
@@ -16,6 +16,9 @@ const metricRecommendations = document.querySelector("#bi-metric-recommendations
 const metricCandidates = document.querySelector("#bi-metric-candidates");
 const metricRates = document.querySelector("#bi-metric-rates");
 const metricSelected = document.querySelector("#bi-metric-selected");
+const runRecommendationsButton = document.querySelector("#bi-run-recommendations");
+const exportRecommendationsButton = document.querySelector("#bi-export-recommendations");
+const recommendationStatus = document.querySelector("#bi-rec-status");
 const runPivotButton = document.querySelector("#bi-run-pivot");
 const copyPivotButton = document.querySelector("#bi-copy-pivot");
 const exportPivotButton = document.querySelector("#bi-export-pivot");
@@ -126,6 +129,45 @@ const BI_TEMPLATES = {
   }
 };
 
+const RECOMMENDATION_TEMPLATES = {
+  "fit-crossborder": {
+    ranking_mode: "fit",
+    limit: 30,
+    min_transactions: 0,
+    pivot: { filters: { crossborder: true } }
+  },
+  "pareto-d2d": {
+    ranking_mode: "pareto",
+    limit: 30,
+    min_transactions: 1,
+    pivot: { filters: { crossborder: true, d2d: true } }
+  },
+  "cost-mile": {
+    ranking_mode: "cost_per_mile",
+    limit: 30,
+    min_transactions: 1,
+    pivot: { filters: { crossborder: true } }
+  },
+  "cost-km": {
+    ranking_mode: "cost_per_km",
+    limit: 30,
+    min_transactions: 1,
+    pivot: { filters: {} }
+  },
+  "border-laredo": {
+    ranking_mode: "transactions",
+    limit: 30,
+    min_transactions: 1,
+    pivot: { filters: { crossborder: true, mx_crossing: "Nuevo Laredo", us_crossing: "Laredo" } }
+  },
+  "equipment-service": {
+    ranking_mode: "fit",
+    limit: 30,
+    min_transactions: 0,
+    pivot: { rows: ["equipment", "trailer", "service"], columns: ["operation"], filters: {} }
+  }
+};
+
 function escapeHtml(value) {
   return String(value ?? "")
     .replace(/&/g, "&amp;")
@@ -142,6 +184,12 @@ function setStatus(message, tone = "neutral") {
   if (!statusMessage) return;
   statusMessage.textContent = message;
   statusMessage.dataset.tone = tone;
+}
+
+function setRecommendationStatus(message, tone = "neutral") {
+  if (!recommendationStatus) return;
+  recommendationStatus.textContent = message;
+  recommendationStatus.dataset.tone = tone;
 }
 
 function setModelStatus(value, tone = "muted") {
@@ -260,6 +308,21 @@ function applyPivotConfig(config) {
   setChecked("#bi-filter-d2d", filters.d2d);
 }
 
+function applyRecommendationTemplate(template) {
+  if (template.pivot) {
+    applyPivotConfig({
+      rows: template.pivot.rows || ["vendor", "corridor", ""],
+      columns: template.pivot.columns || ["operation", "service"],
+      metric: template.pivot.metric || "transaction_count",
+      aggregation: template.pivot.aggregation || "count",
+      filters: template.pivot.filters || {}
+    });
+  }
+  setControl("#bi-rec-ranking-mode", template.ranking_mode || "fit");
+  setControl("#bi-rec-limit", template.limit || 30);
+  setControl("#bi-rec-min-transactions", template.min_transactions || 0);
+}
+
 function readValue(selector) {
   return String(document.querySelector(selector)?.value || "").trim();
 }
@@ -298,6 +361,16 @@ function readPivotConfig() {
     metric: readValue("#bi-pivot-metric") || "transaction_count",
     aggregation: readValue("#bi-pivot-aggregation") || "count",
     filters
+  };
+}
+
+function readRecommendationConfig() {
+  const pivotConfig = readPivotConfig();
+  return {
+    ranking_mode: readValue("#bi-rec-ranking-mode") || "fit",
+    limit: Number(readValue("#bi-rec-limit")) || 30,
+    min_transactions: Number(readValue("#bi-rec-min-transactions")) || 0,
+    filters: pivotConfig.filters
   };
 }
 
@@ -502,6 +575,7 @@ function renderRecommendations(rows = []) {
   currentRecommendations = rows;
   selectedVendorIds.clear();
   metricRecommendations.textContent = formatNumber(rows.length);
+  exportRecommendationsButton.disabled = !rows.length;
 
   if (!rows.length) {
     resultsBody.innerHTML = `
@@ -540,6 +614,7 @@ function renderRecommendations(rows = []) {
           <td>
             <strong>${escapeHtml(row.why || "")}</strong>
             ${listItems(row.evidence || [])}
+            ${row.score_breakdown?.length ? `<div class="bi-score-breakdown">${row.score_breakdown.slice(0, 5).map((item) => `<span>${escapeHtml(item.label)} ${Number(item.value) > 0 ? "+" : ""}${escapeHtml(item.value)}: ${escapeHtml(item.detail)}</span>`).join("")}</div>` : ""}
           </td>
           <td>${listItems(row.gaps || [])}</td>
           <td>${escapeHtml(row.recommended_action || "-")}</td>
@@ -588,6 +663,30 @@ async function runIntelligenceQuery(message) {
   }
 }
 
+function renderRecommendationResult(result) {
+  renderAnswer(result);
+  renderRecommendations(result.recommendations || []);
+  metricCandidates.textContent = formatNumber(result.candidate_count);
+  metricRates.textContent = formatNumber(result.rate_signal_count);
+  setModelStatus("Engine ranked", "success");
+}
+
+async function runStructuredRecommendations() {
+  runRecommendationsButton.disabled = true;
+  setRecommendationStatus("Ranking carriers...");
+
+  try {
+    await requirePrivatePage();
+    const result = await fetchCarrierRecommendations(readRecommendationConfig());
+    renderRecommendationResult(result);
+    setRecommendationStatus(`${formatNumber((result.recommendations || []).length)} carrier(s) ranked by ${result.filters?.ranking_mode || "fit"}.`, "success");
+  } catch (error) {
+    setRecommendationStatus(error.message, "error");
+  } finally {
+    runRecommendationsButton.disabled = false;
+  }
+}
+
 async function promoteSelected() {
   const ids = selectedRecommendations().map((row) => row.vendor_id);
   if (!ids.length) return;
@@ -625,11 +724,40 @@ async function copyRecommendations() {
   setStatus("Recommendation list copied.", "success");
 }
 
+function exportRecommendationsCsv() {
+  if (!currentRecommendations.length) return;
+  const rows = [
+    ["rank", "carrier", "domain", "email", "fit_score", "base_stage", "status", "why", "linked_rates", "approved_rates", "crossborder_rates", "d2d_rates", "avg_all_in", "avg_cost_per_mile", "avg_cost_per_km", "evidence", "gaps", "score_breakdown"],
+    ...currentRecommendations.map((row) => [
+      row.rank,
+      row.vendor_name,
+      row.domain,
+      row.primary_email,
+      row.fit_score,
+      row.base_stage,
+      row.status,
+      row.why,
+      row.metrics?.linked_rates,
+      row.metrics?.approved_rates,
+      row.metrics?.crossborder_rates,
+      row.metrics?.d2d_import_export_rates,
+      row.metrics?.avg_all_in_rate,
+      row.metrics?.avg_cost_per_mile,
+      row.metrics?.avg_cost_per_km,
+      (row.evidence || []).join(" | "),
+      (row.gaps || []).join(" | "),
+      (row.score_breakdown || []).map((item) => `${item.label} ${item.value}: ${item.detail}`).join(" | ")
+    ])
+  ];
+  downloadCsv("rateware-carrier-recommendations.csv", rows);
+  setRecommendationStatus("Recommendations CSV exported.", "success");
+}
+
 initAuthControls();
 setupPivotControls();
 requirePrivatePage()
   .then(async () => {
-    await applyPermissionState("#bi-submit-button, #bi-promote-selected, #bi-copy-list, #bi-run-pivot, #bi-copy-pivot, #bi-export-pivot, #bi-export-drilldown", "business-intelligence:use");
+    await applyPermissionState("#bi-submit-button, #bi-promote-selected, #bi-copy-list, #bi-run-recommendations, #bi-export-recommendations, #bi-run-pivot, #bi-copy-pivot, #bi-export-pivot, #bi-export-drilldown", "business-intelligence:use");
     await runPivot();
   })
   .catch((error) => setStatus(error.message, "error"));
@@ -667,6 +795,8 @@ selectAll?.addEventListener("change", () => {
 
 promoteSelectedButton?.addEventListener("click", promoteSelected);
 copyListButton?.addEventListener("click", copyRecommendations);
+runRecommendationsButton?.addEventListener("click", runStructuredRecommendations);
+exportRecommendationsButton?.addEventListener("click", exportRecommendationsCsv);
 runPivotButton?.addEventListener("click", runPivot);
 copyPivotButton?.addEventListener("click", copyPivot);
 exportPivotButton?.addEventListener("click", exportPivotCsv);
@@ -679,6 +809,16 @@ document.querySelectorAll("[data-bi-template]").forEach((button) => {
     applyPivotConfig(template);
     setPivotStatus(`Template loaded: ${button.textContent}.`);
     await runPivot();
+  });
+});
+
+document.querySelectorAll("[data-rec-template]").forEach((button) => {
+  button.addEventListener("click", async () => {
+    const template = RECOMMENDATION_TEMPLATES[button.dataset.recTemplate];
+    if (!template) return;
+    applyRecommendationTemplate(template);
+    setRecommendationStatus(`Template loaded: ${button.textContent}.`);
+    await runStructuredRecommendations();
   });
 });
 
