@@ -6,6 +6,7 @@ const searchInput = document.querySelector("#rateware-search");
 const operationFilter = document.querySelector("#rateware-operation-filter");
 const serviceFilter = document.querySelector("#rateware-service-filter");
 const refreshButton = document.querySelector("#refresh-rateware-button");
+const clearFiltersButton = document.querySelector("#clear-rateware-filters");
 const selectAllCheckbox = document.querySelector("#select-all-rateware");
 const selectionCount = document.querySelector("#rateware-selection-count");
 const returnSelectedButton = document.querySelector("#return-selected-button");
@@ -363,6 +364,16 @@ function exportSelectedCsv() {
   exportRowsCsv(currentRows.filter((row) => ids.has(row.id)), "selected");
 }
 
+async function clearRatewareFilters() {
+  searchInput.value = "";
+  operationFilter.value = "";
+  serviceFilter.value = "";
+  activeQuickFilter = "all";
+  selectedRowIds.clear();
+  setActionStatus("");
+  await loadRateware();
+}
+
 async function loadRateware() {
   body.innerHTML = '<tr><td colspan="14">Loading approved rates...</td></tr>';
   refreshButton.disabled = true;
@@ -415,6 +426,7 @@ requirePrivatePage().catch(() => {});
 loadRateware();
 
 refreshButton.addEventListener("click", loadRateware);
+clearFiltersButton?.addEventListener("click", clearRatewareFilters);
 searchInput.addEventListener("input", debounce(loadRateware));
 operationFilter.addEventListener("change", loadRateware);
 serviceFilter.addEventListener("change", loadRateware);

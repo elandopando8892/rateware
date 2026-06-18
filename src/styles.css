@@ -1568,7 +1568,7 @@ tbody tr:hover {
 }
 
 .rateware-toolbar {
-  grid-template-columns: minmax(240px, 1fr) minmax(150px, 220px) minmax(150px, 220px) auto;
+  grid-template-columns: minmax(240px, 1fr) minmax(150px, 220px) minmax(150px, 220px) auto auto;
 }
 
 .rateware-table {
