@@ -43,6 +43,8 @@ const confirmImportButton = document.querySelector("#confirm-import-button");
 const cancelImportButton = document.querySelector("#cancel-import-button");
 const confirmImportStatus = document.querySelector("#confirm-import-status");
 const vendorsBody = document.querySelector("#vendors-body");
+const vendorsHeadRow = document.querySelector("#vendors-head-row");
+const vendorBaseContext = document.querySelector("#vendor-base-context");
 const searchInput = document.querySelector("#vendor-search");
 const statusFilter = document.querySelector("#vendor-status-filter");
 const channelFilter = document.querySelector("#vendor-channel-filter");
@@ -230,6 +232,9 @@ function updateBulkState() {
   const visibleSelectedCount = currentVendors.filter((vendor) => selectedVendorIds.has(vendor.id)).length;
   bulkToolbar.classList.toggle("hidden", count === 0);
   bulkSelectionCount.textContent = `${count} selected (${visibleSelectedCount} visible)`;
+  if (bulkProcurementButton) {
+    bulkProcurementButton.textContent = activeBaseStage === "procurement" ? "Return to Sourcing" : "Send to Procurement";
+  }
 }
 
 function clearVendorSelection() {
@@ -423,6 +428,56 @@ function renderCompleteness(row) {
   `;
 }
 
+function renderVendorTableHeader() {
+  const columns =
+    activeBaseStage === "procurement"
+      ? ["Select", "Target carrier", "Contact", "Coverage", "Equipment", "Readiness", "Status", "Source"]
+      : ["Select", "Vendor", "Domain", "Contact", "Email", "Fit", "Tags", "Channel", "Base", "Status"];
+  vendorsHeadRow.innerHTML = columns.map((column) => `<th>${escapeHtml(column)}</th>`).join("");
+  vendorBaseContext.textContent = activeBaseStage === "procurement" ? "Procurement Base" : "Sourcing Base";
+}
+
+function renderProcurementVendorRow(row) {
+  return `
+    <tr>
+      <td><input class="vendor-select" type="checkbox" data-vendor-id="${escapeHtml(row.id)}" ${selectedVendorIds.has(row.id) ? "checked" : ""} /></td>
+      <td>
+        <button class="link-button vendor-profile-button" type="button" data-vendor-id="${escapeHtml(row.id)}">
+          ${escapeHtml(row.vendor_name)}
+        </button>
+        <div class="vendor-subline">${escapeHtml(row.domain || "No domain")}</div>
+      </td>
+      <td>${escapeHtml([row.contact_name, row.primary_email, row.whatsapp_phone].filter(Boolean).join(" | ") || "Missing contact")}</td>
+      <td>${escapeHtml(row.coverage_notes || "No coverage")}</td>
+      <td><div class="tag-list">${renderTags(row.tags)}</div></td>
+      <td>${renderCompleteness(row)}</td>
+      <td><span class="status-pill">${escapeHtml(row.status || "active")}</span></td>
+      <td>${escapeHtml([row.source || "manual", row.source_row_number ? `row ${row.source_row_number}` : ""].filter(Boolean).join(" | "))}</td>
+    </tr>
+  `;
+}
+
+function renderSourcingVendorRow(row) {
+  return `
+    <tr>
+      <td><input class="vendor-select" type="checkbox" data-vendor-id="${escapeHtml(row.id)}" ${selectedVendorIds.has(row.id) ? "checked" : ""} /></td>
+      <td>
+        <button class="link-button vendor-profile-button" type="button" data-vendor-id="${escapeHtml(row.id)}">
+          ${escapeHtml(row.vendor_name)}
+        </button>
+      </td>
+      <td>${escapeHtml(row.domain)}</td>
+      <td>${escapeHtml(row.contact_name)}</td>
+      <td>${escapeHtml(row.primary_email)}</td>
+      <td>${renderCompleteness(row)}</td>
+      <td><div class="tag-list">${renderTags(row.tags)}</div></td>
+      <td>${escapeHtml(row.preferred_channel)}</td>
+      <td><span class="status-pill">${escapeHtml(row.base_stage || "sourcing")}</span></td>
+      <td><span class="status-pill">${escapeHtml(row.status)}</span></td>
+    </tr>
+  `;
+}
+
 function readForm() {
   return {
     vendor_name: document.querySelector("#vendor-name").value,
@@ -439,39 +494,23 @@ function readForm() {
 
 function renderVendors(rows) {
   currentVendors = rows;
+  renderVendorTableHeader();
   updateVendorMetrics();
   updateBulkState();
   renderSegments();
   if (activeVendorTab === "duplicates" || activeQuickFilter === "duplicates") renderDuplicateReview();
 
   if (!rows.length) {
+    const emptyCopy =
+      activeBaseStage === "procurement"
+        ? ["No procurement targets yet", "Select carriers in Sourcing Base and send them to Procurement."]
+        : ["No vendors yet", "Add a vendor manually or import your carrier list."];
     vendorsBody.innerHTML =
-      '<tr><td colspan="10"><div class="empty-state"><strong>No vendors yet</strong><span>Add a vendor manually or import your carrier list.</span></div></td></tr>';
+      `<tr><td colspan="${activeBaseStage === "procurement" ? 8 : 10}"><div class="empty-state"><strong>${emptyCopy[0]}</strong><span>${emptyCopy[1]}</span></div></td></tr>`;
     return;
   }
 
-  vendorsBody.innerHTML = rows
-    .map(
-      (row) => `
-        <tr>
-          <td><input class="vendor-select" type="checkbox" data-vendor-id="${escapeHtml(row.id)}" ${selectedVendorIds.has(row.id) ? "checked" : ""} /></td>
-          <td>
-            <button class="link-button vendor-profile-button" type="button" data-vendor-id="${escapeHtml(row.id)}">
-              ${escapeHtml(row.vendor_name)}
-            </button>
-          </td>
-          <td>${escapeHtml(row.domain)}</td>
-          <td>${escapeHtml(row.contact_name)}</td>
-          <td>${escapeHtml(row.primary_email)}</td>
-          <td>${renderCompleteness(row)}</td>
-          <td><div class="tag-list">${renderTags(row.tags)}</div></td>
-          <td>${escapeHtml(row.preferred_channel)}</td>
-          <td><span class="status-pill">${escapeHtml(row.base_stage || "sourcing")}</span></td>
-          <td><span class="status-pill">${escapeHtml(row.status)}</span></td>
-        </tr>
-      `
-    )
-    .join("");
+  vendorsBody.innerHTML = rows.map((row) => (activeBaseStage === "procurement" ? renderProcurementVendorRow(row) : renderSourcingVendorRow(row))).join("");
 
 }
 
@@ -1024,7 +1063,11 @@ async function runBulkBaseAction(baseStage, label) {
   }
 }
 
-bulkProcurementButton?.addEventListener("click", () => runBulkBaseAction("procurement", "Sending to Procurement Base"));
+bulkProcurementButton?.addEventListener("click", () => {
+  const targetBase = activeBaseStage === "procurement" ? "sourcing" : "procurement";
+  const label = activeBaseStage === "procurement" ? "Returning to Sourcing Base" : "Sending to Procurement Base";
+  runBulkBaseAction(targetBase, label);
+});
 bulkArchiveVendorsButton?.addEventListener("click", () => runBulkBaseAction("archived", "Archiving vendors"));
 bulkRemoveVendorsButton?.addEventListener("click", async () => {
   const ids = Array.from(selectedVendorIds);

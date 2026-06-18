@@ -821,6 +821,16 @@ small,
   align-self: center;
 }
 
+.base-context-pill {
+  align-self: center;
+  border-radius: 999px;
+  background: #eef7f6;
+  color: var(--accent-dark);
+  padding: 4px 10px;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
 .pagination-bar label {
   max-width: 120px;
 }
@@ -1251,6 +1261,13 @@ tbody tr:hover {
 .link-button:hover {
   background: transparent;
   text-decoration: underline;
+}
+
+.vendor-subline {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 720;
+  margin-top: 3px;
 }
 
 .review-actions {
