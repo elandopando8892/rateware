@@ -179,22 +179,30 @@ function downloadVendorTemplate() {
   URL.revokeObjectURL(url);
 }
 
-function scoreVendor(row) {
-  const fields = [
-    row.vendor_name,
-    row.domain,
-    row.contact_name,
-    row.primary_email,
-    row.whatsapp_phone,
-    row.preferred_channel,
-    splitTags(row.tags).length,
-    row.coverage_notes
+function vendorReadiness(row) {
+  const tags = splitTags(row.tags);
+  const checks = [
+    { key: "identity", label: "Identity", done: Boolean(row.vendor_name && row.domain), weight: 20 },
+    { key: "contact", label: "Contact", done: Boolean(row.primary_email || row.whatsapp_phone), weight: 25 },
+    { key: "channel", label: "Channel", done: Boolean(row.preferred_channel), weight: 10 },
+    { key: "coverage", label: "Coverage", done: Boolean(row.coverage_notes), weight: 20 },
+    { key: "equipment", label: "Equipment / tags", done: tags.length > 0, weight: 20 },
+    { key: "notes", label: "Notes", done: Boolean(row.notes), weight: 5 }
   ];
-  return Math.round((fields.filter(Boolean).length / fields.length) * 100);
+  const score = checks.reduce((total, check) => total + (check.done ? check.weight : 0), 0);
+  const missing = checks.filter((check) => !check.done).map((check) => check.label);
+  const label = score >= 85 ? "Procurement ready" : score >= 65 ? "Needs cleanup" : "Incomplete";
+  const tone = score >= 85 ? "strong" : score >= 65 ? "medium" : "weak";
+  return { score, checks, missing, label, tone };
+}
+
+function scoreVendor(row) {
+  return vendorReadiness(row).score;
 }
 
 function isRfxReady(row) {
-  return scoreVendor(row) >= 80 && row.primary_email && splitTags(row.tags).length;
+  const readiness = vendorReadiness(row);
+  return readiness.score >= 85 && (row.primary_email || row.whatsapp_phone) && splitTags(row.tags).length;
 }
 
 function hasMissingContact(row) {
@@ -385,12 +393,11 @@ function renderTags(tags) {
 }
 
 function renderCompleteness(row) {
-  const score = scoreVendor(row);
-  const ready = score >= 80 && row.primary_email && splitTags(row.tags).length;
-  const tone = ready ? "strong" : score >= 55 ? "medium" : "weak";
+  const readiness = vendorReadiness(row);
   return `
     <div class="fit-stack">
-      <span class="score-pill ${tone}">${ready ? "RFx ready" : `${score}%`}</span>
+      <span class="score-pill ${readiness.tone}">${readiness.score}%</span>
+      <span class="fit-label">${escapeHtml(readiness.label)}</span>
     </div>
   `;
 }
@@ -648,6 +655,20 @@ function renderVendorSource(vendor) {
   return `<a href="${escapeHtml(vendor.source_spreadsheet_url)}" target="_blank" rel="noreferrer">${escapeHtml(label)}</a>`;
 }
 
+function renderReadinessBreakdown(vendor) {
+  const readiness = vendorReadiness(vendor);
+  return `
+    <div class="readiness-breakdown">
+      <span class="score-pill ${readiness.tone}">${readiness.score}% ${escapeHtml(readiness.label)}</span>
+      <div class="readiness-checks">
+        ${readiness.checks
+          .map((check) => `<span class="${check.done ? "check-done" : "check-missing"}">${check.done ? "Done" : "Missing"} ${escapeHtml(check.label)}</span>`)
+          .join("")}
+      </div>
+    </div>
+  `;
+}
+
 function openVendorDrawer(vendorId) {
   const vendor = allVendors.find((row) => row.id === vendorId) || currentVendors.find((row) => row.id === vendorId);
   if (!vendor) return;
@@ -659,6 +680,7 @@ function openVendorDrawer(vendorId) {
   document.querySelector("#drawer-quick-actions").innerHTML = renderDrawerQuickActions(vendor);
   setDrawerValue("#drawer-source", renderVendorSource(vendor));
   setDrawerValue("#drawer-completeness", `${scoreVendor(vendor)}% complete`);
+  setDrawerValue("#drawer-readiness", renderReadinessBreakdown(vendor));
   setDrawerValue(
     "#drawer-contact",
     [vendor.contact_name, vendor.primary_email, vendor.whatsapp_phone].filter(Boolean).map(escapeHtml).join("<br>")

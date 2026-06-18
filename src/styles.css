@@ -1108,6 +1108,12 @@ tbody tr:hover {
   flex-wrap: wrap;
 }
 
+.fit-label {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 780;
+}
+
 .score-pill,
 .warning-pill {
   display: inline-flex;
@@ -1132,6 +1138,35 @@ tbody tr:hover {
 .score-pill.weak,
 .warning-pill {
   background: #fde7e4;
+  color: var(--danger);
+}
+
+.readiness-breakdown {
+  display: grid;
+  gap: 10px;
+}
+
+.readiness-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.check-done,
+.check-missing {
+  border-radius: 999px;
+  padding: 3px 8px;
+  font-size: 0.76rem;
+  font-weight: 820;
+}
+
+.check-done {
+  background: #e7f5ec;
+  color: #126b3f;
+}
+
+.check-missing {
+  background: #f6e9e7;
   color: var(--danger);
 }
 
