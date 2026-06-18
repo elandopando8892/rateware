@@ -976,15 +976,46 @@ a {
 
 .dashboard-layout {
   display: grid;
-  gap: 12px;
+  gap: 14px;
   padding-bottom: 28px;
 }
 
-.dashboard-command-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.65fr);
-  gap: 12px;
-  align-items: start;
+.next-best-action-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  border: 1px solid #b8d8d4;
+  border-radius: 8px;
+  background: #eef7f6;
+  padding: 16px;
+}
+
+.next-best-action-card h2 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.next-best-action-card p:not(.eyebrow) {
+  max-width: 720px;
+  margin: 5px 0 0;
+  color: #40505d;
+  line-height: 1.45;
+}
+
+.next-best-action-card[data-severity="critical"] {
+  border-color: #f2bbb5;
+  background: #fffafa;
+}
+
+.next-best-action-card[data-severity="warning"] {
+  border-color: #f4dc9c;
+  background: #fffdf7;
+}
+
+.next-best-action-card[data-severity="success"] {
+  border-color: #b8d8d4;
+  background: #f5fbfa;
 }
 
 .vendors-layout {
@@ -1086,7 +1117,7 @@ a {
 
 .metric-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 10px;
 }
 
@@ -1098,6 +1129,15 @@ a {
   border-radius: var(--radius);
   background: var(--panel);
   padding: 12px;
+}
+
+.metric-card:hover {
+  border-color: #b8d8d4;
+  box-shadow: var(--shadow-soft);
+}
+
+.metric-card.danger-metric {
+  border-color: #f2bbb5;
 }
 
 .metric-card span {
@@ -1130,6 +1170,92 @@ a {
 .priority-queue {
   display: grid;
   gap: 8px;
+}
+
+.priority-alert {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #ffffff;
+  padding: 12px;
+}
+
+.priority-alert span {
+  display: inline-flex;
+  width: fit-content;
+  border-radius: 999px;
+  background: #eef1f4;
+  color: #53616b;
+  padding: 3px 8px;
+  font-size: 0.68rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.priority-alert strong,
+.priority-alert small {
+  display: block;
+}
+
+.priority-alert strong {
+  margin-top: 6px;
+  color: var(--text);
+}
+
+.priority-alert small {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 720;
+  line-height: 1.35;
+}
+
+.priority-alert b {
+  color: var(--text);
+  font-size: 1.2rem;
+}
+
+.priority-alert.critical {
+  border-color: #f2bbb5;
+  background: #fffafa;
+}
+
+.priority-alert.critical span {
+  background: #fde7e4;
+  color: var(--danger);
+}
+
+.priority-alert.warning {
+  border-color: #f4dc9c;
+  background: #fffdf7;
+}
+
+.priority-alert.warning span {
+  background: #fff0bf;
+  color: #7a5300;
+}
+
+.priority-alert.info {
+  border-color: #c8dce8;
+  background: #f7fbfd;
+}
+
+.priority-alert.success {
+  border-color: #b8d8d4;
+  background: #eef7f6;
+}
+
+.priority-alert.success span {
+  background: #dcefed;
+  color: var(--accent-dark);
+}
+
+.priority-alert:hover {
+  border-color: #b8d8d4;
+  box-shadow: var(--shadow-soft);
 }
 
 .priority-queue article {
@@ -1365,6 +1491,59 @@ a {
 .workflow-step.disabled-step {
   opacity: 0.55;
   pointer-events: none;
+}
+
+.core-workflow-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.workflow-action {
+  display: grid;
+  gap: 6px;
+  min-height: 118px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #ffffff;
+  padding: 12px;
+}
+
+.workflow-action span {
+  width: fit-content;
+  border-radius: 999px;
+  background: #eef1f4;
+  color: #53616b;
+  padding: 3px 8px;
+  font-size: 0.68rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.workflow-action strong {
+  color: var(--text);
+  font-size: 1rem;
+}
+
+.workflow-action small {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 740;
+  line-height: 1.35;
+}
+
+.workflow-action.primary-action {
+  border-color: #a8d2cc;
+  background: #eef7f6;
+}
+
+.workflow-action.danger-action {
+  border-color: #f2bbb5;
+}
+
+.workflow-action:hover {
+  border-color: #b8d8d4;
+  box-shadow: var(--shadow-soft);
 }
 
 .next-step-strip {
@@ -3688,6 +3867,7 @@ select.staging-input {
   .vendors-layout,
   .dashboard-command-grid,
   .metric-grid,
+  .core-workflow-grid,
   .vendor-metrics,
   .vendor-intelligence-summary,
   .action-grid,
@@ -3732,5 +3912,10 @@ select.staging-input {
     justify-content: center;
     gap: 10px;
     padding: 14px 0;
+  }
+
+  .next-best-action-card {
+    align-items: stretch;
+    flex-direction: column;
   }
 }

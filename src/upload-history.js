@@ -25,6 +25,25 @@ let currentRows = [];
 let activeQuickFilter = "all";
 const selectedUploadIds = new Set();
 
+function applyUrlFilters() {
+  const params = new URLSearchParams(window.location.search);
+  const status = params.get("status");
+  const quickFilter = params.get("filter");
+
+  if (status && [...statusFilter.options].some((option) => option.value === status)) {
+    statusFilter.value = status;
+  }
+
+  if (quickFilter && [...quickFilterButtons].some((button) => button.dataset.uploadFilter === quickFilter)) {
+    activeQuickFilter = quickFilter;
+    return;
+  }
+
+  if (status === "failed") {
+    activeQuickFilter = "failed";
+  }
+}
+
 function escapeHtml(value) {
   return String(value ?? "")
     .replace(/&/g, "&amp;")
@@ -377,6 +396,7 @@ async function clearUploadFilters() {
 }
 
 initAuthControls();
+applyUrlFilters();
 requirePrivatePage().catch(() => {});
 refreshButton.addEventListener("click", loadHistory);
 clearFiltersButton?.addEventListener("click", clearUploadFilters);
