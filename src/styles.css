@@ -688,7 +688,7 @@ small,
   top: 0;
   z-index: 4;
   display: grid;
-  grid-template-columns: auto minmax(160px, 220px) minmax(220px, 1fr) auto minmax(180px, 1fr);
+  grid-template-columns: auto auto auto minmax(140px, 180px) minmax(140px, 180px) minmax(180px, 1fr) repeat(4, auto);
   gap: 12px;
   align-items: end;
   border: 1px solid var(--line);
@@ -703,6 +703,10 @@ small,
   align-self: center;
   color: var(--accent-dark);
   white-space: nowrap;
+}
+
+.bulk-toolbar .status-message {
+  grid-column: 1 / -1;
 }
 
 .quick-filter-row {

@@ -57,6 +57,8 @@ const vendorNextPageButton = document.querySelector("#vendor-next-page");
 const quickFilterButtons = document.querySelectorAll(".quick-filter");
 const bulkToolbar = document.querySelector("#bulk-toolbar");
 const bulkSelectionCount = document.querySelector("#bulk-selection-count");
+const selectVisibleVendorsButton = document.querySelector("#select-visible-vendors-button");
+const clearVendorSelectionButton = document.querySelector("#clear-vendor-selection-button");
 const bulkStatus = document.querySelector("#bulk-status");
 const bulkBaseStage = document.querySelector("#bulk-base-stage");
 const bulkTags = document.querySelector("#bulk-tags");
@@ -217,8 +219,25 @@ function activateVendorTab(tabName) {
 
 function updateBulkState() {
   const count = selectedVendorIds.size;
+  const visibleSelectedCount = currentVendors.filter((vendor) => selectedVendorIds.has(vendor.id)).length;
   bulkToolbar.classList.toggle("hidden", count === 0);
-  bulkSelectionCount.textContent = `${count} selected`;
+  bulkSelectionCount.textContent = `${count} selected (${visibleSelectedCount} visible)`;
+}
+
+function clearVendorSelection() {
+  selectedVendorIds = new Set();
+  document.querySelectorAll(".vendor-select").forEach((checkbox) => {
+    checkbox.checked = false;
+  });
+  updateBulkState();
+}
+
+function selectVisibleVendors() {
+  currentVendors.forEach((vendor) => selectedVendorIds.add(vendor.id));
+  document.querySelectorAll(".vendor-select").forEach((checkbox) => {
+    checkbox.checked = true;
+  });
+  updateBulkState();
 }
 
 function updateVendorMetrics() {
@@ -439,7 +458,7 @@ function updatePaginationState() {
 
 function resetVendorPageAndLoad() {
   vendorPageOffset = 0;
-  selectedVendorIds = new Set();
+  clearVendorSelection();
   loadVendors();
 }
 
@@ -944,15 +963,17 @@ vendorPageSizeSelect.addEventListener("change", () => {
 });
 vendorPrevPageButton.addEventListener("click", () => {
   vendorPageOffset = Math.max(0, vendorPageOffset - vendorPageSize);
-  selectedVendorIds = new Set();
+  clearVendorSelection();
   loadVendors();
 });
 vendorNextPageButton.addEventListener("click", () => {
   if (vendorPageOffset + vendorPageSize >= vendorTotalCount) return;
   vendorPageOffset += vendorPageSize;
-  selectedVendorIds = new Set();
+  clearVendorSelection();
   loadVendors();
 });
+selectVisibleVendorsButton.addEventListener("click", selectVisibleVendors);
+clearVendorSelectionButton.addEventListener("click", clearVendorSelection);
 vendorTabs.forEach((button) => {
   button.addEventListener("click", () => activateVendorTab(button.dataset.vendorTab));
 });
@@ -963,7 +984,7 @@ quickFilterButtons.forEach((button) => {
 });
 searchInput.addEventListener("input", () => {
   window.clearTimeout(searchInput._timer);
-  searchInput._timer = window.setTimeout(loadVendors, 300);
+  searchInput._timer = window.setTimeout(resetVendorPageAndLoad, 300);
 });
 vendorsBody.addEventListener("click", (event) => {
   const button = event.target.closest(".vendor-profile-button");
@@ -1019,7 +1040,7 @@ initAuthControls();
 requirePrivatePage()
   .then(() =>
     applyPermissionState(
-      "#save-vendor-button, #wizard-save-button, #vendor-import, #import-google-sheet-button, #bulk-update-button, #bulk-procurement-button, #bulk-archive-vendors-button, #bulk-remove-vendors-button, #confirm-import-button, #save-segment-button, #drawer-save-button, #drawer-archive-button, [data-duplicate-inactive]",
+      "#save-vendor-button, #wizard-save-button, #vendor-import, #import-google-sheet-button, #select-visible-vendors-button, #clear-vendor-selection-button, #bulk-update-button, #bulk-procurement-button, #bulk-archive-vendors-button, #bulk-remove-vendors-button, #confirm-import-button, #save-segment-button, #drawer-save-button, #drawer-archive-button, [data-duplicate-inactive]",
       "vendors:manage"
     )
   )
