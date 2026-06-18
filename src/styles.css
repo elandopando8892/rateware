@@ -1219,6 +1219,19 @@ tbody tr:hover {
   background: #fbfcfc;
 }
 
+.staging-table tr.needs-review {
+  background: #fffafa;
+}
+
+.staging-table tr.has-warning {
+  background: #fffdf7;
+}
+
+.staging-table tr.needs-review:hover,
+.staging-table tr.has-warning:hover {
+  background: #fdf7f6;
+}
+
 .status-pill {
   display: inline-flex;
   align-items: center;
@@ -1448,6 +1461,50 @@ tbody tr:hover {
   display: block;
   margin-bottom: 5px;
   color: var(--text);
+}
+
+.row-review-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  max-width: 180px;
+  margin-top: 5px;
+}
+
+.review-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 18px;
+  border-radius: 999px;
+  padding: 1px 6px;
+  font-size: 0.66rem;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.review-chip.success {
+  background: #e7f5ec;
+  color: #126b3f;
+}
+
+.review-chip.neutral {
+  background: #eef7f6;
+  color: var(--accent-dark);
+}
+
+.review-chip.warning {
+  background: #fff4d8;
+  color: #7a4d00;
+}
+
+.review-chip.danger {
+  background: #fde7e4;
+  color: var(--danger);
+}
+
+.review-chip.muted {
+  background: #eef1f4;
+  color: #53616b;
 }
 
 .staging-input {

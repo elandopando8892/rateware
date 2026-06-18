@@ -217,6 +217,35 @@ function hasSplitRate(row) {
   return ["mx_linehaul", "us_linehaul", "fsc", "border_crossing_fee"].some((field) => hasNumericValue(row[field]));
 }
 
+function rowReviewIssues(row) {
+  const issues = [];
+  if (!row.vendors?.vendor_name) issues.push({ tone: "warning", label: "No vendor match" });
+  if (needsLocationMatch(row)) issues.push({ tone: "danger", label: "Needs location" });
+  if (needsNumericRate(row)) issues.push({ tone: "danger", label: "Needs rate" });
+  if (!row.quote_date) issues.push({ tone: "warning", label: "Needs date" });
+  if (!row.weekly_capacity) issues.push({ tone: "muted", label: "No capacity" });
+  return issues;
+}
+
+function rowRateMode(row) {
+  if (hasNumericValue(row.all_in_rate) && !hasSplitRate(row)) return { tone: "success", label: "All-in" };
+  if (hasSplitRate(row)) return { tone: "neutral", label: "Split" };
+  return { tone: "danger", label: "No rate" };
+}
+
+function renderReviewChips(row) {
+  const chips = [rowRateMode(row), ...rowReviewIssues(row)];
+  return `<div class="row-review-chips">${chips
+    .map((chip) => `<span class="review-chip ${escapeHtml(chip.tone)}">${escapeHtml(chip.label)}</span>`)
+    .join("")}</div>`;
+}
+
+function rowQualityClass(row) {
+  if (needsNumericRate(row) || needsLocationMatch(row)) return "needs-review";
+  if (!row.vendors?.vendor_name || !row.quote_date || !row.weekly_capacity) return "has-warning";
+  return "";
+}
+
 function applyReviewFilter(rows = loadedRows) {
   if (activeReviewFilter === "needs-location") return rows.filter(needsLocationMatch);
   if (activeReviewFilter === "needs-rate") return rows.filter(needsNumericRate);
@@ -319,7 +348,7 @@ function renderRows(rows) {
   body.innerHTML = rows
     .map(
       (row) => `
-        <tr data-row-id="${escapeHtml(row.id)}">
+        <tr class="${escapeHtml(rowQualityClass(row))}" data-row-id="${escapeHtml(row.id)}">
           <td class="select-column">
             <input data-select-row="${escapeHtml(row.id)}" type="checkbox" aria-label="Select staging row" ${selectedRowIds.has(row.id) ? "checked" : ""} />
           </td>
@@ -327,6 +356,7 @@ function renderRows(rows) {
             ${row.vendors?.vendor_name ? `<strong>${escapeHtml(row.vendors.vendor_name)}</strong>` : ""}
             ${inputCell(row, "vendor_domain", { wide: true })}
             ${row.vendors?.vendor_name ? '<span class="match-pill">Matched</span>' : ""}
+            ${renderReviewChips(row)}
           </td>
           <td>${inputCell(row, "quote_date", { type: "date", short: true })}</td>
           <td>${inputCell(row, "rfx_id", { short: true })}</td>
