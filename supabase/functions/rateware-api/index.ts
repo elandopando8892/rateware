@@ -2394,6 +2394,154 @@ async function requireOwnedRfxLane(supabase: ReturnType<typeof createClient>, us
   return laneResult.data;
 }
 
+function normalizeOutreachTemplate(input: Record<string, unknown>) {
+  const channel = cleanText(input.channel)?.toLowerCase() || "multi";
+  const name = cleanText(input.name);
+  if (!name) throw new Error("Template name is required.");
+  return {
+    name,
+    channel: ["email", "whatsapp", "multi"].includes(channel) ? channel : "multi",
+    subject: cleanText(input.subject),
+    html_body: cleanText(input.html_body || input.body || input.email_body),
+    whatsapp_body: cleanText(input.whatsapp_body || input.whatsapp_text),
+    active: input.active === undefined ? true : cleanBoolean(input.active),
+    is_default: input.is_default === undefined ? false : cleanBoolean(input.is_default),
+    placeholders: Array.isArray(input.placeholders) ? input.placeholders.map(cleanText).filter(Boolean) : [],
+    updated_at: new Date().toISOString()
+  };
+}
+
+function normalizeOutreachCampaign(input: Record<string, unknown>) {
+  const channel = cleanText(input.channel)?.toLowerCase() || "multi";
+  const status = cleanText(input.status)?.toLowerCase() || "draft";
+  const name = cleanText(input.name);
+  if (!name) throw new Error("Campaign name is required.");
+  return {
+    rfx_event_id: cleanText(input.rfx_event_id || input.event_id),
+    template_id: cleanText(input.template_id),
+    name,
+    channel: ["email", "whatsapp", "multi"].includes(channel) ? channel : "multi",
+    status: ["draft", "generated", "queued", "sent", "closed", "archived"].includes(status) ? status : "draft",
+    notes: cleanText(input.notes),
+    updated_at: new Date().toISOString()
+  };
+}
+
+function renderTemplateText(template: unknown, context: Record<string, unknown>) {
+  return String(template || "").replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_match, key) => {
+    const value = context[key];
+    return value === null || value === undefined ? "" : String(value);
+  });
+}
+
+function htmlToText(html: unknown) {
+  return String(html || "")
+    .replace(/<\s*br\s*\/?>/gi, "\n")
+    .replace(/<\/\s*p\s*>/gi, "\n\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function phoneForWhatsapp(value: unknown) {
+  const digits = String(value || "").replace(/[^\d]/g, "");
+  return digits.length >= 10 ? digits : null;
+}
+
+function gmailComposeUrl(to: unknown, subject: unknown, body: unknown) {
+  const recipient = cleanText(to);
+  if (!recipient) return null;
+  const params = new URLSearchParams({
+    view: "cm",
+    fs: "1",
+    to: recipient,
+    su: cleanText(subject) || "",
+    body: cleanText(body) || ""
+  });
+  return `https://mail.google.com/mail/?${params.toString()}`;
+}
+
+function whatsappDraftUrl(phone: unknown, text: unknown) {
+  const normalized = phoneForWhatsapp(phone);
+  if (!normalized) return null;
+  return `https://wa.me/${normalized}?text=${encodeURIComponent(cleanText(text) || "")}`;
+}
+
+function contactPreview(value: unknown) {
+  return String(value || "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 240);
+}
+
+function outreachContext(invitation: Record<string, unknown>, appOrigin: string) {
+  const vendor = typeof invitation.vendors === "object" && invitation.vendors ? invitation.vendors as Record<string, unknown> : {};
+  const lane = typeof invitation.rfx_lanes === "object" && invitation.rfx_lanes ? invitation.rfx_lanes as Record<string, unknown> : {};
+  const event = typeof invitation.rfx_events === "object" && invitation.rfx_events ? invitation.rfx_events as Record<string, unknown> : {};
+  const bidLink = `${appOrigin.replace(/\/$/, "")}/rfx-bid.html?token=${encodeURIComponent(String(invitation.invitation_token || ""))}`;
+  return {
+    vendor_name: vendor.vendor_name || vendor.domain || "Carrier",
+    contact_name: vendor.contact_name || vendor.vendor_name || "team",
+    vendor_domain: vendor.domain || "",
+    vendor_email: vendor.primary_email || "",
+    rfx_id: event.rfx_id || "",
+    event_name: event.name || event.rfx_id || "",
+    customer: event.customer || "",
+    due_date: event.due_date || "",
+    lane_origin: lane.origin || lane.origin_city || "",
+    lane_destination: lane.destination || lane.destination_city || "",
+    origin_market: lane.origin_market || "",
+    destination_market: lane.destination_market || "",
+    equipment: lane.equipment || "",
+    trailer: lane.trailer || "",
+    config: lane.config || "",
+    operation: lane.operation || "",
+    service: lane.service || "",
+    weekly_volume: lane.weekly_volume || "",
+    target_rate: lane.target_rate || "",
+    currency: lane.currency || "USD",
+    bid_link: bidLink
+  };
+}
+
+function messageChannels(channel: unknown) {
+  const normalized = cleanText(channel)?.toLowerCase() || "multi";
+  if (normalized === "email") return ["email"];
+  if (normalized === "whatsapp") return ["whatsapp"];
+  return ["email", "whatsapp"];
+}
+
+async function fetchOutreachTemplate(supabase: ReturnType<typeof createClient>, user: { owner_email: string | null }, id: unknown) {
+  const templateId = cleanText(id);
+  if (!templateId) throw new Error("Outreach template id is required.");
+  const result = await supabase
+    .from("outreach_templates")
+    .select("*")
+    .eq("id", templateId)
+    .single();
+  if (result.error) throw result.error;
+  if (result.data.owner_email && result.data.owner_email !== user.owner_email) throw new Error("Outreach template not found.");
+  return result.data;
+}
+
+async function requireOwnedOutreachCampaign(supabase: ReturnType<typeof createClient>, user: { owner_email: string | null }, id: unknown) {
+  const campaignId = cleanText(id);
+  if (!campaignId) throw new Error("Outreach campaign id is required.");
+  const result = await supabase
+    .from("outreach_campaigns")
+    .select("*")
+    .eq("id", campaignId)
+    .eq("owner_email", user.owner_email)
+    .single();
+  if (result.error) throw result.error;
+  return result.data;
+}
+
 function buildRowKeys(row: Record<string, unknown>) {
   const routeParts = [
     row.origin,
@@ -3231,8 +3379,284 @@ Deno.serve(async (request) => {
       return jsonResponse({ updated: result.data?.length || 0, rows: result.data || [] });
     }
 
+    if (body.action === "list_outreach_templates") {
+      const [globalResult, ownedResult] = await Promise.all([
+        supabase
+          .from("outreach_templates")
+          .select("*")
+          .is("owner_email", null)
+          .eq("active", true)
+          .order("is_default", { ascending: false })
+          .order("name", { ascending: true }),
+        supabase
+          .from("outreach_templates")
+          .select("*")
+          .eq("owner_email", user.owner_email)
+          .order("created_at", { ascending: false })
+      ]);
+      if (globalResult.error) throw globalResult.error;
+      if (ownedResult.error) throw ownedResult.error;
+      return jsonResponse({ rows: [...(ownedResult.data || []), ...(globalResult.data || [])] });
+    }
+
+    if (body.action === "create_outreach_template") {
+      const row = withOwner(normalizeOutreachTemplate(body.template || {}), user);
+      const result = await supabase.from("outreach_templates").insert(row).select().single();
+      if (result.error) throw result.error;
+      return jsonResponse({ row: result.data });
+    }
+
+    if (body.action === "update_outreach_template") {
+      const id = cleanText(body.id);
+      if (!id) return jsonResponse({ error: "Template id is required." }, 400);
+      const patch = normalizeOutreachTemplate(body.patch || body.template || {});
+      const result = await supabase
+        .from("outreach_templates")
+        .update(patch)
+        .eq("id", id)
+        .eq("owner_email", user.owner_email)
+        .select()
+        .single();
+      if (result.error) throw result.error;
+      return jsonResponse({ row: result.data });
+    }
+
+    if (body.action === "list_outreach_campaigns") {
+      const campaignsResult = await supabase
+        .from("outreach_campaigns")
+        .select("*, rfx_events(rfx_id,name,customer,status), outreach_templates(name,channel)")
+        .eq("owner_email", user.owner_email)
+        .neq("status", "archived")
+        .order("created_at", { ascending: false })
+        .limit(100);
+      if (campaignsResult.error) throw campaignsResult.error;
+      const campaignIds = (campaignsResult.data || []).map((campaign) => campaign.id);
+      const messagesResult = campaignIds.length
+        ? await supabase
+            .from("outreach_messages")
+            .select("id,campaign_id,status,channel")
+            .in("campaign_id", campaignIds)
+        : { data: [], error: null };
+      if (messagesResult.error) throw messagesResult.error;
+      const counts = new Map<string, { messages: number; sent: number; email: number; whatsapp: number }>();
+      for (const message of messagesResult.data || []) {
+        const bucket = counts.get(message.campaign_id) || { messages: 0, sent: 0, email: 0, whatsapp: 0 };
+        bucket.messages += 1;
+        if (message.status === "sent") bucket.sent += 1;
+        if (message.channel === "email") bucket.email += 1;
+        if (message.channel === "whatsapp") bucket.whatsapp += 1;
+        counts.set(message.campaign_id, bucket);
+      }
+      return jsonResponse({
+        rows: (campaignsResult.data || []).map((campaign) => ({
+          ...campaign,
+          message_count: counts.get(campaign.id)?.messages || 0,
+          sent_count: counts.get(campaign.id)?.sent || 0,
+          email_count: counts.get(campaign.id)?.email || 0,
+          whatsapp_count: counts.get(campaign.id)?.whatsapp || 0
+        }))
+      });
+    }
+
+    if (body.action === "create_outreach_campaign") {
+      const normalized = normalizeOutreachCampaign(body.campaign || {});
+      if (normalized.rfx_event_id) await requireOwnedRfxEvent(supabase, user, normalized.rfx_event_id);
+      if (normalized.template_id) await fetchOutreachTemplate(supabase, user, normalized.template_id);
+      const row = withOwner(normalized, user);
+      const result = await supabase.from("outreach_campaigns").insert(row).select().single();
+      if (result.error) throw result.error;
+      return jsonResponse({ row: result.data });
+    }
+
+    if (body.action === "generate_outreach_drafts") {
+      const campaign = await requireOwnedOutreachCampaign(supabase, user, body.campaign_id);
+      const template = await fetchOutreachTemplate(supabase, user, body.template_id || campaign.template_id);
+      const invitationIds = Array.isArray(body.invitation_ids) ? body.invitation_ids.map(String).filter(Boolean).slice(0, 1000) : [];
+      const appOrigin = cleanText(body.app_origin) || Deno.env.get("RATEWARE_APP_URL") || "https://rateware.vercel.app";
+
+      let invitationQuery = supabase
+        .from("rfx_lane_vendors")
+        .select(`
+          *,
+          vendors(id,vendor_name,domain,primary_email,whatsapp_phone,preferred_channel,contact_name),
+          rfx_events!inner(id,owner_email,rfx_id,name,customer,status,due_date),
+          rfx_lanes(*)
+        `)
+        .eq("rfx_events.owner_email", user.owner_email)
+        .neq("invitation_status", "archived")
+        .limit(1000);
+      if (campaign.rfx_event_id) invitationQuery = invitationQuery.eq("rfx_event_id", campaign.rfx_event_id);
+      if (invitationIds.length) invitationQuery = invitationQuery.in("id", invitationIds);
+
+      const invitationsResult = await invitationQuery;
+      if (invitationsResult.error) throw invitationsResult.error;
+
+      const rows: Record<string, unknown>[] = [];
+      const skipped: Record<string, unknown>[] = [];
+      for (const invitation of invitationsResult.data || []) {
+        const vendor = typeof invitation.vendors === "object" && invitation.vendors ? invitation.vendors as Record<string, unknown> : {};
+        const context = outreachContext(invitation, appOrigin);
+        const subject = renderTemplateText(template.subject || campaign.name, context);
+        const htmlBody = renderTemplateText(template.html_body || template.whatsapp_body || "", context);
+        const textBody = htmlToText(htmlBody);
+        const whatsappText = renderTemplateText(template.whatsapp_body || textBody, context);
+        const channels = messageChannels(campaign.channel || template.channel);
+
+        if (channels.includes("email")) {
+          const recipientEmail = cleanText(vendor.primary_email);
+          if (recipientEmail) {
+            rows.push(withOwner({
+              campaign_id: campaign.id,
+              template_id: template.id,
+              rfx_event_id: invitation.rfx_event_id,
+              rfx_lane_id: invitation.rfx_lane_id,
+              rfx_lane_vendor_id: invitation.id,
+              vendor_id: invitation.vendor_id,
+              channel: "email",
+              recipient_email: recipientEmail,
+              subject,
+              html_body: htmlBody,
+              text_body: textBody,
+              gmail_compose_url: gmailComposeUrl(recipientEmail, subject, textBody),
+              status: "drafted",
+              metadata: { bid_link: context.bid_link, generated_at: new Date().toISOString() }
+            }, user));
+          } else {
+            skipped.push({ invitation_id: invitation.id, channel: "email", reason: "Missing vendor email" });
+          }
+        }
+
+        if (channels.includes("whatsapp")) {
+          const recipientPhone = cleanText(vendor.whatsapp_phone);
+          if (phoneForWhatsapp(recipientPhone)) {
+            rows.push(withOwner({
+              campaign_id: campaign.id,
+              template_id: template.id,
+              rfx_event_id: invitation.rfx_event_id,
+              rfx_lane_id: invitation.rfx_lane_id,
+              rfx_lane_vendor_id: invitation.id,
+              vendor_id: invitation.vendor_id,
+              channel: "whatsapp",
+              recipient_phone: recipientPhone,
+              whatsapp_text: whatsappText,
+              text_body: whatsappText,
+              whatsapp_url: whatsappDraftUrl(recipientPhone, whatsappText),
+              status: "drafted",
+              metadata: { bid_link: context.bid_link, generated_at: new Date().toISOString() }
+            }, user));
+          } else {
+            skipped.push({ invitation_id: invitation.id, channel: "whatsapp", reason: "Missing WhatsApp phone" });
+          }
+        }
+      }
+
+      if (!rows.length) return jsonResponse({ generated: 0, rows: [], skipped });
+
+      const result = await supabase
+        .from("outreach_messages")
+        .upsert(rows, { onConflict: "campaign_id,rfx_lane_vendor_id,channel" })
+        .select("*, vendors(vendor_name,domain,primary_email,whatsapp_phone), rfx_events(rfx_id,name), rfx_lanes(origin,destination,equipment,trailer,operation,service)");
+      if (result.error) throw result.error;
+
+      const historyRows = (result.data || []).map((message) => withOwner({
+        outreach_message_id: message.id,
+        campaign_id: campaign.id,
+        vendor_id: message.vendor_id,
+        rfx_event_id: message.rfx_event_id,
+        channel: message.channel,
+        direction: "outbound",
+        status: "drafted",
+        subject: message.subject,
+        body_preview: contactPreview(message.text_body || message.whatsapp_text || message.html_body),
+        metadata: { generated_from: "outreach_engine" }
+      }, user));
+      if (historyRows.length) {
+        const history = await supabase.from("contact_history").insert(historyRows);
+        if (history.error) throw history.error;
+      }
+
+      const campaignUpdate = await supabase
+        .from("outreach_campaigns")
+        .update({ status: "generated", updated_at: new Date().toISOString() })
+        .eq("id", campaign.id)
+        .eq("owner_email", user.owner_email);
+      if (campaignUpdate.error) throw campaignUpdate.error;
+
+      return jsonResponse({ generated: result.data?.length || 0, rows: result.data || [], skipped });
+    }
+
+    if (body.action === "list_outreach_messages") {
+      let query = supabase
+        .from("outreach_messages")
+        .select("*, vendors(vendor_name,domain,primary_email,whatsapp_phone), rfx_events(rfx_id,name), rfx_lanes(origin,destination,equipment,trailer,operation,service)")
+        .eq("owner_email", user.owner_email)
+        .order("created_at", { ascending: false })
+        .limit(500);
+      if (body.campaign_id) query = query.eq("campaign_id", body.campaign_id);
+      if (body.status) query = query.eq("status", body.status);
+      if (body.channel) query = query.eq("channel", body.channel);
+      const result = await query;
+      if (result.error) throw result.error;
+      return jsonResponse({ rows: result.data || [] });
+    }
+
+    if (body.action === "mark_outreach_messages") {
+      const ids = Array.isArray(body.ids) ? body.ids.map(String).filter(Boolean).slice(0, 500) : [];
+      const status = cleanText(body.status)?.toLowerCase();
+      if (!ids.length) return jsonResponse({ updated: 0, rows: [] });
+      if (!status || !["drafted", "queued", "sent", "replied", "failed", "archived"].includes(status)) {
+        return jsonResponse({ error: "Valid message status is required." }, 400);
+      }
+      const patch: Record<string, unknown> = { status, updated_at: new Date().toISOString() };
+      if (status === "sent") {
+        patch.sent_at = new Date().toISOString();
+        patch.last_contacted_at = new Date().toISOString();
+      }
+      const result = await supabase
+        .from("outreach_messages")
+        .update(patch)
+        .eq("owner_email", user.owner_email)
+        .in("id", ids)
+        .select("*");
+      if (result.error) throw result.error;
+
+      const historyRows = (result.data || []).map((message) => withOwner({
+        outreach_message_id: message.id,
+        campaign_id: message.campaign_id,
+        vendor_id: message.vendor_id,
+        rfx_event_id: message.rfx_event_id,
+        channel: message.channel,
+        direction: status === "replied" ? "inbound" : "outbound",
+        status,
+        subject: message.subject,
+        body_preview: contactPreview(message.text_body || message.whatsapp_text || message.html_body),
+        metadata: { marked_from: "outreach_engine" }
+      }, user));
+      if (historyRows.length) {
+        const history = await supabase.from("contact_history").insert(historyRows);
+        if (history.error) throw history.error;
+      }
+
+      return jsonResponse({ updated: result.data?.length || 0, rows: result.data || [] });
+    }
+
+    if (body.action === "list_contact_history") {
+      let query = supabase
+        .from("contact_history")
+        .select("*, vendors(vendor_name,domain,primary_email), outreach_campaigns(name), rfx_events(rfx_id,name)")
+        .eq("owner_email", user.owner_email)
+        .order("occurred_at", { ascending: false })
+        .limit(300);
+      if (body.vendor_id) query = query.eq("vendor_id", body.vendor_id);
+      if (body.campaign_id) query = query.eq("campaign_id", body.campaign_id);
+      if (body.rfx_event_id) query = query.eq("rfx_event_id", body.rfx_event_id);
+      const result = await query;
+      if (result.error) throw result.error;
+      return jsonResponse({ rows: result.data || [] });
+    }
+
     if (body.action === "dashboard_summary") {
-      const [uploads, vendors, sourcingVendors, procurementVendors, archivedVendors, pending, approved, failed, rfxEvents, rfxOpen, rfxBids] = await Promise.all([
+      const [uploads, vendors, sourcingVendors, procurementVendors, archivedVendors, pending, approved, failed, rfxEvents, rfxOpen, rfxBids, outreachMessages] = await Promise.all([
         supabase.from("raw_uploads").select("id", { count: "exact", head: true }).neq("status", "archived"),
         supabase.from("vendors").select("id", { count: "exact", head: true }).eq("owner_email", user.owner_email),
         supabase.from("vendors").select("id", { count: "exact", head: true }).eq("owner_email", user.owner_email).eq("base_stage", "sourcing"),
@@ -3243,10 +3667,11 @@ Deno.serve(async (request) => {
         supabase.from("raw_uploads").select("id", { count: "exact", head: true }).eq("status", "failed"),
         supabase.from("rfx_events").select("id", { count: "exact", head: true }).eq("owner_email", user.owner_email).neq("status", "archived"),
         supabase.from("rfx_events").select("id", { count: "exact", head: true }).eq("owner_email", user.owner_email).eq("status", "open"),
-        supabase.from("rfx_lane_vendors").select("id,rfx_events!inner(owner_email)", { count: "exact", head: true }).eq("rfx_events.owner_email", user.owner_email).eq("invitation_status", "bid_submitted")
+        supabase.from("rfx_lane_vendors").select("id,rfx_events!inner(owner_email)", { count: "exact", head: true }).eq("rfx_events.owner_email", user.owner_email).eq("invitation_status", "bid_submitted"),
+        supabase.from("outreach_messages").select("id", { count: "exact", head: true }).eq("owner_email", user.owner_email).neq("status", "archived")
       ]);
 
-      for (const result of [uploads, vendors, sourcingVendors, procurementVendors, archivedVendors, pending, approved, failed, rfxEvents, rfxOpen, rfxBids]) {
+      for (const result of [uploads, vendors, sourcingVendors, procurementVendors, archivedVendors, pending, approved, failed, rfxEvents, rfxOpen, rfxBids, outreachMessages]) {
         if (result.error) throw result.error;
       }
 
@@ -3261,7 +3686,8 @@ Deno.serve(async (request) => {
         failed_uploads: failed.count || 0,
         rfx_events: rfxEvents.count || 0,
         rfx_open_events: rfxOpen.count || 0,
-        rfx_bids: rfxBids.count || 0
+        rfx_bids: rfxBids.count || 0,
+        outreach_messages: outreachMessages.count || 0
       });
     }
 

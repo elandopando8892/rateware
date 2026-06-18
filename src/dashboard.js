@@ -12,6 +12,7 @@ const signalFailed = document.querySelector("#signal-failed");
 const workflowSourcing = document.querySelector("#workflow-sourcing");
 const workflowProcurement = document.querySelector("#workflow-procurement");
 const workflowRfx = document.querySelector("#workflow-rfx");
+const workflowOutreach = document.querySelector("#workflow-outreach");
 const workflowUploads = document.querySelector("#workflow-uploads");
 const workflowStaging = document.querySelector("#workflow-staging");
 const workflowRateware = document.querySelector("#workflow-rateware");
@@ -71,6 +72,14 @@ function priorityItems(summary) {
       detail: "Review spot books, shortlists, invitations, and submitted bids.",
       href: "./rfx-events.html",
       action: "Open RFx"
+    },
+    {
+      tone: "neutral",
+      count: numberValue(summary.outreach_messages),
+      title: "Send carrier outreach",
+      detail: "Generate or follow up Gmail and WhatsApp invitation drafts.",
+      href: "./outreach.html",
+      action: "Open outreach"
     },
     {
       tone: "neutral",
@@ -160,6 +169,7 @@ function renderPipelineHealth(summary) {
   const sourcingVendors = numberValue(summary.sourcing_vendors);
   const rfxEvents = numberValue(summary.rfx_events);
   const openRfxEvents = numberValue(summary.rfx_open_events);
+  const outreachMessages = numberValue(summary.outreach_messages);
 
   const steps = [
     {
@@ -182,6 +192,13 @@ function renderPipelineHealth(summary) {
       issueCount: 0,
       detail: openRfxEvents > 0 ? `${formatCount(openRfxEvents)} open event(s) collecting bids.` : "Spot books, shortlists, invitations, and bid portal.",
       href: "./rfx-events.html"
+    },
+    {
+      title: "Outreach",
+      count: outreachMessages,
+      issueCount: 0,
+      detail: "Gmail and WhatsApp invitation drafts plus contact history.",
+      href: "./outreach.html"
     },
     {
       title: "Source archive",
@@ -263,6 +280,7 @@ async function loadDashboard() {
     setText(workflowSourcing, `${new Intl.NumberFormat().format(Number(summary.sourcing_vendors || 0))} vendors sourced`);
     setText(workflowProcurement, `${new Intl.NumberFormat().format(Number(summary.procurement_vendors || 0))} target carriers`);
     setText(workflowRfx, `${new Intl.NumberFormat().format(Number(summary.rfx_events || 0))} RFx events`);
+    setText(workflowOutreach, `${new Intl.NumberFormat().format(Number(summary.outreach_messages || 0))} drafts/history`);
     setText(workflowUploads, `${new Intl.NumberFormat().format(Number(summary.raw_uploads || 0))} source files`);
     setText(workflowStaging, `${new Intl.NumberFormat().format(Number(summary.pending_review || 0))} pending review`);
     setText(workflowRateware, `${new Intl.NumberFormat().format(Number(summary.approved_rows || 0))} approved rows`);

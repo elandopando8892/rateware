@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Rateware Outreach</title>
+    <link rel="stylesheet" href="./src/styles.css" />
+  </head>
+  <body>
+    <div class="shell-layout">
+      <aside class="side-nav" aria-label="Rateware modules">
+        <a class="brand-mark" href="./app.html">Rateware</a>
+        <nav>
+          <a href="./app.html">Dashboard</a>
+          <a href="./business-intelligence.html">Business Intelligence</a>
+          <a href="./upload-center.html">Upload Center</a>
+          <a href="./upload-history.html">Upload History</a>
+          <a href="./staging-review.html">Staging Review</a>
+          <a href="./rateware.html">Rateware</a>
+          <a href="./vendors.html">Vendors</a>
+          <a href="./rfx-events.html">RFx Events</a>
+          <a aria-current="page" href="./outreach.html">Outreach</a>
+        </nav>
+      </aside>
+
+      <div class="page-frame">
+        <header class="page-header">
+          <div>
+            <p class="eyebrow">Carrier communication engine</p>
+            <h1>Outreach</h1>
+            <nav class="module-crumbs" aria-label="Module context">
+              <a href="./app.html">Command Center</a>
+              <a href="./rfx-events.html">RFx Events</a>
+              <span>Outreach</span>
+            </nav>
+          </div>
+          <form id="auth-form" class="auth-strip">
+            <button id="auth-button" type="submit">Sign in with Kinde</button>
+            <button id="sign-out-button" type="button" class="secondary hidden">Sign out</button>
+            <p id="auth-status" role="status"></p>
+          </form>
+        </header>
+
+        <main class="outreach-layout">
+          <section class="review-insight-grid" aria-label="Outreach summary">
+            <article><span>Campaigns</span><strong id="outreach-metric-campaigns">0</strong></article>
+            <article><span>Drafts</span><strong id="outreach-metric-drafts">0</strong></article>
+            <article><span>Sent</span><strong id="outreach-metric-sent">0</strong></article>
+            <article><span>History</span><strong id="outreach-metric-history">0</strong></article>
+          </section>
+
+          <section class="outreach-workspace">
+            <section class="workspace-panel">
+              <div class="section-heading compact">
+                <p class="eyebrow">Templates</p>
+                <h2>Gmail HTML and WhatsApp copy</h2>
+              </div>
+              <form id="outreach-template-form" class="outreach-template-form">
+                <label>
+                  Template name
+                  <input id="template-name" required placeholder="RFx cross-border invite" />
+                </label>
+                <label>
+                  Channel
+                  <select id="template-channel">
+                    <option value="multi">Email + WhatsApp</option>
+                    <option value="email">Email only</option>
+                    <option value="whatsapp">WhatsApp only</option>
+                  </select>
+                </label>
+                <label class="wide-field">
+                  Email subject
+                  <input id="template-subject" placeholder="Invitation to quote {{rfx_id}}" />
+                </label>
+                <label class="wide-field">
+                  Gmail HTML body
+                  <textarea id="template-html" rows="7" placeholder="<p>Hello {{vendor_name}},</p><p>Please quote {{lane_origin}} to {{lane_destination}}: {{bid_link}}</p>"></textarea>
+                </label>
+                <label class="wide-field">
+                  WhatsApp draft
+                  <textarea id="template-whatsapp" rows="4" placeholder="Hello {{vendor_name}}, please quote {{rfx_id}}: {{bid_link}}"></textarea>
+                </label>
+                <button type="submit">Save template</button>
+                <p id="template-status" class="status-message" role="status"></p>
+              </form>
+              <div id="template-list" class="outreach-template-list"></div>
+            </section>
+
+            <section class="workspace-panel">
+              <div class="split-heading">
+                <div>
+                  <p class="eyebrow">Campaign builder</p>
+                  <h2>Create from RFx shortlist</h2>
+                </div>
+                <button id="refresh-outreach" class="secondary" type="button">Refresh</button>
+              </div>
+              <form id="outreach-campaign-form" class="outreach-campaign-form">
+                <label>
+                  Campaign name
+                  <input id="campaign-name" required placeholder="RFx-04302602 invitation wave" />
+                </label>
+                <label>
+                  RFx event
+                  <select id="campaign-rfx-event"></select>
+                </label>
+                <label>
+                  Template
+                  <select id="campaign-template"></select>
+                </label>
+                <label>
+                  Channel
+                  <select id="campaign-channel">
+                    <option value="multi">Email + WhatsApp</option>
+                    <option value="email">Email only</option>
+                    <option value="whatsapp">WhatsApp only</option>
+                  </select>
+                </label>
+                <button type="submit">Create campaign</button>
+              </form>
+              <p id="campaign-status" class="status-message" role="status"></p>
+              <div id="campaign-list" class="outreach-campaign-list"></div>
+            </section>
+          </section>
+
+          <section class="workspace-panel">
+            <div class="split-heading">
+              <div>
+                <p class="eyebrow">Draft queue</p>
+                <h2 id="outreach-draft-title">Generated messages</h2>
+              </div>
+              <div class="action-row">
+                <button id="generate-drafts-button" type="button" disabled>Generate drafts</button>
+                <button id="mark-queued-button" class="secondary" type="button" disabled>Mark queued</button>
+                <button id="mark-sent-button" class="secondary" type="button" disabled>Mark sent</button>
+                <button id="archive-messages-button" class="secondary" type="button" disabled>Archive</button>
+              </div>
+            </div>
+            <div class="bulk-action-bar">
+              <span id="outreach-selection-count">0 selected</span>
+              <span id="outreach-action-status" class="row-save-status"></span>
+            </div>
+            <div class="table-wrap">
+              <table class="outreach-table">
+                <thead>
+                  <tr>
+                    <th>Select</th>
+                    <th>Vendor</th>
+                    <th>RFx / Lane</th>
+                    <th>Channel</th>
+                    <th>Recipient</th>
+                    <th>Status</th>
+                    <th>Draft</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="outreach-message-body">
+                  <tr><td colspan="8">Select a campaign to generate outreach drafts.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="workspace-panel">
+            <div class="section-heading compact">
+              <p class="eyebrow">Contact history</p>
+              <h2>Carrier touchpoints</h2>
+            </div>
+            <div id="contact-history-list" class="contact-history-list">
+              <article>No contact history loaded.</article>
+            </div>
+          </section>
+        </main>
+      </div>
+    </div>
+
+    <script type="module" src="./src/outreach.js"></script>
+  </body>
+</html>

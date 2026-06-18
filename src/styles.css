@@ -465,15 +465,147 @@ a {
   grid-column: 1 / -1;
 }
 
+.outreach-layout,
+.outreach-workspace {
+  display: grid;
+  gap: 16px;
+}
+
+.outreach-workspace {
+  grid-template-columns: minmax(320px, 0.85fr) minmax(420px, 1.15fr);
+  align-items: start;
+}
+
+.outreach-template-form,
+.outreach-campaign-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  align-items: end;
+}
+
+.outreach-template-form label,
+.outreach-campaign-form label {
+  display: grid;
+  gap: 6px;
+  color: #40505d;
+  font-size: 0.78rem;
+  font-weight: 780;
+}
+
+.outreach-template-form .wide-field {
+  grid-column: 1 / -1;
+}
+
+.outreach-template-form textarea {
+  font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+  font-size: 0.8rem;
+  resize: vertical;
+}
+
+.outreach-template-list,
+.outreach-campaign-list,
+.contact-history-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.outreach-template-list article,
+.contact-history-list article {
+  display: grid;
+  gap: 4px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--soft-panel);
+  padding: 10px;
+}
+
+.outreach-template-list article > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.outreach-template-list span,
+.contact-history-list span,
+.contact-history-list small {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 760;
+}
+
+.contact-history-list p {
+  margin: 0;
+  color: #41505b;
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.outreach-campaign-card {
+  display: grid;
+  gap: 5px;
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #ffffff;
+  padding: 10px;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.outreach-campaign-card.is-active {
+  border-color: var(--accent);
+  background: #eef8f6;
+}
+
+.outreach-campaign-card span,
+.status-pill {
+  width: fit-content;
+  border-radius: 999px;
+  background: #e7eef0;
+  padding: 2px 7px;
+  color: #344552;
+  font-size: 0.68rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.outreach-campaign-card small {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 760;
+}
+
+.outreach-campaign-card b {
+  color: var(--accent-dark);
+  font-size: 0.78rem;
+}
+
+.outreach-table th,
+.outreach-table td {
+  vertical-align: top;
+}
+
+.compact-actions {
+  display: flex;
+  gap: 5px;
+  white-space: nowrap;
+}
+
 @media (max-width: 980px) {
   .rfx-workspace,
   .rfx-shortlist-box,
+  .outreach-workspace,
   .bid-context,
   .bid-lane-summary dl {
     grid-template-columns: 1fr;
   }
 
   .rfx-event-form,
+  .outreach-template-form,
+  .outreach-campaign-form,
   .bid-form {
     grid-template-columns: 1fr 1fr;
   }
@@ -911,7 +1043,7 @@ a {
 
 .workflow-steps {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
   gap: 10px;
 }
 
