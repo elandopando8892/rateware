@@ -333,6 +333,39 @@ a {
   padding-top: 18px;
 }
 
+.ai-suggestion-panel {
+  border-top: 1px solid var(--line);
+  margin-top: 18px;
+  padding-top: 18px;
+}
+
+.ai-suggestion-list {
+  display: grid;
+  gap: 8px;
+}
+
+.ai-suggestion-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfc;
+  padding: 10px;
+}
+
+.ai-suggestion-card span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.8rem;
+  margin-top: 2px;
+}
+
+.compact-empty {
+  padding: 10px 4px;
+}
+
 .checkbox-label {
   display: inline-flex;
   align-items: center;

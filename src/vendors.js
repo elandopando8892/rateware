@@ -708,6 +708,58 @@ function renderDuplicateSignals(vendor) {
     .join("");
 }
 
+function vendorEnrichmentSuggestions(vendor) {
+  const text = [vendor.vendor_name, vendor.coverage_notes, vendor.notes, splitTags(vendor.tags).join(" ")].join(" ").toLowerCase();
+  const currentTags = new Set(splitTags(vendor.tags));
+  const suggestions = [];
+
+  const tagRules = [
+    ["cross-border", /cross[-\s]?border|mx.?usa|usa.?mx|laredo|nuevo laredo|frontera/],
+    ["ftl", /\bftl\b|truckload|carga completa/],
+    ["ltl", /\bltl\b|consolidado/],
+    ["reefer", /reefer|refrigerad|temperature|temperatura/],
+    ["flatbed", /flatbed|plataforma/],
+    ["hazmat", /hazmat|hazardous|peligros/],
+    ["drayage", /drayage|puerto|intermodal|contenedor/]
+  ];
+
+  tagRules.forEach(([tag, pattern]) => {
+    if (!currentTags.has(tag) && pattern.test(text)) {
+      suggestions.push({ type: "tag", value: tag, label: `Add tag: ${tag}` });
+    }
+  });
+
+  if (!vendor.coverage_notes && /monterrey|laredo|mexico|usa|canada|bajio|norte/.test(text)) {
+    suggestions.push({ type: "coverage", value: "Review notes and add structured coverage markets.", label: "Add coverage from notes" });
+  }
+  if (!vendor.primary_email && !vendor.whatsapp_phone) {
+    suggestions.push({ type: "note", value: "Missing contact channel. Validate email or WhatsApp before RFx invitation.", label: "Flag missing contact" });
+  }
+  if (!vendor.domain && vendor.primary_email?.includes("@")) {
+    suggestions.push({ type: "domain", value: vendor.primary_email.split("@").pop(), label: "Infer domain from email" });
+  }
+
+  return suggestions.slice(0, 6);
+}
+
+function renderEnrichmentSuggestions(vendor) {
+  const suggestions = vendorEnrichmentSuggestions(vendor);
+  if (!suggestions.length) return '<div class="empty-state compact-empty"><strong>No suggestions</strong><span>This vendor has enough structured CRM data for now.</span></div>';
+  return suggestions
+    .map(
+      (suggestion) => `
+        <article class="ai-suggestion-card">
+          <div>
+            <strong>${escapeHtml(suggestion.label)}</strong>
+            <span>${escapeHtml(suggestion.value)}</span>
+          </div>
+          <button class="small-button secondary" type="button" data-ai-suggestion-type="${escapeHtml(suggestion.type)}" data-ai-suggestion-value="${escapeHtml(suggestion.value)}">Apply</button>
+        </article>
+      `
+    )
+    .join("");
+}
+
 function openVendorDrawer(vendorId) {
   const vendor = allVendors.find((row) => row.id === vendorId) || currentVendors.find((row) => row.id === vendorId);
   if (!vendor) return;
@@ -728,6 +780,7 @@ function openVendorDrawer(vendorId) {
   setDrawerValue("#drawer-coverage", escapeHtml(vendor.coverage_notes));
   setDrawerValue("#drawer-duplicates", renderDuplicateSignals(vendor));
   setDrawerValue("#drawer-notes", escapeHtml(vendor.notes));
+  document.querySelector("#drawer-ai-suggestions").innerHTML = renderEnrichmentSuggestions(vendor);
   document.querySelector("#drawer-edit-name").value = vendor.vendor_name || "";
   document.querySelector("#drawer-edit-domain").value = vendor.domain || "";
   document.querySelector("#drawer-edit-contact").value = vendor.contact_name || "";
@@ -755,6 +808,27 @@ function readDrawerPatch() {
     coverage_notes: document.querySelector("#drawer-edit-coverage").value,
     notes: document.querySelector("#drawer-edit-notes").value
   };
+}
+
+function applyDrawerSuggestion(type, value) {
+  if (type === "tag") {
+    const tagInput = document.querySelector("#drawer-edit-tags");
+    const tags = new Set(splitTags(tagInput.value));
+    tags.add(value);
+    tagInput.value = Array.from(tags).join(", ");
+  }
+  if (type === "coverage") {
+    const coverageInput = document.querySelector("#drawer-edit-coverage");
+    coverageInput.value = coverageInput.value ? `${coverageInput.value}\n${value}` : value;
+  }
+  if (type === "note") {
+    const notesInput = document.querySelector("#drawer-edit-notes");
+    notesInput.value = notesInput.value ? `${notesInput.value}\n${value}` : value;
+  }
+  if (type === "domain") {
+    document.querySelector("#drawer-edit-domain").value ||= value;
+  }
+  setStatus(drawerEditStatus, "Suggestion applied. Review and save changes.", "success");
 }
 
 async function parseVendorFile(file) {
@@ -1097,6 +1171,11 @@ vendorsBody.addEventListener("change", (event) => {
   updateBulkState();
 });
 closeDrawerButton.addEventListener("click", () => drawer.classList.add("hidden"));
+drawer.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-ai-suggestion-type]");
+  if (!button) return;
+  applyDrawerSuggestion(button.dataset.aiSuggestionType, button.dataset.aiSuggestionValue);
+});
 drawerEditForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (!activeDrawerVendorId) return;
