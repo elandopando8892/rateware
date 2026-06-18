@@ -1,5 +1,5 @@
 import { applyPermissionState, initAuthControls, requirePrivatePage } from "./auth.js";
-import { askCarrierIntelligence, fetchBusinessIntelligencePivot, promoteCarrierRecommendations } from "./business-intelligence-service.js";
+import { askCarrierIntelligence, fetchBusinessIntelligenceDrilldown, fetchBusinessIntelligencePivot, promoteCarrierRecommendations } from "./business-intelligence-service.js";
 
 const chatForm = document.querySelector("#bi-chat-form");
 const promptInput = document.querySelector("#bi-prompt");
@@ -18,6 +18,7 @@ const metricRates = document.querySelector("#bi-metric-rates");
 const metricSelected = document.querySelector("#bi-metric-selected");
 const runPivotButton = document.querySelector("#bi-run-pivot");
 const copyPivotButton = document.querySelector("#bi-copy-pivot");
+const exportPivotButton = document.querySelector("#bi-export-pivot");
 const pivotHead = document.querySelector("#bi-pivot-head");
 const pivotBody = document.querySelector("#bi-pivot-body");
 const pivotStatus = document.querySelector("#bi-pivot-status");
@@ -25,9 +26,14 @@ const pivotTransactions = document.querySelector("#bi-pivot-transactions");
 const pivotCarriers = document.querySelector("#bi-pivot-carriers");
 const pivotAvgRate = document.querySelector("#bi-pivot-avg-rate");
 const pivotRateRange = document.querySelector("#bi-pivot-rate-range");
+const drilldownTitle = document.querySelector("#bi-drilldown-title");
+const drilldownStatus = document.querySelector("#bi-drilldown-status");
+const drilldownBody = document.querySelector("#bi-drilldown-body");
+const exportDrilldownButton = document.querySelector("#bi-export-drilldown");
 
 let currentRecommendations = [];
 let currentPivot = null;
+let currentDrilldown = null;
 const selectedVendorIds = new Set();
 
 const PIVOT_DIMENSIONS = [
@@ -75,6 +81,51 @@ const PIVOT_METRICS = [
   ["border_crossing_fee", "Border fee"]
 ];
 
+const BI_TEMPLATES = {
+  "pareto-d2d": {
+    rows: ["vendor", "corridor", ""],
+    columns: ["operation", "service"],
+    metric: "transaction_count",
+    aggregation: "count",
+    filters: { crossborder: true, d2d: true }
+  },
+  "cost-mile-corridor": {
+    rows: ["corridor", "vendor", ""],
+    columns: ["operation", "service"],
+    metric: "cost_per_mile",
+    aggregation: "avg",
+    filters: { crossborder: true }
+  },
+  "border-crossing": {
+    rows: ["border_pair", "vendor", ""],
+    columns: ["operation", "service"],
+    metric: "transaction_count",
+    aggregation: "count",
+    filters: { crossborder: true }
+  },
+  "equipment-service": {
+    rows: ["equipment", "trailer", "service"],
+    columns: ["operation", "vendor_stage"],
+    metric: "transaction_count",
+    aggregation: "count",
+    filters: {}
+  },
+  "market-carriers": {
+    rows: ["origin_market", "destination_market", "vendor"],
+    columns: ["operation", ""],
+    metric: "distinct_carriers",
+    aggregation: "distinct",
+    filters: {}
+  },
+  "data-quality": {
+    rows: ["rate_status", "vendor_stage", "vendor"],
+    columns: ["operation", "service"],
+    metric: "transaction_count",
+    aggregation: "count",
+    filters: {}
+  }
+};
+
 function escapeHtml(value) {
   return String(value ?? "")
     .replace(/&/g, "&amp;")
@@ -105,10 +156,34 @@ function setPivotStatus(message, tone = "neutral") {
   pivotStatus.dataset.tone = tone;
 }
 
+function setDrilldownStatus(message, tone = "neutral") {
+  if (!drilldownStatus) return;
+  drilldownStatus.textContent = message;
+  drilldownStatus.dataset.tone = tone;
+}
+
 function moneyValue(value) {
   const number = Number(value);
   if (!Number.isFinite(number)) return "-";
   return new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(number);
+}
+
+function csvEscape(value) {
+  const text = String(value ?? "");
+  return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
+function downloadCsv(filename, rows) {
+  const csv = rows.map((row) => row.map(csvEscape).join(",")).join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 }
 
 function fillSelect(selector, options, value) {
@@ -126,6 +201,63 @@ function setupPivotControls() {
   fillSelect("#bi-pivot-column-2", PIVOT_DIMENSIONS, "service");
   fillSelect("#bi-pivot-metric", PIVOT_METRICS, "transaction_count");
   document.querySelector("#bi-pivot-aggregation").value = "count";
+}
+
+function setControl(selector, value) {
+  const element = document.querySelector(selector);
+  if (element) element.value = value || "";
+}
+
+function setChecked(selector, value) {
+  const element = document.querySelector(selector);
+  if (element) element.checked = Boolean(value);
+}
+
+function clearPivotFilters() {
+  [
+    "#bi-filter-search",
+    "#bi-filter-vendor",
+    "#bi-filter-route",
+    "#bi-filter-corridor",
+    "#bi-filter-origin-state",
+    "#bi-filter-destination-state",
+    "#bi-filter-equipment",
+    "#bi-filter-trailer",
+    "#bi-filter-operation",
+    "#bi-filter-service",
+    "#bi-filter-mx-crossing",
+    "#bi-filter-us-crossing"
+  ].forEach((selector) => setControl(selector, ""));
+  setChecked("#bi-filter-crossborder", false);
+  setChecked("#bi-filter-d2d", false);
+}
+
+function applyPivotConfig(config) {
+  const rows = config.rows || [];
+  const columns = config.columns || [];
+  setControl("#bi-pivot-row-1", rows[0] || "");
+  setControl("#bi-pivot-row-2", rows[1] || "");
+  setControl("#bi-pivot-row-3", rows[2] || "");
+  setControl("#bi-pivot-column-1", columns[0] || "");
+  setControl("#bi-pivot-column-2", columns[1] || "");
+  setControl("#bi-pivot-metric", config.metric || "transaction_count");
+  setControl("#bi-pivot-aggregation", config.aggregation || "count");
+  clearPivotFilters();
+  const filters = config.filters || {};
+  setControl("#bi-filter-search", filters.search || "");
+  setControl("#bi-filter-vendor", filters.vendor || "");
+  setControl("#bi-filter-route", filters.route || "");
+  setControl("#bi-filter-corridor", filters.corridor || "");
+  setControl("#bi-filter-origin-state", filters.origin_state || "");
+  setControl("#bi-filter-destination-state", filters.destination_state || "");
+  setControl("#bi-filter-equipment", filters.equipment || "");
+  setControl("#bi-filter-trailer", filters.trailer || "");
+  setControl("#bi-filter-operation", filters.operation || "");
+  setControl("#bi-filter-service", filters.service || "");
+  setControl("#bi-filter-mx-crossing", filters.mx_crossing || "");
+  setControl("#bi-filter-us-crossing", filters.us_crossing || "");
+  setChecked("#bi-filter-crossborder", filters.crossborder);
+  setChecked("#bi-filter-d2d", filters.d2d);
 }
 
 function readValue(selector) {
@@ -185,6 +317,7 @@ function renderPivot(result) {
   pivotAvgRate.textContent = moneyValue(result.summary?.avg_all_in_rate);
   pivotRateRange.textContent = `${moneyValue(result.summary?.min_all_in_rate)} - ${moneyValue(result.summary?.max_all_in_rate)}`;
   copyPivotButton.disabled = !(result.rows || []).length;
+  exportPivotButton.disabled = !(result.rows || []).length;
 
   pivotHead.innerHTML = `
     <tr>
@@ -211,8 +344,8 @@ function renderPivot(result) {
   pivotBody.innerHTML = result.rows.map((row) => `
     <tr>
       ${(row.row_values || []).map((value) => `<td>${escapeHtml(value)}</td>`).join("")}
-      ${columns.map((column) => `<td>${escapeHtml(row.cells?.[column] ?? "-")}</td>`).join("")}
-      <td><strong>${escapeHtml(row.total ?? "-")}</strong></td>
+      ${columns.map((column) => `<td><button type="button" class="bi-cell-button" data-pivot-row="${escapeHtml(JSON.stringify(row.row_values || []))}" data-pivot-column="${escapeHtml(column)}">${escapeHtml(row.cells?.[column] ?? "-")}</button></td>`).join("")}
+      <td><button type="button" class="bi-cell-button strong" data-pivot-row="${escapeHtml(JSON.stringify(row.row_values || []))}" data-pivot-column="Total">${escapeHtml(row.total ?? "-")}</button></td>
     </tr>
   `).join("");
 }
@@ -245,6 +378,102 @@ async function copyPivot() {
   ].join("\t"));
   await navigator.clipboard.writeText([header, ...lines].join("\n"));
   setPivotStatus("Pivot copied.", "success");
+}
+
+function exportPivotCsv() {
+  if (!currentPivot) return;
+  const rowLabels = currentPivot.row_dimensions || [];
+  const columns = currentPivot.columns || [];
+  const rows = [
+    [...rowLabels, ...columns, "total"],
+    ...(currentPivot.rows || []).map((row) => [
+      ...(row.row_values || []),
+      ...columns.map((column) => row.cells?.[column] ?? ""),
+      row.total ?? ""
+    ])
+  ];
+  downloadCsv("rateware-bi-pivot.csv", rows);
+  setPivotStatus("Pivot CSV exported.", "success");
+}
+
+function renderDrilldown(result) {
+  currentDrilldown = result;
+  exportDrilldownButton.disabled = !(result.rows || []).length;
+  drilldownTitle.textContent = [result.cell?.row_values?.join(" | "), result.cell?.column_value].filter(Boolean).join(" / ") || "Cell detail";
+
+  if (!(result.rows || []).length) {
+    drilldownBody.innerHTML = `
+      <tr>
+        <td colspan="11">
+          <div class="empty-state">
+            <strong>No rows in this cell</strong>
+            <span>The selected value has no drilldown rows.</span>
+          </div>
+        </td>
+      </tr>
+    `;
+    return;
+  }
+
+  drilldownBody.innerHTML = result.rows.map((row) => `
+    <tr>
+      <td>${escapeHtml(row.vendor || "-")}</td>
+      <td>${escapeHtml([row.quote_date, row.rfx_id].filter(Boolean).join(" | ") || "-")}</td>
+      <td>${escapeHtml([row.origin, row.destination].filter(Boolean).join(" -> ") || "-")}</td>
+      <td>${escapeHtml([row.origin_market, row.destination_market].filter(Boolean).join(" -> ") || "-")}</td>
+      <td>${escapeHtml([row.equipment, row.trailer].filter(Boolean).join(" / ") || "-")}</td>
+      <td>${escapeHtml(row.operation || "-")}</td>
+      <td>${escapeHtml(row.service || "-")}</td>
+      <td>${escapeHtml([row.mx_crossing, row.us_crossing].filter(Boolean).join(" / ") || "-")}</td>
+      <td>${escapeHtml([row.all_in_rate, row.currency].filter(Boolean).join(" ") || "-")}</td>
+      <td>${escapeHtml(row.cost_per_mile ?? "-")}</td>
+      <td>${escapeHtml(row.cost_per_km ?? "-")}</td>
+    </tr>
+  `).join("");
+}
+
+async function runDrilldown(rowValues, columnValue) {
+  setDrilldownStatus("Loading detail...");
+  try {
+    await requirePrivatePage();
+    const result = await fetchBusinessIntelligenceDrilldown(readPivotConfig(), {
+      row_values: rowValues,
+      column_value: columnValue
+    });
+    renderDrilldown(result);
+    setDrilldownStatus(`${formatNumber(result.total || 0)} source rate row(s).`, "success");
+  } catch (error) {
+    setDrilldownStatus(error.message, "error");
+  }
+}
+
+function exportDrilldownCsv() {
+  if (!currentDrilldown) return;
+  const rows = [
+    ["carrier", "quote", "rfx", "origin", "destination", "origin_market", "destination_market", "equipment", "trailer", "operation", "service", "mx_crossing", "us_crossing", "all_in", "currency", "cost_per_mile", "cost_per_km", "status"],
+    ...(currentDrilldown.rows || []).map((row) => [
+      row.vendor,
+      row.quote_date,
+      row.rfx_id,
+      row.origin,
+      row.destination,
+      row.origin_market,
+      row.destination_market,
+      row.equipment,
+      row.trailer,
+      row.operation,
+      row.service,
+      row.mx_crossing,
+      row.us_crossing,
+      row.all_in_rate,
+      row.currency,
+      row.cost_per_mile,
+      row.cost_per_km,
+      row.status
+    ])
+  ];
+  downloadCsv("rateware-bi-drilldown.csv", rows);
+  setDrilldownStatus("Drilldown CSV exported.", "success");
 }
 
 function selectedRecommendations() {
@@ -400,7 +629,7 @@ initAuthControls();
 setupPivotControls();
 requirePrivatePage()
   .then(async () => {
-    await applyPermissionState("#bi-submit-button, #bi-promote-selected, #bi-copy-list, #bi-run-pivot, #bi-copy-pivot", "business-intelligence:use");
+    await applyPermissionState("#bi-submit-button, #bi-promote-selected, #bi-copy-list, #bi-run-pivot, #bi-copy-pivot, #bi-export-pivot, #bi-export-drilldown", "business-intelligence:use");
     await runPivot();
   })
   .catch((error) => setStatus(error.message, "error"));
@@ -440,6 +669,30 @@ promoteSelectedButton?.addEventListener("click", promoteSelected);
 copyListButton?.addEventListener("click", copyRecommendations);
 runPivotButton?.addEventListener("click", runPivot);
 copyPivotButton?.addEventListener("click", copyPivot);
+exportPivotButton?.addEventListener("click", exportPivotCsv);
+exportDrilldownButton?.addEventListener("click", exportDrilldownCsv);
+
+document.querySelectorAll("[data-bi-template]").forEach((button) => {
+  button.addEventListener("click", async () => {
+    const template = BI_TEMPLATES[button.dataset.biTemplate];
+    if (!template) return;
+    applyPivotConfig(template);
+    setPivotStatus(`Template loaded: ${button.textContent}.`);
+    await runPivot();
+  });
+});
+
+pivotBody?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-pivot-row]");
+  if (!button) return;
+  let rowValues = [];
+  try {
+    rowValues = JSON.parse(button.dataset.pivotRow || "[]");
+  } catch {
+    rowValues = [];
+  }
+  runDrilldown(rowValues, button.dataset.pivotColumn || "Total");
+});
 
 document.querySelector("#bi-pivot-metric")?.addEventListener("change", () => {
   const metric = readValue("#bi-pivot-metric");

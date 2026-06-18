@@ -2206,6 +2206,17 @@ select.staging-input {
   gap: 12px;
 }
 
+.bi-template-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--soft-panel);
+  padding: 10px;
+}
+
 .bi-pivot-builder {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -2272,6 +2283,45 @@ select.staging-input {
 
 .bi-pivot-table td {
   font-size: 0.84rem;
+}
+
+.bi-cell-button {
+  min-height: 26px;
+  width: 100%;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text);
+  padding: 3px 6px;
+  text-align: left;
+  font-size: 0.84rem;
+  font-weight: 760;
+}
+
+.bi-cell-button:hover {
+  border-color: #b8d8d4;
+  background: #eef7f6;
+  color: var(--accent-dark);
+}
+
+.bi-cell-button.strong {
+  font-weight: 900;
+}
+
+.bi-drilldown-panel {
+  display: grid;
+  gap: 10px;
+  border-top: 1px solid var(--line);
+  margin-top: 8px;
+  padding-top: 14px;
+}
+
+.bi-drilldown-table {
+  min-width: 1480px;
+}
+
+.bi-drilldown-table td {
+  font-size: 0.82rem;
+  white-space: nowrap;
 }
 
 .bi-table {

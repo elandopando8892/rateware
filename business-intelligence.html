@@ -77,7 +77,17 @@
               <div class="action-row">
                 <button id="bi-run-pivot" type="button">Run pivot</button>
                 <button id="bi-copy-pivot" type="button" class="secondary" disabled>Copy pivot</button>
+                <button id="bi-export-pivot" type="button" class="secondary" disabled>Export CSV</button>
               </div>
+            </div>
+
+            <div class="bi-template-row" aria-label="BI templates">
+              <button type="button" class="secondary small-button" data-bi-template="pareto-d2d">Pareto D2D</button>
+              <button type="button" class="secondary small-button" data-bi-template="cost-mile-corridor">Cost / mile by corridor</button>
+              <button type="button" class="secondary small-button" data-bi-template="border-crossing">Border crossing mix</button>
+              <button type="button" class="secondary small-button" data-bi-template="equipment-service">Equipment + service</button>
+              <button type="button" class="secondary small-button" data-bi-template="market-carriers">Top carriers by market</button>
+              <button type="button" class="secondary small-button" data-bi-template="data-quality">Data quality</button>
             </div>
 
             <div class="bi-pivot-builder">
@@ -201,6 +211,46 @@
                   </tr>
                 </tbody>
               </table>
+            </div>
+
+            <div class="bi-drilldown-panel">
+              <div class="section-heading compact split-heading">
+                <div>
+                  <p class="eyebrow">Drilldown</p>
+                  <h2 id="bi-drilldown-title">Cell detail</h2>
+                </div>
+                <button id="bi-export-drilldown" type="button" class="secondary" disabled>Export detail CSV</button>
+              </div>
+              <p id="bi-drilldown-status" class="status-message" role="status">Click a pivot value to see the rates behind it.</p>
+              <div class="table-wrap">
+                <table class="bi-drilldown-table">
+                  <thead>
+                    <tr>
+                      <th>Carrier</th>
+                      <th>Quote</th>
+                      <th>Route</th>
+                      <th>Market</th>
+                      <th>Equipment</th>
+                      <th>Operation</th>
+                      <th>Service</th>
+                      <th>Border</th>
+                      <th>All-in</th>
+                      <th>Cost/mi</th>
+                      <th>Cost/km</th>
+                    </tr>
+                  </thead>
+                  <tbody id="bi-drilldown-body">
+                    <tr>
+                      <td colspan="11">
+                        <div class="empty-state">
+                          <strong>No cell selected</strong>
+                          <span>Click a pivot total or value cell.</span>
+                        </div>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
             </div>
           </section>
 

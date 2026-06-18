@@ -928,7 +928,7 @@ async function buildCarrierIntelligence(supabase: ReturnType<typeof createClient
       .limit(1000),
     supabase
       .from("rate_staging")
-      .select("id,vendor_id,vendor_domain,status,origin,destination,normalized_origin,normalized_destination,origin_country,destination_country,origin_state,destination_state,origin_market,destination_market,equipment,trailer,operation,service,all_in_rate,currency,weekly_capacity,quote_date,hazmat,temperature_controlled")
+      .select("id,vendor_id,vendor_domain,status,origin,destination,normalized_origin,normalized_destination,origin_country,destination_country,origin_state,destination_state,origin_market,destination_market,equipment,trailer,operation,service,mx_border_crossing_point,us_border_crossing_point,mx_linehaul,us_linehaul,us_miles,fsc,border_crossing_fee,all_in_rate,currency,weekly_capacity,quote_date,hazmat,temperature_controlled,calculated_miles,calculated_km")
       .in("status", ["pending_review", "approved"])
       .limit(1500)
   ]);
@@ -1180,18 +1180,77 @@ function buildBusinessIntelligencePivot(rows: Record<string, unknown>[], config:
   };
 }
 
-async function buildBusinessIntelligencePivotFromDb(supabase: ReturnType<typeof createClient>, user: { owner_email: string | null }, config: Record<string, unknown>) {
+async function fetchBusinessIntelligenceRows(supabase: ReturnType<typeof createClient>, user: { owner_email: string | null }) {
   const result = await supabase
     .from("rate_staging")
     .select("*, vendors(vendor_name, domain, primary_email, base_stage, status, owner_email)")
     .in("status", ["pending_review", "approved"])
     .limit(5000);
   if (result.error) throw result.error;
-  const scopedRows = (result.data || []).filter((row) => {
+  return (result.data || []).filter((row) => {
     const vendor = typeof row.vendors === "object" && row.vendors ? row.vendors as Record<string, unknown> : null;
     return !row.vendor_id || !vendor?.owner_email || vendor.owner_email === user.owner_email;
   });
+}
+
+async function buildBusinessIntelligencePivotFromDb(supabase: ReturnType<typeof createClient>, user: { owner_email: string | null }, config: Record<string, unknown>) {
+  const scopedRows = await fetchBusinessIntelligenceRows(supabase, user);
   return buildBusinessIntelligencePivot(scopedRows, config);
+}
+
+function drilldownRow(row: Record<string, unknown>) {
+  const vendor = typeof row.vendors === "object" && row.vendors ? row.vendors as Record<string, unknown> : {};
+  return {
+    id: row.id,
+    vendor: vendor.vendor_name || row.vendor_domain || "Unmatched carrier",
+    vendor_domain: row.vendor_domain || vendor.domain || null,
+    quote_date: row.quote_date || null,
+    rfx_id: row.rfx_id || null,
+    origin: row.normalized_origin || row.origin || null,
+    origin_market: row.origin_market || null,
+    origin_state: row.origin_state || null,
+    destination: row.normalized_destination || row.destination || null,
+    destination_market: row.destination_market || null,
+    destination_state: row.destination_state || null,
+    equipment: row.equipment || null,
+    trailer: row.trailer || null,
+    operation: row.operation || null,
+    service: row.service || null,
+    mx_crossing: row.mx_border_crossing_point || null,
+    us_crossing: row.us_border_crossing_point || null,
+    all_in_rate: numericAmount(row.all_in_rate),
+    currency: row.currency || null,
+    calculated_miles: row.calculated_miles || null,
+    calculated_km: row.calculated_km || null,
+    cost_per_mile: formatBiValue(biNumber(row, "cost_per_mile"), "cost_per_mile"),
+    cost_per_km: formatBiValue(biNumber(row, "cost_per_km"), "cost_per_km"),
+    status: row.status || null
+  };
+}
+
+async function buildBusinessIntelligenceDrilldown(supabase: ReturnType<typeof createClient>, user: { owner_email: string | null }, config: Record<string, unknown>, cell: Record<string, unknown>) {
+  const rows = await fetchBusinessIntelligenceRows(supabase, user);
+  const rowDimensions = (Array.isArray(config.rows) ? config.rows : ["vendor"]).map(String).filter(Boolean).slice(0, 3);
+  const columnDimensions = (Array.isArray(config.columns) ? config.columns : []).map(String).filter(Boolean).slice(0, 2);
+  const filters = typeof config.filters === "object" && config.filters ? config.filters as Record<string, unknown> : {};
+  const rowValues = Array.isArray(cell.row_values) ? cell.row_values.map(String) : [];
+  const columnValue = cleanText(cell.column_value);
+  const filteredRows = filterBiRows(rows, filters).filter((row) => {
+    const rowMatch = rowDimensions.every((dimension, index) => biDimensionValue(row, dimension) === rowValues[index]);
+    if (!rowMatch) return false;
+    if (!columnValue || columnValue === "Total" || !columnDimensions.length) return true;
+    const rowColumnValue = columnDimensions.map((dimension) => biDimensionValue(row, dimension)).join(" | ") || "Total";
+    return rowColumnValue === columnValue;
+  });
+
+  return {
+    rows: filteredRows.slice(0, 250).map(drilldownRow),
+    total: filteredRows.length,
+    cell: {
+      row_values: rowValues,
+      column_value: columnValue || "Total"
+    }
+  };
 }
 
 function normalizeTags(value: unknown) {
@@ -1961,6 +2020,11 @@ Deno.serve(async (request) => {
 
     if (body.action === "business_intelligence_pivot") {
       const result = await buildBusinessIntelligencePivotFromDb(supabase, user, body.config || {});
+      return jsonResponse(result);
+    }
+
+    if (body.action === "business_intelligence_drilldown") {
+      const result = await buildBusinessIntelligenceDrilldown(supabase, user, body.config || {}, body.cell || {});
       return jsonResponse(result);
     }
 
