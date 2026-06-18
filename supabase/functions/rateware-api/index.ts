@@ -50,6 +50,7 @@ function cleanRateText(value: unknown) {
 function sourceRank(source: unknown) {
   const text = String(source || "");
   if (text === "rateware_manual_catalog") return 0;
+  if (text === "rateware_reference_catalog" || text.startsWith("rateware_reference_")) return 0;
   if (text === "rateware_google_catalog" || text === "cusCatalog") return 1;
   if (text === "rateware_seed") return 3;
   return 2;

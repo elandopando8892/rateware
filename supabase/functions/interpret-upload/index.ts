@@ -673,6 +673,7 @@ function buildLocationIndex(locations: Record<string, unknown>[]) {
 function sourceRank(source: unknown) {
   const text = String(source || "");
   if (text === "rateware_manual_catalog") return 0;
+  if (text === "rateware_reference_catalog" || text.startsWith("rateware_reference_")) return 0;
   if (text === "rateware_google_catalog" || text === "cusCatalog") return 1;
   if (text === "rateware_seed") return 3;
   return 2;
@@ -1180,6 +1181,9 @@ function normalizeWithCatalog(rows: Record<string, unknown>[], catalogItems: Rec
     const routeCandidates = [
       [normalized.normalized_origin || row.origin, normalized.normalized_destination || row.destination, normalized.normalized_equipment || row.equipment, normalized.normalized_trailer || row.trailer, normalized.normalized_config || row.config, normalized.normalized_operation || row.operation, normalized.normalized_service || row.service, normalized.normalized_driver || row.driver],
       [normalized.normalized_origin || row.origin, normalized.normalized_destination || row.destination, normalized.normalized_equipment || row.equipment],
+      [normalized.normalized_origin || row.origin, normalized.normalized_destination || row.destination],
+      [normalized.origin_market, normalized.destination_market, normalized.normalized_equipment || row.equipment],
+      [normalized.origin_market, normalized.destination_market],
       [row.route_key]
     ].map((parts) => catalogKey(Array.isArray(parts) ? parts.filter(Boolean).join(" ") : parts));
 
