@@ -46,6 +46,10 @@ const vendorsBody = document.querySelector("#vendors-body");
 const searchInput = document.querySelector("#vendor-search");
 const statusFilter = document.querySelector("#vendor-status-filter");
 const refreshButton = document.querySelector("#refresh-vendors-button");
+const vendorPageStatus = document.querySelector("#vendor-page-status");
+const vendorPageSizeSelect = document.querySelector("#vendor-page-size");
+const vendorPrevPageButton = document.querySelector("#vendor-prev-page");
+const vendorNextPageButton = document.querySelector("#vendor-next-page");
 const quickFilterButtons = document.querySelectorAll(".quick-filter");
 const bulkToolbar = document.querySelector("#bulk-toolbar");
 const bulkSelectionCount = document.querySelector("#bulk-selection-count");
@@ -76,7 +80,9 @@ let activeQuickFilter = "all";
 let activeBaseStage = "sourcing";
 let activeVendorTab = "sourcing";
 let activeDrawerVendorId = null;
-const VENDOR_PAGE_SIZE = 75;
+let vendorPageSize = 75;
+let vendorPageOffset = 0;
+let vendorTotalCount = 0;
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -191,7 +197,10 @@ function hasMissingContact(row) {
 
 function activateVendorTab(tabName) {
   activeVendorTab = tabName;
-  if (["sourcing", "procurement"].includes(tabName)) activeBaseStage = tabName;
+  if (["sourcing", "procurement"].includes(tabName)) {
+    activeBaseStage = tabName;
+    vendorPageOffset = 0;
+  }
   vendorTabs.forEach((button) => button.classList.toggle("is-active", button.dataset.vendorTab === tabName));
   tabPanels.forEach((panel) => {
     const shouldShow = panel.dataset.tabPanel === tabName || (["sourcing", "procurement"].includes(tabName) && panel.dataset.tabPanel === "sourcing");
@@ -210,7 +219,7 @@ function updateBulkState() {
 
 function updateVendorMetrics() {
   const rows = allVendors;
-  vendorMetricTotal.textContent = rows.length;
+  vendorMetricTotal.textContent = vendorTotalCount || rows.length;
   vendorMetricReady.textContent = rows.filter(isRfxReady).length;
   vendorMetricMissingContact.textContent = rows.filter(hasMissingContact).length;
   vendorMetricDuplicates.textContent = rows.filter((row) => duplicateSignals(row, rows).length).length;
@@ -411,12 +420,15 @@ function renderVendors(rows) {
     )
     .join("");
 
-  if (allVendors.length >= VENDOR_PAGE_SIZE && !searchInput.value.trim()) {
-    vendorsBody.insertAdjacentHTML(
-      "beforeend",
-      `<tr><td colspan="10"><div class="empty-state"><strong>Showing first ${VENDOR_PAGE_SIZE} vendors</strong><span>Use search, filters, or segments to narrow the Sourcing Base.</span></div></td></tr>`
-    );
-  }
+}
+
+function updatePaginationState() {
+  const visibleCount = currentVendors.length;
+  const start = vendorTotalCount && visibleCount ? vendorPageOffset + 1 : 0;
+  const end = vendorTotalCount ? Math.min(vendorPageOffset + visibleCount, vendorTotalCount) : 0;
+  vendorPageStatus.textContent = `Showing ${start}-${end} of ${vendorTotalCount}`;
+  vendorPrevPageButton.disabled = vendorPageOffset <= 0;
+  vendorNextPageButton.disabled = vendorPageOffset + vendorPageSize >= vendorTotalCount;
 }
 
 function segmentMatches(segment, vendor) {
@@ -469,21 +481,28 @@ async function loadSegments() {
 async function loadVendors() {
   vendorsBody.innerHTML = '<tr><td colspan="10">Loading vendors...</td></tr>';
   refreshButton.disabled = true;
+  vendorPrevPageButton.disabled = true;
+  vendorNextPageButton.disabled = true;
 
   try {
     await requirePrivatePage();
-    const rows = await fetchVendors({
+    const result = await fetchVendors({
       search: searchInput.value,
       status: statusFilter.value,
       base_stage: activeBaseStage,
-      limit: VENDOR_PAGE_SIZE
+      limit: vendorPageSize,
+      offset: vendorPageOffset
     });
+    const rows = result.rows || [];
+    vendorTotalCount = result.total ?? rows.length;
     allVendors = rows;
     applyQuickFilter(activeQuickFilter);
   } catch (error) {
     vendorsBody.innerHTML = `<tr><td colspan="10">Could not load vendors. ${escapeHtml(error.message)}</td></tr>`;
+    vendorTotalCount = 0;
   } finally {
     refreshButton.disabled = false;
+    updatePaginationState();
   }
 }
 
@@ -882,7 +901,30 @@ duplicateReviewList.addEventListener("click", async (event) => {
 });
 
 refreshButton.addEventListener("click", loadVendors);
-statusFilter.addEventListener("change", loadVendors);
+statusFilter.addEventListener("change", () => {
+  vendorPageOffset = 0;
+  loadVendors();
+});
+searchInput.addEventListener("change", () => {
+  vendorPageOffset = 0;
+  loadVendors();
+});
+vendorPageSizeSelect.addEventListener("change", () => {
+  vendorPageSize = Number(vendorPageSizeSelect.value) || 75;
+  vendorPageOffset = 0;
+  loadVendors();
+});
+vendorPrevPageButton.addEventListener("click", () => {
+  vendorPageOffset = Math.max(0, vendorPageOffset - vendorPageSize);
+  selectedVendorIds = new Set();
+  loadVendors();
+});
+vendorNextPageButton.addEventListener("click", () => {
+  if (vendorPageOffset + vendorPageSize >= vendorTotalCount) return;
+  vendorPageOffset += vendorPageSize;
+  selectedVendorIds = new Set();
+  loadVendors();
+});
 vendorTabs.forEach((button) => {
   button.addEventListener("click", () => activateVendorTab(button.dataset.vendorTab));
 });

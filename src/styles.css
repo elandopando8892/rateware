@@ -712,6 +712,27 @@ small,
   margin-top: 14px;
 }
 
+.pagination-bar {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.pagination-bar > strong {
+  color: var(--ink);
+  align-self: center;
+}
+
+.pagination-bar label {
+  max-width: 120px;
+}
+
 .quick-filter {
   min-height: 34px;
   border: 1px solid var(--line);

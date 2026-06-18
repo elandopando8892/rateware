@@ -455,7 +455,13 @@ Deno.serve(async (request) => {
 
     if (body.action === "list_vendors") {
       const limit = Math.min(Math.max(Number(body.limit) || 75, 1), 250);
-      let query = supabase.from("vendors").select("*").eq("owner_email", user.owner_email).order("created_at", { ascending: false }).limit(limit);
+      const offset = Math.max(Number(body.offset) || 0, 0);
+      let query = supabase
+        .from("vendors")
+        .select("*", { count: "exact" })
+        .eq("owner_email", user.owner_email)
+        .order("created_at", { ascending: false })
+        .range(offset, offset + limit - 1);
 
       if (body.status) query = query.eq("status", body.status);
       if (body.base_stage) query = query.eq("base_stage", body.base_stage);
@@ -466,7 +472,7 @@ Deno.serve(async (request) => {
 
       const result = await query;
       if (result.error) throw result.error;
-      return jsonResponse({ rows: result.data });
+      return jsonResponse({ rows: result.data, total: result.count || 0, limit, offset });
     }
 
     if (body.action === "create_vendor") {
