@@ -4,6 +4,13 @@ import { archiveUpload, fetchUploadHistory, interpretUpload, removeUpload } from
 const historyBody = document.querySelector("#history-body");
 const refreshButton = document.querySelector("#refresh-button");
 const statusFilter = document.querySelector("#status-filter");
+const uploadMetricVisible = document.querySelector("#upload-metric-visible");
+const uploadMetricStaged = document.querySelector("#upload-metric-staged");
+const uploadMetricFailed = document.querySelector("#upload-metric-failed");
+const uploadMetricArchived = document.querySelector("#upload-metric-archived");
+const quickFilterButtons = document.querySelectorAll("[data-upload-filter]");
+let loadedRows = [];
+let activeQuickFilter = "all";
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -27,10 +34,71 @@ function matchLabel(row) {
   return "";
 }
 
+function documentType(row) {
+  return String(row.document_type || "").toLowerCase();
+}
+
+function applyQuickFilter(rows = loadedRows) {
+  if (activeQuickFilter === "needs-interpretation") return rows.filter((row) => row.status === "uploaded");
+  if (activeQuickFilter === "failed") return rows.filter((row) => row.status === "failed");
+  if (activeQuickFilter === "pdf") return rows.filter((row) => documentType(row) === "pdf");
+  if (activeQuickFilter === "spreadsheet") return rows.filter((row) => ["xlsx", "xls", "csv", "spreadsheet"].includes(documentType(row)));
+  if (activeQuickFilter === "image") return rows.filter((row) => ["image", "png", "jpg", "jpeg", "webp"].includes(documentType(row)));
+  return rows;
+}
+
+function updateQuickFilters() {
+  quickFilterButtons.forEach((button) => {
+    button.classList.toggle("is-active", button.dataset.uploadFilter === activeQuickFilter);
+  });
+}
+
+function updateUploadMetrics(rows) {
+  uploadMetricVisible.textContent = String(rows.length);
+  uploadMetricStaged.textContent = String(rows.filter((row) => row.status === "staged").length);
+  uploadMetricFailed.textContent = String(rows.filter((row) => row.status === "failed").length);
+  uploadMetricArchived.textContent = String(rows.filter((row) => row.status === "archived").length);
+}
+
+function statusTone(status) {
+  if (status === "failed") return "danger";
+  if (status === "staged") return "success";
+  if (status === "archived") return "muted";
+  return "neutral";
+}
+
+function uploadQualityChips(row) {
+  const chips = [];
+  chips.push({ tone: statusTone(row.status), label: row.status || "unknown" });
+  if (!row.vendors?.vendor_name && !row.vendor_hint) chips.push({ tone: "warning", label: "No vendor hint" });
+  if (!row.rfx_hint) chips.push({ tone: "muted", label: "No RFx" });
+  if (row.error_message) chips.push({ tone: "danger", label: "Needs attention" });
+  return `<div class="row-review-chips">${chips
+    .map((chip) => `<span class="review-chip ${escapeHtml(chip.tone)}">${escapeHtml(chip.label)}</span>`)
+    .join("")}</div>`;
+}
+
+function emptyUploadMessage() {
+  if (activeQuickFilter === "all") {
+    return {
+      title: "No uploads yet",
+      detail: "Upload carrier source files before running interpretation."
+    };
+  }
+  return {
+    title: "No uploads match this view",
+    detail: "Change the quick filter or status filter to review other source files."
+  };
+}
+
 function renderRows(rows) {
+  updateQuickFilters();
+  updateUploadMetrics(rows);
+
   if (!rows.length) {
+    const empty = emptyUploadMessage();
     historyBody.innerHTML =
-      '<tr><td colspan="8"><div class="empty-state"><strong>No uploads yet</strong><span>Upload carrier source files before running interpretation.</span><a href="./upload-center.html">Upload source files</a></div></td></tr>';
+      `<tr><td colspan="8"><div class="empty-state"><strong>${escapeHtml(empty.title)}</strong><span>${escapeHtml(empty.detail)}</span><a href="./upload-center.html">Upload source files</a></div></td></tr>`;
     return;
   }
 
@@ -44,9 +112,10 @@ function renderRows(rows) {
           <td>
             ${escapeHtml(row.vendors?.vendor_name || row.vendor_hint || "")}
             ${row.vendors?.vendor_name ? matchLabel(row) : ""}
+            ${uploadQualityChips(row)}
           </td>
           <td>${escapeHtml(row.rfx_hint || "")}</td>
-          <td><span class="status-pill">${escapeHtml(row.status)}</span></td>
+          <td><span class="status-pill ${escapeHtml(statusTone(row.status))}">${escapeHtml(row.status)}</span></td>
           <td>${escapeHtml(row.storage_path)}</td>
           <td class="history-actions">
             ${row.status === "archived" ? "" : `<button type="button" class="small-button" data-interpret-id="${escapeHtml(row.id)}">Interpret</button>`}
@@ -68,7 +137,8 @@ async function loadHistory() {
   try {
     await requirePrivatePage();
     const rows = await fetchUploadHistory({ status: statusFilter.value });
-    renderRows(rows);
+    loadedRows = rows;
+    renderRows(applyQuickFilter(rows));
     await applyPermissionState("[data-interpret-id], [data-archive-id], [data-remove-id]", "uploads:interpret");
   } catch (error) {
     historyBody.innerHTML = `<tr><td colspan="8">Could not load upload history. ${escapeHtml(error.message)}</td></tr>`;
@@ -80,7 +150,16 @@ async function loadHistory() {
 initAuthControls();
 requirePrivatePage().catch(() => {});
 refreshButton.addEventListener("click", loadHistory);
-statusFilter.addEventListener("change", loadHistory);
+statusFilter.addEventListener("change", () => {
+  activeQuickFilter = "all";
+  loadHistory();
+});
+quickFilterButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    activeQuickFilter = button.dataset.uploadFilter || "all";
+    renderRows(applyQuickFilter());
+  });
+});
 historyBody.addEventListener("click", async (event) => {
   const interpretButton = event.target.closest("[data-interpret-id]");
   const archiveButton = event.target.closest("[data-archive-id]");

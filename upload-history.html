@@ -36,6 +36,32 @@
 
         <main class="history-layout">
           <section class="workspace-panel">
+            <div class="review-insight-grid" aria-label="Upload history summary">
+              <article>
+                <span>Visible uploads</span>
+                <strong id="upload-metric-visible">0</strong>
+              </article>
+              <article>
+                <span>Staged</span>
+                <strong id="upload-metric-staged">0</strong>
+              </article>
+              <article>
+                <span>Failed</span>
+                <strong id="upload-metric-failed">0</strong>
+              </article>
+              <article>
+                <span>Archived</span>
+                <strong id="upload-metric-archived">0</strong>
+              </article>
+            </div>
+            <div class="review-filter-row" aria-label="Upload quick filters">
+              <button class="review-filter is-active" type="button" data-upload-filter="all">All visible</button>
+              <button class="review-filter" type="button" data-upload-filter="needs-interpretation">Needs interpretation</button>
+              <button class="review-filter" type="button" data-upload-filter="failed">Failed</button>
+              <button class="review-filter" type="button" data-upload-filter="pdf">PDF</button>
+              <button class="review-filter" type="button" data-upload-filter="spreadsheet">Spreadsheets</button>
+              <button class="review-filter" type="button" data-upload-filter="image">Images</button>
+            </div>
             <div class="toolbar">
               <label>
                 Status

@@ -1244,6 +1244,26 @@ tbody tr:hover {
   font-size: 0.76rem;
 }
 
+.status-pill.success {
+  background: #e7f5ec;
+  color: #126b3f;
+}
+
+.status-pill.danger {
+  background: #fde7e4;
+  color: var(--danger);
+}
+
+.status-pill.muted {
+  background: #eef1f4;
+  color: #53616b;
+}
+
+.status-pill.neutral {
+  background: #eef7f6;
+  color: var(--accent-dark);
+}
+
 .match-pill {
   display: inline-flex;
   align-items: center;
