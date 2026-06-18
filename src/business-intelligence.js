@@ -7,6 +7,12 @@ const submitButton = document.querySelector("#bi-submit-button");
 const statusMessage = document.querySelector("#bi-status");
 const modelStatus = document.querySelector("#bi-model-status");
 const answerPanel = document.querySelector("#bi-answer");
+const analystSummary = document.querySelector("#bi-analyst-summary");
+const suggestedPivots = document.querySelector("#bi-suggested-pivots");
+const dataGaps = document.querySelector("#bi-data-gaps");
+const rfxShortlist = document.querySelector("#bi-rfx-shortlist");
+const proposedActions = document.querySelector("#bi-proposed-actions");
+const copyActionsButton = document.querySelector("#bi-copy-actions");
 const resultsBody = document.querySelector("#bi-results-body");
 const selectAll = document.querySelector("#bi-select-all");
 const selectedCount = document.querySelector("#bi-selected-count");
@@ -37,6 +43,7 @@ const exportDrilldownButton = document.querySelector("#bi-export-drilldown");
 let currentRecommendations = [];
 let currentPivot = null;
 let currentDrilldown = null;
+let currentAnalystResult = null;
 const selectedVendorIds = new Set();
 
 const PIVOT_DIMENSIONS = [
@@ -571,6 +578,85 @@ function listItems(values = []) {
   return `<ul>${values.slice(0, 4).map((value) => `<li>${escapeHtml(value)}</li>`).join("")}</ul>`;
 }
 
+function pivotFiltersToObject(filters) {
+  if (!filters) return {};
+  if (!Array.isArray(filters)) return { ...filters };
+  return Object.fromEntries(filters
+    .filter((item) => item?.key && item.value !== undefined && item.value !== "")
+    .map((item) => {
+      const text = String(item.value);
+      const value = text.toLowerCase() === "true" ? true : text.toLowerCase() === "false" ? false : text;
+      return [item.key, value];
+    }));
+}
+
+function suggestedPivotConfig(pivot) {
+  return {
+    rows: pivot.rows || ["vendor"],
+    columns: pivot.columns || [],
+    metric: pivot.metric || "transaction_count",
+    aggregation: pivot.aggregation || "count",
+    filters: pivotFiltersToObject(pivot.filters)
+  };
+}
+
+function analystCard(title, detail, extra = "") {
+  return `
+    <article>
+      <strong>${escapeHtml(title || "-")}</strong>
+      <p>${escapeHtml(detail || "-")}</p>
+      ${extra}
+    </article>
+  `;
+}
+
+function renderAnalystLayer(result = {}) {
+  currentAnalystResult = result;
+  const summary = result.analyst_summary || {};
+  const reasoning = Array.isArray(summary.reasoning) ? summary.reasoning : [];
+  analystSummary.innerHTML = `
+    <div>
+      <strong>${escapeHtml(summary.headline || result.answer || "AI Analyst response")}</strong>
+      <span>${escapeHtml([summary.confidence_label ? `${summary.confidence_label} confidence` : "", summary.data_scope || result.filters?.data_scope || ""].filter(Boolean).join(" | "))}</span>
+    </div>
+    ${reasoning.length ? `<ul>${reasoning.slice(0, 4).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>` : ""}
+  `;
+
+  const pivots = Array.isArray(result.suggested_pivots) ? result.suggested_pivots : [];
+  suggestedPivots.innerHTML = pivots.length
+    ? pivots.map((pivot, index) => analystCard(
+      pivot.title,
+      pivot.purpose,
+      `<button type="button" class="secondary small-button" data-analyst-pivot="${index}">Load pivot</button>`
+    )).join("")
+    : "<article>No pivot suggestions returned.</article>";
+
+  const gaps = Array.isArray(result.data_gaps) ? result.data_gaps : [];
+  dataGaps.innerHTML = gaps.length
+    ? gaps.map((gap) => analystCard(gap.title, gap.impact, `<span>${escapeHtml(gap.suggested_fix || "")}</span>`)).join("")
+    : "<article>No data gaps returned.</article>";
+
+  const shortlist = Array.isArray(result.rfx_shortlist) ? result.rfx_shortlist : [];
+  rfxShortlist.innerHTML = shortlist.length
+    ? shortlist.map((item) => analystCard(
+      `${item.suggested_role || "Invite"}: ${item.vendor_name || "Carrier"}`,
+      item.reason,
+      `<span>Risk: ${escapeHtml(item.risk || "No visible risk")}</span>`
+    )).join("")
+    : "<article>No RFx shortlist returned.</article>";
+
+  const actions = Array.isArray(result.proposed_actions) ? result.proposed_actions : [];
+  proposedActions.innerHTML = actions.length
+    ? actions.map((action) => analystCard(
+      `${action.priority || "Medium"} priority`,
+      action.action,
+      `<span>${escapeHtml(action.rationale || "")}</span><em>${action.requires_confirmation ? "Requires human confirmation" : "Advisory"}</em>`
+    )).join("")
+    : "<article>No proposed actions returned.</article>";
+
+  copyActionsButton.disabled = !actions.length && !shortlist.length && !pivots.length;
+}
+
 function renderRecommendations(rows = []) {
   currentRecommendations = rows;
   selectedVendorIds.clear();
@@ -627,6 +713,7 @@ function renderRecommendations(rows = []) {
 }
 
 function renderAnswer(result) {
+  renderAnalystLayer(result);
   answerPanel.innerHTML = `
     <strong>${escapeHtml(result.answer || "Carrier intelligence response")}</strong>
     <span>${escapeHtml(result.filters?.focus?.join(", ") || "general fit")}</span>
@@ -724,6 +811,23 @@ async function copyRecommendations() {
   setStatus("Recommendation list copied.", "success");
 }
 
+async function copyAnalystActionPlan() {
+  if (!currentAnalystResult) return;
+  const summary = currentAnalystResult.analyst_summary || {};
+  const sections = [
+    ["AI Analyst Summary", [summary.headline, summary.confidence_label, ...(summary.reasoning || [])]],
+    ["Suggested Pivots", (currentAnalystResult.suggested_pivots || []).map((item) => `${item.title}: ${item.purpose}`)],
+    ["Data Gaps", (currentAnalystResult.data_gaps || []).map((item) => `${item.title}: ${item.impact} Fix: ${item.suggested_fix}`)],
+    ["RFx Shortlist", (currentAnalystResult.rfx_shortlist || []).map((item) => `${item.vendor_name} (${item.suggested_role}): ${item.reason}. Risk: ${item.risk}`)],
+    ["Proposed Actions", (currentAnalystResult.proposed_actions || []).map((item) => `${item.priority}: ${item.action}. ${item.rationale}`)]
+  ];
+  const text = sections
+    .map(([title, values]) => [`${title}:`, ...(values || []).filter(Boolean).map((value) => `- ${value}`)].join("\n"))
+    .join("\n\n");
+  await navigator.clipboard.writeText(text);
+  setStatus("AI Analyst action plan copied.", "success");
+}
+
 function exportRecommendationsCsv() {
   if (!currentRecommendations.length) return;
   const rows = [
@@ -795,6 +899,7 @@ selectAll?.addEventListener("change", () => {
 
 promoteSelectedButton?.addEventListener("click", promoteSelected);
 copyListButton?.addEventListener("click", copyRecommendations);
+copyActionsButton?.addEventListener("click", copyAnalystActionPlan);
 runRecommendationsButton?.addEventListener("click", runStructuredRecommendations);
 exportRecommendationsButton?.addEventListener("click", exportRecommendationsCsv);
 runPivotButton?.addEventListener("click", runPivot);
@@ -820,6 +925,16 @@ document.querySelectorAll("[data-rec-template]").forEach((button) => {
     setRecommendationStatus(`Template loaded: ${button.textContent}.`);
     await runStructuredRecommendations();
   });
+});
+
+suggestedPivots?.addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-analyst-pivot]");
+  if (!button || !currentAnalystResult) return;
+  const pivot = currentAnalystResult.suggested_pivots?.[Number(button.dataset.analystPivot)];
+  if (!pivot) return;
+  applyPivotConfig(suggestedPivotConfig(pivot));
+  setPivotStatus(`Analyst pivot loaded: ${pivot.title}.`);
+  await runPivot();
 });
 
 pivotBody?.addEventListener("click", (event) => {

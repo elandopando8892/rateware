@@ -2948,6 +2948,106 @@ select.staging-input {
   margin-bottom: 10px;
 }
 
+.bi-analyst-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.bi-analyst-summary {
+  display: grid;
+  gap: 8px;
+  border: 1px solid #bddbd7;
+  border-radius: var(--radius);
+  background: #eef7f6;
+  padding: 12px;
+}
+
+.bi-analyst-summary strong,
+.bi-analyst-summary span {
+  display: block;
+}
+
+.bi-analyst-summary strong {
+  color: var(--accent-dark);
+}
+
+.bi-analyst-summary span,
+.bi-analyst-summary li {
+  color: #43505a;
+  font-size: 0.82rem;
+  font-weight: 720;
+}
+
+.bi-analyst-summary ul {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding-left: 18px;
+}
+
+.bi-analyst-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.bi-analyst-grid section {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--soft-panel);
+  padding: 12px;
+}
+
+.bi-analyst-grid h3 {
+  margin: 0;
+  font-size: 0.92rem;
+}
+
+.bi-analyst-list {
+  display: grid;
+  gap: 8px;
+}
+
+.bi-analyst-list article {
+  display: grid;
+  gap: 5px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #ffffff;
+  padding: 9px;
+}
+
+.bi-analyst-list strong {
+  color: var(--text);
+  font-size: 0.84rem;
+}
+
+.bi-analyst-list p {
+  margin: 0;
+  color: #42505c;
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.bi-analyst-list span,
+.bi-analyst-list em {
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-style: normal;
+  font-weight: 760;
+}
+
+.bi-analyst-list em {
+  width: fit-content;
+  border-radius: 999px;
+  background: #fff4d8;
+  color: #7a4d00;
+  padding: 2px 7px;
+}
+
 .bi-recommendation-panel {
   display: grid;
   gap: 12px;
@@ -3376,6 +3476,7 @@ select.staging-input {
   .rateware-control-grid.version-grid,
   .settings-grid,
   .settings-form,
+  .bi-analyst-grid,
   .review-insight-grid,
   .auth-strip {
     grid-template-columns: 1fr;

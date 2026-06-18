@@ -17,7 +17,7 @@ function getClient() {
 const CARRIER_INTELLIGENCE_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["answer", "filters", "recommendations", "next_actions"],
+  required: ["answer", "filters", "analyst_summary", "suggested_pivots", "data_gaps", "rfx_shortlist", "proposed_actions", "recommendations", "next_actions"],
   properties: {
     answer: { type: "string" },
     filters: {
@@ -28,6 +28,87 @@ const CARRIER_INTELLIGENCE_SCHEMA = {
         limit: { type: "number" },
         focus: { type: "array", items: { type: "string" } },
         data_scope: { type: "string" }
+      }
+    },
+    analyst_summary: {
+      type: "object",
+      additionalProperties: false,
+      required: ["headline", "confidence_label", "data_scope", "reasoning"],
+      properties: {
+        headline: { type: "string" },
+        confidence_label: { type: "string" },
+        data_scope: { type: "string" },
+        reasoning: { type: "array", items: { type: "string" } }
+      }
+    },
+    suggested_pivots: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["title", "purpose", "rows", "columns", "metric", "aggregation", "filters"],
+        properties: {
+          title: { type: "string" },
+          purpose: { type: "string" },
+          rows: { type: "array", items: { type: "string" } },
+          columns: { type: "array", items: { type: "string" } },
+          metric: { type: "string" },
+          aggregation: { type: "string" },
+          filters: {
+            type: "array",
+            items: {
+              type: "object",
+              additionalProperties: false,
+              required: ["key", "value"],
+              properties: {
+                key: { type: "string" },
+                value: { type: "string" }
+              }
+            }
+          }
+        }
+      }
+    },
+    data_gaps: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["title", "impact", "suggested_fix"],
+        properties: {
+          title: { type: "string" },
+          impact: { type: "string" },
+          suggested_fix: { type: "string" }
+        }
+      }
+    },
+    rfx_shortlist: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["vendor_id", "vendor_name", "reason", "suggested_role", "risk"],
+        properties: {
+          vendor_id: { type: ["string", "null"] },
+          vendor_name: { type: "string" },
+          reason: { type: "string" },
+          suggested_role: { type: "string" },
+          risk: { type: "string" }
+        }
+      }
+    },
+    proposed_actions: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["priority", "action", "rationale", "requires_confirmation"],
+        properties: {
+          priority: { type: "string" },
+          action: { type: "string" },
+          rationale: { type: "string" },
+          requires_confirmation: { type: "boolean" }
+        }
       }
     },
     recommendations: {
@@ -999,6 +1080,205 @@ function paretoCarrierShare(prompt: string) {
   return (lowPercent || 20) / 100;
 }
 
+function filterPairs(filters: Record<string, unknown>) {
+  return Object.entries(filters || {})
+    .filter(([, value]) => value !== null && value !== undefined && value !== "" && value !== false)
+    .map(([keyName, value]) => ({ key: keyName, value: String(value) }))
+    .slice(0, 12);
+}
+
+function analystConfidenceLabel(recommendations: Record<string, unknown>[], rates: Record<string, unknown>[], vendors: Record<string, unknown>[]) {
+  const linkedSignals = rates.filter((row) => row.vendor_id || row.vendor_domain).length;
+  const approvedSignals = rates.filter((row) => cleanText(row.status) === "approved").length;
+  if (recommendations.length >= 10 && linkedSignals >= 40 && approvedSignals >= 10) return "High";
+  if (recommendations.length >= 5 && linkedSignals >= 10) return "Medium";
+  if (vendors.length > 0 || rates.length > 0) return "Directional";
+  return "Low";
+}
+
+function buildSuggestedPivots(prompt: string, intent: ReturnType<typeof carrierIntelligenceIntent>, filters: Record<string, unknown>) {
+  const baseFilters = { ...filters };
+  if (intent.crossborder) baseFilters.crossborder = true;
+  if (intent.d2d) baseFilters.d2d = true;
+  const pivots = [
+    {
+      title: intent.pareto ? "Pareto carriers by D2D transaction share" : "Carrier coverage by corridor",
+      purpose: intent.pareto
+        ? "Validate which carriers represent the transaction concentration before building an RFx shortlist."
+        : "See where each carrier has actual quoted or approved Rateware evidence.",
+      rows: intent.pareto ? ["vendor", "corridor", ""] : ["corridor", "vendor", ""],
+      columns: ["operation", "service"],
+      metric: "transaction_count",
+      aggregation: "count",
+      filters: filterPairs(baseFilters)
+    },
+    {
+      title: intent.costPerMile ? "Cost per mile by carrier and corridor" : "Rate competitiveness by carrier",
+      purpose: "Compare commercial cost signals across carriers, lanes, operations, and services.",
+      rows: ["vendor", "corridor", ""],
+      columns: ["operation", "service"],
+      metric: intent.costPerKm ? "cost_per_km" : "cost_per_mile",
+      aggregation: "avg",
+      filters: filterPairs(baseFilters)
+    },
+    {
+      title: "Data quality before outreach",
+      purpose: "Identify whether missing vendor match, locations, rates, or mileage could weaken the recommendation.",
+      rows: ["rate_status", "vendor_stage", "vendor"],
+      columns: ["operation", "service"],
+      metric: "transaction_count",
+      aggregation: "count",
+      filters: filterPairs(baseFilters)
+    }
+  ];
+
+  if (textIncludesAny(prompt, ["border", "frontera", "laredo", "cruce"])) {
+    pivots.unshift({
+      title: "Border crossing mix",
+      purpose: "Check which carriers are strongest by Mexican and US border city pair.",
+      rows: ["border_pair", "vendor", ""],
+      columns: ["operation", "service"],
+      metric: "transaction_count",
+      aggregation: "count",
+      filters: filterPairs({ ...baseFilters, crossborder: true })
+    });
+  }
+
+  return pivots.slice(0, 4);
+}
+
+function buildDataGaps(rates: Record<string, unknown>[], vendors: Record<string, unknown>[], recommendations: Record<string, unknown>[]) {
+  const missingVendor = rates.filter((row) => !row.vendor_id && (row.vendor_domain || row.vendor)).length;
+  const missingRate = rates.filter((row) => !numericAmount(row.all_in_rate)).length;
+  const missingMiles = rates.filter((row) => numericAmount(row.all_in_rate) && !row.calculated_miles && !row.calculated_km && !numericAmount(row.us_miles)).length;
+  const missingOrigin = rates.filter((row) => !row.origin_market && !row.origin_state && !row.origin_country).length;
+  const missingDestination = rates.filter((row) => !row.destination_market && !row.destination_state && !row.destination_country).length;
+  const missingContact = vendors.filter((vendor) => !vendor.primary_email && !vendor.whatsapp_phone).length;
+  const lowEvidence = recommendations.filter((row) => Number((row.metrics as Record<string, unknown> | undefined)?.linked_rates || 0) === 0).length;
+  const gaps = [
+    missingVendor ? {
+      title: "Unmatched carrier quotes",
+      impact: `${missingVendor} rate row(s) have vendor evidence but are not linked to a vendor record.`,
+      suggested_fix: "Match by domain/email in Sourcing or Procurement Base before using those rows for shortlist decisions."
+    } : null,
+    missingRate ? {
+      title: "Missing all-in rates",
+      impact: `${missingRate} row(s) cannot support cost comparison because all-in is missing.`,
+      suggested_fix: "Correct all-in, linehaul, FSC, or border fee in Staging Review before ranking by price."
+    } : null,
+    missingMiles ? {
+      title: "Missing mileage or kilometers",
+      impact: `${missingMiles} priced row(s) cannot calculate cost per mile/km.`,
+      suggested_fix: "Normalize locations and mileage before trusting cost per mile or cost per kilometer."
+    } : null,
+    missingOrigin || missingDestination ? {
+      title: "Location normalization gaps",
+      impact: `${missingOrigin + missingDestination} origin/destination side(s) are missing market, state, or country.`,
+      suggested_fix: "Resolve US/CA zip prefixes and MX metro/state/region matches in staging."
+    } : null,
+    missingContact ? {
+      title: "Vendor contact gaps",
+      impact: `${missingContact} vendor(s) are missing email and WhatsApp contact data.`,
+      suggested_fix: "Complete contacts before running RFx invitations or Gmail/WhatsApp outreach."
+    } : null,
+    lowEvidence ? {
+      title: "CRM-only carrier recommendations",
+      impact: `${lowEvidence} recommended carrier(s) have no linked quote evidence in the selected slice.`,
+      suggested_fix: "Treat these as sourcing candidates, not proven Rateware carriers, until they quote lanes."
+    } : null
+  ].filter(Boolean) as Array<Record<string, string>>;
+
+  if (!gaps.length) {
+    gaps.push({
+      title: "No critical gaps in selected slice",
+      impact: "The selected data has enough vendor and rate evidence for directional analysis.",
+      suggested_fix: "Use pivot drilldown to review lane-level evidence before acting."
+    });
+  }
+  return gaps.slice(0, 6);
+}
+
+function buildRfxShortlist(recommendations: Record<string, unknown>[]) {
+  return recommendations.slice(0, 12).map((row, index) => {
+    const gaps = Array.isArray(row.gaps) ? row.gaps : [];
+    const metrics = typeof row.metrics === "object" && row.metrics ? row.metrics as Record<string, unknown> : {};
+    const linkedRates = Number(metrics.linked_rates || 0);
+    const role = index < 5 ? "Core invite" : linkedRates > 0 ? "Lane proof invite" : "Sourcing challenger";
+    return {
+      vendor_id: cleanText(row.vendor_id),
+      vendor_name: cleanText(row.vendor_name) || "Unnamed carrier",
+      reason: cleanText(row.why) || (Array.isArray(row.evidence) ? row.evidence.slice(0, 2).join("; ") : "Ranked by Rateware fit"),
+      suggested_role: role,
+      risk: gaps.length ? gaps.slice(0, 2).join("; ") : "No major visible gap"
+    };
+  });
+}
+
+function buildProposedActions(intent: ReturnType<typeof carrierIntelligenceIntent>, recommendations: Record<string, unknown>[], gaps: Record<string, string>[]) {
+  const topCount = Math.min(10, recommendations.length);
+  const actions = [
+    {
+      priority: "High",
+      action: topCount ? `Review the top ${topCount} carrier(s) and confirm which ones should enter an RFx shortlist.` : "Import or match more vendors before building a shortlist.",
+      rationale: topCount ? "The shortlist is ranked, but final invitation should stay under human control." : "The analyst layer needs vendor evidence before it can recommend with confidence.",
+      requires_confirmation: true
+    },
+    {
+      priority: intent.pareto ? "High" : "Medium",
+      action: intent.pareto ? "Validate Pareto concentration with the suggested pivot before excluding long-tail carriers." : "Load the suggested pivot and inspect carrier/lane evidence.",
+      rationale: intent.pareto ? "Pareto is a concentration view, not a quality-only score." : "Pivot drilldown protects against acting on aggregated results without lane evidence.",
+      requires_confirmation: true
+    },
+    {
+      priority: gaps.length > 1 ? "High" : "Medium",
+      action: "Fix the highest-impact data gaps before sending outreach at scale.",
+      rationale: gaps[0]?.impact || "Cleaner vendor and rate data improves recommendation quality.",
+      requires_confirmation: true
+    },
+    {
+      priority: "Medium",
+      action: "Prepare RFx or outreach from the selected carriers only after analyst approval.",
+      rationale: "The AI Analyst can propose the action plan, but should not send invitations or promote vendors automatically.",
+      requires_confirmation: true
+    }
+  ];
+  return actions;
+}
+
+function buildAnalystLayer(
+  prompt: string,
+  recommendations: Record<string, unknown>[],
+  rates: Record<string, unknown>[],
+  vendors: Record<string, unknown>[],
+  intent: ReturnType<typeof carrierIntelligenceIntent>,
+  filters: Record<string, unknown>,
+  dataScope: string
+) {
+  const confidence = analystConfidenceLabel(recommendations, rates, vendors);
+  const approvedRates = rates.filter((row) => cleanText(row.status) === "approved").length;
+  const crossborderRates = rates.filter(isCrossBorderRate).length;
+  const d2dRates = rates.filter(isD2dImportExportRate).length;
+  const dataGaps = buildDataGaps(rates, vendors, recommendations);
+  return {
+    analyst_summary: {
+      headline: recommendations.length
+        ? `${recommendations.length} carrier(s) surfaced for this request.`
+        : "No carrier shortlist is strong enough yet for this request.",
+      confidence_label: confidence,
+      data_scope: dataScope,
+      reasoning: [
+        `${vendors.length} vendor record(s), ${rates.length} staging/Rateware row(s), ${approvedRates} approved row(s).`,
+        `${crossborderRates} crossborder row(s) and ${d2dRates} D2D Import/Export row(s) available for this analysis.`,
+        intent.pareto ? "Pareto ordering uses transaction concentration, not generic carrier quality." : "Ranking balances vendor readiness, contact availability, and linked quote evidence."
+      ]
+    },
+    suggested_pivots: buildSuggestedPivots(prompt, intent, filters),
+    data_gaps: dataGaps,
+    rfx_shortlist: buildRfxShortlist(recommendations),
+    proposed_actions: buildProposedActions(intent, recommendations, dataGaps)
+  };
+}
+
 function deterministicCarrierRecommendations(prompt: string, vendors: Record<string, unknown>[], rates: Record<string, unknown>[]) {
   const intent = carrierIntelligenceIntent(prompt);
   const limit = intent.pareto ? 100 : extractRecommendationLimit(prompt);
@@ -1094,6 +1374,7 @@ function deterministicCarrierRecommendations(prompt: string, vendors: Record<str
     })
     .slice(0, limit)
     .map((item, index) => ({ ...item, rank: index + 1 }));
+  const analystLayer = buildAnalystLayer(prompt, recommendations, rates, vendors, intent, {}, dataScope);
 
   return {
     answer: recommendations.length
@@ -1104,6 +1385,7 @@ function deterministicCarrierRecommendations(prompt: string, vendors: Record<str
       focus: intent.focus,
       data_scope: dataScope
     },
+    ...analystLayer,
     recommendations,
     next_actions: [
       intent.pareto ? "Use this as a transaction concentration view, not a generic carrier quality list." : "Validate missing contacts before sending RFx invitations.",
@@ -1165,6 +1447,9 @@ async function requestCarrierIntelligence(prompt: string, fallback: Record<strin
               "For route, corridor, market, state, equipment, operation, service, border crossing, cost per mile, or cost per km questions, explain which available facts support the answer and which facts are missing.",
               "If the provided facts are not enough for the requested slice, say that the slice needs more linked quotes or normalized mileage before recommending carriers.",
               "If the user asks for carriers to onboard or dar de alta, prioritize strong Sourcing Base candidates, but include Procurement Base carriers when they are clearly relevant.",
+              "Return an analyst layer with a concise executive summary, suggested pivots, data gaps, RFx shortlist, and proposed actions.",
+              "Proposed actions are advisory only. Do not claim that vendors were promoted, RFx events were created, or outreach was sent.",
+              "Suggested pivots must use the available Rateware BI field names from the deterministic result.",
               "Use concise Spanish unless the user writes in English."
             ].join("\n")
           }]
@@ -1177,6 +1462,11 @@ async function requestCarrierIntelligence(prompt: string, fallback: Record<strin
               instruction: prompt,
               deterministic_result: {
                 filters: fallback.filters,
+                analyst_summary: fallback.analyst_summary,
+                suggested_pivots: fallback.suggested_pivots,
+                data_gaps: fallback.data_gaps,
+                rfx_shortlist: fallback.rfx_shortlist,
+                proposed_actions: fallback.proposed_actions,
                 candidate_count: fallback.candidate_count,
                 rate_signal_count: fallback.rate_signal_count
               },
@@ -1218,8 +1508,18 @@ async function requestCarrierIntelligence(prompt: string, fallback: Record<strin
   }
 
   const parsed = JSON.parse(outputText);
+  const fallbackByVendor = new Map((Array.isArray(fallback.recommendations) ? fallback.recommendations : [])
+    .map((row: Record<string, unknown>) => [row.vendor_id, row]));
+  const mergedRecommendations = Array.isArray(parsed.recommendations)
+    ? parsed.recommendations.map((row: Record<string, unknown>) => ({
+      ...(fallbackByVendor.get(row.vendor_id) || {}),
+      ...row
+    }))
+    : fallback.recommendations;
+
   return {
     ...parsed,
+    recommendations: mergedRecommendations,
     model_status: "ai",
     candidate_count: fallback.candidate_count,
     rate_signal_count: fallback.rate_signal_count
@@ -1420,6 +1720,16 @@ async function buildCarrierRecommendations(supabase: ReturnType<typeof createCli
     const { _linked_rates, ...publicRow } = row;
     return { ...publicRow, rank: index + 1 };
   });
+  const dataScope = "Structured recommendation engine over user vendors and filtered staging/Rateware transactions.";
+  const analystLayer = buildAnalystLayer(
+    `Structured ${rankingMode} recommendation`,
+    recommendations,
+    filteredRates,
+    vendorsResult.data || [],
+    intent,
+    filters,
+    dataScope
+  );
 
   return {
     answer: `${recommendations.length} carrier recommendation(s) ranked by ${rankingMode}.`,
@@ -1428,8 +1738,9 @@ async function buildCarrierRecommendations(supabase: ReturnType<typeof createCli
       focus: intent.focus,
       ranking_mode: rankingMode,
       min_transactions: minTransactions,
-      data_scope: "Structured recommendation engine over user vendors and filtered staging/Rateware transactions."
+      data_scope: dataScope
     },
+    ...analystLayer,
     recommendations,
     next_actions: [
       "Review score breakdown before promoting a carrier.",
