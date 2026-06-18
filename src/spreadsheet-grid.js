@@ -27,6 +27,18 @@ function focusCell(container, rowSelector, cellSelector, rowIndex, columnIndex) 
   return true;
 }
 
+function focusFirstCellControl(target, rowSelector, cellSelector) {
+  if (target.closest(cellSelector)) return false;
+  const tableCell = target.closest("td");
+  const row = target.closest(rowSelector);
+  if (!tableCell || !row) return false;
+  const control = tableCell.querySelector(cellSelector);
+  if (!control || control.disabled) return false;
+  control.focus();
+  if (control.select && control.matches('input:not([type="checkbox"])')) control.select();
+  return true;
+}
+
 function shouldKeepArrowInsideInput(event, control) {
   if (!control.matches('input:not([type="checkbox"])')) return false;
   const valueLength = String(control.value || "").length;
@@ -74,6 +86,21 @@ export function installSpreadsheetGrid({
   saveRow,
   onRowsChanged
 }) {
+  container.addEventListener("click", (event) => {
+    focusFirstCellControl(event.target, rowSelector, cellSelector);
+  });
+
+  container.addEventListener("focusin", (event) => {
+    const control = event.target.closest(cellSelector);
+    if (!control) return;
+    container.querySelectorAll(".active-sheet-cell").forEach((cell) => cell.classList.remove("active-sheet-cell"));
+    control.closest("td")?.classList.add("active-sheet-cell");
+  });
+
+  container.addEventListener("focusout", (event) => {
+    event.target.closest("td")?.classList.remove("active-sheet-cell");
+  });
+
   container.addEventListener("keydown", async (event) => {
     const control = event.target.closest(cellSelector);
     if (!control) return;
