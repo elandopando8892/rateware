@@ -67,39 +67,44 @@
             <span id="signal-failed">0 failed uploads</span>
           </section>
 
-          <section class="workspace-panel">
+          <div class="dashboard-command-grid">
+            <section class="workspace-panel">
+              <div class="section-heading compact split-heading">
+                <div>
+                  <p class="eyebrow">Pipeline health</p>
+                  <h2>Rateware readiness</h2>
+                </div>
+                <p id="pipeline-summary" class="section-caption">Checking pipeline...</p>
+              </div>
+              <div id="pipeline-health" class="pipeline-health" aria-label="Pipeline health">
+                <article>
+                  <strong>Loading</strong>
+                  <span>Checking sourcing, uploads, staging, and approved Rateware.</span>
+                </article>
+              </div>
+            </section>
+
+            <section class="workspace-panel">
+              <div class="section-heading compact">
+                <p class="eyebrow">Priority queue</p>
+                <h2>Needs attention</h2>
+              </div>
+              <div id="priority-queue" class="priority-queue">
+                <article>
+                  <strong>Loading priorities...</strong>
+                  <span>Checking uploads, staging, vendors, and approved Rateware.</span>
+                </article>
+              </div>
+            </section>
+          </div>
+
+          <section class="workspace-panel dashboard-workflow-panel">
             <div class="section-heading compact split-heading">
               <div>
-                <p class="eyebrow">Pipeline health</p>
-                <h2>Rateware readiness</h2>
+                <p class="eyebrow">Workflow</p>
+                <h2>Procurement pipeline</h2>
               </div>
-              <p id="pipeline-summary" class="section-caption">Checking pipeline...</p>
-            </div>
-            <div id="pipeline-health" class="pipeline-health" aria-label="Pipeline health">
-              <article>
-                <strong>Loading</strong>
-                <span>Checking sourcing, uploads, staging, and approved Rateware.</span>
-              </article>
-            </div>
-          </section>
-
-          <section class="workspace-panel">
-            <div class="section-heading compact">
-              <p class="eyebrow">Priority queue</p>
-              <h2>What needs attention</h2>
-            </div>
-            <div id="priority-queue" class="priority-queue">
-              <article>
-                <strong>Loading priorities...</strong>
-                <span>Checking uploads, staging, vendors, and approved Rateware.</span>
-              </article>
-            </div>
-          </section>
-
-          <section class="workspace-panel">
-            <div class="section-heading compact">
-              <p class="eyebrow">Workflow</p>
-              <h2>Procurement pipeline</h2>
+              <a class="secondary-link" href="./business-intelligence.html">Ask AI Analyst</a>
             </div>
             <div class="workflow-steps" aria-label="Rateware workflow">
               <a class="workflow-step" href="./vendors.html">
@@ -107,133 +112,65 @@
                 <strong>Sourcing</strong>
                 <small id="workflow-sourcing">Vendor base</small>
               </a>
-              <a class="workflow-step" href="./vendors.html">
-                <span>2</span>
-                <strong>Procurement</strong>
-                <small id="workflow-procurement">Target carriers</small>
-              </a>
               <a class="workflow-step" href="./rfx-events.html">
-                <span>3</span>
+                <span>2</span>
                 <strong>RFx</strong>
                 <small id="workflow-rfx">Spot books and bids</small>
               </a>
               <a class="workflow-step" href="./outreach.html">
-                <span>4</span>
+                <span>3</span>
                 <strong>Outreach</strong>
                 <small id="workflow-outreach">Carrier invitations</small>
               </a>
               <a class="workflow-step" href="./upload-center.html">
-                <span>5</span>
+                <span>4</span>
                 <strong>Uploads</strong>
                 <small id="workflow-uploads">Source files</small>
               </a>
               <a class="workflow-step" href="./staging-review.html">
-                <span>6</span>
+                <span>5</span>
                 <strong>Staging</strong>
                 <small id="workflow-staging">Pending review</small>
               </a>
               <a class="workflow-step" href="./rateware.html">
-                <span>7</span>
+                <span>6</span>
                 <strong>Rateware</strong>
                 <small id="workflow-rateware">Approved lanes</small>
-              </a>
-              <a class="workflow-step" href="./settings.html">
-                <span>8</span>
-                <strong>Admin</strong>
-                <small id="workflow-settings">Settings and audit</small>
               </a>
             </div>
           </section>
 
-          <section class="workspace-panel">
+          <section class="workspace-panel dashboard-action-panel">
             <div class="section-heading compact">
-              <p class="eyebrow">Next actions</p>
-              <h2>Operations Queue</h2>
+              <p class="eyebrow">Workflow</p>
+              <h2>Core actions</h2>
             </div>
             <div class="action-grid">
+              <a class="action-tile primary-action" href="./business-intelligence.html">
+                <strong>Ask AI Analyst</strong>
+                <span>Get carrier recommendations, pivots, gaps, RFx shortlist, and proposed actions.</span>
+              </a>
               <a class="action-tile" href="./upload-center.html">
-                <strong>Upload source files</strong>
+                <strong>Upload files</strong>
                 <span>Capture carrier quotes, emails, PDFs, images, and spreadsheets.</span>
               </a>
               <a class="action-tile" href="./vendors.html">
                 <strong>Manage vendors</strong>
                 <span>Build the carrier master used for RFx invitations and quote matching.</span>
               </a>
-              <a class="action-tile" href="./business-intelligence.html">
-                <strong>Ask AI Analyst</strong>
-                <span>Get carrier recommendations, pivots, gaps, RFx shortlist, and proposed actions.</span>
-              </a>
               <a class="action-tile" href="./rfx-events.html">
-                <strong>Launch RFx event</strong>
+                <strong>Launch RFx</strong>
                 <span>Upload spot book lanes, shortlist carriers, and collect bids.</span>
               </a>
-              <a class="action-tile" href="./outreach.html">
-                <strong>Generate outreach</strong>
-                <span>Create Gmail and WhatsApp invitation drafts for shortlisted carriers.</span>
-              </a>
-              <a class="action-tile" href="./upload-history.html">
-                <strong>Interpret uploads</strong>
-                <span>Move preserved source files into AI extraction and staging.</span>
-              </a>
               <a class="action-tile" href="./staging-review.html">
-                <strong>Review staged rates</strong>
+                <strong>Review staging</strong>
                 <span>Approve, reject, and prepare normalized Rateware rows.</span>
               </a>
               <a class="action-tile" href="./rateware.html">
                 <strong>Open Rateware</strong>
                 <span>Use approved carrier rates as the active procurement rate book.</span>
               </a>
-              <a class="action-tile" href="./settings.html">
-                <strong>Configure SaaS control</strong>
-                <span>Manage workspace profile, full access mode, onboarding, and audit history.</span>
-              </a>
             </div>
-          </section>
-
-          <section class="workspace-panel">
-            <div class="section-heading compact split-heading">
-              <div>
-                <p class="eyebrow">Rateware catalog</p>
-                <h2>Normalization Engine</h2>
-              </div>
-              <button id="sync-catalog-button" type="button" class="secondary">Sync catalog</button>
-            </div>
-            <p id="catalog-sync-status" class="status-message" role="status">
-              Catalog sync ready.
-            </p>
-          </section>
-
-          <section class="workspace-panel">
-            <div class="section-heading compact">
-              <p class="eyebrow">MVP roadmap</p>
-              <h2>Sprint 9 Scope</h2>
-            </div>
-            <ol class="roadmap-list">
-              <li><span>Done</span> Full access model for all authenticated users.</li>
-              <li><span>Done</span> Settings page for user, workspace, onboarding, and audit trail.</li>
-              <li><span>Next</span> Role-based permissions can return after the core workflow stabilizes.</li>
-            </ol>
-          </section>
-
-          <section class="workspace-panel">
-            <div class="section-heading compact">
-              <p class="eyebrow">Access diagnostics</p>
-              <h2>Kinde Session</h2>
-            </div>
-            <dl id="access-diagnostics" class="diagnostic-list">
-              <div>
-                <dt>User</dt>
-                <dd>-</dd>
-              </div>
-              <div>
-                <dt>Roles</dt>
-                <dd>-</dd>
-              </div>
-              <div>
-                <dt>Permissions</dt>
-                <dd>-</dd>
-              </div>
-            </dl>
           </section>
         </main>
       </div>
