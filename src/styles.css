@@ -309,6 +309,22 @@ a {
   margin-bottom: 12px;
 }
 
+.drawer-badges,
+.drawer-quick-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.drawer-quick-actions {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfc;
+  margin-bottom: 14px;
+  padding: 10px;
+}
+
 .drawer-edit-form {
   display: grid;
   gap: 12px;

@@ -613,6 +613,41 @@ function setDrawerValue(selector, value) {
   document.querySelector(selector).innerHTML = value || '<span class="muted-text">Not captured</span>';
 }
 
+function renderDrawerBadges(vendor) {
+  const badges = [
+    vendor.base_stage || "sourcing",
+    vendor.status || "active",
+    vendor.source || "manual"
+  ];
+  return badges.map((badge) => `<span class="status-pill">${escapeHtml(String(badge).replace(/_/g, " "))}</span>`).join("");
+}
+
+function renderDrawerQuickActions(vendor) {
+  const actions = [];
+  if (vendor.primary_email) {
+    actions.push(`<a class="small-button" href="mailto:${escapeHtml(vendor.primary_email)}">Email</a>`);
+  }
+  if (vendor.domain) {
+    actions.push(`<a class="small-button secondary" href="https://${escapeHtml(vendor.domain)}" target="_blank" rel="noreferrer">Website</a>`);
+  }
+  if (vendor.whatsapp_phone) {
+    const phone = String(vendor.whatsapp_phone).replace(/\D/g, "");
+    if (phone) actions.push(`<a class="small-button secondary" href="https://wa.me/${escapeHtml(phone)}" target="_blank" rel="noreferrer">WhatsApp</a>`);
+  }
+  return actions.length ? actions.join("") : '<span class="muted-text">No quick actions available</span>';
+}
+
+function renderVendorSource(vendor) {
+  const parts = [
+    vendor.source ? String(vendor.source).replace(/_/g, " ") : null,
+    vendor.source_row_number ? `row ${vendor.source_row_number}` : null,
+    vendor.last_synced_at ? `synced ${new Date(vendor.last_synced_at).toLocaleDateString()}` : null
+  ].filter(Boolean);
+  const label = parts.join(" | ") || "manual";
+  if (!vendor.source_spreadsheet_url) return escapeHtml(label);
+  return `<a href="${escapeHtml(vendor.source_spreadsheet_url)}" target="_blank" rel="noreferrer">${escapeHtml(label)}</a>`;
+}
+
 function openVendorDrawer(vendorId) {
   const vendor = allVendors.find((row) => row.id === vendorId) || currentVendors.find((row) => row.id === vendorId);
   if (!vendor) return;
@@ -620,6 +655,9 @@ function openVendorDrawer(vendorId) {
   activeDrawerVendorId = vendor.id;
   const duplicates = duplicateSignals(vendor);
   document.querySelector("#drawer-vendor-name").textContent = vendor.vendor_name || "Vendor";
+  document.querySelector("#drawer-badges").innerHTML = renderDrawerBadges(vendor);
+  document.querySelector("#drawer-quick-actions").innerHTML = renderDrawerQuickActions(vendor);
+  setDrawerValue("#drawer-source", renderVendorSource(vendor));
   setDrawerValue("#drawer-completeness", `${scoreVendor(vendor)}% complete`);
   setDrawerValue(
     "#drawer-contact",
