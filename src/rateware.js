@@ -9,6 +9,7 @@ const refreshButton = document.querySelector("#refresh-rateware-button");
 const selectAllCheckbox = document.querySelector("#select-all-rateware");
 const selectionCount = document.querySelector("#rateware-selection-count");
 const returnSelectedButton = document.querySelector("#return-selected-button");
+const exportSelectedButton = document.querySelector("#export-selected-button");
 const exportVisibleButton = document.querySelector("#export-visible-button");
 const actionStatus = document.querySelector("#rateware-action-status");
 const ratewareMetricTotal = document.querySelector("#rateware-metric-total");
@@ -176,6 +177,7 @@ function updateBulkControls() {
   const totalRows = body.querySelectorAll("[data-rateware-id]").length;
   selectionCount.textContent = `${selectedCount} selected`;
   returnSelectedButton.disabled = selectedCount === 0;
+  if (exportSelectedButton) exportSelectedButton.disabled = selectedCount === 0;
   if (exportVisibleButton) exportVisibleButton.disabled = currentRows.length === 0;
   if (selectAllCheckbox) {
     selectAllCheckbox.checked = selectedCount > 0 && selectedCount === totalRows;
@@ -188,9 +190,9 @@ function csvCell(value) {
   return `"${text.replace(/"/g, '""')}"`;
 }
 
-function exportVisibleCsv() {
-  if (!currentRows.length) {
-    setActionStatus("No visible rates to export.", "error");
+function exportRowsCsv(rowsToExport, label) {
+  if (!rowsToExport.length) {
+    setActionStatus(`No ${label} rates to export.`, "error");
     return;
   }
 
@@ -222,7 +224,7 @@ function exportVisibleCsv() {
     "mx_crossing",
     "us_crossing"
   ];
-  const rows = currentRows.map((row) => [
+  const rows = rowsToExport.map((row) => [
     row.vendors?.vendor_name || row.vendor_domain || "",
     row.vendor_domain || row.vendors?.domain || "",
     dateValue(row.quote_date),
@@ -255,10 +257,19 @@ function exportVisibleCsv() {
   const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
   const link = document.createElement("a");
   link.href = url;
-  link.download = `rateware-approved-${new Date().toISOString().slice(0, 10)}.csv`;
+  link.download = `rateware-${label}-${new Date().toISOString().slice(0, 10)}.csv`;
   link.click();
   URL.revokeObjectURL(url);
-  setActionStatus(`${currentRows.length} visible rate(s) exported.`, "success");
+  setActionStatus(`${rowsToExport.length} ${label} rate(s) exported.`, "success");
+}
+
+function exportVisibleCsv() {
+  exportRowsCsv(currentRows, "visible");
+}
+
+function exportSelectedCsv() {
+  const ids = new Set(selectedVisibleIds());
+  exportRowsCsv(currentRows.filter((row) => ids.has(row.id)), "selected");
 }
 
 async function loadRateware() {
@@ -325,6 +336,7 @@ quickFilterButtons.forEach((button) => {
   });
 });
 returnSelectedButton.addEventListener("click", returnSelectedToStaging);
+exportSelectedButton?.addEventListener("click", exportSelectedCsv);
 exportVisibleButton?.addEventListener("click", exportVisibleCsv);
 selectAllCheckbox?.addEventListener("change", () => {
   body.querySelectorAll("[data-select-rateware]").forEach((checkbox) => {
