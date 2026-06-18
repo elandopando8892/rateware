@@ -65,7 +65,7 @@ function inputCell(row, field, options = {}) {
       : row[field] || "";
   const inputType = options.type || (options.money ? "number" : "text");
   const step = options.step || (options.money ? "0.01" : "");
-  return `<input class="staging-input rateware-input ${widthClass}" data-rateware-field="${field}" type="${inputType}" value="${escapeHtml(value)}" ${step ? `step="${escapeHtml(step)}"` : ""} ${options.money ? 'inputmode="decimal"' : ""} />`;
+  return `<input class="staging-input rateware-input ${widthClass}" data-rateware-field="${field}" type="${inputType}" value="${escapeHtml(value)}" ${options.list ? `list="${escapeHtml(options.list)}"` : ""} ${step ? `step="${escapeHtml(step)}"` : ""} ${options.money ? 'inputmode="decimal"' : ""} />`;
 }
 
 function optionList(values = [], currentValue = "") {
@@ -92,6 +92,24 @@ function locationOptionLabel(option) {
   return typeof option === "string" ? "" : option.label || "";
 }
 
+function uniqueLocationValues(field) {
+  return Array.from(new Set(ratewareOptions.locations.map((option) => option?.[field]).filter(Boolean)))
+    .sort((a, b) => String(a).localeCompare(String(b)));
+}
+
+function datalistOptions(values = []) {
+  return values.map((value) => `<option value="${escapeHtml(value)}"></option>`).join("");
+}
+
+function hiddenLocationFields(row, prefix) {
+  return `
+    <input data-rateware-field="normalized_${prefix}" type="hidden" value="${escapeHtml(row[`normalized_${prefix}`] || "")}" />
+    <input data-rateware-field="${prefix}_city" type="hidden" value="${escapeHtml(row[`${prefix}_city`] || "")}" />
+    <input data-rateware-field="${prefix}_country" type="hidden" value="${escapeHtml(row[`${prefix}_country`] || "")}" />
+    <input data-rateware-field="${prefix}_match_reason" type="hidden" value="${escapeHtml(row[`${prefix}_match_reason`] || "")}" />
+  `;
+}
+
 function datalistCell(row, field, listName, options = {}) {
   const widthClass = options.wide ? "wide-input" : options.short ? "short-input" : "";
   return `<input class="staging-input rateware-input ${widthClass}" data-rateware-field="${field}" list="${listName}" value="${escapeHtml(row[field] || "")}" />`;
@@ -114,8 +132,74 @@ function renderRatewareDatalists() {
   container.innerHTML = `
     <datalist id="rateware-origin-options">${ratewareOptions.locations.map((option) => `<option value="${escapeHtml(locationOptionValue(option))}" label="${escapeHtml(locationOptionLabel(option))}"></option>`).join("")}</datalist>
     <datalist id="rateware-destination-options">${ratewareOptions.locations.map((option) => `<option value="${escapeHtml(locationOptionValue(option))}" label="${escapeHtml(locationOptionLabel(option))}"></option>`).join("")}</datalist>
+    <datalist id="rateware-zip-options">${datalistOptions(uniqueLocationValues("zip_prefix"))}</datalist>
+    <datalist id="rateware-state-options">${datalistOptions(uniqueLocationValues("state_code"))}</datalist>
+    <datalist id="rateware-market-options">${datalistOptions(uniqueLocationValues("market"))}</datalist>
+    <datalist id="rateware-region-options">${datalistOptions(uniqueLocationValues("region"))}</datalist>
   `;
   document.body.appendChild(container);
+}
+
+function lookupKey(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function locationOptionMatch(value) {
+  const lookup = lookupKey(value);
+  if (!lookup) return null;
+  const scored = ratewareOptions.locations
+    .map((option) => {
+      const values = [
+        locationOptionValue(option),
+        locationOptionLabel(option),
+        option.city,
+        option.metro_city,
+        option.raw_value,
+        [option.city, option.state_code].filter(Boolean).join(", "),
+        [option.metro_city, option.state_code].filter(Boolean).join(", "),
+        option.zip_prefix
+      ].filter(Boolean);
+      const exact = values.some((candidate) => lookupKey(candidate) === lookup);
+      const partial = values.some((candidate) => lookupKey(candidate).includes(lookup) || lookup.includes(lookupKey(candidate)));
+      return { option, score: exact ? 100 : partial ? 70 : 0 };
+    })
+    .filter((item) => item.score > 0)
+    .sort((a, b) => b.score - a.score);
+  return scored[0]?.option || null;
+}
+
+function setTableField(tableRow, field, value) {
+  const input = tableRow?.querySelector(`[data-rateware-field="${CSS.escape(field)}"]`);
+  if (!input) return;
+  input.value = value || "";
+}
+
+function applyLocationSuggestion(tableRow, prefix, value) {
+  const option = locationOptionMatch(value);
+  if (!option) return false;
+  setTableField(tableRow, `normalized_${prefix}`, option.metro_city || option.city || locationOptionValue(option));
+  setTableField(tableRow, `${prefix}_zip_prefix`, option.zip_prefix);
+  setTableField(tableRow, `${prefix}_state`, option.state_code || option.state_name);
+  setTableField(tableRow, `${prefix}_market`, option.market);
+  setTableField(tableRow, `${prefix}_region`, option.region);
+  setTableField(tableRow, `${prefix}_city`, option.city || option.metro_city);
+  setTableField(tableRow, `${prefix}_country`, option.country);
+  setTableField(tableRow, `${prefix}_match_reason`, "catalog dropdown suggestion");
+  return true;
+}
+
+function applySuggestionFromField(tableRow, field, value) {
+  if (field === "origin" || field === "destination") return applyLocationSuggestion(tableRow, field, value);
+  if (field === "origin_zip_prefix") return applyLocationSuggestion(tableRow, "origin", value);
+  if (field === "destination_zip_prefix") return applyLocationSuggestion(tableRow, "destination", value);
+  return false;
 }
 
 function moneyValue(value) {
@@ -354,16 +438,16 @@ function renderRows(rows) {
       </td>
       <td>${inputCell(row, "quote_date", { type: "date", short: true })}</td>
       <td>${inputCell(row, "rfx_id", { short: true })}</td>
-      <td>${datalistCell(row, "origin", "rateware-origin-options", { wide: true })}</td>
-      <td>${inputCell(row, "origin_zip_prefix", { short: true })}</td>
-      <td>${inputCell(row, "origin_state", { short: true })}</td>
-      <td>${inputCell(row, "origin_market", { wide: true })}</td>
-      <td>${inputCell(row, "origin_region", { wide: true })}</td>
-      <td>${datalistCell(row, "destination", "rateware-destination-options", { wide: true })}</td>
-      <td>${inputCell(row, "destination_zip_prefix", { short: true })}</td>
-      <td>${inputCell(row, "destination_state", { short: true })}</td>
-      <td>${inputCell(row, "destination_market", { wide: true })}</td>
-      <td>${inputCell(row, "destination_region", { wide: true })}</td>
+      <td>${datalistCell(row, "origin", "rateware-origin-options", { wide: true })}${hiddenLocationFields(row, "origin")}</td>
+      <td>${inputCell(row, "origin_zip_prefix", { short: true, list: "rateware-zip-options" })}</td>
+      <td>${inputCell(row, "origin_state", { short: true, list: "rateware-state-options" })}</td>
+      <td>${inputCell(row, "origin_market", { wide: true, list: "rateware-market-options" })}</td>
+      <td>${inputCell(row, "origin_region", { wide: true, list: "rateware-region-options" })}</td>
+      <td>${datalistCell(row, "destination", "rateware-destination-options", { wide: true })}${hiddenLocationFields(row, "destination")}</td>
+      <td>${inputCell(row, "destination_zip_prefix", { short: true, list: "rateware-zip-options" })}</td>
+      <td>${inputCell(row, "destination_state", { short: true, list: "rateware-state-options" })}</td>
+      <td>${inputCell(row, "destination_market", { wide: true, list: "rateware-market-options" })}</td>
+      <td>${inputCell(row, "destination_region", { wide: true, list: "rateware-region-options" })}</td>
       <td>${selectCell(row, "equipment", ratewareOptions.categories.equipment || [], { short: true })}</td>
       <td>${selectCell(row, "trailer", ratewareOptions.categories.trailer || [], { short: true })}</td>
       <td>${checkboxCell(row, "hazmat", "Hazmat")}</td>
@@ -774,6 +858,7 @@ body.addEventListener("input", (event) => {
   const field = event.target.closest("[data-rateware-field]");
   if (!field) return;
   const tableRow = field.closest("[data-rateware-id]");
+  applySuggestionFromField(tableRow, field.dataset.ratewareField, field.value);
   markRatewareRowDirty(tableRow);
   scheduleRatewareAutoSave(tableRow);
 });
@@ -781,6 +866,7 @@ body.addEventListener("change", (event) => {
   const field = event.target.closest("[data-rateware-field]");
   if (field) {
     const tableRow = field.closest("[data-rateware-id]");
+    applySuggestionFromField(tableRow, field.dataset.ratewareField, field.value);
     markRatewareRowDirty(tableRow);
     scheduleRatewareAutoSave(tableRow);
     return;

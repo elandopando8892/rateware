@@ -68,7 +68,7 @@ function inputCell(row, field, options = {}) {
       : row[field] || "";
   const inputType = options.type || (options.money ? "number" : "text");
   const step = options.step || (options.money ? "0.01" : "");
-  return `<input class="staging-input ${widthClass}" data-field="${field}" type="${inputType}" value="${escapeHtml(value)}" ${options.min ? `min="${escapeHtml(options.min)}"` : ""} ${options.max ? `max="${escapeHtml(options.max)}"` : ""} ${step ? `step="${escapeHtml(step)}"` : ""} ${options.money ? 'inputmode="decimal"' : ""} />`;
+  return `<input class="staging-input ${widthClass}" data-field="${field}" type="${inputType}" value="${escapeHtml(value)}" ${options.list ? `list="${escapeHtml(options.list)}"` : ""} ${options.min ? `min="${escapeHtml(options.min)}"` : ""} ${options.max ? `max="${escapeHtml(options.max)}"` : ""} ${step ? `step="${escapeHtml(step)}"` : ""} ${options.money ? 'inputmode="decimal"' : ""} />`;
 }
 
 function optionList(values = [], currentValue = "") {
@@ -109,6 +109,24 @@ function locationOptionLabel(option) {
   return typeof option === "string" ? "" : option.label || "";
 }
 
+function uniqueLocationValues(field) {
+  return Array.from(new Set(stagingOptions.locations.map((option) => option?.[field]).filter(Boolean)))
+    .sort((a, b) => String(a).localeCompare(String(b)));
+}
+
+function datalistOptions(values = []) {
+  return values.map((value) => `<option value="${escapeHtml(value)}"></option>`).join("");
+}
+
+function hiddenLocationFields(row, prefix) {
+  return `
+    <input data-field="normalized_${prefix}" type="hidden" value="${escapeHtml(row[`normalized_${prefix}`] || "")}" />
+    <input data-field="${prefix}_city" type="hidden" value="${escapeHtml(row[`${prefix}_city`] || "")}" />
+    <input data-field="${prefix}_country" type="hidden" value="${escapeHtml(row[`${prefix}_country`] || "")}" />
+    <input data-field="${prefix}_match_reason" type="hidden" value="${escapeHtml(row[`${prefix}_match_reason`] || "")}" />
+  `;
+}
+
 function statusSelect(row) {
   const status = row.status || "pending_review";
   return `
@@ -130,8 +148,74 @@ function renderDatalists() {
   container.innerHTML = `
     <datalist id="staging-origin-options">${stagingOptions.locations.map((option) => `<option value="${escapeHtml(locationOptionValue(option))}" label="${escapeHtml(locationOptionLabel(option))}"></option>`).join("")}</datalist>
     <datalist id="staging-destination-options">${stagingOptions.locations.map((option) => `<option value="${escapeHtml(locationOptionValue(option))}" label="${escapeHtml(locationOptionLabel(option))}"></option>`).join("")}</datalist>
+    <datalist id="staging-zip-options">${datalistOptions(uniqueLocationValues("zip_prefix"))}</datalist>
+    <datalist id="staging-state-options">${datalistOptions(uniqueLocationValues("state_code"))}</datalist>
+    <datalist id="staging-market-options">${datalistOptions(uniqueLocationValues("market"))}</datalist>
+    <datalist id="staging-region-options">${datalistOptions(uniqueLocationValues("region"))}</datalist>
   `;
   document.body.appendChild(container);
+}
+
+function lookupKey(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function locationOptionMatch(value) {
+  const lookup = lookupKey(value);
+  if (!lookup) return null;
+  const scored = stagingOptions.locations
+    .map((option) => {
+      const values = [
+        locationOptionValue(option),
+        locationOptionLabel(option),
+        option.city,
+        option.metro_city,
+        option.raw_value,
+        [option.city, option.state_code].filter(Boolean).join(", "),
+        [option.metro_city, option.state_code].filter(Boolean).join(", "),
+        option.zip_prefix
+      ].filter(Boolean);
+      const exact = values.some((candidate) => lookupKey(candidate) === lookup);
+      const partial = values.some((candidate) => lookupKey(candidate).includes(lookup) || lookup.includes(lookupKey(candidate)));
+      return { option, score: exact ? 100 : partial ? 70 : 0 };
+    })
+    .filter((item) => item.score > 0)
+    .sort((a, b) => b.score - a.score);
+  return scored[0]?.option || null;
+}
+
+function setTableField(tableRow, field, value) {
+  const input = tableRow?.querySelector(`[data-field="${CSS.escape(field)}"]`);
+  if (!input) return;
+  input.value = value || "";
+}
+
+function applyLocationSuggestion(tableRow, prefix, value) {
+  const option = locationOptionMatch(value);
+  if (!option) return false;
+  setTableField(tableRow, `normalized_${prefix}`, option.metro_city || option.city || locationOptionValue(option));
+  setTableField(tableRow, `${prefix}_zip_prefix`, option.zip_prefix);
+  setTableField(tableRow, `${prefix}_state`, option.state_code || option.state_name);
+  setTableField(tableRow, `${prefix}_market`, option.market);
+  setTableField(tableRow, `${prefix}_region`, option.region);
+  setTableField(tableRow, `${prefix}_city`, option.city || option.metro_city);
+  setTableField(tableRow, `${prefix}_country`, option.country);
+  setTableField(tableRow, `${prefix}_match_reason`, "catalog dropdown suggestion");
+  return true;
+}
+
+function applySuggestionFromField(tableRow, field, value) {
+  if (field === "origin" || field === "destination") return applyLocationSuggestion(tableRow, field, value);
+  if (field === "origin_zip_prefix") return applyLocationSuggestion(tableRow, "origin", value);
+  if (field === "destination_zip_prefix") return applyLocationSuggestion(tableRow, "destination", value);
+  return false;
 }
 
 function selectedRows() {
@@ -543,16 +627,16 @@ function renderRows(rows) {
           </td>
           <td>${inputCell(row, "quote_date", { type: "date", short: true })}</td>
           <td>${inputCell(row, "rfx_id", { short: true })}</td>
-          <td>${datalistCell(row, "origin", stagingOptions.locations, { wide: true })}</td>
-          <td>${inputCell(row, "origin_zip_prefix", { short: true })}</td>
-          <td>${inputCell(row, "origin_state", { short: true })}</td>
-          <td>${inputCell(row, "origin_market", { wide: true })}</td>
-          <td>${inputCell(row, "origin_region", { wide: true })}</td>
-          <td>${datalistCell(row, "destination", stagingOptions.locations, { wide: true })}</td>
-          <td>${inputCell(row, "destination_zip_prefix", { short: true })}</td>
-          <td>${inputCell(row, "destination_state", { short: true })}</td>
-          <td>${inputCell(row, "destination_market", { wide: true })}</td>
-          <td>${inputCell(row, "destination_region", { wide: true })}</td>
+          <td>${datalistCell(row, "origin", stagingOptions.locations, { wide: true })}${hiddenLocationFields(row, "origin")}</td>
+          <td>${inputCell(row, "origin_zip_prefix", { short: true, list: "staging-zip-options" })}</td>
+          <td>${inputCell(row, "origin_state", { short: true, list: "staging-state-options" })}</td>
+          <td>${inputCell(row, "origin_market", { wide: true, list: "staging-market-options" })}</td>
+          <td>${inputCell(row, "origin_region", { wide: true, list: "staging-region-options" })}</td>
+          <td>${datalistCell(row, "destination", stagingOptions.locations, { wide: true })}${hiddenLocationFields(row, "destination")}</td>
+          <td>${inputCell(row, "destination_zip_prefix", { short: true, list: "staging-zip-options" })}</td>
+          <td>${inputCell(row, "destination_state", { short: true, list: "staging-state-options" })}</td>
+          <td>${inputCell(row, "destination_market", { wide: true, list: "staging-market-options" })}</td>
+          <td>${inputCell(row, "destination_region", { wide: true, list: "staging-region-options" })}</td>
           <td>${selectCell(row, "equipment", stagingOptions.categories.equipment || [], { short: true })}</td>
           <td>${selectCell(row, "trailer", stagingOptions.categories.trailer || [], { short: true })}</td>
           <td>${checkboxCell(row, "hazmat", "Hazmat")}</td>
@@ -968,6 +1052,7 @@ body.addEventListener("input", (event) => {
   const field = event.target.closest("[data-field]");
   if (!field) return;
   const tableRow = field.closest("[data-row-id]");
+  applySuggestionFromField(tableRow, field.dataset.field, field.value);
   markStagingRowDirty(tableRow);
   scheduleStagingAutoSave(tableRow);
 });
@@ -976,6 +1061,7 @@ body.addEventListener("change", (event) => {
   const field = event.target.closest("[data-field]");
   if (field) {
     const tableRow = field.closest("[data-row-id]");
+    applySuggestionFromField(tableRow, field.dataset.field, field.value);
     markStagingRowDirty(tableRow);
     scheduleStagingAutoSave(tableRow);
     return;
