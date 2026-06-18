@@ -1695,6 +1695,59 @@ select.staging-input {
   background: #fbfefd;
 }
 
+.fix-checklist {
+  display: grid;
+  gap: 8px;
+  background: #ffffff !important;
+}
+
+.fix-checklist .section-heading {
+  margin-bottom: 0;
+}
+
+.fix-checklist h3 {
+  margin: 0;
+}
+
+.fix-item {
+  display: grid !important;
+  gap: 3px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--soft-panel);
+  padding: 9px 10px;
+}
+
+.fix-item strong {
+  color: var(--text);
+  font-size: 0.82rem;
+}
+
+.fix-item span {
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 720;
+}
+
+.fix-item.success {
+  border-color: #b8d8d4;
+  background: #eef7f6;
+}
+
+.fix-item.warning {
+  border-color: #f4dc9c;
+  background: #fffdf7;
+}
+
+.fix-item.danger {
+  border-color: #f2bbb5;
+  background: #fffafa;
+}
+
+.fix-item.muted {
+  background: #f7f9fa;
+}
+
 .leg-list {
   display: grid;
   gap: 8px;

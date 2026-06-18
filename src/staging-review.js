@@ -347,6 +347,82 @@ function renderDrawerBrief(row) {
   `;
 }
 
+function fixChecklist(row) {
+  const items = [];
+  if (needsNumericRate(row)) {
+    items.push({
+      tone: "danger",
+      title: "Enter a numeric rate",
+      detail: "Use All-in, or fill MX/US linehaul if the carrier split the quote."
+    });
+  }
+  if (needsLocationMatch(row)) {
+    items.push({
+      tone: "danger",
+      title: "Resolve origin and destination",
+      detail: "Choose catalog-backed cities so ZIP/state/market can be matched."
+    });
+  }
+  if (!row.vendors?.vendor_name) {
+    items.push({
+      tone: "warning",
+      title: "Confirm vendor",
+      detail: "Match this quote to a configured vendor before using it commercially."
+    });
+  }
+  if (!row.quote_date) {
+    items.push({
+      tone: "warning",
+      title: "Add quote date",
+      detail: "Quote date supports fuel, FX and rate book version context."
+    });
+  }
+  if (!row.weekly_capacity) {
+    items.push({
+      tone: "muted",
+      title: "Add capacity",
+      detail: "Weekly capacity is not required to approve, but it improves sourcing decisions."
+    });
+  }
+  return items;
+}
+
+function renderFixChecklist(row) {
+  const items = fixChecklist(row);
+  if (!items.length) {
+    return `
+      <section class="fix-checklist">
+        <div class="section-heading compact">
+          <p class="eyebrow">Approval readiness</p>
+          <h3>Ready to approve</h3>
+        </div>
+        <article class="fix-item success">
+          <strong>No blocking issues</strong>
+          <span>The row has a usable rate and matched locations.</span>
+        </article>
+      </section>
+    `;
+  }
+  return `
+    <section class="fix-checklist">
+      <div class="section-heading compact">
+        <p class="eyebrow">Approval readiness</p>
+        <h3>Fix checklist</h3>
+      </div>
+      ${items
+        .map(
+          (item) => `
+            <article class="fix-item ${escapeHtml(item.tone)}">
+              <strong>${escapeHtml(item.title)}</strong>
+              <span>${escapeHtml(item.detail)}</span>
+            </article>
+          `
+        )
+        .join("")}
+    </section>
+  `;
+}
+
 function renderRowDetail(row) {
   const legs = Array.isArray(row.rateware_lane_legs)
     ? row.rateware_lane_legs.slice().sort((a, b) => Number(a.leg_sequence || 0) - Number(b.leg_sequence || 0))
@@ -354,6 +430,7 @@ function renderRowDetail(row) {
 
   rowDetail.innerHTML = `
     ${renderDrawerBrief(row)}
+    ${renderFixChecklist(row)}
     <section>
       <h3>Location normalization</h3>
       <dl>
