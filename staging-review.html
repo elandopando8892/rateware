@@ -36,6 +36,31 @@
 
         <main class="history-layout">
           <section class="workspace-panel">
+            <div class="review-insight-grid" aria-label="Staging quality summary">
+              <article>
+                <span>Visible rows</span>
+                <strong id="staging-metric-visible">0</strong>
+              </article>
+              <article>
+                <span>Needs location match</span>
+                <strong id="staging-metric-location">0</strong>
+              </article>
+              <article>
+                <span>Needs numeric rate</span>
+                <strong id="staging-metric-rate">0</strong>
+              </article>
+              <article>
+                <span>Selected</span>
+                <strong id="staging-metric-selected">0</strong>
+              </article>
+            </div>
+            <div class="review-filter-row" aria-label="Staging review filters">
+              <button class="review-filter is-active" type="button" data-staging-filter="all">All visible</button>
+              <button class="review-filter" type="button" data-staging-filter="needs-location">Needs location match</button>
+              <button class="review-filter" type="button" data-staging-filter="needs-rate">Needs numeric rate</button>
+              <button class="review-filter" type="button" data-staging-filter="all-in">All-in</button>
+              <button class="review-filter" type="button" data-staging-filter="split-rate">Split rate</button>
+            </div>
             <div class="toolbar">
               <label>
                 Status

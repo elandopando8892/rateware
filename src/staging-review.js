@@ -19,9 +19,16 @@ const bulkRejectButton = document.querySelector("#bulk-reject-button");
 const bulkArchiveButton = document.querySelector("#bulk-archive-button");
 const bulkRemoveButton = document.querySelector("#bulk-remove-button");
 const bulkActionStatus = document.querySelector("#bulk-action-status");
+const stagingMetricVisible = document.querySelector("#staging-metric-visible");
+const stagingMetricLocation = document.querySelector("#staging-metric-location");
+const stagingMetricRate = document.querySelector("#staging-metric-rate");
+const stagingMetricSelected = document.querySelector("#staging-metric-selected");
+const reviewFilterButtons = document.querySelectorAll("[data-staging-filter]");
 let currentRows = [];
+let loadedRows = [];
 let activeRowId = null;
 const selectedRowIds = new Set();
+let activeReviewFilter = "all";
 let stagingOptions = {
   categories: {},
   locations: [],
@@ -162,6 +169,7 @@ function updateBulkControls() {
   const selectedCount = selectedRows().length;
   const totalRows = body.querySelectorAll("[data-row-id]").length;
   bulkSelectionCount.textContent = `${selectedCount} selected`;
+  if (stagingMetricSelected) stagingMetricSelected.textContent = String(selectedCount);
   bulkSaveButton.disabled = selectedCount === 0;
   bulkApproveButton.disabled = selectedCount === 0;
   bulkRejectButton.disabled = selectedCount === 0;
@@ -171,6 +179,7 @@ function updateBulkControls() {
     selectAllCheckbox.checked = selectedCount > 0 && selectedCount === totalRows;
     selectAllCheckbox.indeterminate = selectedCount > 0 && selectedCount < totalRows;
   }
+  updateReviewMetrics();
 }
 
 function detailLine(label, value) {
@@ -181,6 +190,52 @@ function moneyValue(value) {
   const number = Number(value);
   if (!Number.isFinite(number)) return value || "-";
   return new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(number);
+}
+
+function numericValue(value) {
+  const cleaned = String(value ?? "").replace(/[^0-9.-]/g, "");
+  const number = Number(cleaned);
+  return Number.isFinite(number) ? number : null;
+}
+
+function hasNumericValue(value) {
+  const number = numericValue(value);
+  return number !== null && number > 0;
+}
+
+function needsLocationMatch(row) {
+  const originMatched = Boolean(row.origin_market || row.origin_zip_prefix || row.origin_state || row.origin_country);
+  const destinationMatched = Boolean(row.destination_market || row.destination_zip_prefix || row.destination_state || row.destination_country);
+  return !originMatched || !destinationMatched;
+}
+
+function needsNumericRate(row) {
+  return !hasNumericValue(row.all_in_rate) && !hasNumericValue(row.mx_linehaul) && !hasNumericValue(row.us_linehaul);
+}
+
+function hasSplitRate(row) {
+  return ["mx_linehaul", "us_linehaul", "fsc", "border_crossing_fee"].some((field) => hasNumericValue(row[field]));
+}
+
+function applyReviewFilter(rows = loadedRows) {
+  if (activeReviewFilter === "needs-location") return rows.filter(needsLocationMatch);
+  if (activeReviewFilter === "needs-rate") return rows.filter(needsNumericRate);
+  if (activeReviewFilter === "all-in") return rows.filter((row) => hasNumericValue(row.all_in_rate));
+  if (activeReviewFilter === "split-rate") return rows.filter(hasSplitRate);
+  return rows;
+}
+
+function updateReviewFilters() {
+  reviewFilterButtons.forEach((button) => {
+    button.classList.toggle("is-active", button.dataset.stagingFilter === activeReviewFilter);
+  });
+}
+
+function updateReviewMetrics() {
+  if (stagingMetricVisible) stagingMetricVisible.textContent = String(currentRows.length);
+  if (stagingMetricLocation) stagingMetricLocation.textContent = String(loadedRows.filter(needsLocationMatch).length);
+  if (stagingMetricRate) stagingMetricRate.textContent = String(loadedRows.filter(needsNumericRate).length);
+  if (stagingMetricSelected) stagingMetricSelected.textContent = String(selectedRows().length);
 }
 
 function renderRowDetail(row) {
@@ -252,6 +307,7 @@ function renderRowDetail(row) {
 function renderRows(rows) {
   currentRows = rows;
   renderDatalists();
+  updateReviewFilters();
 
   if (!rows.length) {
     body.innerHTML =
@@ -495,7 +551,8 @@ async function loadRows() {
       us_crossings: options.us_crossings || [],
       currencies: options.currencies || ["USD", "MXN", "CAD"]
     };
-    renderRows(rows);
+    loadedRows = rows;
+    renderRows(applyReviewFilter(rows));
     await applyPermissionState("[data-save-id], [data-approve-id], [data-reject-id], #save-staging-button, #approve-staging-button, #reject-staging-button, #bulk-save-button, #bulk-approve-button, #bulk-reject-button, #bulk-archive-button, #bulk-remove-button", "staging:approve");
   } catch (error) {
     body.innerHTML = `<tr><td colspan="${STAGING_COLSPAN}">Could not load staging rows. ${escapeHtml(error.message)}</td></tr>`;
@@ -572,8 +629,17 @@ body.addEventListener("change", (event) => {
 refreshButton.addEventListener("click", loadRows);
 statusFilter.addEventListener("change", () => {
   selectedRowIds.clear();
+  activeReviewFilter = "all";
   setBulkStatus("");
   loadRows();
+});
+reviewFilterButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    activeReviewFilter = button.dataset.stagingFilter || "all";
+    selectedRowIds.clear();
+    setBulkStatus("");
+    renderRows(applyReviewFilter());
+  });
 });
 selectAllCheckbox?.addEventListener("change", () => {
   body.querySelectorAll("[data-select-row]").forEach((checkbox) => {
