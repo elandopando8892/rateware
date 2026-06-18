@@ -18,6 +18,8 @@ const diagnostics = document.querySelector("#access-diagnostics");
 const syncCatalogButton = document.querySelector("#sync-catalog-button");
 const catalogSyncStatus = document.querySelector("#catalog-sync-status");
 const priorityQueue = document.querySelector("#priority-queue");
+const pipelineSummary = document.querySelector("#pipeline-summary");
+const pipelineHealth = document.querySelector("#pipeline-health");
 
 function setMetric(element, value) {
   element.textContent = new Intl.NumberFormat().format(Number(value || 0));
@@ -126,6 +128,90 @@ function renderPriorityQueue(summary) {
     .join("");
 }
 
+function healthTone(count, issueCount = 0) {
+  if (issueCount > 0) return "danger";
+  if (count > 0) return "success";
+  return "muted";
+}
+
+function healthLabel(tone) {
+  if (tone === "danger") return "Needs attention";
+  if (tone === "success") return "Active";
+  return "Empty";
+}
+
+function renderPipelineHealth(summary) {
+  if (!pipelineHealth) return;
+
+  const failedUploads = numberValue(summary.failed_uploads);
+  const pendingReview = numberValue(summary.pending_review);
+  const approvedRows = numberValue(summary.approved_rows);
+  const rawUploads = numberValue(summary.raw_uploads);
+  const procurementVendors = numberValue(summary.procurement_vendors);
+  const sourcingVendors = numberValue(summary.sourcing_vendors);
+
+  const steps = [
+    {
+      title: "Sourcing base",
+      count: sourcingVendors,
+      issueCount: 0,
+      detail: "Carrier universe available for cleanup and segmentation.",
+      href: "./vendors.html"
+    },
+    {
+      title: "Procurement base",
+      count: procurementVendors,
+      issueCount: 0,
+      detail: "Target carriers curated for sourcing events and quote matching.",
+      href: "./vendors.html"
+    },
+    {
+      title: "Source archive",
+      count: rawUploads,
+      issueCount: failedUploads,
+      detail: failedUploads > 0 ? "Some files need interpretation review." : "Preserved quotes, emails, PDFs, images, and spreadsheets.",
+      href: "./upload-history.html"
+    },
+    {
+      title: "Human review",
+      count: pendingReview,
+      issueCount: pendingReview,
+      detail: pendingReview > 0 ? "Rows are waiting for validation before production." : "No staged rows are waiting right now.",
+      href: "./staging-review.html"
+    },
+    {
+      title: "Approved Rateware",
+      count: approvedRows,
+      issueCount: 0,
+      detail: "Commercial rate base ready to search, inspect, and export.",
+      href: "./rateware.html"
+    }
+  ];
+
+  const attentionCount = steps.filter((step) => healthTone(step.count, step.issueCount) === "danger").length;
+  if (pipelineSummary) {
+    pipelineSummary.textContent = attentionCount
+      ? `${attentionCount} area(s) need review before the rate base is clean.`
+      : approvedRows > 0
+        ? "Pipeline is clean enough for commercial use."
+        : "Pipeline is ready for the next upload or vendor import.";
+  }
+
+  pipelineHealth.innerHTML = steps
+    .map((step) => {
+      const tone = healthTone(step.count, step.issueCount);
+      return `
+        <a class="pipeline-card ${tone}" href="${step.href}">
+          <span>${healthLabel(tone)}</span>
+          <strong>${escapeHtml(step.title)}</strong>
+          <b>${formatCount(step.count)}</b>
+          <small>${escapeHtml(step.detail)}</small>
+        </a>
+      `;
+    })
+    .join("");
+}
+
 async function loadAccessDiagnostics(session) {
   if (!diagnostics) return;
 
@@ -164,6 +250,7 @@ async function loadDashboard() {
     setText(signalUploads, `${new Intl.NumberFormat().format(Number(summary.raw_uploads || 0))} source files`);
     setText(signalArchived, `${new Intl.NumberFormat().format(Number(summary.archived_vendors || 0))} archived vendors`);
     setText(signalFailed, `${new Intl.NumberFormat().format(Number(summary.failed_uploads || 0))} failed uploads`);
+    renderPipelineHealth(summary);
     renderPriorityQueue(summary);
   } catch (error) {
     metricSourcing.textContent = "-";
@@ -179,6 +266,17 @@ async function loadDashboard() {
         </article>
       `;
     }
+    if (pipelineHealth) {
+      pipelineHealth.innerHTML = `
+        <article class="pipeline-card danger">
+          <span>Unavailable</span>
+          <strong>Pipeline health</strong>
+          <b>-</b>
+          <small>${escapeHtml(error.message)}</small>
+        </article>
+      `;
+    }
+    if (pipelineSummary) pipelineSummary.textContent = "Pipeline status could not be loaded.";
   }
 }
 

@@ -501,6 +501,83 @@ a {
   white-space: nowrap;
 }
 
+.section-caption {
+  align-self: end;
+  max-width: 420px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 760;
+  text-align: right;
+}
+
+.pipeline-health {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.pipeline-card {
+  display: grid;
+  gap: 7px;
+  min-height: 132px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #ffffff;
+  padding: 12px;
+}
+
+.pipeline-card span {
+  width: fit-content;
+  border-radius: 999px;
+  background: #eef1f4;
+  color: #53616b;
+  padding: 3px 8px;
+  font-size: 0.72rem;
+  font-weight: 850;
+}
+
+.pipeline-card strong {
+  color: var(--text);
+}
+
+.pipeline-card b {
+  color: var(--text);
+  font-size: 1.65rem;
+  line-height: 1;
+}
+
+.pipeline-card small {
+  color: var(--muted);
+  font-weight: 720;
+  line-height: 1.35;
+}
+
+.pipeline-card.success {
+  border-color: #b8d8d4;
+  background: #f5fbfa;
+}
+
+.pipeline-card.success span {
+  background: #dcefed;
+  color: var(--accent-dark);
+}
+
+.pipeline-card.danger {
+  border-color: #f2bbb5;
+  background: #fffafa;
+}
+
+.pipeline-card.danger span {
+  background: #fde7e4;
+  color: var(--danger);
+}
+
+.pipeline-card:hover {
+  border-color: #b8d8d4;
+  box-shadow: var(--shadow-soft);
+}
+
 .vendor-metrics {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -2055,6 +2132,7 @@ select.staging-input {
   .vendor-metrics,
   .action-grid,
   .workflow-steps,
+  .pipeline-health,
   .form-grid,
   .vendor-form,
   .wizard-steps,
@@ -2065,6 +2143,15 @@ select.staging-input {
   .preview-summary,
   .auth-strip {
     grid-template-columns: 1fr;
+  }
+
+  .split-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .section-caption {
+    text-align: left;
   }
 
   .top-nav {
