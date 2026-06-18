@@ -3,6 +3,8 @@ import { corsHeaders, jsonResponse, requireKindeUser } from "../_shared/kinde.ts
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("RATEWARE_SUPABASE_SERVICE_ROLE_KEY");
+const OPENAI_MODEL = Deno.env.get("OPENAI_MODEL");
+const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
 
 function getClient() {
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
@@ -11,6 +13,48 @@ function getClient() {
 
   return createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 }
+
+const CARRIER_INTELLIGENCE_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["answer", "filters", "recommendations", "next_actions"],
+  properties: {
+    answer: { type: "string" },
+    filters: {
+      type: "object",
+      additionalProperties: false,
+      required: ["limit", "focus", "data_scope"],
+      properties: {
+        limit: { type: "number" },
+        focus: { type: "array", items: { type: "string" } },
+        data_scope: { type: "string" }
+      }
+    },
+    recommendations: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["vendor_id", "rank", "vendor_name", "domain", "primary_email", "base_stage", "status", "fit_score", "why", "evidence", "gaps", "recommended_action"],
+        properties: {
+          vendor_id: { type: ["string", "null"] },
+          rank: { type: "number" },
+          vendor_name: { type: "string" },
+          domain: { type: ["string", "null"] },
+          primary_email: { type: ["string", "null"] },
+          base_stage: { type: ["string", "null"] },
+          status: { type: ["string", "null"] },
+          fit_score: { type: "number" },
+          why: { type: "string" },
+          evidence: { type: "array", items: { type: "string" } },
+          gaps: { type: "array", items: { type: "string" } },
+          recommended_action: { type: "string" }
+        }
+      }
+    },
+    next_actions: { type: "array", items: { type: "string" } }
+  }
+};
 
 function userContext(payload: Record<string, unknown>) {
   const email = cleanText(payload.email || payload.preferred_email || payload["https://kinde.com/email"])?.toLowerCase();
@@ -363,6 +407,404 @@ async function vendorLinkPatch(supabase: ReturnType<typeof createClient>, user: 
     vendor_id: match.vendor.id,
     vendor_domain: normalizeDomain(match.vendor.domain) || match.domain || fallbackDomain || cleanText(reference)
   };
+}
+
+function textIncludesAny(value: unknown, terms: string[]) {
+  const source = catalogKey(value);
+  return terms.some((term) => source.includes(catalogKey(term)));
+}
+
+function arrayValues(value: unknown) {
+  return Array.isArray(value) ? value.map((item) => cleanText(item)).filter(Boolean) as string[] : [];
+}
+
+function extractRecommendationLimit(prompt: string) {
+  const explicit = prompt.match(/\b(\d{1,3})\b/)?.[1];
+  if (!explicit) return 30;
+  return Math.min(Math.max(Number(explicit) || 30, 1), 100);
+}
+
+function carrierIntelligenceIntent(prompt: string) {
+  const text = prompt.toLowerCase();
+  const focus: string[] = [];
+  const crossborder = /\b(cross.?border|crossborder|frontera|border|laredo|usa|us|u\.s\.|canada|canadian|ca)\b/i.test(text);
+  const mexico = /\b(mexican|mexicano|mexicana|mexico|mx|nacional|domestico|domestic|monterrey|nuevo leon|nl|bajio|norte|centro)\b/i.test(text);
+  const addTargets = /\b(alta|dar de alta|onboard|registrar|prospect|target|objetivo|procurement)\b/i.test(text);
+  const hazmat = /\b(hazmat|hazard|hazardous|peligroso|quimico)\b/i.test(text);
+  const reefer = /\b(reefer|refrigerado|temperature|temperatura|temp)\b/i.test(text);
+  const flatbed = /\b(flatbed|plana|plataforma)\b/i.test(text);
+  if (crossborder) focus.push("cross-border");
+  if (mexico) focus.push("mexico");
+  if (addTargets) focus.push("procurement-targets");
+  if (hazmat) focus.push("hazmat");
+  if (reefer) focus.push("reefer");
+  if (flatbed) focus.push("flatbed");
+  return { crossborder, mexico, addTargets, hazmat, reefer, flatbed, focus: focus.length ? focus : ["general carrier fit"] };
+}
+
+function rateText(row: Record<string, unknown>) {
+  return [
+    row.origin,
+    row.destination,
+    row.normalized_origin,
+    row.normalized_destination,
+    row.origin_market,
+    row.destination_market,
+    row.origin_country,
+    row.destination_country,
+    row.origin_state,
+    row.destination_state,
+    row.operation,
+    row.service,
+    row.equipment,
+    row.trailer
+  ].filter(Boolean).join(" ");
+}
+
+function isCrossBorderRate(row: Record<string, unknown>) {
+  const text = rateText(row);
+  const countries = [catalogKey(row.origin_country), catalogKey(row.destination_country)].filter(Boolean);
+  return textIncludesAny(text, ["cross-border", "crossborder", "d2d import", "d2d export", "laredo", "nuevo laredo"]) ||
+    (countries.includes("MX") && (countries.includes("US") || countries.includes("USA") || countries.includes("CA") || countries.includes("CANADA")));
+}
+
+function isMexicoRate(row: Record<string, unknown>) {
+  return textIncludesAny(rateText(row), ["mexico", "mx", "monterrey", "nuevo leon", "apodaca", "queretaro", "bajio", "laredo", "lerma", "toluca"]) ||
+    [row.origin_country, row.destination_country].some((value) => catalogKey(value) === "MX");
+}
+
+function numericAmount(value: unknown) {
+  const cleaned = cleanRateText(value);
+  return cleaned ? Number(cleaned) : null;
+}
+
+function vendorSearchText(vendor: Record<string, unknown>) {
+  return [
+    vendor.vendor_name,
+    vendor.legal_name,
+    vendor.domain,
+    vendor.primary_email,
+    vendor.coverage_notes,
+    vendor.notes,
+    ...arrayValues(vendor.tags)
+  ].filter(Boolean).join(" ");
+}
+
+function createVendorMetrics(vendor: Record<string, unknown>, rates: Record<string, unknown>[]) {
+  const vendorDomain = normalizeDomain(vendor.domain);
+  const emails = vendorEmails(vendor);
+  const linkedRates = rates.filter((row) => {
+    if (row.vendor_id && vendor.id && row.vendor_id === vendor.id) return true;
+    const rowDomain = normalizeDomain(row.vendor_domain);
+    return Boolean(rowDomain && (rowDomain === vendorDomain || emails.some((email) => email.endsWith(`@${rowDomain}`))));
+  });
+  const approvedRates = linkedRates.filter((row) => row.status === "approved");
+  const crossborderRates = linkedRates.filter(isCrossBorderRate);
+  const mexicoRates = linkedRates.filter(isMexicoRate);
+  const rateAmounts = linkedRates.map((row) => numericAmount(row.all_in_rate)).filter((value): value is number => typeof value === "number" && Number.isFinite(value));
+  const marketSet = new Set<string>();
+  const laneSet = new Set<string>();
+  const equipmentSet = new Set<string>();
+  let lastQuoteDate: string | null = null;
+
+  for (const row of linkedRates) {
+    [row.origin_market, row.destination_market].map(cleanText).filter(Boolean).forEach((value) => marketSet.add(value as string));
+    [row.equipment, row.trailer].map(cleanText).filter(Boolean).forEach((value) => equipmentSet.add(value as string));
+    const lane = [row.origin || row.normalized_origin, row.destination || row.normalized_destination].map(cleanText).filter(Boolean).join(" -> ");
+    if (lane) laneSet.add(lane);
+    const quoteDate = cleanText(row.quote_date);
+    if (quoteDate && (!lastQuoteDate || quoteDate > lastQuoteDate)) lastQuoteDate = quoteDate;
+  }
+
+  return {
+    linked_rates: linkedRates.length,
+    approved_rates: approvedRates.length,
+    pending_rates: linkedRates.filter((row) => row.status === "pending_review").length,
+    crossborder_rates: crossborderRates.length,
+    mexico_rates: mexicoRates.length,
+    avg_all_in_rate: rateAmounts.length ? Math.round(rateAmounts.reduce((sum, value) => sum + value, 0) / rateAmounts.length) : null,
+    markets: [...marketSet].slice(0, 8),
+    lanes: [...laneSet].slice(0, 6),
+    equipment: [...equipmentSet].slice(0, 6),
+    last_quote_date: lastQuoteDate
+  };
+}
+
+function scoreCarrierFit(vendor: Record<string, unknown>, metrics: Record<string, unknown>, intent: ReturnType<typeof carrierIntelligenceIntent>) {
+  const text = vendorSearchText(vendor);
+  const tags = arrayValues(vendor.tags).map((tag) => tag.toLowerCase());
+  const status = cleanText(vendor.status)?.toLowerCase();
+  const baseStage = cleanText(vendor.base_stage)?.toLowerCase();
+  let score = 35;
+  const evidence: string[] = [];
+  const gaps: string[] = [];
+
+  if (status === "active") score += 15;
+  if (status === "invited") score += 9;
+  if (status === "inactive") {
+    score -= 12;
+    gaps.push("Inactive vendor record");
+  }
+  if (status === "blocked") {
+    score -= 70;
+    gaps.push("Blocked vendor record");
+  }
+  if (baseStage === "procurement") {
+    score += 12;
+    evidence.push("Already in Procurement Base");
+  } else if (baseStage === "sourcing") {
+    score += intent.addTargets ? 14 : 8;
+    evidence.push("Available in Sourcing Base");
+  } else if (baseStage === "archived") {
+    score -= 20;
+    gaps.push("Archived vendor");
+  }
+
+  if (vendor.primary_email) score += 8;
+  else gaps.push("Missing email");
+  if (vendor.whatsapp_phone) score += 5;
+  if (vendor.domain) score += 5;
+  else gaps.push("Missing domain");
+  if (vendor.coverage_notes) score += 6;
+  if (tags.includes("alta") || tags.includes("high-confidence") || tags.includes("verified")) {
+    score += 10;
+    evidence.push("High-confidence vendor tag");
+  }
+
+  const linkedRates = Number(metrics.linked_rates || 0);
+  const approvedRates = Number(metrics.approved_rates || 0);
+  const crossborderRates = Number(metrics.crossborder_rates || 0);
+  const mexicoRates = Number(metrics.mexico_rates || 0);
+  if (approvedRates) {
+    score += Math.min(24, approvedRates * 4);
+    evidence.push(`${approvedRates} approved Rateware row(s)`);
+  } else if (linkedRates) {
+    score += Math.min(12, linkedRates * 2);
+    evidence.push(`${linkedRates} linked staging/rate row(s)`);
+  }
+  if (metrics.last_quote_date) evidence.push(`Last quote ${metrics.last_quote_date}`);
+  if (Array.isArray(metrics.markets) && metrics.markets.length) evidence.push(`Markets: ${metrics.markets.slice(0, 3).join(", ")}`);
+  if (Array.isArray(metrics.equipment) && metrics.equipment.length) evidence.push(`Equipment: ${metrics.equipment.slice(0, 3).join(", ")}`);
+
+  if (intent.crossborder) {
+    if (textIncludesAny(text, ["cross-border", "crossborder", "usa", "united states", "laredo", "border", "internacional"]) || crossborderRates) {
+      score += 30 + Math.min(18, crossborderRates * 5);
+      evidence.push(crossborderRates ? `${crossborderRates} cross-border rate signal(s)` : "Cross-border coverage signal");
+    } else {
+      score -= 18;
+      gaps.push("No clear cross-border coverage signal");
+    }
+  }
+
+  if (intent.mexico) {
+    if (textIncludesAny(text, ["mexico", "mexicano", "mx", "monterrey", "nuevo leon", "bajio", "norte", "centro"]) || mexicoRates) {
+      score += 22 + Math.min(12, mexicoRates * 4);
+      evidence.push(mexicoRates ? `${mexicoRates} Mexico lane signal(s)` : "Mexico coverage signal");
+    } else {
+      score -= 8;
+    }
+  }
+
+  if (intent.hazmat) {
+    if (textIncludesAny(text, ["hazmat", "hazard", "peligroso", "quimico"])) score += 18;
+    else gaps.push("No hazmat signal");
+  }
+  if (intent.reefer) {
+    if (textIncludesAny(text, ["reefer", "refrigerado", "temperature", "temperatura"])) score += 18;
+    else gaps.push("No reefer signal");
+  }
+  if (intent.flatbed) {
+    if (textIncludesAny(text, ["flatbed", "plana", "plataforma"])) score += 18;
+    else gaps.push("No flatbed signal");
+  }
+
+  if (!evidence.length) evidence.push("Vendor exists in the user's carrier base");
+  return {
+    score: Math.max(0, Math.min(100, Math.round(score))),
+    evidence: [...new Set(evidence)].slice(0, 6),
+    gaps: [...new Set(gaps)].slice(0, 4)
+  };
+}
+
+function deterministicCarrierRecommendations(prompt: string, vendors: Record<string, unknown>[], rates: Record<string, unknown>[]) {
+  const intent = carrierIntelligenceIntent(prompt);
+  const limit = extractRecommendationLimit(prompt);
+  const recommendations = vendors
+    .map((vendor) => {
+      const metrics = createVendorMetrics(vendor, rates);
+      const fit = scoreCarrierFit(vendor, metrics, intent);
+      const baseStage = cleanText(vendor.base_stage);
+      const recommendedAction = baseStage === "procurement"
+        ? "Keep in Procurement Base and invite to the next RFx."
+        : baseStage === "archived"
+          ? "Review before reactivating; archived vendors need validation."
+          : "Promote to Procurement Base after validating contact and coverage.";
+      return {
+        vendor_id: cleanText(vendor.id),
+        vendor_name: cleanText(vendor.vendor_name) || "Unnamed vendor",
+        domain: normalizeDomain(vendor.domain),
+        primary_email: normalizeEmail(vendor.primary_email),
+        base_stage: baseStage,
+        status: cleanText(vendor.status),
+        fit_score: fit.score,
+        why: fit.evidence.slice(0, 3).join("; "),
+        evidence: fit.evidence,
+        gaps: fit.gaps,
+        recommended_action: recommendedAction,
+        metrics
+      };
+    })
+    .filter((item) => item.fit_score > 0)
+    .sort((a, b) => b.fit_score - a.fit_score || String(a.vendor_name).localeCompare(String(b.vendor_name)))
+    .slice(0, limit)
+    .map((item, index) => ({ ...item, rank: index + 1 }));
+
+  return {
+    answer: recommendations.length
+      ? `I found ${recommendations.length} carrier recommendation(s) from your vendor and Rateware data.`
+      : "I could not find matching carriers in your vendor base yet.",
+    filters: {
+      limit,
+      focus: intent.focus,
+      data_scope: "User-scoped vendors, sourcing/procurement stages, linked staging rows, and approved Rateware rows."
+    },
+    recommendations,
+    next_actions: [
+      "Validate missing contacts before sending RFx invitations.",
+      "Promote high-fit sourcing carriers to Procurement Base.",
+      "Keep uploading carrier quotes so Rateware can learn lane-level coverage from actual submissions."
+    ],
+    model_status: "deterministic",
+    candidate_count: vendors.length,
+    rate_signal_count: rates.length
+  };
+}
+
+function compactCarrierFact(item: Record<string, unknown>) {
+  return {
+    vendor_id: item.vendor_id,
+    vendor_name: item.vendor_name,
+    domain: item.domain,
+    primary_email: item.primary_email,
+    base_stage: item.base_stage,
+    status: item.status,
+    fit_score: item.fit_score,
+    evidence: item.evidence,
+    gaps: item.gaps,
+    metrics: item.metrics
+  };
+}
+
+async function requestCarrierIntelligence(prompt: string, fallback: Record<string, unknown>) {
+  if (!OPENAI_API_KEY || !OPENAI_MODEL) {
+    return {
+      ...fallback,
+      model_status: "fallback",
+      model_error: "OPENAI_API_KEY or OPENAI_MODEL is not configured."
+    };
+  }
+
+  const candidates = Array.isArray(fallback.recommendations) ? fallback.recommendations.slice(0, 140).map(compactCarrierFact) : [];
+  const response = await fetch("https://api.openai.com/v1/responses", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${OPENAI_API_KEY}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      model: OPENAI_MODEL,
+      input: [
+        {
+          role: "system",
+          content: [{
+            type: "input_text",
+            text: [
+              "You are Rateware Carrier Intelligence, a senior freight procurement analyst.",
+              "Recommend carriers only from the provided user-scoped vendor facts.",
+              "Do not invent carriers, emails, domains, certifications, lanes, or rates.",
+              "Rank carriers by operational fit, coverage evidence, contact readiness, and Rateware lane signals.",
+              "If the user asks for carriers to onboard or dar de alta, prioritize strong Sourcing Base candidates, but include Procurement Base carriers when they are clearly relevant.",
+              "Use concise Spanish unless the user writes in English."
+            ].join("\n")
+          }]
+        },
+        {
+          role: "user",
+          content: [{
+            type: "input_text",
+            text: JSON.stringify({
+              instruction: prompt,
+              deterministic_result: {
+                filters: fallback.filters,
+                candidate_count: fallback.candidate_count,
+                rate_signal_count: fallback.rate_signal_count
+              },
+              candidates
+            })
+          }]
+        }
+      ],
+      text: {
+        format: {
+          type: "json_schema",
+          name: "carrier_intelligence",
+          strict: true,
+          schema: CARRIER_INTELLIGENCE_SCHEMA
+        }
+      }
+    })
+  });
+
+  if (!response.ok) {
+    const message = await response.text();
+    return {
+      ...fallback,
+      model_status: "fallback",
+      model_error: message
+    };
+  }
+
+  const payload = await response.json();
+  const outputText = payload.output_text ?? payload.output?.flatMap((item: Record<string, unknown>) => item.content ?? [])
+    .find((content: Record<string, unknown>) => content.type === "output_text")?.text;
+
+  if (!outputText) {
+    return {
+      ...fallback,
+      model_status: "fallback",
+      model_error: "OpenAI returned no carrier intelligence output."
+    };
+  }
+
+  const parsed = JSON.parse(outputText);
+  return {
+    ...parsed,
+    model_status: "ai",
+    candidate_count: fallback.candidate_count,
+    rate_signal_count: fallback.rate_signal_count
+  };
+}
+
+async function buildCarrierIntelligence(supabase: ReturnType<typeof createClient>, user: { owner_email: string | null }, prompt: string) {
+  const instruction = cleanText(prompt) || "Recommend the best carriers to add to Procurement Base.";
+  const [vendorsResult, ratesResult] = await Promise.all([
+    supabase
+      .from("vendors")
+      .select("id,vendor_name,legal_name,domain,primary_email,secondary_emails,whatsapp_phone,status,base_stage,tags,coverage_notes,notes,preferred_channel,created_at")
+      .eq("owner_email", user.owner_email)
+      .limit(1000),
+    supabase
+      .from("rate_staging")
+      .select("id,vendor_id,vendor_domain,status,origin,destination,normalized_origin,normalized_destination,origin_country,destination_country,origin_state,destination_state,origin_market,destination_market,equipment,trailer,operation,service,all_in_rate,currency,weekly_capacity,quote_date,hazmat,temperature_controlled")
+      .in("status", ["pending_review", "approved"])
+      .limit(1500)
+  ]);
+
+  if (vendorsResult.error) throw vendorsResult.error;
+  if (ratesResult.error) throw ratesResult.error;
+
+  const fallback = deterministicCarrierRecommendations(instruction, vendorsResult.data || [], ratesResult.data || []);
+  return await requestCarrierIntelligence(instruction, fallback);
 }
 
 function normalizeTags(value: unknown) {
@@ -1123,6 +1565,11 @@ Deno.serve(async (request) => {
       const result = await query;
       if (result.error) throw result.error;
       return jsonResponse({ rows: result.data, total: result.count || 0, limit, offset });
+    }
+
+    if (body.action === "carrier_intelligence_chat") {
+      const result = await buildCarrierIntelligence(supabase, user, String(body.message || body.prompt || ""));
+      return jsonResponse(result);
     }
 
     if (body.action === "create_vendor") {

@@ -2139,6 +2139,110 @@ select.staging-input {
   font-weight: 850;
 }
 
+.bi-layout {
+  display: grid;
+  gap: 16px;
+}
+
+.bi-command-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.bi-chat-form {
+  display: grid;
+  gap: 10px;
+}
+
+.bi-chat-form textarea {
+  min-height: 104px;
+  resize: vertical;
+}
+
+.bi-prompt-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.bi-prompt-row #bi-submit-button {
+  margin-left: auto;
+  min-width: 118px;
+}
+
+.bi-metrics {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.bi-answer {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--soft-panel);
+  margin-bottom: 12px;
+  padding: 12px;
+}
+
+.bi-answer span,
+.bi-answer li {
+  color: var(--muted);
+}
+
+.bi-answer ol {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding-left: 20px;
+}
+
+.bi-bulk-bar {
+  margin-bottom: 10px;
+}
+
+.bi-table {
+  min-width: 1180px;
+}
+
+.bi-table td {
+  vertical-align: top;
+}
+
+.bi-table ul {
+  display: grid;
+  gap: 3px;
+  margin: 6px 0 0;
+  padding-left: 16px;
+}
+
+.bi-table li {
+  color: var(--muted);
+}
+
+.bi-carrier-cell {
+  display: grid;
+  gap: 3px;
+  min-width: 220px;
+}
+
+.bi-carrier-cell span,
+.bi-carrier-cell small {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.bi-score {
+  display: inline-grid;
+  place-items: center;
+  min-width: 42px;
+  min-height: 30px;
+  border-radius: 999px;
+  background: #dcefed;
+  color: var(--accent-dark);
+  font-weight: 900;
+}
+
 .diagnostic-list {
   display: grid;
   gap: 10px;

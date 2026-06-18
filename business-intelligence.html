@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Rateware Business Intelligence</title>
+    <link rel="stylesheet" href="./src/styles.css" />
+  </head>
+  <body>
+    <div class="shell-layout">
+      <aside class="side-nav" aria-label="Rateware modules">
+        <a class="brand-mark" href="./app.html">Rateware</a>
+        <nav>
+          <a href="./app.html">Dashboard</a>
+          <a href="./business-intelligence.html" aria-current="page">Business Intelligence</a>
+          <a href="./upload-center.html">Upload Center</a>
+          <a href="./upload-history.html">Upload History</a>
+          <a href="./staging-review.html">Staging Review</a>
+          <a href="./rateware.html">Rateware</a>
+          <a href="./vendors.html">Vendors</a>
+          <a class="disabled-link" href="#" aria-disabled="true">RFx Events</a>
+        </nav>
+      </aside>
+
+      <div class="page-frame">
+        <header class="page-header">
+          <div>
+            <p class="eyebrow">Carrier intelligence</p>
+            <h1>Business Intelligence</h1>
+            <nav class="module-crumbs" aria-label="Module context">
+              <a href="./app.html">Command Center</a>
+              <span>Business Intelligence</span>
+            </nav>
+          </div>
+          <form id="auth-form" class="auth-strip">
+            <button id="auth-button" type="submit">Sign in with Kinde</button>
+            <button id="sign-out-button" type="button" class="secondary hidden">Sign out</button>
+            <p id="auth-status" role="status"></p>
+          </form>
+        </header>
+
+        <main class="bi-layout">
+          <section class="workspace-panel bi-command-panel">
+            <div class="section-heading compact split-heading">
+              <div>
+                <p class="eyebrow">AI query</p>
+                <h2>Carrier recommendation chat</h2>
+              </div>
+              <span id="bi-model-status" class="status-pill muted">Ready</span>
+            </div>
+
+            <form id="bi-chat-form" class="bi-chat-form">
+              <textarea
+                id="bi-prompt"
+                rows="4"
+                placeholder="Dime los 30 carriers crossborder que recomiendas para darlos de alta."
+              ></textarea>
+              <div class="bi-prompt-row">
+                <button type="button" class="secondary small-button" data-bi-prompt="Dime los 30 carriers crossborder que recomiendas para darlos de alta.">30 crossborder</button>
+                <button type="button" class="secondary small-button" data-bi-prompt="Dime los 50 carriers mexicanos que recomiendas para mi operacion.">50 mexicanos</button>
+                <button type="button" class="secondary small-button" data-bi-prompt="Dame una lista de los 100 carriers que deberia dar de alta en Procurement Base.">100 targets</button>
+                <button id="bi-submit-button" type="submit">Ask AI</button>
+              </div>
+            </form>
+            <p id="bi-status" class="status-message" role="status"></p>
+          </section>
+
+          <section class="workspace-panel">
+            <div class="review-insight-grid bi-metrics" aria-label="Carrier intelligence summary">
+              <article>
+                <span>Recommendations</span>
+                <strong id="bi-metric-recommendations">0</strong>
+              </article>
+              <article>
+                <span>Vendor base</span>
+                <strong id="bi-metric-candidates">0</strong>
+              </article>
+              <article>
+                <span>Rate signals</span>
+                <strong id="bi-metric-rates">0</strong>
+              </article>
+              <article>
+                <span>Selected</span>
+                <strong id="bi-metric-selected">0</strong>
+              </article>
+            </div>
+
+            <div id="bi-answer" class="bi-answer">
+              <strong>Ask for a carrier shortlist.</strong>
+              <span>Rateware will rank vendors from your sourcing and procurement base.</span>
+            </div>
+
+            <div class="bulk-action-bar bi-bulk-bar">
+              <span id="bi-selected-count">0 selected</span>
+              <button id="bi-promote-selected" type="button" class="small-button" disabled>Move to Procurement</button>
+              <button id="bi-copy-list" type="button" class="secondary small-button" disabled>Copy list</button>
+            </div>
+
+            <div class="table-wrap">
+              <table class="bi-table">
+                <thead>
+                  <tr>
+                    <th class="select-column">
+                      <input id="bi-select-all" type="checkbox" aria-label="Select all recommendations" />
+                    </th>
+                    <th>Rank</th>
+                    <th>Carrier</th>
+                    <th>Fit</th>
+                    <th>Evidence</th>
+                    <th>Gaps</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody id="bi-results-body">
+                  <tr>
+                    <td colspan="7">
+                      <div class="empty-state">
+                        <strong>No recommendations yet</strong>
+                        <span>Run a BI query to rank carriers.</span>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </main>
+      </div>
+    </div>
+
+    <script type="module" src="./src/business-intelligence.js"></script>
+  </body>
+</html>
