@@ -560,6 +560,219 @@ function createVendorMetrics(vendor: Record<string, unknown>, rates: Record<stri
   };
 }
 
+function vendorDuplicateReasons(row: Record<string, unknown>, candidate: Record<string, unknown>) {
+  const reasons: string[] = [];
+  const domain = normalizeDomain(row.domain);
+  const candidateDomain = normalizeDomain(candidate.domain);
+  const email = normalizeEmail(row.primary_email);
+  const candidateEmail = normalizeEmail(candidate.primary_email);
+  const nameKey = catalogKey(row.vendor_name);
+  const candidateNameKey = catalogKey(candidate.vendor_name);
+  if (domain && candidateDomain && domain === candidateDomain) reasons.push("Same domain");
+  if (email && candidateEmail && email === candidateEmail) reasons.push("Same email");
+  if (nameKey && candidateNameKey && nameKey !== candidateNameKey && (nameKey.includes(candidateNameKey) || candidateNameKey.includes(nameKey))) reasons.push("Similar name");
+  return reasons;
+}
+
+function vendorDuplicateMap(vendors: Record<string, unknown>[]) {
+  const map = new Map<string, Array<{ vendor_id: string | null; vendor_name: string | null; reasons: string[] }>>();
+  for (const vendor of vendors) {
+    const matches = vendors
+      .filter((candidate) => candidate.id !== vendor.id)
+      .map((candidate) => ({
+        vendor_id: cleanText(candidate.id),
+        vendor_name: cleanText(candidate.vendor_name),
+        reasons: vendorDuplicateReasons(vendor, candidate)
+      }))
+      .filter((match) => match.reasons.length)
+      .slice(0, 5);
+    map.set(String(vendor.id), matches);
+  }
+  return map;
+}
+
+function vendorDeclaredSignals(vendor: Record<string, unknown>) {
+  const text = vendorSearchText(vendor).toLowerCase();
+  const tags = arrayValues(vendor.tags).map((tag) => tag.toLowerCase());
+  const signals = new Set<string>();
+  const addIf = (signal: string, terms: string[]) => {
+    if (tags.includes(signal) || textIncludesAny(text, terms)) signals.add(signal);
+  };
+
+  addIf("cross-border", ["cross-border", "crossborder", "frontera", "usa", "laredo", "nuevo laredo", "impo", "expo"]);
+  addIf("mexico", ["mexico", "mx", "monterrey", "nuevo leon", "bajio", "norte mx", "centro mx"]);
+  addIf("usa", ["usa", "united states", "texas", "laredo tx", "dallas", "el paso"]);
+  addIf("canada", ["canada", "canadian"]);
+  addIf("dry-van", ["dry van", "caja seca", "53", "dv53"]);
+  addIf("flatbed", ["flatbed", "plataforma", "plana"]);
+  addIf("reefer", ["reefer", "refrigerado", "temperature", "temperatura"]);
+  addIf("hazmat", ["hazmat", "hazard", "peligroso", "quimico"]);
+  addIf("ftl", ["ftl", "truckload", "carga completa"]);
+  addIf("ltl", ["ltl", "consolidado"]);
+  addIf("expedited", ["expedited", "expedite", "dedicado", "hot shot"]);
+  addIf("drayage", ["drayage", "intermodal", "puerto", "contenedor"]);
+  addIf("laredo", ["laredo", "nuevo laredo"]);
+  addIf("monterrey", ["monterrey", "apodaca", "nuevo leon", "nl"]);
+  addIf("bajio", ["bajio", "queretaro", "guanajuato", "san luis potosi"]);
+  return [...signals].sort();
+}
+
+function vendorQuotedSignals(metrics: Record<string, unknown>) {
+  const signals = new Set<string>();
+  if (Number(metrics.crossborder_rates || 0) > 0) signals.add("cross-border");
+  if (Number(metrics.d2d_import_export_rates || 0) > 0) signals.add("d2d");
+  if (Number(metrics.mexico_rates || 0) > 0) signals.add("mexico");
+  for (const value of arrayValues(metrics.equipment).join(" ").toLowerCase().split(/\s*[|,/]\s*/)) {
+    if (textIncludesAny(value, ["dry", "van", "caja", "dv53"])) signals.add("dry-van");
+    if (textIncludesAny(value, ["flatbed", "plataforma", "plana"])) signals.add("flatbed");
+    if (textIncludesAny(value, ["reefer", "refriger", "temperature"])) signals.add("reefer");
+    if (textIncludesAny(value, ["hazmat", "hazard"])) signals.add("hazmat");
+  }
+  for (const market of arrayValues(metrics.markets)) {
+    const text = String(market).toLowerCase();
+    if (textIncludesAny(text, ["monterrey", "nuevo leon", "apodaca"])) signals.add("monterrey");
+    if (textIncludesAny(text, ["laredo", "nuevo laredo"])) signals.add("laredo");
+    if (textIncludesAny(text, ["bajio", "queretaro", "guanajuato", "san luis"])) signals.add("bajio");
+    if (textIncludesAny(text, ["dallas", "texas", "tx"])) signals.add("usa");
+  }
+  return [...signals].sort();
+}
+
+function vendorCoverageAlignment(declared: string[], quoted: string[]) {
+  const declaredSet = new Set(declared);
+  const quotedSet = new Set(quoted);
+  const matched = [...declaredSet].filter((signal) => quotedSet.has(signal)).sort();
+  const declaredOnly = [...declaredSet].filter((signal) => !quotedSet.has(signal)).sort();
+  const quotedOnly = [...quotedSet].filter((signal) => !declaredSet.has(signal)).sort();
+  const summary = matched.length
+    ? `${matched.length} aligned signal(s)`
+    : quotedOnly.length
+      ? "Quoted coverage not declared in CRM"
+      : declaredOnly.length
+        ? "Declared coverage without quote evidence"
+        : "No coverage signal yet";
+  return { matched, declared_only: declaredOnly, quoted_only: quotedOnly, summary };
+}
+
+function vendorReadinessScore(vendor: Record<string, unknown>) {
+  const tags = arrayValues(vendor.tags);
+  let score = 0;
+  if (vendor.vendor_name) score += 15;
+  if (vendor.domain) score += 15;
+  if (vendor.primary_email || vendor.whatsapp_phone) score += 25;
+  if (vendor.preferred_channel) score += 8;
+  if (vendor.coverage_notes) score += 18;
+  if (tags.length) score += 14;
+  if (vendor.notes) score += 5;
+  return Math.max(0, Math.min(100, score));
+}
+
+function vendorSuggestedTags(vendor: Record<string, unknown>, metrics: Record<string, unknown>, declared: string[], quoted: string[]) {
+  const current = new Set(arrayValues(vendor.tags).map((tag) => tag.toLowerCase()));
+  const suggestions = new Set<string>();
+  const add = (tag: string, condition: boolean) => {
+    if (condition && !current.has(tag)) suggestions.add(tag);
+  };
+  const combined = new Set([...declared, ...quoted]);
+  add("cross-border", combined.has("cross-border"));
+  add("d2d", combined.has("d2d") || Number(metrics.d2d_import_export_rates || 0) > 0);
+  add("mexico", combined.has("mexico"));
+  add("usa", combined.has("usa"));
+  add("dry-van", combined.has("dry-van"));
+  add("flatbed", combined.has("flatbed"));
+  add("reefer", combined.has("reefer"));
+  add("hazmat", combined.has("hazmat"));
+  add("laredo", combined.has("laredo"));
+  add("monterrey", combined.has("monterrey"));
+  add("quoted", Number(metrics.linked_rates || 0) > 0);
+  add("rateware-approved", Number(metrics.approved_rates || 0) > 0);
+  return [...suggestions].slice(0, 8);
+}
+
+function vendorHealthLabel(score: number) {
+  if (score >= 85) return { label: "Procurement ready", tone: "strong" };
+  if (score >= 70) return { label: "Good target", tone: "medium" };
+  if (score >= 50) return { label: "Needs cleanup", tone: "weak" };
+  return { label: "Incomplete", tone: "weak" };
+}
+
+function buildVendorIntelligenceRows(vendors: Record<string, unknown>[], rates: Record<string, unknown>[]) {
+  const duplicates = vendorDuplicateMap(vendors);
+  return vendors.map((vendor) => {
+    const metrics = createVendorMetrics(vendor, rates);
+    const declared = vendorDeclaredSignals(vendor);
+    const quoted = vendorQuotedSignals(metrics);
+    const alignment = vendorCoverageAlignment(declared, quoted);
+    const duplicateMatches = duplicates.get(String(vendor.id)) || [];
+    const readiness = vendorReadinessScore(vendor);
+    const quoteScore = Math.min(22, Number(metrics.approved_rates || 0) * 6 + Number(metrics.linked_rates || 0) * 2);
+    const alignmentScore = alignment.matched.length ? Math.min(14, alignment.matched.length * 5) : alignment.quoted_only.length ? 8 : 0;
+    const duplicatePenalty = duplicateMatches.length ? 14 : 0;
+    const blockedPenalty = cleanText(vendor.status)?.toLowerCase() === "blocked" ? 50 : cleanText(vendor.status)?.toLowerCase() === "inactive" ? 12 : 0;
+    const healthScore = Math.max(0, Math.min(100, Math.round(readiness * 0.62 + quoteScore + alignmentScore - duplicatePenalty - blockedPenalty)));
+    const health = vendorHealthLabel(healthScore);
+    const suggestedTags = vendorSuggestedTags(vendor, metrics, declared, quoted);
+    const recommendedAction = healthScore >= 85 && cleanText(vendor.base_stage) !== "procurement"
+      ? "Promote to Procurement Base"
+      : duplicateMatches.length
+        ? "Review duplicate before RFx"
+        : readiness < 70
+          ? "Complete contact and coverage"
+          : Number(metrics.linked_rates || 0) > 0
+            ? "Keep active and include in matching RFx"
+            : "Validate coverage with first quote";
+
+    return {
+      vendor_id: cleanText(vendor.id),
+      vendor_name: cleanText(vendor.vendor_name),
+      domain: normalizeDomain(vendor.domain),
+      primary_email: normalizeEmail(vendor.primary_email),
+      preferred_channel: cleanText(vendor.preferred_channel),
+      base_stage: cleanText(vendor.base_stage),
+      status: cleanText(vendor.status),
+      tags: arrayValues(vendor.tags),
+      health_score: healthScore,
+      health_label: health.label,
+      health_tone: health.tone,
+      readiness_score: readiness,
+      duplicate_count: duplicateMatches.length,
+      duplicate_matches: duplicateMatches,
+      declared_signals: declared,
+      quoted_signals: quoted,
+      coverage_alignment: alignment,
+      suggested_tags: suggestedTags,
+      rate_metrics: metrics,
+      recommended_action: recommendedAction
+    };
+  }).sort((a, b) => Number(b.health_score || 0) - Number(a.health_score || 0) || String(a.vendor_name || "").localeCompare(String(b.vendor_name || "")));
+}
+
+async function buildVendorIntelligence(supabase: ReturnType<typeof createClient>, user: { owner_email: string | null }) {
+  const [vendorsResult, rates] = await Promise.all([
+    supabase
+      .from("vendors")
+      .select("id,vendor_name,legal_name,domain,primary_email,secondary_emails,whatsapp_phone,status,base_stage,tags,coverage_notes,notes,preferred_channel,created_at")
+      .eq("owner_email", user.owner_email)
+      .limit(2000),
+    fetchBusinessIntelligenceRows(supabase, user)
+  ]);
+  if (vendorsResult.error) throw vendorsResult.error;
+  const rows = buildVendorIntelligenceRows(vendorsResult.data || [], rates);
+  return {
+    rows,
+    summary: {
+      vendors: rows.length,
+      procurement_ready: rows.filter((row) => Number(row.health_score || 0) >= 85).length,
+      duplicates: rows.filter((row) => Number(row.duplicate_count || 0) > 0).length,
+      quoted: rows.filter((row) => Number((row.rate_metrics as Record<string, unknown>)?.linked_rates || 0) > 0).length,
+      coverage_gaps: rows.filter((row) => {
+        const alignment = row.coverage_alignment as Record<string, unknown>;
+        return arrayValues(alignment.quoted_only).length || arrayValues(alignment.declared_only).length;
+      }).length
+    }
+  };
+}
+
 function scoreCarrierFit(vendor: Record<string, unknown>, metrics: Record<string, unknown>, intent: ReturnType<typeof carrierIntelligenceIntent>) {
   const text = vendorSearchText(vendor);
   const tags = arrayValues(vendor.tags).map((tag) => tag.toLowerCase());
@@ -2205,6 +2418,42 @@ Deno.serve(async (request) => {
       const result = await query;
       if (result.error) throw result.error;
       return jsonResponse({ rows: result.data, total: result.count || 0, limit, offset });
+    }
+
+    if (body.action === "vendor_intelligence") {
+      const result = await buildVendorIntelligence(supabase, user);
+      return jsonResponse(result);
+    }
+
+    if (body.action === "apply_vendor_intelligence_tags") {
+      const ids = Array.isArray(body.ids) ? body.ids.map(String).filter(Boolean).slice(0, 500) : [];
+      if (!ids.length) return jsonResponse({ updated: 0, rows: [] });
+
+      const intelligence = await buildVendorIntelligence(supabase, user);
+      const byId = new Map((intelligence.rows || []).map((row: Record<string, unknown>) => [row.vendor_id, row]));
+      const current = await supabase.from("vendors").select("id,tags").eq("owner_email", user.owner_email).in("id", ids);
+      if (current.error) throw current.error;
+
+      const updates = await Promise.all(
+        (current.data || []).map((vendor) => {
+          const insight = byId.get(vendor.id) as Record<string, unknown> | undefined;
+          const suggested = arrayValues(insight?.suggested_tags);
+          const mergedTags = Array.from(new Set([...normalizeTags(vendor.tags), ...suggested]));
+          return supabase
+            .from("vendors")
+            .update({ tags: mergedTags, updated_at: new Date().toISOString() })
+            .eq("owner_email", user.owner_email)
+            .eq("id", vendor.id)
+            .select()
+            .single();
+        })
+      );
+
+      for (const update of updates) {
+        if (update.error) throw update.error;
+      }
+
+      return jsonResponse({ updated: updates.length, rows: updates.map((update) => update.data) });
     }
 
     if (body.action === "carrier_intelligence_chat") {

@@ -14,6 +14,14 @@ export async function fetchVendors({
   return await callRatewareApi("list_vendors", { search, status, base_stage, view, channel, tag, coverage, limit, offset });
 }
 
+export async function fetchVendorIntelligence() {
+  return await callRatewareApi("vendor_intelligence");
+}
+
+export async function applyVendorIntelligenceTags(ids = []) {
+  return await callRatewareApi("apply_vendor_intelligence_tags", { ids });
+}
+
 export async function createVendor(vendor) {
   return (await callRatewareApi("create_vendor", { vendor })).row;
 }

@@ -934,6 +934,71 @@ h2 {
   font-size: 0.78rem;
 }
 
+.vendor-intelligence-summary {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+  margin: 12px 0;
+}
+
+.vendor-intelligence-summary article {
+  display: grid;
+  gap: 5px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 10px;
+}
+
+.vendor-intelligence-summary strong {
+  font-size: 1.55rem;
+  line-height: 1;
+}
+
+.vendor-intelligence-summary span {
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 820;
+}
+
+.vendor-intelligence-table {
+  min-width: 1680px;
+}
+
+.vendor-intelligence-table th,
+.vendor-intelligence-table td {
+  vertical-align: top;
+  font-size: 0.78rem;
+}
+
+.coverage-delta {
+  display: grid;
+  gap: 5px;
+  min-width: 220px;
+}
+
+.coverage-delta div {
+  display: grid;
+  gap: 3px;
+}
+
+.coverage-delta strong {
+  color: var(--muted);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+}
+
+.vendor-signal-stack {
+  display: grid;
+  gap: 4px;
+  min-width: 160px;
+}
+
+.vendor-signal-stack span {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
 .wide-field {
   grid-column: 1 / -1;
 }
@@ -2603,6 +2668,7 @@ select.staging-input {
   .vendors-layout,
   .metric-grid,
   .vendor-metrics,
+  .vendor-intelligence-summary,
   .action-grid,
   .workflow-steps,
   .pipeline-health,

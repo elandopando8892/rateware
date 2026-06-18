@@ -67,11 +67,73 @@
           <section class="vendor-tabs wide-section" aria-label="Vendor workflows">
             <button class="vendor-tab is-active" type="button" data-vendor-tab="sourcing">Sourcing Base</button>
             <button class="vendor-tab" type="button" data-vendor-tab="procurement">Procurement Base</button>
+            <button class="vendor-tab" type="button" data-vendor-tab="intelligence">Intelligence</button>
             <button class="vendor-tab" type="button" data-vendor-tab="wizard">Wizard</button>
             <button class="vendor-tab" type="button" data-vendor-tab="create">Quick Create</button>
             <button class="vendor-tab" type="button" data-vendor-tab="import">Import</button>
             <button class="vendor-tab" type="button" data-vendor-tab="segments">Segments</button>
             <button class="vendor-tab" type="button" data-vendor-tab="duplicates">Duplicates</button>
+          </section>
+
+          <section class="workspace-panel wide-section hidden" data-tab-panel="intelligence">
+            <div class="split-heading">
+              <div>
+                <p class="eyebrow">Vendor Intelligence</p>
+                <h2>Sourcing and procurement signals</h2>
+              </div>
+              <div class="action-row">
+                <button id="refresh-vendor-intelligence" type="button">Refresh intelligence</button>
+                <button id="apply-intelligence-tags" class="secondary" type="button" disabled>Apply suggested tags</button>
+                <button id="promote-intelligence-selected" class="secondary" type="button" disabled>Move selected to Procurement</button>
+              </div>
+            </div>
+            <div class="vendor-intelligence-summary" aria-label="Vendor intelligence summary">
+              <article><strong id="vi-total">0</strong><span>Vendors analyzed</span></article>
+              <article><strong id="vi-ready">0</strong><span>Procurement ready</span></article>
+              <article><strong id="vi-quoted">0</strong><span>With quote signals</span></article>
+              <article><strong id="vi-duplicates">0</strong><span>Duplicate risk</span></article>
+              <article><strong id="vi-gaps">0</strong><span>Coverage gaps</span></article>
+            </div>
+            <div class="filter-bar" aria-label="Vendor intelligence filters">
+              <label>
+                View
+                <select id="vendor-intelligence-filter">
+                  <option value="all">All vendors</option>
+                  <option value="ready">Procurement ready</option>
+                  <option value="coverage-gap">Coverage gaps</option>
+                  <option value="duplicates">Duplicate risk</option>
+                  <option value="quoted">With quote signals</option>
+                  <option value="needs-cleanup">Needs cleanup</option>
+                </select>
+              </label>
+              <label>
+                Search
+                <input id="vendor-intelligence-search" placeholder="Vendor, tag, market, signal" />
+              </label>
+              <p id="vendor-intelligence-status" class="status-message" role="status"></p>
+            </div>
+            <div class="table-wrap">
+              <table class="vendor-intelligence-table">
+                <thead>
+                  <tr>
+                    <th>Select</th>
+                    <th>Vendor</th>
+                    <th>Health</th>
+                    <th>Declared coverage</th>
+                    <th>Quoted coverage</th>
+                    <th>Coverage delta</th>
+                    <th>Rate signals</th>
+                    <th>Suggested tags</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody id="vendor-intelligence-body">
+                  <tr>
+                    <td colspan="9">Open Intelligence to analyze vendors.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </section>
 
           <section class="workspace-panel wide-section hidden" data-tab-panel="wizard">

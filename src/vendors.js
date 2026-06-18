@@ -1,10 +1,12 @@
 import * as XLSX from "https://esm.sh/xlsx@0.18.5";
 import { applyPermissionState, initAuthControls, requirePrivatePage } from "./auth.js";
 import {
+  applyVendorIntelligenceTags,
   bulkUpdateVendors,
   createVendor,
   createVendorSegment,
   deleteVendorSegment,
+  fetchVendorIntelligence,
   fetchVendorSegments,
   fetchVendors,
   importVendorsFromGoogleSheet,
@@ -69,6 +71,18 @@ const bulkProcurementButton = document.querySelector("#bulk-procurement-button")
 const bulkArchiveVendorsButton = document.querySelector("#bulk-archive-vendors-button");
 const bulkRemoveVendorsButton = document.querySelector("#bulk-remove-vendors-button");
 const bulkStatusMessage = document.querySelector("#bulk-status-message");
+const refreshVendorIntelligenceButton = document.querySelector("#refresh-vendor-intelligence");
+const applyIntelligenceTagsButton = document.querySelector("#apply-intelligence-tags");
+const promoteIntelligenceSelectedButton = document.querySelector("#promote-intelligence-selected");
+const vendorIntelligenceFilter = document.querySelector("#vendor-intelligence-filter");
+const vendorIntelligenceSearch = document.querySelector("#vendor-intelligence-search");
+const vendorIntelligenceStatus = document.querySelector("#vendor-intelligence-status");
+const vendorIntelligenceBody = document.querySelector("#vendor-intelligence-body");
+const viTotal = document.querySelector("#vi-total");
+const viReady = document.querySelector("#vi-ready");
+const viQuoted = document.querySelector("#vi-quoted");
+const viDuplicates = document.querySelector("#vi-duplicates");
+const viGaps = document.querySelector("#vi-gaps");
 const segmentForm = document.querySelector("#segment-form");
 const segmentStatusMessage = document.querySelector("#segment-status-message");
 const segmentsList = document.querySelector("#segments-list");
@@ -91,6 +105,9 @@ let activeDrawerVendorId = null;
 let vendorPageSize = 75;
 let vendorPageOffset = 0;
 let vendorTotalCount = 0;
+let vendorIntelligenceRows = [];
+let currentVendorIntelligenceRows = [];
+let selectedVendorIntelligenceIds = new Set();
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -224,6 +241,7 @@ function activateVendorTab(tabName) {
     panel.classList.toggle("hidden", !shouldShow || isEmptyImportPreview);
   });
   if (tabName === "duplicates") renderDuplicateReview();
+  if (tabName === "intelligence" && !vendorIntelligenceRows.length) loadVendorIntelligence();
   if (["sourcing", "procurement"].includes(tabName)) loadVendors();
 }
 
@@ -426,6 +444,206 @@ function renderCompleteness(row) {
       <span class="fit-label">${escapeHtml(readiness.label)}</span>
     </div>
   `;
+}
+
+function renderSignalChips(values, emptyLabel = "No signal") {
+  const items = Array.isArray(values) ? values.filter(Boolean) : splitTags(values);
+  if (!items.length) return `<span class="muted-text">${escapeHtml(emptyLabel)}</span>`;
+  return items.map((item) => `<span class="tag-chip">${escapeHtml(String(item).replace(/-/g, " "))}</span>`).join("");
+}
+
+function numberValue(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : 0;
+}
+
+function currencyValue(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number <= 0) return "-";
+  return new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(number);
+}
+
+function rateMetrics(row) {
+  return row.rate_metrics || {};
+}
+
+function coverageAlignment(row) {
+  return row.coverage_alignment || {};
+}
+
+function updateVendorIntelligenceSelectionState() {
+  const count = selectedVendorIntelligenceIds.size;
+  if (applyIntelligenceTagsButton) applyIntelligenceTagsButton.disabled = count === 0;
+  if (promoteIntelligenceSelectedButton) promoteIntelligenceSelectedButton.disabled = count === 0;
+}
+
+function vendorIntelligenceSearchText(row) {
+  const metrics = rateMetrics(row);
+  const alignment = coverageAlignment(row);
+  return [
+    row.vendor_name,
+    row.domain,
+    row.primary_email,
+    row.base_stage,
+    row.status,
+    row.health_label,
+    row.recommended_action,
+    ...(row.tags || []),
+    ...(row.declared_signals || []),
+    ...(row.quoted_signals || []),
+    ...(row.suggested_tags || []),
+    ...(metrics.markets || []),
+    ...(metrics.equipment || []),
+    ...(metrics.border_pairs || []),
+    ...(alignment.matched || []),
+    ...(alignment.declared_only || []),
+    ...(alignment.quoted_only || [])
+  ].filter(Boolean).join(" ").toLowerCase();
+}
+
+function filteredVendorIntelligenceRows() {
+  const filter = vendorIntelligenceFilter?.value || "all";
+  const search = String(vendorIntelligenceSearch?.value || "").trim().toLowerCase();
+  return vendorIntelligenceRows.filter((row) => {
+    const metrics = rateMetrics(row);
+    const alignment = coverageAlignment(row);
+    const hasGap = (alignment.declared_only || []).length || (alignment.quoted_only || []).length;
+    if (filter === "ready" && numberValue(row.health_score) < 85) return false;
+    if (filter === "coverage-gap" && !hasGap) return false;
+    if (filter === "duplicates" && !numberValue(row.duplicate_count)) return false;
+    if (filter === "quoted" && !numberValue(metrics.linked_rates)) return false;
+    if (filter === "needs-cleanup" && numberValue(row.health_score) >= 70) return false;
+    if (search && !vendorIntelligenceSearchText(row).includes(search)) return false;
+    return true;
+  });
+}
+
+function renderCoverageDelta(row) {
+  const alignment = coverageAlignment(row);
+  const sections = [];
+  if ((alignment.matched || []).length) sections.push(`<div><strong>Matched</strong><span>${renderSignalChips(alignment.matched)}</span></div>`);
+  if ((alignment.quoted_only || []).length) sections.push(`<div><strong>Quoted only</strong><span>${renderSignalChips(alignment.quoted_only)}</span></div>`);
+  if ((alignment.declared_only || []).length) sections.push(`<div><strong>Declared only</strong><span>${renderSignalChips(alignment.declared_only)}</span></div>`);
+  return sections.length ? `<div class="coverage-delta">${sections.join("")}</div>` : `<span class="muted-text">${escapeHtml(alignment.summary || "No coverage signal")}</span>`;
+}
+
+function renderVendorIntelligenceSummary(summary = {}) {
+  viTotal.textContent = String(summary.vendors || vendorIntelligenceRows.length || 0);
+  viReady.textContent = String(summary.procurement_ready || 0);
+  viQuoted.textContent = String(summary.quoted || 0);
+  viDuplicates.textContent = String(summary.duplicates || 0);
+  viGaps.textContent = String(summary.coverage_gaps || 0);
+}
+
+function renderVendorIntelligence() {
+  currentVendorIntelligenceRows = filteredVendorIntelligenceRows();
+  updateVendorIntelligenceSelectionState();
+
+  if (!currentVendorIntelligenceRows.length) {
+    vendorIntelligenceBody.innerHTML =
+      '<tr><td colspan="9"><div class="empty-state"><strong>No intelligence rows</strong><span>Adjust filters or refresh vendor intelligence.</span></div></td></tr>';
+    return;
+  }
+
+  vendorIntelligenceBody.innerHTML = currentVendorIntelligenceRows
+    .map((row) => {
+      const metrics = rateMetrics(row);
+      return `
+        <tr>
+          <td><input class="vendor-intelligence-select" type="checkbox" data-vendor-intelligence-id="${escapeHtml(row.vendor_id)}" ${selectedVendorIntelligenceIds.has(row.vendor_id) ? "checked" : ""} /></td>
+          <td>
+            <button class="link-button vendor-intelligence-open" type="button" data-vendor-intelligence-open="${escapeHtml(row.vendor_name || "")}">
+              ${escapeHtml(row.vendor_name || "Unnamed vendor")}
+            </button>
+            <div class="vendor-subline">${escapeHtml([row.domain, row.base_stage, row.status].filter(Boolean).join(" | "))}</div>
+          </td>
+          <td>
+            <div class="fit-stack">
+              <span class="score-pill ${escapeHtml(row.health_tone || "weak")}">${escapeHtml(row.health_score || 0)}%</span>
+              <span class="fit-label">${escapeHtml(row.health_label || "Needs review")}</span>
+            </div>
+          </td>
+          <td><div class="tag-list">${renderSignalChips(row.declared_signals)}</div></td>
+          <td><div class="tag-list">${renderSignalChips(row.quoted_signals)}</div></td>
+          <td>${renderCoverageDelta(row)}</td>
+          <td>
+            <div class="vendor-signal-stack">
+              <span>${escapeHtml(metrics.linked_rates || 0)} quoted / ${escapeHtml(metrics.approved_rates || 0)} approved</span>
+              <span>${escapeHtml(metrics.d2d_import_export_rates || 0)} D2D | ${escapeHtml(metrics.crossborder_rates || 0)} cross-border</span>
+              <span>Avg all-in ${escapeHtml(currencyValue(metrics.avg_all_in_rate))}</span>
+            </div>
+          </td>
+          <td><div class="tag-list">${renderSignalChips(row.suggested_tags, "No new tags")}</div></td>
+          <td>
+            <div class="vendor-signal-stack">
+              <strong>${escapeHtml(row.recommended_action || "Review")}</strong>
+              ${numberValue(row.duplicate_count) ? `<span class="warning-pill">${escapeHtml(row.duplicate_count)} duplicate signal(s)</span>` : ""}
+            </div>
+          </td>
+        </tr>
+      `;
+    })
+    .join("");
+}
+
+async function loadVendorIntelligence() {
+  if (!vendorIntelligenceBody) return;
+  vendorIntelligenceBody.innerHTML = '<tr><td colspan="9">Analyzing vendors...</td></tr>';
+  if (refreshVendorIntelligenceButton) refreshVendorIntelligenceButton.disabled = true;
+  setStatus(vendorIntelligenceStatus, "Calculating vendor intelligence...");
+
+  try {
+    await requirePrivatePage();
+    const result = await fetchVendorIntelligence();
+    vendorIntelligenceRows = result.rows || [];
+    selectedVendorIntelligenceIds = new Set();
+    renderVendorIntelligenceSummary(result.summary || {});
+    renderVendorIntelligence();
+    setStatus(vendorIntelligenceStatus, `${vendorIntelligenceRows.length} vendor(s) analyzed.`, "success");
+  } catch (error) {
+    vendorIntelligenceBody.innerHTML = `<tr><td colspan="9">Could not load vendor intelligence. ${escapeHtml(error.message)}</td></tr>`;
+    setStatus(vendorIntelligenceStatus, error.message, "error");
+  } finally {
+    if (refreshVendorIntelligenceButton) refreshVendorIntelligenceButton.disabled = false;
+  }
+}
+
+async function applySelectedIntelligenceTags() {
+  const ids = Array.from(selectedVendorIntelligenceIds);
+  if (!ids.length) return;
+  applyIntelligenceTagsButton.disabled = true;
+  setStatus(vendorIntelligenceStatus, `Applying suggested tags to ${ids.length} vendor(s)...`);
+
+  try {
+    await requirePrivatePage();
+    const result = await applyVendorIntelligenceTags(ids);
+    selectedVendorIntelligenceIds = new Set();
+    setStatus(vendorIntelligenceStatus, `${result.updated || 0} vendor(s) enriched with suggested tags.`, "success");
+    await loadVendorIntelligence();
+    await loadVendors();
+  } catch (error) {
+    setStatus(vendorIntelligenceStatus, error.message, "error");
+    updateVendorIntelligenceSelectionState();
+  }
+}
+
+async function promoteSelectedIntelligenceVendors() {
+  const ids = Array.from(selectedVendorIntelligenceIds);
+  if (!ids.length) return;
+  promoteIntelligenceSelectedButton.disabled = true;
+  setStatus(vendorIntelligenceStatus, `Moving ${ids.length} vendor(s) to Procurement Base...`);
+
+  try {
+    await requirePrivatePage();
+    const result = await bulkUpdateVendors(ids, { base_stage: "procurement", status: "active" });
+    selectedVendorIntelligenceIds = new Set();
+    setStatus(vendorIntelligenceStatus, `${result.updated || 0} vendor(s) moved to Procurement Base.`, "success");
+    await loadVendorIntelligence();
+    await loadVendors();
+  } catch (error) {
+    setStatus(vendorIntelligenceStatus, error.message, "error");
+    updateVendorIntelligenceSelectionState();
+  }
 }
 
 function renderVendorTableHeader() {
@@ -1172,6 +1390,34 @@ duplicateReviewList.addEventListener("click", async (event) => {
   }
 });
 
+refreshVendorIntelligenceButton?.addEventListener("click", loadVendorIntelligence);
+vendorIntelligenceFilter?.addEventListener("change", () => {
+  selectedVendorIntelligenceIds = new Set();
+  renderVendorIntelligence();
+});
+vendorIntelligenceSearch?.addEventListener("input", () => {
+  window.clearTimeout(vendorIntelligenceSearch._timer);
+  vendorIntelligenceSearch._timer = window.setTimeout(() => {
+    selectedVendorIntelligenceIds = new Set();
+    renderVendorIntelligence();
+  }, 250);
+});
+applyIntelligenceTagsButton?.addEventListener("click", applySelectedIntelligenceTags);
+promoteIntelligenceSelectedButton?.addEventListener("click", promoteSelectedIntelligenceVendors);
+vendorIntelligenceBody?.addEventListener("change", (event) => {
+  const checkbox = event.target.closest(".vendor-intelligence-select");
+  if (!checkbox) return;
+  if (checkbox.checked) selectedVendorIntelligenceIds.add(checkbox.dataset.vendorIntelligenceId);
+  else selectedVendorIntelligenceIds.delete(checkbox.dataset.vendorIntelligenceId);
+  updateVendorIntelligenceSelectionState();
+});
+vendorIntelligenceBody?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-vendor-intelligence-open]");
+  if (!button) return;
+  searchInput.value = button.dataset.vendorIntelligenceOpen || "";
+  activateVendorTab("sourcing");
+});
+
 refreshButton.addEventListener("click", loadVendors);
 statusFilter.addEventListener("change", () => {
   resetVendorPageAndLoad();
@@ -1273,7 +1519,7 @@ initAuthControls();
 requirePrivatePage()
   .then(() =>
     applyPermissionState(
-      "#save-vendor-button, #wizard-save-button, #vendor-import, #import-google-sheet-button, #select-visible-vendors-button, #clear-vendor-selection-button, #bulk-update-button, #bulk-procurement-button, #bulk-archive-vendors-button, #bulk-remove-vendors-button, #confirm-import-button, #save-segment-button, #drawer-save-button, #drawer-archive-button, [data-duplicate-inactive]",
+      "#save-vendor-button, #wizard-save-button, #vendor-import, #import-google-sheet-button, #select-visible-vendors-button, #clear-vendor-selection-button, #bulk-update-button, #bulk-procurement-button, #bulk-archive-vendors-button, #bulk-remove-vendors-button, #confirm-import-button, #save-segment-button, #drawer-save-button, #drawer-archive-button, #apply-intelligence-tags, #promote-intelligence-selected, [data-duplicate-inactive]",
       "vendors:manage"
     )
   )
