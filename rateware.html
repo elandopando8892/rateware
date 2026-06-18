@@ -36,6 +36,31 @@
 
         <main class="history-layout">
           <section class="workspace-panel">
+            <div class="review-insight-grid" aria-label="Approved Rateware summary">
+              <article>
+                <span>Approved rates</span>
+                <strong id="rateware-metric-total">0</strong>
+              </article>
+              <article>
+                <span>Vendors</span>
+                <strong id="rateware-metric-vendors">0</strong>
+              </article>
+              <article>
+                <span>Markets</span>
+                <strong id="rateware-metric-markets">0</strong>
+              </article>
+              <article>
+                <span>Average all-in</span>
+                <strong id="rateware-metric-average">-</strong>
+              </article>
+            </div>
+            <div class="review-filter-row" aria-label="Rateware quick filters">
+              <button class="review-filter is-active" type="button" data-rateware-filter="all">All rates</button>
+              <button class="review-filter" type="button" data-rateware-filter="cross-border">Cross-border</button>
+              <button class="review-filter" type="button" data-rateware-filter="all-in">All-in</button>
+              <button class="review-filter" type="button" data-rateware-filter="split-rate">Split rate</button>
+              <button class="review-filter" type="button" data-rateware-filter="with-capacity">With capacity</button>
+            </div>
             <div class="toolbar rateware-toolbar">
               <label>
                 Search

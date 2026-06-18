@@ -10,8 +10,15 @@ const selectAllCheckbox = document.querySelector("#select-all-rateware");
 const selectionCount = document.querySelector("#rateware-selection-count");
 const returnSelectedButton = document.querySelector("#return-selected-button");
 const actionStatus = document.querySelector("#rateware-action-status");
+const ratewareMetricTotal = document.querySelector("#rateware-metric-total");
+const ratewareMetricVendors = document.querySelector("#rateware-metric-vendors");
+const ratewareMetricMarkets = document.querySelector("#rateware-metric-markets");
+const ratewareMetricAverage = document.querySelector("#rateware-metric-average");
+const quickFilterButtons = document.querySelectorAll("[data-rateware-filter]");
 
 let currentRows = [];
+let loadedRows = [];
+let activeQuickFilter = "all";
 const selectedRowIds = new Set();
 
 function escapeHtml(value) {
@@ -32,6 +39,17 @@ function moneyValue(value) {
   return new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(number);
 }
 
+function numericValue(value) {
+  const cleaned = String(value ?? "").replace(/[^0-9.-]/g, "");
+  const number = Number(cleaned);
+  return Number.isFinite(number) ? number : null;
+}
+
+function hasNumericValue(value) {
+  const number = numericValue(value);
+  return number !== null && number > 0;
+}
+
 function compactLocation(row, prefix) {
   const market = row[`${prefix}_market`];
   const zip = row[`${prefix}_zip_prefix`];
@@ -48,6 +66,50 @@ function borderValue(row) {
   return [row.mx_border_crossing_point, row.us_border_crossing_point].filter(Boolean).join(" / ") || "-";
 }
 
+function hasSplitRate(row) {
+  return ["mx_linehaul", "us_linehaul", "fsc", "border_crossing_fee"].some((field) => hasNumericValue(row[field]));
+}
+
+function rateModeLabel(row) {
+  if (hasSplitRate(row)) return "Split components";
+  if (hasNumericValue(row.all_in_rate)) return "All-in";
+  return "No all-in";
+}
+
+function isCrossBorder(row) {
+  const text = [row.operation, row.service, row.origin_country, row.destination_country, row.mx_border_crossing_point, row.us_border_crossing_point]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  return text.includes("cross") || text.includes("export") || text.includes("import") || Boolean(row.mx_border_crossing_point || row.us_border_crossing_point);
+}
+
+function applyQuickFilter(rows = loadedRows) {
+  if (activeQuickFilter === "cross-border") return rows.filter(isCrossBorder);
+  if (activeQuickFilter === "all-in") return rows.filter((row) => hasNumericValue(row.all_in_rate) && !hasSplitRate(row));
+  if (activeQuickFilter === "split-rate") return rows.filter(hasSplitRate);
+  if (activeQuickFilter === "with-capacity") return rows.filter((row) => row.weekly_capacity);
+  return rows;
+}
+
+function updateQuickFilters() {
+  quickFilterButtons.forEach((button) => {
+    button.classList.toggle("is-active", button.dataset.ratewareFilter === activeQuickFilter);
+  });
+}
+
+function updateRatewareMetrics(rows) {
+  const vendorKeys = new Set(rows.map((row) => row.vendors?.vendor_name || row.vendor_domain || row.vendors?.domain).filter(Boolean));
+  const markets = new Set(rows.flatMap((row) => [row.origin_market, row.destination_market]).filter(Boolean));
+  const allInValues = rows.map((row) => numericValue(row.all_in_rate)).filter((value) => value !== null && value > 0);
+  const average = allInValues.length ? allInValues.reduce((total, value) => total + value, 0) / allInValues.length : null;
+
+  ratewareMetricTotal.textContent = String(rows.length);
+  ratewareMetricVendors.textContent = String(vendorKeys.size);
+  ratewareMetricMarkets.textContent = String(markets.size);
+  ratewareMetricAverage.textContent = average === null ? "-" : moneyValue(average);
+}
+
 function populateFilter(select, rows, field) {
   const selected = select.value;
   const values = Array.from(new Set(rows.map((row) => row[field]).filter(Boolean))).sort((a, b) => a.localeCompare(b));
@@ -57,6 +119,8 @@ function populateFilter(select, rows, field) {
 
 function renderRows(rows) {
   currentRows = rows;
+  updateQuickFilters();
+  updateRatewareMetrics(rows);
   populateFilter(operationFilter, rows, "operation");
   populateFilter(serviceFilter, rows, "service");
 
@@ -82,7 +146,10 @@ function renderRows(rows) {
       <td>${escapeHtml(row.operation || "-")}</td>
       <td>${escapeHtml(row.service || "-")}</td>
       <td>${escapeHtml([row.equipment, row.trailer, row.config].filter(Boolean).join(" / ") || "-")}</td>
-      <td><strong>${escapeHtml(moneyValue(row.all_in_rate))}</strong></td>
+      <td>
+        <strong>${escapeHtml(moneyValue(row.all_in_rate))}</strong>
+        <span>${escapeHtml(rateModeLabel(row))}</span>
+      </td>
       <td>${escapeHtml(row.currency || "-")}</td>
       <td>${escapeHtml(row.weekly_capacity || "-")}</td>
       <td>${escapeHtml(borderValue(row))}</td>
@@ -125,7 +192,8 @@ async function loadRateware() {
       operation: operationFilter.value,
       service: serviceFilter.value
     });
-    renderRows(rows);
+    loadedRows = rows;
+    renderRows(applyQuickFilter(rows));
   } catch (error) {
     body.innerHTML = `<tr><td colspan="14">Could not load Rateware. ${escapeHtml(error.message)}</td></tr>`;
   } finally {
@@ -168,6 +236,14 @@ refreshButton.addEventListener("click", loadRateware);
 searchInput.addEventListener("input", debounce(loadRateware));
 operationFilter.addEventListener("change", loadRateware);
 serviceFilter.addEventListener("change", loadRateware);
+quickFilterButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    activeQuickFilter = button.dataset.ratewareFilter || "all";
+    selectedRowIds.clear();
+    setActionStatus("");
+    renderRows(applyQuickFilter());
+  });
+});
 returnSelectedButton.addEventListener("click", returnSelectedToStaging);
 selectAllCheckbox?.addEventListener("change", () => {
   body.querySelectorAll("[data-select-rateware]").forEach((checkbox) => {
