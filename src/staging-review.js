@@ -134,6 +134,9 @@ function hiddenLocationFields(row, prefix) {
     <input data-field="${prefix}_city" type="hidden" value="${escapeHtml(row[`${prefix}_city`] || "")}" />
     <input data-field="${prefix}_country" type="hidden" value="${escapeHtml(row[`${prefix}_country`] || "")}" />
     <input data-field="${prefix}_match_reason" type="hidden" value="${escapeHtml(row[`${prefix}_match_reason`] || "")}" />
+    <input data-field="${prefix}_match_source" type="hidden" value="${escapeHtml(row[`${prefix}_match_source`] || "")}" />
+    <input data-field="${prefix}_match_confidence" type="hidden" value="${escapeHtml(row[`${prefix}_match_confidence`] || "")}" />
+    <input data-field="${prefix}_match_manual" type="hidden" value="${row[`${prefix}_match_manual`] ? "true" : "false"}" />
   `;
 }
 
@@ -189,6 +192,8 @@ function locationOptionMatch(value) {
         option.city,
         option.metro_city,
         option.raw_value,
+        option.market,
+        option.region,
         [option.city, option.state_code].filter(Boolean).join(", "),
         [option.metro_city, option.state_code].filter(Boolean).join(", "),
         option.zip_prefix
@@ -218,7 +223,10 @@ function applyLocationSuggestion(tableRow, prefix, value) {
   setTableField(tableRow, `${prefix}_region`, option.region);
   setTableField(tableRow, `${prefix}_city`, option.city || option.metro_city);
   setTableField(tableRow, `${prefix}_country`, option.country);
-  setTableField(tableRow, `${prefix}_match_reason`, "catalog dropdown suggestion");
+  setTableField(tableRow, `${prefix}_match_reason`, "manual catalog selection");
+  setTableField(tableRow, `${prefix}_match_source`, "manual_dropdown");
+  setTableField(tableRow, `${prefix}_match_confidence`, 100);
+  setTableField(tableRow, `${prefix}_match_manual`, "true");
   return true;
 }
 
@@ -631,6 +639,9 @@ function renderRowDetail(row) {
         ${detailLine("Origin country", row.origin_country)}
         ${detailLine("Origin region", row.origin_region)}
         ${detailLine("Origin match", row.origin_match_reason)}
+        ${detailLine("Origin source", row.origin_match_source)}
+        ${detailLine("Origin confidence", row.origin_match_confidence ? `${moneyValue(row.origin_match_confidence)}%` : "")}
+        ${detailLine("Origin manual", row.origin_match_manual ? "yes" : "no")}
         ${detailLine("Destination market", row.destination_market)}
         ${detailLine("Destination ZIP", row.destination_zip_prefix)}
         ${detailLine("Destination city", row.destination_city)}
@@ -638,6 +649,9 @@ function renderRowDetail(row) {
         ${detailLine("Destination country", row.destination_country)}
         ${detailLine("Destination region", row.destination_region)}
         ${detailLine("Destination match", row.destination_match_reason)}
+        ${detailLine("Destination source", row.destination_match_source)}
+        ${detailLine("Destination confidence", row.destination_match_confidence ? `${moneyValue(row.destination_match_confidence)}%` : "")}
+        ${detailLine("Destination manual", row.destination_match_manual ? "yes" : "no")}
       </dl>
     </section>
     <section>

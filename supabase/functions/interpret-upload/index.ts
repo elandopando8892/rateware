@@ -507,6 +507,41 @@ function catalogKey(value: unknown) {
     .trim();
 }
 
+const LOCATION_US_STATES = new Set([
+  "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA", "HI", "IA", "ID", "IL", "IN", "KS", "KY", "LA", "MA", "MD", "ME", "MI", "MN", "MO", "MS", "MT", "NC", "ND", "NE", "NH", "NJ", "NM", "NV", "NY", "OH", "OK", "OR", "PA", "RI", "SC", "SD", "TN", "TX", "UT", "VA", "VT", "WA", "WI", "WV", "WY", "DC"
+]);
+
+const LOCATION_CA_PROVINCES = new Set(["AB", "BC", "MB", "NB", "NL", "NS", "NT", "NU", "ON", "PE", "QC", "SK", "YT"]);
+const LOCATION_MX_STATES = new Set(["AG", "BN", "CH", "CI", "CM", "CS", "CU", "DF", "DG", "EM", "GR", "GT", "HG", "JA", "MI", "MO", "NA", "NL", "OA", "PU", "QE", "QR", "SL", "SI", "SO", "TB", "TM", "VE", "YU", "ZA"]);
+
+function locationCountry(location: Record<string, unknown>) {
+  return String(location.country || "").toUpperCase();
+}
+
+function locationTokens(value: unknown) {
+  return catalogKey(value).split(" ").filter(Boolean);
+}
+
+function locationTextProfile(value: unknown) {
+  const lookup = catalogKey(value);
+  const tokens = locationTokens(value);
+  const tokenSet = new Set(tokens);
+  const hasUsState = tokens.some((token) => LOCATION_US_STATES.has(token));
+  const hasCaProvince = tokens.some((token) => LOCATION_CA_PROVINCES.has(token));
+  const hasMxState = tokens.some((token) => LOCATION_MX_STATES.has(token));
+  const explicitMx = (tokenSet.has("MEXICO") && !tokenSet.has("NEW")) || tokenSet.has("MEX") || tokenSet.has("MX") || (hasMxState && !hasUsState && !hasCaProvince);
+  const explicitUs = tokenSet.has("USA") || tokenSet.has("US") || tokenSet.has("UNITED") || hasUsState;
+  const explicitCa = tokenSet.has("CANADA") || (hasCaProvince && !hasMxState);
+  return { lookup, tokens, explicitMx, explicitUs, explicitCa };
+}
+
+function locationMatchesProfile(location: Record<string, unknown>, profile: ReturnType<typeof locationTextProfile>) {
+  const country = locationCountry(location);
+  if (profile.explicitMx && country && country !== "MX") return false;
+  if ((profile.explicitUs || profile.explicitCa) && country === "MX") return false;
+  return true;
+}
+
 function scoreVendorMatch(vendor: Record<string, unknown>, rawUpload: Record<string, string>, interpretation: Record<string, unknown>) {
   const haystack = [
     rawUpload.vendor_hint,
@@ -786,16 +821,16 @@ function buildLocationIndex(locations: Record<string, unknown>[]) {
     const keys = [
       location.location_key,
       location.raw_value,
-      location.zip_prefix,
       location.city,
       location.metro_city,
       location.market,
       location.region,
       [location.city, location.state_code].filter(Boolean).join(", "),
       [location.city, location.state_name].filter(Boolean).join(", ")
-    ].map(catalogKey).filter(Boolean);
+    ];
+    if (locationCountry(location) !== "MX") keys.push(location.zip_prefix);
 
-    for (const key of keys) {
+    for (const key of keys.map(catalogKey).filter(Boolean)) {
       const existing = index.get(key);
       if (!existing || locationQuality(location) > locationQuality(existing)) index.set(key, location);
     }
@@ -842,9 +877,10 @@ function locationCandidate(location: Record<string, unknown>, score: number, rea
 function locationMatch(index: Map<string, Record<string, unknown>>, value: unknown) {
   const lookup = catalogKey(value);
   if (!lookup) return null;
+  const profile = locationTextProfile(value);
 
   const direct = index.get(lookup);
-  if (direct) {
+  if (direct && locationMatchesProfile(direct, profile)) {
     return {
       location: direct,
       score: 100,
@@ -855,14 +891,16 @@ function locationMatch(index: Map<string, Record<string, unknown>>, value: unkno
 
   const zipToken = lookup.match(/\b[A-Z]\d[A-Z]|\b\d{3,5}\b/)?.[0] || null;
   const zip = zipToken && /^\d/.test(zipToken) ? zipToken.slice(0, 3) : zipToken;
-  if (zip && index.get(catalogKey(zip))) {
+  if (zip && !profile.explicitMx && index.get(catalogKey(zip))) {
     const zipMatch = index.get(catalogKey(zip))!;
-    return {
-      location: zipMatch,
-      score: 92,
-      reason: `zip prefix ${zip} match`,
-      candidates: [locationCandidate(zipMatch, 92, `zip prefix ${zip} match`)]
-    };
+    if (locationCountry(zipMatch) !== "MX") {
+      return {
+        location: zipMatch,
+        score: 92,
+        reason: `zip prefix ${zip} match`,
+        candidates: [locationCandidate(zipMatch, 92, `zip prefix ${zip} match`)]
+      };
+    }
   }
 
   const candidates: Array<{ location: Record<string, unknown>; score: number; reason: string }> = [];
@@ -872,38 +910,56 @@ function locationMatch(index: Map<string, Record<string, unknown>>, value: unkno
     seen.add(location);
     let score = 0;
     const reasons: string[] = [];
+    const country = locationCountry(location);
+    if (!locationMatchesProfile(location, profile)) score -= 45;
+    else if ((profile.explicitMx && country === "MX") || (profile.explicitUs && country === "US") || (profile.explicitCa && country === "CA")) {
+      score += 12;
+      reasons.push("country hint");
+    }
     const zipPrefix = catalogKey(location.zip_prefix);
     if (zipPrefix && lookup.includes(zipPrefix)) {
-      score += 45;
-      reasons.push("zip prefix");
+      score += country === "MX" ? 6 : 55;
+      reasons.push(country === "MX" ? "mx zip auxiliary" : "zip prefix");
     }
     const state = catalogKey(location.state_code);
     if (state && lookup.includes(state)) {
-      score += 25;
+      score += country === "MX" ? 38 : 30;
       reasons.push("state match");
+    }
+    const stateName = catalogKey(location.state_name);
+    if (stateName && lookup.includes(stateName)) {
+      score += country === "MX" ? 32 : 20;
+      reasons.push("state name");
     }
     const city = catalogKey(location.city);
     if (city && lookup.includes(city)) {
-      score += 35;
+      score += country === "MX" ? 48 : 38;
       reasons.push("city match");
     }
     const metro = catalogKey(location.metro_city);
     if (metro && (lookup.includes(metro) || metro.includes(lookup))) {
-      score += 30;
+      score += country === "MX" ? 42 : 30;
       reasons.push("metro match");
     }
     const market = catalogKey(location.market);
     if (market && (lookup.includes(market) || market.includes(lookup))) {
-      score += 18;
+      score += country === "MX" ? 30 : 20;
       reasons.push("market match");
     }
+    const region = catalogKey(location.region);
+    if (region && (lookup.includes(region) || region.includes(lookup))) {
+      score += country === "MX" ? 18 : 10;
+      reasons.push("region match");
+    }
+    score += Math.max(0, 6 - sourceRank(location.source));
     if (score >= 25) candidates.push({ location, score, reason: reasons.join(", ") || "catalog match" });
   }
 
   candidates.sort((a, b) => b.score - a.score);
   const top = candidates.slice(0, 5).map((candidate) => locationCandidate(candidate.location, candidate.score, candidate.reason));
   const best = candidates[0] || null;
-  if (!best || best.score < 35) {
+  const threshold = locationCountry(best?.location || {}) === "MX" ? 45 : 35;
+  if (!best || best.score < threshold) {
     return {
       location: null,
       score: best?.score || 0,
@@ -931,6 +987,25 @@ function applyLocation(row: Record<string, unknown>, prefix: "origin" | "destina
     [`${prefix}_market`]: location.market || null,
     [`${prefix}_region`]: location.region || null
   };
+}
+
+function locationMatchMeta(prefix: "origin" | "destination", resolution: ReturnType<typeof locationMatch>, source = "auto_catalog") {
+  return {
+    [`${prefix}_match_source`]: resolution?.location ? source : "unmatched",
+    [`${prefix}_match_confidence`]: Math.max(0, Math.min(100, Number(resolution?.score || 0))),
+    [`${prefix}_match_manual`]: false
+  };
+}
+
+function isLocationResolved(row: Record<string, unknown>, prefix: "origin" | "destination") {
+  const country = String(row[`${prefix}_country`] || "").toUpperCase();
+  if (country === "MX") {
+    return Boolean(row[`${prefix}_city`] && row[`${prefix}_state`] && (row[`${prefix}_market`] || row[`${prefix}_region`]));
+  }
+  if (country === "US" || country === "CA") {
+    return Boolean((row[`${prefix}_zip_prefix`] || row[`${prefix}_market`]) && row[`${prefix}_state`]);
+  }
+  return Boolean(row[`${prefix}_market`] || row[`${prefix}_zip_prefix`] || row[`${prefix}_state`] || row[`${prefix}_country`]);
 }
 
 const US_STATES = new Set([
@@ -1275,6 +1350,8 @@ function normalizeWithCatalog(rows: Record<string, unknown>[], catalogItems: Rec
       destination_market: (destinationLocation?.market as string) || ((destinationMatch?.metadata as Record<string, unknown>)?.market as string) || null,
       ...applyLocation(row, "origin", originLocation),
       ...applyLocation(row, "destination", destinationLocation),
+      ...locationMatchMeta("origin", originResolution),
+      ...locationMatchMeta("destination", destinationResolution),
       origin_match_reason: originResolution?.reason || null,
       destination_match_reason: destinationResolution?.reason || null,
       origin_location_candidates: originResolution?.candidates || [],
@@ -1331,7 +1408,11 @@ function normalizeWithCatalog(rows: Record<string, unknown>[], catalogItems: Rec
 
     Object.assign(normalized, buildKeys(normalized));
     normalized.catalog_match_status = matchCount >= 5 ? "matched" : matchCount >= 2 ? "partial" : "unmatched";
-    normalized.location_match_status = originLocation && destinationLocation ? "matched" : originLocation || destinationLocation ? "partial" : "unmatched";
+    normalized.location_match_status = isLocationResolved(normalized, "origin") && isLocationResolved(normalized, "destination")
+      ? "matched"
+      : isLocationResolved(normalized, "origin") || isLocationResolved(normalized, "destination")
+        ? "partial"
+        : "unmatched";
     return addFuelAudit(normalized, fuelRegions, fscTrend);
   });
 }
@@ -1340,6 +1421,113 @@ function isCarrierRateRow(row: Record<string, unknown>) {
   if (isInternalMarksmanDomain(row.vendor_domain)) return false;
   if (isInternalMarksmanDomain(row.primary_email)) return false;
   return true;
+}
+
+function stateToken(value: unknown) {
+  const text = String(value || "").toUpperCase();
+  return text.match(/\b[A-Z]{2}\b/)?.[0] || null;
+}
+
+function locationParts(value: unknown, fallbackState: unknown = null, fallbackCountry: unknown = null) {
+  const text = cleanText(value);
+  if (!text) return null;
+  const parts = text.split(",").map((part) => part.trim()).filter(Boolean);
+  const state = stateToken(fallbackState) || stateToken(parts.slice(1).join(" "));
+  const city = parts[0]?.replace(/\b[A-Z]{2}\b/g, "").trim();
+  const fallback = cleanText(fallbackCountry)?.toUpperCase();
+  const country = fallback || (state && LOCATION_US_STATES.has(state) ? "US" : state && LOCATION_CA_PROVINCES.has(state) ? "CA" : null);
+  if (!city || !state || !country || !["US", "CA"].includes(country)) return null;
+  return { city, state, country };
+}
+
+async function lookupPostalPrefix(value: unknown, fallbackState: unknown = null, fallbackCountry: unknown = null) {
+  const parsed = locationParts(value, fallbackState, fallbackCountry);
+  if (!parsed) return null;
+
+  const countryPath = parsed.country.toLowerCase();
+  const url = `https://api.zippopotam.us/${countryPath}/${encodeURIComponent(parsed.state)}/${encodeURIComponent(parsed.city)}`;
+
+  try {
+    const response = await fetch(url);
+    if (!response.ok) return null;
+    const payload = await response.json();
+    const place = Array.isArray(payload.places) ? payload.places[0] : null;
+    const postalCode = cleanText(place?.["post code"]);
+    if (!postalCode) return null;
+    return {
+      zip_prefix: postalCode.slice(0, 3).toUpperCase(),
+      city: cleanText(place?.["place name"]) || parsed.city,
+      state: cleanText(place?.["state abbreviation"]) || parsed.state,
+      country: parsed.country,
+      source: "zippopotam.us"
+    };
+  } catch {
+    return null;
+  }
+}
+
+function patchExternalLocation(prefix: "origin" | "destination", lookup: Record<string, unknown> | null, locationIndex: Map<string, Record<string, unknown>>) {
+  if (!lookup) return {};
+  const catalogResolution = locationMatch(locationIndex, lookup.zip_prefix);
+  const catalogLocation = catalogResolution?.location || null;
+  const patch: Record<string, unknown> = {
+    [`${prefix}_zip_prefix`]: lookup.zip_prefix,
+    [`${prefix}_city`]: lookup.city,
+    [`${prefix}_state`]: lookup.state,
+    [`${prefix}_country`]: lookup.country,
+    [`${prefix}_match_reason`]: `external ZIP lookup via ${lookup.source}`,
+    [`${prefix}_match_source`]: "external_zip_lookup",
+    [`${prefix}_match_confidence`]: catalogResolution?.score || 70,
+    [`${prefix}_match_manual`]: false,
+    [`${prefix}_location_candidates`]: catalogResolution?.candidates || []
+  };
+
+  if (catalogLocation) {
+    Object.assign(patch, applyLocation({}, prefix, catalogLocation));
+    patch[`${prefix}_match_reason`] = `external ZIP lookup, then ${catalogResolution?.reason || "catalog match"}`;
+    patch[`${prefix}_match_source`] = "external_zip_lookup";
+    patch[`${prefix}_match_confidence`] = Math.max(70, Number(catalogResolution?.score || 0));
+  }
+
+  return patch;
+}
+
+async function enrichRowsWithExternalPostalPrefixes(rows: Record<string, unknown>[], locations: Record<string, unknown>[]) {
+  if (!rows.length || !locations.length) return rows;
+  const locationIndex = buildLocationIndex(locations);
+
+  const enriched: Record<string, unknown>[] = [];
+  for (const row of rows) {
+    const patch: Record<string, unknown> = {};
+    if (!isLocationResolved(row, "origin")) {
+      Object.assign(patch, patchExternalLocation(
+        "origin",
+        await lookupPostalPrefix(row.origin || row.normalized_origin, row.origin_state, row.origin_country),
+        locationIndex
+      ));
+    }
+    const withOrigin = { ...row, ...patch };
+    if (!isLocationResolved(withOrigin, "destination")) {
+      Object.assign(patch, patchExternalLocation(
+        "destination",
+        await lookupPostalPrefix(row.destination || row.normalized_destination, row.destination_state, row.destination_country),
+        locationIndex
+      ));
+    }
+
+    const merged = { ...row, ...patch };
+    if (Object.keys(patch).length) {
+      merged.location_match_status = isLocationResolved(merged, "origin") && isLocationResolved(merged, "destination")
+        ? "matched"
+        : isLocationResolved(merged, "origin") || isLocationResolved(merged, "destination")
+          ? "partial"
+          : "unmatched";
+      Object.assign(merged, buildKeys(merged));
+    }
+    enriched.push(merged);
+  }
+
+  return enriched;
 }
 
 async function extractXlsxText(file: Blob) {
@@ -1706,9 +1894,10 @@ Deno.serve(async (request) => {
       mxDiesel: mxDieselResult.error ? [] : mxDieselResult.data || [],
       fxRates: fxResult.error ? [] : fxResult.data || []
     });
-    const normalizedRows = normalizeWithCatalog(interpretation.rows
+    const catalogNormalizedRows = normalizeWithCatalog(interpretation.rows
       .filter((row: Record<string, unknown>) => isCarrierRateRow(row))
-      .map((row: Record<string, unknown>) => normalizeRow(row, rawUpload, job.data.id, vendorId)), catalogItems, laneMileage, locations, fuelRegions, fscTrend)
+      .map((row: Record<string, unknown>) => normalizeRow(row, rawUpload, job.data.id, vendorId)), catalogItems, laneMileage, locations, fuelRegions, fscTrend);
+    const normalizedRows = (await enrichRowsWithExternalPostalPrefixes(catalogNormalizedRows, locations))
       .map((row) => addRowAudit(row, rawUpload));
     const rows = mergeConnectedD2DAllInRows(normalizedRows, [
       rawUpload.original_filename,
