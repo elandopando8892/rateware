@@ -306,6 +306,14 @@ function rowReviewIssues(row) {
   return issues;
 }
 
+function rowAuditFlags(row) {
+  return Array.isArray(row.audit_flags) ? row.audit_flags.map(String).filter(Boolean) : [];
+}
+
+function rowExtractionWarnings(row) {
+  return Array.isArray(row.extraction_warnings) ? row.extraction_warnings.map(String).filter(Boolean) : [];
+}
+
 function rowRateMode(row) {
   if (hasNumericValue(row.all_in_rate) && !hasSplitRate(row)) return { tone: "success", label: "All-in" };
   if (hasSplitRate(row)) return { tone: "neutral", label: "Split" };
@@ -313,14 +321,23 @@ function rowRateMode(row) {
 }
 
 function renderReviewChips(row) {
+  const auditFlags = rowAuditFlags(row);
   const chips = [rowRateMode(row), ...rowReviewIssues(row)];
+  if (auditFlags.some((flag) => ["missing_rate", "missing_origin", "missing_destination", "missing_equipment", "missing_trailer", "missing_operation", "missing_service"].includes(flag))) {
+    chips.push({ tone: "danger", label: "Audit flag" });
+  } else if (auditFlags.length) {
+    chips.push({ tone: "warning", label: "Audit note" });
+  }
+  if (rowExtractionWarnings(row).length) chips.push({ tone: "warning", label: "Source warning" });
   return `<div class="row-review-chips">${chips
     .map((chip) => `<span class="review-chip ${escapeHtml(chip.tone)}">${escapeHtml(chip.label)}</span>`)
     .join("")}</div>`;
 }
 
 function rowQualityClass(row) {
+  if (rowAuditFlags(row).some((flag) => ["missing_rate", "missing_origin", "missing_destination"].includes(flag))) return "needs-review";
   if (needsNumericRate(row) || needsLocationMatch(row)) return "needs-review";
+  if (rowAuditFlags(row).length || rowExtractionWarnings(row).length) return "has-warning";
   if (!row.vendors?.vendor_name || !row.quote_date || !row.weekly_capacity) return "has-warning";
   return "";
 }
@@ -544,6 +561,57 @@ function renderFixChecklist(row) {
   `;
 }
 
+function objectValue(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+}
+
+function confidencePercent(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "-";
+  return `${Math.round(Math.max(0, Math.min(1, number)) * 100)}%`;
+}
+
+function renderExtractionAudit(row) {
+  const confidence = objectValue(row.field_confidence);
+  const evidence = objectValue(row.source_evidence);
+  const weakFields = Object.entries(confidence)
+    .filter(([, value]) => Number(value) < 0.75)
+    .sort((left, right) => Number(left[1]) - Number(right[1]))
+    .slice(0, 10);
+  const flags = rowAuditFlags(row);
+  const warnings = rowExtractionWarnings(row);
+
+  return `
+    <section>
+      <h3>Extraction audit</h3>
+      <div class="drawer-badges">
+        ${flags.length ? `<span class="review-chip warning">${escapeHtml(flags.length)} audit flag${flags.length === 1 ? "" : "s"}</span>` : '<span class="review-chip success">No audit flags</span>'}
+        ${warnings.length ? `<span class="review-chip warning">${escapeHtml(warnings.length)} source warning${warnings.length === 1 ? "" : "s"}</span>` : ""}
+      </div>
+      <dl>
+        ${detailLine("Source file", evidence.source_filename)}
+        ${detailLine("Source row", evidence.row_id)}
+        ${detailLine("Source lane", evidence.lane)}
+        ${detailLine("Source service", evidence.service)}
+        ${detailLine("Source all-in", evidence.all_in_rate)}
+        ${detailLine("Split rate present", evidence.split_rate_present ? "yes" : "no")}
+      </dl>
+      ${
+        weakFields.length
+          ? `<div class="audit-field-grid">${weakFields
+              .map(([field, value]) => `<span>${escapeHtml(field.replace(/_/g, " "))}<strong>${escapeHtml(confidencePercent(value))}</strong></span>`)
+              .join("")}</div>`
+          : '<p class="muted-text">No weak field confidence recorded.</p>'
+      }
+      ${
+        flags.length || warnings.length
+          ? `<ul class="compact-warning-list">${[...flags, ...warnings].slice(0, 16).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`
+          : ""
+      }
+    </section>
+  `;
+}
+
 function renderRowDetail(row) {
   const legs = Array.isArray(row.rateware_lane_legs)
     ? row.rateware_lane_legs.slice().sort((a, b) => Number(a.leg_sequence || 0) - Number(b.leg_sequence || 0))
@@ -552,6 +620,7 @@ function renderRowDetail(row) {
   rowDetail.innerHTML = `
     ${renderDrawerBrief(row)}
     ${renderFixChecklist(row)}
+    ${renderExtractionAudit(row)}
     <section>
       <h3>Location normalization</h3>
       <dl>

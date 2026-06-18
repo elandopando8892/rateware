@@ -8,10 +8,11 @@ const statusFilter = document.querySelector("#status-filter");
 const uploadMetricVisible = document.querySelector("#upload-metric-visible");
 const uploadMetricStaged = document.querySelector("#upload-metric-staged");
 const uploadMetricFailed = document.querySelector("#upload-metric-failed");
-const uploadMetricArchived = document.querySelector("#upload-metric-archived");
+const uploadMetricNeedsAudit = document.querySelector("#upload-metric-needs-audit");
 const quickFilterButtons = document.querySelectorAll("[data-upload-filter]");
 const selectAllUploads = document.querySelector("#select-all-uploads");
 const uploadSelectionCount = document.querySelector("#upload-selection-count");
+const reprocessSelectedButton = document.querySelector("#reprocess-selected-uploads");
 const archiveSelectedButton = document.querySelector("#archive-selected-uploads");
 const removeSelectedButton = document.querySelector("#remove-selected-uploads");
 const uploadBulkStatus = document.querySelector("#upload-bulk-status");
@@ -52,6 +53,7 @@ function documentType(row) {
 
 function applyQuickFilter(rows = loadedRows) {
   if (activeQuickFilter === "needs-interpretation") return rows.filter((row) => row.status === "uploaded");
+  if (activeQuickFilter === "needs-audit") return rows.filter((row) => auditStatus(row) === "needs_review" || auditStatus(row) === "repaired");
   if (activeQuickFilter === "failed") return rows.filter((row) => row.status === "failed");
   if (activeQuickFilter === "pdf") return rows.filter((row) => documentType(row) === "pdf");
   if (activeQuickFilter === "spreadsheet") return rows.filter((row) => ["xlsx", "xls", "csv", "spreadsheet"].includes(documentType(row)));
@@ -69,7 +71,7 @@ function updateUploadMetrics(rows) {
   uploadMetricVisible.textContent = String(rows.length);
   uploadMetricStaged.textContent = String(rows.filter((row) => row.status === "staged").length);
   uploadMetricFailed.textContent = String(rows.filter((row) => row.status === "failed").length);
-  uploadMetricArchived.textContent = String(rows.filter((row) => row.status === "archived").length);
+  uploadMetricNeedsAudit.textContent = String(rows.filter((row) => auditStatus(row) === "needs_review" || auditStatus(row) === "repaired").length);
 }
 
 function selectedVisibleIds() {
@@ -85,6 +87,7 @@ function updateBulkControls() {
   const selectedCount = selectedVisibleIds().length;
   const totalRows = historyBody.querySelectorAll("[data-upload-id]").length;
   uploadSelectionCount.textContent = `${selectedCount} selected`;
+  reprocessSelectedButton.disabled = selectedCount === 0;
   archiveSelectedButton.disabled = selectedCount === 0;
   removeSelectedButton.disabled = selectedCount === 0;
   if (selectAllUploads) {
@@ -100,9 +103,57 @@ function statusTone(status) {
   return "neutral";
 }
 
+function auditPayload(row) {
+  return row.interpretation_audit && typeof row.interpretation_audit === "object" ? row.interpretation_audit : {};
+}
+
+function auditWarnings(row) {
+  if (Array.isArray(row.audit_warnings)) return row.audit_warnings.map(String).filter(Boolean);
+  const audit = auditPayload(row);
+  return Array.isArray(audit.warnings) ? audit.warnings.map(String).filter(Boolean) : [];
+}
+
+function auditStatus(row) {
+  return row.audit_status || auditPayload(row).status || "not_audited";
+}
+
+function auditTone(status) {
+  if (status === "ok") return "success";
+  if (status === "repaired") return "warning";
+  if (status === "failed") return "danger";
+  if (status === "needs_review") return "danger";
+  return "muted";
+}
+
+function auditLabel(status) {
+  return String(status || "not_audited").replace(/_/g, " ");
+}
+
+function auditRowsLabel(row) {
+  const expected = row.expected_rate_rows ?? auditPayload(row).expected_rate_rows ?? "";
+  const interpreted = row.interpreted_rate_rows ?? auditPayload(row).interpreted_rate_rows ?? "";
+  if (!expected && !interpreted) return "";
+  return `${interpreted || 0}/${expected || interpreted || 0} rows`;
+}
+
+function renderAuditSummary(row) {
+  const status = auditStatus(row);
+  const rowsLabel = auditRowsLabel(row);
+  const warnings = auditWarnings(row);
+  return `
+    <div class="audit-summary">
+      <span class="review-chip ${escapeHtml(auditTone(status))}">${escapeHtml(auditLabel(status))}</span>
+      ${rowsLabel ? `<small>${escapeHtml(rowsLabel)}</small>` : ""}
+      ${warnings.length ? `<small>${escapeHtml(warnings.length)} warning${warnings.length === 1 ? "" : "s"}</small>` : ""}
+    </div>
+  `;
+}
+
 function uploadQualityChips(row) {
   const chips = [];
   chips.push({ tone: statusTone(row.status), label: row.status || "unknown" });
+  if (auditStatus(row) === "needs_review") chips.push({ tone: "danger", label: "Audit needed" });
+  if (auditStatus(row) === "repaired") chips.push({ tone: "warning", label: "Repaired" });
   if (!row.vendors?.vendor_name && !row.vendor_hint) chips.push({ tone: "warning", label: "No vendor hint" });
   if (!row.rfx_hint) chips.push({ tone: "muted", label: "No RFx" });
   if (row.error_message) chips.push({ tone: "danger", label: "Needs attention" });
@@ -118,6 +169,11 @@ function detailItem(label, value) {
       <dd>${escapeHtml(value || "-")}</dd>
     </div>
   `;
+}
+
+function warningList(warnings) {
+  if (!warnings.length) return '<p class="detail-note">No audit warnings recorded.</p>';
+  return `<ul class="compact-warning-list">${warnings.map((warning) => `<li>${escapeHtml(warning)}</li>`).join("")}</ul>`;
 }
 
 function vendorDisplay(row) {
@@ -142,7 +198,25 @@ function openUploadDrawer(rowId) {
         ${detailItem("RFx", row.rfx_hint)}
         ${detailItem("Uploaded", formatDate(row.created_at))}
         ${detailItem("Match source", row.vendor_match_source)}
+        ${detailItem("Reprocess count", row.reprocess_count)}
+        ${detailItem("Last reprocess", formatDate(row.last_reprocessed_at))}
       </dl>
+    </section>
+
+    <section class="upload-detail-section">
+      <h3>Interpretation audit</h3>
+      <div class="drawer-badges">
+        <span class="review-chip ${escapeHtml(auditTone(auditStatus(row)))}">${escapeHtml(auditLabel(auditStatus(row)))}</span>
+        ${auditRowsLabel(row) ? `<span class="review-chip neutral">${escapeHtml(auditRowsLabel(row))}</span>` : ""}
+      </div>
+      <dl>
+        ${detailItem("First pass rows", auditPayload(row).first_pass_rows)}
+        ${detailItem("Audit pass", auditPayload(row).audit_pass_used ? "yes" : "no")}
+        ${detailItem("Audit pass rows", auditPayload(row).audit_pass_rows)}
+        ${detailItem("Deterministic repair", auditPayload(row).deterministic_repair_used ? "yes" : "no")}
+        ${detailItem("Sparse table risk", auditPayload(row).sparse_table_risk ? "yes" : "no")}
+      </dl>
+      ${warningList(auditWarnings(row).slice(0, 12))}
     </section>
 
     <section class="upload-detail-section">
@@ -201,7 +275,7 @@ function renderRows(rows) {
   if (!rows.length) {
     const empty = emptyUploadMessage();
     historyBody.innerHTML =
-      `<tr><td colspan="9"><div class="empty-state"><strong>${escapeHtml(empty.title)}</strong><span>${escapeHtml(empty.detail)}</span><a href="./upload-center.html">Upload source files</a></div></td></tr>`;
+      `<tr><td colspan="10"><div class="empty-state"><strong>${escapeHtml(empty.title)}</strong><span>${escapeHtml(empty.detail)}</span><a href="./upload-center.html">Upload source files</a></div></td></tr>`;
     updateBulkControls();
     return;
   }
@@ -223,10 +297,11 @@ function renderRows(rows) {
           </td>
           <td>${escapeHtml(row.rfx_hint || "")}</td>
           <td><span class="status-pill ${escapeHtml(statusTone(row.status))}">${escapeHtml(row.status)}</span></td>
+          <td>${renderAuditSummary(row)}</td>
           <td>${escapeHtml(row.storage_path)}</td>
           <td class="history-actions">
             <button type="button" class="small-button secondary" data-upload-detail="${escapeHtml(row.id)}">Details</button>
-            ${row.status === "archived" ? "" : `<button type="button" class="small-button" data-interpret-id="${escapeHtml(row.id)}">Interpret</button>`}
+            ${row.status === "archived" ? "" : `<button type="button" class="small-button" data-interpret-id="${escapeHtml(row.id)}">${row.status === "uploaded" ? "Interpret" : "Reprocess"}</button>`}
             ${row.status === "archived" ? "" : `<button type="button" class="small-button secondary" data-archive-id="${escapeHtml(row.id)}">Archive</button>`}
             <button type="button" class="small-button danger" data-remove-id="${escapeHtml(row.id)}">Remove</button>
             ${row.error_message ? `<small class="error-detail">${escapeHtml(row.error_message)}</small>` : ""}
@@ -240,7 +315,7 @@ function renderRows(rows) {
 }
 
 async function loadHistory() {
-  historyBody.innerHTML = '<tr><td colspan="9">Loading uploads...</td></tr>';
+  historyBody.innerHTML = '<tr><td colspan="10">Loading uploads...</td></tr>';
   refreshButton.disabled = true;
 
   try {
@@ -248,9 +323,9 @@ async function loadHistory() {
     const rows = await fetchUploadHistory({ status: statusFilter.value });
     loadedRows = rows;
     renderRows(applyQuickFilter(rows));
-    await applyPermissionState("[data-interpret-id], [data-archive-id], [data-remove-id], #archive-selected-uploads, #remove-selected-uploads", "uploads:interpret");
+    await applyPermissionState("[data-interpret-id], [data-archive-id], [data-remove-id], #reprocess-selected-uploads, #archive-selected-uploads, #remove-selected-uploads", "uploads:interpret");
   } catch (error) {
-    historyBody.innerHTML = `<tr><td colspan="9">Could not load upload history. ${escapeHtml(error.message)}</td></tr>`;
+    historyBody.innerHTML = `<tr><td colspan="10">Could not load upload history. ${escapeHtml(error.message)}</td></tr>`;
   } finally {
     refreshButton.disabled = false;
   }
@@ -265,18 +340,26 @@ async function runBulkUploadAction(action) {
   }
 
   archiveSelectedButton.disabled = true;
+  reprocessSelectedButton.disabled = true;
   removeSelectedButton.disabled = true;
-  setBulkStatus(`${action === "archive" ? "Archiving" : "Removing"} ${ids.length} upload(s)...`);
+  setBulkStatus(`${action === "archive" ? "Archiving" : action === "reprocess" ? "Reprocessing" : "Removing"} ${ids.length} upload(s)...`);
 
   try {
     await ensureSignedIn();
-    if (!(await applyPermissionState("[data-interpret-id], [data-archive-id], [data-remove-id], #archive-selected-uploads, #remove-selected-uploads", "uploads:interpret"))) {
+    if (!(await applyPermissionState("[data-interpret-id], [data-archive-id], [data-remove-id], #reprocess-selected-uploads, #archive-selected-uploads, #remove-selected-uploads", "uploads:interpret"))) {
       throw new Error("Your role does not allow upload actions.");
     }
-    const fn = action === "archive" ? archiveUpload : removeUpload;
-    await Promise.all(ids.map((id) => fn(id)));
+    if (action === "reprocess") {
+      for (let index = 0; index < ids.length; index += 1) {
+        setBulkStatus(`Reprocessing ${index + 1}/${ids.length}...`);
+        await interpretUpload(ids[index]);
+      }
+    } else {
+      const fn = action === "archive" ? archiveUpload : removeUpload;
+      await Promise.all(ids.map((id) => fn(id)));
+    }
     ids.forEach((id) => selectedUploadIds.delete(id));
-    setBulkStatus(`${ids.length} upload(s) ${action === "archive" ? "archived" : "removed"}.`, "success");
+    setBulkStatus(`${ids.length} upload(s) ${action === "archive" ? "archived" : action === "reprocess" ? "reprocessed" : "removed"}.`, "success");
     await loadHistory();
   } catch (error) {
     setBulkStatus(error.message, "error");
@@ -321,6 +404,7 @@ selectAllUploads?.addEventListener("change", () => {
   updateBulkControls();
 });
 archiveSelectedButton?.addEventListener("click", () => runBulkUploadAction("archive"));
+reprocessSelectedButton?.addEventListener("click", () => runBulkUploadAction("reprocess"));
 removeSelectedButton?.addEventListener("click", () => runBulkUploadAction("remove"));
 closeUploadDrawerButton?.addEventListener("click", () => uploadDrawer?.classList.add("hidden"));
 historyBody.addEventListener("change", (event) => {

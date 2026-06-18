@@ -565,13 +565,147 @@ function buildKeys(row: Record<string, unknown>) {
   };
 }
 
-function normalizeRow(row: Record<string, unknown>, rawUploadId: string, jobId: string, vendorId: string | null = null) {
+function clampConfidence(value: unknown, fallback = 0.65) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return fallback;
+  return Math.max(0, Math.min(1, number));
+}
+
+function hasRateAmount(row: Record<string, unknown>) {
+  return [
+    row.mx_linehaul,
+    row.us_linehaul,
+    row.fsc,
+    row.border_crossing_fee,
+    row.flat_rate,
+    row.all_in_rate
+  ].some((value) => cleanRateValue(value) !== null);
+}
+
+function rowAuditFlags(row: Record<string, unknown>) {
+  const flags: string[] = [];
+  const requiredTextFields = [
+    ["vendor_domain", "missing_vendor"],
+    ["rfx_id", "missing_rfx"],
+    ["quote_date", "missing_quote_date"],
+    ["origin", "missing_origin"],
+    ["destination", "missing_destination"],
+    ["equipment", "missing_equipment"],
+    ["trailer", "missing_trailer"],
+    ["operation", "missing_operation"],
+    ["service", "missing_service"],
+    ["currency", "missing_currency"]
+  ];
+
+  for (const [field, flag] of requiredTextFields) {
+    if (!cleanText(row[field])) flags.push(flag);
+  }
+
+  if (!hasRateAmount(row)) flags.push("missing_rate");
+  if (!cleanText(row.weekly_capacity)) flags.push("missing_capacity");
+  if (!cleanText(row.origin_zip_prefix) && !cleanText(row.origin_market) && !cleanText(row.origin_country)) flags.push("origin_not_matched");
+  if (!cleanText(row.destination_zip_prefix) && !cleanText(row.destination_market) && !cleanText(row.destination_country)) flags.push("destination_not_matched");
+  if (clampConfidence(row.confidence, 0) < 0.7) flags.push("low_row_confidence");
+  if (Array.isArray(row.extraction_warnings) && row.extraction_warnings.length) flags.push("has_extraction_warnings");
+
+  return [...new Set(flags)];
+}
+
+const DERIVED_ROW_AUDIT_FLAGS = new Set([
+  "missing_vendor",
+  "missing_rfx",
+  "missing_quote_date",
+  "missing_origin",
+  "missing_destination",
+  "missing_equipment",
+  "missing_trailer",
+  "missing_operation",
+  "missing_service",
+  "missing_currency",
+  "missing_rate",
+  "missing_capacity",
+  "origin_not_matched",
+  "destination_not_matched",
+  "low_row_confidence",
+  "has_extraction_warnings"
+]);
+
+function fieldConfidence(row: Record<string, unknown>) {
+  const base = clampConfidence(row.confidence);
+  const present = (value: unknown, required = true) => cleanText(value) || (!required && value !== null && value !== undefined);
+  const ratePresent = (value: unknown) => cleanRateValue(value) !== null;
+  const valueScore = (value: unknown, required = true) => present(value, required) ? base : required ? 0.25 : 0.9;
+  const rateScore = (value: unknown, required = false) => ratePresent(value) ? base : required ? 0.25 : 0.9;
+  const splitRateProvided = ["mx_linehaul", "us_linehaul", "fsc", "border_crossing_fee"].some((field) => ratePresent(row[field]));
+
+  return {
+    vendor_domain: valueScore(row.vendor_domain),
+    rfx_id: valueScore(row.rfx_id),
+    quote_date: valueScore(row.quote_date),
+    origin: valueScore(row.origin),
+    destination: valueScore(row.destination),
+    equipment: valueScore(row.equipment),
+    trailer: valueScore(row.trailer),
+    hazmat: base,
+    temperature_controlled: base,
+    config: valueScore(row.config, false),
+    operation: valueScore(row.operation),
+    service: valueScore(row.service),
+    mx_border_crossing_point: valueScore(row.mx_border_crossing_point, false),
+    us_border_crossing_point: valueScore(row.us_border_crossing_point, false),
+    mx_linehaul: rateScore(row.mx_linehaul, splitRateProvided),
+    us_linehaul: rateScore(row.us_linehaul, splitRateProvided),
+    fsc: rateScore(row.fsc, false),
+    border_crossing_fee: rateScore(row.border_crossing_fee, false),
+    all_in_rate: rateScore(row.all_in_rate, !splitRateProvided),
+    currency: valueScore(row.currency),
+    weekly_capacity: valueScore(row.weekly_capacity, false)
+  };
+}
+
+function sourceEvidence(rawUpload: Record<string, unknown>, row: Record<string, unknown>) {
+  const warnings = Array.isArray(row.extraction_warnings) ? row.extraction_warnings.map(String) : [];
+  return {
+    source_filename: rawUpload.original_filename || null,
+    document_type: rawUpload.document_type || null,
+    storage_path: rawUpload.storage_path || null,
+    row_id: cleanText(row.row_id),
+    lane: [row.origin, row.destination].filter(Boolean).join(" -> ") || null,
+    service: cleanText(row.service),
+    operation: cleanText(row.operation),
+    all_in_rate: cleanRateValue(row.all_in_rate),
+    split_rate_present: ["mx_linehaul", "us_linehaul", "fsc", "border_crossing_fee"].some((field) => cleanRateValue(row[field]) !== null),
+    notes: cleanText(row.notes),
+    warnings
+  };
+}
+
+function addRowAudit(row: Record<string, unknown>, rawUpload: Record<string, unknown>) {
+  const existingFlags = Array.isArray(row.audit_flags)
+    ? row.audit_flags.map(String).filter((flag) => !DERIVED_ROW_AUDIT_FLAGS.has(flag))
+    : [];
+  const flags = [...new Set([...existingFlags, ...rowAuditFlags(row)])];
+  return {
+    ...row,
+    audit_flags: flags,
+    field_confidence: {
+      ...(typeof row.field_confidence === "object" && row.field_confidence ? row.field_confidence : {}),
+      ...fieldConfidence(row)
+    },
+    source_evidence: {
+      ...(typeof row.source_evidence === "object" && row.source_evidence ? row.source_evidence : {}),
+      ...sourceEvidence(rawUpload, row)
+    }
+  };
+}
+
+function normalizeRow(row: Record<string, unknown>, rawUpload: Record<string, unknown>, jobId: string, vendorId: string | null = null) {
   const interpreted = normalizeRatewareAliases(row);
   const hazmat = cleanBoolean(interpreted.hazmat);
   const temperatureControlled = cleanBoolean(interpreted.temperature_controlled);
   const trailer = trailerWithFlags(cleanText(interpreted.trailer), hazmat, temperatureControlled);
   const base = {
-    raw_upload_id: rawUploadId,
+    raw_upload_id: rawUpload.id,
     interpretation_job_id: jobId,
     vendor_id: vendorId,
     status: "pending_review",
@@ -609,7 +743,7 @@ function normalizeRow(row: Record<string, unknown>, rawUploadId: string, jobId: 
     extracted_payload: interpreted
   };
 
-  return { ...base, ...buildKeys(base) };
+  return addRowAudit({ ...base, ...buildKeys(base) }, rawUpload);
 }
 
 function buildCatalogIndex(items: Record<string, unknown>[]) {
@@ -1344,6 +1478,14 @@ function applyKnownTableRepair(rawUpload: Record<string, string>, interpretation
   return interpretation;
 }
 
+function interpretationRows(interpretation: Record<string, unknown>) {
+  return Array.isArray(interpretation.rows) ? interpretation.rows as Record<string, unknown>[] : [];
+}
+
+function attachInterpretationAuditMeta(interpretation: Record<string, unknown>, meta: Record<string, unknown>) {
+  return Object.assign(interpretation, { __audit: meta });
+}
+
 async function interpretWithModel(rawUpload: Record<string, string>, file: Blob) {
   const systemPrompt = [
     "You are Rateware AI, a senior freight procurement analyst.",
@@ -1397,8 +1539,19 @@ async function interpretWithModel(rawUpload: Record<string, string>, file: Blob)
     userContent.push({ type: "input_file", file_id: openAIFile.id });
   }
 
-  const firstInterpretation = applyKnownTableRepair(rawUpload, await requestRatewareInterpretation(systemPrompt, userContent));
-  if (!shouldAuditSparseInterpretation(rawUpload, firstInterpretation)) return firstInterpretation;
+  const firstRawInterpretation = await requestRatewareInterpretation(systemPrompt, userContent);
+  const firstRawRows = interpretationRows(firstRawInterpretation);
+  const firstInterpretation = applyKnownTableRepair(rawUpload, firstRawInterpretation);
+  const firstRepairUsed = firstInterpretation !== firstRawInterpretation;
+  if (!shouldAuditSparseInterpretation(rawUpload, firstInterpretation)) {
+    return attachInterpretationAuditMeta(firstInterpretation, {
+      first_pass_rows: firstRawRows.length,
+      audit_pass_used: false,
+      audit_pass_rows: null,
+      final_rows: interpretationRows(firstInterpretation).length,
+      deterministic_repair_used: firstRepairUsed
+    });
+  }
 
   const auditPrompt = [
     systemPrompt,
@@ -1413,7 +1566,7 @@ async function interpretWithModel(rawUpload: Record<string, string>, file: Blob)
     "If a cell is X, N/A, blank, Tier 1/2/3, or Please Estimate, ignore only that cell."
   ].join("\n");
 
-  const firstRows = Array.isArray(firstInterpretation.rows) ? firstInterpretation.rows : [];
+  const firstRows = interpretationRows(firstInterpretation);
   const auditContent = [
     ...userContent,
     {
@@ -1422,9 +1575,78 @@ async function interpretWithModel(rawUpload: Record<string, string>, file: Blob)
     }
   ];
 
-  const auditedInterpretation = applyKnownTableRepair(rawUpload, await requestRatewareInterpretation(auditPrompt, auditContent));
-  const auditedRows = Array.isArray(auditedInterpretation.rows) ? auditedInterpretation.rows : [];
-  return auditedRows.length >= firstRows.length ? auditedInterpretation : firstInterpretation;
+  const auditedRawInterpretation = await requestRatewareInterpretation(auditPrompt, auditContent);
+  const auditedInterpretation = applyKnownTableRepair(rawUpload, auditedRawInterpretation);
+  const auditedRepairUsed = auditedInterpretation !== auditedRawInterpretation;
+  const auditedRows = interpretationRows(auditedInterpretation);
+  const finalInterpretation = auditedRows.length >= firstRows.length ? auditedInterpretation : firstInterpretation;
+  return attachInterpretationAuditMeta(finalInterpretation, {
+    first_pass_rows: firstRawRows.length,
+    audit_pass_used: true,
+    audit_pass_rows: auditedRows.length,
+    final_rows: interpretationRows(finalInterpretation).length,
+    deterministic_repair_used: firstRepairUsed || auditedRepairUsed,
+    audit_kept_first_pass: auditedRows.length < firstRows.length
+  });
+}
+
+function buildUploadAudit(rawUpload: Record<string, unknown>, interpretation: Record<string, unknown>, rows: Record<string, unknown>[]) {
+  const meta = typeof interpretation.__audit === "object" && interpretation.__audit ? interpretation.__audit as Record<string, unknown> : {};
+  const rowFlags = rows.flatMap((row) => Array.isArray(row.audit_flags) ? row.audit_flags.map(String) : []);
+  const rowWarnings = rows.flatMap((row) => Array.isArray(row.extraction_warnings) ? row.extraction_warnings.map(String) : []);
+  const warnings = [...new Set([
+    ...rowWarnings,
+    ...rowFlags.map((flag) => `Row audit: ${flag}`),
+    Number(meta.audit_pass_rows || 0) > Number(meta.first_pass_rows || 0) ? "Completeness audit added rows after first pass." : null,
+    meta.audit_kept_first_pass ? "Audit pass returned fewer rows than the first pass, so the first pass was preserved." : null,
+    meta.deterministic_repair_used ? "Deterministic table repair was applied." : null,
+    ["pdf", "image"].includes(String(rawUpload.document_type || "")) && rows.length > 0 && rows.length <= 3
+      ? "Sparse PDF/image result: compare against the source before approving."
+      : null
+  ].filter(Boolean).map(String))];
+
+  const criticalFlags = new Set([
+    "missing_vendor",
+    "missing_rfx",
+    "missing_origin",
+    "missing_destination",
+    "missing_equipment",
+    "missing_trailer",
+    "missing_operation",
+    "missing_service",
+    "missing_currency",
+    "missing_rate"
+  ]);
+  const criticalIssues = rowFlags.filter((flag) => criticalFlags.has(flag)).length;
+  const sparseRisk = ["pdf", "image"].includes(String(rawUpload.document_type || "")) && rows.length > 0 && rows.length <= 3;
+  const status = rows.length === 0
+    ? "failed"
+    : meta.deterministic_repair_used
+      ? "repaired"
+      : criticalIssues || sparseRisk || warnings.length
+        ? "needs_review"
+        : "ok";
+
+  return {
+    status,
+    first_pass_rows: Number(meta.first_pass_rows || rows.length),
+    audit_pass_used: Boolean(meta.audit_pass_used),
+    audit_pass_rows: meta.audit_pass_rows ?? null,
+    deterministic_repair_used: Boolean(meta.deterministic_repair_used),
+    expected_rate_rows: Math.max(rows.length, Number(meta.final_rows || 0), Number(meta.audit_pass_rows || 0)),
+    interpreted_rate_rows: rows.length,
+    sparse_table_risk: sparseRisk,
+    critical_issues: criticalIssues,
+    warning_count: warnings.length,
+    row_quality: {
+      total: rows.length,
+      needs_review: rows.filter((row) => Array.isArray(row.audit_flags) && row.audit_flags.length).length,
+      missing_rate: rowFlags.filter((flag) => flag === "missing_rate").length,
+      missing_location_match: rowFlags.filter((flag) => flag === "origin_not_matched" || flag === "destination_not_matched").length,
+      low_confidence: rowFlags.filter((flag) => flag === "low_row_confidence").length
+    },
+    warnings: warnings.slice(0, 40)
+  };
 }
 
 Deno.serve(async (request) => {
@@ -1486,13 +1708,15 @@ Deno.serve(async (request) => {
     });
     const normalizedRows = normalizeWithCatalog(interpretation.rows
       .filter((row: Record<string, unknown>) => isCarrierRateRow(row))
-      .map((row: Record<string, unknown>) => normalizeRow(row, raw_upload_id, job.data.id, vendorId)), catalogItems, laneMileage, locations, fuelRegions, fscTrend);
+      .map((row: Record<string, unknown>) => normalizeRow(row, rawUpload, job.data.id, vendorId)), catalogItems, laneMileage, locations, fuelRegions, fscTrend)
+      .map((row) => addRowAudit(row, rawUpload));
     const rows = mergeConnectedD2DAllInRows(normalizedRows, [
       rawUpload.original_filename,
       rawUpload.vendor_hint,
       rawUpload.rfx_hint,
       typeof interpretation.summary === "object" && interpretation.summary ? (interpretation.summary as Record<string, unknown>).document_notes : null
-    ].filter(Boolean).join(" "));
+    ].filter(Boolean).join(" ")).map((row) => addRowAudit(row, rawUpload));
+    const uploadAudit = buildUploadAudit(rawUpload, interpretation, rows);
 
     if (rows.length) {
       const archivePrevious = await supabase
@@ -1517,10 +1741,18 @@ Deno.serve(async (request) => {
       vendor_id: vendorId,
       vendor_match_source: rawUpload.vendor_id ? "manual" : vendorMatch?.vendor?.id ? "auto" : rawUpload.vendor_match_source || null,
       status: "staged",
-      interpreted_at: new Date().toISOString()
+      interpreted_at: new Date().toISOString(),
+      last_reprocessed_at: new Date().toISOString(),
+      reprocess_count: Number(rawUpload.reprocess_count || 0) + 1,
+      interpretation_audit: uploadAudit,
+      audit_status: uploadAudit.status,
+      audit_warnings: uploadAudit.warnings,
+      expected_rate_rows: uploadAudit.expected_rate_rows,
+      interpreted_rate_rows: rows.length,
+      error_message: null
     }).eq("id", raw_upload_id);
 
-    return jsonResponse({ job_id: job.data.id, staged_rows: rows.length });
+    return jsonResponse({ job_id: job.data.id, staged_rows: rows.length, audit: uploadAudit });
   } catch (error) {
     await supabase.from("interpretation_jobs").update({
       status: "failed",
@@ -1530,7 +1762,15 @@ Deno.serve(async (request) => {
 
     await supabase.from("raw_uploads").update({
       status: "failed",
-      error_message: error.message
+      error_message: error.message,
+      audit_status: "failed",
+      audit_warnings: [String(error.message || "Interpretation failed.")],
+      interpretation_audit: {
+        status: "failed",
+        warnings: [String(error.message || "Interpretation failed.")],
+        interpreted_rate_rows: 0
+      },
+      interpreted_rate_rows: 0
     }).eq("id", raw_upload_id);
 
     return jsonResponse({ error: error.message }, 500);

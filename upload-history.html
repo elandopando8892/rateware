@@ -56,13 +56,14 @@
                 <strong id="upload-metric-failed">0</strong>
               </article>
               <article>
-                <span>Archived</span>
-                <strong id="upload-metric-archived">0</strong>
+                <span>Needs audit</span>
+                <strong id="upload-metric-needs-audit">0</strong>
               </article>
             </div>
             <div class="review-filter-row" aria-label="Upload quick filters">
               <button class="review-filter is-active" type="button" data-upload-filter="all">All visible</button>
               <button class="review-filter" type="button" data-upload-filter="needs-interpretation">Needs interpretation</button>
+              <button class="review-filter" type="button" data-upload-filter="needs-audit">Audit needed</button>
               <button class="review-filter" type="button" data-upload-filter="failed">Failed</button>
               <button class="review-filter" type="button" data-upload-filter="pdf">PDF</button>
               <button class="review-filter" type="button" data-upload-filter="spreadsheet">Spreadsheets</button>
@@ -86,6 +87,7 @@
 
             <div class="bulk-action-bar" aria-live="polite">
               <span id="upload-selection-count">0 selected</span>
+              <button id="reprocess-selected-uploads" type="button" class="small-button" disabled>Reprocess selected</button>
               <button id="archive-selected-uploads" type="button" class="secondary small-button" disabled>Archive selected</button>
               <button id="remove-selected-uploads" type="button" class="danger small-button" disabled>Remove selected</button>
               <span id="upload-bulk-status" class="row-save-status"></span>
@@ -104,13 +106,14 @@
                     <th>Vendor</th>
                     <th>RFx</th>
                     <th>Status</th>
+                    <th>Audit</th>
                     <th>Storage</th>
                     <th>Action</th>
                   </tr>
                 </thead>
                 <tbody id="history-body">
                   <tr>
-                    <td colspan="9">Loading uploads...</td>
+                    <td colspan="10">Loading uploads...</td>
                   </tr>
                 </tbody>
               </table>
