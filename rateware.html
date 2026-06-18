@@ -108,7 +108,7 @@
                     <th>Currency</th>
                     <th>Capacity</th>
                     <th>Border</th>
-                    <th>Source</th>
+                    <th>Actions</th>
                   </tr>
                 </thead>
                 <tbody id="rateware-body">
@@ -119,6 +119,16 @@
               </table>
             </div>
           </section>
+          <aside id="rateware-drawer" class="profile-drawer hidden" aria-live="polite">
+            <div class="drawer-header">
+              <div>
+                <p class="eyebrow">Approved rate</p>
+                <h2 id="rateware-drawer-title">Rate detail</h2>
+              </div>
+              <button id="close-rateware-drawer" class="secondary small-button" type="button">Close</button>
+            </div>
+            <div id="rateware-detail" class="rateware-detail"></div>
+          </aside>
         </main>
       </div>
     </div>

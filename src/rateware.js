@@ -17,6 +17,10 @@ const ratewareMetricVendors = document.querySelector("#rateware-metric-vendors")
 const ratewareMetricMarkets = document.querySelector("#rateware-metric-markets");
 const ratewareMetricAverage = document.querySelector("#rateware-metric-average");
 const quickFilterButtons = document.querySelectorAll("[data-rateware-filter]");
+const drawer = document.querySelector("#rateware-drawer");
+const closeDrawerButton = document.querySelector("#close-rateware-drawer");
+const drawerTitle = document.querySelector("#rateware-drawer-title");
+const ratewareDetail = document.querySelector("#rateware-detail");
 
 let currentRows = [];
 let loadedRows = [];
@@ -66,6 +70,12 @@ function compactLocation(row, prefix) {
 
 function borderValue(row) {
   return [row.mx_border_crossing_point, row.us_border_crossing_point].filter(Boolean).join(" / ") || "-";
+}
+
+function laneLabel(row) {
+  const origin = row.normalized_origin || row.origin || "-";
+  const destination = row.normalized_destination || row.destination || "-";
+  return `${origin} -> ${destination}`;
 }
 
 function hasSplitRate(row) {
@@ -119,6 +129,86 @@ function populateFilter(select, rows, field) {
   if (values.includes(selected)) select.value = selected;
 }
 
+function detailMetric(label, value, tone = "") {
+  return `
+    <article class="${escapeHtml(tone)}">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(value || "-")}</strong>
+    </article>
+  `;
+}
+
+function detailLine(label, value) {
+  return `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value || "-")}</dd></div>`;
+}
+
+function rateComponent(label, value) {
+  const hasValue = hasNumericValue(value);
+  return `
+    <div class="${hasValue ? "has-value" : ""}">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(hasValue ? moneyValue(value) : "-")}</strong>
+    </div>
+  `;
+}
+
+function openRatewareDrawer(id) {
+  const row = currentRows.find((item) => item.id === id) || loadedRows.find((item) => item.id === id);
+  if (!row) return;
+
+  const equipment = [row.equipment, row.trailer, row.hazmat ? "Hazmat" : "", row.temperature_controlled ? "Temp controlled" : "", row.config]
+    .filter(Boolean)
+    .join(" / ");
+  drawerTitle.textContent = laneLabel(row);
+  ratewareDetail.innerHTML = `
+    <section class="drawer-brief">
+      <div>
+        <p class="eyebrow">Commercial summary</p>
+        <h3>${escapeHtml(laneLabel(row))}</h3>
+        <span>${escapeHtml([row.vendors?.vendor_name || row.vendor_domain, row.rfx_id, dateValue(row.quote_date)].filter(Boolean).join(" | "))}</span>
+      </div>
+      <div class="drawer-brief-metrics">
+        ${detailMetric("All-in", moneyValue(row.all_in_rate), hasNumericValue(row.all_in_rate) ? "strong" : "weak")}
+        ${detailMetric("Currency", row.currency)}
+        ${detailMetric("Capacity", row.weekly_capacity)}
+        ${detailMetric("Rate mode", rateModeLabel(row))}
+      </div>
+      <div class="rate-component-grid">
+        ${rateComponent("MX linehaul", row.mx_linehaul)}
+        ${rateComponent("US linehaul", row.us_linehaul)}
+        ${rateComponent("FSC", row.fsc)}
+        ${rateComponent("Border fee", row.border_crossing_fee)}
+      </div>
+    </section>
+    <section class="rateware-detail-section">
+      <h3>Lane normalization</h3>
+      <dl>
+        ${detailLine("Origin market", row.origin_market)}
+        ${detailLine("Origin ZIP/state", [row.origin_zip_prefix, row.origin_state].filter(Boolean).join(" / "))}
+        ${detailLine("Destination market", row.destination_market)}
+        ${detailLine("Destination ZIP/state", [row.destination_zip_prefix, row.destination_state].filter(Boolean).join(" / "))}
+        ${detailLine("Operation", row.operation)}
+        ${detailLine("Service", row.service)}
+        ${detailLine("Equipment", equipment)}
+        ${detailLine("Border", borderValue(row))}
+      </dl>
+    </section>
+    <section class="rateware-detail-section">
+      <h3>Source context</h3>
+      <dl>
+        ${detailLine("Vendor domain", row.vendor_domain || row.vendors?.domain)}
+        ${detailLine("RFx", row.rfx_id)}
+        ${detailLine("Quote date", dateValue(row.quote_date))}
+        ${detailLine("Status", row.status)}
+      </dl>
+      <div class="action-row">
+        <a class="link-button" href="./staging-review.html">Open staging review</a>
+      </div>
+    </section>
+  `;
+  drawer.classList.remove("hidden");
+}
+
 function renderRows(rows) {
   currentRows = rows;
   updateQuickFilters();
@@ -155,7 +245,8 @@ function renderRows(rows) {
       <td>${escapeHtml(row.currency || "-")}</td>
       <td>${escapeHtml(row.weekly_capacity || "-")}</td>
       <td>${escapeHtml(borderValue(row))}</td>
-      <td>
+      <td class="history-actions">
+        <button class="small-button secondary" type="button" data-rateware-detail="${escapeHtml(row.id)}">Details</button>
         <a class="link-button" href="./staging-review.html">Staging row</a>
       </td>
     </tr>
@@ -355,3 +446,9 @@ body.addEventListener("change", (event) => {
   setActionStatus("");
   updateBulkControls();
 });
+body.addEventListener("click", (event) => {
+  const detailButton = event.target.closest("[data-rateware-detail]");
+  if (!detailButton) return;
+  openRatewareDrawer(detailButton.dataset.ratewareDetail);
+});
+closeDrawerButton?.addEventListener("click", () => drawer.classList.add("hidden"));

@@ -1481,6 +1481,47 @@ tbody tr:hover {
   min-width: 190px;
 }
 
+.rateware-detail {
+  display: grid;
+  gap: 14px;
+}
+
+.rateware-detail-section {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #ffffff;
+  padding: 12px;
+}
+
+.rateware-detail-section h3 {
+  margin: 0 0 8px;
+  font-size: 0.9rem;
+}
+
+.rateware-detail-section dl {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr);
+  gap: 7px 10px;
+  margin: 0 0 10px;
+}
+
+.rateware-detail-section dl div {
+  display: contents;
+}
+
+.rateware-detail-section dt {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 780;
+}
+
+.rateware-detail-section dd {
+  margin: 0;
+  color: var(--text);
+  font-size: 0.78rem;
+  overflow-wrap: anywhere;
+}
+
 .vendor-review-cell {
   min-width: 180px;
 }
