@@ -84,6 +84,7 @@
           <section class="vendor-tabs wide-section" aria-label="Vendor workflows">
             <button class="vendor-tab is-active" type="button" data-vendor-tab="sourcing">Sourcing Base</button>
             <button class="vendor-tab" type="button" data-vendor-tab="procurement">Procurement Base</button>
+            <button class="vendor-tab" type="button" data-vendor-tab="archived">Archived</button>
             <button class="vendor-tab" type="button" data-vendor-tab="intelligence">Intelligence</button>
             <button class="vendor-tab" type="button" data-vendor-tab="wizard">Wizard</button>
             <button class="vendor-tab" type="button" data-vendor-tab="create">Quick Create</button>
@@ -287,6 +288,28 @@
               <p class="eyebrow">Import</p>
               <h2>CSV / XLSX / Google Sheet</h2>
             </div>
+            <div id="vendor-import-guide" class="import-wizard-steps" aria-label="Vendor import workflow">
+              <article class="is-active" data-import-step="source">
+                <span>1</span>
+                <strong>Connect source</strong>
+                <small>Paste Google Sheet or choose XLSX/CSV</small>
+              </article>
+              <article data-import-step="columns">
+                <span>2</span>
+                <strong>Map columns</strong>
+                <small>Name, domain, email, tags, coverage</small>
+              </article>
+              <article data-import-step="review">
+                <span>3</span>
+                <strong>Review rows</strong>
+                <small>Duplicates and missing contact</small>
+              </article>
+              <article data-import-step="sourcing">
+                <span>4</span>
+                <strong>Sourcing Base</strong>
+                <small>Curate before procurement</small>
+              </article>
+            </div>
             <div class="vendor-form">
               <label class="wide-field">
                 Google Sheet URL
@@ -413,7 +436,6 @@
               <button class="quick-filter" type="button" data-quick-filter="cross-border">Cross-border</button>
               <button class="quick-filter" type="button" data-quick-filter="high-confidence">High confidence</button>
               <button class="quick-filter" type="button" data-quick-filter="procurement-ready">Procurement ready</button>
-              <button class="quick-filter" type="button" data-quick-filter="archived">Archived</button>
               <button class="quick-filter" type="button" data-quick-filter="duplicates">Duplicates</button>
             </div>
             <div class="filter-bar" aria-label="Vendor filters">
@@ -454,8 +476,10 @@
               </div>
             </div>
             <div id="bulk-toolbar" class="bulk-toolbar hidden">
-              <strong id="bulk-selection-count">0 selected</strong>
-              <button id="clear-vendor-selection-button" class="secondary" type="button">Clear</button>
+              <div class="bulk-toolbar-summary">
+                <strong id="bulk-selection-count">0 selected</strong>
+                <span>Apply one action to selected vendors.</span>
+              </div>
               <label>
                 Bulk status
                 <select id="bulk-status">
@@ -479,10 +503,13 @@
                 Add tags
                 <input id="bulk-tags" placeholder="preferred, mx, ftl" />
               </label>
-              <button id="bulk-update-button" type="button">Save selected</button>
-              <button id="bulk-procurement-button" type="button">Send to Procurement</button>
-              <button id="bulk-archive-vendors-button" class="secondary" type="button">Archive</button>
-              <button id="bulk-remove-vendors-button" class="danger" type="button">Remove</button>
+              <div class="bulk-action-group">
+                <button id="bulk-update-button" type="button">Save selected</button>
+                <button id="bulk-procurement-button" type="button">Send to Procurement</button>
+                <button id="bulk-archive-vendors-button" class="secondary" type="button">Archive</button>
+                <button id="clear-vendor-selection-button" class="secondary" type="button">Clear</button>
+                <button id="bulk-remove-vendors-button" class="danger" type="button">Remove</button>
+              </div>
               <p id="bulk-status-message" class="status-message" role="status"></p>
             </div>
 
@@ -626,7 +653,7 @@
               </label>
               <div class="action-row">
                 <button id="drawer-save-button" type="submit">Save changes</button>
-                <button id="drawer-archive-button" class="secondary" type="button">Mark inactive</button>
+                <button id="drawer-archive-button" class="secondary" type="button">Archive vendor</button>
                 <p id="drawer-edit-status-message" class="status-message" role="status"></p>
               </div>
             </form>

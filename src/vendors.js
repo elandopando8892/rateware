@@ -108,6 +108,22 @@ let vendorTotalCount = 0;
 let vendorIntelligenceRows = [];
 let currentVendorIntelligenceRows = [];
 let selectedVendorIntelligenceIds = new Set();
+const VENDOR_BASE_TABS = ["sourcing", "procurement", "archived"];
+
+function isVendorBaseTab(tabName) {
+  return VENDOR_BASE_TABS.includes(tabName);
+}
+
+function baseStageLabel(stage = activeBaseStage) {
+  if (stage === "procurement") return "Procurement Base";
+  if (stage === "archived") return "Archived";
+  return "Sourcing Base";
+}
+
+function vendorTableColumnCount() {
+  if (activeBaseStage === "procurement" || activeBaseStage === "archived") return 8;
+  return 10;
+}
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -120,6 +136,12 @@ function escapeHtml(value) {
 function setStatus(element, message, tone = "neutral") {
   element.textContent = message;
   element.dataset.tone = tone;
+}
+
+function setVendorImportStep(step) {
+  document.querySelectorAll("[data-import-step]").forEach((item) => {
+    item.classList.toggle("is-active", item.dataset.importStep === step);
+  });
 }
 
 function normalizeKey(value) {
@@ -230,19 +252,20 @@ function hasMissingContact(row) {
 
 function activateVendorTab(tabName) {
   activeVendorTab = tabName;
-  if (["sourcing", "procurement"].includes(tabName)) {
+  if (isVendorBaseTab(tabName)) {
     activeBaseStage = tabName;
     vendorPageOffset = 0;
   }
   vendorTabs.forEach((button) => button.classList.toggle("is-active", button.dataset.vendorTab === tabName));
   tabPanels.forEach((panel) => {
-    const shouldShow = panel.dataset.tabPanel === tabName || (["sourcing", "procurement"].includes(tabName) && panel.dataset.tabPanel === "sourcing");
+    const shouldShow = panel.dataset.tabPanel === tabName || (isVendorBaseTab(tabName) && panel.dataset.tabPanel === "sourcing");
     const isEmptyImportPreview = panel.id === "import-preview-panel" && !pendingImportRows.length;
     panel.classList.toggle("hidden", !shouldShow || isEmptyImportPreview);
   });
   if (tabName === "duplicates") renderDuplicateReview();
   if (tabName === "intelligence" && !vendorIntelligenceRows.length) loadVendorIntelligence();
-  if (["sourcing", "procurement"].includes(tabName)) loadVendors();
+  if (tabName === "import" && !pendingImportRows.length) setVendorImportStep("source");
+  if (isVendorBaseTab(tabName)) loadVendors();
 }
 
 function updateBulkState() {
@@ -251,7 +274,22 @@ function updateBulkState() {
   bulkToolbar.classList.toggle("hidden", count === 0);
   bulkSelectionCount.textContent = `${count} selected (${visibleSelectedCount} visible)`;
   if (bulkProcurementButton) {
-    bulkProcurementButton.textContent = activeBaseStage === "procurement" ? "Return to Sourcing" : "Send to Procurement";
+    bulkProcurementButton.textContent =
+      activeBaseStage === "archived"
+        ? "Restore to Sourcing"
+        : activeBaseStage === "procurement"
+          ? "Return to Sourcing"
+          : "Send to Procurement";
+    bulkProcurementButton.disabled = count === 0;
+  }
+  if (bulkArchiveVendorsButton) {
+    bulkArchiveVendorsButton.disabled = count === 0 || activeBaseStage === "archived";
+  }
+  if (bulkRemoveVendorsButton) {
+    bulkRemoveVendorsButton.disabled = count === 0;
+  }
+  if (bulkButton) {
+    bulkButton.disabled = count === 0;
   }
 }
 
@@ -433,17 +471,81 @@ function duplicateSignals(row, rows = currentVendors) {
 function renderTags(tags) {
   const values = splitTags(tags);
   if (!values.length) return '<span class="muted-text">No tags</span>';
-  return values.map((tag) => `<span class="tag-chip">${escapeHtml(tag)}</span>`).join("");
+  const visible = values.slice(0, 6);
+  const hidden = values.length - visible.length;
+  return `${visible.map((tag) => `<span class="tag-chip">${escapeHtml(tag)}</span>`).join("")}${hidden > 0 ? `<span class="tag-chip muted">+${hidden}</span>` : ""}`;
 }
 
 function renderCompleteness(row) {
   const readiness = vendorReadiness(row);
   return `
-    <div class="fit-stack">
-      <span class="score-pill ${readiness.tone}">${readiness.score}%</span>
-      <span class="fit-label">${escapeHtml(readiness.label)}</span>
+    <div class="vendor-health-stack">
+      <div class="fit-stack">
+        <span class="score-pill ${readiness.tone}">${readiness.score}%</span>
+        <span class="fit-label">${escapeHtml(readiness.label)}</span>
+      </div>
+      <div class="health-meter ${readiness.tone}" aria-hidden="true"><span style="width:${readiness.score}%"></span></div>
     </div>
   `;
+}
+
+function renderVendorIdentity(row) {
+  const duplicateCount = duplicateSignals(row, allVendors).length;
+  const meta = [
+    row.domain || "No domain",
+    row.primary_email || row.whatsapp_phone || "Missing contact",
+    row.coverage_notes ? "Coverage captured" : "No coverage"
+  ];
+  return `
+    <div class="vendor-identity-cell">
+      <button class="link-button vendor-profile-button" type="button" data-vendor-id="${escapeHtml(row.id)}">
+        ${escapeHtml(row.vendor_name || "Unnamed vendor")}
+      </button>
+      <div class="vendor-subline">${escapeHtml(meta.join(" | "))}</div>
+      <div class="vendor-row-flags">
+        ${duplicateCount ? `<span class="warning-pill">${escapeHtml(duplicateCount)} duplicate signal${duplicateCount === 1 ? "" : "s"}</span>` : ""}
+        ${hasMissingContact(row) ? '<span class="warning-pill">Missing contact</span>' : ""}
+        ${!row.coverage_notes ? '<span class="review-chip muted">No coverage</span>' : ""}
+      </div>
+    </div>
+  `;
+}
+
+function renderVendorContact(row) {
+  const parts = [
+    row.contact_name,
+    row.primary_email,
+    row.whatsapp_phone
+  ].filter(Boolean);
+  return `
+    <div class="vendor-contact-stack">
+      <strong>${escapeHtml(parts[0] || "Missing contact")}</strong>
+      <span>${escapeHtml(parts.slice(1).join(" | ") || row.primary_email || row.whatsapp_phone || "Add email or WhatsApp")}</span>
+    </div>
+  `;
+}
+
+function renderVendorCoverage(row) {
+  return `
+    <div class="vendor-coverage-cell">
+      <span>${escapeHtml(row.coverage_notes || "No coverage captured")}</span>
+      ${row.notes ? `<small>${escapeHtml(row.notes)}</small>` : ""}
+    </div>
+  `;
+}
+
+function renderVendorSourceCell(row) {
+  return `
+    <div class="vendor-source-cell">
+      <span class="status-pill">${escapeHtml(row.source ? String(row.source).replace(/_/g, " ") : "manual")}</span>
+      ${row.source_row_number ? `<small>row ${escapeHtml(row.source_row_number)}</small>` : ""}
+    </div>
+  `;
+}
+
+function renderBaseStagePill(row) {
+  const stage = row.base_stage || "sourcing";
+  return `<span class="status-pill ${stage === "archived" ? "muted" : ""}">${escapeHtml(baseStageLabel(stage))}</span>`;
 }
 
 function renderSignalChips(values, emptyLabel = "No signal") {
@@ -649,28 +751,25 @@ async function promoteSelectedIntelligenceVendors() {
 function renderVendorTableHeader() {
   const columns =
     activeBaseStage === "procurement"
-      ? ["Select", "Target carrier", "Contact", "Coverage", "Equipment", "Readiness", "Status", "Source"]
-      : ["Select", "Vendor", "Domain", "Contact", "Email", "Fit", "Tags", "Channel", "Base", "Status"];
+      ? ["Select", "Target carrier", "Contact", "Coverage", "Tags", "Health", "Status", "Source"]
+      : activeBaseStage === "archived"
+        ? ["Select", "Archived vendor", "Contact", "Coverage", "Tags", "Health", "Status", "Source"]
+        : ["Select", "Vendor", "Contact", "Coverage", "Health", "Tags", "Channel", "Base", "Status", "Source"];
   vendorsHeadRow.innerHTML = columns.map((column) => `<th>${escapeHtml(column)}</th>`).join("");
-  vendorBaseContext.textContent = activeBaseStage === "procurement" ? "Procurement Base" : "Sourcing Base";
+  vendorBaseContext.textContent = baseStageLabel();
 }
 
 function renderProcurementVendorRow(row) {
   return `
     <tr>
       <td><input class="vendor-select" type="checkbox" data-vendor-id="${escapeHtml(row.id)}" ${selectedVendorIds.has(row.id) ? "checked" : ""} /></td>
-      <td>
-        <button class="link-button vendor-profile-button" type="button" data-vendor-id="${escapeHtml(row.id)}">
-          ${escapeHtml(row.vendor_name)}
-        </button>
-        <div class="vendor-subline">${escapeHtml(row.domain || "No domain")}</div>
-      </td>
-      <td>${escapeHtml([row.contact_name, row.primary_email, row.whatsapp_phone].filter(Boolean).join(" | ") || "Missing contact")}</td>
-      <td>${escapeHtml(row.coverage_notes || "No coverage")}</td>
+      <td>${renderVendorIdentity(row)}</td>
+      <td>${renderVendorContact(row)}</td>
+      <td>${renderVendorCoverage(row)}</td>
       <td><div class="tag-list">${renderTags(row.tags)}</div></td>
       <td>${renderCompleteness(row)}</td>
       <td><span class="status-pill">${escapeHtml(row.status || "active")}</span></td>
-      <td>${escapeHtml([row.source || "manual", row.source_row_number ? `row ${row.source_row_number}` : ""].filter(Boolean).join(" | "))}</td>
+      <td>${renderVendorSourceCell(row)}</td>
     </tr>
   `;
 }
@@ -679,19 +778,30 @@ function renderSourcingVendorRow(row) {
   return `
     <tr>
       <td><input class="vendor-select" type="checkbox" data-vendor-id="${escapeHtml(row.id)}" ${selectedVendorIds.has(row.id) ? "checked" : ""} /></td>
-      <td>
-        <button class="link-button vendor-profile-button" type="button" data-vendor-id="${escapeHtml(row.id)}">
-          ${escapeHtml(row.vendor_name)}
-        </button>
-      </td>
-      <td>${escapeHtml(row.domain)}</td>
-      <td>${escapeHtml(row.contact_name)}</td>
-      <td>${escapeHtml(row.primary_email)}</td>
+      <td>${renderVendorIdentity(row)}</td>
+      <td>${renderVendorContact(row)}</td>
+      <td>${renderVendorCoverage(row)}</td>
       <td>${renderCompleteness(row)}</td>
       <td><div class="tag-list">${renderTags(row.tags)}</div></td>
       <td>${escapeHtml(row.preferred_channel)}</td>
-      <td><span class="status-pill">${escapeHtml(row.base_stage || "sourcing")}</span></td>
+      <td>${renderBaseStagePill(row)}</td>
       <td><span class="status-pill">${escapeHtml(row.status)}</span></td>
+      <td>${renderVendorSourceCell(row)}</td>
+    </tr>
+  `;
+}
+
+function renderArchivedVendorRow(row) {
+  return `
+    <tr class="archived-vendor-row">
+      <td><input class="vendor-select" type="checkbox" data-vendor-id="${escapeHtml(row.id)}" ${selectedVendorIds.has(row.id) ? "checked" : ""} /></td>
+      <td>${renderVendorIdentity(row)}</td>
+      <td>${renderVendorContact(row)}</td>
+      <td>${renderVendorCoverage(row)}</td>
+      <td><div class="tag-list">${renderTags(row.tags)}</div></td>
+      <td>${renderCompleteness(row)}</td>
+      <td>${renderBaseStagePill(row)}</td>
+      <td>${renderVendorSourceCell(row)}</td>
     </tr>
   `;
 }
@@ -722,13 +832,23 @@ function renderVendors(rows) {
     const emptyCopy =
       activeBaseStage === "procurement"
         ? ["No procurement targets yet", "Select carriers in Sourcing Base and send them to Procurement."]
-        : ["No vendors yet", "Add a vendor manually or import your carrier list."];
+        : activeBaseStage === "archived"
+          ? ["No archived vendors", "Archived carriers will appear here when you remove them from active sourcing."]
+          : ["No vendors yet", "Add a vendor manually or import your carrier list."];
     vendorsBody.innerHTML =
-      `<tr><td colspan="${activeBaseStage === "procurement" ? 8 : 10}"><div class="empty-state"><strong>${emptyCopy[0]}</strong><span>${emptyCopy[1]}</span></div></td></tr>`;
+      `<tr><td colspan="${vendorTableColumnCount()}"><div class="empty-state"><strong>${emptyCopy[0]}</strong><span>${emptyCopy[1]}</span></div></td></tr>`;
     return;
   }
 
-  vendorsBody.innerHTML = rows.map((row) => (activeBaseStage === "procurement" ? renderProcurementVendorRow(row) : renderSourcingVendorRow(row))).join("");
+  vendorsBody.innerHTML = rows
+    .map((row) =>
+      activeBaseStage === "procurement"
+        ? renderProcurementVendorRow(row)
+        : activeBaseStage === "archived"
+          ? renderArchivedVendorRow(row)
+          : renderSourcingVendorRow(row)
+    )
+    .join("");
 
 }
 
@@ -813,7 +933,8 @@ async function loadSegments() {
 }
 
 async function loadVendors() {
-  vendorsBody.innerHTML = '<tr><td colspan="10">Loading vendors...</td></tr>';
+  renderVendorTableHeader();
+  vendorsBody.innerHTML = `<tr><td colspan="${vendorTableColumnCount()}">Loading ${escapeHtml(baseStageLabel().toLowerCase())}...</td></tr>`;
   refreshButton.disabled = true;
   vendorPrevPageButton.disabled = true;
   vendorNextPageButton.disabled = true;
@@ -840,7 +961,7 @@ async function loadVendors() {
       renderVendors(rows);
     }
   } catch (error) {
-    vendorsBody.innerHTML = `<tr><td colspan="10">Could not load vendors. ${escapeHtml(error.message)}</td></tr>`;
+    vendorsBody.innerHTML = `<tr><td colspan="${vendorTableColumnCount()}">Could not load vendors. ${escapeHtml(error.message)}</td></tr>`;
     vendorTotalCount = 0;
   } finally {
     refreshButton.disabled = false;
@@ -878,6 +999,7 @@ function renderImportPreview() {
   const validRows = validImportRows();
   const duplicateCount = pendingImportRows.filter((row) => duplicateSignals(row).length).length;
   const incompleteCount = pendingImportRows.filter((row) => importIssues(row).some((issue) => !issue.includes("duplicate"))).length;
+  setVendorImportStep("review");
 
   importPreviewSummary.innerHTML = `
     <article><strong>${total}</strong><span>Total rows</span></article>
@@ -1035,8 +1157,12 @@ function renderEnrichmentSuggestions(vendor) {
     .join("");
 }
 
+function findVendorById(vendorId) {
+  return allVendors.find((row) => row.id === vendorId) || currentVendors.find((row) => row.id === vendorId);
+}
+
 function openVendorDrawer(vendorId) {
-  const vendor = allVendors.find((row) => row.id === vendorId) || currentVendors.find((row) => row.id === vendorId);
+  const vendor = findVendorById(vendorId);
   if (!vendor) return;
 
   activeDrawerVendorId = vendor.id;
@@ -1066,6 +1192,7 @@ function openVendorDrawer(vendorId) {
   document.querySelector("#drawer-edit-tags").value = splitTags(vendor.tags).join(", ");
   document.querySelector("#drawer-edit-coverage").value = vendor.coverage_notes || "";
   document.querySelector("#drawer-edit-notes").value = vendor.notes || "";
+  drawerArchiveButton.textContent = vendor.base_stage === "archived" ? "Restore to Sourcing" : "Archive vendor";
   setStatus(drawerEditStatus, "");
   drawer.classList.remove("hidden");
 }
@@ -1176,6 +1303,7 @@ importInput.addEventListener("change", async () => {
   if (!file) return;
 
   setStatus(importStatus, "Reading vendor file...");
+  setVendorImportStep("columns");
 
   try {
     await requirePrivatePage();
@@ -1187,6 +1315,7 @@ importInput.addEventListener("change", async () => {
     setStatus(importStatus, "Review the file before importing.", "success");
   } catch (error) {
     setStatus(importStatus, error.message, "error");
+    setVendorImportStep("source");
   } finally {
     importInput.value = "";
   }
@@ -1198,19 +1327,23 @@ googleImportButton?.addEventListener("click", async () => {
   const url = googleSheetUrlInput.value.trim();
   if (!url) {
     setStatus(googleImportStatus, "Paste a Google Sheet URL.", "error");
+    setVendorImportStep("source");
     return;
   }
 
   googleImportButton.disabled = true;
   setStatus(googleImportStatus, "Importing Google Sheet...");
+  setVendorImportStep("columns");
 
   try {
     await requirePrivatePage();
     const result = await importVendorsFromGoogleSheet(url);
     setStatus(googleImportStatus, `${result.inserted} vendor(s) imported from ${result.total_rows} sheet row(s).`, "success");
+    setVendorImportStep("sourcing");
     await loadVendors();
   } catch (error) {
     setStatus(googleImportStatus, error.message, "error");
+    setVendorImportStep("source");
   } finally {
     googleImportButton.disabled = false;
   }
@@ -1228,6 +1361,7 @@ confirmImportButton.addEventListener("click", async () => {
     importPreviewPanel.classList.add("hidden");
     setStatus(importStatus, `${result.inserted} vendor(s) imported.`, "success");
     setStatus(confirmImportStatus, "");
+    setVendorImportStep("sourcing");
     await loadVendors();
   } catch (error) {
     setStatus(confirmImportStatus, error.message, "error");
@@ -1241,6 +1375,7 @@ cancelImportButton.addEventListener("click", () => {
   importPreviewPanel.classList.add("hidden");
   setStatus(importStatus, "Import canceled.");
   setStatus(confirmImportStatus, "");
+  setVendorImportStep("source");
 });
 
 bulkButton.addEventListener("click", async () => {
@@ -1300,8 +1435,13 @@ async function runBulkBaseAction(baseStage, label) {
 }
 
 bulkProcurementButton?.addEventListener("click", () => {
-  const targetBase = activeBaseStage === "procurement" ? "sourcing" : "procurement";
-  const label = activeBaseStage === "procurement" ? "Returning to Sourcing Base" : "Sending to Procurement Base";
+  const targetBase = activeBaseStage === "sourcing" ? "procurement" : "sourcing";
+  const label =
+    activeBaseStage === "archived"
+      ? "Restoring to Sourcing Base"
+      : activeBaseStage === "procurement"
+        ? "Returning to Sourcing Base"
+        : "Sending to Procurement Base";
   runBulkBaseAction(targetBase, label);
 });
 bulkArchiveVendorsButton?.addEventListener("click", () => runBulkBaseAction("archived", "Archiving vendors"));
@@ -1499,13 +1639,16 @@ drawerEditForm.addEventListener("submit", async (event) => {
 });
 drawerArchiveButton.addEventListener("click", async () => {
   if (!activeDrawerVendorId) return;
+  const vendor = findVendorById(activeDrawerVendorId);
+  const restoring = vendor?.base_stage === "archived";
+  const patch = restoring ? { base_stage: "sourcing", status: "active" } : { base_stage: "archived" };
   drawerArchiveButton.disabled = true;
-  setStatus(drawerEditStatus, "Marking inactive...");
+  setStatus(drawerEditStatus, restoring ? "Restoring vendor..." : "Archiving vendor...");
 
   try {
     await requirePrivatePage();
-    const updated = await updateVendor(activeDrawerVendorId, { status: "inactive" });
-    setStatus(drawerEditStatus, "Vendor marked inactive.", "success");
+    const updated = await updateVendor(activeDrawerVendorId, patch);
+    setStatus(drawerEditStatus, restoring ? "Vendor restored to Sourcing Base." : "Vendor archived.", "success");
     await loadVendors();
     openVendorDrawer(updated.id);
   } catch (error) {
