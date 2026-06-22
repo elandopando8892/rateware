@@ -194,6 +194,28 @@
                 <button type="button" class="secondary small-button" data-correction-template="Use Mexico operating perspective: MX to US/CA is D2D Export, US/CA to MX is D2D Import.">Mexico perspective</button>
                 <button type="button" class="secondary small-button" data-correction-template="Re-read every visible table row and priced cell. Do not summarize by state or destination group.">Find missing rows</button>
               </div>
+              <section class="memory-rule-panel">
+                <div>
+                  <strong>Applicable memory</strong>
+                  <small id="applicable-memory-count">Loading rules...</small>
+                </div>
+                <div id="applicable-memory-list" class="memory-rule-list"></div>
+              </section>
+              <div class="memory-save-row">
+                <label class="checkbox-label">
+                  <input id="save-memory-rule" type="checkbox" />
+                  Save this note as memory
+                </label>
+                <label>
+                  Scope
+                  <select id="memory-rule-scope">
+                    <option value="vendor">Vendor</option>
+                    <option value="rfx">RFx</option>
+                    <option value="global">Global</option>
+                    <option value="upload">This upload only</option>
+                  </select>
+                </label>
+              </div>
               <div class="action-row">
                 <button id="confirm-reprocess-button" type="submit">Reprocess</button>
                 <p id="reprocess-status" class="status-message" role="status"></p>

@@ -4286,6 +4286,110 @@ Deno.serve(async (request) => {
       return jsonResponse({ rows: result.data });
     }
 
+    if (body.action === "list_interpretation_memory") {
+      const rawUploadId = cleanText(body.raw_upload_id);
+      let upload: Record<string, unknown> | null = null;
+      let vendor: Record<string, unknown> | null = null;
+
+      if (rawUploadId) {
+        const uploadResult = await supabase
+          .from("raw_uploads")
+          .select("id,vendor_id,vendor_hint,rfx_hint")
+          .eq("id", rawUploadId)
+          .single();
+        if (uploadResult.error) throw uploadResult.error;
+        upload = uploadResult.data || null;
+
+        if (upload?.vendor_id) {
+          const vendorResult = await supabase
+            .from("vendors")
+            .select("id,vendor_name,domain,primary_email")
+            .eq("id", upload.vendor_id)
+            .maybeSingle();
+          if (vendorResult.error) throw vendorResult.error;
+          vendor = vendorResult.data || null;
+        }
+      }
+
+      const [globalResult, ownedResult] = await Promise.all([
+        supabase
+          .from("interpretation_memory")
+          .select("*")
+          .is("owner_email", null)
+          .eq("active", true)
+          .order("created_at", { ascending: true }),
+        supabase
+          .from("interpretation_memory")
+          .select("*")
+          .eq("owner_email", user.owner_email)
+          .eq("active", true)
+          .order("created_at", { ascending: false })
+      ]);
+      if (globalResult.error) throw globalResult.error;
+      if (ownedResult.error) throw ownedResult.error;
+
+      const vendorDomain = normalizeDomain(vendor?.domain || upload?.vendor_hint);
+      const rfxHint = cleanText(upload?.rfx_hint || body.rfx_hint);
+      const rows = [...(ownedResult.data || []), ...(globalResult.data || [])].filter((rule) => {
+        if (!upload) return true;
+        if (rule.scope === "global") return true;
+        if (rule.scope === "upload") return rule.raw_upload_id === upload.id;
+        if (rule.scope === "rfx") return cleanText(rule.rfx_hint) && cleanText(rule.rfx_hint) === rfxHint;
+        if (rule.scope === "vendor") {
+          if (rule.vendor_id && upload.vendor_id && rule.vendor_id === upload.vendor_id) return true;
+          const ruleDomain = normalizeDomain(rule.vendor_domain);
+          return Boolean(ruleDomain && vendorDomain && ruleDomain === vendorDomain);
+        }
+        return false;
+      });
+      return jsonResponse({ rows, upload, vendor });
+    }
+
+    if (body.action === "create_interpretation_memory") {
+      const instruction = cleanText(body.instruction);
+      if (!instruction) return jsonResponse({ error: "Instruction is required." }, 400);
+      const scope = ["global", "vendor", "rfx", "upload"].includes(String(body.scope || "")) ? String(body.scope) : "global";
+      let upload: Record<string, unknown> | null = null;
+      let vendor: Record<string, unknown> | null = null;
+
+      if (body.raw_upload_id) {
+        const uploadResult = await supabase
+          .from("raw_uploads")
+          .select("id,vendor_id,vendor_hint,rfx_hint")
+          .eq("id", body.raw_upload_id)
+          .maybeSingle();
+        if (uploadResult.error) throw uploadResult.error;
+        upload = uploadResult.data || null;
+        if (upload?.vendor_id) {
+          const vendorResult = await supabase
+            .from("vendors")
+            .select("id,domain")
+            .eq("id", upload.vendor_id)
+            .maybeSingle();
+          if (vendorResult.error) throw vendorResult.error;
+          vendor = vendorResult.data || null;
+        }
+      }
+
+      const row = withOwner({
+        scope,
+        vendor_id: scope === "vendor" ? upload?.vendor_id || null : null,
+        vendor_domain: scope === "vendor" ? normalizeDomain(vendor?.domain || upload?.vendor_hint || body.vendor_domain) : null,
+        rfx_hint: scope === "rfx" ? cleanText(upload?.rfx_hint || body.rfx_hint) : null,
+        raw_upload_id: scope === "upload" ? cleanText(upload?.id || body.raw_upload_id) : null,
+        title: cleanText(body.title) || `${scope} interpretation rule`,
+        instruction,
+        active: true
+      }, user);
+      const result = await supabase.from("interpretation_memory").insert(row).select().single();
+      if (result.error) throw result.error;
+      await writeAuditLog(supabase, user, "create", "interpretation_memory", result.data.id, `Created ${scope} interpretation memory rule`, {
+        scope,
+        raw_upload_id: body.raw_upload_id || null
+      });
+      return jsonResponse({ row: result.data });
+    }
+
     if (body.action === "archive_upload") {
       if (!body.id) return jsonResponse({ error: "Upload id is required." }, 400);
       const result = await supabase

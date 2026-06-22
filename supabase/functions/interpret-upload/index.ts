@@ -159,6 +159,27 @@ function cleanText(value: unknown) {
   return text ? text : null;
 }
 
+function userContext(payload: Record<string, unknown>) {
+  const email = cleanText(payload.email || payload.preferred_email || payload["https://kinde.com/email"])?.toLowerCase();
+  const id = cleanText(payload.sub || payload.id || email);
+  return {
+    owner_user_id: id || email || null,
+    owner_email: email || id || null
+  };
+}
+
+function normalizeDomain(value: unknown) {
+  const text = cleanText(value);
+  if (!text) return null;
+  const emailDomain = text.toLowerCase().match(/@([a-z0-9.-]+\.[a-z]{2,})/)?.[1];
+  return (emailDomain || text)
+    .toLowerCase()
+    .replace(/^https?:\/\//, "")
+    .replace(/^www\./, "")
+    .replace(/^@/, "")
+    .split("/")[0];
+}
+
 function cleanBoolean(value: unknown) {
   if (typeof value === "boolean") return value;
   const text = String(value ?? "").trim().toLowerCase();
@@ -1674,13 +1695,24 @@ function attachInterpretationAuditMeta(interpretation: Record<string, unknown>, 
   return Object.assign(interpretation, { __audit: meta });
 }
 
-async function interpretWithModel(rawUpload: Record<string, string>, file: Blob, correctionNote = "") {
+async function interpretWithModel(rawUpload: Record<string, string>, file: Blob, correctionNote = "", memoryRules: Record<string, unknown>[] = []) {
   const correctionRules = cleanText(correctionNote)
     ? [
       "",
       "Upload-specific correction note from the reviewer:",
       correctionNote,
       "Apply this correction only to this upload. It does not override global Rateware rules, but it should guide extraction when it clarifies source-specific mistakes."
+    ]
+    : [];
+  const memoryRuleText = memoryRules
+    .map((rule, index) => `${index + 1}. [${cleanText(rule.scope) || "global"}] ${cleanText(rule.title) || "Rule"}: ${cleanText(rule.instruction) || ""}`)
+    .filter((line) => cleanText(line));
+  const memoryRuleBlock = memoryRuleText.length
+    ? [
+      "",
+      "Saved Rateware interpretation memory that applies to this upload:",
+      ...memoryRuleText,
+      "Use these saved rules to avoid repeating known interpretation mistakes. Do not use a saved rule if it conflicts with visible carrier evidence or core Rateware rules."
     ]
     : [];
   const systemPrompt = [
@@ -1717,6 +1749,7 @@ async function interpretWithModel(rawUpload: Record<string, string>, file: Blob,
     "Extract weekly_capacity when the carrier states capacity, trucks per week, loads per week, or an available capacity range. Use null when not stated.",
     "Return only rows that represent carrier rates or capacity responses.",
     "Use null when a value is missing. Do not invent rates.",
+    ...memoryRuleBlock,
     ...correctionRules
   ].join("\n");
 
@@ -1846,6 +1879,58 @@ function buildUploadAudit(rawUpload: Record<string, unknown>, interpretation: Re
   };
 }
 
+async function applicableInterpretationMemory(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_email: string | null },
+  rawUpload: Record<string, unknown>
+) {
+  const vendorResult = rawUpload.vendor_id
+    ? await supabase.from("vendors").select("id,domain").eq("id", rawUpload.vendor_id).maybeSingle()
+    : { data: null, error: null };
+  if (vendorResult.error) throw vendorResult.error;
+
+  const [globalResult, ownedResult] = await Promise.all([
+    supabase
+      .from("interpretation_memory")
+      .select("*")
+      .is("owner_email", null)
+      .eq("active", true)
+      .order("created_at", { ascending: true }),
+    user.owner_email
+      ? supabase
+          .from("interpretation_memory")
+          .select("*")
+          .eq("owner_email", user.owner_email)
+          .eq("active", true)
+          .order("created_at", { ascending: false })
+      : Promise.resolve({ data: [], error: null })
+  ]);
+  if (globalResult.error) throw globalResult.error;
+  if (ownedResult.error) throw ownedResult.error;
+
+  const vendorDomain = normalizeDomain((vendorResult.data as Record<string, unknown> | null)?.domain || rawUpload.vendor_hint);
+  const rfxHint = cleanText(rawUpload.rfx_hint);
+  const rules = [...(ownedResult.data || []), ...(globalResult.data || [])].filter((rule) => {
+    if (rule.scope === "global") return true;
+    if (rule.scope === "upload") return rule.raw_upload_id === rawUpload.id;
+    if (rule.scope === "rfx") return cleanText(rule.rfx_hint) && cleanText(rule.rfx_hint) === rfxHint;
+    if (rule.scope === "vendor") {
+      if (rule.vendor_id && rawUpload.vendor_id && rule.vendor_id === rawUpload.vendor_id) return true;
+      const ruleDomain = normalizeDomain(rule.vendor_domain);
+      return Boolean(ruleDomain && vendorDomain && ruleDomain === vendorDomain);
+    }
+    return false;
+  });
+
+  await Promise.all(rules.slice(0, 20).map((rule) => supabase
+    .from("interpretation_memory")
+    .update({ last_used_at: new Date().toISOString(), usage_count: Number(rule.usage_count || 0) + 1 })
+    .eq("id", rule.id)
+  ));
+
+  return rules.slice(0, 20);
+}
+
 Deno.serve(async (request) => {
   if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -1853,8 +1938,9 @@ Deno.serve(async (request) => {
     return jsonResponse({ error: "Missing OPENAI_MODEL, OPENAI_API_KEY, SUPABASE_URL, or RATEWARE_SUPABASE_SERVICE_ROLE_KEY." }, 500);
   }
 
+  let user: { owner_user_id: string | null; owner_email: string | null };
   try {
-    await requireKindeUser(request);
+    user = userContext(await requireKindeUser(request));
   } catch (error) {
     return jsonResponse({ error: error.message }, 401);
   }
@@ -1877,10 +1963,11 @@ Deno.serve(async (request) => {
     if (uploadResult.error) throw uploadResult.error;
 
     const rawUpload = uploadResult.data;
+    const memoryRules = await applicableInterpretationMemory(supabase, user, rawUpload);
     const download = await supabase.storage.from(rawUpload.storage_bucket).download(rawUpload.storage_path);
     if (download.error) throw download.error;
 
-    const interpretation = await interpretWithModel(rawUpload, download.data, correctionNote);
+    const interpretation = await interpretWithModel(rawUpload, download.data, correctionNote, memoryRules);
     const vendorMatch = await findBestVendor(supabase, rawUpload, interpretation);
     const vendorId = vendorMatch?.vendor?.id || rawUpload.vendor_id || null;
     const catalogResult = await supabase.from("rateware_catalog_items").select("category,raw_value,normalized_value,code,metadata").eq("active", true).limit(20000);
@@ -1958,17 +2045,31 @@ Deno.serve(async (request) => {
       interpreted_at: new Date().toISOString(),
       last_reprocessed_at: new Date().toISOString(),
       reprocess_count: Number(rawUpload.reprocess_count || 0) + 1,
-      interpretation_audit: uploadAudit,
       audit_status: uploadAudit.status,
       audit_warnings: uploadAudit.warnings,
       expected_rate_rows: uploadAudit.expected_rate_rows,
       interpreted_rate_rows: rows.length,
       correction_note: correctionNote || rawUpload.correction_note || null,
       correction_history: correctionHistory,
+      interpretation_audit: {
+        ...uploadAudit,
+        memory_rules_used: memoryRules.map((rule) => ({
+          id: rule.id,
+          scope: rule.scope,
+          title: rule.title
+        }))
+      },
       error_message: null
     }).eq("id", raw_upload_id);
 
-    return jsonResponse({ job_id: job.data.id, staged_rows: rows.length, audit: uploadAudit });
+    return jsonResponse({
+      job_id: job.data.id,
+      staged_rows: rows.length,
+      audit: {
+        ...uploadAudit,
+        memory_rules_used: memoryRules.map((rule) => ({ id: rule.id, scope: rule.scope, title: rule.title }))
+      }
+    });
   } catch (error) {
     await supabase.from("interpretation_jobs").update({
       status: "failed",

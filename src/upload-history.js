@@ -1,6 +1,14 @@
 import { applyPermissionState, ensureSignedIn, initAuthControls, requirePrivatePage } from "./auth.js";
 import { humanizeError } from "./error-copy.js";
-import { archiveUpload, fetchUploadHistory, getUploadSourceUrl, interpretUpload, removeUpload } from "./upload-service.js";
+import {
+  archiveUpload,
+  createInterpretationMemory,
+  fetchUploadHistory,
+  getUploadSourceUrl,
+  interpretUpload,
+  listInterpretationMemory,
+  removeUpload
+} from "./upload-service.js";
 
 const historyBody = document.querySelector("#history-body");
 const refreshButton = document.querySelector("#refresh-button");
@@ -27,6 +35,10 @@ const reprocessForm = document.querySelector("#reprocess-form");
 const reprocessNoteInput = document.querySelector("#reprocess-note");
 const reprocessStatus = document.querySelector("#reprocess-status");
 const confirmReprocessButton = document.querySelector("#confirm-reprocess-button");
+const applicableMemoryCount = document.querySelector("#applicable-memory-count");
+const applicableMemoryList = document.querySelector("#applicable-memory-list");
+const saveMemoryRuleInput = document.querySelector("#save-memory-rule");
+const memoryRuleScopeInput = document.querySelector("#memory-rule-scope");
 const HISTORY_COLSPAN = 11;
 let loadedRows = [];
 let currentRows = [];
@@ -489,14 +501,52 @@ function setReprocessStatus(message, tone = "neutral") {
   reprocessStatus.dataset.tone = tone;
 }
 
+function memoryScopeLabel(scope) {
+  if (scope === "vendor") return "Vendor";
+  if (scope === "rfx") return "RFx";
+  if (scope === "upload") return "Upload";
+  return "Global";
+}
+
+function renderApplicableMemory(rules = []) {
+  if (!applicableMemoryCount || !applicableMemoryList) return;
+  applicableMemoryCount.textContent = rules.length ? `${rules.length} rule(s) will guide this interpretation.` : "No saved rules yet.";
+  applicableMemoryList.innerHTML = rules.length
+    ? rules.slice(0, 8).map((rule) => `
+        <article>
+          <span>${escapeHtml(memoryScopeLabel(rule.scope))}</span>
+          <strong>${escapeHtml(rule.title || "Interpretation rule")}</strong>
+          <small>${escapeHtml(rule.instruction || "")}</small>
+        </article>
+      `).join("")
+    : '<p class="detail-note">Use the correction note below, then save it as memory if it should apply again.</p>';
+}
+
+async function loadApplicableMemory(rawUploadId) {
+  if (!applicableMemoryCount || !applicableMemoryList) return;
+  applicableMemoryCount.textContent = "Loading rules...";
+  applicableMemoryList.innerHTML = "";
+  try {
+    const rules = await listInterpretationMemory(rawUploadId);
+    renderApplicableMemory(rules);
+  } catch (error) {
+    applicableMemoryCount.textContent = "Could not load memory rules.";
+    applicableMemoryList.innerHTML = `<p class="detail-note">${escapeHtml(humanizeError(error))}</p>`;
+  }
+}
+
 function openReprocessDrawer(ids = []) {
   pendingReprocessIds = ids.filter(Boolean);
   if (!pendingReprocessIds.length || !reprocessDrawer) return;
   const rows = pendingReprocessIds.map((id) => loadedRows.find((row) => row.id === id)).filter(Boolean);
   const lastNote = rows.find((row) => row.correction_note)?.correction_note || "";
   if (reprocessNoteInput) reprocessNoteInput.value = lastNote;
+  if (saveMemoryRuleInput) saveMemoryRuleInput.checked = false;
+  if (memoryRuleScopeInput) memoryRuleScopeInput.value = rows.length === 1 && rows[0]?.rfx_hint ? "rfx" : "vendor";
+  renderApplicableMemory([]);
   setReprocessStatus(`${pendingReprocessIds.length} upload(s) selected. Add a correction note or leave blank to reprocess normally.`);
   reprocessDrawer.classList.remove("hidden");
+  loadApplicableMemory(pendingReprocessIds[0]);
 }
 
 async function runReprocessWithNote(event) {
@@ -515,6 +565,14 @@ async function runReprocessWithNote(event) {
     for (let index = 0; index < ids.length; index += 1) {
       setReprocessStatus(`Reprocessing ${index + 1}/${ids.length}...`);
       await interpretUpload(ids[index], { correctionNote });
+    }
+    if (saveMemoryRuleInput?.checked && correctionNote.trim()) {
+      await createInterpretationMemory({
+        rawUploadId: ids[0],
+        scope: memoryRuleScopeInput?.value || "vendor",
+        instruction: correctionNote,
+        title: correctionNote.split("\n")[0].slice(0, 80) || "Interpretation correction"
+      });
     }
     ids.forEach((id) => selectedUploadIds.delete(id));
     setReprocessStatus(`${ids.length} upload(s) reprocessed.`, "success");

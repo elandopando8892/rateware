@@ -45,6 +45,19 @@ export async function getUploadSourceUrl(rawUploadId) {
   return await callRatewareApi("get_upload_source_url", { id: rawUploadId });
 }
 
+export async function listInterpretationMemory(rawUploadId = "") {
+  return (await callRatewareApi("list_interpretation_memory", { raw_upload_id: rawUploadId })).rows;
+}
+
+export async function createInterpretationMemory({ rawUploadId = "", scope = "global", instruction = "", title = "" } = {}) {
+  return (await callRatewareApi("create_interpretation_memory", {
+    raw_upload_id: rawUploadId,
+    scope,
+    instruction,
+    title
+  })).row;
+}
+
 export async function interpretUpload(rawUploadId, { correctionNote = "" } = {}) {
   const token = await getKindeToken();
   const response = await fetch(`${SUPABASE_URL}/functions/v1/interpret-upload`, {
