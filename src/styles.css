@@ -1043,6 +1043,23 @@ a {
   padding: 24px;
 }
 
+.sheet-bulk-drawer {
+  z-index: 36;
+}
+
+.sheet-bulk-form {
+  display: grid;
+  gap: 12px;
+}
+
+.sheet-bulk-form label {
+  display: grid;
+  gap: 6px;
+  color: #40505d;
+  font-size: 0.78rem;
+  font-weight: 780;
+}
+
 .drawer-header {
   display: flex;
   align-items: flex-start;
@@ -2223,6 +2240,13 @@ button.danger {
   background: #ffffff;
 }
 
+.sheet-table-wrap {
+  position: relative;
+  max-height: calc(100vh - 300px);
+  min-height: 260px;
+  overflow: auto;
+}
+
 table {
   width: 100%;
   border-collapse: collapse;
@@ -2242,6 +2266,104 @@ table {
 .staging-table th {
   font-size: 0.72rem;
   white-space: nowrap;
+}
+
+.sheet-table-wrap .staging-table th,
+.sheet-table-wrap .rateware-table th {
+  position: sticky;
+  top: 0;
+  z-index: 6;
+  background: #eef3f4;
+  box-shadow: inset 0 -1px 0 var(--line);
+}
+
+.sheet-table-wrap .staging-table td,
+.sheet-table-wrap .rateware-table td {
+  white-space: nowrap;
+}
+
+.staging-table [data-col="select"],
+.rateware-table [data-col="select"],
+.staging-table [data-col="vendor"],
+.rateware-table [data-col="vendor"],
+.staging-table [data-col="origin"],
+.rateware-table [data-col="origin"],
+.staging-table [data-col="destination"],
+.rateware-table [data-col="destination"],
+.staging-table [data-col="all_in_rate"],
+.rateware-table [data-col="all_in_rate"] {
+  position: sticky;
+  background: #ffffff;
+  box-shadow: 1px 0 0 rgba(199, 210, 218, 0.85);
+}
+
+.staging-table th[data-col="select"],
+.rateware-table th[data-col="select"],
+.staging-table th[data-col="vendor"],
+.rateware-table th[data-col="vendor"],
+.staging-table th[data-col="origin"],
+.rateware-table th[data-col="origin"],
+.staging-table th[data-col="destination"],
+.rateware-table th[data-col="destination"],
+.staging-table th[data-col="all_in_rate"],
+.rateware-table th[data-col="all_in_rate"] {
+  z-index: 12;
+  background: #e7eef0;
+}
+
+.staging-table td[data-col="select"],
+.rateware-table td[data-col="select"],
+.staging-table td[data-col="vendor"],
+.rateware-table td[data-col="vendor"],
+.staging-table td[data-col="origin"],
+.rateware-table td[data-col="origin"],
+.staging-table td[data-col="destination"],
+.rateware-table td[data-col="destination"],
+.staging-table td[data-col="all_in_rate"],
+.rateware-table td[data-col="all_in_rate"] {
+  z-index: 7;
+}
+
+.staging-table [data-col="select"],
+.rateware-table [data-col="select"] {
+  left: 0;
+}
+
+.staging-table [data-col="vendor"],
+.rateware-table [data-col="vendor"] {
+  left: 34px;
+  min-width: 180px;
+  width: 180px;
+  max-width: 180px;
+}
+
+.staging-table [data-col="origin"],
+.rateware-table [data-col="origin"] {
+  left: 214px;
+  min-width: 180px;
+  width: 180px;
+  max-width: 180px;
+}
+
+.staging-table [data-col="destination"],
+.rateware-table [data-col="destination"] {
+  left: 394px;
+  min-width: 190px;
+  width: 190px;
+  max-width: 190px;
+}
+
+.staging-table [data-col="all_in_rate"],
+.rateware-table [data-col="all_in_rate"] {
+  left: 584px;
+  min-width: 118px;
+  width: 118px;
+  max-width: 118px;
+}
+
+.rate-freeze-cell .row-save-status {
+  display: block;
+  margin-top: 1px;
 }
 
 .select-column {
@@ -2294,6 +2416,96 @@ table {
   font-size: 0.74rem;
 }
 
+.sheet-command-bar {
+  position: sticky;
+  top: 72px;
+  z-index: 12;
+  display: grid;
+  gap: 8px;
+  border: 1px solid rgba(199, 210, 218, 0.92);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.98);
+  margin: 8px 0;
+  padding: 8px;
+  box-shadow: 0 10px 24px rgba(22, 32, 38, 0.08);
+  backdrop-filter: blur(10px);
+}
+
+.compact-filter-row {
+  margin-bottom: 0;
+}
+
+.sheet-toolbar {
+  grid-template-columns: minmax(180px, 280px) repeat(2, auto) minmax(100px, auto);
+  gap: 8px;
+  align-items: end;
+}
+
+.rateware-toolbar.sheet-toolbar {
+  grid-template-columns: minmax(240px, 1fr) minmax(140px, 200px) minmax(140px, 200px) repeat(3, auto);
+}
+
+.column-visibility-menu {
+  position: relative;
+  align-self: end;
+}
+
+.column-visibility-menu summary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #ffffff;
+  color: #34424e;
+  padding: 7px 11px;
+  font-size: 0.8rem;
+  font-weight: 820;
+  list-style: none;
+  cursor: pointer;
+}
+
+.column-visibility-menu summary::-webkit-details-marker {
+  display: none;
+}
+
+.column-toggle-grid {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 30;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(130px, 1fr));
+  gap: 6px;
+  width: min(420px, 84vw);
+  max-height: 360px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #ffffff;
+  box-shadow: var(--shadow-soft);
+  padding: 10px;
+}
+
+.column-toggle-grid label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 28px;
+  border: 1px solid #edf1f4;
+  border-radius: 6px;
+  background: #fbfcfc;
+  color: #34424e;
+  padding: 4px 7px;
+  font-size: 0.76rem;
+  font-weight: 760;
+}
+
+.column-hidden {
+  display: none !important;
+}
+
 .column-filter-bar {
   display: grid;
   grid-template-columns: repeat(8, minmax(96px, 1fr)) auto;
@@ -2322,9 +2534,20 @@ table {
   border-color: var(--accent);
 }
 
+.compact-column-filters {
+  grid-template-columns: repeat(8, minmax(84px, 1fr)) auto;
+  margin-top: 0;
+  padding: 6px;
+}
+
+.compact-column-filters input {
+  min-height: 26px;
+  font-size: 0.74rem;
+}
+
 .rateware-workbench {
   display: grid;
-  grid-template-columns: minmax(260px, 0.8fr) minmax(360px, 1.2fr) minmax(320px, 1fr);
+  grid-template-columns: minmax(360px, 1.2fr) minmax(320px, 0.8fr);
   gap: 10px;
   margin-top: 10px;
 }
@@ -3878,6 +4101,8 @@ select.staging-input {
   .wizard-steps,
   .wizard-panel,
   .toolbar,
+  .sheet-command-bar,
+  .sheet-toolbar,
   .filter-bar,
   .bulk-toolbar,
   .preview-summary,
@@ -3891,6 +4116,22 @@ select.staging-input {
   .review-insight-grid,
   .auth-strip {
     width: 100%;
+  }
+
+  .sheet-command-bar {
+    position: static;
+  }
+
+  .sheet-toolbar,
+  .rateware-toolbar.sheet-toolbar,
+  .compact-column-filters {
+    grid-template-columns: 1fr;
+  }
+
+  .column-toggle-grid {
+    left: 0;
+    right: auto;
+    width: min(360px, 88vw);
   }
 
   .onboarding-list article {

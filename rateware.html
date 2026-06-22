@@ -77,67 +77,66 @@
                 <strong id="rateware-metric-average">-</strong>
               </article>
             </div>
-            <div class="review-filter-row" aria-label="Rateware quick filters">
-              <button class="review-filter is-active" type="button" data-rateware-filter="all">All rates</button>
-              <button class="review-filter" type="button" data-rateware-filter="cross-border">Cross-border</button>
-              <button class="review-filter" type="button" data-rateware-filter="all-in">All-in</button>
-              <button class="review-filter" type="button" data-rateware-filter="split-rate">Split rate</button>
-              <button class="review-filter" type="button" data-rateware-filter="with-capacity">With capacity</button>
-            </div>
-            <div class="toolbar rateware-toolbar">
-              <label>
-                Search
-                <input id="rateware-search" placeholder="Vendor, RFx, city, market..." />
-              </label>
-              <label>
-                Operation
-                <select id="rateware-operation-filter">
-                  <option value="">All</option>
-                </select>
-              </label>
-              <label>
-                Service
-                <select id="rateware-service-filter">
-                  <option value="">All</option>
-                </select>
-              </label>
-              <button id="refresh-rateware-button" type="button">Refresh</button>
-              <button id="clear-rateware-filters" class="secondary" type="button">Clear filters</button>
-            </div>
+            <div class="sheet-command-bar">
+              <div class="review-filter-row compact-filter-row" aria-label="Rateware quick filters">
+                <button class="review-filter is-active" type="button" data-rateware-filter="all">All rates</button>
+                <button class="review-filter" type="button" data-rateware-filter="cross-border">Cross-border</button>
+                <button class="review-filter" type="button" data-rateware-filter="all-in">All-in</button>
+                <button class="review-filter" type="button" data-rateware-filter="split-rate">Split rate</button>
+                <button class="review-filter" type="button" data-rateware-filter="with-capacity">With capacity</button>
+              </div>
+              <div class="toolbar sheet-toolbar rateware-toolbar">
+                <label>
+                  Search
+                  <input id="rateware-search" placeholder="Vendor, RFx, city, market..." />
+                </label>
+                <label>
+                  Operation
+                  <select id="rateware-operation-filter">
+                    <option value="">All</option>
+                  </select>
+                </label>
+                <label>
+                  Service
+                  <select id="rateware-service-filter">
+                    <option value="">All</option>
+                  </select>
+                </label>
+                <button id="refresh-rateware-button" type="button">Refresh</button>
+                <button id="clear-rateware-filters" class="secondary" type="button">Clear filters</button>
+                <details id="rateware-column-menu" class="column-visibility-menu">
+                  <summary>Columns</summary>
+                  <div data-column-toggle-list class="column-toggle-grid"></div>
+                </details>
+              </div>
 
-            <div class="bulk-action-bar" aria-live="polite">
-              <span id="rateware-selection-count">0 selected</span>
-              <button id="save-selected-rateware" type="button" class="small-button" disabled>Save selected</button>
-              <button id="match-selected-vendors-rateware" type="button" class="secondary small-button" disabled>Match vendors</button>
-              <button id="enrich-selected-zips-rateware" type="button" class="secondary small-button" disabled>Find missing ZIPs</button>
-              <button id="renormalize-selected-rateware" type="button" class="secondary small-button" disabled>Re-normalize selected</button>
-              <button id="return-selected-button" type="button" class="secondary small-button" disabled>Return to staging</button>
-              <button id="export-selected-button" type="button" class="secondary small-button" disabled>Export selected CSV</button>
-              <button id="export-visible-button" type="button" class="secondary small-button">Export visible CSV</button>
-              <span id="rateware-action-status" class="row-save-status"></span>
+              <div class="bulk-action-bar" aria-live="polite">
+                <span id="rateware-selection-count">0 selected</span>
+                <button id="open-rateware-bulk-drawer" type="button" class="secondary small-button" disabled>Bulk edit</button>
+                <button id="save-selected-rateware" type="button" class="small-button" disabled>Save selected</button>
+                <button id="match-selected-vendors-rateware" type="button" class="secondary small-button" disabled>Match vendors</button>
+                <button id="enrich-selected-zips-rateware" type="button" class="secondary small-button" disabled>Find missing ZIPs</button>
+                <button id="renormalize-selected-rateware" type="button" class="secondary small-button" disabled>Re-normalize selected</button>
+                <button id="return-selected-button" type="button" class="secondary small-button" disabled>Return to staging</button>
+                <button id="export-selected-button" type="button" class="secondary small-button" disabled>Export selected CSV</button>
+                <button id="export-visible-button" type="button" class="secondary small-button">Export visible CSV</button>
+                <span id="rateware-action-status" class="row-save-status"></span>
+              </div>
+
+              <div class="column-filter-bar compact-column-filters" aria-label="Rateware column filters">
+                <input data-rateware-column-filter="vendor" type="search" placeholder="Vendor" />
+                <input data-rateware-column-filter="origin" type="search" placeholder="Origin / O market" />
+                <input data-rateware-column-filter="destination" type="search" placeholder="Destination / D market" />
+                <input data-rateware-column-filter="equipment" type="search" placeholder="Equipment" />
+                <input data-rateware-column-filter="trailer" type="search" placeholder="Trailer" />
+                <input data-rateware-column-filter="operation" type="search" placeholder="Operation" />
+                <input data-rateware-column-filter="service" type="search" placeholder="Service" />
+                <input data-rateware-column-filter="all_in_rate" type="search" placeholder="All-in" />
+                <button id="clear-rateware-column-filters" class="secondary small-button" type="button">Clear columns</button>
+              </div>
             </div>
 
             <div class="rateware-workbench" aria-label="Rateware workbench">
-              <section class="rateware-tool-panel">
-                <div>
-                  <p class="eyebrow">Bulk edits</p>
-                  <h2>Apply to selected</h2>
-                </div>
-                <div class="rateware-control-grid">
-                  <label>
-                    Column
-                    <select id="rateware-bulk-field"></select>
-                  </label>
-                  <label>
-                    Value
-                    <input id="rateware-bulk-value" list="rateware-bulk-value-options" placeholder="Set selected rows..." />
-                  </label>
-                  <button id="apply-rateware-bulk-edit" type="button" class="small-button" disabled>Apply</button>
-                </div>
-                <datalist id="rateware-bulk-value-options"></datalist>
-                <p id="rateware-bulk-status" class="status-message" role="status"></p>
-              </section>
-
               <section class="rateware-tool-panel">
                 <div>
                   <p class="eyebrow">Lane comparison</p>
@@ -176,55 +175,43 @@
               </section>
             </div>
 
-            <div class="column-filter-bar" aria-label="Rateware column filters">
-              <input data-rateware-column-filter="vendor" type="search" placeholder="Vendor" />
-              <input data-rateware-column-filter="origin" type="search" placeholder="Origin / O market" />
-              <input data-rateware-column-filter="destination" type="search" placeholder="Destination / D market" />
-              <input data-rateware-column-filter="equipment" type="search" placeholder="Equipment" />
-              <input data-rateware-column-filter="trailer" type="search" placeholder="Trailer" />
-              <input data-rateware-column-filter="operation" type="search" placeholder="Operation" />
-              <input data-rateware-column-filter="service" type="search" placeholder="Service" />
-              <input data-rateware-column-filter="all_in_rate" type="search" placeholder="All-in" />
-              <button id="clear-rateware-column-filters" class="secondary small-button" type="button">Clear columns</button>
-            </div>
-
-            <div class="table-wrap">
+            <div class="table-wrap sheet-table-wrap">
               <table class="rateware-table">
                 <thead>
                   <tr>
-                    <th class="select-column">
+                    <th class="select-column" data-col="select">
                       <input id="select-all-rateware" type="checkbox" aria-label="Select all visible approved rates" />
                     </th>
-                    <th>Vendor</th>
-                    <th>Quote date</th>
-                    <th>RFx</th>
-                    <th>Origin</th>
-                    <th>O ZIP</th>
-                    <th>O ST</th>
-                    <th>O market</th>
-                    <th>O region</th>
-                    <th>Destination</th>
-                    <th>D ZIP</th>
-                    <th>D ST</th>
-                    <th>D market</th>
-                    <th>D region</th>
-                    <th>Equipment</th>
-                    <th>Trailer</th>
-                    <th>Hazmat</th>
-                    <th>Temp ctrl</th>
-                    <th>Config</th>
-                    <th>Operation</th>
-                    <th>Service</th>
-                    <th>MX crossing</th>
-                    <th>US crossing</th>
-                    <th>MX linehaul</th>
-                    <th>US linehaul</th>
-                    <th>FSC</th>
-                    <th>Border fee</th>
-                    <th>All-in</th>
-                    <th>Currency</th>
-                    <th>Capacity</th>
-                    <th>Actions</th>
+                    <th data-col="vendor">Vendor</th>
+                    <th data-col="origin">Origin</th>
+                    <th data-col="destination">Destination</th>
+                    <th data-col="all_in_rate">All-in</th>
+                    <th data-col="quote_date">Quote date</th>
+                    <th data-col="rfx_id">RFx</th>
+                    <th data-col="origin_zip_prefix">O ZIP</th>
+                    <th data-col="origin_state">O ST</th>
+                    <th data-col="origin_market">O market</th>
+                    <th data-col="origin_region">O region</th>
+                    <th data-col="destination_zip_prefix">D ZIP</th>
+                    <th data-col="destination_state">D ST</th>
+                    <th data-col="destination_market">D market</th>
+                    <th data-col="destination_region">D region</th>
+                    <th data-col="equipment">Equipment</th>
+                    <th data-col="trailer">Trailer</th>
+                    <th data-col="hazmat">Hazmat</th>
+                    <th data-col="temperature_controlled">Temp ctrl</th>
+                    <th data-col="config">Config</th>
+                    <th data-col="operation">Operation</th>
+                    <th data-col="service">Service</th>
+                    <th data-col="mx_border_crossing_point">MX crossing</th>
+                    <th data-col="us_border_crossing_point">US crossing</th>
+                    <th data-col="mx_linehaul">MX linehaul</th>
+                    <th data-col="us_linehaul">US linehaul</th>
+                    <th data-col="fsc">FSC</th>
+                    <th data-col="border_crossing_fee">Border fee</th>
+                    <th data-col="currency">Currency</th>
+                    <th data-col="weekly_capacity">Capacity</th>
+                    <th data-col="actions">Actions</th>
                   </tr>
                 </thead>
                 <tbody id="rateware-body">
@@ -248,6 +235,28 @@
               <button id="close-rateware-drawer" class="secondary small-button" type="button">Close</button>
             </div>
             <div id="rateware-detail" class="rateware-detail"></div>
+          </aside>
+          <aside id="rateware-bulk-drawer" class="profile-drawer sheet-bulk-drawer hidden" aria-live="polite">
+            <div class="drawer-header">
+              <div>
+                <p class="eyebrow">Spreadsheet bulk edit</p>
+                <h2>Apply to selected rates</h2>
+              </div>
+              <button id="close-rateware-bulk-drawer" class="secondary small-button" type="button">Close</button>
+            </div>
+            <div class="sheet-bulk-form">
+              <label>
+                Column
+                <select id="rateware-bulk-field"></select>
+              </label>
+              <label>
+                Value
+                <input id="rateware-bulk-value" list="rateware-bulk-value-options" placeholder="Set selected rows..." />
+              </label>
+              <button id="apply-rateware-bulk-edit" type="button" disabled>Apply bulk edit</button>
+              <datalist id="rateware-bulk-value-options"></datalist>
+              <p id="rateware-bulk-status" class="status-message" role="status"></p>
+            </div>
           </aside>
         </main>
       </div>

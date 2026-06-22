@@ -1,6 +1,7 @@
 import { initAuthControls, requirePrivatePage } from "./auth.js";
 import { bulkUpdateApprovedRatewareRows, createRatewareBookVersion, enrichApprovedRatewareLocationZips, fetchRatewareBookVersion, fetchRatewareBookVersions, matchApprovedRatewareVendors, renormalizeApprovedRatewareRows, fetchApprovedRateware, fetchRatewareOptions, returnApprovedRatesToStaging, updateApprovedRatewareRow } from "./rateware-service.js";
 import { installSpreadsheetGrid } from "./spreadsheet-grid.js";
+import { initColumnVisibility, initDrawer } from "./sheet-ui.js";
 
 const body = document.querySelector("#rateware-body");
 const searchInput = document.querySelector("#rateware-search");
@@ -34,6 +35,11 @@ const bulkValueInput = document.querySelector("#rateware-bulk-value");
 const bulkValueOptions = document.querySelector("#rateware-bulk-value-options");
 const applyBulkEditButton = document.querySelector("#apply-rateware-bulk-edit");
 const bulkStatus = document.querySelector("#rateware-bulk-status");
+const openBulkDrawerButton = document.querySelector("#open-rateware-bulk-drawer");
+const bulkDrawer = document.querySelector("#rateware-bulk-drawer");
+const closeBulkDrawerButton = document.querySelector("#close-rateware-bulk-drawer");
+const columnMenu = document.querySelector("#rateware-column-menu");
+const ratewareTable = document.querySelector(".rateware-table");
 const compareSelectedButton = document.querySelector("#compare-selected-rateware");
 const compareVisibleButton = document.querySelector("#compare-visible-rateware");
 const comparisonOutput = document.querySelector("#rateware-comparison-output");
@@ -49,6 +55,7 @@ let currentRows = [];
 let loadedRows = [];
 let activeQuickFilter = "all";
 const autoSaveTimers = new Map();
+let columnVisibilityController;
 let ratewareOptions = {
   categories: {},
   vendors: [],
@@ -59,6 +66,39 @@ let ratewareOptions = {
 };
 let ratewareOptionsLoaded = false;
 const selectedRowIds = new Set();
+const SHEET_COLUMNS = [
+  { key: "select", label: "Select", locked: true },
+  { key: "vendor", label: "Vendor", locked: true },
+  { key: "origin", label: "Origin", locked: true },
+  { key: "destination", label: "Destination", locked: true },
+  { key: "all_in_rate", label: "All-in", locked: true },
+  { key: "quote_date", label: "Quote date" },
+  { key: "rfx_id", label: "RFx" },
+  { key: "origin_zip_prefix", label: "O ZIP" },
+  { key: "origin_state", label: "O ST" },
+  { key: "origin_market", label: "O market" },
+  { key: "origin_region", label: "O region" },
+  { key: "destination_zip_prefix", label: "D ZIP" },
+  { key: "destination_state", label: "D ST" },
+  { key: "destination_market", label: "D market" },
+  { key: "destination_region", label: "D region" },
+  { key: "equipment", label: "Equipment" },
+  { key: "trailer", label: "Trailer" },
+  { key: "hazmat", label: "Hazmat" },
+  { key: "temperature_controlled", label: "Temp ctrl" },
+  { key: "config", label: "Config" },
+  { key: "operation", label: "Operation" },
+  { key: "service", label: "Service" },
+  { key: "mx_border_crossing_point", label: "MX crossing" },
+  { key: "us_border_crossing_point", label: "US crossing" },
+  { key: "mx_linehaul", label: "MX linehaul" },
+  { key: "us_linehaul", label: "US linehaul" },
+  { key: "fsc", label: "FSC" },
+  { key: "border_crossing_fee", label: "Border fee" },
+  { key: "currency", label: "Currency" },
+  { key: "weekly_capacity", label: "Capacity" },
+  { key: "actions", label: "Actions", locked: true }
+];
 const BULK_EDIT_FIELDS = [
   { field: "operation", label: "Operation", source: "operation" },
   { field: "service", label: "Service", source: "service" },
@@ -95,7 +135,7 @@ function inputCell(row, field, options = {}) {
       : row[field] || "";
   const inputType = options.type || (options.money ? "number" : "text");
   const step = options.step || (options.money ? "0.01" : "");
-  return `<input class="staging-input rateware-input ${widthClass}" data-rateware-field="${field}" type="${inputType}" value="${escapeHtml(value)}" ${options.list ? `list="${escapeHtml(options.list)}"` : ""} ${step ? `step="${escapeHtml(step)}"` : ""} ${options.money ? 'inputmode="decimal"' : ""} />`;
+  return `<input class="staging-input rateware-input ${widthClass}" data-rateware-field="${field}" type="${inputType}" value="${escapeHtml(value)}" ${options.list ? `list="${escapeHtml(options.list)}"` : ""} ${step ? `step="${escapeHtml(step)}"` : ""} ${options.money ? 'inputmode="decimal"' : ""} autocomplete="off" spellcheck="false" />`;
 }
 
 function optionList(values = [], currentValue = "") {
@@ -107,7 +147,7 @@ function optionList(values = [], currentValue = "") {
 function selectCell(row, field, values = [], options = {}) {
   const widthClass = options.wide ? "wide-input" : options.money ? "money-input" : options.short ? "short-input" : "";
   return `
-    <select class="staging-input rateware-input ${widthClass}" data-rateware-field="${field}">
+    <select class="staging-input rateware-input ${widthClass}" data-rateware-field="${field}" autocomplete="off">
       <option value=""></option>
       ${optionList(values, row[field] || "")}
     </select>
@@ -150,7 +190,7 @@ function hiddenLocationFields(row, prefix) {
 
 function datalistCell(row, field, listName, options = {}) {
   const widthClass = options.wide ? "wide-input" : options.short ? "short-input" : "";
-  return `<input class="staging-input rateware-input ${widthClass}" data-rateware-field="${field}" list="${listName}" value="${escapeHtml(row[field] || "")}" />`;
+  return `<input class="staging-input rateware-input ${widthClass}" data-rateware-field="${field}" list="${listName}" value="${escapeHtml(row[field] || "")}" autocomplete="off" spellcheck="false" />`;
 }
 
 function checkboxCell(row, field, label) {
@@ -503,56 +543,61 @@ function renderRows(rows) {
 
   if (!rows.length) {
     body.innerHTML = `<tr><td colspan="${RATEWARE_COLSPAN}"><div class="empty-state"><strong>No approved rates yet</strong><span>Approve staging rows to build the Rateware.</span><a href="./staging-review.html">Open staging review</a></div></td></tr>`;
+    columnVisibilityController?.applyVisibility();
     updateBulkControls();
     return;
   }
 
   body.innerHTML = rows.map((row) => `
     <tr data-rateware-id="${escapeHtml(row.id)}">
-      <td class="select-column">
+      <td class="select-column" data-col="select">
         <input data-select-rateware="${escapeHtml(row.id)}" type="checkbox" aria-label="Select approved rate" ${selectedRowIds.has(row.id) ? "checked" : ""} />
       </td>
-      <td>
+      <td data-col="vendor">
         <strong>${escapeHtml(row.vendors?.vendor_name || row.vendor_domain || "-")}</strong>
         ${inputCell(row, "vendor_domain", { wide: true, list: "rateware-vendor-options" })}
         ${row.vendors?.vendor_name ? `<span class="match-pill">${escapeHtml(row.vendors.base_stage || "matched")}</span>` : ""}
       </td>
-      <td>${inputCell(row, "quote_date", { type: "date", short: true })}</td>
-      <td>${inputCell(row, "rfx_id", { short: true })}</td>
-      <td>${datalistCell(row, "origin", "rateware-origin-options", { wide: true })}${hiddenLocationFields(row, "origin")}</td>
-      <td>${inputCell(row, "origin_zip_prefix", { short: true, list: "rateware-zip-options" })}</td>
-      <td>${inputCell(row, "origin_state", { short: true, list: "rateware-state-options" })}</td>
-      <td>${inputCell(row, "origin_market", { wide: true, list: "rateware-market-options" })}</td>
-      <td>${inputCell(row, "origin_region", { wide: true, list: "rateware-region-options" })}</td>
-      <td>${datalistCell(row, "destination", "rateware-destination-options", { wide: true })}${hiddenLocationFields(row, "destination")}</td>
-      <td>${inputCell(row, "destination_zip_prefix", { short: true, list: "rateware-zip-options" })}</td>
-      <td>${inputCell(row, "destination_state", { short: true, list: "rateware-state-options" })}</td>
-      <td>${inputCell(row, "destination_market", { wide: true, list: "rateware-market-options" })}</td>
-      <td>${inputCell(row, "destination_region", { wide: true, list: "rateware-region-options" })}</td>
-      <td>${selectCell(row, "equipment", ratewareOptions.categories.equipment || [], { short: true })}</td>
-      <td>${selectCell(row, "trailer", ratewareOptions.categories.trailer || [], { short: true })}</td>
-      <td>${checkboxCell(row, "hazmat", "Hazmat")}</td>
-      <td>${checkboxCell(row, "temperature_controlled", "Temperature controlled")}</td>
-      <td>${selectCell(row, "config", ratewareOptions.categories.config || [], { short: true })}</td>
-      <td>${selectCell(row, "operation", ratewareOptions.categories.operation || [], { short: true })}</td>
-      <td>${selectCell(row, "service", ratewareOptions.categories.service || [], { short: true })}</td>
-      <td>${selectCell(row, "mx_border_crossing_point", ratewareOptions.mx_crossings || [], { short: true })}</td>
-      <td>${selectCell(row, "us_border_crossing_point", ratewareOptions.us_crossings || [], { short: true })}</td>
-      <td>${inputCell(row, "mx_linehaul", { money: true })}</td>
-      <td>${inputCell(row, "us_linehaul", { money: true })}</td>
-      <td>${inputCell(row, "fsc", { money: true })}</td>
-      <td>${inputCell(row, "border_crossing_fee", { money: true })}</td>
-      <td>${inputCell(row, "all_in_rate", { money: true })}<span>${escapeHtml(rateModeLabel(row))}</span></td>
-      <td>${selectCell(row, "currency", ratewareOptions.currencies || ["USD", "MXN", "CAD"], { short: true })}</td>
-      <td>${inputCell(row, "weekly_capacity", { short: true })}</td>
-      <td class="history-actions rateware-row-actions">
+      <td data-col="origin">${datalistCell(row, "origin", "rateware-origin-options", { wide: true })}${hiddenLocationFields(row, "origin")}</td>
+      <td data-col="destination">${datalistCell(row, "destination", "rateware-destination-options", { wide: true })}${hiddenLocationFields(row, "destination")}</td>
+      <td class="rate-freeze-cell" data-col="all_in_rate">
+        ${inputCell(row, "all_in_rate", { money: true })}
+        <span>${escapeHtml(rateModeLabel(row))}</span>
+        <span class="row-save-status" data-rateware-row-status="${escapeHtml(row.id)}"></span>
+      </td>
+      <td data-col="quote_date">${inputCell(row, "quote_date", { type: "date", short: true })}</td>
+      <td data-col="rfx_id">${inputCell(row, "rfx_id", { short: true })}</td>
+      <td data-col="origin_zip_prefix">${inputCell(row, "origin_zip_prefix", { short: true, list: "rateware-zip-options" })}</td>
+      <td data-col="origin_state">${inputCell(row, "origin_state", { short: true, list: "rateware-state-options" })}</td>
+      <td data-col="origin_market">${inputCell(row, "origin_market", { wide: true, list: "rateware-market-options" })}</td>
+      <td data-col="origin_region">${inputCell(row, "origin_region", { wide: true, list: "rateware-region-options" })}</td>
+      <td data-col="destination_zip_prefix">${inputCell(row, "destination_zip_prefix", { short: true, list: "rateware-zip-options" })}</td>
+      <td data-col="destination_state">${inputCell(row, "destination_state", { short: true, list: "rateware-state-options" })}</td>
+      <td data-col="destination_market">${inputCell(row, "destination_market", { wide: true, list: "rateware-market-options" })}</td>
+      <td data-col="destination_region">${inputCell(row, "destination_region", { wide: true, list: "rateware-region-options" })}</td>
+      <td data-col="equipment">${selectCell(row, "equipment", ratewareOptions.categories.equipment || [], { short: true })}</td>
+      <td data-col="trailer">${selectCell(row, "trailer", ratewareOptions.categories.trailer || [], { short: true })}</td>
+      <td data-col="hazmat">${checkboxCell(row, "hazmat", "Hazmat")}</td>
+      <td data-col="temperature_controlled">${checkboxCell(row, "temperature_controlled", "Temperature controlled")}</td>
+      <td data-col="config">${selectCell(row, "config", ratewareOptions.categories.config || [], { short: true })}</td>
+      <td data-col="operation">${selectCell(row, "operation", ratewareOptions.categories.operation || [], { short: true })}</td>
+      <td data-col="service">${selectCell(row, "service", ratewareOptions.categories.service || [], { short: true })}</td>
+      <td data-col="mx_border_crossing_point">${selectCell(row, "mx_border_crossing_point", ratewareOptions.mx_crossings || [], { short: true })}</td>
+      <td data-col="us_border_crossing_point">${selectCell(row, "us_border_crossing_point", ratewareOptions.us_crossings || [], { short: true })}</td>
+      <td data-col="mx_linehaul">${inputCell(row, "mx_linehaul", { money: true })}</td>
+      <td data-col="us_linehaul">${inputCell(row, "us_linehaul", { money: true })}</td>
+      <td data-col="fsc">${inputCell(row, "fsc", { money: true })}</td>
+      <td data-col="border_crossing_fee">${inputCell(row, "border_crossing_fee", { money: true })}</td>
+      <td data-col="currency">${selectCell(row, "currency", ratewareOptions.currencies || ["USD", "MXN", "CAD"], { short: true })}</td>
+      <td data-col="weekly_capacity">${inputCell(row, "weekly_capacity", { short: true })}</td>
+      <td class="history-actions rateware-row-actions" data-col="actions">
         <button class="small-button secondary" type="button" data-rateware-detail="${escapeHtml(row.id)}">Details</button>
         <button class="small-button" type="button" data-save-rateware-id="${escapeHtml(row.id)}">Save</button>
         <a class="link-button" href="./staging-review.html">Staging row</a>
-        <span class="row-save-status" data-rateware-row-status="${escapeHtml(row.id)}"></span>
       </td>
     </tr>
   `).join("");
+  columnVisibilityController?.applyVisibility();
   updateBulkControls();
 }
 
@@ -603,6 +648,7 @@ function updateBulkControls() {
   const selectedCount = selectedVisibleIds().length;
   const totalRows = body.querySelectorAll("[data-rateware-id]").length;
   selectionCount.textContent = `${selectedCount} selected`;
+  if (openBulkDrawerButton) openBulkDrawerButton.disabled = selectedCount === 0;
   saveSelectedButton.disabled = selectedCount === 0;
   if (matchSelectedVendorsButton) matchSelectedVendorsButton.disabled = selectedCount === 0;
   if (enrichSelectedZipsButton) enrichSelectedZipsButton.disabled = selectedCount === 0;
@@ -1133,6 +1179,18 @@ async function loadRatewareOptions() {
   populateBulkEditControls();
   return ratewareOptions;
 }
+
+columnVisibilityController = initColumnVisibility({
+  table: ratewareTable,
+  menu: columnMenu,
+  columns: SHEET_COLUMNS,
+  storageKey: "rateware:approved:columns"
+});
+initDrawer({
+  drawer: bulkDrawer,
+  openButton: openBulkDrawerButton,
+  closeButton: closeBulkDrawerButton
+});
 
 initAuthControls();
 requirePrivatePage().catch(() => {});

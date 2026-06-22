@@ -1,5 +1,8 @@
 function editableCells(row, cellSelector) {
-  return [...row.querySelectorAll(cellSelector)].filter((cell) => !cell.disabled && cell.type !== "hidden");
+  return [...row.querySelectorAll(cellSelector)].filter((cell) => {
+    const tableCell = cell.closest("td, th");
+    return !cell.disabled && cell.type !== "hidden" && !tableCell?.classList.contains("column-hidden");
+  });
 }
 
 function visibleRows(container, rowSelector) {
