@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Rateware Interpretation Memory</title>
+    <link rel="stylesheet" href="./src/styles.css" />
+  </head>
+  <body>
+    <div class="shell-layout">
+      <aside class="side-nav" aria-label="Rateware modules">
+        <a class="brand-mark" href="./app.html">Rateware</a>
+        <nav class="nav-groups">
+          <section class="nav-group">
+            <p>Operate</p>
+            <a href="./app.html">Dashboard</a>
+            <a href="./upload-center.html">Upload Center</a>
+            <a href="./upload-history.html">Upload History</a>
+            <a href="./staging-review.html">Staging Review</a>
+            <a href="./rateware.html">Rateware</a>
+          </section>
+          <section class="nav-group">
+            <p>Analyze</p>
+            <a href="./business-intelligence.html">AI Analyst</a>
+          </section>
+          <section class="nav-group">
+            <p>Source</p>
+            <a href="./vendors.html">Vendors</a>
+            <a href="./rfx-events.html">RFx Events</a>
+            <a href="./outreach.html">Outreach</a>
+          </section>
+          <section class="nav-group">
+            <p>Admin</p>
+            <a href="./settings.html">Settings</a>
+            <a aria-current="page" href="./interpretation-memory.html">Memory</a>
+          </section>
+        </nav>
+      </aside>
+
+      <div class="page-frame">
+        <header class="page-header">
+          <div>
+            <p class="eyebrow">AI control plane</p>
+            <h1>Interpretation Memory</h1>
+            <nav class="module-crumbs" aria-label="Module context">
+              <a href="./app.html">Command Center</a>
+              <a href="./settings.html">Admin</a>
+              <span>Memory</span>
+            </nav>
+          </div>
+          <div class="page-header-actions">
+            <button class="page-primary-action" type="button" data-click-target="#new-memory-title">New rule</button>
+            <form id="auth-form" class="auth-strip">
+              <button id="auth-button" type="submit">Sign in with Kinde</button>
+              <button id="sign-out-button" type="button" class="secondary hidden">Sign out</button>
+              <p id="auth-status" role="status"></p>
+            </form>
+          </div>
+        </header>
+
+        <main class="settings-layout memory-admin-layout">
+          <section class="review-insight-grid" aria-label="Memory summary">
+            <article><span>Total active</span><strong id="memory-total">0</strong></article>
+            <article><span>Global</span><strong id="memory-global">0</strong></article>
+            <article><span>Vendor/RFx</span><strong id="memory-targeted">0</strong></article>
+            <article><span>Used rules</span><strong id="memory-used">0</strong></article>
+          </section>
+
+          <section class="settings-grid memory-admin-grid">
+            <section class="workspace-panel">
+              <div class="section-heading compact">
+                <p class="eyebrow">Create rule</p>
+                <h2>Teach Rateware</h2>
+              </div>
+              <form id="memory-form" class="settings-form">
+                <label>Title <input id="new-memory-title" placeholder="Roundtrip explicit only" /></label>
+                <label>Scope
+                  <select id="new-memory-scope">
+                    <option value="global">Global</option>
+                    <option value="vendor">Vendor domain</option>
+                    <option value="rfx">RFx</option>
+                  </select>
+                </label>
+                <label>Vendor domain <input id="new-memory-vendor-domain" placeholder="carrier.com" /></label>
+                <label>RFx <input id="new-memory-rfx" placeholder="RFx-..." /></label>
+                <label class="wide-field">Instruction
+                  <textarea id="new-memory-instruction" rows="5" placeholder="Only classify Roundtrip when RT or Round Trip is explicitly stated."></textarea>
+                </label>
+                <button type="submit">Create memory rule</button>
+              </form>
+              <p id="memory-form-status" class="status-message" role="status"></p>
+            </section>
+
+            <section class="workspace-panel memory-guidance-card">
+              <div class="section-heading compact">
+                <p class="eyebrow">How to use</p>
+                <h2>Rules that are worth saving</h2>
+              </div>
+              <div class="memory-guidance-list">
+                <article><strong>Global</strong><span>Rules that should apply to every interpretation, like ignoring Marksman templates.</span></article>
+                <article><strong>Vendor</strong><span>Carrier-specific habits, table formats, or recurring mistakes.</span></article>
+                <article><strong>RFx</strong><span>Rules specific to one bid package, route family, or procurement event.</span></article>
+              </div>
+            </section>
+          </section>
+
+          <section class="workspace-panel">
+            <div class="split-heading">
+              <div>
+                <p class="eyebrow">Rule library</p>
+                <h2>Active interpretation rules</h2>
+              </div>
+              <button id="refresh-memory-button" type="button" class="secondary">Refresh</button>
+            </div>
+            <div class="bulk-toolbar compact-bulk-toolbar">
+              <span id="memory-selection-count">0 selected</span>
+              <select id="memory-scope-filter">
+                <option value="">All scopes</option>
+                <option value="global">Global</option>
+                <option value="vendor">Vendor</option>
+                <option value="rfx">RFx</option>
+                <option value="upload">Upload</option>
+              </select>
+              <input id="memory-search" placeholder="Search rules..." />
+              <button id="archive-memory-selected" type="button" class="danger small-button" disabled>Archive selected</button>
+              <p id="memory-table-status" class="status-message" role="status"></p>
+            </div>
+            <div class="table-wrap">
+              <table class="memory-admin-table">
+                <thead>
+                  <tr>
+                    <th><input id="select-all-memory" type="checkbox" aria-label="Select all memory rules" /></th>
+                    <th>Scope</th>
+                    <th>Title</th>
+                    <th>Instruction</th>
+                    <th>Target</th>
+                    <th>Used</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody id="memory-body">
+                  <tr><td colspan="7">Loading memory rules...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </main>
+      </div>
+    </div>
+
+    <script type="module" src="./src/interpretation-memory.js"></script>
+  </body>
+</html>

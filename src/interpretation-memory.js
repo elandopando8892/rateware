@@ -1,0 +1,228 @@
+import { initAuthControls, requirePrivatePage } from "./auth.js";
+import { humanizeError } from "./error-copy.js";
+import { archiveMemoryRules, createMemoryRule, listMemoryRules, updateMemoryRule } from "./memory-service.js";
+
+const memoryTotal = document.querySelector("#memory-total");
+const memoryGlobal = document.querySelector("#memory-global");
+const memoryTargeted = document.querySelector("#memory-targeted");
+const memoryUsed = document.querySelector("#memory-used");
+const memoryForm = document.querySelector("#memory-form");
+const memoryFormStatus = document.querySelector("#memory-form-status");
+const memoryTableStatus = document.querySelector("#memory-table-status");
+const memoryBody = document.querySelector("#memory-body");
+const refreshButton = document.querySelector("#refresh-memory-button");
+const scopeFilter = document.querySelector("#memory-scope-filter");
+const searchInput = document.querySelector("#memory-search");
+const selectAllMemory = document.querySelector("#select-all-memory");
+const selectionCount = document.querySelector("#memory-selection-count");
+const archiveSelectedButton = document.querySelector("#archive-memory-selected");
+
+const formInputs = {
+  title: document.querySelector("#new-memory-title"),
+  scope: document.querySelector("#new-memory-scope"),
+  vendor_domain: document.querySelector("#new-memory-vendor-domain"),
+  rfx_hint: document.querySelector("#new-memory-rfx"),
+  instruction: document.querySelector("#new-memory-instruction")
+};
+
+let loadedRules = [];
+const selectedIds = new Set();
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function setStatus(element, message, tone = "neutral") {
+  if (!element) return;
+  element.textContent = message;
+  element.dataset.tone = tone;
+}
+
+function scopeLabel(scope) {
+  if (scope === "vendor") return "Vendor";
+  if (scope === "rfx") return "RFx";
+  if (scope === "upload") return "Upload";
+  return "Global";
+}
+
+function targetLabel(rule) {
+  if (rule.scope === "vendor") return rule.vendor_domain || rule.vendor_id || "-";
+  if (rule.scope === "rfx") return rule.rfx_hint || "-";
+  if (rule.scope === "upload") return rule.raw_upload_id || "-";
+  return "All uploads";
+}
+
+function filteredRules() {
+  const scope = scopeFilter?.value || "";
+  const search = String(searchInput?.value || "").trim().toLowerCase();
+  return loadedRules.filter((rule) => {
+    if (scope && rule.scope !== scope) return false;
+    if (!search) return true;
+    return [rule.title, rule.instruction, rule.vendor_domain, rule.rfx_hint, rule.scope]
+      .some((value) => String(value || "").toLowerCase().includes(search));
+  });
+}
+
+function updateMetrics(rows = loadedRules) {
+  memoryTotal.textContent = String(rows.length);
+  memoryGlobal.textContent = String(rows.filter((rule) => rule.scope === "global").length);
+  memoryTargeted.textContent = String(rows.filter((rule) => rule.scope === "vendor" || rule.scope === "rfx").length);
+  memoryUsed.textContent = String(rows.filter((rule) => Number(rule.usage_count || 0) > 0).length);
+}
+
+function updateSelection() {
+  const visibleIds = [...memoryBody.querySelectorAll("[data-memory-select]")].map((input) => input.dataset.memorySelect);
+  const selectedVisible = visibleIds.filter((id) => selectedIds.has(id));
+  selectionCount.textContent = `${selectedVisible.length} selected`;
+  archiveSelectedButton.disabled = selectedVisible.length === 0;
+  if (selectAllMemory) {
+    selectAllMemory.checked = selectedVisible.length > 0 && selectedVisible.length === visibleIds.length;
+    selectAllMemory.indeterminate = selectedVisible.length > 0 && selectedVisible.length < visibleIds.length;
+  }
+}
+
+function renderRules() {
+  const rows = filteredRules();
+  updateMetrics(loadedRules);
+  if (!rows.length) {
+    memoryBody.innerHTML = `<tr><td colspan="7">No memory rules match this view.</td></tr>`;
+    updateSelection();
+    return;
+  }
+
+  memoryBody.innerHTML = rows.map((rule) => `
+    <tr data-memory-row="${escapeHtml(rule.id)}">
+      <td><input data-memory-select="${escapeHtml(rule.id)}" type="checkbox" ${selectedIds.has(rule.id) ? "checked" : ""} /></td>
+      <td><span class="review-chip neutral">${escapeHtml(scopeLabel(rule.scope))}</span></td>
+      <td><input class="memory-inline-input" data-memory-field="title" value="${escapeHtml(rule.title || "")}" /></td>
+      <td><textarea class="memory-inline-textarea" data-memory-field="instruction" rows="2">${escapeHtml(rule.instruction || "")}</textarea></td>
+      <td>${escapeHtml(targetLabel(rule))}</td>
+      <td>${escapeHtml(rule.usage_count || 0)}</td>
+      <td class="history-actions">
+        ${rule.owner_email ? `<button type="button" class="small-button" data-save-memory="${escapeHtml(rule.id)}">Save</button>` : ""}
+        ${rule.owner_email ? `<button type="button" class="small-button danger" data-archive-memory="${escapeHtml(rule.id)}">Archive</button>` : `<span class="review-chip muted">System</span>`}
+        <small class="row-save-status" data-memory-status="${escapeHtml(rule.id)}"></small>
+      </td>
+    </tr>
+  `).join("");
+  updateSelection();
+}
+
+async function loadMemory() {
+  memoryBody.innerHTML = `<tr><td colspan="7">Loading memory rules...</td></tr>`;
+  setStatus(memoryTableStatus, "");
+  try {
+    await requirePrivatePage();
+    loadedRules = await listMemoryRules();
+    selectedIds.clear();
+    renderRules();
+  } catch (error) {
+    memoryBody.innerHTML = `<tr><td colspan="7">${escapeHtml(humanizeError(error))}</td></tr>`;
+  }
+}
+
+function formValue(name) {
+  return formInputs[name]?.value || "";
+}
+
+function clearForm() {
+  Object.values(formInputs).forEach((input) => {
+    if (!input) return;
+    if (input.tagName === "SELECT") input.value = "global";
+    else input.value = "";
+  });
+}
+
+initAuthControls();
+requirePrivatePage().then(loadMemory).catch(() => {});
+
+refreshButton?.addEventListener("click", loadMemory);
+scopeFilter?.addEventListener("change", renderRules);
+searchInput?.addEventListener("input", renderRules);
+
+memoryForm?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  setStatus(memoryFormStatus, "Creating rule...");
+  try {
+    const scope = formValue("scope") || "global";
+    await createMemoryRule({
+      title: formValue("title"),
+      scope,
+      instruction: formValue("instruction"),
+      vendor_domain: scope === "vendor" ? formValue("vendor_domain") : "",
+      rfx_hint: scope === "rfx" ? formValue("rfx_hint") : ""
+    });
+    setStatus(memoryFormStatus, "Memory rule created.", "success");
+    clearForm();
+    await loadMemory();
+  } catch (error) {
+    setStatus(memoryFormStatus, humanizeError(error), "error");
+  }
+});
+
+selectAllMemory?.addEventListener("change", () => {
+  memoryBody.querySelectorAll("[data-memory-select]").forEach((input) => {
+    input.checked = selectAllMemory.checked;
+    if (input.checked) selectedIds.add(input.dataset.memorySelect);
+    else selectedIds.delete(input.dataset.memorySelect);
+  });
+  updateSelection();
+});
+
+memoryBody?.addEventListener("change", (event) => {
+  const checkbox = event.target.closest("[data-memory-select]");
+  if (!checkbox) return;
+  if (checkbox.checked) selectedIds.add(checkbox.dataset.memorySelect);
+  else selectedIds.delete(checkbox.dataset.memorySelect);
+  updateSelection();
+});
+
+memoryBody?.addEventListener("click", async (event) => {
+  const saveButton = event.target.closest("[data-save-memory]");
+  const archiveButton = event.target.closest("[data-archive-memory]");
+  const id = saveButton?.dataset.saveMemory || archiveButton?.dataset.archiveMemory;
+  if (!id) return;
+  const row = memoryBody.querySelector(`[data-memory-row="${CSS.escape(id)}"]`);
+  const status = memoryBody.querySelector(`[data-memory-status="${CSS.escape(id)}"]`);
+
+  try {
+    if (saveButton) {
+      saveButton.disabled = true;
+      setStatus(status, "Saving...");
+      const patch = {};
+      row.querySelectorAll("[data-memory-field]").forEach((input) => {
+        patch[input.dataset.memoryField] = input.value;
+      });
+      await updateMemoryRule(id, patch);
+      setStatus(status, "Saved.", "success");
+      await loadMemory();
+    }
+
+    if (archiveButton) {
+      archiveButton.disabled = true;
+      await archiveMemoryRules([id]);
+      setStatus(memoryTableStatus, "Rule archived.", "success");
+      await loadMemory();
+    }
+  } catch (error) {
+    setStatus(status || memoryTableStatus, humanizeError(error), "error");
+  }
+});
+
+archiveSelectedButton?.addEventListener("click", async () => {
+  const ids = [...selectedIds];
+  if (!ids.length) return;
+  setStatus(memoryTableStatus, `Archiving ${ids.length} rule(s)...`);
+  try {
+    await archiveMemoryRules(ids);
+    selectedIds.clear();
+    setStatus(memoryTableStatus, "Selected rules archived.", "success");
+    await loadMemory();
+  } catch (error) {
+    setStatus(memoryTableStatus, humanizeError(error), "error");
+  }
+});

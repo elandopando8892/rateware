@@ -4390,6 +4390,48 @@ Deno.serve(async (request) => {
       return jsonResponse({ row: result.data });
     }
 
+    if (body.action === "update_interpretation_memory") {
+      const id = cleanText(body.id);
+      if (!id) return jsonResponse({ error: "Memory rule id is required." }, 400);
+      const patchInput = body.patch || {};
+      const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+      if (patchInput.title !== undefined) patch.title = cleanText(patchInput.title) || "Interpretation rule";
+      if (patchInput.instruction !== undefined) {
+        const instruction = cleanText(patchInput.instruction);
+        if (!instruction) return jsonResponse({ error: "Instruction is required." }, 400);
+        patch.instruction = instruction;
+      }
+      if (patchInput.active !== undefined) patch.active = Boolean(patchInput.active);
+      if (patchInput.scope !== undefined && ["global", "vendor", "rfx", "upload"].includes(String(patchInput.scope))) patch.scope = String(patchInput.scope);
+
+      const result = await supabase
+        .from("interpretation_memory")
+        .update(patch)
+        .eq("id", id)
+        .eq("owner_email", user.owner_email)
+        .select()
+        .single();
+      if (result.error) throw result.error;
+      await writeAuditLog(supabase, user, "update", "interpretation_memory", id, "Updated interpretation memory rule");
+      return jsonResponse({ row: result.data });
+    }
+
+    if (body.action === "archive_interpretation_memory") {
+      const ids = Array.isArray(body.ids)
+        ? body.ids.map(String).filter(Boolean).slice(0, 250)
+        : ([cleanText(body.id)].filter(Boolean) as string[]);
+      if (!ids.length) return jsonResponse({ updated: 0, rows: [] });
+      const result = await supabase
+        .from("interpretation_memory")
+        .update({ active: false, updated_at: new Date().toISOString() })
+        .eq("owner_email", user.owner_email)
+        .in("id", ids)
+        .select();
+      if (result.error) throw result.error;
+      await writeAuditLog(supabase, user, "archive", "interpretation_memory", ids.join(","), `Archived ${result.data?.length || 0} interpretation memory rule(s)`);
+      return jsonResponse({ updated: result.data?.length || 0, rows: result.data || [] });
+    }
+
     if (body.action === "archive_upload") {
       if (!body.id) return jsonResponse({ error: "Upload id is required." }, 400);
       const result = await supabase
