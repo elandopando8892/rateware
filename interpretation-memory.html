@@ -129,6 +129,14 @@
                 <option value="suspect">Suspect</option>
                 <option value="unused">Unused</option>
               </select>
+              <select id="memory-recommendation-filter">
+                <option value="">All recommendations</option>
+                <option value="review_or_archive">Review/archive</option>
+                <option value="tighten_rule">Tighten</option>
+                <option value="promote_candidate">Promote</option>
+                <option value="archive_candidate">Archive candidate</option>
+                <option value="keep">Keep</option>
+              </select>
               <input id="memory-search" placeholder="Search rules..." />
               <button id="archive-memory-selected" type="button" class="danger small-button" disabled>Archive selected</button>
               <p id="memory-table-status" class="status-message" role="status"></p>
@@ -143,12 +151,13 @@
                     <th>Instruction</th>
                     <th>Target</th>
                     <th>Effectiveness</th>
+                    <th>Recommendation</th>
                     <th>Last used</th>
                     <th>Action</th>
                   </tr>
                 </thead>
                 <tbody id="memory-body">
-                  <tr><td colspan="7">Loading memory rules...</td></tr>
+                  <tr><td colspan="9">Loading memory rules...</td></tr>
                 </tbody>
               </table>
             </div>

@@ -14,6 +14,7 @@ const memoryBody = document.querySelector("#memory-body");
 const refreshButton = document.querySelector("#refresh-memory-button");
 const scopeFilter = document.querySelector("#memory-scope-filter");
 const healthFilter = document.querySelector("#memory-health-filter");
+const recommendationFilter = document.querySelector("#memory-recommendation-filter");
 const searchInput = document.querySelector("#memory-search");
 const selectAllMemory = document.querySelector("#select-all-memory");
 const selectionCount = document.querySelector("#memory-selection-count");
@@ -77,6 +78,27 @@ function healthTone(health) {
   return "muted";
 }
 
+function recommendationCode(rule) {
+  return rule.recommendation?.code || "";
+}
+
+function recommendationTone(rule) {
+  const tone = rule.recommendation?.tone || "neutral";
+  if (tone === "danger") return "danger";
+  if (tone === "warning") return "warning";
+  if (tone === "success") return "success";
+  if (tone === "muted") return "muted";
+  return "neutral";
+}
+
+function recommendationLabel(rule) {
+  return rule.recommendation?.label || "Monitor";
+}
+
+function recommendationRationale(rule) {
+  return rule.recommendation?.rationale || "No recommendation yet.";
+}
+
 function formatDate(value) {
   if (!value) return "-";
   return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
@@ -99,10 +121,12 @@ function effectivenessLabel(rule) {
 function filteredRules() {
   const scope = scopeFilter?.value || "";
   const health = healthFilter?.value || "";
+  const recommendation = recommendationFilter?.value || "";
   const search = String(searchInput?.value || "").trim().toLowerCase();
   return loadedRules.filter((rule) => {
     if (scope && rule.scope !== scope) return false;
     if (health && ruleHealth(rule) !== health) return false;
+    if (recommendation && recommendationCode(rule) !== recommendation) return false;
     if (!search) return true;
     return [rule.title, rule.instruction, rule.vendor_domain, rule.rfx_hint, rule.scope]
       .some((value) => String(value || "").toLowerCase().includes(search));
@@ -132,7 +156,7 @@ function renderRules() {
   const rows = filteredRules();
   updateMetrics(loadedRules);
   if (!rows.length) {
-    memoryBody.innerHTML = `<tr><td colspan="8">No memory rules match this view.</td></tr>`;
+    memoryBody.innerHTML = `<tr><td colspan="9">No memory rules match this view.</td></tr>`;
     updateSelection();
     return;
   }
@@ -150,6 +174,12 @@ function renderRules() {
           <small>${escapeHtml(effectivenessLabel(rule))}</small>
         </div>
       </td>
+      <td>
+        <div class="memory-recommendation">
+          <span class="review-chip ${escapeHtml(recommendationTone(rule))}">${escapeHtml(recommendationLabel(rule))}</span>
+          <small>${escapeHtml(recommendationRationale(rule))}</small>
+        </div>
+      </td>
       <td>${escapeHtml(formatDate(rule.effectiveness?.last_upload_at || rule.last_used_at))}</td>
       <td class="history-actions">
         ${rule.owner_email ? `<button type="button" class="small-button" data-save-memory="${escapeHtml(rule.id)}">Save</button>` : ""}
@@ -162,7 +192,7 @@ function renderRules() {
 }
 
 async function loadMemory() {
-  memoryBody.innerHTML = `<tr><td colspan="8">Loading memory rules...</td></tr>`;
+  memoryBody.innerHTML = `<tr><td colspan="9">Loading memory rules...</td></tr>`;
   setStatus(memoryTableStatus, "");
   try {
     await requirePrivatePage();
@@ -170,7 +200,7 @@ async function loadMemory() {
     selectedIds.clear();
     renderRules();
   } catch (error) {
-    memoryBody.innerHTML = `<tr><td colspan="8">${escapeHtml(humanizeError(error))}</td></tr>`;
+    memoryBody.innerHTML = `<tr><td colspan="9">${escapeHtml(humanizeError(error))}</td></tr>`;
   }
 }
 
@@ -192,6 +222,7 @@ requirePrivatePage().then(loadMemory).catch(() => {});
 refreshButton?.addEventListener("click", loadMemory);
 scopeFilter?.addEventListener("change", renderRules);
 healthFilter?.addEventListener("change", renderRules);
+recommendationFilter?.addEventListener("change", renderRules);
 searchInput?.addEventListener("input", renderRules);
 
 memoryForm?.addEventListener("submit", async (event) => {

@@ -537,6 +537,74 @@ function memoryEffectivenessSummary(rule: Record<string, unknown>, uploads: Reco
   };
 }
 
+function memoryRecommendation(rule: Record<string, unknown>, effectiveness: Record<string, unknown>) {
+  const health = cleanText(effectiveness.health) || "unused";
+  const scope = cleanText(rule.scope) || "global";
+  const ownerEmail = cleanText(rule.owner_email);
+  const uploadCount = Number(effectiveness.upload_count || 0);
+  const usageCount = Number(rule.usage_count || 0);
+  const warningCount = Number(effectiveness.warning_count || 0);
+  const failedCount = Number(effectiveness.failed_count || 0);
+  const completionRate = effectiveness.completion_rate === null || effectiveness.completion_rate === undefined
+    ? null
+    : Number(effectiveness.completion_rate);
+
+  if (!ownerEmail) {
+    return {
+      code: "system_rule",
+      label: "Monitor",
+      tone: "neutral",
+      rationale: "System rule. Keep it active unless repeated evidence shows it creates bad interpretations."
+    };
+  }
+  if (health === "suspect") {
+    return {
+      code: "review_or_archive",
+      label: "Review or archive",
+      tone: "danger",
+      rationale: `This rule is linked to ${failedCount} failed upload(s) or low row completion${completionRate !== null ? ` (${completionRate}%)` : ""}.`
+    };
+  }
+  if (health === "watch") {
+    return {
+      code: "tighten_rule",
+      label: "Tighten wording",
+      tone: "warning",
+      rationale: `This rule is working with warnings. Review the wording and make it more specific before it spreads.`
+    };
+  }
+  if (health === "unused" && usageCount === 0) {
+    return {
+      code: "archive_candidate",
+      label: "Archive candidate",
+      tone: "muted",
+      rationale: "This rule has not been used yet. Archive it if it was experimental or too narrow."
+    };
+  }
+  if (health === "healthy" && scope !== "global" && uploadCount >= 3 && warningCount === 0) {
+    return {
+      code: "promote_candidate",
+      label: "Promote candidate",
+      tone: "success",
+      rationale: "This targeted rule has worked cleanly across multiple uploads. Consider making it global if it is broadly true."
+    };
+  }
+  if (health === "healthy") {
+    return {
+      code: "keep",
+      label: "Keep",
+      tone: "success",
+      rationale: "This rule has recent evidence and no major audit issues."
+    };
+  }
+  return {
+    code: "collect_more_data",
+    label: "Collect data",
+    tone: "warning",
+    rationale: "The rule has been used but does not have enough matched audit evidence yet."
+  };
+}
+
 function domainFromVendorReference(value: unknown) {
   const email = normalizeEmail(value);
   if (email) return normalizeDomain(email.split("@").pop());
@@ -4405,10 +4473,14 @@ Deno.serve(async (request) => {
         : { data: [], error: null };
       if (uploadAuditResult.error) throw uploadAuditResult.error;
 
-      const rows = baseRows.map((rule) => ({
-        ...rule,
-        effectiveness: memoryEffectivenessSummary(rule, uploadAuditResult.data || [])
-      }));
+      const rows = baseRows.map((rule) => {
+        const effectiveness = memoryEffectivenessSummary(rule, uploadAuditResult.data || []);
+        return {
+          ...rule,
+          effectiveness,
+          recommendation: memoryRecommendation(rule, effectiveness)
+        };
+      });
       return jsonResponse({ rows, upload, vendor });
     }
 
