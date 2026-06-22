@@ -64,6 +64,7 @@
             <article><span>Global</span><strong id="memory-global">0</strong></article>
             <article><span>Vendor/RFx</span><strong id="memory-targeted">0</strong></article>
             <article><span>Used rules</span><strong id="memory-used">0</strong></article>
+            <article><span>Needs review</span><strong id="memory-suspect">0</strong></article>
           </section>
 
           <section class="settings-grid memory-admin-grid">
@@ -121,6 +122,13 @@
                 <option value="rfx">RFx</option>
                 <option value="upload">Upload</option>
               </select>
+              <select id="memory-health-filter">
+                <option value="">All health</option>
+                <option value="healthy">Healthy</option>
+                <option value="watch">Watch</option>
+                <option value="suspect">Suspect</option>
+                <option value="unused">Unused</option>
+              </select>
               <input id="memory-search" placeholder="Search rules..." />
               <button id="archive-memory-selected" type="button" class="danger small-button" disabled>Archive selected</button>
               <p id="memory-table-status" class="status-message" role="status"></p>
@@ -134,7 +142,8 @@
                     <th>Title</th>
                     <th>Instruction</th>
                     <th>Target</th>
-                    <th>Used</th>
+                    <th>Effectiveness</th>
+                    <th>Last used</th>
                     <th>Action</th>
                   </tr>
                 </thead>

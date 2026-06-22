@@ -486,6 +486,57 @@ function normalizeEmail(value: unknown) {
   return text.match(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/)?.[0] || null;
 }
 
+function memoryRuleIdsFromAudit(upload: Record<string, unknown>) {
+  const audit = typeof upload.interpretation_audit === "object" && upload.interpretation_audit
+    ? upload.interpretation_audit as Record<string, unknown>
+    : {};
+  const rules = Array.isArray(audit.memory_rules_used) ? audit.memory_rules_used : [];
+  return rules
+    .map((rule) => typeof rule === "object" && rule ? cleanText((rule as Record<string, unknown>).id) : null)
+    .filter(Boolean) as string[];
+}
+
+function memoryEffectivenessSummary(rule: Record<string, unknown>, uploads: Record<string, unknown>[]) {
+  const ruleId = cleanText(rule.id);
+  const matchedUploads = uploads.filter((upload) => memoryRuleIdsFromAudit(upload).includes(ruleId || ""));
+  if (!matchedUploads.length) {
+    return {
+      upload_count: 0,
+      staged_rows: 0,
+      expected_rows: 0,
+      completion_rate: null,
+      failed_count: 0,
+      warning_count: 0,
+      health: Number(rule.usage_count || 0) > 0 ? "unmeasured" : "unused",
+      last_upload_at: null
+    };
+  }
+
+  const stagedRows = matchedUploads.reduce((sum, upload) => sum + (Number(upload.interpreted_rate_rows || 0) || 0), 0);
+  const expectedRows = matchedUploads.reduce((sum, upload) => sum + (Number(upload.expected_rate_rows || upload.interpreted_rate_rows || 0) || 0), 0);
+  const failedCount = matchedUploads.filter((upload) => upload.status === "failed" || upload.audit_status === "failed").length;
+  const warningCount = matchedUploads.reduce((sum, upload) => {
+    const warnings = Array.isArray(upload.audit_warnings) ? upload.audit_warnings : [];
+    return sum + warnings.length;
+  }, 0);
+  const completionRate = expectedRows > 0 ? Math.round((stagedRows / expectedRows) * 100) : null;
+  const health = failedCount > 0 || (completionRate !== null && completionRate < 75)
+    ? "suspect"
+    : warningCount > matchedUploads.length * 2 || (completionRate !== null && completionRate < 95)
+      ? "watch"
+      : "healthy";
+  return {
+    upload_count: matchedUploads.length,
+    staged_rows: stagedRows,
+    expected_rows: expectedRows,
+    completion_rate: completionRate,
+    failed_count: failedCount,
+    warning_count: warningCount,
+    health,
+    last_upload_at: matchedUploads.map((upload) => cleanText(upload.interpreted_at || upload.created_at)).filter(Boolean).sort().at(-1) || null
+  };
+}
+
 function domainFromVendorReference(value: unknown) {
   const email = normalizeEmail(value);
   if (email) return normalizeDomain(email.split("@").pop());
@@ -4330,7 +4381,7 @@ Deno.serve(async (request) => {
 
       const vendorDomain = normalizeDomain(vendor?.domain || upload?.vendor_hint);
       const rfxHint = cleanText(upload?.rfx_hint || body.rfx_hint);
-      const rows = [...(ownedResult.data || []), ...(globalResult.data || [])].filter((rule) => {
+      const baseRows = [...(ownedResult.data || []), ...(globalResult.data || [])].filter((rule) => {
         if (!upload) return true;
         if (rule.scope === "global") return true;
         if (rule.scope === "upload") return rule.raw_upload_id === upload.id;
@@ -4342,6 +4393,22 @@ Deno.serve(async (request) => {
         }
         return false;
       });
+
+      const usedRuleIds = baseRows.map((rule) => rule.id).filter(Boolean);
+      const uploadAuditResult = usedRuleIds.length
+        ? await supabase
+            .from("raw_uploads")
+            .select("id,status,created_at,interpreted_at,interpreted_rate_rows,expected_rate_rows,audit_status,audit_warnings,interpretation_audit")
+            .not("interpretation_audit", "is", null)
+            .order("interpreted_at", { ascending: false })
+            .limit(500)
+        : { data: [], error: null };
+      if (uploadAuditResult.error) throw uploadAuditResult.error;
+
+      const rows = baseRows.map((rule) => ({
+        ...rule,
+        effectiveness: memoryEffectivenessSummary(rule, uploadAuditResult.data || [])
+      }));
       return jsonResponse({ rows, upload, vendor });
     }
 

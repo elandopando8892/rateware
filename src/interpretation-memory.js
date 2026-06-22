@@ -6,12 +6,14 @@ const memoryTotal = document.querySelector("#memory-total");
 const memoryGlobal = document.querySelector("#memory-global");
 const memoryTargeted = document.querySelector("#memory-targeted");
 const memoryUsed = document.querySelector("#memory-used");
+const memorySuspect = document.querySelector("#memory-suspect");
 const memoryForm = document.querySelector("#memory-form");
 const memoryFormStatus = document.querySelector("#memory-form-status");
 const memoryTableStatus = document.querySelector("#memory-table-status");
 const memoryBody = document.querySelector("#memory-body");
 const refreshButton = document.querySelector("#refresh-memory-button");
 const scopeFilter = document.querySelector("#memory-scope-filter");
+const healthFilter = document.querySelector("#memory-health-filter");
 const searchInput = document.querySelector("#memory-search");
 const selectAllMemory = document.querySelector("#select-all-memory");
 const selectionCount = document.querySelector("#memory-selection-count");
@@ -56,11 +58,51 @@ function targetLabel(rule) {
   return "All uploads";
 }
 
+function ruleHealth(rule) {
+  return rule.effectiveness?.health || (Number(rule.usage_count || 0) > 0 ? "unmeasured" : "unused");
+}
+
+function healthLabel(health) {
+  if (health === "healthy") return "Healthy";
+  if (health === "watch") return "Watch";
+  if (health === "suspect") return "Suspect";
+  if (health === "unmeasured") return "Unmeasured";
+  return "Unused";
+}
+
+function healthTone(health) {
+  if (health === "healthy") return "success";
+  if (health === "watch" || health === "unmeasured") return "warning";
+  if (health === "suspect") return "danger";
+  return "muted";
+}
+
+function formatDate(value) {
+  if (!value) return "-";
+  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
+}
+
+function effectivenessLabel(rule) {
+  const effectiveness = rule.effectiveness || {};
+  const completion = effectiveness.completion_rate;
+  const uploads = Number(effectiveness.upload_count || 0);
+  if (!uploads) return "No interpreted uploads yet";
+  const pieces = [
+    completion === null || completion === undefined ? null : `${completion}% rows`,
+    `${uploads} upload${uploads === 1 ? "" : "s"}`,
+    Number(effectiveness.warning_count || 0) ? `${effectiveness.warning_count} warnings` : null,
+    Number(effectiveness.failed_count || 0) ? `${effectiveness.failed_count} failed` : null
+  ].filter(Boolean);
+  return pieces.join(" / ");
+}
+
 function filteredRules() {
   const scope = scopeFilter?.value || "";
+  const health = healthFilter?.value || "";
   const search = String(searchInput?.value || "").trim().toLowerCase();
   return loadedRules.filter((rule) => {
     if (scope && rule.scope !== scope) return false;
+    if (health && ruleHealth(rule) !== health) return false;
     if (!search) return true;
     return [rule.title, rule.instruction, rule.vendor_domain, rule.rfx_hint, rule.scope]
       .some((value) => String(value || "").toLowerCase().includes(search));
@@ -72,6 +114,7 @@ function updateMetrics(rows = loadedRules) {
   memoryGlobal.textContent = String(rows.filter((rule) => rule.scope === "global").length);
   memoryTargeted.textContent = String(rows.filter((rule) => rule.scope === "vendor" || rule.scope === "rfx").length);
   memoryUsed.textContent = String(rows.filter((rule) => Number(rule.usage_count || 0) > 0).length);
+  memorySuspect.textContent = String(rows.filter((rule) => ["suspect", "watch"].includes(ruleHealth(rule))).length);
 }
 
 function updateSelection() {
@@ -89,7 +132,7 @@ function renderRules() {
   const rows = filteredRules();
   updateMetrics(loadedRules);
   if (!rows.length) {
-    memoryBody.innerHTML = `<tr><td colspan="7">No memory rules match this view.</td></tr>`;
+    memoryBody.innerHTML = `<tr><td colspan="8">No memory rules match this view.</td></tr>`;
     updateSelection();
     return;
   }
@@ -101,7 +144,13 @@ function renderRules() {
       <td><input class="memory-inline-input" data-memory-field="title" value="${escapeHtml(rule.title || "")}" /></td>
       <td><textarea class="memory-inline-textarea" data-memory-field="instruction" rows="2">${escapeHtml(rule.instruction || "")}</textarea></td>
       <td>${escapeHtml(targetLabel(rule))}</td>
-      <td>${escapeHtml(rule.usage_count || 0)}</td>
+      <td>
+        <div class="memory-effectiveness">
+          <span class="review-chip ${escapeHtml(healthTone(ruleHealth(rule)))}">${escapeHtml(healthLabel(ruleHealth(rule)))}</span>
+          <small>${escapeHtml(effectivenessLabel(rule))}</small>
+        </div>
+      </td>
+      <td>${escapeHtml(formatDate(rule.effectiveness?.last_upload_at || rule.last_used_at))}</td>
       <td class="history-actions">
         ${rule.owner_email ? `<button type="button" class="small-button" data-save-memory="${escapeHtml(rule.id)}">Save</button>` : ""}
         ${rule.owner_email ? `<button type="button" class="small-button danger" data-archive-memory="${escapeHtml(rule.id)}">Archive</button>` : `<span class="review-chip muted">System</span>`}
@@ -113,7 +162,7 @@ function renderRules() {
 }
 
 async function loadMemory() {
-  memoryBody.innerHTML = `<tr><td colspan="7">Loading memory rules...</td></tr>`;
+  memoryBody.innerHTML = `<tr><td colspan="8">Loading memory rules...</td></tr>`;
   setStatus(memoryTableStatus, "");
   try {
     await requirePrivatePage();
@@ -121,7 +170,7 @@ async function loadMemory() {
     selectedIds.clear();
     renderRules();
   } catch (error) {
-    memoryBody.innerHTML = `<tr><td colspan="7">${escapeHtml(humanizeError(error))}</td></tr>`;
+    memoryBody.innerHTML = `<tr><td colspan="8">${escapeHtml(humanizeError(error))}</td></tr>`;
   }
 }
 
@@ -142,6 +191,7 @@ requirePrivatePage().then(loadMemory).catch(() => {});
 
 refreshButton?.addEventListener("click", loadMemory);
 scopeFilter?.addEventListener("change", renderRules);
+healthFilter?.addEventListener("change", renderRules);
 searchInput?.addEventListener("input", renderRules);
 
 memoryForm?.addEventListener("submit", async (event) => {
