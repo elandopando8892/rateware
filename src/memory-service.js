@@ -15,3 +15,7 @@ export async function updateMemoryRule(id, patch) {
 export async function archiveMemoryRules(ids = []) {
   return await callRatewareApi("archive_interpretation_memory", { ids });
 }
+
+export async function simulateMemoryRule(input = {}) {
+  return await callRatewareApi("simulate_interpretation_memory", input);
+}

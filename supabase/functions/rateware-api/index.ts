@@ -605,6 +605,21 @@ function memoryRecommendation(rule: Record<string, unknown>, effectiveness: Reco
   };
 }
 
+function memoryRuleMatchesUpload(rule: Record<string, unknown>, upload: Record<string, unknown>) {
+  const scope = cleanText(rule.scope) || "global";
+  if (scope === "global") return true;
+  if (scope === "upload") return cleanText(rule.raw_upload_id) === cleanText(upload.id);
+  if (scope === "rfx") return Boolean(cleanText(rule.rfx_hint) && cleanText(rule.rfx_hint) === cleanText(upload.rfx_hint));
+  if (scope === "vendor") {
+    if (rule.vendor_id && upload.vendor_id && rule.vendor_id === upload.vendor_id) return true;
+    const ruleDomain = normalizeDomain(rule.vendor_domain);
+    const vendor = typeof upload.vendors === "object" && upload.vendors ? upload.vendors as Record<string, unknown> : {};
+    const uploadDomain = normalizeDomain(vendor.domain || upload.vendor_hint);
+    return Boolean(ruleDomain && uploadDomain && ruleDomain === uploadDomain);
+  }
+  return false;
+}
+
 function domainFromVendorReference(value: unknown) {
   const email = normalizeEmail(value);
   if (email) return normalizeDomain(email.split("@").pop());
@@ -4527,6 +4542,67 @@ Deno.serve(async (request) => {
         raw_upload_id: body.raw_upload_id || null
       });
       return jsonResponse({ row: result.data });
+    }
+
+    if (body.action === "simulate_interpretation_memory") {
+      let rule: Record<string, unknown> | null = null;
+      if (body.id) {
+        const result = await supabase
+          .from("interpretation_memory")
+          .select("*")
+          .eq("id", body.id)
+          .or(`owner_email.eq.${user.owner_email},owner_email.is.null`)
+          .maybeSingle();
+        if (result.error) throw result.error;
+        rule = result.data || null;
+      } else {
+        rule = {
+          scope: ["global", "vendor", "rfx", "upload"].includes(String(body.scope || "")) ? String(body.scope) : "global",
+          vendor_domain: normalizeDomain(body.vendor_domain),
+          rfx_hint: cleanText(body.rfx_hint),
+          raw_upload_id: cleanText(body.raw_upload_id),
+          title: cleanText(body.title) || "Draft rule",
+          instruction: cleanText(body.instruction) || ""
+        };
+      }
+      if (!rule) return jsonResponse({ error: "Memory rule not found." }, 404);
+
+      const uploadsResult = await supabase
+        .from("raw_uploads")
+        .select("id,original_filename,status,created_at,interpreted_at,vendor_id,vendor_hint,rfx_hint,document_type,interpreted_rate_rows,expected_rate_rows,audit_status,audit_warnings,vendors(vendor_name,domain)")
+        .neq("status", "archived")
+        .order("created_at", { ascending: false })
+        .limit(500);
+      if (uploadsResult.error) throw uploadsResult.error;
+
+      const matches = (uploadsResult.data || []).filter((upload) => memoryRuleMatchesUpload(rule!, upload));
+      const warningCount = matches.reduce((sum, upload) => sum + (Array.isArray(upload.audit_warnings) ? upload.audit_warnings.length : 0), 0);
+      const stagedRows = matches.reduce((sum, upload) => sum + (Number(upload.interpreted_rate_rows || 0) || 0), 0);
+      const expectedRows = matches.reduce((sum, upload) => sum + (Number(upload.expected_rate_rows || upload.interpreted_rate_rows || 0) || 0), 0);
+      return jsonResponse({
+        rule,
+        impact: {
+          upload_count: matches.length,
+          staged_rows: stagedRows,
+          expected_rows: expectedRows,
+          warning_count: warningCount,
+          failed_count: matches.filter((upload) => upload.status === "failed" || upload.audit_status === "failed").length,
+          current_scope: rule.scope
+        },
+        rows: matches.slice(0, 25).map((upload) => ({
+          id: upload.id,
+          filename: upload.original_filename,
+          status: upload.status,
+          vendor: (upload.vendors as Record<string, unknown> | null)?.vendor_name || upload.vendor_hint || "",
+          vendor_domain: (upload.vendors as Record<string, unknown> | null)?.domain || upload.vendor_hint || "",
+          rfx_hint: upload.rfx_hint,
+          document_type: upload.document_type,
+          interpreted_rate_rows: upload.interpreted_rate_rows,
+          expected_rate_rows: upload.expected_rate_rows,
+          audit_status: upload.audit_status,
+          created_at: upload.created_at
+        }))
+      });
     }
 
     if (body.action === "update_interpretation_memory") {

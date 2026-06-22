@@ -5942,6 +5942,57 @@ tbody tr:hover {
   padding: 4px 7px;
 }
 
+.memory-simulation-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.memory-simulation-panel.hidden {
+  display: none;
+}
+
+.compact-insights {
+  grid-template-columns: repeat(5, minmax(120px, 1fr));
+}
+
+.memory-simulation-list {
+  display: grid;
+  gap: 7px;
+  max-height: 280px;
+  overflow: auto;
+}
+
+.memory-simulation-list article {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #fbfcfd;
+  padding: 8px 10px;
+}
+
+.memory-simulation-list strong,
+.memory-simulation-list span {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.memory-simulation-list strong {
+  font-size: 0.78rem;
+}
+
+.memory-simulation-list span,
+.memory-simulation-list small {
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 760;
+}
+
 .memory-recommendation {
   min-width: 190px;
 }

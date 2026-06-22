@@ -1,6 +1,6 @@
 import { initAuthControls, requirePrivatePage } from "./auth.js";
 import { humanizeError } from "./error-copy.js";
-import { archiveMemoryRules, createMemoryRule, listMemoryRules, updateMemoryRule } from "./memory-service.js";
+import { archiveMemoryRules, createMemoryRule, listMemoryRules, simulateMemoryRule, updateMemoryRule } from "./memory-service.js";
 
 const memoryTotal = document.querySelector("#memory-total");
 const memoryGlobal = document.querySelector("#memory-global");
@@ -19,6 +19,16 @@ const searchInput = document.querySelector("#memory-search");
 const selectAllMemory = document.querySelector("#select-all-memory");
 const selectionCount = document.querySelector("#memory-selection-count");
 const archiveSelectedButton = document.querySelector("#archive-memory-selected");
+const simulateDraftButton = document.querySelector("#simulate-draft-memory");
+const simulationPanel = document.querySelector("#memory-simulation-panel");
+const closeSimulationButton = document.querySelector("#close-memory-simulation");
+const simulationTitle = document.querySelector("#memory-simulation-title");
+const simulationUploadCount = document.querySelector("#simulation-upload-count");
+const simulationStagedRows = document.querySelector("#simulation-staged-rows");
+const simulationExpectedRows = document.querySelector("#simulation-expected-rows");
+const simulationWarningCount = document.querySelector("#simulation-warning-count");
+const simulationFailedCount = document.querySelector("#simulation-failed-count");
+const simulationList = document.querySelector("#memory-simulation-list");
 
 const formInputs = {
   title: document.querySelector("#new-memory-title"),
@@ -114,9 +124,58 @@ function recommendationActions(rule) {
   return "";
 }
 
+function simulationInputFromForm() {
+  const scope = formValue("scope") || "global";
+  return {
+    title: formValue("title"),
+    scope,
+    instruction: formValue("instruction"),
+    vendor_domain: scope === "vendor" ? formValue("vendor_domain") : "",
+    rfx_hint: scope === "rfx" ? formValue("rfx_hint") : ""
+  };
+}
+
 function formatDate(value) {
   if (!value) return "-";
   return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
+}
+
+function renderSimulation(result) {
+  const impact = result.impact || {};
+  const rows = result.rows || [];
+  simulationPanel?.classList.remove("hidden");
+  simulationTitle.textContent = result.rule?.title ? `Impact preview: ${result.rule.title}` : "Rule impact preview";
+  simulationUploadCount.textContent = String(impact.upload_count || 0);
+  simulationStagedRows.textContent = String(impact.staged_rows || 0);
+  simulationExpectedRows.textContent = String(impact.expected_rows || 0);
+  simulationWarningCount.textContent = String(impact.warning_count || 0);
+  simulationFailedCount.textContent = String(impact.failed_count || 0);
+  simulationList.innerHTML = rows.length
+    ? rows.map((row) => `
+        <article>
+          <div>
+            <strong>${escapeHtml(row.filename || "Upload")}</strong>
+            <span>${escapeHtml([row.vendor, row.rfx_hint, row.document_type].filter(Boolean).join(" / ") || "-")}</span>
+          </div>
+          <div>
+            <span class="review-chip ${escapeHtml(row.status === "failed" ? "danger" : row.audit_status === "needs_review" ? "warning" : "neutral")}">${escapeHtml(row.status || "-")}</span>
+            <small>${escapeHtml(row.interpreted_rate_rows || 0)} / ${escapeHtml(row.expected_rate_rows || row.interpreted_rate_rows || 0)} rows</small>
+          </div>
+        </article>
+      `).join("")
+    : '<p class="detail-note">No recent uploads would be affected by this rule.</p>';
+  simulationPanel?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+async function runSimulation(input, statusElement = memoryTableStatus) {
+  setStatus(statusElement, "Simulating rule impact...");
+  try {
+    const result = await simulateMemoryRule(input);
+    renderSimulation(result);
+    setStatus(statusElement, "Simulation ready.", "success");
+  } catch (error) {
+    setStatus(statusElement, humanizeError(error), "error");
+  }
 }
 
 function effectivenessLabel(rule) {
@@ -198,6 +257,7 @@ function renderRules() {
       <td>${escapeHtml(formatDate(rule.effectiveness?.last_upload_at || rule.last_used_at))}</td>
       <td class="history-actions">
         ${rule.owner_email ? `<button type="button" class="small-button" data-save-memory="${escapeHtml(rule.id)}">Save</button>` : ""}
+        <button type="button" class="small-button secondary" data-simulate-memory="${escapeHtml(rule.id)}">Simulate</button>
         ${recommendationActions(rule)}
         ${rule.owner_email ? `<button type="button" class="small-button danger" data-archive-memory="${escapeHtml(rule.id)}">Archive</button>` : `<span class="review-chip muted">System</span>`}
         <small class="row-save-status" data-memory-status="${escapeHtml(rule.id)}"></small>
@@ -240,6 +300,8 @@ scopeFilter?.addEventListener("change", renderRules);
 healthFilter?.addEventListener("change", renderRules);
 recommendationFilter?.addEventListener("change", renderRules);
 searchInput?.addEventListener("input", renderRules);
+closeSimulationButton?.addEventListener("click", () => simulationPanel?.classList.add("hidden"));
+simulateDraftButton?.addEventListener("click", () => runSimulation(simulationInputFromForm(), memoryFormStatus));
 
 memoryForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -283,7 +345,8 @@ memoryBody?.addEventListener("click", async (event) => {
   const archiveButton = event.target.closest("[data-archive-memory]");
   const applyButton = event.target.closest("[data-apply-recommendation]");
   const focusButton = event.target.closest("[data-focus-memory]");
-  const id = saveButton?.dataset.saveMemory || archiveButton?.dataset.archiveMemory || applyButton?.dataset.applyRecommendation || focusButton?.dataset.focusMemory;
+  const simulateButton = event.target.closest("[data-simulate-memory]");
+  const id = saveButton?.dataset.saveMemory || archiveButton?.dataset.archiveMemory || applyButton?.dataset.applyRecommendation || focusButton?.dataset.focusMemory || simulateButton?.dataset.simulateMemory;
   if (!id) return;
   const row = memoryBody.querySelector(`[data-memory-row="${CSS.escape(id)}"]`);
   const status = memoryBody.querySelector(`[data-memory-status="${CSS.escape(id)}"]`);
@@ -291,6 +354,11 @@ memoryBody?.addEventListener("click", async (event) => {
   if (focusButton) {
     row?.querySelector('[data-memory-field="instruction"]')?.focus();
     setStatus(status, "Edit the wording, then Save.", "warning");
+    return;
+  }
+
+  if (simulateButton) {
+    await runSimulation({ id }, status);
     return;
   }
 

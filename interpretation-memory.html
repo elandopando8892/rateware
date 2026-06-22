@@ -87,7 +87,10 @@
                 <label class="wide-field">Instruction
                   <textarea id="new-memory-instruction" rows="5" placeholder="Only classify Roundtrip when RT or Round Trip is explicitly stated."></textarea>
                 </label>
-                <button type="submit">Create memory rule</button>
+                <div class="action-row">
+                  <button type="submit">Create memory rule</button>
+                  <button id="simulate-draft-memory" type="button" class="secondary">Simulate draft</button>
+                </div>
               </form>
               <p id="memory-form-status" class="status-message" role="status"></p>
             </section>
@@ -103,6 +106,24 @@
                 <article><strong>RFx</strong><span>Rules specific to one bid package, route family, or procurement event.</span></article>
               </div>
             </section>
+          </section>
+
+          <section id="memory-simulation-panel" class="workspace-panel memory-simulation-panel hidden">
+            <div class="split-heading">
+              <div>
+                <p class="eyebrow">Simulation</p>
+                <h2 id="memory-simulation-title">Rule impact preview</h2>
+              </div>
+              <button id="close-memory-simulation" type="button" class="secondary small-button">Close</button>
+            </div>
+            <div class="review-insight-grid compact-insights">
+              <article><span>Matched uploads</span><strong id="simulation-upload-count">0</strong></article>
+              <article><span>Rows staged</span><strong id="simulation-staged-rows">0</strong></article>
+              <article><span>Expected rows</span><strong id="simulation-expected-rows">0</strong></article>
+              <article><span>Warnings</span><strong id="simulation-warning-count">0</strong></article>
+              <article><span>Failed</span><strong id="simulation-failed-count">0</strong></article>
+            </div>
+            <div id="memory-simulation-list" class="memory-simulation-list"></div>
           </section>
 
           <section class="workspace-panel">
