@@ -1,17 +1,28 @@
 :root {
   color-scheme: light;
-  --bg: #f7f8f8;
+  --bg: #f6f7f8;
   --panel: #ffffff;
-  --text: #151d22;
-  --muted: #65717a;
-  --line: #dbe2e7;
-  --accent: #087c72;
-  --accent-dark: #075f59;
+  --text: #18222b;
+  --muted: #66727d;
+  --line: #d9e0e6;
+  --line-strong: #c5cdd5;
+  --accent: #34424e;
+  --accent-dark: #202a33;
+  --accent-soft: #eef1f4;
+  --accent-border: #c7d0d8;
   --danger: #b42318;
+  --danger-soft: #fdecea;
   --success: #157347;
-  --soft-panel: #f9fbfb;
-  --shadow-soft: 0 10px 24px rgba(24, 38, 45, 0.05);
-  --radius: 6px;
+  --success-soft: #e8f5ee;
+  --warning: #8a5a00;
+  --warning-soft: #fff6d9;
+  --neutral: #46525d;
+  --neutral-soft: #eef2f5;
+  --soft-panel: #f9fafb;
+  --shadow-soft: 0 8px 18px rgba(24, 38, 45, 0.045);
+  --radius: 5px;
+  --radius-card: 6px;
+  --control-height: 30px;
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
@@ -24,6 +35,10 @@ body {
   min-height: 100vh;
   background: var(--bg);
   color: var(--text);
+  font-size: 14px;
+  line-height: 1.42;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 a {
@@ -4780,6 +4795,387 @@ select.staging-input {
 
 .settings-audit-table td {
   font-size: 0.84rem;
+}
+
+/* Sprint 8 design system cleanup: compact, neutral, consistent component layer. */
+.page-frame {
+  padding: 14px;
+}
+
+.page-header {
+  margin: -14px -14px 12px;
+  border-bottom-color: rgba(217, 224, 230, 0.92);
+  background: rgba(246, 247, 248, 0.96);
+  padding: 10px 14px 9px;
+}
+
+.page-header h1,
+h1 {
+  font-size: clamp(1.55rem, 2.45vw, 2rem);
+  letter-spacing: 0;
+}
+
+h2 {
+  font-size: 0.96rem;
+  letter-spacing: 0;
+}
+
+.eyebrow {
+  color: var(--muted);
+  font-size: 0.64rem;
+  font-weight: 850;
+}
+
+.workspace-panel,
+.queue-panel,
+.metric-card,
+.review-insight-grid article,
+.rfx-dashboard-grid article,
+.outreach-flow-steps article,
+.rfx-lane-coverage-panel,
+.outreach-draft-preview,
+.preview-summary article,
+.pipeline-card,
+.review-card,
+.segment-card,
+.duplicate-card,
+.ai-suggestion-card,
+.settings-access-card,
+.ai-confirmation-strip,
+.bi-analyst-summary,
+.bi-action-plan-panel,
+.bi-analyst-grid section,
+.bi-template-row,
+.bi-pivot-builder section,
+.rfx-import-box,
+.rfx-shortlist-box,
+.outreach-template-preview,
+.outreach-template-list article,
+.contact-history-list article {
+  border-color: var(--line);
+  border-radius: var(--radius-card);
+  background: var(--panel);
+  box-shadow: none;
+}
+
+.workspace-panel,
+.queue-panel {
+  padding: 12px;
+}
+
+.section-heading {
+  margin-bottom: 10px;
+}
+
+.section-heading.compact {
+  margin-bottom: 7px;
+}
+
+.metric-card,
+.review-insight-grid article,
+.rfx-dashboard-grid article,
+.preview-summary article {
+  gap: 4px;
+  min-height: 72px;
+  padding: 10px;
+}
+
+.metric-card strong,
+.review-insight-grid strong,
+.rfx-dashboard-grid strong,
+.preview-summary strong {
+  font-size: 1.45rem;
+  line-height: 1;
+}
+
+.metric-card span,
+.review-insight-grid span,
+.rfx-dashboard-grid span,
+.preview-summary span,
+.section-caption,
+.module-crumbs,
+.rfx-dashboard-grid small,
+.outreach-flow-steps small {
+  color: var(--muted);
+}
+
+label {
+  gap: 4px;
+  color: #4c5964;
+  font-size: 0.75rem;
+  font-weight: 760;
+}
+
+input,
+select,
+textarea,
+.staging-input,
+.rateware-input {
+  min-height: var(--control-height);
+  border-color: var(--line-strong);
+  border-radius: var(--radius);
+  background: #ffffff;
+  padding: 5px 8px;
+  font-size: 0.8rem;
+}
+
+textarea {
+  line-height: 1.35;
+}
+
+input:focus,
+select:focus,
+textarea:focus,
+.staging-input:focus,
+.rateware-input:focus {
+  border-color: var(--accent);
+  outline: 2px solid rgba(52, 66, 78, 0.14);
+  outline-offset: 0;
+  box-shadow: none;
+}
+
+button,
+.page-primary-action,
+.small-button {
+  min-height: var(--control-height);
+  border-radius: var(--radius);
+  background: var(--accent);
+  color: #ffffff;
+  padding: 5px 10px;
+  font-size: 0.78rem;
+  font-weight: 820;
+}
+
+button:hover,
+.page-primary-action:hover {
+  background: var(--accent-dark);
+}
+
+button.secondary,
+.secondary.small-button,
+.quick-filter,
+.review-filter,
+.user-menu-button {
+  border: 1px solid var(--line-strong);
+  background: #ffffff;
+  color: #34404a;
+}
+
+button.secondary:hover,
+.secondary.small-button:hover,
+.quick-filter:hover,
+.quick-filter.is-active,
+.review-filter:hover,
+.review-filter.is-active,
+.user-menu-button:hover,
+.user-menu-panel a:hover,
+.bi-cell-button:hover {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+  color: var(--accent-dark);
+}
+
+button.small-button,
+.small-button {
+  min-height: 24px;
+  padding: 3px 7px;
+  font-size: 0.7rem;
+}
+
+button.danger,
+.reject-button {
+  background: var(--danger);
+  color: #ffffff;
+}
+
+.table-wrap {
+  border-color: var(--line);
+  border-radius: var(--radius-card);
+  background: var(--panel);
+}
+
+table {
+  font-size: 0.8rem;
+}
+
+th,
+td {
+  border-bottom-color: var(--line);
+  padding: 5px 7px;
+}
+
+th,
+.sheet-table-wrap .staging-table th,
+.sheet-table-wrap .rateware-table th {
+  background: #f1f4f6;
+  color: #46525d;
+  font-size: 0.68rem;
+  font-weight: 880;
+}
+
+td {
+  font-size: 0.8rem;
+}
+
+tbody tr:hover {
+  background: #f9fbfc;
+}
+
+.staging-table th,
+.staging-table td,
+.rateware-table th,
+.rateware-table td {
+  padding: 2px 4px;
+}
+
+.status-pill,
+.tag-chip,
+.match-pill,
+.location-chip,
+.score-pill,
+.warning-pill,
+.base-context-pill,
+.wizard-step,
+.dashboard-signals span,
+.rfx-status-mix span,
+.template-token-row span,
+.check-done,
+.check-missing {
+  min-height: 20px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: var(--neutral-soft);
+  color: var(--neutral);
+  padding: 2px 7px;
+  font-size: 0.68rem;
+  font-weight: 820;
+}
+
+.status-pill.neutral,
+.status-pill.muted,
+.status-pill[data-tone="neutral"],
+.status-pill[data-tone="muted"],
+.tag-chip.muted,
+.base-context-pill,
+.location-chip.strong,
+.score-pill.strong,
+.wizard-step,
+.dashboard-signals span {
+  background: var(--neutral-soft);
+  color: var(--neutral);
+}
+
+.status-pill.success,
+.status-pill[data-tone="success"],
+.check-done,
+.score-pill.success,
+.rfx-status-mix span[data-tone="success"] {
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.status-pill.warning,
+.status-pill[data-tone="warning"],
+.score-pill.medium,
+.warning-pill,
+.check-warning {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+.status-pill.danger,
+.status-pill[data-tone="danger"],
+.location-chip.weak,
+.score-pill.weak,
+.check-missing,
+.rfx-status-mix span[data-tone="danger"] {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.match-pill,
+.bi-shortlist-meta span,
+.bi-score-breakdown span,
+.template-token-row span {
+  border-color: var(--line);
+  background: #ffffff;
+  color: var(--neutral);
+}
+
+.side-nav a[aria-current="page"],
+.nav-links a[aria-current="page"],
+.rfx-event-card.is-active,
+.outreach-campaign-card.is-active,
+.wizard-step.is-active,
+.next-best-action-card,
+.scope-banner,
+.settings-access-card,
+.ai-confirmation-strip,
+.bi-analyst-summary,
+.outreach-template-preview {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+  color: var(--accent-dark);
+}
+
+.metric-card:hover,
+.pipeline-card:hover {
+  border-color: var(--accent-border);
+  box-shadow: var(--shadow-soft);
+}
+
+.health-meter.strong span,
+.coverage-meter span,
+.drop-zone input::file-selector-button {
+  background: var(--accent);
+}
+
+.rfx-coverage-card[data-tone="neutral"] {
+  border-left-color: var(--accent);
+}
+
+.rfx-coverage-card[data-tone="success"] {
+  border-left-color: var(--success);
+}
+
+.rfx-coverage-card[data-tone="danger"] {
+  border-left-color: var(--danger);
+}
+
+.bulk-action-bar {
+  min-height: 34px;
+  border-color: var(--line);
+  background: var(--panel);
+  padding: 6px 8px;
+}
+
+.bulk-action-bar span:first-child {
+  color: var(--neutral);
+  font-size: 0.76rem;
+}
+
+.status-message,
+.row-save-status {
+  color: var(--neutral);
+  font-size: 0.76rem;
+  font-weight: 760;
+}
+
+.status-message[data-tone="success"],
+.row-save-status[data-tone="success"] {
+  color: var(--success);
+}
+
+.status-message[data-tone="warning"],
+.row-save-status[data-tone="warning"] {
+  color: var(--warning);
+}
+
+.status-message[data-tone="error"],
+.status-message[data-tone="danger"],
+.row-save-status[data-tone="error"],
+.row-save-status[data-tone="danger"] {
+  color: var(--danger);
 }
 
 @media (max-width: 860px) {
