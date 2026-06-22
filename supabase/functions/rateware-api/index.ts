@@ -4541,7 +4541,15 @@ Deno.serve(async (request) => {
         patch.instruction = instruction;
       }
       if (patchInput.active !== undefined) patch.active = Boolean(patchInput.active);
-      if (patchInput.scope !== undefined && ["global", "vendor", "rfx", "upload"].includes(String(patchInput.scope))) patch.scope = String(patchInput.scope);
+      if (patchInput.scope !== undefined && ["global", "vendor", "rfx", "upload"].includes(String(patchInput.scope))) {
+        patch.scope = String(patchInput.scope);
+        if (patch.scope === "global") {
+          patch.vendor_id = null;
+          patch.vendor_domain = null;
+          patch.rfx_hint = null;
+          patch.raw_upload_id = null;
+        }
+      }
 
       const result = await supabase
         .from("interpretation_memory")

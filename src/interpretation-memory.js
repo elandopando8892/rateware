@@ -99,6 +99,21 @@ function recommendationRationale(rule) {
   return rule.recommendation?.rationale || "No recommendation yet.";
 }
 
+function recommendationActions(rule) {
+  if (!rule.owner_email) return "";
+  const code = recommendationCode(rule);
+  if (code === "archive_candidate" || code === "review_or_archive") {
+    return `<button type="button" class="small-button danger" data-apply-recommendation="${escapeHtml(rule.id)}" data-recommendation-action="archive">Apply: Archive</button>`;
+  }
+  if (code === "promote_candidate") {
+    return `<button type="button" class="small-button" data-apply-recommendation="${escapeHtml(rule.id)}" data-recommendation-action="promote_global">Apply: Promote</button>`;
+  }
+  if (code === "tighten_rule") {
+    return `<button type="button" class="small-button secondary" data-focus-memory="${escapeHtml(rule.id)}">Edit wording</button>`;
+  }
+  return "";
+}
+
 function formatDate(value) {
   if (!value) return "-";
   return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
@@ -183,6 +198,7 @@ function renderRules() {
       <td>${escapeHtml(formatDate(rule.effectiveness?.last_upload_at || rule.last_used_at))}</td>
       <td class="history-actions">
         ${rule.owner_email ? `<button type="button" class="small-button" data-save-memory="${escapeHtml(rule.id)}">Save</button>` : ""}
+        ${recommendationActions(rule)}
         ${rule.owner_email ? `<button type="button" class="small-button danger" data-archive-memory="${escapeHtml(rule.id)}">Archive</button>` : `<span class="review-chip muted">System</span>`}
         <small class="row-save-status" data-memory-status="${escapeHtml(rule.id)}"></small>
       </td>
@@ -265,10 +281,18 @@ memoryBody?.addEventListener("change", (event) => {
 memoryBody?.addEventListener("click", async (event) => {
   const saveButton = event.target.closest("[data-save-memory]");
   const archiveButton = event.target.closest("[data-archive-memory]");
-  const id = saveButton?.dataset.saveMemory || archiveButton?.dataset.archiveMemory;
+  const applyButton = event.target.closest("[data-apply-recommendation]");
+  const focusButton = event.target.closest("[data-focus-memory]");
+  const id = saveButton?.dataset.saveMemory || archiveButton?.dataset.archiveMemory || applyButton?.dataset.applyRecommendation || focusButton?.dataset.focusMemory;
   if (!id) return;
   const row = memoryBody.querySelector(`[data-memory-row="${CSS.escape(id)}"]`);
   const status = memoryBody.querySelector(`[data-memory-status="${CSS.escape(id)}"]`);
+
+  if (focusButton) {
+    row?.querySelector('[data-memory-field="instruction"]')?.focus();
+    setStatus(status, "Edit the wording, then Save.", "warning");
+    return;
+  }
 
   try {
     if (saveButton) {
@@ -287,6 +311,24 @@ memoryBody?.addEventListener("click", async (event) => {
       archiveButton.disabled = true;
       await archiveMemoryRules([id]);
       setStatus(memoryTableStatus, "Rule archived.", "success");
+      await loadMemory();
+    }
+
+    if (applyButton) {
+      applyButton.disabled = true;
+      const action = applyButton.dataset.recommendationAction;
+      if (action === "archive") {
+        await archiveMemoryRules([id]);
+        setStatus(memoryTableStatus, "Recommendation applied: rule archived.", "success");
+      }
+      if (action === "promote_global") {
+        await updateMemoryRule(id, {
+          scope: "global",
+          title: row.querySelector('[data-memory-field="title"]')?.value || "Global interpretation rule",
+          instruction: row.querySelector('[data-memory-field="instruction"]')?.value || ""
+        });
+        setStatus(memoryTableStatus, "Recommendation applied: rule promoted to global.", "success");
+      }
       await loadMemory();
     }
   } catch (error) {

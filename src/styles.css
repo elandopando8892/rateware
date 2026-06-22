@@ -5933,6 +5933,15 @@ tbody tr:hover {
   min-width: 160px;
 }
 
+.memory-admin-table .history-actions {
+  min-width: 170px;
+}
+
+.memory-admin-table .history-actions .small-button {
+  min-height: 24px;
+  padding: 4px 7px;
+}
+
 .memory-recommendation {
   min-width: 190px;
 }
