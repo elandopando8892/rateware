@@ -57,6 +57,11 @@
         </header>
 
         <main class="bi-layout">
+          <div class="ai-confirmation-strip" role="note">
+            <strong>AI proposes. You confirm.</strong>
+            <span>No vendor promotion, RFx invitation, outreach, or Rateware change happens until a user approves the action.</span>
+          </div>
+
           <section class="workspace-panel bi-command-panel">
             <div class="section-heading compact split-heading">
               <div>
@@ -69,18 +74,32 @@
             <form id="bi-chat-form" class="bi-chat-form">
               <textarea
                 id="bi-prompt"
-                rows="4"
+                rows="2"
                 placeholder="Dime los 30 carriers crossborder que recomiendas para darlos de alta."
               ></textarea>
-              <div class="bi-prompt-row">
-                <button type="button" class="secondary small-button" data-bi-prompt="Dime el 20% de los carriers crossborder D2D Export / D2D Import que cotizan el 80% de las transacciones.">Pareto D2D 80/20</button>
-                <button type="button" class="secondary small-button" data-bi-prompt="Dime los 30 carriers crossborder que recomiendas para darlos de alta.">30 crossborder</button>
-                <button type="button" class="secondary small-button" data-bi-prompt="Arma una shortlist RFx para Apodaca / Monterrey a Dallas por Flatbed, con riesgos y gaps antes de invitar.">RFx shortlist</button>
-                <button type="button" class="secondary small-button" data-bi-prompt="Explica los gaps de datos que impiden confiar en costo por milla y que pivots debo revisar.">Gaps + pivots</button>
-                <button type="button" class="secondary small-button" data-bi-prompt="Dime los 50 carriers mexicanos que recomiendas para mi operacion.">50 mexicanos</button>
-                <button type="button" class="secondary small-button" data-bi-prompt="Que carriers tienen mejor costo por milla en rutas D2D Export por Laredo?">Cost / mile</button>
-                <button type="button" class="secondary small-button" data-bi-prompt="Que carriers recomiendas por corredor, mercado, estado, equipo, operacion y servicio?">Multi-slice</button>
-                <button type="button" class="secondary small-button" data-bi-prompt="Dame una lista de los 100 carriers que deberia dar de alta en Procurement Base.">100 targets</button>
+              <div class="bi-prompt-row compact">
+                <div class="bi-prompt-groups" aria-label="Suggested prompts by use case">
+                  <section class="bi-prompt-group">
+                    <span>Coverage</span>
+                    <button type="button" class="secondary small-button" data-bi-prompt="Dime el 20% de los carriers crossborder D2D Export / D2D Import que cotizan el 80% de las transacciones.">Pareto 80/20</button>
+                    <button type="button" class="secondary small-button" data-bi-prompt="Dime los 30 carriers crossborder que recomiendas para darlos de alta.">Top crossborder</button>
+                    <button type="button" class="secondary small-button" data-bi-prompt="Dame una lista de los 100 carriers que deberia dar de alta en Procurement Base.">100 targets</button>
+                  </section>
+                  <section class="bi-prompt-group">
+                    <span>RFx</span>
+                    <button type="button" class="secondary small-button" data-bi-prompt="Arma una shortlist RFx para Apodaca / Monterrey a Dallas por Flatbed, con riesgos y gaps antes de invitar.">Shortlist RFx</button>
+                    <button type="button" class="secondary small-button" data-bi-prompt="Que carriers recomiendas por corredor, mercado, estado, equipo, operacion y servicio?">Multi-slice</button>
+                  </section>
+                  <section class="bi-prompt-group">
+                    <span>Economics</span>
+                    <button type="button" class="secondary small-button" data-bi-prompt="Que carriers tienen mejor costo por milla en rutas D2D Export por Laredo?">Cost / mile</button>
+                    <button type="button" class="secondary small-button" data-bi-prompt="Dime los 50 carriers mexicanos que recomiendas para mi operacion.">50 MX carriers</button>
+                  </section>
+                  <section class="bi-prompt-group">
+                    <span>Quality</span>
+                    <button type="button" class="secondary small-button" data-bi-prompt="Explica los gaps de datos que impiden confiar en costo por milla y que pivots debo revisar.">Gaps + pivots</button>
+                  </section>
+                </div>
                 <button id="bi-submit-button" type="submit">Ask AI</button>
               </div>
             </form>
@@ -100,6 +119,19 @@
               <strong>Ask the analyst a commercial question.</strong>
               <span>The analyst will explain the evidence, gaps, pivots, RFx shortlist, and proposed actions.</span>
             </div>
+
+            <section class="bi-action-plan-panel">
+              <div class="section-heading compact split-heading">
+                <div>
+                  <p class="eyebrow">Action plan</p>
+                  <h3>Proposed next steps</h3>
+                </div>
+                <span class="status-pill muted">Approval required</span>
+              </div>
+              <div id="bi-proposed-actions" class="bi-analyst-list bi-action-plan-list">
+                <article>No proposed actions yet.</article>
+              </div>
+            </section>
 
             <div class="bi-analyst-grid">
               <section>
@@ -129,16 +161,6 @@
                 </div>
                 <div id="bi-rfx-shortlist" class="bi-analyst-list">
                   <article>No shortlist yet.</article>
-                </div>
-              </section>
-
-              <section>
-                <div class="section-heading compact">
-                  <p class="eyebrow">Proposed actions</p>
-                  <h3>Requires confirmation</h3>
-                </div>
-                <div id="bi-proposed-actions" class="bi-analyst-list">
-                  <article>No proposed actions yet.</article>
                 </div>
               </section>
             </div>

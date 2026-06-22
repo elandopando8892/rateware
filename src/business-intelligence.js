@@ -600,14 +600,76 @@ function suggestedPivotConfig(pivot) {
   };
 }
 
-function analystCard(title, detail, extra = "") {
+function analystCard(title, detail, extra = "", className = "") {
   return `
-    <article>
+    <article${className ? ` class="${className}"` : ""}>
       <strong>${escapeHtml(title || "-")}</strong>
       <p>${escapeHtml(detail || "-")}</p>
       ${extra}
     </article>
   `;
+}
+
+function analystEmpty(message) {
+  return `<article class="bi-empty-card">${escapeHtml(message)}</article>`;
+}
+
+function suggestedPivotMeta(pivot = {}) {
+  const rows = (pivot.rows || []).join(", ") || "vendor";
+  const columns = (pivot.columns || []).join(", ") || "none";
+  const metric = PIVOT_METRICS.find(([key]) => key === pivot.metric)?.[1] || pivot.metric || "Transactions";
+  return `Rows: ${rows} | Columns: ${columns} | Metric: ${metric}`;
+}
+
+function renderSuggestedPivotCard(pivot = {}, index) {
+  const meta = suggestedPivotMeta(pivot);
+  return analystCard(
+    pivot.title || "Suggested pivot",
+    pivot.purpose || "Validate the analyst answer with Rateware data.",
+    `
+      <span>${escapeHtml(meta)}</span>
+      <button type="button" class="secondary small-button bi-pivot-suggestion-button" data-analyst-pivot="${index}">Run validation pivot</button>
+    `,
+    "bi-pivot-card"
+  );
+}
+
+function renderDataGapCard(gap = {}) {
+  return analystCard(
+    gap.title || "Data gap",
+    gap.impact || "This weakens the recommendation.",
+    gap.suggested_fix ? `<span>${escapeHtml(gap.suggested_fix)}</span>` : "",
+    "bi-gap-card"
+  );
+}
+
+function renderRfxShortlistCard(item = {}) {
+  return analystCard(
+    item.vendor_name || "Carrier",
+    item.reason || "Recommended for this RFx scenario.",
+    `
+      <div class="bi-shortlist-meta">
+        <span>${escapeHtml(item.suggested_role || "Invite")}</span>
+        <span>${escapeHtml(item.risk || "No visible risk")}</span>
+        <em>Review only</em>
+      </div>
+    `,
+    "bi-shortlist-card"
+  );
+}
+
+function renderActionPlanCard(action = {}, index) {
+  const priority = action.priority || "Medium";
+  const confirmation = action.requires_confirmation === false ? "Advisory" : "Requires confirmation";
+  return analystCard(
+    `${index + 1}. ${priority} priority`,
+    action.action || "Review the analyst recommendation.",
+    `
+      ${action.rationale ? `<span>${escapeHtml(action.rationale)}</span>` : ""}
+      <em>${escapeHtml(confirmation)}</em>
+    `,
+    "bi-action-card"
+  );
 }
 
 function renderAnalystLayer(result = {}) {
@@ -624,35 +686,23 @@ function renderAnalystLayer(result = {}) {
 
   const pivots = Array.isArray(result.suggested_pivots) ? result.suggested_pivots : [];
   suggestedPivots.innerHTML = pivots.length
-    ? pivots.map((pivot, index) => analystCard(
-      pivot.title,
-      pivot.purpose,
-      `<button type="button" class="secondary small-button" data-analyst-pivot="${index}">Load pivot</button>`
-    )).join("")
-    : "<article>No pivot suggestions returned.</article>";
+    ? pivots.map((pivot, index) => renderSuggestedPivotCard(pivot, index)).join("")
+    : analystEmpty("No pivot suggestions returned.");
 
   const gaps = Array.isArray(result.data_gaps) ? result.data_gaps : [];
   dataGaps.innerHTML = gaps.length
-    ? gaps.map((gap) => analystCard(gap.title, gap.impact, `<span>${escapeHtml(gap.suggested_fix || "")}</span>`)).join("")
-    : "<article>No data gaps returned.</article>";
+    ? gaps.map((gap) => renderDataGapCard(gap)).join("")
+    : analystEmpty("No data gaps returned.");
 
   const shortlist = Array.isArray(result.rfx_shortlist) ? result.rfx_shortlist : [];
   rfxShortlist.innerHTML = shortlist.length
-    ? shortlist.map((item) => analystCard(
-      `${item.suggested_role || "Invite"}: ${item.vendor_name || "Carrier"}`,
-      item.reason,
-      `<span>Risk: ${escapeHtml(item.risk || "No visible risk")}</span>`
-    )).join("")
-    : "<article>No RFx shortlist returned.</article>";
+    ? shortlist.map((item) => renderRfxShortlistCard(item)).join("")
+    : analystEmpty("No RFx shortlist returned.");
 
   const actions = Array.isArray(result.proposed_actions) ? result.proposed_actions : [];
   proposedActions.innerHTML = actions.length
-    ? actions.map((action) => analystCard(
-      `${action.priority || "Medium"} priority`,
-      action.action,
-      `<span>${escapeHtml(action.rationale || "")}</span><em>${action.requires_confirmation ? "Requires human confirmation" : "Advisory"}</em>`
-    )).join("")
-    : "<article>No proposed actions returned.</article>";
+    ? actions.map((action, index) => renderActionPlanCard(action, index)).join("")
+    : analystEmpty("No proposed actions returned.");
 
   copyActionsButton.disabled = !actions.length && !shortlist.length && !pivots.length;
 }
@@ -714,7 +764,7 @@ function renderRecommendations(rows = []) {
 
 function renderAnswer(result) {
   renderAnalystLayer(result);
-  answerPanel.innerHTML = `
+  if (answerPanel) answerPanel.innerHTML = `
     <strong>${escapeHtml(result.answer || "Carrier intelligence response")}</strong>
     <span>${escapeHtml(result.filters?.focus?.join(", ") || "general fit")}</span>
     ${(result.next_actions || []).length ? `<ol>${result.next_actions.map((action) => `<li>${escapeHtml(action)}</li>`).join("")}</ol>` : ""}
@@ -933,7 +983,7 @@ suggestedPivots?.addEventListener("click", async (event) => {
   const pivot = currentAnalystResult.suggested_pivots?.[Number(button.dataset.analystPivot)];
   if (!pivot) return;
   applyPivotConfig(suggestedPivotConfig(pivot));
-  setPivotStatus(`Analyst pivot loaded: ${pivot.title}.`);
+  setPivotStatus(`Analyst validation pivot: ${pivot.title}.`);
   await runPivot();
 });
 

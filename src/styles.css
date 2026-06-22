@@ -3823,6 +3823,28 @@ select.staging-input {
   gap: 16px;
 }
 
+.ai-confirmation-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+  border: 1px solid #bddbd7;
+  border-radius: var(--radius);
+  background: #eef7f6;
+  padding: 10px 12px;
+}
+
+.ai-confirmation-strip strong {
+  color: var(--accent-dark);
+  font-size: 0.86rem;
+}
+
+.ai-confirmation-strip span {
+  color: #43505a;
+  font-size: 0.8rem;
+  font-weight: 760;
+}
+
 .bi-command-panel {
   display: grid;
   gap: 12px;
@@ -3830,11 +3852,11 @@ select.staging-input {
 
 .bi-chat-form {
   display: grid;
-  gap: 10px;
+  gap: 8px;
 }
 
 .bi-chat-form textarea {
-  min-height: 104px;
+  min-height: 64px;
   resize: vertical;
 }
 
@@ -3843,6 +3865,36 @@ select.staging-input {
   flex-wrap: wrap;
   gap: 8px;
   align-items: center;
+}
+
+.bi-prompt-row.compact {
+  align-items: stretch;
+}
+
+.bi-prompt-groups {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  flex: 1;
+}
+
+.bi-prompt-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--soft-panel);
+  padding: 8px;
+}
+
+.bi-prompt-group span {
+  width: 100%;
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 900;
+  text-transform: uppercase;
 }
 
 .bi-prompt-row #bi-submit-button {
@@ -3917,9 +3969,27 @@ select.staging-input {
   padding-left: 18px;
 }
 
+.bi-action-plan-panel {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--soft-panel);
+  padding: 12px;
+}
+
+.bi-action-plan-panel h3 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.bi-action-plan-list {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .bi-analyst-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
 }
 
@@ -3952,6 +4022,12 @@ select.staging-input {
   padding: 9px;
 }
 
+.bi-analyst-list article.bi-empty-card {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 760;
+}
+
 .bi-analyst-list strong {
   color: var(--text);
   font-size: 0.84rem;
@@ -3978,6 +4054,38 @@ select.staging-input {
   background: #fff4d8;
   color: #7a4d00;
   padding: 2px 7px;
+}
+
+.bi-pivot-card {
+  border-color: #bddbd7;
+}
+
+.bi-pivot-suggestion-button {
+  justify-self: start;
+}
+
+.bi-shortlist-card {
+  border-left: 3px solid var(--accent);
+}
+
+.bi-shortlist-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  align-items: center;
+}
+
+.bi-shortlist-meta span {
+  border-radius: 999px;
+  background: #eef3f5;
+  color: #43505a;
+  padding: 2px 7px;
+  font-size: 0.7rem;
+  font-weight: 820;
+}
+
+.bi-action-card {
+  border-color: #bddbd7;
 }
 
 .bi-recommendation-panel {
@@ -4471,6 +4579,21 @@ select.staging-input {
   .rateware-toolbar.sheet-toolbar,
   .compact-column-filters {
     grid-template-columns: 1fr;
+  }
+
+  .bi-prompt-groups,
+  .bi-action-plan-list,
+  .bi-analyst-grid,
+  .bi-recommendation-controls,
+  .bi-pivot-builder,
+  .bi-filter-grid,
+  .bi-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .bi-prompt-row #bi-submit-button {
+    width: 100%;
+    margin-left: 0;
   }
 
   .column-toggle-grid {
