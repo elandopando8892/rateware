@@ -4298,6 +4298,32 @@ Deno.serve(async (request) => {
       return jsonResponse({ row: result.data });
     }
 
+    if (body.action === "get_upload_source_url") {
+      if (!body.id) return jsonResponse({ error: "Upload id is required." }, 400);
+      const upload = await supabase
+        .from("raw_uploads")
+        .select("id,original_filename,storage_bucket,storage_path,mime_type")
+        .eq("id", body.id)
+        .single();
+      if (upload.error) throw upload.error;
+      if (!upload.data?.storage_bucket || !upload.data?.storage_path) {
+        return jsonResponse({ error: "Source file is missing from storage." }, 404);
+      }
+
+      const signed = await supabase.storage
+        .from(upload.data.storage_bucket)
+        .createSignedUrl(upload.data.storage_path, 60 * 10, {
+          download: upload.data.original_filename || undefined
+        });
+      if (signed.error) throw signed.error;
+      return jsonResponse({
+        url: signed.data.signedUrl,
+        expires_in_seconds: 600,
+        filename: upload.data.original_filename,
+        mime_type: upload.data.mime_type
+      });
+    }
+
     if (body.action === "remove_upload") {
       if (!body.id) return jsonResponse({ error: "Upload id is required." }, 400);
       const upload = await supabase
@@ -4320,6 +4346,7 @@ Deno.serve(async (request) => {
     if (body.action === "list_staging") {
       let query = supabase.from("rate_staging").select("*, vendors(vendor_name, domain, primary_email, base_stage, status), rateware_lane_legs(*)").order("created_at", { ascending: false }).limit(200);
       if (body.status) query = query.eq("status", body.status);
+      if (body.raw_upload_id) query = query.eq("raw_upload_id", body.raw_upload_id);
       const result = await query;
       if (result.error) throw result.error;
       return jsonResponse({ rows: result.data });

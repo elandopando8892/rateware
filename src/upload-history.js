@@ -1,5 +1,6 @@
 import { applyPermissionState, ensureSignedIn, initAuthControls, requirePrivatePage } from "./auth.js";
-import { archiveUpload, fetchUploadHistory, interpretUpload, removeUpload } from "./upload-service.js";
+import { humanizeError } from "./error-copy.js";
+import { archiveUpload, fetchUploadHistory, getUploadSourceUrl, interpretUpload, removeUpload } from "./upload-service.js";
 
 const historyBody = document.querySelector("#history-body");
 const refreshButton = document.querySelector("#refresh-button");
@@ -20,6 +21,7 @@ const uploadDrawer = document.querySelector("#upload-drawer");
 const closeUploadDrawerButton = document.querySelector("#close-upload-drawer");
 const uploadDrawerTitle = document.querySelector("#upload-drawer-title");
 const uploadDetail = document.querySelector("#upload-detail");
+const HISTORY_COLSPAN = 11;
 let loadedRows = [];
 let currentRows = [];
 let activeQuickFilter = "all";
@@ -68,6 +70,45 @@ function matchLabel(row) {
 
 function documentType(row) {
   return String(row.document_type || "").toLowerCase();
+}
+
+function sourceRowsUrl(row) {
+  const params = new URLSearchParams();
+  params.set("raw_upload_id", row.id);
+  if (row.status !== "approved") params.set("status", "");
+  return `./staging-review.html?${params.toString()}`;
+}
+
+function stagedRows(row) {
+  return Number(row.interpreted_rate_rows ?? auditPayload(row).interpreted_rate_rows ?? 0) || 0;
+}
+
+function detectedRows(row) {
+  return Number(row.expected_rate_rows ?? auditPayload(row).expected_rate_rows ?? stagedRows(row) ?? 0) || 0;
+}
+
+function uploadStepState(row, step) {
+  const staged = stagedRows(row) > 0 || row.status === "staged";
+  if (row.status === "failed" && step === "interpret") return "error";
+  if (step === "upload") return row.status === "archived" ? "muted" : "done";
+  if (step === "interpret") return staged ? "done" : row.status === "uploaded" ? "active" : "muted";
+  if (step === "review") return staged ? "active" : "muted";
+  if (step === "approve") return "muted";
+  return "muted";
+}
+
+function renderUploadFlow(row) {
+  const steps = [
+    ["upload", "Upload"],
+    ["interpret", "Interpret"],
+    ["review", "Review"],
+    ["approve", "Approve"]
+  ];
+  return `
+    <div class="upload-row-flow" aria-label="Upload progress">
+      ${steps.map(([key, label]) => `<span class="${escapeHtml(uploadStepState(row, key))}">${escapeHtml(label)}</span>`).join("")}
+    </div>
+  `;
 }
 
 function applyQuickFilter(rows = loadedRows) {
@@ -149,10 +190,23 @@ function auditLabel(status) {
 }
 
 function auditRowsLabel(row) {
-  const expected = row.expected_rate_rows ?? auditPayload(row).expected_rate_rows ?? "";
-  const interpreted = row.interpreted_rate_rows ?? auditPayload(row).interpreted_rate_rows ?? "";
-  if (!expected && !interpreted) return "";
-  return `${interpreted || 0}/${expected || interpreted || 0} rows`;
+  const detected = detectedRows(row);
+  const staged = stagedRows(row);
+  if (!detected && !staged) return "";
+  return `${staged || 0}/${detected || staged || 0} staged`;
+}
+
+function renderRowAuditMeter(row) {
+  const detected = detectedRows(row);
+  const staged = stagedRows(row);
+  const pct = detected > 0 ? Math.max(0, Math.min(100, Math.round((staged / detected) * 100))) : staged > 0 ? 100 : 0;
+  const tone = row.status === "failed" ? "danger" : detected && staged < detected ? "warning" : staged ? "success" : "muted";
+  return `
+    <div class="upload-audit-meter ${escapeHtml(tone)}">
+      <div><span style="width:${pct}%"></span></div>
+      <small>${escapeHtml(staged || 0)} staged / ${escapeHtml(detected || staged || 0)} detected</small>
+    </div>
+  `;
 }
 
 function renderAuditSummary(row) {
@@ -164,6 +218,7 @@ function renderAuditSummary(row) {
       <span class="review-chip ${escapeHtml(auditTone(status))}">${escapeHtml(auditLabel(status))}</span>
       ${rowsLabel ? `<small>${escapeHtml(rowsLabel)}</small>` : ""}
       ${warnings.length ? `<small>${escapeHtml(warnings.length)} warning${warnings.length === 1 ? "" : "s"}</small>` : ""}
+      ${renderRowAuditMeter(row)}
     </div>
   `;
 }
@@ -212,6 +267,11 @@ function openUploadDrawer(rowId) {
         <span class="review-chip neutral">${escapeHtml(row.document_type || "unknown type")}</span>
         ${matchLabel(row)}
       </div>
+      <div class="drawer-quick-actions">
+        <button class="secondary small-button" type="button" data-source-id="${escapeHtml(row.id)}">View source</button>
+        <a class="small-button" href="${escapeHtml(sourceRowsUrl(row))}">View extracted rows</a>
+        ${row.status === "archived" ? "" : `<button class="secondary small-button" type="button" data-interpret-id="${escapeHtml(row.id)}">${row.status === "uploaded" ? "Interpret" : "Reprocess"}</button>`}
+      </div>
       <dl>
         ${detailItem("Vendor", vendorDisplay(row))}
         ${detailItem("RFx", row.rfx_hint)}
@@ -228,6 +288,7 @@ function openUploadDrawer(rowId) {
         <span class="review-chip ${escapeHtml(auditTone(auditStatus(row)))}">${escapeHtml(auditLabel(auditStatus(row)))}</span>
         ${auditRowsLabel(row) ? `<span class="review-chip neutral">${escapeHtml(auditRowsLabel(row))}</span>` : ""}
       </div>
+      ${renderRowAuditMeter(row)}
       <dl>
         ${detailItem("First pass rows", auditPayload(row).first_pass_rows)}
         ${detailItem("Audit pass", auditPayload(row).audit_pass_used ? "yes" : "no")}
@@ -251,7 +312,8 @@ function openUploadDrawer(rowId) {
       row.error_message
         ? `<section class="upload-detail-section upload-error-panel">
             <h3>Processing issue</h3>
-            <p>${escapeHtml(row.error_message)}</p>
+            <p>${escapeHtml(humanizeError(row.error_message))}</p>
+            <small>${escapeHtml(row.error_message)}</small>
           </section>`
         : ""
     }
@@ -267,7 +329,7 @@ function openUploadDrawer(rowId) {
               ? "Review the processing issue, then retry interpretation after the source or API issue is corrected."
               : "This upload is archived or already processed."
       )}</p>
-      <a class="small-button" href="./staging-review.html">Open staging</a>
+      <a class="small-button" href="${escapeHtml(sourceRowsUrl(row))}">Open extracted rows</a>
     </section>
   `;
   uploadDrawer.classList.remove("hidden");
@@ -294,7 +356,7 @@ function renderRows(rows) {
   if (!rows.length) {
     const empty = emptyUploadMessage();
     historyBody.innerHTML =
-      `<tr><td colspan="10"><div class="empty-state"><strong>${escapeHtml(empty.title)}</strong><span>${escapeHtml(empty.detail)}</span><a href="./upload-center.html">Upload source files</a></div></td></tr>`;
+      `<tr><td colspan="${HISTORY_COLSPAN}"><div class="empty-state"><strong>${escapeHtml(empty.title)}</strong><span>${escapeHtml(empty.detail)}</span><a href="./upload-center.html">Upload source files</a></div></td></tr>`;
     updateBulkControls();
     return;
   }
@@ -316,14 +378,17 @@ function renderRows(rows) {
           </td>
           <td>${escapeHtml(row.rfx_hint || "")}</td>
           <td><span class="status-pill ${escapeHtml(statusTone(row.status))}">${escapeHtml(row.status)}</span></td>
+          <td>${renderUploadFlow(row)}</td>
           <td>${renderAuditSummary(row)}</td>
           <td>${escapeHtml(row.storage_path)}</td>
           <td class="history-actions">
             <button type="button" class="small-button secondary" data-upload-detail="${escapeHtml(row.id)}">Details</button>
+            <button type="button" class="small-button secondary" data-source-id="${escapeHtml(row.id)}">View source</button>
+            <a class="small-button secondary" href="${escapeHtml(sourceRowsUrl(row))}">View rows</a>
             ${row.status === "archived" ? "" : `<button type="button" class="small-button" data-interpret-id="${escapeHtml(row.id)}">${row.status === "uploaded" ? "Interpret" : "Reprocess"}</button>`}
             ${row.status === "archived" ? "" : `<button type="button" class="small-button secondary" data-archive-id="${escapeHtml(row.id)}">Archive</button>`}
             <button type="button" class="small-button danger" data-remove-id="${escapeHtml(row.id)}">Remove</button>
-            ${row.error_message ? `<small class="error-detail">${escapeHtml(row.error_message)}</small>` : ""}
+            ${row.error_message ? `<small class="error-detail">${escapeHtml(humanizeError(row.error_message))}</small>` : ""}
             <small class="row-save-status" data-upload-status="${escapeHtml(row.id)}"></small>
           </td>
         </tr>
@@ -334,7 +399,7 @@ function renderRows(rows) {
 }
 
 async function loadHistory() {
-  historyBody.innerHTML = '<tr><td colspan="10">Loading uploads...</td></tr>';
+  historyBody.innerHTML = `<tr><td colspan="${HISTORY_COLSPAN}">Loading uploads...</td></tr>`;
   refreshButton.disabled = true;
 
   try {
@@ -344,7 +409,7 @@ async function loadHistory() {
     renderRows(applyQuickFilter(rows));
     await applyPermissionState("[data-interpret-id], [data-archive-id], [data-remove-id], #reprocess-selected-uploads, #archive-selected-uploads, #remove-selected-uploads", "uploads:interpret");
   } catch (error) {
-    historyBody.innerHTML = `<tr><td colspan="10">Could not load upload history. ${escapeHtml(error.message)}</td></tr>`;
+    historyBody.innerHTML = `<tr><td colspan="${HISTORY_COLSPAN}">Could not load upload history. ${escapeHtml(humanizeError(error))}</td></tr>`;
   } finally {
     refreshButton.disabled = false;
   }
@@ -381,8 +446,38 @@ async function runBulkUploadAction(action) {
     setBulkStatus(`${ids.length} upload(s) ${action === "archive" ? "archived" : action === "reprocess" ? "reprocessed" : "removed"}.`, "success");
     await loadHistory();
   } catch (error) {
-    setBulkStatus(error.message, "error");
+    setBulkStatus(humanizeError(error), "error");
     updateBulkControls();
+  }
+}
+
+async function openUploadSource(rowId, sourceButton = null) {
+  if (!rowId) return;
+  const originalText = sourceButton?.textContent || "";
+  const sourceWindow = window.open("", "_blank");
+  if (sourceWindow) sourceWindow.opener = null;
+  if (sourceButton) {
+    sourceButton.disabled = true;
+    sourceButton.textContent = "Opening...";
+  }
+
+  try {
+    await ensureSignedIn();
+    const source = await getUploadSourceUrl(rowId);
+    if (sourceWindow) {
+      sourceWindow.location.href = source.url;
+    } else {
+      window.open(source.url, "_blank", "noopener,noreferrer");
+    }
+    setBulkStatus(`Source link opened. It expires in ${Math.round((source.expires_in_seconds || 600) / 60)} minutes.`, "success");
+  } catch (error) {
+    if (sourceWindow && !sourceWindow.closed) sourceWindow.close();
+    setBulkStatus(humanizeError(error), "error");
+  } finally {
+    if (sourceButton) {
+      sourceButton.disabled = false;
+      sourceButton.textContent = originalText;
+    }
   }
 }
 
@@ -427,6 +522,29 @@ archiveSelectedButton?.addEventListener("click", () => runBulkUploadAction("arch
 reprocessSelectedButton?.addEventListener("click", () => runBulkUploadAction("reprocess"));
 removeSelectedButton?.addEventListener("click", () => runBulkUploadAction("remove"));
 closeUploadDrawerButton?.addEventListener("click", () => uploadDrawer?.classList.add("hidden"));
+uploadDetail?.addEventListener("click", async (event) => {
+  const sourceButton = event.target.closest("[data-source-id]");
+  if (sourceButton) {
+    await openUploadSource(sourceButton.dataset.sourceId, sourceButton);
+    return;
+  }
+
+  const interpretButton = event.target.closest("[data-interpret-id]");
+  if (!interpretButton) return;
+  interpretButton.disabled = true;
+  interpretButton.textContent = "Interpreting...";
+  try {
+    await ensureSignedIn();
+    const result = await interpretUpload(interpretButton.dataset.interpretId);
+    setBulkStatus(`${result.staged_rows || 0} row(s) staged from this source.`, "success");
+    uploadDrawer?.classList.add("hidden");
+    await loadHistory();
+  } catch (error) {
+    interpretButton.disabled = false;
+    interpretButton.textContent = "Failed";
+    setBulkStatus(humanizeError(error), "error");
+  }
+});
 historyBody.addEventListener("change", (event) => {
   const checkbox = event.target.closest("[data-select-upload]");
   if (!checkbox) return;
@@ -439,6 +557,12 @@ historyBody.addEventListener("click", async (event) => {
   const detailButton = event.target.closest("[data-upload-detail]");
   if (detailButton) {
     openUploadDrawer(detailButton.dataset.uploadDetail);
+    return;
+  }
+
+  const sourceButton = event.target.closest("[data-source-id]");
+  if (sourceButton) {
+    await openUploadSource(sourceButton.dataset.sourceId, sourceButton);
     return;
   }
 
@@ -462,6 +586,8 @@ historyBody.addEventListener("click", async (event) => {
       button.textContent = "Interpreting...";
       const result = await interpretUpload(rowId);
       button.textContent = `${result.staged_rows} staged`;
+      setBulkStatus(`${result.staged_rows || 0} row(s) staged.`, "success");
+      await loadHistory();
       return;
     }
 
@@ -488,8 +614,8 @@ historyBody.addEventListener("click", async (event) => {
     }
   } catch (error) {
     button.textContent = "Failed";
-    button.title = error.message;
-    button.insertAdjacentHTML("afterend", `<small class="error-detail">${escapeHtml(error.message)}</small>`);
+    button.title = humanizeError(error);
+    button.insertAdjacentHTML("afterend", `<small class="error-detail">${escapeHtml(humanizeError(error))}</small>`);
   }
 });
 

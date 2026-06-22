@@ -42,6 +42,8 @@ const stagingMetricLocation = document.querySelector("#staging-metric-location")
 const stagingMetricRate = document.querySelector("#staging-metric-rate");
 const stagingMetricSelected = document.querySelector("#staging-metric-selected");
 const reviewFilterButtons = document.querySelectorAll("[data-staging-filter]");
+const uploadScopeBanner = document.querySelector("#staging-upload-scope");
+const rawUploadScopeId = new URLSearchParams(window.location.search).get("raw_upload_id") || "";
 let currentRows = [];
 let loadedRows = [];
 let activeRowId = null;
@@ -107,6 +109,18 @@ const STAGING_BULK_EDIT_FIELDS = [
   { field: "status", label: "Status", values: ["pending_review", "approved", "rejected", "archived"] },
   { field: "quote_date", label: "Quote date", type: "date" }
 ];
+
+function applyStagingUrlFilters() {
+  const params = new URLSearchParams(window.location.search);
+  if (params.has("status")) {
+    const status = params.get("status") || "";
+    if ([...statusFilter.options].some((option) => option.value === status)) {
+      statusFilter.value = status;
+    }
+  } else if (rawUploadScopeId) {
+    statusFilter.value = "";
+  }
+}
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -483,6 +497,11 @@ function applyReviewFilter(rows = loadedRows) {
   return rows;
 }
 
+function scopedStagingRows(rows = loadedRows) {
+  if (!rawUploadScopeId) return rows;
+  return rows.filter((row) => row.raw_upload_id === rawUploadScopeId);
+}
+
 function columnFilterText(row, field) {
   if (field === "vendor") return [row.vendors?.vendor_name, row.vendor_domain, row.vendors?.domain].filter(Boolean).join(" ");
   if (field === "origin") {
@@ -522,7 +541,7 @@ function applyColumnFilters(rows = loadedRows) {
 }
 
 function visibleStagingRows() {
-  return applyColumnFilters(applyReviewFilter(loadedRows));
+  return applyColumnFilters(applyReviewFilter(scopedStagingRows(loadedRows)));
 }
 
 function updateReviewFilters() {
@@ -532,10 +551,24 @@ function updateReviewFilters() {
 }
 
 function updateReviewMetrics() {
+  const scopedRows = scopedStagingRows(loadedRows);
   if (stagingMetricVisible) stagingMetricVisible.textContent = String(currentRows.length);
-  if (stagingMetricLocation) stagingMetricLocation.textContent = String(loadedRows.filter(needsLocationMatch).length);
-  if (stagingMetricRate) stagingMetricRate.textContent = String(loadedRows.filter(needsNumericRate).length);
+  if (stagingMetricLocation) stagingMetricLocation.textContent = String(scopedRows.filter(needsLocationMatch).length);
+  if (stagingMetricRate) stagingMetricRate.textContent = String(scopedRows.filter(needsNumericRate).length);
   if (stagingMetricSelected) stagingMetricSelected.textContent = String(selectedRows().length);
+}
+
+function updateUploadScopeBanner() {
+  if (!uploadScopeBanner) return;
+  uploadScopeBanner.classList.toggle("hidden", !rawUploadScopeId);
+  if (!rawUploadScopeId) return;
+  uploadScopeBanner.innerHTML = `
+    <div>
+      <strong>Viewing extracted rows from one upload</strong>
+      <span>${escapeHtml(currentRows.length)} row(s) visible for source ${escapeHtml(rawUploadScopeId)}</span>
+    </div>
+    <a href="./staging-review.html">Clear source filter</a>
+  `;
 }
 
 function briefMetric(label, value, tone = "") {
@@ -802,10 +835,11 @@ function renderRows(rows) {
   currentRows = rows;
   renderDatalists();
   updateReviewFilters();
+  updateUploadScopeBanner();
 
   if (!rows.length) {
     body.innerHTML =
-      `<tr><td colspan="${STAGING_COLSPAN}"><div class="empty-state"><strong>No staging rows found</strong><span>Interpret uploaded quotes to create rows for review.</span><a href="./upload-history.html">Open upload history</a></div></td></tr>`;
+      `<tr><td colspan="${STAGING_COLSPAN}"><div class="empty-state"><strong>No staging rows found</strong><span>${escapeHtml(rawUploadScopeId ? "This upload does not have staging rows in the current filters." : "Interpret uploaded quotes to create rows for review.")}</span><a href="./upload-history.html">Open upload history</a></div></td></tr>`;
     columnVisibilityController?.applyVisibility();
     updateBulkControls();
     return;
@@ -1207,7 +1241,7 @@ async function loadRows() {
     await requirePrivatePage();
     const [options, rows] = await Promise.all([
       fetchStagingOptions().catch(() => stagingOptions),
-      fetchStagingRows({ status: statusFilter.value })
+      fetchStagingRows({ status: statusFilter.value, rawUploadId: rawUploadScopeId })
     ]);
     stagingOptions = {
       categories: options.categories || {},
@@ -1411,5 +1445,6 @@ approveDrawerButton.addEventListener("click", () => saveActiveRow("approved"));
 rejectDrawerButton.addEventListener("click", () => saveActiveRow("rejected"));
 
 initAuthControls();
+applyStagingUrlFilters();
 requirePrivatePage().catch(() => {});
 loadRows();

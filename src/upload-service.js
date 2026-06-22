@@ -41,6 +41,10 @@ export async function removeUpload(rawUploadId) {
   return (await callRatewareApi("remove_upload", { id: rawUploadId })).removed;
 }
 
+export async function getUploadSourceUrl(rawUploadId) {
+  return await callRatewareApi("get_upload_source_url", { id: rawUploadId });
+}
+
 export async function interpretUpload(rawUploadId) {
   const token = await getKindeToken();
   const response = await fetch(`${SUPABASE_URL}/functions/v1/interpret-upload`, {

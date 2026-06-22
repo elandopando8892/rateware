@@ -77,6 +77,28 @@
                 <strong id="upload-metric-needs-audit">0</strong>
               </article>
             </div>
+            <div class="upload-flow-steps compact-flow" aria-label="Upload workflow">
+              <article>
+                <span>1</span>
+                <strong>Upload</strong>
+                <small>Source preserved</small>
+              </article>
+              <article class="is-active">
+                <span>2</span>
+                <strong>Interpret</strong>
+                <small>Create staging rows</small>
+              </article>
+              <article>
+                <span>3</span>
+                <strong>Review</strong>
+                <small>Validate extracted rates</small>
+              </article>
+              <article>
+                <span>4</span>
+                <strong>Approve</strong>
+                <small>Move into Rateware</small>
+              </article>
+            </div>
             <div class="review-filter-row" aria-label="Upload quick filters">
               <button class="review-filter is-active" type="button" data-upload-filter="all">All visible</button>
               <button class="review-filter" type="button" data-upload-filter="needs-interpretation">Needs interpretation</button>
@@ -123,6 +145,7 @@
                     <th>Vendor</th>
                     <th>RFx</th>
                     <th>Status</th>
+                    <th>Flow</th>
                     <th>Audit</th>
                     <th>Storage</th>
                     <th>Action</th>
@@ -130,7 +153,7 @@
                 </thead>
                 <tbody id="history-body">
                   <tr>
-                    <td colspan="10">Loading uploads...</td>
+                    <td colspan="11">Loading uploads...</td>
                   </tr>
                 </tbody>
               </table>

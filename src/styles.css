@@ -1510,6 +1510,167 @@ a {
   pointer-events: none;
 }
 
+.upload-flow-steps {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0 0 14px;
+}
+
+.upload-flow-steps article {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 2px 8px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--soft-panel);
+  padding: 9px;
+}
+
+.upload-flow-steps article span {
+  display: grid;
+  grid-row: span 2;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: #dfe7eb;
+  color: #33424d;
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.upload-flow-steps article strong {
+  line-height: 1.1;
+}
+
+.upload-flow-steps article small {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 760;
+}
+
+.upload-flow-steps article.is-active {
+  border-color: #bddbd7;
+  background: #eef7f6;
+}
+
+.upload-flow-steps article.is-active span {
+  background: var(--accent);
+  color: #ffffff;
+}
+
+.compact-flow {
+  margin-bottom: 10px;
+}
+
+.upload-row-flow {
+  display: grid;
+  grid-template-columns: repeat(4, max-content);
+  gap: 4px;
+  min-width: 260px;
+}
+
+.upload-row-flow span {
+  border-radius: 999px;
+  background: #eef1f4;
+  color: #53616b;
+  padding: 2px 7px;
+  font-size: 0.68rem;
+  font-weight: 850;
+}
+
+.upload-row-flow span.done {
+  background: #e7f5ec;
+  color: #126b3f;
+}
+
+.upload-row-flow span.active {
+  background: #eef7f6;
+  color: var(--accent-dark);
+}
+
+.upload-row-flow span.error {
+  background: #fde7e4;
+  color: var(--danger);
+}
+
+.upload-row-flow span.muted {
+  background: #eef1f4;
+  color: #6a7780;
+}
+
+.upload-audit-meter {
+  display: grid;
+  gap: 4px;
+  min-width: 130px;
+}
+
+.upload-audit-meter > div {
+  height: 6px;
+  border-radius: 999px;
+  background: #edf1f4;
+  overflow: hidden;
+}
+
+.upload-audit-meter > div span {
+  display: block;
+  height: 100%;
+  background: #9fb3bd;
+}
+
+.upload-audit-meter.success > div span {
+  background: var(--accent);
+}
+
+.upload-audit-meter.warning > div span {
+  background: #d99a26;
+}
+
+.upload-audit-meter.danger > div span {
+  background: var(--danger);
+}
+
+.upload-audit-meter small {
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 760;
+}
+
+.scope-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid #bddbd7;
+  border-radius: var(--radius);
+  background: #eef7f6;
+  margin: 0 0 10px;
+  padding: 10px 12px;
+}
+
+.scope-banner div {
+  display: grid;
+  gap: 3px;
+}
+
+.scope-banner strong {
+  color: var(--accent-dark);
+}
+
+.scope-banner span {
+  color: #43505a;
+  font-size: 0.78rem;
+  font-weight: 760;
+}
+
+.scope-banner a {
+  color: var(--accent-dark);
+  font-weight: 850;
+  white-space: nowrap;
+}
+
 .core-workflow-grid {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
@@ -3099,6 +3260,13 @@ tbody tr:hover {
   overflow-wrap: anywhere;
 }
 
+.upload-error-panel small {
+  display: block;
+  margin-top: 6px;
+  color: #8a4f48;
+  overflow-wrap: anywhere;
+}
+
 .audit-summary {
   display: grid;
   gap: 4px;
@@ -4114,8 +4282,23 @@ select.staging-input {
   .settings-form,
   .bi-analyst-grid,
   .review-insight-grid,
+  .upload-flow-steps,
   .auth-strip {
     width: 100%;
+  }
+
+  .upload-flow-steps {
+    grid-template-columns: 1fr;
+  }
+
+  .upload-row-flow {
+    grid-template-columns: repeat(2, max-content);
+    min-width: 0;
+  }
+
+  .scope-banner {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .sheet-command-bar {

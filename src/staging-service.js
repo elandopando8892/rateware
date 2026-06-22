@@ -1,7 +1,7 @@
 import { callRatewareApi } from "./rateware-api.js";
 
-export async function fetchStagingRows({ status = "pending_review" } = {}) {
-  return (await callRatewareApi("list_staging", { status })).rows;
+export async function fetchStagingRows({ status = "pending_review", rawUploadId = "" } = {}) {
+  return (await callRatewareApi("list_staging", { status, raw_upload_id: rawUploadId })).rows;
 }
 
 export async function fetchStagingOptions() {

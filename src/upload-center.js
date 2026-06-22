@@ -1,4 +1,5 @@
 import { applyPermissionState, ensureSignedIn, initAuthControls, requirePrivatePage } from "./auth.js";
+import { humanizeError } from "./error-copy.js";
 import { detectDocumentType, isAllowedFile } from "./file-rules.js";
 import { uploadRawFile } from "./upload-service.js";
 import { fetchVendors } from "./vendor-service.js";
@@ -154,7 +155,7 @@ form.addEventListener("submit", async (event) => {
     }
   } catch (error) {
     uploadButton.disabled = false;
-    setStatus(error.message, "error");
+    setStatus(humanizeError(error), "error");
     return;
   }
 
@@ -168,7 +169,7 @@ form.addEventListener("submit", async (event) => {
       uploaded += 1;
       setStatus(`Uploaded ${uploaded} of ${uploadableFiles.length} file(s).`);
     } catch (error) {
-      failures.push(`${file.name}: ${error.message}`);
+      failures.push(`${file.name}: ${humanizeError(error)}`);
     }
   }
 
@@ -181,7 +182,7 @@ form.addEventListener("submit", async (event) => {
 
   selectedFiles = [];
   renderFiles();
-  setStatus("Upload complete. Source files are preserved and ready for rate_staging.", "success");
+  setStatus("Upload complete. Source files are preserved. Open Upload History to interpret and audit rows.", "success");
 });
 
 initAuthControls();

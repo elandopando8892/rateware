@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { humanizeError } from "../src/error-copy.js";
 import { buildStoragePath, detectDocumentType, sanitizeFilename } from "../src/file-rules.js";
 import { cleanRateValue, isInvalidRateValue, normalizeConfidence } from "../src/rateware-rules.js";
 
@@ -30,5 +31,7 @@ assert.equal(cleanRateValue("$3,500"), "$3,500");
 assert.equal(cleanRateValue("Tier 2"), null);
 assert.equal(normalizeConfidence(2), 1);
 assert.equal(normalizeConfidence(-1), 0);
+assert.match(humanizeError({ message: "insufficient_quota" }), /OpenAI quota/);
+assert.match(humanizeError("401 unauthorized"), /session/);
 
 console.log("Upload Center file rules passed.");
