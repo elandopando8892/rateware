@@ -39,6 +39,12 @@ const metricEvents = document.querySelector("#rfx-metric-events");
 const metricLanes = document.querySelector("#rfx-metric-lanes");
 const metricInvites = document.querySelector("#rfx-metric-invites");
 const metricBids = document.querySelector("#rfx-metric-bids");
+const dashboardTitle = document.querySelector("#rfx-dashboard-title");
+const eventDashboard = document.querySelector("#rfx-event-dashboard");
+const inviteStatusMix = document.querySelector("#rfx-invite-status");
+const dashboardOutreachLink = document.querySelector("#rfx-dashboard-outreach-link");
+const laneCoverage = document.querySelector("#rfx-lane-coverage");
+const coverageSummary = document.querySelector("#rfx-coverage-summary");
 const manualShortlistLane = document.querySelector("#manual-shortlist-lane");
 const manualShortlistSearch = document.querySelector("#manual-shortlist-search");
 const manualShortlistVendors = document.querySelector("#manual-shortlist-vendors");
@@ -175,6 +181,146 @@ function vendorLabel(invitation) {
   return vendor.vendor_name || vendor.domain || vendor.primary_email || "Vendor";
 }
 
+function statusTone(status) {
+  const value = String(status || "").toLowerCase();
+  if (["bid_submitted", "awarded", "sent", "open"].includes(value)) return "success";
+  if (["invited", "viewed", "queued"].includes(value)) return "neutral";
+  if (["declined", "archived", "closed"].includes(value)) return "danger";
+  return "muted";
+}
+
+function statusChip(status) {
+  const value = status || "shortlisted";
+  return `<span class="status-pill" data-tone="${statusTone(value)}">${escapeHtml(value)}</span>`;
+}
+
+function laneRoute(lane) {
+  return `${lane.origin || "-"} -> ${lane.destination || "-"}`;
+}
+
+function invitationStatusCounts(lanes = currentLanes) {
+  const counts = {};
+  lanes.forEach((lane) => {
+    (lane.invitations || []).forEach((invitation) => {
+      const status = invitation.invitation_status || "shortlisted";
+      counts[status] = (counts[status] || 0) + 1;
+    });
+  });
+  return counts;
+}
+
+function coverageRatio(lane) {
+  const invitations = lane.invitations || [];
+  const activeInvitations = invitations.filter((item) => item.invitation_status !== "archived");
+  return Math.min(100, Math.round((activeInvitations.length / 3) * 100));
+}
+
+function responseRatio(lane) {
+  const invitations = (lane.invitations || []).filter((item) => item.invitation_status !== "archived");
+  if (!invitations.length) return 0;
+  const bids = invitations.filter((item) => item.bid_rate !== null || item.invitation_status === "bid_submitted").length;
+  return Math.round((bids / invitations.length) * 100);
+}
+
+function renderEventDashboard() {
+  if (!selectedEvent) {
+    dashboardTitle.textContent = "No event selected";
+    if (dashboardOutreachLink) dashboardOutreachLink.href = "./outreach.html";
+    if (eventDashboard) {
+      eventDashboard.innerHTML = `
+        <article>
+          <span>Status</span>
+          <strong>-</strong>
+          <small>Select an RFx event to see lane coverage, invitation status, and bid progress.</small>
+        </article>
+      `;
+    }
+    if (inviteStatusMix) inviteStatusMix.innerHTML = "";
+    return;
+  }
+
+  const invitations = currentLanes.flatMap((lane) => lane.invitations || []);
+  const activeInvitations = invitations.filter((item) => item.invitation_status !== "archived");
+  const bids = activeInvitations.filter((item) => item.bid_rate !== null || item.invitation_status === "bid_submitted");
+  const lanesWithShortlist = currentLanes.filter((lane) => (lane.invitations || []).some((item) => item.invitation_status !== "archived")).length;
+  const lanesWithBids = currentLanes.filter((lane) => (lane.invitations || []).some((item) => item.bid_rate !== null || item.invitation_status === "bid_submitted")).length;
+  const shortlistCoverage = currentLanes.length ? Math.round((lanesWithShortlist / currentLanes.length) * 100) : 0;
+  const bidCoverage = currentLanes.length ? Math.round((lanesWithBids / currentLanes.length) * 100) : 0;
+  const responseRate = activeInvitations.length ? Math.round((bids.length / activeInvitations.length) * 100) : 0;
+
+  dashboardTitle.textContent = `${selectedEvent.rfx_id || "RFx"} | ${selectedEvent.name || "Selected event"}`;
+  if (dashboardOutreachLink) dashboardOutreachLink.href = `./outreach.html?rfx_event_id=${encodeURIComponent(selectedEvent.id)}`;
+  if (eventDashboard) {
+    eventDashboard.innerHTML = `
+      <article>
+        <span>Status</span>
+        <strong>${escapeHtml(selectedEvent.status || "draft")}</strong>
+        <small>${escapeHtml([selectedEvent.customer, selectedEvent.due_date ? `Due ${selectedEvent.due_date}` : ""].filter(Boolean).join(" | ") || "No customer or due date")}</small>
+      </article>
+      <article>
+        <span>Lane coverage</span>
+        <strong>${formatNumber(shortlistCoverage)}%</strong>
+        <small>${formatNumber(lanesWithShortlist)} of ${formatNumber(currentLanes.length)} lanes have vendors shortlisted.</small>
+      </article>
+      <article>
+        <span>Bid coverage</span>
+        <strong>${formatNumber(bidCoverage)}%</strong>
+        <small>${formatNumber(lanesWithBids)} lane(s) have at least one bid.</small>
+      </article>
+      <article>
+        <span>Response rate</span>
+        <strong>${formatNumber(responseRate)}%</strong>
+        <small>${formatNumber(bids.length)} bid(s) from ${formatNumber(activeInvitations.length)} active invitation(s).</small>
+      </article>
+    `;
+  }
+
+  const counts = invitationStatusCounts();
+  if (inviteStatusMix) {
+    inviteStatusMix.innerHTML = Object.keys(counts).length
+      ? Object.entries(counts).map(([status, count]) => `
+        <span data-tone="${statusTone(status)}">${escapeHtml(status)} <strong>${formatNumber(count)}</strong></span>
+      `).join("")
+      : "<span>No vendors shortlisted yet.</span>";
+  }
+}
+
+function renderLaneCoverage() {
+  if (!laneCoverage || !coverageSummary) return;
+  if (!selectedEventId) {
+    coverageSummary.textContent = "No event";
+    laneCoverage.innerHTML = "<article>Select an event to inspect lane coverage.</article>";
+    return;
+  }
+  if (!currentLanes.length) {
+    coverageSummary.textContent = "No lanes";
+    laneCoverage.innerHTML = "<article>Paste lanes to build coverage.</article>";
+    return;
+  }
+
+  const covered = currentLanes.filter((lane) => (lane.invitations || []).some((item) => item.invitation_status !== "archived")).length;
+  coverageSummary.textContent = `${formatNumber(covered)} / ${formatNumber(currentLanes.length)} lanes covered`;
+  laneCoverage.innerHTML = currentLanes.map((lane) => {
+    const invitations = (lane.invitations || []).filter((item) => item.invitation_status !== "archived");
+    const bids = invitations.filter((item) => item.bid_rate !== null || item.invitation_status === "bid_submitted");
+    const coverage = coverageRatio(lane);
+    const responses = responseRatio(lane);
+    const tone = bids.length ? "success" : invitations.length ? "neutral" : "danger";
+    return `
+      <article class="rfx-coverage-card" data-tone="${tone}">
+        <button type="button" data-rfx-focus-lane="${escapeHtml(lane.id)}">
+          <strong>#${escapeHtml(lane.lane_number || "")} ${escapeHtml(laneRoute(lane))}</strong>
+          <span>${escapeHtml([lane.equipment, lane.trailer, lane.operation, lane.service].filter(Boolean).join(" / ") || "Lane")}</span>
+        </button>
+        <div class="coverage-meter" aria-label="Shortlist coverage">
+          <span style="width: ${coverage}%"></span>
+        </div>
+        <small>${formatNumber(invitations.length)} vendors | ${formatNumber(bids.length)} bids | ${formatNumber(responses)}% response</small>
+      </article>
+    `;
+  }).join("");
+}
+
 function updateMetrics() {
   const laneCount = events.reduce((sum, event) => sum + Number(event.lane_count || 0), 0);
   const inviteCount = events.reduce((sum, event) => sum + Number(event.invitation_count || 0), 0);
@@ -243,7 +389,8 @@ function renderInvitation(invitation, lane) {
       </label>
       <div>
         <strong>${escapeHtml(vendorLabel(invitation))}</strong>
-        <span>${escapeHtml(invitation.invitation_status || "shortlisted")}</span>
+        ${statusChip(invitation.invitation_status || "shortlisted")}
+        <small>${escapeHtml([invitation.vendors?.primary_email, invitation.vendors?.whatsapp_phone].filter(Boolean).join(" | ") || "No contact channel")}</small>
       </div>
       <input data-rfx-bid-field="bid_rate" value="${escapeHtml(invitation.bid_rate ?? "")}" placeholder="Rate" inputmode="decimal" />
       <input data-rfx-bid-field="weekly_capacity" value="${escapeHtml(invitation.weekly_capacity ?? "")}" placeholder="Cap" inputmode="decimal" />
@@ -261,6 +408,8 @@ function renderLanes() {
   selectedInvitationIds = new Set([...selectedInvitationIds].filter((id) => currentLanes.some((lane) => (lane.invitations || []).some((invite) => invite.id === id))));
   updateSelectionControls();
   renderManualShortlistControls();
+  renderEventDashboard();
+  renderLaneCoverage();
 
   if (!selectedEventId) {
     lanesBody.innerHTML = `<tr><td colspan="9">Select an event to load lanes.</td></tr>`;
@@ -308,6 +457,12 @@ async function loadEvents() {
     if (!selectedEventId && events[0]) selectedEventId = events[0].id;
     renderEvents();
     if (selectedEventId) await loadDetail(selectedEventId);
+    else {
+      selectedEvent = null;
+      currentLanes = [];
+      renderEventDashboard();
+      renderLaneCoverage();
+    }
   } catch (error) {
     eventList.innerHTML = `<article>${escapeHtml(error.message)}</article>`;
   }
@@ -336,6 +491,8 @@ async function loadDetail(eventId) {
     closeRfxButton.disabled = false;
     renderEvents();
     renderLanes();
+    renderEventDashboard();
+    renderLaneCoverage();
     setStatus(actionStatus, "RFx loaded.", "success");
   } catch (error) {
     setStatus(actionStatus, error.message, "error");
@@ -382,6 +539,17 @@ eventList?.addEventListener("click", async (event) => {
   const card = event.target.closest("[data-rfx-event-id]");
   if (!card) return;
   await loadDetail(card.dataset.rfxEventId);
+});
+
+laneCoverage?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-rfx-focus-lane]");
+  if (!button) return;
+  const row = [...(lanesBody?.querySelectorAll("[data-rfx-lane-id]") || [])]
+    .find((item) => item.dataset.rfxLaneId === button.dataset.rfxFocusLane);
+  if (!row) return;
+  row.scrollIntoView({ behavior: "smooth", block: "center" });
+  row.classList.add("is-focused-row");
+  window.setTimeout(() => row.classList.remove("is-focused-row"), 1400);
 });
 
 importLanesButton?.addEventListener("click", async () => {

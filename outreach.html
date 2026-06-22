@@ -65,6 +65,30 @@
             <article><span>History</span><strong id="outreach-metric-history">0</strong></article>
           </section>
 
+          <section class="workspace-panel outreach-flow-panel">
+            <div class="section-heading compact">
+              <p class="eyebrow">RFx + Outreach workflow</p>
+              <h2>Invite, preview, send, track</h2>
+            </div>
+            <div class="outreach-flow-steps">
+              <article>
+                <span>1</span>
+                <strong>Choose RFx event</strong>
+                <small>Use the shortlisted vendors from an active RFx book.</small>
+              </article>
+              <article>
+                <span>2</span>
+                <strong>Select template</strong>
+                <small>Review Gmail HTML and WhatsApp copy before generating drafts.</small>
+              </article>
+              <article>
+                <span>3</span>
+                <strong>Confirm drafts</strong>
+                <small>Open Gmail or WhatsApp only after the draft looks correct.</small>
+              </article>
+            </div>
+          </section>
+
           <section class="outreach-workspace">
             <section class="workspace-panel">
               <div class="section-heading compact">
@@ -133,6 +157,10 @@
                 </label>
                 <button id="create-campaign-button" type="submit">Create campaign</button>
               </form>
+              <div id="campaign-template-preview" class="outreach-template-preview">
+                <strong>No template selected.</strong>
+                <span>Select a template to preview subject, Gmail HTML, WhatsApp copy, and placeholders.</span>
+              </div>
               <p id="campaign-status" class="status-message" role="status"></p>
               <div id="campaign-list" class="outreach-campaign-list"></div>
             </section>
@@ -154,6 +182,13 @@
             <div class="bulk-action-bar">
               <span id="outreach-selection-count">0 selected</span>
               <span id="outreach-action-status" class="row-save-status"></span>
+            </div>
+            <div id="outreach-draft-preview" class="outreach-draft-preview">
+              <div>
+                <p class="eyebrow">Draft preview</p>
+                <h3>Select a generated message</h3>
+                <span>Preview the exact Gmail or WhatsApp draft before opening the external channel.</span>
+              </div>
             </div>
             <div class="table-wrap">
               <table class="outreach-table">

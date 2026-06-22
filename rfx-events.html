@@ -77,6 +77,24 @@
             </article>
           </section>
 
+          <section class="workspace-panel rfx-command-center">
+            <div class="split-heading">
+              <div>
+                <p class="eyebrow">RFx event dashboard</p>
+                <h2 id="rfx-dashboard-title">No event selected</h2>
+              </div>
+              <a id="rfx-dashboard-outreach-link" class="secondary small-button" href="./outreach.html">Build outreach</a>
+            </div>
+            <div id="rfx-event-dashboard" class="rfx-dashboard-grid">
+              <article>
+                <span>Status</span>
+                <strong>-</strong>
+                <small>Select an RFx event to see lane coverage, invitation status, and bid progress.</small>
+              </article>
+            </div>
+            <div id="rfx-invite-status" class="rfx-status-mix" aria-label="Invitation status mix"></div>
+          </section>
+
           <section class="workspace-panel">
             <div class="split-heading">
               <div>
@@ -138,6 +156,19 @@
                   <a class="secondary small-button" href="./outreach.html">Open Outreach</a>
                 </div>
               </div>
+
+              <section class="rfx-lane-coverage-panel">
+                <div class="split-heading">
+                  <div>
+                    <p class="eyebrow">Lane coverage</p>
+                    <h3>Shortlist and bid readiness</h3>
+                  </div>
+                  <span id="rfx-coverage-summary" class="status-pill muted">No lanes</span>
+                </div>
+                <div id="rfx-lane-coverage" class="rfx-lane-coverage-grid">
+                  <article>Select an event to inspect lane coverage.</article>
+                </div>
+              </section>
 
               <section class="rfx-import-box">
                 <div>

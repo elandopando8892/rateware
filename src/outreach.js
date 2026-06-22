@@ -24,6 +24,7 @@ const campaignName = document.querySelector("#campaign-name");
 const campaignRfxEvent = document.querySelector("#campaign-rfx-event");
 const campaignTemplate = document.querySelector("#campaign-template");
 const campaignChannel = document.querySelector("#campaign-channel");
+const campaignTemplatePreview = document.querySelector("#campaign-template-preview");
 const campaignStatus = document.querySelector("#campaign-status");
 const campaignList = document.querySelector("#campaign-list");
 const refreshButton = document.querySelector("#refresh-outreach");
@@ -32,6 +33,7 @@ const markQueuedButton = document.querySelector("#mark-queued-button");
 const markSentButton = document.querySelector("#mark-sent-button");
 const archiveMessagesButton = document.querySelector("#archive-messages-button");
 const messageBody = document.querySelector("#outreach-message-body");
+const draftPreview = document.querySelector("#outreach-draft-preview");
 const historyList = document.querySelector("#contact-history-list");
 const draftTitle = document.querySelector("#outreach-draft-title");
 const selectionCount = document.querySelector("#outreach-selection-count");
@@ -46,7 +48,9 @@ let templates = [];
 let campaigns = [];
 let messages = [];
 let historyRows = [];
+const requestedRfxEventId = new URLSearchParams(window.location.search).get("rfx_event_id");
 let selectedCampaignId = null;
+let previewMessageId = null;
 let selectedMessageIds = new Set();
 
 function escapeHtml(value) {
@@ -78,6 +82,81 @@ function laneLabel(row) {
   return `${event.rfx_id || "-"} | ${lane.origin || "-"} -> ${lane.destination || "-"}`;
 }
 
+function messageRecipient(row) {
+  return row.recipient_email || row.recipient_phone || "-";
+}
+
+function selectedTemplate() {
+  return templates.find((item) => item.id === campaignTemplate?.value) || templates[0] || null;
+}
+
+function placeholderList(template) {
+  const variables = Array.isArray(template?.variables) ? template.variables : [];
+  if (variables.length) return variables;
+  const combined = [template?.subject, template?.html_body, template?.whatsapp_body].filter(Boolean).join(" ");
+  return [...new Set([...combined.matchAll(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g)].map((match) => match[1]))];
+}
+
+function renderTemplatePreview() {
+  if (!campaignTemplatePreview) return;
+  const template = selectedTemplate();
+  if (!template) {
+    campaignTemplatePreview.innerHTML = `
+      <strong>No template selected.</strong>
+      <span>Select a template to preview subject, Gmail HTML, WhatsApp copy, and placeholders.</span>
+    `;
+    return;
+  }
+  const placeholders = placeholderList(template);
+  campaignTemplatePreview.innerHTML = `
+    <div>
+      <span class="status-pill">${escapeHtml(template.channel || "multi")}</span>
+      <strong>${escapeHtml(template.name || "Template")}</strong>
+      <small>${escapeHtml(template.subject || "No email subject")}</small>
+    </div>
+    <p>${escapeHtml((template.whatsapp_body || template.html_body || "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim()).slice(0, 180) || "No body preview"}</p>
+    <div class="template-token-row">
+      ${placeholders.length ? placeholders.slice(0, 12).map((item) => `<span>{{${escapeHtml(item)}}}</span>`).join("") : "<span>No placeholders detected</span>"}
+    </div>
+  `;
+}
+
+function renderDraftPreview(message = null) {
+  if (!draftPreview) return;
+  if (!message) {
+    draftPreview.innerHTML = `
+      <div>
+        <p class="eyebrow">Draft preview</p>
+        <h3>Select a generated message</h3>
+        <span>Preview the exact Gmail or WhatsApp draft before opening the external channel.</span>
+      </div>
+    `;
+    return;
+  }
+  const isEmail = message.channel === "email";
+  const body = isEmail ? message.html_body || message.text_body || "" : message.whatsapp_text || message.text_body || "";
+  draftPreview.innerHTML = `
+    <div class="draft-preview-header">
+      <div>
+        <p class="eyebrow">${escapeHtml(message.channel)} draft</p>
+        <h3>${escapeHtml(vendorName(message))}</h3>
+        <span>${escapeHtml(laneLabel(message))}</span>
+      </div>
+      <div class="draft-preview-actions">
+        <span class="status-pill">${escapeHtml(message.status || "drafted")}</span>
+        <button class="secondary small-button" type="button" data-open-url="${escapeHtml(isEmail ? message.gmail_compose_url || "" : message.whatsapp_url || "")}" ${isEmail ? (message.gmail_compose_url ? "" : "disabled") : (message.whatsapp_url ? "" : "disabled")}>Open ${isEmail ? "Gmail" : "WhatsApp"}</button>
+      </div>
+    </div>
+    <dl class="draft-preview-meta">
+      <div><dt>Recipient</dt><dd>${escapeHtml(messageRecipient(message))}</dd></div>
+      <div><dt>Subject</dt><dd>${escapeHtml(message.subject || "-")}</dd></div>
+    </dl>
+    ${isEmail && message.html_body
+      ? `<iframe class="draft-html-preview" sandbox="" srcdoc="${escapeHtml(message.html_body)}"></iframe>`
+      : `<pre class="draft-text-preview">${escapeHtml(body || "-")}</pre>`}
+  `;
+}
+
 function updateMetrics() {
   metricCampaigns.textContent = formatCount(campaigns.length);
   metricDrafts.textContent = formatCount(messages.filter((row) => row.status === "drafted" || row.status === "queued").length);
@@ -97,12 +176,16 @@ function renderTemplateSelects() {
   campaignTemplate.innerHTML = templates.map((template) => `
     <option value="${escapeHtml(template.id)}">${escapeHtml(template.name)}${template.owner_email ? "" : " (default)"}</option>
   `).join("");
+  renderTemplatePreview();
 }
 
 function renderRfxSelects() {
   campaignRfxEvent.innerHTML = rfxEvents.length
     ? rfxEvents.map((event) => `<option value="${escapeHtml(event.id)}">${escapeHtml(event.rfx_id || event.name)} | ${escapeHtml(event.name || "")}</option>`).join("")
     : "<option value=\"\">Create an RFx event first</option>";
+  if (requestedRfxEventId && rfxEvents.some((event) => event.id === requestedRfxEventId)) {
+    campaignRfxEvent.value = requestedRfxEventId;
+  }
 }
 
 function renderTemplates() {
@@ -144,27 +227,32 @@ function renderMessages() {
   updateMetrics();
   if (!selectedCampaignId) {
     messageBody.innerHTML = `<tr><td colspan="8">Create or select a campaign.</td></tr>`;
+    renderDraftPreview(null);
     return;
   }
   if (!messages.length) {
     messageBody.innerHTML = `<tr><td colspan="8">No drafts yet. Generate drafts from the selected RFx shortlist.</td></tr>`;
+    renderDraftPreview(null);
     return;
   }
+  const previewMessage = messages.find((message) => message.id === previewMessageId) || messages[0];
+  previewMessageId = previewMessage?.id || null;
+  renderDraftPreview(previewMessage);
   messageBody.innerHTML = messages.map((message) => {
     const draft = message.channel === "email"
       ? `<button class="small-button" type="button" data-open-url="${escapeHtml(message.gmail_compose_url || "")}" ${message.gmail_compose_url ? "" : "disabled"}>Open Gmail</button>`
       : `<button class="small-button" type="button" data-open-url="${escapeHtml(message.whatsapp_url || "")}" ${message.whatsapp_url ? "" : "disabled"}>Open WhatsApp</button>`;
     const copyHtml = message.html_body ? `<button class="secondary small-button" type="button" data-copy-html="${escapeHtml(message.id)}">Copy HTML</button>` : "";
     return `
-      <tr data-message-id="${escapeHtml(message.id)}">
+      <tr data-message-id="${escapeHtml(message.id)}" class="${message.id === previewMessageId ? "is-focused-row" : ""}">
         <td><input type="checkbox" data-message-select="${escapeHtml(message.id)}" ${selectedMessageIds.has(message.id) ? "checked" : ""} /></td>
         <td>${escapeHtml(vendorName(message))}</td>
         <td>${escapeHtml(laneLabel(message))}</td>
         <td><span class="status-pill">${escapeHtml(message.channel)}</span></td>
-        <td>${escapeHtml(message.recipient_email || message.recipient_phone || "-")}</td>
+        <td>${escapeHtml(messageRecipient(message))}</td>
         <td><span class="status-pill">${escapeHtml(message.status)}</span></td>
         <td>${escapeHtml(message.subject || message.whatsapp_text || message.text_body || "-").slice(0, 140)}</td>
-        <td class="compact-actions">${draft}${copyHtml}</td>
+        <td class="compact-actions"><button class="secondary small-button" type="button" data-preview-message="${escapeHtml(message.id)}">Preview</button>${draft}${copyHtml}</td>
       </tr>
     `;
   }).join("");
@@ -177,11 +265,14 @@ function renderHistory() {
     return;
   }
   historyList.innerHTML = historyRows.slice(0, 80).map((item) => `
-    <article>
-      <span>${escapeHtml(item.channel)} | ${escapeHtml(item.status)} | ${escapeHtml(new Date(item.occurred_at || item.created_at).toLocaleString())}</span>
-      <strong>${escapeHtml(item.vendors?.vendor_name || item.vendors?.domain || "Vendor")}</strong>
-      <small>${escapeHtml(item.outreach_campaigns?.name || "")}${item.rfx_events?.rfx_id ? ` | ${escapeHtml(item.rfx_events.rfx_id)}` : ""}</small>
-      <p>${escapeHtml(item.body_preview || item.subject || "")}</p>
+    <article class="contact-timeline-item" data-channel="${escapeHtml(item.channel || "")}">
+      <i aria-hidden="true"></i>
+      <div>
+        <span>${escapeHtml(item.channel)} | ${escapeHtml(item.status)} | ${escapeHtml(new Date(item.occurred_at || item.created_at).toLocaleString())}</span>
+        <strong>${escapeHtml(item.vendors?.vendor_name || item.vendors?.domain || "Vendor")}</strong>
+        <small>${escapeHtml(item.outreach_campaigns?.name || "")}${item.rfx_events?.rfx_id ? ` | ${escapeHtml(item.rfx_events.rfx_id)}` : ""}</small>
+        <p>${escapeHtml(item.body_preview || item.subject || "")}</p>
+      </div>
     </article>
   `).join("");
 }
@@ -197,6 +288,7 @@ async function loadMessages(campaignId = selectedCampaignId) {
   draftTitle.textContent = campaign ? `${campaign.name} drafts` : "Generated messages";
   messages = await fetchOutreachMessages({ campaign_id: campaignId });
   selectedMessageIds = new Set([...selectedMessageIds].filter((id) => messages.some((message) => message.id === id)));
+  if (!messages.some((message) => message.id === previewMessageId)) previewMessageId = messages[0]?.id || null;
   renderMessages();
 }
 
@@ -211,6 +303,7 @@ async function loadAll() {
     ]);
     renderRfxSelects();
     renderTemplates();
+    renderTemplatePreview();
     renderCampaigns();
     renderHistory();
     await loadMessages(selectedCampaignId);
@@ -259,6 +352,8 @@ campaignForm?.addEventListener("submit", async (event) => {
     });
     selectedCampaignId = campaign.id;
     campaignForm.reset();
+    if (requestedRfxEventId && rfxEvents.some((event) => event.id === requestedRfxEventId)) campaignRfxEvent.value = requestedRfxEventId;
+    renderTemplatePreview();
     setStatus(campaignStatus, "Campaign created.", "success");
     campaigns = await fetchOutreachCampaigns();
     renderCampaigns();
@@ -304,6 +399,14 @@ messageBody?.addEventListener("change", (event) => {
 });
 
 messageBody?.addEventListener("click", async (event) => {
+  const previewButton = event.target.closest("[data-preview-message]");
+  if (previewButton) {
+    previewMessageId = previewButton.dataset.previewMessage;
+    renderMessages();
+    draftPreview?.scrollIntoView({ behavior: "smooth", block: "center" });
+    return;
+  }
+
   const openButton = event.target.closest("[data-open-url]");
   if (openButton) {
     const url = openButton.dataset.openUrl;
@@ -322,6 +425,16 @@ messageBody?.addEventListener("click", async (event) => {
     }
   }
 });
+
+draftPreview?.addEventListener("click", (event) => {
+  const openButton = event.target.closest("[data-open-url]");
+  if (!openButton) return;
+  const url = openButton.dataset.openUrl;
+  if (url) window.open(url, "_blank", "noopener");
+});
+
+campaignTemplate?.addEventListener("change", renderTemplatePreview);
+campaignChannel?.addEventListener("change", renderTemplatePreview);
 
 async function markSelected(status) {
   const ids = [...selectedMessageIds];
