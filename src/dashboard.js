@@ -19,6 +19,12 @@ const workflowRfx = document.querySelector("#workflow-rfx");
 const workflowUploads = document.querySelector("#workflow-uploads");
 const workflowVendors = document.querySelector("#workflow-vendors");
 const priorityQueue = document.querySelector("#priority-queue");
+const progressUpload = document.querySelector("#progress-upload");
+const progressInterpret = document.querySelector("#progress-interpret");
+const progressReview = document.querySelector("#progress-review");
+const progressRateware = document.querySelector("#progress-rateware");
+const progressRfx = document.querySelector("#progress-rfx");
+const progressOutreach = document.querySelector("#progress-outreach");
 
 function numberValue(value) {
   return Number(value || 0);
@@ -180,6 +186,12 @@ function renderSummary(summary) {
   setText(workflowRfx, `${formatCount(summary.rfx_open_events)} open events`);
   setText(workflowUploads, `${formatCount(summary.raw_uploads)} source files`);
   setText(workflowVendors, `${formatCount(summary.procurement_vendors)} procurement vendors`);
+  setText(progressUpload, `${formatCount(summary.raw_uploads)} files`);
+  setText(progressInterpret, `${formatCount(summary.failed_uploads)} failed`);
+  setText(progressReview, `${formatCount(summary.pending_review)} pending`);
+  setText(progressRateware, `${formatCount(summary.approved_rows)} approved`);
+  setText(progressRfx, `${formatCount(summary.rfx_open_events)} events`);
+  setText(progressOutreach, `${formatCount(summary.rfx_bids)} bids`);
 
   renderNextBestAction(summary);
   renderPriorityQueue(summary);

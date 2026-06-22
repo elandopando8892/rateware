@@ -1674,7 +1674,15 @@ function attachInterpretationAuditMeta(interpretation: Record<string, unknown>, 
   return Object.assign(interpretation, { __audit: meta });
 }
 
-async function interpretWithModel(rawUpload: Record<string, string>, file: Blob) {
+async function interpretWithModel(rawUpload: Record<string, string>, file: Blob, correctionNote = "") {
+  const correctionRules = cleanText(correctionNote)
+    ? [
+      "",
+      "Upload-specific correction note from the reviewer:",
+      correctionNote,
+      "Apply this correction only to this upload. It does not override global Rateware rules, but it should guide extraction when it clarifies source-specific mistakes."
+    ]
+    : [];
   const systemPrompt = [
     "You are Rateware AI, a senior freight procurement analyst.",
     "Interpret carrier quotations and normalize them into Rateware staging rows.",
@@ -1708,7 +1716,8 @@ async function interpretWithModel(rawUpload: Record<string, string>, file: Blob)
     "Do not classify a connected D2D quote as transbordo just because the carrier lists the Mexican and US portions separately. Only use transload/transbordo when the carrier explicitly says it.",
     "Extract weekly_capacity when the carrier states capacity, trucks per week, loads per week, or an available capacity range. Use null when not stated.",
     "Return only rows that represent carrier rates or capacity responses.",
-    "Use null when a value is missing. Do not invent rates."
+    "Use null when a value is missing. Do not invent rates.",
+    ...correctionRules
   ].join("\n");
 
   const userContent: Record<string, unknown>[] = [
@@ -1850,13 +1859,15 @@ Deno.serve(async (request) => {
     return jsonResponse({ error: error.message }, 401);
   }
 
-  const { raw_upload_id } = await request.json();
+  const { raw_upload_id, correction_note = "" } = await request.json();
   if (!raw_upload_id) return jsonResponse({ error: "raw_upload_id is required." }, 400);
+  const correctionNote = cleanText(correction_note) || "";
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
   const job = await supabase.from("interpretation_jobs").insert({
     raw_upload_id,
-    model: OPENAI_MODEL
+    model: OPENAI_MODEL,
+    correction_note: correctionNote || null
   }).select().single();
 
   if (job.error) return jsonResponse({ error: job.error.message }, 500);
@@ -1869,7 +1880,7 @@ Deno.serve(async (request) => {
     const download = await supabase.storage.from(rawUpload.storage_bucket).download(rawUpload.storage_path);
     if (download.error) throw download.error;
 
-    const interpretation = await interpretWithModel(rawUpload, download.data);
+    const interpretation = await interpretWithModel(rawUpload, download.data, correctionNote);
     const vendorMatch = await findBestVendor(supabase, rawUpload, interpretation);
     const vendorId = vendorMatch?.vendor?.id || rawUpload.vendor_id || null;
     const catalogResult = await supabase.from("rateware_catalog_items").select("category,raw_value,normalized_value,code,metadata").eq("active", true).limit(20000);
@@ -1926,6 +1937,20 @@ Deno.serve(async (request) => {
       extracted_rows: rows.length
     }).eq("id", job.data.id);
 
+    const priorCorrectionHistory = Array.isArray(rawUpload.correction_history) ? rawUpload.correction_history : [];
+    const correctionHistory = correctionNote
+      ? [
+        ...priorCorrectionHistory,
+        {
+          note: correctionNote,
+          job_id: job.data.id,
+          created_at: new Date().toISOString(),
+          rows_before: Number(rawUpload.interpreted_rate_rows || 0),
+          rows_after: rows.length
+        }
+      ]
+      : priorCorrectionHistory;
+
     await supabase.from("raw_uploads").update({
       vendor_id: vendorId,
       vendor_match_source: rawUpload.vendor_id ? "manual" : vendorMatch?.vendor?.id ? "auto" : rawUpload.vendor_match_source || null,
@@ -1938,6 +1963,8 @@ Deno.serve(async (request) => {
       audit_warnings: uploadAudit.warnings,
       expected_rate_rows: uploadAudit.expected_rate_rows,
       interpreted_rate_rows: rows.length,
+      correction_note: correctionNote || rawUpload.correction_note || null,
+      correction_history: correctionHistory,
       error_message: null
     }).eq("id", raw_upload_id);
 

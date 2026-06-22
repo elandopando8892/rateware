@@ -58,7 +58,19 @@
         </header>
 
         <main class="history-layout">
-          <section class="workspace-panel">
+          <section class="workspace-panel spreadsheet-workbench">
+            <div class="workbench-header">
+              <div>
+                <p class="eyebrow">Spreadsheet workbench</p>
+                <h2>Approved rate book</h2>
+              </div>
+              <div class="saved-view-strip" aria-label="Rateware saved views">
+                <button class="review-filter is-active" type="button" data-rateware-filter="all">All</button>
+                <button class="review-filter" type="button" data-rateware-filter="cross-border">Cross-border</button>
+                <button class="review-filter" type="button" data-rateware-filter="all-in">All-in</button>
+                <button class="review-filter" type="button" data-rateware-filter="with-capacity">Capacity</button>
+              </div>
+            </div>
             <div class="review-insight-grid" aria-label="Approved Rateware summary">
               <article>
                 <span>Approved rates</span>
@@ -79,11 +91,7 @@
             </div>
             <div class="sheet-command-bar">
               <div class="review-filter-row compact-filter-row" aria-label="Rateware quick filters">
-                <button class="review-filter is-active" type="button" data-rateware-filter="all">All rates</button>
-                <button class="review-filter" type="button" data-rateware-filter="cross-border">Cross-border</button>
-                <button class="review-filter" type="button" data-rateware-filter="all-in">All-in</button>
                 <button class="review-filter" type="button" data-rateware-filter="split-rate">Split rate</button>
-                <button class="review-filter" type="button" data-rateware-filter="with-capacity">With capacity</button>
               </div>
               <div class="toolbar sheet-toolbar rateware-toolbar">
                 <label>
@@ -109,6 +117,8 @@
                   <div data-column-toggle-list class="column-toggle-grid"></div>
                 </details>
               </div>
+
+              <div class="column-preset-bar" aria-label="Rateware column presets" data-rateware-column-presets></div>
 
               <div class="bulk-action-bar" aria-live="polite">
                 <span id="rateware-selection-count">0 selected</span>

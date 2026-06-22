@@ -45,7 +45,7 @@ export async function getUploadSourceUrl(rawUploadId) {
   return await callRatewareApi("get_upload_source_url", { id: rawUploadId });
 }
 
-export async function interpretUpload(rawUploadId) {
+export async function interpretUpload(rawUploadId, { correctionNote = "" } = {}) {
   const token = await getKindeToken();
   const response = await fetch(`${SUPABASE_URL}/functions/v1/interpret-upload`, {
     method: "POST",
@@ -53,7 +53,7 @@ export async function interpretUpload(rawUploadId) {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json"
     },
-    body: JSON.stringify({ raw_upload_id: rawUploadId })
+    body: JSON.stringify({ raw_upload_id: rawUploadId, correction_note: correctionNote })
   });
 
   const data = await response.json();

@@ -1,6 +1,6 @@
 import { applyPermissionState, ensureSignedIn, initAuthControls, requirePrivatePage } from "./auth.js";
 import { installSpreadsheetGrid } from "./spreadsheet-grid.js";
-import { initColumnVisibility, initDrawer } from "./sheet-ui.js";
+import { initColumnVisibility, initDrawer, initLocationAutocomplete } from "./sheet-ui.js";
 import { archiveStagingRows, enrichStagingLocationZips, fetchStagingOptions, fetchStagingRows, matchStagingVendors, removeStagingRows, renormalizeStagingRows, updateStagingRow } from "./staging-service.js";
 
 const body = document.querySelector("#staging-body");
@@ -36,6 +36,7 @@ const bulkEditStatus = document.querySelector("#staging-bulk-status");
 const columnFilterInputs = document.querySelectorAll("[data-staging-column-filter]");
 const clearColumnFiltersButton = document.querySelector("#clear-staging-column-filters");
 const columnMenu = document.querySelector("#staging-column-menu");
+const columnPresetBar = document.querySelector("[data-staging-column-presets]");
 const stagingTable = document.querySelector(".staging-table");
 const stagingMetricVisible = document.querySelector("#staging-metric-visible");
 const stagingMetricLocation = document.querySelector("#staging-metric-location");
@@ -93,6 +94,28 @@ const SHEET_COLUMNS = [
   { key: "weekly_capacity", label: "Capacity" },
   { key: "status", label: "Status" },
   { key: "actions", label: "Actions", locked: true }
+];
+const COLUMN_PRESETS = [
+  {
+    name: "review",
+    label: "Review",
+    columns: ["select", "vendor", "origin", "destination", "all_in_rate", "quote_date", "rfx_id", "equipment", "trailer", "operation", "service", "weekly_capacity", "status", "actions"]
+  },
+  {
+    name: "normalization",
+    label: "Normalization",
+    columns: ["select", "vendor", "origin", "destination", "all_in_rate", "origin_zip_prefix", "origin_state", "origin_market", "origin_region", "destination_zip_prefix", "destination_state", "destination_market", "destination_region", "mx_border_crossing_point", "us_border_crossing_point", "actions"]
+  },
+  {
+    name: "finance",
+    label: "Finance",
+    columns: ["select", "vendor", "origin", "destination", "all_in_rate", "mx_linehaul", "us_linehaul", "fsc", "border_crossing_fee", "currency", "weekly_capacity", "actions"]
+  },
+  {
+    name: "source-audit",
+    label: "Source audit",
+    columns: ["select", "vendor", "origin", "destination", "all_in_rate", "quote_date", "rfx_id", "equipment", "trailer", "hazmat", "temperature_controlled", "operation", "service", "status", "actions"]
+  }
 ];
 const STAGING_BULK_EDIT_FIELDS = [
   { field: "operation", label: "Operation", source: "operation" },
@@ -167,7 +190,8 @@ function selectCell(row, field, values = [], options = {}) {
 function datalistCell(row, field, values = [], options = {}) {
   const widthClass = options.wide ? "wide-input" : options.money ? "money-input" : options.short ? "short-input" : "";
   const listId = `staging-${field}-options`;
-  return `<input class="staging-input ${widthClass}" data-field="${field}" list="${listId}" value="${escapeHtml(row[field] || "")}" autocomplete="off" spellcheck="false" />`;
+  const locationAttr = ["origin", "destination"].includes(field) ? `data-location-field="${field}"` : "";
+  return `<input class="staging-input ${widthClass}" data-field="${field}" ${locationAttr} list="${listId}" value="${escapeHtml(row[field] || "")}" autocomplete="off" spellcheck="false" />`;
 }
 
 function checkboxCell(row, field, label) {
@@ -413,6 +437,15 @@ function needsLocationMatch(row) {
   return !originMatched || !destinationMatched;
 }
 
+function locationValidationClass(row, prefix) {
+  const matched = Boolean(row[`${prefix}_market`] || row[`${prefix}_zip_prefix`] || row[`${prefix}_state`] || row[`${prefix}_country`]);
+  return matched ? "cell-valid" : "cell-invalid";
+}
+
+function rateValidationClass(row) {
+  return needsNumericRate(row) ? "cell-invalid" : "cell-valid";
+}
+
 function needsNumericRate(row) {
   return !hasNumericValue(row.all_in_rate) && !hasNumericValue(row.mx_linehaul) && !hasNumericValue(row.us_linehaul);
 }
@@ -465,6 +498,36 @@ function rowQualityClass(row) {
   if (rowAuditFlags(row).length || rowExtractionWarnings(row).length) return "has-warning";
   if (!row.vendors?.vendor_name || !row.quote_date || !row.weekly_capacity) return "has-warning";
   return "";
+}
+
+function sourceEvidence(row) {
+  return objectValue(row.source_evidence);
+}
+
+function qualitySummary(row) {
+  const flags = rowAuditFlags(row);
+  const warnings = rowExtractionWarnings(row);
+  const blockers = approvalBlockers(row);
+  if (blockers.length || flags.some((flag) => ["missing_rate", "missing_origin", "missing_destination"].includes(flag))) {
+    return { tone: "danger", label: "Needs fix", detail: `${blockers.length || flags.length} issue(s)` };
+  }
+  if (flags.length || warnings.length || !row.vendors?.vendor_name || !row.quote_date) {
+    return { tone: "warning", label: "Review", detail: `${flags.length + warnings.length} audit note(s)` };
+  }
+  return { tone: "success", label: "Ready", detail: "Clean row" };
+}
+
+function renderQualityStrip(row) {
+  const quality = qualitySummary(row);
+  const evidence = sourceEvidence(row);
+  const sourceLabel = evidence.source_filename || evidence.email_from || row.raw_upload_id || "No source";
+  return `
+    <div class="quality-strip ${escapeHtml(quality.tone)}">
+      <span>${escapeHtml(quality.label)}</span>
+      <small>${escapeHtml(quality.detail)}</small>
+      <em title="${escapeHtml(sourceLabel)}">${escapeHtml(sourceLabel)}</em>
+    </div>
+  `;
 }
 
 function validationRow(baseRow = {}, patch = {}) {
@@ -756,78 +819,147 @@ function renderExtractionAudit(row) {
   `;
 }
 
+function sourceCompareLine(label, sourceValue, stagedValue) {
+  const sourceText = String(sourceValue || "").trim();
+  const stagedText = String(stagedValue || "").trim();
+  const same = lookupKey(sourceText) && lookupKey(sourceText) === lookupKey(stagedText);
+  const tone = !sourceText || !stagedText ? "muted" : same ? "success" : "warning";
+  return `
+    <article class="source-compare-row ${escapeHtml(tone)}">
+      <span>${escapeHtml(label)}</span>
+      <div>
+        <small>Source</small>
+        <strong>${escapeHtml(sourceText || "-")}</strong>
+      </div>
+      <div>
+        <small>Staged</small>
+        <strong>${escapeHtml(stagedText || "-")}</strong>
+      </div>
+    </article>
+  `;
+}
+
+function renderSourceComparison(row) {
+  const evidence = objectValue(row.source_evidence);
+  return `
+    <section class="source-compare-panel">
+      <div class="section-heading compact">
+        <p class="eyebrow">Source vs staged</p>
+        <h3>Field comparison</h3>
+      </div>
+      ${sourceCompareLine("Origin", evidence.origin || evidence.source_origin, row.origin)}
+      ${sourceCompareLine("Destination", evidence.destination || evidence.source_destination, row.destination)}
+      ${sourceCompareLine("Service", evidence.service, row.service)}
+      ${sourceCompareLine("Equipment", evidence.equipment || evidence.trailer, [row.equipment, row.trailer, row.config].filter(Boolean).join(" / "))}
+      ${sourceCompareLine("All-in", evidence.all_in_rate || evidence.total_rate, row.all_in_rate)}
+      ${sourceCompareLine("Capacity", evidence.weekly_capacity || evidence.capacity, row.weekly_capacity)}
+    </section>
+  `;
+}
+
+function renderSourcePreview(row) {
+  const evidence = objectValue(row.source_evidence);
+  const excerpt = evidence.extracted_text || evidence.source_excerpt || evidence.raw_text || evidence.table_text || "";
+  const fileName = evidence.source_filename || row.original_filename || row.raw_upload_id || "Source file";
+  return `
+    <aside class="source-preview-panel">
+      <div class="section-heading compact">
+        <p class="eyebrow">Original evidence</p>
+        <h3>${escapeHtml(fileName)}</h3>
+      </div>
+      <div class="source-preview-actions">
+        ${row.raw_upload_id ? `<a class="secondary small-button" href="./upload-history.html">Upload history</a>` : ""}
+        ${row.raw_upload_id ? `<a class="small-button" href="./staging-review.html?raw_upload_id=${encodeURIComponent(row.raw_upload_id)}&status=">All rows from source</a>` : ""}
+      </div>
+      <dl>
+        ${detailLine("Source row", evidence.row_id)}
+        ${detailLine("Source lane", evidence.lane)}
+        ${detailLine("Source service", evidence.service)}
+        ${detailLine("Source all-in", evidence.all_in_rate)}
+      </dl>
+      ${excerpt ? `<pre class="source-excerpt">${escapeHtml(excerpt).slice(0, 5000)}</pre>` : '<p class="muted-text">No raw source excerpt was stored for this row.</p>'}
+      ${renderExtractionAudit(row)}
+    </aside>
+  `;
+}
+
 function renderRowDetail(row) {
   const legs = Array.isArray(row.rateware_lane_legs)
     ? row.rateware_lane_legs.slice().sort((a, b) => Number(a.leg_sequence || 0) - Number(b.leg_sequence || 0))
     : [];
 
   rowDetail.innerHTML = `
-    ${renderDrawerBrief(row)}
-    ${renderFixChecklist(row)}
-    ${renderExtractionAudit(row)}
-    <section>
-      <h3>Location normalization</h3>
-      <dl>
-        ${detailLine("Origin market", row.origin_market)}
-        ${detailLine("Origin ZIP", row.origin_zip_prefix)}
-        ${detailLine("Origin city", row.origin_city)}
-        ${detailLine("Origin state", row.origin_state)}
-        ${detailLine("Origin country", row.origin_country)}
-        ${detailLine("Origin region", row.origin_region)}
-        ${detailLine("Origin match", row.origin_match_reason)}
-        ${detailLine("Origin source", row.origin_match_source)}
-        ${detailLine("Origin confidence", row.origin_match_confidence ? `${moneyValue(row.origin_match_confidence)}%` : "")}
-        ${detailLine("Origin manual", row.origin_match_manual ? "yes" : "no")}
-        ${detailLine("Destination market", row.destination_market)}
-        ${detailLine("Destination ZIP", row.destination_zip_prefix)}
-        ${detailLine("Destination city", row.destination_city)}
-        ${detailLine("Destination state", row.destination_state)}
-        ${detailLine("Destination country", row.destination_country)}
-        ${detailLine("Destination region", row.destination_region)}
-        ${detailLine("Destination match", row.destination_match_reason)}
-        ${detailLine("Destination source", row.destination_match_source)}
-        ${detailLine("Destination confidence", row.destination_match_confidence ? `${moneyValue(row.destination_match_confidence)}%` : "")}
-        ${detailLine("Destination manual", row.destination_match_manual ? "yes" : "no")}
-      </dl>
-    </section>
-    <section>
-      <h3>Lane and mileage</h3>
-      <dl>
-        ${detailLine("Lane type", row.lane_type)}
-        ${detailLine("Leg status", row.leg_status)}
-        ${detailLine("Leg summary", row.leg_summary)}
-        ${detailLine("MX km", moneyValue(row.calculated_km))}
-        ${detailLine("US miles", moneyValue(row.us_miles || row.calculated_miles))}
-        ${detailLine("Mileage source", row.mileage_source)}
-      </dl>
-    </section>
-    <section>
-      <h3>Fuel and FX normalization</h3>
-      <dl>
-        ${detailLine("MX diesel MXN/L", moneyValue(row.mx_diesel_mxn_per_liter))}
-        ${detailLine("MX diesel USD/L", moneyValue(row.mx_diesel_usd_per_liter))}
-        ${detailLine("FX MXN/USD", moneyValue(row.fx_rate_mxn_usd))}
-        ${detailLine("MX diesel factor", moneyValue(row.mx_fuel_factor))}
-        ${detailLine("MX fuel USD", moneyValue(row.mx_fuel_cost_usd))}
-        ${detailLine("US fuel region", row.fuel_region)}
-        ${detailLine("US fuel date", dateValue(row.fuel_index_date))}
-        ${detailLine("Rateware FSC", moneyValue(row.normalized_fsc_per_mile))}
-        ${detailLine("FSC total", moneyValue(row.normalized_fsc_total))}
-        ${detailLine("FSC delta", moneyValue(row.fuel_delta))}
-      </dl>
-    </section>
-    <section>
-      <h3>Legs</h3>
-      <div class="leg-list">
-        ${legs.length ? legs.map((leg) => `
-          <div class="leg-card">
-            <strong>${escapeHtml(leg.leg_sequence)}. ${escapeHtml(leg.leg_type)}</strong>
-            <span>${escapeHtml(leg.origin || "-")} -> ${escapeHtml(leg.destination || "-")}</span>
-            <small>${escapeHtml([leg.km ? `${moneyValue(leg.km)} km` : "", leg.miles ? `${moneyValue(leg.miles)} mi` : "", leg.fuel_cost_usd ? `Fuel $${moneyValue(leg.fuel_cost_usd)}` : ""].filter(Boolean).join(" | ") || leg.status || "-")}</small>
+    <div class="source-evidence-workbench">
+      <div class="staged-review-panel">
+        ${renderDrawerBrief(row)}
+        ${renderFixChecklist(row)}
+        ${renderSourceComparison(row)}
+        <section>
+          <h3>Location normalization</h3>
+          <dl>
+            ${detailLine("Origin market", row.origin_market)}
+            ${detailLine("Origin ZIP", row.origin_zip_prefix)}
+            ${detailLine("Origin city", row.origin_city)}
+            ${detailLine("Origin state", row.origin_state)}
+            ${detailLine("Origin country", row.origin_country)}
+            ${detailLine("Origin region", row.origin_region)}
+            ${detailLine("Origin match", row.origin_match_reason)}
+            ${detailLine("Origin source", row.origin_match_source)}
+            ${detailLine("Origin confidence", row.origin_match_confidence ? `${moneyValue(row.origin_match_confidence)}%` : "")}
+            ${detailLine("Origin manual", row.origin_match_manual ? "yes" : "no")}
+            ${detailLine("Destination market", row.destination_market)}
+            ${detailLine("Destination ZIP", row.destination_zip_prefix)}
+            ${detailLine("Destination city", row.destination_city)}
+            ${detailLine("Destination state", row.destination_state)}
+            ${detailLine("Destination country", row.destination_country)}
+            ${detailLine("Destination region", row.destination_region)}
+            ${detailLine("Destination match", row.destination_match_reason)}
+            ${detailLine("Destination source", row.destination_match_source)}
+            ${detailLine("Destination confidence", row.destination_match_confidence ? `${moneyValue(row.destination_match_confidence)}%` : "")}
+            ${detailLine("Destination manual", row.destination_match_manual ? "yes" : "no")}
+          </dl>
+        </section>
+        <section>
+          <h3>Lane and mileage</h3>
+          <dl>
+            ${detailLine("Lane type", row.lane_type)}
+            ${detailLine("Leg status", row.leg_status)}
+            ${detailLine("Leg summary", row.leg_summary)}
+            ${detailLine("MX km", moneyValue(row.calculated_km))}
+            ${detailLine("US miles", moneyValue(row.us_miles || row.calculated_miles))}
+            ${detailLine("Mileage source", row.mileage_source)}
+          </dl>
+        </section>
+        <section>
+          <h3>Fuel and FX normalization</h3>
+          <dl>
+            ${detailLine("MX diesel MXN/L", moneyValue(row.mx_diesel_mxn_per_liter))}
+            ${detailLine("MX diesel USD/L", moneyValue(row.mx_diesel_usd_per_liter))}
+            ${detailLine("FX MXN/USD", moneyValue(row.fx_rate_mxn_usd))}
+            ${detailLine("MX diesel factor", moneyValue(row.mx_fuel_factor))}
+            ${detailLine("MX fuel USD", moneyValue(row.mx_fuel_cost_usd))}
+            ${detailLine("US fuel region", row.fuel_region)}
+            ${detailLine("US fuel date", dateValue(row.fuel_index_date))}
+            ${detailLine("Rateware FSC", moneyValue(row.normalized_fsc_per_mile))}
+            ${detailLine("FSC total", moneyValue(row.normalized_fsc_total))}
+            ${detailLine("FSC delta", moneyValue(row.fuel_delta))}
+          </dl>
+        </section>
+        <section>
+          <h3>Legs</h3>
+          <div class="leg-list">
+            ${legs.length ? legs.map((leg) => `
+              <div class="leg-card">
+                <strong>${escapeHtml(leg.leg_sequence)}. ${escapeHtml(leg.leg_type)}</strong>
+                <span>${escapeHtml(leg.origin || "-")} -> ${escapeHtml(leg.destination || "-")}</span>
+                <small>${escapeHtml([leg.km ? `${moneyValue(leg.km)} km` : "", leg.miles ? `${moneyValue(leg.miles)} mi` : "", leg.fuel_cost_usd ? `Fuel $${moneyValue(leg.fuel_cost_usd)}` : ""].filter(Boolean).join(" | ") || leg.status || "-")}</small>
+              </div>
+            `).join("") : '<p class="muted-text">No legs built yet.</p>'}
           </div>
-        `).join("") : '<p class="muted-text">No legs built yet.</p>'}
+        </section>
       </div>
-    </section>
+      ${renderSourcePreview(row)}
+    </div>
   `;
 }
 
@@ -856,11 +988,12 @@ function renderRows(rows) {
             ${row.vendors?.vendor_name ? `<strong>${escapeHtml(row.vendors.vendor_name)}</strong>` : ""}
             ${inputCell(row, "vendor_domain", { wide: true, list: "staging-vendor-options" })}
             ${row.vendors?.vendor_name ? `<span class="match-pill">${escapeHtml(row.vendors.base_stage || "matched")}</span>` : ""}
+            ${renderQualityStrip(row)}
             ${renderReviewChips(row)}
           </td>
-          <td data-col="origin">${datalistCell(row, "origin", stagingOptions.locations, { wide: true })}${hiddenLocationFields(row, "origin")}</td>
-          <td data-col="destination">${datalistCell(row, "destination", stagingOptions.locations, { wide: true })}${hiddenLocationFields(row, "destination")}</td>
-          <td class="rate-freeze-cell" data-col="all_in_rate">
+          <td class="${escapeHtml(locationValidationClass(row, "origin"))}" data-col="origin" title="${escapeHtml(row.origin_match_reason || row.origin_market || "Needs catalog match")}">${datalistCell(row, "origin", stagingOptions.locations, { wide: true })}${hiddenLocationFields(row, "origin")}</td>
+          <td class="${escapeHtml(locationValidationClass(row, "destination"))}" data-col="destination" title="${escapeHtml(row.destination_match_reason || row.destination_market || "Needs catalog match")}">${datalistCell(row, "destination", stagingOptions.locations, { wide: true })}${hiddenLocationFields(row, "destination")}</td>
+          <td class="rate-freeze-cell ${escapeHtml(rateValidationClass(row))}" data-col="all_in_rate" title="${escapeHtml(needsNumericRate(row) ? "Needs numeric all-in or split rate" : "Numeric rate present")}">
             ${inputCell(row, "all_in_rate", { money: true })}
             <span class="row-save-status" data-row-status="${escapeHtml(row.id)}"></span>
           </td>
@@ -891,7 +1024,7 @@ function renderRows(rows) {
           <td data-col="weekly_capacity">${inputCell(row, "weekly_capacity", { short: true })}</td>
           <td data-col="status">${statusSelect(row)}</td>
           <td class="review-actions" data-col="actions">
-            <button type="button" class="small-button secondary" data-detail-id="${escapeHtml(row.id)}">Details</button>
+            <button type="button" class="small-button secondary" data-detail-id="${escapeHtml(row.id)}">Evidence</button>
             <button type="button" class="small-button secondary" data-save-id="${escapeHtml(row.id)}">Save</button>
             <button type="button" class="small-button" data-approve-id="${escapeHtml(row.id)}">Approve</button>
             <button type="button" class="small-button danger" data-reject-id="${escapeHtml(row.id)}">Reject</button>
@@ -1371,6 +1504,17 @@ installSpreadsheetGrid({
   saveRow: saveStagingTableRow,
   onRowsChanged: (rows) => rows.forEach((row) => scheduleStagingAutoSave(row, 1000))
 });
+initLocationAutocomplete({
+  container: body,
+  inputSelector: "[data-location-field]",
+  getOptions: () => stagingOptions.locations || [],
+  onSelect: ({ input, option }) => {
+    const tableRow = input.closest("[data-row-id]");
+    const prefix = input.dataset.locationField;
+    if (!tableRow || !prefix) return;
+    applyLocationSuggestion(tableRow, prefix, locationOptionValue(option));
+  }
+});
 
 refreshButton.addEventListener("click", loadRows);
 clearFiltersButton?.addEventListener("click", clearStagingFilters);
@@ -1429,7 +1573,10 @@ columnVisibilityController = initColumnVisibility({
   table: stagingTable,
   menu: columnMenu,
   columns: SHEET_COLUMNS,
-  storageKey: "rateware:staging:columns"
+  storageKey: "rateware:staging:columns",
+  presets: COLUMN_PRESETS,
+  presetContainer: columnPresetBar,
+  defaultPreset: "review"
 });
 initDrawer({
   drawer: bulkDrawer,

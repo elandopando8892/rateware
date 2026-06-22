@@ -58,7 +58,19 @@
         </header>
 
         <main class="history-layout">
-          <section class="workspace-panel">
+          <section class="workspace-panel spreadsheet-workbench">
+            <div class="workbench-header">
+              <div>
+                <p class="eyebrow">Spreadsheet workbench</p>
+                <h2>Quote normalization</h2>
+              </div>
+              <div class="saved-view-strip" aria-label="Staging saved views">
+                <button class="review-filter is-active" type="button" data-staging-filter="all">All</button>
+                <button class="review-filter" type="button" data-staging-filter="needs-location">Location gaps</button>
+                <button class="review-filter" type="button" data-staging-filter="needs-rate">Rate gaps</button>
+                <button class="review-filter" type="button" data-staging-filter="split-rate">Split rates</button>
+              </div>
+            </div>
             <div class="review-insight-grid" aria-label="Staging quality summary">
               <article>
                 <span>Visible rows</span>
@@ -80,11 +92,8 @@
             <div id="staging-upload-scope" class="scope-banner hidden"></div>
             <div class="sheet-command-bar">
               <div class="review-filter-row compact-filter-row" aria-label="Staging review filters">
-                <button class="review-filter is-active" type="button" data-staging-filter="all">All visible</button>
-                <button class="review-filter" type="button" data-staging-filter="needs-location">Needs location match</button>
-                <button class="review-filter" type="button" data-staging-filter="needs-rate">Needs numeric rate</button>
                 <button class="review-filter" type="button" data-staging-filter="all-in">All-in</button>
-                <button class="review-filter" type="button" data-staging-filter="split-rate">Split rate</button>
+                <button class="review-filter" type="button" data-staging-filter="split-rate">Split</button>
               </div>
               <div class="toolbar sheet-toolbar">
                 <label>
@@ -104,6 +113,8 @@
                   <div data-column-toggle-list class="column-toggle-grid"></div>
                 </details>
               </div>
+
+              <div class="column-preset-bar" aria-label="Staging column presets" data-staging-column-presets></div>
 
               <div class="bulk-action-bar" aria-live="polite">
                 <span id="bulk-selection-count">0 selected</span>

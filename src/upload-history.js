@@ -21,11 +21,18 @@ const uploadDrawer = document.querySelector("#upload-drawer");
 const closeUploadDrawerButton = document.querySelector("#close-upload-drawer");
 const uploadDrawerTitle = document.querySelector("#upload-drawer-title");
 const uploadDetail = document.querySelector("#upload-detail");
+const reprocessDrawer = document.querySelector("#reprocess-drawer");
+const closeReprocessDrawerButton = document.querySelector("#close-reprocess-drawer");
+const reprocessForm = document.querySelector("#reprocess-form");
+const reprocessNoteInput = document.querySelector("#reprocess-note");
+const reprocessStatus = document.querySelector("#reprocess-status");
+const confirmReprocessButton = document.querySelector("#confirm-reprocess-button");
 const HISTORY_COLSPAN = 11;
 let loadedRows = [];
 let currentRows = [];
 let activeQuickFilter = "all";
 const selectedUploadIds = new Set();
+let pendingReprocessIds = [];
 
 function applyUrlFilters() {
   const params = new URLSearchParams(window.location.search);
@@ -250,6 +257,29 @@ function warningList(warnings) {
   return `<ul class="compact-warning-list">${warnings.map((warning) => `<li>${escapeHtml(warning)}</li>`).join("")}</ul>`;
 }
 
+function correctionHistory(row) {
+  return Array.isArray(row.correction_history) ? row.correction_history : [];
+}
+
+function renderCorrectionHistory(row) {
+  const history = correctionHistory(row).slice(-5).reverse();
+  if (!row.correction_note && !history.length) {
+    return '<p class="detail-note">No correction notes used yet.</p>';
+  }
+  return `
+    <div class="correction-history">
+      ${row.correction_note ? `<article><strong>Last note</strong><span>${escapeHtml(row.correction_note)}</span></article>` : ""}
+      ${history.map((item) => `
+        <article>
+          <strong>${escapeHtml(formatDate(item.created_at) || "Reprocess")}</strong>
+          <span>${escapeHtml(item.note || "")}</span>
+          <small>${escapeHtml([item.rows_before !== undefined ? `${item.rows_before} before` : "", item.rows_after !== undefined ? `${item.rows_after} after` : ""].filter(Boolean).join(" | "))}</small>
+        </article>
+      `).join("")}
+    </div>
+  `;
+}
+
 function vendorDisplay(row) {
   return row.vendors?.vendor_name || row.vendor_hint || "No vendor detected";
 }
@@ -297,6 +327,11 @@ function openUploadDrawer(rowId) {
         ${detailItem("Sparse table risk", auditPayload(row).sparse_table_risk ? "yes" : "no")}
       </dl>
       ${warningList(auditWarnings(row).slice(0, 12))}
+    </section>
+
+    <section class="upload-detail-section">
+      <h3>Correction notes</h3>
+      ${renderCorrectionHistory(row)}
     </section>
 
     <section class="upload-detail-section">
@@ -418,6 +453,10 @@ async function loadHistory() {
 async function runBulkUploadAction(action) {
   const ids = selectedVisibleIds();
   if (!ids.length) return;
+  if (action === "reprocess") {
+    openReprocessDrawer(ids);
+    return;
+  }
   if (action === "remove") {
     const confirmed = window.confirm(`Remove ${ids.length} upload version(s) and their staged rows? This cannot be undone.`);
     if (!confirmed) return;
@@ -433,20 +472,62 @@ async function runBulkUploadAction(action) {
     if (!(await applyPermissionState("[data-interpret-id], [data-archive-id], [data-remove-id], #reprocess-selected-uploads, #archive-selected-uploads, #remove-selected-uploads", "uploads:interpret"))) {
       throw new Error("Your role does not allow upload actions.");
     }
-    if (action === "reprocess") {
-      for (let index = 0; index < ids.length; index += 1) {
-        setBulkStatus(`Reprocessing ${index + 1}/${ids.length}...`);
-        await interpretUpload(ids[index]);
-      }
-    } else {
-      const fn = action === "archive" ? archiveUpload : removeUpload;
-      await Promise.all(ids.map((id) => fn(id)));
-    }
+    const fn = action === "archive" ? archiveUpload : removeUpload;
+    await Promise.all(ids.map((id) => fn(id)));
     ids.forEach((id) => selectedUploadIds.delete(id));
     setBulkStatus(`${ids.length} upload(s) ${action === "archive" ? "archived" : action === "reprocess" ? "reprocessed" : "removed"}.`, "success");
     await loadHistory();
   } catch (error) {
     setBulkStatus(humanizeError(error), "error");
+    updateBulkControls();
+  }
+}
+
+function setReprocessStatus(message, tone = "neutral") {
+  if (!reprocessStatus) return;
+  reprocessStatus.textContent = message;
+  reprocessStatus.dataset.tone = tone;
+}
+
+function openReprocessDrawer(ids = []) {
+  pendingReprocessIds = ids.filter(Boolean);
+  if (!pendingReprocessIds.length || !reprocessDrawer) return;
+  const rows = pendingReprocessIds.map((id) => loadedRows.find((row) => row.id === id)).filter(Boolean);
+  const lastNote = rows.find((row) => row.correction_note)?.correction_note || "";
+  if (reprocessNoteInput) reprocessNoteInput.value = lastNote;
+  setReprocessStatus(`${pendingReprocessIds.length} upload(s) selected. Add a correction note or leave blank to reprocess normally.`);
+  reprocessDrawer.classList.remove("hidden");
+}
+
+async function runReprocessWithNote(event) {
+  event.preventDefault();
+  const ids = pendingReprocessIds.slice();
+  if (!ids.length) return;
+  const correctionNote = reprocessNoteInput?.value || "";
+  if (confirmReprocessButton) confirmReprocessButton.disabled = true;
+  setReprocessStatus(`Reprocessing ${ids.length} upload(s)...`);
+
+  try {
+    await ensureSignedIn();
+    if (!(await applyPermissionState("[data-interpret-id], [data-archive-id], [data-remove-id], #reprocess-selected-uploads, #archive-selected-uploads, #remove-selected-uploads", "uploads:interpret"))) {
+      throw new Error("Your role does not allow upload actions.");
+    }
+    for (let index = 0; index < ids.length; index += 1) {
+      setReprocessStatus(`Reprocessing ${index + 1}/${ids.length}...`);
+      await interpretUpload(ids[index], { correctionNote });
+    }
+    ids.forEach((id) => selectedUploadIds.delete(id));
+    setReprocessStatus(`${ids.length} upload(s) reprocessed.`, "success");
+    setBulkStatus(`${ids.length} upload(s) reprocessed with correction note.`, "success");
+    pendingReprocessIds = [];
+    reprocessDrawer?.classList.add("hidden");
+    uploadDrawer?.classList.add("hidden");
+    await loadHistory();
+  } catch (error) {
+    setReprocessStatus(humanizeError(error), "error");
+    setBulkStatus(humanizeError(error), "error");
+  } finally {
+    if (confirmReprocessButton) confirmReprocessButton.disabled = false;
     updateBulkControls();
   }
 }
@@ -522,6 +603,15 @@ archiveSelectedButton?.addEventListener("click", () => runBulkUploadAction("arch
 reprocessSelectedButton?.addEventListener("click", () => runBulkUploadAction("reprocess"));
 removeSelectedButton?.addEventListener("click", () => runBulkUploadAction("remove"));
 closeUploadDrawerButton?.addEventListener("click", () => uploadDrawer?.classList.add("hidden"));
+closeReprocessDrawerButton?.addEventListener("click", () => reprocessDrawer?.classList.add("hidden"));
+reprocessForm?.addEventListener("submit", runReprocessWithNote);
+reprocessDrawer?.addEventListener("click", (event) => {
+  const templateButton = event.target.closest("[data-correction-template]");
+  if (!templateButton || !reprocessNoteInput) return;
+  const template = templateButton.dataset.correctionTemplate || "";
+  reprocessNoteInput.value = [reprocessNoteInput.value.trim(), template].filter(Boolean).join("\n");
+  reprocessNoteInput.focus();
+});
 uploadDetail?.addEventListener("click", async (event) => {
   const sourceButton = event.target.closest("[data-source-id]");
   if (sourceButton) {
@@ -531,19 +621,7 @@ uploadDetail?.addEventListener("click", async (event) => {
 
   const interpretButton = event.target.closest("[data-interpret-id]");
   if (!interpretButton) return;
-  interpretButton.disabled = true;
-  interpretButton.textContent = "Interpreting...";
-  try {
-    await ensureSignedIn();
-    const result = await interpretUpload(interpretButton.dataset.interpretId);
-    setBulkStatus(`${result.staged_rows || 0} row(s) staged from this source.`, "success");
-    uploadDrawer?.classList.add("hidden");
-    await loadHistory();
-  } catch (error) {
-    interpretButton.disabled = false;
-    interpretButton.textContent = "Failed";
-    setBulkStatus(humanizeError(error), "error");
-  }
+  openReprocessDrawer([interpretButton.dataset.interpretId]);
 });
 historyBody.addEventListener("change", (event) => {
   const checkbox = event.target.closest("[data-select-upload]");
@@ -583,11 +661,8 @@ historyBody.addEventListener("click", async (event) => {
     }
 
     if (interpretButton) {
-      button.textContent = "Interpreting...";
-      const result = await interpretUpload(rowId);
-      button.textContent = `${result.staged_rows} staged`;
-      setBulkStatus(`${result.staged_rows || 0} row(s) staged.`, "success");
-      await loadHistory();
+      button.disabled = false;
+      openReprocessDrawer([rowId]);
       return;
     }
 

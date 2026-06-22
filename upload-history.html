@@ -174,6 +174,32 @@
             </div>
             <div id="upload-detail" class="upload-detail"></div>
           </aside>
+
+          <aside id="reprocess-drawer" class="profile-drawer sheet-bulk-drawer hidden" aria-live="polite">
+            <div class="drawer-header">
+              <div>
+                <p class="eyebrow">Interpretation correction</p>
+                <h2>Reprocess with note</h2>
+              </div>
+              <button id="close-reprocess-drawer" class="secondary small-button" type="button">Close</button>
+            </div>
+            <form id="reprocess-form" class="drawer-edit-form">
+              <label>
+                Correction note
+                <textarea id="reprocess-note" rows="7" placeholder="Example: Only extract the carrier response. Do not use heymarksman.com template values. Roundtrip only when RT or Round Trip is explicitly shown."></textarea>
+              </label>
+              <div class="quick-correction-grid" aria-label="Common correction notes">
+                <button type="button" class="secondary small-button" data-correction-template="Only extract the carrier submitted proposal/rates. Ignore heymarksman.com, Marksman, and shipper template/layout rows.">Ignore template</button>
+                <button type="button" class="secondary small-button" data-correction-template="Roundtrip only when RT, Round Trip, Roundtrip, or viaje redondo is explicitly stated. Otherwise use One Way.">Roundtrip explicit only</button>
+                <button type="button" class="secondary small-button" data-correction-template="Use Mexico operating perspective: MX to US/CA is D2D Export, US/CA to MX is D2D Import.">Mexico perspective</button>
+                <button type="button" class="secondary small-button" data-correction-template="Re-read every visible table row and priced cell. Do not summarize by state or destination group.">Find missing rows</button>
+              </div>
+              <div class="action-row">
+                <button id="confirm-reprocess-button" type="submit">Reprocess</button>
+                <p id="reprocess-status" class="status-message" role="status"></p>
+              </div>
+            </form>
+          </aside>
         </main>
       </div>
     </div>

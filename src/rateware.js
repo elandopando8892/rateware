@@ -1,7 +1,7 @@
 import { initAuthControls, requirePrivatePage } from "./auth.js";
 import { bulkUpdateApprovedRatewareRows, createRatewareBookVersion, enrichApprovedRatewareLocationZips, fetchRatewareBookVersion, fetchRatewareBookVersions, matchApprovedRatewareVendors, renormalizeApprovedRatewareRows, fetchApprovedRateware, fetchRatewareOptions, returnApprovedRatesToStaging, updateApprovedRatewareRow } from "./rateware-service.js";
 import { installSpreadsheetGrid } from "./spreadsheet-grid.js";
-import { initColumnVisibility, initDrawer } from "./sheet-ui.js";
+import { initColumnVisibility, initDrawer, initLocationAutocomplete } from "./sheet-ui.js";
 
 const body = document.querySelector("#rateware-body");
 const searchInput = document.querySelector("#rateware-search");
@@ -39,6 +39,7 @@ const openBulkDrawerButton = document.querySelector("#open-rateware-bulk-drawer"
 const bulkDrawer = document.querySelector("#rateware-bulk-drawer");
 const closeBulkDrawerButton = document.querySelector("#close-rateware-bulk-drawer");
 const columnMenu = document.querySelector("#rateware-column-menu");
+const columnPresetBar = document.querySelector("[data-rateware-column-presets]");
 const ratewareTable = document.querySelector(".rateware-table");
 const compareSelectedButton = document.querySelector("#compare-selected-rateware");
 const compareVisibleButton = document.querySelector("#compare-visible-rateware");
@@ -98,6 +99,28 @@ const SHEET_COLUMNS = [
   { key: "currency", label: "Currency" },
   { key: "weekly_capacity", label: "Capacity" },
   { key: "actions", label: "Actions", locked: true }
+];
+const COLUMN_PRESETS = [
+  {
+    name: "ratebook",
+    label: "Rate book",
+    columns: ["select", "vendor", "origin", "destination", "all_in_rate", "quote_date", "rfx_id", "equipment", "trailer", "operation", "service", "currency", "weekly_capacity", "actions"]
+  },
+  {
+    name: "normalization",
+    label: "Normalization",
+    columns: ["select", "vendor", "origin", "destination", "all_in_rate", "origin_zip_prefix", "origin_state", "origin_market", "origin_region", "destination_zip_prefix", "destination_state", "destination_market", "destination_region", "mx_border_crossing_point", "us_border_crossing_point", "actions"]
+  },
+  {
+    name: "finance",
+    label: "Finance",
+    columns: ["select", "vendor", "origin", "destination", "all_in_rate", "mx_linehaul", "us_linehaul", "fsc", "border_crossing_fee", "currency", "weekly_capacity", "actions"]
+  },
+  {
+    name: "source-audit",
+    label: "Source audit",
+    columns: ["select", "vendor", "origin", "destination", "all_in_rate", "quote_date", "rfx_id", "equipment", "trailer", "hazmat", "temperature_controlled", "operation", "service", "actions"]
+  }
 ];
 const BULK_EDIT_FIELDS = [
   { field: "operation", label: "Operation", source: "operation" },
@@ -190,7 +213,8 @@ function hiddenLocationFields(row, prefix) {
 
 function datalistCell(row, field, listName, options = {}) {
   const widthClass = options.wide ? "wide-input" : options.short ? "short-input" : "";
-  return `<input class="staging-input rateware-input ${widthClass}" data-rateware-field="${field}" list="${listName}" value="${escapeHtml(row[field] || "")}" autocomplete="off" spellcheck="false" />`;
+  const locationAttr = ["origin", "destination"].includes(field) ? `data-location-field="${field}"` : "";
+  return `<input class="staging-input rateware-input ${widthClass}" data-rateware-field="${field}" ${locationAttr} list="${listName}" value="${escapeHtml(row[field] || "")}" autocomplete="off" spellcheck="false" />`;
 }
 
 function checkboxCell(row, field, label) {
@@ -364,6 +388,15 @@ function hasSplitRate(row) {
   return ["mx_linehaul", "us_linehaul", "fsc", "border_crossing_fee"].some((field) => hasNumericValue(row[field]));
 }
 
+function locationValidationClass(row, prefix) {
+  const matched = Boolean(row[`${prefix}_market`] || row[`${prefix}_zip_prefix`] || row[`${prefix}_state`] || row[`${prefix}_country`]);
+  return matched ? "cell-valid" : "cell-warning";
+}
+
+function rateValidationClass(row) {
+  return !hasNumericValue(row.all_in_rate) && !hasSplitRate(row) ? "cell-invalid" : "cell-valid";
+}
+
 function rateModeLabel(row) {
   if (hasSplitRate(row)) return "Split components";
   if (hasNumericValue(row.all_in_rate)) return "All-in";
@@ -466,6 +499,98 @@ function detailLine(label, value) {
   return `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value || "-")}</dd></div>`;
 }
 
+function objectValue(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+}
+
+function rowAuditFlags(row) {
+  return Array.isArray(row.audit_flags) ? row.audit_flags.map(String).filter(Boolean) : [];
+}
+
+function rowExtractionWarnings(row) {
+  return Array.isArray(row.extraction_warnings) ? row.extraction_warnings.map(String).filter(Boolean) : [];
+}
+
+function sourceEvidence(row) {
+  return objectValue(row.source_evidence);
+}
+
+function confidencePercent(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "-";
+  return `${Math.round(Math.max(0, Math.min(1, number)) * 100)}%`;
+}
+
+function approvedQualitySummary(row) {
+  const flags = rowAuditFlags(row);
+  const warnings = rowExtractionWarnings(row);
+  if (!hasNumericValue(row.all_in_rate) && !hasSplitRate(row)) return { tone: "danger", label: "Rate gap", detail: "No usable rate" };
+  if (!row.origin_market || !row.destination_market) return { tone: "warning", label: "Location gap", detail: "Market missing" };
+  if (flags.length || warnings.length) return { tone: "warning", label: "Audit notes", detail: `${flags.length + warnings.length} note(s)` };
+  return { tone: "success", label: "Approved", detail: "Ready to use" };
+}
+
+function approvedQualityClass(row) {
+  const summary = approvedQualitySummary(row);
+  if (summary.tone === "danger") return "needs-review";
+  if (summary.tone === "warning") return "has-warning";
+  return "";
+}
+
+function renderQualityStrip(row) {
+  const quality = approvedQualitySummary(row);
+  const evidence = sourceEvidence(row);
+  const sourceLabel = evidence.source_filename || evidence.email_from || row.raw_upload_id || "Approved source";
+  return `
+    <div class="quality-strip ${escapeHtml(quality.tone)}">
+      <span>${escapeHtml(quality.label)}</span>
+      <small>${escapeHtml(quality.detail)}</small>
+      <em title="${escapeHtml(sourceLabel)}">${escapeHtml(sourceLabel)}</em>
+    </div>
+  `;
+}
+
+function renderSourceAudit(row) {
+  const evidence = sourceEvidence(row);
+  const confidence = objectValue(row.field_confidence);
+  const flags = rowAuditFlags(row);
+  const warnings = rowExtractionWarnings(row);
+  const weakFields = Object.entries(confidence)
+    .filter(([, value]) => Number(value) < 0.75)
+    .sort((left, right) => Number(left[1]) - Number(right[1]))
+    .slice(0, 10);
+
+  return `
+    <section class="rateware-detail-section">
+      <h3>Source evidence</h3>
+      <div class="drawer-badges">
+        ${flags.length ? `<span class="review-chip warning">${escapeHtml(flags.length)} audit flag${flags.length === 1 ? "" : "s"}</span>` : '<span class="review-chip success">No audit flags</span>'}
+        ${warnings.length ? `<span class="review-chip warning">${escapeHtml(warnings.length)} source warning${warnings.length === 1 ? "" : "s"}</span>` : ""}
+      </div>
+      <dl>
+        ${detailLine("Source file", evidence.source_filename)}
+        ${detailLine("Source row", evidence.row_id)}
+        ${detailLine("Source lane", evidence.lane)}
+        ${detailLine("Source service", evidence.service)}
+        ${detailLine("Source all-in", evidence.all_in_rate)}
+        ${detailLine("Split rate present", evidence.split_rate_present ? "yes" : "no")}
+      </dl>
+      ${
+        weakFields.length
+          ? `<div class="audit-field-grid">${weakFields
+              .map(([field, value]) => `<span>${escapeHtml(field.replace(/_/g, " "))}<strong>${escapeHtml(confidencePercent(value))}</strong></span>`)
+              .join("")}</div>`
+          : '<p class="muted-text">No weak field confidence recorded.</p>'
+      }
+      ${
+        flags.length || warnings.length
+          ? `<ul class="compact-warning-list">${[...flags, ...warnings].slice(0, 16).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`
+          : ""
+      }
+    </section>
+  `;
+}
+
 function rateComponent(label, value) {
   const hasValue = hasNumericValue(value);
   return `
@@ -529,6 +654,7 @@ function openRatewareDrawer(id) {
         <a class="link-button" href="./staging-review.html">Open staging review</a>
       </div>
     </section>
+    ${renderSourceAudit(row)}
   `;
   drawer.classList.remove("hidden");
 }
@@ -549,7 +675,7 @@ function renderRows(rows) {
   }
 
   body.innerHTML = rows.map((row) => `
-    <tr data-rateware-id="${escapeHtml(row.id)}">
+    <tr class="${escapeHtml(approvedQualityClass(row))}" data-rateware-id="${escapeHtml(row.id)}">
       <td class="select-column" data-col="select">
         <input data-select-rateware="${escapeHtml(row.id)}" type="checkbox" aria-label="Select approved rate" ${selectedRowIds.has(row.id) ? "checked" : ""} />
       </td>
@@ -557,10 +683,11 @@ function renderRows(rows) {
         <strong>${escapeHtml(row.vendors?.vendor_name || row.vendor_domain || "-")}</strong>
         ${inputCell(row, "vendor_domain", { wide: true, list: "rateware-vendor-options" })}
         ${row.vendors?.vendor_name ? `<span class="match-pill">${escapeHtml(row.vendors.base_stage || "matched")}</span>` : ""}
+        ${renderQualityStrip(row)}
       </td>
-      <td data-col="origin">${datalistCell(row, "origin", "rateware-origin-options", { wide: true })}${hiddenLocationFields(row, "origin")}</td>
-      <td data-col="destination">${datalistCell(row, "destination", "rateware-destination-options", { wide: true })}${hiddenLocationFields(row, "destination")}</td>
-      <td class="rate-freeze-cell" data-col="all_in_rate">
+      <td class="${escapeHtml(locationValidationClass(row, "origin"))}" data-col="origin" title="${escapeHtml(row.origin_match_reason || row.origin_market || "Needs catalog match")}">${datalistCell(row, "origin", "rateware-origin-options", { wide: true })}${hiddenLocationFields(row, "origin")}</td>
+      <td class="${escapeHtml(locationValidationClass(row, "destination"))}" data-col="destination" title="${escapeHtml(row.destination_match_reason || row.destination_market || "Needs catalog match")}">${datalistCell(row, "destination", "rateware-destination-options", { wide: true })}${hiddenLocationFields(row, "destination")}</td>
+      <td class="rate-freeze-cell ${escapeHtml(rateValidationClass(row))}" data-col="all_in_rate" title="${escapeHtml(rateValidationClass(row) === "cell-invalid" ? "Needs numeric all-in or split rate" : "Numeric rate present")}">
         ${inputCell(row, "all_in_rate", { money: true })}
         <span>${escapeHtml(rateModeLabel(row))}</span>
         <span class="row-save-status" data-rateware-row-status="${escapeHtml(row.id)}"></span>
@@ -591,7 +718,7 @@ function renderRows(rows) {
       <td data-col="currency">${selectCell(row, "currency", ratewareOptions.currencies || ["USD", "MXN", "CAD"], { short: true })}</td>
       <td data-col="weekly_capacity">${inputCell(row, "weekly_capacity", { short: true })}</td>
       <td class="history-actions rateware-row-actions" data-col="actions">
-        <button class="small-button secondary" type="button" data-rateware-detail="${escapeHtml(row.id)}">Details</button>
+        <button class="small-button secondary" type="button" data-rateware-detail="${escapeHtml(row.id)}">Evidence</button>
         <button class="small-button" type="button" data-save-rateware-id="${escapeHtml(row.id)}">Save</button>
         <a class="link-button" href="./staging-review.html">Staging row</a>
       </td>
@@ -1184,7 +1311,10 @@ columnVisibilityController = initColumnVisibility({
   table: ratewareTable,
   menu: columnMenu,
   columns: SHEET_COLUMNS,
-  storageKey: "rateware:approved:columns"
+  storageKey: "rateware:approved:columns",
+  presets: COLUMN_PRESETS,
+  presetContainer: columnPresetBar,
+  defaultPreset: "ratebook"
 });
 initDrawer({
   drawer: bulkDrawer,
@@ -1288,6 +1418,17 @@ installSpreadsheetGrid({
   cellSelector: "[data-rateware-field]",
   saveRow: saveRatewareTableRow,
   onRowsChanged: (rows) => rows.forEach((row) => scheduleRatewareAutoSave(row, 1000))
+});
+initLocationAutocomplete({
+  container: body,
+  inputSelector: "[data-location-field]",
+  getOptions: () => ratewareOptions.locations || [],
+  onSelect: ({ input, option }) => {
+    const tableRow = input.closest("[data-rateware-id]");
+    const prefix = input.dataset.locationField;
+    if (!tableRow || !prefix) return;
+    applyLocationSuggestion(tableRow, prefix, locationOptionValue(option));
+  }
 });
 body.addEventListener("click", async (event) => {
   const detailButton = event.target.closest("[data-rateware-detail]");
