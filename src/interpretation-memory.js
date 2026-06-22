@@ -116,7 +116,7 @@ function recommendationActions(rule) {
     return `<button type="button" class="small-button danger" data-apply-recommendation="${escapeHtml(rule.id)}" data-recommendation-action="archive">Apply: Archive</button>`;
   }
   if (code === "promote_candidate") {
-    return `<button type="button" class="small-button" data-apply-recommendation="${escapeHtml(rule.id)}" data-recommendation-action="promote_global">Apply: Promote</button>`;
+    return `<button type="button" class="small-button" data-apply-recommendation="${escapeHtml(rule.id)}" data-recommendation-action="promote_global">Simulate promote</button>`;
   }
   if (code === "tighten_rule") {
     return `<button type="button" class="small-button secondary" data-focus-memory="${escapeHtml(rule.id)}">Edit wording</button>`;
@@ -132,6 +132,14 @@ function simulationInputFromForm() {
     instruction: formValue("instruction"),
     vendor_domain: scope === "vendor" ? formValue("vendor_domain") : "",
     rfx_hint: scope === "rfx" ? formValue("rfx_hint") : ""
+  };
+}
+
+function globalSimulationInputFromRow(row) {
+  return {
+    scope: "global",
+    title: row?.querySelector('[data-memory-field="title"]')?.value || "Global interpretation rule",
+    instruction: row?.querySelector('[data-memory-field="instruction"]')?.value || ""
   };
 }
 
@@ -334,10 +342,22 @@ selectAllMemory?.addEventListener("change", () => {
 
 memoryBody?.addEventListener("change", (event) => {
   const checkbox = event.target.closest("[data-memory-select]");
-  if (!checkbox) return;
-  if (checkbox.checked) selectedIds.add(checkbox.dataset.memorySelect);
-  else selectedIds.delete(checkbox.dataset.memorySelect);
-  updateSelection();
+  if (checkbox) {
+    if (checkbox.checked) selectedIds.add(checkbox.dataset.memorySelect);
+    else selectedIds.delete(checkbox.dataset.memorySelect);
+    updateSelection();
+    return;
+  }
+
+  const editable = event.target.closest("[data-memory-field]");
+  if (editable) {
+    const row = editable.closest("[data-memory-row]");
+    const promoteButton = row?.querySelector('[data-recommendation-action="promote_global"]');
+    if (promoteButton?.dataset.confirmPromote === "true") {
+      promoteButton.dataset.confirmPromote = "false";
+      promoteButton.textContent = "Simulate promote";
+    }
+  }
 });
 
 memoryBody?.addEventListener("click", async (event) => {
@@ -390,6 +410,14 @@ memoryBody?.addEventListener("click", async (event) => {
         setStatus(memoryTableStatus, "Recommendation applied: rule archived.", "success");
       }
       if (action === "promote_global") {
+        if (applyButton.dataset.confirmPromote !== "true") {
+          await runSimulation(globalSimulationInputFromRow(row), status);
+          applyButton.dataset.confirmPromote = "true";
+          applyButton.textContent = "Confirm promote";
+          applyButton.disabled = false;
+          setStatus(status, "Review the global impact simulation, then click Confirm promote.", "warning");
+          return;
+        }
         await updateMemoryRule(id, {
           scope: "global",
           title: row.querySelector('[data-memory-field="title"]')?.value || "Global interpretation rule",
