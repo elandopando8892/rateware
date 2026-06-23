@@ -1502,7 +1502,8 @@ installSpreadsheetGrid({
   rowSelector: "[data-row-id]",
   cellSelector: "[data-field]",
   saveRow: saveStagingTableRow,
-  onRowsChanged: (rows) => rows.forEach((row) => scheduleStagingAutoSave(row, 1000))
+  onRowsChanged: (rows) => rows.forEach((row) => scheduleStagingAutoSave(row, 1000)),
+  onGridMessage: (message) => setBulkStatus(message, "success")
 });
 initLocationAutocomplete({
   container: body,

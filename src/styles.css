@@ -4346,6 +4346,17 @@ select.staging-input {
   background: #ffffff;
 }
 
+.staging-table td.selected-sheet-cell,
+.rateware-table td.selected-sheet-cell {
+  background: #eef8f7;
+  box-shadow: inset 0 0 0 1px rgba(0, 124, 114, 0.28);
+}
+
+.staging-table td.selected-sheet-cell.active-sheet-cell,
+.rateware-table td.selected-sheet-cell.active-sheet-cell {
+  outline-color: rgba(0, 124, 114, 0.72);
+}
+
 .staging-table td:has(.staging-input),
 .rateware-table td:has(.rateware-input) {
   cursor: cell;

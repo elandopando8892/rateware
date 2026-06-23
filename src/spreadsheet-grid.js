@@ -27,7 +27,7 @@ function focusCell(container, rowSelector, cellSelector, rowIndex, columnIndex) 
   if (!target) return false;
   target.focus();
   if (target.select && target.matches('input:not([type="checkbox"])')) target.select();
-  return true;
+  return target;
 }
 
 function focusFirstCellControl(target, rowSelector, cellSelector) {
@@ -82,13 +82,82 @@ function setControlValue(control, value) {
   control.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
+function controlValue(control) {
+  if (control.matches('input[type="checkbox"]')) return control.checked ? "TRUE" : "FALSE";
+  return control.value ?? "";
+}
+
+function selectionBounds(container, anchor, focus, rowSelector, cellSelector) {
+  const anchorPosition = cellPosition(container, anchor, rowSelector, cellSelector);
+  const focusPosition = cellPosition(container, focus, rowSelector, cellSelector);
+  if (anchorPosition.rowIndex < 0 || focusPosition.rowIndex < 0 || anchorPosition.columnIndex < 0 || focusPosition.columnIndex < 0) return null;
+  return {
+    rows: anchorPosition.rows,
+    startRow: Math.min(anchorPosition.rowIndex, focusPosition.rowIndex),
+    endRow: Math.max(anchorPosition.rowIndex, focusPosition.rowIndex),
+    startColumn: Math.min(anchorPosition.columnIndex, focusPosition.columnIndex),
+    endColumn: Math.max(anchorPosition.columnIndex, focusPosition.columnIndex)
+  };
+}
+
+function clearSheetSelection(container) {
+  container.querySelectorAll(".selected-sheet-cell").forEach((cell) => cell.classList.remove("selected-sheet-cell"));
+}
+
+function selectedControls(container, anchor, focus, rowSelector, cellSelector) {
+  const bounds = selectionBounds(container, anchor, focus, rowSelector, cellSelector);
+  if (!bounds) return [];
+  const matrix = [];
+  for (let rowIndex = bounds.startRow; rowIndex <= bounds.endRow; rowIndex += 1) {
+    const row = bounds.rows[rowIndex];
+    const cells = editableCells(row, cellSelector).slice(bounds.startColumn, bounds.endColumn + 1);
+    if (cells.length) matrix.push(cells);
+  }
+  return matrix;
+}
+
+function paintSheetSelection(container, anchor, focus, rowSelector, cellSelector) {
+  clearSheetSelection(container);
+  const matrix = selectedControls(container, anchor, focus, rowSelector, cellSelector);
+  matrix.flat().forEach((control) => control.closest("td")?.classList.add("selected-sheet-cell"));
+  return matrix;
+}
+
+function selectionToTsv(matrix) {
+  return matrix.map((row) => row.map(controlValue).join("\t")).join("\n");
+}
+
+async function copySelection(matrix) {
+  const text = selectionToTsv(matrix);
+  if (!text) return false;
+  if (!navigator.clipboard?.writeText) return false;
+  await navigator.clipboard.writeText(text);
+  return true;
+}
+
+function fillDownSelection(matrix) {
+  if (!matrix.length) return [];
+  const source = matrix[0].map(controlValue);
+  const changedRows = new Set();
+  matrix.slice(1).forEach((row) => {
+    row.forEach((control, index) => {
+      setControlValue(control, source[index] ?? "");
+      changedRows.add(control.closest("tr"));
+    });
+  });
+  return [...changedRows].filter(Boolean);
+}
+
 export function installSpreadsheetGrid({
   container,
   rowSelector,
   cellSelector,
   saveRow,
-  onRowsChanged
+  onRowsChanged,
+  onGridMessage
 }) {
+  const selection = { anchor: null, focus: null, keyboardSelecting: false };
+
   container.addEventListener("click", (event) => {
     focusFirstCellControl(event.target, rowSelector, cellSelector);
   });
@@ -98,6 +167,11 @@ export function installSpreadsheetGrid({
     if (!control) return;
     container.querySelectorAll(".active-sheet-cell").forEach((cell) => cell.classList.remove("active-sheet-cell"));
     control.closest("td")?.classList.add("active-sheet-cell");
+    if (!selection.keyboardSelecting) {
+      selection.anchor = control;
+      selection.focus = control;
+      clearSheetSelection(container);
+    }
   });
 
   container.addEventListener("focusout", (event) => {
@@ -111,6 +185,40 @@ export function installSpreadsheetGrid({
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
       event.preventDefault();
       await saveRow(control.closest(rowSelector));
+      return;
+    }
+
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "c") {
+      const matrix = selectedControls(container, selection.anchor || control, selection.focus || control, rowSelector, cellSelector);
+      if (matrix.flat().length > 1) {
+        event.preventDefault();
+        const copied = await copySelection(matrix);
+        onGridMessage?.(copied ? `${matrix.length} row(s) copied.` : "Clipboard copy is not available in this browser.");
+      }
+      return;
+    }
+
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "d") {
+      event.preventDefault();
+      const matrix = selectedControls(container, selection.anchor || control, selection.focus || control, rowSelector, cellSelector);
+      let changedRows = [];
+      if (matrix.length > 1) {
+        changedRows = fillDownSelection(matrix);
+      } else {
+        const { rows, rowIndex, columnIndex } = cellPosition(container, control, rowSelector, cellSelector);
+        const previousRow = rows[rowIndex - 1];
+        const targetRow = rows[rowIndex];
+        const source = previousRow ? editableCells(previousRow, cellSelector)[columnIndex] : null;
+        const target = targetRow ? editableCells(targetRow, cellSelector)[columnIndex] : null;
+        if (source && target) {
+          setControlValue(target, controlValue(source));
+          changedRows = [targetRow];
+        }
+      }
+      if (changedRows.length) {
+        onRowsChanged?.(changedRows);
+        onGridMessage?.(`Filled ${changedRows.length} row(s).`);
+      }
       return;
     }
 
@@ -130,7 +238,20 @@ export function installSpreadsheetGrid({
     const { rowIndex, columnIndex } = cellPosition(container, control, rowSelector, cellSelector);
     if (rowIndex < 0 || columnIndex < 0) return;
     event.preventDefault();
-    focusCell(container, rowSelector, cellSelector, rowIndex + movement[0], columnIndex + movement[1]);
+    selection.keyboardSelecting = event.shiftKey;
+    const next = focusCell(container, rowSelector, cellSelector, rowIndex + movement[0], columnIndex + movement[1]);
+    if (event.shiftKey && next) {
+      selection.anchor ||= control;
+      selection.focus = next;
+      paintSheetSelection(container, selection.anchor, selection.focus, rowSelector, cellSelector);
+    } else {
+      selection.anchor = next || control;
+      selection.focus = next || control;
+      clearSheetSelection(container);
+    }
+    window.setTimeout(() => {
+      selection.keyboardSelecting = false;
+    });
   });
 
   container.addEventListener("paste", (event) => {

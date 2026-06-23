@@ -1483,7 +1483,8 @@ installSpreadsheetGrid({
   rowSelector: "[data-rateware-id]",
   cellSelector: "[data-rateware-field]",
   saveRow: saveRatewareTableRow,
-  onRowsChanged: (rows) => rows.forEach((row) => scheduleRatewareAutoSave(row, 1000))
+  onRowsChanged: (rows) => rows.forEach((row) => scheduleRatewareAutoSave(row, 1000)),
+  onGridMessage: (message) => setActionStatus(message, "success")
 });
 initLocationAutocomplete({
   container: body,
