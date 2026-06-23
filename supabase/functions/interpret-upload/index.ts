@@ -544,19 +544,58 @@ const LOCATION_US_STATES = new Set([
 
 const LOCATION_CA_PROVINCES = new Set(["AB", "BC", "MB", "NB", "NL", "NF", "NS", "NT", "NU", "ON", "PE", "PQ", "QC", "SK", "YT"]);
 const LOCATION_MX_STATES = new Set(["AG", "BC", "BN", "BS", "CH", "CI", "CL", "CM", "CO", "CS", "CU", "DF", "DG", "EM", "GR", "GT", "HG", "JA", "MI", "MO", "MX", "NA", "NL", "OA", "PU", "QE", "QR", "SI", "SL", "SO", "TB", "TL", "TM", "VE", "YU", "ZA"]);
+const LOCATION_MX_STATE_NAME_HINTS = [
+  "AGUASCALIENTES",
+  "BAJA CALIFORNIA",
+  "BAJA CALIFORNIA SUR",
+  "CAMPECHE",
+  "CHIAPAS",
+  "CHIHUAHUA",
+  "CIUDAD DE MEXICO",
+  "COAHUILA",
+  "COLIMA",
+  "DISTRITO FEDERAL",
+  "DURANGO",
+  "ESTADO DE MEXICO",
+  "GUANAJUATO",
+  "GUERRERO",
+  "HIDALGO",
+  "JALISCO",
+  "MICHOACAN",
+  "MORELOS",
+  "NAYARIT",
+  "NUEVO LEON",
+  "OAXACA",
+  "PUEBLA",
+  "QUERETARO",
+  "QUINTANA ROO",
+  "SAN LUIS POTOSI",
+  "SINALOA",
+  "SONORA",
+  "TABASCO",
+  "TAMAULIPAS",
+  "TLAXCALA",
+  "VERACRUZ",
+  "YUCATAN",
+  "ZACATECAS"
+];
 const LOCATION_MX_CITY_HINTS = [
   "ACAPULCO",
   "ACUNA",
   "AGUASCALIENTES",
+  "ALLENDE",
   "APODACA",
   "ARTEAGA",
+  "CELAYA",
   "CELAYA",
   "CHIHUAHUA",
   "CIUDAD JUAREZ",
   "CD JUAREZ",
+  "COLOMBIA",
   "COATZACOALCOS",
   "CUAUTITLAN",
   "CULIACAN",
+  "ESCOBEDO",
   "ESCOBEDO",
   "GUADALAJARA",
   "HERMOSILLO",
@@ -571,6 +610,7 @@ const LOCATION_MX_CITY_HINTS = [
   "MEXICO CITY",
   "MONTERREY",
   "MORELIA",
+  "MONTEMORELOS",
   "NOGALES",
   "NUEVO LAREDO",
   "PUEBLA",
@@ -606,20 +646,21 @@ function locationTextProfile(value: unknown) {
   const tokenSet = new Set(tokens);
   const hasUsState = tokens.some((token) => LOCATION_US_STATES.has(token));
   const hasCaProvince = tokens.some((token) => LOCATION_CA_PROVINCES.has(token));
-  const hasMxState = tokens.some((token) => LOCATION_MX_STATES.has(token));
+  const hasMxStateName = LOCATION_MX_STATE_NAME_HINTS.some((state) => lookup.includes(state));
+  const hasMxState = hasMxStateName || tokens.some((token) => LOCATION_MX_STATES.has(token));
   const hasFiveDigitPostal = /\b\d{4,5}\b/.test(lookup);
   const hasCanadianPostalCode = /\b[A-Z]\d[A-Z]\b/.test(lookup);
   const hasMxCityHint = LOCATION_MX_CITY_HINTS.some((city) => lookup.includes(city));
   const strongMxText = tokenSet.has("MEX") || tokenSet.has("MX") || (tokenSet.has("MEXICO") && !tokenSet.has("NEW") && !hasUsState);
   const strongUsText = tokenSet.has("USA") || tokenSet.has("US") || tokenSet.has("UNITED");
   const strongCaText = tokenSet.has("CANADA");
-  const hasMxEvidence = strongMxText || hasMxState || hasMxCityHint;
+  const hasMxEvidence = strongMxText || hasMxState || hasMxStateName || hasMxCityHint;
   const mxStateOnly = hasMxState && !hasUsState && !hasCaProvince;
   const mxPostalHint = hasFiveDigitPostal && hasMxState && !strongUsText && !strongCaText;
-  const explicitMx = strongMxText || mxStateOnly || mxPostalHint || (hasMxCityHint && hasMxState && !strongUsText && !strongCaText);
+  const explicitMx = strongMxText || mxStateOnly || mxPostalHint || ((hasMxCityHint || hasMxStateName) && hasMxState && !strongUsText && !strongCaText);
   const explicitUs = strongUsText || (hasUsState && !explicitMx && !strongCaText && !hasCanadianPostalCode);
   const explicitCa = strongCaText || (hasCanadianPostalCode && !explicitMx) || (hasCaProvince && !hasMxState && !strongUsText);
-  return { lookup, tokens, explicitMx, explicitUs, explicitCa, hasMxState, hasFiveDigitPostal, hasMxCityHint, hasMxEvidence };
+  return { lookup, tokens, explicitMx, explicitUs, explicitCa, hasMxState, hasMxStateName, hasFiveDigitPostal, hasMxCityHint, hasMxEvidence };
 }
 
 function locationMatchesProfile(location: Record<string, unknown>, profile: ReturnType<typeof locationTextProfile>) {

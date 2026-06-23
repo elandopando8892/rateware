@@ -293,10 +293,13 @@ function splitCityState(value: unknown) {
 }
 
 function countryFromState(stateCode: string | null, zipPrefix: string | null, market?: unknown) {
+  const marketKey = key(market);
+  const looksLikeMxMarket = marketKey.endsWith(" MARKET") && !marketKey.includes(" MKT ");
+  const looksLikeMxZipMarket = Boolean(zipPrefix && /^\d{3}-/.test(String(zipPrefix)));
+  if (stateCode && MX_STATE_NAMES[stateCode] && (looksLikeMxMarket || looksLikeMxZipMarket)) return "MX";
   if (stateCode && US_STATES.has(stateCode)) return "US";
   if (stateCode && CANADIAN_PROVINCES.has(stateCode)) return "CA";
   if (stateCode && MX_STATE_NAMES[stateCode]) return "MX";
-  if (market && key(market).includes("MARKET") && zipPrefix && /^\d{3}/.test(zipPrefix) && Number(zipPrefix) >= 10) return "MX";
   if (zipPrefix && /^\d{3}/.test(zipPrefix)) return "US";
   return "UNKNOWN";
 }
@@ -313,7 +316,8 @@ function locationRecord(input: {
   const metroCity = cleanText(input.metroCity || rawValue);
   if (!rawValue || !metroCity) return null;
 
-  const zipPrefix = cleanText(input.zipPrefix);
+  const rawZipPrefix = cleanText(input.zipPrefix);
+  const zipPrefix = rawZipPrefix?.match(/^[A-Z]\d|^\d[A-Z]|^\d{3}/)?.[0] || rawZipPrefix;
   const { city, stateCode, stateName } = splitCityState(metroCity);
   const country = countryFromState(stateCode, zipPrefix, input.market);
   const market = cleanText(input.market);
@@ -321,7 +325,7 @@ function locationRecord(input: {
   return {
     source: input.source || "cusCatalog",
     country,
-    location_key: key([zipPrefix, metroCity, input.market].filter(Boolean).join(" ")),
+    location_key: key([country, zipPrefix, metroCity, input.market].filter(Boolean).join(" ")),
     raw_value: rawValue,
     zip_prefix: zipPrefix,
     city,

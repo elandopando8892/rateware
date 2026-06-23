@@ -3,13 +3,13 @@ import path from "node:path";
 
 const ATTACHMENTS = "C:/Users/andre/.codex/attachments";
 const ROOT = process.cwd();
-const OUTPUT = path.join(ROOT, "supabase/migrations/20260618010000_expand_reference_location_catalog.sql");
+const OUTPUT = path.join(ROOT, "supabase/migrations/20260623193000_rebuild_location_catalog_from_user_lists.sql");
 const SOURCE = "rateware_reference_catalog";
 
 const files = {
-  caZipMarkets: path.join(ATTACHMENTS, "9bff3bbb-a40b-48e1-a669-11f8353bdb75/pasted-text.txt"),
+  zipMarkets: path.join(ATTACHMENTS, "aa0f07a1-3cc9-46df-97e1-821a069abae2/pasted-text.txt"),
   mxHomologation: path.join(ATTACHMENTS, "64429e48-845b-4e29-928b-a1015277c359/pasted-text.txt"),
-  marketRegions: path.join(ATTACHMENTS, "a63f1093-7ec8-4183-bacb-0279c3a1115c/pasted-text.txt"),
+  marketRegions: path.join(ATTACHMENTS, "d3048dae-cbbd-4bd1-aaa3-11cb9a801471/pasted-text.txt"),
   usPostalMarkets: path.join(ATTACHMENTS, "f3bcdbe0-c445-491e-97e9-14bec67ac33e/pasted-text.txt"),
   mxKilometers: path.join(ATTACHMENTS, "d0faa739-2174-44c9-bbd5-127c9aa56053/pasted-text.txt"),
   usMarketMiles: path.join(ATTACHMENTS, "c7be64c7-f268-44bf-b439-8d5b2f90f3d9/pasted-text.txt")
@@ -50,6 +50,32 @@ const MX_STATE_NAMES = {
   YU: "Yucatan",
   ZA: "Zacatecas"
 };
+
+const MX_STATE_CODE_BY_NAME = Object.fromEntries(
+  Object.entries(MX_STATE_NAMES).map(([code, name]) => [key(name), code])
+);
+
+Object.assign(MX_STATE_CODE_BY_NAME, {
+  "BAJA CALIFORNIA NORTE": "BN",
+  "CDMX": "DF",
+  "CIUDAD DE MEXICO": "DF",
+  "COAHUILA": "CU",
+  "COAHUILA DE ZARAGOZA": "CU",
+  "DISTRITO FEDERAL": "DF",
+  "DURANGO": "DU",
+  "EDO MEX": "MX",
+  "EDO. MEX": "MX",
+  "ESTADO DE MEXICO": "MX",
+  "GUANAJUATO": "GJ",
+  "MICHOACAN DE OCAMPO": "MC",
+  "MEXICO": "MX",
+  "NUEVO LEON": "NL",
+  "PUEBLA": "PB",
+  "QUERETARO DE ARTEAGA": "QE",
+  "SAN LUIS POTOSI": "SL",
+  "TAMAULIPAS": "TM",
+  "VERACRUZ DE IGNACIO DE LA LLAVE": "VE"
+});
 
 const US_STATE_NAMES = {
   AL: "Alabama",
@@ -280,6 +306,36 @@ function splitCityState(value) {
   };
 }
 
+function splitReferenceLocation(value) {
+  const text = clean(value);
+  if (!text) return { city: null, stateCode: null, stateName: null, country: null };
+  const stripped = text.replace(/^\d{3,5}-/, "").trim();
+  const [cityPart, ...stateParts] = stripped.split(",").map((part) => part?.trim()).filter(Boolean);
+  const stateRaw = clean(stateParts.join(", "));
+  const stateKey = key(stateRaw);
+  const mxCode = MX_STATE_NAMES[stateRaw?.toUpperCase()] ? stateRaw.toUpperCase() : MX_STATE_CODE_BY_NAME[stateKey];
+  if (mxCode) {
+    return {
+      city: clean(cityPart),
+      stateCode: mxCode,
+      stateName: MX_STATE_NAMES[mxCode],
+      country: "MX"
+    };
+  }
+  const stateCode = stateRaw && stateRaw.length <= 3 ? stateRaw.toUpperCase() : null;
+  if (stateCode && US_STATE_NAMES[stateCode]) {
+    return { city: clean(cityPart), stateCode, stateName: US_STATE_NAMES[stateCode], country: "US" };
+  }
+  if (stateCode && CA_PROVINCE_NAMES[stateCode]) {
+    return { city: clean(cityPart), stateCode, stateName: CA_PROVINCE_NAMES[stateCode], country: "CA" };
+  }
+  return { city: clean(cityPart), stateCode, stateName: stateRaw, country: null };
+}
+
+function locationDisplay(city, stateCode) {
+  return [city, stateCode].filter(Boolean).join(", ");
+}
+
 function marketFromMxCity(city) {
   const cleaned = String(city || "").replace(/^Cd\.\s*/i, "").replace(/^Ciudad\s*/i, "");
   if (/^Mexico$/i.test(cleaned)) return "Mexico City Market";
@@ -361,61 +417,127 @@ function rowsToInsert(table, rows, columns, rowSql, conflictTarget, updateColumn
 }
 
 function buildMarketRegionMap(rows) {
-  const map = new Map();
+  const byCityState = new Map();
+  const mxStateRegions = new Map(Object.entries(MX_REGION_BY_STATE));
   for (const row of rows.slice(1)) {
     if (row.length < 3) continue;
-    const [market, region, location] = row;
-    const { city, stateCode } = splitCityState(location);
-    if (!market || !region || !city || !stateCode) continue;
-    map.set(key([city, stateCode].join(" ")), { market, region, city: titleCase(city), stateCode });
+    const firstLooksLikeLocation = splitReferenceLocation(row[0]).city && splitReferenceLocation(row[0]).stateCode;
+    const [location, market, region] = firstLooksLikeLocation ? row : [row[2], row[0], row[1]];
+    const mxRegionState = clean(market)?.toUpperCase();
+    if (!clean(location) && mxRegionState && MX_STATE_NAMES[mxRegionState] && region) {
+      mxStateRegions.set(mxRegionState, region);
+      continue;
+    }
+    const parsed = splitReferenceLocation(location);
+    if (!market || !region || !parsed.city || !parsed.stateCode) continue;
+    byCityState.set(key([parsed.city, parsed.stateCode].join(" ")), {
+      market,
+      region,
+      city: titleCase(parsed.city),
+      stateCode: parsed.stateCode,
+      country: parsed.country
+    });
   }
-  return map;
+  return { byCityState, mxStateRegions };
+}
+
+function addLocationAliases(locations, input) {
+  const aliases = [...new Set(input.aliases.map(clean).filter(Boolean))];
+  for (const alias of aliases) {
+    addLocation(locations, { ...input, raw_value: alias });
+  }
 }
 
 function main() {
   const locations = new Map();
   const mileage = new Map();
+  const { byCityState: marketRegions, mxStateRegions } = buildMarketRegionMap(parseTsv(files.marketRegions));
+  const mxZipMarkets = new Map();
+
+  for (const [zipRaw, marketZip, metroRaw, marketRaw] of parseTsv(files.zipMarkets).slice(1)) {
+    const metro = clean(metroRaw);
+    const market = clean(marketRaw);
+    if (!metro || !market) continue;
+    const parsed = splitReferenceLocation(metro);
+    if (!parsed.city || !parsed.stateCode || !parsed.country) continue;
+    const zip = clean(String(zipRaw || "").match(/^[A-Z]\d|^\d[A-Z]|^\d{3}/)?.[0]);
+    const mapped = marketRegions.get(key([parsed.city, parsed.stateCode].join(" ")));
+    const region = parsed.country === "MX"
+      ? mxStateRegions.get(parsed.stateCode) || MX_REGION_BY_STATE[parsed.stateCode] || null
+      : mapped?.region || (parsed.country === "US" ? US_REGION_BY_STATE[parsed.stateCode] : CA_REGION_BY_PROVINCE[parsed.stateCode]) || null;
+    const metroCity = locationDisplay(parsed.city, parsed.stateCode);
+
+    addLocationAliases(locations, {
+      country: parsed.country,
+      zip_prefix: zip,
+      city: parsed.city,
+      state_code: parsed.stateCode,
+      state_name: parsed.stateName,
+      metro_city: metroCity,
+      market,
+      region,
+      aliases: [
+        marketZip,
+        metro,
+        metroCity,
+        locationDisplay(parsed.city, parsed.stateName),
+        zip ? `${zip}-${metro}` : null
+      ],
+      metadata: {
+        source_tab: "Zip Code Metro City Market",
+        source_file: "Zip Code / Metro City / Market",
+        market_zip: marketZip || null
+      }
+    });
+
+    if (parsed.country === "MX") {
+      mxZipMarkets.set(key([parsed.city, parsed.stateCode].join(" ")), { market, region, zip });
+      mxZipMarkets.set(key([parsed.city, parsed.stateName].join(" ")), { market, region, zip });
+    }
+  }
 
   const mxRows = parseTsv(files.mxHomologation);
   const mxHomologation = new Map();
   for (const [production, homologation] of mxRows.slice(1)) {
     if (!production || !homologation) continue;
-    const canonical = splitCityState(homologation);
+    const canonical = splitReferenceLocation(homologation);
     if (!canonical.city || !canonical.stateCode || !MX_STATE_NAMES[canonical.stateCode]) continue;
-    const productionParts = splitCityState(production);
-    const market = marketFromMxCity(canonical.city);
-    const region = MX_REGION_BY_STATE[canonical.stateCode] || null;
-    const metroCity = `${canonical.city}, ${canonical.stateCode}`;
+    const productionParts = splitReferenceLocation(production);
+    const zipMarket = mxZipMarkets.get(key([canonical.city, canonical.stateCode].join(" ")))
+      || mxZipMarkets.get(key([canonical.city, canonical.stateName].join(" ")));
+    const market = zipMarket?.market || marketFromMxCity(canonical.city);
+    const region = zipMarket?.region || mxStateRegions.get(canonical.stateCode) || MX_REGION_BY_STATE[canonical.stateCode] || null;
+    const metroCity = locationDisplay(canonical.city, canonical.stateCode);
     const aliases = [production, homologation, productionParts.city ? `${productionParts.city}, ${canonical.stateCode}` : null].filter(Boolean);
-    for (const alias of aliases) {
-      addLocation(locations, {
-        country: "MX",
-        raw_value: alias,
-        city: canonical.city,
-        state_code: canonical.stateCode,
-        state_name: MX_STATE_NAMES[canonical.stateCode],
-        metro_city: metroCity,
-        market,
-        region,
-        metadata: {
-          source_tab: "MEX Production Homolgation",
-          production_value: production,
-          homologation_value: homologation
-        }
-      });
-    }
+    addLocationAliases(locations, {
+      country: "MX",
+      zip_prefix: zipMarket?.zip || null,
+      city: canonical.city,
+      state_code: canonical.stateCode,
+      state_name: MX_STATE_NAMES[canonical.stateCode],
+      metro_city: metroCity,
+      market,
+      region,
+      aliases,
+      metadata: {
+        source_tab: "MEX Production Homolgation",
+        production_value: production,
+        homologation_value: homologation,
+        market_source: zipMarket ? "Zip Code Metro City Market" : "derived_city_market"
+      }
+    });
     mxHomologation.set(key(production), metroCity);
     mxHomologation.set(key(homologation), metroCity);
   }
 
-  const marketRegions = buildMarketRegionMap(parseTsv(files.marketRegions));
   for (const item of marketRegions.values()) {
+    if (item.country && item.country !== "US" && item.country !== "CA") continue;
     addLocation(locations, {
-      country: "US",
+      country: item.country || "US",
       raw_value: `${item.city}, ${item.stateCode}`,
       city: item.city,
       state_code: item.stateCode,
-      state_name: US_STATE_NAMES[item.stateCode] || item.stateCode,
+      state_name: US_STATE_NAMES[item.stateCode] || CA_PROVINCE_NAMES[item.stateCode] || item.stateCode,
       metro_city: `${item.city}, ${item.stateCode}`,
       market: item.market,
       region: item.region,
@@ -440,24 +562,6 @@ function main() {
       market: mapped?.market || marketFromUsCity(city, stateCode),
       region: mapped?.region || US_REGION_BY_STATE[stateCode] || null,
       metadata: { source_tab: "US Postal Code Market", postal_prefix: zip.padStart(3, "0") }
-    });
-  }
-
-  for (const [zipRaw, marketZip, metroRaw, market] of parseTsv(files.caZipMarkets).slice(1)) {
-    const zip = clean(zipRaw);
-    const { city, stateCode } = splitCityState(metroRaw);
-    if (!zip || !city || !stateCode || !CA_PROVINCE_NAMES[stateCode]) continue;
-    addLocation(locations, {
-      country: "CA",
-      raw_value: marketZip || `${city}, ${stateCode}`,
-      zip_prefix: zip,
-      city,
-      state_code: stateCode,
-      state_name: CA_PROVINCE_NAMES[stateCode],
-      metro_city: `${city}, ${stateCode}`,
-      market,
-      region: CA_REGION_BY_PROVINCE[stateCode] || "Canada",
-      metadata: { source_tab: "Canada Zip Market", market_zip: marketZip }
     });
   }
 
@@ -526,7 +630,7 @@ function main() {
     ["country_scope", "origin", "destination", "equipment", "trailer", "config", "operation", "service", "driver", "miles", "km", "metadata"]
   );
 
-  const contents = `-- Generated by tools/generate-reference-catalog-migration.mjs\n-- Source: pasted reference catalog extracts provided in Codex attachments.\n\n${locationSql}\n\n${mileageSql}\n`;
+  const contents = `-- Generated by tools/generate-reference-catalog-migration.mjs\n-- Source: pasted reference catalog extracts provided in Codex attachments.\n-- Rebuilds generated catalogs so MX locations use MX city/state/market rules and US/CA use ZIP/KMA rules.\n\nupdate public.rateware_locations\nset active = false,\n    updated_at = now()\nwhere source in ('rateware_reference_catalog', 'rateware_google_catalog', 'cusCatalog', 'rateware_seed');\n\n${locationSql}\n\n${mileageSql}\n`;
   fs.writeFileSync(OUTPUT, contents, "utf8");
   console.log(`Generated ${path.relative(ROOT, OUTPUT)}`);
   console.log(`Locations: ${locationRows.length}`);
