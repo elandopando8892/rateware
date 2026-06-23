@@ -1,6 +1,6 @@
 import { initAuthControls, requirePrivatePage } from "./auth.js";
 import { humanizeError } from "./error-copy.js";
-import { archiveMemoryRules, createMemoryRule, listMemoryRules, simulateMemoryRule, updateMemoryRule } from "./memory-service.js";
+import { archiveMemoryRules, createMemoryRule, listMemoryAudit, listMemoryRules, simulateMemoryRule, updateMemoryRule } from "./memory-service.js";
 
 const memoryTotal = document.querySelector("#memory-total");
 const memoryGlobal = document.querySelector("#memory-global");
@@ -29,6 +29,8 @@ const simulationExpectedRows = document.querySelector("#simulation-expected-rows
 const simulationWarningCount = document.querySelector("#simulation-warning-count");
 const simulationFailedCount = document.querySelector("#simulation-failed-count");
 const simulationList = document.querySelector("#memory-simulation-list");
+const memoryChangeLog = document.querySelector("#memory-change-log");
+const refreshMemoryLogButton = document.querySelector("#refresh-memory-log-button");
 
 const formInputs = {
   title: document.querySelector("#new-memory-title"),
@@ -146,6 +148,68 @@ function globalSimulationInputFromRow(row) {
 function formatDate(value) {
   if (!value) return "-";
   return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
+}
+
+function auditActionLabel(action) {
+  if (action === "create") return "Created";
+  if (action === "update") return "Updated";
+  if (action === "promote") return "Promoted";
+  if (action === "archive") return "Archived";
+  return String(action || "Changed");
+}
+
+function auditActionTone(action) {
+  if (action === "create" || action === "promote") return "success";
+  if (action === "archive") return "danger";
+  if (action === "update") return "neutral";
+  return "muted";
+}
+
+function auditMetadataLabel(metadata = {}) {
+  const changedFields = Array.isArray(metadata.changed_fields) ? metadata.changed_fields.filter(Boolean) : [];
+  if (metadata.prior_scope && metadata.next_scope && metadata.prior_scope !== metadata.next_scope) {
+    return `${metadata.prior_scope} -> ${metadata.next_scope}${changedFields.length ? ` / ${changedFields.join(", ")}` : ""}`;
+  }
+  if (Number(metadata.archived_count || 0)) return `${metadata.archived_count} rule(s)`;
+  if (metadata.scope) return `Scope: ${metadata.scope}`;
+  if (changedFields.length) return `Fields: ${changedFields.join(", ")}`;
+  return "";
+}
+
+function renderMemoryAudit(rows = []) {
+  if (!memoryChangeLog) return;
+  if (!rows.length) {
+    memoryChangeLog.innerHTML = '<p class="detail-note">No memory changes have been recorded yet.</p>';
+    return;
+  }
+  memoryChangeLog.innerHTML = rows.map((row) => {
+    const metadata = row.metadata && typeof row.metadata === "object" ? row.metadata : {};
+    const metadataLabel = auditMetadataLabel(metadata);
+    return `
+      <article>
+        <div class="memory-change-main">
+          <span class="review-chip ${escapeHtml(auditActionTone(row.action))}">${escapeHtml(auditActionLabel(row.action))}</span>
+          <strong>${escapeHtml(row.summary || "Memory rule changed")}</strong>
+          ${metadataLabel ? `<small>${escapeHtml(metadataLabel)}</small>` : ""}
+        </div>
+        <div class="memory-change-meta">
+          <time>${escapeHtml(formatDate(row.created_at))}</time>
+          <span>${escapeHtml(row.actor_email || row.owner_email || "Rateware")}</span>
+        </div>
+      </article>
+    `;
+  }).join("");
+}
+
+async function loadMemoryAudit() {
+  if (!memoryChangeLog) return;
+  memoryChangeLog.innerHTML = '<p class="detail-note">Loading memory activity...</p>';
+  try {
+    const rows = await listMemoryAudit({ limit: 80 });
+    renderMemoryAudit(rows);
+  } catch (error) {
+    memoryChangeLog.innerHTML = `<p class="status-message" data-tone="error">${escapeHtml(humanizeError(error))}</p>`;
+  }
 }
 
 function renderSimulation(result) {
@@ -283,6 +347,7 @@ async function loadMemory() {
     loadedRules = await listMemoryRules();
     selectedIds.clear();
     renderRules();
+    await loadMemoryAudit();
   } catch (error) {
     memoryBody.innerHTML = `<tr><td colspan="9">${escapeHtml(humanizeError(error))}</td></tr>`;
   }
@@ -304,6 +369,7 @@ initAuthControls();
 requirePrivatePage().then(loadMemory).catch(() => {});
 
 refreshButton?.addEventListener("click", loadMemory);
+refreshMemoryLogButton?.addEventListener("click", loadMemoryAudit);
 scopeFilter?.addEventListener("change", renderRules);
 healthFilter?.addEventListener("change", renderRules);
 recommendationFilter?.addEventListener("change", renderRules);

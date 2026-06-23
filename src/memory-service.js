@@ -4,6 +4,10 @@ export async function listMemoryRules(rawUploadId = "") {
   return (await callRatewareApi("list_interpretation_memory", { raw_upload_id: rawUploadId })).rows;
 }
 
+export async function listMemoryAudit({ id = "", limit = 80 } = {}) {
+  return (await callRatewareApi("list_interpretation_memory_audit", { id, limit })).rows;
+}
+
 export async function createMemoryRule(rule) {
   return (await callRatewareApi("create_interpretation_memory", rule)).row;
 }

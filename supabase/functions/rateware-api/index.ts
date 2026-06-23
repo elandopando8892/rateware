@@ -4499,6 +4499,21 @@ Deno.serve(async (request) => {
       return jsonResponse({ rows, upload, vendor });
     }
 
+    if (body.action === "list_interpretation_memory_audit") {
+      const memoryId = cleanText(body.id);
+      let query = supabase
+        .from("saas_audit_log")
+        .select("*")
+        .eq("owner_email", user.owner_email)
+        .eq("entity_type", "interpretation_memory")
+        .order("created_at", { ascending: false })
+        .limit(Math.min(Math.max(Number(body.limit) || 80, 1), 250));
+      if (memoryId) query = query.ilike("entity_id", `%${memoryId}%`);
+      const result = await query;
+      if (result.error) throw result.error;
+      return jsonResponse({ rows: result.data || [] });
+    }
+
     if (body.action === "create_interpretation_memory") {
       const instruction = cleanText(body.instruction);
       if (!instruction) return jsonResponse({ error: "Instruction is required." }, 400);
@@ -4627,6 +4642,15 @@ Deno.serve(async (request) => {
         }
       }
 
+      const currentResult = await supabase
+        .from("interpretation_memory")
+        .select("id,scope,title,vendor_domain,rfx_hint,raw_upload_id")
+        .eq("id", id)
+        .eq("owner_email", user.owner_email)
+        .maybeSingle();
+      if (currentResult.error) throw currentResult.error;
+      if (!currentResult.data) return jsonResponse({ error: "Memory rule not found." }, 404);
+
       const result = await supabase
         .from("interpretation_memory")
         .update(patch)
@@ -4635,7 +4659,20 @@ Deno.serve(async (request) => {
         .select()
         .single();
       if (result.error) throw result.error;
-      await writeAuditLog(supabase, user, "update", "interpretation_memory", id, "Updated interpretation memory rule");
+      const promotedToGlobal = currentResult.data.scope !== "global" && result.data.scope === "global";
+      await writeAuditLog(
+        supabase,
+        user,
+        promotedToGlobal ? "promote" : "update",
+        "interpretation_memory",
+        id,
+        promotedToGlobal ? "Promoted interpretation memory rule to global" : "Updated interpretation memory rule",
+        {
+          prior_scope: currentResult.data.scope,
+          next_scope: result.data.scope,
+          changed_fields: Object.keys(patch).filter((key) => key !== "updated_at")
+        }
+      );
       return jsonResponse({ row: result.data });
     }
 
@@ -4651,7 +4688,10 @@ Deno.serve(async (request) => {
         .in("id", ids)
         .select();
       if (result.error) throw result.error;
-      await writeAuditLog(supabase, user, "archive", "interpretation_memory", ids.join(","), `Archived ${result.data?.length || 0} interpretation memory rule(s)`);
+      await writeAuditLog(supabase, user, "archive", "interpretation_memory", ids.join(","), `Archived ${result.data?.length || 0} interpretation memory rule(s)`, {
+        ids,
+        archived_count: result.data?.length || 0
+      });
       return jsonResponse({ updated: result.data?.length || 0, rows: result.data || [] });
     }
 
