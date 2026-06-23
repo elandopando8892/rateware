@@ -248,8 +248,47 @@ const LOCATION_US_STATES = new Set([
   "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA", "HI", "IA", "ID", "IL", "IN", "KS", "KY", "LA", "MA", "MD", "ME", "MI", "MN", "MO", "MS", "MT", "NC", "ND", "NE", "NH", "NJ", "NM", "NV", "NY", "OH", "OK", "OR", "PA", "RI", "SC", "SD", "TN", "TX", "UT", "VA", "VT", "WA", "WI", "WV", "WY", "DC"
 ]);
 
-const LOCATION_CA_PROVINCES = new Set(["AB", "BC", "MB", "NB", "NL", "NS", "NT", "NU", "ON", "PE", "QC", "SK", "YT"]);
-const LOCATION_MX_STATES = new Set(["AG", "BN", "CH", "CI", "CM", "CS", "CU", "DF", "DG", "EM", "GR", "GT", "HG", "JA", "MI", "MO", "NA", "NL", "OA", "PU", "QE", "QR", "SL", "SI", "SO", "TB", "TM", "VE", "YU", "ZA"]);
+const LOCATION_CA_PROVINCES = new Set(["AB", "BC", "MB", "NB", "NL", "NF", "NS", "NT", "NU", "ON", "PE", "PQ", "QC", "SK", "YT"]);
+const LOCATION_MX_STATES = new Set(["AG", "BC", "BN", "BS", "CH", "CI", "CL", "CM", "CO", "CS", "CU", "DF", "DG", "EM", "GR", "GT", "HG", "JA", "MI", "MO", "MX", "NA", "NL", "OA", "PU", "QE", "QR", "SI", "SL", "SO", "TB", "TL", "TM", "VE", "YU", "ZA"]);
+const LOCATION_MX_CITY_HINTS = [
+  "ACAPULCO",
+  "AGUASCALIENTES",
+  "APODACA",
+  "ARTEAGA",
+  "CELAYA",
+  "CHIHUAHUA",
+  "CIUDAD JUAREZ",
+  "CD JUAREZ",
+  "COATZACOALCOS",
+  "CUAUTITLAN",
+  "CULIACAN",
+  "GUADALAJARA",
+  "HERMOSILLO",
+  "IRAPUATO",
+  "JUAREZ",
+  "LEON",
+  "LERMA",
+  "MANZANILLO",
+  "MATAMOROS",
+  "MEXICALI",
+  "MEXICO CITY",
+  "MONTERREY",
+  "MORELIA",
+  "NOGALES",
+  "NUEVO LAREDO",
+  "PUEBLA",
+  "QUERETARO",
+  "RAMOS ARIZPE",
+  "REYNOSA",
+  "SALTILLO",
+  "SAN LUIS POTOSI",
+  "SILAO",
+  "TAMPICO",
+  "TIJUANA",
+  "TOLUCA",
+  "TORREON",
+  "VERACRUZ"
+];
 
 function locationCountry(location: Record<string, unknown>) {
   return String(location.country || "").toUpperCase();
@@ -266,16 +305,25 @@ function locationTextProfile(value: unknown) {
   const hasUsState = tokens.some((token) => LOCATION_US_STATES.has(token));
   const hasCaProvince = tokens.some((token) => LOCATION_CA_PROVINCES.has(token));
   const hasMxState = tokens.some((token) => LOCATION_MX_STATES.has(token));
-  const explicitMx = (tokenSet.has("MEXICO") && !tokenSet.has("NEW")) || tokenSet.has("MEX") || tokenSet.has("MX") || (hasMxState && !hasUsState && !hasCaProvince);
-  const explicitUs = tokenSet.has("USA") || tokenSet.has("US") || tokenSet.has("UNITED") || hasUsState;
-  const explicitCa = tokenSet.has("CANADA") || (hasCaProvince && !hasMxState);
-  return { lookup, tokens, explicitMx, explicitUs, explicitCa };
+  const hasFiveDigitPostal = /\b\d{4,5}\b/.test(lookup);
+  const hasCanadianPostalCode = /\b[A-Z]\d[A-Z]\b/.test(lookup);
+  const hasMxCityHint = LOCATION_MX_CITY_HINTS.some((city) => lookup.includes(city));
+  const strongMxText = (tokenSet.has("MEXICO") && !tokenSet.has("NEW")) || tokenSet.has("MEX") || tokenSet.has("MX");
+  const strongUsText = tokenSet.has("USA") || tokenSet.has("US") || tokenSet.has("UNITED");
+  const strongCaText = tokenSet.has("CANADA");
+  const mxStateOnly = hasMxState && !hasUsState && !hasCaProvince;
+  const mxPostalHint = hasFiveDigitPostal && hasMxState && (mxStateOnly || hasMxCityHint || strongMxText) && !strongUsText && !strongCaText;
+  const explicitMx = strongMxText || mxStateOnly || mxPostalHint || (hasMxCityHint && hasMxState && !strongUsText && !strongCaText);
+  const explicitUs = strongUsText || (hasUsState && !explicitMx && !strongCaText && !hasCanadianPostalCode);
+  const explicitCa = strongCaText || (hasCanadianPostalCode && !explicitMx) || (hasCaProvince && !hasMxState && !strongUsText);
+  return { lookup, tokens, explicitMx, explicitUs, explicitCa, hasMxState, hasFiveDigitPostal, hasMxCityHint };
 }
 
 function locationMatchesProfile(location: Record<string, unknown>, profile: ReturnType<typeof locationTextProfile>) {
   const country = locationCountry(location);
   if (profile.explicitMx && country && country !== "MX") return false;
-  if ((profile.explicitUs || profile.explicitCa) && country === "MX") return false;
+  if (profile.explicitUs && country && country !== "US") return false;
+  if (profile.explicitCa && country && country !== "CA") return false;
   return true;
 }
 
@@ -369,7 +417,8 @@ function locationMatch(index: Map<string, Record<string, unknown>>, value: unkno
 
   const zipToken = lookup.match(/\b[A-Z]\d[A-Z]|\b\d{3,5}\b/)?.[0] || null;
   const zip = zipToken && /^\d/.test(zipToken) ? zipToken.slice(0, 3) : zipToken;
-  if (zip && !profile.explicitMx && index.get(catalogKey(zip))) {
+  const allowZipShortcut = zip && !profile.explicitMx && !(profile.hasMxState && profile.hasFiveDigitPostal && !profile.explicitUs && !profile.explicitCa);
+  if (allowZipShortcut && index.get(catalogKey(zip))) {
     const zipMatch = index.get(catalogKey(zip))!;
     if (locationCountry(zipMatch) !== "MX") {
       return {
@@ -389,7 +438,7 @@ function locationMatch(index: Map<string, Record<string, unknown>>, value: unkno
     let score = 0;
     const reasons: string[] = [];
     const country = locationCountry(location);
-    if (!locationMatchesProfile(location, profile)) score -= 45;
+    if (!locationMatchesProfile(location, profile)) score -= 85;
     else if ((profile.explicitMx && country === "MX") || (profile.explicitUs && country === "US") || (profile.explicitCa && country === "CA")) {
       score += 12;
       reasons.push("country hint");
@@ -3877,13 +3926,24 @@ function stateToken(value: unknown) {
 function locationParts(value: unknown, fallbackState: unknown = null, fallbackCountry: unknown = null) {
   const text = cleanText(value);
   if (!text) return null;
+  const profile = locationTextProfile([value, fallbackState].filter(Boolean).join(" "));
+  if (profile.explicitMx) return null;
   const parts = text.split(",").map((part) => part.trim()).filter(Boolean);
   const state = stateToken(fallbackState) || stateToken(parts.slice(1).join(" "));
   const city = parts[0]?.replace(/\b[A-Z]{2}\b/g, "").trim();
-  const fallback = cleanText(fallbackCountry)?.toUpperCase();
+  const fallbackText = cleanText(fallbackCountry)?.toUpperCase();
+  const fallback = fallbackText === "USA"
+    ? "US"
+    : fallbackText === "CAN" || fallbackText === "CANADA"
+      ? "CA"
+      : fallbackText === "MEX" || fallbackText === "MEXICO"
+        ? "MX"
+        : fallbackText;
+  if (fallback === "MX") return null;
   const country = fallback || (state && LOCATION_US_STATES.has(state) ? "US" : state && LOCATION_CA_PROVINCES.has(state) ? "CA" : null);
   if (!city || !state || !country) return null;
-  return { city, state, country: country === "USA" ? "US" : country };
+  if (!["US", "CA"].includes(country)) return null;
+  return { city, state, country };
 }
 
 async function lookupPostalPrefix(value: unknown, fallbackState: unknown = null, fallbackCountry: unknown = null) {

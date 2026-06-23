@@ -6,7 +6,46 @@ const US_STATE_CODES = new Set([
   "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA", "IA", "ID", "IL", "IN", "KS", "KY", "LA", "MA", "MD", "ME", "MI", "MN", "MO", "MS", "MT", "NC", "ND", "NE", "NH", "NJ", "NM", "NV", "NY", "OH", "OK", "OR", "PA", "RI", "SC", "SD", "TN", "TX", "UT", "VA", "VT", "WA", "WI", "WV", "WY"
 ]);
 
-const CA_PROVINCE_CODES = new Set(["AB", "BC", "MB", "NB", "NL", "NS", "NT", "NU", "ON", "PE", "QC", "SK", "YT"]);
+const CA_PROVINCE_CODES = new Set(["AB", "BC", "MB", "NB", "NL", "NF", "NS", "NT", "NU", "ON", "PE", "PQ", "QC", "SK", "YT"]);
+const MX_CITY_HINTS = [
+  "ACAPULCO",
+  "AGUASCALIENTES",
+  "APODACA",
+  "ARTEAGA",
+  "CELAYA",
+  "CHIHUAHUA",
+  "CIUDAD JUAREZ",
+  "CD JUAREZ",
+  "COATZACOALCOS",
+  "CUAUTITLAN",
+  "CULIACAN",
+  "GUADALAJARA",
+  "HERMOSILLO",
+  "IRAPUATO",
+  "JUAREZ",
+  "LEON",
+  "LERMA",
+  "MANZANILLO",
+  "MATAMOROS",
+  "MEXICALI",
+  "MEXICO CITY",
+  "MONTERREY",
+  "MORELIA",
+  "NOGALES",
+  "NUEVO LAREDO",
+  "PUEBLA",
+  "QUERETARO",
+  "RAMOS ARIZPE",
+  "REYNOSA",
+  "SALTILLO",
+  "SAN LUIS POTOSI",
+  "SILAO",
+  "TAMPICO",
+  "TIJUANA",
+  "TOLUCA",
+  "TORREON",
+  "VERACRUZ"
+];
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -69,18 +108,28 @@ function inferState(value) {
 
 function inferCountry(value, row, prefix) {
   const explicit = String(row?.[`${prefix}_country`] || "").toUpperCase();
-  if (explicit) return explicit;
-
   const tokens = textTokens(value);
+  const tokenSet = new Set(tokens);
+  const lookup = lookupKey(value).toUpperCase();
+  const hasMxState = tokens.some((token) => MX_STATE_CODES.has(token));
+  const hasUsState = tokens.some((token) => US_STATE_CODES.has(token));
+  const hasCaProvince = tokens.some((token) => CA_PROVINCE_CODES.has(token));
+  const hasMxCityHint = MX_CITY_HINTS.some((city) => lookup.includes(city));
+  const hasFiveDigitPostal = /\b\d{4,5}\b/.test(lookup);
+  const hasCanadianPostalCode = /\b[A-Z]\d[A-Z]\b/.test(lookup);
+  const strongUsText = tokenSet.has("US") || tokenSet.has("USA") || tokenSet.has("UNITED") || tokenSet.has("STATES");
+  const strongCaText = tokenSet.has("CAN") || tokenSet.has("CANADA");
   if (tokens.some((token) => ["MX", "MEX", "MEXICO"].includes(token))) return "MX";
-  if (tokens.some((token) => ["US", "USA", "UNITED", "STATES"].includes(token))) return "US";
-  if (tokens.some((token) => ["CAN", "CANADA"].includes(token))) return "CA";
+  if (hasMxState && (hasMxCityHint || (!hasUsState && !hasCaProvince) || (hasFiveDigitPostal && !strongUsText && !strongCaText))) return "MX";
+  if (strongUsText) return "US";
+  if (strongCaText || hasCanadianPostalCode) return "CA";
+  if (explicit) return explicit;
 
   const state = inferState(value);
   if (state && MX_STATE_CODES.has(state) && !US_STATE_CODES.has(state)) return "MX";
   if (state && US_STATE_CODES.has(state) && !MX_STATE_CODES.has(state)) return "US";
-  if (state && CA_PROVINCE_CODES.has(state) && !US_STATE_CODES.has(state)) return "CA";
-  if (/^[A-Z]\d[A-Z]/i.test(String(value || "").trim())) return "CA";
+  if (state && CA_PROVINCE_CODES.has(state) && !MX_STATE_CODES.has(state) && !US_STATE_CODES.has(state)) return "CA";
+  if (/^[A-Z]\d[A-Z]/i.test(String(value || "").trim()) && !hasMxCityHint) return "CA";
   return "";
 }
 
@@ -108,7 +157,7 @@ function scoreCandidate(option, query, row, prefix) {
   const country = inferCountry(query, row, prefix);
   const optionCountry = String(option?.country || "").toUpperCase();
   if (country && optionCountry === country) score += 18;
-  if (country && optionCountry && optionCountry !== country) score -= 32;
+  if (country && optionCountry && optionCountry !== country) score -= 48;
 
   const state = inferState(query);
   const optionState = String(option?.state_code || option?.state_name || "").toUpperCase();
