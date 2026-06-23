@@ -31,6 +31,9 @@ const simulationFailedCount = document.querySelector("#simulation-failed-count")
 const simulationList = document.querySelector("#memory-simulation-list");
 const memoryChangeLog = document.querySelector("#memory-change-log");
 const refreshMemoryLogButton = document.querySelector("#refresh-memory-log-button");
+const scopeSuggestion = document.querySelector("#memory-scope-suggestion");
+const scopeRationale = document.querySelector("#memory-scope-rationale");
+const applyScopeSuggestionButton = document.querySelector("#apply-scope-suggestion");
 
 const formInputs = {
   title: document.querySelector("#new-memory-title"),
@@ -42,6 +45,7 @@ const formInputs = {
 
 let loadedRules = [];
 const selectedIds = new Set();
+let currentScopeSuggestion = { scope: "global", rationale: "Write a rule and Rateware will suggest the safest scope before saving." };
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -62,6 +66,12 @@ function scopeLabel(scope) {
   if (scope === "rfx") return "RFx";
   if (scope === "upload") return "Upload";
   return "Global";
+}
+
+function scopeTone(scope) {
+  if (scope === "global") return "success";
+  if (scope === "vendor" || scope === "rfx") return "warning";
+  return "neutral";
 }
 
 function targetLabel(rule) {
@@ -138,6 +148,69 @@ function simulationInputFromForm() {
     vendor_domain: scope === "vendor" ? formValue("vendor_domain") : "",
     rfx_hint: scope === "rfx" ? formValue("rfx_hint") : ""
   };
+}
+
+function hasAny(text, terms = []) {
+  return terms.some((term) => text.includes(term));
+}
+
+function suggestMemoryScope() {
+  const title = String(formValue("title") || "").toLowerCase();
+  const instruction = String(formValue("instruction") || "").toLowerCase();
+  const text = `${title} ${instruction}`;
+  const vendorDomain = String(formValue("vendor_domain") || "").trim();
+  const rfxHint = String(formValue("rfx_hint") || "").trim();
+
+  if (!text.trim() && !vendorDomain && !rfxHint) {
+    return {
+      scope: "global",
+      confidence: "low",
+      rationale: "Write a rule and Rateware will suggest the safest scope before saving."
+    };
+  }
+
+  if (rfxHint || hasAny(text, ["this rfx", "bid package", "procurement event", "lane package", "route family", "spot book"])) {
+    return {
+      scope: "rfx",
+      confidence: rfxHint ? "high" : "medium",
+      rationale: rfxHint
+        ? "This rule references an RFx, so keep it scoped to that procurement event."
+        : "The wording sounds tied to a specific bid package or lane family."
+    };
+  }
+
+  if (vendorDomain || hasAny(text, ["vendor", "carrier", "domain", "table format", "email format", "this carrier", "carrier-specific"])) {
+    return {
+      scope: "vendor",
+      confidence: vendorDomain ? "high" : "medium",
+      rationale: vendorDomain
+        ? "A vendor domain is present, so this should stay carrier-specific unless simulation proves it is broadly true."
+        : "The wording sounds carrier-specific. Start with Vendor scope before promoting globally."
+    };
+  }
+
+  if (hasAny(text, ["all uploads", "every upload", "global", "always", "never", "only classify", "do not infer", "ignore marksman", "ignore heymarksman", "ignore template", "tier 1", "tier 2", "tier 3", "please estimate", "n/a"])) {
+    return {
+      scope: "global",
+      confidence: "high",
+      rationale: "This reads like a universal interpretation guardrail and is safe to start as Global."
+    };
+  }
+
+  return {
+    scope: "vendor",
+    confidence: "low",
+    rationale: "This may be too specific for a global rule. Use Vendor first, then simulate/promote if it works across uploads."
+  };
+}
+
+function renderScopeSuggestion() {
+  currentScopeSuggestion = suggestMemoryScope();
+  if (scopeSuggestion) {
+    scopeSuggestion.className = `review-chip ${scopeTone(currentScopeSuggestion.scope)}`;
+    scopeSuggestion.textContent = `Suggested: ${scopeLabel(currentScopeSuggestion.scope)} (${currentScopeSuggestion.confidence})`;
+  }
+  if (scopeRationale) scopeRationale.textContent = currentScopeSuggestion.rationale;
 }
 
 function globalSimulationInputFromRow(row) {
@@ -394,9 +467,11 @@ function clearForm() {
     if (input.tagName === "SELECT") input.value = "global";
     else input.value = "";
   });
+  renderScopeSuggestion();
 }
 
 initAuthControls();
+renderScopeSuggestion();
 requirePrivatePage().then(loadMemory).catch(() => {});
 
 refreshButton?.addEventListener("click", loadMemory);
@@ -407,6 +482,22 @@ recommendationFilter?.addEventListener("change", renderRules);
 searchInput?.addEventListener("input", renderRules);
 closeSimulationButton?.addEventListener("click", () => simulationPanel?.classList.add("hidden"));
 simulateDraftButton?.addEventListener("click", () => runSimulation(simulationInputFromForm(), memoryFormStatus));
+Object.values(formInputs).forEach((input) => input?.addEventListener("input", renderScopeSuggestion));
+Object.values(formInputs).forEach((input) => input?.addEventListener("change", renderScopeSuggestion));
+applyScopeSuggestionButton?.addEventListener("click", () => {
+  renderScopeSuggestion();
+  if (formInputs.scope) formInputs.scope.value = currentScopeSuggestion.scope;
+  if (currentScopeSuggestion.scope === "global") {
+    if (formInputs.vendor_domain) formInputs.vendor_domain.value = "";
+    if (formInputs.rfx_hint) formInputs.rfx_hint.value = "";
+  }
+  if (currentScopeSuggestion.scope === "vendor" && !formValue("vendor_domain")) {
+    formInputs.vendor_domain?.focus();
+  }
+  if (currentScopeSuggestion.scope === "rfx" && !formValue("rfx_hint")) {
+    formInputs.rfx_hint?.focus();
+  }
+});
 
 memoryForm?.addEventListener("submit", async (event) => {
   event.preventDefault();

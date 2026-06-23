@@ -87,6 +87,14 @@
                 <label class="wide-field">Instruction
                   <textarea id="new-memory-instruction" rows="5" placeholder="Only classify Roundtrip when RT or Round Trip is explicitly stated."></textarea>
                 </label>
+                <div id="memory-scope-assistant" class="memory-scope-assistant wide-field" aria-live="polite">
+                  <div>
+                    <span class="review-chip neutral" id="memory-scope-suggestion">Suggested: Global</span>
+                    <strong>Scope assistant</strong>
+                  </div>
+                  <p id="memory-scope-rationale">Write a rule and Rateware will suggest the safest scope before saving.</p>
+                  <button id="apply-scope-suggestion" type="button" class="secondary small-button">Apply suggestion</button>
+                </div>
                 <div class="action-row">
                   <button type="submit">Create memory rule</button>
                   <button id="simulate-draft-memory" type="button" class="secondary">Simulate draft</button>
