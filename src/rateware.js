@@ -1,5 +1,5 @@
 import { initAuthControls, requirePrivatePage } from "./auth.js";
-import { bulkUpdateApprovedRatewareRows, createRatewareBookVersion, enrichApprovedRatewareLocationZips, fetchRatewareBookVersion, fetchRatewareBookVersions, matchApprovedRatewareVendors, renormalizeApprovedRatewareRows, fetchApprovedRateware, fetchRatewareOptions, returnApprovedRatesToStaging, updateApprovedRatewareRow } from "./rateware-service.js";
+import { bulkUpdateApprovedRatewareRows, createRatewareBookVersion, enrichApprovedRatewareLocationZips, fetchRatewareAudit, fetchRatewareBookVersion, fetchRatewareBookVersions, matchApprovedRatewareVendors, renormalizeApprovedRatewareRows, fetchApprovedRateware, fetchRatewareOptions, returnApprovedRatesToStaging, updateApprovedRatewareRow } from "./rateware-service.js";
 import { installSpreadsheetGrid } from "./spreadsheet-grid.js";
 import { initColumnVisibility, initDrawer, initLocationAutocomplete } from "./sheet-ui.js";
 
@@ -147,6 +147,11 @@ function escapeHtml(value) {
 
 function dateValue(value) {
   return value ? String(value).slice(0, 10) : "";
+}
+
+function formatDate(value) {
+  if (!value) return "";
+  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
 }
 
 function inputCell(row, field, options = {}) {
@@ -591,6 +596,60 @@ function renderSourceAudit(row) {
   `;
 }
 
+function governanceActionLabel(action) {
+  if (action === "rateware.approve") return "Approved";
+  if (action === "rateware.update") return "Edited";
+  if (action === "rateware.bulk_update") return "Bulk edited";
+  if (action === "rateware.return_to_staging") return "Returned";
+  if (action === "rateware.snapshot") return "Snapshot";
+  if (action === "staging.status_update") return "Status";
+  return String(action || "Changed");
+}
+
+function governanceTone(action) {
+  if (action === "rateware.approve" || action === "rateware.snapshot") return "success";
+  if (action === "rateware.return_to_staging") return "warning";
+  if (action === "rateware.update" || action === "rateware.bulk_update") return "neutral";
+  return "muted";
+}
+
+function governanceMetadataLabel(metadata = {}) {
+  const fields = Array.isArray(metadata.changed_fields) ? metadata.changed_fields.filter(Boolean) : [];
+  if (metadata.prior_status || metadata.next_status) return `${metadata.prior_status || "-"} -> ${metadata.next_status || "-"}`;
+  if (metadata.row_count) return `${metadata.row_count} row snapshot`;
+  if (fields.length) return `Fields: ${fields.slice(0, 6).join(", ")}${fields.length > 6 ? "..." : ""}`;
+  return "";
+}
+
+function renderGovernanceTimeline(rows = []) {
+  if (!rows.length) return '<p class="muted-text">No governance events recorded for this rate yet.</p>';
+  return rows.map((event) => {
+    const metadata = objectValue(event.metadata);
+    const metadataLabel = governanceMetadataLabel(metadata);
+    return `
+      <article>
+        <span class="review-chip ${escapeHtml(governanceTone(event.action))}">${escapeHtml(governanceActionLabel(event.action))}</span>
+        <div>
+          <strong>${escapeHtml(event.summary || "Rateware changed")}</strong>
+          <small>${escapeHtml([formatDate(event.created_at), event.actor_email || event.owner_email, metadataLabel].filter(Boolean).join(" | "))}</small>
+        </div>
+      </article>
+    `;
+  }).join("");
+}
+
+async function loadRatewareGovernance(rowId) {
+  const target = ratewareDetail?.querySelector(`[data-rateware-governance="${CSS.escape(rowId)}"]`);
+  if (!target) return;
+  target.innerHTML = '<p class="muted-text">Loading governance timeline...</p>';
+  try {
+    const rows = await fetchRatewareAudit(rowId);
+    target.innerHTML = renderGovernanceTimeline(rows);
+  } catch (error) {
+    target.innerHTML = `<p class="status-message" data-tone="error">${escapeHtml(error.message)}</p>`;
+  }
+}
+
 function rateComponent(label, value) {
   const hasValue = hasNumericValue(value);
   return `
@@ -654,9 +713,16 @@ function openRatewareDrawer(id) {
         <a class="link-button" href="./staging-review.html">Open staging review</a>
       </div>
     </section>
+    <section class="rateware-detail-section">
+      <h3>Governance timeline</h3>
+      <div class="rateware-governance-timeline" data-rateware-governance="${escapeHtml(row.id)}">
+        <p class="muted-text">Loading governance timeline...</p>
+      </div>
+    </section>
     ${renderSourceAudit(row)}
   `;
   drawer.classList.remove("hidden");
+  loadRatewareGovernance(row.id);
 }
 
 function renderRows(rows) {

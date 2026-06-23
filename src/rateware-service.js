@@ -4,6 +4,10 @@ export async function fetchApprovedRateware({ search = "", operation = "", servi
   return (await callRatewareApi("list_rateware", { search, operation, service })).rows;
 }
 
+export async function fetchRatewareAudit(id, limit = 80) {
+  return (await callRatewareApi("list_rateware_audit", { id, limit })).rows;
+}
+
 export async function fetchRatewareOptions() {
   return await callRatewareApi("list_staging_options");
 }

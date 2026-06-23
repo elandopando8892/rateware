@@ -4865,6 +4865,21 @@ Deno.serve(async (request) => {
       return jsonResponse({ rows: result.data });
     }
 
+    if (body.action === "list_rateware_audit") {
+      const rateId = cleanText(body.id);
+      let query = supabase
+        .from("saas_audit_log")
+        .select("*")
+        .eq("owner_email", user.owner_email)
+        .eq("entity_type", "rate_staging")
+        .order("created_at", { ascending: false })
+        .limit(Math.min(Math.max(Number(body.limit) || 80, 1), 250));
+      if (rateId) query = query.ilike("entity_id", `%${rateId}%`);
+      const result = await query;
+      if (result.error) throw result.error;
+      return jsonResponse({ rows: result.data || [] });
+    }
+
     if (body.action === "bulk_update_rateware") {
       const ids = Array.isArray(body.ids) ? body.ids.map(String).filter(Boolean).slice(0, 500) : [];
       if (!ids.length) return jsonResponse({ error: "At least one approved rate id is required." }, 400);
@@ -4895,6 +4910,12 @@ Deno.serve(async (request) => {
         updatedRows.push(result.data);
       }
 
+      if (updatedRows.length) {
+        await writeAuditLog(supabase, user, "rateware.bulk_update", "rate_staging", updatedRows.map((row) => row.id).join(","), `Bulk updated ${updatedRows.length} approved Rateware row(s)`, {
+          ids: updatedRows.map((row) => row.id),
+          changed_fields: Object.keys(body.patch || {})
+        });
+      }
       return jsonResponse({ updated: updatedRows.length, rows: updatedRows });
     }
 
@@ -4959,6 +4980,11 @@ Deno.serve(async (request) => {
         .select("id,created_at,owner_email,name,description,filter_summary,row_count")
         .single();
       if (result.error) throw result.error;
+      await writeAuditLog(supabase, user, "rateware.snapshot", "rate_staging", rows.map((row) => row.id).join(","), `Created Rateware snapshot "${name}"`, {
+        version_id: result.data.id,
+        row_count: rows.length,
+        name
+      });
       return jsonResponse({ version: result.data });
     }
 
@@ -5006,6 +5032,9 @@ Deno.serve(async (request) => {
         .select("*, vendors(vendor_name, domain, primary_email, base_stage, status)")
         .single();
       if (result.error) throw result.error;
+      await writeAuditLog(supabase, user, "rateware.update", "rate_staging", body.id, "Updated approved Rateware row", {
+        changed_fields: Object.keys(patch)
+      });
       return jsonResponse({ row: result.data });
     }
 
@@ -5020,6 +5049,11 @@ Deno.serve(async (request) => {
         .eq("status", "approved")
         .select("id");
       if (result.error) throw result.error;
+      if (result.data?.length) {
+        await writeAuditLog(supabase, user, "rateware.return_to_staging", "rate_staging", result.data.map((row) => row.id).join(","), `Returned ${result.data.length} approved Rateware row(s) to staging`, {
+          ids: result.data.map((row) => row.id)
+        });
+      }
       return jsonResponse({ updated: result.data?.length || 0, rows: result.data || [] });
     }
 
@@ -5160,7 +5194,7 @@ Deno.serve(async (request) => {
     if (body.action === "update_staging") {
       const currentResult = await supabase
         .from("rate_staging")
-        .select("trailer,hazmat,temperature_controlled,vendor_id,vendor_domain")
+        .select("trailer,hazmat,temperature_controlled,vendor_id,vendor_domain,status")
         .eq("id", body.id)
         .single();
       if (currentResult.error) throw currentResult.error;
@@ -5176,6 +5210,23 @@ Deno.serve(async (request) => {
         .select("*, vendors(vendor_name, domain, primary_email, base_stage, status)")
         .single();
       if (result.error) throw result.error;
+      const priorStatus = cleanText(currentResult.data?.status);
+      const nextStatus = cleanText(result.data?.status);
+      if (priorStatus !== nextStatus || nextStatus === "approved") {
+        await writeAuditLog(
+          supabase,
+          user,
+          nextStatus === "approved" ? "rateware.approve" : "staging.status_update",
+          "rate_staging",
+          body.id,
+          nextStatus === "approved" ? "Approved staging row into Rateware" : `Updated staging row status to ${nextStatus}`,
+          {
+            prior_status: priorStatus,
+            next_status: nextStatus,
+            changed_fields: Object.keys(patch)
+          }
+        );
+      }
       return jsonResponse({ row: result.data });
     }
 
