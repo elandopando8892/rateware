@@ -4226,7 +4226,7 @@ tbody tr:hover {
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
   align-items: center;
-  min-height: 44px;
+  min-height: 50px;
   border: 1px solid transparent;
   border-radius: 6px;
   background: #ffffff;
@@ -4259,6 +4259,30 @@ tbody tr:hover {
   font-size: 0.68rem;
   font-weight: 760;
   margin-top: 2px;
+}
+
+.location-autocomplete-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 5px;
+}
+
+.location-autocomplete-chips b {
+  display: inline-flex;
+  align-items: center;
+  max-width: 150px;
+  overflow: hidden;
+  border: 1px solid #d9e3e8;
+  border-radius: 999px;
+  background: #f7fafb;
+  color: var(--neutral);
+  padding: 1px 6px;
+  font-size: 0.62rem;
+  font-weight: 850;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .location-autocomplete-panel em {

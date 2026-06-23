@@ -189,19 +189,44 @@ function scoreLocation(option, query) {
   return 0;
 }
 
+function locationMatchReason(option, query) {
+  const lookup = autocompleteKey(query);
+  if (!lookup || typeof option === "string") return "Catalog match";
+  const candidates = [
+    ["Exact city", option.city],
+    ["Exact metro", option.metro_city],
+    ["ZIP prefix", option.zip_prefix],
+    ["State", option.state_code || option.state_name],
+    ["Market", option.market],
+    ["Region", option.region],
+    ["Alias", option.raw_value || option.label || option.value]
+  ];
+  const exact = candidates.find(([, value]) => autocompleteKey(value) === lookup);
+  if (exact) return exact[0];
+  const partial = candidates.find(([, value]) => {
+    const key = autocompleteKey(value);
+    return key && (key.includes(lookup) || lookup.includes(key));
+  });
+  return partial ? partial[0] : "Fuzzy catalog match";
+}
+
 function locationOptionLabelRich(option) {
   if (typeof option === "string") {
-    return { title: option, meta: "", badge: "" };
+    return { title: option, chips: [], badge: "", reason: "Catalog match" };
   }
   const title = locationValue(option);
-  const market = option.market ? `${option.market}` : "";
-  const region = option.region ? `${option.region}` : "";
   const zipState = [option.zip_prefix, option.state_code || option.state_name].filter(Boolean).join(" / ");
-  const country = option.country || "";
+  const chips = [
+    zipState ? `ZIP/ST ${zipState}` : "",
+    option.market ? `Market ${option.market}` : "",
+    option.region ? `Region ${option.region}` : "",
+    option.metro_city && option.metro_city !== option.city ? `Metro ${option.metro_city}` : ""
+  ].filter(Boolean);
   return {
     title,
-    meta: [zipState, market, region].filter(Boolean).join(" | "),
-    badge: country
+    chips,
+    badge: option.country || "",
+    reason: "Catalog match"
   };
 }
 
@@ -243,11 +268,15 @@ export function initLocationAutocomplete({ container, inputSelector, getOptions,
       panel.innerHTML = activeItems
         .map((option, index) => {
           const label = locationOptionLabelRich(option);
+          const reason = locationMatchReason(option, query);
           return `
             <button type="button" data-location-suggestion="${index}">
               <span>
                 <strong>${htmlEscape(label.title)}</strong>
-                <small>${htmlEscape(label.meta || "Catalog location")}</small>
+                <small>${htmlEscape(reason)}</small>
+                <span class="location-autocomplete-chips">
+                  ${(label.chips || []).map((chip) => `<b>${htmlEscape(chip)}</b>`).join("")}
+                </span>
               </span>
               ${label.badge ? `<em>${htmlEscape(label.badge)}</em>` : ""}
             </button>

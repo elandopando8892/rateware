@@ -307,6 +307,17 @@ function locationOptionMatch(value) {
   return scored[0]?.option || null;
 }
 
+function locationManualReason(option) {
+  if (!option || typeof option === "string") return "manual catalog selection";
+  return [
+    "manual catalog selection",
+    option.country ? `country=${option.country}` : "",
+    option.zip_prefix ? `zip=${option.zip_prefix}` : "",
+    option.market ? `market=${option.market}` : "",
+    option.region ? `region=${option.region}` : ""
+  ].filter(Boolean).join("; ");
+}
+
 function setTableField(tableRow, field, value) {
   const input = tableRow?.querySelector(`[data-field="${CSS.escape(field)}"]`);
   if (!input) return;
@@ -323,7 +334,7 @@ function applyLocationSuggestion(tableRow, prefix, value) {
   setTableField(tableRow, `${prefix}_region`, option.region);
   setTableField(tableRow, `${prefix}_city`, option.city || option.metro_city);
   setTableField(tableRow, `${prefix}_country`, option.country);
-  setTableField(tableRow, `${prefix}_match_reason`, "manual catalog selection");
+  setTableField(tableRow, `${prefix}_match_reason`, locationManualReason(option));
   setTableField(tableRow, `${prefix}_match_source`, "manual_dropdown");
   setTableField(tableRow, `${prefix}_match_confidence`, 100);
   setTableField(tableRow, `${prefix}_match_manual`, "true");
