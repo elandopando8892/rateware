@@ -55,6 +55,7 @@ let activeRowId = null;
 const selectedRowIds = new Set();
 let activeReviewFilter = "all";
 const autoSaveTimers = new Map();
+const FILTERED_BULK_BATCH_SIZE = 1000;
 let columnVisibilityController;
 let locationMatchDrawerController;
 let stagingOptions = {
@@ -1466,10 +1467,20 @@ async function runFilteredStagingAction(targetAction) {
       return;
     }
 
-    setBulkStatus(`${isRemove ? "Removing" : "Archiving"} ${matched} filtered staging row(s)...`);
-    const result = await service(filters, { dryRun: false });
+    let affected = 0;
+    let batch = 0;
+    while (affected < matched) {
+      batch += 1;
+      setBulkStatus(`${isRemove ? "Removing" : "Archiving"} filtered staging rows... ${affected.toLocaleString()} / ${matched.toLocaleString()}`);
+      const result = await service(filters, { dryRun: false, maxRows: FILTERED_BULK_BATCH_SIZE });
+      const count = Number(result.updated || result.removed || 0);
+      if (!count) break;
+      affected += count;
+      setBulkStatus(`${isRemove ? "Removed" : "Archived"} ${Math.min(affected, matched).toLocaleString()} / ${matched.toLocaleString()} filtered staging rows (${batch} batch${batch === 1 ? "" : "es"}).`);
+      if (count < FILTERED_BULK_BATCH_SIZE) break;
+    }
     selectedRowIds.clear();
-    setBulkStatus(`${result.updated || result.removed || 0} filtered staging row(s) ${isRemove ? "removed" : "archived"}.`, "success");
+    setBulkStatus(`${affected.toLocaleString()} filtered staging row(s) ${isRemove ? "removed" : "archived"}.`, "success");
     await loadRows();
   } catch (error) {
     setBulkStatus(error.message, "error");

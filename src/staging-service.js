@@ -36,18 +36,20 @@ export async function removeStagingRows(ids = []) {
   return await callRatewareApi("remove_staging", { ids });
 }
 
-export async function archiveStagingRowsByFilter(filters = {}, { dryRun = false } = {}) {
+export async function archiveStagingRowsByFilter(filters = {}, { dryRun = false, maxRows = undefined } = {}) {
   return await callRatewareApi("bulk_rate_rows_by_filter", {
     target_action: "archive",
     filters: { ...filters, mode: "staging" },
-    dry_run: dryRun
+    dry_run: dryRun,
+    max_rows: maxRows
   });
 }
 
-export async function removeStagingRowsByFilter(filters = {}, { dryRun = false } = {}) {
+export async function removeStagingRowsByFilter(filters = {}, { dryRun = false, maxRows = undefined } = {}) {
   return await callRatewareApi("bulk_rate_rows_by_filter", {
     target_action: "remove",
     filters: { ...filters, mode: "staging" },
-    dry_run: dryRun
+    dry_run: dryRun,
+    max_rows: maxRows
   });
 }

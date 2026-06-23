@@ -1098,6 +1098,7 @@ function applyBulkRateBaseFilters(query: any, filters: Record<string, unknown>) 
     const status = cleanText(filters.status);
     if (status) query = query.eq("status", status);
   }
+  if (filters.exclude_archived === true) query = query.neq("status", "archived");
 
   const rawUploadId = cleanText(filters.raw_upload_id);
   if (rawUploadId) query = query.eq("raw_upload_id", rawUploadId);
@@ -1132,14 +1133,15 @@ function matchesBulkRateRow(row: Record<string, unknown>, filters: Record<string
   return matchesBulkReviewFilter(row, filters.review_filter);
 }
 
-async function fetchBulkRateRowsByFilter(supabase: ReturnType<typeof createClient>, filters: Record<string, unknown>) {
+async function fetchBulkRateRowsByFilter(supabase: ReturnType<typeof createClient>, filters: Record<string, unknown>, maxMatches = 50000) {
   const pageSize = 1000;
   const hardLimit = 50000;
   const rows: Record<string, unknown>[] = [];
+  const matches: Record<string, unknown>[] = [];
   let offset = 0;
   let databaseCount = 0;
 
-  while (rows.length < hardLimit) {
+  while (rows.length < hardLimit && matches.length < maxMatches) {
     let query = supabase
       .from("rate_staging")
       .select(BULK_RATE_ROW_SELECT, { count: offset === 0 ? "exact" : undefined })
@@ -1153,12 +1155,13 @@ async function fetchBulkRateRowsByFilter(supabase: ReturnType<typeof createClien
 
     const page = (result.data || []) as Record<string, unknown>[];
     rows.push(...page);
+    matches.push(...page.filter((row) => matchesBulkRateRow(row, filters)));
     if (page.length < pageSize) break;
     offset += pageSize;
   }
 
   return {
-    rows: rows.filter((row) => matchesBulkRateRow(row, filters)),
+    rows: matches.slice(0, maxMatches),
     database_count: databaseCount,
     hard_limit_reached: rows.length >= hardLimit && databaseCount > rows.length
   };
@@ -5944,6 +5947,7 @@ Deno.serve(async (request) => {
       const filters = objectRecord(body.filters);
       const targetAction = cleanText(body.target_action);
       const dryRun = body.dry_run === true;
+      const maxRows = Math.min(Math.max(Number(body.max_rows) || 50000, 1), 50000);
       if (!["archive", "remove"].includes(targetAction || "")) {
         return jsonResponse({ error: "Bulk target action must be archive or remove." }, 400);
       }
@@ -5951,14 +5955,19 @@ Deno.serve(async (request) => {
         return jsonResponse({ error: "The conflicts filter is visual. Add a column/search filter before using a filtered bulk action." }, 400);
       }
 
-      const filtered = await fetchBulkRateRowsByFilter(supabase, filters);
+      const actionFilters = {
+        ...filters,
+        exclude_archived: targetAction === "archive"
+      };
+      const filtered = await fetchBulkRateRowsByFilter(supabase, actionFilters, dryRun ? 50000 : maxRows);
       const ids = filtered.rows.map((row) => cleanText(row.id)).filter(Boolean) as string[];
       if (dryRun) {
         return jsonResponse({
           action: targetAction,
           matched: ids.length,
           database_count: filtered.database_count,
-          hard_limit_reached: filtered.hard_limit_reached
+          hard_limit_reached: filtered.hard_limit_reached,
+          max_rows: maxRows
         });
       }
       if (!ids.length) {
@@ -5990,7 +5999,7 @@ Deno.serve(async (request) => {
         `${targetAction === "archive" ? "Archived" : "Removed"} ${affected} ${mode} row(s) using active filters`,
         {
           ids_count: ids.length,
-          filters,
+          filters: actionFilters,
           hard_limit_reached: filtered.hard_limit_reached
         }
       );
@@ -6000,6 +6009,7 @@ Deno.serve(async (request) => {
         matched: ids.length,
         updated: targetAction === "archive" ? affected : 0,
         removed: targetAction === "remove" ? affected : 0,
+        max_rows: maxRows,
         hard_limit_reached: filtered.hard_limit_reached
       });
     }

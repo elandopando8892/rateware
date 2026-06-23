@@ -63,6 +63,7 @@ let loadedRows = [];
 let activeQuickFilter = "all";
 let ratewareQualityIndex = new Map();
 const autoSaveTimers = new Map();
+const FILTERED_BULK_BATCH_SIZE = 1000;
 let columnVisibilityController;
 let locationMatchDrawerController;
 let ratewareOptions = {
@@ -1801,10 +1802,20 @@ async function runFilteredRatewareAction(targetAction) {
       return;
     }
 
-    setActionStatus(`${isRemove ? "Removing" : "Archiving"} ${matched} filtered approved rate(s)...`);
-    const result = await service(filters, { dryRun: false });
+    let affected = 0;
+    let batch = 0;
+    while (affected < matched) {
+      batch += 1;
+      setActionStatus(`${isRemove ? "Removing" : "Archiving"} filtered approved rates... ${affected.toLocaleString()} / ${matched.toLocaleString()}`);
+      const result = await service(filters, { dryRun: false, maxRows: FILTERED_BULK_BATCH_SIZE });
+      const count = Number(result.updated || result.removed || 0);
+      if (!count) break;
+      affected += count;
+      setActionStatus(`${isRemove ? "Removed" : "Archived"} ${Math.min(affected, matched).toLocaleString()} / ${matched.toLocaleString()} filtered approved rates (${batch} batch${batch === 1 ? "" : "es"}).`);
+      if (count < FILTERED_BULK_BATCH_SIZE) break;
+    }
     selectedRowIds.clear();
-    setActionStatus(`${result.updated || result.removed || 0} filtered approved rate(s) ${isRemove ? "removed" : "archived"}.`, "success");
+    setActionStatus(`${affected.toLocaleString()} filtered approved rate(s) ${isRemove ? "removed" : "archived"}.`, "success");
     await loadRateware();
   } catch (error) {
     setActionStatus(error.message, "error");
