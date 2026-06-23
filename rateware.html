@@ -157,45 +157,6 @@
               <span><kbd>Ctrl</kbd> + <kbd>S</kbd> saves row</span>
             </div>
 
-            <div class="rateware-workbench" aria-label="Rateware workbench">
-              <section class="rateware-tool-panel">
-                <div>
-                  <p class="eyebrow">Lane comparison</p>
-                  <h2>Compare carrier offers</h2>
-                </div>
-                <div class="action-row">
-                  <button id="compare-selected-rateware" type="button" class="secondary small-button" disabled>Compare selected</button>
-                  <button id="compare-visible-rateware" type="button" class="secondary small-button">Compare visible</button>
-                </div>
-                <div id="rateware-comparison-output" class="rateware-comparison-output">
-                  <span>Select lanes or compare the current view.</span>
-                </div>
-              </section>
-
-              <section class="rateware-tool-panel">
-                <div>
-                  <p class="eyebrow">Versioning</p>
-                  <h2>Rate book snapshots</h2>
-                </div>
-                <div class="rateware-control-grid version-grid">
-                  <label>
-                    Version name
-                    <input id="rateware-version-name" placeholder="June cross-border awards" />
-                  </label>
-                  <label>
-                    Note
-                    <input id="rateware-version-note" placeholder="Scope, customer, RFx..." />
-                  </label>
-                </div>
-                <div class="action-row">
-                  <button id="snapshot-selected-rateware" type="button" class="small-button" disabled>Snapshot selected</button>
-                  <button id="snapshot-visible-rateware" type="button" class="secondary small-button">Snapshot visible</button>
-                </div>
-                <div id="rateware-version-list" class="rateware-version-list"></div>
-                <p id="rateware-version-status" class="status-message" role="status"></p>
-              </section>
-            </div>
-
             <div class="table-wrap sheet-table-wrap">
               <table class="rateware-table">
                 <thead>
@@ -240,6 +201,44 @@
                   </tr>
                 </tbody>
               </table>
+            </div>
+            <div class="rateware-workbench" aria-label="Rateware workbench">
+              <section class="rateware-tool-panel">
+                <div>
+                  <p class="eyebrow">Lane comparison</p>
+                  <h2>Compare carrier offers</h2>
+                </div>
+                <div class="action-row">
+                  <button id="compare-selected-rateware" type="button" class="secondary small-button" disabled>Compare selected</button>
+                  <button id="compare-visible-rateware" type="button" class="secondary small-button">Compare visible</button>
+                </div>
+                <div id="rateware-comparison-output" class="rateware-comparison-output">
+                  <span>Select lanes or compare the current view.</span>
+                </div>
+              </section>
+
+              <section class="rateware-tool-panel">
+                <div>
+                  <p class="eyebrow">Versioning</p>
+                  <h2>Rate book snapshots</h2>
+                </div>
+                <div class="rateware-control-grid version-grid">
+                  <label>
+                    Version name
+                    <input id="rateware-version-name" placeholder="June cross-border awards" />
+                  </label>
+                  <label>
+                    Note
+                    <input id="rateware-version-note" placeholder="Scope, customer, RFx..." />
+                  </label>
+                </div>
+                <div class="action-row">
+                  <button id="snapshot-selected-rateware" type="button" class="small-button" disabled>Snapshot selected</button>
+                  <button id="snapshot-visible-rateware" type="button" class="secondary small-button">Snapshot visible</button>
+                </div>
+                <div id="rateware-version-list" class="rateware-version-list"></div>
+                <p id="rateware-version-status" class="status-message" role="status"></p>
+              </section>
             </div>
             <div class="next-step-strip">
               <span>Commercial output</span>

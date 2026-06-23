@@ -79,10 +79,10 @@ let ratewareOptionsLoaded = false;
 const selectedRowIds = new Set();
 const SHEET_COLUMNS = [
   { key: "select", label: "Select", locked: true },
-  { key: "vendor", label: "Vendor", locked: true },
-  { key: "origin", label: "Origin", locked: true },
-  { key: "destination", label: "Destination", locked: true },
-  { key: "all_in_rate", label: "All-in", locked: true },
+  { key: "vendor", label: "Vendor" },
+  { key: "origin", label: "Origin" },
+  { key: "destination", label: "Destination" },
+  { key: "all_in_rate", label: "All-in" },
   { key: "quote_date", label: "Quote date" },
   { key: "rfx_id", label: "RFx" },
   { key: "origin_zip_prefix", label: "O ZIP" },
@@ -442,15 +442,9 @@ function locationMatchSummary(row, prefix) {
 }
 
 function renderLocationCell(row, prefix, listName) {
-  const summary = locationMatchSummary(row, prefix);
-  const action = ["missing", "partial"].includes(summary.label) ? "enrich" : "renormalize";
   return `
     ${datalistCell(row, prefix, listName, { wide: true })}
     ${hiddenLocationFields(row, prefix)}
-    <span class="location-cell-actions">
-      <button class="location-chip ${escapeHtml(summary.tone)}" type="button" data-location-row-action="${escapeHtml(action)}" title="${escapeHtml(`${summary.title} | Click to ${action === "enrich" ? "find missing ZIPs" : "re-normalize this rate"}`)}">${escapeHtml(summary.label)}</button>
-      <button class="location-match-button" type="button" data-location-match-detail="${escapeHtml(prefix)}" title="${escapeHtml(`Explain ${prefix} match and view catalog candidates`)}" aria-label="${escapeHtml(`Explain ${prefix} location match`)}">?</button>
-    </span>
   `;
 }
 
@@ -471,6 +465,11 @@ function renderInlineValidation(row) {
   const issues = inlineValidationIssues(row);
   if (!issues.length) return "";
   return `<span class="cell-validation-stack">${issues.slice(0, 3).map((issue) => `<span class="cell-validation-pill ${escapeHtml(issue.tone)}" title="${escapeHtml(issue.detail)}">${escapeHtml(issue.label)}</span>`).join("")}</span>`;
+}
+
+function rateValidationTitle(row) {
+  const issues = inlineValidationIssues(row).map((issue) => issue.detail);
+  return issues.length ? issues.join(" | ") : rateModeLabel(row);
 }
 
 function rateModeLabel(row) {
@@ -939,11 +938,9 @@ function renderRows(rows) {
       </td>
       <td class="${escapeHtml(locationValidationClass(row, "origin"))}" data-col="origin" title="${escapeHtml(locationMatchSummary(row, "origin").title)}">${renderLocationCell(row, "origin", "rateware-origin-options")}</td>
       <td class="${escapeHtml(locationValidationClass(row, "destination"))}" data-col="destination" title="${escapeHtml(locationMatchSummary(row, "destination").title)}">${renderLocationCell(row, "destination", "rateware-destination-options")}</td>
-      <td class="rate-freeze-cell ${escapeHtml(rateValidationClass(row))}" data-col="all_in_rate" title="${escapeHtml(rateValidationClass(row) === "cell-invalid" ? "Needs numeric all-in or split rate" : "Numeric rate present")}">
+      <td class="rate-cell ${escapeHtml(rateValidationClass(row))}" data-col="all_in_rate" title="${escapeHtml(rateValidationTitle(row))}">
         ${inputCell(row, "all_in_rate", { money: true })}
-        <span>${escapeHtml(rateModeLabel(row))}</span>
-        ${renderInlineValidation(row)}
-        <span class="row-save-status" data-rateware-row-status="${escapeHtml(row.id)}"></span>
+        <span class="row-save-status sheet-row-save-dot" data-rateware-row-status="${escapeHtml(row.id)}"></span>
       </td>
       <td data-col="quote_date">${inputCell(row, "quote_date", { type: "date", short: true })}</td>
       <td data-col="rfx_id">${inputCell(row, "rfx_id", { short: true })}</td>
@@ -1019,7 +1016,12 @@ function setGridSelectionStatus(info) {
 function setRowStatus(id, message, tone = "neutral") {
   const status = body.querySelector(`[data-rateware-row-status="${CSS.escape(id)}"]`);
   if (!status) return;
-  status.textContent = message;
+  status.textContent = "";
+  status.title = message || "";
+  if (!message) {
+    delete status.dataset.tone;
+    return;
+  }
   status.dataset.tone = tone;
 }
 
@@ -1977,6 +1979,12 @@ body.addEventListener("click", (event) => {
   selectOnlyRatewareRow(tableRow);
   if (actionButton.dataset.locationRowAction === "enrich") enrichSelectedRatewareZips();
   else renormalizeSelectedRateware();
+});
+body.addEventListener("dblclick", (event) => {
+  const cell = event.target.closest('td[data-col="origin"], td[data-col="destination"]');
+  const tableRow = cell?.closest("[data-rateware-id]");
+  if (!cell || !tableRow) return;
+  locationMatchDrawerController?.open(tableRow, cell.dataset.col);
 });
 bulkFieldSelect?.addEventListener("change", updateBulkValueOptions);
 applyBulkEditButton?.addEventListener("click", applySelectedBulkEdit);
