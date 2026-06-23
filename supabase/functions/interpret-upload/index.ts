@@ -610,15 +610,16 @@ function locationTextProfile(value: unknown) {
   const hasFiveDigitPostal = /\b\d{4,5}\b/.test(lookup);
   const hasCanadianPostalCode = /\b[A-Z]\d[A-Z]\b/.test(lookup);
   const hasMxCityHint = LOCATION_MX_CITY_HINTS.some((city) => lookup.includes(city));
-  const strongMxText = (tokenSet.has("MEXICO") && !tokenSet.has("NEW")) || tokenSet.has("MEX") || tokenSet.has("MX");
+  const strongMxText = tokenSet.has("MEX") || tokenSet.has("MX") || (tokenSet.has("MEXICO") && !tokenSet.has("NEW") && !hasUsState);
   const strongUsText = tokenSet.has("USA") || tokenSet.has("US") || tokenSet.has("UNITED");
   const strongCaText = tokenSet.has("CANADA");
+  const hasMxEvidence = strongMxText || hasMxState || hasMxCityHint;
   const mxStateOnly = hasMxState && !hasUsState && !hasCaProvince;
   const mxPostalHint = hasFiveDigitPostal && hasMxState && !strongUsText && !strongCaText;
   const explicitMx = strongMxText || mxStateOnly || mxPostalHint || (hasMxCityHint && hasMxState && !strongUsText && !strongCaText);
   const explicitUs = strongUsText || (hasUsState && !explicitMx && !strongCaText && !hasCanadianPostalCode);
   const explicitCa = strongCaText || (hasCanadianPostalCode && !explicitMx) || (hasCaProvince && !hasMxState && !strongUsText);
-  return { lookup, tokens, explicitMx, explicitUs, explicitCa, hasMxState, hasFiveDigitPostal, hasMxCityHint };
+  return { lookup, tokens, explicitMx, explicitUs, explicitCa, hasMxState, hasFiveDigitPostal, hasMxCityHint, hasMxEvidence };
 }
 
 function locationMatchesProfile(location: Record<string, unknown>, profile: ReturnType<typeof locationTextProfile>) {
@@ -1020,7 +1021,9 @@ function locationMatch(index: Map<string, Record<string, unknown>>, value: unkno
 
   const zipToken = lookup.match(/\b[A-Z]\d[A-Z]|\b\d{3,5}\b/)?.[0] || null;
   const zip = zipToken && /^\d/.test(zipToken) ? zipToken.slice(0, 3) : zipToken;
-  const allowZipShortcut = zip && !profile.explicitMx && (!profile.hasFiveDigitPostal || profile.explicitUs || profile.explicitCa);
+  const allowZipShortcut = zip
+    && !profile.explicitMx
+    && (profile.explicitUs || profile.explicitCa || (!profile.hasMxEvidence && !profile.hasFiveDigitPostal));
   if (allowZipShortcut && index.get(catalogKey(zip))) {
     const zipMatch = index.get(catalogKey(zip))!;
     if (locationCountry(zipMatch) !== "MX") {
@@ -1048,8 +1051,14 @@ function locationMatch(index: Map<string, Record<string, unknown>>, value: unkno
     }
     const zipPrefix = catalogKey(location.zip_prefix);
     if (zipPrefix && lookup.includes(zipPrefix)) {
-      score += country === "MX" ? 6 : 55;
-      reasons.push(country === "MX" ? "mx zip auxiliary" : "zip prefix");
+      const zipCompatible = country === "MX"
+        || profile.explicitUs
+        || profile.explicitCa
+        || (!profile.hasMxEvidence && !profile.hasFiveDigitPostal);
+      if (zipCompatible) {
+        score += country === "MX" ? 12 : 55;
+        reasons.push(country === "MX" ? "mx postal auxiliary" : "zip prefix");
+      }
     }
     const state = catalogKey(location.state_code);
     const stateMatches = state && profile.tokens.some((token) => normalizedLocationStateCode(token) === normalizedLocationStateCode(state));

@@ -126,7 +126,8 @@ function inferCountry(value, row, prefix) {
   const hasCanadianPostalCode = /\b[A-Z]\d[A-Z]\b/.test(lookup);
   const strongUsText = tokenSet.has("US") || tokenSet.has("USA") || tokenSet.has("UNITED") || tokenSet.has("STATES");
   const strongCaText = tokenSet.has("CAN") || tokenSet.has("CANADA");
-  if (tokens.some((token) => ["MX", "MEX", "MEXICO"].includes(token))) return "MX";
+  const strongMxText = tokenSet.has("MX") || tokenSet.has("MEX") || (tokenSet.has("MEXICO") && !tokenSet.has("NEW") && !hasUsState);
+  if (strongMxText) return "MX";
   if (hasMxState && (hasMxCityHint || (!hasUsState && !hasCaProvince) || (hasFiveDigitPostal && !strongUsText && !strongCaText))) return "MX";
   if (strongUsText) return "US";
   if (strongCaText || hasCanadianPostalCode) return "CA";
