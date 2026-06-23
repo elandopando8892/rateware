@@ -1,5 +1,5 @@
 const MX_STATE_CODES = new Set([
-  "AG", "BC", "BS", "CH", "CL", "CM", "CO", "CS", "DF", "DG", "EM", "GT", "GR", "HG", "JA", "MI", "MO", "NA", "NL", "OA", "PU", "QE", "QR", "SI", "SL", "SO", "TB", "TL", "TM", "VE", "YU", "ZA"
+  "AG", "BC", "BS", "CH", "CL", "CM", "CO", "CS", "DF", "DG", "EM", "GT", "GR", "HG", "JA", "MI", "MO", "MX", "NA", "NL", "OA", "PU", "QE", "QR", "SI", "SL", "SO", "TB", "TL", "TM", "VE", "YU", "ZA"
 ]);
 
 const US_STATE_CODES = new Set([
@@ -109,6 +109,10 @@ function inferState(value) {
   return tokens.find((token) => MX_STATE_CODES.has(token) || US_STATE_CODES.has(token) || CA_PROVINCE_CODES.has(token)) || "";
 }
 
+function normalizedStateCode(value) {
+  return value === "EM" ? "MX" : value;
+}
+
 function inferCountry(value, row, prefix) {
   const explicit = String(row?.[`${prefix}_country`] || "").toUpperCase();
   const tokens = textTokens(value);
@@ -164,8 +168,8 @@ function scoreCandidate(option, query, row, prefix) {
 
   const state = inferState(query);
   const optionState = String(option?.state_code || option?.state_name || "").toUpperCase();
-  if (state && optionState === state) score += 16;
-  if (state && optionState && optionState !== state) score -= 16;
+  if (state && normalizedStateCode(optionState) === normalizedStateCode(state)) score += 16;
+  if (state && optionState && normalizedStateCode(optionState) !== normalizedStateCode(state)) score -= 16;
 
   const existingMarket = lookupKey(row?.[`${prefix}_market`]);
   if (existingMarket && lookupKey(option?.market) === existingMarket) score += 8;

@@ -249,7 +249,7 @@ const LOCATION_US_STATES = new Set([
 ]);
 
 const LOCATION_CA_PROVINCES = new Set(["AB", "BC", "MB", "NB", "NL", "NF", "NS", "NT", "NU", "ON", "PE", "PQ", "QC", "SK", "YT"]);
-const LOCATION_MX_STATES = new Set(["AG", "BC", "BN", "BS", "CH", "CI", "CL", "CM", "CO", "CS", "CU", "DF", "DG", "EM", "GR", "GT", "HG", "JA", "MI", "MO", "NA", "NL", "OA", "PU", "QE", "QR", "SI", "SL", "SO", "TB", "TL", "TM", "VE", "YU", "ZA"]);
+const LOCATION_MX_STATES = new Set(["AG", "BC", "BN", "BS", "CH", "CI", "CL", "CM", "CO", "CS", "CU", "DF", "DG", "EM", "GR", "GT", "HG", "JA", "MI", "MO", "MX", "NA", "NL", "OA", "PU", "QE", "QR", "SI", "SL", "SO", "TB", "TL", "TM", "VE", "YU", "ZA"]);
 const LOCATION_MX_CITY_HINTS = [
   "ACAPULCO",
   "ACUNA",
@@ -299,6 +299,11 @@ function locationCountry(location: Record<string, unknown>) {
 
 function locationTokens(value: unknown) {
   return catalogKey(value).split(" ").filter(Boolean);
+}
+
+function normalizedLocationStateCode(value: unknown) {
+  const state = catalogKey(value);
+  return state === "EM" ? "MX" : state;
 }
 
 function locationTextProfile(value: unknown) {
@@ -452,7 +457,8 @@ function locationMatch(index: Map<string, Record<string, unknown>>, value: unkno
       reasons.push(country === "MX" ? "mx zip auxiliary" : "zip prefix");
     }
     const state = catalogKey(location.state_code);
-    if (state && lookup.includes(state)) {
+    const stateMatches = state && profile.tokens.some((token) => normalizedLocationStateCode(token) === normalizedLocationStateCode(state));
+    if (state && (lookup.includes(state) || stateMatches)) {
       score += country === "MX" ? 38 : 30;
       reasons.push("state match");
     }
