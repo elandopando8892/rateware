@@ -271,6 +271,93 @@ function warningList(warnings) {
   return `<ul class="compact-warning-list">${warnings.map((warning) => `<li>${escapeHtml(warning)}</li>`).join("")}</ul>`;
 }
 
+function memoryRulesUsed(row) {
+  const audit = auditPayload(row);
+  return Array.isArray(audit.memory_rules_used) ? audit.memory_rules_used.filter(Boolean) : [];
+}
+
+function auditCompleteness(row) {
+  const detected = detectedRows(row);
+  const staged = stagedRows(row);
+  if (!detected && !staged) return 0;
+  return detected > 0 ? Math.max(0, Math.min(100, Math.round((staged / detected) * 100))) : 100;
+}
+
+function renderAuditMetric(label, value, tone = "neutral") {
+  return `
+    <article>
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(value ?? "-")}</strong>
+      <i class="${escapeHtml(tone)}"></i>
+    </article>
+  `;
+}
+
+function renderAuditQuality(row) {
+  const audit = auditPayload(row);
+  const quality = audit.row_quality && typeof audit.row_quality === "object" ? audit.row_quality : {};
+  const total = Number(quality.total ?? stagedRows(row) ?? 0);
+  const metrics = [
+    ["Rows needing review", quality.needs_review ?? 0, Number(quality.needs_review || 0) ? "warning" : "success"],
+    ["Missing rates", quality.missing_rate ?? 0, Number(quality.missing_rate || 0) ? "danger" : "success"],
+    ["Missing location match", quality.missing_location_match ?? 0, Number(quality.missing_location_match || 0) ? "warning" : "success"],
+    ["Low confidence", quality.low_confidence ?? 0, Number(quality.low_confidence || 0) ? "warning" : "success"]
+  ];
+  return `
+    <div class="audit-viewer-grid">
+      ${renderAuditMetric("Completeness", `${auditCompleteness(row)}%`, auditCompleteness(row) >= 95 ? "success" : auditCompleteness(row) >= 75 ? "warning" : "danger")}
+      ${renderAuditMetric("Final staged rows", stagedRows(row), stagedRows(row) ? "success" : "danger")}
+      ${renderAuditMetric("Expected rows", detectedRows(row) || stagedRows(row), "neutral")}
+      ${renderAuditMetric("Rows audited", total, "neutral")}
+      ${metrics.map(([label, value, tone]) => renderAuditMetric(label, value, tone)).join("")}
+    </div>
+  `;
+}
+
+function renderAppliedMemoryRules(row) {
+  const rules = memoryRulesUsed(row);
+  if (!rules.length) {
+    return '<p class="detail-note">No interpretation memory rules were applied to this run.</p>';
+  }
+  return `
+    <div class="audit-memory-list">
+      ${rules.map((rule) => `
+        <article>
+          <span class="review-chip neutral">${escapeHtml(memoryScopeLabel(rule.scope))}</span>
+          <strong>${escapeHtml(rule.title || "Memory rule")}</strong>
+          ${rule.id ? `<small>${escapeHtml(rule.id)}</small>` : ""}
+        </article>
+      `).join("")}
+    </div>
+  `;
+}
+
+function renderInterpretationAuditViewer(row) {
+  const audit = auditPayload(row);
+  return `
+    <div class="interpretation-audit-viewer">
+      <div class="audit-viewer-header">
+        <div>
+          <strong>Audit viewer</strong>
+          <span>${escapeHtml(audit.warning_count || auditWarnings(row).length || 0)} warning(s) / ${escapeHtml(memoryRulesUsed(row).length)} memory rule(s)</span>
+        </div>
+        <span class="review-chip ${escapeHtml(auditTone(auditStatus(row)))}">${escapeHtml(auditLabel(auditStatus(row)))}</span>
+      </div>
+      ${renderAuditQuality(row)}
+      <div class="audit-viewer-split">
+        <section>
+          <h4>Memory used</h4>
+          ${renderAppliedMemoryRules(row)}
+        </section>
+        <section>
+          <h4>Warnings</h4>
+          ${warningList(auditWarnings(row).slice(0, 8))}
+        </section>
+      </div>
+    </div>
+  `;
+}
+
 function correctionHistory(row) {
   return Array.isArray(row.correction_history) ? row.correction_history : [];
 }
@@ -431,7 +518,7 @@ function openUploadDrawer(rowId) {
         ${detailItem("Deterministic repair", auditPayload(row).deterministic_repair_used ? "yes" : "no")}
         ${detailItem("Sparse table risk", auditPayload(row).sparse_table_risk ? "yes" : "no")}
       </dl>
-      ${warningList(auditWarnings(row).slice(0, 12))}
+      ${renderInterpretationAuditViewer(row)}
     </section>
 
     <section class="upload-detail-section">

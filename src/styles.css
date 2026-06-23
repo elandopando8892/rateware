@@ -3829,6 +3829,136 @@ tbody tr:hover {
   font-weight: 760;
 }
 
+.interpretation-audit-viewer {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #fbfcfd;
+  padding: 10px;
+}
+
+.audit-viewer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.audit-viewer-header div {
+  display: grid;
+  gap: 2px;
+}
+
+.audit-viewer-header strong,
+.audit-viewer-split h4 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 0.78rem;
+}
+
+.audit-viewer-header span:not(.review-chip) {
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 760;
+}
+
+.audit-viewer-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.audit-viewer-grid article {
+  position: relative;
+  display: grid;
+  gap: 3px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #ffffff;
+  padding: 8px;
+  overflow: hidden;
+}
+
+.audit-viewer-grid article span {
+  color: var(--muted);
+  font-size: 0.66rem;
+  font-weight: 800;
+}
+
+.audit-viewer-grid article strong {
+  color: var(--ink);
+  font-size: 0.88rem;
+}
+
+.audit-viewer-grid article i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: var(--line-strong);
+}
+
+.audit-viewer-grid article i.success {
+  background: #209b62;
+}
+
+.audit-viewer-grid article i.warning {
+  background: #c98200;
+}
+
+.audit-viewer-grid article i.danger {
+  background: var(--danger);
+}
+
+.audit-viewer-split {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  gap: 10px;
+}
+
+.audit-viewer-split section {
+  display: grid;
+  align-content: start;
+  gap: 7px;
+}
+
+.audit-memory-list {
+  display: grid;
+  gap: 6px;
+  max-height: 180px;
+  overflow: auto;
+}
+
+.audit-memory-list article {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 4px 7px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #ffffff;
+  padding: 7px;
+}
+
+.audit-memory-list strong,
+.audit-memory-list small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.audit-memory-list strong {
+  font-size: 0.74rem;
+}
+
+.audit-memory-list small {
+  grid-column: 2;
+  color: var(--muted);
+  font-size: 0.66rem;
+  font-weight: 760;
+}
+
 .compact-warning-list {
   display: grid;
   gap: 6px;
