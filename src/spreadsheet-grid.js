@@ -87,6 +87,20 @@ function controlValue(control) {
   return control.value ?? "";
 }
 
+function numericControlValue(control) {
+  if (control.matches('input[type="checkbox"]')) return null;
+  const raw = String(controlValue(control) ?? "").trim();
+  if (!raw || raw.includes("/") || raw.includes("\\")) return null;
+  if (/rfx|quote|lane/i.test(raw)) return null;
+  const cleaned = raw
+    .replace(/\b(usd|mxn|cad)\b/gi, "")
+    .replace(/[$,\s]/g, "")
+    .trim();
+  if (!/^-?\d+(\.\d+)?$/.test(cleaned)) return null;
+  const value = Number(cleaned);
+  return Number.isFinite(value) ? value : null;
+}
+
 function selectionBounds(container, anchor, focus, rowSelector, cellSelector) {
   const anchorPosition = cellPosition(container, anchor, rowSelector, cellSelector);
   const focusPosition = cellPosition(container, focus, rowSelector, cellSelector);
@@ -127,11 +141,21 @@ function selectionInfo(matrix) {
   const rowCount = matrix.length;
   const columnCount = matrix[0]?.length || 0;
   const cellCount = matrix.reduce((sum, row) => sum + row.length, 0);
+  const numbers = matrix
+    .flat()
+    .map(numericControlValue)
+    .filter((value) => value !== null);
+  const numericSum = numbers.reduce((sum, value) => sum + value, 0);
   return {
     rows: rowCount,
     columns: columnCount,
     cells: cellCount,
-    isRange: cellCount > 1
+    isRange: cellCount > 1,
+    numeric: {
+      count: numbers.length,
+      sum: numericSum,
+      average: numbers.length ? numericSum / numbers.length : null
+    }
   };
 }
 

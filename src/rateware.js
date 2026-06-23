@@ -804,15 +804,25 @@ function setActionStatus(message, tone = "neutral") {
   actionStatus.dataset.tone = tone;
 }
 
+function compactNumber(value) {
+  return new Intl.NumberFormat("en-US", {
+    maximumFractionDigits: Math.abs(value) >= 100 ? 0 : 2
+  }).format(value);
+}
+
 function setGridSelectionStatus(info) {
   if (!gridSelectionStatus) return;
   if (!info?.cells) {
     gridSelectionStatus.textContent = "Ready";
     return;
   }
-  gridSelectionStatus.textContent = info.isRange
+  const label = info.isRange
     ? `${info.rows} x ${info.columns} range selected`
     : "1 cell selected";
+  const numeric = info.numeric?.count
+    ? ` | count ${info.numeric.count} | sum ${compactNumber(info.numeric.sum)} | avg ${compactNumber(info.numeric.average)}`
+    : "";
+  gridSelectionStatus.textContent = `${label}${numeric}`;
 }
 
 function setRowStatus(id, message, tone = "neutral") {
