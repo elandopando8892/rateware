@@ -543,9 +543,10 @@ const LOCATION_US_STATES = new Set([
 ]);
 
 const LOCATION_CA_PROVINCES = new Set(["AB", "BC", "MB", "NB", "NL", "NF", "NS", "NT", "NU", "ON", "PE", "PQ", "QC", "SK", "YT"]);
-const LOCATION_MX_STATES = new Set(["AG", "BC", "BN", "BS", "CH", "CI", "CL", "CM", "CO", "CS", "CU", "DF", "DG", "EM", "GR", "GT", "HG", "JA", "MI", "MO", "MX", "NA", "NL", "OA", "PU", "QE", "QR", "SI", "SL", "SO", "TB", "TL", "TM", "VE", "YU", "ZA"]);
+const LOCATION_MX_STATES = new Set(["AG", "BC", "BN", "BS", "CH", "CI", "CL", "CM", "CO", "CS", "CU", "DF", "DG", "EM", "GR", "GT", "HG", "JA", "MI", "MO", "NA", "NL", "OA", "PU", "QE", "QR", "SI", "SL", "SO", "TB", "TL", "TM", "VE", "YU", "ZA"]);
 const LOCATION_MX_CITY_HINTS = [
   "ACAPULCO",
+  "ACUNA",
   "AGUASCALIENTES",
   "APODACA",
   "ARTEAGA",
@@ -556,10 +557,12 @@ const LOCATION_MX_CITY_HINTS = [
   "COATZACOALCOS",
   "CUAUTITLAN",
   "CULIACAN",
+  "ESCOBEDO",
   "GUADALAJARA",
   "HERMOSILLO",
   "IRAPUATO",
   "JUAREZ",
+  "EL MARQUES",
   "LEON",
   "LERMA",
   "MANZANILLO",
@@ -606,7 +609,7 @@ function locationTextProfile(value: unknown) {
   const strongUsText = tokenSet.has("USA") || tokenSet.has("US") || tokenSet.has("UNITED");
   const strongCaText = tokenSet.has("CANADA");
   const mxStateOnly = hasMxState && !hasUsState && !hasCaProvince;
-  const mxPostalHint = hasFiveDigitPostal && hasMxState && (mxStateOnly || hasMxCityHint || strongMxText) && !strongUsText && !strongCaText;
+  const mxPostalHint = hasFiveDigitPostal && hasMxState && !strongUsText && !strongCaText;
   const explicitMx = strongMxText || mxStateOnly || mxPostalHint || (hasMxCityHint && hasMxState && !strongUsText && !strongCaText);
   const explicitUs = strongUsText || (hasUsState && !explicitMx && !strongCaText && !hasCanadianPostalCode);
   const explicitCa = strongCaText || (hasCanadianPostalCode && !explicitMx) || (hasCaProvince && !hasMxState && !strongUsText);
@@ -1012,7 +1015,7 @@ function locationMatch(index: Map<string, Record<string, unknown>>, value: unkno
 
   const zipToken = lookup.match(/\b[A-Z]\d[A-Z]|\b\d{3,5}\b/)?.[0] || null;
   const zip = zipToken && /^\d/.test(zipToken) ? zipToken.slice(0, 3) : zipToken;
-  const allowZipShortcut = zip && !profile.explicitMx && !(profile.hasMxState && profile.hasFiveDigitPostal && !profile.explicitUs && !profile.explicitCa);
+  const allowZipShortcut = zip && !profile.explicitMx && (!profile.hasFiveDigitPostal || profile.explicitUs || profile.explicitCa);
   if (allowZipShortcut && index.get(catalogKey(zip))) {
     const zipMatch = index.get(catalogKey(zip))!;
     if (locationCountry(zipMatch) !== "MX") {

@@ -1,5 +1,5 @@
 const MX_STATE_CODES = new Set([
-  "AG", "BC", "BS", "CH", "CL", "CM", "CO", "CS", "DF", "DG", "EM", "GT", "GR", "HG", "JA", "MI", "MO", "NA", "NL", "OA", "PU", "QE", "QR", "SI", "SL", "SO", "TB", "TL", "TM", "VE", "YU", "ZA", "MX"
+  "AG", "BC", "BS", "CH", "CL", "CM", "CO", "CS", "DF", "DG", "EM", "GT", "GR", "HG", "JA", "MI", "MO", "NA", "NL", "OA", "PU", "QE", "QR", "SI", "SL", "SO", "TB", "TL", "TM", "VE", "YU", "ZA"
 ]);
 
 const US_STATE_CODES = new Set([
@@ -9,6 +9,7 @@ const US_STATE_CODES = new Set([
 const CA_PROVINCE_CODES = new Set(["AB", "BC", "MB", "NB", "NL", "NF", "NS", "NT", "NU", "ON", "PE", "PQ", "QC", "SK", "YT"]);
 const MX_CITY_HINTS = [
   "ACAPULCO",
+  "ACUNA",
   "AGUASCALIENTES",
   "APODACA",
   "ARTEAGA",
@@ -19,10 +20,12 @@ const MX_CITY_HINTS = [
   "COATZACOALCOS",
   "CUAUTITLAN",
   "CULIACAN",
+  "ESCOBEDO",
   "GUADALAJARA",
   "HERMOSILLO",
   "IRAPUATO",
   "JUAREZ",
+  "EL MARQUES",
   "LEON",
   "LERMA",
   "MANZANILLO",
