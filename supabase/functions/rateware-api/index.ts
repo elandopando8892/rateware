@@ -1126,12 +1126,31 @@ function buildVendorIntelligenceRows(vendors: Record<string, unknown>[], rates: 
     return {
       vendor_id: cleanText(vendor.id),
       vendor_name: cleanText(vendor.vendor_name),
+      legal_name: cleanText(vendor.legal_name),
       domain: normalizeDomain(vendor.domain),
+      contact_name: cleanText(vendor.contact_name),
       primary_email: normalizeEmail(vendor.primary_email),
+      whatsapp_phone: cleanText(vendor.whatsapp_phone),
       preferred_channel: cleanText(vendor.preferred_channel),
       base_stage: cleanText(vendor.base_stage),
+      funnel_stage: normalizeVendorFunnelStage(vendor.funnel_stage) || null,
+      funnel_stage_updated_at: vendor.funnel_stage_updated_at || null,
+      targeted_at: vendor.targeted_at || null,
+      nested_at: vendor.nested_at || null,
+      drafted_at: vendor.drafted_at || null,
+      invited_at: vendor.invited_at || null,
+      onboarded_at: vendor.onboarded_at || null,
+      trained_at: vendor.trained_at || null,
+      activated_at: vendor.activated_at || null,
+      completed_at: vendor.completed_at || null,
       status: cleanText(vendor.status),
       tags: arrayValues(vendor.tags),
+      coverage_notes: cleanText(vendor.coverage_notes),
+      notes: cleanText(vendor.notes),
+      source: cleanText(vendor.source),
+      source_row_number: vendor.source_row_number || null,
+      source_spreadsheet_url: cleanText(vendor.source_spreadsheet_url),
+      last_synced_at: vendor.last_synced_at || null,
       health_score: healthScore,
       health_label: health.label,
       health_tone: health.tone,
@@ -1152,7 +1171,7 @@ async function buildVendorIntelligence(supabase: ReturnType<typeof createClient>
   const [vendorsResult, rates] = await Promise.all([
     supabase
       .from("vendors")
-      .select("id,vendor_name,legal_name,domain,primary_email,secondary_emails,whatsapp_phone,status,base_stage,tags,coverage_notes,notes,preferred_channel,created_at")
+      .select("id,vendor_name,legal_name,domain,contact_name,primary_email,secondary_emails,whatsapp_phone,status,base_stage,funnel_stage,funnel_stage_updated_at,targeted_at,nested_at,drafted_at,invited_at,onboarded_at,trained_at,activated_at,completed_at,tags,coverage_notes,notes,preferred_channel,source,source_row_number,source_spreadsheet_url,last_synced_at,created_at")
       .eq("owner_email", user.owner_email)
       .limit(2000),
     fetchBusinessIntelligenceRows(supabase, user)
@@ -1170,6 +1189,64 @@ async function buildVendorIntelligence(supabase: ReturnType<typeof createClient>
         const alignment = row.coverage_alignment as Record<string, unknown>;
         return arrayValues(alignment.quoted_only).length || arrayValues(alignment.declared_only).length;
       }).length
+    }
+  };
+}
+
+function vendorEffectiveFunnelStage(row: Record<string, unknown>) {
+  const savedStage = normalizeVendorFunnelStage(row.funnel_stage) || "targeted";
+  const metrics = typeof row.rate_metrics === "object" && row.rate_metrics ? row.rate_metrics as Record<string, unknown> : {};
+  const savedIndex = Math.max(0, VENDOR_FUNNEL_STAGES.indexOf(savedStage));
+  const hasLinkedQuotes = Number(metrics.linked_rates || 0) > 0;
+  if (hasLinkedQuotes && savedIndex < VENDOR_FUNNEL_STAGES.indexOf("nested")) return "nested";
+  return savedStage;
+}
+
+function daysSince(value: unknown) {
+  const date = value ? new Date(String(value)) : null;
+  if (!date || Number.isNaN(date.getTime())) return null;
+  return Math.max(0, Math.floor((Date.now() - date.getTime()) / 86400000));
+}
+
+async function buildVendorFunnel(supabase: ReturnType<typeof createClient>, user: { owner_email: string | null }) {
+  const intelligence = await buildVendorIntelligence(supabase, user);
+  const procurementRows = (intelligence.rows || [])
+    .filter((row: Record<string, unknown>) => cleanText(row.base_stage) === "procurement")
+    .map((row: Record<string, unknown>) => {
+      const stage = vendorEffectiveFunnelStage(row);
+      return {
+        ...row,
+        funnel_stage: normalizeVendorFunnelStage(row.funnel_stage) || "targeted",
+        effective_funnel_stage: stage,
+        funnel_stage_label: VENDOR_FUNNEL_STAGE_LABELS[stage],
+        stage_days: daysSince(row.funnel_stage_updated_at || row.created_at)
+      };
+    });
+  const counts = Object.fromEntries(VENDOR_FUNNEL_STAGES.map((stage) => [stage, procurementRows.filter((row) => row.effective_funnel_stage === stage).length]));
+  const activated = Number(counts.activated || 0) + Number(counts.completed || 0);
+  const targeted = procurementRows.length || 1;
+  return {
+    stages: VENDOR_FUNNEL_STAGES.map((stage, index) => ({
+      key: stage,
+      label: VENDOR_FUNNEL_STAGE_LABELS[stage],
+      description: VENDOR_FUNNEL_STAGE_DESCRIPTIONS[stage],
+      order: index,
+      count: counts[stage] || 0
+    })),
+    rows: procurementRows,
+    summary: {
+      total: procurementRows.length,
+      targeted: counts.targeted || 0,
+      nested: counts.nested || 0,
+      drafted: counts.drafted || 0,
+      invited: counts.invited || 0,
+      onboarded: counts.onboarded || 0,
+      trained: counts.trained || 0,
+      activated: counts.activated || 0,
+      completed: counts.completed || 0,
+      activation_rate: procurementRows.length ? Math.round((activated / targeted) * 100) : 0,
+      stuck: procurementRows.filter((row) => Number(row.stage_days || 0) >= 14 && !["activated", "completed"].includes(String(row.effective_funnel_stage))).length,
+      quoted: procurementRows.filter((row) => Number((row.rate_metrics as Record<string, unknown>)?.linked_rates || 0) > 0).length
     }
   };
 }
@@ -2402,6 +2479,53 @@ function normalizeImportedVendor(row: Record<string, unknown>, source = "google_
   };
 }
 
+const VENDOR_FUNNEL_STAGES = ["targeted", "nested", "drafted", "invited", "onboarded", "trained", "activated", "completed"];
+const VENDOR_FUNNEL_STAGE_LABELS: Record<string, string> = {
+  targeted: "Targeted",
+  nested: "Nested",
+  drafted: "Drafted",
+  invited: "Invited",
+  onboarded: "Onboarded",
+  trained: "Trained",
+  activated: "Activated",
+  completed: "Completed"
+};
+const VENDOR_FUNNEL_STAGE_DESCRIPTIONS: Record<string, string> = {
+  targeted: "Moved from Sourcing Base into Procurement Base.",
+  nested: "Has linked carrier quotes in staging or Rateware.",
+  drafted: "Selected for onboarding preparation.",
+  invited: "Onboarding invitation has been sent.",
+  onboarded: "Supplier registration is complete.",
+  trained: "TMS training or setup is complete.",
+  activated: "Ready for immediate procurement use.",
+  completed: "Legal document package is fully signed."
+};
+const VENDOR_FUNNEL_STAGE_TIMESTAMPS: Record<string, string> = {
+  targeted: "targeted_at",
+  nested: "nested_at",
+  drafted: "drafted_at",
+  invited: "invited_at",
+  onboarded: "onboarded_at",
+  trained: "trained_at",
+  activated: "activated_at",
+  completed: "completed_at"
+};
+
+function normalizeVendorFunnelStage(value: unknown) {
+  const stage = cleanText(value)?.toLowerCase();
+  return stage && VENDOR_FUNNEL_STAGES.includes(stage) ? stage : null;
+}
+
+function vendorFunnelPatch(stage: string | null, now = new Date().toISOString()) {
+  if (!stage) return {};
+  const timestampField = VENDOR_FUNNEL_STAGE_TIMESTAMPS[stage];
+  return {
+    funnel_stage: stage,
+    funnel_stage_updated_at: now,
+    ...(timestampField ? { [timestampField]: now } : {})
+  };
+}
+
 function normalizeVendor(input: Record<string, unknown>, source = "manual") {
   const vendorName = cleanText(input.vendor_name || input.name || input.carrier || input.vendor);
   if (!vendorName) throw new Error("Vendor name is required.");
@@ -2409,6 +2533,8 @@ function normalizeVendor(input: Record<string, unknown>, source = "manual") {
   const preferred = cleanText(input.preferred_channel)?.toLowerCase() || "email";
   const status = cleanText(input.status)?.toLowerCase() || "active";
   const baseStage = cleanText(input.base_stage)?.toLowerCase() || "sourcing";
+  const now = new Date().toISOString();
+  const funnelStage = normalizeVendorFunnelStage(input.funnel_stage) || (baseStage === "procurement" ? "targeted" : null);
 
   return {
     vendor_name: vendorName,
@@ -2423,6 +2549,7 @@ function normalizeVendor(input: Record<string, unknown>, source = "manual") {
     coverage_notes: cleanText(input.coverage_notes || input.coverage || input.lanes),
     notes: cleanText(input.notes),
     base_stage: ["sourcing", "procurement", "archived"].includes(baseStage) ? baseStage : "sourcing",
+    ...vendorFunnelPatch(funnelStage, now),
     source_spreadsheet_url: cleanText(input.source_spreadsheet_url),
     source_spreadsheet_id: cleanText(input.source_spreadsheet_id),
     source_sheet_gid: cleanText(input.source_sheet_gid),
@@ -2437,6 +2564,7 @@ function normalizeVendor(input: Record<string, unknown>, source = "manual") {
 
 function normalizeVendorPatch(input: Record<string, unknown>) {
   const patch: Record<string, unknown> = {};
+  const now = new Date().toISOString();
   if (input.vendor_name !== undefined) patch.vendor_name = cleanText(input.vendor_name);
   if (input.legal_name !== undefined) patch.legal_name = cleanText(input.legal_name);
   if (input.domain !== undefined) patch.domain = normalizeDomain(input.domain);
@@ -2451,13 +2579,19 @@ function normalizeVendorPatch(input: Record<string, unknown>) {
   if (baseStage && ["sourcing", "procurement", "archived"].includes(baseStage)) {
     patch.base_stage = baseStage;
     patch.archived_at = baseStage === "archived" ? new Date().toISOString() : null;
+    if (baseStage === "procurement" && input.funnel_stage === undefined) {
+      Object.assign(patch, vendorFunnelPatch("targeted", now));
+    }
+  }
+  if (input.funnel_stage !== undefined) {
+    Object.assign(patch, vendorFunnelPatch(normalizeVendorFunnelStage(input.funnel_stage), now));
   }
   if (input.tags !== undefined) patch.tags = normalizeTags(input.tags);
   if (input.preferred_channel !== undefined) {
     const preferred = cleanText(input.preferred_channel)?.toLowerCase();
     if (preferred && ["email", "whatsapp", "portal"].includes(preferred)) patch.preferred_channel = preferred;
   }
-  patch.updated_at = new Date().toISOString();
+  patch.updated_at = now;
   return patch;
 }
 
@@ -3756,6 +3890,11 @@ Deno.serve(async (request) => {
 
     if (body.action === "vendor_intelligence") {
       const result = await buildVendorIntelligence(supabase, user);
+      return jsonResponse(result);
+    }
+
+    if (body.action === "vendor_funnel") {
+      const result = await buildVendorFunnel(supabase, user);
       return jsonResponse(result);
     }
 

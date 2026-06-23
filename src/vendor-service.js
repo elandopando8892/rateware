@@ -18,6 +18,10 @@ export async function fetchVendorIntelligence() {
   return await callRatewareApi("vendor_intelligence");
 }
 
+export async function fetchVendorFunnel() {
+  return await callRatewareApi("vendor_funnel");
+}
+
 export async function applyVendorIntelligenceTags(ids = []) {
   return await callRatewareApi("apply_vendor_intelligence_tags", { ids });
 }

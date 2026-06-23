@@ -6,6 +6,7 @@ import {
   createVendor,
   createVendorSegment,
   deleteVendorSegment,
+  fetchVendorFunnel,
   fetchVendorIntelligence,
   fetchVendorSegments,
   fetchVendors,
@@ -83,6 +84,17 @@ const viReady = document.querySelector("#vi-ready");
 const viQuoted = document.querySelector("#vi-quoted");
 const viDuplicates = document.querySelector("#vi-duplicates");
 const viGaps = document.querySelector("#vi-gaps");
+const refreshVendorFunnelButton = document.querySelector("#refresh-vendor-funnel");
+const vendorFunnelStatus = document.querySelector("#vendor-funnel-status");
+const vendorFunnelStrip = document.querySelector("#vendor-funnel-strip");
+const vendorFunnelBoard = document.querySelector("#vendor-funnel-board");
+const vendorFunnelDetailTitle = document.querySelector("#vendor-funnel-detail-title");
+const vendorFunnelDetailCount = document.querySelector("#vendor-funnel-detail-count");
+const vendorFunnelDetailBody = document.querySelector("#vendor-funnel-detail-body");
+const vfTotal = document.querySelector("#vf-total");
+const vfActivationRate = document.querySelector("#vf-activation-rate");
+const vfNested = document.querySelector("#vf-nested");
+const vfStuck = document.querySelector("#vf-stuck");
 const segmentForm = document.querySelector("#segment-form");
 const segmentStatusMessage = document.querySelector("#segment-status-message");
 const segmentsList = document.querySelector("#segments-list");
@@ -108,7 +120,20 @@ let vendorTotalCount = 0;
 let vendorIntelligenceRows = [];
 let currentVendorIntelligenceRows = [];
 let selectedVendorIntelligenceIds = new Set();
+let vendorFunnelStages = [];
+let vendorFunnelRows = [];
+let activeFunnelStage = "targeted";
 const VENDOR_BASE_TABS = ["sourcing", "procurement", "archived"];
+const DEFAULT_FUNNEL_STAGES = [
+  { key: "targeted", label: "Targeted", description: "Moved from sourcing into procurement." },
+  { key: "nested", label: "Nested", description: "Has linked carrier quotes." },
+  { key: "drafted", label: "Drafted", description: "Selected for onboarding preparation." },
+  { key: "invited", label: "Invited", description: "Onboarding invite sent." },
+  { key: "onboarded", label: "Onboarded", description: "Supplier registration complete." },
+  { key: "trained", label: "Trained", description: "TMS setup or training complete." },
+  { key: "activated", label: "Activated", description: "Ready for immediate use." },
+  { key: "completed", label: "Completed", description: "Legal package fully signed." }
+];
 
 function isVendorBaseTab(tabName) {
   return VENDOR_BASE_TABS.includes(tabName);
@@ -264,6 +289,7 @@ function activateVendorTab(tabName) {
   });
   if (tabName === "duplicates") renderDuplicateReview();
   if (tabName === "intelligence" && !vendorIntelligenceRows.length) loadVendorIntelligence();
+  if (tabName === "funnel" && !vendorFunnelRows.length) loadVendorFunnel();
   if (tabName === "import" && !pendingImportRows.length) setVendorImportStep("source");
   if (isVendorBaseTab(tabName)) loadVendors();
 }
@@ -748,6 +774,209 @@ async function promoteSelectedIntelligenceVendors() {
   }
 }
 
+function funnelStageRows(stageKey) {
+  return vendorFunnelRows.filter((row) => (row.effective_funnel_stage || row.funnel_stage || "targeted") === stageKey);
+}
+
+function stageLabel(stageKey) {
+  return (vendorFunnelStages.find((stage) => stage.key === stageKey) || DEFAULT_FUNNEL_STAGES.find((stage) => stage.key === stageKey))?.label || stageKey;
+}
+
+function funnelStageIndex(stageKey) {
+  const stages = vendorFunnelStages.length ? vendorFunnelStages : DEFAULT_FUNNEL_STAGES;
+  return Math.max(0, stages.findIndex((stage) => stage.key === stageKey));
+}
+
+function funnelNextStage(stageKey) {
+  const stages = vendorFunnelStages.length ? vendorFunnelStages : DEFAULT_FUNNEL_STAGES;
+  return stages[Math.min(stages.length - 1, funnelStageIndex(stageKey) + 1)]?.key || stageKey;
+}
+
+function funnelStageAge(row) {
+  const days = Number(row.stage_days);
+  if (!Number.isFinite(days)) return "-";
+  if (days === 0) return "today";
+  return `${days}d`;
+}
+
+function funnelQuoteSignal(row) {
+  const metrics = rateMetrics(row);
+  const linked = numberValue(metrics.linked_rates);
+  const approved = numberValue(metrics.approved_rates);
+  const markets = Array.isArray(metrics.markets) ? metrics.markets.slice(0, 2).join(", ") : "";
+  if (!linked) return "No linked quotes";
+  return `${linked} linked / ${approved} approved${markets ? ` | ${markets}` : ""}`;
+}
+
+function funnelStageRecommendation(row) {
+  const stage = row.effective_funnel_stage || row.funnel_stage || "targeted";
+  const metrics = rateMetrics(row);
+  if (stage === "targeted" && numberValue(metrics.linked_rates) > 0) return "Review quotes";
+  if (stage === "targeted") return "Link first quote";
+  if (stage === "nested") return "Draft onboarding";
+  if (stage === "drafted") return row.primary_email ? "Send invite" : "Add contact";
+  if (stage === "invited") return "Confirm registration";
+  if (stage === "onboarded") return "Schedule TMS setup";
+  if (stage === "trained") return "Activate carrier";
+  if (stage === "activated") return "Complete legal pack";
+  return "Maintain vendor";
+}
+
+function renderVendorFunnelMetrics(summary = {}) {
+  if (vfTotal) vfTotal.textContent = String(summary.total || vendorFunnelRows.length || 0);
+  if (vfActivationRate) vfActivationRate.textContent = `${summary.activation_rate || 0}%`;
+  if (vfNested) vfNested.textContent = String(summary.quoted || summary.nested || 0);
+  if (vfStuck) vfStuck.textContent = String(summary.stuck || 0);
+}
+
+function renderVendorFunnelStrip() {
+  if (!vendorFunnelStrip) return;
+  const stages = vendorFunnelStages.length ? vendorFunnelStages : DEFAULT_FUNNEL_STAGES;
+  vendorFunnelStrip.innerHTML = stages
+    .map((stage, index) => {
+      const rows = funnelStageRows(stage.key);
+      const denominator = vendorFunnelRows.length || 1;
+      return `
+        <button class="funnel-stage-step ${stage.key === activeFunnelStage ? "is-active" : ""}" type="button" data-funnel-stage-filter="${escapeHtml(stage.key)}">
+          <span>${escapeHtml(index + 1)}</span>
+          <strong>${escapeHtml(stage.label)}</strong>
+          <small>${escapeHtml(rows.length)} vendors | ${escapeHtml(Math.round((rows.length / denominator) * 100))}%</small>
+        </button>
+      `;
+    })
+    .join("");
+}
+
+function renderVendorFunnelCard(row) {
+  const readiness = vendorReadiness(row);
+  const metrics = rateMetrics(row);
+  const linked = numberValue(metrics.linked_rates);
+  const approved = numberValue(metrics.approved_rates);
+  return `
+    <article class="funnel-card" draggable="true" data-funnel-vendor-id="${escapeHtml(row.id || row.vendor_id)}">
+      <div class="funnel-card-topline">
+        <strong>${escapeHtml(row.vendor_name || "Unnamed vendor")}</strong>
+        <span class="score-pill ${escapeHtml(row.health_tone || readiness.tone)}">${escapeHtml(row.health_score || readiness.score)}%</span>
+      </div>
+      <small>${escapeHtml([row.domain, row.primary_email || row.whatsapp_phone].filter(Boolean).join(" | ") || "Missing contact")}</small>
+      <div class="funnel-card-signals">
+        <span>${escapeHtml(linked)} quote${linked === 1 ? "" : "s"}</span>
+        <span>${escapeHtml(approved)} approved</span>
+        <span>${escapeHtml(funnelStageAge(row))}</span>
+      </div>
+      <div class="tag-list">${renderSignalChips(row.quoted_signals || row.tags, "No signal")}</div>
+      <div class="funnel-card-actions">
+        <button class="small-button secondary" type="button" data-funnel-open="${escapeHtml(row.id || row.vendor_id)}">Profile</button>
+        <button class="small-button" type="button" data-funnel-move="${escapeHtml(row.id || row.vendor_id)}" data-funnel-target="${escapeHtml(funnelNextStage(row.effective_funnel_stage || row.funnel_stage || "targeted"))}">Next</button>
+      </div>
+    </article>
+  `;
+}
+
+function renderVendorFunnelBoard() {
+  if (!vendorFunnelBoard) return;
+  const stages = vendorFunnelStages.length ? vendorFunnelStages : DEFAULT_FUNNEL_STAGES;
+  if (!vendorFunnelRows.length) {
+    vendorFunnelBoard.innerHTML = '<div class="empty-state"><strong>No procurement funnel yet</strong><span>Move vendors from Sourcing Base into Procurement Base to start the funnel.</span></div>';
+    return;
+  }
+  vendorFunnelBoard.innerHTML = stages
+    .map((stage) => {
+      const rows = funnelStageRows(stage.key);
+      return `
+        <section class="funnel-column" data-funnel-drop-stage="${escapeHtml(stage.key)}">
+          <header>
+            <div>
+              <strong>${escapeHtml(stage.label)}</strong>
+              <small>${escapeHtml(stage.description || "")}</small>
+            </div>
+            <span>${escapeHtml(rows.length)}</span>
+          </header>
+          <div class="funnel-card-stack">
+            ${rows.length ? rows.map(renderVendorFunnelCard).join("") : '<div class="funnel-empty-column">Drop vendor here</div>'}
+          </div>
+        </section>
+      `;
+    })
+    .join("");
+}
+
+function renderVendorFunnelDetail(stageKey = activeFunnelStage) {
+  activeFunnelStage = stageKey;
+  const rows = funnelStageRows(stageKey);
+  if (vendorFunnelDetailTitle) vendorFunnelDetailTitle.textContent = stageLabel(stageKey);
+  if (vendorFunnelDetailCount) vendorFunnelDetailCount.textContent = `${rows.length} vendor${rows.length === 1 ? "" : "s"}`;
+  if (!vendorFunnelDetailBody) return;
+
+  if (!rows.length) {
+    vendorFunnelDetailBody.innerHTML = `<tr><td colspan="4"><div class="empty-state compact-empty"><strong>No vendors in ${escapeHtml(stageLabel(stageKey))}</strong><span>Move cards into this stage when the onboarding signal is confirmed.</span></div></td></tr>`;
+    return;
+  }
+
+  vendorFunnelDetailBody.innerHTML = rows
+    .map((row) => `
+      <tr>
+        <td>
+          <button class="link-button" type="button" data-funnel-open="${escapeHtml(row.id || row.vendor_id)}">${escapeHtml(row.vendor_name || "Unnamed vendor")}</button>
+          <small>${escapeHtml([row.domain, row.primary_email].filter(Boolean).join(" | ") || "Missing contact")}</small>
+        </td>
+        <td><span class="score-pill ${escapeHtml(row.health_tone || "weak")}">${escapeHtml(row.health_score || 0)}%</span></td>
+        <td>${escapeHtml(funnelQuoteSignal(row))}</td>
+        <td>
+          <div class="vendor-signal-stack">
+            <span>${escapeHtml(funnelStageRecommendation(row))}</span>
+            <button class="small-button secondary" type="button" data-funnel-move="${escapeHtml(row.id || row.vendor_id)}" data-funnel-target="${escapeHtml(funnelNextStage(stageKey))}">Move next</button>
+          </div>
+        </td>
+      </tr>
+    `)
+    .join("");
+}
+
+function renderVendorFunnel(result = {}) {
+  vendorFunnelStages = result.stages?.length ? result.stages : DEFAULT_FUNNEL_STAGES;
+  vendorFunnelRows = (result.rows || []).map((row) => ({ ...row, id: row.id || row.vendor_id }));
+  if (!vendorFunnelStages.some((stage) => stage.key === activeFunnelStage)) activeFunnelStage = vendorFunnelStages[0]?.key || "targeted";
+  renderVendorFunnelMetrics(result.summary || {});
+  renderVendorFunnelStrip();
+  renderVendorFunnelBoard();
+  renderVendorFunnelDetail(activeFunnelStage);
+}
+
+async function loadVendorFunnel() {
+  if (!vendorFunnelBoard) return;
+  if (refreshVendorFunnelButton) refreshVendorFunnelButton.disabled = true;
+  vendorFunnelBoard.innerHTML = '<div class="empty-state"><strong>Loading vendor funnel...</strong><span>Reading Procurement Base and linked quote signals.</span></div>';
+  setStatus(vendorFunnelStatus, "Loading funnel...");
+
+  try {
+    await requirePrivatePage();
+    const result = await fetchVendorFunnel();
+    renderVendorFunnel(result);
+    setStatus(vendorFunnelStatus, `${result.summary?.total || 0} procurement vendor(s) in funnel.`, "success");
+  } catch (error) {
+    vendorFunnelBoard.innerHTML = `<div class="empty-state"><strong>Could not load funnel</strong><span>${escapeHtml(error.message)}</span></div>`;
+    setStatus(vendorFunnelStatus, error.message, "error");
+  } finally {
+    if (refreshVendorFunnelButton) refreshVendorFunnelButton.disabled = false;
+  }
+}
+
+async function moveVendorFunnelStage(vendorId, stageKey) {
+  if (!vendorId || !stageKey) return;
+  const stage = DEFAULT_FUNNEL_STAGES.find((item) => item.key === stageKey) || vendorFunnelStages.find((item) => item.key === stageKey);
+  if (!stage) return;
+  setStatus(vendorFunnelStatus, `Moving vendor to ${stage.label}...`);
+  try {
+    await requirePrivatePage();
+    await updateVendor(vendorId, { base_stage: "procurement", funnel_stage: stageKey });
+    setStatus(vendorFunnelStatus, `Vendor moved to ${stage.label}.`, "success");
+    await loadVendorFunnel();
+  } catch (error) {
+    setStatus(vendorFunnelStatus, error.message, "error");
+  }
+}
+
 function renderVendorTableHeader() {
   const columns =
     activeBaseStage === "procurement"
@@ -1041,9 +1270,10 @@ function setDrawerValue(selector, value) {
 function renderDrawerBadges(vendor) {
   const badges = [
     vendor.base_stage || "sourcing",
+    vendor.effective_funnel_stage ? `funnel: ${stageLabel(vendor.effective_funnel_stage)}` : null,
     vendor.status || "active",
     vendor.source || "manual"
-  ];
+  ].filter(Boolean);
   return badges.map((badge) => `<span class="status-pill">${escapeHtml(String(badge).replace(/_/g, " "))}</span>`).join("");
 }
 
@@ -1158,7 +1388,11 @@ function renderEnrichmentSuggestions(vendor) {
 }
 
 function findVendorById(vendorId) {
-  return allVendors.find((row) => row.id === vendorId) || currentVendors.find((row) => row.id === vendorId);
+  const row = allVendors.find((item) => item.id === vendorId)
+    || currentVendors.find((row) => row.id === vendorId)
+    || vendorFunnelRows.find((row) => row.id === vendorId || row.vendor_id === vendorId)
+    || vendorIntelligenceRows.find((row) => row.vendor_id === vendorId);
+  return row ? { ...row, id: row.id || row.vendor_id } : null;
 }
 
 function openVendorDrawer(vendorId) {
@@ -1544,6 +1778,53 @@ vendorIntelligenceSearch?.addEventListener("input", () => {
 });
 applyIntelligenceTagsButton?.addEventListener("click", applySelectedIntelligenceTags);
 promoteIntelligenceSelectedButton?.addEventListener("click", promoteSelectedIntelligenceVendors);
+refreshVendorFunnelButton?.addEventListener("click", loadVendorFunnel);
+vendorFunnelStrip?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-funnel-stage-filter]");
+  if (!button) return;
+  activeFunnelStage = button.dataset.funnelStageFilter;
+  renderVendorFunnelStrip();
+  renderVendorFunnelDetail(activeFunnelStage);
+});
+vendorFunnelBoard?.addEventListener("dragstart", (event) => {
+  const card = event.target.closest("[data-funnel-vendor-id]");
+  if (!card) return;
+  event.dataTransfer.setData("text/plain", card.dataset.funnelVendorId);
+  event.dataTransfer.effectAllowed = "move";
+  card.classList.add("is-dragging");
+});
+vendorFunnelBoard?.addEventListener("dragend", (event) => {
+  event.target.closest("[data-funnel-vendor-id]")?.classList.remove("is-dragging");
+});
+vendorFunnelBoard?.addEventListener("dragover", (event) => {
+  const column = event.target.closest("[data-funnel-drop-stage]");
+  if (!column) return;
+  event.preventDefault();
+  column.classList.add("is-drop-target");
+});
+vendorFunnelBoard?.addEventListener("dragleave", (event) => {
+  const column = event.target.closest("[data-funnel-drop-stage]");
+  if (!column || column.contains(event.relatedTarget)) return;
+  column.classList.remove("is-drop-target");
+});
+vendorFunnelBoard?.addEventListener("drop", (event) => {
+  const column = event.target.closest("[data-funnel-drop-stage]");
+  if (!column) return;
+  event.preventDefault();
+  column.classList.remove("is-drop-target");
+  moveVendorFunnelStage(event.dataTransfer.getData("text/plain"), column.dataset.funnelDropStage);
+});
+document.addEventListener("click", (event) => {
+  const openButton = event.target.closest("[data-funnel-open]");
+  if (openButton) {
+    openVendorDrawer(openButton.dataset.funnelOpen);
+    return;
+  }
+  const moveButton = event.target.closest("[data-funnel-move]");
+  if (moveButton) {
+    moveVendorFunnelStage(moveButton.dataset.funnelMove, moveButton.dataset.funnelTarget);
+  }
+});
 vendorIntelligenceBody?.addEventListener("change", (event) => {
   const checkbox = event.target.closest(".vendor-intelligence-select");
   if (!checkbox) return;
@@ -1662,7 +1943,7 @@ initAuthControls();
 requirePrivatePage()
   .then(() =>
     applyPermissionState(
-      "#save-vendor-button, #wizard-save-button, #vendor-import, #import-google-sheet-button, #select-visible-vendors-button, #clear-vendor-selection-button, #bulk-update-button, #bulk-procurement-button, #bulk-archive-vendors-button, #bulk-remove-vendors-button, #confirm-import-button, #save-segment-button, #drawer-save-button, #drawer-archive-button, #apply-intelligence-tags, #promote-intelligence-selected, [data-duplicate-inactive]",
+      "#save-vendor-button, #wizard-save-button, #vendor-import, #import-google-sheet-button, #select-visible-vendors-button, #clear-vendor-selection-button, #bulk-update-button, #bulk-procurement-button, #bulk-archive-vendors-button, #bulk-remove-vendors-button, #confirm-import-button, #save-segment-button, #drawer-save-button, #drawer-archive-button, #apply-intelligence-tags, #promote-intelligence-selected, [data-duplicate-inactive], [data-funnel-move]",
       "vendors:manage"
     )
   )

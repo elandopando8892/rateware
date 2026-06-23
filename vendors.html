@@ -86,6 +86,7 @@
           <section class="vendor-tabs wide-section" aria-label="Vendor workflows">
             <button class="vendor-tab is-active" type="button" data-vendor-tab="sourcing">Sourcing Base</button>
             <button class="vendor-tab" type="button" data-vendor-tab="procurement">Procurement Base</button>
+            <button class="vendor-tab" type="button" data-vendor-tab="funnel">Funnel</button>
             <button class="vendor-tab" type="button" data-vendor-tab="archived">Archived</button>
             <button class="vendor-tab" type="button" data-vendor-tab="intelligence">Intelligence</button>
             <button class="vendor-tab" type="button" data-vendor-tab="wizard">Wizard</button>
@@ -93,6 +94,66 @@
             <button class="vendor-tab" type="button" data-vendor-tab="import">Import</button>
             <button class="vendor-tab" type="button" data-vendor-tab="segments">Segments</button>
             <button class="vendor-tab" type="button" data-vendor-tab="duplicates">Duplicates</button>
+          </section>
+
+          <section class="workspace-panel wide-section hidden" data-tab-panel="funnel">
+            <div class="split-heading">
+              <div>
+                <p class="eyebrow">Procurement conversion</p>
+                <h2>Vendor funnel</h2>
+              </div>
+              <div class="action-row">
+                <button id="refresh-vendor-funnel" type="button">Refresh funnel</button>
+                <a class="link-button" href="./outreach.html">Open outreach</a>
+              </div>
+            </div>
+            <div class="vendor-funnel-metrics" aria-label="Vendor funnel summary">
+              <article>
+                <span>Procurement vendors</span>
+                <strong id="vf-total">0</strong>
+              </article>
+              <article>
+                <span>Activation rate</span>
+                <strong id="vf-activation-rate">0%</strong>
+              </article>
+              <article>
+                <span>Nested with quotes</span>
+                <strong id="vf-nested">0</strong>
+              </article>
+              <article>
+                <span>Stuck 14+ days</span>
+                <strong id="vf-stuck">0</strong>
+              </article>
+            </div>
+            <div id="vendor-funnel-strip" class="vendor-funnel-strip" aria-label="Vendor funnel stages"></div>
+            <div class="funnel-workspace">
+              <div id="vendor-funnel-board" class="vendor-funnel-board" aria-label="Vendor funnel Kanban"></div>
+              <aside class="funnel-detail-panel">
+                <div class="section-heading compact">
+                  <p class="eyebrow">Stage detail</p>
+                  <h2 id="vendor-funnel-detail-title">Targeted</h2>
+                  <span id="vendor-funnel-detail-count" class="base-context-pill">0 vendors</span>
+                </div>
+                <div class="table-wrap compact-table-wrap">
+                  <table class="funnel-detail-table">
+                    <thead>
+                      <tr>
+                        <th>Vendor</th>
+                        <th>Health</th>
+                        <th>Quote signal</th>
+                        <th>Next</th>
+                      </tr>
+                    </thead>
+                    <tbody id="vendor-funnel-detail-body">
+                      <tr>
+                        <td colspan="4">Open Funnel to load procurement vendors.</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </aside>
+            </div>
+            <p id="vendor-funnel-status" class="status-message" role="status"></p>
           </section>
 
           <section class="workspace-panel wide-section hidden" data-tab-panel="intelligence">
