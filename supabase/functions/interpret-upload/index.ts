@@ -261,16 +261,26 @@ function normalizeServiceSafety(row: Record<string, unknown>) {
   if (serviceKey.includes("ROUNDTRIP") || serviceKey.includes("ROUND TRIP")) {
     return {
       ...row,
-      service: hasOneDirection ? "One Way" : row.service,
-      normalized_service: hasOneDirection ? "One Way" : row.normalized_service,
+      service: "One Way",
+      normalized_service: "One Way",
       notes: [
         row.notes,
-        hasOneDirection ? "Service corrected to One Way because no explicit roundtrip marker was found in the carrier quote." : null
+        "Service corrected to One Way because no explicit RT/Round Trip marker was found in the carrier quote."
       ].filter(Boolean).join(" | ")
     };
   }
 
-  if (!serviceKey && hasOneDirection) return { ...row, service: "One Way", normalized_service: "One Way" };
+  if (!serviceKey && (hasOneDirection || hasRateAmount(row))) {
+    return {
+      ...row,
+      service: "One Way",
+      normalized_service: "One Way",
+      notes: [
+        row.notes,
+        "Service defaulted to One Way because the carrier provided a priced lane without an explicit RT/Round Trip marker."
+      ].filter(Boolean).join(" | ")
+    };
+  }
   return row;
 }
 
@@ -631,11 +641,44 @@ function hasRateAmount(row: Record<string, unknown>) {
   return [
     row.mx_linehaul,
     row.us_linehaul,
+    row.fuel,
     row.fsc,
     row.border_crossing_fee,
     row.flat_rate,
     row.all_in_rate
   ].some((value) => cleanRateValue(value) !== null);
+}
+
+function splitRateFields() {
+  return ["mx_linehaul", "us_linehaul", "fuel", "fsc", "border_crossing_fee"];
+}
+
+function hasSplitRateAmount(row: Record<string, unknown>) {
+  return splitRateFields().some((field) => cleanRateValue(row[field]) !== null);
+}
+
+function extractedPayloadValue(row: Record<string, unknown>, field: string) {
+  return row.extracted_payload && typeof row.extracted_payload === "object"
+    ? (row.extracted_payload as Record<string, unknown>)[field]
+    : undefined;
+}
+
+function hasNonNumericRateText(value: unknown) {
+  const text = cleanText(value);
+  if (!text) return false;
+  const withoutCurrency = text
+    .replace(/\b(USD|US\$|DLLS?|DOLLARS?|MXN|MX\$|PESOS?|CAD|CAN\$)\b/gi, "")
+    .replace(/[$,\s.-]/g, "");
+  return /[A-Z]/i.test(withoutCurrency);
+}
+
+function rateMode(row: Record<string, unknown>) {
+  const allIn = cleanRateValue(row.all_in_rate) !== null;
+  const split = hasSplitRateAmount(row);
+  if (allIn && split) return "itemized_total";
+  if (split) return "split_without_total";
+  if (allIn) return "all_in";
+  return "missing_rate";
 }
 
 function rowAuditFlags(row: Record<string, unknown>) {
@@ -661,6 +704,9 @@ function rowAuditFlags(row: Record<string, unknown>) {
   if (!cleanText(row.weekly_capacity)) flags.push("missing_capacity");
   if (!cleanText(row.origin_zip_prefix) && !cleanText(row.origin_market) && !cleanText(row.origin_country)) flags.push("origin_not_matched");
   if (!cleanText(row.destination_zip_prefix) && !cleanText(row.destination_market) && !cleanText(row.destination_country)) flags.push("destination_not_matched");
+  if (rateMode(row) === "split_without_total") flags.push("split_without_all_in_total");
+  if (hasNonNumericRateText(extractedPayloadValue(row, "all_in_rate"))) flags.push("all_in_text_cleaned");
+  if (rawKey(row.service || row.normalized_service).includes("ROUNDTRIP") && !serviceEvidenceFromRow(row)) flags.push("roundtrip_without_source_marker");
   if (clampConfidence(row.confidence, 0) < 0.7) flags.push("low_row_confidence");
   if (Array.isArray(row.extraction_warnings) && row.extraction_warnings.length) flags.push("has_extraction_warnings");
 
@@ -682,6 +728,9 @@ const DERIVED_ROW_AUDIT_FLAGS = new Set([
   "missing_capacity",
   "origin_not_matched",
   "destination_not_matched",
+  "split_without_all_in_total",
+  "all_in_text_cleaned",
+  "roundtrip_without_source_marker",
   "low_row_confidence",
   "has_extraction_warnings"
 ]);
@@ -730,7 +779,10 @@ function sourceEvidence(rawUpload: Record<string, unknown>, row: Record<string, 
     service: cleanText(row.service),
     operation: cleanText(row.operation),
     all_in_rate: cleanRateValue(row.all_in_rate),
-    split_rate_present: ["mx_linehaul", "us_linehaul", "fsc", "border_crossing_fee"].some((field) => cleanRateValue(row[field]) !== null),
+    split_rate_present: hasSplitRateAmount(row),
+    rate_mode: rateMode(row),
+    service_marker: serviceEvidenceFromRow(row),
+    roundtrip_explicit: serviceEvidenceFromRow(row) === "Roundtrip",
     notes: cleanText(row.notes),
     warnings
   };
@@ -1695,6 +1747,45 @@ function attachInterpretationAuditMeta(interpretation: Record<string, unknown>, 
   return Object.assign(interpretation, { __audit: meta });
 }
 
+function numericRowIds(rows: Record<string, unknown>[]) {
+  return rows
+    .map((row) => cleanText(row.row_id)?.match(/\d+/)?.[0])
+    .map((value) => Number(value))
+    .filter((value) => Number.isFinite(value) && value > 0);
+}
+
+function missingRowDetector(rawUpload: Record<string, unknown>, meta: Record<string, unknown>, rows: Record<string, unknown>[]) {
+  const ids = numericRowIds(rows);
+  const maxRowId = ids.length ? Math.max(...ids) : 0;
+  const uniqueCount = new Set(ids).size;
+  const missingIds = maxRowId > uniqueCount
+    ? Array.from({ length: maxRowId }, (_, index) => index + 1).filter((id) => ids.includes(id) === false)
+    : [];
+  const pdfOrImage = ["pdf", "image"].includes(String(rawUpload.document_type || ""));
+  const firstPassRows = Number(meta.first_pass_rows || 0);
+  const auditPassRows = Number(meta.audit_pass_rows || 0);
+  const finalRows = rows.length;
+  const expected = Math.max(
+    finalRows,
+    Number(meta.final_rows || 0),
+    auditPassRows,
+    maxRowId || 0
+  );
+  const signals = [
+    missingIds.length ? `Visible row numbering appears to skip row(s): ${missingIds.slice(0, 12).join(", ")}.` : null,
+    pdfOrImage && finalRows > 0 && finalRows <= 3 ? "Sparse PDF/image result: only three or fewer staged rows." : null,
+    pdfOrImage && firstPassRows > 0 && auditPassRows > firstPassRows ? `Audit pass found ${auditPassRows - firstPassRows} additional row(s).` : null,
+    meta.audit_kept_first_pass ? "Audit pass returned fewer rows than the first pass." : null
+  ].filter(Boolean).map(String);
+
+  return {
+    expected_rate_rows: expected,
+    missing_row_count: Math.max(0, expected - finalRows),
+    missing_row_ids: missingIds,
+    signals
+  };
+}
+
 async function interpretWithModel(rawUpload: Record<string, string>, file: Blob, correctionNote = "", memoryRules: Record<string, unknown>[] = []) {
   const correctionRules = cleanText(correctionNote)
     ? [
@@ -1722,6 +1813,7 @@ async function interpretWithModel(rawUpload: Record<string, string>, file: Blob,
     "Create one row per unique rated lane and service combination. If a matrix has multiple destinations and multiple service columns, each priced cell is its own row.",
     "For example, 3 destinations with One Way and Roundtrip prices means 6 rows when all six cells have carrier rates.",
     "If a quote includes outbound and return lanes, include both directions when each has a carrier price.",
+    "When the source table has visible row numbers, sequence numbers, or line labels, copy that visible value into row_id. Do not renumber after skipping invalid cells.",
     "For email/PDF screenshots with a rate table, read every visible table line from top to bottom. A table with columns like Origin, Border, Destination, Type of Driver, US Miles, Mex Haul, Border Crossing, US Haul, FSC, Total (USD), and a final OW/RT marker must produce one row for every table line with a Total value.",
     "The final OW or RT marker at the far right of a table row is the service for that row: OW means One Way and RT means Roundtrip.",
     "Do not replace a visible destination with another city from the state. If the table says Canton, MS, do not output Tupelo, MS. If the table says Smyrna, TN, do not output Nashville, TN as destination; Nashville may only be market metadata.",
@@ -1824,9 +1916,11 @@ function buildUploadAudit(rawUpload: Record<string, unknown>, interpretation: Re
   const meta = typeof interpretation.__audit === "object" && interpretation.__audit ? interpretation.__audit as Record<string, unknown> : {};
   const rowFlags = rows.flatMap((row) => Array.isArray(row.audit_flags) ? row.audit_flags.map(String) : []);
   const rowWarnings = rows.flatMap((row) => Array.isArray(row.extraction_warnings) ? row.extraction_warnings.map(String) : []);
+  const missingRows = missingRowDetector(rawUpload, meta, rows);
   const warnings = [...new Set([
     ...rowWarnings,
     ...rowFlags.map((flag) => `Row audit: ${flag}`),
+    ...missingRows.signals,
     Number(meta.audit_pass_rows || 0) > Number(meta.first_pass_rows || 0) ? "Completeness audit added rows after first pass." : null,
     meta.audit_kept_first_pass ? "Audit pass returned fewer rows than the first pass, so the first pass was preserved." : null,
     meta.deterministic_repair_used ? "Deterministic table repair was applied." : null,
@@ -1851,9 +1945,11 @@ function buildUploadAudit(rawUpload: Record<string, unknown>, interpretation: Re
   const sparseRisk = ["pdf", "image"].includes(String(rawUpload.document_type || "")) && rows.length > 0 && rows.length <= 3;
   const status = rows.length === 0
     ? "failed"
-    : meta.deterministic_repair_used
-      ? "repaired"
-      : criticalIssues || sparseRisk || warnings.length
+    : criticalIssues || sparseRisk || missingRows.missing_row_count
+      ? "needs_review"
+      : meta.deterministic_repair_used
+        ? "repaired"
+        : warnings.length
         ? "needs_review"
         : "ok";
 
@@ -1863,8 +1959,11 @@ function buildUploadAudit(rawUpload: Record<string, unknown>, interpretation: Re
     audit_pass_used: Boolean(meta.audit_pass_used),
     audit_pass_rows: meta.audit_pass_rows ?? null,
     deterministic_repair_used: Boolean(meta.deterministic_repair_used),
-    expected_rate_rows: Math.max(rows.length, Number(meta.final_rows || 0), Number(meta.audit_pass_rows || 0)),
+    expected_rate_rows: missingRows.expected_rate_rows,
     interpreted_rate_rows: rows.length,
+    missing_row_count: missingRows.missing_row_count,
+    missing_row_ids: missingRows.missing_row_ids,
+    missing_row_signals: missingRows.signals,
     sparse_table_risk: sparseRisk,
     critical_issues: criticalIssues,
     warning_count: warnings.length,
@@ -1873,6 +1972,8 @@ function buildUploadAudit(rawUpload: Record<string, unknown>, interpretation: Re
       needs_review: rows.filter((row) => Array.isArray(row.audit_flags) && row.audit_flags.length).length,
       missing_rate: rowFlags.filter((flag) => flag === "missing_rate").length,
       missing_location_match: rowFlags.filter((flag) => flag === "origin_not_matched" || flag === "destination_not_matched").length,
+      split_without_total: rowFlags.filter((flag) => flag === "split_without_all_in_total").length,
+      roundtrip_without_marker: rowFlags.filter((flag) => flag === "roundtrip_without_source_marker").length,
       low_confidence: rowFlags.filter((flag) => flag === "low_row_confidence").length
     },
     warnings: warnings.slice(0, 40)

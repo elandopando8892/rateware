@@ -33,6 +33,10 @@ export async function fetchUploadHistory({ status = "" } = {}) {
   return (await callRatewareApi("list_uploads", { status })).rows;
 }
 
+export async function fetchUploadStagedRows(rawUploadId) {
+  return (await callRatewareApi("list_upload_staged_rows", { raw_upload_id: rawUploadId })).rows;
+}
+
 export async function archiveUpload(rawUploadId) {
   return (await callRatewareApi("archive_upload", { id: rawUploadId })).row;
 }

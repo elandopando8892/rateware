@@ -4580,6 +4580,21 @@ Deno.serve(async (request) => {
       return jsonResponse({ rows: result.data });
     }
 
+    if (body.action === "list_upload_staged_rows") {
+      const rawUploadId = cleanText(body.raw_upload_id);
+      if (!rawUploadId) return jsonResponse({ error: "raw_upload_id is required." }, 400);
+      const result = await supabase
+        .from("rate_staging")
+        .select("id,row_id,status,vendor_domain,rfx_id,quote_date,origin,destination,equipment,trailer,operation,service,mx_linehaul,us_linehaul,fsc,fuel,border_crossing_fee,all_in_rate,currency,weekly_capacity,confidence,audit_flags,source_evidence,created_at")
+        .eq("raw_upload_id", rawUploadId)
+        .neq("status", "archived")
+        .order("row_id", { ascending: true, nullsFirst: false })
+        .order("created_at", { ascending: true })
+        .limit(500);
+      if (result.error) throw result.error;
+      return jsonResponse({ rows: result.data || [] });
+    }
+
     if (body.action === "list_interpretation_memory") {
       const rawUploadId = cleanText(body.raw_upload_id);
       let upload: Record<string, unknown> | null = null;

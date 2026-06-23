@@ -4,6 +4,7 @@ import {
   archiveUpload,
   createInterpretationMemory,
   fetchUploadHistory,
+  fetchUploadStagedRows,
   getUploadSourceUrl,
   interpretUpload,
   listInterpretationMemory,
@@ -301,6 +302,8 @@ function renderAuditQuality(row) {
     ["Rows needing review", quality.needs_review ?? 0, Number(quality.needs_review || 0) ? "warning" : "success"],
     ["Missing rates", quality.missing_rate ?? 0, Number(quality.missing_rate || 0) ? "danger" : "success"],
     ["Missing location match", quality.missing_location_match ?? 0, Number(quality.missing_location_match || 0) ? "warning" : "success"],
+    ["Split no total", quality.split_without_total ?? 0, Number(quality.split_without_total || 0) ? "warning" : "success"],
+    ["RT no marker", quality.roundtrip_without_marker ?? 0, Number(quality.roundtrip_without_marker || 0) ? "danger" : "success"],
     ["Low confidence", quality.low_confidence ?? 0, Number(quality.low_confidence || 0) ? "warning" : "success"]
   ];
   return `
@@ -356,6 +359,115 @@ function renderInterpretationAuditViewer(row) {
       </div>
     </div>
   `;
+}
+
+function rowEvidence(row) {
+  return row.source_evidence && typeof row.source_evidence === "object" ? row.source_evidence : {};
+}
+
+function rateDisplay(row) {
+  const split = [row.mx_linehaul, row.us_linehaul, row.fsc, row.fuel, row.border_crossing_fee].filter(Boolean);
+  if (row.all_in_rate) return [row.all_in_rate, row.currency].filter(Boolean).join(" ");
+  if (split.length) return `split ${split.join(" + ")}`;
+  return "-";
+}
+
+function renderMissingRowDetector(row) {
+  const audit = auditPayload(row);
+  const missing = Number(audit.missing_row_count || Math.max(0, detectedRows(row) - stagedRows(row)) || 0);
+  const ids = Array.isArray(audit.missing_row_ids) ? audit.missing_row_ids : [];
+  const signals = Array.isArray(audit.missing_row_signals) ? audit.missing_row_signals : [];
+  return `
+    <div class="missing-row-detector ${missing ? "danger" : "success"}">
+      <div>
+        <span>${escapeHtml(missing ? "Missing rows suspected" : "No missing row gap detected")}</span>
+        <strong>${escapeHtml(missing)}</strong>
+      </div>
+      ${ids.length ? `<small>Missing row IDs: ${escapeHtml(ids.slice(0, 16).join(", "))}</small>` : ""}
+      ${signals.length ? `<ul>${signals.slice(0, 5).map((signal) => `<li>${escapeHtml(signal)}</li>`).join("")}</ul>` : ""}
+    </div>
+  `;
+}
+
+function renderStagedComparisonTable(rows = []) {
+  if (!rows.length) {
+    return '<p class="detail-note">No current staged rows found for this upload.</p>';
+  }
+  return `
+    <div class="source-compare-table">
+      <table>
+        <thead>
+          <tr>
+            <th>Row</th>
+            <th>Lane</th>
+            <th>Service</th>
+            <th>Rate</th>
+            <th>Audit</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map((stagedRow) => {
+            const evidence = rowEvidence(stagedRow);
+            const flags = Array.isArray(stagedRow.audit_flags) ? stagedRow.audit_flags : [];
+            return `
+              <tr>
+                <td>${escapeHtml(stagedRow.row_id || evidence.row_id || "-")}</td>
+                <td>
+                  <strong>${escapeHtml([stagedRow.origin, stagedRow.destination].filter(Boolean).join(" -> ") || evidence.lane || "-")}</strong>
+                  <small>${escapeHtml([stagedRow.operation, stagedRow.equipment, stagedRow.trailer].filter(Boolean).join(" / "))}</small>
+                </td>
+                <td>
+                  ${escapeHtml(stagedRow.service || "-")}
+                  ${evidence.service_marker ? `<small>marker: ${escapeHtml(evidence.service_marker)}</small>` : ""}
+                </td>
+                <td>
+                  ${escapeHtml(rateDisplay(stagedRow))}
+                  ${evidence.rate_mode ? `<small>${escapeHtml(evidence.rate_mode)}</small>` : ""}
+                </td>
+                <td>
+                  ${flags.length ? flags.slice(0, 4).map((flag) => `<span class="review-chip warning">${escapeHtml(String(flag).replace(/_/g, " "))}</span>`).join("") : '<span class="review-chip success">clean</span>'}
+                </td>
+              </tr>
+            `;
+          }).join("")}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+async function loadSourceComparison(row) {
+  const target = document.querySelector("#upload-source-comparison");
+  if (!target) return;
+  target.innerHTML = '<p class="detail-note">Loading staged rows for source comparison...</p>';
+  try {
+    const rows = await fetchUploadStagedRows(row.id);
+    target.innerHTML = `
+      <div class="source-compare-layout">
+        <section>
+          <div class="source-compare-heading">
+            <strong>Source/PDF</strong>
+            <button class="secondary small-button" type="button" data-source-id="${escapeHtml(row.id)}">View source</button>
+          </div>
+          ${renderMissingRowDetector(row)}
+          <dl>
+            ${detailItem("Detected rows", detectedRows(row) || stagedRows(row))}
+            ${detailItem("Staged rows", rows.length || stagedRows(row))}
+            ${detailItem("Audit status", auditLabel(auditStatus(row)))}
+          </dl>
+        </section>
+        <section>
+          <div class="source-compare-heading">
+            <strong>Rows staged</strong>
+            <a class="small-button secondary" href="${escapeHtml(sourceRowsUrl(row))}">Open Staging</a>
+          </div>
+          ${renderStagedComparisonTable(rows)}
+        </section>
+      </div>
+    `;
+  } catch (error) {
+    target.innerHTML = `<p class="detail-note">${escapeHtml(humanizeError(error))}</p>`;
+  }
 }
 
 function correctionHistory(row) {
@@ -472,6 +584,37 @@ function renderSelectedReprocessPreview(rows = []) {
   `).join("") + (rows.length > 8 ? `<p class="detail-note">${escapeHtml(rows.length - 8)} more upload(s) selected.</p>` : "");
 }
 
+function renderReprocessRunResults(results = [], total = 0) {
+  if (!reprocessImpactPreview) return;
+  if (!results.length) {
+    reprocessImpactPreview.innerHTML = `<p class="detail-note">Reprocessing 0/${escapeHtml(total)} upload(s)...</p>`;
+    return;
+  }
+  reprocessImpactPreview.innerHTML = results.map((item) => {
+    const row = loadedRows.find((candidate) => candidate.id === item.id) || {};
+    const diff = item.result?.diff || {};
+    const audit = item.result?.audit || {};
+    const rowDelta = Number(diff.rows_after || 0) - Number(diff.rows_before || 0);
+    const warningDelta = Number(diff.warnings_after || 0) - Number(diff.warnings_before || 0);
+    return `
+      <article class="${item.error ? "danger" : rowDelta > 0 ? "success" : audit.status === "needs_review" ? "warning" : "neutral"}">
+        <div>
+          <strong>${escapeHtml(row.original_filename || item.id)}</strong>
+          <span class="review-chip ${item.error ? "danger" : rowDelta > 0 ? "success" : "neutral"}">${escapeHtml(item.error ? "failed" : rowDelta > 0 ? `+${rowDelta} rows` : "no row change")}</span>
+        </div>
+        ${item.error ? `<span>${escapeHtml(humanizeError(item.error))}</span>` : `
+          <small>${escapeHtml([
+            `${diff.rows_before ?? 0} -> ${diff.rows_after ?? 0} staged`,
+            `${diff.expected_before ?? 0} -> ${diff.expected_after ?? 0} expected`,
+            `${diff.audit_status_before || "-"} -> ${diff.audit_status_after || audit.status || "-"}`,
+            warningDelta < 0 ? `${Math.abs(warningDelta)} fewer warnings` : warningDelta > 0 ? `${warningDelta} more warnings` : "same warnings"
+          ].join(" | "))}</small>
+        `}
+      </article>
+    `;
+  }).join("") + (results.length < total ? `<p class="detail-note">Reprocessing ${escapeHtml(results.length)}/${escapeHtml(total)}...</p>` : "");
+}
+
 function vendorDisplay(row) {
   return row.vendors?.vendor_name || row.vendor_hint || "No vendor detected";
 }
@@ -522,6 +665,13 @@ function openUploadDrawer(rowId) {
     </section>
 
     <section class="upload-detail-section">
+      <h3>Source vs staged rows</h3>
+      <div id="upload-source-comparison" class="source-comparison-panel">
+        <p class="detail-note">Loading comparison...</p>
+      </div>
+    </section>
+
+    <section class="upload-detail-section">
       <h3>Correction notes</h3>
       ${renderReprocessImpact(row)}
       ${renderCorrectionHistory(row)}
@@ -561,6 +711,7 @@ function openUploadDrawer(rowId) {
     </section>
   `;
   uploadDrawer.classList.remove("hidden");
+  loadSourceComparison(row);
 }
 
 function emptyUploadMessage() {
@@ -744,10 +895,18 @@ async function runReprocessWithNote(event) {
     if (!(await applyPermissionState("[data-interpret-id], [data-archive-id], [data-remove-id], #reprocess-selected-uploads, #archive-selected-uploads, #remove-selected-uploads", "uploads:interpret"))) {
       throw new Error("Your role does not allow upload actions.");
     }
+    const runResults = [];
     for (let index = 0; index < ids.length; index += 1) {
       setReprocessStatus(`Reprocessing ${index + 1}/${ids.length}...`);
-      await interpretUpload(ids[index], { correctionNote });
+      try {
+        const result = await interpretUpload(ids[index], { correctionNote });
+        runResults.push({ id: ids[index], result });
+      } catch (error) {
+        runResults.push({ id: ids[index], error });
+      }
+      renderReprocessRunResults(runResults, ids.length);
     }
+    const failed = runResults.filter((item) => item.error).length;
     if (saveMemoryRuleInput?.checked && correctionNote.trim()) {
       await createInterpretationMemory({
         rawUploadId: ids[0],
@@ -757,10 +916,9 @@ async function runReprocessWithNote(event) {
       });
     }
     ids.forEach((id) => selectedUploadIds.delete(id));
-    setReprocessStatus(`${ids.length} upload(s) reprocessed.`, "success");
-    setBulkStatus(`${ids.length} upload(s) reprocessed with correction note.`, "success");
+    setReprocessStatus(`${ids.length - failed}/${ids.length} upload(s) reprocessed.`, failed ? "error" : "success");
+    setBulkStatus(`${ids.length - failed}/${ids.length} upload(s) reprocessed with diff.`, failed ? "error" : "success");
     pendingReprocessIds = [];
-    reprocessDrawer?.classList.add("hidden");
     uploadDrawer?.classList.add("hidden");
     await loadHistory();
   } catch (error) {
