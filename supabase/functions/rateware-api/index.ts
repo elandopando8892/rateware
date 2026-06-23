@@ -508,6 +508,8 @@ function memoryEffectivenessSummary(rule: Record<string, unknown>, uploads: Reco
       failed_count: 0,
       warning_count: 0,
       health: Number(rule.usage_count || 0) > 0 ? "unmeasured" : "unused",
+      quality_score: Number(rule.usage_count || 0) > 0 ? 45 : 0,
+      quality_label: Number(rule.usage_count || 0) > 0 ? "Needs evidence" : "No evidence",
       last_upload_at: null
     };
   }
@@ -525,6 +527,18 @@ function memoryEffectivenessSummary(rule: Record<string, unknown>, uploads: Reco
     : warningCount > matchedUploads.length * 2 || (completionRate !== null && completionRate < 95)
       ? "watch"
       : "healthy";
+  const warningPenalty = Math.min(25, warningCount * 4);
+  const failurePenalty = Math.min(35, failedCount * 15);
+  const completionScore = completionRate === null ? 55 : Math.max(0, Math.min(100, completionRate));
+  const evidenceBonus = Math.min(10, matchedUploads.length * 2);
+  const qualityScore = Math.max(0, Math.min(100, Math.round(completionScore - warningPenalty - failurePenalty + evidenceBonus)));
+  const qualityLabel = qualityScore >= 90
+    ? "Strong"
+    : qualityScore >= 75
+      ? "Good"
+      : qualityScore >= 55
+        ? "Needs review"
+        : "Risky";
   return {
     upload_count: matchedUploads.length,
     staged_rows: stagedRows,
@@ -533,11 +547,58 @@ function memoryEffectivenessSummary(rule: Record<string, unknown>, uploads: Reco
     failed_count: failedCount,
     warning_count: warningCount,
     health,
+    quality_score: qualityScore,
+    quality_label: qualityLabel,
     last_upload_at: matchedUploads.map((upload) => cleanText(upload.interpreted_at || upload.created_at)).filter(Boolean).sort().at(-1) || null
   };
 }
 
-function memoryRecommendation(rule: Record<string, unknown>, effectiveness: Record<string, unknown>) {
+function memoryConflictSignals(rule: Record<string, unknown>, rules: Record<string, unknown>[]) {
+  const instruction = String(rule.instruction || "").toLowerCase();
+  const scope = cleanText(rule.scope) || "global";
+  const target = [normalizeDomain(rule.vendor_domain), cleanText(rule.rfx_hint), cleanText(rule.raw_upload_id)].filter(Boolean).join(":") || "global";
+  const issues: string[] = [];
+  const addIssue = (message: string) => {
+    if (!issues.includes(message)) issues.push(message);
+  };
+  const hasAny = (text: string, terms: string[]) => terms.some((term) => text.includes(term));
+  const deniesRoundtrip = hasAny(instruction, ["only classify roundtrip", "only use roundtrip", "explicitly stated", "do not infer roundtrip", "no roundtrip"]);
+  const forcesRoundtrip = hasAny(instruction, ["default roundtrip", "force roundtrip", "assume roundtrip", "classify as roundtrip"]);
+  const forcesOneWay = hasAny(instruction, ["default one way", "force one way", "assume one way", "classify as one way"]);
+  const hasAllInRule = hasAny(instruction, ["all-in", "all in", "includes fsc", "includes border", "do not split"]);
+  const hasSplitRule = hasAny(instruction, ["split fsc", "separate fsc", "separate border", "linehaul", "border fee"]);
+  if (forcesRoundtrip && deniesRoundtrip) addIssue("Roundtrip wording conflicts inside this rule.");
+  if (forcesRoundtrip && forcesOneWay) addIssue("Service wording conflicts inside this rule.");
+  if (hasAllInRule && hasSplitRule) addIssue("All-in and split-cost wording both appear in this rule.");
+
+  for (const other of rules) {
+    if (other.id === rule.id || !other.active) continue;
+    const otherScope = cleanText(other.scope) || "global";
+    const otherTarget = [normalizeDomain(other.vendor_domain), cleanText(other.rfx_hint), cleanText(other.raw_upload_id)].filter(Boolean).join(":") || "global";
+    const comparable = scope === "global" || otherScope === "global" || (scope === otherScope && target === otherTarget);
+    if (!comparable) continue;
+    const otherInstruction = String(other.instruction || "").toLowerCase();
+    const otherDeniesRoundtrip = hasAny(otherInstruction, ["only classify roundtrip", "only use roundtrip", "explicitly stated", "do not infer roundtrip", "no roundtrip"]);
+    const otherForcesRoundtrip = hasAny(otherInstruction, ["default roundtrip", "force roundtrip", "assume roundtrip", "classify as roundtrip"]);
+    const otherForcesOneWay = hasAny(otherInstruction, ["default one way", "force one way", "assume one way", "classify as one way"]);
+    const otherAllInRule = hasAny(otherInstruction, ["all-in", "all in", "includes fsc", "includes border", "do not split"]);
+    const otherSplitRule = hasAny(otherInstruction, ["split fsc", "separate fsc", "separate border", "linehaul", "border fee"]);
+    if ((forcesRoundtrip && (otherDeniesRoundtrip || otherForcesOneWay)) || (deniesRoundtrip && otherForcesRoundtrip) || (forcesOneWay && otherForcesRoundtrip)) {
+      addIssue(`Potential service conflict with "${cleanText(other.title) || "another rule"}".`);
+    }
+    if ((hasAllInRule && otherSplitRule) || (hasSplitRule && otherAllInRule)) {
+      addIssue(`Potential cost breakout conflict with "${cleanText(other.title) || "another rule"}".`);
+    }
+  }
+
+  return {
+    count: issues.length,
+    severity: issues.length > 1 ? "danger" : issues.length === 1 ? "warning" : "none",
+    issues: issues.slice(0, 4)
+  };
+}
+
+function memoryRecommendation(rule: Record<string, unknown>, effectiveness: Record<string, unknown>, conflicts: Record<string, unknown> = {}) {
   const health = cleanText(effectiveness.health) || "unused";
   const scope = cleanText(rule.scope) || "global";
   const ownerEmail = cleanText(rule.owner_email);
@@ -545,10 +606,19 @@ function memoryRecommendation(rule: Record<string, unknown>, effectiveness: Reco
   const usageCount = Number(rule.usage_count || 0);
   const warningCount = Number(effectiveness.warning_count || 0);
   const failedCount = Number(effectiveness.failed_count || 0);
+  const conflictCount = Number(conflicts.count || 0);
   const completionRate = effectiveness.completion_rate === null || effectiveness.completion_rate === undefined
     ? null
     : Number(effectiveness.completion_rate);
 
+  if (conflictCount > 0) {
+    return {
+      code: "resolve_conflict",
+      label: "Resolve conflict",
+      tone: conflictCount > 1 ? "danger" : "warning",
+      rationale: "This rule appears to overlap or contradict another active memory rule. Review before applying broadly."
+    };
+  }
   if (!ownerEmail) {
     return {
       code: "system_rule",
@@ -4490,10 +4560,12 @@ Deno.serve(async (request) => {
 
       const rows = baseRows.map((rule) => {
         const effectiveness = memoryEffectivenessSummary(rule, uploadAuditResult.data || []);
+        const conflicts = memoryConflictSignals(rule, baseRows);
         return {
           ...rule,
           effectiveness,
-          recommendation: memoryRecommendation(rule, effectiveness)
+          conflicts,
+          recommendation: memoryRecommendation(rule, effectiveness, conflicts)
         };
       });
       return jsonResponse({ rows, upload, vendor });

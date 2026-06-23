@@ -5927,6 +5927,7 @@ tbody tr:hover {
 }
 
 .memory-effectiveness,
+.memory-quality,
 .memory-recommendation {
   display: grid;
   gap: 4px;
@@ -6052,7 +6053,12 @@ tbody tr:hover {
   min-width: 190px;
 }
 
+.memory-quality {
+  min-width: 180px;
+}
+
 .memory-effectiveness small,
+.memory-quality small,
 .memory-recommendation small {
   color: var(--muted);
   font-size: 0.68rem;

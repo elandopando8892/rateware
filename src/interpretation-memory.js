@@ -114,6 +114,9 @@ function recommendationRationale(rule) {
 function recommendationActions(rule) {
   if (!rule.owner_email) return "";
   const code = recommendationCode(rule);
+  if (code === "resolve_conflict") {
+    return `<button type="button" class="small-button secondary" data-focus-memory="${escapeHtml(rule.id)}">Review rule</button>`;
+  }
   if (code === "archive_candidate" || code === "review_or_archive") {
     return `<button type="button" class="small-button danger" data-apply-recommendation="${escapeHtml(rule.id)}" data-recommendation-action="archive">Apply: Archive</button>`;
   }
@@ -264,6 +267,28 @@ function effectivenessLabel(rule) {
   return pieces.join(" / ");
 }
 
+function qualityTone(score, conflicts = {}) {
+  const conflictCount = Number(conflicts.count || 0);
+  if (conflictCount > 1 || Number(score || 0) < 55) return "danger";
+  if (conflictCount === 1 || Number(score || 0) < 75) return "warning";
+  if (Number(score || 0) >= 90) return "success";
+  return "neutral";
+}
+
+function qualityLabel(rule) {
+  const effectiveness = rule.effectiveness || {};
+  const score = Number(effectiveness.quality_score || 0);
+  if (!score) return effectiveness.quality_label || "No evidence";
+  return `${score} / ${effectiveness.quality_label || "Measured"}`;
+}
+
+function conflictLabel(rule) {
+  const conflicts = rule.conflicts || {};
+  const issues = Array.isArray(conflicts.issues) ? conflicts.issues : [];
+  if (!issues.length) return "No active conflicts detected.";
+  return issues.join(" ");
+}
+
 function filteredRules() {
   const scope = scopeFilter?.value || "";
   const health = healthFilter?.value || "";
@@ -302,7 +327,7 @@ function renderRules() {
   const rows = filteredRules();
   updateMetrics(loadedRules);
   if (!rows.length) {
-    memoryBody.innerHTML = `<tr><td colspan="9">No memory rules match this view.</td></tr>`;
+    memoryBody.innerHTML = `<tr><td colspan="10">No memory rules match this view.</td></tr>`;
     updateSelection();
     return;
   }
@@ -314,6 +339,12 @@ function renderRules() {
       <td><input class="memory-inline-input" data-memory-field="title" value="${escapeHtml(rule.title || "")}" /></td>
       <td><textarea class="memory-inline-textarea" data-memory-field="instruction" rows="2">${escapeHtml(rule.instruction || "")}</textarea></td>
       <td>${escapeHtml(targetLabel(rule))}</td>
+      <td>
+        <div class="memory-quality">
+          <span class="review-chip ${escapeHtml(qualityTone(rule.effectiveness?.quality_score, rule.conflicts))}">${escapeHtml(qualityLabel(rule))}</span>
+          <small>${escapeHtml(conflictLabel(rule))}</small>
+        </div>
+      </td>
       <td>
         <div class="memory-effectiveness">
           <span class="review-chip ${escapeHtml(healthTone(ruleHealth(rule)))}">${escapeHtml(healthLabel(ruleHealth(rule)))}</span>
@@ -340,7 +371,7 @@ function renderRules() {
 }
 
 async function loadMemory() {
-  memoryBody.innerHTML = `<tr><td colspan="9">Loading memory rules...</td></tr>`;
+  memoryBody.innerHTML = `<tr><td colspan="10">Loading memory rules...</td></tr>`;
   setStatus(memoryTableStatus, "");
   try {
     await requirePrivatePage();
@@ -349,7 +380,7 @@ async function loadMemory() {
     renderRules();
     await loadMemoryAudit();
   } catch (error) {
-    memoryBody.innerHTML = `<tr><td colspan="9">${escapeHtml(humanizeError(error))}</td></tr>`;
+    memoryBody.innerHTML = `<tr><td colspan="10">${escapeHtml(humanizeError(error))}</td></tr>`;
   }
 }
 
