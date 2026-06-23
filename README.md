@@ -10,6 +10,7 @@ Static Upload Center module for preserving carrier quotation source files before
 - Marks every upload with `staging_target = 'rate_staging'`.
 - Provides an Upload History page for recent source intake.
 - Interprets uploaded files into `rate_staging` through the `interpret-upload` Supabase function.
+- Bulk imports structured XLSX templates into `rate_staging` without OpenAI when headers already match Rateware-style data.
 - Provides a Staging Review page for human approval before production.
 - Provides a Vendor CRM page for carrier master data, import, tags, completeness scoring, duplicate signals, and profile review.
 - Provides a downloadable vendor import template and validates imports before saving valid rows.
@@ -87,3 +88,13 @@ Production inserts are intentionally not implemented here. Uploaded source files
 4. XLSX and EML files are converted into text; PDFs and images are sent as source files to the model.
 5. Structured Rateware rows are inserted into `rate_staging`.
 6. Review rows in Staging Review and mark them approved or rejected.
+
+## Structured bulk import flow
+
+Use this when the XLSX is already a template/database, not an unstructured carrier quote.
+
+1. Upload the XLSX in Upload Center.
+2. Go to Upload History and select `Bulk import`.
+3. The backend reads the workbook from Storage, maps known headers like `Vendor Domain`, `Origen`, `Destino`, `Equipment`, `Trailer`, `Operation`, `Service`, `Rate`, and `Currency`.
+4. Existing pending/rejected rows for that upload are archived to avoid duplicates; approved rows are not touched.
+5. Imported rows are normalized and inserted into `rate_staging` for review before approval.

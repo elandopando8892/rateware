@@ -2,6 +2,7 @@ import { applyPermissionState, ensureSignedIn, initAuthControls, requirePrivateP
 import { humanizeError } from "./error-copy.js";
 import {
   archiveUpload,
+  bulkImportUploadTemplate,
   createInterpretationMemory,
   fetchUploadHistory,
   fetchUploadStagedRows,
@@ -23,6 +24,7 @@ const quickFilterButtons = document.querySelectorAll("[data-upload-filter]");
 const selectAllUploads = document.querySelector("#select-all-uploads");
 const uploadSelectionCount = document.querySelector("#upload-selection-count");
 const reprocessSelectedButton = document.querySelector("#reprocess-selected-uploads");
+const bulkImportSelectedButton = document.querySelector("#bulk-import-selected-uploads");
 const archiveSelectedButton = document.querySelector("#archive-selected-uploads");
 const removeSelectedButton = document.querySelector("#remove-selected-uploads");
 const uploadBulkStatus = document.querySelector("#upload-bulk-status");
@@ -42,6 +44,7 @@ const saveMemoryRuleInput = document.querySelector("#save-memory-rule");
 const memoryRuleScopeInput = document.querySelector("#memory-rule-scope");
 const reprocessImpactPreview = document.querySelector("#reprocess-impact-preview");
 const HISTORY_COLSPAN = 11;
+const UPLOAD_ACTION_SELECTOR = "[data-interpret-id], [data-bulk-import-id], [data-archive-id], [data-remove-id], #reprocess-selected-uploads, #bulk-import-selected-uploads, #archive-selected-uploads, #remove-selected-uploads";
 let loadedRows = [];
 let currentRows = [];
 let activeQuickFilter = "all";
@@ -93,6 +96,10 @@ function documentType(row) {
   return String(row.document_type || "").toLowerCase();
 }
 
+function isSpreadsheetUpload(row) {
+  return ["xlsx", "xls", "csv", "spreadsheet"].includes(documentType(row));
+}
+
 function sourceRowsUrl(row) {
   const params = new URLSearchParams();
   params.set("raw_upload_id", row.id);
@@ -137,7 +144,7 @@ function applyQuickFilter(rows = loadedRows) {
   if (activeQuickFilter === "needs-audit") return rows.filter((row) => auditStatus(row) === "needs_review" || auditStatus(row) === "repaired");
   if (activeQuickFilter === "failed") return rows.filter((row) => row.status === "failed");
   if (activeQuickFilter === "pdf") return rows.filter((row) => documentType(row) === "pdf");
-  if (activeQuickFilter === "spreadsheet") return rows.filter((row) => ["xlsx", "xls", "csv", "spreadsheet"].includes(documentType(row)));
+  if (activeQuickFilter === "spreadsheet") return rows.filter(isSpreadsheetUpload);
   if (activeQuickFilter === "image") return rows.filter((row) => ["image", "png", "jpg", "jpeg", "webp"].includes(documentType(row)));
   return rows;
 }
@@ -159,6 +166,11 @@ function selectedVisibleIds() {
   return [...historyBody.querySelectorAll("[data-select-upload]:checked")].map((input) => input.dataset.selectUpload);
 }
 
+function selectedVisibleRows() {
+  const ids = new Set(selectedVisibleIds());
+  return currentRows.filter((row) => ids.has(row.id));
+}
+
 function setBulkStatus(message, tone = "neutral") {
   uploadBulkStatus.textContent = message;
   uploadBulkStatus.dataset.tone = tone;
@@ -166,9 +178,11 @@ function setBulkStatus(message, tone = "neutral") {
 
 function updateBulkControls() {
   const selectedCount = selectedVisibleIds().length;
+  const spreadsheetCount = selectedVisibleRows().filter(isSpreadsheetUpload).length;
   const totalRows = historyBody.querySelectorAll("[data-upload-id]").length;
   uploadSelectionCount.textContent = `${selectedCount} selected`;
   reprocessSelectedButton.disabled = selectedCount === 0;
+  if (bulkImportSelectedButton) bulkImportSelectedButton.disabled = spreadsheetCount === 0;
   archiveSelectedButton.disabled = selectedCount === 0;
   removeSelectedButton.disabled = selectedCount === 0;
   if (selectAllUploads) {
@@ -635,6 +649,7 @@ function openUploadDrawer(rowId) {
       <div class="drawer-quick-actions">
         <button class="secondary small-button" type="button" data-source-id="${escapeHtml(row.id)}">View source</button>
         <a class="small-button" href="${escapeHtml(sourceRowsUrl(row))}">View extracted rows</a>
+        ${isSpreadsheetUpload(row) && row.status !== "archived" ? `<button class="secondary small-button" type="button" data-bulk-import-id="${escapeHtml(row.id)}">Bulk import</button>` : ""}
         ${row.status === "archived" ? "" : `<button class="secondary small-button" type="button" data-interpret-id="${escapeHtml(row.id)}">${row.status === "uploaded" ? "Interpret" : "Reprocess"}</button>`}
       </div>
       <dl>
@@ -764,6 +779,7 @@ function renderRows(rows) {
             <button type="button" class="small-button secondary" data-upload-detail="${escapeHtml(row.id)}">Details</button>
             <button type="button" class="small-button secondary" data-source-id="${escapeHtml(row.id)}">View source</button>
             <a class="small-button secondary" href="${escapeHtml(sourceRowsUrl(row))}">View rows</a>
+            ${isSpreadsheetUpload(row) && row.status !== "archived" ? `<button type="button" class="small-button secondary" data-bulk-import-id="${escapeHtml(row.id)}">Bulk import</button>` : ""}
             ${row.status === "archived" ? "" : `<button type="button" class="small-button" data-interpret-id="${escapeHtml(row.id)}">${row.status === "uploaded" ? "Interpret" : "Reprocess"}</button>`}
             ${row.status === "archived" ? "" : `<button type="button" class="small-button secondary" data-archive-id="${escapeHtml(row.id)}">Archive</button>`}
             <button type="button" class="small-button danger" data-remove-id="${escapeHtml(row.id)}">Remove</button>
@@ -786,7 +802,7 @@ async function loadHistory() {
     const rows = await fetchUploadHistory({ status: statusFilter.value });
     loadedRows = rows;
     renderRows(applyQuickFilter(rows));
-    await applyPermissionState("[data-interpret-id], [data-archive-id], [data-remove-id], #reprocess-selected-uploads, #archive-selected-uploads, #remove-selected-uploads", "uploads:interpret");
+    await applyPermissionState(UPLOAD_ACTION_SELECTOR, "uploads:interpret");
   } catch (error) {
     historyBody.innerHTML = `<tr><td colspan="${HISTORY_COLSPAN}">Could not load upload history. ${escapeHtml(humanizeError(error))}</td></tr>`;
   } finally {
@@ -808,12 +824,13 @@ async function runBulkUploadAction(action) {
 
   archiveSelectedButton.disabled = true;
   reprocessSelectedButton.disabled = true;
+  if (bulkImportSelectedButton) bulkImportSelectedButton.disabled = true;
   removeSelectedButton.disabled = true;
   setBulkStatus(`${action === "archive" ? "Archiving" : action === "reprocess" ? "Reprocessing" : "Removing"} ${ids.length} upload(s)...`);
 
   try {
     await ensureSignedIn();
-    if (!(await applyPermissionState("[data-interpret-id], [data-archive-id], [data-remove-id], #reprocess-selected-uploads, #archive-selected-uploads, #remove-selected-uploads", "uploads:interpret"))) {
+    if (!(await applyPermissionState(UPLOAD_ACTION_SELECTOR, "uploads:interpret"))) {
       throw new Error("Your role does not allow upload actions.");
     }
     const fn = action === "archive" ? archiveUpload : removeUpload;
@@ -823,6 +840,78 @@ async function runBulkUploadAction(action) {
     await loadHistory();
   } catch (error) {
     setBulkStatus(humanizeError(error), "error");
+    updateBulkControls();
+  }
+}
+
+function bulkImportSummary(result) {
+  const imported = Number(result?.imported_rows || 0);
+  const expected = Number(result?.expected_rows || imported || 0);
+  const skipped = Number(result?.skipped_rows || 0);
+  const skippedLabel = skipped ? `, ${skipped} skipped` : "";
+  return `${imported}/${expected} row(s) imported${skippedLabel}.`;
+}
+
+async function runBulkTemplateImport(ids = selectedVisibleIds(), sourceButton = null) {
+  const spreadsheetIds = ids
+    .map((id) => currentRows.find((row) => row.id === id) || loadedRows.find((row) => row.id === id))
+    .filter((row) => row && isSpreadsheetUpload(row) && row.status !== "archived")
+    .map((row) => row.id);
+
+  if (!spreadsheetIds.length) {
+    setBulkStatus("Select at least one XLSX upload for structured bulk import.", "error");
+    updateBulkControls();
+    return;
+  }
+
+  const confirmed = window.confirm(
+    `Bulk import ${spreadsheetIds.length} spreadsheet upload(s) without AI? Existing pending/rejected staged rows for those uploads will be archived first.`
+  );
+  if (!confirmed) return;
+
+  const originalText = sourceButton?.textContent || "";
+  if (sourceButton) {
+    sourceButton.disabled = true;
+    sourceButton.textContent = "Importing...";
+  }
+  if (bulkImportSelectedButton) bulkImportSelectedButton.disabled = true;
+  reprocessSelectedButton.disabled = true;
+  archiveSelectedButton.disabled = true;
+  removeSelectedButton.disabled = true;
+
+  try {
+    await ensureSignedIn();
+    if (!(await applyPermissionState(UPLOAD_ACTION_SELECTOR, "uploads:interpret"))) {
+      throw new Error("Your role does not allow upload actions.");
+    }
+
+    const results = [];
+    for (let index = 0; index < spreadsheetIds.length; index += 1) {
+      const id = spreadsheetIds[index];
+      setBulkStatus(`Bulk importing ${index + 1}/${spreadsheetIds.length} spreadsheet upload(s)...`);
+      const result = await bulkImportUploadTemplate(id);
+      results.push({ id, result });
+      const rowStatus = historyBody.querySelector(`[data-upload-status="${CSS.escape(id)}"]`);
+      if (rowStatus) {
+        rowStatus.textContent = bulkImportSummary(result);
+        rowStatus.dataset.tone = "success";
+      }
+    }
+
+    spreadsheetIds.forEach((id) => selectedUploadIds.delete(id));
+    const imported = results.reduce((sum, item) => sum + Number(item.result?.imported_rows || 0), 0);
+    const expected = results.reduce((sum, item) => sum + Number(item.result?.expected_rows || 0), 0);
+    const skipped = results.reduce((sum, item) => sum + Number(item.result?.skipped_rows || 0), 0);
+    setBulkStatus(`${imported}/${expected || imported} structured row(s) imported to staging${skipped ? `, ${skipped} skipped` : ""}.`, "success");
+    await loadHistory();
+  } catch (error) {
+    setBulkStatus(humanizeError(error), "error");
+    if (sourceButton) sourceButton.title = humanizeError(error);
+  } finally {
+    if (sourceButton) {
+      sourceButton.disabled = false;
+      sourceButton.textContent = originalText;
+    }
     updateBulkControls();
   }
 }
@@ -892,7 +981,7 @@ async function runReprocessWithNote(event) {
 
   try {
     await ensureSignedIn();
-    if (!(await applyPermissionState("[data-interpret-id], [data-archive-id], [data-remove-id], #reprocess-selected-uploads, #archive-selected-uploads, #remove-selected-uploads", "uploads:interpret"))) {
+    if (!(await applyPermissionState(UPLOAD_ACTION_SELECTOR, "uploads:interpret"))) {
       throw new Error("Your role does not allow upload actions.");
     }
     const runResults = [];
@@ -999,6 +1088,7 @@ selectAllUploads?.addEventListener("change", () => {
 });
 archiveSelectedButton?.addEventListener("click", () => runBulkUploadAction("archive"));
 reprocessSelectedButton?.addEventListener("click", () => runBulkUploadAction("reprocess"));
+bulkImportSelectedButton?.addEventListener("click", () => runBulkTemplateImport());
 removeSelectedButton?.addEventListener("click", () => runBulkUploadAction("remove"));
 closeUploadDrawerButton?.addEventListener("click", () => uploadDrawer?.classList.add("hidden"));
 closeReprocessDrawerButton?.addEventListener("click", () => reprocessDrawer?.classList.add("hidden"));
@@ -1014,6 +1104,12 @@ uploadDetail?.addEventListener("click", async (event) => {
   const sourceButton = event.target.closest("[data-source-id]");
   if (sourceButton) {
     await openUploadSource(sourceButton.dataset.sourceId, sourceButton);
+    return;
+  }
+
+  const bulkImportButton = event.target.closest("[data-bulk-import-id]");
+  if (bulkImportButton) {
+    await runBulkTemplateImport([bulkImportButton.dataset.bulkImportId], bulkImportButton);
     return;
   }
 
@@ -1043,24 +1139,31 @@ historyBody.addEventListener("click", async (event) => {
   }
 
   const interpretButton = event.target.closest("[data-interpret-id]");
+  const bulkImportButton = event.target.closest("[data-bulk-import-id]");
   const archiveButton = event.target.closest("[data-archive-id]");
   const removeButton = event.target.closest("[data-remove-id]");
-  const button = interpretButton || archiveButton || removeButton;
+  const button = interpretButton || bulkImportButton || archiveButton || removeButton;
   if (!button) return;
 
   button.disabled = true;
-  const rowId = interpretButton?.dataset.interpretId || archiveButton?.dataset.archiveId || removeButton?.dataset.removeId;
+  const rowId = interpretButton?.dataset.interpretId || bulkImportButton?.dataset.bulkImportId || archiveButton?.dataset.archiveId || removeButton?.dataset.removeId;
   const status = historyBody.querySelector(`[data-upload-status="${CSS.escape(rowId)}"]`);
 
   try {
     await ensureSignedIn();
-    if (!(await applyPermissionState("[data-interpret-id], [data-archive-id], [data-remove-id]", "uploads:interpret"))) {
+    if (!(await applyPermissionState(UPLOAD_ACTION_SELECTOR, "uploads:interpret"))) {
       throw new Error("Your role does not allow upload actions.");
     }
 
     if (interpretButton) {
       button.disabled = false;
       openReprocessDrawer([rowId]);
+      return;
+    }
+
+    if (bulkImportButton) {
+      button.disabled = false;
+      await runBulkTemplateImport([rowId], button);
       return;
     }
 

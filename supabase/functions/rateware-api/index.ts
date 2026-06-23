@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import * as XLSX from "https://esm.sh/xlsx@0.18.5";
 import { corsHeaders, jsonResponse, requireKindeUser } from "../_shared/kinde.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
@@ -499,7 +500,13 @@ function isLocationResolved(row: Record<string, unknown>, prefix: "origin" | "de
 function normalizeDomain(value: unknown) {
   const text = cleanText(value);
   if (!text) return null;
-  return text.toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").split("/")[0];
+  return text
+    .toLowerCase()
+    .replace(/^https?:\/\//, "")
+    .replace(/^www\./, "")
+    .replace(/^@/, "")
+    .split(/[\/\s,;]+/)[0]
+    .replace(/[^a-z0-9.-]+$/g, "");
 }
 
 function normalizeEmail(value: unknown) {
@@ -2812,6 +2819,402 @@ function cleanNumber(value: unknown) {
   return Number.isFinite(numberValue) ? numberValue : null;
 }
 
+const TEMPLATE_FIELD_ALIASES: Record<string, string[]> = {
+  vendor_name: ["vendor", "carrier", "supplier", "transportista", "proveedor"],
+  vendor_domain: ["vendor domain", "carrier domain", "domain", "email", "vendor email", "carrier email", "correo", "correo proveedor"],
+  rfx_id: ["rfx", "rfx id", "rfq", "rfq id", "event", "event id", "quote no", "quote #", "quote number"],
+  row_id: ["shipment #", "shipment id", "shipment", "load id", "lane id", "lane", "id", "folio"],
+  quote_date: ["period", "date", "quote date", "fecha", "fecha cotizacion", "fecha de cotizacion"],
+  origin: ["origin", "origen", "from", "orig", "pickup", "shipper", "origin city", "orig city"],
+  destination: ["destination", "destino", "to", "dest", "delivery", "consignee", "destination city", "dest city"],
+  distance: ["distance", "total distance", "loaded miles", "miles", "mi", "loaded km", "kms", "km", "kilometers", "kilometros"],
+  distance_type: ["distance type", "distance unit", "unit", "uom", "unidad"],
+  equipment: ["equipment", "equipo", "vehicle", "unit type"],
+  trailer: ["trailer", "remolque", "box", "caja", "trailer type"],
+  config: ["config", "configuration", "configuracion", "type of driver"],
+  operation: ["operation", "operacion", "movement", "move type"],
+  service: ["service", "servicio", "trip type", "ow rt", "one way roundtrip"],
+  driver: ["driver", "chofer", "driver type"],
+  hazmat: ["hazmat", "haz mat", "hazardous", "hazardous material", "material peligroso"],
+  temperature_controlled: ["temp ctrl", "temperature controlled", "temp controlled", "reefer", "refrigerated", "refrigerado"],
+  mx_border_crossing_point: ["mx crossing", "mex crossing", "mx border", "mex border", "mexican border", "border mx"],
+  us_border_crossing_point: ["us crossing", "usa crossing", "us border", "american border", "border us"],
+  mx_linehaul: ["mx linehaul", "mex linehaul", "mex haul", "mx haul", "mexico linehaul"],
+  us_linehaul: ["us linehaul", "usa linehaul", "us haul", "usa haul"],
+  us_miles: ["us miles", "usa miles", "american miles"],
+  fsc: ["fsc", "fuel surcharge", "fuel surcharge cost"],
+  fuel: ["fuel", "diesel", "fuel index"],
+  border_crossing_fee: ["border fee", "border crossing", "border crossing fee", "crossing fee", "cruce"],
+  all_in_rate: ["rate", "incumbent cost", "cost", "all in", "all-in", "all in rate", "total", "total usd", "total cost", "amount", "price", "tarifa"],
+  currency: ["currency", "incumbent currency", "moneda"],
+  weekly_capacity: ["weekly capacity", "capacity", "capacidad", "loads per week", "volumen semanal"],
+  notes: ["notes", "note", "comments", "comentarios", "notas"]
+};
+
+function normalizeHeaderKey(value: unknown) {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[#%()[\]{}:;.,/\\|_+-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function templateAliasLookup() {
+  const lookup = new Map<string, string>();
+  for (const [field, aliases] of Object.entries(TEMPLATE_FIELD_ALIASES)) {
+    for (const alias of aliases) lookup.set(normalizeHeaderKey(alias), field);
+  }
+  return lookup;
+}
+
+function templateHeaderScore(cells: unknown[], aliasLookup: Map<string, string>) {
+  const fields = new Set<string>();
+  for (const cell of cells) {
+    const field = aliasLookup.get(normalizeHeaderKey(cell));
+    if (field) fields.add(field);
+  }
+  let score = fields.size;
+  if (fields.has("origin")) score += 4;
+  if (fields.has("destination")) score += 4;
+  if (fields.has("all_in_rate") || fields.has("mx_linehaul") || fields.has("us_linehaul")) score += 3;
+  if (fields.has("vendor_domain") || fields.has("vendor_name")) score += 2;
+  return score;
+}
+
+function cellHasValue(value: unknown) {
+  return value !== null && value !== undefined && String(value).trim() !== "";
+}
+
+function mappedTemplateRowsFromWorkbook(buffer: ArrayBuffer) {
+  const workbook = XLSX.read(buffer, { type: "array", cellDates: true });
+  const aliasLookup = templateAliasLookup();
+  const rows: Array<{ sheet_name: string; source_row_number: number; mapped: Record<string, unknown>; raw: Record<string, unknown> }> = [];
+  const warnings: string[] = [];
+
+  for (const sheetName of workbook.SheetNames || []) {
+    const sheet = workbook.Sheets[sheetName];
+    const matrix = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null, raw: false, blankrows: false }) as unknown[][];
+    if (!matrix.length) continue;
+
+    let headerIndex = -1;
+    let bestScore = 0;
+    for (let index = 0; index < Math.min(matrix.length, 15); index += 1) {
+      const score = templateHeaderScore(matrix[index] || [], aliasLookup);
+      if (score > bestScore) {
+        bestScore = score;
+        headerIndex = index;
+      }
+    }
+
+    if (headerIndex < 0 || bestScore < 6) {
+      warnings.push(`${sheetName}: no recognizable Rateware template header found.`);
+      continue;
+    }
+
+    const headers = (matrix[headerIndex] || []).map((cell) => cleanText(cell));
+    for (let rowIndex = headerIndex + 1; rowIndex < matrix.length; rowIndex += 1) {
+      const sourceRow = matrix[rowIndex] || [];
+      if (!sourceRow.some(cellHasValue)) continue;
+
+      const mapped: Record<string, unknown> = {};
+      const raw: Record<string, unknown> = {};
+      headers.forEach((header, columnIndex) => {
+        if (!header) return;
+        const value = sourceRow[columnIndex];
+        if (!cellHasValue(value)) return;
+        raw[header] = value;
+        const field = aliasLookup.get(normalizeHeaderKey(header));
+        if (field && mapped[field] === undefined) mapped[field] = value;
+      });
+
+      if (Object.keys(mapped).length) {
+        rows.push({
+          sheet_name: sheetName,
+          source_row_number: rowIndex + 1,
+          mapped,
+          raw
+        });
+      }
+    }
+  }
+
+  return { rows, warnings };
+}
+
+function resolveVendorReferenceFromRows(vendors: Record<string, unknown>[], reference: unknown) {
+  const ranked = vendors
+    .map((vendor) => ({ vendor, ...scoreVendorReference(vendor, reference) }))
+    .filter((match) => match.score >= 75)
+    .sort((a, b) => b.score - a.score);
+  return ranked[0] || null;
+}
+
+function vendorLinkPatchFromRows(vendors: Record<string, unknown>[], reference: unknown) {
+  if (!cleanText(reference)) return {};
+  const match = resolveVendorReferenceFromRows(vendors, reference);
+  const fallbackDomain = domainFromVendorReference(reference);
+  if (!match) return { vendor_id: null, vendor_domain: fallbackDomain || cleanText(reference) };
+  return {
+    vendor_id: match.vendor.id,
+    vendor_domain: normalizeDomain(match.vendor.domain) || match.domain || fallbackDomain || cleanText(reference)
+  };
+}
+
+function templateRowInput(mapped: Record<string, unknown>, upload: Record<string, unknown>) {
+  const input: Record<string, unknown> = {
+    vendor_domain: mapped.vendor_domain || upload.vendor_hint,
+    rfx_id: mapped.rfx_id || upload.rfx_hint,
+    row_id: mapped.row_id,
+    quote_date: mapped.quote_date,
+    origin: mapped.origin,
+    destination: mapped.destination,
+    equipment: mapped.equipment,
+    trailer: mapped.trailer,
+    config: mapped.config,
+    operation: mapped.operation,
+    service: mapped.service,
+    driver: mapped.driver,
+    mx_border_crossing_point: mapped.mx_border_crossing_point,
+    us_border_crossing_point: mapped.us_border_crossing_point,
+    mx_linehaul: mapped.mx_linehaul,
+    us_linehaul: mapped.us_linehaul,
+    us_miles: mapped.us_miles,
+    fsc: mapped.fsc,
+    fuel: mapped.fuel,
+    border_crossing_fee: mapped.border_crossing_fee,
+    all_in_rate: mapped.all_in_rate,
+    currency: mapped.currency || "USD",
+    weekly_capacity: mapped.weekly_capacity,
+    notes: mapped.notes,
+    hazmat: mapped.hazmat,
+    temperature_controlled: mapped.temperature_controlled
+  };
+
+  const distance = cleanNumber(mapped.distance);
+  const distanceType = normalizeHeaderKey(mapped.distance_type);
+  if (distance !== null) {
+    if (distanceType.includes("km") || distanceType.includes("kilomet")) input.calculated_km = distance;
+    else input.calculated_miles = distance;
+  }
+
+  return input;
+}
+
+function rowHasRateSignal(row: Record<string, unknown>) {
+  return Boolean(
+    cleanRateText(row.all_in_rate) ||
+      cleanRateText(row.mx_linehaul) ||
+      cleanRateText(row.us_linehaul) ||
+      cleanRateText(row.fsc) ||
+      cleanRateText(row.border_crossing_fee)
+  );
+}
+
+async function bulkImportStructuredUpload(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_user_id: string | null; owner_email: string | null },
+  rawUploadId: string
+) {
+  if (!rawUploadId) throw new Error("raw_upload_id is required.");
+
+  const uploadResult = await supabase
+    .from("raw_uploads")
+    .select("*, vendors(vendor_name,domain,primary_email)")
+    .eq("id", rawUploadId)
+    .single();
+  if (uploadResult.error) throw uploadResult.error;
+  const upload = uploadResult.data || {};
+  if (cleanText(upload.document_type) !== "xlsx") {
+    throw new Error("Bulk template import is only available for XLSX uploads.");
+  }
+
+  const download = await supabase.storage.from(upload.storage_bucket || "raw-uploads").download(upload.storage_path);
+  if (download.error) throw download.error;
+  const buffer = await download.data.arrayBuffer();
+  const parsed = mappedTemplateRowsFromWorkbook(buffer);
+  if (!parsed.rows.length) {
+    throw new Error(parsed.warnings[0] || "No structured template rows were found in this workbook.");
+  }
+
+  const [catalogResult, locationsResult, mileageResult, vendorsResult] = await Promise.all([
+    supabase
+      .from("rateware_catalog_items")
+      .select("source,category,raw_value,normalized_value,code")
+      .eq("active", true)
+      .limit(10000),
+    supabase
+      .from("rateware_locations")
+      .select("source,location_key,raw_value,zip_prefix,metro_city,city,state_code,state_name,country,market,region")
+      .eq("active", true)
+      .limit(20000),
+    supabase
+      .from("rateware_lane_mileage")
+      .select("source,route_key,miles,km")
+      .eq("active", true)
+      .limit(20000),
+    supabase
+      .from("vendors")
+      .select("id,vendor_name,domain,primary_email,secondary_emails,status,base_stage")
+      .eq("owner_email", user.owner_email)
+      .limit(5000)
+  ]);
+  for (const result of [catalogResult, locationsResult, mileageResult, vendorsResult]) {
+    if (result.error) throw result.error;
+  }
+
+  const jobResult = await supabase
+    .from("interpretation_jobs")
+    .insert({
+      raw_upload_id: rawUploadId,
+      status: "running",
+      model: "structured-template-import"
+    })
+    .select("id")
+    .single();
+  if (jobResult.error) throw jobResult.error;
+
+  const catalog = buildCatalogIndex(catalogResult.data || []);
+  const locationIndex = buildLocationIndex(locationsResult.data || []);
+  const mileage = new Map((mileageResult.data || []).map((lane) => [catalogKey(lane.route_key), lane]));
+  const vendors = vendorsResult.data || [];
+  const rowsToInsert: Record<string, unknown>[] = [];
+  const warnings = [...parsed.warnings];
+  let skipped = 0;
+
+  for (const [index, parsedRow] of parsed.rows.entries()) {
+    const input = templateRowInput(parsedRow.mapped, upload);
+    const patch = normalizeStagingPatch(input, {});
+    const rowWarnings: string[] = [];
+    if (!patch.origin || !patch.destination) rowWarnings.push("missing origin or destination");
+    if (!rowHasRateSignal(patch)) rowWarnings.push("missing usable rate");
+    if (rowWarnings.length) {
+      skipped += 1;
+      if (warnings.length < 20) warnings.push(`${parsedRow.sheet_name} row ${parsedRow.source_row_number}: ${rowWarnings.join(", ")}.`);
+      continue;
+    }
+
+    const vendorReference = patch.vendor_domain || parsedRow.mapped.vendor_domain || parsedRow.mapped.vendor_name || upload.vendor_hint;
+    Object.assign(patch, vendorLinkPatchFromRows(vendors, vendorReference));
+    Object.assign(patch, normalizeRowWithCurrentCatalog(patch, catalog, locationIndex, mileage));
+
+    rowsToInsert.push({
+      ...patch,
+      raw_upload_id: rawUploadId,
+      interpretation_job_id: jobResult.data.id,
+      status: "pending_review",
+      confidence: 1,
+      row_id: patch.row_id || String(index + 1),
+      extraction_warnings: [],
+      audit_flags: [],
+      field_confidence: {
+        import_method: "structured_template",
+        all_fields: 1
+      },
+      source_evidence: {
+        import_method: "structured_template",
+        sheet_name: parsedRow.sheet_name,
+        source_row_number: parsedRow.source_row_number,
+        mapped_fields: Object.keys(parsedRow.mapped)
+      },
+      extracted_payload: {
+        import_method: "structured_template",
+        sheet_name: parsedRow.sheet_name,
+        source_row_number: parsedRow.source_row_number,
+        raw_values: parsedRow.raw
+      }
+    });
+  }
+
+  if (!rowsToInsert.length) {
+    await supabase
+      .from("interpretation_jobs")
+      .update({ status: "failed", completed_at: new Date().toISOString(), extracted_rows: 0, error_message: "No usable template rows found." })
+      .eq("id", jobResult.data.id);
+    throw new Error(warnings[0] || "No usable template rows found.");
+  }
+
+  const existingRowsResult = await supabase
+    .from("rate_staging")
+    .select("id")
+    .eq("raw_upload_id", rawUploadId)
+    .in("status", ["pending_review", "rejected"]);
+  if (existingRowsResult.error) throw existingRowsResult.error;
+
+  const insertedRows: Record<string, unknown>[] = [];
+  for (let index = 0; index < rowsToInsert.length; index += 500) {
+    const result = await supabase
+      .from("rate_staging")
+      .insert(rowsToInsert.slice(index, index + 500))
+      .select("id");
+    if (result.error) throw result.error;
+    insertedRows.push(...(result.data || []));
+  }
+
+  const existingIds = (existingRowsResult.data || []).map((row) => row.id).filter(Boolean);
+  if (existingIds.length) {
+    const archiveResult = await supabase
+      .from("rate_staging")
+      .update({ status: "archived" })
+      .in("id", existingIds);
+    if (archiveResult.error) throw archiveResult.error;
+  }
+
+  const auditStatus = warnings.length || skipped ? "needs_review" : "ok";
+  const auditWarnings = warnings.slice(0, 25);
+  const now = new Date().toISOString();
+  const [jobUpdate, uploadUpdate] = await Promise.all([
+    supabase
+      .from("interpretation_jobs")
+      .update({
+        status: "completed",
+        completed_at: now,
+        extracted_rows: insertedRows.length,
+        error_message: null
+      })
+      .eq("id", jobResult.data.id),
+    supabase
+      .from("raw_uploads")
+      .update({
+        status: "staged",
+        interpreted_at: now,
+        error_message: null,
+        interpreted_rate_rows: insertedRows.length,
+        expected_rate_rows: parsed.rows.length,
+        audit_status: auditStatus,
+        audit_warnings: auditWarnings,
+        interpretation_audit: {
+          status: auditStatus,
+          import_method: "structured_template",
+          expected_rate_rows: parsed.rows.length,
+          interpreted_rate_rows: insertedRows.length,
+          skipped_rows: skipped,
+          warning_count: warnings.length,
+          warnings: auditWarnings
+        }
+      })
+      .eq("id", rawUploadId)
+  ]);
+  if (jobUpdate.error) throw jobUpdate.error;
+  if (uploadUpdate.error) throw uploadUpdate.error;
+
+  await writeAuditLog(supabase, user, "upload.bulk_template_import", "raw_uploads", rawUploadId, `Bulk imported ${insertedRows.length} structured rate row(s)`, {
+    filename: upload.original_filename,
+    expected_rows: parsed.rows.length,
+    imported_rows: insertedRows.length,
+    skipped_rows: skipped,
+    warning_count: warnings.length
+  });
+
+  return {
+    imported_rows: insertedRows.length,
+    expected_rows: parsed.rows.length,
+    skipped_rows: skipped,
+    warnings: auditWarnings
+  };
+}
+
 function randomToken() {
   const bytes = new Uint8Array(18);
   crypto.getRandomValues(bytes);
@@ -4732,6 +5135,12 @@ Deno.serve(async (request) => {
         .limit(500);
       if (result.error) throw result.error;
       return jsonResponse({ rows: result.data || [] });
+    }
+
+    if (body.action === "bulk_import_upload_template") {
+      const rawUploadId = cleanText(body.raw_upload_id);
+      const result = await bulkImportStructuredUpload(supabase, user, rawUploadId || "");
+      return jsonResponse(result);
     }
 
     if (body.action === "list_interpretation_memory") {

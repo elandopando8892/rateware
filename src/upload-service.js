@@ -37,6 +37,10 @@ export async function fetchUploadStagedRows(rawUploadId) {
   return (await callRatewareApi("list_upload_staged_rows", { raw_upload_id: rawUploadId })).rows;
 }
 
+export async function bulkImportUploadTemplate(rawUploadId) {
+  return await callRatewareApi("bulk_import_upload_template", { raw_upload_id: rawUploadId });
+}
+
 export async function archiveUpload(rawUploadId) {
   return (await callRatewareApi("archive_upload", { id: rawUploadId })).row;
 }
