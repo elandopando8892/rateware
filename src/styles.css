@@ -3311,6 +3311,13 @@ table {
   box-shadow: inset 0 -1px 0 var(--line);
 }
 
+.sheet-table-wrap .sheet-column-filter-row th {
+  top: 24px;
+  z-index: 6;
+  padding: 1px 3px;
+  background: #f8fafb;
+}
+
 .sheet-table-wrap .staging-table td,
 .sheet-table-wrap .rateware-table td {
   white-space: nowrap;
@@ -3426,8 +3433,8 @@ table {
 }
 
 .select-column input {
-  width: 16px;
-  height: 16px;
+  width: 13px;
+  height: 13px;
   accent-color: var(--accent);
 }
 
@@ -3435,12 +3442,12 @@ table {
   display: grid;
   place-items: center;
   min-width: 38px;
-  min-height: 24px;
+  min-height: 20px;
 }
 
 .table-checkbox input {
-  width: 15px;
-  height: 15px;
+  width: 13px;
+  height: 13px;
   accent-color: var(--accent);
 }
 
@@ -4950,19 +4957,113 @@ button.location-chip:focus-visible {
   display: block;
   width: 100%;
   min-width: 118px;
-  min-height: 23px;
+  min-height: 20px;
   border: 1px solid transparent;
-  border-radius: 3px;
+  border-radius: 2px;
   background: transparent;
   color: var(--text);
-  padding: 2px 5px;
+  padding: 1px 4px;
   font: inherit;
-  font-size: 0.74rem;
+  font-size: 0.69rem;
 }
 
 select.staging-input {
-  height: 23px;
+  height: 20px;
   cursor: pointer;
+}
+
+.sheet-filter-button,
+.sheet-filter-clear {
+  width: 100%;
+  min-height: 18px;
+  border: 1px solid #d7e0e6;
+  border-radius: 3px;
+  background: #ffffff;
+  color: #51606b;
+  padding: 1px 5px;
+  font-size: 0.64rem;
+  font-weight: 760;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sheet-filter-button.is-active {
+  border-color: rgba(0, 124, 114, 0.45);
+  background: #e7f5f3;
+  color: var(--accent-dark);
+}
+
+.sheet-filter-clear {
+  text-align: center;
+}
+
+.sheet-filter-popover {
+  position: fixed;
+  z-index: 100;
+  width: 320px;
+  max-height: 390px;
+  overflow: hidden;
+  border: 1px solid #cbd6df;
+  border-radius: 6px;
+  background: #ffffff;
+  box-shadow: 0 16px 36px rgba(20, 35, 45, 0.18);
+}
+
+.sheet-filter-popover.hidden {
+  display: none;
+}
+
+.sheet-filter-popover-header,
+.sheet-filter-popover-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 8px;
+  border-bottom: 1px solid var(--line);
+}
+
+.sheet-filter-popover-header button,
+.sheet-filter-popover-actions button {
+  border: 0;
+  background: transparent;
+  color: var(--accent-dark);
+  font-size: 0.72rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.sheet-filter-search {
+  box-sizing: border-box;
+  width: calc(100% - 16px);
+  margin: 8px;
+  min-height: 26px;
+  border: 1px solid #d7e0e6;
+  border-radius: 4px;
+  padding: 3px 7px;
+  font-size: 0.76rem;
+}
+
+.sheet-filter-options {
+  display: grid;
+  max-height: 260px;
+  overflow: auto;
+  padding: 4px 8px 8px;
+}
+
+.sheet-filter-options label {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: center;
+  min-height: 24px;
+  gap: 4px;
+  font-size: 0.74rem;
+}
+
+.sheet-filter-options span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .staging-input:hover {
@@ -5030,6 +5131,46 @@ select.staging-input {
 .staging-table td:has(.staging-input),
 .rateware-table td:has(.rateware-input) {
   cursor: cell;
+}
+
+.sheet-table-wrap .vendor-review-cell > strong,
+.sheet-table-wrap .rateware-table td[data-col="vendor"] > strong,
+.sheet-table-wrap .rate-freeze-cell > span:not(.row-save-status):not(.cell-validation-stack) {
+  display: none;
+}
+
+.sheet-table-wrap .match-pill,
+.sheet-table-wrap .review-chip,
+.sheet-table-wrap .cell-validation-pill,
+.sheet-table-wrap .location-chip {
+  display: inline-block;
+  width: 7px;
+  min-width: 7px;
+  height: 7px;
+  min-height: 7px;
+  overflow: hidden;
+  border-radius: 50%;
+  padding: 0;
+  font-size: 0;
+  vertical-align: middle;
+}
+
+.sheet-table-wrap .location-cell-actions,
+.sheet-table-wrap .cell-validation-stack {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: 2px;
+}
+
+.sheet-table-wrap .location-match-button {
+  width: 13px;
+  height: 13px;
+  min-width: 13px;
+  border-radius: 50%;
+  padding: 0;
+  font-size: 0.58rem;
+  line-height: 1;
 }
 
 .row-save-status {
@@ -6098,7 +6239,9 @@ tbody tr:hover {
 .staging-table td,
 .rateware-table th,
 .rateware-table td {
-  padding: 2px 4px;
+  height: 24px;
+  padding: 0 3px;
+  line-height: 1.05;
 }
 
 .status-pill,
@@ -6641,6 +6784,60 @@ tbody tr:hover {
   background: #fbfcfd;
   margin-top: 8px;
   padding: 7px 10px;
+}
+
+/* Spreadsheet density pass: Staging and Rateware should read like working sheets. */
+.sheet-table-wrap .staging-table th,
+.sheet-table-wrap .rateware-table th {
+  height: 22px;
+  padding: 1px 3px;
+  font-size: 0.65rem;
+  line-height: 1;
+}
+
+.sheet-table-wrap .sheet-column-filter-row th {
+  top: 22px;
+  height: 22px;
+  padding: 1px 3px;
+}
+
+.staging-table th,
+.staging-table td,
+.rateware-table th,
+.rateware-table td {
+  height: 22px;
+  padding: 0 3px;
+  line-height: 1;
+}
+
+.staging-input,
+.rateware-input,
+.staging-table select,
+.rateware-table select {
+  min-height: 19px;
+  height: 19px;
+  border-radius: 2px;
+  padding: 1px 4px;
+  font-size: 0.68rem;
+}
+
+.sheet-filter-button,
+.sheet-filter-clear {
+  min-height: 17px;
+  height: 17px;
+  padding: 0 4px;
+  font-size: 0.62rem;
+}
+
+.sheet-table-wrap .quality-strip {
+  display: none;
+}
+
+.sheet-table-wrap .row-review-chips {
+  display: inline-flex;
+  gap: 3px;
+  max-width: none;
+  margin: 0 0 0 2px;
 }
 
 .profile-drawer {

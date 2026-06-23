@@ -1058,15 +1058,56 @@ function bulkColumnText(row: Record<string, unknown>, field: string) {
   return String(row[field] ?? "");
 }
 
+function bulkColumnValues(row: Record<string, unknown>, field: string) {
+  if (field === "vendor") return [row.vendor_domain].filter(Boolean);
+  if (field === "origin") {
+    return [
+      row.origin,
+      row.normalized_origin,
+      row.origin_city,
+      row.origin_state,
+      row.origin_zip_prefix,
+      row.origin_market,
+      row.origin_region,
+      row.origin_country
+    ].filter(Boolean);
+  }
+  if (field === "destination") {
+    return [
+      row.destination,
+      row.normalized_destination,
+      row.destination_city,
+      row.destination_state,
+      row.destination_zip_prefix,
+      row.destination_market,
+      row.destination_region,
+      row.destination_country
+    ].filter(Boolean);
+  }
+  return [row[field]].filter(Boolean);
+}
+
 function objectRecord(value: unknown): Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }
 
+function bulkFilterKey(value: unknown) {
+  const text = cleanText(value) || "(blank)";
+  return text.toLowerCase();
+}
+
 function matchesBulkColumnFilters(row: Record<string, unknown>, filters: Record<string, unknown>) {
   return Object.entries(filters).every(([field, value]) => {
+    const rowValues = bulkColumnValues(row, field).map((item) => cleanText(item)).filter(Boolean) as string[];
+    const candidates = rowValues.length ? rowValues : ["(blank)"];
+    if (Array.isArray(value)) {
+      const selected = new Set(value.map(bulkFilterKey));
+      if (!selected.size) return true;
+      return candidates.some((candidate) => selected.has(bulkFilterKey(candidate)));
+    }
     const needle = cleanText(value)?.toLowerCase();
     if (!needle) return true;
-    return bulkColumnText(row, field).toLowerCase().includes(needle);
+    return candidates.join(" ").toLowerCase().includes(needle);
   });
 }
 

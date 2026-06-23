@@ -1,5 +1,6 @@
 import { applyPermissionState, ensureSignedIn, initAuthControls, requirePrivatePage } from "./auth.js";
 import { createLocationMatchDrawer } from "./location-match-drawer.js";
+import { initSpreadsheetColumnFilters } from "./spreadsheet-column-filters.js";
 import { installSpreadsheetGrid } from "./spreadsheet-grid.js";
 import { initColumnVisibility, initDrawer, initLocationAutocomplete } from "./sheet-ui.js";
 import { archiveStagingRows, archiveStagingRowsByFilter, enrichStagingLocationZips, fetchStagingOptions, fetchStagingRows, matchStagingVendors, removeStagingRows, removeStagingRowsByFilter, renormalizeStagingRows, saveLocationAlias, updateStagingRow } from "./staging-service.js";
@@ -17,6 +18,7 @@ const rejectDrawerButton = document.querySelector("#reject-staging-button");
 const rowDetail = document.querySelector("#staging-row-detail");
 const selectAllCheckbox = document.querySelector("#select-all-staging");
 const bulkSelectionCount = document.querySelector("#bulk-selection-count");
+const openSelectedDetailButton = document.querySelector("#open-selected-staging-detail");
 const bulkSaveButton = document.querySelector("#bulk-save-button");
 const bulkMatchVendorsButton = document.querySelector("#bulk-match-vendors-button");
 const bulkApproveButton = document.querySelector("#bulk-approve-button");
@@ -36,8 +38,6 @@ const bulkValueInput = document.querySelector("#staging-bulk-value");
 const bulkValueOptions = document.querySelector("#staging-bulk-value-options");
 const applyBulkEditButton = document.querySelector("#apply-staging-bulk-edit");
 const bulkEditStatus = document.querySelector("#staging-bulk-status");
-const columnFilterInputs = document.querySelectorAll("[data-staging-column-filter]");
-const clearColumnFiltersButton = document.querySelector("#clear-staging-column-filters");
 const columnMenu = document.querySelector("#staging-column-menu");
 const columnPresetBar = document.querySelector("[data-staging-column-presets]");
 const stagingTable = document.querySelector(".staging-table");
@@ -58,6 +58,7 @@ const autoSaveTimers = new Map();
 const FILTERED_BULK_BATCH_SIZE = 1000;
 let columnVisibilityController;
 let locationMatchDrawerController;
+let columnFilterController;
 let stagingOptions = {
   categories: {},
   vendors: [],
@@ -66,7 +67,7 @@ let stagingOptions = {
   us_crossings: [],
   currencies: ["USD", "MXN", "CAD"]
 };
-const STAGING_COLSPAN = 32;
+const STAGING_COLSPAN = 31;
 const SHEET_COLUMNS = [
   { key: "select", label: "Select", locked: true },
   { key: "vendor", label: "Vendor", locked: true },
@@ -98,29 +99,28 @@ const SHEET_COLUMNS = [
   { key: "border_crossing_fee", label: "Border fee" },
   { key: "currency", label: "Currency" },
   { key: "weekly_capacity", label: "Capacity" },
-  { key: "status", label: "Status" },
-  { key: "actions", label: "Actions", locked: true }
+  { key: "status", label: "Status" }
 ];
 const COLUMN_PRESETS = [
   {
     name: "review",
     label: "Review",
-    columns: ["select", "vendor", "origin", "destination", "all_in_rate", "quote_date", "rfx_id", "equipment", "trailer", "operation", "service", "weekly_capacity", "status", "actions"]
+    columns: ["select", "vendor", "origin", "destination", "all_in_rate", "quote_date", "rfx_id", "equipment", "trailer", "operation", "service", "weekly_capacity", "status"]
   },
   {
     name: "normalization",
     label: "Normalization",
-    columns: ["select", "vendor", "origin", "destination", "all_in_rate", "origin_zip_prefix", "origin_state", "origin_market", "origin_region", "destination_zip_prefix", "destination_state", "destination_market", "destination_region", "mx_border_crossing_point", "us_border_crossing_point", "actions"]
+    columns: ["select", "vendor", "origin", "destination", "all_in_rate", "origin_zip_prefix", "origin_state", "origin_market", "origin_region", "destination_zip_prefix", "destination_state", "destination_market", "destination_region", "mx_border_crossing_point", "us_border_crossing_point"]
   },
   {
     name: "finance",
     label: "Finance",
-    columns: ["select", "vendor", "origin", "destination", "all_in_rate", "mx_linehaul", "us_linehaul", "fsc", "border_crossing_fee", "currency", "weekly_capacity", "actions"]
+    columns: ["select", "vendor", "origin", "destination", "all_in_rate", "mx_linehaul", "us_linehaul", "fsc", "border_crossing_fee", "currency", "weekly_capacity"]
   },
   {
     name: "source-audit",
     label: "Source audit",
-    columns: ["select", "vendor", "origin", "destination", "all_in_rate", "quote_date", "rfx_id", "equipment", "trailer", "hazmat", "temperature_controlled", "operation", "service", "status", "actions"]
+    columns: ["select", "vendor", "origin", "destination", "all_in_rate", "quote_date", "rfx_id", "equipment", "trailer", "hazmat", "temperature_controlled", "operation", "service", "status"]
   }
 ];
 const STAGING_BULK_EDIT_FIELDS = [
@@ -440,6 +440,7 @@ function updateBulkControls() {
   const selectedCount = selectedRows().length;
   const totalRows = body.querySelectorAll("[data-row-id]").length;
   bulkSelectionCount.textContent = `${selectedCount} selected`;
+  if (openSelectedDetailButton) openSelectedDetailButton.disabled = selectedCount !== 1;
   if (openBulkDrawerButton) openBulkDrawerButton.disabled = selectedCount === 0;
   if (applyBulkEditButton) applyBulkEditButton.disabled = selectedCount === 0;
   if (stagingMetricSelected) stagingMetricSelected.textContent = String(selectedCount);
@@ -694,32 +695,8 @@ function columnFilterValues(row, field) {
   return [row[field]].filter(Boolean);
 }
 
-function updateColumnFilterValueMenus(rows = currentRows) {
-  columnFilterInputs.forEach((input) => {
-    const field = input.dataset.stagingColumnFilter;
-    const listId = `staging-filter-values-${field}`;
-    let datalist = document.querySelector(`#${CSS.escape(listId)}`);
-    if (!datalist) {
-      datalist = document.createElement("datalist");
-      datalist.id = listId;
-      document.body.appendChild(datalist);
-    }
-    const values = Array.from(new Set(rows.flatMap((row) => columnFilterValues(row, field)).map((value) => String(value).trim()).filter(Boolean)))
-      .sort((a, b) => a.localeCompare(b))
-      .slice(0, 80);
-    datalist.innerHTML = values.map((value) => `<option value="${escapeHtml(value)}"></option>`).join("");
-    input.setAttribute("list", listId);
-    input.title = values.length ? "Type to filter or choose a visible value" : "Type to filter this column";
-  });
-}
-
 function applyColumnFilters(rows = loadedRows) {
-  const filters = [...columnFilterInputs]
-    .map((input) => [input.dataset.stagingColumnFilter, String(input.value || "").trim().toLowerCase()])
-    .filter(([, value]) => value);
-
-  if (!filters.length) return rows;
-  return rows.filter((row) => filters.every(([field, value]) => columnFilterText(row, field).toLowerCase().includes(value)));
+  return columnFilterController?.apply(rows) || rows;
 }
 
 function visibleStagingRows() {
@@ -727,12 +704,7 @@ function visibleStagingRows() {
 }
 
 function activeColumnFilters() {
-  const columnFilters = {};
-  columnFilterInputs.forEach((input) => {
-    const value = String(input.value || "").trim();
-    if (value) columnFilters[input.dataset.stagingColumnFilter] = value;
-  });
-  return columnFilters;
+  return columnFilterController?.serialized() || {};
 }
 
 function activeStagingBulkFilters() {
@@ -1113,7 +1085,6 @@ function renderRowDetail(row) {
 function renderRows(rows) {
   currentRows = rows;
   renderDatalists();
-  updateColumnFilterValueMenus(rows);
   updateReviewFilters();
   updateUploadScopeBanner();
 
@@ -1172,12 +1143,6 @@ function renderRows(rows) {
           <td data-col="currency">${selectCell(row, "currency", stagingOptions.currencies || ["USD", "MXN", "CAD"], { short: true })}</td>
           <td data-col="weekly_capacity">${inputCell(row, "weekly_capacity", { short: true })}</td>
           <td data-col="status">${statusSelect(row)}</td>
-          <td class="review-actions" data-col="actions">
-            <button type="button" class="small-button secondary" data-detail-id="${escapeHtml(row.id)}">Evidence</button>
-            <button type="button" class="small-button secondary" data-save-id="${escapeHtml(row.id)}">Save</button>
-            <button type="button" class="small-button" data-approve-id="${escapeHtml(row.id)}">Approve</button>
-            <button type="button" class="small-button danger" data-reject-id="${escapeHtml(row.id)}">Reject</button>
-          </td>
         </tr>
       `
     )
@@ -1633,9 +1598,7 @@ async function loadRows() {
 async function clearStagingFilters() {
   statusFilter.value = "pending_review";
   activeReviewFilter = "all";
-  columnFilterInputs.forEach((input) => {
-    input.value = "";
-  });
+  columnFilterController?.clear({ silent: true });
   selectedRowIds.clear();
   setBulkStatus("");
   drawer.classList.add("hidden");
@@ -1796,20 +1759,9 @@ reviewFilterButtons.forEach((button) => {
     renderRows(visibleStagingRows());
   });
 });
-columnFilterInputs.forEach((input) => {
-  input.addEventListener("input", () => {
-    selectedRowIds.clear();
-    setBulkStatus("");
-    renderRows(visibleStagingRows());
-  });
-});
-clearColumnFiltersButton?.addEventListener("click", () => {
-  columnFilterInputs.forEach((input) => {
-    input.value = "";
-  });
-  selectedRowIds.clear();
-  setBulkStatus("");
-  renderRows(visibleStagingRows());
+openSelectedDetailButton?.addEventListener("click", () => {
+  const row = selectedRows()[0];
+  if (row?.dataset.rowId) openEditDrawer(row.dataset.rowId);
 });
 selectAllCheckbox?.addEventListener("change", () => {
   body.querySelectorAll("[data-select-row]").forEach((checkbox) => {
@@ -1859,6 +1811,18 @@ columnVisibilityController = initColumnVisibility({
   presets: COLUMN_PRESETS,
   presetContainer: columnPresetBar,
   defaultPreset: "review"
+});
+columnFilterController = initSpreadsheetColumnFilters({
+  table: stagingTable,
+  columns: SHEET_COLUMNS,
+  getRows: () => applyReviewFilter(scopedStagingRows(loadedRows)),
+  getValues: columnFilterValues,
+  scope: "staging",
+  onChange: () => {
+    selectedRowIds.clear();
+    setBulkStatus("");
+    renderRows(visibleStagingRows());
+  }
 });
 initDrawer({
   drawer: bulkDrawer,

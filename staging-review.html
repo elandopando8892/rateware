@@ -120,6 +120,7 @@
 
               <div class="bulk-action-bar" aria-live="polite">
                 <span id="bulk-selection-count">0 selected</span>
+                <button id="open-selected-staging-detail" type="button" class="secondary small-button" disabled>Evidence</button>
                 <button id="open-staging-bulk-drawer" type="button" class="secondary small-button" disabled>Bulk edit</button>
                 <button id="bulk-save-button" type="button" class="secondary small-button" disabled>Save selected</button>
                 <button id="bulk-match-vendors-button" type="button" class="secondary small-button" disabled>Match vendors</button>
@@ -132,18 +133,6 @@
                 <button id="bulk-archive-filtered-button" type="button" class="secondary small-button">Archive filtered</button>
                 <button id="bulk-remove-filtered-button" type="button" class="danger small-button">Remove filtered</button>
                 <span id="bulk-action-status" class="row-save-status"></span>
-              </div>
-
-              <div class="column-filter-bar compact-column-filters" aria-label="Staging column filters">
-                <input data-staging-column-filter="vendor" type="search" placeholder="Vendor" />
-                <input data-staging-column-filter="origin" type="search" placeholder="Origin / O market" />
-                <input data-staging-column-filter="destination" type="search" placeholder="Destination / D market" />
-                <input data-staging-column-filter="equipment" type="search" placeholder="Equipment" />
-                <input data-staging-column-filter="trailer" type="search" placeholder="Trailer" />
-                <input data-staging-column-filter="operation" type="search" placeholder="Operation" />
-                <input data-staging-column-filter="service" type="search" placeholder="Service" />
-                <input data-staging-column-filter="all_in_rate" type="search" placeholder="All-in" />
-                <button id="clear-staging-column-filters" class="secondary small-button" type="button">Clear columns</button>
               </div>
             </div>
 
@@ -199,12 +188,11 @@
                     <th data-col="currency">Currency</th>
                     <th data-col="weekly_capacity">Capacity</th>
                     <th data-col="status">Status</th>
-                    <th data-col="actions">Actions</th>
                   </tr>
                 </thead>
                 <tbody id="staging-body">
                   <tr>
-                    <td colspan="32">Loading staging rows...</td>
+                    <td colspan="31">Loading staging rows...</td>
                   </tr>
                 </tbody>
               </table>

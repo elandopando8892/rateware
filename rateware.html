@@ -125,6 +125,7 @@
 
               <div class="bulk-action-bar" aria-live="polite">
                 <span id="rateware-selection-count">0 selected</span>
+                <button id="open-selected-rateware-detail" type="button" class="secondary small-button" disabled>Evidence</button>
                 <button id="open-rateware-bulk-drawer" type="button" class="secondary small-button" disabled>Bulk edit</button>
                 <button id="save-selected-rateware" type="button" class="small-button" disabled>Save selected</button>
                 <button id="match-selected-vendors-rateware" type="button" class="secondary small-button" disabled>Match vendors</button>
@@ -138,18 +139,6 @@
                 <button id="archive-filtered-rateware" type="button" class="secondary small-button">Archive filtered</button>
                 <button id="remove-filtered-rateware" type="button" class="danger small-button">Remove filtered</button>
                 <span id="rateware-action-status" class="row-save-status"></span>
-              </div>
-
-              <div class="column-filter-bar compact-column-filters" aria-label="Rateware column filters">
-                <input data-rateware-column-filter="vendor" type="search" placeholder="Vendor" />
-                <input data-rateware-column-filter="origin" type="search" placeholder="Origin / O market" />
-                <input data-rateware-column-filter="destination" type="search" placeholder="Destination / D market" />
-                <input data-rateware-column-filter="equipment" type="search" placeholder="Equipment" />
-                <input data-rateware-column-filter="trailer" type="search" placeholder="Trailer" />
-                <input data-rateware-column-filter="operation" type="search" placeholder="Operation" />
-                <input data-rateware-column-filter="service" type="search" placeholder="Service" />
-                <input data-rateware-column-filter="all_in_rate" type="search" placeholder="All-in" />
-                <button id="clear-rateware-column-filters" class="secondary small-button" type="button">Clear columns</button>
               </div>
             </div>
 
@@ -243,12 +232,11 @@
                     <th data-col="border_crossing_fee">Border fee</th>
                     <th data-col="currency">Currency</th>
                     <th data-col="weekly_capacity">Capacity</th>
-                    <th data-col="actions">Actions</th>
                   </tr>
                 </thead>
                 <tbody id="rateware-body">
                   <tr>
-                    <td colspan="31">Loading approved rates...</td>
+                    <td colspan="30">Loading approved rates...</td>
                   </tr>
                 </tbody>
               </table>
