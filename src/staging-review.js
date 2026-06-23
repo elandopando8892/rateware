@@ -2,7 +2,7 @@ import { applyPermissionState, ensureSignedIn, initAuthControls, requirePrivateP
 import { createLocationMatchDrawer } from "./location-match-drawer.js";
 import { installSpreadsheetGrid } from "./spreadsheet-grid.js";
 import { initColumnVisibility, initDrawer, initLocationAutocomplete } from "./sheet-ui.js";
-import { archiveStagingRows, enrichStagingLocationZips, fetchStagingOptions, fetchStagingRows, matchStagingVendors, removeStagingRows, renormalizeStagingRows, saveLocationAlias, updateStagingRow } from "./staging-service.js";
+import { archiveStagingRows, archiveStagingRowsByFilter, enrichStagingLocationZips, fetchStagingOptions, fetchStagingRows, matchStagingVendors, removeStagingRows, removeStagingRowsByFilter, renormalizeStagingRows, saveLocationAlias, updateStagingRow } from "./staging-service.js";
 
 const body = document.querySelector("#staging-body");
 const refreshButton = document.querySelector("#refresh-staging-button");
@@ -25,6 +25,8 @@ const bulkEnrichZipsButton = document.querySelector("#bulk-enrich-zips-button");
 const bulkRenormalizeButton = document.querySelector("#bulk-renormalize-button");
 const bulkArchiveButton = document.querySelector("#bulk-archive-button");
 const bulkRemoveButton = document.querySelector("#bulk-remove-button");
+const bulkArchiveFilteredButton = document.querySelector("#bulk-archive-filtered-button");
+const bulkRemoveFilteredButton = document.querySelector("#bulk-remove-filtered-button");
 const bulkActionStatus = document.querySelector("#bulk-action-status");
 const openBulkDrawerButton = document.querySelector("#open-staging-bulk-drawer");
 const bulkDrawer = document.querySelector("#staging-bulk-drawer");
@@ -723,6 +725,34 @@ function visibleStagingRows() {
   return applyColumnFilters(applyReviewFilter(scopedStagingRows(loadedRows)));
 }
 
+function activeColumnFilters() {
+  const columnFilters = {};
+  columnFilterInputs.forEach((input) => {
+    const value = String(input.value || "").trim();
+    if (value) columnFilters[input.dataset.stagingColumnFilter] = value;
+  });
+  return columnFilters;
+}
+
+function activeStagingBulkFilters() {
+  return {
+    status: statusFilter.value || "",
+    raw_upload_id: rawUploadScopeId || "",
+    review_filter: activeReviewFilter,
+    column_filters: activeColumnFilters()
+  };
+}
+
+function stagingFilterSummaryLabel(filters) {
+  const parts = [];
+  if (filters.status) parts.push(`status ${filters.status}`);
+  if (filters.raw_upload_id) parts.push("current source upload");
+  if (filters.review_filter && filters.review_filter !== "all") parts.push(filters.review_filter);
+  const columnCount = Object.keys(filters.column_filters || {}).length;
+  if (columnCount) parts.push(`${columnCount} column filter(s)`);
+  return parts.join(", ") || "all staging rows";
+}
+
 function updateReviewFilters() {
   reviewFilterButtons.forEach((button) => {
     button.classList.toggle("is-active", button.dataset.stagingFilter === activeReviewFilter);
@@ -1405,6 +1435,51 @@ async function runBulkRemove() {
   }
 }
 
+async function runFilteredStagingAction(targetAction) {
+  const isRemove = targetAction === "remove";
+  const filters = activeStagingBulkFilters();
+  const service = isRemove ? removeStagingRowsByFilter : archiveStagingRowsByFilter;
+  const label = isRemove ? "remove" : "archive";
+
+  try {
+    await ensureSignedIn();
+    if (bulkArchiveFilteredButton) bulkArchiveFilteredButton.disabled = true;
+    if (bulkRemoveFilteredButton) bulkRemoveFilteredButton.disabled = true;
+    setBulkStatus(`Counting rows for ${label} filtered...`);
+
+    const preview = await service(filters, { dryRun: true });
+    const matched = Number(preview.matched || 0);
+    if (!matched) {
+      setBulkStatus(`No staging rows match: ${stagingFilterSummaryLabel(filters)}.`, "warning");
+      return;
+    }
+
+    const scope = stagingFilterSummaryLabel(filters);
+    if (isRemove) {
+      const typed = window.prompt(`This will permanently remove ${matched} staging row(s) matching: ${scope}.\n\nType DELETE to continue.`);
+      if (typed !== "DELETE") {
+        setBulkStatus("Filtered remove cancelled.", "warning");
+        return;
+      }
+    } else if (!window.confirm(`Archive ${matched} staging row(s) matching: ${scope}?`)) {
+      setBulkStatus("Filtered archive cancelled.", "warning");
+      return;
+    }
+
+    setBulkStatus(`${isRemove ? "Removing" : "Archiving"} ${matched} filtered staging row(s)...`);
+    const result = await service(filters, { dryRun: false });
+    selectedRowIds.clear();
+    setBulkStatus(`${result.updated || result.removed || 0} filtered staging row(s) ${isRemove ? "removed" : "archived"}.`, "success");
+    await loadRows();
+  } catch (error) {
+    setBulkStatus(error.message, "error");
+  } finally {
+    if (bulkArchiveFilteredButton) bulkArchiveFilteredButton.disabled = false;
+    if (bulkRemoveFilteredButton) bulkRemoveFilteredButton.disabled = false;
+    updateBulkControls();
+  }
+}
+
 async function runBulkRenormalize() {
   const rows = selectedRows();
   if (!rows.length) return;
@@ -1536,7 +1611,7 @@ async function loadRows() {
     loadedRows = rows;
     populateBulkEditControls();
     renderRows(visibleStagingRows());
-    await applyPermissionState("[data-save-id], [data-approve-id], [data-reject-id], #save-staging-button, #approve-staging-button, #reject-staging-button, #bulk-save-button, #bulk-match-vendors-button, #bulk-approve-button, #bulk-reject-button, #bulk-enrich-zips-button, #bulk-renormalize-button, #bulk-archive-button, #bulk-remove-button", "staging:approve");
+    await applyPermissionState("[data-save-id], [data-approve-id], [data-reject-id], #save-staging-button, #approve-staging-button, #reject-staging-button, #bulk-save-button, #bulk-match-vendors-button, #bulk-approve-button, #bulk-reject-button, #bulk-enrich-zips-button, #bulk-renormalize-button, #bulk-archive-button, #bulk-remove-button, #bulk-archive-filtered-button, #bulk-remove-filtered-button", "staging:approve");
   } catch (error) {
     body.innerHTML = `<tr><td colspan="${STAGING_COLSPAN}">Could not load staging rows. ${escapeHtml(error.message)}</td></tr>`;
   } finally {
@@ -1745,6 +1820,8 @@ bulkEnrichZipsButton?.addEventListener("click", runBulkEnrichZips);
 bulkRenormalizeButton?.addEventListener("click", runBulkRenormalize);
 bulkArchiveButton?.addEventListener("click", runBulkArchive);
 bulkRemoveButton?.addEventListener("click", runBulkRemove);
+bulkArchiveFilteredButton?.addEventListener("click", () => runFilteredStagingAction("archive"));
+bulkRemoveFilteredButton?.addEventListener("click", () => runFilteredStagingAction("remove"));
 bulkFieldSelect?.addEventListener("change", updateBulkValueOptions);
 applyBulkEditButton?.addEventListener("click", applySelectedBulkEdit);
 body.addEventListener("click", (event) => {

@@ -965,6 +965,211 @@ function isMexicoRate(row: Record<string, unknown>) {
     [row.origin_country, row.destination_country].some((value) => catalogKey(value) === "MX");
 }
 
+const BULK_RATE_ROW_SELECT = [
+  "id",
+  "status",
+  "raw_upload_id",
+  "vendor_domain",
+  "rfx_id",
+  "origin",
+  "destination",
+  "normalized_origin",
+  "normalized_destination",
+  "origin_city",
+  "origin_state",
+  "origin_zip_prefix",
+  "origin_market",
+  "origin_region",
+  "origin_country",
+  "destination_city",
+  "destination_state",
+  "destination_zip_prefix",
+  "destination_market",
+  "destination_region",
+  "destination_country",
+  "equipment",
+  "trailer",
+  "operation",
+  "service",
+  "all_in_rate",
+  "mx_linehaul",
+  "us_linehaul",
+  "fsc",
+  "border_crossing_fee",
+  "weekly_capacity",
+  "mx_border_crossing_point",
+  "us_border_crossing_point",
+  "quote_date",
+  "created_at"
+].join(",");
+
+function bulkNumericValue(value: unknown) {
+  const cleaned = cleanRateText(value);
+  if (!cleaned) return null;
+  const number = Number(cleaned);
+  return Number.isFinite(number) ? number : null;
+}
+
+function bulkHasNumericValue(value: unknown) {
+  const number = bulkNumericValue(value);
+  return number !== null && number > 0;
+}
+
+function bulkHasSplitRate(row: Record<string, unknown>) {
+  return ["mx_linehaul", "us_linehaul", "fsc", "border_crossing_fee"].some((field) => bulkHasNumericValue(row[field]));
+}
+
+function bulkNeedsNumericRate(row: Record<string, unknown>) {
+  return !bulkHasNumericValue(row.all_in_rate) && !bulkHasNumericValue(row.mx_linehaul) && !bulkHasNumericValue(row.us_linehaul);
+}
+
+function bulkNeedsLocationMatch(row: Record<string, unknown>) {
+  const originMatched = Boolean(row.origin_market || row.origin_zip_prefix || row.origin_state || row.origin_country);
+  const destinationMatched = Boolean(row.destination_market || row.destination_zip_prefix || row.destination_state || row.destination_country);
+  return !originMatched || !destinationMatched;
+}
+
+function bulkColumnText(row: Record<string, unknown>, field: string) {
+  if (field === "vendor") return [row.vendor_domain].filter(Boolean).join(" ");
+  if (field === "origin") {
+    return [
+      row.origin,
+      row.normalized_origin,
+      row.origin_city,
+      row.origin_state,
+      row.origin_zip_prefix,
+      row.origin_market,
+      row.origin_region,
+      row.origin_country
+    ].filter(Boolean).join(" ");
+  }
+  if (field === "destination") {
+    return [
+      row.destination,
+      row.normalized_destination,
+      row.destination_city,
+      row.destination_state,
+      row.destination_zip_prefix,
+      row.destination_market,
+      row.destination_region,
+      row.destination_country
+    ].filter(Boolean).join(" ");
+  }
+  return String(row[field] ?? "");
+}
+
+function objectRecord(value: unknown): Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function matchesBulkColumnFilters(row: Record<string, unknown>, filters: Record<string, unknown>) {
+  return Object.entries(filters).every(([field, value]) => {
+    const needle = cleanText(value)?.toLowerCase();
+    if (!needle) return true;
+    return bulkColumnText(row, field).toLowerCase().includes(needle);
+  });
+}
+
+function matchesBulkReviewFilter(row: Record<string, unknown>, filter: unknown) {
+  const value = cleanText(filter);
+  if (!value || value === "all") return true;
+  if (value === "needs-location") return bulkNeedsLocationMatch(row);
+  if (value === "needs-rate") return bulkNeedsNumericRate(row);
+  if (value === "all-in") return bulkHasNumericValue(row.all_in_rate);
+  if (value === "split-rate") return bulkHasSplitRate(row);
+  return true;
+}
+
+function matchesBulkRatewareQuickFilter(row: Record<string, unknown>, filter: unknown) {
+  const value = cleanText(filter);
+  if (!value || value === "all") return true;
+  if (value === "cross-border") return isCrossBorderRate(row);
+  if (value === "all-in") return bulkHasNumericValue(row.all_in_rate) && !bulkHasSplitRate(row);
+  if (value === "split-rate") return bulkHasSplitRate(row);
+  if (value === "with-capacity") return Boolean(cleanText(row.weekly_capacity));
+  return true;
+}
+
+function applyBulkRateBaseFilters(query: any, filters: Record<string, unknown>) {
+  const mode = cleanText(filters.mode);
+  if (mode === "rateware") {
+    query = query.eq("status", "approved");
+  } else {
+    const status = cleanText(filters.status);
+    if (status) query = query.eq("status", status);
+  }
+
+  const rawUploadId = cleanText(filters.raw_upload_id);
+  if (rawUploadId) query = query.eq("raw_upload_id", rawUploadId);
+
+  const operation = cleanText(filters.operation);
+  if (operation) query = query.eq("operation", operation);
+
+  const service = cleanText(filters.service);
+  if (service) query = query.eq("service", service);
+
+  const search = cleanText(filters.search);
+  if (search) {
+    query = query.or([
+      `vendor_domain.ilike.%${search}%`,
+      `rfx_id.ilike.%${search}%`,
+      `origin.ilike.%${search}%`,
+      `destination.ilike.%${search}%`,
+      `normalized_origin.ilike.%${search}%`,
+      `normalized_destination.ilike.%${search}%`,
+      `origin_market.ilike.%${search}%`,
+      `destination_market.ilike.%${search}%`
+    ].join(","));
+  }
+  return query;
+}
+
+function matchesBulkRateRow(row: Record<string, unknown>, filters: Record<string, unknown>) {
+  const mode = cleanText(filters.mode);
+  const columnFilters = objectRecord(filters.column_filters);
+  if (!matchesBulkColumnFilters(row, columnFilters)) return false;
+  if (mode === "rateware") return matchesBulkRatewareQuickFilter(row, filters.quick_filter);
+  return matchesBulkReviewFilter(row, filters.review_filter);
+}
+
+async function fetchBulkRateRowsByFilter(supabase: ReturnType<typeof createClient>, filters: Record<string, unknown>) {
+  const pageSize = 1000;
+  const hardLimit = 50000;
+  const rows: Record<string, unknown>[] = [];
+  let offset = 0;
+  let databaseCount = 0;
+
+  while (rows.length < hardLimit) {
+    let query = supabase
+      .from("rate_staging")
+      .select(BULK_RATE_ROW_SELECT, { count: offset === 0 ? "exact" : undefined })
+      .order("created_at", { ascending: false })
+      .range(offset, offset + pageSize - 1);
+    query = applyBulkRateBaseFilters(query, filters);
+
+    const result = await query;
+    if (result.error) throw result.error;
+    if (offset === 0) databaseCount = result.count || 0;
+
+    const page = (result.data || []) as Record<string, unknown>[];
+    rows.push(...page);
+    if (page.length < pageSize) break;
+    offset += pageSize;
+  }
+
+  return {
+    rows: rows.filter((row) => matchesBulkRateRow(row, filters)),
+    database_count: databaseCount,
+    hard_limit_reached: rows.length >= hardLimit && databaseCount > rows.length
+  };
+}
+
+function chunkValues<T>(values: T[], size = 500) {
+  const chunks: T[][] = [];
+  for (let index = 0; index < values.length; index += size) chunks.push(values.slice(index, index + size));
+  return chunks;
+}
+
 function numericAmount(value: unknown) {
   const cleaned = cleanRateText(value);
   return cleaned ? Number(cleaned) : null;
@@ -5733,6 +5938,70 @@ Deno.serve(async (request) => {
         });
       }
       return jsonResponse({ updated: updatedRows.length, rows: updatedRows, reason });
+    }
+
+    if (body.action === "bulk_rate_rows_by_filter") {
+      const filters = objectRecord(body.filters);
+      const targetAction = cleanText(body.target_action);
+      const dryRun = body.dry_run === true;
+      if (!["archive", "remove"].includes(targetAction || "")) {
+        return jsonResponse({ error: "Bulk target action must be archive or remove." }, 400);
+      }
+      if (cleanText(filters.mode) === "rateware" && cleanText(filters.quick_filter) === "conflicts") {
+        return jsonResponse({ error: "The conflicts filter is visual. Add a column/search filter before using a filtered bulk action." }, 400);
+      }
+
+      const filtered = await fetchBulkRateRowsByFilter(supabase, filters);
+      const ids = filtered.rows.map((row) => cleanText(row.id)).filter(Boolean) as string[];
+      if (dryRun) {
+        return jsonResponse({
+          action: targetAction,
+          matched: ids.length,
+          database_count: filtered.database_count,
+          hard_limit_reached: filtered.hard_limit_reached
+        });
+      }
+      if (!ids.length) {
+        return jsonResponse({
+          action: targetAction,
+          matched: 0,
+          updated: 0,
+          removed: 0,
+          rows: []
+        });
+      }
+
+      let affected = 0;
+      for (const chunk of chunkValues(ids, 500)) {
+        const result = targetAction === "archive"
+          ? await supabase.from("rate_staging").update({ status: "archived" }).in("id", chunk).select("id")
+          : await supabase.from("rate_staging").delete().in("id", chunk).select("id");
+        if (result.error) throw result.error;
+        affected += result.data?.length || 0;
+      }
+
+      const mode = cleanText(filters.mode) === "rateware" ? "rateware" : "staging";
+      await writeAuditLog(
+        supabase,
+        user,
+        `${mode}.bulk_${targetAction}_filtered`,
+        "rate_staging",
+        ids.slice(0, 50).join(","),
+        `${targetAction === "archive" ? "Archived" : "Removed"} ${affected} ${mode} row(s) using active filters`,
+        {
+          ids_count: ids.length,
+          filters,
+          hard_limit_reached: filtered.hard_limit_reached
+        }
+      );
+
+      return jsonResponse({
+        action: targetAction,
+        matched: ids.length,
+        updated: targetAction === "archive" ? affected : 0,
+        removed: targetAction === "remove" ? affected : 0,
+        hard_limit_reached: filtered.hard_limit_reached
+      });
     }
 
     if (body.action === "archive_staging") {

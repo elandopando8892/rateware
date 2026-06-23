@@ -40,6 +40,22 @@ export async function returnApprovedRatesToStaging(ids = [], reason = "") {
   return await callRatewareApi("return_rateware_to_staging", { ids, reason });
 }
 
+export async function archiveApprovedRatewareByFilter(filters = {}, { dryRun = false } = {}) {
+  return await callRatewareApi("bulk_rate_rows_by_filter", {
+    target_action: "archive",
+    filters: { ...filters, mode: "rateware" },
+    dry_run: dryRun
+  });
+}
+
+export async function removeApprovedRatewareByFilter(filters = {}, { dryRun = false } = {}) {
+  return await callRatewareApi("bulk_rate_rows_by_filter", {
+    target_action: "remove",
+    filters: { ...filters, mode: "rateware" },
+    dry_run: dryRun
+  });
+}
+
 export async function fetchRatewareBookVersions() {
   return (await callRatewareApi("list_rateware_versions")).rows;
 }

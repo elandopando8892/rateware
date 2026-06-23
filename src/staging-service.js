@@ -35,3 +35,19 @@ export async function archiveStagingRows(ids = []) {
 export async function removeStagingRows(ids = []) {
   return await callRatewareApi("remove_staging", { ids });
 }
+
+export async function archiveStagingRowsByFilter(filters = {}, { dryRun = false } = {}) {
+  return await callRatewareApi("bulk_rate_rows_by_filter", {
+    target_action: "archive",
+    filters: { ...filters, mode: "staging" },
+    dry_run: dryRun
+  });
+}
+
+export async function removeStagingRowsByFilter(filters = {}, { dryRun = false } = {}) {
+  return await callRatewareApi("bulk_rate_rows_by_filter", {
+    target_action: "remove",
+    filters: { ...filters, mode: "staging" },
+    dry_run: dryRun
+  });
+}

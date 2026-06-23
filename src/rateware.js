@@ -1,6 +1,6 @@
 import { initAuthControls, requirePrivatePage } from "./auth.js";
 import { createLocationMatchDrawer } from "./location-match-drawer.js";
-import { bulkUpdateApprovedRatewareRows, createRatewareBookVersion, enrichApprovedRatewareLocationZips, fetchRatewareAudit, fetchRatewareBookVersion, fetchRatewareBookVersions, matchApprovedRatewareVendors, renormalizeApprovedRatewareRows, fetchApprovedRateware, fetchRatewareOptions, returnApprovedRatesToStaging, saveLocationAlias, updateApprovedRatewareRow } from "./rateware-service.js";
+import { archiveApprovedRatewareByFilter, bulkUpdateApprovedRatewareRows, createRatewareBookVersion, enrichApprovedRatewareLocationZips, fetchRatewareAudit, fetchRatewareBookVersion, fetchRatewareBookVersions, matchApprovedRatewareVendors, renormalizeApprovedRatewareRows, fetchApprovedRateware, fetchRatewareOptions, removeApprovedRatewareByFilter, returnApprovedRatesToStaging, saveLocationAlias, updateApprovedRatewareRow } from "./rateware-service.js";
 import { installSpreadsheetGrid } from "./spreadsheet-grid.js";
 import { initColumnVisibility, initDrawer, initLocationAutocomplete } from "./sheet-ui.js";
 
@@ -21,6 +21,8 @@ const exportSelectedButton = document.querySelector("#export-selected-button");
 const exportVisibleButton = document.querySelector("#export-visible-button");
 const exportClientVisibleButton = document.querySelector("#export-client-visible-button");
 const exportRfxVisibleButton = document.querySelector("#export-rfx-visible-button");
+const archiveFilteredButton = document.querySelector("#archive-filtered-rateware");
+const removeFilteredButton = document.querySelector("#remove-filtered-rateware");
 const actionStatus = document.querySelector("#rateware-action-status");
 const columnFilterInputs = document.querySelectorAll("[data-rateware-column-filter]");
 const clearColumnFiltersButton = document.querySelector("#clear-rateware-column-filters");
@@ -1590,6 +1592,32 @@ function activeFilterSummary(scope, ids) {
   };
 }
 
+function activeRatewareBulkFilters() {
+  const columnFilters = {};
+  columnFilterInputs.forEach((input) => {
+    const value = String(input.value || "").trim();
+    if (value) columnFilters[input.dataset.ratewareColumnFilter] = value;
+  });
+  return {
+    quick_filter: activeQuickFilter,
+    search: searchInput.value || "",
+    operation: operationFilter.value || "",
+    service: serviceFilter.value || "",
+    column_filters: columnFilters
+  };
+}
+
+function ratewareFilterSummaryLabel(filters) {
+  const parts = [];
+  if (filters.quick_filter && filters.quick_filter !== "all") parts.push(filters.quick_filter);
+  if (filters.search) parts.push(`search "${filters.search}"`);
+  if (filters.operation) parts.push(filters.operation);
+  if (filters.service) parts.push(filters.service);
+  const columnCount = Object.keys(filters.column_filters || {}).length;
+  if (columnCount) parts.push(`${columnCount} column filter(s)`);
+  return parts.join(", ") || "all approved Rateware rows";
+}
+
 function slug(value) {
   return String(value || "rateware")
     .toLowerCase()
@@ -1739,6 +1767,51 @@ async function loadRateware() {
     body.innerHTML = `<tr><td colspan="${RATEWARE_COLSPAN}">Could not load Rateware. ${escapeHtml(error.message)}</td></tr>`;
   } finally {
     refreshButton.disabled = false;
+  }
+}
+
+async function runFilteredRatewareAction(targetAction) {
+  const isRemove = targetAction === "remove";
+  const filters = activeRatewareBulkFilters();
+  const service = isRemove ? removeApprovedRatewareByFilter : archiveApprovedRatewareByFilter;
+  const label = isRemove ? "remove" : "archive";
+
+  try {
+    await requirePrivatePage();
+    if (archiveFilteredButton) archiveFilteredButton.disabled = true;
+    if (removeFilteredButton) removeFilteredButton.disabled = true;
+    setActionStatus(`Counting approved rates for filtered ${label}...`);
+
+    const preview = await service(filters, { dryRun: true });
+    const matched = Number(preview.matched || 0);
+    if (!matched) {
+      setActionStatus(`No approved rates match: ${ratewareFilterSummaryLabel(filters)}.`, "warning");
+      return;
+    }
+
+    const scope = ratewareFilterSummaryLabel(filters);
+    if (isRemove) {
+      const typed = window.prompt(`This will permanently remove ${matched} approved Rateware row(s) matching: ${scope}.\n\nType DELETE to continue.`);
+      if (typed !== "DELETE") {
+        setActionStatus("Filtered remove cancelled.", "warning");
+        return;
+      }
+    } else if (!window.confirm(`Archive ${matched} approved Rateware row(s) matching: ${scope}?`)) {
+      setActionStatus("Filtered archive cancelled.", "warning");
+      return;
+    }
+
+    setActionStatus(`${isRemove ? "Removing" : "Archiving"} ${matched} filtered approved rate(s)...`);
+    const result = await service(filters, { dryRun: false });
+    selectedRowIds.clear();
+    setActionStatus(`${result.updated || result.removed || 0} filtered approved rate(s) ${isRemove ? "removed" : "archived"}.`, "success");
+    await loadRateware();
+  } catch (error) {
+    setActionStatus(error.message, "error");
+  } finally {
+    if (archiveFilteredButton) archiveFilteredButton.disabled = false;
+    if (removeFilteredButton) removeFilteredButton.disabled = false;
+    updateBulkControls();
   }
 }
 
@@ -1916,6 +1989,8 @@ exportSelectedButton?.addEventListener("click", exportSelectedCsv);
 exportVisibleButton?.addEventListener("click", exportVisibleCsv);
 exportClientVisibleButton?.addEventListener("click", exportVisibleClientCsv);
 exportRfxVisibleButton?.addEventListener("click", exportVisibleRfxCsv);
+archiveFilteredButton?.addEventListener("click", () => runFilteredRatewareAction("archive"));
+removeFilteredButton?.addEventListener("click", () => runFilteredRatewareAction("remove"));
 body.addEventListener("click", (event) => {
   const matchButton = event.target.closest("[data-location-match-detail]");
   if (matchButton) {
