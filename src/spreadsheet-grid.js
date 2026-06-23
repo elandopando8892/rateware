@@ -221,7 +221,7 @@ export function installSpreadsheetGrid({
   onGridMessage,
   onSelectionChange
 }) {
-  const selection = { anchor: null, focus: null, keyboardSelecting: false };
+  const selection = { anchor: null, focus: null, keyboardSelecting: false, pointerSelecting: false };
   const undoStack = [];
   const redoStack = [];
   const focusValues = new WeakMap();
@@ -259,6 +259,36 @@ export function installSpreadsheetGrid({
 
   container.addEventListener("click", (event) => {
     focusFirstCellControl(event.target, rowSelector, cellSelector);
+  });
+
+  container.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0) return;
+    if (event.target.closest('button, a, summary, select, textarea, input[type="checkbox"], input[type="date"]')) return;
+    const control = event.target.closest(cellSelector) || event.target.closest("td")?.querySelector(cellSelector);
+    if (!control || control.disabled) return;
+    selection.pointerSelecting = true;
+    selection.keyboardSelecting = true;
+    selection.anchor = control;
+    selection.focus = control;
+    control.focus();
+    if (control.select && control.matches('input:not([type="checkbox"])')) control.select();
+    emitSelection(paintSheetSelection(container, selection.anchor, selection.focus, rowSelector, cellSelector));
+  });
+
+  container.addEventListener("pointerover", (event) => {
+    if (!selection.pointerSelecting) return;
+    const control = event.target.closest(cellSelector) || event.target.closest("td")?.querySelector(cellSelector);
+    if (!control || control.disabled || control === selection.focus) return;
+    selection.focus = control;
+    emitSelection(paintSheetSelection(container, selection.anchor, selection.focus, rowSelector, cellSelector));
+  });
+
+  window.addEventListener("pointerup", () => {
+    if (!selection.pointerSelecting) return;
+    selection.pointerSelecting = false;
+    window.setTimeout(() => {
+      selection.keyboardSelecting = false;
+    });
   });
 
   container.addEventListener("focusin", (event) => {
