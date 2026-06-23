@@ -4357,6 +4357,26 @@ select.staging-input {
   outline-color: rgba(0, 124, 114, 0.72);
 }
 
+.staging-table td.fill-handle-cell,
+.rateware-table td.fill-handle-cell {
+  position: relative;
+}
+
+.staging-table td.fill-handle-cell::after,
+.rateware-table td.fill-handle-cell::after {
+  content: "";
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  width: 7px;
+  height: 7px;
+  border: 1px solid #ffffff;
+  border-radius: 2px;
+  background: var(--accent);
+  cursor: crosshair;
+  z-index: 2;
+}
+
 .staging-table td:has(.staging-input),
 .rateware-table td:has(.rateware-input) {
   cursor: cell;

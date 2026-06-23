@@ -120,7 +120,9 @@ function selectionBounds(container, anchor, focus, rowSelector, cellSelector) {
 }
 
 function clearSheetSelection(container) {
-  container.querySelectorAll(".selected-sheet-cell").forEach((cell) => cell.classList.remove("selected-sheet-cell"));
+  container.querySelectorAll(".selected-sheet-cell, .fill-handle-cell").forEach((cell) => {
+    cell.classList.remove("selected-sheet-cell", "fill-handle-cell");
+  });
 }
 
 function selectedControls(container, anchor, focus, rowSelector, cellSelector) {
@@ -139,6 +141,7 @@ function paintSheetSelection(container, anchor, focus, rowSelector, cellSelector
   clearSheetSelection(container);
   const matrix = selectedControls(container, anchor, focus, rowSelector, cellSelector);
   matrix.flat().forEach((control) => control.closest("td")?.classList.add("selected-sheet-cell"));
+  matrix.at(-1)?.at(-1)?.closest("td")?.classList.add("fill-handle-cell");
   return matrix;
 }
 
@@ -212,6 +215,41 @@ function clearSelectionValues(matrix, snapshots) {
   return [...changedRows].filter(Boolean);
 }
 
+function isFillHandlePointer(event) {
+  const cell = event.target.closest("td.fill-handle-cell");
+  if (!cell) return false;
+  const rect = cell.getBoundingClientRect();
+  return event.clientX >= rect.right - 12 && event.clientY >= rect.bottom - 12;
+}
+
+function controlsForBounds(bounds, startRow, endRow) {
+  const matrix = [];
+  for (let rowIndex = startRow; rowIndex <= endRow; rowIndex += 1) {
+    const row = bounds.rows[rowIndex];
+    const cells = row ? editableCells(row, bounds.cellSelector).slice(bounds.startColumn, bounds.endColumn + 1) : [];
+    if (cells.length) matrix.push(cells);
+  }
+  return matrix;
+}
+
+function fillPatternDown(bounds, targetRowIndex, snapshots) {
+  if (!bounds || targetRowIndex <= bounds.endRow) return [];
+  const sourceMatrix = controlsForBounds(bounds, bounds.startRow, bounds.endRow);
+  if (!sourceMatrix.length) return [];
+  const changedRows = new Set();
+  for (let rowIndex = bounds.endRow + 1; rowIndex <= targetRowIndex; rowIndex += 1) {
+    const row = bounds.rows[rowIndex];
+    if (!row) continue;
+    const cells = editableCells(row, bounds.cellSelector).slice(bounds.startColumn, bounds.endColumn + 1);
+    const sourceRow = sourceMatrix[(rowIndex - bounds.endRow - 1) % sourceMatrix.length] || [];
+    cells.forEach((control, columnIndex) => {
+      setControlValueSilentlyTracked(control, sourceRow[columnIndex] ? controlValue(sourceRow[columnIndex]) : "", snapshots);
+      changedRows.add(row);
+    });
+  }
+  return [...changedRows].filter(Boolean);
+}
+
 export function installSpreadsheetGrid({
   container,
   rowSelector,
@@ -222,6 +260,7 @@ export function installSpreadsheetGrid({
   onSelectionChange
 }) {
   const selection = { anchor: null, focus: null, keyboardSelecting: false, pointerSelecting: false };
+  const fillDrag = { active: false, bounds: null, target: null };
   const undoStack = [];
   const redoStack = [];
   const focusValues = new WeakMap();
@@ -263,6 +302,16 @@ export function installSpreadsheetGrid({
 
   container.addEventListener("pointerdown", (event) => {
     if (event.button !== 0) return;
+    if (isFillHandlePointer(event)) {
+      const control = event.target.closest(cellSelector) || event.target.closest("td")?.querySelector(cellSelector);
+      const bounds = selectionBounds(container, selection.anchor || control, selection.focus || control, rowSelector, cellSelector);
+      if (!control || !bounds) return;
+      event.preventDefault();
+      fillDrag.active = true;
+      fillDrag.bounds = { ...bounds, cellSelector };
+      fillDrag.target = control;
+      return;
+    }
     if (event.target.closest('button, a, summary, select, textarea, input[type="checkbox"], input[type="date"]')) return;
     const control = event.target.closest(cellSelector) || event.target.closest("td")?.querySelector(cellSelector);
     if (!control || control.disabled) return;
@@ -276,6 +325,20 @@ export function installSpreadsheetGrid({
   });
 
   container.addEventListener("pointerover", (event) => {
+    if (fillDrag.active) {
+      const control = event.target.closest(cellSelector) || event.target.closest("td")?.querySelector(cellSelector);
+      if (!control || control.disabled || control === fillDrag.target) return;
+      const position = cellPosition(container, control, rowSelector, cellSelector);
+      if (position.rowIndex <= fillDrag.bounds.endRow) return;
+      fillDrag.target = control;
+      const targetMatrix = controlsForBounds(fillDrag.bounds, fillDrag.bounds.startRow, position.rowIndex);
+      clearSheetSelection(container);
+      targetMatrix.flat().forEach((targetControl) => targetControl.closest("td")?.classList.add("selected-sheet-cell"));
+      targetMatrix.at(-1)?.at(-1)?.closest("td")?.classList.add("fill-handle-cell");
+      emitSelection(targetMatrix);
+      return;
+    }
+
     if (!selection.pointerSelecting) return;
     const control = event.target.closest(cellSelector) || event.target.closest("td")?.querySelector(cellSelector);
     if (!control || control.disabled || control === selection.focus) return;
@@ -284,6 +347,26 @@ export function installSpreadsheetGrid({
   });
 
   window.addEventListener("pointerup", () => {
+    if (fillDrag.active) {
+      const targetPosition = fillDrag.target ? cellPosition(container, fillDrag.target, rowSelector, cellSelector) : { rowIndex: -1 };
+      const snapshots = [];
+      suppressHistory = true;
+      const changedRows = fillPatternDown(fillDrag.bounds, targetPosition.rowIndex, snapshots);
+      suppressHistory = false;
+      if (changedRows.length) {
+        pushBatchHistory(snapshots, "autofill");
+        onRowsChanged?.(changedRows);
+        onGridMessage?.(`Autofilled ${changedRows.length} row(s).`);
+      }
+      if (fillDrag.target) {
+        selection.focus = fillDrag.target;
+      }
+      fillDrag.active = false;
+      fillDrag.bounds = null;
+      fillDrag.target = null;
+      return;
+    }
+
     if (!selection.pointerSelecting) return;
     selection.pointerSelecting = false;
     window.setTimeout(() => {
