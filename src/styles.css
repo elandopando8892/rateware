@@ -3831,6 +3831,48 @@ tbody tr:hover {
   font-weight: 760;
 }
 
+.catalog-workbench-layout {
+  gap: 14px;
+}
+
+.catalog-workbench-table th,
+.catalog-workbench-table td {
+  vertical-align: top;
+}
+
+.catalog-workbench-table td strong,
+.catalog-workbench-table td small {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.catalog-workbench-table td strong {
+  max-width: 360px;
+  color: var(--ink);
+  font-size: 0.76rem;
+  white-space: nowrap;
+}
+
+.catalog-workbench-table td small {
+  max-width: 420px;
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 760;
+  line-height: 1.25;
+}
+
+.catalog-suggestion-input {
+  width: min(360px, 100%);
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: #ffffff;
+  padding: 5px 7px;
+  font: inherit;
+  font-size: 0.76rem;
+}
+
 .upload-detail {
   display: grid;
   gap: 14px;

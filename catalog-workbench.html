@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Rateware Catalog Workbench</title>
+    <link rel="stylesheet" href="./src/styles.css" />
+  </head>
+  <body>
+    <div class="shell-layout">
+      <aside class="side-nav" aria-label="Rateware modules">
+        <a class="brand-mark" href="./app.html">Rateware</a>
+        <nav class="nav-groups">
+          <section class="nav-group">
+            <p>Operate</p>
+            <a href="./app.html">Dashboard</a>
+            <a href="./upload-center.html">Upload Center</a>
+            <a href="./upload-history.html">Upload History</a>
+            <a href="./staging-review.html">Staging Review</a>
+            <a href="./rateware.html">Rateware</a>
+          </section>
+          <section class="nav-group">
+            <p>Analyze</p>
+            <a href="./business-intelligence.html">AI Analyst</a>
+          </section>
+          <section class="nav-group">
+            <p>Source</p>
+            <a href="./vendors.html">Vendors</a>
+            <a href="./rfx-events.html">RFx Events</a>
+            <a href="./outreach.html">Outreach</a>
+          </section>
+          <section class="nav-group">
+            <p>Admin</p>
+            <a href="./settings.html">Settings</a>
+            <a href="./interpretation-memory.html">Memory</a>
+            <a aria-current="page" href="./catalog-workbench.html">Catalog</a>
+          </section>
+        </nav>
+      </aside>
+
+      <div class="page-frame">
+        <header class="page-header">
+          <div>
+            <p class="eyebrow">Normalization control</p>
+            <h1>Catalog Workbench</h1>
+            <nav class="module-crumbs" aria-label="Module context">
+              <a href="./app.html">Command Center</a>
+              <a href="./settings.html">Admin</a>
+              <span>Catalog</span>
+            </nav>
+          </div>
+          <div class="page-header-actions">
+            <button id="sync-catalog-button" class="page-primary-action" type="button">Sync catalog</button>
+            <form id="auth-form" class="auth-strip">
+              <button id="auth-button" type="submit">Sign in with Kinde</button>
+              <button id="sign-out-button" type="button" class="secondary hidden">Sign out</button>
+              <p id="auth-status" role="status"></p>
+            </form>
+          </div>
+        </header>
+
+        <main class="settings-layout catalog-workbench-layout">
+          <section class="review-insight-grid" aria-label="Catalog match summary">
+            <article><span>Rows checked</span><strong id="catalog-rows-checked">0</strong></article>
+            <article><span>Location gaps</span><strong id="catalog-gap-count">0</strong></article>
+            <article><span>Pending review</span><strong id="catalog-pending-count">0</strong></article>
+            <article><span>Approved rows</span><strong id="catalog-approved-count">0</strong></article>
+          </section>
+
+          <section class="workspace-panel">
+            <div class="split-heading">
+              <div>
+                <p class="eyebrow">Location matching</p>
+                <h2>Origin and destination gaps</h2>
+              </div>
+              <div class="action-row">
+                <select id="catalog-side-filter">
+                  <option value="">All sides</option>
+                  <option value="origin">Origin</option>
+                  <option value="destination">Destination</option>
+                </select>
+                <select id="catalog-status-filter">
+                  <option value="">All statuses</option>
+                  <option value="pending_review">Pending review</option>
+                  <option value="approved">Approved</option>
+                </select>
+                <input id="catalog-search" type="search" placeholder="Search lane, vendor, market..." />
+                <button id="refresh-catalog-workbench" type="button" class="secondary small-button">Refresh</button>
+              </div>
+            </div>
+            <p id="catalog-workbench-status" class="status-message" role="status"></p>
+            <div class="table-wrap">
+              <table class="catalog-workbench-table">
+                <thead>
+                  <tr>
+                    <th>Status</th>
+                    <th>Side</th>
+                    <th>Vendor</th>
+                    <th>Lane</th>
+                    <th>Current match</th>
+                    <th>Catalog suggestion</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody id="catalog-workbench-body">
+                  <tr><td colspan="7">Loading catalog gaps...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </main>
+      </div>
+    </div>
+    <script type="module" src="./src/catalog-workbench.js"></script>
+  </body>
+</html>
