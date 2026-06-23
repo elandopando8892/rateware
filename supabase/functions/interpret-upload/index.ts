@@ -2025,18 +2025,24 @@ Deno.serve(async (request) => {
     }).eq("id", job.data.id);
 
     const priorCorrectionHistory = Array.isArray(rawUpload.correction_history) ? rawUpload.correction_history : [];
-    const correctionHistory = correctionNote
-      ? [
-        ...priorCorrectionHistory,
-        {
-          note: correctionNote,
-          job_id: job.data.id,
-          created_at: new Date().toISOString(),
-          rows_before: Number(rawUpload.interpreted_rate_rows || 0),
-          rows_after: rows.length
-        }
-      ]
-      : priorCorrectionHistory;
+    const priorWarnings = Array.isArray(rawUpload.audit_warnings) ? rawUpload.audit_warnings : [];
+    const correctionHistory = [
+      ...priorCorrectionHistory,
+      {
+        note: correctionNote || null,
+        job_id: job.data.id,
+        created_at: new Date().toISOString(),
+        rows_before: Number(rawUpload.interpreted_rate_rows || 0),
+        rows_after: rows.length,
+        expected_before: Number(rawUpload.expected_rate_rows || rawUpload.interpreted_rate_rows || 0),
+        expected_after: uploadAudit.expected_rate_rows,
+        audit_status_before: rawUpload.audit_status || null,
+        audit_status_after: uploadAudit.status,
+        warnings_before: priorWarnings.length,
+        warnings_after: uploadAudit.warnings.length,
+        memory_rules_used: memoryRules.map((rule) => ({ id: rule.id, scope: rule.scope, title: rule.title }))
+      }
+    ];
 
     await supabase.from("raw_uploads").update({
       vendor_id: vendorId,
@@ -2065,6 +2071,16 @@ Deno.serve(async (request) => {
     return jsonResponse({
       job_id: job.data.id,
       staged_rows: rows.length,
+      diff: {
+        rows_before: Number(rawUpload.interpreted_rate_rows || 0),
+        rows_after: rows.length,
+        expected_before: Number(rawUpload.expected_rate_rows || rawUpload.interpreted_rate_rows || 0),
+        expected_after: uploadAudit.expected_rate_rows,
+        audit_status_before: rawUpload.audit_status || null,
+        audit_status_after: uploadAudit.status,
+        warnings_before: priorWarnings.length,
+        warnings_after: uploadAudit.warnings.length
+      },
       audit: {
         ...uploadAudit,
         memory_rules_used: memoryRules.map((rule) => ({ id: rule.id, scope: rule.scope, title: rule.title }))

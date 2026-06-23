@@ -39,6 +39,7 @@ const applicableMemoryCount = document.querySelector("#applicable-memory-count")
 const applicableMemoryList = document.querySelector("#applicable-memory-list");
 const saveMemoryRuleInput = document.querySelector("#save-memory-rule");
 const memoryRuleScopeInput = document.querySelector("#memory-rule-scope");
+const reprocessImpactPreview = document.querySelector("#reprocess-impact-preview");
 const HISTORY_COLSPAN = 11;
 let loadedRows = [];
 let currentRows = [];
@@ -249,6 +250,7 @@ function uploadQualityChips(row) {
   if (auditStatus(row) === "repaired") chips.push({ tone: "warning", label: "Repaired" });
   if (!row.vendors?.vendor_name && !row.vendor_hint) chips.push({ tone: "warning", label: "No vendor hint" });
   if (!row.rfx_hint) chips.push({ tone: "muted", label: "No RFx" });
+  if (latestCorrection(row)) chips.push({ tone: correctionTone(latestCorrection(row)), label: correctionDeltaLabel(latestCorrection(row)) });
   if (row.error_message) chips.push({ tone: "danger", label: "Needs attention" });
   return `<div class="row-review-chips">${chips
     .map((chip) => `<span class="review-chip ${escapeHtml(chip.tone)}">${escapeHtml(chip.label)}</span>`)
@@ -273,6 +275,67 @@ function correctionHistory(row) {
   return Array.isArray(row.correction_history) ? row.correction_history : [];
 }
 
+function latestCorrection(row) {
+  return correctionHistory(row).at(-1) || null;
+}
+
+function correctionDelta(item) {
+  if (!item) return null;
+  const before = Number(item.rows_before || 0);
+  const after = Number(item.rows_after || 0);
+  return after - before;
+}
+
+function correctionTone(item) {
+  const delta = correctionDelta(item);
+  if (delta === null) return "muted";
+  if (delta > 0) return "success";
+  if (delta < 0) return "danger";
+  return "neutral";
+}
+
+function correctionDeltaLabel(item) {
+  const delta = correctionDelta(item);
+  if (delta === null) return "No comparison";
+  if (delta > 0) return `+${delta} row${delta === 1 ? "" : "s"}`;
+  if (delta < 0) return `${delta} row${Math.abs(delta) === 1 ? "" : "s"}`;
+  return "No row change";
+}
+
+function warningDeltaLabel(item) {
+  if (!item || item.warnings_before === undefined || item.warnings_after === undefined) return "";
+  const delta = Number(item.warnings_after || 0) - Number(item.warnings_before || 0);
+  if (delta < 0) return `${Math.abs(delta)} fewer warning${Math.abs(delta) === 1 ? "" : "s"}`;
+  if (delta > 0) return `${delta} more warning${delta === 1 ? "" : "s"}`;
+  return "same warnings";
+}
+
+function renderReprocessImpact(row) {
+  const latest = latestCorrection(row);
+  const before = latest ? Number(latest.rows_before || 0) : stagedRows(row);
+  const after = latest ? Number(latest.rows_after || 0) : stagedRows(row);
+  const expectedBefore = latest ? Number(latest.expected_before || before) : detectedRows(row);
+  const expectedAfter = latest ? Number(latest.expected_after || after) : detectedRows(row);
+  const warningsBefore = latest?.warnings_before ?? auditWarnings(row).length;
+  const warningsAfter = latest?.warnings_after ?? auditWarnings(row).length;
+  return `
+    <div class="reprocess-impact-card">
+      <span class="review-chip ${escapeHtml(correctionTone(latest))}">${escapeHtml(latest ? correctionDeltaLabel(latest) : "No reprocess yet")}</span>
+      <dl>
+        ${detailItem("Before", before)}
+        ${detailItem("After", after)}
+        ${detailItem("Expected before", expectedBefore || before)}
+        ${detailItem("Expected after", expectedAfter || after)}
+        ${detailItem("Audit before", latest?.audit_status_before || auditStatus(row))}
+        ${detailItem("Audit after", latest?.audit_status_after || auditStatus(row))}
+        ${detailItem("Warnings before", warningsBefore)}
+        ${detailItem("Warnings after", warningsAfter)}
+      </dl>
+      <p>${escapeHtml(latest?.note || "Run reprocess with a correction note to create an interpretation diff.")}</p>
+    </div>
+  `;
+}
+
 function renderCorrectionHistory(row) {
   const history = correctionHistory(row).slice(-5).reverse();
   if (!row.correction_note && !history.length) {
@@ -282,14 +345,44 @@ function renderCorrectionHistory(row) {
     <div class="correction-history">
       ${row.correction_note ? `<article><strong>Last note</strong><span>${escapeHtml(row.correction_note)}</span></article>` : ""}
       ${history.map((item) => `
-        <article>
-          <strong>${escapeHtml(formatDate(item.created_at) || "Reprocess")}</strong>
+        <article class="${escapeHtml(correctionTone(item))}">
+          <div>
+            <strong>${escapeHtml(formatDate(item.created_at) || "Reprocess")}</strong>
+            <span class="review-chip ${escapeHtml(correctionTone(item))}">${escapeHtml(correctionDeltaLabel(item))}</span>
+          </div>
           <span>${escapeHtml(item.note || "")}</span>
-          <small>${escapeHtml([item.rows_before !== undefined ? `${item.rows_before} before` : "", item.rows_after !== undefined ? `${item.rows_after} after` : ""].filter(Boolean).join(" | "))}</small>
+          <small>${escapeHtml([
+            item.rows_before !== undefined ? `${item.rows_before} before` : "",
+            item.rows_after !== undefined ? `${item.rows_after} after` : "",
+            item.audit_status_before || item.audit_status_after ? `${item.audit_status_before || "-"} -> ${item.audit_status_after || "-"}` : "",
+            warningDeltaLabel(item)
+          ].filter(Boolean).join(" | "))}</small>
         </article>
       `).join("")}
     </div>
   `;
+}
+
+function renderSelectedReprocessPreview(rows = []) {
+  if (!reprocessImpactPreview) return;
+  if (!rows.length) {
+    reprocessImpactPreview.innerHTML = '<p class="detail-note">Select uploads to see their current interpretation baseline.</p>';
+    return;
+  }
+  reprocessImpactPreview.innerHTML = rows.slice(0, 8).map((row) => `
+    <article>
+      <div>
+        <strong>${escapeHtml(row.original_filename || "Upload")}</strong>
+        <small>${escapeHtml([vendorDisplay(row), row.rfx_hint].filter(Boolean).join(" / ") || "-")}</small>
+      </div>
+      <div>
+        <span class="review-chip neutral">${escapeHtml(`${stagedRows(row)} staged`)}</span>
+        <span class="review-chip muted">${escapeHtml(`${detectedRows(row) || stagedRows(row)} detected`)}</span>
+        <span class="review-chip ${escapeHtml(auditTone(auditStatus(row)))}">${escapeHtml(auditLabel(auditStatus(row)))}</span>
+        ${latestCorrection(row) ? `<span class="review-chip ${escapeHtml(correctionTone(latestCorrection(row)))}">${escapeHtml(correctionDeltaLabel(latestCorrection(row)))}</span>` : ""}
+      </div>
+    </article>
+  `).join("") + (rows.length > 8 ? `<p class="detail-note">${escapeHtml(rows.length - 8)} more upload(s) selected.</p>` : "");
 }
 
 function vendorDisplay(row) {
@@ -343,6 +436,7 @@ function openUploadDrawer(rowId) {
 
     <section class="upload-detail-section">
       <h3>Correction notes</h3>
+      ${renderReprocessImpact(row)}
       ${renderCorrectionHistory(row)}
     </section>
 
@@ -544,6 +638,7 @@ function openReprocessDrawer(ids = []) {
   if (saveMemoryRuleInput) saveMemoryRuleInput.checked = false;
   if (memoryRuleScopeInput) memoryRuleScopeInput.value = rows.length === 1 && rows[0]?.rfx_hint ? "rfx" : "vendor";
   renderApplicableMemory([]);
+  renderSelectedReprocessPreview(rows);
   setReprocessStatus(`${pendingReprocessIds.length} upload(s) selected. Add a correction note or leave blank to reprocess normally.`);
   reprocessDrawer.classList.remove("hidden");
   loadApplicableMemory(pendingReprocessIds[0]);
