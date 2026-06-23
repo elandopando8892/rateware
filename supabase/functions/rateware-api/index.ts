@@ -5146,20 +5146,36 @@ Deno.serve(async (request) => {
     if (body.action === "return_rateware_to_staging") {
       const ids = Array.isArray(body.ids) ? body.ids.map(String).filter(Boolean).slice(0, 500) : [];
       if (!ids.length) return jsonResponse({ error: "At least one approved rate id is required." }, 400);
+      const reason = cleanText(body.reason) || "Needs correction or re-review from Rateware Final";
+      const returnedNote = `Returned to staging ${new Date().toISOString().slice(0, 10)}: ${reason}`;
 
-      const result = await supabase
+      const currentResult = await supabase
         .from("rate_staging")
-        .update({ status: "pending_review" })
+        .select("id,notes")
         .in("id", ids)
-        .eq("status", "approved")
-        .select("id");
-      if (result.error) throw result.error;
-      if (result.data?.length) {
-        await writeAuditLog(supabase, user, "rateware.return_to_staging", "rate_staging", result.data.map((row) => row.id).join(","), `Returned ${result.data.length} approved Rateware row(s) to staging`, {
-          ids: result.data.map((row) => row.id)
+        .eq("status", "approved");
+      if (currentResult.error) throw currentResult.error;
+
+      const updatedRows: Record<string, unknown>[] = [];
+      for (const current of currentResult.data || []) {
+        const notes = [cleanText(current.notes), returnedNote].filter(Boolean).join(" | ");
+        const result = await supabase
+          .from("rate_staging")
+          .update({ status: "pending_review", notes })
+          .eq("id", current.id)
+          .eq("status", "approved")
+          .select("id");
+        if (result.error) throw result.error;
+        updatedRows.push(...(result.data || []));
+      }
+
+      if (updatedRows.length) {
+        await writeAuditLog(supabase, user, "rateware.return_to_staging", "rate_staging", updatedRows.map((row) => row.id).join(","), `Returned ${updatedRows.length} approved Rateware row(s) to staging`, {
+          ids: updatedRows.map((row) => row.id),
+          reason
         });
       }
-      return jsonResponse({ updated: result.data?.length || 0, rows: result.data || [] });
+      return jsonResponse({ updated: updatedRows.length, rows: updatedRows, reason });
     }
 
     if (body.action === "archive_staging") {

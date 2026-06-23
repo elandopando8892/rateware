@@ -3483,6 +3483,47 @@ table {
   font-size: 0.7rem;
 }
 
+.comparison-offers {
+  display: grid;
+  gap: 2px;
+}
+
+.comparison-offers span {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.comparison-offers strong {
+  color: var(--text);
+}
+
+.comparison-offers em {
+  color: var(--neutral);
+  font-style: normal;
+  font-weight: 780;
+}
+
+.comparison-signal {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 2px 7px;
+  font-size: 0.66rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.comparison-signal.success {
+  color: var(--success);
+  background: #eaf7ef;
+}
+
+.comparison-signal.warning {
+  color: var(--warning);
+  background: #fff3d6;
+}
+
 .rateware-version-list {
   display: grid;
   gap: 6px;
@@ -3516,6 +3557,21 @@ table {
 .rateware-version-list span {
   color: var(--muted);
   font-size: 0.72rem;
+}
+
+.rateware-version-list small {
+  color: var(--muted);
+  font-size: 0.68rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.version-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  justify-content: flex-end;
 }
 
 .staging-table tr.dirty-row {

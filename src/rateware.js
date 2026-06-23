@@ -19,6 +19,8 @@ const renormalizeSelectedButton = document.querySelector("#renormalize-selected-
 const returnSelectedButton = document.querySelector("#return-selected-button");
 const exportSelectedButton = document.querySelector("#export-selected-button");
 const exportVisibleButton = document.querySelector("#export-visible-button");
+const exportClientVisibleButton = document.querySelector("#export-client-visible-button");
+const exportRfxVisibleButton = document.querySelector("#export-rfx-visible-button");
 const actionStatus = document.querySelector("#rateware-action-status");
 const columnFilterInputs = document.querySelectorAll("[data-rateware-column-filter]");
 const clearColumnFiltersButton = document.querySelector("#clear-rateware-column-filters");
@@ -57,6 +59,7 @@ const RATEWARE_COLSPAN = 31;
 let currentRows = [];
 let loadedRows = [];
 let activeQuickFilter = "all";
+let ratewareQualityIndex = new Map();
 const autoSaveTimers = new Map();
 let columnVisibilityController;
 let locationMatchDrawerController;
@@ -481,11 +484,118 @@ function isCrossBorder(row) {
   return text.includes("cross") || text.includes("export") || text.includes("import") || Boolean(row.mx_border_crossing_point || row.us_border_crossing_point);
 }
 
+function comparableLocationKey(row, prefix) {
+  return lookupKey([
+    row[`${prefix}_zip_prefix`],
+    row[`${prefix}_state`],
+    row[`${prefix}_market`],
+    row[`${prefix}_region`],
+    row[`normalized_${prefix}`] || row[prefix]
+  ].filter(Boolean).join(" "));
+}
+
+function normalizedCarrierKey(row) {
+  return lookupKey(row.vendor_domain || row.vendors?.domain || row.vendors?.vendor_name || "");
+}
+
+function laneConflictKey(row) {
+  return [
+    comparableLocationKey(row, "origin"),
+    comparableLocationKey(row, "destination"),
+    lookupKey(row.operation || ""),
+    lookupKey(row.service || ""),
+    lookupKey(row.equipment || ""),
+    lookupKey(row.trailer || ""),
+    lookupKey(row.config || ""),
+    row.hazmat ? "hazmat" : "standard",
+    row.temperature_controlled ? "temp" : "ambient"
+  ].join("|");
+}
+
+function duplicateConflictKey(row) {
+  return [normalizedCarrierKey(row), laneConflictKey(row)].join("|");
+}
+
+function rateStats(rows = []) {
+  const priced = rows
+    .map((row) => ({ row, amount: numericValue(row.all_in_rate) }))
+    .filter((item) => item.amount !== null && item.amount > 0)
+    .sort((a, b) => a.amount - b.amount);
+  const low = priced[0] || null;
+  const high = priced[priced.length - 1] || null;
+  const spread = low && high ? high.amount - low.amount : null;
+  const spreadPercent = low && low.amount > 0 && spread !== null ? spread / low.amount : 0;
+  const average = priced.length ? priced.reduce((sum, item) => sum + item.amount, 0) / priced.length : null;
+  return {
+    priced,
+    pricedCount: priced.length,
+    low,
+    high,
+    spread,
+    spreadPercent,
+    average
+  };
+}
+
+function buildRatewareQualityIndex(rows = []) {
+  const laneGroups = new Map();
+  const duplicateGroups = new Map();
+  rows.forEach((row) => {
+    const laneKey = laneConflictKey(row);
+    const duplicateKey = duplicateConflictKey(row);
+    if (!laneGroups.has(laneKey)) laneGroups.set(laneKey, []);
+    if (!duplicateGroups.has(duplicateKey)) duplicateGroups.set(duplicateKey, []);
+    laneGroups.get(laneKey).push(row);
+    duplicateGroups.get(duplicateKey).push(row);
+  });
+
+  const index = new Map();
+  rows.forEach((row) => {
+    const laneRows = laneGroups.get(laneConflictKey(row)) || [];
+    const duplicateRows = duplicateGroups.get(duplicateConflictKey(row)) || [];
+    const stats = rateStats(laneRows);
+    const issues = [];
+    if (duplicateRows.length > 1) {
+      issues.push({
+        type: "duplicate",
+        label: "Duplicate",
+        detail: `${duplicateRows.length} same-carrier rows`
+      });
+    }
+    if (stats.pricedCount > 1 && stats.spreadPercent >= 0.15) {
+      issues.push({
+        type: "conflict",
+        label: "Conflict",
+        detail: `${Math.round(stats.spreadPercent * 100)}% lane spread`
+      });
+    }
+    index.set(row.id, {
+      issues,
+      laneRows,
+      duplicateRows,
+      stats,
+      hasIssue: issues.length > 0
+    });
+  });
+  return index;
+}
+
+function ratewareQualityDetails(row) {
+  return ratewareQualityIndex.get(row.id) || buildRatewareQualityIndex(loadedRows).get(row.id) || {
+    issues: [],
+    laneRows: [],
+    duplicateRows: [],
+    stats: rateStats([]),
+    hasIssue: false
+  };
+}
+
 function applyQuickFilter(rows = loadedRows) {
   if (activeQuickFilter === "cross-border") return rows.filter(isCrossBorder);
   if (activeQuickFilter === "all-in") return rows.filter((row) => hasNumericValue(row.all_in_rate) && !hasSplitRate(row));
   if (activeQuickFilter === "split-rate") return rows.filter(hasSplitRate);
   if (activeQuickFilter === "with-capacity") return rows.filter((row) => row.weekly_capacity);
+  if (activeQuickFilter === "conflicts") return rows.filter((row) => ratewareQualityDetails(row).hasIssue);
   return rows;
 }
 
@@ -620,8 +730,13 @@ function confidencePercent(value) {
 function approvedQualitySummary(row) {
   const flags = rowAuditFlags(row);
   const warnings = rowExtractionWarnings(row);
+  const quality = ratewareQualityDetails(row);
+  const duplicateIssue = quality.issues.find((issue) => issue.type === "duplicate");
+  const conflictIssue = quality.issues.find((issue) => issue.type === "conflict");
   if (!hasNumericValue(row.all_in_rate) && !hasSplitRate(row)) return { tone: "danger", label: "Rate gap", detail: "No usable rate" };
   if (!row.origin_market || !row.destination_market) return { tone: "warning", label: "Location gap", detail: "Market missing" };
+  if (duplicateIssue) return { tone: "warning", label: duplicateIssue.label, detail: duplicateIssue.detail };
+  if (conflictIssue) return { tone: "warning", label: conflictIssue.label, detail: conflictIssue.detail };
   if (flags.length || warnings.length) return { tone: "warning", label: "Audit notes", detail: `${flags.length + warnings.length} note(s)` };
   return { tone: "success", label: "Approved", detail: "Ready to use" };
 }
@@ -818,6 +933,7 @@ function openRatewareDrawer(id) {
 
 function renderRows(rows) {
   currentRows = rows;
+  if (loadedRows.length) ratewareQualityIndex = buildRatewareQualityIndex(loadedRows);
   updateColumnFilterValueMenus(rows);
   updateQuickFilters();
   updateRatewareMetrics(rows);
@@ -973,6 +1089,7 @@ function readRatewarePatch(tableRow) {
 function replaceStoredRatewareRow(updatedRow) {
   loadedRows = loadedRows.map((row) => row.id === updatedRow.id ? updatedRow : row);
   currentRows = currentRows.map((row) => row.id === updatedRow.id ? updatedRow : row);
+  ratewareQualityIndex = buildRatewareQualityIndex(loadedRows);
 }
 
 function clearAutoSaveTimer(id) {
@@ -1001,6 +1118,8 @@ function updateBulkControls() {
   returnSelectedButton.disabled = selectedCount === 0;
   if (exportSelectedButton) exportSelectedButton.disabled = selectedCount === 0;
   if (exportVisibleButton) exportVisibleButton.disabled = currentRows.length === 0;
+  if (exportClientVisibleButton) exportClientVisibleButton.disabled = currentRows.length === 0;
+  if (exportRfxVisibleButton) exportRfxVisibleButton.disabled = currentRows.length === 0;
   if (applyBulkEditButton) applyBulkEditButton.disabled = selectedCount === 0;
   if (compareSelectedButton) compareSelectedButton.disabled = selectedCount === 0;
   if (compareVisibleButton) compareVisibleButton.disabled = currentRows.length === 0;
@@ -1076,90 +1195,257 @@ function csvCell(value) {
   return `"${text.replace(/"/g, '""')}"`;
 }
 
-function exportRowsCsv(rowsToExport, label) {
+function trailerExportLabel(row) {
+  const extras = [];
+  if (row.hazmat) extras.push("Hazmat");
+  if (row.temperature_controlled) extras.push("Reefer");
+  return [row.trailer || "", extras.join(" ")].filter(Boolean).join(" - ");
+}
+
+function exportRateNotes(row) {
+  const quality = ratewareQualityDetails(row);
+  const notes = [];
+  if (hasSplitRate(row)) notes.push("Split components quoted");
+  if (!hasNumericValue(row.all_in_rate) && hasSplitRate(row)) notes.push("All-in not explicitly provided");
+  quality.issues.forEach((issue) => notes.push(`${issue.label}: ${issue.detail}`));
+  return notes.join("; ");
+}
+
+function exportRowValues(row, mode = "rateware") {
+  const base = {
+    vendor: row.vendors?.vendor_name || row.vendor_domain || "",
+    vendorDomain: row.vendor_domain || row.vendors?.domain || "",
+    quoteDate: dateValue(row.quote_date),
+    rfx: row.rfx_id || "",
+    origin: row.normalized_origin || row.origin || "",
+    originZipState: [row.origin_zip_prefix, row.origin_state].filter(Boolean).join(" / "),
+    originMarket: row.origin_market || "",
+    originRegion: row.origin_region || "",
+    destination: row.normalized_destination || row.destination || "",
+    destinationZipState: [row.destination_zip_prefix, row.destination_state].filter(Boolean).join(" / "),
+    destinationMarket: row.destination_market || "",
+    destinationRegion: row.destination_region || "",
+    operation: row.operation || "",
+    service: row.service || "",
+    equipment: row.equipment || "",
+    trailer: trailerExportLabel(row),
+    config: row.config || "",
+    mxLinehaul: row.mx_linehaul || "",
+    usLinehaul: row.us_linehaul || "",
+    fsc: row.fsc || "",
+    borderFee: row.border_crossing_fee || "",
+    allIn: row.all_in_rate || "",
+    currency: row.currency || "",
+    weeklyCapacity: row.weekly_capacity || "",
+    mxCrossing: row.mx_border_crossing_point || "",
+    usCrossing: row.us_border_crossing_point || "",
+    notes: exportRateNotes(row)
+  };
+
+  if (mode === "rfx") {
+    return [
+      base.rfx,
+      base.origin,
+      base.originZipState,
+      base.originMarket,
+      base.destination,
+      base.destinationZipState,
+      base.destinationMarket,
+      base.operation,
+      base.service,
+      base.equipment,
+      base.trailer,
+      base.config,
+      base.vendor,
+      base.vendorDomain,
+      base.allIn,
+      base.currency,
+      base.weeklyCapacity,
+      base.mxCrossing,
+      base.usCrossing,
+      base.notes
+    ];
+  }
+
+  if (mode === "client") {
+    return [
+      `${base.origin} -> ${base.destination}`,
+      base.vendor,
+      base.quoteDate,
+      base.rfx,
+      base.origin,
+      base.originMarket,
+      base.originRegion,
+      base.destination,
+      base.destinationMarket,
+      base.destinationRegion,
+      base.operation,
+      base.service,
+      base.equipment,
+      base.trailer,
+      base.allIn,
+      base.currency,
+      base.weeklyCapacity,
+      base.mxCrossing,
+      base.usCrossing
+    ];
+  }
+
+  return [
+    base.vendor,
+    base.vendorDomain,
+    base.quoteDate,
+    base.rfx,
+    base.origin,
+    base.originZipState,
+    base.originMarket,
+    base.originRegion,
+    base.destination,
+    base.destinationZipState,
+    base.destinationMarket,
+    base.destinationRegion,
+    base.operation,
+    base.service,
+    base.equipment,
+    base.trailer,
+    base.config,
+    base.mxLinehaul,
+    base.usLinehaul,
+    base.fsc,
+    base.borderFee,
+    base.allIn,
+    base.currency,
+    base.weeklyCapacity,
+    base.mxCrossing,
+    base.usCrossing,
+    base.notes
+  ];
+}
+
+function exportHeaders(mode = "rateware") {
+  if (mode === "rfx") {
+    return [
+      "RFx",
+      "Origin",
+      "Origin ZIP/ST",
+      "Origin market",
+      "Destination",
+      "Destination ZIP/ST",
+      "Destination market",
+      "Operation",
+      "Service",
+      "Equipment",
+      "Trailer",
+      "Config",
+      "Carrier",
+      "Carrier domain",
+      "All-in rate",
+      "Currency",
+      "Weekly capacity",
+      "MX border city",
+      "US border city",
+      "Review notes"
+    ];
+  }
+
+  if (mode === "client") {
+    return [
+      "Lane",
+      "Carrier",
+      "Quote date",
+      "RFx",
+      "Origin",
+      "Origin market",
+      "Origin region",
+      "Destination",
+      "Destination market",
+      "Destination region",
+      "Operation",
+      "Service",
+      "Equipment",
+      "Trailer",
+      "All-in rate",
+      "Currency",
+      "Weekly capacity",
+      "MX border city",
+      "US border city"
+    ];
+  }
+
+  return [
+    "Carrier",
+    "Carrier domain",
+    "Quote date",
+    "RFx",
+    "Origin",
+    "Origin ZIP/ST",
+    "Origin market",
+    "Origin region",
+    "Destination",
+    "Destination ZIP/ST",
+    "Destination market",
+    "Destination region",
+    "Operation",
+    "Service",
+    "Equipment",
+    "Trailer",
+    "Config",
+    "MX linehaul",
+    "US linehaul",
+    "FSC",
+    "Border fee",
+    "All-in rate",
+    "Currency",
+    "Weekly capacity",
+    "MX border city",
+    "US border city",
+    "Review notes"
+  ];
+}
+
+function exportRowsCsv(rowsToExport, label, options = {}) {
   if (!rowsToExport.length) {
     setActionStatus(`No ${label} rates to export.`, "error");
     return;
   }
 
-  const headers = [
-    "vendor",
-    "vendor_domain",
-    "quote_date",
-    "rfx",
-    "origin",
-    "origin_market",
-    "origin_zip",
-    "origin_state",
-    "destination",
-    "destination_market",
-    "destination_zip",
-    "destination_state",
-    "operation",
-    "service",
-    "equipment",
-    "trailer",
-    "hazmat",
-    "temperature_controlled",
-    "config",
-    "mx_linehaul",
-    "us_linehaul",
-    "fsc",
-    "border_fee",
-    "all_in",
-    "currency",
-    "weekly_capacity",
-    "mx_crossing",
-    "us_crossing"
+  const mode = options.mode || "rateware";
+  const title = mode === "rfx" ? "Rateware RFx Export" : mode === "client" ? "Rateware Client Export" : "Rateware Export";
+  const generatedAt = new Date().toISOString();
+  const metadata = [
+    [title],
+    ["Scope", label],
+    ["Generated", generatedAt],
+    ["Rows", rowsToExport.length],
+    []
   ];
-  const rows = rowsToExport.map((row) => [
-    row.vendors?.vendor_name || row.vendor_domain || "",
-    row.vendor_domain || row.vendors?.domain || "",
-    dateValue(row.quote_date),
-    row.rfx_id || "",
-    row.normalized_origin || row.origin || "",
-    row.origin_market || "",
-    row.origin_zip_prefix || "",
-    row.origin_state || "",
-    row.normalized_destination || row.destination || "",
-    row.destination_market || "",
-    row.destination_zip_prefix || "",
-    row.destination_state || "",
-    row.operation || "",
-    row.service || "",
-    row.equipment || "",
-    row.trailer || "",
-    row.hazmat ? "yes" : "",
-    row.temperature_controlled ? "yes" : "",
-    row.config || "",
-    row.mx_linehaul || "",
-    row.us_linehaul || "",
-    row.fsc || "",
-    row.border_crossing_fee || "",
-    row.all_in_rate || "",
-    row.currency || "",
-    row.weekly_capacity || "",
-    row.mx_border_crossing_point || "",
-    row.us_border_crossing_point || ""
-  ]);
-
-  const csv = [headers, ...rows].map((row) => row.map(csvCell).join(",")).join("\n");
+  const headers = exportHeaders(mode);
+  const rows = rowsToExport.map((row) => exportRowValues(row, mode));
+  const csv = [...metadata, headers, ...rows].map((row) => row.map(csvCell).join(",")).join("\n");
   const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
   const link = document.createElement("a");
   link.href = url;
-  link.download = `rateware-${label}-${new Date().toISOString().slice(0, 10)}.csv`;
+  link.download = `rateware-${mode}-${label}-${new Date().toISOString().slice(0, 10)}.csv`;
   link.click();
   URL.revokeObjectURL(url);
   setActionStatus(`${rowsToExport.length} ${label} rate(s) exported.`, "success");
 }
 
 function exportVisibleCsv() {
-  exportRowsCsv(currentRows, "visible");
+  exportRowsCsv(currentRows, "visible", { mode: "rateware" });
 }
 
 function exportSelectedCsv() {
   const ids = new Set(selectedVisibleIds());
-  exportRowsCsv(currentRows.filter((row) => ids.has(row.id)), "selected");
+  exportRowsCsv(currentRows.filter((row) => ids.has(row.id)), "selected", { mode: "rateware" });
+}
+
+function exportVisibleClientCsv() {
+  exportRowsCsv(currentRows, "visible", { mode: "client" });
+}
+
+function exportVisibleRfxCsv() {
+  exportRowsCsv(currentRows, "visible", { mode: "rfx" });
 }
 
 function selectedRatewareRows() {
@@ -1182,6 +1468,13 @@ function comparisonKey(row) {
   ].join(" | ");
 }
 
+function corridorLabel(row) {
+  return [
+    row.origin_market || row.origin_region || row.origin_state,
+    row.destination_market || row.destination_region || row.destination_state
+  ].filter(Boolean).join(" -> ") || "-";
+}
+
 function summarizeComparisonRows(rowsToCompare) {
   const groups = new Map();
   rowsToCompare.forEach((row) => {
@@ -1199,11 +1492,19 @@ function summarizeComparisonRows(rowsToCompare) {
     const best = priced[0];
     const high = priced[priced.length - 1];
     const average = priced.length ? priced.reduce((sum, item) => sum + item.amount, 0) / priced.length : null;
+    const spread = best && high ? high.amount - best.amount : null;
+    const spreadPercent = best && spread !== null && best.amount > 0 ? spread / best.amount : 0;
     const [origin, destination, operation, service, equipment, trailer] = key.split(" | ");
+    const bestOffers = priced.slice(0, 3).map((item) => ({
+      carrier: carrierLabel(item.row),
+      amount: item.amount,
+      capacity: item.row.weekly_capacity || "-"
+    }));
     return {
       key,
       origin,
       destination,
+      corridor: corridorLabel(rows[0] || {}),
       operation,
       service,
       equipment,
@@ -1213,9 +1514,13 @@ function summarizeComparisonRows(rowsToCompare) {
       bestCarrier: best ? carrierLabel(best.row) : "-",
       bestRate: best?.amount ?? null,
       average,
-      spread: best && high ? high.amount - best.amount : null
+      spread,
+      spreadPercent,
+      isConflict: priced.length > 1 && spreadPercent >= 0.15,
+      bestOffers
     };
   }).sort((a, b) => {
+    if (Number(b.isConflict) !== Number(a.isConflict)) return Number(b.isConflict) - Number(a.isConflict);
     if (b.carriers !== a.carriers) return b.carriers - a.carriers;
     return (a.bestRate ?? Number.MAX_VALUE) - (b.bestRate ?? Number.MAX_VALUE);
   });
@@ -1239,24 +1544,28 @@ function renderLaneComparison(rowsToCompare, label) {
       <thead>
         <tr>
           <th>Lane</th>
-          <th>Scope</th>
+          <th>Corridor</th>
+          <th>Mode</th>
           <th>Carriers</th>
-          <th>Best carrier</th>
-          <th>Best all-in</th>
-          <th>Avg</th>
-          <th>Spread</th>
+          <th>Best offers</th>
+          <th>Range</th>
+          <th>Signal</th>
         </tr>
       </thead>
       <tbody>
         ${topSummaries.map((item) => `
           <tr>
             <td><strong>${escapeHtml(item.origin)} -> ${escapeHtml(item.destination)}</strong></td>
+            <td>${escapeHtml(item.corridor)}</td>
             <td>${escapeHtml([item.operation, item.service, item.equipment, item.trailer].filter(Boolean).join(" / "))}</td>
             <td>${escapeHtml(item.carriers)} / ${escapeHtml(item.quotes)} quotes</td>
-            <td>${escapeHtml(item.bestCarrier)}</td>
-            <td>${escapeHtml(item.bestRate === null ? "-" : moneyValue(item.bestRate))}</td>
-            <td>${escapeHtml(item.average === null ? "-" : moneyValue(item.average))}</td>
-            <td>${escapeHtml(item.spread === null ? "-" : moneyValue(item.spread))}</td>
+            <td>
+              <div class="comparison-offers">
+                ${item.bestOffers.length ? item.bestOffers.map((offer) => `<span><strong>${escapeHtml(offer.carrier)}</strong> ${escapeHtml(moneyValue(offer.amount))} <em>${escapeHtml(offer.capacity)} / wk</em></span>`).join("") : "<span>-</span>"}
+              </div>
+            </td>
+            <td>${escapeHtml(item.spread === null ? "-" : `${moneyValue(item.spread)} (${Math.round(item.spreadPercent * 100)}%)`)}</td>
+            <td><span class="comparison-signal ${item.isConflict ? "warning" : "success"}">${escapeHtml(item.isConflict ? "Review spread" : "Usable")}</span></td>
           </tr>
         `).join("")}
       </tbody>
@@ -1289,6 +1598,18 @@ function slug(value) {
     .slice(0, 48) || "rateware";
 }
 
+function versionScopeLabel(version) {
+  const summary = objectValue(version.filter_summary);
+  const parts = [
+    summary.scope,
+    summary.quick_filter && summary.quick_filter !== "all" ? summary.quick_filter : "",
+    summary.operation,
+    summary.service,
+    summary.search ? `search: ${summary.search}` : ""
+  ].filter(Boolean);
+  return parts.join(" | ") || "Approved snapshot";
+}
+
 function renderRatewareVersions(rows = []) {
   if (!versionList) return;
   if (!rows.length) {
@@ -1299,9 +1620,13 @@ function renderRatewareVersions(rows = []) {
     <article>
       <div>
         <strong>${escapeHtml(version.name)}</strong>
-        <span>${escapeHtml([dateValue(version.created_at), `${version.row_count || 0} rows`].filter(Boolean).join(" | "))}</span>
+        <span>${escapeHtml([dateValue(version.created_at), `${version.row_count || 0} rows`, versionScopeLabel(version)].filter(Boolean).join(" | "))}</span>
+        ${version.description ? `<small>${escapeHtml(version.description)}</small>` : ""}
       </div>
-      <button class="secondary small-button" type="button" data-download-rateware-version="${escapeHtml(version.id)}">Export CSV</button>
+      <div class="version-actions">
+        <button class="secondary small-button" type="button" data-download-rateware-version="${escapeHtml(version.id)}" data-version-export-mode="client">Client CSV</button>
+        <button class="secondary small-button" type="button" data-download-rateware-version="${escapeHtml(version.id)}" data-version-export-mode="rfx">RFx CSV</button>
+      </div>
     </article>
   `).join("");
 }
@@ -1345,13 +1670,13 @@ async function createRatewareVersion(scope) {
   }
 }
 
-async function downloadRatewareVersion(id) {
+async function downloadRatewareVersion(id, mode = "client") {
   if (!id) return;
   setInlineStatus(versionStatus, "Preparing version export...");
   try {
     await requirePrivatePage();
     const version = await fetchRatewareBookVersion(id);
-    exportRowsCsv(version.rows_snapshot || [], `version-${slug(version.name)}`);
+    exportRowsCsv(version.rows_snapshot || [], `version-${slug(version.name)}`, { mode });
     setInlineStatus(versionStatus, `${version.name} exported.`, "success");
   } catch (error) {
     setInlineStatus(versionStatus, error.message, "error");
@@ -1408,6 +1733,7 @@ async function loadRateware() {
       })
     ]);
     loadedRows = rows;
+    ratewareQualityIndex = buildRatewareQualityIndex(rows);
     renderRows(visibleRatewareRows());
   } catch (error) {
     body.innerHTML = `<tr><td colspan="${RATEWARE_COLSPAN}">Could not load Rateware. ${escapeHtml(error.message)}</td></tr>`;
@@ -1419,15 +1745,20 @@ async function loadRateware() {
 async function returnSelectedToStaging() {
   const ids = selectedVisibleIds();
   if (!ids.length) return;
+  const defaultReason = "Needs correction or re-review from Rateware Final";
+  const reason = window.prompt("Reason for returning selected approved rates to staging:", defaultReason);
+  if (reason === null) return;
+  const cleanReason = String(reason || "").trim() || defaultReason;
+  if (ids.length > 25 && !window.confirm(`Return ${ids.length} approved rates to staging?`)) return;
 
   returnSelectedButton.disabled = true;
   setActionStatus(`Returning ${ids.length} rates...`);
 
   try {
     await requirePrivatePage();
-    const result = await returnApprovedRatesToStaging(ids);
+    const result = await returnApprovedRatesToStaging(ids, cleanReason);
     ids.forEach((id) => selectedRowIds.delete(id));
-    setActionStatus(`${result.updated || ids.length} rates returned to staging.`, "success");
+    setActionStatus(`${result.updated || ids.length} rates returned to staging. Reason: ${cleanReason}`, "success");
     await loadRateware();
   } catch (error) {
     setActionStatus(error.message, "error");
@@ -1583,6 +1914,8 @@ enrichSelectedZipsButton?.addEventListener("click", enrichSelectedRatewareZips);
 renormalizeSelectedButton?.addEventListener("click", renormalizeSelectedRateware);
 exportSelectedButton?.addEventListener("click", exportSelectedCsv);
 exportVisibleButton?.addEventListener("click", exportVisibleCsv);
+exportClientVisibleButton?.addEventListener("click", exportVisibleClientCsv);
+exportRfxVisibleButton?.addEventListener("click", exportVisibleRfxCsv);
 body.addEventListener("click", (event) => {
   const matchButton = event.target.closest("[data-location-match-detail]");
   if (matchButton) {
@@ -1608,7 +1941,7 @@ snapshotVisibleButton?.addEventListener("click", () => createRatewareVersion("vi
 versionList?.addEventListener("click", (event) => {
   const button = event.target.closest("[data-download-rateware-version]");
   if (!button) return;
-  downloadRatewareVersion(button.dataset.downloadRatewareVersion);
+  downloadRatewareVersion(button.dataset.downloadRatewareVersion, button.dataset.versionExportMode || "client");
 });
 selectAllCheckbox?.addEventListener("change", () => {
   body.querySelectorAll("[data-select-rateware]").forEach((checkbox) => {
