@@ -44,6 +44,7 @@ const stagingMetricRate = document.querySelector("#staging-metric-rate");
 const stagingMetricSelected = document.querySelector("#staging-metric-selected");
 const reviewFilterButtons = document.querySelectorAll("[data-staging-filter]");
 const uploadScopeBanner = document.querySelector("#staging-upload-scope");
+const gridSelectionStatus = document.querySelector("#staging-grid-selection");
 const rawUploadScopeId = new URLSearchParams(window.location.search).get("raw_upload_id") || "";
 let currentRows = [];
 let loadedRows = [];
@@ -346,6 +347,17 @@ function selectedRows() {
 function setBulkStatus(message, tone = "neutral") {
   bulkActionStatus.textContent = message;
   bulkActionStatus.dataset.tone = tone;
+}
+
+function setGridSelectionStatus(info) {
+  if (!gridSelectionStatus) return;
+  if (!info?.cells) {
+    gridSelectionStatus.textContent = "Ready";
+    return;
+  }
+  gridSelectionStatus.textContent = info.isRange
+    ? `${info.rows} x ${info.columns} range selected`
+    : "1 cell selected";
 }
 
 function setBulkEditStatus(message, tone = "neutral") {
@@ -1503,7 +1515,8 @@ installSpreadsheetGrid({
   cellSelector: "[data-field]",
   saveRow: saveStagingTableRow,
   onRowsChanged: (rows) => rows.forEach((row) => scheduleStagingAutoSave(row, 1000)),
-  onGridMessage: (message) => setBulkStatus(message, "success")
+  onGridMessage: (message) => setBulkStatus(message, "success"),
+  onSelectionChange: setGridSelectionStatus
 });
 initLocationAutocomplete({
   container: body,

@@ -123,6 +123,18 @@ function paintSheetSelection(container, anchor, focus, rowSelector, cellSelector
   return matrix;
 }
 
+function selectionInfo(matrix) {
+  const rowCount = matrix.length;
+  const columnCount = matrix[0]?.length || 0;
+  const cellCount = matrix.reduce((sum, row) => sum + row.length, 0);
+  return {
+    rows: rowCount,
+    columns: columnCount,
+    cells: cellCount,
+    isRange: cellCount > 1
+  };
+}
+
 function selectionToTsv(matrix) {
   return matrix.map((row) => row.map(controlValue).join("\t")).join("\n");
 }
@@ -154,9 +166,14 @@ export function installSpreadsheetGrid({
   cellSelector,
   saveRow,
   onRowsChanged,
-  onGridMessage
+  onGridMessage,
+  onSelectionChange
 }) {
   const selection = { anchor: null, focus: null, keyboardSelecting: false };
+
+  function emitSelection(matrix) {
+    onSelectionChange?.(selectionInfo(matrix));
+  }
 
   container.addEventListener("click", (event) => {
     focusFirstCellControl(event.target, rowSelector, cellSelector);
@@ -171,6 +188,7 @@ export function installSpreadsheetGrid({
       selection.anchor = control;
       selection.focus = control;
       clearSheetSelection(container);
+      emitSelection([[control]]);
     }
   });
 
@@ -243,11 +261,12 @@ export function installSpreadsheetGrid({
     if (event.shiftKey && next) {
       selection.anchor ||= control;
       selection.focus = next;
-      paintSheetSelection(container, selection.anchor, selection.focus, rowSelector, cellSelector);
+      emitSelection(paintSheetSelection(container, selection.anchor, selection.focus, rowSelector, cellSelector));
     } else {
       selection.anchor = next || control;
       selection.focus = next || control;
       clearSheetSelection(container);
+      emitSelection([[selection.focus]]);
     }
     window.setTimeout(() => {
       selection.keyboardSelecting = false;
@@ -280,5 +299,6 @@ export function installSpreadsheetGrid({
     });
 
     if (changedRows.size) onRowsChanged?.([...changedRows]);
+    if (changedRows.size) onGridMessage?.(`Pasted ${changedRows.size} row(s).`);
   });
 }

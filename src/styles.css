@@ -5886,6 +5886,46 @@ tbody tr:hover {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
 
+.sheet-helper-strip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 30px;
+  overflow-x: auto;
+  border: 1px solid #d9e2e8;
+  border-radius: var(--radius);
+  background: #fbfcfd;
+  padding: 5px 8px;
+  color: var(--muted);
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+
+.sheet-helper-strip strong {
+  color: var(--ink);
+  font-size: 0.74rem;
+}
+
+.sheet-helper-strip span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.sheet-helper-strip kbd {
+  min-width: 18px;
+  border: 1px solid #cbd7df;
+  border-radius: 4px;
+  background: #ffffff;
+  padding: 1px 4px;
+  color: var(--neutral);
+  font-size: 0.66rem;
+  font-weight: 850;
+  line-height: 1.3;
+  text-align: center;
+  box-shadow: inset 0 -1px 0 #e6edf1;
+}
+
 .sheet-table-wrap table {
   border-collapse: separate;
   border-spacing: 0;

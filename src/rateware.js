@@ -50,6 +50,7 @@ const snapshotSelectedButton = document.querySelector("#snapshot-selected-ratewa
 const snapshotVisibleButton = document.querySelector("#snapshot-visible-rateware");
 const versionList = document.querySelector("#rateware-version-list");
 const versionStatus = document.querySelector("#rateware-version-status");
+const gridSelectionStatus = document.querySelector("#rateware-grid-selection");
 
 const RATEWARE_COLSPAN = 31;
 let currentRows = [];
@@ -803,6 +804,17 @@ function setActionStatus(message, tone = "neutral") {
   actionStatus.dataset.tone = tone;
 }
 
+function setGridSelectionStatus(info) {
+  if (!gridSelectionStatus) return;
+  if (!info?.cells) {
+    gridSelectionStatus.textContent = "Ready";
+    return;
+  }
+  gridSelectionStatus.textContent = info.isRange
+    ? `${info.rows} x ${info.columns} range selected`
+    : "1 cell selected";
+}
+
 function setRowStatus(id, message, tone = "neutral") {
   const status = body.querySelector(`[data-rateware-row-status="${CSS.escape(id)}"]`);
   if (!status) return;
@@ -1484,7 +1496,8 @@ installSpreadsheetGrid({
   cellSelector: "[data-rateware-field]",
   saveRow: saveRatewareTableRow,
   onRowsChanged: (rows) => rows.forEach((row) => scheduleRatewareAutoSave(row, 1000)),
-  onGridMessage: (message) => setActionStatus(message, "success")
+  onGridMessage: (message) => setActionStatus(message, "success"),
+  onSelectionChange: setGridSelectionStatus
 });
 initLocationAutocomplete({
   container: body,
