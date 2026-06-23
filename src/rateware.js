@@ -44,7 +44,6 @@ const openBulkDrawerButton = document.querySelector("#open-rateware-bulk-drawer"
 const bulkDrawer = document.querySelector("#rateware-bulk-drawer");
 const closeBulkDrawerButton = document.querySelector("#close-rateware-bulk-drawer");
 const columnMenu = document.querySelector("#rateware-column-menu");
-const columnPresetBar = document.querySelector("[data-rateware-column-presets]");
 const ratewareTable = document.querySelector(".rateware-table");
 const compareSelectedButton = document.querySelector("#compare-selected-rateware");
 const compareVisibleButton = document.querySelector("#compare-visible-rateware");
@@ -108,28 +107,6 @@ const SHEET_COLUMNS = [
   { key: "border_crossing_fee", label: "Border fee" },
   { key: "currency", label: "Currency" },
   { key: "weekly_capacity", label: "Capacity" }
-];
-const COLUMN_PRESETS = [
-  {
-    name: "ratebook",
-    label: "Rate book",
-    columns: ["select", "vendor", "origin", "destination", "all_in_rate", "quote_date", "rfx_id", "equipment", "trailer", "operation", "service", "currency", "weekly_capacity"]
-  },
-  {
-    name: "normalization",
-    label: "Normalization",
-    columns: ["select", "vendor", "origin", "destination", "all_in_rate", "origin_zip_prefix", "origin_state", "origin_market", "origin_region", "destination_zip_prefix", "destination_state", "destination_market", "destination_region", "mx_border_crossing_point", "us_border_crossing_point"]
-  },
-  {
-    name: "finance",
-    label: "Finance",
-    columns: ["select", "vendor", "origin", "destination", "all_in_rate", "mx_linehaul", "us_linehaul", "fsc", "border_crossing_fee", "currency", "weekly_capacity"]
-  },
-  {
-    name: "source-audit",
-    label: "Source audit",
-    columns: ["select", "vendor", "origin", "destination", "all_in_rate", "quote_date", "rfx_id", "equipment", "trailer", "hazmat", "temperature_controlled", "operation", "service"]
-  }
 ];
 const BULK_EDIT_FIELDS = [
   { field: "operation", label: "Operation", source: "operation" },
@@ -1908,10 +1885,7 @@ columnVisibilityController = initColumnVisibility({
   table: ratewareTable,
   menu: columnMenu,
   columns: SHEET_COLUMNS,
-  storageKey: "rateware:approved:columns",
-  presets: COLUMN_PRESETS,
-  presetContainer: columnPresetBar,
-  defaultPreset: "ratebook"
+  storageKey: "rateware:approved:columns"
 });
 columnFilterController = initSpreadsheetColumnFilters({
   table: ratewareTable,
@@ -1925,6 +1899,7 @@ columnFilterController = initSpreadsheetColumnFilters({
     renderRows(visibleRatewareRows());
   }
 });
+columnVisibilityController?.applyVisibility();
 initDrawer({
   drawer: bulkDrawer,
   openButton: openBulkDrawerButton,

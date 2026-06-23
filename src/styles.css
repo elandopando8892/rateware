@@ -3459,6 +3459,59 @@ table {
   font-weight: 760;
 }
 
+.column-layout-tools {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 6px;
+  border-bottom: 1px solid #edf1f4;
+  margin-bottom: 6px;
+  padding-bottom: 6px;
+}
+
+.column-layout-tools button {
+  min-height: 24px;
+  border: 1px solid #cbd7df;
+  border-radius: 4px;
+  background: #ffffff;
+  color: #26333d;
+  padding: 3px 7px;
+  font-size: 0.68rem;
+  font-weight: 820;
+  cursor: pointer;
+}
+
+.column-layout-tools button:hover,
+.column-layout-tools button:focus-visible {
+  border-color: var(--accent);
+  color: var(--accent-dark);
+}
+
+.sheet-table-wrap th.draggable-column {
+  cursor: grab;
+  user-select: none;
+}
+
+.sheet-table-wrap th.draggable-column:active {
+  cursor: grabbing;
+}
+
+.sheet-table-wrap th.is-dragging-column {
+  opacity: 0.48;
+}
+
+.sheet-table-wrap th.column-drop-before,
+.sheet-table-wrap th.column-drop-after {
+  background: #e4f4f2;
+}
+
+.sheet-table-wrap th.column-drop-before {
+  box-shadow: inset 2px 0 0 var(--accent), inset 0 -1px 0 var(--line);
+}
+
+.sheet-table-wrap th.column-drop-after {
+  box-shadow: inset -2px 0 0 var(--accent), inset 0 -1px 0 var(--line);
+}
+
 .column-hidden {
   display: none !important;
 }
@@ -3473,26 +3526,6 @@ table {
   background: #fbfcfc;
   margin-top: 8px;
   padding: 8px;
-}
-
-.column-preset-bar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  align-items: center;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: #fbfcfc;
-  padding: 6px;
-}
-
-.column-preset-bar::before {
-  content: "Column preset";
-  color: var(--muted);
-  font-size: 0.68rem;
-  font-weight: 900;
-  margin: 0 4px;
-  text-transform: uppercase;
 }
 
 .column-filter-bar input {
@@ -6628,16 +6661,6 @@ tbody tr:hover {
   min-height: 0;
 }
 
-.spreadsheet-workbench .column-preset-bar {
-  min-height: 0;
-  gap: 4px;
-  padding: 3px 4px;
-}
-
-.spreadsheet-workbench .column-preset-bar::before {
-  font-size: 0.58rem;
-}
-
 .bulk-action-bar {
   overflow-x: auto;
   scrollbar-width: thin;
@@ -7707,7 +7730,6 @@ tbody tr:hover {
   .bulk-toolbar,
   .preview-summary,
   .column-filter-bar,
-  .column-preset-bar,
   .rateware-workbench,
   .rateware-control-grid,
   .rateware-control-grid.version-grid,

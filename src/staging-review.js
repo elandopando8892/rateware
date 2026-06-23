@@ -39,7 +39,6 @@ const bulkValueOptions = document.querySelector("#staging-bulk-value-options");
 const applyBulkEditButton = document.querySelector("#apply-staging-bulk-edit");
 const bulkEditStatus = document.querySelector("#staging-bulk-status");
 const columnMenu = document.querySelector("#staging-column-menu");
-const columnPresetBar = document.querySelector("[data-staging-column-presets]");
 const stagingTable = document.querySelector(".staging-table");
 const stagingMetricVisible = document.querySelector("#staging-metric-visible");
 const stagingMetricLocation = document.querySelector("#staging-metric-location");
@@ -100,28 +99,6 @@ const SHEET_COLUMNS = [
   { key: "currency", label: "Currency" },
   { key: "weekly_capacity", label: "Capacity" },
   { key: "status", label: "Status" }
-];
-const COLUMN_PRESETS = [
-  {
-    name: "review",
-    label: "Review",
-    columns: ["select", "vendor", "origin", "destination", "all_in_rate", "quote_date", "rfx_id", "equipment", "trailer", "operation", "service", "weekly_capacity", "status"]
-  },
-  {
-    name: "normalization",
-    label: "Normalization",
-    columns: ["select", "vendor", "origin", "destination", "all_in_rate", "origin_zip_prefix", "origin_state", "origin_market", "origin_region", "destination_zip_prefix", "destination_state", "destination_market", "destination_region", "mx_border_crossing_point", "us_border_crossing_point"]
-  },
-  {
-    name: "finance",
-    label: "Finance",
-    columns: ["select", "vendor", "origin", "destination", "all_in_rate", "mx_linehaul", "us_linehaul", "fsc", "border_crossing_fee", "currency", "weekly_capacity"]
-  },
-  {
-    name: "source-audit",
-    label: "Source audit",
-    columns: ["select", "vendor", "origin", "destination", "all_in_rate", "quote_date", "rfx_id", "equipment", "trailer", "hazmat", "temperature_controlled", "operation", "service", "status"]
-  }
 ];
 const STAGING_BULK_EDIT_FIELDS = [
   { field: "operation", label: "Operation", source: "operation" },
@@ -1816,10 +1793,7 @@ columnVisibilityController = initColumnVisibility({
   table: stagingTable,
   menu: columnMenu,
   columns: SHEET_COLUMNS,
-  storageKey: "rateware:staging:columns",
-  presets: COLUMN_PRESETS,
-  presetContainer: columnPresetBar,
-  defaultPreset: "review"
+  storageKey: "rateware:staging:columns"
 });
 columnFilterController = initSpreadsheetColumnFilters({
   table: stagingTable,
@@ -1833,6 +1807,7 @@ columnFilterController = initSpreadsheetColumnFilters({
     renderRows(visibleStagingRows());
   }
 });
+columnVisibilityController?.applyVisibility();
 initDrawer({
   drawer: bulkDrawer,
   openButton: openBulkDrawerButton,

@@ -22,31 +22,64 @@ function writeStoredVisibility(storageKey, visibility) {
   window.localStorage.setItem(storageKey, JSON.stringify(visibility));
 }
 
-export function initColumnVisibility({ table, menu, columns = [], storageKey = "", presets = [], presetContainer = null, defaultPreset = "" }) {
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function columnCellText(cell) {
+  const control = cell?.querySelector("input:not([type='hidden']), select, textarea");
+  if (control) {
+    if (control.type === "checkbox") return control.checked ? "Checked" : "";
+    if (control.tagName === "SELECT") {
+      return control.selectedOptions?.[0]?.textContent || control.value || "";
+    }
+    return control.value || "";
+  }
+  return (cell?.innerText || cell?.textContent || "").trim();
+}
+
+function normalizeStoredLayout(raw, columns) {
+  const columnKeys = columns.map((column) => column.key);
+  const keySet = new Set(columnKeys);
+  const isNewLayout = raw && (raw.visibility || raw.order || raw.widths);
+  const legacyVisibility = isNewLayout ? {} : raw || {};
+  const visibility = { ...(isNewLayout ? raw.visibility || {} : legacyVisibility) };
+  const order = Array.isArray(raw?.order)
+    ? raw.order.filter((key) => keySet.has(key))
+    : [];
+  const missing = columnKeys.filter((key) => !order.includes(key));
+  return {
+    visibility,
+    order: [...order, ...missing],
+    widths: isNewLayout && raw.widths ? raw.widths : {}
+  };
+}
+
+export function initColumnVisibility({ table, menu, columns = [], storageKey = "" }) {
   if (!table || !menu || !columns.length) return;
   const list = menu.querySelector("[data-column-toggle-list]");
-  const stored = readStoredVisibility(storageKey);
-  const presetStorageKey = storageKey ? `${storageKey}:preset` : "";
+  const stored = normalizeStoredLayout(readStoredVisibility(storageKey), columns);
   const lockedKeys = new Set(columns.filter((column) => column.locked).map((column) => column.key));
   const columnKeys = new Set(columns.map((column) => column.key));
+  const labelRow = table.querySelector("thead tr");
   const visibility = {};
+  let order = [...stored.order];
+  let widths = { ...stored.widths };
+  let draggedColumn = "";
 
   columns.forEach((column) => {
-    visibility[column.key] = column.locked ? true : stored[column.key] !== false;
+    visibility[column.key] = column.locked ? true : stored.visibility[column.key] !== false;
   });
 
-  function storedPreset() {
-    if (!presetStorageKey || !storageAvailable()) return "";
-    return window.localStorage.getItem(presetStorageKey) || "";
+  function persistLayout() {
+    writeStoredVisibility(storageKey, { visibility, order, widths });
   }
 
-  let activePreset = storedPreset() || defaultPreset || "";
-
-  function writePreset(value) {
-    activePreset = value || "";
-    if (!presetStorageKey || !storageAvailable()) return;
-    if (activePreset) window.localStorage.setItem(presetStorageKey, activePreset);
-    else window.localStorage.removeItem(presetStorageKey);
+  function orderedColumns() {
+    const current = order.filter((key) => columnKeys.has(key));
+    const missing = columns.map((column) => column.key).filter((key) => !current.includes(key));
+    order = [...current, ...missing];
+    return order;
   }
 
   function syncToggleInputs() {
@@ -56,39 +89,11 @@ export function initColumnVisibility({ table, menu, columns = [], storageKey = "
     });
   }
 
-  function syncPresetButtons() {
-    if (!presetContainer) return;
-    presetContainer.querySelectorAll("[data-column-preset]").forEach((button) => {
-      button.classList.toggle("is-active", button.dataset.columnPreset === activePreset);
-    });
-  }
-
-  function applyVisibility() {
-    columns.forEach((column) => {
-      const visible = visibility[column.key] !== false || column.locked;
-      table.querySelectorAll(`[data-col="${CSS.escape(column.key)}"]`).forEach((cell) => {
-        cell.classList.toggle("column-hidden", !visible);
-      });
-    });
-    writeStoredVisibility(storageKey, visibility);
-    syncToggleInputs();
-    syncPresetButtons();
-  }
-
-  function applyPreset(name, { persist = true } = {}) {
-    const preset = presets.find((item) => item.name === name);
-    if (!preset) return;
-    const visibleKeys = new Set([...(preset.columns || []), ...lockedKeys].filter((key) => columnKeys.has(key)));
-    columns.forEach((column) => {
-      visibility[column.key] = column.locked || visibleKeys.has(column.key);
-    });
-    if (persist) writePreset(preset.name);
-    applyVisibility();
-  }
-
-  if (list) {
-    list.innerHTML = columns
-      .filter((column) => !column.locked)
+  function renderToggleInputs() {
+    if (!list) return;
+    const labels = orderedColumns()
+      .map((key) => columns.find((column) => column.key === key))
+      .filter((column) => column && !column.locked)
       .map((column) => `
         <label>
           <input type="checkbox" data-column-toggle="${column.key}" ${visibility[column.key] !== false ? "checked" : ""} />
@@ -96,33 +101,174 @@ export function initColumnVisibility({ table, menu, columns = [], storageKey = "
         </label>
       `)
       .join("");
+    list.innerHTML = `
+      <div class="column-layout-tools">
+        <button type="button" data-column-autofit>Auto-fit visible</button>
+        <button type="button" data-column-reset-layout>Reset layout</button>
+      </div>
+      ${labels}
+    `;
   }
 
-  if (presetContainer && presets.length) {
-    presetContainer.innerHTML = presets
-      .map((preset) => `<button class="review-filter" type="button" data-column-preset="${preset.name}">${preset.label}</button>`)
-      .join("");
-    presetContainer.addEventListener("click", (event) => {
-      const button = event.target.closest("[data-column-preset]");
-      if (!button) return;
-      applyPreset(button.dataset.columnPreset);
+  function applyOrder() {
+    const ordered = orderedColumns();
+    table.querySelectorAll("tr").forEach((row) => {
+      ordered.forEach((key) => {
+        const cell = row.querySelector(`[data-col="${CSS.escape(key)}"]`);
+        if (cell) row.appendChild(cell);
+      });
     });
+  }
+
+  function applyHeaderDragState() {
+    labelRow?.querySelectorAll("th[data-col]").forEach((cell) => {
+      const key = cell.dataset.col;
+      const draggable = key && !lockedKeys.has(key);
+      cell.draggable = Boolean(draggable);
+      cell.classList.toggle("draggable-column", Boolean(draggable));
+      if (draggable) {
+        cell.title = "Drag to reorder. Double-click to auto-fit this column.";
+      }
+    });
+  }
+
+  function applyWidths() {
+    columns.forEach((column) => {
+      const width = Number(widths[column.key]);
+      table.querySelectorAll(`[data-col="${CSS.escape(column.key)}"]`).forEach((cell) => {
+        if (Number.isFinite(width) && width > 0) {
+          cell.style.width = `${width}px`;
+          cell.style.minWidth = `${width}px`;
+        } else {
+          cell.style.removeProperty("width");
+          cell.style.removeProperty("min-width");
+        }
+        cell.style.removeProperty("max-width");
+      });
+    });
+  }
+
+  function applyVisibility() {
+    applyOrder();
+    columns.forEach((column) => {
+      const visible = visibility[column.key] !== false || column.locked;
+      table.querySelectorAll(`[data-col="${CSS.escape(column.key)}"]`).forEach((cell) => {
+        cell.classList.toggle("column-hidden", !visible);
+      });
+    });
+    applyWidths();
+    applyHeaderDragState();
+    persistLayout();
+    renderToggleInputs();
+    syncToggleInputs();
+  }
+
+  function visibleKeys() {
+    return orderedColumns().filter((key) => visibility[key] !== false || lockedKeys.has(key));
+  }
+
+  function measureColumnWidth(key) {
+    const canvas = measureColumnWidth.canvas || (measureColumnWidth.canvas = document.createElement("canvas"));
+    const context = canvas.getContext("2d");
+    const tableStyle = getComputedStyle(table);
+    context.font = `${tableStyle.fontWeight || "400"} ${tableStyle.fontSize || "12px"} ${tableStyle.fontFamily || "Arial"}`;
+    const header = labelRow?.querySelector(`[data-col="${CSS.escape(key)}"]`);
+    const values = [columnCellText(header)];
+    table.querySelectorAll(`tbody [data-col="${CSS.escape(key)}"]`).forEach((cell, index) => {
+      if (index < 120) values.push(columnCellText(cell));
+    });
+    const maxText = values.reduce((max, value) => Math.max(max, context.measureText(String(value || "")).width), 0);
+    const isSelect = key === "select";
+    const min = isSelect ? 34 : 56;
+    const max = ["origin", "destination", "vendor"].includes(key) ? 260 : 190;
+    return Math.round(clamp(maxText + (isSelect ? 12 : 22), min, max));
+  }
+
+  function autofit(keys = visibleKeys()) {
+    keys.forEach((key) => {
+      widths[key] = measureColumnWidth(key);
+    });
+    applyVisibility();
+  }
+
+  function resetLayout() {
+    columns.forEach((column) => {
+      visibility[column.key] = true;
+    });
+    order = columns.map((column) => column.key);
+    widths = {};
+    applyVisibility();
   }
 
   menu.addEventListener("change", (event) => {
     const input = event.target.closest("[data-column-toggle]");
     if (!input) return;
     visibility[input.dataset.columnToggle] = input.checked;
-    writePreset("");
     applyVisibility();
   });
 
-  if (activePreset && presets.some((preset) => preset.name === activePreset)) {
-    applyPreset(activePreset, { persist: false });
-  } else {
+  menu.addEventListener("click", (event) => {
+    if (event.target.closest("[data-column-autofit]")) {
+      autofit();
+      return;
+    }
+    if (event.target.closest("[data-column-reset-layout]")) {
+      resetLayout();
+    }
+  });
+
+  labelRow?.addEventListener("dragstart", (event) => {
+    const cell = event.target.closest("th[data-col]");
+    if (!cell || lockedKeys.has(cell.dataset.col)) return;
+    draggedColumn = cell.dataset.col;
+    cell.classList.add("is-dragging-column");
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", draggedColumn);
+  });
+
+  labelRow?.addEventListener("dragover", (event) => {
+    const cell = event.target.closest("th[data-col]");
+    if (!cell || !draggedColumn || lockedKeys.has(cell.dataset.col)) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    labelRow.querySelectorAll(".column-drop-before, .column-drop-after").forEach((item) => {
+      item.classList.remove("column-drop-before", "column-drop-after");
+    });
+    const rect = cell.getBoundingClientRect();
+    cell.classList.add(event.clientX < rect.left + rect.width / 2 ? "column-drop-before" : "column-drop-after");
+  });
+
+  labelRow?.addEventListener("drop", (event) => {
+    const cell = event.target.closest("th[data-col]");
+    if (!cell || !draggedColumn) return;
+    event.preventDefault();
+    const target = cell.dataset.col;
+    if (!target || target === draggedColumn || lockedKeys.has(target)) return;
+    const nextOrder = orderedColumns().filter((key) => key !== draggedColumn);
+    const targetIndex = nextOrder.indexOf(target);
+    const rect = cell.getBoundingClientRect();
+    const insertAfter = event.clientX >= rect.left + rect.width / 2;
+    nextOrder.splice(targetIndex + (insertAfter ? 1 : 0), 0, draggedColumn);
+    order = nextOrder;
     applyVisibility();
-  }
-  return { applyVisibility, applyPreset };
+  });
+
+  labelRow?.addEventListener("dragend", () => {
+    draggedColumn = "";
+    labelRow.querySelectorAll(".is-dragging-column, .column-drop-before, .column-drop-after").forEach((cell) => {
+      cell.classList.remove("is-dragging-column", "column-drop-before", "column-drop-after");
+    });
+  });
+
+  labelRow?.addEventListener("dblclick", (event) => {
+    const cell = event.target.closest("th[data-col]");
+    if (!cell?.dataset.col) return;
+    autofit([cell.dataset.col]);
+  });
+
+  renderToggleInputs();
+  applyVisibility();
+  return { applyVisibility, autofit, resetLayout };
 }
 
 export function initDrawer({ drawer, openButton, closeButton }) {
