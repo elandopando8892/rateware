@@ -2885,6 +2885,19 @@ table {
   white-space: nowrap;
 }
 
+.staging-table,
+.rateware-table {
+  --freeze-select: 34px;
+  --freeze-vendor: 180px;
+  --freeze-origin: 180px;
+  --freeze-destination: 190px;
+  --freeze-rate: 118px;
+  --freeze-vendor-left: var(--freeze-select);
+  --freeze-origin-left: calc(var(--freeze-select) + var(--freeze-vendor));
+  --freeze-destination-left: calc(var(--freeze-select) + var(--freeze-vendor) + var(--freeze-origin));
+  --freeze-rate-left: calc(var(--freeze-select) + var(--freeze-vendor) + var(--freeze-origin) + var(--freeze-destination));
+}
+
 .staging-table [data-col="select"],
 .rateware-table [data-col="select"],
 .staging-table [data-col="vendor"],
@@ -2896,8 +2909,9 @@ table {
 .staging-table [data-col="all_in_rate"],
 .rateware-table [data-col="all_in_rate"] {
   position: sticky;
-  background: #ffffff;
-  box-shadow: 1px 0 0 rgba(199, 210, 218, 0.85);
+  background: #fbfcfd;
+  background-clip: padding-box;
+  box-shadow: 1px 0 0 rgba(199, 210, 218, 0.9);
 }
 
 .staging-table th[data-col="select"],
@@ -2911,7 +2925,7 @@ table {
 .staging-table th[data-col="all_in_rate"],
 .rateware-table th[data-col="all_in_rate"] {
   z-index: 12;
-  background: #e7eef0;
+  background: #e6edf1;
 }
 
 .staging-table td[data-col="select"],
@@ -2927,6 +2941,11 @@ table {
   z-index: 7;
 }
 
+.staging-table [data-col="all_in_rate"],
+.rateware-table [data-col="all_in_rate"] {
+  box-shadow: 1px 0 0 rgba(199, 210, 218, 0.9), 8px 0 12px -10px rgba(27, 39, 48, 0.65);
+}
+
 .staging-table [data-col="select"],
 .rateware-table [data-col="select"] {
   left: 0;
@@ -2934,34 +2953,34 @@ table {
 
 .staging-table [data-col="vendor"],
 .rateware-table [data-col="vendor"] {
-  left: 34px;
-  min-width: 180px;
-  width: 180px;
-  max-width: 180px;
+  left: var(--freeze-vendor-left);
+  min-width: var(--freeze-vendor);
+  width: var(--freeze-vendor);
+  max-width: var(--freeze-vendor);
 }
 
 .staging-table [data-col="origin"],
 .rateware-table [data-col="origin"] {
-  left: 214px;
-  min-width: 180px;
-  width: 180px;
-  max-width: 180px;
+  left: var(--freeze-origin-left);
+  min-width: var(--freeze-origin);
+  width: var(--freeze-origin);
+  max-width: var(--freeze-origin);
 }
 
 .staging-table [data-col="destination"],
 .rateware-table [data-col="destination"] {
-  left: 394px;
-  min-width: 190px;
-  width: 190px;
-  max-width: 190px;
+  left: var(--freeze-destination-left);
+  min-width: var(--freeze-destination);
+  width: var(--freeze-destination);
+  max-width: var(--freeze-destination);
 }
 
 .staging-table [data-col="all_in_rate"],
 .rateware-table [data-col="all_in_rate"] {
-  left: 584px;
-  min-width: 118px;
-  width: 118px;
-  max-width: 118px;
+  left: var(--freeze-rate-left);
+  min-width: var(--freeze-rate);
+  width: var(--freeze-rate);
+  max-width: var(--freeze-rate);
 }
 
 .rate-freeze-cell .row-save-status {
