@@ -46,6 +46,7 @@ const reprocessImpactPreview = document.querySelector("#reprocess-impact-preview
 const HISTORY_COLSPAN = 11;
 const UPLOAD_ACTION_SELECTOR = "[data-interpret-id], [data-bulk-import-id], [data-archive-id], [data-remove-id], #reprocess-selected-uploads, #bulk-import-selected-uploads, #archive-selected-uploads, #remove-selected-uploads";
 const XLSX_MODULE_URL = "https://esm.sh/xlsx@0.18.5";
+const BULK_IMPORT_BATCH_SIZE = 75;
 const TEMPLATE_FIELD_ALIASES = {
   vendor_name: ["vendor", "carrier", "supplier", "transportista", "proveedor"],
   vendor_domain: ["vendor domain", "carrier domain", "domain", "email", "vendor email", "carrier email", "correo", "correo proveedor"],
@@ -144,6 +145,14 @@ function templateHeaderScore(cells, aliasLookup) {
 
 function cellHasValue(value) {
   return value !== null && value !== undefined && String(value).trim() !== "";
+}
+
+function chunkRows(rows, size = BULK_IMPORT_BATCH_SIZE) {
+  const chunks = [];
+  for (let index = 0; index < rows.length; index += size) {
+    chunks.push(rows.slice(index, index + size));
+  }
+  return chunks;
 }
 
 function formatDate(value) {
@@ -1000,7 +1009,7 @@ async function runBulkTemplateImport(ids = selectedVisibleIds(), sourceButton = 
   }
 
   const confirmed = window.confirm(
-    `Bulk import ${spreadsheetIds.length} spreadsheet upload(s) without AI? Existing pending/rejected staged rows for those uploads will be archived first.`
+    `Bulk import ${spreadsheetIds.length} spreadsheet upload(s) without AI? Existing pending/rejected staged rows for those uploads will be archived first. Large files will be imported in batches.`
   );
   if (!confirmed) return;
 
@@ -1025,12 +1034,36 @@ async function runBulkTemplateImport(ids = selectedVisibleIds(), sourceButton = 
       const id = spreadsheetIds[index];
       setBulkStatus(`Reading spreadsheet ${index + 1}/${spreadsheetIds.length}...`);
       const parsedWorkbook = await parseStructuredWorkbookFromUpload(id);
-      setBulkStatus(`Bulk importing ${parsedWorkbook.rows.length} row(s) from spreadsheet ${index + 1}/${spreadsheetIds.length}...`);
-      const result = await bulkImportUploadTemplate(id, parsedWorkbook);
-      results.push({ id, result });
+      const batches = chunkRows(parsedWorkbook.rows);
+      const uploadResult = {
+        imported_rows: 0,
+        expected_rows: parsedWorkbook.rows.length,
+        skipped_rows: 0
+      };
+
+      for (let batchIndex = 0; batchIndex < batches.length; batchIndex += 1) {
+        const batchRows = batches[batchIndex];
+        setBulkStatus(
+          `Bulk importing spreadsheet ${index + 1}/${spreadsheetIds.length}: batch ${batchIndex + 1}/${batches.length} (${batchRows.length} row(s))...`
+        );
+        const result = await bulkImportUploadTemplate(id, {
+          rows: batchRows,
+          warnings: batchIndex === 0 ? parsedWorkbook.warnings : [],
+          replaceExisting: batchIndex === 0,
+          expectedRows: parsedWorkbook.rows.length,
+          batchIndex,
+          batchCount: batches.length,
+          importedBefore: uploadResult.imported_rows,
+          skippedBefore: uploadResult.skipped_rows
+        });
+        uploadResult.imported_rows += Number(result.imported_rows || 0);
+        uploadResult.skipped_rows += Number(result.skipped_rows || 0);
+      }
+
+      results.push({ id, result: uploadResult });
       const rowStatus = historyBody.querySelector(`[data-upload-status="${CSS.escape(id)}"]`);
       if (rowStatus) {
-        rowStatus.textContent = bulkImportSummary(result);
+        rowStatus.textContent = bulkImportSummary(uploadResult);
         rowStatus.dataset.tone = "success";
       }
     }

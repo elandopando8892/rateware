@@ -2902,9 +2902,16 @@ async function bulkImportStructuredUpload(
   user: { owner_user_id: string | null; owner_email: string | null },
   rawUploadId: string,
   templateRows: unknown[] = [],
-  templateWarnings: unknown[] = []
+  templateWarnings: unknown[] = [],
+  options: Record<string, unknown> = {}
 ) {
   if (!rawUploadId) throw new Error("raw_upload_id is required.");
+  const replaceExisting = options.replace_existing === undefined ? true : cleanBoolean(options.replace_existing);
+  const expectedRateRows = Math.max(0, Number(options.expected_rate_rows || templateRows.length) || templateRows.length);
+  const batchIndex = Math.max(0, Number(options.batch_index || 0) || 0);
+  const batchCount = Math.max(1, Number(options.batch_count || 1) || 1);
+  const importedBefore = Math.max(0, Number(options.imported_before || 0) || 0);
+  const skippedBefore = Math.max(0, Number(options.skipped_before || 0) || 0);
 
   const uploadResult = await supabase
     .from("raw_uploads")
@@ -2960,7 +2967,7 @@ async function bulkImportStructuredUpload(
     .insert({
       raw_upload_id: rawUploadId,
       status: "running",
-      model: "structured-template-import"
+      model: `structured-template-import ${batchIndex + 1}/${batchCount}`
     })
     .select("id")
     .single();
@@ -3030,12 +3037,15 @@ async function bulkImportStructuredUpload(
     throw new Error(warnings[0] || "No usable template rows found.");
   }
 
-  const existingRowsResult = await supabase
-    .from("rate_staging")
-    .select("id")
-    .eq("raw_upload_id", rawUploadId)
-    .in("status", ["pending_review", "rejected"]);
-  if (existingRowsResult.error) throw existingRowsResult.error;
+  let existingRowsResult: { data: Array<{ id: string }> | null; error: unknown } = { data: [], error: null };
+  if (replaceExisting) {
+    existingRowsResult = await supabase
+      .from("rate_staging")
+      .select("id")
+      .eq("raw_upload_id", rawUploadId)
+      .in("status", ["pending_review", "rejected"]);
+    if (existingRowsResult.error) throw existingRowsResult.error;
+  }
 
   const insertedRows: Record<string, unknown>[] = [];
   for (let index = 0; index < rowsToInsert.length; index += 500) {
@@ -3056,7 +3066,9 @@ async function bulkImportStructuredUpload(
     if (archiveResult.error) throw archiveResult.error;
   }
 
-  const auditStatus = warnings.length || skipped ? "needs_review" : "ok";
+  const totalImportedRows = importedBefore + insertedRows.length;
+  const totalSkippedRows = skippedBefore + skipped;
+  const auditStatus = warnings.length || totalSkippedRows ? "needs_review" : "ok";
   const auditWarnings = warnings.slice(0, 25);
   const now = new Date().toISOString();
   const [jobUpdate, uploadUpdate] = await Promise.all([
@@ -3075,16 +3087,18 @@ async function bulkImportStructuredUpload(
         status: "staged",
         interpreted_at: now,
         error_message: null,
-        interpreted_rate_rows: insertedRows.length,
-        expected_rate_rows: parsed.rows.length,
+        interpreted_rate_rows: totalImportedRows,
+        expected_rate_rows: expectedRateRows,
         audit_status: auditStatus,
         audit_warnings: auditWarnings,
         interpretation_audit: {
           status: auditStatus,
           import_method: "structured_template",
-          expected_rate_rows: parsed.rows.length,
-          interpreted_rate_rows: insertedRows.length,
-          skipped_rows: skipped,
+          batch_index: batchIndex,
+          batch_count: batchCount,
+          expected_rate_rows: expectedRateRows,
+          interpreted_rate_rows: totalImportedRows,
+          skipped_rows: totalSkippedRows,
           warning_count: warnings.length,
           warnings: auditWarnings
         }
@@ -3096,16 +3110,24 @@ async function bulkImportStructuredUpload(
 
   await writeAuditLog(supabase, user, "upload.bulk_template_import", "raw_uploads", rawUploadId, `Bulk imported ${insertedRows.length} structured rate row(s)`, {
     filename: upload.original_filename,
-    expected_rows: parsed.rows.length,
+    batch_index: batchIndex,
+    batch_count: batchCount,
+    expected_rows: expectedRateRows,
     imported_rows: insertedRows.length,
+    total_imported_rows: totalImportedRows,
     skipped_rows: skipped,
+    total_skipped_rows: totalSkippedRows,
     warning_count: warnings.length
   });
 
   return {
     imported_rows: insertedRows.length,
-    expected_rows: parsed.rows.length,
+    expected_rows: expectedRateRows,
     skipped_rows: skipped,
+    total_imported_rows: totalImportedRows,
+    total_skipped_rows: totalSkippedRows,
+    batch_index: batchIndex,
+    batch_count: batchCount,
     warnings: auditWarnings
   };
 }
@@ -5039,7 +5061,15 @@ Deno.serve(async (request) => {
         user,
         rawUploadId || "",
         Array.isArray(body.template_rows) ? body.template_rows : [],
-        Array.isArray(body.template_warnings) ? body.template_warnings : []
+        Array.isArray(body.template_warnings) ? body.template_warnings : [],
+        {
+          replace_existing: body.replace_existing,
+          expected_rate_rows: body.expected_rate_rows,
+          batch_index: body.batch_index,
+          batch_count: body.batch_count,
+          imported_before: body.imported_before,
+          skipped_before: body.skipped_before
+        }
       );
       return jsonResponse(result);
     }
