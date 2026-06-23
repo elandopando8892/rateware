@@ -1,5 +1,6 @@
 import { initAuthControls, requirePrivatePage } from "./auth.js";
-import { bulkUpdateApprovedRatewareRows, createRatewareBookVersion, enrichApprovedRatewareLocationZips, fetchRatewareAudit, fetchRatewareBookVersion, fetchRatewareBookVersions, matchApprovedRatewareVendors, renormalizeApprovedRatewareRows, fetchApprovedRateware, fetchRatewareOptions, returnApprovedRatesToStaging, updateApprovedRatewareRow } from "./rateware-service.js";
+import { createLocationMatchDrawer } from "./location-match-drawer.js";
+import { bulkUpdateApprovedRatewareRows, createRatewareBookVersion, enrichApprovedRatewareLocationZips, fetchRatewareAudit, fetchRatewareBookVersion, fetchRatewareBookVersions, matchApprovedRatewareVendors, renormalizeApprovedRatewareRows, fetchApprovedRateware, fetchRatewareOptions, returnApprovedRatesToStaging, saveLocationAlias, updateApprovedRatewareRow } from "./rateware-service.js";
 import { installSpreadsheetGrid } from "./spreadsheet-grid.js";
 import { initColumnVisibility, initDrawer, initLocationAutocomplete } from "./sheet-ui.js";
 
@@ -58,6 +59,7 @@ let loadedRows = [];
 let activeQuickFilter = "all";
 const autoSaveTimers = new Map();
 let columnVisibilityController;
+let locationMatchDrawerController;
 let ratewareOptions = {
   categories: {},
   vendors: [],
@@ -214,6 +216,9 @@ function hiddenLocationFields(row, prefix) {
     <input data-rateware-field="${prefix}_city" type="hidden" value="${escapeHtml(row[`${prefix}_city`] || "")}" />
     <input data-rateware-field="${prefix}_country" type="hidden" value="${escapeHtml(row[`${prefix}_country`] || "")}" />
     <input data-rateware-field="${prefix}_match_reason" type="hidden" value="${escapeHtml(row[`${prefix}_match_reason`] || "")}" />
+    <input data-rateware-field="${prefix}_match_source" type="hidden" value="${escapeHtml(row[`${prefix}_match_source`] || "")}" />
+    <input data-rateware-field="${prefix}_match_confidence" type="hidden" value="${escapeHtml(row[`${prefix}_match_confidence`] || "")}" />
+    <input data-rateware-field="${prefix}_match_manual" type="hidden" value="${row[`${prefix}_match_manual`] ? "true" : "false"}" />
   `;
 }
 
@@ -352,6 +357,9 @@ function applyLocationSuggestion(tableRow, prefix, value) {
   setTableField(tableRow, `${prefix}_city`, option.city || option.metro_city);
   setTableField(tableRow, `${prefix}_country`, option.country);
   setTableField(tableRow, `${prefix}_match_reason`, locationManualReason(option));
+  setTableField(tableRow, `${prefix}_match_source`, "manual_dropdown");
+  setTableField(tableRow, `${prefix}_match_confidence`, 100);
+  setTableField(tableRow, `${prefix}_match_manual`, "true");
   return true;
 }
 
@@ -433,7 +441,10 @@ function renderLocationCell(row, prefix, listName) {
   return `
     ${datalistCell(row, prefix, listName, { wide: true })}
     ${hiddenLocationFields(row, prefix)}
-    <button class="location-chip ${escapeHtml(summary.tone)}" type="button" data-location-row-action="${escapeHtml(action)}" title="${escapeHtml(`${summary.title} | Click to ${action === "enrich" ? "find missing ZIPs" : "re-normalize this rate"}`)}">${escapeHtml(summary.label)}</button>
+    <span class="location-cell-actions">
+      <button class="location-chip ${escapeHtml(summary.tone)}" type="button" data-location-row-action="${escapeHtml(action)}" title="${escapeHtml(`${summary.title} | Click to ${action === "enrich" ? "find missing ZIPs" : "re-normalize this rate"}`)}">${escapeHtml(summary.label)}</button>
+      <button class="location-match-button" type="button" data-location-match-detail="${escapeHtml(prefix)}" title="${escapeHtml(`Explain ${prefix} match and view catalog candidates`)}" aria-label="${escapeHtml(`Explain ${prefix} location match`)}">?</button>
+    </span>
   `;
 }
 
@@ -878,6 +889,16 @@ function renderRows(rows) {
 
 function selectedVisibleIds() {
   return [...body.querySelectorAll("[data-select-rateware]:checked")].map((input) => input.dataset.selectRateware);
+}
+
+function selectOnlyRatewareRow(tableRow) {
+  if (!tableRow?.dataset.ratewareId) return;
+  selectedRowIds.clear();
+  selectedRowIds.add(tableRow.dataset.ratewareId);
+  body.querySelectorAll("[data-select-rateware]").forEach((checkbox) => {
+    checkbox.checked = checkbox.dataset.selectRateware === tableRow.dataset.ratewareId;
+  });
+  updateBulkControls();
 }
 
 function setActionStatus(message, tone = "neutral") {
@@ -1563,16 +1584,18 @@ renormalizeSelectedButton?.addEventListener("click", renormalizeSelectedRateware
 exportSelectedButton?.addEventListener("click", exportSelectedCsv);
 exportVisibleButton?.addEventListener("click", exportVisibleCsv);
 body.addEventListener("click", (event) => {
+  const matchButton = event.target.closest("[data-location-match-detail]");
+  if (matchButton) {
+    const tableRow = matchButton.closest("[data-rateware-id]");
+    locationMatchDrawerController?.open(tableRow, matchButton.dataset.locationMatchDetail);
+    return;
+  }
+
   const actionButton = event.target.closest("[data-location-row-action]");
   if (!actionButton) return;
   const tableRow = actionButton.closest("[data-rateware-id]");
   if (!tableRow) return;
-  selectedRowIds.clear();
-  selectedRowIds.add(tableRow.dataset.ratewareId);
-  body.querySelectorAll("[data-select-rateware]").forEach((checkbox) => {
-    checkbox.checked = checkbox.dataset.selectRateware === tableRow.dataset.ratewareId;
-  });
-  updateBulkControls();
+  selectOnlyRatewareRow(tableRow);
   if (actionButton.dataset.locationRowAction === "enrich") enrichSelectedRatewareZips();
   else renormalizeSelectedRateware();
 });
@@ -1646,6 +1669,31 @@ initLocationAutocomplete({
     const prefix = input.dataset.locationField;
     if (!tableRow || !prefix) return;
     applyLocationSuggestion(tableRow, prefix, locationOptionValue(option));
+  }
+});
+locationMatchDrawerController = createLocationMatchDrawer({
+  modeLabel: "Rateware Final",
+  getRows: () => currentRows,
+  getLocations: () => ratewareOptions.locations || [],
+  getRowId: (tableRow) => tableRow?.dataset.ratewareId,
+  readPatch: readRatewarePatch,
+  applyCandidate: (tableRow, prefix, option) => applyLocationSuggestion(tableRow, prefix, locationOptionValue(option)),
+  markRowDirty: markRatewareRowDirty,
+  scheduleSave: scheduleRatewareAutoSave,
+  setMessage: setActionStatus,
+  saveAlias: saveLocationAlias,
+  onAliasSaved: (location) => {
+    if (!location?.id || ratewareOptions.locations.some((option) => option.id === location.id)) return;
+    ratewareOptions.locations.push(location);
+    renderRatewareDatalists();
+  },
+  onFindZip: async (tableRow) => {
+    selectOnlyRatewareRow(tableRow);
+    await enrichSelectedRatewareZips();
+  },
+  onRenormalize: async (tableRow) => {
+    selectOnlyRatewareRow(tableRow);
+    await renormalizeSelectedRateware();
   }
 });
 body.addEventListener("click", async (event) => {

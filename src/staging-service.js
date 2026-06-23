@@ -8,6 +8,10 @@ export async function fetchStagingOptions() {
   return await callRatewareApi("list_staging_options");
 }
 
+export async function saveLocationAlias(alias) {
+  return await callRatewareApi("save_location_alias", alias);
+}
+
 export async function updateStagingRow(id, patch) {
   return (await callRatewareApi("update_staging", { id, patch })).row;
 }

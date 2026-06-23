@@ -212,6 +212,27 @@ function optionQuality(location: Record<string, unknown>) {
   return score;
 }
 
+function locationOptionPayload(location: Record<string, unknown>) {
+  const value = cleanText(location.raw_value || location.metro_city || [location.city, location.state_code].filter(Boolean).join(", ")) || "";
+  const geography = [location.zip_prefix, location.market, location.region, location.country]
+    .filter(Boolean)
+    .join(" | ");
+  return {
+    id: location.id,
+    source: location.source,
+    raw_value: location.raw_value,
+    value,
+    label: [location.metro_city || value, geography].filter(Boolean).join(" | "),
+    zip_prefix: location.zip_prefix,
+    city: location.city,
+    state_code: location.state_code,
+    state_name: location.state_name,
+    country: location.country,
+    market: location.market,
+    region: location.region
+  };
+}
+
 function catalogKey(value: unknown) {
   return String(value || "")
     .trim()
@@ -3606,6 +3627,75 @@ async function renormalizeRateRows(supabase: ReturnType<typeof createClient>, id
   return updatedRows;
 }
 
+async function saveRatewareLocationAlias(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_email: string | null },
+  body: Record<string, unknown>
+) {
+  const alias = cleanText(body.alias);
+  const targetLocationId = cleanText(body.target_location_id);
+  if (!alias) throw new Error("Alias text is required.");
+  if (!targetLocationId) throw new Error("A target catalog location is required.");
+
+  const targetResult = await supabase
+    .from("rateware_locations")
+    .select("*")
+    .eq("id", targetLocationId)
+    .eq("active", true)
+    .single();
+  if (targetResult.error) throw targetResult.error;
+
+  const target = targetResult.data || {};
+  const country = ["US", "CA", "MX", "UNKNOWN"].includes(String(target.country || "").toUpperCase())
+    ? String(target.country || "").toUpperCase()
+    : "UNKNOWN";
+  const locationKey = catalogKey([
+    alias,
+    country,
+    target.state_code || target.state_name,
+    target.market || target.region
+  ].filter(Boolean).join(" "));
+
+  const aliasRow = {
+    source: "rateware_manual_catalog",
+    country,
+    location_key: locationKey,
+    raw_value: alias,
+    zip_prefix: cleanText(target.zip_prefix),
+    city: cleanText(target.city || target.metro_city || alias),
+    state_code: cleanText(target.state_code),
+    state_name: cleanText(target.state_name),
+    metro_city: cleanText(target.metro_city || target.city || alias),
+    market: cleanText(target.market),
+    region: cleanText(target.region),
+    metadata: {
+      reason: "user_saved_alias",
+      owner_email: user.owner_email,
+      target_location_id: target.id,
+      target_raw_value: target.raw_value,
+      target_source: target.source
+    },
+    active: true,
+    updated_at: new Date().toISOString()
+  };
+
+  const result = await supabase
+    .from("rateware_locations")
+    .upsert(aliasRow, { onConflict: "source,location_key" })
+    .select("id,source,raw_value,zip_prefix,metro_city,city,state_code,state_name,country,market,region")
+    .single();
+  if (result.error) throw result.error;
+
+  await writeAuditLog(supabase, user, "catalog.location_alias", "rateware_locations", String(result.data.id), `Saved location alias "${alias}"`, {
+    target_location_id: targetLocationId,
+    country,
+    market: aliasRow.market,
+    region: aliasRow.region
+  });
+
+  return { location: locationOptionPayload(result.data) };
+}
+
 Deno.serve(async (request) => {
   if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders() });
 
@@ -5083,6 +5173,11 @@ Deno.serve(async (request) => {
       return jsonResponse({ removed: result.data?.length || 0, rows: result.data || [] });
     }
 
+    if (body.action === "save_location_alias") {
+      const result = await saveRatewareLocationAlias(supabase, user, body);
+      return jsonResponse(result);
+    }
+
     if (body.action === "list_staging_options") {
       const [catalog, locations, borderPairs, vendors] = await Promise.all([
         supabase
@@ -5093,7 +5188,7 @@ Deno.serve(async (request) => {
           .limit(5000),
         supabase
           .from("rateware_locations")
-          .select("source,raw_value,zip_prefix,metro_city,city,state_code,state_name,country,market,region")
+          .select("id,source,raw_value,zip_prefix,metro_city,city,state_code,state_name,country,market,region")
           .eq("active", true)
           .order("country", { ascending: false })
           .order("market", { ascending: true })
@@ -5143,21 +5238,7 @@ Deno.serve(async (request) => {
         const key = `${cityKey}|${stateKey}|${location.market || ""}`;
         const existing = locationMap.get(key);
         if (!existing || optionQuality(location) > optionQuality(existing)) {
-          const geography = [location.zip_prefix, location.market, location.region, location.country]
-            .filter(Boolean)
-            .join(" | ");
-          locationMap.set(key, {
-            source: location.source,
-            value,
-            label: [location.metro_city || value, geography].filter(Boolean).join(" | "),
-            zip_prefix: location.zip_prefix,
-            city: location.city,
-            state_code: location.state_code,
-            state_name: location.state_name,
-            country: location.country,
-            market: location.market,
-            region: location.region
-          });
+          locationMap.set(key, locationOptionPayload(location));
         }
       }
 

@@ -1,7 +1,8 @@
 import { applyPermissionState, ensureSignedIn, initAuthControls, requirePrivatePage } from "./auth.js";
+import { createLocationMatchDrawer } from "./location-match-drawer.js";
 import { installSpreadsheetGrid } from "./spreadsheet-grid.js";
 import { initColumnVisibility, initDrawer, initLocationAutocomplete } from "./sheet-ui.js";
-import { archiveStagingRows, enrichStagingLocationZips, fetchStagingOptions, fetchStagingRows, matchStagingVendors, removeStagingRows, renormalizeStagingRows, updateStagingRow } from "./staging-service.js";
+import { archiveStagingRows, enrichStagingLocationZips, fetchStagingOptions, fetchStagingRows, matchStagingVendors, removeStagingRows, renormalizeStagingRows, saveLocationAlias, updateStagingRow } from "./staging-service.js";
 
 const body = document.querySelector("#staging-body");
 const refreshButton = document.querySelector("#refresh-staging-button");
@@ -53,6 +54,7 @@ const selectedRowIds = new Set();
 let activeReviewFilter = "all";
 const autoSaveTimers = new Map();
 let columnVisibilityController;
+let locationMatchDrawerController;
 let stagingOptions = {
   categories: {},
   vendors: [],
@@ -355,6 +357,16 @@ function selectedRows() {
   });
 }
 
+function selectOnlyStagingRow(tableRow) {
+  if (!tableRow?.dataset.rowId) return;
+  selectedRowIds.clear();
+  selectedRowIds.add(tableRow.dataset.rowId);
+  body.querySelectorAll("[data-select-row]").forEach((checkbox) => {
+    checkbox.checked = checkbox.dataset.selectRow === tableRow.dataset.rowId;
+  });
+  updateBulkControls();
+}
+
 function setBulkStatus(message, tone = "neutral") {
   bulkActionStatus.textContent = message;
   bulkActionStatus.dataset.tone = tone;
@@ -498,7 +510,10 @@ function renderLocationCell(row, prefix) {
   return `
     ${datalistCell(row, prefix, stagingOptions.locations, { wide: true })}
     ${hiddenLocationFields(row, prefix)}
-    <button class="location-chip ${escapeHtml(summary.tone)}" type="button" data-location-row-action="${escapeHtml(action)}" title="${escapeHtml(`${summary.title} | Click to ${action === "enrich" ? "find missing ZIPs" : "re-normalize this row"}`)}">${escapeHtml(summary.label)}</button>
+    <span class="location-cell-actions">
+      <button class="location-chip ${escapeHtml(summary.tone)}" type="button" data-location-row-action="${escapeHtml(action)}" title="${escapeHtml(`${summary.title} | Click to ${action === "enrich" ? "find missing ZIPs" : "re-normalize this row"}`)}">${escapeHtml(summary.label)}</button>
+      <button class="location-match-button" type="button" data-location-match-detail="${escapeHtml(prefix)}" title="${escapeHtml(`Explain ${prefix} match and view catalog candidates`)}" aria-label="${escapeHtml(`Explain ${prefix} location match`)}">?</button>
+    </span>
   `;
 }
 
@@ -1653,6 +1668,31 @@ initLocationAutocomplete({
     applyLocationSuggestion(tableRow, prefix, locationOptionValue(option));
   }
 });
+locationMatchDrawerController = createLocationMatchDrawer({
+  modeLabel: "Staging Review",
+  getRows: () => currentRows,
+  getLocations: () => stagingOptions.locations || [],
+  getRowId: (tableRow) => tableRow?.dataset.rowId,
+  readPatch: readInlinePatch,
+  applyCandidate: (tableRow, prefix, option) => applyLocationSuggestion(tableRow, prefix, locationOptionValue(option)),
+  markRowDirty: markStagingRowDirty,
+  scheduleSave: scheduleStagingAutoSave,
+  setMessage: setBulkStatus,
+  saveAlias: saveLocationAlias,
+  onAliasSaved: (location) => {
+    if (!location?.id || stagingOptions.locations.some((option) => option.id === location.id)) return;
+    stagingOptions.locations.push(location);
+    renderDatalists();
+  },
+  onFindZip: async (tableRow) => {
+    selectOnlyStagingRow(tableRow);
+    await runBulkEnrichZips();
+  },
+  onRenormalize: async (tableRow) => {
+    selectOnlyStagingRow(tableRow);
+    await runBulkRenormalize();
+  }
+});
 
 refreshButton.addEventListener("click", loadRows);
 clearFiltersButton?.addEventListener("click", clearStagingFilters);
@@ -1708,16 +1748,18 @@ bulkRemoveButton?.addEventListener("click", runBulkRemove);
 bulkFieldSelect?.addEventListener("change", updateBulkValueOptions);
 applyBulkEditButton?.addEventListener("click", applySelectedBulkEdit);
 body.addEventListener("click", (event) => {
+  const matchButton = event.target.closest("[data-location-match-detail]");
+  if (matchButton) {
+    const tableRow = matchButton.closest("[data-row-id]");
+    locationMatchDrawerController?.open(tableRow, matchButton.dataset.locationMatchDetail);
+    return;
+  }
+
   const actionButton = event.target.closest("[data-location-row-action]");
   if (!actionButton) return;
   const tableRow = actionButton.closest("[data-row-id]");
   if (!tableRow) return;
-  selectedRowIds.clear();
-  selectedRowIds.add(tableRow.dataset.rowId);
-  body.querySelectorAll("[data-select-row]").forEach((checkbox) => {
-    checkbox.checked = checkbox.dataset.selectRow === tableRow.dataset.rowId;
-  });
-  updateBulkControls();
+  selectOnlyStagingRow(tableRow);
   if (actionButton.dataset.locationRowAction === "enrich") runBulkEnrichZips();
   else runBulkRenormalize();
 });
