@@ -12,7 +12,15 @@ export async function callRatewareApi(action, payload = {}) {
     body: JSON.stringify({ action, ...payload })
   });
 
-  const data = await response.json();
-  if (!response.ok) throw new Error(data.error || "Rateware API request failed.");
+  const text = await response.text();
+  let data = {};
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch {
+    data = { error: text };
+  }
+  if (!response.ok) {
+    throw new Error(data.error || data.message || text || `Rateware API request failed (${response.status})`);
+  }
   return data;
 }

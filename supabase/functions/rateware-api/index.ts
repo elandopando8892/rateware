@@ -1171,7 +1171,7 @@ async function buildVendorIntelligence(supabase: ReturnType<typeof createClient>
   const [vendorsResult, rates] = await Promise.all([
     supabase
       .from("vendors")
-      .select("id,vendor_name,legal_name,domain,contact_name,primary_email,secondary_emails,whatsapp_phone,status,base_stage,funnel_stage,funnel_stage_updated_at,targeted_at,nested_at,drafted_at,invited_at,onboarded_at,trained_at,activated_at,completed_at,tags,coverage_notes,notes,preferred_channel,source,source_row_number,source_spreadsheet_url,last_synced_at,created_at")
+      .select("*")
       .eq("owner_email", user.owner_email)
       .limit(2000),
     fetchBusinessIntelligenceRows(supabase, user)
