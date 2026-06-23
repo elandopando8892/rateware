@@ -506,6 +506,21 @@ function rateValidationClass(row) {
   return needsNumericRate(row) ? "cell-invalid" : "cell-valid";
 }
 
+function inlineValidationIssues(row) {
+  const issues = [];
+  if (needsNumericRate(row)) issues.push({ tone: "danger", label: "rate", detail: "Needs numeric all-in, MX linehaul, or US linehaul" });
+  if (/[a-z]/i.test(String(row.all_in_rate || ""))) issues.push({ tone: "warning", label: "text", detail: "All-in should be numeric only" });
+  if ((hasNumericValue(row.all_in_rate) || hasSplitRate(row)) && !row.currency) issues.push({ tone: "warning", label: "currency", detail: "Currency missing" });
+  if (!row.operation || !row.service) issues.push({ tone: "warning", label: "service", detail: "Operation or service missing" });
+  return issues;
+}
+
+function renderInlineValidation(row) {
+  const issues = inlineValidationIssues(row);
+  if (!issues.length) return "";
+  return `<span class="cell-validation-stack">${issues.slice(0, 3).map((issue) => `<span class="cell-validation-pill ${escapeHtml(issue.tone)}" title="${escapeHtml(issue.detail)}">${escapeHtml(issue.label)}</span>`).join("")}</span>`;
+}
+
 function needsNumericRate(row) {
   return !hasNumericValue(row.all_in_rate) && !hasNumericValue(row.mx_linehaul) && !hasNumericValue(row.us_linehaul);
 }
@@ -652,6 +667,32 @@ function columnFilterText(row, field) {
     ].filter(Boolean).join(" ");
   }
   return String(row[field] ?? "");
+}
+
+function columnFilterValues(row, field) {
+  if (field === "vendor") return [row.vendors?.vendor_name, row.vendor_domain, row.vendors?.domain].filter(Boolean);
+  if (field === "origin") return [row.origin, row.normalized_origin, row.origin_city, row.origin_state, row.origin_zip_prefix, row.origin_market, row.origin_region, row.origin_country].filter(Boolean);
+  if (field === "destination") return [row.destination, row.normalized_destination, row.destination_city, row.destination_state, row.destination_zip_prefix, row.destination_market, row.destination_region, row.destination_country].filter(Boolean);
+  return [row[field]].filter(Boolean);
+}
+
+function updateColumnFilterValueMenus(rows = currentRows) {
+  columnFilterInputs.forEach((input) => {
+    const field = input.dataset.stagingColumnFilter;
+    const listId = `staging-filter-values-${field}`;
+    let datalist = document.querySelector(`#${CSS.escape(listId)}`);
+    if (!datalist) {
+      datalist = document.createElement("datalist");
+      datalist.id = listId;
+      document.body.appendChild(datalist);
+    }
+    const values = Array.from(new Set(rows.flatMap((row) => columnFilterValues(row, field)).map((value) => String(value).trim()).filter(Boolean)))
+      .sort((a, b) => a.localeCompare(b))
+      .slice(0, 80);
+    datalist.innerHTML = values.map((value) => `<option value="${escapeHtml(value)}"></option>`).join("");
+    input.setAttribute("list", listId);
+    input.title = values.length ? "Type to filter or choose a visible value" : "Type to filter this column";
+  });
 }
 
 function applyColumnFilters(rows = loadedRows) {
@@ -1026,6 +1067,7 @@ function renderRowDetail(row) {
 function renderRows(rows) {
   currentRows = rows;
   renderDatalists();
+  updateColumnFilterValueMenus(rows);
   updateReviewFilters();
   updateUploadScopeBanner();
 
@@ -1055,6 +1097,7 @@ function renderRows(rows) {
           <td class="${escapeHtml(locationValidationClass(row, "destination"))}" data-col="destination" title="${escapeHtml(locationMatchSummary(row, "destination").title)}">${renderLocationCell(row, "destination")}</td>
           <td class="rate-freeze-cell ${escapeHtml(rateValidationClass(row))}" data-col="all_in_rate" title="${escapeHtml(needsNumericRate(row) ? "Needs numeric all-in or split rate" : "Numeric rate present")}">
             ${inputCell(row, "all_in_rate", { money: true })}
+            ${renderInlineValidation(row)}
             <span class="row-save-status" data-row-status="${escapeHtml(row.id)}"></span>
           </td>
           <td data-col="quote_date">${inputCell(row, "quote_date", { type: "date", short: true })}</td>
@@ -1149,6 +1192,34 @@ function setRowStatus(id, message, tone = "neutral") {
   status.dataset.tone = tone;
 }
 
+function setCellSaveState(cell, state = "") {
+  if (!cell) return;
+  cell.classList.remove("sheet-cell-dirty", "sheet-cell-saving", "sheet-cell-saved", "sheet-cell-error");
+  delete cell.dataset.cellStatus;
+  if (!state) return;
+  cell.classList.add(`sheet-cell-${state}`);
+  cell.dataset.cellStatus = {
+    dirty: "Unsaved cell",
+    saving: "Saving cell",
+    saved: "Saved cell",
+    error: "Cell save failed"
+  }[state] || state;
+  if (state === "saved") {
+    window.setTimeout(() => {
+      if (cell.classList.contains("sheet-cell-saved")) setCellSaveState(cell);
+    }, 2200);
+  }
+}
+
+function setDirtyRowCellsState(tableRow, state) {
+  tableRow?.querySelectorAll("td.sheet-cell-dirty, td.sheet-cell-saving, td.sheet-cell-error").forEach((cell) => setCellSaveState(cell, state));
+}
+
+function markEditedCellDirty(input) {
+  if (!input || input.type === "hidden") return;
+  setCellSaveState(input.closest("td"), "dirty");
+}
+
 function clearAutoSaveTimer(id) {
   window.clearTimeout(autoSaveTimers.get(id));
   autoSaveTimers.delete(id);
@@ -1173,6 +1244,7 @@ async function saveStagingTableRow(tableRow, status = null) {
   clearAutoSaveTimer(id);
   const button = tableRow.querySelector(`[data-save-id="${CSS.escape(id)}"]`);
   if (button) button.disabled = true;
+  setDirtyRowCellsState(tableRow, "saving");
   setRowStatus(id, "Saving...");
 
   try {
@@ -1180,9 +1252,11 @@ async function saveStagingTableRow(tableRow, status = null) {
     const updated = await updateStagingRow(id, readInlinePatch(tableRow, status));
     replaceStoredRow(updated);
     tableRow.classList.remove("dirty-row");
+    setDirtyRowCellsState(tableRow, "saved");
     setRowStatus(id, status ? `Marked ${status.replace("_", " ")}` : "Saved", "success");
     return updated;
   } catch (error) {
+    setDirtyRowCellsState(tableRow, "error");
     setRowStatus(id, error.message, "error");
     throw error;
   } finally {
@@ -1525,6 +1599,7 @@ body.addEventListener("input", (event) => {
   const field = event.target.closest("[data-field]");
   if (!field) return;
   const tableRow = field.closest("[data-row-id]");
+  markEditedCellDirty(field);
   applySuggestionFromField(tableRow, field.dataset.field, field.value);
   markStagingRowDirty(tableRow);
   scheduleStagingAutoSave(tableRow);
@@ -1534,6 +1609,7 @@ body.addEventListener("change", (event) => {
   const field = event.target.closest("[data-field]");
   if (field) {
     const tableRow = field.closest("[data-row-id]");
+    markEditedCellDirty(field);
     applySuggestionFromField(tableRow, field.dataset.field, field.value);
     markStagingRowDirty(tableRow);
     scheduleStagingAutoSave(tableRow);

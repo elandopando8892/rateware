@@ -215,6 +215,15 @@ function clearSelectionValues(matrix, snapshots) {
   return [...changedRows].filter(Boolean);
 }
 
+function fillSelectionWithValue(matrix, value, snapshots) {
+  const changedRows = new Set();
+  matrix.flat().forEach((control) => {
+    setControlValueSilentlyTracked(control, value, snapshots);
+    changedRows.add(control.closest("tr"));
+  });
+  return [...changedRows].filter(Boolean);
+}
+
 function isFillHandlePointer(event) {
   const cell = event.target.closest("td.fill-handle-cell");
   if (!cell) return false;
@@ -464,6 +473,22 @@ export function installSpreadsheetGrid({
       return;
     }
 
+    if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+      event.preventDefault();
+      const matrix = selectedControls(container, selection.anchor || control, selection.focus || control, rowSelector, cellSelector);
+      if (!selectionInfo(matrix).isRange) return;
+      const snapshots = [];
+      suppressHistory = true;
+      const changedRows = fillSelectionWithValue(matrix, controlValue(control), snapshots);
+      suppressHistory = false;
+      if (changedRows.length) {
+        pushBatchHistory(snapshots, "range edit");
+        onRowsChanged?.(changedRows);
+        onGridMessage?.(`Applied value to ${selectionInfo(matrix).cells} selected cell(s).`);
+      }
+      return;
+    }
+
     if (event.key === "Escape") {
       clearSheetSelection(container);
       selection.anchor = control;
@@ -474,8 +499,10 @@ export function installSpreadsheetGrid({
 
     if (event.key === "Delete") {
       const matrix = selectedControls(container, selection.anchor || control, selection.focus || control, rowSelector, cellSelector);
-      if (selectionInfo(matrix).isRange) {
+      const info = selectionInfo(matrix);
+      if (info.isRange) {
         event.preventDefault();
+        if (info.cells >= 25 && !window.confirm(`Clear ${info.cells} selected cells?`)) return;
         const snapshots = [];
         suppressHistory = true;
         const changedRows = clearSelectionValues(matrix, snapshots);
@@ -483,7 +510,7 @@ export function installSpreadsheetGrid({
         if (changedRows.length) {
           pushBatchHistory(snapshots, "clear range");
           onRowsChanged?.(changedRows);
-          onGridMessage?.(`Cleared ${selectionInfo(matrix).cells} selected cell(s).`);
+          onGridMessage?.(`Cleared ${info.cells} selected cell(s).`);
           emitSelection(matrix);
         }
       }
