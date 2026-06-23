@@ -475,6 +475,32 @@ function locationValidationClass(row, prefix) {
   return matched ? "cell-valid" : "cell-invalid";
 }
 
+function locationMatchSummary(row, prefix) {
+  const zipState = [row[`${prefix}_zip_prefix`], row[`${prefix}_state`]].filter(Boolean).join(" / ");
+  const hasMarket = Boolean(row[`${prefix}_market`]);
+  const hasGeo = Boolean(zipState || row[`${prefix}_country`] || row[`${prefix}_region`]);
+  const manual = row[`${prefix}_match_manual`] === true || row[`${prefix}_match_manual`] === "true";
+  const label = manual ? "manual" : hasMarket && hasGeo ? "matched" : hasGeo ? "partial" : "missing";
+  const tone = label === "missing" ? "weak" : label === "partial" ? "medium" : "strong";
+  const title = [
+    row[`${prefix}_match_reason`],
+    zipState ? `ZIP/ST ${zipState}` : "",
+    row[`${prefix}_market`] ? `Market ${row[`${prefix}_market`]}` : "",
+    row[`${prefix}_region`] ? `Region ${row[`${prefix}_region`]}` : "",
+    row[`${prefix}_country`] ? `Country ${row[`${prefix}_country`]}` : ""
+  ].filter(Boolean).join(" | ") || "Needs catalog match";
+  return { label, tone, title };
+}
+
+function renderLocationCell(row, prefix) {
+  const summary = locationMatchSummary(row, prefix);
+  return `
+    ${datalistCell(row, prefix, stagingOptions.locations, { wide: true })}
+    ${hiddenLocationFields(row, prefix)}
+    <span class="location-chip ${escapeHtml(summary.tone)}" title="${escapeHtml(summary.title)}">${escapeHtml(summary.label)}</span>
+  `;
+}
+
 function rateValidationClass(row) {
   return needsNumericRate(row) ? "cell-invalid" : "cell-valid";
 }
@@ -1024,8 +1050,8 @@ function renderRows(rows) {
             ${renderQualityStrip(row)}
             ${renderReviewChips(row)}
           </td>
-          <td class="${escapeHtml(locationValidationClass(row, "origin"))}" data-col="origin" title="${escapeHtml(row.origin_match_reason || row.origin_market || "Needs catalog match")}">${datalistCell(row, "origin", stagingOptions.locations, { wide: true })}${hiddenLocationFields(row, "origin")}</td>
-          <td class="${escapeHtml(locationValidationClass(row, "destination"))}" data-col="destination" title="${escapeHtml(row.destination_match_reason || row.destination_market || "Needs catalog match")}">${datalistCell(row, "destination", stagingOptions.locations, { wide: true })}${hiddenLocationFields(row, "destination")}</td>
+          <td class="${escapeHtml(locationValidationClass(row, "origin"))}" data-col="origin" title="${escapeHtml(locationMatchSummary(row, "origin").title)}">${renderLocationCell(row, "origin")}</td>
+          <td class="${escapeHtml(locationValidationClass(row, "destination"))}" data-col="destination" title="${escapeHtml(locationMatchSummary(row, "destination").title)}">${renderLocationCell(row, "destination")}</td>
           <td class="rate-freeze-cell ${escapeHtml(rateValidationClass(row))}" data-col="all_in_rate" title="${escapeHtml(needsNumericRate(row) ? "Needs numeric all-in or split rate" : "Numeric rate present")}">
             ${inputCell(row, "all_in_rate", { money: true })}
             <span class="row-save-status" data-row-status="${escapeHtml(row.id)}"></span>

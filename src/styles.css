@@ -3473,6 +3473,11 @@ tbody tr:hover {
   color: var(--accent-dark);
 }
 
+.location-chip.medium {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
 .location-chip.weak {
   background: #fde7e4;
   color: var(--danger);
@@ -5530,6 +5535,7 @@ tbody tr:hover {
 .tag-chip.muted,
 .base-context-pill,
 .location-chip.strong,
+.location-chip.medium,
 .score-pill.strong,
 .wizard-step,
 .dashboard-signals span {
@@ -5549,6 +5555,7 @@ tbody tr:hover {
 .status-pill.warning,
 .status-pill[data-tone="warning"],
 .score-pill.medium,
+.location-chip.medium,
 .warning-pill,
 .check-warning {
   background: var(--warning-soft);
