@@ -184,6 +184,15 @@ function fillDownSelection(matrix) {
   return [...changedRows].filter(Boolean);
 }
 
+function clearSelectionValues(matrix) {
+  const changedRows = new Set();
+  matrix.flat().forEach((control) => {
+    setControlValue(control, "");
+    changedRows.add(control.closest("tr"));
+  });
+  return [...changedRows].filter(Boolean);
+}
+
 export function installSpreadsheetGrid({
   container,
   rowSelector,
@@ -260,6 +269,28 @@ export function installSpreadsheetGrid({
       if (changedRows.length) {
         onRowsChanged?.(changedRows);
         onGridMessage?.(`Filled ${changedRows.length} row(s).`);
+      }
+      return;
+    }
+
+    if (event.key === "Escape") {
+      clearSheetSelection(container);
+      selection.anchor = control;
+      selection.focus = control;
+      emitSelection([[control]]);
+      return;
+    }
+
+    if (event.key === "Delete") {
+      const matrix = selectedControls(container, selection.anchor || control, selection.focus || control, rowSelector, cellSelector);
+      if (selectionInfo(matrix).isRange) {
+        event.preventDefault();
+        const changedRows = clearSelectionValues(matrix);
+        if (changedRows.length) {
+          onRowsChanged?.(changedRows);
+          onGridMessage?.(`Cleared ${selectionInfo(matrix).cells} selected cell(s).`);
+          emitSelection(matrix);
+        }
       }
       return;
     }
