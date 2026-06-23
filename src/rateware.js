@@ -429,10 +429,11 @@ function locationMatchSummary(row, prefix) {
 
 function renderLocationCell(row, prefix, listName) {
   const summary = locationMatchSummary(row, prefix);
+  const action = ["missing", "partial"].includes(summary.label) ? "enrich" : "renormalize";
   return `
     ${datalistCell(row, prefix, listName, { wide: true })}
     ${hiddenLocationFields(row, prefix)}
-    <span class="location-chip ${escapeHtml(summary.tone)}" title="${escapeHtml(summary.title)}">${escapeHtml(summary.label)}</span>
+    <button class="location-chip ${escapeHtml(summary.tone)}" type="button" data-location-row-action="${escapeHtml(action)}" title="${escapeHtml(`${summary.title} | Click to ${action === "enrich" ? "find missing ZIPs" : "re-normalize this rate"}`)}">${escapeHtml(summary.label)}</button>
   `;
 }
 
@@ -1487,6 +1488,20 @@ enrichSelectedZipsButton?.addEventListener("click", enrichSelectedRatewareZips);
 renormalizeSelectedButton?.addEventListener("click", renormalizeSelectedRateware);
 exportSelectedButton?.addEventListener("click", exportSelectedCsv);
 exportVisibleButton?.addEventListener("click", exportVisibleCsv);
+body.addEventListener("click", (event) => {
+  const actionButton = event.target.closest("[data-location-row-action]");
+  if (!actionButton) return;
+  const tableRow = actionButton.closest("[data-rateware-id]");
+  if (!tableRow) return;
+  selectedRowIds.clear();
+  selectedRowIds.add(tableRow.dataset.ratewareId);
+  body.querySelectorAll("[data-select-rateware]").forEach((checkbox) => {
+    checkbox.checked = checkbox.dataset.selectRateware === tableRow.dataset.ratewareId;
+  });
+  updateBulkControls();
+  if (actionButton.dataset.locationRowAction === "enrich") enrichSelectedRatewareZips();
+  else renormalizeSelectedRateware();
+});
 bulkFieldSelect?.addEventListener("change", updateBulkValueOptions);
 applyBulkEditButton?.addEventListener("click", applySelectedBulkEdit);
 compareSelectedButton?.addEventListener("click", () => renderLaneComparison(selectedRatewareRows(), "selected"));

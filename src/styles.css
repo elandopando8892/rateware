@@ -3457,15 +3457,26 @@ tbody tr:hover {
 .location-chip {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   max-width: 96px;
   min-height: 22px;
+  border: 1px solid transparent;
   border-radius: 999px;
   padding: 2px 7px;
   font-size: 0.72rem;
   font-weight: 850;
+  font-family: inherit;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+button.location-chip:hover,
+button.location-chip:focus-visible {
+  border-color: currentColor;
+  outline: none;
+  filter: saturate(1.1);
 }
 
 .location-chip.strong {

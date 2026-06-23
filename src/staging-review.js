@@ -494,10 +494,11 @@ function locationMatchSummary(row, prefix) {
 
 function renderLocationCell(row, prefix) {
   const summary = locationMatchSummary(row, prefix);
+  const action = ["missing", "partial"].includes(summary.label) ? "enrich" : "renormalize";
   return `
     ${datalistCell(row, prefix, stagingOptions.locations, { wide: true })}
     ${hiddenLocationFields(row, prefix)}
-    <span class="location-chip ${escapeHtml(summary.tone)}" title="${escapeHtml(summary.title)}">${escapeHtml(summary.label)}</span>
+    <button class="location-chip ${escapeHtml(summary.tone)}" type="button" data-location-row-action="${escapeHtml(action)}" title="${escapeHtml(`${summary.title} | Click to ${action === "enrich" ? "find missing ZIPs" : "re-normalize this row"}`)}">${escapeHtml(summary.label)}</button>
   `;
 }
 
@@ -1630,6 +1631,20 @@ bulkArchiveButton?.addEventListener("click", runBulkArchive);
 bulkRemoveButton?.addEventListener("click", runBulkRemove);
 bulkFieldSelect?.addEventListener("change", updateBulkValueOptions);
 applyBulkEditButton?.addEventListener("click", applySelectedBulkEdit);
+body.addEventListener("click", (event) => {
+  const actionButton = event.target.closest("[data-location-row-action]");
+  if (!actionButton) return;
+  const tableRow = actionButton.closest("[data-row-id]");
+  if (!tableRow) return;
+  selectedRowIds.clear();
+  selectedRowIds.add(tableRow.dataset.rowId);
+  body.querySelectorAll("[data-select-row]").forEach((checkbox) => {
+    checkbox.checked = checkbox.dataset.selectRow === tableRow.dataset.rowId;
+  });
+  updateBulkControls();
+  if (actionButton.dataset.locationRowAction === "enrich") runBulkEnrichZips();
+  else runBulkRenormalize();
+});
 columnVisibilityController = initColumnVisibility({
   table: stagingTable,
   menu: columnMenu,
