@@ -45,6 +45,38 @@ const memoryRuleScopeInput = document.querySelector("#memory-rule-scope");
 const reprocessImpactPreview = document.querySelector("#reprocess-impact-preview");
 const HISTORY_COLSPAN = 11;
 const UPLOAD_ACTION_SELECTOR = "[data-interpret-id], [data-bulk-import-id], [data-archive-id], [data-remove-id], #reprocess-selected-uploads, #bulk-import-selected-uploads, #archive-selected-uploads, #remove-selected-uploads";
+const XLSX_MODULE_URL = "https://esm.sh/xlsx@0.18.5";
+const TEMPLATE_FIELD_ALIASES = {
+  vendor_name: ["vendor", "carrier", "supplier", "transportista", "proveedor"],
+  vendor_domain: ["vendor domain", "carrier domain", "domain", "email", "vendor email", "carrier email", "correo", "correo proveedor"],
+  rfx_id: ["rfx", "rfx id", "rfq", "rfq id", "event", "event id", "quote no", "quote #", "quote number"],
+  row_id: ["shipment #", "shipment id", "shipment", "load id", "lane id", "lane", "id", "folio"],
+  quote_date: ["period", "date", "quote date", "fecha", "fecha cotizacion", "fecha de cotizacion"],
+  origin: ["origin", "origen", "from", "orig", "pickup", "shipper", "origin city", "orig city"],
+  destination: ["destination", "destino", "to", "dest", "delivery", "consignee", "destination city", "dest city"],
+  distance: ["distance", "total distance", "loaded miles", "miles", "mi", "loaded km", "kms", "km", "kilometers", "kilometros"],
+  distance_type: ["distance type", "distance unit", "unit", "uom", "unidad"],
+  equipment: ["equipment", "equipo", "vehicle", "unit type"],
+  trailer: ["trailer", "remolque", "box", "caja", "trailer type"],
+  config: ["config", "configuration", "configuracion", "type of driver"],
+  operation: ["operation", "operacion", "movement", "move type"],
+  service: ["service", "servicio", "trip type", "ow rt", "one way roundtrip"],
+  driver: ["driver", "chofer", "driver type"],
+  hazmat: ["hazmat", "haz mat", "hazardous", "hazardous material", "material peligroso"],
+  temperature_controlled: ["temp ctrl", "temperature controlled", "temp controlled", "reefer", "refrigerated", "refrigerado"],
+  mx_border_crossing_point: ["mx crossing", "mex crossing", "mx border", "mex border", "mexican border", "border mx"],
+  us_border_crossing_point: ["us crossing", "usa crossing", "us border", "american border", "border us"],
+  mx_linehaul: ["mx linehaul", "mex linehaul", "mex haul", "mx haul", "mexico linehaul"],
+  us_linehaul: ["us linehaul", "usa linehaul", "us haul", "usa haul"],
+  us_miles: ["us miles", "usa miles", "american miles"],
+  fsc: ["fsc", "fuel surcharge", "fuel surcharge cost"],
+  fuel: ["fuel", "diesel", "fuel index"],
+  border_crossing_fee: ["border fee", "border crossing", "border crossing fee", "crossing fee", "cruce"],
+  all_in_rate: ["rate", "incumbent cost", "cost", "all in", "all-in", "all in rate", "total", "total usd", "total cost", "amount", "price", "tarifa"],
+  currency: ["currency", "incumbent currency", "moneda"],
+  weekly_capacity: ["weekly capacity", "capacity", "capacidad", "loads per week", "volumen semanal"],
+  notes: ["notes", "note", "comments", "comentarios", "notas"]
+};
 let loadedRows = [];
 let currentRows = [];
 let activeQuickFilter = "all";
@@ -78,6 +110,42 @@ function escapeHtml(value) {
     .replace(/"/g, "&quot;");
 }
 
+function normalizeHeaderKey(value) {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[#%()[\]{}:;.,/\\|_+-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function templateAliasLookup() {
+  const lookup = new Map();
+  Object.entries(TEMPLATE_FIELD_ALIASES).forEach(([field, aliases]) => {
+    aliases.forEach((alias) => lookup.set(normalizeHeaderKey(alias), field));
+  });
+  return lookup;
+}
+
+function templateHeaderScore(cells, aliasLookup) {
+  const fields = new Set();
+  cells.forEach((cell) => {
+    const field = aliasLookup.get(normalizeHeaderKey(cell));
+    if (field) fields.add(field);
+  });
+  let score = fields.size;
+  if (fields.has("origin")) score += 4;
+  if (fields.has("destination")) score += 4;
+  if (fields.has("all_in_rate") || fields.has("mx_linehaul") || fields.has("us_linehaul")) score += 3;
+  if (fields.has("vendor_domain") || fields.has("vendor_name")) score += 2;
+  return score;
+}
+
+function cellHasValue(value) {
+  return value !== null && value !== undefined && String(value).trim() !== "";
+}
+
 function formatDate(value) {
   if (!value) return "";
   return new Intl.DateTimeFormat(undefined, {
@@ -98,6 +166,73 @@ function documentType(row) {
 
 function isSpreadsheetUpload(row) {
   return ["xlsx", "xls", "csv", "spreadsheet"].includes(documentType(row));
+}
+
+async function parseStructuredWorkbookFromUpload(rowId) {
+  const source = await getUploadSourceUrl(rowId);
+  const response = await fetch(source.url);
+  if (!response.ok) throw new Error(`Could not download XLSX source (${response.status}).`);
+  const buffer = await response.arrayBuffer();
+  const XLSX = await import(XLSX_MODULE_URL);
+  const workbook = XLSX.read(buffer, { type: "array", cellDates: true });
+  const aliasLookup = templateAliasLookup();
+  const rows = [];
+  const warnings = [];
+
+  (workbook.SheetNames || []).forEach((sheetName) => {
+    const sheet = workbook.Sheets[sheetName];
+    const matrix = XLSX.utils.sheet_to_json(sheet, {
+      header: 1,
+      defval: null,
+      raw: false,
+      blankrows: false
+    });
+    if (!matrix.length) return;
+
+    let headerIndex = -1;
+    let bestScore = 0;
+    matrix.slice(0, 15).forEach((sourceRow, index) => {
+      const score = templateHeaderScore(sourceRow || [], aliasLookup);
+      if (score > bestScore) {
+        bestScore = score;
+        headerIndex = index;
+      }
+    });
+
+    if (headerIndex < 0 || bestScore < 6) {
+      warnings.push(`${sheetName}: no recognizable Rateware template header found.`);
+      return;
+    }
+
+    const headers = (matrix[headerIndex] || []).map((cell) => String(cell ?? "").trim());
+    for (let rowIndex = headerIndex + 1; rowIndex < matrix.length; rowIndex += 1) {
+      const sourceRow = matrix[rowIndex] || [];
+      if (!sourceRow.some(cellHasValue)) continue;
+
+      const mapped = {};
+      const raw = {};
+      headers.forEach((header, columnIndex) => {
+        if (!header) return;
+        const value = sourceRow[columnIndex];
+        if (!cellHasValue(value)) return;
+        raw[header] = value;
+        const field = aliasLookup.get(normalizeHeaderKey(header));
+        if (field && mapped[field] === undefined) mapped[field] = value;
+      });
+
+      if (Object.keys(mapped).length) {
+        rows.push({
+          sheet_name: sheetName,
+          source_row_number: rowIndex + 1,
+          mapped,
+          raw
+        });
+      }
+    }
+  });
+
+  if (!rows.length) throw new Error(warnings[0] || "No structured template rows were found in this workbook.");
+  return { rows, warnings };
 }
 
 function sourceRowsUrl(row) {
@@ -888,8 +1023,10 @@ async function runBulkTemplateImport(ids = selectedVisibleIds(), sourceButton = 
     const results = [];
     for (let index = 0; index < spreadsheetIds.length; index += 1) {
       const id = spreadsheetIds[index];
-      setBulkStatus(`Bulk importing ${index + 1}/${spreadsheetIds.length} spreadsheet upload(s)...`);
-      const result = await bulkImportUploadTemplate(id);
+      setBulkStatus(`Reading spreadsheet ${index + 1}/${spreadsheetIds.length}...`);
+      const parsedWorkbook = await parseStructuredWorkbookFromUpload(id);
+      setBulkStatus(`Bulk importing ${parsedWorkbook.rows.length} row(s) from spreadsheet ${index + 1}/${spreadsheetIds.length}...`);
+      const result = await bulkImportUploadTemplate(id, parsedWorkbook);
       results.push({ id, result });
       const rowStatus = historyBody.querySelector(`[data-upload-status="${CSS.escape(id)}"]`);
       if (rowStatus) {
