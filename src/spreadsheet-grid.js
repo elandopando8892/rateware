@@ -82,6 +82,11 @@ function setControlValue(control, value) {
   control.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
+function setControlValueSilentlyTracked(control, value, snapshots) {
+  snapshots.push({ control, before: controlValue(control) });
+  setControlValue(control, value);
+}
+
 function controlValue(control) {
   if (control.matches('input[type="checkbox"]')) return control.checked ? "TRUE" : "FALSE";
   return control.value ?? "";
@@ -171,23 +176,37 @@ async function copySelection(matrix) {
   return true;
 }
 
-function fillDownSelection(matrix) {
+function changedRowsFromControls(controls) {
+  return [...new Set(controls.map((control) => control.closest("tr")).filter(Boolean))];
+}
+
+function changesFromSnapshots(snapshots) {
+  return snapshots
+    .map((snapshot) => ({
+      control: snapshot.control,
+      before: snapshot.before,
+      after: controlValue(snapshot.control)
+    }))
+    .filter((change) => change.before !== change.after);
+}
+
+function fillDownSelection(matrix, snapshots) {
   if (!matrix.length) return [];
   const source = matrix[0].map(controlValue);
   const changedRows = new Set();
   matrix.slice(1).forEach((row) => {
     row.forEach((control, index) => {
-      setControlValue(control, source[index] ?? "");
+      setControlValueSilentlyTracked(control, source[index] ?? "", snapshots);
       changedRows.add(control.closest("tr"));
     });
   });
   return [...changedRows].filter(Boolean);
 }
 
-function clearSelectionValues(matrix) {
+function clearSelectionValues(matrix, snapshots) {
   const changedRows = new Set();
   matrix.flat().forEach((control) => {
-    setControlValue(control, "");
+    setControlValueSilentlyTracked(control, "", snapshots);
     changedRows.add(control.closest("tr"));
   });
   return [...changedRows].filter(Boolean);
@@ -203,9 +222,39 @@ export function installSpreadsheetGrid({
   onSelectionChange
 }) {
   const selection = { anchor: null, focus: null, keyboardSelecting: false };
+  const undoStack = [];
+  const redoStack = [];
+  const focusValues = new WeakMap();
+  let suppressHistory = false;
 
   function emitSelection(matrix) {
     onSelectionChange?.(selectionInfo(matrix));
+  }
+
+  function recordChanges(changes, label) {
+    if (!changes.length) return false;
+    undoStack.push({ changes, label });
+    if (undoStack.length > 50) undoStack.shift();
+    redoStack.length = 0;
+    return true;
+  }
+
+  function applyHistoryEntry(entry, direction) {
+    if (!entry?.changes?.length) return;
+    suppressHistory = true;
+    entry.changes.forEach((change) => {
+      setControlValue(change.control, direction === "undo" ? change.before : change.after);
+      focusValues.set(change.control, controlValue(change.control));
+    });
+    suppressHistory = false;
+    const rows = changedRowsFromControls(entry.changes.map((change) => change.control));
+    if (rows.length) onRowsChanged?.(rows);
+    onGridMessage?.(`${direction === "undo" ? "Undid" : "Redid"} ${entry.label}.`);
+  }
+
+  function pushBatchHistory(snapshots, label) {
+    const changes = changesFromSnapshots(snapshots);
+    return recordChanges(changes, label);
   }
 
   container.addEventListener("click", (event) => {
@@ -217,6 +266,7 @@ export function installSpreadsheetGrid({
     if (!control) return;
     container.querySelectorAll(".active-sheet-cell").forEach((cell) => cell.classList.remove("active-sheet-cell"));
     control.closest("td")?.classList.add("active-sheet-cell");
+    focusValues.set(control, controlValue(control));
     if (!selection.keyboardSelecting) {
       selection.anchor = control;
       selection.focus = control;
@@ -239,6 +289,30 @@ export function installSpreadsheetGrid({
       return;
     }
 
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") {
+      event.preventDefault();
+      const entry = undoStack.pop();
+      if (!entry) {
+        onGridMessage?.("Nothing to undo.");
+        return;
+      }
+      applyHistoryEntry(entry, "undo");
+      redoStack.push(entry);
+      return;
+    }
+
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "y") {
+      event.preventDefault();
+      const entry = redoStack.pop();
+      if (!entry) {
+        onGridMessage?.("Nothing to redo.");
+        return;
+      }
+      applyHistoryEntry(entry, "redo");
+      undoStack.push(entry);
+      return;
+    }
+
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "c") {
       const matrix = selectedControls(container, selection.anchor || control, selection.focus || control, rowSelector, cellSelector);
       if (matrix.flat().length > 1) {
@@ -253,8 +327,10 @@ export function installSpreadsheetGrid({
       event.preventDefault();
       const matrix = selectedControls(container, selection.anchor || control, selection.focus || control, rowSelector, cellSelector);
       let changedRows = [];
+      const snapshots = [];
+      suppressHistory = true;
       if (matrix.length > 1) {
-        changedRows = fillDownSelection(matrix);
+        changedRows = fillDownSelection(matrix, snapshots);
       } else {
         const { rows, rowIndex, columnIndex } = cellPosition(container, control, rowSelector, cellSelector);
         const previousRow = rows[rowIndex - 1];
@@ -262,11 +338,13 @@ export function installSpreadsheetGrid({
         const source = previousRow ? editableCells(previousRow, cellSelector)[columnIndex] : null;
         const target = targetRow ? editableCells(targetRow, cellSelector)[columnIndex] : null;
         if (source && target) {
-          setControlValue(target, controlValue(source));
+          setControlValueSilentlyTracked(target, controlValue(source), snapshots);
           changedRows = [targetRow];
         }
       }
+      suppressHistory = false;
       if (changedRows.length) {
+        pushBatchHistory(snapshots, "fill down");
         onRowsChanged?.(changedRows);
         onGridMessage?.(`Filled ${changedRows.length} row(s).`);
       }
@@ -285,8 +363,12 @@ export function installSpreadsheetGrid({
       const matrix = selectedControls(container, selection.anchor || control, selection.focus || control, rowSelector, cellSelector);
       if (selectionInfo(matrix).isRange) {
         event.preventDefault();
-        const changedRows = clearSelectionValues(matrix);
+        const snapshots = [];
+        suppressHistory = true;
+        const changedRows = clearSelectionValues(matrix, snapshots);
+        suppressHistory = false;
         if (changedRows.length) {
+          pushBatchHistory(snapshots, "clear range");
           onRowsChanged?.(changedRows);
           onGridMessage?.(`Cleared ${selectionInfo(matrix).cells} selected cell(s).`);
           emitSelection(matrix);
@@ -328,6 +410,17 @@ export function installSpreadsheetGrid({
     });
   });
 
+  container.addEventListener("change", (event) => {
+    if (suppressHistory) return;
+    const control = event.target.closest(cellSelector);
+    if (!control) return;
+    const before = focusValues.has(control) ? focusValues.get(control) : "";
+    const after = controlValue(control);
+    focusValues.set(control, after);
+    if (before === after) return;
+    recordChanges([{ control, before, after }], "cell edit");
+  });
+
   container.addEventListener("paste", (event) => {
     const control = event.target.closest(cellSelector);
     if (!control) return;
@@ -341,6 +434,8 @@ export function installSpreadsheetGrid({
 
     const { rows, rowIndex, columnIndex } = cellPosition(container, control, rowSelector, cellSelector);
     const changedRows = new Set();
+    const snapshots = [];
+    suppressHistory = true;
     grid.forEach((clipboardRow, rowOffset) => {
       const targetRow = rows[rowIndex + rowOffset];
       if (!targetRow) return;
@@ -348,11 +443,13 @@ export function installSpreadsheetGrid({
       clipboardRow.forEach((value, columnOffset) => {
         const target = cells[columnIndex + columnOffset];
         if (!target) return;
-        setControlValue(target, value);
+        setControlValueSilentlyTracked(target, value, snapshots);
         changedRows.add(targetRow);
       });
     });
+    suppressHistory = false;
 
+    if (changedRows.size) pushBatchHistory(snapshots, "paste");
     if (changedRows.size) onRowsChanged?.([...changedRows]);
     if (changedRows.size) onGridMessage?.(`Pasted ${changedRows.size} row(s).`);
   });
