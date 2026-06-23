@@ -4240,6 +4240,12 @@ tbody tr:hover {
   background: var(--accent-soft);
 }
 
+.location-autocomplete-panel button.is-active {
+  border-color: var(--accent);
+  background: #edf8f6;
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
 .location-autocomplete-panel strong,
 .location-autocomplete-panel small {
   display: block;

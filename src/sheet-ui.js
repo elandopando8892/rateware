@@ -237,12 +237,14 @@ export function initLocationAutocomplete({ container, inputSelector, getOptions,
   document.body.appendChild(panel);
   let activeInput = null;
   let activeItems = [];
+  let activeIndex = -1;
 
   function hide() {
     panel.classList.add("hidden");
     panel.innerHTML = "";
     activeInput = null;
     activeItems = [];
+    activeIndex = -1;
   }
 
   function positionPanel(input) {
@@ -250,6 +252,26 @@ export function initLocationAutocomplete({ container, inputSelector, getOptions,
     panel.style.left = `${Math.max(8, rect.left + window.scrollX)}px`;
     panel.style.top = `${rect.bottom + window.scrollY + 4}px`;
     panel.style.width = `${Math.max(300, rect.width)}px`;
+  }
+
+  function syncActiveOption() {
+    panel.querySelectorAll("[data-location-suggestion]").forEach((button) => {
+      const isActive = Number(button.dataset.locationSuggestion) === activeIndex;
+      button.classList.toggle("is-active", isActive);
+      if (isActive) button.scrollIntoView({ block: "nearest" });
+    });
+  }
+
+  function selectActiveOption() {
+    if (!activeInput || activeIndex < 0) return false;
+    const option = activeItems[activeIndex];
+    if (!option) return false;
+    activeInput.value = locationValue(option);
+    onSelect?.({ input: activeInput, option });
+    activeInput.dispatchEvent(new Event("input", { bubbles: true }));
+    activeInput.dispatchEvent(new Event("change", { bubbles: true }));
+    hide();
+    return true;
   }
 
   function render(input) {
@@ -263,8 +285,10 @@ export function initLocationAutocomplete({ container, inputSelector, getOptions,
       .map((item) => item.option);
 
     if (!activeItems.length) {
+      activeIndex = -1;
       panel.innerHTML = '<div class="location-autocomplete-empty">No catalog match</div>';
     } else {
+      activeIndex = 0;
       panel.innerHTML = activeItems
         .map((option, index) => {
           const label = locationOptionLabelRich(option);
@@ -286,6 +310,7 @@ export function initLocationAutocomplete({ container, inputSelector, getOptions,
     }
     positionPanel(input);
     panel.classList.remove("hidden");
+    syncActiveOption();
   }
 
   container.addEventListener("focusin", (event) => {
@@ -309,14 +334,40 @@ export function initLocationAutocomplete({ container, inputSelector, getOptions,
   panel.addEventListener("click", (event) => {
     const button = event.target.closest("[data-location-suggestion]");
     if (!button || !activeInput) return;
-    const option = activeItems[Number(button.dataset.locationSuggestion)];
-    if (!option) return;
-    activeInput.value = locationValue(option);
-    onSelect?.({ input: activeInput, option });
-    activeInput.dispatchEvent(new Event("input", { bubbles: true }));
-    activeInput.dispatchEvent(new Event("change", { bubbles: true }));
-    hide();
+    activeIndex = Number(button.dataset.locationSuggestion);
+    selectActiveOption();
   });
+
+  container.addEventListener("keydown", (event) => {
+    const input = event.target.closest(inputSelector);
+    if (!input || input !== activeInput || panel.classList.contains("hidden")) return;
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      hide();
+      return;
+    }
+    if (!activeItems.length) return;
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      event.stopPropagation();
+      activeIndex = Math.min(activeItems.length - 1, activeIndex + 1);
+      syncActiveOption();
+      return;
+    }
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      event.stopPropagation();
+      activeIndex = Math.max(0, activeIndex - 1);
+      syncActiveOption();
+      return;
+    }
+    if (event.key === "Enter") {
+      event.preventDefault();
+      event.stopPropagation();
+      selectActiveOption();
+    }
+  }, true);
 
   document.addEventListener("click", (event) => {
     if (panel.contains(event.target) || event.target.closest(inputSelector)) return;
