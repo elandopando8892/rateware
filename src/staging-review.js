@@ -1793,7 +1793,7 @@ columnVisibilityController = initColumnVisibility({
   table: stagingTable,
   menu: columnMenu,
   columns: SHEET_COLUMNS,
-  storageKey: "rateware:staging:columns"
+  storageKey: "rateware:staging:columns:v2"
 });
 columnFilterController = initSpreadsheetColumnFilters({
   table: stagingTable,

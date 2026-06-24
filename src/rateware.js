@@ -1885,7 +1885,7 @@ columnVisibilityController = initColumnVisibility({
   table: ratewareTable,
   menu: columnMenu,
   columns: SHEET_COLUMNS,
-  storageKey: "rateware:approved:columns"
+  storageKey: "rateware:approved:columns:v2"
 });
 columnFilterController = initSpreadsheetColumnFilters({
   table: ratewareTable,
