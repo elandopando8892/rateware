@@ -1,5 +1,6 @@
 import * as XLSX from "https://esm.sh/xlsx@0.18.5";
 import { applyPermissionState, initAuthControls, requirePrivatePage } from "./auth.js";
+import { humanizeError } from "./error-copy.js";
 import {
   applyVendorIntelligenceTags,
   bulkUpdateVendors,
@@ -15,6 +16,7 @@ import {
   removeVendors,
   updateVendor
 } from "./vendor-service.js";
+import { errorState, loadingState, stateBlock, tableErrorState, tableLoadingState, tableState } from "./ui-state.js";
 
 const form = document.querySelector("#vendor-form");
 const vendorTabs = document.querySelectorAll(".vendor-tab");
@@ -167,7 +169,8 @@ function escapeHtml(value) {
 }
 
 function setStatus(element, message, tone = "neutral") {
-  element.textContent = message;
+  if (!element) return;
+  element.textContent = tone === "error" ? humanizeError(message) : message;
   element.dataset.tone = tone;
 }
 
@@ -679,7 +682,13 @@ function renderVendorIntelligence() {
 
   if (!currentVendorIntelligenceRows.length) {
     vendorIntelligenceBody.innerHTML =
-      '<tr><td colspan="9"><div class="empty-state"><strong>No intelligence rows</strong><span>Adjust filters or refresh vendor intelligence.</span></div></td></tr>';
+      tableState(9, {
+        tone: "neutral",
+        eyebrow: "Vendor intelligence",
+        title: "No carriers match this intelligence view",
+        detail: "Adjust filters, refresh the analysis, or move more vendors into the active base before scoring.",
+        actionButton: '<button class="secondary small-button" type="button" data-retry-action="refresh-vendor-intelligence">Refresh intelligence</button>'
+      });
     return;
   }
 
@@ -726,7 +735,10 @@ function renderVendorIntelligence() {
 
 async function loadVendorIntelligence() {
   if (!vendorIntelligenceBody) return;
-  vendorIntelligenceBody.innerHTML = '<tr><td colspan="9">Analyzing vendors...</td></tr>';
+  vendorIntelligenceBody.innerHTML = tableLoadingState(9, {
+    title: "Analyzing carriers",
+    detail: "Calculating health, quoted coverage, duplicate signals, and suggested tags."
+  });
   if (refreshVendorIntelligenceButton) refreshVendorIntelligenceButton.disabled = true;
   setStatus(vendorIntelligenceStatus, "Calculating vendor intelligence...");
 
@@ -739,7 +751,11 @@ async function loadVendorIntelligence() {
     renderVendorIntelligence();
     setStatus(vendorIntelligenceStatus, `${vendorIntelligenceRows.length} vendor(s) analyzed.`, "success");
   } catch (error) {
-    vendorIntelligenceBody.innerHTML = `<tr><td colspan="9">Could not load vendor intelligence. ${escapeHtml(error.message)}</td></tr>`;
+    vendorIntelligenceBody.innerHTML = tableErrorState(9, error, {
+      title: "Vendor intelligence could not load",
+      retryAction: "refresh-vendor-intelligence",
+      meta: "The vendor directory is unchanged. This only affects the intelligence view."
+    });
     setStatus(vendorIntelligenceStatus, error.message, "error");
   } finally {
     if (refreshVendorIntelligenceButton) refreshVendorIntelligenceButton.disabled = false;
@@ -956,7 +972,10 @@ function renderVendorFunnel(result = {}) {
 async function loadVendorFunnel() {
   if (!vendorFunnelBoard) return;
   if (refreshVendorFunnelButton) refreshVendorFunnelButton.disabled = true;
-  vendorFunnelBoard.innerHTML = '<div class="empty-state"><strong>Loading vendor funnel...</strong><span>Reading Procurement Base and linked quote signals.</span></div>';
+  vendorFunnelBoard.innerHTML = loadingState({
+    title: "Loading procurement funnel",
+    detail: "Reading Procurement Base, linked quotes, onboarding stages, and contact signals."
+  });
   setStatus(vendorFunnelStatus, "Loading funnel...");
 
   try {
@@ -965,7 +984,11 @@ async function loadVendorFunnel() {
     renderVendorFunnel(result);
     setStatus(vendorFunnelStatus, `${result.summary?.total || 0} procurement vendor(s) in funnel.`, "success");
   } catch (error) {
-    vendorFunnelBoard.innerHTML = `<div class="empty-state"><strong>Could not load funnel</strong><span>${escapeHtml(error.message)}</span></div>`;
+    vendorFunnelBoard.innerHTML = errorState(error, {
+      title: "Procurement funnel could not load",
+      retryAction: "refresh-vendor-funnel",
+      meta: "No vendor stages were changed."
+    });
     setStatus(vendorFunnelStatus, error.message, "error");
   } finally {
     if (refreshVendorFunnelButton) refreshVendorFunnelButton.disabled = false;
@@ -1075,7 +1098,15 @@ function renderVendors(rows) {
           ? ["No archived vendors", "Archived carriers will appear here when you remove them from active sourcing."]
           : ["No vendors yet", "Add a vendor manually or import your carrier list."];
     vendorsBody.innerHTML =
-      `<tr><td colspan="${vendorTableColumnCount()}"><div class="empty-state"><strong>${emptyCopy[0]}</strong><span>${emptyCopy[1]}</span></div></td></tr>`;
+      tableState(vendorTableColumnCount(), {
+        tone: "neutral",
+        eyebrow: baseStageLabel(),
+        title: emptyCopy[0],
+        detail: emptyCopy[1],
+        actionButton: activeBaseStage === "sourcing"
+          ? '<button class="secondary small-button" type="button" data-vendor-tab-target="import">Import vendors</button>'
+          : '<button class="secondary small-button" type="button" data-vendor-tab-target="sourcing">Open Sourcing Base</button>'
+      });
     return;
   }
 
@@ -1137,7 +1168,13 @@ function renderSegments() {
   if (!segmentsList) return;
 
   if (!savedSegments.length) {
-    segmentsList.innerHTML = '<div class="empty-state"><strong>No saved segments</strong><span>Create lists from tags, status, and channel.</span></div>';
+    segmentsList.innerHTML = stateBlock({
+      tone: "neutral",
+      eyebrow: "Segments",
+      title: "No saved segments yet",
+      detail: "Create a reusable list from tags, status, channel, or coverage so outreach can move faster.",
+      actionButton: '<button class="secondary small-button" type="button" data-vendor-tab-target="segments">Create segment</button>'
+    });
     return;
   }
 
@@ -1167,13 +1204,19 @@ async function loadSegments() {
     savedSegments = await fetchVendorSegments();
     renderSegments();
   } catch (error) {
-    segmentsList.innerHTML = `<div class="empty-state"><strong>Could not load segments</strong><span>${escapeHtml(error.message)}</span></div>`;
+    segmentsList.innerHTML = errorState(error, {
+      title: "Segments could not load",
+      retryAction: "load-vendor-segments"
+    });
   }
 }
 
 async function loadVendors() {
   renderVendorTableHeader();
-  vendorsBody.innerHTML = `<tr><td colspan="${vendorTableColumnCount()}">Loading ${escapeHtml(baseStageLabel().toLowerCase())}...</td></tr>`;
+  vendorsBody.innerHTML = tableLoadingState(vendorTableColumnCount(), {
+    title: `Loading ${baseStageLabel()}`,
+    detail: "Reading carrier records, contact fields, tags, and coverage signals."
+  });
   refreshButton.disabled = true;
   vendorPrevPageButton.disabled = true;
   vendorNextPageButton.disabled = true;
@@ -1200,7 +1243,11 @@ async function loadVendors() {
       renderVendors(rows);
     }
   } catch (error) {
-    vendorsBody.innerHTML = `<tr><td colspan="${vendorTableColumnCount()}">Could not load vendors. ${escapeHtml(error.message)}</td></tr>`;
+    vendorsBody.innerHTML = tableErrorState(vendorTableColumnCount(), error, {
+      title: `${baseStageLabel()} could not load`,
+      retryAction: "load-vendors",
+      meta: "Vendor records were not changed."
+    });
     vendorTotalCount = 0;
   } finally {
     refreshButton.disabled = false;
@@ -1825,6 +1872,22 @@ vendorFunnelBoard?.addEventListener("drop", (event) => {
   moveVendorFunnelStage(event.dataTransfer.getData("text/plain"), column.dataset.funnelDropStage);
 });
 document.addEventListener("click", (event) => {
+  const retryButton = event.target.closest("[data-retry-action]");
+  if (retryButton) {
+    const action = retryButton.dataset.retryAction;
+    if (action === "load-vendors") loadVendors();
+    if (action === "load-vendor-segments") loadSegments();
+    if (action === "refresh-vendor-intelligence") loadVendorIntelligence();
+    if (action === "refresh-vendor-funnel") loadVendorFunnel();
+    return;
+  }
+
+  const tabTargetButton = event.target.closest("[data-vendor-tab-target]");
+  if (tabTargetButton) {
+    activateVendorTab(tabTargetButton.dataset.vendorTabTarget || "sourcing");
+    return;
+  }
+
   const vendorOpenButton = event.target.closest("[data-vendor-open]");
   if (vendorOpenButton) {
     activateVendorTab(vendorOpenButton.dataset.vendorOpen || "sourcing");

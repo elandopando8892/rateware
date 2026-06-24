@@ -12,6 +12,8 @@ import {
   updateRfxEvent
 } from "./rfx-service.js";
 import { fetchVendors } from "./vendor-service.js";
+import { humanizeError } from "./error-copy.js";
+import { errorState, stateBlock, tableErrorState, tableState } from "./ui-state.js";
 
 const eventForm = document.querySelector("#rfx-event-form");
 const rfxIdInput = document.querySelector("#rfx-id");
@@ -79,7 +81,7 @@ function escapeHtml(value) {
 
 function setStatus(element, message, tone = "neutral") {
   if (!element) return;
-  element.textContent = message;
+  element.textContent = tone === "error" ? humanizeError(message) : message;
   element.dataset.tone = tone;
 }
 
@@ -413,13 +415,23 @@ function renderEventDashboard() {
 function renderLaneCoverage() {
   if (!laneCoverage || !coverageSummary) return;
   if (!selectedEventId) {
-    coverageSummary.textContent = "No event";
-    laneCoverage.innerHTML = "<article>Select an event to inspect lane coverage.</article>";
+    coverageSummary.textContent = "No event selected";
+    laneCoverage.innerHTML = stateBlock({
+      tone: "neutral",
+      eyebrow: "Lane coverage",
+      title: "Select an RFx event",
+      detail: "Choose or create an event to inspect lane coverage, shortlist depth, and bid response progress."
+    });
     return;
   }
   if (!currentLanes.length) {
     coverageSummary.textContent = "No lanes";
-    laneCoverage.innerHTML = "<article>Paste lanes to build coverage.</article>";
+    laneCoverage.innerHTML = stateBlock({
+      tone: "neutral",
+      eyebrow: "Lane coverage",
+      title: "No lanes in this RFx yet",
+      detail: "Paste the spot/RFx book above to create lanes, then shortlist carriers by lane."
+    });
     return;
   }
 
@@ -427,7 +439,12 @@ function renderLaneCoverage() {
   const covered = currentLanes.filter((lane) => activeInvitations(lane).length).length;
   coverageSummary.textContent = `${formatNumber(covered)} / ${formatNumber(currentLanes.length)} lanes covered`;
   if (!lanes.length) {
-    laneCoverage.innerHTML = `<article>No lanes match ${escapeHtml(laneDecisionLabel(activeLaneFilter).toLowerCase())}.</article>`;
+    laneCoverage.innerHTML = stateBlock({
+      tone: "neutral",
+      eyebrow: "Filtered coverage",
+      title: "No lanes match this filter",
+      detail: `No lanes currently match ${laneDecisionLabel(activeLaneFilter).toLowerCase()}. Change the lane filter to continue.`
+    });
     return;
   }
   laneCoverage.innerHTML = lanes.map((lane) => {
@@ -460,7 +477,12 @@ function renderLaneDecision() {
     laneDecisionTitle.textContent = "Select a lane";
     laneDecisionStatusPill.textContent = "No lane";
     laneDecisionStatusPill.className = "status-pill muted";
-    laneDecisionBody.innerHTML = "<article>Select a lane card or table row.</article>";
+    laneDecisionBody.innerHTML = stateBlock({
+      tone: "neutral",
+      eyebrow: "Lane decision",
+      title: "Select a lane",
+      detail: "Pick a lane card or table row to compare Rateware benchmark, bids, spread, and shortlist status."
+    });
     return;
   }
 
@@ -562,7 +584,13 @@ function updateMetrics() {
 function renderEvents() {
   updateMetrics();
   if (!events.length) {
-    eventList.innerHTML = "<article>No RFx events yet.</article>";
+    eventList.innerHTML = stateBlock({
+      tone: "neutral",
+      eyebrow: "RFx events",
+      title: "No RFx events yet",
+      detail: "Create an RFx event, upload or paste lanes, then shortlist target carriers.",
+      actionButton: '<button class="secondary small-button" type="button" data-rfx-focus-create>Create RFx event</button>'
+    });
     return;
   }
   eventList.innerHTML = events.map((event) => `
@@ -642,16 +670,31 @@ function renderLanes() {
   renderResponseBoard();
 
   if (!selectedEventId) {
-    lanesBody.innerHTML = `<tr><td colspan="9">Select an event to load lanes.</td></tr>`;
+    lanesBody.innerHTML = tableState(9, {
+      tone: "neutral",
+      eyebrow: "RFx lanes",
+      title: "Select an event to load lanes",
+      detail: "Choose an RFx event from the left panel or create a new event."
+    });
     return;
   }
   if (!currentLanes.length) {
-    lanesBody.innerHTML = `<tr><td colspan="9">Paste lanes above to build this RFx book.</td></tr>`;
+    lanesBody.innerHTML = tableState(9, {
+      tone: "neutral",
+      eyebrow: "RFx lanes",
+      title: "No lanes in this RFx yet",
+      detail: "Paste lane rows above to build this spot/RFx book before inviting vendors."
+    });
     return;
   }
   const lanes = visibleLanes();
   if (!lanes.length) {
-    lanesBody.innerHTML = `<tr><td colspan="9">No lanes match current filters.</td></tr>`;
+    lanesBody.innerHTML = tableState(9, {
+      tone: "neutral",
+      eyebrow: "Filtered lanes",
+      title: "No lanes match current filters",
+      detail: "Change the decision filter or search criteria to review more lanes."
+    });
     return;
   }
   lanesBody.innerHTML = lanes.map((lane) => {
@@ -708,7 +751,15 @@ async function loadEvents() {
       renderResponseBoard();
     }
   } catch (error) {
-    eventList.innerHTML = `<article>${escapeHtml(error.message)}</article>`;
+    eventList.innerHTML = errorState(error, {
+      title: "RFx events could not load",
+      retryAction: "load-rfx-events",
+      meta: "No RFx data was changed."
+    });
+    lanesBody.innerHTML = tableErrorState(9, error, {
+      title: "RFx lanes could not load",
+      retryAction: "load-rfx-events"
+    });
   }
 }
 
@@ -779,6 +830,20 @@ eventForm?.addEventListener("submit", async (event) => {
 });
 
 refreshButton?.addEventListener("click", loadEvents);
+
+document.addEventListener("click", (event) => {
+  const retryButton = event.target.closest("[data-retry-action]");
+  if (retryButton?.dataset.retryAction === "load-rfx-events") {
+    loadEvents();
+    return;
+  }
+
+  const createButton = event.target.closest("[data-rfx-focus-create]");
+  if (createButton) {
+    rfxIdInput?.focus();
+    eventForm?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+});
 
 eventList?.addEventListener("click", async (event) => {
   const card = event.target.closest("[data-rfx-event-id]");

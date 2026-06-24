@@ -1,5 +1,6 @@
 import { applyPermissionState, initAuthControls, requirePrivatePage } from "./auth.js";
 import { askCarrierIntelligence, fetchBusinessIntelligenceDrilldown, fetchBusinessIntelligencePivot, fetchCarrierRecommendations, promoteCarrierRecommendations } from "./business-intelligence-service.js";
+import { humanizeError } from "./error-copy.js";
 
 const chatForm = document.querySelector("#bi-chat-form");
 const promptInput = document.querySelector("#bi-prompt");
@@ -250,13 +251,13 @@ function formatNumber(value) {
 
 function setStatus(message, tone = "neutral") {
   if (!statusMessage) return;
-  statusMessage.textContent = message;
+  statusMessage.textContent = tone === "error" ? humanizeError(message) : message;
   statusMessage.dataset.tone = tone;
 }
 
 function setRecommendationStatus(message, tone = "neutral") {
   if (!recommendationStatus) return;
-  recommendationStatus.textContent = message;
+  recommendationStatus.textContent = tone === "error" ? humanizeError(message) : message;
   recommendationStatus.dataset.tone = tone;
 }
 
@@ -268,13 +269,13 @@ function setModelStatus(value, tone = "muted") {
 
 function setPivotStatus(message, tone = "neutral") {
   if (!pivotStatus) return;
-  pivotStatus.textContent = message;
+  pivotStatus.textContent = tone === "error" ? humanizeError(message) : message;
   pivotStatus.dataset.tone = tone;
 }
 
 function setDrilldownStatus(message, tone = "neutral") {
   if (!drilldownStatus) return;
-  drilldownStatus.textContent = message;
+  drilldownStatus.textContent = tone === "error" ? humanizeError(message) : message;
   drilldownStatus.dataset.tone = tone;
 }
 

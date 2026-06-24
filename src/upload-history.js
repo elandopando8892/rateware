@@ -1,5 +1,6 @@
 import { applyPermissionState, ensureSignedIn, initAuthControls, requirePrivatePage } from "./auth.js";
 import { humanizeError } from "./error-copy.js";
+import { tableErrorState, tableLoadingState, tableState } from "./ui-state.js";
 import {
   archiveUpload,
   bulkImportUploadTemplate,
@@ -1099,7 +1100,17 @@ function renderRows(rows) {
   if (!rows.length) {
     const empty = emptyUploadMessage();
     historyBody.innerHTML =
-      `<tr><td colspan="${HISTORY_COLSPAN}"><div class="empty-state"><strong>${escapeHtml(empty.title)}</strong><span>${escapeHtml(empty.detail)}</span><a href="./upload-center.html">Upload source files</a></div></td></tr>`;
+      tableState(HISTORY_COLSPAN, {
+        tone: "neutral",
+        eyebrow: activeQuickFilter === "all" ? "Source archive" : "Filtered view",
+        title: empty.title,
+        detail: empty.detail,
+        actionHref: activeQuickFilter === "all" ? "./upload-center.html" : "",
+        actionLabel: "Upload source files",
+        actionButton: activeQuickFilter === "all"
+          ? ""
+          : '<button class="secondary small-button" type="button" data-retry-action="clear-upload-filters">Clear filters</button>'
+      });
     updateBulkControls();
     return;
   }
@@ -1136,7 +1147,10 @@ function renderRows(rows) {
 }
 
 async function loadHistory() {
-  historyBody.innerHTML = `<tr><td colspan="${HISTORY_COLSPAN}">Loading uploads...</td></tr>`;
+  historyBody.innerHTML = tableLoadingState(HISTORY_COLSPAN, {
+    title: "Loading source files",
+    detail: "Reading preserved uploads, staged row counts, and audit signals."
+  });
   refreshButton.disabled = true;
 
   try {
@@ -1146,7 +1160,11 @@ async function loadHistory() {
     renderRows(applyUploadFilters(rows));
     await applyPermissionState(UPLOAD_ACTION_SELECTOR, "uploads:interpret");
   } catch (error) {
-    historyBody.innerHTML = `<tr><td colspan="${HISTORY_COLSPAN}">Could not load upload history. ${escapeHtml(humanizeError(error))}</td></tr>`;
+    historyBody.innerHTML = tableErrorState(HISTORY_COLSPAN, error, {
+      title: "Upload History could not load",
+      retryAction: "load-upload-history",
+      meta: "Your files are preserved in storage. This only affects the current view."
+    });
   } finally {
     refreshButton.disabled = false;
   }
@@ -1467,6 +1485,12 @@ removeSelectedButton?.addEventListener("click", () => runBulkUploadAction("remov
 closeUploadDrawerButton?.addEventListener("click", () => uploadDrawer?.classList.add("hidden"));
 closeReprocessDrawerButton?.addEventListener("click", () => reprocessDrawer?.classList.add("hidden"));
 reprocessForm?.addEventListener("submit", runReprocessWithNote);
+document.addEventListener("click", async (event) => {
+  const retryButton = event.target.closest("[data-retry-action]");
+  if (!retryButton) return;
+  if (retryButton.dataset.retryAction === "load-upload-history") await loadHistory();
+  if (retryButton.dataset.retryAction === "clear-upload-filters") await clearUploadFilters();
+});
 reprocessDrawer?.addEventListener("click", (event) => {
   const templateButton = event.target.closest("[data-correction-template]");
   if (!templateButton || !reprocessNoteInput) return;

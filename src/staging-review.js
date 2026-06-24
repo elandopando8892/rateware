@@ -4,6 +4,7 @@ import { initSpreadsheetColumnFilters } from "./spreadsheet-column-filters.js";
 import { installSpreadsheetGrid } from "./spreadsheet-grid.js";
 import { initColumnVisibility, initDrawer, initLocationAutocomplete } from "./sheet-ui.js";
 import { archiveStagingRows, archiveStagingRowsByFilter, enrichStagingLocationZips, fetchStagingFilterValues, fetchStagingOptions, fetchStagingPage, matchStagingVendors, removeStagingRows, removeStagingRowsByFilter, renormalizeStagingRows, saveLocationAlias, updateStagingRow, updateStagingRowsByFilter } from "./staging-service.js";
+import { tableErrorState, tableLoadingState, tableState } from "./ui-state.js";
 
 const body = document.querySelector("#staging-body");
 const refreshButton = document.querySelector("#refresh-staging-button");
@@ -1350,7 +1351,14 @@ function renderRows(rows, { append = false } = {}) {
 
   if (!rows.length) {
     body.innerHTML =
-      `<tr><td colspan="${STAGING_COLSPAN}"><div class="empty-state"><strong>No staging rows found</strong><span>${escapeHtml(rawUploadScopeId ? "This upload does not have staging rows in the current filters." : "Interpret uploaded quotes to create rows for review.")}</span><a href="./upload-history.html">Open upload history</a></div></td></tr>${stagingLoadStateRow()}`;
+      `${tableState(STAGING_COLSPAN, {
+        tone: "neutral",
+        eyebrow: rawUploadScopeId ? "Source upload" : "Review queue",
+        title: "No staging rows found",
+        detail: rawUploadScopeId ? "This upload does not have staging rows in the current filters." : "Interpret uploaded quotes to create rows for review.",
+        actionHref: "./upload-history.html",
+        actionLabel: "Open upload history"
+      })}${stagingLoadStateRow()}`;
     columnVisibilityController?.applyVisibility();
     updateBulkControls();
     observeStagingLoadSentinel();
@@ -1890,7 +1898,10 @@ async function saveActiveRow(status = null) {
 }
 
 async function loadRows() {
-  body.innerHTML = `<tr><td colspan="${STAGING_COLSPAN}">Loading staging rows...</td></tr>`;
+  body.innerHTML = tableLoadingState(STAGING_COLSPAN, {
+    title: "Loading staging rows",
+    detail: "Reading interpreted quotes, catalog matches, validation flags, and editable spreadsheet columns."
+  });
   refreshButton.disabled = true;
   stagingLoadToken += 1;
   stagingLoadOffset = 0;
@@ -1923,7 +1934,11 @@ async function loadRows() {
     await applyPermissionState("[data-save-id], [data-approve-id], [data-reject-id], #save-staging-button, #approve-staging-button, #reject-staging-button, #bulk-save-button, #bulk-match-vendors-button, #bulk-approve-button, #bulk-reject-button, #bulk-approve-filtered-button, #bulk-reject-filtered-button, #bulk-enrich-zips-button, #bulk-renormalize-button, #bulk-archive-button, #bulk-remove-button, #bulk-archive-filtered-button, #bulk-remove-filtered-button, #apply-staging-bulk-edit-filtered", "staging:approve");
   } catch (error) {
     stagingIsLoadingMore = false;
-    body.innerHTML = `<tr><td colspan="${STAGING_COLSPAN}">Could not load staging rows. ${escapeHtml(error.message)}</td></tr>`;
+    body.innerHTML = tableErrorState(STAGING_COLSPAN, error, {
+      title: "Staging Review could not load",
+      retryAction: "load-staging-rows",
+      meta: "No staged rates were changed."
+    });
   } finally {
     stagingIsLoadingMore = false;
     refreshButton.disabled = false;
@@ -2086,6 +2101,10 @@ locationMatchDrawerController = createLocationMatchDrawer({
 });
 
 refreshButton.addEventListener("click", loadRows);
+document.addEventListener("click", (event) => {
+  const retryButton = event.target.closest("[data-retry-action='load-staging-rows']");
+  if (retryButton) loadRows();
+});
 clearFiltersButton?.addEventListener("click", clearStagingFilters);
 statusFilter.addEventListener("change", () => {
   selectedRowIds.clear();

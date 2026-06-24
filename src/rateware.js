@@ -4,6 +4,7 @@ import { archiveApprovedRatewareByFilter, bulkUpdateApprovedRatewareRows, create
 import { initSpreadsheetColumnFilters } from "./spreadsheet-column-filters.js";
 import { installSpreadsheetGrid } from "./spreadsheet-grid.js";
 import { initColumnVisibility, initDrawer, initLocationAutocomplete } from "./sheet-ui.js";
+import { tableErrorState, tableLoadingState, tableState } from "./ui-state.js";
 
 const body = document.querySelector("#rateware-body");
 const searchInput = document.querySelector("#rateware-search");
@@ -1000,7 +1001,14 @@ function renderRows(rows, { append = false } = {}) {
   updateBulkValueOptions();
 
   if (!loadedRows.length) {
-    body.innerHTML = `<tr><td colspan="${RATEWARE_COLSPAN}"><div class="empty-state"><strong>No approved rates yet</strong><span>Approve staging rows to build the Rateware.</span><a href="./staging-review.html">Open staging review</a></div></td></tr>${ratewareLoadStateRow()}`;
+    body.innerHTML = `${tableState(RATEWARE_COLSPAN, {
+      tone: "neutral",
+      eyebrow: "Approved rate book",
+      title: "No approved rates yet",
+      detail: "Approve staging rows to build the editable Rateware book.",
+      actionHref: "./staging-review.html",
+      actionLabel: "Open staging review"
+    })}${ratewareLoadStateRow()}`;
     columnVisibilityController?.applyVisibility();
     updateBulkControls();
     observeRatewareLoadSentinel();
@@ -1875,7 +1883,10 @@ async function loadMoreRateware() {
 }
 
 async function loadRateware() {
-  body.innerHTML = `<tr><td colspan="${RATEWARE_COLSPAN}">Loading approved rates...</td></tr>`;
+  body.innerHTML = tableLoadingState(RATEWARE_COLSPAN, {
+    title: "Loading Rateware",
+    detail: "Reading approved rates, versions, conflicts, filters, and spreadsheet columns."
+  });
   refreshButton.disabled = true;
   ratewareLoadToken += 1;
   ratewareLoadOffset = 0;
@@ -1895,7 +1906,11 @@ async function loadRateware() {
     applyRatewarePage(page, { append: false });
   } catch (error) {
     if (token !== ratewareLoadToken) return;
-    body.innerHTML = `<tr><td colspan="${RATEWARE_COLSPAN}">Could not load Rateware. ${escapeHtml(error.message)}</td></tr>`;
+    body.innerHTML = tableErrorState(RATEWARE_COLSPAN, error, {
+      title: "Rateware could not load",
+      retryAction: "load-rateware",
+      meta: "Approved rates were not changed."
+    });
   } finally {
     if (token === ratewareLoadToken) refreshButton.disabled = false;
   }
@@ -2116,6 +2131,10 @@ loadRateware();
 loadRatewareVersions();
 
 refreshButton.addEventListener("click", loadRateware);
+document.addEventListener("click", (event) => {
+  const retryButton = event.target.closest("[data-retry-action='load-rateware']");
+  if (retryButton) loadRateware();
+});
 clearFiltersButton?.addEventListener("click", clearRatewareFilters);
 searchInput.addEventListener("input", debounce(loadRateware));
 operationFilter.addEventListener("change", loadRateware);

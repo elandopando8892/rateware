@@ -10,6 +10,8 @@ import {
   generateOutreachDrafts,
   markOutreachMessages
 } from "./outreach-service.js";
+import { humanizeError } from "./error-copy.js";
+import { stateBlock, tableState } from "./ui-state.js";
 
 const templateForm = document.querySelector("#outreach-template-form");
 const templateName = document.querySelector("#template-name");
@@ -70,7 +72,7 @@ function escapeHtml(value) {
 
 function setStatus(element, message, tone = "neutral") {
   if (!element) return;
-  element.textContent = message;
+  element.textContent = tone === "error" ? humanizeError(message) : message;
   element.dataset.tone = tone;
 }
 
@@ -191,13 +193,12 @@ function renderTemplatePreview() {
 function renderDraftPreview(message = null) {
   if (!draftPreview) return;
   if (!message) {
-    draftPreview.innerHTML = `
-      <div>
-        <p class="eyebrow">Draft preview</p>
-        <h3>Select a generated message</h3>
-        <span>Preview the exact Gmail or WhatsApp draft before opening the external channel.</span>
-      </div>
-    `;
+    draftPreview.innerHTML = stateBlock({
+      tone: "neutral",
+      eyebrow: "Draft preview",
+      title: "Select a generated message",
+      detail: "Preview the exact Gmail or WhatsApp draft before opening the external channel."
+    });
     return;
   }
   const isEmail = message.channel === "email";
@@ -337,7 +338,13 @@ function renderRfxSelects() {
 function renderTemplates() {
   renderTemplateSelects();
   if (!templates.length) {
-    templateList.innerHTML = "<article>No templates yet.</article>";
+    templateList.innerHTML = stateBlock({
+      tone: "neutral",
+      eyebrow: "Templates",
+      title: "No outreach templates yet",
+      detail: "Create a Gmail/WhatsApp template with placeholders so RFx invitations can be generated consistently.",
+      actionButton: '<button class="secondary small-button" type="button" data-outreach-focus="template">Create template</button>'
+    });
     return;
   }
   templateList.innerHTML = templates.map((template) => `
@@ -356,7 +363,13 @@ function renderCampaigns() {
   generateDraftsButton.disabled = !selectedCampaignId;
   renderCampaignDashboard();
   if (!campaigns.length) {
-    campaignList.innerHTML = "<article>No outreach campaigns yet.</article>";
+    campaignList.innerHTML = stateBlock({
+      tone: "neutral",
+      eyebrow: "Campaigns",
+      title: "No outreach campaigns yet",
+      detail: "Create a campaign from an RFx shortlist, then generate Gmail and WhatsApp drafts for selected carriers.",
+      actionButton: '<button class="secondary small-button" type="button" data-outreach-focus="campaign">Create campaign</button>'
+    });
     return;
   }
   campaignList.innerHTML = campaigns.map((campaign) => `
@@ -374,20 +387,36 @@ function renderMessages() {
   updateMetrics();
   renderCampaignDashboard();
   if (!selectedCampaignId) {
-    messageBody.innerHTML = `<tr><td colspan="8">Create or select a campaign.</td></tr>`;
+    messageBody.innerHTML = tableState(8, {
+      tone: "neutral",
+      eyebrow: "Draft queue",
+      title: "Create or select a campaign",
+      detail: "Drafts appear here after you connect an RFx event, template, and outreach channel."
+    });
     renderDraftPreview(null);
     renderHistory();
     return;
   }
   if (!messages.length) {
-    messageBody.innerHTML = `<tr><td colspan="8">No drafts yet. Generate drafts from the selected RFx shortlist.</td></tr>`;
+    messageBody.innerHTML = tableState(8, {
+      tone: "neutral",
+      eyebrow: "Draft queue",
+      title: "No drafts generated yet",
+      detail: "Generate drafts from the selected RFx shortlist, then preview each vendor message before opening Gmail or WhatsApp.",
+      actionButton: '<button class="secondary small-button" type="button" data-outreach-focus="generate">Generate drafts</button>'
+    });
     renderDraftPreview(null);
     renderHistory();
     return;
   }
   const rows = visibleMessages();
   if (!rows.length) {
-    messageBody.innerHTML = `<tr><td colspan="8">No messages match current filters.</td></tr>`;
+    messageBody.innerHTML = tableState(8, {
+      tone: "neutral",
+      eyebrow: "Filtered drafts",
+      title: "No messages match current filters",
+      detail: "Clear the search or choose a different delivery state to continue."
+    });
     const fallbackPreview = messages.find((message) => message.id === previewMessageId) || messages[0] || null;
     renderDraftPreview(fallbackPreview);
     renderHistory();
@@ -430,7 +459,12 @@ function renderHistory() {
     historyScope.textContent = previewMessage ? vendorName(previewMessage) : selectedCampaignId ? "Selected campaign" : "All vendors";
   }
   if (!scopedRows.length) {
-    historyList.innerHTML = "<article>No contact history yet.</article>";
+    historyList.innerHTML = stateBlock({
+      tone: "neutral",
+      eyebrow: "Contact history",
+      title: "No carrier touchpoints yet",
+      detail: previewMessage ? "This vendor has no recorded outreach history yet." : "Sent, queued, replied, and archived activity will appear here after drafts are processed."
+    });
     return;
   }
   historyList.innerHTML = scopedRows.slice(0, 80).map((item) => `
@@ -600,6 +634,23 @@ draftPreview?.addEventListener("click", (event) => {
   if (!openButton) return;
   const url = openButton.dataset.openUrl;
   if (url) window.open(url, "_blank", "noopener");
+});
+
+document.addEventListener("click", (event) => {
+  const focusButton = event.target.closest("[data-outreach-focus]");
+  if (!focusButton) return;
+  const focusTarget = focusButton.dataset.outreachFocus;
+  if (focusTarget === "template") {
+    templateName?.focus();
+    templateForm?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+  if (focusTarget === "campaign") {
+    campaignName?.focus();
+    campaignForm?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+  if (focusTarget === "generate" && !generateDraftsButton.disabled) {
+    generateDraftsButton.click();
+  }
 });
 
 campaignTemplate?.addEventListener("change", renderTemplatePreview);

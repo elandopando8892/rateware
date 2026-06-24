@@ -6,11 +6,26 @@ export function humanizeError(errorOrMessage) {
   if (lower.includes("insufficient_quota") || lower.includes("quota")) {
     return "OpenAI quota is not available for this project. Add billing or update the OpenAI key, then reprocess the file.";
   }
+  if (lower.includes("not having enough compute resources") || lower.includes("http 546") || lower.includes("546")) {
+    return "The processing service did not have enough compute resources for this request. Retry, or split the file into smaller batches.";
+  }
+  if (lower.includes("rateware api request failed")) {
+    return "Rateware services could not complete the request. Retry the action, and check the workspace connection if it happens again.";
+  }
+  if (lower.includes("edge function") || lower.includes("function failed")) {
+    return "A processing function failed before finishing. Retry the action; if it repeats, check the function logs.";
+  }
   if (lower.includes("401") || lower.includes("unauthorized") || lower.includes("jwt") || lower.includes("sign in")) {
     return "Your session needs to be refreshed. Sign in again and retry the action.";
   }
+  if (lower.includes("403") || lower.includes("forbidden")) {
+    return "Your account is signed in, but this action is not allowed for the current workspace.";
+  }
   if (lower.includes("failed to fetch") || lower.includes("network") || lower.includes("timeout")) {
     return "The request could not reach Rateware services. Check the connection and retry.";
+  }
+  if (lower.includes("500") || lower.includes("internal server error")) {
+    return "Rateware hit a server error while processing the request. Retry once, then check logs if it repeats.";
   }
   if (lower.includes("unsupported") || lower.includes("accepted source type") || lower.includes("document type")) {
     return "This file type is not supported. Upload XLSX, PDF, image, or EML email files.";

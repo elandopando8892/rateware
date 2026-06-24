@@ -1,5 +1,7 @@
 import { initAuthControls, requirePrivatePage } from "./auth.js";
 import { callRatewareApi } from "./rateware-api.js";
+import { humanizeError } from "./error-copy.js";
+import { loadingState, stateBlock } from "./ui-state.js";
 
 const nextActionCard = document.querySelector("#next-best-action");
 const nextActionTitle = document.querySelector("#next-action-title");
@@ -197,7 +199,27 @@ function renderSummary(summary) {
   renderPriorityQueue(summary);
 }
 
+function renderDashboardLoading() {
+  [metricPending, metricFailed, metricApproved, metricProcurement, metricRfxOpen, metricRfxBids].forEach((element) => {
+    if (element) element.textContent = "-";
+  });
+  if (nextActionCard) nextActionCard.setAttribute("data-severity", "info");
+  setText(nextActionTitle, "Checking today's work...");
+  setText(nextActionDetail, "Loading the highest-impact action from uploads, staging, AI, and RFx.");
+  if (nextActionLink) {
+    nextActionLink.textContent = "Loading";
+    nextActionLink.href = "#";
+  }
+  if (priorityQueue) {
+    priorityQueue.innerHTML = loadingState({
+      title: "Loading priorities",
+      detail: "Checking staging, failed uploads, RFx, and vendor readiness."
+    });
+  }
+}
+
 function renderLoadError(error) {
+  const message = humanizeError(error);
   setMetric(metricPending, 0);
   setMetric(metricFailed, 0);
   setMetric(metricApproved, 0);
@@ -207,27 +229,26 @@ function renderLoadError(error) {
 
   if (nextActionCard) nextActionCard.setAttribute("data-severity", "critical");
   setText(nextActionTitle, "Dashboard could not load");
-  setText(nextActionDetail, error.message);
+  setText(nextActionDetail, message);
   if (nextActionLink) {
-    nextActionLink.textContent = "Open uploads";
-    nextActionLink.href = "./upload-history.html?status=failed";
+    nextActionLink.textContent = "Retry";
+    nextActionLink.href = "#";
+    nextActionLink.dataset.retryAction = "load-dashboard";
   }
 
   if (priorityQueue) {
-    priorityQueue.innerHTML = `
-      <a class="priority-alert critical" href="./upload-history.html?status=failed">
-        <div>
-          <span>Critical</span>
-          <strong>Could not load today's queue</strong>
-          <small>${escapeHtml(error.message)}</small>
-        </div>
-        <b>Open</b>
-      </a>
-    `;
+    priorityQueue.innerHTML = stateBlock({
+      tone: "danger",
+      eyebrow: "Needs attention",
+      title: "Could not load today's queue",
+      detail: message,
+      actionButton: '<button class="secondary small-button" type="button" data-retry-action="load-dashboard">Retry dashboard</button>'
+    });
   }
 }
 
 async function loadDashboard() {
+  renderDashboardLoading();
   try {
     const session = await requirePrivatePage();
     if (!session?.token) return;
@@ -240,3 +261,11 @@ async function loadDashboard() {
 
 initAuthControls();
 loadDashboard();
+
+document.addEventListener("click", (event) => {
+  const retryButton = event.target.closest("[data-retry-action='load-dashboard']");
+  if (!retryButton) return;
+  event.preventDefault();
+  if (nextActionLink) delete nextActionLink.dataset.retryAction;
+  loadDashboard();
+});
