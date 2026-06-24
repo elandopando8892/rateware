@@ -66,6 +66,7 @@ export function initColumnVisibility({ table, menu, columns = [], storageKey = "
   let order = [...stored.order];
   let widths = { ...stored.widths };
   let draggedColumn = "";
+  let layoutStatus = "";
 
   columns.forEach((column) => {
     visibility[column.key] = column.locked ? true : stored.visibility[column.key] !== false;
@@ -103,11 +104,19 @@ export function initColumnVisibility({ table, menu, columns = [], storageKey = "
       .join("");
     list.innerHTML = `
       <div class="column-layout-tools">
+        <button type="button" data-column-save-layout>Save view</button>
         <button type="button" data-column-autofit>Auto-fit visible</button>
         <button type="button" data-column-reset-layout>Reset layout</button>
+        <span class="column-layout-status" data-column-layout-status>${layoutStatus}</span>
       </div>
       ${labels}
     `;
+  }
+
+  function setLayoutStatus(message) {
+    layoutStatus = message;
+    const status = menu.querySelector("[data-column-layout-status]");
+    if (status) status.textContent = message;
   }
 
   function applyOrder() {
@@ -208,12 +217,19 @@ export function initColumnVisibility({ table, menu, columns = [], storageKey = "
   });
 
   menu.addEventListener("click", (event) => {
+    if (event.target.closest("[data-column-save-layout]")) {
+      persistLayout();
+      setLayoutStatus("Saved");
+      return;
+    }
     if (event.target.closest("[data-column-autofit]")) {
       autofit();
+      setLayoutStatus("Auto-fit saved");
       return;
     }
     if (event.target.closest("[data-column-reset-layout]")) {
       resetLayout();
+      setLayoutStatus("Reset saved");
     }
   });
 
@@ -251,6 +267,7 @@ export function initColumnVisibility({ table, menu, columns = [], storageKey = "
     nextOrder.splice(targetIndex + (insertAfter ? 1 : 0), 0, draggedColumn);
     order = nextOrder;
     applyVisibility();
+    setLayoutStatus("Order saved");
   });
 
   labelRow?.addEventListener("dragend", () => {
@@ -264,6 +281,7 @@ export function initColumnVisibility({ table, menu, columns = [], storageKey = "
     const cell = event.target.closest("th[data-col]");
     if (!cell?.dataset.col) return;
     autofit([cell.dataset.col]);
+    setLayoutStatus("Width saved");
   });
 
   renderToggleInputs();

@@ -3462,6 +3462,8 @@ table {
 .column-layout-tools {
   grid-column: 1 / -1;
   display: flex;
+  align-items: center;
+  flex-wrap: wrap;
   gap: 6px;
   border-bottom: 1px solid #edf1f4;
   margin-bottom: 6px;
@@ -3484,6 +3486,25 @@ table {
 .column-layout-tools button:focus-visible {
   border-color: var(--accent);
   color: var(--accent-dark);
+}
+
+.column-layout-tools button[data-column-save-layout] {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #ffffff;
+}
+
+.column-layout-tools button[data-column-save-layout]:hover,
+.column-layout-tools button[data-column-save-layout]:focus-visible {
+  background: var(--accent-dark);
+  color: #ffffff;
+}
+
+.column-layout-status {
+  min-width: 72px;
+  color: var(--success);
+  font-size: 0.68rem;
+  font-weight: 850;
 }
 
 .sheet-table-wrap th.draggable-column {
