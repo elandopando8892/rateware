@@ -6237,6 +6237,17 @@ select.staging-input {
   padding: 6px 8px 0;
 }
 
+.sheet-filter-scope {
+  margin: 0;
+  border-bottom: 1px solid var(--line);
+  background: #f8fafb;
+  color: var(--muted);
+  padding: 6px 8px;
+  font-size: 0.66rem;
+  font-weight: 760;
+  line-height: 1.25;
+}
+
 .sheet-filter-popover-primary button {
   width: 100%;
   border: 1px solid #d7e0e6;
