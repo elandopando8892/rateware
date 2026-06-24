@@ -124,6 +124,20 @@ const SHEET_COLUMNS = [
   { key: "weekly_capacity", label: "Capacity" },
   { key: "status", label: "Status" }
 ];
+function sheetViewPreset(name, visibleKeys, { pageSize = DEFAULT_STAGING_PAGE_SIZE } = {}) {
+  const visible = new Set(["select", ...visibleKeys]);
+  const visibility = Object.fromEntries(SHEET_COLUMNS.map((column) => [column.key, column.locked || visible.has(column.key)]));
+  const order = [...new Set(["select", ...visibleKeys, ...SHEET_COLUMNS.map((column) => column.key)])];
+  return { name, layout: { visibility, order, widths: {}, extra: { pageSize } } };
+}
+
+const STAGING_VIEW_PRESETS = [
+  sheetViewPreset("Default", SHEET_COLUMNS.filter((column) => column.key !== "select").map((column) => column.key)),
+  sheetViewPreset("Operations", ["vendor", "quote_date", "rfx_id", "origin", "origin_state", "origin_market", "destination", "destination_state", "destination_market", "equipment", "trailer", "operation", "service", "weekly_capacity", "status"], { pageSize: 200 }),
+  sheetViewPreset("Pricing", ["vendor", "quote_date", "rfx_id", "origin", "destination", "equipment", "trailer", "operation", "service", "mx_linehaul", "us_linehaul", "fsc", "border_crossing_fee", "all_in_rate", "currency", "weekly_capacity", "status"], { pageSize: 200 }),
+  sheetViewPreset("Lane Normalization", ["vendor", "origin", "origin_zip_prefix", "origin_state", "origin_market", "origin_region", "destination", "destination_zip_prefix", "destination_state", "destination_market", "destination_region", "mx_border_crossing_point", "us_border_crossing_point", "operation", "service", "status"], { pageSize: 100 }),
+  sheetViewPreset("Finance", ["vendor", "quote_date", "rfx_id", "origin", "destination", "mx_linehaul", "us_linehaul", "fsc", "border_crossing_fee", "all_in_rate", "currency", "status"], { pageSize: 200 })
+];
 const STAGING_BULK_EDIT_FIELDS = [
   { field: "operation", label: "Operation", source: "operation" },
   { field: "service", label: "Service", source: "service" },
@@ -2301,7 +2315,19 @@ columnVisibilityController = initColumnVisibility({
   table: stagingTable,
   menu: columnMenu,
   columns: SHEET_COLUMNS,
-  storageKey: "rateware:staging:columns:v2"
+  storageKey: "rateware:staging:columns:v2",
+  viewPresets: STAGING_VIEW_PRESETS,
+  getExtraState: () => ({ pageSize: stagingPageSize }),
+  applyExtraState: (extra = {}) => {
+    const nextSize = Number(extra.pageSize);
+    if (![50, 100, 200, 500].includes(nextSize) || nextSize === stagingPageSize) return;
+    stagingPageSize = nextSize;
+    writeStoredPageSize(STAGING_PAGE_SIZE_STORAGE_KEY, stagingPageSize);
+    stagingPageIndex = 0;
+    selectedRowIds.clear();
+    setBulkStatus("");
+    loadRows({ preservePage: true });
+  }
 });
 columnFilterController = initSpreadsheetColumnFilters({
   table: stagingTable,

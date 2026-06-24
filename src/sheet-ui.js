@@ -51,11 +51,12 @@ function normalizeStoredLayout(raw, columns) {
   return {
     visibility,
     order: [...order, ...missing],
-    widths: isNewLayout && raw.widths ? raw.widths : {}
+    widths: isNewLayout && raw.widths ? raw.widths : {},
+    extra: isNewLayout && raw.extra && typeof raw.extra === "object" ? raw.extra : {}
   };
 }
 
-export function initColumnVisibility({ table, menu, columns = [], storageKey = "" }) {
+export function initColumnVisibility({ table, menu, columns = [], storageKey = "", viewPresets = [], getExtraState = null, applyExtraState = null }) {
   if (!table || !menu || !columns.length) return;
   const list = menu.querySelector("[data-column-toggle-list]");
   const stored = normalizeStoredLayout(readStoredVisibility(storageKey), columns);
@@ -75,15 +76,20 @@ export function initColumnVisibility({ table, menu, columns = [], storageKey = "
     visibility[column.key] = column.locked ? true : stored.visibility[column.key] !== false;
   });
 
+  function readExtraState() {
+    return typeof getExtraState === "function" ? getExtraState() || {} : {};
+  }
+
   function persistLayout() {
-    writeStoredVisibility(storageKey, { visibility, order, widths });
+    writeStoredVisibility(storageKey, { visibility, order, widths, extra: readExtraState() });
   }
 
   function layoutSnapshot() {
     return {
       visibility: { ...visibility },
       order: [...orderedColumns()],
-      widths: { ...widths }
+      widths: { ...widths },
+      extra: readExtraState()
     };
   }
 
@@ -95,6 +101,10 @@ export function initColumnVisibility({ table, menu, columns = [], storageKey = "
     return Object.keys(savedViews).sort((a, b) => a.localeCompare(b));
   }
 
+  function presetViews() {
+    return Array.isArray(viewPresets) ? viewPresets.filter((preset) => preset?.name && preset.layout) : [];
+  }
+
   function applyStoredLayout(layout) {
     const normalized = normalizeStoredLayout(layout || {}, columns);
     columns.forEach((column) => {
@@ -102,6 +112,7 @@ export function initColumnVisibility({ table, menu, columns = [], storageKey = "
     });
     order = [...normalized.order];
     widths = { ...normalized.widths };
+    if (typeof applyExtraState === "function") applyExtraState(normalized.extra || {});
     applyVisibility();
   }
 
@@ -138,6 +149,14 @@ export function initColumnVisibility({ table, menu, columns = [], storageKey = "
         <button type="button" data-column-reset-layout>Reset layout</button>
         <span class="column-layout-status" data-column-layout-status>${layoutStatus}</span>
       </div>
+      ${presetViews().length ? `
+        <div class="column-preset-views">
+          <strong>Preset views</strong>
+          ${presetViews().map((preset) => `
+            <button type="button" data-column-apply-preset="${htmlEscape(preset.name)}">${htmlEscape(preset.name)}</button>
+          `).join("")}
+        </div>
+      ` : ""}
       <div class="column-save-view-row">
         <input data-column-view-name placeholder="Name this view" />
         <button type="button" data-column-save-named-view>Save named</button>
@@ -287,6 +306,15 @@ export function initColumnVisibility({ table, menu, columns = [], storageKey = "
       if (!savedViews[name]) return;
       applyStoredLayout(savedViews[name]);
       setLayoutStatus("View applied");
+      return;
+    }
+    const applyPresetButton = event.target.closest("[data-column-apply-preset]");
+    if (applyPresetButton) {
+      const name = applyPresetButton.dataset.columnApplyPreset;
+      const preset = presetViews().find((item) => item.name === name);
+      if (!preset) return;
+      applyStoredLayout(preset.layout);
+      setLayoutStatus("Preset applied");
       return;
     }
     const deleteViewButton = event.target.closest("[data-column-delete-view]");
