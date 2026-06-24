@@ -119,7 +119,7 @@ export function initSpreadsheetColumnFilters({ table, columns = [], getRows, get
         <strong>${escapeHtml(column?.label || field)}</strong>
         <button type="button" data-sheet-filter-close>Close</button>
       </div>
-      <input class="sheet-filter-search" type="search" placeholder="Search values..." value="${escapeHtml(search)}" />
+      <input class="sheet-filter-search" type="search" placeholder="Search values..." value="" />
       <p class="muted-text">Loading values...</p>
     `;
     popover.dataset.field = field;
