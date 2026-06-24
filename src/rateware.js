@@ -39,6 +39,7 @@ const ratewareMetricTotal = document.querySelector("#rateware-metric-total");
 const ratewareMetricVendors = document.querySelector("#rateware-metric-vendors");
 const ratewareMetricMarkets = document.querySelector("#rateware-metric-markets");
 const ratewareMetricAverage = document.querySelector("#rateware-metric-average");
+const ratewareMetricValidation = document.querySelector("#rateware-metric-validation");
 const quickFilterButtons = document.querySelectorAll("[data-rateware-filter]");
 const drawer = document.querySelector("#rateware-drawer");
 const closeDrawerButton = document.querySelector("#close-rateware-drawer");
@@ -547,11 +548,15 @@ function rateValidationClass(row) {
   return !hasNumericValue(row.all_in_rate) && !hasSplitRate(row) ? "cell-invalid" : "cell-valid";
 }
 
+function hasCurrencyGap(row) {
+  return (hasNumericValue(row.all_in_rate) || hasSplitRate(row)) && !row.currency;
+}
+
 function inlineValidationIssues(row) {
   const issues = [];
   if (!hasNumericValue(row.all_in_rate) && !hasSplitRate(row)) issues.push({ tone: "danger", label: "rate", detail: "Needs numeric all-in or split rate" });
   if (/[a-z]/i.test(String(row.all_in_rate || ""))) issues.push({ tone: "warning", label: "text", detail: "All-in should be numeric only" });
-  if ((hasNumericValue(row.all_in_rate) || hasSplitRate(row)) && !row.currency) issues.push({ tone: "warning", label: "currency", detail: "Currency missing" });
+  if (hasCurrencyGap(row)) issues.push({ tone: "warning", label: "currency", detail: "Currency missing" });
   if (!row.operation || !row.service) issues.push({ tone: "warning", label: "service", detail: "Operation or service missing" });
   return issues;
 }
@@ -579,6 +584,65 @@ function isCrossBorder(row) {
     .join(" ")
     .toLowerCase();
   return text.includes("cross") || text.includes("export") || text.includes("import") || Boolean(row.mx_border_crossing_point || row.us_border_crossing_point);
+}
+
+function hasCrossingGap(row) {
+  return isCrossBorder(row) && (!row.mx_border_crossing_point || !row.us_border_crossing_point);
+}
+
+function locationMatched(row, prefix) {
+  return Boolean(row[`${prefix}_market`] || row[`${prefix}_zip_prefix`] || row[`${prefix}_state`] || row[`${prefix}_country`]);
+}
+
+function addCellIssue(issueMap, field, tone, message) {
+  if (!field || !message) return;
+  const issues = issueMap.get(field) || [];
+  issues.push({ tone, message });
+  issueMap.set(field, issues);
+}
+
+function rowCellValidationIssues(row) {
+  const issues = new Map();
+  if (!locationMatched(row, "origin")) {
+    ["origin", "origin_zip_prefix", "origin_state", "origin_market", "origin_region"].forEach((field) => {
+      addCellIssue(issues, field, "warning", "Origin needs stronger catalog match.");
+    });
+  }
+  if (!locationMatched(row, "destination")) {
+    ["destination", "destination_zip_prefix", "destination_state", "destination_market", "destination_region"].forEach((field) => {
+      addCellIssue(issues, field, "warning", "Destination needs stronger catalog match.");
+    });
+  }
+  if (!hasNumericValue(row.all_in_rate) && !hasSplitRate(row)) addCellIssue(issues, "all_in_rate", "danger", "Needs numeric all-in or split rate.");
+  if (/[a-z]/i.test(String(row.all_in_rate || ""))) addCellIssue(issues, "all_in_rate", "danger", "All-in accepts numbers only. Put USD/MXN/CAD in Currency.");
+  if (hasCurrencyGap(row)) addCellIssue(issues, "currency", "danger", "Currency is required when a rate is present.");
+  if (!row.operation) addCellIssue(issues, "operation", "danger", "Operation is required.");
+  if (!row.service) addCellIssue(issues, "service", "danger", "Service is required.");
+  if (hasCrossingGap(row)) {
+    if (!row.mx_border_crossing_point) addCellIssue(issues, "mx_border_crossing_point", "danger", "Crossborder lanes need an MX border city.");
+    if (!row.us_border_crossing_point) addCellIssue(issues, "us_border_crossing_point", "danger", "Crossborder lanes need a US border city.");
+  }
+  if (!row.weekly_capacity) addCellIssue(issues, "weekly_capacity", "warning", "Weekly capacity missing.");
+  if (!row.vendor_domain && !row.vendor_id && !row.vendors?.domain) addCellIssue(issues, "vendor_domain", "warning", "Vendor has not been matched to sourcing/procurement base.");
+  return issues;
+}
+
+function validationCountsForRows(rows = []) {
+  return rows.reduce((summary, row) => {
+    rowCellValidationIssues(row).forEach((fieldIssues) => {
+      fieldIssues.forEach((issue) => {
+        if (issue.tone === "danger") summary.critical += 1;
+        else summary.warning += 1;
+      });
+    });
+    return summary;
+  }, { critical: 0, warning: 0 });
+}
+
+function setRatewareValidationMetric(validation) {
+  if (!ratewareMetricValidation) return;
+  ratewareMetricValidation.textContent = validation.warning ? `${validation.critical} / ${validation.warning}` : String(validation.critical);
+  ratewareMetricValidation.title = validation.warning ? `${validation.critical} critical cells, ${validation.warning} warning cells` : `${validation.critical} critical cells`;
 }
 
 function comparableLocationKey(row, prefix) {
@@ -762,6 +826,7 @@ function updateRatewareMetrics(rows) {
   const markets = new Set(rows.flatMap((row) => [row.origin_market, row.destination_market]).filter(Boolean));
   const allInValues = rows.map((row) => numericValue(row.all_in_rate)).filter((value) => value !== null && value > 0);
   const average = allInValues.length ? allInValues.reduce((total, value) => total + value, 0) / allInValues.length : null;
+  const validation = validationCountsForRows(rows);
 
   ratewareMetricTotal.textContent = ratewareTotalCount && rows.length !== ratewareTotalCount
     ? `${rows.length.toLocaleString()} / ${ratewareTotalCount.toLocaleString()}`
@@ -769,6 +834,7 @@ function updateRatewareMetrics(rows) {
   ratewareMetricVendors.textContent = String(vendorKeys.size);
   ratewareMetricMarkets.textContent = String(markets.size);
   ratewareMetricAverage.textContent = average === null ? "-" : moneyValue(average);
+  setRatewareValidationMetric(validation);
 }
 
 function populateFilter(select, rows, field) {
@@ -1102,6 +1168,7 @@ function renderRows(rows, { append = false } = {}) {
   const html = rows.map(renderRatewareTableRow).join("");
   body.innerHTML = html + ratewareLoadStateRow();
   columnVisibilityController?.applyVisibility();
+  applyVisibleInlineValidation();
   updateBulkControls();
 }
 
@@ -1131,6 +1198,10 @@ function selectOnlyRatewareRow(tableRow) {
     checkbox.checked = checkbox.dataset.selectRateware === tableRow.dataset.ratewareId;
   });
   updateBulkControls();
+}
+
+function rowById(id) {
+  return currentRows.find((row) => row.id === id) || loadedRows.find((row) => row.id === id) || {};
 }
 
 function setActionStatus(message, tone = "neutral") {
@@ -1205,6 +1276,67 @@ function readRatewarePatch(tableRow) {
     patch[input.dataset.ratewareField] = input.matches('input[type="checkbox"]') ? input.checked : input.value;
   });
   return patch;
+}
+
+function rowFromRatewareTablePatch(tableRow, patch = {}) {
+  return { ...rowById(tableRow?.dataset.ratewareId), ...patch };
+}
+
+function dataColForField(field) {
+  if (field === "vendor_domain") return "vendor";
+  return field;
+}
+
+function setCellValidationState(cell, issues = []) {
+  if (!cell) return;
+  if (cell.dataset.baseTitle === undefined) cell.dataset.baseTitle = cell.title || "";
+  cell.classList.remove("cell-validation-danger", "cell-validation-warning");
+  delete cell.dataset.validationStatus;
+  cell.title = cell.dataset.baseTitle || "";
+  if (!issues.length) return;
+  const hasDanger = issues.some((issue) => issue.tone === "danger");
+  cell.classList.add(hasDanger ? "cell-validation-danger" : "cell-validation-warning");
+  cell.dataset.validationStatus = issues.map((issue) => issue.message).join(" | ");
+  cell.title = [cell.title, cell.dataset.validationStatus].filter(Boolean).join(" | ");
+}
+
+function applyInlineValidation(tableRow, row = null) {
+  if (!tableRow) return { critical: 0, warning: 0 };
+  const validationRowData = row || rowFromRatewareTablePatch(tableRow, readRatewarePatch(tableRow));
+  tableRow.querySelectorAll("td[data-col]").forEach((cell) => {
+    cell.classList.remove("cell-validation-danger", "cell-validation-warning");
+    delete cell.dataset.validationStatus;
+  });
+  const issues = rowCellValidationIssues(validationRowData);
+  let critical = 0;
+  let warning = 0;
+  issues.forEach((fieldIssues, field) => {
+    fieldIssues.forEach((issue) => {
+      if (issue.tone === "danger") critical += 1;
+      else warning += 1;
+    });
+    const cell = tableRow.querySelector(`td[data-col="${CSS.escape(dataColForField(field))}"]`);
+    setCellValidationState(cell, fieldIssues);
+  });
+  tableRow.classList.toggle("has-critical-validation", critical > 0);
+  tableRow.classList.toggle("has-warning-validation", !critical && warning > 0);
+  return { critical, warning };
+}
+
+function applyVisibleInlineValidation() {
+  body.querySelectorAll("[data-rateware-id]").forEach((tableRow) => {
+    applyInlineValidation(tableRow, rowById(tableRow.dataset.ratewareId));
+  });
+}
+
+function updateVisibleValidationMetric() {
+  const validation = [...body.querySelectorAll("[data-rateware-id]")].reduce((summary, tableRow) => {
+    const rowValidation = applyInlineValidation(tableRow);
+    summary.critical += rowValidation.critical;
+    summary.warning += rowValidation.warning;
+    return summary;
+  }, { critical: 0, warning: 0 });
+  setRatewareValidationMetric(validation);
 }
 
 function replaceStoredRatewareRow(updatedRow) {
@@ -1339,6 +1471,8 @@ async function saveRatewareTableRow(tableRow) {
     replaceStoredRatewareRow(updatedRow);
     tableRow.classList.remove("dirty-row");
     setDirtyRowCellsState(tableRow, "saved");
+    applyInlineValidation(tableRow, updatedRow);
+    updateRatewareMetrics(loadedRows);
     setRowStatus(rowId, "Saved", "success");
     return updatedRow;
   } catch (error) {
@@ -2391,6 +2525,8 @@ body.addEventListener("input", (event) => {
   const tableRow = field.closest("[data-rateware-id]");
   markEditedCellDirty(field);
   applySuggestionFromField(tableRow, field.dataset.ratewareField, field.value);
+  applyInlineValidation(tableRow);
+  updateVisibleValidationMetric();
   markRatewareRowDirty(tableRow);
   scheduleRatewareAutoSave(tableRow);
 });
@@ -2400,6 +2536,8 @@ body.addEventListener("change", (event) => {
     const tableRow = field.closest("[data-rateware-id]");
     markEditedCellDirty(field);
     applySuggestionFromField(tableRow, field.dataset.ratewareField, field.value);
+    applyInlineValidation(tableRow);
+    updateVisibleValidationMetric();
     markRatewareRowDirty(tableRow);
     scheduleRatewareAutoSave(tableRow);
     return;

@@ -53,6 +53,7 @@ const stagingTable = document.querySelector(".staging-table");
 const stagingMetricVisible = document.querySelector("#staging-metric-visible");
 const stagingMetricLocation = document.querySelector("#staging-metric-location");
 const stagingMetricRate = document.querySelector("#staging-metric-rate");
+const stagingMetricValidation = document.querySelector("#staging-metric-validation");
 const stagingMetricSelected = document.querySelector("#staging-metric-selected");
 const reviewFilterButtons = document.querySelectorAll("[data-staging-filter]");
 const uploadScopeBanner = document.querySelector("#staging-upload-scope");
@@ -786,8 +787,20 @@ function hasCurrencyGap(row) {
   return (hasNumericValue(row.all_in_rate) || hasSplitRate(row)) && !row.currency;
 }
 
+function isCrossBorder(row) {
+  const text = [row.operation, row.service, row.origin_country, row.destination_country, row.mx_border_crossing_point, row.us_border_crossing_point]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  return text.includes("cross") || text.includes("export") || text.includes("import") || Boolean(row.mx_border_crossing_point || row.us_border_crossing_point);
+}
+
+function hasCrossingGap(row) {
+  return isCrossBorder(row) && (!row.mx_border_crossing_point || !row.us_border_crossing_point);
+}
+
 function hasReviewConflict(row) {
-  return hasAllInText(row) || hasSplitAllInConflict(row) || hasSourceServiceConflict(row) || hasCurrencyGap(row) || !row.operation || !row.service;
+  return hasAllInText(row) || hasSplitAllInConflict(row) || hasSourceServiceConflict(row) || hasCurrencyGap(row) || hasCrossingGap(row) || !row.operation || !row.service;
 }
 
 function hasSourceAuditIssue(row) {
@@ -893,6 +906,9 @@ function approvalBlockers(row) {
   if (needsNumericRate(row)) blockers.push("numeric rate");
   if (hasAllInText(row)) blockers.push("numeric-only all-in");
   if (needsLocationMatch(row)) blockers.push("location match");
+  if (hasCurrencyGap(row)) blockers.push("currency");
+  if (!row.operation || !row.service) blockers.push("operation and service");
+  if (hasCrossingGap(row)) blockers.push("MX and US border cities");
   return blockers;
 }
 
@@ -905,6 +921,121 @@ function rowFromTablePatch(tableRow, patch = {}) {
   const id = tableRow?.dataset.rowId;
   const baseRow = rowById(id) || {};
   return validationRow(baseRow, patch);
+}
+
+function addCellIssue(issueMap, field, tone, message) {
+  if (!field || !message) return;
+  const issues = issueMap.get(field) || [];
+  issues.push({ tone, message });
+  issueMap.set(field, issues);
+}
+
+function locationMatched(row, prefix) {
+  return Boolean(row[`${prefix}_market`] || row[`${prefix}_zip_prefix`] || row[`${prefix}_state`] || row[`${prefix}_country`]);
+}
+
+function rowCellValidationIssues(row) {
+  const issues = new Map();
+  if (!locationMatched(row, "origin")) {
+    ["origin", "origin_zip_prefix", "origin_state", "origin_market", "origin_region"].forEach((field) => {
+      addCellIssue(issues, field, "danger", "Origin needs catalog match: ZIP/ST, market, region, or country.");
+    });
+  }
+  if (!locationMatched(row, "destination")) {
+    ["destination", "destination_zip_prefix", "destination_state", "destination_market", "destination_region"].forEach((field) => {
+      addCellIssue(issues, field, "danger", "Destination needs catalog match: ZIP/ST, market, region, or country.");
+    });
+  }
+  if (needsNumericRate(row)) addCellIssue(issues, "all_in_rate", "danger", "Needs numeric all-in, MX linehaul, or US linehaul.");
+  if (hasAllInText(row)) addCellIssue(issues, "all_in_rate", "danger", "All-in accepts numbers only. Put USD/MXN/CAD in Currency.");
+  if (hasSplitAllInConflict(row)) addCellIssue(issues, "all_in_rate", "warning", "All-in does not match split components within tolerance.");
+  if (hasCurrencyGap(row)) addCellIssue(issues, "currency", "danger", "Currency is required when a rate is present.");
+  if (!row.operation) addCellIssue(issues, "operation", "danger", "Operation is required.");
+  if (!row.service) addCellIssue(issues, "service", "danger", "Service is required.");
+  if (hasSourceServiceConflict(row)) addCellIssue(issues, "service", "warning", "Source service mode differs from staged service.");
+  if (hasCrossingGap(row)) {
+    if (!row.mx_border_crossing_point) addCellIssue(issues, "mx_border_crossing_point", "danger", "Crossborder lanes need an MX border city.");
+    if (!row.us_border_crossing_point) addCellIssue(issues, "us_border_crossing_point", "danger", "Crossborder lanes need a US border city.");
+  }
+  if (!row.quote_date) addCellIssue(issues, "quote_date", "warning", "Quote date missing.");
+  if (!row.weekly_capacity) addCellIssue(issues, "weekly_capacity", "warning", "Weekly capacity missing.");
+  if (!hasVendorMatch(row)) addCellIssue(issues, "vendor_domain", "warning", "Vendor has not been matched to sourcing/procurement base.");
+  return issues;
+}
+
+function validationCountsForRows(rows = []) {
+  return rows.reduce((summary, row) => {
+    rowCellValidationIssues(row).forEach((fieldIssues) => {
+      fieldIssues.forEach((issue) => {
+        if (issue.tone === "danger") summary.critical += 1;
+        else summary.warning += 1;
+      });
+    });
+    return summary;
+  }, { critical: 0, warning: 0 });
+}
+
+function setStagingValidationMetric(validation) {
+  if (!stagingMetricValidation) return;
+  stagingMetricValidation.textContent = validation.warning ? `${validation.critical} / ${validation.warning}` : String(validation.critical);
+  stagingMetricValidation.title = validation.warning ? `${validation.critical} critical cells, ${validation.warning} warning cells` : `${validation.critical} critical cells`;
+}
+
+function dataColForField(field) {
+  if (field === "vendor_domain") return "vendor";
+  return field;
+}
+
+function setCellValidationState(cell, issues = []) {
+  if (!cell) return;
+  if (cell.dataset.baseTitle === undefined) cell.dataset.baseTitle = cell.title || "";
+  cell.classList.remove("cell-validation-danger", "cell-validation-warning");
+  delete cell.dataset.validationStatus;
+  cell.title = cell.dataset.baseTitle || "";
+  if (!issues.length) return;
+  const hasDanger = issues.some((issue) => issue.tone === "danger");
+  cell.classList.add(hasDanger ? "cell-validation-danger" : "cell-validation-warning");
+  cell.dataset.validationStatus = issues.map((issue) => issue.message).join(" | ");
+  cell.title = [cell.title, cell.dataset.validationStatus].filter(Boolean).join(" | ");
+}
+
+function applyInlineValidation(tableRow, row = null) {
+  if (!tableRow) return { critical: 0, warning: 0 };
+  const validationRowData = row || rowFromTablePatch(tableRow, readInlinePatch(tableRow));
+  tableRow.querySelectorAll("td[data-col]").forEach((cell) => {
+    cell.classList.remove("cell-validation-danger", "cell-validation-warning");
+    delete cell.dataset.validationStatus;
+  });
+  const issues = rowCellValidationIssues(validationRowData);
+  let critical = 0;
+  let warning = 0;
+  issues.forEach((fieldIssues, field) => {
+    fieldIssues.forEach((issue) => {
+      if (issue.tone === "danger") critical += 1;
+      else warning += 1;
+    });
+    const cell = tableRow.querySelector(`td[data-col="${CSS.escape(dataColForField(field))}"]`);
+    setCellValidationState(cell, fieldIssues);
+  });
+  tableRow.classList.toggle("has-critical-validation", critical > 0);
+  tableRow.classList.toggle("has-warning-validation", !critical && warning > 0);
+  return { critical, warning };
+}
+
+function applyVisibleInlineValidation() {
+  body.querySelectorAll("[data-row-id]").forEach((tableRow) => {
+    applyInlineValidation(tableRow, rowById(tableRow.dataset.rowId));
+  });
+}
+
+function updateVisibleValidationMetric() {
+  const validation = [...body.querySelectorAll("[data-row-id]")].reduce((summary, tableRow) => {
+    const rowValidation = applyInlineValidation(tableRow);
+    summary.critical += rowValidation.critical;
+    summary.warning += rowValidation.warning;
+    return summary;
+  }, { critical: 0, warning: 0 });
+  setStagingValidationMetric(validation);
 }
 
 function applyReviewFilter(rows = loadedRows) {
@@ -1070,6 +1201,7 @@ function applyReviewFilterForCount(rows, filter) {
 
 function updateReviewMetrics() {
   const scopedRows = scopedStagingRows(loadedRows);
+  const validation = validationCountsForRows(scopedRows);
   if (stagingMetricVisible) {
     stagingMetricVisible.textContent = stagingTotalCount && currentRows.length !== stagingTotalCount
       ? `${currentRows.length.toLocaleString()} / ${stagingTotalCount.toLocaleString()}`
@@ -1077,6 +1209,7 @@ function updateReviewMetrics() {
   }
   if (stagingMetricLocation) stagingMetricLocation.textContent = String(scopedRows.filter(needsLocationMatch).length);
   if (stagingMetricRate) stagingMetricRate.textContent = String(scopedRows.filter(needsNumericRate).length);
+  setStagingValidationMetric(validation);
   if (stagingMetricSelected) stagingMetricSelected.textContent = String(selectedRows().length);
 }
 
@@ -1523,6 +1656,7 @@ function renderRows(rows, { append = false } = {}) {
 
   body.innerHTML = rows.map(renderStagingTableRow).join("") + stagingLoadStateRow();
   columnVisibilityController?.applyVisibility();
+  applyVisibleInlineValidation();
   updateBulkControls();
 }
 
@@ -1666,6 +1800,8 @@ async function saveStagingTableRow(tableRow, status = null) {
     replaceStoredRow(updated);
     tableRow.classList.remove("dirty-row");
     setDirtyRowCellsState(tableRow, "saved");
+    applyInlineValidation(tableRow, updated);
+    updateReviewMetrics();
     setRowStatus(id, status ? `Marked ${status.replace("_", " ")}` : "Saved", "success");
     return updated;
   } catch (error) {
@@ -1704,6 +1840,7 @@ async function runBulkAction(status = null) {
 
     if (blockedRows.length) {
       blockedRows.forEach(({ tableRow, blockers }) => {
+        applyInlineValidation(tableRow);
         setRowStatus(tableRow.dataset.rowId, approvalBlockerMessage(blockers), "error");
       });
       setBulkStatus(`${blockedRows.length} selected row(s) need correction before approval.`, "error");
@@ -2130,6 +2267,7 @@ body.addEventListener("click", async (event) => {
   if (approve && tableRow) {
     const blockers = approvalBlockers(rowFromTablePatch(tableRow, patch));
     if (blockers.length) {
+      applyInlineValidation(tableRow);
       setRowStatus(id, approvalBlockerMessage(blockers), "error");
       return;
     }
@@ -2157,6 +2295,8 @@ body.addEventListener("input", (event) => {
   const tableRow = field.closest("[data-row-id]");
   markEditedCellDirty(field);
   applySuggestionFromField(tableRow, field.dataset.field, field.value);
+  applyInlineValidation(tableRow);
+  updateVisibleValidationMetric();
   markStagingRowDirty(tableRow);
   scheduleStagingAutoSave(tableRow);
 });
@@ -2167,6 +2307,8 @@ body.addEventListener("change", (event) => {
     const tableRow = field.closest("[data-row-id]");
     markEditedCellDirty(field);
     applySuggestionFromField(tableRow, field.dataset.field, field.value);
+    applyInlineValidation(tableRow);
+    updateVisibleValidationMetric();
     markStagingRowDirty(tableRow);
     scheduleStagingAutoSave(tableRow);
     return;
