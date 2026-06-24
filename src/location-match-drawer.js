@@ -1,5 +1,5 @@
 const MX_STATE_CODES = new Set([
-  "AG", "BC", "BS", "CH", "CL", "CM", "CO", "CS", "DF", "DG", "EM", "GT", "GR", "HG", "JA", "MI", "MO", "MX", "NA", "NL", "OA", "PU", "QE", "QR", "SI", "SL", "SO", "TB", "TL", "TM", "VE", "YU", "ZA"
+  "AG", "BC", "BS", "CH", "CL", "CM", "CO", "CS", "CU", "DF", "DG", "EM", "GT", "GR", "HG", "JA", "MI", "MO", "MX", "NA", "NL", "OA", "PU", "QE", "QR", "SI", "SL", "SO", "TB", "TL", "TM", "VE", "YU", "ZA"
 ]);
 
 const US_STATE_CODES = new Set([
@@ -110,6 +110,7 @@ function inferState(value) {
 }
 
 function normalizedStateCode(value) {
+  if (value === "CU") return "CO";
   return value === "EM" ? "MX" : value;
 }
 

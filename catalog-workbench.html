@@ -84,6 +84,10 @@
                   <option value="pending_review">Pending review</option>
                   <option value="approved">Approved</option>
                 </select>
+                <select id="catalog-view-mode">
+                  <option value="groups">Location groups</option>
+                  <option value="rows">Individual rows</option>
+                </select>
                 <input id="catalog-search" type="search" placeholder="Search lane, vendor, market..." />
                 <button id="refresh-catalog-workbench" type="button" class="secondary small-button">Refresh</button>
               </div>
@@ -95,7 +99,7 @@
                   <tr>
                     <th>Status</th>
                     <th>Side</th>
-                    <th>Vendor</th>
+                    <th>Scope</th>
                     <th>Lane</th>
                     <th>Current match</th>
                     <th>Catalog suggestion</th>

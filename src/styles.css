@@ -4707,6 +4707,10 @@ button.location-chip:focus-visible {
   line-height: 1.25;
 }
 
+.catalog-workbench-table .review-chip {
+  white-space: nowrap;
+}
+
 .catalog-suggestion-input {
   width: min(360px, 100%);
   border: 1px solid var(--line-strong);
@@ -4715,6 +4719,23 @@ button.location-chip:focus-visible {
   padding: 5px 7px;
   font: inherit;
   font-size: 0.76rem;
+}
+
+.catalog-candidate-reason {
+  display: block;
+  margin-top: 3px;
+  color: var(--neutral);
+  font-size: 0.66rem;
+  font-weight: 820;
+}
+
+.catalog-actions {
+  min-width: 170px;
+}
+
+.catalog-actions .small-button {
+  min-height: 24px;
+  padding: 3px 7px;
 }
 
 .upload-detail {
