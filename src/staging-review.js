@@ -38,6 +38,7 @@ const bulkRemoveButton = document.querySelector("#bulk-remove-button");
 const bulkArchiveFilteredButton = document.querySelector("#bulk-archive-filtered-button");
 const bulkRemoveFilteredButton = document.querySelector("#bulk-remove-filtered-button");
 const bulkActionStatus = document.querySelector("#bulk-action-status");
+const stagingBulkScopeNote = document.querySelector("#staging-bulk-scope-note");
 const bulkActionBar = document.querySelector(".bulk-action-bar");
 const openBulkDrawerButton = document.querySelector("#open-staging-bulk-drawer");
 const bulkDrawer = document.querySelector("#staging-bulk-drawer");
@@ -188,6 +189,29 @@ function escapeHtml(value) {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+function countLabel(value) {
+  return Number(value || 0).toLocaleString();
+}
+
+function filteredScopeTitle(actionLabel, count) {
+  return `${actionLabel} every staging row in the database that matches the active filters (${countLabel(count)} row(s)). This is not limited to the current page.`;
+}
+
+function setFilteredButtonLabel(button, baseLabel, count) {
+  if (!button) return;
+  button.textContent = count ? `${baseLabel} (${countLabel(count)})` : baseLabel;
+  button.title = filteredScopeTitle(baseLabel, count);
+}
+
+function confirmFilteredDatabaseAction({ actionLabel, matched, scope, keyword = "APPLY", destructive = false }) {
+  const noun = matched === 1 ? "row" : "rows";
+  const warning = destructive ? "This action cannot be undone." : "Review the active filters before continuing.";
+  const typed = window.prompt(
+    `Filtered database action\n\n${actionLabel} ${countLabel(matched)} staging ${noun} across all pages matching: ${scope}.\n\nThis is not limited to the visible page. ${warning}\n\nType ${keyword} to continue.`
+  );
+  return typed === keyword;
 }
 
 function readStoredPageSize(key, fallback) {
@@ -569,6 +593,11 @@ function updateBulkControls() {
   if (bulkSelectionCount) bulkSelectionCount.textContent = `Selected: ${selectedCount.toLocaleString()}`;
   if (stagingPageCountLabel) stagingPageCountLabel.textContent = `Page: ${totalRows.toLocaleString()}`;
   if (stagingFilteredCountLabel) stagingFilteredCountLabel.textContent = `Filtered DB: ${filteredTotal.toLocaleString()}`;
+  if (stagingBulkScopeNote) {
+    stagingBulkScopeNote.textContent = hasFilteredRows
+      ? `Filtered DB actions affect ${filteredTotal.toLocaleString()} row(s) matching current filters.`
+      : "Filtered DB actions run across all matching database rows.";
+  }
   bulkActionBar?.classList.toggle("is-empty", totalRows === 0);
   bulkActionBar?.classList.toggle("has-visible-page", totalRows > 0);
   if (selectStagingPageButton) selectStagingPageButton.disabled = totalRows === 0 || selectedCount === totalRows;
@@ -584,12 +613,17 @@ function updateBulkControls() {
   bulkRejectButton.disabled = selectedCount === 0;
   if (bulkApproveFilteredButton) bulkApproveFilteredButton.disabled = !hasFilteredRows;
   if (bulkRejectFilteredButton) bulkRejectFilteredButton.disabled = !hasFilteredRows;
+  setFilteredButtonLabel(bulkApproveFilteredButton, "Approve filtered DB", filteredTotal);
+  setFilteredButtonLabel(bulkRejectFilteredButton, "Reject filtered DB", filteredTotal);
   if (bulkEnrichZipsButton) bulkEnrichZipsButton.disabled = selectedCount === 0;
   if (bulkRenormalizeButton) bulkRenormalizeButton.disabled = selectedCount === 0;
   bulkArchiveButton.disabled = selectedCount === 0;
   bulkRemoveButton.disabled = selectedCount === 0;
   if (bulkArchiveFilteredButton) bulkArchiveFilteredButton.disabled = !hasFilteredRows;
   if (bulkRemoveFilteredButton) bulkRemoveFilteredButton.disabled = !hasFilteredRows;
+  setFilteredButtonLabel(bulkArchiveFilteredButton, "Archive filtered DB", filteredTotal);
+  setFilteredButtonLabel(bulkRemoveFilteredButton, "Remove filtered DB", filteredTotal);
+  setFilteredButtonLabel(applyBulkEditFilteredButton, "Apply to filtered DB", filteredTotal);
   if (selectAllCheckbox) {
     selectAllCheckbox.checked = selectedCount > 0 && selectedCount === totalRows;
     selectAllCheckbox.indeterminate = selectedCount > 0 && selectedCount < totalRows;
@@ -1961,14 +1995,15 @@ async function runFilteredStagingAction(targetAction) {
 
     const scope = stagingFilterSummaryLabel(filters);
     if (isRemove) {
-      const typed = window.prompt(`Filtered database action: this will permanently remove ${matched.toLocaleString()} staging row(s) across all pages matching: ${scope}.\n\nThis is not limited to the visible page. Type DELETE to continue.`);
-      if (typed !== "DELETE") {
+      if (!confirmFilteredDatabaseAction({ actionLabel: "Remove", matched, scope, keyword: "DELETE", destructive: true })) {
         setBulkStatus("Filtered remove cancelled.", "warning");
         return;
       }
-    } else if (!window.confirm(`Filtered database action: archive ${matched.toLocaleString()} staging row(s) across all pages matching: ${scope}?\n\nThis is not limited to the visible page.`)) {
-      setBulkStatus("Filtered archive cancelled.", "warning");
-      return;
+    } else {
+      if (!confirmFilteredDatabaseAction({ actionLabel: "Archive", matched, scope, keyword: "ARCHIVE" })) {
+        setBulkStatus("Filtered archive cancelled.", "warning");
+        return;
+      }
     }
 
     let affected = 0;
@@ -2014,8 +2049,7 @@ async function runFilteredStagingUpdate(patch, label) {
       return;
     }
 
-    const typed = window.prompt(`Filtered database action: this will ${normalizedLabel} ${matched.toLocaleString()} staging row(s) across all pages matching: ${scope}.\n\nThis is not limited to the visible page. Type APPLY to continue.`);
-    if (typed !== "APPLY") {
+    if (!confirmFilteredDatabaseAction({ actionLabel: normalizedLabel, matched, scope, keyword: "APPLY" })) {
       setBulkStatus(`Filtered ${normalizedLabel} cancelled.`, "warning");
       return;
     }

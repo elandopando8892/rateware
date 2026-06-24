@@ -34,6 +34,7 @@ const exportRfxFilteredButton = document.querySelector("#export-rfx-filtered-but
 const archiveFilteredButton = document.querySelector("#archive-filtered-rateware");
 const removeFilteredButton = document.querySelector("#remove-filtered-rateware");
 const actionStatus = document.querySelector("#rateware-action-status");
+const ratewareBulkScopeNote = document.querySelector("#rateware-bulk-scope-note");
 const bulkActionBar = document.querySelector(".bulk-action-bar");
 const ratewareMetricTotal = document.querySelector("#rateware-metric-total");
 const ratewareMetricVendors = document.querySelector("#rateware-metric-vendors");
@@ -77,6 +78,7 @@ const ratewarePageSizeSelect = document.querySelector("#rateware-page-size");
 const activeFiltersStrip = document.querySelector("#rateware-active-filters");
 
 const RATEWARE_COLSPAN = 30;
+const FILTERED_RATEWARE_BULK_BATCH_SIZE = 1000;
 const RATEWARE_PAGE_SIZE_STORAGE_KEY = "rateware:approved:page-size:v1";
 const DEFAULT_RATEWARE_PAGE_SIZE = 200;
 let currentRows = [];
@@ -171,6 +173,29 @@ function escapeHtml(value) {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+function countLabel(value) {
+  return Number(value || 0).toLocaleString();
+}
+
+function filteredScopeTitle(actionLabel, count) {
+  return `${actionLabel} every approved Rateware row in the database that matches the active filters (${countLabel(count)} row(s)). This is not limited to the current page.`;
+}
+
+function setFilteredButtonLabel(button, baseLabel, count) {
+  if (!button) return;
+  button.textContent = count ? `${baseLabel} (${countLabel(count)})` : baseLabel;
+  button.title = filteredScopeTitle(baseLabel, count);
+}
+
+function confirmFilteredDatabaseAction({ actionLabel, matched, scope, keyword = "APPLY", destructive = false }) {
+  const noun = matched === 1 ? "row" : "rows";
+  const warning = destructive ? "This action cannot be undone." : "Review the active filters before continuing.";
+  const typed = window.prompt(
+    `Filtered database action\n\n${actionLabel} ${countLabel(matched)} approved Rateware ${noun} across all pages matching: ${scope}.\n\nThis is not limited to the visible page. ${warning}\n\nType ${keyword} to continue.`
+  );
+  return typed === keyword;
 }
 
 function readStoredPageSize(key, fallback) {
@@ -1367,6 +1392,11 @@ function updateBulkControls() {
   if (selectionCount) selectionCount.textContent = `Selected: ${selectedCount.toLocaleString()}`;
   if (ratewarePageCountLabel) ratewarePageCountLabel.textContent = `Page: ${totalRows.toLocaleString()}`;
   if (ratewareFilteredCountLabel) ratewareFilteredCountLabel.textContent = `Filtered DB: ${filteredTotal.toLocaleString()}`;
+  if (ratewareBulkScopeNote) {
+    ratewareBulkScopeNote.textContent = hasFilteredRows
+      ? `Filtered DB actions affect ${filteredTotal.toLocaleString()} approved rate(s) matching current filters.`
+      : "Filtered DB actions run across all matching approved rates.";
+  }
   bulkActionBar?.classList.toggle("is-empty", totalRows === 0);
   bulkActionBar?.classList.toggle("has-visible-page", totalRows > 0);
   if (selectRatewarePageButton) selectRatewarePageButton.disabled = totalRows === 0 || selectedCount === totalRows;
@@ -1385,10 +1415,16 @@ function updateBulkControls() {
   if (exportFilteredButton) exportFilteredButton.disabled = !hasFilteredRows && currentRows.length === 0;
   if (exportClientFilteredButton) exportClientFilteredButton.disabled = !hasFilteredRows && currentRows.length === 0;
   if (exportRfxFilteredButton) exportRfxFilteredButton.disabled = !hasFilteredRows && currentRows.length === 0;
+  setFilteredButtonLabel(exportFilteredButton, "Export filtered CSV", filteredTotal);
+  setFilteredButtonLabel(exportClientFilteredButton, "Client filtered", filteredTotal);
+  setFilteredButtonLabel(exportRfxFilteredButton, "RFx filtered", filteredTotal);
   if (applyBulkEditButton) applyBulkEditButton.disabled = selectedCount === 0;
   if (applyBulkEditFilteredButton) applyBulkEditFilteredButton.disabled = !bulkFieldSelect?.value || !hasFilteredRows;
   if (archiveFilteredButton) archiveFilteredButton.disabled = !hasFilteredRows;
   if (removeFilteredButton) removeFilteredButton.disabled = !hasFilteredRows;
+  setFilteredButtonLabel(applyBulkEditFilteredButton, "Apply to filtered DB", filteredTotal);
+  setFilteredButtonLabel(archiveFilteredButton, "Archive filtered DB", filteredTotal);
+  setFilteredButtonLabel(removeFilteredButton, "Remove filtered DB", filteredTotal);
   if (compareSelectedButton) compareSelectedButton.disabled = selectedCount === 0;
   if (compareVisibleButton) compareVisibleButton.disabled = currentRows.length === 0;
   if (snapshotSelectedButton) snapshotSelectedButton.disabled = selectedCount === 0;
@@ -2080,8 +2116,7 @@ async function applyFilteredBulkEdit() {
       return;
     }
 
-    const typed = window.prompt(`Filtered database action: this will update ${matched.toLocaleString()} approved Rateware row(s) across all pages matching: ${scope}.\n\nThis is not limited to the visible page. Type APPLY to continue.`);
-    if (typed !== "APPLY") {
+    if (!confirmFilteredDatabaseAction({ actionLabel: "Update", matched, scope, keyword: "APPLY" })) {
       setInlineStatus(bulkStatus, "Filtered bulk edit cancelled.", "warning");
       return;
     }
@@ -2234,22 +2269,34 @@ async function runFilteredRatewareAction(targetAction) {
 
     const scope = ratewareFilterSummaryLabel(filters);
     if (isRemove) {
-      const typed = window.prompt(`Filtered database action: this will permanently remove ${matched.toLocaleString()} approved Rateware row(s) across all pages matching: ${scope}.\n\nThis is not limited to the visible page. Type DELETE to continue.`);
-      if (typed !== "DELETE") {
+      if (!confirmFilteredDatabaseAction({ actionLabel: "Remove", matched, scope, keyword: "DELETE", destructive: true })) {
         setActionStatus("Filtered remove cancelled.", "warning");
         return;
       }
-    } else if (!window.confirm(`Filtered database action: archive ${matched.toLocaleString()} approved Rateware row(s) across all pages matching: ${scope}?\n\nThis is not limited to the visible page.`)) {
-      setActionStatus("Filtered archive cancelled.", "warning");
-      return;
+    } else {
+      if (!confirmFilteredDatabaseAction({ actionLabel: "Archive", matched, scope, keyword: "ARCHIVE" })) {
+        setActionStatus("Filtered archive cancelled.", "warning");
+        return;
+      }
     }
 
-    setActionStatus(`${isRemove ? "Removing" : "Archiving"} ${matched.toLocaleString()} filtered approved rate(s)...`);
-    const result = await service(filters, { dryRun: false, maxRows: matched });
-    const affected = Number(result.updated || result.removed || 0);
+    let affected = 0;
+    let batch = 0;
+    let hardLimitReached = false;
+    while (affected < matched) {
+      batch += 1;
+      setActionStatus(`${isRemove ? "Removing" : "Archiving"} filtered approved rates... ${affected.toLocaleString()} / ${matched.toLocaleString()}`);
+      const result = await service(filters, { dryRun: false, maxRows: FILTERED_RATEWARE_BULK_BATCH_SIZE });
+      const count = Number(result.updated || result.removed || 0);
+      hardLimitReached = hardLimitReached || Boolean(result.hard_limit_reached);
+      if (!count) break;
+      affected += count;
+      setActionStatus(`${isRemove ? "Removed" : "Archived"} ${Math.min(affected, matched).toLocaleString()} / ${matched.toLocaleString()} filtered approved rates (${batch} batch${batch === 1 ? "" : "es"}).`);
+      if (count < FILTERED_RATEWARE_BULK_BATCH_SIZE) break;
+    }
     selectedRowIds.clear();
-    const capped = result.hard_limit_reached ? " API safety limit reached; narrow the filters and run again for the remainder." : "";
-    setActionStatus(`${affected.toLocaleString()} filtered approved rate(s) ${isRemove ? "removed" : "archived"}.${capped}`, result.hard_limit_reached ? "warning" : "success");
+    const capped = hardLimitReached ? " API safety limit reached; narrow the filters and run again for the remainder." : "";
+    setActionStatus(`${affected.toLocaleString()} filtered approved rate(s) ${isRemove ? "removed" : "archived"}.${capped}`, hardLimitReached ? "warning" : "success");
     await loadRateware({ preservePage: true });
   } catch (error) {
     setActionStatus(error.message, "error");

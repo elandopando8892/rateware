@@ -134,6 +134,7 @@
                   <button id="select-staging-page" type="button" class="secondary small-button">Select page</button>
                   <button id="clear-staging-selection" type="button" class="secondary small-button" disabled>Clear selection</button>
                 </div>
+                <span id="staging-bulk-scope-note" class="bulk-scope-note">Filtered actions use every matching database row.</span>
                 <button id="open-selected-staging-detail" type="button" class="secondary small-button" disabled>Evidence</button>
                 <button id="open-staging-bulk-drawer" type="button" class="secondary small-button" disabled>Bulk edit</button>
                 <button id="bulk-save-button" type="button" class="secondary small-button" disabled>Save selected</button>
@@ -341,7 +342,8 @@
                 <input id="staging-bulk-value" list="staging-bulk-value-options" placeholder="Set selected rows..." />
               </label>
               <button id="apply-staging-bulk-edit" type="button" disabled>Apply bulk edit</button>
-              <button id="apply-staging-bulk-edit-filtered" class="secondary" type="button">Apply to filtered rows</button>
+              <button id="apply-staging-bulk-edit-filtered" class="secondary" type="button">Apply to filtered DB rows</button>
+              <p class="bulk-scope-note">Filtered rows means all rows matching the active filters in the database, not only the current page.</p>
               <datalist id="staging-bulk-value-options"></datalist>
               <p id="staging-bulk-status" class="status-message" role="status"></p>
             </div>
