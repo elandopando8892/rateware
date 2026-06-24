@@ -60,43 +60,41 @@
         </header>
 
         <main class="history-layout">
-          <section class="workspace-panel spreadsheet-workbench">
+          <section class="workspace-panel spreadsheet-workbench rateware-workspace">
             <div class="workbench-header">
               <div>
                 <p class="eyebrow">Spreadsheet workbench</p>
                 <h2>Approved rate book</h2>
               </div>
-              <div class="saved-view-strip" aria-label="Rateware saved views">
+              <div class="rateware-summary-strip" aria-label="Approved Rateware summary">
+                <article>
+                  <span>Rates</span>
+                  <strong id="rateware-metric-total">0</strong>
+                </article>
+                <article>
+                  <span>Carriers</span>
+                  <strong id="rateware-metric-vendors">0</strong>
+                </article>
+                <article>
+                  <span>Markets</span>
+                  <strong id="rateware-metric-markets">0</strong>
+                </article>
+                <article>
+                  <span>Avg all-in</span>
+                  <strong id="rateware-metric-average">-</strong>
+                </article>
+              </div>
+            </div>
+            <div class="sheet-command-bar rateware-command-bar">
+              <div class="review-filter-row compact-filter-row rateware-view-tabs" aria-label="Rateware views">
                 <button class="review-filter is-active" type="button" data-rateware-filter="all">All</button>
                 <button class="review-filter" type="button" data-rateware-filter="cross-border">Cross-border</button>
                 <button class="review-filter" type="button" data-rateware-filter="all-in">All-in</button>
                 <button class="review-filter" type="button" data-rateware-filter="with-capacity">Capacity</button>
                 <button class="review-filter" type="button" data-rateware-filter="conflicts">Conflicts</button>
-              </div>
-            </div>
-            <div class="review-insight-grid" aria-label="Approved Rateware summary">
-              <article>
-                <span>Approved rates</span>
-                <strong id="rateware-metric-total">0</strong>
-              </article>
-              <article>
-                <span>Vendors</span>
-                <strong id="rateware-metric-vendors">0</strong>
-              </article>
-              <article>
-                <span>Markets</span>
-                <strong id="rateware-metric-markets">0</strong>
-              </article>
-              <article>
-                <span>Average all-in</span>
-                <strong id="rateware-metric-average">-</strong>
-              </article>
-            </div>
-            <div class="sheet-command-bar">
-              <div class="review-filter-row compact-filter-row" aria-label="Rateware quick filters">
                 <button class="review-filter" type="button" data-rateware-filter="split-rate">Split rate</button>
               </div>
-              <div class="toolbar sheet-toolbar rateware-toolbar">
+              <div class="toolbar sheet-toolbar rateware-toolbar rateware-main-toolbar">
                 <label>
                   Search
                   <input id="rateware-search" placeholder="Vendor, RFx, city, market..." />
@@ -121,7 +119,7 @@
                 </details>
               </div>
 
-              <div class="bulk-action-bar" aria-live="polite">
+              <div class="bulk-action-bar is-empty" aria-live="polite">
                 <span id="rateware-selection-count">0 selected</span>
                 <button id="open-selected-rateware-detail" type="button" class="secondary small-button" disabled>Evidence</button>
                 <button id="open-rateware-bulk-drawer" type="button" class="secondary small-button" disabled>Bulk edit</button>
@@ -205,44 +203,47 @@
                 </tbody>
               </table>
             </div>
-            <div class="rateware-workbench" aria-label="Rateware workbench">
-              <section class="rateware-tool-panel">
-                <div>
-                  <p class="eyebrow">Lane comparison</p>
-                  <h2>Compare carrier offers</h2>
-                </div>
-                <div class="action-row">
-                  <button id="compare-selected-rateware" type="button" class="secondary small-button" disabled>Compare selected</button>
-                  <button id="compare-visible-rateware" type="button" class="secondary small-button">Compare visible</button>
-                </div>
-                <div id="rateware-comparison-output" class="rateware-comparison-output">
-                  <span>Select lanes or compare the current view.</span>
-                </div>
-              </section>
+            <details class="rateware-workbench-disclosure">
+              <summary>Analysis tools: compare lanes, snapshots, exports</summary>
+              <div class="rateware-workbench" aria-label="Rateware workbench">
+                <section class="rateware-tool-panel">
+                  <div>
+                    <p class="eyebrow">Lane comparison</p>
+                    <h2>Compare carrier offers</h2>
+                  </div>
+                  <div class="action-row">
+                    <button id="compare-selected-rateware" type="button" class="secondary small-button" disabled>Compare selected</button>
+                    <button id="compare-visible-rateware" type="button" class="secondary small-button">Compare visible</button>
+                  </div>
+                  <div id="rateware-comparison-output" class="rateware-comparison-output">
+                    <span>Select lanes or compare the current view.</span>
+                  </div>
+                </section>
 
-              <section class="rateware-tool-panel">
-                <div>
-                  <p class="eyebrow">Versioning</p>
-                  <h2>Rate book snapshots</h2>
-                </div>
-                <div class="rateware-control-grid version-grid">
-                  <label>
-                    Version name
-                    <input id="rateware-version-name" placeholder="June cross-border awards" />
-                  </label>
-                  <label>
-                    Note
-                    <input id="rateware-version-note" placeholder="Scope, customer, RFx..." />
-                  </label>
-                </div>
-                <div class="action-row">
-                  <button id="snapshot-selected-rateware" type="button" class="small-button" disabled>Snapshot selected</button>
-                  <button id="snapshot-visible-rateware" type="button" class="secondary small-button">Snapshot visible</button>
-                </div>
-                <div id="rateware-version-list" class="rateware-version-list"></div>
-                <p id="rateware-version-status" class="status-message" role="status"></p>
-              </section>
-            </div>
+                <section class="rateware-tool-panel">
+                  <div>
+                    <p class="eyebrow">Versioning</p>
+                    <h2>Rate book snapshots</h2>
+                  </div>
+                  <div class="rateware-control-grid version-grid">
+                    <label>
+                      Version name
+                      <input id="rateware-version-name" placeholder="June cross-border awards" />
+                    </label>
+                    <label>
+                      Note
+                      <input id="rateware-version-note" placeholder="Scope, customer, RFx..." />
+                    </label>
+                  </div>
+                  <div class="action-row">
+                    <button id="snapshot-selected-rateware" type="button" class="small-button" disabled>Snapshot selected</button>
+                    <button id="snapshot-visible-rateware" type="button" class="secondary small-button">Snapshot visible</button>
+                  </div>
+                  <div id="rateware-version-list" class="rateware-version-list"></div>
+                  <p id="rateware-version-status" class="status-message" role="status"></p>
+                </section>
+              </div>
+            </details>
             <div class="next-step-strip">
               <span>Commercial output</span>
               <a href="./vendors.html">Review Vendors</a>
