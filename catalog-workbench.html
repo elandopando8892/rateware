@@ -92,24 +92,80 @@
                 <button id="refresh-catalog-workbench" type="button" class="secondary small-button">Refresh</button>
               </div>
             </div>
+            <div class="catalog-rule-strip" aria-label="Normalization rules">
+              <article>
+                <strong>MX logic</strong>
+                <span>Metro city + state drives market and region. ZIP helps, but it is not the commercial key.</span>
+              </article>
+              <article>
+                <strong>US / CA logic</strong>
+                <span>ZIP prefix + state drives key market area and region. Missing ZIPs should be resolved before final use.</span>
+              </article>
+              <article>
+                <strong>Alias logic</strong>
+                <span>Save alias maps carrier text to a catalog location so future quotes normalize faster.</span>
+              </article>
+            </div>
+            <div class="catalog-filter-bar" aria-label="Catalog filters">
+              <label>
+                Country
+                <select id="catalog-country-filter">
+                  <option value="">All countries</option>
+                </select>
+              </label>
+              <label>
+                State / Province
+                <select id="catalog-state-filter">
+                  <option value="">All states</option>
+                </select>
+              </label>
+              <label>
+                Market
+                <select id="catalog-market-filter">
+                  <option value="">All markets</option>
+                </select>
+              </label>
+              <label>
+                Region
+                <select id="catalog-region-filter">
+                  <option value="">All regions</option>
+                </select>
+              </label>
+              <label>
+                Catalog search
+                <input id="catalog-location-search" type="search" placeholder="City, ZIP, market, region..." />
+              </label>
+              <button id="clear-catalog-location-filters" class="secondary small-button" type="button">Clear catalog filters</button>
+            </div>
             <p id="catalog-workbench-status" class="status-message" role="status"></p>
-            <div class="table-wrap">
-              <table class="catalog-workbench-table">
-                <thead>
-                  <tr>
-                    <th>Status</th>
-                    <th>Side</th>
-                    <th>Scope</th>
-                    <th>Lane</th>
-                    <th>Current match</th>
-                    <th>Catalog suggestion</th>
-                    <th>Action</th>
-                  </tr>
-                </thead>
-                <tbody id="catalog-workbench-body">
-                  <tr><td colspan="7">Loading catalog gaps...</td></tr>
-                </tbody>
-              </table>
+            <div class="catalog-workbench-grid">
+              <div class="table-wrap">
+                <table class="catalog-workbench-table">
+                  <thead>
+                    <tr>
+                      <th>Status</th>
+                      <th>Side</th>
+                      <th>Scope</th>
+                      <th>Lane</th>
+                      <th>Current match</th>
+                      <th>Catalog suggestion</th>
+                      <th>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody id="catalog-workbench-body">
+                    <tr><td colspan="7">Loading catalog gaps...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <aside class="catalog-candidate-panel" aria-live="polite">
+                <div>
+                  <p class="eyebrow">Match inspector</p>
+                  <h3 id="catalog-inspector-title">Select a location gap</h3>
+                </div>
+                <div id="catalog-inspector-body">
+                  <p class="muted-text">Choose a row to review candidates, country logic, and alias impact.</p>
+                </div>
+              </aside>
             </div>
           </section>
         </main>
