@@ -64,6 +64,48 @@
             <span>No vendor promotion, RFx invitation, outreach, or Rateware change happens until a user approves the action.</span>
           </div>
 
+          <section class="workspace-panel bi-copilot-brief">
+            <div class="section-heading compact split-heading">
+              <div>
+                <p class="eyebrow">Guided analysis</p>
+                <h2>Start from a business use case</h2>
+              </div>
+              <span class="status-pill muted">Prompt + data context</span>
+            </div>
+            <div class="bi-use-case-grid" aria-label="AI Analyst use cases">
+              <button type="button" class="bi-use-case-card" data-bi-brief="pareto" data-bi-brief-prompt="Dime el 20% de los carriers crossborder D2D Export / D2D Import que cotizan el 80% de las transacciones. Explica el Pareto, riesgos, gaps de datos y acciones recomendadas sin ejecutar nada." data-bi-template-ref="pareto-d2d" data-rec-template-ref="pareto-d2d">
+                <strong>Pareto 80/20</strong>
+                <span>Concentracion por carrier, D2D, crossborder y cobertura real.</span>
+                <em>Best for carrier rationalization</em>
+              </button>
+              <button type="button" class="bi-use-case-card" data-bi-brief="lane-shortlist" data-bi-brief-prompt="Arma una shortlist RFx por ruta/corredor usando carriers con evidencia cotizada, costo competitivo, cobertura y riesgos. Sugiere pivots para validar antes de invitar." data-bi-template-ref="cost-mile-corridor" data-rec-template-ref="fit-crossborder">
+                <strong>RFx shortlist</strong>
+                <span>Recomienda carriers por lane, corredor, mercado, equipo y servicio.</span>
+                <em>Best for bid events</em>
+              </button>
+              <button type="button" class="bi-use-case-card" data-bi-brief="economics" data-bi-brief-prompt="Analiza costo por milla y costo por kilometro por carrier, corredor, frontera, equipo y servicio. Identifica outliers, mejores opciones y gaps de mileage." data-bi-template-ref="cost-mile-corridor" data-rec-template-ref="cost-mile">
+                <strong>Economics</strong>
+                <span>Cost / mile, cost / km, all-in, FSC, border fee y split rates.</span>
+                <em>Best for rate validation</em>
+              </button>
+              <button type="button" class="bi-use-case-card" data-bi-brief="coverage-gaps" data-bi-brief-prompt="Explica los gaps de cobertura y calidad de datos que impiden confiar en las recomendaciones. Prioriza vendor match, location match, mileage, currency, service y missing rates." data-bi-template-ref="data-quality" data-rec-template-ref="equipment-service">
+                <strong>Data quality</strong>
+                <span>Detecta que falta antes de tomar decisiones comerciales.</span>
+                <em>Best for cleanup work</em>
+              </button>
+            </div>
+            <div class="bi-context-panel">
+              <div>
+                <strong>Current analysis context</strong>
+                <span>These filters and pivot settings will be appended to the AI question.</span>
+              </div>
+              <div id="bi-context-chips" class="bi-context-chips">
+                <span>No context selected yet.</span>
+              </div>
+              <button type="button" class="secondary small-button" data-bi-scroll-target="#bi-pivot-panel">Edit pivot context</button>
+            </div>
+          </section>
+
           <section class="workspace-panel bi-command-panel">
             <div class="section-heading compact split-heading">
               <div>
@@ -108,7 +150,14 @@
             <p id="bi-status" class="status-message" role="status"></p>
           </section>
 
-          <section class="workspace-panel bi-analyst-panel">
+          <nav class="bi-result-nav" aria-label="AI Analyst result navigation">
+            <button type="button" data-bi-scroll-target="#bi-analyst-panel">Action plan</button>
+            <button type="button" data-bi-scroll-target="#bi-pivot-panel">Pivots</button>
+            <button type="button" data-bi-scroll-target="#bi-results-panel">Carrier table</button>
+            <button type="button" data-bi-scroll-target="#bi-recommendation-panel">Ranking controls</button>
+          </nav>
+
+          <section id="bi-analyst-panel" class="workspace-panel bi-analyst-panel">
             <div class="section-heading compact split-heading">
               <div>
                 <p class="eyebrow">AI Analyst Layer</p>
@@ -130,6 +179,7 @@
                 </div>
                 <span class="status-pill muted">Approval required</span>
               </div>
+              <p id="bi-action-queue-status" class="status-message">No proposed action has been queued.</p>
               <div id="bi-proposed-actions" class="bi-analyst-list bi-action-plan-list">
                 <article>No proposed actions yet.</article>
               </div>
@@ -168,7 +218,7 @@
             </div>
           </section>
 
-          <section class="workspace-panel bi-recommendation-panel">
+          <section id="bi-recommendation-panel" class="workspace-panel bi-recommendation-panel">
             <div class="section-heading compact split-heading">
               <div>
                 <p class="eyebrow">Recommendation engine</p>
@@ -214,7 +264,7 @@
             <p id="bi-rec-status" class="status-message" role="status">Ready to rank carriers.</p>
           </section>
 
-          <section class="workspace-panel bi-pivot-panel">
+          <section id="bi-pivot-panel" class="workspace-panel bi-pivot-panel">
             <div class="section-heading compact split-heading">
               <div>
                 <p class="eyebrow">Analytics workspace</p>
@@ -400,7 +450,7 @@
             </div>
           </section>
 
-          <section class="workspace-panel">
+          <section id="bi-results-panel" class="workspace-panel">
             <div class="review-insight-grid bi-metrics" aria-label="Carrier intelligence summary">
               <article>
                 <span>Recommendations</span>

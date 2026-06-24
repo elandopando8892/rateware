@@ -6074,6 +6074,131 @@ select.staging-input {
   font-weight: 760;
 }
 
+.bi-copilot-brief {
+  display: grid;
+  gap: 12px;
+}
+
+.bi-use-case-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.bi-use-case-card {
+  display: grid;
+  gap: 6px;
+  min-height: 118px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #fff;
+  color: var(--text);
+  padding: 12px;
+  text-align: left;
+  align-content: start;
+  box-shadow: none;
+}
+
+.bi-use-case-card:hover,
+.bi-use-case-card.is-active {
+  border-color: #9cc9c5;
+  background: #f3faf8;
+}
+
+.bi-use-case-card strong {
+  color: var(--ink);
+  font-size: 0.92rem;
+}
+
+.bi-use-case-card span {
+  color: #43505a;
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.bi-use-case-card em {
+  width: fit-content;
+  margin-top: 2px;
+  border-radius: 999px;
+  background: #eef3f5;
+  color: var(--muted);
+  padding: 2px 7px;
+  font-size: 0.68rem;
+  font-style: normal;
+  font-weight: 820;
+}
+
+.bi-context-panel {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.35fr) minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--soft-panel);
+  padding: 10px;
+}
+
+.bi-context-panel strong,
+.bi-context-panel span {
+  display: block;
+}
+
+.bi-context-panel strong {
+  color: var(--ink);
+  font-size: 0.84rem;
+}
+
+.bi-context-panel > div:first-child span {
+  color: var(--muted);
+  font-size: 0.74rem;
+}
+
+.bi-context-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.bi-context-chips span {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  color: #43505a;
+  padding: 3px 8px;
+  font-size: 0.72rem;
+  font-weight: 780;
+}
+
+.bi-result-nav {
+  position: sticky;
+  top: 64px;
+  z-index: 10;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.94);
+  padding: 7px;
+  backdrop-filter: blur(10px);
+}
+
+.bi-result-nav button {
+  min-height: 28px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  color: #43505a;
+  padding: 4px 9px;
+  font-size: 0.76rem;
+}
+
+.bi-result-nav button:hover {
+  border-color: #9cc9c5;
+  color: var(--accent-dark);
+}
+
 .bi-command-panel {
   display: grid;
   gap: 12px;
@@ -6315,6 +6440,18 @@ select.staging-input {
 
 .bi-action-card {
   border-color: #bddbd7;
+}
+
+.bi-action-card.is-queued {
+  border-color: #95c7ad;
+  background: #f5fbf7;
+}
+
+.bi-action-card-footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
 }
 
 .bi-recommendation-panel {
@@ -8707,6 +8844,8 @@ tbody tr:hover {
   }
 
   .bi-prompt-groups,
+  .bi-use-case-grid,
+  .bi-context-panel,
   .bi-action-plan-list,
   .bi-analyst-grid,
   .bi-recommendation-controls,
@@ -8719,6 +8858,10 @@ tbody tr:hover {
   .bi-prompt-row #bi-submit-button {
     width: 100%;
     margin-left: 0;
+  }
+
+  .bi-result-nav {
+    position: static;
   }
 
   .column-toggle-grid {

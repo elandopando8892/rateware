@@ -13,6 +13,8 @@ const dataGaps = document.querySelector("#bi-data-gaps");
 const rfxShortlist = document.querySelector("#bi-rfx-shortlist");
 const proposedActions = document.querySelector("#bi-proposed-actions");
 const copyActionsButton = document.querySelector("#bi-copy-actions");
+const contextChips = document.querySelector("#bi-context-chips");
+const actionQueueStatus = document.querySelector("#bi-action-queue-status");
 const resultsBody = document.querySelector("#bi-results-body");
 const selectAll = document.querySelector("#bi-select-all");
 const selectedCount = document.querySelector("#bi-selected-count");
@@ -44,6 +46,7 @@ let currentRecommendations = [];
 let currentPivot = null;
 let currentDrilldown = null;
 let currentAnalystResult = null;
+let queuedActionIndexes = new Set();
 const selectedVendorIds = new Set();
 
 const PIVOT_DIMENSIONS = [
@@ -175,6 +178,64 @@ const RECOMMENDATION_TEMPLATES = {
   }
 };
 
+function labelFromList(list, key, fallback = "") {
+  return list.find(([value]) => value === key)?.[1] || fallback || key;
+}
+
+function labelForDimension(key) {
+  return labelFromList(PIVOT_DIMENSIONS, key, key);
+}
+
+function labelForMetric(key) {
+  return labelFromList(PIVOT_METRICS, key, key);
+}
+
+function filterLabel(key, value) {
+  const labels = {
+    search: "Search",
+    vendor: "Carrier",
+    route: "Route",
+    corridor: "Corridor",
+    origin_state: "Origin state",
+    destination_state: "Destination state",
+    equipment: "Equipment",
+    trailer: "Trailer",
+    operation: "Operation",
+    service: "Service",
+    mx_crossing: "MX crossing",
+    us_crossing: "US crossing",
+    crossborder: "Crossborder only",
+    d2d: "D2D only"
+  };
+  if (value === true) return labels[key] || key;
+  return `${labels[key] || key}: ${value}`;
+}
+
+function analystContextText() {
+  const config = readPivotConfig();
+  const filters = Object.entries(config.filters || {}).map(([key, value]) => filterLabel(key, value));
+  return [
+    `Pivot rows: ${config.rows.map(labelForDimension).join(" > ") || "Carrier"}`,
+    `Pivot columns: ${config.columns.map(labelForDimension).join(" > ") || "none"}`,
+    `Metric: ${labelForMetric(config.metric)} (${config.aggregation})`,
+    filters.length ? `Filters: ${filters.join("; ")}` : "Filters: none"
+  ].join(" | ");
+}
+
+function renderContextChips() {
+  if (!contextChips) return;
+  const config = readPivotConfig();
+  const chips = [
+    `Rows: ${config.rows.map(labelForDimension).join(" > ") || "Carrier"}`,
+    `Columns: ${config.columns.map(labelForDimension).join(" > ") || "none"}`,
+    `Metric: ${labelForMetric(config.metric)} (${config.aggregation})`,
+    ...Object.entries(config.filters || {}).map(([key, value]) => filterLabel(key, value))
+  ];
+  contextChips.innerHTML = chips.length
+    ? chips.map((chip) => `<span>${escapeHtml(chip)}</span>`).join("")
+    : "<span>No context selected yet.</span>";
+}
+
 function escapeHtml(value) {
   return String(value ?? "")
     .replace(/&/g, "&amp;")
@@ -256,6 +317,7 @@ function setupPivotControls() {
   fillSelect("#bi-pivot-column-2", PIVOT_DIMENSIONS, "service");
   fillSelect("#bi-pivot-metric", PIVOT_METRICS, "transaction_count");
   document.querySelector("#bi-pivot-aggregation").value = "count";
+  renderContextChips();
 }
 
 function setControl(selector, value) {
@@ -313,6 +375,7 @@ function applyPivotConfig(config) {
   setControl("#bi-filter-us-crossing", filters.us_crossing || "");
   setChecked("#bi-filter-crossborder", filters.crossborder);
   setChecked("#bi-filter-d2d", filters.d2d);
+  renderContextChips();
 }
 
 function applyRecommendationTemplate(template) {
@@ -658,22 +721,38 @@ function renderRfxShortlistCard(item = {}) {
   );
 }
 
+function setActionQueueStatus() {
+  if (!actionQueueStatus) return;
+  const count = queuedActionIndexes.size;
+  actionQueueStatus.textContent = count
+    ? `${formatNumber(count)} proposed action${count === 1 ? "" : "s"} queued for user review. No action has been executed.`
+    : "No proposed action has been queued.";
+  actionQueueStatus.dataset.tone = count ? "success" : "neutral";
+}
+
 function renderActionPlanCard(action = {}, index) {
   const priority = action.priority || "Medium";
   const confirmation = action.requires_confirmation === false ? "Advisory" : "Requires confirmation";
+  const queued = queuedActionIndexes.has(index);
   return analystCard(
     `${index + 1}. ${priority} priority`,
     action.action || "Review the analyst recommendation.",
     `
       ${action.rationale ? `<span>${escapeHtml(action.rationale)}</span>` : ""}
       <em>${escapeHtml(confirmation)}</em>
+      <div class="bi-action-card-footer">
+        <button type="button" class="secondary small-button" data-bi-copy-action="${index}">Copy</button>
+        <button type="button" class="small-button" data-bi-queue-action="${index}">${queued ? "Queued" : "Queue for review"}</button>
+      </div>
     `,
-    "bi-action-card"
+    `bi-action-card${queued ? " is-queued" : ""}`
   );
 }
 
 function renderAnalystLayer(result = {}) {
   currentAnalystResult = result;
+  queuedActionIndexes = new Set();
+  setActionQueueStatus();
   const summary = result.analyst_summary || {};
   const reasoning = Array.isArray(summary.reasoning) ? summary.reasoning : [];
   analystSummary.innerHTML = `
@@ -788,7 +867,7 @@ async function runIntelligenceQuery(message) {
 
   try {
     await requirePrivatePage();
-    const result = await askCarrierIntelligence(prompt);
+    const result = await askCarrierIntelligence(`${prompt}\n\nCurrent Rateware analysis context: ${analystContextText()}`);
     renderAnswer(result);
     renderRecommendations(result.recommendations || []);
     if (!result.model_error) setStatus(`${formatNumber((result.recommendations || []).length)} recommendation(s) ready.`, "success");
@@ -907,6 +986,41 @@ function exportRecommendationsCsv() {
   setRecommendationStatus("Recommendations CSV exported.", "success");
 }
 
+function applyCopilotBrief(button) {
+  document.querySelectorAll("[data-bi-brief]").forEach((item) => item.classList.toggle("is-active", item === button));
+  promptInput.value = button.dataset.biBriefPrompt || "";
+
+  const recommendationTemplate = RECOMMENDATION_TEMPLATES[button.dataset.recTemplateRef];
+  if (recommendationTemplate) applyRecommendationTemplate(recommendationTemplate);
+
+  const pivotTemplate = BI_TEMPLATES[button.dataset.biTemplateRef];
+  if (pivotTemplate) applyPivotConfig(pivotTemplate);
+
+  renderContextChips();
+  setStatus("Use case loaded. Adjust the prompt or filters, then Ask AI.", "success");
+}
+
+function rerenderActionCards() {
+  const actions = Array.isArray(currentAnalystResult?.proposed_actions) ? currentAnalystResult.proposed_actions : [];
+  proposedActions.innerHTML = actions.length
+    ? actions.map((action, index) => renderActionPlanCard(action, index)).join("")
+    : analystEmpty("No proposed actions returned.");
+  setActionQueueStatus();
+}
+
+async function copySingleAction(index) {
+  const action = currentAnalystResult?.proposed_actions?.[index];
+  if (!action) return;
+  const text = [
+    action.priority ? `${action.priority} priority` : "Proposed action",
+    action.action || "",
+    action.rationale ? `Rationale: ${action.rationale}` : "",
+    action.requires_confirmation === false ? "Advisory only" : "Requires user confirmation"
+  ].filter(Boolean).join("\n");
+  await navigator.clipboard.writeText(text);
+  setStatus("Proposed action copied.", "success");
+}
+
 initAuthControls();
 setupPivotControls();
 requirePrivatePage()
@@ -924,8 +1038,41 @@ chatForm?.addEventListener("submit", (event) => {
 document.querySelectorAll("[data-bi-prompt]").forEach((button) => {
   button.addEventListener("click", () => {
     promptInput.value = button.dataset.biPrompt || "";
-    runIntelligenceQuery(promptInput.value);
+    setStatus("Prompt loaded. Adjust it or click Ask AI.", "success");
   });
+});
+
+document.querySelectorAll("[data-bi-brief]").forEach((button) => {
+  button.addEventListener("click", () => applyCopilotBrief(button));
+});
+
+document.querySelectorAll("[data-bi-scroll-target]").forEach((button) => {
+  button.addEventListener("click", () => {
+    const selector = button.dataset.biScrollTarget;
+    if (!selector) return;
+    const target = document.querySelector(selector);
+    if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+});
+
+document.querySelectorAll("#bi-pivot-panel select, #bi-pivot-panel input").forEach((input) => {
+  input.addEventListener("input", renderContextChips);
+  input.addEventListener("change", renderContextChips);
+});
+
+proposedActions?.addEventListener("click", async (event) => {
+  const queueButton = event.target.closest("[data-bi-queue-action]");
+  const copyButton = event.target.closest("[data-bi-copy-action]");
+  if (!queueButton && !copyButton) return;
+  const index = Number((queueButton || copyButton).dataset.biQueueAction ?? (queueButton || copyButton).dataset.biCopyAction);
+  if (!Number.isFinite(index)) return;
+  if (copyButton) {
+    await copySingleAction(index);
+    return;
+  }
+  if (queuedActionIndexes.has(index)) queuedActionIndexes.delete(index);
+  else queuedActionIndexes.add(index);
+  rerenderActionCards();
 });
 
 resultsBody?.addEventListener("change", (event) => {
@@ -1006,4 +1153,5 @@ document.querySelector("#bi-pivot-metric")?.addEventListener("change", () => {
   if (metric === "transaction_count") aggregation.value = "count";
   else if (metric === "distinct_carriers") aggregation.value = "distinct";
   else if (["all_in_rate", "cost_per_mile", "cost_per_km", "calculated_miles", "calculated_km", "us_miles", "mx_linehaul", "us_linehaul", "fsc", "border_crossing_fee"].includes(metric)) aggregation.value = "avg";
+  renderContextChips();
 });
