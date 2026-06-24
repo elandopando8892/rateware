@@ -1,7 +1,17 @@
 import { callRatewareApi } from "./rateware-api.js";
 
-export async function fetchStagingRows({ status = "pending_review", rawUploadId = "", limit = 1000 } = {}) {
-  return (await callRatewareApi("list_staging", { status, raw_upload_id: rawUploadId, limit })).rows;
+export async function fetchStagingPage({ status = "pending_review", rawUploadId = "", limit = 500, offset = 0, search = "" } = {}) {
+  return await callRatewareApi("list_staging", {
+    status,
+    raw_upload_id: rawUploadId,
+    limit,
+    offset,
+    search
+  });
+}
+
+export async function fetchStagingRows({ status = "pending_review", rawUploadId = "", limit = 1000, offset = 0, search = "" } = {}) {
+  return (await fetchStagingPage({ status, rawUploadId, limit, offset, search })).rows;
 }
 
 export async function fetchStagingOptions() {

@@ -5850,13 +5850,46 @@ Deno.serve(async (request) => {
     }
 
     if (body.action === "list_staging") {
-      const limit = Math.min(Math.max(Number(body.limit) || 1000, 1), 1000);
-      let query = supabase.from("rate_staging").select("*, vendors(vendor_name, domain, primary_email, base_stage, status), rateware_lane_legs(*)").order("created_at", { ascending: false }).limit(limit);
+      const limit = Math.min(Math.max(Number(body.limit) || 500, 1), 1000);
+      const offset = Math.max(Number(body.offset) || 0, 0);
+      const search = cleanText(body.search).replace(/[(),]/g, " ").trim();
+      let query = supabase
+        .from("rate_staging")
+        .select("*, vendors(vendor_name, domain, primary_email, base_stage, status), rateware_lane_legs(*)", { count: "exact" })
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: false })
+        .range(offset, offset + limit - 1);
       if (body.status) query = query.eq("status", body.status);
       if (body.raw_upload_id) query = query.eq("raw_upload_id", body.raw_upload_id);
+      if (search) {
+        query = query.or([
+          `vendor_domain.ilike.%${search}%`,
+          `rfx_id.ilike.%${search}%`,
+          `origin.ilike.%${search}%`,
+          `destination.ilike.%${search}%`,
+          `normalized_origin.ilike.%${search}%`,
+          `normalized_destination.ilike.%${search}%`,
+          `origin_market.ilike.%${search}%`,
+          `destination_market.ilike.%${search}%`,
+          `origin_region.ilike.%${search}%`,
+          `destination_region.ilike.%${search}%`,
+          `equipment.ilike.%${search}%`,
+          `trailer.ilike.%${search}%`,
+          `operation.ilike.%${search}%`,
+          `service.ilike.%${search}%`
+        ].join(","));
+      }
       const result = await query;
       if (result.error) throw result.error;
-      return jsonResponse({ rows: result.data });
+      const rows = result.data || [];
+      const total = result.count || 0;
+      return jsonResponse({
+        rows,
+        total,
+        limit,
+        offset,
+        has_more: offset + rows.length < total
+      });
     }
 
     if (body.action === "list_rateware") {

@@ -3,7 +3,7 @@ import { createLocationMatchDrawer } from "./location-match-drawer.js";
 import { initSpreadsheetColumnFilters } from "./spreadsheet-column-filters.js";
 import { installSpreadsheetGrid } from "./spreadsheet-grid.js";
 import { initColumnVisibility, initDrawer, initLocationAutocomplete } from "./sheet-ui.js";
-import { archiveStagingRows, archiveStagingRowsByFilter, enrichStagingLocationZips, fetchStagingOptions, fetchStagingRows, matchStagingVendors, removeStagingRows, removeStagingRowsByFilter, renormalizeStagingRows, saveLocationAlias, updateStagingRow } from "./staging-service.js";
+import { archiveStagingRows, archiveStagingRowsByFilter, enrichStagingLocationZips, fetchStagingOptions, fetchStagingPage, matchStagingVendors, removeStagingRows, removeStagingRowsByFilter, renormalizeStagingRows, saveLocationAlias, updateStagingRow } from "./staging-service.js";
 
 const body = document.querySelector("#staging-body");
 const refreshButton = document.querySelector("#refresh-staging-button");
@@ -57,9 +57,17 @@ const selectedRowIds = new Set();
 let activeReviewFilter = "all";
 const autoSaveTimers = new Map();
 const FILTERED_BULK_BATCH_SIZE = 1000;
+const STAGING_PAGE_SIZE = 500;
 let columnVisibilityController;
 let locationMatchDrawerController;
 let columnFilterController;
+let stagingTotalCount = 0;
+let stagingHasMoreRows = false;
+let stagingIsLoadingMore = false;
+let stagingLoadOffset = 0;
+let stagingLoadToken = 0;
+let stagingSearchTimer = null;
+let stagingLoadObserver = null;
 let stagingOptions = {
   categories: {},
   vendors: [],
@@ -804,8 +812,8 @@ function applyColumnFilters(rows = loadedRows) {
   return columnFilterController?.apply(rows) || rows;
 }
 
-function visibleStagingRows() {
-  return applyColumnFilters(applyStagingTextSearch(applyReviewFilter(scopedStagingRows(loadedRows))));
+function visibleStagingRows(rows = loadedRows) {
+  return applyColumnFilters(applyStagingTextSearch(applyReviewFilter(scopedStagingRows(rows))));
 }
 
 function activeColumnFilters() {
@@ -854,7 +862,11 @@ function applyReviewFilterForCount(rows, filter) {
 
 function updateReviewMetrics() {
   const scopedRows = scopedStagingRows(loadedRows);
-  if (stagingMetricVisible) stagingMetricVisible.textContent = String(currentRows.length);
+  if (stagingMetricVisible) {
+    stagingMetricVisible.textContent = stagingTotalCount && currentRows.length !== stagingTotalCount
+      ? `${currentRows.length.toLocaleString()} / ${stagingTotalCount.toLocaleString()}`
+      : String(currentRows.length.toLocaleString());
+  }
   if (stagingMetricLocation) stagingMetricLocation.textContent = String(scopedRows.filter(needsLocationMatch).length);
   if (stagingMetricRate) stagingMetricRate.textContent = String(scopedRows.filter(needsNumericRate).length);
   if (stagingMetricSelected) stagingMetricSelected.textContent = String(selectedRows().length);
@@ -1223,23 +1235,8 @@ function renderRowDetail(row) {
   `;
 }
 
-function renderRows(rows) {
-  currentRows = rows;
-  renderDatalists();
-  updateReviewFilters();
-  updateUploadScopeBanner();
-
-  if (!rows.length) {
-    body.innerHTML =
-      `<tr><td colspan="${STAGING_COLSPAN}"><div class="empty-state"><strong>No staging rows found</strong><span>${escapeHtml(rawUploadScopeId ? "This upload does not have staging rows in the current filters." : "Interpret uploaded quotes to create rows for review.")}</span><a href="./upload-history.html">Open upload history</a></div></td></tr>`;
-    columnVisibilityController?.applyVisibility();
-    updateBulkControls();
-    return;
-  }
-
-  body.innerHTML = rows
-    .map(
-      (row) => `
+function renderStagingTableRow(row) {
+  return `
         <tr class="${escapeHtml(rowQualityClass(row))}" data-row-id="${escapeHtml(row.id)}">
           <td class="select-column" data-col="select">
             <input data-select-row="${escapeHtml(row.id)}" type="checkbox" aria-label="Select staging row" ${selectedRowIds.has(row.id) ? "checked" : ""} />
@@ -1284,11 +1281,70 @@ function renderRows(rows) {
           <td data-col="weekly_capacity">${inputCell(row, "weekly_capacity", { short: true })}</td>
           <td data-col="status">${statusSelect(row)}</td>
         </tr>
-      `
-    )
-    .join("");
+      `;
+}
+
+function stagingLoadStateRow() {
+  const loaded = loadedRows.length;
+  const total = stagingTotalCount || loaded;
+  if (!loaded && !stagingHasMoreRows && !stagingIsLoadingMore) return "";
+  const message = stagingIsLoadingMore
+    ? "Loading more staging rows..."
+    : stagingHasMoreRows
+      ? `Loaded ${loaded.toLocaleString()} of ${total.toLocaleString()} database row(s). Scroll down or click to load more.`
+      : `All ${loaded.toLocaleString()} database row(s) loaded.`;
+  return `
+    <tr class="staging-load-row" data-staging-loader>
+      <td colspan="${STAGING_COLSPAN}">
+        <div>
+          <span>${escapeHtml(message)}</span>
+          ${stagingHasMoreRows ? '<button type="button" class="secondary small-button" data-load-more-staging>Load more</button>' : ""}
+        </div>
+      </td>
+    </tr>
+  `;
+}
+
+function updateStagingLoadRow() {
+  const existing = body.querySelector("[data-staging-loader]");
+  existing?.remove();
+  const html = stagingLoadStateRow();
+  if (html) body.insertAdjacentHTML("beforeend", html);
+  observeStagingLoadSentinel();
+}
+
+function renderRows(rows, { append = false } = {}) {
+  if (append) {
+    currentRows = [...currentRows, ...rows];
+    const loader = body.querySelector("[data-staging-loader]");
+    loader?.remove();
+    if (rows.length) body.insertAdjacentHTML("beforeend", rows.map(renderStagingTableRow).join(""));
+    updateReviewFilters();
+    updateUploadScopeBanner();
+    updateStagingLoadRow();
+    columnVisibilityController?.applyVisibility();
+    updateBulkControls();
+    return;
+  }
+
+  currentRows = rows;
+  renderDatalists();
+  updateReviewFilters();
+  updateUploadScopeBanner();
+
+  if (!rows.length) {
+    body.innerHTML =
+      `<tr><td colspan="${STAGING_COLSPAN}"><div class="empty-state"><strong>No staging rows found</strong><span>${escapeHtml(rawUploadScopeId ? "This upload does not have staging rows in the current filters." : "Interpret uploaded quotes to create rows for review.")}</span><a href="./upload-history.html">Open upload history</a></div></td></tr>${stagingLoadStateRow()}`;
+    columnVisibilityController?.applyVisibility();
+    updateBulkControls();
+    observeStagingLoadSentinel();
+    return;
+  }
+
+  body.innerHTML = rows.map(renderStagingTableRow).join("") + stagingLoadStateRow();
   columnVisibilityController?.applyVisibility();
   updateBulkControls();
+  observeStagingLoadSentinel();
 }
 
 function setStatus(message, tone = "neutral") {
@@ -1298,6 +1354,66 @@ function setStatus(message, tone = "neutral") {
 
 function rowById(id) {
   return currentRows.find((row) => row.id === id);
+}
+
+function stagingPageParams(offset = 0) {
+  return {
+    status: statusFilter.value,
+    rawUploadId: rawUploadScopeId,
+    limit: STAGING_PAGE_SIZE,
+    offset,
+    search: String(stagingSearchInput?.value || "").trim()
+  };
+}
+
+function applyStagingPage(page, { append = false } = {}) {
+  const rows = page.rows || [];
+  stagingTotalCount = Number(page.total || stagingTotalCount || rows.length || 0);
+  stagingHasMoreRows = Boolean(page.has_more);
+  stagingLoadOffset = append ? stagingLoadOffset + rows.length : rows.length;
+  loadedRows = append ? [...loadedRows, ...rows] : rows;
+  renderRows(append ? visibleStagingRows(rows) : visibleStagingRows(), { append });
+}
+
+function observeStagingLoadSentinel() {
+  const sentinel = body.querySelector("[data-staging-loader]");
+  if (!sentinel || !stagingHasMoreRows) {
+    stagingLoadObserver?.disconnect();
+    return;
+  }
+  if (!stagingLoadObserver) {
+    stagingLoadObserver = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) {
+        loadMoreRows();
+      }
+    }, { root: null, rootMargin: "900px 0px" });
+  }
+  stagingLoadObserver.disconnect();
+  stagingLoadObserver.observe(sentinel);
+}
+
+async function loadMoreRows() {
+  if (stagingIsLoadingMore || !stagingHasMoreRows) return;
+  const token = stagingLoadToken;
+  stagingIsLoadingMore = true;
+  updateStagingLoadRow();
+
+  try {
+    const page = await fetchStagingPage(stagingPageParams(stagingLoadOffset));
+    if (token !== stagingLoadToken) return;
+    applyStagingPage(page, { append: true });
+    await applyPermissionState("[data-save-id], [data-approve-id], [data-reject-id], #save-staging-button, #approve-staging-button, #reject-staging-button, #bulk-save-button, #bulk-match-vendors-button, #bulk-approve-button, #bulk-reject-button, #bulk-enrich-zips-button, #bulk-renormalize-button, #bulk-archive-button, #bulk-remove-button, #bulk-archive-filtered-button, #bulk-remove-filtered-button", "staging:approve");
+  } catch (error) {
+    if (token !== stagingLoadToken) return;
+    stagingHasMoreRows = true;
+    setBulkStatus(`Could not load more rows. ${error.message}`, "error");
+    updateStagingLoadRow();
+  } finally {
+    if (token === stagingLoadToken) {
+      stagingIsLoadingMore = false;
+      updateStagingLoadRow();
+    }
+  }
 }
 
 function openEditDrawer(id) {
@@ -1714,13 +1830,23 @@ async function saveActiveRow(status = null) {
 async function loadRows() {
   body.innerHTML = `<tr><td colspan="${STAGING_COLSPAN}">Loading staging rows...</td></tr>`;
   refreshButton.disabled = true;
+  stagingLoadToken += 1;
+  stagingLoadOffset = 0;
+  stagingTotalCount = 0;
+  stagingHasMoreRows = false;
+  stagingIsLoadingMore = true;
+  loadedRows = [];
+  currentRows = [];
+  stagingLoadObserver?.disconnect();
 
   try {
     await requirePrivatePage();
-    const [options, rows] = await Promise.all([
+    const token = stagingLoadToken;
+    const [options, page] = await Promise.all([
       fetchStagingOptions().catch(() => stagingOptions),
-      fetchStagingRows({ status: statusFilter.value, rawUploadId: rawUploadScopeId })
+      fetchStagingPage(stagingPageParams(0))
     ]);
+    if (token !== stagingLoadToken) return;
     stagingOptions = {
       categories: options.categories || {},
       vendors: options.vendors || [],
@@ -1729,13 +1855,15 @@ async function loadRows() {
       us_crossings: options.us_crossings || [],
       currencies: options.currencies || ["USD", "MXN", "CAD"]
     };
-    loadedRows = rows;
     populateBulkEditControls();
-    renderRows(visibleStagingRows());
+    stagingIsLoadingMore = false;
+    applyStagingPage(page, { append: false });
     await applyPermissionState("[data-save-id], [data-approve-id], [data-reject-id], #save-staging-button, #approve-staging-button, #reject-staging-button, #bulk-save-button, #bulk-match-vendors-button, #bulk-approve-button, #bulk-reject-button, #bulk-enrich-zips-button, #bulk-renormalize-button, #bulk-archive-button, #bulk-remove-button, #bulk-archive-filtered-button, #bulk-remove-filtered-button", "staging:approve");
   } catch (error) {
+    stagingIsLoadingMore = false;
     body.innerHTML = `<tr><td colspan="${STAGING_COLSPAN}">Could not load staging rows. ${escapeHtml(error.message)}</td></tr>`;
   } finally {
+    stagingIsLoadingMore = false;
     refreshButton.disabled = false;
   }
 }
@@ -1752,6 +1880,12 @@ async function clearStagingFilters() {
 }
 
 body.addEventListener("click", async (event) => {
+  const loadMore = event.target.closest("[data-load-more-staging]");
+  if (loadMore) {
+    await loadMoreRows();
+    return;
+  }
+
   const detail = event.target.closest("[data-detail-id]");
   const save = event.target.closest("[data-save-id]");
   const approve = event.target.closest("[data-approve-id]");
@@ -1908,7 +2042,8 @@ reviewFilterButtons.forEach((button) => {
 stagingSearchInput?.addEventListener("input", () => {
   selectedRowIds.clear();
   setBulkStatus("");
-  renderRows(visibleStagingRows());
+  window.clearTimeout(stagingSearchTimer);
+  stagingSearchTimer = window.setTimeout(loadRows, 250);
 });
 openSelectedDetailButton?.addEventListener("click", () => {
   const row = selectedRows()[0];
