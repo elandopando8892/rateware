@@ -215,7 +215,11 @@ export function initSpreadsheetColumnFilters({ table, columns = [], getRows, get
     if (!checkbox) return;
     const allKeys = JSON.parse(popover.dataset.values || "[]");
     const current = selected(field);
-    const active = current.size && !current.has("__none__") ? new Set(current) : new Set(allKeys);
+    const active = current.has("__none__")
+      ? new Set()
+      : current.size
+        ? new Set(current)
+        : new Set(allKeys);
     if (checkbox.checked) active.add(checkbox.dataset.sheetFilterValue);
     else active.delete(checkbox.dataset.sheetFilterValue);
     if (active.size === allKeys.length) state.delete(field);
