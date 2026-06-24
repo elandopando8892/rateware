@@ -14,6 +14,10 @@ const refreshButton = document.querySelector("#refresh-rateware-button");
 const clearFiltersButton = document.querySelector("#clear-rateware-filters");
 const selectAllCheckbox = document.querySelector("#select-all-rateware");
 const selectionCount = document.querySelector("#rateware-selection-count");
+const ratewarePageCountLabel = document.querySelector("#rateware-page-count");
+const ratewareFilteredCountLabel = document.querySelector("#rateware-filtered-count");
+const selectRatewarePageButton = document.querySelector("#select-rateware-page");
+const clearRatewareSelectionButton = document.querySelector("#clear-rateware-selection");
 const openSelectedDetailButton = document.querySelector("#open-selected-rateware-detail");
 const saveSelectedButton = document.querySelector("#save-selected-rateware");
 const matchSelectedVendorsButton = document.querySelector("#match-selected-vendors-rateware");
@@ -1105,6 +1109,20 @@ function selectedVisibleIds() {
   return [...body.querySelectorAll("[data-select-rateware]:checked")].map((input) => input.dataset.selectRateware);
 }
 
+function visibleRatewareCheckboxes() {
+  return [...body.querySelectorAll("[data-select-rateware]")];
+}
+
+function setVisibleRatewareSelection(checked) {
+  if (!checked) selectedRowIds.clear();
+  visibleRatewareCheckboxes().forEach((checkbox) => {
+    checkbox.checked = checked;
+    if (checked) selectedRowIds.add(checkbox.dataset.selectRateware);
+  });
+  setActionStatus(checked ? "Current page selected." : "Selection cleared.");
+  updateBulkControls();
+}
+
 function selectOnlyRatewareRow(tableRow) {
   if (!tableRow?.dataset.ratewareId) return;
   selectedRowIds.clear();
@@ -1212,8 +1230,15 @@ function markRatewareRowDirty(tableRow) {
 function updateBulkControls() {
   const selectedCount = selectedVisibleIds().length;
   const totalRows = body.querySelectorAll("[data-rateware-id]").length;
-  selectionCount.textContent = `${selectedCount} selected`;
-  bulkActionBar?.classList.toggle("is-empty", selectedCount === 0);
+  const filteredTotal = Number(ratewareTotalCount || 0);
+  const hasFilteredRows = filteredTotal > 0;
+  if (selectionCount) selectionCount.textContent = `Selected: ${selectedCount.toLocaleString()}`;
+  if (ratewarePageCountLabel) ratewarePageCountLabel.textContent = `Page: ${totalRows.toLocaleString()}`;
+  if (ratewareFilteredCountLabel) ratewareFilteredCountLabel.textContent = `Filtered DB: ${filteredTotal.toLocaleString()}`;
+  bulkActionBar?.classList.toggle("is-empty", totalRows === 0);
+  bulkActionBar?.classList.toggle("has-visible-page", totalRows > 0);
+  if (selectRatewarePageButton) selectRatewarePageButton.disabled = totalRows === 0 || selectedCount === totalRows;
+  if (clearRatewareSelectionButton) clearRatewareSelectionButton.disabled = selectedCount === 0;
   if (openSelectedDetailButton) openSelectedDetailButton.disabled = selectedCount !== 1;
   if (openBulkDrawerButton) openBulkDrawerButton.disabled = false;
   saveSelectedButton.disabled = selectedCount === 0;
@@ -1225,16 +1250,18 @@ function updateBulkControls() {
   if (exportVisibleButton) exportVisibleButton.disabled = currentRows.length === 0;
   if (exportClientVisibleButton) exportClientVisibleButton.disabled = currentRows.length === 0;
   if (exportRfxVisibleButton) exportRfxVisibleButton.disabled = currentRows.length === 0;
-  if (exportFilteredButton) exportFilteredButton.disabled = ratewareTotalCount === 0 && currentRows.length === 0;
-  if (exportClientFilteredButton) exportClientFilteredButton.disabled = ratewareTotalCount === 0 && currentRows.length === 0;
-  if (exportRfxFilteredButton) exportRfxFilteredButton.disabled = ratewareTotalCount === 0 && currentRows.length === 0;
+  if (exportFilteredButton) exportFilteredButton.disabled = !hasFilteredRows && currentRows.length === 0;
+  if (exportClientFilteredButton) exportClientFilteredButton.disabled = !hasFilteredRows && currentRows.length === 0;
+  if (exportRfxFilteredButton) exportRfxFilteredButton.disabled = !hasFilteredRows && currentRows.length === 0;
   if (applyBulkEditButton) applyBulkEditButton.disabled = selectedCount === 0;
-  if (applyBulkEditFilteredButton) applyBulkEditFilteredButton.disabled = !bulkFieldSelect?.value;
+  if (applyBulkEditFilteredButton) applyBulkEditFilteredButton.disabled = !bulkFieldSelect?.value || !hasFilteredRows;
+  if (archiveFilteredButton) archiveFilteredButton.disabled = !hasFilteredRows;
+  if (removeFilteredButton) removeFilteredButton.disabled = !hasFilteredRows;
   if (compareSelectedButton) compareSelectedButton.disabled = selectedCount === 0;
   if (compareVisibleButton) compareVisibleButton.disabled = currentRows.length === 0;
   if (snapshotSelectedButton) snapshotSelectedButton.disabled = selectedCount === 0;
   if (snapshotVisibleButton) snapshotVisibleButton.disabled = currentRows.length === 0;
-  if (snapshotFilteredButton) snapshotFilteredButton.disabled = ratewareTotalCount === 0 && currentRows.length === 0;
+  if (snapshotFilteredButton) snapshotFilteredButton.disabled = !hasFilteredRows && currentRows.length === 0;
   if (selectAllCheckbox) {
     selectAllCheckbox.checked = selectedCount > 0 && selectedCount === totalRows;
     selectAllCheckbox.indeterminate = selectedCount > 0 && selectedCount < totalRows;
@@ -1919,7 +1946,7 @@ async function applyFilteredBulkEdit() {
       return;
     }
 
-    const typed = window.prompt(`This will update ${matched.toLocaleString()} approved Rateware row(s) matching: ${scope}.\n\nType APPLY to continue.`);
+    const typed = window.prompt(`Filtered database action: this will update ${matched.toLocaleString()} approved Rateware row(s) across all pages matching: ${scope}.\n\nThis is not limited to the visible page. Type APPLY to continue.`);
     if (typed !== "APPLY") {
       setInlineStatus(bulkStatus, "Filtered bulk edit cancelled.", "warning");
       return;
@@ -2073,12 +2100,12 @@ async function runFilteredRatewareAction(targetAction) {
 
     const scope = ratewareFilterSummaryLabel(filters);
     if (isRemove) {
-      const typed = window.prompt(`This will permanently remove ${matched} approved Rateware row(s) matching: ${scope}.\n\nType DELETE to continue.`);
+      const typed = window.prompt(`Filtered database action: this will permanently remove ${matched.toLocaleString()} approved Rateware row(s) across all pages matching: ${scope}.\n\nThis is not limited to the visible page. Type DELETE to continue.`);
       if (typed !== "DELETE") {
         setActionStatus("Filtered remove cancelled.", "warning");
         return;
       }
-    } else if (!window.confirm(`Archive ${matched} approved Rateware row(s) matching: ${scope}?`)) {
+    } else if (!window.confirm(`Filtered database action: archive ${matched.toLocaleString()} approved Rateware row(s) across all pages matching: ${scope}?\n\nThis is not limited to the visible page.`)) {
       setActionStatus("Filtered archive cancelled.", "warning");
       return;
     }
@@ -2348,7 +2375,7 @@ versionList?.addEventListener("click", (event) => {
   downloadRatewareVersion(button.dataset.downloadRatewareVersion, button.dataset.versionExportMode || "client");
 });
 selectAllCheckbox?.addEventListener("change", () => {
-  body.querySelectorAll("[data-select-rateware]").forEach((checkbox) => {
+  visibleRatewareCheckboxes().forEach((checkbox) => {
     checkbox.checked = selectAllCheckbox.checked;
     if (checkbox.checked) selectedRowIds.add(checkbox.dataset.selectRateware);
     else selectedRowIds.delete(checkbox.dataset.selectRateware);
@@ -2356,6 +2383,8 @@ selectAllCheckbox?.addEventListener("change", () => {
   setActionStatus("");
   updateBulkControls();
 });
+selectRatewarePageButton?.addEventListener("click", () => setVisibleRatewareSelection(true));
+clearRatewareSelectionButton?.addEventListener("click", () => setVisibleRatewareSelection(false));
 body.addEventListener("input", (event) => {
   const field = event.target.closest("[data-rateware-field]");
   if (!field) return;

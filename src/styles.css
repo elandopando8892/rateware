@@ -8249,13 +8249,38 @@ tbody tr:hover {
   padding: 3px 5px;
 }
 
+.bulk-scope-strip {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 4px;
+  min-width: 0;
+  padding-right: 3px;
+  border-right: 1px solid #dbe3e8;
+}
+
+.bulk-scope-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  border: 1px solid #d7e0e6;
+  border-radius: 5px;
+  background: #f8fafb;
+  color: var(--neutral);
+  padding: 1px 6px;
+  white-space: nowrap;
+  font-size: 0.66rem;
+  font-weight: 850;
+}
+
 .bulk-action-bar .small-button {
   min-height: 20px;
   padding: 2px 6px;
   font-size: 0.66rem;
 }
 
-.bulk-action-bar > span {
+.bulk-action-bar > span,
+.bulk-action-bar .row-save-status {
   flex: 0 0 auto;
   font-size: 0.66rem;
 }

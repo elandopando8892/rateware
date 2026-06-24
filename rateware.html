@@ -121,7 +121,13 @@
               <div id="rateware-active-filters" class="active-filter-strip hidden" aria-live="polite"></div>
 
               <div class="bulk-action-bar is-empty" aria-live="polite">
-                <span id="rateware-selection-count">0 selected</span>
+                <div class="bulk-scope-strip" aria-label="Bulk action scope">
+                  <span id="rateware-selection-count" class="bulk-scope-pill">Selected: 0</span>
+                  <span id="rateware-page-count" class="bulk-scope-pill">Page: 0</span>
+                  <span id="rateware-filtered-count" class="bulk-scope-pill">Filtered DB: 0</span>
+                  <button id="select-rateware-page" type="button" class="secondary small-button">Select page</button>
+                  <button id="clear-rateware-selection" type="button" class="secondary small-button" disabled>Clear selection</button>
+                </div>
                 <button id="open-selected-rateware-detail" type="button" class="secondary small-button" disabled>Evidence</button>
                 <button id="open-rateware-bulk-drawer" type="button" class="secondary small-button" disabled>Bulk edit</button>
                 <button id="save-selected-rateware" type="button" class="small-button" disabled>Save selected</button>

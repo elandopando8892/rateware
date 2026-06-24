@@ -20,6 +20,10 @@ const rejectDrawerButton = document.querySelector("#reject-staging-button");
 const rowDetail = document.querySelector("#staging-row-detail");
 const selectAllCheckbox = document.querySelector("#select-all-staging");
 const bulkSelectionCount = document.querySelector("#bulk-selection-count");
+const stagingPageCountLabel = document.querySelector("#staging-page-count");
+const stagingFilteredCountLabel = document.querySelector("#staging-filtered-count");
+const selectStagingPageButton = document.querySelector("#select-staging-page");
+const clearStagingSelectionButton = document.querySelector("#clear-staging-selection");
 const openSelectedDetailButton = document.querySelector("#open-selected-staging-detail");
 const bulkSaveButton = document.querySelector("#bulk-save-button");
 const bulkMatchVendorsButton = document.querySelector("#bulk-match-vendors-button");
@@ -464,6 +468,22 @@ function selectedRows() {
   });
 }
 
+function visibleStagingCheckboxes() {
+  return [...body.querySelectorAll("[data-select-row]")];
+}
+
+function setVisibleStagingSelection(checked) {
+  if (!checked) selectedRowIds.clear();
+  visibleStagingCheckboxes().forEach((checkbox) => {
+    checkbox.checked = checked;
+    if (checked) {
+      selectedRowIds.add(checkbox.dataset.selectRow);
+    }
+  });
+  setBulkStatus(checked ? "Current page selected." : "Selection cleared.");
+  updateBulkControls();
+}
+
 function selectOnlyStagingRow(tableRow) {
   if (!tableRow?.dataset.rowId) return;
   selectedRowIds.clear();
@@ -543,21 +563,32 @@ function bulkPatchValue(field, rawValue) {
 function updateBulkControls() {
   const selectedCount = selectedRows().length;
   const totalRows = body.querySelectorAll("[data-row-id]").length;
-  bulkSelectionCount.textContent = `${selectedCount} selected`;
-  bulkActionBar?.classList.toggle("is-empty", selectedCount === 0);
+  const filteredTotal = Number(stagingTotalCount || 0);
+  const hasFilteredRows = filteredTotal > 0;
+  if (bulkSelectionCount) bulkSelectionCount.textContent = `Selected: ${selectedCount.toLocaleString()}`;
+  if (stagingPageCountLabel) stagingPageCountLabel.textContent = `Page: ${totalRows.toLocaleString()}`;
+  if (stagingFilteredCountLabel) stagingFilteredCountLabel.textContent = `Filtered DB: ${filteredTotal.toLocaleString()}`;
+  bulkActionBar?.classList.toggle("is-empty", totalRows === 0);
+  bulkActionBar?.classList.toggle("has-visible-page", totalRows > 0);
+  if (selectStagingPageButton) selectStagingPageButton.disabled = totalRows === 0 || selectedCount === totalRows;
+  if (clearStagingSelectionButton) clearStagingSelectionButton.disabled = selectedCount === 0;
   if (openSelectedDetailButton) openSelectedDetailButton.disabled = selectedCount !== 1;
   if (openBulkDrawerButton) openBulkDrawerButton.disabled = false;
   if (applyBulkEditButton) applyBulkEditButton.disabled = selectedCount === 0;
-  if (applyBulkEditFilteredButton) applyBulkEditFilteredButton.disabled = !bulkFieldSelect?.value;
+  if (applyBulkEditFilteredButton) applyBulkEditFilteredButton.disabled = !bulkFieldSelect?.value || !hasFilteredRows;
   if (stagingMetricSelected) stagingMetricSelected.textContent = String(selectedCount);
   bulkSaveButton.disabled = selectedCount === 0;
   if (bulkMatchVendorsButton) bulkMatchVendorsButton.disabled = selectedCount === 0;
   bulkApproveButton.disabled = selectedCount === 0;
   bulkRejectButton.disabled = selectedCount === 0;
+  if (bulkApproveFilteredButton) bulkApproveFilteredButton.disabled = !hasFilteredRows;
+  if (bulkRejectFilteredButton) bulkRejectFilteredButton.disabled = !hasFilteredRows;
   if (bulkEnrichZipsButton) bulkEnrichZipsButton.disabled = selectedCount === 0;
   if (bulkRenormalizeButton) bulkRenormalizeButton.disabled = selectedCount === 0;
   bulkArchiveButton.disabled = selectedCount === 0;
   bulkRemoveButton.disabled = selectedCount === 0;
+  if (bulkArchiveFilteredButton) bulkArchiveFilteredButton.disabled = !hasFilteredRows;
+  if (bulkRemoveFilteredButton) bulkRemoveFilteredButton.disabled = !hasFilteredRows;
   if (selectAllCheckbox) {
     selectAllCheckbox.checked = selectedCount > 0 && selectedCount === totalRows;
     selectAllCheckbox.indeterminate = selectedCount > 0 && selectedCount < totalRows;
@@ -1793,12 +1824,12 @@ async function runFilteredStagingAction(targetAction) {
 
     const scope = stagingFilterSummaryLabel(filters);
     if (isRemove) {
-      const typed = window.prompt(`This will permanently remove ${matched} staging row(s) matching: ${scope}.\n\nType DELETE to continue.`);
+      const typed = window.prompt(`Filtered database action: this will permanently remove ${matched.toLocaleString()} staging row(s) across all pages matching: ${scope}.\n\nThis is not limited to the visible page. Type DELETE to continue.`);
       if (typed !== "DELETE") {
         setBulkStatus("Filtered remove cancelled.", "warning");
         return;
       }
-    } else if (!window.confirm(`Archive ${matched} staging row(s) matching: ${scope}?`)) {
+    } else if (!window.confirm(`Filtered database action: archive ${matched.toLocaleString()} staging row(s) across all pages matching: ${scope}?\n\nThis is not limited to the visible page.`)) {
       setBulkStatus("Filtered archive cancelled.", "warning");
       return;
     }
@@ -1846,7 +1877,7 @@ async function runFilteredStagingUpdate(patch, label) {
       return;
     }
 
-    const typed = window.prompt(`This will ${normalizedLabel} ${matched.toLocaleString()} staging row(s) matching: ${scope}.\n\nType APPLY to continue.`);
+    const typed = window.prompt(`Filtered database action: this will ${normalizedLabel} ${matched.toLocaleString()} staging row(s) across all pages matching: ${scope}.\n\nThis is not limited to the visible page. Type APPLY to continue.`);
     if (typed !== "APPLY") {
       setBulkStatus(`Filtered ${normalizedLabel} cancelled.`, "warning");
       return;
@@ -2253,7 +2284,7 @@ openSelectedDetailButton?.addEventListener("click", () => {
   if (row?.dataset.rowId) openEditDrawer(row.dataset.rowId);
 });
 selectAllCheckbox?.addEventListener("change", () => {
-  body.querySelectorAll("[data-select-row]").forEach((checkbox) => {
+  visibleStagingCheckboxes().forEach((checkbox) => {
     checkbox.checked = selectAllCheckbox.checked;
     if (checkbox.checked) {
       selectedRowIds.add(checkbox.dataset.selectRow);
@@ -2264,6 +2295,8 @@ selectAllCheckbox?.addEventListener("change", () => {
   setBulkStatus("");
   updateBulkControls();
 });
+selectStagingPageButton?.addEventListener("click", () => setVisibleStagingSelection(true));
+clearStagingSelectionButton?.addEventListener("click", () => setVisibleStagingSelection(false));
 bulkSaveButton?.addEventListener("click", () => runBulkAction());
 bulkMatchVendorsButton?.addEventListener("click", runBulkMatchVendors);
 bulkApproveButton?.addEventListener("click", () => runBulkAction("approved"));
