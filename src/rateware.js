@@ -69,6 +69,7 @@ const ratewareNextPageButton = document.querySelector("#rateware-next-page");
 const ratewareLastPageButton = document.querySelector("#rateware-last-page");
 const ratewarePageNumberInput = document.querySelector("#rateware-page-number");
 const ratewarePageSizeSelect = document.querySelector("#rateware-page-size");
+const activeFiltersStrip = document.querySelector("#rateware-active-filters");
 
 const RATEWARE_COLSPAN = 30;
 const RATEWARE_PAGE_SIZE_STORAGE_KEY = "rateware:approved:page-size:v1";
@@ -177,6 +178,57 @@ function clampRatewarePageIndex(index, total = ratewareTotalCount) {
 
 function ratewarePageOffset() {
   return ratewarePageIndex * ratewarePageSize;
+}
+
+function sheetColumnLabel(field) {
+  return SHEET_COLUMNS.find((column) => column.key === field)?.label || field;
+}
+
+function filterChipValue(field, values = []) {
+  if (values.includes("__none__")) return "None";
+  if (values.length === 1) {
+    const value = String(values[0] || "");
+    return /state|zip|currency/i.test(field) ? value.toUpperCase() : value;
+  }
+  return `${values.length} selected`;
+}
+
+function selectOptionLabel(select, value) {
+  const option = [...select.options].find((item) => item.value === value);
+  return option?.textContent?.trim() || value || "All";
+}
+
+function activeFilterChipHtml({ key, label, value, field = "" }) {
+  return `
+    <button class="active-filter-chip" type="button" data-remove-rateware-filter="${escapeHtml(key)}" data-filter-field="${escapeHtml(field)}" title="Remove ${escapeHtml(label)} filter">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(value)}</strong>
+      <b aria-hidden="true">x</b>
+    </button>
+  `;
+}
+
+function renderRatewareActiveFilters() {
+  if (!activeFiltersStrip) return;
+  const chips = [];
+  const search = String(searchInput?.value || "").trim();
+  if (search) chips.push(activeFilterChipHtml({ key: "search", label: "Search", value: search }));
+  if (operationFilter.value) chips.push(activeFilterChipHtml({ key: "operation", label: "Operation", value: selectOptionLabel(operationFilter, operationFilter.value) }));
+  if (serviceFilter.value) chips.push(activeFilterChipHtml({ key: "service", label: "Service", value: selectOptionLabel(serviceFilter, serviceFilter.value) }));
+  if (activeQuickFilter !== "all") chips.push(activeFilterChipHtml({ key: "quick", label: "View", value: activeQuickFilter }));
+  Object.entries(activeColumnFilters()).forEach(([field, values]) => {
+    chips.push(activeFilterChipHtml({
+      key: "column",
+      field,
+      label: sheetColumnLabel(field),
+      value: filterChipValue(field, Array.isArray(values) ? values : [values])
+    }));
+  });
+
+  activeFiltersStrip.classList.toggle("hidden", !chips.length);
+  activeFiltersStrip.innerHTML = chips.length
+    ? `<span class="active-filter-label">Active filters</span>${chips.join("")}<button class="active-filter-clear" type="button" data-remove-rateware-filter="all">Clear all</button>`
+    : "";
 }
 
 function dateValue(value) {
@@ -1177,6 +1229,7 @@ function updateBulkControls() {
 }
 
 function updateRatewarePaginationControls() {
+  renderRatewareActiveFilters();
   const total = Number(ratewareTotalCount || 0);
   const pageCount = Math.max(1, Math.ceil(total / ratewarePageSize));
   const safeIndex = clampRatewarePageIndex(ratewarePageIndex, total);
@@ -1883,6 +1936,21 @@ async function clearRatewareFilters() {
   await loadRateware();
 }
 
+async function removeRatewareFilter(type, field = "") {
+  if (type === "all") {
+    await clearRatewareFilters();
+    return;
+  }
+  if (type === "search") searchInput.value = "";
+  if (type === "operation") operationFilter.value = "";
+  if (type === "service") serviceFilter.value = "";
+  if (type === "quick") activeQuickFilter = "all";
+  if (type === "column" && field) columnFilterController?.clearField(field, { silent: true });
+  selectedRowIds.clear();
+  setActionStatus("");
+  await loadRateware();
+}
+
 function ratewarePageParams(offset = ratewarePageOffset()) {
   return {
     search: String(searchInput?.value || "").trim(),
@@ -2184,6 +2252,11 @@ ratewarePageNumberInput?.addEventListener("keydown", (event) => {
   }
 });
 clearFiltersButton?.addEventListener("click", clearRatewareFilters);
+activeFiltersStrip?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-remove-rateware-filter]");
+  if (!button) return;
+  removeRatewareFilter(button.dataset.removeRatewareFilter, button.dataset.filterField || "");
+});
 searchInput.addEventListener("input", debounce(loadRateware));
 operationFilter.addEventListener("change", loadRateware);
 serviceFilter.addEventListener("change", loadRateware);

@@ -5958,6 +5958,65 @@ select.staging-input {
   text-align: center;
 }
 
+.active-filter-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  min-height: 28px;
+  padding: 4px 6px;
+  border-top: 1px solid var(--line);
+  background: #f8fafb;
+}
+
+.active-filter-strip.hidden {
+  display: none;
+}
+
+.active-filter-label {
+  color: #5b6872;
+  font-size: 0.68rem;
+  font-weight: 820;
+  text-transform: uppercase;
+}
+
+.active-filter-chip,
+.active-filter-clear {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 20px;
+  border: 1px solid #cfd9e2;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #2f3d48;
+  padding: 2px 7px;
+  font-size: 0.68rem;
+  font-weight: 760;
+  cursor: pointer;
+}
+
+.active-filter-chip strong {
+  max-width: 170px;
+  overflow: hidden;
+  color: #0f766e;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.active-filter-chip b {
+  color: #7c8a95;
+  font-size: 0.78rem;
+  line-height: 1;
+}
+
+.active-filter-clear {
+  border-color: transparent;
+  background: transparent;
+  color: var(--danger);
+  font-weight: 820;
+}
+
 .sheet-filter-popover {
   position: fixed;
   z-index: 100;

@@ -232,6 +232,12 @@ export function initSpreadsheetColumnFilters({ table, columns = [], getRows, get
     if (!silent) onChange?.();
   }
 
+  function clearField(field, { silent = false } = {}) {
+    state.delete(field);
+    updateButtons();
+    if (!silent) onChange?.();
+  }
+
   filterRow.addEventListener("click", (event) => {
     const clearButton = event.target.closest(`[data-${scope}-filter-clear]`);
     if (clearButton) {
@@ -323,5 +329,5 @@ export function initSpreadsheetColumnFilters({ table, columns = [], getRows, get
   });
 
   updateButtons();
-  return { apply, clear, serialized, updateButtons, fieldHasFilter };
+  return { apply, clear, clearField, serialized, updateButtons, fieldHasFilter };
 }

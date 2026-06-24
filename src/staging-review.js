@@ -60,6 +60,7 @@ const stagingNextPageButton = document.querySelector("#staging-next-page");
 const stagingLastPageButton = document.querySelector("#staging-last-page");
 const stagingPageNumberInput = document.querySelector("#staging-page-number");
 const stagingPageSizeSelect = document.querySelector("#staging-page-size");
+const activeFiltersStrip = document.querySelector("#staging-active-filters");
 const rawUploadScopeId = new URLSearchParams(window.location.search).get("raw_upload_id") || "";
 let currentRows = [];
 let loadedRows = [];
@@ -194,6 +195,58 @@ function clampPageIndex(index, total = stagingTotalCount) {
 
 function stagingPageOffset() {
   return stagingPageIndex * stagingPageSize;
+}
+
+function sheetColumnLabel(field) {
+  return SHEET_COLUMNS.find((column) => column.key === field)?.label || field;
+}
+
+function filterChipValue(field, values = []) {
+  if (values.includes("__none__")) return "None";
+  if (values.length === 1) {
+    const value = String(values[0] || "");
+    return /state|zip|currency/i.test(field) ? value.toUpperCase() : value;
+  }
+  return `${values.length} selected`;
+}
+
+function stagingStatusLabel(value) {
+  const option = [...statusFilter.options].find((item) => item.value === value);
+  return option?.textContent?.trim() || value || "All";
+}
+
+function activeFilterChipHtml({ key, label, value, field = "" }) {
+  return `
+    <button class="active-filter-chip" type="button" data-remove-staging-filter="${escapeHtml(key)}" data-filter-field="${escapeHtml(field)}" title="Remove ${escapeHtml(label)} filter">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(value)}</strong>
+      <b aria-hidden="true">x</b>
+    </button>
+  `;
+}
+
+function renderStagingActiveFilters() {
+  if (!activeFiltersStrip) return;
+  const chips = [];
+  const search = String(stagingSearchInput?.value || "").trim();
+  const status = statusFilter.value || "";
+  if (rawUploadScopeId) chips.push(activeFilterChipHtml({ key: "source", label: "Source", value: "Scoped upload" }));
+  if (search) chips.push(activeFilterChipHtml({ key: "search", label: "Search", value: search }));
+  if (status && status !== "pending_review") chips.push(activeFilterChipHtml({ key: "status", label: "Status", value: stagingStatusLabel(status) }));
+  if (activeReviewFilter !== "all") chips.push(activeFilterChipHtml({ key: "review", label: "Review", value: REVIEW_FILTER_LABELS[activeReviewFilter] || activeReviewFilter }));
+  Object.entries(activeColumnFilters()).forEach(([field, values]) => {
+    chips.push(activeFilterChipHtml({
+      key: "column",
+      field,
+      label: sheetColumnLabel(field),
+      value: filterChipValue(field, Array.isArray(values) ? values : [values])
+    }));
+  });
+
+  activeFiltersStrip.classList.toggle("hidden", !chips.length);
+  activeFiltersStrip.innerHTML = chips.length
+    ? `<span class="active-filter-label">Active filters</span>${chips.join("")}<button class="active-filter-clear" type="button" data-remove-staging-filter="all">Clear all</button>`
+    : "";
 }
 
 function lane(row) {
@@ -500,6 +553,7 @@ function updateBulkControls() {
 }
 
 function updateStagingPaginationControls() {
+  renderStagingActiveFilters();
   const total = Number(stagingTotalCount || 0);
   const pageCount = Math.max(1, Math.ceil(total / stagingPageSize));
   const safeIndex = clampPageIndex(stagingPageIndex, total);
@@ -1980,6 +2034,24 @@ async function clearStagingFilters() {
   await loadRows();
 }
 
+async function removeStagingFilter(type, field = "") {
+  if (type === "all") {
+    await clearStagingFilters();
+    return;
+  }
+  if (type === "source") {
+    window.location.href = "./staging-review.html";
+    return;
+  }
+  if (type === "search" && stagingSearchInput) stagingSearchInput.value = "";
+  if (type === "status") statusFilter.value = "";
+  if (type === "review") activeReviewFilter = "all";
+  if (type === "column" && field) columnFilterController?.clearField(field, { silent: true });
+  selectedRowIds.clear();
+  setBulkStatus("");
+  await loadRows();
+}
+
 body.addEventListener("click", async (event) => {
   const detail = event.target.closest("[data-detail-id]");
   const save = event.target.closest("[data-save-id]");
@@ -2137,6 +2209,11 @@ stagingPageNumberInput?.addEventListener("keydown", (event) => {
   }
 });
 clearFiltersButton?.addEventListener("click", clearStagingFilters);
+activeFiltersStrip?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-remove-staging-filter]");
+  if (!button) return;
+  removeStagingFilter(button.dataset.removeStagingFilter, button.dataset.filterField || "");
+});
 statusFilter.addEventListener("change", () => {
   selectedRowIds.clear();
   activeReviewFilter = "all";
