@@ -5961,8 +5961,8 @@ select.staging-input {
 .sheet-filter-popover {
   position: fixed;
   z-index: 100;
-  width: 320px;
-  max-height: 390px;
+  width: 340px;
+  max-height: min(560px, calc(100vh - 70px));
   overflow: hidden;
   border: 1px solid #cbd6df;
   border-radius: 6px;
@@ -5984,6 +5984,37 @@ select.staging-input {
   border-bottom: 1px solid var(--line);
 }
 
+.sheet-filter-popover-primary {
+  padding: 6px 8px 0;
+}
+
+.sheet-filter-popover-primary button {
+  width: 100%;
+  border: 1px solid #d7e0e6;
+  border-radius: 4px;
+  background: #f7fafc;
+  color: #2f3d48;
+  padding: 5px 7px;
+  font-size: 0.72rem;
+  font-weight: 760;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sheet-filter-visible-actions {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.sheet-filter-summary {
+  margin: 0;
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--line);
+  color: #586773;
+  font-size: 0.7rem;
+  font-weight: 720;
+}
+
 .sheet-filter-popover-header button,
 .sheet-filter-popover-actions button {
   border: 0;
@@ -5992,6 +6023,33 @@ select.staging-input {
   font-size: 0.72rem;
   font-weight: 800;
   cursor: pointer;
+}
+
+.sheet-filter-popover-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 8px;
+  border-top: 1px solid var(--line);
+  background: #fbfcfd;
+}
+
+.sheet-filter-popover-footer button {
+  min-height: 26px;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  background: var(--accent);
+  color: #ffffff;
+  padding: 4px 10px;
+  font-size: 0.72rem;
+  font-weight: 820;
+  cursor: pointer;
+}
+
+.sheet-filter-popover-footer button.secondary {
+  border-color: #d7e0e6;
+  background: #ffffff;
+  color: #2f3d48;
 }
 
 .sheet-filter-search {
@@ -6007,7 +6065,7 @@ select.staging-input {
 
 .sheet-filter-options {
   display: grid;
-  max-height: 260px;
+  max-height: min(280px, calc(100vh - 315px));
   overflow: auto;
   padding: 4px 8px 8px;
 }

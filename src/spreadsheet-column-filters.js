@@ -40,6 +40,8 @@ export function initSpreadsheetColumnFilters({ table, columns = [], getRows, get
   const labelRow = header?.querySelector("tr");
   const filterRow = document.createElement("tr");
   const popover = document.createElement("div");
+  let activeMenu = null;
+  let menuRequestId = 0;
 
   filterRow.className = "sheet-column-filter-row";
   filterRow.innerHTML = columns.map((column) => {
@@ -110,7 +112,7 @@ export function initSpreadsheetColumnFilters({ table, columns = [], getRows, get
     return uniqueValues(getRows(), field, getValues);
   }
 
-  async function renderMenu(field, search = "") {
+  function renderLoadingMenu(field) {
     const column = filterableColumns.find((item) => item.key === field);
     popover.innerHTML = `
       <div class="sheet-filter-popover-header">
@@ -122,46 +124,94 @@ export function initSpreadsheetColumnFilters({ table, columns = [], getRows, get
     `;
     popover.dataset.field = field;
     popover.classList.remove("hidden");
+  }
 
-    const values = await menuValues(field, search);
+  function menuVisibleValues(search = "") {
+    if (!activeMenu) return [];
     const query = search.trim().toLowerCase();
-    const visibleValues = values
+    return activeMenu.values
       .filter((value) => !query || value.toLowerCase().includes(query))
-      .slice(0, 160);
-    const active = selected(field);
+      .slice(0, 220);
+  }
+
+  function updateDraftSummary() {
+    if (!activeMenu) return;
+    const summary = popover.querySelector("[data-sheet-filter-summary]");
+    if (!summary) return;
+    const selectedCount = activeMenu.draft.size;
+    const totalCount = activeMenu.allKeys.length;
+    summary.textContent = `${selectedCount.toLocaleString()} of ${totalCount.toLocaleString()} selected`;
+  }
+
+  function renderMenuContent(search = activeMenu?.search || "") {
+    if (!activeMenu) return;
+    activeMenu.search = search;
+    const { field, column, draft } = activeMenu;
+    const visibleValues = menuVisibleValues(search);
 
     popover.innerHTML = `
       <div class="sheet-filter-popover-header">
         <strong>${escapeHtml(column?.label || field)}</strong>
         <button type="button" data-sheet-filter-close>Close</button>
       </div>
+      <div class="sheet-filter-popover-primary">
+        <button type="button" data-sheet-filter-clear-column>Clear filter from ${escapeHtml(column?.label || field)}</button>
+      </div>
       <input class="sheet-filter-search" type="search" placeholder="Search values..." value="${escapeHtml(search)}" />
       <div class="sheet-filter-popover-actions">
-        <button type="button" data-sheet-filter-all>All</button>
-        <button type="button" data-sheet-filter-none>None</button>
+        <button type="button" data-sheet-filter-all>Select all</button>
+        <button type="button" data-sheet-filter-none>Clear all</button>
       </div>
+      <div class="sheet-filter-popover-actions sheet-filter-visible-actions">
+        <button type="button" data-sheet-filter-visible-all>Select visible</button>
+        <button type="button" data-sheet-filter-visible-none>Clear visible</button>
+      </div>
+      <p class="sheet-filter-summary" data-sheet-filter-summary></p>
       <div class="sheet-filter-options">
         ${visibleValues.map((value) => `
           <label title="${escapeHtml(value)}">
-            <input type="checkbox" data-sheet-filter-value="${escapeHtml(valueKey(value))}" ${!active.size || active.has(valueKey(value)) ? "checked" : ""} />
+            <input type="checkbox" data-sheet-filter-value="${escapeHtml(valueKey(value))}" ${draft.has(valueKey(value)) ? "checked" : ""} />
             <span>${escapeHtml(value)}</span>
           </label>
         `).join("") || '<p class="muted-text">No values found.</p>'}
       </div>
+      <div class="sheet-filter-popover-footer">
+        <button type="button" class="secondary" data-sheet-filter-cancel>Cancel</button>
+        <button type="button" data-sheet-filter-apply>Apply</button>
+      </div>
     `;
 
-    popover.dataset.field = field;
-    popover.dataset.values = JSON.stringify(values.map(valueKey));
+    popover.dataset.values = JSON.stringify(activeMenu.allKeys);
     popover.classList.remove("hidden");
+    updateDraftSummary();
     popover.querySelector(".sheet-filter-search")?.focus();
   }
 
   async function openMenu(button) {
     const field = button.dataset[`${scope}FilterMenu`];
     const rect = button.getBoundingClientRect();
+    const requestId = ++menuRequestId;
     popover.style.left = `${Math.min(rect.left, window.innerWidth - 340)}px`;
     popover.style.top = `${rect.bottom + 4}px`;
-    await renderMenu(field);
+    renderLoadingMenu(field);
+
+    const values = await menuValues(field, "");
+    if (requestId !== menuRequestId) return;
+    const active = selected(field);
+    const allKeys = values.map(valueKey);
+    activeMenu = {
+      field,
+      column: filterableColumns.find((item) => item.key === field),
+      values,
+      allKeys,
+      draft: active.has("__none__")
+        ? new Set()
+        : active.size
+          ? new Set(active)
+          : new Set(allKeys),
+      search: ""
+    };
+    renderMenuContent();
   }
 
   function clear({ silent = false } = {}) {
@@ -183,56 +233,79 @@ export function initSpreadsheetColumnFilters({ table, columns = [], getRows, get
   popover.addEventListener("input", (event) => {
     const search = event.target.closest(".sheet-filter-search");
     if (!search) return;
-    renderMenu(popover.dataset.field, search.value);
+    renderMenuContent(search.value);
   });
 
-  popover.addEventListener("click", async (event) => {
-    if (event.target.closest("[data-sheet-filter-close]")) {
+  popover.addEventListener("click", (event) => {
+    if (event.target.closest("[data-sheet-filter-close], [data-sheet-filter-cancel]")) {
+      menuRequestId += 1;
       popover.classList.add("hidden");
+      activeMenu = null;
       return;
     }
 
-    const field = popover.dataset.field;
+    const field = activeMenu?.field;
     if (!field) return;
 
-    if (event.target.closest("[data-sheet-filter-all]")) {
+    if (event.target.closest("[data-sheet-filter-clear-column]")) {
       state.delete(field);
       updateButtons();
-      await renderMenu(field);
+      menuRequestId += 1;
+      popover.classList.add("hidden");
+      activeMenu = null;
       onChange?.();
       return;
     }
 
+    if (event.target.closest("[data-sheet-filter-all]")) {
+      activeMenu.draft = new Set(activeMenu.allKeys);
+      renderMenuContent(activeMenu.search);
+      return;
+    }
+
     if (event.target.closest("[data-sheet-filter-none]")) {
-      state.set(field, new Set(["__none__"]));
+      activeMenu.draft = new Set();
+      renderMenuContent(activeMenu.search);
+      return;
+    }
+
+    if (event.target.closest("[data-sheet-filter-visible-all]")) {
+      menuVisibleValues(activeMenu.search).forEach((value) => activeMenu.draft.add(valueKey(value)));
+      renderMenuContent(activeMenu.search);
+      return;
+    }
+
+    if (event.target.closest("[data-sheet-filter-visible-none]")) {
+      menuVisibleValues(activeMenu.search).forEach((value) => activeMenu.draft.delete(valueKey(value)));
+      renderMenuContent(activeMenu.search);
+      return;
+    }
+
+    if (event.target.closest("[data-sheet-filter-apply]")) {
+      if (activeMenu.draft.size === activeMenu.allKeys.length) state.delete(field);
+      else if (activeMenu.draft.size) state.set(field, new Set(activeMenu.draft));
+      else state.set(field, new Set(["__none__"]));
       updateButtons();
-      await renderMenu(field);
+      menuRequestId += 1;
+      popover.classList.add("hidden");
+      activeMenu = null;
       onChange?.();
       return;
     }
 
     const checkbox = event.target.closest("[data-sheet-filter-value]");
     if (!checkbox) return;
-    const allKeys = JSON.parse(popover.dataset.values || "[]");
-    const current = selected(field);
-    const active = current.has("__none__")
-      ? new Set()
-      : current.size
-        ? new Set(current)
-        : new Set(allKeys);
-    if (checkbox.checked) active.add(checkbox.dataset.sheetFilterValue);
-    else active.delete(checkbox.dataset.sheetFilterValue);
-    if (active.size === allKeys.length) state.delete(field);
-    else if (active.size) state.set(field, active);
-    else state.set(field, new Set(["__none__"]));
-    updateButtons();
-    onChange?.();
+    if (checkbox.checked) activeMenu.draft.add(checkbox.dataset.sheetFilterValue);
+    else activeMenu.draft.delete(checkbox.dataset.sheetFilterValue);
+    updateDraftSummary();
   });
 
   document.addEventListener("click", (event) => {
     if (popover.classList.contains("hidden")) return;
     if (popover.contains(event.target) || filterRow.contains(event.target)) return;
+    menuRequestId += 1;
     popover.classList.add("hidden");
+    activeMenu = null;
   });
 
   updateButtons();
