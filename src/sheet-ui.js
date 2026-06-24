@@ -61,7 +61,9 @@ export function initColumnVisibility({ table, menu, columns = [], storageKey = "
   const list = menu.querySelector("[data-column-toggle-list]");
   const stored = normalizeStoredLayout(readStoredVisibility(storageKey), columns);
   const viewsStorageKey = storageKey ? `${storageKey}:named-views` : "";
+  const activeViewStorageKey = storageKey ? `${storageKey}:active-view` : "";
   const storedViews = readStoredVisibility(viewsStorageKey);
+  const storedActiveView = readStoredVisibility(activeViewStorageKey);
   const lockedKeys = new Set(columns.filter((column) => column.locked).map((column) => column.key));
   const columnKeys = new Set(columns.map((column) => column.key));
   const labelRow = table.querySelector("thead tr");
@@ -69,8 +71,12 @@ export function initColumnVisibility({ table, menu, columns = [], storageKey = "
   let order = [...stored.order];
   let widths = { ...stored.widths };
   let draggedColumn = "";
+  let resizingColumn = null;
   let layoutStatus = "";
   let savedViews = storedViews && typeof storedViews === "object" && !Array.isArray(storedViews) ? storedViews : {};
+  let activeView = storedActiveView && typeof storedActiveView === "object" && !Array.isArray(storedActiveView)
+    ? { name: storedActiveView.name || "Custom layout", kind: storedActiveView.kind || "custom" }
+    : { name: "Custom layout", kind: "custom" };
 
   columns.forEach((column) => {
     visibility[column.key] = column.locked ? true : stored.visibility[column.key] !== false;
@@ -82,6 +88,10 @@ export function initColumnVisibility({ table, menu, columns = [], storageKey = "
 
   function persistLayout() {
     writeStoredVisibility(storageKey, { visibility, order, widths, extra: readExtraState() });
+  }
+
+  function persistActiveView() {
+    writeStoredVisibility(activeViewStorageKey, activeView);
   }
 
   function layoutSnapshot() {
@@ -103,6 +113,58 @@ export function initColumnVisibility({ table, menu, columns = [], storageKey = "
 
   function presetViews() {
     return Array.isArray(viewPresets) ? viewPresets.filter((preset) => preset?.name && preset.layout) : [];
+  }
+
+  function activeViewLabel() {
+    return activeView?.name || "Custom layout";
+  }
+
+  function activeViewMeta() {
+    if (activeView?.kind === "named") return "saved view";
+    if (activeView?.kind === "starter") return "starter layout";
+    return "local layout";
+  }
+
+  function setActiveView(name, kind = "custom", status = "") {
+    activeView = { name: name || "Custom layout", kind };
+    persistActiveView();
+    if (status) layoutStatus = status;
+    const statusElement = menu.querySelector("[data-column-layout-status]");
+    if (status && statusElement) statusElement.textContent = status;
+    updateViewIndicator();
+  }
+
+  function markCustomLayout(status = "Layout saved") {
+    setActiveView("Custom layout", "custom", status);
+  }
+
+  function ensureViewIndicator() {
+    if (!menu.parentElement) return null;
+    let indicator = menu.parentElement.querySelector(`[data-column-active-view="${storageKey}"]`);
+    if (!indicator) {
+      indicator = document.createElement("button");
+      indicator.type = "button";
+      indicator.className = "column-active-view";
+      indicator.dataset.columnActiveView = storageKey;
+      indicator.addEventListener("click", () => {
+        menu.open = true;
+        list?.querySelector("[data-column-view-name]")?.focus();
+      });
+      menu.insertAdjacentElement("beforebegin", indicator);
+    }
+    return indicator;
+  }
+
+  function updateViewIndicator() {
+    const indicator = ensureViewIndicator();
+    if (indicator) {
+      indicator.innerHTML = `<span>View</span><strong>${htmlEscape(activeViewLabel())}</strong><small>${htmlEscape(activeViewMeta())}</small>`;
+      indicator.title = "Open view settings. Drag headers to reorder, pull header edges to resize, and save named views.";
+    }
+    const activeName = list?.querySelector("[data-column-active-name]");
+    const activeMeta = list?.querySelector("[data-column-active-meta]");
+    if (activeName) activeName.textContent = activeViewLabel();
+    if (activeMeta) activeMeta.textContent = activeViewMeta();
   }
 
   function applyStoredLayout(layout) {
@@ -143,22 +205,19 @@ export function initColumnVisibility({ table, menu, columns = [], storageKey = "
       `)
       .join("");
     list.innerHTML = `
+      <div class="column-current-view">
+        <span>Active view</span>
+        <strong data-column-active-name>${htmlEscape(activeViewLabel())}</strong>
+        <small data-column-active-meta>${htmlEscape(activeViewMeta())}</small>
+      </div>
       <div class="column-layout-tools">
-        <button type="button" data-column-save-layout>Save layout</button>
+        <button type="button" data-column-save-layout>Save current</button>
         <button type="button" data-column-autofit>Auto-fit visible</button>
-        <button type="button" data-column-reset-layout>Reset layout</button>
+        <button type="button" data-column-reset-layout>Reset default</button>
         <span class="column-layout-status" data-column-layout-status>${layoutStatus}</span>
       </div>
-      ${presetViews().length ? `
-        <div class="column-preset-views">
-          <strong>Preset views</strong>
-          ${presetViews().map((preset) => `
-            <button type="button" data-column-apply-preset="${htmlEscape(preset.name)}">${htmlEscape(preset.name)}</button>
-          `).join("")}
-        </div>
-      ` : ""}
       <div class="column-save-view-row">
-        <input data-column-view-name placeholder="Name this view" />
+        <input data-column-view-name placeholder="Save as named view" value="${activeView.kind === "named" ? htmlEscape(activeView.name) : ""}" />
         <button type="button" data-column-save-named-view>Save named</button>
       </div>
       ${viewNames().length ? `
@@ -172,8 +231,20 @@ export function initColumnVisibility({ table, menu, columns = [], storageKey = "
           `).join("")}
         </div>
       ` : ""}
+      ${presetViews().length ? `
+        <details class="column-starter-views">
+          <summary>Starter layouts</summary>
+          <div>
+            ${presetViews().map((preset) => `
+              <button type="button" data-column-apply-preset="${htmlEscape(preset.name)}">${htmlEscape(preset.name)}</button>
+            `).join("")}
+          </div>
+        </details>
+      ` : ""}
+      <p class="column-layout-help">Drag headers to reorder. Pull the right edge to resize. Double-click a header to auto-fit one column.</p>
       ${labels}
     `;
+    updateViewIndicator();
   }
 
   function setLayoutStatus(message) {
@@ -199,9 +270,19 @@ export function initColumnVisibility({ table, menu, columns = [], storageKey = "
       cell.draggable = Boolean(draggable);
       cell.classList.toggle("draggable-column", Boolean(draggable));
       if (draggable) {
-        cell.title = "Drag to reorder. Double-click to auto-fit this column.";
+        cell.title = "Drag to reorder. Pull the right edge to resize. Double-click to auto-fit this column.";
       }
+      ensureResizeHandle(cell);
     });
+  }
+
+  function ensureResizeHandle(cell) {
+    if (!cell?.dataset?.col || cell.querySelector(":scope > .column-resize-handle")) return;
+    const handle = document.createElement("span");
+    handle.className = "column-resize-handle";
+    handle.dataset.columnResizeHandle = cell.dataset.col;
+    handle.setAttribute("aria-hidden", "true");
+    cell.appendChild(handle);
   }
 
   function applyWidths() {
@@ -251,9 +332,17 @@ export function initColumnVisibility({ table, menu, columns = [], storageKey = "
     });
     const maxText = values.reduce((max, value) => Math.max(max, context.measureText(String(value || "")).width), 0);
     const isSelect = key === "select";
-    const min = isSelect ? 34 : 56;
-    const max = ["origin", "destination", "vendor"].includes(key) ? 260 : 190;
+    const min = columnMinWidth(key);
+    const max = columnMaxWidth(key);
     return Math.round(clamp(maxText + (isSelect ? 12 : 22), min, max));
+  }
+
+  function columnMinWidth(key) {
+    return key === "select" ? 34 : 56;
+  }
+
+  function columnMaxWidth(key) {
+    return ["origin", "destination", "vendor"].includes(key) ? 360 : 280;
   }
 
   function autofit(keys = visibleKeys()) {
@@ -261,6 +350,7 @@ export function initColumnVisibility({ table, menu, columns = [], storageKey = "
       widths[key] = measureColumnWidth(key);
     });
     applyVisibility();
+    markCustomLayout("Auto-fit saved");
   }
 
   function resetLayout() {
@@ -270,6 +360,7 @@ export function initColumnVisibility({ table, menu, columns = [], storageKey = "
     order = columns.map((column) => column.key);
     widths = {};
     applyVisibility();
+    markCustomLayout("Default saved");
   }
 
   menu.addEventListener("change", (event) => {
@@ -277,12 +368,13 @@ export function initColumnVisibility({ table, menu, columns = [], storageKey = "
     if (!input) return;
     visibility[input.dataset.columnToggle] = input.checked;
     applyVisibility();
+    markCustomLayout("Layout saved");
   });
 
   menu.addEventListener("click", (event) => {
     if (event.target.closest("[data-column-save-layout]")) {
       persistLayout();
-      setLayoutStatus("Saved");
+      markCustomLayout("Saved");
       return;
     }
     if (event.target.closest("[data-column-save-named-view]")) {
@@ -295,9 +387,9 @@ export function initColumnVisibility({ table, menu, columns = [], storageKey = "
       }
       savedViews[name] = { ...layoutSnapshot(), saved_at: new Date().toISOString() };
       persistNamedViews();
+      setActiveView(name, "named", "View saved");
       if (input) input.value = "";
       renderToggleInputs();
-      setLayoutStatus("View saved");
       return;
     }
     const applyViewButton = event.target.closest("[data-column-apply-view]");
@@ -305,7 +397,7 @@ export function initColumnVisibility({ table, menu, columns = [], storageKey = "
       const name = applyViewButton.dataset.columnApplyView;
       if (!savedViews[name]) return;
       applyStoredLayout(savedViews[name]);
-      setLayoutStatus("View applied");
+      setActiveView(name, "named", "View applied");
       return;
     }
     const applyPresetButton = event.target.closest("[data-column-apply-preset]");
@@ -314,7 +406,7 @@ export function initColumnVisibility({ table, menu, columns = [], storageKey = "
       const preset = presetViews().find((item) => item.name === name);
       if (!preset) return;
       applyStoredLayout(preset.layout);
-      setLayoutStatus("Preset applied");
+      setActiveView(name, "starter", "Layout applied");
       return;
     }
     const deleteViewButton = event.target.closest("[data-column-delete-view]");
@@ -323,18 +415,59 @@ export function initColumnVisibility({ table, menu, columns = [], storageKey = "
       delete savedViews[name];
       persistNamedViews();
       renderToggleInputs();
-      setLayoutStatus("View deleted");
+      if (activeView.kind === "named" && activeView.name === name) {
+        markCustomLayout("View deleted");
+      } else {
+        setLayoutStatus("View deleted");
+        updateViewIndicator();
+      }
       return;
     }
     if (event.target.closest("[data-column-autofit]")) {
       autofit();
-      setLayoutStatus("Auto-fit saved");
       return;
     }
     if (event.target.closest("[data-column-reset-layout]")) {
       resetLayout();
-      setLayoutStatus("Reset saved");
     }
+  });
+
+  labelRow?.addEventListener("pointerdown", (event) => {
+    const handle = event.target.closest("[data-column-resize-handle]");
+    if (!handle) return;
+    const cell = handle.closest("th[data-col]");
+    const key = cell?.dataset.col;
+    if (!cell || !key) return;
+    event.preventDefault();
+    event.stopPropagation();
+    resizingColumn = {
+      key,
+      startX: event.clientX,
+      startWidth: cell.getBoundingClientRect().width
+    };
+    cell.classList.add("is-resizing-column");
+    document.body.classList.add("is-column-resizing");
+
+    const onMove = (moveEvent) => {
+      if (!resizingColumn) return;
+      const nextWidth = clamp(resizingColumn.startWidth + moveEvent.clientX - resizingColumn.startX, columnMinWidth(key), columnMaxWidth(key));
+      widths[key] = Math.round(nextWidth);
+      applyWidths();
+    };
+
+    const onUp = () => {
+      if (!resizingColumn) return;
+      resizingColumn = null;
+      cell.classList.remove("is-resizing-column");
+      document.body.classList.remove("is-column-resizing");
+      document.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerup", onUp);
+      persistLayout();
+      markCustomLayout("Width saved");
+    };
+
+    document.addEventListener("pointermove", onMove);
+    document.addEventListener("pointerup", onUp, { once: true });
   });
 
   labelRow?.addEventListener("dragstart", (event) => {
@@ -371,7 +504,7 @@ export function initColumnVisibility({ table, menu, columns = [], storageKey = "
     nextOrder.splice(targetIndex + (insertAfter ? 1 : 0), 0, draggedColumn);
     order = nextOrder;
     applyVisibility();
-    setLayoutStatus("Order saved");
+    markCustomLayout("Order saved");
   });
 
   labelRow?.addEventListener("dragend", () => {
@@ -385,9 +518,9 @@ export function initColumnVisibility({ table, menu, columns = [], storageKey = "
     const cell = event.target.closest("th[data-col]");
     if (!cell?.dataset.col) return;
     autofit([cell.dataset.col]);
-    setLayoutStatus("Width saved");
   });
 
+  updateViewIndicator();
   renderToggleInputs();
   applyVisibility();
   return { applyVisibility, autofit, resetLayout };

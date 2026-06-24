@@ -4050,6 +4050,79 @@ table {
   font-weight: 760;
 }
 
+.column-active-view {
+  display: inline-grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 4px;
+  min-width: 160px;
+  max-width: 240px;
+  min-height: 24px;
+  border: 1px solid #cfd9e2;
+  border-radius: 4px;
+  background: #ffffff;
+  color: #34424e;
+  padding: 2px 6px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.column-active-view span,
+.column-active-view small {
+  color: var(--muted);
+  font-size: 0.58rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.column-active-view strong {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 0.66rem;
+  font-weight: 880;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.column-active-view small {
+  text-transform: none;
+  white-space: nowrap;
+}
+
+.column-current-view {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid #d8e2e8;
+  border-radius: 5px;
+  background: #f8fafb;
+  margin-bottom: 6px;
+  padding: 5px 7px;
+}
+
+.column-current-view span,
+.column-current-view small {
+  color: var(--muted);
+  font-size: 0.62rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.column-current-view strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 0.74rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.column-current-view small {
+  text-transform: none;
+}
+
 .column-layout-tools {
   grid-column: 1 / -1;
   display: flex;
@@ -4100,7 +4173,9 @@ table {
 
 .column-save-view-row,
 .column-saved-views,
-.column-preset-views {
+.column-preset-views,
+.column-starter-views,
+.column-layout-help {
   grid-column: 1 / -1;
 }
 
@@ -4167,6 +4242,47 @@ table {
   color: var(--accent-dark);
 }
 
+.column-starter-views {
+  border-bottom: 1px solid #edf1f4;
+  margin-bottom: 6px;
+  padding-bottom: 6px;
+}
+
+.column-starter-views summary {
+  min-height: 24px;
+  color: var(--muted);
+  font-size: 0.66rem;
+  font-weight: 850;
+  cursor: pointer;
+  text-transform: uppercase;
+}
+
+.column-starter-views div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 5px;
+}
+
+.column-starter-views button {
+  min-height: 24px;
+  border: 1px solid #d8e2e8;
+  border-radius: 4px;
+  background: #f7fafb;
+  color: #26333d;
+  padding: 3px 7px;
+  font-size: 0.68rem;
+  font-weight: 820;
+  cursor: pointer;
+}
+
+.column-layout-help {
+  margin: 0 0 6px;
+  color: var(--muted);
+  font-size: 0.64rem;
+  line-height: 1.3;
+}
+
 .column-saved-views span {
   display: inline-flex;
   overflow: hidden;
@@ -4186,6 +4302,7 @@ table {
 }
 
 .sheet-table-wrap th.draggable-column {
+  position: relative;
   cursor: grab;
   user-select: none;
 }
@@ -4209,6 +4326,37 @@ table {
 
 .sheet-table-wrap th.column-drop-after {
   box-shadow: inset -2px 0 0 var(--accent), inset 0 -1px 0 var(--line);
+}
+
+.column-resize-handle {
+  position: absolute;
+  top: 0;
+  right: -2px;
+  bottom: 0;
+  z-index: 3;
+  width: 7px;
+  cursor: col-resize;
+}
+
+.column-resize-handle::after {
+  content: "";
+  position: absolute;
+  top: 4px;
+  right: 3px;
+  bottom: 4px;
+  width: 1px;
+  background: transparent;
+}
+
+.sheet-table-wrap th:hover > .column-resize-handle::after,
+.sheet-table-wrap th.is-resizing-column > .column-resize-handle::after {
+  background: var(--accent);
+}
+
+.is-column-resizing,
+.is-column-resizing * {
+  cursor: col-resize !important;
+  user-select: none !important;
 }
 
 .column-hidden {
@@ -9859,7 +10007,9 @@ tbody tr:hover {
 
   .column-layout-tools,
   .column-save-view-row,
-  .column-saved-views {
+  .column-saved-views,
+  .column-current-view,
+  .column-starter-views {
     gap: 4px;
     margin-bottom: 4px;
     padding-bottom: 4px;
@@ -9868,10 +10018,42 @@ tbody tr:hover {
   .column-layout-tools button,
   .column-save-view-row button,
   .column-saved-views button,
+  .column-starter-views button,
   .column-save-view-row input {
     min-height: 22px;
     padding: 2px 6px;
     font-size: 0.64rem;
+  }
+
+  .column-active-view {
+    min-width: 132px;
+    max-width: 190px;
+    min-height: 21px;
+    padding: 1px 5px;
+  }
+
+  .column-active-view span,
+  .column-active-view small {
+    font-size: 0.52rem;
+  }
+
+  .column-active-view strong {
+    font-size: 0.6rem;
+  }
+
+  .column-current-view {
+    padding: 4px 6px;
+  }
+
+  .column-current-view span,
+  .column-current-view small,
+  .column-layout-help,
+  .column-starter-views summary {
+    font-size: 0.56rem;
+  }
+
+  .column-current-view strong {
+    font-size: 0.66rem;
   }
 
   .column-layout-status,
