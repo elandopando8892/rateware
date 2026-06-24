@@ -128,6 +128,252 @@ function getUserLabel(user) {
   return name || email;
 }
 
+const SHELL_NAV_GROUPS = [
+  {
+    title: "Operate",
+    items: [
+      { id: "command", code: "CC", label: "Command Center", href: "./app.html" },
+      { id: "import", code: "IM", label: "Import", href: "./upload-center.html" },
+      { id: "sources", code: "SF", label: "Source Files", href: "./upload-history.html" },
+      { id: "review", code: "RQ", label: "Review Queue", href: "./staging-review.html" },
+      { id: "rateware", code: "RW", label: "Rateware", href: "./rateware.html" }
+    ]
+  },
+  {
+    title: "Analyze",
+    items: [{ id: "analyst", code: "AI", label: "Analyst", href: "./business-intelligence.html" }]
+  },
+  {
+    title: "Source",
+    items: [
+      { id: "crm", code: "CM", label: "Carrier CRM", href: "./vendors.html" },
+      { id: "rfx", code: "RX", label: "RFx", href: "./rfx-events.html" },
+      { id: "outreach", code: "OR", label: "Outreach", href: "./outreach.html" }
+    ]
+  },
+  {
+    title: "Admin",
+    items: [
+      { id: "settings", code: "ST", label: "Settings", href: "./settings.html" },
+      { id: "memory", code: "LR", label: "Learning Rules", href: "./interpretation-memory.html" },
+      { id: "catalog", code: "CT", label: "Catalog", href: "./catalog-workbench.html" }
+    ]
+  }
+];
+
+const PAGE_META = {
+  app: {
+    title: "Command Center",
+    eyebrow: "Procurement command center",
+    crumbs: [{ label: "Command" }, { label: "Today" }]
+  },
+  "upload-center": {
+    title: "Import",
+    eyebrow: "Source intake",
+    crumbs: [{ label: "Operate", href: "./app.html" }, { label: "Import" }]
+  },
+  "upload-history": {
+    title: "Source Files",
+    eyebrow: "Source archive",
+    crumbs: [
+      { label: "Operate", href: "./app.html" },
+      { label: "Import", href: "./upload-center.html" },
+      { label: "Source Files" }
+    ]
+  },
+  "staging-review": {
+    title: "Review Queue",
+    eyebrow: "Human approval required",
+    crumbs: [
+      { label: "Operate", href: "./app.html" },
+      { label: "Source Files", href: "./upload-history.html" },
+      { label: "Review Queue" }
+    ]
+  },
+  rateware: {
+    title: "Rateware",
+    eyebrow: "Approved rate book",
+    crumbs: [
+      { label: "Operate", href: "./app.html" },
+      { label: "Review Queue", href: "./staging-review.html" },
+      { label: "Rateware" }
+    ]
+  },
+  "business-intelligence": {
+    title: "Analyst",
+    eyebrow: "Commercial copilot",
+    crumbs: [{ label: "Analyze", href: "./app.html" }, { label: "Analyst" }]
+  },
+  vendors: {
+    title: "Carrier CRM",
+    eyebrow: "Carrier master",
+    crumbs: [{ label: "Source", href: "./app.html" }, { label: "Carrier CRM" }]
+  },
+  "rfx-events": {
+    title: "RFx",
+    eyebrow: "Bid events",
+    crumbs: [
+      { label: "Source", href: "./app.html" },
+      { label: "Carrier CRM", href: "./vendors.html" },
+      { label: "RFx" }
+    ]
+  },
+  outreach: {
+    title: "Outreach",
+    eyebrow: "Invitation workflow",
+    crumbs: [
+      { label: "Source", href: "./app.html" },
+      { label: "RFx", href: "./rfx-events.html" },
+      { label: "Outreach" }
+    ]
+  },
+  settings: {
+    title: "Settings",
+    eyebrow: "Workspace control",
+    crumbs: [{ label: "Admin", href: "./app.html" }, { label: "Settings" }]
+  },
+  "interpretation-memory": {
+    title: "Learning Rules",
+    eyebrow: "AI interpretation memory",
+    crumbs: [{ label: "Admin", href: "./settings.html" }, { label: "Learning Rules" }]
+  },
+  "catalog-workbench": {
+    title: "Catalog",
+    eyebrow: "Normalization control",
+    crumbs: [{ label: "Admin", href: "./settings.html" }, { label: "Catalog" }]
+  }
+};
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function getPageKey(pathname = window.location.pathname) {
+  const raw = pathname.split("/").filter(Boolean).pop() || "app";
+  return raw.replace(/\.html$/i, "") || "app";
+}
+
+function getHrefKey(href) {
+  try {
+    return getPageKey(new URL(href, window.location.href).pathname);
+  } catch {
+    return "";
+  }
+}
+
+function isCurrentShellItem(item) {
+  const current = getPageKey();
+  const itemKey = getHrefKey(item.href);
+  return itemKey === current || (current === "app" && itemKey === "app");
+}
+
+function renderShellCrumbs(crumbs = []) {
+  return crumbs
+    .map((crumb) => {
+      const label = escapeHtml(crumb.label);
+      return crumb.href ? `<a href="${escapeHtml(crumb.href)}">${label}</a>` : `<span>${label}</span>`;
+    })
+    .join("");
+}
+
+function initShellNavigation() {
+  const nav = document.querySelector(".side-nav .nav-groups");
+  if (!nav) return;
+
+  nav.innerHTML = SHELL_NAV_GROUPS.map(
+    (group) => `
+      <section class="nav-group" data-nav-section="${escapeHtml(group.title.toLowerCase())}">
+        <p>${escapeHtml(group.title)}</p>
+        ${group.items
+          .map(
+            (item) => `
+              <a${isCurrentShellItem(item) ? ' aria-current="page"' : ""} href="${escapeHtml(item.href)}" data-nav-id="${escapeHtml(item.id)}" data-nav-code="${escapeHtml(item.code)}">${escapeHtml(item.label)}</a>
+            `
+          )
+          .join("")}
+      </section>
+    `
+  ).join("");
+}
+
+function initShellHeader() {
+  const meta = PAGE_META[getPageKey()];
+  if (!meta) return;
+
+  const header = document.querySelector(".page-header");
+  const h1 = header?.querySelector("h1");
+  const eyebrow = header?.querySelector(".eyebrow");
+  const crumbs = header?.querySelector(".module-crumbs");
+
+  if (h1) h1.textContent = meta.title;
+  if (eyebrow) eyebrow.textContent = meta.eyebrow;
+  if (crumbs) crumbs.innerHTML = renderShellCrumbs(meta.crumbs);
+  document.title = `Rateware ${meta.title}`;
+}
+
+function formatShellCount(value) {
+  return new Intl.NumberFormat().format(Number(value || 0));
+}
+
+function initShellStatus() {
+  if (getPageKey() === "app") return;
+
+  const header = document.querySelector(".page-header");
+  if (!header || document.querySelector(".shell-status-strip")) return;
+
+  const strip = document.createElement("nav");
+  strip.className = "shell-status-strip";
+  strip.setAttribute("aria-label", "Workspace status");
+  strip.innerHTML = `
+    <a href="./upload-history.html">
+      <span>Source files</span>
+      <strong data-shell-status="raw_uploads">-</strong>
+    </a>
+    <a href="./staging-review.html">
+      <span>Review queue</span>
+      <strong data-shell-status="pending_review">-</strong>
+    </a>
+    <a href="./rateware.html">
+      <span>Rateware</span>
+      <strong data-shell-status="approved_rows">-</strong>
+    </a>
+    <a href="./vendors.html">
+      <span>Carrier CRM</span>
+      <strong data-shell-status="procurement_vendors">-</strong>
+    </a>
+  `;
+  header.insertAdjacentElement("afterend", strip);
+
+  getKindeClient()
+    .then(async (kinde) => {
+      if (!(await kinde.isAuthenticated())) return;
+      const { callRatewareApi } = await import("./rateware-api.js");
+      const summary = await callRatewareApi("dashboard_summary");
+      strip.querySelectorAll("[data-shell-status]").forEach((element) => {
+        element.textContent = formatShellCount(summary[element.dataset.shellStatus]);
+      });
+    })
+    .catch(() => {
+      strip.classList.add("is-muted");
+    });
+}
+
+function initSaasShell() {
+  initShellNavigation();
+  initShellHeader();
+  initShellStatus();
+}
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", initSaasShell, { once: true });
+} else {
+  initSaasShell();
+}
+
 function initProxyActions() {
   document.querySelectorAll("[data-click-target]").forEach((button) => {
     if (button.dataset.proxyReady === "true") return;
