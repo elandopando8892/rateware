@@ -1012,6 +1012,7 @@ const BULK_RATE_ROW_SELECT = [
   "raw_upload_id",
   "vendor_id",
   "vendor_domain",
+  "vendors(vendor_name,domain)",
   "rfx_id",
   "origin",
   "destination",
@@ -1173,7 +1174,8 @@ function bulkColumnText(row: Record<string, unknown>, field: string) {
 }
 
 function bulkColumnValues(row: Record<string, unknown>, field: string) {
-  if (field === "vendor") return [row.vendor_domain].filter(Boolean);
+  const vendor = objectRecord(row.vendors);
+  if (field === "vendor") return [vendor.vendor_name, row.vendor_domain, vendor.domain].filter(Boolean);
   if (field === "origin") {
     return [
       row.origin,
@@ -1246,6 +1248,7 @@ function matchesBulkRatewareQuickFilter(row: Record<string, unknown>, filter: un
   if (value === "all-in") return bulkHasNumericValue(row.all_in_rate) && !bulkHasSplitRate(row);
   if (value === "split-rate") return bulkHasSplitRate(row);
   if (value === "with-capacity") return Boolean(cleanText(row.weekly_capacity));
+  if (value === "conflicts") return bulkHasReviewConflict(row);
   return true;
 }
 
@@ -5974,18 +5977,59 @@ Deno.serve(async (request) => {
     }
 
     if (body.action === "list_rateware") {
+      const limit = Math.min(Math.max(Number(body.limit) || 500, 1), 1000);
+      const offset = Math.max(Number(body.offset) || 0, 0);
+      const search = (cleanText(body.search) || "").replace(/[(),]/g, " ").trim();
+      const quickFilter = cleanText(body.quick_filter) || "all";
+      const columnFilters = objectRecord(body.column_filters);
+      const usesGlobalFilters = Object.keys(columnFilters).length > 0 || quickFilter !== "all";
+
+      if (usesGlobalFilters) {
+        const filtered = await fetchBulkRateRowsByFilter(supabase, {
+          mode: "rateware",
+          search,
+          operation: cleanText(body.operation),
+          service: cleanText(body.service),
+          quick_filter: quickFilter,
+          column_filters: columnFilters
+        }, 50000);
+        const orderedIds = filtered.rows.map((row) => cleanText(row.id)).filter(Boolean) as string[];
+        const pageIds = orderedIds.slice(offset, offset + limit);
+        let rows: Record<string, unknown>[] = [];
+
+        if (pageIds.length) {
+          const pageResult = await supabase
+            .from("rate_staging")
+            .select("*, vendors(vendor_name, domain, primary_email, base_stage, status)")
+            .in("id", pageIds);
+          if (pageResult.error) throw pageResult.error;
+          const byId = new Map((pageResult.data || []).map((row) => [cleanText(row.id), row]));
+          rows = pageIds.map((id) => byId.get(id)).filter(Boolean) as Record<string, unknown>[];
+        }
+
+        return jsonResponse({
+          rows,
+          total: filtered.rows.length,
+          database_count: filtered.database_count,
+          limit,
+          offset,
+          has_more: offset + rows.length < filtered.rows.length,
+          hard_limit_reached: filtered.hard_limit_reached
+        });
+      }
+
       let query = supabase
         .from("rate_staging")
         .select("*, vendors(vendor_name, domain, primary_email, base_stage, status)")
         .eq("status", "approved")
         .order("quote_date", { ascending: false, nullsFirst: false })
         .order("created_at", { ascending: false })
-        .limit(500);
+        .range(offset, offset + limit - 1);
 
       if (body.operation) query = query.eq("operation", body.operation);
       if (body.service) query = query.eq("service", body.service);
-      if (body.search) {
-        const term = String(body.search).trim();
+      if (search) {
+        const term = search;
         if (term) {
           query = query.or([
             `vendor_domain.ilike.%${term}%`,
@@ -6002,7 +6046,83 @@ Deno.serve(async (request) => {
 
       const result = await query;
       if (result.error) throw result.error;
-      return jsonResponse({ rows: result.data });
+      const countResult = await supabase
+        .from("rate_staging")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "approved");
+      if (countResult.error) throw countResult.error;
+      let total = result.data?.length || 0;
+      if (!body.operation && !body.service && !search) total = countResult.count || total;
+      else {
+        let countQuery = supabase
+          .from("rate_staging")
+          .select("id", { count: "exact", head: true })
+          .eq("status", "approved");
+        if (body.operation) countQuery = countQuery.eq("operation", body.operation);
+        if (body.service) countQuery = countQuery.eq("service", body.service);
+        if (search) {
+          countQuery = countQuery.or([
+            `vendor_domain.ilike.%${search}%`,
+            `rfx_id.ilike.%${search}%`,
+            `origin.ilike.%${search}%`,
+            `destination.ilike.%${search}%`,
+            `normalized_origin.ilike.%${search}%`,
+            `normalized_destination.ilike.%${search}%`,
+            `origin_market.ilike.%${search}%`,
+            `destination_market.ilike.%${search}%`
+          ].join(","));
+        }
+        const scopedCount = await countQuery;
+        if (scopedCount.error) throw scopedCount.error;
+        total = scopedCount.count || 0;
+      }
+      const rows = result.data || [];
+      return jsonResponse({
+        rows,
+        total,
+        limit,
+        offset,
+        has_more: offset + rows.length < total
+      });
+    }
+
+    if (body.action === "list_rateware_filter_values") {
+      const field = cleanText(body.field);
+      if (!field) return jsonResponse({ error: "Filter field is required." }, 400);
+      const limit = Math.min(Math.max(Number(body.limit) || 1000, 1), 2000);
+      const valueSearch = cleanText(body.value_search)?.toLowerCase() || "";
+      const columnFilters = objectRecord(body.column_filters);
+      delete columnFilters[field];
+
+      const filtered = await fetchBulkRateRowsByFilter(supabase, {
+        mode: "rateware",
+        search: (cleanText(body.search) || "").replace(/[(),]/g, " ").trim(),
+        operation: cleanText(body.operation),
+        service: cleanText(body.service),
+        quick_filter: cleanText(body.quick_filter) || "all",
+        column_filters: columnFilters
+      }, 50000);
+
+      const seen = new Map<string, string>();
+      for (const row of filtered.rows) {
+        const values = bulkColumnValues(row, field);
+        const list = values.length ? values : ["(blank)"];
+        for (const value of list) {
+          const label = cleanText(value) || "(blank)";
+          if (valueSearch && !label.toLowerCase().includes(valueSearch)) continue;
+          const key = bulkFilterKey(label);
+          if (!seen.has(key)) seen.set(key, label);
+        }
+      }
+
+      const values = [...seen.values()].sort((a, b) => a.localeCompare(b));
+      return jsonResponse({
+        field,
+        values: values.slice(0, limit),
+        total: values.length,
+        database_count: filtered.database_count,
+        hard_limit_reached: filtered.hard_limit_reached
+      });
     }
 
     if (body.action === "list_rateware_audit") {
@@ -6089,18 +6209,45 @@ Deno.serve(async (request) => {
 
     if (body.action === "create_rateware_version") {
       const ids = Array.isArray(body.ids) ? body.ids.map(String).filter(Boolean).slice(0, 1000) : [];
-      let query = supabase
-        .from("rate_staging")
-        .select("*, vendors(vendor_name, domain, primary_email, base_stage, status)")
-        .eq("status", "approved")
-        .order("quote_date", { ascending: false, nullsFirst: false })
-        .order("created_at", { ascending: false })
-        .limit(1000);
-      if (ids.length) query = query.in("id", ids);
+      const filters = objectRecord(body.filters);
+      let rows: Record<string, unknown>[] = [];
 
-      const rowsResult = await query;
-      if (rowsResult.error) throw rowsResult.error;
-      const rows = rowsResult.data || [];
+      if (ids.length) {
+        let query = supabase
+          .from("rate_staging")
+          .select("*, vendors(vendor_name, domain, primary_email, base_stage, status)")
+          .eq("status", "approved")
+          .order("quote_date", { ascending: false, nullsFirst: false })
+          .order("created_at", { ascending: false })
+          .limit(1000);
+        query = query.in("id", ids);
+        const rowsResult = await query;
+        if (rowsResult.error) throw rowsResult.error;
+        rows = rowsResult.data || [];
+      } else if (Object.keys(filters).length) {
+        const filtered = await fetchBulkRateRowsByFilter(supabase, { ...filters, mode: "rateware" }, 50000);
+        const filteredIds = filtered.rows.map((row) => cleanText(row.id)).filter(Boolean) as string[];
+        for (const chunk of chunkValues(filteredIds, 500)) {
+          const rowsResult = await supabase
+            .from("rate_staging")
+            .select("*, vendors(vendor_name, domain, primary_email, base_stage, status)")
+            .in("id", chunk);
+          if (rowsResult.error) throw rowsResult.error;
+          rows.push(...(rowsResult.data || []));
+        }
+        const byId = new Map(rows.map((row) => [cleanText(row.id), row]));
+        rows = filteredIds.map((id) => byId.get(id)).filter(Boolean) as Record<string, unknown>[];
+      } else {
+        const rowsResult = await supabase
+          .from("rate_staging")
+          .select("*, vendors(vendor_name, domain, primary_email, base_stage, status)")
+          .eq("status", "approved")
+          .order("quote_date", { ascending: false, nullsFirst: false })
+          .order("created_at", { ascending: false })
+          .limit(1000);
+        if (rowsResult.error) throw rowsResult.error;
+        rows = rowsResult.data || [];
+      }
       if (!rows.length) return jsonResponse({ error: "No approved Rateware rows found for this version." }, 400);
 
       const name = cleanText(body.name) || `Rateware ${new Date().toISOString().slice(0, 10)}`;
@@ -6221,10 +6368,6 @@ Deno.serve(async (request) => {
       if (!["archive", "remove"].includes(targetAction || "")) {
         return jsonResponse({ error: "Bulk target action must be archive or remove." }, 400);
       }
-      if (cleanText(filters.mode) === "rateware" && cleanText(filters.quick_filter) === "conflicts") {
-        return jsonResponse({ error: "The conflicts filter is visual. Add a column/search filter before using a filtered bulk action." }, 400);
-      }
-
       const actionFilters = {
         ...filters,
         exclude_archived: targetAction === "archive"

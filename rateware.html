@@ -50,7 +50,7 @@
             </nav>
           </div>
           <div class="page-header-actions">
-            <button class="page-primary-action" type="button" data-click-target="#export-visible-button">Export visible</button>
+            <button class="page-primary-action" type="button" data-click-target="#export-filtered-button">Export filtered</button>
             <form id="auth-form" class="auth-strip">
               <button id="auth-button" type="submit">Sign in with Kinde</button>
               <button id="sign-out-button" type="button" class="secondary hidden">Sign out</button>
@@ -132,9 +132,12 @@
                     <button id="renormalize-selected-rateware" type="button" class="secondary small-button" disabled>Re-normalize selected</button>
                     <button id="return-selected-button" type="button" class="secondary small-button" disabled>Return to staging</button>
                     <button id="export-selected-button" type="button" class="secondary small-button" disabled>Export selected CSV</button>
-                    <button id="export-visible-button" type="button" class="secondary small-button">Export visible CSV</button>
-                    <button id="export-client-visible-button" type="button" class="secondary small-button">Client export</button>
-                    <button id="export-rfx-visible-button" type="button" class="secondary small-button">RFx export</button>
+                    <button id="export-visible-button" type="button" class="secondary small-button">Export loaded CSV</button>
+                    <button id="export-filtered-button" type="button" class="secondary small-button">Export filtered CSV</button>
+                    <button id="export-client-visible-button" type="button" class="secondary small-button">Client loaded</button>
+                    <button id="export-client-filtered-button" type="button" class="secondary small-button">Client filtered</button>
+                    <button id="export-rfx-visible-button" type="button" class="secondary small-button">RFx loaded</button>
+                    <button id="export-rfx-filtered-button" type="button" class="secondary small-button">RFx filtered</button>
                     <button id="archive-filtered-rateware" type="button" class="secondary small-button">Archive filtered</button>
                     <button id="remove-filtered-rateware" type="button" class="danger small-button">Remove filtered</button>
                   </div>
@@ -163,7 +166,7 @@
                 <thead>
                   <tr>
                     <th class="select-column" data-col="select">
-                      <input id="select-all-rateware" type="checkbox" aria-label="Select all visible approved rates" />
+                      <input id="select-all-rateware" type="checkbox" aria-label="Select all loaded approved rates" />
                     </th>
                     <th data-col="vendor">Vendor</th>
                     <th data-col="origin">Origin</th>
@@ -213,7 +216,7 @@
                   </div>
                   <div class="action-row">
                     <button id="compare-selected-rateware" type="button" class="secondary small-button" disabled>Compare selected</button>
-                    <button id="compare-visible-rateware" type="button" class="secondary small-button">Compare visible</button>
+                    <button id="compare-visible-rateware" type="button" class="secondary small-button">Compare loaded</button>
                   </div>
                   <div id="rateware-comparison-output" class="rateware-comparison-output">
                     <span>Select lanes or compare the current view.</span>
@@ -237,7 +240,8 @@
                   </div>
                   <div class="action-row">
                     <button id="snapshot-selected-rateware" type="button" class="small-button" disabled>Snapshot selected</button>
-                    <button id="snapshot-visible-rateware" type="button" class="secondary small-button">Snapshot visible</button>
+                    <button id="snapshot-visible-rateware" type="button" class="secondary small-button">Snapshot loaded</button>
+                    <button id="snapshot-filtered-rateware" type="button" class="secondary small-button">Snapshot filtered</button>
                   </div>
                   <div id="rateware-version-list" class="rateware-version-list"></div>
                   <p id="rateware-version-status" class="status-message" role="status"></p>
@@ -263,7 +267,7 @@
             <div class="drawer-header">
               <div>
                 <p class="eyebrow">Spreadsheet bulk edit</p>
-                <h2>Apply to selected rates</h2>
+                <h2>Apply to selected or filtered rates</h2>
               </div>
               <button id="close-rateware-bulk-drawer" class="secondary small-button" type="button">Close</button>
             </div>
@@ -276,7 +280,8 @@
                 Value
                 <input id="rateware-bulk-value" list="rateware-bulk-value-options" placeholder="Set selected rows..." />
               </label>
-              <button id="apply-rateware-bulk-edit" type="button" disabled>Apply bulk edit</button>
+              <button id="apply-rateware-bulk-edit" type="button" disabled>Apply to selected rows</button>
+              <button id="apply-rateware-bulk-edit-filtered" class="secondary" type="button">Apply to filtered rows</button>
               <datalist id="rateware-bulk-value-options"></datalist>
               <p id="rateware-bulk-status" class="status-message" role="status"></p>
             </div>

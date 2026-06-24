@@ -1,7 +1,32 @@
 import { callRatewareApi } from "./rateware-api.js";
 
-export async function fetchApprovedRateware({ search = "", operation = "", service = "" } = {}) {
-  return (await callRatewareApi("list_rateware", { search, operation, service })).rows;
+export async function fetchApprovedRatewarePage({ search = "", operation = "", service = "", quickFilter = "all", columnFilters = {}, limit = 500, offset = 0 } = {}) {
+  return await callRatewareApi("list_rateware", {
+    search,
+    operation,
+    service,
+    quick_filter: quickFilter,
+    column_filters: columnFilters,
+    limit,
+    offset
+  });
+}
+
+export async function fetchApprovedRateware({ search = "", operation = "", service = "", quickFilter = "all", columnFilters = {}, limit = 500, offset = 0 } = {}) {
+  return (await fetchApprovedRatewarePage({ search, operation, service, quickFilter, columnFilters, limit, offset })).rows;
+}
+
+export async function fetchRatewareFilterValues({ field, search = "", valueSearch = "", operation = "", service = "", quickFilter = "all", columnFilters = {}, limit = 1000 } = {}) {
+  return (await callRatewareApi("list_rateware_filter_values", {
+    field,
+    search,
+    value_search: valueSearch,
+    operation,
+    service,
+    quick_filter: quickFilter,
+    column_filters: columnFilters,
+    limit
+  })).values;
 }
 
 export async function fetchRatewareAudit(id, limit = 80) {
@@ -22,6 +47,15 @@ export async function updateApprovedRatewareRow(id, patch) {
 
 export async function bulkUpdateApprovedRatewareRows(ids = [], patch = {}) {
   return await callRatewareApi("bulk_update_rateware", { ids, patch });
+}
+
+export async function updateApprovedRatewareByFilter(filters = {}, patch = {}, { dryRun = false, maxRows = undefined } = {}) {
+  return await callRatewareApi("bulk_update_rate_rows_by_filter", {
+    filters: { ...filters, mode: "rateware" },
+    patch,
+    dry_run: dryRun,
+    max_rows: maxRows
+  });
 }
 
 export async function renormalizeApprovedRatewareRows(ids = []) {
@@ -66,9 +100,10 @@ export async function fetchRatewareBookVersion(id) {
   return (await callRatewareApi("get_rateware_version", { id })).version;
 }
 
-export async function createRatewareBookVersion({ ids = [], name = "", description = "", filterSummary = {} } = {}) {
+export async function createRatewareBookVersion({ ids = [], filters = null, name = "", description = "", filterSummary = {} } = {}) {
   return (await callRatewareApi("create_rateware_version", {
     ids,
+    filters,
     name,
     description,
     filter_summary: filterSummary
