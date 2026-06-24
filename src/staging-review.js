@@ -3,7 +3,7 @@ import { createLocationMatchDrawer } from "./location-match-drawer.js";
 import { initSpreadsheetColumnFilters } from "./spreadsheet-column-filters.js";
 import { installSpreadsheetGrid } from "./spreadsheet-grid.js";
 import { initColumnVisibility, initDrawer, initLocationAutocomplete } from "./sheet-ui.js";
-import { archiveStagingRows, archiveStagingRowsByFilter, enrichStagingLocationZips, fetchStagingOptions, fetchStagingPage, matchStagingVendors, removeStagingRows, removeStagingRowsByFilter, renormalizeStagingRows, saveLocationAlias, updateStagingRow } from "./staging-service.js";
+import { archiveStagingRows, archiveStagingRowsByFilter, enrichStagingLocationZips, fetchStagingFilterValues, fetchStagingOptions, fetchStagingPage, matchStagingVendors, removeStagingRows, removeStagingRowsByFilter, renormalizeStagingRows, saveLocationAlias, updateStagingRow, updateStagingRowsByFilter } from "./staging-service.js";
 
 const body = document.querySelector("#staging-body");
 const refreshButton = document.querySelector("#refresh-staging-button");
@@ -24,6 +24,8 @@ const bulkSaveButton = document.querySelector("#bulk-save-button");
 const bulkMatchVendorsButton = document.querySelector("#bulk-match-vendors-button");
 const bulkApproveButton = document.querySelector("#bulk-approve-button");
 const bulkRejectButton = document.querySelector("#bulk-reject-button");
+const bulkApproveFilteredButton = document.querySelector("#bulk-approve-filtered-button");
+const bulkRejectFilteredButton = document.querySelector("#bulk-reject-filtered-button");
 const bulkEnrichZipsButton = document.querySelector("#bulk-enrich-zips-button");
 const bulkRenormalizeButton = document.querySelector("#bulk-renormalize-button");
 const bulkArchiveButton = document.querySelector("#bulk-archive-button");
@@ -39,6 +41,7 @@ const bulkFieldSelect = document.querySelector("#staging-bulk-field");
 const bulkValueInput = document.querySelector("#staging-bulk-value");
 const bulkValueOptions = document.querySelector("#staging-bulk-value-options");
 const applyBulkEditButton = document.querySelector("#apply-staging-bulk-edit");
+const applyBulkEditFilteredButton = document.querySelector("#apply-staging-bulk-edit-filtered");
 const bulkEditStatus = document.querySelector("#staging-bulk-status");
 const columnMenu = document.querySelector("#staging-column-menu");
 const stagingTable = document.querySelector(".staging-table");
@@ -440,8 +443,9 @@ function updateBulkControls() {
   bulkSelectionCount.textContent = `${selectedCount} selected`;
   bulkActionBar?.classList.toggle("is-empty", selectedCount === 0);
   if (openSelectedDetailButton) openSelectedDetailButton.disabled = selectedCount !== 1;
-  if (openBulkDrawerButton) openBulkDrawerButton.disabled = selectedCount === 0;
+  if (openBulkDrawerButton) openBulkDrawerButton.disabled = false;
   if (applyBulkEditButton) applyBulkEditButton.disabled = selectedCount === 0;
+  if (applyBulkEditFilteredButton) applyBulkEditFilteredButton.disabled = !bulkFieldSelect?.value;
   if (stagingMetricSelected) stagingMetricSelected.textContent = String(selectedCount);
   bulkSaveButton.disabled = selectedCount === 0;
   if (bulkMatchVendorsButton) bulkMatchVendorsButton.disabled = selectedCount === 0;
@@ -830,6 +834,20 @@ function activeStagingBulkFilters() {
   };
 }
 
+async function stagingFilterMenuValues(field, search = "") {
+  const columnFilters = { ...activeColumnFilters() };
+  delete columnFilters[field];
+  return await fetchStagingFilterValues({
+    field,
+    status: statusFilter.value,
+    rawUploadId: rawUploadScopeId,
+    search: String(stagingSearchInput?.value || "").trim(),
+    valueSearch: search,
+    reviewFilter: activeReviewFilter,
+    columnFilters
+  });
+}
+
 function stagingFilterSummaryLabel(filters) {
   const parts = [];
   if (filters.status) parts.push(`status ${filters.status}`);
@@ -842,12 +860,10 @@ function stagingFilterSummaryLabel(filters) {
 }
 
 function updateReviewFilters() {
-  const baseRows = applyStagingTextSearch(scopedStagingRows(loadedRows));
   reviewFilterButtons.forEach((button) => {
     const filter = button.dataset.stagingFilter || "all";
-    const count = filter === "all" ? baseRows.length : applyReviewFilterForCount(baseRows, filter).length;
     const label = REVIEW_FILTER_LABELS[filter] || filter;
-    button.textContent = `${label} ${count}`;
+    button.textContent = label;
     button.classList.toggle("is-active", filter === activeReviewFilter);
   });
 }
@@ -1362,7 +1378,9 @@ function stagingPageParams(offset = 0) {
     rawUploadId: rawUploadScopeId,
     limit: STAGING_PAGE_SIZE,
     offset,
-    search: String(stagingSearchInput?.value || "").trim()
+    search: String(stagingSearchInput?.value || "").trim(),
+    reviewFilter: activeReviewFilter,
+    columnFilters: activeColumnFilters()
   };
 }
 
@@ -1402,7 +1420,7 @@ async function loadMoreRows() {
     const page = await fetchStagingPage(stagingPageParams(stagingLoadOffset));
     if (token !== stagingLoadToken) return;
     applyStagingPage(page, { append: true });
-    await applyPermissionState("[data-save-id], [data-approve-id], [data-reject-id], #save-staging-button, #approve-staging-button, #reject-staging-button, #bulk-save-button, #bulk-match-vendors-button, #bulk-approve-button, #bulk-reject-button, #bulk-enrich-zips-button, #bulk-renormalize-button, #bulk-archive-button, #bulk-remove-button, #bulk-archive-filtered-button, #bulk-remove-filtered-button", "staging:approve");
+    await applyPermissionState("[data-save-id], [data-approve-id], [data-reject-id], #save-staging-button, #approve-staging-button, #reject-staging-button, #bulk-save-button, #bulk-match-vendors-button, #bulk-approve-button, #bulk-reject-button, #bulk-approve-filtered-button, #bulk-reject-filtered-button, #bulk-enrich-zips-button, #bulk-renormalize-button, #bulk-archive-button, #bulk-remove-button, #bulk-archive-filtered-button, #bulk-remove-filtered-button, #apply-staging-bulk-edit-filtered", "staging:approve");
   } catch (error) {
     if (token !== stagingLoadToken) return;
     stagingHasMoreRows = true;
@@ -1717,6 +1735,50 @@ async function runFilteredStagingAction(targetAction) {
   }
 }
 
+async function runFilteredStagingUpdate(patch, label) {
+  const filters = activeStagingBulkFilters();
+  const scope = stagingFilterSummaryLabel(filters);
+  const normalizedLabel = label || "update";
+
+  try {
+    await ensureSignedIn();
+    if (bulkApproveFilteredButton) bulkApproveFilteredButton.disabled = true;
+    if (bulkRejectFilteredButton) bulkRejectFilteredButton.disabled = true;
+    if (applyBulkEditFilteredButton) applyBulkEditFilteredButton.disabled = true;
+    setBulkStatus(`Counting rows for ${normalizedLabel} filtered...`);
+
+    const preview = await updateStagingRowsByFilter(filters, patch, { dryRun: true });
+    const matched = Number(preview.matched || 0);
+    if (!matched) {
+      setBulkStatus(`No staging rows match: ${scope}.`, "warning");
+      return;
+    }
+
+    const typed = window.prompt(`This will ${normalizedLabel} ${matched.toLocaleString()} staging row(s) matching: ${scope}.\n\nType APPLY to continue.`);
+    if (typed !== "APPLY") {
+      setBulkStatus(`Filtered ${normalizedLabel} cancelled.`, "warning");
+      return;
+    }
+
+    setBulkStatus(`Applying filtered ${normalizedLabel} to ${matched.toLocaleString()} staging row(s)...`);
+    const result = await updateStagingRowsByFilter(filters, patch, { dryRun: false, maxRows: matched });
+    const affected = Number(result.updated || 0);
+
+    selectedRowIds.clear();
+    const capped = result.hard_limit_reached ? " API safety limit reached; narrow the filters and run again for the remainder." : "";
+    setBulkStatus(`${affected.toLocaleString()} filtered staging row(s) updated.${capped}`, result.hard_limit_reached ? "warning" : "success");
+    await loadRows();
+  } catch (error) {
+    setBulkStatus(error.message, "error");
+    setBulkEditStatus(error.message, "error");
+  } finally {
+    if (bulkApproveFilteredButton) bulkApproveFilteredButton.disabled = false;
+    if (bulkRejectFilteredButton) bulkRejectFilteredButton.disabled = false;
+    if (applyBulkEditFilteredButton) applyBulkEditFilteredButton.disabled = false;
+    updateBulkControls();
+  }
+}
+
 async function runBulkRenormalize() {
   const rows = selectedRows();
   if (!rows.length) return;
@@ -1858,7 +1920,7 @@ async function loadRows() {
     populateBulkEditControls();
     stagingIsLoadingMore = false;
     applyStagingPage(page, { append: false });
-    await applyPermissionState("[data-save-id], [data-approve-id], [data-reject-id], #save-staging-button, #approve-staging-button, #reject-staging-button, #bulk-save-button, #bulk-match-vendors-button, #bulk-approve-button, #bulk-reject-button, #bulk-enrich-zips-button, #bulk-renormalize-button, #bulk-archive-button, #bulk-remove-button, #bulk-archive-filtered-button, #bulk-remove-filtered-button", "staging:approve");
+    await applyPermissionState("[data-save-id], [data-approve-id], [data-reject-id], #save-staging-button, #approve-staging-button, #reject-staging-button, #bulk-save-button, #bulk-match-vendors-button, #bulk-approve-button, #bulk-reject-button, #bulk-approve-filtered-button, #bulk-reject-filtered-button, #bulk-enrich-zips-button, #bulk-renormalize-button, #bulk-archive-button, #bulk-remove-button, #bulk-archive-filtered-button, #bulk-remove-filtered-button, #apply-staging-bulk-edit-filtered", "staging:approve");
   } catch (error) {
     stagingIsLoadingMore = false;
     body.innerHTML = `<tr><td colspan="${STAGING_COLSPAN}">Could not load staging rows. ${escapeHtml(error.message)}</td></tr>`;
@@ -2036,7 +2098,7 @@ reviewFilterButtons.forEach((button) => {
     activeReviewFilter = button.dataset.stagingFilter || "all";
     selectedRowIds.clear();
     setBulkStatus("");
-    renderRows(visibleStagingRows());
+    loadRows();
   });
 });
 stagingSearchInput?.addEventListener("input", () => {
@@ -2071,8 +2133,15 @@ bulkArchiveButton?.addEventListener("click", runBulkArchive);
 bulkRemoveButton?.addEventListener("click", runBulkRemove);
 bulkArchiveFilteredButton?.addEventListener("click", () => runFilteredStagingAction("archive"));
 bulkRemoveFilteredButton?.addEventListener("click", () => runFilteredStagingAction("remove"));
+bulkApproveFilteredButton?.addEventListener("click", () => runFilteredStagingUpdate({ status: "approved" }, "approve"));
+bulkRejectFilteredButton?.addEventListener("click", () => runFilteredStagingUpdate({ status: "rejected" }, "reject"));
 bulkFieldSelect?.addEventListener("change", updateBulkValueOptions);
 applyBulkEditButton?.addEventListener("click", applySelectedBulkEdit);
+applyBulkEditFilteredButton?.addEventListener("click", () => {
+  const field = bulkFieldSelect?.value;
+  if (!field) return;
+  runFilteredStagingUpdate({ [field]: bulkPatchValue(field, bulkValueInput?.value) }, `set ${field}`);
+});
 body.addEventListener("click", (event) => {
   const matchButton = event.target.closest("[data-location-match-detail]");
   if (matchButton) {
@@ -2112,11 +2181,12 @@ columnFilterController = initSpreadsheetColumnFilters({
   columns: SHEET_COLUMNS,
   getRows: () => applyStagingTextSearch(applyReviewFilter(scopedStagingRows(loadedRows))),
   getValues: columnFilterValues,
+  getMenuValues: stagingFilterMenuValues,
   scope: "staging",
   onChange: () => {
     selectedRowIds.clear();
     setBulkStatus("");
-    renderRows(visibleStagingRows());
+    loadRows();
   }
 });
 columnVisibilityController?.applyVisibility();

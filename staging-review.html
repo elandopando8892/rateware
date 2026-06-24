@@ -132,6 +132,8 @@
                   <div>
                     <button id="bulk-match-vendors-button" type="button" class="secondary small-button" disabled>Match vendors</button>
                     <button id="bulk-reject-button" type="button" class="danger small-button" disabled>Reject selected</button>
+                    <button id="bulk-approve-filtered-button" type="button" class="small-button">Approve filtered</button>
+                    <button id="bulk-reject-filtered-button" type="button" class="danger small-button">Reject filtered</button>
                     <button id="bulk-enrich-zips-button" type="button" class="secondary small-button" disabled>Find missing ZIPs</button>
                     <button id="bulk-renormalize-button" type="button" class="secondary small-button" disabled>Re-normalize selected</button>
                     <button id="bulk-archive-button" type="button" class="secondary small-button" disabled>Archive selected</button>
@@ -292,7 +294,7 @@
             <div class="drawer-header">
               <div>
                 <p class="eyebrow">Spreadsheet bulk edit</p>
-                <h2>Apply to selected rows</h2>
+                <h2>Apply to selected or filtered rows</h2>
               </div>
               <button id="close-staging-bulk-drawer" class="secondary small-button" type="button">Close</button>
             </div>
@@ -306,6 +308,7 @@
                 <input id="staging-bulk-value" list="staging-bulk-value-options" placeholder="Set selected rows..." />
               </label>
               <button id="apply-staging-bulk-edit" type="button" disabled>Apply bulk edit</button>
+              <button id="apply-staging-bulk-edit-filtered" class="secondary" type="button">Apply to filtered rows</button>
               <datalist id="staging-bulk-value-options"></datalist>
               <p id="staging-bulk-status" class="status-message" role="status"></p>
             </div>

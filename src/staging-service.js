@@ -1,17 +1,32 @@
 import { callRatewareApi } from "./rateware-api.js";
 
-export async function fetchStagingPage({ status = "pending_review", rawUploadId = "", limit = 500, offset = 0, search = "" } = {}) {
+export async function fetchStagingPage({ status = "pending_review", rawUploadId = "", limit = 500, offset = 0, search = "", reviewFilter = "all", columnFilters = {} } = {}) {
   return await callRatewareApi("list_staging", {
     status,
     raw_upload_id: rawUploadId,
     limit,
     offset,
-    search
+    search,
+    review_filter: reviewFilter,
+    column_filters: columnFilters
   });
 }
 
-export async function fetchStagingRows({ status = "pending_review", rawUploadId = "", limit = 1000, offset = 0, search = "" } = {}) {
-  return (await fetchStagingPage({ status, rawUploadId, limit, offset, search })).rows;
+export async function fetchStagingRows({ status = "pending_review", rawUploadId = "", limit = 1000, offset = 0, search = "", reviewFilter = "all", columnFilters = {} } = {}) {
+  return (await fetchStagingPage({ status, rawUploadId, limit, offset, search, reviewFilter, columnFilters })).rows;
+}
+
+export async function fetchStagingFilterValues({ field, status = "pending_review", rawUploadId = "", search = "", valueSearch = "", reviewFilter = "all", columnFilters = {}, limit = 1000 } = {}) {
+  return (await callRatewareApi("list_staging_filter_values", {
+    field,
+    status,
+    raw_upload_id: rawUploadId,
+    search,
+    value_search: valueSearch,
+    review_filter: reviewFilter,
+    column_filters: columnFilters,
+    limit
+  })).values;
 }
 
 export async function fetchStagingOptions() {
@@ -59,6 +74,15 @@ export async function removeStagingRowsByFilter(filters = {}, { dryRun = false, 
   return await callRatewareApi("bulk_rate_rows_by_filter", {
     target_action: "remove",
     filters: { ...filters, mode: "staging" },
+    dry_run: dryRun,
+    max_rows: maxRows
+  });
+}
+
+export async function updateStagingRowsByFilter(filters = {}, patch = {}, { dryRun = false, maxRows = undefined } = {}) {
+  return await callRatewareApi("bulk_update_rate_rows_by_filter", {
+    filters: { ...filters, mode: "staging" },
+    patch,
     dry_run: dryRun,
     max_rows: maxRows
   });

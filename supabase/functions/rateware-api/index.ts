@@ -1031,6 +1031,10 @@ const BULK_RATE_ROW_SELECT = [
   "destination_country",
   "equipment",
   "trailer",
+  "hazmat",
+  "temperature_controlled",
+  "config",
+  "driver",
   "operation",
   "service",
   "all_in_rate",
@@ -5852,7 +5856,45 @@ Deno.serve(async (request) => {
     if (body.action === "list_staging") {
       const limit = Math.min(Math.max(Number(body.limit) || 500, 1), 1000);
       const offset = Math.max(Number(body.offset) || 0, 0);
-      const search = cleanText(body.search).replace(/[(),]/g, " ").trim();
+      const search = (cleanText(body.search) || "").replace(/[(),]/g, " ").trim();
+      const columnFilters = objectRecord(body.column_filters);
+      const reviewFilter = cleanText(body.review_filter) || "all";
+      const usesGlobalFilters = Object.keys(columnFilters).length > 0 || reviewFilter !== "all";
+
+      if (usesGlobalFilters) {
+        const filtered = await fetchBulkRateRowsByFilter(supabase, {
+          mode: "staging",
+          status: cleanText(body.status),
+          raw_upload_id: cleanText(body.raw_upload_id),
+          search,
+          review_filter: reviewFilter,
+          column_filters: columnFilters
+        }, 50000);
+        const orderedIds = filtered.rows.map((row) => cleanText(row.id)).filter(Boolean) as string[];
+        const pageIds = orderedIds.slice(offset, offset + limit);
+        let rows: Record<string, unknown>[] = [];
+
+        if (pageIds.length) {
+          const pageResult = await supabase
+            .from("rate_staging")
+            .select("*, vendors(vendor_name, domain, primary_email, base_stage, status), rateware_lane_legs(*)")
+            .in("id", pageIds);
+          if (pageResult.error) throw pageResult.error;
+          const byId = new Map((pageResult.data || []).map((row) => [cleanText(row.id), row]));
+          rows = pageIds.map((id) => byId.get(id)).filter(Boolean) as Record<string, unknown>[];
+        }
+
+        return jsonResponse({
+          rows,
+          total: filtered.rows.length,
+          database_count: filtered.database_count,
+          limit,
+          offset,
+          has_more: offset + rows.length < filtered.rows.length,
+          hard_limit_reached: filtered.hard_limit_reached
+        });
+      }
+
       let query = supabase
         .from("rate_staging")
         .select("*, vendors(vendor_name, domain, primary_email, base_stage, status), rateware_lane_legs(*)", { count: "exact" })
@@ -5889,6 +5931,45 @@ Deno.serve(async (request) => {
         limit,
         offset,
         has_more: offset + rows.length < total
+      });
+    }
+
+    if (body.action === "list_staging_filter_values") {
+      const field = cleanText(body.field);
+      if (!field) return jsonResponse({ error: "Filter field is required." }, 400);
+      const limit = Math.min(Math.max(Number(body.limit) || 1000, 1), 2000);
+      const valueSearch = cleanText(body.value_search)?.toLowerCase() || "";
+      const columnFilters = objectRecord(body.column_filters);
+      delete columnFilters[field];
+
+      const filtered = await fetchBulkRateRowsByFilter(supabase, {
+        mode: "staging",
+        status: cleanText(body.status),
+        raw_upload_id: cleanText(body.raw_upload_id),
+        search: (cleanText(body.search) || "").replace(/[(),]/g, " ").trim(),
+        review_filter: cleanText(body.review_filter) || "all",
+        column_filters: columnFilters
+      }, 50000);
+
+      const seen = new Map<string, string>();
+      for (const row of filtered.rows) {
+        const values = bulkColumnValues(row, field);
+        const list = values.length ? values : ["(blank)"];
+        for (const value of list) {
+          const label = cleanText(value) || "(blank)";
+          if (valueSearch && !label.toLowerCase().includes(valueSearch)) continue;
+          const key = bulkFilterKey(label);
+          if (!seen.has(key)) seen.set(key, label);
+        }
+      }
+
+      const values = [...seen.values()].sort((a, b) => a.localeCompare(b));
+      return jsonResponse({
+        field,
+        values: values.slice(0, limit),
+        total: values.length,
+        database_count: filtered.database_count,
+        hard_limit_reached: filtered.hard_limit_reached
       });
     }
 
@@ -6198,6 +6279,98 @@ Deno.serve(async (request) => {
         matched: ids.length,
         updated: targetAction === "archive" ? affected : 0,
         removed: targetAction === "remove" ? affected : 0,
+        max_rows: maxRows,
+        hard_limit_reached: filtered.hard_limit_reached
+      });
+    }
+
+    if (body.action === "bulk_update_rate_rows_by_filter") {
+      const filters = objectRecord(body.filters);
+      const patchInput = objectRecord(body.patch);
+      const dryRun = body.dry_run === true;
+      const maxRows = Math.min(Math.max(Number(body.max_rows) || 50000, 1), 50000);
+      const mode = cleanText(filters.mode) === "rateware" ? "rateware" : "staging";
+      if (!Object.keys(patchInput).length) return jsonResponse({ error: "Bulk update patch is required." }, 400);
+      if (mode === "rateware" && patchInput.status !== undefined) {
+        return jsonResponse({ error: "Filtered Rateware updates cannot change approved status." }, 400);
+      }
+
+      const filtered = await fetchBulkRateRowsByFilter(supabase, filters, dryRun ? 50000 : maxRows);
+      const ids = filtered.rows.map((row) => cleanText(row.id)).filter(Boolean) as string[];
+      if (dryRun) {
+        return jsonResponse({
+          matched: ids.length,
+          database_count: filtered.database_count,
+          hard_limit_reached: filtered.hard_limit_reached,
+          max_rows: maxRows
+        });
+      }
+      if (!ids.length) {
+        return jsonResponse({
+          matched: 0,
+          updated: 0,
+          rows: []
+        });
+      }
+
+      const requiresRowSpecificPatch = patchInput.vendor_domain !== undefined
+        || patchInput.trailer !== undefined
+        || patchInput.hazmat !== undefined
+        || patchInput.temperature_controlled !== undefined;
+      const updatedRows: Record<string, unknown>[] = [];
+
+      if (requiresRowSpecificPatch) {
+        for (const current of filtered.rows) {
+          const patch = normalizeStagingPatch(patchInput, current || {});
+          Object.assign(patch, await vendorLinkPatch(supabase, user, patchInput, current || {}));
+          if (mode === "rateware") delete patch.status;
+          if (!Object.keys(patch).length) continue;
+
+          const result = await supabase
+            .from("rate_staging")
+            .update(patch)
+            .eq("id", current.id)
+            .select("id,status")
+            .single();
+          if (result.error) throw result.error;
+          updatedRows.push(result.data);
+        }
+      } else {
+        const patch = normalizeStagingPatch(patchInput, {});
+        if (mode === "rateware") delete patch.status;
+        if (!Object.keys(patch).length) return jsonResponse({ error: "No valid bulk updates provided." }, 400);
+
+        for (const chunk of chunkValues(ids, 500)) {
+          const result = await supabase
+            .from("rate_staging")
+            .update(patch)
+            .in("id", chunk)
+            .select("id,status");
+          if (result.error) throw result.error;
+          updatedRows.push(...(result.data || []));
+        }
+      }
+
+      await writeAuditLog(
+        supabase,
+        user,
+        `${mode}.bulk_update_filtered`,
+        "rate_staging",
+        ids.slice(0, 50).join(","),
+        `Updated ${updatedRows.length} ${mode} row(s) using active filters`,
+        {
+          ids_count: ids.length,
+          updated_count: updatedRows.length,
+          changed_fields: Object.keys(patchInput),
+          filters,
+          hard_limit_reached: filtered.hard_limit_reached
+        }
+      );
+
+      return jsonResponse({
+        matched: ids.length,
+        updated: updatedRows.length,
+        rows: updatedRows.slice(0, 100),
         max_rows: maxRows,
         hard_limit_reached: filtered.hard_limit_reached
       });

@@ -31,7 +31,7 @@ function uniqueValues(rows, field, getValues) {
   return [...seen.values()].sort((a, b) => a.localeCompare(b));
 }
 
-export function initSpreadsheetColumnFilters({ table, columns = [], getRows, getValues, onChange, scope = "sheet" }) {
+export function initSpreadsheetColumnFilters({ table, columns = [], getRows, getValues, getMenuValues = null, onChange, scope = "sheet" }) {
   if (!table || !columns.length) return null;
 
   const state = new Map();
@@ -102,9 +102,28 @@ export function initSpreadsheetColumnFilters({ table, columns = [], getRows, get
     });
   }
 
-  function renderMenu(field, search = "") {
+  async function menuValues(field, search = "") {
+    if (typeof getMenuValues === "function") {
+      const values = await getMenuValues(field, search);
+      return Array.isArray(values) ? values.map(valueLabel).sort((a, b) => a.localeCompare(b)) : [];
+    }
+    return uniqueValues(getRows(), field, getValues);
+  }
+
+  async function renderMenu(field, search = "") {
     const column = filterableColumns.find((item) => item.key === field);
-    const values = uniqueValues(getRows(), field, getValues);
+    popover.innerHTML = `
+      <div class="sheet-filter-popover-header">
+        <strong>${escapeHtml(column?.label || field)}</strong>
+        <button type="button" data-sheet-filter-close>Close</button>
+      </div>
+      <input class="sheet-filter-search" type="search" placeholder="Search values..." value="${escapeHtml(search)}" />
+      <p class="muted-text">Loading values...</p>
+    `;
+    popover.dataset.field = field;
+    popover.classList.remove("hidden");
+
+    const values = await menuValues(field, search);
     const query = search.trim().toLowerCase();
     const visibleValues = values
       .filter((value) => !query || value.toLowerCase().includes(query))
@@ -132,16 +151,17 @@ export function initSpreadsheetColumnFilters({ table, columns = [], getRows, get
     `;
 
     popover.dataset.field = field;
+    popover.dataset.values = JSON.stringify(values.map(valueKey));
     popover.classList.remove("hidden");
     popover.querySelector(".sheet-filter-search")?.focus();
   }
 
-  function openMenu(button) {
+  async function openMenu(button) {
     const field = button.dataset[`${scope}FilterMenu`];
     const rect = button.getBoundingClientRect();
     popover.style.left = `${Math.min(rect.left, window.innerWidth - 340)}px`;
     popover.style.top = `${rect.bottom + 4}px`;
-    renderMenu(field);
+    await renderMenu(field);
   }
 
   function clear({ silent = false } = {}) {
@@ -166,7 +186,7 @@ export function initSpreadsheetColumnFilters({ table, columns = [], getRows, get
     renderMenu(popover.dataset.field, search.value);
   });
 
-  popover.addEventListener("click", (event) => {
+  popover.addEventListener("click", async (event) => {
     if (event.target.closest("[data-sheet-filter-close]")) {
       popover.classList.add("hidden");
       return;
@@ -178,7 +198,7 @@ export function initSpreadsheetColumnFilters({ table, columns = [], getRows, get
     if (event.target.closest("[data-sheet-filter-all]")) {
       state.delete(field);
       updateButtons();
-      renderMenu(field);
+      await renderMenu(field);
       onChange?.();
       return;
     }
@@ -186,14 +206,14 @@ export function initSpreadsheetColumnFilters({ table, columns = [], getRows, get
     if (event.target.closest("[data-sheet-filter-none]")) {
       state.set(field, new Set(["__none__"]));
       updateButtons();
-      renderMenu(field);
+      await renderMenu(field);
       onChange?.();
       return;
     }
 
     const checkbox = event.target.closest("[data-sheet-filter-value]");
     if (!checkbox) return;
-    const allKeys = uniqueValues(getRows(), field, getValues).map(valueKey);
+    const allKeys = JSON.parse(popover.dataset.values || "[]");
     const current = selected(field);
     const active = current.size && !current.has("__none__") ? new Set(current) : new Set(allKeys);
     if (checkbox.checked) active.add(checkbox.dataset.sheetFilterValue);
