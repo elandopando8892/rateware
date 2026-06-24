@@ -6955,6 +6955,40 @@ tbody tr:hover {
   font-size: 0.98rem;
 }
 
+.review-queue-workspace .workbench-header {
+  align-items: start;
+  gap: 18px;
+}
+
+.staging-summary-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(86px, 1fr));
+  gap: 6px;
+  width: min(520px, 100%);
+}
+
+.staging-summary-strip article {
+  display: grid;
+  gap: 3px;
+  min-height: 42px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #fbfcfd;
+  padding: 6px 8px;
+}
+
+.staging-summary-strip span {
+  color: var(--muted);
+  font-size: 0.64rem;
+  font-weight: 840;
+}
+
+.staging-summary-strip strong {
+  color: var(--text);
+  font-size: 1.02rem;
+  line-height: 1;
+}
+
 .spreadsheet-workbench .saved-view-strip {
   flex-wrap: nowrap;
   overflow-x: auto;
@@ -7001,6 +7035,29 @@ tbody tr:hover {
   margin: 2px 0;
   padding: 4px;
   box-shadow: 0 6px 14px rgba(20, 31, 38, 0.055);
+}
+
+.review-queue-command-bar {
+  display: grid;
+  grid-template-columns: minmax(0, 0.88fr) minmax(420px, 1.12fr);
+  align-items: end;
+}
+
+.review-queue-command-bar .bulk-action-bar {
+  grid-column: 1 / -1;
+}
+
+.review-mode-tabs {
+  align-items: end;
+  margin-bottom: 0;
+}
+
+.review-queue-toolbar {
+  grid-template-columns: minmax(220px, 1fr) minmax(150px, 220px) repeat(3, auto);
+}
+
+.review-search-field input {
+  min-width: 0;
 }
 
 .review-filter-row {
@@ -8043,9 +8100,16 @@ tbody tr:hover {
   }
 
   .source-summary-strip,
-  .source-files-toolbar {
+  .source-files-toolbar,
+  .staging-summary-strip,
+  .review-queue-command-bar,
+  .review-queue-toolbar {
     grid-template-columns: 1fr;
     width: 100%;
+  }
+
+  .review-queue-workspace .workbench-header {
+    display: grid;
   }
 
   .shell-layout {

@@ -60,44 +60,45 @@
         </header>
 
         <main class="history-layout">
-          <section class="workspace-panel spreadsheet-workbench">
+          <section class="workspace-panel spreadsheet-workbench review-queue-workspace">
             <div class="workbench-header">
               <div>
                 <p class="eyebrow">Spreadsheet workbench</p>
                 <h2>Quote normalization</h2>
               </div>
-              <div class="saved-view-strip" aria-label="Staging saved views">
+              <div class="staging-summary-strip" aria-label="Staging quality summary">
+                <article>
+                  <span>Visible</span>
+                  <strong id="staging-metric-visible">0</strong>
+                </article>
+                <article>
+                  <span>Location gaps</span>
+                  <strong id="staging-metric-location">0</strong>
+                </article>
+                <article>
+                  <span>Rate gaps</span>
+                  <strong id="staging-metric-rate">0</strong>
+                </article>
+                <article>
+                  <span>Selected</span>
+                  <strong id="staging-metric-selected">0</strong>
+                </article>
+              </div>
+            </div>
+            <div id="staging-upload-scope" class="scope-banner hidden"></div>
+            <div class="sheet-command-bar review-queue-command-bar">
+              <div class="review-filter-row compact-filter-row review-mode-tabs" aria-label="Staging review views">
                 <button class="review-filter is-active" type="button" data-staging-filter="all">All</button>
                 <button class="review-filter" type="button" data-staging-filter="needs-location">Location gaps</button>
                 <button class="review-filter" type="button" data-staging-filter="needs-rate">Rate gaps</button>
-                <button class="review-filter" type="button" data-staging-filter="split-rate">Split rates</button>
-              </div>
-            </div>
-            <div class="review-insight-grid" aria-label="Staging quality summary">
-              <article>
-                <span>Visible rows</span>
-                <strong id="staging-metric-visible">0</strong>
-              </article>
-              <article>
-                <span>Needs location match</span>
-                <strong id="staging-metric-location">0</strong>
-              </article>
-              <article>
-                <span>Needs numeric rate</span>
-                <strong id="staging-metric-rate">0</strong>
-              </article>
-              <article>
-                <span>Selected</span>
-                <strong id="staging-metric-selected">0</strong>
-              </article>
-            </div>
-            <div id="staging-upload-scope" class="scope-banner hidden"></div>
-            <div class="sheet-command-bar">
-              <div class="review-filter-row compact-filter-row" aria-label="Staging review filters">
                 <button class="review-filter" type="button" data-staging-filter="all-in">All-in</button>
                 <button class="review-filter" type="button" data-staging-filter="split-rate">Split</button>
               </div>
-              <div class="toolbar sheet-toolbar">
+              <div class="toolbar sheet-toolbar review-queue-toolbar">
+                <label class="review-search-field">
+                  Search
+                  <input id="staging-search" type="search" placeholder="Vendor, RFx, lane, market, rate..." />
+                </label>
                 <label>
                   Status
                   <select id="staging-status-filter">

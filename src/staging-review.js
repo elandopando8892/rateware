@@ -9,6 +9,7 @@ const body = document.querySelector("#staging-body");
 const refreshButton = document.querySelector("#refresh-staging-button");
 const clearFiltersButton = document.querySelector("#clear-staging-filters");
 const statusFilter = document.querySelector("#staging-status-filter");
+const stagingSearchInput = document.querySelector("#staging-search");
 const drawer = document.querySelector("#staging-drawer");
 const closeDrawerButton = document.querySelector("#close-staging-drawer");
 const editForm = document.querySelector("#staging-edit-form");
@@ -632,6 +633,49 @@ function applyReviewFilter(rows = loadedRows) {
   return rows;
 }
 
+function stagingSearchHaystack(row) {
+  return [
+    row.vendors?.vendor_name,
+    row.vendor_domain,
+    row.rfx_id,
+    row.quote_date,
+    row.origin,
+    row.normalized_origin,
+    row.origin_city,
+    row.origin_state,
+    row.origin_zip_prefix,
+    row.origin_market,
+    row.origin_region,
+    row.destination,
+    row.normalized_destination,
+    row.destination_city,
+    row.destination_state,
+    row.destination_zip_prefix,
+    row.destination_market,
+    row.destination_region,
+    row.equipment,
+    row.trailer,
+    row.config,
+    row.operation,
+    row.service,
+    row.mx_border_crossing_point,
+    row.us_border_crossing_point,
+    row.all_in_rate,
+    row.currency,
+    row.weekly_capacity,
+    row.status
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+}
+
+function applyStagingTextSearch(rows = loadedRows) {
+  const query = String(stagingSearchInput?.value || "").trim().toLowerCase();
+  if (!query) return rows;
+  return rows.filter((row) => stagingSearchHaystack(row).includes(query));
+}
+
 function scopedStagingRows(rows = loadedRows) {
   if (!rawUploadScopeId) return rows;
   return rows.filter((row) => row.raw_upload_id === rawUploadScopeId);
@@ -678,7 +722,7 @@ function applyColumnFilters(rows = loadedRows) {
 }
 
 function visibleStagingRows() {
-  return applyColumnFilters(applyReviewFilter(scopedStagingRows(loadedRows)));
+  return applyColumnFilters(applyStagingTextSearch(applyReviewFilter(scopedStagingRows(loadedRows))));
 }
 
 function activeColumnFilters() {
@@ -1579,6 +1623,7 @@ async function loadRows() {
 
 async function clearStagingFilters() {
   statusFilter.value = "pending_review";
+  if (stagingSearchInput) stagingSearchInput.value = "";
   activeReviewFilter = "all";
   columnFilterController?.clear({ silent: true });
   selectedRowIds.clear();
@@ -1741,6 +1786,11 @@ reviewFilterButtons.forEach((button) => {
     renderRows(visibleStagingRows());
   });
 });
+stagingSearchInput?.addEventListener("input", () => {
+  selectedRowIds.clear();
+  setBulkStatus("");
+  renderRows(visibleStagingRows());
+});
 openSelectedDetailButton?.addEventListener("click", () => {
   const row = selectedRows()[0];
   if (row?.dataset.rowId) openEditDrawer(row.dataset.rowId);
@@ -1800,7 +1850,7 @@ columnVisibilityController = initColumnVisibility({
 columnFilterController = initSpreadsheetColumnFilters({
   table: stagingTable,
   columns: SHEET_COLUMNS,
-  getRows: () => applyReviewFilter(scopedStagingRows(loadedRows)),
+  getRows: () => applyStagingTextSearch(applyReviewFilter(scopedStagingRows(loadedRows))),
   getValues: columnFilterValues,
   scope: "staging",
   onChange: () => {
