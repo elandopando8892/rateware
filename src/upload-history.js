@@ -49,6 +49,11 @@ const HISTORY_COLSPAN = 9;
 const UPLOAD_ACTION_SELECTOR = "[data-interpret-id], [data-bulk-import-id], [data-archive-id], [data-remove-id], #reprocess-selected-uploads, #bulk-import-selected-uploads, #archive-selected-uploads, #remove-selected-uploads";
 const XLSX_MODULE_URL = "https://esm.sh/xlsx@0.18.5";
 const BULK_IMPORT_BATCH_SIZE = 75;
+const MISSING_ROWS_REPROCESS_NOTE = [
+  "Re-read every visible table row and priced cell. Do not summarize by state, lane group, destination group, or carrier note.",
+  "Return one staged row per carrier quoted lane, including one-way and roundtrip rows only when explicitly priced.",
+  "Compare detected source rows against staged rows and explain any row that cannot be staged."
+].join(" ");
 const TEMPLATE_FIELD_ALIASES = {
   vendor_name: ["vendor", "carrier", "supplier", "transportista", "proveedor"],
   vendor_domain: ["vendor domain", "carrier domain", "domain", "email", "vendor email", "carrier email", "correo", "correo proveedor"],
@@ -261,6 +266,33 @@ function detectedRows(row) {
   return Number(row.expected_rate_rows ?? auditPayload(row).expected_rate_rows ?? stagedRows(row) ?? 0) || 0;
 }
 
+function rowGap(row) {
+  const detected = detectedRows(row);
+  const staged = stagedRows(row);
+  if (!detected || detected <= staged) return 0;
+  return detected - staged;
+}
+
+function uploadNeedsAudit(row) {
+  const status = auditStatus(row);
+  return Boolean(
+    row.status === "failed" ||
+      row.error_message ||
+      rowGap(row) > 0 ||
+      auditWarnings(row).length > 0 ||
+      ["needs_review", "repaired", "failed"].includes(status)
+  );
+}
+
+function auditDisplay(row) {
+  const gap = rowGap(row);
+  if (row.status === "failed" || auditStatus(row) === "failed") return { label: "failed", tone: "danger" };
+  if (gap > 0) return { label: `${gap} missing`, tone: "danger" };
+  if (auditWarnings(row).length > 0) return { label: "warnings", tone: "warning" };
+  if (auditStatus(row) === "repaired") return { label: "repaired", tone: "warning" };
+  return { label: auditLabel(auditStatus(row)), tone: auditTone(auditStatus(row)) };
+}
+
 function uploadStepState(row, step) {
   const staged = stagedRows(row) > 0 || row.status === "staged";
   if (row.status === "failed" && step === "interpret") return "error";
@@ -287,7 +319,7 @@ function renderUploadFlow(row) {
 
 function applyQuickFilter(rows = loadedRows) {
   if (activeQuickFilter === "needs-interpretation") return rows.filter((row) => row.status === "uploaded");
-  if (activeQuickFilter === "needs-audit") return rows.filter((row) => auditStatus(row) === "needs_review" || auditStatus(row) === "repaired");
+  if (activeQuickFilter === "needs-audit") return rows.filter(uploadNeedsAudit);
   if (activeQuickFilter === "failed") return rows.filter((row) => row.status === "failed");
   if (activeQuickFilter === "pdf") return rows.filter((row) => documentType(row) === "pdf");
   if (activeQuickFilter === "spreadsheet") return rows.filter(isSpreadsheetUpload);
@@ -330,7 +362,7 @@ function updateUploadMetrics(rows) {
   uploadMetricVisible.textContent = String(rows.length);
   uploadMetricStaged.textContent = String(rows.filter((row) => row.status === "staged").length);
   uploadMetricFailed.textContent = String(rows.filter((row) => row.status === "failed").length);
-  uploadMetricNeedsAudit.textContent = String(rows.filter((row) => auditStatus(row) === "needs_review" || auditStatus(row) === "repaired").length);
+  uploadMetricNeedsAudit.textContent = String(rows.filter(uploadNeedsAudit).length);
 }
 
 function selectedVisibleIds() {
@@ -418,13 +450,15 @@ function renderRowAuditMeter(row) {
 }
 
 function renderAuditSummary(row) {
-  const status = auditStatus(row);
+  const display = auditDisplay(row);
   const rowsLabel = auditRowsLabel(row);
   const warnings = auditWarnings(row);
+  const gap = rowGap(row);
   return `
     <div class="audit-summary">
-      <span class="review-chip ${escapeHtml(auditTone(status))}">${escapeHtml(auditLabel(status))}</span>
+      <span class="review-chip ${escapeHtml(display.tone)}">${escapeHtml(display.label)}</span>
       ${rowsLabel ? `<small>${escapeHtml(rowsLabel)}</small>` : ""}
+      ${gap ? `<small class="audit-gap-label">${escapeHtml(gap)} missing row${gap === 1 ? "" : "s"}</small>` : ""}
       ${warnings.length ? `<small>${escapeHtml(warnings.length)} warning${warnings.length === 1 ? "" : "s"}</small>` : ""}
       ${renderRowAuditMeter(row)}
     </div>
@@ -434,7 +468,8 @@ function renderAuditSummary(row) {
 function uploadQualityChips(row) {
   const chips = [];
   chips.push({ tone: statusTone(row.status), label: row.status || "unknown" });
-  if (auditStatus(row) === "needs_review") chips.push({ tone: "danger", label: "Audit needed" });
+  if (rowGap(row) > 0) chips.push({ tone: "danger", label: `${rowGap(row)} missing rows` });
+  if (uploadNeedsAudit(row)) chips.push({ tone: "danger", label: "Audit needed" });
   if (auditStatus(row) === "repaired") chips.push({ tone: "warning", label: "Repaired" });
   if (!row.vendors?.vendor_name && !row.vendor_hint) chips.push({ tone: "warning", label: "No vendor hint" });
   if (!row.rfx_hint) chips.push({ tone: "muted", label: "No RFx" });
@@ -450,6 +485,7 @@ function uploadQualitySummary(row) {
   if (row.status) labels.push(`Status: ${row.status}`);
   if (auditStatus(row)) labels.push(`Audit: ${auditLabel(auditStatus(row))}`);
   if (auditRowsLabel(row)) labels.push(`Rows: ${auditRowsLabel(row)}`);
+  if (rowGap(row) > 0) labels.push(`${rowGap(row)} missing staged row(s)`);
   if (!row.vendors?.vendor_name && !row.vendor_hint) labels.push("No vendor hint");
   if (!row.rfx_hint) labels.push("No RFx");
   if (row.error_message) labels.push(`Issue: ${humanizeError(row.error_message)}`);
@@ -469,6 +505,13 @@ function nextUploadStep(row) {
       label: isSpreadsheetUpload(row) ? "Bulk import or interpret" : "Interpret source",
       detail: isSpreadsheetUpload(row) ? "Use the template importer when columns already match." : "Run AI extraction into staging.",
       tone: "warning"
+    };
+  }
+  if (rowGap(row) > 0) {
+    return {
+      label: "Audit missing rows",
+      detail: `${rowGap(row)} detected row(s) did not land in staging.`,
+      tone: "danger"
     };
   }
   if (stagedRows(row) > 0 || row.status === "staged") {
@@ -627,6 +670,7 @@ function renderInterpretationAuditViewer(row) {
         <span class="review-chip ${escapeHtml(auditTone(auditStatus(row)))}">${escapeHtml(auditLabel(auditStatus(row)))}</span>
       </div>
       ${renderAuditQuality(row)}
+      ${renderMissingRowsExplanation(row)}
       <div class="audit-viewer-split">
         <section>
           <h4>Memory used</h4>
@@ -652,9 +696,47 @@ function rateDisplay(row) {
   return "-";
 }
 
+function renderMissingRowsExplanation(row) {
+  const audit = auditPayload(row);
+  const gap = rowGap(row);
+  const warnings = auditWarnings(row);
+  const explanation = cleanAuditText(audit.missing_row_explanation || audit.row_gap_explanation || audit.explanation);
+  const sourceSignals = [
+    audit.source_table_count ? `${audit.source_table_count} source table(s)` : "",
+    audit.first_pass_rows ? `${audit.first_pass_rows} first-pass row(s)` : "",
+    audit.audit_pass_rows ? `${audit.audit_pass_rows} audit-pass row(s)` : "",
+    audit.deterministic_repair_used ? "deterministic repair used" : ""
+  ].filter(Boolean);
+
+  let message = explanation;
+  if (!message && gap > 0) {
+    message = `The source appears to contain ${detectedRows(row)} rate row(s), but only ${stagedRows(row)} reached staging. Open the source, compare the table, then reprocess with the missing-row instruction.`;
+  } else if (!message && warnings.length) {
+    message = "The interpreter reported warning(s). Review source evidence before approving the staged rows.";
+  } else if (!message) {
+    message = "No row-count mismatch is currently detected. Spot-check the source before approval when the file is critical.";
+  }
+
+  return `
+    <div class="audit-explanation-panel ${gap || warnings.length ? "warning" : "success"}">
+      <div>
+        <strong>${escapeHtml(gap ? "Missing-row explanation" : "Audit explanation")}</strong>
+        ${gap ? `<span class="review-chip danger">${escapeHtml(gap)} missing</span>` : '<span class="review-chip success">no row gap</span>'}
+      </div>
+      <p>${escapeHtml(message)}</p>
+      ${sourceSignals.length ? `<small>${escapeHtml(sourceSignals.join(" | "))}</small>` : ""}
+      ${gap ? `<button type="button" class="secondary small-button" data-reprocess-note-id="${escapeHtml(row.id)}" data-reprocess-note="${escapeHtml(MISSING_ROWS_REPROCESS_NOTE)}">Reprocess for missing rows</button>` : ""}
+    </div>
+  `;
+}
+
+function cleanAuditText(value) {
+  return String(value || "").replace(/\s+/g, " ").trim();
+}
+
 function renderMissingRowDetector(row) {
   const audit = auditPayload(row);
-  const missing = Number(audit.missing_row_count || Math.max(0, detectedRows(row) - stagedRows(row)) || 0);
+  const missing = Number(audit.missing_row_count || rowGap(row) || 0);
   const ids = Array.isArray(audit.missing_row_ids) ? audit.missing_row_ids : [];
   const signals = Array.isArray(audit.missing_row_signals) ? audit.missing_row_signals : [];
   return `
@@ -663,6 +745,7 @@ function renderMissingRowDetector(row) {
         <span>${escapeHtml(missing ? "Missing rows suspected" : "No missing row gap detected")}</span>
         <strong>${escapeHtml(missing)}</strong>
       </div>
+      ${renderMissingRowsExplanation(row)}
       ${ids.length ? `<small>Missing row IDs: ${escapeHtml(ids.slice(0, 16).join(", "))}</small>` : ""}
       ${signals.length ? `<ul>${signals.slice(0, 5).map((signal) => `<li>${escapeHtml(signal)}</li>`).join("")}</ul>` : ""}
     </div>
@@ -1241,12 +1324,12 @@ async function loadApplicableMemory(rawUploadId) {
   }
 }
 
-function openReprocessDrawer(ids = []) {
+function openReprocessDrawer(ids = [], { note = "" } = {}) {
   pendingReprocessIds = ids.filter(Boolean);
   if (!pendingReprocessIds.length || !reprocessDrawer) return;
   const rows = pendingReprocessIds.map((id) => loadedRows.find((row) => row.id === id)).filter(Boolean);
   const lastNote = rows.find((row) => row.correction_note)?.correction_note || "";
-  if (reprocessNoteInput) reprocessNoteInput.value = lastNote;
+  if (reprocessNoteInput) reprocessNoteInput.value = note || lastNote;
   if (saveMemoryRuleInput) saveMemoryRuleInput.checked = false;
   if (memoryRuleScopeInput) memoryRuleScopeInput.value = rows.length === 1 && rows[0]?.rfx_hint ? "rfx" : "vendor";
   renderApplicableMemory([]);
@@ -1392,6 +1475,14 @@ reprocessDrawer?.addEventListener("click", (event) => {
   reprocessNoteInput.focus();
 });
 uploadDetail?.addEventListener("click", async (event) => {
+  const reprocessNoteButton = event.target.closest("[data-reprocess-note-id]");
+  if (reprocessNoteButton) {
+    openReprocessDrawer([reprocessNoteButton.dataset.reprocessNoteId], {
+      note: reprocessNoteButton.dataset.reprocessNote || ""
+    });
+    return;
+  }
+
   const sourceButton = event.target.closest("[data-source-id]");
   if (sourceButton) {
     await openUploadSource(sourceButton.dataset.sourceId, sourceButton);

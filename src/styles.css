@@ -1672,6 +1672,46 @@ a {
   padding-left: 16px;
 }
 
+.audit-explanation-panel {
+  display: grid;
+  gap: 7px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 9px;
+}
+
+.audit-explanation-panel > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.audit-explanation-panel strong {
+  color: #17232b;
+  font-size: 0.76rem;
+}
+
+.audit-explanation-panel p,
+.audit-explanation-panel small {
+  margin: 0;
+  color: #53616b;
+  font-size: 0.72rem;
+  font-weight: 740;
+  line-height: 1.35;
+}
+
+.audit-explanation-panel.warning {
+  border-color: #f0d49a;
+  background: #fffaf0;
+}
+
+.audit-explanation-panel.success {
+  border-color: #c8ddd4;
+  background: #f5fbf8;
+}
+
 .source-compare-table {
   max-height: 320px;
   overflow: auto;
@@ -4777,6 +4817,10 @@ button.location-chip:focus-visible {
   color: var(--muted);
   font-size: 0.7rem;
   font-weight: 760;
+}
+
+.audit-summary .audit-gap-label {
+  color: var(--danger);
 }
 
 .interpretation-audit-viewer {
