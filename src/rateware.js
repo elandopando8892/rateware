@@ -657,6 +657,7 @@ function columnFilterText(row, field) {
 
 function columnFilterValues(row, field) {
   if (field === "vendor") return [row.vendors?.vendor_name, row.vendor_domain, row.vendors?.domain].filter(Boolean);
+  if (field === "hazmat" || field === "temperature_controlled") return [row[field] ? "Yes" : "No"];
   if (field === "origin") return [row.origin, row.normalized_origin, row.origin_city, row.origin_state, row.origin_zip_prefix, row.origin_market, row.origin_region, row.origin_country].filter(Boolean);
   if (field === "destination") return [row.destination, row.normalized_destination, row.destination_city, row.destination_state, row.destination_zip_prefix, row.destination_market, row.destination_region, row.destination_country].filter(Boolean);
   return [row[field]].filter(Boolean);

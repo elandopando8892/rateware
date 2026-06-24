@@ -1055,6 +1055,43 @@ const BULK_RATE_ROW_SELECT = [
   "created_at"
 ].join(",");
 
+const RATE_SEARCH_COLUMNS = [
+  "vendor_domain",
+  "rfx_id",
+  "origin",
+  "destination",
+  "normalized_origin",
+  "normalized_destination",
+  "origin_city",
+  "destination_city",
+  "origin_state",
+  "destination_state",
+  "origin_zip_prefix",
+  "destination_zip_prefix",
+  "origin_market",
+  "destination_market",
+  "origin_region",
+  "destination_region",
+  "origin_country",
+  "destination_country",
+  "equipment",
+  "trailer",
+  "config",
+  "driver",
+  "operation",
+  "service",
+  "currency",
+  "weekly_capacity",
+  "mx_border_crossing_point",
+  "us_border_crossing_point"
+];
+
+function applyRateSearchFilter(query: any, search: string) {
+  const term = cleanText(search);
+  if (!term) return query;
+  return query.or(RATE_SEARCH_COLUMNS.map((field) => `${field}.ilike.%${term}%`).join(","));
+}
+
 function bulkNumericValue(value: unknown) {
   const cleaned = cleanRateText(value);
   if (!cleaned) return null;
@@ -1176,6 +1213,7 @@ function bulkColumnText(row: Record<string, unknown>, field: string) {
 function bulkColumnValues(row: Record<string, unknown>, field: string) {
   const vendor = objectRecord(row.vendors);
   if (field === "vendor") return [vendor.vendor_name, row.vendor_domain, vendor.domain].filter(Boolean);
+  if (field === "hazmat" || field === "temperature_controlled") return [row[field] ? "Yes" : "No"];
   if (field === "origin") {
     return [
       row.origin,
@@ -1272,18 +1310,7 @@ function applyBulkRateBaseFilters(query: any, filters: Record<string, unknown>) 
   if (service) query = query.eq("service", service);
 
   const search = cleanText(filters.search);
-  if (search) {
-    query = query.or([
-      `vendor_domain.ilike.%${search}%`,
-      `rfx_id.ilike.%${search}%`,
-      `origin.ilike.%${search}%`,
-      `destination.ilike.%${search}%`,
-      `normalized_origin.ilike.%${search}%`,
-      `normalized_destination.ilike.%${search}%`,
-      `origin_market.ilike.%${search}%`,
-      `destination_market.ilike.%${search}%`
-    ].join(","));
-  }
+  if (search) query = applyRateSearchFilter(query, search);
   return query;
 }
 
@@ -5906,24 +5933,7 @@ Deno.serve(async (request) => {
         .range(offset, offset + limit - 1);
       if (body.status) query = query.eq("status", body.status);
       if (body.raw_upload_id) query = query.eq("raw_upload_id", body.raw_upload_id);
-      if (search) {
-        query = query.or([
-          `vendor_domain.ilike.%${search}%`,
-          `rfx_id.ilike.%${search}%`,
-          `origin.ilike.%${search}%`,
-          `destination.ilike.%${search}%`,
-          `normalized_origin.ilike.%${search}%`,
-          `normalized_destination.ilike.%${search}%`,
-          `origin_market.ilike.%${search}%`,
-          `destination_market.ilike.%${search}%`,
-          `origin_region.ilike.%${search}%`,
-          `destination_region.ilike.%${search}%`,
-          `equipment.ilike.%${search}%`,
-          `trailer.ilike.%${search}%`,
-          `operation.ilike.%${search}%`,
-          `service.ilike.%${search}%`
-        ].join(","));
-      }
+      if (search) query = applyRateSearchFilter(query, search);
       const result = await query;
       if (result.error) throw result.error;
       const rows = result.data || [];
@@ -6020,7 +6030,7 @@ Deno.serve(async (request) => {
 
       let query = supabase
         .from("rate_staging")
-        .select("*, vendors(vendor_name, domain, primary_email, base_stage, status)")
+        .select("*, vendors(vendor_name, domain, primary_email, base_stage, status)", { count: "exact" })
         .eq("status", "approved")
         .order("quote_date", { ascending: false, nullsFirst: false })
         .order("created_at", { ascending: false })
@@ -6028,54 +6038,11 @@ Deno.serve(async (request) => {
 
       if (body.operation) query = query.eq("operation", body.operation);
       if (body.service) query = query.eq("service", body.service);
-      if (search) {
-        const term = search;
-        if (term) {
-          query = query.or([
-            `vendor_domain.ilike.%${term}%`,
-            `rfx_id.ilike.%${term}%`,
-            `origin.ilike.%${term}%`,
-            `destination.ilike.%${term}%`,
-            `normalized_origin.ilike.%${term}%`,
-            `normalized_destination.ilike.%${term}%`,
-            `origin_market.ilike.%${term}%`,
-            `destination_market.ilike.%${term}%`
-          ].join(","));
-        }
-      }
+      if (search) query = applyRateSearchFilter(query, search);
 
       const result = await query;
       if (result.error) throw result.error;
-      const countResult = await supabase
-        .from("rate_staging")
-        .select("id", { count: "exact", head: true })
-        .eq("status", "approved");
-      if (countResult.error) throw countResult.error;
-      let total = result.data?.length || 0;
-      if (!body.operation && !body.service && !search) total = countResult.count || total;
-      else {
-        let countQuery = supabase
-          .from("rate_staging")
-          .select("id", { count: "exact", head: true })
-          .eq("status", "approved");
-        if (body.operation) countQuery = countQuery.eq("operation", body.operation);
-        if (body.service) countQuery = countQuery.eq("service", body.service);
-        if (search) {
-          countQuery = countQuery.or([
-            `vendor_domain.ilike.%${search}%`,
-            `rfx_id.ilike.%${search}%`,
-            `origin.ilike.%${search}%`,
-            `destination.ilike.%${search}%`,
-            `normalized_origin.ilike.%${search}%`,
-            `normalized_destination.ilike.%${search}%`,
-            `origin_market.ilike.%${search}%`,
-            `destination_market.ilike.%${search}%`
-          ].join(","));
-        }
-        const scopedCount = await countQuery;
-        if (scopedCount.error) throw scopedCount.error;
-        total = scopedCount.count || 0;
-      }
+      const total = result.count || 0;
       const rows = result.data || [];
       return jsonResponse({
         rows,
