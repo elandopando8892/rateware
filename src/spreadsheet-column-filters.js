@@ -143,6 +143,18 @@ export function initSpreadsheetColumnFilters({ table, columns = [], getRows, get
     summary.textContent = `${selectedCount.toLocaleString()} of ${totalCount.toLocaleString()} selected`;
   }
 
+  function focusSearchAtEnd() {
+    const input = popover.querySelector(".sheet-filter-search");
+    if (!input) return;
+    const position = input.value.length;
+    input.focus();
+    try {
+      input.setSelectionRange(position, position);
+    } catch {
+      // Some input implementations do not expose a selection range.
+    }
+  }
+
   function renderMenuContent(search = activeMenu?.search || "") {
     if (!activeMenu) return;
     activeMenu.search = search;
@@ -184,7 +196,7 @@ export function initSpreadsheetColumnFilters({ table, columns = [], getRows, get
     popover.dataset.values = JSON.stringify(activeMenu.allKeys);
     popover.classList.remove("hidden");
     updateDraftSummary();
-    popover.querySelector(".sheet-filter-search")?.focus();
+    focusSearchAtEnd();
   }
 
   async function openMenu(button) {
