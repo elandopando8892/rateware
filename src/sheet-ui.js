@@ -133,7 +133,7 @@ export function initColumnVisibility({ table, menu, columns = [], storageKey = "
       .join("");
     list.innerHTML = `
       <div class="column-layout-tools">
-        <button type="button" data-column-save-layout>Save view</button>
+        <button type="button" data-column-save-layout>Save layout</button>
         <button type="button" data-column-autofit>Auto-fit visible</button>
         <button type="button" data-column-reset-layout>Reset layout</button>
         <span class="column-layout-status" data-column-layout-status>${layoutStatus}</span>

@@ -9378,3 +9378,446 @@ tbody tr:hover {
     position: static;
   }
 }
+
+/* Responsive dense layout pass: operational SaaS pages should prioritize the working grid. */
+@media (min-width: 861px) {
+  .shell-layout {
+    grid-template-columns: 176px minmax(0, 1fr);
+  }
+
+  .side-nav {
+    padding: 10px 8px;
+  }
+
+  .brand-mark {
+    min-height: 30px;
+    margin-bottom: 8px;
+    padding: 5px 8px;
+    font-size: 0.92rem;
+  }
+
+  .nav-groups,
+  .side-nav nav {
+    gap: 8px;
+  }
+
+  .nav-group {
+    gap: 2px;
+  }
+
+  .nav-group + .nav-group {
+    padding-top: 7px;
+  }
+
+  .nav-group p {
+    margin: 0 8px 2px;
+    font-size: 0.58rem;
+  }
+
+  .side-nav a:not(.brand-mark) {
+    min-height: 25px;
+    padding: 4px 7px;
+    font-size: 0.75rem;
+  }
+
+  .page-frame {
+    padding: 10px 12px;
+  }
+
+  .page-header {
+    min-height: 50px;
+    margin: -10px -12px 8px;
+    padding: 6px 12px;
+  }
+
+  .page-header h1 {
+    font-size: clamp(1.32rem, 1.72vw, 1.68rem);
+  }
+
+  .page-header .eyebrow {
+    font-size: 0.56rem;
+  }
+
+  .module-crumbs {
+    margin-top: 2px;
+    font-size: 0.62rem;
+  }
+
+  .page-primary-action,
+  .page-header .user-menu-button,
+  .auth-strip button {
+    min-height: 28px;
+    padding: 4px 9px;
+    font-size: 0.7rem;
+  }
+
+  .auth-strip p {
+    font-size: 0.68rem;
+  }
+
+  .history-layout {
+    padding-bottom: 12px;
+  }
+
+  .shell-status-strip {
+    gap: 5px;
+    margin: -3px 0 6px;
+  }
+
+  .shell-status-strip a {
+    min-height: 26px;
+    padding: 3px 7px;
+    font-size: 0.6rem;
+  }
+
+  .shell-status-strip strong {
+    font-size: 0.72rem;
+  }
+
+  .workspace-panel,
+  .queue-panel {
+    padding: 8px;
+  }
+
+  .spreadsheet-workbench {
+    gap: 4px;
+  }
+
+  .spreadsheet-workbench .workbench-header {
+    min-height: 24px;
+    margin: 0;
+    padding-bottom: 3px;
+  }
+
+  .spreadsheet-workbench .workbench-header h2 {
+    font-size: 0.86rem;
+  }
+
+  .review-queue-workspace .workbench-header,
+  .rateware-workspace .workbench-header {
+    align-items: center;
+    gap: 10px;
+  }
+
+  .staging-summary-strip,
+  .rateware-summary-strip {
+    grid-template-columns: repeat(4, minmax(72px, 1fr));
+    gap: 4px;
+    width: min(430px, 44vw);
+  }
+
+  .staging-summary-strip article,
+  .rateware-summary-strip article {
+    min-height: 32px;
+    padding: 4px 6px;
+  }
+
+  .staging-summary-strip span,
+  .rateware-summary-strip span {
+    font-size: 0.56rem;
+  }
+
+  .staging-summary-strip strong,
+  .rateware-summary-strip strong {
+    font-size: 0.86rem;
+  }
+
+  .sheet-command-bar {
+    top: 51px;
+    grid-template-columns: minmax(0, 0.8fr) minmax(420px, 1.2fr);
+    gap: 3px 6px;
+    margin: 0;
+    padding: 4px;
+    border-radius: 4px;
+    box-shadow: 0 4px 12px rgba(22, 32, 38, 0.055);
+  }
+
+  .review-queue-command-bar,
+  .rateware-command-bar {
+    grid-template-columns: minmax(0, 0.82fr) minmax(440px, 1.18fr);
+  }
+
+  .review-mode-tabs,
+  .rateware-view-tabs {
+    min-height: 24px;
+    gap: 3px;
+  }
+
+  .review-filter,
+  .quick-filter,
+  .spreadsheet-workbench .review-filter,
+  .spreadsheet-workbench .quick-filter {
+    min-height: 21px;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 0.62rem;
+  }
+
+  .sheet-toolbar,
+  .review-queue-toolbar,
+  .rateware-main-toolbar {
+    gap: 4px;
+  }
+
+  .review-queue-toolbar {
+    grid-template-columns: minmax(180px, 1fr) minmax(118px, 170px) repeat(3, auto);
+  }
+
+  .rateware-main-toolbar {
+    grid-template-columns: minmax(190px, 1fr) minmax(108px, 150px) minmax(108px, 150px) repeat(3, auto);
+  }
+
+  .spreadsheet-workbench .sheet-toolbar input,
+  .spreadsheet-workbench .sheet-toolbar select,
+  .spreadsheet-workbench .sheet-toolbar button,
+  .spreadsheet-workbench .column-visibility-menu summary,
+  .spreadsheet-workbench .review-filter,
+  .spreadsheet-workbench .quick-filter {
+    min-height: 21px;
+    height: 21px;
+    padding: 1px 6px;
+    font-size: 0.62rem;
+  }
+
+  .sheet-toolbar label,
+  .toolbar label {
+    gap: 1px;
+    font-size: 0.58rem;
+  }
+
+  .bulk-action-bar {
+    min-height: 22px;
+    padding: 2px 4px;
+    gap: 3px;
+  }
+
+  .bulk-action-bar span:first-child,
+  .bulk-action-bar > span,
+  .row-save-status,
+  .status-message {
+    font-size: 0.6rem;
+  }
+
+  .bulk-action-bar .small-button,
+  .sheet-more-actions summary {
+    min-height: 18px;
+    height: 18px;
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 0.58rem;
+  }
+
+  .sheet-more-actions > div {
+    gap: 3px;
+    min-width: 176px;
+    padding: 5px;
+  }
+
+  .column-toggle-grid {
+    grid-template-columns: repeat(2, minmax(120px, 1fr));
+    width: min(520px, 82vw);
+    max-height: min(520px, calc(100vh - 92px));
+    gap: 4px;
+    padding: 8px;
+  }
+
+  .column-toggle-grid label {
+    min-height: 23px;
+    padding: 2px 6px;
+    font-size: 0.66rem;
+  }
+
+  .column-layout-tools,
+  .column-save-view-row,
+  .column-saved-views {
+    gap: 4px;
+    margin-bottom: 4px;
+    padding-bottom: 4px;
+  }
+
+  .column-layout-tools button,
+  .column-save-view-row button,
+  .column-saved-views button,
+  .column-save-view-row input {
+    min-height: 22px;
+    padding: 2px 6px;
+    font-size: 0.64rem;
+  }
+
+  .column-layout-status,
+  .column-saved-views strong {
+    font-size: 0.58rem;
+  }
+
+  .table-wrap {
+    margin-top: 3px;
+    border-radius: 4px;
+  }
+
+  .sheet-table-wrap {
+    height: calc(100vh - 158px);
+    max-height: calc(100vh - 158px);
+    min-height: 420px;
+    overflow: auto;
+    scrollbar-gutter: stable both-edges;
+  }
+
+  .rateware-workspace .sheet-table-wrap {
+    height: calc(100vh - 174px);
+    max-height: calc(100vh - 174px);
+  }
+
+  .sheet-table-wrap table {
+    border-collapse: collapse;
+    font-size: 0.62rem;
+  }
+
+  .staging-table,
+  .rateware-table {
+    min-width: 2450px;
+  }
+
+  .sheet-table-wrap .staging-table thead th,
+  .sheet-table-wrap .rateware-table thead th {
+    top: 0;
+    height: 18px;
+    padding: 0 4px;
+    background: #eef2f4;
+    color: #3f4a54;
+    font-size: 0.58rem;
+    line-height: 18px;
+    text-transform: none;
+  }
+
+  .sheet-table-wrap .sheet-column-filter-row th {
+    top: 18px;
+    height: 18px;
+    padding: 0 2px;
+    background: #f7f9fa;
+  }
+
+  .sheet-table-wrap .staging-table tbody tr,
+  .sheet-table-wrap .rateware-table tbody tr {
+    height: 21px;
+  }
+
+  .sheet-table-wrap .staging-table td,
+  .sheet-table-wrap .rateware-table td {
+    height: 21px;
+    max-height: 21px;
+    padding: 0 3px;
+    border-bottom-color: #e4e9ee;
+    font-size: 0.62rem;
+    line-height: 1;
+  }
+
+  .sheet-table-wrap .staging-input,
+  .sheet-table-wrap .rateware-input,
+  .sheet-table-wrap .staging-table select,
+  .sheet-table-wrap .rateware-table select {
+    height: 17px;
+    min-height: 17px;
+    padding: 0 3px;
+    border-radius: 0;
+    font-size: 0.61rem;
+    line-height: 15px;
+  }
+
+  .sheet-table-wrap select.staging-input,
+  .sheet-table-wrap select.rateware-input {
+    padding-right: 14px;
+  }
+
+  .sheet-table-wrap .staging-input.wide-input,
+  .sheet-table-wrap .rateware-input.wide-input {
+    min-width: 136px;
+  }
+
+  .sheet-table-wrap .staging-input.short-input,
+  .sheet-table-wrap .rateware-input.short-input {
+    min-width: 62px;
+  }
+
+  .sheet-table-wrap .staging-input.money-input,
+  .sheet-table-wrap .rateware-input.money-input {
+    min-width: 64px;
+  }
+
+  .sheet-table-wrap .table-checkbox {
+    min-width: 24px;
+    min-height: 17px;
+  }
+
+  .sheet-table-wrap .table-checkbox input,
+  .sheet-table-wrap .select-column input {
+    width: 11px;
+    min-width: 11px;
+    height: 11px;
+    min-height: 11px;
+  }
+
+  .select-column {
+    width: 28px;
+    min-width: 28px;
+  }
+
+  .sheet-filter-button,
+  .sheet-filter-clear {
+    height: 15px;
+    min-height: 15px;
+    padding: 0 3px;
+    border-radius: 2px;
+    font-size: 0.56rem;
+    line-height: 13px;
+  }
+
+  .sheet-filter-button.is-active {
+    border-color: #9aabbd;
+    background: #edf1f4;
+    color: var(--accent-dark);
+  }
+
+  .sheet-row-save-dot {
+    right: 2px;
+    width: 5px;
+    min-width: 5px;
+    height: 5px;
+    min-height: 5px;
+  }
+
+  .staging-table .staging-load-row td,
+  .rateware-table .staging-load-row td {
+    height: 28px;
+  }
+
+  .staging-load-row div {
+    gap: 7px;
+    font-size: 0.62rem;
+  }
+
+  .next-step-strip {
+    min-height: 28px;
+    margin-top: 5px;
+    padding: 5px 8px;
+    font-size: 0.68rem;
+  }
+
+  .profile-drawer {
+    width: min(460px, 100vw);
+    padding: 14px;
+  }
+
+  #staging-drawer {
+    width: min(940px, calc(100vw - 22px));
+  }
+
+  .drawer-header {
+    top: -14px;
+    margin: -14px -14px 9px;
+    padding: 12px 14px 9px;
+  }
+
+  .drawer-edit-form {
+    gap: 7px;
+  }
+}
