@@ -237,6 +237,8 @@ export function initSpreadsheetColumnFilters({ table, columns = [], getRows, get
   });
 
   popover.addEventListener("click", (event) => {
+    event.stopPropagation();
+
     if (event.target.closest("[data-sheet-filter-close], [data-sheet-filter-cancel]")) {
       menuRequestId += 1;
       popover.classList.add("hidden");
