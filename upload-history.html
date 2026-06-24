@@ -50,7 +50,7 @@
             </nav>
           </div>
           <div class="page-header-actions">
-            <button class="page-primary-action" type="button" data-click-target="#reprocess-selected-uploads">Reprocess</button>
+            <a class="page-primary-action" href="./upload-center.html">Import files</a>
             <form id="auth-form" class="auth-strip">
               <button id="auth-button" type="submit">Sign in with Kinde</button>
               <button id="sign-out-button" type="button" class="secondary hidden">Sign out</button>
@@ -60,47 +60,56 @@
         </header>
 
         <main class="history-layout">
-          <section class="workspace-panel">
-            <div class="review-insight-grid" aria-label="Upload history summary">
-              <article>
-                <span>Visible uploads</span>
-                <strong id="upload-metric-visible">0</strong>
-              </article>
-              <article>
-                <span>Staged</span>
-                <strong id="upload-metric-staged">0</strong>
-              </article>
-              <article>
-                <span>Failed</span>
-                <strong id="upload-metric-failed">0</strong>
-              </article>
-              <article>
-                <span>Needs audit</span>
-                <strong id="upload-metric-needs-audit">0</strong>
-              </article>
+          <section class="workspace-panel source-files-workspace">
+            <div class="module-workspace-heading">
+              <div>
+                <p class="eyebrow">Source files</p>
+                <h2>Processing queue</h2>
+              </div>
+              <div class="source-summary-strip" aria-label="Upload history summary">
+                <article>
+                  <span>Visible</span>
+                  <strong id="upload-metric-visible">0</strong>
+                </article>
+                <article>
+                  <span>Staged</span>
+                  <strong id="upload-metric-staged">0</strong>
+                </article>
+                <article>
+                  <span>Failed</span>
+                  <strong id="upload-metric-failed">0</strong>
+                </article>
+                <article>
+                  <span>Needs audit</span>
+                  <strong id="upload-metric-needs-audit">0</strong>
+                </article>
+              </div>
             </div>
-            <div class="upload-flow-steps compact-flow" aria-label="Upload workflow">
-              <article>
-                <span>1</span>
-                <strong>Upload</strong>
-                <small>Source preserved</small>
-              </article>
-              <article class="is-active">
-                <span>2</span>
-                <strong>Interpret</strong>
-                <small>Create staging rows</small>
-              </article>
-              <article>
-                <span>3</span>
-                <strong>Review</strong>
-                <small>Validate extracted rates</small>
-              </article>
-              <article>
-                <span>4</span>
-                <strong>Approve</strong>
-                <small>Move into Rateware</small>
-              </article>
-            </div>
+            <details class="workflow-disclosure">
+              <summary>Workflow: Upload -> Interpret -> Review -> Approve</summary>
+              <div class="upload-flow-steps compact-flow" aria-label="Upload workflow">
+                <article>
+                  <span>1</span>
+                  <strong>Upload</strong>
+                  <small>Source preserved</small>
+                </article>
+                <article class="is-active">
+                  <span>2</span>
+                  <strong>Interpret</strong>
+                  <small>Create staging rows</small>
+                </article>
+                <article>
+                  <span>3</span>
+                  <strong>Review</strong>
+                  <small>Validate extracted rates</small>
+                </article>
+                <article>
+                  <span>4</span>
+                  <strong>Approve</strong>
+                  <small>Move into Rateware</small>
+                </article>
+              </div>
+            </details>
             <div class="review-filter-row" aria-label="Upload quick filters">
               <button class="review-filter is-active" type="button" data-upload-filter="all">All visible</button>
               <button class="review-filter" type="button" data-upload-filter="needs-interpretation">Needs interpretation</button>
@@ -110,7 +119,11 @@
               <button class="review-filter" type="button" data-upload-filter="spreadsheet">Spreadsheets</button>
               <button class="review-filter" type="button" data-upload-filter="image">Images</button>
             </div>
-            <div class="toolbar">
+            <div class="toolbar source-files-toolbar">
+              <label class="source-search-field">
+                Search
+                <input id="upload-search" type="search" placeholder="File, vendor, RFx, storage..." />
+              </label>
               <label>
                 Status
                 <select id="status-filter">
@@ -126,7 +139,7 @@
               <button id="clear-upload-filters" class="secondary" type="button">Clear filters</button>
             </div>
 
-            <div class="bulk-action-bar" aria-live="polite">
+            <div class="bulk-action-bar is-empty" aria-live="polite">
               <span id="upload-selection-count">0 selected</span>
               <button id="reprocess-selected-uploads" type="button" class="small-button" disabled>Reprocess selected</button>
               <button id="bulk-import-selected-uploads" type="button" class="secondary small-button" disabled>Bulk import selected</button>
@@ -143,20 +156,18 @@
                       <input id="select-all-uploads" type="checkbox" aria-label="Select all visible uploads" />
                     </th>
                     <th>Uploaded</th>
-                    <th>File</th>
-                    <th>Type</th>
-                    <th>Vendor</th>
-                    <th>RFx</th>
+                    <th>Source file</th>
+                    <th>Vendor / RFx</th>
                     <th>Status</th>
-                    <th>Flow</th>
                     <th>Audit</th>
+                    <th>Next step</th>
                     <th>Storage</th>
-                    <th>Action</th>
+                    <th>Actions</th>
                   </tr>
                 </thead>
                 <tbody id="history-body">
                   <tr>
-                    <td colspan="11">Loading uploads...</td>
+                    <td colspan="9">Loading uploads...</td>
                   </tr>
                 </tbody>
               </table>

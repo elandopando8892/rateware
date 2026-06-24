@@ -16,12 +16,14 @@ const historyBody = document.querySelector("#history-body");
 const refreshButton = document.querySelector("#refresh-button");
 const clearFiltersButton = document.querySelector("#clear-upload-filters");
 const statusFilter = document.querySelector("#status-filter");
+const uploadSearchInput = document.querySelector("#upload-search");
 const uploadMetricVisible = document.querySelector("#upload-metric-visible");
 const uploadMetricStaged = document.querySelector("#upload-metric-staged");
 const uploadMetricFailed = document.querySelector("#upload-metric-failed");
 const uploadMetricNeedsAudit = document.querySelector("#upload-metric-needs-audit");
 const quickFilterButtons = document.querySelectorAll("[data-upload-filter]");
 const selectAllUploads = document.querySelector("#select-all-uploads");
+const uploadBulkBar = document.querySelector(".bulk-action-bar");
 const uploadSelectionCount = document.querySelector("#upload-selection-count");
 const reprocessSelectedButton = document.querySelector("#reprocess-selected-uploads");
 const bulkImportSelectedButton = document.querySelector("#bulk-import-selected-uploads");
@@ -43,7 +45,7 @@ const applicableMemoryList = document.querySelector("#applicable-memory-list");
 const saveMemoryRuleInput = document.querySelector("#save-memory-rule");
 const memoryRuleScopeInput = document.querySelector("#memory-rule-scope");
 const reprocessImpactPreview = document.querySelector("#reprocess-impact-preview");
-const HISTORY_COLSPAN = 11;
+const HISTORY_COLSPAN = 9;
 const UPLOAD_ACTION_SELECTOR = "[data-interpret-id], [data-bulk-import-id], [data-archive-id], [data-remove-id], #reprocess-selected-uploads, #bulk-import-selected-uploads, #archive-selected-uploads, #remove-selected-uploads";
 const XLSX_MODULE_URL = "https://esm.sh/xlsx@0.18.5";
 const BULK_IMPORT_BATCH_SIZE = 75;
@@ -293,6 +295,31 @@ function applyQuickFilter(rows = loadedRows) {
   return rows;
 }
 
+function uploadSearchHaystack(row) {
+  return [
+    row.original_filename,
+    row.document_type,
+    row.storage_path,
+    row.vendors?.vendor_name,
+    row.vendor_hint,
+    row.rfx_hint,
+    row.status,
+    auditLabel(auditStatus(row))
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+}
+
+function applyUploadFilters(rows = loadedRows) {
+  let filtered = applyQuickFilter(rows);
+  const query = String(uploadSearchInput?.value || "").trim().toLowerCase();
+  if (query) {
+    filtered = filtered.filter((row) => uploadSearchHaystack(row).includes(query));
+  }
+  return filtered;
+}
+
 function updateQuickFilters() {
   quickFilterButtons.forEach((button) => {
     button.classList.toggle("is-active", button.dataset.uploadFilter === activeQuickFilter);
@@ -318,6 +345,7 @@ function selectedVisibleRows() {
 function setBulkStatus(message, tone = "neutral") {
   uploadBulkStatus.textContent = message;
   uploadBulkStatus.dataset.tone = tone;
+  uploadBulkBar?.classList.toggle("is-empty", selectedVisibleIds().length === 0 && !message);
 }
 
 function updateBulkControls() {
@@ -333,6 +361,7 @@ function updateBulkControls() {
     selectAllUploads.checked = selectedCount > 0 && selectedCount === totalRows;
     selectAllUploads.indeterminate = selectedCount > 0 && selectedCount < totalRows;
   }
+  uploadBulkBar?.classList.toggle("is-empty", selectedCount === 0 && !uploadBulkStatus.textContent);
 }
 
 function statusTone(status) {
@@ -414,6 +443,99 @@ function uploadQualityChips(row) {
   return `<div class="row-review-chips">${chips
     .map((chip) => `<span class="review-chip ${escapeHtml(chip.tone)}">${escapeHtml(chip.label)}</span>`)
     .join("")}</div>`;
+}
+
+function uploadQualitySummary(row) {
+  const labels = [];
+  if (row.status) labels.push(`Status: ${row.status}`);
+  if (auditStatus(row)) labels.push(`Audit: ${auditLabel(auditStatus(row))}`);
+  if (auditRowsLabel(row)) labels.push(`Rows: ${auditRowsLabel(row)}`);
+  if (!row.vendors?.vendor_name && !row.vendor_hint) labels.push("No vendor hint");
+  if (!row.rfx_hint) labels.push("No RFx");
+  if (row.error_message) labels.push(`Issue: ${humanizeError(row.error_message)}`);
+  return labels.join(" | ");
+}
+
+function nextUploadStep(row) {
+  if (row.status === "failed") {
+    return {
+      label: "Fix interpretation",
+      detail: "Review the issue, then reprocess.",
+      tone: "danger"
+    };
+  }
+  if (row.status === "uploaded") {
+    return {
+      label: isSpreadsheetUpload(row) ? "Bulk import or interpret" : "Interpret source",
+      detail: isSpreadsheetUpload(row) ? "Use the template importer when columns already match." : "Run AI extraction into staging.",
+      tone: "warning"
+    };
+  }
+  if (stagedRows(row) > 0 || row.status === "staged") {
+    return {
+      label: "Review staged rows",
+      detail: `${stagedRows(row)} row(s) ready for validation.`,
+      tone: auditStatus(row) === "needs_review" ? "warning" : "success"
+    };
+  }
+  if (row.status === "archived") {
+    return {
+      label: "Archived",
+      detail: "No active action.",
+      tone: "muted"
+    };
+  }
+  return {
+    label: "Inspect source",
+    detail: "Open details to decide the next action.",
+    tone: "neutral"
+  };
+}
+
+function renderNextUploadStep(row) {
+  const step = nextUploadStep(row);
+  return `
+    <div class="upload-next-step ${escapeHtml(step.tone)}">
+      <strong>${escapeHtml(step.label)}</strong>
+      <small>${escapeHtml(step.detail)}</small>
+    </div>
+  `;
+}
+
+function renderPrimaryUploadAction(row) {
+  if (row.status === "uploaded" && isSpreadsheetUpload(row)) {
+    return `<button type="button" class="small-button" data-bulk-import-id="${escapeHtml(row.id)}">Bulk import</button>`;
+  }
+  if (row.status === "uploaded" || row.status === "failed") {
+    return `<button type="button" class="small-button" data-interpret-id="${escapeHtml(row.id)}">${row.status === "failed" ? "Reprocess" : "Interpret"}</button>`;
+  }
+  if (stagedRows(row) > 0 || row.status === "staged") {
+    return `<a class="small-button" href="${escapeHtml(sourceRowsUrl(row))}">View rows</a>`;
+  }
+  return `<button type="button" class="small-button secondary" data-upload-detail="${escapeHtml(row.id)}">Details</button>`;
+}
+
+function renderUploadActions(row) {
+  const archived = row.status === "archived";
+  return `
+    <div class="history-actions">
+      ${renderPrimaryUploadAction(row)}
+      <details class="row-more-menu">
+        <summary>More</summary>
+        <div>
+          <button type="button" class="small-button secondary" data-upload-detail="${escapeHtml(row.id)}">Details</button>
+          <button type="button" class="small-button secondary" data-source-id="${escapeHtml(row.id)}">View source</button>
+          <a class="small-button secondary" href="${escapeHtml(sourceRowsUrl(row))}">View rows</a>
+          ${isSpreadsheetUpload(row) && !archived ? `<button type="button" class="small-button secondary" data-bulk-import-id="${escapeHtml(row.id)}">Bulk import</button>` : ""}
+          ${archived ? "" : `<button type="button" class="small-button secondary" data-interpret-id="${escapeHtml(row.id)}">${row.status === "uploaded" ? "Interpret" : "Reprocess"}</button>`}
+          ${archived ? "" : `<button type="button" class="small-button secondary" data-archive-id="${escapeHtml(row.id)}">Archive</button>`}
+          <button type="button" class="small-button danger" data-remove-id="${escapeHtml(row.id)}">Remove</button>
+        </div>
+      </details>
+      ${row.error_message ? `<small class="error-detail">${escapeHtml(humanizeError(row.error_message))}</small>` : ""}
+      <small class="row-save-status" data-upload-status="${escapeHtml(row.id)}"></small>
+    </div>
+  `;
 }
 
 function detailItem(label, value) {
@@ -907,29 +1029,22 @@ function renderRows(rows) {
             <input data-select-upload="${escapeHtml(row.id)}" type="checkbox" aria-label="Select upload" ${selectedUploadIds.has(row.id) ? "checked" : ""} />
           </td>
           <td>${escapeHtml(formatDate(row.created_at))}</td>
-          <td>${escapeHtml(row.original_filename)}</td>
-          <td>${escapeHtml(row.document_type)}</td>
-          <td>
-            ${escapeHtml(row.vendors?.vendor_name || row.vendor_hint || "")}
+          <td class="source-file-cell">
+            <strong>${escapeHtml(row.original_filename)}</strong>
+            <small>${escapeHtml(row.document_type || "file")}</small>
+          </td>
+          <td class="source-owner-cell">
+            <strong>${escapeHtml(row.vendors?.vendor_name || row.vendor_hint || "No vendor hint")}</strong>
             ${row.vendors?.vendor_name ? matchLabel(row) : ""}
-            ${uploadQualityChips(row)}
+            <small>${escapeHtml(row.rfx_hint || "No RFx")}</small>
           </td>
-          <td>${escapeHtml(row.rfx_hint || "")}</td>
-          <td><span class="status-pill ${escapeHtml(statusTone(row.status))}">${escapeHtml(row.status)}</span></td>
-          <td>${renderUploadFlow(row)}</td>
+          <td title="${escapeHtml(uploadQualitySummary(row))}">
+            <span class="status-pill ${escapeHtml(statusTone(row.status))}">${escapeHtml(row.status)}</span>
+          </td>
           <td>${renderAuditSummary(row)}</td>
-          <td>${escapeHtml(row.storage_path)}</td>
-          <td class="history-actions">
-            <button type="button" class="small-button secondary" data-upload-detail="${escapeHtml(row.id)}">Details</button>
-            <button type="button" class="small-button secondary" data-source-id="${escapeHtml(row.id)}">View source</button>
-            <a class="small-button secondary" href="${escapeHtml(sourceRowsUrl(row))}">View rows</a>
-            ${isSpreadsheetUpload(row) && row.status !== "archived" ? `<button type="button" class="small-button secondary" data-bulk-import-id="${escapeHtml(row.id)}">Bulk import</button>` : ""}
-            ${row.status === "archived" ? "" : `<button type="button" class="small-button" data-interpret-id="${escapeHtml(row.id)}">${row.status === "uploaded" ? "Interpret" : "Reprocess"}</button>`}
-            ${row.status === "archived" ? "" : `<button type="button" class="small-button secondary" data-archive-id="${escapeHtml(row.id)}">Archive</button>`}
-            <button type="button" class="small-button danger" data-remove-id="${escapeHtml(row.id)}">Remove</button>
-            ${row.error_message ? `<small class="error-detail">${escapeHtml(humanizeError(row.error_message))}</small>` : ""}
-            <small class="row-save-status" data-upload-status="${escapeHtml(row.id)}"></small>
-          </td>
+          <td>${renderNextUploadStep(row)}</td>
+          <td class="storage-cell" title="${escapeHtml(row.storage_path)}">${escapeHtml(row.storage_path)}</td>
+          <td>${renderUploadActions(row)}</td>
         </tr>
       `
     )
@@ -945,7 +1060,7 @@ async function loadHistory() {
     await requirePrivatePage();
     const rows = await fetchUploadHistory({ status: statusFilter.value });
     loadedRows = rows;
-    renderRows(applyQuickFilter(rows));
+    renderRows(applyUploadFilters(rows));
     await applyPermissionState(UPLOAD_ACTION_SELECTOR, "uploads:interpret");
   } catch (error) {
     historyBody.innerHTML = `<tr><td colspan="${HISTORY_COLSPAN}">Could not load upload history. ${escapeHtml(humanizeError(error))}</td></tr>`;
@@ -1221,6 +1336,7 @@ async function openUploadSource(rowId, sourceButton = null) {
 
 async function clearUploadFilters() {
   statusFilter.value = "current";
+  if (uploadSearchInput) uploadSearchInput.value = "";
   activeQuickFilter = "all";
   selectedUploadIds.clear();
   uploadDrawer?.classList.add("hidden");
@@ -1244,8 +1360,13 @@ quickFilterButtons.forEach((button) => {
     activeQuickFilter = button.dataset.uploadFilter || "all";
     selectedUploadIds.clear();
     setBulkStatus("");
-    renderRows(applyQuickFilter());
+    renderRows(applyUploadFilters());
   });
+});
+uploadSearchInput?.addEventListener("input", () => {
+  selectedUploadIds.clear();
+  setBulkStatus("");
+  renderRows(applyUploadFilters());
 });
 selectAllUploads?.addEventListener("change", () => {
   historyBody.querySelectorAll("[data-select-upload]").forEach((checkbox) => {
