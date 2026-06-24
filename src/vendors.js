@@ -19,6 +19,7 @@ import {
 const form = document.querySelector("#vendor-form");
 const vendorTabs = document.querySelectorAll(".vendor-tab");
 const tabPanels = document.querySelectorAll("[data-tab-panel]");
+const directoryBaseButtons = document.querySelectorAll("[data-base-tab]");
 const vendorMetricTotal = document.querySelector("#vendor-metric-total");
 const vendorMetricReady = document.querySelector("#vendor-metric-ready");
 const vendorMetricMissingContact = document.querySelector("#vendor-metric-missing-contact");
@@ -124,6 +125,7 @@ let vendorFunnelStages = [];
 let vendorFunnelRows = [];
 let activeFunnelStage = "targeted";
 const VENDOR_BASE_TABS = ["sourcing", "procurement", "archived"];
+const VENDOR_IMPORT_TOOLS = ["wizard", "create", "segments"];
 const DEFAULT_FUNNEL_STAGES = [
   { key: "targeted", label: "Targeted", description: "Moved from sourcing into procurement." },
   { key: "nested", label: "Nested", description: "Has linked carrier quotes." },
@@ -137,6 +139,12 @@ const DEFAULT_FUNNEL_STAGES = [
 
 function isVendorBaseTab(tabName) {
   return VENDOR_BASE_TABS.includes(tabName);
+}
+
+function visibleVendorTab(tabName) {
+  if (isVendorBaseTab(tabName)) return "sourcing";
+  if (VENDOR_IMPORT_TOOLS.includes(tabName)) return "import";
+  return tabName || "sourcing";
 }
 
 function baseStageLabel(stage = activeBaseStage) {
@@ -281,7 +289,9 @@ function activateVendorTab(tabName) {
     activeBaseStage = tabName;
     vendorPageOffset = 0;
   }
-  vendorTabs.forEach((button) => button.classList.toggle("is-active", button.dataset.vendorTab === tabName));
+  const activeVisibleTab = visibleVendorTab(tabName);
+  vendorTabs.forEach((button) => button.classList.toggle("is-active", button.dataset.vendorTab === activeVisibleTab));
+  directoryBaseButtons.forEach((button) => button.classList.toggle("is-active", button.dataset.baseTab === activeBaseStage));
   tabPanels.forEach((panel) => {
     const shouldShow = panel.dataset.tabPanel === tabName || (isVendorBaseTab(tabName) && panel.dataset.tabPanel === "sourcing");
     const isEmptyImportPreview = panel.id === "import-preview-panel" && !pendingImportRows.length;
@@ -1815,6 +1825,12 @@ vendorFunnelBoard?.addEventListener("drop", (event) => {
   moveVendorFunnelStage(event.dataTransfer.getData("text/plain"), column.dataset.funnelDropStage);
 });
 document.addEventListener("click", (event) => {
+  const vendorOpenButton = event.target.closest("[data-vendor-open]");
+  if (vendorOpenButton) {
+    activateVendorTab(vendorOpenButton.dataset.vendorOpen || "sourcing");
+    return;
+  }
+
   const openButton = event.target.closest("[data-funnel-open]");
   if (openButton) {
     openVendorDrawer(openButton.dataset.funnelOpen);
@@ -1871,6 +1887,9 @@ selectVisibleVendorsButton.addEventListener("click", selectVisibleVendors);
 clearVendorSelectionButton.addEventListener("click", clearVendorSelection);
 vendorTabs.forEach((button) => {
   button.addEventListener("click", () => activateVendorTab(button.dataset.vendorTab));
+});
+directoryBaseButtons.forEach((button) => {
+  button.addEventListener("click", () => activateVendorTab(button.dataset.baseTab));
 });
 quickFilterButtons.forEach((button) => {
   button.addEventListener("click", () => {

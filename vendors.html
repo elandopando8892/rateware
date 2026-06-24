@@ -45,12 +45,12 @@
             <h1>Vendors</h1>
             <nav class="module-crumbs" aria-label="Module context">
               <a href="./app.html">Command Center</a>
-              <span>Sourcing Base</span>
+              <span>Vendor Directory</span>
               <span>Vendors</span>
             </nav>
           </div>
           <div class="page-header-actions">
-            <button class="page-primary-action" type="button" data-click-target="[data-vendor-tab='wizard']">Add vendor</button>
+            <button class="page-primary-action" type="button" data-vendor-open="wizard">Add vendor</button>
             <form id="auth-form" class="auth-strip">
               <button id="auth-button" type="submit">Sign in with Kinde</button>
               <button id="sign-out-button" type="button" class="secondary hidden">Sign out</button>
@@ -83,27 +83,37 @@
             </article>
           </section>
 
-          <section class="vendor-tabs wide-section" aria-label="Vendor workflows">
-            <button class="vendor-tab is-active" type="button" data-vendor-tab="sourcing">Sourcing Base</button>
-            <button class="vendor-tab" type="button" data-vendor-tab="procurement">Procurement Base</button>
-            <button class="vendor-tab" type="button" data-vendor-tab="funnel">Funnel</button>
-            <button class="vendor-tab" type="button" data-vendor-tab="archived">Archived</button>
-            <button class="vendor-tab" type="button" data-vendor-tab="intelligence">Intelligence</button>
-            <button class="vendor-tab" type="button" data-vendor-tab="wizard">Wizard</button>
-            <button class="vendor-tab" type="button" data-vendor-tab="create">Quick Create</button>
-            <button class="vendor-tab" type="button" data-vendor-tab="import">Import</button>
-            <button class="vendor-tab" type="button" data-vendor-tab="segments">Segments</button>
-            <button class="vendor-tab" type="button" data-vendor-tab="duplicates">Duplicates</button>
+          <section class="vendor-tabs vendor-workflow-tabs wide-section" aria-label="Vendor workflows">
+            <button class="vendor-tab is-active" type="button" data-vendor-tab="sourcing">
+              <strong>Directory</strong>
+              <span>Sourcing, procurement, archived</span>
+            </button>
+            <button class="vendor-tab" type="button" data-vendor-tab="funnel">
+              <strong>Procurement Pipeline</strong>
+              <span>Funnel and onboarding stages</span>
+            </button>
+            <button class="vendor-tab" type="button" data-vendor-tab="import">
+              <strong>Import</strong>
+              <span>Sheets, files, quick create, segments</span>
+            </button>
+            <button class="vendor-tab" type="button" data-vendor-tab="duplicates">
+              <strong>Duplicates</strong>
+              <span>Merge and cleanup review</span>
+            </button>
+            <button class="vendor-tab" type="button" data-vendor-tab="intelligence">
+              <strong>Intelligence</strong>
+              <span>Signals, tags, procurement fit</span>
+            </button>
           </section>
 
           <section class="workspace-panel wide-section hidden" data-tab-panel="funnel">
             <div class="split-heading">
               <div>
                 <p class="eyebrow">Procurement conversion</p>
-                <h2>Vendor funnel</h2>
+                <h2>Procurement Pipeline</h2>
               </div>
               <div class="action-row">
-                <button id="refresh-vendor-funnel" type="button">Refresh funnel</button>
+                <button id="refresh-vendor-funnel" type="button">Refresh pipeline</button>
                 <a class="link-button" href="./outreach.html">Open outreach</a>
               </div>
             </div>
@@ -146,7 +156,7 @@
                     </thead>
                     <tbody id="vendor-funnel-detail-body">
                       <tr>
-                        <td colspan="4">Open Funnel to load procurement vendors.</td>
+                        <td colspan="4">Open Procurement Pipeline to load procurement vendors.</td>
                       </tr>
                     </tbody>
                   </table>
@@ -219,8 +229,11 @@
 
           <section class="workspace-panel wide-section hidden" data-tab-panel="wizard">
             <div class="section-heading compact">
-              <p class="eyebrow">Guided setup</p>
-              <h2>Vendor Wizard</h2>
+              <div>
+                <p class="eyebrow">Import tools</p>
+                <h2>Guided vendor setup</h2>
+              </div>
+              <button class="secondary small-button" type="button" data-vendor-open="import">Back to Import</button>
             </div>
             <div class="wizard-shell">
               <div class="wizard-steps" aria-label="Vendor wizard steps">
@@ -295,8 +308,11 @@
 
           <section class="workspace-panel wide-section hidden" data-tab-panel="create">
             <div class="section-heading compact">
-              <p class="eyebrow">Add vendor</p>
-              <h2>Carrier profile</h2>
+              <div>
+                <p class="eyebrow">Import tools</p>
+                <h2>Quick carrier profile</h2>
+              </div>
+              <button class="secondary small-button" type="button" data-vendor-open="import">Back to Import</button>
             </div>
             <form id="vendor-form" class="vendor-form">
               <label>
@@ -348,8 +364,22 @@
 
           <section class="queue-panel wide-section hidden" data-tab-panel="import">
             <div class="section-heading compact">
-              <p class="eyebrow">Import</p>
-              <h2>CSV / XLSX / Google Sheet</h2>
+              <p class="eyebrow">Vendor intake</p>
+              <h2>Import and create vendors</h2>
+            </div>
+            <div class="vendor-tool-grid" aria-label="Vendor intake tools">
+              <button type="button" data-vendor-open="wizard">
+                <strong>Guided add</strong>
+                <span>Step-by-step vendor creation for cleaner CRM data.</span>
+              </button>
+              <button type="button" data-vendor-open="create">
+                <strong>Quick create</strong>
+                <span>Add one carrier profile without the full wizard.</span>
+              </button>
+              <button type="button" data-vendor-open="segments">
+                <strong>Saved segments</strong>
+                <span>Create reusable vendor lists by tag, status, or channel.</span>
+              </button>
             </div>
             <div id="vendor-import-guide" class="import-wizard-steps" aria-label="Vendor import workflow">
               <article class="is-active" data-import-step="source">
@@ -394,8 +424,11 @@
 
           <section class="queue-panel wide-section hidden" data-tab-panel="segments">
             <div class="section-heading compact">
-              <p class="eyebrow">Segments</p>
-              <h2>Saved vendor lists</h2>
+              <div>
+                <p class="eyebrow">Import tools</p>
+                <h2>Saved vendor lists</h2>
+              </div>
+              <button class="secondary small-button" type="button" data-vendor-open="import">Back to Import</button>
             </div>
             <form id="segment-form" class="segment-form">
               <label>
@@ -476,6 +509,17 @@
           </section>
 
           <section class="workspace-panel wide-section" data-tab-panel="sourcing">
+            <div class="directory-heading">
+              <div>
+                <p class="eyebrow">Vendor Directory</p>
+                <h2>Carrier master data</h2>
+              </div>
+              <div class="directory-base-switcher" aria-label="Directory base">
+                <button class="is-active" type="button" data-base-tab="sourcing">Sourcing</button>
+                <button type="button" data-base-tab="procurement">Procurement</button>
+                <button type="button" data-base-tab="archived">Archived</button>
+              </div>
+            </div>
             <div class="toolbar">
               <label>
                 Search

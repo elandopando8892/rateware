@@ -2127,21 +2127,130 @@ a {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
-  border-bottom: 1px solid var(--line);
 }
 
 .vendor-tab {
   min-height: 38px;
-  border-radius: var(--radius) var(--radius) 0 0;
-  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
   color: var(--muted);
   padding: 8px 12px;
 }
 
 .vendor-tab:hover,
 .vendor-tab.is-active {
-  background: #dcefed;
+  border-color: #bad9d5;
+  background: #eef7f6;
   color: var(--accent-dark);
+}
+
+.vendor-workflow-tabs {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.vendor-workflow-tabs .vendor-tab {
+  display: grid;
+  align-content: start;
+  gap: 3px;
+  min-height: 70px;
+  text-align: left;
+}
+
+.vendor-workflow-tabs .vendor-tab strong {
+  color: var(--ink);
+  font-size: 0.82rem;
+}
+
+.vendor-workflow-tabs .vendor-tab span {
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 780;
+  line-height: 1.25;
+}
+
+.vendor-workflow-tabs .vendor-tab.is-active strong,
+.vendor-workflow-tabs .vendor-tab.is-active span {
+  color: var(--accent-dark);
+}
+
+.directory-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.directory-heading h2 {
+  margin: 2px 0 0;
+  color: var(--ink);
+  font-size: 1rem;
+}
+
+.directory-base-switcher {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #f7f9fa;
+  padding: 4px;
+}
+
+.directory-base-switcher button {
+  min-height: 28px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  padding: 5px 9px;
+  font-size: 0.72rem;
+  font-weight: 850;
+}
+
+.directory-base-switcher button.is-active {
+  background: #ffffff;
+  color: var(--ink);
+  box-shadow: 0 1px 4px rgba(30, 41, 50, 0.08);
+}
+
+.vendor-tool-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.vendor-tool-grid button {
+  display: grid;
+  gap: 4px;
+  min-height: 76px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--text);
+  padding: 12px;
+  text-align: left;
+}
+
+.vendor-tool-grid button:hover {
+  border-color: #bad9d5;
+  background: #f8fbfb;
+}
+
+.vendor-tool-grid strong {
+  color: var(--ink);
+  font-size: 0.8rem;
+}
+
+.vendor-tool-grid span {
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 760;
+  line-height: 1.3;
 }
 
 .vendor-funnel-metrics {
@@ -8301,9 +8410,11 @@ tbody tr:hover {
   .metric-grid,
   .core-workflow-grid,
   .vendor-metrics,
+  .vendor-workflow-tabs,
   .vendor-funnel-metrics,
   .vendor-intelligence-summary,
   .vendor-funnel-strip,
+  .vendor-tool-grid,
   .funnel-workspace,
   .action-grid,
   .workflow-steps,
@@ -8346,9 +8457,22 @@ tbody tr:hover {
   }
 
   .vendor-funnel-metrics,
+  .vendor-workflow-tabs,
   .vendor-funnel-strip,
+  .vendor-tool-grid,
   .funnel-workspace {
     grid-template-columns: 1fr;
+  }
+
+  .directory-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .directory-base-switcher {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    width: 100%;
   }
 
   .vendor-funnel-board {
