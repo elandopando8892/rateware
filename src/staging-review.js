@@ -30,6 +30,7 @@ const bulkRemoveButton = document.querySelector("#bulk-remove-button");
 const bulkArchiveFilteredButton = document.querySelector("#bulk-archive-filtered-button");
 const bulkRemoveFilteredButton = document.querySelector("#bulk-remove-filtered-button");
 const bulkActionStatus = document.querySelector("#bulk-action-status");
+const bulkActionBar = document.querySelector(".bulk-action-bar");
 const openBulkDrawerButton = document.querySelector("#open-staging-bulk-drawer");
 const bulkDrawer = document.querySelector("#staging-bulk-drawer");
 const closeBulkDrawerButton = document.querySelector("#close-staging-bulk-drawer");
@@ -417,6 +418,7 @@ function updateBulkControls() {
   const selectedCount = selectedRows().length;
   const totalRows = body.querySelectorAll("[data-row-id]").length;
   bulkSelectionCount.textContent = `${selectedCount} selected`;
+  bulkActionBar?.classList.toggle("is-empty", selectedCount === 0);
   if (openSelectedDetailButton) openSelectedDetailButton.disabled = selectedCount !== 1;
   if (openBulkDrawerButton) openBulkDrawerButton.disabled = selectedCount === 0;
   if (applyBulkEditButton) applyBulkEditButton.disabled = selectedCount === 0;

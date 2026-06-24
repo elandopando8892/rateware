@@ -121,15 +121,20 @@
                 <button id="open-selected-staging-detail" type="button" class="secondary small-button" disabled>Evidence</button>
                 <button id="open-staging-bulk-drawer" type="button" class="secondary small-button" disabled>Bulk edit</button>
                 <button id="bulk-save-button" type="button" class="secondary small-button" disabled>Save selected</button>
-                <button id="bulk-match-vendors-button" type="button" class="secondary small-button" disabled>Match vendors</button>
                 <button id="bulk-approve-button" type="button" class="small-button" disabled>Approve selected</button>
-                <button id="bulk-reject-button" type="button" class="danger small-button" disabled>Reject selected</button>
-                <button id="bulk-enrich-zips-button" type="button" class="secondary small-button" disabled>Find missing ZIPs</button>
-                <button id="bulk-renormalize-button" type="button" class="secondary small-button" disabled>Re-normalize selected</button>
-                <button id="bulk-archive-button" type="button" class="secondary small-button" disabled>Archive selected</button>
-                <button id="bulk-remove-button" type="button" class="danger small-button" disabled>Remove selected</button>
-                <button id="bulk-archive-filtered-button" type="button" class="secondary small-button">Archive filtered</button>
-                <button id="bulk-remove-filtered-button" type="button" class="danger small-button">Remove filtered</button>
+                <details class="sheet-more-actions">
+                  <summary>More</summary>
+                  <div>
+                    <button id="bulk-match-vendors-button" type="button" class="secondary small-button" disabled>Match vendors</button>
+                    <button id="bulk-reject-button" type="button" class="danger small-button" disabled>Reject selected</button>
+                    <button id="bulk-enrich-zips-button" type="button" class="secondary small-button" disabled>Find missing ZIPs</button>
+                    <button id="bulk-renormalize-button" type="button" class="secondary small-button" disabled>Re-normalize selected</button>
+                    <button id="bulk-archive-button" type="button" class="secondary small-button" disabled>Archive selected</button>
+                    <button id="bulk-remove-button" type="button" class="danger small-button" disabled>Remove selected</button>
+                    <button id="bulk-archive-filtered-button" type="button" class="secondary small-button">Archive filtered</button>
+                    <button id="bulk-remove-filtered-button" type="button" class="danger small-button">Remove filtered</button>
+                  </div>
+                </details>
                 <span id="bulk-action-status" class="row-save-status"></span>
               </div>
             </div>

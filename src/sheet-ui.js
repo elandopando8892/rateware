@@ -59,6 +59,8 @@ export function initColumnVisibility({ table, menu, columns = [], storageKey = "
   if (!table || !menu || !columns.length) return;
   const list = menu.querySelector("[data-column-toggle-list]");
   const stored = normalizeStoredLayout(readStoredVisibility(storageKey), columns);
+  const viewsStorageKey = storageKey ? `${storageKey}:named-views` : "";
+  const storedViews = readStoredVisibility(viewsStorageKey);
   const lockedKeys = new Set(columns.filter((column) => column.locked).map((column) => column.key));
   const columnKeys = new Set(columns.map((column) => column.key));
   const labelRow = table.querySelector("thead tr");
@@ -67,6 +69,7 @@ export function initColumnVisibility({ table, menu, columns = [], storageKey = "
   let widths = { ...stored.widths };
   let draggedColumn = "";
   let layoutStatus = "";
+  let savedViews = storedViews && typeof storedViews === "object" && !Array.isArray(storedViews) ? storedViews : {};
 
   columns.forEach((column) => {
     visibility[column.key] = column.locked ? true : stored.visibility[column.key] !== false;
@@ -74,6 +77,32 @@ export function initColumnVisibility({ table, menu, columns = [], storageKey = "
 
   function persistLayout() {
     writeStoredVisibility(storageKey, { visibility, order, widths });
+  }
+
+  function layoutSnapshot() {
+    return {
+      visibility: { ...visibility },
+      order: [...orderedColumns()],
+      widths: { ...widths }
+    };
+  }
+
+  function persistNamedViews() {
+    writeStoredVisibility(viewsStorageKey, savedViews);
+  }
+
+  function viewNames() {
+    return Object.keys(savedViews).sort((a, b) => a.localeCompare(b));
+  }
+
+  function applyStoredLayout(layout) {
+    const normalized = normalizeStoredLayout(layout || {}, columns);
+    columns.forEach((column) => {
+      visibility[column.key] = column.locked ? true : normalized.visibility[column.key] !== false;
+    });
+    order = [...normalized.order];
+    widths = { ...normalized.widths };
+    applyVisibility();
   }
 
   function orderedColumns() {
@@ -109,6 +138,21 @@ export function initColumnVisibility({ table, menu, columns = [], storageKey = "
         <button type="button" data-column-reset-layout>Reset layout</button>
         <span class="column-layout-status" data-column-layout-status>${layoutStatus}</span>
       </div>
+      <div class="column-save-view-row">
+        <input data-column-view-name placeholder="Name this view" />
+        <button type="button" data-column-save-named-view>Save named</button>
+      </div>
+      ${viewNames().length ? `
+        <div class="column-saved-views">
+          <strong>Saved views</strong>
+          ${viewNames().map((name) => `
+            <span>
+              <button type="button" data-column-apply-view="${htmlEscape(name)}">${htmlEscape(name)}</button>
+              <button type="button" data-column-delete-view="${htmlEscape(name)}" aria-label="Delete ${htmlEscape(name)}">x</button>
+            </span>
+          `).join("")}
+        </div>
+      ` : ""}
       ${labels}
     `;
   }
@@ -220,6 +264,38 @@ export function initColumnVisibility({ table, menu, columns = [], storageKey = "
     if (event.target.closest("[data-column-save-layout]")) {
       persistLayout();
       setLayoutStatus("Saved");
+      return;
+    }
+    if (event.target.closest("[data-column-save-named-view]")) {
+      const input = menu.querySelector("[data-column-view-name]");
+      const name = String(input?.value || "").trim();
+      if (!name) {
+        setLayoutStatus("Name required");
+        input?.focus();
+        return;
+      }
+      savedViews[name] = { ...layoutSnapshot(), saved_at: new Date().toISOString() };
+      persistNamedViews();
+      if (input) input.value = "";
+      renderToggleInputs();
+      setLayoutStatus("View saved");
+      return;
+    }
+    const applyViewButton = event.target.closest("[data-column-apply-view]");
+    if (applyViewButton) {
+      const name = applyViewButton.dataset.columnApplyView;
+      if (!savedViews[name]) return;
+      applyStoredLayout(savedViews[name]);
+      setLayoutStatus("View applied");
+      return;
+    }
+    const deleteViewButton = event.target.closest("[data-column-delete-view]");
+    if (deleteViewButton) {
+      const name = deleteViewButton.dataset.columnDeleteView;
+      delete savedViews[name];
+      persistNamedViews();
+      renderToggleInputs();
+      setLayoutStatus("View deleted");
       return;
     }
     if (event.target.closest("[data-column-autofit]")) {

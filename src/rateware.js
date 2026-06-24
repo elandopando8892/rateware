@@ -26,6 +26,7 @@ const exportRfxVisibleButton = document.querySelector("#export-rfx-visible-butto
 const archiveFilteredButton = document.querySelector("#archive-filtered-rateware");
 const removeFilteredButton = document.querySelector("#remove-filtered-rateware");
 const actionStatus = document.querySelector("#rateware-action-status");
+const bulkActionBar = document.querySelector(".bulk-action-bar");
 const ratewareMetricTotal = document.querySelector("#rateware-metric-total");
 const ratewareMetricVendors = document.querySelector("#rateware-metric-vendors");
 const ratewareMetricMarkets = document.querySelector("#rateware-metric-markets");
@@ -1062,6 +1063,7 @@ function updateBulkControls() {
   const selectedCount = selectedVisibleIds().length;
   const totalRows = body.querySelectorAll("[data-rateware-id]").length;
   selectionCount.textContent = `${selectedCount} selected`;
+  bulkActionBar?.classList.toggle("is-empty", selectedCount === 0);
   if (openSelectedDetailButton) openSelectedDetailButton.disabled = selectedCount !== 1;
   if (openBulkDrawerButton) openBulkDrawerButton.disabled = selectedCount === 0;
   saveSelectedButton.disabled = selectedCount === 0;

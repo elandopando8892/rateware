@@ -126,16 +126,21 @@
                 <button id="open-selected-rateware-detail" type="button" class="secondary small-button" disabled>Evidence</button>
                 <button id="open-rateware-bulk-drawer" type="button" class="secondary small-button" disabled>Bulk edit</button>
                 <button id="save-selected-rateware" type="button" class="small-button" disabled>Save selected</button>
-                <button id="match-selected-vendors-rateware" type="button" class="secondary small-button" disabled>Match vendors</button>
-                <button id="enrich-selected-zips-rateware" type="button" class="secondary small-button" disabled>Find missing ZIPs</button>
-                <button id="renormalize-selected-rateware" type="button" class="secondary small-button" disabled>Re-normalize selected</button>
-                <button id="return-selected-button" type="button" class="secondary small-button" disabled>Return to staging</button>
-                <button id="export-selected-button" type="button" class="secondary small-button" disabled>Export selected CSV</button>
-                <button id="export-visible-button" type="button" class="secondary small-button">Export visible CSV</button>
-                <button id="export-client-visible-button" type="button" class="secondary small-button">Client export</button>
-                <button id="export-rfx-visible-button" type="button" class="secondary small-button">RFx export</button>
-                <button id="archive-filtered-rateware" type="button" class="secondary small-button">Archive filtered</button>
-                <button id="remove-filtered-rateware" type="button" class="danger small-button">Remove filtered</button>
+                <details class="sheet-more-actions">
+                  <summary>More</summary>
+                  <div>
+                    <button id="match-selected-vendors-rateware" type="button" class="secondary small-button" disabled>Match vendors</button>
+                    <button id="enrich-selected-zips-rateware" type="button" class="secondary small-button" disabled>Find missing ZIPs</button>
+                    <button id="renormalize-selected-rateware" type="button" class="secondary small-button" disabled>Re-normalize selected</button>
+                    <button id="return-selected-button" type="button" class="secondary small-button" disabled>Return to staging</button>
+                    <button id="export-selected-button" type="button" class="secondary small-button" disabled>Export selected CSV</button>
+                    <button id="export-visible-button" type="button" class="secondary small-button">Export visible CSV</button>
+                    <button id="export-client-visible-button" type="button" class="secondary small-button">Client export</button>
+                    <button id="export-rfx-visible-button" type="button" class="secondary small-button">RFx export</button>
+                    <button id="archive-filtered-rateware" type="button" class="secondary small-button">Archive filtered</button>
+                    <button id="remove-filtered-rateware" type="button" class="danger small-button">Remove filtered</button>
+                  </div>
+                </details>
                 <span id="rateware-action-status" class="row-save-status"></span>
               </div>
             </div>
