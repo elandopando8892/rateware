@@ -117,6 +117,17 @@ const STAGING_BULK_EDIT_FIELDS = [
   { field: "status", label: "Status", values: ["pending_review", "approved", "rejected", "archived"] },
   { field: "quote_date", label: "Quote date", type: "date" }
 ];
+const REVIEW_FILTER_LABELS = {
+  all: "All",
+  "needs-location": "Location gaps",
+  "needs-rate": "Rate gaps",
+  "needs-vendor": "Vendor gaps",
+  conflicts: "Conflicts",
+  "source-audit": "Source audit",
+  ready: "Ready",
+  "all-in": "All-in",
+  "split-rate": "Split"
+};
 
 function applyStagingUrlFilters() {
   const params = new URLSearchParams(window.location.search);
@@ -496,14 +507,18 @@ function renderLocationCell(row, prefix) {
 }
 
 function rateValidationClass(row) {
-  return needsNumericRate(row) ? "cell-invalid" : "cell-valid";
+  if (needsNumericRate(row) || hasAllInText(row)) return "cell-invalid";
+  if (hasSplitAllInConflict(row) || hasSourceServiceConflict(row) || hasCurrencyGap(row)) return "cell-warning";
+  return "cell-valid";
 }
 
 function inlineValidationIssues(row) {
   const issues = [];
   if (needsNumericRate(row)) issues.push({ tone: "danger", label: "rate", detail: "Needs numeric all-in, MX linehaul, or US linehaul" });
-  if (/[a-z]/i.test(String(row.all_in_rate || ""))) issues.push({ tone: "warning", label: "text", detail: "All-in should be numeric only" });
-  if ((hasNumericValue(row.all_in_rate) || hasSplitRate(row)) && !row.currency) issues.push({ tone: "warning", label: "currency", detail: "Currency missing" });
+  if (hasAllInText(row)) issues.push({ tone: "danger", label: "text", detail: "All-in should be numeric only; use Currency for USD/MXN/CAD" });
+  if (hasSplitAllInConflict(row)) issues.push({ tone: "warning", label: "split", detail: "All-in does not match the visible split components" });
+  if (hasSourceServiceConflict(row)) issues.push({ tone: "warning", label: "mode", detail: "Source service and staged One Way/Roundtrip mode differ" });
+  if (hasCurrencyGap(row)) issues.push({ tone: "warning", label: "currency", detail: "Currency missing" });
   if (!row.operation || !row.service) issues.push({ tone: "warning", label: "service", detail: "Operation or service missing" });
   return issues;
 }
@@ -527,11 +542,70 @@ function hasSplitRate(row) {
   return ["mx_linehaul", "us_linehaul", "fsc", "border_crossing_fee"].some((field) => hasNumericValue(row[field]));
 }
 
+function hasVendorMatch(row) {
+  return Boolean(row.vendors?.vendor_name || row.vendors?.domain || row.vendor_id);
+}
+
+function hasAllInText(row) {
+  return /[a-z]/i.test(String(row.all_in_rate || ""));
+}
+
+function splitRateTotal(row) {
+  const values = ["mx_linehaul", "us_linehaul", "fsc", "border_crossing_fee"]
+    .map((field) => numericValue(row[field]))
+    .filter((value) => value !== null && value > 0);
+  if (!values.length) return null;
+  return values.reduce((sum, value) => sum + value, 0);
+}
+
+function hasSplitAllInConflict(row) {
+  const allIn = numericValue(row.all_in_rate);
+  const splitTotal = splitRateTotal(row);
+  if (allIn === null || splitTotal === null || allIn <= 0 || splitTotal <= 0) return false;
+  return Math.abs(allIn - splitTotal) > Math.max(25, allIn * 0.05);
+}
+
+function serviceModeKey(value) {
+  const text = lookupKey(value);
+  if (/\b(rt|round trip|roundtrip|round)\b/.test(text)) return "roundtrip";
+  if (/\b(ow|one way|oneway)\b/.test(text)) return "oneway";
+  return "";
+}
+
+function hasSourceServiceConflict(row) {
+  const evidence = sourceEvidence(row);
+  const sourceMode = serviceModeKey([evidence.service, evidence.lane, evidence.source_service].filter(Boolean).join(" "));
+  const stagedMode = serviceModeKey(row.service);
+  return Boolean(sourceMode && stagedMode && sourceMode !== stagedMode);
+}
+
+function hasCurrencyGap(row) {
+  return (hasNumericValue(row.all_in_rate) || hasSplitRate(row)) && !row.currency;
+}
+
+function hasReviewConflict(row) {
+  return hasAllInText(row) || hasSplitAllInConflict(row) || hasSourceServiceConflict(row) || hasCurrencyGap(row) || !row.operation || !row.service;
+}
+
+function hasSourceAuditIssue(row) {
+  const confidence = objectValue(row.field_confidence);
+  return rowAuditFlags(row).length > 0
+    || rowExtractionWarnings(row).length > 0
+    || Object.values(confidence).some((value) => Number(value) < 0.75);
+}
+
+function isReadyForApproval(row) {
+  return !approvalBlockers(row).length && hasVendorMatch(row) && row.quote_date && row.operation && row.service && !hasReviewConflict(row);
+}
+
 function rowReviewIssues(row) {
   const issues = [];
-  if (!row.vendors?.vendor_name) issues.push({ tone: "warning", label: "No vendor match" });
+  if (!hasVendorMatch(row)) issues.push({ tone: "warning", label: "No vendor match" });
   if (needsLocationMatch(row)) issues.push({ tone: "danger", label: "Needs location" });
   if (needsNumericRate(row)) issues.push({ tone: "danger", label: "Needs rate" });
+  if (hasAllInText(row)) issues.push({ tone: "danger", label: "Rate text" });
+  if (hasSplitAllInConflict(row)) issues.push({ tone: "warning", label: "Split mismatch" });
+  if (hasSourceServiceConflict(row)) issues.push({ tone: "warning", label: "Service conflict" });
   if (!row.quote_date) issues.push({ tone: "warning", label: "Needs date" });
   if (!row.weekly_capacity) issues.push({ tone: "muted", label: "No capacity" });
   return issues;
@@ -567,9 +641,10 @@ function renderReviewChips(row) {
 
 function rowQualityClass(row) {
   if (rowAuditFlags(row).some((flag) => ["missing_rate", "missing_origin", "missing_destination"].includes(flag))) return "needs-review";
-  if (needsNumericRate(row) || needsLocationMatch(row)) return "needs-review";
+  if (needsNumericRate(row) || needsLocationMatch(row) || hasAllInText(row)) return "needs-review";
+  if (hasReviewConflict(row)) return "has-warning";
   if (rowAuditFlags(row).length || rowExtractionWarnings(row).length) return "has-warning";
-  if (!row.vendors?.vendor_name || !row.quote_date || !row.weekly_capacity) return "has-warning";
+  if (!hasVendorMatch(row) || !row.quote_date || !row.weekly_capacity) return "has-warning";
   return "";
 }
 
@@ -584,7 +659,10 @@ function qualitySummary(row) {
   if (blockers.length || flags.some((flag) => ["missing_rate", "missing_origin", "missing_destination"].includes(flag))) {
     return { tone: "danger", label: "Needs fix", detail: `${blockers.length || flags.length} issue(s)` };
   }
-  if (flags.length || warnings.length || !row.vendors?.vendor_name || !row.quote_date) {
+  if (hasReviewConflict(row)) {
+    return { tone: "warning", label: "Conflict", detail: "Check rate/service" };
+  }
+  if (flags.length || warnings.length || !hasVendorMatch(row) || !row.quote_date) {
     return { tone: "warning", label: "Review", detail: `${flags.length + warnings.length} audit note(s)` };
   }
   return { tone: "success", label: "Ready", detail: "Clean row" };
@@ -610,6 +688,7 @@ function validationRow(baseRow = {}, patch = {}) {
 function approvalBlockers(row) {
   const blockers = [];
   if (needsNumericRate(row)) blockers.push("numeric rate");
+  if (hasAllInText(row)) blockers.push("numeric-only all-in");
   if (needsLocationMatch(row)) blockers.push("location match");
   return blockers;
 }
@@ -628,6 +707,10 @@ function rowFromTablePatch(tableRow, patch = {}) {
 function applyReviewFilter(rows = loadedRows) {
   if (activeReviewFilter === "needs-location") return rows.filter(needsLocationMatch);
   if (activeReviewFilter === "needs-rate") return rows.filter(needsNumericRate);
+  if (activeReviewFilter === "needs-vendor") return rows.filter((row) => !hasVendorMatch(row));
+  if (activeReviewFilter === "conflicts") return rows.filter(hasReviewConflict);
+  if (activeReviewFilter === "source-audit") return rows.filter(hasSourceAuditIssue);
+  if (activeReviewFilter === "ready") return rows.filter(isReadyForApproval);
   if (activeReviewFilter === "all-in") return rows.filter((row) => hasNumericValue(row.all_in_rate));
   if (activeReviewFilter === "split-rate") return rows.filter(hasSplitRate);
   return rows;
@@ -733,6 +816,7 @@ function activeStagingBulkFilters() {
   return {
     status: statusFilter.value || "",
     raw_upload_id: rawUploadScopeId || "",
+    search: String(stagingSearchInput?.value || "").trim(),
     review_filter: activeReviewFilter,
     column_filters: activeColumnFilters()
   };
@@ -742,6 +826,7 @@ function stagingFilterSummaryLabel(filters) {
   const parts = [];
   if (filters.status) parts.push(`status ${filters.status}`);
   if (filters.raw_upload_id) parts.push("current source upload");
+  if (filters.search) parts.push(`search "${filters.search}"`);
   if (filters.review_filter && filters.review_filter !== "all") parts.push(filters.review_filter);
   const columnCount = Object.keys(filters.column_filters || {}).length;
   if (columnCount) parts.push(`${columnCount} column filter(s)`);
@@ -749,9 +834,22 @@ function stagingFilterSummaryLabel(filters) {
 }
 
 function updateReviewFilters() {
+  const baseRows = applyStagingTextSearch(scopedStagingRows(loadedRows));
   reviewFilterButtons.forEach((button) => {
-    button.classList.toggle("is-active", button.dataset.stagingFilter === activeReviewFilter);
+    const filter = button.dataset.stagingFilter || "all";
+    const count = filter === "all" ? baseRows.length : applyReviewFilterForCount(baseRows, filter).length;
+    const label = REVIEW_FILTER_LABELS[filter] || filter;
+    button.textContent = `${label} ${count}`;
+    button.classList.toggle("is-active", filter === activeReviewFilter);
   });
+}
+
+function applyReviewFilterForCount(rows, filter) {
+  const previous = activeReviewFilter;
+  activeReviewFilter = filter;
+  const filtered = applyReviewFilter(rows);
+  activeReviewFilter = previous;
+  return filtered;
 }
 
 function updateReviewMetrics() {
@@ -842,6 +940,27 @@ function fixChecklist(row) {
       detail: "Use All-in, or fill MX/US linehaul if the carrier split the quote."
     });
   }
+  if (hasAllInText(row)) {
+    items.push({
+      tone: "danger",
+      title: "Clean the all-in rate",
+      detail: "All-in only accepts numbers. Move USD/MXN/CAD into Currency."
+    });
+  }
+  if (hasSplitAllInConflict(row)) {
+    items.push({
+      tone: "warning",
+      title: "Review all-in vs split components",
+      detail: "The all-in amount differs from MX linehaul + US linehaul + FSC + border fee."
+    });
+  }
+  if (hasSourceServiceConflict(row)) {
+    items.push({
+      tone: "warning",
+      title: "Review One Way / Roundtrip",
+      detail: "The staged service mode differs from the source evidence."
+    });
+  }
   if (needsLocationMatch(row)) {
     items.push({
       tone: "danger",
@@ -849,7 +968,7 @@ function fixChecklist(row) {
       detail: "Choose catalog-backed cities so ZIP/state/market can be matched."
     });
   }
-  if (!row.vendors?.vendor_name) {
+  if (!hasVendorMatch(row)) {
     items.push({
       tone: "warning",
       title: "Confirm vendor",
@@ -1836,10 +1955,16 @@ body.addEventListener("click", (event) => {
   else runBulkRenormalize();
 });
 body.addEventListener("dblclick", (event) => {
-  const cell = event.target.closest('td[data-col="origin"], td[data-col="destination"]');
-  const tableRow = cell?.closest("[data-row-id]");
-  if (!cell || !tableRow) return;
-  locationMatchDrawerController?.open(tableRow, cell.dataset.col);
+  const locationCell = event.target.closest('td[data-col="origin"], td[data-col="destination"]');
+  const locationRow = locationCell?.closest("[data-row-id]");
+  if (locationCell && locationRow) {
+    locationMatchDrawerController?.open(locationRow, locationCell.dataset.col);
+    return;
+  }
+
+  if (event.target.closest("[data-field], button, a, select, input, textarea")) return;
+  const tableRow = event.target.closest("[data-row-id]");
+  if (tableRow?.dataset.rowId) openEditDrawer(tableRow.dataset.rowId);
 });
 columnVisibilityController = initColumnVisibility({
   table: stagingTable,

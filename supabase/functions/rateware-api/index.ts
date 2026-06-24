@@ -1010,6 +1010,7 @@ const BULK_RATE_ROW_SELECT = [
   "id",
   "status",
   "raw_upload_id",
+  "vendor_id",
   "vendor_domain",
   "rfx_id",
   "origin",
@@ -1033,6 +1034,7 @@ const BULK_RATE_ROW_SELECT = [
   "operation",
   "service",
   "all_in_rate",
+  "currency",
   "mx_linehaul",
   "us_linehaul",
   "fsc",
@@ -1041,6 +1043,10 @@ const BULK_RATE_ROW_SELECT = [
   "mx_border_crossing_point",
   "us_border_crossing_point",
   "quote_date",
+  "audit_flags",
+  "extraction_warnings",
+  "field_confidence",
+  "source_evidence",
   "created_at"
 ].join(",");
 
@@ -1068,6 +1074,69 @@ function bulkNeedsLocationMatch(row: Record<string, unknown>) {
   const originMatched = Boolean(row.origin_market || row.origin_zip_prefix || row.origin_state || row.origin_country);
   const destinationMatched = Boolean(row.destination_market || row.destination_zip_prefix || row.destination_state || row.destination_country);
   return !originMatched || !destinationMatched;
+}
+
+function bulkHasVendorMatch(row: Record<string, unknown>) {
+  return Boolean(cleanText(row.vendor_id));
+}
+
+function bulkHasAllInText(row: Record<string, unknown>) {
+  return /[a-z]/i.test(String(row.all_in_rate || ""));
+}
+
+function bulkSplitRateTotal(row: Record<string, unknown>) {
+  const values = ["mx_linehaul", "us_linehaul", "fsc", "border_crossing_fee"]
+    .map((field) => bulkNumericValue(row[field]))
+    .filter((value): value is number => value !== null && value > 0);
+  if (!values.length) return null;
+  return values.reduce((sum, value) => sum + value, 0);
+}
+
+function bulkHasSplitAllInConflict(row: Record<string, unknown>) {
+  const allIn = bulkNumericValue(row.all_in_rate);
+  const splitTotal = bulkSplitRateTotal(row);
+  if (allIn === null || splitTotal === null || allIn <= 0 || splitTotal <= 0) return false;
+  return Math.abs(allIn - splitTotal) > Math.max(25, allIn * 0.05);
+}
+
+function bulkServiceModeKey(value: unknown) {
+  const text = catalogKey(value).toLowerCase();
+  if (/\b(rt|round trip|roundtrip|round)\b/.test(text)) return "roundtrip";
+  if (/\b(ow|one way|oneway)\b/.test(text)) return "oneway";
+  return "";
+}
+
+function bulkHasSourceServiceConflict(row: Record<string, unknown>) {
+  const evidence = objectRecord(row.source_evidence);
+  const sourceMode = bulkServiceModeKey([evidence.service, evidence.lane, evidence.source_service].filter(Boolean).join(" "));
+  const stagedMode = bulkServiceModeKey(row.service);
+  return Boolean(sourceMode && stagedMode && sourceMode !== stagedMode);
+}
+
+function bulkHasCurrencyGap(row: Record<string, unknown>) {
+  return (bulkHasNumericValue(row.all_in_rate) || bulkHasSplitRate(row)) && !cleanText(row.currency);
+}
+
+function bulkHasReviewConflict(row: Record<string, unknown>) {
+  return bulkHasAllInText(row) || bulkHasSplitAllInConflict(row) || bulkHasSourceServiceConflict(row) || bulkHasCurrencyGap(row) || !cleanText(row.operation) || !cleanText(row.service);
+}
+
+function bulkHasSourceAuditIssue(row: Record<string, unknown>) {
+  const confidence = objectRecord(row.field_confidence);
+  return (Array.isArray(row.audit_flags) && row.audit_flags.length > 0)
+    || (Array.isArray(row.extraction_warnings) && row.extraction_warnings.length > 0)
+    || Object.values(confidence).some((value) => Number(value) < 0.75);
+}
+
+function bulkIsReadyForApproval(row: Record<string, unknown>) {
+  return !bulkNeedsNumericRate(row)
+    && !bulkHasAllInText(row)
+    && !bulkNeedsLocationMatch(row)
+    && bulkHasVendorMatch(row)
+    && Boolean(cleanText(row.quote_date))
+    && Boolean(cleanText(row.operation))
+    && Boolean(cleanText(row.service))
+    && !bulkHasReviewConflict(row);
 }
 
 function bulkColumnText(row: Record<string, unknown>, field: string) {
@@ -1157,6 +1226,10 @@ function matchesBulkReviewFilter(row: Record<string, unknown>, filter: unknown) 
   if (!value || value === "all") return true;
   if (value === "needs-location") return bulkNeedsLocationMatch(row);
   if (value === "needs-rate") return bulkNeedsNumericRate(row);
+  if (value === "needs-vendor") return !bulkHasVendorMatch(row);
+  if (value === "conflicts") return bulkHasReviewConflict(row);
+  if (value === "source-audit") return bulkHasSourceAuditIssue(row);
+  if (value === "ready") return bulkIsReadyForApproval(row);
   if (value === "all-in") return bulkHasNumericValue(row.all_in_rate);
   if (value === "split-rate") return bulkHasSplitRate(row);
   return true;
@@ -5777,7 +5850,8 @@ Deno.serve(async (request) => {
     }
 
     if (body.action === "list_staging") {
-      let query = supabase.from("rate_staging").select("*, vendors(vendor_name, domain, primary_email, base_stage, status), rateware_lane_legs(*)").order("created_at", { ascending: false }).limit(200);
+      const limit = Math.min(Math.max(Number(body.limit) || 1000, 1), 1000);
+      let query = supabase.from("rate_staging").select("*, vendors(vendor_name, domain, primary_email, base_stage, status), rateware_lane_legs(*)").order("created_at", { ascending: false }).limit(limit);
       if (body.status) query = query.eq("status", body.status);
       if (body.raw_upload_id) query = query.eq("raw_upload_id", body.raw_upload_id);
       const result = await query;

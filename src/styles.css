@@ -7102,7 +7102,15 @@ tbody tr:hover {
 .review-mode-tabs,
 .rateware-view-tabs {
   align-items: end;
+  flex-wrap: nowrap;
   margin-bottom: 0;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.review-mode-tabs .review-filter,
+.rateware-view-tabs .review-filter {
+  flex: 0 0 auto;
 }
 
 .review-queue-toolbar {
