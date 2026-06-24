@@ -43,8 +43,16 @@ const dashboardTitle = document.querySelector("#rfx-dashboard-title");
 const eventDashboard = document.querySelector("#rfx-event-dashboard");
 const inviteStatusMix = document.querySelector("#rfx-invite-status");
 const dashboardOutreachLink = document.querySelector("#rfx-dashboard-outreach-link");
+const copyRfxSummaryButton = document.querySelector("#copy-rfx-summary");
+const eventFlow = document.querySelector("#rfx-event-flow");
 const laneCoverage = document.querySelector("#rfx-lane-coverage");
 const coverageSummary = document.querySelector("#rfx-coverage-summary");
+const laneSearch = document.querySelector("#rfx-lane-search");
+const laneDecisionTitle = document.querySelector("#rfx-lane-decision-title");
+const laneDecisionStatusPill = document.querySelector("#rfx-lane-decision-status");
+const laneDecisionBody = document.querySelector("#rfx-lane-decision-body");
+const responseSummary = document.querySelector("#rfx-response-summary");
+const responseBody = document.querySelector("#rfx-response-body");
 const manualShortlistLane = document.querySelector("#manual-shortlist-lane");
 const manualShortlistSearch = document.querySelector("#manual-shortlist-search");
 const manualShortlistVendors = document.querySelector("#manual-shortlist-vendors");
@@ -58,6 +66,8 @@ let currentLanes = [];
 let vendorOptions = [];
 let selectedLaneIds = new Set();
 let selectedInvitationIds = new Set();
+let focusedLaneId = null;
+let activeLaneFilter = "all";
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -222,10 +232,124 @@ function responseRatio(lane) {
   return Math.round((bids / invitations.length) * 100);
 }
 
+function activeInvitations(lane) {
+  return (lane.invitations || []).filter((item) => item.invitation_status !== "archived");
+}
+
+function bidInvitations(lane) {
+  return activeInvitations(lane).filter((item) => item.bid_rate !== null || item.invitation_status === "bid_submitted");
+}
+
+function bestBidForLane(lane) {
+  return bidInvitations(lane)
+    .map((item) => ({ ...item, numeric_bid: Number(item.bid_rate) }))
+    .filter((item) => Number.isFinite(item.numeric_bid))
+    .sort((a, b) => a.numeric_bid - b.numeric_bid)[0] || null;
+}
+
+function laneDecisionStatus(lane) {
+  const invitations = activeInvitations(lane);
+  const bids = bidInvitations(lane);
+  if (!invitations.length) return "needs_shortlist";
+  if (!invitations.some((item) => ["invited", "viewed", "bid_submitted", "declined", "awarded"].includes(item.invitation_status))) return "needs_invite";
+  if (!bids.length) return "needs_response";
+  return "has_bids";
+}
+
+function laneDecisionLabel(status) {
+  const labels = {
+    needs_shortlist: "Needs shortlist",
+    needs_invite: "Needs invite",
+    needs_response: "Needs response",
+    has_bids: "Has bids",
+    above_benchmark: "Above Rateware"
+  };
+  return labels[status] || "All";
+}
+
+function laneSearchText(lane) {
+  return [
+    lane.lane_number,
+    lane.origin,
+    lane.origin_city,
+    lane.origin_state,
+    lane.origin_market,
+    lane.origin_region,
+    lane.destination,
+    lane.destination_city,
+    lane.destination_state,
+    lane.destination_market,
+    lane.destination_region,
+    lane.equipment,
+    lane.trailer,
+    lane.config,
+    lane.operation,
+    lane.service,
+    lane.incumbent_vendor,
+    ...(lane.invitations || []).map((invitation) => vendorLabel(invitation))
+  ].filter(Boolean).join(" ").toLowerCase();
+}
+
+function laneMatchesFilter(lane) {
+  const term = String(laneSearch?.value || "").trim().toLowerCase();
+  if (term && !laneSearchText(lane).includes(term)) return false;
+  const decision = laneDecisionStatus(lane);
+  if (activeLaneFilter === "all") return true;
+  if (activeLaneFilter === "above_benchmark") {
+    const bid = bestBidForLane(lane);
+    return Number.isFinite(Number(bid?.bid_delta)) && Number(bid.bid_delta) > 0;
+  }
+  return decision === activeLaneFilter;
+}
+
+function visibleLanes() {
+  return currentLanes.filter(laneMatchesFilter);
+}
+
+function eventStepState() {
+  const activeLanes = currentLanes;
+  const invitations = activeLanes.flatMap((lane) => activeInvitations(lane));
+  const bids = activeLanes.flatMap((lane) => bidInvitations(lane));
+  return {
+    setup: Boolean(selectedEvent),
+    lanes: activeLanes.length > 0,
+    shortlist: activeLanes.some((lane) => activeInvitations(lane).length > 0),
+    invite: invitations.some((item) => ["invited", "viewed", "bid_submitted", "declined", "awarded"].includes(item.invitation_status)),
+    responses: bids.length > 0,
+    award: invitations.some((item) => item.invitation_status === "awarded") || selectedEvent?.status === "awarded"
+  };
+}
+
+function renderEventFlow() {
+  if (!eventFlow) return;
+  const state = eventStepState();
+  const steps = [
+    ["setup", "Setup"],
+    ["lanes", "Lanes"],
+    ["shortlist", "Shortlist"],
+    ["invite", "Invite"],
+    ["responses", "Responses"],
+    ["award", "Award"]
+  ];
+  eventFlow.innerHTML = steps.map(([key, label], index) => `
+    <article class="${state[key] ? "is-complete" : ""}">
+      <span>${index + 1}</span>
+      <strong>${escapeHtml(label)}</strong>
+    </article>
+  `).join("");
+}
+
+function focusLane(laneId) {
+  focusedLaneId = laneId || currentLanes[0]?.id || null;
+  renderLanes();
+}
+
 function renderEventDashboard() {
+  renderEventFlow();
   if (!selectedEvent) {
     dashboardTitle.textContent = "No event selected";
     if (dashboardOutreachLink) dashboardOutreachLink.href = "./outreach.html";
+    if (copyRfxSummaryButton) copyRfxSummaryButton.disabled = true;
     if (eventDashboard) {
       eventDashboard.innerHTML = `
         <article>
@@ -250,6 +374,7 @@ function renderEventDashboard() {
 
   dashboardTitle.textContent = `${selectedEvent.rfx_id || "RFx"} | ${selectedEvent.name || "Selected event"}`;
   if (dashboardOutreachLink) dashboardOutreachLink.href = `./outreach.html?rfx_event_id=${encodeURIComponent(selectedEvent.id)}`;
+  if (copyRfxSummaryButton) copyRfxSummaryButton.disabled = false;
   if (eventDashboard) {
     eventDashboard.innerHTML = `
       <article>
@@ -298,16 +423,22 @@ function renderLaneCoverage() {
     return;
   }
 
-  const covered = currentLanes.filter((lane) => (lane.invitations || []).some((item) => item.invitation_status !== "archived")).length;
+  const lanes = visibleLanes();
+  const covered = currentLanes.filter((lane) => activeInvitations(lane).length).length;
   coverageSummary.textContent = `${formatNumber(covered)} / ${formatNumber(currentLanes.length)} lanes covered`;
-  laneCoverage.innerHTML = currentLanes.map((lane) => {
-    const invitations = (lane.invitations || []).filter((item) => item.invitation_status !== "archived");
-    const bids = invitations.filter((item) => item.bid_rate !== null || item.invitation_status === "bid_submitted");
+  if (!lanes.length) {
+    laneCoverage.innerHTML = `<article>No lanes match ${escapeHtml(laneDecisionLabel(activeLaneFilter).toLowerCase())}.</article>`;
+    return;
+  }
+  laneCoverage.innerHTML = lanes.map((lane) => {
+    const invitations = activeInvitations(lane);
+    const bids = bidInvitations(lane);
+    const bestBid = bestBidForLane(lane);
     const coverage = coverageRatio(lane);
     const responses = responseRatio(lane);
     const tone = bids.length ? "success" : invitations.length ? "neutral" : "danger";
     return `
-      <article class="rfx-coverage-card" data-tone="${tone}">
+      <article class="rfx-coverage-card ${lane.id === focusedLaneId ? "is-active" : ""}" data-tone="${tone}">
         <button type="button" data-rfx-focus-lane="${escapeHtml(lane.id)}">
           <strong>#${escapeHtml(lane.lane_number || "")} ${escapeHtml(laneRoute(lane))}</strong>
           <span>${escapeHtml([lane.equipment, lane.trailer, lane.operation, lane.service].filter(Boolean).join(" / ") || "Lane")}</span>
@@ -315,8 +446,105 @@ function renderLaneCoverage() {
         <div class="coverage-meter" aria-label="Shortlist coverage">
           <span style="width: ${coverage}%"></span>
         </div>
-        <small>${formatNumber(invitations.length)} vendors | ${formatNumber(bids.length)} bids | ${formatNumber(responses)}% response</small>
+        <small>${formatNumber(invitations.length)} vendors | ${formatNumber(bids.length)} bids | ${formatNumber(responses)}% response${bestBid ? ` | best ${formatMoney(bestBid.bid_rate, bestBid.currency || lane.currency)}` : ""}</small>
       </article>
+    `;
+  }).join("");
+}
+
+function renderLaneDecision() {
+  if (!laneDecisionBody || !laneDecisionTitle || !laneDecisionStatusPill) return;
+  const lane = currentLanes.find((item) => item.id === focusedLaneId) || visibleLanes()[0] || currentLanes[0];
+  focusedLaneId = lane?.id || null;
+  if (!lane) {
+    laneDecisionTitle.textContent = "Select a lane";
+    laneDecisionStatusPill.textContent = "No lane";
+    laneDecisionStatusPill.className = "status-pill muted";
+    laneDecisionBody.innerHTML = "<article>Select a lane card or table row.</article>";
+    return;
+  }
+
+  const invitations = activeInvitations(lane);
+  const bids = bidInvitations(lane);
+  const bestBid = bestBidForLane(lane);
+  const benchmark = lane.benchmark;
+  const benchmarkAmount = Number(benchmark?.all_in_rate);
+  const bestBidAmount = Number(bestBid?.bid_rate);
+  const spread = bids.length
+    ? Math.max(...bids.map((item) => Number(item.bid_rate)).filter(Number.isFinite)) - Math.min(...bids.map((item) => Number(item.bid_rate)).filter(Number.isFinite))
+    : null;
+  const decision = laneDecisionStatus(lane);
+  laneDecisionTitle.textContent = `#${lane.lane_number || ""} ${laneRoute(lane)}`;
+  laneDecisionStatusPill.textContent = laneDecisionLabel(decision);
+  laneDecisionStatusPill.className = `status-pill ${decision === "has_bids" ? "success" : decision === "needs_shortlist" ? "danger" : "neutral"}`;
+  laneDecisionBody.innerHTML = `
+    <div class="rfx-decision-metrics">
+      <article>
+        <span>Rateware</span>
+        <strong>${benchmark ? formatMoney(benchmark.all_in_rate, benchmark.currency) : "-"}</strong>
+        <small>${escapeHtml(benchmark ? `${benchmark.vendor || "Benchmark"} | ${benchmark.score}% match` : "No benchmark")}</small>
+      </article>
+      <article>
+        <span>Best bid</span>
+        <strong>${bestBid ? formatMoney(bestBid.bid_rate, bestBid.currency || lane.currency) : "-"}</strong>
+        <small>${escapeHtml(bestBid ? vendorLabel(bestBid) : "No response")}</small>
+      </article>
+      <article>
+        <span>Bid vs Rateware</span>
+        <strong>${Number.isFinite(bestBidAmount) && Number.isFinite(benchmarkAmount) ? formatMoney(bestBidAmount - benchmarkAmount, bestBid.currency || lane.currency) : "-"}</strong>
+        <small>${Number.isFinite(bestBidAmount) && Number.isFinite(benchmarkAmount) && benchmarkAmount ? `${formatNumber(((bestBidAmount - benchmarkAmount) / benchmarkAmount) * 100, 1)}%` : "Pending"}</small>
+      </article>
+      <article>
+        <span>Spread</span>
+        <strong>${Number.isFinite(spread) ? formatMoney(spread, lane.currency) : "-"}</strong>
+        <small>${formatNumber(bids.length)} bid(s)</small>
+      </article>
+    </div>
+    <div class="rfx-lane-context">
+      <span>${escapeHtml([lane.equipment, lane.trailer, lane.config].filter(Boolean).join(" / ") || "Equipment pending")}</span>
+      <span>${escapeHtml([lane.operation, lane.service].filter(Boolean).join(" / ") || "Service pending")}</span>
+      <span>${escapeHtml([lane.origin_market, lane.destination_market].filter(Boolean).join(" -> ") || "Market pending")}</span>
+      <span>${escapeHtml([lane.weekly_volume ? `${lane.weekly_volume} / wk` : "", lane.target_rate ? `Target ${formatMoney(lane.target_rate, lane.currency)}` : ""].filter(Boolean).join(" | ") || "Volume pending")}</span>
+    </div>
+    <div class="rfx-lane-shortlist">
+      ${invitations.length ? invitations.map((invitation) => `
+        <article>
+          <strong>${escapeHtml(vendorLabel(invitation))}</strong>
+          ${statusChip(invitation.invitation_status || "shortlisted")}
+          <span>${escapeHtml([invitation.vendors?.base_stage, invitation.vendors?.primary_email || invitation.vendors?.whatsapp_phone].filter(Boolean).join(" | ") || "No contact")}</span>
+          <small>${escapeHtml(invitation.notes || "No fit note")}</small>
+        </article>
+      `).join("") : "<article>No vendors shortlisted.</article>"}
+    </div>
+  `;
+}
+
+function renderResponseBoard() {
+  if (!responseBody || !responseSummary) return;
+  const rows = visibleLanes()
+    .flatMap((lane) => activeInvitations(lane).map((invitation) => ({ lane, invitation })))
+    .filter(({ invitation }) => invitation.invitation_status !== "shortlisted" || invitation.bid_rate !== null);
+  const bidRows = rows.filter(({ invitation }) => invitation.bid_rate !== null || invitation.invitation_status === "bid_submitted");
+  responseSummary.textContent = `${formatNumber(bidRows.length)} bids / ${formatNumber(rows.length)} active rows`;
+  if (!rows.length) {
+    responseBody.innerHTML = `<tr><td colspan="8">No carrier responses yet.</td></tr>`;
+    return;
+  }
+  responseBody.innerHTML = rows.map(({ lane, invitation }) => {
+    const benchmark = lane.benchmark;
+    const delta = Number(invitation.bid_delta);
+    const deltaTone = Number.isFinite(delta) && delta <= 0 ? "success" : Number.isFinite(delta) ? "danger" : "neutral";
+    return `
+      <tr data-rfx-lane-id="${escapeHtml(lane.id)}">
+        <td><strong>${escapeHtml(vendorLabel(invitation))}</strong><small>${escapeHtml(invitation.vendors?.primary_email || invitation.vendors?.domain || "")}</small></td>
+        <td>#${escapeHtml(lane.lane_number || "")} ${escapeHtml(laneRoute(lane))}</td>
+        <td>${statusChip(invitation.invitation_status || "shortlisted")}</td>
+        <td>${invitation.bid_rate !== null ? formatMoney(invitation.bid_rate, invitation.currency || lane.currency) : "-"}</td>
+        <td>${benchmark ? formatMoney(benchmark.all_in_rate, benchmark.currency) : "-"}</td>
+        <td><span class="rfx-bid-delta" data-tone="${deltaTone}">${Number.isFinite(delta) ? formatMoney(delta, invitation.currency || lane.currency) : "-"}</span></td>
+        <td>${escapeHtml(invitation.weekly_capacity ?? "-")}</td>
+        <td>${escapeHtml(invitation.transit_days ?? "-")}</td>
+      </tr>
     `;
   }).join("");
 }
@@ -410,6 +638,8 @@ function renderLanes() {
   renderManualShortlistControls();
   renderEventDashboard();
   renderLaneCoverage();
+  renderLaneDecision();
+  renderResponseBoard();
 
   if (!selectedEventId) {
     lanesBody.innerHTML = `<tr><td colspan="9">Select an event to load lanes.</td></tr>`;
@@ -419,11 +649,18 @@ function renderLanes() {
     lanesBody.innerHTML = `<tr><td colspan="9">Paste lanes above to build this RFx book.</td></tr>`;
     return;
   }
-  lanesBody.innerHTML = currentLanes.map((lane) => {
+  const lanes = visibleLanes();
+  if (!lanes.length) {
+    lanesBody.innerHTML = `<tr><td colspan="9">No lanes match current filters.</td></tr>`;
+    return;
+  }
+  lanesBody.innerHTML = lanes.map((lane) => {
     const benchmark = lane.benchmark;
     const invitations = lane.invitations || [];
+    const bestBid = bestBidForLane(lane);
+    const decision = laneDecisionStatus(lane);
     return `
-      <tr data-rfx-lane-id="${escapeHtml(lane.id)}">
+      <tr data-rfx-lane-id="${escapeHtml(lane.id)}" class="${lane.id === focusedLaneId ? "is-selected-lane" : ""}">
         <td>
           <label class="table-checkbox">
             <input type="checkbox" data-rfx-lane-select="${escapeHtml(lane.id)}" ${selectedLaneIds.has(lane.id) ? "checked" : ""} />
@@ -432,12 +669,16 @@ function renderLanes() {
         <td>
           <strong>#${escapeHtml(lane.lane_number || "")}</strong>
           <span>${escapeHtml(lane.service || "")}</span>
+          <small>${escapeHtml(laneDecisionLabel(decision))}</small>
         </td>
         <td>${escapeHtml(lane.origin || "-")}<small>${escapeHtml([lane.origin_market, lane.origin_region].filter(Boolean).join(" | "))}</small></td>
         <td>${escapeHtml(lane.destination || "-")}<small>${escapeHtml([lane.destination_market, lane.destination_region].filter(Boolean).join(" | "))}</small></td>
         <td>${escapeHtml([lane.equipment, lane.trailer, lane.config, lane.operation].filter(Boolean).join(" / ") || "-")}</td>
         <td>${formatNumber(lane.weekly_volume)} / wk<small>Target ${formatMoney(lane.target_rate, lane.currency)}</small></td>
-        <td>${benchmark ? `${formatMoney(benchmark.all_in_rate, benchmark.currency)}<small>${escapeHtml(benchmark.vendor || "Rateware")} | ${benchmark.score}%</small>` : "-"}</td>
+        <td>
+          ${benchmark ? `${formatMoney(benchmark.all_in_rate, benchmark.currency)}<small>${escapeHtml(benchmark.vendor || "Rateware")} | ${benchmark.score}%</small>` : "-"}
+          ${bestBid ? `<small>Best bid ${formatMoney(bestBid.bid_rate, bestBid.currency || lane.currency)}</small>` : ""}
+        </td>
         <td>
           <div class="rfx-invitation-list">
             ${invitations.length ? invitations.map((invitation) => renderInvitation(invitation, lane)).join("") : "<span>No vendors shortlisted.</span>"}
@@ -460,8 +701,11 @@ async function loadEvents() {
     else {
       selectedEvent = null;
       currentLanes = [];
+      focusedLaneId = null;
       renderEventDashboard();
       renderLaneCoverage();
+      renderLaneDecision();
+      renderResponseBoard();
     }
   } catch (error) {
     eventList.innerHTML = `<article>${escapeHtml(error.message)}</article>`;
@@ -485,6 +729,7 @@ async function loadDetail(eventId) {
     const detail = await fetchRfxDetail(eventId);
     selectedEvent = detail.event;
     currentLanes = detail.lanes || [];
+    if (!currentLanes.some((lane) => lane.id === focusedLaneId)) focusedLaneId = currentLanes[0]?.id || null;
     detailTitle.textContent = `${selectedEvent.name || selectedEvent.rfx_id} (${selectedEvent.status})`;
     importLanesButton.disabled = false;
     openRfxButton.disabled = false;
@@ -544,12 +789,27 @@ eventList?.addEventListener("click", async (event) => {
 laneCoverage?.addEventListener("click", (event) => {
   const button = event.target.closest("[data-rfx-focus-lane]");
   if (!button) return;
+  focusLane(button.dataset.rfxFocusLane);
   const row = [...(lanesBody?.querySelectorAll("[data-rfx-lane-id]") || [])]
     .find((item) => item.dataset.rfxLaneId === button.dataset.rfxFocusLane);
   if (!row) return;
   row.scrollIntoView({ behavior: "smooth", block: "center" });
   row.classList.add("is-focused-row");
   window.setTimeout(() => row.classList.remove("is-focused-row"), 1400);
+});
+
+document.querySelectorAll("[data-rfx-lane-filter]").forEach((button) => {
+  button.addEventListener("click", () => {
+    activeLaneFilter = button.dataset.rfxLaneFilter || "all";
+    document.querySelectorAll("[data-rfx-lane-filter]").forEach((item) => item.classList.toggle("is-active", item === button));
+    if (!visibleLanes().some((lane) => lane.id === focusedLaneId)) focusedLaneId = visibleLanes()[0]?.id || null;
+    renderLanes();
+  });
+});
+
+laneSearch?.addEventListener("input", () => {
+  if (!visibleLanes().some((lane) => lane.id === focusedLaneId)) focusedLaneId = visibleLanes()[0]?.id || null;
+  renderLanes();
 });
 
 importLanesButton?.addEventListener("click", async () => {
@@ -605,6 +865,12 @@ lanesBody?.addEventListener("change", (event) => {
 });
 
 lanesBody?.addEventListener("click", async (event) => {
+  const laneRow = event.target.closest("[data-rfx-lane-id]");
+  if (laneRow && !event.target.closest("button") && !event.target.closest("input")) {
+    focusLane(laneRow.dataset.rfxLaneId);
+    return;
+  }
+
   const shortlistButton = event.target.closest("[data-rfx-auto-shortlist]");
   if (shortlistButton) {
     shortlistButton.disabled = true;
@@ -649,6 +915,31 @@ lanesBody?.addEventListener("click", async (event) => {
       setStatus(actionStatus, url, "neutral");
     }
   }
+});
+
+responseBody?.addEventListener("click", (event) => {
+  const row = event.target.closest("[data-rfx-lane-id]");
+  if (!row) return;
+  focusLane(row.dataset.rfxLaneId);
+});
+
+copyRfxSummaryButton?.addEventListener("click", async () => {
+  if (!selectedEvent) return;
+  const invitations = currentLanes.flatMap((lane) => activeInvitations(lane));
+  const bids = currentLanes.flatMap((lane) => bidInvitations(lane));
+  const lines = [
+    `${selectedEvent.rfx_id || "RFx"} | ${selectedEvent.name || ""}`,
+    `Status: ${selectedEvent.status || "draft"} | Customer: ${selectedEvent.customer || "-"} | Due: ${selectedEvent.due_date || "-"}`,
+    `Lanes: ${currentLanes.length} | Invitations: ${invitations.length} | Bids: ${bids.length}`,
+    `Lane gaps: ${currentLanes.filter((lane) => laneDecisionStatus(lane) !== "has_bids").length}`,
+    "",
+    ...currentLanes.slice(0, 30).map((lane) => {
+      const bestBid = bestBidForLane(lane);
+      return `#${lane.lane_number || ""} ${laneRoute(lane)} | ${laneDecisionLabel(laneDecisionStatus(lane))} | Rateware ${lane.benchmark ? formatMoney(lane.benchmark.all_in_rate, lane.benchmark.currency) : "-"} | Best ${bestBid ? formatMoney(bestBid.bid_rate, bestBid.currency || lane.currency) : "-"}`;
+    })
+  ];
+  await navigator.clipboard.writeText(lines.join("\n"));
+  setStatus(actionStatus, "RFx summary copied.", "success");
 });
 
 autoShortlistButton?.addEventListener("click", async () => {

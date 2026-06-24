@@ -85,7 +85,36 @@
                 <p class="eyebrow">RFx event dashboard</p>
                 <h2 id="rfx-dashboard-title">No event selected</h2>
               </div>
-              <a id="rfx-dashboard-outreach-link" class="secondary small-button" href="./outreach.html">Build outreach</a>
+              <div class="action-row">
+                <button id="copy-rfx-summary" class="secondary small-button" type="button" disabled>Copy summary</button>
+                <a id="rfx-dashboard-outreach-link" class="secondary small-button" href="./outreach.html">Build outreach</a>
+              </div>
+            </div>
+            <div id="rfx-event-flow" class="rfx-event-flow" aria-label="RFx workflow">
+              <article>
+                <span>1</span>
+                <strong>Setup</strong>
+              </article>
+              <article>
+                <span>2</span>
+                <strong>Lanes</strong>
+              </article>
+              <article>
+                <span>3</span>
+                <strong>Shortlist</strong>
+              </article>
+              <article>
+                <span>4</span>
+                <strong>Invite</strong>
+              </article>
+              <article>
+                <span>5</span>
+                <strong>Responses</strong>
+              </article>
+              <article>
+                <span>6</span>
+                <strong>Award</strong>
+              </article>
             </div>
             <div id="rfx-event-dashboard" class="rfx-dashboard-grid">
               <article>
@@ -167,8 +196,32 @@
                   </div>
                   <span id="rfx-coverage-summary" class="status-pill muted">No lanes</span>
                 </div>
+                <div class="rfx-lane-toolbar">
+                  <div class="rfx-lane-filters" aria-label="Lane filters">
+                    <button class="secondary small-button is-active" type="button" data-rfx-lane-filter="all">All</button>
+                    <button class="secondary small-button" type="button" data-rfx-lane-filter="needs_shortlist">Needs shortlist</button>
+                    <button class="secondary small-button" type="button" data-rfx-lane-filter="needs_invite">Needs invite</button>
+                    <button class="secondary small-button" type="button" data-rfx-lane-filter="needs_response">Needs response</button>
+                    <button class="secondary small-button" type="button" data-rfx-lane-filter="has_bids">Has bids</button>
+                    <button class="secondary small-button" type="button" data-rfx-lane-filter="above_benchmark">Above Rateware</button>
+                  </div>
+                  <input id="rfx-lane-search" type="search" placeholder="Search lane, market, equipment, carrier" />
+                </div>
                 <div id="rfx-lane-coverage" class="rfx-lane-coverage-grid">
                   <article>Select an event to inspect lane coverage.</article>
+                </div>
+              </section>
+
+              <section class="rfx-lane-decision-panel">
+                <div class="split-heading">
+                  <div>
+                    <p class="eyebrow">Lane decision view</p>
+                    <h3 id="rfx-lane-decision-title">Select a lane</h3>
+                  </div>
+                  <span id="rfx-lane-decision-status" class="status-pill muted">No lane</span>
+                </div>
+                <div id="rfx-lane-decision-body" class="rfx-lane-decision-body">
+                  <article>Select a lane card or table row.</article>
                 </div>
               </section>
 
@@ -213,6 +266,37 @@
                 <button id="archive-selected-rfx" class="secondary small-button" type="button" disabled>Archive selected</button>
                 <span id="rfx-action-status" class="row-save-status"></span>
               </div>
+
+              <section class="rfx-response-board">
+                <div class="split-heading">
+                  <div>
+                    <p class="eyebrow">Responses by carrier</p>
+                    <h3>Bid comparison</h3>
+                  </div>
+                  <span id="rfx-response-summary" class="status-pill muted">No responses</span>
+                </div>
+                <div class="table-wrap">
+                  <table class="rfx-response-table">
+                    <thead>
+                      <tr>
+                        <th>Carrier</th>
+                        <th>Lane</th>
+                        <th>Status</th>
+                        <th>Bid</th>
+                        <th>Rateware</th>
+                        <th>Delta</th>
+                        <th>Capacity</th>
+                        <th>Transit</th>
+                      </tr>
+                    </thead>
+                    <tbody id="rfx-response-body">
+                      <tr>
+                        <td colspan="8">No carrier responses yet.</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </section>
 
               <div class="table-wrap">
                 <table class="rfx-table">
