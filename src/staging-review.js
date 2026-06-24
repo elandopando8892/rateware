@@ -53,6 +53,13 @@ const stagingMetricSelected = document.querySelector("#staging-metric-selected")
 const reviewFilterButtons = document.querySelectorAll("[data-staging-filter]");
 const uploadScopeBanner = document.querySelector("#staging-upload-scope");
 const gridSelectionStatus = document.querySelector("#staging-grid-selection");
+const stagingPageSummary = document.querySelector("#staging-page-summary");
+const stagingFirstPageButton = document.querySelector("#staging-first-page");
+const stagingPrevPageButton = document.querySelector("#staging-prev-page");
+const stagingNextPageButton = document.querySelector("#staging-next-page");
+const stagingLastPageButton = document.querySelector("#staging-last-page");
+const stagingPageNumberInput = document.querySelector("#staging-page-number");
+const stagingPageSizeSelect = document.querySelector("#staging-page-size");
 const rawUploadScopeId = new URLSearchParams(window.location.search).get("raw_upload_id") || "";
 let currentRows = [];
 let loadedRows = [];
@@ -61,7 +68,8 @@ const selectedRowIds = new Set();
 let activeReviewFilter = "all";
 const autoSaveTimers = new Map();
 const FILTERED_BULK_BATCH_SIZE = 1000;
-const STAGING_PAGE_SIZE = 500;
+const STAGING_PAGE_SIZE_STORAGE_KEY = "rateware:staging:page-size:v1";
+const DEFAULT_STAGING_PAGE_SIZE = 200;
 let columnVisibilityController;
 let locationMatchDrawerController;
 let columnFilterController;
@@ -69,9 +77,10 @@ let stagingTotalCount = 0;
 let stagingHasMoreRows = false;
 let stagingIsLoadingMore = false;
 let stagingLoadOffset = 0;
+let stagingPageIndex = 0;
+let stagingPageSize = readStoredPageSize(STAGING_PAGE_SIZE_STORAGE_KEY, DEFAULT_STAGING_PAGE_SIZE);
 let stagingLoadToken = 0;
 let stagingSearchTimer = null;
-let stagingLoadObserver = null;
 let stagingOptions = {
   categories: {},
   vendors: [],
@@ -159,6 +168,32 @@ function escapeHtml(value) {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+function readStoredPageSize(key, fallback) {
+  try {
+    const value = Number(window.localStorage.getItem(key));
+    return [50, 100, 200, 500].includes(value) ? value : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function writeStoredPageSize(key, value) {
+  try {
+    window.localStorage.setItem(key, String(value));
+  } catch {
+    // Local storage can be blocked; pagination still works for the session.
+  }
+}
+
+function clampPageIndex(index, total = stagingTotalCount) {
+  const maxIndex = Math.max(0, Math.ceil(Number(total || 0) / stagingPageSize) - 1);
+  return Math.max(0, Math.min(Number(index) || 0, maxIndex));
+}
+
+function stagingPageOffset() {
+  return stagingPageIndex * stagingPageSize;
 }
 
 function lane(row) {
@@ -461,6 +496,62 @@ function updateBulkControls() {
     selectAllCheckbox.indeterminate = selectedCount > 0 && selectedCount < totalRows;
   }
   updateReviewMetrics();
+  updateStagingPaginationControls();
+}
+
+function updateStagingPaginationControls() {
+  const total = Number(stagingTotalCount || 0);
+  const pageCount = Math.max(1, Math.ceil(total / stagingPageSize));
+  const safeIndex = clampPageIndex(stagingPageIndex, total);
+  if (safeIndex !== stagingPageIndex) stagingPageIndex = safeIndex;
+  const loadedCount = currentRows.length;
+  const start = total && loadedCount ? stagingPageOffset() + 1 : 0;
+  const end = total && loadedCount ? Math.min(stagingPageOffset() + loadedCount, total) : 0;
+  if (stagingPageSummary) {
+    stagingPageSummary.textContent = total
+      ? `Rows ${start.toLocaleString()}-${end.toLocaleString()} of ${total.toLocaleString()} | Page ${(stagingPageIndex + 1).toLocaleString()} of ${pageCount.toLocaleString()}`
+      : "No rows in current filters";
+  }
+  if (stagingPageNumberInput) {
+    stagingPageNumberInput.value = String(stagingPageIndex + 1);
+    stagingPageNumberInput.max = String(pageCount);
+    stagingPageNumberInput.disabled = !total || stagingIsLoadingMore;
+  }
+  if (stagingPageSizeSelect) {
+    stagingPageSizeSelect.value = String(stagingPageSize);
+    stagingPageSizeSelect.disabled = stagingIsLoadingMore;
+  }
+  const atFirst = stagingPageIndex <= 0;
+  const atLast = stagingPageIndex >= pageCount - 1;
+  [stagingFirstPageButton, stagingPrevPageButton].forEach((button) => {
+    if (button) button.disabled = !total || atFirst || stagingIsLoadingMore;
+  });
+  [stagingNextPageButton, stagingLastPageButton].forEach((button) => {
+    if (button) button.disabled = !total || atLast || stagingIsLoadingMore;
+  });
+}
+
+async function goToStagingPage(index) {
+  const nextIndex = clampPageIndex(index);
+  if (nextIndex === stagingPageIndex && currentRows.length) {
+    updateStagingPaginationControls();
+    return;
+  }
+  stagingPageIndex = nextIndex;
+  selectedRowIds.clear();
+  setBulkStatus("");
+  await loadRows({ preservePage: true });
+}
+
+async function setStagingPageSize(value) {
+  const nextSize = Number(value);
+  if (![50, 100, 200, 500].includes(nextSize)) return;
+  stagingPageSize = nextSize;
+  writeStoredPageSize(STAGING_PAGE_SIZE_STORAGE_KEY, stagingPageSize);
+  stagingPageIndex = 0;
+  selectedRowIds.clear();
+  setBulkStatus("");
+  await loadRows({ preservePage: true });
 }
 
 function detailLine(label, value) {
@@ -1302,48 +1393,14 @@ function renderStagingTableRow(row) {
 }
 
 function stagingLoadStateRow() {
-  const loaded = loadedRows.length;
-  const total = stagingTotalCount || loaded;
-  if (!loaded && !stagingHasMoreRows && !stagingIsLoadingMore) return "";
-  const message = stagingIsLoadingMore
-    ? "Loading more staging rows..."
-    : stagingHasMoreRows
-      ? `Loaded ${loaded.toLocaleString()} of ${total.toLocaleString()} database row(s). Scroll down or click to load more.`
-      : `All ${loaded.toLocaleString()} database row(s) loaded.`;
-  return `
-    <tr class="staging-load-row" data-staging-loader>
-      <td colspan="${STAGING_COLSPAN}">
-        <div>
-          <span>${escapeHtml(message)}</span>
-          ${stagingHasMoreRows ? '<button type="button" class="secondary small-button" data-load-more-staging>Load more</button>' : ""}
-        </div>
-      </td>
-    </tr>
-  `;
+  return "";
 }
 
 function updateStagingLoadRow() {
-  const existing = body.querySelector("[data-staging-loader]");
-  existing?.remove();
-  const html = stagingLoadStateRow();
-  if (html) body.insertAdjacentHTML("beforeend", html);
-  observeStagingLoadSentinel();
+  updateStagingPaginationControls();
 }
 
 function renderRows(rows, { append = false } = {}) {
-  if (append) {
-    currentRows = [...currentRows, ...rows];
-    const loader = body.querySelector("[data-staging-loader]");
-    loader?.remove();
-    if (rows.length) body.insertAdjacentHTML("beforeend", rows.map(renderStagingTableRow).join(""));
-    updateReviewFilters();
-    updateUploadScopeBanner();
-    updateStagingLoadRow();
-    columnVisibilityController?.applyVisibility();
-    updateBulkControls();
-    return;
-  }
-
   currentRows = rows;
   renderDatalists();
   updateReviewFilters();
@@ -1361,14 +1418,12 @@ function renderRows(rows, { append = false } = {}) {
       })}${stagingLoadStateRow()}`;
     columnVisibilityController?.applyVisibility();
     updateBulkControls();
-    observeStagingLoadSentinel();
     return;
   }
 
   body.innerHTML = rows.map(renderStagingTableRow).join("") + stagingLoadStateRow();
   columnVisibilityController?.applyVisibility();
   updateBulkControls();
-  observeStagingLoadSentinel();
 }
 
 function setStatus(message, tone = "neutral") {
@@ -1380,11 +1435,11 @@ function rowById(id) {
   return currentRows.find((row) => row.id === id);
 }
 
-function stagingPageParams(offset = 0) {
+function stagingPageParams(offset = stagingPageOffset()) {
   return {
     status: statusFilter.value,
     rawUploadId: rawUploadScopeId,
-    limit: STAGING_PAGE_SIZE,
+    limit: stagingPageSize,
     offset,
     search: String(stagingSearchInput?.value || "").trim(),
     reviewFilter: activeReviewFilter,
@@ -1392,54 +1447,14 @@ function stagingPageParams(offset = 0) {
   };
 }
 
-function applyStagingPage(page, { append = false } = {}) {
+function applyStagingPage(page) {
   const rows = page.rows || [];
   stagingTotalCount = Number(page.total || stagingTotalCount || rows.length || 0);
   stagingHasMoreRows = Boolean(page.has_more);
-  stagingLoadOffset = append ? stagingLoadOffset + rows.length : rows.length;
-  loadedRows = append ? [...loadedRows, ...rows] : rows;
-  renderRows(append ? visibleStagingRows(rows) : visibleStagingRows(), { append });
-}
-
-function observeStagingLoadSentinel() {
-  const sentinel = body.querySelector("[data-staging-loader]");
-  if (!sentinel || !stagingHasMoreRows) {
-    stagingLoadObserver?.disconnect();
-    return;
-  }
-  if (!stagingLoadObserver) {
-    stagingLoadObserver = new IntersectionObserver((entries) => {
-      if (entries.some((entry) => entry.isIntersecting)) {
-        loadMoreRows();
-      }
-    }, { root: null, rootMargin: "900px 0px" });
-  }
-  stagingLoadObserver.disconnect();
-  stagingLoadObserver.observe(sentinel);
-}
-
-async function loadMoreRows() {
-  if (stagingIsLoadingMore || !stagingHasMoreRows) return;
-  const token = stagingLoadToken;
-  stagingIsLoadingMore = true;
-  updateStagingLoadRow();
-
-  try {
-    const page = await fetchStagingPage(stagingPageParams(stagingLoadOffset));
-    if (token !== stagingLoadToken) return;
-    applyStagingPage(page, { append: true });
-    await applyPermissionState("[data-save-id], [data-approve-id], [data-reject-id], #save-staging-button, #approve-staging-button, #reject-staging-button, #bulk-save-button, #bulk-match-vendors-button, #bulk-approve-button, #bulk-reject-button, #bulk-approve-filtered-button, #bulk-reject-filtered-button, #bulk-enrich-zips-button, #bulk-renormalize-button, #bulk-archive-button, #bulk-remove-button, #bulk-archive-filtered-button, #bulk-remove-filtered-button, #apply-staging-bulk-edit-filtered", "staging:approve");
-  } catch (error) {
-    if (token !== stagingLoadToken) return;
-    stagingHasMoreRows = true;
-    setBulkStatus(`Could not load more rows. ${error.message}`, "error");
-    updateStagingLoadRow();
-  } finally {
-    if (token === stagingLoadToken) {
-      stagingIsLoadingMore = false;
-      updateStagingLoadRow();
-    }
-  }
+  stagingLoadOffset = stagingPageOffset() + rows.length;
+  stagingPageIndex = clampPageIndex(stagingPageIndex, stagingTotalCount);
+  loadedRows = rows;
+  renderRows(visibleStagingRows());
 }
 
 function openEditDrawer(id) {
@@ -1616,7 +1631,7 @@ async function runBulkAction(status = null) {
       selectedRowIds.delete(id);
     }));
     setBulkStatus(`${rows.length} rows updated.`, "success");
-    await loadRows();
+    await loadRows({ preservePage: true });
   } catch (error) {
     setBulkStatus(error.message, "error");
     updateBulkControls();
@@ -1637,7 +1652,7 @@ async function applySelectedBulkEdit() {
     rows.forEach((row) => selectedRowIds.delete(row.dataset.rowId));
     setBulkEditStatus(`${rows.length} selected row(s) updated.`, "success");
     setBulkStatus(`${rows.length} selected row(s) updated.`, "success");
-    await loadRows();
+    await loadRows({ preservePage: true });
   } catch (error) {
     setBulkEditStatus(error.message, "error");
     updateBulkControls();
@@ -1658,7 +1673,7 @@ async function runBulkArchive() {
     const result = await archiveStagingRows(ids);
     ids.forEach((id) => selectedRowIds.delete(id));
     setBulkStatus(`${result.updated || ids.length} rows archived.`, "success");
-    await loadRows();
+    await loadRows({ preservePage: true });
   } catch (error) {
     setBulkStatus(error.message, "error");
     updateBulkControls();
@@ -1681,7 +1696,7 @@ async function runBulkRemove() {
     const result = await removeStagingRows(ids);
     ids.forEach((id) => selectedRowIds.delete(id));
     setBulkStatus(`${result.removed || ids.length} rows removed.`, "success");
-    await loadRows();
+    await loadRows({ preservePage: true });
   } catch (error) {
     setBulkStatus(error.message, "error");
     updateBulkControls();
@@ -1733,7 +1748,7 @@ async function runFilteredStagingAction(targetAction) {
     }
     selectedRowIds.clear();
     setBulkStatus(`${affected.toLocaleString()} filtered staging row(s) ${isRemove ? "removed" : "archived"}.`, "success");
-    await loadRows();
+    await loadRows({ preservePage: true });
   } catch (error) {
     setBulkStatus(error.message, "error");
   } finally {
@@ -1775,7 +1790,7 @@ async function runFilteredStagingUpdate(patch, label) {
     selectedRowIds.clear();
     const capped = result.hard_limit_reached ? " API safety limit reached; narrow the filters and run again for the remainder." : "";
     setBulkStatus(`${affected.toLocaleString()} filtered staging row(s) updated.${capped}`, result.hard_limit_reached ? "warning" : "success");
-    await loadRows();
+    await loadRows({ preservePage: true });
   } catch (error) {
     setBulkStatus(error.message, "error");
     setBulkEditStatus(error.message, "error");
@@ -1800,7 +1815,7 @@ async function runBulkRenormalize() {
     const result = await renormalizeStagingRows(ids);
     ids.forEach((id) => selectedRowIds.delete(id));
     setBulkStatus(`${result.updated || ids.length} rows re-normalized with the current catalog.`, "success");
-    await loadRows();
+    await loadRows({ preservePage: true });
   } catch (error) {
     setBulkStatus(error.message, "error");
     updateBulkControls();
@@ -1820,7 +1835,7 @@ async function runBulkMatchVendors() {
     const result = await matchStagingVendors(ids);
     ids.forEach((id) => selectedRowIds.delete(id));
     setBulkStatus(`${result.updated || 0} rows linked to vendors.`, "success");
-    await loadRows();
+    await loadRows({ preservePage: true });
   } catch (error) {
     setBulkStatus(error.message, "error");
     updateBulkControls();
@@ -1840,7 +1855,7 @@ async function runBulkEnrichZips() {
     const result = await enrichStagingLocationZips(ids);
     ids.forEach((id) => selectedRowIds.delete(id));
     setBulkStatus(`${result.enriched || 0} location(s) enriched. ${result.updated || ids.length} rows checked.`, "success");
-    await loadRows();
+    await loadRows({ preservePage: true });
   } catch (error) {
     setBulkStatus(error.message, "error");
     updateBulkControls();
@@ -1890,36 +1905,43 @@ async function saveActiveRow(status = null) {
     await ensureSignedIn();
     await updateStagingRow(activeRowId, patch);
     setStatus(status ? `Row marked ${status}.` : "Changes saved.", "success");
-    await loadRows();
+    await loadRows({ preservePage: true });
     if (status) drawer.classList.add("hidden");
   } catch (error) {
     setStatus(error.message, "error");
   }
 }
 
-async function loadRows() {
+async function loadRows({ preservePage = false } = {}) {
+  if (!preservePage) stagingPageIndex = 0;
   body.innerHTML = tableLoadingState(STAGING_COLSPAN, {
     title: "Loading staging rows",
     detail: "Reading interpreted quotes, catalog matches, validation flags, and editable spreadsheet columns."
   });
   refreshButton.disabled = true;
   stagingLoadToken += 1;
-  stagingLoadOffset = 0;
+  stagingLoadOffset = stagingPageOffset();
   stagingTotalCount = 0;
   stagingHasMoreRows = false;
   stagingIsLoadingMore = true;
+  updateStagingPaginationControls();
   loadedRows = [];
   currentRows = [];
-  stagingLoadObserver?.disconnect();
 
   try {
     await requirePrivatePage();
     const token = stagingLoadToken;
-    const [options, page] = await Promise.all([
+    let [options, page] = await Promise.all([
       fetchStagingOptions().catch(() => stagingOptions),
-      fetchStagingPage(stagingPageParams(0))
+      fetchStagingPage(stagingPageParams(stagingPageOffset()))
     ]);
     if (token !== stagingLoadToken) return;
+    if (!(page.rows || []).length && Number(page.total || 0) > 0 && stagingPageOffset() >= Number(page.total || 0)) {
+      stagingTotalCount = Number(page.total || 0);
+      stagingPageIndex = clampPageIndex(stagingPageIndex, stagingTotalCount);
+      page = await fetchStagingPage(stagingPageParams(stagingPageOffset()));
+      if (token !== stagingLoadToken) return;
+    }
     stagingOptions = {
       categories: options.categories || {},
       vendors: options.vendors || [],
@@ -1930,7 +1952,7 @@ async function loadRows() {
     };
     populateBulkEditControls();
     stagingIsLoadingMore = false;
-    applyStagingPage(page, { append: false });
+    applyStagingPage(page);
     await applyPermissionState("[data-save-id], [data-approve-id], [data-reject-id], #save-staging-button, #approve-staging-button, #reject-staging-button, #bulk-save-button, #bulk-match-vendors-button, #bulk-approve-button, #bulk-reject-button, #bulk-approve-filtered-button, #bulk-reject-filtered-button, #bulk-enrich-zips-button, #bulk-renormalize-button, #bulk-archive-button, #bulk-remove-button, #bulk-archive-filtered-button, #bulk-remove-filtered-button, #apply-staging-bulk-edit-filtered", "staging:approve");
   } catch (error) {
     stagingIsLoadingMore = false;
@@ -1942,6 +1964,7 @@ async function loadRows() {
   } finally {
     stagingIsLoadingMore = false;
     refreshButton.disabled = false;
+    updateStagingPaginationControls();
   }
 }
 
@@ -1957,12 +1980,6 @@ async function clearStagingFilters() {
 }
 
 body.addEventListener("click", async (event) => {
-  const loadMore = event.target.closest("[data-load-more-staging]");
-  if (loadMore) {
-    await loadMoreRows();
-    return;
-  }
-
   const detail = event.target.closest("[data-detail-id]");
   const save = event.target.closest("[data-save-id]");
   const approve = event.target.closest("[data-approve-id]");
@@ -2009,7 +2026,7 @@ body.addEventListener("click", async (event) => {
       throw new Error("Your role does not allow staging approval.");
     }
     await updateStagingRow(id, patch);
-    await loadRows();
+    await loadRows({ preservePage: true });
   } catch (error) {
     button.disabled = false;
     setRowStatus(id, error.message, "error");
@@ -2104,6 +2121,19 @@ refreshButton.addEventListener("click", loadRows);
 document.addEventListener("click", (event) => {
   const retryButton = event.target.closest("[data-retry-action='load-staging-rows']");
   if (retryButton) loadRows();
+});
+if (stagingPageSizeSelect) stagingPageSizeSelect.value = String(stagingPageSize);
+stagingFirstPageButton?.addEventListener("click", () => goToStagingPage(0));
+stagingPrevPageButton?.addEventListener("click", () => goToStagingPage(stagingPageIndex - 1));
+stagingNextPageButton?.addEventListener("click", () => goToStagingPage(stagingPageIndex + 1));
+stagingLastPageButton?.addEventListener("click", () => goToStagingPage(Math.ceil(stagingTotalCount / stagingPageSize) - 1));
+stagingPageSizeSelect?.addEventListener("change", () => setStagingPageSize(stagingPageSizeSelect.value));
+stagingPageNumberInput?.addEventListener("change", () => goToStagingPage(Number(stagingPageNumberInput.value) - 1));
+stagingPageNumberInput?.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    goToStagingPage(Number(stagingPageNumberInput.value) - 1);
+  }
 });
 clearFiltersButton?.addEventListener("click", clearStagingFilters);
 statusFilter.addEventListener("change", () => {

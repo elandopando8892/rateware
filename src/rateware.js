@@ -62,9 +62,17 @@ const snapshotFilteredButton = document.querySelector("#snapshot-filtered-ratewa
 const versionList = document.querySelector("#rateware-version-list");
 const versionStatus = document.querySelector("#rateware-version-status");
 const gridSelectionStatus = document.querySelector("#rateware-grid-selection");
+const ratewarePageSummary = document.querySelector("#rateware-page-summary");
+const ratewareFirstPageButton = document.querySelector("#rateware-first-page");
+const ratewarePrevPageButton = document.querySelector("#rateware-prev-page");
+const ratewareNextPageButton = document.querySelector("#rateware-next-page");
+const ratewareLastPageButton = document.querySelector("#rateware-last-page");
+const ratewarePageNumberInput = document.querySelector("#rateware-page-number");
+const ratewarePageSizeSelect = document.querySelector("#rateware-page-size");
 
 const RATEWARE_COLSPAN = 30;
-const RATEWARE_PAGE_SIZE = 500;
+const RATEWARE_PAGE_SIZE_STORAGE_KEY = "rateware:approved:page-size:v1";
+const DEFAULT_RATEWARE_PAGE_SIZE = 200;
 let currentRows = [];
 let loadedRows = [];
 let activeQuickFilter = "all";
@@ -77,8 +85,9 @@ let ratewareTotalCount = 0;
 let ratewareHasMoreRows = false;
 let ratewareIsLoadingMore = false;
 let ratewareLoadOffset = 0;
+let ratewarePageIndex = 0;
+let ratewarePageSize = readStoredPageSize(RATEWARE_PAGE_SIZE_STORAGE_KEY, DEFAULT_RATEWARE_PAGE_SIZE);
 let ratewareLoadToken = 0;
-let ratewareLoadObserver = null;
 let ratewareOptions = {
   categories: {},
   vendors: [],
@@ -142,6 +151,32 @@ function escapeHtml(value) {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+function readStoredPageSize(key, fallback) {
+  try {
+    const value = Number(window.localStorage.getItem(key));
+    return [50, 100, 200, 500].includes(value) ? value : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function writeStoredPageSize(key, value) {
+  try {
+    window.localStorage.setItem(key, String(value));
+  } catch {
+    // Local storage can be blocked; pagination still works for the session.
+  }
+}
+
+function clampRatewarePageIndex(index, total = ratewareTotalCount) {
+  const maxIndex = Math.max(0, Math.ceil(Number(total || 0) / ratewarePageSize) - 1);
+  return Math.max(0, Math.min(Number(index) || 0, maxIndex));
+}
+
+function ratewarePageOffset() {
+  return ratewarePageIndex * ratewarePageSize;
 }
 
 function dateValue(value) {
@@ -963,36 +998,15 @@ function renderRatewareTableRow(row) {
 }
 
 function ratewareLoadStateRow() {
-  const loaded = loadedRows.length;
-  const total = ratewareTotalCount || loaded;
-  if (!loaded && !ratewareHasMoreRows && !ratewareIsLoadingMore) return "";
-  const message = ratewareIsLoadingMore
-    ? "Loading more approved rates..."
-    : ratewareHasMoreRows
-      ? `Loaded ${loaded.toLocaleString()} of ${total.toLocaleString()} database row(s). Scroll down or click to load more.`
-      : `All ${loaded.toLocaleString()} database row(s) loaded.`;
-  return `
-    <tr class="staging-load-row" data-rateware-loader>
-      <td colspan="${RATEWARE_COLSPAN}">
-        <div>
-          <span>${escapeHtml(message)}</span>
-          ${ratewareHasMoreRows ? '<button type="button" class="secondary small-button" data-load-more-rateware>Load more</button>' : ""}
-        </div>
-      </td>
-    </tr>
-  `;
+  return "";
 }
 
 function updateRatewareLoadRow() {
-  const existing = body.querySelector("[data-rateware-loader]");
-  if (existing) {
-    existing.outerHTML = ratewareLoadStateRow();
-    columnVisibilityController?.applyVisibility();
-  }
+  updateRatewarePaginationControls();
 }
 
 function renderRows(rows, { append = false } = {}) {
-  currentRows = append ? [...currentRows, ...rows] : rows;
+  currentRows = rows;
   if (loadedRows.length) ratewareQualityIndex = buildRatewareQualityIndex(loadedRows);
   updateQuickFilters();
   updateRatewareMetrics(loadedRows);
@@ -1011,22 +1025,13 @@ function renderRows(rows, { append = false } = {}) {
     })}${ratewareLoadStateRow()}`;
     columnVisibilityController?.applyVisibility();
     updateBulkControls();
-    observeRatewareLoadSentinel();
     return;
   }
 
   const html = rows.map(renderRatewareTableRow).join("");
-  if (append) {
-    const loader = body.querySelector("[data-rateware-loader]");
-    if (loader) loader.insertAdjacentHTML("beforebegin", html);
-    else body.insertAdjacentHTML("beforeend", html);
-    updateRatewareLoadRow();
-  } else {
-    body.innerHTML = html + ratewareLoadStateRow();
-  }
+  body.innerHTML = html + ratewareLoadStateRow();
   columnVisibilityController?.applyVisibility();
   updateBulkControls();
-  observeRatewareLoadSentinel();
 }
 
 function selectedVisibleIds() {
@@ -1167,6 +1172,62 @@ function updateBulkControls() {
     selectAllCheckbox.checked = selectedCount > 0 && selectedCount === totalRows;
     selectAllCheckbox.indeterminate = selectedCount > 0 && selectedCount < totalRows;
   }
+  updateRatewarePaginationControls();
+}
+
+function updateRatewarePaginationControls() {
+  const total = Number(ratewareTotalCount || 0);
+  const pageCount = Math.max(1, Math.ceil(total / ratewarePageSize));
+  const safeIndex = clampRatewarePageIndex(ratewarePageIndex, total);
+  if (safeIndex !== ratewarePageIndex) ratewarePageIndex = safeIndex;
+  const loadedCount = currentRows.length;
+  const start = total && loadedCount ? ratewarePageOffset() + 1 : 0;
+  const end = total && loadedCount ? Math.min(ratewarePageOffset() + loadedCount, total) : 0;
+  if (ratewarePageSummary) {
+    ratewarePageSummary.textContent = total
+      ? `Rows ${start.toLocaleString()}-${end.toLocaleString()} of ${total.toLocaleString()} | Page ${(ratewarePageIndex + 1).toLocaleString()} of ${pageCount.toLocaleString()}`
+      : "No rows in current filters";
+  }
+  if (ratewarePageNumberInput) {
+    ratewarePageNumberInput.value = String(ratewarePageIndex + 1);
+    ratewarePageNumberInput.max = String(pageCount);
+    ratewarePageNumberInput.disabled = !total || ratewareIsLoadingMore;
+  }
+  if (ratewarePageSizeSelect) {
+    ratewarePageSizeSelect.value = String(ratewarePageSize);
+    ratewarePageSizeSelect.disabled = ratewareIsLoadingMore;
+  }
+  const atFirst = ratewarePageIndex <= 0;
+  const atLast = ratewarePageIndex >= pageCount - 1;
+  [ratewareFirstPageButton, ratewarePrevPageButton].forEach((button) => {
+    if (button) button.disabled = !total || atFirst || ratewareIsLoadingMore;
+  });
+  [ratewareNextPageButton, ratewareLastPageButton].forEach((button) => {
+    if (button) button.disabled = !total || atLast || ratewareIsLoadingMore;
+  });
+}
+
+async function goToRatewarePage(index) {
+  const nextIndex = clampRatewarePageIndex(index);
+  if (nextIndex === ratewarePageIndex && currentRows.length) {
+    updateRatewarePaginationControls();
+    return;
+  }
+  ratewarePageIndex = nextIndex;
+  selectedRowIds.clear();
+  setActionStatus("");
+  await loadRateware({ preservePage: true });
+}
+
+async function setRatewarePageSize(value) {
+  const nextSize = Number(value);
+  if (![50, 100, 200, 500].includes(nextSize)) return;
+  ratewarePageSize = nextSize;
+  writeStoredPageSize(RATEWARE_PAGE_SIZE_STORAGE_KEY, ratewarePageSize);
+  ratewarePageIndex = 0;
+  selectedRowIds.clear();
+  setActionStatus("");
+  await loadRateware({ preservePage: true });
 }
 
 async function saveRatewareTableRow(tableRow) {
@@ -1221,7 +1282,7 @@ async function saveSelectedRatewareRows() {
     await Promise.all(rows.map((row) => saveRatewareTableRow(row)));
     selectedRowIds.clear();
     setActionStatus(`${rows.length} approved rate(s) saved.`, "success");
-    await loadRateware();
+    await loadRateware({ preservePage: true });
   } catch (error) {
     setActionStatus(error.message, "error");
     updateBulkControls();
@@ -1764,7 +1825,7 @@ async function applySelectedBulkEdit() {
     ids.forEach((id) => selectedRowIds.delete(id));
     setInlineStatus(bulkStatus, `${result.updated || 0} selected rate(s) updated.`, "success");
     setActionStatus(`${result.updated || 0} selected rate(s) updated.`, "success");
-    await loadRateware();
+    await loadRateware({ preservePage: true });
   } catch (error) {
     setInlineStatus(bulkStatus, error.message, "error");
     updateBulkControls();
@@ -1801,7 +1862,7 @@ async function applyFilteredBulkEdit() {
     selectedRowIds.clear();
     setInlineStatus(bulkStatus, `${result.updated || 0} filtered approved rate(s) updated.`, "success");
     setActionStatus(`${result.updated || 0} filtered approved rate(s) updated.`, "success");
-    await loadRateware();
+    await loadRateware({ preservePage: true });
   } catch (error) {
     setInlineStatus(bulkStatus, error.message, "error");
     setActionStatus(error.message, "error");
@@ -1821,89 +1882,58 @@ async function clearRatewareFilters() {
   await loadRateware();
 }
 
-function ratewarePageParams(offset = 0) {
+function ratewarePageParams(offset = ratewarePageOffset()) {
   return {
     search: String(searchInput?.value || "").trim(),
     operation: operationFilter.value || "",
     service: serviceFilter.value || "",
     quickFilter: activeQuickFilter,
     columnFilters: activeColumnFilters(),
-    limit: RATEWARE_PAGE_SIZE,
+    limit: ratewarePageSize,
     offset
   };
 }
 
-function applyRatewarePage(page, { append = false } = {}) {
+function applyRatewarePage(page) {
   const rows = page.rows || [];
   ratewareTotalCount = Number(page.total || ratewareTotalCount || rows.length || 0);
   ratewareHasMoreRows = Boolean(page.has_more);
-  ratewareLoadOffset = append ? ratewareLoadOffset + rows.length : rows.length;
-  loadedRows = append ? [...loadedRows, ...rows] : rows;
-  renderRows(rows, { append });
+  ratewareLoadOffset = ratewarePageOffset() + rows.length;
+  ratewarePageIndex = clampRatewarePageIndex(ratewarePageIndex, ratewareTotalCount);
+  loadedRows = rows;
+  renderRows(rows);
 }
 
-function observeRatewareLoadSentinel() {
-  const sentinel = body.querySelector("[data-rateware-loader]");
-  if (!sentinel || !ratewareHasMoreRows) {
-    ratewareLoadObserver?.disconnect();
-    return;
-  }
-  if (!ratewareLoadObserver) {
-    ratewareLoadObserver = new IntersectionObserver((entries) => {
-      if (entries.some((entry) => entry.isIntersecting)) {
-        loadMoreRateware();
-      }
-    }, { root: null, rootMargin: "900px 0px" });
-  }
-  ratewareLoadObserver.disconnect();
-  ratewareLoadObserver.observe(sentinel);
-}
-
-async function loadMoreRateware() {
-  if (ratewareIsLoadingMore || !ratewareHasMoreRows) return;
-  const token = ratewareLoadToken;
-  ratewareIsLoadingMore = true;
-  updateRatewareLoadRow();
-
-  try {
-    const page = await fetchApprovedRatewarePage(ratewarePageParams(ratewareLoadOffset));
-    if (token !== ratewareLoadToken) return;
-    applyRatewarePage(page, { append: true });
-  } catch (error) {
-    if (token !== ratewareLoadToken) return;
-    ratewareHasMoreRows = true;
-    setActionStatus(`Could not load more approved rates. ${error.message}`, "error");
-    updateRatewareLoadRow();
-  } finally {
-    if (token === ratewareLoadToken) {
-      ratewareIsLoadingMore = false;
-      updateRatewareLoadRow();
-    }
-  }
-}
-
-async function loadRateware() {
+async function loadRateware({ preservePage = false } = {}) {
+  if (!preservePage) ratewarePageIndex = 0;
   body.innerHTML = tableLoadingState(RATEWARE_COLSPAN, {
     title: "Loading Rateware",
     detail: "Reading approved rates, versions, conflicts, filters, and spreadsheet columns."
   });
   refreshButton.disabled = true;
   ratewareLoadToken += 1;
-  ratewareLoadOffset = 0;
+  ratewareLoadOffset = ratewarePageOffset();
   ratewareTotalCount = 0;
   ratewareHasMoreRows = false;
-  ratewareIsLoadingMore = false;
-  ratewareLoadObserver?.disconnect();
+  ratewareIsLoadingMore = true;
+  updateRatewarePaginationControls();
   const token = ratewareLoadToken;
 
   try {
     await requirePrivatePage();
-    const [, page] = await Promise.all([
+    let [, page] = await Promise.all([
       loadRatewareOptions(),
-      fetchApprovedRatewarePage(ratewarePageParams(0))
+      fetchApprovedRatewarePage(ratewarePageParams(ratewarePageOffset()))
     ]);
     if (token !== ratewareLoadToken) return;
-    applyRatewarePage(page, { append: false });
+    if (!(page.rows || []).length && Number(page.total || 0) > 0 && ratewarePageOffset() >= Number(page.total || 0)) {
+      ratewareTotalCount = Number(page.total || 0);
+      ratewarePageIndex = clampRatewarePageIndex(ratewarePageIndex, ratewareTotalCount);
+      page = await fetchApprovedRatewarePage(ratewarePageParams(ratewarePageOffset()));
+      if (token !== ratewareLoadToken) return;
+    }
+    ratewareIsLoadingMore = false;
+    applyRatewarePage(page);
   } catch (error) {
     if (token !== ratewareLoadToken) return;
     body.innerHTML = tableErrorState(RATEWARE_COLSPAN, error, {
@@ -1912,7 +1942,11 @@ async function loadRateware() {
       meta: "Approved rates were not changed."
     });
   } finally {
-    if (token === ratewareLoadToken) refreshButton.disabled = false;
+    if (token === ratewareLoadToken) {
+      ratewareIsLoadingMore = false;
+      refreshButton.disabled = false;
+      updateRatewarePaginationControls();
+    }
   }
 }
 
@@ -1972,7 +2006,7 @@ async function runFilteredRatewareAction(targetAction) {
     selectedRowIds.clear();
     const capped = result.hard_limit_reached ? " API safety limit reached; narrow the filters and run again for the remainder." : "";
     setActionStatus(`${affected.toLocaleString()} filtered approved rate(s) ${isRemove ? "removed" : "archived"}.${capped}`, result.hard_limit_reached ? "warning" : "success");
-    await loadRateware();
+    await loadRateware({ preservePage: true });
   } catch (error) {
     setActionStatus(error.message, "error");
   } finally {
@@ -1999,7 +2033,7 @@ async function returnSelectedToStaging() {
     const result = await returnApprovedRatesToStaging(ids, cleanReason);
     ids.forEach((id) => selectedRowIds.delete(id));
     setActionStatus(`${result.updated || ids.length} rates returned to staging. Reason: ${cleanReason}`, "success");
-    await loadRateware();
+    await loadRateware({ preservePage: true });
   } catch (error) {
     setActionStatus(error.message, "error");
     updateBulkControls();
@@ -2018,7 +2052,7 @@ async function renormalizeSelectedRateware() {
     const result = await renormalizeApprovedRatewareRows(ids);
     ids.forEach((id) => selectedRowIds.delete(id));
     setActionStatus(`${result.updated || ids.length} approved rate(s) re-normalized with the current catalog.`, "success");
-    await loadRateware();
+    await loadRateware({ preservePage: true });
   } catch (error) {
     setActionStatus(error.message, "error");
     updateBulkControls();
@@ -2037,7 +2071,7 @@ async function matchSelectedRatewareVendors() {
     const result = await matchApprovedRatewareVendors(ids);
     ids.forEach((id) => selectedRowIds.delete(id));
     setActionStatus(`${result.updated || 0} approved rate(s) linked to vendors.`, "success");
-    await loadRateware();
+    await loadRateware({ preservePage: true });
   } catch (error) {
     setActionStatus(error.message, "error");
     updateBulkControls();
@@ -2056,7 +2090,7 @@ async function enrichSelectedRatewareZips() {
     const result = await enrichApprovedRatewareLocationZips(ids);
     ids.forEach((id) => selectedRowIds.delete(id));
     setActionStatus(`${result.enriched || 0} location(s) enriched. ${result.updated || ids.length} approved rate(s) checked.`, "success");
-    await loadRateware();
+    await loadRateware({ preservePage: true });
   } catch (error) {
     setActionStatus(error.message, "error");
     updateBulkControls();
@@ -2135,6 +2169,19 @@ document.addEventListener("click", (event) => {
   const retryButton = event.target.closest("[data-retry-action='load-rateware']");
   if (retryButton) loadRateware();
 });
+if (ratewarePageSizeSelect) ratewarePageSizeSelect.value = String(ratewarePageSize);
+ratewareFirstPageButton?.addEventListener("click", () => goToRatewarePage(0));
+ratewarePrevPageButton?.addEventListener("click", () => goToRatewarePage(ratewarePageIndex - 1));
+ratewareNextPageButton?.addEventListener("click", () => goToRatewarePage(ratewarePageIndex + 1));
+ratewareLastPageButton?.addEventListener("click", () => goToRatewarePage(Math.ceil(ratewareTotalCount / ratewarePageSize) - 1));
+ratewarePageSizeSelect?.addEventListener("change", () => setRatewarePageSize(ratewarePageSizeSelect.value));
+ratewarePageNumberInput?.addEventListener("change", () => goToRatewarePage(Number(ratewarePageNumberInput.value) - 1));
+ratewarePageNumberInput?.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    goToRatewarePage(Number(ratewarePageNumberInput.value) - 1);
+  }
+});
 clearFiltersButton?.addEventListener("click", clearRatewareFilters);
 searchInput.addEventListener("input", debounce(loadRateware));
 operationFilter.addEventListener("change", loadRateware);
@@ -2208,12 +2255,6 @@ selectAllCheckbox?.addEventListener("change", () => {
   });
   setActionStatus("");
   updateBulkControls();
-});
-body.addEventListener("click", async (event) => {
-  const loadMore = event.target.closest("[data-load-more-rateware]");
-  if (loadMore) {
-    await loadMoreRateware();
-  }
 });
 body.addEventListener("input", (event) => {
   const field = event.target.closest("[data-rateware-field]");

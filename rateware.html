@@ -145,6 +145,28 @@
                 <span id="rateware-action-status" class="row-save-status"></span>
               </div>
             </div>
+            <div class="sheet-pagination-bar" aria-label="Rateware pagination">
+              <span id="rateware-page-summary">Page 1</span>
+              <div class="sheet-pagination-controls">
+                <button id="rateware-first-page" type="button" class="secondary small-button">First</button>
+                <button id="rateware-prev-page" type="button" class="secondary small-button">Prev</button>
+                <label>
+                  Page
+                  <input id="rateware-page-number" type="number" min="1" value="1" inputmode="numeric" />
+                </label>
+                <button id="rateware-next-page" type="button" class="secondary small-button">Next</button>
+                <button id="rateware-last-page" type="button" class="secondary small-button">Last</button>
+                <label>
+                  Rows
+                  <select id="rateware-page-size">
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                    <option value="200" selected>200</option>
+                    <option value="500">500</option>
+                  </select>
+                </label>
+              </div>
+            </div>
 
             <div class="sheet-helper-strip" aria-live="polite">
               <strong id="rateware-grid-selection">Ready</strong>

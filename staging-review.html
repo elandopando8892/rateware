@@ -145,6 +145,28 @@
                 <span id="bulk-action-status" class="row-save-status"></span>
               </div>
             </div>
+            <div class="sheet-pagination-bar" aria-label="Staging pagination">
+              <span id="staging-page-summary">Page 1</span>
+              <div class="sheet-pagination-controls">
+                <button id="staging-first-page" type="button" class="secondary small-button">First</button>
+                <button id="staging-prev-page" type="button" class="secondary small-button">Prev</button>
+                <label>
+                  Page
+                  <input id="staging-page-number" type="number" min="1" value="1" inputmode="numeric" />
+                </label>
+                <button id="staging-next-page" type="button" class="secondary small-button">Next</button>
+                <button id="staging-last-page" type="button" class="secondary small-button">Last</button>
+                <label>
+                  Rows
+                  <select id="staging-page-size">
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                    <option value="200" selected>200</option>
+                    <option value="500">500</option>
+                  </select>
+                </label>
+              </div>
+            </div>
 
             <div class="sheet-helper-strip" aria-live="polite">
               <strong id="staging-grid-selection">Ready</strong>
