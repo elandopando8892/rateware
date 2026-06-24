@@ -31,13 +31,19 @@ const refreshButton = document.querySelector("#refresh-outreach");
 const generateDraftsButton = document.querySelector("#generate-drafts-button");
 const markQueuedButton = document.querySelector("#mark-queued-button");
 const markSentButton = document.querySelector("#mark-sent-button");
+const markRepliedButton = document.querySelector("#mark-replied-button");
 const archiveMessagesButton = document.querySelector("#archive-messages-button");
 const messageBody = document.querySelector("#outreach-message-body");
 const draftPreview = document.querySelector("#outreach-draft-preview");
 const historyList = document.querySelector("#contact-history-list");
+const historyScope = document.querySelector("#contact-history-scope");
 const draftTitle = document.querySelector("#outreach-draft-title");
 const selectionCount = document.querySelector("#outreach-selection-count");
 const actionStatus = document.querySelector("#outreach-action-status");
+const campaignHealth = document.querySelector("#outreach-campaign-health");
+const campaignDashboard = document.querySelector("#outreach-campaign-dashboard");
+const placeholderBank = document.querySelector("#outreach-placeholder-bank");
+const messageSearch = document.querySelector("#outreach-message-search");
 const metricCampaigns = document.querySelector("#outreach-metric-campaigns");
 const metricDrafts = document.querySelector("#outreach-metric-drafts");
 const metricSent = document.querySelector("#outreach-metric-sent");
@@ -52,6 +58,7 @@ const requestedRfxEventId = new URLSearchParams(window.location.search).get("rfx
 let selectedCampaignId = null;
 let previewMessageId = null;
 let selectedMessageIds = new Set();
+let activeMessageFilter = "all";
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -86,6 +93,50 @@ function messageRecipient(row) {
   return row.recipient_email || row.recipient_phone || "-";
 }
 
+function statusTone(status) {
+  const value = String(status || "").toLowerCase();
+  if (["sent", "replied"].includes(value)) return "success";
+  if (["queued", "generated"].includes(value)) return "neutral";
+  if (["failed", "archived"].includes(value)) return "danger";
+  return "muted";
+}
+
+function statusChip(status) {
+  const value = status || "drafted";
+  return `<span class="status-pill" data-tone="${statusTone(value)}">${escapeHtml(value)}</span>`;
+}
+
+function channelReady(message) {
+  if (message.channel === "email") return Boolean(message.recipient_email && message.gmail_compose_url);
+  if (message.channel === "whatsapp") return Boolean(message.recipient_phone && message.whatsapp_url);
+  return false;
+}
+
+function messageSearchText(message) {
+  return [
+    vendorName(message),
+    laneLabel(message),
+    message.channel,
+    message.status,
+    messageRecipient(message),
+    message.subject,
+    message.whatsapp_text,
+    message.text_body
+  ].filter(Boolean).join(" ").toLowerCase();
+}
+
+function messageMatchesFilter(message) {
+  const term = String(messageSearch?.value || "").trim().toLowerCase();
+  if (term && !messageSearchText(message).includes(term)) return false;
+  if (activeMessageFilter === "all") return true;
+  if (activeMessageFilter === "missing_channel") return !channelReady(message);
+  return message.status === activeMessageFilter;
+}
+
+function visibleMessages() {
+  return messages.filter(messageMatchesFilter);
+}
+
 function selectedTemplate() {
   return templates.find((item) => item.id === campaignTemplate?.value) || templates[0] || null;
 }
@@ -105,14 +156,30 @@ function renderTemplatePreview() {
       <strong>No template selected.</strong>
       <span>Select a template to preview subject, Gmail HTML, WhatsApp copy, and placeholders.</span>
     `;
+    if (placeholderBank) placeholderBank.innerHTML = "<span>No template selected</span>";
     return;
   }
   const placeholders = placeholderList(template);
+  if (placeholderBank) {
+    placeholderBank.innerHTML = placeholders.length
+      ? placeholders.map((item) => `<button type="button" class="secondary small-button" data-copy-placeholder="{{${escapeHtml(item)}}}">{{${escapeHtml(item)}}}</button>`).join("")
+      : "<span>No placeholders detected</span>";
+  }
   campaignTemplatePreview.innerHTML = `
     <div>
       <span class="status-pill">${escapeHtml(template.channel || "multi")}</span>
       <strong>${escapeHtml(template.name || "Template")}</strong>
       <small>${escapeHtml(template.subject || "No email subject")}</small>
+    </div>
+    <div class="outreach-template-preview-grid">
+      <article>
+        <span>Gmail subject</span>
+        <strong>${escapeHtml(template.subject || "No subject")}</strong>
+      </article>
+      <article>
+        <span>Channel</span>
+        <strong>${escapeHtml(template.channel || "multi")}</strong>
+      </article>
     </div>
     <p>${escapeHtml((template.whatsapp_body || template.html_body || "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim()).slice(0, 180) || "No body preview"}</p>
     <div class="template-token-row">
@@ -135,6 +202,9 @@ function renderDraftPreview(message = null) {
   }
   const isEmail = message.channel === "email";
   const body = isEmail ? message.html_body || message.text_body || "" : message.whatsapp_text || message.text_body || "";
+  const vendorHistory = historyRows
+    .filter((item) => item.vendor_id === message.vendor_id || item.outreach_message_id === message.id)
+    .slice(0, 4);
   draftPreview.innerHTML = `
     <div class="draft-preview-header">
       <div>
@@ -150,10 +220,21 @@ function renderDraftPreview(message = null) {
     <dl class="draft-preview-meta">
       <div><dt>Recipient</dt><dd>${escapeHtml(messageRecipient(message))}</dd></div>
       <div><dt>Subject</dt><dd>${escapeHtml(message.subject || "-")}</dd></div>
+      <div><dt>Status</dt><dd>${escapeHtml(message.status || "drafted")}</dd></div>
+      <div><dt>Channel ready</dt><dd>${channelReady(message) ? "Yes" : "Needs contact data"}</dd></div>
     </dl>
     ${isEmail && message.html_body
       ? `<iframe class="draft-html-preview" sandbox="" srcdoc="${escapeHtml(message.html_body)}"></iframe>`
       : `<pre class="draft-text-preview">${escapeHtml(body || "-")}</pre>`}
+    <div class="draft-vendor-timeline">
+      <strong>Recent vendor touchpoints</strong>
+      ${vendorHistory.length ? vendorHistory.map((item) => `
+        <article>
+          <span>${escapeHtml([item.channel, item.status, new Date(item.occurred_at || item.created_at).toLocaleString()].filter(Boolean).join(" | "))}</span>
+          <p>${escapeHtml(item.body_preview || item.subject || "")}</p>
+        </article>
+      `).join("") : "<article>No previous touchpoints for this vendor.</article>"}
+    </div>
   `;
 }
 
@@ -164,11 +245,76 @@ function updateMetrics() {
   metricHistory.textContent = formatCount(historyRows.length);
 }
 
+function campaignMessageStats(rows = messages) {
+  return {
+    total: rows.length,
+    drafted: rows.filter((row) => row.status === "drafted").length,
+    queued: rows.filter((row) => row.status === "queued").length,
+    sent: rows.filter((row) => row.status === "sent").length,
+    replied: rows.filter((row) => row.status === "replied").length,
+    failed: rows.filter((row) => row.status === "failed").length,
+    archived: rows.filter((row) => row.status === "archived").length,
+    email: rows.filter((row) => row.channel === "email").length,
+    whatsapp: rows.filter((row) => row.channel === "whatsapp").length,
+    missing_channel: rows.filter((row) => !channelReady(row)).length
+  };
+}
+
+function renderCampaignDashboard() {
+  const campaign = campaigns.find((item) => item.id === selectedCampaignId);
+  const stats = campaignMessageStats(messages);
+  if (!campaignDashboard || !campaignHealth) return;
+  if (!campaign) {
+    campaignHealth.textContent = "No campaign selected";
+    campaignHealth.className = "status-pill muted";
+    campaignDashboard.innerHTML = `
+      <article>
+        <span>Selected campaign</span>
+        <strong>-</strong>
+        <small>Create or select a campaign to inspect channel readiness.</small>
+      </article>
+    `;
+    return;
+  }
+
+  const readyCount = stats.total - stats.missing_channel;
+  const healthTone = stats.missing_channel ? "warning" : stats.sent || stats.replied ? "success" : "neutral";
+  campaignHealth.textContent = stats.missing_channel
+    ? `${formatCount(stats.missing_channel)} missing channel`
+    : stats.total
+      ? "Ready to send"
+      : "Needs drafts";
+  campaignHealth.className = `status-pill ${healthTone}`;
+  campaignDashboard.innerHTML = `
+    <article>
+      <span>Campaign</span>
+      <strong>${escapeHtml(campaign.name || "-")}</strong>
+      <small>${escapeHtml([campaign.rfx_events?.rfx_id, campaign.outreach_templates?.name, campaign.channel].filter(Boolean).join(" | ") || "No RFx/template")}</small>
+    </article>
+    <article>
+      <span>Draft readiness</span>
+      <strong>${formatCount(readyCount)} / ${formatCount(stats.total)}</strong>
+      <small>${formatCount(stats.email)} Gmail | ${formatCount(stats.whatsapp)} WhatsApp | ${formatCount(stats.missing_channel)} missing channel</small>
+    </article>
+    <article>
+      <span>Delivery state</span>
+      <strong>${formatCount(stats.sent + stats.replied)} sent/replied</strong>
+      <small>${formatCount(stats.drafted)} drafted | ${formatCount(stats.queued)} queued | ${formatCount(stats.replied)} replied</small>
+    </article>
+    <article>
+      <span>Contact history</span>
+      <strong>${formatCount(historyRows.filter((row) => row.campaign_id === campaign.id).length)}</strong>
+      <small>Touchpoints linked to this campaign.</small>
+    </article>
+  `;
+}
+
 function updateSelection() {
   const count = selectedMessageIds.size;
   selectionCount.textContent = `${count} selected`;
   markQueuedButton.disabled = !count;
   markSentButton.disabled = !count;
+  markRepliedButton.disabled = !count;
   archiveMessagesButton.disabled = !count;
 }
 
@@ -208,6 +354,7 @@ function renderTemplates() {
 function renderCampaigns() {
   if (!selectedCampaignId && campaigns[0]) selectedCampaignId = campaigns[0].id;
   generateDraftsButton.disabled = !selectedCampaignId;
+  renderCampaignDashboard();
   if (!campaigns.length) {
     campaignList.innerHTML = "<article>No outreach campaigns yet.</article>";
     return;
@@ -225,46 +372,68 @@ function renderCampaigns() {
 function renderMessages() {
   updateSelection();
   updateMetrics();
+  renderCampaignDashboard();
   if (!selectedCampaignId) {
     messageBody.innerHTML = `<tr><td colspan="8">Create or select a campaign.</td></tr>`;
     renderDraftPreview(null);
+    renderHistory();
     return;
   }
   if (!messages.length) {
     messageBody.innerHTML = `<tr><td colspan="8">No drafts yet. Generate drafts from the selected RFx shortlist.</td></tr>`;
     renderDraftPreview(null);
+    renderHistory();
     return;
   }
-  const previewMessage = messages.find((message) => message.id === previewMessageId) || messages[0];
+  const rows = visibleMessages();
+  if (!rows.length) {
+    messageBody.innerHTML = `<tr><td colspan="8">No messages match current filters.</td></tr>`;
+    const fallbackPreview = messages.find((message) => message.id === previewMessageId) || messages[0] || null;
+    renderDraftPreview(fallbackPreview);
+    renderHistory();
+    return;
+  }
+  const previewMessage = rows.find((message) => message.id === previewMessageId) || rows[0];
   previewMessageId = previewMessage?.id || null;
   renderDraftPreview(previewMessage);
-  messageBody.innerHTML = messages.map((message) => {
+  messageBody.innerHTML = rows.map((message) => {
     const draft = message.channel === "email"
       ? `<button class="small-button" type="button" data-open-url="${escapeHtml(message.gmail_compose_url || "")}" ${message.gmail_compose_url ? "" : "disabled"}>Open Gmail</button>`
       : `<button class="small-button" type="button" data-open-url="${escapeHtml(message.whatsapp_url || "")}" ${message.whatsapp_url ? "" : "disabled"}>Open WhatsApp</button>`;
     const copyHtml = message.html_body ? `<button class="secondary small-button" type="button" data-copy-html="${escapeHtml(message.id)}">Copy HTML</button>` : "";
+    const ready = channelReady(message);
     return `
       <tr data-message-id="${escapeHtml(message.id)}" class="${message.id === previewMessageId ? "is-focused-row" : ""}">
         <td><input type="checkbox" data-message-select="${escapeHtml(message.id)}" ${selectedMessageIds.has(message.id) ? "checked" : ""} /></td>
         <td>${escapeHtml(vendorName(message))}</td>
         <td>${escapeHtml(laneLabel(message))}</td>
         <td><span class="status-pill">${escapeHtml(message.channel)}</span></td>
-        <td>${escapeHtml(messageRecipient(message))}</td>
-        <td><span class="status-pill">${escapeHtml(message.status)}</span></td>
+        <td>${escapeHtml(messageRecipient(message))}${ready ? "" : "<small>Missing channel setup</small>"}</td>
+        <td>${statusChip(message.status)}</td>
         <td>${escapeHtml(message.subject || message.whatsapp_text || message.text_body || "-").slice(0, 140)}</td>
         <td class="compact-actions"><button class="secondary small-button" type="button" data-preview-message="${escapeHtml(message.id)}">Preview</button>${draft}${copyHtml}</td>
       </tr>
     `;
   }).join("");
+  renderHistory();
 }
 
 function renderHistory() {
   updateMetrics();
-  if (!historyRows.length) {
+  const previewMessage = messages.find((message) => message.id === previewMessageId);
+  const scopedRows = previewMessage
+    ? historyRows.filter((item) => item.vendor_id === previewMessage.vendor_id || item.outreach_message_id === previewMessage.id)
+    : selectedCampaignId
+      ? historyRows.filter((item) => item.campaign_id === selectedCampaignId)
+      : historyRows;
+  if (historyScope) {
+    historyScope.textContent = previewMessage ? vendorName(previewMessage) : selectedCampaignId ? "Selected campaign" : "All vendors";
+  }
+  if (!scopedRows.length) {
     historyList.innerHTML = "<article>No contact history yet.</article>";
     return;
   }
-  historyList.innerHTML = historyRows.slice(0, 80).map((item) => `
+  historyList.innerHTML = scopedRows.slice(0, 80).map((item) => `
     <article class="contact-timeline-item" data-channel="${escapeHtml(item.channel || "")}">
       <i aria-hidden="true"></i>
       <div>
@@ -436,6 +605,31 @@ draftPreview?.addEventListener("click", (event) => {
 campaignTemplate?.addEventListener("change", renderTemplatePreview);
 campaignChannel?.addEventListener("change", renderTemplatePreview);
 
+placeholderBank?.addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-copy-placeholder]");
+  if (!button) return;
+  try {
+    await navigator.clipboard.writeText(button.dataset.copyPlaceholder || "");
+    setStatus(campaignStatus, "Placeholder copied.", "success");
+  } catch (error) {
+    setStatus(campaignStatus, error.message, "error");
+  }
+});
+
+document.querySelectorAll("[data-outreach-filter]").forEach((button) => {
+  button.addEventListener("click", () => {
+    activeMessageFilter = button.dataset.outreachFilter || "all";
+    document.querySelectorAll("[data-outreach-filter]").forEach((item) => item.classList.toggle("is-active", item === button));
+    if (!visibleMessages().some((message) => message.id === previewMessageId)) previewMessageId = visibleMessages()[0]?.id || messages[0]?.id || null;
+    renderMessages();
+  });
+});
+
+messageSearch?.addEventListener("input", () => {
+  if (!visibleMessages().some((message) => message.id === previewMessageId)) previewMessageId = visibleMessages()[0]?.id || messages[0]?.id || null;
+  renderMessages();
+});
+
 async function markSelected(status) {
   const ids = [...selectedMessageIds];
   if (!ids.length) return;
@@ -445,6 +639,8 @@ async function markSelected(status) {
     setStatus(actionStatus, `${result.updated || 0} message(s) updated.`, "success");
     selectedMessageIds.clear();
     historyRows = await fetchContactHistory();
+    campaigns = await fetchOutreachCampaigns();
+    renderCampaigns();
     renderHistory();
     await loadMessages(selectedCampaignId);
   } catch (error) {
@@ -454,4 +650,5 @@ async function markSelected(status) {
 
 markQueuedButton?.addEventListener("click", () => markSelected("queued"));
 markSentButton?.addEventListener("click", () => markSelected("sent"));
+markRepliedButton?.addEventListener("click", () => markSelected("replied"));
 archiveMessagesButton?.addEventListener("click", () => markSelected("archived"));

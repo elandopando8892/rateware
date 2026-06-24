@@ -68,9 +68,12 @@
           </section>
 
           <section class="workspace-panel outreach-flow-panel">
-            <div class="section-heading compact">
-              <p class="eyebrow">RFx + Outreach workflow</p>
-              <h2>Invite, preview, send, track</h2>
+            <div class="split-heading">
+              <div>
+                <p class="eyebrow">RFx + Outreach workflow</p>
+                <h2>Invite, preview, send, track</h2>
+              </div>
+              <span id="outreach-campaign-health" class="status-pill muted">No campaign selected</span>
             </div>
             <div class="outreach-flow-steps">
               <article>
@@ -87,6 +90,13 @@
                 <span>3</span>
                 <strong>Confirm drafts</strong>
                 <small>Open Gmail or WhatsApp only after the draft looks correct.</small>
+              </article>
+            </div>
+            <div id="outreach-campaign-dashboard" class="outreach-campaign-dashboard">
+              <article>
+                <span>Selected campaign</span>
+                <strong>-</strong>
+                <small>Create or select a campaign to inspect channel readiness.</small>
               </article>
             </div>
           </section>
@@ -163,6 +173,15 @@
                 <strong>No template selected.</strong>
                 <span>Select a template to preview subject, Gmail HTML, WhatsApp copy, and placeholders.</span>
               </div>
+              <div class="outreach-placeholder-panel">
+                <div>
+                  <strong>Available placeholders</strong>
+                  <span>Use these tokens inside Gmail HTML, subject, and WhatsApp drafts.</span>
+                </div>
+                <div id="outreach-placeholder-bank" class="template-token-row">
+                  <span>No template selected</span>
+                </div>
+              </div>
               <p id="campaign-status" class="status-message" role="status"></p>
               <div id="campaign-list" class="outreach-campaign-list"></div>
             </section>
@@ -178,12 +197,24 @@
                 <button id="generate-drafts-button" type="button" disabled>Generate drafts</button>
                 <button id="mark-queued-button" class="secondary" type="button" disabled>Mark queued</button>
                 <button id="mark-sent-button" class="secondary" type="button" disabled>Mark sent</button>
+                <button id="mark-replied-button" class="secondary" type="button" disabled>Mark replied</button>
                 <button id="archive-messages-button" class="secondary" type="button" disabled>Archive</button>
               </div>
             </div>
             <div class="bulk-action-bar">
               <span id="outreach-selection-count">0 selected</span>
               <span id="outreach-action-status" class="row-save-status"></span>
+            </div>
+            <div class="outreach-message-toolbar">
+              <div class="outreach-status-filters" aria-label="Outreach status filters">
+                <button class="secondary small-button is-active" type="button" data-outreach-filter="all">All</button>
+                <button class="secondary small-button" type="button" data-outreach-filter="drafted">Drafted</button>
+                <button class="secondary small-button" type="button" data-outreach-filter="queued">Queued</button>
+                <button class="secondary small-button" type="button" data-outreach-filter="sent">Sent</button>
+                <button class="secondary small-button" type="button" data-outreach-filter="replied">Replied</button>
+                <button class="secondary small-button" type="button" data-outreach-filter="missing_channel">Missing channel</button>
+              </div>
+              <input id="outreach-message-search" type="search" placeholder="Search vendor, RFx, lane, recipient" />
             </div>
             <div id="outreach-draft-preview" class="outreach-draft-preview">
               <div>
@@ -214,9 +245,12 @@
           </section>
 
           <section class="workspace-panel">
-            <div class="section-heading compact">
-              <p class="eyebrow">Contact history</p>
-              <h2>Carrier touchpoints</h2>
+            <div class="split-heading">
+              <div>
+                <p class="eyebrow">Contact history</p>
+                <h2>Carrier touchpoints</h2>
+              </div>
+              <span id="contact-history-scope" class="status-pill muted">All vendors</span>
             </div>
             <div id="contact-history-list" class="contact-history-list">
               <article>No contact history loaded.</article>
