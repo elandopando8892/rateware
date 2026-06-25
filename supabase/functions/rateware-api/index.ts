@@ -201,6 +201,30 @@ function sourceRank(source: unknown) {
   return 2;
 }
 
+const MANAGED_CATALOG_CATEGORIES = new Set([
+  "equipment",
+  "trailer",
+  "config",
+  "operation",
+  "service",
+  "driver",
+  "mx_border_crossing",
+  "us_border_crossing",
+  "border_crossing"
+]);
+
+function catalogCode(value: unknown) {
+  return catalogKey(value).replace(/\s+/g, "_").slice(0, 64);
+}
+
+function isManualCatalogOwnedBy(item: Record<string, unknown>, user: { owner_email: string | null }) {
+  const source = cleanText(item.source);
+  if (source !== "rateware_manual_catalog") return true;
+  const metadata = typeof item.metadata === "object" && item.metadata ? item.metadata as Record<string, unknown> : {};
+  const ownerEmail = cleanText(metadata.owner_email);
+  return !ownerEmail || !user.owner_email || ownerEmail === user.owner_email;
+}
+
 function optionQuality(location: Record<string, unknown>) {
   let score = 0;
   if (location.country && location.country !== "UNKNOWN") score += 30;
@@ -5469,6 +5493,110 @@ Deno.serve(async (request) => {
       return jsonResponse({ rows: result.data || [] });
     }
 
+    if (body.action === "list_catalog_values") {
+      const category = cleanText(body.category);
+      let query = supabase
+        .from("rateware_catalog_items")
+        .select("id,source,category,raw_value,normalized_value,code,metadata,active,updated_at")
+        .order("category", { ascending: true })
+        .order("normalized_value", { ascending: true })
+        .limit(5000);
+      if (category && MANAGED_CATALOG_CATEGORIES.has(category)) query = query.eq("category", category);
+      const result = await query;
+      if (result.error) throw result.error;
+
+      const rows = (result.data || [])
+        .filter((item) => MANAGED_CATALOG_CATEGORIES.has(String(item.category)))
+        .filter((item) => isManualCatalogOwnedBy(item, user))
+        .map((item) => ({
+          ...item,
+          is_manual: item.source === "rateware_manual_catalog",
+          can_archive: item.source === "rateware_manual_catalog" && item.active === true
+        }));
+      return jsonResponse({ rows });
+    }
+
+    if (body.action === "save_catalog_value") {
+      const input = objectRecord(body.catalog_value || body);
+      const category = cleanText(input.category);
+      const rawValue = cleanText(input.raw_value || input.rawValue || input.value);
+      const normalizedValue = cleanText(input.normalized_value || input.normalizedValue || rawValue);
+      if (!category || !MANAGED_CATALOG_CATEGORIES.has(category)) {
+        return jsonResponse({ error: "Choose a valid catalog category." }, 400);
+      }
+      if (!rawValue || !normalizedValue) {
+        return jsonResponse({ error: "Catalog value and normalized value are required." }, 400);
+      }
+      const code = cleanText(input.code) || catalogCode(normalizedValue);
+      const metadata = {
+        owner_email: user.owner_email,
+        owner_user_id: user.owner_user_id,
+        note: cleanText(input.note),
+        created_from: "settings_catalog_manager"
+      };
+      const row = {
+        source: "rateware_manual_catalog",
+        category,
+        raw_value: rawValue,
+        normalized_value: normalizedValue,
+        code,
+        metadata,
+        active: true,
+        updated_at: new Date().toISOString()
+      };
+      const result = await supabase
+        .from("rateware_catalog_items")
+        .upsert(row, { onConflict: "source,category,raw_value,normalized_value" })
+        .select("id,source,category,raw_value,normalized_value,code,metadata,active,updated_at")
+        .single();
+      if (result.error) throw result.error;
+      await writeAuditLog(
+        supabase,
+        user,
+        "catalog.value.save",
+        "rateware_catalog_items",
+        result.data.id,
+        `Saved ${category} catalog value "${normalizedValue}"`,
+        { category, raw_value: rawValue, normalized_value: normalizedValue, code }
+      );
+      return jsonResponse({ row: result.data });
+    }
+
+    if (body.action === "archive_catalog_value") {
+      const id = cleanText(body.id);
+      if (!id) return jsonResponse({ error: "Catalog value id is required." }, 400);
+      const current = await supabase
+        .from("rateware_catalog_items")
+        .select("id,source,category,raw_value,normalized_value,metadata,active")
+        .eq("id", id)
+        .maybeSingle();
+      if (current.error) throw current.error;
+      if (!current.data) return jsonResponse({ error: "Catalog value was not found." }, 404);
+      if (current.data.source !== "rateware_manual_catalog") {
+        return jsonResponse({ error: "Only manual catalog values can be archived from Settings." }, 400);
+      }
+      if (!isManualCatalogOwnedBy(current.data, user)) {
+        return jsonResponse({ error: "This manual catalog value belongs to another workspace." }, 403);
+      }
+      const result = await supabase
+        .from("rateware_catalog_items")
+        .update({ active: false, updated_at: new Date().toISOString() })
+        .eq("id", id)
+        .select("id,source,category,raw_value,normalized_value,code,metadata,active,updated_at")
+        .single();
+      if (result.error) throw result.error;
+      await writeAuditLog(
+        supabase,
+        user,
+        "catalog.value.archive",
+        "rateware_catalog_items",
+        id,
+        `Archived ${current.data.category} catalog value "${current.data.normalized_value}"`,
+        { category: current.data.category, raw_value: current.data.raw_value, normalized_value: current.data.normalized_value }
+      );
+      return jsonResponse({ row: result.data });
+    }
+
     if (body.action === "dashboard_summary") {
       const [uploads, vendors, sourcingVendors, procurementVendors, archivedVendors, pending, approved, failed, rfxEvents, rfxOpen, rfxBids, outreachMessages] = await Promise.all([
         supabase.from("raw_uploads").select("id", { count: "exact", head: true }).neq("status", "archived"),
@@ -6521,8 +6649,8 @@ Deno.serve(async (request) => {
       const [catalog, locations, borderPairs, vendors] = await Promise.all([
         supabase
           .from("rateware_catalog_items")
-          .select("source,category,normalized_value,raw_value,code")
-          .in("category", ["equipment", "trailer", "config", "operation", "service", "driver", "border_crossing"])
+          .select("source,category,normalized_value,raw_value,code,metadata")
+          .in("category", ["equipment", "trailer", "config", "operation", "service", "driver", "mx_border_crossing", "us_border_crossing", "border_crossing"])
           .eq("active", true)
           .limit(5000),
         supabase
@@ -6550,7 +6678,8 @@ Deno.serve(async (request) => {
       }
 
       const categoryMaps: Record<string, Map<string, { value: string; source: string }>> = {};
-      for (const item of catalog.data || []) {
+      const catalogData = (catalog.data || []).filter((item) => isManualCatalogOwnedBy(item, user));
+      for (const item of catalogData) {
         const category = String(item.category);
         const value = cleanText(item.normalized_value || item.raw_value || item.code);
         if (!value) continue;
@@ -6585,12 +6714,19 @@ Deno.serve(async (request) => {
         .sort((a, b) => String(a.label || a.value).localeCompare(String(b.label || b.value)))
         .slice(0, 5000);
 
+      const manualMxCrossings = (categoryMaps.mx_border_crossing ? [...categoryMaps.mx_border_crossing.values()].map((item) => item.value) : []);
+      const manualUsCrossings = (categoryMaps.us_border_crossing ? [...categoryMaps.us_border_crossing.values()].map((item) => item.value) : []);
+      const manualGenericCrossings = (categoryMaps.border_crossing ? [...categoryMaps.border_crossing.values()].map((item) => item.value) : []);
+
       const mxCrossings = Array.from(new Set([
+        ...manualMxCrossings,
+        ...manualGenericCrossings,
         ...(borderPairs.data || []).map((pair) => [pair.mx_city, pair.mx_state].filter(Boolean).join(", "))
       ].filter(Boolean))).sort((a, b) => a.localeCompare(b));
 
       const usCrossings = Array.from(new Set((borderPairs.data || [])
         .map((pair) => [pair.us_city, pair.us_state].filter(Boolean).join(", "))
+        .concat(manualUsCrossings, manualGenericCrossings)
         .filter(Boolean))).sort((a, b) => a.localeCompare(b));
 
       const vendorOptions = (vendors.data || []).flatMap((vendor) => {

@@ -7535,6 +7535,45 @@ select.staging-input {
   font-size: 0.84rem;
 }
 
+.settings-catalog-panel {
+  grid-column: 1 / -1;
+}
+
+.catalog-value-form {
+  margin-bottom: 10px;
+}
+
+.catalog-settings-toolbar {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 8px 0;
+}
+
+.catalog-settings-toolbar label {
+  min-width: 220px;
+}
+
+.settings-catalog-table {
+  min-width: 860px;
+}
+
+.settings-catalog-table td strong,
+.settings-catalog-table td small {
+  display: block;
+}
+
+.settings-catalog-table td small {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.settings-catalog-table tr.is-muted-row {
+  opacity: 0.62;
+}
+
 /* Sprint 8 design system cleanup: compact, neutral, consistent component layer. */
 .page-frame {
   padding: 14px;

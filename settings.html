@@ -125,6 +125,63 @@
                 <article>Loading onboarding checklist...</article>
               </div>
             </section>
+
+            <section class="workspace-panel settings-catalog-panel">
+              <div class="split-heading">
+                <div>
+                  <p class="eyebrow">Catalog manager</p>
+                  <h2>Dropdown values for Staging and Rateware</h2>
+                </div>
+                <button id="refresh-catalog-values" type="button" class="secondary small-button">Refresh catalog</button>
+              </div>
+              <form id="catalog-value-form" class="settings-form catalog-value-form">
+                <label>
+                  Category
+                  <select id="catalog-category"></select>
+                </label>
+                <label>
+                  Value
+                  <input id="catalog-raw-value" placeholder="Dry Van, Flatbed, Nuevo Laredo, TM..." />
+                </label>
+                <label>
+                  Normalized value
+                  <input id="catalog-normalized-value" placeholder="Leave blank to use value" />
+                </label>
+                <label>
+                  Code
+                  <input id="catalog-code" placeholder="Optional internal code" />
+                </label>
+                <label class="wide-field">
+                  Note
+                  <input id="catalog-note" placeholder="Why this value was added" />
+                </label>
+                <button type="submit">Save catalog value</button>
+              </form>
+              <div class="catalog-settings-toolbar">
+                <label>
+                  Show category
+                  <select id="catalog-category-filter"></select>
+                </label>
+                <p id="catalog-status" class="status-message" role="status"></p>
+              </div>
+              <div class="table-wrap">
+                <table class="settings-catalog-table">
+                  <thead>
+                    <tr>
+                      <th>Category</th>
+                      <th>Value</th>
+                      <th>Code</th>
+                      <th>Source</th>
+                      <th>Status</th>
+                      <th>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody id="catalog-values-body">
+                    <tr><td colspan="6">Loading catalog values...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
           </section>
 
           <section class="workspace-panel">

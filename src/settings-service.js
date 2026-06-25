@@ -19,3 +19,15 @@ export async function updateOnboardingTask(taskKey, completed = true) {
 export async function fetchSaasAuditLog(limit = 100) {
   return (await callRatewareApi("list_saas_audit_log", { limit })).rows;
 }
+
+export async function fetchCatalogValues(category = "") {
+  return (await callRatewareApi("list_catalog_values", { category })).rows;
+}
+
+export async function saveCatalogValue(catalogValue) {
+  return (await callRatewareApi("save_catalog_value", { catalog_value: catalogValue })).row;
+}
+
+export async function archiveCatalogValue(id) {
+  return (await callRatewareApi("archive_catalog_value", { id })).row;
+}
