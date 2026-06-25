@@ -141,7 +141,7 @@ const SHELL_NAV_GROUPS = [
   },
   {
     title: "Analyze",
-    items: [{ id: "analyst", code: "AI", label: "Analyst", href: "./business-intelligence.html" }]
+    items: [{ id: "analyze", code: "AN", label: "Analyze", href: "./business-intelligence.html" }]
   },
   {
     title: "Source",
@@ -200,9 +200,9 @@ const PAGE_META = {
     ]
   },
   "business-intelligence": {
-    title: "Analyst",
-    eyebrow: "Commercial copilot",
-    crumbs: [{ label: "Analyze", href: "./app.html" }, { label: "Analyst" }]
+    title: "Analyze",
+    eyebrow: "Commercial intelligence",
+    crumbs: [{ label: "Analyze", href: "./app.html" }, { label: "Workbench" }]
   },
   vendors: {
     title: "Carrier CRM",

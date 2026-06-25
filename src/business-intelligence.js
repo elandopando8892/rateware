@@ -63,11 +63,19 @@ const geoTransactions = document.querySelector("#bi-geo-transactions");
 const geoCarriers = document.querySelector("#bi-geo-carriers");
 const geoZones = document.querySelector("#bi-geo-zones");
 const geoMissing = document.querySelector("#bi-geo-missing");
+const geoSelection = document.querySelector("#bi-geo-selection");
+const geoSelectedTitle = document.querySelector("#bi-geo-selected-title");
+const geoSelectedMeta = document.querySelector("#bi-geo-selected-meta");
+const geoPivotZoneButton = document.querySelector("#bi-geo-pivot-zone");
+const geoClearZoneButton = document.querySelector("#bi-geo-clear-zone");
+const viewButtons = document.querySelectorAll("[data-bi-view-button]");
+const viewPanels = document.querySelectorAll("[data-bi-view-panel]");
 
 let currentRecommendations = [];
 let currentPivot = null;
 let currentDrilldown = null;
 let currentGeoDensity = null;
+let selectedGeoPointKey = null;
 let currentAnalystResult = null;
 let queuedActionIndexes = new Set();
 const selectedVendorIds = new Set();
@@ -222,9 +230,15 @@ function filterLabel(key, value) {
     search: "Search",
     vendor: "Carrier",
     route: "Route",
+    origin: "Origin",
+    destination: "Destination",
     corridor: "Corridor",
     origin_state: "Origin state",
     destination_state: "Destination state",
+    origin_market: "Origin market",
+    destination_market: "Destination market",
+    origin_region: "Origin region",
+    destination_region: "Destination region",
     equipment: "Equipment",
     trailer: "Trailer",
     operation: "Operation",
@@ -311,6 +325,29 @@ function setGeoStatus(message, tone = "neutral") {
   geoStatus.dataset.tone = tone;
 }
 
+function activateBiView(view, options = {}) {
+  const availableViews = new Set([...viewPanels].map((panel) => panel.dataset.biViewPanel).filter(Boolean));
+  const nextView = availableViews.has(view) ? view : "geo";
+  viewPanels.forEach((panel) => {
+    panel.hidden = panel.dataset.biViewPanel !== nextView;
+  });
+  viewButtons.forEach((button) => {
+    const isActive = button.dataset.biViewButton === nextView;
+    button.classList.toggle("is-active", isActive);
+    if (button.getAttribute("role") === "tab") button.setAttribute("aria-selected", String(isActive));
+  });
+  if (options.focusTarget) {
+    window.requestAnimationFrame(() => document.querySelector(options.focusTarget)?.focus());
+  }
+}
+
+function activateViewForTarget(selector) {
+  const target = document.querySelector(selector);
+  const view = target?.closest("[data-bi-view-panel]")?.dataset.biViewPanel;
+  if (view) activateBiView(view);
+  return target;
+}
+
 function moneyValue(value) {
   const number = Number(value);
   if (!Number.isFinite(number)) return "-";
@@ -368,9 +405,15 @@ function clearPivotFilters() {
     "#bi-filter-search",
     "#bi-filter-vendor",
     "#bi-filter-route",
+    "#bi-filter-origin",
+    "#bi-filter-destination",
     "#bi-filter-corridor",
     "#bi-filter-origin-state",
     "#bi-filter-destination-state",
+    "#bi-filter-origin-market",
+    "#bi-filter-destination-market",
+    "#bi-filter-origin-region",
+    "#bi-filter-destination-region",
     "#bi-filter-equipment",
     "#bi-filter-trailer",
     "#bi-filter-operation",
@@ -397,9 +440,15 @@ function applyPivotConfig(config) {
   setControl("#bi-filter-search", filters.search || "");
   setControl("#bi-filter-vendor", filters.vendor || "");
   setControl("#bi-filter-route", filters.route || "");
+  setControl("#bi-filter-origin", filters.origin || "");
+  setControl("#bi-filter-destination", filters.destination || "");
   setControl("#bi-filter-corridor", filters.corridor || "");
   setControl("#bi-filter-origin-state", filters.origin_state || "");
   setControl("#bi-filter-destination-state", filters.destination_state || "");
+  setControl("#bi-filter-origin-market", filters.origin_market || "");
+  setControl("#bi-filter-destination-market", filters.destination_market || "");
+  setControl("#bi-filter-origin-region", filters.origin_region || "");
+  setControl("#bi-filter-destination-region", filters.destination_region || "");
   setControl("#bi-filter-equipment", filters.equipment || "");
   setControl("#bi-filter-trailer", filters.trailer || "");
   setControl("#bi-filter-operation", filters.operation || "");
@@ -441,9 +490,15 @@ function readPivotConfig() {
     search: readValue("#bi-filter-search"),
     vendor: readValue("#bi-filter-vendor"),
     route: readValue("#bi-filter-route"),
+    origin: readValue("#bi-filter-origin"),
+    destination: readValue("#bi-filter-destination"),
     corridor: readValue("#bi-filter-corridor"),
     origin_state: readValue("#bi-filter-origin-state"),
     destination_state: readValue("#bi-filter-destination-state"),
+    origin_market: readValue("#bi-filter-origin-market"),
+    destination_market: readValue("#bi-filter-destination-market"),
+    origin_region: readValue("#bi-filter-origin-region"),
+    destination_region: readValue("#bi-filter-destination-region"),
     equipment: readValue("#bi-filter-equipment"),
     trailer: readValue("#bi-filter-trailer"),
     operation: readValue("#bi-filter-operation"),
@@ -698,6 +753,86 @@ function projectNorthAmericaPoint(lat, lng) {
   };
 }
 
+function selectedGeoPoint() {
+  return (currentGeoDensity?.points || []).find((point) => point.key === selectedGeoPointKey) || null;
+}
+
+function geoPointFilter(point) {
+  if (!point) return null;
+  const side = point.flow === "destination" ? "destination" : "origin";
+  const level = point.level || currentGeoDensity?.level || "market";
+  const fieldByLevel = {
+    region: `${side}_region`,
+    state: `${side}_state`,
+    market: `${side}_market`,
+    location: side
+  };
+  const valueByLevel = {
+    region: point.region || point.label,
+    state: point.state || point.label,
+    market: point.market || point.label,
+    location: point.city || point.label
+  };
+  const key = fieldByLevel[level] || fieldByLevel.market;
+  const value = valueByLevel[level] || point.label;
+  return key && value ? { key, value, side } : null;
+}
+
+function renderGeoSelection() {
+  const point = selectedGeoPoint();
+  if (!geoSelection || !geoSelectedTitle || !geoSelectedMeta) return;
+  if (!point) {
+    geoSelection.classList.remove("has-selection");
+    geoSelectedTitle.textContent = "No zone selected";
+    geoSelectedMeta.textContent = "Click a map point or zone row to build a focused pivot.";
+    if (geoPivotZoneButton) geoPivotZoneButton.disabled = true;
+    if (geoClearZoneButton) geoClearZoneButton.disabled = true;
+    return;
+  }
+  const metric = currentGeoDensity?.metric || "transactions";
+  const filter = geoPointFilter(point);
+  geoSelection.classList.add("has-selection");
+  geoSelectedTitle.textContent = point.label || "Selected zone";
+  geoSelectedMeta.textContent = [
+    `${point.flow || "zone"} ${point.level || ""}`.trim(),
+    filter ? `${filter.key}: ${filter.value}` : "",
+    `${formatNumber(point.transactions)} tx`,
+    `${formatNumber(point.carriers)} carriers`,
+    `${geoMetricLabel(metric)} ${geoMoney(geoMetricValue(point, metric))}`
+  ].filter(Boolean).join(" | ");
+  if (geoPivotZoneButton) geoPivotZoneButton.disabled = !filter;
+  if (geoClearZoneButton) geoClearZoneButton.disabled = false;
+}
+
+function selectGeoPoint(pointKey) {
+  selectedGeoPointKey = pointKey || null;
+  renderGeoSelection();
+  if (currentGeoDensity) {
+    renderGeoMap(currentGeoDensity);
+    renderGeoTable(currentGeoDensity);
+  }
+}
+
+async function buildPivotFromSelectedGeoPoint() {
+  const point = selectedGeoPoint();
+  const filter = geoPointFilter(point);
+  if (!filter) return;
+  const sideComplement = filter.side === "origin" ? "destination_market" : "origin_market";
+  applyPivotConfig({
+    rows: ["vendor", sideComplement, ""],
+    columns: ["operation", "service"],
+    metric: "transaction_count",
+    aggregation: "count",
+    filters: {
+      ...readPivotConfig().filters,
+      [filter.key]: filter.value
+    }
+  });
+  activateBiView("pivots");
+  setPivotStatus(`Pivot filtered by ${filter.key}: ${filter.value}.`);
+  await runPivot();
+}
+
 function renderGeoMap(result) {
   if (!geoMap) return;
   const points = result.points || [];
@@ -720,8 +855,9 @@ function renderGeoMap(result) {
       const radius = 5 + Math.sqrt(value / maxValue) * 24;
       const tone = point.flow === "origin" ? "origin" : point.flow === "destination" ? "destination" : "both";
       const label = `${point.label} | ${point.flow} | ${geoMetricLabel(metric)} ${value} | ${point.transactions} tx | ${point.carriers} carriers`;
+      const isSelected = point.key === selectedGeoPointKey;
       return `
-        <g class="bi-map-point" data-flow="${escapeHtml(tone)}">
+        <g class="bi-map-point ${isSelected ? "is-selected" : ""}" data-flow="${escapeHtml(tone)}" data-geo-point-key="${escapeHtml(point.key || "")}" role="button" tabindex="0" aria-label="${escapeHtml(label)}">
           <circle cx="${projected.x.toFixed(1)}" cy="${projected.y.toFixed(1)}" r="${radius.toFixed(1)}"></circle>
           <title>${escapeHtml(label)}</title>
         </g>
@@ -760,7 +896,7 @@ function renderGeoTable(result) {
     return;
   }
   geoBody.innerHTML = points.slice(0, 80).map((point) => `
-    <tr>
+    <tr class="${point.key === selectedGeoPointKey ? "is-selected" : ""}" data-geo-point-key="${escapeHtml(point.key || "")}">
       <td>
         <strong>${escapeHtml(point.label || "-")}</strong>
         <small>${escapeHtml([point.state, point.country, point.region].filter(Boolean).join(" | ") || "-")}</small>
@@ -775,11 +911,15 @@ function renderGeoTable(result) {
 
 function renderGeoDensity(result) {
   currentGeoDensity = result;
+  if (selectedGeoPointKey && !(result.points || []).some((point) => point.key === selectedGeoPointKey)) {
+    selectedGeoPointKey = null;
+  }
   if (geoTransactions) geoTransactions.textContent = formatNumber(result.summary?.transactions || 0);
   if (geoCarriers) geoCarriers.textContent = formatNumber(result.summary?.carriers || 0);
   if (geoZones) geoZones.textContent = formatNumber(result.summary?.zones || 0);
   if (geoMissing) geoMissing.textContent = formatNumber(result.summary?.missing_geo || 0);
   if (exportGeoButton) exportGeoButton.disabled = !(result.points || []).length;
+  renderGeoSelection();
   renderGeoMap(result);
   renderGeoTable(result);
 }
@@ -1229,6 +1369,7 @@ async function copySingleAction(index) {
 
 initAuthControls();
 setupPivotControls();
+activateBiView(new URLSearchParams(window.location.search).get("view") || "geo");
 requirePrivatePage()
   .then(async () => {
     await applyPermissionState("#bi-submit-button, #bi-promote-selected, #bi-copy-list, #bi-run-recommendations, #bi-export-recommendations, #bi-run-pivot, #bi-copy-pivot, #bi-export-pivot, #bi-export-drilldown, #bi-run-geo, #bi-export-geo", "business-intelligence:use");
@@ -1252,11 +1393,21 @@ document.querySelectorAll("[data-bi-brief]").forEach((button) => {
   button.addEventListener("click", () => applyCopilotBrief(button));
 });
 
+viewButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    const view = button.dataset.biViewButton || "geo";
+    activateBiView(view, { focusTarget: button.dataset.biFocusTarget });
+    const url = new URL(window.location.href);
+    url.searchParams.set("view", view);
+    window.history.replaceState({}, "", url);
+  });
+});
+
 document.querySelectorAll("[data-bi-scroll-target]").forEach((button) => {
   button.addEventListener("click", () => {
     const selector = button.dataset.biScrollTarget;
     if (!selector) return;
-    const target = document.querySelector(selector);
+    const target = activateViewForTarget(selector);
     if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
   });
 });
@@ -1317,6 +1468,26 @@ exportPivotButton?.addEventListener("click", exportPivotCsv);
 exportDrilldownButton?.addEventListener("click", exportDrilldownCsv);
 runGeoButton?.addEventListener("click", runGeoDensity);
 exportGeoButton?.addEventListener("click", exportGeoCsv);
+geoPivotZoneButton?.addEventListener("click", buildPivotFromSelectedGeoPoint);
+geoClearZoneButton?.addEventListener("click", () => selectGeoPoint(null));
+
+geoMap?.addEventListener("click", (event) => {
+  const point = event.target.closest("[data-geo-point-key]");
+  if (point) selectGeoPoint(point.dataset.geoPointKey);
+});
+
+geoMap?.addEventListener("keydown", (event) => {
+  if (event.key !== "Enter" && event.key !== " ") return;
+  const point = event.target.closest("[data-geo-point-key]");
+  if (!point) return;
+  event.preventDefault();
+  selectGeoPoint(point.dataset.geoPointKey);
+});
+
+geoBody?.addEventListener("click", (event) => {
+  const row = event.target.closest("[data-geo-point-key]");
+  if (row) selectGeoPoint(row.dataset.geoPointKey);
+});
 
 document.querySelectorAll("[data-bi-template]").forEach((button) => {
   button.addEventListener("click", async () => {
@@ -1344,6 +1515,7 @@ suggestedPivots?.addEventListener("click", async (event) => {
   const pivot = currentAnalystResult.suggested_pivots?.[Number(button.dataset.analystPivot)];
   if (!pivot) return;
   applyPivotConfig(suggestedPivotConfig(pivot));
+  activateBiView("pivots");
   setPivotStatus(`Analyst validation pivot: ${pivot.title}.`);
   await runPivot();
 });

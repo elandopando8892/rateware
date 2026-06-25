@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Rateware AI Analyst</title>
+    <title>Rateware Analyze</title>
     <link rel="stylesheet" href="./src/styles.css" />
   </head>
   <body>
@@ -41,15 +41,15 @@
       <div class="page-frame">
         <header class="page-header">
           <div>
-            <p class="eyebrow">Commercial copilot</p>
-            <h1>AI Analyst</h1>
+            <p class="eyebrow">Commercial intelligence</p>
+            <h1>Analyze</h1>
             <nav class="module-crumbs" aria-label="Module context">
               <a href="./app.html">Command Center</a>
-              <span>AI Analyst</span>
+              <span>Analyze</span>
             </nav>
           </div>
           <div class="page-header-actions">
-            <button class="page-primary-action" type="button" data-click-target="#bi-submit-button">Ask AI</button>
+            <button class="page-primary-action" type="button" data-bi-view-button="copilot" data-bi-focus-target="#bi-prompt">Ask AI</button>
             <form id="auth-form" class="auth-strip">
               <button id="auth-button" type="submit">Sign in with Kinde</button>
               <button id="sign-out-button" type="button" class="secondary hidden">Sign out</button>
@@ -64,7 +64,14 @@
             <span>No vendor promotion, RFx invitation, outreach, or Rateware change happens until a user approves the action.</span>
           </div>
 
-          <section class="workspace-panel bi-copilot-brief">
+          <nav class="bi-workbench-nav" role="tablist" aria-label="Analyze workbench">
+            <button type="button" role="tab" aria-selected="true" data-bi-view-button="geo">Geo Intelligence</button>
+            <button type="button" role="tab" aria-selected="false" data-bi-view-button="pivots">Pivot Builder</button>
+            <button type="button" role="tab" aria-selected="false" data-bi-view-button="copilot">AI Copilot</button>
+            <button type="button" role="tab" aria-selected="false" data-bi-view-button="ranking">Carrier Ranking</button>
+          </nav>
+
+          <section class="workspace-panel bi-copilot-brief bi-view-panel" data-bi-view-panel="copilot">
             <div class="section-heading compact split-heading">
               <div>
                 <p class="eyebrow">Guided analysis</p>
@@ -106,7 +113,7 @@
             </div>
           </section>
 
-          <section class="workspace-panel bi-command-panel">
+          <section class="workspace-panel bi-command-panel bi-view-panel" data-bi-view-panel="copilot">
             <div class="section-heading compact split-heading">
               <div>
                 <p class="eyebrow">AI query</p>
@@ -150,15 +157,7 @@
             <p id="bi-status" class="status-message" role="status"></p>
           </section>
 
-          <nav class="bi-result-nav" aria-label="AI Analyst result navigation">
-            <button type="button" data-bi-scroll-target="#bi-geo-panel">Geo density</button>
-            <button type="button" data-bi-scroll-target="#bi-analyst-panel">Action plan</button>
-            <button type="button" data-bi-scroll-target="#bi-pivot-panel">Pivots</button>
-            <button type="button" data-bi-scroll-target="#bi-results-panel">Carrier table</button>
-            <button type="button" data-bi-scroll-target="#bi-recommendation-panel">Ranking controls</button>
-          </nav>
-
-          <section id="bi-geo-panel" class="workspace-panel bi-geo-panel">
+          <section id="bi-geo-panel" class="workspace-panel bi-geo-panel bi-view-panel" data-bi-view-panel="geo">
             <div class="section-heading compact split-heading">
               <div>
                 <p class="eyebrow">North America density</p>
@@ -240,6 +239,17 @@
                     <strong id="bi-geo-missing">0</strong>
                   </article>
                 </div>
+                <section id="bi-geo-selection" class="bi-geo-selection" aria-label="Selected geo zone">
+                  <div>
+                    <p class="eyebrow">Selected zone</p>
+                    <strong id="bi-geo-selected-title">No zone selected</strong>
+                    <span id="bi-geo-selected-meta">Click a map point or zone row to build a focused pivot.</span>
+                  </div>
+                  <div class="action-row">
+                    <button id="bi-geo-pivot-zone" type="button" class="small-button" disabled>Build pivot</button>
+                    <button id="bi-geo-clear-zone" type="button" class="secondary small-button" disabled>Clear</button>
+                  </div>
+                </section>
                 <div class="table-wrap">
                   <table class="bi-geo-table">
                     <thead>
@@ -267,7 +277,7 @@
             </div>
           </section>
 
-          <section id="bi-analyst-panel" class="workspace-panel bi-analyst-panel">
+          <section id="bi-analyst-panel" class="workspace-panel bi-analyst-panel bi-view-panel" data-bi-view-panel="copilot">
             <div class="section-heading compact split-heading">
               <div>
                 <p class="eyebrow">AI Analyst Layer</p>
@@ -328,7 +338,7 @@
             </div>
           </section>
 
-          <section id="bi-recommendation-panel" class="workspace-panel bi-recommendation-panel">
+          <section id="bi-recommendation-panel" class="workspace-panel bi-recommendation-panel bi-view-panel" data-bi-view-panel="ranking">
             <div class="section-heading compact split-heading">
               <div>
                 <p class="eyebrow">Recommendation engine</p>
@@ -374,7 +384,7 @@
             <p id="bi-rec-status" class="status-message" role="status">Ready to rank carriers.</p>
           </section>
 
-          <section id="bi-pivot-panel" class="workspace-panel bi-pivot-panel">
+          <section id="bi-pivot-panel" class="workspace-panel bi-pivot-panel bi-view-panel" data-bi-view-panel="pivots">
             <div class="section-heading compact split-heading">
               <div>
                 <p class="eyebrow">Analytics workspace</p>
@@ -436,6 +446,14 @@
                 <input id="bi-filter-route" placeholder="Lerma -> Dallas" />
               </label>
               <label>
+                Origin
+                <input id="bi-filter-origin" placeholder="Apodaca, NL" />
+              </label>
+              <label>
+                Destination
+                <input id="bi-filter-destination" placeholder="Dallas, TX" />
+              </label>
+              <label>
                 Corridor
                 <input id="bi-filter-corridor" placeholder="Monterrey -> Dallas Mkt" />
               </label>
@@ -446,6 +464,22 @@
               <label>
                 Destination state
                 <input id="bi-filter-destination-state" placeholder="TX, KY, MS" />
+              </label>
+              <label>
+                Origin market
+                <input id="bi-filter-origin-market" placeholder="Monterrey Market" />
+              </label>
+              <label>
+                Destination market
+                <input id="bi-filter-destination-market" placeholder="Dallas Mkt (TX)" />
+              </label>
+              <label>
+                Origin region
+                <input id="bi-filter-origin-region" placeholder="Northeast Mexico" />
+              </label>
+              <label>
+                Destination region
+                <input id="bi-filter-destination-region" placeholder="Z4 - South Central" />
               </label>
               <label>
                 Equipment
@@ -560,7 +594,7 @@
             </div>
           </section>
 
-          <section id="bi-results-panel" class="workspace-panel">
+          <section id="bi-results-panel" class="workspace-panel bi-view-panel" data-bi-view-panel="ranking">
             <div class="review-insight-grid bi-metrics" aria-label="Carrier intelligence summary">
               <article>
                 <span>Recommendations</span>
