@@ -1,7 +1,9 @@
+import * as XLSX from "https://esm.sh/xlsx@0.18.5";
 import { initAuthControls, requirePrivatePage } from "./auth.js";
 import {
   archiveCatalogValue,
   archiveLocationCatalogValue,
+  bulkImportCatalogValues,
   fetchCatalogValues,
   fetchLocationCatalogValues,
   saveCatalogValue,
@@ -24,6 +26,21 @@ const searchInput = document.querySelector("#catalog-search");
 const refreshButton = document.querySelector("#refresh-catalog-workbench");
 const syncButton = document.querySelector("#sync-catalog-button");
 const catalogValueForm = document.querySelector("#catalog-value-form");
+const catalogImportFileInput = document.querySelector("#catalog-import-file");
+const catalogImportTypeSelect = document.querySelector("#catalog-import-type");
+const catalogImportDefaultCountry = document.querySelector("#catalog-import-default-country");
+const catalogImportDefaultCategory = document.querySelector("#catalog-import-default-category");
+const catalogImportSheetSelect = document.querySelector("#catalog-import-sheet");
+const catalogImportMapTitle = document.querySelector("#catalog-import-map-title");
+const catalogImportMapFields = document.querySelector("#catalog-import-map-fields");
+const catalogImportStatus = document.querySelector("#catalog-import-status");
+const catalogImportSummary = document.querySelector("#catalog-import-summary");
+const catalogImportPreviewHead = document.querySelector("#catalog-import-preview-head");
+const catalogImportPreviewBody = document.querySelector("#catalog-import-preview-body");
+const previewCatalogImportButton = document.querySelector("#preview-catalog-import");
+const confirmCatalogImportButton = document.querySelector("#confirm-catalog-import");
+const resetCatalogImportButton = document.querySelector("#reset-catalog-import");
+const catalogImportStepItems = document.querySelectorAll("[data-catalog-import-step]");
 const catalogCategorySelect = document.querySelector("#catalog-category");
 const catalogCategoryFilter = document.querySelector("#catalog-category-filter");
 const catalogRawValueInput = document.querySelector("#catalog-raw-value");
@@ -87,6 +104,29 @@ const CATALOG_CATEGORIES = [
   { key: "us_border_crossing", label: "US border city" },
   { key: "border_crossing", label: "Border crossing general" }
 ];
+const IMPORT_FIELD_DEFINITIONS = {
+  operational: [
+    { key: "category", label: "Category", required: false, aliases: ["category", "catalog", "type", "tipo", "categoria"] },
+    { key: "raw_value", label: "Value", required: true, aliases: ["value", "raw value", "name", "option", "valor", "descripcion", "description"] },
+    { key: "normalized_value", label: "Normalized value", required: false, aliases: ["normalized", "normalized value", "standard", "standard value", "valor normalizado"] },
+    { key: "code", label: "Code", required: false, aliases: ["code", "key", "codigo", "clave"] },
+    { key: "note", label: "Note", required: false, aliases: ["note", "notes", "comment", "comments", "nota", "notas"] }
+  ],
+  locations: [
+    { key: "country", label: "Country", required: false, aliases: ["country", "pais", "nation"] },
+    { key: "raw_value", label: "Location value", required: false, aliases: ["location", "value", "raw value", "lane location", "ubicacion", "locacion", "city st", "city state"] },
+    { key: "zip_prefix", label: "ZIP / Prefix", required: false, aliases: ["zip", "zip code", "zip prefix", "postal code", "postal", "codigo postal", "cp", "3 digit zip", "zip3"] },
+    { key: "city", label: "City", required: false, aliases: ["city", "ciudad", "location city", "orig city", "dest city"] },
+    { key: "state_code", label: "State", required: false, aliases: ["state", "st", "state code", "province", "estado", "edo"] },
+    { key: "state_name", label: "State name", required: false, aliases: ["state name", "province name", "estado nombre", "nombre estado"] },
+    { key: "metro_city", label: "Metro city", required: false, aliases: ["metro", "metro city", "metro area", "zona metropolitana", "metropolitan area"] },
+    { key: "market", label: "Market / KMA", required: false, aliases: ["market", "key market area", "kma", "mkt", "mercado"] },
+    { key: "region", label: "Region", required: false, aliases: ["region", "region name", "zona"] },
+    { key: "note", label: "Note", required: false, aliases: ["note", "notes", "comment", "comments", "nota", "notas"] }
+  ]
+};
+const IMPORT_PREVIEW_LIMIT = 25;
+const CATALOG_IMPORT_BATCH_SIZE = 500;
 
 let loadedRows = [];
 let locationOptions = [];
@@ -95,6 +135,13 @@ let activeEntryIndex = 0;
 let currentCatalogValues = [];
 let currentLocationCatalogRows = [];
 let locationCatalogFilterTimer = null;
+let catalogImportWorkbook = null;
+let catalogImportSheets = [];
+let catalogImportFileName = "";
+let catalogImportSheetName = "";
+let catalogImportRows = [];
+let catalogImportHeaders = [];
+let catalogImportPreviewRows = [];
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -126,6 +173,276 @@ function sourceLabel(source) {
   if (source === "rateware_seed") return "Seed";
   if (source === "rateware_google_catalog" || source === "cusCatalog") return "Imported";
   return source || "-";
+}
+
+function normalizeHeaderKey(value) {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[#%()[\]{}:;.,/\\|_+-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function cellHasValue(value) {
+  return value !== null && value !== undefined && String(value).trim() !== "";
+}
+
+function updateCatalogImportStep(step) {
+  catalogImportStepItems.forEach((item) => {
+    item.classList.toggle("is-active", item.dataset.catalogImportStep === step);
+  });
+}
+
+function importFields() {
+  return IMPORT_FIELD_DEFINITIONS[catalogImportTypeSelect?.value || "locations"] || IMPORT_FIELD_DEFINITIONS.locations;
+}
+
+function importTypeLabel() {
+  return catalogImportTypeSelect?.value === "operational" ? "Operational dropdowns" : "Lane/location catalog";
+}
+
+function populateImportCategoryControl() {
+  if (!catalogImportDefaultCategory) return;
+  const options = CATALOG_CATEGORIES
+    .map((item) => `<option value="${escapeHtml(item.key)}">${escapeHtml(item.label)}</option>`)
+    .join("");
+  catalogImportDefaultCategory.innerHTML = options;
+}
+
+function mappedHeaderForField(field, headers = catalogImportHeaders) {
+  const aliases = new Set([field.key, field.label, ...(field.aliases || [])].map(normalizeHeaderKey));
+  let exact = headers.find((header) => aliases.has(normalizeHeaderKey(header)));
+  if (exact) return exact;
+  exact = headers.find((header) => {
+    const key = normalizeHeaderKey(header);
+    return [...aliases].some((alias) => key.includes(alias) || alias.includes(key));
+  });
+  return exact || "";
+}
+
+function renderImportMapping() {
+  if (!catalogImportMapFields || !catalogImportMapTitle) return;
+  catalogImportMapTitle.textContent = importTypeLabel();
+  if (!catalogImportHeaders.length) {
+    catalogImportMapFields.innerHTML = '<p class="muted-text">Upload a file to map columns.</p>';
+    return;
+  }
+  const headerOptions = ['<option value="">Do not import</option>']
+    .concat(catalogImportHeaders.map((header) => `<option value="${escapeHtml(header)}">${escapeHtml(header)}</option>`))
+    .join("");
+  catalogImportMapFields.innerHTML = importFields().map((field) => {
+    const selected = mappedHeaderForField(field);
+    return `
+      <label>
+        ${escapeHtml(field.label)}${field.required ? " *" : ""}
+        <select data-import-field="${escapeHtml(field.key)}">
+          ${headerOptions}
+        </select>
+      </label>
+    `;
+  }).join("");
+  catalogImportMapFields.querySelectorAll("[data-import-field]").forEach((select) => {
+    const field = importFields().find((item) => item.key === select.dataset.importField);
+    const selected = field ? mappedHeaderForField(field) : "";
+    if (selected) select.value = selected;
+  });
+  updateCatalogImportStep("map");
+}
+
+function importMapping() {
+  const mapping = {};
+  catalogImportMapFields?.querySelectorAll("[data-import-field]").forEach((select) => {
+    mapping[select.dataset.importField] = select.value || "";
+  });
+  return mapping;
+}
+
+function rowObjectFromMatrixRow(headers, sourceRow) {
+  const row = {};
+  headers.forEach((header, index) => {
+    if (!header) return;
+    const value = sourceRow[index];
+    row[header] = cellHasValue(value) ? String(value).trim() : "";
+  });
+  return row;
+}
+
+function detectHeaderIndex(matrix) {
+  let bestIndex = -1;
+  let bestScore = 0;
+  matrix.slice(0, 20).forEach((row, index) => {
+    const cells = row || [];
+    const normalized = cells.map(normalizeHeaderKey).filter(Boolean);
+    const nonEmpty = normalized.length;
+    if (nonEmpty < 2) return;
+    const matchCount = importFields().reduce((count, field) => {
+      const aliases = [field.key, field.label, ...(field.aliases || [])].map(normalizeHeaderKey);
+      return count + (normalized.some((cell) => aliases.some((alias) => cell === alias || cell.includes(alias) || alias.includes(cell))) ? 1 : 0);
+    }, 0);
+    const score = matchCount * 5 + Math.min(nonEmpty, 8);
+    if (score > bestScore) {
+      bestScore = score;
+      bestIndex = index;
+    }
+  });
+  return bestIndex;
+}
+
+function loadImportSheet(sheetName) {
+  if (!catalogImportWorkbook || !sheetName) return;
+  const sheet = catalogImportWorkbook.Sheets[sheetName];
+  const matrix = XLSX.utils.sheet_to_json(sheet, {
+    header: 1,
+    defval: "",
+    raw: false,
+    blankrows: false
+  });
+  const headerIndex = detectHeaderIndex(matrix);
+  if (headerIndex < 0) {
+    catalogImportRows = [];
+    catalogImportHeaders = [];
+    renderImportMapping();
+    throw new Error("No recognizable header row was found. Use a sheet with column headers.");
+  }
+  catalogImportHeaders = (matrix[headerIndex] || []).map((cell, index) => String(cell || `Column ${index + 1}`).trim());
+  catalogImportRows = matrix
+    .slice(headerIndex + 1)
+    .filter((row) => (row || []).some(cellHasValue))
+    .map((row) => rowObjectFromMatrixRow(catalogImportHeaders, row));
+  catalogImportSheetName = sheetName;
+  renderImportMapping();
+  setElementStatus(catalogImportStatus, `${catalogImportRows.length.toLocaleString()} source row(s) found in ${sheetName}. Review mapping, then preview.`, "success");
+}
+
+function countryValue(value) {
+  const country = String(value || "").trim().toUpperCase();
+  if (["US", "USA", "UNITED STATES"].includes(country)) return "US";
+  if (["MX", "MEX", "MEXICO"].includes(country)) return "MX";
+  if (["CA", "CAN", "CANADA"].includes(country)) return "CA";
+  return country || "";
+}
+
+function rowValue(sourceRow, header) {
+  return header ? String(sourceRow[header] || "").trim() : "";
+}
+
+function normalizeImportRow(sourceRow, mapping) {
+  const type = catalogImportTypeSelect?.value || "locations";
+  if (type === "operational") {
+    const rawValue = rowValue(sourceRow, mapping.raw_value);
+    const normalizedValue = rowValue(sourceRow, mapping.normalized_value) || rawValue;
+    return {
+      category: rowValue(sourceRow, mapping.category) || catalogImportDefaultCategory?.value || "equipment",
+      raw_value: rawValue,
+      normalized_value: normalizedValue,
+      code: rowValue(sourceRow, mapping.code),
+      note: rowValue(sourceRow, mapping.note)
+    };
+  }
+  const city = rowValue(sourceRow, mapping.city);
+  const metroCity = rowValue(sourceRow, mapping.metro_city);
+  const stateCode = rowValue(sourceRow, mapping.state_code);
+  return {
+    country: countryValue(rowValue(sourceRow, mapping.country)) || catalogImportDefaultCountry?.value || "MX",
+    raw_value: rowValue(sourceRow, mapping.raw_value) || [metroCity || city, stateCode].filter(Boolean).join(", "),
+    zip_prefix: rowValue(sourceRow, mapping.zip_prefix),
+    city,
+    state_code: stateCode,
+    state_name: rowValue(sourceRow, mapping.state_name),
+    metro_city: metroCity || city,
+    market: rowValue(sourceRow, mapping.market),
+    region: rowValue(sourceRow, mapping.region),
+    note: rowValue(sourceRow, mapping.note)
+  };
+}
+
+function importRowKey(row) {
+  if ((catalogImportTypeSelect?.value || "locations") === "operational") {
+    return locationSearchKey([row.category, row.raw_value, row.normalized_value].filter(Boolean).join(" | "));
+  }
+  return locationSearchKey([row.country, row.raw_value, row.zip_prefix, row.state_code, row.market, row.region].filter(Boolean).join(" | "));
+}
+
+function validateImportRow(row) {
+  const issues = [];
+  if ((catalogImportTypeSelect?.value || "locations") === "operational") {
+    if (!row.category || !CATALOG_CATEGORIES.some((item) => item.key === row.category)) issues.push("invalid category");
+    if (!row.raw_value) issues.push("missing value");
+  } else {
+    if (!row.country) issues.push("missing country");
+    if (!row.raw_value && !row.city && !row.zip_prefix) issues.push("missing location value");
+    if ((row.country === "US" || row.country === "CA") && !row.zip_prefix) issues.push("missing ZIP/prefix");
+    if (row.country === "MX" && !row.metro_city && !row.city) issues.push("missing MX metro/city");
+  }
+  return issues;
+}
+
+function buildImportPreview() {
+  const mapping = importMapping();
+  const keys = new Map();
+  const preview = catalogImportRows.map((sourceRow, index) => {
+    const mapped = normalizeImportRow(sourceRow, mapping);
+    const key = importRowKey(mapped);
+    const issues = validateImportRow(mapped);
+    if (key) keys.set(key, (keys.get(key) || 0) + 1);
+    return { index, source: sourceRow, mapped, key, issues };
+  });
+  preview.forEach((row) => {
+    if (row.key && keys.get(row.key) > 1) row.issues.push("duplicate in file");
+  });
+  catalogImportPreviewRows = preview;
+  return preview;
+}
+
+function renderImportSummary(preview) {
+  if (!catalogImportSummary) return;
+  const ready = preview.filter((row) => !row.issues.length).length;
+  const needsData = preview.length - ready;
+  const duplicates = preview.filter((row) => row.issues.includes("duplicate in file")).length;
+  const values = [preview.length, ready, needsData, duplicates];
+  catalogImportSummary.querySelectorAll("strong").forEach((element, index) => {
+    element.textContent = values[index].toLocaleString();
+  });
+}
+
+function renderImportPreview() {
+  const preview = buildImportPreview();
+  renderImportSummary(preview);
+  const fields = (catalogImportTypeSelect?.value || "locations") === "operational"
+    ? ["category", "raw_value", "normalized_value", "code"]
+    : ["country", "raw_value", "zip_prefix", "state_code", "metro_city", "market", "region"];
+  catalogImportPreviewHead.innerHTML = `
+    <tr>
+      <th>Status</th>
+      ${fields.map((field) => `<th>${escapeHtml(field.replace(/_/g, " "))}</th>`).join("")}
+      <th>Issues</th>
+    </tr>
+  `;
+  const visible = preview.slice(0, IMPORT_PREVIEW_LIMIT);
+  catalogImportPreviewBody.innerHTML = visible.length ? visible.map((row) => `
+    <tr class="${row.issues.length ? "is-muted-row" : ""}">
+      <td><span class="review-chip ${row.issues.length ? "warning" : "success"}">${row.issues.length ? "needs data" : "ready"}</span></td>
+      ${fields.map((field) => `<td>${escapeHtml(row.mapped[field] || "-")}</td>`).join("")}
+      <td>${escapeHtml(row.issues.join(", ") || "ok")}</td>
+    </tr>
+  `).join("") : '<tr><td colspan="9">No rows to preview.</td></tr>';
+  const ready = preview.filter((row) => !row.issues.length).length;
+  confirmCatalogImportButton.disabled = ready === 0;
+  setElementStatus(catalogImportStatus, `${ready.toLocaleString()} ready row(s). ${preview.length - ready} row(s) need cleanup before import.`, ready ? "success" : "error");
+  updateCatalogImportStep("preview");
+}
+
+async function parseCatalogImportFile(file) {
+  const buffer = await file.arrayBuffer();
+  catalogImportWorkbook = XLSX.read(buffer, { type: "array", cellDates: true });
+  catalogImportSheets = catalogImportWorkbook.SheetNames || [];
+  catalogImportFileName = file.name;
+  if (!catalogImportSheets.length) throw new Error("No sheets were found in this file.");
+  catalogImportSheetSelect.disabled = false;
+  catalogImportSheetSelect.innerHTML = catalogImportSheets.map((sheet) => `<option value="${escapeHtml(sheet)}">${escapeHtml(sheet)}</option>`).join("");
+  loadImportSheet(catalogImportSheets[0]);
 }
 
 function populateCatalogCategoryControls() {
@@ -811,6 +1128,64 @@ async function loadAdminCatalogs() {
   ]);
 }
 
+function resetCatalogImport() {
+  catalogImportWorkbook = null;
+  catalogImportSheets = [];
+  catalogImportFileName = "";
+  catalogImportSheetName = "";
+  catalogImportRows = [];
+  catalogImportHeaders = [];
+  catalogImportPreviewRows = [];
+  if (catalogImportFileInput) catalogImportFileInput.value = "";
+  if (catalogImportSheetSelect) {
+    catalogImportSheetSelect.disabled = true;
+    catalogImportSheetSelect.innerHTML = '<option value="">Upload a file first</option>';
+  }
+  if (catalogImportPreviewHead) catalogImportPreviewHead.innerHTML = '<tr><th>Preview</th></tr>';
+  if (catalogImportPreviewBody) catalogImportPreviewBody.innerHTML = '<tr><td>No import preview yet.</td></tr>';
+  renderImportSummary([]);
+  renderImportMapping();
+  if (confirmCatalogImportButton) confirmCatalogImportButton.disabled = true;
+  setElementStatus(catalogImportStatus, "");
+  updateCatalogImportStep("file");
+}
+
+async function confirmCatalogImport() {
+  const readyRows = catalogImportPreviewRows.filter((row) => !row.issues.length).map((row) => row.mapped);
+  if (!readyRows.length) {
+    setElementStatus(catalogImportStatus, "Preview the file and resolve required fields before saving.", "error");
+    return;
+  }
+  confirmCatalogImportButton.disabled = true;
+  previewCatalogImportButton.disabled = true;
+  let imported = 0;
+  let skipped = 0;
+  const warnings = [];
+  try {
+    for (let index = 0; index < readyRows.length; index += CATALOG_IMPORT_BATCH_SIZE) {
+      const batch = readyRows.slice(index, index + CATALOG_IMPORT_BATCH_SIZE);
+      setElementStatus(catalogImportStatus, `Saving ${Math.min(index + batch.length, readyRows.length).toLocaleString()} / ${readyRows.length.toLocaleString()}...`, "warning");
+      const result = await bulkImportCatalogValues({
+        importType: catalogImportTypeSelect?.value || "locations",
+        rows: batch,
+        fileName: catalogImportFileName,
+        sheetName: catalogImportSheetName
+      });
+      imported += Number(result.imported || 0);
+      skipped += Number(result.skipped || 0);
+      warnings.push(...(result.warnings || []));
+    }
+    setElementStatus(catalogImportStatus, `Imported ${imported.toLocaleString()} row(s). ${skipped.toLocaleString()} skipped.${warnings.length ? ` ${warnings.slice(0, 2).join(" ")}` : ""}`, "success");
+    await loadAdminCatalogs();
+    await refreshWorkbenchLocationOptions();
+  } catch (error) {
+    setElementStatus(catalogImportStatus, error.message, "error");
+    confirmCatalogImportButton.disabled = false;
+  } finally {
+    previewCatalogImportButton.disabled = false;
+  }
+}
+
 async function applyCatalogMatch(tableRow, { saveAlias = false, optionOverride = null } = {}) {
   const index = Number(tableRow?.dataset.catalogEntryIndex);
   const entry = currentEntries[index];
@@ -903,6 +1278,7 @@ async function syncCatalog() {
 
 initAuthControls();
 populateCatalogCategoryControls();
+populateImportCategoryControl();
 requirePrivatePage().then(() => {
   loadAdminCatalogs();
   loadWorkbench();
@@ -910,6 +1286,33 @@ requirePrivatePage().then(() => {
 
 refreshButton?.addEventListener("click", loadWorkbench);
 syncButton?.addEventListener("click", syncCatalog);
+catalogImportTypeSelect?.addEventListener("change", () => {
+  renderImportMapping();
+  if (catalogImportRows.length) renderImportPreview();
+});
+catalogImportSheetSelect?.addEventListener("change", () => {
+  try {
+    loadImportSheet(catalogImportSheetSelect.value);
+  } catch (error) {
+    setElementStatus(catalogImportStatus, error.message, "error");
+  }
+});
+catalogImportFileInput?.addEventListener("change", async () => {
+  const file = catalogImportFileInput.files?.[0];
+  if (!file) return;
+  setElementStatus(catalogImportStatus, "Reading file...");
+  try {
+    await parseCatalogImportFile(file);
+  } catch (error) {
+    setElementStatus(catalogImportStatus, error.message, "error");
+  }
+});
+catalogImportMapFields?.addEventListener("change", () => {
+  if (catalogImportPreviewRows.length) renderImportPreview();
+});
+previewCatalogImportButton?.addEventListener("click", renderImportPreview);
+confirmCatalogImportButton?.addEventListener("click", confirmCatalogImport);
+resetCatalogImportButton?.addEventListener("click", resetCatalogImport);
 refreshCatalogButton?.addEventListener("click", loadCatalogValues);
 catalogCategoryFilter?.addEventListener("change", loadCatalogValues);
 refreshLocationCatalogButton?.addEventListener("click", loadLocationCatalogValues);

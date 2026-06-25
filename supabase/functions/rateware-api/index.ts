@@ -4703,6 +4703,100 @@ function normalizeLocationCatalogInput(input: Record<string, unknown>, user: { o
   };
 }
 
+function normalizeOperationalCatalogImportRow(input: Record<string, unknown>, user: { owner_email: string | null }, context: Record<string, unknown> = {}) {
+  const category = cleanText(input.category);
+  const rawValue = cleanText(input.raw_value || input.rawValue || input.value);
+  const normalizedValue = cleanText(input.normalized_value || input.normalizedValue || rawValue);
+  if (!category || !MANAGED_CATALOG_CATEGORIES.has(category)) throw new Error("invalid category");
+  if (!rawValue || !normalizedValue) throw new Error("missing value");
+  const code = cleanText(input.code) || catalogCode(normalizedValue);
+  return {
+    source: "rateware_manual_catalog",
+    category,
+    raw_value: rawValue,
+    normalized_value: normalizedValue,
+    code,
+    metadata: {
+      owner_email: user.owner_email,
+      owner_user_id: (user as Record<string, unknown>).owner_user_id || null,
+      note: cleanText(input.note),
+      import_file_name: cleanText(context.file_name),
+      import_sheet_name: cleanText(context.sheet_name),
+      created_from: "admin_catalog_import"
+    },
+    active: true,
+    updated_at: new Date().toISOString()
+  };
+}
+
+async function bulkImportCatalogValues(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_email: string | null },
+  body: Record<string, unknown>
+) {
+  const importType = cleanText(body.import_type || body.importType) || "locations";
+  const rows = Array.isArray(body.rows) ? body.rows.slice(0, 5000) : [];
+  if (!rows.length) throw new Error("No catalog rows were provided.");
+  const context = {
+    file_name: cleanText(body.file_name || body.fileName),
+    sheet_name: cleanText(body.sheet_name || body.sheetName)
+  };
+  const warnings: string[] = [];
+  const normalizedRows: Record<string, unknown>[] = [];
+  let skipped = 0;
+
+  for (const [index, item] of rows.entries()) {
+    const input = item && typeof item === "object" ? item as Record<string, unknown> : {};
+    try {
+      if (importType === "operational") {
+        normalizedRows.push(normalizeOperationalCatalogImportRow(input, user, context));
+      } else if (importType === "locations") {
+        const normalized = normalizeLocationCatalogInput({ ...input, ...context }, user);
+        normalized.row.metadata = {
+          ...(typeof normalized.row.metadata === "object" && normalized.row.metadata ? normalized.row.metadata as Record<string, unknown> : {}),
+          import_file_name: context.file_name,
+          import_sheet_name: context.sheet_name,
+          created_from: "admin_catalog_import"
+        };
+        normalizedRows.push(normalized.row);
+      } else {
+        throw new Error("invalid catalog import type");
+      }
+    } catch (error) {
+      skipped += 1;
+      if (warnings.length < 20) warnings.push(`Row ${index + 1}: ${error instanceof Error ? error.message : "invalid row"}.`);
+    }
+  }
+
+  if (!normalizedRows.length) {
+    throw new Error(warnings[0] || "No usable catalog rows were found.");
+  }
+
+  let imported = 0;
+  const table = importType === "operational" ? "rateware_catalog_items" : "rateware_locations";
+  const conflict = importType === "operational" ? "source,category,raw_value,normalized_value" : "source,location_key";
+  for (const batch of chunkValues(normalizedRows, 500)) {
+    const result = await supabase
+      .from(table)
+      .upsert(batch, { onConflict: conflict })
+      .select("id");
+    if (result.error) throw result.error;
+    imported += result.data?.length || 0;
+  }
+
+  await writeAuditLog(
+    supabase,
+    user,
+    importType === "operational" ? "catalog.values.bulk_import" : "catalog.locations.bulk_import",
+    table,
+    null,
+    `Imported ${imported} ${importType === "operational" ? "catalog value" : "location catalog"} row(s)`,
+    { imported, skipped, file_name: context.file_name, sheet_name: context.sheet_name }
+  );
+
+  return { imported, skipped, warnings };
+}
+
 Deno.serve(async (request) => {
   if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders() });
 
@@ -5756,6 +5850,11 @@ Deno.serve(async (request) => {
         { raw_value: current.data.raw_value }
       );
       return jsonResponse({ row: result.data });
+    }
+
+    if (body.action === "bulk_import_catalog_values") {
+      const result = await bulkImportCatalogValues(supabase, user, body);
+      return jsonResponse(result);
     }
 
     if (body.action === "dashboard_summary") {

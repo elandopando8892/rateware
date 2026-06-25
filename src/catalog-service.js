@@ -50,3 +50,12 @@ export async function saveLocationCatalogValue(locationValue) {
 export async function archiveLocationCatalogValue(id) {
   return (await callRatewareApi("archive_location_catalog_value", { id })).row;
 }
+
+export async function bulkImportCatalogValues({ importType, rows, fileName = "", sheetName = "" } = {}) {
+  return await callRatewareApi("bulk_import_catalog_values", {
+    import_type: importType,
+    rows,
+    file_name: fileName,
+    sheet_name: sheetName
+  });
+}

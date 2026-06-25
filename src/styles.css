@@ -7539,6 +7539,86 @@ select.staging-input {
   grid-column: 1 / -1;
 }
 
+.catalog-import-panel {
+  display: grid;
+  gap: 10px;
+}
+
+.compact-steps {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.catalog-import-grid {
+  display: grid;
+  grid-template-columns: minmax(320px, 0.42fr) minmax(0, 0.58fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.catalog-import-controls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  align-items: end;
+}
+
+.catalog-import-controls label,
+.catalog-import-map-fields label {
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 820;
+}
+
+.catalog-import-controls .wide-field {
+  grid-column: 1 / -1;
+}
+
+.catalog-import-controls input,
+.catalog-import-controls select,
+.catalog-import-map-fields select {
+  min-height: 28px;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  background: #fff;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.78rem;
+  padding: 4px 7px;
+}
+
+.catalog-import-controls button {
+  min-height: 30px;
+}
+
+.catalog-import-map-panel {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--soft-panel);
+  padding: 10px;
+}
+
+.catalog-import-map-panel h3 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 0.92rem;
+}
+
+.catalog-import-map-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.compact-summary {
+  margin: 0 0 8px;
+}
+
+.catalog-import-preview-table {
+  min-width: 920px;
+}
+
 .catalog-value-form {
   margin-bottom: 10px;
 }

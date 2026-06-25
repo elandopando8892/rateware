@@ -67,6 +67,97 @@
             <article><span>Approved rows</span><strong id="catalog-approved-count">0</strong></article>
           </section>
 
+          <section class="workspace-panel catalog-import-panel">
+            <div class="split-heading">
+              <div>
+                <p class="eyebrow">Catalog import wizard</p>
+                <h2>Upload XLSX or CSV and map columns before saving</h2>
+              </div>
+              <button id="reset-catalog-import" type="button" class="secondary small-button">Reset import</button>
+            </div>
+            <div class="import-wizard-steps compact-steps" aria-label="Catalog import steps">
+              <article class="is-active" data-catalog-import-step="file">
+                <span>1</span>
+                <strong>Upload</strong>
+                <small>Choose catalog type and source file</small>
+              </article>
+              <article data-catalog-import-step="map">
+                <span>2</span>
+                <strong>Map</strong>
+                <small>Match spreadsheet columns</small>
+              </article>
+              <article data-catalog-import-step="preview">
+                <span>3</span>
+                <strong>Preview</strong>
+                <small>Validate before saving</small>
+              </article>
+            </div>
+            <div class="catalog-import-grid">
+              <div class="catalog-import-controls">
+                <label>
+                  Catalog type
+                  <select id="catalog-import-type">
+                    <option value="locations">Lane/location catalog</option>
+                    <option value="operational">Operational dropdowns</option>
+                  </select>
+                </label>
+                <label>
+                  Default country
+                  <select id="catalog-import-default-country">
+                    <option value="MX">MX</option>
+                    <option value="US">US</option>
+                    <option value="CA">CA</option>
+                    <option value="UNKNOWN">Unknown</option>
+                  </select>
+                </label>
+                <label>
+                  Default operational category
+                  <select id="catalog-import-default-category"></select>
+                </label>
+                <label>
+                  Sheet
+                  <select id="catalog-import-sheet" disabled>
+                    <option value="">Upload a file first</option>
+                  </select>
+                </label>
+                <label class="wide-field import-zone">
+                  <span>XLSX or CSV file</span>
+                  <input id="catalog-import-file" type="file" accept=".xlsx,.xls,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
+                </label>
+                <button id="preview-catalog-import" type="button" class="secondary">Preview mapped rows</button>
+                <button id="confirm-catalog-import" type="button" class="page-primary-action" disabled>Save import</button>
+                <p id="catalog-import-status" class="status-message wide-field" role="status"></p>
+              </div>
+              <div class="catalog-import-map-panel">
+                <div class="section-heading compact">
+                  <p class="eyebrow">Column mapping</p>
+                  <h3 id="catalog-import-map-title">Lane/location catalog</h3>
+                </div>
+                <div id="catalog-import-map-fields" class="catalog-import-map-fields">
+                  <p class="muted-text">Upload a file to map columns.</p>
+                </div>
+              </div>
+            </div>
+            <div class="catalog-import-preview">
+              <div id="catalog-import-summary" class="review-insight-grid compact-summary" aria-label="Import preview summary">
+                <article><span>Total rows</span><strong>0</strong></article>
+                <article><span>Ready</span><strong>0</strong></article>
+                <article><span>Needs data</span><strong>0</strong></article>
+                <article><span>Possible duplicates</span><strong>0</strong></article>
+              </div>
+              <div class="table-wrap">
+                <table class="settings-catalog-table catalog-import-preview-table">
+                  <thead id="catalog-import-preview-head">
+                    <tr><th>Preview</th></tr>
+                  </thead>
+                  <tbody id="catalog-import-preview-body">
+                    <tr><td>No import preview yet.</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+
           <section class="workspace-panel settings-catalog-panel">
             <div class="split-heading">
               <div>
