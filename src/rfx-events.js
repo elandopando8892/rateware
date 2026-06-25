@@ -20,6 +20,7 @@ import {
 import { fetchVendors } from "./vendor-service.js";
 import { humanizeError } from "./error-copy.js";
 import { errorState, stateBlock, tableErrorState, tableState } from "./ui-state.js";
+import { initWorkbenchTabs } from "./workbench-tabs.js";
 
 const eventForm = document.querySelector("#rfx-event-form");
 const rfxIdInput = document.querySelector("#rfx-id");
@@ -88,6 +89,7 @@ let selectedLaneIds = new Set();
 let selectedInvitationIds = new Set();
 let focusedLaneId = null;
 let activeLaneFilter = "all";
+const rfxWorkbench = initWorkbenchTabs({ defaultView: "dashboard" });
 
 function escapeHtml(value) {
   return String(value ?? "")

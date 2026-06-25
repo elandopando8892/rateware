@@ -66,8 +66,17 @@
             <article><span>Workspace</span><strong id="settings-workspace-name">-</strong></article>
           </section>
 
-          <section class="settings-grid">
-            <section class="workspace-panel">
+          <nav class="module-workbench-nav" role="tablist" aria-label="Settings workbench">
+            <button type="button" role="tab" aria-selected="true" data-workbench-view-button="access">Access</button>
+            <button type="button" role="tab" aria-selected="false" data-workbench-view-button="profile" data-workbench-focus-target="#profile-full-name">Profile</button>
+            <button type="button" role="tab" aria-selected="false" data-workbench-view-button="organization" data-workbench-focus-target="#org-name">Organization</button>
+            <button type="button" role="tab" aria-selected="false" data-workbench-view-button="onboarding">Onboarding</button>
+            <button type="button" role="tab" aria-selected="false" data-workbench-view-button="catalogs">Catalogs</button>
+            <button type="button" role="tab" aria-selected="false" data-workbench-view-button="audit">Audit Log</button>
+          </nav>
+
+          <section class="settings-grid" data-workbench-view-panel="access profile organization onboarding catalogs">
+            <section class="workspace-panel" data-workbench-view-panel="access">
               <div class="section-heading compact">
                 <p class="eyebrow">Access model</p>
                 <h2>Full access now</h2>
@@ -83,7 +92,7 @@
               </dl>
             </section>
 
-            <section class="workspace-panel">
+            <section class="workspace-panel" data-workbench-view-panel="profile">
               <div class="section-heading compact">
                 <p class="eyebrow">User profile</p>
                 <h2>Operator details</h2>
@@ -99,7 +108,7 @@
               <p id="profile-status" class="status-message" role="status"></p>
             </section>
 
-            <section class="workspace-panel">
+            <section class="workspace-panel" data-workbench-view-panel="organization">
               <div class="section-heading compact">
                 <p class="eyebrow">Organization</p>
                 <h2>Workspace profile</h2>
@@ -116,7 +125,7 @@
               <p id="organization-status" class="status-message" role="status"></p>
             </section>
 
-            <section class="workspace-panel">
+            <section class="workspace-panel" data-workbench-view-panel="onboarding">
               <div class="section-heading compact">
                 <p class="eyebrow">Onboarding</p>
                 <h2>Launch checklist</h2>
@@ -126,7 +135,7 @@
               </div>
             </section>
 
-            <section class="workspace-panel">
+            <section class="workspace-panel" data-workbench-view-panel="catalogs">
               <div class="section-heading compact">
                 <p class="eyebrow">Admin catalogs</p>
                 <h2>Normalization data</h2>
@@ -139,7 +148,7 @@
             </section>
           </section>
 
-          <section class="workspace-panel">
+          <section class="workspace-panel" data-workbench-view-panel="audit">
             <div class="split-heading">
               <div>
                 <p class="eyebrow">Audit log</p>

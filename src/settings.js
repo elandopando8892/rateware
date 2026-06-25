@@ -8,6 +8,7 @@ import {
   updateSaasOrganization,
   updateSaasProfile
 } from "./settings-service.js";
+import { initWorkbenchTabs } from "./workbench-tabs.js";
 
 const accessMode = document.querySelector("#settings-access-mode");
 const onboardingScore = document.querySelector("#settings-onboarding-score");
@@ -53,6 +54,7 @@ const organizationInputs = {
 let currentSettings = null;
 let currentSession = null;
 let currentCatalogValues = [];
+initWorkbenchTabs({ defaultView: "access" });
 
 const CATALOG_CATEGORIES = [
   { key: "equipment", label: "Equipment" },

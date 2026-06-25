@@ -12,6 +12,7 @@ import {
 } from "./outreach-service.js";
 import { humanizeError } from "./error-copy.js";
 import { stateBlock, tableState } from "./ui-state.js";
+import { initWorkbenchTabs } from "./workbench-tabs.js";
 
 const templateForm = document.querySelector("#outreach-template-form");
 const templateName = document.querySelector("#template-name");
@@ -61,6 +62,7 @@ let selectedCampaignId = null;
 let previewMessageId = null;
 let selectedMessageIds = new Set();
 let activeMessageFilter = "all";
+initWorkbenchTabs({ defaultView: "dashboard" });
 
 function escapeHtml(value) {
   return String(value ?? "")

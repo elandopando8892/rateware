@@ -67,7 +67,14 @@
             <article><span>Approved rows</span><strong id="catalog-approved-count">0</strong></article>
           </section>
 
-          <section class="workspace-panel catalog-import-panel">
+          <nav class="module-workbench-nav" role="tablist" aria-label="Catalog workbench">
+            <button type="button" role="tab" aria-selected="true" data-workbench-view-button="import">Import Wizard</button>
+            <button type="button" role="tab" aria-selected="false" data-workbench-view-button="operational" data-workbench-focus-target="#catalog-raw-value">Operational Dropdowns</button>
+            <button type="button" role="tab" aria-selected="false" data-workbench-view-button="locations" data-workbench-focus-target="#location-raw-value">Lane Locations</button>
+            <button type="button" role="tab" aria-selected="false" data-workbench-view-button="matching">Match Review</button>
+          </nav>
+
+          <section class="workspace-panel catalog-import-panel" data-workbench-view-panel="import">
             <div class="split-heading">
               <div>
                 <p class="eyebrow">Catalog import wizard</p>
@@ -158,7 +165,7 @@
             </div>
           </section>
 
-          <section class="workspace-panel settings-catalog-panel">
+          <section class="workspace-panel settings-catalog-panel" data-workbench-view-panel="operational">
             <div class="split-heading">
               <div>
                 <p class="eyebrow">Operational dropdowns</p>
@@ -215,7 +222,7 @@
             </div>
           </section>
 
-          <section class="workspace-panel location-catalog-panel">
+          <section class="workspace-panel location-catalog-panel" data-workbench-view-panel="locations">
             <div class="split-heading">
               <div>
                 <p class="eyebrow">Lane catalog</p>
@@ -321,7 +328,7 @@
             </div>
           </section>
 
-          <section class="workspace-panel">
+          <section class="workspace-panel" data-workbench-view-panel="matching">
             <div class="split-heading">
               <div>
                 <p class="eyebrow">Location matching</p>

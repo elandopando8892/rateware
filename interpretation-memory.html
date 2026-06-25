@@ -68,7 +68,14 @@
             <article><span>Needs review</span><strong id="memory-suspect">0</strong></article>
           </section>
 
-          <section class="settings-grid memory-admin-grid">
+          <nav class="module-workbench-nav" role="tablist" aria-label="Learning rules workbench">
+            <button type="button" role="tab" aria-selected="true" data-workbench-view-button="create" data-workbench-focus-target="#new-memory-title">Create Rule</button>
+            <button type="button" role="tab" aria-selected="false" data-workbench-view-button="simulation">Simulation</button>
+            <button type="button" role="tab" aria-selected="false" data-workbench-view-button="governance">Governance</button>
+            <button type="button" role="tab" aria-selected="false" data-workbench-view-button="library">Rule Library</button>
+          </nav>
+
+          <section class="settings-grid memory-admin-grid" data-workbench-view-panel="create">
             <section class="workspace-panel">
               <div class="section-heading compact">
                 <p class="eyebrow">Create rule</p>
@@ -117,7 +124,7 @@
             </section>
           </section>
 
-          <section id="memory-simulation-panel" class="workspace-panel memory-simulation-panel hidden">
+          <section id="memory-simulation-panel" class="workspace-panel memory-simulation-panel" data-workbench-view-panel="simulation">
             <div class="split-heading">
               <div>
                 <p class="eyebrow">Simulation</p>
@@ -135,7 +142,7 @@
             <div id="memory-simulation-list" class="memory-simulation-list"></div>
           </section>
 
-          <section class="workspace-panel memory-change-log-panel">
+          <section class="workspace-panel memory-change-log-panel" data-workbench-view-panel="governance">
             <div class="split-heading">
               <div>
                 <p class="eyebrow">Governance</p>
@@ -148,7 +155,7 @@
             </div>
           </section>
 
-          <section class="workspace-panel">
+          <section class="workspace-panel" data-workbench-view-panel="library">
             <div class="split-heading">
               <div>
                 <p class="eyebrow">Rule library</p>

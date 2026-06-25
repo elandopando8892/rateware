@@ -1,6 +1,7 @@
 import { initAuthControls, requirePrivatePage } from "./auth.js";
 import { humanizeError } from "./error-copy.js";
 import { archiveMemoryRules, createMemoryRule, listMemoryAudit, listMemoryRules, simulateMemoryRule, updateMemoryRule } from "./memory-service.js";
+import { initWorkbenchTabs } from "./workbench-tabs.js";
 
 const memoryTotal = document.querySelector("#memory-total");
 const memoryGlobal = document.querySelector("#memory-global");
@@ -46,6 +47,7 @@ const formInputs = {
 let loadedRules = [];
 const selectedIds = new Set();
 let currentScopeSuggestion = { scope: "global", rationale: "Write a rule and Rateware will suggest the safest scope before saving." };
+const memoryWorkbench = initWorkbenchTabs({ defaultView: "create" });
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -292,6 +294,7 @@ function renderSimulation(result) {
   const impact = result.impact || {};
   const rows = result.rows || [];
   simulationPanel?.classList.remove("hidden");
+  memoryWorkbench?.activate("simulation");
   simulationTitle.textContent = result.rule?.title ? `Impact preview: ${result.rule.title}` : "Rule impact preview";
   simulationUploadCount.textContent = String(impact.upload_count || 0);
   simulationStagedRows.textContent = String(impact.staged_rows || 0);
@@ -480,7 +483,7 @@ scopeFilter?.addEventListener("change", renderRules);
 healthFilter?.addEventListener("change", renderRules);
 recommendationFilter?.addEventListener("change", renderRules);
 searchInput?.addEventListener("input", renderRules);
-closeSimulationButton?.addEventListener("click", () => simulationPanel?.classList.add("hidden"));
+closeSimulationButton?.addEventListener("click", () => memoryWorkbench?.activate("create"));
 simulateDraftButton?.addEventListener("click", () => runSimulation(simulationInputFromForm(), memoryFormStatus));
 Object.values(formInputs).forEach((input) => input?.addEventListener("input", renderScopeSuggestion));
 Object.values(formInputs).forEach((input) => input?.addEventListener("change", renderScopeSuggestion));

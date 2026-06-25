@@ -79,7 +79,15 @@
             </article>
           </section>
 
-          <section class="workspace-panel rfx-command-center">
+          <nav class="module-workbench-nav" role="tablist" aria-label="RFx workbench">
+            <button type="button" role="tab" aria-selected="true" data-workbench-view-button="dashboard">Dashboard</button>
+            <button type="button" role="tab" aria-selected="false" data-workbench-view-button="setup" data-workbench-focus-target="#rfx-id">Setup</button>
+            <button type="button" role="tab" aria-selected="false" data-workbench-view-button="lanes">Lanes</button>
+            <button type="button" role="tab" aria-selected="false" data-workbench-view-button="outreach">Outreach</button>
+            <button type="button" role="tab" aria-selected="false" data-workbench-view-button="responses">Responses</button>
+          </nav>
+
+          <section class="workspace-panel rfx-command-center" data-workbench-view-panel="dashboard">
             <div class="split-heading">
               <div>
                 <p class="eyebrow">RFx event dashboard</p>
@@ -126,7 +134,7 @@
             <div id="rfx-invite-status" class="rfx-status-mix" aria-label="Invitation status mix"></div>
           </section>
 
-          <section class="workspace-panel">
+          <section class="workspace-panel" data-workbench-view-panel="setup">
             <div class="split-heading">
               <div>
                 <p class="eyebrow">Create event</p>
@@ -164,7 +172,7 @@
             <p id="rfx-event-status" class="status-message" role="status"></p>
           </section>
 
-          <section class="rfx-workspace">
+          <section class="rfx-workspace" data-workbench-view-panel="lanes outreach responses">
             <aside class="workspace-panel rfx-event-list-panel">
               <div class="section-heading compact">
                 <p class="eyebrow">Events</p>
@@ -188,7 +196,7 @@
                 </div>
               </div>
 
-              <section class="rfx-lane-coverage-panel">
+              <section class="rfx-lane-coverage-panel" data-workbench-view-panel="lanes">
                 <div class="split-heading">
                   <div>
                     <p class="eyebrow">Lane coverage</p>
@@ -212,7 +220,7 @@
                 </div>
               </section>
 
-              <section class="rfx-lane-decision-panel">
+              <section class="rfx-lane-decision-panel" data-workbench-view-panel="lanes">
                 <div class="split-heading">
                   <div>
                     <p class="eyebrow">Lane decision view</p>
@@ -225,7 +233,7 @@
                 </div>
               </section>
 
-              <section class="rfx-import-box">
+              <section class="rfx-import-box" data-workbench-view-panel="lanes">
                 <div>
                   <p class="eyebrow">Lane upload</p>
                   <h3>Paste lanes from Excel or CSV</h3>
@@ -238,7 +246,7 @@
                 </div>
               </section>
 
-              <section class="rfx-shortlist-box">
+              <section class="rfx-shortlist-box" data-workbench-view-panel="lanes">
                 <div>
                   <p class="eyebrow">Manual shortlist</p>
                   <h3>Add vendors to a lane</h3>
@@ -259,7 +267,7 @@
                 <p id="manual-shortlist-status" class="status-message" role="status"></p>
               </section>
 
-              <div class="bulk-action-bar">
+              <div class="bulk-action-bar" data-workbench-view-panel="lanes">
                 <span id="rfx-selection-count">0 selected</span>
                 <button id="auto-shortlist-selected" class="small-button" type="button" disabled>Auto shortlist</button>
                 <button id="invite-selected-rfx" class="secondary small-button" type="button" disabled>Invite selected vendors</button>
@@ -267,7 +275,7 @@
                 <span id="rfx-action-status" class="row-save-status"></span>
               </div>
 
-              <section class="rfx-outreach-launchpad">
+              <section class="rfx-outreach-launchpad" data-workbench-view-panel="outreach">
                 <div class="split-heading">
                   <div>
                     <p class="eyebrow">Outreach launchpad</p>
@@ -312,7 +320,7 @@
                 </div>
               </section>
 
-              <section class="rfx-response-board">
+              <section class="rfx-response-board" data-workbench-view-panel="responses">
                 <div class="split-heading">
                   <div>
                     <p class="eyebrow">Responses by carrier</p>
@@ -343,7 +351,7 @@
                 </div>
               </section>
 
-              <div class="table-wrap">
+              <div class="table-wrap" data-workbench-view-panel="lanes">
                 <table class="rfx-table">
                   <thead>
                     <tr>

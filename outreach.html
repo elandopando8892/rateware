@@ -67,7 +67,15 @@
             <article><span>History</span><strong id="outreach-metric-history">0</strong></article>
           </section>
 
-          <section class="workspace-panel outreach-flow-panel">
+          <nav class="module-workbench-nav" role="tablist" aria-label="Outreach workbench">
+            <button type="button" role="tab" aria-selected="true" data-workbench-view-button="dashboard">Dashboard</button>
+            <button type="button" role="tab" aria-selected="false" data-workbench-view-button="templates" data-workbench-focus-target="#template-name">Templates</button>
+            <button type="button" role="tab" aria-selected="false" data-workbench-view-button="campaigns" data-workbench-focus-target="#campaign-name">Campaigns</button>
+            <button type="button" role="tab" aria-selected="false" data-workbench-view-button="drafts">Draft Queue</button>
+            <button type="button" role="tab" aria-selected="false" data-workbench-view-button="history">Contact History</button>
+          </nav>
+
+          <section class="workspace-panel outreach-flow-panel" data-workbench-view-panel="dashboard">
             <div class="split-heading">
               <div>
                 <p class="eyebrow">RFx + Outreach workflow</p>
@@ -101,8 +109,8 @@
             </div>
           </section>
 
-          <section class="outreach-workspace">
-            <section class="workspace-panel">
+          <section class="outreach-workspace" data-workbench-view-panel="templates campaigns">
+            <section class="workspace-panel" data-workbench-view-panel="templates">
               <div class="section-heading compact">
                 <p class="eyebrow">Templates</p>
                 <h2>Gmail HTML and WhatsApp copy</h2>
@@ -138,7 +146,7 @@
               <div id="template-list" class="outreach-template-list"></div>
             </section>
 
-            <section class="workspace-panel">
+            <section class="workspace-panel" data-workbench-view-panel="campaigns">
               <div class="split-heading">
                 <div>
                   <p class="eyebrow">Campaign builder</p>
@@ -187,7 +195,7 @@
             </section>
           </section>
 
-          <section class="workspace-panel">
+          <section class="workspace-panel" data-workbench-view-panel="drafts">
             <div class="split-heading">
               <div>
                 <p class="eyebrow">Draft queue</p>
@@ -244,7 +252,7 @@
             </div>
           </section>
 
-          <section class="workspace-panel">
+          <section class="workspace-panel" data-workbench-view-panel="history">
             <div class="split-heading">
               <div>
                 <p class="eyebrow">Contact history</p>

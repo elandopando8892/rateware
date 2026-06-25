@@ -12,6 +12,7 @@ import {
 } from "./catalog-service.js";
 import { fetchApprovedRatewarePage, updateApprovedRatewareRow } from "./rateware-service.js";
 import { fetchStagingOptions, fetchStagingPage, saveLocationAlias, updateStagingRow } from "./staging-service.js";
+import { initWorkbenchTabs } from "./workbench-tabs.js";
 
 const rowsChecked = document.querySelector("#catalog-rows-checked");
 const gapCount = document.querySelector("#catalog-gap-count");
@@ -68,6 +69,7 @@ const locationSearchInput = document.querySelector("#catalog-location-search");
 const clearLocationFiltersButton = document.querySelector("#clear-catalog-location-filters");
 const inspectorTitle = document.querySelector("#catalog-inspector-title");
 const inspectorBody = document.querySelector("#catalog-inspector-body");
+initWorkbenchTabs({ defaultView: "import" });
 
 const locationInputs = {
   country: document.querySelector("#location-country"),
