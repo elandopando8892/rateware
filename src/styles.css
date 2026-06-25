@@ -7543,6 +7543,24 @@ select.staging-input {
   margin-bottom: 10px;
 }
 
+.catalog-workbench-layout .catalog-value-form,
+.location-catalog-form {
+  grid-template-columns: repeat(5, minmax(120px, 1fr));
+}
+
+.location-catalog-panel {
+  display: grid;
+  gap: 10px;
+}
+
+.location-catalog-toolbar {
+  margin: 0;
+}
+
+.location-catalog-table {
+  min-width: 1080px;
+}
+
 .catalog-settings-toolbar {
   display: flex;
   align-items: end;

@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Rateware Catalog Workbench</title>
+    <title>Rateware Catalogs</title>
     <link rel="stylesheet" href="./src/styles.css" />
   </head>
   <body>
@@ -33,7 +33,7 @@
             <p>Admin</p>
             <a href="./settings.html">Settings</a>
             <a href="./interpretation-memory.html">Memory</a>
-            <a aria-current="page" href="./catalog-workbench.html">Catalog</a>
+            <a aria-current="page" href="./catalog-workbench.html">Catalogs</a>
           </section>
         </nav>
       </aside>
@@ -41,12 +41,12 @@
       <div class="page-frame">
         <header class="page-header">
           <div>
-            <p class="eyebrow">Normalization control</p>
-            <h1>Catalog Workbench</h1>
+            <p class="eyebrow">Admin catalogs</p>
+            <h1>Catalogs</h1>
             <nav class="module-crumbs" aria-label="Module context">
               <a href="./app.html">Command Center</a>
               <a href="./settings.html">Admin</a>
-              <span>Catalog</span>
+              <span>Catalogs</span>
             </nav>
           </div>
           <div class="page-header-actions">
@@ -65,6 +65,169 @@
             <article><span>Location gaps</span><strong id="catalog-gap-count">0</strong></article>
             <article><span>Pending review</span><strong id="catalog-pending-count">0</strong></article>
             <article><span>Approved rows</span><strong id="catalog-approved-count">0</strong></article>
+          </section>
+
+          <section class="workspace-panel settings-catalog-panel">
+            <div class="split-heading">
+              <div>
+                <p class="eyebrow">Operational dropdowns</p>
+                <h2>Equipment, trailer, service, operation and border cities</h2>
+              </div>
+              <button id="refresh-catalog-values" type="button" class="secondary small-button">Refresh values</button>
+            </div>
+            <form id="catalog-value-form" class="settings-form catalog-value-form">
+              <label>
+                Category
+                <select id="catalog-category"></select>
+              </label>
+              <label>
+                Value
+                <input id="catalog-raw-value" placeholder="Dry Van, Flatbed, Nuevo Laredo, TM..." />
+              </label>
+              <label>
+                Normalized value
+                <input id="catalog-normalized-value" placeholder="Leave blank to use value" />
+              </label>
+              <label>
+                Code
+                <input id="catalog-code" placeholder="Optional internal code" />
+              </label>
+              <label class="wide-field">
+                Note
+                <input id="catalog-note" placeholder="Why this value was added" />
+              </label>
+              <button type="submit">Save value</button>
+            </form>
+            <div class="catalog-settings-toolbar">
+              <label>
+                Show category
+                <select id="catalog-category-filter"></select>
+              </label>
+              <p id="catalog-status" class="status-message" role="status"></p>
+            </div>
+            <div class="table-wrap">
+              <table class="settings-catalog-table">
+                <thead>
+                  <tr>
+                    <th>Category</th>
+                    <th>Value</th>
+                    <th>Code</th>
+                    <th>Source</th>
+                    <th>Status</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody id="catalog-values-body">
+                  <tr><td colspan="6">Loading catalog values...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="workspace-panel location-catalog-panel">
+            <div class="split-heading">
+              <div>
+                <p class="eyebrow">Lane catalog</p>
+                <h2>Locations, ZIPs, key market areas and regions</h2>
+              </div>
+              <button id="refresh-location-catalog" type="button" class="secondary small-button">Refresh locations</button>
+            </div>
+            <form id="location-catalog-form" class="settings-form location-catalog-form">
+              <label>
+                Country
+                <select id="location-country">
+                  <option value="MX">MX</option>
+                  <option value="US">US</option>
+                  <option value="CA">CA</option>
+                  <option value="UNKNOWN">Unknown</option>
+                </select>
+              </label>
+              <label>
+                Location value
+                <input id="location-raw-value" placeholder="Toluca, MX / Dallas, TX / 750" />
+              </label>
+              <label>
+                ZIP / Prefix
+                <input id="location-zip-prefix" placeholder="750, 640, L4..." />
+              </label>
+              <label>
+                City
+                <input id="location-city" placeholder="Toluca, Dallas, Monterrey..." />
+              </label>
+              <label>
+                State
+                <input id="location-state-code" placeholder="MX, TX, NL..." />
+              </label>
+              <label>
+                State name
+                <input id="location-state-name" placeholder="Estado de Mexico, Texas..." />
+              </label>
+              <label>
+                Metro city
+                <input id="location-metro-city" placeholder="Mexico City / Toluca" />
+              </label>
+              <label>
+                Market
+                <input id="location-market" placeholder="Toluca Market, Dallas Mkt (TX)..." />
+              </label>
+              <label>
+                Region
+                <input id="location-region" placeholder="Central Mexico, Southwest..." />
+              </label>
+              <label class="wide-field">
+                Note
+                <input id="location-note" placeholder="Alias source, correction reason, or catalog source" />
+              </label>
+              <button type="submit">Save location</button>
+            </form>
+            <div class="catalog-filter-bar location-catalog-toolbar" aria-label="Location catalog filters">
+              <label>
+                Country
+                <select id="admin-location-country-filter">
+                  <option value="">All countries</option>
+                  <option value="MX">MX</option>
+                  <option value="US">US</option>
+                  <option value="CA">CA</option>
+                  <option value="UNKNOWN">Unknown</option>
+                </select>
+              </label>
+              <label>
+                State
+                <input id="admin-location-state-filter" placeholder="TX, NL, MX..." />
+              </label>
+              <label>
+                Market
+                <input id="admin-location-market-filter" placeholder="Market..." />
+              </label>
+              <label>
+                Region
+                <input id="admin-location-region-filter" placeholder="Region..." />
+              </label>
+              <label>
+                Search
+                <input id="admin-location-search" type="search" placeholder="City, ZIP, market, region..." />
+              </label>
+              <button id="clear-admin-location-filters" class="secondary small-button" type="button">Clear filters</button>
+            </div>
+            <p id="location-catalog-status" class="status-message" role="status"></p>
+            <div class="table-wrap">
+              <table class="settings-catalog-table location-catalog-table">
+                <thead>
+                  <tr>
+                    <th>Country</th>
+                    <th>Location</th>
+                    <th>ZIP / State</th>
+                    <th>Metro / City</th>
+                    <th>Market / Region</th>
+                    <th>Source</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody id="location-catalog-body">
+                  <tr><td colspan="7">Loading location catalog...</td></tr>
+                </tbody>
+              </table>
+            </div>
           </section>
 
           <section class="workspace-panel">

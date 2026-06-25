@@ -4649,6 +4649,60 @@ async function saveRatewareLocationAlias(
   return { location: locationOptionPayload(result.data) };
 }
 
+function normalizeLocationCatalogInput(input: Record<string, unknown>, user: { owner_email: string | null }) {
+  const countryInput = cleanText(input.country)?.toUpperCase() || "UNKNOWN";
+  const country = ["US", "CA", "MX", "UNKNOWN"].includes(countryInput) ? countryInput : "UNKNOWN";
+  const zipPrefix = cleanText(input.zip_prefix || input.zipPrefix);
+  const rawValue = cleanText(input.raw_value || input.rawValue || input.value)
+    || [cleanText(input.city || input.metro_city), cleanText(input.state_code || input.state_name), zipPrefix].filter(Boolean).join(", ");
+  if (!rawValue) throw new Error("Location value is required.");
+
+  const stateCode = cleanText(input.state_code || input.stateCode)?.toUpperCase() || null;
+  const stateName = cleanText(input.state_name || input.stateName);
+  const city = cleanText(input.city || input.metro_city || input.metroCity || rawValue);
+  const metroCity = cleanText(input.metro_city || input.metroCity || city || rawValue);
+  const market = cleanText(input.market);
+  const region = cleanText(input.region);
+  const locationKey = catalogKey([
+    rawValue,
+    zipPrefix,
+    stateCode || stateName,
+    country
+  ].filter(Boolean).join(" "));
+
+  return {
+    row: {
+      source: "rateware_manual_catalog",
+      country,
+      location_key: locationKey,
+      raw_value: rawValue,
+      zip_prefix: zipPrefix,
+      city,
+      state_code: stateCode,
+      state_name: stateName,
+      metro_city: metroCity,
+      market,
+      region,
+      metadata: {
+        owner_email: user.owner_email,
+        owner_user_id: (user as Record<string, unknown>).owner_user_id || null,
+        note: cleanText(input.note),
+        created_from: "admin_catalogs"
+      },
+      active: true,
+      updated_at: new Date().toISOString()
+    },
+    summary: {
+      raw_value: rawValue,
+      country,
+      zip_prefix: zipPrefix,
+      state_code: stateCode,
+      market,
+      region
+    }
+  };
+}
+
 Deno.serve(async (request) => {
   if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders() });
 
@@ -5573,7 +5627,7 @@ Deno.serve(async (request) => {
       if (current.error) throw current.error;
       if (!current.data) return jsonResponse({ error: "Catalog value was not found." }, 404);
       if (current.data.source !== "rateware_manual_catalog") {
-        return jsonResponse({ error: "Only manual catalog values can be archived from Settings." }, 400);
+        return jsonResponse({ error: "Only manual catalog values can be archived from Admin Catalogs." }, 400);
       }
       if (!isManualCatalogOwnedBy(current.data, user)) {
         return jsonResponse({ error: "This manual catalog value belongs to another workspace." }, 403);
@@ -5593,6 +5647,113 @@ Deno.serve(async (request) => {
         id,
         `Archived ${current.data.category} catalog value "${current.data.normalized_value}"`,
         { category: current.data.category, raw_value: current.data.raw_value, normalized_value: current.data.normalized_value }
+      );
+      return jsonResponse({ row: result.data });
+    }
+
+    if (body.action === "list_location_catalog_values") {
+      const country = cleanText(body.country)?.toUpperCase();
+      const activeOnly = body.active === undefined ? true : cleanBoolean(body.active);
+      let query = supabase
+        .from("rateware_locations")
+        .select("id,source,country,location_key,raw_value,zip_prefix,city,state_code,state_name,metro_city,market,region,metadata,active,updated_at")
+        .order("country", { ascending: true })
+        .order("market", { ascending: true })
+        .order("raw_value", { ascending: true })
+        .limit(10000);
+      if (activeOnly) query = query.eq("active", true);
+      if (country && ["US", "CA", "MX", "UNKNOWN"].includes(country)) query = query.eq("country", country);
+      const result = await query;
+      if (result.error) throw result.error;
+
+      const state = catalogKey(body.state || body.state_code || body.stateCode);
+      const market = catalogKey(body.market);
+      const region = catalogKey(body.region);
+      const search = catalogKey(body.search);
+      const rows = (result.data || [])
+        .filter((item) => isManualCatalogOwnedBy(item, user))
+        .filter((item) => {
+          const stateKey = catalogKey([item.state_code, item.state_name].filter(Boolean).join(" "));
+          const marketKey = catalogKey(item.market);
+          const regionKey = catalogKey(item.region);
+          const searchKey = catalogKey([
+            item.raw_value,
+            item.zip_prefix,
+            item.city,
+            item.state_code,
+            item.state_name,
+            item.metro_city,
+            item.market,
+            item.region,
+            item.country
+          ].filter(Boolean).join(" "));
+          if (state && !stateKey.includes(state)) return false;
+          if (market && !marketKey.includes(market)) return false;
+          if (region && !regionKey.includes(region)) return false;
+          if (search && !searchKey.includes(search)) return false;
+          return true;
+        })
+        .slice(0, Math.min(Math.max(Number(body.limit) || 500, 1), 2000))
+        .map((item) => ({
+          ...item,
+          is_manual: item.source === "rateware_manual_catalog",
+          can_archive: item.source === "rateware_manual_catalog" && item.active === true
+        }));
+      return jsonResponse({ rows });
+    }
+
+    if (body.action === "save_location_catalog_value") {
+      const input = objectRecord(body.location_value || body.location || body);
+      const normalized = normalizeLocationCatalogInput(input, user);
+      const result = await supabase
+        .from("rateware_locations")
+        .upsert(normalized.row, { onConflict: "source,location_key" })
+        .select("id,source,country,location_key,raw_value,zip_prefix,city,state_code,state_name,metro_city,market,region,metadata,active,updated_at")
+        .single();
+      if (result.error) throw result.error;
+      await writeAuditLog(
+        supabase,
+        user,
+        "catalog.location.save",
+        "rateware_locations",
+        result.data.id,
+        `Saved location catalog value "${normalized.summary.raw_value}"`,
+        normalized.summary
+      );
+      return jsonResponse({ row: { ...result.data, is_manual: true, can_archive: true } });
+    }
+
+    if (body.action === "archive_location_catalog_value") {
+      const id = cleanText(body.id);
+      if (!id) return jsonResponse({ error: "Location catalog id is required." }, 400);
+      const current = await supabase
+        .from("rateware_locations")
+        .select("id,source,raw_value,metadata,active")
+        .eq("id", id)
+        .maybeSingle();
+      if (current.error) throw current.error;
+      if (!current.data) return jsonResponse({ error: "Location catalog value was not found." }, 404);
+      if (current.data.source !== "rateware_manual_catalog") {
+        return jsonResponse({ error: "Only manual location catalog values can be archived from Admin Catalogs." }, 400);
+      }
+      if (!isManualCatalogOwnedBy(current.data, user)) {
+        return jsonResponse({ error: "This manual location belongs to another workspace." }, 403);
+      }
+      const result = await supabase
+        .from("rateware_locations")
+        .update({ active: false, updated_at: new Date().toISOString() })
+        .eq("id", id)
+        .select("id,source,country,location_key,raw_value,zip_prefix,city,state_code,state_name,metro_city,market,region,metadata,active,updated_at")
+        .single();
+      if (result.error) throw result.error;
+      await writeAuditLog(
+        supabase,
+        user,
+        "catalog.location.archive",
+        "rateware_locations",
+        id,
+        `Archived location catalog value "${current.data.raw_value}"`,
+        { raw_value: current.data.raw_value }
       );
       return jsonResponse({ row: result.data });
     }

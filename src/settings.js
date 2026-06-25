@@ -230,15 +230,10 @@ function renderSettings(settings) {
 
 async function loadSettings() {
   try {
-    const [settings, catalogValues] = await Promise.all([
-      fetchSaasSettings(),
-      fetchCatalogValues()
-    ]);
+    const settings = await fetchSaasSettings();
     renderSettings(settings);
-    renderCatalogValues(catalogValues);
   } catch (error) {
     auditLogBody.innerHTML = `<tr><td colspan="5">${escapeHtml(error.message)}</td></tr>`;
-    if (catalogValuesBody) catalogValuesBody.innerHTML = `<tr><td colspan="6">${escapeHtml(error.message)}</td></tr>`;
   }
 }
 
