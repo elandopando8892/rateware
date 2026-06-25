@@ -145,6 +145,24 @@ function paintSheetSelection(container, anchor, focus, rowSelector, cellSelector
   return matrix;
 }
 
+function controlsForColumn(container, columnKey, rowSelector, cellSelector) {
+  if (!columnKey || columnKey === "select") return [];
+  return visibleRows(container, rowSelector)
+    .map((row) => editableCells(row, cellSelector).find((control) => control.closest("td")?.dataset.col === columnKey))
+    .filter(Boolean);
+}
+
+function controlsForRow(row, cellSelector) {
+  return editableCells(row, cellSelector);
+}
+
+function selectControlMatrix(container, controls) {
+  clearSheetSelection(container);
+  controls.forEach((control) => control.closest("td")?.classList.add("selected-sheet-cell"));
+  controls.at(-1)?.closest("td")?.classList.add("fill-handle-cell");
+  return controls.length ? [controls] : [];
+}
+
 function selectionInfo(matrix) {
   const rowCount = matrix.length;
   const columnCount = matrix[0]?.length || 0;
@@ -321,7 +339,44 @@ export function installSpreadsheetGrid({
       fillDrag.target = control;
       return;
     }
+
+    const header = event.target.closest("th[data-col]");
+    if (header && !event.target.closest("input, button, a, summary")) {
+      const controls = controlsForColumn(container, header.dataset.col, rowSelector, cellSelector);
+      if (!controls.length) return;
+      event.preventDefault();
+      selection.pointerSelecting = false;
+      selection.keyboardSelecting = true;
+      selection.anchor = controls[0];
+      selection.focus = controls.at(-1);
+      controls[0].focus();
+      emitSelection(paintSheetSelection(container, selection.anchor, selection.focus, rowSelector, cellSelector));
+      window.setTimeout(() => {
+        selection.keyboardSelecting = false;
+      });
+      return;
+    }
+
+    const rowHandle = event.target.closest("td.select-column");
+    if (rowHandle && !event.target.closest("input, button, a, summary")) {
+      const row = rowHandle.closest(rowSelector);
+      const controls = row ? controlsForRow(row, cellSelector) : [];
+      if (!controls.length) return;
+      event.preventDefault();
+      selection.pointerSelecting = false;
+      selection.keyboardSelecting = true;
+      selection.anchor = controls[0];
+      selection.focus = controls.at(-1);
+      controls[0].focus();
+      emitSelection(selectControlMatrix(container, controls));
+      window.setTimeout(() => {
+        selection.keyboardSelecting = false;
+      });
+      return;
+    }
+
     if (event.target.closest('button, a, summary, select, textarea, input[type="checkbox"], input[type="date"]')) return;
+    if (event.target.closest('input:not([type="checkbox"]):not([type="date"])') && document.activeElement === event.target && !event.shiftKey && !event.ctrlKey && !event.metaKey) return;
     const control = event.target.closest(cellSelector) || event.target.closest("td")?.querySelector(cellSelector);
     if (!control || control.disabled) return;
     selection.pointerSelecting = true;
@@ -566,7 +621,20 @@ export function installSpreadsheetGrid({
     if (!control) return;
 
     const text = event.clipboardData?.getData("text/plain") || "";
-    if (!text.includes("\t") && !text.includes("\n") && !text.includes("\r")) return;
+    const selectedMatrix = selectedControls(container, selection.anchor || control, selection.focus || control, rowSelector, cellSelector);
+    const selectedInfo = selectionInfo(selectedMatrix);
+    if (!text.includes("\t") && !text.includes("\n") && !text.includes("\r")) {
+      if (!selectedInfo.isRange) return;
+      event.preventDefault();
+      const snapshots = [];
+      suppressHistory = true;
+      const changedRows = fillSelectionWithValue(selectedMatrix, text, snapshots);
+      suppressHistory = false;
+      if (changedRows.length) pushBatchHistory(snapshots, "paste value");
+      if (changedRows.length) onRowsChanged?.(changedRows);
+      if (changedRows.length) onGridMessage?.(`Pasted value into ${selectedInfo.cells} selected cell(s).`);
+      return;
+    }
 
     const grid = parseClipboardGrid(text);
     if (!grid.length) return;

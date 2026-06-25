@@ -2366,7 +2366,7 @@ body.addEventListener("focusout", (event) => {
 });
 
 installSpreadsheetGrid({
-  container: body,
+  container: stagingTable || body,
   rowSelector: "[data-row-id]",
   cellSelector: "[data-field]",
   saveRow: saveStagingTableRow,

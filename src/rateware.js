@@ -2603,7 +2603,7 @@ body.addEventListener("focusout", (event) => {
   scheduleRatewareAutoSave(field.closest("[data-rateware-id]"), 200);
 });
 installSpreadsheetGrid({
-  container: body,
+  container: ratewareTable || body,
   rowSelector: "[data-rateware-id]",
   cellSelector: "[data-rateware-field]",
   saveRow: saveRatewareTableRow,
