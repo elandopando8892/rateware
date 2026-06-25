@@ -800,6 +800,96 @@ a {
   grid-column: 2 / -1;
 }
 
+.rfx-outreach-launchpad {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #ffffff;
+  padding: 12px;
+  margin: 12px 0;
+}
+
+.rfx-outreach-launchpad h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.rfx-outreach-grid {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.42fr) minmax(0, 0.58fr);
+  gap: 10px;
+  align-items: start;
+}
+
+.rfx-outreach-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  align-items: end;
+}
+
+.rfx-outreach-form label {
+  display: grid;
+  gap: 5px;
+  color: #40505d;
+  font-size: 0.76rem;
+  font-weight: 780;
+}
+
+.rfx-outreach-form label:first-child,
+.rfx-outreach-form .status-message {
+  grid-column: 1 / -1;
+}
+
+.rfx-touchpoint-panel {
+  display: grid;
+  grid-template-columns: minmax(190px, 0.26fr) minmax(0, 0.74fr);
+  gap: 10px;
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+
+.rfx-touchpoint-panel > div:first-child {
+  display: grid;
+  gap: 3px;
+  align-content: start;
+}
+
+.rfx-touchpoint-panel strong {
+  color: var(--text);
+  font-size: 0.82rem;
+}
+
+.rfx-touchpoint-panel span,
+.rfx-touchpoint-list span,
+.rfx-touchpoint-list small {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 760;
+}
+
+.rfx-touchpoint-list {
+  display: grid;
+  gap: 7px;
+}
+
+.rfx-touchpoint-list article {
+  display: grid;
+  gap: 3px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--soft-panel);
+  padding: 8px;
+}
+
+.rfx-touchpoint-list p {
+  margin: 0;
+  color: #40505d;
+  font-size: 0.76rem;
+  line-height: 1.35;
+}
+
 .rfx-table th,
 .rfx-table td {
   vertical-align: top;
@@ -1409,6 +1499,8 @@ a {
 @media (max-width: 980px) {
   .rfx-workspace,
   .rfx-shortlist-box,
+  .rfx-outreach-grid,
+  .rfx-touchpoint-panel,
   .rfx-event-flow,
   .rfx-lane-toolbar,
   .rfx-decision-metrics,
@@ -7710,6 +7802,7 @@ h2 {
 .rfx-lane-coverage-panel,
 .rfx-lane-decision-panel,
 .rfx-response-board,
+.rfx-outreach-launchpad,
 .rfx-event-flow article,
 .rfx-decision-metrics article,
 .rfx-lane-shortlist article,
@@ -7729,6 +7822,7 @@ h2 {
 .bi-pivot-builder section,
 .rfx-import-box,
 .rfx-shortlist-box,
+.rfx-touchpoint-list article,
 .outreach-template-preview,
 .outreach-template-list article,
 .contact-history-list article {

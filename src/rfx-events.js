@@ -11,6 +11,12 @@ import {
   updateRfxBid,
   updateRfxEvent
 } from "./rfx-service.js";
+import {
+  createOutreachCampaign,
+  fetchContactHistory,
+  fetchOutreachTemplates,
+  generateOutreachDrafts
+} from "./outreach-service.js";
 import { fetchVendors } from "./vendor-service.js";
 import { humanizeError } from "./error-copy.js";
 import { errorState, stateBlock, tableErrorState, tableState } from "./ui-state.js";
@@ -60,12 +66,24 @@ const manualShortlistSearch = document.querySelector("#manual-shortlist-search")
 const manualShortlistVendors = document.querySelector("#manual-shortlist-vendors");
 const manualShortlistButton = document.querySelector("#manual-shortlist-button");
 const manualShortlistStatus = document.querySelector("#manual-shortlist-status");
+const rfxOutreachForm = document.querySelector("#rfx-outreach-form");
+const rfxOutreachCampaignName = document.querySelector("#rfx-outreach-campaign-name");
+const rfxOutreachTemplate = document.querySelector("#rfx-outreach-template");
+const rfxOutreachChannel = document.querySelector("#rfx-outreach-channel");
+const createRfxOutreachCampaignButton = document.querySelector("#create-rfx-outreach-campaign");
+const rfxOutreachStatus = document.querySelector("#rfx-outreach-status");
+const rfxOutreachPreview = document.querySelector("#rfx-outreach-preview");
+const openRfxOutreach = document.querySelector("#open-rfx-outreach");
+const touchpointSummary = document.querySelector("#rfx-touchpoint-summary");
+const touchpointList = document.querySelector("#rfx-touchpoint-list");
 
 let events = [];
 let selectedEventId = null;
 let selectedEvent = null;
 let currentLanes = [];
 let vendorOptions = [];
+let outreachTemplates = [];
+let contactHistoryRows = [];
 let selectedLaneIds = new Set();
 let selectedInvitationIds = new Set();
 let focusedLaneId = null;
@@ -204,6 +222,94 @@ function statusTone(status) {
 function statusChip(status) {
   const value = status || "shortlisted";
   return `<span class="status-pill" data-tone="${statusTone(value)}">${escapeHtml(value)}</span>`;
+}
+
+function selectedOutreachTemplate() {
+  return outreachTemplates.find((template) => template.id === rfxOutreachTemplate?.value) || outreachTemplates[0] || null;
+}
+
+function templatePlaceholders(template) {
+  if (Array.isArray(template?.placeholders) && template.placeholders.length) return template.placeholders;
+  const source = [template?.subject, template?.html_body, template?.whatsapp_body].filter(Boolean).join(" ");
+  return [...new Set([...source.matchAll(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g)].map((match) => match[1]))];
+}
+
+function outreachTargetInvitations() {
+  const selectedIds = selectedInvitationIds.size ? selectedInvitationIds : null;
+  const selectedLaneSet = !selectedIds && selectedLaneIds.size ? selectedLaneIds : null;
+  return currentLanes
+    .flatMap((lane) => activeInvitations(lane).map((invitation) => ({ lane, invitation })))
+    .filter(({ lane, invitation }) => {
+      if (selectedIds) return selectedIds.has(invitation.id);
+      if (selectedLaneSet) return selectedLaneSet.has(lane.id);
+      return true;
+    });
+}
+
+function targetHasChannel(target, channel) {
+  const vendor = target.invitation?.vendors || {};
+  if (channel === "email") return Boolean(vendor.primary_email);
+  if (channel === "whatsapp") return Boolean(vendor.whatsapp_phone);
+  return Boolean(vendor.primary_email || vendor.whatsapp_phone);
+}
+
+function renderOutreachTemplateSelect() {
+  if (!rfxOutreachTemplate) return;
+  const currentValue = rfxOutreachTemplate.value;
+  rfxOutreachTemplate.innerHTML = outreachTemplates.length
+    ? outreachTemplates.map((template) => `
+      <option value="${escapeHtml(template.id)}">${escapeHtml(template.name)}${template.owner_email ? "" : " (default)"}</option>
+    `).join("")
+    : "<option value=\"\">No templates available</option>";
+  if (currentValue && outreachTemplates.some((template) => template.id === currentValue)) {
+    rfxOutreachTemplate.value = currentValue;
+  }
+}
+
+function renderOutreachPreview() {
+  if (!rfxOutreachPreview) return;
+  const template = selectedOutreachTemplate();
+  const channel = rfxOutreachChannel?.value || "multi";
+  const targets = outreachTargetInvitations();
+  const ready = targets.filter((target) => targetHasChannel(target, channel)).length;
+  const targetScope = selectedInvitationIds.size
+    ? `${formatNumber(selectedInvitationIds.size)} selected vendor rows`
+    : selectedLaneIds.size
+      ? `${formatNumber(selectedLaneIds.size)} selected lanes`
+      : "All active shortlist";
+  const placeholders = templatePlaceholders(template);
+  if (!template) {
+    rfxOutreachPreview.innerHTML = `
+      <strong>No template selected.</strong>
+      <span>Create a template in Outreach before launching RFx invitations.</span>
+    `;
+  } else {
+    rfxOutreachPreview.innerHTML = `
+      <div>
+        <span class="status-pill">${escapeHtml(template.channel || "multi")}</span>
+        <strong>${escapeHtml(template.name || "Template")}</strong>
+        <small>${escapeHtml(template.subject || "No email subject")}</small>
+      </div>
+      <div class="outreach-template-preview-grid">
+        <article>
+          <span>Draft target</span>
+          <strong>${formatNumber(ready)} / ${formatNumber(targets.length)}</strong>
+          <small>${escapeHtml(targetScope)}</small>
+        </article>
+        <article>
+          <span>Channel</span>
+          <strong>${escapeHtml(channel)}</strong>
+        </article>
+      </div>
+      <p>${escapeHtml((template.whatsapp_body || template.html_body || "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim()).slice(0, 180) || "No body preview"}</p>
+      <div class="template-token-row">
+        ${placeholders.length ? placeholders.slice(0, 12).map((item) => `<span>{{${escapeHtml(item)}}}</span>`).join("") : "<span>No placeholders detected</span>"}
+      </div>
+    `;
+  }
+  if (createRfxOutreachCampaignButton) {
+    createRfxOutreachCampaignButton.disabled = !selectedEventId || !template || !targets.length;
+  }
 }
 
 function laneRoute(lane) {
@@ -571,6 +677,49 @@ function renderResponseBoard() {
   }).join("");
 }
 
+function renderTouchpoints() {
+  if (!touchpointSummary || !touchpointList) return;
+  const eventRows = selectedEventId
+    ? contactHistoryRows.filter((row) => row.rfx_event_id === selectedEventId)
+    : [];
+  const sentOrReplied = eventRows.filter((row) => ["sent", "replied"].includes(row.status)).length;
+  touchpointSummary.textContent = eventRows.length
+    ? `${formatNumber(eventRows.length)} touchpoints | ${formatNumber(sentOrReplied)} sent/replied`
+    : "No campaign activity loaded.";
+  if (!selectedEventId) {
+    touchpointList.innerHTML = "<article>Select an RFx event to track invitation activity.</article>";
+    return;
+  }
+  if (!eventRows.length) {
+    touchpointList.innerHTML = "<article>No Gmail or WhatsApp activity for this event yet.</article>";
+    return;
+  }
+  touchpointList.innerHTML = eventRows.slice(0, 8).map((row) => `
+    <article>
+      <span>${escapeHtml([row.channel, row.status, new Date(row.occurred_at || row.created_at).toLocaleString()].filter(Boolean).join(" | "))}</span>
+      <strong>${escapeHtml(row.vendors?.vendor_name || row.vendors?.domain || "Vendor")}</strong>
+      <small>${escapeHtml(row.outreach_campaigns?.name || row.rfx_events?.rfx_id || "")}</small>
+      <p>${escapeHtml(row.body_preview || row.subject || "")}</p>
+    </article>
+  `).join("");
+}
+
+function renderOutreachLaunchpad() {
+  if (openRfxOutreach) {
+    openRfxOutreach.href = selectedEventId ? `./outreach.html?rfx_event_id=${encodeURIComponent(selectedEventId)}` : "./outreach.html";
+  }
+  if (rfxOutreachCampaignName && selectedEvent) {
+    const defaultName = `${selectedEvent.rfx_id || "RFx"} invitation wave`;
+    if (!rfxOutreachCampaignName.value || rfxOutreachCampaignName.dataset.autoName === "true") {
+      rfxOutreachCampaignName.value = defaultName;
+      rfxOutreachCampaignName.dataset.autoName = "true";
+    }
+  }
+  renderOutreachTemplateSelect();
+  renderOutreachPreview();
+  renderTouchpoints();
+}
+
 function updateMetrics() {
   const laneCount = events.reduce((sum, event) => sum + Number(event.lane_count || 0), 0);
   const inviteCount = events.reduce((sum, event) => sum + Number(event.invitation_count || 0), 0);
@@ -668,6 +817,7 @@ function renderLanes() {
   renderLaneCoverage();
   renderLaneDecision();
   renderResponseBoard();
+  renderOutreachLaunchpad();
 
   if (!selectedEventId) {
     lanesBody.innerHTML = tableState(9, {
@@ -749,6 +899,7 @@ async function loadEvents() {
       renderLaneCoverage();
       renderLaneDecision();
       renderResponseBoard();
+      renderOutreachLaunchpad();
     }
   } catch (error) {
     eventList.innerHTML = errorState(error, {
@@ -773,13 +924,28 @@ async function loadVendorOptions() {
   }
 }
 
+async function loadOutreachAssets() {
+  try {
+    outreachTemplates = await fetchOutreachTemplates();
+    renderOutreachLaunchpad();
+  } catch (error) {
+    outreachTemplates = [];
+    renderOutreachLaunchpad();
+    setStatus(rfxOutreachStatus, error.message, "error");
+  }
+}
+
 async function loadDetail(eventId) {
   selectedEventId = eventId;
   setStatus(actionStatus, "Loading RFx detail...");
   try {
-    const detail = await fetchRfxDetail(eventId);
+    const [detail, history] = await Promise.all([
+      fetchRfxDetail(eventId),
+      fetchContactHistory({ rfx_event_id: eventId })
+    ]);
     selectedEvent = detail.event;
     currentLanes = detail.lanes || [];
+    contactHistoryRows = history || [];
     if (!currentLanes.some((lane) => lane.id === focusedLaneId)) focusedLaneId = currentLanes[0]?.id || null;
     detailTitle.textContent = `${selectedEvent.name || selectedEvent.rfx_id} (${selectedEvent.status})`;
     importLanesButton.disabled = false;
@@ -789,6 +955,7 @@ async function loadDetail(eventId) {
     renderLanes();
     renderEventDashboard();
     renderLaneCoverage();
+    renderOutreachLaunchpad();
     setStatus(actionStatus, "RFx loaded.", "success");
   } catch (error) {
     setStatus(actionStatus, error.message, "error");
@@ -805,6 +972,7 @@ initAuthControls();
 requirePrivatePage().then((session) => {
   if (session?.token) {
     loadVendorOptions();
+    loadOutreachAssets();
     loadEvents();
   }
 });
@@ -927,6 +1095,7 @@ lanesBody?.addEventListener("change", (event) => {
     else selectedInvitationIds.delete(inviteInput.dataset.rfxInvitationSelect);
   }
   updateSelectionControls();
+  renderOutreachPreview();
 });
 
 lanesBody?.addEventListener("click", async (event) => {
@@ -1075,5 +1244,51 @@ manualShortlistButton?.addEventListener("click", async () => {
     setStatus(manualShortlistStatus, error.message, "error");
   } finally {
     renderManualShortlistControls();
+  }
+});
+
+rfxOutreachTemplate?.addEventListener("change", renderOutreachPreview);
+rfxOutreachChannel?.addEventListener("change", renderOutreachPreview);
+rfxOutreachCampaignName?.addEventListener("input", () => {
+  rfxOutreachCampaignName.dataset.autoName = "false";
+});
+
+rfxOutreachForm?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!selectedEventId) return;
+  const template = selectedOutreachTemplate();
+  const targets = outreachTargetInvitations();
+  if (!template) {
+    setStatus(rfxOutreachStatus, "Select an outreach template before creating drafts.", "error");
+    return;
+  }
+  if (!targets.length) {
+    setStatus(rfxOutreachStatus, "Shortlist at least one vendor before creating campaign drafts.", "error");
+    return;
+  }
+  const invitationIds = selectedInvitationIds.size
+    ? [...selectedInvitationIds]
+    : targets.map(({ invitation }) => invitation.id);
+  createRfxOutreachCampaignButton.disabled = true;
+  setStatus(rfxOutreachStatus, "Creating campaign and generating drafts...");
+  try {
+    const campaign = await createOutreachCampaign({
+      name: rfxOutreachCampaignName?.value || `${selectedEvent?.rfx_id || "RFx"} invitation wave`,
+      rfx_event_id: selectedEventId,
+      template_id: template.id,
+      channel: rfxOutreachChannel?.value || "multi"
+    });
+    const result = await generateOutreachDrafts(campaign.id, { invitationIds });
+    contactHistoryRows = await fetchContactHistory({ rfx_event_id: selectedEventId });
+    renderOutreachLaunchpad();
+    setStatus(
+      rfxOutreachStatus,
+      `${result.generated || 0} draft(s) created. ${result.skipped?.length || 0} skipped for missing contact data.`,
+      "success"
+    );
+  } catch (error) {
+    setStatus(rfxOutreachStatus, error.message, "error");
+  } finally {
+    renderOutreachPreview();
   }
 });

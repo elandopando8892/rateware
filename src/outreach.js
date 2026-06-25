@@ -359,7 +359,10 @@ function renderTemplates() {
 }
 
 function renderCampaigns() {
-  if (!selectedCampaignId && campaigns[0]) selectedCampaignId = campaigns[0].id;
+  if (!selectedCampaignId && requestedRfxEventId) {
+    selectedCampaignId = campaigns.find((campaign) => campaign.rfx_event_id === requestedRfxEventId)?.id || null;
+  }
+  if (!selectedCampaignId && !requestedRfxEventId && campaigns[0]) selectedCampaignId = campaigns[0].id;
   generateDraftsButton.disabled = !selectedCampaignId;
   renderCampaignDashboard();
   if (!campaigns.length) {

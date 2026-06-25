@@ -5503,6 +5503,7 @@ Deno.serve(async (request) => {
         .order("created_at", { ascending: false })
         .limit(500);
       if (body.campaign_id) query = query.eq("campaign_id", body.campaign_id);
+      if (body.rfx_event_id) query = query.eq("rfx_event_id", body.rfx_event_id);
       if (body.status) query = query.eq("status", body.status);
       if (body.channel) query = query.eq("channel", body.channel);
       const result = await query;
@@ -5517,10 +5518,11 @@ Deno.serve(async (request) => {
       if (!status || !["drafted", "queued", "sent", "replied", "failed", "archived"].includes(status)) {
         return jsonResponse({ error: "Valid message status is required." }, 400);
       }
-      const patch: Record<string, unknown> = { status, updated_at: new Date().toISOString() };
+      const now = new Date().toISOString();
+      const patch: Record<string, unknown> = { status, updated_at: now };
       if (status === "sent") {
-        patch.sent_at = new Date().toISOString();
-        patch.last_contacted_at = new Date().toISOString();
+        patch.sent_at = now;
+        patch.last_contacted_at = now;
       }
       const result = await supabase
         .from("outreach_messages")
@@ -5545,6 +5547,24 @@ Deno.serve(async (request) => {
       if (historyRows.length) {
         const history = await supabase.from("contact_history").insert(historyRows);
         if (history.error) throw history.error;
+      }
+
+      const linkedInvitationIds = [...new Set((result.data || [])
+        .map((message) => cleanText(message.rfx_lane_vendor_id))
+        .filter(Boolean))];
+      if (linkedInvitationIds.length && ["sent", "replied"].includes(status)) {
+        const invitationPatch: Record<string, unknown> = {
+          invitation_status: status === "sent" ? "invited" : "viewed",
+          updated_at: now
+        };
+        if (status === "sent") invitationPatch.invited_at = now;
+        if (status === "replied") invitationPatch.viewed_at = now;
+        const invitationUpdate = await supabase
+          .from("rfx_lane_vendors")
+          .update(invitationPatch)
+          .in("id", linkedInvitationIds)
+          .not("invitation_status", "in", "(bid_submitted,awarded,archived)");
+        if (invitationUpdate.error) throw invitationUpdate.error;
       }
 
       return jsonResponse({ updated: result.data?.length || 0, rows: result.data || [] });

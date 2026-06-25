@@ -267,6 +267,51 @@
                 <span id="rfx-action-status" class="row-save-status"></span>
               </div>
 
+              <section class="rfx-outreach-launchpad">
+                <div class="split-heading">
+                  <div>
+                    <p class="eyebrow">Outreach launchpad</p>
+                    <h3>Gmail / WhatsApp campaign flow</h3>
+                  </div>
+                  <a id="open-rfx-outreach" class="secondary small-button" href="./outreach.html">Open Outreach</a>
+                </div>
+                <div class="rfx-outreach-grid">
+                  <form id="rfx-outreach-form" class="rfx-outreach-form">
+                    <label>
+                      Campaign name
+                      <input id="rfx-outreach-campaign-name" placeholder="RFx invitation wave" />
+                    </label>
+                    <label>
+                      Template
+                      <select id="rfx-outreach-template"></select>
+                    </label>
+                    <label>
+                      Channel
+                      <select id="rfx-outreach-channel">
+                        <option value="multi">Email + WhatsApp</option>
+                        <option value="email">Gmail only</option>
+                        <option value="whatsapp">WhatsApp only</option>
+                      </select>
+                    </label>
+                    <button id="create-rfx-outreach-campaign" type="submit" disabled>Create drafts</button>
+                    <p id="rfx-outreach-status" class="status-message" role="status"></p>
+                  </form>
+                  <div id="rfx-outreach-preview" class="outreach-template-preview">
+                    <strong>No template selected.</strong>
+                    <span>Select a template to preview the carrier invite before creating drafts.</span>
+                  </div>
+                </div>
+                <div class="rfx-touchpoint-panel">
+                  <div>
+                    <strong>Invitation tracking</strong>
+                    <span id="rfx-touchpoint-summary">No campaign activity loaded.</span>
+                  </div>
+                  <div id="rfx-touchpoint-list" class="rfx-touchpoint-list">
+                    <article>No Gmail or WhatsApp activity for this event yet.</article>
+                  </div>
+                </div>
+              </section>
+
               <section class="rfx-response-board">
                 <div class="split-heading">
                   <div>
