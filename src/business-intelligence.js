@@ -8,6 +8,7 @@ import {
   promoteCarrierRecommendations
 } from "./business-intelligence-service.js";
 import { humanizeError } from "./error-copy.js";
+import { NORTH_AMERICA_MAP_BOUNDS, NORTH_AMERICA_MAP_PATHS } from "./north-america-map-paths.js";
 
 const chatForm = document.querySelector("#bi-chat-form");
 const promptInput = document.querySelector("#bi-prompt");
@@ -688,11 +689,12 @@ function projectNorthAmericaPoint(lat, lng) {
   const latitude = Number(lat);
   const longitude = Number(lng);
   if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
-  const x = ((longitude + 170) / 125) * 1000;
-  const y = ((73 - latitude) / 58) * 620;
+  const { lonMin, lonMax, latMin, latMax, width, height } = NORTH_AMERICA_MAP_BOUNDS;
+  const x = ((longitude - lonMin) / (lonMax - lonMin)) * width;
+  const y = ((latMax - latitude) / (latMax - latMin)) * height;
   return {
-    x: Math.max(0, Math.min(1000, x)),
-    y: Math.max(0, Math.min(620, y))
+    x: Math.max(0, Math.min(width, x)),
+    y: Math.max(0, Math.min(height, y))
   };
 }
 
@@ -729,15 +731,13 @@ function renderGeoMap(result) {
 
   geoMap.innerHTML = `
     <svg class="bi-na-map-svg" viewBox="0 0 1000 620" role="img" aria-label="North America freight density">
-      <rect x="0" y="0" width="1000" height="620" rx="14"></rect>
-      <path class="country canada" d="M185 44 C310 18 530 28 706 70 C812 96 900 164 910 246 C792 236 690 218 602 230 C500 246 410 236 318 218 C226 200 156 154 185 44Z"></path>
-      <path class="country usa" d="M245 240 C360 210 514 224 672 250 C764 266 846 298 862 374 C792 412 690 418 582 404 C470 390 372 384 266 402 C214 366 204 294 245 240Z"></path>
-      <path class="country mexico" d="M330 394 C430 402 526 428 610 466 C592 546 520 584 428 556 C354 534 296 480 274 420 C292 408 310 400 330 394Z"></path>
-      <text x="520" y="132">Canada</text>
-      <text x="540" y="326">United States</text>
-      <text x="420" y="500">Mexico</text>
-      <line x1="0" y1="310" x2="1000" y2="310"></line>
-      <line x1="500" y1="0" x2="500" y2="620"></line>
+      <rect class="map-water" x="0" y="0" width="1000" height="620" rx="14"></rect>
+      <path class="country canada" d="${NORTH_AMERICA_MAP_PATHS.canada}"></path>
+      <path class="country usa" d="${NORTH_AMERICA_MAP_PATHS.unitedStates}"></path>
+      <path class="country mexico" d="${NORTH_AMERICA_MAP_PATHS.mexico}"></path>
+      <text x="310" y="122">Canada</text>
+      <text x="468" y="340">United States</text>
+      <text x="382" y="508">Mexico</text>
       ${circles}
     </svg>
   `;
