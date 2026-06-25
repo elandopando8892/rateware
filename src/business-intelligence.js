@@ -1,5 +1,12 @@
 import { applyPermissionState, initAuthControls, requirePrivatePage } from "./auth.js";
-import { askCarrierIntelligence, fetchBusinessIntelligenceDrilldown, fetchBusinessIntelligencePivot, fetchCarrierRecommendations, promoteCarrierRecommendations } from "./business-intelligence-service.js";
+import {
+  askCarrierIntelligence,
+  fetchBusinessIntelligenceDrilldown,
+  fetchBusinessIntelligenceGeoDensity,
+  fetchBusinessIntelligencePivot,
+  fetchCarrierRecommendations,
+  promoteCarrierRecommendations
+} from "./business-intelligence-service.js";
 import { humanizeError } from "./error-copy.js";
 
 const chatForm = document.querySelector("#bi-chat-form");
@@ -42,10 +49,24 @@ const drilldownTitle = document.querySelector("#bi-drilldown-title");
 const drilldownStatus = document.querySelector("#bi-drilldown-status");
 const drilldownBody = document.querySelector("#bi-drilldown-body");
 const exportDrilldownButton = document.querySelector("#bi-export-drilldown");
+const runGeoButton = document.querySelector("#bi-run-geo");
+const exportGeoButton = document.querySelector("#bi-export-geo");
+const geoScope = document.querySelector("#bi-geo-scope");
+const geoLevel = document.querySelector("#bi-geo-level");
+const geoMetric = document.querySelector("#bi-geo-metric");
+const geoLimit = document.querySelector("#bi-geo-limit");
+const geoStatus = document.querySelector("#bi-geo-status");
+const geoMap = document.querySelector("#bi-na-map");
+const geoBody = document.querySelector("#bi-geo-body");
+const geoTransactions = document.querySelector("#bi-geo-transactions");
+const geoCarriers = document.querySelector("#bi-geo-carriers");
+const geoZones = document.querySelector("#bi-geo-zones");
+const geoMissing = document.querySelector("#bi-geo-missing");
 
 let currentRecommendations = [];
 let currentPivot = null;
 let currentDrilldown = null;
+let currentGeoDensity = null;
 let currentAnalystResult = null;
 let queuedActionIndexes = new Set();
 const selectedVendorIds = new Set();
@@ -62,8 +83,12 @@ const PIVOT_DIMENSIONS = [
   ["destination", "Destination"],
   ["origin_market", "Origin market"],
   ["destination_market", "Destination market"],
+  ["origin_region", "Origin region"],
+  ["destination_region", "Destination region"],
   ["origin_state", "Origin state"],
   ["destination_state", "Destination state"],
+  ["origin_zip", "Origin ZIP/ST"],
+  ["destination_zip", "Destination ZIP/ST"],
   ["origin_country", "Origin country"],
   ["destination_country", "Destination country"],
   ["equipment", "Equipment"],
@@ -279,6 +304,12 @@ function setDrilldownStatus(message, tone = "neutral") {
   drilldownStatus.dataset.tone = tone;
 }
 
+function setGeoStatus(message, tone = "neutral") {
+  if (!geoStatus) return;
+  geoStatus.textContent = tone === "error" ? humanizeError(message) : message;
+  geoStatus.dataset.tone = tone;
+}
+
 function moneyValue(value) {
   const number = Number(value);
   if (!Number.isFinite(number)) return "-";
@@ -442,6 +473,16 @@ function readRecommendationConfig() {
     limit: Number(readValue("#bi-rec-limit")) || 30,
     min_transactions: Number(readValue("#bi-rec-min-transactions")) || 0,
     filters: pivotConfig.filters
+  };
+}
+
+function readGeoConfig() {
+  return {
+    scope: geoScope?.value || "both",
+    level: geoLevel?.value || "market",
+    metric: geoMetric?.value || "transactions",
+    limit: Math.min(Math.max(Number(geoLimit?.value) || 80, 10), 250),
+    filters: readPivotConfig().filters
   };
 }
 
@@ -618,6 +659,170 @@ function exportDrilldownCsv() {
   ];
   downloadCsv("rateware-bi-drilldown.csv", rows);
   setDrilldownStatus("Drilldown CSV exported.", "success");
+}
+
+function geoMetricValue(point, metric) {
+  const value = point?.[metric] ?? point?.metric_value ?? point?.transactions;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : 0;
+}
+
+function geoMetricLabel(metric) {
+  const labels = {
+    transactions: "Transactions",
+    carriers: "Carriers",
+    avg_all_in: "Avg all-in",
+    avg_cost_per_mile: "Avg cost / mile",
+    avg_cost_per_km: "Avg cost / km"
+  };
+  return labels[metric] || metric;
+}
+
+function geoMoney(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "-";
+  return new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(number);
+}
+
+function projectNorthAmericaPoint(lat, lng) {
+  const latitude = Number(lat);
+  const longitude = Number(lng);
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+  const x = ((longitude + 170) / 125) * 1000;
+  const y = ((73 - latitude) / 58) * 620;
+  return {
+    x: Math.max(0, Math.min(1000, x)),
+    y: Math.max(0, Math.min(620, y))
+  };
+}
+
+function renderGeoMap(result) {
+  if (!geoMap) return;
+  const points = result.points || [];
+  if (!points.length) {
+    geoMap.innerHTML = `
+      <div class="empty-state">
+        <strong>No geo points available</strong>
+        <span>Try a broader filter or lower aggregation level. Rows without a resolved state/market are counted as missing geo.</span>
+      </div>
+    `;
+    return;
+  }
+  const metric = result.metric || "transactions";
+  const maxValue = Math.max(1, ...points.map((point) => geoMetricValue(point, metric)));
+  const circles = points
+    .map((point) => {
+      const projected = projectNorthAmericaPoint(point.lat, point.lng);
+      if (!projected) return "";
+      const value = geoMetricValue(point, metric);
+      const radius = 5 + Math.sqrt(value / maxValue) * 24;
+      const tone = point.flow === "origin" ? "origin" : point.flow === "destination" ? "destination" : "both";
+      const label = `${point.label} | ${point.flow} | ${geoMetricLabel(metric)} ${value} | ${point.transactions} tx | ${point.carriers} carriers`;
+      return `
+        <g class="bi-map-point" data-flow="${escapeHtml(tone)}">
+          <circle cx="${projected.x.toFixed(1)}" cy="${projected.y.toFixed(1)}" r="${radius.toFixed(1)}"></circle>
+          <title>${escapeHtml(label)}</title>
+        </g>
+      `;
+    })
+    .join("");
+
+  geoMap.innerHTML = `
+    <svg class="bi-na-map-svg" viewBox="0 0 1000 620" role="img" aria-label="North America freight density">
+      <rect x="0" y="0" width="1000" height="620" rx="14"></rect>
+      <path class="country canada" d="M185 44 C310 18 530 28 706 70 C812 96 900 164 910 246 C792 236 690 218 602 230 C500 246 410 236 318 218 C226 200 156 154 185 44Z"></path>
+      <path class="country usa" d="M245 240 C360 210 514 224 672 250 C764 266 846 298 862 374 C792 412 690 418 582 404 C470 390 372 384 266 402 C214 366 204 294 245 240Z"></path>
+      <path class="country mexico" d="M330 394 C430 402 526 428 610 466 C592 546 520 584 428 556 C354 534 296 480 274 420 C292 408 310 400 330 394Z"></path>
+      <text x="520" y="132">Canada</text>
+      <text x="540" y="326">United States</text>
+      <text x="420" y="500">Mexico</text>
+      <line x1="0" y1="310" x2="1000" y2="310"></line>
+      <line x1="500" y1="0" x2="500" y2="620"></line>
+      ${circles}
+    </svg>
+  `;
+}
+
+function renderGeoTable(result) {
+  if (!geoBody) return;
+  const points = result.points || [];
+  if (!points.length) {
+    geoBody.innerHTML = `
+      <tr>
+        <td colspan="5">
+          <div class="empty-state">
+            <strong>No zones match</strong>
+            <span>Relax the Pivot Builder filters or run a broader map level.</span>
+          </div>
+        </td>
+      </tr>
+    `;
+    return;
+  }
+  geoBody.innerHTML = points.slice(0, 80).map((point) => `
+    <tr>
+      <td>
+        <strong>${escapeHtml(point.label || "-")}</strong>
+        <small>${escapeHtml([point.state, point.country, point.region].filter(Boolean).join(" | ") || "-")}</small>
+      </td>
+      <td><span class="status-pill ${point.flow === "origin" ? "neutral" : point.flow === "destination" ? "success" : "muted"}">${escapeHtml(point.flow || "-")}</span></td>
+      <td>${formatNumber(point.transactions)}</td>
+      <td>${formatNumber(point.carriers)}</td>
+      <td>${geoMoney(point.avg_all_in)}${point.currency ? ` ${escapeHtml(point.currency)}` : ""}</td>
+    </tr>
+  `).join("");
+}
+
+function renderGeoDensity(result) {
+  currentGeoDensity = result;
+  if (geoTransactions) geoTransactions.textContent = formatNumber(result.summary?.transactions || 0);
+  if (geoCarriers) geoCarriers.textContent = formatNumber(result.summary?.carriers || 0);
+  if (geoZones) geoZones.textContent = formatNumber(result.summary?.zones || 0);
+  if (geoMissing) geoMissing.textContent = formatNumber(result.summary?.missing_geo || 0);
+  if (exportGeoButton) exportGeoButton.disabled = !(result.points || []).length;
+  renderGeoMap(result);
+  renderGeoTable(result);
+}
+
+async function runGeoDensity() {
+  if (!runGeoButton) return;
+  runGeoButton.disabled = true;
+  setGeoStatus("Building North America density map...");
+  try {
+    await requirePrivatePage();
+    const result = await fetchBusinessIntelligenceGeoDensity(readGeoConfig());
+    renderGeoDensity(result);
+    setGeoStatus(`${formatNumber(result.summary?.transactions || 0)} transaction(s), ${formatNumber(result.summary?.zones || 0)} zone(s).`, "success");
+  } catch (error) {
+    setGeoStatus(error.message, "error");
+  } finally {
+    runGeoButton.disabled = false;
+  }
+}
+
+function exportGeoCsv() {
+  if (!currentGeoDensity) return;
+  const rows = [
+    ["label", "flow", "level", "country", "state", "region", "market", "lat", "lng", "transactions", "carriers", "avg_all_in", "avg_cost_per_mile", "avg_cost_per_km"],
+    ...(currentGeoDensity.points || []).map((point) => [
+      point.label,
+      point.flow,
+      currentGeoDensity.level,
+      point.country,
+      point.state,
+      point.region,
+      point.market,
+      point.lat,
+      point.lng,
+      point.transactions,
+      point.carriers,
+      point.avg_all_in,
+      point.avg_cost_per_mile,
+      point.avg_cost_per_km
+    ])
+  ];
+  downloadCsv("rateware-geo-density.csv", rows);
+  setGeoStatus("Geo density CSV exported.", "success");
 }
 
 function selectedRecommendations() {
@@ -1026,8 +1231,8 @@ initAuthControls();
 setupPivotControls();
 requirePrivatePage()
   .then(async () => {
-    await applyPermissionState("#bi-submit-button, #bi-promote-selected, #bi-copy-list, #bi-run-recommendations, #bi-export-recommendations, #bi-run-pivot, #bi-copy-pivot, #bi-export-pivot, #bi-export-drilldown", "business-intelligence:use");
-    await runPivot();
+    await applyPermissionState("#bi-submit-button, #bi-promote-selected, #bi-copy-list, #bi-run-recommendations, #bi-export-recommendations, #bi-run-pivot, #bi-copy-pivot, #bi-export-pivot, #bi-export-drilldown, #bi-run-geo, #bi-export-geo", "business-intelligence:use");
+    await Promise.all([runPivot(), runGeoDensity()]);
   })
   .catch((error) => setStatus(error.message, "error"));
 
@@ -1058,7 +1263,13 @@ document.querySelectorAll("[data-bi-scroll-target]").forEach((button) => {
 
 document.querySelectorAll("#bi-pivot-panel select, #bi-pivot-panel input").forEach((input) => {
   input.addEventListener("input", renderContextChips);
+  input.addEventListener("input", () => setGeoStatus("Filters changed. Refresh the map to update density.", "warning"));
   input.addEventListener("change", renderContextChips);
+  input.addEventListener("change", () => setGeoStatus("Filters changed. Refresh the map to update density.", "warning"));
+});
+
+document.querySelectorAll("#bi-geo-panel select, #bi-geo-panel input").forEach((input) => {
+  input.addEventListener("change", () => setGeoStatus("Geo settings changed. Refresh the map to update density.", "warning"));
 });
 
 proposedActions?.addEventListener("click", async (event) => {
@@ -1104,6 +1315,8 @@ runPivotButton?.addEventListener("click", runPivot);
 copyPivotButton?.addEventListener("click", copyPivot);
 exportPivotButton?.addEventListener("click", exportPivotCsv);
 exportDrilldownButton?.addEventListener("click", exportDrilldownCsv);
+runGeoButton?.addEventListener("click", runGeoDensity);
+exportGeoButton?.addEventListener("click", exportGeoCsv);
 
 document.querySelectorAll("[data-bi-template]").forEach((button) => {
   button.addEventListener("click", async () => {

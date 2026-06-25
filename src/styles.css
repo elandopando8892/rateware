@@ -7296,6 +7296,159 @@ select.staging-input {
   gap: 12px;
 }
 
+.bi-geo-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.bi-geo-controls {
+  display: grid;
+  grid-template-columns: minmax(150px, 200px) minmax(150px, 200px) minmax(150px, 210px) minmax(100px, 140px);
+  gap: 10px;
+  align-items: end;
+}
+
+.bi-geo-controls label {
+  display: grid;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 820;
+}
+
+.bi-geo-controls select,
+.bi-geo-controls input {
+  min-height: 30px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: #fff;
+  padding: 4px 8px;
+  font-size: 0.8rem;
+}
+
+.bi-geo-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 0.38fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.bi-map-shell {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  background: linear-gradient(180deg, #f8fbfc 0%, #eef3f5 100%);
+}
+
+.bi-map-legend {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.74);
+  padding: 8px 10px;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 820;
+}
+
+.bi-map-legend i {
+  display: block;
+  width: 130px;
+  height: 8px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(71, 101, 126, 0.2), rgba(45, 127, 118, 0.92));
+}
+
+.bi-na-map {
+  min-height: 430px;
+}
+
+.bi-na-map .empty-state {
+  min-height: 430px;
+}
+
+.bi-na-map-svg {
+  display: block;
+  width: 100%;
+  height: min(58vh, 560px);
+  min-height: 430px;
+}
+
+.bi-na-map-svg rect {
+  fill: #edf4f7;
+}
+
+.bi-na-map-svg .country {
+  fill: rgba(255, 255, 255, 0.72);
+  stroke: rgba(116, 132, 145, 0.45);
+  stroke-width: 1.3;
+}
+
+.bi-na-map-svg text {
+  fill: rgba(52, 64, 74, 0.48);
+  font-size: 20px;
+  font-weight: 850;
+}
+
+.bi-na-map-svg line {
+  stroke: rgba(116, 132, 145, 0.16);
+  stroke-width: 1;
+}
+
+.bi-map-point circle {
+  stroke: rgba(255, 255, 255, 0.82);
+  stroke-width: 2;
+  fill: rgba(52, 66, 78, 0.58);
+  transition: fill 140ms ease, stroke 140ms ease;
+}
+
+.bi-map-point[data-flow="origin"] circle {
+  fill: rgba(46, 101, 175, 0.62);
+}
+
+.bi-map-point[data-flow="destination"] circle {
+  fill: rgba(31, 143, 111, 0.62);
+}
+
+.bi-map-point:hover circle {
+  stroke: #1f2d38;
+  fill: rgba(31, 45, 56, 0.86);
+}
+
+.bi-geo-sidebar {
+  display: grid;
+  gap: 10px;
+}
+
+.bi-geo-summary {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0;
+}
+
+.bi-geo-summary article {
+  min-height: 58px;
+}
+
+.bi-geo-table {
+  min-width: 620px;
+}
+
+.bi-geo-table td {
+  vertical-align: top;
+}
+
+.bi-geo-table td strong,
+.bi-geo-table td small {
+  display: block;
+}
+
+.bi-geo-table td small {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 0.68rem;
+}
+
 .bi-recommendation-controls {
   display: grid;
   grid-template-columns: minmax(180px, 1fr) minmax(100px, 140px) minmax(120px, 160px) minmax(180px, 1fr);
@@ -9931,6 +10084,8 @@ tbody tr:hover {
   .bi-context-panel,
   .bi-action-plan-list,
   .bi-analyst-grid,
+  .bi-geo-controls,
+  .bi-geo-workspace,
   .bi-recommendation-controls,
   .bi-pivot-builder,
   .bi-filter-grid,

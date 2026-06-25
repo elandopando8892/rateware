@@ -151,11 +151,121 @@
           </section>
 
           <nav class="bi-result-nav" aria-label="AI Analyst result navigation">
+            <button type="button" data-bi-scroll-target="#bi-geo-panel">Geo density</button>
             <button type="button" data-bi-scroll-target="#bi-analyst-panel">Action plan</button>
             <button type="button" data-bi-scroll-target="#bi-pivot-panel">Pivots</button>
             <button type="button" data-bi-scroll-target="#bi-results-panel">Carrier table</button>
             <button type="button" data-bi-scroll-target="#bi-recommendation-panel">Ranking controls</button>
           </nav>
+
+          <section id="bi-geo-panel" class="workspace-panel bi-geo-panel">
+            <div class="section-heading compact split-heading">
+              <div>
+                <p class="eyebrow">North America density</p>
+                <h2>Inbound / outbound map</h2>
+              </div>
+              <div class="action-row">
+                <button id="bi-run-geo" type="button">Refresh map</button>
+                <button id="bi-export-geo" type="button" class="secondary" disabled>Export CSV</button>
+              </div>
+            </div>
+
+            <div class="bi-geo-controls">
+              <label>
+                Flow
+                <select id="bi-geo-scope">
+                  <option value="both">Inbound + outbound</option>
+                  <option value="origin">Outbound origin density</option>
+                  <option value="destination">Inbound destination density</option>
+                </select>
+              </label>
+              <label>
+                Level
+                <select id="bi-geo-level">
+                  <option value="region">Region</option>
+                  <option value="state">State</option>
+                  <option value="market" selected>Key Market Area</option>
+                  <option value="location">Specific location</option>
+                </select>
+              </label>
+              <label>
+                Metric
+                <select id="bi-geo-metric">
+                  <option value="transactions">Transactions</option>
+                  <option value="carriers">Distinct carriers</option>
+                  <option value="avg_all_in">Avg all-in</option>
+                  <option value="avg_cost_per_mile">Avg cost / mile</option>
+                  <option value="avg_cost_per_km">Avg cost / km</option>
+                </select>
+              </label>
+              <label>
+                Top zones
+                <input id="bi-geo-limit" type="number" min="10" max="250" value="80" />
+              </label>
+            </div>
+
+            <p id="bi-geo-status" class="status-message" role="status">Uses the current Pivot Builder filters.</p>
+
+            <div class="bi-geo-workspace">
+              <div class="bi-map-shell">
+                <div class="bi-map-legend">
+                  <span>Lower density</span>
+                  <i></i>
+                  <strong>Higher density</strong>
+                </div>
+                <div id="bi-na-map" class="bi-na-map" aria-label="North America density map">
+                  <div class="empty-state">
+                    <strong>No geo density loaded</strong>
+                    <span>Refresh the map to plot origin and destination density.</span>
+                  </div>
+                </div>
+              </div>
+
+              <aside class="bi-geo-sidebar">
+                <div class="review-insight-grid bi-geo-summary" aria-label="Geo summary">
+                  <article>
+                    <span>Transactions</span>
+                    <strong id="bi-geo-transactions">0</strong>
+                  </article>
+                  <article>
+                    <span>Carriers</span>
+                    <strong id="bi-geo-carriers">0</strong>
+                  </article>
+                  <article>
+                    <span>Zones</span>
+                    <strong id="bi-geo-zones">0</strong>
+                  </article>
+                  <article>
+                    <span>Missing geo</span>
+                    <strong id="bi-geo-missing">0</strong>
+                  </article>
+                </div>
+                <div class="table-wrap">
+                  <table class="bi-geo-table">
+                    <thead>
+                      <tr>
+                        <th>Zone</th>
+                        <th>Flow</th>
+                        <th>Tx</th>
+                        <th>Carriers</th>
+                        <th>Avg rate</th>
+                      </tr>
+                    </thead>
+                    <tbody id="bi-geo-body">
+                      <tr>
+                        <td colspan="5">
+                          <div class="empty-state">
+                            <strong>No zones yet</strong>
+                            <span>Run the geo density view.</span>
+                          </div>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </aside>
+            </div>
+          </section>
 
           <section id="bi-analyst-panel" class="workspace-panel bi-analyst-panel">
             <div class="section-heading compact split-heading">

@@ -2560,8 +2560,12 @@ const BI_DIMENSIONS = [
   { key: "destination", label: "Destination" },
   { key: "origin_market", label: "Origin market" },
   { key: "destination_market", label: "Destination market" },
+  { key: "origin_region", label: "Origin region" },
+  { key: "destination_region", label: "Destination region" },
   { key: "origin_state", label: "Origin state" },
   { key: "destination_state", label: "Destination state" },
+  { key: "origin_zip", label: "Origin ZIP/ST" },
+  { key: "destination_zip", label: "Destination ZIP/ST" },
   { key: "origin_country", label: "Origin country" },
   { key: "destination_country", label: "Destination country" },
   { key: "equipment", label: "Equipment" },
@@ -2639,8 +2643,12 @@ function biDimensionValue(row: Record<string, unknown>, keyName: string) {
     destination,
     origin_market: originMarket,
     destination_market: destinationMarket,
+    origin_region: row.origin_region || "-",
+    destination_region: row.destination_region || "-",
     origin_state: row.origin_state || "-",
     destination_state: row.destination_state || "-",
+    origin_zip: row.origin_zip_prefix || row.origin_state || "-",
+    destination_zip: row.destination_zip_prefix || row.destination_state || "-",
     origin_country: row.origin_country || "-",
     destination_country: row.destination_country || "-",
     equipment: row.equipment || "-",
@@ -2860,6 +2868,342 @@ async function buildBusinessIntelligenceDrilldown(supabase: ReturnType<typeof cr
       column_value: columnValue || "Total"
     }
   };
+}
+
+const GEO_CITY_COORDINATES: Record<string, [number, number]> = {
+  "laredo|tx": [27.5064, -99.5075],
+  "dallas|tx": [32.7767, -96.7970],
+  "fort worth|tx": [32.7555, -97.3308],
+  "houston|tx": [29.7604, -95.3698],
+  "san antonio|tx": [29.4241, -98.4936],
+  "mcallen|tx": [26.2034, -98.2300],
+  "el paso|tx": [31.7619, -106.4850],
+  "bowling green|ky": [36.9685, -86.4808],
+  "louisville|ky": [38.2527, -85.7585],
+  "canton|ms": [32.6126, -90.0368],
+  "jackson|ms": [32.2988, -90.1848],
+  "smyrna|tn": [35.9828, -86.5186],
+  "nashville|tn": [36.1627, -86.7816],
+  "memphis|tn": [35.1495, -90.0490],
+  "chicago|il": [41.8781, -87.6298],
+  "detroit|mi": [42.3314, -83.0458],
+  "atlanta|ga": [33.7490, -84.3880],
+  "charlotte|nc": [35.2271, -80.8431],
+  "los angeles|ca": [34.0522, -118.2437],
+  "ontario|ca": [34.0633, -117.6509],
+  "phoenix|az": [33.4484, -112.0740],
+  "denver|co": [39.7392, -104.9903],
+  "kansas city|mo": [39.0997, -94.5786],
+  "st louis|mo": [38.6270, -90.1994],
+  "toronto|on": [43.6532, -79.3832],
+  "montreal|qc": [45.5017, -73.5673],
+  "vancouver|bc": [49.2827, -123.1207],
+  "monterrey|nl": [25.6866, -100.3161],
+  "apodaca|nl": [25.7816, -100.1881],
+  "nuevo laredo|tm": [27.4864, -99.5054],
+  "reynosa|tm": [26.0922, -98.2777],
+  "matamoros|tm": [25.8690, -97.5027],
+  "saltillo|cu": [25.4382, -100.9737],
+  "ramos arizpe|cu": [25.5393, -100.9474],
+  "torreon|cu": [25.5428, -103.4068],
+  "toluca|mx": [19.2826, -99.6557],
+  "lerma|mx": [19.2858, -99.5114],
+  "mexico city|df": [19.4326, -99.1332],
+  "mexico|df": [19.4326, -99.1332],
+  "queretaro|qe": [20.5888, -100.3899],
+  "san luis potosi|sl": [22.1565, -100.9855],
+  "aguascalientes|ag": [21.8853, -102.2916],
+  "guadalajara|ja": [20.6597, -103.3496],
+  "puebla|pb": [19.0414, -98.2063],
+  "leon|gj": [21.1250, -101.6860],
+  "hermosillo|so": [29.0729, -110.9559],
+  "nogales|so": [31.3012, -110.9381],
+  "tijuana|bn": [32.5149, -117.0382],
+  "mexicali|bn": [32.6245, -115.4523],
+  "chihuahua|ch": [28.6320, -106.0691],
+  "cd juarez|ch": [31.6904, -106.4245],
+  "ciudad juarez|ch": [31.6904, -106.4245],
+  "veracruz|ve": [19.1738, -96.1342],
+  "merida|yu": [20.9674, -89.5926],
+  "cancun|qr": [21.1619, -86.8515],
+  "culiacan|si": [24.8091, -107.3940]
+};
+
+const GEO_STATE_COORDINATES: Record<string, [number, number]> = {
+  "us|al": [32.8067, -86.7911],
+  "us|az": [34.0489, -111.0937],
+  "us|ar": [34.9697, -92.3731],
+  "us|ca": [36.7783, -119.4179],
+  "us|co": [39.5501, -105.7821],
+  "us|ct": [41.6032, -73.0877],
+  "us|fl": [27.6648, -81.5158],
+  "us|ga": [32.1656, -82.9001],
+  "us|ia": [41.8780, -93.0977],
+  "us|il": [40.6331, -89.3985],
+  "us|in": [40.2672, -86.1349],
+  "us|ks": [39.0119, -98.4842],
+  "us|ky": [37.8393, -84.2700],
+  "us|la": [31.2448, -92.1450],
+  "us|ma": [42.4072, -71.3824],
+  "us|md": [39.0458, -76.6413],
+  "us|mi": [44.3148, -85.6024],
+  "us|mn": [46.7296, -94.6859],
+  "us|mo": [37.9643, -91.8318],
+  "us|ms": [32.3547, -89.3985],
+  "us|nc": [35.7596, -79.0193],
+  "us|ne": [41.4925, -99.9018],
+  "us|nj": [40.0583, -74.4057],
+  "us|nm": [34.5199, -105.8701],
+  "us|nv": [38.8026, -116.4194],
+  "us|ny": [43.2994, -74.2179],
+  "us|oh": [40.4173, -82.9071],
+  "us|ok": [35.0078, -97.0929],
+  "us|or": [43.8041, -120.5542],
+  "us|pa": [41.2033, -77.1945],
+  "us|sc": [33.8361, -81.1637],
+  "us|tn": [35.5175, -86.5804],
+  "us|tx": [31.9686, -99.9018],
+  "us|ut": [39.3210, -111.0937],
+  "us|va": [37.4316, -78.6569],
+  "us|wa": [47.7511, -120.7401],
+  "us|wi": [43.7844, -88.7879],
+  "ca|ab": [53.9333, -116.5765],
+  "ca|bc": [53.7267, -127.6476],
+  "ca|mb": [53.7609, -98.8139],
+  "ca|nb": [46.5653, -66.4619],
+  "ca|nl": [53.1355, -57.6604],
+  "ca|ns": [44.6820, -63.7443],
+  "ca|on": [51.2538, -85.3232],
+  "ca|qc": [52.9399, -73.5491],
+  "ca|sk": [52.9399, -106.4509],
+  "mx|ag": [21.8853, -102.2916],
+  "mx|bn": [30.8406, -115.2838],
+  "mx|bs": [26.0444, -111.6661],
+  "mx|ch": [28.6330, -106.0691],
+  "mx|cu": [27.0587, -101.7068],
+  "mx|df": [19.4326, -99.1332],
+  "mx|gj": [21.0190, -101.2574],
+  "mx|ja": [20.6597, -103.3496],
+  "mx|mc": [19.5665, -101.7068],
+  "mx|mx": [19.2826, -99.6557],
+  "mx|nl": [25.5922, -99.9962],
+  "mx|pb": [19.0414, -98.2063],
+  "mx|qe": [20.5888, -100.3899],
+  "mx|qr": [19.1817, -88.4791],
+  "mx|si": [24.8091, -107.3940],
+  "mx|sl": [22.1565, -100.9855],
+  "mx|so": [29.2972, -110.3309],
+  "mx|tm": [24.2669, -98.8363],
+  "mx|ve": [19.1738, -96.1342],
+  "mx|yu": [20.7099, -89.0943]
+};
+
+const GEO_REGION_COORDINATES: Record<string, [number, number]> = {
+  "central mexico": [20.0, -99.4],
+  "northeast mexico": [25.7, -100.3],
+  "northwest mexico": [29.1, -110.9],
+  "bajio": [20.8, -101.2],
+  "southeast mexico": [19.0, -90.4],
+  "z0 new england": [42.1, -71.7],
+  "z1 mid atlantic": [40.2, -75.2],
+  "z2 southeast": [33.2, -84.3],
+  "z3 midwest": [41.8, -93.5],
+  "z4 south central": [32.8, -96.8],
+  "z5 southwest": [33.4, -112.1],
+  "z6 mid central west": [39.0, -104.5],
+  "z7 west": [37.8, -122.0],
+  "z8 pacific northwest": [47.6, -122.3]
+};
+
+function geoStateCode(value: unknown) {
+  const text = cleanText(value)?.toUpperCase() || "";
+  const aliases: Record<string, string> = {
+    COAHUILA: "CU",
+    NUEVO_LEON: "NL",
+    "NUEVO LEON": "NL",
+    TAMAULIPAS: "TM",
+    MEXICO: "MX",
+    "ESTADO DE MEXICO": "MX",
+    QUERETARO: "QE",
+    JALISCO: "JA",
+    SONORA: "SO",
+    CHIHUAHUA: "CH",
+    SINALOA: "SI",
+    GUANAJUATO: "GJ",
+    "SAN LUIS POTOSI": "SL",
+    AGUASCALIENTES: "AG",
+    PUEBLA: "PB"
+  };
+  return aliases[text] || text.slice(0, 2);
+}
+
+function geoCountryCode(row: Record<string, unknown>, side: "origin" | "destination", stateCode: string) {
+  const raw = cleanText(row[`${side}_country`])?.toUpperCase() || "";
+  if (["MX", "MEX", "MEXICO", "MÉXICO"].includes(raw)) return "MX";
+  if (["US", "USA", "UNITED STATES"].includes(raw)) return "US";
+  if (["CA", "CAN", "CANADA"].includes(raw)) return "CA";
+  if (GEO_STATE_COORDINATES[`mx|${stateCode.toLowerCase()}`]) return "MX";
+  if (GEO_STATE_COORDINATES[`ca|${stateCode.toLowerCase()}`]) return "CA";
+  if (GEO_STATE_COORDINATES[`us|${stateCode.toLowerCase()}`]) return "US";
+  return raw || "";
+}
+
+function geoCleanCity(value: unknown) {
+  return cleanText(value)
+    ?.replace(/\b\d{3,6}\b/g, "")
+    .split(",")[0]
+    .replace(/\s+/g, " ")
+    .trim() || "";
+}
+
+function geoLookupKey(value: unknown) {
+  return catalogKey(value)
+    .toLowerCase()
+    .replace(/\([^)]*\)/g, "")
+    .replace(/\bmkt\b/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function geoCoordinateFor(parts: { label: string; level: string; city: string; market: string; state: string; country: string; region: string }) {
+  const state = geoStateCode(parts.state).toLowerCase();
+  const country = parts.country.toLowerCase();
+  const city = geoLookupKey(parts.city || parts.label || parts.market);
+  const market = geoLookupKey(parts.market || parts.label);
+  const region = geoLookupKey(parts.region);
+  const cityKey = city && state ? `${city}|${state}` : "";
+  const marketKey = market && state ? `${market}|${state}` : "";
+  const stateKey = country && state ? `${country}|${state}` : "";
+  const regionMatch = region ? Object.entries(GEO_REGION_COORDINATES).find(([keyName]) => region.includes(keyName) || keyName.includes(region)) : null;
+  if (parts.level === "region" && regionMatch) return { coords: regionMatch[1], source: "region" };
+  if (parts.level === "state" && stateKey && GEO_STATE_COORDINATES[stateKey]) return { coords: GEO_STATE_COORDINATES[stateKey], source: "state" };
+  if (cityKey && GEO_CITY_COORDINATES[cityKey]) return { coords: GEO_CITY_COORDINATES[cityKey], source: "city" };
+  if (marketKey && GEO_CITY_COORDINATES[marketKey]) return { coords: GEO_CITY_COORDINATES[marketKey], source: "market" };
+  if (regionMatch) return { coords: regionMatch[1], source: "region" };
+  if (stateKey && GEO_STATE_COORDINATES[stateKey]) return { coords: GEO_STATE_COORDINATES[stateKey], source: "state" };
+  return { coords: null, source: "missing" };
+}
+
+function geoSidePoint(row: Record<string, unknown>, side: "origin" | "destination", level: string, flow: string) {
+  const rawLocation = cleanText(row[`normalized_${side}`] || row[side]) || "";
+  const state = geoStateCode(row[`${side}_state`]);
+  const country = geoCountryCode(row, side, state);
+  const market = cleanText(row[`${side}_market`]) || "";
+  const region = cleanText(row[`${side}_region`]) || "";
+  const zip = cleanText(row[`${side}_zip_prefix`]) || "";
+  const city = geoCleanCity(rawLocation || market);
+  const labels: Record<string, string> = {
+    region: region || [country, state].filter(Boolean).join(" / ") || rawLocation || "-",
+    state: [state, country].filter(Boolean).join(" / ") || rawLocation || "-",
+    market: market || rawLocation || [state, country].filter(Boolean).join(" / ") || "-",
+    location: rawLocation || market || [state, country].filter(Boolean).join(" / ") || "-"
+  };
+  const label = labels[level] || labels.market;
+  const coordinate = geoCoordinateFor({ label, level, city, market, state, country, region });
+  if (!coordinate.coords) return null;
+  return {
+    key: [flow, level, label, state, country].join("|"),
+    label,
+    flow,
+    level,
+    side,
+    city,
+    state,
+    country,
+    market,
+    region,
+    zip,
+    lat: coordinate.coords[0],
+    lng: coordinate.coords[1],
+    geo_source: coordinate.source
+  };
+}
+
+function geoMetricSortValue(point: Record<string, unknown>, metric: string) {
+  if (metric === "carriers") return Number(point.carriers || 0);
+  if (metric === "avg_all_in") return Number(point.avg_all_in || 0);
+  if (metric === "avg_cost_per_mile") return Number(point.avg_cost_per_mile || 0);
+  if (metric === "avg_cost_per_km") return Number(point.avg_cost_per_km || 0);
+  return Number(point.transactions || 0);
+}
+
+function buildBusinessIntelligenceGeoDensity(rows: Record<string, unknown>[], config: Record<string, unknown>) {
+  const filters = objectRecord(config.filters);
+  const filteredRows = filterBiRows(rows, filters);
+  const scope = ["origin", "destination", "both"].includes(cleanText(config.scope) || "") ? cleanText(config.scope)! : "both";
+  const level = ["region", "state", "market", "location"].includes(cleanText(config.level) || "") ? cleanText(config.level)! : "market";
+  const metric = cleanText(config.metric) || "transactions";
+  const limit = Math.min(Math.max(Number(config.limit) || 80, 10), 250);
+  const sides: Array<"origin" | "destination"> = scope === "origin" ? ["origin"] : scope === "destination" ? ["destination"] : ["origin", "destination"];
+  const groups = new Map<string, { point: Record<string, unknown>; rows: Record<string, unknown>[]; carriers: Set<string>; rates: number[]; cpm: number[]; cpk: number[] }>();
+  let missingGeo = 0;
+
+  for (const row of filteredRows) {
+    for (const side of sides) {
+      const flow = side;
+      const point = geoSidePoint(row, side, level, flow);
+      if (!point) {
+        missingGeo += 1;
+        continue;
+      }
+      const group = groups.get(point.key) || { point, rows: [], carriers: new Set<string>(), rates: [], cpm: [], cpk: [] };
+      group.rows.push(row);
+      group.carriers.add(biDimensionValue(row, "vendor"));
+      const allIn = numericAmount(row.all_in_rate);
+      const costPerMile = biNumber(row, "cost_per_mile");
+      const costPerKm = biNumber(row, "cost_per_km");
+      if (allIn !== null) group.rates.push(allIn);
+      if (costPerMile !== null) group.cpm.push(costPerMile);
+      if (costPerKm !== null) group.cpk.push(costPerKm);
+      groups.set(point.key, group);
+    }
+  }
+
+  const avg = (values: number[]) => values.length ? Math.round((values.reduce((sum, value) => sum + value, 0) / values.length) * 100) / 100 : null;
+  const points = [...groups.values()]
+    .map((group) => ({
+      ...group.point,
+      transactions: group.rows.length,
+      carriers: group.carriers.size,
+      avg_all_in: avg(group.rates),
+      avg_cost_per_mile: avg(group.cpm),
+      avg_cost_per_km: avg(group.cpk),
+      currency: cleanText(group.rows[0]?.currency) || "USD",
+      metric_value: geoMetricSortValue({
+        transactions: group.rows.length,
+        carriers: group.carriers.size,
+        avg_all_in: avg(group.rates),
+        avg_cost_per_mile: avg(group.cpm),
+        avg_cost_per_km: avg(group.cpk)
+      }, metric)
+    }))
+    .sort((a, b) => geoMetricSortValue(b, metric) - geoMetricSortValue(a, metric) || Number(b.transactions || 0) - Number(a.transactions || 0))
+    .slice(0, limit);
+
+  const carrierSet = new Set(filteredRows.map((row) => biDimensionValue(row, "vendor")).filter(Boolean));
+  return {
+    points,
+    level,
+    scope,
+    metric,
+    filters,
+    summary: {
+      transactions: filteredRows.length,
+      carriers: carrierSet.size,
+      zones: groups.size,
+      missing_geo: missingGeo,
+      plotted: points.length
+    },
+    notes: [
+      "Coordinates are resolved from known city/market centroids first, then state/province fallback.",
+      "Use Admin > Catalogs to harden location data before relying on specific-location heatmaps."
+    ]
+  };
+}
+
+async function buildBusinessIntelligenceGeoDensityFromDb(supabase: ReturnType<typeof createClient>, user: { owner_email: string | null }, config: Record<string, unknown>) {
+  const scopedRows = await fetchBusinessIntelligenceRows(supabase, user);
+  return buildBusinessIntelligenceGeoDensity(scopedRows, config);
 }
 
 function normalizeTags(value: unknown) {
@@ -4913,6 +5257,11 @@ Deno.serve(async (request) => {
 
     if (body.action === "business_intelligence_drilldown") {
       const result = await buildBusinessIntelligenceDrilldown(supabase, user, body.config || {}, body.cell || {});
+      return jsonResponse(result);
+    }
+
+    if (body.action === "business_intelligence_geo_density") {
+      const result = await buildBusinessIntelligenceGeoDensityFromDb(supabase, user, body.config || {});
       return jsonResponse(result);
     }
 
