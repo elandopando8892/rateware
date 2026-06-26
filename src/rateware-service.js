@@ -33,6 +33,10 @@ export async function fetchRatewareAudit(id, limit = 80) {
   return (await callRatewareApi("list_rateware_audit", { id, limit })).rows;
 }
 
+export async function fetchApprovedRatewareDetail(id) {
+  return (await callRatewareApi("get_rate_row_detail", { id, status: "approved" })).row;
+}
+
 export async function fetchRatewareOptions() {
   return await callRatewareApi("list_staging_options");
 }

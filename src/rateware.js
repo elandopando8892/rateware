@@ -1,6 +1,6 @@
 import { initAuthControls, requirePrivatePage } from "./auth.js";
 import { createLocationMatchDrawer } from "./location-match-drawer.js";
-import { archiveApprovedRatewareByFilter, bulkUpdateApprovedRatewareRows, createRatewareBookVersion, enrichApprovedRatewareLocationZips, fetchApprovedRatewarePage, fetchRatewareAudit, fetchRatewareBookVersion, fetchRatewareBookVersions, fetchRatewareFilterValues, matchApprovedRatewareVendors, matchApprovedRatewareVendorsByFilter, renormalizeApprovedRatewareRows, fetchRatewareOptions, removeApprovedRatewareByFilter, returnApprovedRatesToStaging, saveLocationAlias, updateApprovedRatewareByFilter, updateApprovedRatewareRow } from "./rateware-service.js";
+import { archiveApprovedRatewareByFilter, bulkUpdateApprovedRatewareRows, createRatewareBookVersion, enrichApprovedRatewareLocationZips, fetchApprovedRatewareDetail, fetchApprovedRatewarePage, fetchRatewareAudit, fetchRatewareBookVersion, fetchRatewareBookVersions, fetchRatewareFilterValues, matchApprovedRatewareVendors, matchApprovedRatewareVendorsByFilter, renormalizeApprovedRatewareRows, fetchRatewareOptions, removeApprovedRatewareByFilter, returnApprovedRatesToStaging, saveLocationAlias, updateApprovedRatewareByFilter, updateApprovedRatewareRow } from "./rateware-service.js";
 import { initSpreadsheetColumnFilters } from "./spreadsheet-column-filters.js";
 import { installSpreadsheetGrid } from "./spreadsheet-grid.js";
 import { initColumnVisibility, initDrawer, initLocationAutocomplete } from "./sheet-ui.js";
@@ -1047,10 +1047,7 @@ function rateComponent(label, value) {
   `;
 }
 
-function openRatewareDrawer(id) {
-  const row = currentRows.find((item) => item.id === id) || loadedRows.find((item) => item.id === id);
-  if (!row) return;
-
+function renderRatewareDrawer(row) {
   const equipment = [row.equipment, row.trailer, row.hazmat ? "Hazmat" : "", row.temperature_controlled ? "Temp controlled" : "", row.config]
     .filter(Boolean)
     .join(" / ");
@@ -1110,6 +1107,37 @@ function openRatewareDrawer(id) {
   `;
   drawer.classList.remove("hidden");
   loadRatewareGovernance(row.id);
+}
+
+async function openRatewareDrawer(id) {
+  const row = currentRows.find((item) => item.id === id) || loadedRows.find((item) => item.id === id);
+  if (!row) return;
+
+  drawerTitle.textContent = laneLabel(row);
+  ratewareDetail.innerHTML = `
+    <section class="rateware-detail-section">
+      <h3>Loading rate detail...</h3>
+      <p class="muted-text">Loading source evidence and normalization audit only for this selected rate.</p>
+    </section>
+  `;
+  drawer.classList.remove("hidden");
+
+  try {
+    const detail = await fetchApprovedRatewareDetail(id);
+    const hydrated = { ...row, ...detail };
+    const loadedIndex = loadedRows.findIndex((item) => item.id === id);
+    if (loadedIndex >= 0) loadedRows[loadedIndex] = hydrated;
+    const currentIndex = currentRows.findIndex((item) => item.id === id);
+    if (currentIndex >= 0) currentRows[currentIndex] = hydrated;
+    renderRatewareDrawer(hydrated);
+  } catch (error) {
+    ratewareDetail.innerHTML = `
+      <section class="rateware-detail-section">
+        <h3>Could not load full detail</h3>
+        <p class="status-message" data-tone="error">${escapeHtml(error.message)}</p>
+      </section>
+    `;
+  }
 }
 
 function renderRatewareTableRow(row) {

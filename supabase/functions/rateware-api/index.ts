@@ -155,6 +155,24 @@ function withOwner(row: Record<string, unknown>, user: { owner_user_id: string |
   };
 }
 
+async function resolveCanonicalUser(supabase: ReturnType<typeof createClient>, user: { owner_user_id: string | null; owner_email: string | null }) {
+  if (user.owner_email?.includes("@")) return user;
+  if (!user.owner_user_id) return user;
+
+  const result = await supabase
+    .from("user_profiles")
+    .select("owner_user_id,owner_email")
+    .eq("owner_user_id", user.owner_user_id)
+    .limit(1);
+  if (result.error) throw result.error;
+  const email = cleanText(result.data?.[0]?.owner_email)?.toLowerCase();
+  if (!email?.includes("@")) return user;
+  return {
+    ...user,
+    owner_email: email
+  };
+}
+
 async function writeAuditLog(
   supabase: ReturnType<typeof createClient>,
   user: { owner_user_id: string | null; owner_email: string | null },
@@ -1493,6 +1511,117 @@ function matchesBulkRatewareQuickFilter(row: Record<string, unknown>, filter: un
   return true;
 }
 
+const SQL_RATE_FILTER_FIELDS = new Set([
+  "status",
+  "raw_upload_id",
+  "vendor_domain",
+  "rfx_id",
+  "origin_zip_prefix",
+  "origin_state",
+  "origin_market",
+  "origin_region",
+  "origin_country",
+  "destination_zip_prefix",
+  "destination_state",
+  "destination_market",
+  "destination_region",
+  "destination_country",
+  "equipment",
+  "trailer",
+  "hazmat",
+  "temperature_controlled",
+  "config",
+  "operation",
+  "service",
+  "mx_border_crossing_point",
+  "us_border_crossing_point",
+  "currency",
+  "weekly_capacity",
+  "quote_date"
+]);
+
+function sqlRateFilterField(field: unknown) {
+  const value = cleanText(field);
+  return value && SQL_RATE_FILTER_FIELDS.has(value) ? value : null;
+}
+
+function normalizeColumnFilterValues(value: unknown) {
+  if (Array.isArray(value)) return value.map(cleanText).filter(Boolean) as string[];
+  const text = cleanText(value);
+  return text ? [text] : [];
+}
+
+function isBlankFilterValue(value: string) {
+  return value === "(blank)";
+}
+
+function isSqlCompatibleColumnFilters(columnFilters: Record<string, unknown>) {
+  return Object.entries(columnFilters).every(([field, value]) => {
+    const column = sqlRateFilterField(field);
+    if (!column) return false;
+    const values = normalizeColumnFilterValues(value);
+    const hasBlank = values.some(isBlankFilterValue);
+    const hasRealValues = values.some((item) => !isBlankFilterValue(item));
+    return !(hasBlank && hasRealValues);
+  });
+}
+
+function isSqlCompatibleReviewFilter(filter: unknown) {
+  const value = cleanText(filter) || "all";
+  return ["all", "needs-vendor"].includes(value);
+}
+
+function isSqlCompatibleRatewareQuickFilter(filter: unknown) {
+  const value = cleanText(filter) || "all";
+  return ["all", "cross-border", "with-capacity"].includes(value);
+}
+
+function canUseSqlRateFilters(filters: Record<string, unknown>) {
+  const columnFilters = objectRecord(filters.column_filters);
+  if (!isSqlCompatibleColumnFilters(columnFilters)) return false;
+  const mode = cleanText(filters.mode);
+  if (mode === "rateware") return isSqlCompatibleRatewareQuickFilter(filters.quick_filter);
+  return isSqlCompatibleReviewFilter(filters.review_filter);
+}
+
+function applySqlColumnFilter(query: any, field: string, value: unknown) {
+  const column = sqlRateFilterField(field);
+  if (!column) return query;
+  const values = normalizeColumnFilterValues(value);
+  if (!values.length) return query;
+
+  if (column === "hazmat" || column === "temperature_controlled") {
+    const bools = new Set(values.map((item) => item.toLowerCase()).map((item) => item === "yes" || item === "true" ? "true" : item === "no" || item === "false" ? "false" : ""));
+    bools.delete("");
+    if (bools.size !== 1) return query;
+    return query.eq(column, bools.has("true"));
+  }
+
+  if (values.length === 1 && isBlankFilterValue(values[0])) return query.is(column, null);
+  if (Array.isArray(value)) return query.in(column, values.filter((item) => !isBlankFilterValue(item)));
+  return query.ilike(column, `%${values[0]}%`);
+}
+
+function applySqlColumnFilters(query: any, columnFilters: Record<string, unknown>) {
+  return Object.entries(columnFilters).reduce((current, [field, value]) => applySqlColumnFilter(current, field, value), query);
+}
+
+function applySqlDerivedRateFilters(query: any, filters: Record<string, unknown>) {
+  const mode = cleanText(filters.mode);
+  if (mode === "rateware") {
+    const quickFilter = cleanText(filters.quick_filter) || "all";
+    if (quickFilter === "cross-border") {
+      return query.or("operation.ilike.%cross%,operation.ilike.%export%,operation.ilike.%import%,service.ilike.%cross%,mx_border_crossing_point.not.is.null,us_border_crossing_point.not.is.null");
+    }
+    if (quickFilter === "with-capacity") return query.not("weekly_capacity", "is", null);
+    return query;
+  }
+
+  const reviewFilter = cleanText(filters.review_filter) || "all";
+  if (reviewFilter === "needs-vendor") return query.is("vendor_id", null);
+  return query;
+}
+
 function applyBulkRateBaseFilters(query: any, filters: Record<string, unknown>) {
   const mode = cleanText(filters.mode);
   if (mode === "rateware") {
@@ -1515,6 +1644,64 @@ function applyBulkRateBaseFilters(query: any, filters: Record<string, unknown>) 
   const search = cleanText(filters.search);
   if (search) query = applyRateSearchFilter(query, search);
   return query;
+}
+
+function applySqlRateFilters(query: any, filters: Record<string, unknown>) {
+  query = applyBulkRateBaseFilters(query, filters);
+  query = applySqlColumnFilters(query, objectRecord(filters.column_filters));
+  query = applySqlDerivedRateFilters(query, filters);
+  return query;
+}
+
+async function fetchSqlRateFilterValues(
+  supabase: ReturnType<typeof createClient>,
+  filters: Record<string, unknown>,
+  field: string,
+  valueSearch = "",
+  limit = 1000
+) {
+  const column = sqlRateFilterField(field);
+  if (!column || !canUseSqlRateFilters(filters)) return null;
+
+  const values = new Map<string, string>();
+  const pageSize = 1000;
+  const hardLimit = 50000;
+  let offset = 0;
+  let databaseCount = 0;
+  const needle = valueSearch.toLowerCase();
+
+  while (offset < hardLimit && values.size < limit) {
+    let query = supabase
+      .from("rate_staging")
+      .select(column, { count: offset === 0 ? "exact" : undefined })
+      .order(column, { ascending: true, nullsFirst: true })
+      .range(offset, offset + pageSize - 1);
+    query = applySqlRateFilters(query, filters);
+
+    const result = await query;
+    if (result.error) throw result.error;
+    if (offset === 0) databaseCount = result.count || 0;
+
+    const page = (result.data || []) as Record<string, unknown>[];
+    for (const row of page) {
+      let label = cleanText(row[column]) || "(blank)";
+      if (column === "hazmat" || column === "temperature_controlled") label = row[column] ? "Yes" : "No";
+      if (needle && !label.toLowerCase().includes(needle)) continue;
+      const key = bulkFilterKey(label);
+      if (!values.has(key)) values.set(key, label);
+    }
+    if (page.length < pageSize) break;
+    offset += pageSize;
+  }
+
+  const sorted = [...values.values()].sort((a, b) => a.localeCompare(b));
+  return {
+    field,
+    values: sorted.slice(0, limit),
+    total: sorted.length,
+    database_count: databaseCount,
+    hard_limit_reached: offset >= hardLimit && databaseCount > offset
+  };
 }
 
 function matchesBulkRateRow(row: Record<string, unknown>, filters: Record<string, unknown>) {
@@ -5476,8 +5663,8 @@ Deno.serve(async (request) => {
   if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders() });
 
   try {
-    const user = userContext(await requireKindeUser(request));
     const supabase = getClient();
+    const user = await resolveCanonicalUser(supabase, userContext(await requireKindeUser(request)));
     const body = await request.json();
 
     if (body.action === "list_vendors") {
@@ -6978,16 +7165,17 @@ Deno.serve(async (request) => {
       const columnFilters = objectRecord(body.column_filters);
       const reviewFilter = cleanText(body.review_filter) || "all";
       const usesGlobalFilters = Object.keys(columnFilters).length > 0 || reviewFilter !== "all";
+      const filterPayload = {
+        mode: "staging",
+        status: cleanText(body.status),
+        raw_upload_id: cleanText(body.raw_upload_id),
+        search,
+        review_filter: reviewFilter,
+        column_filters: columnFilters
+      };
 
-      if (usesGlobalFilters) {
-        const filtered = await fetchBulkRateRowsByFilter(supabase, {
-          mode: "staging",
-          status: cleanText(body.status),
-          raw_upload_id: cleanText(body.raw_upload_id),
-          search,
-          review_filter: reviewFilter,
-          column_filters: columnFilters
-        }, 50000);
+      if (usesGlobalFilters && !canUseSqlRateFilters(filterPayload)) {
+        const filtered = await fetchBulkRateRowsByFilter(supabase, filterPayload, 50000);
         const orderedIds = filtered.rows.map((row) => cleanText(row.id)).filter(Boolean) as string[];
         const pageIds = orderedIds.slice(offset, offset + limit);
         let rows: Record<string, unknown>[] = [];
@@ -7019,9 +7207,7 @@ Deno.serve(async (request) => {
         .order("created_at", { ascending: false })
         .order("id", { ascending: false })
         .range(offset, offset + limit - 1);
-      if (body.status) query = query.eq("status", body.status);
-      if (body.raw_upload_id) query = query.eq("raw_upload_id", body.raw_upload_id);
-      if (search) query = applyRateSearchFilter(query, search);
+      query = applySqlRateFilters(query, filterPayload);
       const result = await query;
       if (result.error) throw result.error;
       const rows = result.data || [];
@@ -7042,15 +7228,19 @@ Deno.serve(async (request) => {
       const valueSearch = cleanText(body.value_search)?.toLowerCase() || "";
       const columnFilters = objectRecord(body.column_filters);
       delete columnFilters[field];
-
-      const filtered = await fetchBulkRateRowsByFilter(supabase, {
+      const filterPayload = {
         mode: "staging",
         status: cleanText(body.status),
         raw_upload_id: cleanText(body.raw_upload_id),
         search: (cleanText(body.search) || "").replace(/[(),]/g, " ").trim(),
         review_filter: cleanText(body.review_filter) || "all",
         column_filters: columnFilters
-      }, 50000);
+      };
+
+      const sqlValues = await fetchSqlRateFilterValues(supabase, filterPayload, field, valueSearch, limit);
+      if (sqlValues) return jsonResponse(sqlValues);
+
+      const filtered = await fetchBulkRateRowsByFilter(supabase, filterPayload, 50000);
 
       const seen = new Map<string, string>();
       for (const row of filtered.rows) {
@@ -7081,16 +7271,17 @@ Deno.serve(async (request) => {
       const quickFilter = cleanText(body.quick_filter) || "all";
       const columnFilters = objectRecord(body.column_filters);
       const usesGlobalFilters = Object.keys(columnFilters).length > 0 || quickFilter !== "all";
+      const filterPayload = {
+        mode: "rateware",
+        search,
+        operation: cleanText(body.operation),
+        service: cleanText(body.service),
+        quick_filter: quickFilter,
+        column_filters: columnFilters
+      };
 
-      if (usesGlobalFilters) {
-        const filtered = await fetchBulkRateRowsByFilter(supabase, {
-          mode: "rateware",
-          search,
-          operation: cleanText(body.operation),
-          service: cleanText(body.service),
-          quick_filter: quickFilter,
-          column_filters: columnFilters
-        }, 50000);
+      if (usesGlobalFilters && !canUseSqlRateFilters(filterPayload)) {
+        const filtered = await fetchBulkRateRowsByFilter(supabase, filterPayload, 50000);
         const orderedIds = filtered.rows.map((row) => cleanText(row.id)).filter(Boolean) as string[];
         const pageIds = orderedIds.slice(offset, offset + limit);
         let rows: Record<string, unknown>[] = [];
@@ -7124,9 +7315,7 @@ Deno.serve(async (request) => {
         .order("created_at", { ascending: false })
         .range(offset, offset + limit - 1);
 
-      if (body.operation) query = query.eq("operation", body.operation);
-      if (body.service) query = query.eq("service", body.service);
-      if (search) query = applyRateSearchFilter(query, search);
+      query = applySqlRateFilters(query, filterPayload);
 
       const result = await query;
       if (result.error) throw result.error;
@@ -7148,15 +7337,19 @@ Deno.serve(async (request) => {
       const valueSearch = cleanText(body.value_search)?.toLowerCase() || "";
       const columnFilters = objectRecord(body.column_filters);
       delete columnFilters[field];
-
-      const filtered = await fetchBulkRateRowsByFilter(supabase, {
+      const filterPayload = {
         mode: "rateware",
         search: (cleanText(body.search) || "").replace(/[(),]/g, " ").trim(),
         operation: cleanText(body.operation),
         service: cleanText(body.service),
         quick_filter: cleanText(body.quick_filter) || "all",
         column_filters: columnFilters
-      }, 50000);
+      };
+
+      const sqlValues = await fetchSqlRateFilterValues(supabase, filterPayload, field, valueSearch, limit);
+      if (sqlValues) return jsonResponse(sqlValues);
+
+      const filtered = await fetchBulkRateRowsByFilter(supabase, filterPayload, 50000);
 
       const seen = new Map<string, string>();
       for (const row of filtered.rows) {
@@ -7193,6 +7386,21 @@ Deno.serve(async (request) => {
       const result = await query;
       if (result.error) throw result.error;
       return jsonResponse({ rows: result.data || [] });
+    }
+
+    if (body.action === "get_rate_row_detail") {
+      const rateId = cleanText(body.id);
+      if (!rateId) return jsonResponse({ error: "Rate row id is required." }, 400);
+      let query = supabase
+        .from("rate_staging")
+        .select(RATE_ROW_RESPONSE_WITH_LEGS_SELECT)
+        .eq("id", rateId)
+        .single();
+      const status = cleanText(body.status);
+      if (status) query = query.eq("status", status);
+      const result = await query;
+      if (result.error) throw result.error;
+      return jsonResponse({ row: result.data });
     }
 
     if (body.action === "bulk_update_rateware") {

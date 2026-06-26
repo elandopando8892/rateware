@@ -5,6 +5,6 @@
   "type": "module",
   "scripts": {
     "dev": "npx serve .",
-    "test": "node tests/upload-center.test.mjs"
+    "test": "node tests/upload-center.test.mjs && node tests/rateware-stability.test.mjs"
   }
 }
