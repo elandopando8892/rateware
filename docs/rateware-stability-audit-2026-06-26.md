@@ -51,6 +51,8 @@ Fix applied:
 
 - Rateware list endpoint now uses a lightweight response select.
 - Heavy fields such as audit evidence and source JSON are excluded from the table list response.
+- Approved Rateware pagination now has a partial database index matching the default sort order.
+- The default approved-rate page query moved from sequential scan/sort to index scan.
 
 Remaining work:
 
