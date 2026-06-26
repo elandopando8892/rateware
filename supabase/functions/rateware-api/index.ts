@@ -2022,6 +2022,37 @@ async function fetchVendorRateMetrics(
   return metrics;
 }
 
+async function fetchBiVendorMetrics(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_email: string | null },
+  filters: Record<string, unknown> = {}
+) {
+  const result = await supabase.rpc("rateware_bi_vendor_metrics_for_owner", {
+    p_owner_email: user.owner_email,
+    p_filters: filters
+  });
+  if (result.error) throw result.error;
+  const metrics = new Map<string, Record<string, unknown>>();
+  for (const row of result.data || []) {
+    const id = cleanText((row as Record<string, unknown>).vendor_id);
+    if (id) metrics.set(id, normalizeVendorMetricRow(row as Record<string, unknown>));
+  }
+  return metrics;
+}
+
+async function fetchBiSummary(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_email: string | null },
+  filters: Record<string, unknown> = {}
+) {
+  const result = await supabase.rpc("rateware_bi_summary_for_owner", {
+    p_owner_email: user.owner_email,
+    p_filters: filters
+  });
+  if (result.error) throw result.error;
+  return objectRecord(result.data);
+}
+
 function buildVendorRateGroups(vendors: Record<string, unknown>[], rates: Record<string, unknown>[]) {
   const vendorIds = new Set(vendors.map((vendor) => cleanText(vendor.id)).filter(Boolean) as string[]);
   const domainIndex = new Map<string, string[]>();
@@ -2743,12 +2774,115 @@ function buildAnalystLayer(
   };
 }
 
-function deterministicCarrierRecommendations(prompt: string, vendors: Record<string, unknown>[], rates: Record<string, unknown>[]) {
+function summaryCount(summary: Record<string, unknown>, keyName: string) {
+  const value = Number(summary?.[keyName] || 0);
+  return Number.isFinite(value) ? value : 0;
+}
+
+function analystConfidenceLabelFromSummary(recommendations: Record<string, unknown>[], summary: Record<string, unknown>, vendors: Record<string, unknown>[]) {
+  const linkedSignals = summaryCount(summary, "transactions");
+  const approvedSignals = summaryCount(summary, "approved_rates");
+  if (recommendations.length >= 10 && linkedSignals >= 40 && approvedSignals >= 10) return "High";
+  if (recommendations.length >= 5 && linkedSignals >= 10) return "Medium";
+  if (vendors.length > 0 || linkedSignals > 0) return "Directional";
+  return "Low";
+}
+
+function buildDataGapsFromSummary(summary: Record<string, unknown>, vendors: Record<string, unknown>[], recommendations: Record<string, unknown>[]) {
+  const missingVendor = summaryCount(summary, "missing_vendor");
+  const missingRate = summaryCount(summary, "missing_rate");
+  const missingMiles = summaryCount(summary, "missing_miles");
+  const missingOrigin = summaryCount(summary, "missing_origin");
+  const missingDestination = summaryCount(summary, "missing_destination");
+  const missingContact = vendors.filter((vendor) => !vendor.primary_email && !vendor.whatsapp_phone).length;
+  const lowEvidence = recommendations.filter((row) => Number((row.metrics as Record<string, unknown> | undefined)?.linked_rates || 0) === 0).length;
+  const gaps = [
+    missingVendor ? {
+      title: "Unmatched carrier quotes",
+      impact: `${missingVendor} rate row(s) have vendor evidence but are not linked to a vendor record.`,
+      suggested_fix: "Run Match Vendors or improve domain/email data before using these rows for shortlist decisions."
+    } : null,
+    missingRate ? {
+      title: "Missing all-in rates",
+      impact: `${missingRate} row(s) cannot support cost comparison because all-in is missing.`,
+      suggested_fix: "Correct all-in, linehaul, FSC, or border fee in Staging Review before ranking by price."
+    } : null,
+    missingMiles ? {
+      title: "Missing mileage or kilometers",
+      impact: `${missingMiles} priced row(s) cannot calculate cost per mile/km.`,
+      suggested_fix: "Normalize locations and mileage before trusting cost per mile or cost per kilometer."
+    } : null,
+    missingOrigin || missingDestination ? {
+      title: "Location normalization gaps",
+      impact: `${missingOrigin + missingDestination} origin/destination side(s) are missing market, state, or country.`,
+      suggested_fix: "Resolve US/CA zip prefixes and MX metro/state/region matches in staging."
+    } : null,
+    missingContact ? {
+      title: "Vendor contact gaps",
+      impact: `${missingContact} vendor(s) are missing email and WhatsApp contact data.`,
+      suggested_fix: "Complete contacts before running RFx invitations or Gmail/WhatsApp outreach."
+    } : null,
+    lowEvidence ? {
+      title: "CRM-only carrier recommendations",
+      impact: `${lowEvidence} recommended carrier(s) have no linked quote evidence in the selected slice.`,
+      suggested_fix: "Treat these as sourcing candidates, not proven Rateware carriers, until they quote lanes."
+    } : null
+  ].filter(Boolean) as Array<Record<string, string>>;
+
+  if (!gaps.length) {
+    gaps.push({
+      title: "No critical gaps in selected slice",
+      impact: "The selected data has enough vendor and rate evidence for directional analysis.",
+      suggested_fix: "Use pivot drilldown to review lane-level evidence before acting."
+    });
+  }
+  return gaps.slice(0, 6);
+}
+
+function buildAnalystLayerFromSummary(
+  prompt: string,
+  recommendations: Record<string, unknown>[],
+  summary: Record<string, unknown>,
+  vendors: Record<string, unknown>[],
+  intent: ReturnType<typeof carrierIntelligenceIntent>,
+  filters: Record<string, unknown>,
+  dataScope: string
+) {
+  const dataGaps = buildDataGapsFromSummary(summary, vendors, recommendations);
+  return {
+    analyst_summary: {
+      headline: recommendations.length
+        ? `${recommendations.length} carrier(s) surfaced for this request.`
+        : "No carrier shortlist is strong enough yet for this request.",
+      confidence_label: analystConfidenceLabelFromSummary(recommendations, summary, vendors),
+      data_scope: dataScope,
+      reasoning: [
+        `${vendors.length} vendor record(s), ${summaryCount(summary, "transactions")} staging/Rateware row(s), ${summaryCount(summary, "approved_rates")} approved row(s).`,
+        `${summaryCount(summary, "crossborder_rates")} crossborder row(s) and ${summaryCount(summary, "d2d_import_export_rates")} D2D Import/Export row(s) available for this analysis.`,
+        intent.pareto ? "Pareto ordering uses transaction concentration, not generic carrier quality." : "Ranking balances vendor readiness, contact availability, and linked quote evidence."
+      ]
+    },
+    suggested_pivots: buildSuggestedPivots(prompt, intent, filters),
+    data_gaps: dataGaps,
+    rfx_shortlist: buildRfxShortlist(recommendations),
+    proposed_actions: buildProposedActions(intent, recommendations, dataGaps)
+  };
+}
+
+function deterministicCarrierRecommendations(
+  prompt: string,
+  vendors: Record<string, unknown>[],
+  metricsOrRates: Map<string, Record<string, unknown>> | Record<string, unknown>[],
+  summary: Record<string, unknown> = {}
+) {
   const intent = carrierIntelligenceIntent(prompt);
   const limit = intent.pareto ? 100 : extractRecommendationLimit(prompt);
+  const metricsByVendor = metricsOrRates instanceof Map ? metricsOrRates : null;
+  const rates = Array.isArray(metricsOrRates) ? metricsOrRates : [];
   const scoredRecommendations = vendors
     .map((vendor) => {
-      const metrics = createVendorMetrics(vendor, rates);
+      const vendorId = cleanText(vendor.id);
+      const metrics = metricsByVendor ? normalizeVendorMetricRow(metricsByVendor.get(vendorId || "")) : createVendorMetrics(vendor, rates);
       const fit = scoreCarrierFit(vendor, metrics, intent);
       const baseStage = cleanText(vendor.base_stage);
       const recommendedAction = baseStage === "procurement"
@@ -2838,7 +2972,9 @@ function deterministicCarrierRecommendations(prompt: string, vendors: Record<str
     })
     .slice(0, limit)
     .map((item, index) => ({ ...item, rank: index + 1 }));
-  const analystLayer = buildAnalystLayer(prompt, recommendations, rates, vendors, intent, {}, dataScope);
+  const analystLayer = metricsByVendor
+    ? buildAnalystLayerFromSummary(prompt, recommendations, summary, vendors, intent, {}, dataScope)
+    : buildAnalystLayer(prompt, recommendations, rates, vendors, intent, {}, dataScope);
 
   return {
     answer: recommendations.length
@@ -2858,7 +2994,7 @@ function deterministicCarrierRecommendations(prompt: string, vendors: Record<str
     ],
     model_status: "deterministic",
     candidate_count: vendors.length,
-    rate_signal_count: rates.length
+    rate_signal_count: metricsByVendor ? summaryCount(summary, "transactions") : rates.length
   };
 }
 
@@ -2992,23 +3128,19 @@ async function requestCarrierIntelligence(prompt: string, fallback: Record<strin
 
 async function buildCarrierIntelligence(supabase: ReturnType<typeof createClient>, user: { owner_email: string | null }, prompt: string) {
   const instruction = cleanText(prompt) || "Recommend the best carriers to add to Procurement Base.";
-  const [vendorsResult, ratesResult] = await Promise.all([
+  const [vendorsResult, metricsByVendor, summary] = await Promise.all([
     supabase
       .from("vendors")
       .select("id,vendor_name,legal_name,domain,primary_email,secondary_emails,whatsapp_phone,status,base_stage,tags,coverage_notes,notes,preferred_channel,created_at")
       .eq("owner_email", user.owner_email)
       .limit(1000),
-    supabase
-      .from("rate_staging")
-      .select("id,vendor_id,vendor_domain,status,origin,destination,normalized_origin,normalized_destination,origin_country,destination_country,origin_state,destination_state,origin_market,destination_market,equipment,trailer,operation,service,mx_border_crossing_point,us_border_crossing_point,mx_linehaul,us_linehaul,us_miles,fsc,border_crossing_fee,all_in_rate,currency,weekly_capacity,quote_date,hazmat,temperature_controlled,calculated_miles,calculated_km")
-      .in("status", ["pending_review", "approved"])
-      .limit(1500)
+    fetchBiVendorMetrics(supabase, user, {}),
+    fetchBiSummary(supabase, user, {})
   ]);
 
   if (vendorsResult.error) throw vendorsResult.error;
-  if (ratesResult.error) throw ratesResult.error;
 
-  const fallback = deterministicCarrierRecommendations(instruction, vendorsResult.data || [], ratesResult.data || []);
+  const fallback = deterministicCarrierRecommendations(instruction, vendorsResult.data || [], metricsByVendor, summary);
   return await requestCarrierIntelligence(instruction, fallback);
 }
 
@@ -3117,22 +3249,23 @@ async function buildCarrierRecommendations(supabase: ReturnType<typeof createCli
   const limit = Math.min(Math.max(Number(config.limit) || 30, 1), 100);
   const minTransactions = Math.max(Number(config.min_transactions) || 0, 0);
   const intent = recommendationIntentFromConfig(config);
-  const [vendorsResult, rates] = await Promise.all([
+  const [vendorsResult, metricsByVendor, summary] = await Promise.all([
     supabase
       .from("vendors")
       .select("id,vendor_name,legal_name,domain,primary_email,secondary_emails,whatsapp_phone,status,base_stage,tags,coverage_notes,notes,preferred_channel,created_at")
       .eq("owner_email", user.owner_email)
       .limit(1000),
-    fetchBusinessIntelligenceRows(supabase, user)
+    fetchBiVendorMetrics(supabase, user, filters),
+    fetchBiSummary(supabase, user, filters)
   ]);
   if (vendorsResult.error) throw vendorsResult.error;
 
-  const filteredRates = filterBiRows(rates, filters);
   const vendorTerm = cleanText(filters.vendor);
   const candidates = (vendorsResult.data || [])
     .filter((vendor) => !vendorTerm || catalogKey(vendorSearchText(vendor)).includes(catalogKey(vendorTerm)))
     .map((vendor) => {
-      const metrics = createVendorMetrics(vendor, filteredRates);
+      const vendorId = cleanText(vendor.id);
+      const metrics = normalizeVendorMetricRow(metricsByVendor.get(vendorId || ""));
       const fit = scoreCarrierFit(vendor, metrics, intent);
       const breakdown = carrierScoreBreakdown(vendor, metrics, intent, filters);
       const score = Math.max(0, Math.min(100, fit.score + Math.round(breakdown.reduce((sum, item) => sum + item.value, 0) / 8)));
@@ -3185,12 +3318,12 @@ async function buildCarrierRecommendations(supabase: ReturnType<typeof createCli
     return { ...publicRow, rank: index + 1 };
   });
   const dataScope = "Structured recommendation engine over user vendors and filtered staging/Rateware transactions.";
-  const analystLayer = buildAnalystLayer(
+  const analystLayer = buildAnalystLayerFromSummary(
     `Structured ${rankingMode} recommendation`,
     recommendations,
-    filteredRates,
+    summary,
     vendorsResult.data || [],
-    intent,
+    intent as ReturnType<typeof carrierIntelligenceIntent>,
     filters,
     dataScope
   );
@@ -3212,7 +3345,7 @@ async function buildCarrierRecommendations(supabase: ReturnType<typeof createCli
       "Use the pivot drilldown to validate the underlying lanes before RFx outreach."
     ],
     candidate_count: vendorsResult.data?.length || 0,
-    rate_signal_count: filteredRates.length,
+    rate_signal_count: summaryCount(summary, "transactions"),
     model_status: "deterministic"
   };
 }
@@ -3264,6 +3397,37 @@ const BI_METRICS = [
   { key: "fsc", label: "FSC", default_aggregation: "avg" },
   { key: "border_crossing_fee", label: "Border fee", default_aggregation: "avg" }
 ];
+
+const BI_AGGREGATIONS = ["count", "distinct", "avg", "sum", "min", "max"];
+
+function sanitizeBiDimensions(value: unknown, fallback: string[], max = 3) {
+  const allowed = new Set(BI_DIMENSIONS.map((item) => item.key));
+  const source = Array.isArray(value) ? value : fallback;
+  const dimensions = source
+    .map((item) => cleanText(item))
+    .filter((item): item is string => Boolean(item && allowed.has(item)))
+    .slice(0, max);
+  return dimensions.length ? dimensions : fallback.slice(0, max);
+}
+
+function sanitizeBiMetric(value: unknown) {
+  const metric = cleanText(value);
+  return metric && BI_METRICS.some((item) => item.key === metric) ? metric : "transaction_count";
+}
+
+function sanitizeBiAggregation(value: unknown, metric: string) {
+  const aggregation = cleanText(value);
+  if (aggregation && BI_AGGREGATIONS.includes(aggregation)) return aggregation;
+  return BI_METRICS.find((item) => item.key === metric)?.default_aggregation || "avg";
+}
+
+function biFieldCatalog() {
+  return {
+    dimensions: BI_DIMENSIONS,
+    metrics: BI_METRICS,
+    aggregations: BI_AGGREGATIONS
+  };
+}
 
 function biText(row: Record<string, unknown>) {
   const vendor = typeof row.vendors === "object" && row.vendors ? row.vendors as Record<string, unknown> : {};
@@ -3481,8 +3645,26 @@ async function fetchBusinessIntelligenceRows(supabase: ReturnType<typeof createC
 }
 
 async function buildBusinessIntelligencePivotFromDb(supabase: ReturnType<typeof createClient>, user: { owner_email: string | null }, config: Record<string, unknown>) {
-  const scopedRows = await fetchBusinessIntelligenceRows(supabase, user);
-  return buildBusinessIntelligencePivot(scopedRows, config);
+  const rowDimensions = sanitizeBiDimensions(config.rows, ["vendor"], 3);
+  const columnDimensions = sanitizeBiDimensions(config.columns, ["operation"], 2);
+  const metric = sanitizeBiMetric(config.metric);
+  const aggregation = sanitizeBiAggregation(config.aggregation, metric);
+  const filters = objectRecord(config.filters);
+  const result = await supabase.rpc("rateware_bi_pivot_for_owner", {
+    p_owner_email: user.owner_email,
+    p_row_dimensions: rowDimensions,
+    p_column_dimensions: columnDimensions,
+    p_metric: metric,
+    p_aggregation: aggregation,
+    p_filters: filters,
+    p_row_limit: 300,
+    p_column_limit: 80
+  });
+  if (result.error) throw result.error;
+  return {
+    ...objectRecord(result.data),
+    fields: biFieldCatalog()
+  };
 }
 
 function drilldownRow(row: Record<string, unknown>) {
@@ -3516,28 +3698,22 @@ function drilldownRow(row: Record<string, unknown>) {
 }
 
 async function buildBusinessIntelligenceDrilldown(supabase: ReturnType<typeof createClient>, user: { owner_email: string | null }, config: Record<string, unknown>, cell: Record<string, unknown>) {
-  const rows = await fetchBusinessIntelligenceRows(supabase, user);
-  const rowDimensions = (Array.isArray(config.rows) ? config.rows : ["vendor"]).map(String).filter(Boolean).slice(0, 3);
-  const columnDimensions = (Array.isArray(config.columns) ? config.columns : []).map(String).filter(Boolean).slice(0, 2);
-  const filters = typeof config.filters === "object" && config.filters ? config.filters as Record<string, unknown> : {};
+  const rowDimensions = sanitizeBiDimensions(config.rows, ["vendor"], 3);
+  const columnDimensions = sanitizeBiDimensions(config.columns, [], 2);
+  const filters = objectRecord(config.filters);
   const rowValues = Array.isArray(cell.row_values) ? cell.row_values.map(String) : [];
   const columnValue = cleanText(cell.column_value);
-  const filteredRows = filterBiRows(rows, filters).filter((row) => {
-    const rowMatch = rowDimensions.every((dimension, index) => biDimensionValue(row, dimension) === rowValues[index]);
-    if (!rowMatch) return false;
-    if (!columnValue || columnValue === "Total" || !columnDimensions.length) return true;
-    const rowColumnValue = columnDimensions.map((dimension) => biDimensionValue(row, dimension)).join(" | ") || "Total";
-    return rowColumnValue === columnValue;
+  const result = await supabase.rpc("rateware_bi_drilldown_for_owner", {
+    p_owner_email: user.owner_email,
+    p_row_dimensions: rowDimensions,
+    p_column_dimensions: columnDimensions,
+    p_row_values: rowValues,
+    p_column_value: columnValue || "Total",
+    p_filters: filters,
+    p_limit: 250
   });
-
-  return {
-    rows: filteredRows.slice(0, 250).map(drilldownRow),
-    total: filteredRows.length,
-    cell: {
-      row_values: rowValues,
-      column_value: columnValue || "Total"
-    }
-  };
+  if (result.error) throw result.error;
+  return objectRecord(result.data);
 }
 
 const GEO_CITY_COORDINATES: Record<string, [number, number]> = {
@@ -3872,8 +4048,83 @@ function buildBusinessIntelligenceGeoDensity(rows: Record<string, unknown>[], co
 }
 
 async function buildBusinessIntelligenceGeoDensityFromDb(supabase: ReturnType<typeof createClient>, user: { owner_email: string | null }, config: Record<string, unknown>) {
-  const scopedRows = await fetchBusinessIntelligenceRows(supabase, user);
-  return buildBusinessIntelligenceGeoDensity(scopedRows, config);
+  const filters = objectRecord(config.filters);
+  const scope = ["origin", "destination", "both"].includes(cleanText(config.scope) || "") ? cleanText(config.scope)! : "both";
+  const level = ["region", "state", "market", "location"].includes(cleanText(config.level) || "") ? cleanText(config.level)! : "market";
+  const metric = cleanText(config.metric) || "transactions";
+  const limit = Math.min(Math.max(Number(config.limit) || 80, 10), 250);
+  const result = await supabase.rpc("rateware_bi_geo_density_for_owner", {
+    p_owner_email: user.owner_email,
+    p_scope: scope,
+    p_level: level,
+    p_metric: metric,
+    p_filters: filters,
+    p_limit: Math.min(limit * 2, 500)
+  });
+  if (result.error) throw result.error;
+
+  const payload = objectRecord(result.data);
+  const rawPoints = Array.isArray(payload.points) ? payload.points as Record<string, unknown>[] : [];
+  let missingGeo = 0;
+  const points = rawPoints
+    .map((point) => {
+      const state = geoStateCode(point.state);
+      const rawCountry = cleanText(point.country)?.toUpperCase() || "";
+      const country = rawCountry
+        || (GEO_STATE_COORDINATES[`mx|${state.toLowerCase()}`] ? "MX"
+          : GEO_STATE_COORDINATES[`ca|${state.toLowerCase()}`] ? "CA"
+            : GEO_STATE_COORDINATES[`us|${state.toLowerCase()}`] ? "US" : "");
+      const label = cleanText(point.label) || cleanText(point.market) || cleanText(point.city) || "-";
+      const coordinate = geoCoordinateFor({
+        label,
+        level,
+        city: cleanText(point.city) || label,
+        market: cleanText(point.market) || label,
+        state,
+        country,
+        region: cleanText(point.region) || ""
+      });
+      if (!coordinate.coords) {
+        missingGeo += Number(point.transactions || 1);
+        return null;
+      }
+      const enriched = {
+        ...point,
+        key: [point.flow, level, label, state, country].join("|"),
+        label,
+        state,
+        country,
+        lat: coordinate.coords[0],
+        lng: coordinate.coords[1],
+        geo_source: coordinate.source
+      };
+      return {
+        ...enriched,
+        metric_value: geoMetricSortValue(enriched, metric)
+      };
+    })
+    .filter((point): point is Record<string, unknown> => Boolean(point))
+    .sort((a, b) => geoMetricSortValue(b, metric) - geoMetricSortValue(a, metric) || Number(b.transactions || 0) - Number(a.transactions || 0))
+    .slice(0, limit);
+
+  const summary = objectRecord(payload.summary);
+  return {
+    ...payload,
+    points,
+    level,
+    scope,
+    metric,
+    filters,
+    summary: {
+      ...summary,
+      missing_geo: Number(summary.missing_geo || 0) + missingGeo,
+      plotted: points.length
+    },
+    notes: [
+      "Rateware groups the full database in SQL first, then plots known city/market/state centroids.",
+      "Use Admin > Catalogs to harden location data before relying on specific-location heatmaps."
+    ]
+  };
 }
 
 function normalizeTags(value: unknown) {

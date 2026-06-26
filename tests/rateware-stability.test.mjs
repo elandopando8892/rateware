@@ -8,6 +8,10 @@ const optimizedPredicateMigration = readFileSync(new URL("../supabase/migrations
 const fastFilterValuesMigration = readFileSync(new URL("../supabase/migrations/20260626161000_fast_rate_filter_values.sql", import.meta.url), "utf8");
 const ratewarePageIndexMigration = readFileSync(new URL("../supabase/migrations/20260626162500_rateware_page_index.sql", import.meta.url), "utf8");
 const vendorMetricRpcMigration = readFileSync(new URL("../supabase/migrations/20260626171000_vendor_metric_rpc.sql", import.meta.url), "utf8");
+const biAggregationRpcMigration = readFileSync(new URL("../supabase/migrations/20260626183000_bi_aggregation_rpc.sql", import.meta.url), "utf8");
+const optimizedBiVendorMetricMigration = readFileSync(new URL("../supabase/migrations/20260626184500_optimize_bi_vendor_metrics.sql", import.meta.url), "utf8");
+const fastBiVendorMetricMigration = readFileSync(new URL("../supabase/migrations/20260626190000_fast_bi_vendor_metric_arrays.sql", import.meta.url), "utf8");
+const biGenericDomainLabelsMigration = readFileSync(new URL("../supabase/migrations/20260626191000_bi_generic_domain_labels.sql", import.meta.url), "utf8");
 
 for (const domain of ["gmail.com", "hotmail.com", "yahoo.com", "outlook.com", "yahoo.com.mx"]) {
   assert.match(apiSource, new RegExp(`"${domain.replace(".", "\\.")}"`), `generic domain ${domain} should be blocked`);
@@ -108,6 +112,33 @@ assert.match(vendorMetricRpcMigration, /not public\.rateware_is_generic_email_do
 assert.match(apiSource, /async function fetchVendorRateMetrics/, "API should fetch vendor metrics through database RPC");
 assert.match(apiSource, /vendor_rate_metrics_for_owner/, "API should call vendor rate metrics RPC");
 
+for (const functionName of [
+  "rateware_bi_dimension_value",
+  "rateware_bi_metric_value",
+  "rateware_bi_rate_matches_filters",
+  "rateware_bi_pivot_for_owner",
+  "rateware_bi_drilldown_for_owner",
+  "rateware_bi_geo_density_for_owner",
+  "rateware_bi_summary_for_owner",
+  "rateware_bi_vendor_metrics_for_owner"
+]) {
+  assert.match(biAggregationRpcMigration, new RegExp(`function public\\.${functionName}`), `${functionName} should exist in BI aggregation migration`);
+}
+
+assert.match(apiSource, /rateware_bi_pivot_for_owner/, "BI pivot should use database aggregation RPC");
+assert.match(apiSource, /rateware_bi_drilldown_for_owner/, "BI drilldown should use database aggregation RPC");
+assert.match(apiSource, /rateware_bi_geo_density_for_owner/, "BI geo density should use database aggregation RPC");
+assert.match(apiSource, /rateware_bi_vendor_metrics_for_owner/, "carrier recommendations should use BI vendor metric RPC");
+assert.match(apiSource, /rateware_bi_summary_for_owner/, "AI Analyst should use BI summary RPC");
+assert.match(optimizedBiVendorMetricMigration, /rate_staging_vendor_domain_key_status_idx/, "BI vendor metrics should have an indexed domain-key lookup");
+assert.match(optimizedBiVendorMetricMigration, /linked_rates as/, "BI vendor metrics should separate direct vendor_id links");
+assert.match(optimizedBiVendorMetricMigration, /domain_rates as/, "BI vendor metrics should separate domain-key matches");
+assert.match(fastBiVendorMetricMigration, /array_agg\(distinct/, "BI vendor metric arrays should aggregate in one grouped pass");
+assert.doesNotMatch(fastBiVendorMetricMigration, /from prepared market_rows/, "BI vendor metrics should not use correlated market subqueries");
+assert.doesNotMatch(fastBiVendorMetricMigration, /from prepared lane_rows/, "BI vendor metrics should not use correlated lane subqueries");
+assert.match(biGenericDomainLabelsMigration, /safe_vendor_domain/, "BI labels should suppress generic email domains");
+assert.match(biGenericDomainLabelsMigration, /Unmatched carrier/, "generic unlinked BI vendors should roll up as unmatched");
+
 const vendorIntelligenceSource = apiSource.slice(apiSource.indexOf("async function buildVendorIntelligence"), apiSource.indexOf("function vendorEffectiveFunnelStage"));
 assert.ok(vendorIntelligenceSource.length > 100, "vendor intelligence helper should be present");
 assert.doesNotMatch(
@@ -123,5 +154,25 @@ assert.doesNotMatch(
   /fetchBusinessIntelligenceRows/,
   "Procurement Pipeline should not load raw BI rate rows in the Edge Function"
 );
+
+for (const [helperName, nextHelperName] of [
+  ["async function buildCarrierIntelligence", "function recommendationIntentFromConfig"],
+  ["async function buildCarrierRecommendations", "const BI_DIMENSIONS"],
+  ["async function buildBusinessIntelligencePivotFromDb", "function drilldownRow"],
+  ["async function buildBusinessIntelligenceDrilldown", "const GEO_CITY_COORDINATES"],
+  ["async function buildBusinessIntelligenceGeoDensityFromDb", "function normalizeTags"]
+]) {
+  const helperSource = apiSource.slice(apiSource.indexOf(helperName), apiSource.indexOf(nextHelperName));
+  assert.ok(helperSource.length > 100, `${helperName} should be present`);
+  assert.doesNotMatch(
+    helperSource,
+    /fetchBusinessIntelligenceRows/,
+    `${helperName} should not load raw BI rate rows in the Edge Function`
+  );
+}
+
+const carrierIntelligenceSource = apiSource.slice(apiSource.indexOf("async function buildCarrierIntelligence"), apiSource.indexOf("function recommendationIntentFromConfig"));
+assert.doesNotMatch(carrierIntelligenceSource, /\.from\("rate_staging"\)/, "AI Analyst should not query rate_staging directly");
+assert.doesNotMatch(carrierIntelligenceSource, /\.limit\(1500\)/, "AI Analyst should not rely on a 1500-row rate sample");
 
 console.log("Rateware stability guards passed.");

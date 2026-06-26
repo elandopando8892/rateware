@@ -268,6 +268,28 @@ Applied in this block:
 - Replaced quadratic duplicate detection with indexed duplicate candidate buckets.
 - Added regression guards to prevent Vendor Intelligence and Pipeline from reintroducing raw BI scans.
 
+## Stability Block 4 Validation
+
+Applied in this block:
+
+- Added BI aggregation RPCs for pivots, drilldown, geo density, summary, and filtered vendor metrics.
+- Rewired AI Analyst, carrier recommendations, pivots, drilldown, and map density away from raw Edge Function row scans.
+- Kept the frontend response shapes stable while moving heavy grouping and filtering into Postgres.
+- Added regression guards so Analyze endpoints cannot reintroduce `fetchBusinessIntelligenceRows` as their hot path.
+- Added an indexed vendor-domain-key lookup and removed correlated vendor-metric array subqueries.
+- Suppressed generic email domains from BI carrier labels so `gmail.com`/`hotmail.com` roll up as unmatched, not as carriers.
+
+Remaining risk:
+
+- The AI prompt parser is still deterministic-first. Route-specific natural-language parsing can improve later, but the current blocker was compute stability.
+- Geo density still depends on known centroid coverage. Admin Catalogs should keep hardening exact city/market coordinates.
+
+Production validation:
+
+- `rateware_bi_summary_for_owner('sales@heymarksman.com', '{}')` returned 55,763 transactions and 28,753 crossborder rows.
+- Crossborder pivot RPC returned rows from the full database and grouped generic domains under `Unmatched carrier`.
+- `rateware-api` deployed as Supabase function version 100.
+
 ## Recommended Stabilization Sprint
 
 ### Sprint Goal
