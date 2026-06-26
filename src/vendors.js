@@ -460,6 +460,11 @@ function applyQuickFilter(filter) {
   renderVendors(rows);
 }
 
+function resetQuickFilter() {
+  activeQuickFilter = "all";
+  quickFilterButtons.forEach((button) => button.classList.toggle("is-active", button.dataset.quickFilter === "all"));
+}
+
 function readWizard() {
   return {
     vendor_name: document.querySelector("#wizard-vendor-name").value,
@@ -792,8 +797,10 @@ async function promoteSelectedIntelligenceVendors() {
     const result = await bulkUpdateVendors(ids, { base_stage: "procurement", status: "active" });
     selectedVendorIntelligenceIds = new Set();
     setStatus(vendorIntelligenceStatus, `${result.updated || 0} vendor(s) moved to Procurement Base.`, "success");
+    vendorFunnelRows = [];
     await loadVendorIntelligence();
-    await loadVendors();
+    resetQuickFilter();
+    activateVendorTab("procurement");
   } catch (error) {
     setStatus(vendorIntelligenceStatus, error.message, "error");
     updateVendorIntelligenceSelectionState();
@@ -1718,8 +1725,10 @@ async function runBulkBaseAction(baseStage, label) {
     await requirePrivatePage();
     const result = await bulkUpdateVendors(ids, { base_stage: baseStage });
     selectedVendorIds = new Set();
+    vendorFunnelRows = [];
+    resetQuickFilter();
     setStatus(bulkStatusMessage, `${result.updated} vendor(s) updated.`, "success");
-    await loadVendors();
+    activateVendorTab(baseStage === "archived" ? "archived" : baseStage);
   } catch (error) {
     setStatus(bulkStatusMessage, error.message, "error");
   }
