@@ -153,6 +153,12 @@ Recommended fix:
 - Use server-side pagination and SQL `distinct` for dropdown filter values.
 - Keep in-memory filtering only for complex derived checks.
 
+Status update:
+
+- Direct spreadsheet filters were moved to SQL-backed API paths.
+- Derived filters and filtered bulk actions now use the `rateware_filtered_rate_ids` Postgres RPC instead of Edge Function row scans.
+- Remaining risk is limited to filter value dropdowns that may still hydrate row labels for composite fields such as vendor, origin, and destination.
+
 ### B. Rateware Audit Drawer Needs Lazy Load
 
 The table should not load audit JSON, source evidence, confidence, or candidate arrays by default.
@@ -218,6 +224,24 @@ After applying the data repair migration:
 - pending review rows: 0
 
 The migration did not delete rates or vendor records. It only repaired `rate_staging.vendor_id` links and cleared unsafe generic-domain links.
+
+## Stability Block 2 Validation
+
+Applied after the first hotfix:
+
+- Added Postgres RPC `rateware_filtered_rate_ids`.
+- Added SQL helpers for derived filters: split-rate, all-in, conflicts, source-audit, ready, cross-border.
+- Moved filtered archive/remove/update/match actions to RPC-backed ID resolution.
+- Added lazy row detail endpoint for heavy Rateware evidence payloads.
+- Added canonical Kinde owner resolution through `user_profiles`.
+- Added regression guards in `tests/rateware-stability.test.mjs`.
+
+Production validation:
+
+- `rateware_filtered_rate_ids('rateware', ..., 'split-rate', ...)` returned rows.
+- `rateware_filtered_rate_ids('rateware', ..., 'conflicts', ...)` returned rows.
+- `rateware_filtered_rate_ids('staging', 'pending_review', ..., 'ready', ...)` returned 0 rows because production currently has no pending review rows.
+- RPC function exists in `pg_proc`.
 
 ## Recommended Stabilization Sprint
 

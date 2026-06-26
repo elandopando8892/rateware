@@ -1746,6 +1746,103 @@ async function fetchBulkRateRowsByFilter(supabase: ReturnType<typeof createClien
   };
 }
 
+async function fetchRateRowIdsByFilter(
+  supabase: ReturnType<typeof createClient>,
+  filters: Record<string, unknown>,
+  options: { limit?: number; offset?: number } = {}
+) {
+  const limit = Math.min(Math.max(Number(options.limit) || 50000, 1), 50000);
+  const offset = Math.max(Number(options.offset) || 0, 0);
+  const result = await supabase.rpc("rateware_filtered_rate_ids", {
+    p_mode: cleanText(filters.mode) || "staging",
+    p_status: cleanText(filters.status),
+    p_raw_upload_id: cleanText(filters.raw_upload_id),
+    p_search: cleanText(filters.search),
+    p_operation: cleanText(filters.operation),
+    p_service: cleanText(filters.service),
+    p_quick_filter: cleanText(filters.quick_filter) || "all",
+    p_review_filter: cleanText(filters.review_filter) || "all",
+    p_column_filters: objectRecord(filters.column_filters),
+    p_exclude_archived: filters.exclude_archived === true,
+    p_limit: limit,
+    p_offset: offset
+  });
+  if (result.error) throw result.error;
+
+  const data = (result.data || []) as Record<string, unknown>[];
+  const ids = data.map((row) => cleanText(row.row_id || row.id)).filter(Boolean) as string[];
+  const databaseCount = Number(data[0]?.total_count || 0);
+  return {
+    ids,
+    rows: ids.map((id) => ({ id })),
+    database_count: databaseCount,
+    hard_limit_reached: databaseCount > offset + ids.length && ids.length >= limit
+  };
+}
+
+async function fetchRateRowsForIds(
+  supabase: ReturnType<typeof createClient>,
+  ids: string[],
+  select = RATE_ROW_LIST_SELECT
+) {
+  const rows: Record<string, unknown>[] = [];
+  for (const chunk of chunkValues(ids, 500)) {
+    const result = await supabase
+      .from("rate_staging")
+      .select(select)
+      .in("id", chunk);
+    if (result.error) throw result.error;
+    rows.push(...(result.data || []));
+  }
+  const byId = new Map(rows.map((row) => [cleanText(row.id), row]));
+  return ids.map((id) => byId.get(id)).filter(Boolean) as Record<string, unknown>[];
+}
+
+function filterValueSelectForField(field: string) {
+  if (field === "vendor") return "id,vendor_domain, vendors(vendor_name,domain)";
+  if (field === "origin") {
+    return "id,origin,normalized_origin,origin_city,origin_state,origin_zip_prefix,origin_market,origin_region,origin_country";
+  }
+  if (field === "destination") {
+    return "id,destination,normalized_destination,destination_city,destination_state,destination_zip_prefix,destination_market,destination_region,destination_country";
+  }
+  const column = sqlRateFilterField(field);
+  return column ? `id,${column}` : BULK_RATE_ROW_SELECT;
+}
+
+async function fetchRateFilterValuesByRpc(
+  supabase: ReturnType<typeof createClient>,
+  filters: Record<string, unknown>,
+  field: string,
+  valueSearch = "",
+  limit = 1000
+) {
+  const filtered = await fetchRateRowIdsByFilter(supabase, filters, { limit: 50000 });
+  const rows = await fetchRateRowsForIds(supabase, filtered.ids, filterValueSelectForField(field));
+  const seen = new Map<string, string>();
+  const needle = valueSearch.toLowerCase();
+
+  for (const row of rows) {
+    const values = bulkColumnValues(row, field);
+    const list = values.length ? values : ["(blank)"];
+    for (const value of list) {
+      const label = cleanText(value) || "(blank)";
+      if (needle && !label.toLowerCase().includes(needle)) continue;
+      const key = bulkFilterKey(label);
+      if (!seen.has(key)) seen.set(key, label);
+    }
+  }
+
+  const values = [...seen.values()].sort((a, b) => a.localeCompare(b));
+  return {
+    field,
+    values: values.slice(0, limit),
+    total: values.length,
+    database_count: filtered.database_count,
+    hard_limit_reached: filtered.hard_limit_reached
+  };
+}
+
 function chunkValues<T>(values: T[], size = 500) {
   const chunks: T[][] = [];
   for (let index = 0; index < values.length; index += size) chunks.push(values.slice(index, index + size));
@@ -5363,13 +5460,14 @@ async function matchRateVendorRowsByFilter(
   options: { dryRun?: boolean; maxRows?: number } = {}
 ) {
   const maxRows = Math.min(Math.max(Number(options.maxRows) || 50000, 1), 50000);
-  const filtered = await fetchBulkRateRowsByFilter(supabase, filters, options.dryRun ? 50000 : maxRows);
+  const filtered = await fetchRateRowIdsByFilter(supabase, filters, { limit: options.dryRun ? 50000 : maxRows });
+  const rows = await fetchRateRowsForIds(supabase, filtered.ids, "id,vendor_id,vendor_domain,status");
   const vendors = await fetchVendorRowsForRateMatching(supabase, user);
-  const plan = planRateVendorMatches(filtered.rows as Record<string, unknown>[], vendors);
+  const plan = planRateVendorMatches(rows as Record<string, unknown>[], vendors);
 
   if (options.dryRun) {
     return {
-      matched: filtered.rows.length,
+      matched: filtered.ids.length,
       candidates: plan.candidates,
       matchable: plan.matchable,
       updated: 0,
@@ -5382,7 +5480,7 @@ async function matchRateVendorRowsByFilter(
 
   const applied = await applyPlannedRateVendorMatches(supabase, plan);
   return {
-    matched: filtered.rows.length,
+    matched: filtered.ids.length,
     candidates: plan.candidates,
     matchable: plan.matchable,
     updated: applied.updated,
@@ -7175,28 +7273,16 @@ Deno.serve(async (request) => {
       };
 
       if (usesGlobalFilters && !canUseSqlRateFilters(filterPayload)) {
-        const filtered = await fetchBulkRateRowsByFilter(supabase, filterPayload, 50000);
-        const orderedIds = filtered.rows.map((row) => cleanText(row.id)).filter(Boolean) as string[];
-        const pageIds = orderedIds.slice(offset, offset + limit);
-        let rows: Record<string, unknown>[] = [];
-
-        if (pageIds.length) {
-          const pageResult = await supabase
-            .from("rate_staging")
-            .select(RATE_ROW_RESPONSE_WITH_LEGS_SELECT)
-            .in("id", pageIds);
-          if (pageResult.error) throw pageResult.error;
-          const byId = new Map((pageResult.data || []).map((row) => [cleanText(row.id), row]));
-          rows = pageIds.map((id) => byId.get(id)).filter(Boolean) as Record<string, unknown>[];
-        }
+        const filtered = await fetchRateRowIdsByFilter(supabase, filterPayload, { limit, offset });
+        const rows = await fetchRateRowsForIds(supabase, filtered.ids, RATE_ROW_RESPONSE_WITH_LEGS_SELECT);
 
         return jsonResponse({
           rows,
-          total: filtered.rows.length,
+          total: filtered.database_count,
           database_count: filtered.database_count,
           limit,
           offset,
-          has_more: offset + rows.length < filtered.rows.length,
+          has_more: offset + rows.length < filtered.database_count,
           hard_limit_reached: filtered.hard_limit_reached
         });
       }
@@ -7240,28 +7326,7 @@ Deno.serve(async (request) => {
       const sqlValues = await fetchSqlRateFilterValues(supabase, filterPayload, field, valueSearch, limit);
       if (sqlValues) return jsonResponse(sqlValues);
 
-      const filtered = await fetchBulkRateRowsByFilter(supabase, filterPayload, 50000);
-
-      const seen = new Map<string, string>();
-      for (const row of filtered.rows) {
-        const values = bulkColumnValues(row, field);
-        const list = values.length ? values : ["(blank)"];
-        for (const value of list) {
-          const label = cleanText(value) || "(blank)";
-          if (valueSearch && !label.toLowerCase().includes(valueSearch)) continue;
-          const key = bulkFilterKey(label);
-          if (!seen.has(key)) seen.set(key, label);
-        }
-      }
-
-      const values = [...seen.values()].sort((a, b) => a.localeCompare(b));
-      return jsonResponse({
-        field,
-        values: values.slice(0, limit),
-        total: values.length,
-        database_count: filtered.database_count,
-        hard_limit_reached: filtered.hard_limit_reached
-      });
+      return jsonResponse(await fetchRateFilterValuesByRpc(supabase, filterPayload, field, valueSearch, limit));
     }
 
     if (body.action === "list_rateware") {
@@ -7281,28 +7346,16 @@ Deno.serve(async (request) => {
       };
 
       if (usesGlobalFilters && !canUseSqlRateFilters(filterPayload)) {
-        const filtered = await fetchBulkRateRowsByFilter(supabase, filterPayload, 50000);
-        const orderedIds = filtered.rows.map((row) => cleanText(row.id)).filter(Boolean) as string[];
-        const pageIds = orderedIds.slice(offset, offset + limit);
-        let rows: Record<string, unknown>[] = [];
-
-        if (pageIds.length) {
-          const pageResult = await supabase
-            .from("rate_staging")
-            .select(RATE_ROW_LIST_SELECT)
-            .in("id", pageIds);
-          if (pageResult.error) throw pageResult.error;
-          const byId = new Map((pageResult.data || []).map((row) => [cleanText(row.id), row]));
-          rows = pageIds.map((id) => byId.get(id)).filter(Boolean) as Record<string, unknown>[];
-        }
+        const filtered = await fetchRateRowIdsByFilter(supabase, filterPayload, { limit, offset });
+        const rows = await fetchRateRowsForIds(supabase, filtered.ids, RATE_ROW_LIST_SELECT);
 
         return jsonResponse({
           rows,
-          total: filtered.rows.length,
+          total: filtered.database_count,
           database_count: filtered.database_count,
           limit,
           offset,
-          has_more: offset + rows.length < filtered.rows.length,
+          has_more: offset + rows.length < filtered.database_count,
           hard_limit_reached: filtered.hard_limit_reached
         });
       }
@@ -7349,28 +7402,7 @@ Deno.serve(async (request) => {
       const sqlValues = await fetchSqlRateFilterValues(supabase, filterPayload, field, valueSearch, limit);
       if (sqlValues) return jsonResponse(sqlValues);
 
-      const filtered = await fetchBulkRateRowsByFilter(supabase, filterPayload, 50000);
-
-      const seen = new Map<string, string>();
-      for (const row of filtered.rows) {
-        const values = bulkColumnValues(row, field);
-        const list = values.length ? values : ["(blank)"];
-        for (const value of list) {
-          const label = cleanText(value) || "(blank)";
-          if (valueSearch && !label.toLowerCase().includes(valueSearch)) continue;
-          const key = bulkFilterKey(label);
-          if (!seen.has(key)) seen.set(key, label);
-        }
-      }
-
-      const values = [...seen.values()].sort((a, b) => a.localeCompare(b));
-      return jsonResponse({
-        field,
-        values: values.slice(0, limit),
-        total: values.length,
-        database_count: filtered.database_count,
-        hard_limit_reached: filtered.hard_limit_reached
-      });
+      return jsonResponse(await fetchRateFilterValuesByRpc(supabase, filterPayload, field, valueSearch, limit));
     }
 
     if (body.action === "list_rateware_audit") {
@@ -7488,18 +7520,8 @@ Deno.serve(async (request) => {
         if (rowsResult.error) throw rowsResult.error;
         rows = rowsResult.data || [];
       } else if (Object.keys(filters).length) {
-        const filtered = await fetchBulkRateRowsByFilter(supabase, { ...filters, mode: "rateware" }, 50000);
-        const filteredIds = filtered.rows.map((row) => cleanText(row.id)).filter(Boolean) as string[];
-        for (const chunk of chunkValues(filteredIds, 500)) {
-          const rowsResult = await supabase
-            .from("rate_staging")
-            .select("*, vendors(vendor_name, domain, primary_email, base_stage, status)")
-            .in("id", chunk);
-          if (rowsResult.error) throw rowsResult.error;
-          rows.push(...(rowsResult.data || []));
-        }
-        const byId = new Map(rows.map((row) => [cleanText(row.id), row]));
-        rows = filteredIds.map((id) => byId.get(id)).filter(Boolean) as Record<string, unknown>[];
+        const filtered = await fetchRateRowIdsByFilter(supabase, { ...filters, mode: "rateware" }, { limit: 50000 });
+        rows = await fetchRateRowsForIds(supabase, filtered.ids, "*, vendors(vendor_name, domain, primary_email, base_stage, status)");
       } else {
         const rowsResult = await supabase
           .from("rate_staging")
@@ -7664,8 +7686,8 @@ Deno.serve(async (request) => {
         ...filters,
         exclude_archived: targetAction === "archive"
       };
-      const filtered = await fetchBulkRateRowsByFilter(supabase, actionFilters, dryRun ? 50000 : maxRows);
-      const ids = filtered.rows.map((row) => cleanText(row.id)).filter(Boolean) as string[];
+      const filtered = await fetchRateRowIdsByFilter(supabase, actionFilters, { limit: dryRun ? 50000 : maxRows });
+      const ids = filtered.ids;
       if (dryRun) {
         return jsonResponse({
           action: targetAction,
@@ -7730,8 +7752,8 @@ Deno.serve(async (request) => {
         return jsonResponse({ error: "Filtered Rateware updates cannot change approved status." }, 400);
       }
 
-      const filtered = await fetchBulkRateRowsByFilter(supabase, filters, dryRun ? 50000 : maxRows);
-      const ids = filtered.rows.map((row) => cleanText(row.id)).filter(Boolean) as string[];
+      const filtered = await fetchRateRowIdsByFilter(supabase, filters, { limit: dryRun ? 50000 : maxRows });
+      const ids = filtered.ids;
       if (dryRun) {
         return jsonResponse({
           matched: ids.length,
@@ -7755,7 +7777,8 @@ Deno.serve(async (request) => {
       const updatedRows: Record<string, unknown>[] = [];
 
       if (requiresRowSpecificPatch) {
-        for (const current of filtered.rows) {
+        const currentRows = await fetchRateRowsForIds(supabase, ids, BULK_RATE_ROW_SELECT);
+        for (const current of currentRows) {
           const patch = normalizeStagingPatch(patchInput, current || {});
           Object.assign(patch, await vendorLinkPatch(supabase, user, patchInput, current || {}));
           if (mode === "rateware") delete patch.status;
