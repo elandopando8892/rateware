@@ -1959,6 +1959,69 @@ function createVendorMetrics(vendor: Record<string, unknown>, rates: Record<stri
   return createVendorMetricsFromLinkedRates(linkedRates);
 }
 
+function emptyVendorMetrics() {
+  return {
+    linked_rates: 0,
+    approved_rates: 0,
+    pending_rates: 0,
+    crossborder_rates: 0,
+    d2d_import_export_rates: 0,
+    mexico_rates: 0,
+    avg_all_in_rate: null,
+    avg_cost_per_mile: null,
+    avg_cost_per_km: null,
+    markets: [],
+    lanes: [],
+    equipment: [],
+    border_pairs: [],
+    last_quote_date: null
+  };
+}
+
+function normalizeVendorMetricRow(row: Record<string, unknown> | undefined) {
+  if (!row) return emptyVendorMetrics();
+  const numericValue = (value: unknown, decimals = 0) => {
+    const numberValue = Number(value);
+    if (!Number.isFinite(numberValue)) return null;
+    const factor = 10 ** decimals;
+    return Math.round(numberValue * factor) / factor;
+  };
+  return {
+    linked_rates: Number(row.linked_rates || 0),
+    approved_rates: Number(row.approved_rates || 0),
+    pending_rates: Number(row.pending_rates || 0),
+    crossborder_rates: Number(row.crossborder_rates || 0),
+    d2d_import_export_rates: Number(row.d2d_import_export_rates || 0),
+    mexico_rates: Number(row.mexico_rates || 0),
+    avg_all_in_rate: numericValue(row.avg_all_in_rate),
+    avg_cost_per_mile: numericValue(row.avg_cost_per_mile, 2),
+    avg_cost_per_km: numericValue(row.avg_cost_per_km, 2),
+    markets: arrayValues(row.markets).slice(0, 8),
+    lanes: arrayValues(row.lanes).slice(0, 6),
+    equipment: arrayValues(row.equipment).slice(0, 6),
+    border_pairs: arrayValues(row.border_pairs).slice(0, 6),
+    last_quote_date: cleanText(row.last_quote_date)
+  };
+}
+
+async function fetchVendorRateMetrics(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_email: string | null },
+  options: { baseStage?: string | null } = {}
+) {
+  const result = await supabase.rpc("vendor_rate_metrics_for_owner", {
+    p_owner_email: user.owner_email,
+    p_base_stage: cleanText(options.baseStage) || null
+  });
+  if (result.error) throw result.error;
+  const metrics = new Map<string, Record<string, unknown>>();
+  for (const row of result.data || []) {
+    const id = cleanText((row as Record<string, unknown>).vendor_id);
+    if (id) metrics.set(id, normalizeVendorMetricRow(row as Record<string, unknown>));
+  }
+  return metrics;
+}
+
 function buildVendorRateGroups(vendors: Record<string, unknown>[], rates: Record<string, unknown>[]) {
   const vendorIds = new Set(vendors.map((vendor) => cleanText(vendor.id)).filter(Boolean) as string[]);
   const domainIndex = new Map<string, string[]>();
@@ -2004,23 +2067,71 @@ function vendorDuplicateReasons(row: Record<string, unknown>, candidate: Record<
   const candidateNameKey = catalogKey(candidate.vendor_name);
   if (domain && candidateDomain && domain === candidateDomain) reasons.push("Same domain");
   if (email && candidateEmail && email === candidateEmail) reasons.push("Same email");
-  if (nameKey && candidateNameKey && nameKey !== candidateNameKey && (nameKey.includes(candidateNameKey) || candidateNameKey.includes(nameKey))) reasons.push("Similar name");
+  if (nameKey && candidateNameKey && nameKey === candidateNameKey) reasons.push("Same name");
+  else if (nameKey && candidateNameKey && (nameKey.includes(candidateNameKey) || candidateNameKey.includes(nameKey))) reasons.push("Similar name");
   return reasons;
+}
+
+function vendorDuplicateIndexKeys(vendor: Record<string, unknown>) {
+  const keys = new Set<string>();
+  const domain = normalizeDomain(vendor.domain);
+  const email = normalizeEmail(vendor.primary_email);
+  const name = catalogKey(vendor.vendor_name);
+  if (domain && !isGenericEmailDomain(domain)) keys.add(`domain:${domain}`);
+  if (email) keys.add(`email:${email}`);
+  if (name && name.length >= 4) keys.add(`name:${name}`);
+  return [...keys];
 }
 
 function vendorDuplicateMap(vendors: Record<string, unknown>[]) {
   const map = new Map<string, Array<{ vendor_id: string | null; vendor_name: string | null; reasons: string[] }>>();
+  const indexes = new Map<string, Record<string, unknown>[]>();
   for (const vendor of vendors) {
-    const matches = vendors
-      .filter((candidate) => candidate.id !== vendor.id)
-      .map((candidate) => ({
-        vendor_id: cleanText(candidate.id),
-        vendor_name: cleanText(candidate.vendor_name),
-        reasons: vendorDuplicateReasons(vendor, candidate)
-      }))
-      .filter((match) => match.reasons.length)
-      .slice(0, 5);
-    map.set(String(vendor.id), matches);
+    const id = cleanText(vendor.id);
+    if (!id) continue;
+    map.set(id, []);
+    for (const key of vendorDuplicateIndexKeys(vendor)) {
+      const bucket = indexes.get(key) || [];
+      bucket.push(vendor);
+      indexes.set(key, bucket);
+    }
+  }
+
+  const seenPairs = new Set<string>();
+  for (const bucket of indexes.values()) {
+    for (let leftIndex = 0; leftIndex < bucket.length; leftIndex += 1) {
+      for (let rightIndex = leftIndex + 1; rightIndex < bucket.length; rightIndex += 1) {
+        const left = bucket[leftIndex];
+        const right = bucket[rightIndex];
+        const leftId = cleanText(left.id);
+        const rightId = cleanText(right.id);
+        if (!leftId || !rightId) continue;
+        const pairKey = [leftId, rightId].sort().join(":");
+        if (seenPairs.has(pairKey)) continue;
+        seenPairs.add(pairKey);
+
+        const leftReasons = vendorDuplicateReasons(left, right);
+        const rightReasons = vendorDuplicateReasons(right, left);
+        if (leftReasons.length) {
+          map.get(leftId)?.push({
+            vendor_id: rightId,
+            vendor_name: cleanText(right.vendor_name),
+            reasons: leftReasons
+          });
+        }
+        if (rightReasons.length) {
+          map.get(rightId)?.push({
+            vendor_id: leftId,
+            vendor_name: cleanText(left.vendor_name),
+            reasons: rightReasons
+          });
+        }
+      }
+    }
+  }
+
+  for (const [id, matches] of map) {
+    map.set(id, matches.slice(0, 5));
   }
   return map;
 }
@@ -2130,15 +2241,22 @@ function vendorHealthLabel(score: number) {
   return { label: "Incomplete", tone: "weak" };
 }
 
-function buildVendorIntelligenceRows(vendors: Record<string, unknown>[], rates: Record<string, unknown>[]) {
+function buildVendorIntelligenceRows(
+  vendors: Record<string, unknown>[],
+  metricsSource: Map<string, Record<string, unknown>> | Record<string, unknown>[]
+) {
   const duplicates = vendorDuplicateMap(vendors);
-  const rateGroups = buildVendorRateGroups(vendors, rates);
+  const metricsByVendor = metricsSource instanceof Map ? metricsSource : null;
+  const rateGroups = metricsByVendor ? null : buildVendorRateGroups(vendors, metricsSource);
   return vendors.map((vendor) => {
-    const metrics = createVendorMetricsFromLinkedRates(rateGroups.get(cleanText(vendor.id) || "") || []);
+    const vendorId = cleanText(vendor.id) || "";
+    const metrics = metricsByVendor
+      ? normalizeVendorMetricRow(metricsByVendor.get(vendorId))
+      : createVendorMetricsFromLinkedRates(rateGroups?.get(vendorId) || []);
     const declared = vendorDeclaredSignals(vendor);
     const quoted = vendorQuotedSignals(metrics);
     const alignment = vendorCoverageAlignment(declared, quoted);
-    const duplicateMatches = duplicates.get(String(vendor.id)) || [];
+    const duplicateMatches = duplicates.get(vendorId) || [];
     const readiness = vendorReadinessScore(vendor);
     const quoteScore = Math.min(22, Number(metrics.approved_rates || 0) * 6 + Number(metrics.linked_rates || 0) * 2);
     const alignmentScore = alignment.matched.length ? Math.min(14, alignment.matched.length * 5) : alignment.quoted_only.length ? 8 : 0;
@@ -2202,16 +2320,16 @@ function buildVendorIntelligenceRows(vendors: Record<string, unknown>[], rates: 
 }
 
 async function buildVendorIntelligence(supabase: ReturnType<typeof createClient>, user: { owner_email: string | null }) {
-  const [vendorsResult, rates] = await Promise.all([
+  const [vendorsResult, metricsByVendor] = await Promise.all([
     supabase
       .from("vendors")
       .select("*")
       .eq("owner_email", user.owner_email)
       .limit(2000),
-    fetchBusinessIntelligenceRows(supabase, user)
+    fetchVendorRateMetrics(supabase, user)
   ]);
   if (vendorsResult.error) throw vendorsResult.error;
-  const rows = buildVendorIntelligenceRows(vendorsResult.data || [], rates);
+  const rows = buildVendorIntelligenceRows(vendorsResult.data || [], metricsByVendor);
   return {
     rows,
     summary: {
@@ -2252,8 +2370,10 @@ async function buildVendorFunnel(supabase: ReturnType<typeof createClient>, user
   if (vendorsResult.error) throw vendorsResult.error;
 
   const procurementVendors = vendorsResult.data || [];
-  const rates = procurementVendors.length ? await fetchBusinessIntelligenceRows(supabase, user) : [];
-  const procurementRows = buildVendorIntelligenceRows(procurementVendors, rates)
+  const metricsByVendor = procurementVendors.length
+    ? await fetchVendorRateMetrics(supabase, user, { baseStage: "procurement" })
+    : new Map<string, Record<string, unknown>>();
+  const procurementRows = buildVendorIntelligenceRows(procurementVendors, metricsByVendor)
     .map((row: Record<string, unknown>) => {
       const stage = vendorEffectiveFunnelStage(row);
       return {

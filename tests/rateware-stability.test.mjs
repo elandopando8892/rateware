@@ -7,6 +7,7 @@ const compositeRpcMigration = readFileSync(new URL("../supabase/migrations/20260
 const optimizedPredicateMigration = readFileSync(new URL("../supabase/migrations/20260626160000_optimize_rate_filter_predicates.sql", import.meta.url), "utf8");
 const fastFilterValuesMigration = readFileSync(new URL("../supabase/migrations/20260626161000_fast_rate_filter_values.sql", import.meta.url), "utf8");
 const ratewarePageIndexMigration = readFileSync(new URL("../supabase/migrations/20260626162500_rateware_page_index.sql", import.meta.url), "utf8");
+const vendorMetricRpcMigration = readFileSync(new URL("../supabase/migrations/20260626171000_vendor_metric_rpc.sql", import.meta.url), "utf8");
 
 for (const domain of ["gmail.com", "hotmail.com", "yahoo.com", "outlook.com", "yahoo.com.mx"]) {
   assert.match(apiSource, new RegExp(`"${domain.replace(".", "\\.")}"`), `generic domain ${domain} should be blocked`);
@@ -92,5 +93,35 @@ assert.match(
 
 assert.match(ratewarePageIndexMigration, /where status = 'approved'/, "Rateware page index should target approved rows");
 assert.match(ratewarePageIndexMigration, /quote_date desc nulls last, created_at desc, id desc/, "Rateware page index should match default sort order");
+
+for (const functionName of [
+  "rateware_domain_key",
+  "rateware_is_generic_email_domain",
+  "vendor_rate_metrics_for_owner"
+]) {
+  assert.match(vendorMetricRpcMigration, new RegExp(`function public\\.${functionName}`), `${functionName} should exist in vendor metric migration`);
+}
+
+assert.match(vendorMetricRpcMigration, /rate_staging_vendor_status_idx/, "vendor metric RPC should have vendor/status index support");
+assert.match(vendorMetricRpcMigration, /rate_staging_vendor_domain_status_idx/, "vendor metric RPC should have vendor-domain/status index support");
+assert.match(vendorMetricRpcMigration, /not public\.rateware_is_generic_email_domain/, "vendor metric domain matching should ignore generic email domains");
+assert.match(apiSource, /async function fetchVendorRateMetrics/, "API should fetch vendor metrics through database RPC");
+assert.match(apiSource, /vendor_rate_metrics_for_owner/, "API should call vendor rate metrics RPC");
+
+const vendorIntelligenceSource = apiSource.slice(apiSource.indexOf("async function buildVendorIntelligence"), apiSource.indexOf("function vendorEffectiveFunnelStage"));
+assert.ok(vendorIntelligenceSource.length > 100, "vendor intelligence helper should be present");
+assert.doesNotMatch(
+  vendorIntelligenceSource,
+  /fetchBusinessIntelligenceRows/,
+  "Vendor Intelligence should not load raw BI rate rows in the Edge Function"
+);
+
+const vendorFunnelSource = apiSource.slice(apiSource.indexOf("async function buildVendorFunnel"), apiSource.indexOf("function scoreCarrierFit"));
+assert.ok(vendorFunnelSource.length > 100, "vendor funnel helper should be present");
+assert.doesNotMatch(
+  vendorFunnelSource,
+  /fetchBusinessIntelligenceRows/,
+  "Procurement Pipeline should not load raw BI rate rows in the Edge Function"
+);
 
 console.log("Rateware stability guards passed.");

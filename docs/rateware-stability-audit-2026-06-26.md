@@ -74,7 +74,14 @@ Fix applied:
 
 Remaining work:
 
-- Move this to pre-aggregated database views or materialized tables.
+- Move broader AI recommendation slices to SQL-backed aggregations when they need route/corridor-specific filters.
+
+Status update:
+
+- Vendor Intelligence now reads vendor-level metrics from the Postgres RPC `vendor_rate_metrics_for_owner`.
+- The Edge Function no longer loads raw `rate_staging` rows just to calculate Vendor Intelligence.
+- Vendor metrics include linked/approved/pending rates, cross-border signals, D2D Import/Export signals, Mexico signals, average all-in, cost per mile/km, markets, lanes, equipment, border pairs, and last quote date.
+- Generic email domains remain excluded from domain-based vendor matching.
 
 ### 3. Procurement Pipeline Heavy Load
 
@@ -180,9 +187,12 @@ Missing tests:
 
 - Vendor match excludes generic domains.
 - Rateware list endpoint returns paginated rows.
-- Vendor Intelligence handles 1k+ vendors without timeout patterns.
-- Pipeline returns quickly with zero procurement vendors.
 - Bulk filtered actions do not act on only visible rows.
+
+Status update:
+
+- Added stability guards ensuring Vendor Intelligence and Procurement Pipeline do not call the raw BI rate-row loader.
+- Added guards for the vendor metrics RPC and supporting indexes.
 
 ### D. Data Ownership Needs Canonicalization
 
@@ -246,6 +256,17 @@ Production validation:
 - `rateware_filtered_rate_ids('rateware', ..., 'conflicts', ...)` returned rows.
 - `rateware_filtered_rate_ids('staging', 'pending_review', ..., 'ready', ...)` returned 0 rows because production currently has no pending review rows.
 - RPC function exists in `pg_proc`.
+
+## Stability Block 3 Validation
+
+Applied in this block:
+
+- Added SQL helper `rateware_domain_key` for consistent vendor-domain matching.
+- Added SQL helper `rateware_is_generic_email_domain` so generic email domains are excluded in database-side matching.
+- Added RPC `vendor_rate_metrics_for_owner` to aggregate quote/rate signals by vendor in Postgres.
+- Rewired Vendor Intelligence and Procurement Pipeline to consume vendor-level metrics instead of raw `rate_staging` rows.
+- Replaced quadratic duplicate detection with indexed duplicate candidate buckets.
+- Added regression guards to prevent Vendor Intelligence and Pipeline from reintroducing raw BI scans.
 
 ## Recommended Stabilization Sprint
 
