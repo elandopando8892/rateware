@@ -1081,6 +1081,148 @@ const BULK_RATE_ROW_SELECT = [
   "created_at"
 ].join(",");
 
+const RATE_ROW_RESPONSE_COLUMNS = [
+  "id",
+  "created_at",
+  "updated_at",
+  "raw_upload_id",
+  "interpretation_job_id",
+  "status",
+  "vendor_id",
+  "vendor_domain",
+  "rfx_id",
+  "row_id",
+  "rfx_key",
+  "route_key",
+  "business_key",
+  "origin",
+  "destination",
+  "normalized_origin",
+  "normalized_destination",
+  "origin_country",
+  "origin_zip_prefix",
+  "origin_city",
+  "origin_state",
+  "origin_region",
+  "origin_market",
+  "destination_country",
+  "destination_zip_prefix",
+  "destination_city",
+  "destination_state",
+  "destination_region",
+  "destination_market",
+  "equipment",
+  "trailer",
+  "hazmat",
+  "temperature_controlled",
+  "config",
+  "operation",
+  "service",
+  "driver",
+  "mx_border_crossing_point",
+  "us_border_crossing_point",
+  "mx_linehaul",
+  "us_linehaul",
+  "us_miles",
+  "fsc",
+  "fuel",
+  "border_crossing_fee",
+  "flat_rate",
+  "all_in_rate",
+  "currency",
+  "weekly_capacity",
+  "notes",
+  "accessorials",
+  "confidence",
+  "quote_date",
+  "calculated_miles",
+  "calculated_km",
+  "carrier_fsc_per_mile",
+  "normalized_fsc_per_mile",
+  "normalized_fsc_total",
+  "fuel_region",
+  "fuel_index_date",
+  "fuel_diesel_per_gallon",
+  "fuel_delta",
+  "fuel_source",
+  "normalized_all_in_rate",
+  "lane_type",
+  "leg_status",
+  "leg_summary",
+  "mx_diesel_mxn_per_liter",
+  "mx_diesel_usd_per_liter",
+  "mx_fuel_efficiency_km_per_liter",
+  "mx_fuel_factor",
+  "mx_fuel_cost_usd",
+  "mx_fuel_source",
+  "fx_rate_mxn_usd",
+  "fx_source",
+  "catalog_match_status",
+  "location_match_status",
+  "origin_match_reason",
+  "destination_match_reason",
+  "origin_match_source",
+  "destination_match_source",
+  "origin_match_confidence",
+  "destination_match_confidence",
+  "origin_match_manual",
+  "destination_match_manual",
+  "origin_location_candidates",
+  "destination_location_candidates",
+  "extraction_warnings",
+  "field_confidence",
+  "source_evidence",
+  "audit_flags"
+];
+
+const RATE_ROW_RESPONSE_SELECT = `${RATE_ROW_RESPONSE_COLUMNS.join(",")}, vendors(vendor_name, domain, primary_email, base_stage, status)`;
+const RATE_ROW_RESPONSE_WITH_LEGS_SELECT = `${RATE_ROW_RESPONSE_SELECT}, rateware_lane_legs(*)`;
+const RATE_SIGNAL_SELECT = [
+  "id",
+  "status",
+  "vendor_id",
+  "vendor_domain",
+  "rfx_id",
+  "origin",
+  "destination",
+  "normalized_origin",
+  "normalized_destination",
+  "origin_country",
+  "origin_zip_prefix",
+  "origin_city",
+  "origin_state",
+  "origin_region",
+  "origin_market",
+  "destination_country",
+  "destination_zip_prefix",
+  "destination_city",
+  "destination_state",
+  "destination_region",
+  "destination_market",
+  "equipment",
+  "trailer",
+  "hazmat",
+  "temperature_controlled",
+  "config",
+  "operation",
+  "service",
+  "driver",
+  "mx_border_crossing_point",
+  "us_border_crossing_point",
+  "mx_linehaul",
+  "us_linehaul",
+  "fsc",
+  "border_crossing_fee",
+  "all_in_rate",
+  "currency",
+  "weekly_capacity",
+  "quote_date",
+  "calculated_miles",
+  "calculated_km",
+  "created_at",
+  "vendors(vendor_name, domain, primary_email, base_stage, status, owner_email)"
+].join(",");
+
 const RATE_SEARCH_COLUMNS = [
   "vendor_domain",
   "rfx_id",
@@ -2802,9 +2944,11 @@ function buildBusinessIntelligencePivot(rows: Record<string, unknown>[], config:
 async function fetchBusinessIntelligenceRows(supabase: ReturnType<typeof createClient>, user: { owner_email: string | null }) {
   const result = await supabase
     .from("rate_staging")
-    .select("*, vendors(vendor_name, domain, primary_email, base_stage, status, owner_email)")
+    .select(RATE_SIGNAL_SELECT)
     .in("status", ["pending_review", "approved"])
-    .limit(5000);
+    .order("quote_date", { ascending: false, nullsFirst: false })
+    .order("created_at", { ascending: false })
+    .limit(12000);
   if (result.error) throw result.error;
   return (result.data || []).filter((row) => {
     const vendor = typeof row.vendors === "object" && row.vendors ? row.vendors as Record<string, unknown> : null;
@@ -6768,7 +6912,7 @@ Deno.serve(async (request) => {
         if (pageIds.length) {
           const pageResult = await supabase
             .from("rate_staging")
-            .select("*, vendors(vendor_name, domain, primary_email, base_stage, status), rateware_lane_legs(*)")
+            .select(RATE_ROW_RESPONSE_WITH_LEGS_SELECT)
             .in("id", pageIds);
           if (pageResult.error) throw pageResult.error;
           const byId = new Map((pageResult.data || []).map((row) => [cleanText(row.id), row]));
@@ -6788,7 +6932,7 @@ Deno.serve(async (request) => {
 
       let query = supabase
         .from("rate_staging")
-        .select("*, vendors(vendor_name, domain, primary_email, base_stage, status), rateware_lane_legs(*)", { count: "exact" })
+        .select(RATE_ROW_RESPONSE_WITH_LEGS_SELECT, { count: "exact" })
         .order("created_at", { ascending: false })
         .order("id", { ascending: false })
         .range(offset, offset + limit - 1);
@@ -6871,7 +7015,7 @@ Deno.serve(async (request) => {
         if (pageIds.length) {
           const pageResult = await supabase
             .from("rate_staging")
-            .select("*, vendors(vendor_name, domain, primary_email, base_stage, status)")
+            .select(RATE_ROW_RESPONSE_SELECT)
             .in("id", pageIds);
           if (pageResult.error) throw pageResult.error;
           const byId = new Map((pageResult.data || []).map((row) => [cleanText(row.id), row]));
@@ -6891,7 +7035,7 @@ Deno.serve(async (request) => {
 
       let query = supabase
         .from("rate_staging")
-        .select("*, vendors(vendor_name, domain, primary_email, base_stage, status)", { count: "exact" })
+        .select(RATE_ROW_RESPONSE_SELECT, { count: "exact" })
         .eq("status", "approved")
         .order("quote_date", { ascending: false, nullsFirst: false })
         .order("created_at", { ascending: false })
