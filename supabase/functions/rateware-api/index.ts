@@ -1535,6 +1535,11 @@ const SQL_RATE_FILTER_FIELDS = new Set([
   "service",
   "mx_border_crossing_point",
   "us_border_crossing_point",
+  "mx_linehaul",
+  "us_linehaul",
+  "fsc",
+  "border_crossing_fee",
+  "all_in_rate",
   "currency",
   "weekly_capacity",
   "quote_date"
@@ -1798,18 +1803,6 @@ async function fetchRateRowsForIds(
   return ids.map((id) => byId.get(id)).filter(Boolean) as Record<string, unknown>[];
 }
 
-function filterValueSelectForField(field: string) {
-  if (field === "vendor") return "id,vendor_domain, vendors(vendor_name,domain)";
-  if (field === "origin") {
-    return "id,origin,normalized_origin,origin_city,origin_state,origin_zip_prefix,origin_market,origin_region,origin_country";
-  }
-  if (field === "destination") {
-    return "id,destination,normalized_destination,destination_city,destination_state,destination_zip_prefix,destination_market,destination_region,destination_country";
-  }
-  const column = sqlRateFilterField(field);
-  return column ? `id,${column}` : BULK_RATE_ROW_SELECT;
-}
-
 async function fetchRateFilterValuesByRpc(
   supabase: ReturnType<typeof createClient>,
   filters: Record<string, unknown>,
@@ -1817,29 +1810,32 @@ async function fetchRateFilterValuesByRpc(
   valueSearch = "",
   limit = 1000
 ) {
-  const filtered = await fetchRateRowIdsByFilter(supabase, filters, { limit: 50000 });
-  const rows = await fetchRateRowsForIds(supabase, filtered.ids, filterValueSelectForField(field));
-  const seen = new Map<string, string>();
-  const needle = valueSearch.toLowerCase();
+  const result = await supabase.rpc("rateware_filtered_rate_values", {
+    p_field: field,
+    p_mode: cleanText(filters.mode) || "staging",
+    p_status: cleanText(filters.status),
+    p_raw_upload_id: cleanText(filters.raw_upload_id),
+    p_search: cleanText(filters.search),
+    p_operation: cleanText(filters.operation),
+    p_service: cleanText(filters.service),
+    p_quick_filter: cleanText(filters.quick_filter) || "all",
+    p_review_filter: cleanText(filters.review_filter) || "all",
+    p_column_filters: objectRecord(filters.column_filters),
+    p_exclude_archived: filters.exclude_archived === true,
+    p_value_search: cleanText(valueSearch),
+    p_limit: Math.min(Math.max(Number(limit) || 1000, 1), 5000)
+  });
+  if (result.error) throw result.error;
 
-  for (const row of rows) {
-    const values = bulkColumnValues(row, field);
-    const list = values.length ? values : ["(blank)"];
-    for (const value of list) {
-      const label = cleanText(value) || "(blank)";
-      if (needle && !label.toLowerCase().includes(needle)) continue;
-      const key = bulkFilterKey(label);
-      if (!seen.has(key)) seen.set(key, label);
-    }
-  }
-
-  const values = [...seen.values()].sort((a, b) => a.localeCompare(b));
+  const rows = (result.data || []) as Record<string, unknown>[];
+  const values = rows.map((row) => cleanText(row.value)).filter(Boolean) as string[];
+  const total = Number(rows[0]?.total_count || values.length);
   return {
     field,
     values: values.slice(0, limit),
-    total: values.length,
-    database_count: filtered.database_count,
-    hard_limit_reached: filtered.hard_limit_reached
+    total,
+    database_count: total,
+    hard_limit_reached: total > values.length
   };
 }
 

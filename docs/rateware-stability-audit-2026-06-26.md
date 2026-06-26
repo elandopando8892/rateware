@@ -157,7 +157,9 @@ Status update:
 
 - Direct spreadsheet filters were moved to SQL-backed API paths.
 - Derived filters and filtered bulk actions now use the `rateware_filtered_rate_ids` Postgres RPC instead of Edge Function row scans.
-- Remaining risk is limited to filter value dropdowns that may still hydrate row labels for composite fields such as vendor, origin, and destination.
+- Composite filters for vendor, origin, and destination now use database RPCs for both row filtering and dropdown values.
+- Filter dropdowns no longer hydrate full rate rows inside the Edge Function.
+- Dropdown values use a fast SQL path when no advanced filters are active, and only run the full matcher when needed.
 
 ### B. Rateware Audit Drawer Needs Lazy Load
 
