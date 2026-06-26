@@ -3,7 +3,7 @@ import { createLocationMatchDrawer } from "./location-match-drawer.js";
 import { initSpreadsheetColumnFilters } from "./spreadsheet-column-filters.js";
 import { installSpreadsheetGrid } from "./spreadsheet-grid.js";
 import { initColumnVisibility, initDrawer, initLocationAutocomplete } from "./sheet-ui.js";
-import { archiveStagingRows, archiveStagingRowsByFilter, enrichStagingLocationZips, fetchStagingFilterValues, fetchStagingOptions, fetchStagingPage, matchStagingVendors, removeStagingRows, removeStagingRowsByFilter, renormalizeStagingRows, saveLocationAlias, updateStagingRow, updateStagingRowsByFilter } from "./staging-service.js";
+import { archiveStagingRows, archiveStagingRowsByFilter, enrichStagingLocationZips, fetchStagingFilterValues, fetchStagingOptions, fetchStagingPage, matchStagingVendors, matchStagingVendorsByFilter, removeStagingRows, removeStagingRowsByFilter, renormalizeStagingRows, saveLocationAlias, updateStagingRow, updateStagingRowsByFilter } from "./staging-service.js";
 import { tableErrorState, tableLoadingState, tableState } from "./ui-state.js";
 
 const body = document.querySelector("#staging-body");
@@ -608,7 +608,14 @@ function updateBulkControls() {
   if (applyBulkEditFilteredButton) applyBulkEditFilteredButton.disabled = !bulkFieldSelect?.value || !hasFilteredRows;
   if (stagingMetricSelected) stagingMetricSelected.textContent = String(selectedCount);
   bulkSaveButton.disabled = selectedCount === 0;
-  if (bulkMatchVendorsButton) bulkMatchVendorsButton.disabled = selectedCount === 0;
+  if (bulkMatchVendorsButton) {
+    bulkMatchVendorsButton.disabled = selectedCount === 0 && !hasFilteredRows;
+    setFilteredButtonLabel(
+      bulkMatchVendorsButton,
+      selectedCount ? "Match selected vendors" : "Match filtered DB vendors",
+      selectedCount ? selectedCount : filteredTotal
+    );
+  }
   bulkApproveButton.disabled = selectedCount === 0;
   bulkRejectButton.disabled = selectedCount === 0;
   if (bulkApproveFilteredButton) bulkApproveFilteredButton.disabled = !hasFilteredRows;
@@ -1905,6 +1912,7 @@ async function runBulkAction(status = null) {
     await loadRows({ preservePage: true });
   } catch (error) {
     setBulkStatus(error.message, "error");
+  } finally {
     updateBulkControls();
   }
 }
@@ -1947,6 +1955,7 @@ async function runBulkArchive() {
     await loadRows({ preservePage: true });
   } catch (error) {
     setBulkStatus(error.message, "error");
+  } finally {
     updateBulkControls();
   }
 }
@@ -2095,20 +2104,48 @@ async function runBulkRenormalize() {
 
 async function runBulkMatchVendors() {
   const rows = selectedRows();
-  if (!rows.length) return;
   const ids = rows.map((row) => row.dataset.rowId);
 
-  setBulkStatus(`Matching vendors for ${ids.length} rows...`);
   if (bulkMatchVendorsButton) bulkMatchVendorsButton.disabled = true;
 
   try {
     await ensureSignedIn();
-    const result = await matchStagingVendors(ids);
-    ids.forEach((id) => selectedRowIds.delete(id));
-    setBulkStatus(`${result.updated || 0} rows linked to vendors.`, "success");
+    if (ids.length) {
+      setBulkStatus(`Matching vendors for ${ids.length} selected row(s)...`);
+      const result = await matchStagingVendors(ids);
+      ids.forEach((id) => selectedRowIds.delete(id));
+      setBulkStatus(`${result.updated || 0} selected row(s) linked to vendors.`, "success");
+      await loadRows({ preservePage: true });
+      return;
+    }
+
+    const filters = activeStagingBulkFilters();
+    const scope = stagingFilterSummaryLabel(filters);
+    setBulkStatus(`Counting staging rows for vendor match: ${scope}...`);
+    const preview = await matchStagingVendorsByFilter(filters, { dryRun: true });
+    const matched = Number(preview.matched || 0);
+    const matchable = Number(preview.matchable || 0);
+    if (!matched) {
+      setBulkStatus(`No staging rows match: ${scope}.`, "warning");
+      return;
+    }
+    if (!matchable) {
+      setBulkStatus(`No vendor matches found across ${matched.toLocaleString()} filtered staging row(s).`, "warning");
+      return;
+    }
+    if (!confirmFilteredDatabaseAction({ actionLabel: "Match vendors for", matched, scope, keyword: "MATCH" })) {
+      setBulkStatus("Filtered vendor match cancelled.", "warning");
+      return;
+    }
+
+    setBulkStatus(`Matching vendors for ${matched.toLocaleString()} filtered staging row(s)...`);
+    const result = await matchStagingVendorsByFilter(filters, { dryRun: false, maxRows: matched });
+    selectedRowIds.clear();
+    setBulkStatus(`${Number(result.updated || 0).toLocaleString()} staging row(s) linked to vendors. ${Number(result.candidates || 0).toLocaleString()} had vendor references; ${Number(result.matchable || 0).toLocaleString()} matched a vendor.`, "success");
     await loadRows({ preservePage: true });
   } catch (error) {
     setBulkStatus(error.message, "error");
+  } finally {
     updateBulkControls();
   }
 }

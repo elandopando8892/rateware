@@ -1,6 +1,6 @@
 import { initAuthControls, requirePrivatePage } from "./auth.js";
 import { createLocationMatchDrawer } from "./location-match-drawer.js";
-import { archiveApprovedRatewareByFilter, bulkUpdateApprovedRatewareRows, createRatewareBookVersion, enrichApprovedRatewareLocationZips, fetchApprovedRatewarePage, fetchRatewareAudit, fetchRatewareBookVersion, fetchRatewareBookVersions, fetchRatewareFilterValues, matchApprovedRatewareVendors, renormalizeApprovedRatewareRows, fetchRatewareOptions, removeApprovedRatewareByFilter, returnApprovedRatesToStaging, saveLocationAlias, updateApprovedRatewareByFilter, updateApprovedRatewareRow } from "./rateware-service.js";
+import { archiveApprovedRatewareByFilter, bulkUpdateApprovedRatewareRows, createRatewareBookVersion, enrichApprovedRatewareLocationZips, fetchApprovedRatewarePage, fetchRatewareAudit, fetchRatewareBookVersion, fetchRatewareBookVersions, fetchRatewareFilterValues, matchApprovedRatewareVendors, matchApprovedRatewareVendorsByFilter, renormalizeApprovedRatewareRows, fetchRatewareOptions, removeApprovedRatewareByFilter, returnApprovedRatesToStaging, saveLocationAlias, updateApprovedRatewareByFilter, updateApprovedRatewareRow } from "./rateware-service.js";
 import { initSpreadsheetColumnFilters } from "./spreadsheet-column-filters.js";
 import { installSpreadsheetGrid } from "./spreadsheet-grid.js";
 import { initColumnVisibility, initDrawer, initLocationAutocomplete } from "./sheet-ui.js";
@@ -1404,7 +1404,14 @@ function updateBulkControls() {
   if (openSelectedDetailButton) openSelectedDetailButton.disabled = selectedCount !== 1;
   if (openBulkDrawerButton) openBulkDrawerButton.disabled = false;
   saveSelectedButton.disabled = selectedCount === 0;
-  if (matchSelectedVendorsButton) matchSelectedVendorsButton.disabled = selectedCount === 0;
+  if (matchSelectedVendorsButton) {
+    matchSelectedVendorsButton.disabled = selectedCount === 0 && !hasFilteredRows;
+    setFilteredButtonLabel(
+      matchSelectedVendorsButton,
+      selectedCount ? "Match selected vendors" : "Match filtered DB vendors",
+      selectedCount ? selectedCount : filteredTotal
+    );
+  }
   if (enrichSelectedZipsButton) enrichSelectedZipsButton.disabled = selectedCount === 0;
   if (renormalizeSelectedButton) renormalizeSelectedButton.disabled = selectedCount === 0;
   returnSelectedButton.disabled = selectedCount === 0;
@@ -2352,19 +2359,47 @@ async function renormalizeSelectedRateware() {
 
 async function matchSelectedRatewareVendors() {
   const ids = selectedVisibleIds();
-  if (!ids.length) return;
 
   if (matchSelectedVendorsButton) matchSelectedVendorsButton.disabled = true;
-  setActionStatus(`Matching vendors for ${ids.length} approved rate(s)...`);
 
   try {
     await requirePrivatePage();
-    const result = await matchApprovedRatewareVendors(ids);
-    ids.forEach((id) => selectedRowIds.delete(id));
-    setActionStatus(`${result.updated || 0} approved rate(s) linked to vendors.`, "success");
+    if (ids.length) {
+      setActionStatus(`Matching vendors for ${ids.length} selected approved rate(s)...`);
+      const result = await matchApprovedRatewareVendors(ids);
+      ids.forEach((id) => selectedRowIds.delete(id));
+      setActionStatus(`${result.updated || 0} selected approved rate(s) linked to vendors.`, "success");
+      await loadRateware({ preservePage: true });
+      return;
+    }
+
+    const filters = activeRatewareBulkFilters();
+    const scope = ratewareFilterSummaryLabel(filters);
+    setActionStatus(`Counting approved rates for vendor match: ${scope}...`);
+    const preview = await matchApprovedRatewareVendorsByFilter(filters, { dryRun: true });
+    const matched = Number(preview.matched || 0);
+    const matchable = Number(preview.matchable || 0);
+    if (!matched) {
+      setActionStatus(`No approved rates match: ${scope}.`, "warning");
+      return;
+    }
+    if (!matchable) {
+      setActionStatus(`No vendor matches found across ${matched.toLocaleString()} filtered approved rate(s).`, "warning");
+      return;
+    }
+    if (!confirmFilteredDatabaseAction({ actionLabel: "Match vendors for", matched, scope, keyword: "MATCH" })) {
+      setActionStatus("Filtered vendor match cancelled.", "warning");
+      return;
+    }
+
+    setActionStatus(`Matching vendors for ${matched.toLocaleString()} filtered approved rate(s)...`);
+    const result = await matchApprovedRatewareVendorsByFilter(filters, { dryRun: false, maxRows: matched });
+    selectedRowIds.clear();
+    setActionStatus(`${Number(result.updated || 0).toLocaleString()} approved rate(s) linked to vendors. ${Number(result.candidates || 0).toLocaleString()} had vendor references; ${Number(result.matchable || 0).toLocaleString()} matched a vendor.`, "success");
     await loadRateware({ preservePage: true });
   } catch (error) {
     setActionStatus(error.message, "error");
+  } finally {
     updateBulkControls();
   }
 }

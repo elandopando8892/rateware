@@ -4864,6 +4864,66 @@ async function enrichMissingLocationZips(supabase: ReturnType<typeof createClien
   return { rows: updatedRows, enriched };
 }
 
+async function fetchVendorRowsForRateMatching(supabase: ReturnType<typeof createClient>, user: { owner_email: string | null }) {
+  if (!user.owner_email) return [];
+  const result = await supabase
+    .from("vendors")
+    .select("id,vendor_name,domain,primary_email,secondary_emails,status,base_stage")
+    .eq("owner_email", user.owner_email)
+    .limit(10000);
+  if (result.error) throw result.error;
+  return result.data || [];
+}
+
+function planRateVendorMatches(rows: Record<string, unknown>[], vendors: Record<string, unknown>[]) {
+  const groups = new Map<string, { patch: Record<string, unknown>; ids: string[] }>();
+  let candidates = 0;
+  let matchable = 0;
+
+  for (const row of rows) {
+    const id = cleanText(row.id);
+    const reference = cleanText(row.vendor_domain);
+    if (!id || !reference) continue;
+    candidates += 1;
+
+    const match = resolveVendorReferenceFromRows(vendors, reference);
+    if (!match) continue;
+    matchable += 1;
+
+    const fallbackDomain = domainFromVendorReference(reference);
+    const patch = {
+      vendor_id: match.vendor.id,
+      vendor_domain: normalizeDomain(match.vendor.domain) || match.domain || fallbackDomain || reference
+    };
+    const groupKey = `${patch.vendor_id}::${patch.vendor_domain}`;
+    const group = groups.get(groupKey) || { patch, ids: [] };
+    group.ids.push(id);
+    groups.set(groupKey, group);
+  }
+
+  return { candidates, matchable, groups };
+}
+
+async function applyPlannedRateVendorMatches(supabase: ReturnType<typeof createClient>, plan: ReturnType<typeof planRateVendorMatches>) {
+  const rows: Record<string, unknown>[] = [];
+  let updated = 0;
+
+  for (const group of plan.groups.values()) {
+    for (const chunk of chunkValues(group.ids, 500)) {
+      const result = await supabase
+        .from("rate_staging")
+        .update(group.patch)
+        .in("id", chunk)
+        .select("id,status,vendor_id,vendor_domain");
+      if (result.error) throw result.error;
+      updated += result.data?.length || 0;
+      if (rows.length < 100) rows.push(...((result.data || []) as Record<string, unknown>[]).slice(0, 100 - rows.length));
+    }
+  }
+
+  return { updated, rows };
+}
+
 async function matchRateVendorRows(supabase: ReturnType<typeof createClient>, user: { owner_email: string | null }, ids: string[], status: string | null = null) {
   if (!ids.length) throw new Error("At least one rate row id is required.");
 
@@ -4877,26 +4937,46 @@ async function matchRateVendorRows(supabase: ReturnType<typeof createClient>, us
   const rowsResult = await rowQuery;
   if (rowsResult.error) throw rowsResult.error;
 
-  const updatedRows = [];
-  for (const row of rowsResult.data || []) {
-    if (!cleanText(row.vendor_domain)) continue;
-    const match = await resolveVendorReference(supabase, user, row.vendor_domain);
-    if (!match) continue;
-    const patch = {
-      vendor_id: match.vendor.id,
-      vendor_domain: normalizeDomain(match.vendor.domain) || match.domain || domainFromVendorReference(row.vendor_domain) || cleanText(row.vendor_domain)
+  const vendors = await fetchVendorRowsForRateMatching(supabase, user);
+  const plan = planRateVendorMatches((rowsResult.data || []) as Record<string, unknown>[], vendors);
+  return await applyPlannedRateVendorMatches(supabase, plan);
+}
+
+async function matchRateVendorRowsByFilter(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_email: string | null },
+  filters: Record<string, unknown>,
+  options: { dryRun?: boolean; maxRows?: number } = {}
+) {
+  const maxRows = Math.min(Math.max(Number(options.maxRows) || 50000, 1), 50000);
+  const filtered = await fetchBulkRateRowsByFilter(supabase, filters, options.dryRun ? 50000 : maxRows);
+  const vendors = await fetchVendorRowsForRateMatching(supabase, user);
+  const plan = planRateVendorMatches(filtered.rows as Record<string, unknown>[], vendors);
+
+  if (options.dryRun) {
+    return {
+      matched: filtered.rows.length,
+      candidates: plan.candidates,
+      matchable: plan.matchable,
+      updated: 0,
+      rows: [],
+      database_count: filtered.database_count,
+      hard_limit_reached: filtered.hard_limit_reached,
+      max_rows: maxRows
     };
-    const result = await supabase
-      .from("rate_staging")
-      .update(patch)
-      .eq("id", row.id)
-      .select("*, vendors(vendor_name, domain, primary_email, base_stage, status)")
-      .single();
-    if (result.error) throw result.error;
-    updatedRows.push(result.data);
   }
 
-  return updatedRows;
+  const applied = await applyPlannedRateVendorMatches(supabase, plan);
+  return {
+    matched: filtered.rows.length,
+    candidates: plan.candidates,
+    matchable: plan.matchable,
+    updated: applied.updated,
+    rows: applied.rows,
+    database_count: filtered.database_count,
+    hard_limit_reached: filtered.hard_limit_reached,
+    max_rows: maxRows
+  };
 }
 
 async function renormalizeRateRows(supabase: ReturnType<typeof createClient>, ids: string[], status: string | null = null) {
@@ -7033,8 +7113,37 @@ Deno.serve(async (request) => {
     if (body.action === "match_rate_vendors") {
       const ids = Array.isArray(body.ids) ? body.ids.map(String).filter(Boolean).slice(0, 500) : [];
       const status = cleanText(body.status);
-      const rows = await matchRateVendorRows(supabase, user, ids, status);
-      return jsonResponse({ updated: rows.length, rows });
+      const result = await matchRateVendorRows(supabase, user, ids, status);
+      return jsonResponse(result);
+    }
+
+    if (body.action === "match_rate_vendors_by_filter") {
+      const filters = objectRecord(body.filters);
+      const dryRun = body.dry_run === true;
+      const maxRows = Math.min(Math.max(Number(body.max_rows) || 50000, 1), 50000);
+      const mode = cleanText(filters.mode) === "rateware" ? "rateware" : "staging";
+      const result = await matchRateVendorRowsByFilter(supabase, user, filters, { dryRun, maxRows });
+
+      if (!dryRun && result.updated) {
+        await writeAuditLog(
+          supabase,
+          user,
+          `${mode}.bulk_match_vendors_filtered`,
+          "rate_staging",
+          result.rows.map((row) => cleanText(row.id)).filter(Boolean).slice(0, 50).join(","),
+          `Matched vendors for ${result.updated} ${mode} row(s) using active filters`,
+          {
+            matched_count: result.matched,
+            candidates_count: result.candidates,
+            matchable_count: result.matchable,
+            updated_count: result.updated,
+            filters,
+            hard_limit_reached: result.hard_limit_reached
+          }
+        );
+      }
+
+      return jsonResponse(result);
     }
 
     if (body.action === "enrich_missing_location_zips") {

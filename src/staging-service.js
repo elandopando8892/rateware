@@ -49,6 +49,14 @@ export async function matchStagingVendors(ids = []) {
   return await callRatewareApi("match_rate_vendors", { ids });
 }
 
+export async function matchStagingVendorsByFilter(filters = {}, { dryRun = false, maxRows = undefined } = {}) {
+  return await callRatewareApi("match_rate_vendors_by_filter", {
+    filters: { ...filters, mode: "staging" },
+    dry_run: dryRun,
+    max_rows: maxRows
+  });
+}
+
 export async function enrichStagingLocationZips(ids = []) {
   return await callRatewareApi("enrich_missing_location_zips", { ids });
 }

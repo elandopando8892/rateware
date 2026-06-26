@@ -66,6 +66,14 @@ export async function matchApprovedRatewareVendors(ids = []) {
   return await callRatewareApi("match_rate_vendors", { ids, status: "approved" });
 }
 
+export async function matchApprovedRatewareVendorsByFilter(filters = {}, { dryRun = false, maxRows = undefined } = {}) {
+  return await callRatewareApi("match_rate_vendors_by_filter", {
+    filters: { ...filters, mode: "rateware" },
+    dry_run: dryRun,
+    max_rows: maxRows
+  });
+}
+
 export async function enrichApprovedRatewareLocationZips(ids = []) {
   return await callRatewareApi("enrich_missing_location_zips", { ids, status: "approved" });
 }
