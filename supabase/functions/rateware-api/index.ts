@@ -859,6 +859,28 @@ function domainFromVendorReference(value: unknown) {
   return normalizeDomain(domainText);
 }
 
+const GENERIC_EMAIL_DOMAINS = new Set([
+  "gmail.com",
+  "googlemail.com",
+  "hotmail.com",
+  "outlook.com",
+  "live.com",
+  "msn.com",
+  "yahoo.com",
+  "yahoo.com.mx",
+  "icloud.com",
+  "me.com",
+  "aol.com",
+  "proton.me",
+  "protonmail.com"
+]);
+
+function isGenericEmailDomain(domain: unknown) {
+  const value = normalizeDomain(domain);
+  if (!value) return false;
+  return GENERIC_EMAIL_DOMAINS.has(value);
+}
+
 function vendorEmails(vendor: Record<string, unknown>) {
   const secondary = Array.isArray(vendor.secondary_emails) ? vendor.secondary_emails : [];
   return [vendor.primary_email, ...secondary]
@@ -870,6 +892,8 @@ function scoreVendorReference(vendor: Record<string, unknown>, reference: unknow
   const email = normalizeEmail(reference);
   const domain = domainFromVendorReference(reference);
   if (!email && !domain) return { score: 0, source: null as string | null, domain: null as string | null, email: null as string | null };
+  const genericDomain = isGenericEmailDomain(domain);
+  if (!email && genericDomain) return { score: 0, source: null, domain, email };
 
   const vendorDomain = normalizeDomain(vendor.domain);
   const emails = vendorEmails(vendor);
@@ -879,16 +903,16 @@ function scoreVendorReference(vendor: Record<string, unknown>, reference: unknow
   if (email && emails.includes(email)) {
     score = 120;
     source = "email";
-  } else if (domain && vendorDomain && vendorDomain === domain) {
+  } else if (!genericDomain && domain && vendorDomain && vendorDomain === domain) {
     score = 105;
     source = "domain";
-  } else if (email && domain && vendorDomain === domain) {
+  } else if (!genericDomain && email && domain && vendorDomain === domain) {
     score = 100;
     source = "email_domain";
-  } else if (domain && emails.some((candidate) => candidate.endsWith(`@${domain}`))) {
+  } else if (!genericDomain && domain && emails.some((candidate) => candidate.endsWith(`@${domain}`))) {
     score = 92;
     source = "contact_email_domain";
-  } else if (domain && vendorDomain && (domain.endsWith(`.${vendorDomain}`) || vendorDomain.endsWith(`.${domain}`))) {
+  } else if (!genericDomain && domain && vendorDomain && (domain.endsWith(`.${vendorDomain}`) || vendorDomain.endsWith(`.${domain}`))) {
     score = 78;
     source = "domain_alias";
   }
