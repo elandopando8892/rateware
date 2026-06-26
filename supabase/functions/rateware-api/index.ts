@@ -1177,6 +1177,17 @@ const RATE_ROW_RESPONSE_COLUMNS = [
 
 const RATE_ROW_RESPONSE_SELECT = `${RATE_ROW_RESPONSE_COLUMNS.join(",")}, vendors(vendor_name, domain, primary_email, base_stage, status)`;
 const RATE_ROW_RESPONSE_WITH_LEGS_SELECT = `${RATE_ROW_RESPONSE_SELECT}, rateware_lane_legs(*)`;
+const RATE_ROW_LIST_COLUMNS = RATE_ROW_RESPONSE_COLUMNS.filter((column) => ![
+  "accessorials",
+  "notes",
+  "origin_location_candidates",
+  "destination_location_candidates",
+  "extraction_warnings",
+  "field_confidence",
+  "source_evidence",
+  "audit_flags"
+].includes(column));
+const RATE_ROW_LIST_SELECT = `${RATE_ROW_LIST_COLUMNS.join(",")}, vendors(vendor_name, domain, primary_email, base_stage, status)`;
 const RATE_SIGNAL_SELECT = [
   "id",
   "status",
@@ -1547,14 +1558,7 @@ function vendorSearchText(vendor: Record<string, unknown>) {
   ].filter(Boolean).join(" ");
 }
 
-function createVendorMetrics(vendor: Record<string, unknown>, rates: Record<string, unknown>[]) {
-  const vendorDomain = normalizeDomain(vendor.domain);
-  const emails = vendorEmails(vendor);
-  const linkedRates = rates.filter((row) => {
-    if (row.vendor_id && vendor.id && row.vendor_id === vendor.id) return true;
-    const rowDomain = normalizeDomain(row.vendor_domain);
-    return Boolean(rowDomain && (rowDomain === vendorDomain || emails.some((email) => email.endsWith(`@${rowDomain}`))));
-  });
+function createVendorMetricsFromLinkedRates(linkedRates: Record<string, unknown>[]) {
   const approvedRates = linkedRates.filter((row) => row.status === "approved");
   const crossborderRates = linkedRates.filter(isCrossBorderRate);
   const d2dImportExportRates = linkedRates.filter(isD2dImportExportRate);
@@ -1597,6 +1601,52 @@ function createVendorMetrics(vendor: Record<string, unknown>, rates: Record<stri
     border_pairs: [...borderSet].slice(0, 6),
     last_quote_date: lastQuoteDate
   };
+}
+
+function createVendorMetrics(vendor: Record<string, unknown>, rates: Record<string, unknown>[]) {
+  const vendorDomain = normalizeDomain(vendor.domain);
+  const emails = vendorEmails(vendor);
+  const linkedRates = rates.filter((row) => {
+    if (row.vendor_id && vendor.id && row.vendor_id === vendor.id) return true;
+    const rowDomain = normalizeDomain(row.vendor_domain);
+    return Boolean(rowDomain && (rowDomain === vendorDomain || emails.some((email) => email.endsWith(`@${rowDomain}`))));
+  });
+  return createVendorMetricsFromLinkedRates(linkedRates);
+}
+
+function buildVendorRateGroups(vendors: Record<string, unknown>[], rates: Record<string, unknown>[]) {
+  const vendorIds = new Set(vendors.map((vendor) => cleanText(vendor.id)).filter(Boolean) as string[]);
+  const domainIndex = new Map<string, string[]>();
+  const groups = new Map<string, Record<string, unknown>[]>();
+  const addDomain = (domain: string | null | undefined, id: string) => {
+    const key = normalizeDomain(domain);
+    if (!key) return;
+    const ids = domainIndex.get(key) || [];
+    if (!ids.includes(id)) ids.push(id);
+    domainIndex.set(key, ids);
+  };
+
+  for (const vendor of vendors) {
+    const id = cleanText(vendor.id);
+    if (!id) continue;
+    groups.set(id, []);
+    addDomain(normalizeDomain(vendor.domain), id);
+    for (const email of vendorEmails(vendor)) addDomain(email.split("@").pop(), id);
+  }
+
+  for (const row of rates) {
+    const linkedId = cleanText(row.vendor_id);
+    if (linkedId && vendorIds.has(linkedId)) {
+      groups.get(linkedId)?.push(row);
+      continue;
+    }
+
+    const rowDomain = normalizeDomain(row.vendor_domain);
+    const matchingIds = rowDomain ? domainIndex.get(rowDomain) || [] : [];
+    for (const id of matchingIds) groups.get(id)?.push(row);
+  }
+
+  return groups;
 }
 
 function vendorDuplicateReasons(row: Record<string, unknown>, candidate: Record<string, unknown>) {
@@ -1737,8 +1787,9 @@ function vendorHealthLabel(score: number) {
 
 function buildVendorIntelligenceRows(vendors: Record<string, unknown>[], rates: Record<string, unknown>[]) {
   const duplicates = vendorDuplicateMap(vendors);
+  const rateGroups = buildVendorRateGroups(vendors, rates);
   return vendors.map((vendor) => {
-    const metrics = createVendorMetrics(vendor, rates);
+    const metrics = createVendorMetricsFromLinkedRates(rateGroups.get(cleanText(vendor.id) || "") || []);
     const declared = vendorDeclaredSignals(vendor);
     const quoted = vendorQuotedSignals(metrics);
     const alignment = vendorCoverageAlignment(declared, quoted);
@@ -1847,9 +1898,17 @@ function daysSince(value: unknown) {
 }
 
 async function buildVendorFunnel(supabase: ReturnType<typeof createClient>, user: { owner_email: string | null }) {
-  const intelligence = await buildVendorIntelligence(supabase, user);
-  const procurementRows = (intelligence.rows || [])
-    .filter((row: Record<string, unknown>) => cleanText(row.base_stage) === "procurement")
+  const vendorsResult = await supabase
+    .from("vendors")
+    .select("*")
+    .eq("owner_email", user.owner_email)
+    .eq("base_stage", "procurement")
+    .limit(5000);
+  if (vendorsResult.error) throw vendorsResult.error;
+
+  const procurementVendors = vendorsResult.data || [];
+  const rates = procurementVendors.length ? await fetchBusinessIntelligenceRows(supabase, user) : [];
+  const procurementRows = buildVendorIntelligenceRows(procurementVendors, rates)
     .map((row: Record<string, unknown>) => {
       const stage = vendorEffectiveFunnelStage(row);
       return {
@@ -7015,7 +7074,7 @@ Deno.serve(async (request) => {
         if (pageIds.length) {
           const pageResult = await supabase
             .from("rate_staging")
-            .select(RATE_ROW_RESPONSE_SELECT)
+            .select(RATE_ROW_LIST_SELECT)
             .in("id", pageIds);
           if (pageResult.error) throw pageResult.error;
           const byId = new Map((pageResult.data || []).map((row) => [cleanText(row.id), row]));
@@ -7035,7 +7094,7 @@ Deno.serve(async (request) => {
 
       let query = supabase
         .from("rate_staging")
-        .select(RATE_ROW_RESPONSE_SELECT, { count: "exact" })
+        .select(RATE_ROW_LIST_SELECT, { count: "exact" })
         .eq("status", "approved")
         .order("quote_date", { ascending: false, nullsFirst: false })
         .order("created_at", { ascending: false })
