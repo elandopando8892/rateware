@@ -180,6 +180,15 @@ function normalizeDomain(value: unknown) {
     .split("/")[0];
 }
 
+function domainFromVendorReference(value: unknown) {
+  const text = cleanText(value);
+  if (!text) return null;
+  const emailDomain = text.toLowerCase().match(/@([a-z0-9.-]+\.[a-z]{2,})/)?.[1];
+  const domainText = emailDomain || text.replace(/^@/, "");
+  if (!/[a-z0-9-]+\.[a-z]{2,}/i.test(domainText)) return null;
+  return normalizeDomain(domainText);
+}
+
 function cleanBoolean(value: unknown) {
   if (typeof value === "boolean") return value;
   const text = String(value ?? "").trim().toLowerCase();
@@ -693,8 +702,15 @@ function scoreVendorMatch(vendor: Record<string, unknown>, rawUpload: Record<str
   return score;
 }
 
-async function findBestVendor(supabase: ReturnType<typeof createClient>, rawUpload: Record<string, string>, interpretation: Record<string, unknown>) {
-  const result = await supabase.from("vendors").select("id,vendor_name,domain,primary_email,status").eq("status", "active").limit(500);
+async function findBestVendor(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_email: string | null },
+  rawUpload: Record<string, string>,
+  interpretation: Record<string, unknown>
+) {
+  let query = supabase.from("vendors").select("id,vendor_name,domain,primary_email,status").eq("status", "active").limit(500);
+  if (user.owner_email) query = query.eq("owner_email", user.owner_email);
+  const result = await query;
   if (result.error || !result.data?.length) return null;
 
   const ranked = result.data
@@ -905,7 +921,22 @@ function addRowAudit(row: Record<string, unknown>, rawUpload: Record<string, unk
   };
 }
 
-function normalizeRow(row: Record<string, unknown>, rawUpload: Record<string, unknown>, jobId: string, vendorId: string | null = null) {
+function resolveRowVendorDomain(value: unknown, inheritedDomain: unknown, forceInheritedDomain = false) {
+  const interpretedDomain = domainFromVendorReference(value) || cleanText(value);
+  const inherited = domainFromVendorReference(inheritedDomain);
+  if (forceInheritedDomain && inherited) return inherited;
+  if ((!interpretedDomain || isInternalMarksmanDomain(interpretedDomain)) && inherited) return inherited;
+  return interpretedDomain || inherited;
+}
+
+function normalizeRow(
+  row: Record<string, unknown>,
+  rawUpload: Record<string, unknown>,
+  jobId: string,
+  vendorId: string | null = null,
+  vendorDomain: string | null = null,
+  forceVendorDomain = false
+) {
   const interpreted = normalizeRatewareAliases(row);
   const hazmat = cleanBoolean(interpreted.hazmat);
   const temperatureControlled = cleanBoolean(interpreted.temperature_controlled);
@@ -915,7 +946,7 @@ function normalizeRow(row: Record<string, unknown>, rawUpload: Record<string, un
     interpretation_job_id: jobId,
     vendor_id: vendorId,
     status: "pending_review",
-    vendor_domain: cleanText(interpreted.vendor_domain),
+    vendor_domain: resolveRowVendorDomain(interpreted.vendor_domain, vendorDomain, forceVendorDomain),
     rfx_id: cleanText(interpreted.rfx_id),
     quote_date: cleanDate(interpreted.quote_date),
     row_id: cleanText(interpreted.row_id),
@@ -2103,9 +2134,11 @@ async function applicableInterpretationMemory(
   user: { owner_email: string | null },
   rawUpload: Record<string, unknown>
 ) {
-  const vendorResult = rawUpload.vendor_id
-    ? await supabase.from("vendors").select("id,domain").eq("id", rawUpload.vendor_id).maybeSingle()
-    : { data: null, error: null };
+  let vendorQuery = rawUpload.vendor_id
+    ? supabase.from("vendors").select("id,domain").eq("id", rawUpload.vendor_id)
+    : null;
+  if (vendorQuery && user.owner_email) vendorQuery = vendorQuery.eq("owner_email", user.owner_email);
+  const vendorResult = vendorQuery ? await vendorQuery.maybeSingle() : { data: null, error: null };
   if (vendorResult.error) throw vendorResult.error;
 
   const [globalResult, ownedResult] = await Promise.all([
@@ -2187,8 +2220,23 @@ Deno.serve(async (request) => {
     if (download.error) throw download.error;
 
     const interpretation = await interpretWithModel(rawUpload, download.data, correctionNote, memoryRules);
-    const vendorMatch = await findBestVendor(supabase, rawUpload, interpretation);
-    const vendorId = vendorMatch?.vendor?.id || rawUpload.vendor_id || null;
+    let manualVendorQuery = rawUpload.vendor_id
+      ? supabase
+          .from("vendors")
+          .select("id,vendor_name,domain,primary_email,status")
+          .eq("id", rawUpload.vendor_id)
+      : null;
+    if (manualVendorQuery && user.owner_email) manualVendorQuery = manualVendorQuery.eq("owner_email", user.owner_email);
+    const manualVendorResult = manualVendorQuery ? await manualVendorQuery.maybeSingle() : { data: null, error: null };
+    if (manualVendorResult.error) throw manualVendorResult.error;
+    const manualVendor = manualVendorResult.data as Record<string, unknown> | null;
+    const vendorMatch = manualVendor ? null : await findBestVendor(supabase, user, rawUpload, interpretation);
+    const matchedVendor = manualVendor || vendorMatch?.vendor || null;
+    const vendorId = cleanText(matchedVendor?.id) || null;
+    const vendorDomain = domainFromVendorReference(matchedVendor?.domain)
+      || domainFromVendorReference(matchedVendor?.primary_email)
+      || domainFromVendorReference(rawUpload.vendor_hint);
+    const forceVendorDomain = Boolean(manualVendor && vendorDomain);
     const catalogResult = await supabase.from("rateware_catalog_items").select("category,raw_value,normalized_value,code,metadata").eq("active", true).limit(20000);
     const mileageResult = await supabase.from("rateware_lane_mileage").select("source,route_key,miles,km").eq("active", true).limit(20000);
     const locationResult = await supabase.from("rateware_locations").select("source,country,location_key,raw_value,zip_prefix,city,state_code,state_name,metro_city,market,region").eq("active", true).limit(20000);
@@ -2213,7 +2261,7 @@ Deno.serve(async (request) => {
     });
     const catalogNormalizedRows = normalizeWithCatalog(interpretation.rows
       .filter((row: Record<string, unknown>) => isCarrierRateRow(row))
-      .map((row: Record<string, unknown>) => normalizeRow(row, rawUpload, job.data.id, vendorId)), catalogItems, laneMileage, locations, fuelRegions, fscTrend);
+      .map((row: Record<string, unknown>) => normalizeRow(row, rawUpload, job.data.id, vendorId, vendorDomain, forceVendorDomain)), catalogItems, laneMileage, locations, fuelRegions, fscTrend);
     const normalizedRows = (await enrichRowsWithExternalPostalPrefixes(catalogNormalizedRows, locations))
       .map((row) => addRowAudit(row, rawUpload));
     const rows = mergeConnectedD2DAllInRows(normalizedRows, [
@@ -2265,7 +2313,8 @@ Deno.serve(async (request) => {
 
     await supabase.from("raw_uploads").update({
       vendor_id: vendorId,
-      vendor_match_source: rawUpload.vendor_id ? "manual" : vendorMatch?.vendor?.id ? "auto" : rawUpload.vendor_match_source || null,
+      vendor_hint: rawUpload.vendor_hint || vendorDomain || cleanText(matchedVendor?.vendor_name) || null,
+      vendor_match_source: manualVendor ? "manual" : vendorMatch?.vendor?.id ? "auto" : rawUpload.vendor_match_source || null,
       status: "staged",
       interpreted_at: new Date().toISOString(),
       last_reprocessed_at: new Date().toISOString(),

@@ -854,7 +854,9 @@ function domainFromVendorReference(value: unknown) {
   if (email) return normalizeDomain(email.split("@").pop());
   const text = cleanText(value);
   if (!text) return null;
-  return normalizeDomain(text.replace(/^@/, ""));
+  const domainText = text.replace(/^@/, "");
+  if (!/[a-z0-9-]+\.[a-z]{2,}/i.test(domainText)) return null;
+  return normalizeDomain(domainText);
 }
 
 function vendorEmails(vendor: Record<string, unknown>) {
@@ -3679,9 +3681,21 @@ function vendorLinkPatchFromRows(vendors: Record<string, unknown>[], reference: 
   };
 }
 
+function uploadVendorRecord(upload: Record<string, unknown>) {
+  return typeof upload.vendors === "object" && upload.vendors ? upload.vendors as Record<string, unknown> : {};
+}
+
+function uploadVendorDomain(upload: Record<string, unknown>) {
+  const vendor = uploadVendorRecord(upload);
+  return domainFromVendorReference(vendor.domain)
+    || domainFromVendorReference(vendor.primary_email)
+    || domainFromVendorReference(upload.vendor_hint);
+}
+
 function templateRowInput(mapped: Record<string, unknown>, upload: Record<string, unknown>) {
+  const inheritedVendorDomain = uploadVendorDomain(upload);
   const input: Record<string, unknown> = {
-    vendor_domain: mapped.vendor_domain || upload.vendor_hint,
+    vendor_domain: mapped.vendor_domain || inheritedVendorDomain,
     rfx_id: mapped.rfx_id || upload.rfx_hint,
     row_id: mapped.row_id,
     quote_date: mapped.quote_date,
@@ -3809,6 +3823,8 @@ async function bulkImportStructuredUpload(
   const locationIndex = buildLocationIndex(locationsResult.data || []);
   const mileage = new Map((mileageResult.data || []).map((lane) => [catalogKey(lane.route_key), lane]));
   const vendors = vendorsResult.data || [];
+  const inheritedVendorId = cleanText(upload.vendor_id);
+  const inheritedVendorDomain = uploadVendorDomain(upload);
   const rowsToInsert: Record<string, unknown>[] = [];
   const warnings = [...parsed.warnings];
   let skipped = 0;
@@ -3830,7 +3846,14 @@ async function bulkImportStructuredUpload(
     }
 
     const vendorReference = patch.vendor_domain || mapped.vendor_domain || mapped.vendor_name || upload.vendor_hint;
-    Object.assign(patch, vendorLinkPatchFromRows(vendors, vendorReference));
+    if (inheritedVendorId) {
+      Object.assign(patch, {
+        vendor_id: inheritedVendorId,
+        vendor_domain: inheritedVendorDomain || domainFromVendorReference(vendorReference) || patch.vendor_domain || null
+      });
+    } else {
+      Object.assign(patch, vendorLinkPatchFromRows(vendors, vendorReference));
+    }
     Object.assign(patch, normalizeRowWithCurrentCatalog(patch, catalog, locationIndex, mileage));
 
     rowsToInsert.push({
@@ -3917,6 +3940,7 @@ async function bulkImportStructuredUpload(
       .from("raw_uploads")
       .update({
         status: "staged",
+        vendor_hint: upload.vendor_hint || inheritedVendorDomain || null,
         interpreted_at: now,
         error_message: null,
         interpreted_rate_rows: totalImportedRows,

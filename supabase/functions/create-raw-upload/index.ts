@@ -24,11 +24,31 @@ function buildStoragePath(file: File, uploadId = crypto.randomUUID(), now = new 
   };
 }
 
+function cleanText(value: unknown) {
+  if (value === null || value === undefined) return null;
+  const text = String(value).trim();
+  return text ? text : null;
+}
+
+function normalizeDomain(value: unknown) {
+  const text = cleanText(value);
+  if (!text) return null;
+  const emailDomain = text.toLowerCase().match(/@([a-z0-9.-]+\.[a-z]{2,})/)?.[1];
+  const domainText = emailDomain || text.replace(/^https?:\/\//i, "").replace(/^www\./i, "").replace(/^@/, "");
+  if (!/[a-z0-9-]+\.[a-z]{2,}/i.test(domainText)) return null;
+  return domainText.toLowerCase().split(/[\/\s,;]+/)[0].replace(/[^a-z0-9.-]+$/g, "");
+}
+
+function userEmail(payload: Record<string, unknown>) {
+  return cleanText(payload.email || payload.preferred_email || payload["https://kinde.com/email"])?.toLowerCase() || null;
+}
+
 Deno.serve(async (request) => {
   if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders() });
 
   try {
-    await requireKindeUser(request);
+    const user = await requireKindeUser(request);
+    const ownerEmail = userEmail(user);
 
     if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
       return jsonResponse({ error: "Missing SUPABASE_URL or RATEWARE_SUPABASE_SERVICE_ROLE_KEY." }, 500);
@@ -48,6 +68,20 @@ Deno.serve(async (request) => {
     const rfx = String(formData.get("rfx") || "").trim();
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     const { uploadId, path } = buildStoragePath(file);
+    let selectedVendorQuery = vendorId
+      ? supabase
+          .from("vendors")
+          .select("id,vendor_name,domain,primary_email")
+          .eq("id", vendorId)
+      : null;
+    if (selectedVendorQuery && ownerEmail) selectedVendorQuery = selectedVendorQuery.eq("owner_email", ownerEmail);
+    const selectedVendor = selectedVendorQuery ? await selectedVendorQuery.maybeSingle() : { data: null, error: null };
+    if (selectedVendor.error) throw selectedVendor.error;
+    if (vendorId && !selectedVendor.data) return jsonResponse({ error: "Selected vendor was not found in your vendor base." }, 400);
+    const resolvedVendorId = cleanText(selectedVendor.data?.id);
+    const selectedVendorHint = normalizeDomain(selectedVendor.data?.domain)
+      || normalizeDomain(selectedVendor.data?.primary_email)
+      || cleanText(selectedVendor.data?.vendor_name);
 
     const storage = await supabase.storage.from(RAW_UPLOADS_BUCKET).upload(path, file, {
       cacheControl: "3600",
@@ -65,9 +99,9 @@ Deno.serve(async (request) => {
       mime_type: file.type || null,
       file_size_bytes: file.size,
       document_type: documentType,
-      vendor_id: vendorId || null,
-      vendor_hint: vendor || null,
-      vendor_match_source: vendorId ? "manual" : null,
+      vendor_id: resolvedVendorId || null,
+      vendor_hint: vendor || selectedVendorHint || null,
+      vendor_match_source: resolvedVendorId ? "manual" : null,
       rfx_hint: rfx || null,
       status: "uploaded",
       staging_target: "rate_staging"
