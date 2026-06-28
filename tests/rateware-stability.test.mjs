@@ -28,7 +28,11 @@ assert.match(apiSource, /const INTERNAL_RATEWARE_DOMAINS = new Set/, "internal R
 assert.match(apiSource, /function attachUploadVendorHints/, "rate vendor matching should use upload-level vendor hints when rate rows are missing vendor domains");
 assert.match(apiSource, /plannedVendorPatchForRateRow/, "rate vendor matching should centralize patch planning per row");
 assert.match(apiSource, /const pageSize = 5000/, "filtered vendor matching should scan database rows in bounded pages");
-assert.match(apiSource, /while \(processed < maxRows\)/, "filtered vendor matching should continue beyond the first visible or RPC page");
+const filteredVendorMatchSource = apiSource.slice(apiSource.indexOf("async function matchRateVendorRowsByFilter"), apiSource.indexOf("async function renormalizeRateRows"));
+assert.ok(filteredVendorMatchSource.length > 100, "filtered vendor matching helper should be present");
+assert.match(filteredVendorMatchSource, /collectRateRowIdsByFilter/, "filtered vendor matching should freeze all target row ids before updates");
+assert.match(filteredVendorMatchSource, /for \(const chunk of chunkValues\(ids, pageSize\)\)/, "filtered vendor matching should process frozen ids in bounded chunks");
+assert.doesNotMatch(filteredVendorMatchSource, /offset \+=/, "filtered vendor matching should not page mutable filtered sets while updating vendor ids");
 assert.match(apiSource, /Number\(body\.max_rows\) \|\| 100000/, "filtered vendor matching should support whole-base matching above 50k rows");
 
 assert.match(apiSource, /function canUseSqlRateFilters/, "API should decide when filters can stay in SQL");

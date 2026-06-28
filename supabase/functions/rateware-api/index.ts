@@ -6180,22 +6180,15 @@ async function matchRateVendorRowsByFilter(
   const maxRows = Math.min(Math.max(Number(options.maxRows) || 100000, 1), 100000);
   const vendors = await fetchVendorRowsForRateMatching(supabase, user);
   const pageSize = 5000;
-  let offset = 0;
-  let databaseCount = 0;
-  let processed = 0;
   let candidates = 0;
   let matchable = 0;
   let updated = 0;
-  let hardLimitReached = false;
   const sampleRows: Record<string, unknown>[] = [];
+  const filtered = await collectRateRowIdsByFilter(supabase, filters, { maxRows, pageSize });
+  const ids = filtered.ids;
 
-  while (processed < maxRows) {
-    const filtered = await fetchRateRowIdsByFilter(supabase, filters, { limit: Math.min(pageSize, maxRows - processed), offset });
-    if (!databaseCount) databaseCount = filtered.database_count;
-    hardLimitReached = hardLimitReached || filtered.hard_limit_reached;
-    if (!filtered.ids.length) break;
-
-    const rawRows = await fetchRateRowsForIds(supabase, filtered.ids, "id,vendor_id,vendor_domain,status,raw_upload_id");
+  for (const chunk of chunkValues(ids, pageSize)) {
+    const rawRows = await fetchRateRowsForIds(supabase, chunk, "id,vendor_id,vendor_domain,status,raw_upload_id");
     const rows = await attachUploadVendorHints(supabase, rawRows as Record<string, unknown>[]);
     const plan = planRateVendorMatches(rows as Record<string, unknown>[], vendors);
     candidates += plan.candidates;
@@ -6206,35 +6199,31 @@ async function matchRateVendorRowsByFilter(
       updated += applied.updated;
       if (sampleRows.length < 100) sampleRows.push(...applied.rows.slice(0, 100 - sampleRows.length));
     }
-
-    processed += filtered.ids.length;
-    offset += filtered.ids.length;
-    if (filtered.ids.length < pageSize || offset >= filtered.database_count) break;
   }
 
   if (options.dryRun) {
     return {
-      matched: databaseCount || processed,
-      scanned: processed,
+      matched: filtered.database_count || ids.length,
+      scanned: ids.length,
       candidates,
       matchable,
       updated: 0,
       rows: [],
-      database_count: databaseCount || processed,
-      hard_limit_reached: hardLimitReached || processed >= maxRows && (databaseCount || 0) > processed,
+      database_count: filtered.database_count || ids.length,
+      hard_limit_reached: filtered.hard_limit_reached,
       max_rows: maxRows
     };
   }
 
   return {
-    matched: databaseCount || processed,
-    scanned: processed,
+    matched: filtered.database_count || ids.length,
+    scanned: ids.length,
     candidates,
     matchable,
     updated,
     rows: sampleRows,
-    database_count: databaseCount || processed,
-    hard_limit_reached: hardLimitReached || processed >= maxRows && (databaseCount || 0) > processed,
+    database_count: filtered.database_count || ids.length,
+    hard_limit_reached: filtered.hard_limit_reached,
     max_rows: maxRows
   };
 }
