@@ -76,6 +76,7 @@ const bulkArchiveVendorsButton = document.querySelector("#bulk-archive-vendors-b
 const bulkRemoveVendorsButton = document.querySelector("#bulk-remove-vendors-button");
 const bulkStatusMessage = document.querySelector("#bulk-status-message");
 const refreshVendorIntelligenceButton = document.querySelector("#refresh-vendor-intelligence");
+const loadMoreVendorIntelligenceButton = document.querySelector("#load-more-vendor-intelligence");
 const applyIntelligenceTagsButton = document.querySelector("#apply-intelligence-tags");
 const promoteIntelligenceSelectedButton = document.querySelector("#promote-intelligence-selected");
 const vendorIntelligenceFilter = document.querySelector("#vendor-intelligence-filter");
@@ -123,6 +124,9 @@ let vendorTotalCount = 0;
 let vendorIntelligenceRows = [];
 let currentVendorIntelligenceRows = [];
 let selectedVendorIntelligenceIds = new Set();
+let vendorIntelligenceTotal = 0;
+let vendorIntelligenceHasMore = false;
+const vendorIntelligencePageSize = 500;
 let vendorFunnelStages = [];
 let vendorFunnelRows = [];
 let activeFunnelStage = "targeted";
@@ -674,7 +678,9 @@ function renderCoverageDelta(row) {
 }
 
 function renderVendorIntelligenceSummary(summary = {}) {
-  viTotal.textContent = String(summary.vendors || vendorIntelligenceRows.length || 0);
+  const loaded = summary.visible_vendors || summary.vendors || vendorIntelligenceRows.length || 0;
+  const total = summary.total_vendors || vendorIntelligenceTotal || loaded;
+  viTotal.textContent = total > loaded ? `${loaded}/${total}` : String(total || loaded);
   viReady.textContent = String(summary.procurement_ready || 0);
   viQuoted.textContent = String(summary.quoted || 0);
   viDuplicates.textContent = String(summary.duplicates || 0);
@@ -738,26 +744,57 @@ function renderVendorIntelligence() {
     .join("");
 }
 
-async function loadVendorIntelligence() {
+function loadedVendorIntelligenceSummary(sourceSummary = {}) {
+  const rows = vendorIntelligenceRows;
+  return {
+    ...sourceSummary,
+    vendors: rows.length,
+    visible_vendors: rows.length,
+    total_vendors: vendorIntelligenceTotal || sourceSummary.total_vendors || rows.length,
+    procurement_ready: rows.filter((row) => numberValue(row.health_score) >= 85).length,
+    duplicates: rows.filter((row) => numberValue(row.duplicate_count) > 0).length,
+    quoted: rows.filter((row) => numberValue(rateMetrics(row).linked_rates) > 0).length,
+    coverage_gaps: rows.filter((row) => {
+      const alignment = coverageAlignment(row);
+      return (alignment.declared_only || []).length || (alignment.quoted_only || []).length;
+    }).length
+  };
+}
+
+async function loadVendorIntelligence(options = {}) {
   if (!vendorIntelligenceBody) return;
-  vendorIntelligenceBody.innerHTML = tableLoadingState(9, {
-    title: "Analyzing carriers",
-    detail: "Calculating health, quoted coverage, duplicate signals, and suggested tags."
-  });
+  const append = options?.append === true;
+  if (!append) {
+    vendorIntelligenceBody.innerHTML = tableLoadingState(9, {
+      title: "Analyzing carriers",
+      detail: "Calculating health, quoted coverage, duplicate signals, and suggested tags."
+    });
+    vendorIntelligenceRows = [];
+    vendorIntelligenceTotal = 0;
+    vendorIntelligenceHasMore = false;
+  }
   if (refreshVendorIntelligenceButton) refreshVendorIntelligenceButton.disabled = true;
-  setStatus(vendorIntelligenceStatus, "Calculating vendor intelligence...");
+  if (loadMoreVendorIntelligenceButton) loadMoreVendorIntelligenceButton.disabled = true;
+  setStatus(vendorIntelligenceStatus, append ? "Loading more vendor intelligence..." : "Calculating vendor intelligence...");
 
   try {
     await requirePrivatePage();
-    const result = await fetchVendorIntelligence();
-    vendorIntelligenceRows = result.rows || [];
-    selectedVendorIntelligenceIds = new Set();
-    renderVendorIntelligenceSummary(result.summary || {});
+    const result = await fetchVendorIntelligence({
+      limit: vendorIntelligencePageSize,
+      offset: append ? vendorIntelligenceRows.length : 0,
+      search: vendorIntelligenceSearch?.value || ""
+    });
+    const nextRows = result.rows || [];
+    vendorIntelligenceRows = append ? [...vendorIntelligenceRows, ...nextRows] : nextRows;
+    vendorIntelligenceTotal = result.total || result.summary?.total_vendors || vendorIntelligenceRows.length;
+    vendorIntelligenceHasMore = Boolean(result.has_more);
+    if (!append) selectedVendorIntelligenceIds = new Set();
+    renderVendorIntelligenceSummary(loadedVendorIntelligenceSummary(result.summary || {}));
     renderVendorIntelligence();
     const warning = Array.isArray(result.warnings) ? result.warnings.find(Boolean) : "";
     setStatus(
       vendorIntelligenceStatus,
-      warning || `${vendorIntelligenceRows.length} vendor(s) analyzed.`,
+      warning || `${vendorIntelligenceRows.length} of ${vendorIntelligenceTotal || vendorIntelligenceRows.length} vendor(s) analyzed.`,
       warning ? "warning" : "success"
     );
   } catch (error) {
@@ -769,6 +806,7 @@ async function loadVendorIntelligence() {
     setStatus(vendorIntelligenceStatus, error.message, "error");
   } finally {
     if (refreshVendorIntelligenceButton) refreshVendorIntelligenceButton.disabled = false;
+    if (loadMoreVendorIntelligenceButton) loadMoreVendorIntelligenceButton.disabled = !vendorIntelligenceHasMore;
   }
 }
 
@@ -1840,7 +1878,8 @@ duplicateReviewList.addEventListener("click", async (event) => {
   }
 });
 
-refreshVendorIntelligenceButton?.addEventListener("click", loadVendorIntelligence);
+refreshVendorIntelligenceButton?.addEventListener("click", () => loadVendorIntelligence());
+loadMoreVendorIntelligenceButton?.addEventListener("click", () => loadVendorIntelligence({ append: true }));
 vendorIntelligenceFilter?.addEventListener("change", () => {
   selectedVendorIntelligenceIds = new Set();
   renderVendorIntelligence();
@@ -1849,7 +1888,7 @@ vendorIntelligenceSearch?.addEventListener("input", () => {
   window.clearTimeout(vendorIntelligenceSearch._timer);
   vendorIntelligenceSearch._timer = window.setTimeout(() => {
     selectedVendorIntelligenceIds = new Set();
-    renderVendorIntelligence();
+    loadVendorIntelligence();
   }, 250);
 });
 applyIntelligenceTagsButton?.addEventListener("click", applySelectedIntelligenceTags);

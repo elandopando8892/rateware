@@ -2482,22 +2482,63 @@ function buildVendorIntelligenceRows(
   }).sort((a, b) => Number(b.health_score || 0) - Number(a.health_score || 0) || String(a.vendor_name || "").localeCompare(String(b.vendor_name || "")));
 }
 
-async function buildVendorIntelligence(supabase: ReturnType<typeof createClient>, user: { owner_email: string | null }) {
-  const [vendorsResult, metricsResult] = await Promise.all([
-    supabase
-      .from("vendors")
-      .select("*")
-      .eq("owner_email", user.owner_email)
-      .limit(2000),
+async function fetchVendorIntelligenceVendors(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_email: string | null },
+  options: Record<string, unknown> = {}
+) {
+  const ids = Array.isArray(options.ids) ? options.ids.map(String).filter(Boolean).slice(0, 500) : [];
+  const limit = Math.min(Math.max(Number(options.limit) || 500, 1), 1000);
+  const offset = Math.max(Number(options.offset) || 0, 0);
+  const search = cleanText(options.search)?.replace(/[(),]/g, " ").trim();
+  let query = supabase
+    .from("vendors")
+    .select("*", { count: "exact" })
+    .eq("owner_email", user.owner_email)
+    .order("created_at", { ascending: false });
+
+  if (ids.length) {
+    query = query.in("id", ids).limit(ids.length);
+  } else {
+    const baseStage = cleanText(options.base_stage)?.toLowerCase();
+    if (baseStage && ["sourcing", "procurement", "archived"].includes(baseStage)) query = query.eq("base_stage", baseStage);
+    if (search) query = query.or(`vendor_name.ilike.%${search}%,domain.ilike.%${search}%,primary_email.ilike.%${search}%,coverage_notes.ilike.%${search}%,notes.ilike.%${search}%`);
+    query = query.range(offset, offset + limit - 1);
+  }
+
+  const result = await query;
+  if (result.error) throw result.error;
+  const rows = (result.data || []) as Record<string, unknown>[];
+  return {
+    rows,
+    total: result.count || rows.length,
+    limit: ids.length ? rows.length : limit,
+    offset: ids.length ? 0 : offset,
+    has_more: ids.length ? false : offset + rows.length < (result.count || rows.length)
+  };
+}
+
+async function buildVendorIntelligence(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_email: string | null },
+  options: Record<string, unknown> = {}
+) {
+  const [vendorPage, metricsResult] = await Promise.all([
+    fetchVendorIntelligenceVendors(supabase, user, options),
     fetchVendorRateMetricsSafe(supabase, user)
   ]);
-  if (vendorsResult.error) throw vendorsResult.error;
-  const rows = buildVendorIntelligenceRows(vendorsResult.data || [], metricsResult.metrics);
+  const rows = buildVendorIntelligenceRows(vendorPage.rows, metricsResult.metrics);
   return {
     rows,
     warnings: metricsResult.warnings,
+    total: vendorPage.total,
+    limit: vendorPage.limit,
+    offset: vendorPage.offset,
+    has_more: vendorPage.has_more,
     summary: {
       vendors: rows.length,
+      total_vendors: vendorPage.total,
+      visible_vendors: rows.length,
       procurement_ready: rows.filter((row) => Number(row.health_score || 0) >= 85).length,
       duplicates: rows.filter((row) => Number(row.duplicate_count || 0) > 0).length,
       quoted: rows.filter((row) => Number((row.rate_metrics as Record<string, unknown>)?.linked_rates || 0) > 0).length,
@@ -6580,7 +6621,7 @@ Deno.serve(async (request) => {
     }
 
     if (body.action === "vendor_intelligence") {
-      const result = await buildVendorIntelligence(supabase, user);
+      const result = await buildVendorIntelligence(supabase, user, body.options || body);
       return jsonResponse(result);
     }
 
@@ -6593,7 +6634,7 @@ Deno.serve(async (request) => {
       const ids = Array.isArray(body.ids) ? body.ids.map(String).filter(Boolean).slice(0, 500) : [];
       if (!ids.length) return jsonResponse({ updated: 0, rows: [] });
 
-      const intelligence = await buildVendorIntelligence(supabase, user);
+      const intelligence = await buildVendorIntelligence(supabase, user, { ids });
       const byId = new Map((intelligence.rows || []).map((row: Record<string, unknown>) => [row.vendor_id, row]));
       const current = await supabase.from("vendors").select("id,tags").eq("owner_email", user.owner_email).in("id", ids);
       if (current.error) throw current.error;

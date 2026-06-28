@@ -14,8 +14,8 @@ export async function fetchVendors({
   return await callRatewareApi("list_vendors", { search, status, base_stage, view, channel, tag, coverage, limit, offset });
 }
 
-export async function fetchVendorIntelligence() {
-  return await callRatewareApi("vendor_intelligence");
+export async function fetchVendorIntelligence(options = {}) {
+  return await callRatewareApi("vendor_intelligence", { options });
 }
 
 export async function fetchVendorFunnel() {
