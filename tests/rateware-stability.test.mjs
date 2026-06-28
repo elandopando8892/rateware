@@ -20,6 +20,12 @@ for (const domain of ["gmail.com", "hotmail.com", "yahoo.com", "outlook.com", "y
 assert.match(apiSource, /function isGenericEmailDomain/, "API should expose generic-domain guard");
 assert.match(apiSource, /!genericDomain && domain && vendorDomain && vendorDomain === domain/, "domain matching should skip generic email domains");
 assert.match(apiSource, /if \(!email && genericDomain\) return/, "bare generic domains should not create vendor matches");
+assert.match(apiSource, /const INTERNAL_RATEWARE_DOMAINS = new Set/, "internal Rateware and Marksman domains should be blocked from carrier matching");
+assert.match(apiSource, /function attachUploadVendorHints/, "rate vendor matching should use upload-level vendor hints when rate rows are missing vendor domains");
+assert.match(apiSource, /plannedVendorPatchForRateRow/, "rate vendor matching should centralize patch planning per row");
+assert.match(apiSource, /const pageSize = 5000/, "filtered vendor matching should scan database rows in bounded pages");
+assert.match(apiSource, /while \(processed < maxRows\)/, "filtered vendor matching should continue beyond the first visible or RPC page");
+assert.match(apiSource, /Number\(body\.max_rows\) \|\| 100000/, "filtered vendor matching should support whole-base matching above 50k rows");
 
 assert.match(apiSource, /function canUseSqlRateFilters/, "API should decide when filters can stay in SQL");
 assert.match(apiSource, /applySqlRateFilters\(query, filterPayload\)/, "list endpoints should use SQL-backed filters");
@@ -67,6 +73,21 @@ assert.match(
   apiSource,
   /if \(service\) query = query\.ilike\("service", service\)/,
   "Rateware service filters should not depend on exact casing"
+);
+assert.match(
+  apiSource,
+  /function normalizedRpcRateFilters/,
+  "Rateware RPC filters should normalize operation and service before calling database functions"
+);
+assert.match(
+  apiSource,
+  /if \(operation\) columnFilters\.operation = mergeRpcColumnFilterValue/,
+  "Rateware RPC operation filters should route through normalized column filters"
+);
+assert.match(
+  apiSource,
+  /if \(service\) columnFilters\.service = mergeRpcColumnFilterValue/,
+  "Rateware RPC service filters should route through normalized column filters"
 );
 const listRatewareFilterValuesSource = apiSource.slice(apiSource.indexOf('if (body.action === "list_rateware_filter_values")'), apiSource.indexOf('if (body.action === "list_rateware_audit")'));
 assert.ok(listRatewareFilterValuesSource.length > 100, "Rateware filter value block should be present");

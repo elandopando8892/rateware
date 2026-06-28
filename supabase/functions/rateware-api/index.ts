@@ -649,13 +649,17 @@ function isLocationResolved(row: Record<string, unknown>, prefix: "origin" | "de
 function normalizeDomain(value: unknown) {
   const text = cleanText(value);
   if (!text) return null;
-  return text
+  const cleaned = text
     .toLowerCase()
+    .replace(/^mailto:/, "")
     .replace(/^https?:\/\//, "")
     .replace(/^www\./, "")
     .replace(/^@/, "")
     .split(/[\/\s,;]+/)[0]
-    .replace(/[^a-z0-9.-]+$/g, "");
+    .replace(/^.*@/, "")
+    .replace(/[^a-z0-9.-]+$/g, "")
+    .replace(/\.+$/g, "");
+  return /^[a-z0-9]([a-z0-9.-]*[a-z0-9])?\.[a-z]{2,}$/i.test(cleaned) ? cleaned : null;
 }
 
 function normalizeEmail(value: unknown) {
@@ -893,10 +897,23 @@ const GENERIC_EMAIL_DOMAINS = new Set([
   "protonmail.com"
 ]);
 
+const INTERNAL_RATEWARE_DOMAINS = new Set([
+  "heymarksman.com",
+  "marksmanxbf.com",
+  "marksmanxbfllc.com",
+  "rateware.app",
+  "rateware.vercel.app"
+]);
+
 function isGenericEmailDomain(domain: unknown) {
   const value = normalizeDomain(domain);
   if (!value) return false;
   return GENERIC_EMAIL_DOMAINS.has(value);
+}
+
+function isInternalRatewareDomain(value: unknown) {
+  const domain = domainFromVendorReference(value);
+  return Boolean(domain && INTERNAL_RATEWARE_DOMAINS.has(domain));
 }
 
 function vendorEmails(vendor: Record<string, unknown>) {
@@ -1803,6 +1820,35 @@ async function fetchBulkRateRowsByFilter(supabase: ReturnType<typeof createClien
   };
 }
 
+function mergeRpcColumnFilterValue(existing: unknown, value: string) {
+  const next = cleanText(value);
+  if (!next) return existing;
+  const current = normalizeColumnFilterValues(existing);
+  if (!current.length) return [next];
+  if (current.some((item) => item.toLowerCase() === next.toLowerCase())) return current;
+  return ["__rateware_no_match__"];
+}
+
+function normalizedRpcRateFilters(filters: Record<string, unknown>) {
+  const columnFilters = { ...objectRecord(filters.column_filters) };
+  const operation = cleanText(filters.operation);
+  const service = cleanText(filters.service);
+  if (operation) columnFilters.operation = mergeRpcColumnFilterValue(columnFilters.operation, operation);
+  if (service) columnFilters.service = mergeRpcColumnFilterValue(columnFilters.service, service);
+  return {
+    mode: cleanText(filters.mode) || "staging",
+    status: cleanText(filters.status),
+    raw_upload_id: cleanText(filters.raw_upload_id),
+    search: cleanText(filters.search),
+    operation: null,
+    service: null,
+    quick_filter: cleanText(filters.quick_filter) || "all",
+    review_filter: cleanText(filters.review_filter) || "all",
+    column_filters: columnFilters,
+    exclude_archived: filters.exclude_archived === true
+  };
+}
+
 async function fetchRateRowIdsByFilter(
   supabase: ReturnType<typeof createClient>,
   filters: Record<string, unknown>,
@@ -1810,17 +1856,18 @@ async function fetchRateRowIdsByFilter(
 ) {
   const limit = Math.min(Math.max(Number(options.limit) || 50000, 1), 50000);
   const offset = Math.max(Number(options.offset) || 0, 0);
+  const rpcFilters = normalizedRpcRateFilters(filters);
   const result = await supabase.rpc("rateware_filtered_rate_ids", {
-    p_mode: cleanText(filters.mode) || "staging",
-    p_status: cleanText(filters.status),
-    p_raw_upload_id: cleanText(filters.raw_upload_id),
-    p_search: cleanText(filters.search),
-    p_operation: cleanText(filters.operation),
-    p_service: cleanText(filters.service),
-    p_quick_filter: cleanText(filters.quick_filter) || "all",
-    p_review_filter: cleanText(filters.review_filter) || "all",
-    p_column_filters: objectRecord(filters.column_filters),
-    p_exclude_archived: filters.exclude_archived === true,
+    p_mode: rpcFilters.mode,
+    p_status: rpcFilters.status,
+    p_raw_upload_id: rpcFilters.raw_upload_id,
+    p_search: rpcFilters.search,
+    p_operation: rpcFilters.operation,
+    p_service: rpcFilters.service,
+    p_quick_filter: rpcFilters.quick_filter,
+    p_review_filter: rpcFilters.review_filter,
+    p_column_filters: rpcFilters.column_filters,
+    p_exclude_archived: rpcFilters.exclude_archived,
     p_limit: limit,
     p_offset: offset
   });
@@ -1862,18 +1909,19 @@ async function fetchRateFilterValuesByRpc(
   valueSearch = "",
   limit = 1000
 ) {
+  const rpcFilters = normalizedRpcRateFilters(filters);
   const result = await supabase.rpc("rateware_filtered_rate_values", {
     p_field: field,
-    p_mode: cleanText(filters.mode) || "staging",
-    p_status: cleanText(filters.status),
-    p_raw_upload_id: cleanText(filters.raw_upload_id),
-    p_search: cleanText(filters.search),
-    p_operation: cleanText(filters.operation),
-    p_service: cleanText(filters.service),
-    p_quick_filter: cleanText(filters.quick_filter) || "all",
-    p_review_filter: cleanText(filters.review_filter) || "all",
-    p_column_filters: objectRecord(filters.column_filters),
-    p_exclude_archived: filters.exclude_archived === true,
+    p_mode: rpcFilters.mode,
+    p_status: rpcFilters.status,
+    p_raw_upload_id: rpcFilters.raw_upload_id,
+    p_search: rpcFilters.search,
+    p_operation: rpcFilters.operation,
+    p_service: rpcFilters.service,
+    p_quick_filter: rpcFilters.quick_filter,
+    p_review_filter: rpcFilters.review_filter,
+    p_column_filters: rpcFilters.column_filters,
+    p_exclude_archived: rpcFilters.exclude_archived,
     p_value_search: cleanText(valueSearch),
     p_limit: Math.min(Math.max(Number(limit) || 1000, 1), 5000)
   });
@@ -4600,6 +4648,10 @@ function resolveVendorReferenceFromRows(vendors: Record<string, unknown>[], refe
   return ranked[0] || null;
 }
 
+function vendorById(vendors: Record<string, unknown>[]) {
+  return new Map(vendors.map((vendor) => [cleanText(vendor.id), vendor]).filter(([id]) => Boolean(id)) as [string, Record<string, unknown>][]);
+}
+
 function vendorLinkPatchFromRows(vendors: Record<string, unknown>[], reference: unknown) {
   if (!cleanText(reference)) return {};
   const match = resolveVendorReferenceFromRows(vendors, reference);
@@ -5805,6 +5857,62 @@ async function fetchVendorRowsForRateMatching(supabase: ReturnType<typeof create
   return result.data || [];
 }
 
+async function attachUploadVendorHints(
+  supabase: ReturnType<typeof createClient>,
+  rows: Record<string, unknown>[]
+) {
+  const uploadIds = [...new Set(rows.map((row) => cleanText(row.raw_upload_id)).filter(Boolean) as string[])];
+  if (!uploadIds.length) return rows;
+
+  const uploads = await supabase
+    .from("raw_uploads")
+    .select("id,vendor_id,vendor_hint")
+    .in("id", uploadIds);
+  if (uploads.error) throw uploads.error;
+
+  const byId = new Map((uploads.data || []).map((upload) => [cleanText(upload.id), upload]));
+  return rows.map((row) => ({
+    ...row,
+    raw_upload: byId.get(cleanText(row.raw_upload_id)) || null
+  }));
+}
+
+function rateVendorReferenceCandidates(row: Record<string, unknown>) {
+  const upload = typeof row.raw_upload === "object" && row.raw_upload ? row.raw_upload as Record<string, unknown> : {};
+  return [
+    row.vendor_domain,
+    upload.vendor_hint
+  ]
+    .map(cleanText)
+    .filter(Boolean)
+    .filter((reference) => !isGenericEmailDomain(domainFromVendorReference(reference)))
+    .filter((reference) => !isInternalRatewareDomain(reference)) as string[];
+}
+
+function plannedVendorPatchForRateRow(row: Record<string, unknown>, vendors: Record<string, unknown>[]) {
+  const vendorsById = vendorById(vendors);
+  const upload = typeof row.raw_upload === "object" && row.raw_upload ? row.raw_upload as Record<string, unknown> : {};
+  const linkedVendor = vendorsById.get(cleanText(row.vendor_id) || "") || vendorsById.get(cleanText(upload.vendor_id) || "");
+  if (linkedVendor) {
+    return {
+      vendor_id: linkedVendor.id,
+      vendor_domain: normalizeDomain(linkedVendor.domain) || domainFromVendorReference(linkedVendor.primary_email) || domainFromVendorReference(row.vendor_domain)
+    };
+  }
+
+  for (const reference of rateVendorReferenceCandidates(row)) {
+    const match = resolveVendorReferenceFromRows(vendors, reference);
+    if (!match) continue;
+    const fallbackDomain = domainFromVendorReference(reference);
+    return {
+      vendor_id: match.vendor.id,
+      vendor_domain: normalizeDomain(match.vendor.domain) || match.domain || fallbackDomain || reference
+    };
+  }
+
+  return null;
+}
+
 function planRateVendorMatches(rows: Record<string, unknown>[], vendors: Record<string, unknown>[]) {
   const groups = new Map<string, { patch: Record<string, unknown>; ids: string[] }>();
   let candidates = 0;
@@ -5812,19 +5920,20 @@ function planRateVendorMatches(rows: Record<string, unknown>[], vendors: Record<
 
   for (const row of rows) {
     const id = cleanText(row.id);
-    const reference = cleanText(row.vendor_domain);
-    if (!id || !reference) continue;
+    if (!id) continue;
+    const references = rateVendorReferenceCandidates(row);
+    const hasUploadVendor = Boolean(cleanText((row.raw_upload as Record<string, unknown> | undefined)?.vendor_id));
+    const hasCurrentVendor = Boolean(cleanText(row.vendor_id));
+    if (!hasCurrentVendor && !hasUploadVendor && !references.length) continue;
     candidates += 1;
 
-    const match = resolveVendorReferenceFromRows(vendors, reference);
-    if (!match) continue;
+    const patch = plannedVendorPatchForRateRow(row, vendors);
+    if (!patch?.vendor_id) continue;
+    const currentVendorId = cleanText(row.vendor_id);
+    const currentDomain = normalizeDomain(row.vendor_domain);
+    if (currentVendorId === cleanText(patch.vendor_id) && currentDomain === normalizeDomain(patch.vendor_domain)) continue;
     matchable += 1;
 
-    const fallbackDomain = domainFromVendorReference(reference);
-    const patch = {
-      vendor_id: match.vendor.id,
-      vendor_domain: normalizeDomain(match.vendor.domain) || match.domain || fallbackDomain || reference
-    };
     const groupKey = `${patch.vendor_id}::${patch.vendor_domain}`;
     const group = groups.get(groupKey) || { patch, ids: [] };
     group.ids.push(id);
@@ -5859,7 +5968,7 @@ async function matchRateVendorRows(supabase: ReturnType<typeof createClient>, us
 
   let rowQuery = supabase
     .from("rate_staging")
-    .select("id,vendor_id,vendor_domain,status")
+    .select("id,vendor_id,vendor_domain,status,raw_upload_id")
     .in("id", ids)
     .limit(500);
   if (status) rowQuery = rowQuery.eq("status", status);
@@ -5868,7 +5977,8 @@ async function matchRateVendorRows(supabase: ReturnType<typeof createClient>, us
   if (rowsResult.error) throw rowsResult.error;
 
   const vendors = await fetchVendorRowsForRateMatching(supabase, user);
-  const plan = planRateVendorMatches((rowsResult.data || []) as Record<string, unknown>[], vendors);
+  const rows = await attachUploadVendorHints(supabase, (rowsResult.data || []) as Record<string, unknown>[]);
+  const plan = planRateVendorMatches(rows, vendors);
   return await applyPlannedRateVendorMatches(supabase, plan);
 }
 
@@ -5878,34 +5988,64 @@ async function matchRateVendorRowsByFilter(
   filters: Record<string, unknown>,
   options: { dryRun?: boolean; maxRows?: number } = {}
 ) {
-  const maxRows = Math.min(Math.max(Number(options.maxRows) || 50000, 1), 50000);
-  const filtered = await fetchRateRowIdsByFilter(supabase, filters, { limit: options.dryRun ? 50000 : maxRows });
-  const rows = await fetchRateRowsForIds(supabase, filtered.ids, "id,vendor_id,vendor_domain,status");
+  const maxRows = Math.min(Math.max(Number(options.maxRows) || 100000, 1), 100000);
   const vendors = await fetchVendorRowsForRateMatching(supabase, user);
-  const plan = planRateVendorMatches(rows as Record<string, unknown>[], vendors);
+  const pageSize = 5000;
+  let offset = 0;
+  let databaseCount = 0;
+  let processed = 0;
+  let candidates = 0;
+  let matchable = 0;
+  let updated = 0;
+  let hardLimitReached = false;
+  const sampleRows: Record<string, unknown>[] = [];
+
+  while (processed < maxRows) {
+    const filtered = await fetchRateRowIdsByFilter(supabase, filters, { limit: Math.min(pageSize, maxRows - processed), offset });
+    if (!databaseCount) databaseCount = filtered.database_count;
+    hardLimitReached = hardLimitReached || filtered.hard_limit_reached;
+    if (!filtered.ids.length) break;
+
+    const rawRows = await fetchRateRowsForIds(supabase, filtered.ids, "id,vendor_id,vendor_domain,status,raw_upload_id");
+    const rows = await attachUploadVendorHints(supabase, rawRows as Record<string, unknown>[]);
+    const plan = planRateVendorMatches(rows as Record<string, unknown>[], vendors);
+    candidates += plan.candidates;
+    matchable += plan.matchable;
+
+    if (!options.dryRun) {
+      const applied = await applyPlannedRateVendorMatches(supabase, plan);
+      updated += applied.updated;
+      if (sampleRows.length < 100) sampleRows.push(...applied.rows.slice(0, 100 - sampleRows.length));
+    }
+
+    processed += filtered.ids.length;
+    offset += filtered.ids.length;
+    if (filtered.ids.length < pageSize || offset >= filtered.database_count) break;
+  }
 
   if (options.dryRun) {
     return {
-      matched: filtered.ids.length,
-      candidates: plan.candidates,
-      matchable: plan.matchable,
+      matched: databaseCount || processed,
+      scanned: processed,
+      candidates,
+      matchable,
       updated: 0,
       rows: [],
-      database_count: filtered.database_count,
-      hard_limit_reached: filtered.hard_limit_reached,
+      database_count: databaseCount || processed,
+      hard_limit_reached: hardLimitReached || processed >= maxRows && (databaseCount || 0) > processed,
       max_rows: maxRows
     };
   }
 
-  const applied = await applyPlannedRateVendorMatches(supabase, plan);
   return {
-    matched: filtered.ids.length,
-    candidates: plan.candidates,
-    matchable: plan.matchable,
-    updated: applied.updated,
-    rows: applied.rows,
-    database_count: filtered.database_count,
-    hard_limit_reached: filtered.hard_limit_reached,
+    matched: databaseCount || processed,
+    scanned: processed,
+    candidates,
+    matchable,
+    updated,
+    rows: sampleRows,
+    database_count: databaseCount || processed,
+    hard_limit_reached: hardLimitReached || processed >= maxRows && (databaseCount || 0) > processed,
     max_rows: maxRows
   };
 }
@@ -8003,7 +8143,7 @@ Deno.serve(async (request) => {
     if (body.action === "match_rate_vendors_by_filter") {
       const filters = objectRecord(body.filters);
       const dryRun = body.dry_run === true;
-      const maxRows = Math.min(Math.max(Number(body.max_rows) || 50000, 1), 50000);
+      const maxRows = Math.min(Math.max(Number(body.max_rows) || 100000, 1), 100000);
       const mode = cleanText(filters.mode) === "rateware" ? "rateware" : "staging";
       const result = await matchRateVendorRowsByFilter(supabase, user, filters, { dryRun, maxRows });
 
