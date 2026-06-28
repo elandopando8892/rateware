@@ -77,7 +77,7 @@ const ratewarePageNumberInput = document.querySelector("#rateware-page-number");
 const ratewarePageSizeSelect = document.querySelector("#rateware-page-size");
 const activeFiltersStrip = document.querySelector("#rateware-active-filters");
 
-const RATEWARE_COLSPAN = 30;
+const RATEWARE_COLSPAN = 31;
 const FILTERED_RATEWARE_BULK_BATCH_SIZE = 1000;
 const RATEWARE_PAGE_SIZE_STORAGE_KEY = "rateware:approved:page-size:v1";
 const DEFAULT_RATEWARE_PAGE_SIZE = 200;
@@ -114,6 +114,7 @@ const SHEET_COLUMNS = [
   { key: "all_in_rate", label: "All-in" },
   { key: "quote_date", label: "Quote date" },
   { key: "rfx_id", label: "RFx" },
+  { key: "row_id", label: "Shipment ID" },
   { key: "origin_zip_prefix", label: "O ZIP" },
   { key: "origin_state", label: "O ST" },
   { key: "origin_market", label: "O market" },
@@ -147,8 +148,8 @@ function sheetViewPreset(name, visibleKeys, { pageSize = DEFAULT_RATEWARE_PAGE_S
 
 const RATEWARE_VIEW_PRESETS = [
   sheetViewPreset("Default", SHEET_COLUMNS.filter((column) => column.key !== "select").map((column) => column.key)),
-  sheetViewPreset("Operations", ["vendor", "quote_date", "rfx_id", "origin", "origin_state", "origin_market", "destination", "destination_state", "destination_market", "equipment", "trailer", "operation", "service", "weekly_capacity"], { pageSize: 200 }),
-  sheetViewPreset("Pricing", ["vendor", "quote_date", "rfx_id", "origin", "destination", "equipment", "trailer", "operation", "service", "mx_linehaul", "us_linehaul", "fsc", "border_crossing_fee", "all_in_rate", "currency", "weekly_capacity"], { pageSize: 200 }),
+  sheetViewPreset("Operations", ["vendor", "quote_date", "rfx_id", "row_id", "origin", "origin_state", "origin_market", "destination", "destination_state", "destination_market", "equipment", "trailer", "operation", "service", "weekly_capacity"], { pageSize: 200 }),
+  sheetViewPreset("Pricing", ["vendor", "quote_date", "rfx_id", "row_id", "origin", "destination", "equipment", "trailer", "operation", "service", "mx_linehaul", "us_linehaul", "fsc", "border_crossing_fee", "all_in_rate", "currency", "weekly_capacity"], { pageSize: 200 }),
   sheetViewPreset("Lane Normalization", ["vendor", "origin", "origin_zip_prefix", "origin_state", "origin_market", "origin_region", "destination", "destination_zip_prefix", "destination_state", "destination_market", "destination_region", "mx_border_crossing_point", "us_border_crossing_point", "operation", "service"], { pageSize: 100 }),
   sheetViewPreset("Finance", ["vendor", "quote_date", "rfx_id", "origin", "destination", "mx_linehaul", "us_linehaul", "fsc", "border_crossing_fee", "all_in_rate", "currency"], { pageSize: 200 })
 ];
@@ -164,6 +165,7 @@ const BULK_EDIT_FIELDS = [
   { field: "weekly_capacity", label: "Weekly capacity" },
   { field: "mx_border_crossing_point", label: "MX crossing", source: "mx_crossings" },
   { field: "us_border_crossing_point", label: "US crossing", source: "us_crossings" },
+  { field: "row_id", label: "Shipment ID" },
   { field: "quote_date", label: "Quote date", type: "date" }
 ];
 
@@ -177,6 +179,45 @@ function escapeHtml(value) {
 
 function countLabel(value) {
   return Number(value || 0).toLocaleString();
+}
+
+function csvEscape(value) {
+  return `"${String(value ?? "").replace(/"/g, '""')}"`;
+}
+
+function downloadVendorMatchErrors(prefix, rows = [], truncated = false) {
+  if (!Array.isArray(rows) || !rows.length) return false;
+  const headers = [
+    "rate_row_id",
+    "shipment_id",
+    "raw_upload_id",
+    "source_file",
+    "rfx_id",
+    "quote_date",
+    "origin",
+    "destination",
+    "current_vendor_domain",
+    "detected_vendor_reference",
+    "error_reason",
+    "corrected_vendor_domain",
+    "corrected_vendor_name",
+    "corrected_legal_name"
+  ];
+  const payload = [
+    headers.join(","),
+    ...rows.map((row) => headers.map((header) => csvEscape(row[header])).join(",")),
+    ...(truncated ? [headers.map((header) => csvEscape(header === "error_reason" ? "Report truncated. Re-run with narrower filters to export the remaining errors." : "")).join(",")] : [])
+  ].join("\n");
+  const blob = new Blob([payload], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `${prefix}-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+  return true;
 }
 
 function filteredScopeTitle(actionLabel, count) {
@@ -1167,6 +1208,7 @@ function renderRatewareTableRow(row) {
       </td>
       <td data-col="quote_date">${inputCell(row, "quote_date", { type: "date", short: true })}</td>
       <td data-col="rfx_id">${inputCell(row, "rfx_id", { short: true })}</td>
+      <td data-col="row_id">${inputCell(row, "row_id", { short: true })}</td>
       <td data-col="origin_zip_prefix">${inputCell(row, "origin_zip_prefix", { short: true, list: "rateware-zip-options" })}</td>
       <td data-col="origin_state">${inputCell(row, "origin_state", { short: true, list: "rateware-state-options" })}</td>
       <td data-col="origin_market">${inputCell(row, "origin_market", { wide: true, list: "rateware-market-options" })}</td>
@@ -2403,7 +2445,8 @@ async function matchSelectedRatewareVendors() {
       setActionStatus(`Matching vendors for ${ids.length} selected approved rate(s)...`);
       const result = await matchApprovedRatewareVendors(ids);
       ids.forEach((id) => selectedRowIds.delete(id));
-      setActionStatus(`${result.updated || 0} selected approved rate(s) linked to vendors. ${Number(result.upload_updated || 0).toLocaleString()} source upload(s) repaired.`, "success");
+      const downloaded = downloadVendorMatchErrors("rateware-vendor-match-errors", result.unmatched_errors, result.unmatched_errors_truncated);
+      setActionStatus(`${result.updated || 0} selected approved rate(s) linked to vendors. ${Number(result.upload_updated || 0).toLocaleString()} source upload(s) repaired.${downloaded ? " Vendor match errors CSV downloaded." : ""}`, "success");
       await loadRateware({ preservePage: true });
       return;
     }
@@ -2431,7 +2474,8 @@ async function matchSelectedRatewareVendors() {
     setActionStatus(`Matching vendors for ${matched.toLocaleString()} filtered approved rate(s)...`);
     const result = await matchApprovedRatewareVendorsByFilter(filters, { dryRun: false, maxRows: matched });
     selectedRowIds.clear();
-    setActionStatus(`${Number(result.updated || 0).toLocaleString()} approved rate(s) linked to vendors. ${Number(result.upload_updated || 0).toLocaleString()} source upload(s) repaired. ${Number(result.candidates || 0).toLocaleString()} row(s) and ${Number(result.upload_candidates || 0).toLocaleString()} upload(s) had vendor references.`, "success");
+    const downloaded = downloadVendorMatchErrors("rateware-vendor-match-errors", result.unmatched_errors, result.unmatched_errors_truncated);
+    setActionStatus(`${Number(result.updated || 0).toLocaleString()} approved rate(s) linked to vendors. ${Number(result.upload_updated || 0).toLocaleString()} source upload(s) repaired. ${Number(result.candidates || 0).toLocaleString()} row(s) and ${Number(result.upload_candidates || 0).toLocaleString()} upload(s) had vendor references.${downloaded ? " Vendor match errors CSV downloaded." : ""}`, "success");
     await loadRateware({ preservePage: true });
   } catch (error) {
     setActionStatus(error.message, "error");
