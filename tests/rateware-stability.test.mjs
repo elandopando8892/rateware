@@ -41,6 +41,25 @@ assert.doesNotMatch(
   /fetchRateRowsForIds/,
   "filter value dropdowns should not hydrate filtered rows in Edge Function"
 );
+const listRatewareSource = apiSource.slice(apiSource.indexOf('if (body.action === "list_rateware")'), apiSource.indexOf('if (body.action === "list_rateware_filter_values")'));
+assert.ok(listRatewareSource.length > 100, "Rateware list block should be present");
+assert.match(
+  listRatewareSource,
+  /if \(usesGlobalFilters\)[\s\S]*fetchRateRowIdsByFilter/,
+  "Rateware column and quick filters should use the normalized database filter path"
+);
+assert.doesNotMatch(
+  listRatewareSource,
+  /usesGlobalFilters && !canUseSqlRateFilters/,
+  "Rateware filters should not fall back to case-sensitive SQL column matching"
+);
+const listRatewareFilterValuesSource = apiSource.slice(apiSource.indexOf('if (body.action === "list_rateware_filter_values")'), apiSource.indexOf('if (body.action === "list_rateware_audit")'));
+assert.ok(listRatewareFilterValuesSource.length > 100, "Rateware filter value block should be present");
+assert.doesNotMatch(
+  listRatewareFilterValuesSource,
+  /fetchSqlRateFilterValues/,
+  "Rateware filter dropdown values should use the same normalized database filter engine as the grid"
+);
 
 assert.match(apiSource, /body\.action === "get_rate_row_detail"/, "Rateware should lazy-load row detail");
 assert.match(apiSource, /RATE_ROW_RESPONSE_WITH_LEGS_SELECT/, "row detail should include full audit and lane-leg payload");

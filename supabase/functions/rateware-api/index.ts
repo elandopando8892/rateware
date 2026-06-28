@@ -7753,7 +7753,7 @@ Deno.serve(async (request) => {
         column_filters: columnFilters
       };
 
-      if (usesGlobalFilters && !canUseSqlRateFilters(filterPayload)) {
+      if (usesGlobalFilters) {
         const filtered = await fetchRateRowIdsByFilter(supabase, filterPayload, { limit, offset });
         const rows = await fetchRateRowsForIds(supabase, filtered.ids, RATE_ROW_LIST_SELECT);
 
@@ -7806,9 +7806,6 @@ Deno.serve(async (request) => {
         quick_filter: cleanText(body.quick_filter) || "all",
         column_filters: columnFilters
       };
-
-      const sqlValues = await fetchSqlRateFilterValues(supabase, filterPayload, field, valueSearch, limit);
-      if (sqlValues) return jsonResponse(sqlValues);
 
       return jsonResponse(await fetchRateFilterValuesByRpc(supabase, filterPayload, field, valueSearch, limit));
     }
