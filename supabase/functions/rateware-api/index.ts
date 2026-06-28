@@ -967,27 +967,45 @@ function scoreVendorReference(vendor: Record<string, unknown>, reference: unknow
   return { score, source, domain, email };
 }
 
+const VENDOR_REFERENCE_SELECT = "id,vendor_name,domain,primary_email,secondary_emails,status,base_stage";
+
+async function fetchVendorReferenceRows(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_email: string | null },
+  maxRows = 50000
+) {
+  if (!user.owner_email) return [];
+  const pageSize = 1000;
+  const rows: Record<string, unknown>[] = [];
+  for (let offset = 0; offset < maxRows; offset += pageSize) {
+    const result = await supabase
+      .from("vendors")
+      .select(VENDOR_REFERENCE_SELECT)
+      .eq("owner_email", user.owner_email)
+      .order("created_at", { ascending: false })
+      .range(offset, Math.min(offset + pageSize - 1, maxRows - 1));
+    if (result.error) throw result.error;
+    rows.push(...((result.data || []) as Record<string, unknown>[]));
+    if ((result.data || []).length < pageSize) break;
+  }
+  return rows;
+}
+
 async function resolveVendorReference(supabase: ReturnType<typeof createClient>, user: { owner_email: string | null }, reference: unknown) {
   const domain = domainFromVendorReference(reference);
   const email = normalizeEmail(reference);
   if (!domain && !email) return null;
 
-  const result = await supabase
-    .from("vendors")
-    .select("id,vendor_name,domain,primary_email,secondary_emails,status,base_stage")
-    .eq("owner_email", user.owner_email)
-    .limit(1000);
-  if (result.error) throw result.error;
-
-  const ranked = (result.data || [])
-    .map((vendor) => ({ vendor, ...scoreVendorReference(vendor, reference) }))
-    .filter((match) => match.score >= 75)
-    .sort((a, b) => b.score - a.score);
-
-  return ranked[0] || null;
+  return resolveVendorReferenceFromRows(await fetchVendorReferenceRows(supabase, user), reference);
 }
 
-async function vendorLinkPatch(supabase: ReturnType<typeof createClient>, user: { owner_email: string | null }, input: Record<string, unknown>, current: Record<string, unknown>) {
+async function vendorLinkPatch(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_email: string | null },
+  input: Record<string, unknown>,
+  current: Record<string, unknown>,
+  vendors?: Record<string, unknown>[]
+) {
   const explicitVendorUpdate = input.vendor_domain !== undefined;
   const reference = explicitVendorUpdate ? input.vendor_domain : current.vendor_domain;
   const hasExistingLink = Boolean(current.vendor_id);
@@ -997,7 +1015,9 @@ async function vendorLinkPatch(supabase: ReturnType<typeof createClient>, user: 
   }
   if (!explicitVendorUpdate && hasExistingLink) return {};
 
-  const match = await resolveVendorReference(supabase, user, reference);
+  const match = vendors
+    ? resolveVendorReferenceFromRows(vendors, reference)
+    : await resolveVendorReference(supabase, user, reference);
   const fallbackDomain = domainFromVendorReference(reference);
   if (!match) {
     return explicitVendorUpdate ? { vendor_id: null, vendor_domain: fallbackDomain || cleanText(reference) } : {};
@@ -4399,6 +4419,20 @@ function vendorFunnelPatch(stage: string | null, now = new Date().toISOString())
   };
 }
 
+function vendorFunnelUpdatePatch(stage: string | null, current: Record<string, unknown> = {}, now = new Date().toISOString()) {
+  if (!stage) return {};
+  const currentStage = normalizeVendorFunnelStage(current.funnel_stage);
+  const timestampField = VENDOR_FUNNEL_STAGE_TIMESTAMPS[stage];
+  const patch: Record<string, unknown> = { funnel_stage: stage };
+  if (stage !== currentStage || !current.funnel_stage_updated_at) {
+    patch.funnel_stage_updated_at = now;
+  }
+  if (timestampField && !current[timestampField]) {
+    patch[timestampField] = now;
+  }
+  return patch;
+}
+
 function normalizeVendor(input: Record<string, unknown>, source = "manual") {
   const vendorName = cleanText(input.vendor_name || input.name || input.carrier || input.vendor);
   if (!vendorName) throw new Error("Vendor name is required.");
@@ -4435,7 +4469,7 @@ function normalizeVendor(input: Record<string, unknown>, source = "manual") {
   };
 }
 
-function normalizeVendorPatch(input: Record<string, unknown>) {
+function normalizeVendorPatch(input: Record<string, unknown>, current: Record<string, unknown> = {}) {
   const patch: Record<string, unknown> = {};
   const now = new Date().toISOString();
   if (input.vendor_name !== undefined) patch.vendor_name = cleanText(input.vendor_name);
@@ -4453,11 +4487,15 @@ function normalizeVendorPatch(input: Record<string, unknown>) {
     patch.base_stage = baseStage;
     patch.archived_at = baseStage === "archived" ? new Date().toISOString() : null;
     if (baseStage === "procurement" && input.funnel_stage === undefined) {
-      Object.assign(patch, vendorFunnelPatch("targeted", now));
+      Object.assign(patch, vendorFunnelUpdatePatch(normalizeVendorFunnelStage(current.funnel_stage) || "targeted", current, now));
+    }
+    if ((baseStage === "sourcing" || baseStage === "archived") && input.funnel_stage === undefined) {
+      patch.funnel_stage = null;
+      patch.funnel_stage_updated_at = null;
     }
   }
   if (input.funnel_stage !== undefined) {
-    Object.assign(patch, vendorFunnelPatch(normalizeVendorFunnelStage(input.funnel_stage), now));
+    Object.assign(patch, vendorFunnelUpdatePatch(normalizeVendorFunnelStage(input.funnel_stage), current, now));
   }
   if (input.tags !== undefined) patch.tags = normalizeTags(input.tags);
   if (input.preferred_channel !== undefined) {
@@ -6036,14 +6074,7 @@ async function enrichMissingLocationZips(supabase: ReturnType<typeof createClien
 }
 
 async function fetchVendorRowsForRateMatching(supabase: ReturnType<typeof createClient>, user: { owner_email: string | null }) {
-  if (!user.owner_email) return [];
-  const result = await supabase
-    .from("vendors")
-    .select("id,vendor_name,domain,primary_email,secondary_emails,status,base_stage")
-    .eq("owner_email", user.owner_email)
-    .limit(10000);
-  if (result.error) throw result.error;
-  return result.data || [];
+  return await fetchVendorReferenceRows(supabase, user, 50000);
 }
 
 async function attachUploadVendorHints(
@@ -6668,30 +6699,32 @@ Deno.serve(async (request) => {
       const ids = Array.isArray(body.ids) ? body.ids.filter(Boolean) : [];
       if (!ids.length) return jsonResponse({ updated: 0, rows: [] });
 
-      const patch = normalizeVendorPatch(body.patch || {});
-      const addTags = normalizeTags(body.patch?.add_tags);
+      const patchInput = objectRecord(body.patch);
+      const addTags = normalizeTags(patchInput.add_tags);
+      const current = await supabase.from("vendors").select("*").eq("owner_email", user.owner_email).in("id", ids);
+      if (current.error) throw current.error;
 
-      if (addTags.length) {
-        const current = await supabase.from("vendors").select("id,tags").eq("owner_email", user.owner_email).in("id", ids);
-        if (current.error) throw current.error;
+      const updates = await Promise.all(
+        (current.data || []).map((vendor) => {
+          const patch = normalizeVendorPatch(patchInput, vendor || {});
+          if (addTags.length) {
+            patch.tags = Array.from(new Set([...normalizeTags(vendor.tags), ...addTags]));
+          }
+          return supabase
+            .from("vendors")
+            .update(patch)
+            .eq("owner_email", user.owner_email)
+            .eq("id", vendor.id)
+            .select()
+            .single();
+        })
+      );
 
-        const updates = await Promise.all(
-          current.data.map((vendor) => {
-            const mergedTags = Array.from(new Set([...normalizeTags(vendor.tags), ...addTags]));
-            return supabase.from("vendors").update({ ...patch, tags: mergedTags }).eq("owner_email", user.owner_email).eq("id", vendor.id).select().single();
-          })
-        );
-
-        for (const update of updates) {
-          if (update.error) throw update.error;
-        }
-
-        return jsonResponse({ updated: updates.length, rows: updates.map((update) => update.data) });
+      for (const update of updates) {
+        if (update.error) throw update.error;
       }
 
-      const result = await supabase.from("vendors").update(patch).eq("owner_email", user.owner_email).in("id", ids).select();
-      if (result.error) throw result.error;
-      return jsonResponse({ updated: result.data.length, rows: result.data });
+      return jsonResponse({ updated: updates.length, rows: updates.map((update) => update.data) });
     }
 
     if (body.action === "remove_vendors") {
@@ -6704,7 +6737,9 @@ Deno.serve(async (request) => {
 
     if (body.action === "update_vendor") {
       if (!body.id) return jsonResponse({ error: "Vendor id is required." }, 400);
-      const patch = normalizeVendorPatch(body.patch || {});
+      const current = await supabase.from("vendors").select("*").eq("owner_email", user.owner_email).eq("id", body.id).single();
+      if (current.error) throw current.error;
+      const patch = normalizeVendorPatch(body.patch || {}, current.data || {});
       if (patch.vendor_name === null) return jsonResponse({ error: "Vendor name is required." }, 400);
       const result = await supabase.from("vendors").update(patch).eq("owner_email", user.owner_email).eq("id", body.id).select().single();
       if (result.error) throw result.error;
