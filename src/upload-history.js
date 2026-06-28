@@ -1,4 +1,5 @@
 import { applyPermissionState, ensureSignedIn, initAuthControls, requirePrivatePage } from "./auth.js";
+import { downloadBulkImportTemplate } from "./bulk-import-template.js";
 import { humanizeError } from "./error-copy.js";
 import { tableErrorState, tableLoadingState, tableState } from "./ui-state.js";
 import {
@@ -28,6 +29,7 @@ const uploadBulkBar = document.querySelector(".bulk-action-bar");
 const uploadSelectionCount = document.querySelector("#upload-selection-count");
 const reprocessSelectedButton = document.querySelector("#reprocess-selected-uploads");
 const bulkImportSelectedButton = document.querySelector("#bulk-import-selected-uploads");
+const downloadBulkTemplateButton = document.querySelector("[data-download-bulk-template]");
 const archiveSelectedButton = document.querySelector("#archive-selected-uploads");
 const removeSelectedButton = document.querySelector("#remove-selected-uploads");
 const uploadBulkStatus = document.querySelector("#upload-bulk-status");
@@ -57,7 +59,7 @@ const MISSING_ROWS_REPROCESS_NOTE = [
   "Compare detected source rows against staged rows and explain any row that cannot be staged."
 ].join(" ");
 const TEMPLATE_FIELD_ALIASES = {
-  vendor_name: ["vendor", "carrier", "supplier", "transportista", "proveedor"],
+  vendor_name: ["vendor", "vendor name", "carrier", "carrier name", "supplier", "transportista", "proveedor", "legal name", "commercial name", "nombre comercial", "razon social", "razón social"],
   vendor_domain: ["vendor domain", "carrier domain", "domain", "email", "vendor email", "carrier email", "correo", "correo proveedor"],
   rfx_id: ["rfx", "rfx id", "rfq", "rfq id", "event", "event id", "quote no", "quote #", "quote number"],
   row_id: ["shipment #", "shipment id", "shipment", "load id", "lane id", "lane", "id", "folio"],
@@ -1571,6 +1573,17 @@ selectAllUploads?.addEventListener("change", () => {
 archiveSelectedButton?.addEventListener("click", () => runBulkUploadAction("archive"));
 reprocessSelectedButton?.addEventListener("click", () => runBulkUploadAction("reprocess"));
 bulkImportSelectedButton?.addEventListener("click", () => runBulkTemplateImport());
+downloadBulkTemplateButton?.addEventListener("click", async () => {
+  downloadBulkTemplateButton.disabled = true;
+  try {
+    await downloadBulkImportTemplate();
+    setBulkStatus("Bulk import template downloaded.", "success");
+  } catch (error) {
+    setBulkStatus(humanizeError(error), "error");
+  } finally {
+    downloadBulkTemplateButton.disabled = false;
+  }
+});
 removeSelectedButton?.addEventListener("click", () => runBulkUploadAction("remove"));
 closeUploadDrawerButton?.addEventListener("click", () => uploadDrawer?.classList.add("hidden"));
 closeReprocessDrawerButton?.addEventListener("click", () => reprocessDrawer?.classList.add("hidden"));

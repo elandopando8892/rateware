@@ -1,4 +1,5 @@
 import { applyPermissionState, ensureSignedIn, initAuthControls, requirePrivatePage } from "./auth.js";
+import { downloadBulkImportTemplate } from "./bulk-import-template.js";
 import { humanizeError } from "./error-copy.js";
 import { detectDocumentType, isAllowedFile } from "./file-rules.js";
 import { uploadRawFile } from "./upload-service.js";
@@ -17,6 +18,7 @@ const queueMetricTotal = document.querySelector("#upload-queue-total");
 const queueMetricReady = document.querySelector("#upload-queue-ready");
 const queueMetricRejected = document.querySelector("#upload-queue-rejected");
 const queueMetricSize = document.querySelector("#upload-queue-size");
+const downloadBulkTemplateButton = document.querySelector("[data-download-bulk-template]");
 
 let selectedFiles = [];
 
@@ -131,6 +133,18 @@ dropZone.addEventListener("keydown", (event) => {
 fileInput.addEventListener("change", () => {
   addFiles(fileInput.files);
   fileInput.value = "";
+});
+
+downloadBulkTemplateButton?.addEventListener("click", async () => {
+  downloadBulkTemplateButton.disabled = true;
+  try {
+    await downloadBulkImportTemplate();
+    setStatus("Bulk import template downloaded.", "success");
+  } catch (error) {
+    setStatus(humanizeError(error), "error");
+  } finally {
+    downloadBulkTemplateButton.disabled = false;
+  }
 });
 
 form.addEventListener("submit", async (event) => {
