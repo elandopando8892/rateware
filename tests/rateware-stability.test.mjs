@@ -102,6 +102,16 @@ assert.doesNotMatch(
 );
 assert.match(
   apiSource,
+  /async function fetchRatewareRowsBySql/,
+  "Rateware list should have a SQL fallback helper for compatible filters"
+);
+assert.match(
+  listRatewareSource,
+  /fetchRateRowIdsByFilter[\s\S]*catch \(error\)[\s\S]*canUseSqlRateFilters\(filterPayload\)[\s\S]*fetchRatewareRowsBySql/,
+  "Rateware list should recover with SQL when the normalized RPC path is unavailable"
+);
+assert.match(
+  apiSource,
   /function hasActiveRatewareFilters/,
   "Rateware should consistently detect search, operation, service, quick, and column filters"
 );

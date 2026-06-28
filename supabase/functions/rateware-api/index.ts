@@ -1953,6 +1953,36 @@ async function fetchRateRowsForIds(
   return ids.map((id) => byId.get(id)).filter(Boolean) as Record<string, unknown>[];
 }
 
+async function fetchRatewareRowsBySql(
+  supabase: ReturnType<typeof createClient>,
+  filterPayload: Record<string, unknown>,
+  limit: number,
+  offset: number
+) {
+  let query = supabase
+    .from("rate_staging")
+    .select(RATE_ROW_LIST_SELECT, { count: "exact" })
+    .eq("status", "approved")
+    .order("quote_date", { ascending: false, nullsFirst: false })
+    .order("created_at", { ascending: false })
+    .range(offset, offset + limit - 1);
+
+  query = applySqlRateFilters(query, filterPayload);
+
+  const result = await query;
+  if (result.error) throw result.error;
+  const total = result.count || 0;
+  const rows = result.data || [];
+  return {
+    rows,
+    total,
+    limit,
+    offset,
+    has_more: offset + rows.length < total,
+    fallback: "sql"
+  };
+}
+
 async function fetchRateFilterValuesByRpc(
   supabase: ReturnType<typeof createClient>,
   filters: Record<string, unknown>,
@@ -8155,41 +8185,31 @@ Deno.serve(async (request) => {
       const usesGlobalFilters = hasActiveRatewareFilters(filterPayload);
 
       if (usesGlobalFilters) {
-        const filtered = await fetchRateRowIdsByFilter(supabase, filterPayload, { limit, offset });
-        const rows = await fetchRateRowsForIds(supabase, filtered.ids, RATE_ROW_LIST_SELECT);
+        try {
+          const filtered = await fetchRateRowIdsByFilter(supabase, filterPayload, { limit, offset });
+          const rows = await fetchRateRowsForIds(supabase, filtered.ids, RATE_ROW_LIST_SELECT);
 
-        return jsonResponse({
-          rows,
-          total: filtered.database_count,
-          database_count: filtered.database_count,
-          limit,
-          offset,
-          has_more: offset + rows.length < filtered.database_count,
-          hard_limit_reached: filtered.hard_limit_reached
-        });
+          return jsonResponse({
+            rows,
+            total: filtered.database_count,
+            database_count: filtered.database_count,
+            limit,
+            offset,
+            has_more: offset + rows.length < filtered.database_count,
+            hard_limit_reached: filtered.hard_limit_reached
+          });
+        } catch (error) {
+          console.warn("rateware list RPC failed; attempting SQL fallback", {
+            message: error instanceof Error ? error.message : String(error)
+          });
+          if (canUseSqlRateFilters(filterPayload)) {
+            return jsonResponse(await fetchRatewareRowsBySql(supabase, filterPayload, limit, offset));
+          }
+          throw error;
+        }
       }
 
-      let query = supabase
-        .from("rate_staging")
-        .select(RATE_ROW_LIST_SELECT, { count: "exact" })
-        .eq("status", "approved")
-        .order("quote_date", { ascending: false, nullsFirst: false })
-        .order("created_at", { ascending: false })
-        .range(offset, offset + limit - 1);
-
-      query = applySqlRateFilters(query, filterPayload);
-
-      const result = await query;
-      if (result.error) throw result.error;
-      const total = result.count || 0;
-      const rows = result.data || [];
-      return jsonResponse({
-        rows,
-        total,
-        limit,
-        offset,
-        has_more: offset + rows.length < total
-      });
+      return jsonResponse(await fetchRatewareRowsBySql(supabase, filterPayload, limit, offset));
     }
 
     if (body.action === "list_rateware_filter_values") {
