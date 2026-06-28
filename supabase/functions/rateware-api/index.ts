@@ -4931,13 +4931,43 @@ function uploadVendorDomain(upload: Record<string, unknown>) {
 
 function templateRowInput(mapped: Record<string, unknown>, upload: Record<string, unknown>) {
   const inheritedVendorDomain = uploadVendorDomain(upload);
+  const hasOriginLocationMetadata = [
+    mapped.origin_zip_prefix,
+    mapped.origin_state,
+    mapped.origin_country,
+    mapped.origin_market,
+    mapped.origin_region
+  ].some(cleanText);
+  const hasDestinationLocationMetadata = [
+    mapped.destination_zip_prefix,
+    mapped.destination_state,
+    mapped.destination_country,
+    mapped.destination_market,
+    mapped.destination_region
+  ].some(cleanText);
   const input: Record<string, unknown> = {
     vendor_domain: mapped.vendor_domain || inheritedVendorDomain,
     rfx_id: mapped.rfx_id || upload.rfx_hint,
     row_id: mapped.row_id,
     quote_date: mapped.quote_date,
     origin: mapped.origin,
+    origin_zip_prefix: mapped.origin_zip_prefix,
+    origin_state: mapped.origin_state,
+    origin_country: mapped.origin_country,
+    origin_market: mapped.origin_market,
+    origin_region: mapped.origin_region,
+    origin_match_manual: hasOriginLocationMetadata ? true : mapped.origin_match_manual,
+    origin_match_source: hasOriginLocationMetadata ? "template" : mapped.origin_match_source,
+    origin_match_reason: hasOriginLocationMetadata ? "template supplied location metadata" : mapped.origin_match_reason,
     destination: mapped.destination,
+    destination_zip_prefix: mapped.destination_zip_prefix,
+    destination_state: mapped.destination_state,
+    destination_country: mapped.destination_country,
+    destination_market: mapped.destination_market,
+    destination_region: mapped.destination_region,
+    destination_match_manual: hasDestinationLocationMetadata ? true : mapped.destination_match_manual,
+    destination_match_source: hasDestinationLocationMetadata ? "template" : mapped.destination_match_source,
+    destination_match_reason: hasDestinationLocationMetadata ? "template supplied location metadata" : mapped.destination_match_reason,
     equipment: mapped.equipment,
     trailer: mapped.trailer,
     config: mapped.config,
@@ -4983,6 +5013,20 @@ function templateLocationScope(templateRows: Record<string, unknown>[]) {
   const locationKeys = new Set<string>();
 
   for (const mapped of templateMappedRows(templateRows)) {
+    for (const field of ["origin_zip_prefix", "destination_zip_prefix"]) {
+      const value = cleanText(mapped[field]);
+      if (!value) continue;
+      const numericPostal = value.match(/\b\d{3,5}\b/)?.[0] || "";
+      if (numericPostal) zipPrefixes.add(numericPostal.slice(0, 3));
+      const caPostal = catalogKey(value).match(/\b[A-Z]\d[A-Z]\b/)?.[0] || "";
+      if (caPostal) zipPrefixes.add(caPostal);
+    }
+    for (const field of ["origin_state", "destination_state"]) {
+      const value = cleanText(mapped[field]);
+      if (!value) continue;
+      stateCodes.add(value.toUpperCase());
+      stateCodes.add(normalizedLocationStateCode(value).toUpperCase());
+    }
     for (const field of ["origin", "destination", "mx_border_crossing_point", "us_border_crossing_point"]) {
       const value = cleanText(mapped[field]);
       if (!value) continue;
@@ -6022,8 +6066,8 @@ function normalizeCatalogValues(row: Record<string, unknown>, catalog: Map<strin
 }
 
 function normalizeLocations(row: Record<string, unknown>, locationIndex: Map<string, Record<string, unknown>>) {
-  const preserveOriginManual = cleanBoolean(row.origin_match_manual) && (row.origin_market || row.origin_region || row.origin_country);
-  const preserveDestinationManual = cleanBoolean(row.destination_match_manual) && (row.destination_market || row.destination_region || row.destination_country);
+  const preserveOriginManual = cleanBoolean(row.origin_match_manual) && (row.origin_zip_prefix || row.origin_state || row.origin_market || row.origin_region || row.origin_country);
+  const preserveDestinationManual = cleanBoolean(row.destination_match_manual) && (row.destination_zip_prefix || row.destination_state || row.destination_market || row.destination_region || row.destination_country);
   const originResolution = locationMatch(locationIndex, row.origin || row.normalized_origin);
   const destinationResolution = locationMatch(locationIndex, row.destination || row.normalized_destination);
   const originLocation = preserveOriginManual ? null : originResolution?.location || null;

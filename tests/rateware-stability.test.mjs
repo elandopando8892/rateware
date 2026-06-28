@@ -73,6 +73,14 @@ assert.match(bulkImportTemplateSource, /BULK_IMPORT_TEMPLATE_COLUMNS/, "bulk imp
 assert.match(bulkImportTemplateSource, /header: "Shipment ID"/, "bulk import template should include Shipment ID");
 assert.match(bulkImportTemplateSource, /header: "Vendor Domain"/, "bulk import template should include vendor domain");
 assert.match(bulkImportTemplateSource, /header: "Vendor Name"/, "bulk import template should include vendor name for generic email carriers");
+assert.match(bulkImportTemplateSource, /header: "Origin ZIP"/, "bulk import template should include origin ZIP");
+assert.match(bulkImportTemplateSource, /header: "Origin State"/, "bulk import template should include origin state");
+assert.match(bulkImportTemplateSource, /header: "Origin Key Market Area"/, "bulk import template should include origin key market area");
+assert.match(bulkImportTemplateSource, /header: "Origin Region"/, "bulk import template should include origin region");
+assert.match(bulkImportTemplateSource, /header: "Destination ZIP"/, "bulk import template should include destination ZIP");
+assert.match(bulkImportTemplateSource, /header: "Destination State"/, "bulk import template should include destination state");
+assert.match(bulkImportTemplateSource, /header: "Destination Key Market Area"/, "bulk import template should include destination key market area");
+assert.match(bulkImportTemplateSource, /header: "Destination Region"/, "bulk import template should include destination region");
 assert.match(bulkImportTemplateSource, /All-in Rate must be numeric/, "bulk import template should warn about invalid rate placeholders");
 assert.match(uploadHistorySource, /downloadBulkImportTemplate/, "Upload History should expose template download");
 assert.match(uploadCenterSource, /downloadBulkImportTemplate/, "Upload Center should expose template download");
@@ -80,7 +88,15 @@ assert.match(uploadHistoryHtml, /data-download-bulk-template/, "Upload History s
 assert.match(uploadCenterHtml, /data-download-bulk-template/, "Upload Center should render template download button");
 assert.match(uploadHistorySource, /"vendor name"/, "bulk import parser should recognize Vendor Name header");
 assert.match(uploadHistorySource, /"legal name"/, "bulk import parser should recognize Legal Name header");
-assert.match(uploadHistorySource, /"raz[oó]n social"/i, "bulk import parser should recognize Razon Social header");
+assert.match(uploadHistorySource, /"razon social"/i, "bulk import parser should recognize Razon Social header");
+assert.match(uploadHistorySource, /origin_zip_prefix/, "bulk import parser should recognize origin ZIP headers");
+assert.match(uploadHistorySource, /origin_market/, "bulk import parser should recognize origin market headers");
+assert.match(uploadHistorySource, /destination_zip_prefix/, "bulk import parser should recognize destination ZIP headers");
+assert.match(uploadHistorySource, /destination_market/, "bulk import parser should recognize destination market headers");
+assert.match(apiSource, /origin_match_source: hasOriginLocationMetadata \? "template"/, "structured bulk import should mark origin metadata as template supplied");
+assert.match(apiSource, /destination_match_source: hasDestinationLocationMetadata \? "template"/, "structured bulk import should mark destination metadata as template supplied");
+assert.match(apiSource, /row\.origin_zip_prefix \|\| row\.origin_state \|\| row\.origin_market/, "manual origin metadata preservation should include ZIP and state");
+assert.match(apiSource, /row\.destination_zip_prefix \|\| row\.destination_state \|\| row\.destination_market/, "manual destination metadata preservation should include ZIP and state");
 
 assert.match(apiSource, /function canUseSqlRateFilters/, "API should decide when filters can stay in SQL");
 assert.match(apiSource, /applySqlRateFilters\(query, filterPayload\)/, "list endpoints should use SQL-backed filters");
