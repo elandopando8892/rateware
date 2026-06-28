@@ -5057,6 +5057,8 @@ async function bulkImportStructuredUpload(
   if (cleanText(upload.document_type) !== "xlsx") {
     throw new Error("Bulk template import is only available for XLSX uploads.");
   }
+  const inheritedVendorId = cleanText(upload.vendor_id);
+  const inheritedVendorDomain = uploadVendorDomain(upload);
 
   const parsed = {
     rows: Array.isArray(templateRows)
@@ -5070,6 +5072,14 @@ async function bulkImportStructuredUpload(
     throw new Error(parsed.warnings[0] || "No structured template rows were found in this workbook.");
   }
 
+  const vendorsPromise = inheritedVendorId
+    ? Promise.resolve({ data: [], error: null })
+    : supabase
+        .from("vendors")
+        .select("id,vendor_name,domain,primary_email,secondary_emails,status,base_stage")
+        .eq("owner_email", user.owner_email)
+        .limit(5000);
+
   const [catalogResult, scopedLocations, scopedMileage, vendorsResult] = await Promise.all([
     supabase
       .from("rateware_catalog_items")
@@ -5078,11 +5088,7 @@ async function bulkImportStructuredUpload(
       .limit(10000),
     fetchScopedTemplateLocations(supabase, parsed.rows),
     fetchScopedTemplateMileage(supabase, parsed.rows),
-    supabase
-      .from("vendors")
-      .select("id,vendor_name,domain,primary_email,secondary_emails,status,base_stage")
-      .eq("owner_email", user.owner_email)
-      .limit(5000)
+    vendorsPromise
   ]);
   for (const result of [catalogResult, vendorsResult]) {
     if (result.error) throw result.error;
@@ -5103,8 +5109,6 @@ async function bulkImportStructuredUpload(
   const locationIndex = buildLocationIndex(scopedLocations || []);
   const mileage = new Map((scopedMileage || []).map((lane) => [catalogKey(lane.route_key), lane]));
   const vendors = vendorsResult.data || [];
-  const inheritedVendorId = cleanText(upload.vendor_id);
-  const inheritedVendorDomain = uploadVendorDomain(upload);
   const rowsToInsert: Record<string, unknown>[] = [];
   const warnings = [...parsed.warnings];
   let skipped = 0;

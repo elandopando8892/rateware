@@ -50,6 +50,7 @@ const HISTORY_COLSPAN = 9;
 const UPLOAD_ACTION_SELECTOR = "[data-interpret-id], [data-bulk-import-id], [data-archive-id], [data-remove-id], #reprocess-selected-uploads, #bulk-import-selected-uploads, #archive-selected-uploads, #remove-selected-uploads";
 const XLSX_MODULE_URL = "https://esm.sh/xlsx@0.18.5";
 const BULK_IMPORT_BATCH_SIZE = 250;
+const BULK_IMPORT_MIN_BATCH_SIZE = 25;
 const MISSING_ROWS_REPROCESS_NOTE = [
   "Re-read every visible table row and priced cell. Do not summarize by state, lane group, destination group, or carrier note.",
   "Return one staged row per carrier quoted lane, including one-way and roundtrip rows only when explicitly priced.",
@@ -161,6 +162,95 @@ function chunkRows(rows, size = BULK_IMPORT_BATCH_SIZE) {
     chunks.push(rows.slice(index, index + size));
   }
   return chunks;
+}
+
+function shouldSplitBulkImportError(error) {
+  const message = String(error?.message || error || "").toLowerCase();
+  return [
+    "not having enough compute resources",
+    "http 546",
+    "function failed",
+    "edge function",
+    "payload",
+    "request entity",
+    "body exceeded",
+    "timeout",
+    "timed out",
+    "worker",
+    "memory",
+    "failed to fetch",
+    "network"
+  ].some((token) => message.includes(token));
+}
+
+function mergeBulkImportResults(left = {}, right = {}) {
+  const warnings = [
+    ...(Array.isArray(left.warnings) ? left.warnings : []),
+    ...(Array.isArray(right.warnings) ? right.warnings : [])
+  ].slice(0, 25);
+  return {
+    imported_rows: Number(left.imported_rows || 0) + Number(right.imported_rows || 0),
+    expected_rows: Number(right.expected_rows || left.expected_rows || 0),
+    skipped_rows: Number(left.skipped_rows || 0) + Number(right.skipped_rows || 0),
+    warnings
+  };
+}
+
+async function importBulkBatchAdaptive(rawUploadId, rows, {
+  warnings = [],
+  replaceExisting = false,
+  expectedRows = rows.length,
+  batchIndex = 0,
+  batchCount = 1,
+  importedBefore = 0,
+  skippedBefore = 0,
+  statusLabel = "Bulk importing"
+} = {}) {
+  try {
+    return await bulkImportUploadTemplate(rawUploadId, {
+      rows,
+      warnings,
+      replaceExisting,
+      expectedRows,
+      batchIndex,
+      batchCount,
+      importedBefore,
+      skippedBefore
+    });
+  } catch (error) {
+    if (!shouldSplitBulkImportError(error) || rows.length <= BULK_IMPORT_MIN_BATCH_SIZE) {
+      throw error;
+    }
+
+    const midpoint = Math.ceil(rows.length / 2);
+    const leftRows = rows.slice(0, midpoint);
+    const rightRows = rows.slice(midpoint);
+    setBulkStatus(`${statusLabel}: batch was too heavy, retrying as ${leftRows.length} + ${rightRows.length} row chunks...`, "warning");
+
+    const left = await importBulkBatchAdaptive(rawUploadId, leftRows, {
+      warnings,
+      replaceExisting,
+      expectedRows,
+      batchIndex,
+      batchCount,
+      importedBefore,
+      skippedBefore,
+      statusLabel
+    });
+    const leftImported = Number(left.imported_rows || 0);
+    const leftSkipped = Number(left.skipped_rows || 0);
+    const right = await importBulkBatchAdaptive(rawUploadId, rightRows, {
+      warnings: [],
+      replaceExisting: false,
+      expectedRows,
+      batchIndex,
+      batchCount,
+      importedBefore: importedBefore + leftImported,
+      skippedBefore: skippedBefore + leftSkipped,
+      statusLabel
+    });
+    return mergeBulkImportResults(left, right);
+  }
 }
 
 function formatDate(value) {
@@ -1262,15 +1352,15 @@ async function runBulkTemplateImport(ids = selectedVisibleIds(), sourceButton = 
         setBulkStatus(
           `Bulk importing spreadsheet ${index + 1}/${spreadsheetIds.length}: batch ${batchIndex + 1}/${batches.length} (${batchRows.length} row(s))...`
         );
-        const result = await bulkImportUploadTemplate(id, {
-          rows: batchRows,
+        const result = await importBulkBatchAdaptive(id, batchRows, {
           warnings: batchIndex === 0 ? parsedWorkbook.warnings : [],
           replaceExisting: batchIndex === 0,
           expectedRows: parsedWorkbook.rows.length,
           batchIndex,
           batchCount: batches.length,
           importedBefore: uploadResult.imported_rows,
-          skippedBefore: uploadResult.skipped_rows
+          skippedBefore: uploadResult.skipped_rows,
+          statusLabel: `Bulk importing spreadsheet ${index + 1}/${spreadsheetIds.length}, batch ${batchIndex + 1}/${batches.length}`
         });
         uploadResult.imported_rows += Number(result.imported_rows || 0);
         uploadResult.skipped_rows += Number(result.skipped_rows || 0);
