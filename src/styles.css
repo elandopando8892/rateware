@@ -2842,6 +2842,13 @@ a {
   white-space: nowrap;
 }
 
+.funnel-card-vendor small {
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .funnel-card small,
 .funnel-card-signals span,
 .funnel-empty-column {
@@ -4974,6 +4981,80 @@ button.location-chip:focus-visible {
 
 .vendor-identity-cell {
   min-width: 220px;
+}
+
+.vendor-identity-main,
+.funnel-card-vendor,
+.drawer-brand-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.vendor-identity-main.compact {
+  gap: 6px;
+}
+
+.vendor-identity-main > div,
+.funnel-card-vendor > div,
+.drawer-brand-line > div {
+  min-width: 0;
+}
+
+.vendor-logo {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  overflow: hidden;
+  border: 1px solid #cfd8df;
+  border-radius: 6px;
+  background: #eef2f4;
+  color: #344552;
+  font-size: 0.68rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.vendor-logo.tiny {
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  font-size: 0.58rem;
+}
+
+.vendor-logo.card {
+  width: 30px;
+  height: 30px;
+}
+
+.vendor-logo.drawer {
+  width: 46px;
+  height: 46px;
+  border-radius: 8px;
+  font-size: 0.9rem;
+}
+
+.vendor-logo img {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #ffffff;
+}
+
+.vendor-logo span {
+  position: relative;
+  z-index: 0;
+}
+
+.drawer-logo-preview {
+  display: inline-flex;
 }
 
 .vendor-row-flags {

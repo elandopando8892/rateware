@@ -5,6 +5,7 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("RATEWARE_SUPABASE_SERVICE_ROLE_KEY");
 const OPENAI_MODEL = Deno.env.get("OPENAI_MODEL");
 const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
+const VENDOR_LOGOS_BUCKET = "vendor-logos";
 
 function getClient() {
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
@@ -197,6 +198,48 @@ function cleanText(value: unknown) {
   if (value === null || value === undefined) return null;
   const text = String(value).trim();
   return text ? text : null;
+}
+
+function cleanUrl(value: unknown) {
+  const text = cleanText(value);
+  if (!text) return null;
+  try {
+    const url = new URL(text);
+    return ["http:", "https:"].includes(url.protocol) ? url.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
+function safeStorageSegment(value: unknown, fallback = "unknown") {
+  return String(value || fallback)
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 96) || fallback;
+}
+
+function decodeBase64Payload(value: unknown) {
+  const text = cleanText(value);
+  if (!text) return null;
+  const [, dataUrlMime, dataUrlPayload] = text.match(/^data:([^;]+);base64,(.+)$/i) || [];
+  const base64 = dataUrlPayload || text;
+  try {
+    const bytes = Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
+    return { bytes, mimeType: dataUrlMime || null };
+  } catch {
+    return null;
+  }
+}
+
+function vendorLogoExtension(mimeType: string | null, filename: unknown) {
+  const nameExtension = cleanText(filename)?.toLowerCase().match(/\.([a-z0-9]+)$/)?.[1] || "";
+  if (mimeType === "image/png") return "png";
+  if (mimeType === "image/jpeg") return "jpg";
+  if (mimeType === "image/gif") return "gif";
+  if (["png", "jpg", "jpeg", "gif"].includes(nameExtension)) return nameExtension === "jpeg" ? "jpg" : nameExtension;
+  return "png";
 }
 
 function cleanRateText(value: unknown) {
@@ -4526,6 +4569,7 @@ function normalizeImportedVendor(row: Record<string, unknown>, source = "google_
     primary_email: firstValue(row, ["primary_email", "email", "mail", "correo", "e-mail", "pricing email"]),
     whatsapp_phone: firstValue(row, ["whatsapp_phone", "whatsapp", "phone", "telefono", "mobile", "cell"]),
     preferred_channel: firstValue(row, ["preferred_channel", "channel", "canal"]) || "email",
+    logo_url: firstValue(row, ["logo_url", "logo", "logo link", "logo url", "image", "image_url", "brand logo"]),
     tags: firstValue(row, ["tags", "tag", "services", "service", "equipment", "equipos", "coverage type", "tipo"]),
     coverage_notes: firstValue(row, ["coverage_notes", "coverage", "lanes", "rutas", "regions", "region", "markets", "mercados", "notes coverage"]),
     notes: firstValue(row, ["notes", "notas", "comments", "comentarios", "observations", "observaciones"]),
@@ -4614,6 +4658,8 @@ function normalizeVendor(input: Record<string, unknown>, source = "manual") {
     whatsapp_phone: cleanText(input.whatsapp_phone || input.phone || input.whatsapp),
     preferred_channel: ["email", "whatsapp", "portal"].includes(preferred) ? preferred : "email",
     status: ["active", "invited", "blocked", "inactive"].includes(status) ? status : "active",
+    logo_url: cleanUrl(input.logo_url || input.logo),
+    logo_source: cleanUrl(input.logo_url || input.logo) ? "url" : null,
     tags: normalizeTags(input.tags || input.tag || input.services || input.equipment || input.coverage),
     coverage_notes: cleanText(input.coverage_notes || input.coverage || input.lanes),
     notes: cleanText(input.notes),
@@ -4640,6 +4686,11 @@ function normalizeVendorPatch(input: Record<string, unknown>, current: Record<st
   if (input.contact_name !== undefined) patch.contact_name = cleanText(input.contact_name);
   if (input.primary_email !== undefined) patch.primary_email = cleanText(input.primary_email);
   if (input.whatsapp_phone !== undefined) patch.whatsapp_phone = cleanText(input.whatsapp_phone);
+  if (input.logo_url !== undefined || input.logo !== undefined) {
+    const nextLogoUrl = cleanUrl(input.logo_url ?? input.logo);
+    patch.logo_url = nextLogoUrl;
+    patch.logo_source = nextLogoUrl && nextLogoUrl === current.logo_url && current.logo_source ? current.logo_source : nextLogoUrl ? "url" : null;
+  }
   if (input.coverage_notes !== undefined) patch.coverage_notes = cleanText(input.coverage_notes);
   if (input.notes !== undefined) patch.notes = cleanText(input.notes);
   const status = cleanText(input.status)?.toLowerCase();
@@ -7122,6 +7173,50 @@ Deno.serve(async (request) => {
       const result = await supabase.from("vendors").update(patch).eq("owner_email", user.owner_email).eq("id", body.id).select().single();
       if (result.error) throw result.error;
       return jsonResponse({ row: result.data });
+    }
+
+    if (body.action === "upload_vendor_logo") {
+      const vendorId = cleanText(body.vendor_id || body.id);
+      if (!vendorId) return jsonResponse({ error: "Vendor id is required." }, 400);
+
+      const current = await supabase.from("vendors").select("*").eq("owner_email", user.owner_email).eq("id", vendorId).single();
+      if (current.error) throw current.error;
+
+      const decoded = decodeBase64Payload(body.data_url || body.base64);
+      if (!decoded?.bytes?.length) return jsonResponse({ error: "Logo file is required." }, 400);
+      if (decoded.bytes.byteLength > 1_500_000) return jsonResponse({ error: "Logo must be 1.5 MB or smaller." }, 400);
+
+      const mimeType = cleanText(body.mime_type || decoded.mimeType)?.toLowerCase() || "application/octet-stream";
+      const allowed = new Set(["image/png", "image/jpeg", "image/gif"]);
+      if (!allowed.has(mimeType)) return jsonResponse({ error: "Logo must be PNG, JPEG, or GIF." }, 400);
+
+      const extension = vendorLogoExtension(mimeType, body.filename);
+      const ownerSegment = safeStorageSegment(user.owner_email || user.owner_user_id, "owner");
+      const vendorSegment = safeStorageSegment(current.data.vendor_name || vendorId, "vendor");
+      const path = `${ownerSegment}/${vendorId}/${Date.now()}-${vendorSegment}.${extension}`;
+      const upload = await supabase.storage.from(VENDOR_LOGOS_BUCKET).upload(path, decoded.bytes, {
+        contentType: mimeType,
+        upsert: true
+      });
+      if (upload.error) throw upload.error;
+
+      const publicUrl = supabase.storage.from(VENDOR_LOGOS_BUCKET).getPublicUrl(path).data.publicUrl;
+      const result = await supabase
+        .from("vendors")
+        .update({
+          logo_url: publicUrl,
+          logo_storage_bucket: VENDOR_LOGOS_BUCKET,
+          logo_storage_path: path,
+          logo_source: "upload",
+          updated_at: new Date().toISOString()
+        })
+        .eq("owner_email", user.owner_email)
+        .eq("id", vendorId)
+        .select()
+        .single();
+      if (result.error) throw result.error;
+      await writeAuditLog(supabase, user, "vendor.logo.upload", "vendors", vendorId, "Uploaded vendor logo", { path, mime_type: mimeType });
+      return jsonResponse({ row: result.data, url: publicUrl, path });
     }
 
     if (body.action === "list_vendor_segments") {

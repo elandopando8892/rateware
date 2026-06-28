@@ -14,7 +14,8 @@ import {
   importVendorsFromGoogleSheet,
   importVendors,
   removeVendors,
-  updateVendor
+  updateVendor,
+  uploadVendorLogo
 } from "./vendor-service.js";
 import { errorState, loadingState, stateBlock, tableErrorState, tableLoadingState, tableState } from "./ui-state.js";
 
@@ -108,6 +109,8 @@ const closeDrawerButton = document.querySelector("#close-vendor-drawer");
 const drawerEditForm = document.querySelector("#drawer-edit-form");
 const drawerArchiveButton = document.querySelector("#drawer-archive-button");
 const drawerEditStatus = document.querySelector("#drawer-edit-status-message");
+const drawerLogoPreview = document.querySelector("#drawer-logo-preview");
+const drawerLogoFile = document.querySelector("#drawer-logo-file");
 let allVendors = [];
 let currentVendors = [];
 let selectedVendorIds = new Set();
@@ -172,6 +175,51 @@ function escapeHtml(value) {
     .replace(/"/g, "&quot;");
 }
 
+function cleanExternalUrl(value) {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  try {
+    const url = new URL(text);
+    return ["http:", "https:"].includes(url.protocol) ? url.toString() : "";
+  } catch {
+    return "";
+  }
+}
+
+function vendorInitials(row) {
+  const source = row?.vendor_name || row?.domain || row?.primary_email || "RW";
+  return String(source)
+    .split(/[\s@._-]+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part.charAt(0).toUpperCase())
+    .join("") || "RW";
+}
+
+function vendorLogoUrl(row) {
+  return cleanExternalUrl(row?.logo_url);
+}
+
+function renderVendorAvatar(row, size = "small") {
+  const url = vendorLogoUrl(row);
+  const initials = escapeHtml(vendorInitials(row));
+  return `
+    <span class="vendor-logo ${escapeHtml(size)}" aria-hidden="true">
+      ${url ? `<img src="${escapeHtml(url)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()" />` : ""}
+      <span>${initials}</span>
+    </span>
+  `;
+}
+
+function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(reader.error || new Error("Could not read logo file."));
+    reader.readAsDataURL(file);
+  });
+}
+
 function setStatus(element, message, tone = "neutral") {
   if (!element) return;
   element.textContent = tone === "error" ? humanizeError(message) : message;
@@ -231,6 +279,7 @@ function downloadVendorTemplate() {
     "primary_email",
     "whatsapp_phone",
     "preferred_channel",
+    "logo_url",
     "tags",
     "coverage_notes",
     "notes"
@@ -244,6 +293,7 @@ function downloadVendorTemplate() {
       "pricing@abclogistics.com",
       "+5215550000000",
       "email",
+      "https://abclogistics.com/logo.png",
       "mx, cross-border, ftl",
       "MX-US lanes, Laredo, dry van",
       "Preferred for border freight"
@@ -474,6 +524,7 @@ function readWizard() {
     vendor_name: document.querySelector("#wizard-vendor-name").value,
     legal_name: document.querySelector("#wizard-legal-name").value,
     domain: document.querySelector("#wizard-domain").value,
+    logo_url: document.querySelector("#wizard-logo-url").value,
     contact_name: document.querySelector("#wizard-contact-name").value,
     primary_email: document.querySelector("#wizard-primary-email").value,
     whatsapp_phone: document.querySelector("#wizard-whatsapp-phone").value,
@@ -546,10 +597,15 @@ function renderVendorIdentity(row) {
   ];
   return `
     <div class="vendor-identity-cell">
-      <button class="link-button vendor-profile-button" type="button" data-vendor-id="${escapeHtml(row.id)}">
-        ${escapeHtml(row.vendor_name || "Unnamed vendor")}
-      </button>
-      <div class="vendor-subline">${escapeHtml(meta.join(" | "))}</div>
+      <div class="vendor-identity-main">
+        ${renderVendorAvatar(row)}
+        <div>
+          <button class="link-button vendor-profile-button" type="button" data-vendor-id="${escapeHtml(row.id)}">
+            ${escapeHtml(row.vendor_name || "Unnamed vendor")}
+          </button>
+          <div class="vendor-subline">${escapeHtml(meta.join(" | "))}</div>
+        </div>
+      </div>
       <div class="vendor-row-flags">
         ${duplicateCount ? `<span class="warning-pill">${escapeHtml(duplicateCount)} duplicate signal${duplicateCount === 1 ? "" : "s"}</span>` : ""}
         ${hasMissingContact(row) ? '<span class="warning-pill">Missing contact</span>' : ""}
@@ -931,10 +987,15 @@ function renderVendorFunnelCard(row) {
   return `
     <article class="funnel-card" draggable="true" data-funnel-vendor-id="${escapeHtml(row.id || row.vendor_id)}">
       <div class="funnel-card-topline">
-        <strong>${escapeHtml(row.vendor_name || "Unnamed vendor")}</strong>
+        <div class="funnel-card-vendor">
+          ${renderVendorAvatar(row, "card")}
+          <div>
+            <strong>${escapeHtml(row.vendor_name || "Unnamed vendor")}</strong>
+            <small>${escapeHtml(row.domain || row.primary_email || row.whatsapp_phone || "Missing contact")}</small>
+          </div>
+        </div>
         <span class="score-pill ${escapeHtml(row.health_tone || readiness.tone)}">${escapeHtml(row.health_score || readiness.score)}%</span>
       </div>
-      <small>${escapeHtml([row.domain, row.primary_email || row.whatsapp_phone].filter(Boolean).join(" | ") || "Missing contact")}</small>
       <div class="funnel-card-signals">
         <span>${escapeHtml(linked)} quote${linked === 1 ? "" : "s"}</span>
         <span>${escapeHtml(approved)} approved</span>
@@ -993,8 +1054,13 @@ function renderVendorFunnelDetail(stageKey = activeFunnelStage) {
     .map((row) => `
       <tr>
         <td>
-          <button class="link-button" type="button" data-funnel-open="${escapeHtml(row.id || row.vendor_id)}">${escapeHtml(row.vendor_name || "Unnamed vendor")}</button>
-          <small>${escapeHtml([row.domain, row.primary_email].filter(Boolean).join(" | ") || "Missing contact")}</small>
+          <div class="vendor-identity-main compact">
+            ${renderVendorAvatar(row, "tiny")}
+            <div>
+              <button class="link-button" type="button" data-funnel-open="${escapeHtml(row.id || row.vendor_id)}">${escapeHtml(row.vendor_name || "Unnamed vendor")}</button>
+              <small>${escapeHtml([row.domain, row.primary_email].filter(Boolean).join(" | ") || "Missing contact")}</small>
+            </div>
+          </div>
         </td>
         <td><span class="score-pill ${escapeHtml(row.health_tone || "weak")}">${escapeHtml(row.health_score || 0)}%</span></td>
         <td>${escapeHtml(funnelQuoteSignal(row))}</td>
@@ -1127,6 +1193,7 @@ function readForm() {
   return {
     vendor_name: document.querySelector("#vendor-name").value,
     domain: document.querySelector("#vendor-domain").value,
+    logo_url: document.querySelector("#vendor-logo-url").value,
     contact_name: document.querySelector("#contact-name").value,
     primary_email: document.querySelector("#primary-email").value,
     whatsapp_phone: document.querySelector("#whatsapp-phone").value,
@@ -1328,6 +1395,7 @@ function normalizeImportedRow(row) {
     primary_email: row.primary_email || row.email || row["Email"] || row["Primary Email"],
     whatsapp_phone: row.whatsapp_phone || row.whatsapp || row.phone || row["WhatsApp"] || row["Phone"],
     preferred_channel: row.preferred_channel || row.channel || row["Channel"] || "email",
+    logo_url: row.logo_url || row.logo || row.image_url || row["Logo URL"] || row["Logo"] || row["Image URL"],
     tags: row.tags || row.tag || row.services || row.equipment || row.coverage || row["Tags"] || row["Equipment"],
     coverage_notes: row.coverage_notes || row.coverage || row.lanes || row["Coverage"] || row["Lanes"],
     notes: row.notes || row["Notes"],
@@ -1513,6 +1581,7 @@ function openVendorDrawer(vendorId) {
 
   activeDrawerVendorId = vendor.id;
   document.querySelector("#drawer-vendor-name").textContent = vendor.vendor_name || "Vendor";
+  if (drawerLogoPreview) drawerLogoPreview.innerHTML = renderVendorAvatar(vendor, "drawer");
   document.querySelector("#drawer-badges").innerHTML = renderDrawerBadges(vendor);
   document.querySelector("#drawer-quick-actions").innerHTML = renderDrawerQuickActions(vendor);
   setDrawerValue("#drawer-source", renderVendorSource(vendor));
@@ -1530,6 +1599,7 @@ function openVendorDrawer(vendorId) {
   document.querySelector("#drawer-ai-suggestions").innerHTML = renderEnrichmentSuggestions(vendor);
   document.querySelector("#drawer-edit-name").value = vendor.vendor_name || "";
   document.querySelector("#drawer-edit-domain").value = vendor.domain || "";
+  document.querySelector("#drawer-edit-logo-url").value = vendor.logo_url || "";
   document.querySelector("#drawer-edit-contact").value = vendor.contact_name || "";
   document.querySelector("#drawer-edit-email").value = vendor.primary_email || "";
   document.querySelector("#drawer-edit-whatsapp").value = vendor.whatsapp_phone || "";
@@ -1538,6 +1608,7 @@ function openVendorDrawer(vendorId) {
   document.querySelector("#drawer-edit-tags").value = splitTags(vendor.tags).join(", ");
   document.querySelector("#drawer-edit-coverage").value = vendor.coverage_notes || "";
   document.querySelector("#drawer-edit-notes").value = vendor.notes || "";
+  if (drawerLogoFile) drawerLogoFile.value = "";
   drawerArchiveButton.textContent = vendor.base_stage === "archived" ? "Restore to Sourcing" : "Archive vendor";
   setStatus(drawerEditStatus, "");
   drawer.classList.remove("hidden");
@@ -1547,6 +1618,7 @@ function readDrawerPatch() {
   return {
     vendor_name: document.querySelector("#drawer-edit-name").value,
     domain: document.querySelector("#drawer-edit-domain").value,
+    logo_url: document.querySelector("#drawer-edit-logo-url").value,
     contact_name: document.querySelector("#drawer-edit-contact").value,
     primary_email: document.querySelector("#drawer-edit-email").value,
     whatsapp_phone: document.querySelector("#drawer-edit-whatsapp").value,
@@ -1556,6 +1628,53 @@ function readDrawerPatch() {
     coverage_notes: document.querySelector("#drawer-edit-coverage").value,
     notes: document.querySelector("#drawer-edit-notes").value
   };
+}
+
+function replaceVendorInState(updated) {
+  if (!updated?.id) return;
+  allVendors = allVendors.map((row) => (row.id === updated.id ? { ...row, ...updated } : row));
+  currentVendors = currentVendors.map((row) => (row.id === updated.id ? { ...row, ...updated } : row));
+  vendorFunnelRows = vendorFunnelRows.map((row) => ((row.id || row.vendor_id) === updated.id ? { ...row, ...updated } : row));
+  vendorIntelligenceRows = vendorIntelligenceRows.map((row) => ((row.vendor_id || row.id) === updated.id ? { ...row, ...updated, vendor_id: row.vendor_id || updated.id } : row));
+}
+
+async function handleDrawerLogoUpload() {
+  if (!activeDrawerVendorId || !drawerLogoFile?.files?.length) return;
+  const [file] = drawerLogoFile.files;
+  const allowed = new Set(["image/png", "image/jpeg", "image/gif"]);
+  if (!allowed.has(file.type)) {
+    setStatus(drawerEditStatus, "Logo must be PNG, JPEG, or GIF.", "error");
+    drawerLogoFile.value = "";
+    return;
+  }
+  if (file.size > 1_500_000) {
+    setStatus(drawerEditStatus, "Logo must be 1.5 MB or smaller.", "error");
+    drawerLogoFile.value = "";
+    return;
+  }
+
+  setStatus(drawerEditStatus, "Uploading logo...");
+  try {
+    await requirePrivatePage();
+    const dataUrl = await fileToDataUrl(file);
+    const result = await uploadVendorLogo(activeDrawerVendorId, {
+      filename: file.name,
+      mime_type: file.type,
+      data_url: dataUrl
+    });
+    const updated = result.row;
+    replaceVendorInState(updated);
+    document.querySelector("#drawer-edit-logo-url").value = updated.logo_url || "";
+    if (drawerLogoPreview) drawerLogoPreview.innerHTML = renderVendorAvatar(updated, "drawer");
+    renderVendors(currentVendors);
+    renderVendorFunnelBoard();
+    renderVendorFunnelDetail(activeFunnelStage);
+    setStatus(drawerEditStatus, "Logo uploaded.", "success");
+  } catch (error) {
+    setStatus(drawerEditStatus, error.message, "error");
+  } finally {
+    drawerLogoFile.value = "";
+  }
 }
 
 function applyDrawerSuggestion(type, value) {
@@ -2034,6 +2153,7 @@ vendorsBody.addEventListener("change", (event) => {
   updateBulkState();
 });
 closeDrawerButton.addEventListener("click", () => drawer.classList.add("hidden"));
+drawerLogoFile?.addEventListener("change", handleDrawerLogoUpload);
 drawer.addEventListener("click", (event) => {
   const button = event.target.closest("[data-ai-suggestion-type]");
   if (!button) return;
@@ -2049,8 +2169,11 @@ drawerEditForm.addEventListener("submit", async (event) => {
   try {
     await requirePrivatePage();
     const updated = await updateVendor(activeDrawerVendorId, readDrawerPatch());
+    replaceVendorInState(updated);
     setStatus(drawerEditStatus, "Vendor updated.", "success");
     await loadVendors();
+    renderVendorFunnelBoard();
+    renderVendorFunnelDetail(activeFunnelStage);
     openVendorDrawer(updated.id);
   } catch (error) {
     setStatus(drawerEditStatus, error.message, "error");

@@ -34,6 +34,10 @@ export async function updateVendor(id, patch) {
   return (await callRatewareApi("update_vendor", { id, patch })).row;
 }
 
+export async function uploadVendorLogo(vendorId, filePayload) {
+  return await callRatewareApi("upload_vendor_logo", { vendor_id: vendorId, ...filePayload });
+}
+
 export async function importVendors(vendors) {
   return await callRatewareApi("import_vendors", { vendors });
 }

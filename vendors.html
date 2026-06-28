@@ -257,6 +257,10 @@
                     Domain
                     <input id="wizard-domain" placeholder="carrier.com" />
                   </label>
+                  <label>
+                    Logo URL
+                    <input id="wizard-logo-url" placeholder="https://carrier.com/logo.png" />
+                  </label>
                 </section>
                 <section class="wizard-panel hidden" data-step-panel="1">
                   <label>
@@ -323,6 +327,10 @@
               <label>
                 Domain
                 <input id="vendor-domain" placeholder="carrier.com" />
+              </label>
+              <label>
+                Logo URL
+                <input id="vendor-logo-url" placeholder="https://carrier.com/logo.png" />
               </label>
               <label>
                 Contact name
@@ -652,10 +660,13 @@
 
           <aside id="vendor-drawer" class="profile-drawer hidden" aria-live="polite">
             <div class="drawer-header">
-              <div>
-                <p class="eyebrow">Vendor profile</p>
-                <h2 id="drawer-vendor-name">Vendor</h2>
-                <div id="drawer-badges" class="drawer-badges"></div>
+              <div class="drawer-brand-line">
+                <span id="drawer-logo-preview" class="drawer-logo-preview"></span>
+                <div>
+                  <p class="eyebrow">Vendor profile</p>
+                  <h2 id="drawer-vendor-name">Vendor</h2>
+                  <div id="drawer-badges" class="drawer-badges"></div>
+                </div>
               </div>
               <button id="close-vendor-drawer" class="secondary small-button" type="button">Close</button>
             </div>
@@ -717,6 +728,14 @@
               <label>
                 Domain
                 <input id="drawer-edit-domain" />
+              </label>
+              <label>
+                Logo URL
+                <input id="drawer-edit-logo-url" placeholder="https://carrier.com/logo.png" />
+              </label>
+              <label>
+                Upload logo
+                <input id="drawer-logo-file" type="file" accept="image/png,image/jpeg,image/gif" />
               </label>
               <label>
                 Contact name
