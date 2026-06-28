@@ -16,6 +16,10 @@ export async function fetchStagingRows({ status = "pending_review", rawUploadId 
   return (await fetchStagingPage({ status, rawUploadId, limit, offset, search, reviewFilter, columnFilters })).rows;
 }
 
+export async function fetchStagingDetail(id) {
+  return (await callRatewareApi("get_rate_row_detail", { id })).row;
+}
+
 export async function fetchStagingFilterValues({ field, status = "pending_review", rawUploadId = "", search = "", valueSearch = "", reviewFilter = "all", columnFilters = {}, limit = 1000 } = {}) {
   return (await callRatewareApi("list_staging_filter_values", {
     field,

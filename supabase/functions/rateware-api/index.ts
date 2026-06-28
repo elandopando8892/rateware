@@ -8113,7 +8113,7 @@ Deno.serve(async (request) => {
 
       if (usesGlobalFilters && !canUseSqlRateFilters(filterPayload)) {
         const filtered = await fetchRateRowIdsByFilter(supabase, filterPayload, { limit, offset });
-        const rows = await fetchRateRowsForIds(supabase, filtered.ids, RATE_ROW_RESPONSE_WITH_LEGS_SELECT);
+        const rows = await fetchRateRowsForIds(supabase, filtered.ids, RATE_ROW_LIST_SELECT);
 
         return jsonResponse({
           rows,
@@ -8128,7 +8128,7 @@ Deno.serve(async (request) => {
 
       let query = supabase
         .from("rate_staging")
-        .select(RATE_ROW_RESPONSE_WITH_LEGS_SELECT, { count: "exact" })
+        .select(RATE_ROW_LIST_SELECT, { count: "exact" })
         .order("created_at", { ascending: false })
         .order("id", { ascending: false })
         .range(offset, offset + limit - 1);

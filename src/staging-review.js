@@ -3,8 +3,8 @@ import { createLocationMatchDrawer } from "./location-match-drawer.js";
 import { initSpreadsheetColumnFilters } from "./spreadsheet-column-filters.js";
 import { installSpreadsheetGrid } from "./spreadsheet-grid.js";
 import { initColumnVisibility, initDrawer, initLocationAutocomplete } from "./sheet-ui.js";
-import { archiveStagingRows, archiveStagingRowsByFilter, enrichStagingLocationZips, fetchStagingFilterValues, fetchStagingOptions, fetchStagingPage, matchStagingVendors, matchStagingVendorsByFilter, removeStagingRows, removeStagingRowsByFilter, renormalizeStagingRows, saveLocationAlias, updateStagingRow, updateStagingRowsByFilter } from "./staging-service.js";
-import { tableErrorState, tableLoadingState, tableState } from "./ui-state.js";
+import { archiveStagingRows, archiveStagingRowsByFilter, enrichStagingLocationZips, fetchStagingDetail, fetchStagingFilterValues, fetchStagingOptions, fetchStagingPage, matchStagingVendors, matchStagingVendorsByFilter, removeStagingRows, removeStagingRowsByFilter, renormalizeStagingRows, saveLocationAlias, updateStagingRow, updateStagingRowsByFilter } from "./staging-service.js";
+import { loadingState, tableErrorState, tableLoadingState, tableState } from "./ui-state.js";
 
 const body = document.querySelector("#staging-body");
 const refreshButton = document.querySelector("#refresh-staging-button");
@@ -1732,11 +1732,8 @@ function applyStagingPage(page) {
   renderRows(rows);
 }
 
-function openEditDrawer(id) {
-  const row = rowById(id);
+function populateEditDrawer(row) {
   if (!row) return;
-
-  activeRowId = id;
   document.querySelector("#staging-drawer-title").textContent = lane(row) || row.rfx_id || "Rate row";
   document.querySelector("#edit-vendor-domain").value = row.vendor_domain || row.vendors?.domain || "";
   document.querySelector("#edit-rfx-id").value = row.rfx_id || "";
@@ -1753,9 +1750,32 @@ function openEditDrawer(id) {
   document.querySelector("#edit-currency").value = row.currency || "";
   document.querySelector("#edit-weekly-capacity").value = row.weekly_capacity || "";
   document.querySelector("#edit-notes").value = row.notes || "";
-  renderRowDetail(row);
+}
+
+async function openEditDrawer(id) {
+  const row = rowById(id);
+  if (!row) return;
+
+  activeRowId = id;
+  populateEditDrawer(row);
+  rowDetail.innerHTML = loadingState({
+    title: "Loading row evidence",
+    detail: "Opening source evidence, extraction audit, location candidates, and lane legs."
+  });
   setStatus("");
   drawer.classList.remove("hidden");
+
+  try {
+    const detail = await fetchStagingDetail(id);
+    if (activeRowId !== id) return;
+    replaceStoredRow(detail);
+    populateEditDrawer(detail);
+    renderRowDetail(detail);
+  } catch (error) {
+    if (activeRowId !== id) return;
+    renderRowDetail(row);
+    setStatus(`Detail could not load: ${error.message}`, "error");
+  }
 }
 
 function readInlinePatch(tableRow, status = null) {
