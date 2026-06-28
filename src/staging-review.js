@@ -2134,7 +2134,7 @@ async function runBulkMatchVendors() {
       setBulkStatus(`Matching vendors for ${ids.length} selected row(s)...`);
       const result = await matchStagingVendors(ids);
       ids.forEach((id) => selectedRowIds.delete(id));
-      setBulkStatus(`${result.updated || 0} selected row(s) linked to vendors.`, "success");
+      setBulkStatus(`${result.updated || 0} selected row(s) linked to vendors. ${Number(result.upload_updated || 0).toLocaleString()} source upload(s) repaired.`, "success");
       await loadRows({ preservePage: true });
       return;
     }
@@ -2145,11 +2145,12 @@ async function runBulkMatchVendors() {
     const preview = await matchStagingVendorsByFilter(filters, { dryRun: true });
     const matched = Number(preview.matched || 0);
     const matchable = Number(preview.matchable || 0);
+    const uploadMatchable = Number(preview.upload_matchable || 0);
     if (!matched) {
       setBulkStatus(`No staging rows match: ${scope}.`, "warning");
       return;
     }
-    if (!matchable) {
+    if (!matchable && !uploadMatchable) {
       setBulkStatus(`No vendor matches found across ${matched.toLocaleString()} filtered staging row(s).`, "warning");
       return;
     }
@@ -2161,7 +2162,7 @@ async function runBulkMatchVendors() {
     setBulkStatus(`Matching vendors for ${matched.toLocaleString()} filtered staging row(s)...`);
     const result = await matchStagingVendorsByFilter(filters, { dryRun: false, maxRows: matched });
     selectedRowIds.clear();
-    setBulkStatus(`${Number(result.updated || 0).toLocaleString()} staging row(s) linked to vendors. ${Number(result.candidates || 0).toLocaleString()} had vendor references; ${Number(result.matchable || 0).toLocaleString()} matched a vendor.`, "success");
+    setBulkStatus(`${Number(result.updated || 0).toLocaleString()} staging row(s) linked to vendors. ${Number(result.upload_updated || 0).toLocaleString()} source upload(s) repaired. ${Number(result.candidates || 0).toLocaleString()} row(s) and ${Number(result.upload_candidates || 0).toLocaleString()} upload(s) had vendor references.`, "success");
     await loadRows({ preservePage: true });
   } catch (error) {
     setBulkStatus(error.message, "error");

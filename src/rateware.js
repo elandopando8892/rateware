@@ -2403,7 +2403,7 @@ async function matchSelectedRatewareVendors() {
       setActionStatus(`Matching vendors for ${ids.length} selected approved rate(s)...`);
       const result = await matchApprovedRatewareVendors(ids);
       ids.forEach((id) => selectedRowIds.delete(id));
-      setActionStatus(`${result.updated || 0} selected approved rate(s) linked to vendors.`, "success");
+      setActionStatus(`${result.updated || 0} selected approved rate(s) linked to vendors. ${Number(result.upload_updated || 0).toLocaleString()} source upload(s) repaired.`, "success");
       await loadRateware({ preservePage: true });
       return;
     }
@@ -2414,11 +2414,12 @@ async function matchSelectedRatewareVendors() {
     const preview = await matchApprovedRatewareVendorsByFilter(filters, { dryRun: true });
     const matched = Number(preview.matched || 0);
     const matchable = Number(preview.matchable || 0);
+    const uploadMatchable = Number(preview.upload_matchable || 0);
     if (!matched) {
       setActionStatus(`No approved rates match: ${scope}.`, "warning");
       return;
     }
-    if (!matchable) {
+    if (!matchable && !uploadMatchable) {
       setActionStatus(`No vendor matches found across ${matched.toLocaleString()} filtered approved rate(s).`, "warning");
       return;
     }
@@ -2430,7 +2431,7 @@ async function matchSelectedRatewareVendors() {
     setActionStatus(`Matching vendors for ${matched.toLocaleString()} filtered approved rate(s)...`);
     const result = await matchApprovedRatewareVendorsByFilter(filters, { dryRun: false, maxRows: matched });
     selectedRowIds.clear();
-    setActionStatus(`${Number(result.updated || 0).toLocaleString()} approved rate(s) linked to vendors. ${Number(result.candidates || 0).toLocaleString()} had vendor references; ${Number(result.matchable || 0).toLocaleString()} matched a vendor.`, "success");
+    setActionStatus(`${Number(result.updated || 0).toLocaleString()} approved rate(s) linked to vendors. ${Number(result.upload_updated || 0).toLocaleString()} source upload(s) repaired. ${Number(result.candidates || 0).toLocaleString()} row(s) and ${Number(result.upload_candidates || 0).toLocaleString()} upload(s) had vendor references.`, "success");
     await loadRateware({ preservePage: true });
   } catch (error) {
     setActionStatus(error.message, "error");

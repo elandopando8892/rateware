@@ -881,6 +881,26 @@ function domainFromVendorReference(value: unknown) {
   return normalizeDomain(domainText);
 }
 
+function vendorReferenceCandidatesFromText(value: unknown) {
+  const text = cleanText(value);
+  if (!text) return [];
+  const source = text.replace(/\.(pdf|xlsx|xls|csv|eml|png|jpe?g|webp)\b/gi, " ");
+  const candidates = new Set<string>();
+  const emails = text.match(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi) || [];
+  const atDomains = source.match(/@[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?\.[a-z]{2,}/gi) || [];
+  const bareDomains = source.match(/\b[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+\.[a-z]{2,}\b/gi) || [];
+
+  if (normalizeEmail(text) || domainFromVendorReference(text)) candidates.add(text);
+  emails.forEach((candidate) => candidates.add(candidate));
+  atDomains.forEach((candidate) => candidates.add(candidate.replace(/^@/, "")));
+  bareDomains.forEach((candidate) => candidates.add(candidate));
+
+  return [...candidates]
+    .map((candidate) => candidate.trim())
+    .filter(Boolean)
+    .filter((candidate) => !isInternalRatewareDomain(candidate));
+}
+
 const GENERIC_EMAIL_DOMAINS = new Set([
   "gmail.com",
   "googlemail.com",
@@ -6161,7 +6181,7 @@ async function attachUploadVendorHints(
 
   const uploads = await supabase
     .from("raw_uploads")
-    .select("id,vendor_id,vendor_hint")
+    .select("id,original_filename,vendor_id,vendor_hint,vendor_match_source")
     .in("id", uploadIds);
   if (uploads.error) throw uploads.error;
 
@@ -6175,13 +6195,87 @@ async function attachUploadVendorHints(
 function rateVendorReferenceCandidates(row: Record<string, unknown>) {
   const upload = typeof row.raw_upload === "object" && row.raw_upload ? row.raw_upload as Record<string, unknown> : {};
   return [
-    row.vendor_domain,
-    upload.vendor_hint
+    ...vendorReferenceCandidatesFromText(row.vendor_domain),
+    ...vendorReferenceCandidatesFromText(upload.vendor_hint),
+    ...vendorReferenceCandidatesFromText(upload.original_filename)
   ]
-    .map(cleanText)
     .filter(Boolean)
     .filter((reference) => !isGenericEmailDomain(domainFromVendorReference(reference)))
     .filter((reference) => !isInternalRatewareDomain(reference)) as string[];
+}
+
+function rawUploadVendorReferenceCandidates(upload: Record<string, unknown>) {
+  return [
+    ...vendorReferenceCandidatesFromText(upload.vendor_hint),
+    ...vendorReferenceCandidatesFromText(upload.original_filename)
+  ]
+    .filter(Boolean)
+    .filter((reference) => !isGenericEmailDomain(domainFromVendorReference(reference)))
+    .filter((reference) => !isInternalRatewareDomain(reference)) as string[];
+}
+
+function plannedVendorPatchForRawUpload(upload: Record<string, unknown>, vendors: Record<string, unknown>[]) {
+  if (cleanText(upload.vendor_id)) return null;
+
+  for (const reference of rawUploadVendorReferenceCandidates(upload)) {
+    const match = resolveVendorReferenceFromRows(vendors, reference);
+    if (!match) continue;
+    const fallbackDomain = domainFromVendorReference(reference);
+    return {
+      vendor_id: match.vendor.id,
+      vendor_hint: cleanText(upload.vendor_hint) || normalizeDomain(match.vendor.domain) || match.domain || fallbackDomain || cleanText(match.vendor.vendor_name),
+      vendor_match_source: "auto"
+    };
+  }
+
+  return null;
+}
+
+function planRawUploadVendorMatches(uploads: Record<string, unknown>[], vendors: Record<string, unknown>[], seenUploadIds = new Set<string>()) {
+  const groups = new Map<string, { patch: Record<string, unknown>; ids: string[] }>();
+  let candidates = 0;
+  let matchable = 0;
+
+  for (const upload of uploads) {
+    const id = cleanText(upload.id);
+    if (!id || seenUploadIds.has(id)) continue;
+    seenUploadIds.add(id);
+    const references = rawUploadVendorReferenceCandidates(upload);
+    if (!references.length && !cleanText(upload.vendor_id)) continue;
+    candidates += 1;
+
+    const patch = plannedVendorPatchForRawUpload(upload, vendors);
+    if (!patch?.vendor_id) continue;
+    matchable += 1;
+
+    const groupKey = `${patch.vendor_id}::${patch.vendor_hint}`;
+    const group = groups.get(groupKey) || { patch, ids: [] };
+    group.ids.push(id);
+    groups.set(groupKey, group);
+  }
+
+  return { candidates, matchable, groups };
+}
+
+async function applyPlannedRawUploadVendorMatches(supabase: ReturnType<typeof createClient>, plan: ReturnType<typeof planRawUploadVendorMatches>) {
+  let updated = 0;
+  const rows: Record<string, unknown>[] = [];
+
+  for (const group of plan.groups.values()) {
+    for (const chunk of chunkValues(group.ids, 500)) {
+      const result = await supabase
+        .from("raw_uploads")
+        .update(group.patch)
+        .in("id", chunk)
+        .is("vendor_id", null)
+        .select("id,vendor_id,vendor_hint,vendor_match_source");
+      if (result.error) throw result.error;
+      updated += result.data?.length || 0;
+      if (rows.length < 100) rows.push(...((result.data || []) as Record<string, unknown>[]).slice(0, 100 - rows.length));
+    }
+  }
+
+  return { updated, rows };
 }
 
 function plannedVendorPatchForRateRow(row: Record<string, unknown>, vendors: Record<string, unknown>[]) {
@@ -6273,8 +6367,19 @@ async function matchRateVendorRows(supabase: ReturnType<typeof createClient>, us
 
   const vendors = await fetchVendorRowsForRateMatching(supabase, user);
   const rows = await attachUploadVendorHints(supabase, (rowsResult.data || []) as Record<string, unknown>[]);
+  const uploads = rows.map((row) => row.raw_upload).filter((upload) => upload && typeof upload === "object") as Record<string, unknown>[];
+  const uploadPlan = planRawUploadVendorMatches(uploads, vendors);
+  const uploadApplied = await applyPlannedRawUploadVendorMatches(supabase, uploadPlan);
   const plan = planRateVendorMatches(rows, vendors);
-  return await applyPlannedRateVendorMatches(supabase, plan);
+  const applied = await applyPlannedRateVendorMatches(supabase, plan);
+  return {
+    ...applied,
+    candidates: plan.candidates,
+    matchable: plan.matchable,
+    upload_candidates: uploadPlan.candidates,
+    upload_matchable: uploadPlan.matchable,
+    upload_updated: uploadApplied.updated
+  };
 }
 
 async function matchRateVendorRowsByFilter(
@@ -6289,18 +6394,28 @@ async function matchRateVendorRowsByFilter(
   let candidates = 0;
   let matchable = 0;
   let updated = 0;
+  let uploadCandidates = 0;
+  let uploadMatchable = 0;
+  let uploadUpdated = 0;
   const sampleRows: Record<string, unknown>[] = [];
   const filtered = await collectRateRowIdsByFilter(supabase, filters, { maxRows, pageSize });
   const ids = filtered.ids;
+  const seenUploadIds = new Set<string>();
 
   for (const chunk of chunkValues(ids, pageSize)) {
     const rawRows = await fetchRateRowsForIds(supabase, chunk, "id,vendor_id,vendor_domain,status,raw_upload_id");
     const rows = await attachUploadVendorHints(supabase, rawRows as Record<string, unknown>[]);
+    const uploads = rows.map((row) => row.raw_upload).filter((upload) => upload && typeof upload === "object") as Record<string, unknown>[];
+    const uploadPlan = planRawUploadVendorMatches(uploads, vendors, seenUploadIds);
+    uploadCandidates += uploadPlan.candidates;
+    uploadMatchable += uploadPlan.matchable;
     const plan = planRateVendorMatches(rows as Record<string, unknown>[], vendors);
     candidates += plan.candidates;
     matchable += plan.matchable;
 
     if (!options.dryRun) {
+      const uploadApplied = await applyPlannedRawUploadVendorMatches(supabase, uploadPlan);
+      uploadUpdated += uploadApplied.updated;
       const applied = await applyPlannedRateVendorMatches(supabase, plan);
       updated += applied.updated;
       if (sampleRows.length < 100) sampleRows.push(...applied.rows.slice(0, 100 - sampleRows.length));
@@ -6313,6 +6428,9 @@ async function matchRateVendorRowsByFilter(
       scanned: ids.length,
       candidates,
       matchable,
+      upload_candidates: uploadCandidates,
+      upload_matchable: uploadMatchable,
+      upload_updated: 0,
       updated: 0,
       rows: [],
       database_count: filtered.database_count || ids.length,
@@ -6326,6 +6444,9 @@ async function matchRateVendorRowsByFilter(
     scanned: ids.length,
     candidates,
     matchable,
+    upload_candidates: uploadCandidates,
+    upload_matchable: uploadMatchable,
+    upload_updated: uploadUpdated,
     updated,
     rows: sampleRows,
     database_count: filtered.database_count || ids.length,
