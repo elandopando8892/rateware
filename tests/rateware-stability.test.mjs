@@ -35,6 +35,7 @@ assert.match(apiSource, /function canUseSqlRateFilters/, "API should decide when
 assert.match(apiSource, /applySqlRateFilters\(query, filterPayload\)/, "list endpoints should use SQL-backed filters");
 assert.match(apiSource, /fetchSqlRateFilterValues/, "column filter value menus should have SQL-backed loading");
 assert.match(apiSource, /fetchRateRowIdsByFilter/, "derived filters should resolve row ids through database RPC");
+assert.match(apiSource, /async function collectRateRowIdsByFilter/, "filtered bulk actions should collect row ids through paged RPC calls");
 assert.match(apiSource, /rateware_filtered_rate_ids/, "API should call the filtered rate id RPC");
 assert.match(apiSource, /rateware_filtered_rate_values/, "filter dropdown values should come from database RPC");
 const bulkActionSource = apiSource.slice(apiSource.indexOf('if (body.action === "bulk_rate_rows_by_filter")'));
@@ -43,6 +44,33 @@ assert.doesNotMatch(
   bulkActionSource,
   /fetchBulkRateRowsByFilter/,
   "filtered bulk actions should not use Edge Function row scans"
+);
+assert.match(
+  bulkActionSource,
+  /Math\.max\(Number\(body\.max_rows\) \|\| 100000/,
+  "filtered bulk archive/remove should allow large database-scoped operations"
+);
+assert.match(
+  bulkActionSource,
+  /matched: filtered\.database_count \|\| ids\.length/,
+  "filtered bulk dry-runs should report database total, not just hydrated ids"
+);
+const filteredUpdateSource = apiSource.slice(apiSource.indexOf('if (body.action === "bulk_update_rate_rows_by_filter")'), apiSource.indexOf('if (body.action === "archive_staging")'));
+assert.ok(filteredUpdateSource.length > 100, "filtered bulk update block should be present");
+assert.match(
+  filteredUpdateSource,
+  /collectRateRowIdsByFilter/,
+  "filtered bulk updates should collect all target ids before changing rows"
+);
+assert.match(
+  filteredUpdateSource,
+  /Math\.max\(Number\(body\.max_rows\) \|\| 100000/,
+  "filtered bulk updates should support large database-scoped operations"
+);
+assert.match(
+  filteredUpdateSource,
+  /matched: filtered\.database_count \|\| ids\.length/,
+  "filtered bulk update responses should preserve database total"
 );
 const filterValuesSource = apiSource.slice(apiSource.indexOf("async function fetchRateFilterValuesByRpc"), apiSource.indexOf("function chunkValues"));
 assert.ok(filterValuesSource.length > 100, "filter values helper should be present");

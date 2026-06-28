@@ -1884,6 +1884,37 @@ async function fetchRateRowIdsByFilter(
   };
 }
 
+async function collectRateRowIdsByFilter(
+  supabase: ReturnType<typeof createClient>,
+  filters: Record<string, unknown>,
+  options: { maxRows?: number; pageSize?: number } = {}
+) {
+  const maxRows = Math.min(Math.max(Number(options.maxRows) || 100000, 1), 100000);
+  const pageSize = Math.min(Math.max(Number(options.pageSize) || 5000, 1), 5000);
+  const ids: string[] = [];
+  let offset = 0;
+  let databaseCount = 0;
+  let hardLimitReached = false;
+
+  while (ids.length < maxRows) {
+    const limit = Math.min(pageSize, maxRows - ids.length);
+    const filtered = await fetchRateRowIdsByFilter(supabase, filters, { limit, offset });
+    if (!databaseCount) databaseCount = filtered.database_count;
+    hardLimitReached = hardLimitReached || filtered.hard_limit_reached;
+    if (!filtered.ids.length) break;
+    ids.push(...filtered.ids);
+    offset += filtered.ids.length;
+    if (filtered.ids.length < limit || offset >= filtered.database_count) break;
+  }
+
+  return {
+    ids,
+    database_count: databaseCount || ids.length,
+    hard_limit_reached: hardLimitReached || ids.length >= maxRows && (databaseCount || 0) > ids.length,
+    max_rows: maxRows
+  };
+}
+
 async function fetchRateRowsForIds(
   supabase: ReturnType<typeof createClient>,
   ids: string[],
@@ -8398,7 +8429,7 @@ Deno.serve(async (request) => {
       const filters = objectRecord(body.filters);
       const targetAction = cleanText(body.target_action);
       const dryRun = body.dry_run === true;
-      const maxRows = Math.min(Math.max(Number(body.max_rows) || 50000, 1), 50000);
+      const maxRows = Math.min(Math.max(Number(body.max_rows) || 100000, 1), 100000);
       if (!["archive", "remove"].includes(targetAction || "")) {
         return jsonResponse({ error: "Bulk target action must be archive or remove." }, 400);
       }
@@ -8406,14 +8437,16 @@ Deno.serve(async (request) => {
         ...filters,
         exclude_archived: targetAction === "archive"
       };
-      const filtered = await fetchRateRowIdsByFilter(supabase, actionFilters, { limit: dryRun ? 50000 : maxRows });
+      const filtered = dryRun
+        ? await fetchRateRowIdsByFilter(supabase, actionFilters, { limit: 1 })
+        : await collectRateRowIdsByFilter(supabase, actionFilters, { maxRows });
       const ids = filtered.ids;
       if (dryRun) {
         return jsonResponse({
           action: targetAction,
-          matched: ids.length,
+          matched: filtered.database_count || ids.length,
           database_count: filtered.database_count,
-          hard_limit_reached: filtered.hard_limit_reached,
+          hard_limit_reached: false,
           max_rows: maxRows
         });
       }
@@ -8446,6 +8479,7 @@ Deno.serve(async (request) => {
         `${targetAction === "archive" ? "Archived" : "Removed"} ${affected} ${mode} row(s) using active filters`,
         {
           ids_count: ids.length,
+          database_count: filtered.database_count,
           filters: actionFilters,
           hard_limit_reached: filtered.hard_limit_reached
         }
@@ -8453,7 +8487,8 @@ Deno.serve(async (request) => {
 
       return jsonResponse({
         action: targetAction,
-        matched: ids.length,
+        matched: filtered.database_count || ids.length,
+        targeted: ids.length,
         updated: targetAction === "archive" ? affected : 0,
         removed: targetAction === "remove" ? affected : 0,
         max_rows: maxRows,
@@ -8465,20 +8500,22 @@ Deno.serve(async (request) => {
       const filters = objectRecord(body.filters);
       const patchInput = objectRecord(body.patch);
       const dryRun = body.dry_run === true;
-      const maxRows = Math.min(Math.max(Number(body.max_rows) || 50000, 1), 50000);
+      const maxRows = Math.min(Math.max(Number(body.max_rows) || 100000, 1), 100000);
       const mode = cleanText(filters.mode) === "rateware" ? "rateware" : "staging";
       if (!Object.keys(patchInput).length) return jsonResponse({ error: "Bulk update patch is required." }, 400);
       if (mode === "rateware" && patchInput.status !== undefined) {
         return jsonResponse({ error: "Filtered Rateware updates cannot change approved status." }, 400);
       }
 
-      const filtered = await fetchRateRowIdsByFilter(supabase, filters, { limit: dryRun ? 50000 : maxRows });
+      const filtered = dryRun
+        ? await fetchRateRowIdsByFilter(supabase, filters, { limit: 1 })
+        : await collectRateRowIdsByFilter(supabase, filters, { maxRows });
       const ids = filtered.ids;
       if (dryRun) {
         return jsonResponse({
-          matched: ids.length,
+          matched: filtered.database_count || ids.length,
           database_count: filtered.database_count,
-          hard_limit_reached: filtered.hard_limit_reached,
+          hard_limit_reached: false,
           max_rows: maxRows
         });
       }
@@ -8538,6 +8575,7 @@ Deno.serve(async (request) => {
         `Updated ${updatedRows.length} ${mode} row(s) using active filters`,
         {
           ids_count: ids.length,
+          database_count: filtered.database_count,
           updated_count: updatedRows.length,
           changed_fields: Object.keys(patchInput),
           filters,
@@ -8546,7 +8584,8 @@ Deno.serve(async (request) => {
       );
 
       return jsonResponse({
-        matched: ids.length,
+        matched: filtered.database_count || ids.length,
+        targeted: ids.length,
         updated: updatedRows.length,
         rows: updatedRows.slice(0, 100),
         max_rows: maxRows,
