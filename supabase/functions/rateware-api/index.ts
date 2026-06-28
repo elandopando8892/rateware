@@ -529,11 +529,11 @@ function locationMatch(index: Map<string, Record<string, unknown>>, value: unkno
   for (const [, location] of index) {
     if (seen.has(location)) continue;
     seen.add(location);
+    if (!locationMatchesProfile(location, profile)) continue;
     let score = 0;
     const reasons: string[] = [];
     const country = locationCountry(location);
-    if (!locationMatchesProfile(location, profile)) score -= 85;
-    else if ((profile.explicitMx && country === "MX") || (profile.explicitUs && country === "US") || (profile.explicitCa && country === "CA")) {
+    if ((profile.explicitMx && country === "MX") || (profile.explicitUs && country === "US") || (profile.explicitCa && country === "CA")) {
       score += 12;
       reasons.push("country hint");
     }
@@ -6214,32 +6214,28 @@ async function renormalizeRateRows(supabase: ReturnType<typeof createClient>, id
   let rowQuery = supabase.from("rate_staging").select("*").in("id", ids).limit(500);
   if (status) rowQuery = rowQuery.eq("status", status);
 
-  const [rowsResult, catalogResult, locationsResult, mileageResult] = await Promise.all([
+  const [rowsResult, catalogResult] = await Promise.all([
     rowQuery,
     supabase
       .from("rateware_catalog_items")
       .select("source,category,raw_value,normalized_value,code")
       .eq("active", true)
-      .limit(10000),
-    supabase
-      .from("rateware_locations")
-      .select("source,location_key,raw_value,zip_prefix,metro_city,city,state_code,state_name,country,market,region")
-      .eq("active", true)
-      .limit(20000),
-    supabase
-      .from("rateware_lane_mileage")
-      .select("source,route_key,miles,km")
-      .eq("active", true)
-      .limit(20000)
+      .limit(10000)
   ]);
 
-  for (const result of [rowsResult, catalogResult, locationsResult, mileageResult]) {
+  for (const result of [rowsResult, catalogResult]) {
     if (result.error) throw result.error;
   }
 
+  const scopedRows = (rowsResult.data || []).map((row) => ({ mapped: row }));
+  const [locations, mileageRows] = await Promise.all([
+    fetchScopedTemplateLocations(supabase, scopedRows),
+    fetchScopedTemplateMileage(supabase, scopedRows)
+  ]);
+
   const catalog = buildCatalogIndex(catalogResult.data || []);
-  const locationIndex = buildLocationIndex(locationsResult.data || []);
-  const mileage = new Map((mileageResult.data || []).map((lane) => [catalogKey(lane.route_key), lane]));
+  const locationIndex = buildLocationIndex(locations);
+  const mileage = new Map(mileageRows.map((lane) => [catalogKey(lane.route_key), lane]));
 
   const updatedRows = [];
   for (const row of rowsResult.data || []) {

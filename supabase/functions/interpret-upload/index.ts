@@ -1124,11 +1124,11 @@ function locationMatch(index: Map<string, Record<string, unknown>>, value: unkno
   for (const [, location] of index) {
     if (seen.has(location)) continue;
     seen.add(location);
+    if (!locationMatchesProfile(location, profile)) continue;
     let score = 0;
     const reasons: string[] = [];
     const country = locationCountry(location);
-    if (!locationMatchesProfile(location, profile)) score -= 85;
-    else if ((profile.explicitMx && country === "MX") || (profile.explicitUs && country === "US") || (profile.explicitCa && country === "CA")) {
+    if ((profile.explicitMx && country === "MX") || (profile.explicitUs && country === "US") || (profile.explicitCa && country === "CA")) {
       score += 12;
       reasons.push("country hint");
     }
