@@ -7807,7 +7807,17 @@ Deno.serve(async (request) => {
         column_filters: columnFilters
       };
 
-      return jsonResponse(await fetchRateFilterValuesByRpc(supabase, filterPayload, field, valueSearch, limit));
+      try {
+        return jsonResponse(await fetchRateFilterValuesByRpc(supabase, filterPayload, field, valueSearch, limit));
+      } catch (error) {
+        console.warn("rateware filter values RPC failed; using SQL fallback", {
+          field,
+          message: error instanceof Error ? error.message : String(error)
+        });
+        const sqlValues = await fetchSqlRateFilterValues(supabase, filterPayload, field, valueSearch, limit);
+        if (sqlValues) return jsonResponse(sqlValues);
+        throw error;
+      }
     }
 
     if (body.action === "list_rateware_audit") {

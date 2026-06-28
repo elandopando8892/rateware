@@ -55,10 +55,10 @@ assert.doesNotMatch(
 );
 const listRatewareFilterValuesSource = apiSource.slice(apiSource.indexOf('if (body.action === "list_rateware_filter_values")'), apiSource.indexOf('if (body.action === "list_rateware_audit")'));
 assert.ok(listRatewareFilterValuesSource.length > 100, "Rateware filter value block should be present");
-assert.doesNotMatch(
+assert.match(
   listRatewareFilterValuesSource,
-  /fetchSqlRateFilterValues/,
-  "Rateware filter dropdown values should use the same normalized database filter engine as the grid"
+  /fetchRateFilterValuesByRpc[\s\S]*catch[\s\S]*fetchSqlRateFilterValues/,
+  "Rateware filter dropdown values should use normalized RPC first and SQL only as a fallback"
 );
 
 assert.match(apiSource, /body\.action === "get_rate_row_detail"/, "Rateware should lazy-load row detail");
