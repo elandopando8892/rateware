@@ -53,6 +53,21 @@ assert.doesNotMatch(
   /usesGlobalFilters && !canUseSqlRateFilters/,
   "Rateware filters should not fall back to case-sensitive SQL column matching"
 );
+assert.match(
+  apiSource,
+  /function hasActiveRatewareFilters/,
+  "Rateware should consistently detect search, operation, service, quick, and column filters"
+);
+assert.match(
+  apiSource,
+  /if \(operation\) query = query\.ilike\("operation", operation\)/,
+  "Rateware operation filters should not depend on exact casing"
+);
+assert.match(
+  apiSource,
+  /if \(service\) query = query\.ilike\("service", service\)/,
+  "Rateware service filters should not depend on exact casing"
+);
 const listRatewareFilterValuesSource = apiSource.slice(apiSource.indexOf('if (body.action === "list_rateware_filter_values")'), apiSource.indexOf('if (body.action === "list_rateware_audit")'));
 assert.ok(listRatewareFilterValuesSource.length > 100, "Rateware filter value block should be present");
 assert.match(

@@ -22,6 +22,7 @@ export function humanizeError(errorOrMessage) {
     return "Your account is signed in, but this action is not allowed for the current workspace.";
   }
   if (lower.includes("failed to fetch") || lower.includes("network") || lower.includes("timeout")) {
+    if (raw.toLowerCase() !== "failed to fetch") return raw.length > 220 ? `${raw.slice(0, 217)}...` : raw;
     return "The request could not reach Rateware services. Check the connection and retry.";
   }
   if (lower.includes("500") || lower.includes("internal server error")) {

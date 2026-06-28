@@ -869,8 +869,15 @@ function populateFilter(select, rows, field) {
     ? catalogValues
     : rows.map((row) => row[field]).filter(Boolean);
   const values = Array.from(new Set(sourceValues.filter(Boolean))).sort((a, b) => a.localeCompare(b));
+  if (selected && !values.some((value) => String(value).toLowerCase() === String(selected).toLowerCase())) {
+    values.unshift(selected);
+  }
   select.innerHTML = `<option value="">All</option>${values.map((value) => `<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`).join("")}`;
-  if (values.includes(selected)) select.value = selected;
+  if (selected) {
+    const exact = values.find((value) => String(value) === String(selected));
+    const caseMatch = values.find((value) => String(value).toLowerCase() === String(selected).toLowerCase());
+    select.value = exact || caseMatch || selected;
+  }
 }
 
 function detailMetric(label, value, tone = "") {

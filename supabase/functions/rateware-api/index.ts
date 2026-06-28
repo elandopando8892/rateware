@@ -1622,6 +1622,17 @@ function isSqlCompatibleRatewareQuickFilter(filter: unknown) {
   return ["all", "cross-border", "with-capacity"].includes(value);
 }
 
+function hasActiveRatewareFilters(filters: Record<string, unknown>) {
+  const columnFilters = objectRecord(filters.column_filters);
+  return Boolean(
+    cleanText(filters.search) ||
+    cleanText(filters.operation) ||
+    cleanText(filters.service) ||
+    (cleanText(filters.quick_filter) || "all") !== "all" ||
+    Object.keys(columnFilters).length
+  );
+}
+
 function canUseSqlRateFilters(filters: Record<string, unknown>) {
   const columnFilters = objectRecord(filters.column_filters);
   if (!isSqlCompatibleColumnFilters(columnFilters)) return false;
@@ -1682,10 +1693,10 @@ function applyBulkRateBaseFilters(query: any, filters: Record<string, unknown>) 
   if (rawUploadId) query = query.eq("raw_upload_id", rawUploadId);
 
   const operation = cleanText(filters.operation);
-  if (operation) query = query.eq("operation", operation);
+  if (operation) query = query.ilike("operation", operation);
 
   const service = cleanText(filters.service);
-  if (service) query = query.eq("service", service);
+  if (service) query = query.ilike("service", service);
 
   const search = cleanText(filters.search);
   if (search) query = applyRateSearchFilter(query, search);
@@ -7743,7 +7754,6 @@ Deno.serve(async (request) => {
       const search = (cleanText(body.search) || "").replace(/[(),]/g, " ").trim();
       const quickFilter = cleanText(body.quick_filter) || "all";
       const columnFilters = objectRecord(body.column_filters);
-      const usesGlobalFilters = Object.keys(columnFilters).length > 0 || quickFilter !== "all";
       const filterPayload = {
         mode: "rateware",
         search,
@@ -7752,6 +7762,7 @@ Deno.serve(async (request) => {
         quick_filter: quickFilter,
         column_filters: columnFilters
       };
+      const usesGlobalFilters = hasActiveRatewareFilters(filterPayload);
 
       if (usesGlobalFilters) {
         const filtered = await fetchRateRowIdsByFilter(supabase, filterPayload, { limit, offset });
