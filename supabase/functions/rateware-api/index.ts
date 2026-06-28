@@ -4739,6 +4739,148 @@ function templateRowInput(mapped: Record<string, unknown>, upload: Record<string
   return input;
 }
 
+function templateMappedRows(templateRows: Record<string, unknown>[]) {
+  return templateRows
+    .map((row) => (row.mapped && typeof row.mapped === "object" ? row.mapped as Record<string, unknown> : {}))
+    .filter((mapped) => Object.keys(mapped).length);
+}
+
+function templateLocationScope(templateRows: Record<string, unknown>[]) {
+  const references = new Set<string>();
+  const stateCodes = new Set<string>();
+  const zipPrefixes = new Set<string>();
+  const locationKeys = new Set<string>();
+
+  for (const mapped of templateMappedRows(templateRows)) {
+    for (const field of ["origin", "destination", "mx_border_crossing_point", "us_border_crossing_point"]) {
+      const value = cleanText(mapped[field]);
+      if (!value) continue;
+      references.add(value);
+      const profile = locationTextProfile(value);
+      if (profile.lookup) locationKeys.add(profile.lookup);
+
+      for (const token of profile.tokens) {
+        const normalizedState = normalizedLocationStateCode(token).toUpperCase();
+        if (LOCATION_MX_STATES.has(token) || LOCATION_US_STATES.has(token) || LOCATION_CA_PROVINCES.has(token)) {
+          stateCodes.add(token.toUpperCase());
+          stateCodes.add(normalizedState);
+        }
+      }
+
+      const numericPostal = profile.lookup.match(/\b\d{3,5}\b/)?.[0] || "";
+      if (numericPostal && !profile.explicitMx) zipPrefixes.add(numericPostal.slice(0, 3));
+      const caPostal = profile.lookup.match(/\b[A-Z]\d[A-Z]\b/)?.[0] || "";
+      if (caPostal && !profile.explicitMx) zipPrefixes.add(caPostal);
+    }
+  }
+
+  return {
+    references: [...references].slice(0, 500),
+    stateCodes: [...stateCodes].filter(Boolean).slice(0, 100),
+    zipPrefixes: [...zipPrefixes].filter(Boolean).slice(0, 500),
+    locationKeys: [...locationKeys].filter(Boolean).slice(0, 500)
+  };
+}
+
+async function fetchScopedTemplateLocations(
+  supabase: ReturnType<typeof createClient>,
+  templateRows: Record<string, unknown>[]
+) {
+  const selectColumns = "source,location_key,raw_value,zip_prefix,metro_city,city,state_code,state_name,country,market,region";
+  const scope = templateLocationScope(templateRows);
+  const byKey = new Map<string, Record<string, unknown>>();
+  const addRows = (rows: Record<string, unknown>[] | null | undefined) => {
+    for (const row of rows || []) {
+      const key = cleanText(row.location_key) || cleanText(row.raw_value) || cleanText(row.id);
+      if (!key) continue;
+      byKey.set(key, row);
+    }
+  };
+
+  for (const chunk of chunkValues(scope.zipPrefixes, 100)) {
+    const result = await supabase
+      .from("rateware_locations")
+      .select(selectColumns)
+      .eq("active", true)
+      .in("zip_prefix", chunk)
+      .limit(5000);
+    if (result.error) throw result.error;
+    addRows(result.data || []);
+  }
+
+  for (const chunk of chunkValues(scope.stateCodes, 50)) {
+    const result = await supabase
+      .from("rateware_locations")
+      .select(selectColumns)
+      .eq("active", true)
+      .in("state_code", chunk)
+      .limit(8000);
+    if (result.error) throw result.error;
+    addRows(result.data || []);
+  }
+
+  for (const chunk of chunkValues(scope.locationKeys, 100)) {
+    const result = await supabase
+      .from("rateware_locations")
+      .select(selectColumns)
+      .eq("active", true)
+      .in("location_key", chunk)
+      .limit(2000);
+    if (result.error) throw result.error;
+    addRows(result.data || []);
+  }
+
+  if (!byKey.size) {
+    const result = await supabase
+      .from("rateware_locations")
+      .select(selectColumns)
+      .eq("active", true)
+      .limit(3000);
+    if (result.error) throw result.error;
+    addRows(result.data || []);
+  }
+
+  return [...byKey.values()];
+}
+
+function templateMileageKeys(templateRows: Record<string, unknown>[]) {
+  const keys = new Set<string>();
+  for (const mapped of templateMappedRows(templateRows)) {
+    const origin = mapped.origin;
+    const destination = mapped.destination;
+    if (!cleanText(origin) || !cleanText(destination)) continue;
+    [
+      [origin, destination, mapped.equipment, mapped.trailer, mapped.config, mapped.operation, mapped.service, mapped.driver],
+      [origin, destination, mapped.equipment],
+      [origin, destination]
+    ].forEach((parts) => {
+      const key = catalogKey(parts.filter(Boolean).join(" "));
+      if (key) keys.add(key);
+    });
+  }
+  return [...keys].slice(0, 1000);
+}
+
+async function fetchScopedTemplateMileage(
+  supabase: ReturnType<typeof createClient>,
+  templateRows: Record<string, unknown>[]
+) {
+  const keys = templateMileageKeys(templateRows);
+  if (!keys.length) return [];
+  const rows: Record<string, unknown>[] = [];
+  for (const chunk of chunkValues(keys, 100)) {
+    const result = await supabase
+      .from("rateware_lane_mileage")
+      .select("source,route_key,miles,km")
+      .eq("active", true)
+      .in("route_key", chunk)
+      .limit(1000);
+    if (result.error) throw result.error;
+    rows.push(...(result.data || []));
+  }
+  return rows;
+}
+
 function rowHasRateSignal(row: Record<string, unknown>) {
   return Boolean(
     cleanRateText(row.all_in_rate) ||
@@ -4788,29 +4930,21 @@ async function bulkImportStructuredUpload(
     throw new Error(parsed.warnings[0] || "No structured template rows were found in this workbook.");
   }
 
-  const [catalogResult, locationsResult, mileageResult, vendorsResult] = await Promise.all([
+  const [catalogResult, scopedLocations, scopedMileage, vendorsResult] = await Promise.all([
     supabase
       .from("rateware_catalog_items")
       .select("source,category,raw_value,normalized_value,code")
       .eq("active", true)
       .limit(10000),
-    supabase
-      .from("rateware_locations")
-      .select("source,location_key,raw_value,zip_prefix,metro_city,city,state_code,state_name,country,market,region")
-      .eq("active", true)
-      .limit(20000),
-    supabase
-      .from("rateware_lane_mileage")
-      .select("source,route_key,miles,km")
-      .eq("active", true)
-      .limit(20000),
+    fetchScopedTemplateLocations(supabase, parsed.rows),
+    fetchScopedTemplateMileage(supabase, parsed.rows),
     supabase
       .from("vendors")
       .select("id,vendor_name,domain,primary_email,secondary_emails,status,base_stage")
       .eq("owner_email", user.owner_email)
       .limit(5000)
   ]);
-  for (const result of [catalogResult, locationsResult, mileageResult, vendorsResult]) {
+  for (const result of [catalogResult, vendorsResult]) {
     if (result.error) throw result.error;
   }
 
@@ -4826,8 +4960,8 @@ async function bulkImportStructuredUpload(
   if (jobResult.error) throw jobResult.error;
 
   const catalog = buildCatalogIndex(catalogResult.data || []);
-  const locationIndex = buildLocationIndex(locationsResult.data || []);
-  const mileage = new Map((mileageResult.data || []).map((lane) => [catalogKey(lane.route_key), lane]));
+  const locationIndex = buildLocationIndex(scopedLocations || []);
+  const mileage = new Map((scopedMileage || []).map((lane) => [catalogKey(lane.route_key), lane]));
   const vendors = vendorsResult.data || [];
   const inheritedVendorId = cleanText(upload.vendor_id);
   const inheritedVendorDomain = uploadVendorDomain(upload);

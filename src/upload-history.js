@@ -49,7 +49,7 @@ const reprocessImpactPreview = document.querySelector("#reprocess-impact-preview
 const HISTORY_COLSPAN = 9;
 const UPLOAD_ACTION_SELECTOR = "[data-interpret-id], [data-bulk-import-id], [data-archive-id], [data-remove-id], #reprocess-selected-uploads, #bulk-import-selected-uploads, #archive-selected-uploads, #remove-selected-uploads";
 const XLSX_MODULE_URL = "https://esm.sh/xlsx@0.18.5";
-const BULK_IMPORT_BATCH_SIZE = 75;
+const BULK_IMPORT_BATCH_SIZE = 250;
 const MISSING_ROWS_REPROCESS_NOTE = [
   "Re-read every visible table row and priced cell. Do not summarize by state, lane group, destination group, or carrier note.",
   "Return one staged row per carrier quoted lane, including one-way and roundtrip rows only when explicitly priced.",
