@@ -166,6 +166,8 @@ assert.match(vendorMetricRpcMigration, /rate_staging_vendor_domain_status_idx/, 
 assert.match(vendorMetricRpcMigration, /not public\.rateware_is_generic_email_domain/, "vendor metric domain matching should ignore generic email domains");
 assert.match(apiSource, /async function fetchVendorRateMetrics/, "API should fetch vendor metrics through database RPC");
 assert.match(apiSource, /vendor_rate_metrics_for_owner/, "API should call vendor rate metrics RPC");
+assert.match(apiSource, /async function fetchVendorRateMetricsSafe/, "Vendor metric enrichment should have a safe fallback");
+assert.match(apiSource, /Quote metrics are temporarily unavailable/, "Vendor metric fallback should explain partial CRM loading");
 
 for (const functionName of [
   "rateware_bi_dimension_value",
@@ -196,6 +198,8 @@ assert.match(biGenericDomainLabelsMigration, /Unmatched carrier/, "generic unlin
 
 const vendorIntelligenceSource = apiSource.slice(apiSource.indexOf("async function buildVendorIntelligence"), apiSource.indexOf("function vendorEffectiveFunnelStage"));
 assert.ok(vendorIntelligenceSource.length > 100, "vendor intelligence helper should be present");
+assert.match(vendorIntelligenceSource, /fetchVendorRateMetricsSafe/, "Vendor Intelligence should not fail the full view when quote metrics are unavailable");
+assert.match(vendorIntelligenceSource, /warnings: metricsResult\.warnings/, "Vendor Intelligence should return partial-load warnings");
 assert.doesNotMatch(
   vendorIntelligenceSource,
   /fetchBusinessIntelligenceRows/,
@@ -204,6 +208,8 @@ assert.doesNotMatch(
 
 const vendorFunnelSource = apiSource.slice(apiSource.indexOf("async function buildVendorFunnel"), apiSource.indexOf("function scoreCarrierFit"));
 assert.ok(vendorFunnelSource.length > 100, "vendor funnel helper should be present");
+assert.match(vendorFunnelSource, /fetchVendorRateMetricsSafe/, "Procurement Pipeline should not fail the full funnel when quote metrics are unavailable");
+assert.match(vendorFunnelSource, /warnings: metricsResult\.warnings/, "Procurement Pipeline should return partial-load warnings");
 assert.doesNotMatch(
   vendorFunnelSource,
   /fetchBusinessIntelligenceRows/,

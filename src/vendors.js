@@ -754,7 +754,12 @@ async function loadVendorIntelligence() {
     selectedVendorIntelligenceIds = new Set();
     renderVendorIntelligenceSummary(result.summary || {});
     renderVendorIntelligence();
-    setStatus(vendorIntelligenceStatus, `${vendorIntelligenceRows.length} vendor(s) analyzed.`, "success");
+    const warning = Array.isArray(result.warnings) ? result.warnings.find(Boolean) : "";
+    setStatus(
+      vendorIntelligenceStatus,
+      warning || `${vendorIntelligenceRows.length} vendor(s) analyzed.`,
+      warning ? "warning" : "success"
+    );
   } catch (error) {
     vendorIntelligenceBody.innerHTML = tableErrorState(9, error, {
       title: "Vendor intelligence could not load",
@@ -989,7 +994,12 @@ async function loadVendorFunnel() {
     await requirePrivatePage();
     const result = await fetchVendorFunnel();
     renderVendorFunnel(result);
-    setStatus(vendorFunnelStatus, `${result.summary?.total || 0} procurement vendor(s) in funnel.`, "success");
+    const warning = Array.isArray(result.warnings) ? result.warnings.find(Boolean) : "";
+    setStatus(
+      vendorFunnelStatus,
+      warning || `${result.summary?.total || 0} procurement vendor(s) in funnel.`,
+      warning ? "warning" : "success"
+    );
   } catch (error) {
     vendorFunnelBoard.innerHTML = errorState(error, {
       title: "Procurement funnel could not load",

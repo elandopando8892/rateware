@@ -2081,6 +2081,28 @@ async function fetchVendorRateMetrics(
   return metrics;
 }
 
+async function fetchVendorRateMetricsSafe(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_email: string | null },
+  options: { baseStage?: string | null } = {}
+) {
+  try {
+    return {
+      metrics: await fetchVendorRateMetrics(supabase, user, options),
+      warnings: [] as string[]
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error || "Unknown metric error");
+    console.warn("Vendor rate metrics unavailable; continuing with vendor-only CRM data.", message);
+    return {
+      metrics: new Map<string, Record<string, unknown>>(),
+      warnings: [
+        "Quote metrics are temporarily unavailable. Showing vendor CRM data without linked-rate enrichment."
+      ]
+    };
+  }
+}
+
 async function fetchBiVendorMetrics(
   supabase: ReturnType<typeof createClient>,
   user: { owner_email: string | null },
@@ -2410,18 +2432,19 @@ function buildVendorIntelligenceRows(
 }
 
 async function buildVendorIntelligence(supabase: ReturnType<typeof createClient>, user: { owner_email: string | null }) {
-  const [vendorsResult, metricsByVendor] = await Promise.all([
+  const [vendorsResult, metricsResult] = await Promise.all([
     supabase
       .from("vendors")
       .select("*")
       .eq("owner_email", user.owner_email)
       .limit(2000),
-    fetchVendorRateMetrics(supabase, user)
+    fetchVendorRateMetricsSafe(supabase, user)
   ]);
   if (vendorsResult.error) throw vendorsResult.error;
-  const rows = buildVendorIntelligenceRows(vendorsResult.data || [], metricsByVendor);
+  const rows = buildVendorIntelligenceRows(vendorsResult.data || [], metricsResult.metrics);
   return {
     rows,
+    warnings: metricsResult.warnings,
     summary: {
       vendors: rows.length,
       procurement_ready: rows.filter((row) => Number(row.health_score || 0) >= 85).length,
@@ -2460,10 +2483,10 @@ async function buildVendorFunnel(supabase: ReturnType<typeof createClient>, user
   if (vendorsResult.error) throw vendorsResult.error;
 
   const procurementVendors = vendorsResult.data || [];
-  const metricsByVendor = procurementVendors.length
-    ? await fetchVendorRateMetrics(supabase, user, { baseStage: "procurement" })
-    : new Map<string, Record<string, unknown>>();
-  const procurementRows = buildVendorIntelligenceRows(procurementVendors, metricsByVendor)
+  const metricsResult = procurementVendors.length
+    ? await fetchVendorRateMetricsSafe(supabase, user, { baseStage: "procurement" })
+    : { metrics: new Map<string, Record<string, unknown>>(), warnings: [] as string[] };
+  const procurementRows = buildVendorIntelligenceRows(procurementVendors, metricsResult.metrics)
     .map((row: Record<string, unknown>) => {
       const stage = vendorEffectiveFunnelStage(row);
       return {
@@ -2478,6 +2501,7 @@ async function buildVendorFunnel(supabase: ReturnType<typeof createClient>, user
   const activated = Number(counts.activated || 0) + Number(counts.completed || 0);
   const targeted = procurementRows.length || 1;
   return {
+    warnings: metricsResult.warnings,
     stages: VENDOR_FUNNEL_STAGES.map((stage, index) => ({
       key: stage,
       label: VENDOR_FUNNEL_STAGE_LABELS[stage],
