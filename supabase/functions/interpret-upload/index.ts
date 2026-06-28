@@ -20,11 +20,15 @@ const RATEWARE_SCHEMA = {
     summary: {
       type: "object",
       additionalProperties: false,
-      required: ["vendor_domain", "rfx_id", "quote_date", "document_notes"],
+      required: ["vendor_domain", "rfx_id", "quote_date", "expected_rate_rows", "source_table_count", "carrier_response_scope", "completeness_notes", "document_notes"],
       properties: {
         vendor_domain: { type: ["string", "null"] },
         rfx_id: { type: ["string", "null"] },
         quote_date: { type: ["string", "null"] },
+        expected_rate_rows: { type: ["number", "null"] },
+        source_table_count: { type: ["number", "null"] },
+        carrier_response_scope: { type: ["string", "null"] },
+        completeness_notes: { type: ["string", "null"] },
         document_notes: { type: ["string", "null"] }
       }
     },
@@ -47,6 +51,7 @@ const RATEWARE_SCHEMA = {
           "config",
           "operation",
           "service",
+          "source_service_marker",
           "driver",
           "mx_border_crossing_point",
           "us_border_crossing_point",
@@ -79,6 +84,7 @@ const RATEWARE_SCHEMA = {
           config: { type: ["string", "null"] },
           operation: { type: ["string", "null"] },
           service: { type: ["string", "null"] },
+          source_service_marker: { type: ["string", "null"] },
           driver: { type: ["string", "null"] },
           mx_border_crossing_point: { type: ["string", "null"] },
           us_border_crossing_point: { type: ["string", "null"] },
@@ -245,11 +251,13 @@ function serviceFromText(value: unknown) {
 
 function serviceEvidenceFromRow(row: Record<string, unknown>) {
   return serviceFromText([
+    row.source_service_marker,
     row.notes,
     row.accessorials,
     Array.isArray(row.extraction_warnings) ? row.extraction_warnings.join(" ") : row.extraction_warnings,
     row.extracted_payload && typeof row.extracted_payload === "object"
       ? [
+        (row.extracted_payload as Record<string, unknown>).source_service_marker,
         (row.extracted_payload as Record<string, unknown>).notes,
         (row.extracted_payload as Record<string, unknown>).accessorials,
         Array.isArray((row.extracted_payload as Record<string, unknown>).extraction_warnings)
@@ -815,6 +823,7 @@ function rowAuditFlags(row: Record<string, unknown>) {
   }
 
   if (!hasRateAmount(row)) flags.push("missing_rate");
+  if (cleanText(row.vendor_domain) && isInternalMarksmanDomain(row.vendor_domain)) flags.push("internal_vendor_domain");
   if (!cleanText(row.weekly_capacity)) flags.push("missing_capacity");
   if (!cleanText(row.origin_zip_prefix) && !cleanText(row.origin_market) && !cleanText(row.origin_country)) flags.push("origin_not_matched");
   if (!cleanText(row.destination_zip_prefix) && !cleanText(row.destination_market) && !cleanText(row.destination_country)) flags.push("destination_not_matched");
@@ -839,6 +848,7 @@ const DERIVED_ROW_AUDIT_FLAGS = new Set([
   "missing_service",
   "missing_currency",
   "missing_rate",
+  "internal_vendor_domain",
   "missing_capacity",
   "origin_not_matched",
   "destination_not_matched",
@@ -895,6 +905,7 @@ function sourceEvidence(rawUpload: Record<string, unknown>, row: Record<string, 
     all_in_rate: cleanRateValue(row.all_in_rate),
     split_rate_present: hasSplitRateAmount(row),
     rate_mode: rateMode(row),
+    source_service_marker: cleanText(row.source_service_marker) || cleanText(extractedPayloadValue(row, "source_service_marker")),
     service_marker: serviceEvidenceFromRow(row),
     roundtrip_explicit: serviceEvidenceFromRow(row) === "Roundtrip",
     notes: cleanText(row.notes),
@@ -1858,6 +1869,7 @@ function tneRfx05132601Rows(rawUpload: Record<string, string>) {
     destination,
     operation,
     service,
+    source_service_marker: serviceMarker,
     us_miles: usMiles,
     mx_linehaul: mxLinehaul,
     us_linehaul: usLinehaul,
@@ -1880,6 +1892,10 @@ function applyKnownTableRepair(rawUpload: Record<string, string>, interpretation
         vendor_domain: "tnexpress.net",
         rfx_id: "RFx-05132601",
         quote_date: "2026-05-14",
+        expected_rate_rows: 9,
+        source_table_count: 1,
+        carrier_response_scope: "Visible TNE carrier rate table only.",
+        completeness_notes: "The visible table has 9 carrier-priced rows: 6 OW and 3 RT.",
         document_notes: "Deterministic repair applied for TNE RFx-05132601 visible rate table."
       },
       rows: tneRfx05132601Rows(rawUpload)
@@ -1894,6 +1910,27 @@ function interpretationRows(interpretation: Record<string, unknown>) {
 
 function attachInterpretationAuditMeta(interpretation: Record<string, unknown>, meta: Record<string, unknown>) {
   return Object.assign(interpretation, { __audit: meta });
+}
+
+function interpretationSummary(interpretation: Record<string, unknown>) {
+  return interpretation.summary && typeof interpretation.summary === "object"
+    ? interpretation.summary as Record<string, unknown>
+    : {};
+}
+
+function summaryNumber(summary: Record<string, unknown>, field: string) {
+  const value = Number(summary[field]);
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
+
+function interpretationSummaryAuditMeta(interpretation: Record<string, unknown>) {
+  const summary = interpretationSummary(interpretation);
+  return {
+    summary_expected_rate_rows: summaryNumber(summary, "expected_rate_rows"),
+    source_table_count: summaryNumber(summary, "source_table_count"),
+    carrier_response_scope: cleanText(summary.carrier_response_scope),
+    completeness_notes: cleanText(summary.completeness_notes)
+  };
 }
 
 function numericRowIds(rows: Record<string, unknown>[]) {
@@ -1913,14 +1950,19 @@ function missingRowDetector(rawUpload: Record<string, unknown>, meta: Record<str
   const pdfOrImage = ["pdf", "image"].includes(String(rawUpload.document_type || ""));
   const firstPassRows = Number(meta.first_pass_rows || 0);
   const auditPassRows = Number(meta.audit_pass_rows || 0);
+  const summaryExpectedRows = Number(meta.summary_expected_rate_rows || 0);
   const finalRows = rows.length;
   const expected = Math.max(
     finalRows,
+    summaryExpectedRows,
     Number(meta.final_rows || 0),
     auditPassRows,
     maxRowId || 0
   );
   const signals = [
+    summaryExpectedRows > finalRows ? `Document summary expected ${summaryExpectedRows} carrier-priced row(s), but ${finalRows} reached staging.` : null,
+    meta.source_table_count ? `Document summary detected ${meta.source_table_count} source table(s).` : null,
+    meta.completeness_notes ? `Completeness notes: ${meta.completeness_notes}` : null,
     missingIds.length ? `Visible row numbering appears to skip row(s): ${missingIds.slice(0, 12).join(", ")}.` : null,
     pdfOrImage && finalRows > 0 && finalRows <= 3 ? "Sparse PDF/image result: only three or fewer staged rows." : null,
     pdfOrImage && firstPassRows > 0 && auditPassRows > firstPassRows ? `Audit pass found ${auditPassRows - firstPassRows} additional row(s).` : null,
@@ -1959,6 +2001,10 @@ async function interpretWithModel(rawUpload: Record<string, string>, file: Blob,
     "You are Rateware AI, a senior freight procurement analyst.",
     "Interpret carrier quotations and normalize them into Rateware staging rows.",
     "Be exhaustive. Do not summarize a route table into one row per destination or one row per state.",
+    "In summary.expected_rate_rows, return the number of visible carrier-priced rows or priced cells that should become staging rows before any invalid X/N/A/Please Estimate/Tier cells are skipped.",
+    "In summary.source_table_count, return how many carrier response rate tables or matrices you used.",
+    "In summary.carrier_response_scope, describe which carrier response section was captured and which Marksman/template sections were ignored.",
+    "In summary.completeness_notes, explain the row-count logic, such as visible table lines, priced cells, OW/RT columns, outbound/return sections, or skipped invalid cells.",
     "Create one row per unique rated lane and service combination. If a matrix has multiple destinations and multiple service columns, each priced cell is its own row.",
     "For example, 3 destinations with One Way and Roundtrip prices means 6 rows when all six cells have carrier rates.",
     "If a quote includes outbound and return lanes, include both directions when each has a carrier price.",
@@ -1976,6 +2022,7 @@ async function interpretWithModel(rawUpload: Record<string, string>, file: Blob,
     "Set hazmat true only when the carrier quote explicitly says Hazmat, hazardous material, or equivalent. Set temperature_controlled true only when it explicitly says reefer, refrigerated, temperature controlled, or equivalent.",
     "Separate operation from service. Import, Export, Northbound, and Southbound define operation. OW, One Way, RT, Round Trip, and Backhaul define service.",
     "Normalize service to catalog language from the quote's service marker: OW or One Way means One Way; RT, Round Trip, or Roundtrip means Roundtrip; Backhaul means Backhaul. Do not infer One Way just because the operation is Import or Export.",
+    "For each row, set source_service_marker to the exact visible service marker used by the carrier, such as OW, RT, One Way, Round Trip, or Backhaul. Use null when there is no visible marker.",
     "Never infer Roundtrip from a border crossing, D2D route, all-in amount, or two-country movement. Roundtrip requires an explicit RT/Round Trip marker or an explicit carrier statement that the same rate covers the round trip.",
     "When the carrier provides a single price for a lane and there is no RT/Round Trip marker, set service to One Way.",
     "Normalize operation from the Mexico operating perspective, not the US perspective. MX to US/CA is D2D Export. US/CA to MX is D2D Import.",
@@ -2020,7 +2067,8 @@ async function interpretWithModel(rawUpload: Record<string, string>, file: Blob,
       audit_pass_used: false,
       audit_pass_rows: null,
       final_rows: interpretationRows(firstInterpretation).length,
-      deterministic_repair_used: firstRepairUsed
+      deterministic_repair_used: firstRepairUsed,
+      ...interpretationSummaryAuditMeta(firstInterpretation)
     });
   }
 
@@ -2057,7 +2105,10 @@ async function interpretWithModel(rawUpload: Record<string, string>, file: Blob,
     audit_pass_rows: auditedRows.length,
     final_rows: interpretationRows(finalInterpretation).length,
     deterministic_repair_used: firstRepairUsed || auditedRepairUsed,
-    audit_kept_first_pass: auditedRows.length < firstRows.length
+    audit_kept_first_pass: auditedRows.length < firstRows.length,
+    first_pass_expected_rate_rows: interpretationSummaryAuditMeta(firstInterpretation).summary_expected_rate_rows,
+    audit_pass_expected_rate_rows: interpretationSummaryAuditMeta(auditedInterpretation).summary_expected_rate_rows,
+    ...interpretationSummaryAuditMeta(finalInterpretation)
   });
 }
 
@@ -2088,6 +2139,7 @@ function buildUploadAudit(rawUpload: Record<string, unknown>, interpretation: Re
     "missing_operation",
     "missing_service",
     "missing_currency",
+    "internal_vendor_domain",
     "missing_rate"
   ]);
   const criticalIssues = rowFlags.filter((flag) => criticalFlags.has(flag)).length;
@@ -2108,6 +2160,12 @@ function buildUploadAudit(rawUpload: Record<string, unknown>, interpretation: Re
     audit_pass_used: Boolean(meta.audit_pass_used),
     audit_pass_rows: meta.audit_pass_rows ?? null,
     deterministic_repair_used: Boolean(meta.deterministic_repair_used),
+    source_table_count: Number(meta.source_table_count || 0) || null,
+    carrier_response_scope: cleanText(meta.carrier_response_scope),
+    completeness_notes: cleanText(meta.completeness_notes),
+    first_pass_expected_rate_rows: meta.first_pass_expected_rate_rows ?? null,
+    audit_pass_expected_rate_rows: meta.audit_pass_expected_rate_rows ?? null,
+    summary_expected_rate_rows: meta.summary_expected_rate_rows ?? null,
     expected_rate_rows: missingRows.expected_rate_rows,
     interpreted_rate_rows: rows.length,
     missing_row_count: missingRows.missing_row_count,
