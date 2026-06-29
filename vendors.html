@@ -664,7 +664,7 @@
             </div>
           </section>
 
-          <aside id="vendor-drawer" class="profile-drawer hidden" aria-live="polite">
+          <aside id="vendor-drawer" class="profile-drawer vendor-profile-drawer hidden" aria-live="polite">
             <div class="drawer-header">
               <div class="drawer-brand-line">
                 <span id="drawer-logo-preview" class="drawer-logo-preview"></span>
@@ -676,45 +676,58 @@
               </div>
               <button id="close-vendor-drawer" class="secondary small-button" type="button">Close</button>
             </div>
-            <div id="drawer-quick-actions" class="drawer-quick-actions"></div>
-            <dl class="diagnostic-list">
-              <div>
-                <dt>Source</dt>
-                <dd id="drawer-source">-</dd>
+            <section class="vendor-drawer-card vendor-drawer-summary">
+              <div id="drawer-quick-actions" class="drawer-quick-actions"></div>
+              <dl class="vendor-profile-kpis">
+                <div>
+                  <dt>Score</dt>
+                  <dd id="drawer-completeness">-</dd>
+                </div>
+                <div>
+                  <dt>Channel</dt>
+                  <dd id="drawer-channel">-</dd>
+                </div>
+                <div>
+                  <dt>Source</dt>
+                  <dd id="drawer-source">-</dd>
+                </div>
+              </dl>
+            </section>
+            <section class="vendor-drawer-card">
+              <div class="section-heading compact">
+                <p class="eyebrow">Readiness</p>
+                <h2>Procurement fit</h2>
               </div>
-              <div>
-                <dt>Completeness</dt>
-                <dd id="drawer-completeness">-</dd>
+              <div id="drawer-readiness">-</div>
+            </section>
+            <section class="vendor-drawer-card">
+              <div class="section-heading compact">
+                <p class="eyebrow">Profile</p>
+                <h2>Carrier data</h2>
               </div>
-              <div>
-                <dt>Readiness</dt>
-                <dd id="drawer-readiness">-</dd>
-              </div>
-              <div>
-                <dt>Contact</dt>
-                <dd id="drawer-contact">-</dd>
-              </div>
-              <div>
-                <dt>Channel</dt>
-                <dd id="drawer-channel">-</dd>
-              </div>
-              <div>
-                <dt>Tags</dt>
-                <dd id="drawer-tags">-</dd>
-              </div>
-              <div>
-                <dt>Coverage</dt>
-                <dd id="drawer-coverage">-</dd>
-              </div>
-              <div>
-                <dt>Duplicate signals</dt>
-                <dd id="drawer-duplicates">-</dd>
-              </div>
-              <div>
-                <dt>Notes</dt>
-                <dd id="drawer-notes">-</dd>
-              </div>
-            </dl>
+              <dl class="vendor-profile-list">
+                <div>
+                  <dt>Contact</dt>
+                  <dd id="drawer-contact">-</dd>
+                </div>
+                <div>
+                  <dt>Tags</dt>
+                  <dd id="drawer-tags">-</dd>
+                </div>
+                <div>
+                  <dt>Coverage</dt>
+                  <dd id="drawer-coverage">-</dd>
+                </div>
+                <div>
+                  <dt>Duplicates</dt>
+                  <dd id="drawer-duplicates">-</dd>
+                </div>
+                <div>
+                  <dt>Notes</dt>
+                  <dd id="drawer-notes">-</dd>
+                </div>
+              </dl>
+            </section>
             <section class="ai-suggestion-panel">
               <div class="section-heading compact">
                 <p class="eyebrow">AI assist</p>

@@ -1628,10 +1628,19 @@ function renderReadinessBreakdown(vendor) {
   const readiness = vendorReadiness(vendor);
   return `
     <div class="readiness-breakdown">
-      <span class="score-pill ${readiness.tone}">${readiness.score}% ${escapeHtml(readiness.label)}</span>
-      <div class="readiness-checks">
+      <div class="readiness-score-row">
+        <span class="score-pill ${readiness.tone}">${readiness.score}%</span>
+        <strong>${escapeHtml(readiness.label)}</strong>
+      </div>
+      <div class="health-meter ${readiness.tone}" aria-hidden="true"><span style="width:${readiness.score}%"></span></div>
+      <div class="readiness-checks" aria-label="Readiness checks">
         ${readiness.checks
-          .map((check) => `<span class="${check.done ? "check-done" : "check-missing"}">${check.done ? "Done" : "Missing"} ${escapeHtml(check.label)}</span>`)
+          .map((check) => `
+            <span class="readiness-check ${check.done ? "is-done" : "is-missing"}">
+              <span aria-hidden="true">${check.done ? "OK" : "!"}</span>
+              ${escapeHtml(check.label)}
+            </span>
+          `)
           .join("")}
       </div>
     </div>
@@ -2416,8 +2425,7 @@ requirePrivatePage()
   )
   .catch(() => {});
 renderWizard();
-activateVendorTab("sourcing");
+activateVendorTab("funnel");
 updateBulkState();
 loadSegments();
 loadVendors();
-loadVendorFunnel();

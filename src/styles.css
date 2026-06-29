@@ -2193,6 +2193,305 @@ a {
   padding-top: 18px;
 }
 
+.profile-drawer.vendor-profile-drawer {
+  width: min(420px, 100vw);
+  overflow-x: hidden;
+  padding: 12px;
+}
+
+.vendor-profile-drawer .drawer-header {
+  align-items: center;
+  gap: 10px;
+  margin: -12px -12px 8px;
+  padding: 10px 12px 8px;
+}
+
+.vendor-profile-drawer .drawer-brand-line {
+  gap: 8px;
+  min-width: 0;
+}
+
+.vendor-profile-drawer h2 {
+  max-width: 270px;
+  overflow: hidden;
+  font-size: 0.95rem;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vendor-profile-drawer .vendor-logo.drawer {
+  width: 34px;
+  height: 34px;
+  border-radius: 7px;
+  font-size: 0.72rem;
+}
+
+.vendor-profile-drawer .drawer-badges {
+  gap: 4px;
+  margin-top: 5px;
+}
+
+.vendor-profile-drawer .drawer-badges .status-pill,
+.vendor-profile-drawer .tag-chip,
+.vendor-profile-drawer .score-pill {
+  min-height: 18px;
+  padding: 1px 6px;
+  font-size: 0.58rem;
+  line-height: 1.1;
+}
+
+.vendor-drawer-card {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #ffffff;
+  margin-bottom: 8px;
+  padding: 8px;
+}
+
+.vendor-drawer-card .section-heading {
+  margin: 0;
+}
+
+.vendor-drawer-card h2 {
+  max-width: none;
+  font-size: 0.78rem;
+}
+
+.vendor-drawer-card .eyebrow {
+  margin-bottom: 1px;
+  font-size: 0.52rem;
+}
+
+.vendor-drawer-summary {
+  background: #fbfcfd;
+}
+
+.vendor-profile-drawer .drawer-quick-actions {
+  display: flex;
+  gap: 5px;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  padding: 0;
+}
+
+.vendor-profile-drawer .drawer-quick-actions .small-button {
+  min-height: 22px;
+  padding: 2px 7px;
+  font-size: 0.64rem;
+}
+
+.vendor-profile-kpis,
+.vendor-profile-list {
+  display: grid;
+  gap: 0;
+  margin: 0;
+}
+
+.vendor-profile-kpis {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border: 1px solid #e3e9ee;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.vendor-profile-kpis > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  border-right: 1px solid #e3e9ee;
+  background: #ffffff;
+  padding: 6px;
+}
+
+.vendor-profile-kpis > div:last-child {
+  border-right: 0;
+}
+
+.vendor-profile-list > div {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr);
+  gap: 8px;
+  min-width: 0;
+  border-top: 1px solid #edf1f4;
+  padding: 6px 0;
+}
+
+.vendor-profile-list > div:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.vendor-profile-list > div:last-child {
+  padding-bottom: 0;
+}
+
+.vendor-profile-kpis dt,
+.vendor-profile-list dt {
+  color: var(--muted);
+  font-size: 0.58rem;
+  font-weight: 880;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.vendor-profile-kpis dd,
+.vendor-profile-list dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--text);
+  font-size: 0.68rem;
+  font-weight: 720;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.vendor-profile-list .tag-list {
+  gap: 3px;
+}
+
+.vendor-profile-drawer .readiness-breakdown {
+  display: grid;
+  gap: 7px;
+}
+
+.vendor-profile-drawer .readiness-score-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.vendor-profile-drawer .readiness-score-row strong {
+  min-width: 0;
+  color: var(--text);
+  font-size: 0.74rem;
+  line-height: 1.1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vendor-profile-drawer .health-meter {
+  height: 6px;
+}
+
+.vendor-profile-drawer .readiness-checks {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.vendor-profile-drawer .readiness-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  min-height: 22px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: #f8fafb;
+  color: var(--text);
+  padding: 3px 6px;
+  font-size: 0.64rem;
+  font-weight: 760;
+  line-height: 1.1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vendor-profile-drawer .readiness-check span {
+  display: inline-grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  background: var(--neutral-soft);
+  color: var(--neutral);
+  font-size: 0.54rem;
+  font-weight: 900;
+}
+
+.vendor-profile-drawer .readiness-check.is-done span {
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.vendor-profile-drawer .readiness-check.is-missing span {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.vendor-profile-drawer .ai-suggestion-panel,
+.vendor-profile-drawer .drawer-edit-form {
+  border-top: 0;
+  margin-top: 8px;
+  padding-top: 0;
+}
+
+.vendor-profile-drawer .ai-suggestion-panel {
+  display: grid;
+  gap: 8px;
+}
+
+.vendor-profile-drawer .ai-suggestion-card {
+  gap: 8px;
+  border-radius: 6px;
+  padding: 7px;
+}
+
+.vendor-profile-drawer .ai-suggestion-card strong {
+  font-size: 0.7rem;
+}
+
+.vendor-profile-drawer .ai-suggestion-card span {
+  font-size: 0.64rem;
+}
+
+.vendor-profile-drawer .drawer-edit-form {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.vendor-profile-drawer .drawer-edit-form .section-heading,
+.vendor-profile-drawer .drawer-edit-form label:has(textarea),
+.vendor-profile-drawer .drawer-edit-form .action-row {
+  grid-column: 1 / -1;
+}
+
+.vendor-profile-drawer .drawer-edit-form label {
+  gap: 3px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 0.62rem;
+  font-weight: 820;
+}
+
+.vendor-profile-drawer input,
+.vendor-profile-drawer select,
+.vendor-profile-drawer textarea {
+  min-width: 0;
+  min-height: 26px;
+  border-radius: 5px;
+  padding: 4px 6px;
+  font-size: 0.7rem;
+}
+
+.vendor-profile-drawer textarea {
+  min-height: 54px;
+}
+
+.vendor-profile-drawer .action-row {
+  align-items: center;
+  gap: 6px;
+}
+
 .ai-suggestion-panel {
   border-top: 1px solid var(--line);
   margin-top: 18px;
