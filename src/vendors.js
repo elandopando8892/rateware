@@ -56,6 +56,8 @@ const vendorsHeadRow = document.querySelector("#vendors-head-row");
 const vendorsFilterRow = document.querySelector("#vendors-filter-row");
 const vendorsTableWrap = document.querySelector("#vendors-table-wrap");
 const vendorCardGrid = document.querySelector("#vendor-card-grid");
+const vendorColumnOptions = document.querySelector("#vendor-column-options");
+const resetVendorColumnsButton = document.querySelector("#reset-vendor-columns");
 const vendorBaseContext = document.querySelector("#vendor-base-context");
 const searchInput = document.querySelector("#vendor-search");
 const statusFilter = document.querySelector("#vendor-status-filter");
@@ -157,6 +159,7 @@ let vendorMatchSummary = {
 };
 const VENDOR_BASE_TABS = ["sourcing", "procurement", "archived"];
 const VENDOR_IMPORT_TOOLS = ["wizard", "create", "segments"];
+const VENDOR_COLUMN_STORAGE_KEY = "rateware.vendorSheetColumns.v1";
 const DEFAULT_FUNNEL_STAGES = [
   { key: "targeted", label: "Targeted", description: "Moved from sourcing into procurement." },
   { key: "nested", label: "Nested", description: "Has linked carrier quotes." },
@@ -167,7 +170,21 @@ const DEFAULT_FUNNEL_STAGES = [
   { key: "activated", label: "Activated", description: "Ready for immediate use." },
   { key: "completed", label: "Completed", description: "Legal package fully signed." }
 ];
-const VENDOR_SHEET_COLUMNS = ["Select", "Vendor", "Domain", "Contact", "Email", "WhatsApp", "Tags", "Channel", "Base", "Status", "Coverage", "Notes", "Source"];
+const VENDOR_SHEET_COLUMNS = [
+  { key: "select", label: "Select", locked: true },
+  { key: "vendor", label: "Vendor", locked: true },
+  { key: "domain", label: "Domain" },
+  { key: "contact", label: "Contact" },
+  { key: "email", label: "Email" },
+  { key: "whatsapp", label: "WhatsApp" },
+  { key: "tags", label: "Tags" },
+  { key: "channel", label: "Channel" },
+  { key: "base", label: "Base" },
+  { key: "status", label: "Status" },
+  { key: "coverage", label: "Coverage" },
+  { key: "notes", label: "Notes" },
+  { key: "source", label: "Source" }
+];
 
 function isVendorBaseTab(tabName) {
   return VENDOR_BASE_TABS.includes(tabName);
@@ -196,8 +213,48 @@ function syncCrmViewButtons() {
   });
 }
 
+function defaultVendorColumnKeys() {
+  return VENDOR_SHEET_COLUMNS.map((column) => column.key);
+}
+
+function lockedVendorColumnKeys() {
+  return VENDOR_SHEET_COLUMNS.filter((column) => column.locked).map((column) => column.key);
+}
+
+function readVendorColumnKeys() {
+  const validKeys = new Set(VENDOR_SHEET_COLUMNS.map((column) => column.key));
+  const lockedKeys = lockedVendorColumnKeys();
+  try {
+    const saved = JSON.parse(window.localStorage.getItem(VENDOR_COLUMN_STORAGE_KEY) || "[]");
+    if (Array.isArray(saved) && saved.length) {
+      const keys = saved.filter((key) => validKeys.has(key));
+      lockedKeys.forEach((key) => {
+        if (!keys.includes(key)) keys.unshift(key);
+      });
+      return keys.length ? keys : defaultVendorColumnKeys();
+    }
+  } catch (error) {
+    window.localStorage.removeItem(VENDOR_COLUMN_STORAGE_KEY);
+  }
+  return defaultVendorColumnKeys();
+}
+
+function saveVendorColumnKeys(keys) {
+  const validKeys = new Set(VENDOR_SHEET_COLUMNS.map((column) => column.key));
+  const nextKeys = keys.filter((key) => validKeys.has(key));
+  lockedVendorColumnKeys().forEach((key) => {
+    if (!nextKeys.includes(key)) nextKeys.unshift(key);
+  });
+  window.localStorage.setItem(VENDOR_COLUMN_STORAGE_KEY, JSON.stringify(nextKeys));
+}
+
+function visibleVendorColumns() {
+  const visibleKeys = new Set(readVendorColumnKeys());
+  return VENDOR_SHEET_COLUMNS.filter((column) => column.locked || visibleKeys.has(column.key));
+}
+
 function vendorTableColumnCount() {
-  return VENDOR_SHEET_COLUMNS.length;
+  return visibleVendorColumns().length;
 }
 
 function escapeHtml(value) {
@@ -1326,10 +1383,41 @@ async function moveVendorFunnelStage(vendorId, stageKey) {
 }
 
 function renderVendorTableHeader() {
-  const columns = VENDOR_SHEET_COLUMNS;
-  vendorsHeadRow.innerHTML = columns.map((column) => `<th>${escapeHtml(column)}</th>`).join("");
+  const columns = visibleVendorColumns();
+  vendorsHeadRow.closest("table")?.style.setProperty("--vendor-visible-columns", String(columns.length));
+  vendorsHeadRow.innerHTML = columns.map((column) => `<th data-vendor-column="${escapeHtml(column.key)}">${escapeHtml(column.label)}</th>`).join("");
   renderVendorFilterRow(columns);
   vendorBaseContext.textContent = baseStageLabel();
+}
+
+function renderVendorColumnMenu() {
+  if (!vendorColumnOptions) return;
+  const visibleKeys = new Set(readVendorColumnKeys());
+  vendorColumnOptions.innerHTML = VENDOR_SHEET_COLUMNS.map((column) => {
+    const checked = column.locked || visibleKeys.has(column.key);
+    return `
+      <label class="vendor-column-option ${column.locked ? "is-locked" : ""}">
+        <input
+          type="checkbox"
+          data-vendor-column-toggle="${escapeHtml(column.key)}"
+          ${checked ? "checked" : ""}
+          ${column.locked ? "disabled" : ""}
+        />
+        <span>${escapeHtml(column.label)}</span>
+      </label>
+    `;
+  }).join("");
+}
+
+function setVendorColumnVisibility(key, shouldShow) {
+  const column = VENDOR_SHEET_COLUMNS.find((item) => item.key === key);
+  if (!column || column.locked) return;
+  const keys = new Set(readVendorColumnKeys());
+  if (shouldShow) keys.add(key);
+  else keys.delete(key);
+  saveVendorColumnKeys(Array.from(keys));
+  renderVendorColumnMenu();
+  renderVendors(currentVendors);
 }
 
 function filterCell(control) {
@@ -1344,7 +1432,7 @@ function renderVendorFilterRow(columns) {
   const status = escapeHtml(statusFilter.value || "");
   const channel = escapeHtml(channelFilter.value || "");
   const cells = columns.map((column) => {
-    const key = column.toLowerCase();
+    const key = column.key;
     if (key === "select") {
       return filterCell('<button class="sheet-filter-clear vendor-inline-clear" type="button" data-vendor-filter-clear>Clear</button>');
     }
@@ -1413,40 +1501,57 @@ function editableVendorSelect(row, field, options) {
   `;
 }
 
-function renderVendorSheetRow(row) {
-  return `
-    <tr class="${row.base_stage === "archived" ? "archived-vendor-row" : ""}" data-vendor-row-id="${escapeHtml(row.id)}">
-      <td><input class="vendor-select" type="checkbox" data-vendor-id="${escapeHtml(row.id)}" ${selectedVendorIds.has(row.id) ? "checked" : ""} /></td>
+function renderVendorSheetCell(row, columnKey) {
+  if (columnKey === "select") {
+    return `<td><input class="vendor-select" type="checkbox" data-vendor-id="${escapeHtml(row.id)}" ${selectedVendorIds.has(row.id) ? "checked" : ""} /></td>`;
+  }
+  if (columnKey === "vendor") {
+    return `
       <td>
         <div class="vendor-sheet-name-cell">
           <button class="vendor-logo-button" type="button" data-vendor-id="${escapeHtml(row.id)}" title="Open carrier profile">${renderVendorAvatar(row, "tiny")}</button>
           ${editableVendorInput(row, "vendor_name", { wide: true })}
         </div>
       </td>
-      <td>${editableVendorInput(row, "domain")}</td>
-      <td>${editableVendorInput(row, "contact_name")}</td>
-      <td>${editableVendorInput(row, "primary_email", { type: "email" })}</td>
-      <td>${editableVendorInput(row, "whatsapp_phone")}</td>
-      <td>${editableVendorInput(row, "tags", { wide: true })}</td>
-      <td>${editableVendorSelect(row, "preferred_channel", [
-        { value: "email", label: "Email" },
-        { value: "whatsapp", label: "WhatsApp" },
-        { value: "portal", label: "Portal" }
-      ])}</td>
-      <td>${editableVendorSelect(row, "base_stage", [
-        { value: "sourcing", label: "Sourcing" },
-        { value: "procurement", label: "Procurement" },
-        { value: "archived", label: "Archived" }
-      ])}</td>
-      <td>${editableVendorSelect(row, "status", [
-        { value: "active", label: "Active" },
-        { value: "invited", label: "Invited" },
-        { value: "blocked", label: "Blocked" },
-        { value: "inactive", label: "Inactive" }
-      ])}</td>
-      <td>${editableVendorInput(row, "coverage_notes", { wide: true })}</td>
-      <td>${editableVendorInput(row, "notes", { wide: true })}</td>
-      <td>${renderVendorSourceCell(row)}</td>
+    `;
+  }
+  if (columnKey === "domain") return `<td>${editableVendorInput(row, "domain")}</td>`;
+  if (columnKey === "contact") return `<td>${editableVendorInput(row, "contact_name")}</td>`;
+  if (columnKey === "email") return `<td>${editableVendorInput(row, "primary_email", { type: "email" })}</td>`;
+  if (columnKey === "whatsapp") return `<td>${editableVendorInput(row, "whatsapp_phone")}</td>`;
+  if (columnKey === "tags") return `<td>${editableVendorInput(row, "tags", { wide: true })}</td>`;
+  if (columnKey === "channel") {
+    return `<td>${editableVendorSelect(row, "preferred_channel", [
+      { value: "email", label: "Email" },
+      { value: "whatsapp", label: "WhatsApp" },
+      { value: "portal", label: "Portal" }
+    ])}</td>`;
+  }
+  if (columnKey === "base") {
+    return `<td>${editableVendorSelect(row, "base_stage", [
+      { value: "sourcing", label: "Sourcing" },
+      { value: "procurement", label: "Procurement" },
+      { value: "archived", label: "Archived" }
+    ])}</td>`;
+  }
+  if (columnKey === "status") {
+    return `<td>${editableVendorSelect(row, "status", [
+      { value: "active", label: "Active" },
+      { value: "invited", label: "Invited" },
+      { value: "blocked", label: "Blocked" },
+      { value: "inactive", label: "Inactive" }
+    ])}</td>`;
+  }
+  if (columnKey === "coverage") return `<td>${editableVendorInput(row, "coverage_notes", { wide: true })}</td>`;
+  if (columnKey === "notes") return `<td>${editableVendorInput(row, "notes", { wide: true })}</td>`;
+  if (columnKey === "source") return `<td>${renderVendorSourceCell(row)}</td>`;
+  return "<td></td>";
+}
+
+function renderVendorSheetRow(row, columns = visibleVendorColumns()) {
+  return `
+    <tr class="${row.base_stage === "archived" ? "archived-vendor-row" : ""}" data-vendor-row-id="${escapeHtml(row.id)}">
+      ${columns.map((column) => renderVendorSheetCell(row, column.key)).join("")}
     </tr>
   `;
 }
@@ -1536,8 +1641,9 @@ function renderVendors(rows) {
   }
 
   renderVendorCards(rows);
+  const columns = visibleVendorColumns();
   vendorsBody.innerHTML = rows
-    .map(renderVendorSheetRow)
+    .map((row) => renderVendorSheetRow(row, columns))
     .join("");
   syncCrmViewButtons();
 }
@@ -2514,6 +2620,16 @@ crmViewButtons.forEach((button) => {
 directoryBaseButtons.forEach((button) => {
   button.addEventListener("click", () => activateVendorTab(button.dataset.baseTab));
 });
+vendorColumnOptions?.addEventListener("change", (event) => {
+  const checkbox = event.target.closest("[data-vendor-column-toggle]");
+  if (!checkbox) return;
+  setVendorColumnVisibility(checkbox.dataset.vendorColumnToggle, checkbox.checked);
+});
+resetVendorColumnsButton?.addEventListener("click", () => {
+  window.localStorage.removeItem(VENDOR_COLUMN_STORAGE_KEY);
+  renderVendorColumnMenu();
+  renderVendors(currentVendors);
+});
 quickFilterButtons.forEach((button) => {
   button.addEventListener("click", () => {
     applyQuickFilter(button.dataset.quickFilter);
@@ -2655,6 +2771,7 @@ requirePrivatePage()
   )
   .catch(() => {});
 renderWizard();
+renderVendorColumnMenu();
 activateVendorTab("funnel");
 updateBulkState();
 loadSegments();
