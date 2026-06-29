@@ -3905,6 +3905,67 @@ h2 {
   font-weight: 820;
 }
 
+.vendor-match-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin: 12px 0;
+}
+
+.vendor-match-summary article {
+  display: grid;
+  gap: 5px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 10px;
+}
+
+.vendor-match-summary strong {
+  font-size: 1.45rem;
+  line-height: 1;
+}
+
+.vendor-match-summary span,
+.vendor-match-summary small {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 820;
+}
+
+.vendor-match-guidance {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid #d8e5e3;
+  border-radius: 8px;
+  background: #f6fbfa;
+  margin-bottom: 10px;
+  padding: 8px 10px;
+}
+
+.vendor-match-guidance strong {
+  flex: 0 0 auto;
+  color: var(--accent-dark);
+  font-size: 0.76rem;
+}
+
+.vendor-match-guidance span {
+  color: var(--muted);
+  font-size: 0.74rem;
+  line-height: 1.35;
+}
+
+.vendor-match-table {
+  min-width: 1220px;
+}
+
+.vendor-match-table th,
+.vendor-match-table td {
+  font-size: 0.74rem;
+  vertical-align: top;
+}
+
 .vendor-intelligence-table {
   min-width: 1680px;
 }
@@ -10812,6 +10873,7 @@ tbody tr:hover {
   .vendor-workflow-tabs,
   .vendor-funnel-metrics,
   .vendor-intelligence-summary,
+  .vendor-match-summary,
   .vendor-funnel-strip,
   .vendor-tool-grid,
   .funnel-workspace,

@@ -100,6 +100,10 @@
               <strong>Duplicates</strong>
               <span>Merge review</span>
             </button>
+            <button class="vendor-tab" type="button" data-vendor-tab="matching">
+              <strong>Vendor Match</strong>
+              <span>Link rates to carriers</span>
+            </button>
             <button class="vendor-tab" type="button" data-vendor-tab="intelligence">
               <strong>Intelligence</strong>
               <span>Signals and fit</span>
@@ -203,6 +207,67 @@
                 <tbody id="vendor-intelligence-body">
                   <tr>
                     <td colspan="9">Open Intelligence to analyze vendors.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="workspace-panel wide-section hidden" data-tab-panel="matching">
+            <div class="split-heading">
+              <div>
+                <p class="eyebrow">Vendor Match</p>
+                <h2>Unmatched rates queue</h2>
+              </div>
+              <div class="action-row">
+                <button id="refresh-vendor-match" type="button">Analyze queue</button>
+                <button id="match-staging-vendors" class="secondary" type="button">Match staging</button>
+                <button id="match-rateware-vendors" class="secondary" type="button">Match Rateware</button>
+                <button id="download-vendor-match-errors" class="secondary" type="button" disabled>Download errors</button>
+              </div>
+            </div>
+            <div class="vendor-match-summary" aria-label="Vendor match summary">
+              <article>
+                <span>Staging without vendor</span>
+                <strong id="vm-staging-total">0</strong>
+                <small id="vm-staging-matchable">0 matchable</small>
+              </article>
+              <article>
+                <span>Rateware without vendor</span>
+                <strong id="vm-rateware-total">0</strong>
+                <small id="vm-rateware-matchable">0 matchable</small>
+              </article>
+              <article>
+                <span>Source uploads repairable</span>
+                <strong id="vm-upload-matchable">0</strong>
+                <small>from detected hints</small>
+              </article>
+              <article>
+                <span>Manual corrections</span>
+                <strong id="vm-error-total">0</strong>
+                <small>downloadable rows</small>
+              </article>
+            </div>
+            <div class="vendor-match-guidance">
+              <strong>How matching works</strong>
+              <span>Rateware tries domain, email domain, vendor name, legal name, source upload hint, and source filename. Generic email domains require vendor name or legal name.</span>
+            </div>
+            <p id="vendor-match-status" class="status-message" role="status"></p>
+            <div class="table-wrap">
+              <table class="vendor-match-table">
+                <thead>
+                  <tr>
+                    <th>Source</th>
+                    <th>Shipment ID</th>
+                    <th>RFx</th>
+                    <th>Lane</th>
+                    <th>Detected reference</th>
+                    <th>Reason</th>
+                  </tr>
+                </thead>
+                <tbody id="vendor-match-body">
+                  <tr>
+                    <td colspan="6">Analyze the queue to see unmatched rates.</td>
                   </tr>
                 </tbody>
               </table>

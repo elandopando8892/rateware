@@ -1799,6 +1799,7 @@ function hasActiveRatewareFilters(filters: Record<string, unknown>) {
     cleanText(filters.search) ||
     cleanText(filters.operation) ||
     cleanText(filters.service) ||
+    filters.needs_vendor === true ||
     (cleanText(filters.quick_filter) || "all") !== "all" ||
     Object.keys(columnFilters).length
   );
@@ -1835,6 +1836,8 @@ function applySqlColumnFilters(query: any, columnFilters: Record<string, unknown
 }
 
 function applySqlDerivedRateFilters(query: any, filters: Record<string, unknown>) {
+  if (filters.needs_vendor === true) query = query.is("vendor_id", null);
+
   const mode = cleanText(filters.mode);
   if (mode === "rateware") {
     const quickFilter = cleanText(filters.quick_filter) || "all";
@@ -2010,6 +2013,28 @@ async function fetchRateRowIdsByFilter(
 ) {
   const limit = Math.min(Math.max(Number(options.limit) || 50000, 1), 50000);
   const offset = Math.max(Number(options.offset) || 0, 0);
+
+  if (filters.needs_vendor === true && canUseSqlRateFilters(filters)) {
+    let query = supabase
+      .from("rate_staging")
+      .select("id", { count: "exact" })
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
+      .range(offset, offset + limit - 1);
+
+    query = applySqlRateFilters(query, filters);
+    const result = await query;
+    if (result.error) throw result.error;
+    const ids = (result.data || []).map((row: Record<string, unknown>) => cleanText(row.id)).filter(Boolean) as string[];
+    const databaseCount = result.count || ids.length;
+    return {
+      ids,
+      rows: ids.map((id) => ({ id })),
+      database_count: databaseCount,
+      hard_limit_reached: databaseCount > offset + ids.length && ids.length >= limit
+    };
+  }
+
   const rpcFilters = normalizedRpcRateFilters(filters);
   const result = await supabase.rpc("rateware_filtered_rate_ids", {
     p_mode: rpcFilters.mode,

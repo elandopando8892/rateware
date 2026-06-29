@@ -13,6 +13,7 @@ import {
   fetchVendors,
   importVendorsFromGoogleSheet,
   importVendors,
+  matchVendorRateRowsByScope,
   removeVendors,
   updateVendor,
   uploadVendorLogo
@@ -101,6 +102,18 @@ const vfTotal = document.querySelector("#vf-total");
 const vfActivationRate = document.querySelector("#vf-activation-rate");
 const vfNested = document.querySelector("#vf-nested");
 const vfStuck = document.querySelector("#vf-stuck");
+const refreshVendorMatchButton = document.querySelector("#refresh-vendor-match");
+const matchStagingVendorsButton = document.querySelector("#match-staging-vendors");
+const matchRatewareVendorsButton = document.querySelector("#match-rateware-vendors");
+const downloadVendorMatchErrorsButton = document.querySelector("#download-vendor-match-errors");
+const vendorMatchStatus = document.querySelector("#vendor-match-status");
+const vendorMatchBody = document.querySelector("#vendor-match-body");
+const vmStagingTotal = document.querySelector("#vm-staging-total");
+const vmStagingMatchable = document.querySelector("#vm-staging-matchable");
+const vmRatewareTotal = document.querySelector("#vm-rateware-total");
+const vmRatewareMatchable = document.querySelector("#vm-rateware-matchable");
+const vmUploadMatchable = document.querySelector("#vm-upload-matchable");
+const vmErrorTotal = document.querySelector("#vm-error-total");
 const segmentForm = document.querySelector("#segment-form");
 const segmentStatusMessage = document.querySelector("#segment-status-message");
 const segmentsList = document.querySelector("#segments-list");
@@ -136,6 +149,12 @@ const vendorIntelligencePageSize = 500;
 let vendorFunnelStages = [];
 let vendorFunnelRows = [];
 let activeFunnelStage = "targeted";
+let vendorMatchRows = [];
+let vendorMatchLoaded = false;
+let vendorMatchSummary = {
+  staging: null,
+  rateware: null
+};
 const VENDOR_BASE_TABS = ["sourcing", "procurement", "archived"];
 const VENDOR_IMPORT_TOOLS = ["wizard", "create", "segments"];
 const DEFAULT_FUNNEL_STAGES = [
@@ -187,6 +206,50 @@ function escapeHtml(value) {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+function escapeCsv(value) {
+  return `"${String(value ?? "").replace(/"/g, '""')}"`;
+}
+
+function numberLabel(value) {
+  return Number(value || 0).toLocaleString();
+}
+
+function downloadVendorMatchErrors(rows = [], truncated = false) {
+  if (!Array.isArray(rows) || !rows.length) return false;
+  const headers = [
+    "source_scope",
+    "rate_row_id",
+    "shipment_id",
+    "raw_upload_id",
+    "source_file",
+    "rfx_id",
+    "quote_date",
+    "origin",
+    "destination",
+    "current_vendor_domain",
+    "detected_vendor_reference",
+    "error_reason",
+    "corrected_vendor_domain",
+    "corrected_vendor_name",
+    "corrected_legal_name"
+  ];
+  const payload = [
+    headers.join(","),
+    ...rows.map((row) => headers.map((header) => escapeCsv(row[header])).join(",")),
+    ...(truncated ? [headers.map((header) => escapeCsv(header === "error_reason" ? "Report truncated. Re-run the queue after corrections to continue." : "")).join(",")] : [])
+  ].join("\n");
+  const blob = new Blob([payload], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `vendor-match-errors-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+  return true;
 }
 
 function cleanExternalUrl(value) {
@@ -371,6 +434,7 @@ function activateVendorTab(tabName) {
   if (tabName === "duplicates") renderDuplicateReview();
   if (tabName === "intelligence" && !vendorIntelligenceRows.length) loadVendorIntelligence();
   if (tabName === "funnel" && !vendorFunnelRows.length) loadVendorFunnel();
+  if (tabName === "matching" && !vendorMatchLoaded) analyzeVendorMatchQueue();
   if (tabName === "import" && !pendingImportRows.length) setVendorImportStep("source");
   if (isVendorBaseTab(tabName)) loadVendors();
   syncCrmViewButtons();
@@ -1106,6 +1170,143 @@ async function loadVendorFunnel() {
     setStatus(vendorFunnelStatus, error.message, "error");
   } finally {
     if (refreshVendorFunnelButton) refreshVendorFunnelButton.disabled = false;
+  }
+}
+
+function mergeVendorMatchErrors(stagingResult = {}, ratewareResult = {}) {
+  const stagingErrors = (stagingResult.unmatched_errors || []).map((row) => ({ ...row, source_scope: "staging" }));
+  const ratewareErrors = (ratewareResult.unmatched_errors || []).map((row) => ({ ...row, source_scope: "rateware" }));
+  return [...stagingErrors, ...ratewareErrors];
+}
+
+function updateVendorMatchSummary(stagingResult = {}, ratewareResult = {}) {
+  const errors = mergeVendorMatchErrors(stagingResult, ratewareResult);
+  vendorMatchRows = errors;
+  vendorMatchSummary = { staging: stagingResult, rateware: ratewareResult };
+
+  if (vmStagingTotal) vmStagingTotal.textContent = numberLabel(stagingResult.matched);
+  if (vmStagingMatchable) vmStagingMatchable.textContent = `${numberLabel(stagingResult.matchable)} matchable`;
+  if (vmRatewareTotal) vmRatewareTotal.textContent = numberLabel(ratewareResult.matched);
+  if (vmRatewareMatchable) vmRatewareMatchable.textContent = `${numberLabel(ratewareResult.matchable)} matchable`;
+  if (vmUploadMatchable) vmUploadMatchable.textContent = numberLabel(Number(stagingResult.upload_matchable || 0) + Number(ratewareResult.upload_matchable || 0));
+  if (vmErrorTotal) vmErrorTotal.textContent = numberLabel(errors.length);
+  if (downloadVendorMatchErrorsButton) downloadVendorMatchErrorsButton.disabled = !errors.length;
+}
+
+function renderVendorMatchRows() {
+  if (!vendorMatchBody) return;
+  if (!vendorMatchRows.length) {
+    vendorMatchBody.innerHTML = `
+      <tr>
+        <td colspan="6">No manual vendor corrections in the current queue.</td>
+      </tr>
+    `;
+    return;
+  }
+
+  vendorMatchBody.innerHTML = vendorMatchRows
+    .slice(0, 80)
+    .map((row) => {
+      const lane = [row.origin, row.destination].filter(Boolean).join(" -> ") || "-";
+      return `
+        <tr>
+          <td><span class="status-pill">${escapeHtml(row.source_scope)}</span></td>
+          <td>${escapeHtml(row.shipment_id || row.rate_row_id || "-")}</td>
+          <td>${escapeHtml(row.rfx_id || "-")}</td>
+          <td>${escapeHtml(lane)}</td>
+          <td>${escapeHtml(row.detected_vendor_reference || row.current_vendor_domain || "-")}</td>
+          <td>${escapeHtml(row.error_reason || "Needs manual correction")}</td>
+        </tr>
+      `;
+    })
+    .join("");
+}
+
+function setVendorMatchBusy(isBusy) {
+  if (refreshVendorMatchButton) refreshVendorMatchButton.disabled = isBusy;
+  if (matchStagingVendorsButton) matchStagingVendorsButton.disabled = isBusy;
+  if (matchRatewareVendorsButton) matchRatewareVendorsButton.disabled = isBusy;
+}
+
+async function analyzeVendorMatchQueue() {
+  if (!vendorMatchBody) return;
+  setVendorMatchBusy(true);
+  vendorMatchBody.innerHTML = tableLoadingState(6, {
+    title: "Analyzing vendor match queue",
+    detail: "Scanning staging and approved Rateware rows without vendor links."
+  });
+  setStatus(vendorMatchStatus, "Analyzing unmatched rates...");
+
+  try {
+    await requirePrivatePage();
+    const [stagingResult, ratewareResult] = await Promise.all([
+      matchVendorRateRowsByScope("staging", { dryRun: true }),
+      matchVendorRateRowsByScope("rateware", { dryRun: true })
+    ]);
+    updateVendorMatchSummary(stagingResult, ratewareResult);
+    renderVendorMatchRows();
+    vendorMatchLoaded = true;
+    setStatus(
+      vendorMatchStatus,
+      `${numberLabel(Number(stagingResult.matchable || 0) + Number(ratewareResult.matchable || 0))} rate row(s) can be auto-linked. ${numberLabel(vendorMatchRows.length)} need manual correction.`,
+      "success"
+    );
+  } catch (error) {
+    vendorMatchBody.innerHTML = tableErrorState(6, error, {
+      title: "Vendor match queue could not load",
+      retryAction: "refresh-vendor-match",
+      meta: "No rate rows were changed."
+    });
+    setStatus(vendorMatchStatus, error.message, "error");
+  } finally {
+    setVendorMatchBusy(false);
+  }
+}
+
+async function runVendorMatchScope(scope) {
+  try {
+    const current = vendorMatchSummary[scope] || {};
+    let matched = Number(current.matched || 0);
+    let matchable = Number(current.matchable || 0) + Number(current.upload_matchable || 0);
+    if (!matched || !vendorMatchLoaded) {
+      setStatus(vendorMatchStatus, `Counting ${scope} rows without vendor links...`);
+      const preview = await matchVendorRateRowsByScope(scope, { dryRun: true });
+      vendorMatchSummary[scope] = preview;
+      matched = Number(preview.matched || 0);
+      matchable = Number(preview.matchable || 0) + Number(preview.upload_matchable || 0);
+    }
+
+    if (!matched) {
+      setStatus(vendorMatchStatus, `No ${scope} rows are missing vendor links.`, "warning");
+      return;
+    }
+    if (!matchable) {
+      setStatus(vendorMatchStatus, `No automatic ${scope} matches found. Download errors and correct vendor names/domains.`, "warning");
+      return;
+    }
+    if (!window.confirm(`Match vendors for ${matched.toLocaleString()} ${scope} row(s)? Type corrections are not needed for rows with confident domain/name matches.`)) {
+      setStatus(vendorMatchStatus, `${scope} vendor match cancelled.`, "warning");
+      return;
+    }
+
+    setVendorMatchBusy(true);
+    setStatus(vendorMatchStatus, `Matching ${scope} vendor links across the database...`);
+    const result = await matchVendorRateRowsByScope(scope, { dryRun: false, maxRows: matched });
+    const downloaded = downloadVendorMatchErrors(
+      (result.unmatched_errors || []).map((row) => ({ ...row, source_scope: scope })),
+      result.unmatched_errors_truncated
+    );
+    setStatus(
+      vendorMatchStatus,
+      `${numberLabel(result.updated)} ${scope} row(s) linked. ${numberLabel(result.upload_updated)} source upload(s) repaired.${downloaded ? " Error CSV downloaded." : ""}`,
+      "success"
+    );
+    vendorMatchLoaded = false;
+    await analyzeVendorMatchQueue();
+  } catch (error) {
+    setStatus(vendorMatchStatus, error.message, "error");
+  } finally {
+    setVendorMatchBusy(false);
   }
 }
 
@@ -2177,6 +2378,16 @@ vendorIntelligenceSearch?.addEventListener("input", () => {
 applyIntelligenceTagsButton?.addEventListener("click", applySelectedIntelligenceTags);
 promoteIntelligenceSelectedButton?.addEventListener("click", promoteSelectedIntelligenceVendors);
 refreshVendorFunnelButton?.addEventListener("click", loadVendorFunnel);
+refreshVendorMatchButton?.addEventListener("click", analyzeVendorMatchQueue);
+matchStagingVendorsButton?.addEventListener("click", () => runVendorMatchScope("staging"));
+matchRatewareVendorsButton?.addEventListener("click", () => runVendorMatchScope("rateware"));
+downloadVendorMatchErrorsButton?.addEventListener("click", () => {
+  const downloaded = downloadVendorMatchErrors(
+    vendorMatchRows,
+    Boolean(vendorMatchSummary.staging?.unmatched_errors_truncated || vendorMatchSummary.rateware?.unmatched_errors_truncated)
+  );
+  setStatus(vendorMatchStatus, downloaded ? "Vendor match errors CSV downloaded." : "No vendor match errors to download.", downloaded ? "success" : "warning");
+});
 vendorFunnelStrip?.addEventListener("click", (event) => {
   const button = event.target.closest("[data-funnel-stage-filter]");
   if (!button) return;
@@ -2438,7 +2649,7 @@ initAuthControls();
 requirePrivatePage()
   .then(() =>
     applyPermissionState(
-      "#save-vendor-button, #wizard-save-button, #vendor-import, #import-google-sheet-button, #select-visible-vendors-button, #clear-vendor-selection-button, #bulk-update-button, #bulk-procurement-button, #bulk-archive-vendors-button, #bulk-remove-vendors-button, #confirm-import-button, #save-segment-button, #drawer-save-button, #drawer-archive-button, #apply-intelligence-tags, #promote-intelligence-selected, [data-duplicate-inactive], [data-funnel-move]",
+      "#save-vendor-button, #wizard-save-button, #vendor-import, #import-google-sheet-button, #select-visible-vendors-button, #clear-vendor-selection-button, #bulk-update-button, #bulk-procurement-button, #bulk-archive-vendors-button, #bulk-remove-vendors-button, #confirm-import-button, #save-segment-button, #drawer-save-button, #drawer-archive-button, #apply-intelligence-tags, #promote-intelligence-selected, #match-staging-vendors, #match-rateware-vendors, [data-duplicate-inactive], [data-funnel-move]",
       "vendors:manage"
     )
   )

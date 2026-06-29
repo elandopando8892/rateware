@@ -22,6 +22,30 @@ export async function fetchVendorFunnel() {
   return await callRatewareApi("vendor_funnel");
 }
 
+function vendorMatchFilters(scope = "staging") {
+  if (scope === "rateware") {
+    return {
+      mode: "rateware",
+      quick_filter: "all",
+      needs_vendor: true
+    };
+  }
+  return {
+    mode: "staging",
+    status: "pending_review",
+    review_filter: "needs-vendor",
+    needs_vendor: true
+  };
+}
+
+export async function matchVendorRateRowsByScope(scope = "staging", { dryRun = true, maxRows = undefined } = {}) {
+  return await callRatewareApi("match_rate_vendors_by_filter", {
+    filters: vendorMatchFilters(scope),
+    dry_run: dryRun,
+    max_rows: maxRows
+  });
+}
+
 export async function applyVendorIntelligenceTags(ids = []) {
   return await callRatewareApi("apply_vendor_intelligence_tags", { ids });
 }
