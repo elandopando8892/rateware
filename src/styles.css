@@ -2510,27 +2510,30 @@ a {
 .vendor-metrics {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 12px;
+  gap: 6px;
 }
 
 .vendor-metrics article {
-  display: grid;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   gap: 8px;
-  min-height: 96px;
+  min-height: 38px;
   border: 1px solid var(--line);
-  border-radius: var(--radius);
+  border-radius: 6px;
   background: #ffffff;
-  padding: 14px;
+  padding: 6px 8px;
 }
 
 .vendor-metrics span {
   color: var(--muted);
-  font-size: 0.86rem;
-  font-weight: 760;
+  font-size: 0.64rem;
+  font-weight: 820;
+  text-transform: uppercase;
 }
 
 .vendor-metrics strong {
-  font-size: 2rem;
+  font-size: 1rem;
   line-height: 1;
 }
 
@@ -2574,17 +2577,17 @@ a {
 
 .vendor-tabs {
   display: flex;
-  gap: 8px;
+  gap: 4px;
   flex-wrap: wrap;
 }
 
 .vendor-tab {
-  min-height: 38px;
+  min-height: 30px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 6px;
   background: #ffffff;
   color: var(--muted);
-  padding: 8px 12px;
+  padding: 5px 9px;
 }
 
 .vendor-tab:hover,
@@ -2595,29 +2598,31 @@ a {
 }
 
 .vendor-workflow-tabs {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 10px;
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  overflow-x: auto;
 }
 
 .vendor-workflow-tabs .vendor-tab {
-  display: grid;
-  align-content: start;
-  gap: 3px;
-  min-height: 70px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  white-space: nowrap;
   text-align: left;
 }
 
 .vendor-workflow-tabs .vendor-tab strong {
   color: var(--ink);
-  font-size: 0.82rem;
+  font-size: 0.72rem;
 }
 
 .vendor-workflow-tabs .vendor-tab span {
   color: var(--muted);
-  font-size: 0.68rem;
+  font-size: 0.58rem;
   font-weight: 780;
-  line-height: 1.25;
+  line-height: 1;
 }
 
 .vendor-workflow-tabs .vendor-tab.is-active strong,
@@ -2705,49 +2710,53 @@ a {
 .vendor-funnel-metrics {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
+  gap: 6px;
 }
 
 .vendor-funnel-metrics article {
-  display: grid;
-  gap: 7px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  min-height: 32px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 6px;
   background: #ffffff;
-  padding: 12px;
+  padding: 5px 8px;
 }
 
 .vendor-funnel-metrics span {
   color: var(--muted);
-  font-size: 0.78rem;
+  font-size: 0.58rem;
   font-weight: 820;
+  text-transform: uppercase;
 }
 
 .vendor-funnel-metrics strong {
   color: var(--text);
-  font-size: 1.75rem;
+  font-size: 0.95rem;
   line-height: 1;
 }
 
 .vendor-funnel-strip {
   display: grid;
-  grid-template-columns: repeat(8, minmax(120px, 1fr));
-  gap: 7px;
+  grid-template-columns: repeat(8, minmax(88px, 1fr));
+  gap: 4px;
   overflow-x: auto;
-  padding-bottom: 2px;
+  padding-bottom: 1px;
 }
 
 .funnel-stage-step {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
-  gap: 2px 7px;
+  gap: 1px 5px;
   align-items: center;
-  min-height: 58px;
+  min-height: 34px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 6px;
   background: #ffffff;
   color: var(--text);
-  padding: 8px;
+  padding: 4px 6px;
   text-align: left;
 }
 
@@ -2756,24 +2765,25 @@ a {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
+  width: 18px;
+  height: 18px;
   border-radius: 999px;
   background: #eef2f4;
   color: var(--neutral);
-  font-size: 0.72rem;
+  font-size: 0.58rem;
   font-weight: 900;
 }
 
 .funnel-stage-step strong {
   overflow: hidden;
+  font-size: 0.64rem;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .funnel-stage-step small {
   color: var(--muted);
-  font-size: 0.7rem;
+  font-size: 0.54rem;
   font-weight: 760;
 }
 
@@ -2792,22 +2802,22 @@ a {
 .vendor-funnel-board {
   display: grid;
   grid-auto-flow: column;
-  grid-auto-columns: minmax(205px, 240px);
-  gap: 6px;
-  min-height: 420px;
+  grid-auto-columns: minmax(174px, 210px);
+  gap: 5px;
+  min-height: calc(100vh - 270px);
   overflow-x: auto;
-  padding-bottom: 6px;
+  padding-bottom: 4px;
 }
 
 .funnel-column {
   display: grid;
   align-content: start;
-  gap: 5px;
-  min-height: 390px;
+  gap: 4px;
+  min-height: calc(100vh - 285px);
   border: 1px solid var(--line);
-  border-radius: 7px;
+  border-radius: 6px;
   background: #f7f9fa;
-  padding: 6px;
+  padding: 5px;
 }
 
 .funnel-column.is-drop-target {
@@ -2818,47 +2828,47 @@ a {
 .funnel-column header {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px;
-  align-items: start;
-  min-height: 43px;
+  gap: 5px;
+  align-items: center;
+  min-height: 27px;
   border-bottom: 1px solid #e3e9ee;
-  padding-bottom: 5px;
+  padding-bottom: 4px;
 }
 
 .funnel-column header strong {
   color: var(--text);
-  font-size: 0.74rem;
+  font-size: 0.66rem;
 }
 
 .funnel-column header small {
   display: block;
   color: var(--muted);
-  font-size: 0.58rem;
+  font-size: 0.52rem;
   font-weight: 740;
-  line-height: 1.25;
+  line-height: 1.1;
 }
 
 .funnel-column header > span {
   border-radius: 999px;
   background: #e7ecef;
   color: var(--neutral);
-  padding: 1px 6px;
-  font-size: 0.58rem;
+  padding: 1px 5px;
+  font-size: 0.52rem;
   font-weight: 900;
 }
 
 .funnel-card-stack {
   display: grid;
-  gap: 6px;
+  gap: 4px;
 }
 
 .funnel-card {
   display: grid;
-  gap: 4px;
+  gap: 3px;
   border: 1px solid #d8e2e6;
-  border-radius: 7px;
+  border-radius: 6px;
   background: #ffffff;
-  padding: 6px;
+  padding: 5px;
   cursor: grab;
   box-shadow: 0 1px 2px rgba(22, 32, 38, 0.025);
 }
@@ -2878,20 +2888,20 @@ a {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 6px;
+  gap: 4px;
 }
 
 .funnel-card-topline strong {
   min-width: 0;
   overflow: hidden;
   color: var(--text);
-  font-size: 0.68rem;
+  font-size: 0.62rem;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .funnel-card-vendor small {
-  max-width: 116px;
+  max-width: 98px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2901,14 +2911,14 @@ a {
 .funnel-card-signals span,
 .funnel-empty-column {
   color: var(--muted);
-  font-size: 0.58rem;
+  font-size: 0.52rem;
   font-weight: 740;
 }
 
 .funnel-card-signals span {
   border-radius: 999px;
   background: #eef2f4;
-  padding: 1px 5px;
+  padding: 1px 4px;
   white-space: nowrap;
 }
 
@@ -2926,7 +2936,7 @@ a {
 
 .funnel-card-actions {
   border-top: 1px solid #eef2f5;
-  padding-top: 4px;
+  padding-top: 3px;
 }
 
 .funnel-empty-column {
@@ -5033,6 +5043,10 @@ button.location-chip:focus-visible {
   gap: 6px;
 }
 
+.funnel-card-vendor {
+  gap: 5px;
+}
+
 .vendor-identity-main > div,
 .funnel-card-vendor > div,
 .drawer-brand-line > div {
@@ -5061,6 +5075,13 @@ button.location-chip:focus-visible {
   height: 22px;
   border-radius: 5px;
   font-size: 0.58rem;
+}
+
+.vendor-logo.small {
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+  font-size: 0.54rem;
 }
 
 .vendor-logo.card {

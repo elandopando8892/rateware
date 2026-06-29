@@ -120,7 +120,7 @@ let savedSegments = [];
 let wizardStep = 0;
 let activeQuickFilter = "all";
 let activeBaseStage = "sourcing";
-let activeVendorTab = "sourcing";
+let activeVendorTab = "funnel";
 let activeDirectoryView = window.localStorage.getItem("rateware.vendorDirectoryView") || "spreadsheet";
 let activeDrawerVendorId = null;
 let vendorPageSize = 75;
@@ -1013,27 +1013,28 @@ function renderVendorFunnelCard(row) {
   const metrics = rateMetrics(row);
   const linked = numberValue(metrics.linked_rates);
   const approved = numberValue(metrics.approved_rates);
+  const contact = row.domain || row.primary_email || row.whatsapp_phone || "No contact";
+  const nextStage = funnelNextStage(row.effective_funnel_stage || row.funnel_stage || "targeted");
   return `
     <article class="funnel-card" draggable="true" data-funnel-vendor-id="${escapeHtml(row.id || row.vendor_id)}">
       <div class="funnel-card-topline">
         <div class="funnel-card-vendor">
-          ${renderVendorAvatar(row, "card")}
+          ${renderVendorAvatar(row, "small")}
           <div>
             <strong>${escapeHtml(row.vendor_name || "Unnamed vendor")}</strong>
-            <small>${escapeHtml(row.domain || row.primary_email || row.whatsapp_phone || "Missing contact")}</small>
+            <small>${escapeHtml(contact)}</small>
           </div>
         </div>
         <span class="score-pill ${escapeHtml(row.health_tone || readiness.tone)}">${escapeHtml(row.health_score || readiness.score)}%</span>
       </div>
       <div class="funnel-card-signals">
-        <span>${escapeHtml(linked)} quote${linked === 1 ? "" : "s"}</span>
-        <span>${escapeHtml(approved)} approved</span>
-        <span>${escapeHtml(funnelStageAge(row))}</span>
+        <span title="Linked quotes">${escapeHtml(linked)}Q</span>
+        <span title="Approved rates">${escapeHtml(approved)}A</span>
+        <span title="Time in stage">${escapeHtml(funnelStageAge(row))}</span>
       </div>
-      <div class="tag-list">${renderSignalChips(row.quoted_signals || row.tags, "No signal")}</div>
       <div class="funnel-card-actions">
-        <button class="small-button secondary" type="button" data-funnel-open="${escapeHtml(row.id || row.vendor_id)}">Profile</button>
-        <button class="small-button" type="button" data-funnel-move="${escapeHtml(row.id || row.vendor_id)}" data-funnel-target="${escapeHtml(funnelNextStage(row.effective_funnel_stage || row.funnel_stage || "targeted"))}">Next</button>
+        <button class="small-button secondary" type="button" data-funnel-open="${escapeHtml(row.id || row.vendor_id)}">Open</button>
+        <button class="small-button" type="button" data-funnel-move="${escapeHtml(row.id || row.vendor_id)}" data-funnel-target="${escapeHtml(nextStage)}">Next</button>
       </div>
     </article>
   `;
@@ -1054,7 +1055,7 @@ function renderVendorFunnelBoard() {
           <header>
             <div>
               <strong>${escapeHtml(stage.label)}</strong>
-              <small>${escapeHtml(stage.description || "")}</small>
+              <small>${escapeHtml(rows.length)} carrier${rows.length === 1 ? "" : "s"}</small>
             </div>
             <span>${escapeHtml(rows.length)}</span>
           </header>
@@ -2419,3 +2420,4 @@ activateVendorTab("sourcing");
 updateBulkState();
 loadSegments();
 loadVendors();
+loadVendorFunnel();
