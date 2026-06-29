@@ -3464,6 +3464,22 @@ a {
   padding-top: 3px;
 }
 
+.funnel-stage-select {
+  width: 88px;
+  min-width: 0;
+  height: 22px;
+  min-height: 22px;
+  border-radius: 4px;
+  padding: 1px 4px;
+  color: var(--text);
+  font-size: 0.58rem;
+  font-weight: 820;
+}
+
+.funnel-stage-select:disabled {
+  opacity: 0.6;
+}
+
 .funnel-empty-column {
   display: grid;
   min-height: 54px;

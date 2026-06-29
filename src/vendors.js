@@ -1285,9 +1285,11 @@ function funnelStageIndex(stageKey) {
   return Math.max(0, stages.findIndex((stage) => stage.key === stageKey));
 }
 
-function funnelNextStage(stageKey) {
+function funnelStageSelectOptions(currentStage) {
   const stages = vendorFunnelStages.length ? vendorFunnelStages : DEFAULT_FUNNEL_STAGES;
-  return stages[Math.min(stages.length - 1, funnelStageIndex(stageKey) + 1)]?.key || stageKey;
+  return stages
+    .map((stage) => `<option value="${escapeHtml(stage.key)}" ${stage.key === currentStage ? "selected" : ""}>${escapeHtml(stage.label)}</option>`)
+    .join("");
 }
 
 function funnelStageAge(row) {
@@ -1352,7 +1354,7 @@ function renderVendorFunnelCard(row) {
   const linked = numberValue(metrics.linked_rates);
   const approved = numberValue(metrics.approved_rates);
   const contact = row.domain || row.primary_email || row.whatsapp_phone || "No contact";
-  const nextStage = funnelNextStage(row.effective_funnel_stage || row.funnel_stage || "targeted");
+  const currentStage = row.effective_funnel_stage || row.funnel_stage || "targeted";
   return `
     <article class="funnel-card" draggable="true" data-funnel-vendor-id="${escapeHtml(row.id || row.vendor_id)}">
       <div class="funnel-card-topline">
@@ -1372,7 +1374,15 @@ function renderVendorFunnelCard(row) {
       </div>
       <div class="funnel-card-actions">
         <button class="small-button secondary" type="button" data-funnel-open="${escapeHtml(row.id || row.vendor_id)}">Open</button>
-        <button class="small-button" type="button" data-funnel-move="${escapeHtml(row.id || row.vendor_id)}" data-funnel-target="${escapeHtml(nextStage)}">Next</button>
+        <select
+          class="funnel-stage-select"
+          data-funnel-stage-select
+          data-funnel-vendor-id="${escapeHtml(row.id || row.vendor_id)}"
+          data-funnel-current-stage="${escapeHtml(currentStage)}"
+          aria-label="Move vendor to stage"
+        >
+          ${funnelStageSelectOptions(currentStage)}
+        </select>
       </div>
     </article>
   `;
@@ -1654,17 +1664,19 @@ async function runVendorMatchScope(scope) {
 }
 
 async function moveVendorFunnelStage(vendorId, stageKey) {
-  if (!vendorId || !stageKey) return;
+  if (!vendorId || !stageKey) return false;
   const stage = DEFAULT_FUNNEL_STAGES.find((item) => item.key === stageKey) || vendorFunnelStages.find((item) => item.key === stageKey);
-  if (!stage) return;
+  if (!stage) return false;
   setStatus(vendorFunnelStatus, `Moving vendor to ${stage.label}...`);
   try {
     await requirePrivatePage();
     await updateVendor(vendorId, { base_stage: "procurement", funnel_stage: stageKey });
     setStatus(vendorFunnelStatus, `Vendor moved to ${stage.label}.`, "success");
     await loadVendorFunnel();
+    return true;
   } catch (error) {
     setStatus(vendorFunnelStatus, error.message, "error");
+    return false;
   }
 }
 
@@ -2809,6 +2821,10 @@ vendorFunnelStrip?.addEventListener("click", (event) => {
   setActiveFunnelStage(button.dataset.funnelStageFilter, { scroll: true });
 });
 vendorFunnelBoard?.addEventListener("dragstart", (event) => {
+  if (event.target.closest("button, select, input, a")) {
+    event.preventDefault();
+    return;
+  }
   const card = event.target.closest("[data-funnel-vendor-id]");
   if (!card) return;
   event.dataTransfer.setData("text/plain", card.dataset.funnelVendorId);
@@ -2835,6 +2851,20 @@ vendorFunnelBoard?.addEventListener("drop", (event) => {
   event.preventDefault();
   column.classList.remove("is-drop-target");
   moveVendorFunnelStage(event.dataTransfer.getData("text/plain"), column.dataset.funnelDropStage);
+});
+vendorFunnelBoard?.addEventListener("change", async (event) => {
+  const select = event.target.closest("[data-funnel-stage-select]");
+  if (!select) return;
+  const vendorId = select.dataset.funnelVendorId;
+  const targetStage = select.value;
+  const currentStage = select.dataset.funnelCurrentStage;
+  if (!vendorId || !targetStage || targetStage === currentStage) return;
+  select.disabled = true;
+  const moved = await moveVendorFunnelStage(vendorId, targetStage);
+  if (!moved) {
+    select.value = currentStage;
+    select.disabled = false;
+  }
 });
 document.addEventListener("click", (event) => {
   const retryButton = event.target.closest("[data-retry-action]");
@@ -2869,10 +2899,6 @@ document.addEventListener("click", (event) => {
   if (openButton) {
     openVendorDrawer(openButton.dataset.funnelOpen);
     return;
-  }
-  const moveButton = event.target.closest("[data-funnel-move]");
-  if (moveButton) {
-    moveVendorFunnelStage(moveButton.dataset.funnelMove, moveButton.dataset.funnelTarget);
   }
 });
 vendorIntelligenceBody?.addEventListener("change", (event) => {
@@ -3093,7 +3119,7 @@ initAuthControls();
 requirePrivatePage()
   .then(() =>
     applyPermissionState(
-      "#save-vendor-button, #wizard-save-button, #vendor-import, #import-google-sheet-button, #select-visible-vendors-button, #clear-vendor-selection-button, #bulk-update-button, #bulk-procurement-button, #bulk-archive-vendors-button, #bulk-remove-vendors-button, #confirm-import-button, #save-segment-button, #drawer-save-button, #drawer-archive-button, #apply-intelligence-tags, #promote-intelligence-selected, #match-staging-vendors, #match-rateware-vendors, [data-duplicate-inactive], [data-funnel-move]",
+      "#save-vendor-button, #wizard-save-button, #vendor-import, #import-google-sheet-button, #select-visible-vendors-button, #clear-vendor-selection-button, #bulk-update-button, #bulk-procurement-button, #bulk-archive-vendors-button, #bulk-remove-vendors-button, #confirm-import-button, #save-segment-button, #drawer-save-button, #drawer-archive-button, #apply-intelligence-tags, #promote-intelligence-selected, #match-staging-vendors, #match-rateware-vendors, [data-duplicate-inactive], [data-funnel-stage-select]",
       "vendors:manage"
     )
   )
