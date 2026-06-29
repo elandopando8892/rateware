@@ -4664,6 +4664,10 @@ function vendorFunnelUpdatePatch(stage: string | null, current: Record<string, u
   return patch;
 }
 
+function normalizeVendorProfileData(value: unknown) {
+  return objectRecord(value);
+}
+
 function normalizeVendor(input: Record<string, unknown>, source = "manual") {
   const vendorName = cleanText(input.vendor_name || input.name || input.carrier || input.vendor);
   if (!vendorName) throw new Error("Vendor name is required.");
@@ -4688,6 +4692,7 @@ function normalizeVendor(input: Record<string, unknown>, source = "manual") {
     tags: normalizeTags(input.tags || input.tag || input.services || input.equipment || input.coverage),
     coverage_notes: cleanText(input.coverage_notes || input.coverage || input.lanes),
     notes: cleanText(input.notes),
+    profile_data: normalizeVendorProfileData(input.profile_data),
     base_stage: ["sourcing", "procurement", "archived"].includes(baseStage) ? baseStage : "sourcing",
     ...vendorFunnelPatch(funnelStage, now),
     source_spreadsheet_url: cleanText(input.source_spreadsheet_url),
@@ -4718,6 +4723,7 @@ function normalizeVendorPatch(input: Record<string, unknown>, current: Record<st
   }
   if (input.coverage_notes !== undefined) patch.coverage_notes = cleanText(input.coverage_notes);
   if (input.notes !== undefined) patch.notes = cleanText(input.notes);
+  if (input.profile_data !== undefined) patch.profile_data = normalizeVendorProfileData(input.profile_data);
   const status = cleanText(input.status)?.toLowerCase();
   if (status && ["active", "invited", "blocked", "inactive"].includes(status)) patch.status = status;
   const baseStage = cleanText(input.base_stage)?.toLowerCase();

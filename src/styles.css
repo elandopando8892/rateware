@@ -2535,6 +2535,121 @@ a {
   font-size: 0.66rem;
 }
 
+.vendor-profile-drawer .vendor-onboarding-profile {
+  display: grid;
+  gap: 6px;
+}
+
+.vendor-profile-drawer .onboarding-progress {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border: 1px solid #e3e9ee;
+  border-radius: 6px;
+  background: #fbfcfd;
+  padding: 6px;
+  color: var(--muted);
+  font-size: 0.64rem;
+  font-weight: 760;
+}
+
+.vendor-profile-drawer .vendor-profile-section,
+.vendor-profile-drawer .drawer-profile-section,
+.vendor-profile-drawer .profile-checklist {
+  border: 1px solid #e3e9ee;
+  border-radius: 6px;
+  background: #ffffff;
+  overflow: hidden;
+}
+
+.vendor-profile-drawer .vendor-profile-section summary,
+.vendor-profile-drawer .drawer-profile-section summary,
+.vendor-profile-drawer .profile-checklist summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 24px;
+  cursor: pointer;
+  background: #f7f9fa;
+  padding: 5px 7px;
+  color: var(--text);
+  font-size: 0.66rem;
+  font-weight: 850;
+}
+
+.vendor-profile-drawer .vendor-profile-section .vendor-profile-list {
+  padding: 7px;
+}
+
+.vendor-profile-drawer .compact-tags {
+  gap: 3px;
+}
+
+.vendor-profile-drawer .drawer-profile-editor {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: 7px;
+  border-top: 1px solid var(--line);
+  margin-top: 2px;
+  padding-top: 8px;
+}
+
+.vendor-profile-drawer .drawer-profile-fields {
+  display: grid;
+  gap: 7px;
+}
+
+.vendor-profile-drawer .drawer-profile-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  padding: 7px;
+}
+
+.vendor-profile-drawer .profile-field,
+.vendor-profile-drawer .profile-check-option {
+  min-width: 0;
+}
+
+.vendor-profile-drawer .profile-field-wide,
+.vendor-profile-drawer .profile-checklist {
+  grid-column: 1 / -1;
+}
+
+.vendor-profile-drawer .profile-checklist summary strong {
+  color: var(--muted);
+  font-size: 0.58rem;
+}
+
+.vendor-profile-drawer .profile-check-options {
+  display: grid;
+  gap: 4px;
+  max-height: 178px;
+  overflow: auto;
+  padding: 6px 7px;
+}
+
+.vendor-profile-drawer .profile-check-option {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr);
+  align-items: start;
+  gap: 5px;
+  color: var(--text);
+  font-size: 0.64rem;
+  font-weight: 680;
+  line-height: 1.2;
+}
+
+.vendor-profile-drawer .profile-check-option input {
+  min-height: 14px;
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  padding: 0;
+}
+
 .ai-suggestion-panel {
   border-top: 1px solid var(--line);
   margin-top: 18px;

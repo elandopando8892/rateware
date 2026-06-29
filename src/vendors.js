@@ -136,6 +136,8 @@ const drawerArchiveButton = document.querySelector("#drawer-archive-button");
 const drawerEditStatus = document.querySelector("#drawer-edit-status-message");
 const drawerLogoPreview = document.querySelector("#drawer-logo-preview");
 const drawerLogoFile = document.querySelector("#drawer-logo-file");
+const drawerOnboardingProfile = document.querySelector("#drawer-onboarding-profile");
+const drawerProfileFields = document.querySelector("#drawer-profile-fields");
 let allVendors = [];
 let currentVendors = [];
 let selectedVendorIds = new Set();
@@ -184,6 +186,179 @@ const DEFAULT_FUNNEL_STAGES = [
   { key: "trained", label: "Trained", description: "TMS setup or training complete." },
   { key: "activated", label: "Activated", description: "Ready for immediate use." },
   { key: "completed", label: "Completed", description: "Legal package fully signed." }
+];
+const VENDOR_ONBOARDING_SECTIONS = [
+  {
+    key: "general",
+    label: "General contact",
+    fields: [
+      { key: "full_name", label: "Nombre completo", type: "text", required: true },
+      { key: "mobile_number", label: "Numero movil", type: "text", required: true },
+      { key: "company_type", label: "Tipo de empresa", type: "select", required: true, options: ["Persona Fisica", "Persona Moral"] },
+      { key: "operating_country", label: "Pais donde opera la empresa", type: "select", required: true, options: ["Estados Unidos de America", "Mexico", "Canada"] }
+    ]
+  },
+  {
+    key: "international",
+    label: "International identity and payments",
+    fields: [
+      { key: "dba_name", label: "DBA / nombre comercial", type: "text" },
+      { key: "legal_name", label: "Nombre legal", type: "text", required: true },
+      { key: "fiscal_address", label: "Domicilio fiscal", type: "textarea", required: true },
+      { key: "usdot_number", label: "USDOT number", type: "text", required: true },
+      { key: "mc_number", label: "MC number", type: "text", required: true },
+      { key: "scac_code", label: "SCAC code", type: "text" },
+      { key: "tax_id", label: "TAX ID", type: "text", required: true },
+      { key: "bank_name", label: "Bank name", type: "text", required: true },
+      { key: "account_number", label: "Account number", type: "text", required: true },
+      { key: "routing_number", label: "Routing number", type: "text", required: true },
+      { key: "beneficiary_company", label: "Compania beneficiaria", type: "text", required: true },
+      { key: "factoring_company", label: "Tiene compania de factoraje", type: "select", required: true, options: ["Si", "No"] },
+      { key: "payment_terms", label: "Politica de pagos y terminos de credito", type: "textarea", required: true }
+    ]
+  },
+  {
+    key: "mexico",
+    label: "Mexico identity and payments",
+    fields: [
+      { key: "commercial_name", label: "Nombre comercial", type: "text" },
+      { key: "legal_name", label: "Razon social", type: "text", required: true },
+      { key: "fiscal_address", label: "Domicilio fiscal", type: "textarea", required: true },
+      { key: "caat_code", label: "CAAT code", type: "text" },
+      { key: "rfc", label: "RFC", type: "text", required: true },
+      { key: "bank_name", label: "Nombre de banco", type: "text", required: true },
+      { key: "account_number", label: "Numero de cuenta", type: "text", required: true },
+      { key: "clabe_number", label: "Numero CLABE", type: "text", required: true },
+      { key: "beneficiary_company", label: "Compania beneficiaria", type: "text", required: true },
+      { key: "factoring_company", label: "Tiene compania de factoraje", type: "select", required: true, options: ["Si", "No"] },
+      { key: "payment_terms", label: "Politica de pagos y terminos de credito", type: "textarea" }
+    ]
+  },
+  {
+    key: "carrier_profile",
+    label: "Carrier service profile",
+    fields: [
+      { key: "geographic_scope", label: "Alcance geografico", type: "checks", required: true, tagGroup: "country", options: ["Canada", "Mexico", "Estados Unidos"] },
+      {
+        key: "service_scope",
+        label: "Alcance de servicios",
+        type: "checks",
+        required: true,
+        tagGroup: "service",
+        options: [
+          "Fletes Locales MEX",
+          "Fletes Locales (en Frontera USA)",
+          "Fletes Regionales MEX",
+          "Fletes Domesticos MEX",
+          "Fletes Fronterizos (Desde/Hacia Frontera con Caja Mexicana sin Operadores B1)",
+          "Fletes Fronterizos (Desde/Hacia Frontera con Caja Americana con Operadores CDL)",
+          "Fletes Transfronterizos (Door 2 Door con Operadores B1 + Acuerdo de Intercambio)",
+          "Fletes Transfronterizos (Door 2 Door con Doble Placa sin Acuerdo de Intercambio)"
+        ]
+      },
+      {
+        key: "regional_coverage",
+        label: "Cobertura regional",
+        type: "checks",
+        required: true,
+        tagGroup: "region",
+        options: [
+          "Noreste - MX (Coahuila, Nuevo Leon, Tamaulipas)",
+          "Noroeste - MX (Chihuahua, Durango)",
+          "Pacifico - MX (Baja California, Baja California Sur, Sonora, Sinaloa, Nayarit, Colima)",
+          "Occidente - MX (Zacatecas, Aguascalientes, Jalisco, Michoacan)",
+          "Bajio - MX (San Luis Potosi, Guanajuato, Queretaro)",
+          "Golfo - MX (Veracruz)",
+          "Centro - MX (Hidalgo, Tlaxcala, Puebla, Estado de Mexico, CDMX, Morelos)",
+          "Sur - MX (Guerrero, Oaxaca)",
+          "Sureste - MX (Tabasco, Chiapas, Campeche, Yucatan, Quintana Roo)",
+          "Northeast - New England - US (CT, ME, MA, NH, RI, VT)",
+          "Northeast - Mid Atlantic - US (NJ, NY, PA)",
+          "Midwest - Northeast - US (IL, IN, MI, OH, WI)",
+          "Midwest - Northwest - US (ND, SD, IA, KS, MN, MO, NE)",
+          "South - South Atlantic - US (NC, SC, DE, DC, FL, GA, MD, VA, WV)",
+          "South - Southeast - US (AL, KY, MS, TN)",
+          "South - Southwest - US (AR, LA, OK, TX)",
+          "West - Rocky Mountains - US (AZ, CO, ID, MT, NV, NM, UT, WY)",
+          "West - Pacific - US (CA, OR, WA)",
+          "Atlantic - CA (NB, NS, PE, NL)",
+          "Central - CA (QC, ON)",
+          "Prairie - CA (AL, SK, MB)",
+          "West - CA (BC)",
+          "Northern Territories - CA (YU, NT, NU)"
+        ]
+      },
+      { key: "border_crossings", label: "Cruces fronterizos", type: "checks", tagGroup: "border", options: ["San Diego", "Calexico", "Nogales", "El Paso", "Del Rio", "Eagle Pass", "Laredo", "Pharr", "Brownsville"] },
+      { key: "mexican_ports", label: "Puertos mexicanos", type: "checks", tagGroup: "port", options: ["Altamira", "Ensenada", "Lazaro Cardenas", "Manzanillo", "Mazatlan", "Progreso", "Veracruz"] },
+      {
+        key: "value_added_services",
+        label: "Servicios logisticos de valor agregado",
+        type: "checks",
+        tagGroup: "value_add",
+        options: [
+          "Transfer (Cruces Internacionales)",
+          "Power Only (Arrastre de Semi-Remolques)",
+          "Team Driver (Doble Operador)",
+          "Hot Shots (Expeditados)",
+          "Fumigation (Fumigacion)",
+          "Cross Dock (Transbordo)",
+          "Warehousing (Almacenaje)",
+          "Packing, Picking, Shipping (Distribucion)",
+          "Rigging (Grua)",
+          "Trailer Rent (Renta de Semi-Remolques)",
+          "Custody (Custodia)",
+          "Pilot Units (Unidades Piloto)",
+          "Cargo Insurance (Seguro de Carga)",
+          "Drop & Hook (Logistica Carrusel | Quitapon de Semirremolques)",
+          "Driver Assistance (Maniobras de carga/descarga de Operador)",
+          "Last Mile (Ultima Milla)",
+          "Alcohol Permits (Permisos de Alcohol)",
+          "Over-Heavy Haul (Sobredimension / Sobrepeso)"
+        ]
+      },
+      {
+        key: "additional_capabilities",
+        label: "Capacidades adicionales",
+        type: "checks",
+        tagGroup: "capability",
+        options: [
+          "Experiencia automotriz y aeroespacial",
+          "Monitoreo 24/7 dedicado",
+          "Cuenta espejo GPS",
+          "Integracion GPS API/EDI",
+          "Sistema de gestion de flotillas / transporte",
+          "Portales de subasta online (DAT, TruckStop, Fr8App, Cargado, RXO)",
+          "Acuerdos de intercambio con lineas americanas / mexicanas"
+        ]
+      },
+      { key: "interchange_agreements", label: "Acuerdos de intercambio", type: "textarea" },
+      { key: "certifications", label: "Certificaciones", type: "checks", tagGroup: "certification", options: ["US Bonded Carrier", "TWIC Card", "Smartway", "Transporte Limpio", "Hazmat", "ACE", "FAST", "CTPAT", "OEA", "ISO90001", "R-Control"] }
+    ]
+  },
+  {
+    key: "insurance_infrastructure",
+    label: "Insurance and infrastructure",
+    fields: [
+      { key: "coverage_amounts", label: "Montos de cobertura", type: "textarea" },
+      { key: "mexico_terminal_zips", label: "Terminales Mexico ZIPs", type: "textarea" },
+      { key: "us_ca_terminal_zips", label: "Terminales USA/Canada ZIPs", type: "textarea" },
+      { key: "equipment_types", label: "Tipos de unidad disponibles", type: "checks", tagGroup: "equipment", options: ["Power Only (5a Rueda)", "Chassis (Portacontenedor)", "Conestoga (Encortinado)", "Lowboys", "Semi-lowboys", "Stepdecks", "Double Drops", "Multi-Axles (Modulares)", "Flatbed", "Dry Van", "Reefer", "Thortons", "Rabones", "3.5 tons", "1.5 tons"] },
+      { key: "equipment_notes", label: "Observaciones sobre equipos", type: "textarea" }
+    ]
+  },
+  {
+    key: "key_contacts",
+    label: "Key contacts",
+    fields: [
+      { key: "general_manager", label: "Gerente general", type: "textarea" },
+      { key: "operations_manager", label: "Gerente de operaciones", type: "textarea" },
+      { key: "safety_manager", label: "Gerente de seguridad", type: "textarea" },
+      { key: "finance_manager", label: "Gerente de finanzas", type: "textarea" },
+      { key: "commercial_manager", label: "Gerente comercial", type: "textarea" },
+      { key: "key_account_manager", label: "Gerente de cuenta clave", type: "textarea" },
+      { key: "other_contacts", label: "Otros contactos clave", type: "textarea" }
+    ]
+  }
 ];
 const VENDOR_SHEET_COLUMNS = [
   { key: "select", label: "Select", locked: true },
@@ -2197,6 +2372,203 @@ function setDrawerValue(selector, value) {
   document.querySelector(selector).innerHTML = value || '<span class="muted-text">Not captured</span>';
 }
 
+function vendorProfileData(vendor = {}) {
+  const value = vendor.profile_data;
+  if (value && typeof value === "object" && !Array.isArray(value)) return value;
+  if (typeof value === "string" && value.trim()) {
+    try {
+      const parsed = JSON.parse(value);
+      return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+  return {};
+}
+
+function profileFieldValue(profile, sectionKey, fieldKey) {
+  const section = profile?.[sectionKey];
+  return section && typeof section === "object" && !Array.isArray(section) ? section[fieldKey] : undefined;
+}
+
+function profileArrayValue(value) {
+  if (Array.isArray(value)) return value.map((item) => String(item).trim()).filter(Boolean);
+  if (typeof value === "string") {
+    return value
+      .split(/[;,]/)
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+  return [];
+}
+
+function profileScalarValue(value) {
+  if (Array.isArray(value)) return value.filter(Boolean).join(", ");
+  return String(value ?? "").trim();
+}
+
+function profileHasValue(value, field) {
+  return field.type === "checks" ? profileArrayValue(value).length > 0 : Boolean(profileScalarValue(value));
+}
+
+function onboardingCompletion(profile) {
+  const fields = VENDOR_ONBOARDING_SECTIONS.flatMap((section) => section.fields.map((field) => ({ ...field, section: section.key })));
+  const filled = fields.filter((field) => profileHasValue(profileFieldValue(profile, field.section, field.key), field)).length;
+  const required = fields.filter((field) => field.required);
+  const requiredFilled = required.filter((field) => profileHasValue(profileFieldValue(profile, field.section, field.key), field)).length;
+  return { total: fields.length, filled, required: required.length, requiredFilled };
+}
+
+function renderProfileValue(value, field) {
+  if (field.type === "checks") {
+    const values = profileArrayValue(value);
+    if (!values.length) return "";
+    const visible = values.slice(0, 5).map((item) => `<span class="tag-chip" title="${escapeHtml(item)}">${escapeHtml(item)}</span>`).join("");
+    const extra = values.length > 5 ? `<span class="status-pill">+${values.length - 5}</span>` : "";
+    return `<div class="tag-list compact-tags">${visible}${extra}</div>`;
+  }
+  return escapeHtml(profileScalarValue(value));
+}
+
+function renderOnboardingProfile(vendor) {
+  const profile = vendorProfileData(vendor);
+  const completion = onboardingCompletion(profile);
+  if (!completion.filled) {
+    return `
+      <div class="empty-state compact-empty">
+        <strong>No onboarding profile captured</strong>
+        <span>Use Edit profile to capture identity, coverage, equipment, insurance, and key contacts.</span>
+      </div>
+    `;
+  }
+
+  const sections = VENDOR_ONBOARDING_SECTIONS.map((section) => {
+    const rows = section.fields
+      .map((field) => {
+        const value = profileFieldValue(profile, section.key, field.key);
+        if (!profileHasValue(value, field)) return "";
+        return `
+          <div>
+            <dt>${escapeHtml(field.label)}</dt>
+            <dd>${renderProfileValue(value, field)}</dd>
+          </div>
+        `;
+      })
+      .filter(Boolean)
+      .join("");
+    if (!rows) return "";
+    return `
+      <details class="vendor-profile-section" ${section.key === "carrier_profile" || section.key === "general" ? "open" : ""}>
+        <summary>${escapeHtml(section.label)}</summary>
+        <dl class="vendor-profile-list">${rows}</dl>
+      </details>
+    `;
+  }).join("");
+
+  return `
+    <div class="onboarding-progress">
+      <span class="score-pill strong">${completion.filled}/${completion.total} fields</span>
+      <span>${completion.requiredFilled}/${completion.required} required fields</span>
+    </div>
+    ${sections}
+  `;
+}
+
+function renderProfileInput(section, field, value) {
+  const common = `data-profile-input data-profile-section="${escapeHtml(section.key)}" data-profile-field="${escapeHtml(field.key)}"`;
+  const required = field.required ? ' <span aria-hidden="true">*</span>' : "";
+  if (field.type === "textarea") {
+    return `
+      <label class="profile-field profile-field-wide">
+        ${escapeHtml(field.label)}${required}
+        <textarea ${common} rows="2">${escapeHtml(profileScalarValue(value))}</textarea>
+      </label>
+    `;
+  }
+  if (field.type === "select") {
+    const current = profileScalarValue(value);
+    const options = Array.from(new Set([...(field.options || []), current].filter(Boolean)));
+    return `
+      <label class="profile-field">
+        ${escapeHtml(field.label)}${required}
+        <select ${common}>
+          <option value=""></option>
+          ${options.map((option) => `<option value="${escapeHtml(option)}" ${option === current ? "selected" : ""}>${escapeHtml(option)}</option>`).join("")}
+        </select>
+      </label>
+    `;
+  }
+  if (field.type === "checks") {
+    const selected = new Set(profileArrayValue(value));
+    return `
+      <details class="profile-checklist">
+        <summary>
+          <span>${escapeHtml(field.label)}${required}</span>
+          <strong>${selected.size} selected</strong>
+        </summary>
+        <div class="profile-check-options">
+          ${(field.options || []).map((option) => `
+            <label class="profile-check-option">
+              <input type="checkbox" data-profile-check data-profile-section="${escapeHtml(section.key)}" data-profile-field="${escapeHtml(field.key)}" value="${escapeHtml(option)}" ${selected.has(option) ? "checked" : ""} />
+              <span>${escapeHtml(option)}</span>
+            </label>
+          `).join("")}
+        </div>
+      </details>
+    `;
+  }
+  return `
+    <label class="profile-field">
+      ${escapeHtml(field.label)}${required}
+      <input ${common} value="${escapeHtml(profileScalarValue(value))}" />
+    </label>
+  `;
+}
+
+function renderOnboardingEditor(vendor) {
+  if (!drawerProfileFields) return;
+  const profile = vendorProfileData(vendor);
+  drawerProfileFields.innerHTML = VENDOR_ONBOARDING_SECTIONS.map((section) => `
+    <details class="drawer-profile-section" ${["general", "carrier_profile"].includes(section.key) ? "open" : ""}>
+      <summary>${escapeHtml(section.label)}</summary>
+      <div class="drawer-profile-grid">
+        ${section.fields.map((field) => renderProfileInput(section, field, profileFieldValue(profile, section.key, field.key))).join("")}
+      </div>
+    </details>
+  `).join("");
+}
+
+function readDrawerProfileData() {
+  const base = vendorProfileData(findVendorById(activeDrawerVendorId) || {});
+  const known = {};
+  VENDOR_ONBOARDING_SECTIONS.forEach((section) => {
+    const sectionValues = {};
+    section.fields.forEach((field) => {
+      if (field.type === "checks") {
+        const values = Array.from(drawerProfileFields?.querySelectorAll(`[data-profile-check][data-profile-section="${section.key}"][data-profile-field="${field.key}"]:checked`) || [])
+          .map((input) => input.value)
+          .filter(Boolean);
+        if (values.length) sectionValues[field.key] = values;
+        return;
+      }
+      const input = drawerProfileFields?.querySelector(`[data-profile-input][data-profile-section="${section.key}"][data-profile-field="${field.key}"]`);
+      const value = input ? String(input.value || "").trim() : "";
+      if (value) sectionValues[field.key] = value;
+    });
+    known[section.key] = sectionValues;
+  });
+
+  const next = { ...base };
+  VENDOR_ONBOARDING_SECTIONS.forEach((section) => {
+    if (Object.keys(known[section.key]).length) {
+      next[section.key] = known[section.key];
+    } else {
+      delete next[section.key];
+    }
+  });
+  return next;
+}
+
 function renderDrawerBadges(vendor) {
   const badges = [
     vendor.base_stage || "sourcing",
@@ -2367,6 +2739,7 @@ function openVendorDrawer(vendorId, options = {}) {
   setDrawerValue("#drawer-coverage", escapeHtml(vendor.coverage_notes));
   setDrawerValue("#drawer-duplicates", renderDuplicateSignals(vendor));
   setDrawerValue("#drawer-notes", escapeHtml(vendor.notes));
+  if (drawerOnboardingProfile) drawerOnboardingProfile.innerHTML = renderOnboardingProfile(vendor);
   document.querySelector("#drawer-ai-suggestions").innerHTML = renderEnrichmentSuggestions(vendor);
   document.querySelector("#drawer-edit-name").value = vendor.vendor_name || "";
   document.querySelector("#drawer-edit-domain").value = vendor.domain || "";
@@ -2379,6 +2752,7 @@ function openVendorDrawer(vendorId, options = {}) {
   document.querySelector("#drawer-edit-tags").value = splitTags(vendor.tags).join(", ");
   document.querySelector("#drawer-edit-coverage").value = vendor.coverage_notes || "";
   document.querySelector("#drawer-edit-notes").value = vendor.notes || "";
+  renderOnboardingEditor(vendor);
   if (drawerLogoFile) drawerLogoFile.value = "";
   drawerArchiveButton.textContent = vendor.base_stage === "archived" ? "Restore to Sourcing" : "Archive vendor";
   setStatus(drawerEditStatus, "");
@@ -2398,7 +2772,8 @@ function readDrawerPatch() {
     status: document.querySelector("#drawer-edit-status").value,
     tags: splitTags(document.querySelector("#drawer-edit-tags").value),
     coverage_notes: document.querySelector("#drawer-edit-coverage").value,
-    notes: document.querySelector("#drawer-edit-notes").value
+    notes: document.querySelector("#drawer-edit-notes").value,
+    profile_data: readDrawerProfileData()
   };
 }
 
