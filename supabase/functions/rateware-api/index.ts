@@ -4828,6 +4828,206 @@ async function buildVendorOnboardingGaps(supabase: ReturnType<typeof createClien
   };
 }
 
+function hasCorrectionValue(value: unknown): boolean {
+  if (Array.isArray(value)) return value.some(hasCorrectionValue);
+  if (typeof value === "object" && value !== null) return Object.values(value).some(hasCorrectionValue);
+  return Boolean(cleanText(value));
+}
+
+function compactVendorProfileData(profile: Record<string, unknown>) {
+  const compact: Record<string, Record<string, unknown>> = {};
+  for (const [sectionKey, sectionValue] of Object.entries(profile)) {
+    const section = objectRecord(sectionValue);
+    for (const [fieldKey, value] of Object.entries(section)) {
+      if (!hasCorrectionValue(value)) continue;
+      compact[sectionKey] ||= {};
+      compact[sectionKey][fieldKey] = Array.isArray(value)
+        ? value.map((item) => cleanText(item)).filter(Boolean)
+        : value;
+    }
+  }
+  return compact;
+}
+
+function mergeVendorProfileData(current: Record<string, unknown>, correction: Record<string, unknown>) {
+  const merged: Record<string, Record<string, unknown>> = {};
+  for (const [sectionKey, sectionValue] of Object.entries(current)) {
+    const section = objectRecord(sectionValue);
+    if (Object.keys(section).length) merged[sectionKey] = { ...section };
+  }
+  for (const [sectionKey, sectionValue] of Object.entries(compactVendorProfileData(correction))) {
+    merged[sectionKey] = {
+      ...(merged[sectionKey] || {}),
+      ...objectRecord(sectionValue)
+    };
+  }
+  return merged;
+}
+
+function compactVendorCorrectionInput(input: Record<string, unknown>, current: Record<string, unknown>) {
+  const patch: Record<string, unknown> = {};
+  const cleanFields = [
+    "vendor_name",
+    "legal_name",
+    "domain",
+    "contact_name",
+    "primary_email",
+    "whatsapp_phone",
+    "preferred_channel",
+    "logo_url",
+    "coverage_notes",
+    "notes",
+    "base_stage",
+    "funnel_stage",
+    "status"
+  ];
+
+  for (const field of cleanFields) {
+    if (hasCorrectionValue(input[field])) patch[field] = input[field];
+  }
+
+  const tags = normalizeTags(input.tags);
+  if (tags.length) patch.tags = tags;
+
+  const correctionProfile = compactVendorProfileData(normalizeVendorProfileData(input.profile_data));
+  if (Object.keys(correctionProfile).length) {
+    patch.profile_data = mergeVendorProfileData(normalizeVendorProfileData(current.profile_data), correctionProfile);
+  }
+
+  return patch;
+}
+
+async function uniqueVendorMatch(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_email: string | null },
+  column: string,
+  value: string,
+  matchBy: string
+) {
+  const result = await supabase
+    .from("vendors")
+    .select("*")
+    .eq("owner_email", user.owner_email)
+    .eq(column, value)
+    .limit(2);
+  if (result.error) throw result.error;
+  const rows = (result.data || []) as Record<string, unknown>[];
+  if (rows.length === 1) return { vendor: rows[0], matchBy };
+  if (rows.length > 1) return { error: `Ambiguous ${matchBy}: ${value}` };
+  return null;
+}
+
+async function findVendorForOnboardingCorrection(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_email: string | null },
+  input: Record<string, unknown>
+) {
+  const vendorId = cleanText(input.vendor_id || input.id);
+  if (vendorId) {
+    const match = await uniqueVendorMatch(supabase, user, "id", vendorId, "vendor_id");
+    if (match) return match;
+  }
+
+  const domain = normalizeDomain(input.domain || input.vendor_domain || input.primary_email);
+  if (domain) {
+    const match = await uniqueVendorMatch(supabase, user, "domain", domain, "domain");
+    if (match) return match;
+  }
+
+  const email = normalizeEmail(input.primary_email || input.email);
+  if (email) {
+    const match = await uniqueVendorMatch(supabase, user, "primary_email", email, "primary_email");
+    if (match) return match;
+  }
+
+  const vendorName = cleanText(input.vendor_name || input.vendor || input.carrier || input.name);
+  if (vendorName) {
+    const match = await uniqueVendorMatch(supabase, user, "vendor_name", vendorName, "vendor_name");
+    if (match) return match;
+  }
+
+  return { error: "Missing vendor_id, domain, email, or vendor_name" };
+}
+
+async function importVendorOnboardingCorrections(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_user_id: string | null; owner_email: string | null },
+  vendors: unknown[]
+) {
+  const inputs = vendors.map(objectRecord).filter((row) => hasCorrectionValue(row)).slice(0, 5000);
+  let updated = 0;
+  let skipped = 0;
+  const rows: Record<string, unknown>[] = [];
+  const errors: Record<string, unknown>[] = [];
+
+  async function processCorrection(input: Record<string, unknown>) {
+    const match = await findVendorForOnboardingCorrection(supabase, user, input);
+    if (!match || !("vendor" in match) || !match.vendor) {
+      skipped += 1;
+      errors.push({
+        vendor_id: cleanText(input.vendor_id || input.id),
+        vendor_name: cleanText(input.vendor_name),
+        domain: normalizeDomain(input.domain),
+        error_reason: match && "error" in match ? match.error : "No matching vendor found"
+      });
+      return;
+    }
+
+    const patchInput = compactVendorCorrectionInput(input, match.vendor);
+    if (!Object.keys(patchInput).length) {
+      skipped += 1;
+      errors.push({
+        vendor_id: cleanText(match.vendor.id),
+        vendor_name: cleanText(match.vendor.vendor_name),
+        domain: normalizeDomain(match.vendor.domain),
+        error_reason: "No correction values found"
+      });
+      return;
+    }
+
+    const patch = normalizeVendorPatch(patchInput, match.vendor);
+    if (patch.vendor_name === null) {
+      skipped += 1;
+      errors.push({
+        vendor_id: cleanText(match.vendor.id),
+        vendor_name: cleanText(match.vendor.vendor_name),
+        domain: normalizeDomain(match.vendor.domain),
+        error_reason: "Vendor name cannot be blank"
+      });
+      return;
+    }
+
+    const result = await supabase
+      .from("vendors")
+      .update(patch)
+      .eq("owner_email", user.owner_email)
+      .eq("id", match.vendor.id)
+      .select()
+      .single();
+    if (result.error) throw result.error;
+    updated += 1;
+    rows.push(result.data);
+  }
+
+  for (const batch of chunkValues(inputs, 20)) {
+    await Promise.all(batch.map(processCorrection));
+  }
+
+  if (updated) {
+    await writeAuditLog(
+      supabase,
+      user,
+      "vendor.onboarding_gaps.import",
+      "vendors",
+      null,
+      `Applied ${updated} vendor onboarding correction(s)`,
+      { updated, skipped, error_count: errors.length }
+    );
+  }
+
+  return { updated, skipped, rows, errors: errors.slice(0, 200), total_rows: inputs.length };
+}
+
 function normalizeImportedVendor(row: Record<string, unknown>, source = "google_sheet") {
   const profileData = readImportedVendorProfileData(row);
   return {
@@ -7306,6 +7506,12 @@ Deno.serve(async (request) => {
 
     if (body.action === "vendor_onboarding_gaps") {
       const result = await buildVendorOnboardingGaps(supabase, user);
+      return jsonResponse(result);
+    }
+
+    if (body.action === "import_vendor_onboarding_corrections") {
+      const vendors = Array.isArray(body.vendors) ? body.vendors : [];
+      const result = await importVendorOnboardingCorrections(supabase, user, vendors);
       return jsonResponse(result);
     }
 

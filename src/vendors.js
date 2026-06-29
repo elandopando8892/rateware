@@ -12,6 +12,7 @@ import {
   fetchVendorOnboardingGaps,
   fetchVendorSegments,
   fetchVendors,
+  importVendorOnboardingCorrections,
   importVendorsFromGoogleSheet,
   importVendors,
   matchVendorRateRowsByScope,
@@ -71,6 +72,8 @@ const coverageFilter = document.querySelector("#vendor-coverage-filter");
 const clearVendorFiltersButton = document.querySelector("#clear-vendor-filters");
 const refreshButton = document.querySelector("#refresh-vendors-button");
 const downloadOnboardingGapsButton = document.querySelector("#download-onboarding-gaps-button");
+const importOnboardingGapsButton = document.querySelector("#import-onboarding-gaps-button");
+const vendorGapsImportInput = document.querySelector("#vendor-gaps-import");
 const vendorOnboardingGapsStatus = document.querySelector("#vendor-onboarding-gaps-status");
 const vendorPageStatus = document.querySelector("#vendor-page-status");
 const vendorPageSizeSelect = document.querySelector("#vendor-page-size");
@@ -2649,13 +2652,15 @@ function readSegmentForm() {
 function normalizeImportedRow(row) {
   const profile_data = readImportedProfileData(row);
   return {
+    id: row.id || row.vendor_id || row["Vendor ID"],
+    vendor_id: row.vendor_id || row.id || row["Vendor ID"],
     vendor_name: row.vendor_name || row.vendor || row.carrier || row.name || row["Vendor"] || row["Carrier"],
     legal_name: row.legal_name || row["Legal Name"],
     domain: row.domain || row.vendor_domain || row["Domain"],
     contact_name: row.contact_name || row.contact || row["Contact"],
     primary_email: row.primary_email || row.email || row["Email"] || row["Primary Email"],
     whatsapp_phone: row.whatsapp_phone || row.whatsapp || row.phone || row["WhatsApp"] || row["Phone"],
-    preferred_channel: row.preferred_channel || row.channel || row["Channel"] || "email",
+    preferred_channel: row.preferred_channel || row.channel || row["Channel"],
     logo_url: row.logo_url || row.logo || row.image_url || row["Logo URL"] || row["Logo"] || row["Image URL"],
     tags: Array.from(new Set([...splitTags(row.tags || row.tag || row.services || row.equipment || row.coverage || row["Tags"] || row["Equipment"]), ...profileDerivedTags(profile_data)])),
     coverage_notes: row.coverage_notes || row.coverage || row.lanes || row["Coverage"] || row["Lanes"],
@@ -3266,6 +3271,40 @@ async function parseVendorFile(file) {
   return XLSX.utils.sheet_to_json(firstSheet, { defval: "" }).map(normalizeImportedRow);
 }
 
+function hasVendorCorrectionIdentifier(row) {
+  return Boolean(row?.vendor_id || row?.id || row?.domain || row?.vendor_name || row?.primary_email);
+}
+
+async function importOnboardingGapCorrections(file) {
+  if (!file || !importOnboardingGapsButton) return;
+  importOnboardingGapsButton.disabled = true;
+  setStatus(vendorOnboardingGapsStatus, "Applying onboarding corrections...");
+
+  try {
+    await requirePrivatePage();
+    const vendors = (await parseVendorFile(file))
+      .filter(hasVendorCorrectionIdentifier)
+      .map((vendor) => ({
+        ...vendor,
+        tags: splitTags(vendor.tags)
+      }));
+    if (!vendors.length) {
+      setStatus(vendorOnboardingGapsStatus, "No usable correction rows found. Keep vendor_id, domain, or vendor_name in the file.", "error");
+      return;
+    }
+    const result = await importVendorOnboardingCorrections(vendors);
+    const updated = Number(result.updated || 0);
+    const skipped = Number(result.skipped || 0);
+    const message = `Applied ${updated} onboarding correction(s).${skipped ? ` ${skipped} row(s) could not be matched.` : ""}`;
+    setStatus(vendorOnboardingGapsStatus, message, skipped ? "warning" : "success");
+    await loadVendors();
+  } catch (error) {
+    setStatus(vendorOnboardingGapsStatus, error.message, "error");
+  } finally {
+    importOnboardingGapsButton.disabled = false;
+  }
+}
+
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
   const button = document.querySelector("#save-vendor-button");
@@ -3349,6 +3388,16 @@ importInput.addEventListener("change", async () => {
 });
 
 templateButton.addEventListener("click", downloadVendorTemplate);
+
+importOnboardingGapsButton?.addEventListener("click", () => {
+  vendorGapsImportInput?.click();
+});
+
+vendorGapsImportInput?.addEventListener("change", async () => {
+  const [file] = vendorGapsImportInput.files || [];
+  await importOnboardingGapCorrections(file);
+  vendorGapsImportInput.value = "";
+});
 
 googleImportButton?.addEventListener("click", async () => {
   const url = googleSheetUrlInput.value.trim();
@@ -3910,7 +3959,7 @@ initAuthControls();
 requirePrivatePage()
   .then(() =>
     applyPermissionState(
-      "#save-vendor-button, #wizard-save-button, #vendor-import, #import-google-sheet-button, #download-onboarding-gaps-button, #select-visible-vendors-button, #clear-vendor-selection-button, #bulk-update-button, #bulk-procurement-button, #bulk-archive-vendors-button, #bulk-remove-vendors-button, #confirm-import-button, #save-segment-button, #drawer-save-button, #drawer-archive-button, #apply-intelligence-tags, #promote-intelligence-selected, #match-staging-vendors, #match-rateware-vendors, [data-duplicate-inactive], [data-funnel-stage-select]",
+      "#save-vendor-button, #wizard-save-button, #vendor-import, #vendor-gaps-import, #import-google-sheet-button, #download-onboarding-gaps-button, #import-onboarding-gaps-button, #select-visible-vendors-button, #clear-vendor-selection-button, #bulk-update-button, #bulk-procurement-button, #bulk-archive-vendors-button, #bulk-remove-vendors-button, #confirm-import-button, #save-segment-button, #drawer-save-button, #drawer-archive-button, #apply-intelligence-tags, #promote-intelligence-selected, #match-staging-vendors, #match-rateware-vendors, [data-duplicate-inactive], [data-funnel-stage-select]",
       "vendors:manage"
     )
   )

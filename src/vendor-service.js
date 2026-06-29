@@ -26,6 +26,10 @@ export async function fetchVendorOnboardingGaps() {
   return await callRatewareApi("vendor_onboarding_gaps");
 }
 
+export async function importVendorOnboardingCorrections(vendors) {
+  return await callRatewareApi("import_vendor_onboarding_corrections", { vendors });
+}
+
 function vendorMatchFilters(scope = "staging") {
   if (scope === "rateware") {
     return {
