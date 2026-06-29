@@ -1391,7 +1391,7 @@ function renderVendorFunnelBoard() {
     return;
   }
   const visibleStages = vendorFunnelHideEmptyStages
-    ? stages.filter((stage) => funnelStageRows(stage.key, filteredRows).length)
+    ? stages.filter((stage) => stage.key === activeFunnelStage || funnelStageRows(stage.key, filteredRows).length)
     : stages;
   vendorFunnelBoard.innerHTML = visibleStages
     .map((stage) => {
@@ -1399,7 +1399,7 @@ function renderVendorFunnelBoard() {
       const visibleRows = rows.slice(0, funnelStageLimit(stage.key));
       const hiddenRows = rows.length - visibleRows.length;
       return `
-        <section class="funnel-column" data-funnel-drop-stage="${escapeHtml(stage.key)}">
+        <section class="funnel-column ${stage.key === activeFunnelStage ? "is-active-stage" : ""}" data-funnel-drop-stage="${escapeHtml(stage.key)}">
           <header>
             <div>
               <strong>${escapeHtml(stage.label)}</strong>
@@ -1420,6 +1420,32 @@ function renderVendorFunnelBoard() {
       `;
     })
     .join("");
+}
+
+function focusVendorFunnelStage(stageKey = activeFunnelStage) {
+  if (!vendorFunnelBoard || !stageKey) return false;
+  const column = Array.from(vendorFunnelBoard.querySelectorAll("[data-funnel-drop-stage]"))
+    .find((item) => item.dataset.funnelDropStage === stageKey);
+  if (!column) return false;
+  column.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+  return true;
+}
+
+function setActiveFunnelStage(stageKey, { scroll = false } = {}) {
+  if (!stageKey) return;
+  activeFunnelStage = stageKey;
+  renderVendorFunnelStrip();
+  renderVendorFunnelBoard();
+  if (scroll) {
+    window.requestAnimationFrame(() => {
+      const focused = focusVendorFunnelStage(stageKey);
+      setStatus(
+        vendorFunnelStatus,
+        focused ? `Focused ${stageLabel(stageKey)} stage.` : `${stageLabel(stageKey)} stage has no visible column.`,
+        focused ? "neutral" : "warning"
+      );
+    });
+  }
 }
 
 function renderVendorFunnel(result = {}) {
@@ -2780,8 +2806,7 @@ downloadVendorMatchErrorsButton?.addEventListener("click", () => {
 vendorFunnelStrip?.addEventListener("click", (event) => {
   const button = event.target.closest("[data-funnel-stage-filter]");
   if (!button) return;
-  activeFunnelStage = button.dataset.funnelStageFilter;
-  renderVendorFunnelStrip();
+  setActiveFunnelStage(button.dataset.funnelStageFilter, { scroll: true });
 });
 vendorFunnelBoard?.addEventListener("dragstart", (event) => {
   const card = event.target.closest("[data-funnel-vendor-id]");

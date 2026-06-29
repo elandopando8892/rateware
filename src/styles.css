@@ -3312,6 +3312,12 @@ a {
   background: #eef9f8;
 }
 
+.funnel-column.is-active-stage {
+  border-color: #78b9b1;
+  background: #f4fbfa;
+  box-shadow: inset 0 0 0 1px rgba(18, 128, 118, 0.12);
+}
+
 .funnel-column header {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
