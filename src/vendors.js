@@ -103,6 +103,11 @@ const refreshVendorFunnelButton = document.querySelector("#refresh-vendor-funnel
 const vendorFunnelStatus = document.querySelector("#vendor-funnel-status");
 const vendorFunnelStrip = document.querySelector("#vendor-funnel-strip");
 const vendorFunnelBoard = document.querySelector("#vendor-funnel-board");
+const vendorFunnelSearch = document.querySelector("#vendor-funnel-search");
+const vendorFunnelHealthFilter = document.querySelector("#vendor-funnel-health-filter");
+const vendorFunnelQuoteFilter = document.querySelector("#vendor-funnel-quote-filter");
+const vendorFunnelHideEmpty = document.querySelector("#vendor-funnel-hide-empty");
+const clearVendorFunnelFiltersButton = document.querySelector("#clear-vendor-funnel-filters");
 const vfTotal = document.querySelector("#vf-total");
 const vfActivationRate = document.querySelector("#vf-activation-rate");
 const vfNested = document.querySelector("#vf-nested");
@@ -154,6 +159,10 @@ const vendorIntelligencePageSize = 500;
 let vendorFunnelStages = [];
 let vendorFunnelRows = [];
 let activeFunnelStage = "targeted";
+let vendorFunnelSearchTerm = "";
+let vendorFunnelHealthValue = "";
+let vendorFunnelQuoteValue = "";
+let vendorFunnelHideEmptyStages = false;
 let vendorMatchRows = [];
 let vendorMatchLoaded = false;
 let vendorMatchSummary = {
@@ -1200,8 +1209,52 @@ async function promoteSelectedIntelligenceVendors() {
   }
 }
 
-function funnelStageRows(stageKey) {
-  return vendorFunnelRows.filter((row) => (row.effective_funnel_stage || row.funnel_stage || "targeted") === stageKey);
+function funnelSearchText(row) {
+  return [
+    row.vendor_name,
+    row.legal_name,
+    row.domain,
+    row.primary_email,
+    row.whatsapp_phone,
+    row.coverage_notes,
+    row.notes,
+    splitTags(row.tags).join(" ")
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+}
+
+function funnelRowMatchesHealth(row) {
+  if (!vendorFunnelHealthValue) return true;
+  const score = Number(row.health_score || vendorReadiness(row).score || 0);
+  if (vendorFunnelHealthValue === "ready") return score >= 85;
+  if (vendorFunnelHealthValue === "cleanup") return score >= 65 && score < 85;
+  if (vendorFunnelHealthValue === "incomplete") return score < 65;
+  return true;
+}
+
+function funnelRowMatchesQuotes(row) {
+  if (!vendorFunnelQuoteValue) return true;
+  const metrics = rateMetrics(row);
+  const linked = numberValue(metrics.linked_rates);
+  const approved = numberValue(metrics.approved_rates);
+  if (vendorFunnelQuoteValue === "linked") return linked > 0;
+  if (vendorFunnelQuoteValue === "approved") return approved > 0;
+  if (vendorFunnelQuoteValue === "missing") return linked === 0;
+  return true;
+}
+
+function filteredVendorFunnelRows() {
+  const term = vendorFunnelSearchTerm.trim().toLowerCase();
+  return vendorFunnelRows.filter((row) => {
+    const matchesSearch = !term || funnelSearchText(row).includes(term);
+    return matchesSearch && funnelRowMatchesHealth(row) && funnelRowMatchesQuotes(row);
+  });
+}
+
+function funnelStageRows(stageKey, rows = filteredVendorFunnelRows()) {
+  return rows.filter((row) => (row.effective_funnel_stage || row.funnel_stage || "targeted") === stageKey);
 }
 
 function stageLabel(stageKey) {
@@ -1258,10 +1311,11 @@ function renderVendorFunnelMetrics(summary = {}) {
 function renderVendorFunnelStrip() {
   if (!vendorFunnelStrip) return;
   const stages = vendorFunnelStages.length ? vendorFunnelStages : DEFAULT_FUNNEL_STAGES;
+  const filteredRows = filteredVendorFunnelRows();
   vendorFunnelStrip.innerHTML = stages
     .map((stage, index) => {
-      const rows = funnelStageRows(stage.key);
-      const denominator = vendorFunnelRows.length || 1;
+      const rows = funnelStageRows(stage.key, filteredRows);
+      const denominator = filteredRows.length || 1;
       return `
         <button class="funnel-stage-step ${stage.key === activeFunnelStage ? "is-active" : ""}" type="button" data-funnel-stage-filter="${escapeHtml(stage.key)}">
           <span>${escapeHtml(index + 1)}</span>
@@ -1308,13 +1362,21 @@ function renderVendorFunnelCard(row) {
 function renderVendorFunnelBoard() {
   if (!vendorFunnelBoard) return;
   const stages = vendorFunnelStages.length ? vendorFunnelStages : DEFAULT_FUNNEL_STAGES;
+  const filteredRows = filteredVendorFunnelRows();
   if (!vendorFunnelRows.length) {
     vendorFunnelBoard.innerHTML = '<div class="empty-state"><strong>No procurement funnel yet</strong><span>Move vendors from Sourcing Base into Procurement Base to start the funnel.</span></div>';
     return;
   }
-  vendorFunnelBoard.innerHTML = stages
+  if (!filteredRows.length) {
+    vendorFunnelBoard.innerHTML = '<div class="empty-state"><strong>No vendors match these filters</strong><span>Clear pipeline filters or adjust the search.</span></div>';
+    return;
+  }
+  const visibleStages = vendorFunnelHideEmptyStages
+    ? stages.filter((stage) => funnelStageRows(stage.key, filteredRows).length)
+    : stages;
+  vendorFunnelBoard.innerHTML = visibleStages
     .map((stage) => {
-      const rows = funnelStageRows(stage.key);
+      const rows = funnelStageRows(stage.key, filteredRows);
       return `
         <section class="funnel-column" data-funnel-drop-stage="${escapeHtml(stage.key)}">
           <header>
@@ -1342,6 +1404,31 @@ function renderVendorFunnel(result = {}) {
   renderVendorFunnelBoard();
 }
 
+function renderVendorFunnelFilters() {
+  if (vendorFunnelSearch) vendorFunnelSearch.value = vendorFunnelSearchTerm;
+  if (vendorFunnelHealthFilter) vendorFunnelHealthFilter.value = vendorFunnelHealthValue;
+  if (vendorFunnelQuoteFilter) vendorFunnelQuoteFilter.value = vendorFunnelQuoteValue;
+  if (vendorFunnelHideEmpty) vendorFunnelHideEmpty.checked = vendorFunnelHideEmptyStages;
+}
+
+function applyVendorFunnelFilters({ announce = true } = {}) {
+  renderVendorFunnelFilters();
+  renderVendorFunnelStrip();
+  renderVendorFunnelBoard();
+  if (announce) {
+    const visible = filteredVendorFunnelRows().length;
+    setStatus(vendorFunnelStatus, `${visible} of ${vendorFunnelRows.length} procurement vendor(s) visible.`, "neutral");
+  }
+}
+
+function clearVendorFunnelFilters() {
+  vendorFunnelSearchTerm = "";
+  vendorFunnelHealthValue = "";
+  vendorFunnelQuoteValue = "";
+  vendorFunnelHideEmptyStages = false;
+  applyVendorFunnelFilters();
+}
+
 async function loadVendorFunnel() {
   if (!vendorFunnelBoard) return;
   if (refreshVendorFunnelButton) refreshVendorFunnelButton.disabled = true;
@@ -1355,6 +1442,7 @@ async function loadVendorFunnel() {
     await requirePrivatePage();
     const result = await fetchVendorFunnel();
     renderVendorFunnel(result);
+    renderVendorFunnelFilters();
     const warning = Array.isArray(result.warnings) ? result.warnings.find(Boolean) : "";
     setStatus(
       vendorFunnelStatus,
@@ -2630,6 +2718,26 @@ vendorIntelligenceSearch?.addEventListener("input", () => {
 applyIntelligenceTagsButton?.addEventListener("click", applySelectedIntelligenceTags);
 promoteIntelligenceSelectedButton?.addEventListener("click", promoteSelectedIntelligenceVendors);
 refreshVendorFunnelButton?.addEventListener("click", loadVendorFunnel);
+vendorFunnelSearch?.addEventListener("input", () => {
+  window.clearTimeout(vendorFunnelSearch._timer);
+  vendorFunnelSearch._timer = window.setTimeout(() => {
+    vendorFunnelSearchTerm = vendorFunnelSearch.value || "";
+    applyVendorFunnelFilters();
+  }, 200);
+});
+vendorFunnelHealthFilter?.addEventListener("change", () => {
+  vendorFunnelHealthValue = vendorFunnelHealthFilter.value || "";
+  applyVendorFunnelFilters();
+});
+vendorFunnelQuoteFilter?.addEventListener("change", () => {
+  vendorFunnelQuoteValue = vendorFunnelQuoteFilter.value || "";
+  applyVendorFunnelFilters();
+});
+vendorFunnelHideEmpty?.addEventListener("change", () => {
+  vendorFunnelHideEmptyStages = Boolean(vendorFunnelHideEmpty.checked);
+  applyVendorFunnelFilters();
+});
+clearVendorFunnelFiltersButton?.addEventListener("click", clearVendorFunnelFilters);
 refreshVendorMatchButton?.addEventListener("click", analyzeVendorMatchQueue);
 matchStagingVendorsButton?.addEventListener("click", () => runVendorMatchScope("staging"));
 matchRatewareVendorsButton?.addEventListener("click", () => runVendorMatchScope("rateware"));

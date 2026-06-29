@@ -144,6 +144,35 @@
                 <strong id="vf-stuck">0</strong>
               </article>
             </div>
+            <div class="funnel-toolbar" aria-label="Pipeline filters">
+              <label>
+                Search
+                <input id="vendor-funnel-search" placeholder="Vendor, domain, tag, market" />
+              </label>
+              <label>
+                Health
+                <select id="vendor-funnel-health-filter">
+                  <option value="">All</option>
+                  <option value="ready">Procurement ready</option>
+                  <option value="cleanup">Needs cleanup</option>
+                  <option value="incomplete">Incomplete</option>
+                </select>
+              </label>
+              <label>
+                Quotes
+                <select id="vendor-funnel-quote-filter">
+                  <option value="">All</option>
+                  <option value="linked">Linked quotes</option>
+                  <option value="approved">Approved rates</option>
+                  <option value="missing">No linked quotes</option>
+                </select>
+              </label>
+              <label class="inline-check">
+                <input id="vendor-funnel-hide-empty" type="checkbox" />
+                Hide empty stages
+              </label>
+              <button id="clear-vendor-funnel-filters" class="secondary small-button" type="button">Clear</button>
+            </div>
             <div id="vendor-funnel-strip" class="vendor-funnel-strip" aria-label="Vendor funnel stages"></div>
             <div class="funnel-workspace">
               <div id="vendor-funnel-board" class="vendor-funnel-board" aria-label="Vendor funnel Kanban"></div>
