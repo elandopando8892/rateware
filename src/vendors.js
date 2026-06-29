@@ -360,6 +360,57 @@ const VENDOR_ONBOARDING_SECTIONS = [
     ]
   }
 ];
+const VENDOR_PROFILE_IMPORT_FIELDS = [
+  ["general", "full_name", ["onboarding_full_name", "full_name", "nombre completo"]],
+  ["general", "mobile_number", ["onboarding_mobile_number", "mobile_number", "numero movil", "número móvil", "phone", "telefono"]],
+  ["general", "company_type", ["company_type", "tipo de empresa"]],
+  ["general", "operating_country", ["operating_country", "pais donde opera", "país donde opera", "country"]],
+  ["international", "dba_name", ["dba_name", "dba", "nombre comercial internacional"]],
+  ["international", "legal_name", ["international_legal_name", "legal_name_international", "nombre legal"]],
+  ["international", "fiscal_address", ["international_fiscal_address", "domicilio fiscal internacional"]],
+  ["international", "usdot_number", ["usdot_number", "usdot"]],
+  ["international", "mc_number", ["mc_number", "mc"]],
+  ["international", "scac_code", ["scac_code", "scac"]],
+  ["international", "tax_id", ["tax_id"]],
+  ["international", "bank_name", ["international_bank_name", "bank_name"]],
+  ["international", "account_number", ["international_account_number", "account_number"]],
+  ["international", "routing_number", ["routing_number"]],
+  ["international", "beneficiary_company", ["international_beneficiary_company", "beneficiary_company"]],
+  ["international", "factoring_company", ["international_factoring_company", "factoring_company"]],
+  ["international", "payment_terms", ["international_payment_terms", "payment_terms"]],
+  ["mexico", "commercial_name", ["mexico_commercial_name", "nombre comercial"]],
+  ["mexico", "legal_name", ["mexico_legal_name", "razon social", "razón social"]],
+  ["mexico", "fiscal_address", ["mexico_fiscal_address", "domicilio fiscal mexico", "domicilio fiscal méxico"]],
+  ["mexico", "caat_code", ["caat_code", "caat"]],
+  ["mexico", "rfc", ["rfc"]],
+  ["mexico", "bank_name", ["mexico_bank_name", "nombre de banco"]],
+  ["mexico", "account_number", ["mexico_account_number", "numero de cuenta", "número de cuenta"]],
+  ["mexico", "clabe_number", ["clabe_number", "numero clabe", "número clabe", "clabe"]],
+  ["mexico", "beneficiary_company", ["mexico_beneficiary_company", "compania beneficiaria", "compañía beneficiaria"]],
+  ["mexico", "factoring_company", ["mexico_factoring_company"]],
+  ["mexico", "payment_terms", ["mexico_payment_terms"]],
+  ["carrier_profile", "geographic_scope", ["geographic_scope", "alcance geografico", "alcance geográfico"]],
+  ["carrier_profile", "service_scope", ["service_scope", "alcance de servicios", "services"]],
+  ["carrier_profile", "regional_coverage", ["regional_coverage", "cobertura regional", "regions"]],
+  ["carrier_profile", "border_crossings", ["border_crossings", "cruces fronterizos", "border crossings"]],
+  ["carrier_profile", "mexican_ports", ["mexican_ports", "puertos mexicanos"]],
+  ["carrier_profile", "value_added_services", ["value_added_services", "servicios logisticos", "servicios logísticos"]],
+  ["carrier_profile", "additional_capabilities", ["additional_capabilities", "capacidades adicionales"]],
+  ["carrier_profile", "interchange_agreements", ["interchange_agreements", "acuerdos de intercambio"]],
+  ["carrier_profile", "certifications", ["certifications", "certificaciones"]],
+  ["insurance_infrastructure", "coverage_amounts", ["coverage_amounts", "insurance_coverage", "montos de cobertura"]],
+  ["insurance_infrastructure", "mexico_terminal_zips", ["mexico_terminal_zips", "terminales mexico", "terminales méxico"]],
+  ["insurance_infrastructure", "us_ca_terminal_zips", ["us_ca_terminal_zips", "terminales usa canada", "terminales estados unidos canada"]],
+  ["insurance_infrastructure", "equipment_types", ["equipment_types", "tipos de unidad", "equipment"]],
+  ["insurance_infrastructure", "equipment_notes", ["equipment_notes", "observaciones equipo"]],
+  ["key_contacts", "general_manager", ["general_manager", "gerente general"]],
+  ["key_contacts", "operations_manager", ["operations_manager", "gerente de operaciones"]],
+  ["key_contacts", "safety_manager", ["safety_manager", "gerente de seguridad"]],
+  ["key_contacts", "finance_manager", ["finance_manager", "gerente de finanzas"]],
+  ["key_contacts", "commercial_manager", ["commercial_manager", "gerente comercial"]],
+  ["key_contacts", "key_account_manager", ["key_account_manager", "gerente de cuenta clave"]],
+  ["key_contacts", "other_contacts", ["other_contacts", "otros contactos"]]
+];
 const VENDOR_SHEET_COLUMNS = [
   { key: "select", label: "Select", locked: true },
   { key: "vendor", label: "Vendor", locked: true },
@@ -368,6 +419,12 @@ const VENDOR_SHEET_COLUMNS = [
   { key: "email", label: "Email" },
   { key: "whatsapp", label: "WhatsApp" },
   { key: "tags", label: "Tags" },
+  { key: "onboarding", label: "Onboarding" },
+  { key: "operating_country", label: "Country" },
+  { key: "service_scope", label: "Services" },
+  { key: "regional_coverage", label: "Regions" },
+  { key: "equipment_types", label: "Equipment" },
+  { key: "certifications", label: "Certs" },
   { key: "channel", label: "Channel" },
   { key: "base", label: "Base" },
   { key: "status", label: "Status" },
@@ -706,6 +763,40 @@ function splitTags(value) {
     .filter(Boolean);
 }
 
+function splitProfileList(value) {
+  if (Array.isArray(value)) return value.map((item) => String(item).trim()).filter(Boolean);
+  const text = String(value || "").trim();
+  if (!text) return [];
+  const separator = text.includes(";") ? /;/ : /,/;
+  return text.split(separator).map((item) => item.trim()).filter(Boolean);
+}
+
+function firstImportedValue(row, names) {
+  const lookup = new Map(Object.keys(row || {}).map((name) => [normalizeKey(name), row[name]]));
+  for (const name of names) {
+    const value = String(lookup.get(normalizeKey(name)) ?? "").trim();
+    if (value) return value;
+  }
+  return "";
+}
+
+function profileFieldDefinition(sectionKey, fieldKey) {
+  const section = VENDOR_ONBOARDING_SECTIONS.find((item) => item.key === sectionKey);
+  return section?.fields.find((field) => field.key === fieldKey) || null;
+}
+
+function readImportedProfileData(row) {
+  const profile = {};
+  VENDOR_PROFILE_IMPORT_FIELDS.forEach(([sectionKey, fieldKey, names]) => {
+    const value = firstImportedValue(row, names);
+    if (!value) return;
+    const field = profileFieldDefinition(sectionKey, fieldKey);
+    if (!profile[sectionKey]) profile[sectionKey] = {};
+    profile[sectionKey][fieldKey] = field?.type === "checks" ? splitProfileList(value) : value;
+  });
+  return profile;
+}
+
 function isValidEmail(value) {
   if (!value) return true;
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value).trim());
@@ -742,7 +833,36 @@ function downloadVendorTemplate() {
     "logo_url",
     "tags",
     "coverage_notes",
-    "notes"
+    "notes",
+    "onboarding_full_name",
+    "onboarding_mobile_number",
+    "company_type",
+    "operating_country",
+    "usdot_number",
+    "mc_number",
+    "scac_code",
+    "tax_id",
+    "rfc",
+    "caat_code",
+    "geographic_scope",
+    "service_scope",
+    "regional_coverage",
+    "border_crossings",
+    "mexican_ports",
+    "value_added_services",
+    "additional_capabilities",
+    "certifications",
+    "coverage_amounts",
+    "mexico_terminal_zips",
+    "us_ca_terminal_zips",
+    "equipment_types",
+    "equipment_notes",
+    "general_manager",
+    "operations_manager",
+    "safety_manager",
+    "finance_manager",
+    "commercial_manager",
+    "key_account_manager"
   ];
   const examples = [
     [
@@ -756,7 +876,36 @@ function downloadVendorTemplate() {
       "https://abclogistics.com/logo.png",
       "mx, cross-border, ftl",
       "MX-US lanes, Laredo, dry van",
-      "Preferred for border freight"
+      "Preferred for border freight",
+      "Jane Doe",
+      "+5215550000000",
+      "Persona Moral",
+      "Mexico",
+      "1234567",
+      "MC123456",
+      "ABCD",
+      "12-3456789",
+      "ABC010101XX1",
+      "CAAT1234",
+      "Mexico;Estados Unidos",
+      "Fletes Transfronterizos (Door 2 Door con Operadores B1 + Acuerdo de Intercambio)",
+      "Noreste - MX (Coahuila, Nuevo Leon, Tamaulipas);South - Southwest - US (AR, LA, OK, TX)",
+      "Laredo;Pharr",
+      "Altamira;Veracruz",
+      "Transfer (Cruces Internacionales);Cargo Insurance (Seguro de Carga)",
+      "Monitoreo 24/7 dedicado;Sistema de gestion de flotillas / transporte",
+      "CTPAT;FAST;Hazmat",
+      "Crossborder USD 250,000 / Cargo USD 100,000",
+      "64000;66600",
+      "78045;75001",
+      "Dry Van;Flatbed;Reefer",
+      "DV53 and flatbed capacity available",
+      "Jane Doe | jane@abclogistics.com | +5215550000000",
+      "Ops Team | ops@abclogistics.com",
+      "Safety Team | safety@abclogistics.com",
+      "Finance Team | ar@abclogistics.com",
+      "Commercial Team | sales@abclogistics.com",
+      "Key Account | kam@abclogistics.com"
     ]
   ];
   const csv = [headers, ...examples]
@@ -771,13 +920,42 @@ function downloadVendorTemplate() {
 }
 
 function vendorReadiness(row) {
-  const tags = splitTags(row.tags);
+  const profile = vendorProfileData(row);
+  const tags = Array.from(new Set([...splitTags(row.tags), ...profileDerivedTags(row)]));
+  const hasProfileIdentity = Boolean(
+    profileFieldValue(profile, "mexico", "rfc")
+    || profileFieldValue(profile, "mexico", "legal_name")
+    || profileFieldValue(profile, "international", "usdot_number")
+    || profileFieldValue(profile, "international", "mc_number")
+    || profileFieldValue(profile, "international", "legal_name")
+  );
+  const hasProfileCoverage = [
+    profileFieldValue(profile, "carrier_profile", "geographic_scope"),
+    profileFieldValue(profile, "carrier_profile", "service_scope"),
+    profileFieldValue(profile, "carrier_profile", "regional_coverage"),
+    profileFieldValue(profile, "carrier_profile", "border_crossings")
+  ].some((value) => profileHasValue(value, { type: "checks" }));
+  const hasProfileEquipment = profileHasValue(profileFieldValue(profile, "insurance_infrastructure", "equipment_types"), { type: "checks" });
+  const hasProfileCompliance = [
+    profileFieldValue(profile, "carrier_profile", "certifications"),
+    profileFieldValue(profile, "insurance_infrastructure", "coverage_amounts"),
+    profileFieldValue(profile, "international", "tax_id"),
+    profileFieldValue(profile, "mexico", "rfc")
+  ].some((value) => Array.isArray(value) ? value.length : Boolean(value));
+  const hasProfileContacts = [
+    profileFieldValue(profile, "key_contacts", "general_manager"),
+    profileFieldValue(profile, "key_contacts", "operations_manager"),
+    profileFieldValue(profile, "key_contacts", "commercial_manager"),
+    profileFieldValue(profile, "general", "full_name"),
+    profileFieldValue(profile, "general", "mobile_number")
+  ].some(Boolean);
   const checks = [
-    { key: "identity", label: "Identity", done: Boolean(row.vendor_name && row.domain), weight: 20 },
-    { key: "contact", label: "Contact", done: Boolean(row.primary_email || row.whatsapp_phone), weight: 25 },
-    { key: "channel", label: "Channel", done: Boolean(row.preferred_channel), weight: 10 },
-    { key: "coverage", label: "Coverage", done: Boolean(row.coverage_notes), weight: 20 },
-    { key: "equipment", label: "Equipment / tags", done: tags.length > 0, weight: 20 },
+    { key: "identity", label: "Identity", done: Boolean(row.vendor_name && (row.domain || hasProfileIdentity)), weight: 18 },
+    { key: "contact", label: "Contact", done: Boolean(row.primary_email || row.whatsapp_phone || hasProfileContacts), weight: 18 },
+    { key: "channel", label: "Channel", done: Boolean(row.preferred_channel), weight: 8 },
+    { key: "coverage", label: "Coverage", done: Boolean(row.coverage_notes || hasProfileCoverage), weight: 22 },
+    { key: "equipment", label: "Equipment", done: Boolean(tags.length || hasProfileEquipment), weight: 16 },
+    { key: "compliance", label: "Compliance", done: hasProfileCompliance, weight: 13 },
     { key: "notes", label: "Notes", done: Boolean(row.notes), weight: 5 }
   ];
   const score = checks.reduce((total, check) => total + (check.done ? check.weight : 0), 0);
@@ -1000,6 +1178,8 @@ function resetQuickFilter() {
 }
 
 function readWizard() {
+  const profile_data = {};
+  const tags = splitTags(document.querySelector("#wizard-tags").value);
   return {
     vendor_name: document.querySelector("#wizard-vendor-name").value,
     legal_name: document.querySelector("#wizard-legal-name").value,
@@ -1009,9 +1189,10 @@ function readWizard() {
     primary_email: document.querySelector("#wizard-primary-email").value,
     whatsapp_phone: document.querySelector("#wizard-whatsapp-phone").value,
     preferred_channel: document.querySelector("#wizard-preferred-channel").value,
-    tags: splitTags(document.querySelector("#wizard-tags").value),
+    tags: Array.from(new Set([...tags, ...profileDerivedTags(profile_data)])),
     coverage_notes: document.querySelector("#wizard-coverage-notes").value,
-    notes: document.querySelector("#wizard-notes").value
+    notes: document.querySelector("#wizard-notes").value,
+    profile_data
   };
 }
 
@@ -1919,6 +2100,9 @@ function renderVendorFilterRow(columns) {
     if (key === "tags") {
       return filterCell(`<input class="vendor-inline-filter" data-vendor-filter="tag" value="${tag}" placeholder="Tag" />`);
     }
+    if (["service_scope", "regional_coverage", "equipment_types", "certifications"].includes(key)) {
+      return filterCell(`<input class="vendor-inline-filter" data-vendor-filter="tag" value="${tag}" placeholder="Signal" />`);
+    }
     if (key === "channel") {
       return filterCell(`
         <select class="vendor-inline-filter" data-vendor-filter="channel">
@@ -1975,6 +2159,43 @@ function editableVendorSelect(row, field, options) {
   `;
 }
 
+function profileColumnValue(row, sectionKey, fieldKey) {
+  return profileScalarValue(profileFieldValue(vendorProfileData(row), sectionKey, fieldKey));
+}
+
+function editableVendorProfileInput(row, sectionKey, fieldKey, { wide = false } = {}) {
+  const value = profileColumnValue(row, sectionKey, fieldKey);
+  return `
+    <input
+      class="vendor-cell-input ${wide ? "wide-input" : ""}"
+      type="text"
+      value="${escapeHtml(value)}"
+      data-vendor-cell
+      data-vendor-id="${escapeHtml(row.id)}"
+      data-vendor-field="profile_data.${escapeHtml(sectionKey)}.${escapeHtml(fieldKey)}"
+      data-original-value="${escapeHtml(value)}"
+      title="Use semicolons for multiple values"
+    />
+  `;
+}
+
+function editableVendorProfileSelect(row, sectionKey, fieldKey, options) {
+  const current = profileColumnValue(row, sectionKey, fieldKey);
+  const values = Array.from(new Set([...options, current].filter(Boolean)));
+  return `
+    <select
+      class="vendor-cell-input"
+      data-vendor-cell
+      data-vendor-id="${escapeHtml(row.id)}"
+      data-vendor-field="profile_data.${escapeHtml(sectionKey)}.${escapeHtml(fieldKey)}"
+      data-original-value="${escapeHtml(current)}"
+    >
+      <option value=""></option>
+      ${values.map((value) => `<option value="${escapeHtml(value)}" ${value === current ? "selected" : ""}>${escapeHtml(value)}</option>`).join("")}
+    </select>
+  `;
+}
+
 function renderVendorSheetCell(row, columnKey) {
   if (columnKey === "select") {
     return `<td><input class="vendor-select" type="checkbox" data-vendor-id="${escapeHtml(row.id)}" ${selectedVendorIds.has(row.id) ? "checked" : ""} /></td>`;
@@ -1994,6 +2215,17 @@ function renderVendorSheetCell(row, columnKey) {
   if (columnKey === "email") return `<td>${editableVendorInput(row, "primary_email", { type: "email" })}</td>`;
   if (columnKey === "whatsapp") return `<td>${editableVendorInput(row, "whatsapp_phone")}</td>`;
   if (columnKey === "tags") return `<td>${editableVendorInput(row, "tags", { wide: true })}</td>`;
+  if (columnKey === "onboarding") {
+    const completion = onboardingCompletion(vendorProfileData(row));
+    return `<td><span class="score-pill ${completion.requiredFilled === completion.required ? "strong" : completion.filled ? "medium" : "weak"}">${completion.filled}/${completion.total}</span></td>`;
+  }
+  if (columnKey === "operating_country") {
+    return `<td>${editableVendorProfileSelect(row, "general", "operating_country", ["Estados Unidos de America", "Mexico", "Canada"])}</td>`;
+  }
+  if (columnKey === "service_scope") return `<td>${editableVendorProfileInput(row, "carrier_profile", "service_scope", { wide: true })}</td>`;
+  if (columnKey === "regional_coverage") return `<td>${editableVendorProfileInput(row, "carrier_profile", "regional_coverage", { wide: true })}</td>`;
+  if (columnKey === "equipment_types") return `<td>${editableVendorProfileInput(row, "insurance_infrastructure", "equipment_types", { wide: true })}</td>`;
+  if (columnKey === "certifications") return `<td>${editableVendorProfileInput(row, "carrier_profile", "certifications", { wide: true })}</td>`;
   if (columnKey === "channel") {
     return `<td>${editableVendorSelect(row, "preferred_channel", [
       { value: "email", label: "Email" },
@@ -2067,6 +2299,8 @@ function renderVendorCards(rows) {
 }
 
 function readForm() {
+  const profile_data = {};
+  const tags = splitTags(document.querySelector("#vendor-tags").value);
   return {
     vendor_name: document.querySelector("#vendor-name").value,
     domain: document.querySelector("#vendor-domain").value,
@@ -2075,9 +2309,10 @@ function readForm() {
     primary_email: document.querySelector("#primary-email").value,
     whatsapp_phone: document.querySelector("#whatsapp-phone").value,
     preferred_channel: document.querySelector("#preferred-channel").value,
-    tags: splitTags(document.querySelector("#vendor-tags").value),
+    tags: Array.from(new Set([...tags, ...profileDerivedTags(profile_data)])),
     coverage_notes: document.querySelector("#coverage-notes").value,
-    notes: document.querySelector("#vendor-notes").value
+    notes: document.querySelector("#vendor-notes").value,
+    profile_data
   };
 }
 
@@ -2172,6 +2407,25 @@ function vendorCellPatchValue(field, value) {
   return value;
 }
 
+function vendorProfileCellPatch(row, field, value) {
+  const [, sectionKey, fieldKey] = field.split(".");
+  if (!sectionKey || !fieldKey) return null;
+  const profile = vendorProfileData(row);
+  const nextProfile = { ...profile, [sectionKey]: { ...(profile[sectionKey] || {}) } };
+  const fieldDefinition = profileFieldDefinition(sectionKey, fieldKey);
+  const normalizedValue = fieldDefinition?.type === "checks" ? splitProfileList(value) : String(value || "").trim();
+  if (Array.isArray(normalizedValue) ? normalizedValue.length : normalizedValue) {
+    nextProfile[sectionKey][fieldKey] = normalizedValue;
+  } else {
+    delete nextProfile[sectionKey][fieldKey];
+  }
+  if (!Object.keys(nextProfile[sectionKey]).length) delete nextProfile[sectionKey];
+  return {
+    profile_data: nextProfile,
+    tags: Array.from(new Set([...splitTags(row.tags), ...profileDerivedTags(nextProfile)]))
+  };
+}
+
 async function saveVendorCell(control) {
   if (!control?.dataset?.vendorCell) return;
   const vendorId = control.dataset.vendorId;
@@ -2184,9 +2438,18 @@ async function saveVendorCell(control) {
   control.classList.add("is-saving");
   try {
     await requirePrivatePage();
-    const updated = await updateVendor(vendorId, { [field]: vendorCellPatchValue(field, rawValue) });
+    const current = findVendorById(vendorId) || {};
+    const patch = field.startsWith("profile_data.")
+      ? vendorProfileCellPatch(current, field, rawValue)
+      : { [field]: vendorCellPatchValue(field, rawValue) };
+    if (!patch) throw new Error("Unsupported vendor field.");
+    const updated = await updateVendor(vendorId, patch);
     replaceVendorInState(updated);
-    const storedValue = field === "tags" ? splitTags(updated.tags).join(", ") : updated[field] || "";
+    const storedValue = field === "tags"
+      ? splitTags(updated.tags).join(", ")
+      : field.startsWith("profile_data.")
+        ? profileColumnValue(updated, field.split(".")[1], field.split(".")[2])
+        : updated[field] || "";
     control.value = storedValue;
     control.dataset.originalValue = storedValue;
     control.classList.remove("is-saving");
@@ -2312,6 +2575,7 @@ function readSegmentForm() {
 }
 
 function normalizeImportedRow(row) {
+  const profile_data = readImportedProfileData(row);
   return {
     vendor_name: row.vendor_name || row.vendor || row.carrier || row.name || row["Vendor"] || row["Carrier"],
     legal_name: row.legal_name || row["Legal Name"],
@@ -2321,10 +2585,11 @@ function normalizeImportedRow(row) {
     whatsapp_phone: row.whatsapp_phone || row.whatsapp || row.phone || row["WhatsApp"] || row["Phone"],
     preferred_channel: row.preferred_channel || row.channel || row["Channel"] || "email",
     logo_url: row.logo_url || row.logo || row.image_url || row["Logo URL"] || row["Logo"] || row["Image URL"],
-    tags: row.tags || row.tag || row.services || row.equipment || row.coverage || row["Tags"] || row["Equipment"],
+    tags: Array.from(new Set([...splitTags(row.tags || row.tag || row.services || row.equipment || row.coverage || row["Tags"] || row["Equipment"]), ...profileDerivedTags(profile_data)])),
     coverage_notes: row.coverage_notes || row.coverage || row.lanes || row["Coverage"] || row["Lanes"],
     notes: row.notes || row["Notes"],
-    base_stage: row.base_stage || row.base || row["Base"] || row["Stage"]
+    base_stage: row.base_stage || row.base || row["Base"] || row["Stage"],
+    profile_data
   };
 }
 
@@ -2569,6 +2834,58 @@ function readDrawerProfileData() {
   return next;
 }
 
+function profileText(profile) {
+  const values = [];
+  VENDOR_ONBOARDING_SECTIONS.forEach((section) => {
+    section.fields.forEach((field) => {
+      const value = profileFieldValue(profile, section.key, field.key);
+      if (Array.isArray(value)) values.push(...value);
+      else if (value) values.push(value);
+    });
+  });
+  return values.join(" ").toLowerCase();
+}
+
+function profileDerivedTags(vendorOrProfile = {}) {
+  const profile = vendorOrProfile.profile_data ? vendorProfileData(vendorOrProfile) : vendorOrProfile;
+  const text = profileText(profile);
+  const rules = [
+    ["mx", /mexico|mex\b/],
+    ["us", /estados unidos|united states|\bus\b|\busa\b/],
+    ["canada", /canada|\bca\b/],
+    ["cross-border", /transfronteriz|cross.?border|door 2 door|d2d|b1|doble placa/],
+    ["d2d", /door 2 door|d2d|b1|doble placa/],
+    ["border", /fronteriz|frontera|laredo|pharr|nogales|eagle pass|brownsville|el paso|calexico/],
+    ["domestic-mx", /domesticos mex|domestico mex|domestic mex/],
+    ["regional-mx", /regionales mex|regional mex/],
+    ["local-mx", /locales mex|local mex/],
+    ["transfer", /transfer|cruces internacionales/],
+    ["power-only", /power only|arrastre/],
+    ["team-driver", /team driver|doble operador/],
+    ["hot-shot", /hot shots|expeditad/],
+    ["cross-dock", /cross dock|transbordo/],
+    ["warehousing", /warehousing|almacenaje/],
+    ["cargo-insurance", /cargo insurance|seguro de carga/],
+    ["drop-hook", /drop\s*&\s*hook|quitapon|carrusel/],
+    ["heavy-haul", /over-heavy|sobredimension|sobrepeso|lowboys|stepdecks|multi-axles/],
+    ["dry-van", /dry van|caja seca/],
+    ["reefer", /reefer|refrigerad/],
+    ["flatbed", /flatbed|plana|plataforma/],
+    ["hazmat", /hazmat|hazardous/],
+    ["ctpat", /ctpat/],
+    ["fast", /\bfast\b/],
+    ["bonded", /bonded/],
+    ["smartway", /smartway/],
+    ["oea", /\boea\b/],
+    ["gps", /gps|cuenta espejo/],
+    ["tms", /tms|gestion de flotillas|gesti[oó]n de flotillas|sistema de gestion/],
+    ["auction-platforms", /dat|truckstop|fr8app|cargado|rxo/],
+    ["automotive", /automotriz|aeroespacial/],
+    ["24-7-monitoring", /24\/7|monitoreo/]
+  ];
+  return rules.filter(([, pattern]) => pattern.test(text)).map(([tag]) => tag);
+}
+
 function renderDrawerBadges(vendor) {
   const badges = [
     vendor.base_stage || "sourcing",
@@ -2761,6 +3078,8 @@ function openVendorDrawer(vendorId, options = {}) {
 }
 
 function readDrawerPatch() {
+  const profileData = readDrawerProfileData();
+  const tags = Array.from(new Set([...splitTags(document.querySelector("#drawer-edit-tags").value), ...profileDerivedTags(profileData)]));
   return {
     vendor_name: document.querySelector("#drawer-edit-name").value,
     domain: document.querySelector("#drawer-edit-domain").value,
@@ -2770,10 +3089,10 @@ function readDrawerPatch() {
     whatsapp_phone: document.querySelector("#drawer-edit-whatsapp").value,
     preferred_channel: document.querySelector("#drawer-edit-channel").value,
     status: document.querySelector("#drawer-edit-status").value,
-    tags: splitTags(document.querySelector("#drawer-edit-tags").value),
+    tags,
     coverage_notes: document.querySelector("#drawer-edit-coverage").value,
     notes: document.querySelector("#drawer-edit-notes").value,
-    profile_data: readDrawerProfileData()
+    profile_data: profileData
   };
 }
 

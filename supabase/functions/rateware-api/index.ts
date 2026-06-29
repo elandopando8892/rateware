@@ -4585,7 +4585,128 @@ function firstValue(row: Record<string, unknown>, names: string[]) {
   return null;
 }
 
+const VENDOR_PROFILE_CHECK_FIELDS = new Set([
+  "geographic_scope",
+  "service_scope",
+  "regional_coverage",
+  "border_crossings",
+  "mexican_ports",
+  "value_added_services",
+  "additional_capabilities",
+  "certifications",
+  "equipment_types"
+]);
+const VENDOR_PROFILE_IMPORT_FIELDS: [string, string, string[]][] = [
+  ["general", "full_name", ["onboarding_full_name", "full_name", "nombre completo"]],
+  ["general", "mobile_number", ["onboarding_mobile_number", "mobile_number", "numero movil", "telefono"]],
+  ["general", "company_type", ["company_type", "tipo de empresa"]],
+  ["general", "operating_country", ["operating_country", "pais donde opera", "country"]],
+  ["international", "dba_name", ["dba_name", "dba"]],
+  ["international", "legal_name", ["international_legal_name", "legal_name_international", "nombre legal"]],
+  ["international", "fiscal_address", ["international_fiscal_address", "domicilio fiscal internacional"]],
+  ["international", "usdot_number", ["usdot_number", "usdot"]],
+  ["international", "mc_number", ["mc_number", "mc"]],
+  ["international", "scac_code", ["scac_code", "scac"]],
+  ["international", "tax_id", ["tax_id"]],
+  ["mexico", "commercial_name", ["mexico_commercial_name", "nombre comercial"]],
+  ["mexico", "legal_name", ["mexico_legal_name", "razon social"]],
+  ["mexico", "fiscal_address", ["mexico_fiscal_address", "domicilio fiscal mexico"]],
+  ["mexico", "caat_code", ["caat_code", "caat"]],
+  ["mexico", "rfc", ["rfc"]],
+  ["carrier_profile", "geographic_scope", ["geographic_scope", "alcance geografico"]],
+  ["carrier_profile", "service_scope", ["service_scope", "alcance de servicios", "services"]],
+  ["carrier_profile", "regional_coverage", ["regional_coverage", "cobertura regional", "regions"]],
+  ["carrier_profile", "border_crossings", ["border_crossings", "cruces fronterizos"]],
+  ["carrier_profile", "mexican_ports", ["mexican_ports", "puertos mexicanos"]],
+  ["carrier_profile", "value_added_services", ["value_added_services", "servicios logisticos"]],
+  ["carrier_profile", "additional_capabilities", ["additional_capabilities", "capacidades adicionales"]],
+  ["carrier_profile", "interchange_agreements", ["interchange_agreements", "acuerdos de intercambio"]],
+  ["carrier_profile", "certifications", ["certifications", "certificaciones"]],
+  ["insurance_infrastructure", "coverage_amounts", ["coverage_amounts", "insurance_coverage", "montos de cobertura"]],
+  ["insurance_infrastructure", "mexico_terminal_zips", ["mexico_terminal_zips", "terminales mexico"]],
+  ["insurance_infrastructure", "us_ca_terminal_zips", ["us_ca_terminal_zips", "terminales usa canada"]],
+  ["insurance_infrastructure", "equipment_types", ["equipment_types", "tipos de unidad", "equipment"]],
+  ["insurance_infrastructure", "equipment_notes", ["equipment_notes", "observaciones equipo"]],
+  ["key_contacts", "general_manager", ["general_manager", "gerente general"]],
+  ["key_contacts", "operations_manager", ["operations_manager", "gerente de operaciones"]],
+  ["key_contacts", "safety_manager", ["safety_manager", "gerente de seguridad"]],
+  ["key_contacts", "finance_manager", ["finance_manager", "gerente de finanzas"]],
+  ["key_contacts", "commercial_manager", ["commercial_manager", "gerente comercial"]],
+  ["key_contacts", "key_account_manager", ["key_account_manager", "gerente de cuenta clave"]],
+  ["key_contacts", "other_contacts", ["other_contacts", "otros contactos"]]
+];
+
+function splitProfileList(value: unknown) {
+  if (Array.isArray(value)) return value.map((item) => cleanText(item)).filter(Boolean) as string[];
+  const text = cleanText(value);
+  if (!text) return [];
+  const separator = text.includes(";") ? /;/ : /,/;
+  return text.split(separator).map((item) => item.trim()).filter(Boolean);
+}
+
+function readImportedVendorProfileData(row: Record<string, unknown>) {
+  const profile: Record<string, Record<string, unknown>> = {};
+  for (const [section, field, names] of VENDOR_PROFILE_IMPORT_FIELDS) {
+    const value = firstValue(row, names);
+    if (!value) continue;
+    profile[section] ||= {};
+    profile[section][field] = VENDOR_PROFILE_CHECK_FIELDS.has(field) ? splitProfileList(value) : value;
+  }
+  return profile;
+}
+
+function vendorProfileText(profile: Record<string, unknown>) {
+  const values: string[] = [];
+  const walk = (value: unknown) => {
+    if (Array.isArray(value)) value.forEach(walk);
+    else if (typeof value === "object" && value !== null) Object.values(value).forEach(walk);
+    else if (value) values.push(String(value));
+  };
+  walk(profile);
+  return values.join(" ").toLowerCase();
+}
+
+function vendorProfileDerivedTags(profile: Record<string, unknown>) {
+  const text = vendorProfileText(profile);
+  const rules: [string, RegExp][] = [
+    ["mx", /mexico|mex\b/],
+    ["us", /estados unidos|united states|\bus\b|\busa\b/],
+    ["canada", /canada|\bca\b/],
+    ["cross-border", /transfronteriz|cross.?border|door 2 door|d2d|b1|doble placa/],
+    ["d2d", /door 2 door|d2d|b1|doble placa/],
+    ["border", /fronteriz|frontera|laredo|pharr|nogales|eagle pass|brownsville|el paso|calexico/],
+    ["domestic-mx", /domesticos mex|domestico mex|domestic mex/],
+    ["regional-mx", /regionales mex|regional mex/],
+    ["local-mx", /locales mex|local mex/],
+    ["transfer", /transfer|cruces internacionales/],
+    ["power-only", /power only|arrastre/],
+    ["team-driver", /team driver|doble operador/],
+    ["hot-shot", /hot shots|expeditad/],
+    ["cross-dock", /cross dock|transbordo/],
+    ["warehousing", /warehousing|almacenaje/],
+    ["cargo-insurance", /cargo insurance|seguro de carga/],
+    ["drop-hook", /drop\s*&\s*hook|quitapon|carrusel/],
+    ["heavy-haul", /over-heavy|sobredimension|sobrepeso|lowboys|stepdecks|multi-axles/],
+    ["dry-van", /dry van|caja seca/],
+    ["reefer", /reefer|refrigerad/],
+    ["flatbed", /flatbed|plana|plataforma/],
+    ["hazmat", /hazmat|hazardous/],
+    ["ctpat", /ctpat/],
+    ["fast", /\bfast\b/],
+    ["bonded", /bonded/],
+    ["smartway", /smartway/],
+    ["oea", /\boea\b/],
+    ["gps", /gps|cuenta espejo/],
+    ["tms", /tms|gestion de flotillas|sistema de gestion/],
+    ["auction-platforms", /dat|truckstop|fr8app|cargado|rxo/],
+    ["automotive", /automotriz|aeroespacial/],
+    ["24-7-monitoring", /24\/7|monitoreo/]
+  ];
+  return rules.filter(([, pattern]) => pattern.test(text)).map(([tag]) => tag);
+}
+
 function normalizeImportedVendor(row: Record<string, unknown>, source = "google_sheet") {
+  const profileData = readImportedVendorProfileData(row);
   return {
     vendor_name: firstValue(row, ["vendor_name", "vendor", "carrier", "carrier name", "company", "company name", "nombre", "transportista", "proveedor", "name"]),
     legal_name: firstValue(row, ["legal_name", "legal name", "razon social", "legal entity"]),
@@ -4595,10 +4716,11 @@ function normalizeImportedVendor(row: Record<string, unknown>, source = "google_
     whatsapp_phone: firstValue(row, ["whatsapp_phone", "whatsapp", "phone", "telefono", "mobile", "cell"]),
     preferred_channel: firstValue(row, ["preferred_channel", "channel", "canal"]) || "email",
     logo_url: firstValue(row, ["logo_url", "logo", "logo link", "logo url", "image", "image_url", "brand logo"]),
-    tags: firstValue(row, ["tags", "tag", "services", "service", "equipment", "equipos", "coverage type", "tipo"]),
+    tags: Array.from(new Set([...normalizeTags(firstValue(row, ["tags", "tag", "services", "service", "equipment", "equipos", "coverage type", "tipo"])), ...vendorProfileDerivedTags(profileData)])),
     coverage_notes: firstValue(row, ["coverage_notes", "coverage", "lanes", "rutas", "regions", "region", "markets", "mercados", "notes coverage"]),
     notes: firstValue(row, ["notes", "notas", "comments", "comentarios", "observations", "observaciones"]),
     base_stage: firstValue(row, ["base_stage", "base", "stage"]) || "sourcing",
+    profile_data: profileData,
     source
   };
 }
@@ -4677,6 +4799,7 @@ function normalizeVendor(input: Record<string, unknown>, source = "manual") {
   const baseStage = cleanText(input.base_stage)?.toLowerCase() || "sourcing";
   const now = new Date().toISOString();
   const funnelStage = normalizeVendorFunnelStage(input.funnel_stage) || (baseStage === "procurement" ? "targeted" : null);
+  const profileData = normalizeVendorProfileData(input.profile_data);
 
   return {
     vendor_name: vendorName,
@@ -4689,10 +4812,10 @@ function normalizeVendor(input: Record<string, unknown>, source = "manual") {
     status: ["active", "invited", "blocked", "inactive"].includes(status) ? status : "active",
     logo_url: cleanUrl(input.logo_url || input.logo),
     logo_source: cleanUrl(input.logo_url || input.logo) ? "url" : null,
-    tags: normalizeTags(input.tags || input.tag || input.services || input.equipment || input.coverage),
+    tags: Array.from(new Set([...normalizeTags(input.tags || input.tag || input.services || input.equipment || input.coverage), ...vendorProfileDerivedTags(profileData)])),
     coverage_notes: cleanText(input.coverage_notes || input.coverage || input.lanes),
     notes: cleanText(input.notes),
-    profile_data: normalizeVendorProfileData(input.profile_data),
+    profile_data: profileData,
     base_stage: ["sourcing", "procurement", "archived"].includes(baseStage) ? baseStage : "sourcing",
     ...vendorFunnelPatch(funnelStage, now),
     source_spreadsheet_url: cleanText(input.source_spreadsheet_url),
@@ -4723,7 +4846,13 @@ function normalizeVendorPatch(input: Record<string, unknown>, current: Record<st
   }
   if (input.coverage_notes !== undefined) patch.coverage_notes = cleanText(input.coverage_notes);
   if (input.notes !== undefined) patch.notes = cleanText(input.notes);
-  if (input.profile_data !== undefined) patch.profile_data = normalizeVendorProfileData(input.profile_data);
+  if (input.profile_data !== undefined) {
+    const profileData = normalizeVendorProfileData(input.profile_data);
+    patch.profile_data = profileData;
+    if (input.tags === undefined) {
+      patch.tags = Array.from(new Set([...normalizeTags(current.tags), ...vendorProfileDerivedTags(profileData)]));
+    }
+  }
   const status = cleanText(input.status)?.toLowerCase();
   if (status && ["active", "invited", "blocked", "inactive"].includes(status)) patch.status = status;
   const baseStage = cleanText(input.base_stage)?.toLowerCase();
@@ -4741,7 +4870,10 @@ function normalizeVendorPatch(input: Record<string, unknown>, current: Record<st
   if (input.funnel_stage !== undefined) {
     Object.assign(patch, vendorFunnelUpdatePatch(normalizeVendorFunnelStage(input.funnel_stage), current, now));
   }
-  if (input.tags !== undefined) patch.tags = normalizeTags(input.tags);
+  if (input.tags !== undefined) {
+    const profileData = input.profile_data !== undefined ? normalizeVendorProfileData(input.profile_data) : normalizeVendorProfileData(current.profile_data);
+    patch.tags = Array.from(new Set([...normalizeTags(input.tags), ...vendorProfileDerivedTags(profileData)]));
+  }
   if (input.preferred_channel !== undefined) {
     const preferred = cleanText(input.preferred_channel)?.toLowerCase();
     if (preferred && ["email", "whatsapp", "portal"].includes(preferred)) patch.preferred_channel = preferred;
