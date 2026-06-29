@@ -163,6 +163,7 @@ let vendorFunnelSearchTerm = "";
 let vendorFunnelHealthValue = "";
 let vendorFunnelQuoteValue = "";
 let vendorFunnelHideEmptyStages = false;
+let vendorFunnelStageLimits = {};
 let vendorMatchRows = [];
 let vendorMatchLoaded = false;
 let vendorMatchSummary = {
@@ -173,6 +174,7 @@ const VENDOR_BASE_TABS = ["sourcing", "procurement", "archived"];
 const VENDOR_IMPORT_TOOLS = ["wizard", "create", "segments"];
 const VENDOR_COLUMN_STORAGE_KEY = "rateware.vendorSheetColumns.v1";
 const VENDOR_SAVED_VIEWS_STORAGE_KEY = "rateware.vendorSavedViews.v1";
+const FUNNEL_STAGE_BATCH_SIZE = 40;
 const DEFAULT_FUNNEL_STAGES = [
   { key: "targeted", label: "Targeted", description: "Moved from sourcing into procurement." },
   { key: "nested", label: "Nested", description: "Has linked carrier quotes." },
@@ -1257,6 +1259,23 @@ function funnelStageRows(stageKey, rows = filteredVendorFunnelRows()) {
   return rows.filter((row) => (row.effective_funnel_stage || row.funnel_stage || "targeted") === stageKey);
 }
 
+function resetVendorFunnelStageLimits() {
+  vendorFunnelStageLimits = {};
+}
+
+function funnelStageLimit(stageKey) {
+  return Number(vendorFunnelStageLimits[stageKey] || FUNNEL_STAGE_BATCH_SIZE);
+}
+
+function showMoreVendorFunnelStage(stageKey) {
+  if (!stageKey) return;
+  vendorFunnelStageLimits[stageKey] = funnelStageLimit(stageKey) + FUNNEL_STAGE_BATCH_SIZE;
+  renderVendorFunnelStrip();
+  renderVendorFunnelBoard();
+  const visible = Math.min(funnelStageLimit(stageKey), funnelStageRows(stageKey).length);
+  setStatus(vendorFunnelStatus, `${visible} ${stageLabel(stageKey)} vendor card(s) visible.`, "neutral");
+}
+
 function stageLabel(stageKey) {
   return (vendorFunnelStages.find((stage) => stage.key === stageKey) || DEFAULT_FUNNEL_STAGES.find((stage) => stage.key === stageKey))?.label || stageKey;
 }
@@ -1377,17 +1396,25 @@ function renderVendorFunnelBoard() {
   vendorFunnelBoard.innerHTML = visibleStages
     .map((stage) => {
       const rows = funnelStageRows(stage.key, filteredRows);
+      const visibleRows = rows.slice(0, funnelStageLimit(stage.key));
+      const hiddenRows = rows.length - visibleRows.length;
       return `
         <section class="funnel-column" data-funnel-drop-stage="${escapeHtml(stage.key)}">
           <header>
             <div>
               <strong>${escapeHtml(stage.label)}</strong>
-              <small>${escapeHtml(rows.length)} carrier${rows.length === 1 ? "" : "s"}</small>
+              <small>${escapeHtml(visibleRows.length)} shown of ${escapeHtml(rows.length)}</small>
             </div>
             <span>${escapeHtml(rows.length)}</span>
           </header>
           <div class="funnel-card-stack">
-            ${rows.length ? rows.map(renderVendorFunnelCard).join("") : '<div class="funnel-empty-column">Drop vendor here</div>'}
+            ${visibleRows.length ? visibleRows.map(renderVendorFunnelCard).join("") : '<div class="funnel-empty-column">Drop vendor here</div>'}
+            ${hiddenRows > 0 ? `
+              <button class="funnel-show-more" type="button" data-funnel-show-more="${escapeHtml(stage.key)}">
+                Show ${escapeHtml(Math.min(FUNNEL_STAGE_BATCH_SIZE, hiddenRows))} more
+                <span>${escapeHtml(hiddenRows)} remaining</span>
+              </button>
+            ` : ""}
           </div>
         </section>
       `;
@@ -1398,6 +1425,7 @@ function renderVendorFunnelBoard() {
 function renderVendorFunnel(result = {}) {
   vendorFunnelStages = result.stages?.length ? result.stages : DEFAULT_FUNNEL_STAGES;
   vendorFunnelRows = (result.rows || []).map((row) => ({ ...row, id: row.id || row.vendor_id }));
+  resetVendorFunnelStageLimits();
   if (!vendorFunnelStages.some((stage) => stage.key === activeFunnelStage)) activeFunnelStage = vendorFunnelStages[0]?.key || "targeted";
   renderVendorFunnelMetrics(result.summary || {});
   renderVendorFunnelStrip();
@@ -1411,7 +1439,8 @@ function renderVendorFunnelFilters() {
   if (vendorFunnelHideEmpty) vendorFunnelHideEmpty.checked = vendorFunnelHideEmptyStages;
 }
 
-function applyVendorFunnelFilters({ announce = true } = {}) {
+function applyVendorFunnelFilters({ announce = true, resetLimits = true } = {}) {
+  if (resetLimits) resetVendorFunnelStageLimits();
   renderVendorFunnelFilters();
   renderVendorFunnelStrip();
   renderVendorFunnelBoard();
@@ -2802,6 +2831,12 @@ document.addEventListener("click", (event) => {
   const vendorOpenButton = event.target.closest("[data-vendor-open]");
   if (vendorOpenButton) {
     activateVendorTab(vendorOpenButton.dataset.vendorOpen || "sourcing");
+    return;
+  }
+
+  const showMoreFunnelButton = event.target.closest("[data-funnel-show-more]");
+  if (showMoreFunnelButton) {
+    showMoreVendorFunnelStage(showMoreFunnelButton.dataset.funnelShowMore);
     return;
   }
 

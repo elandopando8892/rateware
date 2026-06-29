@@ -3427,6 +3427,32 @@ a {
   font-size: 0.54rem;
 }
 
+.funnel-show-more {
+  display: grid;
+  gap: 2px;
+  min-height: 34px;
+  border: 1px dashed #b7c7cf;
+  border-radius: 6px;
+  background: #ffffff;
+  color: var(--neutral);
+  padding: 5px;
+  font-size: 0.62rem;
+  font-weight: 860;
+  text-align: center;
+}
+
+.funnel-show-more:hover {
+  border-color: var(--accent-border);
+  background: #f6fbfa;
+  color: var(--accent-dark);
+}
+
+.funnel-show-more span {
+  color: var(--muted);
+  font-size: 0.54rem;
+  font-weight: 760;
+}
+
 .funnel-card-actions {
   border-top: 1px solid #eef2f5;
   padding-top: 3px;
