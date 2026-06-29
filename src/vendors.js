@@ -9,6 +9,7 @@ import {
   deleteVendorSegment,
   fetchVendorFunnel,
   fetchVendorIntelligence,
+  fetchVendorOnboardingGaps,
   fetchVendorSegments,
   fetchVendors,
   importVendorsFromGoogleSheet,
@@ -69,6 +70,8 @@ const tagFilter = document.querySelector("#vendor-tag-filter");
 const coverageFilter = document.querySelector("#vendor-coverage-filter");
 const clearVendorFiltersButton = document.querySelector("#clear-vendor-filters");
 const refreshButton = document.querySelector("#refresh-vendors-button");
+const downloadOnboardingGapsButton = document.querySelector("#download-onboarding-gaps-button");
+const vendorOnboardingGapsStatus = document.querySelector("#vendor-onboarding-gaps-status");
 const vendorPageStatus = document.querySelector("#vendor-page-status");
 const vendorPageSizeSelect = document.querySelector("#vendor-page-size");
 const vendorPrevPageButton = document.querySelector("#vendor-prev-page");
@@ -692,6 +695,74 @@ function downloadVendorMatchErrors(rows = [], truncated = false) {
   return true;
 }
 
+function downloadVendorOnboardingGapsCsv(rows = [], summary = {}) {
+  const headers = [
+    "vendor_id",
+    "vendor_name",
+    "domain",
+    "primary_email",
+    "whatsapp_phone",
+    "base_stage",
+    "funnel_stage",
+    "readiness_score",
+    "missing_count",
+    "missing_required_fields",
+    "suggested_action",
+    "operating_country",
+    "legal_name",
+    "rfc",
+    "usdot_number",
+    "mc_number",
+    "geographic_scope",
+    "service_scope",
+    "regional_coverage",
+    "equipment_types",
+    "certifications",
+    "coverage_amounts",
+    "general_manager",
+    "operations_manager",
+    "commercial_manager"
+  ];
+  const payloadRows = rows.map((row) => headers.map((header) => escapeCsv(row[header])).join(","));
+  if (summary.truncated) {
+    payloadRows.push(headers.map((header) => escapeCsv(header === "suggested_action" ? "Report truncated. Narrow the vendor base or export in batches." : "")).join(","));
+  }
+  const payload = [headers.join(","), ...payloadRows].join("\n");
+  const blob = new Blob([payload], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `vendor-onboarding-gaps-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+  return true;
+}
+
+async function downloadVendorOnboardingGaps() {
+  if (!downloadOnboardingGapsButton) return;
+  downloadOnboardingGapsButton.disabled = true;
+  setStatus(vendorOnboardingGapsStatus, "Building onboarding gaps file...");
+  try {
+    await requirePrivatePage();
+    const result = await fetchVendorOnboardingGaps();
+    const rows = result.rows || [];
+    if (!rows.length) {
+      setStatus(vendorOnboardingGapsStatus, "No onboarding gaps found across the vendor base.", "success");
+      return;
+    }
+    downloadVendorOnboardingGapsCsv(rows, result.summary || {});
+    const total = result.summary?.total_vendors ?? rows.length;
+    const gapCount = result.summary?.vendors_with_gaps ?? rows.length;
+    setStatus(vendorOnboardingGapsStatus, `Downloaded ${gapCount} vendor gap row(s) from ${total} vendor(s).`, result.summary?.truncated ? "warning" : "success");
+  } catch (error) {
+    setStatus(vendorOnboardingGapsStatus, error.message, "error");
+  } finally {
+    downloadOnboardingGapsButton.disabled = false;
+  }
+}
+
 function cleanExternalUrl(value) {
   const text = String(value || "").trim();
   if (!text) return "";
@@ -1158,7 +1229,7 @@ function applyQuickFilter(filter) {
   activeQuickFilter = filter;
   quickFilterButtons.forEach((button) => button.classList.toggle("is-active", button.dataset.quickFilter === filter));
 
-  if (filter !== "duplicates") {
+  if (!["duplicates", "onboarding-gaps"].includes(filter)) {
     vendorPageOffset = 0;
     loadVendors();
     return;
@@ -1166,6 +1237,7 @@ function applyQuickFilter(filter) {
 
   const rows = allVendors.filter((row) => {
     if (filter === "duplicates") return duplicateSignals(row, allVendors).length > 0;
+    if (filter === "onboarding-gaps") return vendorOnboardingGapLabels(row).length > 0;
     return true;
   });
 
@@ -2547,8 +2619,8 @@ async function loadVendors() {
     const rows = result.rows || [];
     vendorTotalCount = result.total ?? rows.length;
     allVendors = rows;
-    if (activeQuickFilter === "duplicates") {
-      applyQuickFilter("duplicates");
+    if (["duplicates", "onboarding-gaps"].includes(activeQuickFilter)) {
+      applyQuickFilter(activeQuickFilter);
     } else {
       renderVendors(rows);
     }
@@ -2682,6 +2754,30 @@ function onboardingCompletion(profile) {
   const required = fields.filter((field) => field.required);
   const requiredFilled = required.filter((field) => profileHasValue(profileFieldValue(profile, field.section, field.key), field)).length;
   return { total: fields.length, filled, required: required.length, requiredFilled };
+}
+
+function vendorOnboardingGapLabels(vendor = {}) {
+  const profile = vendorProfileData(vendor);
+  const gaps = [];
+  if (!vendor.vendor_name) gaps.push("Vendor name");
+  if (!vendor.domain) gaps.push("Domain");
+  if (!vendor.primary_email && !vendor.whatsapp_phone && !profileFieldValue(profile, "general", "mobile_number")) gaps.push("Contact channel");
+  if (!profileFieldValue(profile, "general", "operating_country")) gaps.push("Operating country");
+  const hasLegalIdentity = Boolean(
+    vendor.legal_name
+    || profileFieldValue(profile, "mexico", "legal_name")
+    || profileFieldValue(profile, "mexico", "rfc")
+    || profileFieldValue(profile, "international", "legal_name")
+    || profileFieldValue(profile, "international", "usdot_number")
+    || profileFieldValue(profile, "international", "mc_number")
+  );
+  if (!hasLegalIdentity) gaps.push("Legal identity");
+  if (!profileHasValue(profileFieldValue(profile, "carrier_profile", "geographic_scope"), { type: "checks" })) gaps.push("Geographic scope");
+  if (!profileHasValue(profileFieldValue(profile, "carrier_profile", "service_scope"), { type: "checks" })) gaps.push("Service scope");
+  if (!profileHasValue(profileFieldValue(profile, "carrier_profile", "regional_coverage"), { type: "checks" })) gaps.push("Regional coverage");
+  if (!profileHasValue(profileFieldValue(profile, "insurance_infrastructure", "equipment_types"), { type: "checks" })) gaps.push("Equipment");
+  if (!profileHasValue(profileFieldValue(profile, "insurance_infrastructure", "coverage_amounts"), { type: "textarea" })) gaps.push("Insurance coverage");
+  return gaps;
 }
 
 function renderProfileValue(value, field) {
@@ -3610,6 +3706,7 @@ vendorIntelligenceBody?.addEventListener("click", (event) => {
 });
 
 refreshButton.addEventListener("click", loadVendors);
+downloadOnboardingGapsButton?.addEventListener("click", downloadVendorOnboardingGaps);
 statusFilter.addEventListener("change", () => {
   resetVendorPageAndLoad();
 });
@@ -3813,7 +3910,7 @@ initAuthControls();
 requirePrivatePage()
   .then(() =>
     applyPermissionState(
-      "#save-vendor-button, #wizard-save-button, #vendor-import, #import-google-sheet-button, #select-visible-vendors-button, #clear-vendor-selection-button, #bulk-update-button, #bulk-procurement-button, #bulk-archive-vendors-button, #bulk-remove-vendors-button, #confirm-import-button, #save-segment-button, #drawer-save-button, #drawer-archive-button, #apply-intelligence-tags, #promote-intelligence-selected, #match-staging-vendors, #match-rateware-vendors, [data-duplicate-inactive], [data-funnel-stage-select]",
+      "#save-vendor-button, #wizard-save-button, #vendor-import, #import-google-sheet-button, #download-onboarding-gaps-button, #select-visible-vendors-button, #clear-vendor-selection-button, #bulk-update-button, #bulk-procurement-button, #bulk-archive-vendors-button, #bulk-remove-vendors-button, #confirm-import-button, #save-segment-button, #drawer-save-button, #drawer-archive-button, #apply-intelligence-tags, #promote-intelligence-selected, #match-staging-vendors, #match-rateware-vendors, [data-duplicate-inactive], [data-funnel-stage-select]",
       "vendors:manage"
     )
   )

@@ -4705,6 +4705,129 @@ function vendorProfileDerivedTags(profile: Record<string, unknown>) {
   return rules.filter(([, pattern]) => pattern.test(text)).map(([tag]) => tag);
 }
 
+function vendorProfileValue(profile: Record<string, unknown>, section: string, field: string) {
+  const sectionValue = objectRecord(profile[section]);
+  return sectionValue[field];
+}
+
+function vendorProfileHasValue(profile: Record<string, unknown>, section: string, field: string) {
+  const value = vendorProfileValue(profile, section, field);
+  if (Array.isArray(value)) return value.map((item) => cleanText(item)).filter(Boolean).length > 0;
+  return Boolean(cleanText(value));
+}
+
+function vendorProfileCsvValue(profile: Record<string, unknown>, section: string, field: string) {
+  const value = vendorProfileValue(profile, section, field);
+  if (Array.isArray(value)) return value.map((item) => cleanText(item)).filter(Boolean).join("; ");
+  return cleanText(value) || "";
+}
+
+function vendorOnboardingGapReport(row: Record<string, unknown>) {
+  const profile = normalizeVendorProfileData(row.profile_data);
+  const gaps: string[] = [];
+  const vendorName = cleanText(row.vendor_name);
+  const primaryEmail = cleanText(row.primary_email);
+  const whatsapp = cleanText(row.whatsapp_phone);
+  const legalName = cleanText(row.legal_name);
+  if (!vendorName) gaps.push("Vendor name");
+  if (!cleanText(row.domain)) gaps.push("Domain");
+  if (!primaryEmail && !whatsapp && !cleanText(vendorProfileValue(profile, "general", "mobile_number"))) gaps.push("Contact channel");
+  if (!vendorProfileHasValue(profile, "general", "operating_country")) gaps.push("Operating country");
+  const hasLegalIdentity = Boolean(
+    legalName
+    || vendorProfileHasValue(profile, "mexico", "legal_name")
+    || vendorProfileHasValue(profile, "mexico", "rfc")
+    || vendorProfileHasValue(profile, "international", "legal_name")
+    || vendorProfileHasValue(profile, "international", "usdot_number")
+    || vendorProfileHasValue(profile, "international", "mc_number")
+  );
+  if (!hasLegalIdentity) gaps.push("Legal identity");
+  if (!vendorProfileHasValue(profile, "carrier_profile", "geographic_scope")) gaps.push("Geographic scope");
+  if (!vendorProfileHasValue(profile, "carrier_profile", "service_scope")) gaps.push("Service scope");
+  if (!vendorProfileHasValue(profile, "carrier_profile", "regional_coverage")) gaps.push("Regional coverage");
+  if (!vendorProfileHasValue(profile, "insurance_infrastructure", "equipment_types")) gaps.push("Equipment");
+  if (!vendorProfileHasValue(profile, "insurance_infrastructure", "coverage_amounts")) gaps.push("Insurance coverage");
+
+  const readinessScore = Math.max(0, Math.round(((10 - gaps.length) / 10) * 100));
+  const currentStage = normalizeVendorFunnelStage(row.funnel_stage) || "targeted";
+  const suggestedAction = !primaryEmail && !whatsapp
+    ? "Add contact before invite"
+    : gaps.length
+      ? "Complete onboarding profile"
+      : row.base_stage !== "procurement"
+        ? "Move to Procurement Base"
+        : currentStage === "targeted" || currentStage === "nested"
+          ? "Draft onboarding"
+          : currentStage === "drafted"
+            ? "Send onboarding invite"
+            : "Continue onboarding";
+
+  return {
+    vendor_id: row.id,
+    vendor_name: vendorName,
+    domain: cleanText(row.domain),
+    primary_email: primaryEmail,
+    whatsapp_phone: whatsapp,
+    base_stage: cleanText(row.base_stage) || "sourcing",
+    funnel_stage: currentStage,
+    readiness_score: readinessScore,
+    missing_count: gaps.length,
+    missing_required_fields: gaps.join("; "),
+    suggested_action: suggestedAction,
+    operating_country: vendorProfileCsvValue(profile, "general", "operating_country"),
+    legal_name: legalName || vendorProfileCsvValue(profile, "mexico", "legal_name") || vendorProfileCsvValue(profile, "international", "legal_name"),
+    rfc: vendorProfileCsvValue(profile, "mexico", "rfc"),
+    usdot_number: vendorProfileCsvValue(profile, "international", "usdot_number"),
+    mc_number: vendorProfileCsvValue(profile, "international", "mc_number"),
+    geographic_scope: vendorProfileCsvValue(profile, "carrier_profile", "geographic_scope"),
+    service_scope: vendorProfileCsvValue(profile, "carrier_profile", "service_scope"),
+    regional_coverage: vendorProfileCsvValue(profile, "carrier_profile", "regional_coverage"),
+    equipment_types: vendorProfileCsvValue(profile, "insurance_infrastructure", "equipment_types"),
+    certifications: vendorProfileCsvValue(profile, "carrier_profile", "certifications"),
+    coverage_amounts: vendorProfileCsvValue(profile, "insurance_infrastructure", "coverage_amounts"),
+    general_manager: vendorProfileCsvValue(profile, "key_contacts", "general_manager"),
+    operations_manager: vendorProfileCsvValue(profile, "key_contacts", "operations_manager"),
+    commercial_manager: vendorProfileCsvValue(profile, "key_contacts", "commercial_manager")
+  };
+}
+
+async function buildVendorOnboardingGaps(supabase: ReturnType<typeof createClient>, user: { owner_email: string | null }) {
+  const pageSize = 1000;
+  const maxRows = 10000;
+  const vendors: Record<string, unknown>[] = [];
+  let offset = 0;
+  let total = 0;
+
+  while (offset < maxRows) {
+    const result = await supabase
+      .from("vendors")
+      .select("*", { count: "exact" })
+      .eq("owner_email", user.owner_email)
+      .neq("base_stage", "archived")
+      .order("vendor_name", { ascending: true })
+      .range(offset, offset + pageSize - 1);
+    if (result.error) throw result.error;
+    if (offset === 0) total = result.count || 0;
+    const rows = (result.data || []) as Record<string, unknown>[];
+    vendors.push(...rows);
+    if (rows.length < pageSize) break;
+    offset += pageSize;
+  }
+
+  const reports = vendors.map(vendorOnboardingGapReport);
+  const gaps = reports.filter((row) => Number(row.missing_count || 0) > 0);
+  return {
+    rows: gaps,
+    summary: {
+      total_vendors: total || vendors.length,
+      scanned_vendors: vendors.length,
+      vendors_with_gaps: gaps.length,
+      complete_vendors: reports.length - gaps.length,
+      truncated: vendors.length >= maxRows && (total || 0) > vendors.length
+    }
+  };
+}
+
 function normalizeImportedVendor(row: Record<string, unknown>, source = "google_sheet") {
   const profileData = readImportedVendorProfileData(row);
   return {
@@ -7178,6 +7301,11 @@ Deno.serve(async (request) => {
 
     if (body.action === "vendor_funnel") {
       const result = await buildVendorFunnel(supabase, user);
+      return jsonResponse(result);
+    }
+
+    if (body.action === "vendor_onboarding_gaps") {
+      const result = await buildVendorOnboardingGaps(supabase, user);
       return jsonResponse(result);
     }
 

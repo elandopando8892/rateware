@@ -380,6 +380,11 @@ assert.doesNotMatch(
   /fetchBusinessIntelligenceRows/,
   "Procurement Pipeline should not load raw BI rate rows in the Edge Function"
 );
+const vendorOnboardingGapsSource = apiSource.slice(apiSource.indexOf("async function buildVendorOnboardingGaps"), apiSource.indexOf("function normalizeImportedVendor"));
+assert.ok(vendorOnboardingGapsSource.length > 100, "vendor onboarding gaps helper should be present");
+assert.match(vendorOnboardingGapsSource, /\.eq\("owner_email", user\.owner_email\)/, "vendor onboarding gaps should be scoped to the signed-in owner");
+assert.match(vendorOnboardingGapsSource, /vendorOnboardingGapReport/, "vendor onboarding gaps should return row-level gap reports");
+assert.match(apiSource, /body\.action === "vendor_onboarding_gaps"/, "rateware API should expose vendor onboarding gaps export");
 const vendorPatchSource = apiSource.slice(apiSource.indexOf("function normalizeVendorPatch"), apiSource.indexOf("function normalizeSegment"));
 assert.ok(vendorPatchSource.length > 100, "vendor patch normalizer should be present");
 assert.match(apiSource, /function normalizeVendorProfileData/, "vendors should support structured onboarding profile data");
