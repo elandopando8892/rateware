@@ -77,6 +77,12 @@ const rfxOutreachPreview = document.querySelector("#rfx-outreach-preview");
 const openRfxOutreach = document.querySelector("#open-rfx-outreach");
 const touchpointSummary = document.querySelector("#rfx-touchpoint-summary");
 const touchpointList = document.querySelector("#rfx-touchpoint-list");
+const wizardRefreshButton = document.querySelector("#rfx-wizard-refresh");
+const wizardLiveOffersButton = document.querySelector("#rfx-wizard-live-offers");
+const wizardSteps = document.querySelector("#rfx-wizard-steps");
+const wizardPrimary = document.querySelector("#rfx-wizard-primary");
+const wizardPreview = document.querySelector("#rfx-wizard-preview");
+const liveOfferManager = document.querySelector("#rfx-live-offer-manager");
 
 let events = [];
 let selectedEventId = null;
@@ -89,7 +95,7 @@ let selectedLaneIds = new Set();
 let selectedInvitationIds = new Set();
 let focusedLaneId = null;
 let activeLaneFilter = "all";
-const rfxWorkbench = initWorkbenchTabs({ defaultView: "dashboard" });
+const rfxWorkbench = initWorkbenchTabs({ defaultView: "wizard" });
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -272,6 +278,45 @@ function templatePlaceholders(template) {
   return [...new Set([...source.matchAll(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g)].map((match) => match[1]))];
 }
 
+function renderTemplateText(value, context = {}) {
+  return String(value || "").replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_, key) => String(context[key] ?? ""));
+}
+
+function firstOutreachTarget() {
+  return outreachTargetInvitations().find((target) => targetHasChannel(target, rfxOutreachChannel?.value || "multi"))
+    || outreachTargetInvitations()[0]
+    || null;
+}
+
+function sampleOutreachContext(target) {
+  const invitation = target?.invitation || {};
+  const lane = target?.lane || {};
+  const vendor = invitation.vendors || {};
+  return {
+    vendor_name: vendor.vendor_name || vendor.domain || "Carrier",
+    contact_name: vendor.contact_name || vendor.vendor_name || "team",
+    vendor_domain: vendor.domain || "",
+    vendor_email: vendor.primary_email || "",
+    rfx_id: selectedEvent?.rfx_id || "",
+    event_name: selectedEvent?.name || selectedEvent?.rfx_id || "",
+    customer: selectedEvent?.customer || "",
+    due_date: selectedEvent?.due_date || "",
+    lane_origin: lane.origin || lane.origin_city || "",
+    lane_destination: lane.destination || lane.destination_city || "",
+    origin_market: lane.origin_market || "",
+    destination_market: lane.destination_market || "",
+    equipment: lane.equipment || "",
+    trailer: lane.trailer || "",
+    config: lane.config || "",
+    operation: lane.operation || "",
+    service: lane.service || "",
+    weekly_volume: lane.weekly_volume || "",
+    target_rate: lane.target_rate || "",
+    currency: lane.currency || "USD",
+    bid_link: invitation.invitation_token ? portalUrl(invitation.invitation_token) : `${window.location.origin}/rfx-bid.html?token=preview`
+  };
+}
+
 function outreachTargetInvitations() {
   const selectedIds = selectedInvitationIds.size ? selectedInvitationIds : null;
   const selectedLaneSet = !selectedIds && selectedLaneIds.size ? selectedLaneIds : null;
@@ -348,6 +393,202 @@ function renderOutreachPreview() {
   if (createRfxOutreachCampaignButton) {
     createRfxOutreachCampaignButton.disabled = !selectedEventId || !template || !targets.length;
   }
+  renderWizard();
+}
+
+function rfxWizardStats() {
+  const invitations = currentLanes.flatMap((lane) => activeInvitations(lane));
+  const targets = outreachTargetInvitations();
+  const channel = rfxOutreachChannel?.value || "multi";
+  const readyTargets = targets.filter((target) => targetHasChannel(target, channel));
+  const bids = currentLanes.flatMap((lane) => bidInvitations(lane));
+  return {
+    lanes: currentLanes.length,
+    invitations,
+    targets,
+    readyTargets,
+    bids,
+    lanesWithShortlist: currentLanes.filter((lane) => activeInvitations(lane).length).length,
+    lanesWithBids: currentLanes.filter((lane) => bidInvitations(lane).length).length
+  };
+}
+
+function rfxWizardStepState() {
+  const stats = rfxWizardStats();
+  return [
+    { key: "event", label: "Event", complete: Boolean(selectedEvent) },
+    { key: "lanes", label: "Lanes", complete: stats.lanes > 0 },
+    { key: "carriers", label: "Carriers", complete: stats.invitations.length > 0 },
+    { key: "preview", label: "Preview", complete: Boolean(selectedOutreachTemplate() && stats.readyTargets.length) },
+    { key: "launch", label: "Launch", complete: stats.invitations.some(hasInvitationStarted) },
+    { key: "offers", label: "Live offers", complete: stats.bids.length > 0 }
+  ];
+}
+
+function currentWizardStage() {
+  return rfxWizardStepState().find((step) => !step.complete)?.key || "offers";
+}
+
+function wizardActionButton(stage) {
+  const actions = {
+    event: '<button type="button" data-rfx-wizard-go="setup">Create RFx event</button>',
+    lanes: '<button type="button" data-rfx-wizard-go="lanes">Paste or import lanes</button>',
+    carriers: '<button type="button" data-rfx-wizard-auto-shortlist>Auto shortlist all lanes</button>',
+    preview: '<button type="button" data-rfx-wizard-go="outreach">Review invite preview</button>',
+    launch: '<button type="button" data-rfx-wizard-create-drafts>Create Gmail/WhatsApp drafts</button>',
+    offers: '<button type="button" data-rfx-wizard-go="responses">Open live offer manager</button>'
+  };
+  return actions[stage] || actions.event;
+}
+
+function renderWizardSteps() {
+  if (!wizardSteps) return;
+  const stage = currentWizardStage();
+  wizardSteps.innerHTML = rfxWizardStepState().map((step, index) => `
+    <article class="${step.complete ? "is-complete" : ""} ${step.key === stage ? "is-active" : ""}">
+      <span>${index + 1}</span>
+      <strong>${escapeHtml(step.label)}</strong>
+    </article>
+  `).join("");
+}
+
+function renderWizardPreview() {
+  if (!wizardPreview) return;
+  const template = selectedOutreachTemplate();
+  const target = firstOutreachTarget();
+  const context = sampleOutreachContext(target);
+  const subject = template ? renderTemplateText(template.subject || `${context.rfx_id} invitation`, context) : "No template selected";
+  const htmlBody = template ? renderTemplateText(template.html_body || template.whatsapp_body || "", context) : "";
+  const whatsappText = template ? renderTemplateText(template.whatsapp_body || htmlBody.replace(/<[^>]*>/g, " "), context) : "";
+  const channel = rfxOutreachChannel?.value || "multi";
+  wizardPreview.innerHTML = `
+    <div class="split-heading compact">
+      <div>
+        <p class="eyebrow">Invite preview</p>
+        <h3>${escapeHtml(template?.name || "No template selected")}</h3>
+      </div>
+      <span class="status-pill neutral">${escapeHtml(channel)}</span>
+    </div>
+    <div class="rfx-preview-meta">
+      <span>To: ${escapeHtml(context.vendor_name)}</span>
+      <span>Lane: ${escapeHtml(context.lane_origin || "-")} -> ${escapeHtml(context.lane_destination || "-")}</span>
+      <span>Link: ${escapeHtml(context.bid_link)}</span>
+    </div>
+    <article class="rfx-email-preview-card">
+      <span>Subject</span>
+      <strong>${escapeHtml(subject)}</strong>
+      ${htmlBody ? `<iframe sandbox="" srcdoc="${escapeHtml(htmlBody)}"></iframe>` : `<p>${escapeHtml(whatsappText || "Select a template and shortlist at least one vendor to preview the invitation.")}</p>`}
+    </article>
+    <article class="rfx-email-preview-card">
+      <span>WhatsApp</span>
+      <p>${escapeHtml(whatsappText || "No WhatsApp draft configured.")}</p>
+    </article>
+  `;
+}
+
+function renderWizard() {
+  renderWizardSteps();
+  renderWizardPreview();
+  if (!wizardPrimary) return;
+  const stats = rfxWizardStats();
+  const stage = currentWizardStage();
+  const nextCopy = {
+    event: ["Create or select an RFx event", "Start with customer, due date, and event ID. The rest of the launch will attach to that event."],
+    lanes: ["Load the spot/RFx book", "Paste lanes from Excel or CSV. Once lanes exist, Rateware can recommend carriers by lane."],
+    carriers: ["Build the carrier shortlist", "Use procurement vendors and Rateware evidence to create target carriers for each lane."],
+    preview: ["Review invitation copy", "Confirm the Gmail/WhatsApp template, channel, placeholders, and contact readiness before generating drafts."],
+    launch: ["Generate drafts and send invites", "Create Gmail and WhatsApp drafts with bid links. Mark sent when the invite goes out."],
+    offers: ["Monitor live offers", "Track active bids, best rate, spread, capacity, and response coverage like an offer manager."]
+  };
+  const [title, detail] = nextCopy[stage] || nextCopy.event;
+  wizardPrimary.innerHTML = `
+    <article class="rfx-wizard-next">
+      <p class="eyebrow">Next best action</p>
+      <h3>${escapeHtml(title)}</h3>
+      <p>${escapeHtml(detail)}</p>
+      <div class="action-row">
+        ${wizardActionButton(stage)}
+        <button class="secondary" type="button" data-rfx-wizard-go="dashboard">Open dashboard</button>
+      </div>
+    </article>
+    <div class="rfx-wizard-scoreboard">
+      <article><span>Selected event</span><strong>${escapeHtml(selectedEvent?.rfx_id || "-")}</strong><small>${escapeHtml(selectedEvent?.name || "No event selected")}</small></article>
+      <article><span>Lanes</span><strong>${formatNumber(stats.lanes)}</strong><small>${formatNumber(stats.lanesWithShortlist)} with shortlist</small></article>
+      <article><span>Invite targets</span><strong>${formatNumber(stats.readyTargets.length)} / ${formatNumber(stats.targets.length)}</strong><small>ready by selected channel</small></article>
+      <article><span>Live bids</span><strong>${formatNumber(stats.bids.length)}</strong><small>${formatNumber(stats.lanesWithBids)} lane(s) with bids</small></article>
+    </div>
+    <section class="rfx-wizard-offer-strip">
+      ${liveOfferCards(5) || "<article>No bids yet. Once carriers submit through the portal, live offers appear here.</article>"}
+    </section>
+  `;
+}
+
+function liveOfferRows() {
+  return currentLanes.flatMap((lane) => bidInvitations(lane)
+    .map((invitation) => ({
+      lane,
+      invitation,
+      amount: Number(invitation.bid_rate),
+      currency: invitation.currency || lane.currency || "USD"
+    }))
+    .filter((row) => Number.isFinite(row.amount)));
+}
+
+function liveOfferCards(limit = 12) {
+  return liveOfferRows()
+    .sort((a, b) => a.amount - b.amount)
+    .slice(0, limit)
+    .map((row, index) => `
+      <article>
+        <span>#${index + 1} ${escapeHtml(row.lane.lane_number || "")}</span>
+        <strong>${formatMoney(row.amount, row.currency)}</strong>
+        <small>${escapeHtml(vendorLabel(row.invitation))} | ${escapeHtml(laneRoute(row.lane))}</small>
+      </article>
+    `).join("");
+}
+
+function renderLiveOfferManager() {
+  if (!liveOfferManager) return;
+  const rows = liveOfferRows();
+  if (!rows.length) {
+    liveOfferManager.innerHTML = "<article>No live bids yet. Carrier portal submissions will appear here as ranked offers.</article>";
+    return;
+  }
+  const byLane = new Map();
+  rows.forEach((row) => {
+    const bucket = byLane.get(row.lane.id) || [];
+    bucket.push(row);
+    byLane.set(row.lane.id, bucket);
+  });
+  liveOfferManager.innerHTML = [...byLane.values()].map((laneRows) => {
+    const sorted = laneRows.sort((a, b) => a.amount - b.amount);
+    const best = sorted[0];
+    const spread = sorted.length > 1 ? sorted[sorted.length - 1].amount - sorted[0].amount : 0;
+    return `
+      <section class="live-offer-lane">
+        <div>
+          <span class="status-pill success">${formatNumber(sorted.length)} bid(s)</span>
+          <strong>${escapeHtml(laneRoute(best.lane))}</strong>
+          <small>Best ${formatMoney(best.amount, best.currency)} | Spread ${formatMoney(spread, best.currency)}</small>
+        </div>
+        <table>
+          <thead><tr><th>Rank</th><th>Carrier</th><th>Bid</th><th>Capacity</th><th>Transit</th><th>Status</th></tr></thead>
+          <tbody>
+            ${sorted.map((row, index) => `
+              <tr>
+                <td>#${index + 1}</td>
+                <td>${escapeHtml(vendorLabel(row.invitation))}</td>
+                <td>${formatMoney(row.amount, row.currency)}</td>
+                <td>${escapeHtml(row.invitation.weekly_capacity ?? "-")}</td>
+                <td>${escapeHtml(row.invitation.transit_days ?? "-")}</td>
+                <td>${statusChip(row.invitation.invitation_status || "quoted")}</td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      </section>
+    `;
+  }).join("");
 }
 
 function laneRoute(lane) {
@@ -857,6 +1098,8 @@ function renderLanes() {
   renderLaneDecision();
   renderResponseBoard();
   renderOutreachLaunchpad();
+  renderLiveOfferManager();
+  renderWizard();
 
   if (!selectedEventId) {
     lanesBody.innerHTML = tableState(9, {
@@ -939,6 +1182,8 @@ async function loadEvents() {
       renderLaneDecision();
       renderResponseBoard();
       renderOutreachLaunchpad();
+      renderLiveOfferManager();
+      renderWizard();
     }
   } catch (error) {
     eventList.innerHTML = errorState(error, {
@@ -950,6 +1195,7 @@ async function loadEvents() {
       title: "RFx lanes could not load",
       retryAction: "load-rfx-events"
     });
+    renderWizard();
   }
 }
 
@@ -1001,10 +1247,67 @@ async function loadDetail(eventId) {
   }
 }
 
+function activateWorkbenchView(view, focusTarget = null) {
+  const activeView = rfxWorkbench?.activate(view, focusTarget ? { focusTarget } : {}) || view;
+  const url = new URL(window.location.href);
+  url.searchParams.set("view", activeView);
+  window.history.replaceState({}, "", url);
+}
+
 async function autoShortlistLane(laneId) {
   setStatus(actionStatus, "Building shortlist...");
   const result = await autoShortlistRfxLane(laneId, 10);
   setStatus(actionStatus, `${result.inserted || 0} vendor(s) shortlisted.`, "success");
+}
+
+async function autoShortlistLaneIds(ids, statusElement = actionStatus) {
+  const laneIds = ids.filter(Boolean);
+  if (!laneIds.length) return 0;
+  setStatus(statusElement, "Building shortlists...");
+  let inserted = 0;
+  for (const id of laneIds) {
+    const result = await autoShortlistRfxLane(id, 10);
+    inserted += Number(result.inserted || 0);
+  }
+  setStatus(statusElement, `${inserted} vendor shortlist row(s) created.`, "success");
+  selectedLaneIds.clear();
+  await loadDetail(selectedEventId);
+  return inserted;
+}
+
+async function createCurrentOutreachDrafts(statusElement = rfxOutreachStatus) {
+  if (!selectedEventId) return null;
+  const template = selectedOutreachTemplate();
+  const targets = outreachTargetInvitations();
+  if (!template) {
+    setStatus(statusElement, "Select an outreach template before creating drafts.", "error");
+    return null;
+  }
+  if (!targets.length) {
+    setStatus(statusElement, "Shortlist at least one vendor before creating campaign drafts.", "error");
+    return null;
+  }
+  const invitationIds = selectedInvitationIds.size
+    ? [...selectedInvitationIds]
+    : targets.map(({ invitation }) => invitation.id);
+  if (createRfxOutreachCampaignButton) createRfxOutreachCampaignButton.disabled = true;
+  setStatus(statusElement, "Creating campaign and generating drafts...");
+  const campaign = await createOutreachCampaign({
+    name: rfxOutreachCampaignName?.value || `${selectedEvent?.rfx_id || "RFx"} invitation wave`,
+    rfx_event_id: selectedEventId,
+    template_id: template.id,
+    channel: rfxOutreachChannel?.value || "multi"
+  });
+  const result = await generateOutreachDrafts(campaign.id, { invitationIds });
+  contactHistoryRows = await fetchContactHistory({ rfx_event_id: selectedEventId });
+  renderOutreachLaunchpad();
+  setStatus(
+    statusElement,
+    `${result.generated || 0} draft(s) created. ${result.skipped?.length || 0} skipped for missing contact data.`,
+    "success"
+  );
+  await loadDetail(selectedEventId);
+  return result;
 }
 
 initAuthControls();
@@ -1037,11 +1340,51 @@ eventForm?.addEventListener("submit", async (event) => {
 });
 
 refreshButton?.addEventListener("click", loadEvents);
+wizardRefreshButton?.addEventListener("click", loadEvents);
+wizardLiveOffersButton?.addEventListener("click", () => activateWorkbenchView("responses", "#rfx-response-body"));
 
 document.addEventListener("click", (event) => {
   const retryButton = event.target.closest("[data-retry-action]");
   if (retryButton?.dataset.retryAction === "load-rfx-events") {
     loadEvents();
+    return;
+  }
+
+  const wizardGoButton = event.target.closest("[data-rfx-wizard-go]");
+  if (wizardGoButton) {
+    const view = wizardGoButton.dataset.rfxWizardGo || "wizard";
+    const focusTargets = {
+      setup: "#rfx-id",
+      lanes: "#rfx-lane-paste",
+      outreach: "#rfx-outreach-template",
+      responses: "#rfx-response-body"
+    };
+    activateWorkbenchView(view, focusTargets[view] || null);
+    return;
+  }
+
+  const wizardAutoShortlistButton = event.target.closest("[data-rfx-wizard-auto-shortlist]");
+  if (wizardAutoShortlistButton) {
+    if (!selectedEventId || !currentLanes.length) return;
+    wizardAutoShortlistButton.disabled = true;
+    autoShortlistLaneIds(currentLanes.map((lane) => lane.id), actionStatus)
+      .catch((error) => setStatus(actionStatus, error.message, "error"))
+      .finally(() => {
+        wizardAutoShortlistButton.disabled = false;
+        renderWizard();
+      });
+    return;
+  }
+
+  const wizardDraftButton = event.target.closest("[data-rfx-wizard-create-drafts]");
+  if (wizardDraftButton) {
+    wizardDraftButton.disabled = true;
+    createCurrentOutreachDrafts(actionStatus)
+      .catch((error) => setStatus(actionStatus, error.message, "error"))
+      .finally(() => {
+        wizardDraftButton.disabled = false;
+        renderWizard();
+      });
     return;
   }
 
@@ -1226,16 +1569,8 @@ autoShortlistButton?.addEventListener("click", async () => {
   const ids = [...selectedLaneIds];
   if (!ids.length) return;
   autoShortlistButton.disabled = true;
-  setStatus(actionStatus, "Building shortlists...");
   try {
-    let inserted = 0;
-    for (const id of ids) {
-      const result = await autoShortlistRfxLane(id, 10);
-      inserted += Number(result.inserted || 0);
-    }
-    setStatus(actionStatus, `${inserted} vendor shortlist row(s) created.`, "success");
-    selectedLaneIds.clear();
-    await loadDetail(selectedEventId);
+    await autoShortlistLaneIds(ids, actionStatus);
   } catch (error) {
     setStatus(actionStatus, error.message, "error");
   } finally {
@@ -1301,37 +1636,8 @@ rfxOutreachCampaignName?.addEventListener("input", () => {
 
 rfxOutreachForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
-  if (!selectedEventId) return;
-  const template = selectedOutreachTemplate();
-  const targets = outreachTargetInvitations();
-  if (!template) {
-    setStatus(rfxOutreachStatus, "Select an outreach template before creating drafts.", "error");
-    return;
-  }
-  if (!targets.length) {
-    setStatus(rfxOutreachStatus, "Shortlist at least one vendor before creating campaign drafts.", "error");
-    return;
-  }
-  const invitationIds = selectedInvitationIds.size
-    ? [...selectedInvitationIds]
-    : targets.map(({ invitation }) => invitation.id);
-  createRfxOutreachCampaignButton.disabled = true;
-  setStatus(rfxOutreachStatus, "Creating campaign and generating drafts...");
   try {
-    const campaign = await createOutreachCampaign({
-      name: rfxOutreachCampaignName?.value || `${selectedEvent?.rfx_id || "RFx"} invitation wave`,
-      rfx_event_id: selectedEventId,
-      template_id: template.id,
-      channel: rfxOutreachChannel?.value || "multi"
-    });
-    const result = await generateOutreachDrafts(campaign.id, { invitationIds });
-    contactHistoryRows = await fetchContactHistory({ rfx_event_id: selectedEventId });
-    renderOutreachLaunchpad();
-    setStatus(
-      rfxOutreachStatus,
-      `${result.generated || 0} draft(s) created. ${result.skipped?.length || 0} skipped for missing contact data.`,
-      "success"
-    );
+    await createCurrentOutreachDrafts(rfxOutreachStatus);
   } catch (error) {
     setStatus(rfxOutreachStatus, error.message, "error");
   } finally {

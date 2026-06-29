@@ -539,6 +539,184 @@ a {
   color: #1b4e8a;
 }
 
+.rfx-launch-wizard {
+  display: grid;
+  gap: 12px;
+}
+
+.rfx-wizard-steps {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.rfx-wizard-steps article {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #fff;
+  padding: 8px;
+}
+
+.rfx-wizard-steps article.is-active {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+}
+
+.rfx-wizard-steps article.is-complete {
+  border-color: #a8d0bd;
+  background: #f2faf5;
+}
+
+.rfx-wizard-steps span {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: #e7eef0;
+  color: #43505a;
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.rfx-wizard-steps article.is-complete span {
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.rfx-wizard-steps strong {
+  color: #43505a;
+  font-size: 0.76rem;
+}
+
+.rfx-wizard-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.56fr) minmax(340px, 0.44fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.rfx-wizard-primary,
+.rfx-wizard-preview {
+  display: grid;
+  gap: 10px;
+}
+
+.rfx-wizard-next,
+.rfx-email-preview-card,
+.rfx-wizard-scoreboard article,
+.rfx-wizard-offer-strip article,
+.rfx-preview-meta,
+.live-offer-lane,
+.bid-live-board {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #fff;
+}
+
+.rfx-wizard-next {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+}
+
+.rfx-wizard-next h3,
+.rfx-wizard-preview h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.rfx-wizard-next p {
+  margin: 0;
+  color: #40505d;
+  font-size: 0.82rem;
+  line-height: 1.42;
+}
+
+.rfx-wizard-scoreboard,
+.bid-board-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.rfx-wizard-scoreboard article,
+.bid-board-stats article {
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+}
+
+.rfx-wizard-scoreboard span,
+.bid-board-stats span,
+.rfx-email-preview-card span,
+.rfx-wizard-offer-strip span {
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 880;
+  text-transform: uppercase;
+}
+
+.rfx-wizard-scoreboard strong,
+.bid-board-stats strong,
+.rfx-email-preview-card strong,
+.rfx-wizard-offer-strip strong {
+  color: var(--text);
+  font-size: 1rem;
+}
+
+.rfx-wizard-scoreboard small,
+.rfx-wizard-offer-strip small {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.rfx-wizard-offer-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 8px;
+}
+
+.rfx-wizard-offer-strip article {
+  display: grid;
+  gap: 4px;
+  padding: 9px;
+}
+
+.rfx-preview-meta {
+  display: grid;
+  gap: 4px;
+  padding: 8px;
+  color: #40505d;
+  font-size: 0.74rem;
+  font-weight: 760;
+}
+
+.rfx-email-preview-card {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+}
+
+.rfx-email-preview-card iframe {
+  width: 100%;
+  min-height: 180px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+}
+
+.rfx-email-preview-card p {
+  margin: 0;
+  color: #40505d;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
 .rfx-lane-coverage-panel {
   display: grid;
   gap: 10px;
@@ -970,6 +1148,77 @@ a {
 
 .rfx-response-table td {
   white-space: nowrap;
+}
+
+.rfx-live-offer-manager {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.rfx-live-offer-manager > article,
+.live-offer-lane {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+}
+
+.live-offer-lane > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.live-offer-lane strong {
+  color: var(--text);
+  font-size: 0.9rem;
+}
+
+.live-offer-lane small {
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 760;
+}
+
+.live-offer-lane table,
+.bid-live-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+}
+
+.live-offer-lane th,
+.live-offer-lane td,
+.bid-live-table th,
+.bid-live-table td {
+  border-top: 1px solid var(--line);
+  padding: 5px 6px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.bid-live-board {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+
+.bid-board-stats {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.bid-live-table tr.is-current {
+  background: #eef7f6;
+  color: var(--accent-dark);
+  font-weight: 850;
+}
+
+.bid-board-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.4;
 }
 
 .bid-portal-page {

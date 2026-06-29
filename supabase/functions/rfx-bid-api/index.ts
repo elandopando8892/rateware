@@ -36,6 +36,39 @@ function cleanNumber(value: unknown) {
   return Number.isFinite(numberValue) ? numberValue : null;
 }
 
+function liveBoardFromRows(currentInvitation: Record<string, unknown>, peerRows: Record<string, unknown>[]) {
+  const rows = [currentInvitation, ...peerRows]
+    .filter((row) => cleanNumber(row.bid_rate) !== null)
+    .map((row) => ({
+      id: row.id,
+      amount: cleanNumber(row.bid_rate) as number,
+      currency: cleanText(row.currency) || cleanText(currentInvitation.currency) || "USD",
+      weekly_capacity: cleanNumber(row.weekly_capacity),
+      transit_days: cleanNumber(row.transit_days),
+      responded_at: cleanText(row.responded_at || row.updated_at),
+      is_current: row.id === currentInvitation.id
+    }))
+    .sort((a, b) => a.amount - b.amount);
+  const currentIndex = rows.findIndex((row) => row.is_current);
+  return {
+    updated_at: new Date().toISOString(),
+    bid_count: rows.length,
+    current_rank: currentIndex >= 0 ? currentIndex + 1 : null,
+    best_rate: rows[0]?.amount || null,
+    currency: rows[0]?.currency || cleanText(currentInvitation.currency) || "USD",
+    rows: rows.map((row, index) => ({
+      rank: index + 1,
+      bidder: row.is_current ? "Your offer" : `Competitor ${index + 1}`,
+      amount: row.amount,
+      currency: row.currency,
+      weekly_capacity: row.weekly_capacity,
+      transit_days: row.transit_days,
+      responded_at: row.responded_at,
+      is_current: row.is_current
+    }))
+  };
+}
+
 Deno.serve(async (request) => {
   if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders() });
 
@@ -50,6 +83,7 @@ Deno.serve(async (request) => {
         .from("rfx_lane_vendors")
         .select(`
           id,
+          rfx_lane_id,
           invitation_status,
           invitation_token,
           invited_at,
@@ -79,7 +113,19 @@ Deno.serve(async (request) => {
           .eq("id", result.data.id);
       }
 
-      return jsonResponse({ invitation: result.data });
+      const peersResult = await supabase
+        .from("rfx_lane_vendors")
+        .select("id,bid_rate,currency,weekly_capacity,transit_days,responded_at,updated_at")
+        .eq("rfx_lane_id", result.data.rfx_lane_id)
+        .neq("id", result.data.id)
+        .not("bid_rate", "is", null)
+        .in("invitation_status", ["quoted", "bid_submitted", "awarded"]);
+      if (peersResult.error) throw peersResult.error;
+
+      return jsonResponse({
+        invitation: result.data,
+        live_board: liveBoardFromRows(result.data, peersResult.data || [])
+      });
     }
 
     if (body.action === "submit_bid") {

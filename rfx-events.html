@@ -80,12 +80,31 @@
           </section>
 
           <nav class="module-workbench-nav" role="tablist" aria-label="RFx workbench">
-            <button type="button" role="tab" aria-selected="true" data-workbench-view-button="dashboard">Dashboard</button>
+            <button type="button" role="tab" aria-selected="true" data-workbench-view-button="wizard">Launch Wizard</button>
+            <button type="button" role="tab" aria-selected="false" data-workbench-view-button="dashboard">Dashboard</button>
             <button type="button" role="tab" aria-selected="false" data-workbench-view-button="setup" data-workbench-focus-target="#rfx-id">Setup</button>
             <button type="button" role="tab" aria-selected="false" data-workbench-view-button="lanes">Lanes</button>
             <button type="button" role="tab" aria-selected="false" data-workbench-view-button="outreach">Outreach</button>
             <button type="button" role="tab" aria-selected="false" data-workbench-view-button="responses">Responses</button>
           </nav>
+
+          <section class="workspace-panel rfx-launch-wizard" data-workbench-view-panel="wizard">
+            <div class="split-heading">
+              <div>
+                <p class="eyebrow">Guided RFx launch</p>
+                <h2>Build, invite, and monitor bids</h2>
+              </div>
+              <div class="action-row">
+                <button id="rfx-wizard-refresh" class="secondary small-button" type="button">Refresh</button>
+                <button id="rfx-wizard-live-offers" class="small-button" type="button">Open live offers</button>
+              </div>
+            </div>
+            <div id="rfx-wizard-steps" class="rfx-wizard-steps" aria-label="RFx launch steps"></div>
+            <div class="rfx-wizard-grid">
+              <section id="rfx-wizard-primary" class="rfx-wizard-primary"></section>
+              <aside id="rfx-wizard-preview" class="rfx-wizard-preview"></aside>
+            </div>
+          </section>
 
           <section class="workspace-panel rfx-command-center" data-workbench-view-panel="dashboard">
             <div class="split-heading">
@@ -348,6 +367,9 @@
                       </tr>
                     </tbody>
                   </table>
+                </div>
+                <div id="rfx-live-offer-manager" class="rfx-live-offer-manager">
+                  <article>No live bids yet.</article>
                 </div>
               </section>
 
