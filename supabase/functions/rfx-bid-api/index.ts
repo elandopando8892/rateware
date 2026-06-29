@@ -36,6 +36,47 @@ function cleanNumber(value: unknown) {
   return Number.isFinite(numberValue) ? numberValue : null;
 }
 
+function relationRecord(value: unknown): Record<string, unknown> {
+  if (Array.isArray(value)) return (value[0] || {}) as Record<string, unknown>;
+  return value && typeof value === "object" ? value as Record<string, unknown> : {};
+}
+
+function publicLane(row: Record<string, unknown>) {
+  return {
+    id: row.id,
+    lane_number: row.lane_number,
+    origin: row.origin || row.origin_city,
+    destination: row.destination || row.destination_city,
+    origin_city: row.origin_city,
+    origin_state: row.origin_state,
+    origin_market: row.origin_market,
+    origin_region: row.origin_region,
+    destination_city: row.destination_city,
+    destination_state: row.destination_state,
+    destination_market: row.destination_market,
+    destination_region: row.destination_region,
+    equipment: row.equipment,
+    trailer: row.trailer,
+    config: row.config,
+    operation: row.operation,
+    service: row.service,
+    weekly_volume: row.weekly_volume,
+    currency: row.currency || "USD"
+  };
+}
+
+function publicEvent(row: Record<string, unknown>) {
+  return {
+    id: row.id,
+    rfx_id: row.rfx_id,
+    name: row.name,
+    customer: row.customer,
+    event_type: row.event_type,
+    status: row.status,
+    due_date: row.due_date
+  };
+}
+
 function liveBoardFromRows(currentInvitation: Record<string, unknown>, peerRows: Record<string, unknown>[]) {
   const rows = [currentInvitation, ...peerRows]
     .filter((row) => cleanNumber(row.bid_rate) !== null)
@@ -69,6 +110,54 @@ function liveBoardFromRows(currentInvitation: Record<string, unknown>, peerRows:
   };
 }
 
+function carrierBusinessBook(currentInvitation: Record<string, unknown>, invitedRows: Record<string, unknown>[], openLaneRows: Record<string, unknown>[]) {
+  const vendor = relationRecord(currentInvitation.vendors);
+  const invitedLaneIds = new Set(invitedRows.map((row) => cleanText(row.rfx_lane_id)).filter(Boolean));
+  const invited = invitedRows.map((row) => {
+    const lane = relationRecord(row.rfx_lanes);
+    const event = relationRecord(row.rfx_events);
+    return {
+      participation_status: cleanText(row.invitation_status) || "drafted",
+      is_invited: true,
+      invitation_token: row.invitation_token,
+      invitation_id: row.id,
+      bid_rate: cleanNumber(row.bid_rate),
+      currency: cleanText(row.currency) || cleanText(lane.currency) || "USD",
+      weekly_capacity: cleanNumber(row.weekly_capacity),
+      transit_days: cleanNumber(row.transit_days),
+      invited_at: row.invited_at,
+      responded_at: row.responded_at,
+      event: publicEvent(event),
+      lane: publicLane(lane)
+    };
+  });
+  const open_not_invited = openLaneRows
+    .filter((lane) => !invitedLaneIds.has(cleanText(lane.id)))
+    .map((lane) => ({
+      participation_status: "not_invited",
+      is_invited: false,
+      event: publicEvent(relationRecord(lane.rfx_events)),
+      lane: publicLane(lane)
+    }));
+  const quoted = invited.filter((row) => row.bid_rate !== null || ["quoted", "bid_submitted", "awarded"].includes(String(row.participation_status || "").toLowerCase()));
+  return {
+    carrier: {
+      vendor_name: vendor.vendor_name || vendor.domain || "Carrier",
+      domain: vendor.domain || "",
+      primary_email: vendor.primary_email || ""
+    },
+    summary: {
+      invited: invited.length,
+      not_invited_open: open_not_invited.length,
+      quoted: quoted.length,
+      awarded: invited.filter((row) => row.participation_status === "awarded").length
+    },
+    invited,
+    open_not_invited,
+    quoted
+  };
+}
+
 Deno.serve(async (request) => {
   if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders() });
 
@@ -83,7 +172,9 @@ Deno.serve(async (request) => {
         .from("rfx_lane_vendors")
         .select(`
           id,
+          rfx_event_id,
           rfx_lane_id,
+          vendor_id,
           invitation_status,
           invitation_token,
           invited_at,
@@ -95,8 +186,8 @@ Deno.serve(async (request) => {
           transit_days,
           notes,
           vendors(vendor_name,domain,primary_email),
-          rfx_events(rfx_id,name,customer,event_type,status,due_date,notes),
-          rfx_lanes(*)
+          rfx_events(id,owner_user_id,owner_email,rfx_id,name,customer,event_type,status,due_date,notes),
+          rfx_lanes(id,rfx_event_id,lane_number,origin,destination,origin_city,origin_state,origin_market,origin_region,destination_city,destination_state,destination_market,destination_region,equipment,trailer,config,operation,service,weekly_volume,currency)
         `)
         .eq("invitation_token", token)
         .single();
@@ -122,10 +213,122 @@ Deno.serve(async (request) => {
         .in("invitation_status", ["quoted", "bid_submitted", "awarded"]);
       if (peersResult.error) throw peersResult.error;
 
+      const currentEvent = relationRecord(result.data.rfx_events);
+      const ownerEmail = cleanText(currentEvent.owner_email);
+      const invitedResult = ownerEmail
+        ? await supabase
+            .from("rfx_lane_vendors")
+            .select(`
+              id,
+              rfx_event_id,
+              rfx_lane_id,
+              vendor_id,
+              invitation_status,
+              invitation_token,
+              invited_at,
+              responded_at,
+              bid_rate,
+              currency,
+              weekly_capacity,
+              transit_days,
+              rfx_events!inner(id,owner_email,rfx_id,name,customer,event_type,status,due_date),
+              rfx_lanes(id,rfx_event_id,lane_number,origin,destination,origin_city,origin_state,origin_market,origin_region,destination_city,destination_state,destination_market,destination_region,equipment,trailer,config,operation,service,weekly_volume,currency)
+            `)
+            .eq("vendor_id", result.data.vendor_id)
+            .eq("rfx_events.owner_email", ownerEmail)
+            .neq("invitation_status", "archived")
+            .order("responded_at", { ascending: false, nullsFirst: false })
+            .limit(500)
+        : { data: [], error: null };
+      if (invitedResult.error) throw invitedResult.error;
+
+      const openLanesResult = ownerEmail
+        ? await supabase
+            .from("rfx_lanes")
+            .select(`
+              id,
+              rfx_event_id,
+              lane_number,
+              origin,
+              destination,
+              origin_city,
+              origin_state,
+              origin_market,
+              origin_region,
+              destination_city,
+              destination_state,
+              destination_market,
+              destination_region,
+              equipment,
+              trailer,
+              config,
+              operation,
+              service,
+              weekly_volume,
+              currency,
+              rfx_events!inner(id,owner_email,rfx_id,name,customer,event_type,status,due_date)
+            `)
+            .eq("rfx_events.owner_email", ownerEmail)
+            .eq("rfx_events.status", "open")
+            .order("lane_number", { ascending: true })
+            .limit(500)
+        : { data: [], error: null };
+      if (openLanesResult.error) throw openLanesResult.error;
+
       return jsonResponse({
         invitation: result.data,
-        live_board: liveBoardFromRows(result.data, peersResult.data || [])
+        live_board: liveBoardFromRows(result.data, peersResult.data || []),
+        carrier_book: carrierBusinessBook(result.data, invitedResult.data || [], openLanesResult.data || [])
       });
+    }
+
+    if (body.action === "request_lane_access") {
+      const laneId = cleanText(body.lane_id);
+      if (!laneId) return jsonResponse({ error: "Lane id is required." }, 400);
+      const contextResult = await supabase
+        .from("rfx_lane_vendors")
+        .select("id,vendor_id,rfx_events(id,owner_user_id,owner_email,rfx_id,name),vendors(vendor_name,domain,primary_email)")
+        .eq("invitation_token", token)
+        .single();
+      if (contextResult.error) throw contextResult.error;
+      const currentEvent = relationRecord(contextResult.data.rfx_events);
+      const ownerEmail = cleanText(currentEvent.owner_email);
+      const laneResult = await supabase
+        .from("rfx_lanes")
+        .select("id,rfx_event_id,origin,destination,rfx_events!inner(id,owner_email,rfx_id,name)")
+        .eq("id", laneId)
+        .eq("rfx_events.owner_email", ownerEmail)
+        .single();
+      if (laneResult.error) throw laneResult.error;
+      const existing = await supabase
+        .from("rfx_lane_vendors")
+        .select("id,invitation_status")
+        .eq("vendor_id", contextResult.data.vendor_id)
+        .eq("rfx_lane_id", laneId)
+        .maybeSingle();
+      if (existing.error) throw existing.error;
+      if (existing.data) return jsonResponse({ requested: false, status: existing.data.invitation_status, message: "Carrier already has this lane in its book." });
+
+      const lane = laneResult.data;
+      const laneEvent = relationRecord(lane.rfx_events);
+      const vendor = relationRecord(contextResult.data.vendors);
+      const history = await supabase.from("contact_history").insert({
+        owner_user_id: currentEvent.owner_user_id || null,
+        owner_email: ownerEmail,
+        vendor_id: contextResult.data.vendor_id,
+        rfx_event_id: lane.rfx_event_id,
+        channel: "portal",
+        direction: "inbound",
+        status: "requested_invite",
+        subject: `${laneEvent.rfx_id || "RFx"} carrier requested lane access`,
+        body_preview: [
+          vendor.vendor_name || vendor.domain || "Carrier",
+          lane.origin && lane.destination ? `${lane.origin} -> ${lane.destination}` : null
+        ].filter(Boolean).join(" | "),
+        metadata: { source: "carrier_business_book", requested_lane_id: laneId }
+      });
+      if (history.error) throw history.error;
+      return jsonResponse({ requested: true, message: "Access request recorded." });
     }
 
     if (body.action === "submit_bid") {

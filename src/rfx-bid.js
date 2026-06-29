@@ -37,6 +37,22 @@ function formatMoney(value, currency = "USD") {
   return `${new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(number)} ${currency || "USD"}`;
 }
 
+function statusLabel(status) {
+  const value = String(status || "drafted").toLowerCase();
+  const labels = {
+    drafted: "Drafted",
+    invited: "Invited",
+    viewed: "Viewed",
+    responded: "Responded",
+    quoted: "Quoted",
+    bid_submitted: "Quoted",
+    awarded: "Awarded",
+    declined: "Declined",
+    not_invited: "Not invited"
+  };
+  return labels[value] || value;
+}
+
 function renderLiveBoard(liveBoard = {}) {
   const board = card.querySelector("#bid-live-board");
   if (!board) return;
@@ -82,6 +98,90 @@ function renderLiveBoard(liveBoard = {}) {
       </tbody>
     </table>
     <p class="bid-board-note">Competitor names are hidden. Rankings refresh automatically while this page is open.</p>
+  `;
+}
+
+function laneLabel(row = {}) {
+  return `${row.origin || "-"} -> ${row.destination || "-"}`;
+}
+
+function eventLabel(row = {}) {
+  return [row.rfx_id, row.name].filter(Boolean).join(" | ") || "-";
+}
+
+function renderBookRows(rows = [], options = {}) {
+  if (!rows.length) return `<tr><td colspan="7">${escapeHtml(options.empty || "No lanes in this section.")}</td></tr>`;
+  return rows.map((row) => {
+    const lane = row.lane || {};
+    const event = row.event || {};
+    const amount = row.bid_rate !== null && row.bid_rate !== undefined ? formatMoney(row.bid_rate, row.currency || lane.currency) : "-";
+    const action = row.is_invited
+      ? `<a class="secondary small-button" href="./rfx-bid.html?token=${encodeURIComponent(row.invitation_token || "")}">Open</a>`
+      : `<button class="secondary small-button" type="button" data-request-lane="${escapeHtml(lane.id || "")}">Request invite</button>`;
+    return `
+      <tr>
+        <td>${escapeHtml(eventLabel(event))}<small>${escapeHtml(event.status || "")}${event.due_date ? ` | Due ${escapeHtml(event.due_date)}` : ""}</small></td>
+        <td>${escapeHtml(laneLabel(lane))}<small>${escapeHtml([lane.origin_market, lane.destination_market].filter(Boolean).join(" -> "))}</small></td>
+        <td>${escapeHtml([lane.equipment, lane.trailer, lane.config].filter(Boolean).join(" / ") || "-")}</td>
+        <td>${escapeHtml([lane.operation, lane.service].filter(Boolean).join(" / ") || "-")}</td>
+        <td><span class="status-pill ${row.is_invited ? "neutral" : "muted"}">${escapeHtml(statusLabel(row.participation_status))}</span></td>
+        <td>${amount}<small>${row.weekly_capacity ? `${escapeHtml(row.weekly_capacity)} / wk` : ""}</small></td>
+        <td>${action}</td>
+      </tr>
+    `;
+  }).join("");
+}
+
+function renderCarrierBook(carrierBook = {}) {
+  const book = card.querySelector("#carrier-business-book");
+  if (!book) return;
+  const summary = carrierBook.summary || {};
+  const carrier = carrierBook.carrier || {};
+  const invited = Array.isArray(carrierBook.invited) ? carrierBook.invited : [];
+  const openNotInvited = Array.isArray(carrierBook.open_not_invited) ? carrierBook.open_not_invited : [];
+  const quoted = Array.isArray(carrierBook.quoted) ? carrierBook.quoted : [];
+  book.innerHTML = `
+    <div class="split-heading compact">
+      <div>
+        <p class="eyebrow">Carrier business book</p>
+        <h3>${escapeHtml(carrier.vendor_name || "Carrier portal")}</h3>
+      </div>
+      <span class="status-pill neutral">${escapeHtml(carrier.domain || carrier.primary_email || "Private access")}</span>
+    </div>
+    <div class="carrier-book-summary">
+      <article><span>Invited lanes</span><strong>${escapeHtml(summary.invited || 0)}</strong></article>
+      <article><span>Open not invited</span><strong>${escapeHtml(summary.not_invited_open || 0)}</strong></article>
+      <article><span>Submitted bids</span><strong>${escapeHtml(summary.quoted || 0)}</strong></article>
+      <article><span>Awarded</span><strong>${escapeHtml(summary.awarded || 0)}</strong></article>
+    </div>
+    <section class="carrier-book-section">
+      <h4>Invited opportunities</h4>
+      <div class="table-wrap">
+        <table class="carrier-book-table">
+          <thead><tr><th>RFx</th><th>Lane</th><th>Equipment</th><th>Service</th><th>Status</th><th>Your bid</th><th>Action</th></tr></thead>
+          <tbody>${renderBookRows(invited, { empty: "No invited opportunities yet." })}</tbody>
+        </table>
+      </div>
+    </section>
+    <section class="carrier-book-section">
+      <h4>Open business book - not invited yet</h4>
+      <div class="table-wrap">
+        <table class="carrier-book-table">
+          <thead><tr><th>RFx</th><th>Lane</th><th>Equipment</th><th>Service</th><th>Status</th><th>Your bid</th><th>Action</th></tr></thead>
+          <tbody>${renderBookRows(openNotInvited, { empty: "No open non-invited lanes available." })}</tbody>
+        </table>
+      </div>
+      <p class="bid-board-note">Request invite records an access request for the procurement team. It does not submit a bid until Rateware invites the carrier to that lane.</p>
+    </section>
+    <section class="carrier-book-section">
+      <h4>Submitted bid history</h4>
+      <div class="table-wrap">
+        <table class="carrier-book-table">
+          <thead><tr><th>RFx</th><th>Lane</th><th>Equipment</th><th>Service</th><th>Status</th><th>Your bid</th><th>Action</th></tr></thead>
+          <tbody>${renderBookRows(quoted, { empty: "No submitted bids yet." })}</tbody>
+        </table>
+      </div>
+    </section>
   `;
 }
 
@@ -151,6 +251,10 @@ function renderInvitation(invitation, liveBoard = {}) {
       <button type="submit">Submit bid</button>
       <p id="bid-submit-status" class="status-message" role="status"></p>
     </form>
+
+    <section id="carrier-business-book" class="carrier-business-book">
+      <p class="status-message">Loading carrier business book...</p>
+    </section>
   `;
 
   card.querySelector("#bid-form").addEventListener("submit", async (event) => {
@@ -186,8 +290,10 @@ async function loadInvitation(options = {}) {
     const data = await callBidApi("get_invitation");
     if (options.refreshOnly && card.querySelector("#bid-form")) {
       renderLiveBoard(data.live_board);
+      renderCarrierBook(data.carrier_book);
     } else {
       renderInvitation(data.invitation, data.live_board);
+      renderCarrierBook(data.carrier_book);
     }
   } catch (error) {
     if (options.refreshOnly) return;
@@ -195,6 +301,22 @@ async function loadInvitation(options = {}) {
     card.innerHTML = `<p class="status-message" data-tone="error">${escapeHtml(error.message)}</p>`;
   }
 }
+
+card.addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-request-lane]");
+  if (!button) return;
+  button.disabled = true;
+  const originalText = button.textContent;
+  button.textContent = "Requesting...";
+  try {
+    const result = await callBidApi("request_lane_access", { lane_id: button.dataset.requestLane });
+    button.textContent = result.requested ? "Requested" : "Already in book";
+  } catch (error) {
+    button.disabled = false;
+    button.textContent = originalText;
+    window.alert(error.message);
+  }
+});
 
 loadInvitation().then(() => {
   if (boardRefreshTimer) window.clearInterval(boardRefreshTimer);
