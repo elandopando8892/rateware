@@ -167,6 +167,15 @@
                 Hide empty stages
               </label>
               <button id="clear-vendor-funnel-filters" class="secondary small-button" type="button">Clear</button>
+              <div class="funnel-bulk-controls" aria-label="Pipeline bulk actions">
+                <label>
+                  Move active stage to
+                  <select id="vendor-funnel-bulk-stage"></select>
+                </label>
+                <button id="vendor-funnel-move-stage" class="secondary small-button" type="button">Move filtered stage</button>
+                <button id="vendor-funnel-advance-stage" class="secondary small-button" type="button">Advance stage</button>
+                <button id="vendor-funnel-regress-stage" class="secondary small-button" type="button">Back one stage</button>
+              </div>
             </div>
             <div id="vendor-funnel-strip" class="vendor-funnel-strip" aria-label="Vendor funnel stages"></div>
             <div class="funnel-workspace">

@@ -7627,30 +7627,37 @@ Deno.serve(async (request) => {
 
       const patchInput = objectRecord(body.patch);
       const addTags = normalizeTags(patchInput.add_tags);
-      const current = await supabase.from("vendors").select("*").eq("owner_email", user.owner_email).in("id", ids);
-      if (current.error) throw current.error;
+      const updatedRows: Record<string, unknown>[] = [];
 
-      const updates = await Promise.all(
-        (current.data || []).map((vendor) => {
-          const patch = normalizeVendorPatch(patchInput, vendor || {});
-          if (addTags.length) {
-            patch.tags = Array.from(new Set([...normalizeTags(vendor.tags), ...addTags]));
+      for (const idBatch of chunkValues(ids, 100)) {
+        const current = await supabase.from("vendors").select("*").eq("owner_email", user.owner_email).in("id", idBatch);
+        if (current.error) throw current.error;
+
+        for (const vendorBatch of chunkValues(current.data || [], 20)) {
+          const updates = await Promise.all(
+            vendorBatch.map((vendor) => {
+              const patch = normalizeVendorPatch(patchInput, vendor || {});
+              if (addTags.length) {
+                patch.tags = Array.from(new Set([...normalizeTags(vendor.tags), ...addTags]));
+              }
+              return supabase
+                .from("vendors")
+                .update(patch)
+                .eq("owner_email", user.owner_email)
+                .eq("id", vendor.id)
+                .select()
+                .single();
+            })
+          );
+
+          for (const update of updates) {
+            if (update.error) throw update.error;
+            if (update.data) updatedRows.push(update.data);
           }
-          return supabase
-            .from("vendors")
-            .update(patch)
-            .eq("owner_email", user.owner_email)
-            .eq("id", vendor.id)
-            .select()
-            .single();
-        })
-      );
-
-      for (const update of updates) {
-        if (update.error) throw update.error;
+        }
       }
 
-      return jsonResponse({ updated: updates.length, rows: updates.map((update) => update.data) });
+      return jsonResponse({ updated: updatedRows.length, rows: updatedRows });
     }
 
     if (body.action === "remove_vendors") {

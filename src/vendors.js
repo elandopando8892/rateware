@@ -114,6 +114,10 @@ const vendorFunnelHealthFilter = document.querySelector("#vendor-funnel-health-f
 const vendorFunnelQuoteFilter = document.querySelector("#vendor-funnel-quote-filter");
 const vendorFunnelHideEmpty = document.querySelector("#vendor-funnel-hide-empty");
 const clearVendorFunnelFiltersButton = document.querySelector("#clear-vendor-funnel-filters");
+const vendorFunnelBulkStage = document.querySelector("#vendor-funnel-bulk-stage");
+const vendorFunnelMoveStageButton = document.querySelector("#vendor-funnel-move-stage");
+const vendorFunnelAdvanceStageButton = document.querySelector("#vendor-funnel-advance-stage");
+const vendorFunnelRegressStageButton = document.querySelector("#vendor-funnel-regress-stage");
 const vfTotal = document.querySelector("#vf-total");
 const vfActivationRate = document.querySelector("#vf-activation-rate");
 const vfNested = document.querySelector("#vf-nested");
@@ -1711,16 +1715,37 @@ function stageLabel(stageKey) {
   return (vendorFunnelStages.find((stage) => stage.key === stageKey) || DEFAULT_FUNNEL_STAGES.find((stage) => stage.key === stageKey))?.label || stageKey;
 }
 
+function funnelStages() {
+  return vendorFunnelStages.length ? vendorFunnelStages : DEFAULT_FUNNEL_STAGES;
+}
+
 function funnelStageIndex(stageKey) {
-  const stages = vendorFunnelStages.length ? vendorFunnelStages : DEFAULT_FUNNEL_STAGES;
-  return Math.max(0, stages.findIndex((stage) => stage.key === stageKey));
+  return Math.max(0, funnelStages().findIndex((stage) => stage.key === stageKey));
+}
+
+function relativeFunnelStage(stageKey, offset) {
+  const stages = funnelStages();
+  const index = stages.findIndex((stage) => stage.key === stageKey);
+  const next = stages[index + offset];
+  return next?.key || null;
 }
 
 function funnelStageSelectOptions(currentStage) {
-  const stages = vendorFunnelStages.length ? vendorFunnelStages : DEFAULT_FUNNEL_STAGES;
-  return stages
+  return funnelStages()
     .map((stage) => `<option value="${escapeHtml(stage.key)}" ${stage.key === currentStage ? "selected" : ""}>${escapeHtml(stage.label)}</option>`)
     .join("");
+}
+
+function renderVendorFunnelBulkOptions() {
+  if (!vendorFunnelBulkStage) return;
+  const current = vendorFunnelBulkStage.value;
+  vendorFunnelBulkStage.innerHTML = [
+    '<option value="">Choose stage</option>',
+    ...funnelStages().map((stage) => `<option value="${escapeHtml(stage.key)}">${escapeHtml(stage.label)}</option>`)
+  ].join("");
+  if (current && funnelStages().some((stage) => stage.key === current)) {
+    vendorFunnelBulkStage.value = current;
+  }
 }
 
 function funnelStageAge(row) {
@@ -1762,7 +1787,7 @@ function renderVendorFunnelMetrics(summary = {}) {
 
 function renderVendorFunnelStrip() {
   if (!vendorFunnelStrip) return;
-  const stages = vendorFunnelStages.length ? vendorFunnelStages : DEFAULT_FUNNEL_STAGES;
+  const stages = funnelStages();
   const filteredRows = filteredVendorFunnelRows();
   vendorFunnelStrip.innerHTML = stages
     .map((stage, index) => {
@@ -1821,7 +1846,7 @@ function renderVendorFunnelCard(row) {
 
 function renderVendorFunnelBoard() {
   if (!vendorFunnelBoard) return;
-  const stages = vendorFunnelStages.length ? vendorFunnelStages : DEFAULT_FUNNEL_STAGES;
+  const stages = funnelStages();
   const filteredRows = filteredVendorFunnelRows();
   if (!vendorFunnelRows.length) {
     vendorFunnelBoard.innerHTML = '<div class="empty-state"><strong>No procurement funnel yet</strong><span>Move vendors from Sourcing Base into Procurement Base to start the funnel.</span></div>';
@@ -1894,6 +1919,7 @@ function renderVendorFunnel(result = {}) {
   vendorFunnelRows = (result.rows || []).map((row) => ({ ...row, id: row.id || row.vendor_id }));
   resetVendorFunnelStageLimits();
   if (!vendorFunnelStages.some((stage) => stage.key === activeFunnelStage)) activeFunnelStage = vendorFunnelStages[0]?.key || "targeted";
+  renderVendorFunnelBulkOptions();
   renderVendorFunnelMetrics(result.summary || {});
   renderVendorFunnelStrip();
   renderVendorFunnelBoard();
@@ -1904,6 +1930,7 @@ function renderVendorFunnelFilters() {
   if (vendorFunnelHealthFilter) vendorFunnelHealthFilter.value = vendorFunnelHealthValue;
   if (vendorFunnelQuoteFilter) vendorFunnelQuoteFilter.value = vendorFunnelQuoteValue;
   if (vendorFunnelHideEmpty) vendorFunnelHideEmpty.checked = vendorFunnelHideEmptyStages;
+  renderVendorFunnelBulkOptions();
 }
 
 function applyVendorFunnelFilters({ announce = true, resetLimits = true } = {}) {
@@ -2108,6 +2135,52 @@ async function moveVendorFunnelStage(vendorId, stageKey) {
   } catch (error) {
     setStatus(vendorFunnelStatus, error.message, "error");
     return false;
+  }
+}
+
+function setVendorFunnelBulkBusy(isBusy) {
+  [vendorFunnelMoveStageButton, vendorFunnelAdvanceStageButton, vendorFunnelRegressStageButton, vendorFunnelBulkStage]
+    .filter(Boolean)
+    .forEach((control) => {
+      control.disabled = isBusy;
+    });
+}
+
+async function bulkMoveActiveFunnelStage(targetStage, actionLabel = "Move") {
+  const sourceStage = activeFunnelStage || "targeted";
+  const sourceRows = funnelStageRows(sourceStage);
+  const ids = Array.from(new Set(sourceRows.map((row) => row.id || row.vendor_id).filter(Boolean)));
+  if (!targetStage) {
+    setStatus(vendorFunnelStatus, "Choose a target pipeline stage.", "error");
+    return;
+  }
+  if (targetStage === sourceStage) {
+    setStatus(vendorFunnelStatus, "Target stage is already active.", "warning");
+    return;
+  }
+  if (!ids.length) {
+    setStatus(vendorFunnelStatus, `No filtered vendors in ${stageLabel(sourceStage)}.`, "warning");
+    return;
+  }
+  const message = `${actionLabel} ${ids.length} vendor(s) from ${stageLabel(sourceStage)} to ${stageLabel(targetStage)}? This applies to the active pipeline filters, including cards not currently visible.`;
+  if (!window.confirm(message)) {
+    setStatus(vendorFunnelStatus, "Pipeline bulk move cancelled.", "warning");
+    return;
+  }
+
+  setVendorFunnelBulkBusy(true);
+  setStatus(vendorFunnelStatus, `${actionLabel} ${ids.length} vendor(s) to ${stageLabel(targetStage)}...`);
+  try {
+    await requirePrivatePage();
+    const result = await bulkUpdateVendors(ids, { base_stage: "procurement", funnel_stage: targetStage });
+    setStatus(vendorFunnelStatus, `${result.updated || 0} vendor(s) moved to ${stageLabel(targetStage)}.`, "success");
+    activeFunnelStage = targetStage;
+    await loadVendorFunnel();
+    window.requestAnimationFrame(() => focusVendorFunnelStage(targetStage));
+  } catch (error) {
+    setStatus(vendorFunnelStatus, error.message, "error");
+  } finally {
+    setVendorFunnelBulkBusy(false);
   }
 }
 
@@ -3644,6 +3717,25 @@ vendorFunnelHideEmpty?.addEventListener("change", () => {
   applyVendorFunnelFilters();
 });
 clearVendorFunnelFiltersButton?.addEventListener("click", clearVendorFunnelFilters);
+vendorFunnelMoveStageButton?.addEventListener("click", () => {
+  bulkMoveActiveFunnelStage(vendorFunnelBulkStage?.value, "Move");
+});
+vendorFunnelAdvanceStageButton?.addEventListener("click", () => {
+  const nextStage = relativeFunnelStage(activeFunnelStage, 1);
+  if (!nextStage) {
+    setStatus(vendorFunnelStatus, `${stageLabel(activeFunnelStage)} is already the final stage.`, "warning");
+    return;
+  }
+  bulkMoveActiveFunnelStage(nextStage, "Advance");
+});
+vendorFunnelRegressStageButton?.addEventListener("click", () => {
+  const previousStage = relativeFunnelStage(activeFunnelStage, -1);
+  if (!previousStage) {
+    setStatus(vendorFunnelStatus, `${stageLabel(activeFunnelStage)} is already the first stage.`, "warning");
+    return;
+  }
+  bulkMoveActiveFunnelStage(previousStage, "Move back");
+});
 refreshVendorMatchButton?.addEventListener("click", analyzeVendorMatchQueue);
 matchStagingVendorsButton?.addEventListener("click", () => runVendorMatchScope("staging"));
 matchRatewareVendorsButton?.addEventListener("click", () => runVendorMatchScope("rateware"));
@@ -3959,7 +4051,7 @@ initAuthControls();
 requirePrivatePage()
   .then(() =>
     applyPermissionState(
-      "#save-vendor-button, #wizard-save-button, #vendor-import, #vendor-gaps-import, #import-google-sheet-button, #download-onboarding-gaps-button, #import-onboarding-gaps-button, #select-visible-vendors-button, #clear-vendor-selection-button, #bulk-update-button, #bulk-procurement-button, #bulk-archive-vendors-button, #bulk-remove-vendors-button, #confirm-import-button, #save-segment-button, #drawer-save-button, #drawer-archive-button, #apply-intelligence-tags, #promote-intelligence-selected, #match-staging-vendors, #match-rateware-vendors, [data-duplicate-inactive], [data-funnel-stage-select]",
+      "#save-vendor-button, #wizard-save-button, #vendor-import, #vendor-gaps-import, #import-google-sheet-button, #download-onboarding-gaps-button, #import-onboarding-gaps-button, #select-visible-vendors-button, #clear-vendor-selection-button, #bulk-update-button, #bulk-procurement-button, #bulk-archive-vendors-button, #bulk-remove-vendors-button, #confirm-import-button, #save-segment-button, #drawer-save-button, #drawer-archive-button, #apply-intelligence-tags, #promote-intelligence-selected, #vendor-funnel-bulk-stage, #vendor-funnel-move-stage, #vendor-funnel-advance-stage, #vendor-funnel-regress-stage, #match-staging-vendors, #match-rateware-vendors, [data-duplicate-inactive], [data-funnel-stage-select]",
       "vendors:manage"
     )
   )

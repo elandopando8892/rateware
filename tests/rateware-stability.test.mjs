@@ -10,6 +10,7 @@ const uploadCenterHtml = readFileSync(new URL("../upload-center.html", import.me
 const bulkImportTemplateSource = readFileSync(new URL("../src/bulk-import-template.js", import.meta.url), "utf8");
 const stagingReviewSource = readFileSync(new URL("../src/staging-review.js", import.meta.url), "utf8");
 const ratewareSource = readFileSync(new URL("../src/rateware.js", import.meta.url), "utf8");
+const vendorsSource = readFileSync(new URL("../src/vendors.js", import.meta.url), "utf8");
 const stagingServiceSource = readFileSync(new URL("../src/staging-service.js", import.meta.url), "utf8");
 const rpcMigration = readFileSync(new URL("../supabase/migrations/20260626143000_rate_filter_rpc.sql", import.meta.url), "utf8");
 const compositeRpcMigration = readFileSync(new URL("../supabase/migrations/20260626153000_composite_rate_filter_values.sql", import.meta.url), "utf8");
@@ -380,6 +381,9 @@ assert.doesNotMatch(
   /fetchBusinessIntelligenceRows/,
   "Procurement Pipeline should not load raw BI rate rows in the Edge Function"
 );
+assert.match(vendorsSource, /function bulkMoveActiveFunnelStage/, "Vendor Pipeline should support bulk moves for the active stage");
+assert.match(vendorsSource, /funnelStageRows\(sourceStage\)/, "Vendor Pipeline bulk moves should use active funnel filters");
+assert.match(vendorsSource, /bulkUpdateVendors\(ids, \{ base_stage: "procurement", funnel_stage: targetStage \}\)/, "Vendor Pipeline bulk moves should update existing vendors through the bulk API");
 const vendorOnboardingGapsSource = apiSource.slice(apiSource.indexOf("async function buildVendorOnboardingGaps"), apiSource.indexOf("function normalizeImportedVendor"));
 assert.ok(vendorOnboardingGapsSource.length > 100, "vendor onboarding gaps helper should be present");
 assert.match(vendorOnboardingGapsSource, /\.eq\("owner_email", user\.owner_email\)/, "vendor onboarding gaps should be scoped to the signed-in owner");
@@ -403,6 +407,8 @@ const bulkVendorUpdateSource = apiSource.slice(apiSource.indexOf('if (body.actio
 assert.ok(bulkVendorUpdateSource.length > 100, "bulk vendor update block should be present");
 assert.match(bulkVendorUpdateSource, /select\("\*"\)/, "bulk vendor updates should read current vendor state before applying funnel transitions");
 assert.match(bulkVendorUpdateSource, /normalizeVendorPatch\(patchInput, vendor \|\| \{\}\)/, "bulk vendor updates should normalize each vendor against its current funnel state");
+assert.match(bulkVendorUpdateSource, /for \(const idBatch of chunkValues\(ids, 100\)\)/, "bulk vendor updates should page selected ids in bounded chunks");
+assert.match(bulkVendorUpdateSource, /for \(const vendorBatch of chunkValues\(current\.data \|\| \[\], 20\)\)/, "bulk vendor updates should limit concurrent row updates");
 
 for (const [helperName, nextHelperName] of [
   ["async function buildCarrierIntelligence", "function recommendationIntentFromConfig"],

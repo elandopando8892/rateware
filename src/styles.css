@@ -3336,6 +3336,24 @@ a {
   text-transform: none;
 }
 
+.funnel-bulk-controls {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 6px;
+  border-top: 1px solid #edf1f4;
+  padding-top: 6px;
+}
+
+.funnel-bulk-controls label {
+  min-width: 180px;
+}
+
+.funnel-bulk-controls button {
+  min-height: 28px;
+}
+
 .vendor-funnel-strip {
   display: grid;
   grid-template-columns: repeat(8, minmax(88px, 1fr));
