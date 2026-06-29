@@ -85,8 +85,23 @@ Deno.serve(async (request) => {
     if (body.action === "submit_bid") {
       const bidRate = cleanNumber(body.bid_rate);
       if (bidRate === null) return jsonResponse({ error: "Bid rate must be a valid number." }, 400);
+      const invitationResult = await supabase
+        .from("rfx_lane_vendors")
+        .select(`
+          id,
+          rfx_event_id,
+          rfx_lane_id,
+          vendor_id,
+          vendors(vendor_name,domain,primary_email),
+          rfx_events(id,owner_user_id,owner_email,rfx_id,name,customer),
+          rfx_lanes(origin,destination,equipment,trailer,operation,service)
+        `)
+        .eq("invitation_token", token)
+        .single();
+      if (invitationResult.error) throw invitationResult.error;
+
       const patch = {
-        invitation_status: "bid_submitted",
+        invitation_status: "quoted",
         bid_rate: bidRate,
         currency: cleanText(body.currency)?.toUpperCase() || "USD",
         weekly_capacity: cleanNumber(body.weekly_capacity),
@@ -100,10 +115,42 @@ Deno.serve(async (request) => {
       const result = await supabase
         .from("rfx_lane_vendors")
         .update(patch)
-        .eq("invitation_token", token)
+        .eq("id", invitationResult.data.id)
         .select("id,invitation_status,bid_rate,currency,weekly_capacity,transit_days,notes,responded_at")
         .single();
       if (result.error) throw result.error;
+
+      const rfxEvent = Array.isArray(invitationResult.data.rfx_events)
+        ? invitationResult.data.rfx_events[0]
+        : invitationResult.data.rfx_events;
+      const vendor = Array.isArray(invitationResult.data.vendors)
+        ? invitationResult.data.vendors[0]
+        : invitationResult.data.vendors;
+      const lane = Array.isArray(invitationResult.data.rfx_lanes)
+        ? invitationResult.data.rfx_lanes[0]
+        : invitationResult.data.rfx_lanes;
+      if (rfxEvent?.owner_email) {
+        await supabase.from("contact_history").insert({
+          owner_user_id: rfxEvent.owner_user_id || null,
+          owner_email: rfxEvent.owner_email || null,
+          vendor_id: invitationResult.data.vendor_id,
+          rfx_event_id: invitationResult.data.rfx_event_id,
+          channel: "portal",
+          direction: "inbound",
+          status: "quoted",
+          subject: `${rfxEvent.rfx_id || "RFx"} carrier quote submitted`,
+          body_preview: [
+            vendor?.vendor_name || vendor?.domain || "Carrier",
+            `${bidRate} ${patch.currency}`,
+            lane?.origin && lane?.destination ? `${lane.origin} -> ${lane.destination}` : null
+          ].filter(Boolean).join(" | "),
+          metadata: {
+            source: "rfx_bid_portal",
+            rfx_lane_vendor_id: invitationResult.data.id,
+            rfx_lane_id: invitationResult.data.rfx_lane_id
+          }
+        });
+      }
       return jsonResponse({ row: result.data });
     }
 

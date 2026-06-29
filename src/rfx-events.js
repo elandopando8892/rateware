@@ -213,17 +213,53 @@ function vendorLabel(invitation) {
   return vendor.vendor_name || vendor.domain || vendor.primary_email || "Vendor";
 }
 
+function commercialStatus(status) {
+  const value = String(status || "drafted").toLowerCase();
+  if (value === "shortlisted") return "drafted";
+  if (value === "bid_submitted") return "quoted";
+  if (value === "replied") return "responded";
+  return value || "drafted";
+}
+
+function statusLabel(status) {
+  const labels = {
+    drafted: "Drafted",
+    invited: "Invited",
+    viewed: "Viewed",
+    responded: "Responded",
+    quoted: "Quoted",
+    declined: "Declined",
+    awarded: "Awarded",
+    archived: "Archived",
+    open: "Open",
+    closed: "Closed"
+  };
+  const value = commercialStatus(status);
+  return labels[value] || value;
+}
+
 function statusTone(status) {
-  const value = String(status || "").toLowerCase();
-  if (["bid_submitted", "awarded", "sent", "open"].includes(value)) return "success";
-  if (["invited", "viewed", "queued"].includes(value)) return "neutral";
+  const value = commercialStatus(status);
+  if (["quoted", "awarded", "sent", "open"].includes(value)) return "success";
+  if (["invited", "viewed", "responded", "queued"].includes(value)) return "neutral";
   if (["declined", "archived", "closed"].includes(value)) return "danger";
   return "muted";
 }
 
 function statusChip(status) {
-  const value = status || "shortlisted";
-  return `<span class="status-pill" data-tone="${statusTone(value)}">${escapeHtml(value)}</span>`;
+  const value = commercialStatus(status);
+  return `<span class="status-pill" data-tone="${statusTone(value)}">${escapeHtml(statusLabel(value))}</span>`;
+}
+
+function hasBid(invitation) {
+  return (invitation.bid_rate !== null
+    && invitation.bid_rate !== undefined
+    && invitation.bid_rate !== "")
+    || ["quoted", "bid_submitted"].includes(String(invitation.invitation_status || "").toLowerCase());
+}
+
+function hasInvitationStarted(invitation) {
+  return ["invited", "viewed", "responded", "quoted", "bid_submitted", "declined", "awarded"].includes(String(invitation.invitation_status || "").toLowerCase());
 }
 
 function selectedOutreachTemplate() {
@@ -322,7 +358,7 @@ function invitationStatusCounts(lanes = currentLanes) {
   const counts = {};
   lanes.forEach((lane) => {
     (lane.invitations || []).forEach((invitation) => {
-      const status = invitation.invitation_status || "shortlisted";
+      const status = commercialStatus(invitation.invitation_status);
       counts[status] = (counts[status] || 0) + 1;
     });
   });
@@ -338,7 +374,7 @@ function coverageRatio(lane) {
 function responseRatio(lane) {
   const invitations = (lane.invitations || []).filter((item) => item.invitation_status !== "archived");
   if (!invitations.length) return 0;
-  const bids = invitations.filter((item) => item.bid_rate !== null || item.invitation_status === "bid_submitted").length;
+  const bids = invitations.filter(hasBid).length;
   return Math.round((bids / invitations.length) * 100);
 }
 
@@ -347,7 +383,7 @@ function activeInvitations(lane) {
 }
 
 function bidInvitations(lane) {
-  return activeInvitations(lane).filter((item) => item.bid_rate !== null || item.invitation_status === "bid_submitted");
+  return activeInvitations(lane).filter(hasBid);
 }
 
 function bestBidForLane(lane) {
@@ -361,7 +397,7 @@ function laneDecisionStatus(lane) {
   const invitations = activeInvitations(lane);
   const bids = bidInvitations(lane);
   if (!invitations.length) return "needs_shortlist";
-  if (!invitations.some((item) => ["invited", "viewed", "bid_submitted", "declined", "awarded"].includes(item.invitation_status))) return "needs_invite";
+  if (!invitations.some(hasInvitationStarted)) return "needs_invite";
   if (!bids.length) return "needs_response";
   return "has_bids";
 }
@@ -424,7 +460,7 @@ function eventStepState() {
     setup: Boolean(selectedEvent),
     lanes: activeLanes.length > 0,
     shortlist: activeLanes.some((lane) => activeInvitations(lane).length > 0),
-    invite: invitations.some((item) => ["invited", "viewed", "bid_submitted", "declined", "awarded"].includes(item.invitation_status)),
+    invite: invitations.some(hasInvitationStarted),
     responses: bids.length > 0,
     award: invitations.some((item) => item.invitation_status === "awarded") || selectedEvent?.status === "awarded"
   };
@@ -475,9 +511,9 @@ function renderEventDashboard() {
 
   const invitations = currentLanes.flatMap((lane) => lane.invitations || []);
   const activeInvitations = invitations.filter((item) => item.invitation_status !== "archived");
-  const bids = activeInvitations.filter((item) => item.bid_rate !== null || item.invitation_status === "bid_submitted");
+  const bids = activeInvitations.filter(hasBid);
   const lanesWithShortlist = currentLanes.filter((lane) => (lane.invitations || []).some((item) => item.invitation_status !== "archived")).length;
-  const lanesWithBids = currentLanes.filter((lane) => (lane.invitations || []).some((item) => item.bid_rate !== null || item.invitation_status === "bid_submitted")).length;
+  const lanesWithBids = currentLanes.filter((lane) => (lane.invitations || []).some(hasBid)).length;
   const shortlistCoverage = currentLanes.length ? Math.round((lanesWithShortlist / currentLanes.length) * 100) : 0;
   const bidCoverage = currentLanes.length ? Math.round((lanesWithBids / currentLanes.length) * 100) : 0;
   const responseRate = activeInvitations.length ? Math.round((bids.length / activeInvitations.length) * 100) : 0;
@@ -514,7 +550,7 @@ function renderEventDashboard() {
   if (inviteStatusMix) {
     inviteStatusMix.innerHTML = Object.keys(counts).length
       ? Object.entries(counts).map(([status, count]) => `
-        <span data-tone="${statusTone(status)}">${escapeHtml(status)} <strong>${formatNumber(count)}</strong></span>
+        <span data-tone="${statusTone(status)}">${escapeHtml(statusLabel(status))} <strong>${formatNumber(count)}</strong></span>
       `).join("")
       : "<span>No vendors shortlisted yet.</span>";
   }
@@ -640,7 +676,7 @@ function renderLaneDecision() {
       ${invitations.length ? invitations.map((invitation) => `
         <article>
           <strong>${escapeHtml(vendorLabel(invitation))}</strong>
-          ${statusChip(invitation.invitation_status || "shortlisted")}
+          ${statusChip(invitation.invitation_status || "drafted")}
           <span>${escapeHtml([invitation.vendors?.base_stage, invitation.vendors?.primary_email || invitation.vendors?.whatsapp_phone].filter(Boolean).join(" | ") || "No contact")}</span>
           <small>${escapeHtml(invitation.notes || "No fit note")}</small>
         </article>
@@ -653,8 +689,8 @@ function renderResponseBoard() {
   if (!responseBody || !responseSummary) return;
   const rows = visibleLanes()
     .flatMap((lane) => activeInvitations(lane).map((invitation) => ({ lane, invitation })))
-    .filter(({ invitation }) => invitation.invitation_status !== "shortlisted" || invitation.bid_rate !== null);
-  const bidRows = rows.filter(({ invitation }) => invitation.bid_rate !== null || invitation.invitation_status === "bid_submitted");
+    .filter(({ invitation }) => commercialStatus(invitation.invitation_status) !== "drafted" || hasBid(invitation));
+  const bidRows = rows.filter(({ invitation }) => hasBid(invitation));
   responseSummary.textContent = `${formatNumber(bidRows.length)} bids / ${formatNumber(rows.length)} active rows`;
   if (!rows.length) {
     responseBody.innerHTML = `<tr><td colspan="8">No carrier responses yet.</td></tr>`;
@@ -668,7 +704,7 @@ function renderResponseBoard() {
       <tr data-rfx-lane-id="${escapeHtml(lane.id)}">
         <td><strong>${escapeHtml(vendorLabel(invitation))}</strong><small>${escapeHtml(invitation.vendors?.primary_email || invitation.vendors?.domain || "")}</small></td>
         <td>#${escapeHtml(lane.lane_number || "")} ${escapeHtml(laneRoute(lane))}</td>
-        <td>${statusChip(invitation.invitation_status || "shortlisted")}</td>
+        <td>${statusChip(invitation.invitation_status || "drafted")}</td>
         <td>${invitation.bid_rate !== null ? formatMoney(invitation.bid_rate, invitation.currency || lane.currency) : "-"}</td>
         <td>${benchmark ? formatMoney(benchmark.all_in_rate, benchmark.currency) : "-"}</td>
         <td><span class="rfx-bid-delta" data-tone="${deltaTone}">${Number.isFinite(delta) ? formatMoney(delta, invitation.currency || lane.currency) : "-"}</span></td>
@@ -796,7 +832,7 @@ function renderInvitation(invitation, lane) {
       </label>
       <div>
         <strong>${escapeHtml(vendorLabel(invitation))}</strong>
-        ${statusChip(invitation.invitation_status || "shortlisted")}
+        ${statusChip(invitation.invitation_status || "drafted")}
         <small>${escapeHtml([invitation.vendors?.primary_email, invitation.vendors?.whatsapp_phone].filter(Boolean).join(" | ") || "No contact channel")}</small>
       </div>
       <input data-rfx-bid-field="bid_rate" value="${escapeHtml(invitation.bid_rate ?? "")}" placeholder="Rate" inputmode="decimal" />
@@ -805,6 +841,7 @@ function renderInvitation(invitation, lane) {
       <input data-rfx-bid-field="currency" value="${escapeHtml(invitation.currency || lane.currency || "USD")}" class="short-input" />
       <button class="small-button" type="button" data-rfx-save-bid="${escapeHtml(invitation.id)}">Save bid</button>
       <button class="secondary small-button" type="button" data-rfx-copy-link="${escapeHtml(invitation.invitation_token)}">Copy link</button>
+      <button class="secondary small-button" type="button" data-rfx-open-link="${escapeHtml(invitation.invitation_token)}">Open link</button>
       <span class="rfx-bid-delta" data-tone="${deltaTone}">${hasDelta ? `${bidDelta >= 0 ? "+" : ""}${formatMoney(bidDelta, invitation.currency)}` : "-"}</span>
     </article>
   `;
@@ -1150,6 +1187,13 @@ lanesBody?.addEventListener("click", async (event) => {
     } catch {
       setStatus(actionStatus, url, "neutral");
     }
+    return;
+  }
+
+  const openLinkButton = event.target.closest("[data-rfx-open-link]");
+  if (openLinkButton) {
+    const url = portalUrl(openLinkButton.dataset.rfxOpenLink);
+    window.open(url, "_blank", "noopener");
   }
 });
 

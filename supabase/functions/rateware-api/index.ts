@@ -6107,6 +6107,11 @@ function invitationWithComparison(invitation: Record<string, unknown>, benchmark
   };
 }
 
+function isQuotedInvitation(invitation: Record<string, unknown>) {
+  const status = cleanText(invitation.invitation_status)?.toLowerCase();
+  return Boolean(cleanNumber(invitation.bid_rate) !== null || status === "quoted" || status === "bid_submitted");
+}
+
 function vendorOwnsRate(vendor: Record<string, unknown>, rate: Record<string, unknown>) {
   if (vendor.id && rate.vendor_id && vendor.id === rate.vendor_id) return true;
   const vendorDomain = normalizeDomain(vendor.domain);
@@ -7769,7 +7774,7 @@ Deno.serve(async (request) => {
       const bidCounts = new Map<string, number>();
       for (const invite of invitationsResult.data || []) {
         invitationCounts.set(invite.rfx_event_id, (invitationCounts.get(invite.rfx_event_id) || 0) + 1);
-        if (invite.invitation_status === "bid_submitted" || invite.bid_rate !== null) {
+        if (isQuotedInvitation(invite)) {
           bidCounts.set(invite.rfx_event_id, (bidCounts.get(invite.rfx_event_id) || 0) + 1);
         }
       }
@@ -7859,7 +7864,7 @@ Deno.serve(async (request) => {
           benchmark,
           invitations,
           invitation_count: invitations.length,
-          bid_count: invitations.filter((invitation) => invitation.bid_rate !== null || invitation.invitation_status === "bid_submitted").length
+          bid_count: invitations.filter(isQuotedInvitation).length
         };
       });
 
@@ -7890,7 +7895,7 @@ Deno.serve(async (request) => {
         rfx_event_id: lane.rfx_event_id,
         rfx_lane_id: lane.id,
         vendor_id: row.vendor_id,
-        invitation_status: "shortlisted",
+        invitation_status: "drafted",
         invitation_token: randomToken(),
         notes: [`Fit score ${row.fit_score}`, ...(row.evidence || [])].join("; ")
       }));
@@ -7916,7 +7921,7 @@ Deno.serve(async (request) => {
         rfx_event_id: lane.rfx_event_id,
         rfx_lane_id: lane.id,
         vendor_id: vendor.id,
-        invitation_status: "shortlisted",
+        invitation_status: "drafted",
         invitation_token: randomToken()
       }));
       const result = await supabase
@@ -7964,7 +7969,7 @@ Deno.serve(async (request) => {
         weekly_capacity: cleanNumber(patchInput.weekly_capacity),
         transit_days: cleanNumber(patchInput.transit_days),
         notes: cleanText(patchInput.notes),
-        invitation_status: cleanNumber(patchInput.bid_rate) !== null ? "bid_submitted" : cleanText(patchInput.invitation_status) || "shortlisted",
+        invitation_status: cleanNumber(patchInput.bid_rate) !== null ? "quoted" : cleanText(patchInput.invitation_status) || "drafted",
         responded_at: cleanNumber(patchInput.bid_rate) !== null ? new Date().toISOString() : null,
         response_source: "rateware_admin",
         updated_at: new Date().toISOString()
@@ -8208,7 +8213,7 @@ Deno.serve(async (request) => {
     if (body.action === "list_outreach_messages") {
       let query = supabase
         .from("outreach_messages")
-        .select("*, vendors(vendor_name,domain,primary_email,whatsapp_phone), rfx_events(rfx_id,name), rfx_lanes(origin,destination,equipment,trailer,operation,service)")
+        .select("*, vendors(vendor_name,domain,primary_email,whatsapp_phone), rfx_events(rfx_id,name), rfx_lanes(origin,destination,equipment,trailer,operation,service), rfx_lane_vendors(id,invitation_status,invitation_token,bid_rate,currency,responded_at)")
         .eq("owner_email", user.owner_email)
         .order("created_at", { ascending: false })
         .limit(500);
@@ -8264,16 +8269,16 @@ Deno.serve(async (request) => {
         .filter(Boolean))];
       if (linkedInvitationIds.length && ["sent", "replied"].includes(status)) {
         const invitationPatch: Record<string, unknown> = {
-          invitation_status: status === "sent" ? "invited" : "viewed",
+          invitation_status: status === "sent" ? "invited" : "responded",
           updated_at: now
         };
         if (status === "sent") invitationPatch.invited_at = now;
-        if (status === "replied") invitationPatch.viewed_at = now;
+        if (status === "replied") invitationPatch.responded_at = now;
         const invitationUpdate = await supabase
           .from("rfx_lane_vendors")
           .update(invitationPatch)
           .in("id", linkedInvitationIds)
-          .not("invitation_status", "in", "(bid_submitted,awarded,archived)");
+          .not("invitation_status", "in", "(quoted,bid_submitted,awarded,archived)");
         if (invitationUpdate.error) throw invitationUpdate.error;
       }
 
@@ -8599,7 +8604,7 @@ Deno.serve(async (request) => {
         supabase.from("raw_uploads").select("id", { count: "exact", head: true }).eq("status", "failed"),
         supabase.from("rfx_events").select("id", { count: "exact", head: true }).eq("owner_email", user.owner_email).neq("status", "archived"),
         supabase.from("rfx_events").select("id", { count: "exact", head: true }).eq("owner_email", user.owner_email).eq("status", "open"),
-        supabase.from("rfx_lane_vendors").select("id,rfx_events!inner(owner_email)", { count: "exact", head: true }).eq("rfx_events.owner_email", user.owner_email).eq("invitation_status", "bid_submitted"),
+        supabase.from("rfx_lane_vendors").select("id,rfx_events!inner(owner_email)", { count: "exact", head: true }).eq("rfx_events.owner_email", user.owner_email).in("invitation_status", ["quoted", "bid_submitted"]),
         supabase.from("outreach_messages").select("id", { count: "exact", head: true }).eq("owner_email", user.owner_email).neq("status", "archived")
       ]);
 

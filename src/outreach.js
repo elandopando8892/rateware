@@ -99,15 +99,46 @@ function messageRecipient(row) {
 
 function statusTone(status) {
   const value = String(status || "").toLowerCase();
-  if (["sent", "replied"].includes(value)) return "success";
-  if (["queued", "generated"].includes(value)) return "neutral";
+  if (["sent", "replied", "quoted", "awarded"].includes(value)) return "success";
+  if (["queued", "generated", "invited", "viewed", "responded"].includes(value)) return "neutral";
   if (["failed", "archived"].includes(value)) return "danger";
   return "muted";
 }
 
 function statusChip(status) {
   const value = status || "drafted";
-  return `<span class="status-pill" data-tone="${statusTone(value)}">${escapeHtml(value)}</span>`;
+  const label = value === "replied" ? "responded" : value;
+  return `<span class="status-pill" data-tone="${statusTone(value)}">${escapeHtml(label)}</span>`;
+}
+
+function linkedInvitation(message) {
+  const invitation = message.rfx_lane_vendors;
+  if (Array.isArray(invitation)) return invitation[0] || {};
+  return invitation || {};
+}
+
+function invitationStatusLabel(status) {
+  const value = String(status || "drafted").toLowerCase();
+  const normalized = value === "shortlisted" ? "drafted" : value === "bid_submitted" ? "quoted" : value;
+  const labels = {
+    drafted: "Drafted",
+    invited: "Invited",
+    viewed: "Viewed",
+    responded: "Responded",
+    quoted: "Quoted",
+    declined: "Declined",
+    awarded: "Awarded",
+    archived: "Archived"
+  };
+  return labels[normalized] || normalized;
+}
+
+function bidLinkForMessage(message) {
+  const invitation = linkedInvitation(message);
+  const metadataLink = message.metadata?.bid_link;
+  if (metadataLink) return metadataLink;
+  if (!invitation.invitation_token) return "";
+  return `${window.location.origin}/rfx-bid.html?token=${encodeURIComponent(invitation.invitation_token)}`;
 }
 
 function channelReady(message) {
@@ -205,6 +236,8 @@ function renderDraftPreview(message = null) {
   }
   const isEmail = message.channel === "email";
   const body = isEmail ? message.html_body || message.text_body || "" : message.whatsapp_text || message.text_body || "";
+  const portalLink = bidLinkForMessage(message);
+  const messageStatusLabel = message.status === "replied" ? "responded" : message.status || "drafted";
   const vendorHistory = historyRows
     .filter((item) => item.vendor_id === message.vendor_id || item.outreach_message_id === message.id)
     .slice(0, 4);
@@ -216,14 +249,15 @@ function renderDraftPreview(message = null) {
         <span>${escapeHtml(laneLabel(message))}</span>
       </div>
       <div class="draft-preview-actions">
-        <span class="status-pill">${escapeHtml(message.status || "drafted")}</span>
+        <span class="status-pill">${escapeHtml(messageStatusLabel)}</span>
         <button class="secondary small-button" type="button" data-open-url="${escapeHtml(isEmail ? message.gmail_compose_url || "" : message.whatsapp_url || "")}" ${isEmail ? (message.gmail_compose_url ? "" : "disabled") : (message.whatsapp_url ? "" : "disabled")}>Open ${isEmail ? "Gmail" : "WhatsApp"}</button>
+        <button class="secondary small-button" type="button" data-open-url="${escapeHtml(portalLink)}" ${portalLink ? "" : "disabled"}>Open portal</button>
       </div>
     </div>
     <dl class="draft-preview-meta">
       <div><dt>Recipient</dt><dd>${escapeHtml(messageRecipient(message))}</dd></div>
       <div><dt>Subject</dt><dd>${escapeHtml(message.subject || "-")}</dd></div>
-      <div><dt>Status</dt><dd>${escapeHtml(message.status || "drafted")}</dd></div>
+      <div><dt>Status</dt><dd>${escapeHtml(messageStatusLabel)}</dd></div>
       <div><dt>Channel ready</dt><dd>${channelReady(message) ? "Yes" : "Needs contact data"}</dd></div>
     </dl>
     ${isEmail && message.html_body
@@ -301,8 +335,8 @@ function renderCampaignDashboard() {
     </article>
     <article>
       <span>Delivery state</span>
-      <strong>${formatCount(stats.sent + stats.replied)} sent/replied</strong>
-      <small>${formatCount(stats.drafted)} drafted | ${formatCount(stats.queued)} queued | ${formatCount(stats.replied)} replied</small>
+      <strong>${formatCount(stats.sent + stats.replied)} sent/responded</strong>
+      <small>${formatCount(stats.drafted)} drafted | ${formatCount(stats.queued)} queued | ${formatCount(stats.replied)} responded</small>
     </article>
     <article>
       <span>Contact history</span>
@@ -436,6 +470,8 @@ function renderMessages() {
       : `<button class="small-button" type="button" data-open-url="${escapeHtml(message.whatsapp_url || "")}" ${message.whatsapp_url ? "" : "disabled"}>Open WhatsApp</button>`;
     const copyHtml = message.html_body ? `<button class="secondary small-button" type="button" data-copy-html="${escapeHtml(message.id)}">Copy HTML</button>` : "";
     const ready = channelReady(message);
+    const invitation = linkedInvitation(message);
+    const invitationStatus = invitation.invitation_status ? invitationStatusLabel(invitation.invitation_status) : "";
     return `
       <tr data-message-id="${escapeHtml(message.id)}" class="${message.id === previewMessageId ? "is-focused-row" : ""}">
         <td><input type="checkbox" data-message-select="${escapeHtml(message.id)}" ${selectedMessageIds.has(message.id) ? "checked" : ""} /></td>
@@ -443,7 +479,7 @@ function renderMessages() {
         <td>${escapeHtml(laneLabel(message))}</td>
         <td><span class="status-pill">${escapeHtml(message.channel)}</span></td>
         <td>${escapeHtml(messageRecipient(message))}${ready ? "" : "<small>Missing channel setup</small>"}</td>
-        <td>${statusChip(message.status)}</td>
+        <td>${statusChip(message.status)}${invitationStatus ? `<small>RFx ${escapeHtml(invitationStatus)}</small>` : ""}</td>
         <td>${escapeHtml(message.subject || message.whatsapp_text || message.text_body || "-").slice(0, 140)}</td>
         <td class="compact-actions"><button class="secondary small-button" type="button" data-preview-message="${escapeHtml(message.id)}">Preview</button>${draft}${copyHtml}</td>
       </tr>
