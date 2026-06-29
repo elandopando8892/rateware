@@ -58,6 +58,9 @@ const vendorsTableWrap = document.querySelector("#vendors-table-wrap");
 const vendorCardGrid = document.querySelector("#vendor-card-grid");
 const vendorColumnOptions = document.querySelector("#vendor-column-options");
 const resetVendorColumnsButton = document.querySelector("#reset-vendor-columns");
+const vendorSavedViewSelect = document.querySelector("#vendor-saved-view-select");
+const saveVendorViewButton = document.querySelector("#save-vendor-view-button");
+const deleteVendorViewButton = document.querySelector("#delete-vendor-view-button");
 const vendorBaseContext = document.querySelector("#vendor-base-context");
 const searchInput = document.querySelector("#vendor-search");
 const statusFilter = document.querySelector("#vendor-status-filter");
@@ -160,6 +163,7 @@ let vendorMatchSummary = {
 const VENDOR_BASE_TABS = ["sourcing", "procurement", "archived"];
 const VENDOR_IMPORT_TOOLS = ["wizard", "create", "segments"];
 const VENDOR_COLUMN_STORAGE_KEY = "rateware.vendorSheetColumns.v1";
+const VENDOR_SAVED_VIEWS_STORAGE_KEY = "rateware.vendorSavedViews.v1";
 const DEFAULT_FUNNEL_STAGES = [
   { key: "targeted", label: "Targeted", description: "Moved from sourcing into procurement." },
   { key: "nested", label: "Nested", description: "Has linked carrier quotes." },
@@ -255,6 +259,142 @@ function visibleVendorColumns() {
 
 function vendorTableColumnCount() {
   return visibleVendorColumns().length;
+}
+
+function readVendorSavedViews() {
+  try {
+    const saved = JSON.parse(window.localStorage.getItem(VENDOR_SAVED_VIEWS_STORAGE_KEY) || "[]");
+    if (!Array.isArray(saved)) return [];
+    return saved
+      .filter((view) => view?.id && view?.name)
+      .map((view) => ({
+        id: String(view.id),
+        name: String(view.name),
+        baseStage: VENDOR_BASE_TABS.includes(view.baseStage) ? view.baseStage : "sourcing",
+        crmView: view.crmView === "cards" ? "cards" : "spreadsheet",
+        quickFilter: view.quickFilter || "all",
+        pageSize: Number(view.pageSize) || 75,
+        columnKeys: Array.isArray(view.columnKeys) ? view.columnKeys : defaultVendorColumnKeys(),
+        filters: {
+          search: view.filters?.search || "",
+          status: view.filters?.status || "",
+          channel: view.filters?.channel || "",
+          tag: view.filters?.tag || "",
+          coverage: view.filters?.coverage || ""
+        },
+        updatedAt: view.updatedAt || new Date().toISOString()
+      }));
+  } catch (error) {
+    window.localStorage.removeItem(VENDOR_SAVED_VIEWS_STORAGE_KEY);
+    return [];
+  }
+}
+
+function writeVendorSavedViews(views) {
+  window.localStorage.setItem(VENDOR_SAVED_VIEWS_STORAGE_KEY, JSON.stringify(views));
+}
+
+function vendorViewIdFromName(name) {
+  const slug = String(name || "vendor-view")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 48);
+  return `${slug || "vendor-view"}-${Date.now()}`;
+}
+
+function currentVendorViewSnapshot(name, existingId = "") {
+  return {
+    id: existingId || vendorViewIdFromName(name),
+    name,
+    baseStage: activeBaseStage,
+    crmView: activeDirectoryView === "cards" ? "cards" : "spreadsheet",
+    quickFilter: activeQuickFilter,
+    pageSize: vendorPageSize,
+    columnKeys: readVendorColumnKeys(),
+    filters: {
+      search: searchInput.value || "",
+      status: statusFilter.value || "",
+      channel: channelFilter.value || "",
+      tag: tagFilter.value || "",
+      coverage: coverageFilter.value || ""
+    },
+    updatedAt: new Date().toISOString()
+  };
+}
+
+function renderVendorSavedViews(activeId = "") {
+  if (!vendorSavedViewSelect) return;
+  const views = readVendorSavedViews().sort((a, b) => a.name.localeCompare(b.name));
+  vendorSavedViewSelect.innerHTML = [
+    '<option value="">Custom view</option>',
+    ...views.map((view) => `<option value="${escapeHtml(view.id)}">${escapeHtml(view.name)}</option>`)
+  ].join("");
+  vendorSavedViewSelect.value = activeId;
+  if (deleteVendorViewButton) deleteVendorViewButton.disabled = !activeId;
+}
+
+function saveCurrentVendorView() {
+  const existingViews = readVendorSavedViews();
+  const selectedView = existingViews.find((view) => view.id === vendorSavedViewSelect?.value);
+  const defaultName = selectedView?.name || `${baseStageLabel()} view`;
+  const name = window.prompt("Name this vendor view", defaultName);
+  if (!name?.trim()) return;
+
+  const normalizedName = name.trim();
+  const sameNameView = existingViews.find((view) => view.name.toLowerCase() === normalizedName.toLowerCase());
+  const existingId = selectedView?.id || sameNameView?.id || "";
+  const snapshot = currentVendorViewSnapshot(normalizedName, existingId);
+  const nextViews = [
+    ...existingViews.filter((view) => view.id !== snapshot.id),
+    snapshot
+  ].sort((a, b) => a.name.localeCompare(b.name));
+
+  writeVendorSavedViews(nextViews);
+  renderVendorSavedViews(snapshot.id);
+  setStatus(bulkStatusMessage, `Saved vendor view "${snapshot.name}".`, "success");
+}
+
+function applyVendorSavedView(viewId) {
+  const view = readVendorSavedViews().find((item) => item.id === viewId);
+  if (!view) {
+    renderVendorSavedViews("");
+    return;
+  }
+
+  saveVendorColumnKeys(view.columnKeys);
+  renderVendorColumnMenu();
+  activeDirectoryView = view.crmView;
+  window.localStorage.setItem("rateware.vendorDirectoryView", activeDirectoryView);
+  activeQuickFilter = view.quickFilter || "all";
+  quickFilterButtons.forEach((button) => button.classList.toggle("is-active", button.dataset.quickFilter === activeQuickFilter));
+  searchInput.value = view.filters.search;
+  statusFilter.value = view.filters.status;
+  channelFilter.value = view.filters.channel;
+  tagFilter.value = view.filters.tag;
+  coverageFilter.value = view.filters.coverage;
+  vendorPageSize = view.pageSize;
+  vendorPageSizeSelect.value = String(view.pageSize);
+  vendorPageOffset = 0;
+  clearVendorSelection();
+  renderVendorSavedViews(view.id);
+  activateVendorTab(view.baseStage);
+  setStatus(bulkStatusMessage, `Loaded vendor view "${view.name}".`, "success");
+}
+
+function deleteCurrentVendorView() {
+  const viewId = vendorSavedViewSelect?.value;
+  if (!viewId) {
+    setStatus(bulkStatusMessage, "Select a saved view to delete.", "warning");
+    return;
+  }
+  const views = readVendorSavedViews();
+  const view = views.find((item) => item.id === viewId);
+  if (!view) return;
+  if (!window.confirm(`Delete saved view "${view.name}"?`)) return;
+  writeVendorSavedViews(views.filter((item) => item.id !== viewId));
+  renderVendorSavedViews("");
+  setStatus(bulkStatusMessage, `Deleted vendor view "${view.name}".`, "success");
 }
 
 function escapeHtml(value) {
@@ -499,9 +639,11 @@ function activateVendorTab(tabName) {
 
 function setCrmView(view) {
   if (view === "pipeline") {
+    renderVendorSavedViews("");
     activateVendorTab("funnel");
     return;
   }
+  renderVendorSavedViews("");
   activeDirectoryView = view === "cards" ? "cards" : "spreadsheet";
   window.localStorage.setItem("rateware.vendorDirectoryView", activeDirectoryView);
   if (!isVendorBaseTab(activeVendorTab)) {
@@ -648,6 +790,7 @@ function renderDuplicateReview() {
 }
 
 function applyQuickFilter(filter) {
+  renderVendorSavedViews("");
   activeQuickFilter = filter;
   quickFilterButtons.forEach((button) => button.classList.toggle("is-active", button.dataset.quickFilter === filter));
 
@@ -1417,6 +1560,7 @@ function setVendorColumnVisibility(key, shouldShow) {
   else keys.delete(key);
   saveVendorColumnKeys(Array.from(keys));
   renderVendorColumnMenu();
+  renderVendorSavedViews("");
   renderVendors(currentVendors);
 }
 
@@ -1660,6 +1804,7 @@ function updatePaginationState() {
 function resetVendorPageAndLoad() {
   vendorPageOffset = 0;
   clearVendorSelection();
+  renderVendorSavedViews("");
   loadVendors();
 }
 
@@ -1677,6 +1822,7 @@ function resetVendorWorkspace({ preserveBase = true } = {}) {
   vendorPageOffset = 0;
   selectedVendorIds = new Set();
   quickFilterButtons.forEach((button) => button.classList.toggle("is-active", button.dataset.quickFilter === "all"));
+  renderVendorSavedViews("");
   setStatus(bulkStatusMessage, "");
   drawer.classList.add("hidden");
   activateVendorTab(targetBaseStage);
@@ -2618,7 +2764,10 @@ crmViewButtons.forEach((button) => {
   button.addEventListener("click", () => setCrmView(button.dataset.crmView));
 });
 directoryBaseButtons.forEach((button) => {
-  button.addEventListener("click", () => activateVendorTab(button.dataset.baseTab));
+  button.addEventListener("click", () => {
+    renderVendorSavedViews("");
+    activateVendorTab(button.dataset.baseTab);
+  });
 });
 vendorColumnOptions?.addEventListener("change", (event) => {
   const checkbox = event.target.closest("[data-vendor-column-toggle]");
@@ -2628,8 +2777,19 @@ vendorColumnOptions?.addEventListener("change", (event) => {
 resetVendorColumnsButton?.addEventListener("click", () => {
   window.localStorage.removeItem(VENDOR_COLUMN_STORAGE_KEY);
   renderVendorColumnMenu();
+  renderVendorSavedViews("");
   renderVendors(currentVendors);
 });
+vendorSavedViewSelect?.addEventListener("change", () => {
+  const viewId = vendorSavedViewSelect.value;
+  if (!viewId) {
+    renderVendorSavedViews("");
+    return;
+  }
+  applyVendorSavedView(viewId);
+});
+saveVendorViewButton?.addEventListener("click", saveCurrentVendorView);
+deleteVendorViewButton?.addEventListener("click", deleteCurrentVendorView);
 quickFilterButtons.forEach((button) => {
   button.addEventListener("click", () => {
     applyQuickFilter(button.dataset.quickFilter);
@@ -2772,6 +2932,7 @@ requirePrivatePage()
   .catch(() => {});
 renderWizard();
 renderVendorColumnMenu();
+renderVendorSavedViews("");
 activateVendorTab("funnel");
 updateBulkState();
 loadSegments();

@@ -2917,6 +2917,32 @@ a {
   color: #ffffff;
 }
 
+.vendor-saved-view-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.vendor-saved-view-controls select {
+  width: 150px;
+  min-height: 28px;
+  border-radius: 6px;
+  padding: 4px 7px;
+  color: #4a5863;
+  font-size: 0.72rem;
+  font-weight: 780;
+}
+
+.vendor-saved-view-controls .small-button {
+  min-height: 28px;
+  padding: 4px 8px;
+}
+
+.vendor-saved-view-controls .small-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .vendor-column-menu {
   position: relative;
   display: inline-flex;
