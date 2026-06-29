@@ -143,30 +143,6 @@
             <div id="vendor-funnel-strip" class="vendor-funnel-strip" aria-label="Vendor funnel stages"></div>
             <div class="funnel-workspace">
               <div id="vendor-funnel-board" class="vendor-funnel-board" aria-label="Vendor funnel Kanban"></div>
-              <aside class="funnel-detail-panel">
-                <div class="section-heading compact">
-                  <p class="eyebrow">Stage detail</p>
-                  <h2 id="vendor-funnel-detail-title">Targeted</h2>
-                  <span id="vendor-funnel-detail-count" class="base-context-pill">0 vendors</span>
-                </div>
-                <div class="table-wrap compact-table-wrap">
-                  <table class="funnel-detail-table">
-                    <thead>
-                      <tr>
-                        <th>Vendor</th>
-                        <th>Health</th>
-                        <th>Quote signal</th>
-                        <th>Next</th>
-                      </tr>
-                    </thead>
-                    <tbody id="vendor-funnel-detail-body">
-                      <tr>
-                        <td colspan="4">Open Procurement Pipeline to load procurement vendors.</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              </aside>
             </div>
             <p id="vendor-funnel-status" class="status-message" role="status"></p>
           </section>
@@ -651,13 +627,18 @@
                     <th>Domain</th>
                     <th>Contact</th>
                     <th>Email</th>
-                    <th>Fit</th>
+                    <th>WhatsApp</th>
                     <th>Tags</th>
                     <th>Channel</th>
                     <th>Base</th>
                     <th>Status</th>
+                    <th>Coverage</th>
+                    <th>Notes</th>
+                    <th>Source</th>
                   </tr>
                   <tr id="vendors-filter-row" class="vendor-filter-row">
+                    <th></th>
+                    <th></th>
                     <th></th>
                     <th></th>
                     <th></th>
@@ -672,7 +653,7 @@
                 </thead>
                 <tbody id="vendors-body">
                   <tr>
-                    <td colspan="10">Loading vendors...</td>
+                    <td colspan="13">Loading vendors...</td>
                   </tr>
                 </tbody>
               </table>

@@ -2784,30 +2784,30 @@ a {
 
 .funnel-workspace {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(320px, 0.36fr);
-  gap: 12px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
   align-items: start;
 }
 
 .vendor-funnel-board {
   display: grid;
   grid-auto-flow: column;
-  grid-auto-columns: minmax(235px, 280px);
-  gap: 8px;
-  min-height: 500px;
+  grid-auto-columns: minmax(205px, 240px);
+  gap: 6px;
+  min-height: 420px;
   overflow-x: auto;
-  padding-bottom: 8px;
+  padding-bottom: 6px;
 }
 
 .funnel-column {
   display: grid;
   align-content: start;
-  gap: 7px;
-  min-height: 460px;
+  gap: 5px;
+  min-height: 390px;
   border: 1px solid var(--line);
   border-radius: 7px;
   background: #f7f9fa;
-  padding: 8px;
+  padding: 6px;
 }
 
 .funnel-column.is-drop-target {
@@ -2820,20 +2820,20 @@ a {
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
   align-items: start;
-  min-height: 54px;
+  min-height: 43px;
   border-bottom: 1px solid #e3e9ee;
-  padding-bottom: 7px;
+  padding-bottom: 5px;
 }
 
 .funnel-column header strong {
   color: var(--text);
-  font-size: 0.86rem;
+  font-size: 0.74rem;
 }
 
 .funnel-column header small {
   display: block;
   color: var(--muted);
-  font-size: 0.68rem;
+  font-size: 0.58rem;
   font-weight: 740;
   line-height: 1.25;
 }
@@ -2842,8 +2842,8 @@ a {
   border-radius: 999px;
   background: #e7ecef;
   color: var(--neutral);
-  padding: 2px 7px;
-  font-size: 0.7rem;
+  padding: 1px 6px;
+  font-size: 0.58rem;
   font-weight: 900;
 }
 
@@ -2854,11 +2854,11 @@ a {
 
 .funnel-card {
   display: grid;
-  gap: 6px;
+  gap: 4px;
   border: 1px solid #d8e2e6;
   border-radius: 7px;
   background: #ffffff;
-  padding: 8px;
+  padding: 6px;
   cursor: grab;
   box-shadow: 0 1px 2px rgba(22, 32, 38, 0.025);
 }
@@ -2885,13 +2885,13 @@ a {
   min-width: 0;
   overflow: hidden;
   color: var(--text);
-  font-size: 0.8rem;
+  font-size: 0.68rem;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .funnel-card-vendor small {
-  max-width: 150px;
+  max-width: 116px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2901,32 +2901,32 @@ a {
 .funnel-card-signals span,
 .funnel-empty-column {
   color: var(--muted);
-  font-size: 0.7rem;
+  font-size: 0.58rem;
   font-weight: 740;
 }
 
 .funnel-card-signals span {
   border-radius: 999px;
   background: #eef2f4;
-  padding: 2px 6px;
+  padding: 1px 5px;
   white-space: nowrap;
 }
 
 .funnel-card .tag-list {
   gap: 3px;
-  max-height: 20px;
+  max-height: 17px;
   overflow: hidden;
 }
 
 .funnel-card .tag-chip {
-  min-height: 17px;
+  min-height: 15px;
   padding: 1px 5px;
-  font-size: 0.6rem;
+  font-size: 0.54rem;
 }
 
 .funnel-card-actions {
   border-top: 1px solid #eef2f5;
-  padding-top: 6px;
+  padding-top: 4px;
 }
 
 .funnel-empty-column {
@@ -2936,35 +2936,6 @@ a {
   border: 1px dashed #cbd7dc;
   border-radius: 8px;
   background: #ffffff;
-}
-
-.funnel-detail-panel {
-  display: grid;
-  gap: 10px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: #ffffff;
-  padding: 10px;
-}
-
-.compact-table-wrap {
-  max-height: 460px;
-  overflow: auto;
-}
-
-.funnel-detail-table th,
-.funnel-detail-table td {
-  padding: 6px 7px;
-  font-size: 0.74rem;
-  vertical-align: top;
-}
-
-.funnel-detail-table td small {
-  display: block;
-  margin-top: 2px;
-  color: var(--muted);
-  font-size: 0.68rem;
-  font-weight: 720;
 }
 
 .action-grid {
@@ -5124,46 +5095,108 @@ button.location-chip:focus-visible {
 }
 
 .vendor-sheet-wrap {
-  max-height: calc(100vh - 310px);
-  min-height: 430px;
+  max-height: calc(100vh - 260px);
+  min-height: 500px;
   overflow: auto;
   scrollbar-gutter: stable both-edges;
 }
 
 .vendor-sheet-table {
-  min-width: 1320px;
+  min-width: 1680px;
   border-collapse: collapse;
-  font-size: 0.72rem;
+  font-size: 0.64rem;
 }
 
 .vendor-sheet-table thead th {
   position: sticky;
   top: 0;
   z-index: 3;
-  height: 24px;
-  padding: 2px 6px;
+  height: 20px;
+  padding: 1px 4px;
   border-bottom: 1px solid var(--line-strong);
   background: #edf2f5;
   color: #46525d;
-  font-size: 0.66rem;
+  font-size: 0.58rem;
   line-height: 1;
   text-transform: none;
   white-space: nowrap;
 }
 
 .vendor-sheet-table .vendor-filter-row th {
-  top: 24px;
+  top: 20px;
   z-index: 2;
-  height: 24px;
-  padding: 2px 4px;
+  height: 20px;
+  padding: 1px 3px;
   background: #f8fafb;
 }
 
 .vendor-sheet-table td {
-  height: 34px;
-  padding: 2px 6px;
+  height: 24px;
+  max-height: 24px;
+  padding: 1px 3px;
   border-bottom: 1px solid #e4e9ee;
   vertical-align: middle;
+}
+
+.vendor-sheet-name-cell {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.vendor-logo-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  min-width: 22px;
+  height: 20px;
+  min-height: 20px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+}
+
+.vendor-cell-input {
+  width: 100%;
+  min-width: 96px;
+  height: 20px;
+  min-height: 20px;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  background: transparent;
+  padding: 0 4px;
+  color: var(--text);
+  font-size: 0.63rem;
+  line-height: 18px;
+}
+
+.vendor-cell-input.wide-input {
+  min-width: 150px;
+}
+
+.vendor-cell-input:hover,
+.vendor-cell-input:focus {
+  border-color: var(--accent-border);
+  background: #ffffff;
+  outline: none;
+}
+
+.vendor-cell-input.is-saving {
+  border-color: #d9b65f;
+  background: #fff9e8;
+}
+
+.vendor-cell-input.is-saved {
+  border-color: #9ac9b0;
+}
+
+.vendor-cell-input.is-error {
+  border-color: var(--danger);
+  background: var(--danger-soft);
 }
 
 .vendor-inline-filter {
@@ -5173,7 +5206,7 @@ button.location-chip:focus-visible {
   min-height: 20px;
   border-radius: 2px;
   padding: 1px 5px;
-  font-size: 0.64rem;
+  font-size: 0.58rem;
 }
 
 .vendor-inline-clear {
@@ -5183,7 +5216,7 @@ button.location-chip:focus-visible {
 .vendor-sheet-table .tag-list {
   gap: 3px;
   flex-wrap: nowrap;
-  max-width: 230px;
+  max-width: 180px;
   overflow: hidden;
 }
 
@@ -5191,9 +5224,9 @@ button.location-chip:focus-visible {
 .vendor-sheet-table .status-pill,
 .vendor-sheet-table .score-pill,
 .vendor-sheet-table .warning-pill {
-  min-height: 18px;
+  min-height: 16px;
   padding: 1px 5px;
-  font-size: 0.62rem;
+  font-size: 0.55rem;
 }
 
 .vendor-sheet-table .vendor-row-flags {
@@ -5208,13 +5241,13 @@ button.location-chip:focus-visible {
 .vendor-sheet-table .vendor-coverage-cell small,
 .vendor-sheet-table .vendor-contact-stack span,
 .vendor-sheet-table .vendor-subline {
-  font-size: 0.68rem;
+  font-size: 0.58rem;
 }
 
 .vendor-card-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(205px, 1fr));
+  gap: 6px;
 }
 
 .vendor-card-grid.hidden {
@@ -5223,11 +5256,11 @@ button.location-chip:focus-visible {
 
 .vendor-crm-card {
   display: grid;
-  gap: 8px;
+  gap: 5px;
   border: 1px solid var(--line);
-  border-radius: 7px;
+  border-radius: 6px;
   background: #ffffff;
-  padding: 10px;
+  padding: 7px;
 }
 
 .vendor-crm-card.is-selected {
@@ -5240,7 +5273,7 @@ button.location-chip:focus-visible {
 .vendor-card-footer {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 5px;
   min-width: 0;
 }
 
@@ -5257,8 +5290,35 @@ button.location-chip:focus-visible {
 .vendor-card-footer,
 .vendor-crm-card p {
   color: var(--muted);
-  font-size: 0.72rem;
+  font-size: 0.6rem;
   font-weight: 740;
+}
+
+.vendor-crm-card .link-button {
+  font-size: 0.68rem;
+  line-height: 1.1;
+}
+
+.vendor-crm-card .vendor-logo.card {
+  width: 24px;
+  height: 24px;
+  border-radius: 5px;
+  font-size: 0.6rem;
+}
+
+.vendor-crm-card .tag-list {
+  gap: 3px;
+  max-height: 17px;
+  overflow: hidden;
+}
+
+.vendor-crm-card .tag-chip,
+.vendor-crm-card .status-pill,
+.vendor-crm-card .score-pill,
+.vendor-crm-card .warning-pill {
+  min-height: 15px;
+  padding: 1px 5px;
+  font-size: 0.54rem;
 }
 
 .vendor-card-top span,

@@ -97,9 +97,6 @@ const refreshVendorFunnelButton = document.querySelector("#refresh-vendor-funnel
 const vendorFunnelStatus = document.querySelector("#vendor-funnel-status");
 const vendorFunnelStrip = document.querySelector("#vendor-funnel-strip");
 const vendorFunnelBoard = document.querySelector("#vendor-funnel-board");
-const vendorFunnelDetailTitle = document.querySelector("#vendor-funnel-detail-title");
-const vendorFunnelDetailCount = document.querySelector("#vendor-funnel-detail-count");
-const vendorFunnelDetailBody = document.querySelector("#vendor-funnel-detail-body");
 const vfTotal = document.querySelector("#vf-total");
 const vfActivationRate = document.querySelector("#vf-activation-rate");
 const vfNested = document.querySelector("#vf-nested");
@@ -150,6 +147,7 @@ const DEFAULT_FUNNEL_STAGES = [
   { key: "activated", label: "Activated", description: "Ready for immediate use." },
   { key: "completed", label: "Completed", description: "Legal package fully signed." }
 ];
+const VENDOR_SHEET_COLUMNS = ["Select", "Vendor", "Domain", "Contact", "Email", "WhatsApp", "Tags", "Channel", "Base", "Status", "Coverage", "Notes", "Source"];
 
 function isVendorBaseTab(tabName) {
   return VENDOR_BASE_TABS.includes(tabName);
@@ -179,8 +177,7 @@ function syncCrmViewButtons() {
 }
 
 function vendorTableColumnCount() {
-  if (activeBaseStage === "procurement" || activeBaseStage === "archived") return 8;
-  return 10;
+  return VENDOR_SHEET_COLUMNS.length;
 }
 
 function escapeHtml(value) {
@@ -1070,43 +1067,6 @@ function renderVendorFunnelBoard() {
     .join("");
 }
 
-function renderVendorFunnelDetail(stageKey = activeFunnelStage) {
-  activeFunnelStage = stageKey;
-  const rows = funnelStageRows(stageKey);
-  if (vendorFunnelDetailTitle) vendorFunnelDetailTitle.textContent = stageLabel(stageKey);
-  if (vendorFunnelDetailCount) vendorFunnelDetailCount.textContent = `${rows.length} vendor${rows.length === 1 ? "" : "s"}`;
-  if (!vendorFunnelDetailBody) return;
-
-  if (!rows.length) {
-    vendorFunnelDetailBody.innerHTML = `<tr><td colspan="4"><div class="empty-state compact-empty"><strong>No vendors in ${escapeHtml(stageLabel(stageKey))}</strong><span>Move cards into this stage when the onboarding signal is confirmed.</span></div></td></tr>`;
-    return;
-  }
-
-  vendorFunnelDetailBody.innerHTML = rows
-    .map((row) => `
-      <tr>
-        <td>
-          <div class="vendor-identity-main compact">
-            ${renderVendorAvatar(row, "tiny")}
-            <div>
-              <button class="link-button" type="button" data-funnel-open="${escapeHtml(row.id || row.vendor_id)}">${escapeHtml(row.vendor_name || "Unnamed vendor")}</button>
-              <small>${escapeHtml([row.domain, row.primary_email].filter(Boolean).join(" | ") || "Missing contact")}</small>
-            </div>
-          </div>
-        </td>
-        <td><span class="score-pill ${escapeHtml(row.health_tone || "weak")}">${escapeHtml(row.health_score || 0)}%</span></td>
-        <td>${escapeHtml(funnelQuoteSignal(row))}</td>
-        <td>
-          <div class="vendor-signal-stack">
-            <span>${escapeHtml(funnelStageRecommendation(row))}</span>
-            <button class="small-button secondary" type="button" data-funnel-move="${escapeHtml(row.id || row.vendor_id)}" data-funnel-target="${escapeHtml(funnelNextStage(stageKey))}">Move next</button>
-          </div>
-        </td>
-      </tr>
-    `)
-    .join("");
-}
-
 function renderVendorFunnel(result = {}) {
   vendorFunnelStages = result.stages?.length ? result.stages : DEFAULT_FUNNEL_STAGES;
   vendorFunnelRows = (result.rows || []).map((row) => ({ ...row, id: row.id || row.vendor_id }));
@@ -1114,7 +1074,6 @@ function renderVendorFunnel(result = {}) {
   renderVendorFunnelMetrics(result.summary || {});
   renderVendorFunnelStrip();
   renderVendorFunnelBoard();
-  renderVendorFunnelDetail(activeFunnelStage);
 }
 
 async function loadVendorFunnel() {
@@ -1164,12 +1123,7 @@ async function moveVendorFunnelStage(vendorId, stageKey) {
 }
 
 function renderVendorTableHeader() {
-  const columns =
-    activeBaseStage === "procurement"
-      ? ["Select", "Target carrier", "Contact", "Coverage", "Tags", "Health", "Status", "Source"]
-      : activeBaseStage === "archived"
-        ? ["Select", "Archived vendor", "Contact", "Coverage", "Tags", "Health", "Status", "Source"]
-        : ["Select", "Vendor", "Contact", "Coverage", "Health", "Tags", "Channel", "Base", "Status", "Source"];
+  const columns = VENDOR_SHEET_COLUMNS;
   vendorsHeadRow.innerHTML = columns.map((column) => `<th>${escapeHtml(column)}</th>`).join("");
   renderVendorFilterRow(columns);
   vendorBaseContext.textContent = baseStageLabel();
@@ -1191,7 +1145,7 @@ function renderVendorFilterRow(columns) {
     if (key === "select") {
       return filterCell('<button class="sheet-filter-clear vendor-inline-clear" type="button" data-vendor-filter-clear>Clear</button>');
     }
-    if (key.includes("vendor") || key.includes("carrier") || key === "contact") {
+    if (["vendor", "domain", "contact", "email", "whatsapp"].includes(key)) {
       return filterCell(`<input class="vendor-inline-filter" data-vendor-filter="search" value="${search}" placeholder="Search" />`);
     }
     if (key === "coverage") {
@@ -1226,48 +1180,69 @@ function renderVendorFilterRow(columns) {
   vendorsFilterRow.innerHTML = cells.join("");
 }
 
-function renderProcurementVendorRow(row) {
+function editableVendorInput(row, field, { type = "text", wide = false } = {}) {
+  const value = field === "tags" ? splitTags(row.tags).join(", ") : row[field] || "";
   return `
-    <tr>
-      <td><input class="vendor-select" type="checkbox" data-vendor-id="${escapeHtml(row.id)}" ${selectedVendorIds.has(row.id) ? "checked" : ""} /></td>
-      <td>${renderVendorIdentity(row)}</td>
-      <td>${renderVendorContact(row)}</td>
-      <td>${renderVendorCoverage(row)}</td>
-      <td><div class="tag-list">${renderTags(row.tags)}</div></td>
-      <td>${renderCompleteness(row)}</td>
-      <td><span class="status-pill">${escapeHtml(row.status || "active")}</span></td>
-      <td>${renderVendorSourceCell(row)}</td>
-    </tr>
+    <input
+      class="vendor-cell-input ${wide ? "wide-input" : ""}"
+      type="${escapeHtml(type)}"
+      value="${escapeHtml(value)}"
+      data-vendor-cell
+      data-vendor-id="${escapeHtml(row.id)}"
+      data-vendor-field="${escapeHtml(field)}"
+      data-original-value="${escapeHtml(value)}"
+    />
   `;
 }
 
-function renderSourcingVendorRow(row) {
+function editableVendorSelect(row, field, options) {
+  const current = row[field] || "";
   return `
-    <tr>
-      <td><input class="vendor-select" type="checkbox" data-vendor-id="${escapeHtml(row.id)}" ${selectedVendorIds.has(row.id) ? "checked" : ""} /></td>
-      <td>${renderVendorIdentity(row)}</td>
-      <td>${renderVendorContact(row)}</td>
-      <td>${renderVendorCoverage(row)}</td>
-      <td>${renderCompleteness(row)}</td>
-      <td><div class="tag-list">${renderTags(row.tags)}</div></td>
-      <td>${escapeHtml(row.preferred_channel)}</td>
-      <td>${renderBaseStagePill(row)}</td>
-      <td><span class="status-pill">${escapeHtml(row.status)}</span></td>
-      <td>${renderVendorSourceCell(row)}</td>
-    </tr>
+    <select
+      class="vendor-cell-input"
+      data-vendor-cell
+      data-vendor-id="${escapeHtml(row.id)}"
+      data-vendor-field="${escapeHtml(field)}"
+      data-original-value="${escapeHtml(current)}"
+    >
+      ${options.map((option) => `<option value="${escapeHtml(option.value)}" ${option.value === current ? "selected" : ""}>${escapeHtml(option.label)}</option>`).join("")}
+    </select>
   `;
 }
 
-function renderArchivedVendorRow(row) {
+function renderVendorSheetRow(row) {
   return `
-    <tr class="archived-vendor-row">
+    <tr class="${row.base_stage === "archived" ? "archived-vendor-row" : ""}" data-vendor-row-id="${escapeHtml(row.id)}">
       <td><input class="vendor-select" type="checkbox" data-vendor-id="${escapeHtml(row.id)}" ${selectedVendorIds.has(row.id) ? "checked" : ""} /></td>
-      <td>${renderVendorIdentity(row)}</td>
-      <td>${renderVendorContact(row)}</td>
-      <td>${renderVendorCoverage(row)}</td>
-      <td><div class="tag-list">${renderTags(row.tags)}</div></td>
-      <td>${renderCompleteness(row)}</td>
-      <td>${renderBaseStagePill(row)}</td>
+      <td>
+        <div class="vendor-sheet-name-cell">
+          <button class="vendor-logo-button" type="button" data-vendor-id="${escapeHtml(row.id)}" title="Open carrier profile">${renderVendorAvatar(row, "tiny")}</button>
+          ${editableVendorInput(row, "vendor_name", { wide: true })}
+        </div>
+      </td>
+      <td>${editableVendorInput(row, "domain")}</td>
+      <td>${editableVendorInput(row, "contact_name")}</td>
+      <td>${editableVendorInput(row, "primary_email", { type: "email" })}</td>
+      <td>${editableVendorInput(row, "whatsapp_phone")}</td>
+      <td>${editableVendorInput(row, "tags", { wide: true })}</td>
+      <td>${editableVendorSelect(row, "preferred_channel", [
+        { value: "email", label: "Email" },
+        { value: "whatsapp", label: "WhatsApp" },
+        { value: "portal", label: "Portal" }
+      ])}</td>
+      <td>${editableVendorSelect(row, "base_stage", [
+        { value: "sourcing", label: "Sourcing" },
+        { value: "procurement", label: "Procurement" },
+        { value: "archived", label: "Archived" }
+      ])}</td>
+      <td>${editableVendorSelect(row, "status", [
+        { value: "active", label: "Active" },
+        { value: "invited", label: "Invited" },
+        { value: "blocked", label: "Blocked" },
+        { value: "inactive", label: "Inactive" }
+      ])}</td>
+      <td>${editableVendorInput(row, "coverage_notes", { wide: true })}</td>
+      <td>${editableVendorInput(row, "notes", { wide: true })}</td>
       <td>${renderVendorSourceCell(row)}</td>
     </tr>
   `;
@@ -1359,13 +1334,7 @@ function renderVendors(rows) {
 
   renderVendorCards(rows);
   vendorsBody.innerHTML = rows
-    .map((row) =>
-      activeBaseStage === "procurement"
-        ? renderProcurementVendorRow(row)
-        : activeBaseStage === "archived"
-          ? renderArchivedVendorRow(row)
-          : renderSourcingVendorRow(row)
-    )
+    .map(renderVendorSheetRow)
     .join("");
   syncCrmViewButtons();
 }
@@ -1411,6 +1380,41 @@ function applyVendorInlineFilter(field, value) {
   if (field === "channel") channelFilter.value = value;
   if (field === "status") statusFilter.value = value;
   resetVendorPageAndLoad();
+}
+
+function vendorCellPatchValue(field, value) {
+  if (field === "tags") return splitTags(value);
+  return value;
+}
+
+async function saveVendorCell(control) {
+  if (!control?.dataset?.vendorCell) return;
+  const vendorId = control.dataset.vendorId;
+  const field = control.dataset.vendorField;
+  const rawValue = control.value;
+  const original = control.dataset.originalValue || "";
+  if (!vendorId || !field || rawValue === original) return;
+
+  control.classList.remove("is-saved", "is-error");
+  control.classList.add("is-saving");
+  try {
+    await requirePrivatePage();
+    const updated = await updateVendor(vendorId, { [field]: vendorCellPatchValue(field, rawValue) });
+    replaceVendorInState(updated);
+    const storedValue = field === "tags" ? splitTags(updated.tags).join(", ") : updated[field] || "";
+    control.value = storedValue;
+    control.dataset.originalValue = storedValue;
+    control.classList.remove("is-saving");
+    control.classList.add("is-saved");
+    setStatus(bulkStatusMessage, "Cell saved.", "success");
+    if (["base_stage", "status"].includes(field)) {
+      window.setTimeout(() => loadVendors(), 150);
+    }
+  } catch (error) {
+    control.classList.remove("is-saving");
+    control.classList.add("is-error");
+    setStatus(bulkStatusMessage, error.message, "error");
+  }
 }
 
 function segmentMatches(segment, vendor) {
@@ -1804,7 +1808,6 @@ async function handleDrawerLogoUpload() {
     if (drawerLogoPreview) drawerLogoPreview.innerHTML = renderVendorAvatar(updated, "drawer");
     renderVendors(currentVendors);
     renderVendorFunnelBoard();
-    renderVendorFunnelDetail(activeFunnelStage);
     setStatus(drawerEditStatus, "Logo uploaded.", "success");
   } catch (error) {
     setStatus(drawerEditStatus, error.message, "error");
@@ -2154,7 +2157,6 @@ vendorFunnelStrip?.addEventListener("click", (event) => {
   if (!button) return;
   activeFunnelStage = button.dataset.funnelStageFilter;
   renderVendorFunnelStrip();
-  renderVendorFunnelDetail(activeFunnelStage);
 });
 vendorFunnelBoard?.addEventListener("dragstart", (event) => {
   const card = event.target.closest("[data-funnel-vendor-id]");
@@ -2286,7 +2288,7 @@ searchInput.addEventListener("input", () => {
   searchInput._timer = window.setTimeout(resetVendorPageAndLoad, 300);
 });
 vendorsBody.addEventListener("click", (event) => {
-  const button = event.target.closest(".vendor-profile-button");
+  const button = event.target.closest(".vendor-profile-button, .vendor-logo-button");
   if (!button) return;
   openVendorDrawer(button.dataset.vendorId);
 });
@@ -2301,12 +2303,34 @@ vendorCardGrid?.addEventListener("click", (event) => {
   if (card) openVendorDrawer(card.dataset.vendorCardId);
 });
 vendorsBody.addEventListener("change", (event) => {
+  const cell = event.target.closest(".vendor-cell-input");
+  if (cell?.tagName === "SELECT") {
+    saveVendorCell(cell);
+    return;
+  }
   const checkbox = event.target.closest(".vendor-select");
   if (!checkbox) return;
   if (checkbox.checked) selectedVendorIds.add(checkbox.dataset.vendorId);
   else selectedVendorIds.delete(checkbox.dataset.vendorId);
   updateBulkState();
   renderVendorCards(currentVendors);
+});
+vendorsBody.addEventListener("focusout", (event) => {
+  const cell = event.target.closest(".vendor-cell-input");
+  if (!cell || cell.tagName === "SELECT") return;
+  saveVendorCell(cell);
+});
+vendorsBody.addEventListener("keydown", (event) => {
+  const cell = event.target.closest(".vendor-cell-input");
+  if (!cell || cell.tagName === "SELECT") return;
+  if (event.key === "Enter") {
+    event.preventDefault();
+    cell.blur();
+  }
+  if (event.key === "Escape") {
+    cell.value = cell.dataset.originalValue || "";
+    cell.blur();
+  }
 });
 vendorCardGrid?.addEventListener("change", (event) => {
   const checkbox = event.target.closest(".vendor-select");
@@ -2353,7 +2377,6 @@ drawerEditForm.addEventListener("submit", async (event) => {
     setStatus(drawerEditStatus, "Vendor updated.", "success");
     await loadVendors();
     renderVendorFunnelBoard();
-    renderVendorFunnelDetail(activeFunnelStage);
     openVendorDrawer(updated.id);
   } catch (error) {
     setStatus(drawerEditStatus, error.message, "error");
