@@ -107,6 +107,7 @@ const segmentsList = document.querySelector("#segments-list");
 const duplicateReviewList = document.querySelector("#duplicate-review-list");
 const drawer = document.querySelector("#vendor-drawer");
 const closeDrawerButton = document.querySelector("#close-vendor-drawer");
+const drawerEditToggle = document.querySelector("#drawer-edit-toggle");
 const drawerEditForm = document.querySelector("#drawer-edit-form");
 const drawerArchiveButton = document.querySelector("#drawer-archive-button");
 const drawerEditStatus = document.querySelector("#drawer-edit-status-message");
@@ -1725,7 +1726,19 @@ function findVendorById(vendorId) {
   return row ? { ...row, id: row.id || row.vendor_id } : null;
 }
 
-function openVendorDrawer(vendorId) {
+function setDrawerMode(mode = "view", { focus = false } = {}) {
+  const nextMode = mode === "edit" ? "edit" : "view";
+  drawer.dataset.mode = nextMode;
+  if (drawerEditToggle) {
+    drawerEditToggle.textContent = nextMode === "edit" ? "View profile" : "Edit profile";
+    drawerEditToggle.classList.toggle("is-active", nextMode === "edit");
+  }
+  if (nextMode === "edit" && focus) {
+    window.setTimeout(() => document.querySelector("#drawer-edit-name")?.focus(), 0);
+  }
+}
+
+function openVendorDrawer(vendorId, options = {}) {
   const vendor = findVendorById(vendorId);
   if (!vendor) return;
 
@@ -1762,6 +1775,7 @@ function openVendorDrawer(vendorId) {
   drawerArchiveButton.textContent = vendor.base_stage === "archived" ? "Restore to Sourcing" : "Archive vendor";
   setStatus(drawerEditStatus, "");
   drawer.classList.remove("hidden");
+  setDrawerMode(options.mode || "view");
 }
 
 function readDrawerPatch() {
@@ -1844,6 +1858,7 @@ function applyDrawerSuggestion(type, value) {
   if (type === "domain") {
     document.querySelector("#drawer-edit-domain").value ||= value;
   }
+  setDrawerMode("edit", { focus: false });
   setStatus(drawerEditStatus, "Suggestion applied. Review and save changes.", "success");
 }
 
@@ -2367,6 +2382,10 @@ vendorsFilterRow?.addEventListener("click", (event) => {
   resetVendorWorkspace();
 });
 closeDrawerButton.addEventListener("click", () => drawer.classList.add("hidden"));
+drawerEditToggle?.addEventListener("click", () => {
+  const isEditing = drawer.dataset.mode === "edit";
+  setDrawerMode(isEditing ? "view" : "edit", { focus: !isEditing });
+});
 drawerLogoFile?.addEventListener("change", handleDrawerLogoUpload);
 drawer.addEventListener("click", (event) => {
   const button = event.target.closest("[data-ai-suggestion-type]");
@@ -2387,7 +2406,7 @@ drawerEditForm.addEventListener("submit", async (event) => {
     setStatus(drawerEditStatus, "Vendor updated.", "success");
     await loadVendors();
     renderVendorFunnelBoard();
-    openVendorDrawer(updated.id);
+    openVendorDrawer(updated.id, { mode: "edit" });
   } catch (error) {
     setStatus(drawerEditStatus, error.message, "error");
   } finally {

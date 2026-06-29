@@ -664,7 +664,7 @@
             </div>
           </section>
 
-          <aside id="vendor-drawer" class="profile-drawer vendor-profile-drawer hidden" aria-live="polite">
+          <aside id="vendor-drawer" class="profile-drawer vendor-profile-drawer hidden" data-mode="view" aria-live="polite">
             <div class="drawer-header">
               <div class="drawer-brand-line">
                 <span id="drawer-logo-preview" class="drawer-logo-preview"></span>
@@ -674,7 +674,10 @@
                   <div id="drawer-badges" class="drawer-badges"></div>
                 </div>
               </div>
-              <button id="close-vendor-drawer" class="secondary small-button" type="button">Close</button>
+              <div class="drawer-header-actions">
+                <button id="drawer-edit-toggle" class="small-button" type="button">Edit profile</button>
+                <button id="close-vendor-drawer" class="secondary small-button" type="button">Close</button>
+              </div>
             </div>
             <section class="vendor-drawer-card vendor-drawer-summary">
               <div id="drawer-quick-actions" class="drawer-quick-actions"></div>
@@ -735,7 +738,7 @@
               </div>
               <div id="drawer-ai-suggestions" class="ai-suggestion-list"></div>
             </section>
-            <form id="drawer-edit-form" class="drawer-edit-form">
+            <form id="drawer-edit-form" class="drawer-edit-form vendor-drawer-card">
               <div class="section-heading compact">
                 <p class="eyebrow">Edit</p>
                 <h2>Vendor details</h2>

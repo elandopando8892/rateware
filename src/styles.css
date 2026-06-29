@@ -2211,6 +2211,19 @@ a {
   min-width: 0;
 }
 
+.vendor-profile-drawer .drawer-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex: 0 0 auto;
+}
+
+.vendor-profile-drawer #drawer-edit-toggle.is-active {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #ffffff;
+}
+
 .vendor-profile-drawer h2 {
   max-width: 270px;
   overflow: hidden;
@@ -2267,6 +2280,15 @@ a {
 
 .vendor-drawer-summary {
   background: #fbfcfd;
+}
+
+.vendor-profile-drawer[data-mode="view"] .drawer-edit-form {
+  display: none;
+}
+
+.vendor-profile-drawer[data-mode="edit"] .vendor-drawer-card:not(.vendor-drawer-summary):not(.drawer-edit-form),
+.vendor-profile-drawer[data-mode="edit"] .ai-suggestion-panel {
+  display: none;
 }
 
 .vendor-profile-drawer .drawer-quick-actions {
@@ -2457,6 +2479,8 @@ a {
 .vendor-profile-drawer .drawer-edit-form {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 7px;
+  border-color: #c9ddd9;
+  background: #fbfdfc;
 }
 
 .vendor-profile-drawer .drawer-edit-form .section-heading,
@@ -2490,6 +2514,25 @@ a {
 .vendor-profile-drawer .action-row {
   align-items: center;
   gap: 6px;
+  position: sticky;
+  bottom: -12px;
+  border-top: 1px solid var(--line);
+  background: #ffffff;
+  margin: 4px -8px -8px;
+  padding: 8px;
+}
+
+.vendor-profile-drawer .action-row button {
+  min-height: 26px;
+  padding: 4px 8px;
+  font-size: 0.68rem;
+}
+
+.vendor-profile-drawer .action-row .status-message {
+  flex: 1;
+  min-width: 120px;
+  margin: 0;
+  font-size: 0.66rem;
 }
 
 .ai-suggestion-panel {
