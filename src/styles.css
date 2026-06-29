@@ -2534,6 +2534,44 @@ a {
   line-height: 1;
 }
 
+.directory-controls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.crm-view-switcher {
+  display: inline-flex;
+  align-items: center;
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: #ffffff;
+}
+
+.crm-view-switcher button {
+  min-height: 28px;
+  border: 0;
+  border-right: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  color: #4a5863;
+  padding: 4px 10px;
+  font-size: 0.72rem;
+  font-weight: 850;
+}
+
+.crm-view-switcher button:last-child {
+  border-right: 0;
+}
+
+.crm-view-switcher button.is-active {
+  background: var(--accent-dark);
+  color: #ffffff;
+}
+
 .vendor-tabs {
   display: flex;
   gap: 8px;
@@ -2754,8 +2792,9 @@ a {
 .vendor-funnel-board {
   display: grid;
   grid-auto-flow: column;
-  grid-auto-columns: minmax(220px, 260px);
-  gap: 10px;
+  grid-auto-columns: minmax(235px, 280px);
+  gap: 8px;
+  min-height: 500px;
   overflow-x: auto;
   padding-bottom: 8px;
 }
@@ -2763,11 +2802,11 @@ a {
 .funnel-column {
   display: grid;
   align-content: start;
-  gap: 8px;
-  min-height: 320px;
+  gap: 7px;
+  min-height: 460px;
   border: 1px solid var(--line);
-  border-radius: 8px;
-  background: #f8fafb;
+  border-radius: 7px;
+  background: #f7f9fa;
   padding: 8px;
 }
 
@@ -2781,6 +2820,9 @@ a {
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
   align-items: start;
+  min-height: 54px;
+  border-bottom: 1px solid #e3e9ee;
+  padding-bottom: 7px;
 }
 
 .funnel-column header strong {
@@ -2807,17 +2849,23 @@ a {
 
 .funnel-card-stack {
   display: grid;
-  gap: 7px;
+  gap: 6px;
 }
 
 .funnel-card {
   display: grid;
-  gap: 7px;
+  gap: 6px;
   border: 1px solid #d8e2e6;
-  border-radius: 8px;
+  border-radius: 7px;
   background: #ffffff;
-  padding: 9px;
+  padding: 8px;
   cursor: grab;
+  box-shadow: 0 1px 2px rgba(22, 32, 38, 0.025);
+}
+
+.funnel-card:hover {
+  border-color: var(--line-strong);
+  box-shadow: 0 6px 14px rgba(22, 32, 38, 0.06);
 }
 
 .funnel-card.is-dragging {
@@ -2861,6 +2909,24 @@ a {
   border-radius: 999px;
   background: #eef2f4;
   padding: 2px 6px;
+  white-space: nowrap;
+}
+
+.funnel-card .tag-list {
+  gap: 3px;
+  max-height: 20px;
+  overflow: hidden;
+}
+
+.funnel-card .tag-chip {
+  min-height: 17px;
+  padding: 1px 5px;
+  font-size: 0.6rem;
+}
+
+.funnel-card-actions {
+  border-top: 1px solid #eef2f5;
+  padding-top: 6px;
 }
 
 .funnel-empty-column {
@@ -5055,6 +5121,157 @@ button.location-chip:focus-visible {
 
 .drawer-logo-preview {
   display: inline-flex;
+}
+
+.vendor-sheet-wrap {
+  max-height: calc(100vh - 310px);
+  min-height: 430px;
+  overflow: auto;
+  scrollbar-gutter: stable both-edges;
+}
+
+.vendor-sheet-table {
+  min-width: 1320px;
+  border-collapse: collapse;
+  font-size: 0.72rem;
+}
+
+.vendor-sheet-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  height: 24px;
+  padding: 2px 6px;
+  border-bottom: 1px solid var(--line-strong);
+  background: #edf2f5;
+  color: #46525d;
+  font-size: 0.66rem;
+  line-height: 1;
+  text-transform: none;
+  white-space: nowrap;
+}
+
+.vendor-sheet-table .vendor-filter-row th {
+  top: 24px;
+  z-index: 2;
+  height: 24px;
+  padding: 2px 4px;
+  background: #f8fafb;
+}
+
+.vendor-sheet-table td {
+  height: 34px;
+  padding: 2px 6px;
+  border-bottom: 1px solid #e4e9ee;
+  vertical-align: middle;
+}
+
+.vendor-inline-filter {
+  width: 100%;
+  min-width: 76px;
+  height: 20px;
+  min-height: 20px;
+  border-radius: 2px;
+  padding: 1px 5px;
+  font-size: 0.64rem;
+}
+
+.vendor-inline-clear {
+  width: 100%;
+}
+
+.vendor-sheet-table .tag-list {
+  gap: 3px;
+  flex-wrap: nowrap;
+  max-width: 230px;
+  overflow: hidden;
+}
+
+.vendor-sheet-table .tag-chip,
+.vendor-sheet-table .status-pill,
+.vendor-sheet-table .score-pill,
+.vendor-sheet-table .warning-pill {
+  min-height: 18px;
+  padding: 1px 5px;
+  font-size: 0.62rem;
+}
+
+.vendor-sheet-table .vendor-row-flags {
+  display: none;
+}
+
+.vendor-sheet-table .vendor-coverage-cell {
+  max-width: 320px;
+}
+
+.vendor-sheet-table .vendor-coverage-cell span,
+.vendor-sheet-table .vendor-coverage-cell small,
+.vendor-sheet-table .vendor-contact-stack span,
+.vendor-sheet-table .vendor-subline {
+  font-size: 0.68rem;
+}
+
+.vendor-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 10px;
+}
+
+.vendor-card-grid.hidden {
+  display: none;
+}
+
+.vendor-crm-card {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #ffffff;
+  padding: 10px;
+}
+
+.vendor-crm-card.is-selected {
+  border-color: var(--accent);
+  background: #f5f9f8;
+}
+
+.vendor-card-top,
+.vendor-card-meta,
+.vendor-card-footer {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.vendor-card-top {
+  justify-content: space-between;
+}
+
+.vendor-card-top > div {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.vendor-card-top span,
+.vendor-card-footer,
+.vendor-crm-card p {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 740;
+}
+
+.vendor-card-top span,
+.vendor-card-footer span,
+.vendor-crm-card p {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vendor-card-meta,
+.vendor-card-footer {
+  justify-content: space-between;
 }
 
 .vendor-row-flags {

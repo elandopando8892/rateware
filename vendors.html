@@ -85,12 +85,12 @@
 
           <section class="vendor-tabs vendor-workflow-tabs wide-section" aria-label="Vendor workflows">
             <button class="vendor-tab is-active" type="button" data-vendor-tab="sourcing">
-              <strong>Directory</strong>
-              <span>Sourcing, procurement, archived</span>
+              <strong>Spreadsheet</strong>
+              <span>Carrier CRM detail grid</span>
             </button>
             <button class="vendor-tab" type="button" data-vendor-tab="funnel">
-              <strong>Procurement Pipeline</strong>
-              <span>Funnel and onboarding stages</span>
+              <strong>Pipeline</strong>
+              <span>Drag carriers across stages</span>
             </button>
             <button class="vendor-tab" type="button" data-vendor-tab="import">
               <strong>Import</strong>
@@ -113,6 +113,11 @@
                 <h2>Procurement Pipeline</h2>
               </div>
               <div class="action-row">
+                <div class="crm-view-switcher" aria-label="CRM views">
+                  <button type="button" data-crm-view="spreadsheet">Spreadsheet</button>
+                  <button class="is-active" type="button" data-crm-view="pipeline">Pipeline</button>
+                  <button type="button" data-crm-view="cards">Cards</button>
+                </div>
                 <button id="refresh-vendor-funnel" type="button">Refresh pipeline</button>
                 <a class="link-button" href="./outreach.html">Open outreach</a>
               </div>
@@ -523,10 +528,17 @@
                 <p class="eyebrow">Vendor Directory</p>
                 <h2>Carrier master data</h2>
               </div>
-              <div class="directory-base-switcher" aria-label="Directory base">
-                <button class="is-active" type="button" data-base-tab="sourcing">Sourcing</button>
-                <button type="button" data-base-tab="procurement">Procurement</button>
-                <button type="button" data-base-tab="archived">Archived</button>
+              <div class="directory-controls">
+                <div class="crm-view-switcher" aria-label="CRM views">
+                  <button class="is-active" type="button" data-crm-view="spreadsheet">Spreadsheet</button>
+                  <button type="button" data-crm-view="pipeline">Pipeline</button>
+                  <button type="button" data-crm-view="cards">Cards</button>
+                </div>
+                <div class="directory-base-switcher" aria-label="Directory base">
+                  <button class="is-active" type="button" data-base-tab="sourcing">Sourcing</button>
+                  <button type="button" data-base-tab="procurement">Procurement</button>
+                  <button type="button" data-base-tab="archived">Archived</button>
+                </div>
               </div>
             </div>
             <div class="toolbar">
@@ -629,8 +641,9 @@
               <p id="bulk-status-message" class="status-message" role="status"></p>
             </div>
 
-            <div class="table-wrap">
-              <table>
+            <div id="vendor-card-grid" class="vendor-card-grid hidden" aria-label="Vendor cards"></div>
+            <div id="vendors-table-wrap" class="table-wrap vendor-sheet-wrap">
+              <table class="vendor-sheet-table">
                 <thead>
                   <tr id="vendors-head-row">
                     <th>Select</th>
@@ -643,6 +656,18 @@
                     <th>Channel</th>
                     <th>Base</th>
                     <th>Status</th>
+                  </tr>
+                  <tr id="vendors-filter-row" class="vendor-filter-row">
+                    <th></th>
+                    <th></th>
+                    <th></th>
+                    <th></th>
+                    <th></th>
+                    <th></th>
+                    <th></th>
+                    <th></th>
+                    <th></th>
+                    <th></th>
                   </tr>
                 </thead>
                 <tbody id="vendors-body">

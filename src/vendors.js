@@ -23,6 +23,7 @@ const form = document.querySelector("#vendor-form");
 const vendorTabs = document.querySelectorAll(".vendor-tab");
 const tabPanels = document.querySelectorAll("[data-tab-panel]");
 const directoryBaseButtons = document.querySelectorAll("[data-base-tab]");
+const crmViewButtons = document.querySelectorAll("[data-crm-view]");
 const vendorMetricTotal = document.querySelector("#vendor-metric-total");
 const vendorMetricReady = document.querySelector("#vendor-metric-ready");
 const vendorMetricMissingContact = document.querySelector("#vendor-metric-missing-contact");
@@ -51,6 +52,9 @@ const cancelImportButton = document.querySelector("#cancel-import-button");
 const confirmImportStatus = document.querySelector("#confirm-import-status");
 const vendorsBody = document.querySelector("#vendors-body");
 const vendorsHeadRow = document.querySelector("#vendors-head-row");
+const vendorsFilterRow = document.querySelector("#vendors-filter-row");
+const vendorsTableWrap = document.querySelector("#vendors-table-wrap");
+const vendorCardGrid = document.querySelector("#vendor-card-grid");
 const vendorBaseContext = document.querySelector("#vendor-base-context");
 const searchInput = document.querySelector("#vendor-search");
 const statusFilter = document.querySelector("#vendor-status-filter");
@@ -120,6 +124,7 @@ let wizardStep = 0;
 let activeQuickFilter = "all";
 let activeBaseStage = "sourcing";
 let activeVendorTab = "sourcing";
+let activeDirectoryView = window.localStorage.getItem("rateware.vendorDirectoryView") || "spreadsheet";
 let activeDrawerVendorId = null;
 let vendorPageSize = 75;
 let vendorPageOffset = 0;
@@ -160,6 +165,17 @@ function baseStageLabel(stage = activeBaseStage) {
   if (stage === "procurement") return "Procurement Base";
   if (stage === "archived") return "Archived";
   return "Sourcing Base";
+}
+
+function activeCrmView() {
+  return activeVendorTab === "funnel" ? "pipeline" : activeDirectoryView;
+}
+
+function syncCrmViewButtons() {
+  const view = activeCrmView();
+  crmViewButtons.forEach((button) => {
+    button.classList.toggle("is-active", button.dataset.crmView === view);
+  });
 }
 
 function vendorTableColumnCount() {
@@ -359,6 +375,22 @@ function activateVendorTab(tabName) {
   if (tabName === "funnel" && !vendorFunnelRows.length) loadVendorFunnel();
   if (tabName === "import" && !pendingImportRows.length) setVendorImportStep("source");
   if (isVendorBaseTab(tabName)) loadVendors();
+  syncCrmViewButtons();
+}
+
+function setCrmView(view) {
+  if (view === "pipeline") {
+    activateVendorTab("funnel");
+    return;
+  }
+  activeDirectoryView = view === "cards" ? "cards" : "spreadsheet";
+  window.localStorage.setItem("rateware.vendorDirectoryView", activeDirectoryView);
+  if (!isVendorBaseTab(activeVendorTab)) {
+    activateVendorTab(activeBaseStage);
+    return;
+  }
+  renderVendors(currentVendors);
+  syncCrmViewButtons();
 }
 
 function updateBulkState() {
@@ -1139,7 +1171,59 @@ function renderVendorTableHeader() {
         ? ["Select", "Archived vendor", "Contact", "Coverage", "Tags", "Health", "Status", "Source"]
         : ["Select", "Vendor", "Contact", "Coverage", "Health", "Tags", "Channel", "Base", "Status", "Source"];
   vendorsHeadRow.innerHTML = columns.map((column) => `<th>${escapeHtml(column)}</th>`).join("");
+  renderVendorFilterRow(columns);
   vendorBaseContext.textContent = baseStageLabel();
+}
+
+function filterCell(control) {
+  return `<th>${control || ""}</th>`;
+}
+
+function renderVendorFilterRow(columns) {
+  if (!vendorsFilterRow) return;
+  const search = escapeHtml(searchInput.value || "");
+  const coverage = escapeHtml(coverageFilter.value || "");
+  const tag = escapeHtml(tagFilter.value || "");
+  const status = escapeHtml(statusFilter.value || "");
+  const channel = escapeHtml(channelFilter.value || "");
+  const cells = columns.map((column) => {
+    const key = column.toLowerCase();
+    if (key === "select") {
+      return filterCell('<button class="sheet-filter-clear vendor-inline-clear" type="button" data-vendor-filter-clear>Clear</button>');
+    }
+    if (key.includes("vendor") || key.includes("carrier") || key === "contact") {
+      return filterCell(`<input class="vendor-inline-filter" data-vendor-filter="search" value="${search}" placeholder="Search" />`);
+    }
+    if (key === "coverage") {
+      return filterCell(`<input class="vendor-inline-filter" data-vendor-filter="coverage" value="${coverage}" placeholder="Market" />`);
+    }
+    if (key === "tags") {
+      return filterCell(`<input class="vendor-inline-filter" data-vendor-filter="tag" value="${tag}" placeholder="Tag" />`);
+    }
+    if (key === "channel") {
+      return filterCell(`
+        <select class="vendor-inline-filter" data-vendor-filter="channel">
+          <option value="" ${channel ? "" : "selected"}>All</option>
+          <option value="email" ${channel === "email" ? "selected" : ""}>Email</option>
+          <option value="whatsapp" ${channel === "whatsapp" ? "selected" : ""}>WhatsApp</option>
+          <option value="portal" ${channel === "portal" ? "selected" : ""}>Portal</option>
+        </select>
+      `);
+    }
+    if (key === "status") {
+      return filterCell(`
+        <select class="vendor-inline-filter" data-vendor-filter="status">
+          <option value="" ${status ? "" : "selected"}>All</option>
+          <option value="active" ${status === "active" ? "selected" : ""}>Active</option>
+          <option value="invited" ${status === "invited" ? "selected" : ""}>Invited</option>
+          <option value="blocked" ${status === "blocked" ? "selected" : ""}>Blocked</option>
+          <option value="inactive" ${status === "inactive" ? "selected" : ""}>Inactive</option>
+        </select>
+      `);
+    }
+    return filterCell("");
+  });
+  vendorsFilterRow.innerHTML = cells.join("");
 }
 
 function renderProcurementVendorRow(row) {
@@ -1189,6 +1273,42 @@ function renderArchivedVendorRow(row) {
   `;
 }
 
+function renderVendorCard(row) {
+  const readiness = vendorReadiness(row);
+  const duplicateCount = duplicateSignals(row, allVendors).length;
+  const selected = selectedVendorIds.has(row.id);
+  return `
+    <article class="vendor-crm-card ${selected ? "is-selected" : ""}" data-vendor-card-id="${escapeHtml(row.id)}">
+      <div class="vendor-card-top">
+        ${renderVendorAvatar(row, "card")}
+        <div>
+          <button class="link-button vendor-profile-button" type="button" data-vendor-id="${escapeHtml(row.id)}">${escapeHtml(row.vendor_name || "Unnamed vendor")}</button>
+          <span>${escapeHtml(row.domain || row.primary_email || row.whatsapp_phone || "Missing contact")}</span>
+        </div>
+        <input class="vendor-select" type="checkbox" data-vendor-id="${escapeHtml(row.id)}" ${selected ? "checked" : ""} />
+      </div>
+      <div class="vendor-card-meta">
+        <span class="score-pill ${readiness.tone}">${readiness.score}%</span>
+        <span class="status-pill">${escapeHtml(row.status || "active")}</span>
+        <span class="status-pill ${row.base_stage === "archived" ? "muted" : ""}">${escapeHtml(baseStageLabel(row.base_stage))}</span>
+      </div>
+      <p>${escapeHtml(row.coverage_notes || "No coverage captured")}</p>
+      <div class="tag-list">${renderTags(row.tags)}</div>
+      <div class="vendor-card-footer">
+        <span>${escapeHtml([row.contact_name, row.primary_email, row.whatsapp_phone].filter(Boolean).join(" | ") || "Add contact")}</span>
+        ${duplicateCount ? `<span class="warning-pill">${escapeHtml(duplicateCount)} duplicate</span>` : ""}
+      </div>
+    </article>
+  `;
+}
+
+function renderVendorCards(rows) {
+  if (!vendorCardGrid) return;
+  vendorCardGrid.innerHTML = rows.length
+    ? rows.map(renderVendorCard).join("")
+    : '<div class="empty-state"><strong>No vendors in this view</strong><span>Adjust filters or import carrier records.</span></div>';
+}
+
 function readForm() {
   return {
     vendor_name: document.querySelector("#vendor-name").value,
@@ -1210,6 +1330,9 @@ function renderVendors(rows) {
   updateVendorMetrics();
   updateBulkState();
   renderSegments();
+  const cardView = activeDirectoryView === "cards";
+  vendorsTableWrap?.classList.toggle("hidden", cardView);
+  vendorCardGrid?.classList.toggle("hidden", !cardView);
   if (activeVendorTab === "duplicates" || activeQuickFilter === "duplicates") renderDuplicateReview();
 
   if (!rows.length) {
@@ -1229,9 +1352,12 @@ function renderVendors(rows) {
           ? '<button class="secondary small-button" type="button" data-vendor-tab-target="import">Import vendors</button>'
           : '<button class="secondary small-button" type="button" data-vendor-tab-target="sourcing">Open Sourcing Base</button>'
       });
+    renderVendorCards(rows);
+    syncCrmViewButtons();
     return;
   }
 
+  renderVendorCards(rows);
   vendorsBody.innerHTML = rows
     .map((row) =>
       activeBaseStage === "procurement"
@@ -1241,7 +1367,7 @@ function renderVendors(rows) {
           : renderSourcingVendorRow(row)
     )
     .join("");
-
+  syncCrmViewButtons();
 }
 
 function updatePaginationState() {
@@ -1259,7 +1385,8 @@ function resetVendorPageAndLoad() {
   loadVendors();
 }
 
-function resetVendorWorkspace() {
+function resetVendorWorkspace({ preserveBase = true } = {}) {
+  const targetBaseStage = preserveBase ? activeBaseStage : "sourcing";
   searchInput.value = "";
   statusFilter.value = "";
   channelFilter.value = "";
@@ -1274,7 +1401,16 @@ function resetVendorWorkspace() {
   quickFilterButtons.forEach((button) => button.classList.toggle("is-active", button.dataset.quickFilter === "all"));
   setStatus(bulkStatusMessage, "");
   drawer.classList.add("hidden");
-  activateVendorTab("sourcing");
+  activateVendorTab(targetBaseStage);
+}
+
+function applyVendorInlineFilter(field, value) {
+  if (field === "search") searchInput.value = value;
+  if (field === "coverage") coverageFilter.value = value;
+  if (field === "tag") tagFilter.value = value;
+  if (field === "channel") channelFilter.value = value;
+  if (field === "status") statusFilter.value = value;
+  resetVendorPageAndLoad();
 }
 
 function segmentMatches(segment, vendor) {
@@ -2126,7 +2262,16 @@ vendorNextPageButton.addEventListener("click", () => {
 selectVisibleVendorsButton.addEventListener("click", selectVisibleVendors);
 clearVendorSelectionButton.addEventListener("click", clearVendorSelection);
 vendorTabs.forEach((button) => {
-  button.addEventListener("click", () => activateVendorTab(button.dataset.vendorTab));
+  button.addEventListener("click", () => {
+    if (button.dataset.vendorTab === "sourcing") {
+      setCrmView("spreadsheet");
+      return;
+    }
+    activateVendorTab(button.dataset.vendorTab);
+  });
+});
+crmViewButtons.forEach((button) => {
+  button.addEventListener("click", () => setCrmView(button.dataset.crmView));
 });
 directoryBaseButtons.forEach((button) => {
   button.addEventListener("click", () => activateVendorTab(button.dataset.baseTab));
@@ -2145,12 +2290,47 @@ vendorsBody.addEventListener("click", (event) => {
   if (!button) return;
   openVendorDrawer(button.dataset.vendorId);
 });
+vendorCardGrid?.addEventListener("click", (event) => {
+  const button = event.target.closest(".vendor-profile-button");
+  if (button) {
+    openVendorDrawer(button.dataset.vendorId);
+    return;
+  }
+  if (event.target.closest("input, select, textarea, button, a")) return;
+  const card = event.target.closest("[data-vendor-card-id]");
+  if (card) openVendorDrawer(card.dataset.vendorCardId);
+});
 vendorsBody.addEventListener("change", (event) => {
   const checkbox = event.target.closest(".vendor-select");
   if (!checkbox) return;
   if (checkbox.checked) selectedVendorIds.add(checkbox.dataset.vendorId);
   else selectedVendorIds.delete(checkbox.dataset.vendorId);
   updateBulkState();
+  renderVendorCards(currentVendors);
+});
+vendorCardGrid?.addEventListener("change", (event) => {
+  const checkbox = event.target.closest(".vendor-select");
+  if (!checkbox) return;
+  if (checkbox.checked) selectedVendorIds.add(checkbox.dataset.vendorId);
+  else selectedVendorIds.delete(checkbox.dataset.vendorId);
+  updateBulkState();
+  renderVendorCards(currentVendors);
+});
+vendorsFilterRow?.addEventListener("input", (event) => {
+  const control = event.target.closest("[data-vendor-filter]");
+  if (!control || control.tagName === "SELECT") return;
+  window.clearTimeout(control._timer);
+  control._timer = window.setTimeout(() => applyVendorInlineFilter(control.dataset.vendorFilter, control.value), 300);
+});
+vendorsFilterRow?.addEventListener("change", (event) => {
+  const control = event.target.closest("[data-vendor-filter]");
+  if (!control) return;
+  applyVendorInlineFilter(control.dataset.vendorFilter, control.value);
+});
+vendorsFilterRow?.addEventListener("click", (event) => {
+  const clear = event.target.closest("[data-vendor-filter-clear]");
+  if (!clear) return;
+  resetVendorWorkspace();
 });
 closeDrawerButton.addEventListener("click", () => drawer.classList.add("hidden"));
 drawerLogoFile?.addEventListener("change", handleDrawerLogoUpload);
