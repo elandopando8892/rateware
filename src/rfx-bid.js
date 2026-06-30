@@ -2,7 +2,14 @@ import { SUPABASE_URL } from "./config.js";
 
 const title = document.querySelector("#bid-event-title");
 const card = document.querySelector("#bid-invitation-card");
+
 let boardRefreshTimer = null;
+let bookSearchTimer = null;
+let lastCarrierBook = null;
+const bookFilters = {
+  view: "all",
+  query: ""
+};
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -37,6 +44,13 @@ function formatMoney(value, currency = "USD") {
   return `${new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(number)} ${currency || "USD"}`;
 }
 
+function formatDate(value) {
+  if (!value) return "-";
+  const date = new Date(`${value}T12:00:00`);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric" }).format(date);
+}
+
 function statusLabel(status) {
   const value = String(status || "drafted").toLowerCase();
   const labels = {
@@ -48,56 +62,103 @@ function statusLabel(status) {
     bid_submitted: "Quoted",
     awarded: "Awarded",
     declined: "Declined",
-    not_invited: "Not invited"
+    open: "Open",
+    not_invited: "Request invite"
   };
   return labels[value] || value;
+}
+
+function deadlineCopy(event = {}) {
+  if (!event.due_date) return { label: "No deadline", tone: "muted", detail: "Procurement has not set a close date." };
+  const dueAt = new Date(`${event.due_date}T23:59:59`);
+  if (Number.isNaN(dueAt.getTime())) return { label: formatDate(event.due_date), tone: "neutral", detail: "Deadline date needs review." };
+  const days = Math.ceil((dueAt.getTime() - Date.now()) / 86400000);
+  if (days < 0) return { label: "Closed", tone: "danger", detail: `Closed ${Math.abs(days)} day(s) ago.` };
+  if (days === 0) return { label: "Closes today", tone: "warning", detail: "Submit or update your offer today." };
+  if (days === 1) return { label: "1 day left", tone: "warning", detail: `Due ${formatDate(event.due_date)}.` };
+  return { label: `${days} days left`, tone: "success", detail: `Due ${formatDate(event.due_date)}.` };
+}
+
+function visibilityCopy(visibility = {}) {
+  if (visibility.mode === "rank_only") {
+    return "Rank only - competitor names and exact rates are hidden.";
+  }
+  return "Private visibility controlled by procurement.";
+}
+
+function signalTone(signal = "") {
+  const value = signal.toLowerCase();
+  if (value.includes("leading")) return "success";
+  if (value.includes("competitive") || value.includes("active")) return "neutral";
+  if (value.includes("review")) return "warning";
+  return "muted";
 }
 
 function renderLiveBoard(liveBoard = {}) {
   const board = card.querySelector("#bid-live-board");
   if (!board) return;
   const rows = Array.isArray(liveBoard.rows) ? liveBoard.rows : [];
+  const signal = liveBoard.position_signal || "Awaiting first offer";
+  const visibility = liveBoard.visibility || {};
   if (!rows.length) {
     board.innerHTML = `
-      <div class="split-heading compact">
+      <div class="bid-room-section-heading">
         <div>
-          <p class="eyebrow">Live offer manager</p>
-          <h3>No competitor bids yet</h3>
+          <p class="eyebrow">Live bid room</p>
+          <h3>No submitted offers yet</h3>
         </div>
-        <span class="status-pill muted">Auto-refresh</span>
+        <span class="status-pill muted">Auto refresh</span>
       </div>
-      <p class="bid-board-note">Once other carriers submit bids, this board will show anonymous ranking and your current position.</p>
+      <div class="bid-room-empty">
+        <strong>Submit your all-in offer to start the lane auction.</strong>
+        <span>Rateware will show anonymous rank and position signals once bids exist. Competitor names stay hidden.</span>
+      </div>
     `;
     return;
   }
+
   board.innerHTML = `
-    <div class="split-heading compact">
+    <div class="bid-room-section-heading">
       <div>
-        <p class="eyebrow">Live offer manager</p>
-        <h3>${escapeHtml(liveBoard.current_rank ? `Your rank: #${liveBoard.current_rank}` : "Bid ranking")}</h3>
+        <p class="eyebrow">Live bid room</p>
+        <h3>${escapeHtml(liveBoard.current_rank ? `Your rank: #${liveBoard.current_rank}` : signal)}</h3>
       </div>
-      <span class="status-pill neutral">${escapeHtml(String(liveBoard.bid_count || rows.length))} bid(s)</span>
+      <span class="status-pill" data-tone="${signalTone(signal)}">${escapeHtml(signal)}</span>
     </div>
     <div class="bid-board-stats">
-      <article><span>Best offer</span><strong>${formatMoney(liveBoard.best_rate, liveBoard.currency)}</strong></article>
-      <article><span>Your position</span><strong>${liveBoard.current_rank ? `#${liveBoard.current_rank}` : "-"}</strong></article>
-      <article><span>Last refresh</span><strong>${escapeHtml(new Date(liveBoard.updated_at || Date.now()).toLocaleTimeString())}</strong></article>
+      <article>
+        <span>Visibility</span>
+        <strong>Private</strong>
+        <small>${escapeHtml(visibilityCopy(visibility))}</small>
+      </article>
+      <article>
+        <span>Your position</span>
+        <strong>${liveBoard.current_rank ? `#${escapeHtml(liveBoard.current_rank)}` : "-"}</strong>
+        <small>${escapeHtml(liveBoard.guidance || "Submit a bid to see your rank.")}</small>
+      </article>
+      <article>
+        <span>Bid activity</span>
+        <strong>${escapeHtml(liveBoard.bid_count || rows.length)}</strong>
+        <small>Last refresh ${escapeHtml(new Date(liveBoard.updated_at || Date.now()).toLocaleTimeString())}</small>
+      </article>
     </div>
-    <table class="bid-live-table">
-      <thead><tr><th>Rank</th><th>Bidder</th><th>All-in</th><th>Capacity</th><th>Transit</th></tr></thead>
-      <tbody>
-        ${rows.map((row) => `
-          <tr class="${row.is_current ? "is-current" : ""}">
-            <td>#${escapeHtml(row.rank)}</td>
-            <td>${escapeHtml(row.bidder)}</td>
-            <td>${formatMoney(row.amount, row.currency)}</td>
-            <td>${escapeHtml(row.weekly_capacity ?? "-")}</td>
-            <td>${escapeHtml(row.transit_days ?? "-")}</td>
-          </tr>
-        `).join("")}
-      </tbody>
-    </table>
-    <p class="bid-board-note">Competitor names are hidden. Rankings refresh automatically while this page is open.</p>
+    <div class="table-wrap">
+      <table class="bid-live-table">
+        <thead><tr><th>Rank</th><th>Bidder</th><th>Rate visibility</th><th>Capacity</th><th>Transit</th></tr></thead>
+        <tbody>
+          ${rows.map((row) => `
+            <tr class="${row.is_current ? "is-current" : ""}">
+              <td>#${escapeHtml(row.rank)}</td>
+              <td>${escapeHtml(row.bidder)}</td>
+              <td>${row.amount !== null && row.amount !== undefined ? formatMoney(row.amount, row.currency) : `<span class="masked-rate">${escapeHtml(row.amount_display || "Hidden")}</span>`}</td>
+              <td>${escapeHtml(row.weekly_capacity ?? "-")}</td>
+              <td>${escapeHtml(row.transit_days ?? "-")}</td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    </div>
+    <p class="bid-board-note">This room uses anonymous ranking. It should create urgency without exposing competitor identities or exact third-party pricing.</p>
   `;
 }
 
@@ -105,26 +166,88 @@ function laneLabel(row = {}) {
   return `${row.origin || "-"} -> ${row.destination || "-"}`;
 }
 
+function marketLabel(lane = {}) {
+  return [lane.origin_market, lane.destination_market].filter(Boolean).join(" -> ") || "-";
+}
+
 function eventLabel(row = {}) {
   return [row.rfx_id, row.name].filter(Boolean).join(" | ") || "-";
 }
 
-function renderBookRows(rows = [], options = {}) {
-  if (!rows.length) return `<tr><td colspan="7">${escapeHtml(options.empty || "No lanes in this section.")}</td></tr>`;
+function fitTags(row = {}) {
+  const tags = Array.isArray(row.fit_tags) ? row.fit_tags : [];
+  if (tags.length) return tags;
+  const lane = row.lane || {};
+  return [lane.equipment, lane.trailer, lane.operation, lane.service, lane.origin_market, lane.destination_market].filter(Boolean).slice(0, 5);
+}
+
+function bookStatus(row = {}) {
+  return row.business_status || (row.is_invited ? row.participation_status : "open");
+}
+
+function allBookRows(carrierBook = {}) {
+  const invited = Array.isArray(carrierBook.invited) ? carrierBook.invited : [];
+  const openNotInvited = Array.isArray(carrierBook.open_not_invited) ? carrierBook.open_not_invited : [];
+  return [...invited, ...openNotInvited];
+}
+
+function filteredBookRows(carrierBook = {}) {
+  const term = bookFilters.query.trim().toLowerCase();
+  return allBookRows(carrierBook).filter((row) => {
+    const status = bookStatus(row);
+    const lane = row.lane || {};
+    const event = row.event || {};
+    const viewMatches = bookFilters.view === "all"
+      || (bookFilters.view === "invited" && row.is_invited && !["quoted", "awarded"].includes(status))
+      || (bookFilters.view === "open" && !row.is_invited)
+      || (bookFilters.view === "quoted" && status === "quoted")
+      || (bookFilters.view === "awarded" && status === "awarded");
+    if (!viewMatches) return false;
+    if (!term) return true;
+    return [
+      eventLabel(event),
+      laneLabel(lane),
+      marketLabel(lane),
+      lane.equipment,
+      lane.trailer,
+      lane.config,
+      lane.operation,
+      lane.service,
+      status,
+      ...fitTags(row)
+    ].filter(Boolean).join(" ").toLowerCase().includes(term);
+  });
+}
+
+function renderBookRows(rows = []) {
+  if (!rows.length) {
+    return `<tr><td colspan="8">No opportunities match this view.</td></tr>`;
+  }
   return rows.map((row) => {
     const lane = row.lane || {};
     const event = row.event || {};
     const amount = row.bid_rate !== null && row.bid_rate !== undefined ? formatMoney(row.bid_rate, row.currency || lane.currency) : "-";
     const action = row.is_invited
-      ? `<a class="secondary small-button" href="./rfx-bid.html?token=${encodeURIComponent(row.invitation_token || "")}">Open</a>`
+      ? `<a class="secondary small-button" href="./rfx-bid.html?token=${encodeURIComponent(row.invitation_token || "")}">Open bid</a>`
       : `<button class="secondary small-button" type="button" data-request-lane="${escapeHtml(lane.id || "")}">Request invite</button>`;
     return `
       <tr>
-        <td>${escapeHtml(eventLabel(event))}<small>${escapeHtml(event.status || "")}${event.due_date ? ` | Due ${escapeHtml(event.due_date)}` : ""}</small></td>
-        <td>${escapeHtml(laneLabel(lane))}<small>${escapeHtml([lane.origin_market, lane.destination_market].filter(Boolean).join(" -> "))}</small></td>
+        <td>
+          <strong>${escapeHtml(event.rfx_id || event.name || "-")}</strong>
+          <small>${escapeHtml(event.customer || "")}${event.due_date ? ` | Due ${escapeHtml(formatDate(event.due_date))}` : ""}</small>
+        </td>
+        <td>
+          ${escapeHtml(laneLabel(lane))}
+          <small>${escapeHtml(marketLabel(lane))}</small>
+        </td>
         <td>${escapeHtml([lane.equipment, lane.trailer, lane.config].filter(Boolean).join(" / ") || "-")}</td>
         <td>${escapeHtml([lane.operation, lane.service].filter(Boolean).join(" / ") || "-")}</td>
-        <td><span class="status-pill ${row.is_invited ? "neutral" : "muted"}">${escapeHtml(statusLabel(row.participation_status))}</span></td>
+        <td>
+          <div class="book-fit-tags">
+            ${fitTags(row).slice(0, 4).map((tag) => `<span>${escapeHtml(tag)}</span>`).join("") || "<span>No fit tags</span>"}
+          </div>
+        </td>
+        <td><span class="status-pill ${row.is_invited ? "neutral" : "muted"}">${escapeHtml(statusLabel(row.participation_status || bookStatus(row)))}</span></td>
         <td>${amount}<small>${row.weekly_capacity ? `${escapeHtml(row.weekly_capacity)} / wk` : ""}</small></td>
         <td>${action}</td>
       </tr>
@@ -135,53 +258,44 @@ function renderBookRows(rows = [], options = {}) {
 function renderCarrierBook(carrierBook = {}) {
   const book = card.querySelector("#carrier-business-book");
   if (!book) return;
+  lastCarrierBook = carrierBook;
   const summary = carrierBook.summary || {};
   const carrier = carrierBook.carrier || {};
-  const invited = Array.isArray(carrierBook.invited) ? carrierBook.invited : [];
-  const openNotInvited = Array.isArray(carrierBook.open_not_invited) ? carrierBook.open_not_invited : [];
-  const quoted = Array.isArray(carrierBook.quoted) ? carrierBook.quoted : [];
+  const rows = filteredBookRows(carrierBook);
+  const filterButtons = [
+    ["all", "All"],
+    ["invited", "Invited"],
+    ["open", "Open book"],
+    ["quoted", "Quoted"],
+    ["awarded", "Awarded"]
+  ];
   book.innerHTML = `
-    <div class="split-heading compact">
+    <div class="bid-room-section-heading">
       <div>
-        <p class="eyebrow">Carrier business book</p>
+        <p class="eyebrow">Private business book</p>
         <h3>${escapeHtml(carrier.vendor_name || "Carrier portal")}</h3>
       </div>
       <span class="status-pill neutral">${escapeHtml(carrier.domain || carrier.primary_email || "Private access")}</span>
     </div>
     <div class="carrier-book-summary">
       <article><span>Invited lanes</span><strong>${escapeHtml(summary.invited || 0)}</strong></article>
-      <article><span>Open not invited</span><strong>${escapeHtml(summary.not_invited_open || 0)}</strong></article>
+      <article><span>Open book</span><strong>${escapeHtml(summary.not_invited_open || 0)}</strong></article>
       <article><span>Submitted bids</span><strong>${escapeHtml(summary.quoted || 0)}</strong></article>
       <article><span>Awarded</span><strong>${escapeHtml(summary.awarded || 0)}</strong></article>
     </div>
-    <section class="carrier-book-section">
-      <h4>Invited opportunities</h4>
-      <div class="table-wrap">
-        <table class="carrier-book-table">
-          <thead><tr><th>RFx</th><th>Lane</th><th>Equipment</th><th>Service</th><th>Status</th><th>Your bid</th><th>Action</th></tr></thead>
-          <tbody>${renderBookRows(invited, { empty: "No invited opportunities yet." })}</tbody>
-        </table>
+    <div class="bid-book-toolbar">
+      <div class="segmented-control">
+        ${filterButtons.map(([value, label]) => `<button class="${bookFilters.view === value ? "is-active" : ""}" type="button" data-book-filter="${value}">${label}</button>`).join("")}
       </div>
-    </section>
-    <section class="carrier-book-section">
-      <h4>Open business book - not invited yet</h4>
-      <div class="table-wrap">
-        <table class="carrier-book-table">
-          <thead><tr><th>RFx</th><th>Lane</th><th>Equipment</th><th>Service</th><th>Status</th><th>Your bid</th><th>Action</th></tr></thead>
-          <tbody>${renderBookRows(openNotInvited, { empty: "No open non-invited lanes available." })}</tbody>
-        </table>
-      </div>
-      <p class="bid-board-note">Request invite records an access request for the procurement team. It does not submit a bid until Rateware invites the carrier to that lane.</p>
-    </section>
-    <section class="carrier-book-section">
-      <h4>Submitted bid history</h4>
-      <div class="table-wrap">
-        <table class="carrier-book-table">
-          <thead><tr><th>RFx</th><th>Lane</th><th>Equipment</th><th>Service</th><th>Status</th><th>Your bid</th><th>Action</th></tr></thead>
-          <tbody>${renderBookRows(quoted, { empty: "No submitted bids yet." })}</tbody>
-        </table>
-      </div>
-    </section>
+      <input data-book-search type="search" value="${escapeHtml(bookFilters.query)}" placeholder="Search lane, market, equipment, RFx..." />
+    </div>
+    <div class="table-wrap">
+      <table class="carrier-book-table">
+        <thead><tr><th>RFx</th><th>Lane</th><th>Equipment</th><th>Service</th><th>Fit</th><th>Status</th><th>Your bid</th><th>Action</th></tr></thead>
+        <tbody>${renderBookRows(rows)}</tbody>
+      </table>
+    </div>
+    <p class="bid-board-note">Open book lanes are visible for discovery. You can request access, but you cannot bid until procurement invites you to that lane.</p>
   `;
 }
 
@@ -189,30 +303,37 @@ function renderInvitation(invitation, liveBoard = {}) {
   const event = invitation.rfx_events || {};
   const lane = invitation.rfx_lanes || {};
   const vendor = invitation.vendors || {};
-  title.textContent = event.name || event.rfx_id || "Bid request";
+  const deadline = deadlineCopy(event);
+  title.textContent = event.name || event.rfx_id || "Private Bid Room";
   card.innerHTML = `
+    <section class="bid-room-hero">
+      <div>
+        <p class="eyebrow">Private Bid Room v1</p>
+        <h2>${escapeHtml(event.name || event.rfx_id || "Bid request")}</h2>
+        <p>${escapeHtml(vendor.vendor_name || vendor.domain || "Carrier")} can review invited lanes, request access to open opportunities, and submit all-in offers.</p>
+      </div>
+      <aside>
+        <span class="status-pill" data-tone="${deadline.tone}">${escapeHtml(deadline.label)}</span>
+        <strong>${escapeHtml(event.rfx_id || "RFx")}</strong>
+        <small>${escapeHtml(deadline.detail)}</small>
+      </aside>
+    </section>
+
     <div class="bid-context">
-      <article>
-        <span>RFx</span>
-        <strong>${escapeHtml(event.rfx_id || "-")}</strong>
-      </article>
-      <article>
-        <span>Customer</span>
-        <strong>${escapeHtml(event.customer || "-")}</strong>
-      </article>
-      <article>
-        <span>Due date</span>
-        <strong>${escapeHtml(event.due_date || "-")}</strong>
-      </article>
-      <article>
-        <span>Carrier</span>
-        <strong>${escapeHtml(vendor.vendor_name || vendor.domain || "-")}</strong>
-      </article>
+      <article><span>Customer</span><strong>${escapeHtml(event.customer || "-")}</strong></article>
+      <article><span>Carrier</span><strong>${escapeHtml(vendor.vendor_name || vendor.domain || "-")}</strong></article>
+      <article><span>Visibility</span><strong>Anonymous rank</strong></article>
+      <article><span>Refresh</span><strong>30 sec</strong></article>
     </div>
 
     <section class="bid-lane-summary">
-      <p class="eyebrow">Lane</p>
-      <h2>${escapeHtml(formatLane(lane))}</h2>
+      <div class="bid-room-section-heading">
+        <div>
+          <p class="eyebrow">Current lane</p>
+          <h2>${escapeHtml(formatLane(lane))}</h2>
+        </div>
+        <span class="status-pill neutral">${escapeHtml(statusLabel(invitation.invitation_status))}</span>
+      </div>
       <dl>
         <div><dt>Equipment</dt><dd>${escapeHtml([lane.equipment, lane.trailer, lane.config].filter(Boolean).join(" / ") || "-")}</dd></div>
         <div><dt>Operation</dt><dd>${escapeHtml(lane.operation || "-")}</dd></div>
@@ -222,10 +343,17 @@ function renderInvitation(invitation, liveBoard = {}) {
     </section>
 
     <section id="bid-live-board" class="bid-live-board">
-      <p class="status-message">Loading live offers...</p>
+      <p class="status-message">Loading live bid room...</p>
     </section>
 
     <form id="bid-form" class="bid-form">
+      <div class="bid-form-header">
+        <div>
+          <p class="eyebrow">Submit or update offer</p>
+          <h3>Your bid controls your rank</h3>
+        </div>
+        <span class="status-pill muted">All-in only</span>
+      </div>
       <label>
         All-in rate
         <input id="bid-rate" required inputmode="decimal" value="${escapeHtml(invitation.bid_rate ?? "")}" placeholder="2900" />
@@ -246,14 +374,14 @@ function renderInvitation(invitation, liveBoard = {}) {
       </label>
       <label class="full-width">
         Notes
-        <textarea id="bid-notes" rows="4" placeholder="Assumptions, validity, accessorials...">${escapeHtml(invitation.notes || "")}</textarea>
+        <textarea id="bid-notes" rows="3" placeholder="Assumptions, validity, accessorials...">${escapeHtml(invitation.notes || "")}</textarea>
       </label>
       <button type="submit">Submit bid</button>
       <p id="bid-submit-status" class="status-message" role="status"></p>
     </form>
 
     <section id="carrier-business-book" class="carrier-business-book">
-      <p class="status-message">Loading carrier business book...</p>
+      <p class="status-message">Loading private business book...</p>
     </section>
   `;
 
@@ -270,7 +398,7 @@ function renderInvitation(invitation, liveBoard = {}) {
         transit_days: card.querySelector("#bid-transit-days").value,
         notes: card.querySelector("#bid-notes").value
       });
-      status.textContent = "Bid submitted. Thank you.";
+      status.textContent = "Bid submitted. Your rank will refresh automatically.";
       status.dataset.tone = "success";
       await loadInvitation({ refreshOnly: true });
     } catch (error) {
@@ -303,6 +431,13 @@ async function loadInvitation(options = {}) {
 }
 
 card.addEventListener("click", async (event) => {
+  const filterButton = event.target.closest("[data-book-filter]");
+  if (filterButton) {
+    bookFilters.view = filterButton.dataset.bookFilter || "all";
+    renderCarrierBook(lastCarrierBook || {});
+    return;
+  }
+
   const button = event.target.closest("[data-request-lane]");
   if (!button) return;
   button.disabled = true;
@@ -316,6 +451,19 @@ card.addEventListener("click", async (event) => {
     button.textContent = originalText;
     window.alert(error.message);
   }
+});
+
+card.addEventListener("input", (event) => {
+  const search = event.target.closest("[data-book-search]");
+  if (!search) return;
+  bookFilters.query = search.value;
+  if (bookSearchTimer) window.clearTimeout(bookSearchTimer);
+  bookSearchTimer = window.setTimeout(() => {
+    renderCarrierBook(lastCarrierBook || {});
+    const nextSearch = card.querySelector("[data-book-search]");
+    nextSearch?.focus();
+    nextSearch?.setSelectionRange(bookFilters.query.length, bookFilters.query.length);
+  }, 180);
 });
 
 loadInvitation().then(() => {

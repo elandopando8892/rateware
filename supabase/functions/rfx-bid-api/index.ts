@@ -61,6 +61,7 @@ function publicLane(row: Record<string, unknown>) {
     operation: row.operation,
     service: row.service,
     weekly_volume: row.weekly_volume,
+    target_rate: row.target_rate,
     currency: row.currency || "USD"
   };
 }
@@ -77,6 +78,54 @@ function publicEvent(row: Record<string, unknown>) {
   };
 }
 
+function bidRoomVisibility() {
+  return {
+    mode: "rank_only",
+    competitor_names_visible: false,
+    competitor_rates_visible: false,
+    request_invite_enabled: true,
+    open_book_enabled: true,
+    refresh_seconds: 30
+  };
+}
+
+function dueState(dueDate: unknown) {
+  const due = cleanText(dueDate);
+  if (!due) return { due_date: null, days_remaining: null, status: "no_deadline" };
+  const dueAt = new Date(`${due}T23:59:59`);
+  if (Number.isNaN(dueAt.getTime())) return { due_date: due, days_remaining: null, status: "unknown" };
+  const now = new Date();
+  const ms = dueAt.getTime() - now.getTime();
+  const days = Math.ceil(ms / 86400000);
+  return {
+    due_date: due,
+    days_remaining: days,
+    status: days < 0 ? "closed" : days <= 1 ? "closing" : "open"
+  };
+}
+
+function laneFitTags(lane: Record<string, unknown>, event: Record<string, unknown>) {
+  return [
+    cleanText(lane.equipment),
+    cleanText(lane.trailer),
+    cleanText(lane.config),
+    cleanText(lane.operation),
+    cleanText(lane.service),
+    cleanText(lane.origin_market),
+    cleanText(lane.destination_market),
+    cleanText(event.event_type)
+  ].filter(Boolean).slice(0, 6);
+}
+
+function businessBookStatus(row: Record<string, unknown>) {
+  const status = String(cleanText(row.invitation_status) || "drafted").toLowerCase();
+  const bidRate = cleanNumber(row.bid_rate);
+  if (status === "awarded") return "awarded";
+  if (bidRate !== null || ["quoted", "bid_submitted"].includes(status)) return "quoted";
+  if (["invited", "viewed", "responded"].includes(status)) return "invited";
+  return status || "drafted";
+}
+
 function liveBoardFromRows(currentInvitation: Record<string, unknown>, peerRows: Record<string, unknown>[]) {
   const rows = [currentInvitation, ...peerRows]
     .filter((row) => cleanNumber(row.bid_rate) !== null)
@@ -91,16 +140,58 @@ function liveBoardFromRows(currentInvitation: Record<string, unknown>, peerRows:
     }))
     .sort((a, b) => a.amount - b.amount);
   const currentIndex = rows.findIndex((row) => row.is_current);
+  const currentAmount = cleanNumber(currentInvitation.bid_rate);
+  const bestAmount = rows[0]?.amount || null;
+  const currency = rows[0]?.currency || cleanText(currentInvitation.currency) || "USD";
+  const deltaToBest = currentAmount !== null && bestAmount !== null ? currentAmount - bestAmount : null;
+  const deltaPct = currentAmount !== null && bestAmount ? deltaToBest / bestAmount : null;
+  const positionSignal = currentAmount === null
+    ? (rows.length ? "Market is active" : "Awaiting first offer")
+    : currentIndex === 0
+      ? "Leading offer"
+      : Number(deltaPct) <= 0.05
+        ? "Competitive range"
+        : "Needs pricing review";
+  const guidance = currentAmount === null
+    ? "Submit your all-in offer to unlock your anonymous rank."
+    : currentIndex === 0
+      ? "Your offer is currently leading. Keep capacity and assumptions current."
+      : Number(deltaPct) <= 0.05
+        ? "You are close to the leading range. Review capacity, transit, and price before the deadline."
+        : "Your offer is behind the leading range. Reprice only if this lane is strategic.";
   return {
     updated_at: new Date().toISOString(),
+    visibility: bidRoomVisibility(),
     bid_count: rows.length,
     current_rank: currentIndex >= 0 ? currentIndex + 1 : null,
-    best_rate: rows[0]?.amount || null,
-    currency: rows[0]?.currency || cleanText(currentInvitation.currency) || "USD",
+    best_rate: currentIndex === 0 ? currentAmount : null,
+    best_rate_visible: currentIndex === 0,
+    currency,
+    position_signal: positionSignal,
+    guidance,
+    delta_to_leader: deltaToBest,
+    delta_bucket: deltaToBest === null
+      ? null
+      : deltaToBest <= 0
+        ? "leading"
+        : deltaToBest <= 250
+          ? "within_250"
+          : deltaToBest <= 500
+            ? "within_500"
+            : "above_500",
     rows: rows.map((row, index) => ({
       rank: index + 1,
-      bidder: row.is_current ? "Your offer" : `Competitor ${index + 1}`,
-      amount: row.amount,
+      bidder: row.is_current ? "Your offer" : `Anonymous carrier ${index + 1}`,
+      amount: row.is_current ? row.amount : null,
+      amount_display: row.is_current
+        ? "Your submitted offer"
+        : currentAmount === null
+          ? "Hidden until you bid"
+          : row.amount < currentAmount
+            ? "Lower than your offer"
+            : row.amount === currentAmount
+              ? "Comparable to your offer"
+              : "Above your offer",
       currency: row.currency,
       weekly_capacity: row.weekly_capacity,
       transit_days: row.transit_days,
@@ -118,6 +209,7 @@ function carrierBusinessBook(currentInvitation: Record<string, unknown>, invited
     const event = relationRecord(row.rfx_events);
     return {
       participation_status: cleanText(row.invitation_status) || "drafted",
+      business_status: businessBookStatus(row),
       is_invited: true,
       invitation_token: row.invitation_token,
       invitation_id: row.id,
@@ -127,6 +219,8 @@ function carrierBusinessBook(currentInvitation: Record<string, unknown>, invited
       transit_days: cleanNumber(row.transit_days),
       invited_at: row.invited_at,
       responded_at: row.responded_at,
+      due_state: dueState(relationRecord(row.rfx_events).due_date),
+      fit_tags: laneFitTags(lane, event),
       event: publicEvent(event),
       lane: publicLane(lane)
     };
@@ -135,12 +229,16 @@ function carrierBusinessBook(currentInvitation: Record<string, unknown>, invited
     .filter((lane) => !invitedLaneIds.has(cleanText(lane.id)))
     .map((lane) => ({
       participation_status: "not_invited",
+      business_status: "open",
       is_invited: false,
+      due_state: dueState(relationRecord(lane.rfx_events).due_date),
+      fit_tags: laneFitTags(lane, relationRecord(lane.rfx_events)),
       event: publicEvent(relationRecord(lane.rfx_events)),
       lane: publicLane(lane)
     }));
   const quoted = invited.filter((row) => row.bid_rate !== null || ["quoted", "bid_submitted", "awarded"].includes(String(row.participation_status || "").toLowerCase()));
   return {
+    visibility: bidRoomVisibility(),
     carrier: {
       vendor_name: vendor.vendor_name || vendor.domain || "Carrier",
       domain: vendor.domain || "",
@@ -187,7 +285,7 @@ Deno.serve(async (request) => {
           notes,
           vendors(vendor_name,domain,primary_email),
           rfx_events(id,owner_user_id,owner_email,rfx_id,name,customer,event_type,status,due_date,notes),
-          rfx_lanes(id,rfx_event_id,lane_number,origin,destination,origin_city,origin_state,origin_market,origin_region,destination_city,destination_state,destination_market,destination_region,equipment,trailer,config,operation,service,weekly_volume,currency)
+          rfx_lanes(id,rfx_event_id,lane_number,origin,destination,origin_city,origin_state,origin_market,origin_region,destination_city,destination_state,destination_market,destination_region,equipment,trailer,config,operation,service,weekly_volume,target_rate,currency)
         `)
         .eq("invitation_token", token)
         .single();
@@ -232,7 +330,7 @@ Deno.serve(async (request) => {
               weekly_capacity,
               transit_days,
               rfx_events!inner(id,owner_email,rfx_id,name,customer,event_type,status,due_date),
-              rfx_lanes(id,rfx_event_id,lane_number,origin,destination,origin_city,origin_state,origin_market,origin_region,destination_city,destination_state,destination_market,destination_region,equipment,trailer,config,operation,service,weekly_volume,currency)
+              rfx_lanes(id,rfx_event_id,lane_number,origin,destination,origin_city,origin_state,origin_market,origin_region,destination_city,destination_state,destination_market,destination_region,equipment,trailer,config,operation,service,weekly_volume,target_rate,currency)
             `)
             .eq("vendor_id", result.data.vendor_id)
             .eq("rfx_events.owner_email", ownerEmail)
@@ -265,6 +363,7 @@ Deno.serve(async (request) => {
               operation,
               service,
               weekly_volume,
+              target_rate,
               currency,
               rfx_events!inner(id,owner_email,rfx_id,name,customer,event_type,status,due_date)
             `)

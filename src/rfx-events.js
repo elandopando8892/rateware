@@ -421,7 +421,7 @@ function rfxWizardStepState() {
     { key: "carriers", label: "Carriers", complete: stats.invitations.length > 0 },
     { key: "preview", label: "Preview", complete: Boolean(selectedOutreachTemplate() && stats.readyTargets.length) },
     { key: "launch", label: "Launch", complete: stats.invitations.some(hasInvitationStarted) },
-    { key: "offers", label: "Live offers", complete: stats.bids.length > 0 }
+    { key: "offers", label: "Bid Room", complete: stats.bids.length > 0 }
   ];
 }
 
@@ -436,7 +436,7 @@ function wizardActionButton(stage) {
     carriers: '<button type="button" data-rfx-wizard-auto-shortlist>Auto shortlist all lanes</button>',
     preview: '<button type="button" data-rfx-wizard-go="outreach">Review invite preview</button>',
     launch: '<button type="button" data-rfx-wizard-create-drafts>Create Gmail/WhatsApp drafts</button>',
-    offers: '<button type="button" data-rfx-wizard-go="responses">Open live offer manager</button>'
+    offers: '<button type="button" data-rfx-wizard-go="responses">Open Private Bid Room</button>'
   };
   return actions[stage] || actions.event;
 }
@@ -498,7 +498,7 @@ function renderWizard() {
     carriers: ["Build the carrier shortlist", "Use procurement vendors and Rateware evidence to create target carriers for each lane."],
     preview: ["Review invitation copy", "Confirm the Gmail/WhatsApp template, channel, placeholders, and contact readiness before generating drafts."],
     launch: ["Generate drafts and send invites", "Create Gmail and WhatsApp drafts with bid links. Mark sent when the invite goes out."],
-    offers: ["Monitor live offers", "Track active bids, best rate, spread, capacity, and response coverage like an offer manager."]
+    offers: ["Monitor the Private Bid Room", "Track live carrier offers, spread, capacity, and response coverage without exposing competitor identity."]
   };
   const [title, detail] = nextCopy[stage] || nextCopy.event;
   wizardPrimary.innerHTML = `
@@ -518,7 +518,7 @@ function renderWizard() {
       <article><span>Live bids</span><strong>${formatNumber(stats.bids.length)}</strong><small>${formatNumber(stats.lanesWithBids)} lane(s) with bids</small></article>
     </div>
     <section class="rfx-wizard-offer-strip">
-      ${liveOfferCards(5) || "<article>No bids yet. Once carriers submit through the portal, live offers appear here.</article>"}
+      ${liveOfferCards(5) || "<article>No bids yet. Once carriers submit through the Private Bid Room, offers appear here.</article>"}
     </section>
   `;
 }
