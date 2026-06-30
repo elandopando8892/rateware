@@ -1,14 +1,22 @@
 import { initAuthControls, requirePrivatePage } from "./auth.js";
 import { fetchRfxEvents } from "./rfx-service.js";
 import {
+  archiveOutreachCampaign,
+  archiveOutreachTemplate,
   createOutreachCampaign,
   createOutreachTemplate,
+  deleteOutreachCampaign,
+  deleteOutreachTemplate,
+  duplicateOutreachCampaign,
+  duplicateOutreachTemplate,
   fetchContactHistory,
   fetchOutreachCampaigns,
   fetchOutreachMessages,
   fetchOutreachTemplates,
   generateOutreachDrafts,
-  markOutreachMessages
+  markOutreachMessages,
+  updateOutreachCampaign,
+  updateOutreachTemplate
 } from "./outreach-service.js";
 import { humanizeError } from "./error-copy.js";
 import { stateBlock, tableState } from "./ui-state.js";
@@ -27,6 +35,11 @@ const campaignName = document.querySelector("#campaign-name");
 const campaignRfxEvent = document.querySelector("#campaign-rfx-event");
 const campaignTemplate = document.querySelector("#campaign-template");
 const campaignChannel = document.querySelector("#campaign-channel");
+const createCampaignButton = document.querySelector("#create-campaign-button");
+const editCampaignButton = document.querySelector("#edit-campaign-button");
+const duplicateCampaignButton = document.querySelector("#duplicate-campaign-button");
+const archiveCampaignButton = document.querySelector("#archive-campaign-button");
+const deleteCampaignButton = document.querySelector("#delete-campaign-button");
 const campaignTemplatePreview = document.querySelector("#campaign-template-preview");
 const campaignStatus = document.querySelector("#campaign-status");
 const campaignList = document.querySelector("#campaign-list");
@@ -64,6 +77,8 @@ let historyRows = [];
 const pageParams = new URLSearchParams(window.location.search);
 const requestedRfxEventId = pageParams.get("rfx_event_id");
 let selectedCampaignId = null;
+let editingCampaignId = null;
+let editingTemplateId = null;
 let previewMessageId = null;
 let selectedMessageIds = new Set();
 let activeMessageFilter = "all";
@@ -81,6 +96,74 @@ function setStatus(element, message, tone = "neutral") {
   if (!element) return;
   element.textContent = tone === "error" ? humanizeError(message) : message;
   element.dataset.tone = tone;
+}
+
+function templatePayload() {
+  return {
+    name: templateName.value,
+    channel: templateChannel.value,
+    subject: templateSubject.value,
+    html_body: templateHtml.value,
+    whatsapp_body: templateWhatsapp.value
+  };
+}
+
+function campaignPayload() {
+  return {
+    name: campaignName.value,
+    rfx_event_id: campaignRfxEvent.value,
+    template_id: campaignTemplate.value,
+    channel: campaignChannel.value
+  };
+}
+
+function updateCampaignActionState() {
+  const hasCampaign = Boolean(selectedCampaignId);
+  [editCampaignButton, duplicateCampaignButton, archiveCampaignButton, deleteCampaignButton]
+    .forEach((button) => {
+      if (button) button.disabled = !hasCampaign;
+    });
+}
+
+function resetTemplateForm() {
+  editingTemplateId = null;
+  templateForm?.reset();
+  const submit = templateForm?.querySelector("button[type='submit']");
+  if (submit) submit.textContent = "Save template";
+}
+
+function fillTemplateForm(template) {
+  if (!template) return;
+  editingTemplateId = template.id;
+  templateName.value = template.name || "";
+  templateChannel.value = template.channel || "multi";
+  templateSubject.value = template.subject || "";
+  templateHtml.value = template.html_body || "";
+  templateWhatsapp.value = template.whatsapp_body || "";
+  const submit = templateForm?.querySelector("button[type='submit']");
+  if (submit) submit.textContent = "Save changes";
+  activateOutreachView("templates", "#template-name");
+  templateForm?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function resetCampaignForm() {
+  editingCampaignId = null;
+  campaignForm?.reset();
+  if (createCampaignButton) createCampaignButton.textContent = "Create campaign";
+}
+
+function fillCampaignForm(campaign) {
+  if (!campaign) return;
+  editingCampaignId = campaign.id;
+  campaignName.value = campaign.name || "";
+  if (campaign.rfx_event_id) campaignRfxEvent.value = campaign.rfx_event_id;
+  if (campaign.template_id) campaignTemplate.value = campaign.template_id;
+  campaignChannel.value = campaign.channel || "multi";
+  campaignName.dataset.autoName = "false";
+  if (createCampaignButton) createCampaignButton.textContent = "Save changes";
+  renderTemplatePreview();
+  activateOutreachView("campaigns", "#campaign-name");
+  campaignForm?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 function formatCount(value) {
@@ -382,6 +465,7 @@ function renderCampaignDashboard() {
   const stats = campaignMessageStats(messages);
   if (!campaignDashboard || !campaignHealth) return;
   renderOutreachOpsStrip();
+  updateCampaignActionState();
   if (!campaign) {
     campaignHealth.textContent = "No campaign selected";
     campaignHealth.className = "status-pill muted";
@@ -473,11 +557,20 @@ function renderTemplates() {
         <span>${escapeHtml(template.channel)}${template.owner_email ? "" : " | global default"}</span>
       </div>
       <small>${escapeHtml(template.subject || "No subject")}</small>
+      <div class="action-row">
+        <button class="secondary small-button" type="button" data-template-edit="${escapeHtml(template.id)}" ${template.owner_email ? "" : "disabled"}>Edit</button>
+        <button class="secondary small-button" type="button" data-template-duplicate="${escapeHtml(template.id)}">Duplicate</button>
+        <button class="secondary small-button" type="button" data-template-archive="${escapeHtml(template.id)}" ${template.owner_email ? "" : "disabled"}>Archive</button>
+        <button class="danger small-button" type="button" data-template-delete="${escapeHtml(template.id)}" ${template.owner_email ? "" : "disabled"}>Delete</button>
+      </div>
     </article>
   `).join("");
 }
 
 function renderCampaigns() {
+  if (selectedCampaignId && !campaigns.some((campaign) => campaign.id === selectedCampaignId)) {
+    selectedCampaignId = null;
+  }
   if (!selectedCampaignId && requestedRfxEventId) {
     selectedCampaignId = campaigns.find((campaign) => campaign.rfx_event_id === requestedRfxEventId)?.id || null;
   }
@@ -649,17 +742,14 @@ refreshButton?.addEventListener("click", loadAll);
 
 templateForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
-  setStatus(templateStatus, "Saving template...");
+  const isEditing = Boolean(editingTemplateId);
+  setStatus(templateStatus, isEditing ? "Saving template changes..." : "Saving template...");
   try {
-    await createOutreachTemplate({
-      name: templateName.value,
-      channel: templateChannel.value,
-      subject: templateSubject.value,
-      html_body: templateHtml.value,
-      whatsapp_body: templateWhatsapp.value
-    });
-    templateForm.reset();
-    setStatus(templateStatus, "Template saved.", "success");
+    await (isEditing
+      ? updateOutreachTemplate(editingTemplateId, templatePayload())
+      : createOutreachTemplate(templatePayload()));
+    resetTemplateForm();
+    setStatus(templateStatus, isEditing ? "Template updated." : "Template saved.", "success");
     templates = await fetchOutreachTemplates();
     renderTemplates();
   } catch (error) {
@@ -669,24 +759,64 @@ templateForm?.addEventListener("submit", async (event) => {
 
 campaignForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
-  setStatus(campaignStatus, "Creating campaign...");
+  const isEditing = Boolean(editingCampaignId);
+  setStatus(campaignStatus, isEditing ? "Saving campaign..." : "Creating campaign...");
   try {
-    const campaign = await createOutreachCampaign({
-      name: campaignName.value,
-      rfx_event_id: campaignRfxEvent.value,
-      template_id: campaignTemplate.value,
-      channel: campaignChannel.value
-    });
+    const campaign = isEditing
+      ? await updateOutreachCampaign(editingCampaignId, campaignPayload())
+      : await createOutreachCampaign(campaignPayload());
     selectedCampaignId = campaign.id;
-    campaignForm.reset();
+    resetCampaignForm();
     if (requestedRfxEventId && rfxEvents.some((event) => event.id === requestedRfxEventId)) campaignRfxEvent.value = requestedRfxEventId;
     renderTemplatePreview();
-    setStatus(campaignStatus, "Campaign created.", "success");
+    setStatus(campaignStatus, isEditing ? "Campaign updated." : "Campaign created.", "success");
     campaigns = await fetchOutreachCampaigns();
     renderCampaigns();
     await loadMessages(selectedCampaignId);
   } catch (error) {
     setStatus(campaignStatus, error.message, "error");
+  }
+});
+
+templateList?.addEventListener("click", async (event) => {
+  const editButton = event.target.closest("[data-template-edit]");
+  const duplicateButton = event.target.closest("[data-template-duplicate]");
+  const archiveButton = event.target.closest("[data-template-archive]");
+  const deleteButton = event.target.closest("[data-template-delete]");
+  const templateId = editButton?.dataset.templateEdit
+    || duplicateButton?.dataset.templateDuplicate
+    || archiveButton?.dataset.templateArchive
+    || deleteButton?.dataset.templateDelete;
+  if (!templateId) return;
+  const template = templates.find((item) => item.id === templateId);
+
+  try {
+    if (editButton) {
+      fillTemplateForm(template);
+      return;
+    }
+    if (duplicateButton) {
+      setStatus(templateStatus, "Duplicating template...");
+      await duplicateOutreachTemplate(templateId);
+      setStatus(templateStatus, "Template duplicated.", "success");
+    }
+    if (archiveButton) {
+      if (!window.confirm("Archive this template? It will be hidden from active template lists.")) return;
+      setStatus(templateStatus, "Archiving template...");
+      await archiveOutreachTemplate(templateId);
+      setStatus(templateStatus, "Template archived.", "success");
+    }
+    if (deleteButton) {
+      if (!window.confirm(`Delete template ${template?.name || ""}? Campaigns using it will keep their records but lose the template link.`)) return;
+      setStatus(templateStatus, "Deleting template...");
+      await deleteOutreachTemplate(templateId);
+      setStatus(templateStatus, "Template deleted.", "success");
+    }
+    resetTemplateForm();
+    templates = await fetchOutreachTemplates();
+    renderTemplates();
+  } catch (error) {
+    setStatus(templateStatus, error.message, "error");
   }
 });
 
@@ -696,6 +826,75 @@ campaignList?.addEventListener("click", async (event) => {
   selectedCampaignId = card.dataset.campaignId;
   renderCampaigns();
   await loadMessages(selectedCampaignId);
+});
+
+editCampaignButton?.addEventListener("click", () => {
+  fillCampaignForm(selectedCampaign());
+});
+
+duplicateCampaignButton?.addEventListener("click", async () => {
+  if (!selectedCampaignId) return;
+  if (!window.confirm("Duplicate this campaign setup without copying generated drafts?")) return;
+  duplicateCampaignButton.disabled = true;
+  setStatus(campaignStatus, "Duplicating campaign...");
+  try {
+    const campaign = await duplicateOutreachCampaign(selectedCampaignId);
+    selectedCampaignId = campaign.id;
+    resetCampaignForm();
+    setStatus(campaignStatus, "Campaign duplicated.", "success");
+    campaigns = await fetchOutreachCampaigns();
+    renderCampaigns();
+    await loadMessages(selectedCampaignId);
+  } catch (error) {
+    setStatus(campaignStatus, error.message, "error");
+  } finally {
+    updateCampaignActionState();
+  }
+});
+
+archiveCampaignButton?.addEventListener("click", async () => {
+  if (!selectedCampaignId) return;
+  if (!window.confirm("Archive this campaign? Drafts and history stay stored but it leaves the active list.")) return;
+  archiveCampaignButton.disabled = true;
+  setStatus(campaignStatus, "Archiving campaign...");
+  try {
+    await archiveOutreachCampaign(selectedCampaignId);
+    selectedCampaignId = null;
+    messages = [];
+    selectedMessageIds.clear();
+    resetCampaignForm();
+    setStatus(campaignStatus, "Campaign archived.", "success");
+    campaigns = await fetchOutreachCampaigns();
+    renderCampaigns();
+    renderMessages();
+  } catch (error) {
+    setStatus(campaignStatus, error.message, "error");
+  } finally {
+    updateCampaignActionState();
+  }
+});
+
+deleteCampaignButton?.addEventListener("click", async () => {
+  if (!selectedCampaignId) return;
+  const campaign = selectedCampaign();
+  if (!window.confirm(`Delete campaign ${campaign?.name || ""}? This removes generated drafts for this campaign.`)) return;
+  deleteCampaignButton.disabled = true;
+  setStatus(campaignStatus, "Deleting campaign...");
+  try {
+    await deleteOutreachCampaign(selectedCampaignId);
+    selectedCampaignId = null;
+    messages = [];
+    selectedMessageIds.clear();
+    resetCampaignForm();
+    setStatus(campaignStatus, "Campaign deleted.", "success");
+    campaigns = await fetchOutreachCampaigns();
+    renderCampaigns();
+    renderMessages();
+  } catch (error) {
+    setStatus(campaignStatus, error.message, "error");
+  } finally {
+    updateCampaignActionState();
+  }
 });
 
 generateDraftsButton?.addEventListener("click", async () => {

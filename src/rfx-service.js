@@ -12,6 +12,18 @@ export async function updateRfxEvent(id, patch) {
   return (await callRatewareApi("update_rfx_event", { id, patch })).row;
 }
 
+export async function archiveRfxEvent(id) {
+  return (await callRatewareApi("archive_rfx_event", { id })).row;
+}
+
+export async function deleteRfxEvent(id) {
+  return (await callRatewareApi("delete_rfx_event", { id })).removed;
+}
+
+export async function duplicateRfxEvent(id) {
+  return await callRatewareApi("duplicate_rfx_event", { id });
+}
+
 export async function importRfxLanes(eventId, rows) {
   return await callRatewareApi("import_rfx_lanes", { event_id: eventId, rows });
 }

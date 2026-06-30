@@ -8,12 +8,44 @@ export async function createOutreachTemplate(template) {
   return (await callRatewareApi("create_outreach_template", { template })).row;
 }
 
+export async function updateOutreachTemplate(id, patch) {
+  return (await callRatewareApi("update_outreach_template", { id, patch })).row;
+}
+
+export async function archiveOutreachTemplate(id) {
+  return (await callRatewareApi("archive_outreach_template", { id })).row;
+}
+
+export async function deleteOutreachTemplate(id) {
+  return (await callRatewareApi("delete_outreach_template", { id })).removed;
+}
+
+export async function duplicateOutreachTemplate(id) {
+  return (await callRatewareApi("duplicate_outreach_template", { id })).row;
+}
+
 export async function fetchOutreachCampaigns() {
   return (await callRatewareApi("list_outreach_campaigns")).rows;
 }
 
 export async function createOutreachCampaign(campaign) {
   return (await callRatewareApi("create_outreach_campaign", { campaign })).row;
+}
+
+export async function updateOutreachCampaign(id, patch) {
+  return (await callRatewareApi("update_outreach_campaign", { id, patch })).row;
+}
+
+export async function archiveOutreachCampaign(id) {
+  return (await callRatewareApi("archive_outreach_campaign", { id })).row;
+}
+
+export async function deleteOutreachCampaign(id) {
+  return (await callRatewareApi("delete_outreach_campaign", { id })).removed;
+}
+
+export async function duplicateOutreachCampaign(id) {
+  return (await callRatewareApi("duplicate_outreach_campaign", { id })).row;
 }
 
 export async function generateOutreachDrafts(campaignId, options = {}) {

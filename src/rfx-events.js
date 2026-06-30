@@ -1,8 +1,11 @@
 import { initAuthControls, requirePrivatePage } from "./auth.js";
 import {
+  archiveRfxEvent,
   archiveRfxLaneVendors,
   autoShortlistRfxLane,
   createRfxEvent,
+  deleteRfxEvent,
+  duplicateRfxEvent,
   fetchRfxDetail,
   fetchRfxEvents,
   importRfxLanes,
@@ -31,8 +34,13 @@ const rfxDueDateInput = document.querySelector("#rfx-due-date");
 const eventStatus = document.querySelector("#rfx-event-status");
 const eventList = document.querySelector("#rfx-event-list");
 const detailTitle = document.querySelector("#rfx-detail-title");
+const createRfxEventButton = document.querySelector("#create-rfx-event-button");
+const editRfxButton = document.querySelector("#edit-rfx-button");
+const duplicateRfxButton = document.querySelector("#duplicate-rfx-button");
 const openRfxButton = document.querySelector("#open-rfx-button");
 const closeRfxButton = document.querySelector("#close-rfx-button");
+const archiveRfxButton = document.querySelector("#archive-rfx-button");
+const deleteRfxButton = document.querySelector("#delete-rfx-button");
 const lanePaste = document.querySelector("#rfx-lane-paste");
 const importLanesButton = document.querySelector("#import-rfx-lanes-button");
 const clearLanesInputButton = document.querySelector("#clear-rfx-lanes-input");
@@ -91,6 +99,7 @@ const rfxOpsOutreachLink = document.querySelector("#rfx-ops-outreach-link");
 let events = [];
 let selectedEventId = null;
 let selectedEvent = null;
+let editingEventId = null;
 let currentLanes = [];
 let vendorOptions = [];
 let outreachTemplates = [];
@@ -115,6 +124,43 @@ function setStatus(element, message, tone = "neutral") {
   if (!element) return;
   element.textContent = tone === "error" ? humanizeError(message) : message;
   element.dataset.tone = tone;
+}
+
+function rfxEventPayload() {
+  return {
+    rfx_id: rfxIdInput.value,
+    name: rfxNameInput.value,
+    customer: rfxCustomerInput.value,
+    event_type: rfxTypeInput.value,
+    due_date: rfxDueDateInput.value
+  };
+}
+
+function updateEventActionState() {
+  const hasSelection = Boolean(selectedEventId);
+  [editRfxButton, duplicateRfxButton, openRfxButton, closeRfxButton, archiveRfxButton, deleteRfxButton]
+    .forEach((button) => {
+      if (button) button.disabled = !hasSelection;
+    });
+}
+
+function resetRfxEventForm() {
+  editingEventId = null;
+  eventForm?.reset();
+  if (createRfxEventButton) createRfxEventButton.textContent = "Create event";
+}
+
+function fillRfxEventForm(event) {
+  if (!event) return;
+  editingEventId = event.id;
+  rfxIdInput.value = event.rfx_id || "";
+  rfxNameInput.value = event.name || "";
+  rfxCustomerInput.value = event.customer || "";
+  rfxTypeInput.value = event.event_type || "spot";
+  rfxDueDateInput.value = event.due_date || "";
+  if (createRfxEventButton) createRfxEventButton.textContent = "Save changes";
+  activateWorkbenchView("setup", "#rfx-id");
+  eventForm?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 function formatNumber(value, digits = 0) {
@@ -1231,6 +1277,9 @@ async function loadEvents() {
     if (!selectedEventId && requestedRfxEventId && events.some((event) => event.id === requestedRfxEventId)) {
       selectedEventId = requestedRfxEventId;
     }
+    if (selectedEventId && !events.some((event) => event.id === selectedEventId)) {
+      selectedEventId = null;
+    }
     if (!selectedEventId && events[0]) selectedEventId = events[0].id;
     renderEvents();
     if (selectedEventId) await loadDetail(selectedEventId);
@@ -1238,6 +1287,7 @@ async function loadEvents() {
       selectedEvent = null;
       currentLanes = [];
       focusedLaneId = null;
+      updateEventActionState();
       renderEventDashboard();
       renderLaneCoverage();
       renderLaneDecision();
@@ -1295,8 +1345,7 @@ async function loadDetail(eventId) {
     if (!currentLanes.some((lane) => lane.id === focusedLaneId)) focusedLaneId = currentLanes[0]?.id || null;
     detailTitle.textContent = `${selectedEvent.name || selectedEvent.rfx_id} (${selectedEvent.status})`;
     importLanesButton.disabled = false;
-    openRfxButton.disabled = false;
-    closeRfxButton.disabled = false;
+    updateEventActionState();
     renderEvents();
     renderLanes();
     renderEventDashboard();
@@ -1305,6 +1354,7 @@ async function loadDetail(eventId) {
     setStatus(actionStatus, "RFx loaded.", "success");
   } catch (error) {
     setStatus(actionStatus, error.message, "error");
+    updateEventActionState();
   }
 }
 
@@ -1382,18 +1432,15 @@ requirePrivatePage().then((session) => {
 
 eventForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
-  setStatus(eventStatus, "Creating RFx event...");
+  const isEditing = Boolean(editingEventId);
+  setStatus(eventStatus, isEditing ? "Saving RFx event..." : "Creating RFx event...");
   try {
-    const row = await createRfxEvent({
-      rfx_id: rfxIdInput.value,
-      name: rfxNameInput.value,
-      customer: rfxCustomerInput.value,
-      event_type: rfxTypeInput.value,
-      due_date: rfxDueDateInput.value
-    });
+    const row = isEditing
+      ? await updateRfxEvent(editingEventId, rfxEventPayload())
+      : await createRfxEvent(rfxEventPayload());
     selectedEventId = row.id;
-    eventForm.reset();
-    setStatus(eventStatus, "RFx event created.", "success");
+    resetRfxEventForm();
+    setStatus(eventStatus, isEditing ? "RFx event updated." : "RFx event created.", "success");
     await loadEvents();
   } catch (error) {
     setStatus(eventStatus, error.message, "error");
@@ -1524,6 +1571,68 @@ closeRfxButton?.addEventListener("click", async () => {
   if (!selectedEventId) return;
   await updateRfxEvent(selectedEventId, { status: "closed" });
   await loadEvents();
+});
+
+editRfxButton?.addEventListener("click", () => {
+  if (!selectedEvent) return;
+  fillRfxEventForm(selectedEvent);
+});
+
+duplicateRfxButton?.addEventListener("click", async () => {
+  if (!selectedEventId) return;
+  if (!window.confirm("Duplicate this RFx event with its lanes and shortlisted vendors?")) return;
+  duplicateRfxButton.disabled = true;
+  setStatus(actionStatus, "Duplicating RFx event...");
+  try {
+    const result = await duplicateRfxEvent(selectedEventId);
+    selectedEventId = result.row?.id || selectedEventId;
+    resetRfxEventForm();
+    setStatus(actionStatus, `RFx duplicated with ${result.lanes || 0} lane(s).`, "success");
+    await loadEvents();
+  } catch (error) {
+    setStatus(actionStatus, error.message, "error");
+  } finally {
+    updateEventActionState();
+  }
+});
+
+archiveRfxButton?.addEventListener("click", async () => {
+  if (!selectedEventId) return;
+  if (!window.confirm("Archive this RFx event? It will be hidden from active RFx lists.")) return;
+  archiveRfxButton.disabled = true;
+  setStatus(actionStatus, "Archiving RFx event...");
+  try {
+    await archiveRfxEvent(selectedEventId);
+    selectedEventId = null;
+    selectedEvent = null;
+    resetRfxEventForm();
+    setStatus(actionStatus, "RFx event archived.", "success");
+    await loadEvents();
+  } catch (error) {
+    setStatus(actionStatus, error.message, "error");
+  } finally {
+    updateEventActionState();
+  }
+});
+
+deleteRfxButton?.addEventListener("click", async () => {
+  if (!selectedEventId) return;
+  const label = selectedEvent?.rfx_id || selectedEvent?.name || "this RFx event";
+  if (!window.confirm(`Delete ${label}? This removes the event and related RFx rows.`)) return;
+  deleteRfxButton.disabled = true;
+  setStatus(actionStatus, "Deleting RFx event...");
+  try {
+    await deleteRfxEvent(selectedEventId);
+    selectedEventId = null;
+    selectedEvent = null;
+    resetRfxEventForm();
+    setStatus(actionStatus, "RFx event deleted.", "success");
+    await loadEvents();
+  } catch (error) {
+    setStatus(actionStatus, error.message, "error");
+  } finally {
+    updateEventActionState();
+  }
 });
 
 lanesBody?.addEventListener("change", (event) => {

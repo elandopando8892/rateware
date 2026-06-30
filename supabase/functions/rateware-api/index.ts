@@ -7811,6 +7811,120 @@ Deno.serve(async (request) => {
       return jsonResponse({ row: result.data });
     }
 
+    if (body.action === "archive_rfx_event") {
+      const eventId = cleanText(body.id || body.event_id);
+      if (!eventId) return jsonResponse({ error: "RFx event id is required." }, 400);
+      const result = await supabase
+        .from("rfx_events")
+        .update({ status: "archived", updated_at: new Date().toISOString() })
+        .eq("id", eventId)
+        .eq("owner_email", user.owner_email)
+        .select()
+        .single();
+      if (result.error) throw result.error;
+      return jsonResponse({ row: result.data });
+    }
+
+    if (body.action === "delete_rfx_event") {
+      const eventId = cleanText(body.id || body.event_id);
+      if (!eventId) return jsonResponse({ error: "RFx event id is required." }, 400);
+      const result = await supabase
+        .from("rfx_events")
+        .delete()
+        .eq("id", eventId)
+        .eq("owner_email", user.owner_email)
+        .select("id,rfx_id,name")
+        .single();
+      if (result.error) throw result.error;
+      return jsonResponse({ removed: result.data });
+    }
+
+    if (body.action === "duplicate_rfx_event") {
+      const event = await requireOwnedRfxEvent(supabase, user, body.id || body.event_id);
+      const [lanesResult, invitationsResult] = await Promise.all([
+        supabase
+          .from("rfx_lanes")
+          .select("*")
+          .eq("rfx_event_id", event.id)
+          .order("lane_number", { ascending: true }),
+        supabase
+          .from("rfx_lane_vendors")
+          .select("rfx_lane_id,vendor_id,notes")
+          .eq("rfx_event_id", event.id)
+          .neq("invitation_status", "archived")
+      ]);
+      if (lanesResult.error) throw lanesResult.error;
+      if (invitationsResult.error) throw invitationsResult.error;
+
+      const suffix = cleanText(body.name_suffix) || "Copy";
+      const eventRow = withOwner({
+        rfx_id: `${event.rfx_id || "RFx"}-${suffix}`.slice(0, 120),
+        name: `${event.name || event.rfx_id || "RFx"} ${suffix}`.trim(),
+        customer: event.customer,
+        event_type: event.event_type || "spot",
+        status: "draft",
+        due_date: null,
+        notes: event.notes,
+        updated_at: new Date().toISOString()
+      }, user);
+      const eventInsert = await supabase.from("rfx_events").insert(eventRow).select().single();
+      if (eventInsert.error) throw eventInsert.error;
+
+      const oldToNewLane = new Map<string, string>();
+      const laneRows = (lanesResult.data || []).map((lane) => {
+        const { id: _id, created_at: _createdAt, updated_at: _updatedAt, rfx_event_id: _oldEventId, ...rest } = lane;
+        return {
+          ...rest,
+          rfx_event_id: eventInsert.data.id,
+          updated_at: new Date().toISOString()
+        };
+      });
+      let insertedLanes: Record<string, unknown>[] = [];
+      if (laneRows.length) {
+        const laneInsert = await supabase
+          .from("rfx_lanes")
+          .insert(laneRows)
+          .select()
+          .order("lane_number", { ascending: true });
+        if (laneInsert.error) throw laneInsert.error;
+        insertedLanes = laneInsert.data || [];
+        (lanesResult.data || []).forEach((oldLane, index) => {
+          const nextLane = insertedLanes[index];
+          if (oldLane?.id && nextLane?.id) oldToNewLane.set(String(oldLane.id), String(nextLane.id));
+        });
+      }
+
+      const vendorRows = (invitationsResult.data || [])
+        .map((invitation) => {
+          const nextLaneId = oldToNewLane.get(String(invitation.rfx_lane_id));
+          if (!nextLaneId) return null;
+          return {
+            rfx_event_id: eventInsert.data.id,
+            rfx_lane_id: nextLaneId,
+            vendor_id: invitation.vendor_id,
+            invitation_status: "drafted",
+            invitation_token: randomToken(),
+            notes: invitation.notes
+          };
+        })
+        .filter(Boolean);
+      let insertedVendors = 0;
+      if (vendorRows.length) {
+        const vendorInsert = await supabase
+          .from("rfx_lane_vendors")
+          .insert(vendorRows)
+          .select("id");
+        if (vendorInsert.error) throw vendorInsert.error;
+        insertedVendors = vendorInsert.data?.length || 0;
+      }
+
+      return jsonResponse({
+        row: eventInsert.data,
+        lanes: insertedLanes.length,
+        invitations: insertedVendors
+      });
+    }
+
     if (body.action === "import_rfx_lanes") {
       const event = await requireOwnedRfxEvent(supabase, user, body.event_id);
       const rows = Array.isArray(body.rows) ? body.rows.slice(0, 1000) : [];
@@ -8017,6 +8131,7 @@ Deno.serve(async (request) => {
           .from("outreach_templates")
           .select("*")
           .eq("owner_email", user.owner_email)
+          .eq("active", true)
           .order("created_at", { ascending: false })
       ]);
       if (globalResult.error) throw globalResult.error;
@@ -8042,6 +8157,54 @@ Deno.serve(async (request) => {
         .eq("owner_email", user.owner_email)
         .select()
         .single();
+      if (result.error) throw result.error;
+      return jsonResponse({ row: result.data });
+    }
+
+    if (body.action === "archive_outreach_template") {
+      const id = cleanText(body.id || body.template_id);
+      if (!id) return jsonResponse({ error: "Template id is required." }, 400);
+      const result = await supabase
+        .from("outreach_templates")
+        .update({ active: false, updated_at: new Date().toISOString() })
+        .eq("id", id)
+        .eq("owner_email", user.owner_email)
+        .select()
+        .single();
+      if (result.error) throw result.error;
+      return jsonResponse({ row: result.data });
+    }
+
+    if (body.action === "delete_outreach_template") {
+      const id = cleanText(body.id || body.template_id);
+      if (!id) return jsonResponse({ error: "Template id is required." }, 400);
+      const result = await supabase
+        .from("outreach_templates")
+        .delete()
+        .eq("id", id)
+        .eq("owner_email", user.owner_email)
+        .select("id,name")
+        .single();
+      if (result.error) throw result.error;
+      return jsonResponse({ removed: result.data });
+    }
+
+    if (body.action === "duplicate_outreach_template") {
+      const id = cleanText(body.id || body.template_id);
+      if (!id) return jsonResponse({ error: "Template id is required." }, 400);
+      const source = await fetchOutreachTemplate(supabase, user, id);
+      const row = withOwner({
+        name: `${source.name || "Template"} Copy`,
+        channel: source.channel || "multi",
+        subject: source.subject,
+        html_body: source.html_body,
+        whatsapp_body: source.whatsapp_body,
+        active: true,
+        is_default: false,
+        placeholders: Array.isArray(source.placeholders) ? source.placeholders : [],
+        updated_at: new Date().toISOString()
+      }, user);
+      const result = await supabase.from("outreach_templates").insert(row).select().single();
       if (result.error) throw result.error;
       return jsonResponse({ row: result.data });
     }
@@ -8088,6 +8251,69 @@ Deno.serve(async (request) => {
       if (normalized.rfx_event_id) await requireOwnedRfxEvent(supabase, user, normalized.rfx_event_id);
       if (normalized.template_id) await fetchOutreachTemplate(supabase, user, normalized.template_id);
       const row = withOwner(normalized, user);
+      const result = await supabase.from("outreach_campaigns").insert(row).select().single();
+      if (result.error) throw result.error;
+      return jsonResponse({ row: result.data });
+    }
+
+    if (body.action === "update_outreach_campaign") {
+      const campaignId = cleanText(body.id || body.campaign_id);
+      if (!campaignId) return jsonResponse({ error: "Campaign id is required." }, 400);
+      const patch = normalizeOutreachCampaign(body.patch || body.campaign || {});
+      if (patch.rfx_event_id) await requireOwnedRfxEvent(supabase, user, patch.rfx_event_id);
+      if (patch.template_id) await fetchOutreachTemplate(supabase, user, patch.template_id);
+      const result = await supabase
+        .from("outreach_campaigns")
+        .update(patch)
+        .eq("id", campaignId)
+        .eq("owner_email", user.owner_email)
+        .select()
+        .single();
+      if (result.error) throw result.error;
+      return jsonResponse({ row: result.data });
+    }
+
+    if (body.action === "archive_outreach_campaign") {
+      const campaignId = cleanText(body.id || body.campaign_id);
+      if (!campaignId) return jsonResponse({ error: "Campaign id is required." }, 400);
+      const result = await supabase
+        .from("outreach_campaigns")
+        .update({ status: "archived", updated_at: new Date().toISOString() })
+        .eq("id", campaignId)
+        .eq("owner_email", user.owner_email)
+        .select()
+        .single();
+      if (result.error) throw result.error;
+      return jsonResponse({ row: result.data });
+    }
+
+    if (body.action === "delete_outreach_campaign") {
+      const campaignId = cleanText(body.id || body.campaign_id);
+      if (!campaignId) return jsonResponse({ error: "Campaign id is required." }, 400);
+      const result = await supabase
+        .from("outreach_campaigns")
+        .delete()
+        .eq("id", campaignId)
+        .eq("owner_email", user.owner_email)
+        .select("id,name")
+        .single();
+      if (result.error) throw result.error;
+      return jsonResponse({ removed: result.data });
+    }
+
+    if (body.action === "duplicate_outreach_campaign") {
+      const campaign = await requireOwnedOutreachCampaign(supabase, user, body.id || body.campaign_id);
+      if (campaign.rfx_event_id) await requireOwnedRfxEvent(supabase, user, campaign.rfx_event_id);
+      if (campaign.template_id) await fetchOutreachTemplate(supabase, user, campaign.template_id);
+      const row = withOwner({
+        rfx_event_id: campaign.rfx_event_id,
+        template_id: campaign.template_id,
+        name: `${campaign.name || "Campaign"} Copy`,
+        channel: campaign.channel || "multi",
+        status: "draft",
+        notes: campaign.notes,
+        updated_at: new Date().toISOString()
+      }, user);
       const result = await supabase.from("outreach_campaigns").insert(row).select().single();
       if (result.error) throw result.error;
       return jsonResponse({ row: result.data });
