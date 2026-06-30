@@ -51,6 +51,7 @@
           </div>
           <div class="page-header-actions">
             <button class="page-primary-action" type="button" data-click-target="#create-rfx-event-button">Create RFx</button>
+            <button class="secondary" type="button" data-rfx-wizard-go="responses">Bid Room</button>
             <form id="auth-form" class="auth-strip">
               <button id="auth-button" type="submit">Sign in with Kinde</button>
               <button id="sign-out-button" type="button" class="secondary hidden">Sign out</button>
@@ -85,7 +86,7 @@
             <button type="button" role="tab" aria-selected="false" data-workbench-view-button="setup" data-workbench-focus-target="#rfx-id">Setup</button>
             <button type="button" role="tab" aria-selected="false" data-workbench-view-button="lanes">Lanes</button>
             <button type="button" role="tab" aria-selected="false" data-workbench-view-button="outreach">Outreach</button>
-            <button type="button" role="tab" aria-selected="false" data-workbench-view-button="responses">Responses</button>
+            <button type="button" role="tab" aria-selected="false" data-workbench-view-button="responses">Bid Room</button>
           </nav>
 
           <section class="workspace-panel rfx-launch-wizard" data-workbench-view-panel="wizard">
@@ -136,7 +137,7 @@
               </article>
               <article>
                 <span>5</span>
-                <strong>Responses</strong>
+                <strong>Bid Room</strong>
               </article>
               <article>
                 <span>6</span>
@@ -342,10 +343,10 @@
               <section class="rfx-response-board" data-workbench-view-panel="responses">
                 <div class="split-heading">
                   <div>
-                    <p class="eyebrow">Responses by carrier</p>
-                    <h3>Bid comparison</h3>
+                    <p class="eyebrow">Private Bid Room</p>
+                    <h3>Live offer board</h3>
                   </div>
-                  <span id="rfx-response-summary" class="status-pill muted">No responses</span>
+                  <span id="rfx-response-summary" class="status-pill muted">No bids</span>
                 </div>
                 <div class="table-wrap">
                   <table class="rfx-response-table">
@@ -363,7 +364,7 @@
                     </thead>
                     <tbody id="rfx-response-body">
                       <tr>
-                        <td colspan="8">No carrier responses yet.</td>
+                        <td colspan="8">No carrier bids yet.</td>
                       </tr>
                     </tbody>
                   </table>

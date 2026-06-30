@@ -715,7 +715,7 @@ function renderEventFlow() {
     ["lanes", "Lanes"],
     ["shortlist", "Shortlist"],
     ["invite", "Invite"],
-    ["responses", "Responses"],
+    ["responses", "Bid Room"],
     ["award", "Award"]
   ];
   eventFlow.innerHTML = steps.map(([key, label], index) => `
@@ -934,7 +934,7 @@ function renderResponseBoard() {
   const bidRows = rows.filter(({ invitation }) => hasBid(invitation));
   responseSummary.textContent = `${formatNumber(bidRows.length)} bids / ${formatNumber(rows.length)} active rows`;
   if (!rows.length) {
-    responseBody.innerHTML = `<tr><td colspan="8">No carrier responses yet.</td></tr>`;
+    responseBody.innerHTML = `<tr><td colspan="8">No carrier bids yet.</td></tr>`;
     return;
   }
   responseBody.innerHTML = rows.map(({ lane, invitation }) => {
