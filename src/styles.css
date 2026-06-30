@@ -428,6 +428,78 @@ a {
   gap: 12px;
 }
 
+.rfx-ops-strip,
+.outreach-ops-strip {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+
+.rfx-ops-strip .split-heading,
+.outreach-ops-strip .split-heading {
+  align-items: center;
+}
+
+.rfx-ops-subtitle,
+#rfx-ops-subtitle,
+#outreach-ops-subtitle {
+  margin: 3px 0 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.rfx-ops-health,
+.outreach-ops-health {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.rfx-ops-health article,
+.outreach-ops-health article {
+  display: grid;
+  gap: 3px;
+  min-height: 66px;
+  border: 1px solid var(--line);
+  border-left: 4px solid #c7d0d8;
+  border-radius: var(--radius);
+  background: var(--soft-panel);
+  padding: 8px 10px;
+}
+
+.rfx-ops-health article[data-tone="success"],
+.outreach-ops-health article[data-tone="success"] {
+  border-left-color: var(--success);
+}
+
+.rfx-ops-health article[data-tone="warning"],
+.outreach-ops-health article[data-tone="warning"] {
+  border-left-color: #d19a00;
+}
+
+.rfx-ops-health span,
+.outreach-ops-health span {
+  color: var(--muted);
+  font-size: 0.66rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.rfx-ops-health strong,
+.outreach-ops-health strong {
+  color: var(--accent-dark);
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.rfx-ops-health small,
+.outreach-ops-health small {
+  color: #51606b;
+  font-size: 0.72rem;
+  font-weight: 720;
+  line-height: 1.25;
+}
+
 .rfx-event-flow {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
@@ -2043,6 +2115,8 @@ a {
   .outreach-template-preview-grid,
   .outreach-message-toolbar,
   .rfx-dashboard-grid,
+  .rfx-ops-health,
+  .outreach-ops-health,
   .outreach-flow-steps,
   .draft-preview-meta,
   .bid-room-hero,

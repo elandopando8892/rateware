@@ -83,6 +83,10 @@ const wizardSteps = document.querySelector("#rfx-wizard-steps");
 const wizardPrimary = document.querySelector("#rfx-wizard-primary");
 const wizardPreview = document.querySelector("#rfx-wizard-preview");
 const liveOfferManager = document.querySelector("#rfx-live-offer-manager");
+const rfxOpsTitle = document.querySelector("#rfx-ops-title");
+const rfxOpsSubtitle = document.querySelector("#rfx-ops-subtitle");
+const rfxOpsHealth = document.querySelector("#rfx-ops-health");
+const rfxOpsOutreachLink = document.querySelector("#rfx-ops-outreach-link");
 
 let events = [];
 let selectedEventId = null;
@@ -95,6 +99,8 @@ let selectedLaneIds = new Set();
 let selectedInvitationIds = new Set();
 let focusedLaneId = null;
 let activeLaneFilter = "all";
+const rfxPageParams = new URLSearchParams(window.location.search);
+const requestedRfxEventId = rfxPageParams.get("rfx_event_id");
 const rfxWorkbench = initWorkbenchTabs({ defaultView: "wizard" });
 
 function escapeHtml(value) {
@@ -726,6 +732,57 @@ function renderEventFlow() {
   `).join("");
 }
 
+function renderRfxOpsStrip() {
+  if (!rfxOpsTitle || !rfxOpsSubtitle || !rfxOpsHealth) return;
+  if (!selectedEvent) {
+    rfxOpsTitle.textContent = "Select or create an RFx event";
+    rfxOpsSubtitle.textContent = "Start with setup, import lanes, shortlist carriers, then launch outreach and monitor bids.";
+    if (rfxOpsOutreachLink) rfxOpsOutreachLink.href = "./outreach.html";
+    rfxOpsHealth.innerHTML = `
+      <article><span>Event</span><strong>-</strong><small>No RFx selected.</small></article>
+      <article><span>Lanes</span><strong>0</strong><small>Paste or import the spot book.</small></article>
+      <article><span>Outreach</span><strong>0</strong><small>No carrier targets yet.</small></article>
+      <article><span>Bid Room</span><strong>0</strong><small>No live bids yet.</small></article>
+    `;
+    return;
+  }
+
+  const activeInviteRows = currentLanes.flatMap((lane) => activeInvitations(lane));
+  const bids = currentLanes.flatMap((lane) => bidInvitations(lane));
+  const targets = outreachTargetInvitations();
+  const readyTargets = targets.filter((target) => targetHasChannel(target, rfxOutreachChannel?.value || "multi"));
+  const lanesWithShortlist = currentLanes.filter((lane) => activeInvitations(lane).length).length;
+  const lanesWithBids = currentLanes.filter((lane) => bidInvitations(lane).length).length;
+  const due = selectedEvent.due_date ? `Due ${selectedEvent.due_date}` : "No due date";
+  const outreachUrl = `./outreach.html?rfx_event_id=${encodeURIComponent(selectedEvent.id)}&view=campaigns`;
+
+  rfxOpsTitle.textContent = `${selectedEvent.rfx_id || "RFx"} procurement flow`;
+  rfxOpsSubtitle.textContent = `${selectedEvent.name || "Selected event"} | ${selectedEvent.customer || "No customer"} | ${due}`;
+  if (rfxOpsOutreachLink) rfxOpsOutreachLink.href = outreachUrl;
+  rfxOpsHealth.innerHTML = `
+    <article data-tone="${selectedEvent.status === "open" ? "success" : "neutral"}">
+      <span>Event</span>
+      <strong>${escapeHtml(selectedEvent.status || "draft")}</strong>
+      <small>${escapeHtml(due)}</small>
+    </article>
+    <article data-tone="${currentLanes.length ? "success" : "warning"}">
+      <span>Lanes</span>
+      <strong>${formatNumber(currentLanes.length)}</strong>
+      <small>${formatNumber(lanesWithShortlist)} lane(s) with shortlist.</small>
+    </article>
+    <article data-tone="${readyTargets.length ? "success" : activeInviteRows.length ? "warning" : "neutral"}">
+      <span>Outreach ready</span>
+      <strong>${formatNumber(readyTargets.length)} / ${formatNumber(targets.length)}</strong>
+      <small>${formatNumber(activeInviteRows.length)} active carrier target(s).</small>
+    </article>
+    <article data-tone="${bids.length ? "success" : "neutral"}">
+      <span>Bid Room</span>
+      <strong>${formatNumber(bids.length)}</strong>
+      <small>${formatNumber(lanesWithBids)} lane(s) with live bids.</small>
+    </article>
+  `;
+}
+
 function focusLane(laneId) {
   focusedLaneId = laneId || currentLanes[0]?.id || null;
   renderLanes();
@@ -733,6 +790,7 @@ function focusLane(laneId) {
 
 function renderEventDashboard() {
   renderEventFlow();
+  renderRfxOpsStrip();
   if (!selectedEvent) {
     dashboardTitle.textContent = "No event selected";
     if (dashboardOutreachLink) dashboardOutreachLink.href = "./outreach.html";
@@ -1170,6 +1228,9 @@ function renderLanes() {
 async function loadEvents() {
   try {
     events = await fetchRfxEvents();
+    if (!selectedEventId && requestedRfxEventId && events.some((event) => event.id === requestedRfxEventId)) {
+      selectedEventId = requestedRfxEventId;
+    }
     if (!selectedEventId && events[0]) selectedEventId = events[0].id;
     renderEvents();
     if (selectedEventId) await loadDetail(selectedEventId);

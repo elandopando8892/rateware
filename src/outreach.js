@@ -51,18 +51,23 @@ const metricCampaigns = document.querySelector("#outreach-metric-campaigns");
 const metricDrafts = document.querySelector("#outreach-metric-drafts");
 const metricSent = document.querySelector("#outreach-metric-sent");
 const metricHistory = document.querySelector("#outreach-metric-history");
+const outreachOpsTitle = document.querySelector("#outreach-ops-title");
+const outreachOpsSubtitle = document.querySelector("#outreach-ops-subtitle");
+const outreachOpsHealth = document.querySelector("#outreach-ops-health");
+const outreachOpsRfxLink = document.querySelector("#outreach-ops-rfx-link");
 
 let rfxEvents = [];
 let templates = [];
 let campaigns = [];
 let messages = [];
 let historyRows = [];
-const requestedRfxEventId = new URLSearchParams(window.location.search).get("rfx_event_id");
+const pageParams = new URLSearchParams(window.location.search);
+const requestedRfxEventId = pageParams.get("rfx_event_id");
 let selectedCampaignId = null;
 let previewMessageId = null;
 let selectedMessageIds = new Set();
 let activeMessageFilter = "all";
-initWorkbenchTabs({ defaultView: "dashboard" });
+const outreachWorkbench = initWorkbenchTabs({ defaultView: requestedRfxEventId ? "campaigns" : "dashboard" });
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -192,6 +197,7 @@ function renderTemplatePreview() {
       <span>Select a template to preview subject, Gmail HTML, WhatsApp copy, and placeholders.</span>
     `;
     if (placeholderBank) placeholderBank.innerHTML = "<span>No template selected</span>";
+    renderOutreachOpsStrip();
     return;
   }
   const placeholders = placeholderList(template);
@@ -221,6 +227,14 @@ function renderTemplatePreview() {
       ${placeholders.length ? placeholders.slice(0, 12).map((item) => `<span>{{${escapeHtml(item)}}}</span>`).join("") : "<span>No placeholders detected</span>"}
     </div>
   `;
+  renderOutreachOpsStrip();
+}
+
+function activateOutreachView(view, focusTarget = null) {
+  const activeView = outreachWorkbench?.activate(view, focusTarget ? { focusTarget } : {}) || view;
+  const url = new URL(window.location.href);
+  url.searchParams.set("view", activeView);
+  window.history.replaceState({}, "", url);
 }
 
 function renderDraftPreview(message = null) {
@@ -297,10 +311,77 @@ function campaignMessageStats(rows = messages) {
   };
 }
 
+function selectedCampaign() {
+  return campaigns.find((item) => item.id === selectedCampaignId) || null;
+}
+
+function selectedRfxEvent() {
+  const campaign = selectedCampaign();
+  const eventId = campaign?.rfx_event_id || campaignRfxEvent?.value || requestedRfxEventId;
+  return rfxEvents.find((event) => event.id === eventId) || campaign?.rfx_events || null;
+}
+
+function setCampaignDefaultsFromRfx() {
+  const event = selectedRfxEvent();
+  if (!event || !campaignName) return;
+  const defaultName = `${event.rfx_id || "RFx"} invitation wave`;
+  if (!campaignName.value || campaignName.dataset.autoName === "true") {
+    campaignName.value = defaultName;
+    campaignName.dataset.autoName = "true";
+  }
+}
+
+function renderOutreachOpsStrip() {
+  if (!outreachOpsTitle || !outreachOpsSubtitle || !outreachOpsHealth) return;
+  const campaign = selectedCampaign();
+  const event = selectedRfxEvent();
+  const template = selectedTemplate();
+  const stats = campaignMessageStats(messages);
+  const readyCount = stats.total - stats.missing_channel;
+  const eventLabel = event ? `${event.rfx_id || "RFx"} | ${event.name || "Untitled event"}` : "No RFx selected";
+  const rfxHref = event
+    ? `./rfx-events.html?view=responses&rfx_event_id=${encodeURIComponent(event.id)}`
+    : "./rfx-events.html";
+
+  outreachOpsTitle.textContent = campaign
+    ? `${campaign.name || "Campaign"} cockpit`
+    : event
+      ? `${event.rfx_id || "RFx"} outreach setup`
+      : "Connect RFx, template, and carrier targets";
+  outreachOpsSubtitle.textContent = campaign
+    ? `${eventLabel} | ${campaign.channel || "multi"} | ${campaign.status || "draft"}`
+    : "Create a campaign from an RFx shortlist, choose a template, then generate drafts.";
+  if (outreachOpsRfxLink) outreachOpsRfxLink.href = rfxHref;
+
+  outreachOpsHealth.innerHTML = `
+    <article data-tone="${campaign ? "success" : "neutral"}">
+      <span>Campaign</span>
+      <strong>${escapeHtml(campaign ? "Selected" : "Not started")}</strong>
+      <small>${escapeHtml(campaign?.name || "Create a campaign from an RFx shortlist.")}</small>
+    </article>
+    <article data-tone="${event ? "success" : "warning"}">
+      <span>RFx</span>
+      <strong>${escapeHtml(event?.rfx_id || "-")}</strong>
+      <small>${escapeHtml(event?.name || "Select an RFx event.")}</small>
+    </article>
+    <article data-tone="${template ? "success" : "warning"}">
+      <span>Template</span>
+      <strong>${escapeHtml(template?.name || "-")}</strong>
+      <small>${escapeHtml(template?.channel || "Choose Gmail/WhatsApp copy.")}</small>
+    </article>
+    <article data-tone="${stats.total ? stats.missing_channel ? "warning" : "success" : "neutral"}">
+      <span>Draft readiness</span>
+      <strong>${formatCount(readyCount)} / ${formatCount(stats.total)}</strong>
+      <small>${formatCount(stats.sent)} sent | ${formatCount(stats.replied)} responded | ${formatCount(stats.missing_channel)} missing channel</small>
+    </article>
+  `;
+}
+
 function renderCampaignDashboard() {
-  const campaign = campaigns.find((item) => item.id === selectedCampaignId);
+  const campaign = selectedCampaign();
   const stats = campaignMessageStats(messages);
   if (!campaignDashboard || !campaignHealth) return;
+  renderOutreachOpsStrip();
   if (!campaign) {
     campaignHealth.textContent = "No campaign selected";
     campaignHealth.className = "status-pill muted";
@@ -369,6 +450,8 @@ function renderRfxSelects() {
   if (requestedRfxEventId && rfxEvents.some((event) => event.id === requestedRfxEventId)) {
     campaignRfxEvent.value = requestedRfxEventId;
   }
+  setCampaignDefaultsFromRfx();
+  renderOutreachOpsStrip();
 }
 
 function renderTemplates() {
@@ -678,6 +761,19 @@ draftPreview?.addEventListener("click", (event) => {
 });
 
 document.addEventListener("click", (event) => {
+  const goButton = event.target.closest("[data-outreach-go]");
+  if (goButton) {
+    const view = goButton.dataset.outreachGo || "dashboard";
+    const focusTargets = {
+      campaigns: "#campaign-name",
+      templates: "#template-name",
+      drafts: "#outreach-message-search",
+      history: "#contact-history-list"
+    };
+    activateOutreachView(view, focusTargets[view] || null);
+    return;
+  }
+
   const focusButton = event.target.closest("[data-outreach-focus]");
   if (!focusButton) return;
   const focusTarget = focusButton.dataset.outreachFocus;
@@ -696,6 +792,13 @@ document.addEventListener("click", (event) => {
 
 campaignTemplate?.addEventListener("change", renderTemplatePreview);
 campaignChannel?.addEventListener("change", renderTemplatePreview);
+campaignRfxEvent?.addEventListener("change", () => {
+  setCampaignDefaultsFromRfx();
+  renderOutreachOpsStrip();
+});
+campaignName?.addEventListener("input", () => {
+  campaignName.dataset.autoName = "false";
+});
 
 placeholderBank?.addEventListener("click", async (event) => {
   const button = event.target.closest("[data-copy-placeholder]");
