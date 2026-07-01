@@ -98,6 +98,8 @@ const rfxOpsTitle = document.querySelector("#rfx-ops-title");
 const rfxOpsSubtitle = document.querySelector("#rfx-ops-subtitle");
 const rfxOpsHealth = document.querySelector("#rfx-ops-health");
 const rfxOpsOutreachLink = document.querySelector("#rfx-ops-outreach-link");
+const rfxOpsStageRail = document.querySelector("#rfx-ops-stage-rail");
+const rfxOpsNextAction = document.querySelector("#rfx-ops-next-action");
 
 let events = [];
 let selectedEventId = null;
@@ -485,16 +487,104 @@ function currentWizardStage() {
   return rfxWizardStepState().find((step) => !step.complete)?.key || "offers";
 }
 
+function wizardStageView(stage) {
+  return {
+    event: "setup",
+    lanes: "lanes",
+    carriers: "lanes",
+    preview: "outreach",
+    launch: "outreach",
+    offers: "responses"
+  }[stage] || "wizard";
+}
+
+function wizardStageCopy(stage) {
+  return {
+    event: {
+      title: "Create or select a bid event",
+      detail: "Start with customer, due date, and event ID. The rest of the workflow attaches to this room.",
+      cta: "Create bid event",
+      note: "Setup"
+    },
+    lanes: {
+      title: "Load the business book",
+      detail: "Paste or import lanes from Excel/CSV so Rateware can build coverage and shortlist carriers.",
+      cta: "Load lanes",
+      note: "Book"
+    },
+    carriers: {
+      title: "Build the carrier shortlist",
+      detail: "Use procurement vendors and Rateware evidence to create target carriers for every lane.",
+      cta: "Build shortlist",
+      note: "Shortlist"
+    },
+    preview: {
+      title: "Review invitation copy",
+      detail: "Confirm template, channel, placeholders, and contact readiness before generating drafts.",
+      cta: "Review invites",
+      note: "Preview"
+    },
+    launch: {
+      title: "Generate and send invitations",
+      detail: "Create Gmail/WhatsApp drafts with private bid links, then mark invites as sent.",
+      cta: "Generate invitations",
+      note: "Launch"
+    },
+    offers: {
+      title: "Monitor live bids",
+      detail: "Track carrier offers, spread, capacity, and response coverage from the private bid room.",
+      cta: "Open live bids",
+      note: "Bids"
+    }
+  }[stage] || {
+    title: "Open Bid Room",
+    detail: "Continue the procurement workflow.",
+    cta: "Open",
+    note: "Bid Room"
+  };
+}
+
 function wizardActionButton(stage) {
   const actions = {
     event: '<button type="button" data-rfx-wizard-go="setup">Create bid event</button>',
-    lanes: '<button type="button" data-rfx-wizard-go="lanes">Paste or import lanes</button>',
-    carriers: '<button type="button" data-rfx-wizard-auto-shortlist>Auto shortlist all lanes</button>',
-    preview: '<button type="button" data-rfx-wizard-go="outreach">Review invite preview</button>',
-    launch: '<button type="button" data-rfx-wizard-create-drafts>Create Gmail/WhatsApp drafts</button>',
+    lanes: '<button type="button" data-rfx-wizard-go="lanes">Load business book</button>',
+    carriers: '<button type="button" data-rfx-wizard-auto-shortlist>Build shortlist</button>',
+    preview: '<button type="button" data-rfx-wizard-go="outreach">Review invitation preview</button>',
+    launch: '<button type="button" data-rfx-wizard-create-drafts>Generate invitations</button>',
     offers: '<button type="button" data-rfx-wizard-go="responses">Open live bids</button>'
   };
   return actions[stage] || actions.event;
+}
+
+function renderOpsStageRail() {
+  if (!rfxOpsStageRail) return;
+  const stage = currentWizardStage();
+  rfxOpsStageRail.innerHTML = rfxWizardStepState().map((step, index) => {
+    const copy = wizardStageCopy(step.key);
+    return `
+      <button
+        type="button"
+        class="${step.complete ? "is-complete" : ""} ${step.key === stage ? "is-active" : ""}"
+        data-rfx-wizard-go="${escapeHtml(wizardStageView(step.key))}"
+        aria-current="${step.key === stage ? "step" : "false"}"
+      >
+        <span class="stage-index">${index + 1}</span>
+        <span class="stage-copy"><strong>${escapeHtml(step.label)}</strong><small>${escapeHtml(copy.note)}</small></span>
+      </button>
+    `;
+  }).join("");
+}
+
+function renderOpsNextAction() {
+  if (!rfxOpsNextAction) return;
+  const stage = currentWizardStage();
+  const copy = wizardStageCopy(stage);
+  rfxOpsNextAction.innerHTML = `
+    <span>Next action</span>
+    <strong>${escapeHtml(copy.title)}</strong>
+    <small>${escapeHtml(copy.detail)}</small>
+    ${wizardActionButton(stage)}
+  `;
 }
 
 function renderWizardSteps() {
@@ -545,23 +635,17 @@ function renderWizardPreview() {
 function renderWizard() {
   renderWizardSteps();
   renderWizardPreview();
+  renderOpsStageRail();
+  renderOpsNextAction();
   if (!wizardPrimary) return;
   const stats = rfxWizardStats();
   const stage = currentWizardStage();
-  const nextCopy = {
-    event: ["Create or select a bid event", "Start with customer, due date, and event ID. The rest of the launch will attach to that event."],
-    lanes: ["Load the spot/RFx book", "Paste lanes from Excel or CSV. Once lanes exist, Rateware can recommend carriers by lane."],
-    carriers: ["Build the carrier shortlist", "Use procurement vendors and Rateware evidence to create target carriers for each lane."],
-    preview: ["Review invitation copy", "Confirm the Gmail/WhatsApp template, channel, placeholders, and contact readiness before generating drafts."],
-    launch: ["Generate drafts and send invites", "Create Gmail and WhatsApp drafts with bid links. Mark sent when the invite goes out."],
-    offers: ["Monitor live bids", "Track carrier offers, spread, capacity, and response coverage without exposing competitor identity."]
-  };
-  const [title, detail] = nextCopy[stage] || nextCopy.event;
+  const nextCopy = wizardStageCopy(stage);
   wizardPrimary.innerHTML = `
     <article class="rfx-wizard-next">
       <p class="eyebrow">Next best action</p>
-      <h3>${escapeHtml(title)}</h3>
-      <p>${escapeHtml(detail)}</p>
+      <h3>${escapeHtml(nextCopy.title)}</h3>
+      <p>${escapeHtml(nextCopy.detail)}</p>
       <div class="action-row">
         ${wizardActionButton(stage)}
         <button class="secondary" type="button" data-rfx-wizard-go="dashboard">Open dashboard</button>
@@ -784,6 +868,8 @@ function renderEventFlow() {
 
 function renderRfxOpsStrip() {
   if (!rfxOpsTitle || !rfxOpsSubtitle || !rfxOpsHealth) return;
+  renderOpsStageRail();
+  renderOpsNextAction();
   if (!selectedEvent) {
     rfxOpsTitle.textContent = "Select or create a bid event";
     rfxOpsSubtitle.textContent = "Start with setup, import lanes, shortlist carriers, then launch invitations and monitor bids.";

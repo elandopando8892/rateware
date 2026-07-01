@@ -87,10 +87,18 @@
                 <p id="rfx-ops-subtitle">Create the book, shortlist carriers, launch invitations, then monitor live bids.</p>
               </div>
               <div class="action-row">
-                <button class="secondary small-button" type="button" data-rfx-wizard-go="lanes">Business book</button>
-                <button id="rfx-ops-outreach-link" class="secondary small-button" type="button" data-rfx-wizard-go="outreach">Invitations</button>
+                <button class="secondary small-button" type="button" data-rfx-wizard-go="lanes">Book</button>
+                <button id="rfx-ops-outreach-link" class="secondary small-button" type="button" data-rfx-wizard-go="outreach">Invites</button>
                 <button class="small-button" type="button" data-rfx-wizard-go="responses">Live bids</button>
               </div>
+            </div>
+            <div class="bid-room-control-grid">
+              <div id="rfx-ops-stage-rail" class="bid-room-stage-rail" aria-label="Bid Room stages"></div>
+              <aside id="rfx-ops-next-action" class="bid-room-next-action" aria-live="polite">
+                <span>Next action</span>
+                <strong>Create or select a bid event</strong>
+                <small>Start the private bid room workflow.</small>
+              </aside>
             </div>
             <div id="rfx-ops-health" class="rfx-ops-health">
               <article><span>Event</span><strong>-</strong><small>No bid event selected.</small></article>
@@ -98,11 +106,11 @@
           </section>
 
           <nav class="module-workbench-nav" role="tablist" aria-label="Bid Room workbench">
-            <button type="button" role="tab" aria-selected="true" data-workbench-view-button="wizard">Launch Wizard</button>
+            <button type="button" role="tab" aria-selected="true" data-workbench-view-button="wizard">Launch</button>
             <button type="button" role="tab" aria-selected="false" data-workbench-view-button="dashboard">Dashboard</button>
             <button type="button" role="tab" aria-selected="false" data-workbench-view-button="setup" data-workbench-focus-target="#rfx-id">Event</button>
-            <button type="button" role="tab" aria-selected="false" data-workbench-view-button="lanes">Business Book</button>
-            <button type="button" role="tab" aria-selected="false" data-workbench-view-button="outreach">Invitations</button>
+            <button type="button" role="tab" aria-selected="false" data-workbench-view-button="lanes">Book</button>
+            <button type="button" role="tab" aria-selected="false" data-workbench-view-button="outreach">Invites</button>
             <button type="button" role="tab" aria-selected="false" data-workbench-view-button="responses">Live Bids</button>
           </nav>
 
@@ -311,7 +319,7 @@
               <div class="bulk-action-bar" data-workbench-view-panel="lanes">
                 <span id="rfx-selection-count">0 selected</span>
                 <button id="auto-shortlist-selected" class="small-button" type="button" disabled>Auto shortlist</button>
-                <button id="invite-selected-rfx" class="secondary small-button" type="button" disabled>Invite selected vendors</button>
+                <button id="invite-selected-rfx" class="secondary small-button" type="button" disabled>Mark invited</button>
                 <button id="archive-selected-rfx" class="secondary small-button" type="button" disabled>Archive selected</button>
                 <span id="rfx-action-status" class="row-save-status"></span>
               </div>
@@ -326,22 +334,22 @@
                 <div class="rfx-outreach-grid">
                   <form id="rfx-outreach-form" class="rfx-outreach-form">
                     <label>
-                      Campaign name
+                      Invitation wave
                       <input id="rfx-outreach-campaign-name" placeholder="RFx invitation wave" />
                     </label>
                     <label>
-                      Template
+                      Invite template
                       <select id="rfx-outreach-template"></select>
                     </label>
                     <label>
-                      Channel
+                      Send channel
                       <select id="rfx-outreach-channel">
                         <option value="multi">Email + WhatsApp</option>
                         <option value="email">Gmail only</option>
                         <option value="whatsapp">WhatsApp only</option>
                       </select>
                     </label>
-                    <button id="create-rfx-outreach-campaign" type="submit" disabled>Create invite drafts</button>
+                    <button id="create-rfx-outreach-campaign" type="submit" disabled>Generate invitations</button>
                     <p id="rfx-outreach-status" class="status-message" role="status"></p>
                   </form>
                   <div id="rfx-outreach-preview" class="outreach-template-preview">

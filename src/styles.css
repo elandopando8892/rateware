@@ -12504,3 +12504,317 @@ tbody tr:hover {
     gap: 7px;
   }
 }
+
+/* Bid Room final cascade */
+.rfx-layout {
+  gap: 10px;
+}
+
+.rfx-ops-strip {
+  gap: 8px;
+  border-color: #cfdae3;
+  background: #fbfcfd;
+  padding: 10px;
+}
+
+.rfx-ops-strip .split-heading {
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+}
+
+.bid-room-control-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 280px);
+  gap: 8px;
+  align-items: stretch;
+}
+
+.bid-room-stage-rail {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.bid-room-stage-rail button {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 6px;
+  align-items: center;
+  min-height: 46px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #ffffff;
+  color: #35414b;
+  padding: 6px 8px;
+  text-align: left;
+}
+
+.bid-room-stage-rail button.is-active {
+  border-color: var(--accent-border);
+  background: #eef8f6;
+  color: var(--accent-dark);
+}
+
+.bid-room-stage-rail button.is-complete {
+  border-color: #bad8c8;
+  background: #f4fbf7;
+}
+
+.bid-room-stage-rail .stage-index {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  background: #e8eef2;
+  color: #43505a;
+  font-size: 0.68rem;
+  font-weight: 900;
+}
+
+.bid-room-stage-rail button.is-active .stage-index {
+  background: var(--accent);
+  color: #ffffff;
+}
+
+.bid-room-stage-rail button.is-complete .stage-index {
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.bid-room-stage-rail .stage-copy {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.bid-room-stage-rail strong,
+.bid-room-stage-rail small,
+.rfx-event-card strong,
+.rfx-event-card small,
+.rfx-event-card b {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bid-room-stage-rail strong {
+  color: inherit;
+  font-size: 0.75rem;
+  font-weight: 900;
+  line-height: 1.05;
+}
+
+.bid-room-stage-rail small {
+  color: var(--muted);
+  font-size: 0.64rem;
+  font-weight: 760;
+}
+
+.bid-room-next-action {
+  display: grid;
+  gap: 4px;
+  align-content: center;
+  border: 1px solid #cfdbe5;
+  border-left: 4px solid var(--accent);
+  border-radius: 7px;
+  background: #ffffff;
+  padding: 8px 10px;
+}
+
+.bid-room-next-action span {
+  color: var(--muted);
+  font-size: 0.64rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.bid-room-next-action strong {
+  color: var(--text);
+  font-size: 0.84rem;
+  line-height: 1.16;
+}
+
+.bid-room-next-action small {
+  color: #4b5964;
+  font-size: 0.72rem;
+  font-weight: 720;
+  line-height: 1.25;
+}
+
+.bid-room-next-action button {
+  justify-self: start;
+  min-height: 26px;
+  margin-top: 2px;
+  padding: 4px 9px;
+  font-size: 0.72rem;
+}
+
+.rfx-ops-health {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.rfx-ops-health article {
+  min-height: 52px;
+  padding: 7px 9px;
+}
+
+.module-workbench-nav {
+  grid-template-columns: repeat(6, minmax(86px, 1fr));
+  gap: 3px;
+  padding: 4px;
+}
+
+.module-workbench-nav button {
+  min-height: 28px;
+  padding: 4px 8px;
+  font-size: 0.72rem;
+}
+
+.rfx-launch-wizard,
+.rfx-command-center,
+.rfx-detail-panel,
+.rfx-event-list-panel {
+  padding: 10px;
+}
+
+.rfx-wizard-steps {
+  gap: 5px;
+}
+
+.rfx-wizard-steps article {
+  min-height: 38px;
+  gap: 6px;
+  padding: 6px 7px;
+}
+
+.rfx-wizard-grid {
+  grid-template-columns: minmax(390px, 0.62fr) minmax(320px, 0.38fr);
+  gap: 10px;
+}
+
+.rfx-wizard-next {
+  border-left: 4px solid var(--accent);
+  padding: 10px 12px;
+}
+
+.rfx-wizard-scoreboard,
+.rfx-dashboard-grid {
+  gap: 7px;
+}
+
+.rfx-wizard-scoreboard article,
+.rfx-wizard-offer-strip article,
+.rfx-dashboard-grid article {
+  min-height: 58px;
+  padding: 8px;
+}
+
+.rfx-wizard-offer-strip {
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 7px;
+}
+
+.rfx-workspace {
+  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+  gap: 10px;
+}
+
+.rfx-event-list-panel {
+  position: sticky;
+  top: 108px;
+  max-height: calc(100vh - 122px);
+  overflow: auto;
+}
+
+.rfx-event-list {
+  gap: 6px;
+}
+
+.rfx-event-card {
+  min-height: 58px;
+  gap: 4px;
+  border-radius: 6px;
+  padding: 8px;
+}
+
+.rfx-event-card span {
+  padding: 1px 6px;
+  font-size: 0.62rem;
+}
+
+.rfx-event-card strong {
+  font-size: 0.78rem;
+  line-height: 1.12;
+}
+
+.rfx-event-card small,
+.rfx-event-card b {
+  font-size: 0.68rem;
+}
+
+.rfx-lane-coverage-panel,
+.rfx-lane-decision-panel,
+.rfx-import-box,
+.rfx-shortlist-box,
+.rfx-outreach-launchpad,
+.rfx-response-board {
+  margin: 10px 0;
+  padding: 10px;
+}
+
+.rfx-outreach-grid {
+  grid-template-columns: minmax(300px, 0.38fr) minmax(0, 0.62fr);
+  gap: 8px;
+}
+
+.rfx-touchpoint-panel {
+  grid-template-columns: minmax(150px, 210px) minmax(0, 1fr);
+  gap: 8px;
+  padding-top: 8px;
+}
+
+.rfx-draft-queue-panel .rfx-touchpoint-list article {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+}
+
+.rfx-draft-queue-panel .action-row {
+  justify-content: flex-end;
+}
+
+.rfx-table th,
+.rfx-table td,
+.rfx-response-table th,
+.rfx-response-table td {
+  padding: 5px 7px;
+  font-size: 0.75rem;
+}
+
+@media (max-width: 1180px) {
+  .bid-room-control-grid,
+  .rfx-wizard-grid,
+  .rfx-workspace,
+  .rfx-outreach-grid,
+  .rfx-touchpoint-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .bid-room-stage-rail {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .rfx-event-list-panel {
+    position: static;
+    max-height: none;
+  }
+}
+
+@media (max-width: 760px) {
+  .bid-room-stage-rail,
+  .rfx-ops-health,
+  .module-workbench-nav {
+    grid-template-columns: 1fr 1fr;
+  }
+}
