@@ -421,7 +421,7 @@ function renderOutreachOpsStrip() {
   const template = selectedTemplate();
   const stats = campaignMessageStats(messages);
   const readyCount = stats.total - stats.missing_channel;
-  const eventLabel = event ? `${event.rfx_id || "RFx"} | ${event.name || "Untitled event"}` : "No RFx selected";
+  const eventLabel = event ? `${event.rfx_id || "Bid Room"} | ${event.name || "Untitled event"}` : "No Bid Room event selected";
   const rfxHref = event
     ? `./rfx-events.html?view=responses&rfx_event_id=${encodeURIComponent(event.id)}`
     : "./rfx-events.html";
@@ -440,12 +440,12 @@ function renderOutreachOpsStrip() {
     <article data-tone="${campaign ? "success" : "neutral"}">
       <span>Campaign</span>
       <strong>${escapeHtml(campaign ? "Selected" : "Not started")}</strong>
-      <small>${escapeHtml(campaign?.name || "Create a campaign from an RFx shortlist.")}</small>
+      <small>${escapeHtml(campaign?.name || "Create a campaign from a Bid Room shortlist.")}</small>
     </article>
     <article data-tone="${event ? "success" : "warning"}">
-      <span>RFx</span>
+      <span>Bid Room</span>
       <strong>${escapeHtml(event?.rfx_id || "-")}</strong>
-      <small>${escapeHtml(event?.name || "Select an RFx event.")}</small>
+      <small>${escapeHtml(event?.name || "Select a Bid Room event.")}</small>
     </article>
     <article data-tone="${template ? "success" : "warning"}">
       <span>Template</span>
@@ -491,7 +491,7 @@ function renderCampaignDashboard() {
     <article>
       <span>Campaign</span>
       <strong>${escapeHtml(campaign.name || "-")}</strong>
-      <small>${escapeHtml([campaign.rfx_events?.rfx_id, campaign.outreach_templates?.name, campaign.channel].filter(Boolean).join(" | ") || "No RFx/template")}</small>
+        <small>${escapeHtml([campaign.rfx_events?.rfx_id, campaign.outreach_templates?.name, campaign.channel].filter(Boolean).join(" | ") || "No Bid Room/template")}</small>
     </article>
     <article>
       <span>Draft readiness</span>
@@ -530,7 +530,7 @@ function renderTemplateSelects() {
 function renderRfxSelects() {
   campaignRfxEvent.innerHTML = rfxEvents.length
     ? rfxEvents.map((event) => `<option value="${escapeHtml(event.id)}">${escapeHtml(event.rfx_id || event.name)} | ${escapeHtml(event.name || "")}</option>`).join("")
-    : "<option value=\"\">Create an RFx event first</option>";
+    : "<option value=\"\">Create a Bid Room event first</option>";
   if (requestedRfxEventId && rfxEvents.some((event) => event.id === requestedRfxEventId)) {
     campaignRfxEvent.value = requestedRfxEventId;
   }
@@ -582,7 +582,7 @@ function renderCampaigns() {
       tone: "neutral",
       eyebrow: "Campaigns",
       title: "No outreach campaigns yet",
-      detail: "Create a campaign from an RFx shortlist, then generate Gmail and WhatsApp drafts for selected carriers.",
+      detail: "Create a campaign from a Bid Room shortlist, then generate Gmail and WhatsApp drafts for selected carriers.",
       actionButton: '<button class="secondary small-button" type="button" data-outreach-focus="campaign">Create campaign</button>'
     });
     return;
@@ -591,7 +591,7 @@ function renderCampaigns() {
     <button class="outreach-campaign-card ${campaign.id === selectedCampaignId ? "is-active" : ""}" type="button" data-campaign-id="${escapeHtml(campaign.id)}">
       <span>${escapeHtml(campaign.status || "draft")}</span>
       <strong>${escapeHtml(campaign.name)}</strong>
-      <small>${escapeHtml(campaign.rfx_events?.rfx_id || "No RFx")} | ${escapeHtml(campaign.outreach_templates?.name || "No template")}</small>
+      <small>${escapeHtml(campaign.rfx_events?.rfx_id || "No Bid Room")} | ${escapeHtml(campaign.outreach_templates?.name || "No template")}</small>
       <b>${formatCount(campaign.message_count)} messages / ${formatCount(campaign.sent_count)} sent</b>
     </button>
   `).join("");
@@ -606,7 +606,7 @@ function renderMessages() {
       tone: "neutral",
       eyebrow: "Draft queue",
       title: "Create or select a campaign",
-      detail: "Drafts appear here after you connect an RFx event, template, and outreach channel."
+      detail: "Drafts appear here after you connect a Bid Room event, template, and invitation channel."
     });
     renderDraftPreview(null);
     renderHistory();
@@ -727,7 +727,7 @@ async function loadAll() {
     renderCampaigns();
     renderHistory();
     await loadMessages(selectedCampaignId);
-    setStatus(actionStatus, "Outreach ready.", "success");
+    setStatus(actionStatus, "Invitation admin ready.", "success");
   } catch (error) {
     setStatus(actionStatus, error.message, "error");
   }

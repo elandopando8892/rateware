@@ -90,10 +90,10 @@ function buildActionList(summary) {
     actions.push({
       severity: "info",
       count: openRfx,
-      title: "Check open RFx events",
+      title: "Check open Bid Rooms",
       detail: rfxBids > 0 ? "Compare bid responses and decide which lanes need follow-up." : "Shortlist vendors and send invitations.",
       href: "./rfx-events.html",
-      action: "Open RFx"
+      action: "Open Bid Room"
     });
   }
 
@@ -185,7 +185,7 @@ function renderSummary(summary) {
 
   setText(workflowStaging, `${formatCount(summary.pending_review)} pending rows`);
   setText(workflowFailed, `${formatCount(summary.failed_uploads)} files need review`);
-  setText(workflowRfx, `${formatCount(summary.rfx_open_events)} open events`);
+  setText(workflowRfx, `${formatCount(summary.rfx_open_events)} open Bid Rooms`);
   setText(workflowUploads, `${formatCount(summary.raw_uploads)} source files`);
   setText(workflowVendors, `${formatCount(summary.procurement_vendors)} procurement vendors`);
   setText(progressUpload, `${formatCount(summary.raw_uploads)} files`);
@@ -205,7 +205,7 @@ function renderDashboardLoading() {
   });
   if (nextActionCard) nextActionCard.setAttribute("data-severity", "info");
   setText(nextActionTitle, "Checking today's work...");
-  setText(nextActionDetail, "Loading the highest-impact action from uploads, staging, AI, and RFx.");
+  setText(nextActionDetail, "Loading the highest-impact action from uploads, staging, AI, and Bid Room.");
   if (nextActionLink) {
     nextActionLink.textContent = "Loading";
     nextActionLink.href = "#";
@@ -213,7 +213,7 @@ function renderDashboardLoading() {
   if (priorityQueue) {
     priorityQueue.innerHTML = loadingState({
       title: "Loading priorities",
-      detail: "Checking staging, failed uploads, RFx, and vendor readiness."
+      detail: "Checking staging, failed uploads, Bid Room, and vendor readiness."
     });
   }
 }

@@ -147,8 +147,7 @@ const SHELL_NAV_GROUPS = [
     title: "Source",
     items: [
       { id: "crm", code: "CM", label: "Carrier CRM", href: "./vendors.html" },
-      { id: "rfx", code: "RX", label: "RFx", href: "./rfx-events.html" },
-      { id: "outreach", code: "OR", label: "Outreach", href: "./outreach.html" }
+      { id: "rfx", code: "BR", label: "Bid Room", href: "./rfx-events.html" }
     ]
   },
   {
@@ -210,21 +209,21 @@ const PAGE_META = {
     crumbs: [{ label: "Source", href: "./app.html" }, { label: "Carrier CRM" }]
   },
   "rfx-events": {
-    title: "RFx",
-    eyebrow: "Bid events",
+    title: "Bid Room",
+    eyebrow: "Private procurement room",
     crumbs: [
       { label: "Source", href: "./app.html" },
       { label: "Carrier CRM", href: "./vendors.html" },
-      { label: "RFx" }
+      { label: "Bid Room" }
     ]
   },
   outreach: {
-    title: "Outreach",
-    eyebrow: "Invitation workflow",
+    title: "Invitation Admin",
+    eyebrow: "Templates and draft queue",
     crumbs: [
       { label: "Source", href: "./app.html" },
-      { label: "RFx", href: "./rfx-events.html" },
-      { label: "Outreach" }
+      { label: "Bid Room", href: "./rfx-events.html" },
+      { label: "Invitation Admin" }
     ]
   },
   settings: {

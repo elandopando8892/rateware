@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Rateware RFx Events</title>
+    <title>Rateware Bid Room</title>
     <link rel="stylesheet" href="./src/styles.css" />
   </head>
   <body>
@@ -26,8 +26,7 @@
           <section class="nav-group">
             <p>Source</p>
             <a href="./vendors.html">Vendors</a>
-            <a aria-current="page" href="./rfx-events.html">RFx Events</a>
-            <a href="./outreach.html">Outreach</a>
+            <a aria-current="page" href="./rfx-events.html">Bid Room</a>
           </section>
           <section class="nav-group">
             <p>Admin</p>
@@ -41,17 +40,17 @@
       <div class="page-frame">
         <header class="page-header">
           <div>
-            <p class="eyebrow">Spot book and carrier bids</p>
-            <h1>RFx Events</h1>
+            <p class="eyebrow">Private procurement room</p>
+            <h1>Bid Room</h1>
             <nav class="module-crumbs" aria-label="Module context">
               <a href="./app.html">Command Center</a>
               <a href="./vendors.html">Procurement Base</a>
-              <span>RFx Events</span>
+              <span>Bid Room</span>
             </nav>
           </div>
           <div class="page-header-actions">
-            <button class="page-primary-action" type="button" data-click-target="#create-rfx-event-button">Create RFx</button>
-            <button class="secondary" type="button" data-rfx-wizard-go="responses">Bid Room</button>
+            <button class="page-primary-action" type="button" data-click-target="#create-rfx-event-button">Create bid event</button>
+            <button class="secondary" type="button" data-rfx-wizard-go="responses">Live bids</button>
             <form id="auth-form" class="auth-strip">
               <button id="auth-button" type="submit">Sign in with Kinde</button>
               <button id="sign-out-button" type="button" class="secondary hidden">Sign out</button>
@@ -61,7 +60,7 @@
         </header>
 
         <main class="rfx-layout">
-          <section class="review-insight-grid" aria-label="RFx summary">
+          <section class="review-insight-grid" aria-label="Bid Room summary">
             <article>
               <span>Events</span>
               <strong id="rfx-metric-events">0</strong>
@@ -83,35 +82,34 @@
           <section id="rfx-ops-strip" class="workspace-panel rfx-ops-strip">
             <div class="split-heading">
               <div>
-                <p class="eyebrow">Procurement launch control</p>
-                <h2 id="rfx-ops-title">Select an RFx event</h2>
-                <p id="rfx-ops-subtitle">Create lanes, shortlist carriers, launch outreach, then monitor the Private Bid Room.</p>
+                <p class="eyebrow">Bid Room control</p>
+                <h2 id="rfx-ops-title">Select a bid event</h2>
+                <p id="rfx-ops-subtitle">Create the book, shortlist carriers, launch invitations, then monitor live bids.</p>
               </div>
               <div class="action-row">
-                <button class="secondary small-button" type="button" data-rfx-wizard-go="lanes">Lanes</button>
-                <button class="secondary small-button" type="button" data-rfx-wizard-go="outreach">Outreach</button>
-                <button class="small-button" type="button" data-rfx-wizard-go="responses">Bid Room</button>
-                <a id="rfx-ops-outreach-link" class="secondary small-button" href="./outreach.html">Open Outreach</a>
+                <button class="secondary small-button" type="button" data-rfx-wizard-go="lanes">Business book</button>
+                <button id="rfx-ops-outreach-link" class="secondary small-button" type="button" data-rfx-wizard-go="outreach">Invitations</button>
+                <button class="small-button" type="button" data-rfx-wizard-go="responses">Live bids</button>
               </div>
             </div>
             <div id="rfx-ops-health" class="rfx-ops-health">
-              <article><span>RFx</span><strong>-</strong><small>No event selected.</small></article>
+              <article><span>Event</span><strong>-</strong><small>No bid event selected.</small></article>
             </div>
           </section>
 
-          <nav class="module-workbench-nav" role="tablist" aria-label="RFx workbench">
+          <nav class="module-workbench-nav" role="tablist" aria-label="Bid Room workbench">
             <button type="button" role="tab" aria-selected="true" data-workbench-view-button="wizard">Launch Wizard</button>
             <button type="button" role="tab" aria-selected="false" data-workbench-view-button="dashboard">Dashboard</button>
-            <button type="button" role="tab" aria-selected="false" data-workbench-view-button="setup" data-workbench-focus-target="#rfx-id">Setup</button>
-            <button type="button" role="tab" aria-selected="false" data-workbench-view-button="lanes">Lanes</button>
-            <button type="button" role="tab" aria-selected="false" data-workbench-view-button="outreach">Outreach</button>
-            <button type="button" role="tab" aria-selected="false" data-workbench-view-button="responses">Bid Room</button>
+            <button type="button" role="tab" aria-selected="false" data-workbench-view-button="setup" data-workbench-focus-target="#rfx-id">Event</button>
+            <button type="button" role="tab" aria-selected="false" data-workbench-view-button="lanes">Business Book</button>
+            <button type="button" role="tab" aria-selected="false" data-workbench-view-button="outreach">Invitations</button>
+            <button type="button" role="tab" aria-selected="false" data-workbench-view-button="responses">Live Bids</button>
           </nav>
 
           <section class="workspace-panel rfx-launch-wizard" data-workbench-view-panel="wizard">
             <div class="split-heading">
               <div>
-                <p class="eyebrow">Guided RFx launch</p>
+                <p class="eyebrow">Guided Bid Room launch</p>
                 <h2>Build, invite, and monitor bids</h2>
               </div>
               <div class="action-row">
@@ -129,12 +127,12 @@
           <section class="workspace-panel rfx-command-center" data-workbench-view-panel="dashboard">
             <div class="split-heading">
               <div>
-                <p class="eyebrow">RFx event dashboard</p>
+                <p class="eyebrow">Bid event dashboard</p>
                 <h2 id="rfx-dashboard-title">No event selected</h2>
               </div>
               <div class="action-row">
                 <button id="copy-rfx-summary" class="secondary small-button" type="button" disabled>Copy summary</button>
-                <a id="rfx-dashboard-outreach-link" class="secondary small-button" href="./outreach.html">Build outreach</a>
+                <button id="rfx-dashboard-outreach-link" class="secondary small-button" type="button" data-rfx-wizard-go="outreach">Build invitations</button>
               </div>
             </div>
             <div id="rfx-event-flow" class="rfx-event-flow" aria-label="RFx workflow">
@@ -144,7 +142,7 @@
               </article>
               <article>
                 <span>2</span>
-                <strong>Lanes</strong>
+                <strong>Book</strong>
               </article>
               <article>
                 <span>3</span>
@@ -152,11 +150,11 @@
               </article>
               <article>
                 <span>4</span>
-                <strong>Invite</strong>
+                <strong>Invitations</strong>
               </article>
               <article>
                 <span>5</span>
-                <strong>Bid Room</strong>
+                <strong>Live bids</strong>
               </article>
               <article>
                 <span>6</span>
@@ -167,7 +165,7 @@
               <article>
                 <span>Status</span>
                 <strong>-</strong>
-                <small>Select an RFx event to see lane coverage, invitation status, and bid progress.</small>
+                <small>Select a bid event to see book coverage, invitation status, and bid progress.</small>
               </article>
             </div>
             <div id="rfx-invite-status" class="rfx-status-mix" aria-label="Invitation status mix"></div>
@@ -177,7 +175,7 @@
             <div class="split-heading">
               <div>
                 <p class="eyebrow">Create event</p>
-                <h2>RFx / Spot Book setup</h2>
+                <h2>Bid Room setup</h2>
               </div>
               <button id="refresh-rfx-events" class="secondary" type="button">Refresh</button>
             </div>
@@ -218,7 +216,7 @@
                 <h2>Active books</h2>
               </div>
               <div id="rfx-event-list" class="rfx-event-list">
-                <article>Loading RFx events...</article>
+                <article>Loading bid events...</article>
               </div>
             </aside>
 
@@ -235,7 +233,7 @@
                   <button id="close-rfx-button" class="secondary small-button" type="button" disabled>Close</button>
                   <button id="archive-rfx-button" class="secondary small-button" type="button" disabled>Archive</button>
                   <button id="delete-rfx-button" class="danger small-button" type="button" disabled>Delete</button>
-                  <a class="secondary small-button" href="./outreach.html">Open Outreach</a>
+                  <button class="secondary small-button" type="button" data-rfx-wizard-go="outreach">Invitations</button>
                 </div>
               </div>
 
@@ -321,10 +319,9 @@
               <section class="rfx-outreach-launchpad" data-workbench-view-panel="outreach">
                 <div class="split-heading">
                   <div>
-                    <p class="eyebrow">Outreach launchpad</p>
-                    <h3>Gmail / WhatsApp campaign flow</h3>
+                    <p class="eyebrow">Invitation launchpad</p>
+                    <h3>Gmail / WhatsApp inside this Bid Room</h3>
                   </div>
-                  <a id="open-rfx-outreach" class="secondary small-button" href="./outreach.html">Open Outreach</a>
                 </div>
                 <div class="rfx-outreach-grid">
                   <form id="rfx-outreach-form" class="rfx-outreach-form">
@@ -344,7 +341,7 @@
                         <option value="whatsapp">WhatsApp only</option>
                       </select>
                     </label>
-                    <button id="create-rfx-outreach-campaign" type="submit" disabled>Create drafts</button>
+                    <button id="create-rfx-outreach-campaign" type="submit" disabled>Create invite drafts</button>
                     <p id="rfx-outreach-status" class="status-message" role="status"></p>
                   </form>
                   <div id="rfx-outreach-preview" class="outreach-template-preview">
@@ -359,6 +356,15 @@
                   </div>
                   <div id="rfx-touchpoint-list" class="rfx-touchpoint-list">
                     <article>No Gmail or WhatsApp activity for this event yet.</article>
+                  </div>
+                </div>
+                <div class="rfx-touchpoint-panel rfx-draft-queue-panel">
+                  <div>
+                    <strong>Draft queue</strong>
+                    <span id="rfx-draft-summary">No drafts generated for this bid event.</span>
+                  </div>
+                  <div id="rfx-draft-list" class="rfx-touchpoint-list">
+                    <article>Create invite drafts to review Gmail and WhatsApp messages inside this Bid Room.</article>
                   </div>
                 </div>
               </section>

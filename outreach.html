@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Rateware Outreach</title>
+    <title>Rateware Invitation Admin</title>
     <link rel="stylesheet" href="./src/styles.css" />
   </head>
   <body>
@@ -26,8 +26,7 @@
           <section class="nav-group">
             <p>Source</p>
             <a href="./vendors.html">Vendors</a>
-            <a href="./rfx-events.html">RFx Events</a>
-            <a aria-current="page" href="./outreach.html">Outreach</a>
+            <a href="./rfx-events.html">Bid Room</a>
           </section>
           <section class="nav-group">
             <p>Admin</p>
@@ -41,12 +40,12 @@
       <div class="page-frame">
         <header class="page-header">
           <div>
-            <p class="eyebrow">Carrier communication engine</p>
-            <h1>Outreach</h1>
+            <p class="eyebrow">Invitation template control</p>
+            <h1>Invitation Admin</h1>
             <nav class="module-crumbs" aria-label="Module context">
               <a href="./app.html">Command Center</a>
-              <a href="./rfx-events.html">RFx Events</a>
-              <span>Outreach</span>
+              <a href="./rfx-events.html">Bid Room</a>
+              <span>Invitation Admin</span>
             </nav>
           </div>
           <div class="page-header-actions">
@@ -60,7 +59,7 @@
         </header>
 
         <main class="outreach-layout">
-          <section class="review-insight-grid" aria-label="Outreach summary">
+          <section class="review-insight-grid" aria-label="Invitation admin summary">
             <article><span>Campaigns</span><strong id="outreach-metric-campaigns">0</strong></article>
             <article><span>Drafts</span><strong id="outreach-metric-drafts">0</strong></article>
             <article><span>Sent</span><strong id="outreach-metric-sent">0</strong></article>
@@ -70,9 +69,9 @@
           <section id="outreach-ops-strip" class="workspace-panel outreach-ops-strip">
             <div class="split-heading">
               <div>
-                <p class="eyebrow">Campaign cockpit</p>
-                <h2 id="outreach-ops-title">Connect RFx, template, and carrier targets</h2>
-                <p id="outreach-ops-subtitle">Build drafts, open Gmail or WhatsApp, then track responses back into the Bid Room.</p>
+                <p class="eyebrow">Invitation admin</p>
+                <h2 id="outreach-ops-title">Manage templates and draft queues</h2>
+                <p id="outreach-ops-subtitle">This supports the Bid Room launch flow; daily RFx work should start from Bid Room.</p>
               </div>
               <div class="action-row">
                 <button class="secondary small-button" type="button" data-outreach-go="campaigns">Campaign</button>
@@ -82,7 +81,7 @@
                 <button id="duplicate-campaign-button" class="secondary small-button" type="button" disabled>Duplicate</button>
                 <button id="archive-campaign-button" class="secondary small-button" type="button" disabled>Archive</button>
                 <button id="delete-campaign-button" class="danger small-button" type="button" disabled>Delete</button>
-                <a id="outreach-ops-rfx-link" class="small-button" href="./rfx-events.html">Open RFx</a>
+                <a id="outreach-ops-rfx-link" class="small-button" href="./rfx-events.html">Open Bid Room</a>
               </div>
             </div>
             <div id="outreach-ops-health" class="outreach-ops-health">
@@ -90,7 +89,7 @@
             </div>
           </section>
 
-          <nav class="module-workbench-nav" role="tablist" aria-label="Outreach workbench">
+          <nav class="module-workbench-nav" role="tablist" aria-label="Invitation admin workbench">
             <button type="button" role="tab" aria-selected="true" data-workbench-view-button="dashboard">Dashboard</button>
             <button type="button" role="tab" aria-selected="false" data-workbench-view-button="templates" data-workbench-focus-target="#template-name">Templates</button>
             <button type="button" role="tab" aria-selected="false" data-workbench-view-button="campaigns" data-workbench-focus-target="#campaign-name">Campaigns</button>
@@ -101,7 +100,7 @@
           <section class="workspace-panel outreach-flow-panel" data-workbench-view-panel="dashboard">
             <div class="split-heading">
               <div>
-                <p class="eyebrow">RFx + Outreach workflow</p>
+                <p class="eyebrow">Bid Room support workflow</p>
                 <h2>Invite, preview, send, track</h2>
               </div>
               <span id="outreach-campaign-health" class="status-pill muted">No campaign selected</span>
@@ -109,8 +108,8 @@
             <div class="outreach-flow-steps">
               <article>
                 <span>1</span>
-                <strong>Choose RFx event</strong>
-                <small>Use the shortlisted vendors from an active RFx book.</small>
+                <strong>Choose Bid Room event</strong>
+                <small>Use the shortlisted vendors from an active Bid Room book.</small>
               </article>
               <article>
                 <span>2</span>
@@ -183,7 +182,7 @@
                   <input id="campaign-name" required placeholder="RFx-04302602 invitation wave" />
                 </label>
                 <label>
-                  RFx event
+                  Bid Room event
                   <select id="campaign-rfx-event"></select>
                 </label>
                 <label>

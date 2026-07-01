@@ -17,8 +17,10 @@ import {
 import {
   createOutreachCampaign,
   fetchContactHistory,
+  fetchOutreachMessages,
   fetchOutreachTemplates,
-  generateOutreachDrafts
+  generateOutreachDrafts,
+  markOutreachMessages
 } from "./outreach-service.js";
 import { fetchVendors } from "./vendor-service.js";
 import { humanizeError } from "./error-copy.js";
@@ -82,9 +84,10 @@ const rfxOutreachChannel = document.querySelector("#rfx-outreach-channel");
 const createRfxOutreachCampaignButton = document.querySelector("#create-rfx-outreach-campaign");
 const rfxOutreachStatus = document.querySelector("#rfx-outreach-status");
 const rfxOutreachPreview = document.querySelector("#rfx-outreach-preview");
-const openRfxOutreach = document.querySelector("#open-rfx-outreach");
 const touchpointSummary = document.querySelector("#rfx-touchpoint-summary");
 const touchpointList = document.querySelector("#rfx-touchpoint-list");
+const draftSummary = document.querySelector("#rfx-draft-summary");
+const draftList = document.querySelector("#rfx-draft-list");
 const wizardRefreshButton = document.querySelector("#rfx-wizard-refresh");
 const wizardLiveOffersButton = document.querySelector("#rfx-wizard-live-offers");
 const wizardSteps = document.querySelector("#rfx-wizard-steps");
@@ -104,6 +107,7 @@ let currentLanes = [];
 let vendorOptions = [];
 let outreachTemplates = [];
 let contactHistoryRows = [];
+let outreachMessages = [];
 let selectedLaneIds = new Set();
 let selectedInvitationIds = new Set();
 let focusedLaneId = null;
@@ -416,7 +420,7 @@ function renderOutreachPreview() {
   if (!template) {
     rfxOutreachPreview.innerHTML = `
       <strong>No template selected.</strong>
-      <span>Create a template in Outreach before launching RFx invitations.</span>
+      <span>Create an invitation template before launching carrier invitations.</span>
     `;
   } else {
     rfxOutreachPreview.innerHTML = `
@@ -473,7 +477,7 @@ function rfxWizardStepState() {
     { key: "carriers", label: "Carriers", complete: stats.invitations.length > 0 },
     { key: "preview", label: "Preview", complete: Boolean(selectedOutreachTemplate() && stats.readyTargets.length) },
     { key: "launch", label: "Launch", complete: stats.invitations.some(hasInvitationStarted) },
-    { key: "offers", label: "Bid Room", complete: stats.bids.length > 0 }
+    { key: "offers", label: "Live bids", complete: stats.bids.length > 0 }
   ];
 }
 
@@ -483,12 +487,12 @@ function currentWizardStage() {
 
 function wizardActionButton(stage) {
   const actions = {
-    event: '<button type="button" data-rfx-wizard-go="setup">Create RFx event</button>',
+    event: '<button type="button" data-rfx-wizard-go="setup">Create bid event</button>',
     lanes: '<button type="button" data-rfx-wizard-go="lanes">Paste or import lanes</button>',
     carriers: '<button type="button" data-rfx-wizard-auto-shortlist>Auto shortlist all lanes</button>',
     preview: '<button type="button" data-rfx-wizard-go="outreach">Review invite preview</button>',
     launch: '<button type="button" data-rfx-wizard-create-drafts>Create Gmail/WhatsApp drafts</button>',
-    offers: '<button type="button" data-rfx-wizard-go="responses">Open Private Bid Room</button>'
+    offers: '<button type="button" data-rfx-wizard-go="responses">Open live bids</button>'
   };
   return actions[stage] || actions.event;
 }
@@ -545,12 +549,12 @@ function renderWizard() {
   const stats = rfxWizardStats();
   const stage = currentWizardStage();
   const nextCopy = {
-    event: ["Create or select an RFx event", "Start with customer, due date, and event ID. The rest of the launch will attach to that event."],
+    event: ["Create or select a bid event", "Start with customer, due date, and event ID. The rest of the launch will attach to that event."],
     lanes: ["Load the spot/RFx book", "Paste lanes from Excel or CSV. Once lanes exist, Rateware can recommend carriers by lane."],
     carriers: ["Build the carrier shortlist", "Use procurement vendors and Rateware evidence to create target carriers for each lane."],
     preview: ["Review invitation copy", "Confirm the Gmail/WhatsApp template, channel, placeholders, and contact readiness before generating drafts."],
     launch: ["Generate drafts and send invites", "Create Gmail and WhatsApp drafts with bid links. Mark sent when the invite goes out."],
-    offers: ["Monitor the Private Bid Room", "Track live carrier offers, spread, capacity, and response coverage without exposing competitor identity."]
+    offers: ["Monitor live bids", "Track carrier offers, spread, capacity, and response coverage without exposing competitor identity."]
   };
   const [title, detail] = nextCopy[stage] || nextCopy.event;
   wizardPrimary.innerHTML = `
@@ -764,10 +768,10 @@ function renderEventFlow() {
   const state = eventStepState();
   const steps = [
     ["setup", "Setup"],
-    ["lanes", "Lanes"],
+    ["lanes", "Book"],
     ["shortlist", "Shortlist"],
-    ["invite", "Invite"],
-    ["responses", "Bid Room"],
+    ["invite", "Invitations"],
+    ["responses", "Live bids"],
     ["award", "Award"]
   ];
   eventFlow.innerHTML = steps.map(([key, label], index) => `
@@ -781,14 +785,13 @@ function renderEventFlow() {
 function renderRfxOpsStrip() {
   if (!rfxOpsTitle || !rfxOpsSubtitle || !rfxOpsHealth) return;
   if (!selectedEvent) {
-    rfxOpsTitle.textContent = "Select or create an RFx event";
-    rfxOpsSubtitle.textContent = "Start with setup, import lanes, shortlist carriers, then launch outreach and monitor bids.";
-    if (rfxOpsOutreachLink) rfxOpsOutreachLink.href = "./outreach.html";
+    rfxOpsTitle.textContent = "Select or create a bid event";
+    rfxOpsSubtitle.textContent = "Start with setup, import lanes, shortlist carriers, then launch invitations and monitor bids.";
     rfxOpsHealth.innerHTML = `
-      <article><span>Event</span><strong>-</strong><small>No RFx selected.</small></article>
+      <article><span>Event</span><strong>-</strong><small>No bid event selected.</small></article>
       <article><span>Lanes</span><strong>0</strong><small>Paste or import the spot book.</small></article>
-      <article><span>Outreach</span><strong>0</strong><small>No carrier targets yet.</small></article>
-      <article><span>Bid Room</span><strong>0</strong><small>No live bids yet.</small></article>
+      <article><span>Invitations</span><strong>0</strong><small>No carrier targets yet.</small></article>
+      <article><span>Live bids</span><strong>0</strong><small>No live bids yet.</small></article>
     `;
     return;
   }
@@ -800,11 +803,9 @@ function renderRfxOpsStrip() {
   const lanesWithShortlist = currentLanes.filter((lane) => activeInvitations(lane).length).length;
   const lanesWithBids = currentLanes.filter((lane) => bidInvitations(lane).length).length;
   const due = selectedEvent.due_date ? `Due ${selectedEvent.due_date}` : "No due date";
-  const outreachUrl = `./outreach.html?rfx_event_id=${encodeURIComponent(selectedEvent.id)}&view=campaigns`;
 
   rfxOpsTitle.textContent = `${selectedEvent.rfx_id || "RFx"} procurement flow`;
   rfxOpsSubtitle.textContent = `${selectedEvent.name || "Selected event"} | ${selectedEvent.customer || "No customer"} | ${due}`;
-  if (rfxOpsOutreachLink) rfxOpsOutreachLink.href = outreachUrl;
   rfxOpsHealth.innerHTML = `
     <article data-tone="${selectedEvent.status === "open" ? "success" : "neutral"}">
       <span>Event</span>
@@ -817,12 +818,12 @@ function renderRfxOpsStrip() {
       <small>${formatNumber(lanesWithShortlist)} lane(s) with shortlist.</small>
     </article>
     <article data-tone="${readyTargets.length ? "success" : activeInviteRows.length ? "warning" : "neutral"}">
-      <span>Outreach ready</span>
+      <span>Invitations ready</span>
       <strong>${formatNumber(readyTargets.length)} / ${formatNumber(targets.length)}</strong>
       <small>${formatNumber(activeInviteRows.length)} active carrier target(s).</small>
     </article>
     <article data-tone="${bids.length ? "success" : "neutral"}">
-      <span>Bid Room</span>
+      <span>Live bids</span>
       <strong>${formatNumber(bids.length)}</strong>
       <small>${formatNumber(lanesWithBids)} lane(s) with live bids.</small>
     </article>
@@ -839,14 +840,13 @@ function renderEventDashboard() {
   renderRfxOpsStrip();
   if (!selectedEvent) {
     dashboardTitle.textContent = "No event selected";
-    if (dashboardOutreachLink) dashboardOutreachLink.href = "./outreach.html";
     if (copyRfxSummaryButton) copyRfxSummaryButton.disabled = true;
     if (eventDashboard) {
       eventDashboard.innerHTML = `
         <article>
           <span>Status</span>
           <strong>-</strong>
-          <small>Select an RFx event to see lane coverage, invitation status, and bid progress.</small>
+          <small>Select a bid event to see lane coverage, invitation status, and bid progress.</small>
         </article>
       `;
     }
@@ -864,7 +864,6 @@ function renderEventDashboard() {
   const responseRate = activeInvitations.length ? Math.round((bids.length / activeInvitations.length) * 100) : 0;
 
   dashboardTitle.textContent = `${selectedEvent.rfx_id || "RFx"} | ${selectedEvent.name || "Selected event"}`;
-  if (dashboardOutreachLink) dashboardOutreachLink.href = `./outreach.html?rfx_event_id=${encodeURIComponent(selectedEvent.id)}`;
   if (copyRfxSummaryButton) copyRfxSummaryButton.disabled = false;
   if (eventDashboard) {
     eventDashboard.innerHTML = `
@@ -908,7 +907,7 @@ function renderLaneCoverage() {
     laneCoverage.innerHTML = stateBlock({
       tone: "neutral",
       eyebrow: "Lane coverage",
-      title: "Select an RFx event",
+      title: "Select a bid event",
       detail: "Choose or create an event to inspect lane coverage, shortlist depth, and bid response progress."
     });
     return;
@@ -1070,7 +1069,7 @@ function renderTouchpoints() {
     ? `${formatNumber(eventRows.length)} touchpoints | ${formatNumber(sentOrReplied)} sent/replied`
     : "No campaign activity loaded.";
   if (!selectedEventId) {
-    touchpointList.innerHTML = "<article>Select an RFx event to track invitation activity.</article>";
+    touchpointList.innerHTML = "<article>Select a bid event to track invitation activity.</article>";
     return;
   }
   if (!eventRows.length) {
@@ -1087,10 +1086,53 @@ function renderTouchpoints() {
   `).join("");
 }
 
-function renderOutreachLaunchpad() {
-  if (openRfxOutreach) {
-    openRfxOutreach.href = selectedEventId ? `./outreach.html?rfx_event_id=${encodeURIComponent(selectedEventId)}` : "./outreach.html";
+function messageRecipient(message) {
+  return message.channel === "email"
+    ? message.recipient_email || message.vendors?.primary_email || ""
+    : message.recipient_phone || message.vendors?.whatsapp_phone || "";
+}
+
+function renderDraftQueue() {
+  if (!draftSummary || !draftList) return;
+  const rows = selectedEventId
+    ? outreachMessages.filter((message) => message.rfx_event_id === selectedEventId)
+    : [];
+  const actionable = rows.filter((message) => ["drafted", "queued", "failed"].includes(String(message.status || "").toLowerCase()));
+  draftSummary.textContent = rows.length
+    ? `${formatNumber(rows.length)} draft rows | ${formatNumber(actionable.length)} need action`
+    : "No drafts generated for this bid event.";
+  if (!selectedEventId) {
+    draftList.innerHTML = "<article>Select a bid event to review invitation drafts.</article>";
+    return;
   }
+  if (!rows.length) {
+    draftList.innerHTML = "<article>Create invite drafts to review Gmail and WhatsApp messages inside this Bid Room.</article>";
+    return;
+  }
+  draftList.innerHTML = rows.slice(0, 12).map((message) => {
+    const isEmail = message.channel === "email";
+    const openUrl = isEmail ? message.gmail_compose_url : message.whatsapp_url;
+    const preview = String(message.text_body || message.whatsapp_text || message.subject || "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 140);
+    return `
+      <article data-rfx-draft-id="${escapeHtml(message.id)}">
+        <span>${escapeHtml([message.channel, message.status, messageRecipient(message)].filter(Boolean).join(" | "))}</span>
+        <strong>${escapeHtml(message.vendors?.vendor_name || message.vendors?.domain || "Vendor")}</strong>
+        <small>${escapeHtml(message.rfx_lanes ? `${message.rfx_lanes.origin || "-"} -> ${message.rfx_lanes.destination || "-"}` : message.rfx_events?.rfx_id || "")}</small>
+        <p>${escapeHtml(preview || "No draft preview")}</p>
+        <div class="action-row">
+          <button class="secondary small-button" type="button" data-rfx-open-draft="${escapeHtml(openUrl || "")}" ${openUrl ? "" : "disabled"}>Open ${isEmail ? "Gmail" : "WhatsApp"}</button>
+          <button class="secondary small-button" type="button" data-rfx-mark-draft="${escapeHtml(message.id)}" data-rfx-draft-status="queued">Queue</button>
+          <button class="small-button" type="button" data-rfx-mark-draft="${escapeHtml(message.id)}" data-rfx-draft-status="sent">Mark sent</button>
+        </div>
+      </article>
+    `;
+  }).join("");
+}
+
+function renderOutreachLaunchpad() {
   if (rfxOutreachCampaignName && selectedEvent) {
     const defaultName = `${selectedEvent.rfx_id || "RFx"} invitation wave`;
     if (!rfxOutreachCampaignName.value || rfxOutreachCampaignName.dataset.autoName === "true") {
@@ -1101,6 +1143,7 @@ function renderOutreachLaunchpad() {
   renderOutreachTemplateSelect();
   renderOutreachPreview();
   renderTouchpoints();
+  renderDraftQueue();
 }
 
 function updateMetrics() {
@@ -1118,10 +1161,10 @@ function renderEvents() {
   if (!events.length) {
     eventList.innerHTML = stateBlock({
       tone: "neutral",
-      eyebrow: "RFx events",
-      title: "No RFx events yet",
-      detail: "Create an RFx event, upload or paste lanes, then shortlist target carriers.",
-      actionButton: '<button class="secondary small-button" type="button" data-rfx-focus-create>Create RFx event</button>'
+      eyebrow: "Bid events",
+      title: "No bid events yet",
+      detail: "Create a bid event, upload or paste lanes, then shortlist target carriers.",
+      actionButton: '<button class="secondary small-button" type="button" data-rfx-focus-create>Create bid event</button>'
     });
     return;
   }
@@ -1208,16 +1251,16 @@ function renderLanes() {
   if (!selectedEventId) {
     lanesBody.innerHTML = tableState(9, {
       tone: "neutral",
-      eyebrow: "RFx lanes",
+      eyebrow: "Business book",
       title: "Select an event to load lanes",
-      detail: "Choose an RFx event from the left panel or create a new event."
+      detail: "Choose a bid event from the left panel or create a new event."
     });
     return;
   }
   if (!currentLanes.length) {
     lanesBody.innerHTML = tableState(9, {
       tone: "neutral",
-      eyebrow: "RFx lanes",
+      eyebrow: "Business book",
       title: "No lanes in this RFx yet",
       detail: "Paste lane rows above to build this spot/RFx book before inviting vendors."
     });
@@ -1286,6 +1329,8 @@ async function loadEvents() {
     else {
       selectedEvent = null;
       currentLanes = [];
+      contactHistoryRows = [];
+      outreachMessages = [];
       focusedLaneId = null;
       updateEventActionState();
       renderEventDashboard();
@@ -1298,12 +1343,12 @@ async function loadEvents() {
     }
   } catch (error) {
     eventList.innerHTML = errorState(error, {
-      title: "RFx events could not load",
+      title: "Bid events could not load",
       retryAction: "load-rfx-events",
-      meta: "No RFx data was changed."
+      meta: "No Bid Room data was changed."
     });
     lanesBody.innerHTML = tableErrorState(9, error, {
-      title: "RFx lanes could not load",
+      title: "Business book lanes could not load",
       retryAction: "load-rfx-events"
     });
     renderWizard();
@@ -1335,13 +1380,15 @@ async function loadDetail(eventId) {
   selectedEventId = eventId;
   setStatus(actionStatus, "Loading RFx detail...");
   try {
-    const [detail, history] = await Promise.all([
+    const [detail, history, messages] = await Promise.all([
       fetchRfxDetail(eventId),
-      fetchContactHistory({ rfx_event_id: eventId })
+      fetchContactHistory({ rfx_event_id: eventId }),
+      fetchOutreachMessages({ rfx_event_id: eventId })
     ]);
     selectedEvent = detail.event;
     currentLanes = detail.lanes || [];
     contactHistoryRows = history || [];
+    outreachMessages = messages || [];
     if (!currentLanes.some((lane) => lane.id === focusedLaneId)) focusedLaneId = currentLanes[0]?.id || null;
     detailTitle.textContent = `${selectedEvent.name || selectedEvent.rfx_id} (${selectedEvent.status})`;
     importLanesButton.disabled = false;
@@ -1351,7 +1398,7 @@ async function loadDetail(eventId) {
     renderEventDashboard();
     renderLaneCoverage();
     renderOutreachLaunchpad();
-    setStatus(actionStatus, "RFx loaded.", "success");
+    setStatus(actionStatus, "Bid Room loaded.", "success");
   } catch (error) {
     setStatus(actionStatus, error.message, "error");
     updateEventActionState();
@@ -1410,7 +1457,10 @@ async function createCurrentOutreachDrafts(statusElement = rfxOutreachStatus) {
     channel: rfxOutreachChannel?.value || "multi"
   });
   const result = await generateOutreachDrafts(campaign.id, { invitationIds });
-  contactHistoryRows = await fetchContactHistory({ rfx_event_id: selectedEventId });
+  [contactHistoryRows, outreachMessages] = await Promise.all([
+    fetchContactHistory({ rfx_event_id: selectedEventId }),
+    fetchOutreachMessages({ rfx_event_id: selectedEventId })
+  ]);
   renderOutreachLaunchpad();
   setStatus(
     statusElement,
@@ -1433,14 +1483,14 @@ requirePrivatePage().then((session) => {
 eventForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
   const isEditing = Boolean(editingEventId);
-  setStatus(eventStatus, isEditing ? "Saving RFx event..." : "Creating RFx event...");
+  setStatus(eventStatus, isEditing ? "Saving bid event..." : "Creating bid event...");
   try {
     const row = isEditing
       ? await updateRfxEvent(editingEventId, rfxEventPayload())
       : await createRfxEvent(rfxEventPayload());
     selectedEventId = row.id;
     resetRfxEventForm();
-    setStatus(eventStatus, isEditing ? "RFx event updated." : "RFx event created.", "success");
+    setStatus(eventStatus, isEditing ? "Bid event updated." : "Bid event created.", "success");
     await loadEvents();
   } catch (error) {
     setStatus(eventStatus, error.message, "error");
@@ -1460,6 +1510,7 @@ document.addEventListener("click", (event) => {
 
   const wizardGoButton = event.target.closest("[data-rfx-wizard-go]");
   if (wizardGoButton) {
+    event.preventDefault();
     const view = wizardGoButton.dataset.rfxWizardGo || "wizard";
     const focusTargets = {
       setup: "#rfx-id",
@@ -1500,6 +1551,35 @@ document.addEventListener("click", (event) => {
   if (createButton) {
     rfxIdInput?.focus();
     eventForm?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+});
+
+draftList?.addEventListener("click", async (event) => {
+  const openButton = event.target.closest("[data-rfx-open-draft]");
+  if (openButton) {
+    const url = openButton.dataset.rfxOpenDraft;
+    if (url) window.open(url, "_blank", "noopener");
+    return;
+  }
+  const statusButton = event.target.closest("[data-rfx-mark-draft]");
+  if (!statusButton) return;
+  const id = statusButton.dataset.rfxMarkDraft;
+  const status = statusButton.dataset.rfxDraftStatus;
+  if (!id || !status) return;
+  statusButton.disabled = true;
+  setStatus(rfxOutreachStatus, `Marking draft ${status}...`);
+  try {
+    await markOutreachMessages([id], status);
+    [contactHistoryRows, outreachMessages] = await Promise.all([
+      fetchContactHistory({ rfx_event_id: selectedEventId }),
+      fetchOutreachMessages({ rfx_event_id: selectedEventId })
+    ]);
+    renderOutreachLaunchpad();
+    setStatus(rfxOutreachStatus, "Draft updated.", "success");
+  } catch (error) {
+    setStatus(rfxOutreachStatus, error.message, "error");
+  } finally {
+    statusButton.disabled = false;
   }
 });
 
@@ -1580,9 +1660,9 @@ editRfxButton?.addEventListener("click", () => {
 
 duplicateRfxButton?.addEventListener("click", async () => {
   if (!selectedEventId) return;
-  if (!window.confirm("Duplicate this RFx event with its lanes and shortlisted vendors?")) return;
+  if (!window.confirm("Duplicate this bid event with its lanes and shortlisted vendors?")) return;
   duplicateRfxButton.disabled = true;
-  setStatus(actionStatus, "Duplicating RFx event...");
+  setStatus(actionStatus, "Duplicating bid event...");
   try {
     const result = await duplicateRfxEvent(selectedEventId);
     selectedEventId = result.row?.id || selectedEventId;
@@ -1598,15 +1678,15 @@ duplicateRfxButton?.addEventListener("click", async () => {
 
 archiveRfxButton?.addEventListener("click", async () => {
   if (!selectedEventId) return;
-  if (!window.confirm("Archive this RFx event? It will be hidden from active RFx lists.")) return;
+  if (!window.confirm("Archive this bid event? It will be hidden from active Bid Room lists.")) return;
   archiveRfxButton.disabled = true;
-  setStatus(actionStatus, "Archiving RFx event...");
+  setStatus(actionStatus, "Archiving bid event...");
   try {
     await archiveRfxEvent(selectedEventId);
     selectedEventId = null;
     selectedEvent = null;
     resetRfxEventForm();
-    setStatus(actionStatus, "RFx event archived.", "success");
+    setStatus(actionStatus, "Bid event archived.", "success");
     await loadEvents();
   } catch (error) {
     setStatus(actionStatus, error.message, "error");
@@ -1617,16 +1697,16 @@ archiveRfxButton?.addEventListener("click", async () => {
 
 deleteRfxButton?.addEventListener("click", async () => {
   if (!selectedEventId) return;
-  const label = selectedEvent?.rfx_id || selectedEvent?.name || "this RFx event";
+  const label = selectedEvent?.rfx_id || selectedEvent?.name || "this bid event";
   if (!window.confirm(`Delete ${label}? This removes the event and related RFx rows.`)) return;
   deleteRfxButton.disabled = true;
-  setStatus(actionStatus, "Deleting RFx event...");
+  setStatus(actionStatus, "Deleting bid event...");
   try {
     await deleteRfxEvent(selectedEventId);
     selectedEventId = null;
     selectedEvent = null;
     resetRfxEventForm();
-    setStatus(actionStatus, "RFx event deleted.", "success");
+    setStatus(actionStatus, "Bid event deleted.", "success");
     await loadEvents();
   } catch (error) {
     setStatus(actionStatus, error.message, "error");
@@ -1732,7 +1812,7 @@ copyRfxSummaryButton?.addEventListener("click", async () => {
     })
   ];
   await navigator.clipboard.writeText(lines.join("\n"));
-  setStatus(actionStatus, "RFx summary copied.", "success");
+  setStatus(actionStatus, "Bid Room summary copied.", "success");
 });
 
 autoShortlistButton?.addEventListener("click", async () => {
