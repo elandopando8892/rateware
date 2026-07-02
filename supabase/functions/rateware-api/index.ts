@@ -8871,6 +8871,137 @@ Deno.serve(async (request) => {
       });
     }
 
+    if (body.action === "book_audit") {
+      // Read-only data-quality audit of the approved rate book. Returns issue
+      // counts and (optionally) row ids per fixable issue class so batch
+      // repairs (renormalize / vendor match) can be driven from the client.
+      try {
+      const includeIds = body.include_ids === true;
+      const idCap = Math.min(Math.max(Number(body.id_cap) || 5000, 100), 20000);
+      const approvedHead = () => supabase.from("rate_staging").select("id", { count: "exact", head: true }).eq("status", "approved");
+
+      const countQueries: Array<[string, () => PromiseLike<{ count: number | null; error: unknown }>]> = [
+        ["approved_total", () => approvedHead()],
+        ["staging_total_estimated", () => supabase.from("rate_staging").select("id", { count: "estimated", head: true })],
+        ["market_gaps", () => approvedHead().or("origin_market.is.null,destination_market.is.null")],
+        ["vendor_unmatched", () => approvedHead().is("vendor_id", null)],
+        ["missing_quote_date", () => approvedHead().is("quote_date", null)],
+        ["catalog_unmatched", () => approvedHead().eq("catalog_match_status", "unmatched")]
+      ];
+      const counts: Record<string, number> = {};
+      for (const [key, build] of countQueries) {
+        let result = await build();
+        if (result.error) {
+          // Transient pooler drops surface as empty-body errors on HEAD
+          // counts; retry once before failing.
+          await new Promise((resolve) => setTimeout(resolve, 350));
+          result = await build();
+        }
+        if (result.error) {
+          const meta = result as unknown as { status?: number; statusText?: string };
+          const detail = JSON.stringify({ error: result.error, status: meta.status, statusText: meta.statusText }).slice(0, 300);
+          return jsonResponse({ error: `book_audit count '${key}' failed: ${detail}` }, 500);
+        }
+        counts[key] = result.count || 0;
+      }
+
+      return jsonResponse({
+        counts,
+        include_ids: includeIds,
+        id_cap: idCap
+      });
+      } catch (auditError) {
+        const detail = auditError && typeof auditError === "object"
+          ? JSON.stringify({ message: (auditError as Error).message, ...(auditError as Record<string, unknown>) }).slice(0, 500)
+          : String(auditError);
+        return jsonResponse({ error: `book_audit failed: ${detail}` }, 500);
+      }
+    }
+
+    if (body.action === "book_audit_scan") {
+      // Incremental slice of the normalized-lane mismatch / market-gap scan.
+      // Kept small per invocation to stay inside edge CPU limits; the client
+      // loops with the returned cursor until done=true.
+      const cursorStart = cleanText(body.cursor) || "";
+      const maxPages = Math.min(Math.max(Number(body.max_pages) || 10, 1), 20);
+      const pageSize = 1000;
+
+      // Accent-folded, bidirectional containment: only flag rows where the
+      // normalized city and the raw text share no token in either direction
+      // (true corruption like raw "Laredo, TX" normalized to "Amarillo"),
+      // not legitimate canonicalization ("Cd Juarez" -> "Ciudad Juárez").
+      const fold = (value: unknown) =>
+        String(value || "")
+          .normalize("NFD")
+          .replace(/[̀-ͯ]/g, "")
+          .toLowerCase();
+      const cityToken = (value: unknown) => fold(value).split(",")[0].replace(/\b[a-z]{2}\b\s*$/g, "").trim();
+      const isMismatch = (raw: unknown, normalized: unknown) => {
+        const token = cityToken(normalized);
+        const rawFold = fold(raw);
+        const rawCity = cityToken(raw);
+        if (!token || token.length < 3 || !rawFold) return false;
+        if (rawFold.includes(token)) return false;
+        if (rawCity && rawCity.length >= 3 && token.includes(rawCity)) return false;
+        return true;
+      };
+
+      let mismatchCount = 0;
+      let zipGapCount = 0;
+      let currencyGapCount = 0;
+      let ratelessCount = 0;
+      let scanned = 0;
+      const mismatchIds: string[] = [];
+      const marketGapIds: string[] = [];
+      let cursor = cursorStart;
+      let done = false;
+      for (let page = 0; page < maxPages; page += 1) {
+        let pageQuery = supabase
+          .from("rate_staging")
+          .select("id,origin,destination,normalized_origin,normalized_destination,origin_market,destination_market,origin_zip_prefix,destination_zip_prefix,currency,all_in_rate,mx_linehaul,us_linehaul")
+          .eq("status", "approved")
+          .order("id", { ascending: true })
+          .limit(pageSize);
+        if (cursor) pageQuery = pageQuery.gt("id", cursor);
+        const pageResult = await pageQuery;
+        if (pageResult.error) throw pageResult.error;
+        const rows = pageResult.data || [];
+        if (!rows.length) {
+          done = true;
+          break;
+        }
+        cursor = String(rows[rows.length - 1].id);
+        scanned += rows.length;
+        for (const row of rows) {
+          if (isMismatch(row.origin, row.normalized_origin) || isMismatch(row.destination, row.normalized_destination)) {
+            mismatchCount += 1;
+            mismatchIds.push(String(row.id));
+          }
+          if (!row.origin_market || !row.destination_market) marketGapIds.push(String(row.id));
+          if (!row.origin_zip_prefix || !row.destination_zip_prefix) zipGapCount += 1;
+          const hasAnyRate = row.all_in_rate !== null || row.mx_linehaul !== null || row.us_linehaul !== null;
+          if (!row.currency && row.all_in_rate !== null) currencyGapCount += 1;
+          if (!hasAnyRate) ratelessCount += 1;
+        }
+        if (rows.length < pageSize) {
+          done = true;
+          break;
+        }
+      }
+
+      return jsonResponse({
+        scanned,
+        mismatch_count: mismatchCount,
+        zip_gap_count: zipGapCount,
+        currency_gap_count: currencyGapCount,
+        rateless_count: ratelessCount,
+        mismatch_ids: mismatchIds,
+        market_gap_ids: marketGapIds,
+        cursor,
+        done
+      });
+    }
+
     if (body.action === "list_uploads") {
       let query = supabase.from("raw_uploads").select("*, vendors(vendor_name, domain, primary_email, base_stage, status)").order("created_at", { ascending: false }).limit(100);
       if (body.status === "current" || body.status === undefined) query = query.neq("status", "archived");
