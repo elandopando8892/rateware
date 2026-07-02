@@ -166,11 +166,16 @@ const RFX_LANE_TEMPLATE_COLUMNS = [
 ];
 
 const RFX_CARRIER_TEMPLATE_COLUMNS = [
-  { key: "lane_number", label: "Lane #", example: "1 or ALL" },
-  { key: "lane_id", label: "Lane ID", example: "" },
+  { key: "participate", label: "Participate", example: "TRUE" },
+  { key: "vendor_id", label: "CRM Vendor ID", example: "" },
+  { key: "vendor_name", label: "Vendor Name", example: "Carrier Logistics" },
   { key: "vendor_domain", label: "Vendor Domain", example: "carrier.com" },
   { key: "vendor_email", label: "Vendor Email", example: "pricing@carrier.com" },
-  { key: "vendor_name", label: "Vendor Name", example: "Carrier Logistics" },
+  { key: "base_stage", label: "Base Stage", example: "procurement" },
+  { key: "status", label: "Status", example: "active" },
+  { key: "preferred_channel", label: "Preferred Channel", example: "email" },
+  { key: "coverage_notes", label: "Coverage Notes", example: "Cross-border MX-US" },
+  { key: "tags", label: "Tags", example: "flatbed; cross-border" },
   { key: "notes", label: "Notes", example: "Target invite wave 1" }
 ];
 
@@ -462,11 +467,21 @@ function downloadRfxLaneTemplate() {
 
 function mapCarrierHeader(header) {
   const aliases = {
-    lane: "lane_number",
-    lane_no: "lane_number",
-    lane_num: "lane_number",
-    lane_number: "lane_number",
-    rfx_lane_id: "lane_id",
+    participate: "participate",
+    participates: "participate",
+    participant: "participate",
+    include: "participate",
+    included: "participate",
+    invite: "participate",
+    invited: "participate",
+    selected: "participate",
+    select: "participate",
+    true_false: "participate",
+    y_n: "participate",
+    yes_no: "participate",
+    vendor_id: "vendor_id",
+    crm_vendor_id: "vendor_id",
+    id: "vendor_id",
     carrier: "vendor_name",
     carrier_name: "vendor_name",
     vendor: "vendor_name",
@@ -482,10 +497,23 @@ function mapCarrierHeader(header) {
     vendor_email: "vendor_email",
     carrier_email: "vendor_email",
     primary_email: "vendor_email",
-    contact_email: "vendor_email"
+    contact_email: "vendor_email",
+    stage: "base_stage",
+    crm_stage: "base_stage",
+    base: "base_stage",
+    channel: "preferred_channel",
+    coverage: "coverage_notes",
+    coverage_note: "coverage_notes",
+    tag: "tags"
   };
   const key = cleanHeader(header);
   return aliases[key] || key;
+}
+
+function parseBooleanFlag(value) {
+  const text = String(value ?? "").trim().toLowerCase();
+  if (!text) return false;
+  return ["true", "yes", "y", "1", "x", "si", "sí", "selected", "include", "included", "invite"].includes(text);
 }
 
 function normalizeDomain(value) {
@@ -513,10 +541,11 @@ function normalizeLookupText(value) {
 function rowsFromCarrierTemplateMatrix(matrix = []) {
   const headerIndex = matrix.findIndex((row) => {
     const headers = row.map(mapCarrierHeader);
-    return headers.some((header) => ["vendor_domain", "vendor_email", "vendor_name"].includes(header));
+    return headers.includes("participate")
+      && headers.some((header) => ["vendor_id", "vendor_domain", "vendor_email", "vendor_name"].includes(header));
   });
   if (headerIndex < 0) {
-    throw new Error("Carrier participant template headers not found. Use vendor_domain, vendor_email or vendor_name.");
+    throw new Error("Carrier catalog template headers not found. Use participate plus vendor_id, vendor_domain, vendor_email or vendor_name.");
   }
   const headers = matrix[headerIndex].map(mapCarrierHeader);
   return matrix.slice(headerIndex + 1)
@@ -538,11 +567,16 @@ function normalizeCarrierTemplateRows(rows = []) {
       const value = row[column.key] ?? row[mapCarrierHeader(column.label)] ?? "";
       normalized[column.key] = typeof value === "string" ? value.trim() : value;
     });
+    normalized.participate = parseBooleanFlag(normalized.participate);
+    normalized.vendor_id = String(normalized.vendor_id || "").trim();
     normalized.vendor_domain = normalizeDomain(normalized.vendor_domain || normalized.vendor_email);
     normalized.vendor_email = String(normalized.vendor_email || "").trim().toLowerCase();
     normalized.vendor_name = String(normalized.vendor_name || "").trim();
-    normalized.lane_number = String(normalized.lane_number || "").trim();
-    normalized.lane_id = String(normalized.lane_id || "").trim();
+    normalized.base_stage = String(normalized.base_stage || "").trim();
+    normalized.status = String(normalized.status || "").trim();
+    normalized.preferred_channel = String(normalized.preferred_channel || "").trim();
+    normalized.coverage_notes = String(normalized.coverage_notes || "").trim();
+    normalized.tags = String(Array.isArray(normalized.tags) ? normalized.tags.join("; ") : normalized.tags || "").trim();
     normalized.notes = String(normalized.notes || "").trim();
     return normalized;
   });
@@ -556,7 +590,7 @@ async function parseCarrierTemplateFile(file) {
   }
   const workbook = XLSX.read(await file.arrayBuffer(), { type: "array", cellDates: true });
   const sheetName = workbook.SheetNames.find((name) => /carrier|vendor|participant|shortlist|target/i.test(name)) || workbook.SheetNames[0];
-  if (!sheetName) throw new Error("No sheets were found in this participant template.");
+  if (!sheetName) throw new Error("No sheets were found in this CRM participant catalog.");
   const matrix = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], {
     header: 1,
     defval: "",
@@ -567,25 +601,41 @@ async function parseCarrierTemplateFile(file) {
 }
 
 function downloadRfxCarrierTemplate() {
+  if (!vendorOptions.length) {
+    setStatus(carrierTemplateStatus, "Carrier CRM is still loading. Wait a moment and download the catalog again.", "error");
+    return;
+  }
   const headers = RFX_CARRIER_TEMPLATE_COLUMNS.map((column) => column.key);
-  const example = Object.fromEntries(RFX_CARRIER_TEMPLATE_COLUMNS.map((column) => [column.key, column.example || ""]));
-  const blank = Object.fromEntries(RFX_CARRIER_TEMPLATE_COLUMNS.map((column) => [column.key, ""]));
+  const rows = sortedVendorOptions(vendorOptions).map((vendor) => ({
+    participate: "FALSE",
+    vendor_id: vendor.id || "",
+    vendor_name: vendor.vendor_name || "",
+    vendor_domain: vendor.domain || normalizeDomain(vendor.primary_email || ""),
+    vendor_email: vendor.primary_email || "",
+    base_stage: vendor.base_stage || "",
+    status: vendor.status || "",
+    preferred_channel: vendor.preferred_channel || "",
+    coverage_notes: vendor.coverage_notes || "",
+    tags: Array.isArray(vendor.tags) ? vendor.tags.join("; ") : vendor.tags || "",
+    notes: vendor.notes || ""
+  }));
   const workbook = XLSX.utils.book_new();
-  const templateSheet = XLSX.utils.json_to_sheet([example, blank], { header: headers });
+  const templateSheet = XLSX.utils.json_to_sheet(rows, { header: headers });
   templateSheet["!cols"] = RFX_CARRIER_TEMPLATE_COLUMNS.map((column) => ({ wch: Math.max(column.key.length + 2, 18) }));
   templateSheet["!autofilter"] = { ref: `A1:${XLSX.utils.encode_col(headers.length - 1)}1` };
-  XLSX.utils.book_append_sheet(workbook, templateSheet, "Carrier Participants");
+  XLSX.utils.book_append_sheet(workbook, templateSheet, "Carrier CRM Catalog");
   const referenceRows = [
     ["Column", "How to use"],
-    ["lane_number", "Use the RFx lane number. Use ALL to add this carrier to every lane. Leave blank to use the selected lane."],
-    ["lane_id", "Optional internal lane id. Use only if exported from Rateware."],
-    ["vendor_domain", "Best match key. Must already exist in Carrier CRM."],
-    ["vendor_email", "Fallback match key. Must already exist in Carrier CRM."],
-    ["vendor_name", "Fallback exact-name match when domain/email are not available."],
+    ["participate", "Set TRUE for carriers that should receive this bid invitation. FALSE rows stay as catalog reference."],
+    ["vendor_id", "Best match key exported from Carrier CRM. Do not edit if possible."],
+    ["vendor_domain", "Fallback match key if vendor_id is missing."],
+    ["vendor_email", "Fallback match key if vendor_id/domain are missing."],
+    ["vendor_name", "Fallback exact-name match when id/domain/email are not available."],
+    ["base_stage/status/channel/coverage/tags", "Read-only CRM context to help decide who participates."],
     ["notes", "Optional operator notes; not required for import."]
   ];
   XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(referenceRows), "Field Reference");
-  XLSX.writeFile(workbook, `rateware-rfx-carrier-participants-${new Date().toISOString().slice(0, 10)}.xlsx`);
+  XLSX.writeFile(workbook, `rateware-bid-carrier-crm-catalog-${new Date().toISOString().slice(0, 10)}.xlsx`);
 }
 
 function portalUrl(token) {
@@ -1838,10 +1888,12 @@ function vendorMetaLine(row) {
 }
 
 function vendorLookupMaps() {
+  const byId = new Map();
   const byDomain = new Map();
   const byEmail = new Map();
   const byName = new Map();
   vendorOptions.forEach((vendor) => {
+    if (vendor.id && !byId.has(String(vendor.id))) byId.set(String(vendor.id), vendor);
     const domain = normalizeDomain(vendor.domain || vendor.primary_email);
     const email = String(vendor.primary_email || "").trim().toLowerCase();
     const name = normalizeLookupText(vendor.vendor_name);
@@ -1849,10 +1901,14 @@ function vendorLookupMaps() {
     if (email && !byEmail.has(email)) byEmail.set(email, vendor);
     if (name && !byName.has(name)) byName.set(name, vendor);
   });
-  return { byDomain, byEmail, byName };
+  return { byId, byDomain, byEmail, byName };
 }
 
 function matchCarrierTemplateVendor(row, maps = vendorLookupMaps()) {
+  const id = String(row.vendor_id || "").trim();
+  if (id && maps.byId.has(id)) {
+    return { vendor: maps.byId.get(id), method: "crm id" };
+  }
   const domain = normalizeDomain(row.vendor_domain || row.vendor_email);
   if (domain && maps.byDomain.has(domain)) {
     return { vendor: maps.byDomain.get(domain), method: "domain" };
@@ -1868,48 +1924,20 @@ function matchCarrierTemplateVendor(row, maps = vendorLookupMaps()) {
   return { vendor: null, method: "" };
 }
 
-function laneLabel(lane) {
-  if (!lane) return "";
-  return `#${lane.lane_number || ""} ${lane.origin || "-"} -> ${lane.destination || "-"}`.trim();
-}
-
-function selectedManualLane() {
-  return currentLanes.find((lane) => String(lane.id) === String(manualShortlistLane?.value || "")) || null;
-}
-
-function matchCarrierTemplateLanes(row) {
-  const laneId = String(row.lane_id || "").trim();
-  if (laneId) {
-    const lane = currentLanes.find((item) => String(item.id) === laneId);
-    return lane ? { lanes: [lane], label: laneLabel(lane), method: "lane_id" } : { lanes: [], label: laneId, method: "lane_id" };
-  }
-  const laneNumber = String(row.lane_number || "").trim();
-  if (["all", "*", "event", "all_lanes"].includes(laneNumber.toLowerCase())) {
-    return { lanes: currentLanes, label: "All lanes", method: "all" };
-  }
-  if (laneNumber) {
-    const lane = currentLanes.find((item) => String(item.lane_number || "").trim() === laneNumber);
-    return lane ? { lanes: [lane], label: laneLabel(lane), method: "lane_number" } : { lanes: [], label: laneNumber, method: "lane_number" };
-  }
-  const selected = selectedManualLane();
-  return selected ? { lanes: [selected], label: laneLabel(selected), method: "selected_lane" } : { lanes: [], label: "No lane selected", method: "selected_lane" };
-}
-
 function evaluateCarrierTemplateRows(rows = pendingCarrierTemplateRows) {
   const maps = vendorLookupMaps();
   return rows.map((row, index) => {
     const issues = [];
-    const laneMatch = matchCarrierTemplateLanes(row);
     const vendorMatch = matchCarrierTemplateVendor(row, maps);
-    if (!laneMatch.lanes.length) issues.push("lane not found");
-    if (!vendorMatch.vendor) issues.push("carrier not found in CRM");
-    if (!row.vendor_domain && !row.vendor_email && !row.vendor_name) issues.push("carrier identifier missing");
+    if (row.participate && !currentLanes.length) issues.push("no lanes in bid event");
+    if (row.participate && !vendorMatch.vendor) issues.push("carrier not found in CRM");
+    if (row.participate && !row.vendor_id && !row.vendor_domain && !row.vendor_email && !row.vendor_name) issues.push("carrier identifier missing");
     return {
       index,
       row,
-      lanes: laneMatch.lanes,
-      laneLabel: laneMatch.label,
-      laneMethod: laneMatch.method,
+      lanes: row.participate ? currentLanes : [],
+      laneLabel: row.participate ? "All event lanes" : "Not selected",
+      laneMethod: row.participate ? "event" : "not_selected",
       vendor: vendorMatch.vendor,
       vendorMethod: vendorMatch.method,
       issues
@@ -1918,7 +1946,7 @@ function evaluateCarrierTemplateRows(rows = pendingCarrierTemplateRows) {
 }
 
 function readyCarrierTemplateMatches() {
-  return pendingCarrierTemplateMatches.filter((item) => !item.issues.length);
+  return pendingCarrierTemplateMatches.filter((item) => item.row.participate && !item.issues.length);
 }
 
 function updateCarrierTemplateButton() {
@@ -1930,23 +1958,29 @@ function renderCarrierTemplatePreview() {
   if (!carrierTemplatePreview || !carrierTemplatePreviewBody) return;
   pendingCarrierTemplateMatches = evaluateCarrierTemplateRows();
   const readyRows = readyCarrierTemplateMatches();
+  const selectedRows = pendingCarrierTemplateMatches.filter((item) => item.row.participate);
+  const skippedRows = pendingCarrierTemplateMatches.length - selectedRows.length;
   carrierTemplatePreview.hidden = !pendingCarrierTemplateMatches.length;
-  carrierTemplatePreviewBody.innerHTML = pendingCarrierTemplateMatches.slice(0, 12).map((item) => {
+  const previewRows = [
+    ...selectedRows,
+    ...pendingCarrierTemplateMatches.filter((item) => !item.row.participate)
+  ].slice(0, 18);
+  carrierTemplatePreviewBody.innerHTML = previewRows.map((item) => {
     const input = item.row.vendor_domain || item.row.vendor_email || item.row.vendor_name || "-";
     const match = item.vendor ? `${vendorDisplayName(item.vendor)} (${item.vendorMethod})` : "-";
-    const status = item.issues.length ? item.issues.join(", ") : "ready";
+    const status = !item.row.participate ? "not selected" : item.issues.length ? item.issues.join(", ") : "ready";
     return `
       <tr class="${item.issues.length ? "is-muted-row" : ""}">
-        <td>${escapeHtml(item.laneLabel || "-")}</td>
+        <td>${item.row.participate ? "TRUE" : "FALSE"}</td>
         <td>${escapeHtml(input)}</td>
         <td>${escapeHtml(match)}</td>
         <td>${escapeHtml(status)}</td>
       </tr>
     `;
   }).join("");
-  const blocked = pendingCarrierTemplateMatches.length - readyRows.length;
+  const blocked = selectedRows.length - readyRows.length;
   const suffix = selectedEventId ? "" : " Select or create a bid event before import.";
-  const message = `${readyRows.length} ready participant row(s). ${blocked} row(s) need CRM/lane cleanup.${suffix}`;
+  const message = `${readyRows.length} selected carrier(s) ready. ${blocked} selected row(s) need CRM cleanup. ${skippedRows} catalog row(s) not selected.${suffix}`;
   setStatus(carrierTemplateStatus, message, readyRows.length ? "success" : "error");
   updateCarrierTemplateButton();
 }
@@ -1957,7 +1991,7 @@ function clearCarrierTemplateImport({ preserveStatus = false } = {}) {
   if (carrierTemplateFileInput) carrierTemplateFileInput.value = "";
   if (carrierTemplatePreview) carrierTemplatePreview.hidden = true;
   if (carrierTemplatePreviewBody) carrierTemplatePreviewBody.innerHTML = "";
-  if (!preserveStatus) setStatus(carrierTemplateStatus, "Upload a participant template to match carriers against Carrier CRM.");
+  if (!preserveStatus) setStatus(carrierTemplateStatus, "Upload the edited CRM catalog to import TRUE participant carriers.");
   updateCarrierTemplateButton();
 }
 
@@ -2005,7 +2039,7 @@ function renderManualShortlistControls() {
       manualShortlistVendorList.innerHTML = `
         <article class="bid-room-crm-vendor-empty">
           <strong>Select a bid event and import lanes first.</strong>
-          <span>Then choose carriers directly from Carrier CRM / Procurement Base.</span>
+          <span>Then choose participants directly from Carrier CRM / Procurement Base.</span>
         </article>
       `;
     }
@@ -2021,7 +2055,7 @@ function renderManualShortlistControls() {
     const listSummary = `
       <div class="bid-room-crm-list-summary">
         <strong>Carrier CRM candidates</strong>
-        <span>Showing ${Math.min(visibleRows.length, rows.length)} of ${rows.length}. Use search to find any CRM carrier.</span>
+        <span>Showing ${Math.min(visibleRows.length, rows.length)} of ${rows.length}. Selected carriers apply to all lanes in this bid.</span>
       </div>
     `;
     manualShortlistVendorList.innerHTML = visibleRows.length ? `${listSummary}${visibleRows.map(renderCrmVendorCandidate).join("")}` : `
@@ -2187,7 +2221,7 @@ async function loadVendorOptions() {
     const pageSize = 250;
     const rows = [];
     let total = 0;
-    for (let offset = 0; offset < 2500; offset += pageSize) {
+    for (let offset = 0; offset < 10000; offset += pageSize) {
       const result = await fetchVendors({ limit: pageSize, offset, view: "all" });
       const pageRows = result.rows || [];
       total = Number(result.total || 0);
@@ -2748,17 +2782,20 @@ manualShortlistLane?.addEventListener("change", () => {
 manualShortlistVendorList?.addEventListener("change", updateManualShortlistButtonState);
 
 manualShortlistButton?.addEventListener("click", async () => {
-  const laneId = manualShortlistLane?.value;
   const vendorIds = selectedManualVendorIds();
-  if (!laneId || !vendorIds.length) {
-    setStatus(manualShortlistStatus, "Select one lane and at least one carrier from Carrier CRM.", "error");
+  if (!currentLanes.length || !vendorIds.length) {
+    setStatus(manualShortlistStatus, "Import bid lanes and select at least one carrier from Carrier CRM.", "error");
     return;
   }
   manualShortlistButton.disabled = true;
-  setStatus(manualShortlistStatus, "Adding CRM carriers...");
+  setStatus(manualShortlistStatus, `Adding ${vendorIds.length} participant carrier(s) to ${currentLanes.length} lane(s)...`);
   try {
-    const result = await shortlistRfxLaneVendors(laneId, vendorIds);
-    setStatus(manualShortlistStatus, `${result.inserted || 0} CRM carrier(s) added to this lane.`, "success");
+    let inserted = 0;
+    for (const lane of currentLanes) {
+      const result = await shortlistRfxLaneVendors(lane.id, vendorIds);
+      inserted += Number(result.inserted || 0);
+    }
+    setStatus(manualShortlistStatus, `${inserted} invitation row(s) created for this bid.`, "success");
     await loadDetail(selectedEventId);
   } catch (error) {
     setStatus(manualShortlistStatus, error.message, "error");
@@ -2784,7 +2821,7 @@ carrierTemplateFileInput?.addEventListener("change", async () => {
   try {
     pendingCarrierTemplateRows = await parseCarrierTemplateFile(file);
     if (!pendingCarrierTemplateRows.length) {
-      setStatus(carrierTemplateStatus, "No participant rows found. Use the template and add at least one carrier domain, email, or name.", "error");
+      setStatus(carrierTemplateStatus, "No CRM catalog rows found. Download the catalog, mark participate TRUE, then upload it.", "error");
     }
     renderCarrierTemplatePreview();
   } catch (error) {
@@ -2800,7 +2837,7 @@ carrierTemplateFileInput?.addEventListener("change", async () => {
 importCarrierTemplateButton?.addEventListener("click", async () => {
   const readyRows = readyCarrierTemplateMatches();
   if (!selectedEventId || !readyRows.length) {
-    setStatus(carrierTemplateStatus, "Upload a participant template with CRM matches before importing.", "error");
+    setStatus(carrierTemplateStatus, "Upload the edited CRM catalog with at least one TRUE carrier before importing.", "error");
     return;
   }
   const laneGroups = new Map();
@@ -2811,14 +2848,14 @@ importCarrierTemplateButton?.addEventListener("click", async () => {
     });
   });
   importCarrierTemplateButton.disabled = true;
-  setStatus(carrierTemplateStatus, `Adding participants to ${laneGroups.size} lane(s)...`);
+  setStatus(carrierTemplateStatus, `Adding ${readyRows.length} selected CRM carrier(s) to this bid...`);
   try {
     let inserted = 0;
     for (const [laneId, vendorIds] of laneGroups.entries()) {
       const result = await shortlistRfxLaneVendors(laneId, [...vendorIds]);
       inserted += Number(result.inserted || 0);
     }
-    setStatus(carrierTemplateStatus, `${inserted} CRM carrier participant row(s) added to the Bid Room.`, "success");
+    setStatus(carrierTemplateStatus, `${inserted} invitation row(s) created from the CRM participant catalog.`, "success");
     clearCarrierTemplateImport({ preserveStatus: true });
     await loadDetail(selectedEventId);
     await loadEvents();

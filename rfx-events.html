@@ -261,7 +261,7 @@
               <div class="bid-room-stage-header">
                 <div>
                   <p class="eyebrow">Step 3</p>
-                  <h3>Shortlist carriers by lane</h3>
+                  <h3>Select bid participants</h3>
                 </div>
               </div>
               <div class="bulk-action-bar bid-room-bulk-bar">
@@ -274,39 +274,36 @@
               <div class="bid-room-carrier-grid">
                 <section class="rfx-shortlist-box">
                   <div>
-                    <p class="eyebrow">Carrier CRM shortlist</p>
-                    <h3>Add CRM carriers to a lane</h3>
+                    <p class="eyebrow">Carrier CRM participants</p>
+                    <h3>Select carriers for this bid</h3>
                     <span id="manual-shortlist-source-summary">Loading Carrier CRM...</span>
                   </div>
-                  <label>
-                    Lane
-                    <select id="manual-shortlist-lane"></select>
-                  </label>
+                  <select id="manual-shortlist-lane" hidden></select>
                   <label>
                     Search Carrier CRM
                     <input id="manual-shortlist-search" placeholder="Carrier, domain, email, coverage..." />
                   </label>
                   <div id="manual-shortlist-vendor-list" class="bid-room-crm-vendor-list">
-                    <article>Select a lane to shortlist CRM carriers.</article>
+                    <article>Select a bid event and import lanes first.</article>
                   </div>
                   <select id="manual-shortlist-vendors" multiple size="4" hidden></select>
-                  <button id="manual-shortlist-button" class="secondary" type="button" disabled>Add vendors</button>
+                  <button id="manual-shortlist-button" class="secondary" type="button" disabled>Add selected to bid</button>
                   <p id="manual-shortlist-status" class="status-message" role="status"></p>
                   <div class="bid-room-participant-template">
                     <div>
-                      <strong>Upload participant template</strong>
+                      <strong>Upload CRM participant catalog</strong>
                       <button id="download-rfx-carrier-template" class="secondary small-button" type="button">Download template</button>
                     </div>
                     <label>
-                      Participants file
+                      Mark TRUE/FALSE in the catalog, then upload it
                       <input id="rfx-carrier-template-file" type="file" accept=".xlsx,.xls,.csv,.tsv" />
                     </label>
                     <div id="rfx-carrier-template-preview" class="bid-room-carrier-template-preview" hidden>
                       <table>
                         <thead>
                           <tr>
-                            <th>Lane</th>
-                            <th>Carrier input</th>
+                            <th>Participates</th>
+                            <th>Carrier</th>
                             <th>CRM match</th>
                             <th>Status</th>
                           </tr>

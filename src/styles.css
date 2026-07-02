@@ -14561,7 +14561,7 @@ textarea:focus,
 }
 
 .bid-room-carrier-grid {
-  grid-template-columns: minmax(260px, 0.34fr) minmax(0, 1fr);
+  grid-template-columns: minmax(380px, 0.44fr) minmax(0, 1fr);
 }
 
 .bid-room-carrier-grid .rfx-lane-coverage-grid {
