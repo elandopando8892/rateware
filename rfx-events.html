@@ -341,26 +341,51 @@
                 </div>
               </div>
               <div class="rfx-outreach-grid bid-room-invite-grid">
-                <form id="rfx-outreach-form" class="rfx-outreach-form">
-                  <label>
-                    Invitation wave
-                    <input id="rfx-outreach-campaign-name" placeholder="RFx invitation wave" />
-                  </label>
-                  <label>
-                    Invite template
-                    <select id="rfx-outreach-template"></select>
-                  </label>
-                  <label>
-                    Send channel
-                    <select id="rfx-outreach-channel">
-                      <option value="multi">Email + WhatsApp</option>
-                      <option value="email">Gmail only</option>
-                      <option value="whatsapp">WhatsApp only</option>
-                    </select>
-                  </label>
-                  <button id="create-rfx-outreach-campaign" type="submit" disabled>Generate invitations</button>
-                  <p id="rfx-outreach-status" class="status-message" role="status"></p>
-                </form>
+                <div class="rfx-outreach-controls">
+                  <form id="rfx-outreach-form" class="rfx-outreach-form">
+                    <label>
+                      Invitation wave
+                      <input id="rfx-outreach-campaign-name" placeholder="RFx invitation wave" />
+                    </label>
+                    <label>
+                      Invite template
+                      <select id="rfx-outreach-template"></select>
+                    </label>
+                    <label>
+                      Send channel
+                      <select id="rfx-outreach-channel">
+                        <option value="multi">Email + WhatsApp</option>
+                        <option value="email">Gmail only</option>
+                        <option value="whatsapp">WhatsApp only</option>
+                      </select>
+                    </label>
+                    <button id="create-rfx-outreach-campaign" type="submit" disabled>Generate invitations</button>
+                    <p id="rfx-outreach-status" class="status-message" role="status"></p>
+                  </form>
+                  <details id="rfx-template-editor" class="rfx-template-editor">
+                    <summary>Edit selected template HTML</summary>
+                    <div class="rfx-template-editor-body">
+                      <label>
+                        Subject
+                        <input id="rfx-template-subject" placeholder="RFx | {{event_name}} | {{vendor_domain}}" />
+                      </label>
+                      <label>
+                        Email HTML
+                        <textarea id="rfx-template-html" rows="13" spellcheck="false" placeholder="<p>Hello {{vendor_name}}</p>"></textarea>
+                      </label>
+                      <label>
+                        WhatsApp / text
+                        <textarea id="rfx-template-whatsapp" rows="5" spellcheck="false" placeholder="Hello {{vendor_name}}, please quote {{rfx_id}}: {{bid_link}}"></textarea>
+                      </label>
+                      <div class="action-row">
+                        <button id="save-rfx-template-html" type="button">Save template</button>
+                        <button id="reset-rfx-template-html" class="secondary" type="button">Reset from saved</button>
+                        <a class="secondary small-button" href="./outreach.html?view=templates">Open Invitation Admin</a>
+                      </div>
+                      <p id="rfx-template-editor-status" class="status-message" role="status"></p>
+                    </div>
+                  </details>
+                </div>
                 <div id="rfx-outreach-preview" class="outreach-template-preview">
                   <strong>No template selected.</strong>
                   <span>Select a template to preview the carrier invite before creating drafts.</span>

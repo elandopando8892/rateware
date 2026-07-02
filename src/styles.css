@@ -1103,6 +1103,12 @@ a {
   align-items: start;
 }
 
+.rfx-outreach-controls {
+  display: grid;
+  gap: 8px;
+  align-items: start;
+}
+
 .rfx-outreach-form {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1828,6 +1834,56 @@ a {
   background: var(--brand-tint);
   margin-top: 10px;
   padding: 10px;
+}
+
+.rfx-template-editor {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 8px;
+}
+
+.rfx-template-editor summary {
+  cursor: pointer;
+  color: #25313b;
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.rfx-template-editor-body {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.rfx-template-editor label {
+  display: grid;
+  gap: 4px;
+  color: #526270;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.rfx-template-editor input,
+.rfx-template-editor textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fbfdfe;
+  color: #1f2937;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.76rem;
+  line-height: 1.35;
+  padding: 7px;
+}
+
+.rfx-template-editor textarea {
+  min-height: 140px;
+  resize: vertical;
+}
+
+.rfx-template-editor textarea#rfx-template-html {
+  min-height: 310px;
 }
 
 .outreach-template-preview > div {

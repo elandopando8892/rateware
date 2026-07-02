@@ -16,11 +16,13 @@ import {
 } from "./rfx-service.js";
 import {
   createOutreachCampaign,
+  createOutreachTemplate,
   fetchContactHistory,
   fetchOutreachMessages,
   fetchOutreachTemplates,
   generateOutreachDrafts,
-  markOutreachMessages
+  markOutreachMessages,
+  updateOutreachTemplate
 } from "./outreach-service.js";
 import { fetchVendors } from "./vendor-service.js";
 import { humanizeError } from "./error-copy.js";
@@ -97,6 +99,13 @@ const rfxOutreachChannel = document.querySelector("#rfx-outreach-channel");
 const createRfxOutreachCampaignButton = document.querySelector("#create-rfx-outreach-campaign");
 const rfxOutreachStatus = document.querySelector("#rfx-outreach-status");
 const rfxOutreachPreview = document.querySelector("#rfx-outreach-preview");
+const rfxTemplateEditor = document.querySelector("#rfx-template-editor");
+const rfxTemplateSubject = document.querySelector("#rfx-template-subject");
+const rfxTemplateHtml = document.querySelector("#rfx-template-html");
+const rfxTemplateWhatsapp = document.querySelector("#rfx-template-whatsapp");
+const saveRfxTemplateHtmlButton = document.querySelector("#save-rfx-template-html");
+const resetRfxTemplateHtmlButton = document.querySelector("#reset-rfx-template-html");
+const rfxTemplateEditorStatus = document.querySelector("#rfx-template-editor-status");
 const touchpointSummary = document.querySelector("#rfx-touchpoint-summary");
 const touchpointList = document.querySelector("#rfx-touchpoint-list");
 const draftSummary = document.querySelector("#rfx-draft-summary");
@@ -124,6 +133,8 @@ let editingEventId = null;
 let currentLanes = [];
 let vendorOptions = [];
 let outreachTemplates = [];
+let rfxTemplateEditorTemplateId = null;
+let rfxTemplateEditorDirty = false;
 let contactHistoryRows = [];
 let outreachMessages = [];
 let selectedLaneIds = new Set();
@@ -700,6 +711,58 @@ function selectedOutreachTemplate() {
   return outreachTemplates.find((template) => template.id === rfxOutreachTemplate?.value) || outreachTemplates[0] || null;
 }
 
+function selectedOutreachTemplateDraft() {
+  const template = selectedOutreachTemplate();
+  if (!template) return null;
+  if (rfxTemplateEditorTemplateId === template.id && rfxTemplateHtml) {
+    return {
+      ...template,
+      subject: rfxTemplateSubject?.value || "",
+      html_body: rfxTemplateHtml.value || "",
+      whatsapp_body: rfxTemplateWhatsapp?.value || ""
+    };
+  }
+  return template;
+}
+
+function templateSavePayload(template) {
+  return {
+    name: template?.name || "RFx invitation template",
+    channel: template?.channel || rfxOutreachChannel?.value || "multi",
+    subject: rfxTemplateSubject?.value || "",
+    html_body: rfxTemplateHtml?.value || "",
+    whatsapp_body: rfxTemplateWhatsapp?.value || ""
+  };
+}
+
+function renderRfxTemplateEditor({ force = false } = {}) {
+  if (!rfxTemplateEditor || !rfxTemplateHtml) return;
+  const template = selectedOutreachTemplate();
+  const hasTemplate = Boolean(template);
+  rfxTemplateEditor.toggleAttribute("data-empty", !hasTemplate);
+  [rfxTemplateSubject, rfxTemplateHtml, rfxTemplateWhatsapp, saveRfxTemplateHtmlButton, resetRfxTemplateHtmlButton].forEach((field) => {
+    if (field) field.disabled = !hasTemplate;
+  });
+  if (!template) {
+    rfxTemplateEditorTemplateId = null;
+    rfxTemplateEditorDirty = false;
+    if (rfxTemplateSubject) rfxTemplateSubject.value = "";
+    rfxTemplateHtml.value = "";
+    if (rfxTemplateWhatsapp) rfxTemplateWhatsapp.value = "";
+    setStatus(rfxTemplateEditorStatus, "Select a template to edit the HTML.", "neutral");
+    return;
+  }
+  if (force || rfxTemplateEditorTemplateId !== template.id || !rfxTemplateEditorDirty) {
+    rfxTemplateEditorTemplateId = template.id;
+    rfxTemplateEditorDirty = false;
+    if (rfxTemplateSubject) rfxTemplateSubject.value = template.subject || "";
+    rfxTemplateHtml.value = template.html_body || "";
+    if (rfxTemplateWhatsapp) rfxTemplateWhatsapp.value = template.whatsapp_body || "";
+    const scope = template.owner_email ? "Editable user template." : "Default template: saving creates your editable copy.";
+    setStatus(rfxTemplateEditorStatus, scope, "neutral");
+  }
+}
+
 function templatePlaceholders(template) {
   if (Array.isArray(template?.placeholders) && template.placeholders.length) return template.placeholders;
   const source = [template?.subject, template?.html_body, template?.whatsapp_body].filter(Boolean).join(" ");
@@ -859,7 +922,8 @@ function renderOutreachTemplateSelect() {
 
 function renderOutreachPreview() {
   if (!rfxOutreachPreview) return;
-  const template = selectedOutreachTemplate();
+  renderRfxTemplateEditor();
+  const template = selectedOutreachTemplateDraft();
   const channel = rfxOutreachChannel?.value || "multi";
   const targets = outreachTargetInvitations();
   const ready = targets.filter((target) => targetHasChannel(target, channel)).length;
@@ -914,7 +978,7 @@ function renderOutreachPreview() {
     `;
   }
   if (createRfxOutreachCampaignButton) {
-    createRfxOutreachCampaignButton.disabled = !selectedEventId || !template || !targets.length;
+    createRfxOutreachCampaignButton.disabled = !selectedEventId || !template || !targets.length || rfxTemplateEditorDirty;
   }
   renderWizard();
 }
@@ -1255,7 +1319,7 @@ function renderWizardSteps() {
 
 function renderWizardPreview() {
   if (!wizardPreview) return;
-  const template = selectedOutreachTemplate();
+  const template = selectedOutreachTemplateDraft();
   const target = firstOutreachTarget();
   const context = sampleOutreachContext(target);
   const subject = template ? renderTemplateText(template.subject || `${context.rfx_id} invitation`, context) : "No template selected";
@@ -2416,6 +2480,10 @@ async function createCurrentOutreachDrafts(statusElement = rfxOutreachStatus) {
     setStatus(statusElement, "Shortlist at least one vendor before creating campaign drafts.", "error");
     return null;
   }
+  if (rfxTemplateEditorDirty) {
+    setStatus(statusElement, "Save the edited HTML template before generating invitations.", "error");
+    return null;
+  }
   const invitationIds = selectedInvitationIds.size
     ? [...selectedInvitationIds]
     : targets.map(({ invitation }) => invitation.id);
@@ -2440,6 +2508,39 @@ async function createCurrentOutreachDrafts(statusElement = rfxOutreachStatus) {
   );
   await loadDetail(selectedEventId);
   return result;
+}
+
+async function saveSelectedRfxTemplate() {
+  const template = selectedOutreachTemplate();
+  if (!template || !rfxTemplateHtml) {
+    setStatus(rfxTemplateEditorStatus, "Select a template before saving HTML.", "error");
+    return;
+  }
+  const isDefaultTemplate = !template.owner_email;
+  const payload = templateSavePayload({
+    ...template,
+    name: isDefaultTemplate ? `${template.name || "RFx invitation template"} - custom` : template.name
+  });
+  if (saveRfxTemplateHtmlButton) saveRfxTemplateHtmlButton.disabled = true;
+  setStatus(rfxTemplateEditorStatus, isDefaultTemplate ? "Saving editable copy..." : "Saving template...");
+  try {
+    const row = isDefaultTemplate
+      ? await createOutreachTemplate(payload)
+      : await updateOutreachTemplate(template.id, payload);
+    outreachTemplates = await fetchOutreachTemplates();
+    if (rfxOutreachTemplate && row?.id) rfxOutreachTemplate.value = row.id;
+    rfxTemplateEditorTemplateId = row?.id || template.id;
+    rfxTemplateEditorDirty = false;
+    renderOutreachTemplateSelect();
+    if (rfxOutreachTemplate && row?.id) rfxOutreachTemplate.value = row.id;
+    renderRfxTemplateEditor({ force: true });
+    renderOutreachPreview();
+    setStatus(rfxTemplateEditorStatus, isDefaultTemplate ? "Editable copy saved and selected." : "Template saved.", "success");
+  } catch (error) {
+    setStatus(rfxTemplateEditorStatus, error.message, "error");
+  } finally {
+    if (saveRfxTemplateHtmlButton) saveRfxTemplateHtmlButton.disabled = false;
+  }
 }
 
 initAuthControls();
@@ -2961,10 +3062,30 @@ importCarrierTemplateButton?.addEventListener("click", async () => {
   }
 });
 
-rfxOutreachTemplate?.addEventListener("change", renderOutreachPreview);
+rfxOutreachTemplate?.addEventListener("change", () => {
+  rfxTemplateEditorDirty = false;
+  renderRfxTemplateEditor({ force: true });
+  renderOutreachPreview();
+});
 rfxOutreachChannel?.addEventListener("change", renderOutreachPreview);
 rfxOutreachCampaignName?.addEventListener("input", () => {
   rfxOutreachCampaignName.dataset.autoName = "false";
+});
+
+[rfxTemplateSubject, rfxTemplateHtml, rfxTemplateWhatsapp].forEach((field) => {
+  field?.addEventListener("input", () => {
+    rfxTemplateEditorDirty = true;
+    setStatus(rfxTemplateEditorStatus, "Unsaved template changes. Save before generating invitations.", "neutral");
+    renderOutreachPreview();
+  });
+});
+
+saveRfxTemplateHtmlButton?.addEventListener("click", saveSelectedRfxTemplate);
+
+resetRfxTemplateHtmlButton?.addEventListener("click", () => {
+  rfxTemplateEditorDirty = false;
+  renderRfxTemplateEditor({ force: true });
+  renderOutreachPreview();
 });
 
 rfxOutreachForm?.addEventListener("submit", async (event) => {
