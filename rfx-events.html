@@ -187,15 +187,40 @@
               </div>
               <section class="rfx-import-box bid-room-import-panel">
                 <div>
-                  <p class="eyebrow">Lane upload</p>
-                  <h3>Paste lanes from Excel or CSV</h3>
+                  <p class="eyebrow">Template upload</p>
+                  <h3>Upload the RFx lane book template</h3>
                 </div>
-                <textarea id="rfx-lane-paste" rows="5" placeholder="origin,destination,equipment,trailer,operation,service,weekly_volume,target_rate,currency&#10;Apodaca, NL,Dallas, TX,Truck Trailer,Flatbed,D2D Export,One Way,10,2900,USD"></textarea>
+                <div class="bid-room-template-upload">
+                  <button id="download-rfx-lane-template" class="secondary" type="button">Download template</button>
+                  <label>
+                    Filled template
+                    <input id="rfx-lane-template-file" type="file" accept=".xlsx,.xls,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
+                  </label>
+                </div>
+                <div id="rfx-lane-template-preview" class="table-wrap bid-room-template-preview" hidden>
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Lane</th>
+                        <th>Origin</th>
+                        <th>Destination</th>
+                        <th>Equipment</th>
+                        <th>Service</th>
+                        <th>Issues</th>
+                      </tr>
+                    </thead>
+                    <tbody id="rfx-lane-template-preview-body"></tbody>
+                  </table>
+                </div>
                 <div class="action-row">
-                  <button id="import-rfx-lanes-button" type="button" disabled>Import lanes</button>
-                  <button id="clear-rfx-lanes-input" class="secondary" type="button">Clear</button>
+                  <button id="import-rfx-lanes-button" type="button" disabled>Import template</button>
+                  <button id="clear-rfx-lanes-input" class="secondary" type="button">Clear template</button>
                   <span id="rfx-lane-import-status" class="status-message" role="status"></span>
                 </div>
+                <details class="bid-room-manual-paste">
+                  <summary>Manual paste fallback</summary>
+                  <textarea id="rfx-lane-paste" rows="5" placeholder="origin,destination,equipment,trailer,operation,service,weekly_volume,target_rate,currency&#10;Apodaca, NL,Dallas, TX,Truck Trailer,Flatbed,D2D Export,One Way,10,2900,USD"></textarea>
+                </details>
               </section>
               <div class="rfx-lane-toolbar bid-room-table-toolbar">
                 <div class="rfx-lane-filters" aria-label="Lane filters">

@@ -26,6 +26,7 @@ import { fetchVendors } from "./vendor-service.js";
 import { humanizeError } from "./error-copy.js";
 import { errorState, stateBlock, tableErrorState, tableState } from "./ui-state.js";
 import { initWorkbenchTabs } from "./workbench-tabs.js";
+import * as XLSX from "https://esm.sh/xlsx@0.18.5";
 
 const eventForm = document.querySelector("#rfx-event-form");
 const rfxIdInput = document.querySelector("#rfx-id");
@@ -44,9 +45,13 @@ const closeRfxButton = document.querySelector("#close-rfx-button");
 const archiveRfxButton = document.querySelector("#archive-rfx-button");
 const deleteRfxButton = document.querySelector("#delete-rfx-button");
 const lanePaste = document.querySelector("#rfx-lane-paste");
+const laneTemplateFileInput = document.querySelector("#rfx-lane-template-file");
+const downloadLaneTemplateButton = document.querySelector("#download-rfx-lane-template");
 const importLanesButton = document.querySelector("#import-rfx-lanes-button");
 const clearLanesInputButton = document.querySelector("#clear-rfx-lanes-input");
 const laneImportStatus = document.querySelector("#rfx-lane-import-status");
+const laneTemplatePreview = document.querySelector("#rfx-lane-template-preview");
+const laneTemplatePreviewBody = document.querySelector("#rfx-lane-template-preview-body");
 const lanesBody = document.querySelector("#rfx-lanes-body");
 const refreshButton = document.querySelector("#refresh-rfx-events");
 const selectionCount = document.querySelector("#rfx-selection-count");
@@ -117,9 +122,38 @@ let selectedLaneIds = new Set();
 let selectedInvitationIds = new Set();
 let focusedLaneId = null;
 let activeLaneFilter = "all";
+let pendingLaneTemplateRows = [];
+let pendingLaneTemplateIssues = [];
 const rfxPageParams = new URLSearchParams(window.location.search);
 const requestedRfxEventId = rfxPageParams.get("rfx_event_id");
 const rfxWorkbench = initWorkbenchTabs({ defaultView: "setup" });
+
+const RFX_LANE_TEMPLATE_COLUMNS = [
+  { key: "lane_number", label: "Lane #", example: "1" },
+  { key: "origin", label: "Origin", required: true, example: "Apodaca, NL" },
+  { key: "origin_city", label: "Origin City", example: "Apodaca" },
+  { key: "origin_state", label: "Origin ST", example: "NL" },
+  { key: "origin_country", label: "Origin Country", example: "MX" },
+  { key: "origin_market", label: "Origin Market", example: "Monterrey Market" },
+  { key: "origin_region", label: "Origin Region", example: "Northeast Mexico" },
+  { key: "destination", label: "Destination", required: true, example: "Dallas, TX" },
+  { key: "destination_city", label: "Destination City", example: "Dallas" },
+  { key: "destination_state", label: "Destination ST", example: "TX" },
+  { key: "destination_country", label: "Destination Country", example: "US" },
+  { key: "destination_market", label: "Destination Market", example: "Dallas Mkt (TX)" },
+  { key: "destination_region", label: "Destination Region", example: "Texas" },
+  { key: "equipment", label: "Equipment", example: "Truck Trailer" },
+  { key: "trailer", label: "Trailer", example: "Dry Van" },
+  { key: "config", label: "Config", example: "Single" },
+  { key: "operation", label: "Operation", example: "D2D Export" },
+  { key: "service", label: "Service", example: "One Way" },
+  { key: "weekly_volume", label: "Weekly Volume", example: "10" },
+  { key: "annual_volume", label: "Annual Volume", example: "520" },
+  { key: "target_rate", label: "Target Rate", example: "2900" },
+  { key: "currency", label: "Currency", example: "USD" },
+  { key: "incumbent_vendor", label: "Incumbent Vendor", example: "carrier.com" },
+  { key: "notes", label: "Notes", example: "Hazmat allowed" }
+];
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -269,6 +303,142 @@ function parseLanePaste(text) {
     });
     return item;
   }).filter((row) => row.origin || row.destination);
+}
+
+function rowsFromTemplateMatrix(matrix = []) {
+  const headerIndex = matrix.findIndex((row) => {
+    const headers = row.map(mapHeader);
+    return headers.includes("origin") && headers.includes("destination");
+  });
+  if (headerIndex < 0) {
+    throw new Error("Template headers not found. Keep the RFx lane template header row intact.");
+  }
+  const headers = matrix[headerIndex].map(mapHeader);
+  return matrix.slice(headerIndex + 1)
+    .map((row, index) => {
+      const item = { lane_number: index + 1 };
+      headers.forEach((header, cellIndex) => {
+        if (!header) return;
+        item[header] = row[cellIndex] ?? "";
+      });
+      return item;
+    })
+    .filter((row) => Object.entries(row).some(([key, value]) => key !== "lane_number" && String(value ?? "").trim()));
+}
+
+function normalizeTemplateRows(rows = []) {
+  return rows.map((row, index) => {
+    const normalized = { lane_number: Number(row.lane_number || row.lane || row.seq || index + 1) || index + 1 };
+    RFX_LANE_TEMPLATE_COLUMNS.forEach((column) => {
+      if (column.key === "lane_number") return;
+      const value = row[column.key] ?? row[mapHeader(column.label)] ?? "";
+      normalized[column.key] = typeof value === "string" ? value.trim() : value;
+    });
+    normalized.currency = String(normalized.currency || "USD").trim().toUpperCase();
+    return normalized;
+  });
+}
+
+function validateLaneTemplateRows(rows = []) {
+  return rows.map((row, index) => {
+    const issues = [];
+    if (!String(row.origin || "").trim()) issues.push("origin required");
+    if (!String(row.destination || "").trim()) issues.push("destination required");
+    if (!String(row.equipment || "").trim()) issues.push("equipment recommended");
+    if (!String(row.trailer || "").trim()) issues.push("trailer recommended");
+    if (!String(row.operation || "").trim()) issues.push("operation recommended");
+    if (!String(row.service || "").trim()) issues.push("service recommended");
+    return { index, row, issues };
+  });
+}
+
+function readyLaneTemplateRows() {
+  return pendingLaneTemplateIssues
+    .filter((item) => !item.issues.some((issue) => issue.includes("required")))
+    .map((item) => item.row);
+}
+
+function updateLaneImportButton() {
+  if (!importLanesButton) return;
+  const hasTemplateRows = readyLaneTemplateRows().length > 0;
+  const hasPasteRows = Boolean(lanePaste?.value?.trim());
+  importLanesButton.disabled = !selectedEventId || (!hasTemplateRows && !hasPasteRows);
+}
+
+function renderLaneTemplatePreview() {
+  if (!laneTemplatePreview || !laneTemplatePreviewBody) return;
+  const issues = pendingLaneTemplateIssues;
+  const readyRows = readyLaneTemplateRows();
+  laneTemplatePreview.hidden = !issues.length;
+  if (!issues.length) {
+    laneTemplatePreviewBody.innerHTML = "";
+    return;
+  }
+  laneTemplatePreviewBody.innerHTML = issues.slice(0, 8).map((item) => `
+    <tr class="${item.issues.some((issue) => issue.includes("required")) ? "is-muted-row" : ""}">
+      <td>${escapeHtml(item.row.lane_number || item.index + 1)}</td>
+      <td>${escapeHtml(item.row.origin || "-")}</td>
+      <td>${escapeHtml(item.row.destination || "-")}</td>
+      <td>${escapeHtml(item.row.equipment || "-")} / ${escapeHtml(item.row.trailer || "-")}</td>
+      <td>${escapeHtml(item.row.operation || "-")} / ${escapeHtml(item.row.service || "-")}</td>
+      <td>${escapeHtml(item.issues.join(", ") || "ready")}</td>
+    </tr>
+  `).join("");
+  updateLaneImportButton();
+  const blocked = issues.length - readyRows.length;
+  const suffix = selectedEventId ? "" : " Select or create a bid event before import.";
+  const message = `${readyRows.length} ready lane(s). ${blocked} row(s) need required origin/destination cleanup.${suffix}`;
+  setStatus(laneImportStatus, message, readyRows.length ? "success" : "error");
+}
+
+function clearLaneTemplateImport({ preserveStatus = false } = {}) {
+  pendingLaneTemplateRows = [];
+  pendingLaneTemplateIssues = [];
+  if (laneTemplateFileInput) laneTemplateFileInput.value = "";
+  if (lanePaste) lanePaste.value = "";
+  if (laneTemplatePreview) laneTemplatePreview.hidden = true;
+  if (laneTemplatePreviewBody) laneTemplatePreviewBody.innerHTML = "";
+  if (!preserveStatus) setStatus(laneImportStatus, "Upload the RFx lane book template to preview lanes.");
+  updateLaneImportButton();
+}
+
+async function parseLaneTemplateFile(file) {
+  if (!file) return [];
+  const extension = file.name.split(".").pop()?.toLowerCase() || "";
+  if (extension === "csv" || file.type === "text/csv") {
+    return normalizeTemplateRows(rowsFromTemplateMatrix(parseDelimitedRows(await file.text())));
+  }
+  const workbook = XLSX.read(await file.arrayBuffer(), { type: "array", cellDates: true });
+  const sheetName = workbook.SheetNames.find((name) => /rfx|lane|book/i.test(name)) || workbook.SheetNames[0];
+  if (!sheetName) throw new Error("No sheets were found in this template.");
+  const matrix = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], {
+    header: 1,
+    defval: "",
+    blankrows: false,
+    raw: false
+  });
+  return normalizeTemplateRows(rowsFromTemplateMatrix(matrix));
+}
+
+function downloadRfxLaneTemplate() {
+  const headers = RFX_LANE_TEMPLATE_COLUMNS.map((column) => column.key);
+  const example = Object.fromEntries(RFX_LANE_TEMPLATE_COLUMNS.map((column) => [column.key, column.example || ""]));
+  const blank = Object.fromEntries(RFX_LANE_TEMPLATE_COLUMNS.map((column) => [column.key, ""]));
+  const workbook = XLSX.utils.book_new();
+  const templateSheet = XLSX.utils.json_to_sheet([example, blank], { header: headers });
+  templateSheet["!cols"] = RFX_LANE_TEMPLATE_COLUMNS.map((column) => ({ wch: Math.max(column.key.length + 2, 14) }));
+  templateSheet["!autofilter"] = { ref: `A1:${XLSX.utils.encode_col(headers.length - 1)}1` };
+  XLSX.utils.book_append_sheet(workbook, templateSheet, "RFx Lane Template");
+  const referenceRows = [
+    ["Column", "Required", "How to use"],
+    ...RFX_LANE_TEMPLATE_COLUMNS.map((column) => [
+      column.key,
+      column.required ? "Yes" : "No",
+      column.required ? "Required for import." : "Optional but improves matching, shortlist and bidding."
+    ])
+  ];
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(referenceRows), "Field Reference");
+  XLSX.writeFile(workbook, `rateware-rfx-lane-template-${new Date().toISOString().slice(0, 10)}.xlsx`);
 }
 
 function portalUrl(token) {
@@ -1673,7 +1843,7 @@ async function loadDetail(eventId) {
     outreachMessages = messages || [];
     if (!currentLanes.some((lane) => lane.id === focusedLaneId)) focusedLaneId = currentLanes[0]?.id || null;
     detailTitle.textContent = `${selectedEvent.name || selectedEvent.rfx_id} (${selectedEvent.status})`;
-    importLanesButton.disabled = false;
+    updateLaneImportButton();
     updateEventActionState();
     renderEvents();
     renderLanes();
@@ -1902,19 +2072,56 @@ laneSearch?.addEventListener("input", () => {
   renderLanes();
 });
 
+downloadLaneTemplateButton?.addEventListener("click", downloadRfxLaneTemplate);
+
+laneTemplateFileInput?.addEventListener("change", async () => {
+  const file = laneTemplateFileInput.files?.[0];
+  if (!file) {
+    clearLaneTemplateImport();
+    return;
+  }
+  setStatus(laneImportStatus, `Reading ${file.name}...`);
+  importLanesButton.disabled = true;
+  try {
+    pendingLaneTemplateRows = await parseLaneTemplateFile(file);
+    pendingLaneTemplateIssues = validateLaneTemplateRows(pendingLaneTemplateRows);
+    if (!pendingLaneTemplateRows.length) {
+      setStatus(laneImportStatus, "No lane rows found. Use the template and keep origin/destination populated.", "error");
+    }
+    renderLaneTemplatePreview();
+  } catch (error) {
+    pendingLaneTemplateRows = [];
+    pendingLaneTemplateIssues = [];
+    renderLaneTemplatePreview();
+    setStatus(laneImportStatus, error.message, "error");
+  } finally {
+    updateLaneImportButton();
+  }
+});
+
+lanePaste?.addEventListener("input", () => {
+  if (lanePaste.value.trim()) {
+    pendingLaneTemplateRows = [];
+    pendingLaneTemplateIssues = [];
+    if (laneTemplatePreview) laneTemplatePreview.hidden = true;
+  }
+  updateLaneImportButton();
+});
+
 importLanesButton?.addEventListener("click", async () => {
   if (!selectedEventId) return;
-  const rows = parseLanePaste(lanePaste.value);
+  const templateRows = readyLaneTemplateRows();
+  const rows = templateRows.length ? templateRows : parseLanePaste(lanePaste?.value || "");
   if (!rows.length) {
-    setStatus(laneImportStatus, "Paste at least one lane.", "error");
+    setStatus(laneImportStatus, "Upload a completed RFx lane template before importing.", "error");
     return;
   }
   importLanesButton.disabled = true;
-  setStatus(laneImportStatus, "Importing lanes...");
+  setStatus(laneImportStatus, `Importing ${rows.length} lane(s)...`);
   try {
     const result = await importRfxLanes(selectedEventId, rows);
     setStatus(laneImportStatus, `${result.inserted || 0} lane(s) imported.`, "success");
-    lanePaste.value = "";
+    clearLaneTemplateImport({ preserveStatus: true });
     await loadDetail(selectedEventId);
     await loadEvents();
   } catch (error) {
@@ -1925,7 +2132,7 @@ importLanesButton?.addEventListener("click", async () => {
 });
 
 clearLanesInputButton?.addEventListener("click", () => {
-  lanePaste.value = "";
+  clearLaneTemplateImport();
 });
 
 openRfxButton?.addEventListener("click", async () => {

@@ -14496,6 +14496,70 @@ textarea:focus,
   padding: 10px;
 }
 
+.bid-room-template-upload {
+  display: grid;
+  grid-template-columns: auto minmax(280px, 1fr);
+  gap: 10px;
+  align-items: end;
+}
+
+.bid-room-template-upload label {
+  display: grid;
+  gap: 4px;
+  color: #52616d;
+  font-size: 0.7rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.bid-room-template-upload input[type="file"] {
+  min-height: 32px;
+  border: 1px solid #cbd6df;
+  border-radius: 6px;
+  background: #ffffff;
+  padding: 5px 8px;
+  color: #26323d;
+  font-size: 0.74rem;
+  text-transform: none;
+}
+
+.bid-room-template-preview {
+  max-height: 220px;
+  margin: 8px 0 0;
+  overflow: auto;
+}
+
+.bid-room-template-preview table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.72rem;
+}
+
+.bid-room-template-preview th,
+.bid-room-template-preview td {
+  border-bottom: 1px solid #e2e8ee;
+  padding: 5px 6px;
+  text-align: left;
+}
+
+.bid-room-manual-paste {
+  border-top: 1px solid var(--line);
+  margin-top: 8px;
+  padding-top: 8px;
+}
+
+.bid-room-manual-paste summary {
+  color: #52616d;
+  cursor: pointer;
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.bid-room-manual-paste textarea {
+  margin-top: 8px;
+  width: 100%;
+}
+
 .bid-room-carrier-grid {
   grid-template-columns: minmax(260px, 0.34fr) minmax(0, 1fr);
 }
@@ -14526,7 +14590,8 @@ textarea:focus,
 @media (max-width: 760px) {
   .bid-room-metrics,
   .bid-room-flow-shell .bid-room-stage-rail,
-  .bid-room-form {
+  .bid-room-form,
+  .bid-room-template-upload {
     grid-template-columns: 1fr;
   }
 
