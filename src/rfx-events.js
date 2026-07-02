@@ -168,7 +168,7 @@ function fillRfxEventForm(event) {
   rfxTypeInput.value = event.event_type || "spot";
   rfxDueDateInput.value = event.due_date || "";
   if (createRfxEventButton) createRfxEventButton.textContent = "Save changes";
-  activateWorkbenchView("setup", "#rfx-id");
+  activateWorkbenchView("manager", "#rfx-id");
   eventForm?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
@@ -492,13 +492,13 @@ function currentWizardStage() {
 
 function wizardStageView(stage) {
   return {
-    event: "setup",
+    event: "manager",
     lanes: "lanes",
     carriers: "lanes",
     preview: "outreach",
     launch: "outreach",
     offers: "responses"
-  }[stage] || "wizard";
+  }[stage] || "manager";
 }
 
 function wizardStageCopy(stage) {
@@ -549,7 +549,7 @@ function wizardStageCopy(stage) {
 
 function wizardActionButton(stage) {
   const actions = {
-    event: '<button type="button" data-rfx-wizard-go="setup">Create bid event</button>',
+    event: '<button type="button" data-rfx-focus-create>Create bid event</button>',
     lanes: '<button type="button" data-rfx-wizard-go="lanes">Load business book</button>',
     carriers: '<button type="button" data-rfx-wizard-auto-shortlist>Build shortlist</button>',
     preview: '<button type="button" data-rfx-wizard-go="outreach">Review invitation preview</button>',
@@ -654,7 +654,7 @@ function renderProcessFocus() {
       eyebrow: "Bid Room process",
       title: "Select or create a bid event",
       detail: "The event list stays on the left. Once an event is selected, this board shows the process, next action, lane coverage, invitations, and bids.",
-      actionButton: '<button type="button" data-rfx-wizard-go="setup">Create bid event</button>'
+      actionButton: '<button type="button" data-rfx-focus-create>Create bid event</button>'
     });
     return;
   }
@@ -688,7 +688,7 @@ function processQueueItems() {
       done: Boolean(selectedEvent),
       title: "Event setup",
       detail: selectedEvent ? `${selectedEvent.rfx_id || "RFx"} is selected.` : "Create or select the bid event.",
-      action: "setup"
+      action: "manager"
     },
     {
       done: stats.lanes > 0,
@@ -1095,8 +1095,10 @@ function focusLane(laneId) {
 function renderEventDashboard() {
   renderEventFlow();
   renderRfxOpsStrip();
+  renderProcessManager();
+  if (!dashboardTitle && !eventDashboard && !inviteStatusMix) return;
   if (!selectedEvent) {
-    dashboardTitle.textContent = "No event selected";
+    if (dashboardTitle) dashboardTitle.textContent = "No event selected";
     if (copyRfxSummaryButton) copyRfxSummaryButton.disabled = true;
     if (eventDashboard) {
       eventDashboard.innerHTML = `
@@ -1120,7 +1122,7 @@ function renderEventDashboard() {
   const bidCoverage = currentLanes.length ? Math.round((lanesWithBids / currentLanes.length) * 100) : 0;
   const responseRate = activeInvitations.length ? Math.round((bids.length / activeInvitations.length) * 100) : 0;
 
-  dashboardTitle.textContent = `${selectedEvent.rfx_id || "RFx"} | ${selectedEvent.name || "Selected event"}`;
+  if (dashboardTitle) dashboardTitle.textContent = `${selectedEvent.rfx_id || "RFx"} | ${selectedEvent.name || "Selected event"}`;
   if (copyRfxSummaryButton) copyRfxSummaryButton.disabled = false;
   if (eventDashboard) {
     eventDashboard.innerHTML = `
@@ -1407,10 +1409,10 @@ function updateMetrics() {
   const laneCount = events.reduce((sum, event) => sum + Number(event.lane_count || 0), 0);
   const inviteCount = events.reduce((sum, event) => sum + Number(event.invitation_count || 0), 0);
   const bidCount = events.reduce((sum, event) => sum + Number(event.bid_count || 0), 0);
-  metricEvents.textContent = formatNumber(events.length);
-  metricLanes.textContent = formatNumber(laneCount);
-  metricInvites.textContent = formatNumber(inviteCount);
-  metricBids.textContent = formatNumber(bidCount);
+  if (metricEvents) metricEvents.textContent = formatNumber(events.length);
+  if (metricLanes) metricLanes.textContent = formatNumber(laneCount);
+  if (metricInvites) metricInvites.textContent = formatNumber(inviteCount);
+  if (metricBids) metricBids.textContent = formatNumber(bidCount);
 }
 
 function renderEvents() {
@@ -1768,9 +1770,10 @@ document.addEventListener("click", (event) => {
   const wizardGoButton = event.target.closest("[data-rfx-wizard-go]");
   if (wizardGoButton) {
     event.preventDefault();
-    const view = wizardGoButton.dataset.rfxWizardGo || "wizard";
+    const requestedView = wizardGoButton.dataset.rfxWizardGo || "manager";
+    const view = requestedView === "setup" || requestedView === "wizard" ? "manager" : requestedView;
     const focusTargets = {
-      setup: "#rfx-id",
+      manager: requestedView === "setup" ? "#rfx-id" : null,
       lanes: "#rfx-lane-paste",
       outreach: "#rfx-outreach-template",
       responses: "#rfx-response-body"
