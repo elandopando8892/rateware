@@ -13219,6 +13219,29 @@ textarea:focus,
   color: var(--danger);
 }
 
+/* --- Utility toolbars: natural-width controls, wrap instead of stretch ---
+   The legacy .toolbar grid stretched every control to half the panel width,
+   turning Refresh/Clear into hero-sized bars. Flex keeps them button-sized;
+   the leading search field is the only one that grows. */
+.toolbar,
+.source-files-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 8px;
+}
+
+.toolbar > *,
+.source-files-toolbar > * {
+  min-width: 0;
+}
+
+.toolbar > label:first-child,
+.source-search-field,
+.review-search-field {
+  flex: 1 1 240px;
+}
+
 /* --- Dense sheet toolbars: reflow instead of overflow ---
    These grids get extra controls injected by JS (e.g. .column-active-view),
    which spill past a fixed track count. Flex-wrap lets them wrap cleanly. */
@@ -13244,6 +13267,47 @@ textarea:focus,
 .column-active-view {
   flex: 0 1 auto;
   min-width: 0;
+}
+
+/* --- Sheet shortcuts: collapse the hint wall behind a chip --- */
+.sheet-shortcuts summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  width: fit-content;
+  cursor: pointer;
+  list-style: none;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--panel);
+  padding: 2px 10px;
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 780;
+}
+
+.sheet-shortcuts summary::-webkit-details-marker {
+  display: none;
+}
+
+.sheet-shortcuts summary::before {
+  content: "⌨";
+  font-size: 0.85rem;
+  line-height: 1;
+}
+
+.sheet-shortcuts[open] summary,
+.sheet-shortcuts summary:hover {
+  border-color: var(--brand-border);
+  background: var(--brand-tint);
+  color: var(--brand-strong);
+}
+
+.sheet-shortcuts-panel {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  padding-top: 7px;
 }
 
 /* --- Landing page: brand polish + fix hero/product-card overlap --- */

@@ -114,7 +114,7 @@
                     <option value="">All</option>
                   </select>
                 </label>
-                <button id="refresh-rateware-button" type="button">Refresh</button>
+                <button id="refresh-rateware-button" class="secondary" type="button">Refresh</button>
                 <button id="clear-rateware-filters" class="secondary" type="button">Clear filters</button>
                 <details id="rateware-column-menu" class="column-visibility-menu">
                   <summary>View</summary>
@@ -181,20 +181,25 @@
 
             <div class="sheet-helper-strip" aria-live="polite">
               <strong id="rateware-grid-selection">Ready</strong>
-              <span>Click a header to select a visible column</span>
-              <span>Click the row gutter to select a visible row</span>
-              <span>Drag across cells selects a range</span>
-              <span>Paste over a range applies values in bulk</span>
-              <span>Drag the corner handle fills down</span>
-              <span><kbd>Shift</kbd> + arrows selects a range</span>
-              <span><kbd>Ctrl</kbd> + <kbd>C</kbd> copies cells</span>
-              <span><kbd>Ctrl</kbd> + <kbd>Enter</kbd> applies value to range</span>
-              <span><kbd>Ctrl</kbd> + <kbd>D</kbd> fills down</span>
-              <span><kbd>Delete</kbd> clears selected cells</span>
-              <span><kbd>Esc</kbd> clears range</span>
-              <span><kbd>Ctrl</kbd> + <kbd>Z</kbd> undo</span>
-              <span><kbd>Ctrl</kbd> + <kbd>Y</kbd> redo</span>
-              <span><kbd>Ctrl</kbd> + <kbd>S</kbd> saves row</span>
+              <details class="sheet-shortcuts">
+                <summary>Shortcuts</summary>
+                <div class="sheet-shortcuts-panel">
+                  <span>Click a header to select a visible column</span>
+                  <span>Click the row gutter to select a visible row</span>
+                  <span>Drag across cells selects a range</span>
+                  <span>Paste over a range applies values in bulk</span>
+                  <span>Drag the corner handle fills down</span>
+                  <span><kbd>Shift</kbd> + arrows selects a range</span>
+                  <span><kbd>Ctrl</kbd> + <kbd>C</kbd> copies cells</span>
+                  <span><kbd>Ctrl</kbd> + <kbd>Enter</kbd> applies value to range</span>
+                  <span><kbd>Ctrl</kbd> + <kbd>D</kbd> fills down</span>
+                  <span><kbd>Delete</kbd> clears selected cells</span>
+                  <span><kbd>Esc</kbd> clears range</span>
+                  <span><kbd>Ctrl</kbd> + <kbd>Z</kbd> undo</span>
+                  <span><kbd>Ctrl</kbd> + <kbd>Y</kbd> redo</span>
+                  <span><kbd>Ctrl</kbd> + <kbd>S</kbd> saves row</span>
+                </div>
+              </details>
             </div>
 
             <div class="table-wrap sheet-table-wrap">

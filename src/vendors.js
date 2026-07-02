@@ -425,16 +425,18 @@ const VENDOR_SHEET_COLUMNS = [
   { key: "select", label: "Select", locked: true },
   { key: "vendor", label: "Vendor", locked: true },
   { key: "domain", label: "Domain" },
-  { key: "contact", label: "Contact" },
+  // defaultHidden: sparse profile columns stay available in the Columns menu
+  // but do not clutter the default grid until the data exists.
+  { key: "contact", label: "Contact", defaultHidden: true },
   { key: "email", label: "Email" },
   { key: "whatsapp", label: "WhatsApp" },
   { key: "tags", label: "Tags" },
   { key: "onboarding", label: "Onboarding" },
-  { key: "operating_country", label: "Country" },
-  { key: "service_scope", label: "Services" },
-  { key: "regional_coverage", label: "Regions" },
-  { key: "equipment_types", label: "Equipment" },
-  { key: "certifications", label: "Certs" },
+  { key: "operating_country", label: "Country", defaultHidden: true },
+  { key: "service_scope", label: "Services", defaultHidden: true },
+  { key: "regional_coverage", label: "Regions", defaultHidden: true },
+  { key: "equipment_types", label: "Equipment", defaultHidden: true },
+  { key: "certifications", label: "Certs", defaultHidden: true },
   { key: "channel", label: "Channel" },
   { key: "base", label: "Base" },
   { key: "status", label: "Status" },
@@ -471,7 +473,7 @@ function syncCrmViewButtons() {
 }
 
 function defaultVendorColumnKeys() {
-  return VENDOR_SHEET_COLUMNS.map((column) => column.key);
+  return VENDOR_SHEET_COLUMNS.filter((column) => !column.defaultHidden).map((column) => column.key);
 }
 
 function lockedVendorColumnKeys() {
@@ -1039,7 +1041,9 @@ function vendorReadiness(row) {
   const score = checks.reduce((total, check) => total + (check.done ? check.weight : 0), 0);
   const missing = checks.filter((check) => !check.done).map((check) => check.label);
   const label = score >= 85 ? "Procurement ready" : score >= 65 ? "Needs cleanup" : "Incomplete";
-  const tone = score >= 85 ? "strong" : score >= 65 ? "medium" : "weak";
+  // Color bands are deliberately looser than the business labels: red is
+  // reserved for truly incomplete profiles so mid scores read as in-progress.
+  const tone = score >= 70 ? "strong" : score >= 35 ? "medium" : "weak";
   return { score, checks, missing, label, tone };
 }
 
@@ -2365,7 +2369,7 @@ function renderVendorSheetCell(row, columnKey) {
   if (columnKey === "tags") return `<td>${editableVendorInput(row, "tags", { wide: true })}</td>`;
   if (columnKey === "onboarding") {
     const completion = onboardingCompletion(vendorProfileData(row));
-    return `<td><span class="score-pill ${completion.requiredFilled === completion.required ? "strong" : completion.filled ? "medium" : "weak"}">${completion.filled}/${completion.total}</span></td>`;
+    return `<td><span class="score-pill ${completion.requiredFilled === completion.required ? "strong" : completion.filled ? "medium" : ""}">${completion.filled}/${completion.total}</span></td>`;
   }
   if (columnKey === "operating_country") {
     return `<td>${editableVendorProfileSelect(row, "general", "operating_country", ["Estados Unidos de America", "Mexico", "Canada"])}</td>`;

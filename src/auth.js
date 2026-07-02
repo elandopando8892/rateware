@@ -314,57 +314,9 @@ function initShellHeader() {
   document.title = `Rateware ${meta.title}`;
 }
 
-function formatShellCount(value) {
-  return new Intl.NumberFormat().format(Number(value || 0));
-}
-
-function initShellStatus() {
-  if (getPageKey() === "app") return;
-
-  const header = document.querySelector(".page-header");
-  if (!header || document.querySelector(".shell-status-strip")) return;
-
-  const strip = document.createElement("nav");
-  strip.className = "shell-status-strip";
-  strip.setAttribute("aria-label", "Workspace status");
-  strip.innerHTML = `
-    <a href="./upload-history.html">
-      <span>Source files</span>
-      <strong data-shell-status="raw_uploads">-</strong>
-    </a>
-    <a href="./staging-review.html">
-      <span>Review queue</span>
-      <strong data-shell-status="pending_review">-</strong>
-    </a>
-    <a href="./rateware.html">
-      <span>Rateware</span>
-      <strong data-shell-status="approved_rows">-</strong>
-    </a>
-    <a href="./vendors.html">
-      <span>Carrier CRM</span>
-      <strong data-shell-status="procurement_vendors">-</strong>
-    </a>
-  `;
-  header.insertAdjacentElement("afterend", strip);
-
-  getKindeClient()
-    .then(async (kinde) => {
-      if (!(await kinde.isAuthenticated())) return;
-      const { callRatewareApi } = await import("./rateware-api.js");
-      const summary = await callRatewareApi("dashboard_summary");
-      strip.querySelectorAll("[data-shell-status]").forEach((element) => {
-        element.textContent = formatShellCount(summary[element.dataset.shellStatus]);
-      });
-    })
-    .catch(() => {
-      strip.classList.add("is-muted");
-    });
-}
-
 function initSaasShell() {
   initShellNavigation();
   initShellHeader();
-  initShellStatus();
 }
 
 if (document.readyState === "loading") {

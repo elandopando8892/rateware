@@ -572,9 +572,15 @@ function borderValue(row) {
 }
 
 function laneLabel(row) {
-  const origin = row.normalized_origin || row.origin || "-";
-  const destination = row.normalized_destination || row.destination || "-";
+  const origin = row.origin || row.normalized_origin || "-";
+  const destination = row.destination || row.normalized_destination || "-";
   return `${origin} -> ${destination}`;
+}
+
+function normalizedLaneLabel(row) {
+  if (!row.normalized_origin && !row.normalized_destination) return "";
+  const label = `${row.normalized_origin || "-"} -> ${row.normalized_destination || "-"}`;
+  return label === laneLabel(row) ? "" : label;
 }
 
 function hasSplitRate(row) {
@@ -1123,6 +1129,7 @@ function renderRatewareDrawer(row) {
     <section class="rateware-detail-section">
       <h3>Lane normalization</h3>
       <dl>
+        ${normalizedLaneLabel(row) ? detailLine("Normalized lane", normalizedLaneLabel(row)) : ""}
         ${detailLine("Origin market", row.origin_market)}
         ${detailLine("Origin ZIP/state", [row.origin_zip_prefix, row.origin_state].filter(Boolean).join(" / "))}
         ${detailLine("Destination market", row.destination_market)}
