@@ -1869,6 +1869,50 @@ a {
   font-size: 0.82rem;
 }
 
+.outreach-html-preview,
+.outreach-text-preview {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 8px;
+}
+
+.outreach-html-preview > div {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.outreach-html-preview span,
+.outreach-text-preview span {
+  color: #607080;
+  font-size: 0.68rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.outreach-html-preview strong {
+  color: #26323d;
+  font-size: 0.76rem;
+}
+
+.outreach-html-preview iframe {
+  width: 100%;
+  min-height: 420px;
+  border: 1px solid #d7e0e7;
+  border-radius: 7px;
+  background: #ffffff;
+}
+
+.outreach-text-preview p {
+  max-height: 180px;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+
 .outreach-placeholder-panel {
   display: grid;
   grid-template-columns: minmax(190px, 0.34fr) minmax(0, 1fr);

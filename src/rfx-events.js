@@ -852,17 +852,22 @@ function renderOutreachPreview() {
       ? `${formatNumber(selectedLaneIds.size)} selected lanes`
       : "All active shortlist";
   const placeholders = templatePlaceholders(template);
+  const previewTarget = firstOutreachTarget();
+  const previewContext = sampleOutreachContext(previewTarget);
   if (!template) {
     rfxOutreachPreview.innerHTML = `
       <strong>No template selected.</strong>
       <span>Create an invitation template before launching carrier invitations.</span>
     `;
   } else {
+    const renderedSubject = renderTemplateText(template.subject || `${previewContext.rfx_id} invitation`, previewContext);
+    const renderedHtml = renderTemplateText(template.html_body || template.whatsapp_body || "", previewContext);
+    const renderedWhatsapp = renderTemplateText(template.whatsapp_body || renderedHtml.replace(/<[^>]*>/g, " "), previewContext);
     rfxOutreachPreview.innerHTML = `
       <div>
         <span class="status-pill">${escapeHtml(template.channel || "multi")}</span>
         <strong>${escapeHtml(template.name || "Template")}</strong>
-        <small>${escapeHtml(template.subject || "No email subject")}</small>
+        <small>${escapeHtml(renderedSubject || "No email subject")}</small>
       </div>
       <div class="outreach-template-preview-grid">
         <article>
@@ -875,7 +880,17 @@ function renderOutreachPreview() {
           <strong>${escapeHtml(channel)}</strong>
         </article>
       </div>
-      <p>${escapeHtml((template.whatsapp_body || template.html_body || "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim()).slice(0, 180) || "No body preview"}</p>
+      <article class="outreach-html-preview">
+        <div>
+          <span>Email HTML preview</span>
+          <strong>${escapeHtml(previewContext.vendor_name || "Carrier")} | ${formatNumber(previewContext.lane_count || 0)} lane(s)</strong>
+        </div>
+        ${renderedHtml ? `<iframe sandbox="" srcdoc="${escapeHtml(renderedHtml)}"></iframe>` : `<p>No HTML body configured for this template.</p>`}
+      </article>
+      <article class="outreach-text-preview">
+        <span>WhatsApp / text preview</span>
+        <p>${escapeHtml(renderedWhatsapp || "No WhatsApp body configured.")}</p>
+      </article>
       <div class="template-token-row">
         ${placeholders.length ? placeholders.slice(0, 12).map((item) => `<span>{{${escapeHtml(item)}}}</span>`).join("") : "<span>No placeholders detected</span>"}
       </div>
