@@ -710,6 +710,64 @@ function renderTemplateText(value, context = {}) {
   return String(value || "").replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_, key) => String(context[key] ?? ""));
 }
 
+function sameVendorInvitation(left = {}, right = {}) {
+  const leftVendor = left.vendors || {};
+  const rightVendor = right.vendors || {};
+  const leftKey = left.vendor_id || leftVendor.id || leftVendor.domain || leftVendor.primary_email;
+  const rightKey = right.vendor_id || rightVendor.id || rightVendor.domain || rightVendor.primary_email;
+  return Boolean(leftKey && rightKey && String(leftKey).toLowerCase() === String(rightKey).toLowerCase());
+}
+
+function outreachTargetsForCarrier(target) {
+  if (!target?.invitation) return [];
+  return outreachTargetInvitations().filter((item) => sameVendorInvitation(item.invitation, target.invitation));
+}
+
+function laneRowsText(targets = []) {
+  return targets.map(({ lane }, index) => [
+    `Route ${lane.lane_number || index + 1}: ${lane.origin || "-"} -> ${lane.destination || "-"}`,
+    `Equipment: ${[lane.equipment, lane.trailer, lane.config].filter(Boolean).join(" / ") || "-"}`,
+    `Operation/Service: ${[lane.operation, lane.service].filter(Boolean).join(" / ") || "-"}`,
+    `Volume: ${lane.weekly_volume || "-"} per week`,
+    `Target: ${lane.target_rate ? formatMoney(lane.target_rate, lane.currency) : "-"}`
+  ].join(" | ")).join("\n");
+}
+
+function laneTableHtml(targets = []) {
+  if (!targets.length) return "";
+  const rows = targets.map(({ lane }, index) => `
+    <tr>
+      <td>${escapeHtml(lane.lane_number || index + 1)}</td>
+      <td>${escapeHtml(lane.origin || "-")}</td>
+      <td>${escapeHtml(lane.destination || "-")}</td>
+      <td>${escapeHtml([lane.equipment, lane.trailer, lane.config].filter(Boolean).join(" / ") || "-")}</td>
+      <td>${escapeHtml([lane.operation, lane.service].filter(Boolean).join(" / ") || "-")}</td>
+      <td>${escapeHtml(lane.weekly_volume || "-")}</td>
+      <td>${escapeHtml(lane.target_rate ? formatMoney(lane.target_rate, lane.currency) : "-")}</td>
+      <td>Por ofertar</td>
+      <td>Por estimar</td>
+    </tr>
+  `).join("");
+  return `
+    <table style="border-collapse:collapse;width:100%;font-family:Arial,sans-serif;font-size:12px">
+      <thead>
+        <tr style="background:#f3f6f8">
+          <th style="border:1px solid #d8e0e7;padding:6px;text-align:left">Route ID</th>
+          <th style="border:1px solid #d8e0e7;padding:6px;text-align:left">Origen</th>
+          <th style="border:1px solid #d8e0e7;padding:6px;text-align:left">Destino</th>
+          <th style="border:1px solid #d8e0e7;padding:6px;text-align:left">Equipment / Trailer / Config</th>
+          <th style="border:1px solid #d8e0e7;padding:6px;text-align:left">Operacion / Servicio</th>
+          <th style="border:1px solid #d8e0e7;padding:6px;text-align:left">Volumen semanal</th>
+          <th style="border:1px solid #d8e0e7;padding:6px;text-align:left">Rango objetivo inicial</th>
+          <th style="border:1px solid #d8e0e7;padding:6px;text-align:left">Tu tarifa</th>
+          <th style="border:1px solid #d8e0e7;padding:6px;text-align:left">Tu capacidad semanal</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `;
+}
+
 function firstOutreachTarget() {
   return outreachTargetInvitations().find((target) => targetHasChannel(target, rfxOutreachChannel?.value || "multi"))
     || outreachTargetInvitations()[0]
@@ -720,6 +778,7 @@ function sampleOutreachContext(target) {
   const invitation = target?.invitation || {};
   const lane = target?.lane || {};
   const vendor = invitation.vendors || {};
+  const carrierTargets = outreachTargetsForCarrier(target);
   return {
     vendor_name: vendor.vendor_name || vendor.domain || "Carrier",
     contact_name: vendor.contact_name || vendor.vendor_name || "team",
@@ -727,6 +786,7 @@ function sampleOutreachContext(target) {
     vendor_email: vendor.primary_email || "",
     rfx_id: selectedEvent?.rfx_id || "",
     event_name: selectedEvent?.name || selectedEvent?.rfx_id || "",
+    rfx_type: selectedEvent?.event_type || "",
     customer: selectedEvent?.customer || "",
     due_date: selectedEvent?.due_date || "",
     lane_origin: lane.origin || lane.origin_city || "",
@@ -741,6 +801,9 @@ function sampleOutreachContext(target) {
     weekly_volume: lane.weekly_volume || "",
     target_rate: lane.target_rate || "",
     currency: lane.currency || "USD",
+    lane_count: carrierTargets.length || (target ? 1 : 0),
+    lane_table: laneTableHtml(carrierTargets.length ? carrierTargets : target ? [target] : []),
+    lane_rows_text: laneRowsText(carrierTargets.length ? carrierTargets : target ? [target] : []),
     bid_link: invitation.invitation_token ? portalUrl(invitation.invitation_token) : `${window.location.origin}/rfx-bid.html?token=preview`
   };
 }

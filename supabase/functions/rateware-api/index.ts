@@ -6275,6 +6275,77 @@ function htmlToText(html: unknown) {
     .trim();
 }
 
+function escapeHtmlText(value: unknown) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function formatOutreachMoney(value: unknown, currency: unknown = "USD") {
+  const number = cleanNumber(value);
+  if (number === null) return "-";
+  return `${new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(number)} ${cleanText(currency) || "USD"}`;
+}
+
+function laneRecordFromInvitation(invitation: Record<string, unknown>) {
+  return typeof invitation.rfx_lanes === "object" && invitation.rfx_lanes
+    ? invitation.rfx_lanes as Record<string, unknown>
+    : {};
+}
+
+function outreachLaneRowsText(invitations: Record<string, unknown>[]) {
+  return invitations.map((invitation, index) => {
+    const lane = laneRecordFromInvitation(invitation);
+    return [
+      `Route ${cleanText(lane.lane_number) || index + 1}: ${cleanText(lane.origin) || "-"} -> ${cleanText(lane.destination) || "-"}`,
+      `Equipment: ${[lane.equipment, lane.trailer, lane.config].map(cleanText).filter(Boolean).join(" / ") || "-"}`,
+      `Operation/Service: ${[lane.operation, lane.service].map(cleanText).filter(Boolean).join(" / ") || "-"}`,
+      `Volume: ${cleanText(lane.weekly_volume) || "-"} per week`,
+      `Target: ${formatOutreachMoney(lane.target_rate, lane.currency)}`
+    ].join(" | ");
+  }).join("\n");
+}
+
+function outreachLaneTableHtml(invitations: Record<string, unknown>[]) {
+  if (!invitations.length) return "";
+  const rows = invitations.map((invitation, index) => {
+    const lane = laneRecordFromInvitation(invitation);
+    return `
+      <tr>
+        <td style="border:1px solid #d8e0e7;padding:6px">${escapeHtmlText(lane.lane_number || index + 1)}</td>
+        <td style="border:1px solid #d8e0e7;padding:6px">${escapeHtmlText(lane.origin || "-")}</td>
+        <td style="border:1px solid #d8e0e7;padding:6px">${escapeHtmlText(lane.destination || "-")}</td>
+        <td style="border:1px solid #d8e0e7;padding:6px">${escapeHtmlText([lane.equipment, lane.trailer, lane.config].map(cleanText).filter(Boolean).join(" / ") || "-")}</td>
+        <td style="border:1px solid #d8e0e7;padding:6px">${escapeHtmlText([lane.operation, lane.service].map(cleanText).filter(Boolean).join(" / ") || "-")}</td>
+        <td style="border:1px solid #d8e0e7;padding:6px">${escapeHtmlText(lane.weekly_volume || "-")}</td>
+        <td style="border:1px solid #d8e0e7;padding:6px">${escapeHtmlText(formatOutreachMoney(lane.target_rate, lane.currency))}</td>
+        <td style="border:1px solid #d8e0e7;padding:6px">Por ofertar</td>
+        <td style="border:1px solid #d8e0e7;padding:6px">Por estimar</td>
+      </tr>
+    `;
+  }).join("");
+  return `
+    <table style="border-collapse:collapse;width:100%;font-family:Arial,sans-serif;font-size:12px">
+      <thead>
+        <tr style="background:#f3f6f8">
+          <th style="border:1px solid #d8e0e7;padding:6px;text-align:left">Route ID</th>
+          <th style="border:1px solid #d8e0e7;padding:6px;text-align:left">Origen</th>
+          <th style="border:1px solid #d8e0e7;padding:6px;text-align:left">Destino</th>
+          <th style="border:1px solid #d8e0e7;padding:6px;text-align:left">Equipment / Trailer / Config</th>
+          <th style="border:1px solid #d8e0e7;padding:6px;text-align:left">Operacion / Servicio</th>
+          <th style="border:1px solid #d8e0e7;padding:6px;text-align:left">Volumen semanal</th>
+          <th style="border:1px solid #d8e0e7;padding:6px;text-align:left">Rango objetivo inicial</th>
+          <th style="border:1px solid #d8e0e7;padding:6px;text-align:left">Tu tarifa</th>
+          <th style="border:1px solid #d8e0e7;padding:6px;text-align:left">Tu capacidad semanal</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `;
+}
+
 function phoneForWhatsapp(value: unknown) {
   const digits = String(value || "").replace(/[^\d]/g, "");
   return digits.length >= 10 ? digits : null;
@@ -6306,7 +6377,7 @@ function contactPreview(value: unknown) {
     .slice(0, 240);
 }
 
-function outreachContext(invitation: Record<string, unknown>, appOrigin: string) {
+function outreachContext(invitation: Record<string, unknown>, appOrigin: string, invitationGroup: Record<string, unknown>[] = [invitation]) {
   const vendor = typeof invitation.vendors === "object" && invitation.vendors ? invitation.vendors as Record<string, unknown> : {};
   const lane = typeof invitation.rfx_lanes === "object" && invitation.rfx_lanes ? invitation.rfx_lanes as Record<string, unknown> : {};
   const event = typeof invitation.rfx_events === "object" && invitation.rfx_events ? invitation.rfx_events as Record<string, unknown> : {};
@@ -6318,6 +6389,7 @@ function outreachContext(invitation: Record<string, unknown>, appOrigin: string)
     vendor_email: vendor.primary_email || "",
     rfx_id: event.rfx_id || "",
     event_name: event.name || event.rfx_id || "",
+    rfx_type: event.event_type || "",
     customer: event.customer || "",
     due_date: event.due_date || "",
     lane_origin: lane.origin || lane.origin_city || "",
@@ -6332,6 +6404,9 @@ function outreachContext(invitation: Record<string, unknown>, appOrigin: string)
     weekly_volume: lane.weekly_volume || "",
     target_rate: lane.target_rate || "",
     currency: lane.currency || "USD",
+    lane_count: invitationGroup.length,
+    lane_table: outreachLaneTableHtml(invitationGroup),
+    lane_rows_text: outreachLaneRowsText(invitationGroup),
     bid_link: bidLink
   };
 }
@@ -8330,7 +8405,7 @@ Deno.serve(async (request) => {
         .select(`
           *,
           vendors(id,vendor_name,domain,primary_email,whatsapp_phone,preferred_channel,contact_name),
-          rfx_events!inner(id,owner_email,rfx_id,name,customer,status,due_date),
+          rfx_events!inner(id,owner_email,rfx_id,name,customer,status,due_date,event_type),
           rfx_lanes(*)
         `)
         .eq("rfx_events.owner_email", user.owner_email)
@@ -8344,14 +8419,27 @@ Deno.serve(async (request) => {
 
       const rows: Record<string, unknown>[] = [];
       const skipped: Record<string, unknown>[] = [];
+      const invitationGroups = new Map<string, Record<string, unknown>[]>();
       for (const invitation of invitationsResult.data || []) {
         const vendor = typeof invitation.vendors === "object" && invitation.vendors ? invitation.vendors as Record<string, unknown> : {};
-        const context = outreachContext(invitation, appOrigin);
+        const vendorKey = cleanText(invitation.vendor_id) || cleanText(vendor.primary_email) || cleanText(vendor.domain) || cleanText(invitation.id);
+        const key = [cleanText(invitation.rfx_event_id), vendorKey].filter(Boolean).join(":");
+        const bucket = invitationGroups.get(key) || [];
+        bucket.push(invitation);
+        invitationGroups.set(key, bucket);
+      }
+
+      for (const invitationGroup of invitationGroups.values()) {
+        const invitation = invitationGroup[0];
+        const vendor = typeof invitation.vendors === "object" && invitation.vendors ? invitation.vendors as Record<string, unknown> : {};
+        const context = outreachContext(invitation, appOrigin, invitationGroup);
         const subject = renderTemplateText(template.subject || campaign.name, context);
         const htmlBody = renderTemplateText(template.html_body || template.whatsapp_body || "", context);
         const textBody = htmlToText(htmlBody);
         const whatsappText = renderTemplateText(template.whatsapp_body || textBody, context);
         const channels = messageChannels(campaign.channel || template.channel);
+        const groupInvitationIds = invitationGroup.map((item) => item.id).filter(Boolean);
+        const laneIds = invitationGroup.map((item) => item.rfx_lane_id).filter(Boolean);
 
         if (channels.includes("email")) {
           const recipientEmail = cleanText(vendor.primary_email);
@@ -8370,10 +8458,16 @@ Deno.serve(async (request) => {
               text_body: textBody,
               gmail_compose_url: gmailComposeUrl(recipientEmail, subject, textBody),
               status: "drafted",
-              metadata: { bid_link: context.bid_link, generated_at: new Date().toISOString() }
+              metadata: {
+                bid_link: context.bid_link,
+                generated_at: new Date().toISOString(),
+                lane_count: invitationGroup.length,
+                rfx_lane_vendor_ids: groupInvitationIds,
+                rfx_lane_ids: laneIds
+              }
             }, user));
           } else {
-            skipped.push({ invitation_id: invitation.id, channel: "email", reason: "Missing vendor email" });
+            skipped.push({ invitation_id: invitation.id, invitation_ids: groupInvitationIds, channel: "email", reason: "Missing vendor email" });
           }
         }
 
@@ -8393,10 +8487,16 @@ Deno.serve(async (request) => {
               text_body: whatsappText,
               whatsapp_url: whatsappDraftUrl(recipientPhone, whatsappText),
               status: "drafted",
-              metadata: { bid_link: context.bid_link, generated_at: new Date().toISOString() }
+              metadata: {
+                bid_link: context.bid_link,
+                generated_at: new Date().toISOString(),
+                lane_count: invitationGroup.length,
+                rfx_lane_vendor_ids: groupInvitationIds,
+                rfx_lane_ids: laneIds
+              }
             }, user));
           } else {
-            skipped.push({ invitation_id: invitation.id, channel: "whatsapp", reason: "Missing WhatsApp phone" });
+            skipped.push({ invitation_id: invitation.id, invitation_ids: groupInvitationIds, channel: "whatsapp", reason: "Missing WhatsApp phone" });
           }
         }
       }
