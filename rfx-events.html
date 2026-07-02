@@ -274,21 +274,22 @@
               <div class="bid-room-carrier-grid">
                 <section class="rfx-shortlist-box">
                   <div>
-                    <p class="eyebrow">Manual shortlist</p>
-                    <h3>Add vendors to a lane</h3>
+                    <p class="eyebrow">Carrier CRM shortlist</p>
+                    <h3>Add CRM carriers to a lane</h3>
+                    <span id="manual-shortlist-source-summary">Loading Carrier CRM...</span>
                   </div>
                   <label>
                     Lane
                     <select id="manual-shortlist-lane"></select>
                   </label>
                   <label>
-                    Vendor search
+                    Search Carrier CRM
                     <input id="manual-shortlist-search" placeholder="Carrier, domain, email, coverage..." />
                   </label>
-                  <label>
-                    Vendors
-                    <select id="manual-shortlist-vendors" multiple size="4"></select>
-                  </label>
+                  <div id="manual-shortlist-vendor-list" class="bid-room-crm-vendor-list">
+                    <article>Select a lane to shortlist CRM carriers.</article>
+                  </div>
+                  <select id="manual-shortlist-vendors" multiple size="4" hidden></select>
                   <button id="manual-shortlist-button" class="secondary" type="button" disabled>Add vendors</button>
                   <p id="manual-shortlist-status" class="status-message" role="status"></p>
                 </section>

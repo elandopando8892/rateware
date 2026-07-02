@@ -80,6 +80,8 @@ const responseBody = document.querySelector("#rfx-response-body");
 const manualShortlistLane = document.querySelector("#manual-shortlist-lane");
 const manualShortlistSearch = document.querySelector("#manual-shortlist-search");
 const manualShortlistVendors = document.querySelector("#manual-shortlist-vendors");
+const manualShortlistVendorList = document.querySelector("#manual-shortlist-vendor-list");
+const manualShortlistSourceSummary = document.querySelector("#manual-shortlist-source-summary");
 const manualShortlistButton = document.querySelector("#manual-shortlist-button");
 const manualShortlistStatus = document.querySelector("#manual-shortlist-status");
 const rfxOutreachForm = document.querySelector("#rfx-outreach-form");
@@ -1646,19 +1648,122 @@ function vendorSearchText(row) {
     .toLowerCase();
 }
 
+function vendorDisplayName(row) {
+  return row.vendor_name || row.domain || row.primary_email || "Unnamed carrier";
+}
+
+function vendorStageRank(row) {
+  const stage = String(row.base_stage || "").toLowerCase();
+  const funnel = String(row.funnel_stage || "").toLowerCase();
+  const status = String(row.status || "").toLowerCase();
+  if (stage === "procurement") return 0;
+  if (["targeted", "nested", "drafted", "invited", "onboarded", "trained", "activated", "completed"].includes(funnel)) return 1;
+  if (status === "active") return 2;
+  if (stage === "sourcing") return 3;
+  if (stage === "archived" || status === "archived") return 9;
+  return 4;
+}
+
+function isProcurementCarrier(row) {
+  return vendorStageRank(row) <= 1;
+}
+
+function sortedVendorOptions(rows) {
+  return [...rows].sort((a, b) => {
+    const stageDelta = vendorStageRank(a) - vendorStageRank(b);
+    if (stageDelta) return stageDelta;
+    return vendorDisplayName(a).localeCompare(vendorDisplayName(b));
+  });
+}
+
+function shortlistCandidateRows() {
+  const term = String(manualShortlistSearch?.value || "").trim().toLowerCase();
+  const activeRows = vendorOptions.filter((vendor) => vendorStageRank(vendor) < 9);
+  const filtered = activeRows.filter((vendor) => !term || vendorSearchText(vendor).includes(term));
+  return sortedVendorOptions(filtered);
+}
+
+function vendorMetaLine(row) {
+  return [
+    row.domain,
+    row.primary_email,
+    row.preferred_channel,
+    row.status
+  ].filter(Boolean).join(" | ");
+}
+
+function renderCrmVendorCandidate(row) {
+  const stageLabel = row.base_stage || (isProcurementCarrier(row) ? "procurement" : "crm");
+  const coverage = row.coverage_notes || row.notes || "No coverage notes captured";
+  return `
+    <label class="bid-room-crm-vendor-option">
+      <input type="checkbox" data-manual-vendor-select="${escapeHtml(row.id)}" />
+      <span class="crm-vendor-main">
+        <strong>${escapeHtml(vendorDisplayName(row))}</strong>
+        <small>${escapeHtml(vendorMetaLine(row) || "Missing contact data")}</small>
+      </span>
+      <span class="crm-vendor-stage" data-stage="${escapeHtml(String(stageLabel).toLowerCase())}">${escapeHtml(stageLabel)}</span>
+      <span class="crm-vendor-coverage" title="${escapeHtml(coverage)}">${escapeHtml(coverage)}</span>
+    </label>
+  `;
+}
+
+function selectedManualVendorIds() {
+  const checked = manualShortlistVendorList
+    ? [...manualShortlistVendorList.querySelectorAll("[data-manual-vendor-select]:checked")].map((input) => input.value).filter(Boolean)
+    : [];
+  if (checked.length) return checked;
+  return manualShortlistVendors ? [...manualShortlistVendors.selectedOptions].map((option) => option.value).filter(Boolean) : [];
+}
+
+function updateManualShortlistButtonState() {
+  if (!manualShortlistButton) return;
+  manualShortlistButton.disabled = !currentLanes.length || !selectedManualVendorIds().length;
+}
+
 function renderManualShortlistControls() {
   if (!manualShortlistLane || !manualShortlistVendors) return;
   manualShortlistLane.innerHTML = currentLanes.map((lane) => `
     <option value="${escapeHtml(lane.id)}">#${escapeHtml(lane.lane_number || "")} ${escapeHtml(lane.origin || "-")} -> ${escapeHtml(lane.destination || "-")}</option>
   `).join("");
-  const term = String(manualShortlistSearch?.value || "").trim().toLowerCase();
-  const rows = vendorOptions
-    .filter((vendor) => !term || vendorSearchText(vendor).includes(term))
-    .slice(0, 200);
+  const procurementCount = vendorOptions.filter(isProcurementCarrier).length;
+  if (manualShortlistSourceSummary) {
+    manualShortlistSourceSummary.textContent = `${vendorOptions.length} CRM carrier(s) loaded | ${procurementCount} in Procurement/Pipeline`;
+  }
+  if (!currentLanes.length) {
+    manualShortlistVendors.innerHTML = "";
+    if (manualShortlistVendorList) {
+      manualShortlistVendorList.innerHTML = `
+        <article class="bid-room-crm-vendor-empty">
+          <strong>Select a bid event and import lanes first.</strong>
+          <span>Then choose carriers directly from Carrier CRM / Procurement Base.</span>
+        </article>
+      `;
+    }
+    updateManualShortlistButtonState();
+    return;
+  }
+  const rows = shortlistCandidateRows();
   manualShortlistVendors.innerHTML = rows.map((vendor) => `
-    <option value="${escapeHtml(vendor.id)}">${escapeHtml(vendor.vendor_name || vendor.domain || "Vendor")} | ${escapeHtml(vendor.base_stage || "")} | ${escapeHtml(vendor.primary_email || vendor.domain || "")}</option>
+    <option value="${escapeHtml(vendor.id)}">${escapeHtml(vendorDisplayName(vendor))} | ${escapeHtml(vendor.base_stage || "crm")} | ${escapeHtml(vendor.primary_email || vendor.domain || "")}</option>
   `).join("");
-  manualShortlistButton.disabled = !currentLanes.length || !rows.length;
+  if (manualShortlistVendorList) {
+    const visibleRows = rows.slice(0, 80);
+    const listSummary = `
+      <div class="bid-room-crm-list-summary">
+        <strong>Carrier CRM candidates</strong>
+        <span>Showing ${Math.min(visibleRows.length, rows.length)} of ${rows.length}. Use search to find any CRM carrier.</span>
+      </div>
+    `;
+    manualShortlistVendorList.innerHTML = visibleRows.length ? `${listSummary}${visibleRows.map(renderCrmVendorCandidate).join("")}` : `
+      <article class="bid-room-crm-vendor-empty">
+        <strong>No CRM carriers match this search.</strong>
+        <span>Clear the search or add/update carriers in Carrier CRM.</span>
+      </article>
+    `;
+    manualShortlistVendorList.dataset.totalMatches = String(rows.length);
+  }
+  updateManualShortlistButtonState();
 }
 
 function renderInvitation(invitation, lane) {
@@ -1809,10 +1914,23 @@ async function loadEvents() {
 
 async function loadVendorOptions() {
   try {
-    const result = await fetchVendors({ limit: 250, view: "all" });
-    vendorOptions = result.rows || [];
+    const pageSize = 250;
+    const rows = [];
+    let total = 0;
+    for (let offset = 0; offset < 2500; offset += pageSize) {
+      const result = await fetchVendors({ limit: pageSize, offset, view: "all" });
+      const pageRows = result.rows || [];
+      total = Number(result.total || 0);
+      rows.push(...pageRows);
+      if (!pageRows.length) break;
+      if (total && rows.length >= total) break;
+      if (pageRows.length < pageSize) break;
+    }
+    vendorOptions = sortedVendorOptions(rows);
     renderManualShortlistControls();
   } catch (error) {
+    vendorOptions = [];
+    renderManualShortlistControls();
     setStatus(manualShortlistStatus, error.message, "error");
   }
 }
@@ -2351,19 +2469,21 @@ archiveSelectedButton?.addEventListener("click", async () => {
 });
 
 manualShortlistSearch?.addEventListener("input", renderManualShortlistControls);
+manualShortlistLane?.addEventListener("change", updateManualShortlistButtonState);
+manualShortlistVendorList?.addEventListener("change", updateManualShortlistButtonState);
 
 manualShortlistButton?.addEventListener("click", async () => {
   const laneId = manualShortlistLane?.value;
-  const vendorIds = [...manualShortlistVendors.selectedOptions].map((option) => option.value).filter(Boolean);
+  const vendorIds = selectedManualVendorIds();
   if (!laneId || !vendorIds.length) {
-    setStatus(manualShortlistStatus, "Select one lane and at least one vendor.", "error");
+    setStatus(manualShortlistStatus, "Select one lane and at least one carrier from Carrier CRM.", "error");
     return;
   }
   manualShortlistButton.disabled = true;
-  setStatus(manualShortlistStatus, "Adding vendors...");
+  setStatus(manualShortlistStatus, "Adding CRM carriers...");
   try {
     const result = await shortlistRfxLaneVendors(laneId, vendorIds);
-    setStatus(manualShortlistStatus, `${result.inserted || 0} vendor(s) added to shortlist.`, "success");
+    setStatus(manualShortlistStatus, `${result.inserted || 0} CRM carrier(s) added to this lane.`, "success");
     await loadDetail(selectedEventId);
   } catch (error) {
     setStatus(manualShortlistStatus, error.message, "error");
