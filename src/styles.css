@@ -12543,7 +12543,9 @@ tbody tr:hover {
 
 .rfx-ops-strip {
   gap: 8px;
+  border: 1px solid #cfdae3;
   border-color: #cfdae3;
+  border-radius: 7px;
   background: #fbfcfd;
   padding: 10px;
 }
@@ -12692,7 +12694,7 @@ tbody tr:hover {
 }
 
 .module-workbench-nav {
-  grid-template-columns: repeat(6, minmax(86px, 1fr));
+  grid-template-columns: repeat(5, minmax(86px, 1fr));
   gap: 3px;
   padding: 4px;
 }
@@ -12823,16 +12825,225 @@ tbody tr:hover {
   font-size: 0.75rem;
 }
 
+.rfx-process-manager {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.rfx-manager-flow {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.rfx-manager-flow article {
+  display: grid;
+  gap: 5px;
+  min-height: 122px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #ffffff;
+  padding: 8px;
+}
+
+.rfx-manager-flow article.is-active {
+  border-color: var(--accent-border);
+  background: #eef8f6;
+}
+
+.rfx-manager-flow article.is-complete {
+  border-color: #bad8c8;
+  background: #f4fbf7;
+}
+
+.rfx-manager-flow article > div {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.rfx-manager-flow span {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  background: #e8eef2;
+  color: #43505a;
+  font-size: 0.66rem;
+  font-weight: 900;
+}
+
+.rfx-manager-flow article.is-active span {
+  background: var(--accent);
+  color: #ffffff;
+}
+
+.rfx-manager-flow article.is-complete span {
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.rfx-manager-flow strong {
+  overflow: hidden;
+  color: #27333d;
+  font-size: 0.76rem;
+  font-weight: 900;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rfx-manager-flow p {
+  margin: 0;
+  color: #40505d;
+  font-size: 0.72rem;
+  font-weight: 760;
+  line-height: 1.25;
+}
+
+.rfx-manager-flow small {
+  color: var(--muted);
+  font-size: 0.66rem;
+  font-weight: 720;
+  line-height: 1.2;
+}
+
+.rfx-manager-flow button {
+  align-self: end;
+  justify-self: start;
+  min-height: 24px;
+  padding: 3px 7px;
+  font-size: 0.68rem;
+}
+
+.rfx-manager-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(250px, 320px);
+  gap: 10px;
+  align-items: start;
+}
+
+.rfx-manager-focus,
+.rfx-manager-queue {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.rfx-manager-next,
+.rfx-manager-kpis article,
+.rfx-manager-task-list article {
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #ffffff;
+}
+
+.rfx-manager-next {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  border-left: 4px solid var(--accent);
+  padding: 10px;
+}
+
+.rfx-manager-next h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.rfx-manager-next p {
+  margin: 2px 0 0;
+  color: #40505d;
+  font-size: 0.8rem;
+  line-height: 1.35;
+}
+
+.rfx-manager-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.rfx-manager-kpis article {
+  display: grid;
+  gap: 4px;
+  min-height: 62px;
+  padding: 8px;
+}
+
+.rfx-manager-kpis span,
+.rfx-manager-task-list span {
+  color: var(--muted);
+  font-size: 0.64rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.rfx-manager-kpis strong {
+  color: var(--text);
+  font-size: 1.15rem;
+  line-height: 1;
+}
+
+.rfx-manager-kpis small,
+.rfx-manager-task-list small {
+  color: #4c5964;
+  font-size: 0.7rem;
+  font-weight: 720;
+  line-height: 1.25;
+}
+
+.rfx-manager-task-list {
+  display: grid;
+  gap: 6px;
+}
+
+.rfx-manager-task-list article {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 3px 8px;
+  align-items: center;
+  padding: 8px;
+}
+
+.rfx-manager-task-list article.is-done {
+  background: #f7faf8;
+}
+
+.rfx-manager-task-list article.is-done span {
+  color: var(--success);
+}
+
+.rfx-manager-task-list strong,
+.rfx-manager-task-list small {
+  grid-column: 1;
+}
+
+.rfx-manager-task-list button {
+  grid-column: 2;
+  grid-row: 1 / span 3;
+  min-height: 24px;
+  padding: 3px 7px;
+  font-size: 0.68rem;
+}
+
 @media (max-width: 1180px) {
   .bid-room-control-grid,
   .rfx-wizard-grid,
   .rfx-workspace,
   .rfx-outreach-grid,
-  .rfx-touchpoint-panel {
+  .rfx-touchpoint-panel,
+  .rfx-manager-grid,
+  .rfx-manager-next {
     grid-template-columns: 1fr;
   }
 
-  .bid-room-stage-rail {
+  .bid-room-stage-rail,
+  .rfx-manager-flow,
+  .rfx-manager-kpis {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
@@ -12845,7 +13056,9 @@ tbody tr:hover {
 @media (max-width: 760px) {
   .bid-room-stage-rail,
   .rfx-ops-health,
-  .module-workbench-nav {
+  .module-workbench-nav,
+  .rfx-manager-flow,
+  .rfx-manager-kpis {
     grid-template-columns: 1fr 1fr;
   }
 }

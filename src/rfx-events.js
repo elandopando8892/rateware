@@ -100,6 +100,9 @@ const rfxOpsHealth = document.querySelector("#rfx-ops-health");
 const rfxOpsOutreachLink = document.querySelector("#rfx-ops-outreach-link");
 const rfxOpsStageRail = document.querySelector("#rfx-ops-stage-rail");
 const rfxOpsNextAction = document.querySelector("#rfx-ops-next-action");
+const rfxManagerFlow = document.querySelector("#rfx-manager-flow");
+const rfxManagerFocus = document.querySelector("#rfx-manager-focus");
+const rfxManagerQueue = document.querySelector("#rfx-manager-queue");
 
 let events = [];
 let selectedEventId = null;
@@ -116,7 +119,7 @@ let focusedLaneId = null;
 let activeLaneFilter = "all";
 const rfxPageParams = new URLSearchParams(window.location.search);
 const requestedRfxEventId = rfxPageParams.get("rfx_event_id");
-const rfxWorkbench = initWorkbenchTabs({ defaultView: "wizard" });
+const rfxWorkbench = initWorkbenchTabs({ defaultView: "manager" });
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -587,6 +590,173 @@ function renderOpsNextAction() {
   `;
 }
 
+function processStats() {
+  const stats = rfxWizardStats();
+  const startedInvitations = stats.invitations.filter(hasInvitationStarted);
+  const lanesWithInvites = currentLanes.filter((lane) => activeInvitations(lane).some(hasInvitationStarted)).length;
+  return {
+    ...stats,
+    startedInvitations,
+    lanesWithInvites,
+    shortlistCoverage: currentLanes.length ? Math.round((stats.lanesWithShortlist / currentLanes.length) * 100) : 0,
+    inviteCoverage: currentLanes.length ? Math.round((lanesWithInvites / currentLanes.length) * 100) : 0,
+    bidCoverage: currentLanes.length ? Math.round((stats.lanesWithBids / currentLanes.length) * 100) : 0,
+    responseRate: stats.invitations.length ? Math.round((stats.bids.length / stats.invitations.length) * 100) : 0
+  };
+}
+
+function managerStageAction(stepKey) {
+  if (stepKey === "carriers") {
+    return `<button class="secondary small-button" type="button" data-rfx-wizard-auto-shortlist ${currentLanes.length ? "" : "disabled"}>Build shortlist</button>`;
+  }
+  if (stepKey === "launch") {
+    return `<button class="small-button" type="button" data-rfx-wizard-create-drafts ${selectedEventId ? "" : "disabled"}>Generate invitations</button>`;
+  }
+  return `<button class="secondary small-button" type="button" data-rfx-wizard-go="${escapeHtml(wizardStageView(stepKey))}">${escapeHtml(wizardStageCopy(stepKey).cta)}</button>`;
+}
+
+function renderProcessFlow() {
+  if (!rfxManagerFlow) return;
+  const stage = currentWizardStage();
+  const stats = processStats();
+  const stageMeta = {
+    event: selectedEvent ? `${selectedEvent.status || "draft"} | ${selectedEvent.due_date || "No due date"}` : "No event selected",
+    lanes: `${formatNumber(stats.lanes)} lane(s)`,
+    carriers: `${formatNumber(stats.lanesWithShortlist)} / ${formatNumber(stats.lanes)} lane(s) covered`,
+    preview: `${formatNumber(stats.readyTargets.length)} / ${formatNumber(stats.targets.length)} contact-ready`,
+    launch: `${formatNumber(stats.startedInvitations.length)} sent/started`,
+    offers: `${formatNumber(stats.bids.length)} bid(s)`
+  };
+  rfxManagerFlow.innerHTML = rfxWizardStepState().map((step, index) => {
+    const copy = wizardStageCopy(step.key);
+    return `
+      <article class="${step.complete ? "is-complete" : ""} ${step.key === stage ? "is-active" : ""}">
+        <div>
+          <span>${index + 1}</span>
+          <strong>${escapeHtml(step.label)}</strong>
+        </div>
+        <p>${escapeHtml(copy.title)}</p>
+        <small>${escapeHtml(stageMeta[step.key] || copy.note)}</small>
+        ${managerStageAction(step.key)}
+      </article>
+    `;
+  }).join("");
+}
+
+function renderProcessFocus() {
+  if (!rfxManagerFocus) return;
+  const stats = processStats();
+  const stage = currentWizardStage();
+  const copy = wizardStageCopy(stage);
+  if (!selectedEvent) {
+    rfxManagerFocus.innerHTML = stateBlock({
+      tone: "neutral",
+      eyebrow: "Bid Room process",
+      title: "Select or create a bid event",
+      detail: "The event list stays on the left. Once an event is selected, this board shows the process, next action, lane coverage, invitations, and bids.",
+      actionButton: '<button type="button" data-rfx-wizard-go="setup">Create bid event</button>'
+    });
+    return;
+  }
+  rfxManagerFocus.innerHTML = `
+    <article class="rfx-manager-next">
+      <div>
+        <p class="eyebrow">Current priority</p>
+        <h3>${escapeHtml(copy.title)}</h3>
+        <p>${escapeHtml(copy.detail)}</p>
+      </div>
+      <div class="action-row">
+        ${wizardActionButton(stage)}
+        <button class="secondary small-button" type="button" data-rfx-wizard-go="lanes">Book</button>
+        <button class="secondary small-button" type="button" data-rfx-wizard-go="outreach">Invites</button>
+        <button class="secondary small-button" type="button" data-rfx-wizard-go="responses">Bids</button>
+      </div>
+    </article>
+    <div class="rfx-manager-kpis">
+      <article><span>Shortlist</span><strong>${formatNumber(stats.shortlistCoverage)}%</strong><small>${formatNumber(stats.lanesWithShortlist)} of ${formatNumber(stats.lanes)} lanes</small></article>
+      <article><span>Invite ready</span><strong>${formatNumber(stats.readyTargets.length)}</strong><small>${formatNumber(stats.targets.length)} active targets</small></article>
+      <article><span>Invited</span><strong>${formatNumber(stats.startedInvitations.length)}</strong><small>${formatNumber(stats.inviteCoverage)}% lane invite coverage</small></article>
+      <article><span>Bids</span><strong>${formatNumber(stats.bids.length)}</strong><small>${formatNumber(stats.responseRate)}% response rate</small></article>
+    </div>
+  `;
+}
+
+function processQueueItems() {
+  const stats = processStats();
+  return [
+    {
+      done: Boolean(selectedEvent),
+      title: "Event setup",
+      detail: selectedEvent ? `${selectedEvent.rfx_id || "RFx"} is selected.` : "Create or select the bid event.",
+      action: "setup"
+    },
+    {
+      done: stats.lanes > 0,
+      title: "Business book",
+      detail: stats.lanes ? `${formatNumber(stats.lanes)} lane(s) loaded.` : "Load lanes before selecting carriers.",
+      action: "lanes"
+    },
+    {
+      done: stats.invitations.length > 0,
+      title: "Carrier shortlist",
+      detail: stats.invitations.length ? `${formatNumber(stats.invitations.length)} carrier target(s) shortlisted.` : "Build or add vendors to lanes.",
+      action: "lanes",
+      special: "shortlist"
+    },
+    {
+      done: stats.readyTargets.length > 0,
+      title: "Invitation readiness",
+      detail: `${formatNumber(stats.readyTargets.length)} of ${formatNumber(stats.targets.length)} target(s) have a usable channel.`,
+      action: "outreach"
+    },
+    {
+      done: stats.startedInvitations.length > 0,
+      title: "Invitation launch",
+      detail: stats.startedInvitations.length ? `${formatNumber(stats.startedInvitations.length)} invite(s) started.` : "Generate drafts and mark invites as sent.",
+      action: "outreach",
+      special: "drafts"
+    },
+    {
+      done: stats.bids.length > 0,
+      title: "Live bid monitoring",
+      detail: stats.bids.length ? `${formatNumber(stats.bids.length)} live bid(s) received.` : "Monitor responses and compare bids against Rateware.",
+      action: "responses"
+    }
+  ];
+}
+
+function renderProcessQueue() {
+  if (!rfxManagerQueue) return;
+  const items = processQueueItems();
+  const openItems = items.filter((item) => !item.done);
+  rfxManagerQueue.innerHTML = `
+    <div class="section-heading compact">
+      <p class="eyebrow">Work queue</p>
+      <h3>${openItems.length ? `${formatNumber(openItems.length)} action(s) pending` : "Process ready for bids"}</h3>
+    </div>
+    <div class="rfx-manager-task-list">
+      ${items.map((item) => `
+        <article class="${item.done ? "is-done" : ""}">
+          <span>${item.done ? "Done" : "Next"}</span>
+          <strong>${escapeHtml(item.title)}</strong>
+          <small>${escapeHtml(item.detail)}</small>
+          ${item.special === "shortlist"
+            ? `<button class="secondary small-button" type="button" data-rfx-wizard-auto-shortlist ${currentLanes.length ? "" : "disabled"}>Build shortlist</button>`
+            : item.special === "drafts"
+              ? `<button class="small-button" type="button" data-rfx-wizard-create-drafts ${selectedEventId ? "" : "disabled"}>Generate invitations</button>`
+              : `<button class="secondary small-button" type="button" data-rfx-wizard-go="${escapeHtml(item.action)}">Open</button>`}
+        </article>
+      `).join("")}
+    </div>
+  `;
+}
+
+function renderProcessManager() {
+  renderProcessFlow();
+  renderProcessFocus();
+  renderProcessQueue();
+}
+
 function renderWizardSteps() {
   if (!wizardSteps) return;
   const stage = currentWizardStage();
@@ -637,6 +807,7 @@ function renderWizard() {
   renderWizardPreview();
   renderOpsStageRail();
   renderOpsNextAction();
+  renderProcessManager();
   if (!wizardPrimary) return;
   const stats = rfxWizardStats();
   const stage = currentWizardStage();
@@ -648,7 +819,7 @@ function renderWizard() {
       <p>${escapeHtml(nextCopy.detail)}</p>
       <div class="action-row">
         ${wizardActionButton(stage)}
-        <button class="secondary" type="button" data-rfx-wizard-go="dashboard">Open dashboard</button>
+        <button class="secondary" type="button" data-rfx-wizard-go="manager">Open process</button>
       </div>
     </article>
     <div class="rfx-wizard-scoreboard">
