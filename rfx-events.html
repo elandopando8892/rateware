@@ -50,7 +50,6 @@
           </div>
           <div class="page-header-actions">
             <button class="page-primary-action" type="button" data-rfx-focus-create>New bid event</button>
-            <button class="secondary" type="button" data-rfx-wizard-go="responses">Live bids</button>
             <form id="auth-form" class="auth-strip">
               <button id="auth-button" type="submit">Sign in with Kinde</button>
               <button id="sign-out-button" type="button" class="secondary hidden">Sign out</button>
@@ -59,13 +58,13 @@
           </div>
         </header>
 
-        <main class="bid-room-shell">
-          <aside class="bid-room-sidebar" aria-label="Bid events">
-            <section class="bid-room-side-panel">
+        <main class="bid-room-product">
+          <aside class="bid-room-event-rail" aria-label="Bid events">
+            <section class="bid-room-rail-card">
               <div class="split-heading compact">
                 <div>
-                  <p class="eyebrow">Events</p>
-                  <h2>Bid books</h2>
+                  <p class="eyebrow">Bid rooms</p>
+                  <h2>Events</h2>
                 </div>
                 <button id="refresh-rfx-events" class="secondary small-button" type="button">Refresh</button>
               </div>
@@ -73,104 +72,132 @@
                 <article>Loading bid events...</article>
               </div>
             </section>
-
-            <section class="bid-room-side-panel bid-room-event-editor">
-              <div class="section-heading compact">
-                <p class="eyebrow">Event setup</p>
-                <h2>Create or edit</h2>
-              </div>
-              <form id="rfx-event-form" class="rfx-event-form">
-                <label>
-                  RFx ID
-                  <input id="rfx-id" required placeholder="RFx-04302602" />
-                </label>
-                <label>
-                  Name
-                  <input id="rfx-name" required placeholder="Apodaca NL to Dallas TX spot book" />
-                </label>
-                <label>
-                  Customer
-                  <input id="rfx-customer" placeholder="Customer / shipper" />
-                </label>
-                <label>
-                  Type
-                  <select id="rfx-type">
-                    <option value="spot">Spot</option>
-                    <option value="rfx">RFx</option>
-                    <option value="bid">Bid</option>
-                  </select>
-                </label>
-                <label>
-                  Due date
-                  <input id="rfx-due-date" type="date" />
-                </label>
-                <button id="create-rfx-event-button" type="submit">Create event</button>
-              </form>
-              <p id="rfx-event-status" class="status-message" role="status"></p>
-            </section>
           </aside>
 
-          <section class="bid-room-main">
-            <section class="bid-room-command">
-              <div class="split-heading">
+          <section class="bid-room-workspace">
+            <section class="bid-room-control-panel">
+              <div class="bid-room-title-row">
                 <div>
                   <p class="eyebrow">Active bid room</p>
                   <h2 id="rfx-detail-title">Select or create an event</h2>
-                  <p id="rfx-ops-subtitle">Manage the book, shortlist, invitations, bids, and award decision from one flow.</p>
+                  <p id="rfx-ops-subtitle">One workflow: setup, book, shortlist, invite, live bids, award.</p>
                 </div>
-                <div class="action-row">
-                  <button id="edit-rfx-button" class="secondary small-button" type="button" disabled>Edit</button>
-                  <button id="duplicate-rfx-button" class="secondary small-button" type="button" disabled>Duplicate</button>
-                  <button id="open-rfx-button" class="secondary small-button" type="button" disabled>Mark open</button>
-                  <button id="close-rfx-button" class="secondary small-button" type="button" disabled>Close</button>
-                  <button id="archive-rfx-button" class="secondary small-button" type="button" disabled>Archive</button>
-                  <button id="delete-rfx-button" class="danger small-button" type="button" disabled>Delete</button>
-                </div>
+                <details class="bid-room-action-menu">
+                  <summary>Event actions</summary>
+                  <div class="action-row">
+                    <button id="edit-rfx-button" class="secondary small-button" type="button" disabled>Edit</button>
+                    <button id="duplicate-rfx-button" class="secondary small-button" type="button" disabled>Duplicate</button>
+                    <button id="open-rfx-button" class="secondary small-button" type="button" disabled>Mark open</button>
+                    <button id="close-rfx-button" class="secondary small-button" type="button" disabled>Close</button>
+                    <button id="archive-rfx-button" class="secondary small-button" type="button" disabled>Archive</button>
+                    <button id="delete-rfx-button" class="danger small-button" type="button" disabled>Delete</button>
+                  </div>
+                </details>
               </div>
 
-              <div class="bid-room-control-grid">
-                <div>
-                  <h3 id="rfx-ops-title" class="sr-only">Bid Room process</h3>
-                  <div id="rfx-ops-stage-rail" class="bid-room-stage-rail" aria-label="Bid Room stages"></div>
-                </div>
+              <div id="rfx-ops-health" class="bid-room-metrics">
+                <article><span>Event</span><strong>-</strong><small>No bid event selected.</small></article>
+                <article><span>Lanes</span><strong>0</strong><small>Paste or import the book.</small></article>
+                <article><span>Targets</span><strong>0</strong><small>No carriers shortlisted.</small></article>
+                <article><span>Bids</span><strong>0</strong><small>No live offers yet.</small></article>
+              </div>
+
+              <div class="bid-room-flow-shell">
+                <nav id="rfx-ops-stage-rail" class="bid-room-stage-rail" role="tablist" aria-label="Bid Room stages">
+                  <button type="button" role="tab" aria-selected="true" data-workbench-view-button="setup" data-stage-key="event">
+                    <span class="stage-index">1</span>
+                    <span class="stage-copy"><strong>Setup</strong><small>Event</small></span>
+                  </button>
+                  <button type="button" role="tab" aria-selected="false" data-workbench-view-button="lanes" data-stage-key="lanes">
+                    <span class="stage-index">2</span>
+                    <span class="stage-copy"><strong>Book</strong><small>Lanes</small></span>
+                  </button>
+                  <button type="button" role="tab" aria-selected="false" data-workbench-view-button="carriers" data-stage-key="carriers">
+                    <span class="stage-index">3</span>
+                    <span class="stage-copy"><strong>Shortlist</strong><small>Vendors</small></span>
+                  </button>
+                  <button type="button" role="tab" aria-selected="false" data-workbench-view-button="outreach" data-stage-key="launch">
+                    <span class="stage-index">4</span>
+                    <span class="stage-copy"><strong>Invite</strong><small>Templates</small></span>
+                  </button>
+                  <button type="button" role="tab" aria-selected="false" data-workbench-view-button="responses" data-stage-key="offers">
+                    <span class="stage-index">5</span>
+                    <span class="stage-copy"><strong>Bids</strong><small>Live</small></span>
+                  </button>
+                  <button type="button" role="tab" aria-selected="false" data-workbench-view-button="award" data-stage-key="award">
+                    <span class="stage-index">6</span>
+                    <span class="stage-copy"><strong>Award</strong><small>Decision</small></span>
+                  </button>
+                </nav>
                 <aside id="rfx-ops-next-action" class="bid-room-next-action" aria-live="polite">
                   <span>Next action</span>
                   <strong>Create or select a bid event</strong>
                   <small>Start the private bid room workflow.</small>
                 </aside>
               </div>
-
-              <div id="rfx-ops-health" class="rfx-ops-health">
-                <article><span>Event</span><strong>-</strong><small>No bid event selected.</small></article>
-                <article><span>Lanes</span><strong>0</strong><small>Paste or import the book.</small></article>
-                <article><span>Targets</span><strong>0</strong><small>No carriers shortlisted.</small></article>
-                <article><span>Bids</span><strong>0</strong><small>No live offers yet.</small></article>
-              </div>
             </section>
 
-            <nav class="bid-room-mode-nav" role="tablist" aria-label="Bid Room modes">
-              <button type="button" role="tab" aria-selected="true" data-workbench-view-button="manager">Overview</button>
-              <button type="button" role="tab" aria-selected="false" data-workbench-view-button="lanes">Business Book</button>
-              <button type="button" role="tab" aria-selected="false" data-workbench-view-button="outreach">Invitations</button>
-              <button type="button" role="tab" aria-selected="false" data-workbench-view-button="responses">Live Bids</button>
-            </nav>
-
-            <section class="bid-room-mode-panel" data-workbench-view-panel="manager">
-              <div class="rfx-manager-grid">
-                <section id="rfx-manager-focus" class="rfx-manager-focus"></section>
-                <aside id="rfx-manager-queue" class="rfx-manager-queue"></aside>
-              </div>
-            </section>
-
-            <section class="bid-room-mode-panel" data-workbench-view-panel="lanes">
-              <div class="split-heading compact">
+            <section class="bid-room-stage-panel" data-workbench-view-panel="setup">
+              <div class="bid-room-stage-header">
                 <div>
-                  <p class="eyebrow">Business book</p>
-                  <h3>Lane coverage and carrier shortlist</h3>
+                  <p class="eyebrow">Step 1</p>
+                  <h3>Setup the bid event</h3>
+                </div>
+                <span class="status-pill muted">Required before lanes</span>
+              </div>
+              <div class="bid-room-setup-grid">
+                <form id="rfx-event-form" class="rfx-event-form bid-room-form">
+                  <label>
+                    RFx ID
+                    <input id="rfx-id" required placeholder="RFx-04302602" />
+                  </label>
+                  <label>
+                    Name
+                    <input id="rfx-name" required placeholder="Apodaca NL to Dallas TX spot book" />
+                  </label>
+                  <label>
+                    Customer
+                    <input id="rfx-customer" placeholder="Customer / shipper" />
+                  </label>
+                  <label>
+                    Type
+                    <select id="rfx-type">
+                      <option value="spot">Spot</option>
+                      <option value="rfx">RFx</option>
+                      <option value="bid">Bid</option>
+                    </select>
+                  </label>
+                  <label>
+                    Due date
+                    <input id="rfx-due-date" type="date" />
+                  </label>
+                  <button id="create-rfx-event-button" type="submit">Create event</button>
+                  <p id="rfx-event-status" class="status-message" role="status"></p>
+                </form>
+              </div>
+            </section>
+
+            <section class="bid-room-stage-panel" data-workbench-view-panel="lanes">
+              <div class="bid-room-stage-header">
+                <div>
+                  <p class="eyebrow">Step 2</p>
+                  <h3>Load the business book</h3>
                 </div>
                 <span id="rfx-coverage-summary" class="status-pill muted">No lanes</span>
               </div>
-              <div class="rfx-lane-toolbar">
+              <section class="rfx-import-box bid-room-import-panel">
+                <div>
+                  <p class="eyebrow">Lane upload</p>
+                  <h3>Paste lanes from Excel or CSV</h3>
+                </div>
+                <textarea id="rfx-lane-paste" rows="5" placeholder="origin,destination,equipment,trailer,operation,service,weekly_volume,target_rate,currency&#10;Apodaca, NL,Dallas, TX,Truck Trailer,Flatbed,D2D Export,One Way,10,2900,USD"></textarea>
+                <div class="action-row">
+                  <button id="import-rfx-lanes-button" type="button" disabled>Import lanes</button>
+                  <button id="clear-rfx-lanes-input" class="secondary" type="button">Clear</button>
+                  <span id="rfx-lane-import-status" class="status-message" role="status"></span>
+                </div>
+              </section>
+              <div class="rfx-lane-toolbar bid-room-table-toolbar">
                 <div class="rfx-lane-filters" aria-label="Lane filters">
                   <button class="secondary small-button is-active" type="button" data-rfx-lane-filter="all">All</button>
                   <button class="secondary small-button" type="button" data-rfx-lane-filter="needs_shortlist">Needs shortlist</button>
@@ -181,68 +208,6 @@
                 </div>
                 <input id="rfx-lane-search" type="search" placeholder="Search lane, market, equipment, carrier" />
               </div>
-
-              <div class="bid-room-book-grid">
-                <section class="rfx-import-box">
-                  <div>
-                    <p class="eyebrow">Lane upload</p>
-                    <h3>Paste lanes from Excel or CSV</h3>
-                  </div>
-                  <textarea id="rfx-lane-paste" rows="5" placeholder="origin,destination,equipment,trailer,operation,service,weekly_volume,target_rate,currency&#10;Apodaca, NL,Dallas, TX,Truck Trailer,Flatbed,D2D Export,One Way,10,2900,USD"></textarea>
-                  <div class="action-row">
-                    <button id="import-rfx-lanes-button" type="button" disabled>Import lanes</button>
-                    <button id="clear-rfx-lanes-input" class="secondary" type="button">Clear</button>
-                    <span id="rfx-lane-import-status" class="status-message" role="status"></span>
-                  </div>
-                </section>
-
-                <section class="rfx-shortlist-box">
-                  <div>
-                    <p class="eyebrow">Shortlist</p>
-                    <h3>Add vendors to a lane</h3>
-                  </div>
-                  <label>
-                    Lane
-                    <select id="manual-shortlist-lane"></select>
-                  </label>
-                  <label>
-                    Vendor search
-                    <input id="manual-shortlist-search" placeholder="Carrier, domain, email, coverage..." />
-                  </label>
-                  <label>
-                    Vendors
-                    <select id="manual-shortlist-vendors" multiple size="4"></select>
-                  </label>
-                  <button id="manual-shortlist-button" class="secondary" type="button" disabled>Add vendors</button>
-                  <p id="manual-shortlist-status" class="status-message" role="status"></p>
-                </section>
-              </div>
-
-              <div class="bulk-action-bar">
-                <span id="rfx-selection-count">0 selected</span>
-                <button id="auto-shortlist-selected" class="small-button" type="button" disabled>Auto shortlist</button>
-                <button id="invite-selected-rfx" class="secondary small-button" type="button" disabled>Mark invited</button>
-                <button id="archive-selected-rfx" class="secondary small-button" type="button" disabled>Archive selected</button>
-                <span id="rfx-action-status" class="row-save-status"></span>
-              </div>
-
-              <div id="rfx-lane-coverage" class="rfx-lane-coverage-grid">
-                <article>Select an event to inspect lane coverage.</article>
-              </div>
-
-              <section class="rfx-lane-decision-panel">
-                <div class="split-heading compact">
-                  <div>
-                    <p class="eyebrow">Lane decision</p>
-                    <h3 id="rfx-lane-decision-title">Select a lane</h3>
-                  </div>
-                  <span id="rfx-lane-decision-status" class="status-pill muted">No lane</span>
-                </div>
-                <div id="rfx-lane-decision-body" class="rfx-lane-decision-body">
-                  <article>Select a lane card or table row.</article>
-                </div>
-              </section>
-
               <div class="table-wrap">
                 <table class="rfx-table">
                   <thead>
@@ -267,14 +232,67 @@
               </div>
             </section>
 
-            <section class="bid-room-mode-panel" data-workbench-view-panel="outreach">
-              <div class="split-heading compact">
+            <section class="bid-room-stage-panel" data-workbench-view-panel="carriers">
+              <div class="bid-room-stage-header">
                 <div>
-                  <p class="eyebrow">Invitations</p>
-                  <h3>Generate, preview, and track invites</h3>
+                  <p class="eyebrow">Step 3</p>
+                  <h3>Shortlist carriers by lane</h3>
                 </div>
               </div>
-              <div class="rfx-outreach-grid">
+              <div class="bulk-action-bar bid-room-bulk-bar">
+                <span id="rfx-selection-count">0 selected</span>
+                <button id="auto-shortlist-selected" class="small-button" type="button" disabled>Auto shortlist</button>
+                <button id="invite-selected-rfx" class="secondary small-button" type="button" disabled>Mark invited</button>
+                <button id="archive-selected-rfx" class="secondary small-button" type="button" disabled>Archive selected</button>
+                <span id="rfx-action-status" class="row-save-status"></span>
+              </div>
+              <div class="bid-room-carrier-grid">
+                <section class="rfx-shortlist-box">
+                  <div>
+                    <p class="eyebrow">Manual shortlist</p>
+                    <h3>Add vendors to a lane</h3>
+                  </div>
+                  <label>
+                    Lane
+                    <select id="manual-shortlist-lane"></select>
+                  </label>
+                  <label>
+                    Vendor search
+                    <input id="manual-shortlist-search" placeholder="Carrier, domain, email, coverage..." />
+                  </label>
+                  <label>
+                    Vendors
+                    <select id="manual-shortlist-vendors" multiple size="4"></select>
+                  </label>
+                  <button id="manual-shortlist-button" class="secondary" type="button" disabled>Add vendors</button>
+                  <p id="manual-shortlist-status" class="status-message" role="status"></p>
+                </section>
+                <div id="rfx-lane-coverage" class="rfx-lane-coverage-grid">
+                  <article>Select an event to inspect lane coverage.</article>
+                </div>
+              </div>
+              <section class="rfx-lane-decision-panel">
+                <div class="split-heading compact">
+                  <div>
+                    <p class="eyebrow">Lane decision</p>
+                    <h3 id="rfx-lane-decision-title">Select a lane</h3>
+                  </div>
+                  <span id="rfx-lane-decision-status" class="status-pill muted">No lane</span>
+                </div>
+                <div id="rfx-lane-decision-body" class="rfx-lane-decision-body">
+                  <article>Select a lane card or table row.</article>
+                </div>
+              </section>
+            </section>
+
+            <section class="bid-room-stage-panel" data-workbench-view-panel="outreach">
+              <div class="bid-room-stage-header">
+                <div>
+                  <p class="eyebrow">Step 4</p>
+                  <h3>Preview and launch invitations</h3>
+                </div>
+              </div>
+              <div class="rfx-outreach-grid bid-room-invite-grid">
                 <form id="rfx-outreach-form" class="rfx-outreach-form">
                   <label>
                     Invitation wave
@@ -320,13 +338,16 @@
               </div>
             </section>
 
-            <section class="bid-room-mode-panel" data-workbench-view-panel="responses">
-              <div class="split-heading compact">
+            <section class="bid-room-stage-panel" data-workbench-view-panel="responses">
+              <div class="bid-room-stage-header">
                 <div>
-                  <p class="eyebrow">Private Bid Room</p>
-                  <h3>Live offer board</h3>
+                  <p class="eyebrow">Step 5</p>
+                  <h3>Live bid board</h3>
                 </div>
                 <span id="rfx-response-summary" class="status-pill muted">No bids</span>
+              </div>
+              <div id="rfx-live-offer-manager" class="rfx-live-offer-manager">
+                <article>No live bids yet.</article>
               </div>
               <div class="table-wrap">
                 <table class="rfx-response-table">
@@ -349,8 +370,27 @@
                   </tbody>
                 </table>
               </div>
-              <div id="rfx-live-offer-manager" class="rfx-live-offer-manager">
-                <article>No live bids yet.</article>
+            </section>
+
+            <section class="bid-room-stage-panel" data-workbench-view-panel="award">
+              <div class="bid-room-stage-header">
+                <div>
+                  <p class="eyebrow">Step 6</p>
+                  <h3>Award decision</h3>
+                </div>
+                <span class="status-pill muted">Decision room</span>
+              </div>
+              <div class="bid-room-award-grid">
+                <article class="bid-room-context-card">
+                  <p class="eyebrow">Decision checklist</p>
+                  <h4>Move from bids to award</h4>
+                  <p>Use live bids, Rateware benchmark deltas, capacity, and response coverage to decide which carriers should be awarded or moved back to outreach.</p>
+                </article>
+                <article class="bid-room-context-card">
+                  <p class="eyebrow">Next product step</p>
+                  <h4>Award workflow</h4>
+                  <p>This stage is intentionally clean: the next backend increment should add award status, award notes, and award export without adding another RFx module.</p>
+                </article>
               </div>
             </section>
           </section>

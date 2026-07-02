@@ -119,7 +119,7 @@ let focusedLaneId = null;
 let activeLaneFilter = "all";
 const rfxPageParams = new URLSearchParams(window.location.search);
 const requestedRfxEventId = rfxPageParams.get("rfx_event_id");
-const rfxWorkbench = initWorkbenchTabs({ defaultView: "manager" });
+const rfxWorkbench = initWorkbenchTabs({ defaultView: "setup" });
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -168,7 +168,7 @@ function fillRfxEventForm(event) {
   rfxTypeInput.value = event.event_type || "spot";
   rfxDueDateInput.value = event.due_date || "";
   if (createRfxEventButton) createRfxEventButton.textContent = "Save changes";
-  activateWorkbenchView("manager", "#rfx-id");
+  activateWorkbenchView("setup", "#rfx-id");
   eventForm?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
@@ -477,12 +477,12 @@ function rfxWizardStats() {
 function rfxWizardStepState() {
   const stats = rfxWizardStats();
   return [
-    { key: "event", label: "Event", complete: Boolean(selectedEvent) },
-    { key: "lanes", label: "Lanes", complete: stats.lanes > 0 },
-    { key: "carriers", label: "Carriers", complete: stats.invitations.length > 0 },
-    { key: "preview", label: "Preview", complete: Boolean(selectedOutreachTemplate() && stats.readyTargets.length) },
-    { key: "launch", label: "Launch", complete: stats.invitations.some(hasInvitationStarted) },
-    { key: "offers", label: "Live bids", complete: stats.bids.length > 0 }
+    { key: "event", label: "Setup", complete: Boolean(selectedEvent) },
+    { key: "lanes", label: "Book", complete: stats.lanes > 0 },
+    { key: "carriers", label: "Shortlist", complete: stats.invitations.length > 0 },
+    { key: "launch", label: "Invite", complete: stats.invitations.some(hasInvitationStarted) },
+    { key: "offers", label: "Bids", complete: stats.bids.length > 0 },
+    { key: "award", label: "Award", complete: selectedEvent?.status === "awarded" }
   ];
 }
 
@@ -492,13 +492,14 @@ function currentWizardStage() {
 
 function wizardStageView(stage) {
   return {
-    event: "manager",
+    event: "setup",
     lanes: "lanes",
-    carriers: "lanes",
+    carriers: "carriers",
     preview: "outreach",
     launch: "outreach",
-    offers: "responses"
-  }[stage] || "manager";
+    offers: "responses",
+    award: "award"
+  }[stage] || "setup";
 }
 
 function wizardStageCopy(stage) {
@@ -507,19 +508,19 @@ function wizardStageCopy(stage) {
       title: "Create or select a bid event",
       detail: "Start with customer, due date, and event ID. The rest of the workflow attaches to this room.",
       cta: "Create bid event",
-      note: "Setup"
+      note: "Event"
     },
     lanes: {
       title: "Load the business book",
       detail: "Paste or import lanes from Excel/CSV so Rateware can build coverage and shortlist carriers.",
       cta: "Load lanes",
-      note: "Book"
+      note: "Lanes"
     },
     carriers: {
       title: "Build the carrier shortlist",
       detail: "Use procurement vendors and Rateware evidence to create target carriers for every lane.",
       cta: "Build shortlist",
-      note: "Shortlist"
+      note: "Targets"
     },
     preview: {
       title: "Review invitation copy",
@@ -528,16 +529,22 @@ function wizardStageCopy(stage) {
       note: "Preview"
     },
     launch: {
-      title: "Generate and send invitations",
-      detail: "Create Gmail/WhatsApp drafts with private bid links, then mark invites as sent.",
+      title: "Preview and launch invitations",
+      detail: "Confirm template, channel, contact readiness, and private bid links before generating drafts.",
       cta: "Generate invitations",
-      note: "Launch"
+      note: "Drafts"
     },
     offers: {
       title: "Monitor live bids",
       detail: "Track carrier offers, spread, capacity, and response coverage from the private bid room.",
       cta: "Open live bids",
-      note: "Bids"
+      note: "Offers"
+    },
+    award: {
+      title: "Prepare the award decision",
+      detail: "Compare bids against Rateware, capacity, and coverage before awarding lanes.",
+      cta: "Open award room",
+      note: "Decision"
     }
   }[stage] || {
     title: "Open Bid Room",
@@ -549,12 +556,13 @@ function wizardStageCopy(stage) {
 
 function wizardActionButton(stage) {
   const actions = {
-    event: '<button type="button" data-rfx-focus-create>Create bid event</button>',
+    event: "",
     lanes: '<button type="button" data-rfx-wizard-go="lanes">Load business book</button>',
     carriers: '<button type="button" data-rfx-wizard-auto-shortlist>Build shortlist</button>',
     preview: '<button type="button" data-rfx-wizard-go="outreach">Review invitation preview</button>',
     launch: '<button type="button" data-rfx-wizard-create-drafts>Generate invitations</button>',
-    offers: '<button type="button" data-rfx-wizard-go="responses">Open live bids</button>'
+    offers: '<button type="button" data-rfx-wizard-go="responses">Open live bids</button>',
+    award: '<button type="button" data-rfx-wizard-go="award">Open award room</button>'
   };
   return actions[stage] || actions.event;
 }
@@ -562,12 +570,27 @@ function wizardActionButton(stage) {
 function renderOpsStageRail() {
   if (!rfxOpsStageRail) return;
   const stage = currentWizardStage();
+  const buttons = [...rfxOpsStageRail.querySelectorAll("[data-stage-key]")];
+  if (buttons.length) {
+    rfxWizardStepState().forEach((step, index) => {
+      const button = rfxOpsStageRail.querySelector(`[data-stage-key="${step.key}"]`);
+      if (!button) return;
+      const copy = wizardStageCopy(step.key);
+      button.classList.toggle("is-complete", step.complete);
+      button.classList.toggle("is-next", step.key === stage);
+      button.setAttribute("aria-current", step.key === stage ? "step" : "false");
+      button.querySelector(".stage-index").textContent = String(index + 1);
+      button.querySelector(".stage-copy strong").textContent = step.label;
+      button.querySelector(".stage-copy small").textContent = copy.note;
+    });
+    return;
+  }
   rfxOpsStageRail.innerHTML = rfxWizardStepState().map((step, index) => {
     const copy = wizardStageCopy(step.key);
     return `
       <button
         type="button"
-        class="${step.complete ? "is-complete" : ""} ${step.key === stage ? "is-active" : ""}"
+        class="${step.complete ? "is-complete" : ""} ${step.key === stage ? "is-next" : ""}"
         data-rfx-wizard-go="${escapeHtml(wizardStageView(step.key))}"
         aria-current="${step.key === stage ? "step" : "false"}"
       >
@@ -1038,11 +1061,11 @@ function renderEventFlow() {
 }
 
 function renderRfxOpsStrip() {
-  if (!rfxOpsTitle || !rfxOpsSubtitle || !rfxOpsHealth) return;
+  if (!rfxOpsSubtitle || !rfxOpsHealth) return;
   renderOpsStageRail();
   renderOpsNextAction();
   if (!selectedEvent) {
-    rfxOpsTitle.textContent = "Select or create a bid event";
+    if (rfxOpsTitle) rfxOpsTitle.textContent = "Select or create a bid event";
     rfxOpsSubtitle.textContent = "Start with setup, import lanes, shortlist carriers, then launch invitations and monitor bids.";
     rfxOpsHealth.innerHTML = `
       <article><span>Event</span><strong>-</strong><small>No bid event selected.</small></article>
@@ -1061,7 +1084,7 @@ function renderRfxOpsStrip() {
   const lanesWithBids = currentLanes.filter((lane) => bidInvitations(lane).length).length;
   const due = selectedEvent.due_date ? `Due ${selectedEvent.due_date}` : "No due date";
 
-  rfxOpsTitle.textContent = `${selectedEvent.rfx_id || "RFx"} procurement flow`;
+  if (rfxOpsTitle) rfxOpsTitle.textContent = `${selectedEvent.rfx_id || "RFx"} procurement flow`;
   rfxOpsSubtitle.textContent = `${selectedEvent.name || "Selected event"} | ${selectedEvent.customer || "No customer"} | ${due}`;
   rfxOpsHealth.innerHTML = `
     <article data-tone="${selectedEvent.status === "open" ? "success" : "neutral"}">
@@ -1771,12 +1794,14 @@ document.addEventListener("click", (event) => {
   if (wizardGoButton) {
     event.preventDefault();
     const requestedView = wizardGoButton.dataset.rfxWizardGo || "manager";
-    const view = requestedView === "setup" || requestedView === "wizard" ? "manager" : requestedView;
+    const view = requestedView === "wizard" || requestedView === "manager" ? "setup" : requestedView;
     const focusTargets = {
-      manager: requestedView === "setup" ? "#rfx-id" : null,
+      setup: "#rfx-id",
       lanes: "#rfx-lane-paste",
+      carriers: "#manual-shortlist-search",
       outreach: "#rfx-outreach-template",
-      responses: "#rfx-response-body"
+      responses: "#rfx-response-body",
+      award: null
     };
     activateWorkbenchView(view, focusTargets[view] || null);
     return;
@@ -1809,6 +1834,8 @@ document.addEventListener("click", (event) => {
 
   const createButton = event.target.closest("[data-rfx-focus-create]");
   if (createButton) {
+    resetRfxEventForm();
+    activateWorkbenchView("setup", "#rfx-id");
     rfxIdInput?.focus();
     eventForm?.scrollIntoView({ behavior: "smooth", block: "start" });
   }

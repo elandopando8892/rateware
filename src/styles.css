@@ -14203,3 +14203,337 @@ textarea:focus,
     grid-template-columns: 1fr 1fr;
   }
 }
+
+/* Bid Room product reset */
+.bid-room-product {
+  display: grid;
+  grid-template-columns: 248px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  min-height: calc(100vh - 86px);
+}
+
+.bid-room-event-rail {
+  position: sticky;
+  top: 64px;
+  max-height: calc(100vh - 74px);
+  overflow: auto;
+}
+
+.bid-room-workspace {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.bid-room-rail-card,
+.bid-room-control-panel,
+.bid-room-stage-panel {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: none;
+}
+
+.bid-room-rail-card,
+.bid-room-control-panel,
+.bid-room-stage-panel {
+  padding: 10px;
+}
+
+.bid-room-create-link {
+  width: 100%;
+  min-height: 28px;
+  margin: 4px 0 8px;
+  border: 1px dashed #bcc9d4;
+  border-radius: 6px;
+  background: #f8fafc;
+  color: #26323d;
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.bid-room-title-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.bid-room-title-row h2 {
+  margin: 0;
+  font-size: 1.08rem;
+  letter-spacing: 0;
+}
+
+.bid-room-title-row p:not(.eyebrow) {
+  margin: 2px 0 0;
+  color: #52616d;
+  font-size: 0.78rem;
+}
+
+.bid-room-action-menu {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.bid-room-action-menu summary {
+  min-height: 30px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #f8fafc;
+  padding: 6px 10px;
+  color: #25313b;
+  cursor: pointer;
+  font-size: 0.72rem;
+  font-weight: 900;
+  list-style: none;
+}
+
+.bid-room-action-menu summary::-webkit-details-marker {
+  display: none;
+}
+
+.bid-room-action-menu[open] summary {
+  border-color: #9fb1bf;
+  background: #ffffff;
+}
+
+.bid-room-action-menu .action-row {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 30;
+  display: grid;
+  grid-template-columns: 1fr;
+  min-width: 170px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 6px;
+  box-shadow: 0 12px 32px rgba(28, 38, 48, 0.14);
+}
+
+.bid-room-action-menu .action-row button {
+  justify-content: flex-start;
+  width: 100%;
+}
+
+.bid-room-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.bid-room-metrics article {
+  display: grid;
+  gap: 2px;
+  min-height: 46px;
+  border: 1px solid #d8e0e7;
+  border-radius: 6px;
+  background: #f8fafc;
+  padding: 7px 8px;
+}
+
+.bid-room-metrics span {
+  color: #667480;
+  font-size: 0.6rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.bid-room-metrics strong {
+  color: #121c26;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.bid-room-metrics small {
+  color: #52616d;
+  font-size: 0.66rem;
+  font-weight: 720;
+}
+
+.bid-room-flow-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(230px, 300px);
+  gap: 8px;
+  align-items: stretch;
+  margin-top: 8px;
+}
+
+.bid-room-flow-shell .bid-room-stage-rail {
+  position: static;
+  display: grid;
+  grid-template-columns: repeat(6, minmax(88px, 1fr));
+  gap: 4px;
+  min-width: 0;
+}
+
+.bid-room-flow-shell .bid-room-stage-rail button {
+  min-height: 40px;
+  border-radius: 7px;
+  background: #ffffff;
+}
+
+.bid-room-flow-shell .bid-room-stage-rail button.is-active {
+  border-color: #26323d;
+  background: #26323d;
+  color: #ffffff;
+}
+
+.bid-room-flow-shell .bid-room-stage-rail button.is-active small,
+.bid-room-flow-shell .bid-room-stage-rail button.is-active strong {
+  color: #ffffff;
+}
+
+.bid-room-flow-shell .bid-room-stage-rail button.is-next:not(.is-active) {
+  border-color: var(--accent-border);
+  background: #eff8f6;
+}
+
+.bid-room-flow-shell .bid-room-stage-rail button.is-next:not(.is-active) .stage-index {
+  background: var(--accent);
+  color: #ffffff;
+}
+
+.bid-room-flow-shell .bid-room-stage-rail button.is-complete:not(.is-active) {
+  border-color: #cbded3;
+  background: #f7fbf8;
+}
+
+.bid-room-stage-panel {
+  display: grid;
+  gap: 10px;
+}
+
+.bid-room-stage-panel[hidden] {
+  display: none;
+}
+
+.bid-room-stage-header {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 8px;
+}
+
+.bid-room-stage-header h3 {
+  margin: 0;
+  font-size: 1rem;
+  letter-spacing: 0;
+}
+
+.bid-room-setup-grid,
+.bid-room-carrier-grid,
+.bid-room-award-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 0.38fr);
+  gap: 10px;
+  align-items: start;
+}
+
+.bid-room-setup-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.bid-room-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.bid-room-form label {
+  gap: 3px;
+  font-size: 0.72rem;
+}
+
+.bid-room-form label:nth-child(2),
+.bid-room-form label:nth-child(3) {
+  grid-column: span 2;
+}
+
+.bid-room-form input,
+.bid-room-form select {
+  min-height: 30px;
+}
+
+.bid-room-form button,
+.bid-room-form .status-message {
+  grid-column: span 2;
+}
+
+.bid-room-context-card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fafc;
+  padding: 10px;
+}
+
+.bid-room-context-card h4 {
+  margin: 0 0 5px;
+  font-size: 0.9rem;
+}
+
+.bid-room-context-card p:not(.eyebrow) {
+  margin: 0;
+  color: #52616d;
+  font-size: 0.76rem;
+  line-height: 1.4;
+}
+
+.bid-room-import-panel,
+.bid-room-table-toolbar,
+.bid-room-bulk-bar,
+.bid-room-invite-grid {
+  margin: 0;
+}
+
+.bid-room-import-panel {
+  padding: 10px;
+}
+
+.bid-room-carrier-grid {
+  grid-template-columns: minmax(260px, 0.34fr) minmax(0, 1fr);
+}
+
+.bid-room-carrier-grid .rfx-lane-coverage-grid {
+  margin: 0;
+}
+
+.bid-room-award-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@media (max-width: 1180px) {
+  .bid-room-product,
+  .bid-room-flow-shell,
+  .bid-room-setup-grid,
+  .bid-room-carrier-grid,
+  .bid-room-award-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .bid-room-event-rail {
+    position: static;
+    max-height: none;
+  }
+}
+
+@media (max-width: 760px) {
+  .bid-room-metrics,
+  .bid-room-flow-shell .bid-room-stage-rail,
+  .bid-room-form {
+    grid-template-columns: 1fr;
+  }
+
+  .bid-room-form label:nth-child(2),
+  .bid-room-form label:nth-child(3),
+  .bid-room-form button,
+  .bid-room-form .status-message {
+    grid-column: auto;
+  }
+}
