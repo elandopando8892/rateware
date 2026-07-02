@@ -8819,7 +8819,14 @@ Deno.serve(async (request) => {
     }
 
     if (body.action === "dashboard_summary") {
-      const [uploads, vendors, sourcingVendors, procurementVendors, archivedVendors, pending, approved, failed, rfxEvents, rfxOpen, rfxBids, outreachMessages] = await Promise.all([
+      // Rate-book health cutoffs. quote_date is a date column with an index,
+      // so these stay cheap head-counts like the rest of the summary.
+      const dayIso = (daysAgo: number) => new Date(Date.now() - daysAgo * 86400000).toISOString().slice(0, 10);
+      const freshCutoff = dayIso(30);
+      const agingCutoff = dayIso(60);
+      const recentCutoff = new Date(Date.now() - 7 * 86400000).toISOString();
+
+      const [uploads, vendors, sourcingVendors, procurementVendors, archivedVendors, pending, approved, failed, rfxEvents, rfxOpen, rfxBids, outreachMessages, freshRates, agingRates, staleRates, recentRates, locationGapRates] = await Promise.all([
         supabase.from("raw_uploads").select("id", { count: "exact", head: true }).neq("status", "archived"),
         supabase.from("vendors").select("id", { count: "exact", head: true }).eq("owner_email", user.owner_email),
         supabase.from("vendors").select("id", { count: "exact", head: true }).eq("owner_email", user.owner_email).eq("base_stage", "sourcing"),
@@ -8831,10 +8838,15 @@ Deno.serve(async (request) => {
         supabase.from("rfx_events").select("id", { count: "exact", head: true }).eq("owner_email", user.owner_email).neq("status", "archived"),
         supabase.from("rfx_events").select("id", { count: "exact", head: true }).eq("owner_email", user.owner_email).eq("status", "open"),
         supabase.from("rfx_lane_vendors").select("id,rfx_events!inner(owner_email)", { count: "exact", head: true }).eq("rfx_events.owner_email", user.owner_email).in("invitation_status", ["quoted", "bid_submitted"]),
-        supabase.from("outreach_messages").select("id", { count: "exact", head: true }).eq("owner_email", user.owner_email).neq("status", "archived")
+        supabase.from("outreach_messages").select("id", { count: "exact", head: true }).eq("owner_email", user.owner_email).neq("status", "archived"),
+        supabase.from("rate_staging").select("id", { count: "exact", head: true }).eq("status", "approved").gte("quote_date", freshCutoff),
+        supabase.from("rate_staging").select("id", { count: "exact", head: true }).eq("status", "approved").gte("quote_date", agingCutoff).lt("quote_date", freshCutoff),
+        supabase.from("rate_staging").select("id", { count: "exact", head: true }).eq("status", "approved").or(`quote_date.lt.${agingCutoff},quote_date.is.null`),
+        supabase.from("rate_staging").select("id", { count: "exact", head: true }).eq("status", "approved").gte("created_at", recentCutoff),
+        supabase.from("rate_staging").select("id", { count: "exact", head: true }).eq("status", "approved").or("origin_market.is.null,destination_market.is.null")
       ]);
 
-      for (const result of [uploads, vendors, sourcingVendors, procurementVendors, archivedVendors, pending, approved, failed, rfxEvents, rfxOpen, rfxBids, outreachMessages]) {
+      for (const result of [uploads, vendors, sourcingVendors, procurementVendors, archivedVendors, pending, approved, failed, rfxEvents, rfxOpen, rfxBids, outreachMessages, freshRates, agingRates, staleRates, recentRates, locationGapRates]) {
         if (result.error) throw result.error;
       }
 
@@ -8850,7 +8862,12 @@ Deno.serve(async (request) => {
         rfx_events: rfxEvents.count || 0,
         rfx_open_events: rfxOpen.count || 0,
         rfx_bids: rfxBids.count || 0,
-        outreach_messages: outreachMessages.count || 0
+        outreach_messages: outreachMessages.count || 0,
+        fresh_rates: freshRates.count || 0,
+        aging_rates: agingRates.count || 0,
+        stale_rates: staleRates.count || 0,
+        recent_rates_7d: recentRates.count || 0,
+        location_gap_rates: locationGapRates.count || 0
       });
     }
 

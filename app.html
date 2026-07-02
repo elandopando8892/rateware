@@ -67,6 +67,44 @@
             <a id="next-action-link" class="page-primary-action" href="./upload-center.html">Open</a>
           </section>
 
+          <section id="rate-book-health" class="workspace-panel rate-book-health-panel hidden" aria-label="Rate book health">
+            <div class="section-heading compact split-heading">
+              <div>
+                <p class="eyebrow">Rate book health</p>
+                <h2>Quote freshness</h2>
+              </div>
+              <a class="secondary-link" href="./rateware.html">Open rate book</a>
+            </div>
+            <div class="rate-health-layout">
+              <div class="freshness-block">
+                <div id="freshness-bar" class="freshness-bar" role="img" aria-label="Quote freshness distribution">
+                  <span class="fresh" style="flex-grow: 0"></span>
+                  <span class="aging" style="flex-grow: 0"></span>
+                  <span class="stale" style="flex-grow: 1"></span>
+                </div>
+                <div class="freshness-legend">
+                  <span><i class="fresh"></i>Fresh &le; 30d <b id="freshness-fresh">-</b></span>
+                  <span><i class="aging"></i>Aging 31&ndash;60d <b id="freshness-aging">-</b></span>
+                  <span><i class="stale"></i>Stale &gt; 60d <b id="freshness-stale">-</b></span>
+                </div>
+              </div>
+              <div class="metric-grid rate-health-metrics">
+                <a class="metric-card" href="./rateware.html">
+                  <span>Fresh share</span>
+                  <strong id="health-fresh-share">-</strong>
+                </a>
+                <a class="metric-card" href="./rateware.html">
+                  <span>Approved last 7 days</span>
+                  <strong id="health-recent">-</strong>
+                </a>
+                <a class="metric-card" href="./rateware.html">
+                  <span>Location gaps</span>
+                  <strong id="health-gaps">-</strong>
+                </a>
+              </div>
+            </div>
+          </section>
+
           <section class="workflow-progress-panel" aria-label="Procurement workflow">
             <a class="workflow-progress-step" href="./upload-center.html">
               <span>1</span>

@@ -15,6 +15,15 @@ const metricProcurement = document.querySelector("#metric-procurement");
 const metricRfxOpen = document.querySelector("#metric-rfx-open");
 const metricRfxBids = document.querySelector("#metric-rfx-bids");
 
+const rateBookHealthPanel = document.querySelector("#rate-book-health");
+const freshnessBar = document.querySelector("#freshness-bar");
+const freshnessFresh = document.querySelector("#freshness-fresh");
+const freshnessAging = document.querySelector("#freshness-aging");
+const freshnessStale = document.querySelector("#freshness-stale");
+const healthFreshShare = document.querySelector("#health-fresh-share");
+const healthRecent = document.querySelector("#health-recent");
+const healthGaps = document.querySelector("#health-gaps");
+
 const workflowStaging = document.querySelector("#workflow-staging");
 const workflowFailed = document.querySelector("#workflow-failed");
 const workflowRfx = document.querySelector("#workflow-rfx");
@@ -52,6 +61,22 @@ function escapeHtml(value) {
     .replace(/"/g, "&quot;");
 }
 
+function rateBookFreshness(summary) {
+  const fresh = numberValue(summary.fresh_rates);
+  const aging = numberValue(summary.aging_rates);
+  const stale = numberValue(summary.stale_rates);
+  const total = fresh + aging + stale;
+  return {
+    available: summary.fresh_rates !== undefined,
+    fresh,
+    aging,
+    stale,
+    total,
+    staleShare: total ? stale / total : 0,
+    freshShare: total ? fresh / total : 0
+  };
+}
+
 function buildActionList(summary) {
   const failedUploads = numberValue(summary.failed_uploads);
   const pendingReview = numberValue(summary.pending_review);
@@ -61,6 +86,7 @@ function buildActionList(summary) {
   const sourcingVendors = numberValue(summary.sourcing_vendors);
   const rawUploads = numberValue(summary.raw_uploads);
   const approvedRows = numberValue(summary.approved_rows);
+  const freshness = rateBookFreshness(summary);
 
   const actions = [];
 
@@ -92,6 +118,17 @@ function buildActionList(summary) {
       count: openRfx,
       title: "Check open Bid Rooms",
       detail: rfxBids > 0 ? "Compare bid responses and decide which lanes need follow-up." : "Shortlist vendors and send invitations.",
+      href: "./rfx-events.html",
+      action: "Open Bid Room"
+    });
+  }
+
+  if (freshness.available && freshness.stale > 0 && freshness.staleShare >= 0.35) {
+    actions.push({
+      severity: "warning",
+      count: freshness.stale,
+      title: "Re-quote stale lanes",
+      detail: `${Math.round(freshness.staleShare * 100)}% of the approved book is older than 60 days. Launch a Bid Room to refresh pricing.`,
       href: "./rfx-events.html",
       action: "Open Bid Room"
     });
@@ -175,6 +212,38 @@ function renderPriorityQueue(summary) {
     .join("");
 }
 
+function renderRateBookHealth(summary) {
+  if (!rateBookHealthPanel) return;
+  const freshness = rateBookFreshness(summary);
+
+  // Older deployments of the rateware-api function do not return freshness
+  // fields yet; keep the panel hidden until the data exists.
+  if (!freshness.available || !freshness.total) {
+    rateBookHealthPanel.classList.add("hidden");
+    return;
+  }
+
+  if (freshnessBar) {
+    const segments = { fresh: freshness.fresh, aging: freshness.aging, stale: freshness.stale };
+    Object.entries(segments).forEach(([key, value]) => {
+      const segment = freshnessBar.querySelector(`.${key}`);
+      if (segment) segment.style.flexGrow = String(value || 0);
+    });
+    freshnessBar.setAttribute(
+      "aria-label",
+      `Quote freshness: ${formatCount(freshness.fresh)} fresh, ${formatCount(freshness.aging)} aging, ${formatCount(freshness.stale)} stale`
+    );
+  }
+
+  setText(freshnessFresh, formatCount(freshness.fresh));
+  setText(freshnessAging, formatCount(freshness.aging));
+  setText(freshnessStale, formatCount(freshness.stale));
+  setText(healthFreshShare, `${Math.round(freshness.freshShare * 100)}%`);
+  setMetric(healthRecent, summary.recent_rates_7d);
+  setMetric(healthGaps, summary.location_gap_rates);
+  rateBookHealthPanel.classList.remove("hidden");
+}
+
 function renderSummary(summary) {
   setMetric(metricPending, summary.pending_review);
   setMetric(metricFailed, summary.failed_uploads);
@@ -195,6 +264,7 @@ function renderSummary(summary) {
   setText(progressRfx, `${formatCount(summary.rfx_open_events)} events`);
   setText(progressOutreach, `${formatCount(summary.rfx_bids)} bids`);
 
+  renderRateBookHealth(summary);
   renderNextBestAction(summary);
   renderPriorityQueue(summary);
 }
