@@ -1942,6 +1942,12 @@ a {
   justify-content: space-between;
 }
 
+.outreach-preview-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
 .outreach-html-preview span,
 .outreach-text-preview span {
   color: #607080;
@@ -1961,6 +1967,55 @@ a {
   border: 1px solid #d7e0e7;
   border-radius: 7px;
   background: #ffffff;
+}
+
+.outreach-html-editor-surface {
+  min-height: 420px;
+  max-height: 680px;
+  overflow: auto;
+  border: 1px solid #94a9bb;
+  border-radius: 7px;
+  background: #ffffff;
+  color: #1f2937;
+  padding: 12px;
+  outline: 2px solid rgba(31, 78, 121, 0.08);
+}
+
+.outreach-html-editor-surface:focus {
+  border-color: #1f4e79;
+  box-shadow: 0 0 0 2px rgba(31, 78, 121, 0.12);
+}
+
+.outreach-html-editor-surface table {
+  border-collapse: collapse;
+}
+
+.outreach-html-editor-surface td,
+.outreach-html-editor-surface th {
+  min-width: 80px;
+}
+
+.template-token-chip {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid #bddbd7;
+  border-radius: 999px;
+  background: #eef8f6;
+  color: #0f5f58;
+  font-size: 0.72rem;
+  font-weight: 900;
+  line-height: 1.2;
+  padding: 2px 7px;
+  white-space: nowrap;
+}
+
+.template-token-chip.is-block-token {
+  display: flex;
+  justify-content: center;
+  border-radius: 6px;
+  border-style: dashed;
+  margin: 8px 0;
+  padding: 8px;
 }
 
 .outreach-text-preview p {

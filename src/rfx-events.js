@@ -135,6 +135,7 @@ let vendorOptions = [];
 let outreachTemplates = [];
 let rfxTemplateEditorTemplateId = null;
 let rfxTemplateEditorDirty = false;
+let rfxTemplateVisualEditing = false;
 let contactHistoryRows = [];
 let outreachMessages = [];
 let selectedLaneIds = new Set();
@@ -763,6 +764,66 @@ function renderRfxTemplateEditor({ force = false } = {}) {
   }
 }
 
+function sanitizeEditableTemplate(root) {
+  root.querySelectorAll("script, object, embed, iframe").forEach((item) => item.remove());
+  root.querySelectorAll("*").forEach((item) => {
+    [...item.attributes].forEach((attribute) => {
+      const name = attribute.name.toLowerCase();
+      const value = String(attribute.value || "").trim().toLowerCase();
+      if (name.startsWith("on") || value.startsWith("javascript:")) item.removeAttribute(attribute.name);
+      if (name === "contenteditable") item.removeAttribute(attribute.name);
+    });
+  });
+}
+
+function tokenChip(token) {
+  const span = document.createElement("span");
+  span.className = token === "lane_table" ? "template-token-chip is-block-token" : "template-token-chip";
+  span.dataset.templateToken = token;
+  span.contentEditable = "false";
+  span.textContent = token === "lane_table" ? "Dynamic lane table {{lane_table}}" : `{{${token}}}`;
+  return span;
+}
+
+function tokenizedHtmlForVisualEditor(html) {
+  const template = document.createElement("template");
+  template.innerHTML = html || "";
+  sanitizeEditableTemplate(template.content);
+  const textNodes = [];
+  const walker = document.createTreeWalker(template.content, NodeFilter.SHOW_TEXT);
+  while (walker.nextNode()) textNodes.push(walker.currentNode);
+  textNodes.forEach((node) => {
+    const source = node.nodeValue || "";
+    if (!/\{\{\s*[a-zA-Z0-9_]+\s*\}\}/.test(source)) return;
+    const fragment = document.createDocumentFragment();
+    let lastIndex = 0;
+    source.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (match, token, index) => {
+      if (index > lastIndex) fragment.appendChild(document.createTextNode(source.slice(lastIndex, index)));
+      fragment.appendChild(tokenChip(token));
+      lastIndex = index + match.length;
+      return match;
+    });
+    if (lastIndex < source.length) fragment.appendChild(document.createTextNode(source.slice(lastIndex)));
+    node.replaceWith(fragment);
+  });
+  const container = document.createElement("div");
+  container.appendChild(template.content.cloneNode(true));
+  return container.innerHTML;
+}
+
+function htmlFromVisualEditor(element) {
+  const template = document.createElement("template");
+  template.innerHTML = element?.innerHTML || "";
+  template.content.querySelectorAll("[data-template-token]").forEach((item) => {
+    const token = item.dataset.templateToken || "";
+    item.replaceWith(document.createTextNode(token ? `{{${token}}}` : ""));
+  });
+  sanitizeEditableTemplate(template.content);
+  const container = document.createElement("div");
+  container.appendChild(template.content.cloneNode(true));
+  return container.innerHTML.trim();
+}
+
 function templatePlaceholders(template) {
   if (Array.isArray(template?.placeholders) && template.placeholders.length) return template.placeholders;
   const source = [template?.subject, template?.html_body, template?.whatsapp_body].filter(Boolean).join(" ");
@@ -944,6 +1005,7 @@ function renderOutreachPreview() {
     const renderedSubject = renderTemplateText(template.subject || `${previewContext.rfx_id} invitation`, previewContext);
     const renderedHtml = renderTemplateText(template.html_body || template.whatsapp_body || "", previewContext);
     const renderedWhatsapp = renderTemplateText(template.whatsapp_body || renderedHtml.replace(/<[^>]*>/g, " "), previewContext);
+    const visualEditorHtml = tokenizedHtmlForVisualEditor(template.html_body || template.whatsapp_body || "");
     rfxOutreachPreview.innerHTML = `
       <div>
         <span class="status-pill">${escapeHtml(template.channel || "multi")}</span>
@@ -964,9 +1026,17 @@ function renderOutreachPreview() {
       <article class="outreach-html-preview">
         <div>
           <span>Email HTML preview</span>
-          <strong>${escapeHtml(previewContext.vendor_name || "Carrier")} | ${formatNumber(previewContext.lane_count || 0)} lane(s)</strong>
+          <strong>${rfxTemplateVisualEditing ? "Editing template visually" : `${escapeHtml(previewContext.vendor_name || "Carrier")} | ${formatNumber(previewContext.lane_count || 0)} lane(s)`}</strong>
+          <div class="outreach-preview-actions">
+            ${rfxTemplateVisualEditing
+              ? `<button class="small-button" type="button" data-rfx-template-save-visual>Save</button>
+                 <button class="secondary small-button" type="button" data-rfx-template-cancel-visual>Cancel</button>`
+              : `<button class="secondary small-button" type="button" data-rfx-template-edit-visual>Edit</button>`}
+          </div>
         </div>
-        ${renderedHtml ? `<iframe sandbox="" srcdoc="${escapeHtml(renderedHtml)}"></iframe>` : `<p>No HTML body configured for this template.</p>`}
+        ${rfxTemplateVisualEditing
+          ? `<div id="rfx-email-visual-editor" class="outreach-html-editor-surface" contenteditable="true" spellcheck="true">${visualEditorHtml || "<p>Edit your template here.</p>"}</div>`
+          : renderedHtml ? `<iframe sandbox="" srcdoc="${escapeHtml(renderedHtml)}"></iframe>` : `<p>No HTML body configured for this template.</p>`}
       </article>
       <article class="outreach-text-preview">
         <span>WhatsApp / text preview</span>
@@ -978,7 +1048,7 @@ function renderOutreachPreview() {
     `;
   }
   if (createRfxOutreachCampaignButton) {
-    createRfxOutreachCampaignButton.disabled = !selectedEventId || !template || !targets.length || rfxTemplateEditorDirty;
+    createRfxOutreachCampaignButton.disabled = !selectedEventId || !template || !targets.length || rfxTemplateEditorDirty || rfxTemplateVisualEditing;
   }
   renderWizard();
 }
@@ -2480,7 +2550,7 @@ async function createCurrentOutreachDrafts(statusElement = rfxOutreachStatus) {
     setStatus(statusElement, "Shortlist at least one vendor before creating campaign drafts.", "error");
     return null;
   }
-  if (rfxTemplateEditorDirty) {
+  if (rfxTemplateEditorDirty || rfxTemplateVisualEditing) {
     setStatus(statusElement, "Save the edited HTML template before generating invitations.", "error");
     return null;
   }
@@ -2577,6 +2647,35 @@ document.addEventListener("click", (event) => {
   const retryButton = event.target.closest("[data-retry-action]");
   if (retryButton?.dataset.retryAction === "load-rfx-events") {
     loadEvents();
+    return;
+  }
+
+  const editVisualTemplateButton = event.target.closest("[data-rfx-template-edit-visual]");
+  if (editVisualTemplateButton) {
+    event.preventDefault();
+    rfxTemplateVisualEditing = true;
+    renderOutreachPreview();
+    document.querySelector("#rfx-email-visual-editor")?.focus();
+    return;
+  }
+
+  const cancelVisualTemplateButton = event.target.closest("[data-rfx-template-cancel-visual]");
+  if (cancelVisualTemplateButton) {
+    event.preventDefault();
+    rfxTemplateVisualEditing = false;
+    renderOutreachPreview();
+    return;
+  }
+
+  const saveVisualTemplateButton = event.target.closest("[data-rfx-template-save-visual]");
+  if (saveVisualTemplateButton) {
+    event.preventDefault();
+    const surface = document.querySelector("#rfx-email-visual-editor");
+    if (!surface || !rfxTemplateHtml) return;
+    rfxTemplateHtml.value = htmlFromVisualEditor(surface);
+    rfxTemplateEditorDirty = true;
+    rfxTemplateVisualEditing = false;
+    saveSelectedRfxTemplate().catch((error) => setStatus(rfxTemplateEditorStatus, error.message, "error"));
     return;
   }
 
@@ -3064,6 +3163,7 @@ importCarrierTemplateButton?.addEventListener("click", async () => {
 
 rfxOutreachTemplate?.addEventListener("change", () => {
   rfxTemplateEditorDirty = false;
+  rfxTemplateVisualEditing = false;
   renderRfxTemplateEditor({ force: true });
   renderOutreachPreview();
 });
@@ -3084,6 +3184,7 @@ saveRfxTemplateHtmlButton?.addEventListener("click", saveSelectedRfxTemplate);
 
 resetRfxTemplateHtmlButton?.addEventListener("click", () => {
   rfxTemplateEditorDirty = false;
+  rfxTemplateVisualEditing = false;
   renderRfxTemplateEditor({ force: true });
   renderOutreachPreview();
 });
