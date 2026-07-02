@@ -84,6 +84,12 @@ const manualShortlistVendorList = document.querySelector("#manual-shortlist-vend
 const manualShortlistSourceSummary = document.querySelector("#manual-shortlist-source-summary");
 const manualShortlistButton = document.querySelector("#manual-shortlist-button");
 const manualShortlistStatus = document.querySelector("#manual-shortlist-status");
+const carrierTemplateFileInput = document.querySelector("#rfx-carrier-template-file");
+const downloadCarrierTemplateButton = document.querySelector("#download-rfx-carrier-template");
+const importCarrierTemplateButton = document.querySelector("#import-rfx-carrier-template");
+const carrierTemplatePreview = document.querySelector("#rfx-carrier-template-preview");
+const carrierTemplatePreviewBody = document.querySelector("#rfx-carrier-template-preview-body");
+const carrierTemplateStatus = document.querySelector("#rfx-carrier-template-status");
 const rfxOutreachForm = document.querySelector("#rfx-outreach-form");
 const rfxOutreachCampaignName = document.querySelector("#rfx-outreach-campaign-name");
 const rfxOutreachTemplate = document.querySelector("#rfx-outreach-template");
@@ -126,6 +132,8 @@ let focusedLaneId = null;
 let activeLaneFilter = "all";
 let pendingLaneTemplateRows = [];
 let pendingLaneTemplateIssues = [];
+let pendingCarrierTemplateRows = [];
+let pendingCarrierTemplateMatches = [];
 const rfxPageParams = new URLSearchParams(window.location.search);
 const requestedRfxEventId = rfxPageParams.get("rfx_event_id");
 const rfxWorkbench = initWorkbenchTabs({ defaultView: "setup" });
@@ -155,6 +163,15 @@ const RFX_LANE_TEMPLATE_COLUMNS = [
   { key: "currency", label: "Currency", example: "USD" },
   { key: "incumbent_vendor", label: "Incumbent Vendor", example: "carrier.com" },
   { key: "notes", label: "Notes", example: "Hazmat allowed" }
+];
+
+const RFX_CARRIER_TEMPLATE_COLUMNS = [
+  { key: "lane_number", label: "Lane #", example: "1 or ALL" },
+  { key: "lane_id", label: "Lane ID", example: "" },
+  { key: "vendor_domain", label: "Vendor Domain", example: "carrier.com" },
+  { key: "vendor_email", label: "Vendor Email", example: "pricing@carrier.com" },
+  { key: "vendor_name", label: "Vendor Name", example: "Carrier Logistics" },
+  { key: "notes", label: "Notes", example: "Target invite wave 1" }
 ];
 
 function escapeHtml(value) {
@@ -441,6 +458,134 @@ function downloadRfxLaneTemplate() {
   ];
   XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(referenceRows), "Field Reference");
   XLSX.writeFile(workbook, `rateware-rfx-lane-template-${new Date().toISOString().slice(0, 10)}.xlsx`);
+}
+
+function mapCarrierHeader(header) {
+  const aliases = {
+    lane: "lane_number",
+    lane_no: "lane_number",
+    lane_num: "lane_number",
+    lane_number: "lane_number",
+    rfx_lane_id: "lane_id",
+    carrier: "vendor_name",
+    carrier_name: "vendor_name",
+    vendor: "vendor_name",
+    vendor_name: "vendor_name",
+    name: "vendor_name",
+    company: "vendor_name",
+    company_name: "vendor_name",
+    domain: "vendor_domain",
+    vendor_domain: "vendor_domain",
+    carrier_domain: "vendor_domain",
+    website: "vendor_domain",
+    email: "vendor_email",
+    vendor_email: "vendor_email",
+    carrier_email: "vendor_email",
+    primary_email: "vendor_email",
+    contact_email: "vendor_email"
+  };
+  const key = cleanHeader(header);
+  return aliases[key] || key;
+}
+
+function normalizeDomain(value) {
+  const text = String(value || "").trim().toLowerCase();
+  const fromEmail = text.includes("@") ? text.split("@").pop() : text;
+  return fromEmail
+    .replace(/^https?:\/\//, "")
+    .replace(/^www\./, "")
+    .split(/[/?#]/)[0]
+    .replace(/[^a-z0-9.-]/g, "")
+    .replace(/^\.+|\.+$/g, "");
+}
+
+function normalizeLookupText(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/&/g, "and")
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\b(inc|llc|ltd|sa|de|cv|sapi|corp|corporation|company|co)\b/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function rowsFromCarrierTemplateMatrix(matrix = []) {
+  const headerIndex = matrix.findIndex((row) => {
+    const headers = row.map(mapCarrierHeader);
+    return headers.some((header) => ["vendor_domain", "vendor_email", "vendor_name"].includes(header));
+  });
+  if (headerIndex < 0) {
+    throw new Error("Carrier participant template headers not found. Use vendor_domain, vendor_email or vendor_name.");
+  }
+  const headers = matrix[headerIndex].map(mapCarrierHeader);
+  return matrix.slice(headerIndex + 1)
+    .map((row) => {
+      const item = {};
+      headers.forEach((header, cellIndex) => {
+        if (!header) return;
+        item[header] = row[cellIndex] ?? "";
+      });
+      return item;
+    })
+    .filter((row) => Object.values(row).some((value) => String(value ?? "").trim()));
+}
+
+function normalizeCarrierTemplateRows(rows = []) {
+  return rows.map((row) => {
+    const normalized = {};
+    RFX_CARRIER_TEMPLATE_COLUMNS.forEach((column) => {
+      const value = row[column.key] ?? row[mapCarrierHeader(column.label)] ?? "";
+      normalized[column.key] = typeof value === "string" ? value.trim() : value;
+    });
+    normalized.vendor_domain = normalizeDomain(normalized.vendor_domain || normalized.vendor_email);
+    normalized.vendor_email = String(normalized.vendor_email || "").trim().toLowerCase();
+    normalized.vendor_name = String(normalized.vendor_name || "").trim();
+    normalized.lane_number = String(normalized.lane_number || "").trim();
+    normalized.lane_id = String(normalized.lane_id || "").trim();
+    normalized.notes = String(normalized.notes || "").trim();
+    return normalized;
+  });
+}
+
+async function parseCarrierTemplateFile(file) {
+  if (!file) return [];
+  const extension = file.name.split(".").pop()?.toLowerCase() || "";
+  if (extension === "csv" || extension === "tsv" || file.type === "text/csv") {
+    return normalizeCarrierTemplateRows(rowsFromCarrierTemplateMatrix(parseDelimitedRows(await file.text())));
+  }
+  const workbook = XLSX.read(await file.arrayBuffer(), { type: "array", cellDates: true });
+  const sheetName = workbook.SheetNames.find((name) => /carrier|vendor|participant|shortlist|target/i.test(name)) || workbook.SheetNames[0];
+  if (!sheetName) throw new Error("No sheets were found in this participant template.");
+  const matrix = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], {
+    header: 1,
+    defval: "",
+    blankrows: false,
+    raw: false
+  });
+  return normalizeCarrierTemplateRows(rowsFromCarrierTemplateMatrix(matrix));
+}
+
+function downloadRfxCarrierTemplate() {
+  const headers = RFX_CARRIER_TEMPLATE_COLUMNS.map((column) => column.key);
+  const example = Object.fromEntries(RFX_CARRIER_TEMPLATE_COLUMNS.map((column) => [column.key, column.example || ""]));
+  const blank = Object.fromEntries(RFX_CARRIER_TEMPLATE_COLUMNS.map((column) => [column.key, ""]));
+  const workbook = XLSX.utils.book_new();
+  const templateSheet = XLSX.utils.json_to_sheet([example, blank], { header: headers });
+  templateSheet["!cols"] = RFX_CARRIER_TEMPLATE_COLUMNS.map((column) => ({ wch: Math.max(column.key.length + 2, 18) }));
+  templateSheet["!autofilter"] = { ref: `A1:${XLSX.utils.encode_col(headers.length - 1)}1` };
+  XLSX.utils.book_append_sheet(workbook, templateSheet, "Carrier Participants");
+  const referenceRows = [
+    ["Column", "How to use"],
+    ["lane_number", "Use the RFx lane number. Use ALL to add this carrier to every lane. Leave blank to use the selected lane."],
+    ["lane_id", "Optional internal lane id. Use only if exported from Rateware."],
+    ["vendor_domain", "Best match key. Must already exist in Carrier CRM."],
+    ["vendor_email", "Fallback match key. Must already exist in Carrier CRM."],
+    ["vendor_name", "Fallback exact-name match when domain/email are not available."],
+    ["notes", "Optional operator notes; not required for import."]
+  ];
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(referenceRows), "Field Reference");
+  XLSX.writeFile(workbook, `rateware-rfx-carrier-participants-${new Date().toISOString().slice(0, 10)}.xlsx`);
 }
 
 function portalUrl(token) {
@@ -1692,6 +1837,130 @@ function vendorMetaLine(row) {
   ].filter(Boolean).join(" | ");
 }
 
+function vendorLookupMaps() {
+  const byDomain = new Map();
+  const byEmail = new Map();
+  const byName = new Map();
+  vendorOptions.forEach((vendor) => {
+    const domain = normalizeDomain(vendor.domain || vendor.primary_email);
+    const email = String(vendor.primary_email || "").trim().toLowerCase();
+    const name = normalizeLookupText(vendor.vendor_name);
+    if (domain && !byDomain.has(domain)) byDomain.set(domain, vendor);
+    if (email && !byEmail.has(email)) byEmail.set(email, vendor);
+    if (name && !byName.has(name)) byName.set(name, vendor);
+  });
+  return { byDomain, byEmail, byName };
+}
+
+function matchCarrierTemplateVendor(row, maps = vendorLookupMaps()) {
+  const domain = normalizeDomain(row.vendor_domain || row.vendor_email);
+  if (domain && maps.byDomain.has(domain)) {
+    return { vendor: maps.byDomain.get(domain), method: "domain" };
+  }
+  const email = String(row.vendor_email || "").trim().toLowerCase();
+  if (email && maps.byEmail.has(email)) {
+    return { vendor: maps.byEmail.get(email), method: "email" };
+  }
+  const name = normalizeLookupText(row.vendor_name);
+  if (name && maps.byName.has(name)) {
+    return { vendor: maps.byName.get(name), method: "name" };
+  }
+  return { vendor: null, method: "" };
+}
+
+function laneLabel(lane) {
+  if (!lane) return "";
+  return `#${lane.lane_number || ""} ${lane.origin || "-"} -> ${lane.destination || "-"}`.trim();
+}
+
+function selectedManualLane() {
+  return currentLanes.find((lane) => String(lane.id) === String(manualShortlistLane?.value || "")) || null;
+}
+
+function matchCarrierTemplateLanes(row) {
+  const laneId = String(row.lane_id || "").trim();
+  if (laneId) {
+    const lane = currentLanes.find((item) => String(item.id) === laneId);
+    return lane ? { lanes: [lane], label: laneLabel(lane), method: "lane_id" } : { lanes: [], label: laneId, method: "lane_id" };
+  }
+  const laneNumber = String(row.lane_number || "").trim();
+  if (["all", "*", "event", "all_lanes"].includes(laneNumber.toLowerCase())) {
+    return { lanes: currentLanes, label: "All lanes", method: "all" };
+  }
+  if (laneNumber) {
+    const lane = currentLanes.find((item) => String(item.lane_number || "").trim() === laneNumber);
+    return lane ? { lanes: [lane], label: laneLabel(lane), method: "lane_number" } : { lanes: [], label: laneNumber, method: "lane_number" };
+  }
+  const selected = selectedManualLane();
+  return selected ? { lanes: [selected], label: laneLabel(selected), method: "selected_lane" } : { lanes: [], label: "No lane selected", method: "selected_lane" };
+}
+
+function evaluateCarrierTemplateRows(rows = pendingCarrierTemplateRows) {
+  const maps = vendorLookupMaps();
+  return rows.map((row, index) => {
+    const issues = [];
+    const laneMatch = matchCarrierTemplateLanes(row);
+    const vendorMatch = matchCarrierTemplateVendor(row, maps);
+    if (!laneMatch.lanes.length) issues.push("lane not found");
+    if (!vendorMatch.vendor) issues.push("carrier not found in CRM");
+    if (!row.vendor_domain && !row.vendor_email && !row.vendor_name) issues.push("carrier identifier missing");
+    return {
+      index,
+      row,
+      lanes: laneMatch.lanes,
+      laneLabel: laneMatch.label,
+      laneMethod: laneMatch.method,
+      vendor: vendorMatch.vendor,
+      vendorMethod: vendorMatch.method,
+      issues
+    };
+  });
+}
+
+function readyCarrierTemplateMatches() {
+  return pendingCarrierTemplateMatches.filter((item) => !item.issues.length);
+}
+
+function updateCarrierTemplateButton() {
+  if (!importCarrierTemplateButton) return;
+  importCarrierTemplateButton.disabled = !selectedEventId || !readyCarrierTemplateMatches().length;
+}
+
+function renderCarrierTemplatePreview() {
+  if (!carrierTemplatePreview || !carrierTemplatePreviewBody) return;
+  pendingCarrierTemplateMatches = evaluateCarrierTemplateRows();
+  const readyRows = readyCarrierTemplateMatches();
+  carrierTemplatePreview.hidden = !pendingCarrierTemplateMatches.length;
+  carrierTemplatePreviewBody.innerHTML = pendingCarrierTemplateMatches.slice(0, 12).map((item) => {
+    const input = item.row.vendor_domain || item.row.vendor_email || item.row.vendor_name || "-";
+    const match = item.vendor ? `${vendorDisplayName(item.vendor)} (${item.vendorMethod})` : "-";
+    const status = item.issues.length ? item.issues.join(", ") : "ready";
+    return `
+      <tr class="${item.issues.length ? "is-muted-row" : ""}">
+        <td>${escapeHtml(item.laneLabel || "-")}</td>
+        <td>${escapeHtml(input)}</td>
+        <td>${escapeHtml(match)}</td>
+        <td>${escapeHtml(status)}</td>
+      </tr>
+    `;
+  }).join("");
+  const blocked = pendingCarrierTemplateMatches.length - readyRows.length;
+  const suffix = selectedEventId ? "" : " Select or create a bid event before import.";
+  const message = `${readyRows.length} ready participant row(s). ${blocked} row(s) need CRM/lane cleanup.${suffix}`;
+  setStatus(carrierTemplateStatus, message, readyRows.length ? "success" : "error");
+  updateCarrierTemplateButton();
+}
+
+function clearCarrierTemplateImport({ preserveStatus = false } = {}) {
+  pendingCarrierTemplateRows = [];
+  pendingCarrierTemplateMatches = [];
+  if (carrierTemplateFileInput) carrierTemplateFileInput.value = "";
+  if (carrierTemplatePreview) carrierTemplatePreview.hidden = true;
+  if (carrierTemplatePreviewBody) carrierTemplatePreviewBody.innerHTML = "";
+  if (!preserveStatus) setStatus(carrierTemplateStatus, "Upload a participant template to match carriers against Carrier CRM.");
+  updateCarrierTemplateButton();
+}
+
 function renderCrmVendorCandidate(row) {
   const stageLabel = row.base_stage || (isProcurementCarrier(row) ? "procurement" : "crm");
   const coverage = row.coverage_notes || row.notes || "No coverage notes captured";
@@ -1797,6 +2066,7 @@ function renderLanes() {
   selectedInvitationIds = new Set([...selectedInvitationIds].filter((id) => currentLanes.some((lane) => (lane.invitations || []).some((invite) => invite.id === id))));
   updateSelectionControls();
   renderManualShortlistControls();
+  if (pendingCarrierTemplateRows.length) renderCarrierTemplatePreview();
   renderEventDashboard();
   renderLaneCoverage();
   renderLaneDecision();
@@ -1928,9 +2198,11 @@ async function loadVendorOptions() {
     }
     vendorOptions = sortedVendorOptions(rows);
     renderManualShortlistControls();
+    if (pendingCarrierTemplateRows.length) renderCarrierTemplatePreview();
   } catch (error) {
     vendorOptions = [];
     renderManualShortlistControls();
+    if (pendingCarrierTemplateRows.length) renderCarrierTemplatePreview();
     setStatus(manualShortlistStatus, error.message, "error");
   }
 }
@@ -2469,7 +2741,10 @@ archiveSelectedButton?.addEventListener("click", async () => {
 });
 
 manualShortlistSearch?.addEventListener("input", renderManualShortlistControls);
-manualShortlistLane?.addEventListener("change", updateManualShortlistButtonState);
+manualShortlistLane?.addEventListener("change", () => {
+  updateManualShortlistButtonState();
+  if (pendingCarrierTemplateRows.length) renderCarrierTemplatePreview();
+});
 manualShortlistVendorList?.addEventListener("change", updateManualShortlistButtonState);
 
 manualShortlistButton?.addEventListener("click", async () => {
@@ -2489,6 +2764,68 @@ manualShortlistButton?.addEventListener("click", async () => {
     setStatus(manualShortlistStatus, error.message, "error");
   } finally {
     renderManualShortlistControls();
+  }
+});
+
+downloadCarrierTemplateButton?.addEventListener("click", downloadRfxCarrierTemplate);
+
+carrierTemplateFileInput?.addEventListener("change", async () => {
+  const file = carrierTemplateFileInput.files?.[0];
+  if (!file) {
+    clearCarrierTemplateImport();
+    return;
+  }
+  if (!vendorOptions.length) {
+    setStatus(carrierTemplateStatus, "Carrier CRM is still loading. Try again in a moment.", "error");
+    return;
+  }
+  setStatus(carrierTemplateStatus, `Reading ${file.name}...`);
+  if (importCarrierTemplateButton) importCarrierTemplateButton.disabled = true;
+  try {
+    pendingCarrierTemplateRows = await parseCarrierTemplateFile(file);
+    if (!pendingCarrierTemplateRows.length) {
+      setStatus(carrierTemplateStatus, "No participant rows found. Use the template and add at least one carrier domain, email, or name.", "error");
+    }
+    renderCarrierTemplatePreview();
+  } catch (error) {
+    pendingCarrierTemplateRows = [];
+    pendingCarrierTemplateMatches = [];
+    renderCarrierTemplatePreview();
+    setStatus(carrierTemplateStatus, error.message, "error");
+  } finally {
+    updateCarrierTemplateButton();
+  }
+});
+
+importCarrierTemplateButton?.addEventListener("click", async () => {
+  const readyRows = readyCarrierTemplateMatches();
+  if (!selectedEventId || !readyRows.length) {
+    setStatus(carrierTemplateStatus, "Upload a participant template with CRM matches before importing.", "error");
+    return;
+  }
+  const laneGroups = new Map();
+  readyRows.forEach((item) => {
+    item.lanes.forEach((lane) => {
+      if (!laneGroups.has(lane.id)) laneGroups.set(lane.id, new Set());
+      laneGroups.get(lane.id).add(item.vendor.id);
+    });
+  });
+  importCarrierTemplateButton.disabled = true;
+  setStatus(carrierTemplateStatus, `Adding participants to ${laneGroups.size} lane(s)...`);
+  try {
+    let inserted = 0;
+    for (const [laneId, vendorIds] of laneGroups.entries()) {
+      const result = await shortlistRfxLaneVendors(laneId, [...vendorIds]);
+      inserted += Number(result.inserted || 0);
+    }
+    setStatus(carrierTemplateStatus, `${inserted} CRM carrier participant row(s) added to the Bid Room.`, "success");
+    clearCarrierTemplateImport({ preserveStatus: true });
+    await loadDetail(selectedEventId);
+    await loadEvents();
+  } catch (error) {
+    setStatus(carrierTemplateStatus, error.message, "error");
+  } finally {
+    updateCarrierTemplateButton();
   }
 });
 

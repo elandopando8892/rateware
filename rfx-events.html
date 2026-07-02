@@ -292,6 +292,31 @@
                   <select id="manual-shortlist-vendors" multiple size="4" hidden></select>
                   <button id="manual-shortlist-button" class="secondary" type="button" disabled>Add vendors</button>
                   <p id="manual-shortlist-status" class="status-message" role="status"></p>
+                  <div class="bid-room-participant-template">
+                    <div>
+                      <strong>Upload participant template</strong>
+                      <button id="download-rfx-carrier-template" class="secondary small-button" type="button">Download template</button>
+                    </div>
+                    <label>
+                      Participants file
+                      <input id="rfx-carrier-template-file" type="file" accept=".xlsx,.xls,.csv,.tsv" />
+                    </label>
+                    <div id="rfx-carrier-template-preview" class="bid-room-carrier-template-preview" hidden>
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>Lane</th>
+                            <th>Carrier input</th>
+                            <th>CRM match</th>
+                            <th>Status</th>
+                          </tr>
+                        </thead>
+                        <tbody id="rfx-carrier-template-preview-body"></tbody>
+                      </table>
+                    </div>
+                    <button id="import-rfx-carrier-template" class="secondary" type="button" disabled>Import matched carriers</button>
+                    <p id="rfx-carrier-template-status" class="status-message" role="status"></p>
+                  </div>
                 </section>
                 <div id="rfx-lane-coverage" class="rfx-lane-coverage-grid">
                   <article>Select an event to inspect lane coverage.</article>
