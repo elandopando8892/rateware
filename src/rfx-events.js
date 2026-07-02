@@ -735,32 +735,49 @@ function laneRowsText(targets = []) {
 
 function laneTableHtml(targets = []) {
   if (!targets.length) return "";
+  const headerStyle = "background:rgb(31,78,121);color:rgb(255,255,255);border:1px solid rgb(183,201,217);padding:6px 8px;text-align:left;vertical-align:top;line-height:1.15;white-space:nowrap";
+  const headerCenterStyle = `${headerStyle};text-align:center`;
+  const cellStyle = "border:1px solid rgb(208,215,222);padding:6px 8px;vertical-align:top;line-height:1.22";
+  const centerCellStyle = `${cellStyle};white-space:nowrap;text-align:center`;
+  const quoteCellStyle = `${centerCellStyle};background:rgb(234,243,248);font-weight:700`;
+  const bidCellStyle = `${centerCellStyle};background:rgb(255,247,237)`;
+  const equipmentLabel = (lane) => [lane.equipment, lane.trailer, lane.config].filter(Boolean).join(" / ") || "-";
+  const hazmatTempLabel = (lane) => [
+    lane.hazmat ? "Hazmat" : null,
+    lane.temperature_controlled ? "Temp Ctrl" : null
+  ].filter(Boolean).join(" / ") || "-";
   const rows = targets.map(({ lane }, index) => `
     <tr>
-      <td>${escapeHtml(lane.lane_number || index + 1)}</td>
-      <td>${escapeHtml(lane.origin || "-")}</td>
-      <td>${escapeHtml(lane.destination || "-")}</td>
-      <td>${escapeHtml([lane.equipment, lane.trailer, lane.config].filter(Boolean).join(" / ") || "-")}</td>
-      <td>${escapeHtml([lane.operation, lane.service].filter(Boolean).join(" / ") || "-")}</td>
-      <td>${escapeHtml(lane.weekly_volume || "-")}</td>
-      <td>${escapeHtml(lane.target_rate ? formatMoney(lane.target_rate, lane.currency) : "-")}</td>
-      <td>Por ofertar</td>
-      <td>Por estimar</td>
+      <td style="${cellStyle};white-space:nowrap">${escapeHtml(lane.lane_number || index + 1)}</td>
+      <td style="${cellStyle};white-space:nowrap">${escapeHtml(lane.origin || "-")}<br>${escapeHtml(lane.origin_notes || lane.origin_site || "")}</td>
+      <td style="${cellStyle}">${escapeHtml(lane.destination || "-")}<br>${escapeHtml(lane.destination_notes || lane.destination_site || "")}</td>
+      <td style="${cellStyle}">${escapeHtml(equipmentLabel(lane))}</td>
+      <td style="${cellStyle}">${escapeHtml(hazmatTempLabel(lane))}</td>
+      <td style="${centerCellStyle}">${escapeHtml(lane.estimated_miles || lane.miles || "-")}</td>
+      <td style="${centerCellStyle}">${escapeHtml(lane.weekly_volume || "-")}</td>
+      <td style="${centerCellStyle}">${escapeHtml(lane.load_weight || lane.weight || "-")}</td>
+      <td style="${quoteCellStyle}">${escapeHtml(lane.target_rate ? formatMoney(lane.target_rate, lane.currency) : "-")}</td>
+      <td style="${bidCellStyle}">Por ofertar</td>
+      <td style="${bidCellStyle}">Por estimar</td>
+      <td style="${cellStyle}">${escapeHtml(lane.notes || "")}</td>
     </tr>
   `).join("");
   return `
-    <table style="border-collapse:collapse;width:100%;font-family:Arial,sans-serif;font-size:12px">
+    <table style="color:rgb(31,41,55);font-family:-apple-system,BlinkMacSystemFont,&quot;Segoe UI&quot;,Roboto,Oxygen,Ubuntu,Cantarell,&quot;Helvetica Neue&quot;,Arial,sans-serif;border-collapse:collapse;width:auto;max-width:100%;table-layout:auto;font-size:12px;margin-bottom:14px">
       <thead>
-        <tr style="background:#f3f6f8">
-          <th style="border:1px solid #d8e0e7;padding:6px;text-align:left">Route ID</th>
-          <th style="border:1px solid #d8e0e7;padding:6px;text-align:left">Origen</th>
-          <th style="border:1px solid #d8e0e7;padding:6px;text-align:left">Destino</th>
-          <th style="border:1px solid #d8e0e7;padding:6px;text-align:left">Equipment / Trailer / Config</th>
-          <th style="border:1px solid #d8e0e7;padding:6px;text-align:left">Operacion / Servicio</th>
-          <th style="border:1px solid #d8e0e7;padding:6px;text-align:left">Volumen semanal</th>
-          <th style="border:1px solid #d8e0e7;padding:6px;text-align:left">Rango objetivo inicial</th>
-          <th style="border:1px solid #d8e0e7;padding:6px;text-align:left">Tu tarifa</th>
-          <th style="border:1px solid #d8e0e7;padding:6px;text-align:left">Tu capacidad semanal</th>
+        <tr>
+          <th style="${headerStyle}">Route ID</th>
+          <th style="${headerStyle}">Origen</th>
+          <th style="${headerStyle}">Destino</th>
+          <th style="${headerStyle}">Equipment / Trailer / Config</th>
+          <th style="${headerStyle}">Hazmat / Temp Ctrl</th>
+          <th style="${headerCenterStyle}">Millas<br>estimadas</th>
+          <th style="${headerCenterStyle}">Volumen<br>semanal</th>
+          <th style="${headerCenterStyle}">Peso<br>por carga</th>
+          <th style="${headerCenterStyle}">Rango objetivo<br>inicial</th>
+          <th style="${headerCenterStyle}">Tu tarifa</th>
+          <th style="${headerCenterStyle}">Tu capacidad<br>semanal</th>
+          <th style="${headerStyle}">Notas / Supuestos</th>
         </tr>
       </thead>
       <tbody>${rows}</tbody>

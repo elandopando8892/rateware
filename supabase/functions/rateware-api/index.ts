@@ -6229,13 +6229,52 @@ function normalizeOutreachTemplate(input: Record<string, unknown>) {
     name,
     channel: ["email", "whatsapp", "multi"].includes(channel) ? channel : "multi",
     subject: cleanText(input.subject),
-    html_body: cleanText(input.html_body || input.body || input.email_body),
+    html_body: cleanText(extractHtmlFromMime(input.html_body || input.body || input.email_body)),
     whatsapp_body: cleanText(input.whatsapp_body || input.whatsapp_text),
     active: input.active === undefined ? true : cleanBoolean(input.active),
     is_default: input.is_default === undefined ? false : cleanBoolean(input.is_default),
     placeholders: Array.isArray(input.placeholders) ? input.placeholders.map(cleanText).filter(Boolean) : [],
     updated_at: new Date().toISOString()
   };
+}
+
+function decodeQuotedPrintable(value: string) {
+  const normalized = value.replace(/=\r?\n/g, "");
+  const bytes: number[] = [];
+  for (let index = 0; index < normalized.length; index += 1) {
+    const char = normalized[index];
+    const hex = normalized.slice(index + 1, index + 3);
+    if (char === "=" && /^[0-9a-fA-F]{2}$/.test(hex)) {
+      bytes.push(parseInt(hex, 16));
+      index += 2;
+    } else {
+      bytes.push(char.charCodeAt(0));
+    }
+  }
+  return new TextDecoder("utf-8").decode(new Uint8Array(bytes));
+}
+
+function decodeBase64Text(value: string) {
+  try {
+    const binary = atob(value.replace(/\s+/g, ""));
+    const bytes = new Uint8Array([...binary].map((char) => char.charCodeAt(0)));
+    return new TextDecoder("utf-8").decode(bytes);
+  } catch {
+    return value;
+  }
+}
+
+function extractHtmlFromMime(value: unknown) {
+  const source = String(value || "");
+  if (!/MIME-Version:/i.test(source) || !/Content-Type:\s*text\/html/i.test(source)) return source;
+  const headerMatch = /Content-Type:\s*text\/html[\s\S]*?\r?\n\r?\n/i.exec(source);
+  if (!headerMatch) return source;
+  const htmlHeader = headerMatch[0];
+  let htmlPart = source.slice(headerMatch.index + headerMatch[0].length);
+  htmlPart = htmlPart.replace(/\r?\n--[^\r\n]+[\s\S]*$/m, "").trim();
+  if (/Content-Transfer-Encoding:\s*quoted-printable/i.test(htmlHeader)) return decodeQuotedPrintable(htmlPart);
+  if (/Content-Transfer-Encoding:\s*base64/i.test(htmlHeader)) return decodeBase64Text(htmlPart);
+  return htmlPart;
 }
 
 function normalizeOutreachCampaign(input: Record<string, unknown>) {
@@ -6310,35 +6349,52 @@ function outreachLaneRowsText(invitations: Record<string, unknown>[]) {
 
 function outreachLaneTableHtml(invitations: Record<string, unknown>[]) {
   if (!invitations.length) return "";
+  const headerStyle = "background:rgb(31,78,121);color:rgb(255,255,255);border:1px solid rgb(183,201,217);padding:6px 8px;text-align:left;vertical-align:top;line-height:1.15;white-space:nowrap";
+  const headerCenterStyle = `${headerStyle};text-align:center`;
+  const cellStyle = "border:1px solid rgb(208,215,222);padding:6px 8px;vertical-align:top;line-height:1.22";
+  const centerCellStyle = `${cellStyle};white-space:nowrap;text-align:center`;
+  const quoteCellStyle = `${centerCellStyle};background:rgb(234,243,248);font-weight:700`;
+  const bidCellStyle = `${centerCellStyle};background:rgb(255,247,237)`;
   const rows = invitations.map((invitation, index) => {
     const lane = laneRecordFromInvitation(invitation);
+    const equipment = [lane.equipment, lane.trailer, lane.config].map(cleanText).filter(Boolean).join(" / ") || "-";
+    const hazmatTemp = [
+      cleanBoolean(lane.hazmat) ? "Hazmat" : null,
+      cleanBoolean(lane.temperature_controlled) ? "Temp Ctrl" : null
+    ].filter(Boolean).join(" / ") || "-";
     return `
       <tr>
-        <td style="border:1px solid #d8e0e7;padding:6px">${escapeHtmlText(lane.lane_number || index + 1)}</td>
-        <td style="border:1px solid #d8e0e7;padding:6px">${escapeHtmlText(lane.origin || "-")}</td>
-        <td style="border:1px solid #d8e0e7;padding:6px">${escapeHtmlText(lane.destination || "-")}</td>
-        <td style="border:1px solid #d8e0e7;padding:6px">${escapeHtmlText([lane.equipment, lane.trailer, lane.config].map(cleanText).filter(Boolean).join(" / ") || "-")}</td>
-        <td style="border:1px solid #d8e0e7;padding:6px">${escapeHtmlText([lane.operation, lane.service].map(cleanText).filter(Boolean).join(" / ") || "-")}</td>
-        <td style="border:1px solid #d8e0e7;padding:6px">${escapeHtmlText(lane.weekly_volume || "-")}</td>
-        <td style="border:1px solid #d8e0e7;padding:6px">${escapeHtmlText(formatOutreachMoney(lane.target_rate, lane.currency))}</td>
-        <td style="border:1px solid #d8e0e7;padding:6px">Por ofertar</td>
-        <td style="border:1px solid #d8e0e7;padding:6px">Por estimar</td>
+        <td style="${cellStyle};white-space:nowrap">${escapeHtmlText(lane.lane_number || index + 1)}</td>
+        <td style="${cellStyle};white-space:nowrap">${escapeHtmlText(lane.origin || "-")}<br>${escapeHtmlText(lane.origin_notes || lane.origin_site || "")}</td>
+        <td style="${cellStyle}">${escapeHtmlText(lane.destination || "-")}<br>${escapeHtmlText(lane.destination_notes || lane.destination_site || "")}</td>
+        <td style="${cellStyle}">${escapeHtmlText(equipment)}</td>
+        <td style="${cellStyle}">${escapeHtmlText(hazmatTemp)}</td>
+        <td style="${centerCellStyle}">${escapeHtmlText(lane.estimated_miles || lane.miles || "-")}</td>
+        <td style="${centerCellStyle}">${escapeHtmlText(lane.weekly_volume || "-")}</td>
+        <td style="${centerCellStyle}">${escapeHtmlText(lane.load_weight || lane.weight || "-")}</td>
+        <td style="${quoteCellStyle}">${escapeHtmlText(formatOutreachMoney(lane.target_rate, lane.currency))}</td>
+        <td style="${bidCellStyle}">Por ofertar</td>
+        <td style="${bidCellStyle}">Por estimar</td>
+        <td style="${cellStyle}">${escapeHtmlText(lane.notes || "")}</td>
       </tr>
     `;
   }).join("");
   return `
-    <table style="border-collapse:collapse;width:100%;font-family:Arial,sans-serif;font-size:12px">
+    <table style="color:rgb(31,41,55);font-family:-apple-system,BlinkMacSystemFont,&quot;Segoe UI&quot;,Roboto,Oxygen,Ubuntu,Cantarell,&quot;Helvetica Neue&quot;,Arial,sans-serif;border-collapse:collapse;width:auto;max-width:100%;table-layout:auto;font-size:12px;margin-bottom:14px">
       <thead>
-        <tr style="background:#f3f6f8">
-          <th style="border:1px solid #d8e0e7;padding:6px;text-align:left">Route ID</th>
-          <th style="border:1px solid #d8e0e7;padding:6px;text-align:left">Origen</th>
-          <th style="border:1px solid #d8e0e7;padding:6px;text-align:left">Destino</th>
-          <th style="border:1px solid #d8e0e7;padding:6px;text-align:left">Equipment / Trailer / Config</th>
-          <th style="border:1px solid #d8e0e7;padding:6px;text-align:left">Operacion / Servicio</th>
-          <th style="border:1px solid #d8e0e7;padding:6px;text-align:left">Volumen semanal</th>
-          <th style="border:1px solid #d8e0e7;padding:6px;text-align:left">Rango objetivo inicial</th>
-          <th style="border:1px solid #d8e0e7;padding:6px;text-align:left">Tu tarifa</th>
-          <th style="border:1px solid #d8e0e7;padding:6px;text-align:left">Tu capacidad semanal</th>
+        <tr>
+          <th style="${headerStyle}">Route ID</th>
+          <th style="${headerStyle}">Origen</th>
+          <th style="${headerStyle}">Destino</th>
+          <th style="${headerStyle}">Equipment / Trailer / Config</th>
+          <th style="${headerStyle}">Hazmat / Temp Ctrl</th>
+          <th style="${headerCenterStyle}">Millas<br>estimadas</th>
+          <th style="${headerCenterStyle}">Volumen<br>semanal</th>
+          <th style="${headerCenterStyle}">Peso<br>por carga</th>
+          <th style="${headerCenterStyle}">Rango objetivo<br>inicial</th>
+          <th style="${headerCenterStyle}">Tu tarifa</th>
+          <th style="${headerCenterStyle}">Tu capacidad<br>semanal</th>
+          <th style="${headerStyle}">Notas / Supuestos</th>
         </tr>
       </thead>
       <tbody>${rows}</tbody>
