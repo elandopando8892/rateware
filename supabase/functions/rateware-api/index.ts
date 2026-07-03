@@ -8982,7 +8982,7 @@ Deno.serve(async (request) => {
       const agingCutoff = dayIso(60);
       const recentCutoff = new Date(Date.now() - 7 * 86400000).toISOString();
 
-      const [uploads, vendors, sourcingVendors, procurementVendors, archivedVendors, pending, approved, failed, rfxEvents, rfxOpen, rfxBids, outreachMessages, freshRates, agingRates, staleRates, recentRates, locationGapRates] = await Promise.all([
+      const [uploads, vendors, sourcingVendors, procurementVendors, archivedVendors, pending, approved, failed, rfxEvents, rfxOpen, rfxBids, outreachMessages] = await Promise.all([
         supabase.from("raw_uploads").select("id", { count: "exact", head: true }).neq("status", "archived"),
         supabase.from("vendors").select("id", { count: "exact", head: true }).eq("owner_email", user.owner_email),
         supabase.from("vendors").select("id", { count: "exact", head: true }).eq("owner_email", user.owner_email).eq("base_stage", "sourcing"),
@@ -8994,19 +8994,14 @@ Deno.serve(async (request) => {
         supabase.from("rfx_events").select("id", { count: "exact", head: true }).eq("owner_email", user.owner_email).neq("status", "archived"),
         supabase.from("rfx_events").select("id", { count: "exact", head: true }).eq("owner_email", user.owner_email).eq("status", "open"),
         supabase.from("rfx_lane_vendors").select("id,rfx_events!inner(owner_email)", { count: "exact", head: true }).eq("rfx_events.owner_email", user.owner_email).in("invitation_status", ["quoted", "bid_submitted"]),
-        supabase.from("outreach_messages").select("id", { count: "exact", head: true }).eq("owner_email", user.owner_email).neq("status", "archived"),
-        supabase.from("rate_staging").select("id", { count: "exact", head: true }).eq("status", "approved").gte("quote_date", freshCutoff),
-        supabase.from("rate_staging").select("id", { count: "exact", head: true }).eq("status", "approved").gte("quote_date", agingCutoff).lt("quote_date", freshCutoff),
-        supabase.from("rate_staging").select("id", { count: "exact", head: true }).eq("status", "approved").or(`quote_date.lt.${agingCutoff},quote_date.is.null`),
-        supabase.from("rate_staging").select("id", { count: "exact", head: true }).eq("status", "approved").gte("created_at", recentCutoff),
-        supabase.from("rate_staging").select("id", { count: "exact", head: true }).eq("status", "approved").or("origin_market.is.null,destination_market.is.null")
+        supabase.from("outreach_messages").select("id", { count: "exact", head: true }).eq("owner_email", user.owner_email).neq("status", "archived")
       ]);
 
-      for (const result of [uploads, vendors, sourcingVendors, procurementVendors, archivedVendors, pending, approved, failed, rfxEvents, rfxOpen, rfxBids, outreachMessages, freshRates, agingRates, staleRates, recentRates, locationGapRates]) {
+      for (const result of [uploads, vendors, sourcingVendors, procurementVendors, archivedVendors, pending, approved, failed, rfxEvents, rfxOpen, rfxBids, outreachMessages]) {
         if (result.error) throw result.error;
       }
 
-      return jsonResponse({
+      const summary: Record<string, number> = {
         raw_uploads: uploads.count || 0,
         vendors: vendors.count || 0,
         sourcing_vendors: sourcingVendors.count || 0,
@@ -9018,13 +9013,34 @@ Deno.serve(async (request) => {
         rfx_events: rfxEvents.count || 0,
         rfx_open_events: rfxOpen.count || 0,
         rfx_bids: rfxBids.count || 0,
-        outreach_messages: outreachMessages.count || 0,
-        fresh_rates: freshRates.count || 0,
-        aging_rates: agingRates.count || 0,
-        stale_rates: staleRates.count || 0,
-        recent_rates_7d: recentRates.count || 0,
-        location_gap_rates: locationGapRates.count || 0
-      });
+        outreach_messages: outreachMessages.count || 0
+      };
+
+      // Rate-book health counts are best-effort: they scan wider than the
+      // indexed status counts and can hit statement timeouts while the table
+      // digests bulk updates. If they fail, return the core summary without
+      // the freshness fields — the dashboard hides the health panel.
+      try {
+        const [freshRates, agingRates, staleRates, recentRates, locationGapRates] = await Promise.all([
+          supabase.from("rate_staging").select("id", { count: "exact", head: true }).eq("status", "approved").gte("quote_date", freshCutoff),
+          supabase.from("rate_staging").select("id", { count: "exact", head: true }).eq("status", "approved").gte("quote_date", agingCutoff).lt("quote_date", freshCutoff),
+          supabase.from("rate_staging").select("id", { count: "exact", head: true }).eq("status", "approved").or(`quote_date.lt.${agingCutoff},quote_date.is.null`),
+          supabase.from("rate_staging").select("id", { count: "exact", head: true }).eq("status", "approved").gte("created_at", recentCutoff),
+          supabase.from("rate_staging").select("id", { count: "exact", head: true }).eq("status", "approved").or("origin_market.is.null,destination_market.is.null")
+        ]);
+        const healthResults = [freshRates, agingRates, staleRates, recentRates, locationGapRates];
+        if (!healthResults.some((result) => result.error)) {
+          summary.fresh_rates = freshRates.count || 0;
+          summary.aging_rates = agingRates.count || 0;
+          summary.stale_rates = staleRates.count || 0;
+          summary.recent_rates_7d = recentRates.count || 0;
+          summary.location_gap_rates = locationGapRates.count || 0;
+        }
+      } catch {
+        // best-effort: omit freshness fields
+      }
+
+      return jsonResponse(summary);
     }
 
     if (body.action === "book_audit") {
