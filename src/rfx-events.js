@@ -85,6 +85,8 @@ const manualShortlistVendors = document.querySelector("#manual-shortlist-vendors
 const manualShortlistVendorList = document.querySelector("#manual-shortlist-vendor-list");
 const manualShortlistSourceSummary = document.querySelector("#manual-shortlist-source-summary");
 const manualShortlistSegment = document.querySelector("#manual-shortlist-segment");
+const manualShortlistSelectedCount = document.querySelector("#manual-shortlist-selected-count");
+const manualShortlistSelectedList = document.querySelector("#manual-shortlist-selected-list");
 const selectVisibleCarriersButton = document.querySelector("#select-visible-carriers");
 const selectSegmentCarriersButton = document.querySelector("#select-segment-carriers");
 const clearCarrierSelectionButton = document.querySelector("#clear-carrier-selection");
@@ -2184,15 +2186,6 @@ function shortlistCandidateRows() {
   return sortedVendorOptions(filtered);
 }
 
-function vendorMetaLine(row) {
-  return [
-    row.domain,
-    row.primary_email,
-    row.preferred_channel,
-    row.status
-  ].filter(Boolean).join(" | ");
-}
-
 function vendorLookupMaps() {
   const byId = new Map();
   const byDomain = new Map();
@@ -2302,31 +2295,17 @@ function clearCarrierTemplateImport({ preserveStatus = false } = {}) {
 }
 
 function renderCrmVendorCandidate(row) {
-  const stageLabel = row.base_stage || (isProcurementCarrier(row) ? "procurement" : "crm");
-  const coverage = row.coverage_notes || row.notes || "No coverage notes captured";
   return `
     <label class="bid-room-crm-vendor-option">
       <input type="checkbox" data-manual-vendor-select="${escapeHtml(row.id)}" ${selectedManualVendorIdsState.has(row.id) ? "checked" : ""} />
       <span class="crm-vendor-main">
         <strong>${escapeHtml(vendorDisplayName(row))}</strong>
-        <small>${escapeHtml(vendorMetaLine(row) || "Missing contact data")}</small>
       </span>
-      <span class="crm-vendor-stage" data-stage="${escapeHtml(String(stageLabel).toLowerCase())}">${escapeHtml(stageLabel)}</span>
-      <span class="crm-vendor-coverage" title="${escapeHtml(coverage)}">${escapeHtml(coverage)}</span>
     </label>
   `;
 }
 
 function selectedManualVendorIds() {
-  if (manualShortlistVendorList) {
-    manualShortlistVendorList.querySelectorAll("[data-manual-vendor-select]").forEach((input) => {
-      if (input.checked) selectedManualVendorIdsState.add(input.value);
-      else selectedManualVendorIdsState.delete(input.value);
-    });
-  }
-  if (!selectedManualVendorIdsState.size && manualShortlistVendors) {
-    [...manualShortlistVendors.selectedOptions].forEach((option) => selectedManualVendorIdsState.add(option.value));
-  }
   selectedManualVendorIdsState = new Set([...selectedManualVendorIdsState].filter((id) => vendorOptions.some((vendor) => vendor.id === id)));
   return [...selectedManualVendorIdsState];
 }
@@ -2342,6 +2321,35 @@ function selectManualVendorIds(ids = []) {
   renderManualShortlistControls();
 }
 
+function selectedManualVendorRows() {
+  const selectedIds = selectedManualVendorIds();
+  const rows = selectedIds
+    .map((id) => vendorOptions.find((vendor) => vendor.id === id))
+    .filter(Boolean);
+  return sortedVendorOptions(rows);
+}
+
+function renderSelectedManualVendors() {
+  if (!manualShortlistSelectedList || !manualShortlistSelectedCount) return;
+  const rows = selectedManualVendorRows();
+  manualShortlistSelectedCount.textContent = `${formatNumber(rows.length)} selected`;
+  if (!rows.length) {
+    manualShortlistSelectedList.innerHTML = `
+      <article class="bid-room-selected-empty">
+        <strong>No carriers selected</strong>
+        <span>Select carriers from the left list or use a saved segment.</span>
+      </article>
+    `;
+    return;
+  }
+  manualShortlistSelectedList.innerHTML = rows.map((vendor) => `
+    <article class="bid-room-selected-row">
+      <strong>${escapeHtml(vendorDisplayName(vendor))}</strong>
+      <button class="secondary small-button" type="button" data-remove-manual-vendor="${escapeHtml(vendor.id)}">Remove</button>
+    </article>
+  `).join("");
+}
+
 function updateManualShortlistButtonState() {
   if (!manualShortlistButton) return;
   const selectedCount = selectedManualVendorIds().length;
@@ -2353,6 +2361,7 @@ function updateManualShortlistButtonState() {
 
 function renderManualShortlistControls() {
   if (!manualShortlistLane || !manualShortlistVendors) return;
+  renderSelectedManualVendors();
   renderManualSegmentOptions();
   manualShortlistLane.innerHTML = currentLanes.map((lane) => `
     <option value="${escapeHtml(lane.id)}">#${escapeHtml(lane.lane_number || "")} ${escapeHtml(lane.origin || "-")} -> ${escapeHtml(lane.destination || "-")}</option>
@@ -3240,7 +3249,13 @@ manualShortlistVendorList?.addEventListener("change", (event) => {
     if (input.checked) selectedManualVendorIdsState.add(input.value);
     else selectedManualVendorIdsState.delete(input.value);
   }
-  updateManualShortlistButtonState();
+  renderManualShortlistControls();
+});
+manualShortlistSelectedList?.addEventListener("click", (event) => {
+  const removeButton = event.target.closest("[data-remove-manual-vendor]");
+  if (!removeButton) return;
+  selectedManualVendorIdsState.delete(removeButton.dataset.removeManualVendor);
+  renderManualShortlistControls();
 });
 
 manualShortlistButton?.addEventListener("click", async () => {
