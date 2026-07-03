@@ -1197,6 +1197,31 @@ a {
   line-height: 1.35;
 }
 
+.rfx-draft-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.rfx-draft-selector {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+}
+
+.rfx-draft-selector input {
+  inline-size: 13px;
+  block-size: 13px;
+  margin: 0;
+}
+
+.rfx-draft-card.is-selected {
+  border-color: var(--accent);
+  background: var(--brand-tint);
+}
+
 .rfx-table th,
 .rfx-table td {
   vertical-align: top;
@@ -13008,6 +13033,13 @@ tbody tr:hover {
 
 .rfx-draft-queue-panel .action-row {
   justify-content: flex-end;
+}
+
+.rfx-draft-queue-panel .rfx-draft-card > strong,
+.rfx-draft-queue-panel .rfx-draft-card > small,
+.rfx-draft-queue-panel .rfx-draft-card > p,
+.rfx-draft-queue-panel .rfx-draft-card > .error-text {
+  grid-column: 1 / 2;
 }
 
 .rfx-table th,

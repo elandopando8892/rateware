@@ -67,6 +67,13 @@ export async function markOutreachMessages(ids = [], status) {
   return await callRatewareApi("mark_outreach_messages", { ids, status });
 }
 
+export async function sendOutreachMessages(ids = [], options = {}) {
+  return await callRatewareApi("send_outreach_messages", {
+    ids,
+    sender_email: options.senderEmail || ""
+  });
+}
+
 export async function fetchContactHistory(filters = {}) {
   return (await callRatewareApi("list_contact_history", filters)).rows;
 }

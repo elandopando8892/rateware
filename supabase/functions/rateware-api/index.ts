@@ -6734,6 +6734,293 @@ async function disconnectGmailConnection(supabase: ReturnType<typeof createClien
   return publicGmailConnection(result.data);
 }
 
+function base64ToBytes(value: string) {
+  const binary = atob(value);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+  return bytes;
+}
+
+function bytesToBase64(bytes: Uint8Array) {
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+
+function bytesToBase64Url(bytes: Uint8Array) {
+  return bytesToBase64(bytes).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+async function gmailCryptoKey(usages: KeyUsage[]) {
+  const secret = Deno.env.get("GMAIL_TOKEN_ENCRYPTION_KEY");
+  if (!secret) throw new Error("GMAIL_TOKEN_ENCRYPTION_KEY is not configured.");
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(secret));
+  return crypto.subtle.importKey("raw", digest, "AES-GCM", false, usages);
+}
+
+async function encryptGmailToken(value: string) {
+  const key = await gmailCryptoKey(["encrypt"]);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ciphertext = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, new TextEncoder().encode(value));
+  return `v1:${bytesToBase64(iv)}:${bytesToBase64(new Uint8Array(ciphertext))}`;
+}
+
+async function decryptGmailToken(value: unknown) {
+  const text = cleanText(value);
+  if (!text) throw new Error("Gmail token is missing.");
+  const [version, ivText, ciphertextText] = text.split(":");
+  if (version !== "v1" || !ivText || !ciphertextText) throw new Error("Gmail token format is invalid.");
+  const key = await gmailCryptoKey(["decrypt"]);
+  const plain = await crypto.subtle.decrypt(
+    { name: "AES-GCM", iv: base64ToBytes(ivText) },
+    key,
+    base64ToBytes(ciphertextText)
+  );
+  return new TextDecoder().decode(plain);
+}
+
+function encodedSubject(subject: unknown) {
+  const text = cleanText(subject) || "Rateware invitation";
+  return `=?UTF-8?B?${bytesToBase64(new TextEncoder().encode(text))}?=`;
+}
+
+function safeHeader(value: unknown) {
+  return String(value || "").replace(/[\r\n]+/g, " ").trim();
+}
+
+function gmailRawMessage(message: Record<string, unknown>, senderEmail: string) {
+  const to = safeHeader(message.recipient_email);
+  const subject = encodedSubject(message.subject);
+  const textBody = cleanText(message.text_body) || htmlToText(cleanText(message.html_body) || "");
+  const htmlBody = cleanText(message.html_body) || `<pre>${String(textBody || "").replace(/&/g, "&amp;").replace(/</g, "&lt;")}</pre>`;
+  const boundary = `rateware_${crypto.randomUUID().replace(/-/g, "")}`;
+  const mime = [
+    `To: ${to}`,
+    `From: ${safeHeader(senderEmail)}`,
+    `Subject: ${subject}`,
+    "MIME-Version: 1.0",
+    `Content-Type: multipart/alternative; boundary="${boundary}"`,
+    "",
+    `--${boundary}`,
+    'Content-Type: text/plain; charset="UTF-8"',
+    "Content-Transfer-Encoding: 8bit",
+    "",
+    textBody || "",
+    "",
+    `--${boundary}`,
+    'Content-Type: text/html; charset="UTF-8"',
+    "Content-Transfer-Encoding: 8bit",
+    "",
+    htmlBody || "",
+    "",
+    `--${boundary}--`
+  ].join("\r\n");
+  return bytesToBase64Url(new TextEncoder().encode(mime));
+}
+
+async function gmailAccessToken(supabase: ReturnType<typeof createClient>, user: { owner_email: string | null }, senderEmail: string) {
+  if (senderEmail.toLowerCase() !== GMAIL_ALLOWED_SENDER) {
+    throw new Error(`Only ${GMAIL_ALLOWED_SENDER} can send Bid Room email.`);
+  }
+  const result = await supabase
+    .from("gmail_mailbox_connections")
+    .select("*")
+    .eq("owner_email", user.owner_email)
+    .eq("mailbox_email", GMAIL_ALLOWED_SENDER)
+    .eq("status", "connected")
+    .maybeSingle();
+  if (result.error) throw result.error;
+  const connection = result.data;
+  if (!connection) throw new Error(`Connect ${GMAIL_ALLOWED_SENDER} in Settings before sending email.`);
+
+  const expiresAt = connection.token_expires_at ? new Date(connection.token_expires_at).getTime() : 0;
+  if (connection.access_token_encrypted && expiresAt > Date.now() + 120_000) {
+    return await decryptGmailToken(connection.access_token_encrypted);
+  }
+
+  const clientId = Deno.env.get("GOOGLE_CLIENT_ID");
+  const clientSecret = Deno.env.get("GOOGLE_CLIENT_SECRET");
+  if (!clientId || !clientSecret) throw new Error("Google OAuth client is not configured.");
+  const refreshToken = await decryptGmailToken(connection.refresh_token_encrypted);
+  const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: clientId,
+      client_secret: clientSecret,
+      refresh_token: refreshToken,
+      grant_type: "refresh_token"
+    })
+  });
+  const tokenData = await tokenResponse.json();
+  if (!tokenResponse.ok || !tokenData.access_token) {
+    const message = cleanText(tokenData.error_description) || cleanText(tokenData.error) || "Google token refresh failed.";
+    await supabase
+      .from("gmail_mailbox_connections")
+      .update({ status: "error", last_error: message, updated_at: new Date().toISOString() })
+      .eq("owner_email", user.owner_email)
+      .eq("mailbox_email", GMAIL_ALLOWED_SENDER);
+    throw new Error(message);
+  }
+
+  const accessToken = String(tokenData.access_token);
+  const expiresIn = Number(tokenData.expires_in) || 3600;
+  const update = await supabase
+    .from("gmail_mailbox_connections")
+    .update({
+      access_token_encrypted: await encryptGmailToken(accessToken),
+      token_expires_at: new Date(Date.now() + expiresIn * 1000).toISOString(),
+      last_error: null,
+      updated_at: new Date().toISOString()
+    })
+    .eq("owner_email", user.owner_email)
+    .eq("mailbox_email", GMAIL_ALLOWED_SENDER);
+  if (update.error) throw update.error;
+  return accessToken;
+}
+
+function messageInvitationIds(message: Record<string, unknown>) {
+  const metadata = objectRecord(message.metadata);
+  const ids = Array.isArray(metadata.rfx_lane_vendor_ids)
+    ? metadata.rfx_lane_vendor_ids.map(String).filter(Boolean)
+    : [];
+  const directId = cleanText(message.rfx_lane_vendor_id);
+  return [...new Set([directId, ...ids].filter(Boolean))];
+}
+
+async function sendOutreachMessages(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_user_id: string | null; owner_email: string | null },
+  input: Record<string, unknown>
+) {
+  const ids = Array.isArray(input.ids) ? input.ids.map(String).filter(Boolean).slice(0, 100) : [];
+  if (!ids.length) return { sent: 0, failed: 0, rows: [], failures: [] };
+
+  const messagesResult = await supabase
+    .from("outreach_messages")
+    .select("*")
+    .eq("owner_email", user.owner_email)
+    .in("id", ids)
+    .order("created_at", { ascending: true });
+  if (messagesResult.error) throw messagesResult.error;
+
+  const messages = (messagesResult.data || []).filter((message) => message.channel === "email");
+  if (!messages.length) throw new Error("Select at least one email draft to send.");
+  const senderEmail = (cleanText(input.sender_email) || cleanText(messages[0].sender_email) || GMAIL_ALLOWED_SENDER).toLowerCase();
+  const accessToken = await gmailAccessToken(supabase, user, senderEmail);
+  const now = new Date().toISOString();
+  const sentRows: Record<string, unknown>[] = [];
+  const failures: Record<string, unknown>[] = [];
+
+  for (const message of messages) {
+    if (message.status === "sent" || message.status === "archived") {
+      failures.push({ id: message.id, reason: `Message is ${message.status}.` });
+      continue;
+    }
+    if (!cleanText(message.recipient_email)) {
+      failures.push({ id: message.id, reason: "Missing recipient email." });
+      await supabase
+        .from("outreach_messages")
+        .update({ status: "failed", delivery_error: "Missing recipient email.", updated_at: now })
+        .eq("id", message.id)
+        .eq("owner_email", user.owner_email);
+      continue;
+    }
+
+    try {
+      const response = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ raw: gmailRawMessage(message, senderEmail) })
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        const reason = cleanText(data?.error?.message) || cleanText(data?.error_description) || `Gmail send failed (${response.status}).`;
+        throw new Error(reason);
+      }
+
+      const updateResult = await supabase
+        .from("outreach_messages")
+        .update({
+          status: "sent",
+          sent_at: now,
+          last_contacted_at: now,
+          sender_email: senderEmail,
+          sender_connection_status: "connected",
+          provider_message_id: cleanText(data.id),
+          delivery_error: null,
+          delivered_by: GMAIL_ALLOWED_SENDER,
+          updated_at: now
+        })
+        .eq("id", message.id)
+        .eq("owner_email", user.owner_email)
+        .select("*")
+        .single();
+      if (updateResult.error) throw updateResult.error;
+      sentRows.push(updateResult.data);
+
+      const history = await supabase.from("contact_history").insert(withOwner({
+        outreach_message_id: message.id,
+        campaign_id: message.campaign_id,
+        vendor_id: message.vendor_id,
+        rfx_event_id: message.rfx_event_id,
+        channel: "email",
+        direction: "outbound",
+        status: "sent",
+        subject: message.subject,
+        body_preview: contactPreview(message.text_body || message.html_body),
+        occurred_at: now,
+        metadata: {
+          sent_from: "gmail_api",
+          sender_email: senderEmail,
+          provider_message_id: cleanText(data.id),
+          gmail_thread_id: cleanText(data.threadId)
+        }
+      }, user));
+      if (history.error) throw history.error;
+
+      const invitationIds = messageInvitationIds(message);
+      if (invitationIds.length) {
+        const invitationUpdate = await supabase
+          .from("rfx_lane_vendors")
+          .update({ invitation_status: "invited", invited_at: now, updated_at: now })
+          .in("id", invitationIds)
+          .not("invitation_status", "in", "(quoted,bid_submitted,awarded,archived)");
+        if (invitationUpdate.error) throw invitationUpdate.error;
+      }
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      failures.push({ id: message.id, recipient_email: message.recipient_email, reason });
+      await supabase
+        .from("outreach_messages")
+        .update({
+          status: "failed",
+          delivery_error: reason,
+          sender_email: senderEmail,
+          sender_connection_status: "connected",
+          updated_at: now
+        })
+        .eq("id", message.id)
+        .eq("owner_email", user.owner_email);
+    }
+  }
+
+  const campaignIds = [...new Set(sentRows.map((row) => cleanText(row.campaign_id)).filter(Boolean))];
+  if (campaignIds.length) {
+    const campaignUpdate = await supabase
+      .from("outreach_campaigns")
+      .update({ status: "sent", sender_email: senderEmail, sender_connection_status: "connected", updated_at: now })
+      .eq("owner_email", user.owner_email)
+      .in("id", campaignIds);
+    if (campaignUpdate.error) throw campaignUpdate.error;
+  }
+
+  return { sent: sentRows.length, failed: failures.length, rows: sentRows, failures };
+}
+
 function onboardingDefinition(summary: Record<string, unknown>, profile: Record<string, unknown>, organization: Record<string, unknown>, manual: Map<string, Record<string, unknown>>) {
   const definitions = [
     {
@@ -8817,6 +9104,11 @@ Deno.serve(async (request) => {
       const result = await query;
       if (result.error) throw result.error;
       return jsonResponse({ rows: result.data || [] });
+    }
+
+    if (body.action === "send_outreach_messages") {
+      const result = await sendOutreachMessages(supabase, user, body);
+      return jsonResponse(result);
     }
 
     if (body.action === "mark_outreach_messages") {
