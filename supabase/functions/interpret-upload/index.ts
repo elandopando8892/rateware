@@ -195,6 +195,23 @@ function domainFromVendorReference(value: unknown) {
   return normalizeDomain(domainText);
 }
 
+// Free / personal / disposable email hosts. A carrier that quotes from one of
+// these has no usable corporate domain, so it must not be treated as a carrier
+// identity (otherwise unrelated carriers get grouped under e.g. "gmail.com").
+const PERSONAL_EMAIL_DOMAINS = new Set([
+  "gmail.com", "hotmail.com", "hotmail.com.mx", "yahoo.com", "yahoo.com.mx",
+  "outlook.com", "outlook.es", "live.com", "live.com.mx", "icloud.com",
+  "me.com", "aol.com", "msn.com", "gmx.com", "mail.com", "prodigy.net.mx",
+  "yopmail.com"
+]);
+
+function isCarrierDomain(value: unknown): value is string {
+  const domain = typeof value === "string" ? value.toLowerCase() : "";
+  if (!/^[a-z0-9.-]+\.[a-z]{2,}$/.test(domain)) return false;
+  if (PERSONAL_EMAIL_DOMAINS.has(domain)) return false;
+  return true;
+}
+
 function cleanBoolean(value: unknown) {
   if (typeof value === "boolean") return value;
   const text = String(value ?? "").trim().toLowerCase();
@@ -933,11 +950,30 @@ function addRowAudit(row: Record<string, unknown>, rawUpload: Record<string, unk
 }
 
 function resolveRowVendorDomain(value: unknown, inheritedDomain: unknown, forceInheritedDomain = false) {
-  const interpretedDomain = domainFromVendorReference(value) || cleanText(value);
+  // Only ever emit a real carrier domain. Bare names ("transportes") and
+  // personal-email hosts ("gmail.com") are not carrier identities and are
+  // preserved separately via resolveRowVendorReference().
   const inherited = domainFromVendorReference(inheritedDomain);
-  if (forceInheritedDomain && inherited) return inherited;
-  if ((!interpretedDomain || isInternalMarksmanDomain(interpretedDomain)) && inherited) return inherited;
-  return interpretedDomain || inherited;
+  const inheritedCarrier = isCarrierDomain(inherited) ? inherited : null;
+  if (forceInheritedDomain && inheritedCarrier) return inheritedCarrier;
+
+  const interpreted = domainFromVendorReference(value);
+  if (interpreted && !isInternalMarksmanDomain(interpreted) && isCarrierDomain(interpreted)) {
+    return interpreted;
+  }
+  return inheritedCarrier;
+}
+
+function resolveRowVendorReference(value: unknown, inheritedDomain: unknown) {
+  // Keep the raw carrier signal (name or contact email) so it is not lost when
+  // it does not qualify as a carrier domain; used for later name matching.
+  // Once the row's own value resolves to a carrier domain, no reference is
+  // needed (the carrier is identified) — do not fall back to the upload hint.
+  const raw = cleanText(value);
+  if (raw) return isCarrierDomain(domainFromVendorReference(raw)) ? null : raw;
+  const inherited = cleanText(inheritedDomain);
+  if (inherited && !isCarrierDomain(domainFromVendorReference(inherited))) return inherited;
+  return null;
 }
 
 function normalizeRow(
@@ -958,6 +994,7 @@ function normalizeRow(
     vendor_id: vendorId,
     status: "pending_review",
     vendor_domain: resolveRowVendorDomain(interpreted.vendor_domain, vendorDomain, forceVendorDomain),
+    vendor_reference: resolveRowVendorReference(interpreted.vendor_domain, vendorDomain),
     rfx_id: cleanText(interpreted.rfx_id),
     quote_date: cleanDate(interpreted.quote_date),
     row_id: cleanText(interpreted.row_id),

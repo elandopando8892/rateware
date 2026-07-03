@@ -1075,7 +1075,7 @@ function rfxWizardStepState() {
   return [
     { key: "event", label: "Setup", complete: Boolean(selectedEvent) },
     { key: "lanes", label: "Book", complete: stats.lanes > 0 },
-    { key: "carriers", label: "Shortlist", complete: stats.invitations.length > 0 },
+    { key: "carriers", label: "Participants", complete: stats.invitations.length > 0 },
     { key: "launch", label: "Invite", complete: stats.invitations.some(hasInvitationStarted) },
     { key: "offers", label: "Bids", complete: stats.bids.length > 0 },
     { key: "award", label: "Award", complete: selectedEvent?.status === "awarded" }
@@ -1113,10 +1113,10 @@ function wizardStageCopy(stage) {
       note: "Lanes"
     },
     carriers: {
-      title: "Build the carrier shortlist",
-      detail: "Use procurement vendors and Rateware evidence to create target carriers for every lane.",
-      cta: "Build shortlist",
-      note: "Targets"
+      title: "Select bid participants",
+      detail: "Choose carriers from Carrier CRM or upload the participant catalog marked TRUE/FALSE.",
+      cta: "Select participants",
+      note: "Carriers"
     },
     preview: {
       title: "Review invitation copy",
@@ -1154,7 +1154,7 @@ function wizardActionButton(stage) {
   const actions = {
     event: "",
     lanes: '<button type="button" data-rfx-wizard-go="lanes">Load business book</button>',
-    carriers: '<button type="button" data-rfx-wizard-auto-shortlist>Build shortlist</button>',
+    carriers: '<button type="button" data-rfx-wizard-go="carriers">Select participants</button>',
     preview: '<button type="button" data-rfx-wizard-go="outreach">Review invitation preview</button>',
     launch: '<button type="button" data-rfx-wizard-create-drafts>Generate invitations</button>',
     offers: '<button type="button" data-rfx-wizard-go="responses">Open live bids</button>',
@@ -1226,7 +1226,7 @@ function processStats() {
 
 function managerStageAction(stepKey) {
   if (stepKey === "carriers") {
-    return `<button class="secondary small-button" type="button" data-rfx-wizard-auto-shortlist ${currentLanes.length ? "" : "disabled"}>Build shortlist</button>`;
+    return `<button class="secondary small-button" type="button" data-rfx-wizard-go="carriers" ${selectedEventId ? "" : "disabled"}>Select participants</button>`;
   }
   if (stepKey === "launch") {
     return `<button class="small-button" type="button" data-rfx-wizard-create-drafts ${selectedEventId ? "" : "disabled"}>Generate invitations</button>`;
@@ -1317,10 +1317,9 @@ function processQueueItems() {
     },
     {
       done: stats.invitations.length > 0,
-      title: "Carrier shortlist",
-      detail: stats.invitations.length ? `${formatNumber(stats.invitations.length)} carrier target(s) shortlisted.` : "Build or add vendors to lanes.",
-      action: "lanes",
-      special: "shortlist"
+      title: "Bid participants",
+      detail: stats.invitations.length ? `${formatNumber(stats.invitations.length)} carrier participant row(s) selected.` : "Select carriers from CRM or upload the participant catalog.",
+      action: "carriers"
     },
     {
       done: stats.readyTargets.length > 0,
@@ -1779,31 +1778,36 @@ function renderEventDashboard() {
 }
 
 function renderLaneCoverage() {
-  if (!laneCoverage || !coverageSummary) return;
+  if (!laneCoverage && !coverageSummary) return;
   if (!selectedEventId) {
-    coverageSummary.textContent = "No event selected";
-    laneCoverage.innerHTML = stateBlock({
-      tone: "neutral",
-      eyebrow: "Lane coverage",
-      title: "Select a bid event",
-      detail: "Choose or create an event to inspect lane coverage, shortlist depth, and bid response progress."
-    });
+    if (coverageSummary) coverageSummary.textContent = "No event selected";
+    if (laneCoverage) {
+      laneCoverage.innerHTML = stateBlock({
+        tone: "neutral",
+        eyebrow: "Lane coverage",
+        title: "Select a bid event",
+        detail: "Choose or create an event to inspect lane coverage, shortlist depth, and bid response progress."
+      });
+    }
     return;
   }
   if (!currentLanes.length) {
-    coverageSummary.textContent = "No lanes";
-    laneCoverage.innerHTML = stateBlock({
-      tone: "neutral",
-      eyebrow: "Lane coverage",
-      title: "No lanes in this RFx yet",
-      detail: "Paste the spot/RFx book above to create lanes, then shortlist carriers by lane."
-    });
+    if (coverageSummary) coverageSummary.textContent = "No lanes";
+    if (laneCoverage) {
+      laneCoverage.innerHTML = stateBlock({
+        tone: "neutral",
+        eyebrow: "Lane coverage",
+        title: "No lanes in this RFx yet",
+        detail: "Paste the spot/RFx book above to create lanes, then shortlist carriers by lane."
+      });
+    }
     return;
   }
 
   const lanes = visibleLanes();
   const covered = currentLanes.filter((lane) => activeInvitations(lane).length).length;
-  coverageSummary.textContent = `${formatNumber(covered)} / ${formatNumber(currentLanes.length)} lanes covered`;
+  if (coverageSummary) coverageSummary.textContent = `${formatNumber(covered)} / ${formatNumber(currentLanes.length)} lanes covered`;
+  if (!laneCoverage) return;
   if (!lanes.length) {
     laneCoverage.innerHTML = stateBlock({
       tone: "neutral",
@@ -2059,10 +2063,10 @@ function renderEvents() {
 function updateSelectionControls() {
   const laneCount = selectedLaneIds.size;
   const inviteCount = selectedInvitationIds.size;
-  selectionCount.textContent = `${laneCount} lanes / ${inviteCount} vendors selected`;
-  autoShortlistButton.disabled = !laneCount;
-  inviteSelectedButton.disabled = !inviteCount;
-  archiveSelectedButton.disabled = !inviteCount;
+  if (selectionCount) selectionCount.textContent = `${laneCount} lanes / ${inviteCount} vendors selected`;
+  if (autoShortlistButton) autoShortlistButton.disabled = !laneCount;
+  if (inviteSelectedButton) inviteSelectedButton.disabled = !inviteCount;
+  if (archiveSelectedButton) archiveSelectedButton.disabled = !inviteCount;
 }
 
 function vendorSearchText(row) {
@@ -2262,13 +2266,13 @@ function renderManualShortlistControls() {
   if (manualShortlistSourceSummary) {
     manualShortlistSourceSummary.textContent = `${vendorOptions.length} CRM carrier(s) loaded | ${procurementCount} in Procurement/Pipeline`;
   }
-  if (!currentLanes.length) {
+  if (!selectedEventId) {
     manualShortlistVendors.innerHTML = "";
     if (manualShortlistVendorList) {
       manualShortlistVendorList.innerHTML = `
         <article class="bid-room-crm-vendor-empty">
-          <strong>Select a bid event and import lanes first.</strong>
-          <span>Then choose participants directly from Carrier CRM / Procurement Base.</span>
+          <strong>Select or create a bid event first.</strong>
+          <span>Then choose participants directly from Carrier CRM or upload the participant catalog.</span>
         </article>
       `;
     }
@@ -2284,7 +2288,7 @@ function renderManualShortlistControls() {
     const listSummary = `
       <div class="bid-room-crm-list-summary">
         <strong>Carrier CRM candidates</strong>
-        <span>Showing ${Math.min(visibleRows.length, rows.length)} of ${rows.length}. Selected carriers apply to all lanes in this bid.</span>
+        <span>Showing ${Math.min(visibleRows.length, rows.length)} of ${rows.length}. Selected carriers become participants in this bid.</span>
       </div>
     `;
     manualShortlistVendorList.innerHTML = visibleRows.length ? `${listSummary}${visibleRows.map(renderCrmVendorCandidate).join("")}` : `
@@ -3079,11 +3083,11 @@ manualShortlistVendorList?.addEventListener("change", updateManualShortlistButto
 manualShortlistButton?.addEventListener("click", async () => {
   const vendorIds = selectedManualVendorIds();
   if (!currentLanes.length || !vendorIds.length) {
-    setStatus(manualShortlistStatus, "Import bid lanes and select at least one carrier from Carrier CRM.", "error");
+    setStatus(manualShortlistStatus, "Create a bid event, load the bid book, and select at least one carrier from Carrier CRM.", "error");
     return;
   }
   manualShortlistButton.disabled = true;
-  setStatus(manualShortlistStatus, `Adding ${vendorIds.length} participant carrier(s) to ${currentLanes.length} lane(s)...`);
+  setStatus(manualShortlistStatus, `Adding ${vendorIds.length} participant carrier(s) to this bid...`);
   try {
     let inserted = 0;
     for (const lane of currentLanes) {

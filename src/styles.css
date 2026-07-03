@@ -14427,6 +14427,13 @@ textarea:focus,
   font-size: 0.78rem;
 }
 
+.bid-room-action-status {
+  display: block;
+  min-height: 14px;
+  margin: 4px 0 0;
+  color: #52616d;
+}
+
 .bid-room-action-menu {
   position: relative;
   flex: 0 0 auto;
@@ -14719,10 +14726,6 @@ textarea:focus,
   grid-template-columns: minmax(380px, 0.44fr) minmax(0, 1fr);
 }
 
-.bid-room-carrier-grid .rfx-lane-coverage-grid {
-  margin: 0;
-}
-
 .bid-room-carrier-grid .rfx-shortlist-box {
   grid-template-columns: 1fr;
   gap: 8px;
@@ -14882,9 +14885,13 @@ textarea:focus,
 .bid-room-participant-template {
   display: grid;
   gap: 7px;
-  border-top: 1px solid #e2e8ee;
-  margin-top: 4px;
-  padding-top: 9px;
+  align-content: start;
+  border: 1px solid #d7e0e7;
+  border-radius: 8px;
+  background: #ffffff;
+  margin: 0;
+  min-width: 0;
+  padding: 10px;
 }
 
 .bid-room-participant-template > div:first-child {
@@ -14892,6 +14899,13 @@ textarea:focus,
   gap: 8px;
   align-items: center;
   justify-content: space-between;
+}
+
+.bid-room-participant-template h3 {
+  margin: 1px 0 0;
+  color: #26323d;
+  font-size: 0.9rem;
+  letter-spacing: 0;
 }
 
 .bid-room-participant-template > div:first-child strong {

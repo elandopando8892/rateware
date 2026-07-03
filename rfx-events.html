@@ -94,6 +94,7 @@
                   </div>
                 </details>
               </div>
+              <p id="rfx-action-status" class="row-save-status bid-room-action-status" role="status"></p>
 
               <div id="rfx-ops-health" class="bid-room-metrics">
                 <article><span>Event</span><strong>-</strong><small>No bid event selected.</small></article>
@@ -114,7 +115,7 @@
                   </button>
                   <button type="button" role="tab" aria-selected="false" data-workbench-view-button="carriers" data-stage-key="carriers">
                     <span class="stage-index">3</span>
-                    <span class="stage-copy"><strong>Shortlist</strong><small>Vendors</small></span>
+                    <span class="stage-copy"><strong>Participants</strong><small>Carriers</small></span>
                   </button>
                   <button type="button" role="tab" aria-selected="false" data-workbench-view-button="outreach" data-stage-key="launch">
                     <span class="stage-index">4</span>
@@ -264,13 +265,6 @@
                   <h3>Select bid participants</h3>
                 </div>
               </div>
-              <div class="bulk-action-bar bid-room-bulk-bar">
-                <span id="rfx-selection-count">0 selected</span>
-                <button id="auto-shortlist-selected" class="small-button" type="button" disabled>Auto shortlist</button>
-                <button id="invite-selected-rfx" class="secondary small-button" type="button" disabled>Mark invited</button>
-                <button id="archive-selected-rfx" class="secondary small-button" type="button" disabled>Archive selected</button>
-                <span id="rfx-action-status" class="row-save-status"></span>
-              </div>
               <div class="bid-room-carrier-grid">
                 <section class="rfx-shortlist-box">
                   <div>
@@ -284,53 +278,39 @@
                     <input id="manual-shortlist-search" placeholder="Carrier, domain, email, coverage..." />
                   </label>
                   <div id="manual-shortlist-vendor-list" class="bid-room-crm-vendor-list">
-                    <article>Select a bid event and import lanes first.</article>
+                    <article>Select or create a bid event first.</article>
                   </div>
                   <select id="manual-shortlist-vendors" multiple size="4" hidden></select>
                   <button id="manual-shortlist-button" class="secondary" type="button" disabled>Add selected to bid</button>
                   <p id="manual-shortlist-status" class="status-message" role="status"></p>
-                  <div class="bid-room-participant-template">
-                    <div>
-                      <strong>Upload CRM participant catalog</strong>
-                      <button id="download-rfx-carrier-template" class="secondary small-button" type="button">Download template</button>
-                    </div>
-                    <label>
-                      Mark TRUE/FALSE in the catalog, then upload it
-                      <input id="rfx-carrier-template-file" type="file" accept=".xlsx,.xls,.csv,.tsv" />
-                    </label>
-                    <div id="rfx-carrier-template-preview" class="bid-room-carrier-template-preview" hidden>
-                      <table>
-                        <thead>
-                          <tr>
-                            <th>Participates</th>
-                            <th>Carrier</th>
-                            <th>CRM match</th>
-                            <th>Status</th>
-                          </tr>
-                        </thead>
-                        <tbody id="rfx-carrier-template-preview-body"></tbody>
-                      </table>
-                    </div>
-                    <button id="import-rfx-carrier-template" class="secondary" type="button" disabled>Import matched carriers</button>
-                    <p id="rfx-carrier-template-status" class="status-message" role="status"></p>
-                  </div>
                 </section>
-                <div id="rfx-lane-coverage" class="rfx-lane-coverage-grid">
-                  <article>Select an event to inspect lane coverage.</article>
-                </div>
-              </div>
-              <section class="rfx-lane-decision-panel">
-                <div class="split-heading compact">
+                <section class="bid-room-participant-template">
                   <div>
-                    <p class="eyebrow">Lane decision</p>
-                    <h3 id="rfx-lane-decision-title">Select a lane</h3>
+                    <p class="eyebrow">Participant template</p>
+                    <h3>Upload CRM participant catalog</h3>
+                    <button id="download-rfx-carrier-template" class="secondary small-button" type="button">Download template</button>
                   </div>
-                  <span id="rfx-lane-decision-status" class="status-pill muted">No lane</span>
-                </div>
-                <div id="rfx-lane-decision-body" class="rfx-lane-decision-body">
-                  <article>Select a lane card or table row.</article>
-                </div>
-              </section>
+                  <label>
+                    Mark TRUE/FALSE in the catalog, then upload it
+                    <input id="rfx-carrier-template-file" type="file" accept=".xlsx,.xls,.csv,.tsv" />
+                  </label>
+                  <div id="rfx-carrier-template-preview" class="bid-room-carrier-template-preview" hidden>
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Participates</th>
+                          <th>Carrier</th>
+                          <th>CRM match</th>
+                          <th>Status</th>
+                        </tr>
+                      </thead>
+                      <tbody id="rfx-carrier-template-preview-body"></tbody>
+                    </table>
+                  </div>
+                  <button id="import-rfx-carrier-template" class="secondary" type="button" disabled>Import matched carriers</button>
+                  <p id="rfx-carrier-template-status" class="status-message" role="status"></p>
+                </section>
+              </div>
             </section>
 
             <section class="bid-room-stage-panel" data-workbench-view-panel="outreach">

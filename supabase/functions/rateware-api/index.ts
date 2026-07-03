@@ -705,6 +705,21 @@ function normalizeDomain(value: unknown) {
   return /^[a-z0-9]([a-z0-9.-]*[a-z0-9])?\.[a-z]{2,}$/i.test(cleaned) ? cleaned : null;
 }
 
+// Free / personal / disposable email hosts — not usable as a carrier identity.
+const PERSONAL_EMAIL_DOMAINS = new Set([
+  "gmail.com", "hotmail.com", "hotmail.com.mx", "yahoo.com", "yahoo.com.mx",
+  "outlook.com", "outlook.es", "live.com", "live.com.mx", "icloud.com",
+  "me.com", "aol.com", "msn.com", "gmx.com", "mail.com", "prodigy.net.mx",
+  "yopmail.com"
+]);
+
+// A carrier domain is a normalized real domain that is not a personal host.
+function carrierDomain(value: unknown) {
+  const domain = normalizeDomain(value);
+  if (!domain || PERSONAL_EMAIL_DOMAINS.has(domain)) return null;
+  return domain;
+}
+
 function normalizeEmail(value: unknown) {
   const text = String(value || "").toLowerCase();
   return text.match(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/)?.[0] || null;
@@ -5255,6 +5270,7 @@ function normalizeStagingPatch(input: Record<string, unknown>, current: Record<s
   const patch: Record<string, unknown> = {};
   const textFields = [
     "vendor_domain",
+    "vendor_reference",
     "rfx_id",
     "row_id",
     "origin",
@@ -5482,8 +5498,16 @@ function templateRowInput(mapped: Record<string, unknown>, upload: Record<string
     mapped.destination_market,
     mapped.destination_region
   ].some(cleanText);
+  // vendor_domain holds only a real carrier domain; a bare name or personal
+  // email from the template is kept as vendor_reference (the template's
+  // "Vendor Name" column is the intended home for those).
+  const templateVendorDomain = carrierDomain(mapped.vendor_domain) || carrierDomain(inheritedVendorDomain);
+  const templateVendorReference = cleanText(mapped.vendor_name)
+    || (carrierDomain(mapped.vendor_domain) ? null : cleanText(mapped.vendor_domain))
+    || null;
   const input: Record<string, unknown> = {
-    vendor_domain: mapped.vendor_domain || inheritedVendorDomain,
+    vendor_domain: templateVendorDomain,
+    vendor_reference: templateVendorReference,
     rfx_id: mapped.rfx_id || upload.rfx_hint,
     row_id: mapped.row_id,
     quote_date: mapped.quote_date,
