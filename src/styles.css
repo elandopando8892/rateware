@@ -14814,15 +14814,14 @@ textarea:focus,
 
 .bid-room-crm-vendor-option {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 7px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
   align-items: center;
   min-height: 30px;
   border: 1px solid #e2e8ee;
   border-radius: 6px;
   background: #ffffff;
   padding: 4px 6px;
-  cursor: pointer;
 }
 
 .bid-room-crm-vendor-option:hover {
@@ -14830,11 +14829,10 @@ textarea:focus,
   background: #fbfdff;
 }
 
-.bid-room-crm-vendor-option input {
-  width: 14px;
-  height: 14px;
-  min-height: 0;
-  margin: 0;
+.bid-room-crm-vendor-option.is-selected {
+  border-color: #c9d8e2;
+  background: #f5f8fa;
+  color: #697887;
 }
 
 .crm-vendor-main {

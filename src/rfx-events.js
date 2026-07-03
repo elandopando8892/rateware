@@ -2295,13 +2295,16 @@ function clearCarrierTemplateImport({ preserveStatus = false } = {}) {
 }
 
 function renderCrmVendorCandidate(row) {
+  const isSelected = selectedManualVendorIdsState.has(row.id);
   return `
-    <label class="bid-room-crm-vendor-option">
-      <input type="checkbox" data-manual-vendor-select="${escapeHtml(row.id)}" ${selectedManualVendorIdsState.has(row.id) ? "checked" : ""} />
+    <article class="bid-room-crm-vendor-option ${isSelected ? "is-selected" : ""}">
       <span class="crm-vendor-main">
         <strong>${escapeHtml(vendorDisplayName(row))}</strong>
       </span>
-    </label>
+      <button class="secondary small-button" type="button" data-add-manual-vendor="${escapeHtml(row.id)}" ${isSelected ? "disabled" : ""}>
+        ${isSelected ? "Selected" : "Add"}
+      </button>
+    </article>
   `;
 }
 
@@ -2345,7 +2348,7 @@ function renderSelectedManualVendors() {
   manualShortlistSelectedList.innerHTML = rows.map((vendor) => `
     <article class="bid-room-selected-row">
       <strong>${escapeHtml(vendorDisplayName(vendor))}</strong>
-      <button class="secondary small-button" type="button" data-remove-manual-vendor="${escapeHtml(vendor.id)}">Remove</button>
+      <button class="secondary small-button" type="button" data-remove-manual-vendor="${escapeHtml(vendor.id)}">Move back</button>
     </article>
   `).join("");
 }
@@ -3251,11 +3254,21 @@ manualShortlistVendorList?.addEventListener("change", (event) => {
   }
   renderManualShortlistControls();
 });
+manualShortlistVendorList?.addEventListener("click", (event) => {
+  const addButton = event.target.closest("[data-add-manual-vendor]");
+  if (!addButton) return;
+  const vendorId = addButton.dataset.addManualVendor;
+  if (!vendorId) return;
+  selectedManualVendorIdsState.add(vendorId);
+  renderManualShortlistControls();
+  setStatus(manualShortlistStatus, "Carrier moved to selected participants.", "success");
+});
 manualShortlistSelectedList?.addEventListener("click", (event) => {
   const removeButton = event.target.closest("[data-remove-manual-vendor]");
   if (!removeButton) return;
   selectedManualVendorIdsState.delete(removeButton.dataset.removeManualVendor);
   renderManualShortlistControls();
+  setStatus(manualShortlistStatus, "Carrier moved back to CRM candidates.", "neutral");
 });
 
 manualShortlistButton?.addEventListener("click", async () => {
