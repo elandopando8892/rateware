@@ -277,8 +277,22 @@
                     Search Carrier CRM
                     <input id="manual-shortlist-search" placeholder="Carrier, domain, email, coverage..." />
                   </label>
+                  <div class="bid-room-participant-filters">
+                    <label>
+                      Saved list / segment
+                      <select id="manual-shortlist-segment">
+                        <option value="all">All active CRM carriers</option>
+                        <option value="procurement">Procurement / Pipeline</option>
+                      </select>
+                    </label>
+                    <div class="action-row">
+                      <button id="select-visible-carriers" class="secondary small-button" type="button">Select visible</button>
+                      <button id="select-segment-carriers" class="secondary small-button" type="button">Select segment</button>
+                      <button id="clear-carrier-selection" class="secondary small-button" type="button">Clear</button>
+                    </div>
+                  </div>
                   <div id="manual-shortlist-vendor-list" class="bid-room-crm-vendor-list">
-                    <article>Select or create a bid event first.</article>
+                    <article>Loading Carrier CRM...</article>
                   </div>
                   <select id="manual-shortlist-vendors" multiple size="4" hidden></select>
                   <button id="manual-shortlist-button" class="secondary" type="button" disabled>Add selected to bid</button>

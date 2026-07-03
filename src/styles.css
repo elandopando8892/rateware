@@ -14760,6 +14760,22 @@ textarea:focus,
   grid-column: 1;
 }
 
+.bid-room-participant-filters {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) auto;
+  gap: 6px;
+  align-items: end;
+}
+
+.bid-room-participant-filters .action-row {
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+.bid-room-participant-filters .small-button {
+  min-height: 30px;
+}
+
 .bid-room-crm-vendor-list {
   display: grid;
   gap: 4px;
