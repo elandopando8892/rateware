@@ -69,10 +69,15 @@ assert.match(ratewareSource, /downloadVendorMatchErrors/, "Rateware should downl
 assert.match(stagingReviewSource, /Shipment ID/, "Staging should expose Shipment ID");
 assert.match(ratewareSource, /Shipment ID/, "Rateware should expose Shipment ID");
 assert.match(apiSource, /vendor_ids: vendorIds/, "Vendor segments should support exact participant template vendor ids");
+assert.match(apiSource, /update_vendor_segment/, "API should support updating reusable vendor participant templates");
 assert.match(rfxEventsSource, /createVendorSegment/, "Bid Room should save selected participants as reusable vendor templates");
+assert.match(rfxEventsSource, /updateVendorSegment/, "Bid Room should update saved participant templates after carrier changes");
+assert.match(rfxEventsSource, /deleteVendorSegment/, "Bid Room should delete saved participant templates without touching CRM carriers");
 assert.match(rfxEventsSource, /segmentVendorIds/, "Bid Room should preload exact vendor id templates");
 assert.match(rfxEventsHtml, /manual-shortlist-template-name/, "Bid Room should render a named participant template input");
 assert.match(rfxEventsHtml, /load-manual-shortlist-template/, "Bid Room should render a saved participant template loader");
+assert.match(rfxEventsHtml, /update-manual-shortlist-template/, "Bid Room should render an update button for selected participant templates");
+assert.match(rfxEventsHtml, /delete-manual-shortlist-template/, "Bid Room should render a delete button for selected participant templates");
 assert.match(shipmentIdFilterMigration, /when 'row_id' then array\[rate_row\.row_id\]/, "SQL filter values should support Shipment ID");
 assert.match(shipmentIdFilterMigration, /public\.rateware_values_filter_match\(p_column_filters, 'row_id', array\[rate_row\.row_id\]\)/, "SQL row filters should support Shipment ID");
 assert.match(shipmentIdFilterMigration, /when 'row_id' then rs\.row_id/, "SQL column value menus should support Shipment ID");

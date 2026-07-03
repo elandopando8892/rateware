@@ -7921,6 +7921,20 @@ Deno.serve(async (request) => {
       return jsonResponse({ row: result.data });
     }
 
+    if (body.action === "update_vendor_segment") {
+      if (!body.id) return jsonResponse({ error: "Segment id is required." }, 400);
+      const patch = normalizeSegment(body.segment || body.patch || {}, user);
+      const result = await supabase
+        .from("vendor_segments")
+        .update(patch)
+        .eq("owner_email", user.owner_email)
+        .eq("id", body.id)
+        .select()
+        .single();
+      if (result.error) throw result.error;
+      return jsonResponse({ row: result.data });
+    }
+
     if (body.action === "delete_vendor_segment") {
       if (!body.id) return jsonResponse({ error: "Segment id is required." }, 400);
       const result = await supabase.from("vendor_segments").delete().eq("owner_email", user.owner_email).eq("id", body.id).select().single();

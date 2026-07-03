@@ -94,6 +94,10 @@ export async function createVendorSegment(segment) {
   return (await callRatewareApi("create_vendor_segment", { segment })).row;
 }
 
+export async function updateVendorSegment(id, segment) {
+  return (await callRatewareApi("update_vendor_segment", { id, segment })).row;
+}
+
 export async function deleteVendorSegment(id) {
   return (await callRatewareApi("delete_vendor_segment", { id })).row;
 }
