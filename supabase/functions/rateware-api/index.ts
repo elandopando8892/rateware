@@ -9074,6 +9074,30 @@ Deno.serve(async (request) => {
       }
     }
 
+    if (body.action === "list_vendor_unmatched_ids") {
+      // Cursor-paged ids of approved rows without a linked vendor, for
+      // driving match_rate_vendors in id batches (the filter RPC variant
+      // exceeds statement timeouts on large books).
+      const unmatchedCursor = cleanText(body.cursor) || "";
+      const pageLimit = Math.min(Math.max(Number(body.limit) || 5000, 100), 10000);
+      let unmatchedQuery = supabase
+        .from("rate_staging")
+        .select("id")
+        .eq("status", "approved")
+        .is("vendor_id", null)
+        .order("id", { ascending: true })
+        .limit(pageLimit);
+      if (unmatchedCursor) unmatchedQuery = unmatchedQuery.gt("id", unmatchedCursor);
+      const unmatchedResult = await unmatchedQuery;
+      if (unmatchedResult.error) throw unmatchedResult.error;
+      const unmatchedRows = unmatchedResult.data || [];
+      return jsonResponse({
+        ids: unmatchedRows.map((row) => String(row.id)),
+        cursor: unmatchedRows.length ? String(unmatchedRows[unmatchedRows.length - 1].id) : unmatchedCursor,
+        done: unmatchedRows.length < pageLimit
+      });
+    }
+
     if (body.action === "book_audit_scan") {
       // Incremental slice of the normalized-lane mismatch / market-gap scan.
       // Kept small per invocation to stay inside edge CPU limits; the client
