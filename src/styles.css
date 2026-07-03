@@ -14835,6 +14835,13 @@ textarea:focus,
   color: #697887;
 }
 
+.bid-room-carrier-grid .rfx-shortlist-box .bid-room-crm-vendor-option button {
+  grid-column: auto;
+  justify-self: end;
+  min-width: 58px;
+  white-space: nowrap;
+}
+
 .crm-vendor-main {
   display: grid;
   gap: 1px;
