@@ -24,7 +24,7 @@ import {
   markOutreachMessages,
   updateOutreachTemplate
 } from "./outreach-service.js";
-import { fetchVendorSegments, fetchVendors } from "./vendor-service.js";
+import { createVendorSegment, fetchVendorSegments, fetchVendors } from "./vendor-service.js";
 import { humanizeError } from "./error-copy.js";
 import { errorState, stateBlock, tableErrorState, tableState } from "./ui-state.js";
 import { initWorkbenchTabs } from "./workbench-tabs.js";
@@ -90,6 +90,9 @@ const manualShortlistSelectedList = document.querySelector("#manual-shortlist-se
 const selectVisibleCarriersButton = document.querySelector("#select-visible-carriers");
 const selectSegmentCarriersButton = document.querySelector("#select-segment-carriers");
 const clearCarrierSelectionButton = document.querySelector("#clear-carrier-selection");
+const manualShortlistTemplateName = document.querySelector("#manual-shortlist-template-name");
+const saveManualShortlistTemplateButton = document.querySelector("#save-manual-shortlist-template");
+const loadManualShortlistTemplateButton = document.querySelector("#load-manual-shortlist-template");
 const manualShortlistButton = document.querySelector("#manual-shortlist-button");
 const manualShortlistStatus = document.querySelector("#manual-shortlist-status");
 const carrierTemplateFileInput = document.querySelector("#rfx-carrier-template-file");
@@ -2110,7 +2113,18 @@ function selectedSegmentId() {
   return manualShortlistSegment?.value || "all";
 }
 
+function segmentVendorIds(segment) {
+  if (!segment) return [];
+  if (Array.isArray(segment.vendor_ids)) return segment.vendor_ids.map((id) => String(id)).filter(Boolean);
+  return String(segment.vendor_ids || "")
+    .split(/[,\s;|]+/)
+    .map((id) => id.trim())
+    .filter(Boolean);
+}
+
 function segmentMatchesVendor(segment, vendor) {
+  const vendorIds = segmentVendorIds(segment);
+  if (vendorIds.length) return vendorIds.includes(String(vendor.id || ""));
   const vendorTags = splitTags(vendor.tags);
   const requiredTags = splitTags(segment.tags);
   const hasTags = requiredTags.every((tag) => vendorTags.includes(tag));
@@ -2159,8 +2173,10 @@ function renderManualSegmentOptions() {
   const currentValue = manualShortlistSegment.value || "all";
   const segmentOptions = savedVendorSegments.map((segment) => {
     const matchCount = vendorOptions.filter((vendor) => vendorStageRank(vendor) < 9 && segmentMatchesVendor(segment, vendor)).length;
+    const isParticipantTemplate = segment.segment_type === "participant_template" || segmentVendorIds(segment).length;
     const suffix = matchCount ? ` (${formatNumber(matchCount)})` : "";
-    return `<option value="${escapeHtml(segment.id)}">${escapeHtml(segment.segment_name || "Saved segment")}${suffix}</option>`;
+    const labelSuffix = isParticipantTemplate ? " · template" : "";
+    return `<option value="${escapeHtml(segment.id)}">${escapeHtml(segment.segment_name || "Saved segment")}${labelSuffix}${suffix}</option>`;
   }).join("");
   manualShortlistSegment.innerHTML = `
     <option value="all">All active CRM carriers</option>
@@ -2172,16 +2188,19 @@ function renderManualSegmentOptions() {
   }
 }
 
-function shortlistCandidateRows() {
-  const term = String(manualShortlistSearch?.value || "").trim().toLowerCase();
-  const segmentId = selectedSegmentId();
+function segmentCandidateRows(segmentId = selectedSegmentId()) {
   const activeRows = vendorOptions.filter((vendor) => vendorStageRank(vendor) < 9);
   const segment = savedVendorSegments.find((item) => item.id === segmentId);
-  const segmentRows = segmentId === "procurement"
+  return segmentId === "procurement"
     ? activeRows.filter(isProcurementCarrier)
     : segment
       ? activeRows.filter((vendor) => segmentMatchesVendor(segment, vendor))
       : activeRows;
+}
+
+function shortlistCandidateRows() {
+  const term = String(manualShortlistSearch?.value || "").trim().toLowerCase();
+  const segmentRows = segmentCandidateRows();
   const filtered = segmentRows.filter((vendor) => !term || vendorSearchText(vendor).includes(term));
   return sortedVendorOptions(filtered);
 }
@@ -2362,6 +2381,21 @@ function updateManualShortlistButtonState() {
     : selectedCount ? "Load bid book to add selected carriers" : "Add selected to bid";
 }
 
+function updateParticipantTemplateControls() {
+  const selectedCount = selectedManualVendorIds().length;
+  if (saveManualShortlistTemplateButton) {
+    saveManualShortlistTemplateButton.disabled = !selectedCount || vendorSegmentsLoading;
+  }
+  if (loadManualShortlistTemplateButton) {
+    const segmentId = selectedSegmentId();
+    const rows = segmentId === "all" ? [] : segmentCandidateRows(segmentId);
+    loadManualShortlistTemplateButton.disabled = vendorOptionsLoading || vendorSegmentsLoading || !rows.length;
+    loadManualShortlistTemplateButton.textContent = rows.length
+      ? `Load ${formatNumber(rows.length)} from saved list`
+      : "Load saved list";
+  }
+}
+
 function renderManualShortlistControls() {
   if (!manualShortlistLane || !manualShortlistVendors) return;
   renderSelectedManualVendors();
@@ -2379,6 +2413,7 @@ function renderManualShortlistControls() {
     if (selectVisibleCarriersButton) selectVisibleCarriersButton.disabled = true;
     if (selectSegmentCarriersButton) selectSegmentCarriersButton.disabled = true;
     if (clearCarrierSelectionButton) clearCarrierSelectionButton.disabled = true;
+    updateParticipantTemplateControls();
     manualShortlistVendors.innerHTML = "";
     if (manualShortlistVendorList) {
       manualShortlistVendorList.innerHTML = `
@@ -2395,6 +2430,7 @@ function renderManualShortlistControls() {
     if (selectVisibleCarriersButton) selectVisibleCarriersButton.disabled = true;
     if (selectSegmentCarriersButton) selectSegmentCarriersButton.disabled = true;
     if (clearCarrierSelectionButton) clearCarrierSelectionButton.disabled = true;
+    updateParticipantTemplateControls();
     manualShortlistVendors.innerHTML = "";
     if (manualShortlistVendorList) {
       manualShortlistVendorList.innerHTML = `
@@ -2431,6 +2467,7 @@ function renderManualShortlistControls() {
     manualShortlistVendorList.dataset.totalMatches = String(rows.length);
   }
   updateManualShortlistButtonState();
+  updateParticipantTemplateControls();
 }
 
 function renderInvitation(invitation, lane) {
@@ -3241,6 +3278,57 @@ clearCarrierSelectionButton?.addEventListener("click", () => {
   selectedManualVendorIdsState.clear();
   renderManualShortlistControls();
   setStatus(manualShortlistStatus, "Carrier selection cleared.", "neutral");
+});
+saveManualShortlistTemplateButton?.addEventListener("click", async () => {
+  const vendorIds = selectedManualVendorIds();
+  const name = String(manualShortlistTemplateName?.value || "").trim();
+  if (!vendorIds.length) {
+    setStatus(manualShortlistStatus, "Select at least one carrier before saving a participant template.", "error");
+    return;
+  }
+  if (!name) {
+    setStatus(manualShortlistStatus, "Add a template name before saving this participant list.", "error");
+    manualShortlistTemplateName?.focus();
+    return;
+  }
+  saveManualShortlistTemplateButton.disabled = true;
+  setStatus(manualShortlistStatus, `Saving participant template "${name}"...`);
+  try {
+    const row = await createVendorSegment({
+      segment_name: name,
+      segment_type: "participant_template",
+      vendor_ids: vendorIds,
+      tags: ["bid-room-template"],
+      description: `Bid Room participant template with ${vendorIds.length} carrier(s).`,
+      notes: "Saved from Bid Room selected participants."
+    });
+    savedVendorSegments = [row, ...savedVendorSegments.filter((segment) => segment.id !== row.id)];
+    if (manualShortlistSegment) manualShortlistSegment.value = row.id;
+    if (manualShortlistTemplateName) manualShortlistTemplateName.value = "";
+    renderManualShortlistControls();
+    setStatus(manualShortlistStatus, `Template "${row.segment_name || name}" saved with ${formatNumber(vendorIds.length)} carrier(s).`, "success");
+  } catch (error) {
+    setStatus(manualShortlistStatus, humanizeError(error.message), "error");
+  } finally {
+    renderManualShortlistControls();
+  }
+});
+loadManualShortlistTemplateButton?.addEventListener("click", () => {
+  const segmentId = selectedSegmentId();
+  if (segmentId === "all") {
+    setStatus(manualShortlistStatus, "Choose a saved list or procurement segment before loading participants.", "error");
+    return;
+  }
+  const rows = sortedVendorOptions(segmentCandidateRows(segmentId));
+  if (!rows.length) {
+    setStatus(manualShortlistStatus, "No carriers were found for the selected saved list.", "error");
+    return;
+  }
+  selectedManualVendorIdsState = new Set(rows.map((vendor) => vendor.id).filter(Boolean));
+  renderManualShortlistControls();
+  const segment = savedVendorSegments.find((item) => item.id === segmentId);
+  const label = segment?.segment_name || (segmentId === "procurement" ? "Procurement / Pipeline" : "saved list");
+  setStatus(manualShortlistStatus, `${formatNumber(rows.length)} carrier(s) loaded from ${label}.`, "success");
 });
 manualShortlistLane?.addEventListener("change", () => {
   updateManualShortlistButtonState();

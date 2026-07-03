@@ -11,6 +11,8 @@ const bulkImportTemplateSource = readFileSync(new URL("../src/bulk-import-templa
 const stagingReviewSource = readFileSync(new URL("../src/staging-review.js", import.meta.url), "utf8");
 const ratewareSource = readFileSync(new URL("../src/rateware.js", import.meta.url), "utf8");
 const vendorsSource = readFileSync(new URL("../src/vendors.js", import.meta.url), "utf8");
+const rfxEventsSource = readFileSync(new URL("../src/rfx-events.js", import.meta.url), "utf8");
+const rfxEventsHtml = readFileSync(new URL("../rfx-events.html", import.meta.url), "utf8");
 const stagingServiceSource = readFileSync(new URL("../src/staging-service.js", import.meta.url), "utf8");
 const rpcMigration = readFileSync(new URL("../supabase/migrations/20260626143000_rate_filter_rpc.sql", import.meta.url), "utf8");
 const compositeRpcMigration = readFileSync(new URL("../supabase/migrations/20260626153000_composite_rate_filter_values.sql", import.meta.url), "utf8");
@@ -66,6 +68,11 @@ assert.match(stagingReviewSource, /downloadVendorMatchErrors/, "Staging should d
 assert.match(ratewareSource, /downloadVendorMatchErrors/, "Rateware should download unmatched vendor diagnostics");
 assert.match(stagingReviewSource, /Shipment ID/, "Staging should expose Shipment ID");
 assert.match(ratewareSource, /Shipment ID/, "Rateware should expose Shipment ID");
+assert.match(apiSource, /vendor_ids: vendorIds/, "Vendor segments should support exact participant template vendor ids");
+assert.match(rfxEventsSource, /createVendorSegment/, "Bid Room should save selected participants as reusable vendor templates");
+assert.match(rfxEventsSource, /segmentVendorIds/, "Bid Room should preload exact vendor id templates");
+assert.match(rfxEventsHtml, /manual-shortlist-template-name/, "Bid Room should render a named participant template input");
+assert.match(rfxEventsHtml, /load-manual-shortlist-template/, "Bid Room should render a saved participant template loader");
 assert.match(shipmentIdFilterMigration, /when 'row_id' then array\[rate_row\.row_id\]/, "SQL filter values should support Shipment ID");
 assert.match(shipmentIdFilterMigration, /public\.rateware_values_filter_match\(p_column_filters, 'row_id', array\[rate_row\.row_id\]\)/, "SQL row filters should support Shipment ID");
 assert.match(shipmentIdFilterMigration, /when 'row_id' then rs\.row_id/, "SQL column value menus should support Shipment ID");

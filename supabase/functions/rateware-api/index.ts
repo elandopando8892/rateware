@@ -5220,12 +5220,28 @@ function normalizeVendorPatch(input: Record<string, unknown>, current: Record<st
   return patch;
 }
 
-function normalizeSegment(input: Record<string, unknown>) {
+function normalizeUuidList(value: unknown) {
+  const rawValues = Array.isArray(value)
+    ? value
+    : String(value || "").split(/[,\s;|]+/);
+  return Array.from(new Set(rawValues
+    .map((item) => cleanText(item))
+    .filter((item) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(item))));
+}
+
+function normalizeSegment(input: Record<string, unknown>, user?: { owner_user_id: string | null; owner_email: string | null }) {
   const segmentName = cleanText(input.segment_name || input.name);
   if (!segmentName) throw new Error("Segment name is required.");
 
   const status = cleanText(input.status)?.toLowerCase() || null;
   const preferredChannel = cleanText(input.preferred_channel)?.toLowerCase() || null;
+  const vendorIds = normalizeUuidList(input.vendor_ids);
+  const segmentType = cleanText(input.segment_type || input.type)?.toLowerCase();
+  const normalizedType = vendorIds.length
+    ? "participant_template"
+    : ["dynamic", "participant_template"].includes(segmentType || "")
+      ? segmentType || "dynamic"
+      : "dynamic";
 
   return {
     segment_name: segmentName,
@@ -5233,7 +5249,11 @@ function normalizeSegment(input: Record<string, unknown>) {
     tags: normalizeTags(input.tags),
     status: status && ["active", "invited", "blocked", "inactive"].includes(status) ? status : null,
     preferred_channel: preferredChannel && ["email", "whatsapp", "portal"].includes(preferredChannel) ? preferredChannel : null,
+    segment_type: normalizedType,
+    vendor_ids: vendorIds,
     notes: cleanText(input.notes),
+    owner_user_id: user?.owner_user_id || null,
+    owner_email: user?.owner_email || null,
     updated_at: new Date().toISOString()
   };
 }
@@ -7884,13 +7904,18 @@ Deno.serve(async (request) => {
     }
 
     if (body.action === "list_vendor_segments") {
-      const result = await supabase.from("vendor_segments").select("*").order("created_at", { ascending: false }).limit(100);
+      const result = await supabase
+        .from("vendor_segments")
+        .select("*")
+        .or(`owner_email.is.null,owner_email.eq.${user.owner_email}`)
+        .order("created_at", { ascending: false })
+        .limit(100);
       if (result.error) throw result.error;
       return jsonResponse({ rows: result.data });
     }
 
     if (body.action === "create_vendor_segment") {
-      const row = normalizeSegment(body.segment || {});
+      const row = normalizeSegment(body.segment || {}, user);
       const result = await supabase.from("vendor_segments").insert(row).select().single();
       if (result.error) throw result.error;
       return jsonResponse({ row: result.data });
@@ -7898,7 +7923,7 @@ Deno.serve(async (request) => {
 
     if (body.action === "delete_vendor_segment") {
       if (!body.id) return jsonResponse({ error: "Segment id is required." }, 400);
-      const result = await supabase.from("vendor_segments").delete().eq("id", body.id).select().single();
+      const result = await supabase.from("vendor_segments").delete().eq("owner_email", user.owner_email).eq("id", body.id).select().single();
       if (result.error) throw result.error;
       return jsonResponse({ row: result.data });
     }

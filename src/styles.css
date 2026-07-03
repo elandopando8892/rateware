@@ -14978,6 +14978,37 @@ textarea:focus,
   font-size: 0.7rem;
 }
 
+.bid-room-participant-template-actions {
+  display: grid;
+  grid-template-columns: minmax(190px, 1fr) auto;
+  gap: 6px;
+  align-items: end;
+  border: 1px solid #e2e8ee;
+  border-radius: 7px;
+  background: #ffffff;
+  padding: 6px;
+}
+
+.bid-room-participant-template-actions label {
+  display: grid;
+  gap: 3px;
+  color: #52616d;
+  font-size: 0.68rem;
+  font-weight: 900;
+}
+
+.bid-room-participant-template-actions input {
+  min-height: 28px;
+  border: 1px solid #cbd6df;
+  border-radius: 6px;
+  padding: 4px 7px;
+}
+
+.bid-room-participant-template-actions .action-row {
+  gap: 4px;
+  justify-content: flex-end;
+}
+
 .bid-room-participant-template {
   display: grid;
   gap: 7px;
