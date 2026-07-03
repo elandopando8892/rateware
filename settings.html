@@ -69,12 +69,13 @@
             <button type="button" role="tab" aria-selected="true" data-workbench-view-button="access">Access</button>
             <button type="button" role="tab" aria-selected="false" data-workbench-view-button="profile" data-workbench-focus-target="#profile-full-name">Profile</button>
             <button type="button" role="tab" aria-selected="false" data-workbench-view-button="organization" data-workbench-focus-target="#org-name">Organization</button>
+            <button type="button" role="tab" aria-selected="false" data-workbench-view-button="integrations">Integrations</button>
             <button type="button" role="tab" aria-selected="false" data-workbench-view-button="onboarding">Onboarding</button>
             <button type="button" role="tab" aria-selected="false" data-workbench-view-button="catalogs">Catalogs</button>
             <button type="button" role="tab" aria-selected="false" data-workbench-view-button="audit">Audit Log</button>
           </nav>
 
-          <section class="settings-grid" data-workbench-view-panel="access profile organization onboarding catalogs">
+          <section class="settings-grid" data-workbench-view-panel="access profile organization integrations onboarding catalogs">
             <section class="workspace-panel" data-workbench-view-panel="access">
               <div class="section-heading compact">
                 <p class="eyebrow">Access model</p>
@@ -122,6 +123,25 @@
                 <button type="submit">Save organization</button>
               </form>
               <p id="organization-status" class="status-message" role="status"></p>
+            </section>
+
+            <section class="workspace-panel" data-workbench-view-panel="integrations">
+              <div class="split-heading">
+                <div>
+                  <p class="eyebrow">Gmail sender</p>
+                  <h2>Outbound mailbox</h2>
+                </div>
+                <button id="refresh-gmail-connection" type="button" class="secondary">Refresh</button>
+              </div>
+              <div id="gmail-connection-card" class="settings-access-card">
+                <strong>sales@heymarksman.com</strong>
+                <p>Loading Gmail connection status...</p>
+              </div>
+              <div class="action-row">
+                <button id="connect-gmail-button" type="button">Connect sales@heymarksman.com</button>
+                <button id="disconnect-gmail-button" type="button" class="secondary">Disconnect</button>
+              </div>
+              <p id="gmail-connection-status" class="status-message" role="status"></p>
             </section>
 
             <section class="workspace-panel" data-workbench-view-panel="onboarding">

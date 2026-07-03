@@ -81,6 +81,8 @@ assert.match(rfxEventsHtml, /load-manual-shortlist-template/, "Bid Room should r
 assert.match(rfxEventsHtml, /update-manual-shortlist-template/, "Bid Room should render an update button for selected participant templates");
 assert.match(rfxEventsHtml, /delete-manual-shortlist-template/, "Bid Room should render a delete button for selected participant templates");
 assert.match(rfxEventsHtml, /rfx-outreach-sender/, "Bid Room Step 4 should include a sender account selector");
+assert.match(rfxEventsHtml, /sales@heymarksman\.com/, "Bid Room Step 4 should use sales@heymarksman.com as the approved sender");
+assert.doesNotMatch(rfxEventsHtml, /carriers@xbfreight\.com/, "Bid Room Step 4 should not offer legacy sender accounts");
 assert.doesNotMatch(rfxEventsHtml, /Advanced source editor/, "Bid Room Step 4 should not expose the advanced source editor in the main flow");
 assert.match(rfxEventsSource, /sender_email: rfxOutreachSender/, "Bid Room should pass the selected sender into outreach campaign creation");
 assert.match(outreachServiceSource, /sender_email: options\.senderEmail/, "Outreach draft generation should send selected sender metadata to the API");

@@ -31,3 +31,18 @@ export async function saveCatalogValue(catalogValue) {
 export async function archiveCatalogValue(id) {
   return (await callRatewareApi("archive_catalog_value", { id })).row;
 }
+
+export async function fetchGmailConnections() {
+  return await callRatewareApi("list_gmail_connections");
+}
+
+export async function startGmailOAuth(mailboxEmail, redirectAfter = "settings.html?view=integrations") {
+  return await callRatewareApi("start_gmail_oauth", {
+    mailbox_email: mailboxEmail,
+    redirect_after: redirectAfter
+  });
+}
+
+export async function disconnectGmailConnection() {
+  return (await callRatewareApi("disconnect_gmail_connection")).row;
+}

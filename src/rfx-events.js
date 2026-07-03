@@ -165,6 +165,7 @@ let selectedManualVendorIdsState = new Set();
 const rfxPageParams = new URLSearchParams(window.location.search);
 const requestedRfxEventId = rfxPageParams.get("rfx_event_id");
 const rfxWorkbench = initWorkbenchTabs({ defaultView: "setup" });
+const APPROVED_GMAIL_SENDER = "sales@heymarksman.com";
 
 const RFX_LANE_TEMPLATE_COLUMNS = [
   { key: "lane_number", label: "Lane #", example: "1" },
@@ -1021,7 +1022,7 @@ function renderOutreachPreview() {
   renderRfxTemplateEditor();
   const template = selectedOutreachTemplateDraft();
   const channel = rfxOutreachChannel?.value || "multi";
-  const senderEmail = rfxOutreachSender?.value || "carriers@xbfreight.com";
+  const senderEmail = rfxOutreachSender?.value || APPROVED_GMAIL_SENDER;
   const targets = outreachTargetInvitations();
   const ready = targets.filter((target) => targetHasChannel(target, channel)).length;
   const targetScope = selectedInvitationIds.size
@@ -2789,8 +2790,8 @@ async function createCurrentOutreachDrafts(statusElement = rfxOutreachStatus) {
     rfx_event_id: selectedEventId,
     template_id: template.id,
     channel: rfxOutreachChannel?.value || "multi",
-    sender_email: rfxOutreachSender?.value || "carriers@xbfreight.com",
-    sender_label: rfxOutreachSender?.selectedOptions?.[0]?.textContent || rfxOutreachSender?.value || "Gmail sender",
+    sender_email: rfxOutreachSender?.value || APPROVED_GMAIL_SENDER,
+    sender_label: rfxOutreachSender?.selectedOptions?.[0]?.textContent || rfxOutreachSender?.value || APPROVED_GMAIL_SENDER,
     sender_connection_status: "draft_only"
   });
   const result = await generateOutreachDrafts(campaign.id, {
@@ -3545,6 +3546,7 @@ rfxOutreachTemplate?.addEventListener("change", () => {
   renderOutreachPreview();
 });
 rfxOutreachChannel?.addEventListener("change", renderOutreachPreview);
+rfxOutreachSender && (rfxOutreachSender.value = APPROVED_GMAIL_SENDER);
 rfxOutreachSender?.addEventListener("change", renderOutreachPreview);
 rfxOutreachCampaignName?.addEventListener("input", () => {
   rfxOutreachCampaignName.dataset.autoName = "false";

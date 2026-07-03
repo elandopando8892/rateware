@@ -9708,6 +9708,20 @@ select.staging-input {
   overflow-wrap: anywhere;
 }
 
+.diagnostic-list.compact-list {
+  gap: 4px;
+}
+
+.diagnostic-list.compact-list div {
+  grid-template-columns: 110px minmax(0, 1fr);
+  padding: 6px 0;
+}
+
+.error-text {
+  color: var(--danger);
+  font-weight: 800;
+}
+
 .settings-layout {
   display: grid;
   gap: 16px;

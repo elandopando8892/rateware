@@ -1,9 +1,12 @@
 import { initAuthControls, requirePrivatePage } from "./auth.js";
 import {
   archiveCatalogValue,
+  disconnectGmailConnection,
   fetchCatalogValues,
+  fetchGmailConnections,
   fetchSaasSettings,
   saveCatalogValue,
+  startGmailOAuth,
   updateOnboardingTask,
   updateSaasOrganization,
   updateSaasProfile
@@ -23,6 +26,11 @@ const organizationStatus = document.querySelector("#organization-status");
 const onboardingList = document.querySelector("#onboarding-list");
 const auditLogBody = document.querySelector("#audit-log-body");
 const refreshButton = document.querySelector("#refresh-settings-button");
+const gmailConnectionCard = document.querySelector("#gmail-connection-card");
+const gmailConnectionStatus = document.querySelector("#gmail-connection-status");
+const connectGmailButton = document.querySelector("#connect-gmail-button");
+const disconnectGmailButton = document.querySelector("#disconnect-gmail-button");
+const refreshGmailConnectionButton = document.querySelector("#refresh-gmail-connection");
 const catalogValueForm = document.querySelector("#catalog-value-form");
 const catalogCategorySelect = document.querySelector("#catalog-category");
 const catalogCategoryFilter = document.querySelector("#catalog-category-filter");
@@ -55,6 +63,7 @@ let currentSettings = null;
 let currentSession = null;
 let currentCatalogValues = [];
 initWorkbenchTabs({ defaultView: "access" });
+const GMAIL_ALLOWED_SENDER = "sales@heymarksman.com";
 
 const CATALOG_CATEGORIES = [
   { key: "equipment", label: "Equipment" },
@@ -182,6 +191,36 @@ function renderAudit(settings) {
   `).join("");
 }
 
+function renderGmailConnections(data = currentSettings?.gmail) {
+  if (!gmailConnectionCard) return;
+  const row = data?.rows?.[0] || {};
+  const connected = row.status === "connected";
+  const configured = row.configured === true;
+  const statusLabel = connected ? "Connected" : row.status === "error" ? "Connection error" : row.status === "revoked" ? "Disconnected" : "Not connected";
+  gmailConnectionCard.innerHTML = `
+    <strong>${escapeHtml(GMAIL_ALLOWED_SENDER)}</strong>
+    <p>${escapeHtml(connected
+      ? "Bid Room can use this mailbox as the approved Gmail sender."
+      : "Connect this Gmail/Workspace mailbox before sending invitations directly from Rateware.")}</p>
+    <dl class="diagnostic-list compact-list">
+      <div><dt>Status</dt><dd><span class="status-pill ${connected ? "success" : row.status === "error" ? "danger" : "neutral"}">${escapeHtml(statusLabel)}</span></dd></div>
+      <div><dt>OAuth setup</dt><dd>${escapeHtml(configured ? "Configured" : "Missing Google secrets")}</dd></div>
+      <div><dt>Redirect URI</dt><dd>${escapeHtml(row.redirect_uri || "-")}</dd></div>
+      <div><dt>Updated</dt><dd>${escapeHtml(row.updated_at ? new Date(row.updated_at).toLocaleString() : "-")}</dd></div>
+    </dl>
+    ${row.last_error ? `<p class="error-text">${escapeHtml(row.last_error)}</p>` : ""}
+  `;
+  if (connectGmailButton) connectGmailButton.disabled = !configured;
+  if (disconnectGmailButton) disconnectGmailButton.disabled = !connected && row.status !== "error";
+  setStatus(
+    gmailConnectionStatus,
+    configured
+      ? (connected ? "Gmail is connected for outbound Bid Room invitations." : "Ready to connect Gmail with Google consent.")
+      : "Add Google OAuth secrets in Supabase before connecting Gmail.",
+    configured ? (connected ? "success" : "neutral") : "warning"
+  );
+}
+
 function renderCatalogValues(rows = currentCatalogValues) {
   currentCatalogValues = rows || [];
   const category = catalogCategoryFilter?.value || "";
@@ -228,6 +267,7 @@ function renderSettings(settings) {
   renderAccess(settings);
   renderOnboarding(settings);
   renderAudit(settings);
+  renderGmailConnections(settings.gmail);
 }
 
 async function loadSettings() {
@@ -249,6 +289,16 @@ async function loadCatalogValues() {
   }
 }
 
+async function loadGmailConnections() {
+  setStatus(gmailConnectionStatus, "Checking Gmail connection...");
+  try {
+    const data = await fetchGmailConnections();
+    renderGmailConnections(data);
+  } catch (error) {
+    setStatus(gmailConnectionStatus, error.message, "error");
+  }
+}
+
 initAuthControls();
 populateCatalogCategoryControls();
 requirePrivatePage().then((session) => {
@@ -258,6 +308,28 @@ requirePrivatePage().then((session) => {
 
 refreshButton?.addEventListener("click", loadSettings);
 refreshCatalogButton?.addEventListener("click", loadCatalogValues);
+refreshGmailConnectionButton?.addEventListener("click", loadGmailConnections);
+
+connectGmailButton?.addEventListener("click", async () => {
+  setStatus(gmailConnectionStatus, `Preparing Google consent for ${GMAIL_ALLOWED_SENDER}...`);
+  try {
+    const result = await startGmailOAuth(GMAIL_ALLOWED_SENDER, "settings.html?view=integrations");
+    if (!result.authorization_url) throw new Error("Google authorization URL was not returned.");
+    window.location.href = result.authorization_url;
+  } catch (error) {
+    setStatus(gmailConnectionStatus, error.message, "error");
+  }
+});
+
+disconnectGmailButton?.addEventListener("click", async () => {
+  setStatus(gmailConnectionStatus, "Disconnecting Gmail sender...");
+  try {
+    await disconnectGmailConnection();
+    await loadGmailConnections();
+  } catch (error) {
+    setStatus(gmailConnectionStatus, error.message, "error");
+  }
+});
 catalogCategoryFilter?.addEventListener("change", loadCatalogValues);
 
 catalogValueForm?.addEventListener("submit", async (event) => {

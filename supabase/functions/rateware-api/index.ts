@@ -6,6 +6,8 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("RATEWARE_SUPABASE_SERVICE_ROLE_K
 const OPENAI_MODEL = Deno.env.get("OPENAI_MODEL");
 const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
 const VENDOR_LOGOS_BUCKET = "vendor-logos";
+const GMAIL_ALLOWED_SENDER = (Deno.env.get("GMAIL_ALLOWED_SENDER") || "sales@heymarksman.com").trim().toLowerCase();
+const GMAIL_OAUTH_SCOPES = ["openid", "email", "profile", "https://www.googleapis.com/auth/gmail.send"];
 
 function getClient() {
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
@@ -6621,6 +6623,117 @@ async function ensureOrganization(supabase: ReturnType<typeof createClient>, use
   return result.data;
 }
 
+function gmailRedirectUri() {
+  return Deno.env.get("GOOGLE_OAUTH_REDIRECT_URI")
+    || `${String(SUPABASE_URL || "").replace(/\/$/, "")}/functions/v1/gmail-oauth-callback`;
+}
+
+function publicGmailConnection(row: Record<string, unknown> | null | undefined) {
+  return {
+    mailbox_email: GMAIL_ALLOWED_SENDER,
+    provider: "gmail",
+    status: cleanText(row?.status) || "not_connected",
+    connected: cleanText(row?.status) === "connected",
+    scopes: Array.isArray(row?.scopes) ? row?.scopes : [],
+    token_expires_at: row?.token_expires_at || null,
+    updated_at: row?.updated_at || null,
+    last_error: row?.last_error || null,
+    configured: Boolean(Deno.env.get("GOOGLE_CLIENT_ID") && Deno.env.get("GOOGLE_CLIENT_SECRET") && Deno.env.get("GMAIL_TOKEN_ENCRYPTION_KEY")),
+    redirect_uri: gmailRedirectUri()
+  };
+}
+
+async function listGmailConnections(supabase: ReturnType<typeof createClient>, user: { owner_email: string | null }) {
+  const result = await supabase
+    .from("gmail_mailbox_connections")
+    .select("mailbox_email,provider,status,scopes,token_expires_at,updated_at,last_error")
+    .eq("owner_email", user.owner_email)
+    .eq("mailbox_email", GMAIL_ALLOWED_SENDER)
+    .maybeSingle();
+  if (result.error) throw result.error;
+  return {
+    allowed_sender: GMAIL_ALLOWED_SENDER,
+    rows: [publicGmailConnection(result.data)]
+  };
+}
+
+async function startGmailOauth(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_user_id: string | null; owner_email: string | null },
+  input: Record<string, unknown> = {}
+) {
+  const requestedMailbox = (cleanText(input.mailbox_email) || GMAIL_ALLOWED_SENDER).toLowerCase();
+  if (requestedMailbox !== GMAIL_ALLOWED_SENDER) {
+    return {
+      error: `Only ${GMAIL_ALLOWED_SENDER} can be connected as the Bid Room sender.`,
+      status: 400
+    };
+  }
+
+  const clientId = Deno.env.get("GOOGLE_CLIENT_ID");
+  const clientSecret = Deno.env.get("GOOGLE_CLIENT_SECRET");
+  const encryptionKey = Deno.env.get("GMAIL_TOKEN_ENCRYPTION_KEY");
+  if (!clientId || !clientSecret || !encryptionKey) {
+    return {
+      error: "Google OAuth is not configured yet. Add GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GMAIL_TOKEN_ENCRYPTION_KEY in Supabase secrets.",
+      status: 400,
+      redirect_uri: gmailRedirectUri()
+    };
+  }
+
+  const state = crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "");
+  const redirectAfter = cleanText(input.redirect_after) || "settings.html?gmail=connected";
+  const stateResult = await supabase.from("gmail_oauth_states").insert({
+    state,
+    owner_user_id: user.owner_user_id,
+    owner_email: user.owner_email,
+    mailbox_email: GMAIL_ALLOWED_SENDER,
+    redirect_after: redirectAfter,
+    expires_at: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+    metadata: { requested_from: "settings" }
+  });
+  if (stateResult.error) throw stateResult.error;
+
+  const params = new URLSearchParams({
+    client_id: clientId,
+    redirect_uri: gmailRedirectUri(),
+    response_type: "code",
+    scope: GMAIL_OAUTH_SCOPES.join(" "),
+    state,
+    access_type: "offline",
+    prompt: "consent",
+    include_granted_scopes: "true",
+    login_hint: GMAIL_ALLOWED_SENDER
+  });
+
+  return {
+    authorization_url: `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`,
+    mailbox_email: GMAIL_ALLOWED_SENDER,
+    redirect_uri: gmailRedirectUri(),
+    scopes: GMAIL_OAUTH_SCOPES
+  };
+}
+
+async function disconnectGmailConnection(supabase: ReturnType<typeof createClient>, user: { owner_email: string | null }) {
+  const result = await supabase
+    .from("gmail_mailbox_connections")
+    .upsert({
+      owner_email: user.owner_email,
+      mailbox_email: GMAIL_ALLOWED_SENDER,
+      provider: "gmail",
+      status: "revoked",
+      access_token_encrypted: null,
+      refresh_token_encrypted: null,
+      token_expires_at: null,
+      last_error: null,
+      updated_at: new Date().toISOString()
+    }, { onConflict: "owner_email,mailbox_email" })
+    .select("mailbox_email,provider,status,scopes,token_expires_at,updated_at,last_error")
+    .single();
+  if (result.error) throw result.error;
+  return publicGmailConnection(result.data);
+}
+
 function onboardingDefinition(summary: Record<string, unknown>, profile: Record<string, unknown>, organization: Record<string, unknown>, manual: Map<string, Record<string, unknown>>) {
   const definitions = [
     {
@@ -6686,7 +6799,7 @@ function onboardingDefinition(summary: Record<string, unknown>, profile: Record<
 }
 
 async function buildSaasSettings(supabase: ReturnType<typeof createClient>, user: { owner_user_id: string | null; owner_email: string | null }) {
-  const [profile, organization, checklistResult, auditResult, uploads, vendors, pending, approved, rfxEvents, outreachMessages] = await Promise.all([
+  const [profile, organization, checklistResult, auditResult, uploads, vendors, pending, approved, rfxEvents, outreachMessages, gmailConnections] = await Promise.all([
     ensureSaasProfile(supabase, user),
     ensureOrganization(supabase, user),
     supabase.from("onboarding_checklist").select("*").eq("owner_email", user.owner_email),
@@ -6696,7 +6809,8 @@ async function buildSaasSettings(supabase: ReturnType<typeof createClient>, user
     supabase.from("rate_staging").select("id", { count: "exact", head: true }).eq("status", "pending_review"),
     supabase.from("rate_staging").select("id", { count: "exact", head: true }).eq("status", "approved"),
     supabase.from("rfx_events").select("id", { count: "exact", head: true }).eq("owner_email", user.owner_email).neq("status", "archived"),
-    supabase.from("outreach_messages").select("id", { count: "exact", head: true }).eq("owner_email", user.owner_email).neq("status", "archived")
+    supabase.from("outreach_messages").select("id", { count: "exact", head: true }).eq("owner_email", user.owner_email).neq("status", "archived"),
+    listGmailConnections(supabase, user)
   ]);
 
   for (const result of [checklistResult, auditResult, uploads, vendors, pending, approved, rfxEvents, outreachMessages]) {
@@ -6723,7 +6837,8 @@ async function buildSaasSettings(supabase: ReturnType<typeof createClient>, user
     },
     summary,
     onboarding,
-    audit: auditResult.data || []
+    audit: auditResult.data || [],
+    gmail: gmailConnections
   };
 }
 
@@ -8781,6 +8896,23 @@ Deno.serve(async (request) => {
     if (body.action === "get_saas_settings") {
       const settings = await buildSaasSettings(supabase, user);
       return jsonResponse(settings);
+    }
+
+    if (body.action === "list_gmail_connections") {
+      const result = await listGmailConnections(supabase, user);
+      return jsonResponse(result);
+    }
+
+    if (body.action === "start_gmail_oauth") {
+      const result = await startGmailOauth(supabase, user, body);
+      if ("error" in result) return jsonResponse(result, Number(result.status) || 400);
+      return jsonResponse(result);
+    }
+
+    if (body.action === "disconnect_gmail_connection") {
+      const row = await disconnectGmailConnection(supabase, user);
+      await writeAuditLog(supabase, user, "gmail.disconnect", "gmail_mailbox_connections", GMAIL_ALLOWED_SENDER, `Disconnected ${GMAIL_ALLOWED_SENDER} from Gmail sending`);
+      return jsonResponse({ row });
     }
 
     if (body.action === "update_saas_profile") {
