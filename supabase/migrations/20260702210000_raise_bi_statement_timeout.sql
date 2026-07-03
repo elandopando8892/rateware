@@ -1,0 +1,16 @@
+-- Raise the statement timeout for the trusted server role used by the
+-- rateware-api edge function. The BI aggregation RPCs (geo density, pivot,
+-- carrier ranking) scan the full approved book (~55k rows) with per-row
+-- filter/metric helper functions, which legitimately exceeds the default
+-- ~8s timeout and was surfacing as "canceling statement due to statement
+-- timeout" with a blank Geo Intelligence map.
+--
+-- service_role is never exposed to the browser (only the edge function uses
+-- it, behind Kinde auth), and edge functions have their own wall-clock limit,
+-- so a longer analytical timeout here is safe. This is the Supabase-documented
+-- way to allow long-running analytical queries.
+--
+-- NOTE: a follow-up should optimize the BI RPCs to be index-friendly (the
+-- per-row rateware_bi_rate_matches_filters call forces a seq scan); this
+-- unblocks the feature in the meantime.
+alter role service_role set statement_timeout to '45s';
