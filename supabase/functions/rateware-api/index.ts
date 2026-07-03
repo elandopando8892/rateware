@@ -6324,6 +6324,7 @@ function extractHtmlFromMime(value: unknown) {
 function normalizeOutreachCampaign(input: Record<string, unknown>) {
   const channel = cleanText(input.channel)?.toLowerCase() || "multi";
   const status = cleanText(input.status)?.toLowerCase() || "draft";
+  const senderConnectionStatus = cleanText(input.sender_connection_status)?.toLowerCase() || "draft_only";
   const name = cleanText(input.name);
   if (!name) throw new Error("Campaign name is required.");
   return {
@@ -6332,6 +6333,9 @@ function normalizeOutreachCampaign(input: Record<string, unknown>) {
     name,
     channel: ["email", "whatsapp", "multi"].includes(channel) ? channel : "multi",
     status: ["draft", "generated", "queued", "sent", "closed", "archived"].includes(status) ? status : "draft",
+    sender_email: cleanText(input.sender_email),
+    sender_label: cleanText(input.sender_label),
+    sender_connection_status: ["draft_only", "oauth_connected", "workspace_delegated"].includes(senderConnectionStatus) ? senderConnectionStatus : "draft_only",
     notes: cleanText(input.notes),
     updated_at: new Date().toISOString()
   };
@@ -8504,6 +8508,9 @@ Deno.serve(async (request) => {
         template_id: campaign.template_id,
         name: `${campaign.name || "Campaign"} Copy`,
         channel: campaign.channel || "multi",
+        sender_email: campaign.sender_email,
+        sender_label: campaign.sender_label,
+        sender_connection_status: campaign.sender_connection_status || "draft_only",
         status: "draft",
         notes: campaign.notes,
         updated_at: new Date().toISOString()
@@ -8518,6 +8525,9 @@ Deno.serve(async (request) => {
       const template = await fetchOutreachTemplate(supabase, user, body.template_id || campaign.template_id);
       const invitationIds = Array.isArray(body.invitation_ids) ? body.invitation_ids.map(String).filter(Boolean).slice(0, 1000) : [];
       const appOrigin = cleanText(body.app_origin) || Deno.env.get("RATEWARE_APP_URL") || "https://rateware.vercel.app";
+      const senderEmail = cleanText(body.sender_email || campaign.sender_email);
+      const senderLabel = cleanText(body.sender_label || campaign.sender_label || senderEmail);
+      const senderConnectionStatus = cleanText(body.sender_connection_status || campaign.sender_connection_status) || "draft_only";
 
       let invitationQuery = supabase
         .from("rfx_lane_vendors")
@@ -8576,13 +8586,19 @@ Deno.serve(async (request) => {
               html_body: htmlBody,
               text_body: textBody,
               gmail_compose_url: gmailComposeUrl(recipientEmail, subject, textBody),
+              sender_email: senderEmail,
+              sender_label: senderLabel,
+              sender_connection_status: senderConnectionStatus,
               status: "drafted",
               metadata: {
                 bid_link: context.bid_link,
                 generated_at: new Date().toISOString(),
                 lane_count: invitationGroup.length,
                 rfx_lane_vendor_ids: groupInvitationIds,
-                rfx_lane_ids: laneIds
+                rfx_lane_ids: laneIds,
+                sender_email: senderEmail,
+                sender_label: senderLabel,
+                sender_connection_status: senderConnectionStatus
               }
             }, user));
           } else {
@@ -8605,13 +8621,19 @@ Deno.serve(async (request) => {
               whatsapp_text: whatsappText,
               text_body: whatsappText,
               whatsapp_url: whatsappDraftUrl(recipientPhone, whatsappText),
+              sender_email: senderEmail,
+              sender_label: senderLabel,
+              sender_connection_status: senderConnectionStatus,
               status: "drafted",
               metadata: {
                 bid_link: context.bid_link,
                 generated_at: new Date().toISOString(),
                 lane_count: invitationGroup.length,
                 rfx_lane_vendor_ids: groupInvitationIds,
-                rfx_lane_ids: laneIds
+                rfx_lane_ids: laneIds,
+                sender_email: senderEmail,
+                sender_label: senderLabel,
+                sender_connection_status: senderConnectionStatus
               }
             }, user));
           } else {
@@ -8638,7 +8660,12 @@ Deno.serve(async (request) => {
         status: "drafted",
         subject: message.subject,
         body_preview: contactPreview(message.text_body || message.whatsapp_text || message.html_body),
-        metadata: { generated_from: "outreach_engine" }
+        metadata: {
+          generated_from: "outreach_engine",
+          sender_email: message.sender_email,
+          sender_label: message.sender_label,
+          sender_connection_status: message.sender_connection_status
+        }
       }, user));
       if (historyRows.length) {
         const history = await supabase.from("contact_history").insert(historyRows);
@@ -8647,7 +8674,13 @@ Deno.serve(async (request) => {
 
       const campaignUpdate = await supabase
         .from("outreach_campaigns")
-        .update({ status: "generated", updated_at: new Date().toISOString() })
+        .update({
+          status: "generated",
+          sender_email: senderEmail || campaign.sender_email,
+          sender_label: senderLabel || campaign.sender_label,
+          sender_connection_status: senderConnectionStatus,
+          updated_at: new Date().toISOString()
+        })
         .eq("id", campaign.id)
         .eq("owner_email", user.owner_email);
       if (campaignUpdate.error) throw campaignUpdate.error;

@@ -375,11 +375,22 @@
                         <option value="whatsapp">WhatsApp only</option>
                       </select>
                     </label>
-                    <button id="create-rfx-outreach-campaign" type="submit" disabled>Generate invitations</button>
+                    <label>
+                      Send from
+                      <select id="rfx-outreach-sender">
+                        <option value="carriers@xbfreight.com">carriers@xbfreight.com</option>
+                        <option value="sales@heymarksman.com">sales@heymarksman.com</option>
+                      </select>
+                    </label>
+                    <button id="create-rfx-outreach-campaign" type="submit" disabled>Generate draft queue</button>
                     <p id="rfx-outreach-status" class="status-message" role="status"></p>
                   </form>
-                  <details id="rfx-template-editor" class="rfx-template-editor">
-                    <summary>Advanced source editor</summary>
+                  <section class="gmail-sender-note">
+                    <strong>Gmail sending model</strong>
+                    <span>Step 4 prepares auditable drafts by selected sender. Direct sending will require each Gmail/Workspace mailbox to be connected before launch.</span>
+                  </section>
+                  <details id="rfx-template-editor" class="rfx-template-editor is-source-admin">
+                    <summary>Template source tools</summary>
                     <div class="rfx-template-editor-body">
                       <label>
                         Subject

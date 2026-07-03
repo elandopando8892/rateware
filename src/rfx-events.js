@@ -107,6 +107,7 @@ const rfxOutreachForm = document.querySelector("#rfx-outreach-form");
 const rfxOutreachCampaignName = document.querySelector("#rfx-outreach-campaign-name");
 const rfxOutreachTemplate = document.querySelector("#rfx-outreach-template");
 const rfxOutreachChannel = document.querySelector("#rfx-outreach-channel");
+const rfxOutreachSender = document.querySelector("#rfx-outreach-sender");
 const createRfxOutreachCampaignButton = document.querySelector("#create-rfx-outreach-campaign");
 const rfxOutreachStatus = document.querySelector("#rfx-outreach-status");
 const rfxOutreachPreview = document.querySelector("#rfx-outreach-preview");
@@ -1020,6 +1021,7 @@ function renderOutreachPreview() {
   renderRfxTemplateEditor();
   const template = selectedOutreachTemplateDraft();
   const channel = rfxOutreachChannel?.value || "multi";
+  const senderEmail = rfxOutreachSender?.value || "carriers@xbfreight.com";
   const targets = outreachTargetInvitations();
   const ready = targets.filter((target) => targetHasChannel(target, channel)).length;
   const targetScope = selectedInvitationIds.size
@@ -1056,16 +1058,21 @@ function renderOutreachPreview() {
           <span>Channel</span>
           <strong>${escapeHtml(channel)}</strong>
         </article>
+        <article>
+          <span>Send from</span>
+          <strong>${escapeHtml(senderEmail)}</strong>
+          <small>Draft-only until Gmail is connected</small>
+        </article>
       </div>
       <article class="outreach-html-preview">
         <div>
-          <span>Email HTML preview</span>
-          <strong>${rfxTemplateVisualEditing ? "Editing template visually" : `${escapeHtml(previewContext.vendor_name || "Carrier")} | ${formatNumber(previewContext.lane_count || 0)} lane(s)`}</strong>
+          <span>Email preview</span>
+          <strong>${rfxTemplateVisualEditing ? "Editing email preview" : `${escapeHtml(previewContext.vendor_name || "Carrier")} | ${formatNumber(previewContext.lane_count || 0)} lane(s)`}</strong>
           <div class="outreach-preview-actions">
             ${rfxTemplateVisualEditing
-              ? `<button class="small-button" type="button" data-rfx-template-save-visual>Save</button>
+              ? `<button class="small-button" type="button" data-rfx-template-save-visual>Save changes</button>
                  <button class="secondary small-button" type="button" data-rfx-template-cancel-visual>Cancel</button>`
-              : `<button class="secondary small-button" type="button" data-rfx-template-edit-visual>Edit</button>`}
+              : `<button class="secondary small-button" type="button" data-rfx-template-edit-visual>Edit email</button>`}
           </div>
         </div>
         ${rfxTemplateVisualEditing
@@ -2034,7 +2041,7 @@ function renderDraftQueue() {
       .slice(0, 140);
     return `
       <article data-rfx-draft-id="${escapeHtml(message.id)}">
-        <span>${escapeHtml([message.channel, message.status, messageRecipient(message)].filter(Boolean).join(" | "))}</span>
+        <span>${escapeHtml([message.channel, message.status, message.sender_email ? `from ${message.sender_email}` : "", messageRecipient(message)].filter(Boolean).join(" | "))}</span>
         <strong>${escapeHtml(message.vendors?.vendor_name || message.vendors?.domain || "Vendor")}</strong>
         <small>${escapeHtml(message.rfx_lanes ? `${message.rfx_lanes.origin || "-"} -> ${message.rfx_lanes.destination || "-"}` : message.rfx_events?.rfx_id || "")}</small>
         <p>${escapeHtml(preview || "No draft preview")}</p>
@@ -2769,7 +2776,7 @@ async function createCurrentOutreachDrafts(statusElement = rfxOutreachStatus) {
     return null;
   }
   if (rfxTemplateEditorDirty || rfxTemplateVisualEditing) {
-    setStatus(statusElement, "Save the edited HTML template before generating invitations.", "error");
+    setStatus(statusElement, "Save the edited email preview before generating draft queue.", "error");
     return null;
   }
   const invitationIds = selectedInvitationIds.size
@@ -2781,9 +2788,17 @@ async function createCurrentOutreachDrafts(statusElement = rfxOutreachStatus) {
     name: rfxOutreachCampaignName?.value || `${selectedEvent?.rfx_id || "RFx"} invitation wave`,
     rfx_event_id: selectedEventId,
     template_id: template.id,
-    channel: rfxOutreachChannel?.value || "multi"
+    channel: rfxOutreachChannel?.value || "multi",
+    sender_email: rfxOutreachSender?.value || "carriers@xbfreight.com",
+    sender_label: rfxOutreachSender?.selectedOptions?.[0]?.textContent || rfxOutreachSender?.value || "Gmail sender",
+    sender_connection_status: "draft_only"
   });
-  const result = await generateOutreachDrafts(campaign.id, { invitationIds });
+  const result = await generateOutreachDrafts(campaign.id, {
+    invitationIds,
+    senderEmail: campaign.sender_email,
+    senderLabel: campaign.sender_label,
+    senderConnectionStatus: campaign.sender_connection_status
+  });
   [contactHistoryRows, outreachMessages] = await Promise.all([
     fetchContactHistory({ rfx_event_id: selectedEventId }),
     fetchOutreachMessages({ rfx_event_id: selectedEventId })
@@ -2824,8 +2839,10 @@ async function saveSelectedRfxTemplate() {
     renderRfxTemplateEditor({ force: true });
     renderOutreachPreview();
     setStatus(rfxTemplateEditorStatus, isDefaultTemplate ? "Editable copy saved and selected." : "Template saved.", "success");
+    setStatus(rfxOutreachStatus, "Email template changes saved. Draft queue is ready to generate.", "success");
   } catch (error) {
     setStatus(rfxTemplateEditorStatus, error.message, "error");
+    setStatus(rfxOutreachStatus, error.message, "error");
   } finally {
     if (saveRfxTemplateHtmlButton) saveRfxTemplateHtmlButton.disabled = false;
   }
@@ -3528,6 +3545,7 @@ rfxOutreachTemplate?.addEventListener("change", () => {
   renderOutreachPreview();
 });
 rfxOutreachChannel?.addEventListener("change", renderOutreachPreview);
+rfxOutreachSender?.addEventListener("change", renderOutreachPreview);
 rfxOutreachCampaignName?.addEventListener("input", () => {
   rfxOutreachCampaignName.dataset.autoName = "false";
 });

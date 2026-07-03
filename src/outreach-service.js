@@ -52,7 +52,10 @@ export async function generateOutreachDrafts(campaignId, options = {}) {
   return await callRatewareApi("generate_outreach_drafts", {
     campaign_id: campaignId,
     app_origin: options.appOrigin || window.location.origin,
-    invitation_ids: options.invitationIds || []
+    invitation_ids: options.invitationIds || [],
+    sender_email: options.senderEmail || "",
+    sender_label: options.senderLabel || "",
+    sender_connection_status: options.senderConnectionStatus || "draft_only"
   });
 }
 

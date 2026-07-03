@@ -1129,6 +1129,26 @@ a {
   grid-column: 1 / -1;
 }
 
+.gmail-sender-note {
+  display: grid;
+  gap: 3px;
+  border: 1px solid #d7e0e7;
+  border-radius: 7px;
+  background: #ffffff;
+  padding: 8px;
+}
+
+.gmail-sender-note strong {
+  color: #26323d;
+  font-size: 0.76rem;
+}
+
+.gmail-sender-note span {
+  color: #52616d;
+  font-size: 0.7rem;
+  line-height: 1.35;
+}
+
 .rfx-touchpoint-panel {
   display: grid;
   grid-template-columns: minmax(190px, 0.26fr) minmax(0, 0.74fr);
@@ -1886,6 +1906,10 @@ a {
   min-height: 310px;
 }
 
+.rfx-template-editor.is-source-admin {
+  display: none;
+}
+
 .outreach-template-preview > div {
   display: grid;
   gap: 5px;
@@ -1906,7 +1930,7 @@ a {
 
 .outreach-template-preview-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
   gap: 8px;
 }
 
