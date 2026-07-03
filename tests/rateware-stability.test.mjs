@@ -88,7 +88,10 @@ assert.match(rfxEventsSource, /sender_email: rfxOutreachSender/, "Bid Room shoul
 assert.match(outreachServiceSource, /sender_email: options\.senderEmail/, "Outreach draft generation should send selected sender metadata to the API");
 assert.match(outreachServiceSource, /send_outreach_messages/, "Outreach service should expose direct Gmail send for selected draft messages");
 assert.match(rfxEventsHtml, /rfx-send-selected-email-drafts/, "Bid Room draft queue should include a bulk send selected emails action");
+assert.match(rfxEventsHtml, /rfx-archive-selected-drafts/, "Bid Room draft queue should include archive selected action");
+assert.match(rfxEventsHtml, /rfx-delete-selected-drafts/, "Bid Room draft queue should include delete selected action");
 assert.match(apiSource, /sendOutreachMessages/, "API should send selected outreach messages through Gmail");
+assert.match(apiSource, /delete_outreach_messages/, "API should delete selected outreach draft rows");
 assert.match(apiSource, /sender_email: senderEmail/, "API should persist sender email on outreach draft rows");
 assert.match(outreachSenderMigration, /add column if not exists sender_email text/, "Outreach schema should store sender identity");
 assert.match(shipmentIdFilterMigration, /when 'row_id' then array\[rate_row\.row_id\]/, "SQL filter values should support Shipment ID");

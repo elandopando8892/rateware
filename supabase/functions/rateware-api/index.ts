@@ -9100,6 +9100,7 @@ Deno.serve(async (request) => {
       if (body.campaign_id) query = query.eq("campaign_id", body.campaign_id);
       if (body.rfx_event_id) query = query.eq("rfx_event_id", body.rfx_event_id);
       if (body.status) query = query.eq("status", body.status);
+      if (!body.status && !body.include_archived) query = query.neq("status", "archived");
       if (body.channel) query = query.eq("channel", body.channel);
       const result = await query;
       if (result.error) throw result.error;
@@ -9109,6 +9110,28 @@ Deno.serve(async (request) => {
     if (body.action === "send_outreach_messages") {
       const result = await sendOutreachMessages(supabase, user, body);
       return jsonResponse(result);
+    }
+
+    if (body.action === "delete_outreach_messages") {
+      const ids = Array.isArray(body.ids) ? body.ids.map(String).filter(Boolean).slice(0, 500) : [];
+      if (!ids.length) return jsonResponse({ removed: 0, rows: [] });
+      const result = await supabase
+        .from("outreach_messages")
+        .delete()
+        .eq("owner_email", user.owner_email)
+        .in("id", ids)
+        .select("id,campaign_id,rfx_event_id,vendor_id,channel,recipient_email,recipient_phone,status");
+      if (result.error) throw result.error;
+      await writeAuditLog(
+        supabase,
+        user,
+        "outreach.messages.delete",
+        "outreach_messages",
+        null,
+        `Deleted ${result.data?.length || 0} outreach draft row(s)`,
+        { ids }
+      );
+      return jsonResponse({ removed: result.data?.length || 0, rows: result.data || [] });
     }
 
     if (body.action === "mark_outreach_messages") {

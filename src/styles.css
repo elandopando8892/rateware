@@ -1204,22 +1204,80 @@ a {
   align-items: center;
 }
 
-.rfx-draft-selector {
-  display: flex;
+.rfx-draft-workbench {
+  display: grid;
   gap: 6px;
-  align-items: center;
   min-width: 0;
 }
 
-.rfx-draft-selector input {
+.rfx-draft-table-wrap {
+  max-height: 360px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #fff;
+}
+
+.rfx-draft-table {
+  width: 100%;
+  min-width: 1040px;
+  border-collapse: collapse;
+}
+
+.rfx-draft-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #eef3f6;
+  border-bottom: 1px solid var(--line);
+  color: #46545f;
+  font-size: 0.68rem;
+  font-weight: 900;
+  text-align: left;
+  padding: 5px 6px;
+  white-space: nowrap;
+}
+
+.rfx-draft-table td {
+  border-bottom: 1px solid var(--line);
+  color: #26323d;
+  font-size: 0.72rem;
+  padding: 4px 6px;
+  vertical-align: top;
+}
+
+.rfx-draft-table td:first-child,
+.rfx-draft-table th:first-child {
+  inline-size: 28px;
+  text-align: center;
+}
+
+.rfx-draft-table strong,
+.rfx-draft-table small {
+  display: block;
+}
+
+.rfx-draft-table small {
+  color: var(--muted);
+  font-size: 0.68rem;
+  line-height: 1.25;
+}
+
+.rfx-draft-table tr.is-selected-row {
+  background: var(--brand-tint);
+}
+
+.rfx-draft-table input[type="checkbox"] {
   inline-size: 13px;
   block-size: 13px;
   margin: 0;
 }
 
-.rfx-draft-card.is-selected {
-  border-color: var(--accent);
-  background: var(--brand-tint);
+.rfx-draft-row-actions {
+  display: flex;
+  gap: 4px;
+  justify-content: flex-end;
+  white-space: nowrap;
 }
 
 .rfx-table th,

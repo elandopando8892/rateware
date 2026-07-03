@@ -74,6 +74,10 @@ export async function sendOutreachMessages(ids = [], options = {}) {
   });
 }
 
+export async function deleteOutreachMessages(ids = []) {
+  return await callRatewareApi("delete_outreach_messages", { ids });
+}
+
 export async function fetchContactHistory(filters = {}) {
   return (await callRatewareApi("list_contact_history", filters)).rows;
 }

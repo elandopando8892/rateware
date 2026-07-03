@@ -21,6 +21,7 @@ import {
   fetchOutreachMessages,
   fetchOutreachTemplates,
   generateOutreachDrafts,
+  deleteOutreachMessages,
   markOutreachMessages,
   sendOutreachMessages,
   updateOutreachTemplate
@@ -123,9 +124,13 @@ const touchpointSummary = document.querySelector("#rfx-touchpoint-summary");
 const touchpointList = document.querySelector("#rfx-touchpoint-list");
 const draftSummary = document.querySelector("#rfx-draft-summary");
 const draftList = document.querySelector("#rfx-draft-list");
+const draftSelectionLabel = document.querySelector("#rfx-draft-selection-label");
+const draftToggleVisible = document.querySelector("#rfx-toggle-visible-drafts");
 const draftSelectAllEmailsButton = document.querySelector("#rfx-select-all-email-drafts");
 const draftClearSelectionButton = document.querySelector("#rfx-clear-draft-selection");
 const draftSendSelectedButton = document.querySelector("#rfx-send-selected-email-drafts");
+const draftArchiveSelectedButton = document.querySelector("#rfx-archive-selected-drafts");
+const draftDeleteSelectedButton = document.querySelector("#rfx-delete-selected-drafts");
 const wizardRefreshButton = document.querySelector("#rfx-wizard-refresh");
 const wizardLiveOffersButton = document.querySelector("#rfx-wizard-live-offers");
 const wizardSteps = document.querySelector("#rfx-wizard-steps");
@@ -2028,25 +2033,50 @@ function selectableEmailDrafts(rows = []) {
   });
 }
 
+function draftRowsForEvent() {
+  return selectedEventId
+    ? outreachMessages.filter((message) => message.rfx_event_id === selectedEventId)
+    : [];
+}
+
+function selectedDraftRows(rows = draftRowsForEvent()) {
+  return rows.filter((message) => selectedDraftMessageIds.has(String(message.id)));
+}
+
+function selectedSendableDraftIds(rows = draftRowsForEvent()) {
+  return selectableEmailDrafts(selectedDraftRows(rows)).map((message) => String(message.id));
+}
+
 function updateDraftSendControls(rows = []) {
+  const visibleIds = new Set(rows.map((message) => String(message.id)));
+  selectedDraftMessageIds = new Set([...selectedDraftMessageIds].filter((id) => visibleIds.has(id)));
   const selectable = selectableEmailDrafts(rows);
-  const selectableIds = new Set(selectable.map((message) => String(message.id)));
-  selectedDraftMessageIds = new Set([...selectedDraftMessageIds].filter((id) => selectableIds.has(id)));
+  const selectedRows = selectedDraftRows(rows);
+  const sendableSelectedIds = selectedSendableDraftIds(rows);
+  if (draftSelectionLabel) {
+    draftSelectionLabel.textContent = `${formatNumber(selectedRows.length)} selected`;
+    draftSelectionLabel.className = `status-pill ${selectedRows.length ? "success" : "muted"}`;
+  }
+  if (draftToggleVisible) {
+    draftToggleVisible.checked = rows.length > 0 && rows.every((message) => selectedDraftMessageIds.has(String(message.id)));
+    draftToggleVisible.indeterminate = selectedRows.length > 0 && selectedRows.length < rows.length;
+    draftToggleVisible.disabled = !rows.length;
+  }
   if (draftSelectAllEmailsButton) draftSelectAllEmailsButton.disabled = !selectable.length;
   if (draftClearSelectionButton) draftClearSelectionButton.disabled = !selectedDraftMessageIds.size;
   if (draftSendSelectedButton) {
-    draftSendSelectedButton.disabled = !selectedDraftMessageIds.size;
-    draftSendSelectedButton.textContent = selectedDraftMessageIds.size
-      ? `Send ${formatNumber(selectedDraftMessageIds.size)} email${selectedDraftMessageIds.size === 1 ? "" : "s"}`
+    draftSendSelectedButton.disabled = !sendableSelectedIds.length;
+    draftSendSelectedButton.textContent = sendableSelectedIds.length
+      ? `Send ${formatNumber(sendableSelectedIds.length)} email${sendableSelectedIds.length === 1 ? "" : "s"}`
       : "Send selected emails";
   }
+  if (draftArchiveSelectedButton) draftArchiveSelectedButton.disabled = !selectedRows.length;
+  if (draftDeleteSelectedButton) draftDeleteSelectedButton.disabled = !selectedRows.length;
 }
 
 function renderDraftQueue() {
   if (!draftSummary || !draftList) return;
-  const rows = selectedEventId
-    ? outreachMessages.filter((message) => message.rfx_event_id === selectedEventId)
-    : [];
+  const rows = draftRowsForEvent();
   const actionable = rows.filter((message) => ["drafted", "queued", "failed"].includes(String(message.status || "").toLowerCase()));
   const emailSelectable = selectableEmailDrafts(rows);
   updateDraftSendControls(rows);
@@ -2055,44 +2085,56 @@ function renderDraftQueue() {
     : "No drafts generated for this bid event.";
   if (!selectedEventId) {
     updateDraftSendControls([]);
-    draftList.innerHTML = "<article>Select a bid event to review invitation drafts.</article>";
+    draftList.innerHTML = `<tr><td colspan="8">Select a bid event to review invitation drafts.</td></tr>`;
     return;
   }
   if (!rows.length) {
     updateDraftSendControls([]);
-    draftList.innerHTML = "<article>Create invite drafts to review Gmail and WhatsApp messages inside this Bid Room.</article>";
+    draftList.innerHTML = `<tr><td colspan="8">Create invite drafts to review Gmail and WhatsApp messages inside this Bid Room.</td></tr>`;
     return;
   }
   if (!emailSelectable.length && rows.length) {
     updateDraftSendControls(rows);
   }
-  draftList.innerHTML = rows.slice(0, 12).map((message) => {
+  const visibleRows = rows.slice(0, 200);
+  draftList.innerHTML = visibleRows.map((message) => {
     const isEmail = message.channel === "email";
     const openUrl = isEmail ? message.gmail_compose_url : message.whatsapp_url;
-    const selectable = selectableEmailDrafts([message]).length > 0;
     const checked = selectedDraftMessageIds.has(String(message.id));
     const preview = String(message.text_body || message.whatsapp_text || message.subject || "")
       .replace(/\s+/g, " ")
       .trim()
-      .slice(0, 140);
+      .slice(0, 120);
+    const status = String(message.status || "-").toLowerCase();
+    const recipient = messageRecipient(message) || "-";
+    const updated = message.updated_at || message.sent_at || message.created_at;
     return `
-      <article class="rfx-draft-card ${checked ? "is-selected" : ""}" data-rfx-draft-id="${escapeHtml(message.id)}">
-        <label class="rfx-draft-selector">
-          <input type="checkbox" data-rfx-draft-select="${escapeHtml(message.id)}" ${checked ? "checked" : ""} ${selectable ? "" : "disabled"} />
-          <span>${escapeHtml([message.channel, message.status, message.sender_email ? `from ${message.sender_email}` : "", messageRecipient(message)].filter(Boolean).join(" | "))}</span>
-        </label>
-        <strong>${escapeHtml(message.vendors?.vendor_name || message.vendors?.domain || "Vendor")}</strong>
-        <small>${escapeHtml(message.rfx_lanes ? `${message.rfx_lanes.origin || "-"} -> ${message.rfx_lanes.destination || "-"}` : message.rfx_events?.rfx_id || "")}</small>
-        <p>${escapeHtml(preview || "No draft preview")}</p>
-        ${message.delivery_error ? `<small class="error-text">${escapeHtml(message.delivery_error)}</small>` : ""}
-        <div class="action-row">
-          <button class="secondary small-button" type="button" data-rfx-open-draft="${escapeHtml(openUrl || "")}" ${openUrl ? "" : "disabled"}>Open ${isEmail ? "Gmail" : "WhatsApp"}</button>
-          <button class="secondary small-button" type="button" data-rfx-mark-draft="${escapeHtml(message.id)}" data-rfx-draft-status="queued">Queue</button>
-          <button class="small-button" type="button" data-rfx-mark-draft="${escapeHtml(message.id)}" data-rfx-draft-status="sent">Mark sent manually</button>
-        </div>
-      </article>
+      <tr class="${checked ? "is-selected-row" : ""}" data-rfx-draft-id="${escapeHtml(message.id)}">
+        <td><input type="checkbox" data-rfx-draft-select="${escapeHtml(message.id)}" ${checked ? "checked" : ""} /></td>
+        <td>
+          <strong>${escapeHtml(message.vendors?.vendor_name || message.vendors?.domain || "Vendor")}</strong>
+          <small>${escapeHtml(message.rfx_lanes ? `${message.rfx_lanes.origin || "-"} -> ${message.rfx_lanes.destination || "-"}` : message.rfx_events?.rfx_id || "")}</small>
+        </td>
+        <td>${escapeHtml(recipient)}</td>
+        <td>${escapeHtml(message.channel || "-")}</td>
+        <td><span class="status-pill ${status === "sent" ? "success" : status === "failed" ? "danger" : status === "archived" ? "muted" : "neutral"}">${escapeHtml(status)}</span></td>
+        <td>
+          <strong>${escapeHtml(message.subject || "No subject")}</strong>
+          <small>${escapeHtml(message.delivery_error || preview || "No preview")}</small>
+        </td>
+        <td>${escapeHtml(updated ? new Date(updated).toLocaleString() : "-")}</td>
+        <td>
+          <div class="rfx-draft-row-actions">
+            <button class="secondary small-button" type="button" data-rfx-open-draft="${escapeHtml(openUrl || "")}" ${openUrl ? "" : "disabled"}>${isEmail ? "Open Gmail" : "Open WhatsApp"}</button>
+            <button class="secondary small-button" type="button" data-rfx-mark-draft="${escapeHtml(message.id)}" data-rfx-draft-status="queued" ${status === "queued" || status === "sent" || status === "archived" ? "disabled" : ""}>Queue</button>
+            <button class="secondary small-button" type="button" data-rfx-mark-draft="${escapeHtml(message.id)}" data-rfx-draft-status="archived" ${status === "archived" ? "disabled" : ""}>Archive</button>
+          </div>
+        </td>
+      </tr>
     `;
-  }).join("");
+  }).join("") + (rows.length > visibleRows.length
+    ? `<tr><td colspan="8">Showing first ${formatNumber(visibleRows.length)} of ${formatNumber(rows.length)} draft rows.</td></tr>`
+    : "");
 }
 
 function renderOutreachLaunchpad() {
@@ -2855,11 +2897,11 @@ async function createCurrentOutreachDrafts(statusElement = rfxOutreachStatus) {
 }
 
 async function sendSelectedDraftEmails() {
-  if (!selectedDraftMessageIds.size) {
+  const ids = selectedSendableDraftIds();
+  if (!ids.length) {
     setStatus(rfxOutreachStatus, "Select one or more email drafts before sending.", "error");
     return;
   }
-  const ids = [...selectedDraftMessageIds];
   if (draftSendSelectedButton) draftSendSelectedButton.disabled = true;
   setStatus(rfxOutreachStatus, `Sending ${formatNumber(ids.length)} individual email(s) from ${APPROVED_GMAIL_SENDER}...`);
   try {
@@ -2875,6 +2917,54 @@ async function sendSelectedDraftEmails() {
       `${formatNumber(result.sent || 0)} email(s) sent individually. ${formatNumber(result.failed || 0)} failed.`,
       result.failed ? "warning" : "success"
     );
+  } catch (error) {
+    setStatus(rfxOutreachStatus, error.message, "error");
+    renderDraftQueue();
+  }
+}
+
+async function archiveSelectedDrafts() {
+  const ids = [...selectedDraftMessageIds];
+  if (!ids.length) {
+    setStatus(rfxOutreachStatus, "Select one or more draft rows before archiving.", "error");
+    return;
+  }
+  if (draftArchiveSelectedButton) draftArchiveSelectedButton.disabled = true;
+  setStatus(rfxOutreachStatus, `Archiving ${formatNumber(ids.length)} draft row(s)...`);
+  try {
+    await markOutreachMessages(ids, "archived");
+    selectedDraftMessageIds.clear();
+    [contactHistoryRows, outreachMessages] = await Promise.all([
+      fetchContactHistory({ rfx_event_id: selectedEventId }),
+      fetchOutreachMessages({ rfx_event_id: selectedEventId })
+    ]);
+    renderOutreachLaunchpad();
+    setStatus(rfxOutreachStatus, `${formatNumber(ids.length)} draft row(s) archived.`, "success");
+  } catch (error) {
+    setStatus(rfxOutreachStatus, error.message, "error");
+    renderDraftQueue();
+  }
+}
+
+async function deleteSelectedDrafts() {
+  const ids = [...selectedDraftMessageIds];
+  if (!ids.length) {
+    setStatus(rfxOutreachStatus, "Select one or more draft rows before deleting.", "error");
+    return;
+  }
+  const confirmed = window.confirm(`Delete ${ids.length} selected draft row(s)? This only removes the queue rows, not vendors or RFx lanes.`);
+  if (!confirmed) return;
+  if (draftDeleteSelectedButton) draftDeleteSelectedButton.disabled = true;
+  setStatus(rfxOutreachStatus, `Deleting ${formatNumber(ids.length)} draft row(s)...`);
+  try {
+    const result = await deleteOutreachMessages(ids);
+    selectedDraftMessageIds.clear();
+    [contactHistoryRows, outreachMessages] = await Promise.all([
+      fetchContactHistory({ rfx_event_id: selectedEventId }),
+      fetchOutreachMessages({ rfx_event_id: selectedEventId })
+    ]);
+    renderOutreachLaunchpad();
+    setStatus(rfxOutreachStatus, `${formatNumber(result.removed || 0)} draft row(s) deleted.`, "success");
   } catch (error) {
     setStatus(rfxOutreachStatus, error.message, "error");
     renderDraftQueue();
@@ -3076,10 +3166,18 @@ draftList?.addEventListener("change", (event) => {
   renderDraftQueue();
 });
 
+draftToggleVisible?.addEventListener("change", () => {
+  const rows = draftRowsForEvent().slice(0, 200);
+  if (draftToggleVisible.checked) {
+    rows.forEach((message) => selectedDraftMessageIds.add(String(message.id)));
+  } else {
+    rows.forEach((message) => selectedDraftMessageIds.delete(String(message.id)));
+  }
+  renderDraftQueue();
+});
+
 draftSelectAllEmailsButton?.addEventListener("click", () => {
-  const rows = selectedEventId
-    ? outreachMessages.filter((message) => message.rfx_event_id === selectedEventId)
-    : [];
+  const rows = draftRowsForEvent();
   selectedDraftMessageIds = new Set(selectableEmailDrafts(rows).map((message) => String(message.id)));
   renderDraftQueue();
 });
@@ -3091,6 +3189,14 @@ draftClearSelectionButton?.addEventListener("click", () => {
 
 draftSendSelectedButton?.addEventListener("click", () => {
   sendSelectedDraftEmails();
+});
+
+draftArchiveSelectedButton?.addEventListener("click", () => {
+  archiveSelectedDrafts();
+});
+
+draftDeleteSelectedButton?.addEventListener("click", () => {
+  deleteSelectedDrafts();
 });
 
 eventList?.addEventListener("click", async (event) => {
