@@ -191,32 +191,45 @@ function renderAudit(settings) {
   `).join("");
 }
 
+function humanGmailMessage(message = "") {
+  const text = String(message || "");
+  if (/GOOGLE_CLIENT|GOOGLE_CLIENT_SECRET|GMAIL_TOKEN_ENCRYPTION_KEY|OAuth is not configured|OAuth client is not configured|Google secrets|Supabase secrets/i.test(text)) {
+    return "Gmail connector is not enabled for this deployment yet. No user credentials are required.";
+  }
+  return text || "Gmail action could not be completed.";
+}
+
 function renderGmailConnections(data = currentSettings?.gmail) {
   if (!gmailConnectionCard) return;
   const row = data?.rows?.[0] || {};
   const connected = row.status === "connected";
   const configured = row.configured === true;
   const statusLabel = connected ? "Connected" : row.status === "error" ? "Connection error" : row.status === "revoked" ? "Disconnected" : "Not connected";
+  const connectionCopy = connected
+    ? "Ready to send individual Bid Room invitations from this approved Gmail account."
+    : configured
+      ? "Connect once with Google consent. Users never type or share Gmail credentials inside Rateware."
+      : "This Gmail connector is not enabled for the deployment yet. Once enabled, connecting is a one-click Google consent flow.";
   gmailConnectionCard.innerHTML = `
     <strong>${escapeHtml(GMAIL_ALLOWED_SENDER)}</strong>
-    <p>${escapeHtml(connected
-      ? "Bid Room can use this mailbox as the approved Gmail sender."
-      : "Connect this Gmail/Workspace mailbox before sending invitations directly from Rateware.")}</p>
+    <p>${escapeHtml(connectionCopy)}</p>
     <dl class="diagnostic-list compact-list">
       <div><dt>Status</dt><dd><span class="status-pill ${connected ? "success" : row.status === "error" ? "danger" : "neutral"}">${escapeHtml(statusLabel)}</span></dd></div>
-      <div><dt>OAuth setup</dt><dd>${escapeHtml(configured ? "Configured" : "Missing Google secrets")}</dd></div>
-      <div><dt>Redirect URI</dt><dd>${escapeHtml(row.redirect_uri || "-")}</dd></div>
+      <div><dt>Sender</dt><dd>${escapeHtml(GMAIL_ALLOWED_SENDER)}</dd></div>
       <div><dt>Updated</dt><dd>${escapeHtml(row.updated_at ? new Date(row.updated_at).toLocaleString() : "-")}</dd></div>
     </dl>
-    ${row.last_error ? `<p class="error-text">${escapeHtml(row.last_error)}</p>` : ""}
+    ${row.last_error ? `<p class="error-text">${escapeHtml(humanGmailMessage(row.last_error))}</p>` : ""}
   `;
-  if (connectGmailButton) connectGmailButton.disabled = !configured;
+  if (connectGmailButton) {
+    connectGmailButton.disabled = !configured || connected;
+    connectGmailButton.textContent = connected ? "Gmail connected" : "Connect Gmail";
+  }
   if (disconnectGmailButton) disconnectGmailButton.disabled = !connected && row.status !== "error";
   setStatus(
     gmailConnectionStatus,
     configured
-      ? (connected ? "Gmail is connected for outbound Bid Room invitations." : "Ready to connect Gmail with Google consent.")
-      : "Add Google OAuth secrets in Supabase before connecting Gmail.",
+      ? (connected ? "Gmail is connected for outbound Bid Room invitations." : "Click Connect Gmail and approve access in Google.")
+      : "Gmail connector is not enabled yet. No user credentials are required.",
     configured ? (connected ? "success" : "neutral") : "warning"
   );
 }
@@ -295,7 +308,7 @@ async function loadGmailConnections() {
     const data = await fetchGmailConnections();
     renderGmailConnections(data);
   } catch (error) {
-    setStatus(gmailConnectionStatus, error.message, "error");
+    setStatus(gmailConnectionStatus, humanGmailMessage(error.message), "error");
   }
 }
 
@@ -317,7 +330,7 @@ connectGmailButton?.addEventListener("click", async () => {
     if (!result.authorization_url) throw new Error("Google authorization URL was not returned.");
     window.location.href = result.authorization_url;
   } catch (error) {
-    setStatus(gmailConnectionStatus, error.message, "error");
+    setStatus(gmailConnectionStatus, humanGmailMessage(error.message), "error");
   }
 });
 
@@ -327,7 +340,7 @@ disconnectGmailButton?.addEventListener("click", async () => {
     await disconnectGmailConnection();
     await loadGmailConnections();
   } catch (error) {
-    setStatus(gmailConnectionStatus, error.message, "error");
+    setStatus(gmailConnectionStatus, humanGmailMessage(error.message), "error");
   }
 });
 catalogCategoryFilter?.addEventListener("change", loadCatalogValues);

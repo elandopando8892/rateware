@@ -13,6 +13,8 @@ const ratewareSource = readFileSync(new URL("../src/rateware.js", import.meta.ur
 const vendorsSource = readFileSync(new URL("../src/vendors.js", import.meta.url), "utf8");
 const rfxEventsSource = readFileSync(new URL("../src/rfx-events.js", import.meta.url), "utf8");
 const rfxEventsHtml = readFileSync(new URL("../rfx-events.html", import.meta.url), "utf8");
+const settingsSource = readFileSync(new URL("../src/settings.js", import.meta.url), "utf8");
+const settingsHtml = readFileSync(new URL("../settings.html", import.meta.url), "utf8");
 const outreachServiceSource = readFileSync(new URL("../src/outreach-service.js", import.meta.url), "utf8");
 const stagingServiceSource = readFileSync(new URL("../src/staging-service.js", import.meta.url), "utf8");
 const rpcMigration = readFileSync(new URL("../supabase/migrations/20260626143000_rate_filter_rpc.sql", import.meta.url), "utf8");
@@ -94,6 +96,10 @@ assert.match(apiSource, /sendOutreachMessages/, "API should send selected outrea
 assert.match(apiSource, /delete_outreach_messages/, "API should delete selected outreach draft rows");
 assert.match(apiSource, /sender_email: senderEmail/, "API should persist sender email on outreach draft rows");
 assert.match(outreachSenderMigration, /add column if not exists sender_email text/, "Outreach schema should store sender identity");
+assert.doesNotMatch(settingsHtml, /Redirect URI|OAuth setup|Google secrets/i, "Settings UI should not expose deployment-level Gmail OAuth details to users");
+assert.doesNotMatch(settingsSource, /Redirect URI|OAuth setup|Missing Google secrets|Add Google OAuth secrets/i, "Settings copy should keep Gmail setup SaaS-like and non-technical");
+assert.doesNotMatch(apiSource, /Add GOOGLE_CLIENT_ID/i, "API errors should not instruct end users to manage deployment secrets");
+assert.match(settingsSource, /No user credentials are required/, "Settings should explain that users do not type Gmail credentials into Rateware");
 assert.match(shipmentIdFilterMigration, /when 'row_id' then array\[rate_row\.row_id\]/, "SQL filter values should support Shipment ID");
 assert.match(shipmentIdFilterMigration, /public\.rateware_values_filter_match\(p_column_filters, 'row_id', array\[rate_row\.row_id\]\)/, "SQL row filters should support Shipment ID");
 assert.match(shipmentIdFilterMigration, /when 'row_id' then rs\.row_id/, "SQL column value menus should support Shipment ID");

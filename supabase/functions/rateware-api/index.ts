@@ -6638,8 +6638,7 @@ function publicGmailConnection(row: Record<string, unknown> | null | undefined) 
     token_expires_at: row?.token_expires_at || null,
     updated_at: row?.updated_at || null,
     last_error: row?.last_error || null,
-    configured: Boolean(Deno.env.get("GOOGLE_CLIENT_ID") && Deno.env.get("GOOGLE_CLIENT_SECRET") && Deno.env.get("GMAIL_TOKEN_ENCRYPTION_KEY")),
-    redirect_uri: gmailRedirectUri()
+    configured: Boolean(Deno.env.get("GOOGLE_CLIENT_ID") && Deno.env.get("GOOGLE_CLIENT_SECRET") && Deno.env.get("GMAIL_TOKEN_ENCRYPTION_KEY"))
   };
 }
 
@@ -6675,9 +6674,9 @@ async function startGmailOauth(
   const encryptionKey = Deno.env.get("GMAIL_TOKEN_ENCRYPTION_KEY");
   if (!clientId || !clientSecret || !encryptionKey) {
     return {
-      error: "Google OAuth is not configured yet. Add GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GMAIL_TOKEN_ENCRYPTION_KEY in Supabase secrets.",
+      error: "Gmail connector is not enabled for this deployment yet.",
       status: 400,
-      redirect_uri: gmailRedirectUri()
+      configured: false
     };
   }
 
