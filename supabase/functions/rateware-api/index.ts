@@ -6581,6 +6581,11 @@ async function syncGoogleChatInboundMessagesForThreads(
       if (String(insertResult.error.code || "") === "23505") skipped += 1;
       else throw insertResult.error;
     } else {
+      await supabase.from("bid_room_chat_threads").update({
+        updated_at: Number.isNaN(createdAt.getTime()) ? new Date().toISOString() : createdAt.toISOString(),
+        read_status: "unread",
+        last_action_at: new Date().toISOString()
+      }).eq("id", targetThread.id);
       imported += 1;
     }
   }
@@ -6765,6 +6770,71 @@ async function listBidRoomChat(supabase: ReturnType<typeof createClient>, user: 
   };
 }
 
+async function updateBidRoomChatThreadAction(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_email: string | null },
+  input: Record<string, unknown>
+) {
+  const threadId = cleanText(input.thread_id || input.id);
+  if (!threadId) throw new Error("Thread id is required.");
+  const action = cleanText(input.thread_action || input.action_type || input.status_action)?.toLowerCase() || "update";
+  const now = new Date().toISOString();
+  const patch: Record<string, unknown> = {
+    last_action_at: now,
+    updated_at: now
+  };
+
+  if (action === "mark_read") {
+    patch.read_status = "read";
+    patch.last_read_at = now;
+  } else if (action === "mark_unread") {
+    patch.read_status = "unread";
+  } else if (action === "mark_needs_reply") {
+    patch.communication_status = "needs_reply";
+    patch.needs_reply = true;
+    patch.read_status = "unread";
+  } else if (action === "resolve") {
+    patch.communication_status = "resolved";
+    patch.needs_reply = false;
+    patch.read_status = "read";
+    patch.last_read_at = now;
+    patch.resolved_at = now;
+    patch.resolved_by = user.owner_email;
+  } else if (action === "reopen") {
+    patch.communication_status = "open";
+    patch.needs_reply = false;
+    patch.resolved_at = null;
+    patch.resolved_by = null;
+  } else if (action === "assign") {
+    patch.assigned_to = cleanText(input.assigned_to) || user.owner_email || null;
+  } else if (action === "note") {
+    patch.internal_note = cleanText(input.internal_note || input.note) || null;
+  } else if (action === "update") {
+    const status = cleanText(input.communication_status)?.toLowerCase();
+    const readStatus = cleanText(input.read_status)?.toLowerCase();
+    if (status && ["open", "needs_reply", "resolved"].includes(status)) {
+      patch.communication_status = status;
+      patch.needs_reply = status === "needs_reply";
+    }
+    if (readStatus && ["read", "unread"].includes(readStatus)) patch.read_status = readStatus;
+    if ("assigned_to" in input) patch.assigned_to = cleanText(input.assigned_to) || null;
+    if ("internal_note" in input || "note" in input) patch.internal_note = cleanText(input.internal_note || input.note) || null;
+  } else {
+    throw new Error("Unsupported chat thread action.");
+  }
+
+  const result = await supabase
+    .from("bid_room_chat_threads")
+    .update(patch)
+    .eq("id", threadId)
+    .eq("owner_email", user.owner_email)
+    .neq("status", "archived")
+    .select("*, vendors(vendor_name,domain), rfx_lanes(lane_number,origin,destination)")
+    .single();
+  if (result.error) throw result.error;
+  return { row: result.data, action };
+}
+
 async function postBidRoomChatMessage(
   supabase: ReturnType<typeof createClient>,
   user: { owner_user_id: string | null; owner_email: string | null },
@@ -6790,7 +6860,15 @@ async function postBidRoomChatMessage(
   }, user);
   const messageResult = await supabase.from("bid_room_chat_messages").insert(row).select("*, vendors(vendor_name,domain)").single();
   if (messageResult.error) throw messageResult.error;
-  await supabase.from("bid_room_chat_threads").update({ updated_at: new Date().toISOString() }).eq("id", thread.id);
+  await supabase.from("bid_room_chat_threads").update({
+    updated_at: new Date().toISOString(),
+    communication_status: "open",
+    needs_reply: false,
+    read_status: "read",
+    last_read_at: new Date().toISOString(),
+    resolved_at: null,
+    resolved_by: null
+  }).eq("id", thread.id);
   const sync = await syncBidRoomMessageToGoogleChat(supabase, thread, messageResult.data, event);
   return { thread, message: { ...messageResult.data, google_chat_sync_status: sync.status }, google_chat_configured: sync.status !== "not_configured" || Boolean(GOOGLE_CHAT_WEBHOOK_URL) };
 }
@@ -9506,6 +9584,20 @@ Deno.serve(async (request) => {
         result.thread.id,
         `Posted Bid Room chat message to ${result.thread.title || result.thread.thread_type}`,
         { thread_type: result.thread.thread_type, google_chat_sync_status: result.message.google_chat_sync_status }
+      );
+      return jsonResponse(result);
+    }
+
+    if (body.action === "update_bid_room_chat_thread") {
+      const result = await updateBidRoomChatThreadAction(supabase, user, body);
+      await writeAuditLog(
+        supabase,
+        user,
+        "bid_room.chat.thread_action",
+        "bid_room_chat_threads",
+        result.row.id,
+        `Updated Bid Room communication thread action: ${result.action}`,
+        { communication_status: result.row.communication_status, read_status: result.row.read_status }
       );
       return jsonResponse(result);
     }

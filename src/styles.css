@@ -15420,6 +15420,15 @@ textarea:focus,
   background: #fffdf8;
 }
 
+.bid-room-chat-thread.is-unread {
+  box-shadow: inset 3px 0 0 #315bdc;
+}
+
+.bid-room-chat-thread.is-resolved {
+  background: #f7fbf8;
+  opacity: 0.88;
+}
+
 .bid-room-chat-thread header {
   display: flex;
   gap: 8px;
@@ -15446,6 +15455,39 @@ textarea:focus,
   display: flex;
   gap: 5px;
   align-items: center;
+}
+
+.bid-room-chat-meta,
+.bid-room-chat-thread-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  align-items: center;
+}
+
+.bid-room-chat-meta span {
+  overflow: hidden;
+  max-width: 280px;
+  border: 1px solid #e2e8ee;
+  border-radius: 999px;
+  background: #f8fafc;
+  color: #52616d;
+  padding: 2px 7px;
+  font-size: 0.64rem;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bid-room-chat-thread-actions {
+  border-top: 1px solid #edf2f6;
+  padding-top: 5px;
+}
+
+.bid-room-chat-thread-actions .small-button {
+  min-height: 23px;
+  padding: 3px 7px;
+  font-size: 0.64rem;
 }
 
 .bid-room-chat-latest {

@@ -41,6 +41,7 @@ const bidVisibilityMigration = readFileSync(new URL("../supabase/migrations/2026
 const bidRoomChatMigration = readFileSync(new URL("../supabase/migrations/20260704001000_bid_room_chat_threads.sql", import.meta.url), "utf8");
 const googleChatConnectionsMigration = readFileSync(new URL("../supabase/migrations/20260704012000_google_chat_connections.sql", import.meta.url), "utf8");
 const googleChatInboundMigration = readFileSync(new URL("../supabase/migrations/20260704052000_google_chat_inbound_sync.sql", import.meta.url), "utf8");
+const bidRoomCommunicationActionsMigration = readFileSync(new URL("../supabase/migrations/20260704062000_bid_room_communication_actions.sql", import.meta.url), "utf8");
 
 for (const domain of ["gmail.com", "hotmail.com", "yahoo.com", "outlook.com", "yahoo.com.mx"]) {
   assert.match(apiSource, new RegExp(`"${domain.replace(".", "\\.")}"`), `generic domain ${domain} should be blocked`);
@@ -116,10 +117,18 @@ assert.match(apiSource, /post_bid_room_chat_message/, "Internal API should post 
 assert.match(rfxBidApiSource, /postCarrierBidRoomChatMessage/, "Carrier portal API should post token-scoped chat messages");
 assert.match(rfxEventsHtml, /rfx-chat-thread-type/, "Bid Room should render internal chat controls");
 assert.match(rfxEventsHtml, /rfx-chat-command-center/, "Bid Room communications should expose an operational command center");
+assert.match(rfxEventsHtml, /data-rfx-chat-filter="unread"/, "Bid Room communications should filter unread threads");
 assert.match(rfxEventsHtml, /data-rfx-chat-filter="needs_reply"/, "Bid Room communications should filter threads that need reply");
 assert.match(rfxEventsSource, /chatOpsSummary/, "Bid Room communications should summarize operational chat state");
 assert.match(rfxEventsSource, /threadNeedsReply/, "Bid Room communications should prioritize carrier threads that need reply");
 assert.match(rfxEventsSource, /rfxChatCopySummary/, "Bid Room communications should copy a procurement summary");
+assert.match(rfxEventsSource, /updateBidRoomChatThread/, "Bid Room communications should update thread actions from the UI");
+assert.match(rfxServiceSource, /update_bid_room_chat_thread/, "RFx service should expose Bid Room thread actions");
+assert.match(apiSource, /updateBidRoomChatThreadAction/, "API should persist Bid Room communication actions");
+assert.match(apiSource, /bid_room\.chat\.thread_action/, "API should audit Bid Room communication actions");
+assert.match(bidRoomCommunicationActionsMigration, /communication_status text not null default 'open'/, "Bid Room chat threads should persist communication status");
+assert.match(bidRoomCommunicationActionsMigration, /needs_reply boolean not null default false/, "Bid Room chat threads should persist needs-reply state");
+assert.match(bidRoomCommunicationActionsMigration, /read_status text not null default 'read'/, "Bid Room chat threads should persist read/unread state");
 assert.match(rfxEventsSource, /fetchBidRoomChat/, "Bid Room UI should load chat threads");
 assert.match(rfxServiceSource, /postBidRoomChatMessage/, "RFx service should expose chat posting");
 assert.match(rfxBidSource, /carrier-chat-form/, "Carrier portal should render chat form");

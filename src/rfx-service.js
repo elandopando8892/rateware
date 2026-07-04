@@ -60,6 +60,10 @@ export async function postBidRoomChatMessage(eventId, message) {
   return await callRatewareApi("post_bid_room_chat_message", { rfx_event_id: eventId, ...message });
 }
 
+export async function updateBidRoomChatThread(threadId, patch = {}) {
+  return await callRatewareApi("update_bid_room_chat_thread", { thread_id: threadId, ...patch });
+}
+
 export async function syncBidRoomEventThread(eventId, options = {}) {
   return await callRatewareApi("sync_bid_room_event_thread", { rfx_event_id: eventId, ...options });
 }

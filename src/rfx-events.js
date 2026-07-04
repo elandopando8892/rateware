@@ -14,6 +14,7 @@ import {
   postBidRoomChatMessage,
   shortlistRfxLaneVendors,
   syncBidRoomEventThread,
+  updateBidRoomChatThread,
   updateRfxBid,
   updateRfxEvent
 } from "./rfx-service.js";
@@ -1913,8 +1914,18 @@ function threadHasGoogleChatActivity(thread = {}) {
 }
 
 function threadNeedsReply(thread = {}) {
+  if (thread.needs_reply === true || thread.communication_status === "needs_reply") return true;
+  if (thread.communication_status === "resolved") return false;
   const latest = latestChatMessage(thread);
   return latest?.sender_role === "carrier";
+}
+
+function threadIsUnread(thread = {}) {
+  return thread.read_status === "unread";
+}
+
+function threadIsResolved(thread = {}) {
+  return thread.communication_status === "resolved";
 }
 
 function threadHasCarrierMessage(thread = {}) {
@@ -1928,7 +1939,9 @@ function threadLastActivityLabel(thread = {}) {
 }
 
 function chatThreadPriority(thread = {}) {
+  if (threadIsUnread(thread)) return 0;
   if (threadNeedsReply(thread)) return 0;
+  if (threadIsResolved(thread)) return 5;
   if (thread.thread_type === "carrier_private") return 1;
   if (thread.thread_type === "lane_group") return 2;
   return 3;
@@ -1947,18 +1960,23 @@ function chatThreadMatchesFilter(thread = {}) {
   if (bidRoomChatFilter === "carrier") return threadHasCarrierMessage(thread);
   if (bidRoomChatFilter === "private") return thread.thread_type === "carrier_private";
   if (bidRoomChatFilter === "google") return threadHasGoogleChatActivity(thread);
+  if (bidRoomChatFilter === "unread") return threadIsUnread(thread);
   return true;
 }
 
 function chatStats(rows = []) {
   const messages = rows.flatMap((thread) => chatMessages(thread));
   const needsReply = rows.filter(threadNeedsReply).length;
+  const unread = rows.filter(threadIsUnread).length;
+  const resolved = rows.filter(threadIsResolved).length;
   const carrierMessages = messages.filter((message) => message.sender_role === "carrier").length;
   const googleMessages = messages.filter(messageFromGoogleChat).length;
   const syncErrors = messages.filter((message) => message.google_chat_sync_status === "error").length;
   return {
     threads: rows.length,
     needsReply,
+    unread,
+    resolved,
     carrierMessages,
     googleMessages,
     syncErrors,
@@ -1973,6 +1991,7 @@ function chatOpsSummary(rows = []) {
   if (!rows.length) return "No communication threads yet. Start the event thread, then use lane or private carrier threads as questions come in.";
   if (inbound.status === "needs_reconnect") return "Google Chat is linked for outbound messages, but inbound replies require reconnecting Google Chat in Settings.";
   if (stats.syncErrors) return `${stats.syncErrors} Google Chat message(s) need retry. Refresh or use Settings > Retry Chat sync.`;
+  if (stats.unread) return `${stats.unread} unread thread(s). Review new activity before awarding or sending follow-up invitations.`;
   if (stats.needsReply) return `${stats.needsReply} thread(s) need a procurement reply. Start with carrier-private threads before lane or event announcements.`;
   if (stats.carrierMessages) return `${stats.carrierMessages} carrier message(s) captured. No open reply blocker detected.`;
   return "Communication queue is clean. Keep the event thread synced and monitor new carrier replies.";
@@ -1984,7 +2003,9 @@ function chatSummaryText(rows = []) {
   return [
     `Bid Room communication summary${selectedEvent?.name ? ` - ${selectedEvent.name}` : ""}`,
     `Threads: ${stats.threads}`,
+    `Unread: ${stats.unread}`,
     `Needs reply: ${stats.needsReply}`,
+    `Resolved: ${stats.resolved}`,
     `Carrier messages: ${stats.carrierMessages}`,
     `Google Chat inbound: ${stats.googleMessages}`,
     urgent.length ? "Priority threads:" : "Priority threads: none",
@@ -2058,20 +2079,37 @@ function renderBidRoomChat() {
     const latest = latestChatMessage(thread);
     const needsReply = threadNeedsReply(thread);
     const hasGoogleActivity = threadHasGoogleChatActivity(thread);
+    const unread = threadIsUnread(thread);
+    const resolved = threadIsResolved(thread);
     return `
-      <article class="bid-room-chat-thread${needsReply ? " needs-reply" : ""}">
+      <article class="bid-room-chat-thread${needsReply ? " needs-reply" : ""}${unread ? " is-unread" : ""}${resolved ? " is-resolved" : ""}" data-rfx-chat-thread-id="${escapeHtml(thread.id)}">
         <header>
           <div>
             <strong>${escapeHtml(thread.title || thread.thread_type)}</strong>
             <span>${escapeHtml(thread.thread_type || "thread")} | ${escapeHtml(threadLastActivityLabel(thread))}</span>
           </div>
           <div class="bid-room-chat-thread-badges">
+            ${unread ? '<span class="status-pill neutral">Unread</span>' : ""}
             ${needsReply ? '<span class="status-pill warning">Needs reply</span>' : ""}
+            ${resolved ? '<span class="status-pill success">Resolved</span>' : ""}
             ${hasGoogleActivity ? '<span class="status-pill success">Google</span>' : ""}
             <small>${messages.length} message(s)</small>
           </div>
         </header>
+        ${(thread.assigned_to || thread.internal_note) ? `
+          <div class="bid-room-chat-meta">
+            ${thread.assigned_to ? `<span>Owner: ${escapeHtml(thread.assigned_to)}</span>` : ""}
+            ${thread.internal_note ? `<span title="${escapeHtml(thread.internal_note)}">Note: ${escapeHtml(thread.internal_note)}</span>` : ""}
+          </div>
+        ` : ""}
         ${latest ? `<p class="bid-room-chat-latest">${escapeHtml(latest.body || "")}</p>` : ""}
+        <div class="bid-room-chat-thread-actions">
+          <button type="button" class="secondary small-button" data-rfx-chat-thread-action="${unread ? "mark_read" : "mark_unread"}" data-thread-id="${escapeHtml(thread.id)}">${unread ? "Mark read" : "Mark unread"}</button>
+          <button type="button" class="secondary small-button" data-rfx-chat-thread-action="mark_needs_reply" data-thread-id="${escapeHtml(thread.id)}">Needs reply</button>
+          <button type="button" class="secondary small-button" data-rfx-chat-thread-action="${resolved ? "reopen" : "resolve"}" data-thread-id="${escapeHtml(thread.id)}">${resolved ? "Reopen" : "Resolve"}</button>
+          <button type="button" class="secondary small-button" data-rfx-chat-thread-action="assign" data-thread-id="${escapeHtml(thread.id)}">Assign</button>
+          <button type="button" class="secondary small-button" data-rfx-chat-thread-action="note" data-thread-id="${escapeHtml(thread.id)}">Note</button>
+        </div>
         <div class="bid-room-chat-messages">
           ${messages.slice(-8).map((message) => `
             <div class="bid-room-chat-message" data-role="${escapeHtml(message.sender_role || "procurement")}">
@@ -4067,6 +4105,35 @@ rfxChatInboxFilters?.addEventListener("click", (event) => {
   if (!button) return;
   bidRoomChatFilter = button.dataset.rfxChatFilter || "all";
   renderBidRoomChat();
+});
+rfxChatThreadList?.addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-rfx-chat-thread-action]");
+  if (!button) return;
+  const threadId = button.dataset.threadId;
+  const action = button.dataset.rfxChatThreadAction;
+  if (!threadId || !action) return;
+  const payload = { thread_action: action };
+  if (action === "assign") {
+    const assignedTo = window.prompt("Assign this communication thread to:", "sales@heymarksman.com");
+    if (assignedTo === null) return;
+    payload.assigned_to = assignedTo;
+  }
+  if (action === "note") {
+    const currentThread = (bidRoomChatThreads.rows || []).find((thread) => String(thread.id) === String(threadId));
+    const note = window.prompt("Internal note for this thread:", currentThread?.internal_note || "");
+    if (note === null) return;
+    payload.internal_note = note;
+  }
+  button.disabled = true;
+  setStatus(rfxChatStatus, "Updating communication thread...");
+  try {
+    await updateBidRoomChatThread(threadId, payload);
+    await loadBidRoomChat();
+    setStatus(rfxChatStatus, "Communication thread updated.", "success");
+  } catch (error) {
+    setStatus(rfxChatStatus, error.message, "error");
+    button.disabled = false;
+  }
 });
 rfxChatCopySummary?.addEventListener("click", async () => {
   const rows = Array.isArray(bidRoomChatThreads.rows) ? bidRoomChatThreads.rows : [];

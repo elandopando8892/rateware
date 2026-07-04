@@ -531,6 +531,11 @@ async function syncGoogleChatInboundMessagesForThreads(
       if (String(insertResult.error.code || "") === "23505") skipped += 1;
       else throw insertResult.error;
     } else {
+      await supabase.from("bid_room_chat_threads").update({
+        updated_at: Number.isNaN(createdAt.getTime()) ? new Date().toISOString() : createdAt.toISOString(),
+        read_status: "unread",
+        last_action_at: new Date().toISOString()
+      }).eq("id", targetThread.id);
       imported += 1;
     }
   }
@@ -689,7 +694,13 @@ async function postCarrierBidRoomChatMessage(
   };
   const messageResult = await supabase.from("bid_room_chat_messages").insert(row).select("*, vendors(vendor_name,domain)").single();
   if (messageResult.error) throw messageResult.error;
-  await supabase.from("bid_room_chat_threads").update({ updated_at: new Date().toISOString() }).eq("id", thread.id);
+  await supabase.from("bid_room_chat_threads").update({
+    updated_at: new Date().toISOString(),
+    communication_status: "needs_reply",
+    needs_reply: true,
+    read_status: "unread",
+    last_action_at: new Date().toISOString()
+  }).eq("id", thread.id);
   const sync = await syncBidRoomMessageToGoogleChat(supabase, thread, messageResult.data, event);
   return { thread, message: { ...messageResult.data, google_chat_sync_status: sync.status }, google_chat_configured: sync.status !== "not_configured" || Boolean(GOOGLE_CHAT_WEBHOOK_URL) };
 }
