@@ -14,6 +14,7 @@ const GOOGLE_CHAT_OAUTH_SCOPES = [
   "email",
   "profile",
   "https://www.googleapis.com/auth/chat.messages.create",
+  "https://www.googleapis.com/auth/chat.messages.readonly",
   "https://www.googleapis.com/auth/chat.spaces.readonly"
 ];
 const GOOGLE_CHAT_WEBHOOK_URL = Deno.env.get("GOOGLE_CHAT_WEBHOOK_URL");
@@ -6355,6 +6356,7 @@ async function syncBidRoomMessageToGoogleChatApi(
     await supabase.from("bid_room_chat_threads").update({
       google_chat_space: spaceName,
       google_chat_thread_key: threadKey,
+      google_chat_thread_name: cleanText(payload?.thread?.name),
       google_chat_sync_status: status,
       updated_at: new Date().toISOString()
     }).eq("id", thread.id);
@@ -6401,6 +6403,7 @@ async function syncBidRoomMessageToGoogleChat(
     }).eq("id", message.id);
     await supabase.from("bid_room_chat_threads").update({
       google_chat_thread_key: threadKey,
+      google_chat_thread_name: cleanText(payload?.thread?.name),
       google_chat_sync_status: status,
       updated_at: new Date().toISOString()
     }).eq("id", thread.id);
@@ -6410,6 +6413,179 @@ async function syncBidRoomMessageToGoogleChat(
     await supabase.from("bid_room_chat_threads").update({ google_chat_sync_status: "error" }).eq("id", thread.id);
     return { status: "error", name: null, error: String(error?.message || error) };
   }
+}
+
+function googleChatConnectionCanReadMessages(connection: Record<string, unknown> | null | undefined) {
+  const scopes = Array.isArray(connection?.scopes) ? connection?.scopes.map(String) : [];
+  return scopes.includes("https://www.googleapis.com/auth/chat.messages.readonly")
+    || scopes.includes("https://www.googleapis.com/auth/chat.messages");
+}
+
+function googleChatMessageThreadName(message: Record<string, unknown>) {
+  return cleanText(objectRecord(message.thread).name);
+}
+
+function googleChatMessageBody(message: Record<string, unknown>) {
+  return cleanText(message.text || message.argumentText || message.formattedText);
+}
+
+async function syncGoogleChatInboundMessagesForThreads(
+  supabase: ReturnType<typeof createClient>,
+  ownerEmail: string | null,
+  threads: Record<string, unknown>[],
+  input: Record<string, unknown> = {}
+) {
+  const owner = cleanText(ownerEmail);
+  const candidateThreads = (threads || []).filter((thread) => cleanText(thread.id) && cleanText(thread.rfx_event_id));
+  if (!owner || !candidateThreads.length) return { status: "skipped", imported: 0, skipped: 0, reason: "No Bid Room threads to sync." };
+
+  const connectionResult = await supabase
+    .from("google_chat_connections")
+    .select("*")
+    .eq("owner_email", owner)
+    .eq("account_email", GOOGLE_CHAT_ALLOWED_ACCOUNT)
+    .eq("status", "connected")
+    .maybeSingle();
+  if (connectionResult.error) throw connectionResult.error;
+  const connection = connectionResult.data;
+  const spaceName = cleanText(connection?.default_space_name);
+  if (!connection || !spaceName) return { status: "not_configured", imported: 0, skipped: 0 };
+  if (!googleChatConnectionCanReadMessages(connection)) {
+    return {
+      status: "needs_reconnect",
+      imported: 0,
+      skipped: 0,
+      reason: `Reconnect Google Chat in Settings to allow Rateware to read messages from ${spaceName}.`
+    };
+  }
+
+  const accessToken = await googleChatAccessToken(supabase, { owner_email: owner });
+  const url = new URL(`https://chat.googleapis.com/v1/${spaceName}/messages`);
+  url.searchParams.set("pageSize", String(Math.min(Math.max(Number(input.limit) || 100, 10), 100)));
+  const response = await fetch(url.toString(), {
+    headers: { Authorization: `Bearer ${accessToken}` }
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const message = cleanText(payload?.error?.message) || `Google Chat message sync failed (${response.status}).`;
+    await supabase.from("google_chat_connections").update({
+      last_error: message,
+      updated_at: new Date().toISOString()
+    }).eq("owner_email", owner).eq("account_email", GOOGLE_CHAT_ALLOWED_ACCOUNT);
+    return { status: "error", imported: 0, skipped: 0, error: message };
+  }
+
+  const googleMessages = Array.isArray(payload.messages)
+    ? payload.messages
+        .filter((message: Record<string, unknown>) => cleanText(message.name))
+        .sort((a: Record<string, unknown>, b: Record<string, unknown>) => {
+          const aTime = new Date(String(a.createTime || 0)).getTime();
+          const bTime = new Date(String(b.createTime || 0)).getTime();
+          return aTime - bTime;
+        })
+    : [];
+  if (!googleMessages.length) return { status: "synced", imported: 0, skipped: 0 };
+
+  const googleNames = googleMessages.map((message: Record<string, unknown>) => cleanText(message.name)).filter(Boolean) as string[];
+  const existingResult = googleNames.length
+    ? await supabase
+        .from("bid_room_chat_messages")
+        .select("id,thread_id,google_chat_message_name")
+        .eq("owner_email", owner)
+        .in("google_chat_message_name", googleNames)
+    : { data: [], error: null };
+  if (existingResult.error) throw existingResult.error;
+
+  const existingByGoogleName = new Map((existingResult.data || []).map((message) => [String(message.google_chat_message_name), message]));
+  const threadsById = new Map(candidateThreads.map((thread) => [String(thread.id), thread]));
+  const threadsByGoogleThreadName = new Map(
+    candidateThreads
+      .map((thread) => [cleanText(thread.google_chat_thread_name), thread] as [string | null, Record<string, unknown>])
+      .filter(([name]) => Boolean(name)) as [string, Record<string, unknown>][]
+  );
+  const eventGroupThread = candidateThreads.find((thread) => cleanText(thread.thread_type) === "event_group") || candidateThreads[0];
+
+  let imported = 0;
+  let skipped = 0;
+  let updatedThreads = 0;
+
+  for (const googleMessage of googleMessages) {
+    const googleMessageName = cleanText(googleMessage.name);
+    const googleThreadName = googleChatMessageThreadName(googleMessage);
+    const existingMessage = googleMessageName ? existingByGoogleName.get(googleMessageName) : null;
+    if (existingMessage) {
+      const existingThread = threadsById.get(String(existingMessage.thread_id));
+      if (existingThread && googleThreadName && cleanText(existingThread.google_chat_thread_name) !== googleThreadName) {
+        await supabase.from("bid_room_chat_threads").update({
+          google_chat_space: spaceName,
+          google_chat_thread_name: googleThreadName,
+          google_chat_sync_status: "synced",
+          updated_at: new Date().toISOString()
+        }).eq("id", existingThread.id);
+        existingThread.google_chat_thread_name = googleThreadName;
+        threadsByGoogleThreadName.set(googleThreadName, existingThread);
+        updatedThreads += 1;
+      }
+      skipped += 1;
+      continue;
+    }
+
+    const body = googleChatMessageBody(googleMessage);
+    if (!body) {
+      skipped += 1;
+      continue;
+    }
+    const targetThread = (googleThreadName && threadsByGoogleThreadName.get(googleThreadName)) || eventGroupThread;
+    if (!targetThread) {
+      skipped += 1;
+      continue;
+    }
+    if (googleThreadName && cleanText(targetThread.google_chat_thread_name) !== googleThreadName) {
+      await supabase.from("bid_room_chat_threads").update({
+        google_chat_space: spaceName,
+        google_chat_thread_name: googleThreadName,
+        google_chat_sync_status: "synced",
+        updated_at: new Date().toISOString()
+      }).eq("id", targetThread.id);
+      targetThread.google_chat_thread_name = googleThreadName;
+      threadsByGoogleThreadName.set(googleThreadName, targetThread);
+      updatedThreads += 1;
+    }
+
+    const sender = objectRecord(googleMessage.sender);
+    const senderType = cleanText(sender.type)?.toUpperCase();
+    const createdAt = new Date(String(googleMessage.createTime || ""));
+    const insertResult = await supabase.from("bid_room_chat_messages").insert({
+      owner_user_id: cleanText(targetThread.owner_user_id),
+      owner_email: owner,
+      thread_id: targetThread.id,
+      rfx_event_id: targetThread.rfx_event_id,
+      rfx_lane_id: targetThread.rfx_lane_id || null,
+      vendor_id: targetThread.vendor_id || null,
+      sender_role: senderType === "BOT" ? "system" : "procurement",
+      sender_name: cleanText(sender.displayName || sender.name) || "Google Chat",
+      sender_email: null,
+      body,
+      google_chat_message_name: googleMessageName,
+      google_chat_sender_name: cleanText(sender.name),
+      google_chat_sync_status: "synced",
+      created_at: Number.isNaN(createdAt.getTime()) ? new Date().toISOString() : createdAt.toISOString(),
+      metadata: {
+        source: "google_chat_inbound",
+        google_chat_space: spaceName,
+        google_chat_thread_name: googleThreadName,
+        sender
+      }
+    });
+    if (insertResult.error) {
+      if (String(insertResult.error.code || "") === "23505") skipped += 1;
+      else throw insertResult.error;
+    } else {
+      imported += 1;
+    }
+  }
+
+  return { status: "synced", imported, skipped, updated_threads: updatedThreads };
 }
 
 async function retryGoogleChatSync(
@@ -6549,6 +6725,12 @@ async function listBidRoomChat(supabase: ReturnType<typeof createClient>, user: 
   const threadsResult = await query;
   if (threadsResult.error) throw threadsResult.error;
   const threads = threadsResult.data || [];
+  const googleChatInbound = await syncGoogleChatInboundMessagesForThreads(supabase, user.owner_email, threads).catch((error) => ({
+    status: "error",
+    imported: 0,
+    skipped: 0,
+    error: String(error?.message || error)
+  }));
   const threadIds = threads.map((thread) => thread.id).filter(Boolean);
   const messagesResult = threadIds.length
     ? await supabase
@@ -6575,6 +6757,7 @@ async function listBidRoomChat(supabase: ReturnType<typeof createClient>, user: 
   return {
     event,
     google_chat_configured: Boolean(chatConnection.data?.default_space_name || GOOGLE_CHAT_WEBHOOK_URL),
+    google_chat_inbound: googleChatInbound,
     rows: threads.map((thread) => ({
       ...thread,
       messages: messagesByThread.get(String(thread.id)) || []
@@ -7082,11 +7265,14 @@ async function listGmailConnections(supabase: ReturnType<typeof createClient>, u
 }
 
 function publicGoogleChatConnection(row: Record<string, unknown> | null | undefined) {
+  const inboundEnabled = googleChatConnectionCanReadMessages(row);
   return {
     account_email: GOOGLE_CHAT_ALLOWED_ACCOUNT,
     provider: "google_chat",
     status: cleanText(row?.status) || "not_connected",
     connected: cleanText(row?.status) === "connected",
+    inbound_enabled: inboundEnabled,
+    outbound_enabled: cleanText(row?.status) === "connected",
     scopes: Array.isArray(row?.scopes) ? row?.scopes : [],
     token_expires_at: row?.token_expires_at || null,
     updated_at: row?.updated_at || null,

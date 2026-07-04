@@ -192,14 +192,26 @@ function renderCarrierChat(chat = lastCarrierChat) {
   const panel = card.querySelector("#carrier-bid-chat");
   if (!panel) return;
   const rows = Array.isArray(lastCarrierChat.rows) ? lastCarrierChat.rows : [];
+  const inboundStatus = lastCarrierChat.google_chat_inbound?.status || "";
+  const chatSyncLabel = inboundStatus === "needs_reconnect"
+    ? "Reconnect Google Chat"
+    : lastCarrierChat.google_chat_configured
+      ? "Google Chat linked"
+      : "Rateware chat";
+  const chatSyncTone = inboundStatus === "needs_reconnect"
+    ? "warning"
+    : lastCarrierChat.google_chat_configured
+      ? "success"
+      : "muted";
   panel.innerHTML = `
     <div class="bid-room-section-heading">
       <div>
         <p class="eyebrow">Bid Room Chat</p>
         <h3>Ask questions and coordinate live capacity</h3>
       </div>
-      <span class="status-pill ${lastCarrierChat.google_chat_configured ? "success" : "muted"}">${lastCarrierChat.google_chat_configured ? "Google Chat linked" : "Rateware chat"}</span>
+      <span class="status-pill ${chatSyncTone}">${escapeHtml(chatSyncLabel)}</span>
     </div>
+    ${inboundStatus === "needs_reconnect" ? `<p class="status-message warning">Google Chat can send outbound mirror messages, but Settings must be reconnected once before Rateware can import replies typed in Google Chat.</p>` : ""}
     <div class="carrier-chat-tabs">
       ${[
         ["carrier_private", "Private"],

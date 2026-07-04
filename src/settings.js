@@ -299,13 +299,16 @@ function renderGoogleChatConnections(data = currentSettings?.google_chat, spaces
   const connected = row.status === "connected";
   const configured = row.configured === true;
   const hasSpace = Boolean(row.default_space_name);
+  const inboundEnabled = row.inbound_enabled === true;
   const needsChatAppSetup = /Google Chat app not found|configure the app|Chat app/i.test(String(row.last_error || ""));
   const statusLabel = connected
-    ? hasSpace ? "Connected" : "Connected, select Space"
+    ? hasSpace ? inboundEnabled ? "Connected" : "Connected outbound only" : "Connected, select Space"
     : row.status === "error" ? "Connection error" : row.status === "revoked" ? "Disconnected" : "Not connected";
   const connectionCopy = connected
     ? hasSpace
-      ? "Bid Room chat messages will mirror into the selected Google Chat Space."
+      ? inboundEnabled
+        ? "Bid Room chat messages mirror to Google Chat and replies from Google Chat sync back into Rateware."
+        : "Bid Room chat messages mirror to Google Chat. Reconnect Google Chat once to enable replies from Google Chat back into Rateware."
       : "Google Chat is connected. Select the Space where Bid Room threads should appear."
     : configured
       ? "The Space exists in Google Chat, but Rateware still needs Google authorization before it can read Spaces or mirror Bid Room threads."
@@ -314,7 +317,7 @@ function renderGoogleChatConnections(data = currentSettings?.google_chat, spaces
     <strong>${escapeHtml(GOOGLE_CHAT_ALLOWED_ACCOUNT)}</strong>
     <p>${escapeHtml(connectionCopy)}</p>
     <dl class="diagnostic-list compact-list">
-      <div><dt>Status</dt><dd><span class="status-pill ${connected && hasSpace ? "success" : row.status === "error" ? "danger" : "neutral"}">${escapeHtml(statusLabel)}</span></dd></div>
+      <div><dt>Status</dt><dd><span class="status-pill ${connected && hasSpace && inboundEnabled ? "success" : connected && hasSpace ? "warning" : row.status === "error" ? "danger" : "neutral"}">${escapeHtml(statusLabel)}</span></dd></div>
       <div><dt>Account</dt><dd>${escapeHtml(GOOGLE_CHAT_ALLOWED_ACCOUNT)}</dd></div>
       <div><dt>Bid Room Space</dt><dd>${escapeHtml(row.default_space_display_name || row.default_space_name || "-")}</dd></div>
       <div><dt>Updated</dt><dd>${escapeHtml(row.updated_at ? new Date(row.updated_at).toLocaleString() : "-")}</dd></div>
@@ -326,11 +329,21 @@ function renderGoogleChatConnections(data = currentSettings?.google_chat, spaces
         <code>${escapeHtml(GOOGLE_CHAT_APP_ENDPOINT)}</code>
       </div>
     ` : ""}
+    ${connected && hasSpace && !inboundEnabled ? `
+      <div class="integration-callout warning">
+        <strong>Reconnect required for inbound sync</strong>
+        <p>Google Chat was connected before Rateware requested message-read permission. Click Connect Google Chat again and approve access.</p>
+      </div>
+    ` : ""}
     ${row.last_error ? `<p class="error-text">${escapeHtml(humanGoogleChatMessage(row.last_error))}</p>` : ""}
   `;
   if (connectGoogleChatButton) {
-    connectGoogleChatButton.disabled = !configured || connected;
-    connectGoogleChatButton.textContent = connected ? "Google Chat connected" : "Connect Google Chat with Google";
+    connectGoogleChatButton.disabled = !configured || (connected && inboundEnabled);
+    connectGoogleChatButton.textContent = connected && !inboundEnabled
+      ? "Reconnect Google Chat"
+      : connected
+        ? "Google Chat connected"
+        : "Connect Google Chat with Google";
   }
   if (disconnectGoogleChatButton) disconnectGoogleChatButton.disabled = !connected && row.status !== "error";
   if (retryGoogleChatSyncButton) retryGoogleChatSyncButton.disabled = !connected || !hasSpace;

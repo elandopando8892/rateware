@@ -1903,8 +1903,13 @@ function renderBidRoomChatControls() {
 function renderBidRoomChat() {
   renderBidRoomChatControls();
   if (rfxChatSyncStatus) {
-    rfxChatSyncStatus.textContent = bidRoomChatThreads.google_chat_configured ? "Google Chat linked" : "Google Chat not linked";
-    rfxChatSyncStatus.className = `status-pill ${bidRoomChatThreads.google_chat_configured ? "success" : "muted"}`;
+    const inboundStatus = bidRoomChatThreads.google_chat_inbound?.status || "";
+    rfxChatSyncStatus.textContent = inboundStatus === "needs_reconnect"
+      ? "Reconnect Google Chat"
+      : bidRoomChatThreads.google_chat_configured
+        ? "Google Chat linked"
+        : "Google Chat not linked";
+    rfxChatSyncStatus.className = `status-pill ${inboundStatus === "needs_reconnect" ? "warning" : bidRoomChatThreads.google_chat_configured ? "success" : "muted"}`;
   }
   if (!rfxChatThreadList) return;
   const rows = Array.isArray(bidRoomChatThreads.rows) ? bidRoomChatThreads.rows : [];
