@@ -5276,6 +5276,53 @@ function cleanBoolean(value: unknown) {
   return ["true", "1", "yes", "y", "on", "checked"].includes(text);
 }
 
+function cleanOptionalBoolean(value: unknown) {
+  if (value === null || value === undefined || value === "") return null;
+  if (typeof value === "boolean") return value;
+  const text = String(value ?? "").trim().toLowerCase();
+  if (["true", "1", "yes", "y", "on", "checked"].includes(text)) return true;
+  if (["false", "0", "no", "n", "off", "unchecked"].includes(text)) return false;
+  return null;
+}
+
+function cleanTimestamp(value: unknown) {
+  const text = cleanText(value);
+  if (!text) return null;
+  const date = new Date(text);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+function cleanPercent(value: unknown) {
+  const numberValue = cleanNumber(value);
+  if (numberValue === null) return null;
+  return Math.min(100, Math.max(0, numberValue));
+}
+
+function normalizeCommercialModel(value: unknown) {
+  const text = cleanText(value)?.toLowerCase().replace(/[\s-]+/g, "_");
+  if (!text) return null;
+  const aliases: Record<string, string> = {
+    direct: "direct_cost_plus",
+    direct_carrier: "direct_cost_plus",
+    cost_plus: "direct_cost_plus",
+    direct_cost_plus: "direct_cost_plus",
+    carrier_share: "carrier_share",
+    shared_margin: "carrier_share",
+    share: "carrier_share",
+    xbf: "xbf_buy_sell",
+    buy_sell: "xbf_buy_sell",
+    xbf_buy_sell: "xbf_buy_sell"
+  };
+  const normalized = aliases[text] || text;
+  return ["direct_cost_plus", "carrier_share", "xbf_buy_sell"].includes(normalized) ? normalized : null;
+}
+
+function availabilityValidationStatus(value: unknown, mirrorEnabled: boolean) {
+  const text = cleanText(value)?.toLowerCase();
+  if (text && ["not_requested", "mirror_requested", "mirror_enabled", "validated", "rejected"].includes(text)) return text;
+  return mirrorEnabled ? "mirror_requested" : "not_requested";
+}
+
 function baseTrailerName(value: unknown) {
   const text = cleanText(value) || "Dry Van";
   const cleaned = text
@@ -6451,6 +6498,14 @@ function rfxAwardRateInput(invitation: Record<string, unknown>, event: Record<st
     weekly_capacity: invitation.weekly_capacity,
     notes: [
       cleanText(invitation.notes),
+      normalizeCommercialModel(invitation.commercial_model) ? `Commercial model: ${normalizeCommercialModel(invitation.commercial_model)}` : null,
+      cleanNumber(invitation.marksman_margin_pct) !== null ? `MARKSMAN margin: ${cleanNumber(invitation.marksman_margin_pct)}%` : null,
+      cleanNumber(invitation.carrier_share_pct) !== null ? `Carrier share: ${cleanNumber(invitation.carrier_share_pct)}%` : null,
+      cleanOptionalBoolean(invitation.best_alternative_offered) ? `Best alternative: ${[cleanText(invitation.alternative_equipment), cleanNumber(invitation.alternative_units) !== null ? `${cleanNumber(invitation.alternative_units)} unit(s)` : null, cleanText(invitation.alternative_notes)].filter(Boolean).join(" / ")}` : null,
+      cleanOptionalBoolean(invitation.equipment_available) !== null ? `Equipment available: ${cleanOptionalBoolean(invitation.equipment_available) ? "yes" : "no"}` : null,
+      cleanText(invitation.unit_details) ? `Unit details: ${cleanText(invitation.unit_details)}` : null,
+      cleanText(invitation.eta_pickup) ? `ETA pickup: ${cleanText(invitation.eta_pickup)}` : null,
+      cleanText(invitation.eta_delivery) ? `ETA delivery: ${cleanText(invitation.eta_delivery)}` : null,
       cleanText(invitation.award_reason),
       cleanText(invitation.award_notes),
       "Source: RFx award closeout"
@@ -7530,7 +7585,7 @@ async function applyBidUpdateFromChat(
   if (bidRate === null) throw new Error("All-in rate is required before applying a chat bid update.");
   const sourceBody = cleanText(sourceMessage?.body);
   const sourceNote = cleanText(input.source_note) || sourceBody || "Bid update reviewed from Bid Room chat.";
-  const patch = {
+  const patch: Record<string, unknown> = {
     bid_rate: bidRate,
     currency: cleanText(input.currency)?.toUpperCase() || cleanText(before.currency) || cleanText((before.rfx_lanes as Record<string, unknown> | null)?.currency) || "USD",
     weekly_capacity: cleanNumber(input.weekly_capacity),
@@ -7545,6 +7600,25 @@ async function applyBidUpdateFromChat(
     bid_updated_from_chat_at: now,
     updated_at: now
   };
+  const mirrorEnabled = cleanOptionalBoolean(input.mirror_account_enabled);
+  if (input.commercial_model !== undefined) patch.commercial_model = normalizeCommercialModel(input.commercial_model);
+  if (input.marksman_margin_pct !== undefined) patch.marksman_margin_pct = cleanPercent(input.marksman_margin_pct);
+  if (input.carrier_share_pct !== undefined) patch.carrier_share_pct = cleanPercent(input.carrier_share_pct);
+  if (input.best_alternative_offered !== undefined) patch.best_alternative_offered = cleanOptionalBoolean(input.best_alternative_offered) === true;
+  if (input.alternative_equipment !== undefined) patch.alternative_equipment = cleanText(input.alternative_equipment);
+  if (input.alternative_units !== undefined) patch.alternative_units = cleanNumber(input.alternative_units);
+  if (input.alternative_notes !== undefined) patch.alternative_notes = cleanText(input.alternative_notes);
+  if (input.equipment_available !== undefined) patch.equipment_available = cleanOptionalBoolean(input.equipment_available);
+  if (input.unit_details !== undefined) patch.unit_details = cleanText(input.unit_details);
+  if (input.eta_pickup !== undefined) patch.eta_pickup = cleanTimestamp(input.eta_pickup);
+  if (input.eta_delivery !== undefined) patch.eta_delivery = cleanTimestamp(input.eta_delivery);
+  if (input.availability_validation_notes !== undefined) patch.availability_validation_notes = cleanText(input.availability_validation_notes);
+  if (mirrorEnabled !== null) {
+    patch.mirror_account_enabled = mirrorEnabled;
+    patch.availability_validation_status = availabilityValidationStatus(input.availability_validation_status, mirrorEnabled);
+  } else if (input.availability_validation_status !== undefined) {
+    patch.availability_validation_status = availabilityValidationStatus(input.availability_validation_status, cleanBoolean(before.mirror_account_enabled));
+  }
 
   const result = await supabase
     .from("rfx_lane_vendors")
@@ -7575,6 +7649,8 @@ async function applyBidUpdateFromChat(
       currency: before.currency,
       weekly_capacity: before.weekly_capacity,
       transit_days: before.transit_days,
+      commercial_model: before.commercial_model,
+      equipment_available: before.equipment_available,
       invitation_status: before.invitation_status,
       response_source: before.response_source
     },
@@ -7583,6 +7659,8 @@ async function applyBidUpdateFromChat(
       currency: result.data.currency,
       weekly_capacity: result.data.weekly_capacity,
       transit_days: result.data.transit_days,
+      commercial_model: result.data.commercial_model,
+      equipment_available: result.data.equipment_available,
       invitation_status: result.data.invitation_status,
       response_source: result.data.response_source
     }
@@ -10495,7 +10573,7 @@ Deno.serve(async (request) => {
         .single();
       if (ownedResult.error) throw ownedResult.error;
       const patchInput = body.patch || {};
-      const patch = {
+      const patch: Record<string, unknown> = {
         bid_rate: cleanNumber(patchInput.bid_rate),
         currency: cleanText(patchInput.currency)?.toUpperCase() || "USD",
         weekly_capacity: cleanNumber(patchInput.weekly_capacity),
@@ -10506,6 +10584,25 @@ Deno.serve(async (request) => {
         response_source: "rateware_admin",
         updated_at: new Date().toISOString()
       };
+      const mirrorEnabled = cleanOptionalBoolean(patchInput.mirror_account_enabled);
+      if (patchInput.commercial_model !== undefined) patch.commercial_model = normalizeCommercialModel(patchInput.commercial_model);
+      if (patchInput.marksman_margin_pct !== undefined) patch.marksman_margin_pct = cleanPercent(patchInput.marksman_margin_pct);
+      if (patchInput.carrier_share_pct !== undefined) patch.carrier_share_pct = cleanPercent(patchInput.carrier_share_pct);
+      if (patchInput.best_alternative_offered !== undefined) patch.best_alternative_offered = cleanOptionalBoolean(patchInput.best_alternative_offered) === true;
+      if (patchInput.alternative_equipment !== undefined) patch.alternative_equipment = cleanText(patchInput.alternative_equipment);
+      if (patchInput.alternative_units !== undefined) patch.alternative_units = cleanNumber(patchInput.alternative_units);
+      if (patchInput.alternative_notes !== undefined) patch.alternative_notes = cleanText(patchInput.alternative_notes);
+      if (patchInput.equipment_available !== undefined) patch.equipment_available = cleanOptionalBoolean(patchInput.equipment_available);
+      if (patchInput.unit_details !== undefined) patch.unit_details = cleanText(patchInput.unit_details);
+      if (patchInput.eta_pickup !== undefined) patch.eta_pickup = cleanTimestamp(patchInput.eta_pickup);
+      if (patchInput.eta_delivery !== undefined) patch.eta_delivery = cleanTimestamp(patchInput.eta_delivery);
+      if (patchInput.availability_validation_notes !== undefined) patch.availability_validation_notes = cleanText(patchInput.availability_validation_notes);
+      if (mirrorEnabled !== null) {
+        patch.mirror_account_enabled = mirrorEnabled;
+        patch.availability_validation_status = availabilityValidationStatus(patchInput.availability_validation_status, mirrorEnabled);
+      } else if (patchInput.availability_validation_status !== undefined) {
+        patch.availability_validation_status = availabilityValidationStatus(patchInput.availability_validation_status, false);
+      }
       const result = await supabase
         .from("rfx_lane_vendors")
         .update(patch)

@@ -1725,6 +1725,44 @@ a {
   grid-column: 1 / -1;
 }
 
+.bid-form-section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border-top: 1px solid var(--line);
+  padding-top: 9px;
+}
+
+.bid-form-section-title strong {
+  color: var(--text);
+  font-size: 0.78rem;
+}
+
+.bid-form-section-title span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 720;
+}
+
+.bid-checkbox-label {
+  align-self: end;
+  min-height: 34px;
+  display: inline-flex !important;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 7px !important;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--soft-panel);
+  padding: 6px 8px;
+}
+
+.bid-checkbox-label input {
+  width: 14px;
+  height: 14px;
+}
+
 .masked-rate {
   display: inline-flex;
   border-radius: 999px;

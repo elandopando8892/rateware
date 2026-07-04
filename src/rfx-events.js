@@ -813,6 +813,43 @@ function statusChip(status) {
   return `<span class="status-pill" data-tone="${statusTone(value)}">${escapeHtml(statusLabel(value))}</span>`;
 }
 
+function commercialModelLabel(value) {
+  const labels = {
+    direct_cost_plus: "Direct / cost-plus",
+    carrier_share: "Carrier share",
+    xbf_buy_sell: "XBF buy-sell"
+  };
+  return labels[String(value || "").toLowerCase()] || "Not declared";
+}
+
+function formatCompactDateTime(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit"
+  }).format(date);
+}
+
+function offerCommercialSummary(invitation = {}) {
+  const parts = [commercialModelLabel(invitation.commercial_model)];
+  if (invitation.marksman_margin_pct !== null && invitation.marksman_margin_pct !== undefined) parts.push(`${invitation.marksman_margin_pct}% MARKSMAN`);
+  if (invitation.carrier_share_pct !== null && invitation.carrier_share_pct !== undefined) parts.push(`${invitation.carrier_share_pct}% share`);
+  if (invitation.best_alternative_offered) parts.push(invitation.alternative_equipment ? `Alt: ${invitation.alternative_equipment}` : "Best alternative");
+  return parts.filter(Boolean).join(" | ");
+}
+
+function offerAvailabilitySummary(invitation = {}) {
+  if (invitation.equipment_available === true) {
+    return ["Available", invitation.eta_pickup ? `PU ${formatCompactDateTime(invitation.eta_pickup)}` : null, invitation.eta_delivery ? `DEL ${formatCompactDateTime(invitation.eta_delivery)}` : null].filter(Boolean).join(" | ");
+  }
+  if (invitation.equipment_available === false) return "Not available";
+  return "Pending";
+}
+
 function hasBid(invitation) {
   return (invitation.bid_rate !== null
     && invitation.bid_rate !== undefined
@@ -1623,13 +1660,15 @@ function renderLiveOfferManager() {
           <small>Best ${formatMoney(best.amount, best.currency)} | Spread ${formatMoney(spread, best.currency)}</small>
         </div>
         <table>
-          <thead><tr><th>Rank</th><th>Carrier</th><th>Bid</th><th>Capacity</th><th>Transit</th><th>Status</th></tr></thead>
+          <thead><tr><th>Rank</th><th>Carrier</th><th>Bid</th><th>Commercial</th><th>Availability</th><th>Capacity</th><th>Transit</th><th>Status</th></tr></thead>
           <tbody>
             ${sorted.map((row, index) => `
               <tr>
                 <td>#${index + 1}</td>
                 <td>${escapeHtml(vendorLabel(row.invitation))}</td>
                 <td>${formatMoney(row.amount, row.currency)}</td>
+                <td>${escapeHtml(offerCommercialSummary(row.invitation))}</td>
+                <td>${escapeHtml(offerAvailabilitySummary(row.invitation))}</td>
                 <td>${escapeHtml(row.invitation.weekly_capacity ?? "-")}</td>
                 <td>${escapeHtml(row.invitation.transit_days ?? "-")}</td>
                 <td>${statusChip(row.invitation.invitation_status || "quoted")}</td>
@@ -1662,6 +1701,9 @@ function awardReasonDefault(row, rank) {
     const delta = Number(row.invitation.bid_delta);
     parts.push(delta <= 0 ? "Below Rateware benchmark" : "Accepted vs benchmark");
   }
+  if (row.invitation.commercial_model) parts.push(commercialModelLabel(row.invitation.commercial_model));
+  if (row.invitation.equipment_available === true) parts.push("Equipment available");
+  if (row.invitation.best_alternative_offered) parts.push("Best alternative available");
   if (row.invitation.weekly_capacity) parts.push(`Capacity ${row.invitation.weekly_capacity}/wk`);
   if (row.invitation.transit_days) parts.push(`Transit ${row.invitation.transit_days} day(s)`);
   return parts.join("; ") || "Procurement decision";
@@ -1799,6 +1841,8 @@ function renderAwardBoard() {
                 <th>Carrier</th>
                 <th>All-in</th>
                 <th>Delta</th>
+                <th>Commercial</th>
+                <th>Availability</th>
                 <th>Capacity</th>
                 <th>Transit</th>
                 <th>Role</th>
@@ -1817,6 +1861,8 @@ function renderAwardBoard() {
                     <td><strong>${escapeHtml(vendorLabel(row.invitation))}</strong><small>${escapeHtml(row.invitation.vendors?.domain || row.invitation.vendors?.primary_email || "")}</small></td>
                     <td>${formatMoney(row.amount, row.currency)}</td>
                     <td><span class="rfx-bid-delta" data-tone="${deltaTone}">${Number.isFinite(delta) ? formatMoney(delta, row.currency) : "-"}</span></td>
+                    <td><small>${escapeHtml(offerCommercialSummary(row.invitation))}</small></td>
+                    <td><small>${escapeHtml(offerAvailabilitySummary(row.invitation))}</small></td>
                     <td>${escapeHtml(row.invitation.weekly_capacity ?? "-")}</td>
                     <td>${escapeHtml(row.invitation.transit_days ?? "-")}</td>
                     <td>${awardRoleChip(row.invitation)}</td>
@@ -2789,7 +2835,7 @@ function renderResponseBoard() {
   const bidRows = rows.filter(({ invitation }) => hasBid(invitation));
   responseSummary.textContent = `${formatNumber(bidRows.length)} bids / ${formatNumber(rows.length)} active rows`;
   if (!rows.length) {
-    responseBody.innerHTML = `<tr><td colspan="8">No carrier bids yet.</td></tr>`;
+    responseBody.innerHTML = `<tr><td colspan="10">No carrier bids yet.</td></tr>`;
     return;
   }
   responseBody.innerHTML = rows.map(({ lane, invitation }) => {
@@ -2804,6 +2850,8 @@ function renderResponseBoard() {
         <td>${invitation.bid_rate !== null ? formatMoney(invitation.bid_rate, invitation.currency || lane.currency) : "-"}</td>
         <td>${benchmark ? formatMoney(benchmark.all_in_rate, benchmark.currency) : "-"}</td>
         <td><span class="rfx-bid-delta" data-tone="${deltaTone}">${Number.isFinite(delta) ? formatMoney(delta, invitation.currency || lane.currency) : "-"}</span></td>
+        <td><small>${escapeHtml(offerCommercialSummary(invitation))}</small></td>
+        <td><small>${escapeHtml(offerAvailabilitySummary(invitation))}</small></td>
         <td>${escapeHtml(invitation.weekly_capacity ?? "-")}</td>
         <td>${escapeHtml(invitation.transit_days ?? "-")}</td>
       </tr>

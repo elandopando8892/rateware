@@ -41,6 +41,53 @@ function cleanNumber(value: unknown) {
   return Number.isFinite(numberValue) ? numberValue : null;
 }
 
+function cleanBoolean(value: unknown) {
+  if (typeof value === "boolean") return value;
+  const text = cleanText(value)?.toLowerCase();
+  if (!text) return null;
+  if (["true", "1", "yes", "y", "on", "checked"].includes(text)) return true;
+  if (["false", "0", "no", "n", "off", "unchecked"].includes(text)) return false;
+  return null;
+}
+
+function cleanTimestamp(value: unknown) {
+  const text = cleanText(value);
+  if (!text) return null;
+  const date = new Date(text);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+function cleanPercent(value: unknown) {
+  const numberValue = cleanNumber(value);
+  if (numberValue === null) return null;
+  return Math.min(100, Math.max(0, numberValue));
+}
+
+function normalizeCommercialModel(value: unknown) {
+  const text = cleanText(value)?.toLowerCase().replace(/[\s-]+/g, "_");
+  if (!text) return null;
+  const aliases: Record<string, string> = {
+    direct: "direct_cost_plus",
+    direct_carrier: "direct_cost_plus",
+    cost_plus: "direct_cost_plus",
+    direct_cost_plus: "direct_cost_plus",
+    carrier_share: "carrier_share",
+    shared_margin: "carrier_share",
+    share: "carrier_share",
+    xbf: "xbf_buy_sell",
+    buy_sell: "xbf_buy_sell",
+    xbf_buy_sell: "xbf_buy_sell"
+  };
+  const normalized = aliases[text] || text;
+  return ["direct_cost_plus", "carrier_share", "xbf_buy_sell"].includes(normalized) ? normalized : null;
+}
+
+function availabilityValidationStatus(value: unknown, mirrorEnabled: boolean) {
+  const text = cleanText(value)?.toLowerCase();
+  if (text && ["not_requested", "mirror_requested", "mirror_enabled", "validated", "rejected"].includes(text)) return text;
+  return mirrorEnabled ? "mirror_requested" : "not_requested";
+}
+
 function relationRecord(value: unknown): Record<string, unknown> {
   if (Array.isArray(value)) return (value[0] || {}) as Record<string, unknown>;
   return value && typeof value === "object" ? value as Record<string, unknown> : {};
@@ -729,6 +776,15 @@ function liveBoardFromRows(currentInvitation: Record<string, unknown>, peerRows:
       currency: cleanText(row.currency) || cleanText(currentInvitation.currency) || "USD",
       weekly_capacity: cleanNumber(row.weekly_capacity),
       transit_days: cleanNumber(row.transit_days),
+      commercial_model: cleanText(row.commercial_model),
+      marksman_margin_pct: cleanNumber(row.marksman_margin_pct),
+      carrier_share_pct: cleanNumber(row.carrier_share_pct),
+      best_alternative_offered: cleanBoolean(row.best_alternative_offered) === true,
+      alternative_equipment: cleanText(row.alternative_equipment),
+      alternative_units: cleanNumber(row.alternative_units),
+      equipment_available: cleanBoolean(row.equipment_available),
+      eta_pickup: cleanText(row.eta_pickup),
+      eta_delivery: cleanText(row.eta_delivery),
       responded_at: cleanText(row.responded_at || row.updated_at),
       vendor_name: cleanText(relationRecord(row.vendors).vendor_name),
       vendor_domain: cleanText(relationRecord(row.vendors).domain),
@@ -806,6 +862,15 @@ function liveBoardFromRows(currentInvitation: Record<string, unknown>, peerRows:
       currency: row.currency,
       weekly_capacity: row.weekly_capacity,
       transit_days: row.transit_days,
+      commercial_model: row.commercial_model,
+      marksman_margin_pct: row.is_current || visibility.competitor_rates_visible ? row.marksman_margin_pct : null,
+      carrier_share_pct: row.is_current || visibility.competitor_rates_visible ? row.carrier_share_pct : null,
+      best_alternative_offered: row.best_alternative_offered,
+      alternative_equipment: row.alternative_equipment,
+      alternative_units: row.alternative_units,
+      equipment_available: row.equipment_available,
+      eta_pickup: row.eta_pickup,
+      eta_delivery: row.eta_delivery,
       responded_at: row.responded_at,
       is_current: row.is_current
     }))
@@ -828,6 +893,20 @@ function carrierBusinessBook(currentInvitation: Record<string, unknown>, invited
       currency: cleanText(row.currency) || cleanText(lane.currency) || "USD",
       weekly_capacity: cleanNumber(row.weekly_capacity),
       transit_days: cleanNumber(row.transit_days),
+      commercial_model: cleanText(row.commercial_model),
+      marksman_margin_pct: cleanNumber(row.marksman_margin_pct),
+      carrier_share_pct: cleanNumber(row.carrier_share_pct),
+      best_alternative_offered: cleanBoolean(row.best_alternative_offered) === true,
+      alternative_equipment: cleanText(row.alternative_equipment),
+      alternative_units: cleanNumber(row.alternative_units),
+      alternative_notes: cleanText(row.alternative_notes),
+      equipment_available: cleanBoolean(row.equipment_available),
+      unit_details: cleanText(row.unit_details),
+      eta_pickup: row.eta_pickup,
+      eta_delivery: row.eta_delivery,
+      mirror_account_enabled: cleanBoolean(row.mirror_account_enabled) === true,
+      availability_validation_status: cleanText(row.availability_validation_status),
+      availability_validation_notes: cleanText(row.availability_validation_notes),
       award_role: cleanText(row.award_role),
       award_status: awardOutcome(row),
       award_reason: cleanText(row.award_reason),
@@ -902,6 +981,20 @@ Deno.serve(async (request) => {
           weekly_capacity,
           transit_days,
           notes,
+          commercial_model,
+          marksman_margin_pct,
+          carrier_share_pct,
+          best_alternative_offered,
+          alternative_equipment,
+          alternative_units,
+          alternative_notes,
+          equipment_available,
+          unit_details,
+          eta_pickup,
+          eta_delivery,
+          mirror_account_enabled,
+          availability_validation_status,
+          availability_validation_notes,
           award_role,
           award_reason,
           award_notes,
@@ -929,7 +1022,7 @@ Deno.serve(async (request) => {
 
       const peersResult = await supabase
         .from("rfx_lane_vendors")
-        .select("id,bid_rate,currency,weekly_capacity,transit_days,responded_at,updated_at,vendors(vendor_name,domain)")
+        .select("id,bid_rate,currency,weekly_capacity,transit_days,commercial_model,marksman_margin_pct,carrier_share_pct,best_alternative_offered,alternative_equipment,alternative_units,equipment_available,eta_pickup,eta_delivery,responded_at,updated_at,vendors(vendor_name,domain)")
         .eq("rfx_lane_id", result.data.rfx_lane_id)
         .neq("id", result.data.id)
         .not("bid_rate", "is", null)
@@ -954,6 +1047,20 @@ Deno.serve(async (request) => {
               currency,
               weekly_capacity,
               transit_days,
+              commercial_model,
+              marksman_margin_pct,
+              carrier_share_pct,
+              best_alternative_offered,
+              alternative_equipment,
+              alternative_units,
+              alternative_notes,
+              equipment_available,
+              unit_details,
+              eta_pickup,
+              eta_delivery,
+              mirror_account_enabled,
+              availability_validation_status,
+              availability_validation_notes,
               award_role,
               award_reason,
               award_notes,
@@ -1074,6 +1181,8 @@ Deno.serve(async (request) => {
     if (body.action === "submit_bid") {
       const bidRate = cleanNumber(body.bid_rate);
       if (bidRate === null) return jsonResponse({ error: "Bid rate must be a valid number." }, 400);
+      const mirrorEnabled = cleanBoolean(body.mirror_account_enabled) === true;
+      const equipmentAvailable = cleanBoolean(body.equipment_available);
       const invitationResult = await supabase
         .from("rfx_lane_vendors")
         .select(`
@@ -1095,6 +1204,20 @@ Deno.serve(async (request) => {
         currency: cleanText(body.currency)?.toUpperCase() || "USD",
         weekly_capacity: cleanNumber(body.weekly_capacity),
         transit_days: cleanNumber(body.transit_days),
+        commercial_model: normalizeCommercialModel(body.commercial_model),
+        marksman_margin_pct: cleanPercent(body.marksman_margin_pct),
+        carrier_share_pct: cleanPercent(body.carrier_share_pct),
+        best_alternative_offered: cleanBoolean(body.best_alternative_offered) === true,
+        alternative_equipment: cleanText(body.alternative_equipment),
+        alternative_units: cleanNumber(body.alternative_units),
+        alternative_notes: cleanText(body.alternative_notes),
+        equipment_available: equipmentAvailable,
+        unit_details: cleanText(body.unit_details),
+        eta_pickup: cleanTimestamp(body.eta_pickup),
+        eta_delivery: cleanTimestamp(body.eta_delivery),
+        mirror_account_enabled: mirrorEnabled,
+        availability_validation_status: availabilityValidationStatus(body.availability_validation_status, mirrorEnabled),
+        availability_validation_notes: cleanText(body.availability_validation_notes),
         notes: cleanText(body.notes),
         response_source: "carrier_portal",
         responded_at: new Date().toISOString(),
@@ -1105,7 +1228,7 @@ Deno.serve(async (request) => {
         .from("rfx_lane_vendors")
         .update(patch)
         .eq("id", invitationResult.data.id)
-        .select("id,invitation_status,bid_rate,currency,weekly_capacity,transit_days,notes,responded_at")
+        .select("id,invitation_status,bid_rate,currency,weekly_capacity,transit_days,commercial_model,marksman_margin_pct,carrier_share_pct,best_alternative_offered,alternative_equipment,alternative_units,alternative_notes,equipment_available,unit_details,eta_pickup,eta_delivery,mirror_account_enabled,availability_validation_status,availability_validation_notes,notes,responded_at")
         .single();
       if (result.error) throw result.error;
 
@@ -1131,6 +1254,8 @@ Deno.serve(async (request) => {
           body_preview: [
             vendor?.vendor_name || vendor?.domain || "Carrier",
             `${bidRate} ${patch.currency}`,
+            patch.commercial_model ? `model ${patch.commercial_model}` : null,
+            equipmentAvailable === null ? null : `available ${equipmentAvailable ? "yes" : "no"}`,
             lane?.origin && lane?.destination ? `${lane.origin} -> ${lane.destination}` : null
           ].filter(Boolean).join(" | "),
           metadata: {

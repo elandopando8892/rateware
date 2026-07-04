@@ -44,6 +44,7 @@ const googleChatInboundMigration = readFileSync(new URL("../supabase/migrations/
 const bidRoomCommunicationActionsMigration = readFileSync(new URL("../supabase/migrations/20260704062000_bid_room_communication_actions.sql", import.meta.url), "utf8");
 const bidRoomChatBidUpdatesMigration = readFileSync(new URL("../supabase/migrations/20260704070000_bid_room_chat_bid_updates.sql", import.meta.url), "utf8");
 const rfxAwardCloseoutMigration = readFileSync(new URL("../supabase/migrations/20260704080000_rfx_award_closeout.sql", import.meta.url), "utf8");
+const rfxBidSubmissionV2Migration = readFileSync(new URL("../supabase/migrations/20260704093000_rfx_bid_submission_v2.sql", import.meta.url), "utf8");
 
 for (const domain of ["gmail.com", "hotmail.com", "yahoo.com", "outlook.com", "yahoo.com.mx"]) {
   assert.match(apiSource, new RegExp(`"${domain.replace(".", "\\.")}"`), `generic domain ${domain} should be blocked`);
@@ -162,6 +163,21 @@ assert.match(rfxEventsSource, /generateAwardNoticeDrafts/, "Bid Room should gene
 assert.match(rfxEventsSource, /sendAwardNoticeDrafts/, "Bid Room should send generated award notices from Step 6");
 assert.match(rfxBidApiSource, /award_outcome/, "Carrier portal API should expose award outcome per invitation");
 assert.match(rfxBidSource, /renderAwardOutcome/, "Carrier portal should render awarded, backup, and not-awarded outcomes");
+assert.match(rfxBidSubmissionV2Migration, /commercial_model text/, "RFx bid submission v2 should persist commercial model");
+assert.match(rfxBidSubmissionV2Migration, /best_alternative_offered boolean not null default false/, "RFx bid submission v2 should persist best-alternative offers");
+assert.match(rfxBidSubmissionV2Migration, /eta_pickup timestamptz/, "RFx bid submission v2 should persist pickup ETA");
+assert.match(rfxBidSubmissionV2Migration, /mirror_account_enabled boolean not null default false/, "RFx bid submission v2 should persist mirror account requests");
+assert.match(rfxBidApiSource, /normalizeCommercialModel/, "Carrier portal API should normalize commercial model submissions");
+assert.match(rfxBidApiSource, /commercial_model: normalizeCommercialModel\(body\.commercial_model\)/, "Carrier portal API should write commercial model");
+assert.match(rfxBidApiSource, /best_alternative_offered: cleanBoolean\(body\.best_alternative_offered\) === true/, "Carrier portal API should write best-alternative flag");
+assert.match(rfxBidApiSource, /eta_pickup: cleanTimestamp\(body\.eta_pickup\)/, "Carrier portal API should write pickup ETA");
+assert.match(apiSource, /commercial_model = normalizeCommercialModel|patch\.commercial_model = normalizeCommercialModel/, "Internal API should accept commercial model bid updates");
+assert.match(rfxBidSource, /bid-commercial-model/, "Carrier portal should render commercial model input");
+assert.match(rfxBidSource, /bid-alt-enabled/, "Carrier portal should render best-alternative input");
+assert.match(rfxBidSource, /bid-equipment-available/, "Carrier portal should render equipment availability input");
+assert.match(rfxBidSource, /bid-eta-pickup/, "Carrier portal should render pickup ETA input");
+assert.match(rfxEventsSource, /offerCommercialSummary/, "Internal Bid Room should display commercial offer summaries");
+assert.match(rfxEventsSource, /offerAvailabilitySummary/, "Internal Bid Room should display availability summaries");
 assert.match(rfxEventsSource, /AI proposes, user confirms/, "Bid Room communications should keep bid updates confirm-first");
 assert.match(rfxEventsSource, /updateBidRoomChatThread/, "Bid Room communications should update thread actions from the UI");
 assert.match(rfxServiceSource, /update_bid_room_chat_thread/, "RFx service should expose Bid Room thread actions");
