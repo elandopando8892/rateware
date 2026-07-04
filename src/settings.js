@@ -2,11 +2,16 @@ import { initAuthControls, requirePrivatePage } from "./auth.js";
 import {
   archiveCatalogValue,
   disconnectGmailConnection,
+  disconnectGoogleChatConnection,
   fetchCatalogValues,
   fetchGmailConnections,
+  fetchGoogleChatConnections,
+  fetchGoogleChatSpaces,
   fetchSaasSettings,
   saveCatalogValue,
+  saveGoogleChatSettings,
   startGmailOAuth,
+  startGoogleChatOAuth,
   updateOnboardingTask,
   updateSaasOrganization,
   updateSaasProfile
@@ -31,6 +36,13 @@ const gmailConnectionStatus = document.querySelector("#gmail-connection-status")
 const connectGmailButton = document.querySelector("#connect-gmail-button");
 const disconnectGmailButton = document.querySelector("#disconnect-gmail-button");
 const refreshGmailConnectionButton = document.querySelector("#refresh-gmail-connection");
+const googleChatConnectionCard = document.querySelector("#google-chat-connection-card");
+const googleChatConnectionStatus = document.querySelector("#google-chat-connection-status");
+const connectGoogleChatButton = document.querySelector("#connect-google-chat-button");
+const disconnectGoogleChatButton = document.querySelector("#disconnect-google-chat-button");
+const refreshGoogleChatConnectionButton = document.querySelector("#refresh-google-chat-connection");
+const googleChatSpaceSelect = document.querySelector("#google-chat-space-select");
+const saveGoogleChatSpaceButton = document.querySelector("#save-google-chat-space-button");
 const catalogValueForm = document.querySelector("#catalog-value-form");
 const catalogCategorySelect = document.querySelector("#catalog-category");
 const catalogCategoryFilter = document.querySelector("#catalog-category-filter");
@@ -64,6 +76,7 @@ let currentSession = null;
 let currentCatalogValues = [];
 initWorkbenchTabs({ defaultView: "access" });
 const GMAIL_ALLOWED_SENDER = "sales@heymarksman.com";
+const GOOGLE_CHAT_ALLOWED_ACCOUNT = "sales@heymarksman.com";
 
 const CATALOG_CATEGORIES = [
   { key: "equipment", label: "Equipment" },
@@ -199,6 +212,17 @@ function humanGmailMessage(message = "") {
   return text || "Gmail action could not be completed.";
 }
 
+function humanGoogleChatMessage(message = "") {
+  const text = String(message || "");
+  if (/GOOGLE_CLIENT|GOOGLE_CLIENT_SECRET|GMAIL_TOKEN_ENCRYPTION_KEY|OAuth is not configured|OAuth client is not configured|Google secrets|Supabase secrets/i.test(text)) {
+    return "Google Chat connector is not enabled for this deployment yet. No user credentials are required.";
+  }
+  if (/space/i.test(text) && /not available|not found|not configured|Select/i.test(text)) {
+    return "Select a Google Chat space for Bid Room messages.";
+  }
+  return text || "Google Chat action could not be completed.";
+}
+
 function renderGmailConnections(data = currentSettings?.gmail) {
   if (!gmailConnectionCard) return;
   const row = data?.rows?.[0] || {};
@@ -231,6 +255,60 @@ function renderGmailConnections(data = currentSettings?.gmail) {
       ? (connected ? "Gmail is connected for outbound Bid Room invitations." : "Click Connect Gmail and approve access in Google.")
       : "Gmail connector is not enabled yet. No user credentials are required.",
     configured ? (connected ? "success" : "neutral") : "warning"
+  );
+}
+
+function renderGoogleChatConnections(data = currentSettings?.google_chat, spacesData = null) {
+  if (!googleChatConnectionCard) return;
+  const row = data?.rows?.[0] || {};
+  const connected = row.status === "connected";
+  const configured = row.configured === true;
+  const hasSpace = Boolean(row.default_space_name);
+  const statusLabel = connected
+    ? hasSpace ? "Connected" : "Connected, select Space"
+    : row.status === "error" ? "Connection error" : row.status === "revoked" ? "Disconnected" : "Not connected";
+  const connectionCopy = connected
+    ? hasSpace
+      ? "Bid Room chat messages will mirror into the selected Google Chat Space."
+      : "Google Chat is connected. Select the Space where Bid Room threads should appear."
+    : configured
+      ? "Connect once with Google consent. Rateware will use this account to mirror Bid Room threads."
+      : "This Google Chat connector is not enabled for the deployment yet.";
+  googleChatConnectionCard.innerHTML = `
+    <strong>${escapeHtml(GOOGLE_CHAT_ALLOWED_ACCOUNT)}</strong>
+    <p>${escapeHtml(connectionCopy)}</p>
+    <dl class="diagnostic-list compact-list">
+      <div><dt>Status</dt><dd><span class="status-pill ${connected && hasSpace ? "success" : row.status === "error" ? "danger" : "neutral"}">${escapeHtml(statusLabel)}</span></dd></div>
+      <div><dt>Account</dt><dd>${escapeHtml(GOOGLE_CHAT_ALLOWED_ACCOUNT)}</dd></div>
+      <div><dt>Bid Room Space</dt><dd>${escapeHtml(row.default_space_display_name || row.default_space_name || "-")}</dd></div>
+      <div><dt>Updated</dt><dd>${escapeHtml(row.updated_at ? new Date(row.updated_at).toLocaleString() : "-")}</dd></div>
+    </dl>
+    ${row.last_error ? `<p class="error-text">${escapeHtml(humanGoogleChatMessage(row.last_error))}</p>` : ""}
+  `;
+  if (connectGoogleChatButton) {
+    connectGoogleChatButton.disabled = !configured || connected;
+    connectGoogleChatButton.textContent = connected ? "Google Chat connected" : "Connect Google Chat";
+  }
+  if (disconnectGoogleChatButton) disconnectGoogleChatButton.disabled = !connected && row.status !== "error";
+  if (saveGoogleChatSpaceButton) saveGoogleChatSpaceButton.disabled = !connected || !googleChatSpaceSelect?.value;
+  const spaces = spacesData?.rows || [];
+  if (googleChatSpaceSelect) {
+    const selected = row.default_space_name || spacesData?.default_space_name || googleChatSpaceSelect.value || "";
+    googleChatSpaceSelect.innerHTML = connected
+      ? `<option value="">Select Bid Room Space</option>${spaces.map((space) => `
+          <option value="${escapeHtml(space.name)}">${escapeHtml(space.display_name || space.name)}</option>
+        `).join("")}`
+      : `<option value="">Connect Google Chat to load spaces</option>`;
+    googleChatSpaceSelect.value = spaces.some((space) => space.name === selected) ? selected : "";
+  }
+  setStatus(
+    googleChatConnectionStatus,
+    configured
+      ? (connected
+          ? (hasSpace ? "Google Chat is ready for Bid Room threads." : "Select and save the Bid Room Space.")
+          : "Click Connect Google Chat and approve access in Google.")
+      : "Google Chat connector is not enabled yet. No user credentials are required.",
+    configured ? (connected && hasSpace ? "success" : "neutral") : "warning"
   );
 }
 
@@ -281,12 +359,16 @@ function renderSettings(settings) {
   renderOnboarding(settings);
   renderAudit(settings);
   renderGmailConnections(settings.gmail);
+  renderGoogleChatConnections(settings.google_chat);
 }
 
 async function loadSettings() {
   try {
     const settings = await fetchSaasSettings();
     renderSettings(settings);
+    if (settings.google_chat?.rows?.[0]?.status === "connected") {
+      await loadGoogleChatConnections();
+    }
   } catch (error) {
     auditLogBody.innerHTML = `<tr><td colspan="5">${escapeHtml(error.message)}</td></tr>`;
   }
@@ -312,6 +394,20 @@ async function loadGmailConnections() {
   }
 }
 
+async function loadGoogleChatConnections() {
+  setStatus(googleChatConnectionStatus, "Checking Google Chat connection...");
+  try {
+    const data = await fetchGoogleChatConnections();
+    currentSettings = currentSettings || {};
+    currentSettings.google_chat = data;
+    const row = data?.rows?.[0] || {};
+    const spaces = row.status === "connected" ? await fetchGoogleChatSpaces() : null;
+    renderGoogleChatConnections(data, spaces);
+  } catch (error) {
+    setStatus(googleChatConnectionStatus, humanGoogleChatMessage(error.message), "error");
+  }
+}
+
 initAuthControls();
 populateCatalogCategoryControls();
 requirePrivatePage().then((session) => {
@@ -322,6 +418,7 @@ requirePrivatePage().then((session) => {
 refreshButton?.addEventListener("click", loadSettings);
 refreshCatalogButton?.addEventListener("click", loadCatalogValues);
 refreshGmailConnectionButton?.addEventListener("click", loadGmailConnections);
+refreshGoogleChatConnectionButton?.addEventListener("click", loadGoogleChatConnections);
 
 connectGmailButton?.addEventListener("click", async () => {
   setStatus(gmailConnectionStatus, `Preparing Google consent for ${GMAIL_ALLOWED_SENDER}...`);
@@ -341,6 +438,46 @@ disconnectGmailButton?.addEventListener("click", async () => {
     await loadGmailConnections();
   } catch (error) {
     setStatus(gmailConnectionStatus, humanGmailMessage(error.message), "error");
+  }
+});
+
+connectGoogleChatButton?.addEventListener("click", async () => {
+  setStatus(googleChatConnectionStatus, `Preparing Google consent for ${GOOGLE_CHAT_ALLOWED_ACCOUNT}...`);
+  try {
+    const result = await startGoogleChatOAuth(GOOGLE_CHAT_ALLOWED_ACCOUNT, "settings.html?view=integrations");
+    if (!result.authorization_url) throw new Error("Google authorization URL was not returned.");
+    window.location.href = result.authorization_url;
+  } catch (error) {
+    setStatus(googleChatConnectionStatus, humanGoogleChatMessage(error.message), "error");
+  }
+});
+
+disconnectGoogleChatButton?.addEventListener("click", async () => {
+  setStatus(googleChatConnectionStatus, "Disconnecting Google Chat...");
+  try {
+    await disconnectGoogleChatConnection();
+    await loadGoogleChatConnections();
+  } catch (error) {
+    setStatus(googleChatConnectionStatus, humanGoogleChatMessage(error.message), "error");
+  }
+});
+
+googleChatSpaceSelect?.addEventListener("change", () => {
+  if (saveGoogleChatSpaceButton) saveGoogleChatSpaceButton.disabled = !googleChatSpaceSelect.value;
+});
+
+saveGoogleChatSpaceButton?.addEventListener("click", async () => {
+  const spaceName = googleChatSpaceSelect?.value || "";
+  if (!spaceName) {
+    setStatus(googleChatConnectionStatus, "Select a Google Chat space first.", "error");
+    return;
+  }
+  setStatus(googleChatConnectionStatus, "Saving Bid Room Space...");
+  try {
+    await saveGoogleChatSettings(spaceName);
+    await loadGoogleChatConnections();
+  } catch (error) {
+    setStatus(googleChatConnectionStatus, humanGoogleChatMessage(error.message), "error");
   }
 });
 catalogCategoryFilter?.addEventListener("change", loadCatalogValues);

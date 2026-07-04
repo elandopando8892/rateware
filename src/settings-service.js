@@ -46,3 +46,28 @@ export async function startGmailOAuth(mailboxEmail, redirectAfter = "settings.ht
 export async function disconnectGmailConnection() {
   return (await callRatewareApi("disconnect_gmail_connection")).row;
 }
+
+export async function fetchGoogleChatConnections() {
+  return await callRatewareApi("list_google_chat_connections");
+}
+
+export async function startGoogleChatOAuth(accountEmail, redirectAfter = "settings.html?view=integrations") {
+  return await callRatewareApi("start_google_chat_oauth", {
+    account_email: accountEmail,
+    redirect_after: redirectAfter
+  });
+}
+
+export async function disconnectGoogleChatConnection() {
+  return (await callRatewareApi("disconnect_google_chat_connection")).row;
+}
+
+export async function fetchGoogleChatSpaces() {
+  return await callRatewareApi("list_google_chat_spaces");
+}
+
+export async function saveGoogleChatSettings(defaultSpaceName) {
+  return (await callRatewareApi("save_google_chat_settings", {
+    default_space_name: defaultSpaceName
+  })).row;
+}

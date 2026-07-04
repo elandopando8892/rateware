@@ -9842,6 +9842,23 @@ select.staging-input {
   justify-self: start;
 }
 
+.settings-form.compact-form {
+  grid-template-columns: minmax(240px, 1fr) auto;
+  align-items: end;
+  margin: 10px 0 12px;
+}
+
+.settings-form.compact-form .wide-field,
+.settings-form.compact-form button {
+  grid-column: auto;
+}
+
+.integration-heading {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
 .settings-access-card {
   display: grid;
   gap: 6px;

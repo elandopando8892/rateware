@@ -37,6 +37,7 @@ const shipmentIdFilterMigration = readFileSync(new URL("../supabase/migrations/2
 const outreachSenderMigration = readFileSync(new URL("../supabase/migrations/20260703165000_outreach_sender_identity.sql", import.meta.url), "utf8");
 const bidVisibilityMigration = readFileSync(new URL("../supabase/migrations/20260703235500_rfx_bid_visibility_mode.sql", import.meta.url), "utf8");
 const bidRoomChatMigration = readFileSync(new URL("../supabase/migrations/20260704001000_bid_room_chat_threads.sql", import.meta.url), "utf8");
+const googleChatConnectionsMigration = readFileSync(new URL("../supabase/migrations/20260704012000_google_chat_connections.sql", import.meta.url), "utf8");
 
 for (const domain of ["gmail.com", "hotmail.com", "yahoo.com", "outlook.com", "yahoo.com.mx"]) {
   assert.match(apiSource, new RegExp(`"${domain.replace(".", "\\.")}"`), `generic domain ${domain} should be blocked`);
@@ -115,6 +116,13 @@ assert.match(rfxEventsSource, /fetchBidRoomChat/, "Bid Room UI should load chat 
 assert.match(rfxServiceSource, /postBidRoomChatMessage/, "RFx service should expose chat posting");
 assert.match(rfxBidSource, /carrier-chat-form/, "Carrier portal should render chat form");
 assert.match(stylesSource, /bid-room-chat-panel/, "Bid Room chat should have compact UI styling");
+assert.match(googleChatConnectionsMigration, /create table if not exists public\.google_chat_connections/, "Google Chat should store OAuth connections separately from Gmail");
+assert.match(apiSource, /start_google_chat_oauth/, "API should start Google Chat OAuth consent");
+assert.match(apiSource, /list_google_chat_spaces/, "API should list Google Chat spaces for the connected user");
+assert.match(apiSource, /chat\.messages\.create/, "Google Chat OAuth should request message creation scope");
+assert.match(apiSource, /syncBidRoomMessageToGoogleChatApi/, "Bid Room chat should prefer Google Chat API sync over webhook-only mirroring");
+assert.match(settingsHtml, /connect-google-chat-button/, "Settings should expose a Google Chat connection action");
+assert.match(settingsSource, /saveGoogleChatSettings/, "Settings should save the default Bid Room Google Chat Space");
 assert.match(apiSource, /sendOutreachMessages/, "API should send selected outreach messages through Gmail");
 assert.match(apiSource, /delete_outreach_messages/, "API should delete selected outreach draft rows");
 assert.match(apiSource, /sender_email: senderEmail/, "API should persist sender email on outreach draft rows");

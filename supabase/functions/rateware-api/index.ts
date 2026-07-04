@@ -8,6 +8,14 @@ const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
 const VENDOR_LOGOS_BUCKET = "vendor-logos";
 const GMAIL_ALLOWED_SENDER = (Deno.env.get("GMAIL_ALLOWED_SENDER") || "sales@heymarksman.com").trim().toLowerCase();
 const GMAIL_OAUTH_SCOPES = ["openid", "email", "profile", "https://www.googleapis.com/auth/gmail.send"];
+const GOOGLE_CHAT_ALLOWED_ACCOUNT = (Deno.env.get("GOOGLE_CHAT_ALLOWED_ACCOUNT") || GMAIL_ALLOWED_SENDER).trim().toLowerCase();
+const GOOGLE_CHAT_OAUTH_SCOPES = [
+  "openid",
+  "email",
+  "profile",
+  "https://www.googleapis.com/auth/chat.messages.create",
+  "https://www.googleapis.com/auth/chat.spaces.readonly"
+];
 const GOOGLE_CHAT_WEBHOOK_URL = Deno.env.get("GOOGLE_CHAT_WEBHOOK_URL");
 
 function getClient() {
@@ -6300,12 +6308,77 @@ function bidRoomThreadTitle(threadType: string, event: Record<string, unknown>, 
   return `Event: ${event.rfx_id || event.name || "Bid Room"}`;
 }
 
+async function syncBidRoomMessageToGoogleChatApi(
+  supabase: ReturnType<typeof createClient>,
+  thread: Record<string, unknown>,
+  message: Record<string, unknown>,
+  event: Record<string, unknown>
+) {
+  const ownerEmail = cleanText(message.owner_email || thread.owner_email || event.owner_email);
+  if (!ownerEmail) return { status: "not_configured", name: null };
+  const connectionResult = await supabase
+    .from("google_chat_connections")
+    .select("default_space_name,default_space_display_name,status")
+    .eq("owner_email", ownerEmail)
+    .eq("account_email", GOOGLE_CHAT_ALLOWED_ACCOUNT)
+    .eq("status", "connected")
+    .maybeSingle();
+  if (connectionResult.error) throw connectionResult.error;
+  const connection = connectionResult.data;
+  const spaceName = cleanText(connection?.default_space_name);
+  if (!connection || !spaceName) return { status: "not_configured", name: null };
+
+  const threadKey = cleanText(thread.google_chat_thread_key) || bidRoomGoogleThreadKey(thread.rfx_event_id, String(thread.thread_type || "event_group"), thread.rfx_lane_id, thread.vendor_id);
+  const sender = cleanText(message.sender_name || message.sender_email) || "Rateware";
+  const title = cleanText(thread.title) || cleanText(event.rfx_id || event.name) || "Bid Room";
+  const text = `*${title}*\n${sender}: ${cleanText(message.body) || ""}`;
+  try {
+    const accessToken = await googleChatAccessToken(supabase, { owner_email: ownerEmail });
+    const response = await fetch(`https://chat.googleapis.com/v1/${spaceName}/messages?messageReplyOption=REPLY_MESSAGE_FALLBACK_TO_NEW_THREAD`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        text,
+        thread: { threadKey }
+      })
+    });
+    const payload = await response.json().catch(() => ({}));
+    const status = response.ok ? "synced" : "error";
+    await supabase.from("bid_room_chat_messages").update({
+      google_chat_message_name: cleanText(payload.name),
+      google_chat_sync_status: status
+    }).eq("id", message.id);
+    await supabase.from("bid_room_chat_threads").update({
+      google_chat_space: spaceName,
+      google_chat_thread_key: threadKey,
+      google_chat_sync_status: status,
+      updated_at: new Date().toISOString()
+    }).eq("id", thread.id);
+    if (!response.ok) {
+      await supabase.from("google_chat_connections").update({
+        last_error: cleanText(payload?.error?.message) || `Google Chat send failed (${response.status}).`,
+        updated_at: new Date().toISOString()
+      }).eq("owner_email", ownerEmail).eq("account_email", GOOGLE_CHAT_ALLOWED_ACCOUNT);
+    }
+    return { status, name: cleanText(payload.name), space_name: spaceName };
+  } catch (error) {
+    await supabase.from("bid_room_chat_messages").update({ google_chat_sync_status: "error" }).eq("id", message.id);
+    await supabase.from("bid_room_chat_threads").update({ google_chat_sync_status: "error" }).eq("id", thread.id);
+    return { status: "error", name: null, error: String(error?.message || error) };
+  }
+}
+
 async function syncBidRoomMessageToGoogleChat(
   supabase: ReturnType<typeof createClient>,
   thread: Record<string, unknown>,
   message: Record<string, unknown>,
   event: Record<string, unknown>
 ) {
+  const apiSync = await syncBidRoomMessageToGoogleChatApi(supabase, thread, message, event);
+  if (apiSync.status !== "not_configured") return apiSync;
   if (!GOOGLE_CHAT_WEBHOOK_URL) return { status: "not_configured", name: null };
   const threadKey = cleanText(thread.google_chat_thread_key) || bidRoomGoogleThreadKey(thread.rfx_event_id, String(thread.thread_type || "event_group"), thread.rfx_lane_id, thread.vendor_id);
   const url = new URL(GOOGLE_CHAT_WEBHOOK_URL);
@@ -6392,7 +6465,7 @@ async function findOrCreateBidRoomChatThread(
     thread_type: threadType,
     title: cleanText(input.title) || bidRoomThreadTitle(threadType, event, lane, vendor),
     google_chat_thread_key: bidRoomGoogleThreadKey(event.id, threadType, lane?.id, vendor?.id),
-    google_chat_sync_status: GOOGLE_CHAT_WEBHOOK_URL ? "ready" : "not_configured",
+    google_chat_sync_status: "ready",
     metadata: {
       source: "rateware_bid_room",
       rfx_id: event.rfx_id || null
@@ -6437,9 +6510,17 @@ async function listBidRoomChat(supabase: ReturnType<typeof createClient>, user: 
     list.push(message);
     messagesByThread.set(String(message.thread_id), list);
   }
+  const chatConnection = await supabase
+    .from("google_chat_connections")
+    .select("default_space_name,status")
+    .eq("owner_email", user.owner_email)
+    .eq("account_email", GOOGLE_CHAT_ALLOWED_ACCOUNT)
+    .eq("status", "connected")
+    .maybeSingle();
+  if (chatConnection.error) throw chatConnection.error;
   return {
     event,
-    google_chat_configured: Boolean(GOOGLE_CHAT_WEBHOOK_URL),
+    google_chat_configured: Boolean(chatConnection.data?.default_space_name || GOOGLE_CHAT_WEBHOOK_URL),
     rows: threads.map((thread) => ({
       ...thread,
       messages: messagesByThread.get(String(thread.id)) || []
@@ -6465,7 +6546,7 @@ async function postBidRoomChatMessage(
     sender_name: cleanText(input.sender_name) || user.owner_email || "Procurement",
     sender_email: user.owner_email,
     body,
-    google_chat_sync_status: GOOGLE_CHAT_WEBHOOK_URL ? "pending" : "not_configured",
+    google_chat_sync_status: "pending",
     metadata: {
       source: "rateware_internal"
     }
@@ -6474,7 +6555,7 @@ async function postBidRoomChatMessage(
   if (messageResult.error) throw messageResult.error;
   await supabase.from("bid_room_chat_threads").update({ updated_at: new Date().toISOString() }).eq("id", thread.id);
   const sync = await syncBidRoomMessageToGoogleChat(supabase, thread, messageResult.data, event);
-  return { thread, message: { ...messageResult.data, google_chat_sync_status: sync.status }, google_chat_configured: Boolean(GOOGLE_CHAT_WEBHOOK_URL) };
+  return { thread, message: { ...messageResult.data, google_chat_sync_status: sync.status }, google_chat_configured: sync.status !== "not_configured" || Boolean(GOOGLE_CHAT_WEBHOOK_URL) };
 }
 
 function normalizeOutreachTemplate(input: Record<string, unknown>) {
@@ -6838,6 +6919,12 @@ function gmailRedirectUri() {
     || `${String(SUPABASE_URL || "").replace(/\/$/, "")}/functions/v1/gmail-oauth-callback`;
 }
 
+function googleChatRedirectUri() {
+  return Deno.env.get("GOOGLE_CHAT_OAUTH_REDIRECT_URI")
+    || Deno.env.get("GOOGLE_OAUTH_REDIRECT_URI")
+    || gmailRedirectUri();
+}
+
 function publicGmailConnection(row: Record<string, unknown> | null | undefined) {
   return {
     mailbox_email: GMAIL_ALLOWED_SENDER,
@@ -6864,6 +6951,115 @@ async function listGmailConnections(supabase: ReturnType<typeof createClient>, u
     allowed_sender: GMAIL_ALLOWED_SENDER,
     rows: [publicGmailConnection(result.data)]
   };
+}
+
+function publicGoogleChatConnection(row: Record<string, unknown> | null | undefined) {
+  return {
+    account_email: GOOGLE_CHAT_ALLOWED_ACCOUNT,
+    provider: "google_chat",
+    status: cleanText(row?.status) || "not_connected",
+    connected: cleanText(row?.status) === "connected",
+    scopes: Array.isArray(row?.scopes) ? row?.scopes : [],
+    token_expires_at: row?.token_expires_at || null,
+    updated_at: row?.updated_at || null,
+    last_error: row?.last_error || null,
+    default_space_name: row?.default_space_name || null,
+    default_space_display_name: row?.default_space_display_name || null,
+    configured: Boolean(Deno.env.get("GOOGLE_CLIENT_ID") && Deno.env.get("GOOGLE_CLIENT_SECRET") && Deno.env.get("GMAIL_TOKEN_ENCRYPTION_KEY"))
+  };
+}
+
+async function listGoogleChatConnections(supabase: ReturnType<typeof createClient>, user: { owner_email: string | null }) {
+  const result = await supabase
+    .from("google_chat_connections")
+    .select("account_email,provider,status,scopes,token_expires_at,updated_at,last_error,default_space_name,default_space_display_name")
+    .eq("owner_email", user.owner_email)
+    .eq("account_email", GOOGLE_CHAT_ALLOWED_ACCOUNT)
+    .maybeSingle();
+  if (result.error) throw result.error;
+  return {
+    allowed_account: GOOGLE_CHAT_ALLOWED_ACCOUNT,
+    rows: [publicGoogleChatConnection(result.data)]
+  };
+}
+
+async function startGoogleChatOauth(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_user_id: string | null; owner_email: string | null },
+  input: Record<string, unknown> = {}
+) {
+  const requestedAccount = (cleanText(input.account_email) || GOOGLE_CHAT_ALLOWED_ACCOUNT).toLowerCase();
+  if (requestedAccount !== GOOGLE_CHAT_ALLOWED_ACCOUNT) {
+    return {
+      error: `Only ${GOOGLE_CHAT_ALLOWED_ACCOUNT} can be connected to Google Chat for this workspace.`,
+      status: 400
+    };
+  }
+
+  const clientId = Deno.env.get("GOOGLE_CLIENT_ID");
+  const clientSecret = Deno.env.get("GOOGLE_CLIENT_SECRET");
+  const encryptionKey = Deno.env.get("GMAIL_TOKEN_ENCRYPTION_KEY");
+  if (!clientId || !clientSecret || !encryptionKey) {
+    return {
+      error: "Google Chat connector is not enabled for this deployment yet.",
+      status: 400,
+      configured: false
+    };
+  }
+
+  const state = crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "");
+  const redirectAfter = cleanText(input.redirect_after) || "settings.html?view=integrations&chat=connected";
+  const stateResult = await supabase.from("google_chat_oauth_states").insert({
+    state,
+    owner_user_id: user.owner_user_id,
+    owner_email: user.owner_email,
+    account_email: GOOGLE_CHAT_ALLOWED_ACCOUNT,
+    redirect_after: redirectAfter,
+    expires_at: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+    metadata: { requested_from: "settings", provider: "google_chat" }
+  });
+  if (stateResult.error) throw stateResult.error;
+
+  const params = new URLSearchParams({
+    client_id: clientId,
+    redirect_uri: googleChatRedirectUri(),
+    response_type: "code",
+    scope: GOOGLE_CHAT_OAUTH_SCOPES.join(" "),
+    state,
+    access_type: "offline",
+    prompt: "consent",
+    include_granted_scopes: "true",
+    login_hint: GOOGLE_CHAT_ALLOWED_ACCOUNT
+  });
+
+  return {
+    authorization_url: `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`,
+    account_email: GOOGLE_CHAT_ALLOWED_ACCOUNT,
+    redirect_uri: googleChatRedirectUri(),
+    scopes: GOOGLE_CHAT_OAUTH_SCOPES
+  };
+}
+
+async function disconnectGoogleChatConnection(supabase: ReturnType<typeof createClient>, user: { owner_email: string | null }) {
+  const result = await supabase
+    .from("google_chat_connections")
+    .upsert({
+      owner_email: user.owner_email,
+      account_email: GOOGLE_CHAT_ALLOWED_ACCOUNT,
+      provider: "google_chat",
+      status: "revoked",
+      access_token_encrypted: null,
+      refresh_token_encrypted: null,
+      token_expires_at: null,
+      default_space_name: null,
+      default_space_display_name: null,
+      last_error: null,
+      updated_at: new Date().toISOString()
+    }, { onConflict: "owner_email,account_email" })
+    .select("account_email,provider,status,scopes,token_expires_at,updated_at,last_error,default_space_name,default_space_display_name")
+    .single();
+  if (result.error) throw result.error;
+  return publicGoogleChatConnection(result.data);
 }
 
 async function startGmailOauth(
@@ -7088,6 +7284,127 @@ async function gmailAccessToken(supabase: ReturnType<typeof createClient>, user:
   return accessToken;
 }
 
+async function googleChatAccessToken(supabase: ReturnType<typeof createClient>, user: { owner_email: string | null }) {
+  const result = await supabase
+    .from("google_chat_connections")
+    .select("*")
+    .eq("owner_email", user.owner_email)
+    .eq("account_email", GOOGLE_CHAT_ALLOWED_ACCOUNT)
+    .eq("status", "connected")
+    .maybeSingle();
+  if (result.error) throw result.error;
+  const connection = result.data;
+  if (!connection) throw new Error(`Connect ${GOOGLE_CHAT_ALLOWED_ACCOUNT} in Settings before using Google Chat.`);
+
+  const expiresAt = connection.token_expires_at ? new Date(connection.token_expires_at).getTime() : 0;
+  if (connection.access_token_encrypted && expiresAt > Date.now() + 120_000) {
+    return await decryptGmailToken(connection.access_token_encrypted);
+  }
+
+  const clientId = Deno.env.get("GOOGLE_CLIENT_ID");
+  const clientSecret = Deno.env.get("GOOGLE_CLIENT_SECRET");
+  if (!clientId || !clientSecret) throw new Error("Google OAuth client is not configured.");
+  const refreshToken = await decryptGmailToken(connection.refresh_token_encrypted);
+  const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: clientId,
+      client_secret: clientSecret,
+      refresh_token: refreshToken,
+      grant_type: "refresh_token"
+    })
+  });
+  const tokenData = await tokenResponse.json();
+  if (!tokenResponse.ok || !tokenData.access_token) {
+    const message = cleanText(tokenData.error_description) || cleanText(tokenData.error) || "Google Chat token refresh failed.";
+    await supabase
+      .from("google_chat_connections")
+      .update({ status: "error", last_error: message, updated_at: new Date().toISOString() })
+      .eq("owner_email", user.owner_email)
+      .eq("account_email", GOOGLE_CHAT_ALLOWED_ACCOUNT);
+    throw new Error(message);
+  }
+
+  const accessToken = String(tokenData.access_token);
+  const expiresIn = Number(tokenData.expires_in) || 3600;
+  const update = await supabase
+    .from("google_chat_connections")
+    .update({
+      access_token_encrypted: await encryptGmailToken(accessToken),
+      token_expires_at: new Date(Date.now() + expiresIn * 1000).toISOString(),
+      last_error: null,
+      updated_at: new Date().toISOString()
+    })
+    .eq("owner_email", user.owner_email)
+    .eq("account_email", GOOGLE_CHAT_ALLOWED_ACCOUNT);
+  if (update.error) throw update.error;
+  return accessToken;
+}
+
+async function listGoogleChatSpaces(supabase: ReturnType<typeof createClient>, user: { owner_email: string | null }) {
+  const connectionResult = await supabase
+    .from("google_chat_connections")
+    .select("default_space_name,default_space_display_name,status")
+    .eq("owner_email", user.owner_email)
+    .eq("account_email", GOOGLE_CHAT_ALLOWED_ACCOUNT)
+    .eq("status", "connected")
+    .maybeSingle();
+  if (connectionResult.error) throw connectionResult.error;
+  if (!connectionResult.data) return { connected: false, rows: [], default_space_name: null };
+
+  const accessToken = await googleChatAccessToken(supabase, user);
+  const response = await fetch("https://chat.googleapis.com/v1/spaces?pageSize=100", {
+    headers: { Authorization: `Bearer ${accessToken}` }
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const message = cleanText(payload?.error?.message) || `Google Chat spaces lookup failed (${response.status}).`;
+    throw new Error(message);
+  }
+  const rows = Array.isArray(payload.spaces)
+    ? payload.spaces.map((space: Record<string, unknown>) => ({
+        name: cleanText(space.name),
+        display_name: cleanText(space.displayName) || cleanText(space.name),
+        type: cleanText(space.spaceType),
+        threaded: space.threaded
+      })).filter((space: Record<string, unknown>) => space.name)
+    : [];
+  return {
+    connected: true,
+    rows,
+    default_space_name: connectionResult.data.default_space_name || null,
+    default_space_display_name: connectionResult.data.default_space_display_name || null
+  };
+}
+
+async function saveGoogleChatSettings(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_email: string | null },
+  input: Record<string, unknown>
+) {
+  const spaceName = cleanText(input.default_space_name || input.space_name);
+  if (!spaceName) throw new Error("Select a Google Chat space first.");
+  const spaces = await listGoogleChatSpaces(supabase, user);
+  const selected = (spaces.rows || []).find((space: Record<string, unknown>) => cleanText(space.name) === spaceName);
+  if (!selected) throw new Error("Selected Google Chat space is not available to the connected account.");
+  const result = await supabase
+    .from("google_chat_connections")
+    .update({
+      default_space_name: selected.name,
+      default_space_display_name: selected.display_name,
+      last_error: null,
+      updated_at: new Date().toISOString()
+    })
+    .eq("owner_email", user.owner_email)
+    .eq("account_email", GOOGLE_CHAT_ALLOWED_ACCOUNT)
+    .eq("status", "connected")
+    .select("account_email,provider,status,scopes,token_expires_at,updated_at,last_error,default_space_name,default_space_display_name")
+    .single();
+  if (result.error) throw result.error;
+  return publicGoogleChatConnection(result.data);
+}
+
 function messageInvitationIds(message: Record<string, unknown>) {
   const metadata = objectRecord(message.metadata);
   const ids = Array.isArray(metadata.rfx_lane_vendor_ids)
@@ -7295,7 +7612,7 @@ function onboardingDefinition(summary: Record<string, unknown>, profile: Record<
 }
 
 async function buildSaasSettings(supabase: ReturnType<typeof createClient>, user: { owner_user_id: string | null; owner_email: string | null }) {
-  const [profile, organization, checklistResult, auditResult, uploads, vendors, pending, approved, rfxEvents, outreachMessages, gmailConnections] = await Promise.all([
+  const [profile, organization, checklistResult, auditResult, uploads, vendors, pending, approved, rfxEvents, outreachMessages, gmailConnections, googleChatConnections] = await Promise.all([
     ensureSaasProfile(supabase, user),
     ensureOrganization(supabase, user),
     supabase.from("onboarding_checklist").select("*").eq("owner_email", user.owner_email),
@@ -7306,7 +7623,8 @@ async function buildSaasSettings(supabase: ReturnType<typeof createClient>, user
     supabase.from("rate_staging").select("id", { count: "exact", head: true }).eq("status", "approved"),
     supabase.from("rfx_events").select("id", { count: "exact", head: true }).eq("owner_email", user.owner_email).neq("status", "archived"),
     supabase.from("outreach_messages").select("id", { count: "exact", head: true }).eq("owner_email", user.owner_email).neq("status", "archived"),
-    listGmailConnections(supabase, user)
+    listGmailConnections(supabase, user),
+    listGoogleChatConnections(supabase, user)
   ]);
 
   for (const result of [checklistResult, auditResult, uploads, vendors, pending, approved, rfxEvents, outreachMessages]) {
@@ -7334,7 +7652,8 @@ async function buildSaasSettings(supabase: ReturnType<typeof createClient>, user
     summary,
     onboarding,
     audit: auditResult.data || [],
-    gmail: gmailConnections
+    gmail: gmailConnections,
+    google_chat: googleChatConnections
   };
 }
 
@@ -9455,6 +9774,33 @@ Deno.serve(async (request) => {
     if (body.action === "disconnect_gmail_connection") {
       const row = await disconnectGmailConnection(supabase, user);
       await writeAuditLog(supabase, user, "gmail.disconnect", "gmail_mailbox_connections", GMAIL_ALLOWED_SENDER, `Disconnected ${GMAIL_ALLOWED_SENDER} from Gmail sending`);
+      return jsonResponse({ row });
+    }
+
+    if (body.action === "list_google_chat_connections") {
+      const result = await listGoogleChatConnections(supabase, user);
+      return jsonResponse(result);
+    }
+
+    if (body.action === "start_google_chat_oauth") {
+      const result = await startGoogleChatOauth(supabase, user, body);
+      if ("error" in result) return jsonResponse(result, Number(result.status) || 400);
+      return jsonResponse(result);
+    }
+
+    if (body.action === "disconnect_google_chat_connection") {
+      const row = await disconnectGoogleChatConnection(supabase, user);
+      await writeAuditLog(supabase, user, "google_chat.disconnect", "google_chat_connections", GOOGLE_CHAT_ALLOWED_ACCOUNT, `Disconnected ${GOOGLE_CHAT_ALLOWED_ACCOUNT} from Google Chat`);
+      return jsonResponse({ row });
+    }
+
+    if (body.action === "list_google_chat_spaces") {
+      return jsonResponse(await listGoogleChatSpaces(supabase, user));
+    }
+
+    if (body.action === "save_google_chat_settings") {
+      const row = await saveGoogleChatSettings(supabase, user, body);
+      await writeAuditLog(supabase, user, "google_chat.space.update", "google_chat_connections", row.default_space_name || GOOGLE_CHAT_ALLOWED_ACCOUNT, `Updated Google Chat default space to ${row.default_space_display_name || row.default_space_name || "selected space"}`);
       return jsonResponse({ row });
     }
 

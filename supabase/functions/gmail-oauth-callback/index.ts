@@ -7,6 +7,7 @@ const GOOGLE_CLIENT_ID = Deno.env.get("GOOGLE_CLIENT_ID");
 const GOOGLE_CLIENT_SECRET = Deno.env.get("GOOGLE_CLIENT_SECRET");
 const GMAIL_TOKEN_ENCRYPTION_KEY = Deno.env.get("GMAIL_TOKEN_ENCRYPTION_KEY");
 const GMAIL_ALLOWED_SENDER = (Deno.env.get("GMAIL_ALLOWED_SENDER") || "sales@heymarksman.com").trim().toLowerCase();
+const GOOGLE_CHAT_ALLOWED_ACCOUNT = (Deno.env.get("GOOGLE_CHAT_ALLOWED_ACCOUNT") || GMAIL_ALLOWED_SENDER).trim().toLowerCase();
 const RATEWARE_APP_ORIGIN = (Deno.env.get("RATEWARE_APP_ORIGIN") || "https://rateware.vercel.app").replace(/\/$/, "");
 
 function getClient() {
@@ -91,6 +92,7 @@ Deno.serve(async (request) => {
   if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders() });
 
   let stateRow: Record<string, unknown> | null = null;
+  let stateProvider = "gmail";
   const supabase = getClient();
 
   try {
@@ -101,17 +103,28 @@ Deno.serve(async (request) => {
     if (oauthError) return redirectTo("settings.html", { gmail: "error", reason: oauthError });
     if (!code || !state) return redirectTo("settings.html", { gmail: "error", reason: "missing_code_or_state" });
 
-    const stateResult = await supabase
+    const gmailStateResult = await supabase
       .from("gmail_oauth_states")
       .select("*")
       .eq("state", state)
       .maybeSingle();
-    if (stateResult.error) throw stateResult.error;
-    stateRow = stateResult.data || null;
-    if (!stateRow) return redirectTo("settings.html", { gmail: "error", reason: "invalid_state" });
-    if (stateRow.used_at) return redirectTo(cleanText(stateRow.redirect_after) || "settings.html", { gmail: "error", reason: "state_already_used" });
+    if (gmailStateResult.error) throw gmailStateResult.error;
+    stateRow = gmailStateResult.data || null;
+    if (!stateRow) {
+      const chatStateResult = await supabase
+        .from("google_chat_oauth_states")
+        .select("*")
+        .eq("state", state)
+        .maybeSingle();
+      if (chatStateResult.error) throw chatStateResult.error;
+      stateRow = chatStateResult.data || null;
+      stateProvider = "google_chat";
+    }
+    const statusParam = stateProvider === "google_chat" ? "chat" : "gmail";
+    if (!stateRow) return redirectTo("settings.html", { [statusParam]: "error", reason: "invalid_state" });
+    if (stateRow.used_at) return redirectTo(cleanText(stateRow.redirect_after) || "settings.html", { [statusParam]: "error", reason: "state_already_used" });
     if (new Date(String(stateRow.expires_at)).getTime() < Date.now()) {
-      return redirectTo(cleanText(stateRow.redirect_after) || "settings.html", { gmail: "error", reason: "state_expired" });
+      return redirectTo(cleanText(stateRow.redirect_after) || "settings.html", { [statusParam]: "error", reason: "state_expired" });
     }
 
     if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) throw new Error("Google OAuth client is not configured.");
@@ -133,16 +146,21 @@ Deno.serve(async (request) => {
     const accessToken = cleanText(tokenData.access_token);
     if (!accessToken) throw new Error("Google did not return an access token.");
     const googleUser = await fetchGoogleUserEmail(accessToken, cleanText(tokenData.id_token) || undefined);
-    const mailboxEmail = cleanText(stateRow.mailbox_email)?.toLowerCase() || GMAIL_ALLOWED_SENDER;
-    if (googleUser.email !== mailboxEmail || googleUser.email !== GMAIL_ALLOWED_SENDER) {
-      throw new Error(`Connected Google account must be ${GMAIL_ALLOWED_SENDER}.`);
+    const expectedEmail = stateProvider === "google_chat"
+      ? cleanText(stateRow.account_email)?.toLowerCase() || GOOGLE_CHAT_ALLOWED_ACCOUNT
+      : cleanText(stateRow.mailbox_email)?.toLowerCase() || GMAIL_ALLOWED_SENDER;
+    const requiredEmail = stateProvider === "google_chat" ? GOOGLE_CHAT_ALLOWED_ACCOUNT : GMAIL_ALLOWED_SENDER;
+    if (googleUser.email !== expectedEmail || googleUser.email !== requiredEmail) {
+      throw new Error(`Connected Google account must be ${requiredEmail}.`);
     }
 
+    const connectionTable = stateProvider === "google_chat" ? "google_chat_connections" : "gmail_mailbox_connections";
+    const accountColumn = stateProvider === "google_chat" ? "account_email" : "mailbox_email";
     const existing = await supabase
-      .from("gmail_mailbox_connections")
+      .from(connectionTable)
       .select("refresh_token_encrypted")
       .eq("owner_email", stateRow.owner_email)
-      .eq("mailbox_email", mailboxEmail)
+      .eq(accountColumn, expectedEmail)
       .maybeSingle();
     if (existing.error) throw existing.error;
 
@@ -153,12 +171,24 @@ Deno.serve(async (request) => {
     if (!refreshTokenEncrypted) throw new Error("Google did not return a refresh token. Retry consent or revoke the app in Google and connect again.");
 
     const expiresIn = Number(tokenData.expires_in) || 3600;
-    const connectionResult = await supabase
-      .from("gmail_mailbox_connections")
-      .upsert({
+    const connectionRow = stateProvider === "google_chat" ? {
         owner_user_id: stateRow.owner_user_id,
         owner_email: stateRow.owner_email,
-        mailbox_email: mailboxEmail,
+        account_email: expectedEmail,
+        provider: "google_chat",
+        status: "connected",
+        scopes: String(tokenData.scope || "").split(/\s+/).filter(Boolean),
+        access_token_encrypted: accessTokenEncrypted,
+        refresh_token_encrypted: refreshTokenEncrypted,
+        token_expires_at: new Date(Date.now() + expiresIn * 1000).toISOString(),
+        google_sub: googleUser.sub,
+        last_error: null,
+        updated_at: new Date().toISOString(),
+        metadata: { token_type: tokenData.token_type || "Bearer" }
+      } : {
+        owner_user_id: stateRow.owner_user_id,
+        owner_email: stateRow.owner_email,
+        mailbox_email: expectedEmail,
         provider: "gmail",
         status: "connected",
         scopes: String(tokenData.scope || "").split(/\s+/).filter(Boolean),
@@ -169,18 +199,31 @@ Deno.serve(async (request) => {
         last_error: null,
         updated_at: new Date().toISOString(),
         metadata: { token_type: tokenData.token_type || "Bearer" }
-      }, { onConflict: "owner_email,mailbox_email" });
+      };
+    const connectionResult = await supabase
+      .from(connectionTable)
+      .upsert(connectionRow, { onConflict: stateProvider === "google_chat" ? "owner_email,account_email" : "owner_email,mailbox_email" });
     if (connectionResult.error) throw connectionResult.error;
 
     await supabase
-      .from("gmail_oauth_states")
+      .from(stateProvider === "google_chat" ? "google_chat_oauth_states" : "gmail_oauth_states")
       .update({ used_at: new Date().toISOString() })
       .eq("state", state);
 
-    return redirectTo(cleanText(stateRow.redirect_after) || "settings.html", { gmail: "connected" });
+    return redirectTo(cleanText(stateRow.redirect_after) || "settings.html", { [statusParam]: "connected" });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    if (stateRow?.owner_email && stateRow?.mailbox_email) {
+    if (stateProvider === "google_chat" && stateRow?.owner_email && stateRow?.account_email) {
+      await supabase.from("google_chat_connections").upsert({
+        owner_user_id: stateRow.owner_user_id,
+        owner_email: stateRow.owner_email,
+        account_email: stateRow.account_email,
+        provider: "google_chat",
+        status: "error",
+        last_error: message,
+        updated_at: new Date().toISOString()
+      }, { onConflict: "owner_email,account_email" });
+    } else if (stateRow?.owner_email && stateRow?.mailbox_email) {
       await supabase.from("gmail_mailbox_connections").upsert({
         owner_user_id: stateRow.owner_user_id,
         owner_email: stateRow.owner_email,
@@ -191,6 +234,6 @@ Deno.serve(async (request) => {
         updated_at: new Date().toISOString()
       }, { onConflict: "owner_email,mailbox_email" });
     }
-    return redirectTo(cleanText(stateRow?.redirect_after) || "settings.html", { gmail: "error", reason: message.slice(0, 120) });
+    return redirectTo(cleanText(stateRow?.redirect_after) || "settings.html", { [stateProvider === "google_chat" ? "chat" : "gmail"]: "error", reason: message.slice(0, 120) });
   }
 });
