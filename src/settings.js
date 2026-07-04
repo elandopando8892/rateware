@@ -8,6 +8,7 @@ import {
   fetchGoogleChatConnections,
   fetchGoogleChatSpaces,
   fetchSaasSettings,
+  retryGoogleChatSync,
   saveCatalogValue,
   saveGoogleChatSettings,
   startGmailOAuth,
@@ -16,6 +17,7 @@ import {
   updateSaasOrganization,
   updateSaasProfile
 } from "./settings-service.js";
+import { SUPABASE_URL } from "./config.js";
 import { initWorkbenchTabs } from "./workbench-tabs.js";
 
 const accessMode = document.querySelector("#settings-access-mode");
@@ -40,6 +42,7 @@ const googleChatConnectionCard = document.querySelector("#google-chat-connection
 const googleChatConnectionStatus = document.querySelector("#google-chat-connection-status");
 const connectGoogleChatButton = document.querySelector("#connect-google-chat-button");
 const disconnectGoogleChatButton = document.querySelector("#disconnect-google-chat-button");
+const retryGoogleChatSyncButton = document.querySelector("#retry-google-chat-sync-button");
 const refreshGoogleChatConnectionButton = document.querySelector("#refresh-google-chat-connection");
 const googleChatSpaceSelect = document.querySelector("#google-chat-space-select");
 const googleChatSpaceManualInput = document.querySelector("#google-chat-space-manual-input");
@@ -80,6 +83,7 @@ let currentCatalogValues = [];
 initWorkbenchTabs({ defaultView: "access" });
 const GMAIL_ALLOWED_SENDER = "sales@heymarksman.com";
 const GOOGLE_CHAT_ALLOWED_ACCOUNT = "sales@heymarksman.com";
+const GOOGLE_CHAT_APP_ENDPOINT = `${SUPABASE_URL.replace(/\/$/, "")}/functions/v1/google-chat-app`;
 
 const CATALOG_CATEGORIES = [
   { key: "equipment", label: "Equipment" },
@@ -231,6 +235,9 @@ function humanGoogleChatMessage(message = "") {
   if (/space/i.test(text) && /not available|not found|not configured|Select/i.test(text)) {
     return "Select a Google Chat space for Bid Room messages.";
   }
+  if (/Google Chat app not found|configure the app|Chat app/i.test(text)) {
+    return "Google Chat is connected, but the Google Cloud Chat app is not configured yet. Configure the Chat API as an HTTP app using the endpoint shown below, then retry sync.";
+  }
   return text || "Google Chat action could not be completed.";
 }
 
@@ -292,6 +299,7 @@ function renderGoogleChatConnections(data = currentSettings?.google_chat, spaces
   const connected = row.status === "connected";
   const configured = row.configured === true;
   const hasSpace = Boolean(row.default_space_name);
+  const needsChatAppSetup = /Google Chat app not found|configure the app|Chat app/i.test(String(row.last_error || ""));
   const statusLabel = connected
     ? hasSpace ? "Connected" : "Connected, select Space"
     : row.status === "error" ? "Connection error" : row.status === "revoked" ? "Disconnected" : "Not connected";
@@ -311,6 +319,13 @@ function renderGoogleChatConnections(data = currentSettings?.google_chat, spaces
       <div><dt>Bid Room Space</dt><dd>${escapeHtml(row.default_space_display_name || row.default_space_name || "-")}</dd></div>
       <div><dt>Updated</dt><dd>${escapeHtml(row.updated_at ? new Date(row.updated_at).toLocaleString() : "-")}</dd></div>
     </dl>
+    ${needsChatAppSetup ? `
+      <div class="integration-callout warning">
+        <strong>Google Chat app setup required</strong>
+        <p>In Google Cloud > Google Chat API > Configuration, set Connection settings to HTTP endpoint URL and paste this endpoint.</p>
+        <code>${escapeHtml(GOOGLE_CHAT_APP_ENDPOINT)}</code>
+      </div>
+    ` : ""}
     ${row.last_error ? `<p class="error-text">${escapeHtml(humanGoogleChatMessage(row.last_error))}</p>` : ""}
   `;
   if (connectGoogleChatButton) {
@@ -318,6 +333,7 @@ function renderGoogleChatConnections(data = currentSettings?.google_chat, spaces
     connectGoogleChatButton.textContent = connected ? "Google Chat connected" : "Connect Google Chat with Google";
   }
   if (disconnectGoogleChatButton) disconnectGoogleChatButton.disabled = !connected && row.status !== "error";
+  if (retryGoogleChatSyncButton) retryGoogleChatSyncButton.disabled = !connected || !hasSpace;
   if (googleChatSpaceRow) googleChatSpaceRow.classList.toggle("hidden", !connected);
   const spaces = spacesData?.rows || [];
   const spacesError = spacesData?.error ? humanGoogleChatMessage(spacesData.error) : "";
@@ -512,6 +528,21 @@ disconnectGoogleChatButton?.addEventListener("click", async () => {
   try {
     await disconnectGoogleChatConnection();
     await loadGoogleChatConnections();
+  } catch (error) {
+    setStatus(googleChatConnectionStatus, humanGoogleChatMessage(error.message), "error");
+  }
+});
+
+retryGoogleChatSyncButton?.addEventListener("click", async () => {
+  setStatus(googleChatConnectionStatus, "Retrying failed Google Chat messages...");
+  try {
+    const result = await retryGoogleChatSync(50);
+    await loadGoogleChatConnections();
+    setStatus(
+      googleChatConnectionStatus,
+      `Google Chat retry finished: ${result.synced || 0} synced, ${result.failed || 0} failed, ${result.skipped || 0} skipped.`,
+      result.failed ? "warning" : "success"
+    );
   } catch (error) {
     setStatus(googleChatConnectionStatus, humanGoogleChatMessage(error.message), "error");
   }

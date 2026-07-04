@@ -6412,6 +6412,59 @@ async function syncBidRoomMessageToGoogleChat(
   }
 }
 
+async function retryGoogleChatSync(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_email: string | null },
+  input: Record<string, unknown> = {}
+) {
+  const limit = Math.min(Math.max(Number(input.limit) || 50, 1), 100);
+  const messagesResult = await supabase
+    .from("bid_room_chat_messages")
+    .select("*")
+    .eq("owner_email", user.owner_email)
+    .in("google_chat_sync_status", ["error", "pending", "not_configured"])
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (messagesResult.error) throw messagesResult.error;
+
+  const messages = messagesResult.data || [];
+  const threadIds = [...new Set(messages.map((message) => cleanText(message.thread_id)).filter(Boolean))];
+  const eventIds = [...new Set(messages.map((message) => cleanText(message.rfx_event_id)).filter(Boolean))];
+
+  const threadsResult = threadIds.length
+    ? await supabase.from("bid_room_chat_threads").select("*").in("id", threadIds)
+    : { data: [], error: null };
+  if (threadsResult.error) throw threadsResult.error;
+  const eventsResult = eventIds.length
+    ? await supabase.from("rfx_events").select("*").in("id", eventIds)
+    : { data: [], error: null };
+  if (eventsResult.error) throw eventsResult.error;
+
+  const threadsById = new Map((threadsResult.data || []).map((thread) => [String(thread.id), thread]));
+  const eventsById = new Map((eventsResult.data || []).map((event) => [String(event.id), event]));
+  let synced = 0;
+  let failed = 0;
+  let skipped = 0;
+  const rows: Record<string, unknown>[] = [];
+
+  for (const message of messages) {
+    const thread = threadsById.get(String(message.thread_id));
+    const event = eventsById.get(String(message.rfx_event_id));
+    if (!thread || !event) {
+      skipped += 1;
+      rows.push({ id: message.id, status: "skipped", reason: "Missing Bid Room thread or event." });
+      continue;
+    }
+    const result = await syncBidRoomMessageToGoogleChat(supabase, thread, message, event);
+    if (result.status === "synced") synced += 1;
+    else if (result.status === "not_configured") skipped += 1;
+    else failed += 1;
+    rows.push({ id: message.id, status: result.status, error: result.error || null });
+  }
+
+  return { attempted: messages.length, synced, failed, skipped, rows };
+}
+
 async function findOrCreateBidRoomChatThread(
   supabase: ReturnType<typeof createClient>,
   user: { owner_user_id: string | null; owner_email: string | null },
@@ -9281,6 +9334,20 @@ Deno.serve(async (request) => {
         result.thread.id,
         `Synced Google Chat thread for ${result.thread.title || "Bid Room event"}`,
         { google_chat_sync_status: result.message.google_chat_sync_status }
+      );
+      return jsonResponse(result);
+    }
+
+    if (body.action === "retry_google_chat_sync") {
+      const result = await retryGoogleChatSync(supabase, user, body);
+      await writeAuditLog(
+        supabase,
+        user,
+        "google_chat.retry_sync",
+        "bid_room_chat_messages",
+        "bulk",
+        `Retried ${result.attempted} Google Chat message(s): ${result.synced} synced, ${result.failed} failed`,
+        { synced: result.synced, failed: result.failed, skipped: result.skipped }
       );
       return jsonResponse(result);
     }

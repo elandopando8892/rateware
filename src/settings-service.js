@@ -72,3 +72,7 @@ export async function saveGoogleChatSettings(defaultSpaceName, manualSpaceName =
     manual_space_name: manualSpaceName
   })).row;
 }
+
+export async function retryGoogleChatSync(limit = 50) {
+  return await callRatewareApi("retry_google_chat_sync", { limit });
+}
