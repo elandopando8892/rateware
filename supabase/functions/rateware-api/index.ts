@@ -6000,12 +6000,14 @@ function normalizeRfxEvent(input: Record<string, unknown>) {
   const rfxId = cleanText(input.rfx_id || input.rfx || input.event_id) || `RFx-${new Date().toISOString().slice(0, 10)}`;
   const eventType = cleanText(input.event_type || input.type)?.toLowerCase() || "spot";
   const status = cleanText(input.status)?.toLowerCase() || "draft";
+  const bidVisibilityMode = cleanText(input.bid_visibility_mode || input.visibility_mode)?.toLowerCase() || "anonymous_rank";
   return {
     rfx_id: rfxId,
     name: cleanText(input.name || input.event_name || input.title) || rfxId,
     customer: cleanText(input.customer || input.shipper || input.account),
     event_type: ["spot", "rfx", "bid"].includes(eventType) ? eventType : "spot",
     status: ["draft", "open", "closed", "awarded", "archived"].includes(status) ? status : "draft",
+    bid_visibility_mode: ["private", "anonymous_rank", "open_leaderboard"].includes(bidVisibilityMode) ? bidVisibilityMode : "anonymous_rank",
     due_date: cleanDate(input.due_date || input.deadline),
     notes: cleanText(input.notes || input.description),
     updated_at: new Date().toISOString()
@@ -6024,6 +6026,12 @@ function normalizeRfxEventPatch(input: Record<string, unknown>) {
   if (input.status !== undefined) {
     const status = cleanText(input.status)?.toLowerCase();
     if (status && ["draft", "open", "closed", "awarded", "archived"].includes(status)) patch.status = status;
+  }
+  if (input.bid_visibility_mode !== undefined || input.visibility_mode !== undefined) {
+    const bidVisibilityMode = cleanText(input.bid_visibility_mode || input.visibility_mode)?.toLowerCase();
+    if (bidVisibilityMode && ["private", "anonymous_rank", "open_leaderboard"].includes(bidVisibilityMode)) {
+      patch.bid_visibility_mode = bidVisibilityMode;
+    }
   }
   if (input.due_date !== undefined || input.deadline !== undefined) patch.due_date = cleanDate(input.due_date || input.deadline);
   if (input.notes !== undefined || input.description !== undefined) patch.notes = cleanText(input.notes || input.description);
@@ -8462,6 +8470,7 @@ Deno.serve(async (request) => {
         customer: event.customer,
         event_type: event.event_type || "spot",
         status: "draft",
+        bid_visibility_mode: event.bid_visibility_mode || "anonymous_rank",
         due_date: null,
         notes: event.notes,
         updated_at: new Date().toISOString()

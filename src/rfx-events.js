@@ -37,6 +37,7 @@ const rfxIdInput = document.querySelector("#rfx-id");
 const rfxNameInput = document.querySelector("#rfx-name");
 const rfxCustomerInput = document.querySelector("#rfx-customer");
 const rfxTypeInput = document.querySelector("#rfx-type");
+const rfxBidVisibilityInput = document.querySelector("#rfx-bid-visibility");
 const rfxDueDateInput = document.querySelector("#rfx-due-date");
 const eventStatus = document.querySelector("#rfx-event-status");
 const eventList = document.querySelector("#rfx-event-list");
@@ -238,6 +239,7 @@ function rfxEventPayload() {
     name: rfxNameInput.value,
     customer: rfxCustomerInput.value,
     event_type: rfxTypeInput.value,
+    bid_visibility_mode: rfxBidVisibilityInput?.value || "anonymous_rank",
     due_date: rfxDueDateInput.value
   };
 }
@@ -263,6 +265,7 @@ function fillRfxEventForm(event) {
   rfxNameInput.value = event.name || "";
   rfxCustomerInput.value = event.customer || "";
   rfxTypeInput.value = event.event_type || "spot";
+  if (rfxBidVisibilityInput) rfxBidVisibilityInput.value = event.bid_visibility_mode || "anonymous_rank";
   rfxDueDateInput.value = event.due_date || "";
   if (createRfxEventButton) createRfxEventButton.textContent = "Save changes";
   activateWorkbenchView("setup", "#rfx-id");
@@ -279,6 +282,15 @@ function formatMoney(value, currency = "USD") {
   const number = Number(value);
   if (!Number.isFinite(number)) return "-";
   return `${new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(number)} ${currency || "USD"}`;
+}
+
+function bidVisibilityLabel(mode = "anonymous_rank") {
+  const labels = {
+    private: "Private blind",
+    anonymous_rank: "Anonymous rank",
+    open_leaderboard: "Open leaderboard"
+  };
+  return labels[mode] || labels.anonymous_rank;
 }
 
 function cleanHeader(value) {
@@ -1816,6 +1828,15 @@ function renderEventDashboard() {
         <strong>${formatNumber(responseRate)}%</strong>
         <small>${formatNumber(bids.length)} bid(s) from ${formatNumber(activeInvitations.length)} active invitation(s).</small>
       </article>
+      <article>
+        <span>Bid visibility</span>
+        <strong>${escapeHtml(bidVisibilityLabel(selectedEvent.bid_visibility_mode))}</strong>
+        <small>${selectedEvent.bid_visibility_mode === "open_leaderboard"
+          ? "Carriers see named competitors and submitted rates."
+          : selectedEvent.bid_visibility_mode === "private"
+            ? "Carriers only see their own submitted offer."
+            : "Carriers see anonymous rank and pricing signals."}</small>
+      </article>
     `;
   }
 
@@ -2179,6 +2200,7 @@ function renderEvents() {
       <strong>${escapeHtml(event.name || event.rfx_id)}</strong>
       <small>${escapeHtml(event.rfx_id || "")}${event.customer ? ` | ${escapeHtml(event.customer)}` : ""}</small>
       <b>${formatNumber(event.lane_count)} lanes / ${formatNumber(event.bid_count)} bids</b>
+      <small>${escapeHtml(bidVisibilityLabel(event.bid_visibility_mode))}</small>
     </button>
   `).join("");
 }

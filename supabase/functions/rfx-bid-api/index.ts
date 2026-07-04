@@ -74,15 +74,20 @@ function publicEvent(row: Record<string, unknown>) {
     customer: row.customer,
     event_type: row.event_type,
     status: row.status,
-    due_date: row.due_date
+    due_date: row.due_date,
+    bid_visibility_mode: cleanText(row.bid_visibility_mode) || "anonymous_rank"
   };
 }
 
-function bidRoomVisibility() {
+function bidRoomVisibility(event: Record<string, unknown> = {}) {
+  const mode = cleanText(event.bid_visibility_mode)?.toLowerCase() || "anonymous_rank";
+  const normalizedMode = ["private", "anonymous_rank", "open_leaderboard"].includes(mode) ? mode : "anonymous_rank";
   return {
-    mode: "rank_only",
-    competitor_names_visible: false,
-    competitor_rates_visible: false,
+    mode: normalizedMode,
+    competitor_names_visible: normalizedMode === "open_leaderboard",
+    competitor_rates_visible: normalizedMode === "open_leaderboard",
+    competitor_rank_visible: normalizedMode !== "private",
+    competitor_activity_visible: normalizedMode !== "private",
     request_invite_enabled: true,
     open_book_enabled: true,
     refresh_seconds: 30
@@ -127,6 +132,8 @@ function businessBookStatus(row: Record<string, unknown>) {
 }
 
 function liveBoardFromRows(currentInvitation: Record<string, unknown>, peerRows: Record<string, unknown>[]) {
+  const event = relationRecord(currentInvitation.rfx_events);
+  const visibility = bidRoomVisibility(event);
   const rows = [currentInvitation, ...peerRows]
     .filter((row) => cleanNumber(row.bid_rate) !== null)
     .map((row) => ({
@@ -136,6 +143,8 @@ function liveBoardFromRows(currentInvitation: Record<string, unknown>, peerRows:
       weekly_capacity: cleanNumber(row.weekly_capacity),
       transit_days: cleanNumber(row.transit_days),
       responded_at: cleanText(row.responded_at || row.updated_at),
+      vendor_name: cleanText(relationRecord(row.vendors).vendor_name),
+      vendor_domain: cleanText(relationRecord(row.vendors).domain),
       is_current: row.id === currentInvitation.id
     }))
     .sort((a, b) => a.amount - b.amount);
@@ -159,16 +168,28 @@ function liveBoardFromRows(currentInvitation: Record<string, unknown>, peerRows:
       : Number(deltaPct) <= 0.05
         ? "You are close to the leading range. Review capacity, transit, and price before the deadline."
         : "Your offer is behind the leading range. Reprice only if this lane is strategic.";
+  const amountDisplayFor = (row: { is_current: boolean; amount: number }) => {
+    if (row.is_current) return "Your submitted offer";
+    if (visibility.mode === "private") return "Private";
+    if (visibility.competitor_rates_visible) return "Visible";
+    if (currentAmount === null) return "Hidden until you bid";
+    if (row.amount < currentAmount) return "Lower than your offer";
+    if (row.amount === currentAmount) return "Comparable to your offer";
+    return "Above your offer";
+  };
+  const visibleRows = visibility.mode === "private" ? rows.filter((row) => row.is_current) : rows;
   return {
     updated_at: new Date().toISOString(),
-    visibility: bidRoomVisibility(),
-    bid_count: rows.length,
-    current_rank: currentIndex >= 0 ? currentIndex + 1 : null,
+    visibility,
+    bid_count: visibility.competitor_activity_visible ? rows.length : rows.filter((row) => row.is_current).length,
+    current_rank: visibility.competitor_rank_visible && currentIndex >= 0 ? currentIndex + 1 : null,
     best_rate: currentIndex === 0 ? currentAmount : null,
-    best_rate_visible: currentIndex === 0,
+    best_rate_visible: visibility.competitor_rates_visible || currentIndex === 0,
     currency,
     position_signal: positionSignal,
-    guidance,
+    guidance: visibility.mode === "private"
+      ? "This event is running in private mode. Procurement can see all offers, but carriers cannot see competitors."
+      : guidance,
     delta_to_leader: deltaToBest,
     delta_bucket: deltaToBest === null
       ? null
@@ -179,19 +200,15 @@ function liveBoardFromRows(currentInvitation: Record<string, unknown>, peerRows:
           : deltaToBest <= 500
             ? "within_500"
             : "above_500",
-    rows: rows.map((row, index) => ({
+    rows: visibleRows.map((row, index) => ({
       rank: index + 1,
-      bidder: row.is_current ? "Your offer" : `Anonymous carrier ${index + 1}`,
-      amount: row.is_current ? row.amount : null,
-      amount_display: row.is_current
-        ? "Your submitted offer"
-        : currentAmount === null
-          ? "Hidden until you bid"
-          : row.amount < currentAmount
-            ? "Lower than your offer"
-            : row.amount === currentAmount
-              ? "Comparable to your offer"
-              : "Above your offer",
+      bidder: row.is_current
+        ? "Your offer"
+        : visibility.competitor_names_visible
+          ? (row.vendor_name || row.vendor_domain || `Carrier ${index + 1}`)
+          : `Anonymous carrier ${index + 1}`,
+      amount: row.is_current || visibility.competitor_rates_visible ? row.amount : null,
+      amount_display: amountDisplayFor(row),
       currency: row.currency,
       weekly_capacity: row.weekly_capacity,
       transit_days: row.transit_days,
@@ -238,7 +255,7 @@ function carrierBusinessBook(currentInvitation: Record<string, unknown>, invited
     }));
   const quoted = invited.filter((row) => row.bid_rate !== null || ["quoted", "bid_submitted", "awarded"].includes(String(row.participation_status || "").toLowerCase()));
   return {
-    visibility: bidRoomVisibility(),
+    visibility: bidRoomVisibility(relationRecord(currentInvitation.rfx_events)),
     carrier: {
       vendor_name: vendor.vendor_name || vendor.domain || "Carrier",
       domain: vendor.domain || "",
@@ -284,7 +301,7 @@ Deno.serve(async (request) => {
           transit_days,
           notes,
           vendors(vendor_name,domain,primary_email),
-          rfx_events(id,owner_user_id,owner_email,rfx_id,name,customer,event_type,status,due_date,notes),
+          rfx_events(id,owner_user_id,owner_email,rfx_id,name,customer,event_type,status,due_date,bid_visibility_mode,notes),
           rfx_lanes(id,rfx_event_id,lane_number,origin,destination,origin_city,origin_state,origin_market,origin_region,destination_city,destination_state,destination_market,destination_region,equipment,trailer,config,operation,service,weekly_volume,target_rate,currency)
         `)
         .eq("invitation_token", token)
@@ -304,7 +321,7 @@ Deno.serve(async (request) => {
 
       const peersResult = await supabase
         .from("rfx_lane_vendors")
-        .select("id,bid_rate,currency,weekly_capacity,transit_days,responded_at,updated_at")
+        .select("id,bid_rate,currency,weekly_capacity,transit_days,responded_at,updated_at,vendors(vendor_name,domain)")
         .eq("rfx_lane_id", result.data.rfx_lane_id)
         .neq("id", result.data.id)
         .not("bid_rate", "is", null)
@@ -329,7 +346,7 @@ Deno.serve(async (request) => {
               currency,
               weekly_capacity,
               transit_days,
-              rfx_events!inner(id,owner_email,rfx_id,name,customer,event_type,status,due_date),
+              rfx_events!inner(id,owner_email,rfx_id,name,customer,event_type,status,due_date,bid_visibility_mode),
               rfx_lanes(id,rfx_event_id,lane_number,origin,destination,origin_city,origin_state,origin_market,origin_region,destination_city,destination_state,destination_market,destination_region,equipment,trailer,config,operation,service,weekly_volume,target_rate,currency)
             `)
             .eq("vendor_id", result.data.vendor_id)
@@ -365,7 +382,7 @@ Deno.serve(async (request) => {
               weekly_volume,
               target_rate,
               currency,
-              rfx_events!inner(id,owner_email,rfx_id,name,customer,event_type,status,due_date)
+              rfx_events!inner(id,owner_email,rfx_id,name,customer,event_type,status,due_date,bid_visibility_mode)
             `)
             .eq("rfx_events.owner_email", ownerEmail)
             .eq("rfx_events.status", "open")

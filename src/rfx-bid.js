@@ -80,10 +80,25 @@ function deadlineCopy(event = {}) {
 }
 
 function visibilityCopy(visibility = {}) {
-  if (visibility.mode === "rank_only") {
-    return "Rank only - competitor names and exact rates are hidden.";
+  if (visibility.mode === "open_leaderboard") {
+    return "Open leaderboard - competitor names and exact submitted rates are visible.";
+  }
+  if (visibility.mode === "anonymous_rank") {
+    return "Anonymous rank - competitor names and exact third-party rates are hidden.";
+  }
+  if (visibility.mode === "private") {
+    return "Private - procurement sees all offers; carriers only see their own submitted bid.";
   }
   return "Private visibility controlled by procurement.";
+}
+
+function visibilityLabel(visibility = {}) {
+  const labels = {
+    private: "Private",
+    anonymous_rank: "Anonymous rank",
+    open_leaderboard: "Open leaderboard"
+  };
+  return labels[visibility.mode] || "Private";
 }
 
 function signalTone(signal = "") {
@@ -111,7 +126,7 @@ function renderLiveBoard(liveBoard = {}) {
       </div>
       <div class="bid-room-empty">
         <strong>Submit your all-in offer to start the lane auction.</strong>
-        <span>Rateware will show anonymous rank and position signals once bids exist. Competitor names stay hidden.</span>
+        <span>${escapeHtml(visibilityCopy(visibility))}</span>
       </div>
     `;
     return;
@@ -128,7 +143,7 @@ function renderLiveBoard(liveBoard = {}) {
     <div class="bid-board-stats">
       <article>
         <span>Visibility</span>
-        <strong>Private</strong>
+        <strong>${escapeHtml(visibilityLabel(visibility))}</strong>
         <small>${escapeHtml(visibilityCopy(visibility))}</small>
       </article>
       <article>
@@ -158,7 +173,7 @@ function renderLiveBoard(liveBoard = {}) {
         </tbody>
       </table>
     </div>
-    <p class="bid-board-note">This room uses anonymous ranking. It should create urgency without exposing competitor identities or exact third-party pricing.</p>
+    <p class="bid-board-note">${escapeHtml(visibilityCopy(visibility))}</p>
   `;
 }
 
@@ -322,7 +337,7 @@ function renderInvitation(invitation, liveBoard = {}) {
     <div class="bid-context">
       <article><span>Customer</span><strong>${escapeHtml(event.customer || "-")}</strong></article>
       <article><span>Carrier</span><strong>${escapeHtml(vendor.vendor_name || vendor.domain || "-")}</strong></article>
-      <article><span>Visibility</span><strong>Anonymous rank</strong></article>
+      <article><span>Visibility</span><strong>${escapeHtml(visibilityLabel(liveBoard.visibility || {}))}</strong></article>
       <article><span>Refresh</span><strong>30 sec</strong></article>
     </div>
 
