@@ -7417,6 +7417,58 @@ async function googleChatAccessToken(supabase: ReturnType<typeof createClient>, 
   return accessToken;
 }
 
+function normalizeGoogleChatSpaceName(value: unknown) {
+  const text = cleanText(value);
+  if (!text) return null;
+  const directMatch = text.match(/^spaces\/([A-Za-z0-9_-]+)$/i);
+  if (directMatch) return `spaces/${directMatch[1]}`;
+
+  try {
+    const url = new URL(text);
+    const combined = `${url.pathname} ${url.hash} ${url.search}`;
+    const urlMatch = combined.match(/(?:\/|#)(?:chat\/)?(?:space|room)\/([A-Za-z0-9_-]+)/i);
+    if (urlMatch) return `spaces/${urlMatch[1]}`;
+  } catch {
+    // Not a URL; fall through to raw ID parsing.
+  }
+
+  const rawId = text.replace(/^space\s*[:=]\s*/i, "").trim();
+  if (/^[A-Za-z0-9_-]{5,}$/.test(rawId) && !rawId.includes("/")) return `spaces/${rawId}`;
+  return null;
+}
+
+function publicGoogleChatSpace(space: Record<string, unknown>, fallbackName: string | null = null) {
+  const name = cleanText(space.name) || fallbackName;
+  return {
+    name,
+    display_name: cleanText(space.displayName) || cleanText(space.spaceUri) || name,
+    type: cleanText(space.spaceType),
+    threaded: space.threaded,
+    space_threading_state: cleanText(space.spaceThreadingState)
+  };
+}
+
+async function getGoogleChatSpaceDetails(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_email: string | null },
+  spaceReference: unknown
+) {
+  const spaceName = normalizeGoogleChatSpaceName(spaceReference);
+  if (!spaceName) {
+    throw new Error("Paste a valid Google Chat Space link or resource name like spaces/AAA...");
+  }
+  const accessToken = await googleChatAccessToken(supabase, user);
+  const response = await fetch(`https://chat.googleapis.com/v1/${spaceName}`, {
+    headers: { Authorization: `Bearer ${accessToken}` }
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const message = cleanText(payload?.error?.message) || `Google Chat space lookup failed (${response.status}).`;
+    throw new Error(`${message} Confirm ${GOOGLE_CHAT_ALLOWED_ACCOUNT} is a member of that Space.`);
+  }
+  return publicGoogleChatSpace(payload, spaceName);
+}
+
 async function listGoogleChatSpaces(supabase: ReturnType<typeof createClient>, user: { owner_email: string | null }) {
   const connectionResult = await supabase
     .from("google_chat_connections")
@@ -7429,22 +7481,34 @@ async function listGoogleChatSpaces(supabase: ReturnType<typeof createClient>, u
   if (!connectionResult.data) return { connected: false, rows: [], default_space_name: null };
 
   const accessToken = await googleChatAccessToken(supabase, user);
-  const response = await fetch("https://chat.googleapis.com/v1/spaces?pageSize=100", {
-    headers: { Authorization: `Bearer ${accessToken}` }
-  });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const message = cleanText(payload?.error?.message) || `Google Chat spaces lookup failed (${response.status}).`;
-    throw new Error(message);
+  const rows: Record<string, unknown>[] = [];
+  const seen = new Set<string>();
+  let pageToken = "";
+  for (let page = 0; page < 10; page += 1) {
+    const url = new URL("https://chat.googleapis.com/v1/spaces");
+    url.searchParams.set("pageSize", "100");
+    if (pageToken) url.searchParams.set("pageToken", pageToken);
+    const response = await fetch(url.toString(), {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const message = cleanText(payload?.error?.message) || `Google Chat spaces lookup failed (${response.status}).`;
+      throw new Error(message);
+    }
+    if (Array.isArray(payload.spaces)) {
+      for (const space of payload.spaces) {
+        const row = publicGoogleChatSpace(space);
+        const name = cleanText(row.name);
+        if (name && !seen.has(name)) {
+          seen.add(name);
+          rows.push(row);
+        }
+      }
+    }
+    pageToken = cleanText(payload.nextPageToken) || "";
+    if (!pageToken) break;
   }
-  const rows = Array.isArray(payload.spaces)
-    ? payload.spaces.map((space: Record<string, unknown>) => ({
-        name: cleanText(space.name),
-        display_name: cleanText(space.displayName) || cleanText(space.name),
-        type: cleanText(space.spaceType),
-        threaded: space.threaded
-      })).filter((space: Record<string, unknown>) => space.name)
-    : [];
   return {
     connected: true,
     rows,
@@ -7458,16 +7522,16 @@ async function saveGoogleChatSettings(
   user: { owner_email: string | null },
   input: Record<string, unknown>
 ) {
-  const spaceName = cleanText(input.default_space_name || input.space_name);
-  if (!spaceName) throw new Error("Select a Google Chat space first.");
+  const spaceName = cleanText(input.default_space_name || input.space_name || input.manual_space_name || input.space_link);
+  if (!spaceName) throw new Error("Select a Google Chat space or paste the Space link first.");
   const spaces = await listGoogleChatSpaces(supabase, user);
   const selected = (spaces.rows || []).find((space: Record<string, unknown>) => cleanText(space.name) === spaceName);
-  if (!selected) throw new Error("Selected Google Chat space is not available to the connected account.");
+  const resolved = selected || await getGoogleChatSpaceDetails(supabase, user, spaceName);
   const result = await supabase
     .from("google_chat_connections")
     .update({
-      default_space_name: selected.name,
-      default_space_display_name: selected.display_name,
+      default_space_name: resolved.name,
+      default_space_display_name: resolved.display_name,
       last_error: null,
       updated_at: new Date().toISOString()
     })

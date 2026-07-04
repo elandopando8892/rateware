@@ -42,6 +42,8 @@ const connectGoogleChatButton = document.querySelector("#connect-google-chat-but
 const disconnectGoogleChatButton = document.querySelector("#disconnect-google-chat-button");
 const refreshGoogleChatConnectionButton = document.querySelector("#refresh-google-chat-connection");
 const googleChatSpaceSelect = document.querySelector("#google-chat-space-select");
+const googleChatSpaceManualInput = document.querySelector("#google-chat-space-manual-input");
+const googleChatSpaceHelp = document.querySelector("#google-chat-space-help");
 const saveGoogleChatSpaceButton = document.querySelector("#save-google-chat-space-button");
 const googleChatSpaceRow = document.querySelector("#google-chat-space-row");
 const catalogValueForm = document.querySelector("#catalog-value-form");
@@ -107,6 +109,14 @@ function setStatus(element, message, tone = "neutral") {
 
 function setValue(input, value) {
   if (input) input.value = value || "";
+}
+
+function hasGoogleChatSpaceCandidate() {
+  return Boolean((googleChatSpaceSelect?.value || "").trim() || (googleChatSpaceManualInput?.value || "").trim());
+}
+
+function updateGoogleChatSpaceSaveState(connected = true) {
+  if (saveGoogleChatSpaceButton) saveGoogleChatSpaceButton.disabled = !connected || !hasGoogleChatSpaceCandidate();
 }
 
 function formValues(inputs) {
@@ -291,9 +301,9 @@ function renderGoogleChatConnections(data = currentSettings?.google_chat, spaces
     connectGoogleChatButton.textContent = connected ? "Google Chat connected" : "Connect Google Chat with Google";
   }
   if (disconnectGoogleChatButton) disconnectGoogleChatButton.disabled = !connected && row.status !== "error";
-  if (saveGoogleChatSpaceButton) saveGoogleChatSpaceButton.disabled = !connected || !googleChatSpaceSelect?.value;
   if (googleChatSpaceRow) googleChatSpaceRow.classList.toggle("hidden", !connected);
   const spaces = spacesData?.rows || [];
+  const spacesError = spacesData?.error ? humanGoogleChatMessage(spacesData.error) : "";
   if (googleChatSpaceSelect) {
     const selected = row.default_space_name || spacesData?.default_space_name || googleChatSpaceSelect.value || "";
     googleChatSpaceSelect.innerHTML = connected
@@ -303,14 +313,31 @@ function renderGoogleChatConnections(data = currentSettings?.google_chat, spaces
       : `<option value="">Connect Google Chat first</option>`;
     googleChatSpaceSelect.value = spaces.some((space) => space.name === selected) ? selected : "";
   }
+  if (googleChatSpaceManualInput) {
+    const selected = row.default_space_name || spacesData?.default_space_name || "";
+    const selectedIsListed = spaces.some((space) => space.name === selected);
+    googleChatSpaceManualInput.value = connected && selected && !selectedIsListed
+      ? selected
+      : googleChatSpaceManualInput.value || "";
+    googleChatSpaceManualInput.disabled = !connected;
+  }
+  if (googleChatSpaceHelp) {
+    googleChatSpaceHelp.textContent = connected
+      ? spacesError
+        ? `${spacesError} Paste the Google Chat Space link or resource name instead.`
+        : "Choose a listed Space, or paste the Google Chat Space link if it does not appear."
+      : "Connect Google Chat before selecting the Bid Room Space.";
+    googleChatSpaceHelp.dataset.tone = spacesError ? "warning" : "neutral";
+  }
+  updateGoogleChatSpaceSaveState(connected);
   setStatus(
     googleChatConnectionStatus,
     configured
       ? (connected
-          ? (hasSpace ? "Google Chat is ready for Bid Room threads." : "Select and save the Bid Room Space.")
+          ? (spacesError || (hasSpace ? "Google Chat is ready for Bid Room threads." : "Select and save the Bid Room Space."))
           : "Click Connect Google Chat with Google and approve access.")
       : "Google Chat connector is not enabled yet. No user credentials are required.",
-    configured ? (connected && hasSpace ? "success" : "neutral") : "warning"
+    configured ? (spacesError ? "warning" : connected && hasSpace ? "success" : "neutral") : "warning"
   );
 }
 
@@ -403,7 +430,14 @@ async function loadGoogleChatConnections() {
     currentSettings = currentSettings || {};
     currentSettings.google_chat = data;
     const row = data?.rows?.[0] || {};
-    const spaces = row.status === "connected" ? await fetchGoogleChatSpaces() : null;
+    let spaces = null;
+    if (row.status === "connected") {
+      try {
+        spaces = await fetchGoogleChatSpaces();
+      } catch (error) {
+        spaces = { connected: true, rows: [], error: error.message };
+      }
+    }
     renderGoogleChatConnections(data, spaces);
   } catch (error) {
     setStatus(googleChatConnectionStatus, humanGoogleChatMessage(error.message), "error");
@@ -465,18 +499,23 @@ disconnectGoogleChatButton?.addEventListener("click", async () => {
 });
 
 googleChatSpaceSelect?.addEventListener("change", () => {
-  if (saveGoogleChatSpaceButton) saveGoogleChatSpaceButton.disabled = !googleChatSpaceSelect.value;
+  updateGoogleChatSpaceSaveState(true);
+});
+
+googleChatSpaceManualInput?.addEventListener("input", () => {
+  updateGoogleChatSpaceSaveState(true);
 });
 
 saveGoogleChatSpaceButton?.addEventListener("click", async () => {
   const spaceName = googleChatSpaceSelect?.value || "";
-  if (!spaceName) {
-    setStatus(googleChatConnectionStatus, "Select a Google Chat space first.", "error");
+  const manualSpaceName = googleChatSpaceManualInput?.value?.trim() || "";
+  if (!spaceName && !manualSpaceName) {
+    setStatus(googleChatConnectionStatus, "Select a Google Chat space or paste the Space link first.", "error");
     return;
   }
   setStatus(googleChatConnectionStatus, "Saving Bid Room Space...");
   try {
-    await saveGoogleChatSettings(spaceName);
+    await saveGoogleChatSettings(spaceName, manualSpaceName);
     await loadGoogleChatConnections();
   } catch (error) {
     setStatus(googleChatConnectionStatus, humanGoogleChatMessage(error.message), "error");

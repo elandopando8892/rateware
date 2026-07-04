@@ -9853,6 +9853,21 @@ select.staging-input {
   grid-column: auto;
 }
 
+#google-chat-space-row {
+  grid-template-columns: minmax(220px, 1fr) minmax(280px, 1fr) auto;
+}
+
+.helper-text {
+  margin: -4px 0 10px;
+  color: var(--muted);
+  font-size: 0.76rem;
+  line-height: 1.35;
+}
+
+.helper-text[data-tone="warning"] {
+  color: #9a5b00;
+}
+
 .integration-heading {
   margin-top: 18px;
   padding-top: 14px;

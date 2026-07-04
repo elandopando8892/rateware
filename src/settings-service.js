@@ -66,8 +66,9 @@ export async function fetchGoogleChatSpaces() {
   return await callRatewareApi("list_google_chat_spaces");
 }
 
-export async function saveGoogleChatSettings(defaultSpaceName) {
+export async function saveGoogleChatSettings(defaultSpaceName, manualSpaceName = "") {
   return (await callRatewareApi("save_google_chat_settings", {
-    default_space_name: defaultSpaceName
+    default_space_name: defaultSpaceName,
+    manual_space_name: manualSpaceName
   })).row;
 }
