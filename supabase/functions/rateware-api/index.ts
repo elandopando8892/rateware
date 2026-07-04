@@ -6629,6 +6629,290 @@ async function closeoutAwardedRfxToRateware(
   };
 }
 
+function awardNoticeOutcome(invitation: Record<string, unknown>) {
+  const role = cleanText(invitation.award_role)?.toLowerCase();
+  if (role === "primary") return { key: "awarded", label: "Awarded" };
+  if (role === "backup") return { key: "backup", label: "Backup" };
+  return { key: "not_awarded", label: "Not awarded" };
+}
+
+function awardNoticeLaneSummary(invitation: Record<string, unknown>) {
+  const lane = objectRecord(invitation.rfx_lanes);
+  const outcome = awardNoticeOutcome(invitation);
+  return {
+    outcome,
+    lane_number: cleanText(lane.lane_number),
+    origin: cleanText(lane.origin || lane.origin_city),
+    destination: cleanText(lane.destination || lane.destination_city),
+    equipment: [lane.equipment, lane.trailer, lane.config].map(cleanText).filter(Boolean).join(" / "),
+    service: [lane.operation, lane.service].map(cleanText).filter(Boolean).join(" / "),
+    bid_rate: cleanNumber(invitation.bid_rate),
+    currency: cleanText(invitation.currency || lane.currency) || "USD",
+    capacity: cleanNumber(invitation.weekly_capacity),
+    transit_days: cleanNumber(invitation.transit_days),
+    reason: cleanText(invitation.award_reason || invitation.award_notes)
+  };
+}
+
+function awardNoticeTableHtml(rows: Record<string, unknown>[]) {
+  if (!rows.length) return "";
+  return `
+    <table style="border-collapse:collapse;width:100%;font-family:Arial,sans-serif;font-size:13px">
+      <thead>
+        <tr>
+          <th style="border:1px solid #cbd7df;padding:7px;text-align:left;background:#f1f5f8">Result</th>
+          <th style="border:1px solid #cbd7df;padding:7px;text-align:left;background:#f1f5f8">Lane</th>
+          <th style="border:1px solid #cbd7df;padding:7px;text-align:left;background:#f1f5f8">Equipment</th>
+          <th style="border:1px solid #cbd7df;padding:7px;text-align:left;background:#f1f5f8">Service</th>
+          <th style="border:1px solid #cbd7df;padding:7px;text-align:right;background:#f1f5f8">Your bid</th>
+          <th style="border:1px solid #cbd7df;padding:7px;text-align:left;background:#f1f5f8">Notes</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows.map((row) => {
+          const outcome = objectRecord(row.outcome);
+          const rate = cleanNumber(row.bid_rate);
+          const amount = rate === null ? "-" : `${rate.toLocaleString("en-US", { maximumFractionDigits: 2 })} ${cleanText(row.currency) || "USD"}`;
+          return `
+            <tr>
+              <td style="border:1px solid #d9e2e8;padding:7px">${escapeHtmlText(outcome.label)}</td>
+              <td style="border:1px solid #d9e2e8;padding:7px">${escapeHtmlText([row.lane_number ? `#${row.lane_number}` : null, `${row.origin || "-"} -> ${row.destination || "-"}`].filter(Boolean).join(" "))}</td>
+              <td style="border:1px solid #d9e2e8;padding:7px">${escapeHtmlText(row.equipment || "-")}</td>
+              <td style="border:1px solid #d9e2e8;padding:7px">${escapeHtmlText(row.service || "-")}</td>
+              <td style="border:1px solid #d9e2e8;padding:7px;text-align:right">${escapeHtmlText(amount)}</td>
+              <td style="border:1px solid #d9e2e8;padding:7px">${escapeHtmlText(row.reason || "")}</td>
+            </tr>
+          `;
+        }).join("")}
+      </tbody>
+    </table>
+  `;
+}
+
+function awardNoticeRowsText(rows: Record<string, unknown>[]) {
+  return rows.map((row) => {
+    const outcome = objectRecord(row.outcome);
+    const rate = cleanNumber(row.bid_rate);
+    const amount = rate === null ? "-" : `${rate.toLocaleString("en-US", { maximumFractionDigits: 2 })} ${cleanText(row.currency) || "USD"}`;
+    return [
+      cleanText(outcome.label),
+      [row.lane_number ? `#${row.lane_number}` : null, `${row.origin || "-"} -> ${row.destination || "-"}`].filter(Boolean).join(" "),
+      cleanText(row.equipment),
+      cleanText(row.service),
+      amount,
+      cleanText(row.reason)
+    ].filter(Boolean).join(" | ");
+  }).join("\n");
+}
+
+function awardNoticeHtml(event: Record<string, unknown>, vendor: Record<string, unknown>, rows: Record<string, unknown>[], portalLink: string | null) {
+  const counts = rows.reduce((acc, row) => {
+    const key = cleanText(objectRecord(row.outcome).key) || "not_awarded";
+    acc[key] = (acc[key] || 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
+  const headline = counts.awarded
+    ? "Your award decision is ready."
+    : counts.backup
+      ? "You have been selected as backup capacity."
+      : "This RFx has been awarded to another carrier.";
+  return `
+    <div style="font-family:Arial,sans-serif;color:#1f2d36;line-height:1.45">
+      <p>Estimados ${escapeHtmlText(vendor.vendor_name || vendor.domain || "team")},</p>
+      <p>${escapeHtmlText(headline)}</p>
+      <p>RFx: <strong>${escapeHtmlText(event.rfx_id || event.name || "RFx")}</strong>${event.name ? ` | ${escapeHtmlText(event.name)}` : ""}</p>
+      ${awardNoticeTableHtml(rows)}
+      ${portalLink ? `<p>Bid Room: <a href="${escapeHtmlText(portalLink)}">${escapeHtmlText(portalLink)}</a></p>` : ""}
+      <p>Gracias por participar. Mantendremos su capacidad y comentarios visibles para siguientes asignaciones.</p>
+      <p>MARKSMAN Procurement</p>
+    </div>
+  `;
+}
+
+async function ensureAwardNoticeCampaign(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_user_id: string | null; owner_email: string | null },
+  event: Record<string, unknown>,
+  senderEmail: string,
+  senderLabel: string
+) {
+  const name = `${cleanText(event.rfx_id || event.name) || "RFx"} award closeout`;
+  const existing = await supabase
+    .from("outreach_campaigns")
+    .select("*")
+    .eq("owner_email", user.owner_email)
+    .eq("rfx_event_id", event.id)
+    .eq("name", name)
+    .neq("status", "archived")
+    .order("created_at", { ascending: false })
+    .limit(1);
+  if (existing.error) throw existing.error;
+  if (existing.data?.[0]) return existing.data[0];
+
+  const result = await supabase
+    .from("outreach_campaigns")
+    .insert(withOwner({
+      rfx_event_id: event.id,
+      name,
+      channel: "email",
+      status: "draft",
+      sender_email: senderEmail,
+      sender_label: senderLabel,
+      sender_connection_status: "draft_only",
+      notes: "rfx_award_notice"
+    }, user))
+    .select()
+    .single();
+  if (result.error) throw result.error;
+  return result.data;
+}
+
+async function generateRfxAwardNotices(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_user_id: string | null; owner_email: string | null },
+  input: Record<string, unknown>
+) {
+  const event = await requireOwnedRfxEvent(supabase, user, input.event_id || input.rfx_event_id || input.id);
+  const appOrigin = cleanText(input.app_origin) || Deno.env.get("RATEWARE_APP_URL") || "https://rateware.vercel.app";
+  const senderEmail = (cleanText(input.sender_email) || GMAIL_ALLOWED_SENDER).toLowerCase();
+  const senderLabel = cleanText(input.sender_label) || senderEmail;
+  const campaign = await ensureAwardNoticeCampaign(supabase, user, event, senderEmail, senderLabel);
+  const invitationsResult = await supabase
+    .from("rfx_lane_vendors")
+    .select("*, vendors(id,vendor_name,domain,primary_email,whatsapp_phone,preferred_channel,contact_name), rfx_lanes(*)")
+    .eq("rfx_event_id", event.id)
+    .neq("invitation_status", "archived")
+    .order("updated_at", { ascending: false });
+  if (invitationsResult.error) throw invitationsResult.error;
+
+  const rows = new Map<string, Record<string, unknown>[]>();
+  const skipped: Record<string, unknown>[] = [];
+  for (const invitation of invitationsResult.data || []) {
+    const status = cleanText(invitation.invitation_status)?.toLowerCase() || "";
+    const hasDecision = Boolean(cleanText(invitation.award_role));
+    const hasParticipation = cleanNumber(invitation.bid_rate) !== null || ["invited", "viewed", "responded", "quoted", "bid_submitted", "awarded"].includes(status);
+    if (!hasDecision && !hasParticipation) continue;
+    const vendor = objectRecord(invitation.vendors);
+    const recipient = cleanText(vendor.primary_email);
+    if (!recipient) {
+      skipped.push({ invitation_id: invitation.id, vendor_id: invitation.vendor_id, reason: "Missing vendor email" });
+      continue;
+    }
+    const key = cleanText(invitation.vendor_id) || recipient || cleanText(invitation.id) || crypto.randomUUID();
+    const bucket = rows.get(key) || [];
+    bucket.push(invitation);
+    rows.set(key, bucket);
+  }
+
+  const messageRows: Record<string, unknown>[] = [];
+  const now = new Date().toISOString();
+  for (const invitationGroup of rows.values()) {
+    const sortedGroup = [...invitationGroup].sort((a, b) => {
+      const aLane = objectRecord(a.rfx_lanes);
+      const bLane = objectRecord(b.rfx_lanes);
+      return String(aLane.lane_number || a.rfx_lane_id || a.id || "").localeCompare(String(bLane.lane_number || b.rfx_lane_id || b.id || ""));
+    });
+    const first = sortedGroup[0];
+    const vendor = objectRecord(first.vendors);
+    const recipientEmail = cleanText(vendor.primary_email);
+    const laneSummaries = sortedGroup.map(awardNoticeLaneSummary);
+    const counts = laneSummaries.reduce((acc, row) => {
+      const key = cleanText(objectRecord(row.outcome).key) || "not_awarded";
+      acc[key] = (acc[key] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+    const subjectPrefix = counts.awarded ? "Award" : counts.backup ? "Backup status" : "RFx closeout";
+    const subject = `${subjectPrefix}: ${cleanText(event.rfx_id || event.name) || "Bid Room"}`;
+    const token = cleanText(first.invitation_token);
+    const portalLink = token ? `${appOrigin.replace(/\/$/, "")}/rfx-bid.html?token=${encodeURIComponent(token)}` : null;
+    const htmlBody = awardNoticeHtml(event, vendor, laneSummaries, portalLink);
+    const textBody = [
+      `Estimados ${cleanText(vendor.vendor_name || vendor.domain || "team")},`,
+      `RFx: ${cleanText(event.rfx_id || event.name) || "RFx"}`,
+      "",
+      awardNoticeRowsText(laneSummaries),
+      "",
+      portalLink ? `Bid Room: ${portalLink}` : null,
+      "Gracias por participar.",
+      "MARKSMAN Procurement"
+    ].filter(Boolean).join("\n");
+    const invitationIds = sortedGroup.map((item) => item.id).filter(Boolean);
+    const laneIds = sortedGroup.map((item) => item.rfx_lane_id).filter(Boolean);
+    messageRows.push(withOwner({
+      campaign_id: campaign.id,
+      template_id: null,
+      rfx_event_id: event.id,
+      rfx_lane_id: first.rfx_lane_id,
+      rfx_lane_vendor_id: first.id,
+      vendor_id: first.vendor_id,
+      channel: "email",
+      recipient_email: recipientEmail,
+      subject,
+      html_body: htmlBody,
+      text_body: textBody,
+      gmail_compose_url: gmailComposeUrl(recipientEmail, subject, textBody),
+      sender_email: senderEmail,
+      sender_label: senderLabel,
+      sender_connection_status: "draft_only",
+      status: "drafted",
+      metadata: {
+        notice_type: "rfx_award_closeout",
+        generated_at: now,
+        award_summary: counts,
+        rfx_lane_vendor_ids: invitationIds,
+        rfx_lane_ids: laneIds,
+        bid_link: portalLink,
+        sender_email: senderEmail,
+        sender_label: senderLabel
+      }
+    }, user));
+  }
+
+  if (!messageRows.length) return { generated: 0, rows: [], skipped, campaign_id: campaign.id };
+
+  const result = await supabase
+    .from("outreach_messages")
+    .upsert(messageRows, { onConflict: "campaign_id,rfx_lane_vendor_id,channel" })
+    .select("*, vendors(vendor_name,domain,primary_email,whatsapp_phone), outreach_campaigns(name), rfx_events(rfx_id,name), rfx_lanes(origin,destination,equipment,trailer,operation,service), rfx_lane_vendors(id,invitation_status,award_role,bid_rate,currency,responded_at)");
+  if (result.error) throw result.error;
+
+  const historyRows = (result.data || []).map((message) => withOwner({
+    outreach_message_id: message.id,
+    campaign_id: campaign.id,
+    vendor_id: message.vendor_id,
+    rfx_event_id: message.rfx_event_id,
+    channel: "email",
+    direction: "outbound",
+    status: "drafted",
+    subject: message.subject,
+    body_preview: contactPreview(message.text_body || message.html_body),
+    metadata: {
+      generated_from: "rfx_award_closeout",
+      notice_type: "rfx_award_closeout",
+      award_summary: objectRecord(message.metadata).award_summary || null
+    }
+  }, user));
+  if (historyRows.length) {
+    const history = await supabase.from("contact_history").insert(historyRows);
+    if (history.error) throw history.error;
+  }
+
+  const campaignUpdate = await supabase
+    .from("outreach_campaigns")
+    .update({
+      status: "generated",
+      sender_email: senderEmail,
+      sender_label: senderLabel,
+      sender_connection_status: "draft_only",
+      updated_at: now
+    })
+    .eq("id", campaign.id)
+    .eq("owner_email", user.owner_email);
+  if (campaignUpdate.error) throw campaignUpdate.error;
+
+  return { generated: result.data?.length || 0, rows: result.data || [], skipped, campaign_id: campaign.id };
+}
+
 const BID_ROOM_CHAT_THREAD_TYPES = new Set(["event_group", "lane_group", "carrier_private"]);
 
 function normalizeBidRoomThreadType(value: unknown) {
@@ -10289,6 +10573,25 @@ Deno.serve(async (request) => {
       return jsonResponse(result);
     }
 
+    if (body.action === "generate_rfx_award_notices") {
+      const result = await generateRfxAwardNotices(supabase, user, body);
+      await writeAuditLog(
+        supabase,
+        user,
+        "rfx.award.notices.generate",
+        "outreach_messages",
+        result.campaign_id || null,
+        `Generated ${result.generated} RFx award notice draft(s)`,
+        {
+          generated: result.generated,
+          skipped: result.skipped?.length || 0,
+          campaign_id: result.campaign_id,
+          rfx_event_id: body.event_id || body.rfx_event_id || body.id
+        }
+      );
+      return jsonResponse(result);
+    }
+
     if (body.action === "archive_rfx_lane_vendors") {
       const ids = Array.isArray(body.ids) ? body.ids.map(String).filter(Boolean).slice(0, 500) : [];
       if (!ids.length) return jsonResponse({ updated: 0, rows: [] });
@@ -10684,7 +10987,7 @@ Deno.serve(async (request) => {
     if (body.action === "list_outreach_messages") {
       let query = supabase
         .from("outreach_messages")
-        .select("*, vendors(vendor_name,domain,primary_email,whatsapp_phone), rfx_events(rfx_id,name), rfx_lanes(origin,destination,equipment,trailer,operation,service), rfx_lane_vendors(id,invitation_status,invitation_token,bid_rate,currency,responded_at)")
+        .select("*, vendors(vendor_name,domain,primary_email,whatsapp_phone), outreach_campaigns(name,notes), rfx_events(rfx_id,name), rfx_lanes(origin,destination,equipment,trailer,operation,service), rfx_lane_vendors(id,invitation_status,invitation_token,award_role,bid_rate,currency,responded_at)")
         .eq("owner_email", user.owner_email)
         .order("created_at", { ascending: false })
         .limit(500);

@@ -62,11 +62,23 @@ function statusLabel(status) {
     quoted: "Quoted",
     bid_submitted: "Quoted",
     awarded: "Awarded",
+    backup: "Backup",
+    not_awarded: "Not awarded",
+    pending: "Pending",
     declined: "Declined",
     open: "Open",
     not_invited: "Request invite"
   };
   return labels[value] || value;
+}
+
+function statusTone(status) {
+  const value = String(status || "").toLowerCase();
+  if (value === "awarded") return "success";
+  if (value === "backup" || value === "quoted" || value === "bid_submitted") return "neutral";
+  if (value === "not_awarded" || value === "declined") return "muted";
+  if (value === "invited" || value === "viewed" || value === "responded") return "warning";
+  return "muted";
 }
 
 function deadlineCopy(event = {}) {
@@ -291,7 +303,7 @@ function fitTags(row = {}) {
 }
 
 function bookStatus(row = {}) {
-  return row.business_status || (row.is_invited ? row.participation_status : "open");
+  return row.award_status || row.business_status || (row.is_invited ? row.participation_status : "open");
 }
 
 function allBookRows(carrierBook = {}) {
@@ -307,10 +319,12 @@ function filteredBookRows(carrierBook = {}) {
     const lane = row.lane || {};
     const event = row.event || {};
     const viewMatches = bookFilters.view === "all"
-      || (bookFilters.view === "invited" && row.is_invited && !["quoted", "awarded"].includes(status))
+      || (bookFilters.view === "invited" && row.is_invited && !["quoted", "awarded", "backup", "not_awarded"].includes(status))
       || (bookFilters.view === "open" && !row.is_invited)
       || (bookFilters.view === "quoted" && status === "quoted")
-      || (bookFilters.view === "awarded" && status === "awarded");
+      || (bookFilters.view === "awarded" && status === "awarded")
+      || (bookFilters.view === "backup" && status === "backup")
+      || (bookFilters.view === "not_awarded" && status === "not_awarded");
     if (!viewMatches) return false;
     if (!term) return true;
     return [
@@ -356,7 +370,7 @@ function renderBookRows(rows = []) {
             ${fitTags(row).slice(0, 4).map((tag) => `<span>${escapeHtml(tag)}</span>`).join("") || "<span>No fit tags</span>"}
           </div>
         </td>
-        <td><span class="status-pill ${row.is_invited ? "neutral" : "muted"}">${escapeHtml(statusLabel(row.participation_status || bookStatus(row)))}</span></td>
+        <td><span class="status-pill ${statusTone(bookStatus(row))}">${escapeHtml(statusLabel(bookStatus(row)))}</span></td>
         <td>${amount}<small>${row.weekly_capacity ? `${escapeHtml(row.weekly_capacity)} / wk` : ""}</small></td>
         <td>${action}</td>
       </tr>
@@ -376,7 +390,9 @@ function renderCarrierBook(carrierBook = {}) {
     ["invited", "Invited"],
     ["open", "Open book"],
     ["quoted", "Quoted"],
-    ["awarded", "Awarded"]
+    ["awarded", "Awarded"],
+    ["backup", "Backup"],
+    ["not_awarded", "Not awarded"]
   ];
   book.innerHTML = `
     <div class="bid-room-section-heading">
@@ -391,6 +407,8 @@ function renderCarrierBook(carrierBook = {}) {
       <article><span>Open book</span><strong>${escapeHtml(summary.not_invited_open || 0)}</strong></article>
       <article><span>Submitted bids</span><strong>${escapeHtml(summary.quoted || 0)}</strong></article>
       <article><span>Awarded</span><strong>${escapeHtml(summary.awarded || 0)}</strong></article>
+      <article><span>Backup</span><strong>${escapeHtml(summary.backup || 0)}</strong></article>
+      <article><span>Not awarded</span><strong>${escapeHtml(summary.not_awarded || 0)}</strong></article>
     </div>
     <div class="bid-book-toolbar">
       <div class="segmented-control">
@@ -405,6 +423,64 @@ function renderCarrierBook(carrierBook = {}) {
       </table>
     </div>
     <p class="bid-board-note">Open book lanes are visible for discovery. You can request access, but you cannot bid until procurement invites you to that lane.</p>
+  `;
+}
+
+function renderAwardOutcome(invitation = {}, carrierBook = {}, liveBoard = {}) {
+  const panel = card.querySelector("#carrier-award-outcome");
+  if (!panel) return;
+  const event = invitation.rfx_events || {};
+  const liveOutcome = liveBoard.award_outcome || {};
+  const currentStatus = liveOutcome.status || invitation.award_role && (invitation.award_role === "primary" ? "awarded" : "backup");
+  const summary = carrierBook.summary || {};
+  const hasOutcome = ["awarded", "backup", "not_awarded"].includes(String(currentStatus || ""))
+    || Number(summary.awarded || 0) > 0
+    || Number(summary.backup || 0) > 0
+    || Number(summary.not_awarded || 0) > 0
+    || String(event.status || "").toLowerCase() === "awarded";
+  if (!hasOutcome) {
+    panel.innerHTML = "";
+    panel.hidden = true;
+    return;
+  }
+  const status = ["awarded", "backup", "not_awarded"].includes(String(currentStatus || ""))
+    ? currentStatus
+    : "pending";
+  const reason = liveOutcome.reason || invitation.award_reason || invitation.award_notes || "";
+  const copy = status === "awarded"
+    ? "This lane is awarded to your team. Procurement may follow up with final onboarding and execution details."
+    : status === "backup"
+      ? "You are selected as backup capacity. Keep availability current in case the primary award changes."
+      : status === "not_awarded"
+        ? "This lane was awarded to another carrier. Your bid remains visible for future procurement decisions."
+        : "Procurement has started the award closeout. Final lane results are still being confirmed.";
+  panel.hidden = false;
+  panel.innerHTML = `
+    <div class="bid-room-section-heading">
+      <div>
+        <p class="eyebrow">Award outcome</p>
+        <h3>${escapeHtml(statusLabel(status))}</h3>
+      </div>
+      <span class="status-pill ${statusTone(status)}">${escapeHtml(statusLabel(status))}</span>
+    </div>
+    <div class="carrier-award-summary">
+      <article>
+        <span>Current lane</span>
+        <strong>${escapeHtml(statusLabel(status))}</strong>
+        <small>${escapeHtml(reason || copy)}</small>
+      </article>
+      <article>
+        <span>Event awards</span>
+        <strong>${escapeHtml(summary.awarded || 0)} awarded</strong>
+        <small>${escapeHtml(summary.backup || 0)} backup | ${escapeHtml(summary.not_awarded || 0)} not awarded</small>
+      </article>
+      <article>
+        <span>Rateware closeout</span>
+        <strong>${escapeHtml(liveOutcome.rateware_closeout_at ? "Created" : status === "awarded" ? "Pending" : "-")}</strong>
+        <small>${escapeHtml(liveOutcome.rateware_closeout_at ? new Date(liveOutcome.rateware_closeout_at).toLocaleString() : "Procurement controls final Rateware insert.")}</small>
+      </article>
+    </div>
+    <p class="bid-board-note">${escapeHtml(copy)}</p>
   `;
 }
 
@@ -434,6 +510,8 @@ function renderInvitation(invitation, liveBoard = {}) {
       <article><span>Visibility</span><strong>${escapeHtml(visibilityLabel(liveBoard.visibility || {}))}</strong></article>
       <article><span>Refresh</span><strong>30 sec</strong></article>
     </div>
+
+    <section id="carrier-award-outcome" class="carrier-award-outcome" hidden></section>
 
     <section class="bid-lane-summary">
       <div class="bid-room-section-heading">
@@ -531,10 +609,12 @@ async function loadInvitation(options = {}) {
     const data = await callBidApi("get_invitation");
   if (options.refreshOnly && card.querySelector("#bid-form")) {
       renderLiveBoard(data.live_board);
+      renderAwardOutcome(data.invitation, data.carrier_book, data.live_board);
       renderCarrierBook(data.carrier_book);
       await loadCarrierChat();
     } else {
       renderInvitation(data.invitation, data.live_board);
+      renderAwardOutcome(data.invitation, data.carrier_book, data.live_board);
       renderCarrierBook(data.carrier_book);
       await loadCarrierChat();
     }

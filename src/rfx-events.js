@@ -6,6 +6,7 @@ import {
   awardRfxLaneVendor,
   clearRfxAward,
   closeoutAwardedRfxToRateware,
+  generateRfxAwardNotices,
   autoShortlistRfxLane,
   createRfxEvent,
   deleteRfxEvent,
@@ -197,6 +198,9 @@ const rfxAwardBackup = document.querySelector("#rfx-award-backup");
 const rfxAwardRateware = document.querySelector("#rfx-award-rateware");
 const rfxCloseoutAwardsButton = document.querySelector("#rfx-closeout-awards-to-rateware");
 const rfxRefreshAwardsButton = document.querySelector("#rfx-refresh-awards");
+const rfxGenerateAwardNoticesButton = document.querySelector("#rfx-generate-award-notices");
+const rfxSendAwardNoticesButton = document.querySelector("#rfx-send-award-notices");
+const rfxAwardNoticeSummary = document.querySelector("#rfx-award-notice-summary");
 
 let events = [];
 let selectedEventId = null;
@@ -1680,6 +1684,49 @@ function awardLaneRows() {
     .filter((row) => row.bids.length);
 }
 
+function awardNoticeDraftRows() {
+  if (!selectedEventId) return [];
+  return outreachMessages.filter((message) => {
+    const metadata = message.metadata && typeof message.metadata === "object" ? message.metadata : {};
+    return message.rfx_event_id === selectedEventId && metadata.notice_type === "rfx_award_closeout";
+  });
+}
+
+function sendableAwardNoticeIds(rows = awardNoticeDraftRows()) {
+  return rows
+    .filter((message) => {
+      const status = String(message.status || "").toLowerCase();
+      return message.channel === "email" && Boolean(message.recipient_email) && ["drafted", "queued", "failed"].includes(status);
+    })
+    .map((message) => String(message.id));
+}
+
+function updateAwardNoticeControls() {
+  const rows = awardNoticeDraftRows();
+  const sendableIds = sendableAwardNoticeIds(rows);
+  const sent = rows.filter((message) => String(message.status || "").toLowerCase() === "sent").length;
+  const failed = rows.filter((message) => String(message.status || "").toLowerCase() === "failed").length;
+  const primary = currentLanes.flatMap((lane) => activeInvitations(lane)).filter((item) => item.award_role === "primary").length;
+  const bidRows = awardLaneRows().reduce((sum, row) => sum + row.bids.length, 0);
+  if (rfxGenerateAwardNoticesButton) {
+    rfxGenerateAwardNoticesButton.disabled = !selectedEventId || !bidRows;
+  }
+  if (rfxSendAwardNoticesButton) {
+    rfxSendAwardNoticesButton.disabled = !sendableIds.length;
+    rfxSendAwardNoticesButton.textContent = sendableIds.length
+      ? `Send ${formatNumber(sendableIds.length)} notice${sendableIds.length === 1 ? "" : "s"}`
+      : "Send notices";
+  }
+  if (rfxAwardNoticeSummary) {
+    rfxAwardNoticeSummary.textContent = rows.length
+      ? `${formatNumber(rows.length)} notice draft(s). ${formatNumber(sendableIds.length)} ready, ${formatNumber(sent)} sent${failed ? `, ${formatNumber(failed)} failed` : ""}.`
+      : primary
+        ? "Generate notices when award decisions are ready."
+        : "Award at least one lane before sending closeout notices.";
+    rfxAwardNoticeSummary.dataset.tone = failed ? "warning" : rows.length ? "success" : "neutral";
+  }
+}
+
 function updateAwardMetrics() {
   const invitations = currentLanes.flatMap((lane) => activeInvitations(lane));
   const awardable = awardLaneRows();
@@ -1701,6 +1748,7 @@ function updateAwardMetrics() {
       ? `Create ${formatNumber(pendingCloseout)} Rateware row${pendingCloseout === 1 ? "" : "s"}`
       : "Create Rateware rows";
   }
+  updateAwardNoticeControls();
 }
 
 function renderAwardBoard() {
@@ -3737,6 +3785,69 @@ async function closeoutSelectedAwardsToRateware() {
   }
 }
 
+async function generateAwardNoticeDrafts() {
+  if (!selectedEventId) {
+    setStatus(rfxAwardStatus, "Select a bid event before generating award notices.", "error");
+    return;
+  }
+  const bids = awardLaneRows().reduce((sum, row) => sum + row.bids.length, 0);
+  if (!bids) {
+    setStatus(rfxAwardStatus, "There are no carrier bids to close out yet.", "error");
+    return;
+  }
+  if (rfxGenerateAwardNoticesButton) rfxGenerateAwardNoticesButton.disabled = true;
+  setStatus(rfxAwardStatus, "Generating award, backup, and not-awarded email drafts...");
+  try {
+    const result = await generateRfxAwardNotices(selectedEventId, {
+      senderEmail: APPROVED_GMAIL_SENDER,
+      senderLabel: APPROVED_GMAIL_SENDER
+    });
+    [contactHistoryRows, outreachMessages] = await Promise.all([
+      fetchContactHistory({ rfx_event_id: selectedEventId }),
+      fetchOutreachMessages({ rfx_event_id: selectedEventId })
+    ]);
+    renderOutreachLaunchpad();
+    renderAwardBoard();
+    setStatus(
+      rfxAwardStatus,
+      `${formatNumber(result.generated || 0)} award notice draft(s) ready. ${formatNumber(result.skipped?.length || 0)} skipped.`,
+      "success"
+    );
+  } catch (error) {
+    setStatus(rfxAwardStatus, error.message, "error");
+    updateAwardNoticeControls();
+  }
+}
+
+async function sendAwardNoticeDrafts() {
+  if (!selectedEventId) return;
+  const ids = sendableAwardNoticeIds();
+  if (!ids.length) {
+    setStatus(rfxAwardStatus, "There are no unsent award notice emails ready.", "error");
+    return;
+  }
+  if (!window.confirm(`Send ${ids.length} individual award notice email(s) from ${APPROVED_GMAIL_SENDER}?`)) return;
+  if (rfxSendAwardNoticesButton) rfxSendAwardNoticesButton.disabled = true;
+  setStatus(rfxAwardStatus, `Sending ${formatNumber(ids.length)} award notice email(s)...`);
+  try {
+    const result = await sendOutreachMessages(ids, { senderEmail: APPROVED_GMAIL_SENDER });
+    [contactHistoryRows, outreachMessages] = await Promise.all([
+      fetchContactHistory({ rfx_event_id: selectedEventId }),
+      fetchOutreachMessages({ rfx_event_id: selectedEventId })
+    ]);
+    renderOutreachLaunchpad();
+    renderAwardBoard();
+    setStatus(
+      rfxAwardStatus,
+      `${formatNumber(result.sent || 0)} award notice email(s) sent. ${formatNumber(result.failed || 0)} failed.`,
+      result.failed ? "warning" : "success"
+    );
+  } catch (error) {
+    setStatus(rfxAwardStatus, error.message, "error");
+    updateAwardNoticeControls();
+  }
+}
+
 async function sendSelectedDraftEmails() {
   const ids = selectedSendableDraftIds();
   if (!ids.length) {
@@ -4331,6 +4442,8 @@ rfxRefreshAwardsButton?.addEventListener("click", async () => {
 });
 
 rfxCloseoutAwardsButton?.addEventListener("click", closeoutSelectedAwardsToRateware);
+rfxGenerateAwardNoticesButton?.addEventListener("click", generateAwardNoticeDrafts);
+rfxSendAwardNoticesButton?.addEventListener("click", sendAwardNoticeDrafts);
 
 copyRfxSummaryButton?.addEventListener("click", async () => {
   if (!selectedEvent) return;

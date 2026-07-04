@@ -173,11 +173,24 @@ function laneFitTags(lane: Record<string, unknown>, event: Record<string, unknow
 
 function businessBookStatus(row: Record<string, unknown>) {
   const status = String(cleanText(row.invitation_status) || "drafted").toLowerCase();
+  const awardRole = String(cleanText(row.award_role) || "").toLowerCase();
+  const event = relationRecord(row.rfx_events);
   const bidRate = cleanNumber(row.bid_rate);
+  if (awardRole === "primary") return "awarded";
+  if (awardRole === "backup") return "backup";
+  if (String(cleanText(event.status) || "").toLowerCase() === "awarded" && (bidRate !== null || ["invited", "viewed", "responded", "quoted", "bid_submitted"].includes(status))) return "not_awarded";
   if (status === "awarded") return "awarded";
   if (bidRate !== null || ["quoted", "bid_submitted"].includes(status)) return "quoted";
   if (["invited", "viewed", "responded"].includes(status)) return "invited";
   return status || "drafted";
+}
+
+function awardOutcome(row: Record<string, unknown>) {
+  const status = businessBookStatus(row);
+  if (status === "awarded") return "awarded";
+  if (status === "backup") return "backup";
+  if (status === "not_awarded") return "not_awarded";
+  return "pending";
 }
 
 const BID_ROOM_CHAT_THREAD_TYPES = new Set(["event_group", "lane_group", "carrier_private"]);
@@ -755,6 +768,13 @@ function liveBoardFromRows(currentInvitation: Record<string, unknown>, peerRows:
   return {
     updated_at: new Date().toISOString(),
     visibility,
+    award_outcome: {
+      status: awardOutcome(currentInvitation),
+      role: cleanText(currentInvitation.award_role) || null,
+      reason: cleanText(currentInvitation.award_reason || currentInvitation.award_notes),
+      awarded_at: currentInvitation.awarded_at || null,
+      rateware_closeout_at: currentInvitation.rateware_closeout_at || null
+    },
     bid_count: visibility.competitor_activity_visible ? rows.length : rows.filter((row) => row.is_current).length,
     current_rank: visibility.competitor_rank_visible && currentIndex >= 0 ? currentIndex + 1 : null,
     best_rate: currentIndex === 0 ? currentAmount : null,
@@ -808,6 +828,12 @@ function carrierBusinessBook(currentInvitation: Record<string, unknown>, invited
       currency: cleanText(row.currency) || cleanText(lane.currency) || "USD",
       weekly_capacity: cleanNumber(row.weekly_capacity),
       transit_days: cleanNumber(row.transit_days),
+      award_role: cleanText(row.award_role),
+      award_status: awardOutcome(row),
+      award_reason: cleanText(row.award_reason),
+      award_notes: cleanText(row.award_notes),
+      awarded_at: row.awarded_at,
+      rateware_closeout_at: row.rateware_closeout_at,
       invited_at: row.invited_at,
       responded_at: row.responded_at,
       due_state: dueState(relationRecord(row.rfx_events).due_date),
@@ -839,7 +865,9 @@ function carrierBusinessBook(currentInvitation: Record<string, unknown>, invited
       invited: invited.length,
       not_invited_open: open_not_invited.length,
       quoted: quoted.length,
-      awarded: invited.filter((row) => row.participation_status === "awarded").length
+      awarded: invited.filter((row) => row.award_status === "awarded").length,
+      backup: invited.filter((row) => row.award_status === "backup").length,
+      not_awarded: invited.filter((row) => row.award_status === "not_awarded").length
     },
     invited,
     open_not_invited,
@@ -874,6 +902,12 @@ Deno.serve(async (request) => {
           weekly_capacity,
           transit_days,
           notes,
+          award_role,
+          award_reason,
+          award_notes,
+          awarded_at,
+          rate_staging_id,
+          rateware_closeout_at,
           vendors(vendor_name,domain,primary_email),
           rfx_events(id,owner_user_id,owner_email,rfx_id,name,customer,event_type,status,due_date,bid_visibility_mode,notes),
           rfx_lanes(id,rfx_event_id,lane_number,origin,destination,origin_city,origin_state,origin_market,origin_region,destination_city,destination_state,destination_market,destination_region,equipment,trailer,config,operation,service,weekly_volume,target_rate,currency)
@@ -920,6 +954,12 @@ Deno.serve(async (request) => {
               currency,
               weekly_capacity,
               transit_days,
+              award_role,
+              award_reason,
+              award_notes,
+              awarded_at,
+              rate_staging_id,
+              rateware_closeout_at,
               rfx_events!inner(id,owner_email,rfx_id,name,customer,event_type,status,due_date,bid_visibility_mode),
               rfx_lanes(id,rfx_event_id,lane_number,origin,destination,origin_city,origin_state,origin_market,origin_region,destination_city,destination_state,destination_market,destination_region,equipment,trailer,config,operation,service,weekly_volume,target_rate,currency)
             `)

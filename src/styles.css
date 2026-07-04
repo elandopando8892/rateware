@@ -1472,6 +1472,50 @@ a {
   font-size: 1.08rem;
 }
 
+.carrier-award-outcome {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #fff;
+  padding: 12px;
+}
+
+.carrier-award-outcome[hidden] {
+  display: none;
+}
+
+.carrier-award-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.carrier-award-summary article {
+  display: grid;
+  gap: 3px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--soft-panel);
+  padding: 9px;
+}
+
+.carrier-award-summary span,
+.carrier-award-summary small {
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 760;
+}
+
+.carrier-award-summary span {
+  text-transform: uppercase;
+}
+
+.carrier-award-summary strong {
+  color: var(--text);
+  font-size: 1rem;
+}
+
 .carrier-book-section {
   display: grid;
   gap: 7px;
@@ -15707,7 +15751,7 @@ textarea:focus,
 }
 
 .bid-room-award-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1.2fr) minmax(250px, 0.9fr) minmax(250px, 0.9fr);
 }
 
 .rfx-award-metrics {

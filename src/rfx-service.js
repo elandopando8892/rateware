@@ -60,6 +60,15 @@ export async function closeoutAwardedRfxToRateware(eventId, options = {}) {
   return await callRatewareApi("closeout_awarded_rfx_to_rateware", { event_id: eventId, ...options });
 }
 
+export async function generateRfxAwardNotices(eventId, options = {}) {
+  return await callRatewareApi("generate_rfx_award_notices", {
+    event_id: eventId,
+    app_origin: options.appOrigin || window.location.origin,
+    sender_email: options.senderEmail || "",
+    sender_label: options.senderLabel || ""
+  });
+}
+
 export async function applyBidUpdateFromChat(payload = {}) {
   return await callRatewareApi("apply_bid_update_from_chat", payload);
 }
