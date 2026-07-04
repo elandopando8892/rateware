@@ -553,6 +553,51 @@
                   <textarea id="rfx-chat-message" rows="2" placeholder="Write message to carriers or selected carrier..."></textarea>
                   <button id="rfx-chat-send" type="submit" disabled>Send</button>
                 </form>
+                <aside id="rfx-chat-bid-update-drawer" class="bid-room-bid-update-drawer" hidden>
+                  <div class="bid-room-drawer-header">
+                    <div>
+                      <p class="eyebrow">AI proposes, user confirms</p>
+                      <h4>Review bid update</h4>
+                      <span id="rfx-chat-bid-update-title">Selected thread</span>
+                    </div>
+                    <button id="rfx-chat-bid-update-close" class="secondary small-button" type="button">Close</button>
+                  </div>
+                  <form id="rfx-chat-bid-update-form" class="bid-room-bid-update-form">
+                    <label class="wide-field">
+                      Lane / carrier
+                      <select id="rfx-chat-bid-update-invitation"></select>
+                    </label>
+                    <label>
+                      All-in rate
+                      <input id="rfx-chat-bid-update-rate" required inputmode="decimal" placeholder="2900" />
+                    </label>
+                    <label>
+                      Currency
+                      <input id="rfx-chat-bid-update-currency" maxlength="3" placeholder="USD" />
+                    </label>
+                    <label>
+                      Capacity / wk
+                      <input id="rfx-chat-bid-update-capacity" inputmode="decimal" placeholder="5" />
+                    </label>
+                    <label>
+                      Transit days
+                      <input id="rfx-chat-bid-update-transit" inputmode="decimal" placeholder="2" />
+                    </label>
+                    <label class="wide-field">
+                      Notes
+                      <textarea id="rfx-chat-bid-update-notes" rows="3" placeholder="Source assumptions, availability, all-in confirmation"></textarea>
+                    </label>
+                    <div class="wide-field bid-room-source-preview">
+                      <span>Source message</span>
+                      <p id="rfx-chat-bid-update-source">No source message selected.</p>
+                    </div>
+                    <div class="wide-field action-row">
+                      <button id="rfx-chat-bid-update-apply" type="submit">Apply bid update</button>
+                      <button class="secondary" type="button" id="rfx-chat-bid-update-close-secondary">Cancel</button>
+                      <span id="rfx-chat-bid-update-status" class="status-message" role="status"></span>
+                    </div>
+                  </form>
+                </aside>
                 <p id="rfx-chat-status" class="status-message" role="status"></p>
               </section>
               <div class="table-wrap">

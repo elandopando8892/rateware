@@ -6835,6 +6835,132 @@ async function updateBidRoomChatThreadAction(
   return { row: result.data, action };
 }
 
+async function applyBidUpdateFromChat(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_user_id: string | null; owner_email: string | null },
+  input: Record<string, unknown>
+) {
+  const threadId = cleanText(input.thread_id);
+  if (!threadId) throw new Error("Chat thread id is required.");
+  const invitationId = cleanText(input.rfx_lane_vendor_id || input.invitation_id);
+  const now = new Date().toISOString();
+  const threadResult = await supabase
+    .from("bid_room_chat_threads")
+    .select("*, vendors(vendor_name,domain), rfx_lanes(lane_number,origin,destination)")
+    .eq("id", threadId)
+    .eq("owner_email", user.owner_email)
+    .neq("status", "archived")
+    .single();
+  if (threadResult.error) throw threadResult.error;
+  const thread = threadResult.data;
+
+  let sourceMessage: Record<string, unknown> | null = null;
+  const messageId = cleanText(input.message_id || input.source_message_id);
+  if (messageId) {
+    const messageResult = await supabase
+      .from("bid_room_chat_messages")
+      .select("*")
+      .eq("id", messageId)
+      .eq("thread_id", thread.id)
+      .eq("owner_email", user.owner_email)
+      .maybeSingle();
+    if (messageResult.error) throw messageResult.error;
+    sourceMessage = messageResult.data || null;
+  }
+  if (!sourceMessage) {
+    const latestMessageResult = await supabase
+      .from("bid_room_chat_messages")
+      .select("*")
+      .eq("thread_id", thread.id)
+      .eq("owner_email", user.owner_email)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (latestMessageResult.error) throw latestMessageResult.error;
+    sourceMessage = latestMessageResult.data || null;
+  }
+
+  let invitationQuery = supabase
+    .from("rfx_lane_vendors")
+    .select("*, rfx_events!inner(owner_email), vendors(id,vendor_name,domain,primary_email,whatsapp_phone,preferred_channel,base_stage,status), rfx_lanes(id,lane_number,origin,destination,currency)")
+    .eq("rfx_events.owner_email", user.owner_email);
+  if (invitationId) {
+    invitationQuery = invitationQuery.eq("id", invitationId);
+  } else {
+    const laneId = cleanText(input.rfx_lane_id || thread.rfx_lane_id);
+    const vendorId = cleanText(input.vendor_id || thread.vendor_id);
+    if (!laneId || !vendorId) {
+      throw new Error("Choose a lane-carrier row before applying a chat bid update.");
+    }
+    invitationQuery = invitationQuery.eq("rfx_lane_id", laneId).eq("vendor_id", vendorId);
+  }
+  const invitationResult = await invitationQuery.single();
+  if (invitationResult.error) throw invitationResult.error;
+  const before = invitationResult.data;
+
+  const bidRate = cleanNumber(input.bid_rate);
+  if (bidRate === null) throw new Error("All-in rate is required before applying a chat bid update.");
+  const sourceBody = cleanText(sourceMessage?.body);
+  const sourceNote = cleanText(input.source_note) || sourceBody || "Bid update reviewed from Bid Room chat.";
+  const patch = {
+    bid_rate: bidRate,
+    currency: cleanText(input.currency)?.toUpperCase() || cleanText(before.currency) || cleanText((before.rfx_lanes as Record<string, unknown> | null)?.currency) || "USD",
+    weekly_capacity: cleanNumber(input.weekly_capacity),
+    transit_days: cleanNumber(input.transit_days),
+    notes: cleanText(input.notes),
+    invitation_status: "quoted",
+    responded_at: now,
+    response_source: "bid_room_chat",
+    bid_source_thread_id: thread.id,
+    bid_source_message_id: sourceMessage?.id || null,
+    bid_source_note: sourceNote.slice(0, 2000),
+    bid_updated_from_chat_at: now,
+    updated_at: now
+  };
+
+  const result = await supabase
+    .from("rfx_lane_vendors")
+    .update(patch)
+    .eq("id", before.id)
+    .select("*, vendors(id,vendor_name,domain,primary_email,whatsapp_phone,preferred_channel,base_stage,status), rfx_lanes(id,lane_number,origin,destination,currency)")
+    .single();
+  if (result.error) throw result.error;
+
+  const resolveThread = input.resolve_thread !== false;
+  await supabase.from("bid_room_chat_threads").update({
+    communication_status: resolveThread ? "resolved" : "open",
+    needs_reply: false,
+    read_status: "read",
+    last_read_at: now,
+    resolved_at: resolveThread ? now : null,
+    resolved_by: resolveThread ? user.owner_email : null,
+    last_action_at: now,
+    updated_at: now
+  }).eq("id", thread.id).eq("owner_email", user.owner_email);
+
+  return {
+    row: result.data,
+    thread,
+    source_message: sourceMessage,
+    before: {
+      bid_rate: before.bid_rate,
+      currency: before.currency,
+      weekly_capacity: before.weekly_capacity,
+      transit_days: before.transit_days,
+      invitation_status: before.invitation_status,
+      response_source: before.response_source
+    },
+    after: {
+      bid_rate: result.data.bid_rate,
+      currency: result.data.currency,
+      weekly_capacity: result.data.weekly_capacity,
+      transit_days: result.data.transit_days,
+      invitation_status: result.data.invitation_status,
+      response_source: result.data.response_source
+    }
+  };
+}
+
 async function postBidRoomChatMessage(
   supabase: ReturnType<typeof createClient>,
   user: { owner_user_id: string | null; owner_email: string | null },
@@ -9598,6 +9724,25 @@ Deno.serve(async (request) => {
         result.row.id,
         `Updated Bid Room communication thread action: ${result.action}`,
         { communication_status: result.row.communication_status, read_status: result.row.read_status }
+      );
+      return jsonResponse(result);
+    }
+
+    if (body.action === "apply_bid_update_from_chat") {
+      const result = await applyBidUpdateFromChat(supabase, user, body);
+      await writeAuditLog(
+        supabase,
+        user,
+        "bid_room.chat.apply_bid_update",
+        "rfx_lane_vendors",
+        result.row.id,
+        `Applied Bid Room chat update to ${result.row.vendors?.vendor_name || result.row.vendors?.domain || "carrier bid"}`,
+        {
+          thread_id: result.thread.id,
+          source_message_id: result.source_message?.id || null,
+          before: result.before,
+          after: result.after
+        }
       );
       return jsonResponse(result);
     }

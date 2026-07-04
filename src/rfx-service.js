@@ -48,6 +48,10 @@ export async function updateRfxBid(id, patch) {
   return (await callRatewareApi("update_rfx_bid", { id, patch })).row;
 }
 
+export async function applyBidUpdateFromChat(payload = {}) {
+  return await callRatewareApi("apply_bid_update_from_chat", payload);
+}
+
 export async function archiveRfxLaneVendors(ids = []) {
   return await callRatewareApi("archive_rfx_lane_vendors", { ids });
 }

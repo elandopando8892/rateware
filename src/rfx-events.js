@@ -1,5 +1,6 @@
 import { initAuthControls, requirePrivatePage } from "./auth.js";
 import {
+  applyBidUpdateFromChat,
   archiveRfxEvent,
   archiveRfxLaneVendors,
   autoShortlistRfxLane,
@@ -161,6 +162,20 @@ const rfxChatInboxFilters = document.querySelector("#rfx-chat-inbox-filters");
 const rfxChatCopySummary = document.querySelector("#rfx-chat-copy-summary");
 const rfxChatAiSummary = document.querySelector("#rfx-chat-ai-summary");
 const rfxChatSignalQueue = document.querySelector("#rfx-chat-signal-queue");
+const rfxChatBidUpdateDrawer = document.querySelector("#rfx-chat-bid-update-drawer");
+const rfxChatBidUpdateForm = document.querySelector("#rfx-chat-bid-update-form");
+const rfxChatBidUpdateTitle = document.querySelector("#rfx-chat-bid-update-title");
+const rfxChatBidUpdateInvitation = document.querySelector("#rfx-chat-bid-update-invitation");
+const rfxChatBidUpdateRate = document.querySelector("#rfx-chat-bid-update-rate");
+const rfxChatBidUpdateCurrency = document.querySelector("#rfx-chat-bid-update-currency");
+const rfxChatBidUpdateCapacity = document.querySelector("#rfx-chat-bid-update-capacity");
+const rfxChatBidUpdateTransit = document.querySelector("#rfx-chat-bid-update-transit");
+const rfxChatBidUpdateNotes = document.querySelector("#rfx-chat-bid-update-notes");
+const rfxChatBidUpdateSource = document.querySelector("#rfx-chat-bid-update-source");
+const rfxChatBidUpdateClose = document.querySelector("#rfx-chat-bid-update-close");
+const rfxChatBidUpdateCloseSecondary = document.querySelector("#rfx-chat-bid-update-close-secondary");
+const rfxChatBidUpdateApply = document.querySelector("#rfx-chat-bid-update-apply");
+const rfxChatBidUpdateStatus = document.querySelector("#rfx-chat-bid-update-status");
 const rfxOpsTitle = document.querySelector("#rfx-ops-title");
 const rfxOpsSubtitle = document.querySelector("#rfx-ops-subtitle");
 const rfxOpsHealth = document.querySelector("#rfx-ops-health");
@@ -186,6 +201,7 @@ let outreachMessages = [];
 let bidRoomChatThreads = { rows: [], google_chat_configured: false };
 let bidRoomChatFilter = "all";
 let bidRoomChatRefreshTimer = null;
+let pendingChatBidUpdate = null;
 let selectedLaneIds = new Set();
 let selectedInvitationIds = new Set();
 let selectedDraftMessageIds = new Set();
@@ -2038,6 +2054,88 @@ function extractedBidUpdateText(thread = {}) {
   return lines.join("\n");
 }
 
+function hasBidUpdateSignal(analysis = {}) {
+  const extracted = analysis.extracted || {};
+  return Boolean(extracted.rate || extracted.capacity !== null || extracted.transit_days !== null);
+}
+
+function chatBidUpdateSourceMessage(thread = {}) {
+  const analysis = analyzeCommunicationThread(thread);
+  return analysis.latest_actionable_message || latestChatMessage(thread) || null;
+}
+
+function chatBidUpdateCandidates(thread = {}) {
+  const laneId = String(thread.rfx_lane_id || "");
+  const vendorId = String(thread.vendor_id || "");
+  const rows = currentLanes.flatMap((lane) => activeInvitations(lane).map((invitation) => ({ lane, invitation })));
+  const scoped = rows.filter(({ lane, invitation }) => {
+    const laneMatches = !laneId || String(lane.id) === laneId;
+    const vendorMatches = !vendorId || String(invitation.vendor_id) === vendorId;
+    return laneMatches && vendorMatches;
+  });
+  return scoped.length ? scoped : rows;
+}
+
+function chatBidUpdateCandidateLabel(candidate) {
+  if (!candidate) return "Select lane-carrier";
+  const laneLabel = `#${candidate.lane.lane_number || ""} ${laneRoute(candidate.lane)}`.trim();
+  return `${vendorLabel(candidate.invitation)} | ${laneLabel}`;
+}
+
+function selectedChatBidUpdateCandidate() {
+  if (!pendingChatBidUpdate || !rfxChatBidUpdateInvitation) return null;
+  return pendingChatBidUpdate.candidates.find((candidate) => String(candidate.invitation.id) === String(rfxChatBidUpdateInvitation.value)) || null;
+}
+
+function closeChatBidUpdateDrawer() {
+  pendingChatBidUpdate = null;
+  if (rfxChatBidUpdateDrawer) rfxChatBidUpdateDrawer.hidden = true;
+  if (rfxChatBidUpdateStatus) rfxChatBidUpdateStatus.textContent = "";
+}
+
+function openChatBidUpdateDrawer(thread = {}) {
+  if (!rfxChatBidUpdateDrawer || !rfxChatBidUpdateForm) return;
+  const analysis = analyzeCommunicationThread(thread);
+  const sourceMessage = chatBidUpdateSourceMessage(thread);
+  const candidates = chatBidUpdateCandidates(thread);
+  pendingChatBidUpdate = {
+    thread,
+    sourceMessage,
+    candidates
+  };
+  if (rfxChatBidUpdateTitle) rfxChatBidUpdateTitle.textContent = thread.title || "Review bid update";
+  if (rfxChatBidUpdateInvitation) {
+    rfxChatBidUpdateInvitation.innerHTML = candidates.length
+      ? candidates.map((candidate) => `
+          <option value="${escapeHtml(candidate.invitation.id)}">${escapeHtml(chatBidUpdateCandidateLabel(candidate))}</option>
+        `).join("")
+      : '<option value="">No lane-carrier rows available</option>';
+    const exactCandidate = candidates.find((candidate) => (
+      (!thread.rfx_lane_id || String(candidate.lane.id) === String(thread.rfx_lane_id))
+      && (!thread.vendor_id || String(candidate.invitation.vendor_id) === String(thread.vendor_id))
+    )) || candidates[0];
+    rfxChatBidUpdateInvitation.value = exactCandidate?.invitation?.id || "";
+  }
+  const selectedCandidate = selectedChatBidUpdateCandidate() || candidates[0];
+  if (rfxChatBidUpdateRate) rfxChatBidUpdateRate.value = analysis.extracted.rate?.amount ?? "";
+  if (rfxChatBidUpdateCurrency) rfxChatBidUpdateCurrency.value = analysis.extracted.rate?.currency || selectedCandidate?.invitation?.currency || selectedCandidate?.lane?.currency || "USD";
+  if (rfxChatBidUpdateCapacity) rfxChatBidUpdateCapacity.value = analysis.extracted.capacity ?? "";
+  if (rfxChatBidUpdateTransit) rfxChatBidUpdateTransit.value = analysis.extracted.transit_days ?? "";
+  if (rfxChatBidUpdateNotes) {
+    const currentNotes = selectedCandidate?.invitation?.notes || "";
+    rfxChatBidUpdateNotes.value = currentNotes
+      ? `${currentNotes}\nChat update: ${messageText(sourceMessage || {})}`.slice(0, 1200)
+      : messageText(sourceMessage || "");
+  }
+  if (rfxChatBidUpdateSource) {
+    rfxChatBidUpdateSource.textContent = messageText(sourceMessage || {}) || "No source message found.";
+  }
+  if (rfxChatBidUpdateApply) rfxChatBidUpdateApply.disabled = !candidates.length;
+  rfxChatBidUpdateDrawer.hidden = false;
+  setStatus(rfxChatBidUpdateStatus, "Review extracted values before applying. AI proposes, user confirms.", "neutral");
+  rfxChatBidUpdateRate?.focus();
+}
+
 function communicationActionQueue(rows = []) {
   return sortedChatThreads(rows)
     .map((thread) => ({ thread, analysis: analyzeCommunicationThread(thread) }))
@@ -2208,7 +2306,10 @@ function renderBidRoomChat() {
           <strong>${escapeHtml(thread.title || thread.thread_type || "Communication thread")}</strong>
           <span>${escapeHtml(analysis.signals.map((signal) => signal.label).join(" | ") || (threadNeedsReply(thread) ? "Needs reply" : "Unread"))}</span>
         </div>
-        <button type="button" class="secondary small-button" data-rfx-chat-thread-action="suggest_reply" data-thread-id="${escapeHtml(thread.id)}">Suggest reply</button>
+        <div class="action-row compact-actions">
+          <button type="button" class="secondary small-button" data-rfx-chat-thread-action="suggest_reply" data-thread-id="${escapeHtml(thread.id)}">Suggest reply</button>
+          <button type="button" class="small-button" data-rfx-chat-thread-action="review_bid_update" data-thread-id="${escapeHtml(thread.id)}" ${hasBidUpdateSignal(analysis) ? "" : "disabled"}>Review update</button>
+        </div>
       </article>
     `).join("") : "No communication signals detected yet.";
   }
@@ -2277,7 +2378,7 @@ function renderBidRoomChat() {
           <button type="button" class="secondary small-button" data-rfx-chat-thread-action="assign" data-thread-id="${escapeHtml(thread.id)}">Assign</button>
           <button type="button" class="secondary small-button" data-rfx-chat-thread-action="note" data-thread-id="${escapeHtml(thread.id)}">Note</button>
           <button type="button" class="secondary small-button" data-rfx-chat-thread-action="suggest_reply" data-thread-id="${escapeHtml(thread.id)}">Suggest reply</button>
-          <button type="button" class="secondary small-button" data-rfx-chat-thread-action="copy_bid_update" data-thread-id="${escapeHtml(thread.id)}" ${intelligence.has_signals ? "" : "disabled"}>Extract bid update</button>
+          <button type="button" class="small-button" data-rfx-chat-thread-action="review_bid_update" data-thread-id="${escapeHtml(thread.id)}" ${hasBidUpdateSignal(intelligence) ? "" : "disabled"}>Review bid update</button>
         </div>
         <div class="bid-room-chat-messages">
           ${messages.slice(-8).map((message) => `
@@ -4275,7 +4376,7 @@ rfxChatInboxFilters?.addEventListener("click", (event) => {
   bidRoomChatFilter = button.dataset.rfxChatFilter || "all";
   renderBidRoomChat();
 });
-rfxChatThreadList?.addEventListener("click", async (event) => {
+async function handleBidRoomChatThreadAction(event) {
   const button = event.target.closest("[data-rfx-chat-thread-action]");
   if (!button) return;
   const threadId = button.dataset.threadId;
@@ -4295,14 +4396,9 @@ rfxChatThreadList?.addEventListener("click", async (event) => {
     setStatus(rfxChatStatus, "Suggested reply drafted. Review before sending.", "success");
     return;
   }
-  if (action === "copy_bid_update") {
-    const text = extractedBidUpdateText(currentThread);
-    try {
-      await navigator.clipboard.writeText(text);
-      setStatus(rfxChatStatus, "Bid update candidate copied. Review before applying.", "success");
-    } catch (_error) {
-      setStatus(rfxChatStatus, text, "neutral");
-    }
+  if (action === "review_bid_update") {
+    openChatBidUpdateDrawer(currentThread);
+    setStatus(rfxChatStatus, "Bid update opened for review. Confirm before applying.", "success");
     return;
   }
   const payload = { thread_action: action };
@@ -4326,7 +4422,9 @@ rfxChatThreadList?.addEventListener("click", async (event) => {
     setStatus(rfxChatStatus, error.message, "error");
     button.disabled = false;
   }
-});
+}
+rfxChatThreadList?.addEventListener("click", handleBidRoomChatThreadAction);
+rfxChatSignalQueue?.addEventListener("click", handleBidRoomChatThreadAction);
 rfxChatCopySummary?.addEventListener("click", async () => {
   const rows = Array.isArray(bidRoomChatThreads.rows) ? bidRoomChatThreads.rows : [];
   try {
@@ -4334,6 +4432,58 @@ rfxChatCopySummary?.addEventListener("click", async () => {
     setStatus(rfxChatStatus, "Communication summary copied.", "success");
   } catch (_error) {
     setStatus(rfxChatStatus, chatSummaryText(rows), "neutral");
+  }
+});
+rfxChatBidUpdateClose?.addEventListener("click", closeChatBidUpdateDrawer);
+rfxChatBidUpdateCloseSecondary?.addEventListener("click", closeChatBidUpdateDrawer);
+rfxChatBidUpdateInvitation?.addEventListener("change", () => {
+  const candidate = selectedChatBidUpdateCandidate();
+  if (!candidate) return;
+  if (rfxChatBidUpdateCurrency && !rfxChatBidUpdateCurrency.value) {
+    rfxChatBidUpdateCurrency.value = candidate.invitation.currency || candidate.lane.currency || "USD";
+  }
+  if (rfxChatBidUpdateNotes && !rfxChatBidUpdateNotes.value) {
+    rfxChatBidUpdateNotes.value = candidate.invitation.notes || "";
+  }
+});
+rfxChatBidUpdateForm?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const candidate = selectedChatBidUpdateCandidate();
+  if (!pendingChatBidUpdate || !candidate) {
+    setStatus(rfxChatBidUpdateStatus, "Choose a lane-carrier row before applying the update.", "error");
+    return;
+  }
+  const amount = Number(String(rfxChatBidUpdateRate?.value || "").replace(/,/g, ""));
+  if (!Number.isFinite(amount)) {
+    setStatus(rfxChatBidUpdateStatus, "All-in rate must be numeric before applying.", "error");
+    rfxChatBidUpdateRate?.focus();
+    return;
+  }
+  if (rfxChatBidUpdateApply) rfxChatBidUpdateApply.disabled = true;
+  setStatus(rfxChatBidUpdateStatus, "Applying chat update to bid...");
+  try {
+    await applyBidUpdateFromChat({
+      thread_id: pendingChatBidUpdate.thread.id,
+      message_id: pendingChatBidUpdate.sourceMessage?.id || null,
+      rfx_lane_vendor_id: candidate.invitation.id,
+      rfx_lane_id: candidate.lane.id,
+      vendor_id: candidate.invitation.vendor_id,
+      bid_rate: amount,
+      currency: rfxChatBidUpdateCurrency?.value || candidate.invitation.currency || candidate.lane.currency || "USD",
+      weekly_capacity: rfxChatBidUpdateCapacity?.value || null,
+      transit_days: rfxChatBidUpdateTransit?.value || null,
+      notes: rfxChatBidUpdateNotes?.value || "",
+      source_note: rfxChatBidUpdateSource?.textContent || "",
+      resolve_thread: true
+    });
+    closeChatBidUpdateDrawer();
+    await loadDetail(selectedEventId);
+    activateWorkbenchView("responses", "#rfx-response-body");
+    setStatus(rfxChatStatus, "Bid updated from chat and communication thread resolved.", "success");
+  } catch (error) {
+    setStatus(rfxChatBidUpdateStatus, error.message, "error");
+  } finally {
+    if (rfxChatBidUpdateApply) rfxChatBidUpdateApply.disabled = false;
   }
 });
 rfxChatStartEventThread?.addEventListener("click", async () => {
