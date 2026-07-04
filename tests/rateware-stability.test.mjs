@@ -115,6 +115,11 @@ assert.match(bidRoomChatMigration, /google_chat_thread_key/, "Bid Room chat shou
 assert.match(apiSource, /post_bid_room_chat_message/, "Internal API should post Bid Room chat messages");
 assert.match(rfxBidApiSource, /postCarrierBidRoomChatMessage/, "Carrier portal API should post token-scoped chat messages");
 assert.match(rfxEventsHtml, /rfx-chat-thread-type/, "Bid Room should render internal chat controls");
+assert.match(rfxEventsHtml, /rfx-chat-command-center/, "Bid Room communications should expose an operational command center");
+assert.match(rfxEventsHtml, /data-rfx-chat-filter="needs_reply"/, "Bid Room communications should filter threads that need reply");
+assert.match(rfxEventsSource, /chatOpsSummary/, "Bid Room communications should summarize operational chat state");
+assert.match(rfxEventsSource, /threadNeedsReply/, "Bid Room communications should prioritize carrier threads that need reply");
+assert.match(rfxEventsSource, /rfxChatCopySummary/, "Bid Room communications should copy a procurement summary");
 assert.match(rfxEventsSource, /fetchBidRoomChat/, "Bid Room UI should load chat threads");
 assert.match(rfxServiceSource, /postBidRoomChatMessage/, "RFx service should expose chat posting");
 assert.match(rfxBidSource, /carrier-chat-form/, "Carrier portal should render chat form");

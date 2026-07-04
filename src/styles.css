@@ -15294,9 +15294,83 @@ textarea:focus,
 
 .bid-room-chat-controls {
   display: grid;
-  grid-template-columns: minmax(140px, 0.8fr) minmax(180px, 1fr) minmax(180px, 1fr) auto;
+  grid-template-columns: minmax(140px, 0.8fr) minmax(180px, 1fr) minmax(180px, 1fr) auto auto;
   gap: 6px;
   align-items: end;
+}
+
+.bid-room-comm-command-center {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.bid-room-comm-command-center article {
+  border: 1px solid #d7e0e7;
+  border-radius: 7px;
+  background: #f8fafc;
+  padding: 7px 9px;
+}
+
+.bid-room-comm-command-center span {
+  display: block;
+  color: #52616d;
+  font-size: 0.62rem;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.bid-room-comm-command-center strong {
+  color: #17212b;
+  font-size: 1.1rem;
+  line-height: 1.1;
+}
+
+.bid-room-comm-toolbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.bid-room-comm-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.bid-room-comm-filters button {
+  min-height: 26px;
+  border: 1px solid #cbd6df;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #52616d;
+  padding: 4px 8px;
+  font-size: 0.68rem;
+  font-weight: 900;
+}
+
+.bid-room-comm-filters button.is-active {
+  border-color: #26323d;
+  background: #26323d;
+  color: #ffffff;
+}
+
+.bid-room-comm-summary {
+  border: 1px solid #d7e0e7;
+  border-radius: 7px;
+  background: #f8fafc;
+  color: #40515f;
+  padding: 7px 9px;
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+.bid-room-comm-summary[data-tone="warning"] {
+  border-color: #f1c78f;
+  background: #fff8ed;
+  color: #7a4a0b;
 }
 
 .bid-room-chat-controls label {
@@ -15341,6 +15415,11 @@ textarea:focus,
   padding: 7px;
 }
 
+.bid-room-chat-thread.needs-reply {
+  border-color: #f1c78f;
+  background: #fffdf8;
+}
+
 .bid-room-chat-thread header {
   display: flex;
   gap: 8px;
@@ -15361,6 +15440,22 @@ textarea:focus,
   color: #697987;
   font-size: 0.66rem;
   font-weight: 800;
+}
+
+.bid-room-chat-thread-badges {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+}
+
+.bid-room-chat-latest {
+  overflow: hidden;
+  margin: 0;
+  color: #40515f;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .bid-room-chat-messages {
@@ -15427,6 +15522,7 @@ textarea:focus,
   .bid-room-flow-shell,
   .bid-room-setup-grid,
   .bid-room-carrier-grid,
+  .bid-room-comm-command-center,
   .bid-room-chat-controls,
   .bid-room-chat-form,
   .bid-room-award-grid {

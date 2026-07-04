@@ -490,6 +490,37 @@
                   </div>
                   <span id="rfx-chat-sync-status" class="status-pill muted">Google Chat ready</span>
                 </div>
+                <div id="rfx-chat-command-center" class="bid-room-comm-command-center">
+                  <article>
+                    <span>Open threads</span>
+                    <strong id="rfx-chat-metric-threads">0</strong>
+                  </article>
+                  <article>
+                    <span>Needs reply</span>
+                    <strong id="rfx-chat-metric-needs-reply">0</strong>
+                  </article>
+                  <article>
+                    <span>Carrier messages</span>
+                    <strong id="rfx-chat-metric-carrier">0</strong>
+                  </article>
+                  <article>
+                    <span>Google sync</span>
+                    <strong id="rfx-chat-metric-google">0</strong>
+                  </article>
+                </div>
+                <div class="bid-room-comm-toolbar">
+                  <div id="rfx-chat-inbox-filters" class="bid-room-comm-filters" role="tablist" aria-label="Communication filters">
+                    <button type="button" class="is-active" data-rfx-chat-filter="all">All</button>
+                    <button type="button" data-rfx-chat-filter="needs_reply">Needs reply</button>
+                    <button type="button" data-rfx-chat-filter="carrier">Carrier</button>
+                    <button type="button" data-rfx-chat-filter="private">Private</button>
+                    <button type="button" data-rfx-chat-filter="google">Google Chat</button>
+                  </div>
+                  <button id="rfx-chat-copy-summary" type="button" class="secondary small-button">Copy summary</button>
+                </div>
+                <div id="rfx-chat-ai-summary" class="bid-room-comm-summary">
+                  Select a bid event to load the communication queue.
+                </div>
                 <div class="bid-room-chat-controls">
                   <label>
                     Thread

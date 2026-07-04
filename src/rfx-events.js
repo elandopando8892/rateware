@@ -152,6 +152,13 @@ const rfxChatMessage = document.querySelector("#rfx-chat-message");
 const rfxChatSend = document.querySelector("#rfx-chat-send");
 const rfxChatStatus = document.querySelector("#rfx-chat-status");
 const rfxChatSyncStatus = document.querySelector("#rfx-chat-sync-status");
+const rfxChatMetricThreads = document.querySelector("#rfx-chat-metric-threads");
+const rfxChatMetricNeedsReply = document.querySelector("#rfx-chat-metric-needs-reply");
+const rfxChatMetricCarrier = document.querySelector("#rfx-chat-metric-carrier");
+const rfxChatMetricGoogle = document.querySelector("#rfx-chat-metric-google");
+const rfxChatInboxFilters = document.querySelector("#rfx-chat-inbox-filters");
+const rfxChatCopySummary = document.querySelector("#rfx-chat-copy-summary");
+const rfxChatAiSummary = document.querySelector("#rfx-chat-ai-summary");
 const rfxOpsTitle = document.querySelector("#rfx-ops-title");
 const rfxOpsSubtitle = document.querySelector("#rfx-ops-subtitle");
 const rfxOpsHealth = document.querySelector("#rfx-ops-health");
@@ -175,6 +182,7 @@ let rfxTemplateVisualEditing = false;
 let contactHistoryRows = [];
 let outreachMessages = [];
 let bidRoomChatThreads = { rows: [], google_chat_configured: false };
+let bidRoomChatFilter = "all";
 let bidRoomChatRefreshTimer = null;
 let selectedLaneIds = new Set();
 let selectedInvitationIds = new Set();
@@ -1881,6 +1889,109 @@ function chatVendorOptions() {
   return [...map.values()].sort((a, b) => a.label.localeCompare(b.label));
 }
 
+function chatMessages(thread = {}) {
+  return Array.isArray(thread.messages) ? thread.messages : [];
+}
+
+function chatMessageTime(message = {}) {
+  const time = new Date(String(message.created_at || ""));
+  return Number.isNaN(time.getTime()) ? 0 : time.getTime();
+}
+
+function latestChatMessage(thread = {}) {
+  const messages = chatMessages(thread);
+  return messages.length ? messages[messages.length - 1] : null;
+}
+
+function messageFromGoogleChat(message = {}) {
+  const metadata = message.metadata && typeof message.metadata === "object" ? message.metadata : {};
+  return metadata.source === "google_chat_inbound" || Boolean(message.google_chat_sender_name);
+}
+
+function threadHasGoogleChatActivity(thread = {}) {
+  return chatMessages(thread).some((message) => messageFromGoogleChat(message) || message.google_chat_sync_status === "synced");
+}
+
+function threadNeedsReply(thread = {}) {
+  const latest = latestChatMessage(thread);
+  return latest?.sender_role === "carrier";
+}
+
+function threadHasCarrierMessage(thread = {}) {
+  return chatMessages(thread).some((message) => message.sender_role === "carrier");
+}
+
+function threadLastActivityLabel(thread = {}) {
+  const latest = latestChatMessage(thread);
+  if (!latest?.created_at) return "No activity";
+  return new Date(latest.created_at).toLocaleString();
+}
+
+function chatThreadPriority(thread = {}) {
+  if (threadNeedsReply(thread)) return 0;
+  if (thread.thread_type === "carrier_private") return 1;
+  if (thread.thread_type === "lane_group") return 2;
+  return 3;
+}
+
+function sortedChatThreads(rows = []) {
+  return [...rows].sort((a, b) => {
+    const priorityDelta = chatThreadPriority(a) - chatThreadPriority(b);
+    if (priorityDelta) return priorityDelta;
+    return chatMessageTime(latestChatMessage(b) || {}) - chatMessageTime(latestChatMessage(a) || {});
+  });
+}
+
+function chatThreadMatchesFilter(thread = {}) {
+  if (bidRoomChatFilter === "needs_reply") return threadNeedsReply(thread);
+  if (bidRoomChatFilter === "carrier") return threadHasCarrierMessage(thread);
+  if (bidRoomChatFilter === "private") return thread.thread_type === "carrier_private";
+  if (bidRoomChatFilter === "google") return threadHasGoogleChatActivity(thread);
+  return true;
+}
+
+function chatStats(rows = []) {
+  const messages = rows.flatMap((thread) => chatMessages(thread));
+  const needsReply = rows.filter(threadNeedsReply).length;
+  const carrierMessages = messages.filter((message) => message.sender_role === "carrier").length;
+  const googleMessages = messages.filter(messageFromGoogleChat).length;
+  const syncErrors = messages.filter((message) => message.google_chat_sync_status === "error").length;
+  return {
+    threads: rows.length,
+    needsReply,
+    carrierMessages,
+    googleMessages,
+    syncErrors,
+    messages: messages.length
+  };
+}
+
+function chatOpsSummary(rows = []) {
+  const stats = chatStats(rows);
+  const inbound = bidRoomChatThreads.google_chat_inbound || {};
+  if (!selectedEventId) return "Select a bid event to load the communication queue.";
+  if (!rows.length) return "No communication threads yet. Start the event thread, then use lane or private carrier threads as questions come in.";
+  if (inbound.status === "needs_reconnect") return "Google Chat is linked for outbound messages, but inbound replies require reconnecting Google Chat in Settings.";
+  if (stats.syncErrors) return `${stats.syncErrors} Google Chat message(s) need retry. Refresh or use Settings > Retry Chat sync.`;
+  if (stats.needsReply) return `${stats.needsReply} thread(s) need a procurement reply. Start with carrier-private threads before lane or event announcements.`;
+  if (stats.carrierMessages) return `${stats.carrierMessages} carrier message(s) captured. No open reply blocker detected.`;
+  return "Communication queue is clean. Keep the event thread synced and monitor new carrier replies.";
+}
+
+function chatSummaryText(rows = []) {
+  const stats = chatStats(rows);
+  const urgent = sortedChatThreads(rows).filter(threadNeedsReply).slice(0, 5);
+  return [
+    `Bid Room communication summary${selectedEvent?.name ? ` - ${selectedEvent.name}` : ""}`,
+    `Threads: ${stats.threads}`,
+    `Needs reply: ${stats.needsReply}`,
+    `Carrier messages: ${stats.carrierMessages}`,
+    `Google Chat inbound: ${stats.googleMessages}`,
+    urgent.length ? "Priority threads:" : "Priority threads: none",
+    ...urgent.map((thread) => `- ${thread.title || thread.thread_type}: ${latestChatMessage(thread)?.body || ""}`)
+  ].join("\n");
+}
+
 function renderBidRoomChatControls() {
   const threadType = rfxChatThreadType?.value || "event_group";
   if (rfxChatLane) {
@@ -1902,6 +2013,8 @@ function renderBidRoomChatControls() {
 
 function renderBidRoomChat() {
   renderBidRoomChatControls();
+  const rows = Array.isArray(bidRoomChatThreads.rows) ? bidRoomChatThreads.rows : [];
+  const stats = chatStats(rows);
   if (rfxChatSyncStatus) {
     const inboundStatus = bidRoomChatThreads.google_chat_inbound?.status || "";
     rfxChatSyncStatus.textContent = inboundStatus === "needs_reconnect"
@@ -1911,32 +2024,54 @@ function renderBidRoomChat() {
         : "Google Chat not linked";
     rfxChatSyncStatus.className = `status-pill ${inboundStatus === "needs_reconnect" ? "warning" : bidRoomChatThreads.google_chat_configured ? "success" : "muted"}`;
   }
+  if (rfxChatMetricThreads) rfxChatMetricThreads.textContent = formatNumber(stats.threads);
+  if (rfxChatMetricNeedsReply) rfxChatMetricNeedsReply.textContent = formatNumber(stats.needsReply);
+  if (rfxChatMetricCarrier) rfxChatMetricCarrier.textContent = formatNumber(stats.carrierMessages);
+  if (rfxChatMetricGoogle) rfxChatMetricGoogle.textContent = formatNumber(stats.googleMessages);
+  if (rfxChatAiSummary) {
+    rfxChatAiSummary.textContent = chatOpsSummary(rows);
+    rfxChatAiSummary.dataset.tone = stats.needsReply ? "warning" : bidRoomChatThreads.google_chat_inbound?.status === "needs_reconnect" ? "warning" : "neutral";
+  }
+  if (rfxChatInboxFilters) {
+    rfxChatInboxFilters.querySelectorAll("[data-rfx-chat-filter]").forEach((button) => {
+      button.classList.toggle("is-active", button.dataset.rfxChatFilter === bidRoomChatFilter);
+    });
+  }
+  if (rfxChatCopySummary) rfxChatCopySummary.disabled = !selectedEventId || !rows.length;
   if (!rfxChatThreadList) return;
-  const rows = Array.isArray(bidRoomChatThreads.rows) ? bidRoomChatThreads.rows : [];
   if (!selectedEventId) {
     rfxChatThreadList.innerHTML = "Select a bid event to load chat threads.";
     return;
   }
-  if (!rows.length) {
+  const visibleRows = sortedChatThreads(rows).filter(chatThreadMatchesFilter);
+  if (!visibleRows.length) {
     rfxChatThreadList.innerHTML = `
       <div class="bid-room-empty">
-        <strong>No chat messages yet.</strong>
-        <span>Start an event group, lane group, or private carrier thread.</span>
+        <strong>${rows.length ? "No threads match this filter." : "No chat messages yet."}</strong>
+        <span>${rows.length ? "Change the inbox filter or refresh Google Chat sync." : "Start an event group, lane group, or private carrier thread."}</span>
       </div>
     `;
     return;
   }
-  rfxChatThreadList.innerHTML = rows.map((thread) => {
+  rfxChatThreadList.innerHTML = visibleRows.map((thread) => {
     const messages = Array.isArray(thread.messages) ? thread.messages : [];
+    const latest = latestChatMessage(thread);
+    const needsReply = threadNeedsReply(thread);
+    const hasGoogleActivity = threadHasGoogleChatActivity(thread);
     return `
-      <article class="bid-room-chat-thread">
+      <article class="bid-room-chat-thread${needsReply ? " needs-reply" : ""}">
         <header>
           <div>
             <strong>${escapeHtml(thread.title || thread.thread_type)}</strong>
-            <span>${escapeHtml(thread.thread_type || "thread")} | ${escapeHtml(thread.google_chat_sync_status || "not_configured")}</span>
+            <span>${escapeHtml(thread.thread_type || "thread")} | ${escapeHtml(threadLastActivityLabel(thread))}</span>
           </div>
-          <small>${messages.length} message(s)</small>
+          <div class="bid-room-chat-thread-badges">
+            ${needsReply ? '<span class="status-pill warning">Needs reply</span>' : ""}
+            ${hasGoogleActivity ? '<span class="status-pill success">Google</span>' : ""}
+            <small>${messages.length} message(s)</small>
+          </div>
         </header>
+        ${latest ? `<p class="bid-room-chat-latest">${escapeHtml(latest.body || "")}</p>` : ""}
         <div class="bid-room-chat-messages">
           ${messages.slice(-8).map((message) => `
             <div class="bid-room-chat-message" data-role="${escapeHtml(message.sender_role || "procurement")}">
@@ -3927,6 +4062,21 @@ rfxOutreachCampaignName?.addEventListener("input", () => {
 
 rfxChatThreadType?.addEventListener("change", renderBidRoomChatControls);
 rfxChatRefresh?.addEventListener("click", loadBidRoomChat);
+rfxChatInboxFilters?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-rfx-chat-filter]");
+  if (!button) return;
+  bidRoomChatFilter = button.dataset.rfxChatFilter || "all";
+  renderBidRoomChat();
+});
+rfxChatCopySummary?.addEventListener("click", async () => {
+  const rows = Array.isArray(bidRoomChatThreads.rows) ? bidRoomChatThreads.rows : [];
+  try {
+    await navigator.clipboard.writeText(chatSummaryText(rows));
+    setStatus(rfxChatStatus, "Communication summary copied.", "success");
+  } catch (_error) {
+    setStatus(rfxChatStatus, chatSummaryText(rows), "neutral");
+  }
+});
 rfxChatStartEventThread?.addEventListener("click", async () => {
   if (!selectedEventId) {
     setStatus(rfxChatStatus, "Select a bid event before creating the Google Chat thread.", "error");
