@@ -6578,6 +6578,22 @@ async function syncBidRoomEventThread(
   if (messagesResult.error) throw messagesResult.error;
 
   let message = messagesResult.data?.[0] || null;
+  const forceSync = input.force === true;
+  if (
+    message
+    && !forceSync
+    && cleanText(message.google_chat_sync_status) === "synced"
+    && cleanText(thread.google_chat_space)
+    && cleanText(thread.google_chat_thread_key)
+  ) {
+    return {
+      thread: { ...thread, title: bidRoomThreadTitle("event_group", event), google_chat_sync_status: "synced" },
+      message,
+      google_chat_configured: true,
+      already_synced: true
+    };
+  }
+
   if (!message) {
     const body = [
       `Bid Room thread started for ${event.rfx_id || event.name || "selected event"}.`,

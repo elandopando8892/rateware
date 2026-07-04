@@ -1962,6 +1962,29 @@ async function loadBidRoomChat() {
   }
 }
 
+async function ensureSelectedEventChatThread(eventId, options = {}) {
+  if (!eventId) return null;
+  try {
+    const result = await syncBidRoomEventThread(eventId, { force: options.force === true });
+    if (selectedEventId === eventId) {
+      await loadBidRoomChat();
+      if (!options.silent) {
+        setStatus(
+          rfxChatStatus,
+          result.google_chat_configured
+            ? "Event thread is ready in Google Chat."
+            : "Event thread is ready in Rateware. Connect Google Chat and save a Space to mirror it.",
+          result.google_chat_configured ? "success" : "warning"
+        );
+      }
+    }
+    return result;
+  } catch (error) {
+    if (!options.silent) setStatus(rfxChatStatus, error.message, "error");
+    return null;
+  }
+}
+
 function renderLaneCoverage() {
   if (!laneCoverage && !coverageSummary) return;
   if (!selectedEventId) {
@@ -2953,6 +2976,7 @@ async function loadDetail(eventId) {
       if (selectedEventId === eventId) loadBidRoomChat();
     }, 15000);
     setStatus(actionStatus, "Bid Room loaded.", "success");
+    ensureSelectedEventChatThread(eventId, { silent: true });
   } catch (error) {
     setStatus(actionStatus, error.message, "error");
     updateEventActionState();
@@ -3906,15 +3930,14 @@ rfxChatStartEventThread?.addEventListener("click", async () => {
   rfxChatStartEventThread.disabled = true;
   setStatus(rfxChatStatus, "Creating event thread in Google Chat...");
   try {
-    const result = await syncBidRoomEventThread(selectedEventId);
+    const result = await ensureSelectedEventChatThread(selectedEventId, { force: true, silent: true });
     setStatus(
       rfxChatStatus,
-      result.google_chat_configured
+      result?.google_chat_configured
         ? "Event thread created and mirrored to Google Chat."
         : "Event thread created in Rateware. Connect Google Chat and save a Space to mirror it.",
-      result.google_chat_configured ? "success" : "warning"
+      result?.google_chat_configured ? "success" : "warning"
     );
-    await loadBidRoomChat();
   } catch (error) {
     setStatus(rfxChatStatus, error.message, "error");
   } finally {
