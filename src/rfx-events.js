@@ -3,6 +3,9 @@ import {
   applyBidUpdateFromChat,
   archiveRfxEvent,
   archiveRfxLaneVendors,
+  awardRfxLaneVendor,
+  clearRfxAward,
+  closeoutAwardedRfxToRateware,
   autoShortlistRfxLane,
   createRfxEvent,
   deleteRfxEvent,
@@ -185,6 +188,15 @@ const rfxOpsNextAction = document.querySelector("#rfx-ops-next-action");
 const rfxManagerFlow = document.querySelector("#rfx-manager-flow");
 const rfxManagerFocus = document.querySelector("#rfx-manager-focus");
 const rfxManagerQueue = document.querySelector("#rfx-manager-queue");
+const rfxAwardBoard = document.querySelector("#rfx-award-board");
+const rfxAwardStatus = document.querySelector("#rfx-award-status");
+const rfxAwardStatusPill = document.querySelector("#rfx-award-status-pill");
+const rfxAwardLanes = document.querySelector("#rfx-award-lanes");
+const rfxAwardPrimary = document.querySelector("#rfx-award-primary");
+const rfxAwardBackup = document.querySelector("#rfx-award-backup");
+const rfxAwardRateware = document.querySelector("#rfx-award-rateware");
+const rfxCloseoutAwardsButton = document.querySelector("#rfx-closeout-awards-to-rateware");
+const rfxRefreshAwardsButton = document.querySelector("#rfx-refresh-awards");
 
 let events = [];
 let selectedEventId = null;
@@ -1621,6 +1633,160 @@ function renderLiveOfferManager() {
             `).join("")}
           </tbody>
         </table>
+      </section>
+    `;
+  }).join("");
+}
+
+function awardRoleLabel(role) {
+  return {
+    primary: "Primary",
+    backup: "Backup"
+  }[String(role || "").toLowerCase()] || "";
+}
+
+function awardRoleChip(invitation) {
+  const role = String(invitation.award_role || "").toLowerCase();
+  if (!role) return '<span class="status-pill muted">Open</span>';
+  return `<span class="status-pill ${role === "primary" ? "success" : "neutral"}">${escapeHtml(awardRoleLabel(role))}</span>`;
+}
+
+function awardReasonDefault(row, rank) {
+  const parts = [];
+  if (rank === 1) parts.push("Best all-in");
+  if (Number.isFinite(Number(row.invitation.bid_delta))) {
+    const delta = Number(row.invitation.bid_delta);
+    parts.push(delta <= 0 ? "Below Rateware benchmark" : "Accepted vs benchmark");
+  }
+  if (row.invitation.weekly_capacity) parts.push(`Capacity ${row.invitation.weekly_capacity}/wk`);
+  if (row.invitation.transit_days) parts.push(`Transit ${row.invitation.transit_days} day(s)`);
+  return parts.join("; ") || "Procurement decision";
+}
+
+function awardLaneRows() {
+  return currentLanes
+    .map((lane) => {
+      const bids = bidInvitations(lane)
+        .map((invitation) => ({
+          lane,
+          invitation,
+          amount: Number(invitation.bid_rate),
+          currency: invitation.currency || lane.currency || "USD"
+        }))
+        .filter((row) => Number.isFinite(row.amount))
+        .sort((a, b) => a.amount - b.amount);
+      return { lane, bids };
+    })
+    .filter((row) => row.bids.length);
+}
+
+function updateAwardMetrics() {
+  const invitations = currentLanes.flatMap((lane) => activeInvitations(lane));
+  const awardable = awardLaneRows();
+  const primary = invitations.filter((item) => item.award_role === "primary");
+  const backup = invitations.filter((item) => item.award_role === "backup");
+  const ratewareRows = invitations.filter((item) => item.rate_staging_id);
+  if (rfxAwardLanes) rfxAwardLanes.textContent = formatNumber(awardable.length);
+  if (rfxAwardPrimary) rfxAwardPrimary.textContent = formatNumber(primary.length);
+  if (rfxAwardBackup) rfxAwardBackup.textContent = formatNumber(backup.length);
+  if (rfxAwardRateware) rfxAwardRateware.textContent = formatNumber(ratewareRows.length);
+  if (rfxAwardStatusPill) {
+    rfxAwardStatusPill.textContent = primary.length ? `${formatNumber(primary.length)} primary` : "Decision room";
+    rfxAwardStatusPill.className = `status-pill ${primary.length ? "success" : "muted"}`;
+  }
+  if (rfxCloseoutAwardsButton) {
+    const pendingCloseout = primary.filter((item) => !item.rate_staging_id).length;
+    rfxCloseoutAwardsButton.disabled = !pendingCloseout;
+    rfxCloseoutAwardsButton.textContent = pendingCloseout
+      ? `Create ${formatNumber(pendingCloseout)} Rateware row${pendingCloseout === 1 ? "" : "s"}`
+      : "Create Rateware rows";
+  }
+}
+
+function renderAwardBoard() {
+  updateAwardMetrics();
+  if (!rfxAwardBoard) return;
+  if (!selectedEventId) {
+    rfxAwardBoard.innerHTML = stateBlock({
+      tone: "neutral",
+      eyebrow: "Award",
+      title: "Select a bid event",
+      detail: "Create or select a Bid Room event before awarding carrier bids."
+    });
+    return;
+  }
+  const lanes = awardLaneRows();
+  if (!lanes.length) {
+    rfxAwardBoard.innerHTML = stateBlock({
+      tone: "neutral",
+      eyebrow: "Award",
+      title: "No live bids to award",
+      detail: "Carrier bids submitted through the Private Bid Room will appear here by lane."
+    });
+    return;
+  }
+
+  rfxAwardBoard.innerHTML = lanes.map(({ lane, bids }) => {
+    const primary = bids.find((row) => row.invitation.award_role === "primary");
+    const backups = bids.filter((row) => row.invitation.award_role === "backup");
+    return `
+      <section class="rfx-award-lane" data-rfx-award-lane-id="${escapeHtml(lane.id)}">
+        <header>
+          <div>
+            <span class="status-pill ${primary ? "success" : "warning"}">${primary ? "Awarded" : "Needs decision"}</span>
+            <strong>#${escapeHtml(lane.lane_number || "")} ${escapeHtml(laneRoute(lane))}</strong>
+            <small>${escapeHtml([lane.equipment, lane.trailer, lane.operation, lane.service].filter(Boolean).join(" / ") || "Lane")}</small>
+          </div>
+          <div class="rfx-award-lane-summary">
+            <span>Rateware ${lane.benchmark ? formatMoney(lane.benchmark.all_in_rate, lane.benchmark.currency) : "-"}</span>
+            <span>${formatNumber(bids.length)} bid(s)</span>
+            <span>${formatNumber(backups.length)} backup(s)</span>
+          </div>
+        </header>
+        <div class="table-wrap">
+          <table class="rfx-award-table">
+            <thead>
+              <tr>
+                <th>Rank</th>
+                <th>Carrier</th>
+                <th>All-in</th>
+                <th>Delta</th>
+                <th>Capacity</th>
+                <th>Transit</th>
+                <th>Role</th>
+                <th>Reason</th>
+                <th>Rateware</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${bids.map((row, index) => {
+                const delta = Number(row.invitation.bid_delta);
+                const deltaTone = Number.isFinite(delta) && delta <= 0 ? "success" : Number.isFinite(delta) ? "danger" : "neutral";
+                return `
+                  <tr data-rfx-award-invitation-id="${escapeHtml(row.invitation.id)}">
+                    <td>#${index + 1}</td>
+                    <td><strong>${escapeHtml(vendorLabel(row.invitation))}</strong><small>${escapeHtml(row.invitation.vendors?.domain || row.invitation.vendors?.primary_email || "")}</small></td>
+                    <td>${formatMoney(row.amount, row.currency)}</td>
+                    <td><span class="rfx-bid-delta" data-tone="${deltaTone}">${Number.isFinite(delta) ? formatMoney(delta, row.currency) : "-"}</span></td>
+                    <td>${escapeHtml(row.invitation.weekly_capacity ?? "-")}</td>
+                    <td>${escapeHtml(row.invitation.transit_days ?? "-")}</td>
+                    <td>${awardRoleChip(row.invitation)}</td>
+                    <td><small>${escapeHtml(row.invitation.award_reason || row.invitation.notes || awardReasonDefault(row, index + 1))}</small></td>
+                    <td>${row.invitation.rate_staging_id ? '<span class="status-pill success">Created</span>' : '<span class="status-pill muted">Pending</span>'}</td>
+                    <td>
+                      <div class="compact-actions">
+                        <button type="button" class="small-button" data-rfx-award-primary="${escapeHtml(row.invitation.id)}" data-award-default="${escapeHtml(awardReasonDefault(row, index + 1))}" ${row.invitation.award_role === "primary" ? "disabled" : ""}>Award</button>
+                        <button type="button" class="secondary small-button" data-rfx-award-backup="${escapeHtml(row.invitation.id)}" data-award-default="${escapeHtml(awardReasonDefault(row, index + 1))}" ${row.invitation.award_role === "backup" ? "disabled" : ""}>Backup</button>
+                        <button type="button" class="secondary small-button" data-rfx-clear-award="${escapeHtml(row.invitation.id)}" ${row.invitation.award_role ? "" : "disabled"}>Clear</button>
+                      </div>
+                    </td>
+                  </tr>
+                `;
+              }).join("")}
+            </tbody>
+          </table>
+        </div>
       </section>
     `;
   }).join("");
@@ -3230,6 +3396,7 @@ function renderLanes() {
   renderResponseBoard();
   renderOutreachLaunchpad();
   renderLiveOfferManager();
+  renderAwardBoard();
   renderWizard();
 
   if (!selectedEventId) {
@@ -3323,6 +3490,7 @@ async function loadEvents() {
       renderResponseBoard();
       renderOutreachLaunchpad();
       renderLiveOfferManager();
+      renderAwardBoard();
       renderWizard();
     }
   } catch (error) {
@@ -3507,6 +3675,66 @@ async function createCurrentOutreachDrafts(statusElement = rfxOutreachStatus) {
   );
   await loadDetail(selectedEventId);
   return result;
+}
+
+async function applyRfxAwardDecision(invitationId, role, defaultReason = "") {
+  if (!selectedEventId || !invitationId) return;
+  const label = role === "primary" ? "primary award" : "backup";
+  const reason = window.prompt(`Reason for ${label}:`, defaultReason || "Procurement decision");
+  if (reason === null) return;
+  setStatus(rfxAwardStatus, role === "primary" ? "Saving primary award..." : "Saving backup carrier...");
+  try {
+    await awardRfxLaneVendor(invitationId, {
+      award_role: role,
+      award_reason: reason || defaultReason || "Procurement decision"
+    });
+    setStatus(rfxAwardStatus, role === "primary" ? "Primary award saved." : "Backup carrier saved.", "success");
+    await loadDetail(selectedEventId);
+    activateWorkbenchView("award");
+  } catch (error) {
+    setStatus(rfxAwardStatus, error.message, "error");
+  }
+}
+
+async function clearRfxAwardDecision(invitationId) {
+  if (!selectedEventId || !invitationId) return;
+  if (!window.confirm("Clear this award or backup role? The carrier bid stays in the Bid Room.")) return;
+  setStatus(rfxAwardStatus, "Clearing award role...");
+  try {
+    await clearRfxAward(invitationId);
+    setStatus(rfxAwardStatus, "Award role cleared.", "success");
+    await loadDetail(selectedEventId);
+    activateWorkbenchView("award");
+  } catch (error) {
+    setStatus(rfxAwardStatus, error.message, "error");
+  }
+}
+
+async function closeoutSelectedAwardsToRateware() {
+  if (!selectedEventId) return;
+  const pending = currentLanes
+    .flatMap((lane) => activeInvitations(lane))
+    .filter((invitation) => invitation.award_role === "primary" && !invitation.rate_staging_id);
+  if (!pending.length) {
+    setStatus(rfxAwardStatus, "There are no primary awards pending Rateware closeout.", "neutral");
+    return;
+  }
+  if (!window.confirm(`Create ${pending.length} approved Rateware row(s) from primary awards?`)) return;
+  if (rfxCloseoutAwardsButton) rfxCloseoutAwardsButton.disabled = true;
+  setStatus(rfxAwardStatus, "Creating Rateware rows from awards...");
+  try {
+    const result = await closeoutAwardedRfxToRateware(selectedEventId, { target_status: "approved" });
+    await loadEvents();
+    activateWorkbenchView("award");
+    setStatus(
+      rfxAwardStatus,
+      `${formatNumber(result.inserted || 0)} Rateware row(s) created. ${formatNumber(result.skipped || 0)} skipped.`,
+      result.inserted ? "success" : "neutral"
+    );
+  } catch (error) {
+    setStatus(rfxAwardStatus, error.message, "error");
+    renderAwardBoard();
+  }
 }
 
 async function sendSelectedDraftEmails() {
@@ -4061,6 +4289,48 @@ responseBody?.addEventListener("click", (event) => {
   if (!row) return;
   focusLane(row.dataset.rfxLaneId);
 });
+
+rfxAwardBoard?.addEventListener("click", async (event) => {
+  const primaryButton = event.target.closest("[data-rfx-award-primary]");
+  if (primaryButton) {
+    primaryButton.disabled = true;
+    try {
+      await applyRfxAwardDecision(primaryButton.dataset.rfxAwardPrimary, "primary", primaryButton.dataset.awardDefault || "");
+    } finally {
+      renderAwardBoard();
+    }
+    return;
+  }
+
+  const backupButton = event.target.closest("[data-rfx-award-backup]");
+  if (backupButton) {
+    backupButton.disabled = true;
+    try {
+      await applyRfxAwardDecision(backupButton.dataset.rfxAwardBackup, "backup", backupButton.dataset.awardDefault || "");
+    } finally {
+      renderAwardBoard();
+    }
+    return;
+  }
+
+  const clearButton = event.target.closest("[data-rfx-clear-award]");
+  if (clearButton) {
+    clearButton.disabled = true;
+    try {
+      await clearRfxAwardDecision(clearButton.dataset.rfxClearAward);
+    } finally {
+      renderAwardBoard();
+    }
+  }
+});
+
+rfxRefreshAwardsButton?.addEventListener("click", async () => {
+  if (!selectedEventId) return;
+  await loadDetail(selectedEventId);
+  activateWorkbenchView("award");
+});
+
+rfxCloseoutAwardsButton?.addEventListener("click", closeoutSelectedAwardsToRateware);
 
 copyRfxSummaryButton?.addEventListener("click", async () => {
   if (!selectedEvent) return;

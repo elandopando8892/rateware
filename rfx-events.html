@@ -629,19 +629,32 @@
                   <p class="eyebrow">Step 6</p>
                   <h3>Award decision</h3>
                 </div>
-                <span class="status-pill muted">Decision room</span>
+                <span id="rfx-award-status-pill" class="status-pill muted">Decision room</span>
               </div>
               <div class="bid-room-award-grid">
                 <article class="bid-room-context-card">
-                  <p class="eyebrow">Decision checklist</p>
-                  <h4>Move from bids to award</h4>
-                  <p>Use live bids, Rateware benchmark deltas, capacity, and response coverage to decide which carriers should be awarded or moved back to outreach.</p>
+                  <p class="eyebrow">Award summary</p>
+                  <h4>Lane award control</h4>
+                  <div class="rfx-award-metrics">
+                    <span><b id="rfx-award-lanes">0</b> lanes with bids</span>
+                    <span><b id="rfx-award-primary">0</b> primary awards</span>
+                    <span><b id="rfx-award-backup">0</b> backups</span>
+                    <span><b id="rfx-award-rateware">0</b> Rateware rows</span>
+                  </div>
                 </article>
                 <article class="bid-room-context-card">
-                  <p class="eyebrow">Next product step</p>
-                  <h4>Award workflow</h4>
-                  <p>This stage is intentionally clean: the next backend increment should add award status, award notes, and award export without adding another RFx module.</p>
+                  <p class="eyebrow">Closeout</p>
+                  <h4>Create Rateware from awards</h4>
+                  <p>Primary awards can be written as approved Rateware rows with RFx audit trail and source preservation.</p>
+                  <div class="action-row">
+                    <button id="rfx-closeout-awards-to-rateware" type="button">Create Rateware rows</button>
+                    <button id="rfx-refresh-awards" class="secondary" type="button">Refresh</button>
+                  </div>
+                  <p id="rfx-award-status" class="status-message" role="status"></p>
                 </article>
+              </div>
+              <div id="rfx-award-board" class="rfx-award-board">
+                Select a bid event to award lanes.
               </div>
             </section>
           </section>

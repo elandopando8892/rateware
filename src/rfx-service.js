@@ -48,6 +48,18 @@ export async function updateRfxBid(id, patch) {
   return (await callRatewareApi("update_rfx_bid", { id, patch })).row;
 }
 
+export async function awardRfxLaneVendor(id, payload = {}) {
+  return await callRatewareApi("award_rfx_lane_vendor", { id, ...payload });
+}
+
+export async function clearRfxAward(id) {
+  return await callRatewareApi("clear_rfx_award", { id });
+}
+
+export async function closeoutAwardedRfxToRateware(eventId, options = {}) {
+  return await callRatewareApi("closeout_awarded_rfx_to_rateware", { event_id: eventId, ...options });
+}
+
 export async function applyBidUpdateFromChat(payload = {}) {
   return await callRatewareApi("apply_bid_update_from_chat", payload);
 }

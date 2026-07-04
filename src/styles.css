@@ -15710,6 +15710,93 @@ textarea:focus,
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.rfx-award-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.rfx-award-metrics span {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #ffffff;
+  padding: 7px;
+  color: #52616d;
+  font-size: 0.68rem;
+  font-weight: 800;
+}
+
+.rfx-award-metrics b {
+  display: block;
+  color: var(--ink);
+  font-size: 1rem;
+}
+
+.rfx-award-board {
+  display: grid;
+  gap: 10px;
+}
+
+.rfx-award-lane {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  overflow: hidden;
+}
+
+.rfx-award-lane > header {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--line);
+  background: #f8fafc;
+  padding: 8px 10px;
+}
+
+.rfx-award-lane > header strong,
+.rfx-award-lane > header small {
+  display: block;
+}
+
+.rfx-award-lane > header small,
+.rfx-award-lane-summary {
+  color: #52616d;
+  font-size: 0.7rem;
+}
+
+.rfx-award-lane-summary {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  font-weight: 800;
+}
+
+.rfx-award-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.72rem;
+}
+
+.rfx-award-table th,
+.rfx-award-table td {
+  border-bottom: 1px solid var(--line);
+  padding: 5px 7px;
+  text-align: left;
+  vertical-align: top;
+  white-space: nowrap;
+}
+
+.rfx-award-table td small {
+  display: block;
+  max-width: 240px;
+  overflow: hidden;
+  color: #52616d;
+  text-overflow: ellipsis;
+}
+
 @media (max-width: 1180px) {
   .bid-room-product,
   .bid-room-flow-shell,
@@ -15735,6 +15822,10 @@ textarea:focus,
   .bid-room-form,
   .bid-room-template-upload {
     grid-template-columns: 1fr;
+  }
+
+  .rfx-award-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .bid-room-form label:nth-child(2),

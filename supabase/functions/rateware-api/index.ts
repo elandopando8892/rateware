@@ -6285,6 +6285,350 @@ async function requireOwnedRfxLane(supabase: ReturnType<typeof createClient>, us
   return laneResult.data;
 }
 
+async function requireOwnedRfxLaneVendor(supabase: ReturnType<typeof createClient>, user: { owner_email: string | null }, invitationId: unknown) {
+  const id = cleanText(invitationId);
+  if (!id) throw new Error("RFx invitation id is required.");
+  const result = await supabase
+    .from("rfx_lane_vendors")
+    .select("*, rfx_events!inner(id,rfx_id,name,customer,status,owner_email), rfx_lanes(*), vendors(id,vendor_name,legal_name,domain,primary_email,base_stage,status)")
+    .eq("id", id)
+    .eq("rfx_events.owner_email", user.owner_email)
+    .single();
+  if (result.error) throw result.error;
+  return result.data || {};
+}
+
+function normalizeAwardRole(value: unknown) {
+  const role = cleanText(value)?.toLowerCase();
+  return role === "backup" ? "backup" : "primary";
+}
+
+async function awardRfxLaneVendor(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_user_id: string | null; owner_email: string | null },
+  input: Record<string, unknown>
+) {
+  const invitation = await requireOwnedRfxLaneVendor(supabase, user, input.id || input.rfx_lane_vendor_id || input.invitation_id);
+  if (cleanNumber(invitation.bid_rate) === null) throw new Error("A carrier bid rate is required before awarding.");
+  const role = normalizeAwardRole(input.award_role || input.role);
+  const now = new Date().toISOString();
+
+  if (role === "primary") {
+    const clearResult = await supabase
+      .from("rfx_lane_vendors")
+      .update({
+        award_role: null,
+        award_reason: null,
+        award_notes: null,
+        awarded_at: null,
+        awarded_by: null,
+        updated_at: now
+      })
+      .eq("rfx_lane_id", invitation.rfx_lane_id)
+      .eq("award_role", "primary")
+      .neq("id", invitation.id);
+    if (clearResult.error) throw clearResult.error;
+  }
+
+  const result = await supabase
+    .from("rfx_lane_vendors")
+    .update({
+      award_role: role,
+      award_reason: cleanText(input.award_reason || input.reason) || (role === "primary" ? "Primary procurement award" : "Backup carrier"),
+      award_notes: cleanText(input.award_notes || input.notes),
+      awarded_at: now,
+      awarded_by: user.owner_email,
+      invitation_status: role === "primary" ? "awarded" : "quoted",
+      updated_at: now
+    })
+    .eq("id", invitation.id)
+    .select("*, vendors(id,vendor_name,domain,primary_email,base_stage,status)")
+    .single();
+  if (result.error) throw result.error;
+
+  if (role === "primary") {
+    const eventId = cleanText(invitation.rfx_event_id);
+    if (eventId) {
+      const eventUpdate = await supabase
+        .from("rfx_events")
+        .update({ status: "awarded", updated_at: now })
+        .eq("id", eventId)
+        .eq("owner_email", user.owner_email);
+      if (eventUpdate.error) throw eventUpdate.error;
+    }
+  }
+
+  return { row: result.data, before: invitation, award_role: role };
+}
+
+async function clearRfxAward(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_user_id: string | null; owner_email: string | null },
+  input: Record<string, unknown>
+) {
+  const invitation = await requireOwnedRfxLaneVendor(supabase, user, input.id || input.rfx_lane_vendor_id || input.invitation_id);
+  const wasPrimary = cleanText(invitation.award_role) === "primary";
+  const nextStatus = cleanText(invitation.invitation_status) === "awarded" ? "quoted" : cleanText(invitation.invitation_status) || "quoted";
+  const now = new Date().toISOString();
+  const result = await supabase
+    .from("rfx_lane_vendors")
+    .update({
+      award_role: null,
+      award_reason: null,
+      award_notes: null,
+      awarded_at: null,
+      awarded_by: null,
+      invitation_status: nextStatus,
+      updated_at: now
+    })
+    .eq("id", invitation.id)
+    .select("*, vendors(id,vendor_name,domain,primary_email,base_stage,status)")
+    .single();
+  if (result.error) throw result.error;
+
+  if (wasPrimary && cleanText(invitation.rfx_event_id)) {
+    const remaining = await supabase
+      .from("rfx_lane_vendors")
+      .select("id", { count: "exact", head: true })
+      .eq("rfx_event_id", invitation.rfx_event_id)
+      .eq("award_role", "primary");
+    if (remaining.error) throw remaining.error;
+    if (!remaining.count) {
+      const eventUpdate = await supabase
+        .from("rfx_events")
+        .update({ status: "open", updated_at: now })
+        .eq("id", invitation.rfx_event_id)
+        .eq("owner_email", user.owner_email);
+      if (eventUpdate.error) throw eventUpdate.error;
+    }
+  }
+
+  return { row: result.data, before: invitation };
+}
+
+function rfxAwardRateInput(invitation: Record<string, unknown>, event: Record<string, unknown>, index: number, targetStatus: string) {
+  const lane = objectRecord(invitation.rfx_lanes);
+  const vendor = objectRecord(invitation.vendors);
+  const vendorDomain = carrierDomain(vendor.domain) || carrierDomain(vendor.primary_email) || domainFromVendorReference(invitation.vendor_domain);
+  const vendorReference = cleanText(vendor.vendor_name || vendor.legal_name || vendorDomain);
+  const hasOriginLocationMetadata = [lane.origin_state, lane.origin_country, lane.origin_market, lane.origin_region].some(cleanText);
+  const hasDestinationLocationMetadata = [lane.destination_state, lane.destination_country, lane.destination_market, lane.destination_region].some(cleanText);
+  const rowLabel = [
+    cleanText(event.rfx_id) || "RFx",
+    cleanText(lane.lane_number) || String(index + 1),
+    vendorDomain || vendorReference || cleanText(invitation.vendor_id) || "carrier"
+  ].filter(Boolean).join("-");
+
+  return {
+    vendor_domain: vendorDomain,
+    vendor_reference: vendorReference,
+    rfx_id: event.rfx_id,
+    row_id: rowLabel,
+    quote_date: cleanDate(invitation.responded_at || invitation.awarded_at || new Date().toISOString()),
+    origin: lane.origin,
+    origin_state: lane.origin_state,
+    origin_country: lane.origin_country,
+    origin_market: lane.origin_market,
+    origin_region: lane.origin_region,
+    origin_match_manual: hasOriginLocationMetadata,
+    origin_match_source: hasOriginLocationMetadata ? "rfx_lane" : null,
+    origin_match_reason: hasOriginLocationMetadata ? "RFx lane supplied location metadata" : null,
+    destination: lane.destination,
+    destination_state: lane.destination_state,
+    destination_country: lane.destination_country,
+    destination_market: lane.destination_market,
+    destination_region: lane.destination_region,
+    destination_match_manual: hasDestinationLocationMetadata,
+    destination_match_source: hasDestinationLocationMetadata ? "rfx_lane" : null,
+    destination_match_reason: hasDestinationLocationMetadata ? "RFx lane supplied location metadata" : null,
+    equipment: lane.equipment,
+    trailer: lane.trailer,
+    config: lane.config,
+    operation: lane.operation,
+    service: lane.service,
+    all_in_rate: invitation.bid_rate,
+    currency: invitation.currency || lane.currency || "USD",
+    weekly_capacity: invitation.weekly_capacity,
+    notes: [
+      cleanText(invitation.notes),
+      cleanText(invitation.award_reason),
+      cleanText(invitation.award_notes),
+      "Source: RFx award closeout"
+    ].filter(Boolean).join(" | "),
+    status: targetStatus,
+    confidence: 1
+  };
+}
+
+async function closeoutAwardedRfxToRateware(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_user_id: string | null; owner_email: string | null },
+  input: Record<string, unknown>
+) {
+  const event = await requireOwnedRfxEvent(supabase, user, input.event_id || input.rfx_event_id || input.id);
+  const targetStatus = cleanText(input.target_status) === "pending_review" ? "pending_review" : "approved";
+  const now = new Date().toISOString();
+  const awardsResult = await supabase
+    .from("rfx_lane_vendors")
+    .select("*, rfx_lanes(*), vendors(id,vendor_name,legal_name,domain,primary_email,base_stage,status)")
+    .eq("rfx_event_id", event.id)
+    .eq("award_role", "primary")
+    .neq("invitation_status", "archived")
+    .order("awarded_at", { ascending: true });
+  if (awardsResult.error) throw awardsResult.error;
+
+  const awards = awardsResult.data || [];
+  const pendingAwards = awards.filter((row) => cleanNumber(row.bid_rate) !== null && !row.rate_staging_id);
+  const skipped = awards.length - pendingAwards.length;
+  if (!pendingAwards.length) {
+    return { inserted: 0, skipped, rows: [], raw_upload_id: null, job_id: null };
+  }
+
+  const storageStamp = now.replace(/[^0-9T]/g, "").slice(0, 15);
+  const rawUpload = await supabase
+    .from("raw_uploads")
+    .insert({
+      original_filename: `${cleanText(event.rfx_id) || "rfx"}-award-closeout.json`,
+      storage_bucket: "rfx-awards",
+      storage_path: `rfx-awards/${event.id}/${storageStamp}-${safeStorageSegment(event.rfx_id || event.id)}.json`,
+      mime_type: "application/json",
+      file_size_bytes: 0,
+      document_type: "xlsx",
+      vendor_hint: null,
+      rfx_hint: event.rfx_id,
+      status: "staged",
+      staging_target: "rate_staging",
+      interpreted_at: now,
+      interpreted_rate_rows: pendingAwards.length,
+      expected_rate_rows: pendingAwards.length,
+      audit_status: "ok",
+      audit_warnings: [],
+      interpretation_audit: {
+        status: "ok",
+        import_method: "rfx_award_closeout",
+        rfx_event_id: event.id,
+        rfx_id: event.rfx_id,
+        target_status: targetStatus,
+        awarded_rows: pendingAwards.length,
+        skipped_rows: skipped
+      }
+    })
+    .select("id")
+    .single();
+  if (rawUpload.error) throw rawUpload.error;
+
+  const job = await supabase
+    .from("interpretation_jobs")
+    .insert({
+      raw_upload_id: rawUpload.data.id,
+      status: "completed",
+      completed_at: now,
+      model: "rfx-award-closeout",
+      extracted_rows: pendingAwards.length,
+      error_message: null
+    })
+    .select("id")
+    .single();
+  if (job.error) throw job.error;
+
+  const mappedRows = pendingAwards.map((award, index) => ({ mapped: rfxAwardRateInput(award, event, index, targetStatus) }));
+  const [catalogResult, scopedLocations, scopedMileage] = await Promise.all([
+    supabase
+      .from("rateware_catalog_items")
+      .select("source,category,raw_value,normalized_value,code")
+      .eq("active", true)
+      .limit(10000),
+    fetchScopedTemplateLocations(supabase, mappedRows),
+    fetchScopedTemplateMileage(supabase, mappedRows)
+  ]);
+  if (catalogResult.error) throw catalogResult.error;
+
+  const catalog = buildCatalogIndex(catalogResult.data || []);
+  const locationIndex = buildLocationIndex(scopedLocations || []);
+  const mileage = new Map((scopedMileage || []).map((lane) => [catalogKey(lane.route_key), lane]));
+  const insertedRows: Record<string, unknown>[] = [];
+
+  for (const [index, award] of pendingAwards.entries()) {
+    const mapped = mappedRows[index].mapped as Record<string, unknown>;
+    const patch = normalizeStagingPatch(mapped, {});
+    patch.vendor_id = award.vendor_id;
+    Object.assign(patch, normalizeRowWithCurrentCatalog(patch, catalog, locationIndex, mileage));
+    const insert = await supabase
+      .from("rate_staging")
+      .insert({
+        ...patch,
+        raw_upload_id: rawUpload.data.id,
+        interpretation_job_id: job.data.id,
+        status: targetStatus,
+        confidence: 1,
+        extraction_warnings: [],
+        audit_flags: [],
+        field_confidence: {
+          import_method: "rfx_award_closeout",
+          all_fields: 1,
+          award_decision: 1
+        },
+        source_evidence: {
+          import_method: "rfx_award_closeout",
+          rfx_event_id: event.id,
+          rfx_lane_id: award.rfx_lane_id,
+          rfx_lane_vendor_id: award.id,
+          award_role: award.award_role,
+          award_reason: award.award_reason,
+          awarded_at: award.awarded_at
+        },
+        extracted_payload: {
+          import_method: "rfx_award_closeout",
+          rfx_event: { id: event.id, rfx_id: event.rfx_id, name: event.name },
+          lane: award.rfx_lanes,
+          bid: {
+            id: award.id,
+            vendor_id: award.vendor_id,
+            bid_rate: award.bid_rate,
+            currency: award.currency,
+            weekly_capacity: award.weekly_capacity,
+            transit_days: award.transit_days,
+            notes: award.notes,
+            award_reason: award.award_reason,
+            award_notes: award.award_notes
+          }
+        }
+      })
+      .select("id,row_id,status")
+      .single();
+    if (insert.error) throw insert.error;
+    insertedRows.push(insert.data);
+
+    const link = await supabase
+      .from("rfx_lane_vendors")
+      .update({ rate_staging_id: insert.data.id, rateware_closeout_at: now, updated_at: now })
+      .eq("id", award.id);
+    if (link.error) throw link.error;
+  }
+
+  const eventUpdate = await supabase
+    .from("rfx_events")
+    .update({ status: "awarded", updated_at: now })
+    .eq("id", event.id)
+    .eq("owner_email", user.owner_email);
+  if (eventUpdate.error) throw eventUpdate.error;
+
+  const uploadUpdate = await supabase
+    .from("raw_uploads")
+    .update({ interpreted_rate_rows: insertedRows.length })
+    .eq("id", rawUpload.data.id);
+  if (uploadUpdate.error) throw uploadUpdate.error;
+
+  return {
+    inserted: insertedRows.length,
+    skipped,
+    rows: insertedRows,
+    raw_upload_id: rawUpload.data.id,
+    job_id: job.data.id,
+    target_status: targetStatus
+  };
+}
+
 const BID_ROOM_CHAT_THREAD_TYPES = new Set(["event_group", "lane_group", "carrier_private"]);
 
 function normalizeBidRoomThreadType(value: unknown) {
@@ -9886,6 +10230,63 @@ Deno.serve(async (request) => {
         .single();
       if (result.error) throw result.error;
       return jsonResponse({ row: result.data });
+    }
+
+    if (body.action === "award_rfx_lane_vendor") {
+      const result = await awardRfxLaneVendor(supabase, user, body);
+      await writeAuditLog(
+        supabase,
+        user,
+        "rfx.award.save",
+        "rfx_lane_vendors",
+        result.row.id,
+        `Saved ${result.award_role} award for ${result.row.vendors?.vendor_name || result.row.vendors?.domain || "carrier bid"}`,
+        {
+          award_role: result.award_role,
+          award_reason: result.row.award_reason,
+          rfx_event_id: result.row.rfx_event_id,
+          rfx_lane_id: result.row.rfx_lane_id
+        }
+      );
+      return jsonResponse(result);
+    }
+
+    if (body.action === "clear_rfx_award") {
+      const result = await clearRfxAward(supabase, user, body);
+      await writeAuditLog(
+        supabase,
+        user,
+        "rfx.award.clear",
+        "rfx_lane_vendors",
+        result.row.id,
+        `Cleared award role for ${result.row.vendors?.vendor_name || result.row.vendors?.domain || "carrier bid"}`,
+        {
+          previous_award_role: result.before.award_role,
+          rfx_event_id: result.row.rfx_event_id,
+          rfx_lane_id: result.row.rfx_lane_id
+        }
+      );
+      return jsonResponse(result);
+    }
+
+    if (body.action === "closeout_awarded_rfx_to_rateware") {
+      const result = await closeoutAwardedRfxToRateware(supabase, user, body);
+      await writeAuditLog(
+        supabase,
+        user,
+        "rfx.award.closeout",
+        "rfx_events",
+        body.event_id || body.rfx_event_id || body.id,
+        `Created ${result.inserted} Rateware row(s) from RFx primary awards`,
+        {
+          inserted: result.inserted,
+          skipped: result.skipped,
+          raw_upload_id: result.raw_upload_id,
+          job_id: result.job_id,
+          target_status: result.target_status
+        }
+      );
+      return jsonResponse(result);
     }
 
     if (body.action === "archive_rfx_lane_vendors") {
