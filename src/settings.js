@@ -43,6 +43,7 @@ const disconnectGoogleChatButton = document.querySelector("#disconnect-google-ch
 const refreshGoogleChatConnectionButton = document.querySelector("#refresh-google-chat-connection");
 const googleChatSpaceSelect = document.querySelector("#google-chat-space-select");
 const saveGoogleChatSpaceButton = document.querySelector("#save-google-chat-space-button");
+const googleChatSpaceRow = document.querySelector("#google-chat-space-row");
 const catalogValueForm = document.querySelector("#catalog-value-form");
 const catalogCategorySelect = document.querySelector("#catalog-category");
 const catalogCategoryFilter = document.querySelector("#catalog-category-filter");
@@ -272,7 +273,7 @@ function renderGoogleChatConnections(data = currentSettings?.google_chat, spaces
       ? "Bid Room chat messages will mirror into the selected Google Chat Space."
       : "Google Chat is connected. Select the Space where Bid Room threads should appear."
     : configured
-      ? "Connect once with Google consent. Rateware will use this account to mirror Bid Room threads."
+      ? "The Space exists in Google Chat, but Rateware still needs Google authorization before it can read Spaces or mirror Bid Room threads."
       : "This Google Chat connector is not enabled for the deployment yet.";
   googleChatConnectionCard.innerHTML = `
     <strong>${escapeHtml(GOOGLE_CHAT_ALLOWED_ACCOUNT)}</strong>
@@ -287,10 +288,11 @@ function renderGoogleChatConnections(data = currentSettings?.google_chat, spaces
   `;
   if (connectGoogleChatButton) {
     connectGoogleChatButton.disabled = !configured || connected;
-    connectGoogleChatButton.textContent = connected ? "Google Chat connected" : "Connect Google Chat";
+    connectGoogleChatButton.textContent = connected ? "Google Chat connected" : "Connect Google Chat with Google";
   }
   if (disconnectGoogleChatButton) disconnectGoogleChatButton.disabled = !connected && row.status !== "error";
   if (saveGoogleChatSpaceButton) saveGoogleChatSpaceButton.disabled = !connected || !googleChatSpaceSelect?.value;
+  if (googleChatSpaceRow) googleChatSpaceRow.classList.toggle("hidden", !connected);
   const spaces = spacesData?.rows || [];
   if (googleChatSpaceSelect) {
     const selected = row.default_space_name || spacesData?.default_space_name || googleChatSpaceSelect.value || "";
@@ -298,7 +300,7 @@ function renderGoogleChatConnections(data = currentSettings?.google_chat, spaces
       ? `<option value="">Select Bid Room Space</option>${spaces.map((space) => `
           <option value="${escapeHtml(space.name)}">${escapeHtml(space.display_name || space.name)}</option>
         `).join("")}`
-      : `<option value="">Connect Google Chat to load spaces</option>`;
+      : `<option value="">Connect Google Chat first</option>`;
     googleChatSpaceSelect.value = spaces.some((space) => space.name === selected) ? selected : "";
   }
   setStatus(
@@ -306,7 +308,7 @@ function renderGoogleChatConnections(data = currentSettings?.google_chat, spaces
     configured
       ? (connected
           ? (hasSpace ? "Google Chat is ready for Bid Room threads." : "Select and save the Bid Room Space.")
-          : "Click Connect Google Chat and approve access in Google.")
+          : "Click Connect Google Chat with Google and approve access.")
       : "Google Chat connector is not enabled yet. No user credentials are required.",
     configured ? (connected && hasSpace ? "success" : "neutral") : "warning"
   );
