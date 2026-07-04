@@ -234,6 +234,23 @@ function humanGoogleChatMessage(message = "") {
   return text || "Google Chat action could not be completed.";
 }
 
+function applyOAuthUrlFeedback() {
+  const params = new URLSearchParams(window.location.search);
+  const chatStatus = params.get("chat");
+  const gmailStatus = params.get("gmail");
+  const reason = params.get("reason") || "";
+  if (chatStatus === "connected") {
+    setStatus(googleChatConnectionStatus, "Google Chat authorization completed. Select and save the Bid Room Space.", "success");
+  } else if (chatStatus === "error") {
+    setStatus(googleChatConnectionStatus, humanGoogleChatMessage(reason || "Google Chat authorization failed."), "error");
+  }
+  if (gmailStatus === "connected") {
+    setStatus(gmailConnectionStatus, "Gmail authorization completed.", "success");
+  } else if (gmailStatus === "error") {
+    setStatus(gmailConnectionStatus, humanGmailMessage(reason || "Gmail authorization failed."), "error");
+  }
+}
+
 function renderGmailConnections(data = currentSettings?.gmail) {
   if (!gmailConnectionCard) return;
   const row = data?.rows?.[0] || {};
@@ -448,7 +465,9 @@ initAuthControls();
 populateCatalogCategoryControls();
 requirePrivatePage().then((session) => {
   currentSession = session;
-  if (session?.token) loadSettings();
+  if (session?.token) {
+    loadSettings().then(applyOAuthUrlFeedback);
+  }
 });
 
 refreshButton?.addEventListener("click", loadSettings);

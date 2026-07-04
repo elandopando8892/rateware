@@ -100,8 +100,8 @@ Deno.serve(async (request) => {
     const code = cleanText(url.searchParams.get("code"));
     const state = cleanText(url.searchParams.get("state"));
     const oauthError = cleanText(url.searchParams.get("error"));
-    if (oauthError) return redirectTo("settings.html", { gmail: "error", reason: oauthError });
-    if (!code || !state) return redirectTo("settings.html", { gmail: "error", reason: "missing_code_or_state" });
+    if (!state) return redirectTo("settings.html", { gmail: "error", reason: "missing_state" });
+    if (!code && !oauthError) return redirectTo("settings.html", { gmail: "error", reason: "missing_code" });
 
     const gmailStateResult = await supabase
       .from("gmail_oauth_states")
@@ -122,6 +122,7 @@ Deno.serve(async (request) => {
     }
     const statusParam = stateProvider === "google_chat" ? "chat" : "gmail";
     if (!stateRow) return redirectTo("settings.html", { [statusParam]: "error", reason: "invalid_state" });
+    if (oauthError) return redirectTo(cleanText(stateRow.redirect_after) || "settings.html", { [statusParam]: "error", reason: oauthError });
     if (stateRow.used_at) return redirectTo(cleanText(stateRow.redirect_after) || "settings.html", { [statusParam]: "error", reason: "state_already_used" });
     if (new Date(String(stateRow.expires_at)).getTime() < Date.now()) {
       return redirectTo(cleanText(stateRow.redirect_after) || "settings.html", { [statusParam]: "error", reason: "state_expired" });

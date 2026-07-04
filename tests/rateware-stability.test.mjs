@@ -15,6 +15,7 @@ const rfxEventsSource = readFileSync(new URL("../src/rfx-events.js", import.meta
 const rfxEventsHtml = readFileSync(new URL("../rfx-events.html", import.meta.url), "utf8");
 const rfxBidSource = readFileSync(new URL("../src/rfx-bid.js", import.meta.url), "utf8");
 const rfxBidApiSource = readFileSync(new URL("../supabase/functions/rfx-bid-api/index.ts", import.meta.url), "utf8");
+const gmailOauthCallbackSource = readFileSync(new URL("../supabase/functions/gmail-oauth-callback/index.ts", import.meta.url), "utf8");
 const rfxServiceSource = readFileSync(new URL("../src/rfx-service.js", import.meta.url), "utf8");
 const settingsSource = readFileSync(new URL("../src/settings.js", import.meta.url), "utf8");
 const settingsHtml = readFileSync(new URL("../settings.html", import.meta.url), "utf8");
@@ -125,6 +126,9 @@ assert.match(settingsHtml, /connect-google-chat-button/, "Settings should expose
 assert.match(settingsSource, /saveGoogleChatSettings/, "Settings should save the default Bid Room Google Chat Space");
 assert.match(settingsHtml, /google-chat-space-manual-input/, "Settings should let users paste a Google Chat Space link when list lookup is incomplete");
 assert.match(apiSource, /normalizeGoogleChatSpaceName/, "API should normalize pasted Google Chat Space links or resource names");
+assert.match(settingsSource, /applyOAuthUrlFeedback/, "Settings should show OAuth redirect success or error messages");
+assert.match(gmailOauthCallbackSource, /if \(!state\)/, "OAuth callback should read state before classifying provider-specific OAuth errors");
+assert.match(gmailOauthCallbackSource, /oauthError\) return redirectTo\(cleanText\(stateRow\.redirect_after\)/, "OAuth callback should surface Google Chat OAuth errors on the Chat integration");
 assert.match(apiSource, /sync_bid_room_event_thread/, "Bid Room should create an explicit Google Chat event thread");
 assert.match(rfxEventsHtml, /rfx-chat-start-event-thread/, "Bid Room chat should expose a start event thread action");
 assert.match(rfxEventsSource, /syncBidRoomEventThread/, "Bid Room UI should call the event thread sync action");
