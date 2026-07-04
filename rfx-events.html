@@ -482,6 +482,42 @@
               <div id="rfx-live-offer-manager" class="rfx-live-offer-manager">
                 <article>No live bids yet.</article>
               </div>
+              <section class="bid-room-chat-panel">
+                <div class="bid-room-stage-header compact">
+                  <div>
+                    <p class="eyebrow">Bid Room Chat</p>
+                    <h3>Carrier communications</h3>
+                  </div>
+                  <span id="rfx-chat-sync-status" class="status-pill muted">Google Chat ready</span>
+                </div>
+                <div class="bid-room-chat-controls">
+                  <label>
+                    Thread
+                    <select id="rfx-chat-thread-type">
+                      <option value="event_group">Event group</option>
+                      <option value="lane_group">Lane group</option>
+                      <option value="carrier_private">Carrier private</option>
+                    </select>
+                  </label>
+                  <label>
+                    Lane
+                    <select id="rfx-chat-lane"></select>
+                  </label>
+                  <label>
+                    Carrier
+                    <select id="rfx-chat-vendor"></select>
+                  </label>
+                  <button id="rfx-chat-refresh" type="button" class="secondary small-button">Refresh</button>
+                </div>
+                <div id="rfx-chat-thread-list" class="bid-room-chat-thread-list">
+                  Select a bid event to load chat threads.
+                </div>
+                <form id="rfx-chat-form" class="bid-room-chat-form">
+                  <textarea id="rfx-chat-message" rows="2" placeholder="Write message to carriers or selected carrier..."></textarea>
+                  <button id="rfx-chat-send" type="submit" disabled>Send</button>
+                </form>
+                <p id="rfx-chat-status" class="status-message" role="status"></p>
+              </section>
               <div class="table-wrap">
                 <table class="rfx-response-table">
                   <thead>

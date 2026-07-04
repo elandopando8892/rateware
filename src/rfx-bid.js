@@ -6,6 +6,7 @@ const card = document.querySelector("#bid-invitation-card");
 let boardRefreshTimer = null;
 let bookSearchTimer = null;
 let lastCarrierBook = null;
+let lastCarrierChat = { rows: [], google_chat_configured: false };
 const bookFilters = {
   view: "all",
   query: ""
@@ -175,6 +176,87 @@ function renderLiveBoard(liveBoard = {}) {
     </div>
     <p class="bid-board-note">${escapeHtml(visibilityCopy(visibility))}</p>
   `;
+}
+
+function carrierChatLabel(threadType = "") {
+  const labels = {
+    event_group: "Event room",
+    lane_group: "This lane",
+    carrier_private: "Private with procurement"
+  };
+  return labels[threadType] || "Chat";
+}
+
+function renderCarrierChat(chat = lastCarrierChat) {
+  lastCarrierChat = chat || { rows: [], google_chat_configured: false };
+  const panel = card.querySelector("#carrier-bid-chat");
+  if (!panel) return;
+  const rows = Array.isArray(lastCarrierChat.rows) ? lastCarrierChat.rows : [];
+  panel.innerHTML = `
+    <div class="bid-room-section-heading">
+      <div>
+        <p class="eyebrow">Bid Room Chat</p>
+        <h3>Ask questions and coordinate live capacity</h3>
+      </div>
+      <span class="status-pill ${lastCarrierChat.google_chat_configured ? "success" : "muted"}">${lastCarrierChat.google_chat_configured ? "Google Chat linked" : "Rateware chat"}</span>
+    </div>
+    <div class="carrier-chat-tabs">
+      ${[
+        ["carrier_private", "Private"],
+        ["lane_group", "Lane"],
+        ["event_group", "Event"]
+      ].map(([value, label]) => `<button type="button" class="secondary small-button" data-carrier-chat-scope="${value}">${label}</button>`).join("")}
+    </div>
+    <div class="carrier-chat-thread-list">
+      ${rows.length ? rows.map((thread) => {
+        const messages = Array.isArray(thread.messages) ? thread.messages : [];
+        return `
+          <article class="bid-room-chat-thread">
+            <header>
+              <div>
+                <strong>${escapeHtml(thread.title || carrierChatLabel(thread.thread_type))}</strong>
+                <span>${escapeHtml(carrierChatLabel(thread.thread_type))}</span>
+              </div>
+              <small>${messages.length} message(s)</small>
+            </header>
+            <div class="bid-room-chat-messages">
+              ${messages.slice(-8).map((message) => `
+                <div class="bid-room-chat-message" data-role="${escapeHtml(message.sender_role || "carrier")}">
+                  <b>${escapeHtml(message.sender_name || message.sender_email || message.sender_role || "User")}</b>
+                  <p>${escapeHtml(message.body)}</p>
+                  <span>${escapeHtml(message.created_at ? new Date(message.created_at).toLocaleString() : "")}</span>
+                </div>
+              `).join("")}
+            </div>
+          </article>
+        `;
+      }).join("") : `
+        <div class="bid-room-empty">
+          <strong>No chat messages yet.</strong>
+          <span>Start a private thread with procurement or ask a lane-level question.</span>
+        </div>
+      `}
+    </div>
+    <form id="carrier-chat-form" class="bid-room-chat-form">
+      <select id="carrier-chat-scope">
+        <option value="carrier_private">Private with procurement</option>
+        <option value="lane_group">This lane group</option>
+        <option value="event_group">Event group</option>
+      </select>
+      <textarea id="carrier-chat-message" rows="2" placeholder="Write a message..."></textarea>
+      <button type="submit">Send</button>
+    </form>
+    <p id="carrier-chat-status" class="status-message" role="status"></p>
+  `;
+}
+
+async function loadCarrierChat() {
+  try {
+    const chat = await callBidApi("list_bid_room_chat");
+    renderCarrierChat(chat);
+  } catch (_error) {
+    renderCarrierChat({ rows: [], google_chat_configured: false });
+  }
 }
 
 function laneLabel(row = {}) {
@@ -361,6 +443,10 @@ function renderInvitation(invitation, liveBoard = {}) {
       <p class="status-message">Loading live bid room...</p>
     </section>
 
+    <section id="carrier-bid-chat" class="carrier-bid-chat">
+      <p class="status-message">Loading Bid Room Chat...</p>
+    </section>
+
     <form id="bid-form" class="bid-form">
       <div class="bid-form-header">
         <div>
@@ -431,12 +517,14 @@ async function loadInvitation(options = {}) {
   }
   try {
     const data = await callBidApi("get_invitation");
-    if (options.refreshOnly && card.querySelector("#bid-form")) {
+  if (options.refreshOnly && card.querySelector("#bid-form")) {
       renderLiveBoard(data.live_board);
       renderCarrierBook(data.carrier_book);
+      await loadCarrierChat();
     } else {
       renderInvitation(data.invitation, data.live_board);
       renderCarrierBook(data.carrier_book);
+      await loadCarrierChat();
     }
   } catch (error) {
     if (options.refreshOnly) return;
@@ -446,6 +534,14 @@ async function loadInvitation(options = {}) {
 }
 
 card.addEventListener("click", async (event) => {
+  const scopeButton = event.target.closest("[data-carrier-chat-scope]");
+  if (scopeButton) {
+    const select = card.querySelector("#carrier-chat-scope");
+    if (select) select.value = scopeButton.dataset.carrierChatScope || "carrier_private";
+    card.querySelector("#carrier-chat-message")?.focus();
+    return;
+  }
+
   const filterButton = event.target.closest("[data-book-filter]");
   if (filterButton) {
     bookFilters.view = filterButton.dataset.bookFilter || "all";
@@ -465,6 +561,45 @@ card.addEventListener("click", async (event) => {
     button.disabled = false;
     button.textContent = originalText;
     window.alert(error.message);
+  }
+});
+
+card.addEventListener("submit", async (event) => {
+  const chatForm = event.target.closest("#carrier-chat-form");
+  if (!chatForm) return;
+  event.preventDefault();
+  const status = card.querySelector("#carrier-chat-status");
+  const message = card.querySelector("#carrier-chat-message");
+  const scope = card.querySelector("#carrier-chat-scope");
+  const body = String(message?.value || "").trim();
+  if (!body) {
+    if (status) {
+      status.textContent = "Write a message first.";
+      status.dataset.tone = "error";
+    }
+    message?.focus();
+    return;
+  }
+  if (status) {
+    status.textContent = "Sending message...";
+    status.dataset.tone = "neutral";
+  }
+  try {
+    const result = await callBidApi("post_bid_room_chat_message", {
+      thread_type: scope?.value || "carrier_private",
+      body
+    });
+    if (message) message.value = "";
+    if (status) {
+      status.textContent = result.google_chat_configured ? "Message sent and mirrored to Google Chat." : "Message sent.";
+      status.dataset.tone = "success";
+    }
+    await loadCarrierChat();
+  } catch (error) {
+    if (status) {
+      status.textContent = error.message;
+      status.dataset.tone = "error";
+    }
   }
 });
 

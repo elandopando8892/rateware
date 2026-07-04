@@ -15,8 +15,10 @@ const rfxEventsSource = readFileSync(new URL("../src/rfx-events.js", import.meta
 const rfxEventsHtml = readFileSync(new URL("../rfx-events.html", import.meta.url), "utf8");
 const rfxBidSource = readFileSync(new URL("../src/rfx-bid.js", import.meta.url), "utf8");
 const rfxBidApiSource = readFileSync(new URL("../supabase/functions/rfx-bid-api/index.ts", import.meta.url), "utf8");
+const rfxServiceSource = readFileSync(new URL("../src/rfx-service.js", import.meta.url), "utf8");
 const settingsSource = readFileSync(new URL("../src/settings.js", import.meta.url), "utf8");
 const settingsHtml = readFileSync(new URL("../settings.html", import.meta.url), "utf8");
+const stylesSource = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
 const outreachServiceSource = readFileSync(new URL("../src/outreach-service.js", import.meta.url), "utf8");
 const stagingServiceSource = readFileSync(new URL("../src/staging-service.js", import.meta.url), "utf8");
 const rpcMigration = readFileSync(new URL("../supabase/migrations/20260626143000_rate_filter_rpc.sql", import.meta.url), "utf8");
@@ -34,6 +36,7 @@ const laneLocationAliasesMigration = readFileSync(new URL("../supabase/migration
 const shipmentIdFilterMigration = readFileSync(new URL("../supabase/migrations/20260628123000_add_shipment_id_rate_filters.sql", import.meta.url), "utf8");
 const outreachSenderMigration = readFileSync(new URL("../supabase/migrations/20260703165000_outreach_sender_identity.sql", import.meta.url), "utf8");
 const bidVisibilityMigration = readFileSync(new URL("../supabase/migrations/20260703235500_rfx_bid_visibility_mode.sql", import.meta.url), "utf8");
+const bidRoomChatMigration = readFileSync(new URL("../supabase/migrations/20260704001000_bid_room_chat_threads.sql", import.meta.url), "utf8");
 
 for (const domain of ["gmail.com", "hotmail.com", "yahoo.com", "outlook.com", "yahoo.com.mx"]) {
   assert.match(apiSource, new RegExp(`"${domain.replace(".", "\\.")}"`), `generic domain ${domain} should be blocked`);
@@ -102,6 +105,16 @@ assert.match(rfxEventsSource, /bid_visibility_mode: rfxBidVisibilityInput/, "Bid
 assert.match(apiSource, /"private", "anonymous_rank", "open_leaderboard"/, "API should validate Bid Room visibility modes");
 assert.match(rfxBidApiSource, /competitor_names_visible: normalizedMode === "open_leaderboard"/, "Carrier portal should reveal competitor names only in open leaderboard mode");
 assert.match(rfxBidSource, /Open leaderboard - competitor names and exact submitted rates are visible/, "Carrier portal should explain open leaderboard visibility");
+assert.match(bidRoomChatMigration, /create table if not exists public\.bid_room_chat_threads/, "Bid Room chat should store durable threads");
+assert.match(bidRoomChatMigration, /thread_type in \('event_group', 'lane_group', 'carrier_private'\)/, "Bid Room chat should support group, lane, and private threads");
+assert.match(bidRoomChatMigration, /google_chat_thread_key/, "Bid Room chat should be ready for Google Chat thread mirroring");
+assert.match(apiSource, /post_bid_room_chat_message/, "Internal API should post Bid Room chat messages");
+assert.match(rfxBidApiSource, /postCarrierBidRoomChatMessage/, "Carrier portal API should post token-scoped chat messages");
+assert.match(rfxEventsHtml, /rfx-chat-thread-type/, "Bid Room should render internal chat controls");
+assert.match(rfxEventsSource, /fetchBidRoomChat/, "Bid Room UI should load chat threads");
+assert.match(rfxServiceSource, /postBidRoomChatMessage/, "RFx service should expose chat posting");
+assert.match(rfxBidSource, /carrier-chat-form/, "Carrier portal should render chat form");
+assert.match(stylesSource, /bid-room-chat-panel/, "Bid Room chat should have compact UI styling");
 assert.match(apiSource, /sendOutreachMessages/, "API should send selected outreach messages through Gmail");
 assert.match(apiSource, /delete_outreach_messages/, "API should delete selected outreach draft rows");
 assert.match(apiSource, /sender_email: senderEmail/, "API should persist sender email on outreach draft rows");

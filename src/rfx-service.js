@@ -51,3 +51,11 @@ export async function updateRfxBid(id, patch) {
 export async function archiveRfxLaneVendors(ids = []) {
   return await callRatewareApi("archive_rfx_lane_vendors", { ids });
 }
+
+export async function fetchBidRoomChat(eventId, filters = {}) {
+  return await callRatewareApi("list_bid_room_chat", { rfx_event_id: eventId, ...filters });
+}
+
+export async function postBidRoomChatMessage(eventId, message) {
+  return await callRatewareApi("post_bid_room_chat_message", { rfx_event_id: eventId, ...message });
+}

@@ -10,6 +10,8 @@ import {
   fetchRfxEvents,
   importRfxLanes,
   inviteRfxLaneVendors,
+  fetchBidRoomChat,
+  postBidRoomChatMessage,
   shortlistRfxLaneVendors,
   updateRfxBid,
   updateRfxEvent
@@ -138,6 +140,16 @@ const wizardSteps = document.querySelector("#rfx-wizard-steps");
 const wizardPrimary = document.querySelector("#rfx-wizard-primary");
 const wizardPreview = document.querySelector("#rfx-wizard-preview");
 const liveOfferManager = document.querySelector("#rfx-live-offer-manager");
+const rfxChatThreadType = document.querySelector("#rfx-chat-thread-type");
+const rfxChatLane = document.querySelector("#rfx-chat-lane");
+const rfxChatVendor = document.querySelector("#rfx-chat-vendor");
+const rfxChatRefresh = document.querySelector("#rfx-chat-refresh");
+const rfxChatThreadList = document.querySelector("#rfx-chat-thread-list");
+const rfxChatForm = document.querySelector("#rfx-chat-form");
+const rfxChatMessage = document.querySelector("#rfx-chat-message");
+const rfxChatSend = document.querySelector("#rfx-chat-send");
+const rfxChatStatus = document.querySelector("#rfx-chat-status");
+const rfxChatSyncStatus = document.querySelector("#rfx-chat-sync-status");
 const rfxOpsTitle = document.querySelector("#rfx-ops-title");
 const rfxOpsSubtitle = document.querySelector("#rfx-ops-subtitle");
 const rfxOpsHealth = document.querySelector("#rfx-ops-health");
@@ -160,6 +172,8 @@ let rfxTemplateEditorDirty = false;
 let rfxTemplateVisualEditing = false;
 let contactHistoryRows = [];
 let outreachMessages = [];
+let bidRoomChatThreads = { rows: [], google_chat_configured: false };
+let bidRoomChatRefreshTimer = null;
 let selectedLaneIds = new Set();
 let selectedInvitationIds = new Set();
 let selectedDraftMessageIds = new Set();
@@ -1850,6 +1864,101 @@ function renderEventDashboard() {
   }
 }
 
+function chatVendorOptions() {
+  const map = new Map();
+  currentLanes.forEach((lane) => {
+    (lane.invitations || []).forEach((invitation) => {
+      const vendor = invitation.vendors || {};
+      if (!invitation.vendor_id || map.has(invitation.vendor_id)) return;
+      map.set(invitation.vendor_id, {
+        id: invitation.vendor_id,
+        label: vendor.vendor_name || vendor.domain || invitation.vendor_id
+      });
+    });
+  });
+  return [...map.values()].sort((a, b) => a.label.localeCompare(b.label));
+}
+
+function renderBidRoomChatControls() {
+  const threadType = rfxChatThreadType?.value || "event_group";
+  if (rfxChatLane) {
+    rfxChatLane.innerHTML = currentLanes.length
+      ? currentLanes.map((lane) => `<option value="${escapeHtml(lane.id)}">#${escapeHtml(lane.lane_number || "")} ${escapeHtml(laneRoute(lane))}</option>`).join("")
+      : '<option value="">No lanes</option>';
+    rfxChatLane.disabled = threadType !== "lane_group" || !currentLanes.length;
+  }
+  if (rfxChatVendor) {
+    const vendors = chatVendorOptions();
+    rfxChatVendor.innerHTML = vendors.length
+      ? vendors.map((vendor) => `<option value="${escapeHtml(vendor.id)}">${escapeHtml(vendor.label)}</option>`).join("")
+      : '<option value="">No carriers</option>';
+    rfxChatVendor.disabled = threadType !== "carrier_private" || !vendors.length;
+  }
+  if (rfxChatSend) rfxChatSend.disabled = !selectedEventId;
+}
+
+function renderBidRoomChat() {
+  renderBidRoomChatControls();
+  if (rfxChatSyncStatus) {
+    rfxChatSyncStatus.textContent = bidRoomChatThreads.google_chat_configured ? "Google Chat linked" : "Google Chat not linked";
+    rfxChatSyncStatus.className = `status-pill ${bidRoomChatThreads.google_chat_configured ? "success" : "muted"}`;
+  }
+  if (!rfxChatThreadList) return;
+  const rows = Array.isArray(bidRoomChatThreads.rows) ? bidRoomChatThreads.rows : [];
+  if (!selectedEventId) {
+    rfxChatThreadList.innerHTML = "Select a bid event to load chat threads.";
+    return;
+  }
+  if (!rows.length) {
+    rfxChatThreadList.innerHTML = `
+      <div class="bid-room-empty">
+        <strong>No chat messages yet.</strong>
+        <span>Start an event group, lane group, or private carrier thread.</span>
+      </div>
+    `;
+    return;
+  }
+  rfxChatThreadList.innerHTML = rows.map((thread) => {
+    const messages = Array.isArray(thread.messages) ? thread.messages : [];
+    return `
+      <article class="bid-room-chat-thread">
+        <header>
+          <div>
+            <strong>${escapeHtml(thread.title || thread.thread_type)}</strong>
+            <span>${escapeHtml(thread.thread_type || "thread")} | ${escapeHtml(thread.google_chat_sync_status || "not_configured")}</span>
+          </div>
+          <small>${messages.length} message(s)</small>
+        </header>
+        <div class="bid-room-chat-messages">
+          ${messages.slice(-8).map((message) => `
+            <div class="bid-room-chat-message" data-role="${escapeHtml(message.sender_role || "procurement")}">
+              <b>${escapeHtml(message.sender_name || message.sender_email || message.sender_role || "User")}</b>
+              <p>${escapeHtml(message.body)}</p>
+              <span>${escapeHtml(message.created_at ? new Date(message.created_at).toLocaleString() : "")}</span>
+            </div>
+          `).join("")}
+        </div>
+      </article>
+    `;
+  }).join("");
+}
+
+async function loadBidRoomChat() {
+  if (!selectedEventId) {
+    bidRoomChatThreads = [];
+    renderBidRoomChat();
+    return;
+  }
+  try {
+    bidRoomChatThreads = await fetchBidRoomChat(selectedEventId);
+    renderBidRoomChat();
+  } catch (error) {
+    bidRoomChatThreads = [];
+    renderBidRoomChat();
+    setStatus(rfxChatStatus, error.message, "error");
+  }
+}
+
 function renderLaneCoverage() {
   if (!laneCoverage && !coverageSummary) return;
   if (!selectedEventId) {
@@ -2813,17 +2922,20 @@ async function loadOutreachAssets() {
 async function loadDetail(eventId) {
   if (selectedEventId !== eventId) selectedDraftMessageIds.clear();
   selectedEventId = eventId;
+  if (bidRoomChatRefreshTimer) window.clearInterval(bidRoomChatRefreshTimer);
   setStatus(actionStatus, "Loading RFx detail...");
   try {
-    const [detail, history, messages] = await Promise.all([
+    const [detail, history, messages, chat] = await Promise.all([
       fetchRfxDetail(eventId),
       fetchContactHistory({ rfx_event_id: eventId }),
-      fetchOutreachMessages({ rfx_event_id: eventId })
+      fetchOutreachMessages({ rfx_event_id: eventId }),
+      fetchBidRoomChat(eventId)
     ]);
     selectedEvent = detail.event;
     currentLanes = detail.lanes || [];
     contactHistoryRows = history || [];
     outreachMessages = messages || [];
+    bidRoomChatThreads = chat || { rows: [], google_chat_configured: false };
     if (!currentLanes.some((lane) => lane.id === focusedLaneId)) focusedLaneId = currentLanes[0]?.id || null;
     detailTitle.textContent = `${selectedEvent.name || selectedEvent.rfx_id} (${selectedEvent.status})`;
     updateLaneImportButton();
@@ -2832,7 +2944,11 @@ async function loadDetail(eventId) {
     renderLanes();
     renderEventDashboard();
     renderLaneCoverage();
+    renderBidRoomChat();
     renderOutreachLaunchpad();
+    bidRoomChatRefreshTimer = window.setInterval(() => {
+      if (selectedEventId === eventId) loadBidRoomChat();
+    }, 15000);
     setStatus(actionStatus, "Bid Room loaded.", "success");
   } catch (error) {
     setStatus(actionStatus, error.message, "error");
@@ -3775,6 +3891,53 @@ rfxOutreachSender && (rfxOutreachSender.value = APPROVED_GMAIL_SENDER);
 rfxOutreachSender?.addEventListener("change", renderOutreachPreview);
 rfxOutreachCampaignName?.addEventListener("input", () => {
   rfxOutreachCampaignName.dataset.autoName = "false";
+});
+
+rfxChatThreadType?.addEventListener("change", renderBidRoomChatControls);
+rfxChatRefresh?.addEventListener("click", loadBidRoomChat);
+rfxChatForm?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!selectedEventId) {
+    setStatus(rfxChatStatus, "Select a bid event before sending a chat message.", "error");
+    return;
+  }
+  const body = String(rfxChatMessage?.value || "").trim();
+  if (!body) {
+    setStatus(rfxChatStatus, "Write a message first.", "error");
+    rfxChatMessage?.focus();
+    return;
+  }
+  const threadType = rfxChatThreadType?.value || "event_group";
+  const payload = {
+    thread_type: threadType,
+    body
+  };
+  if (threadType === "lane_group") payload.rfx_lane_id = rfxChatLane?.value || focusedLaneId;
+  if (threadType === "carrier_private") payload.vendor_id = rfxChatVendor?.value;
+  if (threadType === "carrier_private" && !payload.vendor_id) {
+    setStatus(rfxChatStatus, "Choose a carrier for private chat.", "error");
+    return;
+  }
+  if (threadType === "lane_group" && !payload.rfx_lane_id) {
+    setStatus(rfxChatStatus, "Choose a lane for lane group chat.", "error");
+    return;
+  }
+  if (rfxChatSend) rfxChatSend.disabled = true;
+  setStatus(rfxChatStatus, "Sending message...");
+  try {
+    const result = await postBidRoomChatMessage(selectedEventId, payload);
+    if (rfxChatMessage) rfxChatMessage.value = "";
+    setStatus(
+      rfxChatStatus,
+      result.google_chat_configured ? "Message sent and mirrored to Google Chat." : "Message sent. Google Chat mirror is not configured yet.",
+      "success"
+    );
+    await loadBidRoomChat();
+  } catch (error) {
+    setStatus(rfxChatStatus, error.message, "error");
+  } finally {
+    renderBidRoomChatControls();
+  }
 });
 
 [rfxTemplateSubject, rfxTemplateHtml, rfxTemplateWhatsapp].forEach((field) => {

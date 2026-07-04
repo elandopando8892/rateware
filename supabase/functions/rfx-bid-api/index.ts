@@ -3,6 +3,7 @@ import { corsHeaders, jsonResponse } from "../_shared/kinde.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("RATEWARE_SUPABASE_SERVICE_ROLE_KEY");
+const GOOGLE_CHAT_WEBHOOK_URL = Deno.env.get("GOOGLE_CHAT_WEBHOOK_URL");
 
 function getClient() {
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
@@ -129,6 +130,209 @@ function businessBookStatus(row: Record<string, unknown>) {
   if (bidRate !== null || ["quoted", "bid_submitted"].includes(status)) return "quoted";
   if (["invited", "viewed", "responded"].includes(status)) return "invited";
   return status || "drafted";
+}
+
+const BID_ROOM_CHAT_THREAD_TYPES = new Set(["event_group", "lane_group", "carrier_private"]);
+
+function normalizeBidRoomThreadType(value: unknown) {
+  const threadType = cleanText(value)?.toLowerCase() || "carrier_private";
+  return BID_ROOM_CHAT_THREAD_TYPES.has(threadType) ? threadType : "carrier_private";
+}
+
+function bidRoomGoogleThreadKey(eventId: unknown, threadType: string, laneId: unknown, vendorId: unknown) {
+  return [
+    "rateware",
+    "bid-room",
+    cleanText(eventId) || "event",
+    threadType,
+    cleanText(laneId) || "event",
+    cleanText(vendorId) || "group"
+  ].join("-").replace(/[^a-zA-Z0-9_-]+/g, "-").slice(0, 190);
+}
+
+function bidRoomThreadTitle(threadType: string, event: Record<string, unknown>, lane?: Record<string, unknown> | null, vendor?: Record<string, unknown> | null) {
+  if (threadType === "carrier_private") return `Private: ${cleanText(vendor?.vendor_name || vendor?.domain) || "Carrier"}`;
+  if (threadType === "lane_group") return `Lane: ${[lane?.origin, lane?.destination].filter(Boolean).join(" -> ") || lane?.lane_number || "Selected lane"}`;
+  return `Event: ${event.rfx_id || event.name || "Bid Room"}`;
+}
+
+async function syncBidRoomMessageToGoogleChat(
+  supabase: ReturnType<typeof createClient>,
+  thread: Record<string, unknown>,
+  message: Record<string, unknown>,
+  event: Record<string, unknown>
+) {
+  if (!GOOGLE_CHAT_WEBHOOK_URL) return { status: "not_configured", name: null };
+  const threadKey = cleanText(thread.google_chat_thread_key) || bidRoomGoogleThreadKey(thread.rfx_event_id, String(thread.thread_type || "event_group"), thread.rfx_lane_id, thread.vendor_id);
+  const url = new URL(GOOGLE_CHAT_WEBHOOK_URL);
+  url.searchParams.set("threadKey", threadKey);
+  const sender = cleanText(message.sender_name || message.sender_email) || "Carrier";
+  const title = cleanText(thread.title) || cleanText(event.rfx_id || event.name) || "Bid Room";
+  const text = `*${title}*\n${sender}: ${cleanText(message.body) || ""}`;
+  try {
+    const response = await fetch(url.toString(), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text })
+    });
+    const payload = await response.json().catch(() => ({}));
+    const status = response.ok ? "synced" : "error";
+    await supabase.from("bid_room_chat_messages").update({
+      google_chat_message_name: cleanText(payload.name),
+      google_chat_sync_status: status
+    }).eq("id", message.id);
+    await supabase.from("bid_room_chat_threads").update({
+      google_chat_thread_key: threadKey,
+      google_chat_sync_status: status,
+      updated_at: new Date().toISOString()
+    }).eq("id", thread.id);
+    return { status, name: cleanText(payload.name) };
+  } catch (error) {
+    await supabase.from("bid_room_chat_messages").update({ google_chat_sync_status: "error" }).eq("id", message.id);
+    await supabase.from("bid_room_chat_threads").update({ google_chat_sync_status: "error" }).eq("id", thread.id);
+    return { status: "error", name: null, error: String(error?.message || error) };
+  }
+}
+
+async function currentInvitationContext(supabase: ReturnType<typeof createClient>, token: string) {
+  const result = await supabase
+    .from("rfx_lane_vendors")
+    .select(`
+      id,
+      rfx_event_id,
+      rfx_lane_id,
+      vendor_id,
+      invitation_status,
+      invitation_token,
+      vendors(id,vendor_name,domain,primary_email),
+      rfx_events(id,owner_user_id,owner_email,rfx_id,name,customer,event_type,status,due_date,bid_visibility_mode),
+      rfx_lanes(id,rfx_event_id,lane_number,origin,destination)
+    `)
+    .eq("invitation_token", token)
+    .single();
+  if (result.error) throw result.error;
+  return result.data;
+}
+
+async function findOrCreateCarrierChatThread(
+  supabase: ReturnType<typeof createClient>,
+  invitation: Record<string, unknown>,
+  input: Record<string, unknown>
+) {
+  const event = relationRecord(invitation.rfx_events);
+  const lane = relationRecord(invitation.rfx_lanes);
+  const vendor = relationRecord(invitation.vendors);
+  const threadType = normalizeBidRoomThreadType(input.thread_type || input.scope);
+  const laneId = threadType === "event_group" ? null : cleanText(lane.id || invitation.rfx_lane_id);
+  const vendorId = threadType === "carrier_private" ? cleanText(vendor.id || invitation.vendor_id) : null;
+  const owner = {
+    owner_user_id: cleanText(event.owner_user_id),
+    owner_email: cleanText(event.owner_email)
+  };
+
+  let query = supabase
+    .from("bid_room_chat_threads")
+    .select("*, vendors(vendor_name,domain), rfx_lanes(lane_number,origin,destination)")
+    .eq("rfx_event_id", event.id)
+    .eq("thread_type", threadType)
+    .neq("status", "archived");
+  query = laneId ? query.eq("rfx_lane_id", laneId) : query.is("rfx_lane_id", null);
+  query = vendorId ? query.eq("vendor_id", vendorId) : query.is("vendor_id", null);
+  const existing = await query.maybeSingle();
+  if (existing.error) throw existing.error;
+  if (existing.data) return existing.data;
+
+  const row = {
+    owner_user_id: owner.owner_user_id,
+    owner_email: owner.owner_email,
+    rfx_event_id: event.id,
+    rfx_lane_id: laneId,
+    vendor_id: vendorId,
+    thread_type: threadType,
+    title: bidRoomThreadTitle(threadType, event, lane, vendor),
+    google_chat_thread_key: bidRoomGoogleThreadKey(event.id, threadType, laneId, vendorId),
+    google_chat_sync_status: GOOGLE_CHAT_WEBHOOK_URL ? "ready" : "not_configured",
+    metadata: { source: "carrier_portal", rfx_id: event.rfx_id || null }
+  };
+  const created = await supabase
+    .from("bid_room_chat_threads")
+    .insert(row)
+    .select("*, vendors(vendor_name,domain), rfx_lanes(lane_number,origin,destination)")
+    .single();
+  if (created.error) throw created.error;
+  return created.data;
+}
+
+async function listCarrierBidRoomChat(supabase: ReturnType<typeof createClient>, invitation: Record<string, unknown>) {
+  const event = relationRecord(invitation.rfx_events);
+  const laneId = cleanText(invitation.rfx_lane_id);
+  const vendorId = cleanText(invitation.vendor_id);
+  const threadsResult = await supabase
+    .from("bid_room_chat_threads")
+    .select("*, vendors(vendor_name,domain), rfx_lanes(lane_number,origin,destination)")
+    .eq("rfx_event_id", event.id)
+    .neq("status", "archived")
+    .or([
+      "thread_type.eq.event_group",
+      `and(thread_type.eq.lane_group,rfx_lane_id.eq.${laneId})`,
+      `and(thread_type.eq.carrier_private,vendor_id.eq.${vendorId})`
+    ].join(","))
+    .order("updated_at", { ascending: false });
+  if (threadsResult.error) throw threadsResult.error;
+  const threads = threadsResult.data || [];
+  const threadIds = threads.map((thread) => thread.id).filter(Boolean);
+  const messagesResult = threadIds.length
+    ? await supabase
+        .from("bid_room_chat_messages")
+        .select("*, vendors(vendor_name,domain)")
+        .in("thread_id", threadIds)
+        .order("created_at", { ascending: true })
+    : { data: [], error: null };
+  if (messagesResult.error) throw messagesResult.error;
+  const messagesByThread = new Map<string, Record<string, unknown>[]>();
+  for (const message of messagesResult.data || []) {
+    const list = messagesByThread.get(String(message.thread_id)) || [];
+    list.push(message);
+    messagesByThread.set(String(message.thread_id), list);
+  }
+  return {
+    google_chat_configured: Boolean(GOOGLE_CHAT_WEBHOOK_URL),
+    rows: threads.map((thread) => ({
+      ...thread,
+      messages: messagesByThread.get(String(thread.id)) || []
+    }))
+  };
+}
+
+async function postCarrierBidRoomChatMessage(
+  supabase: ReturnType<typeof createClient>,
+  invitation: Record<string, unknown>,
+  input: Record<string, unknown>
+) {
+  const body = cleanText(input.body || input.message);
+  if (!body) throw new Error("Message body is required.");
+  const event = relationRecord(invitation.rfx_events);
+  const vendor = relationRecord(invitation.vendors);
+  const thread = await findOrCreateCarrierChatThread(supabase, invitation, input);
+  const row = {
+    owner_user_id: cleanText(event.owner_user_id),
+    owner_email: cleanText(event.owner_email),
+    thread_id: thread.id,
+    rfx_event_id: event.id,
+    rfx_lane_id: thread.rfx_lane_id || null,
+    vendor_id: cleanText(vendor.id || invitation.vendor_id),
+    sender_role: "carrier",
+    sender_name: cleanText(vendor.vendor_name || vendor.domain) || "Carrier",
+    sender_email: cleanText(vendor.primary_email),
+    body,
+    google_chat_sync_status: GOOGLE_CHAT_WEBHOOK_URL ? "pending" : "not_configured",
+    metadata: { source: "carrier_portal" }
+  };
+  const messageResult = await supabase.from("bid_room_chat_messages").insert(row).select("*, vendors(vendor_name,domain)").single();
+  if (messageResult.error) throw messageResult.error;
+  await supabase.from("bid_room_chat_threads").update({ updated_at: new Date().toISOString() }).eq("id", thread.id);
+  const sync = await syncBidRoomMessageToGoogleChat(supabase, thread, messageResult.data, event);
+  return { thread, message: { ...messageResult.data, google_chat_sync_status: sync.status }, google_chat_configured: Boolean(GOOGLE_CHAT_WEBHOOK_URL) };
 }
 
 function liveBoardFromRows(currentInvitation: Record<string, unknown>, peerRows: Record<string, unknown>[]) {
@@ -396,6 +600,16 @@ Deno.serve(async (request) => {
         live_board: liveBoardFromRows(result.data, peersResult.data || []),
         carrier_book: carrierBusinessBook(result.data, invitedResult.data || [], openLanesResult.data || [])
       });
+    }
+
+    if (body.action === "list_bid_room_chat") {
+      const invitation = await currentInvitationContext(supabase, token);
+      return jsonResponse(await listCarrierBidRoomChat(supabase, invitation));
+    }
+
+    if (body.action === "post_bid_room_chat_message") {
+      const invitation = await currentInvitationContext(supabase, token);
+      return jsonResponse(await postCarrierBidRoomChatMessage(supabase, invitation, body));
     }
 
     if (body.action === "request_lane_access") {
