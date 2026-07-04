@@ -160,6 +160,7 @@ const rfxChatMetricGoogle = document.querySelector("#rfx-chat-metric-google");
 const rfxChatInboxFilters = document.querySelector("#rfx-chat-inbox-filters");
 const rfxChatCopySummary = document.querySelector("#rfx-chat-copy-summary");
 const rfxChatAiSummary = document.querySelector("#rfx-chat-ai-summary");
+const rfxChatSignalQueue = document.querySelector("#rfx-chat-signal-queue");
 const rfxOpsTitle = document.querySelector("#rfx-ops-title");
 const rfxOpsSubtitle = document.querySelector("#rfx-ops-subtitle");
 const rfxOpsHealth = document.querySelector("#rfx-ops-health");
@@ -1909,6 +1910,141 @@ function messageFromGoogleChat(message = {}) {
   return metadata.source === "google_chat_inbound" || Boolean(message.google_chat_sender_name);
 }
 
+function messageText(message = {}) {
+  return String(message.body || "").trim();
+}
+
+function threadText(thread = {}) {
+  return chatMessages(thread).map(messageText).filter(Boolean).join("\n");
+}
+
+function extractFirstNumber(text = "") {
+  const match = String(text).replace(/,/g, "").match(/-?\d+(?:\.\d+)?/);
+  return match ? Number(match[0]) : null;
+}
+
+function extractRateSignal(text = "") {
+  const value = String(text || "");
+  const match = value.match(/(?:\$|usd|mxn|cad|us\$|mx\$)\s*[\d,]+(?:\.\d+)?|[\d,]+(?:\.\d+)?\s*(?:usd|mxn|cad|dlls?|dollars?)/i);
+  if (!match) return null;
+  const raw = match[0];
+  const amount = extractFirstNumber(raw);
+  const currency = /mxn|mx\$|pesos?/i.test(raw) ? "MXN" : /cad|can\$/i.test(raw) ? "CAD" : "USD";
+  return amount ? { amount, currency, raw } : null;
+}
+
+function extractCapacitySignal(text = "") {
+  const value = String(text || "");
+  const match = value.match(/(?:capacidad|capacity|available|disponible|tengo|puedo)\D{0,24}(\d{1,3})\s*(?:unidades|units|trucks|camiones|cajas|trailers|loads|viajes)?|(\d{1,3})\s*(?:unidades|units|trucks|camiones|cajas|trailers|loads|viajes)/i);
+  const amount = match ? Number(match[1] || match[2]) : null;
+  return Number.isFinite(amount) ? amount : null;
+}
+
+function extractTransitSignal(text = "") {
+  const value = String(text || "");
+  const match = value.match(/(?:transit|transito|tr[aá]nsito|delivery|entrega)\D{0,24}(\d{1,2})\s*(?:days|d[ií]as)|(\d{1,2})\s*(?:days|d[ií]as)\s*(?:transit|transito|tr[aá]nsito)?/i);
+  const days = match ? Number(match[1] || match[2]) : null;
+  return Number.isFinite(days) ? days : null;
+}
+
+function detectMessageIntent(message = {}) {
+  const text = messageText(message);
+  const lower = text.toLowerCase();
+  const signals = [];
+  const rate = extractRateSignal(text);
+  const capacity = extractCapacitySignal(text);
+  const transitDays = extractTransitSignal(text);
+  if (/[?¿]/.test(text) || /\b(can you|could you|puedes|podrias|podr[ií]as|favor|confirm|confirma|duda|pregunta|question)\b/i.test(text)) {
+    signals.push({ code: "question", label: "Question", tone: "warning", detail: "Carrier is asking for clarification." });
+  }
+  if (rate) {
+    signals.push({ code: "price", label: "Price mentioned", tone: "success", detail: `${formatMoney(rate.amount, rate.currency)} detected.` });
+  }
+  if (capacity !== null) {
+    signals.push({ code: "capacity", label: "Capacity", tone: "success", detail: `${capacity} unit(s) mentioned.` });
+  }
+  if (transitDays !== null || /\b(eta|pickup|pick up|recolecci[oó]n|delivery|entrega|disponible|available)\b/i.test(text)) {
+    signals.push({ code: "eta", label: "ETA / availability", tone: "neutral", detail: transitDays !== null ? `${transitDays} transit day(s) detected.` : "ETA or availability language detected." });
+  }
+  if (/\b(no puedo|no contamos|not available|no availability|delay|retraso|problema|target|too low|insurance|seguro|cannot|can't|decline|declinar)\b/i.test(lower)) {
+    signals.push({ code: "risk", label: "Risk", tone: "danger", detail: "Potential exception, rejection, or escalation language." });
+  }
+  return { signals, rate, capacity, transit_days: transitDays };
+}
+
+function analyzeCommunicationThread(thread = {}) {
+  const messages = chatMessages(thread);
+  const signalMap = new Map();
+  let latestActionableMessage = null;
+  let extracted = { rate: null, capacity: null, transit_days: null };
+  for (const message of messages) {
+    const analysis = detectMessageIntent(message);
+    if (analysis.signals.length) latestActionableMessage = message;
+    analysis.signals.forEach((signal) => {
+      if (!signalMap.has(signal.code)) signalMap.set(signal.code, signal);
+    });
+    if (analysis.rate) extracted.rate = analysis.rate;
+    if (analysis.capacity !== null) extracted.capacity = analysis.capacity;
+    if (analysis.transit_days !== null) extracted.transit_days = analysis.transit_days;
+  }
+  const signals = [...signalMap.values()];
+  return {
+    signals,
+    latest_actionable_message: latestActionableMessage,
+    extracted,
+    has_signals: signals.length > 0
+  };
+}
+
+function signalToneClass(signal = {}) {
+  if (signal.tone === "danger") return "danger";
+  if (signal.tone === "warning") return "warning";
+  if (signal.tone === "success") return "success";
+  return "neutral";
+}
+
+function suggestedReplyForThread(thread = {}) {
+  const analysis = analyzeCommunicationThread(thread);
+  const vendor = thread.vendors?.vendor_name || thread.vendors?.domain || "team";
+  const latest = latestChatMessage(thread);
+  const body = latest?.body || "";
+  const hasPrice = analysis.signals.some((signal) => signal.code === "price");
+  const hasCapacity = analysis.signals.some((signal) => signal.code === "capacity");
+  const hasRisk = analysis.signals.some((signal) => signal.code === "risk");
+  if (hasRisk) {
+    return `Hi ${vendor}, thanks for the update. Can you confirm the main constraint and whether there is any alternative option we should consider for this lane?`;
+  }
+  if (hasPrice || hasCapacity) {
+    const parts = [];
+    if (analysis.extracted.rate) parts.push(`rate ${formatMoney(analysis.extracted.rate.amount, analysis.extracted.rate.currency)}`);
+    if (analysis.extracted.capacity !== null) parts.push(`capacity ${analysis.extracted.capacity}`);
+    if (analysis.extracted.transit_days !== null) parts.push(`transit ${analysis.extracted.transit_days} day(s)`);
+    return `Hi ${vendor}, thanks. We captured ${parts.join(", ") || "your update"}. Please confirm if this is all-in, the equipment is available, and the pickup/delivery ETA.`;
+  }
+  if (body.includes("?") || body.includes("¿")) {
+    return `Hi ${vendor}, thanks for the question. We are reviewing it now and will confirm the lane requirement, service expectation, and next step shortly.`;
+  }
+  return `Hi ${vendor}, thanks for the update. We will review it against the bid room requirements and follow up with next steps.`;
+}
+
+function extractedBidUpdateText(thread = {}) {
+  const analysis = analyzeCommunicationThread(thread);
+  const lines = [`Bid update candidate - ${thread.title || thread.thread_type || "Bid Room thread"}`];
+  if (analysis.extracted.rate) lines.push(`All-in candidate: ${formatMoney(analysis.extracted.rate.amount, analysis.extracted.rate.currency)}`);
+  if (analysis.extracted.capacity !== null) lines.push(`Capacity candidate: ${analysis.extracted.capacity}`);
+  if (analysis.extracted.transit_days !== null) lines.push(`Transit candidate: ${analysis.extracted.transit_days} day(s)`);
+  lines.push(`Source message: ${messageText(analysis.latest_actionable_message || latestChatMessage(thread) || {}) || "-"}`);
+  lines.push("Review before updating the bid. AI proposes, user confirms.");
+  return lines.join("\n");
+}
+
+function communicationActionQueue(rows = []) {
+  return sortedChatThreads(rows)
+    .map((thread) => ({ thread, analysis: analyzeCommunicationThread(thread) }))
+    .filter((item) => item.analysis.has_signals || threadNeedsReply(item.thread) || threadIsUnread(item.thread))
+    .slice(0, 8);
+}
+
 function threadHasGoogleChatActivity(thread = {}) {
   return chatMessages(thread).some((message) => messageFromGoogleChat(message) || message.google_chat_sync_status === "synced");
 }
@@ -1961,11 +2097,15 @@ function chatThreadMatchesFilter(thread = {}) {
   if (bidRoomChatFilter === "private") return thread.thread_type === "carrier_private";
   if (bidRoomChatFilter === "google") return threadHasGoogleChatActivity(thread);
   if (bidRoomChatFilter === "unread") return threadIsUnread(thread);
+  if (bidRoomChatFilter === "signals") return analyzeCommunicationThread(thread).has_signals;
   return true;
 }
 
 function chatStats(rows = []) {
   const messages = rows.flatMap((thread) => chatMessages(thread));
+  const signalThreads = rows.filter((thread) => analyzeCommunicationThread(thread).has_signals).length;
+  const priceSignals = rows.filter((thread) => analyzeCommunicationThread(thread).signals.some((signal) => signal.code === "price")).length;
+  const riskSignals = rows.filter((thread) => analyzeCommunicationThread(thread).signals.some((signal) => signal.code === "risk")).length;
   const needsReply = rows.filter(threadNeedsReply).length;
   const unread = rows.filter(threadIsUnread).length;
   const resolved = rows.filter(threadIsResolved).length;
@@ -1977,6 +2117,9 @@ function chatStats(rows = []) {
     needsReply,
     unread,
     resolved,
+    signalThreads,
+    priceSignals,
+    riskSignals,
     carrierMessages,
     googleMessages,
     syncErrors,
@@ -1993,6 +2136,7 @@ function chatOpsSummary(rows = []) {
   if (stats.syncErrors) return `${stats.syncErrors} Google Chat message(s) need retry. Refresh or use Settings > Retry Chat sync.`;
   if (stats.unread) return `${stats.unread} unread thread(s). Review new activity before awarding or sending follow-up invitations.`;
   if (stats.needsReply) return `${stats.needsReply} thread(s) need a procurement reply. Start with carrier-private threads before lane or event announcements.`;
+  if (stats.signalThreads) return `${stats.signalThreads} thread(s) have detected commercial signals. Review price, capacity, ETA, and risk before awarding.`;
   if (stats.carrierMessages) return `${stats.carrierMessages} carrier message(s) captured. No open reply blocker detected.`;
   return "Communication queue is clean. Keep the event thread synced and monitor new carrier replies.";
 }
@@ -2006,6 +2150,9 @@ function chatSummaryText(rows = []) {
     `Unread: ${stats.unread}`,
     `Needs reply: ${stats.needsReply}`,
     `Resolved: ${stats.resolved}`,
+    `Signal threads: ${stats.signalThreads}`,
+    `Price signals: ${stats.priceSignals}`,
+    `Risk signals: ${stats.riskSignals}`,
     `Carrier messages: ${stats.carrierMessages}`,
     `Google Chat inbound: ${stats.googleMessages}`,
     urgent.length ? "Priority threads:" : "Priority threads: none",
@@ -2051,7 +2198,19 @@ function renderBidRoomChat() {
   if (rfxChatMetricGoogle) rfxChatMetricGoogle.textContent = formatNumber(stats.googleMessages);
   if (rfxChatAiSummary) {
     rfxChatAiSummary.textContent = chatOpsSummary(rows);
-    rfxChatAiSummary.dataset.tone = stats.needsReply ? "warning" : bidRoomChatThreads.google_chat_inbound?.status === "needs_reconnect" ? "warning" : "neutral";
+    rfxChatAiSummary.dataset.tone = stats.riskSignals ? "danger" : stats.needsReply || stats.signalThreads ? "warning" : bidRoomChatThreads.google_chat_inbound?.status === "needs_reconnect" ? "warning" : "neutral";
+  }
+  if (rfxChatSignalQueue) {
+    const actionQueue = communicationActionQueue(rows);
+    rfxChatSignalQueue.innerHTML = actionQueue.length ? actionQueue.map(({ thread, analysis }) => `
+      <article>
+        <div>
+          <strong>${escapeHtml(thread.title || thread.thread_type || "Communication thread")}</strong>
+          <span>${escapeHtml(analysis.signals.map((signal) => signal.label).join(" | ") || (threadNeedsReply(thread) ? "Needs reply" : "Unread"))}</span>
+        </div>
+        <button type="button" class="secondary small-button" data-rfx-chat-thread-action="suggest_reply" data-thread-id="${escapeHtml(thread.id)}">Suggest reply</button>
+      </article>
+    `).join("") : "No communication signals detected yet.";
   }
   if (rfxChatInboxFilters) {
     rfxChatInboxFilters.querySelectorAll("[data-rfx-chat-filter]").forEach((button) => {
@@ -2081,6 +2240,7 @@ function renderBidRoomChat() {
     const hasGoogleActivity = threadHasGoogleChatActivity(thread);
     const unread = threadIsUnread(thread);
     const resolved = threadIsResolved(thread);
+    const intelligence = analyzeCommunicationThread(thread);
     return `
       <article class="bid-room-chat-thread${needsReply ? " needs-reply" : ""}${unread ? " is-unread" : ""}${resolved ? " is-resolved" : ""}" data-rfx-chat-thread-id="${escapeHtml(thread.id)}">
         <header>
@@ -2096,6 +2256,13 @@ function renderBidRoomChat() {
             <small>${messages.length} message(s)</small>
           </div>
         </header>
+        ${intelligence.signals.length ? `
+          <div class="bid-room-chat-signals">
+            ${intelligence.signals.map((signal) => `
+              <span class="status-pill ${signalToneClass(signal)}" title="${escapeHtml(signal.detail)}">${escapeHtml(signal.label)}</span>
+            `).join("")}
+          </div>
+        ` : ""}
         ${(thread.assigned_to || thread.internal_note) ? `
           <div class="bid-room-chat-meta">
             ${thread.assigned_to ? `<span>Owner: ${escapeHtml(thread.assigned_to)}</span>` : ""}
@@ -2109,6 +2276,8 @@ function renderBidRoomChat() {
           <button type="button" class="secondary small-button" data-rfx-chat-thread-action="${resolved ? "reopen" : "resolve"}" data-thread-id="${escapeHtml(thread.id)}">${resolved ? "Reopen" : "Resolve"}</button>
           <button type="button" class="secondary small-button" data-rfx-chat-thread-action="assign" data-thread-id="${escapeHtml(thread.id)}">Assign</button>
           <button type="button" class="secondary small-button" data-rfx-chat-thread-action="note" data-thread-id="${escapeHtml(thread.id)}">Note</button>
+          <button type="button" class="secondary small-button" data-rfx-chat-thread-action="suggest_reply" data-thread-id="${escapeHtml(thread.id)}">Suggest reply</button>
+          <button type="button" class="secondary small-button" data-rfx-chat-thread-action="copy_bid_update" data-thread-id="${escapeHtml(thread.id)}" ${intelligence.has_signals ? "" : "disabled"}>Extract bid update</button>
         </div>
         <div class="bid-room-chat-messages">
           ${messages.slice(-8).map((message) => `
@@ -4112,6 +4281,30 @@ rfxChatThreadList?.addEventListener("click", async (event) => {
   const threadId = button.dataset.threadId;
   const action = button.dataset.rfxChatThreadAction;
   if (!threadId || !action) return;
+  const currentThread = (bidRoomChatThreads.rows || []).find((thread) => String(thread.id) === String(threadId));
+  if (!currentThread) return;
+  if (action === "suggest_reply") {
+    if (rfxChatThreadType) rfxChatThreadType.value = currentThread.thread_type || "event_group";
+    renderBidRoomChatControls();
+    if (currentThread.rfx_lane_id && rfxChatLane) rfxChatLane.value = currentThread.rfx_lane_id;
+    if (currentThread.vendor_id && rfxChatVendor) rfxChatVendor.value = currentThread.vendor_id;
+    if (rfxChatMessage) {
+      rfxChatMessage.value = suggestedReplyForThread(currentThread);
+      rfxChatMessage.focus();
+    }
+    setStatus(rfxChatStatus, "Suggested reply drafted. Review before sending.", "success");
+    return;
+  }
+  if (action === "copy_bid_update") {
+    const text = extractedBidUpdateText(currentThread);
+    try {
+      await navigator.clipboard.writeText(text);
+      setStatus(rfxChatStatus, "Bid update candidate copied. Review before applying.", "success");
+    } catch (_error) {
+      setStatus(rfxChatStatus, text, "neutral");
+    }
+    return;
+  }
   const payload = { thread_action: action };
   if (action === "assign") {
     const assignedTo = window.prompt("Assign this communication thread to:", "sales@heymarksman.com");
@@ -4119,7 +4312,6 @@ rfxChatThreadList?.addEventListener("click", async (event) => {
     payload.assigned_to = assignedTo;
   }
   if (action === "note") {
-    const currentThread = (bidRoomChatThreads.rows || []).find((thread) => String(thread.id) === String(threadId));
     const note = window.prompt("Internal note for this thread:", currentThread?.internal_note || "");
     if (note === null) return;
     payload.internal_note = note;

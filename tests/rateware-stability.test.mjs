@@ -119,9 +119,15 @@ assert.match(rfxEventsHtml, /rfx-chat-thread-type/, "Bid Room should render inte
 assert.match(rfxEventsHtml, /rfx-chat-command-center/, "Bid Room communications should expose an operational command center");
 assert.match(rfxEventsHtml, /data-rfx-chat-filter="unread"/, "Bid Room communications should filter unread threads");
 assert.match(rfxEventsHtml, /data-rfx-chat-filter="needs_reply"/, "Bid Room communications should filter threads that need reply");
+assert.match(rfxEventsHtml, /data-rfx-chat-filter="signals"/, "Bid Room communications should filter threads with detected signals");
+assert.match(rfxEventsHtml, /rfx-chat-signal-queue/, "Bid Room communications should render an intelligence signal queue");
 assert.match(rfxEventsSource, /chatOpsSummary/, "Bid Room communications should summarize operational chat state");
 assert.match(rfxEventsSource, /threadNeedsReply/, "Bid Room communications should prioritize carrier threads that need reply");
 assert.match(rfxEventsSource, /rfxChatCopySummary/, "Bid Room communications should copy a procurement summary");
+assert.match(rfxEventsSource, /detectMessageIntent/, "Bid Room communications should detect message intent locally");
+assert.match(rfxEventsSource, /suggestedReplyForThread/, "Bid Room communications should draft suggested replies for review");
+assert.match(rfxEventsSource, /extractedBidUpdateText/, "Bid Room communications should extract bid update candidates without applying them automatically");
+assert.match(rfxEventsSource, /AI proposes, user confirms/, "Bid Room communications should keep bid updates confirm-first");
 assert.match(rfxEventsSource, /updateBidRoomChatThread/, "Bid Room communications should update thread actions from the UI");
 assert.match(rfxServiceSource, /update_bid_room_chat_thread/, "RFx service should expose Bid Room thread actions");
 assert.match(apiSource, /updateBidRoomChatThreadAction/, "API should persist Bid Room communication actions");

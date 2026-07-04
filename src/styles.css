@@ -15373,6 +15373,53 @@ textarea:focus,
   color: #7a4a0b;
 }
 
+.bid-room-comm-summary[data-tone="danger"] {
+  border-color: #efb2a8;
+  background: #fff5f3;
+  color: #8c2d23;
+}
+
+.bid-room-signal-queue {
+  display: grid;
+  gap: 5px;
+  border: 1px solid #d7e0e7;
+  border-radius: 7px;
+  background: #ffffff;
+  padding: 6px;
+  color: #52616d;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.bid-room-signal-queue article {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  border: 1px solid #edf2f6;
+  border-radius: 6px;
+  background: #f8fafc;
+  padding: 6px 7px;
+}
+
+.bid-room-signal-queue strong,
+.bid-room-signal-queue span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bid-room-signal-queue strong {
+  color: #26323d;
+  font-size: 0.72rem;
+}
+
+.bid-room-signal-queue span {
+  color: #697987;
+  font-size: 0.64rem;
+}
+
 .bid-room-chat-controls label {
   display: grid;
   gap: 3px;
@@ -15458,6 +15505,7 @@ textarea:focus,
 }
 
 .bid-room-chat-meta,
+.bid-room-chat-signals,
 .bid-room-chat-thread-actions {
   display: flex;
   flex-wrap: wrap;
