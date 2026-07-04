@@ -195,9 +195,10 @@ function bidRoomGoogleThreadKey(eventId: unknown, threadType: string, laneId: un
 }
 
 function bidRoomThreadTitle(threadType: string, event: Record<string, unknown>, lane?: Record<string, unknown> | null, vendor?: Record<string, unknown> | null) {
-  if (threadType === "carrier_private") return `Private: ${cleanText(vendor?.vendor_name || vendor?.domain) || "Carrier"}`;
-  if (threadType === "lane_group") return `Lane: ${[lane?.origin, lane?.destination].filter(Boolean).join(" -> ") || lane?.lane_number || "Selected lane"}`;
-  return `Event: ${event.rfx_id || event.name || "Bid Room"}`;
+  const eventRef = [cleanText(event.rfx_id), cleanText(event.name)].filter(Boolean).join(" | ") || "Bid Room";
+  if (threadType === "carrier_private") return `${eventRef} | Private: ${cleanText(vendor?.vendor_name || vendor?.domain) || "Carrier"}`;
+  if (threadType === "lane_group") return `${eventRef} | Lane: ${[lane?.origin, lane?.destination].filter(Boolean).join(" -> ") || lane?.lane_number || "Selected lane"}`;
+  return `${eventRef} | Event group`;
 }
 
 async function googleChatAccessToken(supabase: ReturnType<typeof createClient>, ownerEmail: string) {

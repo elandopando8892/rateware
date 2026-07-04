@@ -6303,9 +6303,10 @@ function bidRoomGoogleThreadKey(eventId: unknown, threadType: string, laneId: un
 }
 
 function bidRoomThreadTitle(threadType: string, event: Record<string, unknown>, lane?: Record<string, unknown> | null, vendor?: Record<string, unknown> | null) {
-  if (threadType === "carrier_private") return `Private: ${cleanText(vendor?.vendor_name || vendor?.domain) || "Carrier"}`;
-  if (threadType === "lane_group") return `Lane: ${[lane?.origin, lane?.destination].filter(Boolean).join(" -> ") || lane?.lane_number || "Selected lane"}`;
-  return `Event: ${event.rfx_id || event.name || "Bid Room"}`;
+  const eventRef = [cleanText(event.rfx_id), cleanText(event.name)].filter(Boolean).join(" | ") || "Bid Room";
+  if (threadType === "carrier_private") return `${eventRef} | Private: ${cleanText(vendor?.vendor_name || vendor?.domain) || "Carrier"}`;
+  if (threadType === "lane_group") return `${eventRef} | Lane: ${[lane?.origin, lane?.destination].filter(Boolean).join(" -> ") || lane?.lane_number || "Selected lane"}`;
+  return `${eventRef} | Event group`;
 }
 
 async function syncBidRoomMessageToGoogleChatApi(
@@ -6556,6 +6557,64 @@ async function postBidRoomChatMessage(
   await supabase.from("bid_room_chat_threads").update({ updated_at: new Date().toISOString() }).eq("id", thread.id);
   const sync = await syncBidRoomMessageToGoogleChat(supabase, thread, messageResult.data, event);
   return { thread, message: { ...messageResult.data, google_chat_sync_status: sync.status }, google_chat_configured: sync.status !== "not_configured" || Boolean(GOOGLE_CHAT_WEBHOOK_URL) };
+}
+
+async function syncBidRoomEventThread(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_user_id: string | null; owner_email: string | null },
+  input: Record<string, unknown>
+) {
+  const event = await requireOwnedRfxEvent(supabase, user, input.rfx_event_id || input.event_id);
+  const thread = await findOrCreateBidRoomChatThread(supabase, user, event, {
+    thread_type: "event_group",
+    title: bidRoomThreadTitle("event_group", event)
+  });
+  const messagesResult = await supabase
+    .from("bid_room_chat_messages")
+    .select("*")
+    .eq("thread_id", thread.id)
+    .order("created_at", { ascending: false })
+    .limit(1);
+  if (messagesResult.error) throw messagesResult.error;
+
+  let message = messagesResult.data?.[0] || null;
+  if (!message) {
+    const body = [
+      `Bid Room thread started for ${event.rfx_id || event.name || "selected event"}.`,
+      event.name ? `Event: ${event.name}` : null,
+      event.customer ? `Customer: ${event.customer}` : null,
+      event.due_date ? `Due date: ${event.due_date}` : null,
+      "Messages posted from Rateware will mirror into this Google Chat thread."
+    ].filter(Boolean).join("\n");
+    const inserted = await supabase.from("bid_room_chat_messages").insert(withOwner({
+      thread_id: thread.id,
+      rfx_event_id: event.id,
+      rfx_lane_id: null,
+      vendor_id: null,
+      sender_role: "system",
+      sender_name: "Rateware",
+      sender_email: user.owner_email,
+      body,
+      google_chat_sync_status: "pending",
+      metadata: {
+        source: "rateware_event_thread_seed",
+        rfx_id: event.rfx_id || null
+      }
+    }, user)).select("*, vendors(vendor_name,domain)").single();
+    if (inserted.error) throw inserted.error;
+    message = inserted.data;
+  }
+
+  await supabase.from("bid_room_chat_threads").update({
+    title: bidRoomThreadTitle("event_group", event),
+    updated_at: new Date().toISOString()
+  }).eq("id", thread.id);
+  const sync = await syncBidRoomMessageToGoogleChat(supabase, thread, message, event);
+  return {
+    thread: { ...thread, title: bidRoomThreadTitle("event_group", event), google_chat_sync_status: sync.status },
+    message: { ...message, google_chat_sync_status: sync.status },
+    google_chat_configured: sync.status !== "not_configured" || Boolean(GOOGLE_CHAT_WEBHOOK_URL)
+  };
 }
 
 function normalizeOutreachTemplate(input: Record<string, unknown>) {
@@ -9128,6 +9187,20 @@ Deno.serve(async (request) => {
         result.thread.id,
         `Posted Bid Room chat message to ${result.thread.title || result.thread.thread_type}`,
         { thread_type: result.thread.thread_type, google_chat_sync_status: result.message.google_chat_sync_status }
+      );
+      return jsonResponse(result);
+    }
+
+    if (body.action === "sync_bid_room_event_thread") {
+      const result = await syncBidRoomEventThread(supabase, user, body);
+      await writeAuditLog(
+        supabase,
+        user,
+        "bid_room.chat.thread_sync",
+        "bid_room_chat_threads",
+        result.thread.id,
+        `Synced Google Chat thread for ${result.thread.title || "Bid Room event"}`,
+        { google_chat_sync_status: result.message.google_chat_sync_status }
       );
       return jsonResponse(result);
     }

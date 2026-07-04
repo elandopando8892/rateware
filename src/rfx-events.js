@@ -13,6 +13,7 @@ import {
   fetchBidRoomChat,
   postBidRoomChatMessage,
   shortlistRfxLaneVendors,
+  syncBidRoomEventThread,
   updateRfxBid,
   updateRfxEvent
 } from "./rfx-service.js";
@@ -144,6 +145,7 @@ const rfxChatThreadType = document.querySelector("#rfx-chat-thread-type");
 const rfxChatLane = document.querySelector("#rfx-chat-lane");
 const rfxChatVendor = document.querySelector("#rfx-chat-vendor");
 const rfxChatRefresh = document.querySelector("#rfx-chat-refresh");
+const rfxChatStartEventThread = document.querySelector("#rfx-chat-start-event-thread");
 const rfxChatThreadList = document.querySelector("#rfx-chat-thread-list");
 const rfxChatForm = document.querySelector("#rfx-chat-form");
 const rfxChatMessage = document.querySelector("#rfx-chat-message");
@@ -1895,6 +1897,7 @@ function renderBidRoomChatControls() {
     rfxChatVendor.disabled = threadType !== "carrier_private" || !vendors.length;
   }
   if (rfxChatSend) rfxChatSend.disabled = !selectedEventId;
+  if (rfxChatStartEventThread) rfxChatStartEventThread.disabled = !selectedEventId;
 }
 
 function renderBidRoomChat() {
@@ -3895,6 +3898,29 @@ rfxOutreachCampaignName?.addEventListener("input", () => {
 
 rfxChatThreadType?.addEventListener("change", renderBidRoomChatControls);
 rfxChatRefresh?.addEventListener("click", loadBidRoomChat);
+rfxChatStartEventThread?.addEventListener("click", async () => {
+  if (!selectedEventId) {
+    setStatus(rfxChatStatus, "Select a bid event before creating the Google Chat thread.", "error");
+    return;
+  }
+  rfxChatStartEventThread.disabled = true;
+  setStatus(rfxChatStatus, "Creating event thread in Google Chat...");
+  try {
+    const result = await syncBidRoomEventThread(selectedEventId);
+    setStatus(
+      rfxChatStatus,
+      result.google_chat_configured
+        ? "Event thread created and mirrored to Google Chat."
+        : "Event thread created in Rateware. Connect Google Chat and save a Space to mirror it.",
+      result.google_chat_configured ? "success" : "warning"
+    );
+    await loadBidRoomChat();
+  } catch (error) {
+    setStatus(rfxChatStatus, error.message, "error");
+  } finally {
+    renderBidRoomChatControls();
+  }
+});
 rfxChatForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (!selectedEventId) {
