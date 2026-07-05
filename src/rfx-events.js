@@ -1349,7 +1349,7 @@ function renderOutreachPreview() {
     `;
   }
   if (createRfxOutreachCampaignButton) {
-    createRfxOutreachCampaignButton.disabled = !selectedEventId || !template || !targets.length || rfxTemplateEditorDirty || rfxTemplateVisualEditing;
+    createRfxOutreachCampaignButton.disabled = !selectedEventId || !template || !targets.length || Boolean(launchPreflightIssues().length) || rfxTemplateEditorDirty || rfxTemplateVisualEditing;
   }
   renderWizard();
 }
@@ -1579,10 +1579,12 @@ function bidRoomReadinessSnapshot() {
     {
       key: "contacts",
       label: "Contactability",
-      status: stats.targets.length ? targetsMissingChannel ? "attention" : "ready" : "blocker",
+      status: stats.targets.length ? targetsMissingChannel === stats.targets.length ? "blocker" : targetsMissingChannel ? "attention" : "ready" : "blocker",
       metric: `${formatNumber(stats.readyTargets.length)} / ${formatNumber(stats.targets.length)}`,
       detail: stats.targets.length
-        ? targetsMissingChannel ? `${formatNumber(targetsMissingChannel)} target(s) missing ${channel} contact data.` : "Targets have usable contact channel."
+        ? targetsMissingChannel === stats.targets.length
+          ? `No targets have usable ${channel} contact data.`
+          : targetsMissingChannel ? `${formatNumber(targetsMissingChannel)} target(s) missing ${channel} contact data.` : "Targets have usable contact channel."
         : "Add participants before invite QA.",
       action: "carriers"
     },
@@ -1664,6 +1666,27 @@ async function copyReadinessReport() {
   } catch (_error) {
     setStatus(actionStatus, lines.join(" | "), "neutral");
   }
+}
+
+function launchPreflightIssues() {
+  const launchRequiredKeys = new Set(["event", "lanes", "participants", "contacts", "template"]);
+  const snapshot = bidRoomReadinessSnapshot();
+  return snapshot.checks.filter((check) => launchRequiredKeys.has(check.key) && check.status === "blocker");
+}
+
+function blockIfLaunchPreflightFails(statusElement = rfxOutreachStatus) {
+  const issues = launchPreflightIssues();
+  if (!issues.length) return false;
+  const firstIssue = issues[0];
+  activateWorkbenchView(firstIssue.action || "setup", {
+    setup: "#rfx-id",
+    lanes: "#rfx-lane-template-file",
+    carriers: "#manual-shortlist-search",
+    outreach: "#rfx-outreach-template"
+  }[firstIssue.action] || null);
+  setStatus(statusElement, `Launch blocked: ${firstIssue.label}. ${firstIssue.detail}`, "error");
+  renderBidRoomLaunchReadiness();
+  return true;
 }
 
 function openFirstReadinessIssue() {
@@ -4279,7 +4302,11 @@ async function autoShortlistLaneIds(ids, statusElement = actionStatus) {
 }
 
 async function createCurrentOutreachDrafts(statusElement = rfxOutreachStatus) {
-  if (!selectedEventId) return null;
+  if (!selectedEventId) {
+    blockIfLaunchPreflightFails(statusElement);
+    return null;
+  }
+  if (blockIfLaunchPreflightFails(statusElement)) return null;
   const template = selectedOutreachTemplate();
   const targets = outreachTargetInvitations();
   if (!template) {

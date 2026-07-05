@@ -112,6 +112,10 @@ assert.match(rfxEventsSource, /function renderBidRoomLaunchReadiness/, "Bid Room
 assert.match(rfxEventsSource, /function readinessReportLines/, "Bid Room should produce a copyable launch QA report");
 assert.match(rfxEventsSource, /data-rfx-readiness-first-issue/, "Bid Room readiness QA should navigate to the first blocker");
 assert.match(rfxEventsSource, /data-rfx-copy-readiness/, "Bid Room readiness QA should copy a report for debugging");
+assert.match(rfxEventsSource, /function launchPreflightIssues/, "Bid Room should classify launch-blocking readiness issues");
+assert.match(rfxEventsSource, /function blockIfLaunchPreflightFails/, "Bid Room should block invitation launch when required readiness checks fail");
+assert.match(rfxEventsSource, /blockIfLaunchPreflightFails\(statusElement\)/, "Bid Room draft generation should run launch preflight before creating campaigns");
+assert.match(rfxEventsSource, /No targets have usable/, "Bid Room contactability should block launch when no selected target can be contacted");
 assert.match(stylesSource, /bid-room-readiness-grid/, "Bid Room readiness QA should have compact operational styling");
 assert.match(bidVisibilityMigration, /bid_visibility_mode text not null default 'anonymous_rank'/, "RFx events should store a per-event Bid Room visibility mode");
 assert.match(bidVisibilityMigration, /open_leaderboard/, "Bid Room visibility should support open leaderboard events");
