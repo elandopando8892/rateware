@@ -850,6 +850,144 @@ function offerAvailabilitySummary(invitation = {}) {
   return "Pending";
 }
 
+function decisionNumber(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function clampScore(value, min = 0, max = 100) {
+  return Math.max(min, Math.min(max, Math.round(value)));
+}
+
+function scoreFromRange(value, bestValue, worstValue, maxScore, lowerIsBetter = true) {
+  if (value === null || bestValue === null || worstValue === null) return 0;
+  if (bestValue === worstValue) return maxScore;
+  const progress = lowerIsBetter
+    ? (worstValue - value) / (worstValue - bestValue)
+    : (value - worstValue) / (bestValue - worstValue);
+  return clampScore(progress * maxScore, 0, maxScore);
+}
+
+function laneDecisionContext(rows = []) {
+  const amounts = rows.map((row) => decisionNumber(row.amount)).filter((value) => value !== null);
+  const capacities = rows.map((row) => decisionNumber(row.invitation.weekly_capacity)).filter((value) => value !== null);
+  const transits = rows.map((row) => decisionNumber(row.invitation.transit_days)).filter((value) => value !== null);
+  const pickupEtas = rows
+    .map((row) => {
+      const date = new Date(row.invitation.eta_pickup || "");
+      return Number.isNaN(date.getTime()) ? null : date.getTime();
+    })
+    .filter((value) => value !== null);
+  return {
+    lowestAmount: amounts.length ? Math.min(...amounts) : null,
+    highestAmount: amounts.length ? Math.max(...amounts) : null,
+    bestCapacity: capacities.length ? Math.max(...capacities) : null,
+    weakestCapacity: capacities.length ? Math.min(...capacities) : null,
+    fastestTransit: transits.length ? Math.min(...transits) : null,
+    slowestTransit: transits.length ? Math.max(...transits) : null,
+    earliestPickupEta: pickupEtas.length ? Math.min(...pickupEtas) : null,
+    latestPickupEta: pickupEtas.length ? Math.max(...pickupEtas) : null
+  };
+}
+
+function commercialDecisionScore(invitation = {}) {
+  const model = String(invitation.commercial_model || "").toLowerCase();
+  const marksmanMargin = decisionNumber(invitation.marksman_margin_pct);
+  const carrierShare = decisionNumber(invitation.carrier_share_pct);
+  let score = 0;
+  if (model === "direct_cost_plus") score += 6;
+  if (model === "carrier_share") score += 5;
+  if (model === "xbf_buy_sell") score += 4;
+  if (marksmanMargin !== null && marksmanMargin >= 2 && marksmanMargin <= 5) score += 3;
+  if (carrierShare !== null && carrierShare >= 2 && carrierShare <= 5) score += 3;
+  if (marksmanMargin !== null && marksmanMargin > 5) score -= 2;
+  if (carrierShare !== null && carrierShare > 5) score -= 2;
+  return clampScore(score, 0, 10);
+}
+
+function procurementDecisionForBid(row, laneRows = []) {
+  const invitation = row.invitation || {};
+  const context = laneDecisionContext(laneRows);
+  const amount = decisionNumber(row.amount);
+  const capacity = decisionNumber(invitation.weekly_capacity);
+  const transit = decisionNumber(invitation.transit_days);
+  const pickupDate = new Date(invitation.eta_pickup || "");
+  const pickupEta = Number.isNaN(pickupDate.getTime()) ? null : pickupDate.getTime();
+  const priceScore = scoreFromRange(amount, context.lowestAmount, context.highestAmount, 35, true);
+  const capacityScore = scoreFromRange(capacity, context.bestCapacity, context.weakestCapacity, 15, false);
+  const transitScore = scoreFromRange(transit, context.fastestTransit, context.slowestTransit, 10, true);
+  const etaScore = pickupEta !== null
+    ? scoreFromRange(pickupEta, context.earliestPickupEta, context.latestPickupEta, 5, true)
+    : 0;
+  const availabilityScore = invitation.equipment_available === true
+    ? 12
+    : invitation.equipment_available === false
+      ? -6
+      : 0;
+  const validationScore = [
+    invitation.mirror_account_enabled ? 4 : 0,
+    invitation.unit_details ? 3 : 0,
+    invitation.availability_validation_status === "validated" ? 3 : 0
+  ].reduce((sum, value) => sum + value, 0);
+  const commercialScore = commercialDecisionScore(invitation);
+  const alternativeScore = invitation.best_alternative_offered ? 5 : 0;
+  const riskFlags = [];
+  if (capacity === null) riskFlags.push("No capacity");
+  if (invitation.equipment_available !== true) riskFlags.push("Availability not validated");
+  if (invitation.equipment_available === true && pickupEta === null) riskFlags.push("Missing pickup ETA");
+  if (invitation.equipment_available === true && !invitation.unit_details) riskFlags.push("Missing unit details");
+  if (Number.isFinite(Number(invitation.bid_delta)) && Number(invitation.bid_delta) > 0) riskFlags.push("Above Rateware");
+  if (!invitation.commercial_model) riskFlags.push("No commercial model");
+  const score = clampScore(priceScore + capacityScore + transitScore + etaScore + availabilityScore + validationScore + commercialScore + alternativeScore - Math.min(12, riskFlags.length * 3));
+  return {
+    score,
+    price_score: priceScore,
+    capacity_score: capacityScore,
+    speed_score: transitScore + etaScore,
+    availability_score: availabilityScore,
+    validation_score: validationScore,
+    commercial_score: commercialScore,
+    alternative_score: alternativeScore,
+    risk_flags: riskFlags,
+    badges: []
+  };
+}
+
+function decisionBadgesForBid(row, laneRows = []) {
+  const context = laneDecisionContext(laneRows);
+  const decisionRows = laneRows.map((candidate) => ({ row: candidate, decision: procurementDecisionForBid(candidate, laneRows) }));
+  const bestScore = decisionRows.length ? Math.max(...decisionRows.map((item) => item.decision.score)) : null;
+  const badges = [];
+  if (bestScore !== null && procurementDecisionForBid(row, laneRows).score === bestScore) badges.push({ label: "Best overall", tone: "success" });
+  if (decisionNumber(row.amount) === context.lowestAmount) badges.push({ label: "Lowest", tone: "success" });
+  if (row.invitation.equipment_available === true) badges.push({ label: "Available", tone: "success" });
+  if (decisionNumber(row.invitation.weekly_capacity) === context.bestCapacity && context.bestCapacity !== null) badges.push({ label: "Best capacity", tone: "neutral" });
+  if (decisionNumber(row.invitation.transit_days) === context.fastestTransit && context.fastestTransit !== null) badges.push({ label: "Fastest transit", tone: "neutral" });
+  if (row.invitation.best_alternative_offered) badges.push({ label: "Alternative offered", tone: "warning" });
+  const decision = procurementDecisionForBid(row, laneRows);
+  if (decision.risk_flags.length) badges.push({ label: "Needs validation", tone: "danger" });
+  return badges.slice(0, 6);
+}
+
+function decisionBadgeHtml(badge) {
+  return `<span class="rfx-decision-badge" data-tone="${escapeHtml(badge.tone || "neutral")}">${escapeHtml(badge.label)}</span>`;
+}
+
+function decisionRecommendation(row, rank, laneRows = []) {
+  const decision = procurementDecisionForBid(row, laneRows);
+  const badges = decisionBadgesForBid(row, laneRows).map((badge) => badge.label);
+  const parts = [];
+  if (rank === 1) parts.push(`Best overall score ${decision.score}/100`);
+  if (badges.includes("Lowest")) parts.push("lowest all-in");
+  if (badges.includes("Available")) parts.push("equipment available");
+  if (badges.includes("Best capacity")) parts.push("strongest capacity");
+  if (badges.includes("Fastest transit")) parts.push("fastest transit");
+  if (row.invitation.commercial_model) parts.push(commercialModelLabel(row.invitation.commercial_model));
+  if (row.invitation.best_alternative_offered) parts.push("alternative option available");
+  if (decision.risk_flags.length) parts.push(`validate: ${decision.risk_flags.slice(0, 2).join(", ")}`);
+  return parts.join("; ") || "Procurement decision";
+}
+
 function hasBid(invitation) {
   return (invitation.bid_rate !== null
     && invitation.bid_rate !== undefined
@@ -1649,23 +1787,31 @@ function renderLiveOfferManager() {
     byLane.set(row.lane.id, bucket);
   });
   liveOfferManager.innerHTML = [...byLane.values()].map((laneRows) => {
-    const sorted = laneRows.sort((a, b) => a.amount - b.amount);
+    const scoredRows = laneRows.map((row) => ({
+      ...row,
+      decision: procurementDecisionForBid(row, laneRows),
+      decision_badges: decisionBadgesForBid(row, laneRows)
+    }));
+    const sorted = scoredRows.sort((a, b) => b.decision.score - a.decision.score || a.amount - b.amount);
     const best = sorted[0];
-    const spread = sorted.length > 1 ? sorted[sorted.length - 1].amount - sorted[0].amount : 0;
+    const cheapest = [...scoredRows].sort((a, b) => a.amount - b.amount)[0];
+    const amounts = scoredRows.map((row) => row.amount);
+    const spread = amounts.length > 1 ? Math.max(...amounts) - Math.min(...amounts) : 0;
     return `
       <section class="live-offer-lane">
         <div>
           <span class="status-pill success">${formatNumber(sorted.length)} bid(s)</span>
           <strong>${escapeHtml(laneRoute(best.lane))}</strong>
-          <small>Best ${formatMoney(best.amount, best.currency)} | Spread ${formatMoney(spread, best.currency)}</small>
+          <small>Best overall ${escapeHtml(vendorLabel(best.invitation))} (${best.decision.score}/100) | Lowest ${formatMoney(cheapest.amount, cheapest.currency)} | Spread ${formatMoney(spread, best.currency)}</small>
         </div>
         <table>
-          <thead><tr><th>Rank</th><th>Carrier</th><th>Bid</th><th>Commercial</th><th>Availability</th><th>Capacity</th><th>Transit</th><th>Status</th></tr></thead>
+          <thead><tr><th>Rank</th><th>Carrier</th><th>Score</th><th>Bid</th><th>Commercial</th><th>Availability</th><th>Capacity</th><th>Transit</th><th>Status</th></tr></thead>
           <tbody>
             ${sorted.map((row, index) => `
               <tr>
                 <td>#${index + 1}</td>
                 <td>${escapeHtml(vendorLabel(row.invitation))}</td>
+                <td><span class="rfx-decision-score">${escapeHtml(row.decision.score)}</span></td>
                 <td>${formatMoney(row.amount, row.currency)}</td>
                 <td>${escapeHtml(offerCommercialSummary(row.invitation))}</td>
                 <td>${escapeHtml(offerAvailabilitySummary(row.invitation))}</td>
@@ -1712,15 +1858,21 @@ function awardReasonDefault(row, rank) {
 function awardLaneRows() {
   return currentLanes
     .map((lane) => {
-      const bids = bidInvitations(lane)
+      const rawBids = bidInvitations(lane)
         .map((invitation) => ({
           lane,
           invitation,
           amount: Number(invitation.bid_rate),
           currency: invitation.currency || lane.currency || "USD"
         }))
-        .filter((row) => Number.isFinite(row.amount))
-        .sort((a, b) => a.amount - b.amount);
+        .filter((row) => Number.isFinite(row.amount));
+      const bids = rawBids
+        .map((row) => ({
+          ...row,
+          decision: procurementDecisionForBid(row, rawBids),
+          decision_badges: decisionBadgesForBid(row, rawBids)
+        }))
+        .sort((a, b) => b.decision.score - a.decision.score || a.amount - b.amount);
       return { lane, bids };
     })
     .filter((row) => row.bids.length);
@@ -1793,6 +1945,36 @@ function updateAwardMetrics() {
   updateAwardNoticeControls();
 }
 
+function renderDecisionScorecard(row, index, laneRows = []) {
+  const decision = row.decision || procurementDecisionForBid(row, laneRows);
+  const badges = row.decision_badges || decisionBadgesForBid(row, laneRows);
+  const riskCopy = decision.risk_flags.length
+    ? decision.risk_flags.slice(0, 3).join(" | ")
+    : "No major validation gaps";
+  const recommendation = decisionRecommendation(row, index + 1, laneRows);
+  return `
+    <article class="rfx-decision-card" data-score-tone="${decision.score >= 75 ? "strong" : decision.score >= 55 ? "medium" : "weak"}">
+      <header>
+        <span>${index === 0 ? "Recommended" : `Option #${index + 1}`}</span>
+        <strong>${escapeHtml(decision.score)}/100</strong>
+      </header>
+      <h4>${escapeHtml(vendorLabel(row.invitation))}</h4>
+      <p>${formatMoney(row.amount, row.currency)} | ${escapeHtml(offerAvailabilitySummary(row.invitation))}</p>
+      <div class="rfx-decision-badges">
+        ${badges.map(decisionBadgeHtml).join("") || '<span class="rfx-decision-badge" data-tone="neutral">Needs review</span>'}
+      </div>
+      <div class="rfx-decision-breakdown">
+        <span>Price <b>${escapeHtml(decision.price_score)}</b></span>
+        <span>Capacity <b>${escapeHtml(decision.capacity_score)}</b></span>
+        <span>Speed <b>${escapeHtml(decision.speed_score)}</b></span>
+        <span>Validation <b>${escapeHtml(decision.validation_score)}</b></span>
+      </div>
+      <small>${escapeHtml(recommendation)}</small>
+      <em>${escapeHtml(riskCopy)}</em>
+    </article>
+  `;
+}
+
 function renderAwardBoard() {
   updateAwardMetrics();
   if (!rfxAwardBoard) return;
@@ -1819,6 +2001,8 @@ function renderAwardBoard() {
   rfxAwardBoard.innerHTML = lanes.map(({ lane, bids }) => {
     const primary = bids.find((row) => row.invitation.award_role === "primary");
     const backups = bids.filter((row) => row.invitation.award_role === "backup");
+    const cheapest = [...bids].sort((a, b) => a.amount - b.amount)[0];
+    const recommended = bids[0];
     return `
       <section class="rfx-award-lane" data-rfx-award-lane-id="${escapeHtml(lane.id)}">
         <header>
@@ -1828,17 +2012,24 @@ function renderAwardBoard() {
             <small>${escapeHtml([lane.equipment, lane.trailer, lane.operation, lane.service].filter(Boolean).join(" / ") || "Lane")}</small>
           </div>
           <div class="rfx-award-lane-summary">
+            <span>Recommended ${escapeHtml(vendorLabel(recommended.invitation))} (${recommended.decision.score}/100)</span>
+            <span>Lowest ${formatMoney(cheapest.amount, cheapest.currency)}</span>
             <span>Rateware ${lane.benchmark ? formatMoney(lane.benchmark.all_in_rate, lane.benchmark.currency) : "-"}</span>
             <span>${formatNumber(bids.length)} bid(s)</span>
             <span>${formatNumber(backups.length)} backup(s)</span>
           </div>
         </header>
+        <div class="rfx-decision-scorecards">
+          ${bids.slice(0, 3).map((row, index) => renderDecisionScorecard(row, index, bids)).join("")}
+        </div>
         <div class="table-wrap">
           <table class="rfx-award-table">
             <thead>
               <tr>
                 <th>Rank</th>
                 <th>Carrier</th>
+                <th>Score</th>
+                <th>Badges</th>
                 <th>All-in</th>
                 <th>Delta</th>
                 <th>Commercial</th>
@@ -1855,10 +2046,16 @@ function renderAwardBoard() {
               ${bids.map((row, index) => {
                 const delta = Number(row.invitation.bid_delta);
                 const deltaTone = Number.isFinite(delta) && delta <= 0 ? "success" : Number.isFinite(delta) ? "danger" : "neutral";
+                const recommendedReason = decisionRecommendation(row, index + 1, bids);
                 return `
                   <tr data-rfx-award-invitation-id="${escapeHtml(row.invitation.id)}">
                     <td>#${index + 1}</td>
                     <td><strong>${escapeHtml(vendorLabel(row.invitation))}</strong><small>${escapeHtml(row.invitation.vendors?.domain || row.invitation.vendors?.primary_email || "")}</small></td>
+                    <td>
+                      <span class="rfx-decision-score" data-score-tone="${row.decision.score >= 75 ? "strong" : row.decision.score >= 55 ? "medium" : "weak"}">${escapeHtml(row.decision.score)}</span>
+                      <small>${escapeHtml(row.decision.risk_flags.length ? `${row.decision.risk_flags.length} risk flag(s)` : "clean")}</small>
+                    </td>
+                    <td><div class="rfx-decision-badges">${row.decision_badges.map(decisionBadgeHtml).join("")}</div></td>
                     <td>${formatMoney(row.amount, row.currency)}</td>
                     <td><span class="rfx-bid-delta" data-tone="${deltaTone}">${Number.isFinite(delta) ? formatMoney(delta, row.currency) : "-"}</span></td>
                     <td><small>${escapeHtml(offerCommercialSummary(row.invitation))}</small></td>
@@ -1866,12 +2063,12 @@ function renderAwardBoard() {
                     <td>${escapeHtml(row.invitation.weekly_capacity ?? "-")}</td>
                     <td>${escapeHtml(row.invitation.transit_days ?? "-")}</td>
                     <td>${awardRoleChip(row.invitation)}</td>
-                    <td><small>${escapeHtml(row.invitation.award_reason || row.invitation.notes || awardReasonDefault(row, index + 1))}</small></td>
+                    <td><small>${escapeHtml(row.invitation.award_reason || recommendedReason || row.invitation.notes || awardReasonDefault(row, index + 1))}</small></td>
                     <td>${row.invitation.rate_staging_id ? '<span class="status-pill success">Created</span>' : '<span class="status-pill muted">Pending</span>'}</td>
                     <td>
                       <div class="compact-actions">
-                        <button type="button" class="small-button" data-rfx-award-primary="${escapeHtml(row.invitation.id)}" data-award-default="${escapeHtml(awardReasonDefault(row, index + 1))}" ${row.invitation.award_role === "primary" ? "disabled" : ""}>Award</button>
-                        <button type="button" class="secondary small-button" data-rfx-award-backup="${escapeHtml(row.invitation.id)}" data-award-default="${escapeHtml(awardReasonDefault(row, index + 1))}" ${row.invitation.award_role === "backup" ? "disabled" : ""}>Backup</button>
+                        <button type="button" class="small-button" data-rfx-award-primary="${escapeHtml(row.invitation.id)}" data-award-default="${escapeHtml(recommendedReason)}" ${row.invitation.award_role === "primary" ? "disabled" : ""}>Award</button>
+                        <button type="button" class="secondary small-button" data-rfx-award-backup="${escapeHtml(row.invitation.id)}" data-award-default="${escapeHtml(recommendedReason)}" ${row.invitation.award_role === "backup" ? "disabled" : ""}>Backup</button>
                         <button type="button" class="secondary small-button" data-rfx-clear-award="${escapeHtml(row.invitation.id)}" ${row.invitation.award_role ? "" : "disabled"}>Clear</button>
                       </div>
                     </td>
@@ -2835,10 +3032,21 @@ function renderResponseBoard() {
   const bidRows = rows.filter(({ invitation }) => hasBid(invitation));
   responseSummary.textContent = `${formatNumber(bidRows.length)} bids / ${formatNumber(rows.length)} active rows`;
   if (!rows.length) {
-    responseBody.innerHTML = `<tr><td colspan="10">No carrier bids yet.</td></tr>`;
+    responseBody.innerHTML = `<tr><td colspan="11">No carrier bids yet.</td></tr>`;
     return;
   }
   responseBody.innerHTML = rows.map(({ lane, invitation }) => {
+    const laneRows = bidInvitations(lane)
+      .map((bidInvitation) => ({
+        lane,
+        invitation: bidInvitation,
+        amount: Number(bidInvitation.bid_rate),
+        currency: bidInvitation.currency || lane.currency || "USD"
+      }))
+      .filter((row) => Number.isFinite(row.amount));
+    const currentRow = laneRows.find((row) => row.invitation.id === invitation.id);
+    const decision = currentRow ? procurementDecisionForBid(currentRow, laneRows) : null;
+    const badges = currentRow ? decisionBadgesForBid(currentRow, laneRows) : [];
     const benchmark = lane.benchmark;
     const delta = Number(invitation.bid_delta);
     const deltaTone = Number.isFinite(delta) && delta <= 0 ? "success" : Number.isFinite(delta) ? "danger" : "neutral";
@@ -2847,6 +3055,10 @@ function renderResponseBoard() {
         <td><strong>${escapeHtml(vendorLabel(invitation))}</strong><small>${escapeHtml(invitation.vendors?.primary_email || invitation.vendors?.domain || "")}</small></td>
         <td>#${escapeHtml(lane.lane_number || "")} ${escapeHtml(laneRoute(lane))}</td>
         <td>${statusChip(invitation.invitation_status || "drafted")}</td>
+        <td>
+          ${decision ? `<span class="rfx-decision-score" data-score-tone="${decision.score >= 75 ? "strong" : decision.score >= 55 ? "medium" : "weak"}">${escapeHtml(decision.score)}</span>` : "-"}
+          <small>${badges.slice(0, 2).map((badge) => badge.label).join(" | ")}</small>
+        </td>
         <td>${invitation.bid_rate !== null ? formatMoney(invitation.bid_rate, invitation.currency || lane.currency) : "-"}</td>
         <td>${benchmark ? formatMoney(benchmark.all_in_rate, benchmark.currency) : "-"}</td>
         <td><span class="rfx-bid-delta" data-tone="${deltaTone}">${Number.isFinite(delta) ? formatMoney(delta, invitation.currency || lane.currency) : "-"}</span></td>

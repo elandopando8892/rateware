@@ -156,9 +156,16 @@ assert.match(rfxEventsHtml, /rfx-award-board/, "Bid Room should render an operat
 assert.match(rfxEventsHtml, /rfx-closeout-awards-to-rateware/, "Bid Room should expose Rateware closeout from awards");
 assert.match(rfxEventsHtml, /rfx-generate-award-notices/, "Bid Room Step 6 should generate award notice drafts");
 assert.match(rfxEventsHtml, /rfx-send-award-notices/, "Bid Room Step 6 should send award notice emails in bulk");
+assert.match(rfxEventsHtml, /<th>Score<\/th>/, "Bid Room response board should expose procurement decision score");
 assert.match(rfxEventsSource, /renderAwardBoard/, "Bid Room should render award decisions by lane");
 assert.match(rfxEventsSource, /data-rfx-award-primary/, "Bid Room should allow primary awards per carrier bid");
 assert.match(rfxEventsSource, /data-rfx-award-backup/, "Bid Room should allow backup carrier awards");
+assert.match(rfxEventsSource, /function procurementDecisionForBid/, "Bid Room should score bids beyond cheapest rate");
+assert.match(rfxEventsSource, /decisionBadgesForBid/, "Bid Room should explain decision score with badges");
+assert.match(rfxEventsSource, /renderDecisionScorecard/, "Bid Room should render side-by-side decision scorecards");
+assert.match(rfxEventsSource, /Best overall score/, "Bid Room award reasons should include best-overall score");
+assert.match(stylesSource, /rfx-decision-scorecards/, "Bid Room decision view should style scorecards");
+assert.match(stylesSource, /rfx-decision-badge/, "Bid Room decision view should style badges");
 assert.match(rfxEventsSource, /generateAwardNoticeDrafts/, "Bid Room should generate award notices from Step 6");
 assert.match(rfxEventsSource, /sendAwardNoticeDrafts/, "Bid Room should send generated award notices from Step 6");
 assert.match(rfxBidApiSource, /award_outcome/, "Carrier portal API should expose award outcome per invitation");
