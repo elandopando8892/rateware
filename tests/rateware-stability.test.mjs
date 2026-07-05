@@ -162,6 +162,10 @@ assert.match(rfxEventsHtml, /rfx-chat-bid-update-drawer/, "Bid Room communicatio
 assert.match(rfxServiceSource, /apply_bid_update_from_chat/, "RFx service should expose chat-to-bid updates");
 assert.match(apiSource, /applyBidUpdateFromChat/, "API should apply reviewed chat bid updates");
 assert.match(apiSource, /bid_room\.chat\.apply_bid_update/, "API should audit reviewed chat bid updates");
+assert.match(apiSource, /function strictBidNumber/, "Internal API should expose strict numeric validation for user-entered bid fields");
+assert.match(apiSource, /strictBidNumber\(patchInput\.bid_rate, "Bid rate"\)/, "Internal API should validate direct bid edits before updating RFx rows");
+assert.match(apiSource, /strictBidNumber\(input\.bid_rate, "All-in rate", \{ required: true \}\)/, "Internal API should validate chat-to-bid rates before applying updates");
+assert.match(apiSource, /strictCurrencyCode\(patchInput\.currency\)/, "Internal API should reject invalid bid currency codes");
 assert.match(bidRoomChatBidUpdatesMigration, /bid_source_thread_id/, "RFx bid rows should persist the source chat thread");
 assert.match(bidRoomChatBidUpdatesMigration, /bid_source_message_id/, "RFx bid rows should persist the source chat message");
 assert.match(bidRoomChatBidUpdatesMigration, /bid_updated_from_chat_at/, "RFx bid rows should timestamp chat-applied updates");
@@ -224,6 +228,10 @@ assert.match(rfxBidSubmissionV2Migration, /best_alternative_offered boolean not 
 assert.match(rfxBidSubmissionV2Migration, /eta_pickup timestamptz/, "RFx bid submission v2 should persist pickup ETA");
 assert.match(rfxBidSubmissionV2Migration, /mirror_account_enabled boolean not null default false/, "RFx bid submission v2 should persist mirror account requests");
 assert.match(rfxBidApiSource, /normalizeCommercialModel/, "Carrier portal API should normalize commercial model submissions");
+assert.match(rfxBidApiSource, /function strictBidNumber/, "Carrier portal API should expose strict numeric validation for submitted bids");
+assert.match(rfxBidApiSource, /strictBidNumber\(body\.bid_rate, "Bid rate", \{ required: true \}\)/, "Carrier portal API should reject missing or invalid bid rates");
+assert.match(rfxBidApiSource, /strictPercentNumber\(body\.marksman_margin_pct, "MARKSMAN margin"\)/, "Carrier portal API should validate MARKSMAN margin percentages");
+assert.match(rfxBidApiSource, /strictCurrencyCode\(body\.currency\)/, "Carrier portal API should reject invalid currency codes");
 assert.match(rfxBidApiSource, /commercial_model: normalizeCommercialModel\(body\.commercial_model\)/, "Carrier portal API should write commercial model");
 assert.match(rfxBidApiSource, /best_alternative_offered: cleanBoolean\(body\.best_alternative_offered\) === true/, "Carrier portal API should write best-alternative flag");
 assert.match(rfxBidApiSource, /eta_pickup: cleanTimestamp\(body\.eta_pickup\)/, "Carrier portal API should write pickup ETA");

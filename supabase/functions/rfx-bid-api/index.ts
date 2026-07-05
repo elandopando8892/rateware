@@ -63,6 +63,35 @@ function cleanPercent(value: unknown) {
   return Math.min(100, Math.max(0, numberValue));
 }
 
+function strictBidNumber(value: unknown, label: string, options: { required?: boolean; positive?: boolean } = {}) {
+  const text = cleanText(value);
+  if (!text) {
+    if (options.required) throw new Error(`${label} is required.`);
+    return null;
+  }
+  const normalized = text.replace(/[$,]/g, "").trim();
+  if (!/^-?\d+(?:\.\d+)?$/.test(normalized)) {
+    throw new Error(`${label} must be numeric.`);
+  }
+  const numberValue = Number(normalized);
+  if (!Number.isFinite(numberValue)) throw new Error(`${label} must be numeric.`);
+  if (options.positive !== false && numberValue <= 0) throw new Error(`${label} must be greater than zero.`);
+  return numberValue;
+}
+
+function strictPercentNumber(value: unknown, label: string) {
+  const numberValue = strictBidNumber(value, label, { positive: false });
+  if (numberValue === null) return null;
+  if (numberValue < 0 || numberValue > 100) throw new Error(`${label} must be between 0 and 100.`);
+  return numberValue;
+}
+
+function strictCurrencyCode(value: unknown, fallback = "USD") {
+  const currency = (cleanText(value) || fallback || "USD").toUpperCase();
+  if (!/^[A-Z]{3}$/.test(currency)) throw new Error("Currency must be a 3-letter code like USD, MXN, or CAD.");
+  return currency;
+}
+
 function normalizeCommercialModel(value: unknown) {
   const text = cleanText(value)?.toLowerCase().replace(/[\s-]+/g, "_");
   if (!text) return null;
@@ -1372,8 +1401,7 @@ Deno.serve(async (request) => {
     }
 
     if (body.action === "submit_bid") {
-      const bidRate = cleanNumber(body.bid_rate);
-      if (bidRate === null) return jsonResponse({ error: "Bid rate must be a valid number." }, 400);
+      const bidRate = strictBidNumber(body.bid_rate, "Bid rate", { required: true });
       const mirrorEnabled = cleanBoolean(body.mirror_account_enabled) === true;
       const equipmentAvailable = cleanBoolean(body.equipment_available);
       const bestFinal = cleanBoolean(body.best_final) === true;
@@ -1410,15 +1438,15 @@ Deno.serve(async (request) => {
       const patch = {
         invitation_status: "quoted",
         bid_rate: bidRate,
-        currency: cleanText(body.currency)?.toUpperCase() || "USD",
-        weekly_capacity: cleanNumber(body.weekly_capacity),
-        transit_days: cleanNumber(body.transit_days),
+        currency: strictCurrencyCode(body.currency),
+        weekly_capacity: strictBidNumber(body.weekly_capacity, "Weekly capacity"),
+        transit_days: strictBidNumber(body.transit_days, "Transit days"),
         commercial_model: normalizeCommercialModel(body.commercial_model),
-        marksman_margin_pct: cleanPercent(body.marksman_margin_pct),
-        carrier_share_pct: cleanPercent(body.carrier_share_pct),
+        marksman_margin_pct: strictPercentNumber(body.marksman_margin_pct, "MARKSMAN margin"),
+        carrier_share_pct: strictPercentNumber(body.carrier_share_pct, "Carrier share"),
         best_alternative_offered: cleanBoolean(body.best_alternative_offered) === true,
         alternative_equipment: cleanText(body.alternative_equipment),
-        alternative_units: cleanNumber(body.alternative_units),
+        alternative_units: strictBidNumber(body.alternative_units, "Alternative units"),
         alternative_notes: cleanText(body.alternative_notes),
         equipment_available: equipmentAvailable,
         unit_details: cleanText(body.unit_details),

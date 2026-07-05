@@ -5298,6 +5298,35 @@ function cleanPercent(value: unknown) {
   return Math.min(100, Math.max(0, numberValue));
 }
 
+function strictBidNumber(value: unknown, label: string, options: { required?: boolean; positive?: boolean } = {}) {
+  const text = cleanText(value);
+  if (!text) {
+    if (options.required) throw new Error(`${label} is required.`);
+    return null;
+  }
+  const normalized = text.replace(/[$,]/g, "").trim();
+  if (!/^-?\d+(?:\.\d+)?$/.test(normalized)) {
+    throw new Error(`${label} must be numeric.`);
+  }
+  const numberValue = Number(normalized);
+  if (!Number.isFinite(numberValue)) throw new Error(`${label} must be numeric.`);
+  if (options.positive !== false && numberValue <= 0) throw new Error(`${label} must be greater than zero.`);
+  return numberValue;
+}
+
+function strictPercentNumber(value: unknown, label: string) {
+  const numberValue = strictBidNumber(value, label, { positive: false });
+  if (numberValue === null) return null;
+  if (numberValue < 0 || numberValue > 100) throw new Error(`${label} must be between 0 and 100.`);
+  return numberValue;
+}
+
+function strictCurrencyCode(value: unknown, fallback = "USD") {
+  const currency = (cleanText(value) || fallback || "USD").toUpperCase();
+  if (!/^[A-Z]{3}$/.test(currency)) throw new Error("Currency must be a 3-letter code like USD, MXN, or CAD.");
+  return currency;
+}
+
 function normalizeCommercialModel(value: unknown) {
   const text = cleanText(value)?.toLowerCase().replace(/[\s-]+/g, "_");
   if (!text) return null;
@@ -7581,15 +7610,15 @@ async function applyBidUpdateFromChat(
   if (invitationResult.error) throw invitationResult.error;
   const before = invitationResult.data;
 
-  const bidRate = cleanNumber(input.bid_rate);
-  if (bidRate === null) throw new Error("All-in rate is required before applying a chat bid update.");
+  const bidRate = strictBidNumber(input.bid_rate, "All-in rate", { required: true });
   const sourceBody = cleanText(sourceMessage?.body);
   const sourceNote = cleanText(input.source_note) || sourceBody || "Bid update reviewed from Bid Room chat.";
+  const laneCurrency = cleanText((before.rfx_lanes as Record<string, unknown> | null)?.currency);
   const patch: Record<string, unknown> = {
     bid_rate: bidRate,
-    currency: cleanText(input.currency)?.toUpperCase() || cleanText(before.currency) || cleanText((before.rfx_lanes as Record<string, unknown> | null)?.currency) || "USD",
-    weekly_capacity: cleanNumber(input.weekly_capacity),
-    transit_days: cleanNumber(input.transit_days),
+    currency: strictCurrencyCode(input.currency, cleanText(before.currency) || laneCurrency || "USD"),
+    weekly_capacity: strictBidNumber(input.weekly_capacity, "Weekly capacity"),
+    transit_days: strictBidNumber(input.transit_days, "Transit days"),
     notes: cleanText(input.notes),
     invitation_status: "quoted",
     responded_at: now,
@@ -7602,11 +7631,11 @@ async function applyBidUpdateFromChat(
   };
   const mirrorEnabled = cleanOptionalBoolean(input.mirror_account_enabled);
   if (input.commercial_model !== undefined) patch.commercial_model = normalizeCommercialModel(input.commercial_model);
-  if (input.marksman_margin_pct !== undefined) patch.marksman_margin_pct = cleanPercent(input.marksman_margin_pct);
-  if (input.carrier_share_pct !== undefined) patch.carrier_share_pct = cleanPercent(input.carrier_share_pct);
+  if (input.marksman_margin_pct !== undefined) patch.marksman_margin_pct = strictPercentNumber(input.marksman_margin_pct, "MARKSMAN margin");
+  if (input.carrier_share_pct !== undefined) patch.carrier_share_pct = strictPercentNumber(input.carrier_share_pct, "Carrier share");
   if (input.best_alternative_offered !== undefined) patch.best_alternative_offered = cleanOptionalBoolean(input.best_alternative_offered) === true;
   if (input.alternative_equipment !== undefined) patch.alternative_equipment = cleanText(input.alternative_equipment);
-  if (input.alternative_units !== undefined) patch.alternative_units = cleanNumber(input.alternative_units);
+  if (input.alternative_units !== undefined) patch.alternative_units = strictBidNumber(input.alternative_units, "Alternative units");
   if (input.alternative_notes !== undefined) patch.alternative_notes = cleanText(input.alternative_notes);
   if (input.equipment_available !== undefined) patch.equipment_available = cleanOptionalBoolean(input.equipment_available);
   if (input.unit_details !== undefined) patch.unit_details = cleanText(input.unit_details);
@@ -10573,24 +10602,25 @@ Deno.serve(async (request) => {
         .single();
       if (ownedResult.error) throw ownedResult.error;
       const patchInput = body.patch || {};
+      const bidRate = strictBidNumber(patchInput.bid_rate, "Bid rate");
       const patch: Record<string, unknown> = {
-        bid_rate: cleanNumber(patchInput.bid_rate),
-        currency: cleanText(patchInput.currency)?.toUpperCase() || "USD",
-        weekly_capacity: cleanNumber(patchInput.weekly_capacity),
-        transit_days: cleanNumber(patchInput.transit_days),
+        bid_rate: bidRate,
+        currency: strictCurrencyCode(patchInput.currency),
+        weekly_capacity: strictBidNumber(patchInput.weekly_capacity, "Weekly capacity"),
+        transit_days: strictBidNumber(patchInput.transit_days, "Transit days"),
         notes: cleanText(patchInput.notes),
-        invitation_status: cleanNumber(patchInput.bid_rate) !== null ? "quoted" : cleanText(patchInput.invitation_status) || "drafted",
-        responded_at: cleanNumber(patchInput.bid_rate) !== null ? new Date().toISOString() : null,
+        invitation_status: bidRate !== null ? "quoted" : cleanText(patchInput.invitation_status) || "drafted",
+        responded_at: bidRate !== null ? new Date().toISOString() : null,
         response_source: "rateware_admin",
         updated_at: new Date().toISOString()
       };
       const mirrorEnabled = cleanOptionalBoolean(patchInput.mirror_account_enabled);
       if (patchInput.commercial_model !== undefined) patch.commercial_model = normalizeCommercialModel(patchInput.commercial_model);
-      if (patchInput.marksman_margin_pct !== undefined) patch.marksman_margin_pct = cleanPercent(patchInput.marksman_margin_pct);
-      if (patchInput.carrier_share_pct !== undefined) patch.carrier_share_pct = cleanPercent(patchInput.carrier_share_pct);
+      if (patchInput.marksman_margin_pct !== undefined) patch.marksman_margin_pct = strictPercentNumber(patchInput.marksman_margin_pct, "MARKSMAN margin");
+      if (patchInput.carrier_share_pct !== undefined) patch.carrier_share_pct = strictPercentNumber(patchInput.carrier_share_pct, "Carrier share");
       if (patchInput.best_alternative_offered !== undefined) patch.best_alternative_offered = cleanOptionalBoolean(patchInput.best_alternative_offered) === true;
       if (patchInput.alternative_equipment !== undefined) patch.alternative_equipment = cleanText(patchInput.alternative_equipment);
-      if (patchInput.alternative_units !== undefined) patch.alternative_units = cleanNumber(patchInput.alternative_units);
+      if (patchInput.alternative_units !== undefined) patch.alternative_units = strictBidNumber(patchInput.alternative_units, "Alternative units");
       if (patchInput.alternative_notes !== undefined) patch.alternative_notes = cleanText(patchInput.alternative_notes);
       if (patchInput.equipment_available !== undefined) patch.equipment_available = cleanOptionalBoolean(patchInput.equipment_available);
       if (patchInput.unit_details !== undefined) patch.unit_details = cleanText(patchInput.unit_details);
