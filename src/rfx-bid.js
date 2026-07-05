@@ -360,6 +360,101 @@ function renderLiveBoard(liveBoard = {}) {
   `;
 }
 
+function bidHistoryMetadata(row = {}) {
+  if (row.metadata && typeof row.metadata === "object") return row.metadata;
+  if (typeof row.metadata === "string") {
+    try {
+      return JSON.parse(row.metadata);
+    } catch (_error) {
+      return {};
+    }
+  }
+  return {};
+}
+
+function bidRevisionLabel(row = {}) {
+  const metadata = bidHistoryMetadata(row);
+  const value = String(metadata.revision_type || "").toLowerCase();
+  if (metadata.best_final || value === "best_final") return "Best and final";
+  if (value === "revision") return "Revision";
+  if (value === "initial") return "Initial quote";
+  return row.subject || "Quote update";
+}
+
+function bidRevisionTone(row = {}) {
+  const label = bidRevisionLabel(row).toLowerCase();
+  if (label.includes("best")) return "success";
+  if (label.includes("revision")) return "warning";
+  return "neutral";
+}
+
+function bidHistoryDeltaHtml(metadata = {}) {
+  const before = metadata.before || {};
+  const after = metadata.after || {};
+  const deltas = [
+    before.bid_rate !== after.bid_rate && after.bid_rate !== undefined
+      ? `Rate ${formatMoney(after.bid_rate, after.currency || before.currency)}`
+      : null,
+    before.weekly_capacity !== after.weekly_capacity && after.weekly_capacity !== undefined
+      ? `Capacity ${after.weekly_capacity ?? "-"} / wk`
+      : null,
+    before.transit_days !== after.transit_days && after.transit_days !== undefined
+      ? `Transit ${after.transit_days ?? "-"} day(s)`
+      : null,
+    before.commercial_model !== after.commercial_model && after.commercial_model
+      ? commercialModelLabel(after.commercial_model)
+      : null,
+    before.equipment_available !== after.equipment_available && after.equipment_available !== undefined
+      ? `Equipment ${after.equipment_available ? "available" : "not available"}`
+      : null
+  ].filter(Boolean);
+  return deltas.length
+    ? deltas.map((delta) => `<span>${escapeHtml(delta)}</span>`).join("")
+    : "<span>No field-level delta captured</span>";
+}
+
+function renderBidHistory(rows = []) {
+  const panel = card.querySelector("#carrier-bid-history");
+  if (!panel) return;
+  const historyRows = Array.isArray(rows) ? rows : [];
+  panel.innerHTML = `
+    <div class="bid-room-section-heading">
+      <div>
+        <p class="eyebrow">Offer history</p>
+        <h3>Bid revisions and best-and-final trail</h3>
+      </div>
+      <span class="status-pill neutral">${escapeHtml(historyRows.length)} update(s)</span>
+    </div>
+    ${historyRows.length ? `
+      <div class="carrier-bid-history-list">
+        ${historyRows.slice(0, 8).map((row) => {
+          const metadata = bidHistoryMetadata(row);
+          const after = metadata.after || {};
+          return `
+            <article>
+              <div class="carrier-bid-history-dot" data-tone="${escapeHtml(bidRevisionTone(row))}"></div>
+              <div>
+                <header>
+                  <strong>${escapeHtml(bidRevisionLabel(row))}</strong>
+                  <span>${escapeHtml(formatDateTime(row.occurred_at || row.created_at))}</span>
+                </header>
+                <p>${escapeHtml(row.body_preview || row.subject || "Carrier offer update")}</p>
+                <div class="carrier-bid-history-deltas">${bidHistoryDeltaHtml(metadata)}</div>
+                ${after.responded_at ? `<small>Submitted ${escapeHtml(formatDateTime(after.responded_at))}</small>` : ""}
+              </div>
+            </article>
+          `;
+        }).join("")}
+      </div>
+    ` : `
+      <div class="bid-room-empty">
+        <strong>No bid revisions yet.</strong>
+        <span>Your submitted offers and best-and-final changes will appear here.</span>
+      </div>
+    `}
+  `;
+}
+
 function carrierChatLabel(threadType = "") {
   const labels = {
     event_group: "Event room",
@@ -789,6 +884,10 @@ function renderInvitation(invitation, liveBoard = {}) {
       <p class="status-message">Loading live bid room...</p>
     </section>
 
+    <section id="carrier-bid-history" class="carrier-bid-history">
+      <p class="status-message">Loading offer history...</p>
+    </section>
+
     <section id="carrier-bid-chat" class="carrier-bid-chat">
       <p class="status-message">Loading Bid Room Chat...</p>
     </section>
@@ -990,11 +1089,13 @@ async function loadInvitation(options = {}) {
   if (options.refreshOnly && card.querySelector("#bid-form")) {
       renderLiveBoard(data.live_board);
       renderAwardOutcome(data.invitation, data.carrier_book, data.live_board);
+      renderBidHistory(data.bid_history);
       renderCarrierBook(data.carrier_book);
       await loadCarrierChat();
     } else {
       renderInvitation(data.invitation, data.live_board);
       renderAwardOutcome(data.invitation, data.carrier_book, data.live_board);
+      renderBidHistory(data.bid_history);
       renderCarrierBook(data.carrier_book);
       await loadCarrierChat();
     }

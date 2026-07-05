@@ -1284,11 +1284,31 @@ Deno.serve(async (request) => {
             .limit(500)
         : { data: [], error: null };
       if (openLanesResult.error) throw openLanesResult.error;
+      const bidHistoryResult = ownerEmail
+        ? await supabase
+            .from("contact_history")
+            .select("id,occurred_at,created_at,status,subject,body_preview,channel,direction,metadata")
+            .eq("owner_email", ownerEmail)
+            .eq("rfx_event_id", result.data.rfx_event_id)
+            .eq("vendor_id", result.data.vendor_id)
+            .eq("channel", "portal")
+            .order("occurred_at", { ascending: false })
+            .limit(100)
+        : { data: [], error: null };
+      if (bidHistoryResult.error) throw bidHistoryResult.error;
+      const bidHistory = (bidHistoryResult.data || [])
+        .filter((row) => {
+          const metadata = row.metadata && typeof row.metadata === "object" ? row.metadata : {};
+          return cleanText(metadata.rfx_lane_vendor_id) === cleanText(result.data.id)
+            || cleanText(metadata.rfx_lane_id) === cleanText(result.data.rfx_lane_id);
+        })
+        .slice(0, 25);
 
       return jsonResponse({
         invitation: result.data,
         live_board: liveBoardFromRows(result.data, peersResult.data || []),
-        carrier_book: carrierBusinessBook(result.data, invitedResult.data || [], openLanesResult.data || [])
+        carrier_book: carrierBusinessBook(result.data, invitedResult.data || [], openLanesResult.data || []),
+        bid_history: bidHistory
       });
     }
 
@@ -1356,6 +1376,7 @@ Deno.serve(async (request) => {
       if (bidRate === null) return jsonResponse({ error: "Bid rate must be a valid number." }, 400);
       const mirrorEnabled = cleanBoolean(body.mirror_account_enabled) === true;
       const equipmentAvailable = cleanBoolean(body.equipment_available);
+      const bestFinal = cleanBoolean(body.best_final) === true;
       const invitationResult = await supabase
         .from("rfx_lane_vendors")
         .select(`
@@ -1363,6 +1384,14 @@ Deno.serve(async (request) => {
           rfx_event_id,
           rfx_lane_id,
           vendor_id,
+          bid_rate,
+          currency,
+          weekly_capacity,
+          transit_days,
+          commercial_model,
+          equipment_available,
+          responded_at,
+          notes,
           vendors(vendor_name,domain,primary_email),
           rfx_events(id,owner_user_id,owner_email,rfx_id,name,customer),
           rfx_lanes(origin,destination,equipment,trailer,operation,service)
@@ -1370,6 +1399,13 @@ Deno.serve(async (request) => {
         .eq("invitation_token", token)
         .single();
       if (invitationResult.error) throw invitationResult.error;
+      const previousBidRate = cleanNumber(invitationResult.data.bid_rate);
+      const revisionType = bestFinal ? "best_final" : previousBidRate !== null ? "revision" : "initial";
+      const revisionLabel = revisionType === "best_final"
+        ? "Best and final"
+        : revisionType === "revision"
+          ? "Quote revision"
+          : "Initial quote";
 
       const patch = {
         invitation_status: "quoted",
@@ -1415,7 +1451,7 @@ Deno.serve(async (request) => {
         ? invitationResult.data.rfx_lanes[0]
         : invitationResult.data.rfx_lanes;
       if (rfxEvent?.owner_email) {
-        await supabase.from("contact_history").insert({
+        const historyResult = await supabase.from("contact_history").insert({
           owner_user_id: rfxEvent.owner_user_id || null,
           owner_email: rfxEvent.owner_email || null,
           vendor_id: invitationResult.data.vendor_id,
@@ -1423,8 +1459,9 @@ Deno.serve(async (request) => {
           channel: "portal",
           direction: "inbound",
           status: "quoted",
-          subject: `${rfxEvent.rfx_id || "RFx"} carrier quote submitted`,
+          subject: `${rfxEvent.rfx_id || "RFx"} ${revisionLabel.toLowerCase()}`,
           body_preview: [
+            revisionLabel,
             vendor?.vendor_name || vendor?.domain || "Carrier",
             `${bidRate} ${patch.currency}`,
             patch.commercial_model ? `model ${patch.commercial_model}` : null,
@@ -1433,10 +1470,31 @@ Deno.serve(async (request) => {
           ].filter(Boolean).join(" | "),
           metadata: {
             source: "rfx_bid_portal",
+            revision_type: revisionType,
+            best_final: bestFinal,
             rfx_lane_vendor_id: invitationResult.data.id,
-            rfx_lane_id: invitationResult.data.rfx_lane_id
+            rfx_lane_id: invitationResult.data.rfx_lane_id,
+            before: {
+              bid_rate: previousBidRate,
+              currency: cleanText(invitationResult.data.currency),
+              weekly_capacity: cleanNumber(invitationResult.data.weekly_capacity),
+              transit_days: cleanNumber(invitationResult.data.transit_days),
+              commercial_model: cleanText(invitationResult.data.commercial_model),
+              equipment_available: cleanBoolean(invitationResult.data.equipment_available),
+              responded_at: invitationResult.data.responded_at || null
+            },
+            after: {
+              bid_rate: bidRate,
+              currency: patch.currency,
+              weekly_capacity: patch.weekly_capacity,
+              transit_days: patch.transit_days,
+              commercial_model: patch.commercial_model,
+              equipment_available: patch.equipment_available,
+              responded_at: patch.responded_at
+            }
           }
         });
+        if (historyResult.error) throw historyResult.error;
       }
       return jsonResponse({ row: result.data });
     }

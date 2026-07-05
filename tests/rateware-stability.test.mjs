@@ -205,12 +205,17 @@ assert.match(rfxBidSource, /bid-best-final/, "Carrier portal should support best
 assert.match(rfxBidSource, /bid-confirm-review/, "Carrier portal should require capacity and commercial terms confirmation");
 assert.match(rfxBidSource, /function bidDraftWarnings/, "Carrier portal should validate bid completeness before submit");
 assert.match(rfxBidSource, /function updateBidReviewSummary/, "Carrier portal should update the review summary as carriers edit");
+assert.match(rfxBidSource, /function renderBidHistory/, "Carrier portal should render offer revision history");
+assert.match(rfxBidSource, /carrier-bid-history/, "Carrier portal should include offer history in the bid room");
 assert.match(stylesSource, /carrier-bid-workflow/, "Carrier portal guided bid flow should have compact navigation styling");
 assert.match(stylesSource, /bid-review-summary-grid/, "Carrier portal review summary should have card styling");
+assert.match(stylesSource, /carrier-bid-history-list/, "Carrier portal offer history should have compact timeline styling");
 assert.match(rfxBidApiSource, /function liveBoardRowScore/, "Carrier portal API should score bids for the live capacity marketplace");
 assert.match(rfxBidApiSource, /marketplace_score/, "Carrier portal API should expose marketplace score");
 assert.match(rfxBidApiSource, /score_bucket/, "Carrier portal API should expose marketplace score buckets");
 assert.match(rfxBidApiSource, /price_signal/, "Carrier portal API should explain marketplace price signals");
+assert.match(rfxBidApiSource, /bid_history: bidHistory/, "Carrier portal API should return lane-specific bid revision history");
+assert.match(rfxBidApiSource, /revision_type: revisionType/, "Carrier portal API should classify initial, revision, and best-final bids");
 assert.match(rfxBidSource, /function marketplaceBucketLabel/, "Carrier portal should label marketplace score buckets");
 assert.match(rfxBidSource, /marketplaceBadgesHtml/, "Carrier portal should render marketplace score signals");
 assert.match(stylesSource, /marketplace-score-pill/, "Carrier portal marketplace score should have compact styling");
