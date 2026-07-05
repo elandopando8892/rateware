@@ -161,6 +161,79 @@ function commercialSummary(row = {}) {
   return parts.filter(Boolean).join(" | ");
 }
 
+function numberFromInput(value) {
+  const number = Number(String(value ?? "").replace(/[$,]/g, "").trim());
+  return Number.isFinite(number) ? number : null;
+}
+
+function collectBidDraft() {
+  const bestFinal = card.querySelector("#bid-best-final")?.checked || false;
+  const notes = card.querySelector("#bid-notes")?.value || "";
+  return {
+    bid_rate: card.querySelector("#bid-rate")?.value || "",
+    currency: card.querySelector("#bid-currency")?.value || "USD",
+    weekly_capacity: card.querySelector("#bid-capacity")?.value || "",
+    transit_days: card.querySelector("#bid-transit-days")?.value || "",
+    commercial_model: card.querySelector("#bid-commercial-model")?.value || "direct_cost_plus",
+    marksman_margin_pct: card.querySelector("#bid-marksman-margin")?.value || "",
+    carrier_share_pct: card.querySelector("#bid-carrier-share")?.value || "",
+    best_alternative_offered: card.querySelector("#bid-alt-enabled")?.checked || false,
+    alternative_equipment: card.querySelector("#bid-alt-equipment")?.value || "",
+    alternative_units: card.querySelector("#bid-alt-units")?.value || "",
+    alternative_notes: card.querySelector("#bid-alt-notes")?.value || "",
+    equipment_available: card.querySelector("#bid-equipment-available")?.value || "",
+    unit_details: card.querySelector("#bid-unit-details")?.value || "",
+    eta_pickup: card.querySelector("#bid-eta-pickup")?.value || "",
+    eta_delivery: card.querySelector("#bid-eta-delivery")?.value || "",
+    mirror_account_enabled: card.querySelector("#bid-mirror-account")?.checked || false,
+    best_final: bestFinal,
+    notes: [notes, bestFinal ? "Best and final offer confirmed." : null].filter(Boolean).join(" | ")
+  };
+}
+
+function bidDraftWarnings(draft) {
+  const warnings = [];
+  if (numberFromInput(draft.bid_rate) === null) warnings.push("All-in rate is required.");
+  if (numberFromInput(draft.weekly_capacity) === null) warnings.push("Weekly capacity is recommended before submitting.");
+  if (draft.equipment_available === "true" && !draft.eta_pickup) warnings.push("Pickup ETA is recommended when equipment is available.");
+  if (draft.equipment_available === "true" && !draft.unit_details.trim()) warnings.push("Unit, trailer, driver or mirror details improve validation.");
+  if (draft.best_alternative_offered && !draft.alternative_equipment.trim()) warnings.push("Add alternative equipment or units for the best alternative offer.");
+  if (draft.commercial_model === "carrier_share" && numberFromInput(draft.carrier_share_pct) === null) warnings.push("Carrier share % is recommended for billing share model.");
+  if (draft.commercial_model === "direct_cost_plus" && numberFromInput(draft.marksman_margin_pct) === null) warnings.push("MARKSMAN margin % is recommended for cost-plus model.");
+  return warnings;
+}
+
+function bidReviewSummaryHtml(draft) {
+  const warnings = bidDraftWarnings(draft);
+  const alternative = draft.best_alternative_offered
+    ? [draft.alternative_equipment, draft.alternative_units ? `${draft.alternative_units} unit(s)` : null].filter(Boolean).join(" / ") || "Alternative declared"
+    : "No alternative";
+  const availability = draft.equipment_available === "true"
+    ? ["Available", draft.eta_pickup ? `Pickup ${draft.eta_pickup.replace("T", " ")}` : null, draft.eta_delivery ? `Delivery ${draft.eta_delivery.replace("T", " ")}` : null].filter(Boolean).join(" | ")
+    : draft.equipment_available === "false"
+      ? "Not available"
+      : "Not declared";
+  return `
+    <div class="bid-review-summary-grid">
+      <article><span>Primary offer</span><strong>${escapeHtml(formatMoney(draft.bid_rate, draft.currency))}</strong><small>${escapeHtml(draft.weekly_capacity || "-")} / wk | ${escapeHtml(draft.transit_days || "-")} day(s)</small></article>
+      <article><span>Commercial model</span><strong>${escapeHtml(commercialModelLabel(draft.commercial_model))}</strong><small>${escapeHtml([draft.marksman_margin_pct ? `${draft.marksman_margin_pct}% MARKSMAN` : "", draft.carrier_share_pct ? `${draft.carrier_share_pct}% share` : ""].filter(Boolean).join(" | ") || "Margin/share not declared")}</small></article>
+      <article><span>Alternative</span><strong>${escapeHtml(alternative)}</strong><small>${escapeHtml(draft.alternative_notes || "No alternative notes")}</small></article>
+      <article><span>Capacity</span><strong>${escapeHtml(availability)}</strong><small>${escapeHtml(draft.mirror_account_enabled ? "Mirror account requested" : draft.unit_details || "No unit details")}</small></article>
+    </div>
+    <div class="bid-review-warnings" data-tone="${warnings.length ? "warning" : "success"}">
+      ${warnings.length
+        ? warnings.map((warning) => `<span>${escapeHtml(warning)}</span>`).join("")
+        : "<span>Ready to submit. Procurement will see the full commercial and capacity context.</span>"}
+    </div>
+  `;
+}
+
+function updateBidReviewSummary() {
+  const summary = card.querySelector("#bid-review-summary");
+  if (!summary) return;
+  summary.innerHTML = bidReviewSummaryHtml(collectBidDraft());
+}
+
 function signalTone(signal = "") {
   const value = signal.toLowerCase();
   if (value.includes("leading")) return "success";
@@ -594,99 +667,147 @@ function renderInvitation(invitation, liveBoard = {}) {
       <div class="bid-form-header">
         <div>
           <p class="eyebrow">Submit or update offer</p>
-          <h3>Your bid controls your rank</h3>
+          <h3>Guided bid flow</h3>
         </div>
-        <span class="status-pill muted">All-in only</span>
+        <span class="status-pill muted">Primary + alternatives</span>
       </div>
-      <label>
-        All-in rate
-        <input id="bid-rate" required inputmode="decimal" value="${escapeHtml(invitation.bid_rate ?? "")}" placeholder="2900" />
-      </label>
-      <label>
-        Currency
-        <select id="bid-currency">
-          ${["USD", "MXN", "CAD"].map((currency) => `<option value="${currency}" ${currency === (invitation.currency || lane.currency || "USD") ? "selected" : ""}>${currency}</option>`).join("")}
-        </select>
-      </label>
-      <label>
-        Weekly capacity
-        <input id="bid-capacity" inputmode="decimal" value="${escapeHtml(invitation.weekly_capacity ?? "")}" placeholder="5" />
-      </label>
-      <label>
-        Transit days
-        <input id="bid-transit-days" inputmode="decimal" value="${escapeHtml(invitation.transit_days ?? "")}" placeholder="2" />
-      </label>
-      <div class="bid-form-section-title full-width">
-        <strong>Commercial structure</strong>
-        <span>Choose how MARKSMAN/XBF should treat your offer.</span>
+      <div class="carrier-bid-workflow full-width" aria-label="Bid steps">
+        <button type="button" data-bid-section-target="primary">Submit primary bid</button>
+        <button type="button" data-bid-section-target="commercial">Commercial model</button>
+        <button type="button" data-bid-section-target="alternative">Add alternative</button>
+        <button type="button" data-bid-section-target="capacity">Confirm capacity</button>
+        <button type="button" data-bid-section-target="review">Best and final</button>
       </div>
-      <label>
-        Commercial model
-        <select id="bid-commercial-model">
-          ${[
-            ["direct_cost_plus", "Direct carrier / cost-plus"],
-            ["carrier_share", "Carrier shares 2-5%"],
-            ["xbf_buy_sell", "XBF buy-sell"]
-          ].map(([value, label]) => `<option value="${value}" ${value === (invitation.commercial_model || "direct_cost_plus") ? "selected" : ""}>${label}</option>`).join("")}
-        </select>
-      </label>
-      <label>
-        MARKSMAN margin %
-        <input id="bid-marksman-margin" inputmode="decimal" value="${escapeHtml(invitation.marksman_margin_pct ?? "")}" placeholder="2-5" />
-      </label>
-      <label>
-        Carrier share %
-        <input id="bid-carrier-share" inputmode="decimal" value="${escapeHtml(invitation.carrier_share_pct ?? "")}" placeholder="2-5" />
-      </label>
-      <label class="bid-checkbox-label">
-        <input id="bid-alt-enabled" type="checkbox" ${invitation.best_alternative_offered ? "checked" : ""} />
-        Best alternative offer
-      </label>
-      <label>
-        Alternative equipment
-        <input id="bid-alt-equipment" value="${escapeHtml(invitation.alternative_equipment || "")}" placeholder="2 x 3.5 ton, 4 vans..." />
-      </label>
-      <label>
-        Alternative units
-        <input id="bid-alt-units" inputmode="decimal" value="${escapeHtml(invitation.alternative_units ?? "")}" placeholder="2" />
-      </label>
-      <label class="full-width">
-        Alternative notes
-        <textarea id="bid-alt-notes" rows="2" placeholder="Capacity, restrictions, rate assumptions for the alternative...">${escapeHtml(invitation.alternative_notes || "")}</textarea>
-      </label>
-      <div class="bid-form-section-title full-width">
-        <strong>Capacity and availability</strong>
-        <span>Declare if equipment is ready and when it can pick up/deliver.</span>
-      </div>
-      <label>
-        Equipment available
-        <select id="bid-equipment-available">
-          <option value="" ${invitation.equipment_available === null || invitation.equipment_available === undefined ? "selected" : ""}>Not declared</option>
-          <option value="true" ${invitation.equipment_available === true ? "selected" : ""}>Available</option>
-          <option value="false" ${invitation.equipment_available === false ? "selected" : ""}>Not available</option>
-        </select>
-      </label>
-      <label>
-        ETA pickup
-        <input id="bid-eta-pickup" type="datetime-local" value="${escapeHtml(dateTimeLocalValue(invitation.eta_pickup))}" />
-      </label>
-      <label>
-        ETA delivery
-        <input id="bid-eta-delivery" type="datetime-local" value="${escapeHtml(dateTimeLocalValue(invitation.eta_delivery))}" />
-      </label>
-      <label class="bid-checkbox-label">
-        <input id="bid-mirror-account" type="checkbox" ${invitation.mirror_account_enabled ? "checked" : ""} />
-        Mirror account enabled
-      </label>
-      <label class="full-width">
-        Unit details
-        <textarea id="bid-unit-details" rows="2" placeholder="Truck, trailer, driver, plate, tracking or mirror account validation details...">${escapeHtml(invitation.unit_details || "")}</textarea>
-      </label>
-      <label class="full-width">
-        Notes
-        <textarea id="bid-notes" rows="3" placeholder="Assumptions, validity, accessorials...">${escapeHtml(invitation.notes || "")}</textarea>
-      </label>
-      <button type="submit">Submit bid</button>
+      <section class="guided-bid-section full-width" data-bid-section="primary">
+        <div class="bid-form-section-title">
+          <strong>Primary offer</strong>
+          <span>Your compliant all-in bid for this lane.</span>
+        </div>
+        <div class="guided-bid-fields">
+          <label>
+            All-in rate
+            <input id="bid-rate" required inputmode="decimal" value="${escapeHtml(invitation.bid_rate ?? "")}" placeholder="2900" />
+          </label>
+          <label>
+            Currency
+            <select id="bid-currency">
+              ${["USD", "MXN", "CAD"].map((currency) => `<option value="${currency}" ${currency === (invitation.currency || lane.currency || "USD") ? "selected" : ""}>${currency}</option>`).join("")}
+            </select>
+          </label>
+          <label>
+            Weekly capacity
+            <input id="bid-capacity" inputmode="decimal" value="${escapeHtml(invitation.weekly_capacity ?? "")}" placeholder="5" />
+          </label>
+          <label>
+            Transit days
+            <input id="bid-transit-days" inputmode="decimal" value="${escapeHtml(invitation.transit_days ?? "")}" placeholder="2" />
+          </label>
+        </div>
+      </section>
+      <section class="guided-bid-section full-width" data-bid-section="commercial">
+        <div class="bid-form-section-title">
+          <strong>Commercial structure</strong>
+          <span>Choose how MARKSMAN/XBF should treat your offer.</span>
+        </div>
+        <div class="guided-bid-fields">
+          <label>
+            Commercial model
+            <select id="bid-commercial-model">
+              ${[
+                ["direct_cost_plus", "Direct carrier / cost-plus"],
+                ["carrier_share", "Carrier shares 2-5%"],
+                ["xbf_buy_sell", "XBF buy-sell"]
+              ].map(([value, label]) => `<option value="${value}" ${value === (invitation.commercial_model || "direct_cost_plus") ? "selected" : ""}>${label}</option>`).join("")}
+            </select>
+          </label>
+          <label>
+            MARKSMAN margin %
+            <input id="bid-marksman-margin" inputmode="decimal" value="${escapeHtml(invitation.marksman_margin_pct ?? "")}" placeholder="2-5" />
+          </label>
+          <label>
+            Carrier share %
+            <input id="bid-carrier-share" inputmode="decimal" value="${escapeHtml(invitation.carrier_share_pct ?? "")}" placeholder="2-5" />
+          </label>
+        </div>
+      </section>
+      <section class="guided-bid-section full-width" data-bid-section="alternative">
+        <div class="bid-form-section-title">
+          <strong>Best alternative</strong>
+          <span>Offer substitute equipment, multiple units, or a different capacity model.</span>
+        </div>
+        <div class="guided-bid-fields">
+          <label class="bid-checkbox-label">
+            <input id="bid-alt-enabled" type="checkbox" ${invitation.best_alternative_offered ? "checked" : ""} />
+            Best alternative offer
+          </label>
+          <label>
+            Alternative equipment
+            <input id="bid-alt-equipment" value="${escapeHtml(invitation.alternative_equipment || "")}" placeholder="2 x 3.5 ton, 4 vans..." />
+          </label>
+          <label>
+            Alternative units
+            <input id="bid-alt-units" inputmode="decimal" value="${escapeHtml(invitation.alternative_units ?? "")}" placeholder="2" />
+          </label>
+          <label class="wide-field">
+            Alternative notes
+            <textarea id="bid-alt-notes" rows="2" placeholder="Capacity, restrictions, rate assumptions for the alternative...">${escapeHtml(invitation.alternative_notes || "")}</textarea>
+          </label>
+        </div>
+      </section>
+      <section class="guided-bid-section full-width" data-bid-section="capacity">
+        <div class="bid-form-section-title">
+          <strong>Live capacity commitment</strong>
+          <span>Confirm availability, unit details, validation and ETAs.</span>
+        </div>
+        <div class="guided-bid-fields">
+          <label>
+            Equipment available
+            <select id="bid-equipment-available">
+              <option value="" ${invitation.equipment_available === null || invitation.equipment_available === undefined ? "selected" : ""}>Not declared</option>
+              <option value="true" ${invitation.equipment_available === true ? "selected" : ""}>Available</option>
+              <option value="false" ${invitation.equipment_available === false ? "selected" : ""}>Not available</option>
+            </select>
+          </label>
+          <label>
+            ETA pickup
+            <input id="bid-eta-pickup" type="datetime-local" value="${escapeHtml(dateTimeLocalValue(invitation.eta_pickup))}" />
+          </label>
+          <label>
+            ETA delivery
+            <input id="bid-eta-delivery" type="datetime-local" value="${escapeHtml(dateTimeLocalValue(invitation.eta_delivery))}" />
+          </label>
+          <label class="bid-checkbox-label">
+            <input id="bid-mirror-account" type="checkbox" ${invitation.mirror_account_enabled ? "checked" : ""} />
+            Mirror account enabled
+          </label>
+          <label class="wide-field">
+            Unit details
+            <textarea id="bid-unit-details" rows="2" placeholder="Truck, trailer, driver, plate, tracking or mirror account validation details...">${escapeHtml(invitation.unit_details || "")}</textarea>
+          </label>
+        </div>
+      </section>
+      <section class="guided-bid-section full-width" data-bid-section="review">
+        <div class="bid-form-section-title">
+          <strong>Review and submit</strong>
+          <span>This is what procurement will see.</span>
+        </div>
+        <div id="bid-review-summary" class="bid-review-summary"></div>
+        <label class="wide-field">
+          Notes
+          <textarea id="bid-notes" rows="3" placeholder="Assumptions, validity, accessorials...">${escapeHtml(invitation.notes || "")}</textarea>
+        </label>
+        <div class="bid-final-actions">
+          <label class="bid-checkbox-label">
+            <input id="bid-best-final" type="checkbox" />
+            Best and final offer
+          </label>
+          <label class="bid-checkbox-label">
+            <input id="bid-confirm-review" type="checkbox" />
+            Confirm capacity and commercial terms
+          </label>
+          <button type="submit">Submit primary bid</button>
+        </div>
+      </section>
       <p id="bid-submit-status" class="status-message" role="status"></p>
     </form>
 
@@ -698,28 +819,25 @@ function renderInvitation(invitation, liveBoard = {}) {
   card.querySelector("#bid-form").addEventListener("submit", async (event) => {
     event.preventDefault();
     const status = card.querySelector("#bid-submit-status");
-    status.textContent = "Submitting bid...";
+    const draft = collectBidDraft();
+    const warnings = bidDraftWarnings(draft);
+    const blockingWarning = warnings.find((warning) => warning.includes("required"));
+    if (blockingWarning) {
+      status.textContent = blockingWarning;
+      status.dataset.tone = "error";
+      card.querySelector('[data-bid-section="primary"]')?.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
+    if (!card.querySelector("#bid-confirm-review")?.checked) {
+      status.textContent = "Confirm capacity and commercial terms before submitting.";
+      status.dataset.tone = "error";
+      card.querySelector('[data-bid-section="review"]')?.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
+    status.textContent = warnings.length ? "Submitting bid with validation warnings..." : "Submitting bid...";
     status.dataset.tone = "neutral";
     try {
-      await callBidApi("submit_bid", {
-        bid_rate: card.querySelector("#bid-rate").value,
-        currency: card.querySelector("#bid-currency").value,
-        weekly_capacity: card.querySelector("#bid-capacity").value,
-        transit_days: card.querySelector("#bid-transit-days").value,
-        commercial_model: card.querySelector("#bid-commercial-model").value,
-        marksman_margin_pct: card.querySelector("#bid-marksman-margin").value,
-        carrier_share_pct: card.querySelector("#bid-carrier-share").value,
-        best_alternative_offered: card.querySelector("#bid-alt-enabled").checked,
-        alternative_equipment: card.querySelector("#bid-alt-equipment").value,
-        alternative_units: card.querySelector("#bid-alt-units").value,
-        alternative_notes: card.querySelector("#bid-alt-notes").value,
-        equipment_available: card.querySelector("#bid-equipment-available").value,
-        unit_details: card.querySelector("#bid-unit-details").value,
-        eta_pickup: card.querySelector("#bid-eta-pickup").value,
-        eta_delivery: card.querySelector("#bid-eta-delivery").value,
-        mirror_account_enabled: card.querySelector("#bid-mirror-account").checked,
-        notes: card.querySelector("#bid-notes").value
-      });
+      await callBidApi("submit_bid", draft);
       status.textContent = "Bid submitted with commercial and availability details. Your rank will refresh automatically.";
       status.dataset.tone = "success";
       await loadInvitation({ refreshOnly: true });
@@ -729,6 +847,7 @@ function renderInvitation(invitation, liveBoard = {}) {
     }
   });
   renderLiveBoard(liveBoard);
+  updateBidReviewSummary();
 }
 
 async function loadInvitation(options = {}) {
@@ -757,6 +876,16 @@ async function loadInvitation(options = {}) {
 }
 
 card.addEventListener("click", async (event) => {
+  const bidSectionButton = event.target.closest("[data-bid-section-target]");
+  if (bidSectionButton) {
+    const target = card.querySelector(`[data-bid-section="${CSS.escape(bidSectionButton.dataset.bidSectionTarget || "")}"]`);
+    if (target) {
+      target.scrollIntoView({ behavior: "smooth", block: "start" });
+      target.querySelector("input, select, textarea, button")?.focus({ preventScroll: true });
+    }
+    return;
+  }
+
   const scopeButton = event.target.closest("[data-carrier-chat-scope]");
   if (scopeButton) {
     const select = card.querySelector("#carrier-chat-scope");
@@ -827,6 +956,8 @@ card.addEventListener("submit", async (event) => {
 });
 
 card.addEventListener("input", (event) => {
+  if (event.target.closest("#bid-form")) updateBidReviewSummary();
+
   const search = event.target.closest("[data-book-search]");
   if (!search) return;
   bookFilters.query = search.value;
@@ -837,6 +968,10 @@ card.addEventListener("input", (event) => {
     nextSearch?.focus();
     nextSearch?.setSelectionRange(bookFilters.query.length, bookFilters.query.length);
   }, 180);
+});
+
+card.addEventListener("change", (event) => {
+  if (event.target.closest("#bid-form")) updateBidReviewSummary();
 });
 
 loadInvitation().then(() => {

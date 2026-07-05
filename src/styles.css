@@ -1725,13 +1725,65 @@ a {
   grid-column: 1 / -1;
 }
 
+.carrier-bid-workflow {
+  position: sticky;
+  top: 58px;
+  z-index: 6;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 5px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.96);
+  padding: 5px;
+  backdrop-filter: blur(10px);
+}
+
+.carrier-bid-workflow button {
+  min-height: 28px;
+  border-color: transparent;
+  background: var(--soft-panel);
+  color: #40505d;
+  font-size: 0.7rem;
+  font-weight: 850;
+}
+
+.carrier-bid-workflow button:hover,
+.carrier-bid-workflow button:focus {
+  border-color: var(--accent);
+  background: var(--brand-tint);
+  color: var(--accent-dark);
+}
+
+.guided-bid-section {
+  display: grid;
+  gap: 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 10px;
+  scroll-margin-top: 96px;
+}
+
+.guided-bid-fields {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(120px, 1fr));
+  gap: 9px;
+  align-items: end;
+}
+
+.guided-bid-fields .wide-field,
+.guided-bid-section .wide-field {
+  grid-column: 1 / -1;
+}
+
 .bid-form-section-title {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  border-top: 1px solid var(--line);
-  padding-top: 9px;
+  border: 0;
+  padding-top: 0;
 }
 
 .bid-form-section-title strong {
@@ -1761,6 +1813,69 @@ a {
 .bid-checkbox-label input {
   width: 14px;
   height: 14px;
+}
+
+.bid-review-summary {
+  display: grid;
+  gap: 8px;
+}
+
+.bid-review-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.bid-review-summary-grid article {
+  display: grid;
+  gap: 3px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--soft-panel);
+  padding: 8px;
+}
+
+.bid-review-summary-grid span,
+.bid-review-summary-grid small,
+.bid-review-warnings span {
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 760;
+  line-height: 1.3;
+}
+
+.bid-review-summary-grid strong {
+  color: var(--ink);
+  font-size: 0.86rem;
+}
+
+.bid-review-warnings {
+  display: grid;
+  gap: 4px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #f7faf8;
+  padding: 8px;
+}
+
+.bid-review-warnings[data-tone="warning"] {
+  border-color: #ecd49a;
+  background: #fff9e8;
+}
+
+.bid-review-warnings[data-tone="success"] span {
+  color: var(--success);
+}
+
+.bid-final-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.bid-final-actions button {
+  margin-left: auto;
 }
 
 .masked-rate {
@@ -2514,6 +2629,17 @@ a {
 
   .bid-book-toolbar input {
     width: 100%;
+  }
+
+  .carrier-bid-workflow,
+  .guided-bid-fields,
+  .bid-review-summary-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .bid-final-actions button {
+    width: 100%;
+    margin-left: 0;
   }
 }
 

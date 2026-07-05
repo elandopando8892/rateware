@@ -183,6 +183,16 @@ assert.match(rfxBidSource, /bid-commercial-model/, "Carrier portal should render
 assert.match(rfxBidSource, /bid-alt-enabled/, "Carrier portal should render best-alternative input");
 assert.match(rfxBidSource, /bid-equipment-available/, "Carrier portal should render equipment availability input");
 assert.match(rfxBidSource, /bid-eta-pickup/, "Carrier portal should render pickup ETA input");
+assert.match(rfxBidSource, /Guided bid flow/, "Carrier portal should present the bid form as a guided workflow");
+assert.match(rfxBidSource, /data-bid-section-target="primary"/, "Carrier portal should let carriers jump to primary bid section");
+assert.match(rfxBidSource, /data-bid-section-target="alternative"/, "Carrier portal should let carriers add alternative offers");
+assert.match(rfxBidSource, /bid-review-summary/, "Carrier portal should render a pre-submit review summary");
+assert.match(rfxBidSource, /bid-best-final/, "Carrier portal should support best-and-final confirmation");
+assert.match(rfxBidSource, /bid-confirm-review/, "Carrier portal should require capacity and commercial terms confirmation");
+assert.match(rfxBidSource, /function bidDraftWarnings/, "Carrier portal should validate bid completeness before submit");
+assert.match(rfxBidSource, /function updateBidReviewSummary/, "Carrier portal should update the review summary as carriers edit");
+assert.match(stylesSource, /carrier-bid-workflow/, "Carrier portal guided bid flow should have compact navigation styling");
+assert.match(stylesSource, /bid-review-summary-grid/, "Carrier portal review summary should have card styling");
 assert.match(rfxEventsSource, /offerCommercialSummary/, "Internal Bid Room should display commercial offer summaries");
 assert.match(rfxEventsSource, /offerAvailabilitySummary/, "Internal Bid Room should display availability summaries");
 assert.match(rfxEventsSource, /AI proposes, user confirms/, "Bid Room communications should keep bid updates confirm-first");
