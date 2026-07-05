@@ -100,6 +100,14 @@ assert.match(rfxEventsSource, /function confirmBidRoomBulkAction/, "Bid Room sho
 assert.match(rfxEventsSource, /confirmBidRoomBulkAction\("auto_shortlist", ids\)/, "Bid Room should confirm before auto-shortlisting selected lanes");
 assert.match(rfxEventsSource, /confirmBidRoomBulkAction\("mark_invited", ids\)/, "Bid Room should confirm before marking selected participants invited");
 assert.match(rfxEventsSource, /confirmBidRoomBulkAction\("archive_participants", ids\)/, "Bid Room should confirm before archiving selected participants");
+assert.match(rfxEventsSource, /function eventLifecycleRiskSummary/, "Bid Room event lifecycle actions should summarize event risk before changes");
+assert.match(rfxEventsSource, /function confirmEventLifecycleAction/, "Bid Room event lifecycle actions should use a shared confirmation guard");
+assert.match(rfxEventsSource, /confirmEventLifecycleAction\("open"\)/, "Bid Room should confirm before opening an event");
+assert.match(rfxEventsSource, /confirmEventLifecycleAction\("close"\)/, "Bid Room should confirm before closing an event");
+assert.match(rfxEventsSource, /confirmEventLifecycleAction\("duplicate"\)/, "Bid Room should confirm before duplicating an event");
+assert.match(rfxEventsSource, /confirmEventLifecycleAction\("archive"\)/, "Bid Room should confirm before archiving an event");
+assert.match(rfxEventsSource, /confirmEventLifecycleAction\("delete"\)/, "Bid Room should require typed confirmation before deleting an event");
+assert.match(rfxEventsSource, /window\.prompt\(`Type "\$\{label\}" to delete/, "Bid Room event delete should require typing the RFx label");
 assert.match(rfxEventsHtml, /rfx-outreach-sender/, "Bid Room Step 4 should include a sender account selector");
 assert.match(rfxEventsHtml, /sales@heymarksman\.com/, "Bid Room Step 4 should use sales@heymarksman.com as the approved sender");
 assert.doesNotMatch(rfxEventsHtml, /carriers@xbfreight\.com/, "Bid Room Step 4 should not offer legacy sender accounts");

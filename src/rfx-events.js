@@ -314,6 +314,56 @@ function updateEventActionState() {
     });
 }
 
+function eventLifecycleRiskSummary() {
+  const invitations = currentLanes.flatMap((lane) => lane.invitations || []);
+  const activeInviteRows = invitations.filter((item) => item.invitation_status !== "archived");
+  const messageRows = selectedEventId
+    ? outreachMessages.filter((message) => message.rfx_event_id === selectedEventId && String(message.status || "").toLowerCase() !== "archived")
+    : [];
+  return {
+    lanes: currentLanes.length,
+    participants: activeInviteRows.length,
+    bids: invitations.filter(hasBid).length,
+    awards: activeInviteRows.filter((item) => item.award_role).length,
+    ratewareRows: activeInviteRows.filter((item) => item.rate_staging_id).length,
+    messages: messageRows.length,
+    sentMessages: messageRows.filter((message) => String(message.status || "").toLowerCase() === "sent").length
+  };
+}
+
+function eventLifecycleRiskLines(summary = eventLifecycleRiskSummary()) {
+  return [
+    `${formatNumber(summary.lanes)} lane(s)`,
+    `${formatNumber(summary.participants)} participant row(s)`,
+    `${formatNumber(summary.bids)} bid(s)`,
+    `${formatNumber(summary.awards)} award decision(s)`,
+    `${formatNumber(summary.ratewareRows)} Rateware closeout row(s)`,
+    `${formatNumber(summary.sentMessages)} sent email(s)`
+  ];
+}
+
+function confirmEventLifecycleAction(action) {
+  const label = selectedEvent?.rfx_id || selectedEvent?.name || "this bid event";
+  const summaryText = eventLifecycleRiskLines().join(" | ");
+  if (action === "open") {
+    return window.confirm(`Open ${label}? Current scope: ${summaryText}.`);
+  }
+  if (action === "close") {
+    return window.confirm(`Close ${label}? Current scope: ${summaryText}.`);
+  }
+  if (action === "duplicate") {
+    return window.confirm(`Duplicate ${label}? Lanes and active shortlisted vendors will be copied. This does not send invitations. Current scope: ${summaryText}.`);
+  }
+  if (action === "archive") {
+    return window.confirm(`Archive ${label}? It will be hidden from active Bid Room lists. Current scope: ${summaryText}.`);
+  }
+  if (action === "delete") {
+    const typed = window.prompt(`Type "${label}" to delete this bid event and related RFx rows. Current scope: ${summaryText}.`);
+    return typed === label;
+  }
+  return true;
+}
+
 function resetRfxEventForm() {
   editingEventId = null;
   eventForm?.reset();
@@ -5002,12 +5052,14 @@ clearLanesInputButton?.addEventListener("click", () => {
 
 openRfxButton?.addEventListener("click", async () => {
   if (!selectedEventId) return;
+  if (!confirmEventLifecycleAction("open")) return;
   await updateRfxEvent(selectedEventId, { status: "open" });
   await loadEvents();
 });
 
 closeRfxButton?.addEventListener("click", async () => {
   if (!selectedEventId) return;
+  if (!confirmEventLifecycleAction("close")) return;
   await updateRfxEvent(selectedEventId, { status: "closed" });
   await loadEvents();
 });
@@ -5019,7 +5071,7 @@ editRfxButton?.addEventListener("click", () => {
 
 duplicateRfxButton?.addEventListener("click", async () => {
   if (!selectedEventId) return;
-  if (!window.confirm("Duplicate this bid event with its lanes and shortlisted vendors?")) return;
+  if (!confirmEventLifecycleAction("duplicate")) return;
   duplicateRfxButton.disabled = true;
   setStatus(actionStatus, "Duplicating bid event...");
   try {
@@ -5037,7 +5089,7 @@ duplicateRfxButton?.addEventListener("click", async () => {
 
 archiveRfxButton?.addEventListener("click", async () => {
   if (!selectedEventId) return;
-  if (!window.confirm("Archive this bid event? It will be hidden from active Bid Room lists.")) return;
+  if (!confirmEventLifecycleAction("archive")) return;
   archiveRfxButton.disabled = true;
   setStatus(actionStatus, "Archiving bid event...");
   try {
@@ -5056,8 +5108,7 @@ archiveRfxButton?.addEventListener("click", async () => {
 
 deleteRfxButton?.addEventListener("click", async () => {
   if (!selectedEventId) return;
-  const label = selectedEvent?.rfx_id || selectedEvent?.name || "this bid event";
-  if (!window.confirm(`Delete ${label}? This removes the event and related RFx rows.`)) return;
+  if (!confirmEventLifecycleAction("delete")) return;
   deleteRfxButton.disabled = true;
   setStatus(actionStatus, "Deleting bid event...");
   try {
