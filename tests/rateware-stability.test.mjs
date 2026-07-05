@@ -106,6 +106,9 @@ assert.match(outreachServiceSource, /send_outreach_messages/, "Outreach service 
 assert.match(rfxEventsHtml, /rfx-send-selected-email-drafts/, "Bid Room draft queue should include a bulk send selected emails action");
 assert.match(rfxEventsHtml, /rfx-archive-selected-drafts/, "Bid Room draft queue should include archive selected action");
 assert.match(rfxEventsHtml, /rfx-delete-selected-drafts/, "Bid Room draft queue should include delete selected action");
+assert.match(rfxEventsSource, /function confirmDraftQueueAction/, "Bid Room draft queue should require human confirmation for bulk queue actions");
+assert.match(rfxEventsSource, /confirmDraftQueueAction\("send", ids\)/, "Bid Room should confirm before sending selected draft emails");
+assert.match(rfxEventsSource, /confirmDraftQueueAction\("archive", ids\)/, "Bid Room should confirm before archiving selected draft rows");
 assert.match(rfxEventsHtml, /rfx-launch-readiness/, "Bid Room should render a launch readiness QA panel");
 assert.match(rfxEventsSource, /function bidRoomReadinessSnapshot/, "Bid Room should calculate end-to-end readiness blockers");
 assert.match(rfxEventsSource, /function renderBidRoomLaunchReadiness/, "Bid Room should render readiness checks from live event state");

@@ -3531,6 +3531,17 @@ function selectedSendableDraftIds(rows = draftRowsForEvent()) {
   return selectableEmailDrafts(selectedDraftRows(rows)).map((message) => String(message.id));
 }
 
+function confirmDraftQueueAction(action, ids = []) {
+  const count = formatNumber(ids.length);
+  if (action === "send") {
+    return window.confirm(`Send ${count} individual email(s) from ${APPROVED_GMAIL_SENDER}? Each selected carrier will receive its own message.`);
+  }
+  if (action === "archive") {
+    return window.confirm(`Archive ${count} selected draft row(s)? Drafts will be hidden from the active queue, but vendors and RFx lanes stay unchanged.`);
+  }
+  return true;
+}
+
 function updateDraftSendControls(rows = []) {
   const visibleIds = new Set(rows.map((message) => String(message.id)));
   selectedDraftMessageIds = new Set([...selectedDraftMessageIds].filter((id) => visibleIds.has(id)));
@@ -4567,6 +4578,7 @@ async function sendSelectedDraftEmails() {
     setStatus(rfxOutreachStatus, "Select one or more email drafts before sending.", "error");
     return;
   }
+  if (!confirmDraftQueueAction("send", ids)) return;
   if (draftSendSelectedButton) draftSendSelectedButton.disabled = true;
   setStatus(rfxOutreachStatus, `Sending ${formatNumber(ids.length)} individual email(s) from ${APPROVED_GMAIL_SENDER}...`);
   try {
@@ -4594,6 +4606,7 @@ async function archiveSelectedDrafts() {
     setStatus(rfxOutreachStatus, "Select one or more draft rows before archiving.", "error");
     return;
   }
+  if (!confirmDraftQueueAction("archive", ids)) return;
   if (draftArchiveSelectedButton) draftArchiveSelectedButton.disabled = true;
   setStatus(rfxOutreachStatus, `Archiving ${formatNumber(ids.length)} draft row(s)...`);
   try {
