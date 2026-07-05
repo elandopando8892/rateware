@@ -203,6 +203,7 @@ const rfxRefreshAwardsButton = document.querySelector("#rfx-refresh-awards");
 const rfxGenerateAwardNoticesButton = document.querySelector("#rfx-generate-award-notices");
 const rfxSendAwardNoticesButton = document.querySelector("#rfx-send-award-notices");
 const rfxAwardNoticeSummary = document.querySelector("#rfx-award-notice-summary");
+const rfxAwardNoticeQueue = document.querySelector("#rfx-award-notice-queue");
 
 let events = [];
 let selectedEventId = null;
@@ -1897,6 +1898,77 @@ function sendableAwardNoticeIds(rows = awardNoticeDraftRows()) {
     .map((message) => String(message.id));
 }
 
+function awardNoticeOutcome(message) {
+  const metadata = message.metadata && typeof message.metadata === "object" ? message.metadata : {};
+  const summary = metadata.award_summary && typeof metadata.award_summary === "object" ? metadata.award_summary : {};
+  if (Number(summary.awarded || 0) > 0) return "Award";
+  if (Number(summary.backup || 0) > 0) return "Backup";
+  if (Number(summary.not_awarded || 0) > 0) return "Not awarded";
+  return "Closeout";
+}
+
+function awardNoticeOutcomeTone(outcome, status) {
+  const normalizedStatus = String(status || "").toLowerCase();
+  if (normalizedStatus === "failed") return "danger";
+  if (normalizedStatus === "sent") return "success";
+  if (outcome === "Award") return "success";
+  if (outcome === "Backup") return "neutral";
+  if (outcome === "Not awarded") return "muted";
+  return "neutral";
+}
+
+function renderAwardNoticeQueue(rows = awardNoticeDraftRows()) {
+  if (!rfxAwardNoticeQueue) return;
+  if (!selectedEventId) {
+    rfxAwardNoticeQueue.innerHTML = "Select a bid event to review closeout notices.";
+    return;
+  }
+  if (!rows.length) {
+    rfxAwardNoticeQueue.innerHTML = "Generate notices to review carrier closeout messages.";
+    return;
+  }
+  const visibleRows = rows.slice(0, 8);
+  rfxAwardNoticeQueue.innerHTML = `
+    <table>
+      <thead>
+        <tr>
+          <th>Carrier</th>
+          <th>Outcome</th>
+          <th>Status</th>
+          <th>Recipient</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${visibleRows.map((message) => {
+          const outcome = awardNoticeOutcome(message);
+          const status = String(message.status || "drafted").toLowerCase();
+          const openUrl = message.channel === "email" ? message.gmail_compose_url : message.whatsapp_url;
+          return `
+            <tr>
+              <td>
+                <strong>${escapeHtml(message.vendors?.vendor_name || message.vendors?.domain || "Vendor")}</strong>
+                <small>${escapeHtml(message.subject || message.outreach_campaigns?.name || "Award notice")}</small>
+              </td>
+              <td><span class="status-pill ${awardNoticeOutcomeTone(outcome, status)}">${escapeHtml(outcome)}</span></td>
+              <td><span class="status-pill ${status === "sent" ? "success" : status === "failed" ? "danger" : status === "archived" ? "muted" : "neutral"}">${escapeHtml(status)}</span></td>
+              <td>${escapeHtml(messageRecipient(message) || "-")}</td>
+              <td>
+                <div class="compact-actions">
+                  <button class="secondary small-button" type="button" data-rfx-open-award-notice="${escapeHtml(openUrl || "")}" ${openUrl ? "" : "disabled"}>Open</button>
+                  <button class="secondary small-button" type="button" data-rfx-mark-award-notice="${escapeHtml(message.id)}" data-rfx-award-notice-status="queued" ${status === "queued" || status === "sent" || status === "archived" ? "disabled" : ""}>Queue</button>
+                  <button class="secondary small-button" type="button" data-rfx-mark-award-notice="${escapeHtml(message.id)}" data-rfx-award-notice-status="archived" ${status === "archived" ? "disabled" : ""}>Archive</button>
+                </div>
+              </td>
+            </tr>
+          `;
+        }).join("")}
+      </tbody>
+    </table>
+    ${rows.length > visibleRows.length ? `<p>Showing ${formatNumber(visibleRows.length)} of ${formatNumber(rows.length)} closeout notice(s).</p>` : ""}
+  `;
+}
+
 function recommendedAwardCandidates() {
   return awardLaneRows()
     .map(({ lane, bids }) => {
@@ -1989,6 +2061,7 @@ function updateAwardNoticeControls() {
         : "Award at least one lane before sending closeout notices.";
     rfxAwardNoticeSummary.dataset.tone = failed ? "warning" : rows.length ? "success" : "neutral";
   }
+  renderAwardNoticeQueue(rows);
 }
 
 function updateAwardMetrics() {
@@ -4816,6 +4889,36 @@ rfxCloseoutAwardsButton?.addEventListener("click", closeoutSelectedAwardsToRatew
 rfxApplyRecommendedAwardsButton?.addEventListener("click", applyRecommendedAwardDecisions);
 rfxGenerateAwardNoticesButton?.addEventListener("click", generateAwardNoticeDrafts);
 rfxSendAwardNoticesButton?.addEventListener("click", sendAwardNoticeDrafts);
+
+rfxAwardNoticeQueue?.addEventListener("click", async (event) => {
+  const openButton = event.target.closest("[data-rfx-open-award-notice]");
+  if (openButton) {
+    const url = openButton.dataset.rfxOpenAwardNotice;
+    if (url) window.open(url, "_blank", "noopener");
+    return;
+  }
+  const statusButton = event.target.closest("[data-rfx-mark-award-notice]");
+  if (!statusButton) return;
+  const id = statusButton.dataset.rfxMarkAwardNotice;
+  const status = statusButton.dataset.rfxAwardNoticeStatus;
+  if (!id || !status) return;
+  statusButton.disabled = true;
+  setStatus(rfxAwardStatus, `Marking award notice ${status}...`);
+  try {
+    await markOutreachMessages([id], status);
+    [contactHistoryRows, outreachMessages] = await Promise.all([
+      fetchContactHistory({ rfx_event_id: selectedEventId }),
+      fetchOutreachMessages({ rfx_event_id: selectedEventId })
+    ]);
+    renderOutreachLaunchpad();
+    renderAwardBoard();
+    setStatus(rfxAwardStatus, "Award notice updated.", "success");
+  } catch (error) {
+    setStatus(rfxAwardStatus, error.message, "error");
+  } finally {
+    statusButton.disabled = false;
+  }
+});
 
 copyRfxSummaryButton?.addEventListener("click", async () => {
   if (!selectedEvent) return;

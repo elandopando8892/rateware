@@ -16070,6 +16070,61 @@ textarea:focus,
   font-size: 0.9rem;
 }
 
+.rfx-award-notice-queue {
+  max-height: 220px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #fff;
+  color: #52616d;
+  font-size: 0.72rem;
+}
+
+.rfx-award-notice-queue table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.rfx-award-notice-queue th,
+.rfx-award-notice-queue td {
+  border-bottom: 1px solid var(--line);
+  padding: 5px 6px;
+  text-align: left;
+  vertical-align: top;
+  white-space: nowrap;
+}
+
+.rfx-award-notice-queue th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #eef3f6;
+  color: #46545f;
+  font-size: 0.66rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.rfx-award-notice-queue strong,
+.rfx-award-notice-queue small {
+  display: block;
+}
+
+.rfx-award-notice-queue small {
+  max-width: 220px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.66rem;
+  text-overflow: ellipsis;
+}
+
+.rfx-award-notice-queue p {
+  margin: 0;
+  padding: 6px;
+  color: var(--muted);
+  font-size: 0.68rem;
+}
+
 .rfx-award-board {
   display: grid;
   gap: 10px;
