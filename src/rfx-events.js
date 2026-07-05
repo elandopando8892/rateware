@@ -1641,6 +1641,49 @@ function bidRoomReadinessSnapshot() {
   };
 }
 
+function readinessReportLines(snapshot = bidRoomReadinessSnapshot()) {
+  const header = selectedEvent
+    ? `${selectedEvent.rfx_id || "RFx"} | ${selectedEvent.name || "Bid Room"}`
+    : "Bid Room | No event selected";
+  const stats = processStats();
+  return [
+    header,
+    `Status: ${selectedEvent?.status || "-"} | Customer: ${selectedEvent?.customer || "-"} | Due: ${selectedEvent?.due_date || "-"}`,
+    `Lanes: ${formatNumber(stats.lanes)} | Participants: ${formatNumber(stats.invitations.length)} | Invite targets: ${formatNumber(stats.readyTargets.length)} / ${formatNumber(stats.targets.length)} | Bids: ${formatNumber(stats.bids.length)}`,
+    `QA: ${formatNumber(snapshot.ready.length)} ready | ${formatNumber(snapshot.warnings.length)} warning(s) | ${formatNumber(snapshot.blockers.length)} blocker(s)`,
+    "",
+    ...snapshot.checks.map((check) => `${readinessLabel(check.status)} | ${check.label}: ${check.metric} | ${check.detail}`)
+  ];
+}
+
+async function copyReadinessReport() {
+  const lines = readinessReportLines();
+  try {
+    await navigator.clipboard.writeText(lines.join("\n"));
+    setStatus(actionStatus, "Bid Room QA report copied.", "success");
+  } catch (_error) {
+    setStatus(actionStatus, lines.join(" | "), "neutral");
+  }
+}
+
+function openFirstReadinessIssue() {
+  const snapshot = bidRoomReadinessSnapshot();
+  const issue = snapshot.blockers[0] || snapshot.warnings[0];
+  if (!issue) {
+    setStatus(actionStatus, "No launch blockers detected.", "success");
+    return;
+  }
+  activateWorkbenchView(issue.action || "setup", {
+    setup: "#rfx-id",
+    lanes: "#rfx-lane-template-file",
+    carriers: "#manual-shortlist-search",
+    outreach: "#rfx-outreach-template",
+    responses: "#rfx-response-body",
+    award: "#rfx-award-board"
+  }[issue.action] || null);
+  setStatus(actionStatus, `${issue.label}: ${issue.detail}`, issue.status === "blocker" ? "error" : "neutral");
+}
+
 function renderBidRoomLaunchReadiness() {
   if (!rfxLaunchReadiness) return;
   const snapshot = bidRoomReadinessSnapshot();
@@ -1655,9 +1698,13 @@ function renderBidRoomLaunchReadiness() {
           ? `${formatNumber(snapshot.warnings.length)} item(s) need monitoring, but no launch blockers remain.`
           : nextIssue ? nextIssue.detail : "Select a bid event to inspect readiness."}</small>
       </div>
-      <span class="status-pill" data-tone="${launchReady ? "success" : snapshot.blockers.length ? "danger" : "warning"}">
-        ${launchReady ? "Operational" : snapshot.blockers.length ? `${formatNumber(snapshot.blockers.length)} blocker(s)` : `${formatNumber(snapshot.warnings.length)} warning(s)`}
-      </span>
+      <div class="bid-room-readiness-actions">
+        <span class="status-pill" data-tone="${launchReady ? "success" : snapshot.blockers.length ? "danger" : "warning"}">
+          ${launchReady ? "Operational" : snapshot.blockers.length ? `${formatNumber(snapshot.blockers.length)} blocker(s)` : `${formatNumber(snapshot.warnings.length)} warning(s)`}
+        </span>
+        <button class="secondary small-button" type="button" data-rfx-readiness-first-issue ${nextIssue ? "" : "disabled"}>Open first issue</button>
+        <button class="secondary small-button" type="button" data-rfx-copy-readiness>Copy QA report</button>
+      </div>
     </div>
     <div class="bid-room-readiness-grid">
       ${snapshot.checks.map((check) => `
@@ -4618,6 +4665,20 @@ document.addEventListener("click", (event) => {
     rfxTemplateEditorDirty = true;
     rfxTemplateVisualEditing = false;
     saveSelectedRfxTemplate().catch((error) => setStatus(rfxTemplateEditorStatus, error.message, "error"));
+    return;
+  }
+
+  const copyReadinessButton = event.target.closest("[data-rfx-copy-readiness]");
+  if (copyReadinessButton) {
+    event.preventDefault();
+    copyReadinessReport();
+    return;
+  }
+
+  const firstReadinessIssueButton = event.target.closest("[data-rfx-readiness-first-issue]");
+  if (firstReadinessIssueButton) {
+    event.preventDefault();
+    openFirstReadinessIssue();
     return;
   }
 

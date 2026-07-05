@@ -109,6 +109,9 @@ assert.match(rfxEventsHtml, /rfx-delete-selected-drafts/, "Bid Room draft queue 
 assert.match(rfxEventsHtml, /rfx-launch-readiness/, "Bid Room should render a launch readiness QA panel");
 assert.match(rfxEventsSource, /function bidRoomReadinessSnapshot/, "Bid Room should calculate end-to-end readiness blockers");
 assert.match(rfxEventsSource, /function renderBidRoomLaunchReadiness/, "Bid Room should render readiness checks from live event state");
+assert.match(rfxEventsSource, /function readinessReportLines/, "Bid Room should produce a copyable launch QA report");
+assert.match(rfxEventsSource, /data-rfx-readiness-first-issue/, "Bid Room readiness QA should navigate to the first blocker");
+assert.match(rfxEventsSource, /data-rfx-copy-readiness/, "Bid Room readiness QA should copy a report for debugging");
 assert.match(stylesSource, /bid-room-readiness-grid/, "Bid Room readiness QA should have compact operational styling");
 assert.match(bidVisibilityMigration, /bid_visibility_mode text not null default 'anonymous_rank'/, "RFx events should store a per-event Bid Room visibility mode");
 assert.match(bidVisibilityMigration, /open_leaderboard/, "Bid Room visibility should support open leaderboard events");

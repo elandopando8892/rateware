@@ -15197,6 +15197,21 @@ textarea:focus,
   font-weight: 740;
 }
 
+.bid-room-readiness-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  align-items: center;
+  justify-content: flex-end;
+  max-width: 390px;
+}
+
+.bid-room-readiness-actions .small-button {
+  min-height: 24px;
+  padding: 3px 7px;
+  font-size: 0.64rem;
+}
+
 .bid-room-readiness-grid {
   display: grid;
   grid-template-columns: repeat(9, minmax(96px, 1fr));
