@@ -187,6 +187,10 @@ assert.match(rfxEventsHtml, /rfx-award-readiness/, "Bid Room Step 6 should show 
 assert.match(rfxEventsHtml, /rfx-award-notice-queue/, "Bid Room Step 6 should show the award notice queue");
 assert.match(rfxEventsHtml, /<th>Score<\/th>/, "Bid Room response board should expose procurement decision score");
 assert.match(rfxEventsSource, /renderAwardBoard/, "Bid Room should render award decisions by lane");
+assert.match(rfxEventsSource, /function validateRfxBidPatch/, "Bid Room should validate internal bid edits before saving");
+assert.match(rfxEventsSource, /parseOptionalBidNumber\(patch\[field\], label\)/, "Bid Room should reject non-numeric rate, capacity, or transit edits");
+assert.match(rfxEventsSource, /validateRfxBidPatch\(patch\)/, "Bid Room save bid action should use validated numeric fields");
+assert.match(rfxEventsSource, /Currency must be a 3-letter code/, "Bid Room should validate bid currency codes before saving");
 assert.match(rfxEventsSource, /data-rfx-award-primary/, "Bid Room should allow primary awards per carrier bid");
 assert.match(rfxEventsSource, /data-rfx-award-backup/, "Bid Room should allow backup carrier awards");
 assert.match(rfxEventsSource, /function procurementDecisionForBid/, "Bid Room should score bids beyond cheapest rate");

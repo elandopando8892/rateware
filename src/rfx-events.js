@@ -909,6 +909,36 @@ function decisionNumber(value) {
   return Number.isFinite(number) ? number : null;
 }
 
+function parseOptionalBidNumber(value, label) {
+  const text = String(value ?? "").trim();
+  if (!text) return { ok: true, value: "" };
+  const normalized = text.replace(/[$,\s]/g, "");
+  const number = Number(normalized);
+  if (!Number.isFinite(number)) return { ok: false, error: `${label} must be numeric.` };
+  if (number <= 0) return { ok: false, error: `${label} must be greater than zero.` };
+  return { ok: true, value: number };
+}
+
+function validateRfxBidPatch(rawPatch = {}) {
+  const patch = { ...rawPatch };
+  const numericFields = [
+    ["bid_rate", "Bid rate"],
+    ["weekly_capacity", "Weekly capacity"],
+    ["transit_days", "Transit days"]
+  ];
+  for (const [field, label] of numericFields) {
+    const parsed = parseOptionalBidNumber(patch[field], label);
+    if (!parsed.ok) return { ok: false, field, error: parsed.error };
+    patch[field] = parsed.value;
+  }
+  const currency = String(patch.currency || "USD").trim().toUpperCase();
+  if (!/^[A-Z]{3}$/.test(currency)) {
+    return { ok: false, field: "currency", error: "Currency must be a 3-letter code like USD, MXN, or CAD." };
+  }
+  patch.currency = currency;
+  return { ok: true, patch };
+}
+
 function clampScore(value, min = 0, max = 100) {
   return Math.max(min, Math.min(max, Math.round(value)));
 }
@@ -5168,9 +5198,15 @@ lanesBody?.addEventListener("click", async (event) => {
     invitation.querySelectorAll("[data-rfx-bid-field]").forEach((input) => {
       patch[input.dataset.rfxBidField] = input.value;
     });
+    const validation = validateRfxBidPatch(patch);
+    if (!validation.ok) {
+      setStatus(actionStatus, validation.error, "error");
+      invitation.querySelector(`[data-rfx-bid-field="${validation.field}"]`)?.focus();
+      return;
+    }
     saveButton.disabled = true;
     try {
-      await updateRfxBid(saveButton.dataset.rfxSaveBid, patch);
+      await updateRfxBid(saveButton.dataset.rfxSaveBid, validation.patch);
       setStatus(actionStatus, "Bid saved.", "success");
       await loadDetail(selectedEventId);
     } catch (error) {
