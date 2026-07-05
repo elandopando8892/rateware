@@ -179,6 +179,11 @@ assert.match(rfxEventsSource, /generateAwardNoticeDrafts/, "Bid Room should gene
 assert.match(rfxEventsSource, /sendAwardNoticeDrafts/, "Bid Room should send generated award notices from Step 6");
 assert.match(rfxBidApiSource, /award_outcome/, "Carrier portal API should expose award outcome per invitation");
 assert.match(rfxBidSource, /renderAwardOutcome/, "Carrier portal should render awarded, backup, and not-awarded outcomes");
+assert.match(rfxBidSource, /function awardNextSteps/, "Carrier portal should guide carriers through post-award next steps");
+assert.match(rfxBidSource, /function renderCarrierAwardTimeline/, "Carrier portal should render lane-level award closeout context");
+assert.match(rfxBidSource, /data-carrier-award-filter/, "Carrier portal award outcome should link into filtered business book views");
+assert.match(stylesSource, /carrier-award-next/, "Carrier portal post-award panel should have next-step styling");
+assert.match(stylesSource, /carrier-award-timeline/, "Carrier portal post-award panel should have closeout timeline styling");
 assert.match(rfxBidSubmissionV2Migration, /commercial_model text/, "RFx bid submission v2 should persist commercial model");
 assert.match(rfxBidSubmissionV2Migration, /best_alternative_offered boolean not null default false/, "RFx bid submission v2 should persist best-alternative offers");
 assert.match(rfxBidSubmissionV2Migration, /eta_pickup timestamptz/, "RFx bid submission v2 should persist pickup ETA");

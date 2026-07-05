@@ -552,6 +552,70 @@ function renderBookRows(rows = []) {
   }).join("");
 }
 
+function awardNextSteps(status, liveOutcome = {}) {
+  if (status === "awarded") {
+    return [
+      "Confirm capacity and ETA if anything changes.",
+      liveOutcome.rateware_closeout_at ? "Rateware closeout is complete for this lane." : "Procurement is finalizing Rateware closeout.",
+      "Watch Bid Room Chat for execution, onboarding, or document follow-up."
+    ];
+  }
+  if (status === "backup") {
+    return [
+      "Keep equipment availability current while procurement confirms primary capacity.",
+      "Use Bid Room Chat to update any ETA or capacity changes.",
+      "Your offer remains visible as backup for this lane."
+    ];
+  }
+  if (status === "not_awarded") {
+    return [
+      "Review the business book for other open or invited lanes.",
+      "Keep your commercial profile and capacity current for future events.",
+      "Procurement may still use your quote as market intelligence for later awards."
+    ];
+  }
+  return [
+    "Procurement is still closing the event.",
+    "Keep your offer and capacity assumptions current until the final closeout.",
+    "Use Bid Room Chat for questions or updates."
+  ];
+}
+
+function carrierAwardRows(carrierBook = {}) {
+  const rows = [
+    ...(Array.isArray(carrierBook.invited) ? carrierBook.invited : []),
+    ...(Array.isArray(carrierBook.quoted) ? carrierBook.quoted : [])
+  ];
+  const seen = new Set();
+  return rows
+    .filter((row) => ["awarded", "backup", "not_awarded"].includes(String(bookStatus(row) || "").toLowerCase()))
+    .filter((row) => {
+      const id = row.invitation_id || row.lane?.id || `${row.event?.id}-${row.lane?.lane_number}-${bookStatus(row)}`;
+      if (seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    });
+}
+
+function renderCarrierAwardTimeline(carrierBook = {}) {
+  const rows = carrierAwardRows(carrierBook).slice(0, 6);
+  if (!rows.length) return '<div class="carrier-award-timeline empty">No lane-level closeout results loaded yet.</div>';
+  return `
+    <div class="carrier-award-timeline">
+      ${rows.map((row) => {
+        const status = bookStatus(row);
+        return `
+          <article>
+            <span class="status-pill ${statusTone(status)}">${escapeHtml(statusLabel(status))}</span>
+            <strong>${escapeHtml(laneLabel(row.lane || {}))}</strong>
+            <small>${escapeHtml([row.event?.rfx_id || row.event?.name, row.bid_rate ? formatMoney(row.bid_rate, row.currency) : null].filter(Boolean).join(" | "))}</small>
+          </article>
+        `;
+      }).join("")}
+    </div>
+  `;
+}
+
 function renderCarrierBook(carrierBook = {}) {
   const book = card.querySelector("#carrier-business-book");
   if (!book) return;
@@ -627,7 +691,9 @@ function renderAwardOutcome(invitation = {}, carrierBook = {}, liveBoard = {}) {
       ? "You are selected as backup capacity. Keep availability current in case the primary award changes."
       : status === "not_awarded"
         ? "This lane was awarded to another carrier. Your bid remains visible for future procurement decisions."
-        : "Procurement has started the award closeout. Final lane results are still being confirmed.";
+      : "Procurement has started the award closeout. Final lane results are still being confirmed.";
+  const steps = awardNextSteps(status, liveOutcome);
+  const filterTarget = status === "awarded" || status === "backup" || status === "not_awarded" ? status : "all";
   panel.hidden = false;
   panel.innerHTML = `
     <div class="bid-room-section-heading">
@@ -653,6 +719,22 @@ function renderAwardOutcome(invitation = {}, carrierBook = {}, liveBoard = {}) {
         <strong>${escapeHtml(liveOutcome.rateware_closeout_at ? "Created" : status === "awarded" ? "Pending" : "-")}</strong>
         <small>${escapeHtml(liveOutcome.rateware_closeout_at ? new Date(liveOutcome.rateware_closeout_at).toLocaleString() : "Procurement controls final Rateware insert.")}</small>
       </article>
+    </div>
+    <div class="carrier-award-next">
+      <section>
+        <span>Next steps</span>
+        <ol>
+          ${steps.map((step) => `<li>${escapeHtml(step)}</li>`).join("")}
+        </ol>
+      </section>
+      <section>
+        <span>Event closeout</span>
+        ${renderCarrierAwardTimeline(carrierBook)}
+      </section>
+    </div>
+    <div class="carrier-award-actions">
+      <button class="secondary small-button" type="button" data-carrier-award-filter="${escapeHtml(filterTarget)}">View ${escapeHtml(statusLabel(filterTarget))} lanes</button>
+      <button class="secondary small-button" type="button" data-carrier-chat-focus>Open Bid Room Chat</button>
     </div>
     <p class="bid-board-note">${escapeHtml(copy)}</p>
   `;
@@ -946,6 +1028,21 @@ card.addEventListener("click", async (event) => {
   if (filterButton) {
     bookFilters.view = filterButton.dataset.bookFilter || "all";
     renderCarrierBook(lastCarrierBook || {});
+    return;
+  }
+
+  const awardFilterButton = event.target.closest("[data-carrier-award-filter]");
+  if (awardFilterButton) {
+    bookFilters.view = awardFilterButton.dataset.carrierAwardFilter || "all";
+    renderCarrierBook(lastCarrierBook || {});
+    card.querySelector("#carrier-business-book")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    return;
+  }
+
+  const chatFocusButton = event.target.closest("[data-carrier-chat-focus]");
+  if (chatFocusButton) {
+    card.querySelector("#carrier-bid-chat")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    card.querySelector("#carrier-chat-message")?.focus({ preventScroll: true });
     return;
   }
 
