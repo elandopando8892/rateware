@@ -2227,6 +2227,46 @@ function awardReadinessSnapshot() {
   };
 }
 
+function awardPreflightIssues(action = "closeout") {
+  const snapshot = awardReadinessSnapshot();
+  const issues = [];
+  if (!selectedEventId) {
+    issues.push({ key: "event", label: "No bid event selected", detail: "Select a bid event before award closeout." });
+    return issues;
+  }
+  if ((action === "closeout" || action === "generate_notices") && !snapshot.lanes.length) {
+    issues.push({ key: "bids", label: "No carrier bids", detail: "Capture carrier bids before making award decisions." });
+  }
+  if ((action === "closeout" || action === "generate_notices") && !snapshot.primary.length) {
+    issues.push({ key: "primary", label: "No primary awards", detail: "Award at least one carrier as primary before closeout." });
+  }
+  if ((action === "closeout" || action === "generate_notices") && snapshot.missingPrimary.length) {
+    issues.push({
+      key: "incomplete_awards",
+      label: "Incomplete lane awards",
+      detail: `${formatNumber(snapshot.missingPrimary.length)} lane(s) with bids still need a primary award.`
+    });
+  }
+  if (action === "closeout" && !snapshot.pendingCloseout.length) {
+    issues.push({ key: "closeout", label: "No Rateware closeout pending", detail: "Primary awards already have Rateware rows or no primary awards are available." });
+  }
+  if (action === "send_notices" && !snapshot.sendable.length) {
+    issues.push({ key: "notices", label: "No sendable notices", detail: "Generate award notice drafts before sending Gmail messages." });
+  }
+  return issues;
+}
+
+function blockIfAwardPreflightFails(action = "closeout", statusElement = rfxAwardStatus) {
+  const issues = awardPreflightIssues(action);
+  if (!issues.length) return false;
+  const firstIssue = issues[0];
+  activateWorkbenchView("award");
+  setStatus(statusElement, `Award action blocked: ${firstIssue.label}. ${firstIssue.detail}`, "error");
+  renderAwardReadiness();
+  updateAwardNoticeControls();
+  return true;
+}
+
 function renderAwardReadiness() {
   if (!rfxAwardReadiness) return;
   if (!selectedEventId) {
@@ -2266,10 +2306,10 @@ function updateAwardNoticeControls() {
   const primary = currentLanes.flatMap((lane) => activeInvitations(lane)).filter((item) => item.award_role === "primary").length;
   const bidRows = awardLaneRows().reduce((sum, row) => sum + row.bids.length, 0);
   if (rfxGenerateAwardNoticesButton) {
-    rfxGenerateAwardNoticesButton.disabled = !selectedEventId || !bidRows;
+    rfxGenerateAwardNoticesButton.disabled = !selectedEventId || !bidRows || Boolean(awardPreflightIssues("generate_notices").length);
   }
   if (rfxSendAwardNoticesButton) {
-    rfxSendAwardNoticesButton.disabled = !sendableIds.length;
+    rfxSendAwardNoticesButton.disabled = !sendableIds.length || Boolean(awardPreflightIssues("send_notices").length);
     rfxSendAwardNoticesButton.textContent = sendableIds.length
       ? `Send ${formatNumber(sendableIds.length)} notice${sendableIds.length === 1 ? "" : "s"}`
       : "Send notices";
@@ -2301,7 +2341,7 @@ function updateAwardMetrics() {
   }
   if (rfxCloseoutAwardsButton) {
     const pendingCloseout = primary.filter((item) => !item.rate_staging_id).length;
-    rfxCloseoutAwardsButton.disabled = !pendingCloseout;
+    rfxCloseoutAwardsButton.disabled = !pendingCloseout || Boolean(awardPreflightIssues("closeout").length);
     rfxCloseoutAwardsButton.textContent = pendingCloseout
       ? `Create ${formatNumber(pendingCloseout)} Rateware row${pendingCloseout === 1 ? "" : "s"}`
       : "Create Rateware rows";
@@ -4430,6 +4470,7 @@ async function applyRecommendedAwardDecisions() {
 
 async function closeoutSelectedAwardsToRateware() {
   if (!selectedEventId) return;
+  if (blockIfAwardPreflightFails("closeout")) return;
   const pending = currentLanes
     .flatMap((lane) => activeInvitations(lane))
     .filter((invitation) => invitation.award_role === "primary" && !invitation.rate_staging_id);
@@ -4460,6 +4501,7 @@ async function generateAwardNoticeDrafts() {
     setStatus(rfxAwardStatus, "Select a bid event before generating award notices.", "error");
     return;
   }
+  if (blockIfAwardPreflightFails("generate_notices")) return;
   const bids = awardLaneRows().reduce((sum, row) => sum + row.bids.length, 0);
   if (!bids) {
     setStatus(rfxAwardStatus, "There are no carrier bids to close out yet.", "error");
@@ -4491,6 +4533,7 @@ async function generateAwardNoticeDrafts() {
 
 async function sendAwardNoticeDrafts() {
   if (!selectedEventId) return;
+  if (blockIfAwardPreflightFails("send_notices")) return;
   const ids = sendableAwardNoticeIds();
   if (!ids.length) {
     setStatus(rfxAwardStatus, "There are no unsent award notice emails ready.", "error");

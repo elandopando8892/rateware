@@ -179,6 +179,11 @@ assert.match(rfxEventsSource, /decisionBadgesForBid/, "Bid Room should explain d
 assert.match(rfxEventsSource, /renderDecisionScorecard/, "Bid Room should render side-by-side decision scorecards");
 assert.match(rfxEventsSource, /Best overall score/, "Bid Room award reasons should include best-overall score");
 assert.match(rfxEventsSource, /function awardReadinessSnapshot/, "Bid Room should calculate award closeout readiness");
+assert.match(rfxEventsSource, /function awardPreflightIssues/, "Bid Room award closeout should classify blocking award readiness issues");
+assert.match(rfxEventsSource, /function blockIfAwardPreflightFails/, "Bid Room award closeout should block unsafe Rateware or Gmail actions");
+assert.match(rfxEventsSource, /blockIfAwardPreflightFails\("closeout"\)/, "Bid Room should guard Rateware closeout with award preflight checks");
+assert.match(rfxEventsSource, /blockIfAwardPreflightFails\("generate_notices"\)/, "Bid Room should guard award notice generation with award preflight checks");
+assert.match(rfxEventsSource, /blockIfAwardPreflightFails\("send_notices"\)/, "Bid Room should guard award notice sending with award preflight checks");
 assert.match(rfxEventsSource, /function applyRecommendedAwardDecisions/, "Bid Room should save recommended primary awards in bulk");
 assert.match(rfxEventsSource, /function renderAwardNoticeQueue/, "Bid Room should render award notice queue from generated drafts");
 assert.match(rfxEventsSource, /data-rfx-mark-award-notice/, "Bid Room should update award notice draft status from Step 6");
