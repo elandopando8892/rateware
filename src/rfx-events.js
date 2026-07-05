@@ -196,6 +196,8 @@ const rfxAwardLanes = document.querySelector("#rfx-award-lanes");
 const rfxAwardPrimary = document.querySelector("#rfx-award-primary");
 const rfxAwardBackup = document.querySelector("#rfx-award-backup");
 const rfxAwardRateware = document.querySelector("#rfx-award-rateware");
+const rfxAwardReadiness = document.querySelector("#rfx-award-readiness");
+const rfxApplyRecommendedAwardsButton = document.querySelector("#rfx-apply-recommended-awards");
 const rfxCloseoutAwardsButton = document.querySelector("#rfx-closeout-awards-to-rateware");
 const rfxRefreshAwardsButton = document.querySelector("#rfx-refresh-awards");
 const rfxGenerateAwardNoticesButton = document.querySelector("#rfx-generate-award-notices");
@@ -1895,6 +1897,74 @@ function sendableAwardNoticeIds(rows = awardNoticeDraftRows()) {
     .map((message) => String(message.id));
 }
 
+function recommendedAwardCandidates() {
+  return awardLaneRows()
+    .map(({ lane, bids }) => {
+      const hasPrimary = bids.some((row) => row.invitation.award_role === "primary");
+      return {
+        lane,
+        bids,
+        recommended: bids[0],
+        hasPrimary
+      };
+    })
+    .filter((row) => !row.hasPrimary && row.recommended?.invitation?.id);
+}
+
+function awardReadinessSnapshot() {
+  const lanes = awardLaneRows();
+  const invitations = currentLanes.flatMap((lane) => activeInvitations(lane));
+  const primary = invitations.filter((item) => item.award_role === "primary");
+  const pendingCloseout = primary.filter((item) => !item.rate_staging_id);
+  const noticeRows = awardNoticeDraftRows();
+  const sendable = sendableAwardNoticeIds(noticeRows);
+  const missingPrimary = lanes.filter(({ bids }) => !bids.some((row) => row.invitation.award_role === "primary"));
+  const riskFlags = lanes.reduce((sum, { bids }) => sum + (bids[0]?.decision?.risk_flags?.length || 0), 0);
+  const weakRecommended = lanes.filter(({ bids }) => Number(bids[0]?.decision?.score || 0) < 55);
+  return {
+    lanes,
+    primary,
+    pendingCloseout,
+    noticeRows,
+    sendable,
+    missingPrimary,
+    riskFlags,
+    weakRecommended,
+    recommendations: recommendedAwardCandidates()
+  };
+}
+
+function renderAwardReadiness() {
+  if (!rfxAwardReadiness) return;
+  if (!selectedEventId) {
+    rfxAwardReadiness.innerHTML = "Select a bid event to inspect closeout readiness.";
+    if (rfxApplyRecommendedAwardsButton) rfxApplyRecommendedAwardsButton.disabled = true;
+    return;
+  }
+  const snapshot = awardReadinessSnapshot();
+  const lanesCount = snapshot.lanes.length;
+  const awardedCount = snapshot.primary.length;
+  const decisionTone = lanesCount && !snapshot.missingPrimary.length ? "success" : lanesCount ? "warning" : "neutral";
+  const riskTone = snapshot.weakRecommended.length || snapshot.riskFlags ? "warning" : "success";
+  const closeoutTone = snapshot.pendingCloseout.length ? "warning" : snapshot.primary.length ? "success" : "neutral";
+  const noticesTone = snapshot.sendable.length ? "warning" : snapshot.noticeRows.length ? "success" : "neutral";
+  if (rfxApplyRecommendedAwardsButton) {
+    rfxApplyRecommendedAwardsButton.disabled = !snapshot.recommendations.length;
+    rfxApplyRecommendedAwardsButton.textContent = snapshot.recommendations.length
+      ? `Award ${formatNumber(snapshot.recommendations.length)} recommended`
+      : "Award recommended";
+  }
+  rfxAwardReadiness.innerHTML = `
+    <div class="rfx-award-readiness-grid">
+      <span data-tone="${decisionTone}"><b>${formatNumber(awardedCount)} / ${formatNumber(lanesCount)}</b> lanes awarded</span>
+      <span data-tone="${riskTone}"><b>${formatNumber(snapshot.riskFlags)}</b> top-choice risk flag(s)</span>
+      <span data-tone="${closeoutTone}"><b>${formatNumber(snapshot.pendingCloseout.length)}</b> Rateware closeout pending</span>
+      <span data-tone="${noticesTone}"><b>${formatNumber(snapshot.sendable.length)}</b> notice email(s) ready</span>
+    </div>
+    ${snapshot.weakRecommended.length ? `<p>${formatNumber(snapshot.weakRecommended.length)} lane(s) have weak recommended scores. Review before applying awards in bulk.</p>` : ""}
+  `;
+}
+
 function updateAwardNoticeControls() {
   const rows = awardNoticeDraftRows();
   const sendableIds = sendableAwardNoticeIds(rows);
@@ -1942,6 +2012,7 @@ function updateAwardMetrics() {
       ? `Create ${formatNumber(pendingCloseout)} Rateware row${pendingCloseout === 1 ? "" : "s"}`
       : "Create Rateware rows";
   }
+  renderAwardReadiness();
   updateAwardNoticeControls();
 }
 
@@ -4018,6 +4089,46 @@ async function clearRfxAwardDecision(invitationId) {
   }
 }
 
+async function applyRecommendedAwardDecisions() {
+  if (!selectedEventId) return;
+  const candidates = recommendedAwardCandidates();
+  if (!candidates.length) {
+    setStatus(rfxAwardStatus, "Every lane with bids already has a primary award.", "neutral");
+    return;
+  }
+  const weak = candidates.filter((row) => Number(row.recommended?.decision?.score || 0) < 55).length;
+  const copy = weak
+    ? `Award ${candidates.length} recommended carrier(s)? ${weak} have weak scores and should be reviewed.`
+    : `Award ${candidates.length} recommended carrier(s) as primary awards?`;
+  if (!window.confirm(copy)) return;
+  if (rfxApplyRecommendedAwardsButton) rfxApplyRecommendedAwardsButton.disabled = true;
+  setStatus(rfxAwardStatus, `Applying ${formatNumber(candidates.length)} recommended award(s)...`);
+  let saved = 0;
+  const failed = [];
+  for (const candidate of candidates) {
+    const row = candidate.recommended;
+    const reason = decisionRecommendation(row, 1, candidate.bids) || awardReasonDefault(row, 1);
+    try {
+      await awardRfxLaneVendor(row.invitation.id, {
+        award_role: "primary",
+        award_reason: reason || "Recommended procurement award"
+      });
+      saved += 1;
+    } catch (error) {
+      failed.push(`${laneRoute(candidate.lane)}: ${error.message}`);
+    }
+  }
+  await loadDetail(selectedEventId);
+  activateWorkbenchView("award");
+  setStatus(
+    rfxAwardStatus,
+    failed.length
+      ? `${formatNumber(saved)} award(s) saved. ${formatNumber(failed.length)} failed: ${failed.slice(0, 2).join(" | ")}`
+      : `${formatNumber(saved)} recommended award(s) saved.`,
+    failed.length ? "warning" : "success"
+  );
+}
+
 async function closeoutSelectedAwardsToRateware() {
   if (!selectedEventId) return;
   const pending = currentLanes
@@ -4702,6 +4813,7 @@ rfxRefreshAwardsButton?.addEventListener("click", async () => {
 });
 
 rfxCloseoutAwardsButton?.addEventListener("click", closeoutSelectedAwardsToRateware);
+rfxApplyRecommendedAwardsButton?.addEventListener("click", applyRecommendedAwardDecisions);
 rfxGenerateAwardNoticesButton?.addEventListener("click", generateAwardNoticeDrafts);
 rfxSendAwardNoticesButton?.addEventListener("click", sendAwardNoticeDrafts);
 
