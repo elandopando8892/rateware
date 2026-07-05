@@ -186,6 +186,7 @@ const rfxOpsHealth = document.querySelector("#rfx-ops-health");
 const rfxOpsOutreachLink = document.querySelector("#rfx-ops-outreach-link");
 const rfxOpsStageRail = document.querySelector("#rfx-ops-stage-rail");
 const rfxOpsNextAction = document.querySelector("#rfx-ops-next-action");
+const rfxLaunchReadiness = document.querySelector("#rfx-launch-readiness");
 const rfxManagerFlow = document.querySelector("#rfx-manager-flow");
 const rfxManagerFocus = document.querySelector("#rfx-manager-focus");
 const rfxManagerQueue = document.querySelector("#rfx-manager-queue");
@@ -1524,6 +1525,156 @@ function processStats() {
   };
 }
 
+function readinessLabel(status) {
+  return {
+    ready: "Ready",
+    attention: "Needs review",
+    blocker: "Blocked"
+  }[status] || "Needs review";
+}
+
+function readinessActionButton(action, label = "Open") {
+  if (!action) return "";
+  return `<button class="secondary small-button" type="button" data-rfx-wizard-go="${escapeHtml(action)}">${escapeHtml(label)}</button>`;
+}
+
+function bidRoomReadinessSnapshot() {
+  const stats = processStats();
+  const channel = rfxOutreachChannel?.value || "multi";
+  const template = selectedOutreachTemplateDraft();
+  const drafts = draftRowsForEvent();
+  const sendableDrafts = selectableEmailDrafts(drafts);
+  const lanesMissingShortlist = currentLanes.filter((lane) => !activeInvitations(lane).length).length;
+  const lanesMissingInvite = currentLanes.filter((lane) => activeInvitations(lane).length && !activeInvitations(lane).some(hasInvitationStarted)).length;
+  const targetsMissingChannel = Math.max(0, stats.targets.length - stats.readyTargets.length);
+  const awardSnapshot = awardReadinessSnapshot();
+  const primaryAwards = awardSnapshot.lanes.reduce((sum, { bids }) => sum + bids.filter((row) => row.invitation.award_role === "primary").length, 0);
+  const checks = [
+    {
+      key: "event",
+      label: "Event",
+      status: selectedEvent ? "ready" : "blocker",
+      metric: selectedEvent?.rfx_id || "-",
+      detail: selectedEvent ? `${selectedEvent.status || "draft"} | ${selectedEvent.due_date || "No due date"}` : "Create or select a bid event.",
+      action: "setup"
+    },
+    {
+      key: "lanes",
+      label: "Business book",
+      status: stats.lanes > 0 ? "ready" : "blocker",
+      metric: formatNumber(stats.lanes),
+      detail: stats.lanes ? `${formatNumber(stats.lanes)} lane(s) loaded.` : "Upload the RFx lane template.",
+      action: "lanes"
+    },
+    {
+      key: "participants",
+      label: "Participants",
+      status: stats.invitations.length ? lanesMissingShortlist ? "attention" : "ready" : "blocker",
+      metric: formatNumber(stats.invitations.length),
+      detail: stats.invitations.length
+        ? lanesMissingShortlist ? `${formatNumber(lanesMissingShortlist)} lane(s) still need carriers.` : "All lanes have at least one carrier."
+        : "Select carriers from CRM or participant template.",
+      action: "carriers"
+    },
+    {
+      key: "contacts",
+      label: "Contactability",
+      status: stats.targets.length ? targetsMissingChannel ? "attention" : "ready" : "blocker",
+      metric: `${formatNumber(stats.readyTargets.length)} / ${formatNumber(stats.targets.length)}`,
+      detail: stats.targets.length
+        ? targetsMissingChannel ? `${formatNumber(targetsMissingChannel)} target(s) missing ${channel} contact data.` : "Targets have usable contact channel."
+        : "Add participants before invite QA.",
+      action: "carriers"
+    },
+    {
+      key: "template",
+      label: "Invite template",
+      status: template ? "ready" : "blocker",
+      metric: template ? "Selected" : "-",
+      detail: template ? template.name || "Template ready." : "Select an invitation template.",
+      action: "outreach"
+    },
+    {
+      key: "drafts",
+      label: "Draft queue",
+      status: drafts.length ? sendableDrafts.length ? "ready" : "attention" : "attention",
+      metric: formatNumber(drafts.length),
+      detail: drafts.length
+        ? `${formatNumber(sendableDrafts.length)} email draft(s) sendable.`
+        : "Generate individualized invitation drafts.",
+      action: "outreach"
+    },
+    {
+      key: "launch",
+      label: "Invite launch",
+      status: stats.startedInvitations.length ? lanesMissingInvite ? "attention" : "ready" : "attention",
+      metric: formatNumber(stats.startedInvitations.length),
+      detail: stats.startedInvitations.length
+        ? lanesMissingInvite ? `${formatNumber(lanesMissingInvite)} shortlisted lane(s) still need invite launch.` : "Invitations have started."
+        : "Send or mark invitations before waiting for bids.",
+      action: "outreach"
+    },
+    {
+      key: "bids",
+      label: "Live bids",
+      status: stats.bids.length ? "ready" : "attention",
+      metric: formatNumber(stats.bids.length),
+      detail: stats.bids.length ? `${formatNumber(stats.lanesWithBids)} lane(s) have bids.` : "No carrier bids received yet.",
+      action: "responses"
+    },
+    {
+      key: "award",
+      label: "Award closeout",
+      status: primaryAwards ? awardSnapshot.missingPrimary.length ? "attention" : "ready" : "attention",
+      metric: `${formatNumber(primaryAwards)} / ${formatNumber(awardSnapshot.lanes.length)}`,
+      detail: awardSnapshot.lanes.length
+        ? primaryAwards ? `${formatNumber(awardSnapshot.missingPrimary.length)} lane(s) still missing primary award.` : "Review live bids before award."
+        : "Awards unlock after bids are received.",
+      action: "award"
+    }
+  ];
+  return {
+    checks,
+    blockers: checks.filter((check) => check.status === "blocker"),
+    warnings: checks.filter((check) => check.status === "attention"),
+    ready: checks.filter((check) => check.status === "ready")
+  };
+}
+
+function renderBidRoomLaunchReadiness() {
+  if (!rfxLaunchReadiness) return;
+  const snapshot = bidRoomReadinessSnapshot();
+  const launchReady = Boolean(selectedEvent) && !snapshot.blockers.length;
+  const nextIssue = snapshot.blockers[0] || snapshot.warnings[0];
+  rfxLaunchReadiness.innerHTML = `
+    <div class="bid-room-readiness-header">
+      <div>
+        <p class="eyebrow">Launch QA</p>
+        <h3>${launchReady ? "Bid Room can operate" : "Bid Room needs setup"}</h3>
+        <small>${launchReady
+          ? `${formatNumber(snapshot.warnings.length)} item(s) need monitoring, but no launch blockers remain.`
+          : nextIssue ? nextIssue.detail : "Select a bid event to inspect readiness."}</small>
+      </div>
+      <span class="status-pill" data-tone="${launchReady ? "success" : snapshot.blockers.length ? "danger" : "warning"}">
+        ${launchReady ? "Operational" : snapshot.blockers.length ? `${formatNumber(snapshot.blockers.length)} blocker(s)` : `${formatNumber(snapshot.warnings.length)} warning(s)`}
+      </span>
+    </div>
+    <div class="bid-room-readiness-grid">
+      ${snapshot.checks.map((check) => `
+        <article data-readiness="${escapeHtml(check.status)}">
+          <span>${escapeHtml(check.label)}</span>
+          <strong>${escapeHtml(check.metric)}</strong>
+          <small>${escapeHtml(check.detail)}</small>
+          <div>
+            <b>${escapeHtml(readinessLabel(check.status))}</b>
+            ${readinessActionButton(check.action)}
+          </div>
+        </article>
+      `).join("")}
+    </div>
+  `;
+}
+
 function managerStageAction(stepKey) {
   if (stepKey === "carriers") {
     return `<button class="secondary small-button" type="button" data-rfx-wizard-go="carriers" ${selectedEventId ? "" : "disabled"}>Select participants</button>`;
@@ -2366,6 +2517,7 @@ function renderRfxOpsStrip() {
   if (!rfxOpsSubtitle || !rfxOpsHealth) return;
   renderOpsStageRail();
   renderOpsNextAction();
+  renderBidRoomLaunchReadiness();
   if (!selectedEvent) {
     if (rfxOpsTitle) rfxOpsTitle.textContent = "Select or create a bid event";
     rfxOpsSubtitle.textContent = "Start with setup, import lanes, shortlist carriers, then launch invitations and monitor bids.";

@@ -15165,6 +15165,114 @@ textarea:focus,
   font-weight: 720;
 }
 
+.bid-room-readiness-panel {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+  border: 1px solid #d8e0e7;
+  border-radius: 7px;
+  background: #fbfcfd;
+  padding: 8px;
+}
+
+.bid-room-readiness-header {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.bid-room-readiness-header h3 {
+  margin: 0;
+  color: #121c26;
+  font-size: 0.92rem;
+  letter-spacing: 0;
+}
+
+.bid-room-readiness-header small {
+  display: block;
+  margin-top: 2px;
+  color: #52616d;
+  font-size: 0.7rem;
+  font-weight: 740;
+}
+
+.bid-room-readiness-grid {
+  display: grid;
+  grid-template-columns: repeat(9, minmax(96px, 1fr));
+  gap: 5px;
+  overflow-x: auto;
+  padding-bottom: 1px;
+}
+
+.bid-room-readiness-grid article {
+  display: grid;
+  gap: 3px;
+  min-width: 96px;
+  border: 1px solid #d7e0e7;
+  border-radius: 6px;
+  background: #ffffff;
+  padding: 6px;
+}
+
+.bid-room-readiness-grid article[data-readiness="ready"] {
+  border-color: #b8d9ca;
+  background: #f4fbf7;
+}
+
+.bid-room-readiness-grid article[data-readiness="attention"] {
+  border-color: #ead18b;
+  background: #fffaf0;
+}
+
+.bid-room-readiness-grid article[data-readiness="blocker"] {
+  border-color: #efc2bd;
+  background: #fff7f6;
+}
+
+.bid-room-readiness-grid span {
+  color: #667480;
+  font-size: 0.58rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.bid-room-readiness-grid strong {
+  color: #17212b;
+  font-size: 0.88rem;
+  line-height: 1;
+}
+
+.bid-room-readiness-grid small {
+  min-height: 28px;
+  color: #52616d;
+  font-size: 0.64rem;
+  font-weight: 720;
+  line-height: 1.25;
+}
+
+.bid-room-readiness-grid article > div {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  justify-content: space-between;
+  border-top: 1px solid #e4ebf0;
+  padding-top: 4px;
+}
+
+.bid-room-readiness-grid b {
+  color: #40505d;
+  font-size: 0.6rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.bid-room-readiness-grid .small-button {
+  min-height: 22px;
+  padding: 2px 6px;
+  font-size: 0.6rem;
+}
+
 .bid-room-flow-shell {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(230px, 300px);
