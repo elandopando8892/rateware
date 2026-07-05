@@ -3531,6 +3531,20 @@ function selectedSendableDraftIds(rows = draftRowsForEvent()) {
   return selectableEmailDrafts(selectedDraftRows(rows)).map((message) => String(message.id));
 }
 
+function confirmBidRoomBulkAction(action, ids = []) {
+  const count = formatNumber(ids.length);
+  if (action === "auto_shortlist") {
+    return window.confirm(`Auto-shortlist carriers for ${count} selected lane(s)? Rateware will add recommended CRM carriers to the Bid Room shortlist.`);
+  }
+  if (action === "mark_invited") {
+    return window.confirm(`Mark ${count} selected participant row(s) as invited? Use this only after the invitation touchpoint is ready or already sent.`);
+  }
+  if (action === "archive_participants") {
+    return window.confirm(`Archive ${count} selected participant row(s)? This removes them from the active Bid Room shortlist but keeps CRM vendors and lane history.`);
+  }
+  return true;
+}
+
 function confirmDraftQueueAction(action, ids = []) {
   const count = formatNumber(ids.length);
   if (action === "send") {
@@ -5238,6 +5252,7 @@ copyRfxSummaryButton?.addEventListener("click", async () => {
 autoShortlistButton?.addEventListener("click", async () => {
   const ids = [...selectedLaneIds];
   if (!ids.length) return;
+  if (!confirmBidRoomBulkAction("auto_shortlist", ids)) return;
   autoShortlistButton.disabled = true;
   try {
     await autoShortlistLaneIds(ids, actionStatus);
@@ -5251,6 +5266,7 @@ autoShortlistButton?.addEventListener("click", async () => {
 inviteSelectedButton?.addEventListener("click", async () => {
   const ids = [...selectedInvitationIds];
   if (!ids.length) return;
+  if (!confirmBidRoomBulkAction("mark_invited", ids)) return;
   setStatus(actionStatus, "Marking invitations as sent...");
   try {
     const result = await inviteRfxLaneVendors(ids);
@@ -5265,6 +5281,7 @@ inviteSelectedButton?.addEventListener("click", async () => {
 archiveSelectedButton?.addEventListener("click", async () => {
   const ids = [...selectedInvitationIds];
   if (!ids.length) return;
+  if (!confirmBidRoomBulkAction("archive_participants", ids)) return;
   setStatus(actionStatus, "Archiving invitation rows...");
   try {
     const result = await archiveRfxLaneVendors(ids);

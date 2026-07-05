@@ -96,6 +96,10 @@ assert.match(rfxEventsHtml, /manual-shortlist-template-name/, "Bid Room should r
 assert.match(rfxEventsHtml, /load-manual-shortlist-template/, "Bid Room should render a saved participant template loader");
 assert.match(rfxEventsHtml, /update-manual-shortlist-template/, "Bid Room should render an update button for selected participant templates");
 assert.match(rfxEventsHtml, /delete-manual-shortlist-template/, "Bid Room should render a delete button for selected participant templates");
+assert.match(rfxEventsSource, /function confirmBidRoomBulkAction/, "Bid Room should require human confirmation for shortlist and participant bulk actions");
+assert.match(rfxEventsSource, /confirmBidRoomBulkAction\("auto_shortlist", ids\)/, "Bid Room should confirm before auto-shortlisting selected lanes");
+assert.match(rfxEventsSource, /confirmBidRoomBulkAction\("mark_invited", ids\)/, "Bid Room should confirm before marking selected participants invited");
+assert.match(rfxEventsSource, /confirmBidRoomBulkAction\("archive_participants", ids\)/, "Bid Room should confirm before archiving selected participants");
 assert.match(rfxEventsHtml, /rfx-outreach-sender/, "Bid Room Step 4 should include a sender account selector");
 assert.match(rfxEventsHtml, /sales@heymarksman\.com/, "Bid Room Step 4 should use sales@heymarksman.com as the approved sender");
 assert.doesNotMatch(rfxEventsHtml, /carriers@xbfreight\.com/, "Bid Room Step 4 should not offer legacy sender accounts");
