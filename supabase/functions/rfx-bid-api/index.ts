@@ -765,10 +765,143 @@ async function postCarrierBidRoomChatMessage(
   return { thread, message: { ...messageResult.data, google_chat_sync_status: sync.status }, google_chat_configured: sync.status !== "not_configured" || Boolean(GOOGLE_CHAT_WEBHOOK_URL) };
 }
 
+function rangeScore(value: number | null, best: number | null, worst: number | null, weight: number, lowerIsBetter = true) {
+  if (value === null) return 0;
+  if (best === null || worst === null || best === worst) return Math.round(weight * 0.82);
+  const ratio = Math.min(1, Math.max(0, (value - best) / (worst - best)));
+  return Math.round(weight * (lowerIsBetter ? 1 - ratio : ratio));
+}
+
+function timestampValue(value: unknown) {
+  const text = cleanText(value);
+  if (!text) return null;
+  const time = new Date(text).getTime();
+  return Number.isNaN(time) ? null : time;
+}
+
+function commercialModelScore(row: Record<string, unknown>) {
+  const model = cleanText(row.commercial_model);
+  const marksmanMargin = cleanNumber(row.marksman_margin_pct);
+  const carrierShare = cleanNumber(row.carrier_share_pct);
+  if (model === "direct_cost_plus") {
+    if (marksmanMargin !== null && marksmanMargin >= 2 && marksmanMargin <= 5) return 10;
+    return marksmanMargin !== null ? 8 : 6;
+  }
+  if (model === "carrier_share") {
+    if (carrierShare !== null && carrierShare >= 2 && carrierShare <= 5) return 9;
+    return carrierShare !== null ? 7 : 5;
+  }
+  if (model === "xbf_buy_sell") return 7;
+  return 3;
+}
+
+function liveBoardContext(rows: Record<string, unknown>[]) {
+  const amounts = rows.map((row) => cleanNumber(row.amount)).filter((value): value is number => value !== null);
+  const capacities = rows.map((row) => cleanNumber(row.weekly_capacity)).filter((value): value is number => value !== null);
+  const transits = rows.map((row) => cleanNumber(row.transit_days)).filter((value): value is number => value !== null);
+  const pickupTimes = rows.map((row) => timestampValue(row.eta_pickup)).filter((value): value is number => value !== null);
+  return {
+    minAmount: amounts.length ? Math.min(...amounts) : null,
+    maxAmount: amounts.length ? Math.max(...amounts) : null,
+    maxCapacity: capacities.length ? Math.max(...capacities) : null,
+    minCapacity: capacities.length ? Math.min(...capacities) : null,
+    minTransit: transits.length ? Math.min(...transits) : null,
+    maxTransit: transits.length ? Math.max(...transits) : null,
+    minPickup: pickupTimes.length ? Math.min(...pickupTimes) : null,
+    maxPickup: pickupTimes.length ? Math.max(...pickupTimes) : null
+  };
+}
+
+function liveBoardRowScore(row: Record<string, unknown>, context: Record<string, number | null>) {
+  const amount = cleanNumber(row.amount);
+  const capacity = cleanNumber(row.weekly_capacity);
+  const transit = cleanNumber(row.transit_days);
+  const pickupTime = timestampValue(row.eta_pickup);
+  const equipmentAvailable = cleanBoolean(row.equipment_available);
+  const mirrorEnabled = cleanBoolean(row.mirror_account_enabled) === true;
+  const validationStatus = cleanText(row.availability_validation_status);
+  const bestAlternative = cleanBoolean(row.best_alternative_offered) === true;
+  const badges: string[] = [];
+  const riskFlags: string[] = [];
+
+  const priceScore = rangeScore(amount, context.minAmount || null, context.maxAmount || null, 35, true);
+  if (amount !== null && context.minAmount !== null && amount <= context.minAmount) badges.push("Best price");
+  else if (amount !== null && context.minAmount !== null && amount <= context.minAmount * 1.05) badges.push("Within 5%");
+  else riskFlags.push("Price gap");
+
+  const capacityScore = rangeScore(capacity, context.minCapacity || null, context.maxCapacity || null, 15, false);
+  if (capacity === null) riskFlags.push("No capacity");
+  else if (context.maxCapacity !== null && capacity >= context.maxCapacity) badges.push("Top capacity");
+  else badges.push("Capacity stated");
+
+  const transitScore = rangeScore(transit, context.minTransit || null, context.maxTransit || null, 10, true);
+  if (transit === null) riskFlags.push("No transit");
+  else if (context.minTransit !== null && transit <= context.minTransit) badges.push("Fast transit");
+
+  const etaScore = rangeScore(pickupTime, context.minPickup || null, context.maxPickup || null, 5, true);
+  if (pickupTime !== null) badges.push("Pickup ETA");
+  else if (equipmentAvailable === true) riskFlags.push("Missing ETA");
+
+  let availabilityScore = 2;
+  if (equipmentAvailable === true) {
+    availabilityScore = 12;
+    badges.push("Equipment available");
+  } else if (equipmentAvailable === false) {
+    availabilityScore = -8;
+    riskFlags.push("Equipment unavailable");
+  } else {
+    riskFlags.push("Availability pending");
+  }
+
+  let validationScore = 0;
+  if (validationStatus === "validated") {
+    validationScore = 10;
+    badges.push("Validated");
+  } else if (validationStatus === "mirror_enabled") {
+    validationScore = 8;
+    badges.push("Mirror enabled");
+  } else if (validationStatus === "mirror_requested" || mirrorEnabled) {
+    validationScore = 5;
+    badges.push("Mirror requested");
+  } else if (validationStatus === "rejected") {
+    validationScore = -10;
+    riskFlags.push("Validation rejected");
+  }
+  if (cleanText(row.unit_details)) badges.push("Unit details");
+
+  const commercialScore = commercialModelScore(row);
+  if (cleanText(row.commercial_model)) badges.push("Commercial model");
+  else riskFlags.push("No commercial model");
+
+  const alternativeScore = bestAlternative ? 5 : 0;
+  if (bestAlternative) badges.push("Alternative offer");
+
+  const score = Math.max(0, Math.min(100, Math.round(
+    priceScore +
+    capacityScore +
+    transitScore +
+    etaScore +
+    availabilityScore +
+    validationScore +
+    commercialScore +
+    alternativeScore
+  )));
+  const bucket = score >= 85 ? "leading" : score >= 72 ? "strong" : score >= 58 ? "competitive" : "needs_review";
+  return {
+    score,
+    score_bucket: bucket,
+    badges: badges.slice(0, 5),
+    risk_flags: riskFlags.slice(0, 5),
+    price_signal: amount === null ? "No rate" : priceScore >= 30 ? "Best rate range" : priceScore >= 20 ? "Competitive rate" : "Rate gap",
+    capacity_signal: capacity === null ? "No capacity" : capacityScore >= 12 ? "High capacity" : "Capacity stated",
+    eta_signal: pickupTime === null ? "ETA pending" : etaScore >= 4 ? "Fast pickup" : "Pickup scheduled"
+  };
+}
+
 function liveBoardFromRows(currentInvitation: Record<string, unknown>, peerRows: Record<string, unknown>[]) {
   const event = relationRecord(currentInvitation.rfx_events);
   const visibility = bidRoomVisibility(event);
-  const rows = [currentInvitation, ...peerRows]
+  const baseRows = [currentInvitation, ...peerRows]
     .filter((row) => cleanNumber(row.bid_rate) !== null)
     .map((row) => ({
       id: row.id,
@@ -783,34 +916,57 @@ function liveBoardFromRows(currentInvitation: Record<string, unknown>, peerRows:
       alternative_equipment: cleanText(row.alternative_equipment),
       alternative_units: cleanNumber(row.alternative_units),
       equipment_available: cleanBoolean(row.equipment_available),
+      unit_details: cleanText(row.unit_details),
       eta_pickup: cleanText(row.eta_pickup),
       eta_delivery: cleanText(row.eta_delivery),
+      mirror_account_enabled: cleanBoolean(row.mirror_account_enabled),
+      availability_validation_status: cleanText(row.availability_validation_status),
       responded_at: cleanText(row.responded_at || row.updated_at),
       vendor_name: cleanText(relationRecord(row.vendors).vendor_name),
       vendor_domain: cleanText(relationRecord(row.vendors).domain),
       is_current: row.id === currentInvitation.id
-    }))
-    .sort((a, b) => a.amount - b.amount);
+    }));
+  const context = liveBoardContext(baseRows);
+  const rows = baseRows
+    .map((row) => {
+      const score = liveBoardRowScore(row, context);
+      return {
+        ...row,
+        marketplace_score: score.score,
+        score_bucket: score.score_bucket,
+        marketplace_badges: score.badges,
+        risk_flags: score.risk_flags,
+        price_signal: score.price_signal,
+        capacity_signal: score.capacity_signal,
+        eta_signal: score.eta_signal
+      };
+    })
+    .sort((a, b) => b.marketplace_score - a.marketplace_score || a.amount - b.amount);
   const currentIndex = rows.findIndex((row) => row.is_current);
   const currentAmount = cleanNumber(currentInvitation.bid_rate);
-  const bestAmount = rows[0]?.amount || null;
+  const bestAmount = context.minAmount;
+  const bestScore = rows[0]?.marketplace_score || null;
+  const currentScore = currentIndex >= 0 ? rows[currentIndex].marketplace_score : null;
   const currency = rows[0]?.currency || cleanText(currentInvitation.currency) || "USD";
   const deltaToBest = currentAmount !== null && bestAmount !== null ? currentAmount - bestAmount : null;
   const deltaPct = currentAmount !== null && bestAmount ? deltaToBest / bestAmount : null;
+  const scoreGap = currentScore !== null && bestScore !== null ? bestScore - currentScore : null;
   const positionSignal = currentAmount === null
     ? (rows.length ? "Market is active" : "Awaiting first offer")
     : currentIndex === 0
-      ? "Leading offer"
-      : Number(deltaPct) <= 0.05
-        ? "Competitive range"
-        : "Needs pricing review";
+      ? "Leading capacity offer"
+      : Number(scoreGap) <= 5
+        ? "Operationally competitive"
+        : Number(deltaPct) <= 0.05
+          ? "Price competitive"
+          : "Improve capacity score";
   const guidance = currentAmount === null
-    ? "Submit your all-in offer to unlock your anonymous rank."
+    ? "Submit your all-in offer, capacity, ETA and validation details to unlock your marketplace score."
     : currentIndex === 0
-      ? "Your offer is currently leading. Keep capacity and assumptions current."
-      : Number(deltaPct) <= 0.05
-        ? "You are close to the leading range. Review capacity, transit, and price before the deadline."
-        : "Your offer is behind the leading range. Reprice only if this lane is strategic.";
+      ? "Your offer is leading on the full operational score. Keep capacity, ETA and assumptions current."
+      : Number(scoreGap) <= 5
+        ? "You are close to the leading operational score. Improve ETA, capacity or validation before repricing."
+        : "Your offer trails the marketplace score. Review rate, capacity, ETA and validation before the deadline.";
   const amountDisplayFor = (row: { is_current: boolean; amount: number }) => {
     if (row.is_current) return "Your submitted offer";
     if (visibility.mode === "private") return "Private";
@@ -824,6 +980,7 @@ function liveBoardFromRows(currentInvitation: Record<string, unknown>, peerRows:
   return {
     updated_at: new Date().toISOString(),
     visibility,
+    marketplace_mode: "capacity_score",
     award_outcome: {
       status: awardOutcome(currentInvitation),
       role: cleanText(currentInvitation.award_role) || null,
@@ -837,10 +994,16 @@ function liveBoardFromRows(currentInvitation: Record<string, unknown>, peerRows:
     best_rate_visible: visibility.competitor_rates_visible || currentIndex === 0,
     currency,
     position_signal: positionSignal,
+    marketplace_signal: positionSignal,
+    current_score: currentScore,
+    current_score_bucket: currentIndex >= 0 ? rows[currentIndex].score_bucket : null,
+    current_badges: currentIndex >= 0 ? rows[currentIndex].marketplace_badges : [],
+    leader_score: bestScore,
     guidance: visibility.mode === "private"
       ? "This event is running in private mode. Procurement can see all offers, but carriers cannot see competitors."
       : guidance,
     delta_to_leader: deltaToBest,
+    score_gap_to_leader: scoreGap,
     delta_bucket: deltaToBest === null
       ? null
       : deltaToBest <= 0
@@ -862,6 +1025,13 @@ function liveBoardFromRows(currentInvitation: Record<string, unknown>, peerRows:
       currency: row.currency,
       weekly_capacity: row.weekly_capacity,
       transit_days: row.transit_days,
+      marketplace_score: row.is_current || visibility.competitor_rates_visible ? row.marketplace_score : null,
+      score_bucket: row.score_bucket,
+      marketplace_badges: row.marketplace_badges,
+      risk_flags: row.risk_flags,
+      price_signal: row.price_signal,
+      capacity_signal: row.capacity_signal,
+      eta_signal: row.eta_signal,
       commercial_model: row.commercial_model,
       marksman_margin_pct: row.is_current || visibility.competitor_rates_visible ? row.marksman_margin_pct : null,
       carrier_share_pct: row.is_current || visibility.competitor_rates_visible ? row.carrier_share_pct : null,
@@ -869,8 +1039,11 @@ function liveBoardFromRows(currentInvitation: Record<string, unknown>, peerRows:
       alternative_equipment: row.alternative_equipment,
       alternative_units: row.alternative_units,
       equipment_available: row.equipment_available,
+      unit_details: row.is_current || visibility.competitor_rates_visible ? row.unit_details : null,
       eta_pickup: row.eta_pickup,
       eta_delivery: row.eta_delivery,
+      mirror_account_enabled: row.mirror_account_enabled,
+      availability_validation_status: row.availability_validation_status,
       responded_at: row.responded_at,
       is_current: row.is_current
     }))

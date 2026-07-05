@@ -193,6 +193,14 @@ assert.match(rfxBidSource, /function bidDraftWarnings/, "Carrier portal should v
 assert.match(rfxBidSource, /function updateBidReviewSummary/, "Carrier portal should update the review summary as carriers edit");
 assert.match(stylesSource, /carrier-bid-workflow/, "Carrier portal guided bid flow should have compact navigation styling");
 assert.match(stylesSource, /bid-review-summary-grid/, "Carrier portal review summary should have card styling");
+assert.match(rfxBidApiSource, /function liveBoardRowScore/, "Carrier portal API should score bids for the live capacity marketplace");
+assert.match(rfxBidApiSource, /marketplace_score/, "Carrier portal API should expose marketplace score");
+assert.match(rfxBidApiSource, /score_bucket/, "Carrier portal API should expose marketplace score buckets");
+assert.match(rfxBidApiSource, /price_signal/, "Carrier portal API should explain marketplace price signals");
+assert.match(rfxBidSource, /function marketplaceBucketLabel/, "Carrier portal should label marketplace score buckets");
+assert.match(rfxBidSource, /marketplaceBadgesHtml/, "Carrier portal should render marketplace score signals");
+assert.match(stylesSource, /marketplace-score-pill/, "Carrier portal marketplace score should have compact styling");
+assert.match(stylesSource, /marketplace-badge/, "Carrier portal marketplace signals should have compact badges");
 assert.match(rfxEventsSource, /offerCommercialSummary/, "Internal Bid Room should display commercial offer summaries");
 assert.match(rfxEventsSource, /offerAvailabilitySummary/, "Internal Bid Room should display availability summaries");
 assert.match(rfxEventsSource, /AI proposes, user confirms/, "Bid Room communications should keep bid updates confirm-first");

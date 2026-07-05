@@ -161,6 +161,45 @@ function commercialSummary(row = {}) {
   return parts.filter(Boolean).join(" | ");
 }
 
+function marketplaceBucketLabel(bucket = "") {
+  const labels = {
+    leading: "Leading",
+    strong: "Strong",
+    competitive: "Competitive",
+    needs_review: "Needs review"
+  };
+  return labels[String(bucket || "").toLowerCase()] || "Unscored";
+}
+
+function marketplaceScoreTone(bucket = "") {
+  const value = String(bucket || "").toLowerCase();
+  if (value === "leading" || value === "strong") return "success";
+  if (value === "competitive") return "neutral";
+  if (value === "needs_review") return "warning";
+  return "muted";
+}
+
+function marketplaceScoreHtml(row = {}) {
+  const score = Number(row.marketplace_score);
+  const tone = marketplaceScoreTone(row.score_bucket);
+  const label = marketplaceBucketLabel(row.score_bucket);
+  if (Number.isFinite(score)) {
+    return `<span class="marketplace-score-pill" data-tone="${escapeHtml(tone)}">${escapeHtml(score)}/100 <small>${escapeHtml(label)}</small></span>`;
+  }
+  return `<span class="marketplace-score-pill masked" data-tone="${escapeHtml(tone)}">${escapeHtml(label)}</span>`;
+}
+
+function marketplaceBadgesHtml(row = {}) {
+  const badges = Array.isArray(row.marketplace_badges) ? row.marketplace_badges : [];
+  const riskFlags = Array.isArray(row.risk_flags) ? row.risk_flags : [];
+  const signals = [
+    ...badges.map((label) => ({ label, tone: "success" })),
+    ...riskFlags.map((label) => ({ label, tone: "warning" }))
+  ].slice(0, 6);
+  if (!signals.length) return `<span class="marketplace-badge muted">No signals</span>`;
+  return `<span class="marketplace-badges">${signals.map((signal) => `<span class="marketplace-badge ${escapeHtml(signal.tone)}" title="${escapeHtml(signal.label)}">${escapeHtml(signal.label)}</span>`).join("")}</span>`;
+}
+
 function numberFromInput(value) {
   const number = Number(String(value ?? "").replace(/[$,]/g, "").trim());
   return Number.isFinite(number) ? number : null;
@@ -246,7 +285,7 @@ function renderLiveBoard(liveBoard = {}) {
   const board = card.querySelector("#bid-live-board");
   if (!board) return;
   const rows = Array.isArray(liveBoard.rows) ? liveBoard.rows : [];
-  const signal = liveBoard.position_signal || "Awaiting first offer";
+  const signal = liveBoard.marketplace_signal || liveBoard.position_signal || "Awaiting first offer";
   const visibility = liveBoard.visibility || {};
   if (!rows.length) {
     board.innerHTML = `
@@ -264,6 +303,9 @@ function renderLiveBoard(liveBoard = {}) {
     `;
     return;
   }
+  const currentScore = Number(liveBoard.current_score);
+  const currentScoreText = Number.isFinite(currentScore) ? `${currentScore}/100` : "-";
+  const currentScoreTone = marketplaceScoreTone(liveBoard.current_score_bucket);
 
   board.innerHTML = `
     <div class="bid-room-section-heading">
@@ -280,6 +322,11 @@ function renderLiveBoard(liveBoard = {}) {
         <small>${escapeHtml(visibilityCopy(visibility))}</small>
       </article>
       <article>
+        <span>Your score</span>
+        <strong><span class="marketplace-score-pill" data-tone="${escapeHtml(currentScoreTone)}">${escapeHtml(currentScoreText)}</span></strong>
+        <small>${escapeHtml(marketplaceBucketLabel(liveBoard.current_score_bucket))}</small>
+      </article>
+      <article>
         <span>Your position</span>
         <strong>${liveBoard.current_rank ? `#${escapeHtml(liveBoard.current_rank)}` : "-"}</strong>
         <small>${escapeHtml(liveBoard.guidance || "Submit a bid to see your rank.")}</small>
@@ -292,15 +339,16 @@ function renderLiveBoard(liveBoard = {}) {
     </div>
     <div class="table-wrap">
       <table class="bid-live-table">
-        <thead><tr><th>Rank</th><th>Bidder</th><th>Rate visibility</th><th>Commercial</th><th>Availability</th><th>Capacity</th><th>Transit</th></tr></thead>
+        <thead><tr><th>Rank</th><th>Bidder</th><th>Score</th><th>Rate visibility</th><th>Commercial</th><th>Market signals</th><th>Capacity</th><th>Transit</th></tr></thead>
         <tbody>
           ${rows.map((row) => `
             <tr class="${row.is_current ? "is-current" : ""}">
               <td>#${escapeHtml(row.rank)}</td>
               <td>${escapeHtml(row.bidder)}</td>
+              <td>${marketplaceScoreHtml(row)}</td>
               <td>${row.amount !== null && row.amount !== undefined ? formatMoney(row.amount, row.currency) : `<span class="masked-rate">${escapeHtml(row.amount_display || "Hidden")}</span>`}</td>
               <td>${escapeHtml(commercialSummary(row))}</td>
-              <td>${escapeHtml(availabilitySummary(row))}</td>
+              <td>${marketplaceBadgesHtml(row)}</td>
               <td>${escapeHtml(row.weekly_capacity ?? "-")}</td>
               <td>${escapeHtml(row.transit_days ?? "-")}</td>
             </tr>
@@ -308,7 +356,7 @@ function renderLiveBoard(liveBoard = {}) {
         </tbody>
       </table>
     </div>
-    <p class="bid-board-note">${escapeHtml(visibilityCopy(visibility))}</p>
+    <p class="bid-board-note">Marketplace rank combines price, capacity, transit, pickup ETA, availability validation, commercial model and alternative offers. ${escapeHtml(visibilityCopy(visibility))}</p>
   `;
 }
 

@@ -1420,7 +1420,7 @@ a {
 }
 
 .bid-board-stats {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .bid-live-table tr.is-current {
@@ -1888,10 +1888,91 @@ a {
   font-weight: 860;
 }
 
+.marketplace-score-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: max-content;
+  border: 1px solid #ccd5dc;
+  border-radius: 999px;
+  background: #f8fafb;
+  color: #25313c;
+  padding: 2px 8px;
+  font-size: 0.72rem;
+  font-weight: 900;
+  line-height: 1.25;
+}
+
+.marketplace-score-pill small {
+  color: #5a6671;
+  font-size: 0.66rem;
+  font-weight: 820;
+}
+
+.marketplace-score-pill[data-tone="success"] {
+  border-color: #a8d9ca;
+  background: #eaf7f2;
+  color: #09614e;
+}
+
+.marketplace-score-pill[data-tone="neutral"] {
+  border-color: #bed0ee;
+  background: #eef5ff;
+  color: #29527d;
+}
+
+.marketplace-score-pill[data-tone="warning"] {
+  border-color: #ecd49a;
+  background: #fff7df;
+  color: #7d4f00;
+}
+
+.marketplace-score-pill.masked,
+.marketplace-score-pill[data-tone="muted"] {
+  border-color: #d9e0e5;
+  background: #f1f4f6;
+  color: #5b6670;
+}
+
+.marketplace-badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  max-width: 360px;
+}
+
+.marketplace-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  background: #edf2f4;
+  color: #42515e;
+  padding: 2px 6px;
+  font-size: 0.66rem;
+  font-weight: 860;
+  line-height: 1.25;
+}
+
+.marketplace-badge.success {
+  background: #e7f5ee;
+  color: #0e6b53;
+}
+
+.marketplace-badge.warning {
+  background: #fff3df;
+  color: #805100;
+}
+
+.marketplace-badge.muted {
+  background: #f0f3f5;
+  color: #6a7480;
+}
+
 .bid-board-stats,
 .carrier-book-summary {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
 }
 
