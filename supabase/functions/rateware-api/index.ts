@@ -2745,6 +2745,7 @@ function buildVendorIntelligenceRows(
             : "Validate coverage with first quote";
 
     return {
+      id: cleanText(vendor.id),
       vendor_id: cleanText(vendor.id),
       vendor_name: cleanText(vendor.vendor_name),
       legal_name: cleanText(vendor.legal_name),
@@ -2768,10 +2769,17 @@ function buildVendorIntelligenceRows(
       tags: arrayValues(vendor.tags),
       coverage_notes: cleanText(vendor.coverage_notes),
       notes: cleanText(vendor.notes),
+      logo_url: cleanText(vendor.logo_url),
+      logo_storage_bucket: cleanText(vendor.logo_storage_bucket),
+      logo_storage_path: cleanText(vendor.logo_storage_path),
+      logo_source: cleanText(vendor.logo_source),
+      profile_data: typeof vendor.profile_data === "object" && vendor.profile_data ? vendor.profile_data : {},
       source: cleanText(vendor.source),
       source_row_number: vendor.source_row_number || null,
       source_spreadsheet_url: cleanText(vendor.source_spreadsheet_url),
       last_synced_at: vendor.last_synced_at || null,
+      created_at: vendor.created_at || null,
+      updated_at: vendor.updated_at || null,
       health_score: healthScore,
       health_label: health.label,
       health_tone: health.tone,
@@ -5337,6 +5345,7 @@ function normalizeSegment(input: Record<string, unknown>, user?: { owner_user_id
 
   const status = cleanText(input.status)?.toLowerCase() || null;
   const preferredChannel = cleanText(input.preferred_channel)?.toLowerCase() || null;
+  const coverageFilter = cleanText(input.coverage_filter || input.coverage);
   const vendorIds = normalizeUuidList(input.vendor_ids);
   const segmentType = cleanText(input.segment_type || input.type)?.toLowerCase();
   const normalizedType = vendorIds.length
@@ -5351,6 +5360,7 @@ function normalizeSegment(input: Record<string, unknown>, user?: { owner_user_id
     tags: normalizeTags(input.tags),
     status: status && ["active", "invited", "blocked", "inactive"].includes(status) ? status : null,
     preferred_channel: preferredChannel && ["email", "whatsapp", "portal"].includes(preferredChannel) ? preferredChannel : null,
+    coverage_filter: coverageFilter,
     segment_type: normalizedType,
     vendor_ids: vendorIds,
     notes: cleanText(input.notes),
@@ -10351,7 +10361,20 @@ Deno.serve(async (request) => {
 
       const result = await query;
       if (result.error) throw result.error;
-      return jsonResponse({ rows: result.data, total: result.count || 0, limit, offset });
+      const rows = (result.data || []) as Record<string, unknown>[];
+      let enrichedRows = rows;
+      let warnings: string[] = [];
+      if (rows.length) {
+        const metricsResult = await fetchVendorRateMetricsSafe(supabase, user);
+        warnings = metricsResult.warnings;
+        const intelligenceRows = buildVendorIntelligenceRows(rows, metricsResult.metrics);
+        const intelligenceById = new Map(intelligenceRows.map((row) => [cleanText(row.id || row.vendor_id), row]));
+        enrichedRows = rows.map((row) => ({
+          ...row,
+          ...(intelligenceById.get(cleanText(row.id)) || {})
+        }));
+      }
+      return jsonResponse({ rows: enrichedRows, total: result.count || 0, limit, offset, warnings });
     }
 
     if (body.action === "vendor_intelligence") {

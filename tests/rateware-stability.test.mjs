@@ -16,6 +16,7 @@ const locationMatchDrawerSource = readFileSync(new URL("../src/location-match-dr
 const stagingReviewHtml = readFileSync(new URL("../staging-review.html", import.meta.url), "utf8");
 const ratewareHtml = readFileSync(new URL("../rateware.html", import.meta.url), "utf8");
 const vendorsSource = readFileSync(new URL("../src/vendors.js", import.meta.url), "utf8");
+const vendorsHtml = readFileSync(new URL("../vendors.html", import.meta.url), "utf8");
 const rfxEventsSource = readFileSync(new URL("../src/rfx-events.js", import.meta.url), "utf8");
 const rfxEventsHtml = readFileSync(new URL("../rfx-events.html", import.meta.url), "utf8");
 const rfxBidSource = readFileSync(new URL("../src/rfx-bid.js", import.meta.url), "utf8");
@@ -55,6 +56,7 @@ const bidRoomCommunicationActionsMigration = readFileSync(new URL("../supabase/m
 const bidRoomChatBidUpdatesMigration = readFileSync(new URL("../supabase/migrations/20260704070000_bid_room_chat_bid_updates.sql", import.meta.url), "utf8");
 const rfxAwardCloseoutMigration = readFileSync(new URL("../supabase/migrations/20260704080000_rfx_award_closeout.sql", import.meta.url), "utf8");
 const rfxBidSubmissionV2Migration = readFileSync(new URL("../supabase/migrations/20260704093000_rfx_bid_submission_v2.sql", import.meta.url), "utf8");
+const vendorSegmentsCoverageMigration = readFileSync(new URL("../supabase/migrations/20260706143000_vendor_segments_coverage_filter.sql", import.meta.url), "utf8");
 
 for (const domain of ["gmail.com", "hotmail.com", "yahoo.com", "outlook.com", "yahoo.com.mx"]) {
   assert.match(apiSource, new RegExp(`"${domain.replace(".", "\\.")}"`), `generic domain ${domain} should be blocked`);
@@ -692,6 +694,21 @@ assert.match(apiSource, /async function fetchVendorRateMetrics/, "API should fet
 assert.match(apiSource, /vendor_rate_metrics_for_owner/, "API should call vendor rate metrics RPC");
 assert.match(apiSource, /async function fetchVendorRateMetricsSafe/, "Vendor metric enrichment should have a safe fallback");
 assert.match(apiSource, /Quote metrics are temporarily unavailable/, "Vendor metric fallback should explain partial CRM loading");
+const listVendorsSource = apiSource.slice(apiSource.indexOf('if (body.action === "list_vendors")'), apiSource.indexOf('if (body.action === "vendor_intelligence")'));
+assert.ok(listVendorsSource.length > 100, "list vendors block should be present");
+assert.match(listVendorsSource, /fetchVendorRateMetricsSafe/, "Carrier CRM directory should enrich vendors with quote metrics");
+assert.match(listVendorsSource, /buildVendorIntelligenceRows\(rows, metricsResult\.metrics\)/, "Carrier CRM directory should share the Vendor Intelligence scoring model");
+assert.match(listVendorsSource, /return jsonResponse\(\{ rows: enrichedRows[\s\S]*warnings/, "Carrier CRM directory should surface partial metric warnings");
+assert.match(apiSource, /logo_url: cleanText\(vendor\.logo_url\)/, "Vendor intelligence rows should keep uploaded logo URLs");
+assert.match(apiSource, /profile_data: typeof vendor\.profile_data/, "Vendor intelligence rows should keep structured profile data");
+assert.match(vendorsSource, /key: "health"/, "Carrier CRM spreadsheet should include a health column");
+assert.match(vendorsSource, /key: "quotes"/, "Carrier CRM spreadsheet should include a quotes column");
+assert.match(vendorsSource, /key: "coverage_delta"/, "Carrier CRM spreadsheet should include a coverage fit column");
+assert.match(vendorsSource, /function renderDrawerRatewareEvidence/, "Vendor drawer should explain Rateware evidence");
+assert.match(vendorsHtml, /drawer-rateware-evidence/, "Vendor drawer should have a Rateware evidence section");
+assert.match(vendorSegmentsCoverageMigration, /coverage_filter text/, "Vendor saved lists should persist a coverage filter");
+assert.match(apiSource, /coverage_filter: coverageFilter/, "Vendor segment API should persist coverage filters");
+assert.match(vendorsSource, /segment\.coverage_filter/, "Vendor saved lists should apply coverage filters in the UI");
 
 for (const functionName of [
   "rateware_bi_dimension_value",

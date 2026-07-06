@@ -4941,6 +4941,29 @@ a {
   white-space: nowrap;
 }
 
+.funnel-card-recommendation {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  border-top: 1px solid #eef2f5;
+  padding-top: 3px;
+}
+
+.funnel-card-recommendation strong {
+  display: block;
+  overflow: hidden;
+  color: var(--neutral);
+  font-size: 0.55rem;
+  font-weight: 860;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.funnel-card-recommendation .coverage-fit-cell {
+  max-height: 16px;
+  overflow: hidden;
+}
+
 .funnel-card .tag-list {
   gap: 3px;
   max-height: 17px;
@@ -7378,6 +7401,54 @@ button.location-chip:focus-visible {
   display: none;
 }
 
+.vendor-sheet-table .vendor-health-stack {
+  min-width: 124px;
+}
+
+.vendor-sheet-table .vendor-health-stack.compact {
+  gap: 2px;
+}
+
+.vendor-sheet-table .vendor-health-stack.compact .fit-label {
+  max-width: 82px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vendor-quote-cell {
+  display: grid;
+  gap: 1px;
+  min-width: 110px;
+  color: var(--muted);
+  font-size: 0.58rem;
+  font-weight: 760;
+  line-height: 1.15;
+}
+
+.vendor-quote-cell strong {
+  color: var(--text);
+  font-size: 0.61rem;
+  font-weight: 880;
+}
+
+.coverage-fit-cell {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  min-width: 112px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.coverage-fit-cell .score-pill,
+.coverage-fit-cell .warning-pill,
+.coverage-fit-cell .status-pill {
+  min-height: 15px;
+  padding: 1px 5px;
+  font-size: 0.52rem;
+}
+
 .vendor-sheet-table .vendor-coverage-cell {
   max-width: 320px;
 }
@@ -7592,6 +7663,63 @@ button.location-chip:focus-visible {
 .readiness-breakdown {
   display: grid;
   gap: 10px;
+}
+
+.health-explainer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.health-explainer span {
+  border-radius: 999px;
+  background: #eef2f4;
+  color: var(--neutral);
+  padding: 2px 7px;
+  font-size: 0.68rem;
+  font-weight: 780;
+}
+
+.drawer-rateware-evidence {
+  display: grid;
+  gap: 10px;
+}
+
+.drawer-evidence-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.drawer-evidence-grid article {
+  display: grid;
+  gap: 2px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fbfcfc;
+  padding: 7px;
+}
+
+.drawer-evidence-grid span {
+  color: var(--muted);
+  font-size: 0.66rem;
+  font-weight: 780;
+}
+
+.drawer-evidence-grid strong {
+  color: var(--text);
+  font-size: 0.86rem;
+  font-weight: 900;
+}
+
+.drawer-coverage-fit {
+  display: grid;
+  gap: 6px;
+}
+
+.drawer-coverage-fit > strong {
+  color: var(--text);
+  font-size: 0.76rem;
 }
 
 .readiness-checks {

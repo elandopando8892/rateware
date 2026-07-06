@@ -430,6 +430,9 @@ const VENDOR_SHEET_COLUMNS = [
   { key: "contact", label: "Contact", defaultHidden: true },
   { key: "email", label: "Email" },
   { key: "whatsapp", label: "WhatsApp" },
+  { key: "health", label: "Health" },
+  { key: "quotes", label: "Quotes" },
+  { key: "coverage_delta", label: "Coverage fit" },
   { key: "tags", label: "Tags" },
   { key: "onboarding", label: "Onboarding" },
   { key: "operating_country", label: "Country", defaultHidden: true },
@@ -441,8 +444,8 @@ const VENDOR_SHEET_COLUMNS = [
   { key: "base", label: "Base" },
   { key: "status", label: "Status" },
   { key: "coverage", label: "Coverage" },
-  { key: "notes", label: "Notes" },
-  { key: "source", label: "Source" }
+  { key: "notes", label: "Notes", defaultHidden: true },
+  { key: "source", label: "Source", defaultHidden: true }
 ];
 
 function isVendorBaseTab(tabName) {
@@ -1320,16 +1323,7 @@ function renderTags(tags) {
 }
 
 function renderCompleteness(row) {
-  const readiness = vendorReadiness(row);
-  return `
-    <div class="vendor-health-stack">
-      <div class="fit-stack">
-        <span class="score-pill ${readiness.tone}">${readiness.score}%</span>
-        <span class="fit-label">${escapeHtml(readiness.label)}</span>
-      </div>
-      <div class="health-meter ${readiness.tone}" aria-hidden="true"><span style="width:${readiness.score}%"></span></div>
-    </div>
-  `;
+  return renderHealthSummary(row);
 }
 
 function renderVendorIdentity(row) {
@@ -1419,6 +1413,132 @@ function rateMetrics(row) {
 
 function coverageAlignment(row) {
   return row.coverage_alignment || {};
+}
+
+function combinedVendorHealth(row) {
+  const readiness = vendorReadiness(row);
+  const hasServerScore = row.health_score !== undefined && row.health_score !== null && row.health_score !== "";
+  const score = Math.max(0, Math.min(100, Math.round(hasServerScore ? numberValue(row.health_score) : readiness.score)));
+  const label = row.health_label || readiness.label;
+  const tone = row.health_tone || readiness.tone;
+  return { ...readiness, score, label, tone };
+}
+
+function compactList(values, limit = 3) {
+  const items = Array.isArray(values) ? values.filter(Boolean) : splitTags(values);
+  if (!items.length) return "";
+  const visible = items.slice(0, limit);
+  const hidden = items.length - visible.length;
+  return `${visible.join(", ")}${hidden > 0 ? ` +${hidden}` : ""}`;
+}
+
+function healthFactors(row) {
+  const readiness = vendorReadiness(row);
+  const metrics = rateMetrics(row);
+  const alignment = coverageAlignment(row);
+  const factors = [`${readiness.score}% profile completeness`];
+  const linked = numberValue(metrics.linked_rates);
+  const approved = numberValue(metrics.approved_rates);
+  const matched = alignment.matched || [];
+  const quotedOnly = alignment.quoted_only || [];
+  const declaredOnly = alignment.declared_only || [];
+  if (linked) factors.push(`${linked} linked quote${linked === 1 ? "" : "s"}`);
+  if (approved) factors.push(`${approved} approved Rateware row${approved === 1 ? "" : "s"}`);
+  if (matched.length) factors.push(`${matched.length} matched coverage signal${matched.length === 1 ? "" : "s"}`);
+  if (quotedOnly.length) factors.push(`${quotedOnly.length} quoted-only market signal${quotedOnly.length === 1 ? "" : "s"}`);
+  if (declaredOnly.length) factors.push(`${declaredOnly.length} declared-only coverage signal${declaredOnly.length === 1 ? "" : "s"}`);
+  if (numberValue(row.duplicate_count)) factors.push(`${numberValue(row.duplicate_count)} duplicate signal${numberValue(row.duplicate_count) === 1 ? "" : "s"}`);
+  if (row.recommended_action) factors.push(row.recommended_action);
+  return factors;
+}
+
+function renderHealthSummary(row, { compact = false } = {}) {
+  const health = combinedVendorHealth(row);
+  const detail = healthFactors(row).join(" | ");
+  return `
+    <div class="vendor-health-stack ${compact ? "compact" : ""}" title="${escapeHtml(detail)}">
+      <div class="fit-stack">
+        <span class="score-pill ${escapeHtml(health.tone)}">${escapeHtml(health.score)}%</span>
+        <span class="fit-label">${escapeHtml(health.label)}</span>
+      </div>
+      <div class="health-meter ${escapeHtml(health.tone)}" aria-hidden="true"><span style="width:${escapeHtml(health.score)}%"></span></div>
+    </div>
+  `;
+}
+
+function renderQuoteSignals(row) {
+  const metrics = rateMetrics(row);
+  const linked = numberValue(metrics.linked_rates);
+  const approved = numberValue(metrics.approved_rates);
+  const avgAllIn = currencyValue(metrics.avg_all_in_rate);
+  const markets = compactList(metrics.markets, 2);
+  return `
+    <div class="vendor-quote-cell" title="${escapeHtml([markets, compactList(metrics.equipment, 2), compactList(metrics.border_pairs, 2)].filter(Boolean).join(" | "))}">
+      <strong>${escapeHtml(linked)} quoted</strong>
+      <span>${escapeHtml(approved)} approved${avgAllIn !== "-" ? ` | avg ${escapeHtml(avgAllIn)}` : ""}</span>
+    </div>
+  `;
+}
+
+function renderCoverageFit(row) {
+  const alignment = coverageAlignment(row);
+  const matched = alignment.matched || [];
+  const quotedOnly = alignment.quoted_only || [];
+  const declaredOnly = alignment.declared_only || [];
+  if (!matched.length && !quotedOnly.length && !declaredOnly.length) {
+    return `<span class="muted-text">${escapeHtml(alignment.summary || "No coverage signal")}</span>`;
+  }
+  return `
+    <div class="coverage-fit-cell" title="${escapeHtml(renderCoverageFitText(row))}">
+      ${matched.length ? `<span class="score-pill strong">${escapeHtml(matched.length)} match</span>` : ""}
+      ${quotedOnly.length ? `<span class="warning-pill">${escapeHtml(quotedOnly.length)} quoted only</span>` : ""}
+      ${declaredOnly.length ? `<span class="status-pill">${escapeHtml(declaredOnly.length)} declared only</span>` : ""}
+    </div>
+  `;
+}
+
+function renderCoverageFitText(row) {
+  const alignment = coverageAlignment(row);
+  return [
+    (alignment.matched || []).length ? `Matched: ${compactList(alignment.matched, 8)}` : "",
+    (alignment.quoted_only || []).length ? `Quoted only: ${compactList(alignment.quoted_only, 8)}` : "",
+    (alignment.declared_only || []).length ? `Declared only: ${compactList(alignment.declared_only, 8)}` : ""
+  ].filter(Boolean).join(" | ") || alignment.summary || "No coverage signal";
+}
+
+function renderDrawerRatewareEvidence(vendor) {
+  const metrics = rateMetrics(vendor);
+  const health = combinedVendorHealth(vendor);
+  const factors = healthFactors(vendor);
+  return `
+    <div class="drawer-rateware-evidence">
+      <div class="drawer-evidence-grid">
+        <article>
+          <span>Linked quotes</span>
+          <strong>${escapeHtml(numberValue(metrics.linked_rates))}</strong>
+        </article>
+        <article>
+          <span>Approved rates</span>
+          <strong>${escapeHtml(numberValue(metrics.approved_rates))}</strong>
+        </article>
+        <article>
+          <span>Avg all-in</span>
+          <strong>${escapeHtml(currencyValue(metrics.avg_all_in_rate))}</strong>
+        </article>
+        <article>
+          <span>Health</span>
+          <strong>${escapeHtml(health.score)}%</strong>
+        </article>
+      </div>
+      <div class="health-explainer">
+        ${factors.map((factor) => `<span>${escapeHtml(factor)}</span>`).join("")}
+      </div>
+      <div class="drawer-coverage-fit">
+        <strong>Coverage fit</strong>
+        ${renderCoverageDelta(vendor)}
+      </div>
+    </div>
+  `;
 }
 
 function updateVendorIntelligenceSelectionState() {
@@ -1809,12 +1929,13 @@ function renderVendorFunnelStrip() {
 }
 
 function renderVendorFunnelCard(row) {
-  const readiness = vendorReadiness(row);
+  const readiness = combinedVendorHealth(row);
   const metrics = rateMetrics(row);
   const linked = numberValue(metrics.linked_rates);
   const approved = numberValue(metrics.approved_rates);
   const contact = row.domain || row.primary_email || row.whatsapp_phone || "No contact";
   const currentStage = row.effective_funnel_stage || row.funnel_stage || "targeted";
+  const nextStep = funnelStageRecommendation(row);
   return `
     <article class="funnel-card" draggable="true" data-funnel-vendor-id="${escapeHtml(row.id || row.vendor_id)}">
       <div class="funnel-card-topline">
@@ -1825,12 +1946,16 @@ function renderVendorFunnelCard(row) {
             <small>${escapeHtml(contact)}</small>
           </div>
         </div>
-        <span class="score-pill ${escapeHtml(row.health_tone || readiness.tone)}">${escapeHtml(row.health_score || readiness.score)}%</span>
+        <span class="score-pill ${escapeHtml(readiness.tone)}">${escapeHtml(readiness.score)}%</span>
       </div>
       <div class="funnel-card-signals">
         <span title="Linked quotes">${escapeHtml(linked)}Q</span>
         <span title="Approved rates">${escapeHtml(approved)}A</span>
         <span title="Time in stage">${escapeHtml(funnelStageAge(row))}</span>
+      </div>
+      <div class="funnel-card-recommendation" title="${escapeHtml(healthFactors(row).join(" | "))}">
+        <strong>${escapeHtml(nextStep)}</strong>
+        ${renderCoverageFit(row)}
       </div>
       <div class="funnel-card-actions">
         <button class="small-button secondary" type="button" data-funnel-open="${escapeHtml(row.id || row.vendor_id)}">Open</button>
@@ -2366,6 +2491,9 @@ function renderVendorSheetCell(row, columnKey) {
   if (columnKey === "contact") return `<td>${editableVendorInput(row, "contact_name")}</td>`;
   if (columnKey === "email") return `<td>${editableVendorInput(row, "primary_email", { type: "email" })}</td>`;
   if (columnKey === "whatsapp") return `<td>${editableVendorInput(row, "whatsapp_phone")}</td>`;
+  if (columnKey === "health") return `<td>${renderHealthSummary(row, { compact: true })}</td>`;
+  if (columnKey === "quotes") return `<td>${renderQuoteSignals(row)}</td>`;
+  if (columnKey === "coverage_delta") return `<td>${renderCoverageFit(row)}</td>`;
   if (columnKey === "tags") return `<td>${editableVendorInput(row, "tags", { wide: true })}</td>`;
   if (columnKey === "onboarding") {
     const completion = onboardingCompletion(vendorProfileData(row));
@@ -2415,7 +2543,7 @@ function renderVendorSheetRow(row, columns = visibleVendorColumns()) {
 }
 
 function renderVendorCard(row) {
-  const readiness = vendorReadiness(row);
+  const readiness = combinedVendorHealth(row);
   const duplicateCount = duplicateSignals(row, allVendors).length;
   const selected = selectedVendorIds.has(row.id);
   return `
@@ -2433,6 +2561,10 @@ function renderVendorCard(row) {
         <span class="status-pill">${escapeHtml(row.status || "active")}</span>
         <span class="status-pill ${row.base_stage === "archived" ? "muted" : ""}">${escapeHtml(baseStageLabel(row.base_stage))}</span>
       </div>
+      <div class="vendor-card-meta">
+        ${renderCoverageFit(row)}
+      </div>
+      ${renderQuoteSignals(row)}
       <p>${escapeHtml(row.coverage_notes || "No coverage captured")}</p>
       <div class="tag-list">${renderTags(row.tags)}</div>
       <div class="vendor-card-footer">
@@ -2623,7 +2755,16 @@ function segmentMatches(segment, vendor) {
   const hasTags = requiredTags.every((tag) => vendorTags.includes(tag));
   const hasStatus = !segment.status || vendor.status === segment.status;
   const hasChannel = !segment.preferred_channel || vendor.preferred_channel === segment.preferred_channel;
-  return hasTags && hasStatus && hasChannel;
+  const coverage = String(segment.coverage_filter || "").trim().toLowerCase();
+  const coverageText = [
+    vendor.coverage_notes,
+    vendor.notes,
+    ...(splitTags(vendor.tags)),
+    ...Object.values(coverageAlignment(vendor)).flat().filter(Boolean),
+    ...Object.values(rateMetrics(vendor)).flat().filter(Boolean)
+  ].join(" ").toLowerCase();
+  const hasCoverage = !coverage || coverageText.includes(coverage);
+  return hasTags && hasStatus && hasChannel && hasCoverage;
 }
 
 function renderSegments() {
@@ -2650,7 +2791,7 @@ function renderSegments() {
             <span>${matches.length} vendor(s)</span>
           </div>
           <div class="tag-list">${renderTags(segment.tags)}</div>
-          <small>${escapeHtml([segment.status, segment.preferred_channel].filter(Boolean).join(" | ") || "Any active filter")}</small>
+          <small>${escapeHtml([segment.status, segment.preferred_channel, segment.coverage_filter].filter(Boolean).join(" | ") || "Any active filter")}</small>
           <div class="action-row">
             <button class="small-button" type="button" data-segment-filter="${escapeHtml(segment.id)}">Apply</button>
             <button class="small-button danger" type="button" data-segment-delete="${escapeHtml(segment.id)}">Delete</button>
@@ -2722,7 +2863,8 @@ function readSegmentForm() {
     segment_name: document.querySelector("#segment-name").value,
     tags: splitTags(document.querySelector("#segment-tags").value),
     status: document.querySelector("#segment-status").value,
-    preferred_channel: document.querySelector("#segment-channel").value
+    preferred_channel: document.querySelector("#segment-channel").value,
+    coverage_filter: document.querySelector("#segment-coverage").value
   };
 }
 
@@ -3101,7 +3243,8 @@ function renderVendorSource(vendor) {
 }
 
 function renderReadinessBreakdown(vendor) {
-  const readiness = vendorReadiness(vendor);
+  const readiness = combinedVendorHealth(vendor);
+  const localReadiness = vendorReadiness(vendor);
   return `
     <div class="readiness-breakdown">
       <div class="readiness-score-row">
@@ -3109,8 +3252,11 @@ function renderReadinessBreakdown(vendor) {
         <strong>${escapeHtml(readiness.label)}</strong>
       </div>
       <div class="health-meter ${readiness.tone}" aria-hidden="true"><span style="width:${readiness.score}%"></span></div>
+      <div class="health-explainer">
+        ${healthFactors(vendor).map((factor) => `<span>${escapeHtml(factor)}</span>`).join("")}
+      </div>
       <div class="readiness-checks" aria-label="Readiness checks">
-        ${readiness.checks
+        ${localReadiness.checks
           .map((check) => `
             <span class="readiness-check ${check.done ? "is-done" : "is-missing"}">
               <span aria-hidden="true">${check.done ? "OK" : "!"}</span>
@@ -3194,11 +3340,25 @@ function renderEnrichmentSuggestions(vendor) {
 }
 
 function findVendorById(vendorId) {
-  const row = allVendors.find((item) => item.id === vendorId)
-    || currentVendors.find((row) => row.id === vendorId)
-    || vendorFunnelRows.find((row) => row.id === vendorId || row.vendor_id === vendorId)
-    || vendorIntelligenceRows.find((row) => row.vendor_id === vendorId);
-  return row ? { ...row, id: row.id || row.vendor_id } : null;
+  const key = String(vendorId || "").trim().toLowerCase();
+  if (!key) return null;
+  const matchesIdentity = (row) => {
+    const values = [row.id, row.vendor_id, row.vendor_name, row.domain, row.primary_email].filter(Boolean).map((value) => String(value).trim().toLowerCase());
+    return values.includes(key);
+  };
+  const row = allVendors.find(matchesIdentity)
+    || currentVendors.find(matchesIdentity)
+    || vendorFunnelRows.find(matchesIdentity)
+    || vendorIntelligenceRows.find(matchesIdentity);
+  if (!row) return null;
+  const id = row.id || row.vendor_id;
+  const merged = [
+    allVendors.find((item) => item.id === id),
+    currentVendors.find((item) => item.id === id),
+    vendorFunnelRows.find((item) => item.id === id || item.vendor_id === id),
+    vendorIntelligenceRows.find((item) => item.id === id || item.vendor_id === id)
+  ].filter(Boolean).reduce((acc, item) => ({ ...acc, ...item }), {});
+  return { ...merged, id: merged.id || merged.vendor_id };
 }
 
 function setDrawerMode(mode = "view", { focus = false } = {}) {
@@ -3216,6 +3376,7 @@ function setDrawerMode(mode = "view", { focus = false } = {}) {
 function openVendorDrawer(vendorId, options = {}) {
   const vendor = findVendorById(vendorId);
   if (!vendor) return;
+  const health = combinedVendorHealth(vendor);
 
   activeDrawerVendorId = vendor.id;
   document.querySelector("#drawer-vendor-name").textContent = vendor.vendor_name || "Vendor";
@@ -3223,8 +3384,9 @@ function openVendorDrawer(vendorId, options = {}) {
   document.querySelector("#drawer-badges").innerHTML = renderDrawerBadges(vendor);
   document.querySelector("#drawer-quick-actions").innerHTML = renderDrawerQuickActions(vendor);
   setDrawerValue("#drawer-source", renderVendorSource(vendor));
-  setDrawerValue("#drawer-completeness", `${scoreVendor(vendor)}% complete`);
+  setDrawerValue("#drawer-completeness", `${health.score}% ${health.label}`);
   setDrawerValue("#drawer-readiness", renderReadinessBreakdown(vendor));
+  setDrawerValue("#drawer-rateware-evidence", renderDrawerRatewareEvidence(vendor));
   setDrawerValue(
     "#drawer-contact",
     [vendor.contact_name, vendor.primary_email, vendor.whatsapp_phone].filter(Boolean).map(escapeHtml).join("<br>")
@@ -3645,8 +3807,11 @@ segmentsList.addEventListener("click", async (event) => {
   if (filterButton) {
     const segment = savedSegments.find((item) => item.id === filterButton.dataset.segmentFilter);
     if (!segment) return;
-    searchInput.value = splitTags(segment.tags).join(", ");
+    searchInput.value = "";
+    tagFilter.value = splitTags(segment.tags).join(", ");
     statusFilter.value = segment.status || "";
+    channelFilter.value = segment.preferred_channel || "";
+    coverageFilter.value = segment.coverage_filter || "";
     renderVendors(allVendors.filter((vendor) => segmentMatches(segment, vendor)));
   }
 
