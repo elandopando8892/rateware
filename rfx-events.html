@@ -80,7 +80,7 @@
                 <div>
                   <p class="eyebrow">Active bid room</p>
                   <h2 id="rfx-detail-title">Select or create an event</h2>
-                  <p id="rfx-ops-subtitle">One workflow: setup, book, shortlist, invite, live bids, award.</p>
+                  <p id="rfx-ops-subtitle">One workflow: event setup, lane book, participants, outreach, auction, award.</p>
                 </div>
                 <details class="bid-room-action-menu">
                   <summary>Event actions</summary>
@@ -114,33 +114,37 @@
                 <nav id="rfx-ops-stage-rail" class="bid-room-stage-rail" role="tablist" aria-label="Bid Room stages">
                   <button type="button" role="tab" aria-selected="true" data-workbench-view-button="setup" data-stage-key="event">
                     <span class="stage-index">1</span>
-                    <span class="stage-copy"><strong>Setup</strong><small>Event</small></span>
+                    <span class="stage-copy"><strong>Event</strong><small>Room | Next</small></span>
                   </button>
                   <button type="button" role="tab" aria-selected="false" data-workbench-view-button="lanes" data-stage-key="lanes">
                     <span class="stage-index">2</span>
-                    <span class="stage-copy"><strong>Book</strong><small>Lanes</small></span>
+                    <span class="stage-copy"><strong>Book</strong><small>Lanes | Pending</small></span>
                   </button>
                   <button type="button" role="tab" aria-selected="false" data-workbench-view-button="carriers" data-stage-key="carriers">
                     <span class="stage-index">3</span>
-                    <span class="stage-copy"><strong>Participants</strong><small>Carriers</small></span>
+                    <span class="stage-copy"><strong>Participants</strong><small>CRM | Pending</small></span>
                   </button>
                   <button type="button" role="tab" aria-selected="false" data-workbench-view-button="outreach" data-stage-key="launch">
                     <span class="stage-index">4</span>
-                    <span class="stage-copy"><strong>Invite</strong><small>Templates</small></span>
+                    <span class="stage-copy"><strong>Outreach</strong><small>Invites | Pending</small></span>
                   </button>
                   <button type="button" role="tab" aria-selected="false" data-workbench-view-button="responses" data-stage-key="offers">
                     <span class="stage-index">5</span>
-                    <span class="stage-copy"><strong>Bids</strong><small>Live</small></span>
+                    <span class="stage-copy"><strong>Auction</strong><small>Live | Pending</small></span>
                   </button>
                   <button type="button" role="tab" aria-selected="false" data-workbench-view-button="award" data-stage-key="award">
                     <span class="stage-index">6</span>
-                    <span class="stage-copy"><strong>Award</strong><small>Decision</small></span>
+                    <span class="stage-copy"><strong>Award</strong><small>Closeout | Pending</small></span>
                   </button>
                 </nav>
                 <aside id="rfx-ops-next-action" class="bid-room-next-action" aria-live="polite">
-                  <span>Next action</span>
-                  <strong>Create or select a bid event</strong>
-                  <small>Start the private bid room workflow.</small>
+                  <div class="bid-room-next-head">
+                    <span>Command center</span>
+                    <b>0%</b>
+                  </div>
+                  <div class="bid-room-workflow-meter" aria-label="0 of 6 workflow steps ready"><i style="width: 0%"></i></div>
+                  <strong>Step 1: Create or select the bid room</strong>
+                  <small>Start the private procurement workflow.</small>
                 </aside>
               </div>
             </section>
@@ -149,7 +153,7 @@
               <div class="bid-room-stage-header">
                 <div>
                   <p class="eyebrow">Step 1</p>
-                  <h3>Setup the bid event</h3>
+                  <h3>Event setup</h3>
                 </div>
                 <span class="status-pill muted">Required before lanes</span>
               </div>
@@ -197,7 +201,7 @@
               <div class="bid-room-stage-header">
                 <div>
                   <p class="eyebrow">Step 2</p>
-                  <h3>Load the business book</h3>
+                  <h3>Business book</h3>
                 </div>
                 <span id="rfx-coverage-summary" class="status-pill muted">No lanes</span>
               </div>
@@ -277,7 +281,7 @@
               <div class="bid-room-stage-header">
                 <div>
                   <p class="eyebrow">Step 3</p>
-                  <h3>Select bid participants</h3>
+                  <h3>Participants</h3>
                 </div>
               </div>
               <div class="bid-room-carrier-grid">
@@ -368,7 +372,7 @@
               <div class="bid-room-stage-header">
                 <div>
                   <p class="eyebrow">Step 4</p>
-                  <h3>Preview and launch invitations</h3>
+                  <h3>Outreach launchpad</h3>
                 </div>
               </div>
               <div class="rfx-outreach-grid bid-room-invite-grid">
@@ -404,7 +408,7 @@
                     <span>Step 4 uses sales@heymarksman.com as the only approved sender. Connect it in Settings before direct Gmail sending.</span>
                   </section>
                   <details id="rfx-template-editor" class="rfx-template-editor is-source-admin">
-                    <summary>Template source tools</summary>
+                    <summary>HTML source fallback</summary>
                     <div class="rfx-template-editor-body">
                       <label>
                         Subject
@@ -482,7 +486,7 @@
               <div class="bid-room-stage-header">
                 <div>
                   <p class="eyebrow">Step 5</p>
-                  <h3>Live bid board</h3>
+                  <h3>Auction room</h3>
                 </div>
                 <span id="rfx-response-summary" class="status-pill muted">No bids</span>
               </div>
@@ -637,7 +641,7 @@
               <div class="bid-room-stage-header">
                 <div>
                   <p class="eyebrow">Step 6</p>
-                  <h3>Award decision</h3>
+                  <h3>Award & closeout</h3>
                 </div>
                 <span id="rfx-award-status-pill" class="status-pill muted">Decision room</span>
               </div>

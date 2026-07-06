@@ -1454,17 +1454,35 @@ function rfxWizardStats() {
 function rfxWizardStepState() {
   const stats = rfxWizardStats();
   return [
-    { key: "event", label: "Setup", complete: Boolean(selectedEvent) },
+    { key: "event", label: "Event", complete: Boolean(selectedEvent) },
     { key: "lanes", label: "Book", complete: stats.lanes > 0 },
     { key: "carriers", label: "Participants", complete: stats.invitations.length > 0 },
-    { key: "launch", label: "Invite", complete: stats.invitations.some(hasInvitationStarted) },
-    { key: "offers", label: "Bids", complete: stats.bids.length > 0 },
+    { key: "launch", label: "Outreach", complete: stats.invitations.some(hasInvitationStarted) },
+    { key: "offers", label: "Auction", complete: stats.bids.length > 0 },
     { key: "award", label: "Award", complete: selectedEvent?.status === "awarded" }
   ];
 }
 
 function currentWizardStage() {
-  return rfxWizardStepState().find((step) => !step.complete)?.key || "offers";
+  return rfxWizardStepState().find((step) => !step.complete)?.key || "award";
+}
+
+function bidRoomWorkflowProgress() {
+  const steps = rfxWizardStepState();
+  const completeCount = steps.filter((step) => step.complete).length;
+  const activeStage = currentWizardStage();
+  const activeIndex = Math.max(0, steps.findIndex((step) => step.key === activeStage));
+  const percent = steps.length ? Math.round((completeCount / steps.length) * 100) : 0;
+  const stats = processStats();
+  return {
+    steps,
+    completeCount,
+    activeStage,
+    activeIndex,
+    percent,
+    statusLine: `${formatNumber(completeCount)} / ${formatNumber(steps.length)} workflow step(s) ready`,
+    commercialLine: `${formatNumber(stats.lanes)} lane(s) | ${formatNumber(stats.invitations.length)} participant row(s) | ${formatNumber(stats.bids.length)} live bid(s)`
+  };
 }
 
 function wizardStageView(stage) {
@@ -1482,46 +1500,46 @@ function wizardStageView(stage) {
 function wizardStageCopy(stage) {
   return {
     event: {
-      title: "Create or select a bid event",
-      detail: "Start with customer, due date, and event ID. The rest of the workflow attaches to this room.",
+      title: "Create or select the bid room",
+      detail: "Define the commercial room once: RFx ID, customer, due date, and visibility. Every lane, invite, chat, bid, and award stays attached here.",
       cta: "Create bid event",
-      note: "Event"
+      note: "Room"
     },
     lanes: {
-      title: "Load the business book",
-      detail: "Paste or import lanes from Excel/CSV so Rateware can build coverage and shortlist carriers.",
-      cta: "Load lanes",
+      title: "Import the business book",
+      detail: "Upload the lane template so Rateware can build the book, benchmarks, participant coverage, and auction context.",
+      cta: "Import book",
       note: "Lanes"
     },
     carriers: {
-      title: "Select bid participants",
-      detail: "Choose carriers from Carrier CRM or upload the participant catalog marked TRUE/FALSE.",
+      title: "Choose the carriers that will participate",
+      detail: "Select carriers directly from Carrier CRM or upload the TRUE/FALSE participant catalog. This is the only source for the bid invitation list.",
       cta: "Select participants",
-      note: "Carriers"
+      note: "CRM"
     },
     preview: {
-      title: "Review invitation copy",
-      detail: "Confirm template, channel, placeholders, and contact readiness before generating drafts.",
+      title: "Review the invitation experience",
+      detail: "Preview the carrier email, placeholders, sender, and channel before generating individualized drafts.",
       cta: "Review invites",
       note: "Preview"
     },
     launch: {
-      title: "Preview and launch invitations",
-      detail: "Confirm template, channel, contact readiness, and private bid links before generating drafts.",
-      cta: "Generate invitations",
-      note: "Drafts"
+      title: "Generate the outreach queue",
+      detail: "Create one personalized invitation per selected carrier, then send Gmail messages from the draft queue.",
+      cta: "Generate draft queue",
+      note: "Invites"
     },
     offers: {
-      title: "Monitor live bids",
-      detail: "Track carrier offers, spread, capacity, and response coverage from the private bid room.",
-      cta: "Open live bids",
-      note: "Offers"
+      title: "Run the live auction room",
+      detail: "Monitor bids, alternatives, capacity, ETA, chat signals, and leaderboard position in one operating view.",
+      cta: "Open auction room",
+      note: "Live"
     },
     award: {
-      title: "Prepare the award decision",
-      detail: "Compare bids against Rateware, capacity, and coverage before awarding lanes.",
-      cta: "Open award room",
-      note: "Decision"
+      title: "Award and close out",
+      detail: "Compare price, capacity, ETA, validation, margin, and risk before moving approved awards back to Rateware.",
+      cta: "Open award board",
+      note: "Closeout"
     }
   }[stage] || {
     title: "Open Bid Room",
@@ -1533,13 +1551,13 @@ function wizardStageCopy(stage) {
 
 function wizardActionButton(stage) {
   const actions = {
-    event: "",
-    lanes: '<button type="button" data-rfx-wizard-go="lanes">Load business book</button>',
+    event: '<button type="button" data-rfx-focus-create>Create bid room</button>',
+    lanes: '<button type="button" data-rfx-wizard-go="lanes">Import business book</button>',
     carriers: '<button type="button" data-rfx-wizard-go="carriers">Select participants</button>',
-    preview: '<button type="button" data-rfx-wizard-go="outreach">Review invitation preview</button>',
-    launch: '<button type="button" data-rfx-wizard-create-drafts>Generate invitations</button>',
-    offers: '<button type="button" data-rfx-wizard-go="responses">Open live bids</button>',
-    award: '<button type="button" data-rfx-wizard-go="award">Open award room</button>'
+    preview: '<button type="button" data-rfx-wizard-go="outreach">Review invitations</button>',
+    launch: '<button type="button" data-rfx-wizard-create-drafts>Generate draft queue</button>',
+    offers: '<button type="button" data-rfx-wizard-go="responses">Open auction room</button>',
+    award: '<button type="button" data-rfx-wizard-go="award">Open award board</button>'
   };
   return actions[stage] || actions.event;
 }
@@ -1553,12 +1571,18 @@ function renderOpsStageRail() {
       const button = rfxOpsStageRail.querySelector(`[data-stage-key="${step.key}"]`);
       if (!button) return;
       const copy = wizardStageCopy(step.key);
+      const view = wizardStageView(step.key);
+      const stateLabel = step.complete ? "Ready" : step.key === stage ? "Next" : "Pending";
       button.classList.toggle("is-complete", step.complete);
       button.classList.toggle("is-next", step.key === stage);
+      button.classList.toggle("is-pending", !step.complete && step.key !== stage);
       button.setAttribute("aria-current", step.key === stage ? "step" : "false");
+      button.setAttribute("aria-label", `${step.label}: ${stateLabel}. ${copy.title}`);
+      button.setAttribute("title", `${copy.title}. ${copy.detail}`);
+      button.dataset.rfxWizardGo = view;
       button.querySelector(".stage-index").textContent = String(index + 1);
       button.querySelector(".stage-copy strong").textContent = step.label;
-      button.querySelector(".stage-copy small").textContent = copy.note;
+      button.querySelector(".stage-copy small").textContent = `${copy.note} | ${stateLabel}`;
     });
     return;
   }
@@ -1582,11 +1606,27 @@ function renderOpsNextAction() {
   if (!rfxOpsNextAction) return;
   const stage = currentWizardStage();
   const copy = wizardStageCopy(stage);
+  const progress = bidRoomWorkflowProgress();
+  const nextStepNumber = progress.activeIndex + 1;
+  rfxOpsNextAction.dataset.stage = stage;
+  rfxOpsNextAction.dataset.ready = progress.percent >= 100 ? "true" : "false";
   rfxOpsNextAction.innerHTML = `
-    <span>Next action</span>
-    <strong>${escapeHtml(copy.title)}</strong>
+    <div class="bid-room-next-head">
+      <span>Command center</span>
+      <b>${formatNumber(progress.percent)}%</b>
+    </div>
+    <div class="bid-room-workflow-meter" aria-label="${escapeHtml(progress.statusLine)}">
+      <i style="width: ${progress.percent}%"></i>
+    </div>
+    <strong>Step ${formatNumber(nextStepNumber)}: ${escapeHtml(copy.title)}</strong>
     <small>${escapeHtml(copy.detail)}</small>
-    ${wizardActionButton(stage)}
+    <div class="bid-room-next-meta">
+      <span>${escapeHtml(progress.statusLine)}</span>
+      <span>${escapeHtml(progress.commercialLine)}</span>
+    </div>
+    <div class="bid-room-next-actions">
+      ${wizardActionButton(stage)}
+    </div>
   `;
 }
 
@@ -1795,7 +1835,7 @@ function renderBidRoomLaunchReadiness() {
   rfxLaunchReadiness.innerHTML = `
     <div class="bid-room-readiness-header">
       <div>
-        <p class="eyebrow">Launch QA</p>
+        <p class="eyebrow">Operating checklist</p>
         <h3>${launchReady ? "Bid Room can operate" : "Bid Room needs setup"}</h3>
         <small>${launchReady
           ? `${formatNumber(snapshot.warnings.length)} item(s) need monitoring, but no launch blockers remain.`
@@ -2710,7 +2750,7 @@ function renderRfxOpsStrip() {
   renderBidRoomLaunchReadiness();
   if (!selectedEvent) {
     if (rfxOpsTitle) rfxOpsTitle.textContent = "Select or create a bid event";
-    rfxOpsSubtitle.textContent = "Start with setup, import lanes, shortlist carriers, then launch invitations and monitor bids.";
+    rfxOpsSubtitle.textContent = "One workflow: event setup, lane book, participants, outreach, auction, award.";
     rfxOpsHealth.innerHTML = `
       <article><span>Event</span><strong>-</strong><small>No bid event selected.</small></article>
       <article><span>Lanes</span><strong>0</strong><small>Paste or import the spot book.</small></article>

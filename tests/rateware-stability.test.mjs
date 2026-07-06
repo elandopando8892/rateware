@@ -130,6 +130,10 @@ assert.match(rfxEventsHtml, /rfx-launch-readiness/, "Bid Room should render a la
 assert.match(rfxEventsSource, /function bidRoomReadinessSnapshot/, "Bid Room should calculate end-to-end readiness blockers");
 assert.match(rfxEventsSource, /function renderBidRoomLaunchReadiness/, "Bid Room should render readiness checks from live event state");
 assert.match(rfxEventsSource, /function readinessReportLines/, "Bid Room should produce a copyable launch QA report");
+assert.match(rfxEventsSource, /function bidRoomWorkflowProgress/, "Bid Room should calculate a unified RFx to award workflow progress");
+assert.match(rfxEventsSource, /Command center/, "Bid Room should expose one primary command center instead of fragmented RFx and outreach controls");
+assert.match(rfxEventsHtml, /One workflow: event setup, lane book, participants, outreach, auction, award/, "Bid Room should describe RFx, Outreach, Auction, and Award as one workflow");
+assert.match(stylesSource, /bid-room-workflow-meter/, "Bid Room should render a compact workflow progress meter");
 assert.match(rfxEventsSource, /data-rfx-readiness-first-issue/, "Bid Room readiness QA should navigate to the first blocker");
 assert.match(rfxEventsSource, /data-rfx-copy-readiness/, "Bid Room readiness QA should copy a report for debugging");
 assert.match(rfxEventsSource, /function launchPreflightIssues/, "Bid Room should classify launch-blocking readiness issues");
