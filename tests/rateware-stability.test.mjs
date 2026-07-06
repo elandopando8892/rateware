@@ -10,6 +10,8 @@ const uploadCenterHtml = readFileSync(new URL("../upload-center.html", import.me
 const bulkImportTemplateSource = readFileSync(new URL("../src/bulk-import-template.js", import.meta.url), "utf8");
 const stagingReviewSource = readFileSync(new URL("../src/staging-review.js", import.meta.url), "utf8");
 const ratewareSource = readFileSync(new URL("../src/rateware.js", import.meta.url), "utf8");
+const stagingReviewHtml = readFileSync(new URL("../staging-review.html", import.meta.url), "utf8");
+const ratewareHtml = readFileSync(new URL("../rateware.html", import.meta.url), "utf8");
 const vendorsSource = readFileSync(new URL("../src/vendors.js", import.meta.url), "utf8");
 const rfxEventsSource = readFileSync(new URL("../src/rfx-events.js", import.meta.url), "utf8");
 const rfxEventsHtml = readFileSync(new URL("../rfx-events.html", import.meta.url), "utf8");
@@ -91,6 +93,15 @@ assert.match(stagingReviewSource, /downloadVendorMatchErrors/, "Staging should d
 assert.match(ratewareSource, /downloadVendorMatchErrors/, "Rateware should download unmatched vendor diagnostics");
 assert.match(stagingReviewSource, /Shipment ID/, "Staging should expose Shipment ID");
 assert.match(ratewareSource, /Shipment ID/, "Rateware should expose Shipment ID");
+assert.match(stagingReviewHtml, /staging-next-issue/, "Staging spreadsheet should expose a next-issue navigator");
+assert.match(stagingReviewHtml, /staging-select-issue-rows/, "Staging spreadsheet should select visible rows with validation issues");
+assert.match(ratewareHtml, /rateware-next-issue/, "Rateware spreadsheet should expose a next-issue navigator");
+assert.match(ratewareHtml, /rateware-select-issue-rows/, "Rateware spreadsheet should select visible rows with validation issues");
+assert.match(stagingReviewSource, /function focusNextVisibleIssue/, "Staging should focus the next visible validation issue");
+assert.match(ratewareSource, /function focusNextVisibleIssue/, "Rateware should focus the next visible validation issue");
+assert.match(stagingReviewSource, /rowsWithCriticalValidation\(rows\)/, "Staging bulk save should warn before saving selected rows with critical validation issues");
+assert.match(ratewareSource, /rowsWithCriticalValidation\(rows\)/, "Rateware bulk save should warn before saving selected rows with critical validation issues");
+assert.match(stylesSource, /sheet-issue-nav/, "Spreadsheet issue navigator should have compact styling");
 assert.match(apiSource, /vendor_ids: vendorIds/, "Vendor segments should support exact participant template vendor ids");
 assert.match(apiSource, /update_vendor_segment/, "API should support updating reusable vendor participant templates");
 assert.match(rfxEventsSource, /createVendorSegment/, "Bid Room should save selected participants as reusable vendor templates");

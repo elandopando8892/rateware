@@ -68,6 +68,9 @@ const snapshotFilteredButton = document.querySelector("#snapshot-filtered-ratewa
 const versionList = document.querySelector("#rateware-version-list");
 const versionStatus = document.querySelector("#rateware-version-status");
 const gridSelectionStatus = document.querySelector("#rateware-grid-selection");
+const ratewareNextIssueButton = document.querySelector("#rateware-next-issue");
+const ratewareSelectIssueRowsButton = document.querySelector("#rateware-select-issue-rows");
+const ratewareIssueSummary = document.querySelector("#rateware-issue-summary");
 const ratewarePageSummary = document.querySelector("#rateware-page-summary");
 const ratewareFirstPageButton = document.querySelector("#rateware-first-page");
 const ratewarePrevPageButton = document.querySelector("#rateware-prev-page");
@@ -96,6 +99,7 @@ let ratewareLoadOffset = 0;
 let ratewarePageIndex = 0;
 let ratewarePageSize = readStoredPageSize(RATEWARE_PAGE_SIZE_STORAGE_KEY, DEFAULT_RATEWARE_PAGE_SIZE);
 let ratewareLoadToken = 0;
+let ratewareIssueCursor = -1;
 let ratewareOptions = {
   categories: {},
   vendors: [],
@@ -1446,6 +1450,86 @@ function updateVisibleValidationMetric() {
     return summary;
   }, { critical: 0, warning: 0 });
   setRatewareValidationMetric(validation);
+  updateIssueNavigator();
+}
+
+function criticalIssueCount(row) {
+  let count = 0;
+  rowCellValidationIssues(row).forEach((fieldIssues) => {
+    fieldIssues.forEach((issue) => {
+      if (issue.tone === "danger") count += 1;
+    });
+  });
+  return count;
+}
+
+function rowsWithCriticalValidation(tableRows, patchFactory) {
+  return tableRows
+    .map((tableRow) => {
+      const patch = patchFactory ? patchFactory(tableRow) : readRatewarePatch(tableRow);
+      const critical = criticalIssueCount(rowFromRatewareTablePatch(tableRow, patch));
+      return { tableRow, critical };
+    })
+    .filter((item) => item.critical > 0);
+}
+
+function visibleIssueCells() {
+  return [...body.querySelectorAll("td.cell-validation-danger, td.cell-validation-warning")]
+    .filter((cell) => !cell.classList.contains("column-hidden"));
+}
+
+function visibleIssueRows() {
+  return [...body.querySelectorAll("[data-rateware-id].has-critical-validation, [data-rateware-id].has-warning-validation")];
+}
+
+function updateIssueNavigator() {
+  const issueCells = visibleIssueCells();
+  const issueRows = visibleIssueRows();
+  const summary = issueCells.reduce((counts, cell) => {
+    if (cell.classList.contains("cell-validation-danger")) counts.critical += 1;
+    else counts.warning += 1;
+    return counts;
+  }, { critical: 0, warning: 0 });
+  const hasIssues = issueCells.length > 0;
+  if (ratewareNextIssueButton) ratewareNextIssueButton.disabled = !hasIssues;
+  if (ratewareSelectIssueRowsButton) ratewareSelectIssueRowsButton.disabled = !issueRows.length;
+  if (ratewareIssueSummary) {
+    ratewareIssueSummary.textContent = hasIssues
+      ? `${summary.critical.toLocaleString()} critical / ${summary.warning.toLocaleString()} warning cells on this page`
+      : "No visible issues";
+  }
+  if (!hasIssues) ratewareIssueCursor = -1;
+}
+
+function focusNextVisibleIssue() {
+  const cells = visibleIssueCells();
+  if (!cells.length) {
+    setActionStatus("No visible validation issues on this page.", "success");
+    updateIssueNavigator();
+    return;
+  }
+
+  ratewareIssueCursor = (ratewareIssueCursor + 1) % cells.length;
+  const cell = cells[ratewareIssueCursor];
+  cell.scrollIntoView({ block: "center", inline: "center" });
+  cell.classList.add("sheet-issue-focus");
+  window.setTimeout(() => cell.classList.remove("sheet-issue-focus"), 1600);
+  const control = cell.querySelector("[data-rateware-field], button, select, textarea, input");
+  control?.focus({ preventScroll: true });
+  const message = cell.dataset.validationStatus || cell.title || "Review this cell.";
+  setActionStatus(`Issue ${ratewareIssueCursor + 1} of ${cells.length}: ${message}`, "warning");
+}
+
+function selectVisibleIssueRows() {
+  const issueRows = visibleIssueRows();
+  selectedRowIds.clear();
+  visibleRatewareCheckboxes().forEach((checkbox) => {
+    const hasIssue = issueRows.some((row) => row.dataset.ratewareId === checkbox.dataset.selectRateware);
+    checkbox.checked = hasIssue;
+    if (hasIssue) selectedRowIds.add(checkbox.dataset.selectRateware);
+  });
+  setActionStatus(issueRows.length ? `${issueRows.length} visible row(s) with validation issues selected.` : "No issue rows on this page.", issueRows.length ? "warning" : "success");
+  updateBulkControls();
 }
 
 function replaceStoredRatewareRow(updatedRow) {
@@ -1525,6 +1609,7 @@ function updateBulkControls() {
     selectAllCheckbox.checked = selectedCount > 0 && selectedCount === totalRows;
     selectAllCheckbox.indeterminate = selectedCount > 0 && selectedCount < totalRows;
   }
+  updateIssueNavigator();
   updateRatewarePaginationControls();
 }
 
@@ -1629,6 +1714,18 @@ async function saveSelectedRatewareRows() {
     .map((id) => body.querySelector(`[data-rateware-id="${CSS.escape(id)}"]`))
     .filter(Boolean);
   if (!rows.length) return;
+
+  const criticalRows = rowsWithCriticalValidation(rows);
+  if (criticalRows.length) {
+    criticalRows.forEach(({ tableRow }) => applyInlineValidation(tableRow));
+    updateIssueNavigator();
+    const proceed = window.confirm(`Save ${rows.length} approved rate(s) with ${criticalRows.length} row(s) still showing critical validation issues?`);
+    if (!proceed) {
+      setActionStatus("Bulk save cancelled. Fix critical cells or save rows one by one.", "warning");
+      updateBulkControls();
+      return;
+    }
+  }
 
   saveSelectedButton.disabled = true;
   setActionStatus(`Saving ${rows.length} approved rate(s)...`);
@@ -2172,6 +2269,15 @@ async function applySelectedBulkEdit() {
   if (!ids.length || !field) return;
 
   const patch = { [field]: bulkPatchValue(field, bulkValueInput?.value) };
+  const rows = ids.map((id) => body.querySelector(`[data-rateware-id="${CSS.escape(id)}"]`)).filter(Boolean);
+  const criticalRows = rowsWithCriticalValidation(rows, (tableRow) => ({ ...readRatewarePatch(tableRow), ...patch }));
+  if (criticalRows.length) {
+    const proceed = window.confirm(`Apply this bulk edit to ${ids.length} approved rate(s) even though ${criticalRows.length} row(s) will still have critical validation issues?`);
+    if (!proceed) {
+      setInlineStatus(bulkStatus, "Bulk edit cancelled.", "warning");
+      return;
+    }
+  }
   if (applyBulkEditButton) applyBulkEditButton.disabled = true;
   setInlineStatus(bulkStatus, `Updating ${ids.length} selected rate(s)...`);
 
@@ -2688,6 +2794,8 @@ selectAllCheckbox?.addEventListener("change", () => {
 });
 selectRatewarePageButton?.addEventListener("click", () => setVisibleRatewareSelection(true));
 clearRatewareSelectionButton?.addEventListener("click", () => setVisibleRatewareSelection(false));
+ratewareNextIssueButton?.addEventListener("click", focusNextVisibleIssue);
+ratewareSelectIssueRowsButton?.addEventListener("click", selectVisibleIssueRows);
 body.addEventListener("input", (event) => {
   const field = event.target.closest("[data-rateware-field]");
   if (!field) return;

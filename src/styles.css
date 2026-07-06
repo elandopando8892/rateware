@@ -8472,6 +8472,12 @@ button.location-chip:focus-visible {
   box-shadow: inset 0 -2px 0 rgba(180, 35, 24, 0.82), inset 2px 0 0 rgba(180, 35, 24, 0.55);
 }
 
+.sheet-issue-focus {
+  outline: 2px solid rgba(49, 89, 255, 0.72);
+  outline-offset: -2px;
+  box-shadow: inset 0 -2px 0 rgba(49, 89, 255, 0.72), inset 2px 0 0 rgba(49, 89, 255, 0.52);
+}
+
 .cell-validation-warning .staging-input,
 .cell-validation-warning .rateware-input {
   background: #fffaf0;
@@ -11644,7 +11650,7 @@ tbody tr:hover {
 }
 
 .sheet-helper-strip {
-  display: none;
+  display: flex;
   align-items: center;
   gap: 10px;
   min-height: 30px;
@@ -11667,6 +11673,25 @@ tbody tr:hover {
   display: inline-flex;
   align-items: center;
   gap: 4px;
+}
+
+.sheet-issue-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding-left: 8px;
+  border-left: 1px solid var(--line);
+}
+
+.sheet-issue-nav button {
+  min-height: 22px;
+  padding: 2px 7px;
+  font-size: 0.68rem;
+}
+
+.sheet-issue-nav span {
+  color: var(--neutral);
+  font-weight: 760;
 }
 
 .sheet-helper-strip kbd {

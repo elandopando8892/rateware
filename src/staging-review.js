@@ -59,6 +59,9 @@ const stagingMetricSelected = document.querySelector("#staging-metric-selected")
 const reviewFilterButtons = document.querySelectorAll("[data-staging-filter]");
 const uploadScopeBanner = document.querySelector("#staging-upload-scope");
 const gridSelectionStatus = document.querySelector("#staging-grid-selection");
+const stagingNextIssueButton = document.querySelector("#staging-next-issue");
+const stagingSelectIssueRowsButton = document.querySelector("#staging-select-issue-rows");
+const stagingIssueSummary = document.querySelector("#staging-issue-summary");
 const stagingPageSummary = document.querySelector("#staging-page-summary");
 const stagingFirstPageButton = document.querySelector("#staging-first-page");
 const stagingPrevPageButton = document.querySelector("#staging-prev-page");
@@ -88,6 +91,7 @@ let stagingPageIndex = 0;
 let stagingPageSize = readStoredPageSize(STAGING_PAGE_SIZE_STORAGE_KEY, DEFAULT_STAGING_PAGE_SIZE);
 let stagingLoadToken = 0;
 let stagingSearchTimer = null;
+let stagingIssueCursor = -1;
 let stagingOptions = {
   categories: {},
   vendors: [],
@@ -677,6 +681,7 @@ function updateBulkControls() {
     selectAllCheckbox.indeterminate = selectedCount > 0 && selectedCount < totalRows;
   }
   updateReviewMetrics();
+  updateIssueNavigator();
   updateStagingPaginationControls();
 }
 
@@ -1118,6 +1123,86 @@ function updateVisibleValidationMetric() {
     return summary;
   }, { critical: 0, warning: 0 });
   setStagingValidationMetric(validation);
+  updateIssueNavigator();
+}
+
+function criticalIssueCount(row) {
+  let count = 0;
+  rowCellValidationIssues(row).forEach((fieldIssues) => {
+    fieldIssues.forEach((issue) => {
+      if (issue.tone === "danger") count += 1;
+    });
+  });
+  return count;
+}
+
+function rowsWithCriticalValidation(tableRows, patchFactory) {
+  return tableRows
+    .map((tableRow) => {
+      const patch = patchFactory ? patchFactory(tableRow) : readInlinePatch(tableRow);
+      const critical = criticalIssueCount(rowFromTablePatch(tableRow, patch));
+      return { tableRow, critical };
+    })
+    .filter((item) => item.critical > 0);
+}
+
+function visibleIssueCells() {
+  return [...body.querySelectorAll("td.cell-validation-danger, td.cell-validation-warning")]
+    .filter((cell) => !cell.classList.contains("column-hidden"));
+}
+
+function visibleIssueRows() {
+  return [...body.querySelectorAll("[data-row-id].has-critical-validation, [data-row-id].has-warning-validation")];
+}
+
+function updateIssueNavigator(validation = null) {
+  const issueCells = visibleIssueCells();
+  const issueRows = visibleIssueRows();
+  const summary = validation || issueCells.reduce((counts, cell) => {
+    if (cell.classList.contains("cell-validation-danger")) counts.critical += 1;
+    else counts.warning += 1;
+    return counts;
+  }, { critical: 0, warning: 0 });
+  const hasIssues = issueCells.length > 0;
+  if (stagingNextIssueButton) stagingNextIssueButton.disabled = !hasIssues;
+  if (stagingSelectIssueRowsButton) stagingSelectIssueRowsButton.disabled = !issueRows.length;
+  if (stagingIssueSummary) {
+    stagingIssueSummary.textContent = hasIssues
+      ? `${summary.critical.toLocaleString()} critical / ${summary.warning.toLocaleString()} warning cells on this page`
+      : "No visible issues";
+  }
+  if (!hasIssues) stagingIssueCursor = -1;
+}
+
+function focusNextVisibleIssue() {
+  const cells = visibleIssueCells();
+  if (!cells.length) {
+    setBulkStatus("No visible validation issues on this page.", "success");
+    updateIssueNavigator();
+    return;
+  }
+
+  stagingIssueCursor = (stagingIssueCursor + 1) % cells.length;
+  const cell = cells[stagingIssueCursor];
+  cell.scrollIntoView({ block: "center", inline: "center" });
+  cell.classList.add("sheet-issue-focus");
+  window.setTimeout(() => cell.classList.remove("sheet-issue-focus"), 1600);
+  const control = cell.querySelector("[data-field], button, select, textarea, input");
+  control?.focus({ preventScroll: true });
+  const message = cell.dataset.validationStatus || cell.title || "Review this cell.";
+  setBulkStatus(`Issue ${stagingIssueCursor + 1} of ${cells.length}: ${message}`, "warning");
+}
+
+function selectVisibleIssueRows() {
+  const issueRows = visibleIssueRows();
+  selectedRowIds.clear();
+  visibleStagingCheckboxes().forEach((checkbox) => {
+    const hasIssue = issueRows.some((row) => row.dataset.rowId === checkbox.dataset.selectRow);
+    checkbox.checked = hasIssue;
+    if (hasIssue) selectedRowIds.add(checkbox.dataset.selectRow);
+  });
+  setBulkStatus(issueRows.length ? `${issueRows.length} visible row(s) with validation issues selected.` : "No issue rows on this page.", issueRows.length ? "warning" : "success");
+  updateBulkControls();
 }
 
 function applyReviewFilter(rows = loadedRows) {
@@ -1952,6 +2037,20 @@ async function runBulkAction(status = null) {
     }
   }
 
+  if (!status) {
+    const criticalRows = rowsWithCriticalValidation(rows);
+    if (criticalRows.length) {
+      criticalRows.forEach(({ tableRow }) => applyInlineValidation(tableRow));
+      updateIssueNavigator();
+      const proceed = window.confirm(`Save ${rows.length} selected row(s) with ${criticalRows.length} row(s) still showing critical validation issues? They will stay editable and cannot be approved until corrected.`);
+      if (!proceed) {
+        setBulkStatus("Bulk save cancelled. Fix critical cells or save rows one by one.", "warning");
+        updateBulkControls();
+        return;
+      }
+    }
+  }
+
   const label = status ? status.replace("_", " ") : "save";
   setBulkStatus(`Processing ${rows.length} rows...`);
   bulkSaveButton.disabled = true;
@@ -1984,6 +2083,14 @@ async function applySelectedBulkEdit() {
   const field = bulkFieldSelect?.value;
   if (!rows.length || !field) return;
   const patch = { [field]: bulkPatchValue(field, bulkValueInput?.value) };
+  const criticalRows = rowsWithCriticalValidation(rows, (tableRow) => ({ ...readInlinePatch(tableRow), ...patch }));
+  if (criticalRows.length) {
+    const proceed = window.confirm(`Apply this bulk edit to ${rows.length} row(s) even though ${criticalRows.length} row(s) will still have critical validation issues?`);
+    if (!proceed) {
+      setBulkEditStatus("Bulk edit cancelled.", "warning");
+      return;
+    }
+  }
   if (applyBulkEditButton) applyBulkEditButton.disabled = true;
   setBulkEditStatus(`Updating ${rows.length} selected row(s)...`);
 
@@ -2575,6 +2682,8 @@ selectAllCheckbox?.addEventListener("change", () => {
 });
 selectStagingPageButton?.addEventListener("click", () => setVisibleStagingSelection(true));
 clearStagingSelectionButton?.addEventListener("click", () => setVisibleStagingSelection(false));
+stagingNextIssueButton?.addEventListener("click", focusNextVisibleIssue);
+stagingSelectIssueRowsButton?.addEventListener("click", selectVisibleIssueRows);
 bulkSaveButton?.addEventListener("click", () => runBulkAction());
 bulkMatchVendorsButton?.addEventListener("click", runBulkMatchVendors);
 bulkApproveButton?.addEventListener("click", () => runBulkAction("approved"));
