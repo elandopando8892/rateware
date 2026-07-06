@@ -40,7 +40,7 @@ function formatLane(lane = {}) {
 }
 
 function formatMoney(value, currency = "USD") {
-  const number = Number(value);
+  const number = typeof value === "number" ? value : numberFromInput(value);
   if (!Number.isFinite(number)) return "-";
   return `${new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(number)} ${currency || "USD"}`;
 }
@@ -201,8 +201,42 @@ function marketplaceBadgesHtml(row = {}) {
 }
 
 function numberFromInput(value) {
-  const number = Number(String(value ?? "").replace(/[$,]/g, "").trim());
+  const text = String(value ?? "").trim();
+  if (!text) return null;
+  const normalized = text.replace(/[$,]/g, "").trim();
+  if (!/^-?\d+(?:\.\d+)?$/.test(normalized)) return null;
+  const number = Number(normalized);
   return Number.isFinite(number) ? number : null;
+}
+
+function validationIssue(field, message) {
+  return { field, message };
+}
+
+function validatePositiveNumberIssue(value, field, label, required = true) {
+  const text = String(value ?? "").trim();
+  if (!text) return required ? validationIssue(field, `${label} is required and must be numeric.`) : null;
+  const number = numberFromInput(value);
+  if (number === null) return validationIssue(field, `${label} must be numeric.`);
+  if (number <= 0) return validationIssue(field, `${label} must be greater than zero.`);
+  return null;
+}
+
+function validatePercentIssue(value, field, label, options = {}) {
+  const text = String(value ?? "").trim();
+  if (!text) return options.required ? validationIssue(field, `${label} is required for this commercial model.`) : null;
+  const number = numberFromInput(value);
+  if (number === null) return validationIssue(field, `${label} must be numeric.`);
+  if (number < 0 || number > 100) return validationIssue(field, `${label} must be between 0% and 100%.`);
+  if (options.procurementRange && (number < 2 || number > 5)) return validationIssue(field, `${label} must be between 2% and 5%.`);
+  return null;
+}
+
+function validDateTimeValue(value) {
+  const text = String(value ?? "").trim();
+  if (!text) return null;
+  const date = new Date(text);
+  return Number.isNaN(date.getTime()) ? null : date;
 }
 
 function collectBidDraft() {
@@ -230,20 +264,85 @@ function collectBidDraft() {
   };
 }
 
-function bidDraftWarnings(draft) {
+function validateBidDraft(draft) {
+  const errors = [
+    validatePositiveNumberIssue(draft.bid_rate, "bid-rate", "All-in rate"),
+    validatePositiveNumberIssue(draft.weekly_capacity, "bid-capacity", "Weekly capacity"),
+    validatePositiveNumberIssue(draft.transit_days, "bid-transit-days", "Transit days")
+  ].filter(Boolean);
+
+  if (!/^[A-Z]{3}$/.test(String(draft.currency || "").trim().toUpperCase())) {
+    errors.push(validationIssue("bid-currency", "Currency must be USD, MXN, CAD, or another 3-letter code."));
+  }
+
+  if (draft.commercial_model === "direct_cost_plus") {
+    const marginIssue = validatePercentIssue(draft.marksman_margin_pct, "bid-marksman-margin", "MARKSMAN margin %", { required: true, procurementRange: true });
+    if (marginIssue) errors.push(marginIssue);
+  } else {
+    const marginIssue = validatePercentIssue(draft.marksman_margin_pct, "bid-marksman-margin", "MARKSMAN margin %");
+    if (marginIssue) errors.push(marginIssue);
+  }
+
+  if (draft.commercial_model === "carrier_share") {
+    const shareIssue = validatePercentIssue(draft.carrier_share_pct, "bid-carrier-share", "Carrier share %", { required: true, procurementRange: true });
+    if (shareIssue) errors.push(shareIssue);
+  } else {
+    const shareIssue = validatePercentIssue(draft.carrier_share_pct, "bid-carrier-share", "Carrier share %");
+    if (shareIssue) errors.push(shareIssue);
+  }
+
+  const alternativeUnitsIssue = validatePositiveNumberIssue(draft.alternative_units, "bid-alt-units", "Alternative units", false);
+  if (alternativeUnitsIssue) errors.push(alternativeUnitsIssue);
+  if (draft.best_alternative_offered && !draft.alternative_equipment.trim() && numberFromInput(draft.alternative_units) === null) {
+    errors.push(validationIssue("bid-alt-equipment", "Best alternative needs equipment or a positive unit count."));
+  }
+
+  const pickupEta = validDateTimeValue(draft.eta_pickup);
+  const deliveryEta = validDateTimeValue(draft.eta_delivery);
+  if (draft.eta_pickup && !pickupEta) errors.push(validationIssue("bid-eta-pickup", "Pickup ETA must be a valid date and time."));
+  if (draft.eta_delivery && !deliveryEta) errors.push(validationIssue("bid-eta-delivery", "Delivery ETA must be a valid date and time."));
+  if (draft.equipment_available === "true") {
+    if (!pickupEta) errors.push(validationIssue("bid-eta-pickup", "Pickup ETA is required when equipment is available."));
+    if (!deliveryEta) errors.push(validationIssue("bid-eta-delivery", "Delivery ETA is required when equipment is available."));
+    if (!draft.unit_details.trim()) errors.push(validationIssue("bid-unit-details", "Unit, trailer, driver or mirror details are required when equipment is available."));
+  }
+  if (pickupEta && deliveryEta && deliveryEta.getTime() <= pickupEta.getTime()) {
+    errors.push(validationIssue("bid-eta-delivery", "Delivery ETA must be after pickup ETA."));
+  }
+
   const warnings = [];
-  if (numberFromInput(draft.bid_rate) === null) warnings.push("All-in rate is required.");
-  if (numberFromInput(draft.weekly_capacity) === null) warnings.push("Weekly capacity is recommended before submitting.");
-  if (draft.equipment_available === "true" && !draft.eta_pickup) warnings.push("Pickup ETA is recommended when equipment is available.");
-  if (draft.equipment_available === "true" && !draft.unit_details.trim()) warnings.push("Unit, trailer, driver or mirror details improve validation.");
-  if (draft.best_alternative_offered && !draft.alternative_equipment.trim()) warnings.push("Add alternative equipment or units for the best alternative offer.");
-  if (draft.commercial_model === "carrier_share" && numberFromInput(draft.carrier_share_pct) === null) warnings.push("Carrier share % is recommended for billing share model.");
-  if (draft.commercial_model === "direct_cost_plus" && numberFromInput(draft.marksman_margin_pct) === null) warnings.push("MARKSMAN margin % is recommended for cost-plus model.");
-  return warnings;
+  if (draft.commercial_model === "xbf_buy_sell" && (draft.marksman_margin_pct || draft.carrier_share_pct)) {
+    warnings.push("XBF buy-sell does not require MARKSMAN margin or carrier share.");
+  }
+  if (draft.best_alternative_offered && !draft.alternative_notes.trim()) {
+    warnings.push("Alternative notes help procurement understand assumptions and restrictions.");
+  }
+  if (draft.equipment_available !== "true") {
+    warnings.push("Declaring available equipment and ETAs improves award scoring.");
+  }
+  return { errors, warnings };
+}
+
+function bidDraftWarnings(draft) {
+  const validation = validateBidDraft(draft);
+  return [...validation.errors.map((issue) => issue.message), ...validation.warnings];
+}
+
+function focusBidValidationField(field) {
+  const input = card.querySelector(`#${field}`);
+  if (!input) return;
+  input.setAttribute("aria-invalid", "true");
+  input.scrollIntoView({ behavior: "smooth", block: "center" });
+  window.setTimeout(() => input.focus(), 200);
+}
+
+function clearBidValidationState() {
+  card.querySelectorAll("#bid-form [aria-invalid='true']").forEach((input) => input.removeAttribute("aria-invalid"));
 }
 
 function bidReviewSummaryHtml(draft) {
-  const warnings = bidDraftWarnings(draft);
+  const validation = validateBidDraft(draft);
+  const warnings = [...validation.errors.map((issue) => issue.message), ...validation.warnings];
   const alternative = draft.best_alternative_offered
     ? [draft.alternative_equipment, draft.alternative_units ? `${draft.alternative_units} unit(s)` : null].filter(Boolean).join(" / ") || "Alternative declared"
     : "No alternative";
@@ -259,7 +358,7 @@ function bidReviewSummaryHtml(draft) {
       <article><span>Alternative</span><strong>${escapeHtml(alternative)}</strong><small>${escapeHtml(draft.alternative_notes || "No alternative notes")}</small></article>
       <article><span>Capacity</span><strong>${escapeHtml(availability)}</strong><small>${escapeHtml(draft.mirror_account_enabled ? "Mirror account requested" : draft.unit_details || "No unit details")}</small></article>
     </div>
-    <div class="bid-review-warnings" data-tone="${warnings.length ? "warning" : "success"}">
+    <div class="bid-review-warnings" data-tone="${validation.errors.length ? "danger" : warnings.length ? "warning" : "success"}">
       ${warnings.length
         ? warnings.map((warning) => `<span>${escapeHtml(warning)}</span>`).join("")
         : "<span>Ready to submit. Procurement will see the full commercial and capacity context.</span>"}
@@ -1049,21 +1148,24 @@ function renderInvitation(invitation, liveBoard = {}) {
     event.preventDefault();
     const status = card.querySelector("#bid-submit-status");
     const draft = collectBidDraft();
-    const warnings = bidDraftWarnings(draft);
-    const blockingWarning = warnings.find((warning) => warning.includes("required"));
-    if (blockingWarning) {
-      status.textContent = blockingWarning;
+    const validation = validateBidDraft(draft);
+    clearBidValidationState();
+    updateBidReviewSummary();
+    if (validation.errors.length) {
+      const firstError = validation.errors[0];
+      status.textContent = firstError.message;
       status.dataset.tone = "error";
-      card.querySelector('[data-bid-section="primary"]')?.scrollIntoView({ behavior: "smooth", block: "start" });
+      focusBidValidationField(firstError.field);
       return;
     }
     if (!card.querySelector("#bid-confirm-review")?.checked) {
       status.textContent = "Confirm capacity and commercial terms before submitting.";
       status.dataset.tone = "error";
+      focusBidValidationField("bid-confirm-review");
       card.querySelector('[data-bid-section="review"]')?.scrollIntoView({ behavior: "smooth", block: "start" });
       return;
     }
-    status.textContent = warnings.length ? "Submitting bid with validation warnings..." : "Submitting bid...";
+    status.textContent = validation.warnings.length ? "Submitting bid with validation warnings..." : "Submitting bid...";
     status.dataset.tone = "neutral";
     try {
       await callBidApi("submit_bid", draft);
@@ -1202,7 +1304,10 @@ card.addEventListener("submit", async (event) => {
 });
 
 card.addEventListener("input", (event) => {
-  if (event.target.closest("#bid-form")) updateBidReviewSummary();
+  if (event.target.closest("#bid-form")) {
+    clearBidValidationState();
+    updateBidReviewSummary();
+  }
 
   const search = event.target.closest("[data-book-search]");
   if (!search) return;
@@ -1217,7 +1322,10 @@ card.addEventListener("input", (event) => {
 });
 
 card.addEventListener("change", (event) => {
-  if (event.target.closest("#bid-form")) updateBidReviewSummary();
+  if (event.target.closest("#bid-form")) {
+    clearBidValidationState();
+    updateBidReviewSummary();
+  }
 });
 
 loadInvitation().then(() => {
