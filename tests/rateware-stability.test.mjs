@@ -16,6 +16,7 @@ const rfxEventsHtml = readFileSync(new URL("../rfx-events.html", import.meta.url
 const rfxBidSource = readFileSync(new URL("../src/rfx-bid.js", import.meta.url), "utf8");
 const rfxBidApiSource = readFileSync(new URL("../supabase/functions/rfx-bid-api/index.ts", import.meta.url), "utf8");
 const bidRoomE2eSource = readFileSync(new URL("../tools/bid-room-e2e.mjs", import.meta.url), "utf8");
+const integrationSmokeSource = readFileSync(new URL("../tools/integration-smoke.mjs", import.meta.url), "utf8");
 const packageJsonSource = readFileSync(new URL("../package.json", import.meta.url), "utf8");
 const gmailOauthCallbackSource = readFileSync(new URL("../supabase/functions/gmail-oauth-callback/index.ts", import.meta.url), "utf8");
 const googleChatAppSource = readFileSync(new URL("../supabase/functions/google-chat-app/index.ts", import.meta.url), "utf8");
@@ -192,6 +193,7 @@ assert.match(rfxEventsHtml, /rfx-apply-recommended-awards/, "Bid Room Step 6 sho
 assert.match(rfxEventsHtml, /rfx-award-readiness/, "Bid Room Step 6 should show closeout readiness");
 assert.match(rfxEventsHtml, /rfx-award-notice-queue/, "Bid Room Step 6 should show the award notice queue");
 assert.match(packageJsonSource, /"e2e:bid-room": "node tools\/bid-room-e2e\.mjs"/, "Package scripts should expose the Bid Room production E2E runner");
+assert.match(packageJsonSource, /"smoke:integrations": "node tools\/integration-smoke\.mjs"/, "Package scripts should expose the production integration smoke runner");
 assert.match(bidRoomE2eSource, /RATEWARE_E2E_KINDE_TOKEN/, "Bid Room E2E should require a real Kinde token for production API calls");
 assert.match(bidRoomE2eSource, /create_rfx_event/, "Bid Room E2E should create a real RFx event");
 assert.match(bidRoomE2eSource, /import_rfx_lanes/, "Bid Room E2E should load lane book rows");
@@ -206,6 +208,18 @@ assert.match(bidRoomE2eSource, /sync_bid_room_event_thread/, "Bid Room E2E shoul
 assert.match(bidRoomE2eSource, /award_rfx_lane_vendor/, "Bid Room E2E should award a primary carrier");
 assert.match(bidRoomE2eSource, /closeout_awarded_rfx_to_rateware/, "Bid Room E2E should close awarded bids into Rateware");
 assert.match(bidRoomE2eSource, /pending_review/, "Bid Room E2E should default closeout to pending review unless explicitly approved");
+assert.match(integrationSmokeSource, /Vercel deploy/, "Integration smoke should confirm Vercel deployment");
+assert.match(integrationSmokeSource, /Kinde login/, "Integration smoke should confirm Kinde login");
+assert.match(integrationSmokeSource, /get_saas_settings/, "Integration smoke should confirm authenticated Supabase API access");
+assert.match(integrationSmokeSource, /list_gmail_connections/, "Integration smoke should check Gmail connection status");
+assert.match(integrationSmokeSource, /send_outreach_messages/, "Integration smoke should cover real Gmail sending when enabled");
+assert.match(integrationSmokeSource, /google-chat-app/, "Integration smoke should hit the Google Chat inbound endpoint");
+assert.match(integrationSmokeSource, /list_google_chat_connections/, "Integration smoke should check Google Chat OAuth connection");
+assert.match(integrationSmokeSource, /google_chat_sync_status/, "Integration smoke should validate Google Chat outbound sync status");
+assert.match(integrationSmokeSource, /google_chat_inbound/, "Integration smoke should validate Google Chat inbound sync status");
+assert.match(integrationSmokeSource, /closeout_awarded_rfx_to_rateware/, "Integration smoke should validate Rateware closeout");
+assert.match(integrationSmokeSource, /pending_review/, "Integration smoke should default Rateware closeout to pending review");
+assert.match(integrationSmokeSource, /Refusing to send real Gmail to external recipient/, "Integration smoke should block accidental external Gmail sends");
 assert.match(rfxEventsHtml, /<th>Score<\/th>/, "Bid Room response board should expose procurement decision score");
 assert.match(rfxEventsSource, /renderAwardBoard/, "Bid Room should render award decisions by lane");
 assert.match(rfxEventsSource, /function validateRfxBidPatch/, "Bid Room should validate internal bid edits before saving");
