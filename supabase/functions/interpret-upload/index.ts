@@ -671,6 +671,7 @@ function locationTokens(value: unknown) {
 
 function normalizedLocationStateCode(value: unknown) {
   const state = catalogKey(value);
+  if (state === "CU") return "CO";
   return state === "EM" ? "MX" : state;
 }
 
@@ -697,12 +698,28 @@ function locationTextProfile(value: unknown) {
   return { lookup, tokens, explicitMx, explicitUs, explicitCa, hasMxState, hasMxStateName, hasFiveDigitPostal, hasMxCityHint, hasMxEvidence };
 }
 
+function profileExplicitCountry(profile: ReturnType<typeof locationTextProfile>) {
+  if (profile.explicitMx) return "MX";
+  if (profile.explicitUs) return "US";
+  if (profile.explicitCa) return "CA";
+  return "";
+}
+
 function locationMatchesProfile(location: Record<string, unknown>, profile: ReturnType<typeof locationTextProfile>) {
   const country = locationCountry(location);
-  if (profile.explicitMx && country && country !== "MX") return false;
-  if (profile.explicitUs && country && country !== "US") return false;
-  if (profile.explicitCa && country && country !== "CA") return false;
+  const explicitCountry = profileExplicitCountry(profile);
+  if (explicitCountry) return country === explicitCountry;
   return true;
+}
+
+function locationZipPrefixMatches(profile: ReturnType<typeof locationTextProfile>, zipPrefix: unknown) {
+  const zip = catalogKey(zipPrefix);
+  if (!zip) return false;
+  return profile.tokens.some((token) => {
+    if (token === zip) return true;
+    if (!/^[A-Z0-9]+$/.test(token)) return false;
+    return token.length > zip.length && token.startsWith(zip);
+  });
 }
 
 function scoreVendorMatch(vendor: Record<string, unknown>, rawUpload: Record<string, string>, interpretation: Record<string, unknown>) {
@@ -1146,7 +1163,7 @@ function locationMatch(index: Map<string, Record<string, unknown>>, value: unkno
     && (profile.explicitUs || profile.explicitCa || (!profile.hasMxEvidence && !profile.hasFiveDigitPostal));
   if (allowZipShortcut && index.get(catalogKey(zip))) {
     const zipMatch = index.get(catalogKey(zip))!;
-    if (locationCountry(zipMatch) !== "MX") {
+    if (locationMatchesProfile(zipMatch, profile) && locationCountry(zipMatch) !== "MX") {
       return {
         location: zipMatch,
         score: 92,
@@ -1170,7 +1187,7 @@ function locationMatch(index: Map<string, Record<string, unknown>>, value: unkno
       reasons.push("country hint");
     }
     const zipPrefix = catalogKey(location.zip_prefix);
-    if (zipPrefix && lookup.includes(zipPrefix)) {
+    if (zipPrefix && locationZipPrefixMatches(profile, zipPrefix)) {
       const zipCompatible = country === "MX"
         || profile.explicitUs
         || profile.explicitCa

@@ -579,14 +579,34 @@ function locationSearchFields(option) {
   ].filter(Boolean);
 }
 
+function autocompleteTokens(value) {
+  return String(value || "")
+    .toUpperCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .split(/[^A-Z0-9]+/)
+    .filter(Boolean);
+}
+
+function isZipLikeField(value) {
+  return /^\d{3,5}$/.test(String(value || "")) || /^[A-Z]\d[A-Z]$/i.test(String(value || ""));
+}
+
+function zipPrefixMatchesQuery(query, zipPrefix) {
+  const zip = String(zipPrefix || "").toUpperCase().trim();
+  if (!zip) return false;
+  return autocompleteTokens(query).some((token) => token === zip || (token.length > zip.length && token.startsWith(zip)));
+}
+
 function scoreLocation(option, query) {
   const lookup = autocompleteKey(query);
   if (!lookup) return 1;
   const fields = locationSearchFields(option).map(autocompleteKey).filter(Boolean);
+  if (typeof option !== "string" && option.zip_prefix && zipPrefixMatchesQuery(query, option.zip_prefix)) return 92;
   if (fields.some((field) => field === lookup)) return 100;
   if (fields.some((field) => field.startsWith(lookup))) return 86;
   if (fields.some((field) => field.includes(lookup))) return 72;
-  if (fields.some((field) => lookup.includes(field) && field.length > 2)) return 58;
+  if (fields.some((field) => lookup.includes(field) && field.length > 2 && (!isZipLikeField(field) || zipPrefixMatchesQuery(query, field)))) return 58;
   return 0;
 }
 
@@ -606,6 +626,7 @@ function locationMatchReason(option, query) {
   if (exact) return exact[0];
   const partial = candidates.find(([, value]) => {
     const key = autocompleteKey(value);
+    if (isZipLikeField(key)) return zipPrefixMatchesQuery(query, key);
     return key && (key.includes(lookup) || lookup.includes(key));
   });
   return partial ? partial[0] : "Fuzzy catalog match";

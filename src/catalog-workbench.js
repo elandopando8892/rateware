@@ -570,6 +570,12 @@ function textTokens(value) {
     .filter(Boolean);
 }
 
+function zipPrefixMatchesTokens(tokens, zipPrefix) {
+  const zip = String(zipPrefix || "").toUpperCase().trim();
+  if (!zip) return false;
+  return tokens.some((token) => token === zip || (token.length > zip.length && token.startsWith(zip)));
+}
+
 function locationSearchKey(value) {
   return String(value || "")
     .toLowerCase()
@@ -785,7 +791,7 @@ function scoreLocationCandidate(row, side, option) {
   const inferredCountry = country(row, side);
   const optionCountry = String(option.country || "").toUpperCase();
   if (inferredCountry && optionCountry === inferredCountry) score += 22;
-  if (inferredCountry && optionCountry && optionCountry !== inferredCountry) score -= 70;
+  if (inferredCountry && optionCountry && optionCountry !== inferredCountry) return null;
 
   const state = inferState(query);
   const optionState = String(option.state_code || option.state_name || "").toUpperCase();
@@ -795,7 +801,7 @@ function scoreLocationCandidate(row, side, option) {
   const queryTokens = new Set(textTokens(query));
   const optionCityTokens = textTokens([option.city, option.metro_city].filter(Boolean).join(" "));
   if (optionCityTokens.some((token) => queryTokens.has(token))) score += 10;
-  if (option.zip_prefix && queryTokens.has(String(option.zip_prefix).toUpperCase())) score += optionCountry === "MX" ? 4 : 12;
+  if (option.zip_prefix && zipPrefixMatchesTokens([...queryTokens], option.zip_prefix)) score += optionCountry === "MX" ? 4 : 12;
   if (optionCountry === "MX" && option.market) score += 8;
   if ((optionCountry === "US" || optionCountry === "CA") && !option.zip_prefix) score -= 8;
 

@@ -104,6 +104,12 @@ function textTokens(value) {
     .filter(Boolean);
 }
 
+function zipPrefixMatchesText(value, zipPrefix) {
+  const zip = lookupKey(zipPrefix).toUpperCase();
+  if (!zip) return false;
+  return textTokens(value).some((token) => token === zip || (token.length > zip.length && token.startsWith(zip)));
+}
+
 function inferState(value) {
   const tokens = textTokens(value);
   return tokens.find((token) => MX_STATE_CODES.has(token) || US_STATE_CODES.has(token) || CA_PROVINCE_CODES.has(token)) || "";
@@ -166,7 +172,7 @@ function scoreCandidate(option, query, row, prefix) {
   const country = inferCountry(query, row, prefix);
   const optionCountry = String(option?.country || "").toUpperCase();
   if (country && optionCountry === country) score += 18;
-  if (country && optionCountry && optionCountry !== country) score -= 48;
+  if (country && optionCountry && optionCountry !== country) return null;
 
   const state = inferState(query);
   const optionState = String(option?.state_code || option?.state_name || "").toUpperCase();
@@ -175,7 +181,7 @@ function scoreCandidate(option, query, row, prefix) {
 
   const existingMarket = lookupKey(row?.[`${prefix}_market`]);
   if (existingMarket && lookupKey(option?.market) === existingMarket) score += 8;
-  if (option?.zip_prefix && lookup.includes(lookupKey(option.zip_prefix))) score += 10;
+  if (option?.zip_prefix && zipPrefixMatchesText(query, option.zip_prefix)) score += 10;
   if (["US", "CA"].includes(optionCountry) && !option?.zip_prefix) score -= 8;
   if (optionCountry === "MX" && option?.market) score += 6;
 

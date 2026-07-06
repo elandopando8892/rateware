@@ -10,6 +10,9 @@ const uploadCenterHtml = readFileSync(new URL("../upload-center.html", import.me
 const bulkImportTemplateSource = readFileSync(new URL("../src/bulk-import-template.js", import.meta.url), "utf8");
 const stagingReviewSource = readFileSync(new URL("../src/staging-review.js", import.meta.url), "utf8");
 const ratewareSource = readFileSync(new URL("../src/rateware.js", import.meta.url), "utf8");
+const sheetUiSource = readFileSync(new URL("../src/sheet-ui.js", import.meta.url), "utf8");
+const catalogWorkbenchSource = readFileSync(new URL("../src/catalog-workbench.js", import.meta.url), "utf8");
+const locationMatchDrawerSource = readFileSync(new URL("../src/location-match-drawer.js", import.meta.url), "utf8");
 const stagingReviewHtml = readFileSync(new URL("../staging-review.html", import.meta.url), "utf8");
 const ratewareHtml = readFileSync(new URL("../rateware.html", import.meta.url), "utf8");
 const vendorsSource = readFileSync(new URL("../src/vendors.js", import.meta.url), "utf8");
@@ -41,6 +44,7 @@ const fastBiVendorMetricMigration = readFileSync(new URL("../supabase/migrations
 const biGenericDomainLabelsMigration = readFileSync(new URL("../supabase/migrations/20260626191000_bi_generic_domain_labels.sql", import.meta.url), "utf8");
 const uploadBulkImportIndexesMigration = readFileSync(new URL("../supabase/migrations/20260627162000_upload_bulk_import_catalog_indexes.sql", import.meta.url), "utf8");
 const laneLocationAliasesMigration = readFileSync(new URL("../supabase/migrations/20260627173500_strengthen_lane_location_aliases.sql", import.meta.url), "utf8");
+const laneLocationCountryZipGuardsMigration = readFileSync(new URL("../supabase/migrations/20260706120000_strengthen_location_country_zip_guards.sql", import.meta.url), "utf8");
 const shipmentIdFilterMigration = readFileSync(new URL("../supabase/migrations/20260628123000_add_shipment_id_rate_filters.sql", import.meta.url), "utf8");
 const outreachSenderMigration = readFileSync(new URL("../supabase/migrations/20260703165000_outreach_sender_identity.sql", import.meta.url), "utf8");
 const bidVisibilityMigration = readFileSync(new URL("../supabase/migrations/20260703235500_rfx_bid_visibility_mode.sql", import.meta.url), "utf8");
@@ -534,11 +538,32 @@ assert.match(uploadBulkImportIndexesMigration, /rateware_locations_state_active_
 assert.match(uploadBulkImportIndexesMigration, /rateware_locations_location_key_active_idx/, "bulk import should have location key lookup index support");
 const apiLocationMatchSource = apiSource.slice(apiSource.indexOf("function locationMatch"), apiSource.indexOf("function applyLocation"));
 const interpretLocationMatchSource = interpretUploadSource.slice(interpretUploadSource.indexOf("function locationMatch"), interpretUploadSource.indexOf("function applyLocation"));
+const templateLocationScopeSource = apiSource.slice(apiSource.indexOf("function templateLocationScope"), apiSource.indexOf("async function fetchScopedTemplateLocations"));
+assert.match(apiSource, /function profileExplicitCountry/, "API location matching should derive one explicit country guard");
+assert.match(interpretUploadSource, /function profileExplicitCountry/, "Interpretation matching should derive one explicit country guard");
+assert.match(apiSource, /if \(explicitCountry\) return country === explicitCountry;/, "API location matching should reject blank or wrong-country candidates when text is explicit");
+assert.match(interpretUploadSource, /if \(explicitCountry\) return country === explicitCountry;/, "Interpretation matching should reject blank or wrong-country candidates when text is explicit");
+assert.match(apiSource, /if \(state === "CU"\) return "CO";/, "API location matching should treat CU and CO as Coahuila aliases");
+assert.match(interpretUploadSource, /if \(state === "CU"\) return "CO";/, "Interpretation matching should treat CU and CO as Coahuila aliases");
 assert.match(apiLocationMatchSource, /if \(!locationMatchesProfile\(location, profile\)\) continue;/, "API location matching should reject country-incompatible candidates");
 assert.match(interpretLocationMatchSource, /if \(!locationMatchesProfile\(location, profile\)\) continue;/, "Interpretation location matching should reject country-incompatible candidates");
+assert.match(apiLocationMatchSource, /locationZipPrefixMatches\(profile, zipPrefix\)/, "API location matching should use token-safe ZIP prefix matching");
+assert.match(interpretLocationMatchSource, /locationZipPrefixMatches\(profile, zipPrefix\)/, "Interpretation location matching should use token-safe ZIP prefix matching");
+assert.doesNotMatch(apiLocationMatchSource, /lookup\.includes\(zipPrefix\)/, "API location matching should not treat ZIP prefixes as arbitrary substrings");
+assert.doesNotMatch(interpretLocationMatchSource, /lookup\.includes\(zipPrefix\)/, "Interpretation location matching should not treat ZIP prefixes as arbitrary substrings");
+assert.match(templateLocationScopeSource, /zipPrefixes\.add\(numericPostal\)/, "structured import should fetch full MX postal aliases as well as prefixes");
+assert.match(templateLocationScopeSource, /zipPrefixes\.add\(numericPostal\.slice\(0, 3\)\)/, "structured import should still fetch US\/CA three-digit prefix aliases");
+assert.match(locationMatchDrawerSource, /function zipPrefixMatchesText/, "location drawer should explain matches with token-safe ZIP prefix checks");
+assert.match(locationMatchDrawerSource, /optionCountry && optionCountry !== country\) return null;/, "location drawer should hide wrong-country candidates when text is explicit");
+assert.doesNotMatch(locationMatchDrawerSource, /lookup\.includes\(lookupKey\(option\.zip_prefix\)\)/, "location drawer should not score ZIP prefixes by substring");
+assert.match(catalogWorkbenchSource, /function zipPrefixMatchesTokens/, "catalog workbench should score ZIP prefixes by token or leading prefix");
+assert.match(catalogWorkbenchSource, /optionCountry && optionCountry !== inferredCountry\) return null;/, "catalog workbench candidates should respect inferred country");
+assert.match(sheetUiSource, /function zipPrefixMatchesQuery/, "spreadsheet autocomplete should protect ZIP prefix matching");
+assert.match(sheetUiSource, /!isZipLikeField\(field\) \|\| zipPrefixMatchesQuery\(query, field\)/, "spreadsheet autocomplete should not match ZIP prefixes by arbitrary substring");
 for (const locationAlias of [
   "Ramos Arizpe, CU 25900",
   "Escobedo, NL 66050",
+  "Monterrey, NL 64000",
   "Acuna, CU 26220",
   "Hermosillo, SO 83200",
   "San Luis Potosi, SL 79255"
@@ -546,6 +571,17 @@ for (const locationAlias of [
   assert.match(laneLocationAliasesMigration, new RegExp(locationAlias.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")), `${locationAlias} should be protected by manual MX catalog aliases`);
 }
 assert.match(laneLocationAliasesMigration, /rateware_locations_country_state_active_idx/, "lane normalization should have country/state lookup support");
+for (const locationAlias of [
+  "Apodaca, NL 66600",
+  "Lerma, MX 52000",
+  "Toluca, MX 50000",
+  "Dallas, TX 75000",
+  "Laredo, TX 78000",
+  "Nuevo Laredo, TM 88000"
+]) {
+  assert.match(laneLocationCountryZipGuardsMigration, new RegExp(locationAlias.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")), `${locationAlias} should be protected by country/ZIP catalog guards`);
+}
+assert.match(laneLocationCountryZipGuardsMigration, /rateware_locations_country_zip_active_idx/, "lane normalization should have country/ZIP lookup support");
 const renormalizeRowsSource = apiSource.slice(apiSource.indexOf("async function renormalizeRateRows"), apiSource.indexOf("async function saveRatewareLocationAlias"));
 assert.match(renormalizeRowsSource, /fetchScopedTemplateLocations/, "rate row re-normalization should use scoped location lookup");
 assert.match(renormalizeRowsSource, /fetchScopedTemplateMileage/, "rate row re-normalization should use scoped mileage lookup");
