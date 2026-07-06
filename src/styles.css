@@ -10448,6 +10448,88 @@ select.staging-input {
   font-size: 0.84rem;
 }
 
+.settings-observability-panel {
+  grid-column: 1 / -1;
+}
+
+.observability-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.observability-summary article {
+  display: grid;
+  gap: 2px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--soft-panel);
+  padding: 8px 10px;
+}
+
+.observability-summary article.has-warning {
+  border-color: #efd18a;
+  background: #fff9e8;
+}
+
+.observability-summary article.has-error {
+  border-color: #f2b8b5;
+  background: #fff5f5;
+}
+
+.observability-summary span,
+.observability-summary small {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 820;
+}
+
+.observability-summary strong {
+  color: var(--text);
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.observability-toolbar {
+  display: grid;
+  grid-template-columns: minmax(160px, 220px) minmax(160px, 220px) minmax(0, 1fr);
+  gap: 8px;
+  align-items: end;
+  margin-bottom: 8px;
+}
+
+.observability-toolbar label {
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 820;
+}
+
+.observability-toolbar select {
+  min-height: 28px;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  background: #fff;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.78rem;
+  padding: 4px 7px;
+}
+
+.observability-table td strong,
+.observability-table td small {
+  display: block;
+}
+
+.observability-table td small {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 0.74rem;
+  line-height: 1.25;
+}
+
 .settings-catalog-panel {
   grid-column: 1 / -1;
 }

@@ -70,12 +70,13 @@
             <button type="button" role="tab" aria-selected="false" data-workbench-view-button="profile" data-workbench-focus-target="#profile-full-name">Profile</button>
             <button type="button" role="tab" aria-selected="false" data-workbench-view-button="organization" data-workbench-focus-target="#org-name">Organization</button>
             <button type="button" role="tab" aria-selected="false" data-workbench-view-button="integrations">Integrations</button>
+            <button type="button" role="tab" aria-selected="false" data-workbench-view-button="observability">Observability</button>
             <button type="button" role="tab" aria-selected="false" data-workbench-view-button="onboarding">Onboarding</button>
             <button type="button" role="tab" aria-selected="false" data-workbench-view-button="catalogs">Catalogs</button>
             <button type="button" role="tab" aria-selected="false" data-workbench-view-button="audit">Audit Log</button>
           </nav>
 
-          <section class="settings-grid" data-workbench-view-panel="access profile organization integrations onboarding catalogs">
+          <section class="settings-grid" data-workbench-view-panel="access profile organization integrations observability onboarding catalogs">
             <section class="workspace-panel" data-workbench-view-panel="access">
               <div class="section-heading compact">
                 <p class="eyebrow">Access model</p>
@@ -172,6 +173,58 @@
               </div>
               <p id="google-chat-space-help" class="helper-text"></p>
               <p id="google-chat-connection-status" class="status-message" role="status"></p>
+            </section>
+
+            <section class="workspace-panel settings-observability-panel" data-workbench-view-panel="observability">
+              <div class="split-heading">
+                <div>
+                  <p class="eyebrow">Operational logs</p>
+                  <h2>Observability Center</h2>
+                </div>
+                <button id="refresh-observability-button" type="button" class="secondary">Refresh logs</button>
+              </div>
+              <div class="observability-summary" id="observability-summary" aria-label="Integration incident summary">
+                <article><span>Rateware API</span><strong>0</strong><small>incidents</small></article>
+                <article><span>Gmail</span><strong>0</strong><small>incidents</small></article>
+                <article><span>Google Chat</span><strong>0</strong><small>incidents</small></article>
+                <article><span>Bid Room</span><strong>0</strong><small>incidents</small></article>
+              </div>
+              <div class="observability-toolbar">
+                <label>Source
+                  <select id="observability-source-filter">
+                    <option value="">All sources</option>
+                    <option value="rateware_api">Rateware API</option>
+                    <option value="gmail">Gmail</option>
+                    <option value="google_chat">Google Chat</option>
+                    <option value="bid_room">Bid Room</option>
+                  </select>
+                </label>
+                <label>Severity
+                  <select id="observability-severity-filter">
+                    <option value="">All severities</option>
+                    <option value="error">Errors</option>
+                    <option value="warning">Warnings</option>
+                    <option value="info">Info</option>
+                  </select>
+                </label>
+                <p id="observability-status" class="status-message" role="status"></p>
+              </div>
+              <div class="table-wrap">
+                <table class="settings-audit-table observability-table">
+                  <thead>
+                    <tr>
+                      <th>Time</th>
+                      <th>Source</th>
+                      <th>Severity</th>
+                      <th>What happened</th>
+                      <th>Next action</th>
+                    </tr>
+                  </thead>
+                  <tbody id="observability-log-body">
+                    <tr><td colspan="5">Loading operational logs...</td></tr>
+                  </tbody>
+                </table>
+              </div>
             </section>
 
             <section class="workspace-panel" data-workbench-view-panel="onboarding">

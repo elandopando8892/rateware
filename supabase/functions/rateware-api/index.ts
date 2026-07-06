@@ -9016,6 +9016,319 @@ function onboardingDefinition(summary: Record<string, unknown>, profile: Record<
   });
 }
 
+type ObservabilityEvent = {
+  id: string;
+  at: string | null;
+  source: "rateware_api" | "gmail" | "google_chat" | "bid_room";
+  severity: "error" | "warning" | "info";
+  title: string;
+  detail: string;
+  status: string | null;
+  entity_type: string | null;
+  entity_id: string | null;
+  action: string | null;
+  next_action: string;
+  metadata?: Record<string, unknown>;
+};
+
+function observabilityEvent(input: Partial<ObservabilityEvent> & Pick<ObservabilityEvent, "source" | "severity" | "title">): ObservabilityEvent {
+  return {
+    id: cleanText(input.id) || crypto.randomUUID(),
+    at: cleanText(input.at) || new Date().toISOString(),
+    source: input.source,
+    severity: input.severity,
+    title: cleanText(input.title) || "Operational event",
+    detail: cleanText(input.detail) || "",
+    status: cleanText(input.status),
+    entity_type: cleanText(input.entity_type),
+    entity_id: cleanText(input.entity_id),
+    action: cleanText(input.action),
+    next_action: cleanText(input.next_action) || "Retry the action. If it repeats, review the integration setup.",
+    metadata: objectRecord(input.metadata || {})
+  };
+}
+
+async function safeObservabilityQuery(
+  events: ObservabilityEvent[],
+  source: ObservabilityEvent["source"],
+  label: string,
+  nextAction: string,
+  query: () => Promise<{ data?: unknown[] | null; error?: { message?: string } | null }>
+) {
+  try {
+    const result = await query();
+    if (result.error) {
+      events.push(observabilityEvent({
+        source,
+        severity: "error",
+        title: `${label} could not load`,
+        detail: cleanText(result.error.message) || "Rateware could not read this operational log.",
+        entity_type: "observability_query",
+        action: "observability.query_failed",
+        next_action: nextAction
+      }));
+      return [];
+    }
+    return Array.isArray(result.data) ? result.data as Record<string, unknown>[] : [];
+  } catch (error) {
+    events.push(observabilityEvent({
+      source,
+      severity: "error",
+      title: `${label} could not load`,
+      detail: error instanceof Error ? error.message : String(error),
+      entity_type: "observability_query",
+      action: "observability.query_failed",
+      next_action: nextAction
+    }));
+    return [];
+  }
+}
+
+function auditSource(row: Record<string, unknown>): ObservabilityEvent["source"] {
+  const action = cleanText(row.action) || "";
+  const entityType = cleanText(row.entity_type) || "";
+  if (action.startsWith("gmail.") || entityType.includes("gmail")) return "gmail";
+  if (action.startsWith("google_chat.") || entityType.includes("google_chat")) return "google_chat";
+  if (action.startsWith("bid_room.") || action.startsWith("rfx.") || entityType.includes("rfx")) return "bid_room";
+  return "rateware_api";
+}
+
+function auditSeverity(row: Record<string, unknown>): ObservabilityEvent["severity"] {
+  const text = `${cleanText(row.action) || ""} ${cleanText(row.summary) || ""}`.toLowerCase();
+  if (text.includes("error") || text.includes("failed") || text.includes("could not")) return "error";
+  if (text.includes("disconnect") || text.includes("archive") || text.includes("delete") || text.includes("retry")) return "warning";
+  return "info";
+}
+
+function observabilitySummary(events: ObservabilityEvent[]) {
+  const sources: ObservabilityEvent["source"][] = ["rateware_api", "gmail", "google_chat", "bid_room"];
+  const bySource = Object.fromEntries(sources.map((source) => [source, { total: 0, error: 0, warning: 0, info: 0 }]));
+  const bySeverity = { error: 0, warning: 0, info: 0 };
+  for (const event of events) {
+    bySeverity[event.severity] += 1;
+    const sourceBucket = bySource[event.source] || { total: 0, error: 0, warning: 0, info: 0 };
+    sourceBucket[event.severity] += 1;
+    if (event.severity !== "info") sourceBucket.total += 1;
+    bySource[event.source] = sourceBucket;
+  }
+  return {
+    total_logs: events.length,
+    total_incidents: events.filter((event) => event.severity !== "info").length,
+    by_source: bySource,
+    by_severity: bySeverity
+  };
+}
+
+async function buildObservabilityEvents(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_email: string | null },
+  input: Record<string, unknown> = {}
+) {
+  const limit = Math.min(Math.max(Number(input.limit) || 150, 20), 300);
+  const events: ObservabilityEvent[] = [];
+  const apiNextAction = "Retry. If this repeats, check the Rateware API deployment and Supabase logs.";
+  const gmailNextAction = "Open Settings > Integrations, confirm Gmail is connected, then retry the send queue.";
+  const chatNextAction = "Open Settings > Integrations, confirm Google Chat and Space, then retry Chat sync.";
+  const bidRoomNextAction = "Open Bid Room, inspect the event thread, then retry or resolve the communication item.";
+
+  const auditRows = await safeObservabilityQuery(events, "rateware_api", "Rateware API audit log", apiNextAction, () =>
+    supabase
+      .from("saas_audit_log")
+      .select("id,created_at,actor_email,action,entity_type,entity_id,summary,metadata")
+      .eq("owner_email", user.owner_email)
+      .order("created_at", { ascending: false })
+      .limit(80)
+  );
+
+  for (const row of auditRows) {
+    const action = cleanText(row.action) || "";
+    if (!action.includes("error") && !action.startsWith("gmail.") && !action.startsWith("google_chat.") && !action.startsWith("bid_room.") && !action.startsWith("rfx.")) continue;
+    const source = auditSource(row);
+    events.push(observabilityEvent({
+      id: `audit-${row.id}`,
+      at: cleanText(row.created_at),
+      source,
+      severity: auditSeverity(row),
+      title: cleanText(row.summary) || cleanText(row.action) || "Workspace activity",
+      detail: [row.actor_email, row.entity_type, row.entity_id].filter(Boolean).join(" / "),
+      status: cleanText(row.action),
+      entity_type: cleanText(row.entity_type),
+      entity_id: cleanText(row.entity_id),
+      action,
+      next_action: source === "gmail" ? gmailNextAction : source === "google_chat" ? chatNextAction : source === "bid_room" ? bidRoomNextAction : apiNextAction,
+      metadata: objectRecord(row.metadata)
+    }));
+  }
+
+  const gmailRows = await safeObservabilityQuery(events, "gmail", "Gmail connection status", gmailNextAction, () =>
+    supabase
+      .from("gmail_mailbox_connections")
+      .select("id,updated_at,mailbox_email,status,token_expires_at,last_error,metadata")
+      .eq("owner_email", user.owner_email)
+      .eq("mailbox_email", GMAIL_ALLOWED_SENDER)
+      .limit(1)
+  );
+  for (const row of gmailRows) {
+    const status = cleanText(row.status) || "not_connected";
+    const expiresAt = cleanText(row.token_expires_at);
+    const expired = Boolean(expiresAt && new Date(expiresAt).getTime() < Date.now());
+    if (status === "connected" && !row.last_error && !expired) continue;
+    events.push(observabilityEvent({
+      id: `gmail-connection-${row.id || GMAIL_ALLOWED_SENDER}`,
+      at: cleanText(row.updated_at),
+      source: "gmail",
+      severity: status === "error" || row.last_error || expired ? "error" : "warning",
+      title: status === "connected" && expired ? "Gmail token needs refresh" : `Gmail sender is ${status.replace(/_/g, " ")}`,
+      detail: cleanText(row.last_error) || `Sender: ${GMAIL_ALLOWED_SENDER}`,
+      status,
+      entity_type: "gmail_mailbox_connections",
+      entity_id: cleanText(row.mailbox_email),
+      action: "gmail.connection_status",
+      next_action: gmailNextAction,
+      metadata: objectRecord(row.metadata)
+    }));
+  }
+
+  const outreachRows = await safeObservabilityQuery(events, "gmail", "Gmail delivery queue", gmailNextAction, () =>
+    supabase
+      .from("outreach_messages")
+      .select("id,created_at,updated_at,status,channel,recipient_email,subject,delivery_error,sender_email,sender_connection_status,rfx_event_id,campaign_id,metadata")
+      .eq("owner_email", user.owner_email)
+      .order("updated_at", { ascending: false })
+      .limit(120)
+  );
+  for (const row of outreachRows) {
+    const status = cleanText(row.status);
+    if (status !== "failed" && !row.delivery_error) continue;
+    events.push(observabilityEvent({
+      id: `outreach-${row.id}`,
+      at: cleanText(row.updated_at || row.created_at),
+      source: "gmail",
+      severity: "error",
+      title: `Invitation failed for ${cleanText(row.recipient_email) || "carrier"}`,
+      detail: cleanText(row.delivery_error) || cleanText(row.subject) || "Outbound invitation did not complete.",
+      status,
+      entity_type: "outreach_messages",
+      entity_id: cleanText(row.id),
+      action: "gmail.delivery_failed",
+      next_action: gmailNextAction,
+      metadata: {
+        campaign_id: row.campaign_id,
+        rfx_event_id: row.rfx_event_id,
+        sender_email: row.sender_email,
+        sender_connection_status: row.sender_connection_status,
+        ...(objectRecord(row.metadata))
+      }
+    }));
+  }
+
+  const chatConnectionRows = await safeObservabilityQuery(events, "google_chat", "Google Chat connection status", chatNextAction, () =>
+    supabase
+      .from("google_chat_connections")
+      .select("id,updated_at,account_email,status,token_expires_at,default_space_name,default_space_display_name,last_error,metadata")
+      .eq("owner_email", user.owner_email)
+      .eq("account_email", GOOGLE_CHAT_ALLOWED_ACCOUNT)
+      .limit(1)
+  );
+  for (const row of chatConnectionRows) {
+    const status = cleanText(row.status) || "not_connected";
+    const expiresAt = cleanText(row.token_expires_at);
+    const expired = Boolean(expiresAt && new Date(expiresAt).getTime() < Date.now());
+    const missingSpace = status === "connected" && !cleanText(row.default_space_name);
+    if (status === "connected" && !row.last_error && !expired && !missingSpace) continue;
+    events.push(observabilityEvent({
+      id: `google-chat-connection-${row.id || GOOGLE_CHAT_ALLOWED_ACCOUNT}`,
+      at: cleanText(row.updated_at),
+      source: "google_chat",
+      severity: status === "error" || row.last_error || expired ? "error" : "warning",
+      title: missingSpace ? "Google Chat Space is not selected" : `Google Chat is ${status.replace(/_/g, " ")}`,
+      detail: cleanText(row.last_error) || cleanText(row.default_space_display_name || row.default_space_name) || `Account: ${GOOGLE_CHAT_ALLOWED_ACCOUNT}`,
+      status,
+      entity_type: "google_chat_connections",
+      entity_id: cleanText(row.account_email),
+      action: "google_chat.connection_status",
+      next_action: chatNextAction,
+      metadata: objectRecord(row.metadata)
+    }));
+  }
+
+  const chatMessageRows = await safeObservabilityQuery(events, "google_chat", "Google Chat message sync", chatNextAction, () =>
+    supabase
+      .from("bid_room_chat_messages")
+      .select("id,created_at,thread_id,rfx_event_id,sender_role,sender_name,sender_email,body,google_chat_sync_status,google_chat_message_name,metadata")
+      .eq("owner_email", user.owner_email)
+      .in("google_chat_sync_status", ["error", "pending"])
+      .order("created_at", { ascending: false })
+      .limit(120)
+  );
+  for (const row of chatMessageRows) {
+    const status = cleanText(row.google_chat_sync_status) || "pending";
+    events.push(observabilityEvent({
+      id: `chat-message-${row.id}`,
+      at: cleanText(row.created_at),
+      source: "google_chat",
+      severity: status === "error" ? "error" : "warning",
+      title: `Google Chat message sync is ${status}`,
+      detail: cleanText(row.body)?.slice(0, 180) || "Bid Room message has not mirrored correctly.",
+      status,
+      entity_type: "bid_room_chat_messages",
+      entity_id: cleanText(row.id),
+      action: "google_chat.message_sync",
+      next_action: chatNextAction,
+      metadata: {
+        thread_id: row.thread_id,
+        rfx_event_id: row.rfx_event_id,
+        google_chat_message_name: row.google_chat_message_name,
+        sender_role: row.sender_role,
+        sender_email: row.sender_email,
+        sender_name: row.sender_name,
+        ...(objectRecord(row.metadata))
+      }
+    }));
+  }
+
+  const chatThreadRows = await safeObservabilityQuery(events, "bid_room", "Bid Room communication queue", bidRoomNextAction, () =>
+    supabase
+      .from("bid_room_chat_threads")
+      .select("id,updated_at,rfx_event_id,rfx_lane_id,vendor_id,thread_type,title,communication_status,needs_reply,read_status,google_chat_sync_status,metadata")
+      .eq("owner_email", user.owner_email)
+      .neq("status", "archived")
+      .order("updated_at", { ascending: false })
+      .limit(120)
+  );
+  for (const row of chatThreadRows) {
+    const syncStatus = cleanText(row.google_chat_sync_status) || "not_configured";
+    const communicationStatus = cleanText(row.communication_status) || "open";
+    const needsReply = row.needs_reply === true || cleanText(row.read_status) === "unread" || communicationStatus === "needs_reply";
+    if (syncStatus !== "error" && syncStatus !== "pending" && !needsReply) continue;
+    events.push(observabilityEvent({
+      id: `bid-room-thread-${row.id}`,
+      at: cleanText(row.updated_at),
+      source: "bid_room",
+      severity: syncStatus === "error" ? "error" : "warning",
+      title: needsReply ? `Bid Room thread needs reply: ${cleanText(row.title) || cleanText(row.thread_type) || "thread"}` : `Bid Room thread sync is ${syncStatus}`,
+      detail: [row.thread_type, row.communication_status, row.read_status].filter(Boolean).join(" / "),
+      status: needsReply ? "needs_reply" : syncStatus,
+      entity_type: "bid_room_chat_threads",
+      entity_id: cleanText(row.id),
+      action: needsReply ? "bid_room.thread_needs_reply" : "bid_room.thread_sync",
+      next_action: bidRoomNextAction,
+      metadata: {
+        rfx_event_id: row.rfx_event_id,
+        rfx_lane_id: row.rfx_lane_id,
+        vendor_id: row.vendor_id,
+        ...(objectRecord(row.metadata))
+      }
+    }));
+  }
+
+  events.sort((a, b) => new Date(b.at || 0).getTime() - new Date(a.at || 0).getTime());
+  return {
+    summary: observabilitySummary(events),
+    events: events.slice(0, limit)
+  };
+}
+
 async function buildSaasSettings(supabase: ReturnType<typeof createClient>, user: { owner_user_id: string | null; owner_email: string | null }) {
   const [profile, organization, checklistResult, auditResult, uploads, vendors, pending, approved, rfxEvents, outreachMessages, gmailConnections, googleChatConnections] = await Promise.all([
     ensureSaasProfile(supabase, user),
@@ -9958,10 +10271,14 @@ async function bulkImportCatalogValues(
 Deno.serve(async (request) => {
   if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders() });
 
+  let supabase: ReturnType<typeof createClient> | null = null;
+  let user: { owner_user_id: string | null; owner_email: string | null } | null = null;
+  let body: Record<string, unknown> = {};
+
   try {
-    const supabase = getClient();
-    const user = await resolveCanonicalUser(supabase, userContext(await requireKindeUser(request)));
-    const body = await request.json();
+    supabase = getClient();
+    user = await resolveCanonicalUser(supabase, userContext(await requireKindeUser(request)));
+    body = await request.json();
 
     if (body.action === "list_vendors") {
       const limit = Math.min(Math.max(Number(body.limit) || 75, 1), 250);
@@ -11356,6 +11673,10 @@ Deno.serve(async (request) => {
     if (body.action === "get_saas_settings") {
       const settings = await buildSaasSettings(supabase, user);
       return jsonResponse(settings);
+    }
+
+    if (body.action === "list_observability_events") {
+      return jsonResponse(await buildObservabilityEvents(supabase, user, body));
     }
 
     if (body.action === "list_gmail_connections") {
@@ -13083,6 +13404,22 @@ Deno.serve(async (request) => {
 
     return jsonResponse({ error: "Unknown action." }, 400);
   } catch (error) {
-    return jsonResponse({ error: error.message }, 401);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    if (supabase && user) {
+      try {
+        await writeAuditLog(
+          supabase,
+          user,
+          "api.error",
+          "rateware_api",
+          cleanText(body.action) || "unknown",
+          `Rateware API action failed: ${cleanText(body.action) || "unknown action"}`,
+          { action: cleanText(body.action), error: errorMessage.slice(0, 500) }
+        );
+      } catch (_) {
+        // Avoid masking the original API error if audit persistence is unavailable.
+      }
+    }
+    return jsonResponse({ error: errorMessage }, 401);
   }
 });

@@ -7,6 +7,7 @@ import {
   fetchGmailConnections,
   fetchGoogleChatConnections,
   fetchGoogleChatSpaces,
+  fetchObservabilityEvents,
   fetchSaasSettings,
   retryGoogleChatSync,
   saveCatalogValue,
@@ -33,6 +34,12 @@ const organizationStatus = document.querySelector("#organization-status");
 const onboardingList = document.querySelector("#onboarding-list");
 const auditLogBody = document.querySelector("#audit-log-body");
 const refreshButton = document.querySelector("#refresh-settings-button");
+const observabilitySummary = document.querySelector("#observability-summary");
+const observabilityLogBody = document.querySelector("#observability-log-body");
+const observabilityStatus = document.querySelector("#observability-status");
+const observabilitySourceFilter = document.querySelector("#observability-source-filter");
+const observabilitySeverityFilter = document.querySelector("#observability-severity-filter");
+const refreshObservabilityButton = document.querySelector("#refresh-observability-button");
 const gmailConnectionCard = document.querySelector("#gmail-connection-card");
 const gmailConnectionStatus = document.querySelector("#gmail-connection-status");
 const connectGmailButton = document.querySelector("#connect-gmail-button");
@@ -80,6 +87,7 @@ const organizationInputs = {
 let currentSettings = null;
 let currentSession = null;
 let currentCatalogValues = [];
+let currentObservability = { summary: {}, events: [] };
 initWorkbenchTabs({ defaultView: "access" });
 const GMAIL_ALLOWED_SENDER = "sales@heymarksman.com";
 const GOOGLE_CHAT_ALLOWED_ACCOUNT = "sales@heymarksman.com";
@@ -137,6 +145,21 @@ function sourceLabel(source) {
   if (source === "rateware_seed") return "Seed";
   if (source === "rateware_google_catalog" || source === "cusCatalog") return "Imported";
   return source || "-";
+}
+
+function observabilitySourceLabel(source) {
+  const value = String(source || "");
+  if (value === "rateware_api") return "Rateware API";
+  if (value === "gmail") return "Gmail";
+  if (value === "google_chat") return "Google Chat";
+  if (value === "bid_room") return "Bid Room";
+  return value || "-";
+}
+
+function observabilitySeverityClass(severity) {
+  if (severity === "error") return "danger";
+  if (severity === "warning") return "warning";
+  return "neutral";
 }
 
 function populateCatalogCategoryControls() {
@@ -217,6 +240,65 @@ function renderAudit(settings) {
       <td>${escapeHtml(row.summary || "-")}</td>
     </tr>
   `).join("");
+}
+
+function renderObservability(data = currentObservability) {
+  currentObservability = data || { summary: {}, events: [] };
+  const events = Array.isArray(currentObservability.events) ? currentObservability.events : [];
+  const summary = currentObservability.summary || {};
+  const bySource = summary.by_source || {};
+  const sourceFilter = observabilitySourceFilter?.value || "";
+  const severityFilter = observabilitySeverityFilter?.value || "";
+  const visibleEvents = events.filter((event) => {
+    const sourceOk = !sourceFilter || event.source === sourceFilter;
+    const severityOk = !severityFilter || event.severity === severityFilter;
+    return sourceOk && severityOk;
+  });
+
+  if (observabilitySummary) {
+    const cards = [
+      ["rateware_api", "Rateware API"],
+      ["gmail", "Gmail"],
+      ["google_chat", "Google Chat"],
+      ["bid_room", "Bid Room"]
+    ];
+    observabilitySummary.innerHTML = cards.map(([key, label]) => {
+      const count = Number(bySource[key]?.total || 0);
+      const errors = Number(bySource[key]?.error || 0);
+      return `
+        <article class="${errors ? "has-error" : count ? "has-warning" : ""}">
+          <span>${escapeHtml(label)}</span>
+          <strong>${count.toLocaleString()}</strong>
+          <small>${errors ? `${errors.toLocaleString()} error(s)` : count ? "needs review" : "healthy"}</small>
+        </article>
+      `;
+    }).join("");
+  }
+
+  if (!observabilityLogBody) return;
+  if (!visibleEvents.length) {
+    observabilityLogBody.innerHTML = `<tr><td colspan="5">No operational incidents in this view.</td></tr>`;
+    setStatus(observabilityStatus, "No incidents match the current filters.", "success");
+    return;
+  }
+
+  observabilityLogBody.innerHTML = visibleEvents.map((event) => `
+    <tr>
+      <td>${escapeHtml(event.at ? new Date(event.at).toLocaleString() : "-")}</td>
+      <td>${escapeHtml(observabilitySourceLabel(event.source))}</td>
+      <td><span class="status-pill ${observabilitySeverityClass(event.severity)}">${escapeHtml(event.severity || "info")}</span></td>
+      <td>
+        <strong>${escapeHtml(event.title || "-")}</strong>
+        <small>${escapeHtml(event.detail || event.status || "")}</small>
+      </td>
+      <td>${escapeHtml(event.next_action || "-")}</td>
+    </tr>
+  `).join("");
+  setStatus(
+    observabilityStatus,
+    `${visibleEvents.length.toLocaleString()} incident(s) shown from ${events.length.toLocaleString()} recent operational log(s).`,
+    visibleEvents.some((event) => event.severity === "error") ? "warning" : "neutral"
+  );
 }
 
 function humanGmailMessage(message = "") {
@@ -437,10 +519,31 @@ function renderSettings(settings) {
   renderGoogleChatConnections(settings.google_chat);
 }
 
+async function loadObservability() {
+  setStatus(observabilityStatus, "Loading operational logs...");
+  try {
+    const data = await fetchObservabilityEvents({ limit: 150 });
+    renderObservability(data);
+  } catch (error) {
+    if (observabilityLogBody) {
+      observabilityLogBody.innerHTML = `
+        <tr>
+          <td colspan="5">
+            <strong>Observability could not load</strong>
+            <small>${escapeHtml(error.message || "The request could not reach Rateware services.")}</small>
+          </td>
+        </tr>
+      `;
+    }
+    setStatus(observabilityStatus, "Operational logs could not load. Retry after checking the API connection.", "error");
+  }
+}
+
 async function loadSettings() {
   try {
     const settings = await fetchSaasSettings();
     renderSettings(settings);
+    await loadObservability();
     if (settings.google_chat?.rows?.[0]?.status === "connected") {
       await loadGoogleChatConnections();
     }
@@ -500,6 +603,9 @@ requirePrivatePage().then((session) => {
 });
 
 refreshButton?.addEventListener("click", loadSettings);
+refreshObservabilityButton?.addEventListener("click", loadObservability);
+observabilitySourceFilter?.addEventListener("change", () => renderObservability(currentObservability));
+observabilitySeverityFilter?.addEventListener("change", () => renderObservability(currentObservability));
 refreshCatalogButton?.addEventListener("click", loadCatalogValues);
 refreshGmailConnectionButton?.addEventListener("click", loadGmailConnections);
 refreshGoogleChatConnectionButton?.addEventListener("click", loadGoogleChatConnections);

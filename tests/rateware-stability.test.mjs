@@ -22,6 +22,7 @@ const gmailOauthCallbackSource = readFileSync(new URL("../supabase/functions/gma
 const googleChatAppSource = readFileSync(new URL("../supabase/functions/google-chat-app/index.ts", import.meta.url), "utf8");
 const rfxServiceSource = readFileSync(new URL("../src/rfx-service.js", import.meta.url), "utf8");
 const settingsSource = readFileSync(new URL("../src/settings.js", import.meta.url), "utf8");
+const settingsServiceSource = readFileSync(new URL("../src/settings-service.js", import.meta.url), "utf8");
 const settingsHtml = readFileSync(new URL("../settings.html", import.meta.url), "utf8");
 const stylesSource = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
 const outreachServiceSource = readFileSync(new URL("../src/outreach-service.js", import.meta.url), "utf8");
@@ -341,6 +342,15 @@ assert.match(gmailOauthCallbackSource, /oauthError\) return redirectTo\(cleanTex
 assert.match(googleChatAppSource, /ADDED_TO_SPACE/, "Google Chat app endpoint should respond when added to a Space");
 assert.match(settingsHtml, /retry-google-chat-sync-button/, "Settings should expose retry for failed Google Chat syncs");
 assert.match(apiSource, /retry_google_chat_sync/, "API should retry failed Google Chat message syncs after setup is complete");
+assert.match(settingsHtml, /data-workbench-view-button="observability"/, "Settings should expose an Observability tab for integration and API incidents");
+assert.match(settingsHtml, /observability-log-body/, "Settings should render a visible operational log table");
+assert.match(settingsSource, /fetchObservabilityEvents/, "Settings should load operational logs from Rateware API");
+assert.match(settingsServiceSource, /list_observability_events/, "Settings service should call the observability endpoint");
+assert.match(apiSource, /buildObservabilityEvents/, "Rateware API should aggregate operational logs into one observability response");
+for (const tableName of ["saas_audit_log", "outreach_messages", "gmail_mailbox_connections", "google_chat_connections", "bid_room_chat_messages", "bid_room_chat_threads"]) {
+  assert.match(apiSource, new RegExp(`\\.from\\("${tableName}"\\)`), `Observability should read ${tableName}`);
+}
+assert.match(apiSource, /"api\.error"/, "Rateware API should audit unhandled endpoint failures");
 assert.match(apiSource, /sync_bid_room_event_thread/, "Bid Room should create an explicit Google Chat event thread");
 assert.match(rfxEventsHtml, /rfx-chat-start-event-thread/, "Bid Room chat should expose a start event thread action");
 assert.match(rfxEventsSource, /syncBidRoomEventThread/, "Bid Room UI should call the event thread sync action");

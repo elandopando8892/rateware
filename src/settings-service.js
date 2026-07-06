@@ -20,6 +20,10 @@ export async function fetchSaasAuditLog(limit = 100) {
   return (await callRatewareApi("list_saas_audit_log", { limit })).rows;
 }
 
+export async function fetchObservabilityEvents(filters = {}) {
+  return await callRatewareApi("list_observability_events", filters);
+}
+
 export async function fetchCatalogValues(category = "") {
   return (await callRatewareApi("list_catalog_values", { category })).rows;
 }
