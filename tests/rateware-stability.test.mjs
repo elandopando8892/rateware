@@ -82,7 +82,8 @@ assert.ok(filteredVendorMatchSource.length > 100, "filtered vendor matching help
 assert.match(filteredVendorMatchSource, /collectRateRowIdsByFilter/, "filtered vendor matching should freeze all target row ids before updates");
 assert.match(filteredVendorMatchSource, /for \(const chunk of chunkValues\(ids, pageSize\)\)/, "filtered vendor matching should process frozen ids in bounded chunks");
 assert.doesNotMatch(filteredVendorMatchSource, /offset \+=/, "filtered vendor matching should not page mutable filtered sets while updating vendor ids");
-assert.match(apiSource, /Number\(body\.max_rows\) \|\| 100000/, "filtered vendor matching should support whole-base matching above 50k rows");
+assert.match(apiSource, /normalizeBulkMaxRows\(body\.max_rows\)/, "filtered vendor matching should support whole-base matching above 50k rows");
+assert.match(apiSource, /filtered vendor match[\s\S]*requirePreviewCountForFilteredBulk/, "filtered vendor matching should require confirmed dry-run preview before applying whole-base updates");
 assert.match(stagingReviewSource, /source upload\(s\) repaired/, "Staging vendor matching should explain source upload repair counts");
 assert.match(ratewareSource, /source upload\(s\) repaired/, "Rateware vendor matching should explain source upload repair counts");
 assert.match(stagingReviewSource, /downloadVendorMatchErrors/, "Staging should download unmatched vendor diagnostics");
@@ -393,6 +394,11 @@ assert.match(apiSource, /fetchRateRowIdsByFilter/, "derived filters should resol
 assert.match(apiSource, /async function collectRateRowIdsByFilter/, "filtered bulk actions should collect row ids through paged RPC calls");
 assert.match(apiSource, /rateware_filtered_rate_ids/, "API should call the filtered rate id RPC");
 assert.match(apiSource, /rateware_filtered_rate_values/, "filter dropdown values should come from database RPC");
+assert.match(apiSource, /function normalizeBulkIds/, "API should normalize and validate bulk id lists before updates");
+assert.match(apiSource, /function requireBulkConfirmation/, "API should require explicit backend confirmation for risky bulk actions");
+assert.match(apiSource, /function requirePreviewCountForFilteredBulk/, "API should require dry-run preview counts before large filtered bulk actions");
+assert.match(apiSource, /BULK_SEND_LIMIT = 100/, "API should cap direct Gmail send batches");
+assert.match(apiSource, /BULK_FILTER_CONFIRM_THRESHOLD = 250/, "API should require confirmation for large filtered database actions");
 const bulkActionSource = apiSource.slice(apiSource.indexOf('if (body.action === "bulk_rate_rows_by_filter")'));
 assert.ok(bulkActionSource.length > 100, "bulk filtered action block should be present");
 assert.doesNotMatch(
@@ -402,8 +408,13 @@ assert.doesNotMatch(
 );
 assert.match(
   bulkActionSource,
-  /Math\.max\(Number\(body\.max_rows\) \|\| 100000/,
+  /normalizeBulkMaxRows\(body\.max_rows\)/,
   "filtered bulk archive/remove should allow large database-scoped operations"
+);
+assert.match(
+  bulkActionSource,
+  /requirePreviewCountForFilteredBulk/,
+  "filtered bulk archive/remove should require confirmed dry-run preview before changing rows"
 );
 assert.match(
   bulkActionSource,
@@ -419,8 +430,13 @@ assert.match(
 );
 assert.match(
   filteredUpdateSource,
-  /Math\.max\(Number\(body\.max_rows\) \|\| 100000/,
+  /normalizeBulkMaxRows\(body\.max_rows\)/,
   "filtered bulk updates should support large database-scoped operations"
+);
+assert.match(
+  filteredUpdateSource,
+  /requirePreviewCountForFilteredBulk/,
+  "filtered bulk updates should require confirmed dry-run preview before changing rows"
 );
 assert.match(
   filteredUpdateSource,

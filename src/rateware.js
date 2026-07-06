@@ -2213,7 +2213,7 @@ async function applyFilteredBulkEdit() {
     }
 
     setInlineStatus(bulkStatus, `Updating ${matched.toLocaleString()} filtered approved rate(s)...`);
-    const result = await updateApprovedRatewareByFilter(filters, patch, { dryRun: false, maxRows: matched });
+    const result = await updateApprovedRatewareByFilter(filters, patch, { dryRun: false, maxRows: matched, confirmed: true, previewCount: matched });
     selectedRowIds.clear();
     setInlineStatus(bulkStatus, `${result.updated || 0} filtered approved rate(s) updated.`, "success");
     setActionStatus(`${result.updated || 0} filtered approved rate(s) updated.`, "success");
@@ -2377,7 +2377,7 @@ async function runFilteredRatewareAction(targetAction) {
     while (affected < matched) {
       batch += 1;
       setActionStatus(`${isRemove ? "Removing" : "Archiving"} filtered approved rates... ${affected.toLocaleString()} / ${matched.toLocaleString()}`);
-      const result = await service(filters, { dryRun: false, maxRows: FILTERED_RATEWARE_BULK_BATCH_SIZE });
+      const result = await service(filters, { dryRun: false, maxRows: FILTERED_RATEWARE_BULK_BATCH_SIZE, confirmed: true, previewCount: matched });
       const count = Number(result.updated || result.removed || 0);
       hardLimitReached = hardLimitReached || Boolean(result.hard_limit_reached);
       if (!count) break;
@@ -2479,7 +2479,7 @@ async function matchSelectedRatewareVendors() {
     }
 
     setActionStatus(`Matching vendors for ${matched.toLocaleString()} filtered approved rate(s)...`);
-    const result = await matchApprovedRatewareVendorsByFilter(filters, { dryRun: false, maxRows: matched });
+    const result = await matchApprovedRatewareVendorsByFilter(filters, { dryRun: false, maxRows: matched, confirmed: true, previewCount: matched });
     selectedRowIds.clear();
     const downloaded = downloadVendorMatchErrors("rateware-vendor-match-errors", result.unmatched_errors, result.unmatched_errors_truncated);
     setActionStatus(`${Number(result.updated || 0).toLocaleString()} approved rate(s) linked to vendors. ${Number(result.upload_updated || 0).toLocaleString()} source upload(s) repaired. ${Number(result.candidates || 0).toLocaleString()} row(s) and ${Number(result.upload_candidates || 0).toLocaleString()} upload(s) had vendor references.${downloaded ? " Vendor match errors CSV downloaded." : ""}`, "success");

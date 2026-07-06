@@ -18,6 +18,12 @@ const GOOGLE_CHAT_OAUTH_SCOPES = [
   "https://www.googleapis.com/auth/chat.spaces.readonly"
 ];
 const GOOGLE_CHAT_WEBHOOK_URL = Deno.env.get("GOOGLE_CHAT_WEBHOOK_URL");
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const BULK_SELECTED_ID_LIMIT = 500;
+const BULK_SEND_LIMIT = 100;
+const BULK_SHORTLIST_VENDOR_LIMIT = 200;
+const BULK_FILTER_LIMIT = 100000;
+const BULK_FILTER_CONFIRM_THRESHOLD = 250;
 
 function getClient() {
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
@@ -210,6 +216,73 @@ function cleanText(value: unknown) {
   if (value === null || value === undefined) return null;
   const text = String(value).trim();
   return text ? text : null;
+}
+
+function uniqueCleanValues(value: unknown) {
+  const values = Array.isArray(value) ? value : [];
+  return Array.from(new Set(values.map((item) => cleanText(item)).filter(Boolean) as string[]));
+}
+
+function normalizeBulkIds(
+  value: unknown,
+  options: { label?: string; limit?: number; uuid?: boolean } = {}
+) {
+  const label = options.label || "Ids";
+  const limit = Math.max(1, Number(options.limit || BULK_SELECTED_ID_LIMIT));
+  const ids = uniqueCleanValues(value);
+  if (!ids.length) return [];
+  if (ids.length > limit) {
+    throw new Error(`${label} is limited to ${limit} row(s) per request. Split the action into smaller batches.`);
+  }
+  if (options.uuid !== false) {
+    const invalid = ids.filter((id) => !UUID_PATTERN.test(id));
+    if (invalid.length) throw new Error(`${label} must contain valid row ids.`);
+  }
+  return ids;
+}
+
+function bulkConfirmed(input: Record<string, unknown>, actionKey = "") {
+  const confirmation = objectRecord(input.confirmation);
+  const actionText = cleanText(confirmation.action || input.confirmation_action)?.toLowerCase();
+  return input.confirmed === true
+    || input.confirm_bulk === true
+    || cleanOptionalBoolean(input.confirmed) === true
+    || (Boolean(actionKey) && actionText === actionKey.toLowerCase());
+}
+
+function requireBulkConfirmation(
+  input: Record<string, unknown>,
+  options: { action: string; label: string; count?: number; threshold?: number } = { action: "bulk", label: "Bulk action" }
+) {
+  const count = Math.max(0, Number(options.count || 0));
+  const threshold = Math.max(1, Number(options.threshold || 1));
+  if (count < threshold) return;
+  if (!bulkConfirmed(input, options.action)) {
+    throw new Error(`${options.label} requires confirmed=true from a reviewed UI action or approved automation.`);
+  }
+}
+
+function requirePreviewCountForFilteredBulk(
+  input: Record<string, unknown>,
+  databaseCount: number,
+  label: string
+) {
+  const count = Math.max(0, Number(databaseCount || 0));
+  if (count < BULK_FILTER_CONFIRM_THRESHOLD) return;
+  requireBulkConfirmation(input, {
+    action: cleanText(input.target_action) || "bulk_filter",
+    label,
+    count,
+    threshold: BULK_FILTER_CONFIRM_THRESHOLD
+  });
+  const previewCount = Number(input.preview_count || input.matched_count || input.expected_count || 0);
+  if (!Number.isFinite(previewCount) || previewCount < count) {
+    throw new Error(`${label} requires a fresh dry-run preview count before applying changes.`);
+  }
+}
+
+function normalizeBulkMaxRows(value: unknown, fallback = BULK_FILTER_LIMIT) {
+  return Math.min(Math.max(Number(value) || fallback, 1), BULK_FILTER_LIMIT);
 }
 
 function cleanUrl(value: unknown) {
@@ -8736,8 +8809,13 @@ async function sendOutreachMessages(
   user: { owner_user_id: string | null; owner_email: string | null },
   input: Record<string, unknown>
 ) {
-  const ids = Array.isArray(input.ids) ? input.ids.map(String).filter(Boolean).slice(0, 100) : [];
+  const ids = normalizeBulkIds(input.ids, { label: "Outreach message ids", limit: BULK_SEND_LIMIT });
   if (!ids.length) return { sent: 0, failed: 0, rows: [], failures: [] };
+  requireBulkConfirmation(input, {
+    action: "send_outreach_messages",
+    label: "Gmail bulk send",
+    count: ids.length
+  });
 
   const messagesResult = await supabase
     .from("outreach_messages")
@@ -8749,7 +8827,17 @@ async function sendOutreachMessages(
 
   const messages = (messagesResult.data || []).filter((message) => message.channel === "email");
   if (!messages.length) throw new Error("Select at least one email draft to send.");
+  if (messages.length !== ids.length) throw new Error("Only email draft rows can be sent through Gmail.");
+  const blockedStatuses = messages
+    .map((message) => cleanText(message.status)?.toLowerCase())
+    .filter((status) => status && !["drafted", "queued", "failed"].includes(status));
+  if (blockedStatuses.length) throw new Error("Only drafted, queued, or failed email rows can be sent.");
+  const campaignIds = new Set(messages.map((message) => cleanText(message.campaign_id)).filter(Boolean));
+  if (campaignIds.size > 1) throw new Error("Bulk send must target one outreach campaign at a time.");
+  const senderCandidates = new Set(messages.map((message) => cleanText(message.sender_email)?.toLowerCase()).filter(Boolean));
+  if (senderCandidates.size > 1 && !cleanText(input.sender_email)) throw new Error("Bulk send has multiple sender accounts. Select one sender before sending.");
   const senderEmail = (cleanText(input.sender_email) || cleanText(messages[0].sender_email) || GMAIL_ALLOWED_SENDER).toLowerCase();
+  if (senderEmail !== GMAIL_ALLOWED_SENDER) throw new Error(`Gmail sender must be ${GMAIL_ALLOWED_SENDER}.`);
   const accessToken = await gmailAccessToken(supabase, user, senderEmail);
   const now = new Date().toISOString();
   const sentRows: Record<string, unknown>[] = [];
@@ -8851,13 +8939,13 @@ async function sendOutreachMessages(
     }
   }
 
-  const campaignIds = [...new Set(sentRows.map((row) => cleanText(row.campaign_id)).filter(Boolean))];
-  if (campaignIds.length) {
+  const sentCampaignIds = [...new Set(sentRows.map((row) => cleanText(row.campaign_id)).filter(Boolean))];
+  if (sentCampaignIds.length) {
     const campaignUpdate = await supabase
       .from("outreach_campaigns")
       .update({ status: "sent", sender_email: senderEmail, sender_connection_status: "connected", updated_at: now })
       .eq("owner_email", user.owner_email)
-      .in("id", campaignIds);
+      .in("id", sentCampaignIds);
     if (campaignUpdate.error) throw campaignUpdate.error;
   }
 
@@ -9947,7 +10035,7 @@ Deno.serve(async (request) => {
     }
 
     if (body.action === "apply_vendor_intelligence_tags") {
-      const ids = Array.isArray(body.ids) ? body.ids.map(String).filter(Boolean).slice(0, 500) : [];
+      const ids = normalizeBulkIds(body.ids, { label: "Vendor ids", limit: BULK_SELECTED_ID_LIMIT });
       if (!ids.length) return jsonResponse({ updated: 0, rows: [] });
 
       const intelligence = await buildVendorIntelligence(supabase, user, { ids });
@@ -10053,10 +10141,19 @@ Deno.serve(async (request) => {
     }
 
     if (body.action === "bulk_update_vendors") {
-      const ids = Array.isArray(body.ids) ? body.ids.filter(Boolean) : [];
+      const ids = normalizeBulkIds(body.ids, { label: "Vendor ids", limit: BULK_SELECTED_ID_LIMIT });
       if (!ids.length) return jsonResponse({ updated: 0, rows: [] });
 
       const patchInput = objectRecord(body.patch);
+      if (!Object.keys(patchInput).length) return jsonResponse({ error: "Vendor update patch is required." }, 400);
+      if (ids.length >= 100 || cleanText(patchInput.base_stage) === "archived") {
+        requireBulkConfirmation(body, {
+          action: "bulk_update_vendors",
+          label: "Vendor bulk update",
+          count: ids.length,
+          threshold: 1
+        });
+      }
       const addTags = normalizeTags(patchInput.add_tags);
       const updatedRows: Record<string, unknown>[] = [];
 
@@ -10092,8 +10189,13 @@ Deno.serve(async (request) => {
     }
 
     if (body.action === "remove_vendors") {
-      const ids = Array.isArray(body.ids) ? body.ids.filter(Boolean) : [];
+      const ids = normalizeBulkIds(body.ids, { label: "Vendor ids", limit: BULK_SELECTED_ID_LIMIT });
       if (!ids.length) return jsonResponse({ removed: 0, rows: [] });
+      requireBulkConfirmation(body, {
+        action: "remove_vendors",
+        label: "Vendor removal",
+        count: ids.length
+      });
       const result = await supabase.from("vendors").delete().eq("owner_email", user.owner_email).in("id", ids).select("id");
       if (result.error) throw result.error;
       return jsonResponse({ removed: result.data.length, rows: result.data });
@@ -10548,7 +10650,7 @@ Deno.serve(async (request) => {
 
     if (body.action === "shortlist_rfx_lane_vendors") {
       const lane = await requireOwnedRfxLane(supabase, user, body.lane_id);
-      const vendorIds = Array.isArray(body.vendor_ids) ? body.vendor_ids.map(String).filter(Boolean).slice(0, 200) : [];
+      const vendorIds = normalizeBulkIds(body.vendor_ids, { label: "Vendor ids", limit: BULK_SHORTLIST_VENDOR_LIMIT });
       if (!vendorIds.length) return jsonResponse({ inserted: 0, rows: [] });
       const vendorsResult = await supabase
         .from("vendors")
@@ -10572,8 +10674,13 @@ Deno.serve(async (request) => {
     }
 
     if (body.action === "invite_rfx_lane_vendors") {
-      const ids = Array.isArray(body.ids) ? body.ids.map(String).filter(Boolean).slice(0, 500) : [];
+      const ids = normalizeBulkIds(body.ids, { label: "RFx participant ids", limit: BULK_SELECTED_ID_LIMIT });
       if (!ids.length) return jsonResponse({ updated: 0, rows: [] });
+      requireBulkConfirmation(body, {
+        action: "invite_rfx_lane_vendors",
+        label: "RFx participant invite update",
+        count: ids.length
+      });
       const ownedResult = await supabase
         .from("rfx_lane_vendors")
         .select("id,rfx_events!inner(owner_email)")
@@ -10720,8 +10827,13 @@ Deno.serve(async (request) => {
     }
 
     if (body.action === "archive_rfx_lane_vendors") {
-      const ids = Array.isArray(body.ids) ? body.ids.map(String).filter(Boolean).slice(0, 500) : [];
+      const ids = normalizeBulkIds(body.ids, { label: "RFx participant ids", limit: BULK_SELECTED_ID_LIMIT });
       if (!ids.length) return jsonResponse({ updated: 0, rows: [] });
+      requireBulkConfirmation(body, {
+        action: "archive_rfx_lane_vendors",
+        label: "RFx participant archive",
+        count: ids.length
+      });
       const ownedResult = await supabase
         .from("rfx_lane_vendors")
         .select("id,rfx_events!inner(owner_email)")
@@ -10946,7 +11058,7 @@ Deno.serve(async (request) => {
     if (body.action === "generate_outreach_drafts") {
       const campaign = await requireOwnedOutreachCampaign(supabase, user, body.campaign_id);
       const template = await fetchOutreachTemplate(supabase, user, body.template_id || campaign.template_id);
-      const invitationIds = Array.isArray(body.invitation_ids) ? body.invitation_ids.map(String).filter(Boolean).slice(0, 1000) : [];
+      const invitationIds = normalizeBulkIds(body.invitation_ids, { label: "RFx invitation ids", limit: 1000 });
       const appOrigin = cleanText(body.app_origin) || Deno.env.get("RATEWARE_APP_URL") || "https://rateware.vercel.app";
       const senderEmail = cleanText(body.sender_email || campaign.sender_email);
       const senderLabel = cleanText(body.sender_label || campaign.sender_label || senderEmail);
@@ -11134,8 +11246,13 @@ Deno.serve(async (request) => {
     }
 
     if (body.action === "delete_outreach_messages") {
-      const ids = Array.isArray(body.ids) ? body.ids.map(String).filter(Boolean).slice(0, 500) : [];
+      const ids = normalizeBulkIds(body.ids, { label: "Outreach message ids", limit: BULK_SELECTED_ID_LIMIT });
       if (!ids.length) return jsonResponse({ removed: 0, rows: [] });
+      requireBulkConfirmation(body, {
+        action: "delete_outreach_messages",
+        label: "Outreach message delete",
+        count: ids.length
+      });
       const result = await supabase
         .from("outreach_messages")
         .delete()
@@ -11156,11 +11273,18 @@ Deno.serve(async (request) => {
     }
 
     if (body.action === "mark_outreach_messages") {
-      const ids = Array.isArray(body.ids) ? body.ids.map(String).filter(Boolean).slice(0, 500) : [];
+      const ids = normalizeBulkIds(body.ids, { label: "Outreach message ids", limit: BULK_SELECTED_ID_LIMIT });
       const status = cleanText(body.status)?.toLowerCase();
       if (!ids.length) return jsonResponse({ updated: 0, rows: [] });
       if (!status || !["drafted", "queued", "sent", "replied", "failed", "archived"].includes(status)) {
         return jsonResponse({ error: "Valid message status is required." }, 400);
+      }
+      if (["sent", "replied", "archived"].includes(status) || ids.length >= 100) {
+        requireBulkConfirmation(body, {
+          action: "mark_outreach_messages",
+          label: "Outreach message status update",
+          count: ids.length
+        });
       }
       const now = new Date().toISOString();
       const patch: Record<string, unknown> = { status, updated_at: now };
@@ -12344,8 +12468,16 @@ Deno.serve(async (request) => {
     }
 
     if (body.action === "bulk_update_rateware") {
-      const ids = Array.isArray(body.ids) ? body.ids.map(String).filter(Boolean).slice(0, 500) : [];
+      const ids = normalizeBulkIds(body.ids, { label: "Approved rate ids", limit: BULK_SELECTED_ID_LIMIT });
       if (!ids.length) return jsonResponse({ error: "At least one approved rate id is required." }, 400);
+      if (ids.length >= 100) {
+        requireBulkConfirmation(body, {
+          action: "bulk_update_rateware",
+          label: "Rateware selected bulk update",
+          count: ids.length,
+          threshold: 100
+        });
+      }
 
       const currentResult = await supabase
         .from("rate_staging")
@@ -12411,7 +12543,7 @@ Deno.serve(async (request) => {
     }
 
     if (body.action === "create_rateware_version") {
-      const ids = Array.isArray(body.ids) ? body.ids.map(String).filter(Boolean).slice(0, 1000) : [];
+      const ids = normalizeBulkIds(body.ids, { label: "Approved rate ids", limit: 1000 });
       const filters = objectRecord(body.filters);
       let rows: Record<string, unknown>[] = [];
 
@@ -12469,14 +12601,14 @@ Deno.serve(async (request) => {
     }
 
     if (body.action === "renormalize_rate_rows") {
-      const ids = Array.isArray(body.ids) ? body.ids.map(String).filter(Boolean).slice(0, 500) : [];
+      const ids = normalizeBulkIds(body.ids, { label: "Rate row ids", limit: BULK_SELECTED_ID_LIMIT });
       const status = cleanText(body.status);
       const rows = await renormalizeRateRows(supabase, ids, status);
       return jsonResponse({ updated: rows.length, rows });
     }
 
     if (body.action === "match_rate_vendors") {
-      const ids = Array.isArray(body.ids) ? body.ids.map(String).filter(Boolean).slice(0, 500) : [];
+      const ids = normalizeBulkIds(body.ids, { label: "Rate row ids", limit: BULK_SELECTED_ID_LIMIT });
       const status = cleanText(body.status);
       const result = await matchRateVendorRows(supabase, user, ids, status);
       return jsonResponse(result);
@@ -12485,8 +12617,12 @@ Deno.serve(async (request) => {
     if (body.action === "match_rate_vendors_by_filter") {
       const filters = objectRecord(body.filters);
       const dryRun = body.dry_run === true;
-      const maxRows = Math.min(Math.max(Number(body.max_rows) || 100000, 1), 100000);
+      const maxRows = normalizeBulkMaxRows(body.max_rows);
       const mode = cleanText(filters.mode) === "rateware" ? "rateware" : "staging";
+      if (!dryRun) {
+        const preview = await fetchRateRowIdsByFilter(supabase, filters, { limit: 1 });
+        requirePreviewCountForFilteredBulk(body, preview.database_count || 0, `${mode} filtered vendor match`);
+      }
       const result = await matchRateVendorRowsByFilter(supabase, user, filters, { dryRun, maxRows });
 
       if (!dryRun && result.updated) {
@@ -12512,7 +12648,7 @@ Deno.serve(async (request) => {
     }
 
     if (body.action === "enrich_missing_location_zips") {
-      const ids = Array.isArray(body.ids) ? body.ids.map(String).filter(Boolean).slice(0, 250) : [];
+      const ids = normalizeBulkIds(body.ids, { label: "Rate row ids", limit: 250 });
       const status = cleanText(body.status);
       const result = await enrichMissingLocationZips(supabase, ids, status);
       return jsonResponse({ updated: result.rows.length, enriched: result.enriched, rows: result.rows });
@@ -12548,8 +12684,13 @@ Deno.serve(async (request) => {
     }
 
     if (body.action === "return_rateware_to_staging") {
-      const ids = Array.isArray(body.ids) ? body.ids.map(String).filter(Boolean).slice(0, 500) : [];
+      const ids = normalizeBulkIds(body.ids, { label: "Approved rate ids", limit: BULK_SELECTED_ID_LIMIT });
       if (!ids.length) return jsonResponse({ error: "At least one approved rate id is required." }, 400);
+      requireBulkConfirmation(body, {
+        action: "return_rateware_to_staging",
+        label: "Return approved rates to staging",
+        count: ids.length
+      });
       const reason = cleanText(body.reason) || "Needs correction or re-review from Rateware Final";
       const returnedNote = `Returned to staging ${new Date().toISOString().slice(0, 10)}: ${reason}`;
 
@@ -12586,7 +12727,7 @@ Deno.serve(async (request) => {
       const filters = objectRecord(body.filters);
       const targetAction = cleanText(body.target_action);
       const dryRun = body.dry_run === true;
-      const maxRows = Math.min(Math.max(Number(body.max_rows) || 100000, 1), 100000);
+      const maxRows = normalizeBulkMaxRows(body.max_rows);
       if (!["archive", "remove"].includes(targetAction || "")) {
         return jsonResponse({ error: "Bulk target action must be archive or remove." }, 400);
       }
@@ -12594,6 +12735,10 @@ Deno.serve(async (request) => {
         ...filters,
         exclude_archived: targetAction === "archive"
       };
+      if (!dryRun) {
+        const preview = await fetchRateRowIdsByFilter(supabase, actionFilters, { limit: 1 });
+        requirePreviewCountForFilteredBulk(body, preview.database_count || 0, `${targetAction} filtered rate rows`);
+      }
       const filtered = dryRun
         ? await fetchRateRowIdsByFilter(supabase, actionFilters, { limit: 1 })
         : await collectRateRowIdsByFilter(supabase, actionFilters, { maxRows });
@@ -12657,13 +12802,17 @@ Deno.serve(async (request) => {
       const filters = objectRecord(body.filters);
       const patchInput = objectRecord(body.patch);
       const dryRun = body.dry_run === true;
-      const maxRows = Math.min(Math.max(Number(body.max_rows) || 100000, 1), 100000);
+      const maxRows = normalizeBulkMaxRows(body.max_rows);
       const mode = cleanText(filters.mode) === "rateware" ? "rateware" : "staging";
       if (!Object.keys(patchInput).length) return jsonResponse({ error: "Bulk update patch is required." }, 400);
       if (mode === "rateware" && patchInput.status !== undefined) {
         return jsonResponse({ error: "Filtered Rateware updates cannot change approved status." }, 400);
       }
 
+      if (!dryRun) {
+        const preview = await fetchRateRowIdsByFilter(supabase, filters, { limit: 1 });
+        requirePreviewCountForFilteredBulk(body, preview.database_count || 0, `${mode} filtered rate update`);
+      }
       const filtered = dryRun
         ? await fetchRateRowIdsByFilter(supabase, filters, { limit: 1 })
         : await collectRateRowIdsByFilter(supabase, filters, { maxRows });
@@ -12751,8 +12900,13 @@ Deno.serve(async (request) => {
     }
 
     if (body.action === "archive_staging") {
-      const ids = Array.isArray(body.ids) ? body.ids.map(String).filter(Boolean).slice(0, 500) : [];
+      const ids = normalizeBulkIds(body.ids, { label: "Staging row ids", limit: BULK_SELECTED_ID_LIMIT });
       if (!ids.length) return jsonResponse({ error: "At least one staging row id is required." }, 400);
+      requireBulkConfirmation(body, {
+        action: "archive_staging",
+        label: "Staging archive",
+        count: ids.length
+      });
 
       const result = await supabase
         .from("rate_staging")
@@ -12764,8 +12918,13 @@ Deno.serve(async (request) => {
     }
 
     if (body.action === "remove_staging") {
-      const ids = Array.isArray(body.ids) ? body.ids.map(String).filter(Boolean).slice(0, 500) : [];
+      const ids = normalizeBulkIds(body.ids, { label: "Staging row ids", limit: BULK_SELECTED_ID_LIMIT });
       if (!ids.length) return jsonResponse({ error: "At least one staging row id is required." }, 400);
+      requireBulkConfirmation(body, {
+        action: "remove_staging",
+        label: "Staging remove",
+        count: ids.length
+      });
 
       const result = await supabase
         .from("rate_staging")

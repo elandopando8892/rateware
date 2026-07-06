@@ -2082,7 +2082,7 @@ async function runFilteredStagingAction(targetAction) {
     while (affected < matched) {
       batch += 1;
       setBulkStatus(`${isRemove ? "Removing" : "Archiving"} filtered staging rows... ${affected.toLocaleString()} / ${matched.toLocaleString()}`);
-      const result = await service(filters, { dryRun: false, maxRows: FILTERED_BULK_BATCH_SIZE });
+      const result = await service(filters, { dryRun: false, maxRows: FILTERED_BULK_BATCH_SIZE, confirmed: true, previewCount: matched });
       const count = Number(result.updated || result.removed || 0);
       if (!count) break;
       affected += count;
@@ -2126,7 +2126,7 @@ async function runFilteredStagingUpdate(patch, label) {
     }
 
     setBulkStatus(`Applying filtered ${normalizedLabel} to ${matched.toLocaleString()} staging row(s)...`);
-    const result = await updateStagingRowsByFilter(filters, patch, { dryRun: false, maxRows: matched });
+    const result = await updateStagingRowsByFilter(filters, patch, { dryRun: false, maxRows: matched, confirmed: true, previewCount: matched });
     const affected = Number(result.updated || 0);
 
     selectedRowIds.clear();
@@ -2203,7 +2203,7 @@ async function runBulkMatchVendors() {
     }
 
     setBulkStatus(`Matching vendors for ${matched.toLocaleString()} filtered staging row(s)...`);
-    const result = await matchStagingVendorsByFilter(filters, { dryRun: false, maxRows: matched });
+    const result = await matchStagingVendorsByFilter(filters, { dryRun: false, maxRows: matched, confirmed: true, previewCount: matched });
     selectedRowIds.clear();
     const downloaded = downloadVendorMatchErrors("staging-vendor-match-errors", result.unmatched_errors, result.unmatched_errors_truncated);
     setBulkStatus(`${Number(result.updated || 0).toLocaleString()} staging row(s) linked to vendors. ${Number(result.upload_updated || 0).toLocaleString()} source upload(s) repaired. ${Number(result.candidates || 0).toLocaleString()} row(s) and ${Number(result.upload_candidates || 0).toLocaleString()} upload(s) had vendor references.${downloaded ? " Vendor match errors CSV downloaded." : ""}`, "success");

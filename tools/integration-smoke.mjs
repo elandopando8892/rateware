@@ -357,7 +357,8 @@ async function generateInvitationDraft(event, invitation) {
 async function runGmailSendIfEnabled(drafts) {
   const result = await rateware("send_outreach_messages", {
     ids: drafts.map((row) => row.id),
-    sender_email: senderEmail
+    sender_email: senderEmail,
+    confirmed: true
   });
   if (!Number(result.sent)) throw new Error(`No Gmail messages were sent. Failures: ${JSON.stringify(result.failures || [])}`);
   return { sent: result.sent, failed: result.failed };
@@ -557,7 +558,7 @@ await check("Invitation draft", async () => {
 
 if (!sendGmail) {
   skip("Gmail send", "Skipped by default. Rerun with --send-gmail to send one real test email.");
-  await rateware("invite_rfx_lane_vendors", { ids: [context.invitation.id] });
+  await rateware("invite_rfx_lane_vendors", { ids: [context.invitation.id], confirmed: true });
 } else {
   await check("Gmail send", async () => runGmailSendIfEnabled(drafts), { stopOnFail: true });
 }

@@ -41,7 +41,7 @@ export async function shortlistRfxLaneVendors(laneId, vendorIds = []) {
 }
 
 export async function inviteRfxLaneVendors(ids = []) {
-  return await callRatewareApi("invite_rfx_lane_vendors", { ids });
+  return await callRatewareApi("invite_rfx_lane_vendors", { ids, confirmed: true });
 }
 
 export async function updateRfxBid(id, patch) {
@@ -74,7 +74,7 @@ export async function applyBidUpdateFromChat(payload = {}) {
 }
 
 export async function archiveRfxLaneVendors(ids = []) {
-  return await callRatewareApi("archive_rfx_lane_vendors", { ids });
+  return await callRatewareApi("archive_rfx_lane_vendors", { ids, confirmed: true });
 }
 
 export async function fetchBidRoomChat(eventId, filters = {}) {

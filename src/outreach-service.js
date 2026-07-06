@@ -64,18 +64,19 @@ export async function fetchOutreachMessages(filters = {}) {
 }
 
 export async function markOutreachMessages(ids = [], status) {
-  return await callRatewareApi("mark_outreach_messages", { ids, status });
+  return await callRatewareApi("mark_outreach_messages", { ids, status, confirmed: true });
 }
 
 export async function sendOutreachMessages(ids = [], options = {}) {
   return await callRatewareApi("send_outreach_messages", {
     ids,
-    sender_email: options.senderEmail || ""
+    sender_email: options.senderEmail || "",
+    confirmed: true
   });
 }
 
 export async function deleteOutreachMessages(ids = []) {
-  return await callRatewareApi("delete_outreach_messages", { ids });
+  return await callRatewareApi("delete_outreach_messages", { ids, confirmed: true });
 }
 
 export async function fetchContactHistory(filters = {}) {

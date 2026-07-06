@@ -50,15 +50,17 @@ export async function updateApprovedRatewareRow(id, patch) {
 }
 
 export async function bulkUpdateApprovedRatewareRows(ids = [], patch = {}) {
-  return await callRatewareApi("bulk_update_rateware", { ids, patch });
+  return await callRatewareApi("bulk_update_rateware", { ids, patch, confirmed: true });
 }
 
-export async function updateApprovedRatewareByFilter(filters = {}, patch = {}, { dryRun = false, maxRows = undefined } = {}) {
+export async function updateApprovedRatewareByFilter(filters = {}, patch = {}, { dryRun = false, maxRows = undefined, confirmed = false, previewCount = undefined } = {}) {
   return await callRatewareApi("bulk_update_rate_rows_by_filter", {
     filters: { ...filters, mode: "rateware" },
     patch,
     dry_run: dryRun,
-    max_rows: maxRows
+    max_rows: maxRows,
+    confirmed,
+    preview_count: previewCount
   });
 }
 
@@ -70,11 +72,13 @@ export async function matchApprovedRatewareVendors(ids = []) {
   return await callRatewareApi("match_rate_vendors", { ids, status: "approved" });
 }
 
-export async function matchApprovedRatewareVendorsByFilter(filters = {}, { dryRun = false, maxRows = undefined } = {}) {
+export async function matchApprovedRatewareVendorsByFilter(filters = {}, { dryRun = false, maxRows = undefined, confirmed = false, previewCount = undefined } = {}) {
   return await callRatewareApi("match_rate_vendors_by_filter", {
     filters: { ...filters, mode: "rateware" },
     dry_run: dryRun,
-    max_rows: maxRows
+    max_rows: maxRows,
+    confirmed,
+    preview_count: previewCount
   });
 }
 
@@ -83,24 +87,28 @@ export async function enrichApprovedRatewareLocationZips(ids = []) {
 }
 
 export async function returnApprovedRatesToStaging(ids = [], reason = "") {
-  return await callRatewareApi("return_rateware_to_staging", { ids, reason });
+  return await callRatewareApi("return_rateware_to_staging", { ids, reason, confirmed: true });
 }
 
-export async function archiveApprovedRatewareByFilter(filters = {}, { dryRun = false, maxRows = undefined } = {}) {
+export async function archiveApprovedRatewareByFilter(filters = {}, { dryRun = false, maxRows = undefined, confirmed = false, previewCount = undefined } = {}) {
   return await callRatewareApi("bulk_rate_rows_by_filter", {
     target_action: "archive",
     filters: { ...filters, mode: "rateware" },
     dry_run: dryRun,
-    max_rows: maxRows
+    max_rows: maxRows,
+    confirmed,
+    preview_count: previewCount
   });
 }
 
-export async function removeApprovedRatewareByFilter(filters = {}, { dryRun = false, maxRows = undefined } = {}) {
+export async function removeApprovedRatewareByFilter(filters = {}, { dryRun = false, maxRows = undefined, confirmed = false, previewCount = undefined } = {}) {
   return await callRatewareApi("bulk_rate_rows_by_filter", {
     target_action: "remove",
     filters: { ...filters, mode: "rateware" },
     dry_run: dryRun,
-    max_rows: maxRows
+    max_rows: maxRows,
+    confirmed,
+    preview_count: previewCount
   });
 }
 

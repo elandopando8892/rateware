@@ -53,11 +53,13 @@ export async function matchStagingVendors(ids = []) {
   return await callRatewareApi("match_rate_vendors", { ids });
 }
 
-export async function matchStagingVendorsByFilter(filters = {}, { dryRun = false, maxRows = undefined } = {}) {
+export async function matchStagingVendorsByFilter(filters = {}, { dryRun = false, maxRows = undefined, confirmed = false, previewCount = undefined } = {}) {
   return await callRatewareApi("match_rate_vendors_by_filter", {
     filters: { ...filters, mode: "staging" },
     dry_run: dryRun,
-    max_rows: maxRows
+    max_rows: maxRows,
+    confirmed,
+    preview_count: previewCount
   });
 }
 
@@ -66,36 +68,42 @@ export async function enrichStagingLocationZips(ids = []) {
 }
 
 export async function archiveStagingRows(ids = []) {
-  return await callRatewareApi("archive_staging", { ids });
+  return await callRatewareApi("archive_staging", { ids, confirmed: true });
 }
 
 export async function removeStagingRows(ids = []) {
-  return await callRatewareApi("remove_staging", { ids });
+  return await callRatewareApi("remove_staging", { ids, confirmed: true });
 }
 
-export async function archiveStagingRowsByFilter(filters = {}, { dryRun = false, maxRows = undefined } = {}) {
+export async function archiveStagingRowsByFilter(filters = {}, { dryRun = false, maxRows = undefined, confirmed = false, previewCount = undefined } = {}) {
   return await callRatewareApi("bulk_rate_rows_by_filter", {
     target_action: "archive",
     filters: { ...filters, mode: "staging" },
     dry_run: dryRun,
-    max_rows: maxRows
+    max_rows: maxRows,
+    confirmed,
+    preview_count: previewCount
   });
 }
 
-export async function removeStagingRowsByFilter(filters = {}, { dryRun = false, maxRows = undefined } = {}) {
+export async function removeStagingRowsByFilter(filters = {}, { dryRun = false, maxRows = undefined, confirmed = false, previewCount = undefined } = {}) {
   return await callRatewareApi("bulk_rate_rows_by_filter", {
     target_action: "remove",
     filters: { ...filters, mode: "staging" },
     dry_run: dryRun,
-    max_rows: maxRows
+    max_rows: maxRows,
+    confirmed,
+    preview_count: previewCount
   });
 }
 
-export async function updateStagingRowsByFilter(filters = {}, patch = {}, { dryRun = false, maxRows = undefined } = {}) {
+export async function updateStagingRowsByFilter(filters = {}, patch = {}, { dryRun = false, maxRows = undefined, confirmed = false, previewCount = undefined } = {}) {
   return await callRatewareApi("bulk_update_rate_rows_by_filter", {
     filters: { ...filters, mode: "staging" },
     patch,
     dry_run: dryRun,
-    max_rows: maxRows
+    max_rows: maxRows,
+    confirmed,
+    preview_count: previewCount
   });
 }

@@ -328,7 +328,8 @@ try {
     await step("send Gmail invitation", async () => {
       const data = await rateware("send_outreach_messages", {
         ids: drafts.map((row) => row.id),
-        sender_email: senderEmail
+        sender_email: senderEmail,
+        confirmed: true
       });
       if (!Number(data.sent)) throw new Error(`Gmail did not send. Failures: ${JSON.stringify(data.failures || [])}`);
       logCheckpoint("Gmail invitation sent", { sent: data.sent, failed: data.failed });
@@ -336,7 +337,7 @@ try {
     });
   } else {
     await step("mark invitation launched without Gmail send", async () => {
-      const data = await rateware("invite_rfx_lane_vendors", { ids: [invitation.id] });
+      const data = await rateware("invite_rfx_lane_vendors", { ids: [invitation.id], confirmed: true });
       if (!Number(data.updated)) throw new Error("Invitation was not marked invited.");
       logCheckpoint("Invitation marked invited", { updated: data.updated, send_gmail: false });
       return data;
