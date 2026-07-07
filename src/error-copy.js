@@ -1,5 +1,25 @@
+function rawErrorMessage(errorOrMessage) {
+  if (!errorOrMessage) return "";
+  if (typeof errorOrMessage === "string") return errorOrMessage;
+  if (errorOrMessage instanceof Error) return rawErrorMessage(errorOrMessage.message);
+  if (typeof errorOrMessage !== "object") return String(errorOrMessage);
+
+  const nested = errorOrMessage.message || errorOrMessage.error || errorOrMessage.details || errorOrMessage.hint;
+  if (nested && nested !== errorOrMessage) {
+    const message = rawErrorMessage(nested);
+    if (message && message !== "[object Object]") return message;
+  }
+
+  try {
+    const json = JSON.stringify(errorOrMessage);
+    return json === "{}" ? "" : json;
+  } catch {
+    return "";
+  }
+}
+
 export function humanizeError(errorOrMessage) {
-  const raw = String(errorOrMessage?.message || errorOrMessage || "").trim();
+  const raw = rawErrorMessage(errorOrMessage).trim();
   const lower = raw.toLowerCase();
 
   if (!raw) return "Something went wrong. Please try again.";
