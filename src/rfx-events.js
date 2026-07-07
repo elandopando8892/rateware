@@ -4179,10 +4179,10 @@ function renderManualShortlistControls() {
   const procurementCount = vendorOptions.filter(isProcurementCarrier).length;
   if (manualShortlistSourceSummary) {
     manualShortlistSourceSummary.textContent = vendorOptionsLoading
-      ? "Loading Carrier CRM..."
+      ? `Loading Carrier CRM${vendorOptions.length ? `... ${formatNumber(vendorOptions.length)} carrier(s) ready so far` : "..."}`
       : `${vendorOptions.length} CRM carrier(s) loaded | ${procurementCount} in Procurement/Pipeline | ${vendorSegmentsLoading ? "loading segments" : `${savedVendorSegments.length} saved segment(s)`}`;
   }
-  if (vendorOptionsLoading) {
+  if (vendorOptionsLoading && !vendorOptions.length) {
     if (selectVisibleCarriersButton) selectVisibleCarriersButton.disabled = true;
     if (selectSegmentCarriersButton) selectSegmentCarriersButton.disabled = true;
     if (clearCarrierSelectionButton) clearCarrierSelectionButton.disabled = true;
@@ -4394,16 +4394,26 @@ async function loadEvents() {
 
 async function loadVendorOptions() {
   vendorOptionsLoading = true;
+  vendorOptions = [];
   renderManualShortlistControls();
+  const pageSize = 250;
+  const rows = [];
+  const seenIds = new Set();
+  let total = 0;
   try {
-    const pageSize = 250;
-    const rows = [];
-    let total = 0;
     for (let offset = 0; offset < 10000; offset += pageSize) {
-      const result = await fetchVendors({ limit: pageSize, offset, view: "all" });
+      const result = await fetchVendors({ limit: pageSize, offset, view: "all", lightweight: true });
       const pageRows = result.rows || [];
       total = Number(result.total || 0);
-      rows.push(...pageRows);
+      for (const row of pageRows) {
+        const id = String(row.id || "");
+        if (id && seenIds.has(id)) continue;
+        if (id) seenIds.add(id);
+        rows.push(row);
+      }
+      vendorOptions = sortedVendorOptions(rows);
+      renderManualShortlistControls();
+      if (pendingCarrierTemplateRows.length) renderCarrierTemplatePreview();
       if (!pageRows.length) break;
       if (total && rows.length >= total) break;
       if (pageRows.length < pageSize) break;
@@ -4413,11 +4423,17 @@ async function loadVendorOptions() {
     renderManualShortlistControls();
     if (pendingCarrierTemplateRows.length) renderCarrierTemplatePreview();
   } catch (error) {
-    vendorOptions = [];
+    vendorOptions = sortedVendorOptions(rows);
     vendorOptionsLoading = false;
     renderManualShortlistControls();
     if (pendingCarrierTemplateRows.length) renderCarrierTemplatePreview();
-    setStatus(manualShortlistStatus, error.message, "error");
+    setStatus(
+      manualShortlistStatus,
+      rows.length
+        ? `Carrier CRM partially loaded with ${formatNumber(rows.length)} carrier(s). ${humanizeError(error.message)}`
+        : `Carrier CRM could not load. ${humanizeError(error.message)}`,
+      rows.length ? "warning" : "error"
+    );
   }
 }
 

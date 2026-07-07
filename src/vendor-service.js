@@ -8,10 +8,11 @@ export async function fetchVendors({
   channel = "",
   tag = "",
   coverage = "",
+  lightweight = false,
   limit = 75,
   offset = 0
 } = {}) {
-  return await callRatewareApi("list_vendors", { search, status, base_stage, view, channel, tag, coverage, limit, offset });
+  return await callRatewareApi("list_vendors", { search, status, base_stage, view, channel, tag, coverage, lightweight, limit, offset });
 }
 
 export async function fetchVendorIntelligence(options = {}) {

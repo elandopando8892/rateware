@@ -703,6 +703,8 @@ const listVendorsSource = apiSource.slice(apiSource.indexOf('if (body.action ===
 assert.ok(listVendorsSource.length > 100, "list vendors block should be present");
 assert.match(listVendorsSource, /fetchVendorRateMetricsSafe/, "Carrier CRM directory should enrich vendors with quote metrics");
 assert.match(listVendorsSource, /buildVendorIntelligenceRows\(rows, metricsResult\.metrics\)/, "Carrier CRM directory should share the Vendor Intelligence scoring model");
+assert.match(listVendorsSource, /const lightweight =/, "Carrier CRM vendor list should support lightweight selector loading");
+assert.match(listVendorsSource, /if \(!lightweight && rows\.length\)/, "Bid Room carrier selector should be able to skip heavy CRM metric enrichment");
 assert.match(listVendorsSource, /return jsonResponse\(\{ rows: enrichedRows[\s\S]*warnings/, "Carrier CRM directory should surface partial metric warnings");
 assert.match(apiSource, /logo_url: cleanText\(vendor\.logo_url\)/, "Vendor intelligence rows should keep uploaded logo URLs");
 assert.match(apiSource, /profile_data: typeof vendor\.profile_data/, "Vendor intelligence rows should keep structured profile data");
@@ -718,6 +720,9 @@ assert.match(vendorProfileRequestsMigration, /create table if not exists public\
 assert.match(vendorProfileRequestsMigration, /request_token text not null/, "Carrier profile requests should store a secure request token");
 assert.match(apiSource, /body\.action === "create_vendor_profile_request"/, "Carrier CRM should create carrier profile request tokens");
 assert.match(vendorServiceSource, /createVendorProfileRequest/, "Vendor service should expose profile request creation");
+assert.match(vendorServiceSource, /lightweight = false/, "Vendor service should expose lightweight CRM loading for Bid Room selectors");
+assert.match(rfxEventsSource, /fetchVendors\(\{ limit: pageSize, offset, view: "all", lightweight: true \}\)/, "Bid Room should load CRM carriers through the lightweight vendor path");
+assert.match(rfxEventsSource, /Carrier CRM partially loaded/, "Bid Room should keep partial CRM carrier results when a later page fails");
 assert.match(vendorsSource, /data-copy-profile-link/, "Vendor drawer should expose profile link creation");
 assert.match(carrierProfileHtml, /carrier-profile\.js/, "Carrier profile page should load the public profile script");
 assert.match(carrierProfileSource, /carrier-profile-api/, "Carrier profile page should call the public profile API");

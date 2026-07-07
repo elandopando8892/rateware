@@ -10318,9 +10318,13 @@ Deno.serve(async (request) => {
       const limit = Math.min(Math.max(Number(body.limit) || 75, 1), 250);
       const offset = Math.max(Number(body.offset) || 0, 0);
       const view = cleanText(body.view)?.toLowerCase() || "all";
+      const lightweight = body.lightweight === true || cleanText(body.lightweight)?.toLowerCase() === "true";
+      const vendorSelect = lightweight
+        ? "id,vendor_name,name,legal_name,domain,primary_email,secondary_emails,whatsapp_phone,preferred_channel,base_stage,funnel_stage,status,tags,coverage_notes,notes,logo_url,created_at,updated_at"
+        : "*";
       let query = supabase
         .from("vendors")
-        .select("*", { count: "exact" })
+        .select(vendorSelect, { count: "exact" })
         .eq("owner_email", user.owner_email)
         .order("created_at", { ascending: false })
         .range(offset, offset + limit - 1);
@@ -10364,7 +10368,7 @@ Deno.serve(async (request) => {
       const rows = (result.data || []) as Record<string, unknown>[];
       let enrichedRows = rows;
       let warnings: string[] = [];
-      if (rows.length) {
+      if (!lightweight && rows.length) {
         const metricsResult = await fetchVendorRateMetricsSafe(supabase, user);
         warnings = metricsResult.warnings;
         const intelligenceRows = buildVendorIntelligenceRows(rows, metricsResult.metrics);
