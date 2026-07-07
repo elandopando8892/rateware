@@ -513,6 +513,7 @@ assert.match(apiSource, /function apiErrorStatus/, "Rateware API should return a
 assert.match(apiSource, /BULK_SEND_LIMIT = 100/, "API should cap direct Gmail send batches");
 assert.match(apiSource, /BULK_SHORTLIST_VENDOR_LIMIT = 1000/, "Bid Room participant shortlist should support up to 1,000 vendors per request");
 assert.match(apiSource, /BULK_FILTER_CONFIRM_THRESHOLD = 250/, "API should require confirmation for large filtered database actions");
+assert.match(apiSource, /const invitationIdChunks = invitationIds\.length \? chunkValues\(invitationIds, 100\) : \[\[\]\]/, "Outreach draft generation should read selected invitations in small id batches");
 assert.match(apiSource, /for \(const chunk of chunkValues\(rows, 100\)\)/, "Outreach draft generation should upsert draft messages in small batches");
 assert.match(apiSource, /return jsonResponse\(\{ generated: generatedMessages\.length, rows: \[\], skipped, campaign_id: campaign\.id \}\)/, "Outreach draft generation should avoid returning large HTML draft payloads");
 const bulkActionSource = apiSource.slice(apiSource.indexOf('if (body.action === "bulk_rate_rows_by_filter")'));

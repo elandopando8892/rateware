@@ -11539,27 +11539,33 @@ Deno.serve(async (request) => {
       const senderLabel = cleanText(body.sender_label || campaign.sender_label || senderEmail);
       const senderConnectionStatus = cleanText(body.sender_connection_status || campaign.sender_connection_status) || "draft_only";
 
-      let invitationQuery = supabase
-        .from("rfx_lane_vendors")
-        .select(`
-          *,
-          vendors(id,vendor_name,domain,primary_email,whatsapp_phone,preferred_channel,contact_name),
-          rfx_events!inner(id,owner_email,rfx_id,name,customer,status,due_date,event_type),
-          rfx_lanes(*)
-        `)
-        .eq("rfx_events.owner_email", user.owner_email)
-        .neq("invitation_status", "archived")
-        .limit(1000);
-      if (campaign.rfx_event_id) invitationQuery = invitationQuery.eq("rfx_event_id", campaign.rfx_event_id);
-      if (invitationIds.length) invitationQuery = invitationQuery.in("id", invitationIds);
+      const invitationSelect = `
+        *,
+        vendors(id,vendor_name,domain,primary_email,whatsapp_phone,preferred_channel,contact_name),
+        rfx_events!inner(id,owner_email,rfx_id,name,customer,status,due_date,event_type),
+        rfx_lanes(*)
+      `;
+      const invitations: Record<string, unknown>[] = [];
+      const invitationIdChunks = invitationIds.length ? chunkValues(invitationIds, 100) : [[]];
+      for (const chunk of invitationIdChunks) {
+        let invitationQuery = supabase
+          .from("rfx_lane_vendors")
+          .select(invitationSelect)
+          .eq("rfx_events.owner_email", user.owner_email)
+          .neq("invitation_status", "archived")
+          .limit(1000);
+        if (campaign.rfx_event_id) invitationQuery = invitationQuery.eq("rfx_event_id", campaign.rfx_event_id);
+        if (chunk.length) invitationQuery = invitationQuery.in("id", chunk);
 
-      const invitationsResult = await invitationQuery;
-      if (invitationsResult.error) throw invitationsResult.error;
+        const invitationsResult = await invitationQuery;
+        if (invitationsResult.error) throw invitationsResult.error;
+        invitations.push(...(invitationsResult.data || []));
+      }
 
       const rows: Record<string, unknown>[] = [];
       const skipped: Record<string, unknown>[] = [];
       const invitationGroups = new Map<string, Record<string, unknown>[]>();
-      for (const invitation of invitationsResult.data || []) {
+      for (const invitation of invitations) {
         const vendor = typeof invitation.vendors === "object" && invitation.vendors ? invitation.vendors as Record<string, unknown> : {};
         const vendorKey = cleanText(invitation.vendor_id) || cleanText(vendor.primary_email) || cleanText(vendor.domain) || cleanText(invitation.id);
         const key = [cleanText(invitation.rfx_event_id), vendorKey].filter(Boolean).join(":");
