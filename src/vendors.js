@@ -2835,6 +2835,7 @@ async function loadVendors() {
       channel: channelFilter.value,
       tag: tagFilter.value,
       coverage: coverageFilter.value,
+      lightweight: true,
       limit: vendorPageSize,
       offset: vendorPageOffset
     });

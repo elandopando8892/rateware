@@ -721,6 +721,7 @@ assert.match(vendorProfileRequestsMigration, /request_token text not null/, "Car
 assert.match(apiSource, /body\.action === "create_vendor_profile_request"/, "Carrier CRM should create carrier profile request tokens");
 assert.match(vendorServiceSource, /createVendorProfileRequest/, "Vendor service should expose profile request creation");
 assert.match(vendorServiceSource, /lightweight = false/, "Vendor service should expose lightweight CRM loading for Bid Room selectors");
+assert.match(vendorsSource, /fetchVendors\(\{[\s\S]*lightweight: true,[\s\S]*limit: vendorPageSize/, "Carrier CRM directory should load vendors through the lightweight path");
 assert.match(rfxEventsSource, /fetchVendors\(\{ limit: pageSize, offset, view: "all", lightweight: true \}\)/, "Bid Room should load CRM carriers through the lightweight vendor path");
 assert.match(rfxEventsSource, /Carrier CRM partially loaded/, "Bid Room should keep partial CRM carrier results when a later page fails");
 assert.match(vendorsSource, /data-copy-profile-link/, "Vendor drawer should expose profile link creation");
