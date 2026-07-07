@@ -6,8 +6,23 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("RATEWARE_SUPABASE_SERVICE_ROLE_K
 const GOOGLE_CLIENT_ID = Deno.env.get("GOOGLE_CLIENT_ID");
 const GOOGLE_CLIENT_SECRET = Deno.env.get("GOOGLE_CLIENT_SECRET");
 const GMAIL_TOKEN_ENCRYPTION_KEY = Deno.env.get("GMAIL_TOKEN_ENCRYPTION_KEY");
-const GOOGLE_CHAT_ALLOWED_ACCOUNT = (Deno.env.get("GOOGLE_CHAT_ALLOWED_ACCOUNT") || Deno.env.get("GMAIL_ALLOWED_SENDER") || "sales@heymarksman.com").trim().toLowerCase();
+const GMAIL_ALLOWED_SENDER = (Deno.env.get("GMAIL_ALLOWED_SENDER") || "sales@heymarksman.com").trim().toLowerCase();
+const RATEWARE_APP_URL = (Deno.env.get("RATEWARE_APP_URL") || Deno.env.get("RATEWARE_PUBLIC_APP_URL") || "https://rateware.vercel.app").trim();
+const GOOGLE_CHAT_ALLOWED_ACCOUNT = (Deno.env.get("GOOGLE_CHAT_ALLOWED_ACCOUNT") || GMAIL_ALLOWED_SENDER).trim().toLowerCase();
 const GOOGLE_CHAT_WEBHOOK_URL = Deno.env.get("GOOGLE_CHAT_WEBHOOK_URL");
+const GENERIC_EMAIL_DOMAINS = new Set([
+  "gmail.com",
+  "hotmail.com",
+  "hotmail.com.mx",
+  "yahoo.com",
+  "yahoo.com.mx",
+  "outlook.com",
+  "live.com",
+  "icloud.com",
+  "aol.com",
+  "proton.me",
+  "protonmail.com"
+]);
 
 function getClient() {
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
@@ -26,6 +41,20 @@ function cleanEmail(value: unknown) {
   const email = cleanText(value)?.toLowerCase() || null;
   if (!email) return null;
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : null;
+}
+
+function emailDomain(email: unknown) {
+  const text = cleanEmail(email);
+  return text ? text.split("@").pop() || null : null;
+}
+
+function escapeHtmlText(value: unknown) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
 }
 
 function cleanRateText(value: unknown) {
@@ -152,6 +181,10 @@ function bytesToBase64(bytes: Uint8Array) {
   return btoa(binary);
 }
 
+function bytesToBase64Url(bytes: Uint8Array) {
+  return bytesToBase64(bytes).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
 async function googleTokenCryptoKey(usages: KeyUsage[]) {
   if (!GMAIL_TOKEN_ENCRYPTION_KEY) throw new Error("Google token encryption is not configured.");
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(GMAIL_TOKEN_ENCRYPTION_KEY));
@@ -177,6 +210,139 @@ async function decryptGoogleToken(value: unknown) {
     base64ToBytes(ciphertextText)
   );
   return new TextDecoder().decode(plain);
+}
+
+function encodedSubject(subject: unknown) {
+  const text = cleanText(subject) || "";
+  return /^[\x00-\x7F]*$/.test(text) ? text : `=?UTF-8?B?${bytesToBase64(new TextEncoder().encode(text))}?=`;
+}
+
+function safeHeader(value: unknown) {
+  return String(value || "").replace(/[\r\n]+/g, " ").trim();
+}
+
+function simpleTextFromHtml(html: unknown) {
+  return String(html || "")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n\n")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/[ \t]{2,}/g, " ")
+    .trim();
+}
+
+function gmailRawMessage(message: Record<string, unknown>, senderEmail: string) {
+  const to = safeHeader(message.recipient_email);
+  const subject = encodedSubject(message.subject);
+  const htmlBody = cleanText(message.html_body) || "";
+  const textBody = cleanText(message.text_body) || simpleTextFromHtml(htmlBody);
+  const boundary = `rateware_${crypto.randomUUID().replace(/-/g, "")}`;
+  const mime = [
+    `To: ${to}`,
+    `From: ${safeHeader(senderEmail)}`,
+    `Subject: ${subject}`,
+    "MIME-Version: 1.0",
+    `Content-Type: multipart/alternative; boundary="${boundary}"`,
+    "",
+    `--${boundary}`,
+    'Content-Type: text/plain; charset="UTF-8"',
+    "Content-Transfer-Encoding: 8bit",
+    "",
+    textBody || "",
+    "",
+    `--${boundary}`,
+    'Content-Type: text/html; charset="UTF-8"',
+    "Content-Transfer-Encoding: 8bit",
+    "",
+    htmlBody || `<pre>${escapeHtmlText(textBody || "")}</pre>`,
+    "",
+    `--${boundary}--`
+  ].join("\r\n");
+  return bytesToBase64Url(new TextEncoder().encode(mime));
+}
+
+async function gmailAccessTokenForOwner(supabase: ReturnType<typeof createClient>, ownerEmail: unknown) {
+  const owner = cleanEmail(ownerEmail);
+  if (!owner) throw new Error("Bid Room owner email is missing.");
+  const result = await supabase
+    .from("gmail_mailbox_connections")
+    .select("*")
+    .eq("owner_email", owner)
+    .eq("mailbox_email", GMAIL_ALLOWED_SENDER)
+    .eq("status", "connected")
+    .maybeSingle();
+  if (result.error) throw result.error;
+  const connection = result.data;
+  if (!connection) throw new Error(`Connect ${GMAIL_ALLOWED_SENDER} in Settings before sending magic links.`);
+
+  const expiresAt = connection.token_expires_at ? new Date(connection.token_expires_at).getTime() : 0;
+  if (connection.access_token_encrypted && expiresAt > Date.now() + 120_000) {
+    return await decryptGoogleToken(connection.access_token_encrypted);
+  }
+
+  if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) throw new Error("Google OAuth client is not configured.");
+  const refreshToken = await decryptGoogleToken(connection.refresh_token_encrypted);
+  const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: GOOGLE_CLIENT_ID,
+      client_secret: GOOGLE_CLIENT_SECRET,
+      refresh_token: refreshToken,
+      grant_type: "refresh_token"
+    })
+  });
+  const tokenData = await tokenResponse.json();
+  if (!tokenResponse.ok || !tokenData.access_token) {
+    const message = cleanText(tokenData.error_description) || cleanText(tokenData.error) || "Google token refresh failed.";
+    await supabase
+      .from("gmail_mailbox_connections")
+      .update({ status: "error", last_error: message, updated_at: new Date().toISOString() })
+      .eq("owner_email", owner)
+      .eq("mailbox_email", GMAIL_ALLOWED_SENDER);
+    throw new Error(message);
+  }
+
+  const accessToken = String(tokenData.access_token);
+  const expiresIn = Number(tokenData.expires_in) || 3600;
+  const update = await supabase
+    .from("gmail_mailbox_connections")
+    .update({
+      access_token_encrypted: await encryptGoogleToken(accessToken),
+      token_expires_at: new Date(Date.now() + expiresIn * 1000).toISOString(),
+      last_error: null,
+      updated_at: new Date().toISOString()
+    })
+    .eq("owner_email", owner)
+    .eq("mailbox_email", GMAIL_ALLOWED_SENDER);
+  if (update.error) throw update.error;
+  return accessToken;
+}
+
+async function sendGmailMessageForOwner(
+  supabase: ReturnType<typeof createClient>,
+  ownerEmail: unknown,
+  message: Record<string, unknown>
+) {
+  const accessToken = await gmailAccessTokenForOwner(supabase, ownerEmail);
+  const response = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ raw: gmailRawMessage(message, GMAIL_ALLOWED_SENDER) })
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const messageText = cleanText(payload?.error?.message) || cleanText(payload?.error_description) || `Gmail send failed (${response.status}).`;
+    throw new Error(messageText);
+  }
+  return payload;
 }
 
 function publicLane(row: Record<string, unknown>) {
@@ -1449,6 +1615,220 @@ async function publicBidRoomInviteRequest(supabase: ReturnType<typeof createClie
   };
 }
 
+async function publicInvitationVendorIds(supabase: ReturnType<typeof createClient>, email: string) {
+  const domain = emailDomain(email);
+  const candidates = new Map<string, Record<string, unknown>>();
+  const queries = [
+    supabase
+      .from("vendors")
+      .select("id,vendor_name,legal_name,domain,primary_email,secondary_emails")
+      .eq("primary_email", email)
+      .limit(50),
+    supabase
+      .from("vendors")
+      .select("id,vendor_name,legal_name,domain,primary_email,secondary_emails")
+      .contains("secondary_emails", [email])
+      .limit(50)
+  ];
+  if (domain && !GENERIC_EMAIL_DOMAINS.has(domain)) {
+    queries.push(
+      supabase
+        .from("vendors")
+        .select("id,vendor_name,legal_name,domain,primary_email,secondary_emails")
+        .eq("domain", domain)
+        .limit(50)
+    );
+  }
+  const results = await Promise.all(queries);
+  for (const result of results) {
+    if (result.error) throw result.error;
+    for (const row of result.data || []) {
+      const id = cleanText(row.id);
+      if (id) candidates.set(id, row as Record<string, unknown>);
+    }
+  }
+  return [...candidates.keys()];
+}
+
+function privateBidLink(token: unknown) {
+  return `${RATEWARE_APP_URL.replace(/\/$/, "")}/rfx-bid.html?token=${encodeURIComponent(String(token || ""))}`;
+}
+
+function publicInvitationSummary(row: Record<string, unknown>) {
+  const event = relationRecord(row.rfx_events);
+  const lane = relationRecord(row.rfx_lanes);
+  return {
+    invitation_id: row.id,
+    event_id: row.rfx_event_id,
+    lane_id: row.rfx_lane_id,
+    rfx_id: event.rfx_id || event.name || "Bid Room",
+    customer: event.customer || "",
+    status: row.invitation_status || "invited",
+    route: [lane.origin || lane.origin_city, lane.destination || lane.destination_city].filter(Boolean).join(" -> "),
+    equipment: [lane.equipment, lane.trailer, lane.config].filter(Boolean).join(" / "),
+    service: [lane.operation, lane.service].filter(Boolean).join(" / "),
+    due_date: event.due_date || null,
+    owner_email: event.owner_email || null,
+    vendor_id: row.vendor_id,
+    link: privateBidLink(row.invitation_token)
+  };
+}
+
+function publicInvitationEmailHtml(rows: Record<string, unknown>[], recipientEmail: string) {
+  const cards = rows.map((row) => {
+    const item = publicInvitationSummary(row);
+    return `
+      <tr>
+        <td style="padding:10px;border-bottom:1px solid #dbe4eb">
+          <strong>${escapeHtmlText(item.rfx_id)}</strong><br>
+          <span style="color:#526372">${escapeHtmlText(item.customer || "Private Bid Room")}</span><br>
+          <span>${escapeHtmlText(item.route || "Lane pending")}</span><br>
+          <span style="color:#526372">${escapeHtmlText([item.equipment, item.service].filter(Boolean).join(" | ") || "Bid details")}</span>
+        </td>
+        <td style="padding:10px;border-bottom:1px solid #dbe4eb;text-align:right;white-space:nowrap">
+          <a href="${escapeHtmlText(item.link)}" style="display:inline-block;background:#25313b;color:#ffffff;text-decoration:none;border-radius:6px;padding:8px 10px;font-weight:700">Open Bid Room</a>
+        </td>
+      </tr>
+    `;
+  }).join("");
+  return `
+    <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;color:#172530;font-size:14px;line-height:1.45">
+      <p>We found active Rateware Bid Room invitation(s) for <strong>${escapeHtmlText(recipientEmail)}</strong>.</p>
+      <p>Use the private links below to access your assigned events and submit or update your offers. Do not forward these links outside your carrier team.</p>
+      <table style="border-collapse:collapse;width:100%;max-width:760px;border:1px solid #dbe4eb">${cards}</table>
+      <p style="color:#647584;font-size:12px">If you did not request these links, you can ignore this message.</p>
+    </div>
+  `;
+}
+
+function publicInvitationEmailText(rows: Record<string, unknown>[], recipientEmail: string) {
+  const lines = rows.map((row, index) => {
+    const item = publicInvitationSummary(row);
+    return [
+      `${index + 1}. ${item.rfx_id}`,
+      item.route ? `Route: ${item.route}` : null,
+      item.equipment ? `Equipment: ${item.equipment}` : null,
+      item.service ? `Service: ${item.service}` : null,
+      `Private link: ${item.link}`
+    ].filter(Boolean).join("\n");
+  }).join("\n\n");
+  return `We found active Rateware Bid Room invitations for ${recipientEmail}.\n\n${lines}\n\nDo not forward these private links outside your carrier team.`;
+}
+
+async function publicBidRoomFindInvitations(supabase: ReturnType<typeof createClient>, input: Record<string, unknown>) {
+  const email = cleanEmail(input.email);
+  const language = ["en", "es"].includes(String(cleanText(input.language) || "").toLowerCase())
+    ? String(cleanText(input.language)).toLowerCase()
+    : "en";
+  if (!email) return { sent: false, error: "A valid email is required.", status: 400 };
+
+  const vendorIds = await publicInvitationVendorIds(supabase, email);
+  if (!vendorIds.length) {
+    return {
+      sent: false,
+      matched: 0,
+      message: language === "es"
+        ? "No encontramos invitaciones activas para ese correo. Solicita invitacion desde una oportunidad publica."
+        : "No active invitations were found for that email. Request an invitation from a public opportunity."
+    };
+  }
+
+  const invitationsResult = await supabase
+    .from("rfx_lane_vendors")
+    .select(`
+      id,
+      rfx_event_id,
+      rfx_lane_id,
+      vendor_id,
+      invitation_status,
+      invitation_token,
+      invited_at,
+      viewed_at,
+      responded_at,
+      vendors(id,vendor_name,legal_name,domain,primary_email,secondary_emails),
+      rfx_events(id,owner_user_id,owner_email,rfx_id,name,customer,event_type,status,due_date),
+      rfx_lanes(id,lane_number,origin,destination,origin_city,destination_city,equipment,trailer,config,operation,service,currency)
+    `)
+    .in("vendor_id", vendorIds)
+    .neq("invitation_status", "archived")
+    .limit(100);
+  if (invitationsResult.error) throw invitationsResult.error;
+
+  const invitations = (invitationsResult.data || [])
+    .filter((row) => cleanText(row.invitation_token))
+    .filter((row) => ["draft", "open", "closed", "awarded"].includes(String(cleanText(relationRecord(row.rfx_events).status) || "").toLowerCase()))
+    .slice(0, 25);
+  if (!invitations.length) {
+    return {
+      sent: false,
+      matched: 0,
+      message: language === "es"
+        ? "No encontramos invitaciones activas para ese correo. Solicita invitacion desde una oportunidad publica."
+        : "No active invitations were found for that email. Request an invitation from a public opportunity."
+    };
+  }
+
+  const byOwner = new Map<string, Record<string, unknown>[]>();
+  for (const row of invitations) {
+    const ownerEmail = cleanEmail(relationRecord(row.rfx_events).owner_email);
+    if (!ownerEmail) continue;
+    const bucket = byOwner.get(ownerEmail) || [];
+    bucket.push(row as Record<string, unknown>);
+    byOwner.set(ownerEmail, bucket);
+  }
+  if (!byOwner.size) throw new Error("Matched invitations do not have a valid owner email.");
+
+  let sent = 0;
+  const sentOwners: string[] = [];
+  for (const [ownerEmail, rows] of byOwner.entries()) {
+    const subject = rows.length === 1
+      ? `Your Rateware Bid Room link: ${publicInvitationSummary(rows[0]).rfx_id}`
+      : `Your Rateware Bid Room links (${rows.length})`;
+    const htmlBody = publicInvitationEmailHtml(rows, email);
+    const textBody = publicInvitationEmailText(rows, email);
+    const gmailResult = await sendGmailMessageForOwner(supabase, ownerEmail, {
+      recipient_email: email,
+      subject,
+      html_body: htmlBody,
+      text_body: textBody
+    });
+    sent += rows.length;
+    sentOwners.push(ownerEmail);
+    const now = new Date().toISOString();
+    const historyRows = rows.map((row) => ({
+      owner_user_id: relationRecord(row.rfx_events).owner_user_id || null,
+      owner_email: ownerEmail,
+      vendor_id: row.vendor_id,
+      rfx_event_id: row.rfx_event_id,
+      channel: "email",
+      direction: "outbound",
+      status: "magic_link_sent",
+      subject,
+      body_preview: `Private Bid Room links sent to ${email}`,
+      occurred_at: now,
+      metadata: {
+        source: "public_bid_room_soft_login",
+        recipient_email: email,
+        invitation_id: row.id,
+        rfx_lane_id: row.rfx_lane_id,
+        provider_message_id: cleanText(gmailResult.id),
+        gmail_thread_id: cleanText(gmailResult.threadId)
+      }
+    }));
+    const history = await supabase.from("contact_history").insert(historyRows);
+    if (history.error) throw history.error;
+  }
+
+  return {
+    sent: true,
+    matched: sent,
+    owners: sentOwners.length,
+    message: language === "es"
+      ? `Enviamos ${sent} link(s) privados a ${email}.`
+      : `We sent ${sent} private Bid Room link(s) to ${email}.`
+  };
+}
+
 Deno.serve(async (request) => {
   if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders() });
 
@@ -1460,6 +1840,14 @@ Deno.serve(async (request) => {
     }
     if (body.action === "public_bid_room_request_invite") {
       const result = await publicBidRoomInviteRequest(supabase, body);
+      if (result.status) {
+        const { status, ...payload } = result;
+        return jsonResponse(payload, status as number);
+      }
+      return jsonResponse(result);
+    }
+    if (body.action === "public_bid_room_find_invitations") {
+      const result = await publicBidRoomFindInvitations(supabase, body);
       if (result.status) {
         const { status, ...payload } = result;
         return jsonResponse(payload, status as number);

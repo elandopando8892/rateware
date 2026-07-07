@@ -17,6 +17,7 @@
         </div>
         <div class="public-board-actions">
           <button id="public-board-sound" type="button" class="page-primary-action">Enable sound</button>
+          <button id="public-board-find-invites" type="button" class="secondary">Find my invitations</button>
           <select id="public-board-language" aria-label="Announcement language">
             <option value="en">English alerts</option>
             <option value="es">Alertas en espanol</option>
@@ -85,6 +86,29 @@
       <div class="public-board-drawer-panel">
         <button id="public-board-detail-close" type="button" class="secondary">Close</button>
         <div id="public-board-detail-content"></div>
+      </div>
+    </aside>
+
+    <aside id="public-board-soft-login-drawer" class="public-board-detail-drawer" hidden aria-label="Find private Bid Room invitations">
+      <div class="public-board-drawer-panel">
+        <button id="public-board-soft-login-close" type="button" class="secondary">Close</button>
+        <div class="public-board-drawer-header">
+          <span class="status-pill neutral">Soft login</span>
+          <h2>Find my private Bid Rooms</h2>
+          <p>Already invited? Enter the email where procurement contacted you. Rateware will send your private Bid Room links to that same inbox.</p>
+        </div>
+        <section class="public-board-invite-rule">
+          <strong>No public bidding from this board</strong>
+          <p>Public opportunities are visible for market awareness. To bid, use your private invitation token or request access.</p>
+        </section>
+        <form id="public-soft-login-form" class="public-board-request-form">
+          <h3>Email verification</h3>
+          <label>Email used for your invitation<input name="email" type="email" required placeholder="name@carrier.com" /></label>
+          <div class="public-board-request-actions">
+            <button type="submit" class="page-primary-action">Send my private links</button>
+            <span id="public-soft-login-status" class="row-save-status" role="status"></span>
+          </div>
+        </form>
       </div>
     </aside>
 

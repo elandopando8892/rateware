@@ -13,9 +13,12 @@ const statusFilter = document.querySelector("#public-board-status-filter");
 const searchInput = document.querySelector("#public-board-search");
 const autoRefreshInput = document.querySelector("#public-board-auto-refresh");
 const viewButtons = [...document.querySelectorAll("[data-board-view]")];
+const findInvitesButton = document.querySelector("#public-board-find-invites");
 const detailDrawer = document.querySelector("#public-board-detail-drawer");
 const detailContent = document.querySelector("#public-board-detail-content");
 const detailClose = document.querySelector("#public-board-detail-close");
+const softLoginDrawer = document.querySelector("#public-board-soft-login-drawer");
+const softLoginClose = document.querySelector("#public-board-soft-login-close");
 
 const API_URL = `${SUPABASE_URL}/functions/v1/rfx-bid-api`;
 const boardParams = new URLSearchParams(window.location.search);
@@ -27,7 +30,8 @@ const ANNOUNCEMENTS = {
     quote: "Quote Available.",
     closing: "Deadline closing soon.",
     displaced: "Place new bid. Your offer has been displaced.",
-    inviteSent: "Invitation request sent."
+    inviteSent: "Invitation request sent.",
+    linksSent: "Private Bid Room links sent."
   },
   es: {
     enabled: "Alertas del Bid Room activadas.",
@@ -39,6 +43,7 @@ const ANNOUNCEMENTS = {
 ANNOUNCEMENTS.es.opportunity = "Nueva oportunidad disponible.";
 ANNOUNCEMENTS.es.closing = "La oportunidad esta por cerrar.";
 ANNOUNCEMENTS.es.inviteSent = "Solicitud de invitacion enviada.";
+ANNOUNCEMENTS.es.linksSent = "Links privados enviados.";
 
 const state = {
   rows: [],
@@ -147,6 +152,23 @@ async function callInviteRequest(payload = {}) {
     data = { error: text };
   }
   if (!response.ok) throw new Error(data.error || data.message || text || `Invitation request failed (${response.status})`);
+  return data;
+}
+
+async function callFindInvitations(payload = {}) {
+  const response = await fetch(API_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "public_bid_room_find_invitations", ...payload })
+  });
+  const text = await response.text();
+  let data = {};
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch {
+    data = { error: text };
+  }
+  if (!response.ok) throw new Error(data.error || data.message || text || `Invitation lookup failed (${response.status})`);
   return data;
 }
 
@@ -356,6 +378,7 @@ function renderDetailDrawer(row, focusRequest = false) {
     <section class="public-board-invite-rule">
       <strong>Invitation required to bid</strong>
       <p>${escapeHtml(invitationRuleCopy(row))}</p>
+      <button type="button" class="secondary" data-public-board-soft-login="${escapeHtml(row.id)}">Already invited? Find my private link</button>
     </section>
     <form id="public-invite-request-form" class="public-board-request-form" data-event-id="${escapeHtml(row.event?.id || row.event_id || "")}" data-lane-id="${escapeHtml(row.id)}">
       <h3>Request invitation</h3>
@@ -382,6 +405,28 @@ function closeDetailDrawer() {
   detailDrawer.hidden = true;
   document.body.classList.remove("has-public-board-drawer");
   state.selectedRowId = null;
+}
+
+function openSoftLoginDrawer(row = null) {
+  if (!softLoginDrawer) return;
+  const profile = requestProfile();
+  const emailInput = softLoginDrawer.querySelector("[name='email']");
+  const status = softLoginDrawer.querySelector("#public-soft-login-status");
+  softLoginDrawer.dataset.eventId = row?.event?.id || row?.event_id || "";
+  softLoginDrawer.dataset.laneId = row?.id || "";
+  if (emailInput && profile.email) emailInput.value = profile.email;
+  if (status) status.textContent = "";
+  softLoginDrawer.hidden = false;
+  document.body.classList.add("has-public-board-drawer");
+  emailInput?.focus();
+}
+
+function closeSoftLoginDrawer() {
+  if (!softLoginDrawer) return;
+  softLoginDrawer.hidden = true;
+  document.body.classList.remove("has-public-board-drawer");
+  softLoginDrawer.dataset.eventId = "";
+  softLoginDrawer.dataset.laneId = "";
 }
 
 function renderOpportunityCard(row) {
@@ -548,6 +593,7 @@ languageSelect.addEventListener("change", () => {
 refreshButton.addEventListener("click", () => loadBoard());
 statusFilter.addEventListener("change", () => loadBoard({ announceChanges: false }));
 searchInput.addEventListener("input", renderBoard);
+findInvitesButton?.addEventListener("click", () => openSoftLoginDrawer());
 fullscreenButton.addEventListener("click", () => {
   if (!document.fullscreenElement) document.documentElement.requestFullscreen?.();
   else document.exitFullscreen?.();
@@ -584,6 +630,13 @@ boardRoot.addEventListener("click", (event) => {
 
 detailClose?.addEventListener("click", closeDetailDrawer);
 detailDrawer?.addEventListener("click", (event) => {
+  const softLoginButton = event.target.closest("[data-public-board-soft-login]");
+  if (softLoginButton) {
+    const row = rowById(softLoginButton.dataset.publicBoardSoftLogin);
+    closeDetailDrawer();
+    openSoftLoginDrawer(row);
+    return;
+  }
   if (event.target === detailDrawer) closeDetailDrawer();
 });
 detailDrawer?.addEventListener("submit", async (event) => {
@@ -621,8 +674,41 @@ detailDrawer?.addEventListener("submit", async (event) => {
     submitButton.disabled = false;
   }
 });
+softLoginClose?.addEventListener("click", closeSoftLoginDrawer);
+softLoginDrawer?.addEventListener("click", (event) => {
+  if (event.target === softLoginDrawer) closeSoftLoginDrawer();
+});
+softLoginDrawer?.addEventListener("submit", async (event) => {
+  const form = event.target.closest("#public-soft-login-form");
+  if (!form) return;
+  event.preventDefault();
+  const submitButton = form.querySelector("button[type='submit']");
+  const status = form.querySelector("#public-soft-login-status");
+  const formData = new FormData(form);
+  const email = formData.get("email");
+  submitButton.disabled = true;
+  status.textContent = "Looking up invitations...";
+  try {
+    const data = await callFindInvitations({
+      email,
+      event_id: softLoginDrawer.dataset.eventId || "",
+      lane_id: softLoginDrawer.dataset.laneId || "",
+      language: state.language
+    });
+    const profile = requestProfile();
+    saveRequestProfile({ ...profile, email });
+    status.textContent = data.message || "If invitations exist, private links were sent to that email.";
+    if (data.sent) queueAlert("linksSent", { route_label: "Private Bid Room", event: { name: "Soft login" } });
+  } catch (error) {
+    status.textContent = error.message || "Could not find invitations right now.";
+  } finally {
+    submitButton.disabled = false;
+  }
+});
 document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape" && detailDrawer && !detailDrawer.hidden) closeDetailDrawer();
+  if (event.key !== "Escape") return;
+  if (detailDrawer && !detailDrawer.hidden) closeDetailDrawer();
+  if (softLoginDrawer && !softLoginDrawer.hidden) closeSoftLoginDrawer();
 });
 
 setInterval(() => {
