@@ -11716,7 +11716,7 @@ Deno.serve(async (request) => {
         .select("*, vendors(vendor_name,domain,primary_email,whatsapp_phone), outreach_campaigns(name,notes), rfx_events(rfx_id,name), rfx_lanes(origin,destination,equipment,trailer,operation,service), rfx_lane_vendors(id,invitation_status,invitation_token,award_role,bid_rate,currency,responded_at)")
         .eq("owner_email", user.owner_email)
         .order("created_at", { ascending: false })
-        .limit(500);
+        .limit(1000);
       if (body.campaign_id) query = query.eq("campaign_id", body.campaign_id);
       if (body.rfx_event_id) query = query.eq("rfx_event_id", body.rfx_event_id);
       if (body.status) query = query.eq("status", body.status);

@@ -154,6 +154,12 @@ assert.match(outreachServiceSource, /send_outreach_messages/, "Outreach service 
 assert.match(rfxEventsHtml, /rfx-send-selected-email-drafts/, "Bid Room draft queue should include a bulk send selected emails action");
 assert.match(rfxEventsHtml, /rfx-archive-selected-drafts/, "Bid Room draft queue should include archive selected action");
 assert.match(rfxEventsHtml, /rfx-delete-selected-drafts/, "Bid Room draft queue should include delete selected action");
+assert.match(rfxEventsSource, /const OUTREACH_SEND_BATCH_SIZE = 100/, "Bid Room Step 4 should respect the backend Gmail send batch size");
+assert.match(rfxEventsSource, /function sendDraftEmailIds/, "Bid Room Step 4 should send selected emails through automatic batches");
+assert.match(rfxEventsSource, /chunkRows\(ids, OUTREACH_SEND_BATCH_SIZE\)/, "Bid Room Step 4 should split large sends before calling the API");
+assert.match(rfxEventsSource, /data-rfx-send-draft-now/, "Bid Room Step 4 should allow sending a single carrier invitation from the draft queue");
+assert.match(rfxEventsSource, /function sendSingleDraftEmail/, "Bid Room Step 4 should support individual same-day carrier invite sends");
+assert.match(rfxEventsSource, /targetHasActiveOutreachDraft/, "Bid Room Step 4 should generate missing drafts without duplicating the whole wave");
 assert.match(rfxEventsSource, /function confirmDraftQueueAction/, "Bid Room draft queue should require human confirmation for bulk queue actions");
 assert.match(rfxEventsSource, /confirmDraftQueueAction\("send", ids\)/, "Bid Room should confirm before sending selected draft emails");
 assert.match(rfxEventsSource, /confirmDraftQueueAction\("archive", ids\)/, "Bid Room should confirm before archiving selected draft rows");
@@ -467,6 +473,7 @@ assert.match(apiSource, /already_synced: true/, "Google Chat event thread sync s
 assert.match(apiSource, /sendOutreachMessages/, "API should send selected outreach messages through Gmail");
 assert.match(apiSource, /delete_outreach_messages/, "API should delete selected outreach draft rows");
 assert.match(apiSource, /sender_email: senderEmail/, "API should persist sender email on outreach draft rows");
+assert.match(apiSource, /\.from\("outreach_messages"\)[\s\S]*\.limit\(1000\)/, "Outreach draft queue should load up to 1000 rows for large Bid Room waves");
 assert.match(outreachSenderMigration, /add column if not exists sender_email text/, "Outreach schema should store sender identity");
 assert.doesNotMatch(settingsHtml, /Redirect URI|OAuth setup|Google secrets/i, "Settings UI should not expose deployment-level Gmail OAuth details to users");
 assert.doesNotMatch(settingsSource, /Redirect URI|OAuth setup|Missing Google secrets|Add Google OAuth secrets/i, "Settings copy should keep Gmail setup SaaS-like and non-technical");

@@ -242,6 +242,7 @@ const rfxPageParams = new URLSearchParams(window.location.search);
 const requestedRfxEventId = rfxPageParams.get("rfx_event_id");
 const rfxWorkbench = initWorkbenchTabs({ defaultView: "setup" });
 const APPROVED_GMAIL_SENDER = "sales@heymarksman.com";
+const OUTREACH_SEND_BATCH_SIZE = 100;
 
 const RFX_LANE_TEMPLATE_COLUMNS = [
   { key: "lane_number", label: "Lane #", example: "1" },
@@ -392,6 +393,15 @@ function formatNumber(value, digits = 0) {
   const number = Number(value);
   if (!Number.isFinite(number)) return "-";
   return new Intl.NumberFormat(undefined, { maximumFractionDigits: digits }).format(number);
+}
+
+function chunkRows(rows = [], size = OUTREACH_SEND_BATCH_SIZE) {
+  const chunkSize = Math.max(1, Number(size) || OUTREACH_SEND_BATCH_SIZE);
+  const chunks = [];
+  for (let index = 0; index < rows.length; index += chunkSize) {
+    chunks.push(rows.slice(index, index + chunkSize));
+  }
+  return chunks;
 }
 
 function formatMoney(value, currency = "USD") {
@@ -3670,6 +3680,25 @@ function selectedSendableDraftIds(rows = draftRowsForEvent()) {
   return selectableEmailDrafts(selectedDraftRows(rows)).map((message) => String(message.id));
 }
 
+function outreachMessageInvitationIds(message = {}) {
+  const metadata = message.metadata && typeof message.metadata === "object" ? message.metadata : {};
+  const ids = Array.isArray(metadata.rfx_lane_vendor_ids)
+    ? metadata.rfx_lane_vendor_ids.map(String).filter(Boolean)
+    : [];
+  if (message.rfx_lane_vendor_id) ids.push(String(message.rfx_lane_vendor_id));
+  return new Set(ids);
+}
+
+function targetHasActiveOutreachDraft(target) {
+  const invitationId = String(target?.invitation?.id || "");
+  if (!invitationId) return false;
+  return draftRowsForEvent().some((message) => {
+    const status = String(message.status || "").toLowerCase();
+    if (status === "archived") return false;
+    return outreachMessageInvitationIds(message).has(invitationId);
+  });
+}
+
 function confirmBidRoomBulkAction(action, ids = []) {
   const count = formatNumber(ids.length);
   if (action === "auto_shortlist") {
@@ -3687,7 +3716,8 @@ function confirmBidRoomBulkAction(action, ids = []) {
 function confirmDraftQueueAction(action, ids = []) {
   const count = formatNumber(ids.length);
   if (action === "send") {
-    return window.confirm(`Send ${count} individual email(s) from ${APPROVED_GMAIL_SENDER}? Each selected carrier will receive its own message.`);
+    const batches = Math.ceil(ids.length / OUTREACH_SEND_BATCH_SIZE);
+    return window.confirm(`Send ${count} individual email(s) from ${APPROVED_GMAIL_SENDER}? Each selected carrier will receive its own message${batches > 1 ? ` in ${batches} batches` : ""}.`);
   }
   if (action === "archive") {
     return window.confirm(`Archive ${count} selected draft row(s)? Drafts will be hidden from the active queue, but vendors and RFx lanes stay unchanged.`);
@@ -3773,6 +3803,7 @@ function renderDraftQueue() {
         <td>${escapeHtml(updated ? new Date(updated).toLocaleString() : "-")}</td>
         <td>
           <div class="rfx-draft-row-actions">
+            <button class="small-button" type="button" data-rfx-send-draft-now="${escapeHtml(message.id)}" ${isEmail && selectableEmailDrafts([message]).length ? "" : "disabled"}>Send now</button>
             <button class="secondary small-button" type="button" data-rfx-open-draft="${escapeHtml(openUrl || "")}" ${openUrl ? "" : "disabled"}>${isEmail ? "Open Gmail" : "Open WhatsApp"}</button>
             <button class="secondary small-button" type="button" data-rfx-mark-draft="${escapeHtml(message.id)}" data-rfx-draft-status="queued" ${status === "queued" || status === "sent" || status === "archived" ? "disabled" : ""}>Queue</button>
             <button class="secondary small-button" type="button" data-rfx-mark-draft="${escapeHtml(message.id)}" data-rfx-draft-status="archived" ${status === "archived" ? "disabled" : ""}>Archive</button>
@@ -4642,9 +4673,15 @@ async function createCurrentOutreachDrafts(statusElement = rfxOutreachStatus) {
     setStatus(statusElement, "Save the edited email preview before generating draft queue.", "error");
     return null;
   }
-  const invitationIds = selectedInvitationIds.size
-    ? [...selectedInvitationIds]
-    : targets.map(({ invitation }) => invitation.id);
+  const draftTargets = selectedInvitationIds.size
+    ? targets
+    : targets.filter((target) => !targetHasActiveOutreachDraft(target));
+  if (!draftTargets.length) {
+    setStatus(statusElement, "All shortlisted carriers already have active invitation drafts. Select a specific participant if you need to regenerate one.", "neutral");
+    renderOutreachLaunchpad();
+    return { generated: 0, skipped: [] };
+  }
+  const invitationIds = draftTargets.map(({ invitation }) => invitation.id);
   if (createRfxOutreachCampaignButton) createRfxOutreachCampaignButton.disabled = true;
   setStatus(statusElement, "Creating campaign and generating drafts...");
   const campaign = await createOutreachCampaign({
@@ -4842,6 +4879,23 @@ async function sendAwardNoticeDrafts() {
   }
 }
 
+async function sendDraftEmailIds(ids = [], statusElement = rfxOutreachStatus) {
+  const batches = chunkRows(ids, OUTREACH_SEND_BATCH_SIZE);
+  const totals = { sent: 0, failed: 0, failures: [] };
+  for (let index = 0; index < batches.length; index += 1) {
+    const batch = batches[index];
+    setStatus(
+      statusElement,
+      `Sending batch ${formatNumber(index + 1)} of ${formatNumber(batches.length)} (${formatNumber(batch.length)} email${batch.length === 1 ? "" : "s"}) from ${APPROVED_GMAIL_SENDER}...`
+    );
+    const result = await sendOutreachMessages(batch, { senderEmail: APPROVED_GMAIL_SENDER });
+    totals.sent += Number(result.sent || 0);
+    totals.failed += Number(result.failed || 0);
+    if (Array.isArray(result.failures)) totals.failures.push(...result.failures);
+  }
+  return totals;
+}
+
 async function sendSelectedDraftEmails() {
   const ids = selectedSendableDraftIds();
   if (!ids.length) {
@@ -4850,9 +4904,8 @@ async function sendSelectedDraftEmails() {
   }
   if (!confirmDraftQueueAction("send", ids)) return;
   if (draftSendSelectedButton) draftSendSelectedButton.disabled = true;
-  setStatus(rfxOutreachStatus, `Sending ${formatNumber(ids.length)} individual email(s) from ${APPROVED_GMAIL_SENDER}...`);
   try {
-    const result = await sendOutreachMessages(ids, { senderEmail: APPROVED_GMAIL_SENDER });
+    const result = await sendDraftEmailIds(ids, rfxOutreachStatus);
     selectedDraftMessageIds.clear();
     [contactHistoryRows, outreachMessages] = await Promise.all([
       fetchContactHistory({ rfx_event_id: selectedEventId }),
@@ -4863,6 +4916,40 @@ async function sendSelectedDraftEmails() {
       rfxOutreachStatus,
       `${formatNumber(result.sent || 0)} email(s) sent individually. ${formatNumber(result.failed || 0)} failed.`,
       result.failed ? "warning" : "success"
+    );
+  } catch (error) {
+    setStatus(rfxOutreachStatus, error.message, "error");
+    renderDraftQueue();
+  }
+}
+
+async function sendSingleDraftEmail(id) {
+  if (!id) return;
+  const row = draftRowsForEvent().find((message) => String(message.id) === String(id));
+  if (!row) {
+    setStatus(rfxOutreachStatus, "Draft row could not be found. Refresh the Bid Room and try again.", "error");
+    return;
+  }
+  const sendable = selectableEmailDrafts([row]).length > 0;
+  if (!sendable) {
+    setStatus(rfxOutreachStatus, "This draft cannot be sent directly. It needs an email recipient and drafted/queued/failed status.", "error");
+    return;
+  }
+  const carrier = row.vendors?.vendor_name || row.vendors?.domain || row.recipient_email || "this carrier";
+  if (!window.confirm(`Send this invitation now to ${carrier} from ${APPROVED_GMAIL_SENDER}?`)) return;
+  setStatus(rfxOutreachStatus, `Sending invitation to ${carrier}...`);
+  try {
+    const result = await sendDraftEmailIds([String(id)], rfxOutreachStatus);
+    selectedDraftMessageIds.delete(String(id));
+    [contactHistoryRows, outreachMessages] = await Promise.all([
+      fetchContactHistory({ rfx_event_id: selectedEventId }),
+      fetchOutreachMessages({ rfx_event_id: selectedEventId })
+    ]);
+    renderOutreachLaunchpad();
+    setStatus(
+      rfxOutreachStatus,
+      result.sent ? `Invitation sent to ${carrier}.` : `Invitation could not be sent to ${carrier}. ${formatNumber(result.failed || 0)} failed.`,
+      result.sent ? "success" : "warning"
     );
   } catch (error) {
     setStatus(rfxOutreachStatus, error.message, "error");
@@ -5087,6 +5174,16 @@ document.addEventListener("click", (event) => {
 });
 
 draftList?.addEventListener("click", async (event) => {
+  const sendNowButton = event.target.closest("[data-rfx-send-draft-now]");
+  if (sendNowButton) {
+    sendNowButton.disabled = true;
+    try {
+      await sendSingleDraftEmail(sendNowButton.dataset.rfxSendDraftNow);
+    } finally {
+      sendNowButton.disabled = false;
+    }
+    return;
+  }
   const openButton = event.target.closest("[data-rfx-open-draft]");
   if (openButton) {
     const url = openButton.dataset.rfxOpenDraft;
