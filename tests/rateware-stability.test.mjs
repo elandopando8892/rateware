@@ -17,6 +17,10 @@ const stagingReviewHtml = readFileSync(new URL("../staging-review.html", import.
 const ratewareHtml = readFileSync(new URL("../rateware.html", import.meta.url), "utf8");
 const vendorsSource = readFileSync(new URL("../src/vendors.js", import.meta.url), "utf8");
 const vendorsHtml = readFileSync(new URL("../vendors.html", import.meta.url), "utf8");
+const vendorServiceSource = readFileSync(new URL("../src/vendor-service.js", import.meta.url), "utf8");
+const carrierProfileSource = readFileSync(new URL("../src/carrier-profile.js", import.meta.url), "utf8");
+const carrierProfileHtml = readFileSync(new URL("../carrier-profile.html", import.meta.url), "utf8");
+const carrierProfileApiSource = readFileSync(new URL("../supabase/functions/carrier-profile-api/index.ts", import.meta.url), "utf8");
 const rfxEventsSource = readFileSync(new URL("../src/rfx-events.js", import.meta.url), "utf8");
 const rfxEventsHtml = readFileSync(new URL("../rfx-events.html", import.meta.url), "utf8");
 const rfxBidSource = readFileSync(new URL("../src/rfx-bid.js", import.meta.url), "utf8");
@@ -57,6 +61,7 @@ const bidRoomChatBidUpdatesMigration = readFileSync(new URL("../supabase/migrati
 const rfxAwardCloseoutMigration = readFileSync(new URL("../supabase/migrations/20260704080000_rfx_award_closeout.sql", import.meta.url), "utf8");
 const rfxBidSubmissionV2Migration = readFileSync(new URL("../supabase/migrations/20260704093000_rfx_bid_submission_v2.sql", import.meta.url), "utf8");
 const vendorSegmentsCoverageMigration = readFileSync(new URL("../supabase/migrations/20260706143000_vendor_segments_coverage_filter.sql", import.meta.url), "utf8");
+const vendorProfileRequestsMigration = readFileSync(new URL("../supabase/migrations/20260706152000_vendor_profile_requests.sql", import.meta.url), "utf8");
 
 for (const domain of ["gmail.com", "hotmail.com", "yahoo.com", "outlook.com", "yahoo.com.mx"]) {
   assert.match(apiSource, new RegExp(`"${domain.replace(".", "\\.")}"`), `generic domain ${domain} should be blocked`);
@@ -709,6 +714,18 @@ assert.match(vendorsHtml, /drawer-rateware-evidence/, "Vendor drawer should have
 assert.match(vendorSegmentsCoverageMigration, /coverage_filter text/, "Vendor saved lists should persist a coverage filter");
 assert.match(apiSource, /coverage_filter: coverageFilter/, "Vendor segment API should persist coverage filters");
 assert.match(vendorsSource, /segment\.coverage_filter/, "Vendor saved lists should apply coverage filters in the UI");
+assert.match(vendorProfileRequestsMigration, /create table if not exists public\.vendor_profile_requests/, "Carrier profile requests should have a token table");
+assert.match(vendorProfileRequestsMigration, /request_token text not null/, "Carrier profile requests should store a secure request token");
+assert.match(apiSource, /body\.action === "create_vendor_profile_request"/, "Carrier CRM should create carrier profile request tokens");
+assert.match(vendorServiceSource, /createVendorProfileRequest/, "Vendor service should expose profile request creation");
+assert.match(vendorsSource, /data-copy-profile-link/, "Vendor drawer should expose profile link creation");
+assert.match(carrierProfileHtml, /carrier-profile\.js/, "Carrier profile page should load the public profile script");
+assert.match(carrierProfileSource, /carrier-profile-api/, "Carrier profile page should call the public profile API");
+assert.match(carrierProfileSource, /submit_profile/, "Carrier profile page should submit profile data");
+assert.match(carrierProfileApiSource, /Deno\.serve/, "Carrier profile API should be an Edge Function");
+assert.match(carrierProfileApiSource, /get_profile/, "Carrier profile API should expose token-scoped profile loading");
+assert.match(carrierProfileApiSource, /submit_profile/, "Carrier profile API should expose token-scoped profile submission");
+assert.doesNotMatch(carrierProfileApiSource, /requireKindeUser/, "Carrier profile API should not require Kinde for token-scoped access");
 
 for (const functionName of [
   "rateware_bi_dimension_value",

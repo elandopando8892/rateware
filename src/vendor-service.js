@@ -70,6 +70,14 @@ export async function uploadVendorLogo(vendorId, filePayload) {
   return await callRatewareApi("upload_vendor_logo", { vendor_id: vendorId, ...filePayload });
 }
 
+export async function createVendorProfileRequest(vendorId, { expiresInDays = 30 } = {}) {
+  return await callRatewareApi("create_vendor_profile_request", {
+    vendor_id: vendorId,
+    expires_in_days: expiresInDays,
+    origin: window.location.origin
+  });
+}
+
 export async function importVendors(vendors) {
   return await callRatewareApi("import_vendors", { vendors });
 }

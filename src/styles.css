@@ -7722,6 +7722,69 @@ button.location-chip:focus-visible {
   font-size: 0.76rem;
 }
 
+.carrier-profile-portal .workspace-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.carrier-profile-form {
+  display: grid;
+  gap: 14px;
+}
+
+.carrier-profile-summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfc;
+  padding: 12px;
+}
+
+.carrier-profile-summary p:last-child {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
+.carrier-profile-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.carrier-profile-grid .profile-field-wide,
+.carrier-profile-grid label:has(textarea) {
+  grid-column: 1 / -1;
+}
+
+.carrier-profile-sections {
+  display: grid;
+  gap: 10px;
+}
+
+.carrier-profile-portal .drawer-profile-section {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 8px;
+}
+
+.carrier-profile-portal .drawer-profile-section summary {
+  cursor: pointer;
+  color: var(--text);
+  font-size: 0.82rem;
+  font-weight: 900;
+}
+
+@media (max-width: 860px) {
+  .carrier-profile-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .readiness-checks {
   display: flex;
   flex-wrap: wrap;

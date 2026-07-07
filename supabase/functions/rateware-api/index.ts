@@ -10576,6 +10576,60 @@ Deno.serve(async (request) => {
       return jsonResponse({ row: result.data });
     }
 
+    if (body.action === "create_vendor_profile_request") {
+      const vendorId = cleanText(body.vendor_id || body.id);
+      if (!vendorId) return jsonResponse({ error: "Vendor id is required." }, 400);
+
+      const current = await supabase
+        .from("vendors")
+        .select("id,vendor_name,domain,primary_email,owner_user_id,owner_email")
+        .eq("owner_email", user.owner_email)
+        .eq("id", vendorId)
+        .single();
+      if (current.error) throw current.error;
+
+      const expiresInDays = Math.min(Math.max(Number(body.expires_in_days) || 30, 1), 90);
+      const expiresAt = new Date(Date.now() + expiresInDays * 86400000).toISOString();
+      const tokenSeed = `${crypto.randomUUID()}${crypto.randomUUID()}`.replace(/-/g, "");
+      const requestToken = tokenSeed.slice(0, 48);
+      const origin = cleanUrl(body.origin) || Deno.env.get("RATEWARE_PUBLIC_APP_URL") || "https://rateware.vercel.app";
+      const baseUrl = origin.replace(/\/$/, "");
+      const row = {
+        owner_user_id: user.owner_user_id,
+        owner_email: user.owner_email,
+        vendor_id: vendorId,
+        request_token: requestToken,
+        status: "active",
+        expires_at: expiresAt,
+        metadata: {
+          vendor_name: current.data?.vendor_name,
+          generated_from: "carrier_crm",
+          expires_in_days: expiresInDays
+        }
+      };
+
+      const result = await supabase.from("vendor_profile_requests").insert(row).select().single();
+      if (result.error) throw result.error;
+
+      await writeAuditLog(
+        supabase,
+        user,
+        "vendor.profile_request.create",
+        "vendors",
+        vendorId,
+        `Created carrier profile request for ${current.data?.vendor_name || "vendor"}`,
+        { request_id: result.data.id, expires_at: expiresAt }
+      );
+
+      return jsonResponse({
+        id: result.data.id,
+        token: requestToken,
+        url: `${baseUrl}/carrier-profile.html?token=${encodeURIComponent(requestToken)}`,
+        expires_at: expiresAt,
+        vendor: current.data
+      });
+    }
+
     if (body.action === "upload_vendor_logo") {
       const vendorId = cleanText(body.vendor_id || body.id);
       if (!vendorId) return jsonResponse({ error: "Vendor id is required." }, 400);

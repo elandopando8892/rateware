@@ -6,6 +6,7 @@ import {
   bulkUpdateVendors,
   createVendor,
   createVendorSegment,
+  createVendorProfileRequest,
   deleteVendorSegment,
   fetchVendorFunnel,
   fetchVendorIntelligence,
@@ -3228,6 +3229,7 @@ function renderDrawerQuickActions(vendor) {
     const phone = String(vendor.whatsapp_phone).replace(/\D/g, "");
     if (phone) actions.push(`<a class="small-button secondary" href="https://wa.me/${escapeHtml(phone)}" target="_blank" rel="noreferrer">WhatsApp</a>`);
   }
+  actions.push(`<button class="small-button secondary" type="button" data-copy-profile-link="${escapeHtml(vendor.id || vendor.vendor_id)}">Copy profile link</button>`);
   return actions.length ? actions.join("") : '<span class="muted-text">No quick actions available</span>';
 }
 
@@ -3479,6 +3481,24 @@ async function handleDrawerLogoUpload() {
     setStatus(drawerEditStatus, error.message, "error");
   } finally {
     drawerLogoFile.value = "";
+  }
+}
+
+async function copyVendorProfileLink(vendorId) {
+  if (!vendorId) return;
+  setStatus(drawerEditStatus, "Creating carrier profile link...");
+  try {
+    await requirePrivatePage();
+    const result = await createVendorProfileRequest(vendorId, { expiresInDays: 30 });
+    const url = result.url || `${window.location.origin}/carrier-profile.html?token=${encodeURIComponent(result.token || "")}`;
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(url);
+      setStatus(drawerEditStatus, `Profile link copied. Expires ${new Date(result.expires_at).toLocaleDateString()}.`, "success");
+    } else {
+      setStatus(drawerEditStatus, `Profile link: ${url}`, "success");
+    }
+  } catch (error) {
+    setStatus(drawerEditStatus, error.message, "error");
   }
 }
 
@@ -4170,6 +4190,11 @@ drawerEditToggle?.addEventListener("click", () => {
 });
 drawerLogoFile?.addEventListener("change", handleDrawerLogoUpload);
 drawer.addEventListener("click", (event) => {
+  const profileLinkButton = event.target.closest("[data-copy-profile-link]");
+  if (profileLinkButton) {
+    copyVendorProfileLink(profileLinkButton.dataset.copyProfileLink);
+    return;
+  }
   const button = event.target.closest("[data-ai-suggestion-type]");
   if (!button) return;
   applyDrawerSuggestion(button.dataset.aiSuggestionType, button.dataset.aiSuggestionValue);
