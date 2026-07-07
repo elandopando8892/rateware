@@ -1843,6 +1843,117 @@ a {
   font-weight: 780;
 }
 
+.private-bid-alert-panel {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.65fr) auto minmax(260px, 1fr);
+  gap: 10px;
+  align-items: stretch;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  margin: 0 0 12px;
+  padding: 10px;
+}
+
+.private-bid-alert-panel h3 {
+  margin: 2px 0 0;
+  color: var(--text);
+  font-size: 0.95rem;
+  line-height: 1.15;
+}
+
+.private-bid-alert-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.private-bid-alert-actions select,
+.private-bid-alert-actions button {
+  min-height: 30px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #ffffff;
+  color: var(--text);
+  padding: 0 10px;
+  font-size: 0.72rem;
+  font-weight: 850;
+}
+
+.private-bid-alert-actions button {
+  border-color: var(--accent-dark);
+  background: var(--accent-dark);
+  color: #ffffff;
+}
+
+.private-bid-alert-actions button:disabled {
+  border-color: #cbd6df;
+  background: #eef3f6;
+  color: #52616d;
+}
+
+.private-bid-alerts {
+  display: grid;
+  gap: 5px;
+  max-height: 96px;
+  overflow: auto;
+}
+
+.private-bid-alerts > p {
+  margin: 0;
+  align-content: center;
+  min-height: 44px;
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 720;
+}
+
+.private-bid-alert {
+  display: grid;
+  grid-template-columns: 130px minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  border: 1px solid #d7e0e7;
+  border-left: 4px solid var(--accent);
+  border-radius: 7px;
+  background: #f8fafc;
+  padding: 6px 8px;
+}
+
+.private-bid-alert.is-displaced,
+.private-bid-alert.is-closing {
+  border-left-color: #d97706;
+  background: #fff8ed;
+}
+
+.private-bid-alert.is-bidSubmitted,
+.private-bid-alert.is-leading {
+  border-left-color: #11806a;
+  background: #f0fbf7;
+}
+
+.private-bid-alert strong,
+.private-bid-alert span,
+.private-bid-alert small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.private-bid-alert strong {
+  color: var(--text);
+  font-size: 0.72rem;
+}
+
+.private-bid-alert span,
+.private-bid-alert small {
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 720;
+}
+
 .bid-lane-summary {
   display: grid;
   gap: 10px;
@@ -2952,6 +3063,7 @@ a {
   .draft-preview-meta,
   .bid-room-hero,
   .bid-context,
+  .private-bid-alert-panel,
   .bid-lane-summary dl {
     grid-template-columns: 1fr;
   }

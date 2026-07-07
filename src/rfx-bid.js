@@ -11,6 +11,36 @@ const bookFilters = {
   view: "all",
   query: ""
 };
+const PRIVATE_BID_ANNOUNCEMENTS = {
+  en: {
+    enabled: "Private Bid Room alerts enabled.",
+    quote: "Quote Available.",
+    displaced: "Place new bid. Your offer has been displaced.",
+    leading: "You are currently leading.",
+    chat: "New message in Bid Room chat.",
+    bidSubmitted: "Bid submitted.",
+    closing: "Deadline closing soon."
+  },
+  es: {
+    enabled: "Alertas del Bid Room privado activadas.",
+    quote: "Cotizacion disponible.",
+    displaced: "Necesitas pujar de nuevo. Has sido superado.",
+    leading: "Vas liderando.",
+    chat: "Nuevo mensaje en el chat del Bid Room.",
+    bidSubmitted: "Oferta enviada.",
+    closing: "La oportunidad esta por cerrar."
+  }
+};
+const privateAlertState = {
+  language: localStorage.getItem("rateware.privateBidRoom.language") || "en",
+  soundEnabled: false,
+  audioContext: null,
+  alerts: [],
+  loaded: false,
+  chatLoaded: false,
+  previousSnapshot: null,
+  previousChatSnapshot: null
+};
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -169,6 +199,183 @@ function formatDateTime(value) {
     hour: "numeric",
     minute: "2-digit"
   }).format(date);
+}
+
+function privateAlertPhrase(type) {
+  const language = PRIVATE_BID_ANNOUNCEMENTS[privateAlertState.language] ? privateAlertState.language : "en";
+  return PRIVATE_BID_ANNOUNCEMENTS[language][type] || PRIVATE_BID_ANNOUNCEMENTS.en[type] || type;
+}
+
+function privateAlertLabel(type) {
+  const labels = {
+    enabled: "Alerts enabled",
+    quote: "Quote movement",
+    displaced: "Rank changed",
+    leading: "Leading offer",
+    chat: "New chat message",
+    bidSubmitted: "Bid submitted",
+    closing: "Deadline risk"
+  };
+  return labels[type] || privateAlertPhrase(type);
+}
+
+function renderPrivateBidAlerts() {
+  const panel = card.querySelector("#private-bid-alerts");
+  const button = card.querySelector("#private-bid-sound");
+  const language = card.querySelector("#private-bid-language");
+  if (button) {
+    button.textContent = privateAlertState.soundEnabled ? "Sound enabled" : "Enable sound";
+    button.disabled = privateAlertState.soundEnabled;
+  }
+  if (language) language.value = privateAlertState.language;
+  if (!panel) return;
+  if (!privateAlertState.alerts.length) {
+    panel.innerHTML = "<p>No movement yet. Enable sound to hear ranking, quote, chat, and deadline alerts.</p>";
+    return;
+  }
+  panel.innerHTML = privateAlertState.alerts.map((alert) => `
+    <article class="private-bid-alert is-${escapeHtml(alert.type)}">
+      <strong>${escapeHtml(privateAlertLabel(alert.type))}</strong>
+      <span>${escapeHtml(alert.message)}</span>
+      <small>${escapeHtml(formatDateTime(alert.created_at))}</small>
+    </article>
+  `).join("");
+}
+
+function ensurePrivateAudioContext() {
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextClass) return null;
+  if (!privateAlertState.audioContext) privateAlertState.audioContext = new AudioContextClass();
+  return privateAlertState.audioContext;
+}
+
+function playPrivateBidTone(type) {
+  const context = ensurePrivateAudioContext();
+  if (!context) return;
+  const now = context.currentTime;
+  const oscillator = context.createOscillator();
+  const gain = context.createGain();
+  const tones = {
+    displaced: [392, 523],
+    closing: [494, 659],
+    chat: [587, 740],
+    bidSubmitted: [659, 880],
+    leading: [784, 988]
+  };
+  const [startFrequency, endFrequency] = tones[type] || [659, 880];
+  oscillator.type = "sine";
+  oscillator.frequency.setValueAtTime(startFrequency, now);
+  oscillator.frequency.exponentialRampToValueAtTime(endFrequency, now + 0.18);
+  gain.gain.setValueAtTime(0.0001, now);
+  gain.gain.exponentialRampToValueAtTime(0.18, now + 0.02);
+  gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.42);
+  oscillator.connect(gain);
+  gain.connect(context.destination);
+  oscillator.start(now);
+  oscillator.stop(now + 0.45);
+}
+
+function announcePrivateBidAlert(type) {
+  if (!privateAlertState.soundEnabled) return;
+  const language = PRIVATE_BID_ANNOUNCEMENTS[privateAlertState.language] ? privateAlertState.language : "en";
+  const phrase = privateAlertPhrase(type);
+  playPrivateBidTone(type);
+  if (!("speechSynthesis" in window) || !phrase) return;
+  const utterance = new SpeechSynthesisUtterance(phrase);
+  utterance.lang = language === "es" ? "es-MX" : "en-US";
+  utterance.rate = 0.94;
+  utterance.pitch = type === "displaced" ? 0.9 : 1.05;
+  window.speechSynthesis.speak(utterance);
+}
+
+function queuePrivateBidAlert(type, message = "") {
+  const alert = {
+    id: `${Date.now()}-${Math.random()}`,
+    type,
+    message: message || privateAlertPhrase(type),
+    created_at: new Date().toISOString()
+  };
+  privateAlertState.alerts = [alert, ...privateAlertState.alerts].slice(0, 8);
+  renderPrivateBidAlerts();
+  announcePrivateBidAlert(type);
+}
+
+async function enablePrivateBidAlerts() {
+  privateAlertState.soundEnabled = true;
+  const context = ensurePrivateAudioContext();
+  if (context?.state === "suspended") await context.resume();
+  queuePrivateBidAlert("enabled", "Multimedia alerts are active for this private bid room.");
+}
+
+function numberOrNull(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function privateBidRoomSnapshot(data = {}) {
+  const liveBoard = data.live_board || {};
+  const rows = Array.isArray(liveBoard.rows) ? liveBoard.rows : [];
+  const currentRow = rows.find((row) => row.is_current) || {};
+  const event = data.invitation?.rfx_events || {};
+  const deadline = deadlineCopy(event);
+  return {
+    rank: numberOrNull(liveBoard.current_rank ?? currentRow.rank),
+    bidCount: Number(liveBoard.bid_count || rows.length || 0),
+    currentRate: numberOrNull(currentRow.amount ?? data.invitation?.bid_rate),
+    signal: liveBoard.marketplace_signal || liveBoard.position_signal || "",
+    historyCount: Array.isArray(data.bid_history) ? data.bid_history.length : 0,
+    deadlineTone: deadline.tone,
+    updatedAt: liveBoard.updated_at || ""
+  };
+}
+
+function detectPrivateBidRoomSignals(data = {}) {
+  const snapshot = privateBidRoomSnapshot(data);
+  const previous = privateAlertState.previousSnapshot;
+  if (!privateAlertState.loaded || !previous) {
+    privateAlertState.previousSnapshot = snapshot;
+    privateAlertState.loaded = true;
+    renderPrivateBidAlerts();
+    return;
+  }
+
+  if (snapshot.rank && previous.rank && snapshot.rank > previous.rank) {
+    queuePrivateBidAlert("displaced", `Your rank moved from #${previous.rank} to #${snapshot.rank}. Review the live board and consider a new bid.`);
+  } else if (snapshot.rank === 1 && previous.rank !== 1) {
+    queuePrivateBidAlert("leading", "Your offer moved into the leading position.");
+  } else if (snapshot.bidCount > previous.bidCount) {
+    queuePrivateBidAlert("quote", "New bid activity is available in this private room.");
+  } else if (snapshot.deadlineTone === "warning" && previous.deadlineTone !== "warning") {
+    queuePrivateBidAlert("closing", "The bid deadline is close. Review your offer before the room closes.");
+  }
+
+  privateAlertState.previousSnapshot = snapshot;
+}
+
+function privateChatSnapshot(chat = {}) {
+  const rows = Array.isArray(chat.rows) ? chat.rows : [];
+  const messages = rows.flatMap((thread) => Array.isArray(thread.messages) ? thread.messages : []);
+  const latest = messages
+    .slice()
+    .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())[0] || {};
+  return {
+    count: messages.length,
+    latestId: latest.id || latest.google_chat_message_name || latest.created_at || ""
+  };
+}
+
+function detectPrivateChatSignals(chat = {}) {
+  const snapshot = privateChatSnapshot(chat);
+  const previous = privateAlertState.previousChatSnapshot;
+  if (!privateAlertState.chatLoaded || !previous) {
+    privateAlertState.previousChatSnapshot = snapshot;
+    privateAlertState.chatLoaded = true;
+    return;
+  }
+  if (snapshot.count > previous.count && snapshot.latestId !== previous.latestId) {
+    queuePrivateBidAlert("chat", "A new message was added to the event group discussion.");
+  }
+  privateAlertState.previousChatSnapshot = snapshot;
 }
 
 function dateTimeLocalValue(value) {
@@ -687,10 +894,11 @@ function renderCarrierChat(chat = lastCarrierChat) {
   `;
 }
 
-async function loadCarrierChat() {
+async function loadCarrierChat(options = {}) {
   try {
     const chat = await callBidApi("list_bid_room_chat");
     renderCarrierChat(chat);
+    if (!options.suppressAlert) detectPrivateChatSignals(chat);
   } catch (_error) {
     renderCarrierChat({ rows: [], google_chat_configured: false });
   }
@@ -1010,6 +1218,23 @@ function renderInvitation(invitation, liveBoard = {}) {
       <article><span>Refresh</span><strong>30 sec</strong></article>
     </div>
 
+    <section class="private-bid-alert-panel" aria-live="polite">
+      <div>
+        <p class="eyebrow">Multimedia alerts</p>
+        <h3>Ranking, quote and chat movement</h3>
+      </div>
+      <div class="private-bid-alert-actions">
+        <select id="private-bid-language" aria-label="Private Bid Room alert language">
+          <option value="en" ${privateAlertState.language === "en" ? "selected" : ""}>English alerts</option>
+          <option value="es" ${privateAlertState.language === "es" ? "selected" : ""}>Alertas en espanol</option>
+        </select>
+        <button id="private-bid-sound" type="button">Enable sound</button>
+      </div>
+      <div id="private-bid-alerts" class="private-bid-alerts">
+        <p>No movement yet. Enable sound to hear ranking, quote, chat, and deadline alerts.</p>
+      </div>
+    </section>
+
     <section id="carrier-award-outcome" class="carrier-award-outcome" hidden></section>
 
     <section class="bid-lane-summary">
@@ -1223,6 +1448,7 @@ function renderInvitation(invitation, liveBoard = {}) {
       await callBidApi("submit_bid", draft);
       status.textContent = "Bid submitted with commercial and availability details. Your rank will refresh automatically.";
       status.dataset.tone = "success";
+      queuePrivateBidAlert("bidSubmitted", "Your bid was submitted. The live board will refresh your rank automatically.");
       await loadInvitation({ refreshOnly: true });
     } catch (error) {
       status.textContent = error.message;
@@ -1241,19 +1467,19 @@ async function loadInvitation(options = {}) {
   }
   try {
     const data = await callBidApi("get_invitation");
-  if (options.refreshOnly && card.querySelector("#bid-form")) {
+    if (options.refreshOnly && card.querySelector("#bid-form")) {
       renderLiveBoard(data.live_board);
       renderAwardOutcome(data.invitation, data.carrier_book, data.live_board);
       renderBidHistory(data.bid_history);
       renderCarrierBook(data.carrier_book);
-      await loadCarrierChat();
     } else {
       renderInvitation(data.invitation, data.live_board);
       renderAwardOutcome(data.invitation, data.carrier_book, data.live_board);
       renderBidHistory(data.bid_history);
       renderCarrierBook(data.carrier_book);
-      await loadCarrierChat();
     }
+    detectPrivateBidRoomSignals(data);
+    await loadCarrierChat();
   } catch (error) {
     if (options.refreshOnly) return;
     title.textContent = "Bid request unavailable";
@@ -1262,6 +1488,20 @@ async function loadInvitation(options = {}) {
 }
 
 card.addEventListener("click", async (event) => {
+  const soundButton = event.target.closest("#private-bid-sound");
+  if (soundButton) {
+    soundButton.disabled = true;
+    soundButton.textContent = "Enabling...";
+    try {
+      await enablePrivateBidAlerts();
+    } catch (_error) {
+      privateAlertState.soundEnabled = false;
+      soundButton.disabled = false;
+      soundButton.textContent = "Enable sound";
+    }
+    return;
+  }
+
   const bidSectionButton = event.target.closest("[data-bid-section-target]");
   if (bidSectionButton) {
     const target = card.querySelector(`[data-bid-section="${CSS.escape(bidSectionButton.dataset.bidSectionTarget || "")}"]`);
@@ -1346,7 +1586,7 @@ card.addEventListener("submit", async (event) => {
       status.textContent = result.google_chat_configured ? "Message sent and mirrored to Google Chat." : "Message sent.";
       status.dataset.tone = "success";
     }
-    await loadCarrierChat();
+    await loadCarrierChat({ suppressAlert: true });
   } catch (error) {
     if (status) {
       status.textContent = error.message;
@@ -1374,6 +1614,14 @@ card.addEventListener("input", (event) => {
 });
 
 card.addEventListener("change", (event) => {
+  const privateLanguage = event.target.closest("#private-bid-language");
+  if (privateLanguage) {
+    privateAlertState.language = privateLanguage.value || "en";
+    localStorage.setItem("rateware.privateBidRoom.language", privateAlertState.language);
+    renderPrivateBidAlerts();
+    return;
+  }
+
   if (event.target.closest("#bid-form")) {
     if (event.target.closest("#bid-commercial-model")) {
       syncCommercialStructureFields({ clearInapplicable: true });

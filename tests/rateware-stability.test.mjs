@@ -357,6 +357,14 @@ assert.match(rfxBidSource, /data-bid-section-target="alternative"/, "Carrier por
 assert.match(rfxBidSource, /bid-review-summary/, "Carrier portal should render a pre-submit review summary");
 assert.match(rfxBidSource, /bid-best-final/, "Carrier portal should support best-and-final confirmation");
 assert.match(rfxBidSource, /bid-confirm-review/, "Carrier portal should require capacity and commercial terms confirmation");
+assert.match(rfxBidSource, /private-bid-sound/, "Carrier portal should expose private multimedia alert controls");
+assert.match(rfxBidSource, /PRIVATE_BID_ANNOUNCEMENTS/, "Carrier portal should define private bid room alert phrases");
+assert.match(rfxBidSource, /Place new bid\. Your offer has been displaced\./, "Carrier portal should announce rank displacement");
+assert.match(rfxBidSource, /Bid submitted\./, "Carrier portal should announce successful bid submission");
+assert.match(rfxBidSource, /New message in Bid Room chat\./, "Carrier portal should announce new chat messages");
+assert.match(rfxBidSource, /speechSynthesis/, "Carrier portal should use browser speech announcements");
+assert.match(rfxBidSource, /detectPrivateBidRoomSignals/, "Carrier portal should compare live board snapshots before alerting");
+assert.match(rfxBidSource, /detectPrivateChatSignals/, "Carrier portal should compare chat snapshots before alerting");
 assert.match(rfxBidSource, /function bidDraftWarnings/, "Carrier portal should validate bid completeness before submit");
 assert.match(rfxBidSource, /function validateBidDraft/, "Carrier portal should block invalid bid submissions before API submit");
 assert.match(rfxBidSource, /validatePositiveNumberIssue\(draft\.bid_rate, "bid-rate", "All-in rate"\)/, "Carrier portal should require numeric all-in rate");
@@ -380,6 +388,7 @@ assert.match(rfxBidSource, /function renderBidHistory/, "Carrier portal should r
 assert.match(rfxBidSource, /carrier-bid-history/, "Carrier portal should include offer history in the bid room");
 assert.match(stylesSource, /carrier-bid-workflow/, "Carrier portal guided bid flow should have compact navigation styling");
 assert.match(stylesSource, /bid-review-summary-grid/, "Carrier portal review summary should have card styling");
+assert.match(stylesSource, /private-bid-alert-panel/, "Carrier portal multimedia alerts should have compact panel styling");
 assert.match(stylesSource, /bid-form \[aria-invalid="true"\]/, "Carrier portal should highlight invalid bid fields inline");
 assert.match(stylesSource, /carrier-bid-history-list/, "Carrier portal offer history should have compact timeline styling");
 assert.match(rfxBidApiSource, /function liveBoardRowScore/, "Carrier portal API should score bids for the live capacity marketplace");
