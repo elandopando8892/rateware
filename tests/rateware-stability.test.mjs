@@ -502,6 +502,7 @@ assert.match(apiSource, /function normalizeBulkIds/, "API should normalize and v
 assert.match(apiSource, /function requireBulkConfirmation/, "API should require explicit backend confirmation for risky bulk actions");
 assert.match(apiSource, /function requirePreviewCountForFilteredBulk/, "API should require dry-run preview counts before large filtered bulk actions");
 assert.match(apiSource, /BULK_SEND_LIMIT = 100/, "API should cap direct Gmail send batches");
+assert.match(apiSource, /BULK_SHORTLIST_VENDOR_LIMIT = 1000/, "Bid Room participant shortlist should support up to 1,000 vendors per request");
 assert.match(apiSource, /BULK_FILTER_CONFIRM_THRESHOLD = 250/, "API should require confirmation for large filtered database actions");
 const bulkActionSource = apiSource.slice(apiSource.indexOf('if (body.action === "bulk_rate_rows_by_filter")'));
 assert.ok(bulkActionSource.length > 100, "bulk filtered action block should be present");
