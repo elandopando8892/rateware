@@ -13,6 +13,9 @@ const statusFilter = document.querySelector("#public-board-status-filter");
 const searchInput = document.querySelector("#public-board-search");
 const autoRefreshInput = document.querySelector("#public-board-auto-refresh");
 const viewButtons = [...document.querySelectorAll("[data-board-view]")];
+const detailDrawer = document.querySelector("#public-board-detail-drawer");
+const detailContent = document.querySelector("#public-board-detail-content");
+const detailClose = document.querySelector("#public-board-detail-close");
 
 const API_URL = `${SUPABASE_URL}/functions/v1/rfx-bid-api`;
 const boardParams = new URLSearchParams(window.location.search);
@@ -20,8 +23,11 @@ const scopedEventId = boardParams.get("event_id") || boardParams.get("rfx_event_
 const ANNOUNCEMENTS = {
   en: {
     enabled: "Rateware bid room alerts enabled.",
+    opportunity: "New opportunity available.",
     quote: "Quote Available.",
-    displaced: "Place new bid. Your offer has been displaced."
+    closing: "Deadline closing soon.",
+    displaced: "Place new bid. Your offer has been displaced.",
+    inviteSent: "Invitation request sent."
   },
   es: {
     enabled: "Alertas del Bid Room activadas.",
@@ -29,6 +35,10 @@ const ANNOUNCEMENTS = {
     displaced: "Necesitas pujar de nuevo. Has sido superado."
   }
 };
+
+ANNOUNCEMENTS.es.opportunity = "Nueva oportunidad disponible.";
+ANNOUNCEMENTS.es.closing = "La oportunidad esta por cerrar.";
+ANNOUNCEMENTS.es.inviteSent = "Solicitud de invitacion enviada.";
 
 const state = {
   rows: [],
@@ -39,7 +49,8 @@ const state = {
   language: localStorage.getItem("rateware.publicBidBoard.language") || "en",
   soundEnabled: false,
   audioContext: null,
-  alerts: []
+  alerts: [],
+  selectedRowId: null
 };
 
 languageSelect.value = state.language;
@@ -122,6 +133,23 @@ async function callPublicBoard(payload = {}) {
   return data;
 }
 
+async function callInviteRequest(payload = {}) {
+  const response = await fetch(API_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "public_bid_room_request_invite", ...payload })
+  });
+  const text = await response.text();
+  let data = {};
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch {
+    data = { error: text };
+  }
+  if (!response.ok) throw new Error(data.error || data.message || text || `Invitation request failed (${response.status})`);
+  return data;
+}
+
 function rowSnapshot(row) {
   return {
     quote_count: Number(row.quote_count || 0),
@@ -160,7 +188,7 @@ function detectBoardSignals(rows) {
     const previous = state.previousRows.get(String(row.id));
     if (!previous) {
       if (["live", "closing"].includes(row.board_status)) {
-        queueAlert("quote", row);
+        queueAlert("opportunity", row);
         alertCount += 1;
       }
       continue;
@@ -169,6 +197,9 @@ function detectBoardSignals(rows) {
     const bestRate = Number(row.best_rate || 0);
     if (quoteCount > Number(previous.quote_count || 0)) {
       queueAlert("quote", row);
+      alertCount += 1;
+    } else if (row.board_status === "closing" && previous.board_status !== "closing") {
+      queueAlert("closing", row);
       alertCount += 1;
     } else if (bestRate > 0 && Number(previous.best_rate || 0) > 0 && bestRate < Number(previous.best_rate)) {
       queueAlert("displaced", row);
@@ -191,8 +222,10 @@ function playTone(type) {
   const oscillator = context.createOscillator();
   const gain = context.createGain();
   oscillator.type = "sine";
-  oscillator.frequency.setValueAtTime(type === "displaced" ? 392 : 659, now);
-  oscillator.frequency.exponentialRampToValueAtTime(type === "displaced" ? 523 : 880, now + 0.18);
+  const startFrequency = type === "displaced" ? 392 : type === "closing" ? 494 : type === "inviteSent" ? 587 : 659;
+  const endFrequency = type === "displaced" ? 523 : type === "closing" ? 659 : type === "inviteSent" ? 784 : 880;
+  oscillator.frequency.setValueAtTime(startFrequency, now);
+  oscillator.frequency.exponentialRampToValueAtTime(endFrequency, now + 0.18);
   gain.gain.setValueAtTime(0.0001, now);
   gain.gain.exponentialRampToValueAtTime(0.18, now + 0.02);
   gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.42);
@@ -217,7 +250,7 @@ function announce(type) {
 
 function renderAlerts() {
   if (!state.alerts.length) {
-    alertsRoot.innerHTML = "<p>No movement yet. Enable sound to hear quote and ranking alerts.</p>";
+    alertsRoot.innerHTML = "<p>No movement yet. Enable sound to hear opportunity, quote, deadline, and ranking alerts.</p>";
     return;
   }
   alertsRoot.innerHTML = state.alerts.map((alert) => `
@@ -266,10 +299,95 @@ function laneTags(row) {
   ].filter(Boolean).slice(0, 4);
 }
 
+function rowById(id) {
+  return state.rows.find((row) => String(row.id) === String(id)) || null;
+}
+
+function requestProfile() {
+  try {
+    return JSON.parse(localStorage.getItem("rateware.publicBidBoard.requestProfile") || "{}");
+  } catch {
+    return {};
+  }
+}
+
+function saveRequestProfile(profile) {
+  localStorage.setItem("rateware.publicBidBoard.requestProfile", JSON.stringify(profile || {}));
+}
+
+function invitationRuleCopy(row) {
+  if (row.board_status === "awarded") {
+    return "This lane is awarded. You can still request access so procurement can consider you for future coverage.";
+  }
+  if (row.board_status === "expired") {
+    return "This room is closed. Request access if you want procurement to review your carrier profile or reopen access.";
+  }
+  return "Public cards do not accept direct bids. Request an invitation and procurement will decide whether to add your carrier to the private Bid Room.";
+}
+
+function renderDetailDrawer(row, focusRequest = false) {
+  if (!detailDrawer || !detailContent || !row) return;
+  const profile = requestProfile();
+  const tags = laneTags(row);
+  state.selectedRowId = row.id;
+  detailContent.innerHTML = `
+    <div class="public-board-drawer-header">
+      <span class="status-pill ${row.board_status === "live" ? "success" : row.board_status === "closing" ? "warning" : "neutral"}">${escapeHtml(statusLabel(row.board_status))}</span>
+      <small>${escapeHtml(row.event?.rfx_id || row.event?.name || "Bid Room")}</small>
+      <h2>${escapeHtml(row.route_label || "Lane pending")}</h2>
+      <p>${escapeHtml(row.event?.customer || "Public marketplace")} | ${escapeHtml(row.event?.event_type || "rfx")}</p>
+    </div>
+    <div class="public-board-drawer-metrics">
+      <span><b>${formatNumber(row.quote_count)}</b><small>quotes</small></span>
+      <span><b>${formatMoney(row.best_rate, row.currency)}</b><small>best visible</small></span>
+      <span><b>${formatNumber(row.total_weekly_capacity)}</b><small>weekly cap</small></span>
+      <span><b>${escapeHtml(row.due_state?.due_date || "No deadline")}</b><small>deadline</small></span>
+    </div>
+    <section class="public-board-detail-section">
+      <h3>Opportunity detail</h3>
+      <dl>
+        <div><dt>Origin</dt><dd>${escapeHtml(row.lane?.origin || "-")}</dd></div>
+        <div><dt>Destination</dt><dd>${escapeHtml(row.lane?.destination || "-")}</dd></div>
+        <div><dt>Equipment</dt><dd>${escapeHtml([row.lane?.equipment, row.lane?.trailer, row.lane?.config].filter(Boolean).join(" / ") || "-")}</dd></div>
+        <div><dt>Service</dt><dd>${escapeHtml([row.lane?.operation, row.lane?.service].filter(Boolean).join(" / ") || "-")}</dd></div>
+      </dl>
+      <div class="public-opportunity-tags">${tags.map((tag) => `<span>${escapeHtml(tag)}</span>`).join("") || "<span>No tags</span>"}</div>
+    </section>
+    <section class="public-board-invite-rule">
+      <strong>Invitation required to bid</strong>
+      <p>${escapeHtml(invitationRuleCopy(row))}</p>
+    </section>
+    <form id="public-invite-request-form" class="public-board-request-form" data-event-id="${escapeHtml(row.event?.id || row.event_id || "")}" data-lane-id="${escapeHtml(row.id)}">
+      <h3>Request invitation</h3>
+      <div class="public-board-form-grid">
+        <label>Carrier company<input name="company" required value="${escapeHtml(profile.company || "")}" placeholder="Carrier legal or commercial name" /></label>
+        <label>Contact name<input name="contact_name" value="${escapeHtml(profile.contact_name || "")}" placeholder="Your name" /></label>
+        <label>Email<input name="email" type="email" required value="${escapeHtml(profile.email || "")}" placeholder="name@carrier.com" /></label>
+        <label>Phone / WhatsApp<input name="phone" value="${escapeHtml(profile.phone || "")}" placeholder="+52..." /></label>
+      </div>
+      <label>Notes<textarea name="notes" rows="3" placeholder="Capacity, equipment fit, target corridor, or why your carrier should be invited."></textarea></label>
+      <div class="public-board-request-actions">
+        <button type="submit" class="page-primary-action">Send invitation request</button>
+        <span id="public-invite-request-status" class="row-save-status" role="status"></span>
+      </div>
+    </form>
+  `;
+  detailDrawer.hidden = false;
+  document.body.classList.add("has-public-board-drawer");
+  if (focusRequest) detailContent.querySelector("[name='company']")?.focus();
+}
+
+function closeDetailDrawer() {
+  if (!detailDrawer) return;
+  detailDrawer.hidden = true;
+  document.body.classList.remove("has-public-board-drawer");
+  state.selectedRowId = null;
+}
+
 function renderOpportunityCard(row) {
   const tags = laneTags(row);
   return `
-    <article class="public-opportunity-card is-${escapeHtml(row.board_status)}">
+    <article class="public-opportunity-card is-${escapeHtml(row.board_status)}" data-public-board-card="${escapeHtml(row.id)}">
       <div class="public-opportunity-head">
         <span class="status-pill ${row.board_status === "live" ? "success" : row.board_status === "closing" ? "warning" : "neutral"}">${escapeHtml(statusLabel(row.board_status))}</span>
         <small>${escapeHtml(row.event?.rfx_id || row.event?.name || "Bid Room")}</small>
@@ -283,6 +401,10 @@ function renderOpportunityCard(row) {
       </div>
       <div class="public-opportunity-tags">
         ${tags.map((tag) => `<span>${escapeHtml(tag)}</span>`).join("") || "<span>No tags</span>"}
+      </div>
+      <div class="public-opportunity-actions">
+        <button type="button" class="secondary" data-public-board-details="${escapeHtml(row.id)}">View details</button>
+        <button type="button" class="page-primary-action" data-public-board-request="${escapeHtml(row.id)}">Request invitation</button>
       </div>
       <footer>
         <span>Due: ${escapeHtml(row.due_state?.due_date || "No deadline")}</span>
@@ -335,11 +457,12 @@ function renderSheet(rows) {
             <th>Capacity</th>
             <th>Due</th>
             <th>Last quote</th>
+            <th>Action</th>
           </tr>
         </thead>
         <tbody>
           ${rows.map((row) => `
-            <tr>
+            <tr data-public-board-card="${escapeHtml(row.id)}">
               <td>${escapeHtml(statusLabel(row.board_status))}</td>
               <td>${escapeHtml(row.event?.rfx_id || row.event?.name || "-")}</td>
               <td>${escapeHtml(row.lane?.origin || "-")}</td>
@@ -351,6 +474,7 @@ function renderSheet(rows) {
               <td>${formatNumber(row.total_weekly_capacity)}</td>
               <td>${escapeHtml(row.due_state?.due_date || "-")}</td>
               <td>${escapeHtml(formatDateTime(row.last_quote_at))}</td>
+              <td><button type="button" class="secondary" data-public-board-request="${escapeHtml(row.id)}">Request invitation</button></td>
             </tr>
           `).join("")}
         </tbody>
@@ -438,7 +562,67 @@ viewButtons.forEach((button) => {
 });
 
 boardRoot.addEventListener("click", (event) => {
-  if (event.target.closest("[data-retry-public-board]")) loadBoard();
+  if (event.target.closest("[data-retry-public-board]")) {
+    loadBoard();
+    return;
+  }
+  const requestButton = event.target.closest("[data-public-board-request]");
+  if (requestButton) {
+    renderDetailDrawer(rowById(requestButton.dataset.publicBoardRequest), true);
+    return;
+  }
+  const detailsButton = event.target.closest("[data-public-board-details]");
+  if (detailsButton) {
+    renderDetailDrawer(rowById(detailsButton.dataset.publicBoardDetails), false);
+    return;
+  }
+  const card = event.target.closest("[data-public-board-card]");
+  if (card && !event.target.closest("button, a, input, select, textarea")) {
+    renderDetailDrawer(rowById(card.dataset.publicBoardCard), false);
+  }
+});
+
+detailClose?.addEventListener("click", closeDetailDrawer);
+detailDrawer?.addEventListener("click", (event) => {
+  if (event.target === detailDrawer) closeDetailDrawer();
+});
+detailDrawer?.addEventListener("submit", async (event) => {
+  const form = event.target.closest("#public-invite-request-form");
+  if (!form) return;
+  event.preventDefault();
+  const submitButton = form.querySelector("button[type='submit']");
+  const status = form.querySelector("#public-invite-request-status");
+  const formData = new FormData(form);
+  const payload = {
+    event_id: form.dataset.eventId,
+    lane_id: form.dataset.laneId,
+    company: formData.get("company"),
+    contact_name: formData.get("contact_name"),
+    email: formData.get("email"),
+    phone: formData.get("phone"),
+    notes: formData.get("notes"),
+    language: state.language
+  };
+  submitButton.disabled = true;
+  status.textContent = "Sending request...";
+  try {
+    const data = await callInviteRequest(payload);
+    saveRequestProfile({
+      company: payload.company,
+      contact_name: payload.contact_name,
+      email: payload.email,
+      phone: payload.phone
+    });
+    status.textContent = data.message || "Invitation request sent.";
+    queueAlert("inviteSent", rowById(form.dataset.laneId) || { route_label: "Bid Room", event: { name: "Bid Room" } });
+  } catch (error) {
+    status.textContent = error.message || "Could not send the invitation request.";
+  } finally {
+    submitButton.disabled = false;
+  }
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && detailDrawer && !detailDrawer.hidden) closeDetailDrawer();
 });
 
 setInterval(() => {

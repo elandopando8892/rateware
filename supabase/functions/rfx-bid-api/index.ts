@@ -22,6 +22,12 @@ function cleanText(value: unknown) {
   return text ? text : null;
 }
 
+function cleanEmail(value: unknown) {
+  const email = cleanText(value)?.toLowerCase() || null;
+  if (!email) return null;
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : null;
+}
+
 function cleanRateText(value: unknown) {
   const text = cleanText(value);
   if (!text || /^x$/i.test(text) || /^n\/?a$/i.test(text) || /^please estimate$/i.test(text) || /^tier\s*[123]$/i.test(text)) return null;
@@ -1339,6 +1345,110 @@ async function publicBidRoomBoard(supabase: ReturnType<typeof createClient>, inp
   };
 }
 
+async function publicBidRoomInviteRequest(supabase: ReturnType<typeof createClient>, input: Record<string, unknown>) {
+  const eventId = cleanText(input.event_id || input.rfx_event_id);
+  const laneId = cleanText(input.lane_id || input.rfx_lane_id);
+  const company = cleanText(input.company || input.vendor_name || input.carrier_name);
+  const contactName = cleanText(input.contact_name || input.name);
+  const email = cleanEmail(input.email);
+  const phone = cleanText(input.phone || input.whatsapp);
+  const notes = cleanText(input.notes);
+  const language = ["en", "es"].includes(String(cleanText(input.language) || "").toLowerCase())
+    ? String(cleanText(input.language)).toLowerCase()
+    : "en";
+
+  if (!eventId) return { requested: false, error: "Event id is required.", status: 400 };
+  if (!laneId) return { requested: false, error: "Lane id is required.", status: 400 };
+  if (!company) return { requested: false, error: "Carrier company is required.", status: 400 };
+  if (!email) return { requested: false, error: "A valid email is required.", status: 400 };
+
+  const laneResult = await supabase
+    .from("rfx_lanes")
+    .select(`
+      id,
+      rfx_event_id,
+      lane_number,
+      origin,
+      destination,
+      origin_city,
+      destination_city,
+      equipment,
+      trailer,
+      operation,
+      service,
+      rfx_events!inner(id,owner_user_id,owner_email,rfx_id,name,customer,event_type,status,due_date)
+    `)
+    .eq("id", laneId)
+    .eq("rfx_event_id", eventId)
+    .single();
+  if (laneResult.error) throw laneResult.error;
+
+  const lane = laneResult.data as Record<string, unknown>;
+  const event = relationRecord(lane.rfx_events);
+  const eventStatus = String(cleanText(event.status) || "").toLowerCase();
+  if (!["draft", "open", "closed", "awarded"].includes(eventStatus)) {
+    return { requested: false, error: "This Bid Room is not accepting public invitation requests.", status: 409 };
+  }
+
+  const duplicateResult = await supabase
+    .from("contact_history")
+    .select("id,created_at")
+    .eq("rfx_event_id", event.id)
+    .eq("status", "requested_invite")
+    .contains("metadata", { source: "public_bid_room_board", lane_id: lane.id, email })
+    .limit(1);
+  if (duplicateResult.error) throw duplicateResult.error;
+  if ((duplicateResult.data || []).length) {
+    return {
+      requested: false,
+      duplicate: true,
+      message: language === "es" ? "Tu solicitud ya estaba registrada." : "Your invitation request is already registered."
+    };
+  }
+
+  const route = [lane.origin || lane.origin_city, lane.destination || lane.destination_city].filter(Boolean).join(" -> ");
+  const history = await supabase.from("contact_history").insert({
+    owner_user_id: event.owner_user_id || null,
+    owner_email: cleanText(event.owner_email),
+    rfx_event_id: event.id,
+    channel: "portal",
+    direction: "inbound",
+    status: "requested_invite",
+    subject: `${event.rfx_id || event.name || "Bid Room"} public marketplace invitation request`,
+    body_preview: [
+      company,
+      contactName,
+      email,
+      route || null
+    ].filter(Boolean).join(" | "),
+    metadata: {
+      source: "public_bid_room_board",
+      event_id: event.id,
+      lane_id: lane.id,
+      rfx_id: event.rfx_id || null,
+      event_name: event.name || null,
+      customer: event.customer || null,
+      lane_number: lane.lane_number || null,
+      route,
+      company,
+      contact_name: contactName,
+      email,
+      phone,
+      notes,
+      language,
+      requested_at: new Date().toISOString()
+    }
+  });
+  if (history.error) throw history.error;
+
+  return {
+    requested: true,
+    message: language === "es"
+      ? "Solicitud enviada. Procurement revisara tu acceso al Bid Room privado."
+      : "Request sent. Procurement will review access to the private Bid Room."
+  };
+}
+
 Deno.serve(async (request) => {
   if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders() });
 
@@ -1347,6 +1457,14 @@ Deno.serve(async (request) => {
     const body = await request.json().catch(() => ({}));
     if (body.action === "public_bid_room_board") {
       return jsonResponse(await publicBidRoomBoard(supabase, body));
+    }
+    if (body.action === "public_bid_room_request_invite") {
+      const result = await publicBidRoomInviteRequest(supabase, body);
+      if (result.status) {
+        const { status, ...payload } = result;
+        return jsonResponse(payload, status as number);
+      }
+      return jsonResponse(result);
     }
 
     const token = cleanText(body.token);

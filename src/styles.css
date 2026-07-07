@@ -17923,6 +17923,7 @@ textarea:focus,
   border-radius: 10px;
   background: #ffffff;
   padding: 11px;
+  cursor: pointer;
 }
 
 .public-opportunity-card.is-live {
@@ -17998,6 +17999,202 @@ textarea:focus,
   padding: 3px 7px;
   font-size: 0.63rem;
   font-weight: 900;
+}
+
+.public-opportunity-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.public-opportunity-actions button {
+  flex: 1;
+  min-height: 30px;
+  font-size: 0.68rem;
+}
+
+.public-board-detail-drawer[hidden] {
+  display: none;
+}
+
+.public-board-detail-drawer {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  justify-content: flex-end;
+  background: rgba(14, 24, 34, 0.35);
+}
+
+.public-board-drawer-panel {
+  width: min(540px, 100vw);
+  height: 100vh;
+  overflow: auto;
+  border-left: 1px solid #cbd8e1;
+  background: #ffffff;
+  padding: 14px;
+  box-shadow: -14px 0 32px rgba(15, 23, 42, 0.18);
+}
+
+.public-board-drawer-panel > button {
+  float: right;
+}
+
+.public-board-drawer-header {
+  display: grid;
+  gap: 5px;
+  padding-right: 72px;
+}
+
+.public-board-drawer-header h2 {
+  margin: 0;
+  color: #172530;
+  font-size: 1.25rem;
+  line-height: 1.15;
+}
+
+.public-board-drawer-header p,
+.public-board-drawer-header small {
+  margin: 0;
+  color: #5e6f7d;
+  font-size: 0.76rem;
+}
+
+.public-board-drawer-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 7px;
+  margin: 14px 0;
+}
+
+.public-board-drawer-metrics span,
+.public-board-invite-rule,
+.public-board-detail-section,
+.public-board-request-form {
+  border: 1px solid #d5e0e8;
+  border-radius: 9px;
+  background: #fafdff;
+}
+
+.public-board-drawer-metrics span {
+  padding: 8px;
+}
+
+.public-board-drawer-metrics b,
+.public-board-drawer-metrics small {
+  display: block;
+}
+
+.public-board-drawer-metrics b {
+  color: #14212c;
+  font-size: 0.95rem;
+}
+
+.public-board-drawer-metrics small {
+  color: #627482;
+  font-size: 0.62rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.public-board-detail-section,
+.public-board-invite-rule,
+.public-board-request-form {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 12px;
+}
+
+.public-board-detail-section h3,
+.public-board-request-form h3 {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.public-board-detail-section dl {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+}
+
+.public-board-detail-section dl div {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr);
+  gap: 8px;
+  border-bottom: 1px solid #edf2f5;
+  padding-bottom: 5px;
+}
+
+.public-board-detail-section dt {
+  color: #5d6e7b;
+  font-size: 0.68rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.public-board-detail-section dd {
+  margin: 0;
+  color: #14212c;
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.public-board-invite-rule {
+  border-left: 4px solid #2f6ce5;
+  background: #f5f8ff;
+}
+
+.public-board-invite-rule strong {
+  font-size: 0.82rem;
+}
+
+.public-board-invite-rule p {
+  margin: 0;
+  color: #4f6170;
+  font-size: 0.78rem;
+}
+
+.public-board-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.public-board-request-form label {
+  display: grid;
+  gap: 4px;
+  color: #526372;
+  font-size: 0.66rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.public-board-request-form input,
+.public-board-request-form textarea {
+  border: 1px solid #b9c8d4;
+  border-radius: 7px;
+  background: #ffffff;
+  padding: 8px;
+  color: #172530;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: none;
+}
+
+.public-board-request-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.public-board-alert.is-opportunity,
+.public-board-alert.is-inviteSent {
+  border-left-color: #2f6ce5;
+}
+
+.public-board-alert.is-closing {
+  border-left-color: #c78405;
 }
 
 .public-board-pipeline {
