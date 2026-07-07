@@ -508,9 +508,13 @@ assert.match(apiSource, /rateware_filtered_rate_values/, "filter dropdown values
 assert.match(apiSource, /function normalizeBulkIds/, "API should normalize and validate bulk id lists before updates");
 assert.match(apiSource, /function requireBulkConfirmation/, "API should require explicit backend confirmation for risky bulk actions");
 assert.match(apiSource, /function requirePreviewCountForFilteredBulk/, "API should require dry-run preview counts before large filtered bulk actions");
+assert.match(apiSource, /function apiErrorInfo/, "Rateware API should serialize object errors before returning them to the UI");
+assert.match(apiSource, /function apiErrorStatus/, "Rateware API should return appropriate status codes for serialized backend errors");
 assert.match(apiSource, /BULK_SEND_LIMIT = 100/, "API should cap direct Gmail send batches");
 assert.match(apiSource, /BULK_SHORTLIST_VENDOR_LIMIT = 1000/, "Bid Room participant shortlist should support up to 1,000 vendors per request");
 assert.match(apiSource, /BULK_FILTER_CONFIRM_THRESHOLD = 250/, "API should require confirmation for large filtered database actions");
+assert.match(apiSource, /for \(const chunk of chunkValues\(rows, 100\)\)/, "Outreach draft generation should upsert draft messages in small batches");
+assert.match(apiSource, /return jsonResponse\(\{ generated: generatedMessages\.length, rows: \[\], skipped, campaign_id: campaign\.id \}\)/, "Outreach draft generation should avoid returning large HTML draft payloads");
 const bulkActionSource = apiSource.slice(apiSource.indexOf('if (body.action === "bulk_rate_rows_by_filter")'));
 assert.ok(bulkActionSource.length > 100, "bulk filtered action block should be present");
 assert.doesNotMatch(

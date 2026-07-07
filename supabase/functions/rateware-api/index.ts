@@ -1794,6 +1794,49 @@ function objectRecord(value: unknown): Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }
 
+function apiErrorInfo(error: unknown) {
+  if (error instanceof Error) {
+    return {
+      message: cleanText(error.message) || "Rateware API request failed.",
+      name: cleanText(error.name),
+      code: null,
+      details: null,
+      hint: null
+    };
+  }
+
+  const record = objectRecord(error);
+  if (Object.keys(record).length) {
+    const nested = record.error && typeof record.error === "object" ? apiErrorInfo(record.error) : null;
+    const scalarError = record.error && typeof record.error !== "object" ? cleanText(record.error) : null;
+    const message = cleanText(record.message)
+      || nested?.message
+      || scalarError
+      || cleanText(record.details)
+      || cleanText(record.hint)
+      || "Rateware API request failed.";
+    return {
+      message,
+      name: cleanText(record.name) || nested?.name || null,
+      code: cleanText(record.code) || cleanText(record.status) || nested?.code || null,
+      details: cleanText(record.details) || nested?.details || null,
+      hint: cleanText(record.hint) || nested?.hint || null
+    };
+  }
+
+  const message = cleanText(error) || "Rateware API request failed.";
+  return { message, name: null, code: null, details: null, hint: null };
+}
+
+function apiErrorStatus(info: ReturnType<typeof apiErrorInfo>) {
+  const code = cleanText(info.code)?.toLowerCase() || "";
+  const message = cleanText(info.message)?.toLowerCase() || "";
+  if (code === "401" || message.includes("bearer token") || message.includes("kinde") || message.includes("jwt")) return 401;
+  if (code === "403" || message.includes("forbidden") || message.includes("not allowed")) return 403;
+  if (code === "404" || message.includes("not found")) return 404;
+  return 500;
+}
+
 function bulkFilterKey(value: unknown) {
   const text = cleanText(value) || "(blank)";
   return text.toLowerCase();
@@ -11611,13 +11654,17 @@ Deno.serve(async (request) => {
 
       if (!rows.length) return jsonResponse({ generated: 0, rows: [], skipped });
 
-      const result = await supabase
-        .from("outreach_messages")
-        .upsert(rows, { onConflict: "campaign_id,rfx_lane_vendor_id,channel" })
-        .select("*, vendors(vendor_name,domain,primary_email,whatsapp_phone), rfx_events(rfx_id,name), rfx_lanes(origin,destination,equipment,trailer,operation,service)");
-      if (result.error) throw result.error;
+      const generatedMessages: Record<string, unknown>[] = [];
+      for (const chunk of chunkValues(rows, 100)) {
+        const result = await supabase
+          .from("outreach_messages")
+          .upsert(chunk, { onConflict: "campaign_id,rfx_lane_vendor_id,channel" })
+          .select("id,campaign_id,vendor_id,rfx_event_id,channel,subject,text_body,whatsapp_text,html_body,sender_email,sender_label,sender_connection_status");
+        if (result.error) throw result.error;
+        generatedMessages.push(...(result.data || []));
+      }
 
-      const historyRows = (result.data || []).map((message) => withOwner({
+      const historyRows = generatedMessages.map((message) => withOwner({
         outreach_message_id: message.id,
         campaign_id: campaign.id,
         vendor_id: message.vendor_id,
@@ -11635,8 +11682,10 @@ Deno.serve(async (request) => {
         }
       }, user));
       if (historyRows.length) {
-        const history = await supabase.from("contact_history").insert(historyRows);
-        if (history.error) throw history.error;
+        for (const chunk of chunkValues(historyRows, 200)) {
+          const history = await supabase.from("contact_history").insert(chunk);
+          if (history.error) throw history.error;
+        }
       }
 
       const campaignUpdate = await supabase
@@ -11652,7 +11701,7 @@ Deno.serve(async (request) => {
         .eq("owner_email", user.owner_email);
       if (campaignUpdate.error) throw campaignUpdate.error;
 
-      return jsonResponse({ generated: result.data?.length || 0, rows: result.data || [], skipped });
+      return jsonResponse({ generated: generatedMessages.length, rows: [], skipped, campaign_id: campaign.id });
     }
 
     if (body.action === "list_outreach_messages") {
@@ -13519,7 +13568,8 @@ Deno.serve(async (request) => {
 
     return jsonResponse({ error: "Unknown action." }, 400);
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorInfo = apiErrorInfo(error);
+    const errorMessage = errorInfo.message;
     if (supabase && user) {
       try {
         await writeAuditLog(
@@ -13529,12 +13579,24 @@ Deno.serve(async (request) => {
           "rateware_api",
           cleanText(body.action) || "unknown",
           `Rateware API action failed: ${cleanText(body.action) || "unknown action"}`,
-          { action: cleanText(body.action), error: errorMessage.slice(0, 500) }
+          {
+            action: cleanText(body.action),
+            error: errorMessage.slice(0, 500),
+            code: errorInfo.code,
+            details: errorInfo.details,
+            hint: errorInfo.hint,
+            name: errorInfo.name
+          }
         );
       } catch (_) {
         // Avoid masking the original API error if audit persistence is unavailable.
       }
     }
-    return jsonResponse({ error: errorMessage }, 401);
+    return jsonResponse({
+      error: errorMessage,
+      code: errorInfo.code,
+      details: errorInfo.details,
+      hint: errorInfo.hint
+    }, apiErrorStatus(errorInfo));
   }
 });
