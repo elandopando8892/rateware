@@ -223,6 +223,9 @@ assert.match(publicBidInviteApiSource, /source: "public_bid_room_board"/, "Publi
 assert.match(publicBidInviteApiSource, /contains\("metadata", \{ source: "public_bid_room_board", lane_id: lane\.id, email \}\)/, "Public invitation requests should avoid duplicate email and lane requests");
 assert.match(publicBidFindInviteApiSource, /publicInvitationVendorIds/, "Public invitation lookup should match existing CRM vendors by verified email");
 assert.match(publicBidInviteVendorApiSource, /GENERIC_EMAIL_DOMAINS/, "Public invitation lookup should avoid generic-domain matching");
+assert.match(publicBidFindInviteApiSource, /eventOwnerMap/, "Public invitation lookup should resolve event owners directly when nested event data is incomplete");
+assert.match(publicBidFindInviteApiSource, /resolvedPublicInvitationEvent/, "Public invitation lookup should normalize event owner context before sending private links");
+assert.match(publicBidFindInviteApiSource, /GMAIL_ALLOWED_SENDER/, "Public invitation lookup should use the approved Gmail sender as a legacy fallback owner");
 assert.match(publicBidFindInviteApiSource, /sendGmailMessageForOwner/, "Public invitation lookup should email private links instead of returning tokens");
 assert.match(publicBidFindInviteApiSource, /status: "magic_link_sent"/, "Public invitation lookup should audit magic link sends");
 assert.match(publicBidFindInviteApiSource, /source: "public_bid_room_soft_login"/, "Public invitation lookup should tag soft-login contact history");
@@ -293,6 +296,10 @@ assert.match(bidRoomE2eSource, /sync_bid_room_event_thread/, "Bid Room E2E shoul
 assert.match(bidRoomE2eSource, /award_rfx_lane_vendor/, "Bid Room E2E should award a primary carrier");
 assert.match(bidRoomE2eSource, /closeout_awarded_rfx_to_rateware/, "Bid Room E2E should close awarded bids into Rateware");
 assert.match(bidRoomE2eSource, /pending_review/, "Bid Room E2E should default closeout to pending review unless explicitly approved");
+const rfxGmailAccessTokenSource = rfxBidApiSource.slice(rfxBidApiSource.indexOf("async function gmailAccessTokenForOwner"), rfxBidApiSource.indexOf("async function sendGmailMessageForOwner"));
+assert.match(rfxGmailAccessTokenSource, /\.eq\("mailbox_email", GMAIL_ALLOWED_SENDER\)[\s\S]*\.eq\("status", "connected"\)[\s\S]*\.order\("updated_at"/, "Bid Room Gmail sender should fall back to the approved connected mailbox when owner metadata is inconsistent");
+assert.match(rfxGmailAccessTokenSource, /const connectionOwner = cleanEmail\(connection\.owner_email\) \|\| owner/, "Bid Room Gmail token refresh should update the actual connection owner");
+assert.match(rfxGmailAccessTokenSource, /\.eq\("owner_email", connectionOwner\)/, "Bid Room Gmail token refresh should not write against stale event owner metadata");
 assert.match(integrationSmokeSource, /Vercel deploy/, "Integration smoke should confirm Vercel deployment");
 assert.match(integrationSmokeSource, /Kinde login/, "Integration smoke should confirm Kinde login");
 assert.match(integrationSmokeSource, /get_saas_settings/, "Integration smoke should confirm authenticated Supabase API access");

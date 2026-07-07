@@ -276,8 +276,20 @@ async function gmailAccessTokenForOwner(supabase: ReturnType<typeof createClient
     .eq("status", "connected")
     .maybeSingle();
   if (result.error) throw result.error;
-  const connection = result.data;
+  let connection = result.data;
+  if (!connection) {
+    const fallbackResult = await supabase
+      .from("gmail_mailbox_connections")
+      .select("*")
+      .eq("mailbox_email", GMAIL_ALLOWED_SENDER)
+      .eq("status", "connected")
+      .order("updated_at", { ascending: false })
+      .limit(1);
+    if (fallbackResult.error) throw fallbackResult.error;
+    connection = fallbackResult.data?.[0] || null;
+  }
   if (!connection) throw new Error(`Connect ${GMAIL_ALLOWED_SENDER} in Settings before sending magic links.`);
+  const connectionOwner = cleanEmail(connection.owner_email) || owner;
 
   const expiresAt = connection.token_expires_at ? new Date(connection.token_expires_at).getTime() : 0;
   if (connection.access_token_encrypted && expiresAt > Date.now() + 120_000) {
@@ -302,7 +314,7 @@ async function gmailAccessTokenForOwner(supabase: ReturnType<typeof createClient
     await supabase
       .from("gmail_mailbox_connections")
       .update({ status: "error", last_error: message, updated_at: new Date().toISOString() })
-      .eq("owner_email", owner)
+      .eq("owner_email", connectionOwner)
       .eq("mailbox_email", GMAIL_ALLOWED_SENDER);
     throw new Error(message);
   }
@@ -317,7 +329,7 @@ async function gmailAccessTokenForOwner(supabase: ReturnType<typeof createClient
       last_error: null,
       updated_at: new Date().toISOString()
     })
-    .eq("owner_email", owner)
+    .eq("owner_email", connectionOwner)
     .eq("mailbox_email", GMAIL_ALLOWED_SENDER);
   if (update.error) throw update.error;
   return accessToken;
@@ -1715,6 +1727,30 @@ function publicInvitationEmailText(rows: Record<string, unknown>[], recipientEma
   return `We found active Rateware Bid Room invitations for ${recipientEmail}.\n\n${lines}\n\nDo not forward these private links outside your carrier team.`;
 }
 
+function resolvedPublicInvitationEvent(
+  row: Record<string, unknown>,
+  eventOwnerMap: Map<string, Record<string, unknown>>,
+  fallbackOwnerEmail: string | null
+) {
+  const related = relationRecord(row.rfx_events);
+  const eventId = cleanText(row.rfx_event_id) || cleanText(related.id);
+  const direct = eventId ? eventOwnerMap.get(eventId) || {} : {};
+  const ownerEmail = cleanEmail(direct.owner_email) || cleanEmail(related.owner_email) || fallbackOwnerEmail;
+  return {
+    ...related,
+    ...direct,
+    id: cleanText(direct.id) || cleanText(related.id) || eventId || null,
+    owner_user_id: direct.owner_user_id || related.owner_user_id || null,
+    owner_email: ownerEmail,
+    rfx_id: cleanText(direct.rfx_id) || cleanText(related.rfx_id),
+    name: cleanText(direct.name) || cleanText(related.name),
+    customer: cleanText(direct.customer) || cleanText(related.customer),
+    event_type: cleanText(direct.event_type) || cleanText(related.event_type),
+    status: cleanText(direct.status) || cleanText(related.status),
+    due_date: cleanText(direct.due_date) || cleanText(related.due_date)
+  };
+}
+
 async function publicBidRoomFindInvitations(supabase: ReturnType<typeof createClient>, input: Record<string, unknown>) {
   const email = cleanEmail(input.email);
   const language = ["en", "es"].includes(String(cleanText(input.language) || "").toLowerCase())
@@ -1754,7 +1790,27 @@ async function publicBidRoomFindInvitations(supabase: ReturnType<typeof createCl
     .limit(100);
   if (invitationsResult.error) throw invitationsResult.error;
 
-  const invitations = (invitationsResult.data || [])
+  const invitationRows = (invitationsResult.data || []) as Record<string, unknown>[];
+  const fallbackOwnerEmail = cleanEmail(GMAIL_ALLOWED_SENDER);
+  const eventIds = [...new Set(invitationRows.map((row) => cleanText(row.rfx_event_id)).filter(Boolean) as string[])];
+  const eventOwnerMap = new Map<string, Record<string, unknown>>();
+  if (eventIds.length) {
+    const eventsResult = await supabase
+      .from("rfx_events")
+      .select("id,owner_user_id,owner_email,rfx_id,name,customer,event_type,status,due_date")
+      .in("id", eventIds);
+    if (eventsResult.error) throw eventsResult.error;
+    for (const event of eventsResult.data || []) {
+      const id = cleanText(event.id);
+      if (id) eventOwnerMap.set(id, event as Record<string, unknown>);
+    }
+  }
+
+  const invitations = invitationRows
+    .map((row) => ({
+      ...row,
+      rfx_events: resolvedPublicInvitationEvent(row, eventOwnerMap, fallbackOwnerEmail)
+    }))
     .filter((row) => cleanText(row.invitation_token))
     .filter((row) => ["draft", "open", "closed", "awarded"].includes(String(cleanText(relationRecord(row.rfx_events).status) || "").toLowerCase()))
     .slice(0, 25);
