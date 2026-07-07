@@ -10320,7 +10320,7 @@ Deno.serve(async (request) => {
       const view = cleanText(body.view)?.toLowerCase() || "all";
       const lightweight = body.lightweight === true || cleanText(body.lightweight)?.toLowerCase() === "true";
       const vendorSelect = lightweight
-        ? "id,vendor_name,name,legal_name,domain,primary_email,secondary_emails,whatsapp_phone,preferred_channel,base_stage,funnel_stage,status,tags,coverage_notes,notes,logo_url,created_at,updated_at"
+        ? "id,vendor_name,name,legal_name,contact_name,domain,primary_email,secondary_emails,whatsapp_phone,preferred_channel,base_stage,funnel_stage,status,tags,coverage_notes,notes,logo_url,created_at,updated_at"
         : "*";
       let query = supabase
         .from("vendors")

@@ -727,6 +727,8 @@ function normalizeLookupText(value) {
   return String(value || "")
     .trim()
     .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
     .replace(/&/g, "and")
     .replace(/[^a-z0-9]+/g, " ")
     .replace(/\b(inc|llc|ltd|sa|de|cv|sapi|corp|corporation|company|co)\b/g, "")
@@ -3880,10 +3882,26 @@ function segmentMatchesVendor(segment, vendor) {
 }
 
 function vendorSearchText(row) {
-  return [row.vendor_name, row.domain, row.primary_email, row.coverage_notes, row.notes, ...(Array.isArray(row.tags) ? row.tags : [])]
+  return [
+    row.vendor_name,
+    row.name,
+    row.legal_name,
+    row.contact_name,
+    row.domain,
+    row.primary_email,
+    row.whatsapp_phone,
+    row.preferred_channel,
+    row.base_stage,
+    row.funnel_stage,
+    row.status,
+    row.coverage_notes,
+    row.notes,
+    ...(Array.isArray(row.secondary_emails) ? row.secondary_emails : []),
+    ...(Array.isArray(row.tags) ? row.tags : [])
+  ]
     .filter(Boolean)
-    .join(" ")
-    .toLowerCase();
+    .map(normalizeLookupText)
+    .join(" ");
 }
 
 function vendorDisplayName(row) {
@@ -3945,7 +3963,7 @@ function segmentCandidateRows(segmentId = selectedSegmentId()) {
 }
 
 function shortlistCandidateRows() {
-  const term = String(manualShortlistSearch?.value || "").trim().toLowerCase();
+  const term = normalizeLookupText(manualShortlistSearch?.value || "");
   const segmentRows = segmentCandidateRows();
   const filtered = segmentRows.filter((vendor) => !term || vendorSearchText(vendor).includes(term));
   return sortedVendorOptions(filtered);
@@ -4061,10 +4079,14 @@ function clearCarrierTemplateImport({ preserveStatus = false } = {}) {
 
 function renderCrmVendorCandidate(row) {
   const isSelected = selectedManualVendorIdsState.has(row.id);
+  const meta = [row.domain, row.primary_email, row.contact_name].filter(Boolean).slice(0, 3).join(" | ");
+  const stage = [row.base_stage || "crm", row.funnel_stage, row.status].filter(Boolean).join(" / ");
   return `
     <article class="bid-room-crm-vendor-option ${isSelected ? "is-selected" : ""}">
       <span class="crm-vendor-main">
         <strong>${escapeHtml(vendorDisplayName(row))}</strong>
+        <small>${escapeHtml(meta || "No domain or contact loaded")}</small>
+        <em>${escapeHtml(stage)}</em>
       </span>
       <button class="secondary small-button" type="button" data-add-manual-vendor="${escapeHtml(row.id)}" ${isSelected ? "disabled" : ""}>
         ${isSelected ? "Selected" : "Add"}
@@ -4125,7 +4147,10 @@ function renderSelectedManualVendors() {
   }
   manualShortlistSelectedList.innerHTML = rows.map((vendor) => `
     <article class="bid-room-selected-row">
-      <strong>${escapeHtml(vendorDisplayName(vendor))}</strong>
+      <span>
+        <strong>${escapeHtml(vendorDisplayName(vendor))}</strong>
+        <small>${escapeHtml([vendor.domain, vendor.primary_email, vendor.contact_name].filter(Boolean).slice(0, 3).join(" | ") || "No domain or contact loaded")}</small>
+      </span>
       <button class="secondary small-button" type="button" data-remove-manual-vendor="${escapeHtml(vendor.id)}">Move back</button>
     </article>
   `).join("");

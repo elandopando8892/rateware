@@ -772,6 +772,7 @@ assert.ok(listVendorsSource.length > 100, "list vendors block should be present"
 assert.match(listVendorsSource, /fetchVendorRateMetricsSafe/, "Carrier CRM directory should enrich vendors with quote metrics");
 assert.match(listVendorsSource, /buildVendorIntelligenceRows\(rows, metricsResult\.metrics\)/, "Carrier CRM directory should share the Vendor Intelligence scoring model");
 assert.match(listVendorsSource, /const lightweight =/, "Carrier CRM vendor list should support lightweight selector loading");
+assert.match(listVendorsSource, /contact_name/, "Lightweight Carrier CRM loading should include contact names for Bid Room search");
 assert.match(listVendorsSource, /if \(!lightweight && rows\.length\)/, "Bid Room carrier selector should be able to skip heavy CRM metric enrichment");
 assert.match(listVendorsSource, /return jsonResponse\(\{ rows: enrichedRows[\s\S]*warnings/, "Carrier CRM directory should surface partial metric warnings");
 assert.match(apiSource, /logo_url: cleanText\(vendor\.logo_url\)/, "Vendor intelligence rows should keep uploaded logo URLs");
@@ -797,6 +798,9 @@ const vendorDrawerSaveSource = vendorsSource.slice(vendorsSource.indexOf("drawer
 assert.match(vendorDrawerSaveSource, /applyVendorUpdateToFunnel/, "Vendor drawer saves should refresh funnel cards from local state");
 assert.doesNotMatch(vendorDrawerSaveSource, /loadVendors\(/, "Vendor drawer saves should not reload the whole Carrier CRM directory");
 assert.match(rfxEventsSource, /fetchVendors\(\{ limit: pageSize, offset, view: "all", lightweight: true \}\)/, "Bid Room should load CRM carriers through the lightweight vendor path");
+assert.match(rfxEventsSource, /row\.contact_name/, "Bid Room participant search should include CRM contact names");
+assert.match(rfxEventsSource, /\.normalize\("NFD"\)/, "Bid Room participant search should normalize accents for Spanish names");
+assert.match(rfxEventsSource, /row\.domain, row\.primary_email, row\.contact_name/, "Bid Room participant cards should expose domain and contact context");
 assert.match(rfxEventsSource, /Carrier CRM partially loaded/, "Bid Room should keep partial CRM carrier results when a later page fails");
 assert.match(vendorsSource, /data-copy-profile-link/, "Vendor drawer should expose profile link creation");
 assert.match(carrierProfileHtml, /carrier-profile\.js/, "Carrier profile page should load the public profile script");
