@@ -1163,12 +1163,188 @@ function carrierBusinessBook(currentInvitation: Record<string, unknown>, invited
   };
 }
 
+const PUBLIC_BOARD_STATUSES = new Set(["all", "live", "closing", "expired", "awarded"]);
+
+function publicBidBoardState(event: Record<string, unknown>) {
+  const status = String(cleanText(event.status) || "draft").toLowerCase();
+  const due = dueState(event.due_date);
+  if (status === "awarded") return "awarded";
+  if (status === "closed") return "expired";
+  if (status === "open" && due.status === "closed") return "expired";
+  if (status === "open" && due.status === "closing") return "closing";
+  if (status === "open") return "live";
+  return status;
+}
+
+function publicQuoteStats(rows: Record<string, unknown>[]) {
+  const validRows = rows
+    .filter((row) => String(cleanText(row.invitation_status) || "").toLowerCase() !== "archived")
+    .map((row) => ({
+      amount: cleanNumber(row.bid_rate),
+      currency: cleanText(row.currency) || "USD",
+      capacity: cleanNumber(row.weekly_capacity),
+      transit_days: cleanNumber(row.transit_days),
+      commercial_model: cleanText(row.commercial_model),
+      best_alternative_offered: cleanBoolean(row.best_alternative_offered) === true,
+      equipment_available: cleanBoolean(row.equipment_available),
+      eta_pickup: cleanText(row.eta_pickup),
+      responded_at: cleanText(row.responded_at || row.updated_at),
+      award_role: cleanText(row.award_role)
+    }))
+    .filter((row) => row.amount !== null);
+  const amounts = validRows.map((row) => row.amount as number).sort((a, b) => a - b);
+  const capacities = validRows.map((row) => row.capacity).filter((value) => value !== null) as number[];
+  const transitDays = validRows.map((row) => row.transit_days).filter((value) => value !== null) as number[];
+  const lastQuoteAt = validRows
+    .map((row) => cleanText(row.responded_at))
+    .filter(Boolean)
+    .sort()
+    .at(-1) || null;
+  const commercialModels = [...new Set(validRows.map((row) => row.commercial_model).filter(Boolean) as string[])];
+  const avgRate = amounts.length ? amounts.reduce((sum, value) => sum + value, 0) / amounts.length : null;
+  return {
+    quote_count: validRows.length,
+    best_rate: amounts[0] ?? null,
+    average_rate: avgRate === null ? null : Math.round(avgRate * 100) / 100,
+    highest_rate: amounts.at(-1) ?? null,
+    currency: validRows[0]?.currency || "USD",
+    total_weekly_capacity: capacities.length ? capacities.reduce((sum, value) => sum + value, 0) : null,
+    best_transit_days: transitDays.length ? Math.min(...transitDays) : null,
+    alternative_offer_count: validRows.filter((row) => row.best_alternative_offered).length,
+    available_equipment_count: validRows.filter((row) => row.equipment_available === true).length,
+    eta_count: validRows.filter((row) => Boolean(row.eta_pickup)).length,
+    commercial_models: commercialModels,
+    awarded_count: validRows.filter((row) => cleanText(row.award_role) === "primary").length,
+    last_quote_at: lastQuoteAt
+  };
+}
+
+function publicBidBoardSummary(rows: Record<string, unknown>[]) {
+  const eventIds = new Set(rows.map((row) => cleanText(row.event_id)).filter(Boolean));
+  return {
+    events: eventIds.size,
+    opportunities: rows.length,
+    live: rows.filter((row) => row.board_status === "live").length,
+    closing: rows.filter((row) => row.board_status === "closing").length,
+    expired: rows.filter((row) => row.board_status === "expired").length,
+    awarded: rows.filter((row) => row.board_status === "awarded").length,
+    lanes_with_quotes: rows.filter((row) => Number(row.quote_count || 0) > 0).length,
+    total_quotes: rows.reduce((sum, row) => sum + Number(row.quote_count || 0), 0)
+  };
+}
+
+async function publicBidRoomBoard(supabase: ReturnType<typeof createClient>, input: Record<string, unknown>) {
+  const requestedStatus = String(cleanText(input.status) || "all").toLowerCase();
+  const statusFilter = PUBLIC_BOARD_STATUSES.has(requestedStatus) ? requestedStatus : "all";
+  const limit = Math.min(250, Math.max(1, Number(input.limit || 150) || 150));
+  const eventLimit = Math.min(100, Math.max(20, Number(input.event_limit || 80) || 80));
+
+  const eventsResult = await supabase
+    .from("rfx_events")
+    .select("id,rfx_id,name,customer,event_type,status,due_date,bid_visibility_mode,created_at,updated_at")
+    .in("status", ["open", "closed", "awarded"])
+    .order("updated_at", { ascending: false })
+    .limit(eventLimit);
+  if (eventsResult.error) throw eventsResult.error;
+
+  const events = eventsResult.data || [];
+  const eventIds = events.map((event) => event.id).filter(Boolean);
+  if (!eventIds.length) {
+    return {
+      rows: [],
+      summary: publicBidBoardSummary([]),
+      refresh_seconds: 15,
+      generated_at: new Date().toISOString()
+    };
+  }
+
+  const [lanesResult, quotesResult] = await Promise.all([
+    supabase
+      .from("rfx_lanes")
+      .select("id,rfx_event_id,lane_number,origin,destination,origin_city,origin_state,origin_market,origin_region,destination_city,destination_state,destination_market,destination_region,equipment,trailer,config,operation,service,weekly_volume,annual_volume,target_rate,currency,updated_at")
+      .in("rfx_event_id", eventIds)
+      .order("lane_number", { ascending: true }),
+    supabase
+      .from("rfx_lane_vendors")
+      .select("id,rfx_event_id,rfx_lane_id,invitation_status,bid_rate,currency,weekly_capacity,transit_days,commercial_model,best_alternative_offered,equipment_available,eta_pickup,responded_at,updated_at,award_role")
+      .in("rfx_event_id", eventIds)
+      .not("bid_rate", "is", null)
+      .neq("invitation_status", "archived")
+      .limit(10000)
+  ]);
+  if (lanesResult.error) throw lanesResult.error;
+  if (quotesResult.error) throw quotesResult.error;
+
+  const eventsById = new Map(events.map((event) => [String(event.id), event as Record<string, unknown>]));
+  const quotesByLane = new Map<string, Record<string, unknown>[]>();
+  for (const quote of quotesResult.data || []) {
+    const laneId = cleanText(quote.rfx_lane_id);
+    if (!laneId) continue;
+    const bucket = quotesByLane.get(laneId) || [];
+    bucket.push(quote as Record<string, unknown>);
+    quotesByLane.set(laneId, bucket);
+  }
+
+  const rows = (lanesResult.data || [])
+    .map((lane) => {
+      const event = eventsById.get(String(lane.rfx_event_id)) || {};
+      const boardStatus = publicBidBoardState(event);
+      const quoteStats = publicQuoteStats(quotesByLane.get(String(lane.id)) || []);
+      const visibility = bidRoomVisibility(event);
+      return {
+        id: lane.id,
+        event_id: lane.rfx_event_id,
+        board_status: boardStatus,
+        due_state: dueState(event.due_date),
+        visibility: {
+          mode: visibility.mode,
+          competitor_rank_visible: visibility.competitor_rank_visible,
+          public_board: true,
+          carrier_identity_visible: false
+        },
+        event: {
+          id: event.id,
+          rfx_id: event.rfx_id,
+          name: event.name,
+          customer: event.customer,
+          event_type: event.event_type,
+          status: event.status,
+          due_date: event.due_date,
+          updated_at: event.updated_at
+        },
+        lane: publicLane(lane as Record<string, unknown>),
+        route_label: [lane.origin || lane.origin_city, lane.destination || lane.destination_city].filter(Boolean).join(" -> "),
+        fit_tags: laneFitTags(lane as Record<string, unknown>, event),
+        ...quoteStats
+      };
+    })
+    .filter((row) => statusFilter === "all" || row.board_status === statusFilter)
+    .sort((a, b) => {
+      const order: Record<string, number> = { live: 0, closing: 1, awarded: 2, expired: 3 };
+      const statusDelta = (order[a.board_status] ?? 9) - (order[b.board_status] ?? 9);
+      if (statusDelta) return statusDelta;
+      return String(b.last_quote_at || b.event.updated_at || "").localeCompare(String(a.last_quote_at || a.event.updated_at || ""));
+    })
+    .slice(0, limit);
+
+  return {
+    rows,
+    summary: publicBidBoardSummary(rows),
+    refresh_seconds: 15,
+    generated_at: new Date().toISOString()
+  };
+}
+
 Deno.serve(async (request) => {
   if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders() });
 
   try {
     const supabase = getClient();
     const body = await request.json().catch(() => ({}));
+    if (body.action === "public_bid_room_board") {
+      return jsonResponse(await publicBidRoomBoard(supabase, body));
+    }
+
     const token = cleanText(body.token);
     if (!token) return jsonResponse({ error: "Invitation token is required." }, 400);
 
