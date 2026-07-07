@@ -406,6 +406,10 @@ function bidVisibilityLabel(mode = "anonymous_rank") {
   return labels[mode] || labels.anonymous_rank;
 }
 
+function marketplaceUrlForEvent(eventId) {
+  return `./bid-room-board.html?event_id=${encodeURIComponent(eventId || "")}`;
+}
+
 function cleanHeader(value) {
   return String(value || "")
     .trim()
@@ -2858,6 +2862,7 @@ function renderEventDashboard() {
         <span>Status</span>
         <strong>${escapeHtml(selectedEvent.status || "draft")}</strong>
         <small>${escapeHtml([selectedEvent.customer, selectedEvent.due_date ? `Due ${selectedEvent.due_date}` : ""].filter(Boolean).join(" | ") || "No customer or due date")}</small>
+        <a class="secondary-link small-button" href="${escapeHtml(marketplaceUrlForEvent(selectedEvent.id))}" target="_blank" rel="noreferrer">Go to marketplace</a>
       </article>
       <article>
         <span>Lane coverage</span>
@@ -3812,13 +3817,18 @@ function renderEvents() {
     return;
   }
   eventList.innerHTML = events.map((event) => `
-    <button class="rfx-event-card ${event.id === selectedEventId ? "is-active" : ""}" type="button" data-rfx-event-id="${escapeHtml(event.id)}">
-      <span>${escapeHtml(event.status || "draft")}</span>
-      <strong>${escapeHtml(event.name || event.rfx_id)}</strong>
-      <small>${escapeHtml(event.rfx_id || "")}${event.customer ? ` | ${escapeHtml(event.customer)}` : ""}</small>
-      <b>${formatNumber(event.lane_count)} lanes / ${formatNumber(event.bid_count)} bids</b>
-      <small>${escapeHtml(bidVisibilityLabel(event.bid_visibility_mode))}</small>
-    </button>
+    <article class="rfx-event-card ${event.id === selectedEventId ? "is-active" : ""}" data-rfx-event-id="${escapeHtml(event.id)}">
+      <button class="rfx-event-select" type="button" data-rfx-event-select="${escapeHtml(event.id)}">
+        <span>${escapeHtml(event.status || "draft")}</span>
+        <strong>${escapeHtml(event.name || event.rfx_id)}</strong>
+        <small>${escapeHtml(event.rfx_id || "")}${event.customer ? ` | ${escapeHtml(event.customer)}` : ""}</small>
+        <b>${formatNumber(event.lane_count)} lanes / ${formatNumber(event.bid_count)} bids</b>
+        <small>${escapeHtml(bidVisibilityLabel(event.bid_visibility_mode))}</small>
+      </button>
+      <a class="secondary-link small-button rfx-marketplace-link" href="${escapeHtml(marketplaceUrlForEvent(event.id))}" target="_blank" rel="noreferrer" data-rfx-marketplace-link>
+        Marketplace
+      </a>
+    </article>
   `).join("");
 }
 
@@ -5078,6 +5088,7 @@ draftDeleteSelectedButton?.addEventListener("click", () => {
 });
 
 eventList?.addEventListener("click", async (event) => {
+  if (event.target.closest("[data-rfx-marketplace-link]")) return;
   const card = event.target.closest("[data-rfx-event-id]");
   if (!card) return;
   await loadDetail(card.dataset.rfxEventId);

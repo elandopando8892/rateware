@@ -14,6 +14,8 @@ const autoRefreshInput = document.querySelector("#public-board-auto-refresh");
 const viewButtons = [...document.querySelectorAll("[data-board-view]")];
 
 const API_URL = `${SUPABASE_URL}/functions/v1/rfx-bid-api`;
+const boardParams = new URLSearchParams(window.location.search);
+const scopedEventId = boardParams.get("event_id") || boardParams.get("rfx_event_id") || "";
 const ANNOUNCEMENTS = {
   en: {
     enabled: "Rateware bid room alerts enabled.",
@@ -236,6 +238,14 @@ function renderSummary() {
   `;
 }
 
+function scopedEventLabel(rows = state.rows) {
+  if (!scopedEventId) return "";
+  const event = rows.find((row) => row.event?.id === scopedEventId)?.event || {};
+  return event.rfx_id || event.name
+    ? `Marketplace filtered to ${event.rfx_id || event.name}`
+    : "Marketplace filtered to selected bid event";
+}
+
 function laneTags(row) {
   return [
     row.lane?.equipment,
@@ -360,9 +370,9 @@ function renderBoard() {
 
 async function loadBoard({ announceChanges = true } = {}) {
   refreshButton.disabled = true;
-  statusEl.textContent = "Refreshing public Bid Room board...";
+  statusEl.textContent = scopedEventId ? "Refreshing selected event marketplace..." : "Refreshing public Bid Room board...";
   try {
-    const data = await callPublicBoard({ status: statusFilter.value, limit: 250 });
+    const data = await callPublicBoard({ status: statusFilter.value, limit: 250, event_id: scopedEventId });
     if (announceChanges) detectBoardSignals(data.rows || []);
     state.rows = data.rows || [];
     state.summary = data.summary || {};
@@ -370,7 +380,7 @@ async function loadBoard({ announceChanges = true } = {}) {
     state.loaded = true;
     renderSummary();
     renderBoard();
-    statusEl.textContent = `Updated ${formatDateTime(data.generated_at)} | ${formatNumber(state.rows.length)} opportunities`;
+    statusEl.textContent = `${scopedEventLabel() || "Public marketplace"} | Updated ${formatDateTime(data.generated_at)} | ${formatNumber(state.rows.length)} opportunities`;
   } catch (error) {
     statusEl.textContent = error.message || "Public board could not load.";
     boardRoot.innerHTML = `

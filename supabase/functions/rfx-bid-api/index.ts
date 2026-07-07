@@ -1236,15 +1236,18 @@ function publicBidBoardSummary(rows: Record<string, unknown>[]) {
 async function publicBidRoomBoard(supabase: ReturnType<typeof createClient>, input: Record<string, unknown>) {
   const requestedStatus = String(cleanText(input.status) || "all").toLowerCase();
   const statusFilter = PUBLIC_BOARD_STATUSES.has(requestedStatus) ? requestedStatus : "all";
+  const eventId = cleanText(input.event_id || input.rfx_event_id);
   const limit = Math.min(250, Math.max(1, Number(input.limit || 150) || 150));
   const eventLimit = Math.min(100, Math.max(20, Number(input.event_limit || 80) || 80));
 
-  const eventsResult = await supabase
+  let eventsQuery = supabase
     .from("rfx_events")
     .select("id,rfx_id,name,customer,event_type,status,due_date,bid_visibility_mode,created_at,updated_at")
-    .in("status", ["open", "closed", "awarded"])
-    .order("updated_at", { ascending: false })
-    .limit(eventLimit);
+    .in("status", ["open", "closed", "awarded"]);
+  eventsQuery = eventId
+    ? eventsQuery.eq("id", eventId).limit(1)
+    : eventsQuery.order("updated_at", { ascending: false }).limit(eventLimit);
+  const eventsResult = await eventsQuery;
   if (eventsResult.error) throw eventsResult.error;
 
   const events = eventsResult.data || [];

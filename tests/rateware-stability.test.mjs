@@ -177,12 +177,16 @@ assert.match(rfxEventsHtml, /bid-room-board\.html/, "Internal Bid Room should li
 assert.match(bidRoomBoardHtml, /data-board-view="pipeline"/, "Public Bid Room board should support pipeline view");
 assert.match(bidRoomBoardHtml, /data-board-view="sheet"/, "Public Bid Room board should support spreadsheet view");
 assert.match(bidRoomBoardSource, /public_bid_room_board/, "Public Bid Room board should call the public board action");
+assert.match(bidRoomBoardSource, /event_id: scopedEventId/, "Public Bid Room board should request a specific event when opened from a Bid Room event");
+assert.match(rfxEventsSource, /marketplaceUrlForEvent/, "Bid Room should build event-specific marketplace links");
+assert.match(rfxEventsSource, /data-rfx-marketplace-link/, "Bid Room event cards should expose a marketplace button");
 assert.match(bidRoomBoardSource, /Quote Available/, "Public Bid Room board should announce new quotes in English");
 assert.match(bidRoomBoardSource, /Cotización disponible/, "Public Bid Room board should announce new quotes in Spanish");
 assert.match(bidRoomBoardSource, /Your offer has been displaced/, "Public Bid Room board should announce ranking displacement");
 assert.match(bidRoomBoardSource, /speechSynthesis/, "Public Bid Room board should use browser speech announcements");
 assert.match(rfxBidApiSource, /body\.action === "public_bid_room_board"[\s\S]*const token = cleanText\(body\.token\)/, "Public Bid Room board action should be handled before invitation token validation");
 const publicBidBoardApiSource = rfxBidApiSource.slice(rfxBidApiSource.indexOf("async function publicBidRoomBoard"), rfxBidApiSource.indexOf("Deno.serve"));
+assert.match(publicBidBoardApiSource, /eventId[\s\S]*eventsQuery\.eq\("id", eventId\)/, "Public Bid Room board API should support event-specific filtering");
 assert.match(publicBidBoardApiSource, /carrier_identity_visible: false/, "Public Bid Room board should hide carrier identity");
 assert.doesNotMatch(publicBidBoardApiSource, /vendors\(/, "Public Bid Room board should not join carrier vendor records");
 assert.doesNotMatch(publicBidBoardApiSource, /invitation_token/, "Public Bid Room board should not expose invitation tokens");

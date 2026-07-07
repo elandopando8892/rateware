@@ -424,6 +424,25 @@ a {
   cursor: pointer;
 }
 
+.rfx-event-select {
+  display: grid;
+  gap: inherit;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.rfx-marketplace-link {
+  justify-self: start;
+  min-height: 24px;
+  padding: 3px 8px;
+  font-size: 0.64rem;
+}
+
 .rfx-event-card.is-active {
   border-color: var(--accent);
   background: #eef8f6;
