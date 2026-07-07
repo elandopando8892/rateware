@@ -8,6 +8,7 @@ const soundButton = document.querySelector("#public-board-sound");
 const languageSelect = document.querySelector("#public-board-language");
 const refreshButton = document.querySelector("#public-board-refresh");
 const fullscreenButton = document.querySelector("#public-board-fullscreen");
+const boardActions = document.querySelector(".public-board-actions");
 const statusFilter = document.querySelector("#public-board-status-filter");
 const searchInput = document.querySelector("#public-board-search");
 const autoRefreshInput = document.querySelector("#public-board-auto-refresh");
@@ -228,6 +229,16 @@ function renderAlerts() {
   `).join("");
 }
 
+function initScopedBoardMode() {
+  if (!scopedEventId || !boardActions) return;
+  document.body.classList.add("is-event-scoped-board");
+  const link = document.createElement("a");
+  link.className = "secondary-link public-board-all-link";
+  link.href = "./bid-room-board.html";
+  link.textContent = "View all opportunities";
+  boardActions.append(link);
+}
+
 function renderSummary() {
   const summary = state.summary || {};
   summaryRoot.innerHTML = `
@@ -242,8 +253,8 @@ function scopedEventLabel(rows = state.rows) {
   if (!scopedEventId) return "";
   const event = rows.find((row) => row.event?.id === scopedEventId)?.event || {};
   return event.rfx_id || event.name
-    ? `Marketplace filtered to ${event.rfx_id || event.name}`
-    : "Marketplace filtered to selected bid event";
+    ? `Event marketplace: ${event.rfx_id || event.name}`
+    : "Event marketplace: selected bid event";
 }
 
 function laneTags(row) {
@@ -435,4 +446,5 @@ setInterval(() => {
 }, 15000);
 
 renderAlerts();
+initScopedBoardMode();
 loadBoard({ announceChanges: false });

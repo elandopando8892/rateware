@@ -178,7 +178,9 @@ assert.match(bidRoomBoardHtml, /data-board-view="pipeline"/, "Public Bid Room bo
 assert.match(bidRoomBoardHtml, /data-board-view="sheet"/, "Public Bid Room board should support spreadsheet view");
 assert.match(bidRoomBoardSource, /public_bid_room_board/, "Public Bid Room board should call the public board action");
 assert.match(bidRoomBoardSource, /event_id: scopedEventId/, "Public Bid Room board should request a specific event when opened from a Bid Room event");
+assert.match(bidRoomBoardSource, /View all opportunities/, "Event-scoped marketplace should let users return to the full public opportunity board");
 assert.match(rfxEventsSource, /marketplaceUrlForEvent/, "Bid Room should build event-specific marketplace links");
+assert.match(rfxEventsSource, /Event marketplace/, "Bid Room event links should be clearly scoped to a single event");
 assert.match(rfxEventsSource, /data-rfx-marketplace-link/, "Bid Room event cards should expose a marketplace button");
 assert.match(bidRoomBoardSource, /Quote Available/, "Public Bid Room board should announce new quotes in English");
 assert.match(bidRoomBoardSource, /Cotización disponible/, "Public Bid Room board should announce new quotes in Spanish");

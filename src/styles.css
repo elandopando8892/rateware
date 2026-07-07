@@ -17734,6 +17734,17 @@ textarea:focus,
   justify-content: flex-end;
 }
 
+.public-board-all-link {
+  min-height: 34px;
+  align-content: center;
+  border: 1px solid #b9c8d4;
+  border-radius: 7px;
+  background: #ffffff;
+  padding: 0 10px;
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
 .public-board-actions select,
 .public-board-control-strip select,
 .public-board-control-strip input {
