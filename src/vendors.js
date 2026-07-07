@@ -1910,6 +1910,28 @@ function renderVendorFunnelMetrics(summary = {}) {
   if (vfStuck) vfStuck.textContent = String(summary.stuck || 0);
 }
 
+function vendorFunnelSummaryFromRows(rows = vendorFunnelRows) {
+  const total = rows.length;
+  const activeStages = new Set(["activated", "completed"]);
+  const activated = rows.filter((row) => activeStages.has(row.effective_funnel_stage || row.funnel_stage)).length;
+  const quoted = rows.filter((row) => numberValue(rateMetrics(row).linked_rates) > 0).length;
+  const stuck = rows.filter((row) => numberValue(row.stage_days) >= 14).length;
+  return {
+    total,
+    activation_rate: total ? Math.round((activated / total) * 100) : 0,
+    quoted,
+    nested: funnelStageRows("nested", rows).length,
+    stuck
+  };
+}
+
+function refreshVendorFunnelLocal({ resetLimits = false } = {}) {
+  if (resetLimits) resetVendorFunnelStageLimits();
+  renderVendorFunnelMetrics(vendorFunnelSummaryFromRows());
+  renderVendorFunnelStrip();
+  renderVendorFunnelBoard();
+}
+
 function renderVendorFunnelStrip() {
   if (!vendorFunnelStrip) return;
   const stages = funnelStages();
@@ -2258,9 +2280,20 @@ async function moveVendorFunnelStage(vendorId, stageKey) {
   setStatus(vendorFunnelStatus, `Moving vendor to ${stage.label}...`);
   try {
     await requirePrivatePage();
-    await updateVendor(vendorId, { base_stage: "procurement", funnel_stage: stageKey });
+    const existing = findVendorById(vendorId) || {};
+    const updated = await updateVendor(vendorId, { base_stage: "procurement", funnel_stage: stageKey });
+    const nextRow = {
+      ...existing,
+      ...updated,
+      base_stage: "procurement",
+      funnel_stage: stageKey,
+      effective_funnel_stage: stageKey,
+      stage_days: 0
+    };
+    replaceVendorInState(nextRow);
+    applyVendorUpdateToFunnel(nextRow);
+    renderVendors(currentVendors);
     setStatus(vendorFunnelStatus, `Vendor moved to ${stage.label}.`, "success");
-    await loadVendorFunnel();
     return true;
   } catch (error) {
     setStatus(vendorFunnelStatus, error.message, "error");
@@ -2303,9 +2336,16 @@ async function bulkMoveActiveFunnelStage(targetStage, actionLabel = "Move") {
   try {
     await requirePrivatePage();
     const result = await bulkUpdateVendors(ids, { base_stage: "procurement", funnel_stage: targetStage });
+    applyBulkVendorPatchToState(ids, {
+      base_stage: "procurement",
+      funnel_stage: targetStage,
+      effective_funnel_stage: targetStage,
+      stage_days: 0
+    });
     setStatus(vendorFunnelStatus, `${result.updated || 0} vendor(s) moved to ${stageLabel(targetStage)}.`, "success");
     activeFunnelStage = targetStage;
-    await loadVendorFunnel();
+    refreshVendorFunnelLocal({ resetLimits: true });
+    renderVendors(currentVendors);
     window.requestAnimationFrame(() => focusVendorFunnelStage(targetStage));
   } catch (error) {
     setStatus(vendorFunnelStatus, error.message, "error");
@@ -2740,8 +2780,9 @@ async function saveVendorCell(control) {
     control.classList.remove("is-saving");
     control.classList.add("is-saved");
     setStatus(bulkStatusMessage, "Cell saved.", "success");
-    if (["base_stage", "status"].includes(field)) {
-      window.setTimeout(() => loadVendors(), 150);
+    if (["base_stage", "status", "funnel_stage"].includes(field)) {
+      applyVendorUpdateToFunnel(updated);
+      renderVendors(currentVendors);
     }
   } catch (error) {
     control.classList.remove("is-saving");
@@ -3445,6 +3486,50 @@ function replaceVendorInState(updated) {
   currentVendors = currentVendors.map((row) => (row.id === updated.id ? { ...row, ...updated } : row));
   vendorFunnelRows = vendorFunnelRows.map((row) => ((row.id || row.vendor_id) === updated.id ? { ...row, ...updated } : row));
   vendorIntelligenceRows = vendorIntelligenceRows.map((row) => ((row.vendor_id || row.id) === updated.id ? { ...row, ...updated, vendor_id: row.vendor_id || updated.id } : row));
+}
+
+function applyVendorUpdateToFunnel(updated, { render = true, resetLimits = false } = {}) {
+  if (!updated?.id) return;
+  const id = updated.id || updated.vendor_id;
+  const existingIndex = vendorFunnelRows.findIndex((row) => (row.id || row.vendor_id) === id);
+  const existing = existingIndex >= 0 ? vendorFunnelRows[existingIndex] : {};
+  const baseStage = updated.base_stage || existing.base_stage || "sourcing";
+
+  if (baseStage !== "procurement") {
+    if (existingIndex >= 0) vendorFunnelRows.splice(existingIndex, 1);
+    if (render) refreshVendorFunnelLocal({ resetLimits });
+    return;
+  }
+
+  const nextStage = updated.funnel_stage || updated.effective_funnel_stage || existing.funnel_stage || existing.effective_funnel_stage || "targeted";
+  const nextRow = {
+    ...existing,
+    ...updated,
+    id,
+    vendor_id: updated.vendor_id || existing.vendor_id || id,
+    base_stage: "procurement",
+    funnel_stage: nextStage,
+    effective_funnel_stage: nextStage
+  };
+
+  if (existingIndex >= 0) vendorFunnelRows.splice(existingIndex, 1, nextRow);
+  else vendorFunnelRows.unshift(nextRow);
+  if (render) refreshVendorFunnelLocal({ resetLimits });
+}
+
+function applyBulkVendorPatchToState(ids, patch) {
+  const idSet = new Set(ids.map((id) => String(id)));
+  const applyPatch = (row) => {
+    const rowId = String(row.id || row.vendor_id || "");
+    if (!idSet.has(rowId)) return row;
+    return { ...row, ...patch };
+  };
+  allVendors = allVendors.map(applyPatch);
+  currentVendors = currentVendors.map(applyPatch);
+  vendorIntelligenceRows = vendorIntelligenceRows.map(applyPatch);
+  vendorFunnelRows = vendorFunnelRows
+    .map(applyPatch)
+    .filter((row) => (row.base_stage || "sourcing") === "procurement");
 }
 
 async function handleDrawerLogoUpload() {
@@ -4209,12 +4294,14 @@ drawerEditForm.addEventListener("submit", async (event) => {
 
   try {
     await requirePrivatePage();
+    const current = findVendorById(activeDrawerVendorId) || {};
     const updated = await updateVendor(activeDrawerVendorId, readDrawerPatch());
-    replaceVendorInState(updated);
+    const nextVendor = { ...current, ...updated };
+    replaceVendorInState(nextVendor);
+    applyVendorUpdateToFunnel(nextVendor);
+    renderVendors(currentVendors);
     setStatus(drawerEditStatus, "Vendor updated.", "success");
-    await loadVendors();
-    renderVendorFunnelBoard();
-    openVendorDrawer(updated.id, { mode: "edit" });
+    openVendorDrawer(nextVendor.id, { mode: "edit" });
   } catch (error) {
     setStatus(drawerEditStatus, error.message, "error");
   } finally {
@@ -4231,10 +4318,14 @@ drawerArchiveButton.addEventListener("click", async () => {
 
   try {
     await requirePrivatePage();
+    const current = findVendorById(activeDrawerVendorId) || {};
     const updated = await updateVendor(activeDrawerVendorId, patch);
+    const nextVendor = { ...current, ...updated };
+    replaceVendorInState(nextVendor);
+    applyVendorUpdateToFunnel(nextVendor);
+    renderVendors(currentVendors);
     setStatus(drawerEditStatus, restoring ? "Vendor restored to Sourcing Base." : "Vendor archived.", "success");
-    await loadVendors();
-    openVendorDrawer(updated.id);
+    openVendorDrawer(nextVendor.id);
   } catch (error) {
     setStatus(drawerEditStatus, error.message, "error");
   } finally {

@@ -722,6 +722,12 @@ assert.match(apiSource, /body\.action === "create_vendor_profile_request"/, "Car
 assert.match(vendorServiceSource, /createVendorProfileRequest/, "Vendor service should expose profile request creation");
 assert.match(vendorServiceSource, /lightweight = false/, "Vendor service should expose lightweight CRM loading for Bid Room selectors");
 assert.match(vendorsSource, /fetchVendors\(\{[\s\S]*lightweight: true,[\s\S]*limit: vendorPageSize/, "Carrier CRM directory should load vendors through the lightweight path");
+const vendorFunnelMoveSource = vendorsSource.slice(vendorsSource.indexOf("async function moveVendorFunnelStage"), vendorsSource.indexOf("function setVendorFunnelBulkBusy"));
+assert.match(vendorFunnelMoveSource, /applyVendorUpdateToFunnel/, "Vendor Pipeline stage moves should update the kanban locally");
+assert.doesNotMatch(vendorFunnelMoveSource, /loadVendorFunnel\(/, "Vendor Pipeline stage moves should not reload the whole funnel");
+const vendorDrawerSaveSource = vendorsSource.slice(vendorsSource.indexOf("drawerEditForm.addEventListener"), vendorsSource.indexOf("drawerArchiveButton.addEventListener"));
+assert.match(vendorDrawerSaveSource, /applyVendorUpdateToFunnel/, "Vendor drawer saves should refresh funnel cards from local state");
+assert.doesNotMatch(vendorDrawerSaveSource, /loadVendors\(/, "Vendor drawer saves should not reload the whole Carrier CRM directory");
 assert.match(rfxEventsSource, /fetchVendors\(\{ limit: pageSize, offset, view: "all", lightweight: true \}\)/, "Bid Room should load CRM carriers through the lightweight vendor path");
 assert.match(rfxEventsSource, /Carrier CRM partially loaded/, "Bid Room should keep partial CRM carrier results when a later page fails");
 assert.match(vendorsSource, /data-copy-profile-link/, "Vendor drawer should expose profile link creation");
