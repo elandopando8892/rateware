@@ -597,6 +597,26 @@ function clearLaneTemplateImport({ preserveStatus = false } = {}) {
   updateLaneImportButton();
 }
 
+function emptyBidRoomChatThreads() {
+  return {
+    rows: [],
+    google_chat_configured: false,
+    google_chat_inbound: null,
+    google_chat_space_name: "",
+    google_chat_space_display_name: ""
+  };
+}
+
+function getSettledValue(result, fallback) {
+  return result && result.status === "fulfilled" ? result.value : fallback;
+}
+
+function getSettledWarning(result, label) {
+  if (!result || result.status !== "rejected") return "";
+  const message = humanizeError(result.reason?.message || result.reason || "");
+  return `${label} could not load${message ? ` (${message})` : ""}.`;
+}
+
 async function parseLaneTemplateFile(file) {
   if (!file) return [];
   const extension = file.name.split(".").pop()?.toLowerCase() || "";
@@ -3379,15 +3399,15 @@ function renderBidRoomChat() {
 
 async function loadBidRoomChat() {
   if (!selectedEventId) {
-    bidRoomChatThreads = [];
+    bidRoomChatThreads = emptyBidRoomChatThreads();
     renderBidRoomChat();
     return;
   }
   try {
-    bidRoomChatThreads = await fetchBidRoomChat(selectedEventId);
+    bidRoomChatThreads = await fetchBidRoomChat(selectedEventId) || emptyBidRoomChatThreads();
     renderBidRoomChat();
   } catch (error) {
-    bidRoomChatThreads = [];
+    bidRoomChatThreads = emptyBidRoomChatThreads();
     renderBidRoomChat();
     setStatus(rfxChatStatus, error.message, "error");
   }
@@ -4115,10 +4135,16 @@ function renderSelectedManualVendors() {
 function updateManualShortlistButtonState() {
   if (!manualShortlistButton) return;
   const selectedCount = selectedManualVendorIds().length;
-  manualShortlistButton.disabled = !currentLanes.length || !selectedCount;
-  manualShortlistButton.textContent = currentLanes.length
-    ? selectedCount ? `Add ${formatNumber(selectedCount)} selected to bid` : "Add selected to bid"
-    : selectedCount ? "Load bid book to add selected carriers" : "Add selected to bid";
+  manualShortlistButton.disabled = !selectedEventId || !currentLanes.length || !selectedCount;
+  if (!selectedEventId) {
+    manualShortlistButton.textContent = selectedCount ? "Create event to add selected" : "Add selected to bid";
+    return;
+  }
+  if (!currentLanes.length) {
+    manualShortlistButton.textContent = selectedCount ? "Import lane book to add selected" : "Add selected to bid";
+    return;
+  }
+  manualShortlistButton.textContent = selectedCount ? `Add ${formatNumber(selectedCount)} selected to bid` : "Add selected to bid";
 }
 
 function updateParticipantTemplateControls() {
@@ -4202,7 +4228,7 @@ function renderManualShortlistControls() {
     const listSummary = `
       <div class="bid-room-crm-list-summary">
         <strong>Carrier CRM candidates</strong>
-        <span>Showing ${Math.min(visibleRows.length, rows.length)} of ${rows.length}. ${selectedEventId ? "Selected carriers become participants in this bid." : "Create/select an event and load the book before adding them."}</span>
+        <span>Showing ${Math.min(visibleRows.length, rows.length)} of ${rows.length}. Select carriers now, save them as a template, then add them after the event and lane book are ready.</span>
       </div>
     `;
     manualShortlistVendorList.innerHTML = visibleRows.length ? `${listSummary}${visibleRows.map(renderCrmVendorCandidate).join("")}` : `
@@ -4426,17 +4452,12 @@ async function loadDetail(eventId) {
   if (bidRoomChatRefreshTimer) window.clearInterval(bidRoomChatRefreshTimer);
   setStatus(actionStatus, "Loading RFx detail...");
   try {
-    const [detail, history, messages, chat] = await Promise.all([
-      fetchRfxDetail(eventId),
-      fetchContactHistory({ rfx_event_id: eventId }),
-      fetchOutreachMessages({ rfx_event_id: eventId }),
-      fetchBidRoomChat(eventId)
-    ]);
+    const detail = await fetchRfxDetail(eventId);
     selectedEvent = detail.event;
     currentLanes = detail.lanes || [];
-    contactHistoryRows = history || [];
-    outreachMessages = messages || [];
-    bidRoomChatThreads = chat || { rows: [], google_chat_configured: false };
+    contactHistoryRows = [];
+    outreachMessages = [];
+    bidRoomChatThreads = emptyBidRoomChatThreads();
     if (!currentLanes.some((lane) => lane.id === focusedLaneId)) focusedLaneId = currentLanes[0]?.id || null;
     detailTitle.textContent = `${selectedEvent.name || selectedEvent.rfx_id} (${selectedEvent.status})`;
     updateLaneImportButton();
@@ -4447,13 +4468,39 @@ async function loadDetail(eventId) {
     renderLaneCoverage();
     renderBidRoomChat();
     renderOutreachLaunchpad();
+    setStatus(actionStatus, "Bid Room core loaded. Loading outreach and chat context...");
+
+    const [historyResult, messagesResult, chatResult] = await Promise.allSettled([
+      fetchContactHistory({ rfx_event_id: eventId }),
+      fetchOutreachMessages({ rfx_event_id: eventId }),
+      fetchBidRoomChat(eventId)
+    ]);
+    contactHistoryRows = getSettledValue(historyResult, []) || [];
+    outreachMessages = getSettledValue(messagesResult, []) || [];
+    bidRoomChatThreads = getSettledValue(chatResult, emptyBidRoomChatThreads()) || emptyBidRoomChatThreads();
+    renderEventDashboard();
+    renderLanes();
+    renderBidRoomChat();
+    renderOutreachLaunchpad();
+
     bidRoomChatRefreshTimer = window.setInterval(() => {
       if (selectedEventId === eventId) loadBidRoomChat();
     }, 15000);
-    setStatus(actionStatus, "Bid Room loaded.", "success");
+    const warnings = [
+      getSettledWarning(historyResult, "Contact history"),
+      getSettledWarning(messagesResult, "Outreach queue"),
+      getSettledWarning(chatResult, "Bid Room chat")
+    ].filter(Boolean);
+    setStatus(
+      actionStatus,
+      warnings.length
+        ? `Bid Room loaded. ${warnings.join(" ")} Core event, lanes and participants are still available.`
+        : "Bid Room loaded.",
+      warnings.length ? "warning" : "success"
+    );
     ensureSelectedEventChatThread(eventId, { silent: true });
   } catch (error) {
-    setStatus(actionStatus, error.message, "error");
+    setStatus(actionStatus, humanizeError(error.message), "error");
     updateEventActionState();
   }
 }
@@ -5569,8 +5616,16 @@ manualShortlistSelectedList?.addEventListener("click", (event) => {
 
 manualShortlistButton?.addEventListener("click", async () => {
   const vendorIds = selectedManualVendorIds();
-  if (!currentLanes.length || !vendorIds.length) {
-    setStatus(manualShortlistStatus, "Create a bid event, load the bid book, and select at least one carrier from Carrier CRM.", "error");
+  if (!vendorIds.length) {
+    setStatus(manualShortlistStatus, "Select at least one carrier from Carrier CRM before adding participants.", "error");
+    return;
+  }
+  if (!selectedEventId) {
+    setStatus(manualShortlistStatus, "Create or select a bid event before adding participants. You can still save this carrier selection as a template.", "error");
+    return;
+  }
+  if (!currentLanes.length) {
+    setStatus(manualShortlistStatus, "Import the lane book before creating bid invitations. Your selected carriers stay selected and can be saved as a template.", "error");
     return;
   }
   manualShortlistButton.disabled = true;
