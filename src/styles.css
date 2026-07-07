@@ -16474,26 +16474,6 @@ textarea:focus,
   line-height: 1.15;
 }
 
-.crm-vendor-main small,
-.crm-vendor-main em {
-  display: block;
-  overflow: hidden;
-  color: #607080;
-  font-size: 0.62rem;
-  font-style: normal;
-  font-weight: 760;
-  line-height: 1.15;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.crm-vendor-main em {
-  color: #81909e;
-  font-size: 0.58rem;
-  font-weight: 900;
-  text-transform: uppercase;
-}
-
 .crm-vendor-stage {
   border-radius: 999px;
   background: #eef4f8;
@@ -16588,22 +16568,6 @@ textarea:focus,
   overflow: hidden;
   color: #1f2d38;
   font-size: 0.72rem;
-  line-height: 1.15;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.bid-room-selected-row > span {
-  display: grid;
-  gap: 1px;
-  min-width: 0;
-}
-
-.bid-room-selected-row small {
-  overflow: hidden;
-  color: #607080;
-  font-size: 0.62rem;
-  font-weight: 760;
   line-height: 1.15;
   text-overflow: ellipsis;
   white-space: nowrap;

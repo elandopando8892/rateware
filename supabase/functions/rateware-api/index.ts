@@ -10359,8 +10359,18 @@ Deno.serve(async (request) => {
         if (coverage) query = query.or(`coverage_notes.ilike.%${coverage}%,notes.ilike.%${coverage}%`);
       }
       if (body.search) {
-        const term = String(body.search).trim();
-        query = query.or(`vendor_name.ilike.%${term}%,domain.ilike.%${term}%,primary_email.ilike.%${term}%`);
+        const term = String(body.search).trim().replace(/[,]/g, " ");
+        query = query.or([
+          `vendor_name.ilike.%${term}%`,
+          `name.ilike.%${term}%`,
+          `legal_name.ilike.%${term}%`,
+          `contact_name.ilike.%${term}%`,
+          `domain.ilike.%${term}%`,
+          `primary_email.ilike.%${term}%`,
+          `whatsapp_phone.ilike.%${term}%`,
+          `coverage_notes.ilike.%${term}%`,
+          `notes.ilike.%${term}%`
+        ].join(","));
       }
 
       const result = await query;

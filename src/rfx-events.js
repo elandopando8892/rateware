@@ -232,6 +232,9 @@ let pendingLaneTemplateIssues = [];
 let pendingCarrierTemplateRows = [];
 let pendingCarrierTemplateMatches = [];
 let vendorOptionsLoading = true;
+let vendorSearchLoading = false;
+let vendorSearchTimer = null;
+let vendorSearchSequence = 0;
 let vendorSegmentsLoading = true;
 let savedVendorSegments = [];
 let selectedManualVendorIdsState = new Set();
@@ -3932,6 +3935,51 @@ function sortedVendorOptions(rows) {
   });
 }
 
+function mergeVendorOptionRows(rows = []) {
+  const byId = new Map(vendorOptions.map((vendor) => [String(vendor.id || ""), vendor]));
+  rows.forEach((row) => {
+    const id = String(row.id || "");
+    if (!id) return;
+    byId.set(id, { ...(byId.get(id) || {}), ...row });
+  });
+  vendorOptions = sortedVendorOptions([...byId.values()]);
+}
+
+async function loadVendorSearchOptions() {
+  const rawTerm = String(manualShortlistSearch?.value || "").trim();
+  const term = rawTerm.replace(/\s+/g, " ");
+  vendorSearchSequence += 1;
+  const sequence = vendorSearchSequence;
+  if (term.length < 2) {
+    vendorSearchLoading = false;
+    renderManualShortlistControls();
+    return;
+  }
+  vendorSearchLoading = true;
+  renderManualShortlistControls();
+  try {
+    const result = await fetchVendors({ limit: 100, offset: 0, view: "all", lightweight: true, search: term });
+    if (sequence !== vendorSearchSequence) return;
+    const rows = result.rows || [];
+    mergeVendorOptionRows(rows);
+    vendorSearchLoading = false;
+    renderManualShortlistControls();
+    if (rows.length) {
+      setStatus(manualShortlistStatus, `${formatNumber(rows.length)} CRM match(es) loaded for "${term}".`, "success");
+    }
+  } catch (error) {
+    if (sequence !== vendorSearchSequence) return;
+    vendorSearchLoading = false;
+    renderManualShortlistControls();
+    setStatus(manualShortlistStatus, `CRM search failed: ${humanizeError(error.message)}`, "error");
+  }
+}
+
+function queueVendorSearchLoad() {
+  if (vendorSearchTimer) window.clearTimeout(vendorSearchTimer);
+  vendorSearchTimer = window.setTimeout(loadVendorSearchOptions, 280);
+}
+
 function renderManualSegmentOptions() {
   if (!manualShortlistSegment) return;
   const currentValue = manualShortlistSegment.value || "all";
@@ -4079,14 +4127,10 @@ function clearCarrierTemplateImport({ preserveStatus = false } = {}) {
 
 function renderCrmVendorCandidate(row) {
   const isSelected = selectedManualVendorIdsState.has(row.id);
-  const meta = [row.domain, row.primary_email, row.contact_name].filter(Boolean).slice(0, 3).join(" | ");
-  const stage = [row.base_stage || "crm", row.funnel_stage, row.status].filter(Boolean).join(" / ");
   return `
     <article class="bid-room-crm-vendor-option ${isSelected ? "is-selected" : ""}">
       <span class="crm-vendor-main">
         <strong>${escapeHtml(vendorDisplayName(row))}</strong>
-        <small>${escapeHtml(meta || "No domain or contact loaded")}</small>
-        <em>${escapeHtml(stage)}</em>
       </span>
       <button class="secondary small-button" type="button" data-add-manual-vendor="${escapeHtml(row.id)}" ${isSelected ? "disabled" : ""}>
         ${isSelected ? "Selected" : "Add"}
@@ -4147,10 +4191,7 @@ function renderSelectedManualVendors() {
   }
   manualShortlistSelectedList.innerHTML = rows.map((vendor) => `
     <article class="bid-room-selected-row">
-      <span>
-        <strong>${escapeHtml(vendorDisplayName(vendor))}</strong>
-        <small>${escapeHtml([vendor.domain, vendor.primary_email, vendor.contact_name].filter(Boolean).slice(0, 3).join(" | ") || "No domain or contact loaded")}</small>
-      </span>
+      <strong>${escapeHtml(vendorDisplayName(vendor))}</strong>
       <button class="secondary small-button" type="button" data-remove-manual-vendor="${escapeHtml(vendor.id)}">Move back</button>
     </article>
   `).join("");
@@ -4204,6 +4245,8 @@ function renderManualShortlistControls() {
   if (manualShortlistSourceSummary) {
     manualShortlistSourceSummary.textContent = vendorOptionsLoading
       ? `Loading Carrier CRM${vendorOptions.length ? `... ${formatNumber(vendorOptions.length)} carrier(s) ready so far` : "..."}`
+      : vendorSearchLoading
+        ? `Searching Carrier CRM... ${formatNumber(vendorOptions.length)} carrier(s) loaded`
       : `${vendorOptions.length} CRM carrier(s) loaded | ${procurementCount} in Procurement/Pipeline | ${vendorSegmentsLoading ? "loading segments" : `${savedVendorSegments.length} saved segment(s)`}`;
   }
   if (vendorOptionsLoading && !vendorOptions.length) {
@@ -4252,10 +4295,16 @@ function renderManualShortlistControls() {
     const listSummary = `
       <div class="bid-room-crm-list-summary">
         <strong>Carrier CRM candidates</strong>
-        <span>Showing ${Math.min(visibleRows.length, rows.length)} of ${rows.length}. Select carriers now, save them as a template, then add them after the event and lane book are ready.</span>
+        <span>${vendorSearchLoading ? "Searching CRM..." : `Showing ${Math.min(visibleRows.length, rows.length)} of ${rows.length}.`} Select carriers now, save them as a template, then add them after the event and lane book are ready.</span>
       </div>
     `;
-    manualShortlistVendorList.innerHTML = visibleRows.length ? `${listSummary}${visibleRows.map(renderCrmVendorCandidate).join("")}` : `
+    manualShortlistVendorList.innerHTML = visibleRows.length ? `${listSummary}${visibleRows.map(renderCrmVendorCandidate).join("")}` : vendorSearchLoading ? `
+      ${listSummary}
+      <article class="bid-room-crm-vendor-empty">
+        <strong>Searching Carrier CRM...</strong>
+        <span>Looking across vendor name, domain, contact, email, tags, notes and coverage.</span>
+      </article>
+    ` : `
       <article class="bid-room-crm-vendor-empty">
         <strong>No CRM carriers match this search.</strong>
         <span>Clear the search or add/update carriers in Carrier CRM.</span>
@@ -4435,19 +4484,19 @@ async function loadVendorOptions() {
         if (id) seenIds.add(id);
         rows.push(row);
       }
-      vendorOptions = sortedVendorOptions(rows);
+      mergeVendorOptionRows(pageRows);
       renderManualShortlistControls();
       if (pendingCarrierTemplateRows.length) renderCarrierTemplatePreview();
       if (!pageRows.length) break;
       if (total && rows.length >= total) break;
       if (pageRows.length < pageSize) break;
     }
-    vendorOptions = sortedVendorOptions(rows);
+    mergeVendorOptionRows(rows);
     vendorOptionsLoading = false;
     renderManualShortlistControls();
     if (pendingCarrierTemplateRows.length) renderCarrierTemplatePreview();
   } catch (error) {
-    vendorOptions = sortedVendorOptions(rows);
+    mergeVendorOptionRows(rows);
     vendorOptionsLoading = false;
     renderManualShortlistControls();
     if (pendingCarrierTemplateRows.length) renderCarrierTemplatePreview();
@@ -5508,7 +5557,10 @@ archiveSelectedButton?.addEventListener("click", async () => {
   }
 });
 
-manualShortlistSearch?.addEventListener("input", renderManualShortlistControls);
+manualShortlistSearch?.addEventListener("input", () => {
+  renderManualShortlistControls();
+  queueVendorSearchLoad();
+});
 manualShortlistSegment?.addEventListener("change", () => {
   renderManualShortlistControls();
 });

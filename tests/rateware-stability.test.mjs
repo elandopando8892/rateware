@@ -773,6 +773,9 @@ assert.match(listVendorsSource, /fetchVendorRateMetricsSafe/, "Carrier CRM direc
 assert.match(listVendorsSource, /buildVendorIntelligenceRows\(rows, metricsResult\.metrics\)/, "Carrier CRM directory should share the Vendor Intelligence scoring model");
 assert.match(listVendorsSource, /const lightweight =/, "Carrier CRM vendor list should support lightweight selector loading");
 assert.match(listVendorsSource, /contact_name/, "Lightweight Carrier CRM loading should include contact names for Bid Room search");
+assert.match(listVendorsSource, /contact_name\.ilike/, "Carrier CRM search should include contact names");
+assert.match(listVendorsSource, /legal_name\.ilike/, "Carrier CRM search should include legal names");
+assert.match(listVendorsSource, /coverage_notes\.ilike/, "Carrier CRM search should include coverage notes");
 assert.match(listVendorsSource, /if \(!lightweight && rows\.length\)/, "Bid Room carrier selector should be able to skip heavy CRM metric enrichment");
 assert.match(listVendorsSource, /return jsonResponse\(\{ rows: enrichedRows[\s\S]*warnings/, "Carrier CRM directory should surface partial metric warnings");
 assert.match(apiSource, /logo_url: cleanText\(vendor\.logo_url\)/, "Vendor intelligence rows should keep uploaded logo URLs");
@@ -798,9 +801,11 @@ const vendorDrawerSaveSource = vendorsSource.slice(vendorsSource.indexOf("drawer
 assert.match(vendorDrawerSaveSource, /applyVendorUpdateToFunnel/, "Vendor drawer saves should refresh funnel cards from local state");
 assert.doesNotMatch(vendorDrawerSaveSource, /loadVendors\(/, "Vendor drawer saves should not reload the whole Carrier CRM directory");
 assert.match(rfxEventsSource, /fetchVendors\(\{ limit: pageSize, offset, view: "all", lightweight: true \}\)/, "Bid Room should load CRM carriers through the lightweight vendor path");
+assert.match(rfxEventsSource, /function loadVendorSearchOptions/, "Bid Room should search the full CRM on participant search input");
+assert.match(rfxEventsSource, /fetchVendors\(\{ limit: 100, offset: 0, view: "all", lightweight: true, search: term \}\)/, "Bid Room participant search should call the CRM search endpoint");
 assert.match(rfxEventsSource, /row\.contact_name/, "Bid Room participant search should include CRM contact names");
 assert.match(rfxEventsSource, /\.normalize\("NFD"\)/, "Bid Room participant search should normalize accents for Spanish names");
-assert.match(rfxEventsSource, /row\.domain, row\.primary_email, row\.contact_name/, "Bid Room participant cards should expose domain and contact context");
+assert.match(rfxEventsSource, /<strong>\$\{escapeHtml\(vendorDisplayName\(row\)\)\}<\/strong>/, "Bid Room participant cards should stay focused on vendor name only");
 assert.match(rfxEventsSource, /Carrier CRM partially loaded/, "Bid Room should keep partial CRM carrier results when a later page fails");
 assert.match(vendorsSource, /data-copy-profile-link/, "Vendor drawer should expose profile link creation");
 assert.match(carrierProfileHtml, /carrier-profile\.js/, "Carrier profile page should load the public profile script");
