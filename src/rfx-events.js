@@ -6008,7 +6008,7 @@ rfxOutreachForm?.addEventListener("submit", async (event) => {
   try {
     await createCurrentOutreachDrafts(rfxOutreachStatus);
   } catch (error) {
-    setStatus(rfxOutreachStatus, error.message, "error");
+    setStatus(rfxOutreachStatus, `Draft queue could not be generated. ${humanizeError(error)}`, "error");
   } finally {
     renderOutreachPreview();
   }

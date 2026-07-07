@@ -134,6 +134,8 @@ assert.match(rfxEventsSource, /confirmBidRoomBulkAction\("archive_participants",
 assert.match(ratewareApiClientSource, /function apiErrorMessage/, "Rateware API client should normalize object error payloads before throwing");
 assert.doesNotMatch(ratewareApiClientSource, /new Error\(data\.error \|\| data\.message/, "Rateware API client should not throw raw object errors that render as [object Object]");
 assert.match(errorCopySource, /function rawErrorMessage/, "Human error copy should convert nested object errors to readable text");
+assert.match(errorCopySource, /lower === "\[object object\]"/, "Human error copy should never display [object Object] to users");
+assert.match(rfxEventsSource, /Draft queue could not be generated/, "Bid Room Step 4 should show contextual outreach errors");
 assert.match(rfxEventsSource, /function eventLifecycleRiskSummary/, "Bid Room event lifecycle actions should summarize event risk before changes");
 assert.match(rfxEventsSource, /function confirmEventLifecycleAction/, "Bid Room event lifecycle actions should use a shared confirmation guard");
 assert.match(rfxEventsSource, /confirmEventLifecycleAction\("open"\)/, "Bid Room should confirm before opening an event");

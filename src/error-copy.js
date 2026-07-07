@@ -23,6 +23,9 @@ export function humanizeError(errorOrMessage) {
   const lower = raw.toLowerCase();
 
   if (!raw) return "Something went wrong. Please try again.";
+  if (lower === "[object object]" || lower.includes("[object object]")) {
+    return "Rateware returned an unreadable error. Refresh the page and retry the action. If it repeats, check Observability for the detailed failure.";
+  }
   if (lower.includes("insufficient_quota") || lower.includes("quota")) {
     return "OpenAI quota is not available for this project. Add billing or update the OpenAI key, then reprocess the file.";
   }
