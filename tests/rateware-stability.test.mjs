@@ -725,8 +725,16 @@ assert.match(rfxEventsSource, /fetchVendors\(\{ limit: pageSize, offset, view: "
 assert.match(rfxEventsSource, /Carrier CRM partially loaded/, "Bid Room should keep partial CRM carrier results when a later page fails");
 assert.match(vendorsSource, /data-copy-profile-link/, "Vendor drawer should expose profile link creation");
 assert.match(carrierProfileHtml, /carrier-profile\.js/, "Carrier profile page should load the public profile script");
+assert.match(carrierProfileHtml, /carrier-profile-eyebrow/, "Carrier profile page header should be translatable");
 assert.match(carrierProfileSource, /carrier-profile-api/, "Carrier profile page should call the public profile API");
 assert.match(carrierProfileSource, /submit_profile/, "Carrier profile page should submit profile data");
+assert.match(carrierProfileSource, /LANGUAGE_KEY/, "Carrier profile should persist the selected language");
+assert.match(carrierProfileSource, /data-language-toggle/, "Carrier profile should expose an English/Spanish language switch");
+assert.match(carrierProfileSource, /carrier-profile-stepper/, "Carrier profile should use a guided stepper instead of one long form");
+assert.match(carrierProfileSource, /requiredMissing/, "Carrier profile should validate required fields before submit");
+assert.match(carrierProfileSource, /response_language: currentLanguage/, "Carrier profile submissions should record the response language");
+assert.match(stylesSource, /carrier-profile-stepper/, "Carrier profile stepper should have dedicated UI styling");
+assert.match(stylesSource, /profile-progress-track/, "Carrier profile should show a completion progress bar");
 assert.match(carrierProfileApiSource, /Deno\.serve/, "Carrier profile API should be an Edge Function");
 assert.match(carrierProfileApiSource, /get_profile/, "Carrier profile API should expose token-scoped profile loading");
 assert.match(carrierProfileApiSource, /submit_profile/, "Carrier profile API should expose token-scoped profile submission");
