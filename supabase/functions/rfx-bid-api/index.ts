@@ -86,6 +86,13 @@ function strictPercentNumber(value: unknown, label: string) {
   return numberValue;
 }
 
+function strictCommercialSharePercent(value: unknown, label: string) {
+  const numberValue = strictBidNumber(value, label, { positive: false, required: true });
+  if (numberValue === null) throw new Error(`${label} is required for this commercial structure.`);
+  if (numberValue < 2 || numberValue > 5) throw new Error(`${label} must be between 2% and 5%.`);
+  return numberValue;
+}
+
 function strictCurrencyCode(value: unknown, fallback = "USD") {
   const currency = (cleanText(value) || fallback || "USD").toUpperCase();
   if (!/^[A-Z]{3}$/.test(currency)) throw new Error("Currency must be a 3-letter code like USD, MXN, or CAD.");
@@ -1429,6 +1436,13 @@ Deno.serve(async (request) => {
       if (invitationResult.error) throw invitationResult.error;
       const previousBidRate = cleanNumber(invitationResult.data.bid_rate);
       const revisionType = bestFinal ? "best_final" : previousBidRate !== null ? "revision" : "initial";
+      const commercialModel = normalizeCommercialModel(body.commercial_model) || "direct_cost_plus";
+      const marksmanMarginPct = commercialModel === "direct_cost_plus"
+        ? strictCommercialSharePercent(body.marksman_margin_pct, "Suggested margin to share")
+        : null;
+      const carrierSharePct = commercialModel === "carrier_share"
+        ? strictCommercialSharePercent(body.carrier_share_pct, "Carrier invoice share")
+        : null;
       const revisionLabel = revisionType === "best_final"
         ? "Best and final"
         : revisionType === "revision"
@@ -1441,9 +1455,9 @@ Deno.serve(async (request) => {
         currency: strictCurrencyCode(body.currency),
         weekly_capacity: strictBidNumber(body.weekly_capacity, "Weekly capacity"),
         transit_days: strictBidNumber(body.transit_days, "Transit days"),
-        commercial_model: normalizeCommercialModel(body.commercial_model),
-        marksman_margin_pct: strictPercentNumber(body.marksman_margin_pct, "MARKSMAN margin"),
-        carrier_share_pct: strictPercentNumber(body.carrier_share_pct, "Carrier share"),
+        commercial_model: commercialModel,
+        marksman_margin_pct: marksmanMarginPct,
+        carrier_share_pct: carrierSharePct,
         best_alternative_offered: cleanBoolean(body.best_alternative_offered) === true,
         alternative_equipment: cleanText(body.alternative_equipment),
         alternative_units: strictBidNumber(body.alternative_units, "Alternative units"),

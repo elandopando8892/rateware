@@ -117,10 +117,46 @@ function visibilityLabel(visibility = {}) {
 function commercialModelLabel(value) {
   const labels = {
     direct_cost_plus: "Direct / cost-plus",
-    carrier_share: "Carrier share",
+    carrier_share: "Carrier invoice share",
     xbf_buy_sell: "XBF buy-sell"
   };
   return labels[String(value || "").toLowerCase()] || "Not declared";
+}
+
+function commercialStructureConfig(value) {
+  const model = String(value || "direct_cost_plus").toLowerCase();
+  const configs = {
+    direct_cost_plus: {
+      tone: "Cost-plus",
+      percentageField: "marksman",
+      percentageLabel: "Suggested margin to share %",
+      percentageTooltip: "Optional commercial guidance for MARKSMAN. The carrier shares the suggested margin MARKSMAN may add on top of the carrier all-in cost.",
+      copy: "Use when the carrier is quoting their direct all-in cost and can suggest the MARKSMAN margin to share with the customer."
+    },
+    carrier_share: {
+      tone: "Carrier shares",
+      percentageField: "carrier",
+      percentageLabel: "Carrier invoice share %",
+      percentageTooltip: "Percentage of the customer billing amount the carrier is willing to share from the original quoted amount.",
+      copy: "Use when the carrier wants MARKSMAN to bill the customer and share a percentage of that billing based on the carrier quote."
+    },
+    xbf_buy_sell: {
+      tone: "XBF buy-sell",
+      percentageField: "none",
+      percentageLabel: "",
+      percentageTooltip: "No percentage is requested. XBF controls the customer markup at its discretion.",
+      copy: "Use when the carrier only submits their sell rate to XBF. No margin or share percentage is collected."
+    }
+  };
+  return configs[model] || configs.direct_cost_plus;
+}
+
+function commercialPercentSummary(draft = {}) {
+  const config = commercialStructureConfig(draft.commercial_model);
+  if (config.percentageField === "marksman" && draft.marksman_margin_pct) return `${draft.marksman_margin_pct}% suggested margin`;
+  if (config.percentageField === "carrier" && draft.carrier_share_pct) return `${draft.carrier_share_pct}% invoice share`;
+  if (config.percentageField === "none") return "No percentage applies";
+  return `${config.percentageLabel || "Percentage"} not declared`;
 }
 
 function formatDateTime(value) {
@@ -153,8 +189,9 @@ function availabilitySummary(row = {}) {
 
 function commercialSummary(row = {}) {
   const parts = [commercialModelLabel(row.commercial_model)];
-  if (row.marksman_margin_pct !== null && row.marksman_margin_pct !== undefined) parts.push(`${row.marksman_margin_pct}% MARKSMAN`);
-  if (row.carrier_share_pct !== null && row.carrier_share_pct !== undefined) parts.push(`${row.carrier_share_pct}% share`);
+  const config = commercialStructureConfig(row.commercial_model);
+  if (config.percentageField === "marksman" && row.marksman_margin_pct !== null && row.marksman_margin_pct !== undefined) parts.push(`${row.marksman_margin_pct}% suggested margin`);
+  if (config.percentageField === "carrier" && row.carrier_share_pct !== null && row.carrier_share_pct !== undefined) parts.push(`${row.carrier_share_pct}% invoice share`);
   if (row.best_alternative_offered) {
     parts.push(row.alternative_equipment ? `Alt: ${row.alternative_equipment}` : "Best alternative");
   }
@@ -242,14 +279,16 @@ function validDateTimeValue(value) {
 function collectBidDraft() {
   const bestFinal = card.querySelector("#bid-best-final")?.checked || false;
   const notes = card.querySelector("#bid-notes")?.value || "";
-  return {
+  const commercialModel = card.querySelector("#bid-commercial-model")?.value || "direct_cost_plus";
+  const commercialConfig = commercialStructureConfig(commercialModel);
+  const draft = {
     bid_rate: card.querySelector("#bid-rate")?.value || "",
     currency: card.querySelector("#bid-currency")?.value || "USD",
     weekly_capacity: card.querySelector("#bid-capacity")?.value || "",
     transit_days: card.querySelector("#bid-transit-days")?.value || "",
-    commercial_model: card.querySelector("#bid-commercial-model")?.value || "direct_cost_plus",
-    marksman_margin_pct: card.querySelector("#bid-marksman-margin")?.value || "",
-    carrier_share_pct: card.querySelector("#bid-carrier-share")?.value || "",
+    commercial_model: commercialModel,
+    marksman_margin_pct: commercialConfig.percentageField === "marksman" ? card.querySelector("#bid-marksman-margin")?.value || "" : "",
+    carrier_share_pct: commercialConfig.percentageField === "carrier" ? card.querySelector("#bid-carrier-share")?.value || "" : "",
     best_alternative_offered: card.querySelector("#bid-alt-enabled")?.checked || false,
     alternative_equipment: card.querySelector("#bid-alt-equipment")?.value || "",
     alternative_units: card.querySelector("#bid-alt-units")?.value || "",
@@ -262,6 +301,7 @@ function collectBidDraft() {
     best_final: bestFinal,
     notes: [notes, bestFinal ? "Best and final offer confirmed." : null].filter(Boolean).join(" | ")
   };
+  return draft;
 }
 
 function validateBidDraft(draft) {
@@ -276,18 +316,12 @@ function validateBidDraft(draft) {
   }
 
   if (draft.commercial_model === "direct_cost_plus") {
-    const marginIssue = validatePercentIssue(draft.marksman_margin_pct, "bid-marksman-margin", "MARKSMAN margin %", { required: true, procurementRange: true });
-    if (marginIssue) errors.push(marginIssue);
-  } else {
-    const marginIssue = validatePercentIssue(draft.marksman_margin_pct, "bid-marksman-margin", "MARKSMAN margin %");
+    const marginIssue = validatePercentIssue(draft.marksman_margin_pct, "bid-marksman-margin", "Suggested margin to share %", { required: true, procurementRange: true });
     if (marginIssue) errors.push(marginIssue);
   }
 
   if (draft.commercial_model === "carrier_share") {
-    const shareIssue = validatePercentIssue(draft.carrier_share_pct, "bid-carrier-share", "Carrier share %", { required: true, procurementRange: true });
-    if (shareIssue) errors.push(shareIssue);
-  } else {
-    const shareIssue = validatePercentIssue(draft.carrier_share_pct, "bid-carrier-share", "Carrier share %");
+    const shareIssue = validatePercentIssue(draft.carrier_share_pct, "bid-carrier-share", "Carrier invoice share %", { required: true, procurementRange: true });
     if (shareIssue) errors.push(shareIssue);
   }
 
@@ -311,9 +345,6 @@ function validateBidDraft(draft) {
   }
 
   const warnings = [];
-  if (draft.commercial_model === "xbf_buy_sell" && (draft.marksman_margin_pct || draft.carrier_share_pct)) {
-    warnings.push("XBF buy-sell does not require MARKSMAN margin or carrier share.");
-  }
   if (draft.best_alternative_offered && !draft.alternative_notes.trim()) {
     warnings.push("Alternative notes help procurement understand assumptions and restrictions.");
   }
@@ -354,7 +385,7 @@ function bidReviewSummaryHtml(draft) {
   return `
     <div class="bid-review-summary-grid">
       <article><span>Primary offer</span><strong>${escapeHtml(formatMoney(draft.bid_rate, draft.currency))}</strong><small>${escapeHtml(draft.weekly_capacity || "-")} / wk | ${escapeHtml(draft.transit_days || "-")} day(s)</small></article>
-      <article><span>Commercial model</span><strong>${escapeHtml(commercialModelLabel(draft.commercial_model))}</strong><small>${escapeHtml([draft.marksman_margin_pct ? `${draft.marksman_margin_pct}% MARKSMAN` : "", draft.carrier_share_pct ? `${draft.carrier_share_pct}% share` : ""].filter(Boolean).join(" | ") || "Margin/share not declared")}</small></article>
+      <article><span>Commercial model</span><strong>${escapeHtml(commercialModelLabel(draft.commercial_model))}</strong><small>${escapeHtml(commercialPercentSummary(draft))}</small></article>
       <article><span>Alternative</span><strong>${escapeHtml(alternative)}</strong><small>${escapeHtml(draft.alternative_notes || "No alternative notes")}</small></article>
       <article><span>Capacity</span><strong>${escapeHtml(availability)}</strong><small>${escapeHtml(draft.mirror_account_enabled ? "Mirror account requested" : draft.unit_details || "No unit details")}</small></article>
     </div>
@@ -370,6 +401,36 @@ function updateBidReviewSummary() {
   const summary = card.querySelector("#bid-review-summary");
   if (!summary) return;
   summary.innerHTML = bidReviewSummaryHtml(collectBidDraft());
+}
+
+function syncCommercialStructureFields({ clearInapplicable = false } = {}) {
+  const model = card.querySelector("#bid-commercial-model")?.value || "direct_cost_plus";
+  const config = commercialStructureConfig(model);
+  const marksmanGroup = card.querySelector("[data-commercial-field='marksman']");
+  const carrierGroup = card.querySelector("[data-commercial-field='carrier']");
+  const marksmanInput = card.querySelector("#bid-marksman-margin");
+  const carrierInput = card.querySelector("#bid-carrier-share");
+  const helper = card.querySelector("#bid-commercial-helper");
+  const activePercent = card.querySelector("#bid-commercial-active-percent");
+
+  marksmanGroup?.classList.toggle("hidden", config.percentageField !== "marksman");
+  carrierGroup?.classList.toggle("hidden", config.percentageField !== "carrier");
+  if (marksmanInput) marksmanInput.disabled = config.percentageField !== "marksman";
+  if (carrierInput) carrierInput.disabled = config.percentageField !== "carrier";
+  if (clearInapplicable) {
+    if (config.percentageField !== "marksman" && marksmanInput) marksmanInput.value = "";
+    if (config.percentageField !== "carrier" && carrierInput) carrierInput.value = "";
+  }
+  if (helper) {
+    helper.innerHTML = `
+      <strong>${escapeHtml(config.tone)}</strong>
+      <span>${escapeHtml(config.copy)}</span>
+      <button type="button" class="tooltip-icon" aria-label="${escapeHtml(config.percentageTooltip)}" title="${escapeHtml(config.percentageTooltip)}">?</button>
+    `;
+  }
+  if (activePercent) {
+    activePercent.textContent = config.percentageField === "none" ? "No percentage required" : config.percentageLabel;
+  }
 }
 
 function signalTone(signal = "") {
@@ -556,18 +617,16 @@ function renderBidHistory(rows = []) {
 
 function carrierChatLabel(threadType = "") {
   const labels = {
-    event_group: "Event room",
-    lane_group: "This lane",
-    carrier_private: "Private with procurement"
+    event_group: "Event group"
   };
-  return labels[threadType] || "Chat";
+  return labels[threadType] || "Event group";
 }
 
 function renderCarrierChat(chat = lastCarrierChat) {
   lastCarrierChat = chat || { rows: [], google_chat_configured: false };
   const panel = card.querySelector("#carrier-bid-chat");
   if (!panel) return;
-  const rows = Array.isArray(lastCarrierChat.rows) ? lastCarrierChat.rows : [];
+  const rows = (Array.isArray(lastCarrierChat.rows) ? lastCarrierChat.rows : []).filter((thread) => (thread.thread_type || "event_group") === "event_group");
   const inboundStatus = lastCarrierChat.google_chat_inbound?.status || "";
   const chatSyncLabel = inboundStatus === "needs_reconnect"
     ? "Reconnect Google Chat"
@@ -583,18 +642,12 @@ function renderCarrierChat(chat = lastCarrierChat) {
     <div class="bid-room-section-heading">
       <div>
         <p class="eyebrow">Bid Room Chat</p>
-        <h3>Ask questions and coordinate live capacity</h3>
+        <h3>Event group discussion</h3>
       </div>
       <span class="status-pill ${chatSyncTone}">${escapeHtml(chatSyncLabel)}</span>
     </div>
     ${inboundStatus === "needs_reconnect" ? `<p class="status-message warning">Google Chat can send outbound mirror messages, but Settings must be reconnected once before Rateware can import replies typed in Google Chat.</p>` : ""}
-    <div class="carrier-chat-tabs">
-      ${[
-        ["carrier_private", "Private"],
-        ["lane_group", "Lane"],
-        ["event_group", "Event"]
-      ].map(([value, label]) => `<button type="button" class="secondary small-button" data-carrier-chat-scope="${value}">${label}</button>`).join("")}
-    </div>
+    <p class="bid-room-chat-scope-note">One shared event thread keeps questions, clarifications, and live capacity updates in the same place.</p>
     <div class="carrier-chat-thread-list">
       ${rows.length ? rows.map((thread) => {
         const messages = Array.isArray(thread.messages) ? thread.messages : [];
@@ -621,17 +674,13 @@ function renderCarrierChat(chat = lastCarrierChat) {
       }).join("") : `
         <div class="bid-room-empty">
           <strong>No chat messages yet.</strong>
-          <span>Start a private thread with procurement or ask a lane-level question.</span>
+          <span>Send the first event group message to procurement.</span>
         </div>
       `}
     </div>
     <form id="carrier-chat-form" class="bid-room-chat-form">
-      <select id="carrier-chat-scope">
-        <option value="carrier_private">Private with procurement</option>
-        <option value="lane_group">This lane group</option>
-        <option value="event_group">Event group</option>
-      </select>
-      <textarea id="carrier-chat-message" rows="2" placeholder="Write a message..."></textarea>
+      <input id="carrier-chat-scope" type="hidden" value="event_group" />
+      <textarea id="carrier-chat-message" rows="2" placeholder="Write an event group message..."></textarea>
       <button type="submit">Send</button>
     </form>
     <p id="carrier-chat-status" class="status-message" role="status"></p>
@@ -1035,25 +1084,28 @@ function renderInvitation(invitation, liveBoard = {}) {
       <section class="guided-bid-section full-width" data-bid-section="commercial">
         <div class="bid-form-section-title">
           <strong>Commercial structure</strong>
-          <span>Choose how MARKSMAN/XBF should treat your offer.</span>
+          <span id="bid-commercial-active-percent">Suggested margin to share %</span>
         </div>
+        <div id="bid-commercial-helper" class="commercial-structure-helper"></div>
         <div class="guided-bid-fields">
           <label>
             Commercial model
             <select id="bid-commercial-model">
               ${[
                 ["direct_cost_plus", "Direct carrier / cost-plus"],
-                ["carrier_share", "Carrier shares 2-5%"],
+                ["carrier_share", "Carrier shares billing %"],
                 ["xbf_buy_sell", "XBF buy-sell"]
               ].map(([value, label]) => `<option value="${value}" ${value === (invitation.commercial_model || "direct_cost_plus") ? "selected" : ""}>${label}</option>`).join("")}
             </select>
           </label>
-          <label>
-            MARKSMAN margin %
+          <label data-commercial-field="marksman">
+            Suggested margin to share %
+            <span class="field-help" title="Recommended MARKSMAN margin over your all-in cost. This is not a carrier invoice share.">?</span>
             <input id="bid-marksman-margin" inputmode="decimal" value="${escapeHtml(invitation.marksman_margin_pct ?? "")}" placeholder="2-5" />
           </label>
-          <label>
-            Carrier share %
+          <label data-commercial-field="carrier">
+            Carrier invoice share %
+            <span class="field-help" title="Percent of customer billing the carrier is willing to share based on the original quote. This does not apply to cost-plus.">?</span>
             <input id="bid-carrier-share" inputmode="decimal" value="${escapeHtml(invitation.carrier_share_pct ?? "")}" placeholder="2-5" />
           </label>
         </div>
@@ -1178,6 +1230,7 @@ function renderInvitation(invitation, liveBoard = {}) {
     }
   });
   renderLiveBoard(liveBoard);
+  syncCommercialStructureFields();
   updateBidReviewSummary();
 }
 
@@ -1222,7 +1275,7 @@ card.addEventListener("click", async (event) => {
   const scopeButton = event.target.closest("[data-carrier-chat-scope]");
   if (scopeButton) {
     const select = card.querySelector("#carrier-chat-scope");
-    if (select) select.value = scopeButton.dataset.carrierChatScope || "carrier_private";
+    if (select) select.value = "event_group";
     card.querySelector("#carrier-chat-message")?.focus();
     return;
   }
@@ -1270,7 +1323,6 @@ card.addEventListener("submit", async (event) => {
   event.preventDefault();
   const status = card.querySelector("#carrier-chat-status");
   const message = card.querySelector("#carrier-chat-message");
-  const scope = card.querySelector("#carrier-chat-scope");
   const body = String(message?.value || "").trim();
   if (!body) {
     if (status) {
@@ -1286,7 +1338,7 @@ card.addEventListener("submit", async (event) => {
   }
   try {
     const result = await callBidApi("post_bid_room_chat_message", {
-      thread_type: scope?.value || "carrier_private",
+      thread_type: "event_group",
       body
     });
     if (message) message.value = "";
@@ -1323,6 +1375,9 @@ card.addEventListener("input", (event) => {
 
 card.addEventListener("change", (event) => {
   if (event.target.closest("#bid-form")) {
+    if (event.target.closest("#bid-commercial-model")) {
+      syncCommercialStructureFields({ clearInapplicable: true });
+    }
     clearBidValidationState();
     updateBidReviewSummary();
   }

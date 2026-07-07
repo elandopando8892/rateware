@@ -280,6 +280,7 @@ const RFX_CARRIER_TEMPLATE_COLUMNS = [
   { key: "tags", label: "Tags", example: "flatbed; cross-border" },
   { key: "notes", label: "Notes", example: "Target invite wave 1" }
 ];
+const BID_ROOM_EVENT_THREAD_TYPE = "event_group";
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -3179,9 +3180,11 @@ function chatThreadPriority(thread = {}) {
   if (threadIsUnread(thread)) return 0;
   if (threadNeedsReply(thread)) return 0;
   if (threadIsResolved(thread)) return 5;
-  if (thread.thread_type === "carrier_private") return 1;
-  if (thread.thread_type === "lane_group") return 2;
   return 3;
+}
+
+function eventGroupChatThreads(rows = []) {
+  return rows.filter((thread) => (thread.thread_type || BID_ROOM_EVENT_THREAD_TYPE) === BID_ROOM_EVENT_THREAD_TYPE);
 }
 
 function sortedChatThreads(rows = []) {
@@ -3195,7 +3198,6 @@ function sortedChatThreads(rows = []) {
 function chatThreadMatchesFilter(thread = {}) {
   if (bidRoomChatFilter === "needs_reply") return threadNeedsReply(thread);
   if (bidRoomChatFilter === "carrier") return threadHasCarrierMessage(thread);
-  if (bidRoomChatFilter === "private") return thread.thread_type === "carrier_private";
   if (bidRoomChatFilter === "google") return threadHasGoogleChatActivity(thread);
   if (bidRoomChatFilter === "unread") return threadIsUnread(thread);
   if (bidRoomChatFilter === "signals") return analyzeCommunicationThread(thread).has_signals;
@@ -3232,11 +3234,11 @@ function chatOpsSummary(rows = []) {
   const stats = chatStats(rows);
   const inbound = bidRoomChatThreads.google_chat_inbound || {};
   if (!selectedEventId) return "Select a bid event to load the communication queue.";
-  if (!rows.length) return "No communication threads yet. Start the event thread, then use lane or private carrier threads as questions come in.";
+  if (!rows.length) return "No event group messages yet. Start the event thread so all Bid Room communication stays in one shared place.";
   if (inbound.status === "needs_reconnect") return "Google Chat is linked for outbound messages, but inbound replies require reconnecting Google Chat in Settings.";
   if (stats.syncErrors) return `${stats.syncErrors} Google Chat message(s) need retry. Refresh or use Settings > Retry Chat sync.`;
   if (stats.unread) return `${stats.unread} unread thread(s). Review new activity before awarding or sending follow-up invitations.`;
-  if (stats.needsReply) return `${stats.needsReply} thread(s) need a procurement reply. Start with carrier-private threads before lane or event announcements.`;
+  if (stats.needsReply) return `${stats.needsReply} event thread(s) need a procurement reply.`;
   if (stats.signalThreads) return `${stats.signalThreads} thread(s) have detected commercial signals. Review price, capacity, ETA, and risk before awarding.`;
   if (stats.carrierMessages) return `${stats.carrierMessages} carrier message(s) captured. No open reply blocker detected.`;
   return "Communication queue is clean. Keep the event thread synced and monitor new carrier replies.";
@@ -3262,27 +3264,14 @@ function chatSummaryText(rows = []) {
 }
 
 function renderBidRoomChatControls() {
-  const threadType = rfxChatThreadType?.value || "event_group";
-  if (rfxChatLane) {
-    rfxChatLane.innerHTML = currentLanes.length
-      ? currentLanes.map((lane) => `<option value="${escapeHtml(lane.id)}">#${escapeHtml(lane.lane_number || "")} ${escapeHtml(laneRoute(lane))}</option>`).join("")
-      : '<option value="">No lanes</option>';
-    rfxChatLane.disabled = threadType !== "lane_group" || !currentLanes.length;
-  }
-  if (rfxChatVendor) {
-    const vendors = chatVendorOptions();
-    rfxChatVendor.innerHTML = vendors.length
-      ? vendors.map((vendor) => `<option value="${escapeHtml(vendor.id)}">${escapeHtml(vendor.label)}</option>`).join("")
-      : '<option value="">No carriers</option>';
-    rfxChatVendor.disabled = threadType !== "carrier_private" || !vendors.length;
-  }
+  if (rfxChatThreadType) rfxChatThreadType.value = BID_ROOM_EVENT_THREAD_TYPE;
   if (rfxChatSend) rfxChatSend.disabled = !selectedEventId;
   if (rfxChatStartEventThread) rfxChatStartEventThread.disabled = !selectedEventId;
 }
 
 function renderBidRoomChat() {
   renderBidRoomChatControls();
-  const rows = Array.isArray(bidRoomChatThreads.rows) ? bidRoomChatThreads.rows : [];
+  const rows = eventGroupChatThreads(Array.isArray(bidRoomChatThreads.rows) ? bidRoomChatThreads.rows : []);
   const stats = chatStats(rows);
   if (rfxChatSyncStatus) {
     const inboundStatus = bidRoomChatThreads.google_chat_inbound?.status || "";
@@ -3332,7 +3321,7 @@ function renderBidRoomChat() {
     rfxChatThreadList.innerHTML = `
       <div class="bid-room-empty">
         <strong>${rows.length ? "No threads match this filter." : "No chat messages yet."}</strong>
-        <span>${rows.length ? "Change the inbox filter or refresh Google Chat sync." : "Start an event group, lane group, or private carrier thread."}</span>
+        <span>${rows.length ? "Change the inbox filter or refresh Google Chat sync." : "Start the event group thread to keep communication in one place."}</span>
       </div>
     `;
     return;
@@ -5754,10 +5743,8 @@ async function handleBidRoomChatThreadAction(event) {
   const currentThread = (bidRoomChatThreads.rows || []).find((thread) => String(thread.id) === String(threadId));
   if (!currentThread) return;
   if (action === "suggest_reply") {
-    if (rfxChatThreadType) rfxChatThreadType.value = currentThread.thread_type || "event_group";
+    if (rfxChatThreadType) rfxChatThreadType.value = BID_ROOM_EVENT_THREAD_TYPE;
     renderBidRoomChatControls();
-    if (currentThread.rfx_lane_id && rfxChatLane) rfxChatLane.value = currentThread.rfx_lane_id;
-    if (currentThread.vendor_id && rfxChatVendor) rfxChatVendor.value = currentThread.vendor_id;
     if (rfxChatMessage) {
       rfxChatMessage.value = suggestedReplyForThread(currentThread);
       rfxChatMessage.focus();
@@ -5795,7 +5782,7 @@ async function handleBidRoomChatThreadAction(event) {
 rfxChatThreadList?.addEventListener("click", handleBidRoomChatThreadAction);
 rfxChatSignalQueue?.addEventListener("click", handleBidRoomChatThreadAction);
 rfxChatCopySummary?.addEventListener("click", async () => {
-  const rows = Array.isArray(bidRoomChatThreads.rows) ? bidRoomChatThreads.rows : [];
+  const rows = eventGroupChatThreads(Array.isArray(bidRoomChatThreads.rows) ? bidRoomChatThreads.rows : []);
   try {
     await navigator.clipboard.writeText(chatSummaryText(rows));
     setStatus(rfxChatStatus, "Communication summary copied.", "success");
@@ -5889,21 +5876,10 @@ rfxChatForm?.addEventListener("submit", async (event) => {
     rfxChatMessage?.focus();
     return;
   }
-  const threadType = rfxChatThreadType?.value || "event_group";
   const payload = {
-    thread_type: threadType,
+    thread_type: BID_ROOM_EVENT_THREAD_TYPE,
     body
   };
-  if (threadType === "lane_group") payload.rfx_lane_id = rfxChatLane?.value || focusedLaneId;
-  if (threadType === "carrier_private") payload.vendor_id = rfxChatVendor?.value;
-  if (threadType === "carrier_private" && !payload.vendor_id) {
-    setStatus(rfxChatStatus, "Choose a carrier for private chat.", "error");
-    return;
-  }
-  if (threadType === "lane_group" && !payload.rfx_lane_id) {
-    setStatus(rfxChatStatus, "Choose a lane for lane group chat.", "error");
-    return;
-  }
   if (rfxChatSend) rfxChatSend.disabled = true;
   setStatus(rfxChatStatus, "Sending message...");
   try {

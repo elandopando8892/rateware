@@ -1950,6 +1950,48 @@ a {
   grid-column: 1 / -1;
 }
 
+.commercial-structure-helper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--soft-panel);
+  padding: 7px 9px;
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.commercial-structure-helper strong {
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.commercial-structure-helper span {
+  flex: 1;
+  min-width: 0;
+}
+
+.tooltip-icon,
+.field-help {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border: 1px solid var(--line-strong);
+  border-radius: 50%;
+  background: #ffffff;
+  color: var(--muted);
+  font-size: 0.65rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.field-help {
+  margin-left: 4px;
+}
+
 .bid-form-section-title {
   display: flex;
   align-items: center;
@@ -1986,6 +2028,17 @@ a {
 .bid-checkbox-label input {
   width: 14px;
   height: 14px;
+}
+
+.bid-room-chat-scope-note {
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--soft-panel);
+  padding: 7px 9px;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 720;
 }
 
 .bid-review-summary {
