@@ -189,6 +189,8 @@ assert.match(bidRoomBoardSource, /speechSynthesis/, "Public Bid Room board shoul
 assert.match(rfxBidApiSource, /body\.action === "public_bid_room_board"[\s\S]*const token = cleanText\(body\.token\)/, "Public Bid Room board action should be handled before invitation token validation");
 const publicBidBoardApiSource = rfxBidApiSource.slice(rfxBidApiSource.indexOf("async function publicBidRoomBoard"), rfxBidApiSource.indexOf("Deno.serve"));
 assert.match(publicBidBoardApiSource, /eventId[\s\S]*eventsQuery\.eq\("id", eventId\)/, "Public Bid Room board API should support event-specific filtering");
+assert.match(publicBidBoardApiSource, /\["draft", "open", "closed", "awarded"\]/, "Public Bid Room marketplace should include draft/setup opportunities loaded into Bid Room");
+assert.match(rfxBidApiSource, /if \(status === "draft"\) return "live"/, "Draft Bid Room opportunities should appear as live marketplace opportunities");
 assert.match(publicBidBoardApiSource, /carrier_identity_visible: false/, "Public Bid Room board should hide carrier identity");
 assert.doesNotMatch(publicBidBoardApiSource, /vendors\(/, "Public Bid Room board should not join carrier vendor records");
 assert.doesNotMatch(publicBidBoardApiSource, /invitation_token/, "Public Bid Room board should not expose invitation tokens");

@@ -1170,6 +1170,7 @@ function publicBidBoardState(event: Record<string, unknown>) {
   const due = dueState(event.due_date);
   if (status === "awarded") return "awarded";
   if (status === "closed") return "expired";
+  if (status === "draft") return "live";
   if (status === "open" && due.status === "closed") return "expired";
   if (status === "open" && due.status === "closing") return "closing";
   if (status === "open") return "live";
@@ -1243,7 +1244,7 @@ async function publicBidRoomBoard(supabase: ReturnType<typeof createClient>, inp
   let eventsQuery = supabase
     .from("rfx_events")
     .select("id,rfx_id,name,customer,event_type,status,due_date,bid_visibility_mode,created_at,updated_at")
-    .in("status", ["open", "closed", "awarded"]);
+    .in("status", ["draft", "open", "closed", "awarded"]);
   eventsQuery = eventId
     ? eventsQuery.eq("id", eventId).limit(1)
     : eventsQuery.order("updated_at", { ascending: false }).limit(eventLimit);
