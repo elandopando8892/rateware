@@ -1550,13 +1550,35 @@ function syncBidFormMode() {
   if (submitButton) submitButton.textContent = editing ? t("updateOffer") : t("submitPrimary");
 }
 
+function openBidEditor(options = {}) {
+  const modal = card.querySelector("#bid-editor-modal");
+  if (!modal) return;
+  modal.hidden = false;
+  document.body.classList.add("bid-editor-open");
+  const section = options.section
+    ? card.querySelector(`[data-bid-section="${CSS.escape(options.section)}"]`)
+    : null;
+  const focusTarget = options.focusSelector
+    ? card.querySelector(options.focusSelector)
+    : section?.querySelector("input, select, textarea, button") || card.querySelector("#bid-rate");
+  window.setTimeout(() => {
+    section?.scrollIntoView({ behavior: "smooth", block: "start" });
+    focusTarget?.focus({ preventScroll: true });
+  }, 80);
+}
+
+function closeBidEditor() {
+  const modal = card.querySelector("#bid-editor-modal");
+  if (!modal) return;
+  modal.hidden = true;
+  document.body.classList.remove("bid-editor-open");
+}
+
 function focusCurrentOfferEditor() {
   const offer = currentSubmittedOffer();
   hydrateBidFormFromOffer(offer, lastInvitation || {});
-  const form = card.querySelector("#bid-form");
   const status = card.querySelector("#bid-submit-status");
-  form?.scrollIntoView({ behavior: "smooth", block: "start" });
-  window.setTimeout(() => card.querySelector("#bid-rate")?.focus(), 220);
+  openBidEditor({ section: "primary", focusSelector: "#bid-rate" });
   if (status) {
     status.textContent = dualText(
       "Update the fields you need, confirm terms, then save this revised offer.",
@@ -2457,13 +2479,31 @@ function renderInvitation(invitation, liveBoard = {}, carrierBook = {}) {
       <p class="status-message">${escapeHtml(t("loadingChat"))}</p>
     </section>
 
+    <section class="bid-offer-launcher">
+      <div>
+        <p class="eyebrow">${escapeHtml(t("submitOrUpdate"))}</p>
+        <h3>${escapeHtml(dualText("Advanced offer editor", "Editor avanzado de oferta"))}</h3>
+        <p>${escapeHtml(dualText(
+          "Use the row grid for quick updates. Open this editor for alternatives, ETA, unit details, notes and best-final confirmation.",
+          "Usa la grilla para cambios rapidos. Abre este editor para alternativas, ETA, datos de unidad, notas y confirmacion best-final."
+        ))}</p>
+      </div>
+      <button type="button" data-open-bid-editor>${escapeHtml(dualText("Open offer editor", "Abrir editor de oferta"))}</button>
+    </section>
+
+    <div id="bid-editor-modal" class="bid-editor-modal" hidden>
+      <button class="bid-editor-scrim" type="button" data-close-bid-editor aria-label="Close offer editor"></button>
+      <div class="bid-editor-panel" role="dialog" aria-modal="true" aria-labelledby="bid-editor-title">
     <form id="bid-form" class="bid-form">
       <div class="bid-form-header">
         <div>
           <p class="eyebrow">${escapeHtml(t("submitOrUpdate"))}</p>
-          <h3>${escapeHtml(t("guidedBidFlow"))}</h3>
+          <h3 id="bid-editor-title">${escapeHtml(t("guidedBidFlow"))}</h3>
         </div>
-        <span class="status-pill muted" data-bid-form-mode>${escapeHtml(t("primaryAlt"))}</span>
+        <div class="bid-form-header-actions">
+          <span class="status-pill muted" data-bid-form-mode>${escapeHtml(t("primaryAlt"))}</span>
+          <button type="button" class="secondary small-button" data-close-bid-editor>${escapeHtml(dualText("Close", "Cerrar"))}</button>
+        </div>
       </div>
       <div class="carrier-bid-workflow full-width" aria-label="Bid steps">
         <button type="button" data-bid-section-target="primary">${escapeHtml(t("submitPrimary"))}</button>
@@ -2607,6 +2647,8 @@ function renderInvitation(invitation, liveBoard = {}, carrierBook = {}) {
       </section>
       <p id="bid-submit-status" class="status-message" role="status"></p>
     </form>
+      </div>
+    </div>
 
     <section id="carrier-business-book" class="carrier-business-book">
       <p class="status-message">Loading private business book...</p>
@@ -2717,6 +2759,19 @@ card.addEventListener("click", async (event) => {
   const editCurrentOfferButton = event.target.closest("[data-edit-current-offer]");
   if (editCurrentOfferButton) {
     focusCurrentOfferEditor();
+    return;
+  }
+
+  const openBidEditorButton = event.target.closest("[data-open-bid-editor]");
+  if (openBidEditorButton) {
+    hydrateBidFormFromOffer(currentSubmittedOffer(), lastInvitation || {});
+    openBidEditor({ section: "primary", focusSelector: "#bid-rate" });
+    return;
+  }
+
+  const closeBidEditorButton = event.target.closest("[data-close-bid-editor]");
+  if (closeBidEditorButton) {
+    closeBidEditor();
     return;
   }
 
@@ -2917,6 +2972,12 @@ card.addEventListener("change", async (event) => {
       if (disabled) pct.value = "";
       pct.placeholder = disabled ? "-" : "2-5";
     }
+  }
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !card.querySelector("#bid-editor-modal")?.hidden) {
+    closeBidEditor();
   }
 });
 

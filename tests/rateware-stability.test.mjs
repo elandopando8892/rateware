@@ -544,6 +544,9 @@ assert.match(rfxBidSource, /carrier-bid-history/, "Carrier portal should include
 assert.match(rfxBidSource, /data-edit-current-offer/, "Carrier portal should let carriers edit their submitted live offer row");
 assert.match(rfxBidSource, /function hydrateBidFormFromOffer/, "Carrier portal should preload the bid form from the current submitted offer");
 assert.match(rfxBidSource, /data-bid-submit-button/, "Carrier portal should relabel submit as update when a published offer exists");
+assert.match(rfxBidSource, /bid-editor-modal/, "Carrier portal should render the advanced offer editor as a modal");
+assert.match(rfxBidSource, /data-open-bid-editor/, "Carrier portal should open the advanced offer editor from a compact launcher");
+assert.match(rfxBidSource, /data-close-bid-editor/, "Carrier portal should close the advanced offer editor without page navigation");
 assert.match(rfxBidApiSource, /revisionType = bestFinal \? "best_final" : previousBidRate !== null \? "revision" : "initial"/, "Carrier portal API should classify repeated submitted bids as revisions");
 assert.match(rfxBidSource, /carrier-quick-bid-grid/, "Carrier portal should render an inline editable lane bid grid");
 assert.match(rfxBidSource, /data-save-quick-bid/, "Carrier portal should save or update bids directly from each lane row");
@@ -551,6 +554,8 @@ assert.match(rfxBidSource, /function saveQuickBidRow/, "Carrier portal should su
 assert.match(rfxBidSource, /callBidApi\("submit_bid", \{ token: rowToken, \.\.\.draft \}\)/, "Carrier quick bid grid should submit the selected row token instead of forcing lane navigation");
 assert.match(rfxBidApiSource, /notes: cleanText\(row\.notes\)/, "Carrier business book API should expose notes so quick row edits can preserve existing bid notes");
 assert.match(stylesSource, /carrier-bid-workflow/, "Carrier portal guided bid flow should have compact navigation styling");
+assert.match(stylesSource, /bid-offer-launcher/, "Carrier portal should keep the advanced bid editor launcher compact");
+assert.match(stylesSource, /bid-editor-panel/, "Carrier portal should style the advanced offer editor as a focused popup panel");
 assert.match(stylesSource, /bid-review-summary-grid/, "Carrier portal review summary should have card styling");
 assert.match(stylesSource, /private-bid-alert-panel/, "Carrier portal multimedia alerts should have compact panel styling");
 assert.match(stylesSource, /bid-form \[aria-invalid="true"\]/, "Carrier portal should highlight invalid bid fields inline");

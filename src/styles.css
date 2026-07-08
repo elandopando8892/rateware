@@ -2493,6 +2493,81 @@ a {
   box-shadow: inset 3px 0 0 var(--accent);
 }
 
+.bid-offer-launcher {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #ffffff;
+  padding: 10px 12px;
+}
+
+.bid-offer-launcher h3,
+.bid-offer-launcher p {
+  margin: 0;
+}
+
+.bid-offer-launcher p:not(.eyebrow) {
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.bid-offer-launcher button {
+  min-width: max-content;
+}
+
+.bid-editor-modal[hidden] {
+  display: none;
+}
+
+.bid-editor-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+}
+
+.bid-editor-scrim {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: rgba(16, 27, 38, 0.48);
+  cursor: default;
+}
+
+.bid-editor-panel {
+  position: relative;
+  width: min(1040px, calc(100vw - 32px));
+  max-height: calc(100vh - 40px);
+  overflow: auto;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 22px 64px rgba(16, 27, 38, 0.28);
+}
+
+.bid-editor-panel .bid-form {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.bid-form-header-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+body.bid-editor-open {
+  overflow: hidden;
+}
+
 .bid-form-header {
   grid-column: 1 / -1;
   display: flex;
@@ -3561,6 +3636,26 @@ a {
 
   .bid-book-toolbar {
     align-items: stretch;
+    flex-direction: column;
+  }
+
+  .bid-offer-launcher {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .bid-editor-modal {
+    align-items: stretch;
+    padding: 10px;
+  }
+
+  .bid-editor-panel {
+    width: 100%;
+    max-height: calc(100vh - 20px);
+  }
+
+  .bid-form-header-actions {
+    align-items: flex-end;
     flex-direction: column;
   }
 
