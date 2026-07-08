@@ -335,6 +335,10 @@ assert.match(rfxEventsSource, /function renderEditableLaneRow/, "Bid Room Step 2
 assert.match(rfxEventsSource, /function saveRfxLaneEdits/, "Bid Room Step 2 should save loaded lane edits");
 assert.match(rfxEventsSource, /function renderSupplyDepthCell/, "Bid Room Step 2 should render supply depth by lane");
 assert.match(rfxEventsSource, /rfx-supply-meter/, "Bid Room Step 2 should show a thermometer-style supply signal");
+assert.match(rfxEventsSource, /Typical range/, "Bid Room supply depth should use plain operational rate-range language");
+assert.match(rfxEventsSource, /Align history to/, "Bid Room supply depth should explain currency mismatch without showing false converted rates");
+assert.doesNotMatch(rfxEventsSource, /P50 \$/, "Bid Room supply depth should not expose percentile labels in the UI");
+assert.doesNotMatch(rfxEventsSource, /P75 \$/, "Bid Room supply depth should not expose percentile labels in the UI");
 assert.match(rfxEventsSource, /function insertClipboardHtmlIntoTextarea/, "Bid Room lane detail editors should accept pasted HTML source");
 assert.match(rfxEventsSource, /getData\("text\/html"\)/, "Bid Room lane detail paste should prefer clipboard HTML when available");
 assert.match(rfxEventsSource, /manualLanesBody\?\.addEventListener\("paste"/, "Manual lane detail editor should support pasted HTML");

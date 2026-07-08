@@ -468,7 +468,9 @@ function supplyDepthTone(score) {
   return "muted";
 }
 
-function supplyDepthLabel(score) {
+function supplyDepthLabel(score, reason = "") {
+  if (reason === "currency_mismatch") return "Price not comparable";
+  if (reason === "target_not_set") return "Set target";
   const value = Number(score);
   if (!Number.isFinite(value)) return "No signal";
   if (value >= 75) return "High likelihood";
@@ -491,26 +493,28 @@ function renderSupplyDepthCell(lane) {
   }
   const score = Math.max(0, Math.min(100, Number(depth.likelihood_score || 0)));
   const probability = Number(depth.target_probability);
+  const reason = String(depth.target_probability_reason || "");
+  const comparableCurrency = reason === "comparable";
   const probabilityLabel = Number.isFinite(probability)
-    ? `${formatNumber(probability)}% at target`
-    : depth.target_probability_reason === "currency_mismatch"
-      ? `Target ${depth.target_currency || lane.currency || "-"} vs history ${depth.currency || "-"}`
-      : "Target not set";
-  const percentileLine = [
-    depth.p50_rate ? `P50 ${formatMoney(depth.p50_rate, depth.currency)}` : "",
-    depth.p75_rate ? `P75 ${formatMoney(depth.p75_rate, depth.currency)}` : ""
-  ].filter(Boolean).join(" | ");
+    ? `${formatNumber(probability)}% likely at buy target`
+    : reason === "currency_mismatch"
+      ? `Align history to ${depth.target_currency || lane.currency || "lane currency"}`
+      : "Add target buy rate";
+  const typicalRange = comparableCurrency && depth.p50_rate && depth.p75_rate
+    ? `Typical range ${formatMoney(depth.p50_rate, depth.currency)} - ${formatMoney(depth.p75_rate, depth.currency)}`
+    : "";
+  const tone = comparableCurrency ? supplyDepthTone(score) : "muted";
   return `
-    <div class="rfx-supply-depth-cell" data-tone="${escapeHtml(supplyDepthTone(score))}">
+    <div class="rfx-supply-depth-cell" data-tone="${escapeHtml(tone)}">
       <div class="rfx-supply-depth-head">
         <strong>${formatNumber(carrierCount)} carrier${carrierCount === 1 ? "" : "s"}</strong>
-        <span>${escapeHtml(supplyDepthLabel(score))}</span>
+        <span>${escapeHtml(supplyDepthLabel(score, reason))}</span>
       </div>
       <div class="rfx-supply-meter" aria-label="${escapeHtml(`${formatNumber(score)} percent supply likelihood`)}">
-        <i style="width: ${escapeHtml(String(score))}%"></i>
+        <i style="width: ${escapeHtml(String(comparableCurrency ? score : 0))}%"></i>
       </div>
       <small>${formatNumber(quoteCount)} quote${quoteCount === 1 ? "" : "s"} | ${escapeHtml(probabilityLabel)}</small>
-      ${percentileLine ? `<small>${escapeHtml(percentileLine)}</small>` : ""}
+      ${typicalRange ? `<small>${escapeHtml(typicalRange)}</small>` : ""}
     </div>
   `;
 }
