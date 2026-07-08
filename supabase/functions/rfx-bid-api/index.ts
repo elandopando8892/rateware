@@ -10,6 +10,8 @@ const GMAIL_ALLOWED_SENDER = (Deno.env.get("GMAIL_ALLOWED_SENDER") || "sales@hey
 const RATEWARE_APP_URL = (Deno.env.get("RATEWARE_APP_URL") || Deno.env.get("RATEWARE_PUBLIC_APP_URL") || "https://rateware.vercel.app").trim();
 const GOOGLE_CHAT_ALLOWED_ACCOUNT = (Deno.env.get("GOOGLE_CHAT_ALLOWED_ACCOUNT") || GMAIL_ALLOWED_SENDER).trim().toLowerCase();
 const GOOGLE_CHAT_WEBHOOK_URL = Deno.env.get("GOOGLE_CHAT_WEBHOOK_URL");
+const OPENAI_MODEL = Deno.env.get("OPENAI_MODEL");
+const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
 const GENERIC_EMAIL_DOMAINS = new Set([
   "gmail.com",
   "hotmail.com",
@@ -2051,6 +2053,161 @@ function supportContextScope(input: { token?: string | null; lane?: Record<strin
   return pieces.filter(Boolean).join(" | ");
 }
 
+function supportLanePayload(lane: Record<string, unknown>, language: string, index = 0) {
+  return {
+    lane_label: supportLaneSummary(lane, language, index),
+    lane_number: cleanText(lane.lane_number),
+    origin: cleanText(lane.origin || lane.origin_city),
+    destination: cleanText(lane.destination || lane.destination_city),
+    origin_market: cleanText(lane.origin_market),
+    destination_market: cleanText(lane.destination_market),
+    origin_region: cleanText(lane.origin_region),
+    destination_region: cleanText(lane.destination_region),
+    equipment: cleanText(lane.equipment),
+    trailer: cleanText(lane.trailer),
+    config: cleanText(lane.config),
+    operation: cleanText(lane.operation),
+    service: cleanText(lane.service),
+    weekly_volume: lane.weekly_volume ?? null,
+    target_rate: lane.target_rate ?? null,
+    currency: cleanText(lane.currency),
+    logistics_model: supportCleanDetailText(lane.logistics_model, 800),
+    operation_criteria: supportCleanDetailText(lane.operation_criteria, 800),
+    business_rules: supportCleanDetailText(lane.business_rules, 800),
+    service_specifications: supportCleanDetailText(lane.service_specifications, 800),
+    other_notes: supportCleanDetailText(lane.other_notes, 800),
+    notes: supportCleanDetailText(lane.notes, 800)
+  };
+}
+
+function supportAiOutputText(payload: Record<string, unknown>) {
+  const direct = cleanText(payload.output_text);
+  if (direct) return direct;
+  const output = Array.isArray(payload.output) ? payload.output : [];
+  for (const item of output) {
+    const content = Array.isArray((item as Record<string, unknown>).content) ? (item as Record<string, unknown>).content as Record<string, unknown>[] : [];
+    for (const part of content) {
+      if (part.type === "output_text" && cleanText(part.text)) return cleanText(part.text);
+    }
+  }
+  return null;
+}
+
+async function bidSupportAiAnswer(
+  question: string,
+  context: {
+    language: string;
+    token?: string | null;
+    event?: Record<string, unknown> | null;
+    lane?: Record<string, unknown> | null;
+    vendor?: Record<string, unknown> | null;
+    invited_lanes?: Record<string, unknown>[];
+    live_board?: Record<string, unknown> | null;
+    scope: string;
+  },
+  fallback: Record<string, unknown>
+) {
+  if (!OPENAI_API_KEY || !OPENAI_MODEL) return null;
+  const language = context.language;
+  const lanes = Array.isArray(context.invited_lanes) ? context.invited_lanes : [];
+  const focusedLane = supportSelectLane(question, context.lane || {}, lanes);
+  const requestContext = {
+    question,
+    language,
+    scope: context.scope,
+    event: {
+      rfx_id: cleanText(context.event?.rfx_id),
+      name: cleanText(context.event?.name),
+      customer: cleanText(context.event?.customer),
+      event_type: cleanText(context.event?.event_type),
+      status: cleanText(context.event?.status),
+      due_date: cleanText(context.event?.due_date)
+    },
+    carrier: {
+      name: cleanText(context.vendor?.vendor_name),
+      domain: cleanText(context.vendor?.domain)
+    },
+    focused_lane: supportLanePayload(focusedLane || context.lane || {}, language),
+    invited_lanes: lanes.slice(0, 25).map((lane, index) => supportLanePayload(lane, language, index)),
+    live_board: {
+      current_rank: context.live_board?.current_rank ?? null,
+      marketplace_signal: cleanText(context.live_board?.marketplace_signal),
+      current_score: context.live_board?.current_score ?? null
+    },
+    deterministic_fallback: {
+      answer: cleanText(fallback.answer),
+      needs_ticket: fallback.needs_ticket === true,
+      confidence: cleanText(fallback.confidence)
+    }
+  };
+
+  const response = await fetch("https://api.openai.com/v1/responses", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${OPENAI_API_KEY}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      model: OPENAI_MODEL,
+      input: [
+        {
+          role: "system",
+          content: [{
+            type: "input_text",
+            text: [
+              "You are Rateware Bid Room support for freight procurement.",
+              "Answer only from the supplied Bid Room context. Do not invent carriers, lanes, prices, rankings, legal terms, or commercial approvals.",
+              "If the context does not contain the answer, say that procurement should review it and set needs_ticket true.",
+              "Keep the answer concise, practical, and in the requested language.",
+              "Never promise an award, access, payment, capacity, or exception."
+            ].join(" ")
+          }]
+        },
+        {
+          role: "user",
+          content: [{ type: "input_text", text: JSON.stringify(requestContext) }]
+        }
+      ],
+      text: {
+        format: {
+          type: "json_schema",
+          name: "bid_support_answer",
+          strict: true,
+          schema: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              answer: { type: "string" },
+              needs_ticket: { type: "boolean" },
+              confidence: { type: "string", enum: ["low", "medium", "high"] },
+              scope: { type: "string" }
+            },
+            required: ["answer", "needs_ticket", "confidence", "scope"]
+          }
+        }
+      }
+    })
+  });
+  if (!response.ok) return null;
+  const payload = await response.json();
+  const outputText = supportAiOutputText(payload);
+  if (!outputText) return null;
+  try {
+    const parsed = JSON.parse(outputText);
+    const answer = cleanText(parsed.answer)?.slice(0, 2400);
+    if (!answer) return null;
+    return {
+      answer,
+      needs_ticket: parsed.needs_ticket === true,
+      confidence: ["low", "medium", "high"].includes(String(parsed.confidence)) ? parsed.confidence : "medium",
+      scope: cleanText(parsed.scope) || context.scope,
+      ai_assisted: true
+    };
+  } catch (_error) {
+    return null;
+  }
+}
+
 async function loadPublicSupportLane(supabase: ReturnType<typeof createClient>, input: Record<string, unknown>) {
   const laneId = cleanText(input.lane_id || input.rfx_lane_id);
   if (!laneId) return null;
@@ -2443,16 +2600,22 @@ async function mirrorSupportTicketToGoogleChat(
   const ownerEmail = cleanText(event.owner_email);
   if (!eventId || !ownerEmail) return { status: "skipped", reason: "Ticket has no event context." };
 
-  const threadType = "event_group";
-  let threadResult = await supabase
+  const vendorId = cleanText(context.vendor.id);
+  const laneId = cleanText(context.lane.id);
+  const threadType = vendorId ? "carrier_private" : "event_group";
+  let threadQuery = supabase
     .from("bid_room_chat_threads")
     .select("*, vendors(vendor_name,domain), rfx_lanes(*)")
     .eq("rfx_event_id", eventId)
     .eq("thread_type", threadType)
-    .is("rfx_lane_id", null)
-    .is("vendor_id", null)
-    .neq("status", "archived")
-    .maybeSingle();
+    .neq("status", "archived");
+  if (threadType === "carrier_private") {
+    threadQuery = threadQuery.eq("vendor_id", vendorId);
+    threadQuery = laneId ? threadQuery.eq("rfx_lane_id", laneId) : threadQuery.is("rfx_lane_id", null);
+  } else {
+    threadQuery = threadQuery.is("rfx_lane_id", null).is("vendor_id", null);
+  }
+  const threadResult = await threadQuery.maybeSingle();
   if (threadResult.error) throw threadResult.error;
 
   let thread = threadResult.data;
@@ -2461,11 +2624,11 @@ async function mirrorSupportTicketToGoogleChat(
       owner_user_id: cleanText(event.owner_user_id),
       owner_email: ownerEmail,
       rfx_event_id: eventId,
-      rfx_lane_id: null,
-      vendor_id: null,
+      rfx_lane_id: threadType === "carrier_private" ? laneId : null,
+      vendor_id: threadType === "carrier_private" ? vendorId : null,
       thread_type: threadType,
-      title: bidRoomThreadTitle(threadType, event),
-      google_chat_thread_key: bidRoomGoogleThreadKey(eventId, threadType, null, null),
+      title: bidRoomThreadTitle(threadType, event, context.lane, context.vendor),
+      google_chat_thread_key: bidRoomGoogleThreadKey(eventId, threadType, threadType === "carrier_private" ? laneId : null, threadType === "carrier_private" ? vendorId : null),
       google_chat_sync_status: "ready",
       metadata: { source: "vendor_support_ticket", rfx_id: cleanText(event.rfx_id) }
     }).select("*, vendors(vendor_name,domain), rfx_lanes(*)").single();
@@ -2549,7 +2712,23 @@ async function bidSupportReply(supabase: ReturnType<typeof createClient>, input:
     }
   }
 
-  const support = bidSupportAnswerFromOpportunityContext(question, { language, token, event, lane, vendor, invited_lanes: invitedLanes, live_board: liveBoard });
+  const deterministicSupport = bidSupportAnswerFromOpportunityContext(question, { language, token, event, lane, vendor, invited_lanes: invitedLanes, live_board: liveBoard });
+  const support = await bidSupportAiAnswer(question, {
+    language,
+    token,
+    event,
+    lane,
+    vendor,
+    invited_lanes: invitedLanes,
+    live_board: liveBoard,
+    scope: cleanText(deterministicSupport.scope) || supportContextScope({
+      token,
+      event: event || undefined,
+      lane: lane || undefined,
+      vendor: vendor || undefined,
+      lane_count: invitedLanes.length
+    }, language)
+  }, deterministicSupport).catch(() => null) || deterministicSupport;
   let ticket = null;
   if (cleanBoolean(input.create_ticket) === true) {
     ticket = await createBidSupportTicket(supabase, input, support, { event, lane, vendor });

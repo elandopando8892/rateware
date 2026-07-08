@@ -59,7 +59,17 @@ const COPY = {
     startHere: "Start here",
     profileSaved: "Your information was saved.",
     statusReady: "Ready",
-    statusNeedsInfo: "Needs info"
+    statusNeedsInfo: "Needs info",
+    supportLog: "Support log",
+    supportLogHelp: "Your Bid Room support questions and procurement follow-up status.",
+    noSupportTickets: "No support tickets yet.",
+    supportOpen: "Open",
+    supportInProgress: "In progress",
+    supportResolved: "Resolved",
+    supportArchived: "Archived",
+    ticketFollowup: "Add follow-up",
+    ticketFollowupPlaceholder: "Write a follow-up for procurement...",
+    ticketFollowupSaved: "Follow-up saved."
   },
   es: {
     loadingTitle: "Cargando perfil del carrier...",
@@ -112,7 +122,17 @@ const COPY = {
     startHere: "Empieza aqui",
     profileSaved: "Tu informacion fue guardada.",
     statusReady: "Listo",
-    statusNeedsInfo: "Falta info"
+    statusNeedsInfo: "Falta info",
+    supportLog: "Bitacora de soporte",
+    supportLogHelp: "Tus preguntas de Bid Room y el estado de seguimiento de procurement.",
+    noSupportTickets: "Aun no hay tickets de soporte.",
+    supportOpen: "Abierto",
+    supportInProgress: "En proceso",
+    supportResolved: "Resuelto",
+    supportArchived: "Archivado",
+    ticketFollowup: "Agregar seguimiento",
+    ticketFollowupPlaceholder: "Escribe un seguimiento para procurement...",
+    ticketFollowupSaved: "Seguimiento guardado."
   }
 };
 
@@ -248,6 +268,7 @@ const STEPS = [
 ];
 
 let currentVendor = null;
+let currentSupportTickets = [];
 let currentLanguage = initialLanguage();
 let activeStepIndex = 0;
 let submitterDraft = { name: "", email: "" };
@@ -276,6 +297,10 @@ function escapeHtml(value) {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+function escapeAttribute(value) {
+  return escapeHtml(value);
 }
 
 function tokenFromUrl() {
@@ -475,6 +500,58 @@ function renderStepper() {
   `;
 }
 
+function supportStatusLabel(value) {
+  const labels = {
+    open: t("supportOpen"),
+    in_progress: t("supportInProgress"),
+    resolved: t("supportResolved"),
+    archived: t("supportArchived")
+  };
+  return labels[value] || labels.open;
+}
+
+function renderSupportLog(rows = currentSupportTickets) {
+  return `
+    <section class="carrier-profile-support-log">
+      <div class="carrier-profile-step-heading">
+        <div>
+          <p class="eyebrow">${escapeHtml(t("profileRequest"))}</p>
+          <h3>${escapeHtml(t("supportLog"))}</h3>
+          <p>${escapeHtml(t("supportLogHelp"))}</p>
+        </div>
+        <span>${escapeHtml(`${rows.length} ticket(s)`)}</span>
+      </div>
+      ${rows.length ? `
+        <div class="carrier-profile-support-list">
+          ${rows.slice(0, 8).map((row) => `
+            <article>
+              <div>
+                <strong>${escapeHtml(row.question || row.subject || "Support question")}</strong>
+                <span>${escapeHtml([row.route, row.subject].filter(Boolean).join(" | ") || "-")}</span>
+              </div>
+              <div>
+                <span class="status-pill ${row.support_status === "resolved" ? "success" : "warning"}">${escapeHtml(supportStatusLabel(row.support_status))}</span>
+                <small>${escapeHtml(row.occurred_at ? new Date(row.occurred_at).toLocaleString(currentLanguage === "es" ? "es-MX" : "en-US") : "")}</small>
+              </div>
+              ${row.answer ? `<p>${escapeHtml(row.answer)}</p>` : ""}
+              ${row.latest_followup ? `<p><b>${escapeHtml(t("ticketFollowup"))}:</b> ${escapeHtml(row.latest_followup)}</p>` : ""}
+              <div class="carrier-profile-ticket-followup">
+                <textarea rows="2" data-ticket-followup-input="${escapeHtml(row.id)}" placeholder="${escapeAttribute(t("ticketFollowupPlaceholder"))}"></textarea>
+                <button type="button" class="secondary small-button" data-ticket-followup-save="${escapeHtml(row.id)}">${escapeHtml(t("ticketFollowup"))}</button>
+              </div>
+            </article>
+          `).join("")}
+        </div>
+      ` : `
+        <div class="carrier-profile-empty compact">
+          <strong>${escapeHtml(t("noSupportTickets"))}</strong>
+          <span>${escapeHtml(t("supportLogHelp"))}</span>
+        </div>
+      `}
+    </section>
+  `;
+}
+
 function renderProfile(vendor) {
   setDocumentLanguage();
   title.textContent = vendor.vendor_name || (currentLanguage === "es" ? "Perfil del carrier" : "Carrier profile");
@@ -510,6 +587,7 @@ function renderProfile(vendor) {
             <span>${escapeHtml(t("requiredHint"))}</span>
           </div>
           ${STEPS.map((step, index) => renderStepPanel(step, index, vendor)).join("")}
+          ${renderSupportLog()}
           <section class="carrier-profile-submit-panel">
             <div class="carrier-profile-grid">
               <label class="profile-field">
@@ -698,6 +776,7 @@ async function submitProfile(event) {
       submitted_contact: readSubmitter(form)
     });
     currentVendor = result.vendor;
+    currentSupportTickets = Array.isArray(result.support_tickets) ? result.support_tickets : currentSupportTickets;
     saveStatus.textContent = t("submitted");
     saveStatus.dataset.tone = "success";
     setStatus(t("submittedStatus"), "success");
@@ -707,6 +786,27 @@ async function submitProfile(event) {
     saveStatus.dataset.tone = "error";
   } finally {
     button.disabled = false;
+  }
+}
+
+async function saveTicketFollowup(ticketId) {
+  const input = card.querySelector(`[data-ticket-followup-input="${CSS.escape(ticketId)}"]`);
+  const message = String(input?.value || "").trim();
+  if (!message) {
+    input?.focus();
+    return;
+  }
+  const button = card.querySelector(`[data-ticket-followup-save="${CSS.escape(ticketId)}"]`);
+  if (button) button.disabled = true;
+  try {
+    const result = await callProfileApi("add_ticket_followup", { ticket_id: ticketId, message });
+    currentSupportTickets = Array.isArray(result.support_tickets) ? result.support_tickets : currentSupportTickets;
+    setStatus(t("ticketFollowupSaved"), "success");
+    if (currentVendor) renderProfile(currentVendor);
+  } catch (error) {
+    setStatus(error.message || t("requestFailed"), "error");
+  } finally {
+    if (button) button.disabled = false;
   }
 }
 
@@ -732,6 +832,7 @@ async function init() {
   try {
     const result = await callProfileApi("get_profile");
     currentVendor = result.vendor;
+    currentSupportTickets = Array.isArray(result.support_tickets) ? result.support_tickets : [];
     renderProfile(result.vendor);
     setStatus(`${t("secureLink")} - ${t("expires")} ${new Date(result.request.expires_at).toLocaleDateString(currentLanguage === "es" ? "es-MX" : "en-US")}.`);
   } catch (error) {
@@ -769,6 +870,12 @@ card.addEventListener("click", (event) => {
     localStorage.setItem(LANGUAGE_KEY, currentLanguage);
     if (currentVendor) renderProfile(currentVendor);
     else init();
+    return;
+  }
+
+  const ticketFollowupButton = event.target.closest("[data-ticket-followup-save]");
+  if (ticketFollowupButton) {
+    saveTicketFollowup(ticketFollowupButton.dataset.ticketFollowupSave);
     return;
   }
 

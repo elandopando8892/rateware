@@ -1795,10 +1795,52 @@ function renderBidHistory(rows = []) {
 }
 
 function carrierChatLabel(threadType = "") {
-  const labels = {
-    event_group: "Event group"
-  };
-  return labels[threadType] || "Event group";
+  const labels = portalLanguage() === "es"
+    ? {
+        carrier_private: "Privado con procurement",
+        event_group: "Sala del evento",
+        lane_group: "Ruta enfocada"
+      }
+    : {
+        carrier_private: "Private with procurement",
+        event_group: "Event room",
+        lane_group: "Focused lane"
+      };
+  return labels[threadType] || labels.carrier_private;
+}
+
+function carrierChatDescription(threadType = "") {
+  const descriptions = portalLanguage() === "es"
+    ? {
+        carrier_private: "Mensajes privados entre tu equipo y procurement para este negocio.",
+        event_group: "Preguntas generales visibles para la sala del evento dentro de Rateware.",
+        lane_group: "Conversacion enfocada en la ruta seleccionada."
+      }
+    : {
+        carrier_private: "Private messages between your team and procurement for this opportunity.",
+        event_group: "General questions visible in the event room inside Rateware.",
+        lane_group: "Conversation focused on the selected lane."
+      };
+  return descriptions[threadType] || descriptions.carrier_private;
+}
+
+function carrierChatPlaceholder(threadType = "") {
+  const placeholders = portalLanguage() === "es"
+    ? {
+        carrier_private: "Escribe un mensaje privado a procurement...",
+        event_group: "Escribe una pregunta para la sala del evento...",
+        lane_group: "Escribe un mensaje sobre esta ruta..."
+      }
+    : {
+        carrier_private: "Write a private message to procurement...",
+        event_group: "Write a question for the event room...",
+        lane_group: "Write a message about this lane..."
+      };
+  return placeholders[threadType] || placeholders.carrier_private;
+}
+
+function normalizedCarrierChatThreadType(value) {
+  return ["carrier_private", "event_group", "lane_group"].includes(value) ? value : "carrier_private";
 }
 
 function renderCarrierChat(chat = lastCarrierChat) {
@@ -1806,9 +1848,18 @@ function renderCarrierChat(chat = lastCarrierChat) {
   const panel = card.querySelector("#carrier-bid-chat");
   if (!panel) return;
   const keepOpen = panel.dataset.open === "true";
+  const activeThreadType = normalizedCarrierChatThreadType(panel.dataset.threadType);
   panel.dataset.open = keepOpen ? "true" : "false";
-  const rows = (Array.isArray(lastCarrierChat.rows) ? lastCarrierChat.rows : []).filter((thread) => (thread.thread_type || "event_group") === "event_group");
+  panel.dataset.threadType = activeThreadType;
+  const allRows = Array.isArray(lastCarrierChat.rows) ? lastCarrierChat.rows : [];
+  const rows = allRows.filter((thread) => normalizedCarrierChatThreadType(thread.thread_type || "event_group") === activeThreadType);
   const messageCount = rows.reduce((sum, thread) => sum + (Array.isArray(thread.messages) ? thread.messages.length : 0), 0);
+  const totalMessageCount = allRows.reduce((sum, thread) => sum + (Array.isArray(thread.messages) ? thread.messages.length : 0), 0);
+  const threadCounts = allRows.reduce((counts, thread) => {
+    const type = normalizedCarrierChatThreadType(thread.thread_type || "event_group");
+    counts[type] = (counts[type] || 0) + (Array.isArray(thread.messages) ? thread.messages.length : 0);
+    return counts;
+  }, {});
   const inboundStatus = lastCarrierChat.google_chat_inbound?.status || "";
   const chatSyncLabel = inboundStatus === "needs_reconnect"
     ? "Reconnect Google Chat"
@@ -1822,15 +1873,15 @@ function renderCarrierChat(chat = lastCarrierChat) {
       : "muted";
   panel.innerHTML = `
     <button type="button" class="bid-chat-launcher" data-carrier-chat-toggle aria-expanded="${keepOpen ? "true" : "false"}">
-      <span>${escapeHtml(dualText("Bid Room chat", "Chat del Bid Room"))}</span>
-      <small>${escapeHtml(`${messageCount} message(s) | ${chatSyncLabel}`)}</small>
+      <span>${escapeHtml(carrierChatLabel(activeThreadType))}</span>
+      <small>${escapeHtml(`${totalMessageCount} message(s) | ${chatSyncLabel}`)}</small>
     </button>
-    <div class="bid-chat-popover" role="dialog" aria-modal="false" aria-label="${escapeAttribute(dualText("Bid Room event chat", "Chat del evento Bid Room"))}">
+    <div class="bid-chat-popover" role="dialog" aria-modal="false" aria-label="${escapeAttribute(dualText("Bid Room messages", "Mensajes del Bid Room"))}">
       <header>
         <div>
-          <p class="eyebrow">Bid Room Chat</p>
-          <h3>Event group discussion</h3>
-          <p>One shared event thread keeps questions, clarifications, and live capacity updates in the same place.</p>
+          <p class="eyebrow">Bid Room Messages</p>
+          <h3>${escapeHtml(carrierChatLabel(activeThreadType))}</h3>
+          <p>${escapeHtml(carrierChatDescription(activeThreadType))}</p>
         </div>
         <div class="bid-chat-header-actions">
           <span class="status-pill ${chatSyncTone}">${escapeHtml(chatSyncLabel)}</span>
@@ -1838,6 +1889,14 @@ function renderCarrierChat(chat = lastCarrierChat) {
         </div>
       </header>
       ${inboundStatus === "needs_reconnect" ? `<p class="status-message warning">Google Chat can send outbound mirror messages, but Settings must be reconnected once before Rateware can import replies typed in Google Chat.</p>` : ""}
+      <div class="bid-chat-thread-tabs" role="tablist" aria-label="${escapeAttribute(dualText("Message scope", "Alcance del mensaje"))}">
+        ${["carrier_private", "event_group", "lane_group"].map((type) => `
+          <button type="button" data-carrier-chat-thread="${escapeHtml(type)}" aria-pressed="${activeThreadType === type ? "true" : "false"}">
+            <span>${escapeHtml(carrierChatLabel(type))}</span>
+            <small>${escapeHtml(String(threadCounts[type] || 0))}</small>
+          </button>
+        `).join("")}
+      </div>
       <div class="carrier-chat-thread-list">
         ${rows.length ? rows.map((thread) => {
           const messages = Array.isArray(thread.messages) ? thread.messages : [];
@@ -1845,8 +1904,8 @@ function renderCarrierChat(chat = lastCarrierChat) {
             <article class="bid-room-chat-thread">
               <header>
                 <div>
-                  <strong>${escapeHtml(thread.title || carrierChatLabel(thread.thread_type))}</strong>
-                  <span>${escapeHtml(carrierChatLabel(thread.thread_type))}</span>
+                  <strong>${escapeHtml(thread.title || carrierChatLabel(thread.thread_type || "event_group"))}</strong>
+                  <span>${escapeHtml(carrierChatLabel(thread.thread_type || "event_group"))}</span>
                 </div>
                 <small>${messages.length} message(s)</small>
               </header>
@@ -1864,14 +1923,14 @@ function renderCarrierChat(chat = lastCarrierChat) {
         }).join("") : `
           <div class="bid-room-empty">
             <strong>No chat messages yet.</strong>
-            <span>Send the first event group message to procurement.</span>
+            <span>${escapeHtml(carrierChatDescription(activeThreadType))}</span>
           </div>
         `}
       </div>
       <form id="carrier-chat-form" class="bid-room-chat-form">
-        <input id="carrier-chat-scope" type="hidden" value="event_group" />
-        <textarea id="carrier-chat-message" rows="2" placeholder="Write an event group message..."></textarea>
-        <button type="submit">Send</button>
+        <input id="carrier-chat-scope" type="hidden" value="${escapeHtml(activeThreadType)}" />
+        <textarea id="carrier-chat-message" rows="2" placeholder="${escapeAttribute(carrierChatPlaceholder(activeThreadType))}"></textarea>
+        <button type="submit">${escapeHtml(dualText("Send", "Enviar"))}</button>
       </form>
       <p id="carrier-chat-status" class="status-message" role="status"></p>
     </div>
@@ -2566,31 +2625,24 @@ function renderInvitation(invitation, liveBoard = {}, carrierBook = {}) {
           carrier: vendor.vendor_name || vendor.domain || t("carrier"),
           lane_count: multiLaneRows.length > 1 ? t("invitedLanes", { count: multiLaneRows.length }) : t("selectedLane")
         }))}</p>
-        <div class="bid-room-hero-actions">
-          <button type="button" class="secondary small-button" data-bid-support-focus>
-            ${escapeHtml(dualText("Ask support", "Soporte"))}
-          </button>
-          <button type="button" class="secondary small-button" data-carrier-chat-focus>
-            ${escapeHtml(dualText("Open chat", "Chat"))}
-          </button>
-          <a class="secondary small-button" href="${escapeAttribute(eventMarketplaceUrl(event))}" target="_blank" rel="noreferrer" title="${escapeAttribute(t("publicLiveBoardHelp"))}">
-            ${escapeHtml(t("publicLiveBoard"))}
-          </a>
-        </div>
       </div>
       <aside>
         <span class="status-pill" data-tone="${deadline.tone}">${escapeHtml(deadline.label)}</span>
         <strong>${escapeHtml(event.rfx_id || "RFx")}</strong>
         <small>${escapeHtml(deadline.detail)}</small>
+        <div class="bid-room-hero-actions">
+          <button type="button" class="secondary small-button" data-carrier-chat-focus="carrier_private">
+            ${escapeHtml(dualText("Private messages", "Mensajes privados"))}
+          </button>
+          <button type="button" class="secondary small-button" data-bid-support-focus>
+            ${escapeHtml(dualText("Ask assistant", "Asistente"))}
+          </button>
+          <a class="secondary small-button" href="${escapeAttribute(eventMarketplaceUrl(event))}" target="_blank" rel="noreferrer" title="${escapeAttribute(t("publicLiveBoardHelp"))}">
+            ${escapeHtml(t("publicLiveBoard"))}
+          </a>
+        </div>
       </aside>
     </section>
-
-    <div class="bid-context">
-      <article><span>${escapeHtml(t("customer"))}</span><strong>${escapeHtml(event.customer || "-")}</strong></article>
-      <article><span>${escapeHtml(t("carrier"))}</span><strong>${escapeHtml(vendor.vendor_name || vendor.domain || "-")}</strong></article>
-      <article><span>${escapeHtml(t("visibility"))}</span><strong>${escapeHtml(visibilityLabel(liveBoard.visibility || {}))}</strong></article>
-      <article><span>${escapeHtml(t("refresh"))}</span><strong>30 sec</strong></article>
-    </div>
 
     <section class="private-bid-alert-panel" aria-live="polite">
       <div>
@@ -2608,6 +2660,13 @@ function renderInvitation(invitation, liveBoard = {}, carrierBook = {}) {
         <p>${escapeHtml(t("noMovement"))}</p>
       </div>
     </section>
+
+    <div class="bid-context">
+      <article><span>${escapeHtml(t("customer"))}</span><strong>${escapeHtml(event.customer || "-")}</strong></article>
+      <article><span>${escapeHtml(t("carrier"))}</span><strong>${escapeHtml(vendor.vendor_name || vendor.domain || "-")}</strong></article>
+      <article><span>${escapeHtml(t("visibility"))}</span><strong>${escapeHtml(visibilityLabel(liveBoard.visibility || {}))}</strong></article>
+      <article><span>${escapeHtml(t("refresh"))}</span><strong>30 sec</strong></article>
+    </div>
 
     <section id="bid-support-agent" class="bid-support-agent bid-support-widget private-bid-support-widget" data-open="false">
       <p class="status-message">${escapeHtml(dualText("Loading contextual support...", "Cargando soporte contextual..."))}</p>
@@ -2991,7 +3050,23 @@ card.addEventListener("click", async (event) => {
 
   const chatFocusButton = event.target.closest("[data-carrier-chat-focus]");
   if (chatFocusButton) {
+    const panel = card.querySelector("#carrier-bid-chat");
+    if (panel) {
+      panel.dataset.threadType = normalizedCarrierChatThreadType(chatFocusButton.dataset.carrierChatFocus || "carrier_private");
+      renderCarrierChat(lastCarrierChat);
+    }
     setCarrierChatOpen(true);
+    return;
+  }
+
+  const chatThreadButton = event.target.closest("[data-carrier-chat-thread]");
+  if (chatThreadButton) {
+    const panel = card.querySelector("#carrier-bid-chat");
+    if (panel) {
+      panel.dataset.threadType = normalizedCarrierChatThreadType(chatThreadButton.dataset.carrierChatThread);
+      renderCarrierChat(lastCarrierChat);
+      setCarrierChatOpen(true);
+    }
     return;
   }
 
@@ -3117,8 +3192,9 @@ card.addEventListener("submit", async (event) => {
     status.dataset.tone = "neutral";
   }
   try {
+    const threadType = normalizedCarrierChatThreadType(card.querySelector("#carrier-chat-scope")?.value || card.querySelector("#carrier-bid-chat")?.dataset.threadType);
     const result = await callBidApi("post_bid_room_chat_message", {
-      thread_type: "event_group",
+      thread_type: threadType,
       body
     });
     if (message) message.value = "";

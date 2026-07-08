@@ -534,9 +534,9 @@ assert.match(rfxBidSource, /function commercialStructureConfig/, "Carrier portal
 assert.match(rfxBidSource, /syncCommercialStructureFields/, "Carrier portal should show only the applicable commercial percentage input");
 assert.match(rfxBidSource, /validatePercentIssue\(draft\.marksman_margin_pct, "bid-marksman-margin", "Suggested margin to share %", \{ required: true, procurementRange: true \}\)/, "Carrier portal should enforce suggested margin range for cost-plus");
 assert.match(rfxBidSource, /validatePercentIssue\(draft\.carrier_share_pct, "bid-carrier-share", "Carrier invoice share %", \{ required: true, procurementRange: true \}\)/, "Carrier portal should enforce invoice share range for carrier-share");
-assert.match(rfxBidSource, /thread_type: "event_group"/, "Carrier portal chat should post only to the event group");
-assert.doesNotMatch(rfxBidSource, /<option value="carrier_private">/, "Carrier portal chat should not expose private chat scope");
-assert.doesNotMatch(rfxBidSource, /<option value="lane_group">/, "Carrier portal chat should not expose lane chat scope");
+assert.match(rfxBidSource, /thread_type: threadType/, "Carrier portal chat should post to the selected chat scope");
+assert.match(rfxBidSource, /\["carrier_private", "event_group", "lane_group"\]/, "Carrier portal chat should expose private, event and lane scopes");
+assert.match(rfxBidSource, /carrierChatLabel\(type\)/, "Carrier portal chat should label each chat scope");
 assert.match(rfxEventsSource, /const BID_ROOM_EVENT_THREAD_TYPE = "event_group"/, "Internal Bid Room chat should use event group as the only visible compose scope");
 assert.doesNotMatch(rfxEventsHtml, /id="rfx-chat-lane"|id="rfx-chat-vendor"|Carrier private|Lane group/, "Internal Bid Room chat should not expose lane or private compose controls");
 assert.match(rfxBidSource, /Best alternative needs equipment or a positive unit count/, "Carrier portal should validate alternative offers");

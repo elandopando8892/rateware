@@ -94,6 +94,41 @@ function publicVendor(row: Record<string, unknown>) {
   };
 }
 
+function publicSupportTicket(row: Record<string, unknown>) {
+  const metadata = objectRecord(row.metadata);
+  return {
+    id: row.id,
+    subject: row.subject,
+    question: metadata.question || row.body_preview,
+    answer: metadata.answer,
+    support_status: metadata.support_status || "open",
+    priority: metadata.priority || "normal",
+    route: metadata.route,
+    latest_followup: metadata.latest_followup,
+    latest_followup_at: metadata.latest_followup_at,
+    followups: Array.isArray(metadata.followups) ? metadata.followups.slice(-5) : [],
+    rfx_event_id: row.rfx_event_id,
+    occurred_at: row.occurred_at,
+    updated_at: row.updated_at,
+    google_chat_sync_status: metadata.google_chat_sync_status
+  };
+}
+
+async function loadSupportTickets(supabase: ReturnType<typeof createClient>, request: Record<string, unknown>, vendor: Record<string, unknown>) {
+  const vendorId = cleanText(vendor.id);
+  if (!vendorId) return [];
+  const result = await supabase
+    .from("contact_history")
+    .select("id,subject,body_preview,status,metadata,rfx_event_id,occurred_at,updated_at")
+    .eq("owner_email", request.owner_email)
+    .eq("vendor_id", vendorId)
+    .eq("status", "support_ticket")
+    .order("occurred_at", { ascending: false })
+    .limit(50);
+  if (result.error) throw result.error;
+  return (result.data || []).map((row) => publicSupportTicket(row as Record<string, unknown>));
+}
+
 async function loadRequest(supabase: ReturnType<typeof createClient>, token: string) {
   const result = await supabase
     .from("vendor_profile_requests")
@@ -133,13 +168,15 @@ Deno.serve(async (request) => {
         .from("vendor_profile_requests")
         .update({ status: String(requestRow.status) === "active" ? "viewed" : requestRow.status, viewed_at: new Date().toISOString(), updated_at: new Date().toISOString() })
         .eq("id", requestRow.id);
+      const supportTickets = await loadSupportTickets(supabase, requestRow, vendor).catch(() => []);
       return jsonResponse({
         request: {
           id: requestRow.id,
           status: requestRow.status,
           expires_at: requestRow.expires_at
         },
-        vendor: publicVendor(vendor)
+        vendor: publicVendor(vendor),
+        support_tickets: supportTickets
       });
     }
 
@@ -184,7 +221,50 @@ Deno.serve(async (request) => {
         })
         .eq("id", requestRow.id);
 
-      return jsonResponse({ vendor: publicVendor(update.data), submitted: true });
+      const supportTickets = await loadSupportTickets(supabase, requestRow, update.data as Record<string, unknown>).catch(() => []);
+      return jsonResponse({ vendor: publicVendor(update.data), support_tickets: supportTickets, submitted: true });
+    }
+
+    if (action === "add_ticket_followup") {
+      const ticketId = cleanText(body.ticket_id);
+      const message = cleanText(body.message);
+      if (!ticketId) return jsonResponse({ error: "Ticket id is required." }, 400);
+      if (!message) return jsonResponse({ error: "Follow-up message is required." }, 400);
+      const ticketResult = await supabase
+        .from("contact_history")
+        .select("id,metadata,vendor_id,status")
+        .eq("id", ticketId)
+        .eq("owner_email", requestRow.owner_email)
+        .eq("vendor_id", vendor.id)
+        .eq("status", "support_ticket")
+        .single();
+      if (ticketResult.error) throw ticketResult.error;
+      const metadata = objectRecord(ticketResult.data.metadata);
+      const followups = Array.isArray(metadata.followups) ? metadata.followups : [];
+      const update = await supabase
+        .from("contact_history")
+        .update({
+          body_preview: message.slice(0, 400),
+          metadata: {
+            ...metadata,
+            support_status: metadata.support_status === "resolved" ? "open" : metadata.support_status || "open",
+            latest_followup: message,
+            latest_followup_at: new Date().toISOString(),
+            followups: [
+              ...followups.slice(-20),
+              {
+                source: "carrier_profile",
+                body: message,
+                created_at: new Date().toISOString()
+              }
+            ]
+          },
+          updated_at: new Date().toISOString()
+        })
+        .eq("id", ticketId);
+      if (update.error) throw update.error;
+      const supportTickets = await loadSupportTickets(supabase, requestRow, vendor).catch(() => []);
+      return jsonResponse({ support_tickets: supportTickets, saved: true });
     }
 
     return jsonResponse({ error: "Unsupported carrier profile action." }, 400);
