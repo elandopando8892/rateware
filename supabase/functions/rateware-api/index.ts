@@ -6433,6 +6433,75 @@ function bestRatewareBenchmark(lane: Record<string, unknown>, rates: Record<stri
   };
 }
 
+function percentileValue(values: number[], percentile: number) {
+  const sorted = values.filter((value) => Number.isFinite(value)).sort((a, b) => a - b);
+  if (!sorted.length) return null;
+  const position = (sorted.length - 1) * percentile;
+  const lower = Math.floor(position);
+  const upper = Math.ceil(position);
+  if (lower === upper) return sorted[lower];
+  const weight = position - lower;
+  return sorted[lower] + (sorted[upper] - sorted[lower]) * weight;
+}
+
+function rateCarrierKey(rate: Record<string, unknown>) {
+  return cleanText(rate.vendor_id)
+    || normalizeDomain(rate.vendor_domain)
+    || normalizeDomain((rate.vendors as Record<string, unknown> | undefined)?.domain)
+    || cleanText((rate.vendors as Record<string, unknown> | undefined)?.vendor_name)
+    || cleanText(rate.vendor)
+    || cleanText(rate.id)
+    || "";
+}
+
+function supplyDepthForLane(lane: Record<string, unknown>, rates: Record<string, unknown>[]) {
+  const matches = rates
+    .map((rate) => ({
+      rate,
+      score: rateFitForLane(lane, rate),
+      amount: numericAmount(rate.all_in_rate)
+    }))
+    .filter((item) => item.score >= 40 && item.amount !== null)
+    .sort((a, b) => Number(a.amount) - Number(b.amount));
+  const amounts = matches.map((item) => Number(item.amount)).filter(Number.isFinite);
+  const carrierKeys = new Set(matches.map((item) => rateCarrierKey(item.rate)).filter(Boolean));
+  const targetRate = cleanNumber(lane.target_rate);
+  const marketCurrency = cleanText(matches[0]?.rate?.currency || lane.currency || "USD")?.toUpperCase() || "USD";
+  const targetCurrency = cleanText(lane.currency)?.toUpperCase() || marketCurrency;
+  const targetComparable = targetRate !== null && targetCurrency === marketCurrency;
+  const atOrBelowTarget = targetComparable
+    ? matches.filter((item) => Number(item.amount) <= targetRate).length
+    : 0;
+  const target_probability = matches.length && targetComparable
+    ? Math.round((atOrBelowTarget / matches.length) * 100)
+    : null;
+  const carrierCount = carrierKeys.size;
+  const depthScore = Math.min(100, Math.round((carrierCount / 12) * 100));
+  const matchScore = matches.length
+    ? Math.round(matches.reduce((sum, item) => sum + item.score, 0) / matches.length)
+    : 0;
+  const likelihood_score = target_probability !== null
+    ? Math.round((target_probability * 0.72) + (depthScore * 0.18) + (matchScore * 0.10))
+    : Math.round((depthScore * 0.65) + (matchScore * 0.35));
+  return {
+    carrier_count: carrierCount,
+    quote_count: matches.length,
+    p25_rate: percentileValue(amounts, 0.25),
+    p50_rate: percentileValue(amounts, 0.50),
+    p75_rate: percentileValue(amounts, 0.75),
+    p90_rate: percentileValue(amounts, 0.90),
+    best_rate: amounts[0] ?? null,
+    currency: marketCurrency,
+    target_currency: targetCurrency,
+    target_rate: targetRate,
+    target_probability,
+    target_probability_reason: targetRate === null ? "target_not_set" : targetComparable ? "comparable" : "currency_mismatch",
+    likelihood_score,
+    match_score: matchScore,
+    depth_score: depthScore
+  };
+}
+
 function invitationWithComparison(invitation: Record<string, unknown>, benchmark: Record<string, unknown> | null) {
   const bidRate = cleanNumber(invitation.bid_rate);
   const benchmarkRate = cleanNumber(benchmark?.all_in_rate);
@@ -11079,10 +11148,12 @@ Deno.serve(async (request) => {
 
       const lanes = (lanesResult.data || []).map((lane) => {
         const benchmark = bestRatewareBenchmark(lane, rates);
+        const supplyDepth = supplyDepthForLane(lane, rates);
         const invitations = (invitationsByLane.get(lane.id) || []).map((invitation) => invitationWithComparison(invitation, benchmark));
         return {
           ...lane,
           benchmark,
+          supply_depth: supplyDepth,
           invitations,
           invitation_count: invitations.length,
           bid_count: invitations.filter(isQuotedInvitation).length

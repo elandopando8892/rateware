@@ -459,6 +459,62 @@ function formatMoney(value, currency = "USD") {
   return `${new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(number)} ${currency || "USD"}`;
 }
 
+function supplyDepthTone(score) {
+  const value = Number(score);
+  if (!Number.isFinite(value)) return "muted";
+  if (value >= 75) return "success";
+  if (value >= 50) return "warning";
+  if (value > 0) return "danger";
+  return "muted";
+}
+
+function supplyDepthLabel(score) {
+  const value = Number(score);
+  if (!Number.isFinite(value)) return "No signal";
+  if (value >= 75) return "High likelihood";
+  if (value >= 50) return "Moderate likelihood";
+  if (value > 0) return "Low likelihood";
+  return "No signal";
+}
+
+function renderSupplyDepthCell(lane) {
+  const depth = lane?.supply_depth || {};
+  const carrierCount = Number(depth.carrier_count || 0);
+  const quoteCount = Number(depth.quote_count || 0);
+  if (!quoteCount) {
+    return `
+      <div class="rfx-supply-depth-cell" data-tone="muted">
+        <strong>No history</strong>
+        <small>No approved carrier quotes matched this lane yet.</small>
+      </div>
+    `;
+  }
+  const score = Math.max(0, Math.min(100, Number(depth.likelihood_score || 0)));
+  const probability = Number(depth.target_probability);
+  const probabilityLabel = Number.isFinite(probability)
+    ? `${formatNumber(probability)}% at target`
+    : depth.target_probability_reason === "currency_mismatch"
+      ? `Target ${depth.target_currency || lane.currency || "-"} vs history ${depth.currency || "-"}`
+      : "Target not set";
+  const percentileLine = [
+    depth.p50_rate ? `P50 ${formatMoney(depth.p50_rate, depth.currency)}` : "",
+    depth.p75_rate ? `P75 ${formatMoney(depth.p75_rate, depth.currency)}` : ""
+  ].filter(Boolean).join(" | ");
+  return `
+    <div class="rfx-supply-depth-cell" data-tone="${escapeHtml(supplyDepthTone(score))}">
+      <div class="rfx-supply-depth-head">
+        <strong>${formatNumber(carrierCount)} carrier${carrierCount === 1 ? "" : "s"}</strong>
+        <span>${escapeHtml(supplyDepthLabel(score))}</span>
+      </div>
+      <div class="rfx-supply-meter" aria-label="${escapeHtml(`${formatNumber(score)} percent supply likelihood`)}">
+        <i style="width: ${escapeHtml(String(score))}%"></i>
+      </div>
+      <small>${formatNumber(quoteCount)} quote${quoteCount === 1 ? "" : "s"} | ${escapeHtml(probabilityLabel)}</small>
+      ${percentileLine ? `<small>${escapeHtml(percentileLine)}</small>` : ""}
+    </div>
+  `;
+}
+
 function bidVisibilityLabel(mode = "anonymous_rank") {
   const labels = {
     private: "Private blind",
@@ -801,7 +857,7 @@ function renderEditableLaneRow(lane, context = {}) {
         ${laneEditInput(lane, "currency", { type: "select", values: MANUAL_LANE_CURRENCIES })}
       </td>
       <td>
-        ${context.benchmark ? `${formatMoney(context.benchmark.all_in_rate, context.benchmark.currency)}<small>${escapeHtml(context.benchmark.vendor || "Rateware")} | ${context.benchmark.score}%</small>` : "-"}
+        ${renderSupplyDepthCell(lane)}
         ${context.bestBid ? `<small>Best bid ${formatMoney(context.bestBid.bid_rate, context.bestBid.currency || lane.currency)}</small>` : ""}
       </td>
       <td>
@@ -4764,7 +4820,7 @@ function renderLanes() {
         <td>${escapeHtml([lane.equipment, lane.trailer, lane.config, lane.operation].filter(Boolean).join(" / ") || "-")}</td>
         <td>${formatNumber(lane.weekly_volume)} / wk<small>Target ${formatMoney(lane.target_rate, lane.currency)}</small></td>
         <td>
-          ${benchmark ? `${formatMoney(benchmark.all_in_rate, benchmark.currency)}<small>${escapeHtml(benchmark.vendor || "Rateware")} | ${benchmark.score}%</small>` : "-"}
+          ${renderSupplyDepthCell(lane)}
           ${bestBid ? `<small>Best bid ${formatMoney(bestBid.bid_rate, bestBid.currency || lane.currency)}</small>` : ""}
         </td>
         <td>

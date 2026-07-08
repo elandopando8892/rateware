@@ -1364,6 +1364,65 @@ a {
   white-space: nowrap;
 }
 
+.rfx-supply-depth-cell {
+  display: grid;
+  gap: 3px;
+  min-width: 150px;
+}
+
+.rfx-supply-depth-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.rfx-supply-depth-head strong {
+  color: #17212b;
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+.rfx-supply-depth-head span {
+  color: #52616d;
+  font-size: 0.66rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.rfx-supply-depth-cell small {
+  color: #52616d;
+  font-size: 0.66rem;
+  line-height: 1.25;
+}
+
+.rfx-supply-meter {
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e7edf3;
+}
+
+.rfx-supply-meter i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #9ba7b0;
+}
+
+.rfx-supply-depth-cell[data-tone="success"] .rfx-supply-meter i {
+  background: #12836d;
+}
+
+.rfx-supply-depth-cell[data-tone="warning"] .rfx-supply-meter i {
+  background: #d69122;
+}
+
+.rfx-supply-depth-cell[data-tone="danger"] .rfx-supply-meter i {
+  background: #c0392b;
+}
+
 .rfx-invitation-list {
   display: grid;
   gap: 6px;

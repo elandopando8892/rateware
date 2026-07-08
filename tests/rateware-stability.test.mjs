@@ -321,6 +321,7 @@ assert.match(integrationSmokeSource, /pending_review/, "Integration smoke should
 assert.match(integrationSmokeSource, /Refusing to send real Gmail to external recipient/, "Integration smoke should block accidental external Gmail sends");
 assert.match(rfxEventsHtml, /<th>Score<\/th>/, "Bid Room response board should expose procurement decision score");
 assert.match(rfxEventsSource, /renderAwardBoard/, "Bid Room should render award decisions by lane");
+assert.match(rfxEventsHtml, /<th>Supply depth<\/th>/, "Bid Room Step 2 should show supply depth instead of a simple benchmark column");
 assert.match(rfxEventsHtml, /<th>Progress<\/th>/, "Bid Room Step 2 should summarize lane progress instead of rendering shortlist controls");
 assert.doesNotMatch(rfxEventsHtml, /Shortlist \/ bids/, "Bid Room Step 2 should keep carrier shortlist work out of the business book table");
 assert.doesNotMatch(rfxEventsHtml, /Manual paste fallback/, "Bid Room Step 2 should not expose technical paste fallback language");
@@ -332,6 +333,8 @@ assert.match(rfxEventsHtml, /toggle-rfx-lane-edit/, "Bid Room Step 2 should allo
 assert.match(rfxEventsHtml, /save-rfx-lane-edits/, "Bid Room Step 2 should save edits across loaded lanes");
 assert.match(rfxEventsSource, /function renderEditableLaneRow/, "Bid Room Step 2 should render imported lanes as editable rows");
 assert.match(rfxEventsSource, /function saveRfxLaneEdits/, "Bid Room Step 2 should save loaded lane edits");
+assert.match(rfxEventsSource, /function renderSupplyDepthCell/, "Bid Room Step 2 should render supply depth by lane");
+assert.match(rfxEventsSource, /rfx-supply-meter/, "Bid Room Step 2 should show a thermometer-style supply signal");
 assert.match(rfxEventsSource, /function insertClipboardHtmlIntoTextarea/, "Bid Room lane detail editors should accept pasted HTML source");
 assert.match(rfxEventsSource, /getData\("text\/html"\)/, "Bid Room lane detail paste should prefer clipboard HTML when available");
 assert.match(rfxEventsSource, /manualLanesBody\?\.addEventListener\("paste"/, "Manual lane detail editor should support pasted HTML");
@@ -339,6 +342,8 @@ assert.match(rfxEventsSource, /lanesBody\?\.addEventListener\("paste"/, "Loaded 
 assert.match(rfxServiceSource, /update_rfx_lane/, "RFx service should expose loaded lane updates");
 assert.match(apiSource, /body\.action === "update_rfx_lane"/, "Rateware API should update existing RFx lanes");
 assert.match(apiSource, /function normalizeRfxLanePatch/, "Rateware API should normalize partial RFx lane updates");
+assert.match(apiSource, /function supplyDepthForLane/, "Rateware API should calculate RFx lane supply depth");
+assert.match(apiSource, /target_probability_reason/, "RFx lane supply depth should explain missing target probability");
 for (const field of ["logistics_model", "operation_criteria", "business_rules", "service_specifications", "other_notes"]) {
   assert.match(rfxLaneDetailSectionsMigration, new RegExp(`add column if not exists ${field} text`), `RFx lanes should persist ${field}`);
   assert.match(rfxEventsSource, new RegExp(`key: "${field}"`), `RFx lane template should expose ${field}`);
