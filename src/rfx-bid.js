@@ -11,6 +11,8 @@ let lastCarrierChat = { rows: [], google_chat_configured: false };
 let lastInvitation = null;
 let lastLiveBoard = {};
 let lastQuickBidSaveStatus = null;
+let lastBidSupportQuestion = "";
+let lastBidSupportResult = null;
 let pendingBidTemplateRows = [];
 const bookFilters = {
   view: "all",
@@ -1839,6 +1841,99 @@ function renderCarrierChat(chat = lastCarrierChat) {
   `;
 }
 
+function bidSupportPromptList() {
+  return portalLanguage() === "es"
+    ? ["Como mejoro mi ranking?", "Que modelo comercial debo elegir?", "Que detalles tiene esta lane?", "Como subo una alternativa?"]
+    : ["How do I improve my rank?", "Which commercial model should I use?", "What details are available for this lane?", "How do I submit an alternative?"];
+}
+
+function renderBidSupportAgent(result = lastBidSupportResult) {
+  lastBidSupportResult = result || null;
+  const panel = card.querySelector("#bid-support-agent");
+  if (!panel) return;
+  const event = lastInvitation?.rfx_events || {};
+  const lane = lastInvitation?.rfx_lanes || {};
+  const scope = result?.scope || [
+    dualText("Private Bid Room", "Bid Room privado"),
+    event.rfx_id || event.name,
+    lane.origin && lane.destination ? `${lane.origin} -> ${lane.destination}` : null
+  ].filter(Boolean).join(" | ");
+  panel.innerHTML = `
+    <div class="bid-room-section-heading">
+      <div>
+        <p class="eyebrow">${escapeHtml(dualText("Contextual support", "Soporte contextual"))}</p>
+        <h3>${escapeHtml(dualText("Ask about this bid", "Pregunta sobre esta puja"))}</h3>
+      </div>
+      <span class="status-pill neutral">${escapeHtml(dualText("No guessing", "Sin inventar"))}</span>
+    </div>
+    <p class="bid-support-scope">${escapeHtml(scope || dualText("Private Bid Room context", "Contexto del Bid Room privado"))}</p>
+    <div class="bid-support-prompts">
+      ${bidSupportPromptList().map((prompt) => `<button type="button" class="secondary small-button" data-bid-support-prompt="${escapeAttribute(prompt)}">${escapeHtml(prompt)}</button>`).join("")}
+    </div>
+    ${result ? `
+      <article class="bid-support-answer" data-needs-ticket="${result.needs_ticket ? "true" : "false"}">
+        <div>
+          <strong>${escapeHtml(result.needs_ticket ? dualText("Human follow-up recommended", "Requiere seguimiento humano") : dualText("Support answer", "Respuesta de soporte"))}</strong>
+          <span>${escapeHtml(result.confidence ? `${dualText("Confidence", "Confianza")}: ${result.confidence}` : "")}</span>
+        </div>
+        <p>${escapeHtml(result.answer || "")}</p>
+        ${result.ticket?.id ? `<small>${escapeHtml(dualText("Ticket created", "Ticket creado"))}: ${escapeHtml(result.ticket.id)}</small>` : ""}
+      </article>
+    ` : ""}
+    <form id="bid-support-form" class="bid-support-form">
+      <textarea id="bid-support-message" rows="2" placeholder="${escapeAttribute(dualText("Ask about ranking, commercial model, ETA, alternatives, lane details, or next steps...", "Pregunta sobre ranking, modelo comercial, ETA, alternativas, detalles de la lane o siguientes pasos..."))}">${escapeHtml(lastBidSupportQuestion)}</textarea>
+      <div>
+        <button type="submit">${escapeHtml(dualText("Ask support", "Preguntar"))}</button>
+        ${result?.needs_ticket ? `<button type="button" class="secondary" data-create-support-ticket>${escapeHtml(dualText("Create ticket", "Crear ticket"))}</button>` : ""}
+      </div>
+      <p id="bid-support-status" class="status-message" role="status"></p>
+    </form>
+  `;
+}
+
+async function askBidSupport(options = {}) {
+  const status = card.querySelector("#bid-support-status");
+  const input = card.querySelector("#bid-support-message");
+  const message = String(options.createTicket ? lastBidSupportQuestion : input?.value || "").trim();
+  if (!message) {
+    if (status) {
+      status.textContent = dualText("Write a support question first.", "Escribe una pregunta primero.");
+      status.dataset.tone = "error";
+    }
+    input?.focus();
+    return;
+  }
+  lastBidSupportQuestion = message;
+  if (status) {
+    status.textContent = options.createTicket
+      ? dualText("Creating ticket...", "Creando ticket...")
+      : dualText("Checking bid context...", "Revisando contexto de la puja...");
+    status.dataset.tone = "neutral";
+  }
+  try {
+    const result = await callBidApi("bid_support_reply", {
+      message,
+      create_ticket: options.createTicket === true,
+      language: portalLanguage()
+    });
+    renderBidSupportAgent(result);
+    const nextStatus = card.querySelector("#bid-support-status");
+    if (nextStatus) {
+      nextStatus.textContent = result.ticket?.id
+        ? dualText("Ticket created for procurement follow-up.", "Ticket creado para seguimiento de procurement.")
+        : result.needs_ticket
+          ? dualText("Support recommends creating a ticket.", "Soporte recomienda crear un ticket.")
+          : dualText("Answered from visible Bid Room context.", "Respondido con contexto visible del Bid Room.");
+      nextStatus.dataset.tone = result.ticket?.id || !result.needs_ticket ? "success" : "warning";
+    }
+  } catch (error) {
+    if (status) {
+      status.textContent = error.message || dualText("Support could not answer.", "Soporte no pudo responder.");
+      status.dataset.tone = "error";
+    }
+  }
+}
+
 async function loadCarrierChat(options = {}) {
   try {
     const chat = await callBidApi("list_bid_room_chat");
@@ -2479,6 +2574,10 @@ function renderInvitation(invitation, liveBoard = {}, carrierBook = {}) {
       <p class="status-message">${escapeHtml(t("loadingChat"))}</p>
     </section>
 
+    <section id="bid-support-agent" class="bid-support-agent">
+      <p class="status-message">${escapeHtml(dualText("Loading contextual support...", "Cargando soporte contextual..."))}</p>
+    </section>
+
     <section class="bid-offer-launcher">
       <div>
         <p class="eyebrow">${escapeHtml(t("submitOrUpdate"))}</p>
@@ -2693,6 +2792,7 @@ function renderInvitation(invitation, liveBoard = {}, carrierBook = {}) {
     }
   });
   renderLiveBoard(liveBoard);
+  renderBidSupportAgent();
   syncCommercialStructureFields();
   updateBidReviewSummary();
   syncBidFormMode();
@@ -2812,6 +2912,22 @@ card.addEventListener("click", async (event) => {
     return;
   }
 
+  const supportPromptButton = event.target.closest("[data-bid-support-prompt]");
+  if (supportPromptButton) {
+    const input = card.querySelector("#bid-support-message");
+    if (input) {
+      input.value = supportPromptButton.dataset.bidSupportPrompt || "";
+      input.focus();
+    }
+    return;
+  }
+
+  const supportTicketButton = event.target.closest("[data-create-support-ticket]");
+  if (supportTicketButton) {
+    await askBidSupport({ createTicket: true });
+    return;
+  }
+
   const downloadTemplateButton = event.target.closest("[data-download-bid-template]");
   if (downloadTemplateButton) {
     const status = card.querySelector("#carrier-bid-template-status");
@@ -2862,8 +2978,13 @@ card.addEventListener("click", async (event) => {
 
 card.addEventListener("submit", async (event) => {
   const chatForm = event.target.closest("#carrier-chat-form");
-  if (!chatForm) return;
+  const supportForm = event.target.closest("#bid-support-form");
+  if (!chatForm && !supportForm) return;
   event.preventDefault();
+  if (supportForm) {
+    await askBidSupport();
+    return;
+  }
   const status = card.querySelector("#carrier-chat-status");
   const message = card.querySelector("#carrier-chat-message");
   const body = String(message?.value || "").trim();

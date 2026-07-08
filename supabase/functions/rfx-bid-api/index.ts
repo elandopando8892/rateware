@@ -1893,12 +1893,328 @@ async function publicBidRoomFindInvitations(supabase: ReturnType<typeof createCl
   };
 }
 
+function supportLanguage(input: Record<string, unknown>) {
+  const language = String(cleanText(input.language) || "").toLowerCase();
+  return language === "es" ? "es" : "en";
+}
+
+function supportRouteLabel(lane: Record<string, unknown>) {
+  return [lane.origin || lane.origin_city, lane.destination || lane.destination_city]
+    .map(cleanText)
+    .filter(Boolean)
+    .join(" -> ") || "selected lane";
+}
+
+function supportEventLabel(event: Record<string, unknown>) {
+  return [event.rfx_id, event.name].map(cleanText).filter(Boolean).join(" | ") || "Bid Room";
+}
+
+function supportCommercialModelCopy(question: string, language: string) {
+  const lower = question.toLowerCase();
+  if (!/(commercial|cost|share|margin|markup|modelo|comercial|margen|facturacion|facturación|compra|venta|xbf)/i.test(lower)) return null;
+  return language === "es"
+    ? "Estructura comercial: Cost-plus usa el margen sugerido MARKSMAN sobre tu costo all-in; Carrier invoice share usa el porcentaje de facturacion que el carrier acepta compartir; XBF Buy-Sell no requiere porcentaje porque el markup lo define XBF internamente. No mezcles share % con cost-plus."
+    : "Commercial structure: Cost-plus uses the suggested MARKSMAN margin over your all-in cost; Carrier invoice share uses the billing percentage the carrier agrees to share; XBF Buy-Sell does not require a percentage because XBF controls the markup internally. Do not mix share % with cost-plus.";
+}
+
+function supportBestPracticeCopy(question: string, language: string) {
+  const lower = question.toLowerCase();
+  if (/(alternative|alternativa|equipo|equipment|unidad|unit|eta|capacity|capacidad|ranking|rank|score|displaced|superado|price|tarifa|rate|puja|bid)/i.test(lower)) {
+    return language === "es"
+      ? "Para mejorar una puja, captura tarifa all-in numerica, moneda, capacidad semanal, dias de transito, ETA de pickup/delivery si aplica, disponibilidad de equipo y cualquier alternativa real. Si ofreces una alternativa, explica unidades/equipo sustituto y restricciones. El ranking considera precio, capacidad, ETA, validacion y modelo comercial; no solo la tarifa mas baja."
+      : "To improve a bid, enter numeric all-in rate, currency, weekly capacity, transit days, pickup/delivery ETA when available, equipment availability, and any real alternative. If you offer an alternative, describe substitute units/equipment and restrictions. Ranking considers price, capacity, ETA, validation, and commercial model, not only the lowest rate.";
+  }
+  return null;
+}
+
+function supportOutOfScopeReason(question: string, language: string) {
+  const lower = question.toLowerCase();
+  const hardEscalation = /(contract|legal|lawsuit|payment|invoice|factura|pago|cobranza|claim|reclamo|insurance|seguro|cancel|cancelar|delete|borrar|account|login|access error|error|fallo|bug|no puedo|human|humano|award guarantee|garantiza|why rejected|por que rechazaron|por qué rechazaron)/i;
+  if (!hardEscalation.test(lower)) return null;
+  return language === "es"
+    ? "Esto requiere revision humana o datos fuera del contexto visible del Bid Room."
+    : "This requires human review or data outside the visible Bid Room context.";
+}
+
+function supportMissingContextCopy(language: string) {
+  return language === "es"
+    ? "No tengo suficiente contexto confiable para responder eso sin inventar. Puedo crear un ticket para procurement con tu pregunta y el contexto disponible."
+    : "I do not have enough reliable context to answer that without guessing. I can create a procurement ticket with your question and the available context.";
+}
+
+function supportContextScope(input: { token?: string | null; lane?: Record<string, unknown>; event?: Record<string, unknown>; vendor?: Record<string, unknown> }, language: string) {
+  const pieces = [];
+  if (input.token) pieces.push(language === "es" ? "Bid Room privado" : "Private Bid Room");
+  else pieces.push(language === "es" ? "Tablero publico" : "Public board");
+  if (input.event) pieces.push(supportEventLabel(input.event));
+  if (input.lane) pieces.push(supportRouteLabel(input.lane));
+  if (input.vendor) pieces.push(cleanText(input.vendor.vendor_name) || cleanText(input.vendor.domain) || "Carrier");
+  return pieces.filter(Boolean).join(" | ");
+}
+
+async function loadPublicSupportLane(supabase: ReturnType<typeof createClient>, input: Record<string, unknown>) {
+  const laneId = cleanText(input.lane_id || input.rfx_lane_id);
+  if (!laneId) return null;
+  const result = await supabase
+    .from("rfx_lanes")
+    .select(`
+      id,
+      rfx_event_id,
+      lane_number,
+      origin,
+      destination,
+      origin_city,
+      destination_city,
+      equipment,
+      trailer,
+      operation,
+      service,
+      weekly_volume,
+      target_rate,
+      currency,
+      logistics_model,
+      operation_criteria,
+      business_rules,
+      service_specifications,
+      other_notes,
+      notes,
+      rfx_events!inner(id,owner_user_id,owner_email,rfx_id,name,customer,event_type,status,due_date,bid_visibility_mode)
+    `)
+    .eq("id", laneId)
+    .maybeSingle();
+  if (result.error) throw result.error;
+  return result.data as Record<string, unknown> | null;
+}
+
+async function loadPrivateSupportContext(supabase: ReturnType<typeof createClient>, token: string) {
+  const context = await currentInvitationContext(supabase, token);
+  const currentResult = await supabase
+    .from("rfx_lane_vendors")
+    .select("id,bid_rate,currency,weekly_capacity,transit_days,commercial_model,marksman_margin_pct,carrier_share_pct,best_alternative_offered,alternative_equipment,alternative_units,equipment_available,eta_pickup,eta_delivery,responded_at,updated_at,notes,vendors(vendor_name,domain)")
+    .eq("id", context.id)
+    .single();
+  if (currentResult.error) throw currentResult.error;
+  const current = {
+    ...context,
+    ...currentResult.data,
+    rfx_events: context.rfx_events,
+    rfx_lanes: context.rfx_lanes,
+    vendors: context.vendors
+  };
+  const peersResult = await supabase
+    .from("rfx_lane_vendors")
+    .select("id,bid_rate,currency,weekly_capacity,transit_days,commercial_model,marksman_margin_pct,carrier_share_pct,best_alternative_offered,alternative_equipment,alternative_units,equipment_available,eta_pickup,eta_delivery,responded_at,updated_at,vendors(vendor_name,domain)")
+    .eq("rfx_lane_id", context.rfx_lane_id)
+    .neq("id", context.id)
+    .not("bid_rate", "is", null)
+    .in("invitation_status", ["quoted", "bid_submitted", "awarded"])
+    .limit(1000);
+  if (peersResult.error) throw peersResult.error;
+  return {
+    invitation: current,
+    event: relationRecord(context.rfx_events),
+    lane: relationRecord(context.rfx_lanes),
+    vendor: relationRecord(context.vendors),
+    live_board: liveBoardFromRows(current, peersResult.data || [])
+  };
+}
+
+function bidSupportAnswerFromContext(
+  question: string,
+  context: {
+    language: string;
+    token?: string | null;
+    event?: Record<string, unknown> | null;
+    lane?: Record<string, unknown> | null;
+    vendor?: Record<string, unknown> | null;
+    live_board?: Record<string, unknown> | null;
+  }
+) {
+  const language = context.language;
+  const reason = supportOutOfScopeReason(question, language);
+  const scope = supportContextScope({
+    token: context.token,
+    event: context.event || undefined,
+    lane: context.lane || undefined,
+    vendor: context.vendor || undefined
+  }, language);
+  if (reason) {
+    return {
+      answer: `${reason} ${supportMissingContextCopy(language)}`,
+      needs_ticket: true,
+      confidence: "low",
+      scope
+    };
+  }
+
+  const parts: string[] = [];
+  const lane = context.lane || {};
+  const event = context.event || {};
+  const liveBoard = context.live_board || {};
+  const commercialCopy = supportCommercialModelCopy(question, language);
+  const bestPracticeCopy = supportBestPracticeCopy(question, language);
+  if (/(deadline|due|vence|vencimiento|fecha|cierre)/i.test(question)) {
+    const dueDate = cleanText(event.due_date);
+    parts.push(language === "es"
+      ? `La fecha limite visible para este Bid Room es ${dueDate || "no definida"}.`
+      : `The visible deadline for this Bid Room is ${dueDate || "not defined"}.`);
+  }
+  if (/(lane|ruta|origin|origen|destination|destino|equipment|equipo|service|servicio|operation|operacion|operación)/i.test(question)) {
+    parts.push(language === "es"
+      ? `Contexto de ruta: ${supportRouteLabel(lane)}. Equipo/servicio visible: ${[lane.equipment, lane.trailer, lane.operation, lane.service].map(cleanText).filter(Boolean).join(" / ") || "no declarado"}.`
+      : `Lane context: ${supportRouteLabel(lane)}. Visible equipment/service: ${[lane.equipment, lane.trailer, lane.operation, lane.service].map(cleanText).filter(Boolean).join(" / ") || "not declared"}.`);
+  }
+  if (/(rank|ranking|score|position|posicion|posición|leader|lider|líder|superado|displaced)/i.test(question) && context.token) {
+    parts.push(language === "es"
+      ? `Tu posicion visible es ${liveBoard.current_rank ? `#${liveBoard.current_rank}` : "no disponible aun"}. Senal actual: ${cleanText(liveBoard.marketplace_signal) || "sin senal"}.`
+      : `Your visible position is ${liveBoard.current_rank ? `#${liveBoard.current_rank}` : "not available yet"}. Current signal: ${cleanText(liveBoard.marketplace_signal) || "no signal"}.`);
+  }
+  if (commercialCopy) parts.push(commercialCopy);
+  if (bestPracticeCopy) parts.push(bestPracticeCopy);
+  if (!context.token && /(invitation|invite|access|participate|private link|link privado|invitacion|invitación|invitar|acceso|participar)/i.test(question)) {
+    parts.push(language === "es"
+      ? "Para participar desde el tablero publico, abre una oportunidad y usa Request invitation. Si ya recibiste invitacion, usa Find my invitations con el mismo correo al que procurement te contacto; Rateware enviara tus links privados a ese inbox."
+      : "To participate from the public board, open an opportunity and use Request invitation. If you were already invited, use Find my invitations with the same email procurement contacted; Rateware will send your private links to that inbox.");
+  }
+  if (!context.token && /(opportunity|opportunities|marketplace|public board|tablero|publico|público|oportunidad|oportunidades)/i.test(question)) {
+    parts.push(language === "es"
+      ? "El tablero publico muestra oportunidades cargadas al Bid Room para visibilidad de mercado. No expone identidad de competidores y no permite pujar directamente; la puja ocurre en el Bid Room privado con token."
+      : "The public board shows Bid Room opportunities for market visibility. It does not expose competitor identity and it does not accept direct bids; bidding happens in the private tokenized Bid Room.");
+  }
+  if (!context.token && /(bid|puja|quote|cotizar|tarifa|rate|submit|enviar)/i.test(question)) {
+    parts.push(language === "es"
+      ? "Desde el tablero publico no se puede pujar directamente. Solicita invitacion o usa tu link privado; si ya fuiste invitado, usa Find my invitations con el correo donde recibiste la invitacion."
+      : "You cannot bid directly from the public board. Request an invitation or use your private link; if you were already invited, use Find my invitations with the email that received the invite.");
+  }
+  if (/(business|modelo logistico|logistico|criterios|rules|reglas|notes|notas|detail|detalle)/i.test(question)) {
+    const details = [
+      lane.logistics_model ? "logistics model" : null,
+      lane.operation_criteria ? "operation criteria" : null,
+      lane.business_rules ? "business rules" : null,
+      lane.service_specifications ? "service specifications" : null,
+      lane.other_notes || lane.notes ? "notes" : null
+    ].filter(Boolean);
+    parts.push(language === "es"
+      ? `Los detalles disponibles son: ${details.length ? details.join(", ") : "no hay detalles adicionales capturados en esta lane"}.`
+      : `Available details: ${details.length ? details.join(", ") : "no additional lane details are captured"}.`);
+  }
+  if (!parts.length) {
+    return {
+      answer: supportMissingContextCopy(language),
+      needs_ticket: true,
+      confidence: "low",
+      scope
+    };
+  }
+  parts.push(language === "es"
+    ? "Si necesitas una decision comercial, excepcion o dato no visible, crea un ticket para procurement."
+    : "If you need a commercial decision, exception, or data that is not visible, create a ticket for procurement.");
+  return {
+    answer: parts.join(" "),
+    needs_ticket: false,
+    confidence: context.token ? "high" : "medium",
+    scope
+  };
+}
+
+async function createBidSupportTicket(
+  supabase: ReturnType<typeof createClient>,
+  input: Record<string, unknown>,
+  support: Record<string, unknown>,
+  context: {
+    event?: Record<string, unknown> | null;
+    lane?: Record<string, unknown> | null;
+    vendor?: Record<string, unknown> | null;
+  }
+) {
+  const event = context.event || {};
+  const lane = context.lane || {};
+  const vendor = context.vendor || {};
+  const question = cleanText(input.message || input.question) || "Support request";
+  const contactEmail = cleanEmail(input.email || relationRecord(vendor).primary_email);
+  const ownerEmail = cleanText(event.owner_email) || GMAIL_ALLOWED_SENDER;
+  const result = await supabase.from("contact_history").insert({
+    owner_user_id: cleanText(event.owner_user_id),
+    owner_email: ownerEmail,
+    vendor_id: cleanText(vendor.id || input.vendor_id),
+    rfx_event_id: cleanText(event.id || input.event_id || input.rfx_event_id),
+    channel: "portal",
+    direction: "inbound",
+    status: "support_ticket",
+    subject: `${supportEventLabel(event)} support question`,
+    body_preview: question.slice(0, 400),
+    occurred_at: new Date().toISOString(),
+    metadata: {
+      source: "bid_support_agent",
+      question,
+      answer: cleanText(support.answer),
+      confidence: cleanText(support.confidence),
+      scope: cleanText(support.scope),
+      lane_id: cleanText(lane.id || input.lane_id || input.rfx_lane_id),
+      route: Object.keys(lane).length ? supportRouteLabel(lane) : null,
+      contact_email: contactEmail,
+      public_context: cleanBoolean(input.public_context) === true
+    }
+  }).select("id").single();
+  if (result.error) throw result.error;
+  return result.data;
+}
+
+async function bidSupportReply(supabase: ReturnType<typeof createClient>, input: Record<string, unknown>) {
+  const question = cleanText(input.message || input.question);
+  const language = supportLanguage(input);
+  if (!question) {
+    return { error: language === "es" ? "Escribe una pregunta primero." : "Write a question first.", status: 400 };
+  }
+
+  const token = cleanText(input.token);
+  let event: Record<string, unknown> | null = null;
+  let lane: Record<string, unknown> | null = null;
+  let vendor: Record<string, unknown> | null = null;
+  let liveBoard: Record<string, unknown> | null = null;
+  if (token) {
+    const privateContext = await loadPrivateSupportContext(supabase, token);
+    event = privateContext.event;
+    lane = privateContext.lane;
+    vendor = privateContext.vendor;
+    liveBoard = privateContext.live_board;
+  } else {
+    const publicLane = await loadPublicSupportLane(supabase, input);
+    if (publicLane) {
+      event = relationRecord(publicLane.rfx_events);
+      lane = publicLane;
+    }
+  }
+
+  const support = bidSupportAnswerFromContext(question, { language, token, event, lane, vendor, live_board: liveBoard });
+  let ticket = null;
+  if (cleanBoolean(input.create_ticket) === true) {
+    ticket = await createBidSupportTicket(supabase, input, support, { event, lane, vendor });
+  }
+  return {
+    ...support,
+    ticket,
+    escalation_available: true,
+    suggested_prompts: language === "es"
+      ? ["Como mejoro mi ranking?", "Como solicito invitacion?", "Que modelo comercial debo elegir?", "Que detalles tiene esta lane?"]
+      : ["How do I improve my rank?", "How do I request an invitation?", "Which commercial model should I use?", "What details are available for this lane?"]
+  };
+}
+
 Deno.serve(async (request) => {
   if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders() });
 
   try {
     const supabase = getClient();
     const body = await request.json().catch(() => ({}));
+    if (body.action === "bid_support_reply") {
+      const result = await bidSupportReply(supabase, body);
+      if (result.status) {
+        const { status, ...payload } = result;
+        return jsonResponse(payload, status as number);
+      }
+      return jsonResponse(result);
+    }
     if (body.action === "public_bid_room_board") {
       return jsonResponse(await publicBidRoomBoard(supabase, body));
     }

@@ -676,6 +676,13 @@ assert.match(apiSource, /function apiErrorStatus/, "Rateware API should return a
 assert.match(apiSource, /BULK_SEND_LIMIT = 100/, "API should cap direct Gmail send batches");
 assert.match(apiSource, /BULK_SHORTLIST_VENDOR_LIMIT = 1000/, "Bid Room participant shortlist should support up to 1,000 vendors per request");
 assert.match(apiSource, /BULK_FILTER_CONFIRM_THRESHOLD = 250/, "API should require confirmation for large filtered database actions");
+assert.match(rfxBidApiSource, /bid_support_reply/, "Bid Room API should expose contextual support replies");
+assert.match(rfxBidApiSource, /function bidSupportAnswerFromContext/, "Bid Room support should answer from scoped context");
+assert.match(rfxBidApiSource, /status: "support_ticket"/, "Bid Room support should escalate unknown questions as support tickets");
+assert.match(rfxBidSource, /id="bid-support-agent"/, "Private Bid Room should render a contextual support agent");
+assert.match(rfxBidSource, /function askBidSupport/, "Private Bid Room should call the support agent");
+assert.match(bidRoomBoardHtml, /id="public-board-support-form"/, "Public Bid Room board should render public support");
+assert.match(bidRoomBoardSource, /function askPublicSupport/, "Public Bid Room board should call the support agent");
 assert.match(apiSource, /const invitationIdChunks = invitationIds\.length \? chunkValues\(invitationIds, 100\) : \[\[\]\]/, "Outreach draft generation should read selected invitations in small id batches");
 assert.match(apiSource, /for \(const chunk of chunkValues\(rows, 100\)\)/, "Outreach draft generation should upsert draft messages in small batches");
 assert.match(apiSource, /return jsonResponse\(\{ generated: generatedMessages\.length, rows: \[\], skipped, campaign_id: campaign\.id \}\)/, "Outreach draft generation should avoid returning large HTML draft payloads");

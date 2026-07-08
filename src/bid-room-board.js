@@ -19,6 +19,10 @@ const detailContent = document.querySelector("#public-board-detail-content");
 const detailClose = document.querySelector("#public-board-detail-close");
 const softLoginDrawer = document.querySelector("#public-board-soft-login-drawer");
 const softLoginClose = document.querySelector("#public-board-soft-login-close");
+const supportForm = document.querySelector("#public-board-support-form");
+const supportReply = document.querySelector("#public-board-support-reply");
+const supportMessage = document.querySelector("#public-board-support-message");
+const supportEmail = document.querySelector("#public-board-support-email");
 
 const API_URL = `${SUPABASE_URL}/functions/v1/rfx-bid-api`;
 const ANNOUNCEMENTS = {
@@ -53,7 +57,9 @@ const state = {
   soundEnabled: localStorage.getItem("rateware.publicBidBoard.sound") !== "off",
   audioContext: null,
   alerts: [],
-  selectedRowId: null
+  selectedRowId: null,
+  supportLaneId: "",
+  supportQuestion: ""
 };
 
 languageSelect.value = state.language;
@@ -241,6 +247,69 @@ async function callFindInvitations(payload = {}) {
   }
   if (!response.ok) throw new Error(data.error || data.message || text || `Invitation lookup failed (${response.status})`);
   return data;
+}
+
+async function callBidSupport(payload = {}) {
+  const response = await fetch(API_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "bid_support_reply", public_context: true, ...payload })
+  });
+  const text = await response.text();
+  let data = {};
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch {
+    data = { error: text };
+  }
+  if (!response.ok) throw new Error(data.error || data.message || text || `Support request failed (${response.status})`);
+  return data;
+}
+
+function renderPublicSupportReply(result = null, status = "") {
+  if (!supportReply) return;
+  if (!result && !status) {
+    supportReply.innerHTML = "";
+    return;
+  }
+  if (status) {
+    supportReply.innerHTML = `<p class="status-message">${escapeHtml(status)}</p>`;
+    return;
+  }
+  supportReply.innerHTML = `
+    <article class="bid-support-answer" data-needs-ticket="${result.needs_ticket ? "true" : "false"}">
+      <div>
+        <strong>${escapeHtml(result.needs_ticket ? "Human follow-up recommended" : "Support answer")}</strong>
+        <span>${escapeHtml(result.scope || "Public Bid Room")}</span>
+      </div>
+      <p>${escapeHtml(result.answer || "")}</p>
+      ${result.ticket?.id ? `<small>Ticket created: ${escapeHtml(result.ticket.id)}</small>` : ""}
+      ${result.needs_ticket && !result.ticket?.id ? `<button type="button" class="secondary small-button" data-public-support-ticket>Create ticket</button>` : ""}
+    </article>
+  `;
+}
+
+async function askPublicSupport(options = {}) {
+  const message = String(options.createTicket ? state.supportQuestion : supportMessage?.value || "").trim();
+  if (!message) {
+    renderPublicSupportReply(null, "Write a support question first.");
+    supportMessage?.focus();
+    return;
+  }
+  state.supportQuestion = message;
+  renderPublicSupportReply(null, options.createTicket ? "Creating ticket..." : "Checking public Bid Room context...");
+  try {
+    const result = await callBidSupport({
+      message,
+      create_ticket: options.createTicket === true,
+      language: state.language,
+      lane_id: state.supportLaneId || "",
+      email: supportEmail?.value || ""
+    });
+    renderPublicSupportReply(result);
+  } catch (error) {
+    renderPublicSupportReply(null, error.message || "Support could not answer.");
+  }
 }
 
 function rowSnapshot(row) {
@@ -507,6 +576,7 @@ function renderDetailDrawer(row, focusRequest = false) {
       <strong>Invitation required to bid</strong>
       <p>${escapeHtml(invitationRuleCopy(row))}</p>
       <button type="button" class="secondary" data-public-board-soft-login="${escapeHtml(row.id)}">Already invited? Find my private link</button>
+      <button type="button" class="secondary" data-public-board-support="${escapeHtml(row.id)}">Ask support about this opportunity</button>
     </section>
     <form id="public-invite-request-form" class="public-board-request-form" data-event-id="${escapeHtml(row.event?.id || row.event_id || "")}" data-lane-id="${escapeHtml(row.id)}">
       <h3>Request invitation</h3>
@@ -773,6 +843,19 @@ detailDrawer?.addEventListener("click", (event) => {
     openSoftLoginDrawer(row);
     return;
   }
+  const supportButton = event.target.closest("[data-public-board-support]");
+  if (supportButton) {
+    const row = rowById(supportButton.dataset.publicBoardSupport);
+    state.supportLaneId = row?.id || "";
+    if (supportMessage) {
+      supportMessage.value = `Can you explain how to participate in ${row?.route_label || "this opportunity"}?`;
+      state.supportQuestion = supportMessage.value;
+    }
+    closeDetailDrawer();
+    document.querySelector(".public-board-support-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    supportMessage?.focus({ preventScroll: true });
+    return;
+  }
   if (event.target === detailDrawer) closeDetailDrawer();
 });
 detailDrawer?.addEventListener("submit", async (event) => {
@@ -840,6 +923,16 @@ softLoginDrawer?.addEventListener("submit", async (event) => {
   } finally {
     submitButton.disabled = false;
   }
+});
+
+supportForm?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  await askPublicSupport();
+});
+
+supportReply?.addEventListener("click", async (event) => {
+  if (!event.target.closest("[data-public-support-ticket]")) return;
+  await askPublicSupport({ createTicket: true });
 });
 document.addEventListener("keydown", (event) => {
   if (event.key !== "Escape") return;
