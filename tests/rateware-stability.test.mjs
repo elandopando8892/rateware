@@ -68,6 +68,8 @@ const vendorSegmentsCoverageMigration = readFileSync(new URL("../supabase/migrat
 const vendorProfileRequestsMigration = readFileSync(new URL("../supabase/migrations/20260706152000_vendor_profile_requests.sql", import.meta.url), "utf8");
 const rfxLaneDetailSectionsMigration = readFileSync(new URL("../supabase/migrations/20260707170000_rfx_lane_detail_sections.sql", import.meta.url), "utf8");
 const rfxDefaultTemplateMigration = readFileSync(new URL("../supabase/migrations/20260708093000_enrich_rfx_default_invitation_template.sql", import.meta.url), "utf8");
+const rfxBilingualTemplateMigration = readFileSync(new URL("../supabase/migrations/20260708101500_simplify_bilingual_rfx_invitation_templates.sql", import.meta.url), "utf8");
+const rfxSpanishTemplateNameMigration = readFileSync(new URL("../supabase/migrations/20260708103000_normalize_spanish_template_name.sql", import.meta.url), "utf8");
 
 for (const domain of ["gmail.com", "hotmail.com", "yahoo.com", "outlook.com", "yahoo.com.mx"]) {
   assert.match(apiSource, new RegExp(`"${domain.replace(".", "\\.")}"`), `generic domain ${domain} should be blocked`);
@@ -345,12 +347,15 @@ assert.match(rfxEventsSource, /function insertClipboardHtmlIntoTextarea/, "Bid R
 assert.match(rfxEventsSource, /getData\("text\/html"\)/, "Bid Room lane detail paste should prefer clipboard HTML when available");
 assert.match(rfxEventsSource, /manualLanesBody\?\.addEventListener\("paste"/, "Manual lane detail editor should support pasted HTML");
 assert.match(rfxEventsSource, /lanesBody\?\.addEventListener\("paste"/, "Loaded lane detail editor should support pasted HTML");
-assert.match(rfxEventsSource, /function laneBidInstructionSummary/, "Bid Room outreach preview should summarize lane detail sections in the email table");
-assert.match(apiSource, /function outreachLaneBidInstructionSummary/, "Rateware API outreach drafts should include lane detail sections in generated messages");
-assert.match(rfxDefaultTemplateMigration, /Please include/, "Default RFx carrier invitation should include quote instructions");
-assert.match(rfxDefaultTemplateMigration, /Commercial model/, "Default RFx carrier invitation should request commercial model details");
-assert.match(rfxDefaultTemplateMigration, /{{lane_table}}/, "Default RFx carrier invitation should include the full business book table");
-assert.match(rfxDefaultTemplateMigration, /is_default = false/, "Legacy basic RFx carrier invitation should no longer outrank the Marksman default");
+assert.match(rfxDefaultTemplateMigration, /{{lane_table}}/, "Default RFx carrier invitation should include the business book table");
+assert.doesNotMatch(rfxEventsSource, /function laneBidInstructionSummary/, "Bid Room outreach preview should keep invitation lanes simple and push details to the Bid Room");
+assert.doesNotMatch(apiSource, /function outreachLaneBidInstructionSummary/, "Rateware API outreach drafts should keep invitation lanes simple and push details to the Bid Room");
+assert.match(rfxBilingualTemplateMigration, /RFx carrier invitation - English/, "Bid Room should provide an English default invitation template");
+assert.match(rfxBilingualTemplateMigration, /RFx carrier invitation - Spanish/, "Bid Room should provide a Spanish default invitation template");
+assert.match(rfxBilingualTemplateMigration, /logistics model, operating criteria, business rules, service specifications, and additional notes/, "English template should direct carriers to the Bid Room for operational details");
+assert.match(rfxBilingualTemplateMigration, /modelo logistico, criterios de operacion, reglas de negocio, especificaciones de servicio y otras notas/, "Spanish template should direct carriers to the Bid Room for operational details");
+assert.match(rfxSpanishTemplateNameMigration, /name like 'RFx carrier invitation - Espa%'/, "Spanish template migration should normalize old accented or mojibake names");
+assert.match(rfxBilingualTemplateMigration, /active = false[\s\S]*Marksman RFx lane book invitation/, "Long Marksman template should be hidden from the default workflow");
 assert.match(rfxServiceSource, /update_rfx_lane/, "RFx service should expose loaded lane updates");
 assert.match(apiSource, /body\.action === "update_rfx_lane"/, "Rateware API should update existing RFx lanes");
 assert.match(apiSource, /function normalizeRfxLanePatch/, "Rateware API should normalize partial RFx lane updates");
