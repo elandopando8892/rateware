@@ -236,6 +236,7 @@ let selectedLaneIds = new Set();
 let selectedInvitationIds = new Set();
 let selectedDraftMessageIds = new Set();
 let draftQueueSearch = "";
+let draftSearchRenderTimer = null;
 let focusedLaneId = null;
 let activeLaneFilter = "all";
 let laneEditMode = false;
@@ -258,6 +259,7 @@ const rfxWorkbench = initWorkbenchTabs({ defaultView: "setup" });
 const APPROVED_GMAIL_SENDER = "sales@heymarksman.com";
 const OUTREACH_SEND_BATCH_SIZE = 100;
 const DRAFT_QUEUE_VISIBLE_LIMIT = 1000;
+const DRAFT_QUEUE_SEARCH_DEBOUNCE_MS = 120;
 
 const RFX_LANE_TEMPLATE_COLUMNS = [
   { key: "lane_number", label: "Lane #", example: "1" },
@@ -4117,16 +4119,13 @@ function draftSearchText(message = {}) {
     vendor.legal_name,
     vendor.domain,
     vendor.primary_email,
+    vendor.whatsapp_phone,
     message.recipient_email,
     message.recipient_phone,
-    message.sender_email,
     message.channel,
     message.status,
     message.subject,
-    message.text_body,
-    message.whatsapp_text,
     message.delivery_error,
-    message.body_preview,
     lane.origin,
     lane.destination,
     lane.origin_market,
@@ -4137,8 +4136,10 @@ function draftSearchText(message = {}) {
     lane.service,
     event.rfx_id,
     event.name,
-    metadata.bid_link,
-    metadata.profile_link
+    metadata.vendor_name,
+    metadata.vendor_domain,
+    metadata.recipient_email,
+    metadata.contact_name
   ].filter(Boolean).join(" "));
 }
 
@@ -5745,15 +5746,29 @@ draftList?.addEventListener("change", (event) => {
 
 function applyDraftQueueSearch() {
   if (!draftSearchInput) return;
+  if (draftSearchRenderTimer) {
+    window.clearTimeout(draftSearchRenderTimer);
+    draftSearchRenderTimer = null;
+  }
   draftQueueSearch = draftSearchInput.value || "";
   renderDraftQueue();
 }
 
-draftSearchInput?.addEventListener("input", applyDraftQueueSearch);
+function scheduleDraftQueueSearch() {
+  if (!draftSearchInput) return;
+  if (draftSearchRenderTimer) window.clearTimeout(draftSearchRenderTimer);
+  draftSearchRenderTimer = window.setTimeout(applyDraftQueueSearch, DRAFT_QUEUE_SEARCH_DEBOUNCE_MS);
+}
+
+draftSearchInput?.addEventListener("input", scheduleDraftQueueSearch);
 draftSearchInput?.addEventListener("change", applyDraftQueueSearch);
 draftSearchInput?.addEventListener("search", applyDraftQueueSearch);
 
 draftClearSearchButton?.addEventListener("click", () => {
+  if (draftSearchRenderTimer) {
+    window.clearTimeout(draftSearchRenderTimer);
+    draftSearchRenderTimer = null;
+  }
   draftQueueSearch = "";
   if (draftSearchInput) draftSearchInput.value = "";
   renderDraftQueue();

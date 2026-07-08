@@ -378,8 +378,15 @@ assert.match(rfxEventsHtml, /id="rfx-draft-search"/, "Bid Room draft queue shoul
 assert.doesNotMatch(rfxEventsHtml, /rfx-touchpoint-summary/, "Bid Room Step 4 should not duplicate drafts in an invitation tracking section");
 assert.match(rfxEventsSource, /function filteredDraftRows/, "Bid Room draft queue should filter rows before rendering");
 assert.match(rfxEventsSource, /draftSearchText\(message\)/, "Draft queue search should match against each message payload");
+{
+  const draftSearchStart = rfxEventsSource.indexOf("function draftSearchText");
+  const draftSearchEnd = rfxEventsSource.indexOf("function normalizeDraftSearch", draftSearchStart);
+  const draftSearchBody = rfxEventsSource.slice(draftSearchStart, draftSearchEnd);
+  assert.doesNotMatch(draftSearchBody, /message\.text_body|message\.whatsapp_text|message\.sender_email|metadata\.bid_link|metadata\.profile_link/, "Draft queue search should not match common email body, signature, sender, or shared links");
+}
 assert.match(rfxEventsSource, /\.normalize\("NFD"\)/, "Draft queue search should be accent-insensitive");
 assert.match(rfxEventsSource, /addEventListener\("search", applyDraftQueueSearch\)/, "Draft queue search should react when the browser clears a search input");
+assert.match(rfxEventsSource, /addEventListener\("input", scheduleDraftQueueSearch\)/, "Draft queue search should debounce typing before rerendering the table");
 assert.match(rfxEventsSource, /selectableEmailDrafts\(rows\)\.forEach/, "Select sendable should add filtered drafts instead of replacing previous selections");
 assert.doesNotMatch(rfxEventsSource, /draftRowsForEvent\(\)\.slice\(0, 200\)/, "Draft queue selection should not be capped to the first 200 unfiltered rows");
 for (const source of [rfxInvitationTableSource, apiInvitationTableSource]) {
