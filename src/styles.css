@@ -1315,6 +1315,19 @@ a {
   background: #f4faf9;
 }
 
+.rfx-lane-progress-cell {
+  display: grid;
+  gap: 3px;
+  min-width: 150px;
+}
+
+.rfx-lane-progress-cell small {
+  color: var(--muted);
+  font-size: 0.68rem;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
 .rfx-invitation-list {
   display: grid;
   gap: 6px;

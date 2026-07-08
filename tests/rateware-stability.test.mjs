@@ -320,10 +320,13 @@ assert.match(integrationSmokeSource, /pending_review/, "Integration smoke should
 assert.match(integrationSmokeSource, /Refusing to send real Gmail to external recipient/, "Integration smoke should block accidental external Gmail sends");
 assert.match(rfxEventsHtml, /<th>Score<\/th>/, "Bid Room response board should expose procurement decision score");
 assert.match(rfxEventsSource, /renderAwardBoard/, "Bid Room should render award decisions by lane");
-assert.match(rfxEventsSource, /function validateRfxBidPatch/, "Bid Room should validate internal bid edits before saving");
-assert.match(rfxEventsSource, /parseOptionalBidNumber\(patch\[field\], label\)/, "Bid Room should reject non-numeric rate, capacity, or transit edits");
-assert.match(rfxEventsSource, /validateRfxBidPatch\(patch\)/, "Bid Room save bid action should use validated numeric fields");
-assert.match(rfxEventsSource, /Currency must be a 3-letter code/, "Bid Room should validate bid currency codes before saving");
+assert.match(rfxEventsHtml, /<th>Progress<\/th>/, "Bid Room Step 2 should summarize lane progress instead of rendering shortlist controls");
+assert.doesNotMatch(rfxEventsHtml, /Shortlist \/ bids/, "Bid Room Step 2 should keep carrier shortlist work out of the business book table");
+assert.match(rfxEventsSource, /rfx-lane-progress-cell/, "Bid Room Step 2 should render compact lane progress");
+assert.match(rfxEventsSource, /Needs participants/, "Bid Room Step 2 should describe missing carrier work as participant work");
+assert.doesNotMatch(rfxEventsSource, /data-rfx-save-bid/, "Bid Room Step 2 should not expose bid editing controls");
+assert.doesNotMatch(rfxEventsSource, /data-rfx-copy-link/, "Bid Room Step 2 should not expose private bid links");
+assert.doesNotMatch(rfxEventsSource, /data-rfx-auto-shortlist/, "Bid Room Step 2 should not expose per-row shortlist actions");
 assert.match(rfxEventsSource, /data-rfx-award-primary/, "Bid Room should allow primary awards per carrier bid");
 assert.match(rfxEventsSource, /data-rfx-award-backup/, "Bid Room should allow backup carrier awards");
 assert.match(rfxEventsSource, /function procurementDecisionForBid/, "Bid Room should score bids beyond cheapest rate");

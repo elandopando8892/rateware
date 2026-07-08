@@ -20,7 +20,6 @@ import {
   shortlistRfxLaneVendors,
   syncBidRoomEventThread,
   updateBidRoomChatThread,
-  updateRfxBid,
   updateRfxEvent
 } from "./rfx-service.js";
 import {
@@ -947,36 +946,6 @@ function offerAvailabilitySummary(invitation = {}) {
 function decisionNumber(value) {
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
-}
-
-function parseOptionalBidNumber(value, label) {
-  const text = String(value ?? "").trim();
-  if (!text) return { ok: true, value: "" };
-  const normalized = text.replace(/[$,\s]/g, "");
-  const number = Number(normalized);
-  if (!Number.isFinite(number)) return { ok: false, error: `${label} must be numeric.` };
-  if (number <= 0) return { ok: false, error: `${label} must be greater than zero.` };
-  return { ok: true, value: number };
-}
-
-function validateRfxBidPatch(rawPatch = {}) {
-  const patch = { ...rawPatch };
-  const numericFields = [
-    ["bid_rate", "Bid rate"],
-    ["weekly_capacity", "Weekly capacity"],
-    ["transit_days", "Transit days"]
-  ];
-  for (const [field, label] of numericFields) {
-    const parsed = parseOptionalBidNumber(patch[field], label);
-    if (!parsed.ok) return { ok: false, field, error: parsed.error };
-    patch[field] = parsed.value;
-  }
-  const currency = String(patch.currency || "USD").trim().toUpperCase();
-  if (!/^[A-Z]{3}$/.test(currency)) {
-    return { ok: false, field: "currency", error: "Currency must be a 3-letter code like USD, MXN, or CAD." };
-  }
-  patch.currency = currency;
-  return { ok: true, patch };
 }
 
 function clampScore(value, min = 0, max = 100) {
@@ -2702,7 +2671,7 @@ function laneDecisionStatus(lane) {
 
 function laneDecisionLabel(status) {
   const labels = {
-    needs_shortlist: "Needs shortlist",
+    needs_shortlist: "Needs participants",
     needs_invite: "Needs invite",
     needs_response: "Needs response",
     has_bids: "Has bids",
@@ -4347,32 +4316,6 @@ function renderManualShortlistControls() {
   updateParticipantTemplateControls();
 }
 
-function renderInvitation(invitation, lane) {
-  const bidDelta = Number(invitation.bid_delta);
-  const hasDelta = Number.isFinite(bidDelta);
-  const deltaTone = hasDelta && bidDelta <= 0 ? "success" : hasDelta ? "danger" : "neutral";
-  return `
-    <article class="rfx-invitation" data-rfx-invite-id="${escapeHtml(invitation.id)}">
-      <label class="table-checkbox">
-        <input type="checkbox" data-rfx-invitation-select="${escapeHtml(invitation.id)}" ${selectedInvitationIds.has(invitation.id) ? "checked" : ""} />
-      </label>
-      <div>
-        <strong>${escapeHtml(vendorLabel(invitation))}</strong>
-        ${statusChip(invitation.invitation_status || "drafted")}
-        <small>${escapeHtml([invitation.vendors?.primary_email, invitation.vendors?.whatsapp_phone].filter(Boolean).join(" | ") || "No contact channel")}</small>
-      </div>
-      <input data-rfx-bid-field="bid_rate" value="${escapeHtml(invitation.bid_rate ?? "")}" placeholder="Rate" inputmode="decimal" />
-      <input data-rfx-bid-field="weekly_capacity" value="${escapeHtml(invitation.weekly_capacity ?? "")}" placeholder="Cap" inputmode="decimal" />
-      <input data-rfx-bid-field="transit_days" value="${escapeHtml(invitation.transit_days ?? "")}" placeholder="Days" inputmode="decimal" />
-      <input data-rfx-bid-field="currency" value="${escapeHtml(invitation.currency || lane.currency || "USD")}" class="short-input" />
-      <button class="small-button" type="button" data-rfx-save-bid="${escapeHtml(invitation.id)}">Save bid</button>
-      <button class="secondary small-button" type="button" data-rfx-copy-link="${escapeHtml(invitation.invitation_token)}">Copy link</button>
-      <button class="secondary small-button" type="button" data-rfx-open-link="${escapeHtml(invitation.invitation_token)}">Open link</button>
-      <span class="rfx-bid-delta" data-tone="${deltaTone}">${hasDelta ? `${bidDelta >= 0 ? "+" : ""}${formatMoney(bidDelta, invitation.currency)}` : "-"}</span>
-    </article>
-  `;
-}
-
 function renderLanes() {
   selectedLaneIds = new Set([...selectedLaneIds].filter((id) => currentLanes.some((lane) => lane.id === id)));
   selectedInvitationIds = new Set([...selectedInvitationIds].filter((id) => currentLanes.some((lane) => (lane.invitations || []).some((invite) => invite.id === id))));
@@ -4389,7 +4332,7 @@ function renderLanes() {
   renderWizard();
 
   if (!selectedEventId) {
-    lanesBody.innerHTML = tableState(9, {
+    lanesBody.innerHTML = tableState(8, {
       tone: "neutral",
       eyebrow: "Business book",
       title: "Select an event to load lanes",
@@ -4398,7 +4341,7 @@ function renderLanes() {
     return;
   }
   if (!currentLanes.length) {
-    lanesBody.innerHTML = tableState(9, {
+    lanesBody.innerHTML = tableState(8, {
       tone: "neutral",
       eyebrow: "Business book",
       title: "No lanes in this RFx yet",
@@ -4408,7 +4351,7 @@ function renderLanes() {
   }
   const lanes = visibleLanes();
   if (!lanes.length) {
-    lanesBody.innerHTML = tableState(9, {
+    lanesBody.innerHTML = tableState(8, {
       tone: "neutral",
       eyebrow: "Filtered lanes",
       title: "No lanes match current filters",
@@ -4421,6 +4364,8 @@ function renderLanes() {
     const invitations = lane.invitations || [];
     const bestBid = bestBidForLane(lane);
     const decision = laneDecisionStatus(lane);
+    const bidCount = bidInvitations(lane).length;
+    const invitedCount = invitations.filter(hasInvitationStarted).length;
     return `
       <tr data-rfx-lane-id="${escapeHtml(lane.id)}" class="${lane.id === focusedLaneId ? "is-selected-lane" : ""}">
         <td>
@@ -4442,12 +4387,10 @@ function renderLanes() {
           ${bestBid ? `<small>Best bid ${formatMoney(bestBid.bid_rate, bestBid.currency || lane.currency)}</small>` : ""}
         </td>
         <td>
-          <div class="rfx-invitation-list">
-            ${invitations.length ? invitations.map((invitation) => renderInvitation(invitation, lane)).join("") : "<span>No vendors shortlisted.</span>"}
+          <div class="rfx-lane-progress-cell">
+            ${statusChip(laneDecisionLabel(decision))}
+            <small>${formatNumber(invitations.length)} participant${invitations.length === 1 ? "" : "s"} | ${formatNumber(invitedCount)} invited | ${formatNumber(bidCount)} bid${bidCount === 1 ? "" : "s"}</small>
           </div>
-        </td>
-        <td>
-          <button class="small-button" type="button" data-rfx-auto-shortlist="${escapeHtml(lane.id)}">Auto shortlist</button>
         </td>
       </tr>
     `;
@@ -4488,7 +4431,7 @@ async function loadEvents() {
       retryAction: "load-rfx-events",
       meta: "No Bid Room data was changed."
     });
-    lanesBody.innerHTML = tableErrorState(9, error, {
+    lanesBody.innerHTML = tableErrorState(8, error, {
       title: "Business book lanes could not load",
       retryAction: "load-rfx-events"
     });
@@ -5435,11 +5378,6 @@ lanesBody?.addEventListener("change", (event) => {
     if (laneInput.checked) selectedLaneIds.add(laneInput.dataset.rfxLaneSelect);
     else selectedLaneIds.delete(laneInput.dataset.rfxLaneSelect);
   }
-  const inviteInput = event.target.closest("[data-rfx-invitation-select]");
-  if (inviteInput) {
-    if (inviteInput.checked) selectedInvitationIds.add(inviteInput.dataset.rfxInvitationSelect);
-    else selectedInvitationIds.delete(inviteInput.dataset.rfxInvitationSelect);
-  }
   updateSelectionControls();
   renderOutreachPreview();
 });
@@ -5448,65 +5386,6 @@ lanesBody?.addEventListener("click", async (event) => {
   const laneRow = event.target.closest("[data-rfx-lane-id]");
   if (laneRow && !event.target.closest("button") && !event.target.closest("input")) {
     focusLane(laneRow.dataset.rfxLaneId);
-    return;
-  }
-
-  const shortlistButton = event.target.closest("[data-rfx-auto-shortlist]");
-  if (shortlistButton) {
-    shortlistButton.disabled = true;
-    try {
-      await autoShortlistLane(shortlistButton.dataset.rfxAutoShortlist);
-      await loadDetail(selectedEventId);
-    } catch (error) {
-      setStatus(actionStatus, error.message, "error");
-    } finally {
-      shortlistButton.disabled = false;
-    }
-    return;
-  }
-
-  const saveButton = event.target.closest("[data-rfx-save-bid]");
-  if (saveButton) {
-    const invitation = saveButton.closest("[data-rfx-invite-id]");
-    const patch = {};
-    invitation.querySelectorAll("[data-rfx-bid-field]").forEach((input) => {
-      patch[input.dataset.rfxBidField] = input.value;
-    });
-    const validation = validateRfxBidPatch(patch);
-    if (!validation.ok) {
-      setStatus(actionStatus, validation.error, "error");
-      invitation.querySelector(`[data-rfx-bid-field="${validation.field}"]`)?.focus();
-      return;
-    }
-    saveButton.disabled = true;
-    try {
-      await updateRfxBid(saveButton.dataset.rfxSaveBid, validation.patch);
-      setStatus(actionStatus, "Bid saved.", "success");
-      await loadDetail(selectedEventId);
-    } catch (error) {
-      setStatus(actionStatus, error.message, "error");
-    } finally {
-      saveButton.disabled = false;
-    }
-    return;
-  }
-
-  const copyButton = event.target.closest("[data-rfx-copy-link]");
-  if (copyButton) {
-    const url = portalUrl(copyButton.dataset.rfxCopyLink);
-    try {
-      await navigator.clipboard.writeText(url);
-      setStatus(actionStatus, "Bid link copied.", "success");
-    } catch {
-      setStatus(actionStatus, url, "neutral");
-    }
-    return;
-  }
-
-  const openLinkButton = event.target.closest("[data-rfx-open-link]");
-  if (openLinkButton) {
-    const url = portalUrl(openLinkButton.dataset.rfxOpenLink);
-    window.open(url, "_blank", "noopener");
   }
 });
 
