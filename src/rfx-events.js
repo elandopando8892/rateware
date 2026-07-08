@@ -1585,7 +1585,12 @@ function tokenChip(token) {
   span.className = token === "lane_table" ? "template-token-chip is-block-token" : "template-token-chip";
   span.dataset.templateToken = token;
   span.contentEditable = "false";
-  span.textContent = token === "lane_table" ? "Dynamic lane table {{lane_table}}" : `{{${token}}}`;
+  const labels = {
+    lane_table: "Dynamic lane table {{lane_table}}",
+    bid_link: "Private Bid Room link {{bid_link}}",
+    profile_link: "Carrier profile link {{profile_link}}"
+  };
+  span.textContent = labels[token] || `{{${token}}}`;
   return span;
 }
 
@@ -1783,7 +1788,8 @@ function sampleOutreachContext(target, template = selectedOutreachTemplateDraft(
     lane_count: carrierTargets.length || (target ? 1 : 0),
     lane_table: laneTableHtml(targetRows, language),
     lane_rows_text: laneRowsText(targetRows, language),
-    bid_link: invitation.invitation_token ? portalUrl(invitation.invitation_token) : `${window.location.origin}/rfx-bid.html?token=preview`
+    bid_link: invitation.invitation_token ? portalUrl(invitation.invitation_token) : `${window.location.origin}/rfx-bid.html?token=preview`,
+    profile_link: `${window.location.origin}/carrier-profile.html?token=profile-preview`
   };
 }
 

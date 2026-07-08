@@ -8320,11 +8320,77 @@ function contactPreview(value: unknown) {
     .slice(0, 240);
 }
 
+function carrierProfileUrl(appOrigin: unknown, token: unknown) {
+  const baseUrl = (cleanText(appOrigin) || Deno.env.get("RATEWARE_PUBLIC_APP_URL") || "https://rateware.vercel.app").replace(/\/$/, "");
+  const requestToken = cleanText(token);
+  return requestToken ? `${baseUrl}/carrier-profile.html?token=${encodeURIComponent(requestToken)}` : "";
+}
+
+async function vendorProfileLinksForInvitations(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_user_id: string | null; owner_email: string | null },
+  invitations: Record<string, unknown>[],
+  appOrigin: string,
+  metadata: Record<string, unknown> = {}
+) {
+  const vendorIds = Array.from(new Set(invitations.map((invitation) => cleanText(invitation.vendor_id)).filter(Boolean))) as string[];
+  const links = new Map<string, string>();
+  if (!vendorIds.length) return links;
+
+  const nowIso = new Date().toISOString();
+  const existingRows: Record<string, unknown>[] = [];
+  for (const chunk of chunkValues(vendorIds, 100)) {
+    const existing = await supabase
+      .from("vendor_profile_requests")
+      .select("id,vendor_id,request_token,status,expires_at,created_at")
+      .eq("owner_email", user.owner_email)
+      .in("vendor_id", chunk)
+      .in("status", ["active", "viewed", "submitted"])
+      .gt("expires_at", nowIso)
+      .order("created_at", { ascending: false });
+    if (existing.error) throw existing.error;
+    existingRows.push(...(existing.data || []));
+  }
+
+  for (const row of existingRows) {
+    const vendorId = cleanText(row.vendor_id);
+    if (vendorId && !links.has(vendorId)) links.set(vendorId, carrierProfileUrl(appOrigin, row.request_token));
+  }
+
+  const missingVendorIds = vendorIds.filter((vendorId) => !links.has(vendorId));
+  if (!missingVendorIds.length) return links;
+
+  const expiresAt = new Date(Date.now() + 90 * 86400000).toISOString();
+  const rows = missingVendorIds.map((vendorId) => {
+    const requestToken = `${crypto.randomUUID()}${crypto.randomUUID()}`.replace(/-/g, "").slice(0, 48);
+    links.set(vendorId, carrierProfileUrl(appOrigin, requestToken));
+    return withOwner({
+      vendor_id: vendorId,
+      request_token: requestToken,
+      status: "active",
+      expires_at: expiresAt,
+      metadata: {
+        ...metadata,
+        generated_from: "rfx_outreach",
+        expires_in_days: 90
+      }
+    }, user);
+  });
+
+  for (const chunk of chunkValues(rows, 250)) {
+    const created = await supabase.from("vendor_profile_requests").insert(chunk).select("id,vendor_id,request_token");
+    if (created.error) throw created.error;
+  }
+
+  return links;
+}
+
 function outreachContext(
   invitation: Record<string, unknown>,
   appOrigin: string,
   invitationGroup: Record<string, unknown>[] = [invitation],
-  template: Record<string, unknown> | null | undefined = null
+  template: Record<string, unknown> | null | undefined = null,
+  profileLink = ""
 ) {
   const vendor = typeof invitation.vendors === "object" && invitation.vendors ? invitation.vendors as Record<string, unknown> : {};
   const lane = typeof invitation.rfx_lanes === "object" && invitation.rfx_lanes ? invitation.rfx_lanes as Record<string, unknown> : {};
@@ -8356,7 +8422,8 @@ function outreachContext(
     lane_count: invitationGroup.length,
     lane_table: outreachLaneTableHtml(invitationGroup, language),
     lane_rows_text: outreachLaneRowsText(invitationGroup, language),
-    bid_link: bidLink
+    bid_link: bidLink,
+    profile_link: profileLink || carrierProfileUrl(appOrigin, "")
   };
 }
 
@@ -11765,10 +11832,17 @@ Deno.serve(async (request) => {
         invitationGroups.set(key, bucket);
       }
 
+      const profileLinksByVendor = await vendorProfileLinksForInvitations(supabase, user, invitations, appOrigin, {
+        rfx_event_id: campaign.rfx_event_id,
+        campaign_id: campaign.id,
+        template_id: template.id
+      });
+
       for (const invitationGroup of invitationGroups.values()) {
         const invitation = invitationGroup[0];
         const vendor = typeof invitation.vendors === "object" && invitation.vendors ? invitation.vendors as Record<string, unknown> : {};
-        const context = outreachContext(invitation, appOrigin, invitationGroup, template);
+        const profileLink = profileLinksByVendor.get(cleanText(invitation.vendor_id) || "") || "";
+        const context = outreachContext(invitation, appOrigin, invitationGroup, template, profileLink);
         const subject = renderTemplateText(template.subject || campaign.name, context);
         const htmlBody = renderTemplateText(template.html_body || template.whatsapp_body || "", context);
         const textBody = htmlToText(htmlBody);
@@ -11799,6 +11873,7 @@ Deno.serve(async (request) => {
               status: "drafted",
               metadata: {
                 bid_link: context.bid_link,
+                profile_link: context.profile_link,
                 generated_at: new Date().toISOString(),
                 lane_count: invitationGroup.length,
                 rfx_lane_vendor_ids: groupInvitationIds,
@@ -11834,6 +11909,7 @@ Deno.serve(async (request) => {
               status: "drafted",
               metadata: {
                 bid_link: context.bid_link,
+                profile_link: context.profile_link,
                 generated_at: new Date().toISOString(),
                 lane_count: invitationGroup.length,
                 rfx_lane_vendor_ids: groupInvitationIds,

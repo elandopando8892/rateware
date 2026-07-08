@@ -72,6 +72,7 @@ const rfxBilingualTemplateMigration = readFileSync(new URL("../supabase/migratio
 const rfxSpanishTemplateNameMigration = readFileSync(new URL("../supabase/migrations/20260708103000_normalize_spanish_template_name.sql", import.meta.url), "utf8");
 const rfxTemplateSignatureMigration = readFileSync(new URL("../supabase/migrations/20260708110000_add_marksman_signature_to_rfx_templates.sql", import.meta.url), "utf8");
 const rfxTemplateSignatureImageMigration = readFileSync(new URL("../supabase/migrations/20260708112500_add_signature_image_to_rfx_templates.sql", import.meta.url), "utf8");
+const rfxTemplateProfileLinkMigration = readFileSync(new URL("../supabase/migrations/20260708123000_add_profile_update_link_to_rfx_templates.sql", import.meta.url), "utf8");
 const rfxInvitationTableSource = rfxEventsSource.slice(rfxEventsSource.indexOf("function laneTableLabels"), rfxEventsSource.indexOf("function firstOutreachTarget"));
 const apiInvitationTableSource = apiSource.slice(apiSource.indexOf("function outreachLaneTableLabels"), apiSource.indexOf("function phoneForWhatsapp"));
 const marksmanSignatureAsset = new URL("../assets/marksman-email-signature.png", import.meta.url);
@@ -366,6 +367,13 @@ assert.match(rfxTemplateSignatureMigration, /Confidentiality &amp; Privacy Notic
 assert.match(rfxTemplateSignatureMigration, /XBF SISTEMAS LOG&Iacute;STICOS/, "RFx email templates should include the full company privacy scope");
 assert.ok(existsSync(marksmanSignatureAsset), "RFx email templates should have a hosted Marksman signature image asset");
 assert.match(rfxTemplateSignatureImageMigration, /marksman-email-signature\.png/, "RFx email templates should render the Marksman signature image");
+assert.match(rfxTemplateProfileLinkMigration, /\{\{profile_link\}\}/, "RFx email templates should include a carrier profile update link");
+assert.match(rfxTemplateProfileLinkMigration, /Keep your carrier profile current/, "English RFx template should prompt carriers to refresh CRM profile data");
+assert.match(rfxTemplateProfileLinkMigration, /Manten actualizado tu perfil de carrier/, "Spanish RFx template should prompt carriers to refresh CRM profile data");
+assert.match(apiSource, /function vendorProfileLinksForInvitations/, "RFx outreach drafts should generate carrier profile links in batch");
+assert.match(apiSource, /generated_from: "rfx_outreach"/, "RFx-created profile links should be traceable to outreach");
+assert.match(apiSource, /profile_link: context\.profile_link/, "RFx outreach messages should preserve the profile link in metadata");
+assert.match(rfxEventsSource, /Carrier profile link \{\{profile_link\}\}/, "RFx template editor should label the profile link token");
 for (const source of [rfxInvitationTableSource, apiInvitationTableSource]) {
   assert.doesNotMatch(source, /Tu tarifa|Tu capacidad|Rango objetivo|Millas|Peso/, "RFx invitation lane table should not include carrier response or heavy analysis columns");
   assert.match(source, /Weekly<br>volume/, "RFx invitation lane table should keep a compact weekly volume column");
