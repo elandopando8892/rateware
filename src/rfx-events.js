@@ -1285,8 +1285,8 @@ function downloadRfxCarrierTemplate() {
   setStatus(carrierTemplateStatus, `${formatNumber(rows.length)} carrier(s) exported from ${listName}.`, "success");
 }
 
-function portalUrl(token) {
-  return `${window.location.origin}/rfx-bid.html?token=${encodeURIComponent(token)}`;
+function portalUrl(token, laneCount = 1) {
+  return `${window.location.origin}/rfx-bid.html?token=${encodeURIComponent(token)}${Number(laneCount) > 1 ? "&view=book" : ""}`;
 }
 
 function vendorLabel(invitation) {
@@ -1794,7 +1794,7 @@ function sampleOutreachContext(target, template = selectedOutreachTemplateDraft(
     lane_count: carrierTargets.length || (target ? 1 : 0),
     lane_table: laneTableHtml(targetRows, language),
     lane_rows_text: laneRowsText(targetRows, language),
-    bid_link: invitation.invitation_token ? portalUrl(invitation.invitation_token) : `${window.location.origin}/rfx-bid.html?token=preview`,
+    bid_link: invitation.invitation_token ? portalUrl(invitation.invitation_token, targetRows.length) : `${window.location.origin}/rfx-bid.html?token=preview`,
     profile_link: `${window.location.origin}/carrier-profile.html?token=profile-preview`
   };
 }

@@ -50,6 +50,14 @@ function escapeHtml(value) {
     .replace(/"/g, "&quot;");
 }
 
+function escapeAttribute(value) {
+  return escapeHtml(value).replace(/'/g, "&#39;");
+}
+
+function viewModeFromUrl() {
+  return new URLSearchParams(window.location.search).get("view") || "";
+}
+
 function tokenFromUrl() {
   return new URLSearchParams(window.location.search).get("token") || "";
 }
@@ -78,6 +86,43 @@ function laneDetailSections(lane = {}) {
     ["Other notes", lane.other_notes],
     ["Notes", lane.notes]
   ].filter(([, value]) => String(value || "").trim());
+}
+
+function sanitizeRichTextNode(node) {
+  if (!node) return "";
+  if (node.nodeType === 3) return escapeHtml(node.textContent || "").replace(/\u00a0/g, " ");
+  if (node.nodeType !== 1) return "";
+  const tag = String(node.tagName || "").toLowerCase();
+  if (["script", "style", "meta", "link", "iframe", "object", "embed", "svg"].includes(tag)) return "";
+  const children = Array.from(node.childNodes || []).map(sanitizeRichTextNode).join("");
+  if (tag === "br") return "<br>";
+  if (tag === "a") {
+    const href = node.getAttribute("href") || "";
+    const safeHref = /^(https?:|mailto:|tel:)/i.test(href) ? href : "";
+    return safeHref
+      ? `<a href="${escapeAttribute(safeHref)}" target="_blank" rel="noreferrer">${children || escapeHtml(safeHref)}</a>`
+      : children;
+  }
+  if (["p", "ul", "ol", "li", "strong", "b", "em", "i", "u", "table", "thead", "tbody", "tr", "th", "td"].includes(tag)) {
+    return `<${tag}>${children}</${tag}>`;
+  }
+  return children;
+}
+
+function renderLaneDetailValue(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  if (!/<\/?[a-z][\s\S]*>/i.test(raw)) {
+    return escapeHtml(raw).replace(/\r?\n/g, "<br>");
+  }
+  try {
+    const parsed = new DOMParser().parseFromString(raw, "text/html");
+    const source = parsed.body || parsed;
+    const html = Array.from(source.childNodes || []).map(sanitizeRichTextNode).join("").trim();
+    return html || escapeHtml(source.textContent || raw).replace(/\r?\n/g, "<br>");
+  } catch (_error) {
+    return escapeHtml(raw).replace(/\r?\n/g, "<br>");
+  }
 }
 
 function formatMoney(value, currency = "USD") {
@@ -1014,6 +1059,50 @@ function renderBookRows(rows = []) {
   }).join("");
 }
 
+function currentEventBookRows(carrierBook = {}, event = {}) {
+  const eventId = String(event.id || "");
+  const rows = Array.isArray(carrierBook.invited) ? carrierBook.invited : [];
+  if (!eventId) return rows;
+  return rows.filter((row) => String(row.event?.id || "") === eventId);
+}
+
+function renderCarrierLaneSwitcher(carrierBook = {}, invitation = {}) {
+  const event = invitation.rfx_events || {};
+  const currentLaneId = String(invitation.rfx_lane_id || invitation.rfx_lanes?.id || "");
+  const rows = currentEventBookRows(carrierBook, event);
+  if (rows.length <= 1) return "";
+  return `
+    <section class="carrier-lane-switcher" id="carrier-lane-book-overview">
+      <div class="bid-room-section-heading">
+        <div>
+          <p class="eyebrow">Invited lane book</p>
+          <h3>${escapeHtml(rows.length)} lanes available in this RFx</h3>
+        </div>
+        <span class="status-pill neutral">Pick a lane to quote</span>
+      </div>
+      <p class="bid-board-note">Your private invitation covers multiple lanes. The form below is for the selected lane; use this list to switch routes.</p>
+      <div class="carrier-lane-switcher-grid">
+        ${rows.map((row) => {
+          const lane = row.lane || {};
+          const isCurrent = String(lane.id || "") === currentLaneId || String(row.invitation_id || "") === String(invitation.id || "");
+          return `
+            <article class="${isCurrent ? "is-current" : ""}">
+              <div>
+                <span class="status-pill ${statusTone(bookStatus(row))}">${escapeHtml(isCurrent ? "Selected lane" : statusLabel(bookStatus(row)))}</span>
+                <strong>${escapeHtml(laneLabel(lane))}</strong>
+                <small>${escapeHtml([marketLabel(lane), [lane.equipment, lane.trailer, lane.config].filter(Boolean).join(" / "), [lane.operation, lane.service].filter(Boolean).join(" / ")].filter(Boolean).join(" | "))}</small>
+              </div>
+              <a class="${isCurrent ? "small-button" : "secondary small-button"}" href="./rfx-bid.html?token=${encodeURIComponent(row.invitation_token || "")}">
+                ${isCurrent ? "Current bid" : "Open lane"}
+              </a>
+            </article>
+          `;
+        }).join("")}
+      </div>
+    </section>
+  `;
+}
+
 function awardNextSteps(status, liveOutcome = {}) {
   if (status === "awarded") {
     return [
@@ -1202,18 +1291,20 @@ function renderAwardOutcome(invitation = {}, carrierBook = {}, liveBoard = {}) {
   `;
 }
 
-function renderInvitation(invitation, liveBoard = {}) {
+function renderInvitation(invitation, liveBoard = {}, carrierBook = {}) {
   const event = invitation.rfx_events || {};
   const lane = invitation.rfx_lanes || {};
   const vendor = invitation.vendors || {};
   const deadline = deadlineCopy(event);
+  const multiLaneRows = currentEventBookRows(carrierBook, event);
+  const isBookView = viewModeFromUrl() === "book" && multiLaneRows.length > 1;
   title.textContent = event.name || event.rfx_id || "Private Bid Room";
   card.innerHTML = `
     <section class="bid-room-hero">
       <div>
         <p class="eyebrow">Private Bid Room v1</p>
         <h2>${escapeHtml(event.name || event.rfx_id || "Bid request")}</h2>
-        <p>${escapeHtml(vendor.vendor_name || vendor.domain || "Carrier")} can review invited lanes, request access to open opportunities, and submit all-in offers.</p>
+        <p>${escapeHtml(vendor.vendor_name || vendor.domain || "Carrier")} can review ${escapeHtml(multiLaneRows.length > 1 ? `${multiLaneRows.length} invited lanes` : "the selected lane")}, request access to open opportunities, and submit all-in offers.</p>
       </div>
       <aside>
         <span class="status-pill" data-tone="${deadline.tone}">${escapeHtml(deadline.label)}</span>
@@ -1248,10 +1339,12 @@ function renderInvitation(invitation, liveBoard = {}) {
 
     <section id="carrier-award-outcome" class="carrier-award-outcome" hidden></section>
 
+    ${renderCarrierLaneSwitcher(carrierBook, invitation)}
+
     <section class="bid-lane-summary">
       <div class="bid-room-section-heading">
         <div>
-          <p class="eyebrow">Current lane</p>
+          <p class="eyebrow">${isBookView ? "Selected lane from book" : "Current lane"}</p>
           <h2>${escapeHtml(formatLane(lane))}</h2>
         </div>
         <span class="status-pill neutral">${escapeHtml(statusLabel(invitation.invitation_status))}</span>
@@ -1267,7 +1360,7 @@ function renderInvitation(invitation, liveBoard = {}) {
           ${laneDetailSections(lane).map(([label, value]) => `
             <article>
               <span>${escapeHtml(label)}</span>
-              <p>${escapeHtml(value)}</p>
+              <div class="bid-lane-rich-text">${renderLaneDetailValue(value)}</div>
             </article>
           `).join("")}
         </div>
@@ -1494,7 +1587,7 @@ async function loadInvitation(options = {}) {
       renderBidHistory(data.bid_history);
       renderCarrierBook(data.carrier_book);
     } else {
-      renderInvitation(data.invitation, data.live_board);
+      renderInvitation(data.invitation, data.live_board, data.carrier_book);
       renderAwardOutcome(data.invitation, data.carrier_book, data.live_board);
       renderBidHistory(data.bid_history);
       renderCarrierBook(data.carrier_book);

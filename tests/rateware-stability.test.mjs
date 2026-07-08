@@ -413,6 +413,12 @@ assert.match(rfxEventsSource, /notas_adicionales: "other_notes"/, "RFx lane impo
 assert.match(rfxEventsSource, /elementos_adicionales_en_el_remolque_camion_almacenamiento_de_carga_etc: "service_specifications"/, "RFx lane import should map RFI service specification notes");
 assert.match(rfxEventsSource, /function laneDetailSections/, "Bid Room should render lane detail sections");
 assert.match(rfxBidSource, /function laneDetailSections/, "Carrier portal should render lane detail sections");
+assert.match(rfxBidSource, /function renderLaneDetailValue/, "Carrier portal should render pasted HTML lane detail as readable rich text");
+assert.match(rfxBidSource, /sanitizeRichTextNode/, "Carrier portal should sanitize lane detail HTML before inserting it");
+assert.doesNotMatch(rfxBidSource, /<p>\$\{escapeHtml\(value\)\}<\/p>/, "Carrier portal should not show pasted lane detail HTML as escaped source");
+assert.match(rfxBidSource, /function renderCarrierLaneSwitcher/, "Carrier portal should expose all invited event lanes before the selected lane bid form");
+assert.match(apiSource, /invitationGroup\.length > 1 \? "&view=book" : ""/, "RFx outreach links with multiple lanes should open the carrier business book view");
+assert.match(rfxEventsSource, /portalUrl\(invitation\.invitation_token, targetRows\.length\)/, "Bid Room preview should show the same multi-lane business book link behavior");
 assert.match(rfxBidApiSource, /logistics_model,operation_criteria,business_rules,service_specifications,other_notes,notes/, "Carrier public board should select RFx lane detail sections");
 assert.match(rfxEventsSource, /rfx-lane-progress-cell/, "Bid Room Step 2 should render compact lane progress");
 assert.match(rfxEventsSource, /Needs participants/, "Bid Room Step 2 should describe missing carrier work as participant work");
