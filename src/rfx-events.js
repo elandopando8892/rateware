@@ -469,7 +469,7 @@ function supplyDepthTone(score) {
 }
 
 function supplyDepthLabel(score, reason = "") {
-  if (reason === "currency_mismatch") return "Price not comparable";
+  if (reason === "currency_mismatch") return "No matching currency";
   if (reason === "target_not_set") return "Set target";
   const value = Number(score);
   if (!Number.isFinite(value)) return "No signal";
@@ -492,18 +492,24 @@ function renderSupplyDepthCell(lane) {
     `;
   }
   const score = Math.max(0, Math.min(100, Number(depth.likelihood_score || 0)));
-  const probability = Number(depth.target_probability);
+  const rawProbability = depth.target_probability;
+  const probability = rawProbability === null || rawProbability === undefined || rawProbability === "" ? null : Number(rawProbability);
   const reason = String(depth.target_probability_reason || "");
-  const comparableCurrency = reason === "comparable";
+  const sameCurrencyQuoteCount = Number(depth.comparable_quote_count || 0);
+  const hasSameCurrencyHistory = sameCurrencyQuoteCount > 0;
+  const historyCurrencies = Array.isArray(depth.historical_currencies) ? depth.historical_currencies.filter(Boolean).join(", ") : depth.currency || "";
   const probabilityLabel = Number.isFinite(probability)
     ? `${formatNumber(probability)}% likely at buy target`
     : reason === "currency_mismatch"
-      ? `Align history to ${depth.target_currency || lane.currency || "lane currency"}`
+      ? `History ${historyCurrencies || "-"} | target ${depth.target_currency || lane.currency || "-"}`
       : "Add target buy rate";
-  const typicalRange = comparableCurrency && depth.p50_rate && depth.p75_rate
+  const quoteLabel = reason === "currency_mismatch"
+    ? `${formatNumber(quoteCount)} route quote${quoteCount === 1 ? "" : "s"} | 0 ${depth.target_currency || lane.currency || ""} price quote${quoteCount === 1 ? "" : "s"}`
+    : `${formatNumber(quoteCount)} route quote${quoteCount === 1 ? "" : "s"} | ${formatNumber(sameCurrencyQuoteCount)} price quote${sameCurrencyQuoteCount === 1 ? "" : "s"}`;
+  const typicalRange = hasSameCurrencyHistory && depth.p50_rate && depth.p75_rate
     ? `Typical range ${formatMoney(depth.p50_rate, depth.currency)} - ${formatMoney(depth.p75_rate, depth.currency)}`
     : "";
-  const tone = comparableCurrency ? supplyDepthTone(score) : "muted";
+  const tone = Number.isFinite(probability) ? supplyDepthTone(score) : "muted";
   return `
     <div class="rfx-supply-depth-cell" data-tone="${escapeHtml(tone)}">
       <div class="rfx-supply-depth-head">
@@ -511,9 +517,10 @@ function renderSupplyDepthCell(lane) {
         <span>${escapeHtml(supplyDepthLabel(score, reason))}</span>
       </div>
       <div class="rfx-supply-meter" aria-label="${escapeHtml(`${formatNumber(score)} percent supply likelihood`)}">
-        <i style="width: ${escapeHtml(String(comparableCurrency ? score : 0))}%"></i>
+        <i style="width: ${escapeHtml(String(Number.isFinite(probability) ? score : 0))}%"></i>
       </div>
-      <small>${formatNumber(quoteCount)} quote${quoteCount === 1 ? "" : "s"} | ${escapeHtml(probabilityLabel)}</small>
+      <small>${escapeHtml(quoteLabel)}</small>
+      <small>${escapeHtml(probabilityLabel)}</small>
       ${typicalRange ? `<small>${escapeHtml(typicalRange)}</small>` : ""}
     </div>
   `;

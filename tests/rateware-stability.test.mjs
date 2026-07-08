@@ -336,7 +336,8 @@ assert.match(rfxEventsSource, /function saveRfxLaneEdits/, "Bid Room Step 2 shou
 assert.match(rfxEventsSource, /function renderSupplyDepthCell/, "Bid Room Step 2 should render supply depth by lane");
 assert.match(rfxEventsSource, /rfx-supply-meter/, "Bid Room Step 2 should show a thermometer-style supply signal");
 assert.match(rfxEventsSource, /Typical range/, "Bid Room supply depth should use plain operational rate-range language");
-assert.match(rfxEventsSource, /Align history to/, "Bid Room supply depth should explain currency mismatch without showing false converted rates");
+assert.match(rfxEventsSource, /rawProbability === null/, "Bid Room supply depth should not convert missing target probability into zero");
+assert.match(rfxEventsSource, /History \$\{historyCurrencies/, "Bid Room supply depth should explain currency mismatch without showing false converted rates");
 assert.doesNotMatch(rfxEventsSource, /P50 \$/, "Bid Room supply depth should not expose percentile labels in the UI");
 assert.doesNotMatch(rfxEventsSource, /P75 \$/, "Bid Room supply depth should not expose percentile labels in the UI");
 assert.match(rfxEventsSource, /function insertClipboardHtmlIntoTextarea/, "Bid Room lane detail editors should accept pasted HTML source");
@@ -348,6 +349,7 @@ assert.match(apiSource, /body\.action === "update_rfx_lane"/, "Rateware API shou
 assert.match(apiSource, /function normalizeRfxLanePatch/, "Rateware API should normalize partial RFx lane updates");
 assert.match(apiSource, /function supplyDepthForLane/, "Rateware API should calculate RFx lane supply depth");
 assert.match(apiSource, /target_probability_reason/, "RFx lane supply depth should explain missing target probability");
+assert.match(apiSource, /comparable_quote_count/, "RFx lane supply depth should separate route supply from same-currency price history");
 for (const field of ["logistics_model", "operation_criteria", "business_rules", "service_specifications", "other_notes"]) {
   assert.match(rfxLaneDetailSectionsMigration, new RegExp(`add column if not exists ${field} text`), `RFx lanes should persist ${field}`);
   assert.match(rfxEventsSource, new RegExp(`key: "${field}"`), `RFx lane template should expose ${field}`);

@@ -6459,21 +6459,22 @@ function supplyDepthForLane(lane: Record<string, unknown>, rates: Record<string,
     .map((rate) => ({
       rate,
       score: rateFitForLane(lane, rate),
-      amount: numericAmount(rate.all_in_rate)
+      amount: numericAmount(rate.all_in_rate),
+      currency: cleanText(rate.currency || lane.currency || "USD")?.toUpperCase() || "USD"
     }))
     .filter((item) => item.score >= 40 && item.amount !== null)
     .sort((a, b) => Number(a.amount) - Number(b.amount));
-  const amounts = matches.map((item) => Number(item.amount)).filter(Number.isFinite);
   const carrierKeys = new Set(matches.map((item) => rateCarrierKey(item.rate)).filter(Boolean));
   const targetRate = cleanNumber(lane.target_rate);
-  const marketCurrency = cleanText(matches[0]?.rate?.currency || lane.currency || "USD")?.toUpperCase() || "USD";
-  const targetCurrency = cleanText(lane.currency)?.toUpperCase() || marketCurrency;
-  const targetComparable = targetRate !== null && targetCurrency === marketCurrency;
-  const atOrBelowTarget = targetComparable
-    ? matches.filter((item) => Number(item.amount) <= targetRate).length
+  const targetCurrency = cleanText(lane.currency)?.toUpperCase() || cleanText(matches[0]?.currency)?.toUpperCase() || "USD";
+  const comparableMatches = matches.filter((item) => item.currency === targetCurrency);
+  const priceMatches = comparableMatches.length ? comparableMatches : [];
+  const amounts = priceMatches.map((item) => Number(item.amount)).filter(Number.isFinite);
+  const atOrBelowTarget = targetRate !== null && priceMatches.length
+    ? priceMatches.filter((item) => Number(item.amount) <= targetRate).length
     : 0;
-  const target_probability = matches.length && targetComparable
-    ? Math.round((atOrBelowTarget / matches.length) * 100)
+  const target_probability = targetRate !== null && priceMatches.length
+    ? Math.round((atOrBelowTarget / priceMatches.length) * 100)
     : null;
   const carrierCount = carrierKeys.size;
   const depthScore = Math.min(100, Math.round((carrierCount / 12) * 100));
@@ -6491,11 +6492,13 @@ function supplyDepthForLane(lane: Record<string, unknown>, rates: Record<string,
     p75_rate: percentileValue(amounts, 0.75),
     p90_rate: percentileValue(amounts, 0.90),
     best_rate: amounts[0] ?? null,
-    currency: marketCurrency,
+    currency: targetCurrency,
+    historical_currencies: Array.from(new Set(matches.map((item) => item.currency).filter(Boolean))).sort(),
+    comparable_quote_count: priceMatches.length,
     target_currency: targetCurrency,
     target_rate: targetRate,
     target_probability,
-    target_probability_reason: targetRate === null ? "target_not_set" : targetComparable ? "comparable" : "currency_mismatch",
+    target_probability_reason: targetRate === null ? "target_not_set" : priceMatches.length ? "comparable" : "currency_mismatch",
     likelihood_score,
     match_score: matchScore,
     depth_score: depthScore
