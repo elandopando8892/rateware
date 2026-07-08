@@ -125,7 +125,9 @@ const BID_PORTAL_COPY = {
     operationCriteria: "Operation criteria",
     businessRules: "Business rules",
     serviceSpecifications: "Service specifications",
-    otherNotes: "Other notes"
+    otherNotes: "Other notes",
+    publicLiveBoard: "Public live board",
+    publicLiveBoardHelp: "Open the real-time marketplace screen for this bid room."
   },
   es: {
     languageLabel: "Espanol",
@@ -205,7 +207,9 @@ const BID_PORTAL_COPY = {
     operationCriteria: "Criterios de operacion",
     businessRules: "Reglas de negocio",
     serviceSpecifications: "Especificaciones de servicio",
-    otherNotes: "Otras notas"
+    otherNotes: "Otras notas",
+    publicLiveBoard: "Pantalla publica",
+    publicLiveBoardHelp: "Abrir la pantalla interactiva en tiempo real de este bid room."
   }
 };
 
@@ -985,6 +989,10 @@ function safeSheetName(value, fallback = "Bid Template") {
   return name || fallback;
 }
 
+function eventMarketplaceUrl(event = {}) {
+  return event.id ? `./bid-room-board.html?event_id=${encodeURIComponent(event.id)}` : "./bid-room-board.html";
+}
+
 async function loadExcelJs() {
   if (!excelJsModule) {
     excelJsModule = await import("https://esm.sh/exceljs@4.4.0?bundle");
@@ -1088,7 +1096,7 @@ function applyBidTemplateWorksheetRules(worksheet, rowCount) {
 }
 
 function addBidTemplateInstructions(workbook) {
-  const instructions = workbook.addWorksheet("Instructions / Instrucciones");
+  const instructions = workbook.addWorksheet("Instructions - Instrucciones");
   instructions.columns = [
     { header: "Section / Seccion", key: "section", width: 28 },
     { header: "English", key: "en", width: 70 },
@@ -2047,6 +2055,11 @@ function renderInvitation(invitation, liveBoard = {}, carrierBook = {}) {
           carrier: vendor.vendor_name || vendor.domain || t("carrier"),
           lane_count: multiLaneRows.length > 1 ? t("invitedLanes", { count: multiLaneRows.length }) : t("selectedLane")
         }))}</p>
+        <div class="bid-room-hero-actions">
+          <a class="secondary small-button" href="${escapeAttribute(eventMarketplaceUrl(event))}" target="_blank" rel="noreferrer" title="${escapeAttribute(t("publicLiveBoardHelp"))}">
+            ${escapeHtml(t("publicLiveBoard"))}
+          </a>
+        </div>
       </div>
       <aside>
         <span class="status-pill" data-tone="${deadline.tone}">${escapeHtml(deadline.label)}</span>

@@ -1929,6 +1929,13 @@ a {
   color: var(--muted);
 }
 
+.bid-room-hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
 .bid-room-hero aside {
   display: grid;
   align-content: center;

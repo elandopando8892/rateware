@@ -424,13 +424,15 @@ assert.match(rfxBidSource, /function downloadBidTemplate/, "Carrier portal shoul
 assert.match(rfxBidSource, /function parseBidTemplateFile/, "Carrier portal should parse uploaded bid templates");
 assert.match(rfxBidSource, /function validateBidTemplateRow/, "Carrier portal should validate uploaded XLSX bid rows before submit");
 assert.match(rfxBidSource, /dataValidation = validation/, "Carrier portal XLSX template should write dropdown and numeric validations");
-assert.match(rfxBidSource, /Instructions \/ Instrucciones/, "Carrier portal XLSX template should include bilingual instructions");
+assert.match(rfxBidSource, /Instructions - Instrucciones/, "Carrier portal XLSX template should include bilingual instructions with an Excel-safe worksheet name");
 assert.match(rfxBidSource, /Commercial model \/ Modelo comercial/, "Carrier portal XLSX template should use bilingual headers");
 assert.match(rfxBidSource, /data-download-bid-template/, "Carrier portal should render a bid template download action");
 assert.match(rfxBidSource, /data-submit-bid-template/, "Carrier portal should require confirmation before submitting XLSX bids");
 assert.match(rfxBidSource, /callBidApi\("submit_bid", \{ token: row\.invitation_token, \.\.\.row\.draft \}\)/, "Carrier portal should submit each XLSX row through the normal tokenized bid API");
 assert.match(rfxBidSource, /const BID_PORTAL_COPY = \{/, "Carrier portal should provide English and Spanish UI copy");
 assert.match(rfxBidSource, /id="private-bid-language"/, "Carrier portal should expose an English/Spanish language toggle");
+assert.match(rfxBidSource, /function eventMarketplaceUrl/, "Carrier portal should build a contextual public Bid Room board URL");
+assert.match(rfxBidSource, /bid-room-board\.html\?event_id/, "Carrier portal should link bid-specific pages to the event public live board");
 assert.match(stylesSource, /\.carrier-bid-template-tools/, "Carrier portal should style the XLSX bid template workflow");
 assert.match(stylesSource, /\.bid-lane-detail-sections[\s\S]*grid-template-columns: minmax\(280px/, "Carrier portal lane detail sections should use a wider readable layout");
 assert.match(apiSource, /invitationGroup\.length > 1 \? "&view=book" : ""/, "RFx outreach links with multiple lanes should open the carrier business book view");
