@@ -27,6 +27,7 @@ const supportEmail = document.querySelector("#public-board-support-email");
 const supportWidget = document.querySelector("#public-board-support-widget");
 const supportLauncher = document.querySelector("#public-board-support-launcher");
 const supportClose = document.querySelector("#public-board-support-close");
+const supportFollowup = document.querySelector("#public-board-support-followup");
 
 const API_URL = `${SUPABASE_URL}/functions/v1/rfx-bid-api`;
 const PUBLIC_BOARD_SOUND_DEFAULT_VERSION = "2026-07-08-sound-on";
@@ -279,11 +280,17 @@ function renderPublicSupportReply(result = null, status = "") {
   if (!supportReply) return;
   if (!result && !status) {
     supportReply.innerHTML = "";
+    supportFollowup?.setAttribute("hidden", "");
     return;
   }
   if (status) {
     supportReply.innerHTML = `<p class="status-message">${escapeHtml(status)}</p>`;
     return;
+  }
+  if (result.needs_ticket && !result.ticket?.id) {
+    supportFollowup?.removeAttribute("hidden");
+  } else {
+    supportFollowup?.setAttribute("hidden", "");
   }
   supportReply.innerHTML = `
     <article class="bid-support-answer" data-needs-ticket="${result.needs_ticket ? "true" : "false"}">
@@ -293,7 +300,10 @@ function renderPublicSupportReply(result = null, status = "") {
       </div>
       <p>${escapeHtml(result.answer || "")}</p>
       ${result.ticket?.id ? `<small>Ticket created: ${escapeHtml(result.ticket.id)}</small>` : ""}
-      ${result.needs_ticket && !result.ticket?.id ? `<button type="button" class="secondary small-button" data-public-support-ticket>Create ticket</button>` : ""}
+      ${result.needs_ticket && !result.ticket?.id ? `
+        <small>Add a follow-up email if procurement should respond directly.</small>
+        <button type="button" class="secondary small-button" data-public-support-ticket>Create ticket</button>
+      ` : ""}
     </article>
   `;
 }
@@ -323,7 +333,14 @@ async function askPublicSupport(options = {}) {
     supportMessage?.focus();
     return;
   }
+  if (options.createTicket && !String(supportEmail?.value || "").trim()) {
+    supportFollowup?.removeAttribute("hidden");
+    renderPublicSupportReply(null, "Add an email so procurement can follow up on the ticket.");
+    supportEmail?.focus();
+    return;
+  }
   state.supportQuestion = message;
+  if (!options.createTicket) supportFollowup?.setAttribute("hidden", "");
   renderPublicSupportReply(null, options.createTicket ? "Creating ticket..." : "Checking public Bid Room context...");
   try {
     const result = await callBidSupport({

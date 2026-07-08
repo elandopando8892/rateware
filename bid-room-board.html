@@ -29,18 +29,22 @@
       </header>
 
       <section class="public-board-control-strip" aria-label="Board controls">
-        <label>
-          Search
-          <input id="public-board-search" placeholder="RFx, lane, market, equipment..." />
-        </label>
-        <label class="public-board-toggle">
-          <input id="public-board-auto-refresh" type="checkbox" checked />
-          Auto refresh
-        </label>
-        <div class="public-board-view-toggle" role="group" aria-label="View mode">
-          <button type="button" data-board-view="cards" aria-pressed="true">Cards</button>
-          <button type="button" data-board-view="pipeline" aria-pressed="false">Pipeline</button>
-          <button type="button" data-board-view="sheet" aria-pressed="false">Spreadsheet</button>
+        <div class="public-board-search-control">
+          <label>
+            <span>Search opportunities</span>
+            <input id="public-board-search" placeholder="RFx, lane, market, equipment..." />
+          </label>
+        </div>
+        <div class="public-board-control-actions">
+          <label class="public-board-toggle">
+            <input id="public-board-auto-refresh" type="checkbox" checked />
+            <span>Auto refresh</span>
+          </label>
+          <div class="public-board-view-toggle" role="group" aria-label="View mode">
+            <button type="button" data-board-view="cards" aria-pressed="true">Cards</button>
+            <button type="button" data-board-view="pipeline" aria-pressed="false">Pipeline</button>
+            <button type="button" data-board-view="sheet" aria-pressed="false">Spreadsheet</button>
+          </div>
         </div>
       </section>
 
@@ -95,8 +99,14 @@
               <p>Ask about requesting access, deadlines, opportunity details, or how private invitations work.</p>
             </article>
           </div>
+          <div id="public-board-support-followup" class="bid-support-followup" hidden>
+            <label>
+              Follow-up email
+              <input id="public-board-support-email" type="email" placeholder="name@carrier.com" />
+            </label>
+            <p>Only needed when the assistant creates a procurement ticket for human follow-up.</p>
+          </div>
           <form id="public-board-support-form" class="public-board-support-form bid-support-chat-form">
-            <input id="public-board-support-email" type="email" placeholder="Email for ticket follow-up" />
             <textarea id="public-board-support-message" rows="2" placeholder="Ask the Bid Room assistant..."></textarea>
             <button type="submit" class="page-primary-action">Send</button>
           </form>

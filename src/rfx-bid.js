@@ -1805,7 +1805,10 @@ function renderCarrierChat(chat = lastCarrierChat) {
   lastCarrierChat = chat || { rows: [], google_chat_configured: false };
   const panel = card.querySelector("#carrier-bid-chat");
   if (!panel) return;
+  const keepOpen = panel.dataset.open === "true";
+  panel.dataset.open = keepOpen ? "true" : "false";
   const rows = (Array.isArray(lastCarrierChat.rows) ? lastCarrierChat.rows : []).filter((thread) => (thread.thread_type || "event_group") === "event_group");
+  const messageCount = rows.reduce((sum, thread) => sum + (Array.isArray(thread.messages) ? thread.messages.length : 0), 0);
   const inboundStatus = lastCarrierChat.google_chat_inbound?.status || "";
   const chatSyncLabel = inboundStatus === "needs_reconnect"
     ? "Reconnect Google Chat"
@@ -1818,52 +1821,69 @@ function renderCarrierChat(chat = lastCarrierChat) {
       ? "success"
       : "muted";
   panel.innerHTML = `
-    <div class="bid-room-section-heading">
-      <div>
-        <p class="eyebrow">Bid Room Chat</p>
-        <h3>Event group discussion</h3>
-      </div>
-      <span class="status-pill ${chatSyncTone}">${escapeHtml(chatSyncLabel)}</span>
-    </div>
-    ${inboundStatus === "needs_reconnect" ? `<p class="status-message warning">Google Chat can send outbound mirror messages, but Settings must be reconnected once before Rateware can import replies typed in Google Chat.</p>` : ""}
-    <p class="bid-room-chat-scope-note">One shared event thread keeps questions, clarifications, and live capacity updates in the same place.</p>
-    <div class="carrier-chat-thread-list">
-      ${rows.length ? rows.map((thread) => {
-        const messages = Array.isArray(thread.messages) ? thread.messages : [];
-        return `
-          <article class="bid-room-chat-thread">
-            <header>
-              <div>
-                <strong>${escapeHtml(thread.title || carrierChatLabel(thread.thread_type))}</strong>
-                <span>${escapeHtml(carrierChatLabel(thread.thread_type))}</span>
-              </div>
-              <small>${messages.length} message(s)</small>
-            </header>
-            <div class="bid-room-chat-messages">
-              ${messages.slice(-8).map((message) => `
-                <div class="bid-room-chat-message" data-role="${escapeHtml(message.sender_role || "carrier")}">
-                  <b>${escapeHtml(message.sender_name || message.sender_email || message.sender_role || "User")}</b>
-                  <p>${escapeHtml(message.body)}</p>
-                  <span>${escapeHtml(message.created_at ? new Date(message.created_at).toLocaleString() : "")}</span>
-                </div>
-              `).join("")}
-            </div>
-          </article>
-        `;
-      }).join("") : `
-        <div class="bid-room-empty">
-          <strong>No chat messages yet.</strong>
-          <span>Send the first event group message to procurement.</span>
+    <button type="button" class="bid-chat-launcher" data-carrier-chat-toggle aria-expanded="${keepOpen ? "true" : "false"}">
+      <span>${escapeHtml(dualText("Bid Room chat", "Chat del Bid Room"))}</span>
+      <small>${escapeHtml(`${messageCount} message(s) | ${chatSyncLabel}`)}</small>
+    </button>
+    <div class="bid-chat-popover" role="dialog" aria-modal="false" aria-label="${escapeAttribute(dualText("Bid Room event chat", "Chat del evento Bid Room"))}">
+      <header>
+        <div>
+          <p class="eyebrow">Bid Room Chat</p>
+          <h3>Event group discussion</h3>
+          <p>One shared event thread keeps questions, clarifications, and live capacity updates in the same place.</p>
         </div>
-      `}
+        <div class="bid-chat-header-actions">
+          <span class="status-pill ${chatSyncTone}">${escapeHtml(chatSyncLabel)}</span>
+          <button type="button" class="secondary small-button" data-carrier-chat-close>${escapeHtml(dualText("Close", "Cerrar"))}</button>
+        </div>
+      </header>
+      ${inboundStatus === "needs_reconnect" ? `<p class="status-message warning">Google Chat can send outbound mirror messages, but Settings must be reconnected once before Rateware can import replies typed in Google Chat.</p>` : ""}
+      <div class="carrier-chat-thread-list">
+        ${rows.length ? rows.map((thread) => {
+          const messages = Array.isArray(thread.messages) ? thread.messages : [];
+          return `
+            <article class="bid-room-chat-thread">
+              <header>
+                <div>
+                  <strong>${escapeHtml(thread.title || carrierChatLabel(thread.thread_type))}</strong>
+                  <span>${escapeHtml(carrierChatLabel(thread.thread_type))}</span>
+                </div>
+                <small>${messages.length} message(s)</small>
+              </header>
+              <div class="bid-room-chat-messages">
+                ${messages.slice(-8).map((message) => `
+                  <div class="bid-room-chat-message" data-role="${escapeHtml(message.sender_role || "carrier")}">
+                    <b>${escapeHtml(message.sender_name || message.sender_email || message.sender_role || "User")}</b>
+                    <p>${escapeHtml(message.body)}</p>
+                    <span>${escapeHtml(message.created_at ? new Date(message.created_at).toLocaleString() : "")}</span>
+                  </div>
+                `).join("")}
+              </div>
+            </article>
+          `;
+        }).join("") : `
+          <div class="bid-room-empty">
+            <strong>No chat messages yet.</strong>
+            <span>Send the first event group message to procurement.</span>
+          </div>
+        `}
+      </div>
+      <form id="carrier-chat-form" class="bid-room-chat-form">
+        <input id="carrier-chat-scope" type="hidden" value="event_group" />
+        <textarea id="carrier-chat-message" rows="2" placeholder="Write an event group message..."></textarea>
+        <button type="submit">Send</button>
+      </form>
+      <p id="carrier-chat-status" class="status-message" role="status"></p>
     </div>
-    <form id="carrier-chat-form" class="bid-room-chat-form">
-      <input id="carrier-chat-scope" type="hidden" value="event_group" />
-      <textarea id="carrier-chat-message" rows="2" placeholder="Write an event group message..."></textarea>
-      <button type="submit">Send</button>
-    </form>
-    <p id="carrier-chat-status" class="status-message" role="status"></p>
   `;
+}
+
+function setCarrierChatOpen(open = true) {
+  const panel = card.querySelector("#carrier-bid-chat");
+  if (!panel) return;
+  panel.dataset.open = open ? "true" : "false";
+  panel.querySelector("[data-carrier-chat-toggle]")?.setAttribute("aria-expanded", open ? "true" : "false");
+  if (open) window.setTimeout(() => panel.querySelector("#carrier-chat-message")?.focus({ preventScroll: true }), 40);
 }
 
 function bidSupportPromptList() {
@@ -2078,11 +2098,7 @@ function renderBookRows(rows = []) {
         </td>
         <td>${escapeHtml([lane.equipment, lane.trailer, lane.config].filter(Boolean).join(" / ") || "-")}</td>
         <td>${escapeHtml([lane.operation, lane.service].filter(Boolean).join(" / ") || "-")}</td>
-        <td>
-          <div class="book-fit-tags">
-            ${fitTags(row).slice(0, 4).map((tag) => `<span>${escapeHtml(tag)}</span>`).join("") || "<span>No fit tags</span>"}
-          </div>
-        </td>
+        <td>${renderBookFitSummary(row)}</td>
         <td><span class="status-pill ${statusTone(bookStatus(row))}">${escapeHtml(statusLabel(bookStatus(row)))}</span></td>
         <td>
           ${amount}
@@ -2093,6 +2109,13 @@ function renderBookRows(rows = []) {
       </tr>
     `;
   }).join("");
+}
+
+function renderBookFitSummary(row = {}) {
+  const tags = fitTags(row).filter(Boolean);
+  if (!tags.length) return `<span class="book-fit-summary">No fit tags</span>`;
+  const label = tags.length > 1 ? `${tags[0]} +${tags.length - 1}` : tags[0];
+  return `<span class="book-fit-summary" title="${escapeAttribute(tags.join(" | "))}">${escapeHtml(label)}</span>`;
 }
 
 function quickBidRows(carrierBook = {}, invitation = {}) {
@@ -2547,6 +2570,9 @@ function renderInvitation(invitation, liveBoard = {}, carrierBook = {}) {
           <button type="button" class="secondary small-button" data-bid-support-focus>
             ${escapeHtml(dualText("Ask support", "Soporte"))}
           </button>
+          <button type="button" class="secondary small-button" data-carrier-chat-focus>
+            ${escapeHtml(dualText("Open chat", "Chat"))}
+          </button>
           <a class="secondary small-button" href="${escapeAttribute(eventMarketplaceUrl(event))}" target="_blank" rel="noreferrer" title="${escapeAttribute(t("publicLiveBoardHelp"))}">
             ${escapeHtml(t("publicLiveBoard"))}
           </a>
@@ -2629,7 +2655,7 @@ function renderInvitation(invitation, liveBoard = {}, carrierBook = {}) {
       <p class="status-message">${escapeHtml(t("loadingHistory"))}</p>
     </section>
 
-    <section id="carrier-bid-chat" class="carrier-bid-chat">
+    <section id="carrier-bid-chat" class="carrier-bid-chat bid-chat-widget" data-open="false">
       <p class="status-message">${escapeHtml(t("loadingChat"))}</p>
     </section>
 
@@ -2965,8 +2991,20 @@ card.addEventListener("click", async (event) => {
 
   const chatFocusButton = event.target.closest("[data-carrier-chat-focus]");
   if (chatFocusButton) {
-    card.querySelector("#carrier-bid-chat")?.scrollIntoView({ behavior: "smooth", block: "start" });
-    card.querySelector("#carrier-chat-message")?.focus({ preventScroll: true });
+    setCarrierChatOpen(true);
+    return;
+  }
+
+  const chatToggleButton = event.target.closest("[data-carrier-chat-toggle]");
+  if (chatToggleButton) {
+    const panel = card.querySelector("#carrier-bid-chat");
+    setCarrierChatOpen(panel?.dataset.open !== "true");
+    return;
+  }
+
+  const chatCloseButton = event.target.closest("[data-carrier-chat-close]");
+  if (chatCloseButton) {
+    setCarrierChatOpen(false);
     return;
   }
 
@@ -3180,6 +3218,9 @@ document.addEventListener("keydown", (event) => {
   }
   if (event.key === "Escape" && card.querySelector("#bid-support-agent")?.dataset.open === "true") {
     setBidSupportOpen(false);
+  }
+  if (event.key === "Escape" && card.querySelector("#carrier-bid-chat")?.dataset.open === "true") {
+    setCarrierChatOpen(false);
   }
   armPrivateBidAudio();
 });
