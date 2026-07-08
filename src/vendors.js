@@ -12,6 +12,7 @@ import {
   fetchVendorIntelligence,
   fetchVendorOnboardingGaps,
   fetchVendorSegments,
+  fetchVendorSupportTickets,
   fetchVendors,
   importVendorOnboardingCorrections,
   importVendorsFromGoogleSheet,
@@ -19,6 +20,7 @@ import {
   matchVendorRateRowsByScope,
   removeVendors,
   updateVendor,
+  updateVendorSupportTicket,
   uploadVendorLogo
 } from "./vendor-service.js";
 import { errorState, loadingState, stateBlock, tableErrorState, tableLoadingState, tableState } from "./ui-state.js";
@@ -149,6 +151,7 @@ const drawerLogoPreview = document.querySelector("#drawer-logo-preview");
 const drawerLogoFile = document.querySelector("#drawer-logo-file");
 const drawerOnboardingProfile = document.querySelector("#drawer-onboarding-profile");
 const drawerProfileFields = document.querySelector("#drawer-profile-fields");
+const drawerVendorSupport = document.querySelector("#drawer-vendor-support");
 let allVendors = [];
 let currentVendors = [];
 let selectedVendorIds = new Set();
@@ -3417,6 +3420,61 @@ function setDrawerMode(mode = "view", { focus = false } = {}) {
   }
 }
 
+function supportStatusLabel(value) {
+  const labels = {
+    open: "Open",
+    in_progress: "In progress",
+    resolved: "Resolved",
+    archived: "Archived"
+  };
+  return labels[value] || "Open";
+}
+
+function renderDrawerSupportTickets(rows = []) {
+  if (!drawerVendorSupport) return;
+  if (!rows.length) {
+    drawerVendorSupport.innerHTML = `
+      <div class="empty-state compact-empty">
+        <strong>No support tickets</strong>
+        <span>Carrier support tickets from Bid Room will appear here.</span>
+      </div>
+    `;
+    return;
+  }
+  drawerVendorSupport.innerHTML = rows.slice(0, 5).map((row) => `
+    <article class="vendor-support-mini-card" data-drawer-support-ticket="${escapeHtml(row.id)}">
+      <div>
+        <strong>${escapeHtml(row.question || row.subject || "Support question")}</strong>
+        <span>${escapeHtml([row.rfx_id, row.route, row.contact_email].filter(Boolean).join(" | ") || "No RFx context")}</span>
+      </div>
+      <div>
+        <span class="status-pill ${row.priority === "urgent" || row.priority === "high" ? "warning" : "neutral"}">${escapeHtml(row.priority || "normal")}</span>
+        <span class="status-pill ${row.support_status === "resolved" ? "success" : "warning"}">${escapeHtml(supportStatusLabel(row.support_status))}</span>
+      </div>
+      <div class="action-row">
+        <button class="secondary small-button" type="button" data-drawer-support-status="in_progress">Take</button>
+        <button class="small-button" type="button" data-drawer-support-status="resolved">Resolve</button>
+      </div>
+    </article>
+  `).join("");
+}
+
+async function loadDrawerVendorSupport(vendorId) {
+  if (!drawerVendorSupport || !vendorId) return;
+  drawerVendorSupport.innerHTML = '<p class="status-message">Loading support tickets...</p>';
+  try {
+    const result = await fetchVendorSupportTickets({ vendor_id: vendorId, limit: 25 });
+    renderDrawerSupportTickets(result.rows || []);
+  } catch (error) {
+    drawerVendorSupport.innerHTML = `
+      <div class="empty-state error-state compact-empty">
+        <strong>Support could not load</strong>
+        <span>${escapeHtml(humanizeError(error))}</span>
+      </div>
+    `;
+  }
+}
+
 function openVendorDrawer(vendorId, options = {}) {
   const vendor = findVendorById(vendorId);
   if (!vendor) return;
@@ -3459,6 +3517,7 @@ function openVendorDrawer(vendorId, options = {}) {
   setStatus(drawerEditStatus, "");
   drawer.classList.remove("hidden");
   setDrawerMode(options.mode || "view");
+  loadDrawerVendorSupport(vendor.id);
 }
 
 function readDrawerPatch() {
@@ -4279,6 +4338,24 @@ drawer.addEventListener("click", (event) => {
   const profileLinkButton = event.target.closest("[data-copy-profile-link]");
   if (profileLinkButton) {
     copyVendorProfileLink(profileLinkButton.dataset.copyProfileLink);
+    return;
+  }
+  const supportButton = event.target.closest("[data-drawer-support-status]");
+  if (supportButton) {
+    const ticketCard = supportButton.closest("[data-drawer-support-ticket]");
+    const ticketId = ticketCard?.dataset.drawerSupportTicket;
+    const status = supportButton.dataset.drawerSupportStatus;
+    if (ticketId && status) {
+      supportButton.disabled = true;
+      updateVendorSupportTicket(ticketId, { status })
+        .then(() => loadDrawerVendorSupport(activeDrawerVendorId))
+        .catch((error) => {
+          setStatus(drawerEditStatus, humanizeError(error), "error");
+        })
+        .finally(() => {
+          supportButton.disabled = false;
+        });
+    }
     return;
   }
   const button = event.target.closest("[data-ai-suggestion-type]");

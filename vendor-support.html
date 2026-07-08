@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Rateware Vendor Support</title>
+    <link rel="stylesheet" href="./src/styles.css" />
+  </head>
+  <body>
+    <div class="shell-layout">
+      <aside class="side-nav" aria-label="Rateware modules">
+        <a class="brand-mark" href="./app.html">Rateware</a>
+        <nav class="nav-groups">
+          <section class="nav-group">
+            <p>Operate</p>
+            <a href="./app.html">Dashboard</a>
+            <a href="./upload-center.html">Upload Center</a>
+            <a href="./upload-history.html">Upload History</a>
+            <a href="./staging-review.html">Staging Review</a>
+            <a href="./rateware.html">Rateware</a>
+          </section>
+          <section class="nav-group">
+            <p>Analyze</p>
+            <a href="./business-intelligence.html">AI Analyst</a>
+          </section>
+          <section class="nav-group">
+            <p>Source</p>
+            <a href="./vendors.html">Vendors</a>
+            <a href="./rfx-events.html">Bid Room</a>
+            <a aria-current="page" href="./vendor-support.html">Vendor Support</a>
+          </section>
+          <section class="nav-group">
+            <p>Admin</p>
+            <a href="./settings.html">Settings</a>
+            <a href="./interpretation-memory.html">Memory</a>
+            <a href="./catalog-workbench.html">Catalogs</a>
+          </section>
+        </nav>
+      </aside>
+
+      <div class="page-frame">
+        <header class="page-header">
+          <div>
+            <p class="eyebrow">Carrier assistance</p>
+            <h1>Vendor Support</h1>
+            <nav class="module-crumbs" aria-label="Module context">
+              <a href="./app.html">Command Center</a>
+              <a href="./vendors.html">Carrier CRM</a>
+              <span>Vendor Support</span>
+            </nav>
+          </div>
+          <div class="page-header-actions">
+            <button id="refresh-support-tickets" class="page-primary-action" type="button">Refresh</button>
+            <form id="auth-form" class="auth-strip">
+              <button id="auth-button" type="submit">Sign in with Kinde</button>
+              <button id="sign-out-button" type="button" class="secondary hidden">Sign out</button>
+              <p id="auth-status" role="status"></p>
+            </form>
+          </div>
+        </header>
+
+        <main class="vendor-support-layout">
+          <section class="vendor-support-metrics wide-section" aria-label="Vendor support metrics">
+            <article><span>Total tickets</span><strong id="support-total">0</strong></article>
+            <article><span>Open</span><strong id="support-open">0</strong></article>
+            <article><span>In progress</span><strong id="support-in-progress">0</strong></article>
+            <article><span>Resolved</span><strong id="support-resolved">0</strong></article>
+            <article><span>Google Chat</span><strong id="support-google-chat">0</strong></article>
+          </section>
+
+          <section class="workspace-panel wide-section">
+            <div class="split-heading">
+              <div>
+                <p class="eyebrow">Support queue</p>
+                <h2>Carrier questions and escalations</h2>
+              </div>
+              <div class="action-row">
+                <a class="secondary link-button" href="./settings.html">Google Chat settings</a>
+                <a class="secondary link-button" href="./rfx-events.html">Open Bid Room</a>
+              </div>
+            </div>
+
+            <div class="vendor-support-toolbar" aria-label="Support filters">
+              <label>
+                Status
+                <select id="support-status-filter">
+                  <option value="all">All</option>
+                  <option value="open">Open</option>
+                  <option value="in_progress">In progress</option>
+                  <option value="resolved">Resolved</option>
+                  <option value="archived">Archived</option>
+                </select>
+              </label>
+              <label>
+                Priority
+                <select id="support-priority-filter">
+                  <option value="all">All</option>
+                  <option value="urgent">Urgent</option>
+                  <option value="high">High</option>
+                  <option value="normal">Normal</option>
+                  <option value="low">Low</option>
+                </select>
+              </label>
+              <label class="wide-field">
+                Search
+                <input id="support-search" placeholder="Vendor, RFx, route, question, email" />
+              </label>
+              <button id="clear-support-filters" class="secondary small-button" type="button">Clear</button>
+              <p id="support-status-message" class="status-message" role="status"></p>
+            </div>
+
+            <div class="table-wrap vendor-support-table-wrap">
+              <table class="vendor-support-table">
+                <thead>
+                  <tr>
+                    <th>Ticket</th>
+                    <th>Vendor</th>
+                    <th>RFx / route</th>
+                    <th>Question</th>
+                    <th>Priority</th>
+                    <th>Status</th>
+                    <th>Google Chat</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="support-ticket-body">
+                  <tr><td colspan="8">Loading support tickets...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </main>
+      </div>
+    </div>
+
+    <script type="module" src="./src/vendor-support.js"></script>
+  </body>
+</html>

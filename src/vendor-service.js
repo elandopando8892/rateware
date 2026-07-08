@@ -110,3 +110,11 @@ export async function updateVendorSegment(id, segment) {
 export async function deleteVendorSegment(id) {
   return (await callRatewareApi("delete_vendor_segment", { id })).row;
 }
+
+export async function fetchVendorSupportTickets(filters = {}) {
+  return await callRatewareApi("list_vendor_support_tickets", filters);
+}
+
+export async function updateVendorSupportTicket(id, patch = {}) {
+  return (await callRatewareApi("update_vendor_support_ticket", { id, ...patch })).row;
+}

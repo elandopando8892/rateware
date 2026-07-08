@@ -1794,6 +1794,11 @@ function objectRecord(value: unknown): Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }
 
+function relationRecord(value: unknown): Record<string, unknown> {
+  if (Array.isArray(value)) return objectRecord(value[0]);
+  return objectRecord(value);
+}
+
 function apiErrorInfo(error: unknown) {
   if (error instanceof Error) {
     return {
@@ -8320,6 +8325,182 @@ function contactPreview(value: unknown) {
     .slice(0, 240);
 }
 
+const SUPPORT_TICKET_DB_STATUSES = ["support_ticket", "support_open", "support_in_progress", "support_resolved", "support_archived"];
+const SUPPORT_TICKET_UI_STATUSES = new Set(["open", "in_progress", "resolved", "archived"]);
+const SUPPORT_TICKET_PRIORITIES = new Set(["low", "normal", "high", "urgent"]);
+
+function supportTicketStatus(row: Record<string, unknown>) {
+  const metadata = objectRecord(row.metadata);
+  const status = cleanText(metadata.support_status)?.toLowerCase() || cleanText(row.status)?.toLowerCase();
+  if (status === "support_ticket" || status === "support_open") return "open";
+  if (status === "support_in_progress") return "in_progress";
+  if (status === "support_resolved") return "resolved";
+  if (status === "support_archived") return "archived";
+  return SUPPORT_TICKET_UI_STATUSES.has(status || "") ? status : "open";
+}
+
+function supportTicketPriority(row: Record<string, unknown>) {
+  const metadata = objectRecord(row.metadata);
+  const priority = cleanText(metadata.priority)?.toLowerCase();
+  return SUPPORT_TICKET_PRIORITIES.has(priority || "") ? priority : "normal";
+}
+
+function supportTicketDbStatus(status: unknown) {
+  const normalized = cleanText(status)?.toLowerCase() || "open";
+  if (!SUPPORT_TICKET_UI_STATUSES.has(normalized)) throw new Error("Unsupported support ticket status.");
+  return normalized === "open" ? "support_open" : `support_${normalized}`;
+}
+
+function supportTicketMatchesSearch(row: Record<string, unknown>, search: string) {
+  if (!search) return true;
+  const metadata = objectRecord(row.metadata);
+  const vendor = relationRecord(row.vendors);
+  const event = relationRecord(row.rfx_events);
+  const haystack = [
+    row.subject,
+    row.body_preview,
+    metadata.question,
+    metadata.answer,
+    metadata.route,
+    metadata.contact_email,
+    vendor.vendor_name,
+    vendor.domain,
+    vendor.primary_email,
+    event.rfx_id,
+    event.name,
+    event.customer
+  ].map((value) => String(value || "").toLowerCase()).join(" ");
+  return haystack.includes(search.toLowerCase());
+}
+
+function serializeSupportTicket(row: Record<string, unknown>) {
+  const metadata = objectRecord(row.metadata);
+  const vendor = relationRecord(row.vendors);
+  const event = relationRecord(row.rfx_events);
+  return {
+    ...row,
+    support_status: supportTicketStatus(row),
+    priority: supportTicketPriority(row),
+    question: cleanText(metadata.question || row.body_preview),
+    answer: cleanText(metadata.answer),
+    route: cleanText(metadata.route),
+    lane_id: cleanText(metadata.lane_id),
+    contact_email: cleanText(metadata.contact_email || vendor.primary_email),
+    assigned_to: cleanText(metadata.assigned_to),
+    internal_note: cleanText(metadata.internal_note || metadata.last_internal_note),
+    public_context: cleanBoolean(metadata.public_context),
+    google_chat_sync_status: cleanText(metadata.google_chat_sync_status),
+    google_chat_thread_id: cleanText(metadata.google_chat_thread_id),
+    google_chat_message_id: cleanText(metadata.google_chat_message_id),
+    vendor_name: cleanText(vendor.vendor_name || vendor.domain),
+    vendor_domain: cleanText(vendor.domain),
+    vendor_email: cleanText(vendor.primary_email),
+    rfx_id: cleanText(event.rfx_id),
+    rfx_name: cleanText(event.name),
+    event_customer: cleanText(event.customer),
+    due_date: cleanText(event.due_date)
+  };
+}
+
+async function listVendorSupportTickets(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_email: string | null },
+  input: Record<string, unknown>
+) {
+  const limit = Math.min(Math.max(Number(input.limit || 300) || 300, 1), 1000);
+  let query = supabase
+    .from("contact_history")
+    .select("*, vendors(id,vendor_name,domain,primary_email,whatsapp_phone), rfx_events(id,rfx_id,name,customer,status,due_date)")
+    .eq("owner_email", user.owner_email)
+    .in("status", SUPPORT_TICKET_DB_STATUSES)
+    .order("occurred_at", { ascending: false })
+    .limit(limit);
+  if (input.vendor_id) query = query.eq("vendor_id", cleanText(input.vendor_id));
+  if (input.rfx_event_id || input.event_id) query = query.eq("rfx_event_id", cleanText(input.rfx_event_id || input.event_id));
+  const result = await query;
+  if (result.error) throw result.error;
+
+  const statusFilter = cleanText(input.status)?.toLowerCase();
+  const priorityFilter = cleanText(input.priority)?.toLowerCase();
+  const search = cleanText(input.search)?.toLowerCase() || "";
+  const rows = (result.data || [])
+    .map(serializeSupportTicket)
+    .filter((row) => !statusFilter || statusFilter === "all" || row.support_status === statusFilter)
+    .filter((row) => !priorityFilter || priorityFilter === "all" || row.priority === priorityFilter)
+    .filter((row) => supportTicketMatchesSearch(row, search));
+
+  const summary = rows.reduce((acc, row) => {
+    acc.total += 1;
+    acc[row.support_status] = (acc[row.support_status] || 0) + 1;
+    if (row.google_chat_sync_status === "synced") acc.google_chat_synced += 1;
+    if (row.priority === "urgent" || row.priority === "high") acc.high_priority += 1;
+    return acc;
+  }, { total: 0, open: 0, in_progress: 0, resolved: 0, archived: 0, google_chat_synced: 0, high_priority: 0 } as Record<string, number>);
+
+  return { rows, summary, limit };
+}
+
+async function updateVendorSupportTicket(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_user_id: string | null; owner_email: string | null },
+  input: Record<string, unknown>
+) {
+  const id = cleanText(input.id || input.ticket_id);
+  if (!id) throw new Error("Support ticket id is required.");
+  const existing = await supabase
+    .from("contact_history")
+    .select("*, vendors(id,vendor_name,domain,primary_email,whatsapp_phone), rfx_events(id,rfx_id,name,customer,status,due_date)")
+    .eq("id", id)
+    .eq("owner_email", user.owner_email)
+    .in("status", SUPPORT_TICKET_DB_STATUSES)
+    .single();
+  if (existing.error) throw existing.error;
+
+  const currentMetadata = objectRecord(existing.data.metadata);
+  const patchMetadata: Record<string, unknown> = {
+    ...currentMetadata,
+    last_action_at: new Date().toISOString(),
+    last_action_by: user.owner_email
+  };
+  const updatePatch: Record<string, unknown> = {};
+
+  if ("status" in input || "support_status" in input) {
+    const nextStatus = cleanText(input.status || input.support_status)?.toLowerCase() || "open";
+    updatePatch.status = supportTicketDbStatus(nextStatus);
+    patchMetadata.support_status = nextStatus;
+    if (nextStatus === "resolved") patchMetadata.resolved_at = new Date().toISOString();
+    if (nextStatus !== "resolved") patchMetadata.resolved_at = null;
+  }
+  if ("priority" in input) {
+    const priority = cleanText(input.priority)?.toLowerCase() || "normal";
+    if (!SUPPORT_TICKET_PRIORITIES.has(priority)) throw new Error("Unsupported support ticket priority.");
+    patchMetadata.priority = priority;
+  }
+  if ("assigned_to" in input) patchMetadata.assigned_to = cleanText(input.assigned_to);
+  if ("internal_note" in input || "note" in input) patchMetadata.internal_note = cleanText(input.internal_note || input.note);
+
+  updatePatch.metadata = patchMetadata;
+  const result = await supabase
+    .from("contact_history")
+    .update(updatePatch)
+    .eq("id", id)
+    .eq("owner_email", user.owner_email)
+    .select("*, vendors(id,vendor_name,domain,primary_email,whatsapp_phone), rfx_events(id,rfx_id,name,customer,status,due_date)")
+    .single();
+  if (result.error) throw result.error;
+
+  await writeAuditLog(
+    supabase,
+    user,
+    "vendor_support.update",
+    "contact_history",
+    id,
+    `Updated vendor support ticket ${id}`,
+    { support_status: serializeSupportTicket(result.data).support_status, priority: serializeSupportTicket(result.data).priority }
+  );
+  return { row: serializeSupportTicket(result.data) };
+}
+
 function carrierProfileUrl(appOrigin: unknown, token: unknown) {
   const baseUrl = (cleanText(appOrigin) || Deno.env.get("RATEWARE_PUBLIC_APP_URL") || "https://rateware.vercel.app").replace(/\/$/, "");
   const requestToken = cleanText(token);
@@ -12105,6 +12286,14 @@ Deno.serve(async (request) => {
       const result = await query;
       if (result.error) throw result.error;
       return jsonResponse({ rows: result.data || [] });
+    }
+
+    if (body.action === "list_vendor_support_tickets") {
+      return jsonResponse(await listVendorSupportTickets(supabase, user, body));
+    }
+
+    if (body.action === "update_vendor_support_ticket") {
+      return jsonResponse(await updateVendorSupportTicket(supabase, user, body));
     }
 
     if (body.action === "get_saas_settings") {

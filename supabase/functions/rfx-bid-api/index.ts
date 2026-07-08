@@ -2133,6 +2133,19 @@ async function createBidSupportTicket(
   const question = cleanText(input.message || input.question) || "Support request";
   const contactEmail = cleanEmail(input.email || relationRecord(vendor).primary_email);
   const ownerEmail = cleanText(event.owner_email) || GMAIL_ALLOWED_SENDER;
+  const metadata = {
+    source: "bid_support_agent",
+    support_status: "open",
+    priority: cleanText(input.priority) || "normal",
+    question,
+    answer: cleanText(support.answer),
+    confidence: cleanText(support.confidence),
+    scope: cleanText(support.scope),
+    lane_id: cleanText(lane.id || input.lane_id || input.rfx_lane_id),
+    route: Object.keys(lane).length ? supportRouteLabel(lane) : null,
+    contact_email: contactEmail,
+    public_context: cleanBoolean(input.public_context) === true
+  };
   const result = await supabase.from("contact_history").insert({
     owner_user_id: cleanText(event.owner_user_id),
     owner_email: ownerEmail,
@@ -2144,20 +2157,121 @@ async function createBidSupportTicket(
     subject: `${supportEventLabel(event)} support question`,
     body_preview: question.slice(0, 400),
     occurred_at: new Date().toISOString(),
-    metadata: {
-      source: "bid_support_agent",
-      question,
-      answer: cleanText(support.answer),
-      confidence: cleanText(support.confidence),
-      scope: cleanText(support.scope),
-      lane_id: cleanText(lane.id || input.lane_id || input.rfx_lane_id),
-      route: Object.keys(lane).length ? supportRouteLabel(lane) : null,
-      contact_email: contactEmail,
-      public_context: cleanBoolean(input.public_context) === true
-    }
-  }).select("id").single();
+    metadata
+  }).select("id,metadata").single();
   if (result.error) throw result.error;
-  return result.data;
+
+  const chatSync = await mirrorSupportTicketToGoogleChat(supabase, result.data, { event, lane, vendor, question, contactEmail }).catch((error) => ({
+    status: "error",
+    error: String(error?.message || error)
+  }));
+  if (chatSync?.status && chatSync.status !== "skipped") {
+    await supabase.from("contact_history").update({
+      metadata: {
+        ...objectRecord(result.data.metadata),
+        google_chat_sync_status: chatSync.status,
+        google_chat_thread_id: cleanText(chatSync.thread_id),
+        google_chat_message_id: cleanText(chatSync.message_id),
+        google_chat_message_name: cleanText(chatSync.name),
+        google_chat_error: cleanText(chatSync.error)
+      }
+    }).eq("id", result.data.id);
+  }
+
+  return { ...result.data, google_chat: chatSync };
+}
+
+async function mirrorSupportTicketToGoogleChat(
+  supabase: ReturnType<typeof createClient>,
+  ticket: Record<string, unknown>,
+  context: {
+    event: Record<string, unknown>;
+    lane: Record<string, unknown>;
+    vendor: Record<string, unknown>;
+    question: string;
+    contactEmail: string | null;
+  }
+) {
+  const event = context.event || {};
+  const eventId = cleanText(event.id);
+  const ownerEmail = cleanText(event.owner_email);
+  if (!eventId || !ownerEmail) return { status: "skipped", reason: "Ticket has no event context." };
+
+  const threadType = "event_group";
+  let threadResult = await supabase
+    .from("bid_room_chat_threads")
+    .select("*, vendors(vendor_name,domain), rfx_lanes(*)")
+    .eq("rfx_event_id", eventId)
+    .eq("thread_type", threadType)
+    .is("rfx_lane_id", null)
+    .is("vendor_id", null)
+    .neq("status", "archived")
+    .maybeSingle();
+  if (threadResult.error) throw threadResult.error;
+
+  let thread = threadResult.data;
+  if (!thread) {
+    const created = await supabase.from("bid_room_chat_threads").insert({
+      owner_user_id: cleanText(event.owner_user_id),
+      owner_email: ownerEmail,
+      rfx_event_id: eventId,
+      rfx_lane_id: null,
+      vendor_id: null,
+      thread_type: threadType,
+      title: bidRoomThreadTitle(threadType, event),
+      google_chat_thread_key: bidRoomGoogleThreadKey(eventId, threadType, null, null),
+      google_chat_sync_status: "ready",
+      metadata: { source: "vendor_support_ticket", rfx_id: cleanText(event.rfx_id) }
+    }).select("*, vendors(vendor_name,domain), rfx_lanes(*)").single();
+    if (created.error) throw created.error;
+    thread = created.data;
+  }
+
+  const route = Object.keys(context.lane || {}).length ? supportRouteLabel(context.lane) : "No lane selected";
+  const vendorName = cleanText(context.vendor.vendor_name || context.vendor.domain) || "Unknown carrier";
+  const body = [
+    `Vendor support ticket ${cleanText(ticket.id)}`,
+    `Event: ${supportEventLabel(event)}`,
+    `Vendor: ${vendorName}`,
+    context.contactEmail ? `Contact: ${context.contactEmail}` : null,
+    `Route: ${route}`,
+    `Question: ${context.question}`
+  ].filter(Boolean).join("\n");
+
+  const messageResult = await supabase.from("bid_room_chat_messages").insert({
+    owner_user_id: cleanText(event.owner_user_id),
+    owner_email: ownerEmail,
+    thread_id: thread.id,
+    rfx_event_id: eventId,
+    rfx_lane_id: cleanText(context.lane.id),
+    vendor_id: cleanText(context.vendor.id),
+    sender_role: "system",
+    sender_name: "Vendor Support",
+    sender_email: ownerEmail,
+    body,
+    google_chat_sync_status: "pending",
+    metadata: {
+      source: "vendor_support_ticket",
+      contact_history_id: cleanText(ticket.id),
+      support_status: "open"
+    }
+  }).select("*, vendors(vendor_name,domain)").single();
+  if (messageResult.error) throw messageResult.error;
+
+  await supabase.from("bid_room_chat_threads").update({
+    updated_at: new Date().toISOString(),
+    communication_status: "needs_reply",
+    needs_reply: true,
+    read_status: "unread",
+    last_action_at: new Date().toISOString()
+  }).eq("id", thread.id);
+
+  const sync = await syncBidRoomMessageToGoogleChat(supabase, thread, messageResult.data, event);
+  return {
+    ...sync,
+    thread_id: cleanText(thread.id),
+    message_id: cleanText(messageResult.data.id)
+  };
 }
 
 async function bidSupportReply(supabase: ReturnType<typeof createClient>, input: Record<string, unknown>) {

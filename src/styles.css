@@ -4456,6 +4456,139 @@ body.bid-editor-open {
   font-size: 0.64rem;
 }
 
+.drawer-vendor-support {
+  display: grid;
+  gap: 6px;
+}
+
+.vendor-support-mini-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px;
+  align-items: center;
+  border: 1px solid #d9e3ec;
+  border-radius: 6px;
+  background: #fbfcfd;
+  padding: 6px;
+}
+
+.vendor-support-mini-card strong,
+.vendor-support-mini-card span {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vendor-support-mini-card strong {
+  font-size: 0.68rem;
+}
+
+.vendor-support-mini-card span {
+  color: var(--muted);
+  font-size: 0.6rem;
+}
+
+.vendor-support-mini-card .action-row {
+  grid-column: 1 / -1;
+  gap: 4px;
+  margin: 0;
+}
+
+.vendor-support-layout {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+}
+
+.vendor-support-metrics {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.vendor-support-metrics article {
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #fff;
+  padding: 8px 10px;
+}
+
+.vendor-support-metrics span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.64rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.vendor-support-metrics strong {
+  display: block;
+  margin-top: 4px;
+  color: var(--ink);
+  font-size: 1.3rem;
+}
+
+.vendor-support-toolbar {
+  display: grid;
+  grid-template-columns: 150px 150px minmax(240px, 1fr) auto minmax(180px, auto);
+  gap: 8px;
+  align-items: end;
+  margin-bottom: 8px;
+}
+
+.vendor-support-toolbar label {
+  display: grid;
+  gap: 3px;
+  color: var(--muted);
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.vendor-support-toolbar input,
+.vendor-support-toolbar select {
+  min-height: 28px;
+  border: 1px solid #c9d5df;
+  border-radius: 5px;
+  background: #fff;
+  padding: 4px 7px;
+  color: var(--ink);
+  font: inherit;
+  text-transform: none;
+}
+
+.vendor-support-table-wrap {
+  max-height: calc(100vh - 270px);
+}
+
+.vendor-support-table th,
+.vendor-support-table td {
+  padding: 5px 7px;
+  vertical-align: top;
+}
+
+.vendor-support-table td strong,
+.vendor-support-table td small,
+.vendor-support-table td span {
+  display: block;
+}
+
+.vendor-support-table td small {
+  color: var(--muted);
+  font-size: 0.62rem;
+}
+
+.vendor-support-table select {
+  max-width: 140px;
+  min-height: 24px;
+  border: 1px solid #c9d5df;
+  border-radius: 5px;
+  background: #fff;
+  font-size: 0.68rem;
+}
+
 .vendor-profile-kpis,
 .vendor-profile-list {
   display: grid;
