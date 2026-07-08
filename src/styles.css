@@ -8585,6 +8585,20 @@ button.location-chip:focus-visible {
   font-weight: 900;
 }
 
+.carrier-profile-grid .profile-field > span em,
+.profile-checklist legend span em {
+  display: inline-block;
+  margin-left: 5px;
+  border-radius: 999px;
+  background: #edf3f6;
+  color: #60717f;
+  padding: 1px 5px;
+  font-size: 0.58rem;
+  font-style: normal;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
 .carrier-profile-grid input,
 .carrier-profile-grid select,
 .carrier-profile-grid textarea {
@@ -18558,6 +18572,61 @@ textarea:focus,
   font-size: 0.9rem;
 }
 
+.public-opportunity-countdown {
+  display: grid;
+  grid-template-columns: minmax(82px, auto) 1fr;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid #d8e3eb;
+  border-radius: 8px;
+  background: #f9fbfd;
+  padding: 7px 8px;
+}
+
+.public-opportunity-countdown strong {
+  color: #14212c;
+  font-size: 0.86rem;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.public-opportunity-countdown span {
+  color: #607280;
+  font-size: 0.62rem;
+  font-weight: 900;
+  line-height: 1.05;
+  text-transform: uppercase;
+}
+
+.public-opportunity-countdown[data-tone="live"] {
+  border-color: #b9ded7;
+  background: #f0fbf8;
+}
+
+.public-opportunity-countdown[data-tone="warning"] {
+  border-color: #efd391;
+  background: #fff9ea;
+}
+
+.public-opportunity-countdown[data-tone="urgent"] {
+  border-color: #efb1a8;
+  background: #fff4f1;
+}
+
+.public-opportunity-countdown[data-tone="expired"],
+.public-opportunity-countdown[data-tone="muted"] {
+  background: #f2f5f7;
+}
+
+.public-opportunity-countdown.is-compact {
+  grid-template-columns: 1fr;
+  gap: 3px;
+  border: 0;
+  background: transparent;
+  padding: 0;
+}
+
 .public-opportunity-tags {
   display: flex;
   flex-wrap: wrap;
@@ -18667,7 +18736,8 @@ textarea:focus,
   margin: 14px 0;
 }
 
-.public-board-drawer-metrics span,
+.public-board-drawer-metrics > span,
+.public-board-drawer-metrics > div,
 .public-board-invite-rule,
 .public-board-detail-section,
 .public-board-request-form {
@@ -18676,21 +18746,26 @@ textarea:focus,
   background: #fafdff;
 }
 
-.public-board-drawer-metrics span {
+.public-board-drawer-metrics > span,
+.public-board-drawer-metrics > div {
   padding: 8px;
 }
 
-.public-board-drawer-metrics b,
-.public-board-drawer-metrics small {
+.public-board-drawer-metrics > span > b,
+.public-board-drawer-metrics > span > small,
+.public-board-drawer-metrics > div > b,
+.public-board-drawer-metrics > div > small {
   display: block;
 }
 
-.public-board-drawer-metrics b {
+.public-board-drawer-metrics > span > b,
+.public-board-drawer-metrics > div > b {
   color: #14212c;
   font-size: 0.95rem;
 }
 
-.public-board-drawer-metrics small {
+.public-board-drawer-metrics > span > small,
+.public-board-drawer-metrics > div > small {
   color: #627482;
   font-size: 0.62rem;
   font-weight: 900;

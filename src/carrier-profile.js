@@ -18,25 +18,25 @@ const COPY = {
     requestEyebrow: "Carrier onboarding",
     profileRequest: "Carrier profile request",
     privateProfile: "Private carrier profile",
-    intro: "Complete or correct your company profile. You can answer in English or Spanish.",
+    intro: "Complete or correct your company profile. You can skip any field and come back later.",
     privacy: "This private link only updates your own carrier record.",
     language: "Language",
     english: "English",
     spanish: "Español",
     completion: "Profile completion",
-    requiredComplete: "required fields complete",
-    missingRequired: "Missing required fields",
-    reviewRequired: "Review required fields",
-    requiredHint: "Fields marked with * help procurement validate your profile faster.",
+    requiredComplete: "recommended fields complete",
+    missingRequired: "Recommended information pending",
+    reviewRequired: "Review recommended fields",
+    requiredHint: "Nothing is mandatory to continue. Recommended fields only help procurement validate your profile faster.",
     selected: "selected",
     previous: "Back",
-    next: "Save and continue",
-    submit: "Submit profile",
+    next: "Continue",
+    submit: "Save profile",
     saving: "Saving profile...",
     submitted: "Profile submitted. Thank you.",
     submittedStatus: "Profile submitted successfully.",
-    fixMissingPrefix: "Please complete",
-    fixMissingSuffix: "required field(s) before submitting.",
+    fixMissingPrefix: "Recommended information pending:",
+    fixMissingSuffix: "field(s). You can still save the profile.",
     answerLanguage: "Answer in English or Spanish. Rateware will keep your original wording.",
     companyStepHelp: "Confirm the company identity and main contact channel.",
     finalStepHelp: "Add contacts by role so procurement knows who to reach.",
@@ -55,8 +55,9 @@ const COPY = {
     channel: "Preferred channel",
     coverageSummary: "Coverage summary",
     optional: "Optional",
+    recommended: "Recommended",
     startHere: "Start here",
-    profileSaved: "Your information is ready to submit.",
+    profileSaved: "Your information was saved.",
     statusReady: "Ready",
     statusNeedsInfo: "Needs info"
   },
@@ -76,19 +77,19 @@ const COPY = {
     english: "English",
     spanish: "Español",
     completion: "Avance del perfil",
-    requiredComplete: "campos requeridos completos",
-    missingRequired: "Campos requeridos pendientes",
+    requiredComplete: "campos recomendados completos",
+    missingRequired: "Informacion recomendada pendiente",
     reviewRequired: "Revisar campos requeridos",
-    requiredHint: "Los campos con * ayudan a procurement a validar tu perfil mas rapido.",
+    requiredHint: "Nada es obligatorio para avanzar. Los campos recomendados solo ayudan a procurement a validar tu perfil mas rapido.",
     selected: "seleccionados",
     previous: "Atras",
-    next: "Guardar y continuar",
-    submit: "Enviar perfil",
+    next: "Continuar",
+    submit: "Guardar perfil",
     saving: "Guardando perfil...",
     submitted: "Perfil enviado. Gracias.",
     submittedStatus: "Perfil enviado correctamente.",
-    fixMissingPrefix: "Completa",
-    fixMissingSuffix: "campo(s) requerido(s) antes de enviar.",
+    fixMissingPrefix: "Informacion recomendada pendiente:",
+    fixMissingSuffix: "campo(s). Aun puedes guardar el perfil.",
     answerLanguage: "Responde en ingles o español. Rateware conserva tu texto original.",
     companyStepHelp: "Confirma la identidad de la empresa y el canal principal de contacto.",
     finalStepHelp: "Agrega contactos por rol para que procurement sepa a quien contactar.",
@@ -107,19 +108,18 @@ const COPY = {
     channel: "Canal preferido",
     coverageSummary: "Resumen de cobertura",
     optional: "Opcional",
+    recommended: "Recomendado",
     startHere: "Empieza aqui",
-    profileSaved: "Tu informacion esta lista para enviarse.",
+    profileSaved: "Tu informacion fue guardada.",
     statusReady: "Listo",
     statusNeedsInfo: "Falta info"
   }
 };
 
 const COMPANY_FIELDS = [
-  { key: "vendor_name", label: { en: "Company name", es: "Nombre comercial" }, type: "text", required: true },
-  { key: "legal_name", label: { en: "Legal name", es: "Razon social" }, type: "text" },
+  { key: "vendor_name", label: { en: "Company name", es: "Nombre comercial" }, type: "text", recommended: true },
   { key: "domain", label: { en: "Website / domain", es: "Sitio web / dominio" }, type: "text" },
-  { key: "contact_name", label: { en: "Contact name", es: "Contacto principal" }, type: "text" },
-  { key: "primary_email", label: { en: "Email", es: "Correo" }, type: "email", required: true },
+  { key: "primary_email", label: { en: "Email", es: "Correo" }, type: "email", recommended: true },
   { key: "whatsapp_phone", label: { en: "WhatsApp / phone", es: "WhatsApp / telefono" }, type: "text" },
   { key: "preferred_channel", label: { en: "Preferred channel", es: "Canal preferido" }, type: "select", options: ["email", "whatsapp", "portal"] },
   { key: "coverage_notes", label: { en: "Coverage summary", es: "Resumen de cobertura" }, type: "textarea", wide: true }
@@ -131,10 +131,9 @@ const PROFILE_SECTIONS = [
     label: { en: "Main contact", es: "Contacto principal" },
     help: { en: "Tell us who owns this profile and where the company operates.", es: "Indica quien responde este perfil y donde opera la empresa." },
     fields: [
-      { key: "full_name", label: { en: "Full name", es: "Nombre completo" }, type: "text", required: true },
-      { key: "mobile_number", label: { en: "Mobile number", es: "Celular" }, type: "text", required: true },
-      { key: "company_type", label: { en: "Company type", es: "Tipo de empresa" }, type: "select", required: true, options: ["Persona Fisica", "Persona Moral"] },
-      { key: "operating_country", label: { en: "Operating country", es: "Pais de operacion" }, type: "select", required: true, options: ["Mexico", "Estados Unidos de America", "Canada"] }
+      { key: "full_name", label: { en: "Profile respondent", es: "Persona que responde" }, type: "text", recommended: true },
+      { key: "company_type", label: { en: "Company type", es: "Tipo de empresa" }, type: "select", recommended: true, options: ["Persona Fisica", "Persona Moral"] },
+      { key: "operating_country", label: { en: "Operating country", es: "Pais de operacion" }, type: "select", recommended: true, options: ["Mexico", "Estados Unidos de America", "Canada"] }
     ]
   },
   {
@@ -142,9 +141,8 @@ const PROFILE_SECTIONS = [
     label: { en: "Legal identity", es: "Identidad legal" },
     help: { en: "Add legal, tax and operating authority identifiers.", es: "Agrega datos legales, fiscales y de autoridad operativa." },
     fields: [
-      { key: "dba_name", label: { en: "DBA / commercial name", es: "DBA / nombre comercial" }, type: "text" },
-      { key: "legal_name", label: { en: "Legal name", es: "Razon social" }, type: "text", required: true },
-      { key: "fiscal_address", label: { en: "Fiscal address", es: "Domicilio fiscal" }, type: "textarea", required: true },
+      { key: "legal_name", label: { en: "Legal name", es: "Razon social" }, type: "text", recommended: true },
+      { key: "fiscal_address", label: { en: "Fiscal address", es: "Domicilio fiscal" }, type: "textarea" },
       { key: "rfc", label: { en: "RFC", es: "RFC" }, type: "text" },
       { key: "usdot_number", label: { en: "USDOT number", es: "Numero USDOT" }, type: "text" },
       { key: "mc_number", label: { en: "MC number", es: "Numero MC" }, type: "text" },
@@ -158,12 +156,12 @@ const PROFILE_SECTIONS = [
     label: { en: "Services and coverage", es: "Servicios y cobertura" },
     help: { en: "Select the services, regions and crossings you can support.", es: "Selecciona servicios, regiones y cruces que puedes cubrir." },
     fields: [
-      { key: "geographic_scope", label: { en: "Geographic scope", es: "Alcance geografico" }, type: "checks", required: true, options: ["Mexico", "Estados Unidos", "Canada"] },
+      { key: "geographic_scope", label: { en: "Geographic scope", es: "Alcance geografico" }, type: "checks", recommended: true, options: ["Mexico", "Estados Unidos", "Canada"] },
       {
         key: "service_scope",
         label: { en: "Service scope", es: "Tipo de servicio" },
         type: "checks",
-        required: true,
+        recommended: true,
         options: [
           "Local MEX",
           "Regional MEX",
@@ -179,7 +177,7 @@ const PROFILE_SECTIONS = [
         key: "regional_coverage",
         label: { en: "Regional coverage", es: "Cobertura regional" },
         type: "checks",
-        required: true,
+        recommended: true,
         options: [
           "Noreste MX",
           "Noroeste MX",
@@ -211,7 +209,7 @@ const PROFILE_SECTIONS = [
       { key: "coverage_amounts", label: { en: "Insurance coverage amounts", es: "Montos de cobertura de seguro" }, type: "textarea" },
       { key: "mexico_terminal_zips", label: { en: "Mexico terminal ZIPs / cities", es: "CP / ciudades de terminales en Mexico" }, type: "textarea" },
       { key: "us_ca_terminal_zips", label: { en: "US / Canada terminal ZIPs", es: "ZIPs de terminales US / Canada" }, type: "textarea" },
-      { key: "equipment_types", label: { en: "Available equipment", es: "Equipo disponible" }, type: "checks", required: true, options: ["Power Only", "Chassis", "Conestoga", "Lowboy", "Stepdeck", "Flatbed", "Dry Van", "Reefer", "Straight truck", "3.5 tons", "1.5 tons"] },
+      { key: "equipment_types", label: { en: "Available equipment", es: "Equipo disponible" }, type: "checks", recommended: true, options: ["Power Only", "Chassis", "Conestoga", "Lowboy", "Stepdeck", "Flatbed", "Dry Van", "Reefer", "Straight truck", "3.5 tons", "1.5 tons"] },
       { key: "equipment_notes", label: { en: "Equipment notes", es: "Notas de equipo" }, type: "textarea" }
     ]
   },
@@ -355,12 +353,12 @@ function renderVendorLogo(vendor) {
 }
 
 function renderCompanyField(field, value) {
-  const required = field.required ? ' <span aria-hidden="true">*</span>' : "";
-  const common = `data-vendor-field="${escapeHtml(field.key)}" ${field.required ? "data-required-field" : ""}`;
+  const recommended = field.recommended ? ` <em>${escapeHtml(t("recommended"))}</em>` : "";
+  const common = `data-vendor-field="${escapeHtml(field.key)}" ${field.recommended ? "data-recommended-field" : ""}`;
   if (field.type === "textarea") {
     return `
       <label class="profile-field ${field.wide ? "profile-field-wide" : ""}">
-        <span>${escapeHtml(localized(field.label))}${required}</span>
+        <span>${escapeHtml(localized(field.label))}${recommended}</span>
         <textarea ${common} rows="3">${escapeHtml(scalarValue(value))}</textarea>
       </label>
     `;
@@ -370,7 +368,7 @@ function renderCompanyField(field, value) {
     const options = Array.from(new Set([...(field.options || []), current].filter(Boolean)));
     return `
       <label class="profile-field">
-        <span>${escapeHtml(localized(field.label))}${required}</span>
+        <span>${escapeHtml(localized(field.label))}${recommended}</span>
         <select ${common}>
           <option value=""></option>
           ${options.map((option) => `<option value="${escapeHtml(option)}" ${option === current ? "selected" : ""}>${escapeHtml(option)}</option>`).join("")}
@@ -380,19 +378,19 @@ function renderCompanyField(field, value) {
   }
   return `
     <label class="profile-field ${field.wide ? "profile-field-wide" : ""}">
-      <span>${escapeHtml(localized(field.label))}${required}</span>
+      <span>${escapeHtml(localized(field.label))}${recommended}</span>
       <input ${common} type="${escapeHtml(field.type || "text")}" value="${escapeHtml(scalarValue(value))}" />
     </label>
   `;
 }
 
 function renderProfileField(section, field, value) {
-  const required = field.required ? ' <span aria-hidden="true">*</span>' : "";
-  const common = `data-profile-input data-section="${escapeHtml(section.key)}" data-field="${escapeHtml(field.key)}" ${field.required ? "data-required-field" : ""}`;
+  const recommended = field.recommended ? ` <em>${escapeHtml(t("recommended"))}</em>` : "";
+  const common = `data-profile-input data-section="${escapeHtml(section.key)}" data-field="${escapeHtml(field.key)}" ${field.recommended ? "data-recommended-field" : ""}`;
   if (field.type === "textarea") {
     return `
       <label class="profile-field profile-field-wide">
-        <span>${escapeHtml(localized(field.label))}${required}</span>
+        <span>${escapeHtml(localized(field.label))}${recommended}</span>
         <textarea ${common} rows="3">${escapeHtml(scalarValue(value))}</textarea>
       </label>
     `;
@@ -402,7 +400,7 @@ function renderProfileField(section, field, value) {
     const options = Array.from(new Set([...(field.options || []), current].filter(Boolean)));
     return `
       <label class="profile-field">
-        <span>${escapeHtml(localized(field.label))}${required}</span>
+        <span>${escapeHtml(localized(field.label))}${recommended}</span>
         <select ${common}>
           <option value=""></option>
           ${options.map((option) => `<option value="${escapeHtml(option)}" ${option === current ? "selected" : ""}>${escapeHtml(option)}</option>`).join("")}
@@ -413,9 +411,9 @@ function renderProfileField(section, field, value) {
   if (field.type === "checks") {
     const selected = new Set(arrayValue(value));
     return `
-      <fieldset class="profile-checklist" data-required-checklist="${field.required ? "true" : "false"}" data-section="${escapeHtml(section.key)}" data-field="${escapeHtml(field.key)}">
+      <fieldset class="profile-checklist" data-recommended-checklist="${field.recommended ? "true" : "false"}" data-section="${escapeHtml(section.key)}" data-field="${escapeHtml(field.key)}">
         <legend>
-          <span>${escapeHtml(localized(field.label))}${required}</span>
+          <span>${escapeHtml(localized(field.label))}${recommended}</span>
           <strong data-check-count>${formatSelectedCount(selected.size)}</strong>
         </legend>
         <div class="profile-check-options">
@@ -431,7 +429,7 @@ function renderProfileField(section, field, value) {
   }
   return `
     <label class="profile-field">
-      <span>${escapeHtml(localized(field.label))}${required}</span>
+      <span>${escapeHtml(localized(field.label))}${recommended}</span>
       <input ${common} value="${escapeHtml(scalarValue(value))}" />
     </label>
   `;
@@ -498,7 +496,7 @@ function renderProfile(vendor) {
             <span>${escapeHtml(t("completion"))}</span>
             <strong data-profile-progress-label>0%</strong>
             <div class="profile-progress-track"><div data-profile-progress-bar></div></div>
-            <small data-profile-required-count>0 / 0 ${escapeHtml(t("requiredComplete"))}</small>
+            <small data-profile-recommended-count>0 / 0 ${escapeHtml(t("requiredComplete"))}</small>
           </div>
           <p>${escapeHtml(t("answerLanguage"))}</p>
         </aside>
@@ -507,7 +505,7 @@ function renderProfile(vendor) {
       <section class="carrier-profile-workspace">
         ${renderStepper()}
         <div class="carrier-profile-editor">
-          <div class="carrier-profile-alert" data-required-alert hidden>
+          <div class="carrier-profile-alert" data-recommended-alert hidden>
             <strong>${escapeHtml(t("missingRequired"))}</strong>
             <span>${escapeHtml(t("requiredHint"))}</span>
           </div>
@@ -600,16 +598,16 @@ function fieldFilled(form, step, field) {
   return Boolean(String(input?.value || "").trim());
 }
 
-function stepRequiredStatus(form, step) {
-  const requiredFields = (step.fields || []).filter((field) => field.required);
-  const complete = requiredFields.filter((field) => fieldFilled(form, step, field)).length;
-  return { complete, total: requiredFields.length };
+function stepRecommendedStatus(form, step) {
+  const recommendedFields = (step.fields || []).filter((field) => field.recommended);
+  const complete = recommendedFields.filter((field) => fieldFilled(form, step, field)).length;
+  return { complete, total: recommendedFields.length };
 }
 
-function requiredMissing(form) {
+function recommendedMissing(form) {
   const missing = [];
   STEPS.forEach((step, stepIndex) => {
-    (step.fields || []).filter((field) => field.required).forEach((field) => {
+    (step.fields || []).filter((field) => field.recommended).forEach((field) => {
       if (!fieldFilled(form, step, field)) {
         missing.push({ stepIndex, step, field });
       }
@@ -634,7 +632,7 @@ function refreshProgress() {
   let complete = 0;
   let total = 0;
   STEPS.forEach((step) => {
-    const status = stepRequiredStatus(form, step);
+    const status = stepRecommendedStatus(form, step);
     complete += status.complete;
     total += status.total;
     const stepCount = form.querySelector(`[data-step-count="${step.key}"]`);
@@ -648,12 +646,15 @@ function refreshProgress() {
   const percent = total ? Math.round((complete / total) * 100) : 100;
   const progressLabel = form.querySelector("[data-profile-progress-label]");
   const progressBar = form.querySelector("[data-profile-progress-bar]");
-  const requiredCount = form.querySelector("[data-profile-required-count]");
-  const alert = form.querySelector("[data-required-alert]");
+  const requiredCount = form.querySelector("[data-profile-recommended-count]");
+  const alert = form.querySelector("[data-recommended-alert]");
   if (progressLabel) progressLabel.textContent = `${percent}%`;
   if (progressBar) progressBar.style.width = `${percent}%`;
   if (requiredCount) requiredCount.textContent = `${complete} / ${total} ${t("requiredComplete")}`;
-  if (alert) alert.hidden = complete === total;
+  if (alert) {
+    alert.hidden = complete === total;
+    alert.dataset.tone = "neutral";
+  }
 }
 
 function setActiveStep(index, { silent = false } = {}) {
@@ -684,17 +685,12 @@ async function submitProfile(event) {
   const form = event.target;
   const button = form.querySelector("#carrier-profile-submit");
   const saveStatus = form.querySelector("#carrier-profile-save-status");
-  const missing = requiredMissing(form);
-  if (missing.length) {
-    setActiveStep(missing[0].stepIndex);
-    saveStatus.textContent = `${t("fixMissingPrefix")} ${missing.length} ${t("fixMissingSuffix")}`;
-    saveStatus.dataset.tone = "error";
-    refreshProgress();
-    return;
-  }
+  const missing = recommendedMissing(form);
   button.disabled = true;
-  saveStatus.textContent = t("saving");
-  saveStatus.dataset.tone = "neutral";
+  saveStatus.textContent = missing.length
+    ? `${t("fixMissingPrefix")} ${missing.length} ${t("fixMissingSuffix")} ${t("saving")}`
+    : t("saving");
+  saveStatus.dataset.tone = missing.length ? "warning" : "neutral";
   try {
     const result = await callProfileApi("submit_profile", {
       vendor: readVendorPatch(form),

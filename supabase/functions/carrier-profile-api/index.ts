@@ -159,7 +159,7 @@ Deno.serve(async (request) => {
       if (vendorPatchInput.preferred_channel !== undefined) patch.preferred_channel = normalizeChannel(vendorPatchInput.preferred_channel) || vendor.preferred_channel || "email";
       if (vendorPatchInput.coverage_notes !== undefined) patch.coverage_notes = cleanText(vendorPatchInput.coverage_notes);
       if (vendorPatchInput.notes !== undefined) patch.notes = cleanText(vendorPatchInput.notes);
-      if (!patch.vendor_name && !vendor.vendor_name) return jsonResponse({ error: "Vendor name is required." }, 400);
+      if (!patch.vendor_name && !vendor.vendor_name) patch.vendor_name = patch.domain || patch.primary_email || "Carrier profile";
 
       const update = await supabase
         .from("vendors")

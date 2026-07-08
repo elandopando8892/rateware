@@ -102,6 +102,72 @@ function statusLabel(value) {
   return labels[value] || value || "Unknown";
 }
 
+function countdownDueValue(row = {}) {
+  return row.event?.due_date || row.due_state?.due_date || "";
+}
+
+function parseCountdownDueDate(value) {
+  if (!value) return null;
+  const text = String(value);
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(text)
+    ? new Date(`${text}T23:59:59`)
+    : new Date(text);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function countdownMeta(value) {
+  const dueAt = parseCountdownDueDate(value);
+  if (!dueAt) {
+    return {
+      label: state.language === "es" ? "Sin fecha limite" : "No deadline",
+      caption: state.language === "es" ? "Cierre pendiente" : "Close date pending",
+      tone: "muted"
+    };
+  }
+  const diff = dueAt.getTime() - Date.now();
+  if (diff <= 0) {
+    return {
+      label: state.language === "es" ? "Cerrado" : "Closed",
+      caption: state.language === "es" ? "Tiempo finalizado" : "Time expired",
+      tone: "expired"
+    };
+  }
+  const dayMs = 24 * 60 * 60 * 1000;
+  const hourMs = 60 * 60 * 1000;
+  const minuteMs = 60 * 1000;
+  const days = Math.floor(diff / dayMs);
+  const hours = Math.floor((diff % dayMs) / hourMs);
+  const minutes = Math.floor((diff % hourMs) / minuteMs);
+  const seconds = Math.floor((diff % minuteMs) / 1000);
+  return {
+    label: `${days}d ${String(hours).padStart(2, "0")}h ${String(minutes).padStart(2, "0")}m ${String(seconds).padStart(2, "0")}s`,
+    caption: state.language === "es" ? "Tiempo para cerrar" : "Time to close",
+    tone: days === 0 && hours < 6 ? "urgent" : days <= 1 ? "warning" : "live"
+  };
+}
+
+function renderCountdown(row = {}, compact = false) {
+  const dueDate = countdownDueValue(row);
+  const meta = countdownMeta(dueDate);
+  return `
+    <div class="public-opportunity-countdown ${compact ? "is-compact" : ""}" data-public-countdown data-due-date="${escapeHtml(dueDate)}" data-tone="${escapeHtml(meta.tone)}">
+      <strong>${escapeHtml(meta.label)}</strong>
+      <span>${escapeHtml(meta.caption)}</span>
+    </div>
+  `;
+}
+
+function updateCountdowns() {
+  document.querySelectorAll("[data-public-countdown]").forEach((node) => {
+    const meta = countdownMeta(node.dataset.dueDate || "");
+    node.dataset.tone = meta.tone;
+    const label = node.querySelector("strong");
+    const caption = node.querySelector("span");
+    if (label) label.textContent = meta.label;
+    if (caption) caption.textContent = meta.caption;
+  });
+}
+
 function rowSearchText(row) {
   return [
     row.event?.rfx_id,
@@ -424,7 +490,7 @@ function renderDetailDrawer(row, focusRequest = false) {
       <span><b>${formatNumber(row.quote_count)}</b><small>quotes</small></span>
       <span><b>${formatMoney(row.best_rate, row.currency)}</b><small>best visible</small></span>
       <span><b>${formatNumber(row.total_weekly_capacity)}</b><small>weekly cap</small></span>
-      <span><b>${escapeHtml(row.due_state?.due_date || "No deadline")}</b><small>deadline</small></span>
+      <span>${renderCountdown(row, true)}</span>
     </div>
     <section class="public-board-detail-section">
       <h3>Opportunity detail</h3>
@@ -459,6 +525,7 @@ function renderDetailDrawer(row, focusRequest = false) {
   `;
   detailDrawer.hidden = false;
   document.body.classList.add("has-public-board-drawer");
+  updateCountdowns();
   if (focusRequest) detailContent.querySelector("[name='company']")?.focus();
 }
 
@@ -506,6 +573,7 @@ function renderOpportunityCard(row) {
         <span><b>${formatMoney(row.best_rate, row.currency)}</b><small>best</small></span>
         <span><b>${formatNumber(row.total_weekly_capacity)}</b><small>weekly cap</small></span>
       </div>
+      ${renderCountdown(row)}
       <div class="public-opportunity-tags">
         ${tags.map((tag) => `<span>${escapeHtml(tag)}</span>`).join("") || "<span>No tags</span>"}
       </div>
@@ -515,7 +583,7 @@ function renderOpportunityCard(row) {
         <button type="button" class="page-primary-action" data-public-board-request="${escapeHtml(row.id)}">Request invitation</button>
       </div>
       <footer>
-        <span>Due: ${escapeHtml(row.due_state?.due_date || "No deadline")}</span>
+        <span>Due: ${escapeHtml(countdownDueValue(row) || "No deadline")}</span>
         <span>Last quote: ${escapeHtml(formatDateTime(row.last_quote_at))}</span>
       </footer>
     </article>
@@ -582,7 +650,7 @@ function renderSheet(rows) {
               <td>${formatMoney(row.best_rate, row.currency)}</td>
               <td>${formatNumber(row.total_weekly_capacity)}</td>
               <td>${publicLaneDetailSections(row).length ? "Available" : "-"}</td>
-              <td>${escapeHtml(row.due_state?.due_date || "-")}</td>
+              <td>${renderCountdown(row, true)}</td>
               <td>${escapeHtml(formatDateTime(row.last_quote_at))}</td>
               <td><button type="button" class="secondary" data-public-board-request="${escapeHtml(row.id)}">Request invitation</button></td>
             </tr>
@@ -611,6 +679,7 @@ function renderBoard() {
   if (state.viewMode === "pipeline") boardRoot.innerHTML = renderPipeline(rows);
   else if (state.viewMode === "sheet") boardRoot.innerHTML = renderSheet(rows);
   else boardRoot.innerHTML = renderCards(rows);
+  updateCountdowns();
 }
 
 async function loadBoard({ announceChanges = true } = {}) {
@@ -781,6 +850,8 @@ document.addEventListener("keydown", (event) => {
 setInterval(() => {
   if (autoRefreshInput.checked && document.visibilityState !== "hidden") loadBoard();
 }, 15000);
+
+setInterval(updateCountdowns, 1000);
 
 syncSoundButton();
 renderAlerts();

@@ -221,6 +221,10 @@ assert.match(bidRoomBoardSource, /function publicLaneDetailSections/, "Public Bi
 assert.match(bidRoomBoardSource, /Logistics model \/ Modelo logistico/, "Public Bid Room board should expose logistics model details");
 assert.match(bidRoomBoardSource, /Operation criteria \/ Criterios de operacion/, "Public Bid Room board should expose operation criteria details");
 assert.match(bidRoomBoardSource, /Business rules \/ Reglas de negocio/, "Public Bid Room board should expose business rules details");
+assert.match(bidRoomBoardSource, /function countdownMeta/, "Public Bid Room cards should compute a live deadline countdown");
+assert.match(bidRoomBoardSource, /data-public-countdown/, "Public Bid Room cards should render countdown timers per opportunity");
+assert.match(bidRoomBoardSource, /setInterval\(updateCountdowns, 1000\)/, "Public Bid Room countdowns should update every second without reloading the board");
+assert.match(stylesSource, /public-opportunity-countdown/, "Public Bid Room countdowns should have dedicated card styling");
 assert.match(bidRoomBoardSource, /Deadline closing soon/, "Public Bid Room board should announce deadline risk");
 assert.match(bidRoomBoardSource, /Invitation request sent/, "Public Bid Room board should announce invitation requests");
 assert.match(bidRoomBoardSource, /Quote Available/, "Public Bid Room board should announce new quotes in English");
@@ -973,8 +977,12 @@ assert.match(carrierProfileSource, /submit_profile/, "Carrier profile page shoul
 assert.match(carrierProfileSource, /LANGUAGE_KEY/, "Carrier profile should persist the selected language");
 assert.match(carrierProfileSource, /data-language-toggle/, "Carrier profile should expose an English/Spanish language switch");
 assert.match(carrierProfileSource, /carrier-profile-stepper/, "Carrier profile should use a guided stepper instead of one long form");
-assert.match(carrierProfileSource, /requiredMissing/, "Carrier profile should validate required fields before submit");
+assert.match(carrierProfileSource, /recommendedMissing/, "Carrier profile should show recommended profile gaps without blocking submission");
+assert.doesNotMatch(carrierProfileSource, /required: true/, "Carrier profile fields should be recommended instead of mandatory");
+assert.match(carrierProfileSource, /data-recommended-field/, "Carrier profile should label helpful fields as recommended");
+assert.doesNotMatch(carrierProfileSource, /return;\s*\}\s*button\.disabled = true;/, "Carrier profile should not block save when recommended fields are missing");
 assert.match(carrierProfileSource, /response_language: currentLanguage/, "Carrier profile submissions should record the response language");
+assert.match(carrierProfileApiSource, /patch\.vendor_name = patch\.domain \|\| patch\.primary_email \|\| "Carrier profile"/, "Carrier profile API should allow partial profile saves without requiring a vendor name from the carrier");
 assert.match(stylesSource, /carrier-profile-stepper/, "Carrier profile stepper should have dedicated UI styling");
 assert.match(stylesSource, /profile-progress-track/, "Carrier profile should show a completion progress bar");
 assert.match(carrierProfileApiSource, /Deno\.serve/, "Carrier profile API should be an Edge Function");
