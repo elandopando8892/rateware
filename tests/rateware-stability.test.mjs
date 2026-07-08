@@ -451,7 +451,7 @@ assert.match(rfxBidSource, /data-download-bid-template/, "Carrier portal should 
 assert.match(rfxBidSource, /data-submit-bid-template/, "Carrier portal should require confirmation before submitting XLSX bids");
 assert.match(rfxBidSource, /callBidApi\("submit_bid", \{ token: row\.invitation_token, \.\.\.row\.draft \}\)/, "Carrier portal should submit each XLSX row through the normal tokenized bid API");
 assert.match(rfxBidSource, /const BID_PORTAL_COPY = \{/, "Carrier portal should provide English and Spanish UI copy");
-assert.match(rfxBidSource, /id="private-bid-language"/, "Carrier portal should expose an English/Spanish language toggle");
+assert.match(rfxBidSource, /data-private-language-toggle="en"/, "Carrier portal should expose an English/Spanish language toggle");
 assert.match(rfxBidSource, /function eventMarketplaceUrl/, "Carrier portal should build a contextual public Bid Room board URL");
 assert.match(rfxBidSource, /return "\.\/bid-room-board\.html"/, "Carrier portal should link bid-specific pages to the full public live board");
 assert.match(stylesSource, /\.carrier-bid-template-tools/, "Carrier portal should style the XLSX bid template workflow");
@@ -562,7 +562,7 @@ assert.match(stylesSource, /carrier-bid-workflow/, "Carrier portal guided bid fl
 assert.match(stylesSource, /bid-offer-launcher/, "Carrier portal should keep the advanced bid editor launcher compact");
 assert.match(stylesSource, /bid-editor-panel/, "Carrier portal should style the advanced offer editor as a focused popup panel");
 assert.match(stylesSource, /bid-review-summary-grid/, "Carrier portal review summary should have card styling");
-assert.match(stylesSource, /private-bid-alert-panel/, "Carrier portal multimedia alerts should have compact panel styling");
+assert.match(stylesSource, /bid-room-alert-feed/, "Carrier portal multimedia alerts should have compact hero styling");
 assert.match(stylesSource, /bid-form \[aria-invalid="true"\]/, "Carrier portal should highlight invalid bid fields inline");
 assert.match(stylesSource, /carrier-bid-history-list/, "Carrier portal offer history should have compact timeline styling");
 assert.match(rfxBidApiSource, /function liveBoardRowScore/, "Carrier portal API should score bids for the live capacity marketplace");

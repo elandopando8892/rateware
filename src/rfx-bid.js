@@ -57,8 +57,10 @@ if (localStorage.getItem("rateware.privateBidRoom.soundDefault") !== PRIVATE_BID
 let excelJsModule = null;
 const BID_PORTAL_COPY = {
   en: {
+    privateCarrierAccess: "Private carrier access",
     languageLabel: "English",
     otherLanguageLabel: "Espanol",
+    languageToggle: "Language",
     privateRoom: "Private Bid Room v1",
     requestFallback: "Bid request",
     carrierCanReview: "{carrier} can review {lane_count}, request access to open opportunities, and submit all-in offers.",
@@ -71,7 +73,11 @@ const BID_PORTAL_COPY = {
     multimediaAlerts: "Multimedia alerts",
     rankingMovement: "Ranking, quote and chat movement",
     enableSound: "Enable sound",
+    soundOn: "Sound on",
+    soundOff: "Sound off",
     noMovement: "No movement yet. Enable sound to hear ranking, quote, chat, and deadline alerts.",
+    noMovementSoundOn: "No movement yet. Sound is on for ranking, quote, chat, and deadline alerts.",
+    noMovementSoundOff: "No movement yet. Sound is off. Turn it on to hear ranking, quote, chat, and deadline alerts.",
     xlsxEyebrow: "XLSX bid template",
     xlsxTitle: "Quote multiple invited lanes in Excel",
     xlsxCopy: "Download the prefilled bid workbook, edit only the offer columns, upload it here, then confirm after validation.",
@@ -138,12 +144,17 @@ const BID_PORTAL_COPY = {
     businessRules: "Business rules",
     serviceSpecifications: "Service specifications",
     otherNotes: "Other notes",
-    publicLiveBoard: "Public live board",
+    talkToUs: "Talk to us",
+    chatSupport: "Chat Support",
+    goMarketplace: "Go to Marketplace",
+    publicLiveBoard: "Go to Marketplace",
     publicLiveBoardHelp: "Open the real-time marketplace screen for this bid room."
   },
   es: {
+    privateCarrierAccess: "Acceso privado para carrier",
     languageLabel: "Espanol",
     otherLanguageLabel: "English",
+    languageToggle: "Idioma",
     privateRoom: "Bid Room privado v1",
     requestFallback: "Solicitud de cotizacion",
     carrierCanReview: "{carrier} puede revisar {lane_count}, solicitar acceso a oportunidades abiertas y enviar tarifas all-in.",
@@ -156,7 +167,11 @@ const BID_PORTAL_COPY = {
     multimediaAlerts: "Alertas multimedia",
     rankingMovement: "Movimiento de ranking, cotizaciones y chat",
     enableSound: "Activar sonido",
+    soundOn: "Sonido activo",
+    soundOff: "Sonido apagado",
     noMovement: "Sin movimiento todavia. Activa sonido para escuchar ranking, cotizaciones, chat y vencimientos.",
+    noMovementSoundOn: "Sin movimiento todavia. El sonido esta activo para ranking, cotizaciones, chat y vencimientos.",
+    noMovementSoundOff: "Sin movimiento todavia. El sonido esta apagado. Activalo para escuchar ranking, cotizaciones, chat y vencimientos.",
     xlsxEyebrow: "Template XLSX de puja",
     xlsxTitle: "Cotiza varias lanes invitadas en Excel",
     xlsxCopy: "Descarga el libro prellenado, edita solo las columnas de oferta, subelo aqui y confirma despues de la validacion.",
@@ -223,7 +238,10 @@ const BID_PORTAL_COPY = {
     businessRules: "Reglas de negocio",
     serviceSpecifications: "Especificaciones de servicio",
     otherNotes: "Otras notas",
-    publicLiveBoard: "Pantalla publica",
+    talkToUs: "Hablar con nosotros",
+    chatSupport: "Soporte",
+    goMarketplace: "Ir al Marketplace",
+    publicLiveBoard: "Ir al Marketplace",
     publicLiveBoardHelp: "Abrir la pantalla interactiva en tiempo real de este bid room."
   }
 };
@@ -252,6 +270,26 @@ function t(key, params = {}) {
 
 function dualText(en, es) {
   return portalLanguage() === "es" ? es : en;
+}
+
+function syncPortalLanguageChrome() {
+  document.documentElement.lang = portalLanguage();
+  const eyebrow = document.querySelector("[data-bid-private-eyebrow]");
+  if (eyebrow) eyebrow.textContent = t("privateCarrierAccess");
+}
+
+async function setPrivateLanguage(language) {
+  privateAlertState.language = language === "es" ? "es" : "en";
+  localStorage.setItem("rateware.privateBidRoom.language", privateAlertState.language);
+  syncPortalLanguageChrome();
+  renderPrivateBidAlerts();
+  if (lastInvitation) {
+    renderInvitation(lastInvitation, lastLiveBoard || {}, lastCarrierBook || {});
+    renderAwardOutcome(lastInvitation, lastCarrierBook || {}, lastLiveBoard || {});
+    renderCarrierBook(lastCarrierBook || {});
+    renderPrivateBidAlerts();
+    await loadCarrierChat({ suppressAlert: true });
+  }
 }
 
 function viewModeFromUrl() {
@@ -522,19 +560,23 @@ function privateAlertLabel(type) {
 function renderPrivateBidAlerts() {
   const panel = card.querySelector("#private-bid-alerts");
   const button = card.querySelector("#private-bid-sound");
-  const language = card.querySelector("#private-bid-language");
+  const languageButtons = card.querySelectorAll("[data-private-language-toggle]");
   if (button) {
-    button.textContent = privateAlertState.soundEnabled ? "Sound on" : "Sound off";
+    button.textContent = privateAlertState.soundEnabled ? t("soundOn") : t("soundOff");
     button.setAttribute("aria-pressed", privateAlertState.soundEnabled ? "true" : "false");
     button.classList.toggle("is-muted", !privateAlertState.soundEnabled);
     button.disabled = false;
   }
-  if (language) language.value = privateAlertState.language;
+  languageButtons.forEach((languageButton) => {
+    const active = languageButton.dataset.privateLanguageToggle === portalLanguage();
+    languageButton.setAttribute("aria-pressed", active ? "true" : "false");
+    languageButton.classList.toggle("is-active", active);
+  });
   if (!panel) return;
   if (!privateAlertState.alerts.length) {
     panel.innerHTML = privateAlertState.soundEnabled
-      ? "<p>No movement yet. Sound is on for ranking, quote, chat, and deadline alerts.</p>"
-      : "<p>No movement yet. Sound is off. Turn it on to hear ranking, quote, chat, and deadline alerts.</p>";
+      ? `<p>${escapeHtml(t("noMovementSoundOn"))}</p>`
+      : `<p>${escapeHtml(t("noMovementSoundOff"))}</p>`;
     return;
   }
   panel.innerHTML = privateAlertState.alerts.map((alert) => `
@@ -2615,6 +2657,7 @@ function renderInvitation(invitation, liveBoard = {}, carrierBook = {}) {
   const deadline = deadlineCopy(event);
   const multiLaneRows = currentEventBookRows(carrierBook, event);
   const isBookView = viewModeFromUrl() === "book" && multiLaneRows.length > 1;
+  syncPortalLanguageChrome();
   title.textContent = event.name || event.rfx_id || "Private Bid Room";
   card.innerHTML = `
     <section class="bid-room-hero">
@@ -2626,39 +2669,40 @@ function renderInvitation(invitation, liveBoard = {}, carrierBook = {}) {
           lane_count: multiLaneRows.length > 1 ? t("invitedLanes", { count: multiLaneRows.length }) : t("selectedLane")
         }))}</p>
       </div>
-      <aside>
-        <span class="status-pill" data-tone="${deadline.tone}">${escapeHtml(deadline.label)}</span>
-        <strong>${escapeHtml(event.rfx_id || "RFx")}</strong>
-        <small>${escapeHtml(deadline.detail)}</small>
+      <aside class="bid-room-hero-side">
+        <div class="bid-room-deadline-card">
+          <span class="status-pill" data-tone="${deadline.tone}">${escapeHtml(deadline.label)}</span>
+          <strong>${escapeHtml(event.rfx_id || "RFx")}</strong>
+          <small>${escapeHtml(deadline.detail)}</small>
+        </div>
+        <div class="bid-room-hero-toolbar" aria-label="${escapeAttribute(t("multimediaAlerts"))}">
+          <div class="bid-room-language-toggle" aria-label="${escapeAttribute(t("languageToggle"))}">
+            <span>${escapeHtml(t("languageToggle"))}</span>
+            <button type="button" data-private-language-toggle="en" aria-pressed="${portalLanguage() === "en" ? "true" : "false"}">EN</button>
+            <button type="button" data-private-language-toggle="es" aria-pressed="${portalLanguage() === "es" ? "true" : "false"}">ES</button>
+          </div>
+          <button id="private-bid-sound" class="bid-room-sound-toggle" type="button" aria-pressed="${privateAlertState.soundEnabled ? "true" : "false"}">
+            ${escapeHtml(privateAlertState.soundEnabled ? t("soundOn") : t("soundOff"))}
+          </button>
+        </div>
         <div class="bid-room-hero-actions">
           <button type="button" class="secondary small-button" data-carrier-chat-focus="carrier_private">
-            ${escapeHtml(dualText("Private messages", "Mensajes privados"))}
+            ${escapeHtml(t("talkToUs"))}
           </button>
           <button type="button" class="secondary small-button" data-bid-support-focus>
-            ${escapeHtml(dualText("Ask assistant", "Asistente"))}
+            ${escapeHtml(t("chatSupport"))}
           </button>
           <a class="secondary small-button" href="${escapeAttribute(eventMarketplaceUrl(event))}" target="_blank" rel="noreferrer" title="${escapeAttribute(t("publicLiveBoardHelp"))}">
-            ${escapeHtml(t("publicLiveBoard"))}
+            ${escapeHtml(t("goMarketplace"))}
           </a>
         </div>
+        <div class="bid-room-alert-feed">
+          <span>${escapeHtml(t("rankingMovement"))}</span>
+          <div id="private-bid-alerts" class="private-bid-alerts" aria-live="polite">
+            <p>${escapeHtml(privateAlertState.soundEnabled ? t("noMovementSoundOn") : t("noMovementSoundOff"))}</p>
+          </div>
+        </div>
       </aside>
-    </section>
-
-    <section class="private-bid-alert-panel" aria-live="polite">
-      <div>
-        <p class="eyebrow">${escapeHtml(t("multimediaAlerts"))}</p>
-        <h3>${escapeHtml(t("rankingMovement"))}</h3>
-      </div>
-      <div class="private-bid-alert-actions">
-        <select id="private-bid-language" aria-label="Private Bid Room language">
-          <option value="en" ${privateAlertState.language === "en" ? "selected" : ""}>English</option>
-          <option value="es" ${privateAlertState.language === "es" ? "selected" : ""}>Espanol</option>
-        </select>
-        <button id="private-bid-sound" type="button">${escapeHtml(t("enableSound"))}</button>
-      </div>
-      <div id="private-bid-alerts" class="private-bid-alerts">
-        <p>${escapeHtml(t("noMovement"))}</p>
-      </div>
     </section>
 
     <div class="bid-context">
@@ -2972,10 +3016,18 @@ async function loadInvitation(options = {}) {
 }
 
 card.addEventListener("click", async (event) => {
+  const languageToggleButton = event.target.closest("[data-private-language-toggle]");
+  if (languageToggleButton) {
+    await setPrivateLanguage(languageToggleButton.dataset.privateLanguageToggle);
+    return;
+  }
+
   const soundButton = event.target.closest("#private-bid-sound");
   if (soundButton) {
     soundButton.disabled = true;
-    soundButton.textContent = privateAlertState.soundEnabled ? "Turning off..." : "Turning on...";
+    soundButton.textContent = privateAlertState.soundEnabled
+      ? dualText("Turning off...", "Apagando...")
+      : dualText("Turning on...", "Activando...");
     try {
       if (privateAlertState.soundEnabled) disablePrivateBidAlerts();
       else await enablePrivateBidAlerts();
@@ -2983,7 +3035,7 @@ card.addEventListener("click", async (event) => {
       privateAlertState.soundEnabled = false;
       localStorage.setItem("rateware.privateBidRoom.sound", "off");
       soundButton.disabled = false;
-      soundButton.textContent = "Sound off";
+      soundButton.textContent = t("soundOff");
     }
     renderPrivateBidAlerts();
     return;
@@ -3230,20 +3282,6 @@ card.addEventListener("input", (event) => {
 });
 
 card.addEventListener("change", async (event) => {
-  const privateLanguage = event.target.closest("#private-bid-language");
-  if (privateLanguage) {
-    privateAlertState.language = privateLanguage.value || "en";
-    localStorage.setItem("rateware.privateBidRoom.language", privateAlertState.language);
-    renderPrivateBidAlerts();
-    if (lastInvitation) {
-      renderInvitation(lastInvitation, lastLiveBoard || {}, lastCarrierBook || {});
-      renderAwardOutcome(lastInvitation, lastCarrierBook || {}, lastLiveBoard || {});
-      renderCarrierBook(lastCarrierBook || {});
-      await loadCarrierChat({ suppressAlert: true });
-    }
-    return;
-  }
-
   const templateFileInput = event.target.closest("#carrier-bid-template-file");
   if (templateFileInput) {
     const status = card.querySelector("#carrier-bid-template-status");
@@ -3305,6 +3343,7 @@ document.addEventListener("pointerdown", () => {
   armPrivateBidAudio();
 }, { capture: true });
 
+syncPortalLanguageChrome();
 loadInvitation().then(() => {
   if (boardRefreshTimer) window.clearInterval(boardRefreshTimer);
   boardRefreshTimer = window.setInterval(() => loadInvitation({ refreshOnly: true }), 30000);
