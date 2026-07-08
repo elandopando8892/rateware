@@ -6302,6 +6302,11 @@ function normalizeRfxLane(input: Record<string, unknown>, index = 0) {
     target_rate: cleanNumber(input.target_rate || input.target || input.budget),
     currency: cleanText(input.currency)?.toUpperCase() || "USD",
     incumbent_vendor: cleanText(input.incumbent_vendor || input.incumbent),
+    logistics_model: cleanText(input.logistics_model || input.logistic_model || input.modelo_logistico || input.shipment_model),
+    operation_criteria: cleanText(input.operation_criteria || input.operational_criteria || input.criterios_de_operacion),
+    business_rules: cleanText(input.business_rules || input.reglas_de_negocio),
+    service_specifications: cleanText(input.service_specifications || input.service_specs || input.especificaciones_de_servicio),
+    other_notes: cleanText(input.other_notes || input.otras_notas || input.notas_adicionales || input.additional_notes),
     notes: cleanText(input.notes || input.lane_notes),
     updated_at: new Date().toISOString()
   };

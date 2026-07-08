@@ -378,7 +378,13 @@ function publicLane(row: Record<string, unknown>) {
     service: row.service,
     weekly_volume: row.weekly_volume,
     target_rate: row.target_rate,
-    currency: row.currency || "USD"
+    currency: row.currency || "USD",
+    logistics_model: row.logistics_model,
+    operation_criteria: row.operation_criteria,
+    business_rules: row.business_rules,
+    service_specifications: row.service_specifications,
+    other_notes: row.other_notes,
+    notes: row.notes
   };
 }
 
@@ -835,7 +841,7 @@ async function currentInvitationContext(supabase: ReturnType<typeof createClient
       invitation_token,
       vendors(id,vendor_name,domain,primary_email),
       rfx_events(id,owner_user_id,owner_email,rfx_id,name,customer,event_type,status,due_date,bid_visibility_mode),
-      rfx_lanes(id,rfx_event_id,lane_number,origin,destination)
+      rfx_lanes(*)
     `)
     .eq("invitation_token", token)
     .single();
@@ -861,7 +867,7 @@ async function findOrCreateCarrierChatThread(
 
   let query = supabase
     .from("bid_room_chat_threads")
-    .select("*, vendors(vendor_name,domain), rfx_lanes(lane_number,origin,destination)")
+    .select("*, vendors(vendor_name,domain), rfx_lanes(*)")
     .eq("rfx_event_id", event.id)
     .eq("thread_type", threadType)
     .neq("status", "archived");
@@ -886,7 +892,7 @@ async function findOrCreateCarrierChatThread(
   const created = await supabase
     .from("bid_room_chat_threads")
     .insert(row)
-    .select("*, vendors(vendor_name,domain), rfx_lanes(lane_number,origin,destination)")
+    .select("*, vendors(vendor_name,domain), rfx_lanes(*)")
     .single();
   if (created.error) throw created.error;
   return created.data;
@@ -898,7 +904,7 @@ async function listCarrierBidRoomChat(supabase: ReturnType<typeof createClient>,
   const vendorId = cleanText(invitation.vendor_id);
   const threadsResult = await supabase
     .from("bid_room_chat_threads")
-    .select("*, vendors(vendor_name,domain), rfx_lanes(lane_number,origin,destination)")
+    .select("*, vendors(vendor_name,domain), rfx_lanes(*)")
     .eq("rfx_event_id", event.id)
     .neq("status", "archived")
     .or([
@@ -1449,7 +1455,7 @@ async function publicBidRoomBoard(supabase: ReturnType<typeof createClient>, inp
   const [lanesResult, quotesResult] = await Promise.all([
     supabase
       .from("rfx_lanes")
-      .select("id,rfx_event_id,lane_number,origin,destination,origin_city,origin_state,origin_market,origin_region,destination_city,destination_state,destination_market,destination_region,equipment,trailer,config,operation,service,weekly_volume,annual_volume,target_rate,currency,updated_at")
+      .select("id,rfx_event_id,lane_number,origin,destination,origin_city,origin_state,origin_market,origin_region,destination_city,destination_state,destination_market,destination_region,equipment,trailer,config,operation,service,weekly_volume,annual_volume,target_rate,currency,logistics_model,operation_criteria,business_rules,service_specifications,other_notes,notes,updated_at")
       .in("rfx_event_id", eventIds)
       .order("lane_number", { ascending: true }),
     supabase
@@ -1783,7 +1789,7 @@ async function publicBidRoomFindInvitations(supabase: ReturnType<typeof createCl
       responded_at,
       vendors(id,vendor_name,legal_name,domain,primary_email,secondary_emails),
       rfx_events(id,owner_user_id,owner_email,rfx_id,name,customer,event_type,status,due_date),
-      rfx_lanes(id,lane_number,origin,destination,origin_city,destination_city,equipment,trailer,config,operation,service,currency)
+      rfx_lanes(*)
     `)
     .in("vendor_id", vendorIds)
     .neq("invitation_status", "archived")
@@ -1954,7 +1960,7 @@ Deno.serve(async (request) => {
           rateware_closeout_at,
           vendors(vendor_name,domain,primary_email),
           rfx_events(id,owner_user_id,owner_email,rfx_id,name,customer,event_type,status,due_date,bid_visibility_mode,notes),
-          rfx_lanes(id,rfx_event_id,lane_number,origin,destination,origin_city,origin_state,origin_market,origin_region,destination_city,destination_state,destination_market,destination_region,equipment,trailer,config,operation,service,weekly_volume,target_rate,currency)
+      rfx_lanes(*)
         `)
         .eq("invitation_token", token)
         .single();
@@ -2019,7 +2025,7 @@ Deno.serve(async (request) => {
               rate_staging_id,
               rateware_closeout_at,
               rfx_events!inner(id,owner_email,rfx_id,name,customer,event_type,status,due_date,bid_visibility_mode),
-              rfx_lanes(id,rfx_event_id,lane_number,origin,destination,origin_city,origin_state,origin_market,origin_region,destination_city,destination_state,destination_market,destination_region,equipment,trailer,config,operation,service,weekly_volume,target_rate,currency)
+              rfx_lanes(*)
             `)
             .eq("vendor_id", result.data.vendor_id)
             .eq("rfx_events.owner_email", ownerEmail)
@@ -2054,6 +2060,12 @@ Deno.serve(async (request) => {
               weekly_volume,
               target_rate,
               currency,
+              logistics_model,
+              operation_criteria,
+              business_rules,
+              service_specifications,
+              other_notes,
+              notes,
               rfx_events!inner(id,owner_email,rfx_id,name,customer,event_type,status,due_date,bid_visibility_mode)
             `)
             .eq("rfx_events.owner_email", ownerEmail)
@@ -2171,7 +2183,7 @@ Deno.serve(async (request) => {
           notes,
           vendors(vendor_name,domain,primary_email),
           rfx_events(id,owner_user_id,owner_email,rfx_id,name,customer),
-          rfx_lanes(origin,destination,equipment,trailer,operation,service)
+          rfx_lanes(*)
         `)
         .eq("invitation_token", token)
         .single();

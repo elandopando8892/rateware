@@ -69,6 +69,17 @@ function formatLane(lane = {}) {
   return `${lane.origin || "-"} -> ${lane.destination || "-"}`;
 }
 
+function laneDetailSections(lane = {}) {
+  return [
+    ["Logistics model", lane.logistics_model],
+    ["Operation criteria", lane.operation_criteria],
+    ["Business rules", lane.business_rules],
+    ["Service specifications", lane.service_specifications],
+    ["Other notes", lane.other_notes],
+    ["Notes", lane.notes]
+  ].filter(([, value]) => String(value || "").trim());
+}
+
 function formatMoney(value, currency = "USD") {
   const number = typeof value === "number" ? value : numberFromInput(value);
   if (!Number.isFinite(number)) return "-";
@@ -1251,6 +1262,16 @@ function renderInvitation(invitation, liveBoard = {}) {
         <div><dt>Service</dt><dd>${escapeHtml(lane.service || "-")}</dd></div>
         <div><dt>Weekly volume</dt><dd>${escapeHtml(lane.weekly_volume ?? "-")}</dd></div>
       </dl>
+      ${laneDetailSections(lane).length ? `
+        <div class="bid-lane-detail-sections">
+          ${laneDetailSections(lane).map(([label, value]) => `
+            <article>
+              <span>${escapeHtml(label)}</span>
+              <p>${escapeHtml(value)}</p>
+            </article>
+          `).join("")}
+        </div>
+      ` : ""}
     </section>
 
     <section id="bid-live-board" class="bid-live-board">

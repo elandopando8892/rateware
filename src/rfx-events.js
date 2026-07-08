@@ -272,6 +272,11 @@ const RFX_LANE_TEMPLATE_COLUMNS = [
   { key: "target_rate", label: "Target Rate", example: "2900" },
   { key: "currency", label: "Currency", example: "USD" },
   { key: "incumbent_vendor", label: "Incumbent Vendor", example: "carrier.com" },
+  { key: "logistics_model", label: "Logistics Model", example: "Direct service; cross-border D2D" },
+  { key: "operation_criteria", label: "Operation Criteria", example: "Pickup Mon-Sat 07:00-18:00; 48h pickup notice" },
+  { key: "business_rules", label: "Business Rules", example: "Border crossing included; no transload" },
+  { key: "service_specifications", label: "Service Specifications", example: "53 ft dry van; standard jacks included" },
+  { key: "other_notes", label: "Other Notes", example: "Carrier must quote direct service only" },
   { key: "notes", label: "Notes", example: "Hazmat allowed" }
 ];
 
@@ -444,6 +449,8 @@ function cleanHeader(value) {
   return String(value || "")
     .trim()
     .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^a-z0-9]+/g, "_")
     .replace(/^_+|_+$/g, "");
 }
@@ -510,7 +517,40 @@ function mapHeader(header) {
     weekly_loads: "weekly_volume",
     volume: "weekly_volume",
     target: "target_rate",
-    budget: "target_rate"
+    budget: "target_rate",
+    logistics_model: "logistics_model",
+    logistic_model: "logistics_model",
+    modelo_logistico: "logistics_model",
+    modelo_logistica: "logistics_model",
+    modelo_de_logistica: "logistics_model",
+    modelo_operativo: "logistics_model",
+    embarque_spot_o_programado: "logistics_model",
+    spot_o_programado: "logistics_model",
+    operation_criteria: "operation_criteria",
+    operational_criteria: "operation_criteria",
+    criterios_de_operacion: "operation_criteria",
+    criterio_de_operacion: "operation_criteria",
+    criterios_operativos: "operation_criteria",
+    pickup_criteria: "operation_criteria",
+    delivery_criteria: "operation_criteria",
+    business_rules: "business_rules",
+    reglas_de_negocio: "business_rules",
+    regla_de_negocio: "business_rules",
+    reglas_comerciales: "business_rules",
+    plazo_para_recoger: "business_rules",
+    asistencia_del_conductor: "business_rules",
+    doble_chofer: "business_rules",
+    service_specifications: "service_specifications",
+    service_specs: "service_specifications",
+    especificaciones_de_servicio: "service_specifications",
+    especificacion_de_servicio: "service_specifications",
+    especificaciones_del_servicio: "service_specifications",
+    elementos_adicionales_en_el_remolque_camion_almacenamiento_de_carga_etc: "service_specifications",
+    additional_service_elements: "service_specifications",
+    other_notes: "other_notes",
+    otras_notas: "other_notes",
+    notas_adicionales: "other_notes",
+    additional_notes: "other_notes"
   };
   const key = cleanHeader(header);
   return aliases[key] || key;
@@ -576,6 +616,11 @@ function newManualLaneRow() {
     weekly_volume: "",
     target_rate: "",
     currency: MANUAL_LANE_DEFAULTS.currency,
+    logistics_model: "",
+    operation_criteria: "",
+    business_rules: "",
+    service_specifications: "",
+    other_notes: "",
     notes: ""
   };
 }
@@ -586,6 +631,11 @@ function hasManualLaneUserInput(row = {}) {
     || String(row.destination || "").trim()
     || String(row.weekly_volume || "").trim()
     || String(row.target_rate || "").trim()
+    || String(row.logistics_model || "").trim()
+    || String(row.operation_criteria || "").trim()
+    || String(row.business_rules || "").trim()
+    || String(row.service_specifications || "").trim()
+    || String(row.other_notes || "").trim()
     || String(row.notes || "").trim()
   );
 }
@@ -656,6 +706,36 @@ function renderManualLaneRows() {
           </select>
         </td>
         <td><button class="secondary small-button" type="button" data-remove-manual-lane="${index}" ${manualLaneRows.length === 1 ? "disabled" : ""}>Remove</button></td>
+      </tr>
+      <tr class="manual-lane-detail-row ${rowClass}" data-manual-lane-index="${index}">
+        <td colspan="10">
+          <div class="manual-lane-detail-grid">
+            <label>
+              Modelo logistico
+              <textarea data-manual-lane-field="logistics_model" rows="2" placeholder="Direct service, D2D, spot/scheduled, no transload...">${escapeHtml(row.logistics_model || "")}</textarea>
+            </label>
+            <label>
+              Criterios de operacion
+              <textarea data-manual-lane-field="operation_criteria" rows="2" placeholder="Pickup/delivery windows, load/unload type, schedule, appointment rules...">${escapeHtml(row.operation_criteria || "")}</textarea>
+            </label>
+            <label>
+              Reglas de negocio
+              <textarea data-manual-lane-field="business_rules" rows="2" placeholder="Border included, driver assist, double driver, direct service only...">${escapeHtml(row.business_rules || "")}</textarea>
+            </label>
+            <label>
+              Especificaciones de servicio
+              <textarea data-manual-lane-field="service_specifications" rows="2" placeholder="Equipment accessories, packaging, hazmat instructions, jacks, straps...">${escapeHtml(row.service_specifications || "")}</textarea>
+            </label>
+            <label>
+              Otras notas
+              <textarea data-manual-lane-field="other_notes" rows="2" placeholder="Any additional information from the RFI or customer...">${escapeHtml(row.other_notes || "")}</textarea>
+            </label>
+            <label>
+              Internal notes
+              <textarea data-manual-lane-field="notes" rows="2" placeholder="Internal procurement context...">${escapeHtml(row.notes || "")}</textarea>
+            </label>
+          </div>
+        </td>
       </tr>
     `;
   }).join("");
@@ -3579,6 +3659,17 @@ function renderLaneCoverage() {
   }).join("");
 }
 
+function laneDetailSections(lane = {}) {
+  return [
+    ["Modelo logistico", lane.logistics_model],
+    ["Criterios de operacion", lane.operation_criteria],
+    ["Reglas de negocio", lane.business_rules],
+    ["Especificaciones de servicio", lane.service_specifications],
+    ["Otras notas", lane.other_notes],
+    ["Notas internas", lane.notes]
+  ].filter(([, value]) => String(value || "").trim());
+}
+
 function renderLaneDecision() {
   if (!laneDecisionBody || !laneDecisionTitle || !laneDecisionStatusPill) return;
   const lane = currentLanes.find((item) => item.id === focusedLaneId) || visibleLanes()[0] || currentLanes[0];
@@ -3637,6 +3728,19 @@ function renderLaneDecision() {
       <span>${escapeHtml([lane.operation, lane.service].filter(Boolean).join(" / ") || "Service pending")}</span>
       <span>${escapeHtml([lane.origin_market, lane.destination_market].filter(Boolean).join(" -> ") || "Market pending")}</span>
       <span>${escapeHtml([lane.weekly_volume ? `${lane.weekly_volume} / wk` : "", lane.target_rate ? `Target ${formatMoney(lane.target_rate, lane.currency)}` : ""].filter(Boolean).join(" | ") || "Volume pending")}</span>
+    </div>
+    <div class="rfx-lane-detail-sections">
+      ${laneDetailSections(lane).length ? laneDetailSections(lane).map(([label, value]) => `
+        <article>
+          <span>${escapeHtml(label)}</span>
+          <p>${escapeHtml(value)}</p>
+        </article>
+      `).join("") : `
+        <article>
+          <span>Lane details</span>
+          <p>No detail notes captured yet. Use Step 2 manual entry or the RFx lane template to capture model, criteria, rules and service specs.</p>
+        </article>
+      `}
     </div>
     <div class="rfx-lane-shortlist">
       ${invitations.length ? invitations.map((invitation) => `

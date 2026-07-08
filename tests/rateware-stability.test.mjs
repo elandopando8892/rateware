@@ -66,6 +66,7 @@ const rfxAwardCloseoutMigration = readFileSync(new URL("../supabase/migrations/2
 const rfxBidSubmissionV2Migration = readFileSync(new URL("../supabase/migrations/20260704093000_rfx_bid_submission_v2.sql", import.meta.url), "utf8");
 const vendorSegmentsCoverageMigration = readFileSync(new URL("../supabase/migrations/20260706143000_vendor_segments_coverage_filter.sql", import.meta.url), "utf8");
 const vendorProfileRequestsMigration = readFileSync(new URL("../supabase/migrations/20260706152000_vendor_profile_requests.sql", import.meta.url), "utf8");
+const rfxLaneDetailSectionsMigration = readFileSync(new URL("../supabase/migrations/20260707170000_rfx_lane_detail_sections.sql", import.meta.url), "utf8");
 
 for (const domain of ["gmail.com", "hotmail.com", "yahoo.com", "outlook.com", "yahoo.com.mx"]) {
   assert.match(apiSource, new RegExp(`"${domain.replace(".", "\\.")}"`), `generic domain ${domain} should be blocked`);
@@ -327,6 +328,17 @@ assert.match(rfxEventsHtml, /rfx-manual-lanes-body/, "Bid Room Step 2 should all
 assert.match(rfxEventsHtml, /import-manual-rfx-lanes-button/, "Bid Room Step 2 should import manually captured lanes");
 assert.match(rfxEventsSource, /function manualLaneImportRows/, "Bid Room Step 2 should normalize manual lane rows before import");
 assert.match(rfxEventsSource, /importManualLanesButton\?\.addEventListener\("click"/, "Bid Room Step 2 should wire manual lane import to the RFx lane API");
+for (const field of ["logistics_model", "operation_criteria", "business_rules", "service_specifications", "other_notes"]) {
+  assert.match(rfxLaneDetailSectionsMigration, new RegExp(`add column if not exists ${field} text`), `RFx lanes should persist ${field}`);
+  assert.match(rfxEventsSource, new RegExp(`key: "${field}"`), `RFx lane template should expose ${field}`);
+  assert.match(rfxEventsSource, new RegExp(`data-manual-lane-field="${field}"`), `manual lane detail should edit ${field}`);
+  assert.match(apiSource, new RegExp(`${field}: cleanText`), `Rateware API should normalize ${field}`);
+}
+assert.match(rfxEventsSource, /notas_adicionales: "other_notes"/, "RFx lane import should map Spanish RFI additional notes");
+assert.match(rfxEventsSource, /elementos_adicionales_en_el_remolque_camion_almacenamiento_de_carga_etc: "service_specifications"/, "RFx lane import should map RFI service specification notes");
+assert.match(rfxEventsSource, /function laneDetailSections/, "Bid Room should render lane detail sections");
+assert.match(rfxBidSource, /function laneDetailSections/, "Carrier portal should render lane detail sections");
+assert.match(rfxBidApiSource, /logistics_model,operation_criteria,business_rules,service_specifications,other_notes,notes/, "Carrier public board should select RFx lane detail sections");
 assert.match(rfxEventsSource, /rfx-lane-progress-cell/, "Bid Room Step 2 should render compact lane progress");
 assert.match(rfxEventsSource, /Needs participants/, "Bid Room Step 2 should describe missing carrier work as participant work");
 assert.doesNotMatch(rfxEventsSource, /data-rfx-save-bid/, "Bid Room Step 2 should not expose bid editing controls");

@@ -2000,6 +2000,38 @@ a {
   font-weight: 820;
 }
 
+.bid-lane-detail-sections,
+.rfx-lane-detail-sections {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.bid-lane-detail-sections article,
+.rfx-lane-detail-sections article {
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #f8fafc;
+  padding: 8px;
+}
+
+.bid-lane-detail-sections span,
+.rfx-lane-detail-sections span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.bid-lane-detail-sections p,
+.rfx-lane-detail-sections p {
+  margin: 4px 0 0;
+  color: var(--text);
+  font-size: 0.76rem;
+  line-height: 1.35;
+}
+
 .bid-room-empty {
   display: grid;
   gap: 4px;
@@ -16373,7 +16405,8 @@ textarea:focus,
 }
 
 .bid-room-manual-lanes-table input,
-.bid-room-manual-lanes-table select {
+.bid-room-manual-lanes-table select,
+.bid-room-manual-lanes-table textarea {
   width: 100%;
   min-height: 26px;
   border: 1px solid #cbd6df;
@@ -16381,6 +16414,35 @@ textarea:focus,
   background: #ffffff;
   padding: 3px 6px;
   font-size: 0.72rem;
+}
+
+.manual-lane-detail-row td {
+  background: #f8fafc;
+  padding: 8px;
+}
+
+.manual-lane-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.manual-lane-detail-grid label {
+  display: grid;
+  gap: 4px;
+  color: #52616d;
+  font-size: 0.68rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.manual-lane-detail-grid textarea {
+  min-height: 48px;
+  resize: vertical;
+  color: #26323d;
+  font-weight: 650;
+  line-height: 1.3;
+  text-transform: none;
 }
 
 .bid-room-carrier-grid {
