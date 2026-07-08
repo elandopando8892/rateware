@@ -995,7 +995,7 @@ function safeSheetName(value, fallback = "Bid Template") {
 }
 
 function eventMarketplaceUrl(event = {}) {
-  return event.id ? `./bid-room-board.html?event_id=${encodeURIComponent(event.id)}` : "./bid-room-board.html";
+  return "./bid-room-board.html";
 }
 
 async function loadExcelJs() {

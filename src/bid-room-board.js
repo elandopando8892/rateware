@@ -21,8 +21,6 @@ const softLoginDrawer = document.querySelector("#public-board-soft-login-drawer"
 const softLoginClose = document.querySelector("#public-board-soft-login-close");
 
 const API_URL = `${SUPABASE_URL}/functions/v1/rfx-bid-api`;
-const boardParams = new URLSearchParams(window.location.search);
-const scopedEventId = boardParams.get("event_id") || boardParams.get("rfx_event_id") || "";
 const ANNOUNCEMENTS = {
   en: {
     enabled: "Rateware bid room alerts enabled.",
@@ -52,13 +50,20 @@ const state = {
   loaded: false,
   viewMode: localStorage.getItem("rateware.publicBidBoard.view") || "cards",
   language: localStorage.getItem("rateware.publicBidBoard.language") || "en",
-  soundEnabled: false,
+  soundEnabled: localStorage.getItem("rateware.publicBidBoard.sound") !== "off",
   audioContext: null,
   alerts: [],
   selectedRowId: null
 };
 
 languageSelect.value = state.language;
+
+function syncSoundButton() {
+  if (!soundButton) return;
+  soundButton.textContent = state.soundEnabled ? "Sound on" : "Sound off";
+  soundButton.setAttribute("aria-pressed", state.soundEnabled ? "true" : "false");
+  soundButton.classList.toggle("is-muted", !state.soundEnabled);
+}
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -272,7 +277,9 @@ function announce(type) {
 
 function renderAlerts() {
   if (!state.alerts.length) {
-    alertsRoot.innerHTML = "<p>No movement yet. Enable sound to hear opportunity, quote, deadline, and ranking alerts.</p>";
+    alertsRoot.innerHTML = state.soundEnabled
+      ? "<p>No movement yet. Sound is on for opportunity, quote, deadline, and ranking alerts.</p>"
+      : "<p>No movement yet. Sound is off. Turn it on to hear opportunity, quote, deadline, and ranking alerts.</p>";
     return;
   }
   alertsRoot.innerHTML = state.alerts.map((alert) => `
@@ -285,13 +292,7 @@ function renderAlerts() {
 }
 
 function initScopedBoardMode() {
-  if (!scopedEventId || !boardActions) return;
-  document.body.classList.add("is-event-scoped-board");
-  const link = document.createElement("a");
-  link.className = "secondary-link public-board-all-link";
-  link.href = "./bid-room-board.html";
-  link.textContent = "View all opportunities";
-  boardActions.append(link);
+  document.body.classList.remove("is-event-scoped-board");
 }
 
 function renderSummary() {
@@ -305,11 +306,7 @@ function renderSummary() {
 }
 
 function scopedEventLabel(rows = state.rows) {
-  if (!scopedEventId) return "";
-  const event = rows.find((row) => row.event?.id === scopedEventId)?.event || {};
-  return event.rfx_id || event.name
-    ? `Event marketplace: ${event.rfx_id || event.name}`
-    : "Event marketplace: selected bid event";
+  return "";
 }
 
 function laneTags(row) {
@@ -319,6 +316,70 @@ function laneTags(row) {
     row.lane?.operation,
     row.lane?.service
   ].filter(Boolean).slice(0, 4);
+}
+
+function publicLaneDetailSections(row = {}) {
+  const lane = row.lane || {};
+  return [
+    ["Logistics model / Modelo logistico", lane.logistics_model],
+    ["Operation criteria / Criterios de operacion", lane.operation_criteria],
+    ["Business rules / Reglas de negocio", lane.business_rules],
+    ["Service specifications / Especificaciones de servicio", lane.service_specifications],
+    ["Other notes / Otras notas", lane.other_notes],
+    ["Notes / Notas", lane.notes]
+  ].filter(([, value]) => String(value || "").trim());
+}
+
+function renderPublicRichText(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  if (!/<\/?[a-z][\s\S]*>/i.test(raw)) {
+    return `<p>${escapeHtml(raw).replace(/\r?\n/g, "<br>")}</p>`;
+  }
+  const allowedTags = new Set(["p", "ul", "ol", "li", "br", "strong", "b", "em", "i", "span"]);
+  const parser = new DOMParser();
+  const documentValue = parser.parseFromString(raw, "text/html");
+  const sanitizeNode = (node) => {
+    if (node.nodeType === Node.TEXT_NODE) return escapeHtml(node.textContent || "");
+    if (node.nodeType !== Node.ELEMENT_NODE) return "";
+    const tag = node.nodeName.toLowerCase();
+    const children = [...node.childNodes].map(sanitizeNode).join("");
+    if (tag === "body" || tag === "html" || tag === "span") return children;
+    if (!allowedTags.has(tag)) return children;
+    if (tag === "br") return "<br>";
+    const outputTag = tag === "b" ? "strong" : tag === "i" ? "em" : tag;
+    return `<${outputTag}>${children}</${outputTag}>`;
+  };
+  return sanitizeNode(documentValue.body);
+}
+
+function renderBusinessDetailPreview(row = {}) {
+  const sections = publicLaneDetailSections(row);
+  if (!sections.length) return "";
+  return `
+    <div class="public-business-detail-preview" title="Business details available">
+      <strong>Business details</strong>
+      ${sections.slice(0, 3).map(([label]) => `<span>${escapeHtml(label.split(" / ")[0])}</span>`).join("")}
+    </div>
+  `;
+}
+
+function renderBusinessDetails(row = {}) {
+  const sections = publicLaneDetailSections(row);
+  if (!sections.length) return "";
+  return `
+    <section class="public-board-detail-section public-business-detail-section">
+      <h3>Business details / Detalles del negocio</h3>
+      <div class="public-business-detail-grid">
+        ${sections.map(([label, value]) => `
+          <article>
+            <h4>${escapeHtml(label)}</h4>
+            <div class="public-rich-text">${renderPublicRichText(value)}</div>
+          </article>
+        `).join("")}
+      </div>
+    </section>
+  `;
 }
 
 function rowById(id) {
@@ -375,6 +436,7 @@ function renderDetailDrawer(row, focusRequest = false) {
       </dl>
       <div class="public-opportunity-tags">${tags.map((tag) => `<span>${escapeHtml(tag)}</span>`).join("") || "<span>No tags</span>"}</div>
     </section>
+    ${renderBusinessDetails(row)}
     <section class="public-board-invite-rule">
       <strong>Invitation required to bid</strong>
       <p>${escapeHtml(invitationRuleCopy(row))}</p>
@@ -447,6 +509,7 @@ function renderOpportunityCard(row) {
       <div class="public-opportunity-tags">
         ${tags.map((tag) => `<span>${escapeHtml(tag)}</span>`).join("") || "<span>No tags</span>"}
       </div>
+      ${renderBusinessDetailPreview(row)}
       <div class="public-opportunity-actions">
         <button type="button" class="secondary" data-public-board-details="${escapeHtml(row.id)}">View details</button>
         <button type="button" class="page-primary-action" data-public-board-request="${escapeHtml(row.id)}">Request invitation</button>
@@ -500,6 +563,7 @@ function renderSheet(rows) {
             <th>Quotes</th>
             <th>Best</th>
             <th>Capacity</th>
+            <th>Business details</th>
             <th>Due</th>
             <th>Last quote</th>
             <th>Action</th>
@@ -517,6 +581,7 @@ function renderSheet(rows) {
               <td>${formatNumber(row.quote_count)}</td>
               <td>${formatMoney(row.best_rate, row.currency)}</td>
               <td>${formatNumber(row.total_weekly_capacity)}</td>
+              <td>${publicLaneDetailSections(row).length ? "Available" : "-"}</td>
               <td>${escapeHtml(row.due_state?.due_date || "-")}</td>
               <td>${escapeHtml(formatDateTime(row.last_quote_at))}</td>
               <td><button type="button" class="secondary" data-public-board-request="${escapeHtml(row.id)}">Request invitation</button></td>
@@ -550,9 +615,9 @@ function renderBoard() {
 
 async function loadBoard({ announceChanges = true } = {}) {
   refreshButton.disabled = true;
-  statusEl.textContent = scopedEventId ? "Refreshing selected event marketplace..." : "Refreshing public Bid Room board...";
+  statusEl.textContent = "Refreshing all public Bid Room opportunities...";
   try {
-    const data = await callPublicBoard({ status: statusFilter.value, limit: 250, event_id: scopedEventId });
+    const data = await callPublicBoard({ limit: 1000 });
     if (announceChanges) detectBoardSignals(data.rows || []);
     state.rows = data.rows || [];
     state.summary = data.summary || {};
@@ -576,12 +641,15 @@ async function loadBoard({ announceChanges = true } = {}) {
 }
 
 soundButton.addEventListener("click", async () => {
-  state.soundEnabled = true;
-  const context = ensureAudioContext();
-  if (context?.state === "suspended") await context.resume();
-  soundButton.textContent = "Sound enabled";
-  soundButton.disabled = true;
-  announce("enabled");
+  state.soundEnabled = !state.soundEnabled;
+  localStorage.setItem("rateware.publicBidBoard.sound", state.soundEnabled ? "on" : "off");
+  if (state.soundEnabled) {
+    const context = ensureAudioContext();
+    if (context?.state === "suspended") await context.resume();
+    announce("enabled");
+  }
+  syncSoundButton();
+  renderAlerts();
 });
 
 languageSelect.addEventListener("change", () => {
@@ -591,7 +659,6 @@ languageSelect.addEventListener("change", () => {
 });
 
 refreshButton.addEventListener("click", () => loadBoard());
-statusFilter.addEventListener("change", () => loadBoard({ announceChanges: false }));
 searchInput.addEventListener("input", renderBoard);
 findInvitesButton?.addEventListener("click", () => openSoftLoginDrawer());
 fullscreenButton.addEventListener("click", () => {
@@ -715,6 +782,7 @@ setInterval(() => {
   if (autoRefreshInput.checked && document.visibilityState !== "hidden") loadBoard();
 }, 15000);
 
+syncSoundButton();
 renderAlerts();
 initScopedBoardMode();
 loadBoard({ announceChanges: false });

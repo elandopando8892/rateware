@@ -1428,8 +1428,8 @@ async function publicBidRoomBoard(supabase: ReturnType<typeof createClient>, inp
   const requestedStatus = String(cleanText(input.status) || "all").toLowerCase();
   const statusFilter = PUBLIC_BOARD_STATUSES.has(requestedStatus) ? requestedStatus : "all";
   const eventId = cleanText(input.event_id || input.rfx_event_id);
-  const limit = Math.min(250, Math.max(1, Number(input.limit || 150) || 150));
-  const eventLimit = Math.min(100, Math.max(20, Number(input.event_limit || 80) || 80));
+  const limit = Math.min(1000, Math.max(1, Number(input.limit || 1000) || 1000));
+  const eventLimit = Math.min(500, Math.max(20, Number(input.event_limit || 250) || 250));
 
   let eventsQuery = supabase
     .from("rfx_events")

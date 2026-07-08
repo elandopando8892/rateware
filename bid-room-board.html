@@ -16,7 +16,7 @@
           <p>All opportunities loaded into Bid Room, active bid movement, expired rooms, and awarded lanes without exposing carrier identity.</p>
         </div>
         <div class="public-board-actions">
-          <button id="public-board-sound" type="button" class="page-primary-action">Enable sound</button>
+          <button id="public-board-sound" type="button" class="page-primary-action" aria-pressed="true">Sound on</button>
           <button id="public-board-find-invites" type="button" class="secondary">Find my invitations</button>
           <select id="public-board-language" aria-label="Announcement language">
             <option value="en">English alerts</option>
@@ -28,16 +28,6 @@
       </header>
 
       <section class="public-board-control-strip" aria-label="Board controls">
-        <label>
-          Status
-          <select id="public-board-status-filter">
-            <option value="all">All opportunities</option>
-            <option value="live">Live</option>
-            <option value="closing">Closing</option>
-            <option value="expired">Expired</option>
-            <option value="awarded">Awarded</option>
-          </select>
-        </label>
         <label>
           Search
           <input id="public-board-search" placeholder="RFx, lane, market, equipment..." />

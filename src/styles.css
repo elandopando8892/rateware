@@ -18299,6 +18299,13 @@ textarea:focus,
   justify-content: flex-end;
 }
 
+#public-board-sound[aria-pressed="false"],
+#public-board-sound.is-muted {
+  border-color: #cbd7e2;
+  background: #eef3f8;
+  color: #314252;
+}
+
 .public-board-all-link {
   min-height: 34px;
   align-content: center;
@@ -18566,6 +18573,35 @@ textarea:focus,
   font-weight: 900;
 }
 
+.public-business-detail-preview {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  border: 1px dashed #c8d8e4;
+  border-radius: 8px;
+  background: #f8fbfd;
+  padding: 6px;
+}
+
+.public-business-detail-preview strong,
+.public-business-detail-preview span {
+  font-size: 0.62rem;
+  font-weight: 900;
+}
+
+.public-business-detail-preview strong {
+  color: #14212c;
+  margin-right: 4px;
+}
+
+.public-business-detail-preview span {
+  border-radius: 999px;
+  background: #eaf2ff;
+  color: #294a7a;
+  padding: 2px 6px;
+}
+
 .public-opportunity-actions {
   display: flex;
   gap: 6px;
@@ -18702,6 +18738,49 @@ textarea:focus,
   color: #14212c;
   font-size: 0.8rem;
   font-weight: 800;
+}
+
+.public-business-detail-section {
+  background: #fbfcfd;
+}
+
+.public-business-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.public-business-detail-grid article {
+  min-height: 92px;
+  border: 1px solid #dbe5ec;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 9px;
+}
+
+.public-business-detail-grid h4 {
+  margin: 0 0 6px;
+  color: #263746;
+  font-size: 0.72rem;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.public-rich-text {
+  color: #1f2f3b;
+  font-size: 0.76rem;
+  line-height: 1.42;
+}
+
+.public-rich-text p,
+.public-rich-text ul,
+.public-rich-text ol {
+  margin: 0 0 6px;
+}
+
+.public-rich-text ul,
+.public-rich-text ol {
+  padding-left: 16px;
 }
 
 .public-board-invite-rule {

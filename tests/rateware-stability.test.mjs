@@ -200,10 +200,11 @@ assert.match(rfxEventsHtml, /bid-room-board\.html/, "Internal Bid Room should li
 assert.match(bidRoomBoardHtml, /data-board-view="pipeline"/, "Public Bid Room board should support pipeline view");
 assert.match(bidRoomBoardHtml, /data-board-view="sheet"/, "Public Bid Room board should support spreadsheet view");
 assert.match(bidRoomBoardSource, /public_bid_room_board/, "Public Bid Room board should call the public board action");
-assert.match(bidRoomBoardSource, /event_id: scopedEventId/, "Public Bid Room board should request a specific event when opened from a Bid Room event");
-assert.match(bidRoomBoardSource, /View all opportunities/, "Event-scoped marketplace should let users return to the full public opportunity board");
+assert.doesNotMatch(bidRoomBoardSource, /event_id: scopedEventId/, "Public Bid Room board should not filter opportunities by a scoped event");
+assert.doesNotMatch(bidRoomBoardHtml, /public-board-status-filter/, "Public Bid Room board should not hide opportunities behind a status filter");
+assert.match(bidRoomBoardSource, /callPublicBoard\(\{ limit: 1000 \}\)/, "Public Bid Room board should request the full opportunity board");
 assert.match(rfxEventsSource, /marketplaceUrlForEvent/, "Bid Room should build event-specific marketplace links");
-assert.match(rfxEventsSource, /Event marketplace/, "Bid Room event links should be clearly scoped to a single event");
+assert.match(rfxEventsSource, /Public marketplace/, "Bid Room event links should open the full public opportunity board");
 assert.match(rfxEventsSource, /data-rfx-marketplace-link/, "Bid Room event cards should expose a marketplace button");
 assert.match(bidRoomBoardHtml, /public-board-detail-drawer/, "Public Bid Room board should render an opportunity detail drawer");
 assert.match(bidRoomBoardHtml, /public-board-soft-login-drawer/, "Public Bid Room board should render soft login for already invited carriers");
@@ -214,6 +215,12 @@ assert.match(bidRoomBoardSource, /public_bid_room_find_invitations/, "Public Bid
 assert.match(bidRoomBoardSource, /Already invited\? Find my private link/, "Public Bid Room card detail should let already invited carriers retrieve their private link");
 assert.match(bidRoomBoardSource, /Private Bid Room links sent/, "Public Bid Room board should announce private link delivery");
 assert.match(bidRoomBoardSource, /New opportunity available/, "Public Bid Room board should announce new public opportunities");
+assert.match(bidRoomBoardSource, /soundEnabled: localStorage\.getItem\("rateware\.publicBidBoard\.sound"\) !== "off"/, "Public Bid Room board should start with sound enabled unless the user turns it off");
+assert.match(bidRoomBoardSource, /Sound is on for opportunity, quote, deadline, and ranking alerts/, "Public Bid Room board should explain that sound is enabled by default");
+assert.match(bidRoomBoardSource, /function publicLaneDetailSections/, "Public Bid Room board should render lane business detail sections");
+assert.match(bidRoomBoardSource, /Logistics model \/ Modelo logistico/, "Public Bid Room board should expose logistics model details");
+assert.match(bidRoomBoardSource, /Operation criteria \/ Criterios de operacion/, "Public Bid Room board should expose operation criteria details");
+assert.match(bidRoomBoardSource, /Business rules \/ Reglas de negocio/, "Public Bid Room board should expose business rules details");
 assert.match(bidRoomBoardSource, /Deadline closing soon/, "Public Bid Room board should announce deadline risk");
 assert.match(bidRoomBoardSource, /Invitation request sent/, "Public Bid Room board should announce invitation requests");
 assert.match(bidRoomBoardSource, /Quote Available/, "Public Bid Room board should announce new quotes in English");
@@ -229,6 +236,7 @@ const publicBidInviteVendorApiSource = rfxBidApiSource.slice(rfxBidApiSource.ind
 const publicBidFindInviteApiSource = rfxBidApiSource.slice(rfxBidApiSource.indexOf("async function publicBidRoomFindInvitations"), rfxBidApiSource.indexOf("Deno.serve"));
 assert.match(publicBidBoardApiSource, /eventId[\s\S]*eventsQuery\.eq\("id", eventId\)/, "Public Bid Room board API should support event-specific filtering");
 assert.match(publicBidBoardApiSource, /\["draft", "open", "closed", "awarded"\]/, "Public Bid Room marketplace should include draft/setup opportunities loaded into Bid Room");
+assert.match(publicBidBoardApiSource, /Math\.min\(1000/, "Public Bid Room board API should support a larger full-board response");
 assert.match(rfxBidApiSource, /if \(status === "draft"\) return "live"/, "Draft Bid Room opportunities should appear as live marketplace opportunities");
 assert.match(publicBidBoardApiSource, /carrier_identity_visible: false/, "Public Bid Room board should hide carrier identity");
 assert.doesNotMatch(publicBidBoardApiSource, /vendors\(/, "Public Bid Room board should not join carrier vendor records");
@@ -436,7 +444,7 @@ assert.match(rfxBidSource, /callBidApi\("submit_bid", \{ token: row\.invitation_
 assert.match(rfxBidSource, /const BID_PORTAL_COPY = \{/, "Carrier portal should provide English and Spanish UI copy");
 assert.match(rfxBidSource, /id="private-bid-language"/, "Carrier portal should expose an English/Spanish language toggle");
 assert.match(rfxBidSource, /function eventMarketplaceUrl/, "Carrier portal should build a contextual public Bid Room board URL");
-assert.match(rfxBidSource, /bid-room-board\.html\?event_id/, "Carrier portal should link bid-specific pages to the event public live board");
+assert.match(rfxBidSource, /return "\.\/bid-room-board\.html"/, "Carrier portal should link bid-specific pages to the full public live board");
 assert.match(stylesSource, /\.carrier-bid-template-tools/, "Carrier portal should style the XLSX bid template workflow");
 assert.match(stylesSource, /\.bid-lane-detail-sections[\s\S]*grid-template-columns: minmax\(280px/, "Carrier portal lane detail sections should use a wider readable layout");
 assert.match(apiSource, /invitationGroup\.length > 1 \? "&view=book" : ""/, "RFx outreach links with multiple lanes should open the carrier business book view");

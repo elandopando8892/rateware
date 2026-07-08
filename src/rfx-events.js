@@ -542,7 +542,7 @@ function bidVisibilityLabel(mode = "anonymous_rank") {
 }
 
 function marketplaceUrlForEvent(eventId) {
-  return `./bid-room-board.html?event_id=${encodeURIComponent(eventId || "")}`;
+  return "./bid-room-board.html";
 }
 
 function cleanHeader(value) {
@@ -3312,7 +3312,7 @@ function renderEventDashboard() {
         <span>Status</span>
         <strong>${escapeHtml(selectedEvent.status || "draft")}</strong>
         <small>${escapeHtml([selectedEvent.customer, selectedEvent.due_date ? `Due ${selectedEvent.due_date}` : ""].filter(Boolean).join(" | ") || "No customer or due date")}</small>
-        <a class="secondary-link small-button" href="${escapeHtml(marketplaceUrlForEvent(selectedEvent.id))}" target="_blank" rel="noreferrer">Event marketplace</a>
+        <a class="secondary-link small-button" href="${escapeHtml(marketplaceUrlForEvent(selectedEvent.id))}" target="_blank" rel="noreferrer">Public marketplace</a>
       </article>
       <article>
         <span>Lane coverage</span>
@@ -4365,7 +4365,7 @@ function renderEvents() {
         <small>${escapeHtml(bidVisibilityLabel(event.bid_visibility_mode))}</small>
       </button>
       <a class="secondary-link small-button rfx-marketplace-link" href="${escapeHtml(marketplaceUrlForEvent(event.id))}" target="_blank" rel="noreferrer" data-rfx-marketplace-link>
-        Event marketplace
+        Public marketplace
       </a>
     </article>
   `).join("");
