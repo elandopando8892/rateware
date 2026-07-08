@@ -61,20 +61,6 @@
         </div>
       </section>
 
-      <section class="public-board-support-panel" aria-label="Public Bid Room support">
-        <div>
-          <p class="eyebrow">Bid support</p>
-          <h2>Ask how to participate</h2>
-          <p>Answers stay inside public board context. Questions outside the visible Bid Room can become a procurement ticket.</p>
-        </div>
-        <form id="public-board-support-form" class="public-board-support-form">
-          <input id="public-board-support-email" type="email" placeholder="Optional email for ticket follow-up" />
-          <textarea id="public-board-support-message" rows="2" placeholder="Ask about requesting access, public opportunities, deadlines, or bid best practices..."></textarea>
-          <button type="submit" class="page-primary-action">Ask support</button>
-        </form>
-        <div id="public-board-support-reply" class="public-board-support-reply" aria-live="polite"></div>
-      </section>
-
       <section class="public-board-stage" aria-label="Public opportunities">
         <div class="split-heading compact">
           <div>
@@ -84,6 +70,37 @@
           <p id="public-board-status" class="row-save-status" role="status">Loading opportunities...</p>
         </div>
         <div id="public-board-root" class="public-board-root"></div>
+      </section>
+
+      <section id="public-board-support-widget" class="bid-support-widget public-board-support-widget" data-open="false" aria-label="Public Bid Room support assistant">
+        <button id="public-board-support-launcher" class="bid-support-launcher" type="button" aria-expanded="false">
+          <span>Bid assistant</span>
+          <small>Access, invitations, bid questions</small>
+        </button>
+        <div class="bid-support-popover public-board-support-popover" role="dialog" aria-modal="false" aria-labelledby="public-board-support-title">
+          <header>
+            <div>
+              <p class="eyebrow">Bid support</p>
+              <h2 id="public-board-support-title">Ask how to participate</h2>
+              <p>Answers stay inside public board context. If the question needs procurement, the assistant creates a support ticket.</p>
+            </div>
+            <button id="public-board-support-close" type="button" class="secondary small-button">Close</button>
+          </header>
+          <div id="public-board-support-reply" class="public-board-support-reply bid-support-chat-log" aria-live="polite">
+            <article class="bid-support-answer">
+              <div>
+                <strong>How can I help?</strong>
+                <span>Public Bid Room</span>
+              </div>
+              <p>Ask about requesting access, deadlines, opportunity details, or how private invitations work.</p>
+            </article>
+          </div>
+          <form id="public-board-support-form" class="public-board-support-form bid-support-chat-form">
+            <input id="public-board-support-email" type="email" placeholder="Email for ticket follow-up" />
+            <textarea id="public-board-support-message" rows="2" placeholder="Ask the Bid Room assistant..."></textarea>
+            <button type="submit" class="page-primary-action">Send</button>
+          </form>
+        </div>
       </section>
     </main>
 

@@ -24,6 +24,9 @@ const supportForm = document.querySelector("#public-board-support-form");
 const supportReply = document.querySelector("#public-board-support-reply");
 const supportMessage = document.querySelector("#public-board-support-message");
 const supportEmail = document.querySelector("#public-board-support-email");
+const supportWidget = document.querySelector("#public-board-support-widget");
+const supportLauncher = document.querySelector("#public-board-support-launcher");
+const supportClose = document.querySelector("#public-board-support-close");
 
 const API_URL = `${SUPABASE_URL}/functions/v1/rfx-bid-api`;
 const PUBLIC_BOARD_SOUND_DEFAULT_VERSION = "2026-07-08-sound-on";
@@ -293,6 +296,24 @@ function renderPublicSupportReply(result = null, status = "") {
       ${result.needs_ticket && !result.ticket?.id ? `<button type="button" class="secondary small-button" data-public-support-ticket>Create ticket</button>` : ""}
     </article>
   `;
+}
+
+function setPublicSupportOpen(open = true) {
+  if (!supportWidget) return;
+  supportWidget.dataset.open = open ? "true" : "false";
+  supportLauncher?.setAttribute("aria-expanded", open ? "true" : "false");
+  if (open) {
+    window.setTimeout(() => supportMessage?.focus({ preventScroll: true }), 40);
+  }
+}
+
+function openPublicSupportForRow(row = null) {
+  state.supportLaneId = row?.id || "";
+  if (supportMessage && row) {
+    supportMessage.value = `Can you explain how to participate in ${row.route_label || "this opportunity"}?`;
+    state.supportQuestion = supportMessage.value;
+  }
+  setPublicSupportOpen(true);
 }
 
 async function askPublicSupport(options = {}) {
@@ -814,9 +835,10 @@ languageSelect.addEventListener("change", () => {
 refreshButton.addEventListener("click", () => loadBoard());
 searchInput.addEventListener("input", renderBoard);
 supportJumpButton?.addEventListener("click", () => {
-  document.querySelector(".public-board-support-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
-  supportMessage?.focus({ preventScroll: true });
+  openPublicSupportForRow(null);
 });
+supportLauncher?.addEventListener("click", () => setPublicSupportOpen(supportWidget?.dataset.open !== "true"));
+supportClose?.addEventListener("click", () => setPublicSupportOpen(false));
 findInvitesButton?.addEventListener("click", () => openSoftLoginDrawer());
 fullscreenButton.addEventListener("click", () => {
   if (!document.fullscreenElement) document.documentElement.requestFullscreen?.();
@@ -864,14 +886,8 @@ detailDrawer?.addEventListener("click", (event) => {
   const supportButton = event.target.closest("[data-public-board-support]");
   if (supportButton) {
     const row = rowById(supportButton.dataset.publicBoardSupport);
-    state.supportLaneId = row?.id || "";
-    if (supportMessage) {
-      supportMessage.value = `Can you explain how to participate in ${row?.route_label || "this opportunity"}?`;
-      state.supportQuestion = supportMessage.value;
-    }
     closeDetailDrawer();
-    document.querySelector(".public-board-support-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
-    supportMessage?.focus({ preventScroll: true });
+    openPublicSupportForRow(row);
     return;
   }
   if (event.target === detailDrawer) closeDetailDrawer();
@@ -957,6 +973,7 @@ document.addEventListener("keydown", (event) => {
   if (event.key !== "Escape") return;
   if (detailDrawer && !detailDrawer.hidden) closeDetailDrawer();
   if (softLoginDrawer && !softLoginDrawer.hidden) closeSoftLoginDrawer();
+  if (supportWidget?.dataset.open === "true") setPublicSupportOpen(false);
 });
 
 document.addEventListener("pointerdown", () => {

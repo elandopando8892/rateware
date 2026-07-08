@@ -18903,6 +18903,171 @@ textarea:focus,
   min-height: 44px;
 }
 
+.bid-support-widget {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 96;
+  display: block;
+  width: min(420px, calc(100vw - 28px));
+  margin: 0;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  box-shadow: none;
+}
+
+.bid-support-agent.bid-support-widget {
+  display: block;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  padding: 0;
+}
+
+.bid-support-launcher {
+  position: relative;
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  min-height: 52px;
+  border: 1px solid #23313d;
+  border-radius: 13px;
+  background: #22303c;
+  color: #ffffff;
+  padding: 10px 14px;
+  text-align: left;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.24);
+}
+
+.bid-support-launcher::before {
+  content: "";
+  position: absolute;
+  right: 13px;
+  top: 13px;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #18a775;
+  box-shadow: 0 0 0 4px rgba(24, 167, 117, 0.18);
+}
+
+.bid-support-launcher span,
+.bid-support-launcher small {
+  display: block;
+}
+
+.bid-support-launcher span {
+  font-size: 0.86rem;
+  font-weight: 950;
+}
+
+.bid-support-launcher small {
+  color: #cbd7e3;
+  font-size: 0.68rem;
+  font-weight: 800;
+}
+
+.bid-support-popover {
+  display: none;
+  position: absolute;
+  right: 0;
+  bottom: 64px;
+  width: min(460px, calc(100vw - 28px));
+  max-height: min(680px, calc(100vh - 110px));
+  overflow: hidden;
+  border: 1px solid #b9c8d4;
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.28);
+}
+
+.bid-support-widget[data-open="true"] .bid-support-popover {
+  display: grid;
+  grid-auto-rows: auto;
+}
+
+.bid-support-widget[data-open="true"] .bid-support-launcher {
+  background: #17232d;
+}
+
+.bid-support-popover > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  border-bottom: 1px solid #dbe4eb;
+  background: #f7fafc;
+  padding: 12px;
+}
+
+.bid-support-popover > header h2,
+.bid-support-popover > header h3,
+.bid-support-popover > header p {
+  margin: 0;
+}
+
+.bid-support-popover > header h2,
+.bid-support-popover > header h3 {
+  color: #17212b;
+  font-size: 1rem;
+}
+
+.bid-support-popover > header p:not(.eyebrow) {
+  color: #5d6d79;
+  font-size: 0.75rem;
+  line-height: 1.35;
+}
+
+.bid-support-popover .bid-support-scope {
+  border-bottom: 1px solid #e4ebf0;
+  padding: 9px 12px;
+}
+
+.bid-support-popover .bid-support-prompts {
+  border-bottom: 1px solid #e4ebf0;
+  padding: 8px 12px;
+}
+
+.bid-support-chat-log {
+  display: grid;
+  gap: 8px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 10px 12px;
+}
+
+.bid-support-chat-form,
+.public-board-support-widget .public-board-support-form {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 7px;
+  align-items: end;
+  border-top: 1px solid #dbe4eb;
+  background: #f8fafc;
+  padding: 10px;
+}
+
+.public-board-support-widget .public-board-support-form input {
+  grid-column: 1 / -1;
+}
+
+.bid-support-chat-form textarea,
+.public-board-support-widget .public-board-support-form textarea {
+  min-height: 44px;
+  max-height: 120px;
+  resize: vertical;
+}
+
+.bid-support-chat-form > div {
+  display: grid;
+  gap: 6px;
+}
+
+.bid-support-chat-form .status-message {
+  grid-column: 1 / -1;
+}
+
 .public-board-alert {
   flex: 0 0 280px;
   border: 1px solid #d5e1e9;
@@ -19451,6 +19616,22 @@ textarea:focus,
 }
 
 @media (max-width: 980px) {
+  .bid-support-widget {
+    right: 10px;
+    bottom: 10px;
+    width: calc(100vw - 20px);
+  }
+
+  .bid-support-popover {
+    width: calc(100vw - 20px);
+    max-height: calc(100vh - 92px);
+  }
+
+  .bid-support-chat-form,
+  .public-board-support-widget .public-board-support-form {
+    grid-template-columns: 1fr;
+  }
+
   .public-bid-board-header,
   .public-board-alert-panel {
     grid-template-columns: 1fr;
