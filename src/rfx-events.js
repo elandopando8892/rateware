@@ -57,7 +57,6 @@ const openRfxButton = document.querySelector("#open-rfx-button");
 const closeRfxButton = document.querySelector("#close-rfx-button");
 const archiveRfxButton = document.querySelector("#archive-rfx-button");
 const deleteRfxButton = document.querySelector("#delete-rfx-button");
-const lanePaste = document.querySelector("#rfx-lane-paste");
 const laneTemplateFileInput = document.querySelector("#rfx-lane-template-file");
 const downloadLaneTemplateButton = document.querySelector("#download-rfx-lane-template");
 const importLanesButton = document.querySelector("#import-rfx-lanes-button");
@@ -65,6 +64,11 @@ const clearLanesInputButton = document.querySelector("#clear-rfx-lanes-input");
 const laneImportStatus = document.querySelector("#rfx-lane-import-status");
 const laneTemplatePreview = document.querySelector("#rfx-lane-template-preview");
 const laneTemplatePreviewBody = document.querySelector("#rfx-lane-template-preview-body");
+const manualLanesBody = document.querySelector("#rfx-manual-lanes-body");
+const addManualLaneButton = document.querySelector("#add-manual-rfx-lane");
+const clearManualLanesButton = document.querySelector("#clear-manual-rfx-lanes");
+const importManualLanesButton = document.querySelector("#import-manual-rfx-lanes-button");
+const manualLaneStatus = document.querySelector("#rfx-manual-lane-status");
 const lanesBody = document.querySelector("#rfx-lanes-body");
 const refreshButton = document.querySelector("#refresh-rfx-events");
 const selectionCount = document.querySelector("#rfx-selection-count");
@@ -228,6 +232,7 @@ let focusedLaneId = null;
 let activeLaneFilter = "all";
 let pendingLaneTemplateRows = [];
 let pendingLaneTemplateIssues = [];
+let manualLaneRows = [];
 let pendingCarrierTemplateRows = [];
 let pendingCarrierTemplateMatches = [];
 let vendorOptionsLoading = true;
@@ -269,6 +274,19 @@ const RFX_LANE_TEMPLATE_COLUMNS = [
   { key: "incumbent_vendor", label: "Incumbent Vendor", example: "carrier.com" },
   { key: "notes", label: "Notes", example: "Hazmat allowed" }
 ];
+
+const MANUAL_LANE_DEFAULTS = {
+  equipment: "Truck Trailer",
+  trailer: "Dry Van",
+  config: "Single",
+  operation: "D2D Export",
+  service: "One Way",
+  currency: "USD"
+};
+
+const MANUAL_LANE_OPERATIONS = ["D2D Export", "D2D Import", "Intra-Mex", "US Northbound", "US Southbound", "Domestic US", "Domestic MX"];
+const MANUAL_LANE_SERVICES = ["One Way", "Roundtrip", "Spot", "Dedicated"];
+const MANUAL_LANE_CURRENCIES = ["USD", "MXN", "CAD"];
 
 const RFX_CARRIER_TEMPLATE_COLUMNS = [
   { key: "participate", label: "Participate", example: "TRUE" },
@@ -498,25 +516,6 @@ function mapHeader(header) {
   return aliases[key] || key;
 }
 
-function parseLanePaste(text) {
-  const rows = parseDelimitedRows(text);
-  if (!rows.length) return [];
-  const firstRow = rows[0].map(mapHeader);
-  const hasHeader = firstRow.some((header) => ["origin", "destination", "equipment", "trailer", "operation", "service"].includes(header));
-  const headers = hasHeader
-    ? firstRow
-    : ["origin", "destination", "equipment", "trailer", "operation", "service", "weekly_volume", "target_rate", "currency"];
-  const dataRows = hasHeader ? rows.slice(1) : rows;
-  return dataRows.map((row, index) => {
-    const item = { lane_number: index + 1 };
-    headers.forEach((header, cellIndex) => {
-      if (!header) return;
-      item[header] = row[cellIndex] || "";
-    });
-    return item;
-  }).filter((row) => row.origin || row.destination);
-}
-
 function rowsFromTemplateMatrix(matrix = []) {
   const headerIndex = matrix.findIndex((row) => {
     const headers = row.map(mapHeader);
@@ -564,6 +563,105 @@ function validateLaneTemplateRows(rows = []) {
   });
 }
 
+function newManualLaneRow() {
+  return {
+    lane_number: manualLaneRows.length + 1,
+    origin: "",
+    destination: "",
+    equipment: MANUAL_LANE_DEFAULTS.equipment,
+    trailer: MANUAL_LANE_DEFAULTS.trailer,
+    config: MANUAL_LANE_DEFAULTS.config,
+    operation: MANUAL_LANE_DEFAULTS.operation,
+    service: MANUAL_LANE_DEFAULTS.service,
+    weekly_volume: "",
+    target_rate: "",
+    currency: MANUAL_LANE_DEFAULTS.currency,
+    notes: ""
+  };
+}
+
+function hasManualLaneUserInput(row = {}) {
+  return Boolean(
+    String(row.origin || "").trim()
+    || String(row.destination || "").trim()
+    || String(row.weekly_volume || "").trim()
+    || String(row.target_rate || "").trim()
+    || String(row.notes || "").trim()
+  );
+}
+
+function manualLaneIssues(row = {}) {
+  const issues = [];
+  if (!String(row.origin || "").trim()) issues.push("origin required");
+  if (!String(row.destination || "").trim()) issues.push("destination required");
+  return issues;
+}
+
+function manualLaneImportRows() {
+  return manualLaneRows
+    .filter(hasManualLaneUserInput)
+    .map((row, index) => normalizeTemplateRows([{ ...row, lane_number: index + 1 }])[0]);
+}
+
+function manualLaneSelectOptions(values, selected) {
+  const selectedValue = String(selected || "");
+  const allValues = values.includes(selectedValue) || !selectedValue ? values : [selectedValue, ...values];
+  return allValues.map((value) => `<option value="${escapeHtml(value)}" ${value === selectedValue ? "selected" : ""}>${escapeHtml(value)}</option>`).join("");
+}
+
+function updateManualLaneImportButton() {
+  if (!importManualLanesButton) return;
+  const rows = manualLaneRows.filter(hasManualLaneUserInput);
+  const invalidRows = rows.filter((row) => manualLaneIssues(row).length);
+  importManualLanesButton.disabled = !selectedEventId || !rows.length || invalidRows.length > 0;
+  if (!rows.length) {
+    setStatus(manualLaneStatus, "Add origin and destination for each manual lane.");
+  } else if (invalidRows.length) {
+    setStatus(manualLaneStatus, `${invalidRows.length} manual row(s) need origin and destination before import.`, "error");
+  } else if (!selectedEventId) {
+    setStatus(manualLaneStatus, `${rows.length} manual lane(s) ready. Select or create a bid event before import.`, "warning");
+  } else {
+    setStatus(manualLaneStatus, `${rows.length} manual lane(s) ready to import.`, "success");
+  }
+}
+
+function renderManualLaneRows() {
+  if (!manualLanesBody) return;
+  if (!manualLaneRows.length) manualLaneRows = [newManualLaneRow()];
+  manualLanesBody.innerHTML = manualLaneRows.map((row, index) => {
+    const active = hasManualLaneUserInput(row);
+    const issues = active ? manualLaneIssues(row) : [];
+    const rowClass = issues.length ? "is-muted-row" : "";
+    return `
+      <tr class="${rowClass}" data-manual-lane-index="${index}">
+        <td><input data-manual-lane-field="origin" value="${escapeHtml(row.origin || "")}" placeholder="Apodaca, NL" /></td>
+        <td><input data-manual-lane-field="destination" value="${escapeHtml(row.destination || "")}" placeholder="Dallas, TX" /></td>
+        <td><input data-manual-lane-field="equipment" value="${escapeHtml(row.equipment || "")}" placeholder="Truck Trailer" /></td>
+        <td><input data-manual-lane-field="trailer" value="${escapeHtml(row.trailer || "")}" placeholder="Dry Van" /></td>
+        <td>
+          <select data-manual-lane-field="operation">
+            ${manualLaneSelectOptions(MANUAL_LANE_OPERATIONS, row.operation || MANUAL_LANE_DEFAULTS.operation)}
+          </select>
+        </td>
+        <td>
+          <select data-manual-lane-field="service">
+            ${manualLaneSelectOptions(MANUAL_LANE_SERVICES, row.service || MANUAL_LANE_DEFAULTS.service)}
+          </select>
+        </td>
+        <td><input data-manual-lane-field="weekly_volume" value="${escapeHtml(row.weekly_volume || "")}" inputmode="decimal" placeholder="10" /></td>
+        <td><input data-manual-lane-field="target_rate" value="${escapeHtml(row.target_rate || "")}" inputmode="decimal" placeholder="2900" /></td>
+        <td>
+          <select data-manual-lane-field="currency">
+            ${manualLaneSelectOptions(MANUAL_LANE_CURRENCIES, row.currency || MANUAL_LANE_DEFAULTS.currency)}
+          </select>
+        </td>
+        <td><button class="secondary small-button" type="button" data-remove-manual-lane="${index}" ${manualLaneRows.length === 1 ? "disabled" : ""}>Remove</button></td>
+      </tr>
+    `;
+  }).join("");
+  updateManualLaneImportButton();
+}
+
 function readyLaneTemplateRows() {
   return pendingLaneTemplateIssues
     .filter((item) => !item.issues.some((issue) => issue.includes("required")))
@@ -573,8 +671,8 @@ function readyLaneTemplateRows() {
 function updateLaneImportButton() {
   if (!importLanesButton) return;
   const hasTemplateRows = readyLaneTemplateRows().length > 0;
-  const hasPasteRows = Boolean(lanePaste?.value?.trim());
-  importLanesButton.disabled = !selectedEventId || (!hasTemplateRows && !hasPasteRows);
+  importLanesButton.disabled = !selectedEventId || !hasTemplateRows;
+  updateManualLaneImportButton();
 }
 
 function renderLaneTemplatePreview() {
@@ -607,11 +705,16 @@ function clearLaneTemplateImport({ preserveStatus = false } = {}) {
   pendingLaneTemplateRows = [];
   pendingLaneTemplateIssues = [];
   if (laneTemplateFileInput) laneTemplateFileInput.value = "";
-  if (lanePaste) lanePaste.value = "";
   if (laneTemplatePreview) laneTemplatePreview.hidden = true;
   if (laneTemplatePreviewBody) laneTemplatePreviewBody.innerHTML = "";
   if (!preserveStatus) setStatus(laneImportStatus, "Upload the RFx lane book template to preview lanes.");
   updateLaneImportButton();
+}
+
+function resetManualLaneRows({ preserveStatus = false } = {}) {
+  manualLaneRows = [newManualLaneRow()];
+  renderManualLaneRows();
+  if (!preserveStatus) setStatus(manualLaneStatus, "Add origin and destination for each manual lane.");
 }
 
 function emptyBidRoomChatThreads() {
@@ -4985,6 +5088,7 @@ async function saveSelectedRfxTemplate() {
 }
 
 initAuthControls();
+renderManualLaneRows();
 requirePrivatePage().then((session) => {
   if (session?.token) {
     loadVendorOptions();
@@ -5072,7 +5176,7 @@ document.addEventListener("click", (event) => {
     const view = requestedView === "wizard" || requestedView === "manager" ? "setup" : requestedView;
     const focusTargets = {
       setup: "#rfx-id",
-      lanes: "#rfx-lane-paste",
+      lanes: "#rfx-lane-template-file",
       carriers: "#manual-shortlist-search",
       outreach: "#rfx-outreach-template",
       responses: "#rfx-response-body",
@@ -5261,21 +5365,11 @@ laneTemplateFileInput?.addEventListener("change", async () => {
   }
 });
 
-lanePaste?.addEventListener("input", () => {
-  if (lanePaste.value.trim()) {
-    pendingLaneTemplateRows = [];
-    pendingLaneTemplateIssues = [];
-    if (laneTemplatePreview) laneTemplatePreview.hidden = true;
-  }
-  updateLaneImportButton();
-});
-
 importLanesButton?.addEventListener("click", async () => {
   if (!selectedEventId) return;
-  const templateRows = readyLaneTemplateRows();
-  const rows = templateRows.length ? templateRows : parseLanePaste(lanePaste?.value || "");
+  const rows = readyLaneTemplateRows();
   if (!rows.length) {
-    setStatus(laneImportStatus, "Upload a completed RFx lane template before importing.", "error");
+    setStatus(laneImportStatus, "Upload a completed RFx lane template before importing, or use quick manual entry below.", "error");
     return;
   }
   importLanesButton.disabled = true;
@@ -5295,6 +5389,74 @@ importLanesButton?.addEventListener("click", async () => {
 
 clearLanesInputButton?.addEventListener("click", () => {
   clearLaneTemplateImport();
+});
+
+addManualLaneButton?.addEventListener("click", () => {
+  manualLaneRows.push(newManualLaneRow());
+  renderManualLaneRows();
+  manualLanesBody?.querySelector(`[data-manual-lane-index="${manualLaneRows.length - 1}"] input`)?.focus();
+});
+
+clearManualLanesButton?.addEventListener("click", () => {
+  resetManualLaneRows();
+});
+
+manualLanesBody?.addEventListener("input", (event) => {
+  const field = event.target.closest("[data-manual-lane-field]");
+  if (!field) return;
+  const row = field.closest("[data-manual-lane-index]");
+  const index = Number(row?.dataset.manualLaneIndex);
+  if (!Number.isInteger(index) || !manualLaneRows[index]) return;
+  manualLaneRows[index][field.dataset.manualLaneField] = field.value;
+  updateManualLaneImportButton();
+});
+
+manualLanesBody?.addEventListener("change", (event) => {
+  const field = event.target.closest("[data-manual-lane-field]");
+  if (!field) return;
+  const row = field.closest("[data-manual-lane-index]");
+  const index = Number(row?.dataset.manualLaneIndex);
+  if (!Number.isInteger(index) || !manualLaneRows[index]) return;
+  manualLaneRows[index][field.dataset.manualLaneField] = field.value;
+  updateManualLaneImportButton();
+});
+
+manualLanesBody?.addEventListener("click", (event) => {
+  const removeButton = event.target.closest("[data-remove-manual-lane]");
+  if (!removeButton) return;
+  const index = Number(removeButton.dataset.removeManualLane);
+  if (!Number.isInteger(index) || manualLaneRows.length <= 1) return;
+  manualLaneRows.splice(index, 1);
+  renderManualLaneRows();
+});
+
+importManualLanesButton?.addEventListener("click", async () => {
+  if (!selectedEventId) return;
+  const rows = manualLaneImportRows();
+  const invalidRows = manualLaneRows.filter(hasManualLaneUserInput).filter((row) => manualLaneIssues(row).length);
+  if (!rows.length) {
+    setStatus(manualLaneStatus, "Add at least one manual lane before importing.", "error");
+    return;
+  }
+  if (invalidRows.length) {
+    setStatus(manualLaneStatus, `${invalidRows.length} manual row(s) need origin and destination before import.`, "error");
+    return;
+  }
+  importManualLanesButton.disabled = true;
+  setStatus(manualLaneStatus, `Importing ${rows.length} manual lane(s)...`);
+  try {
+    const result = await importRfxLanes(selectedEventId, rows);
+    const importedMessage = `${result.inserted || 0} manual lane(s) imported.`;
+    resetManualLaneRows({ preserveStatus: true });
+    setStatus(manualLaneStatus, importedMessage, "success");
+    await loadDetail(selectedEventId);
+    await loadEvents();
+  } catch (error) {
+    setStatus(manualLaneStatus, error.message, "error");
+  } finally {
+    importManualLanesButton.disabled = false;
+    updateManualLaneImportButton();
+  }
 });
 
 openRfxButton?.addEventListener("click", async () => {

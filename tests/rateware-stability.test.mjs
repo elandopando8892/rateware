@@ -322,6 +322,11 @@ assert.match(rfxEventsHtml, /<th>Score<\/th>/, "Bid Room response board should e
 assert.match(rfxEventsSource, /renderAwardBoard/, "Bid Room should render award decisions by lane");
 assert.match(rfxEventsHtml, /<th>Progress<\/th>/, "Bid Room Step 2 should summarize lane progress instead of rendering shortlist controls");
 assert.doesNotMatch(rfxEventsHtml, /Shortlist \/ bids/, "Bid Room Step 2 should keep carrier shortlist work out of the business book table");
+assert.doesNotMatch(rfxEventsHtml, /Manual paste fallback/, "Bid Room Step 2 should not expose technical paste fallback language");
+assert.match(rfxEventsHtml, /rfx-manual-lanes-body/, "Bid Room Step 2 should allow quick manual lane entry");
+assert.match(rfxEventsHtml, /import-manual-rfx-lanes-button/, "Bid Room Step 2 should import manually captured lanes");
+assert.match(rfxEventsSource, /function manualLaneImportRows/, "Bid Room Step 2 should normalize manual lane rows before import");
+assert.match(rfxEventsSource, /importManualLanesButton\?\.addEventListener\("click"/, "Bid Room Step 2 should wire manual lane import to the RFx lane API");
 assert.match(rfxEventsSource, /rfx-lane-progress-cell/, "Bid Room Step 2 should render compact lane progress");
 assert.match(rfxEventsSource, /Needs participants/, "Bid Room Step 2 should describe missing carrier work as participant work");
 assert.doesNotMatch(rfxEventsSource, /data-rfx-save-bid/, "Bid Room Step 2 should not expose bid editing controls");

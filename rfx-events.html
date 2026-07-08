@@ -207,14 +207,16 @@
                 <span id="rfx-coverage-summary" class="status-pill muted">No lanes</span>
               </div>
               <section class="rfx-import-box bid-room-import-panel">
-                <div>
-                  <p class="eyebrow">Template upload</p>
-                  <h3>Upload the RFx lane book template</h3>
+                <div class="bid-room-book-entry-header">
+                  <div>
+                    <p class="eyebrow">Business book entry</p>
+                    <h3>Load lanes by template or quick manual entry</h3>
+                  </div>
+                  <button id="download-rfx-lane-template" class="secondary" type="button">Download template</button>
                 </div>
                 <div class="bid-room-template-upload">
-                  <button id="download-rfx-lane-template" class="secondary" type="button">Download template</button>
                   <label>
-                    Filled template
+                    Filled template for large RFx books
                     <input id="rfx-lane-template-file" type="file" accept=".xlsx,.xls,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
                   </label>
                 </div>
@@ -238,10 +240,41 @@
                   <button id="clear-rfx-lanes-input" class="secondary" type="button">Clear template</button>
                   <span id="rfx-lane-import-status" class="status-message" role="status"></span>
                 </div>
-                <details class="bid-room-manual-paste">
-                  <summary>Manual paste fallback</summary>
-                  <textarea id="rfx-lane-paste" rows="5" placeholder="origin,destination,equipment,trailer,operation,service,weekly_volume,target_rate,currency&#10;Apodaca, NL,Dallas, TX,Truck Trailer,Flatbed,D2D Export,One Way,10,2900,USD"></textarea>
-                </details>
+                <section class="bid-room-manual-lanes" aria-labelledby="manual-lanes-title">
+                  <div class="bid-room-manual-lanes-header">
+                    <div>
+                      <p class="eyebrow">Quick manual entry</p>
+                      <h4 id="manual-lanes-title">Add a few lanes without a template</h4>
+                    </div>
+                    <div class="action-row">
+                      <button id="add-manual-rfx-lane" class="secondary small-button" type="button">Add lane</button>
+                      <button id="clear-manual-rfx-lanes" class="secondary small-button" type="button">Clear manual rows</button>
+                    </div>
+                  </div>
+                  <div class="table-wrap bid-room-manual-lanes-wrap">
+                    <table class="bid-room-manual-lanes-table">
+                      <thead>
+                        <tr>
+                          <th>Origin</th>
+                          <th>Destination</th>
+                          <th>Equipment</th>
+                          <th>Trailer</th>
+                          <th>Operation</th>
+                          <th>Service</th>
+                          <th>Weekly</th>
+                          <th>Target</th>
+                          <th>Currency</th>
+                          <th></th>
+                        </tr>
+                      </thead>
+                      <tbody id="rfx-manual-lanes-body"></tbody>
+                    </table>
+                  </div>
+                  <div class="action-row">
+                    <button id="import-manual-rfx-lanes-button" type="button" disabled>Import manual lanes</button>
+                    <span id="rfx-manual-lane-status" class="status-message" role="status"></span>
+                  </div>
+                </section>
               </section>
               <div class="rfx-lane-toolbar bid-room-table-toolbar">
                 <div class="rfx-lane-filters" aria-label="Lane filters">

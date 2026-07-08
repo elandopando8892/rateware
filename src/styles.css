@@ -16285,11 +16285,25 @@ textarea:focus,
   padding: 10px;
 }
 
+.bid-room-book-entry-header,
+.bid-room-manual-lanes-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.bid-room-book-entry-header h3,
+.bid-room-manual-lanes-header h4 {
+  margin: 0;
+}
+
 .bid-room-template-upload {
   display: grid;
-  grid-template-columns: auto minmax(280px, 1fr);
+  grid-template-columns: minmax(280px, 1fr);
   gap: 10px;
   align-items: end;
+  margin-top: 8px;
 }
 
 .bid-room-template-upload label {
@@ -16331,22 +16345,42 @@ textarea:focus,
   text-align: left;
 }
 
-.bid-room-manual-paste {
+.bid-room-manual-lanes {
   border-top: 1px solid var(--line);
-  margin-top: 8px;
-  padding-top: 8px;
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 10px;
 }
 
-.bid-room-manual-paste summary {
-  color: #52616d;
-  cursor: pointer;
-  font-size: 0.72rem;
-  font-weight: 900;
+.bid-room-manual-lanes-wrap {
+  max-height: 240px;
+  overflow: auto;
 }
 
-.bid-room-manual-paste textarea {
-  margin-top: 8px;
+.bid-room-manual-lanes-table {
   width: 100%;
+  min-width: 980px;
+  border-collapse: collapse;
+  font-size: 0.72rem;
+}
+
+.bid-room-manual-lanes-table th,
+.bid-room-manual-lanes-table td {
+  border-bottom: 1px solid #e2e8ee;
+  padding: 4px;
+  text-align: left;
+}
+
+.bid-room-manual-lanes-table input,
+.bid-room-manual-lanes-table select {
+  width: 100%;
+  min-height: 26px;
+  border: 1px solid #cbd6df;
+  border-radius: 5px;
+  background: #ffffff;
+  padding: 3px 6px;
+  font-size: 0.72rem;
 }
 
 .bid-room-carrier-grid {
