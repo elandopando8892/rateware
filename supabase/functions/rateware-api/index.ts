@@ -7296,6 +7296,14 @@ function bidRoomThreadTitle(threadType: string, event: Record<string, unknown>, 
   return `${eventRef} | Event group`;
 }
 
+function googleChatThreadTarget(thread: Record<string, unknown>, threadKey: string) {
+  const threadName = cleanText(thread.google_chat_thread_name);
+  return {
+    replyOption: threadName ? "REPLY_MESSAGE_OR_FAIL" : "REPLY_MESSAGE_FALLBACK_TO_NEW_THREAD",
+    thread: threadName ? { name: threadName } : { threadKey }
+  };
+}
+
 async function syncBidRoomMessageToGoogleChatApi(
   supabase: ReturnType<typeof createClient>,
   thread: Record<string, unknown>,
@@ -7322,7 +7330,9 @@ async function syncBidRoomMessageToGoogleChatApi(
   const text = `*${title}*\n${sender}: ${cleanText(message.body) || ""}`;
   try {
     const accessToken = await googleChatAccessToken(supabase, { owner_email: ownerEmail });
-    const response = await fetch(`https://chat.googleapis.com/v1/${spaceName}/messages?messageReplyOption=REPLY_MESSAGE_FALLBACK_TO_NEW_THREAD`, {
+    const target = googleChatThreadTarget(thread, threadKey);
+    const params = new URLSearchParams({ messageReplyOption: target.replyOption });
+    const response = await fetch(`https://chat.googleapis.com/v1/${spaceName}/messages?${params.toString()}`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${accessToken}`,
@@ -7330,7 +7340,7 @@ async function syncBidRoomMessageToGoogleChatApi(
       },
       body: JSON.stringify({
         text,
-        thread: { threadKey }
+        thread: target.thread
       })
     });
     const payload = await response.json().catch(() => ({}));
@@ -7342,7 +7352,7 @@ async function syncBidRoomMessageToGoogleChatApi(
     await supabase.from("bid_room_chat_threads").update({
       google_chat_space: spaceName,
       google_chat_thread_key: threadKey,
-      google_chat_thread_name: cleanText(payload?.thread?.name),
+      google_chat_thread_name: cleanText(payload?.thread?.name) || cleanText(thread.google_chat_thread_name),
       google_chat_sync_status: status,
       updated_at: new Date().toISOString()
     }).eq("id", thread.id);
@@ -7372,6 +7382,7 @@ async function syncBidRoomMessageToGoogleChat(
   const threadKey = cleanText(thread.google_chat_thread_key) || bidRoomGoogleThreadKey(thread.rfx_event_id, String(thread.thread_type || "event_group"), thread.rfx_lane_id, thread.vendor_id);
   const url = new URL(GOOGLE_CHAT_WEBHOOK_URL);
   url.searchParams.set("threadKey", threadKey);
+  url.searchParams.set("messageReplyOption", "REPLY_MESSAGE_FALLBACK_TO_NEW_THREAD");
   const sender = cleanText(message.sender_name || message.sender_email) || "Rateware";
   const title = cleanText(thread.title) || cleanText(event.rfx_id || event.name) || "Bid Room";
   const text = `*${title}*\n${sender}: ${cleanText(message.body) || ""}`;

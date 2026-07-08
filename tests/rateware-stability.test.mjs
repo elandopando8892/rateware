@@ -595,6 +595,10 @@ assert.match(apiSource, /list_google_chat_spaces/, "API should list Google Chat 
 assert.match(apiSource, /chat\.messages\.create/, "Google Chat OAuth should request message creation scope");
 assert.match(apiSource, /chat\.messages\.readonly/, "Google Chat OAuth should request message read scope for inbound sync");
 assert.match(apiSource, /syncBidRoomMessageToGoogleChatApi/, "Bid Room chat should prefer Google Chat API sync over webhook-only mirroring");
+assert.match(apiSource, /function googleChatThreadTarget/, "Google Chat sync should target the persisted Chat thread name before creating a new thread");
+assert.match(apiSource, /REPLY_MESSAGE_OR_FAIL/, "Google Chat sync should fail instead of creating stray messages when a real thread already exists");
+assert.match(apiSource, /url\.searchParams\.set\("messageReplyOption", "REPLY_MESSAGE_FALLBACK_TO_NEW_THREAD"\)/, "Google Chat webhook fallback should include explicit thread reply behavior");
+assert.match(rfxBidApiSource, /function googleChatThreadTarget/, "Carrier portal Google Chat sync should use the same thread targeting rules");
 assert.match(apiSource, /syncGoogleChatInboundMessagesForThreads/, "Internal Bid Room chat should import Google Chat replies back into Rateware");
 assert.match(rfxBidApiSource, /syncGoogleChatInboundMessagesForThreads/, "Carrier Bid Room portal should import Google Chat replies before rendering chat");
 assert.match(googleChatInboundMigration, /google_chat_thread_name text/, "Bid Room chat should persist the real Google Chat thread name for inbound matching");
