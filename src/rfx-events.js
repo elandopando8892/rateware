@@ -4084,30 +4084,8 @@ function renderResponseBoard() {
 }
 
 function renderTouchpoints() {
-  if (!touchpointSummary || !touchpointList) return;
-  const eventRows = selectedEventId
-    ? contactHistoryRows.filter((row) => row.rfx_event_id === selectedEventId)
-    : [];
-  const sentOrReplied = eventRows.filter((row) => ["sent", "replied"].includes(row.status)).length;
-  touchpointSummary.textContent = eventRows.length
-    ? `${formatNumber(eventRows.length)} touchpoints | ${formatNumber(sentOrReplied)} sent/replied`
-    : "No campaign activity loaded.";
-  if (!selectedEventId) {
-    touchpointList.innerHTML = "<article>Select a bid event to track invitation activity.</article>";
-    return;
-  }
-  if (!eventRows.length) {
-    touchpointList.innerHTML = "<article>No Gmail or WhatsApp activity for this event yet.</article>";
-    return;
-  }
-  touchpointList.innerHTML = eventRows.slice(0, 8).map((row) => `
-    <article>
-      <span>${escapeHtml([row.channel, row.status, new Date(row.occurred_at || row.created_at).toLocaleString()].filter(Boolean).join(" | "))}</span>
-      <strong>${escapeHtml(row.vendors?.vendor_name || row.vendors?.domain || "Vendor")}</strong>
-      <small>${escapeHtml(row.outreach_campaigns?.name || row.rfx_events?.rfx_id || "")}</small>
-      <p>${escapeHtml(row.body_preview || row.subject || "")}</p>
-    </article>
-  `).join("");
+  // Invitation tracking was removed from Step 4. Draft Queue is the source of truth
+  // for searching, selecting, resending, archiving, and deleting outreach drafts.
 }
 
 function messageRecipient(message) {
@@ -4134,7 +4112,7 @@ function draftSearchText(message = {}) {
   const lane = message.rfx_lanes && typeof message.rfx_lanes === "object" ? message.rfx_lanes : {};
   const vendor = message.vendors && typeof message.vendors === "object" ? message.vendors : {};
   const event = message.rfx_events && typeof message.rfx_events === "object" ? message.rfx_events : {};
-  return [
+  return normalizeDraftSearch([
     vendor.vendor_name,
     vendor.legal_name,
     vendor.domain,
@@ -4161,11 +4139,16 @@ function draftSearchText(message = {}) {
     event.name,
     metadata.bid_link,
     metadata.profile_link
-  ].filter(Boolean).join(" ").toLowerCase();
+  ].filter(Boolean).join(" "));
 }
 
 function normalizeDraftSearch(value = "") {
-  return String(value || "").trim().replace(/\s+/g, " ").toLowerCase();
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLowerCase();
 }
 
 function filteredDraftRows(rows = draftRowsForEvent()) {
@@ -5760,10 +5743,15 @@ draftList?.addEventListener("change", (event) => {
   renderDraftQueue();
 });
 
-draftSearchInput?.addEventListener("input", () => {
+function applyDraftQueueSearch() {
+  if (!draftSearchInput) return;
   draftQueueSearch = draftSearchInput.value || "";
   renderDraftQueue();
-});
+}
+
+draftSearchInput?.addEventListener("input", applyDraftQueueSearch);
+draftSearchInput?.addEventListener("change", applyDraftQueueSearch);
+draftSearchInput?.addEventListener("search", applyDraftQueueSearch);
 
 draftClearSearchButton?.addEventListener("click", () => {
   draftQueueSearch = "";

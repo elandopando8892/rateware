@@ -375,8 +375,11 @@ assert.match(apiSource, /generated_from: "rfx_outreach"/, "RFx-created profile l
 assert.match(apiSource, /profile_link: context\.profile_link/, "RFx outreach messages should preserve the profile link in metadata");
 assert.match(rfxEventsSource, /Carrier profile link \{\{profile_link\}\}/, "RFx template editor should label the profile link token");
 assert.match(rfxEventsHtml, /id="rfx-draft-search"/, "Bid Room draft queue should expose a vendor/email search box");
+assert.doesNotMatch(rfxEventsHtml, /rfx-touchpoint-summary/, "Bid Room Step 4 should not duplicate drafts in an invitation tracking section");
 assert.match(rfxEventsSource, /function filteredDraftRows/, "Bid Room draft queue should filter rows before rendering");
 assert.match(rfxEventsSource, /draftSearchText\(message\)/, "Draft queue search should match against each message payload");
+assert.match(rfxEventsSource, /\.normalize\("NFD"\)/, "Draft queue search should be accent-insensitive");
+assert.match(rfxEventsSource, /addEventListener\("search", applyDraftQueueSearch\)/, "Draft queue search should react when the browser clears a search input");
 assert.match(rfxEventsSource, /selectableEmailDrafts\(rows\)\.forEach/, "Select sendable should add filtered drafts instead of replacing previous selections");
 assert.doesNotMatch(rfxEventsSource, /draftRowsForEvent\(\)\.slice\(0, 200\)/, "Draft queue selection should not be capped to the first 200 unfiltered rows");
 for (const source of [rfxInvitationTableSource, apiInvitationTableSource]) {
