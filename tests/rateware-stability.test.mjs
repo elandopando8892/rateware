@@ -681,8 +681,15 @@ assert.match(rfxBidApiSource, /function bidSupportAnswerFromContext/, "Bid Room 
 assert.match(rfxBidApiSource, /status: "support_ticket"/, "Bid Room support should escalate unknown questions as support tickets");
 assert.match(rfxBidSource, /id="bid-support-agent"/, "Private Bid Room should render a contextual support agent");
 assert.match(rfxBidSource, /function askBidSupport/, "Private Bid Room should call the support agent");
+assert.match(rfxBidSource, /rateware\.privateBidRoom\.sound"\) !== "off"/, "Private Bid Room should start with sound enabled unless the carrier turns it off");
+assert.match(rfxBidSource, /PRIVATE_BID_SOUND_DEFAULT_VERSION/, "Private Bid Room should reset old sound-off defaults");
+assert.match(rfxBidSource, /data-bid-support-focus/, "Private Bid Room should expose top-level support access");
+assert.match(rfxBidSource, /function armPrivateBidAudio/, "Private Bid Room should arm multimedia alerts on first interaction");
 assert.match(bidRoomBoardHtml, /id="public-board-support-form"/, "Public Bid Room board should render public support");
+assert.match(bidRoomBoardHtml, /id="public-board-support-jump"/, "Public Bid Room board should expose header support access");
 assert.match(bidRoomBoardSource, /function askPublicSupport/, "Public Bid Room board should call the support agent");
+assert.match(bidRoomBoardSource, /PUBLIC_BOARD_SOUND_DEFAULT_VERSION/, "Public Bid Room board should reset old sound-off defaults");
+assert.match(bidRoomBoardSource, /function armPublicBoardAudio/, "Public Bid Room board should arm multimedia alerts on first interaction");
 assert.match(apiSource, /const invitationIdChunks = invitationIds\.length \? chunkValues\(invitationIds, 100\) : \[\[\]\]/, "Outreach draft generation should read selected invitations in small id batches");
 assert.match(apiSource, /for \(const chunk of chunkValues\(rows, 100\)\)/, "Outreach draft generation should upsert draft messages in small batches");
 assert.match(apiSource, /return jsonResponse\(\{ generated: generatedMessages\.length, rows: \[\], skipped, campaign_id: campaign\.id \}\)/, "Outreach draft generation should avoid returning large HTML draft payloads");

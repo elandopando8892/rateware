@@ -13,6 +13,7 @@ const statusFilter = document.querySelector("#public-board-status-filter");
 const searchInput = document.querySelector("#public-board-search");
 const autoRefreshInput = document.querySelector("#public-board-auto-refresh");
 const viewButtons = [...document.querySelectorAll("[data-board-view]")];
+const supportJumpButton = document.querySelector("#public-board-support-jump");
 const findInvitesButton = document.querySelector("#public-board-find-invites");
 const detailDrawer = document.querySelector("#public-board-detail-drawer");
 const detailContent = document.querySelector("#public-board-detail-content");
@@ -25,6 +26,11 @@ const supportMessage = document.querySelector("#public-board-support-message");
 const supportEmail = document.querySelector("#public-board-support-email");
 
 const API_URL = `${SUPABASE_URL}/functions/v1/rfx-bid-api`;
+const PUBLIC_BOARD_SOUND_DEFAULT_VERSION = "2026-07-08-sound-on";
+if (localStorage.getItem("rateware.publicBidBoard.soundDefault") !== PUBLIC_BOARD_SOUND_DEFAULT_VERSION) {
+  localStorage.setItem("rateware.publicBidBoard.sound", "on");
+  localStorage.setItem("rateware.publicBidBoard.soundDefault", PUBLIC_BOARD_SOUND_DEFAULT_VERSION);
+}
 const ANNOUNCEMENTS = {
   en: {
     enabled: "Rateware bid room alerts enabled.",
@@ -375,6 +381,14 @@ function ensureAudioContext() {
   if (!AudioContextClass) return null;
   if (!state.audioContext) state.audioContext = new AudioContextClass();
   return state.audioContext;
+}
+
+async function armPublicBoardAudio() {
+  if (!state.soundEnabled) return;
+  const context = ensureAudioContext();
+  if (context?.state === "suspended") {
+    await context.resume().catch(() => {});
+  }
 }
 
 function playTone(type) {
@@ -799,6 +813,10 @@ languageSelect.addEventListener("change", () => {
 
 refreshButton.addEventListener("click", () => loadBoard());
 searchInput.addEventListener("input", renderBoard);
+supportJumpButton?.addEventListener("click", () => {
+  document.querySelector(".public-board-support-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  supportMessage?.focus({ preventScroll: true });
+});
 findInvitesButton?.addEventListener("click", () => openSoftLoginDrawer());
 fullscreenButton.addEventListener("click", () => {
   if (!document.fullscreenElement) document.documentElement.requestFullscreen?.();
@@ -935,10 +953,15 @@ supportReply?.addEventListener("click", async (event) => {
   await askPublicSupport({ createTicket: true });
 });
 document.addEventListener("keydown", (event) => {
+  armPublicBoardAudio();
   if (event.key !== "Escape") return;
   if (detailDrawer && !detailDrawer.hidden) closeDetailDrawer();
   if (softLoginDrawer && !softLoginDrawer.hidden) closeSoftLoginDrawer();
 });
+
+document.addEventListener("pointerdown", () => {
+  armPublicBoardAudio();
+}, { capture: true });
 
 setInterval(() => {
   if (autoRefreshInput.checked && document.visibilityState !== "hidden") loadBoard();

@@ -40,7 +40,7 @@ const PRIVATE_BID_ANNOUNCEMENTS = {
 };
 const privateAlertState = {
   language: localStorage.getItem("rateware.privateBidRoom.language") || "en",
-  soundEnabled: false,
+  soundEnabled: localStorage.getItem("rateware.privateBidRoom.sound") !== "off",
   audioContext: null,
   alerts: [],
   loaded: false,
@@ -48,6 +48,12 @@ const privateAlertState = {
   previousSnapshot: null,
   previousChatSnapshot: null
 };
+const PRIVATE_BID_SOUND_DEFAULT_VERSION = "2026-07-08-sound-on";
+if (localStorage.getItem("rateware.privateBidRoom.soundDefault") !== PRIVATE_BID_SOUND_DEFAULT_VERSION) {
+  localStorage.setItem("rateware.privateBidRoom.sound", "on");
+  localStorage.setItem("rateware.privateBidRoom.soundDefault", PRIVATE_BID_SOUND_DEFAULT_VERSION);
+  privateAlertState.soundEnabled = true;
+}
 let excelJsModule = null;
 const BID_PORTAL_COPY = {
   en: {
@@ -518,13 +524,17 @@ function renderPrivateBidAlerts() {
   const button = card.querySelector("#private-bid-sound");
   const language = card.querySelector("#private-bid-language");
   if (button) {
-    button.textContent = privateAlertState.soundEnabled ? "Sound enabled" : "Enable sound";
-    button.disabled = privateAlertState.soundEnabled;
+    button.textContent = privateAlertState.soundEnabled ? "Sound on" : "Sound off";
+    button.setAttribute("aria-pressed", privateAlertState.soundEnabled ? "true" : "false");
+    button.classList.toggle("is-muted", !privateAlertState.soundEnabled);
+    button.disabled = false;
   }
   if (language) language.value = privateAlertState.language;
   if (!panel) return;
   if (!privateAlertState.alerts.length) {
-    panel.innerHTML = "<p>No movement yet. Enable sound to hear ranking, quote, chat, and deadline alerts.</p>";
+    panel.innerHTML = privateAlertState.soundEnabled
+      ? "<p>No movement yet. Sound is on for ranking, quote, chat, and deadline alerts.</p>"
+      : "<p>No movement yet. Sound is off. Turn it on to hear ranking, quote, chat, and deadline alerts.</p>";
     return;
   }
   panel.innerHTML = privateAlertState.alerts.map((alert) => `
@@ -541,6 +551,14 @@ function ensurePrivateAudioContext() {
   if (!AudioContextClass) return null;
   if (!privateAlertState.audioContext) privateAlertState.audioContext = new AudioContextClass();
   return privateAlertState.audioContext;
+}
+
+async function armPrivateBidAudio() {
+  if (!privateAlertState.soundEnabled) return;
+  const context = ensurePrivateAudioContext();
+  if (context?.state === "suspended") {
+    await context.resume().catch(() => {});
+  }
 }
 
 function playPrivateBidTone(type) {
@@ -596,9 +614,16 @@ function queuePrivateBidAlert(type, message = "") {
 
 async function enablePrivateBidAlerts() {
   privateAlertState.soundEnabled = true;
+  localStorage.setItem("rateware.privateBidRoom.sound", "on");
   const context = ensurePrivateAudioContext();
   if (context?.state === "suspended") await context.resume();
   queuePrivateBidAlert("enabled", "Multimedia alerts are active for this private bid room.");
+}
+
+function disablePrivateBidAlerts() {
+  privateAlertState.soundEnabled = false;
+  localStorage.setItem("rateware.privateBidRoom.sound", "off");
+  renderPrivateBidAlerts();
 }
 
 function numberOrNull(value) {
@@ -2492,6 +2517,9 @@ function renderInvitation(invitation, liveBoard = {}, carrierBook = {}) {
           lane_count: multiLaneRows.length > 1 ? t("invitedLanes", { count: multiLaneRows.length }) : t("selectedLane")
         }))}</p>
         <div class="bid-room-hero-actions">
+          <button type="button" class="secondary small-button" data-bid-support-focus>
+            ${escapeHtml(dualText("Ask support", "Soporte"))}
+          </button>
           <a class="secondary small-button" href="${escapeAttribute(eventMarketplaceUrl(event))}" target="_blank" rel="noreferrer" title="${escapeAttribute(t("publicLiveBoardHelp"))}">
             ${escapeHtml(t("publicLiveBoard"))}
           </a>
@@ -2526,6 +2554,10 @@ function renderInvitation(invitation, liveBoard = {}, carrierBook = {}) {
       <div id="private-bid-alerts" class="private-bid-alerts">
         <p>${escapeHtml(t("noMovement"))}</p>
       </div>
+    </section>
+
+    <section id="bid-support-agent" class="bid-support-agent is-prominent">
+      <p class="status-message">${escapeHtml(dualText("Loading contextual support...", "Cargando soporte contextual..."))}</p>
     </section>
 
     <section id="carrier-award-outcome" class="carrier-award-outcome" hidden></section>
@@ -2572,10 +2604,6 @@ function renderInvitation(invitation, liveBoard = {}, carrierBook = {}) {
 
     <section id="carrier-bid-chat" class="carrier-bid-chat">
       <p class="status-message">${escapeHtml(t("loadingChat"))}</p>
-    </section>
-
-    <section id="bid-support-agent" class="bid-support-agent">
-      <p class="status-message">${escapeHtml(dualText("Loading contextual support...", "Cargando soporte contextual..."))}</p>
     </section>
 
     <section class="bid-offer-launcher">
@@ -2835,14 +2863,17 @@ card.addEventListener("click", async (event) => {
   const soundButton = event.target.closest("#private-bid-sound");
   if (soundButton) {
     soundButton.disabled = true;
-    soundButton.textContent = "Enabling...";
+    soundButton.textContent = privateAlertState.soundEnabled ? "Turning off..." : "Turning on...";
     try {
-      await enablePrivateBidAlerts();
+      if (privateAlertState.soundEnabled) disablePrivateBidAlerts();
+      else await enablePrivateBidAlerts();
     } catch (_error) {
       privateAlertState.soundEnabled = false;
+      localStorage.setItem("rateware.privateBidRoom.sound", "off");
       soundButton.disabled = false;
-      soundButton.textContent = "Enable sound";
+      soundButton.textContent = "Sound off";
     }
+    renderPrivateBidAlerts();
     return;
   }
 
@@ -2909,6 +2940,13 @@ card.addEventListener("click", async (event) => {
   if (chatFocusButton) {
     card.querySelector("#carrier-bid-chat")?.scrollIntoView({ behavior: "smooth", block: "start" });
     card.querySelector("#carrier-chat-message")?.focus({ preventScroll: true });
+    return;
+  }
+
+  const supportFocusButton = event.target.closest("[data-bid-support-focus]");
+  if (supportFocusButton) {
+    card.querySelector("#bid-support-agent")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    card.querySelector("#bid-support-message")?.focus({ preventScroll: true });
     return;
   }
 
@@ -3100,7 +3138,12 @@ document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && !card.querySelector("#bid-editor-modal")?.hidden) {
     closeBidEditor();
   }
+  armPrivateBidAudio();
 });
+
+document.addEventListener("pointerdown", () => {
+  armPrivateBidAudio();
+}, { capture: true });
 
 loadInvitation().then(() => {
   if (boardRefreshTimer) window.clearInterval(boardRefreshTimer);

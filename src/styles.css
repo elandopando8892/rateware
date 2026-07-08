@@ -17447,6 +17447,12 @@ textarea:focus,
   line-height: 1.45;
 }
 
+.bid-support-agent.is-prominent {
+  border-color: #b6c7ff;
+  background: linear-gradient(180deg, #ffffff 0%, #f6f8ff 100%);
+  box-shadow: 0 1px 4px rgba(53, 83, 216, 0.08);
+}
+
 .bid-room-chat-controls {
   display: grid;
   grid-template-columns: minmax(140px, 0.8fr) minmax(180px, 1fr) minmax(180px, 1fr) auto auto;
@@ -18719,6 +18725,8 @@ textarea:focus,
   grid-template-columns: minmax(220px, 0.7fr) minmax(360px, 1.25fr) minmax(260px, 1fr);
   gap: 10px;
   align-items: start;
+  border-color: #b6c7ff;
+  background: linear-gradient(180deg, #ffffff 0%, #f6f8ff 100%);
   padding: 11px;
 }
 
