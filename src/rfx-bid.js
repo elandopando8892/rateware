@@ -1,3 +1,4 @@
+import * as XLSX from "https://esm.sh/xlsx@0.18.5";
 import { SUPABASE_URL } from "./config.js";
 
 const title = document.querySelector("#bid-event-title");
@@ -7,6 +8,8 @@ let boardRefreshTimer = null;
 let bookSearchTimer = null;
 let lastCarrierBook = null;
 let lastCarrierChat = { rows: [], google_chat_configured: false };
+let lastInvitation = null;
+let pendingBidTemplateRows = [];
 const bookFilters = {
   view: "all",
   query: ""
@@ -103,6 +106,7 @@ function sanitizeRichTextNode(node) {
       ? `<a href="${escapeAttribute(safeHref)}" target="_blank" rel="noreferrer">${children || escapeHtml(safeHref)}</a>`
       : children;
   }
+  if ((tag === "li" || tag === "p") && !children.trim()) return "";
   if (["p", "ul", "ol", "li", "strong", "b", "em", "i", "u", "table", "thead", "tbody", "tr", "th", "td"].includes(tag)) {
     return `<${tag}>${children}</${tag}>`;
   }
@@ -615,6 +619,345 @@ function validateBidDraft(draft) {
     warnings.push("Declaring available equipment and ETAs improves award scoring.");
   }
   return { errors, warnings };
+}
+
+const BID_TEMPLATE_COLUMNS = [
+  { key: "rfx_id", label: "RFx", width: 16, readonly: true },
+  { key: "event_name", label: "Event", width: 28, readonly: true },
+  { key: "lane_number", label: "Lane #", width: 10, readonly: true },
+  { key: "origin", label: "Origin", width: 22, readonly: true },
+  { key: "destination", label: "Destination", width: 22, readonly: true },
+  { key: "equipment", label: "Equipment", width: 18, readonly: true },
+  { key: "trailer", label: "Trailer", width: 16, readonly: true },
+  { key: "config", label: "Config", width: 14, readonly: true },
+  { key: "operation", label: "Operation", width: 16, readonly: true },
+  { key: "service", label: "Service", width: 14, readonly: true },
+  { key: "weekly_volume", label: "Weekly volume", width: 14, readonly: true },
+  { key: "target_rate", label: "Target rate", width: 14, readonly: true },
+  { key: "target_currency", label: "Target currency", width: 14, readonly: true },
+  { key: "invitation_token", label: "Invitation token", width: 28, readonly: true, hidden: true },
+  { key: "submit_this_lane", label: "Submit this lane", width: 16 },
+  { key: "all_in_rate", label: "All-in rate", width: 14 },
+  { key: "currency", label: "Currency", width: 12 },
+  { key: "weekly_capacity", label: "Weekly capacity", width: 16 },
+  { key: "transit_days", label: "Transit days", width: 14 },
+  { key: "commercial_model", label: "Commercial model", width: 22 },
+  { key: "suggested_margin_pct", label: "Suggested margin %", width: 18 },
+  { key: "carrier_invoice_share_pct", label: "Carrier invoice share %", width: 22 },
+  { key: "best_alternative", label: "Best alternative", width: 16 },
+  { key: "alternative_equipment", label: "Alternative equipment", width: 24 },
+  { key: "alternative_units", label: "Alternative units", width: 16 },
+  { key: "alternative_notes", label: "Alternative notes", width: 36 },
+  { key: "equipment_available", label: "Equipment available", width: 18 },
+  { key: "eta_pickup", label: "Pickup ETA", width: 20 },
+  { key: "eta_delivery", label: "Delivery ETA", width: 20 },
+  { key: "unit_details", label: "Unit details", width: 34 },
+  { key: "notes", label: "Notes", width: 36 }
+];
+
+function bidTemplateColumn(key) {
+  return BID_TEMPLATE_COLUMNS.find((column) => column.key === key) || { key, label: key };
+}
+
+function bidTemplateValue(row, key) {
+  const column = bidTemplateColumn(key);
+  return row[column.label] ?? row[column.key] ?? "";
+}
+
+function textValue(value) {
+  return String(value ?? "").trim();
+}
+
+function normalizeTemplateBoolean(value, defaultValue = false) {
+  const text = textValue(value).toLowerCase();
+  if (!text) return defaultValue;
+  if (["true", "yes", "y", "si", "x", "1", "include", "submit", "available"].includes(text)) return true;
+  if (["false", "no", "n", "0", "exclude", "skip", "not available"].includes(text)) return false;
+  return defaultValue;
+}
+
+function normalizeTemplateCommercialModel(value) {
+  const text = textValue(value).toLowerCase();
+  if (!text) return "direct_cost_plus";
+  if (text.includes("carrier") || text.includes("invoice") || text.includes("share")) return "carrier_share";
+  if (text.includes("xbf") || text.includes("buy") || text.includes("sell")) return "xbf_buy_sell";
+  return "direct_cost_plus";
+}
+
+function normalizeTemplateAvailability(value) {
+  const text = textValue(value).toLowerCase();
+  if (!text) return "";
+  if (["true", "yes", "y", "si", "1", "available", "disponible"].includes(text)) return "true";
+  if (["false", "no", "n", "0", "not available", "no disponible"].includes(text)) return "false";
+  return "";
+}
+
+function normalizeTemplateDateTime(value) {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) return dateTimeLocalValue(value.toISOString());
+  return textValue(value);
+}
+
+function normalizeTemplateCurrency(value, fallback = "USD") {
+  const currency = textValue(value || fallback).toUpperCase();
+  return /^[A-Z]{3}$/.test(currency) ? currency : currency || fallback;
+}
+
+function bidTemplateRows(carrierBook = {}, invitation = {}) {
+  const event = invitation.rfx_events || {};
+  return currentEventBookRows(carrierBook, event)
+    .filter((row) => row.is_invited && row.invitation_token)
+    .map((row, index) => {
+      const lane = row.lane || {};
+      const rowEvent = row.event || event;
+      return {
+        rfx_id: rowEvent.rfx_id || event.rfx_id || "",
+        event_name: rowEvent.name || event.name || "",
+        lane_number: lane.lane_number || index + 1,
+        origin: lane.origin || "",
+        destination: lane.destination || "",
+        equipment: lane.equipment || "",
+        trailer: lane.trailer || "",
+        config: lane.config || "",
+        operation: lane.operation || "",
+        service: lane.service || "",
+        weekly_volume: lane.weekly_volume ?? "",
+        target_rate: lane.target_rate ?? lane.target_buy_rate ?? lane.benchmark_rate ?? "",
+        target_currency: lane.currency || row.currency || "USD",
+        invitation_token: row.invitation_token || "",
+        submit_this_lane: "TRUE",
+        all_in_rate: row.bid_rate ?? "",
+        currency: row.currency || lane.currency || "USD",
+        weekly_capacity: row.weekly_capacity ?? "",
+        transit_days: row.transit_days ?? "",
+        commercial_model: commercialModelLabel(row.commercial_model || "direct_cost_plus"),
+        suggested_margin_pct: row.marksman_margin_pct ?? "",
+        carrier_invoice_share_pct: row.carrier_share_pct ?? "",
+        best_alternative: row.best_alternative_offered ? "TRUE" : "",
+        alternative_equipment: row.alternative_equipment || "",
+        alternative_units: row.alternative_units ?? "",
+        alternative_notes: row.alternative_notes || "",
+        equipment_available: row.equipment_available === true ? "Available" : row.equipment_available === false ? "Not available" : "",
+        eta_pickup: dateTimeLocalValue(row.eta_pickup),
+        eta_delivery: dateTimeLocalValue(row.eta_delivery),
+        unit_details: row.unit_details || "",
+        notes: row.notes || ""
+      };
+    });
+}
+
+function safeSheetName(value, fallback = "Bid Template") {
+  const name = textValue(value || fallback).replace(/[\\/?*[\]:]/g, " ").slice(0, 31).trim();
+  return name || fallback;
+}
+
+function downloadBidTemplate(carrierBook = {}, invitation = {}) {
+  const rows = bidTemplateRows(carrierBook, invitation);
+  if (!rows.length) {
+    window.alert("No invited lanes are available for this bid template.");
+    return;
+  }
+  const workbook = XLSX.utils.book_new();
+  const headers = BID_TEMPLATE_COLUMNS.map((column) => column.label);
+  const body = rows.map((row) => BID_TEMPLATE_COLUMNS.map((column) => row[column.key] ?? ""));
+  const worksheet = XLSX.utils.aoa_to_sheet([headers, ...body]);
+  worksheet["!cols"] = BID_TEMPLATE_COLUMNS.map((column) => ({
+    wch: column.width || 16,
+    hidden: Boolean(column.hidden)
+  }));
+  worksheet["!autofilter"] = {
+    ref: XLSX.utils.encode_range({
+      s: { c: 0, r: 0 },
+      e: { c: BID_TEMPLATE_COLUMNS.length - 1, r: rows.length }
+    })
+  };
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Bid Template");
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+    ["How to use"],
+    ["1. Keep the readonly columns unchanged. The hidden invitation token links each row to the correct bid lane."],
+    ["2. Edit only Submit this lane, All-in rate, Currency, Weekly capacity, Transit days, commercial model, availability, ETA and notes."],
+    ["3. Submit this lane accepts TRUE/FALSE, YES/NO, X/blank."],
+    ["4. Commercial model accepts Direct / cost-plus, Carrier invoice share, or XBF buy-sell."],
+    ["5. Upload the completed workbook back into Rateware. The portal validates each row before sending."],
+    ["6. Nothing is submitted until you click Confirm and submit XLSX bids."]
+  ]), "Instructions");
+  const event = invitation.rfx_events || {};
+  const filename = safeSheetName(`${event.rfx_id || "rfx"} bid template`, "bid-template");
+  XLSX.writeFile(workbook, `${filename}.xlsx`);
+}
+
+function draftFromBidTemplateRow(row) {
+  const commercialModel = normalizeTemplateCommercialModel(row.commercial_model);
+  return {
+    bid_rate: textValue(row.all_in_rate),
+    currency: normalizeTemplateCurrency(row.currency, row.target_currency || "USD"),
+    weekly_capacity: textValue(row.weekly_capacity),
+    transit_days: textValue(row.transit_days),
+    commercial_model: commercialModel,
+    marksman_margin_pct: commercialModel === "direct_cost_plus" ? textValue(row.suggested_margin_pct) : "",
+    carrier_share_pct: commercialModel === "carrier_share" ? textValue(row.carrier_invoice_share_pct) : "",
+    best_alternative_offered: normalizeTemplateBoolean(row.best_alternative),
+    alternative_equipment: textValue(row.alternative_equipment),
+    alternative_units: textValue(row.alternative_units),
+    alternative_notes: textValue(row.alternative_notes),
+    equipment_available: normalizeTemplateAvailability(row.equipment_available),
+    unit_details: textValue(row.unit_details),
+    eta_pickup: normalizeTemplateDateTime(row.eta_pickup),
+    eta_delivery: normalizeTemplateDateTime(row.eta_delivery),
+    mirror_account_enabled: false,
+    best_final: false,
+    notes: textValue(row.notes)
+  };
+}
+
+function normalizeBidTemplateRow(rawRow = {}, index = 0) {
+  const row = Object.fromEntries(BID_TEMPLATE_COLUMNS.map((column) => [column.key, bidTemplateValue(rawRow, column.key)]));
+  row.row_number = index + 2;
+  row.submit_this_lane = normalizeTemplateBoolean(row.submit_this_lane);
+  row.invitation_token = textValue(row.invitation_token);
+  row.draft = draftFromBidTemplateRow(row);
+  row.validation = validateBidTemplateRow(row);
+  return row;
+}
+
+function validateBidTemplateRow(row) {
+  if (!row.submit_this_lane) return { errors: [], warnings: [] };
+  const validation = validateBidDraft(row.draft);
+  const errors = [...validation.errors];
+  if (!row.invitation_token) errors.unshift(validationIssue("invitation-token", `Row ${row.row_number}: missing invitation token. Download a fresh template.`));
+  return { errors, warnings: validation.warnings };
+}
+
+async function parseBidTemplateFile(file) {
+  const buffer = await file.arrayBuffer();
+  const workbook = XLSX.read(buffer, { type: "array", cellDates: true });
+  const worksheet = workbook.Sheets["Bid Template"] || workbook.Sheets[workbook.SheetNames[0]];
+  if (!worksheet) throw new Error("Workbook does not contain a bid template sheet.");
+  const rows = XLSX.utils.sheet_to_json(worksheet, { defval: "", raw: false });
+  return rows
+    .map(normalizeBidTemplateRow)
+    .filter((row) => row.invitation_token || row.submit_this_lane || row.all_in_rate || row.weekly_capacity);
+}
+
+function renderBidTemplatePreview(rows = pendingBidTemplateRows) {
+  const preview = card.querySelector("#carrier-bid-template-preview");
+  const submitButton = card.querySelector("[data-submit-bid-template]");
+  const status = card.querySelector("#carrier-bid-template-status");
+  if (!preview || !submitButton) return;
+  const selectedRows = rows.filter((row) => row.submit_this_lane);
+  const invalidRows = selectedRows.filter((row) => row.validation.errors.length);
+  submitButton.disabled = !selectedRows.length || invalidRows.length > 0;
+  if (!rows.length) {
+    preview.innerHTML = "";
+    if (status) {
+      status.textContent = "Upload the completed XLSX to validate it before submitting.";
+      status.dataset.tone = "neutral";
+    }
+    return;
+  }
+  if (status) {
+    status.textContent = invalidRows.length
+      ? `${invalidRows.length} row(s) need correction before submit.`
+      : `${selectedRows.length} row(s) ready. Review the preview, then confirm submission.`;
+    status.dataset.tone = invalidRows.length ? "error" : "success";
+  }
+  preview.innerHTML = `
+    <div class="bid-template-preview-summary">
+      <span>${escapeHtml(selectedRows.length)} selected</span>
+      <span>${escapeHtml(invalidRows.length)} with errors</span>
+      <span>${escapeHtml(rows.length - selectedRows.length)} skipped</span>
+    </div>
+    <div class="table-wrap">
+      <table class="bid-template-preview-table">
+        <thead><tr><th>Row</th><th>Lane</th><th>Rate</th><th>Capacity</th><th>Status</th></tr></thead>
+        <tbody>
+          ${rows.slice(0, 12).map((row) => {
+            const errors = row.validation.errors.map((issue) => issue.message);
+            const lane = [row.origin, row.destination].filter(Boolean).join(" -> ") || row.lane_number || "-";
+            const statusHtml = !row.submit_this_lane
+              ? '<span class="status-pill muted">Skipped</span>'
+              : errors.length
+                ? `<span class="status-pill danger">Fix required</span><small>${escapeHtml(errors.join(" | "))}</small>`
+                : '<span class="status-pill success">Ready</span>';
+            return `
+              <tr>
+                <td>${escapeHtml(row.row_number)}</td>
+                <td>${escapeHtml(lane)}</td>
+                <td>${escapeHtml(row.draft.bid_rate || "-")} ${escapeHtml(row.draft.currency || "")}</td>
+                <td>${escapeHtml(row.draft.weekly_capacity || "-")} / wk</td>
+                <td>${statusHtml}</td>
+              </tr>
+            `;
+          }).join("")}
+        </tbody>
+      </table>
+    </div>
+    ${rows.length > 12 ? `<p class="bid-board-note">Previewing first 12 of ${escapeHtml(rows.length)} rows.</p>` : ""}
+  `;
+}
+
+async function submitBidTemplateRows() {
+  const status = card.querySelector("#carrier-bid-template-status");
+  const button = card.querySelector("[data-submit-bid-template]");
+  const rows = pendingBidTemplateRows.filter((row) => row.submit_this_lane);
+  const invalidRows = rows.filter((row) => row.validation.errors.length);
+  if (!rows.length) {
+    if (status) {
+      status.textContent = "No XLSX rows selected for submit.";
+      status.dataset.tone = "error";
+    }
+    return;
+  }
+  if (invalidRows.length) {
+    renderBidTemplatePreview();
+    return;
+  }
+  if (button) button.disabled = true;
+  if (status) {
+    status.textContent = `Submitting ${rows.length} XLSX bid row(s)...`;
+    status.dataset.tone = "neutral";
+  }
+  try {
+    for (const row of rows) {
+      await callBidApi("submit_bid", { token: row.invitation_token, ...row.draft });
+    }
+    pendingBidTemplateRows = [];
+    if (status) {
+      status.textContent = `${rows.length} bid row(s) submitted. The private book will refresh now.`;
+      status.dataset.tone = "success";
+    }
+    queuePrivateBidAlert("bidSubmitted", `${rows.length} bid row(s) submitted from XLSX.`);
+    await loadInvitation();
+  } catch (error) {
+    if (status) {
+      status.textContent = error.message;
+      status.dataset.tone = "error";
+    }
+    if (button) button.disabled = false;
+  }
+}
+
+function renderBidTemplateTools(carrierBook = {}, invitation = {}) {
+  const rows = bidTemplateRows(carrierBook, invitation);
+  if (rows.length <= 1) return "";
+  return `
+    <section class="carrier-bid-template-tools">
+      <div>
+        <p class="eyebrow">XLSX bid template</p>
+        <h3>Quote multiple invited lanes in Excel</h3>
+        <p>Download the prefilled bid workbook, edit only the offer columns, upload it here, then confirm after validation.</p>
+      </div>
+      <div class="carrier-bid-template-actions">
+        <button type="button" data-download-bid-template>Download XLSX template</button>
+        <label class="carrier-bid-template-upload">
+          <span>Upload completed XLSX</span>
+          <input id="carrier-bid-template-file" type="file" accept=".xlsx,.xls,.csv" />
+        </label>
+        <button type="button" data-submit-bid-template disabled>Confirm and submit XLSX bids</button>
+      </div>
+      <p id="carrier-bid-template-status" class="status-message" role="status">Upload the completed XLSX to validate it before submitting.</p>
+      <div id="carrier-bid-template-preview" class="carrier-bid-template-preview"></div>
+    </section>
+  `;
 }
 
 function bidDraftWarnings(draft) {
@@ -1292,6 +1635,8 @@ function renderAwardOutcome(invitation = {}, carrierBook = {}, liveBoard = {}) {
 }
 
 function renderInvitation(invitation, liveBoard = {}, carrierBook = {}) {
+  lastInvitation = invitation;
+  pendingBidTemplateRows = [];
   const event = invitation.rfx_events || {};
   const lane = invitation.rfx_lanes || {};
   const vendor = invitation.vendors || {};
@@ -1340,6 +1685,8 @@ function renderInvitation(invitation, liveBoard = {}, carrierBook = {}) {
     <section id="carrier-award-outcome" class="carrier-award-outcome" hidden></section>
 
     ${renderCarrierLaneSwitcher(carrierBook, invitation)}
+
+    ${renderBidTemplateTools(carrierBook, invitation)}
 
     <section class="bid-lane-summary">
       <div class="bid-room-section-heading">
@@ -1581,6 +1928,7 @@ async function loadInvitation(options = {}) {
   }
   try {
     const data = await callBidApi("get_invitation");
+    lastInvitation = data.invitation;
     if (options.refreshOnly && card.querySelector("#bid-form")) {
       renderLiveBoard(data.live_board);
       renderAwardOutcome(data.invitation, data.carrier_book, data.live_board);
@@ -1656,6 +2004,18 @@ card.addEventListener("click", async (event) => {
     return;
   }
 
+  const downloadTemplateButton = event.target.closest("[data-download-bid-template]");
+  if (downloadTemplateButton) {
+    downloadBidTemplate(lastCarrierBook || {}, lastInvitation || {});
+    return;
+  }
+
+  const submitTemplateButton = event.target.closest("[data-submit-bid-template]");
+  if (submitTemplateButton) {
+    await submitBidTemplateRows();
+    return;
+  }
+
   const button = event.target.closest("[data-request-lane]");
   if (!button) return;
   button.disabled = true;
@@ -1727,12 +2087,35 @@ card.addEventListener("input", (event) => {
   }, 180);
 });
 
-card.addEventListener("change", (event) => {
+card.addEventListener("change", async (event) => {
   const privateLanguage = event.target.closest("#private-bid-language");
   if (privateLanguage) {
     privateAlertState.language = privateLanguage.value || "en";
     localStorage.setItem("rateware.privateBidRoom.language", privateAlertState.language);
     renderPrivateBidAlerts();
+    return;
+  }
+
+  const templateFileInput = event.target.closest("#carrier-bid-template-file");
+  if (templateFileInput) {
+    const status = card.querySelector("#carrier-bid-template-status");
+    const file = templateFileInput.files?.[0];
+    if (!file) return;
+    if (status) {
+      status.textContent = "Reading XLSX bid template...";
+      status.dataset.tone = "neutral";
+    }
+    try {
+      pendingBidTemplateRows = await parseBidTemplateFile(file);
+      renderBidTemplatePreview();
+    } catch (error) {
+      pendingBidTemplateRows = [];
+      renderBidTemplatePreview();
+      if (status) {
+        status.textContent = error.message;
+        status.dataset.tone = "error";
+      }
+    }
     return;
   }
 

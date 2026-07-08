@@ -417,6 +417,16 @@ assert.match(rfxBidSource, /function renderLaneDetailValue/, "Carrier portal sho
 assert.match(rfxBidSource, /sanitizeRichTextNode/, "Carrier portal should sanitize lane detail HTML before inserting it");
 assert.doesNotMatch(rfxBidSource, /<p>\$\{escapeHtml\(value\)\}<\/p>/, "Carrier portal should not show pasted lane detail HTML as escaped source");
 assert.match(rfxBidSource, /function renderCarrierLaneSwitcher/, "Carrier portal should expose all invited event lanes before the selected lane bid form");
+assert.match(rfxBidSource, /import \* as XLSX from "https:\/\/esm\.sh\/xlsx@0\.18\.5"/, "Carrier portal should load XLSX support for bid templates");
+assert.match(rfxBidSource, /const BID_TEMPLATE_COLUMNS = \[/, "Carrier portal should define a prefilled XLSX bid template schema");
+assert.match(rfxBidSource, /function downloadBidTemplate/, "Carrier portal should download a prefilled XLSX bid template");
+assert.match(rfxBidSource, /function parseBidTemplateFile/, "Carrier portal should parse uploaded bid templates");
+assert.match(rfxBidSource, /function validateBidTemplateRow/, "Carrier portal should validate uploaded XLSX bid rows before submit");
+assert.match(rfxBidSource, /data-download-bid-template/, "Carrier portal should render a bid template download action");
+assert.match(rfxBidSource, /data-submit-bid-template/, "Carrier portal should require confirmation before submitting XLSX bids");
+assert.match(rfxBidSource, /callBidApi\("submit_bid", \{ token: row\.invitation_token, \.\.\.row\.draft \}\)/, "Carrier portal should submit each XLSX row through the normal tokenized bid API");
+assert.match(stylesSource, /\.carrier-bid-template-tools/, "Carrier portal should style the XLSX bid template workflow");
+assert.match(stylesSource, /\.bid-lane-detail-sections[\s\S]*grid-template-columns: minmax\(280px/, "Carrier portal lane detail sections should use a wider readable layout");
 assert.match(apiSource, /invitationGroup\.length > 1 \? "&view=book" : ""/, "RFx outreach links with multiple lanes should open the carrier business book view");
 assert.match(rfxEventsSource, /portalUrl\(invitation\.invitation_token, targetRows\.length\)/, "Bid Room preview should show the same multi-lane business book link behavior");
 assert.match(rfxBidApiSource, /logistics_model,operation_criteria,business_rules,service_specifications,other_notes,notes/, "Carrier public board should select RFx lane detail sections");
