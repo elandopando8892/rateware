@@ -799,8 +799,8 @@ function collectBidDraft() {
 function validateBidDraft(draft) {
   const errors = [
     validatePositiveNumberIssue(draft.bid_rate, "bid-rate", "All-in rate"),
-    validatePositiveNumberIssue(draft.weekly_capacity, "bid-capacity", "Weekly capacity"),
-    validatePositiveNumberIssue(draft.transit_days, "bid-transit-days", "Transit days")
+    validatePositiveNumberIssue(draft.weekly_capacity, "bid-capacity", "Weekly capacity", false),
+    validatePositiveNumberIssue(draft.transit_days, "bid-transit-days", "Transit days", false)
   ].filter(Boolean);
 
   if (!/^[A-Z]{3}$/.test(String(draft.currency || "").trim().toUpperCase())) {
@@ -827,21 +827,26 @@ function validateBidDraft(draft) {
   const deliveryEta = validDateTimeValue(draft.eta_delivery);
   if (draft.eta_pickup && !pickupEta) errors.push(validationIssue("bid-eta-pickup", "Pickup ETA must be a valid date and time."));
   if (draft.eta_delivery && !deliveryEta) errors.push(validationIssue("bid-eta-delivery", "Delivery ETA must be a valid date and time."));
-  if (draft.equipment_available === "true") {
-    if (!pickupEta) errors.push(validationIssue("bid-eta-pickup", "Pickup ETA is required when equipment is available."));
-    if (!deliveryEta) errors.push(validationIssue("bid-eta-delivery", "Delivery ETA is required when equipment is available."));
-    if (!draft.unit_details.trim()) errors.push(validationIssue("bid-unit-details", "Unit, trailer, driver or mirror details are required when equipment is available."));
-  }
   if (pickupEta && deliveryEta && deliveryEta.getTime() <= pickupEta.getTime()) {
     errors.push(validationIssue("bid-eta-delivery", "Delivery ETA must be after pickup ETA."));
   }
 
   const warnings = [];
+  if (!String(draft.weekly_capacity || "").trim()) {
+    warnings.push("Weekly capacity is recommended for award scoring.");
+  }
+  if (!String(draft.transit_days || "").trim()) {
+    warnings.push("Transit days are recommended for service comparison.");
+  }
   if (draft.best_alternative_offered && !draft.alternative_notes.trim()) {
     warnings.push("Alternative notes help procurement understand assumptions and restrictions.");
   }
   if (draft.equipment_available !== "true") {
     warnings.push("Declaring available equipment and ETAs improves award scoring.");
+  } else {
+    if (!pickupEta) warnings.push("Pickup ETA is recommended when equipment is available.");
+    if (!deliveryEta) warnings.push("Delivery ETA is recommended when equipment is available.");
+    if (!draft.unit_details.trim()) warnings.push("Unit, trailer, driver or mirror details help procurement validate capacity.");
   }
   return { errors, warnings };
 }
@@ -861,14 +866,14 @@ const BID_TEMPLATE_COLUMNS = [
   { key: "target_rate", label: "Target rate / Tarifa objetivo", aliases: ["Target rate", "Tarifa objetivo"], width: 18, readonly: true },
   { key: "target_currency", label: "Target currency / Moneda objetivo", aliases: ["Target currency", "Moneda objetivo"], width: 18, readonly: true },
   { key: "invitation_token", label: "Invitation token / Token invitacion", aliases: ["Invitation token", "Token invitacion"], width: 28, readonly: true, hidden: true },
-  { key: "submit_this_lane", label: "Submit this lane / Enviar esta ruta", aliases: ["Submit this lane", "Enviar esta ruta"], width: 20, validation: "yesNo" },
-  { key: "all_in_rate", label: "All-in rate / Tarifa all-in", aliases: ["All-in rate", "Tarifa all-in"], width: 18, validation: "positiveNumber" },
-  { key: "currency", label: "Currency / Moneda", aliases: ["Currency", "Moneda"], width: 14, validation: "currency" },
-  { key: "weekly_capacity", label: "Weekly capacity / Capacidad semanal", aliases: ["Weekly capacity", "Capacidad semanal"], width: 20, validation: "positiveNumber" },
-  { key: "transit_days", label: "Transit days / Dias transito", aliases: ["Transit days", "Dias transito"], width: 18, validation: "positiveNumber" },
-  { key: "commercial_model", label: "Commercial model / Modelo comercial", aliases: ["Commercial model", "Modelo comercial"], width: 28, validation: "commercialModel" },
-  { key: "suggested_margin_pct", label: "Suggested margin % / Margen sugerido %", aliases: ["Suggested margin %", "Margen sugerido %"], width: 24, validation: "percent2to5" },
-  { key: "carrier_invoice_share_pct", label: "Carrier invoice share % / Share factura carrier %", aliases: ["Carrier invoice share %", "Share factura carrier %"], width: 28, validation: "percent2to5" },
+  { key: "submit_this_lane", label: "Submit this lane / Enviar esta ruta", aliases: ["Submit this lane", "Enviar esta ruta"], width: 20, validation: "yesNoBlank" },
+  { key: "all_in_rate", label: "All-in rate / Tarifa all-in", aliases: ["All-in rate", "Tarifa all-in"], width: 18, validation: "positiveNumber", required: true },
+  { key: "currency", label: "Currency / Moneda", aliases: ["Currency", "Moneda"], width: 14, validation: "currency", required: true },
+  { key: "weekly_capacity", label: "Weekly capacity / Capacidad semanal", aliases: ["Weekly capacity", "Capacidad semanal"], width: 20, validation: "positiveNumberBlank", recommended: true },
+  { key: "transit_days", label: "Transit days / Dias transito", aliases: ["Transit days", "Dias transito"], width: 18, validation: "positiveNumberBlank", recommended: true },
+  { key: "commercial_model", label: "Commercial model / Modelo comercial", aliases: ["Commercial model", "Modelo comercial"], width: 28, validation: "commercialModel", required: true },
+  { key: "suggested_margin_pct", label: "Suggested margin % / Margen sugerido %", aliases: ["Suggested margin %", "Margen sugerido %"], width: 24, validation: "percent2to5", conditional: "Required only for Direct / cost-plus. / Obligatorio solo para Direct / cost-plus." },
+  { key: "carrier_invoice_share_pct", label: "Carrier invoice share % / Share factura carrier %", aliases: ["Carrier invoice share %", "Share factura carrier %"], width: 28, validation: "percent2to5", conditional: "Required only for Carrier invoice share. / Obligatorio solo para Carrier invoice share." },
   { key: "best_alternative", label: "Best alternative / Mejor alternativa", aliases: ["Best alternative", "Mejor alternativa"], width: 22, validation: "yesNoBlank" },
   { key: "alternative_equipment", label: "Alternative equipment / Equipo alternativo", aliases: ["Alternative equipment", "Equipo alternativo"], width: 26 },
   { key: "alternative_units", label: "Alternative units / Unidades alternativas", aliases: ["Alternative units", "Unidades alternativas"], width: 22, validation: "positiveNumberBlank" },
@@ -1079,13 +1084,22 @@ function applyBidTemplateWorksheetRules(worksheet, rowCount) {
       if (rowNumber === 1) {
         cell.note = column.readonly
           ? "Readonly / No editar"
-          : "Editable. Use dropdowns where available. / Editable. Usa las listas donde existan.";
+          : column.required
+            ? "Required to submit. Use dropdowns where available. / Obligatorio para enviar. Usa las listas donde existan."
+            : column.conditional
+              ? column.conditional
+              : column.recommended
+                ? "Recommended, but not required. / Recomendado, pero no obligatorio."
+                : "Optional. Use dropdowns where available. / Opcional. Usa las listas donde existan.";
         return;
       }
       cell.alignment = { vertical: "middle", wrapText: true };
-      cell.fill = column.readonly
-        ? { type: "pattern", pattern: "solid", fgColor: { argb: "FFF3F6FA" } }
-        : { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFFBEA" } };
+      let fillColor = "FFFFFFFF";
+      if (column.readonly) fillColor = "FFF3F6FA";
+      else if (column.required) fillColor = "FFFFF2CC";
+      else if (column.conditional) fillColor = "FFEAF3FF";
+      else if (column.recommended) fillColor = "FFF8FBFF";
+      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: fillColor } };
       const validation = bidTemplateValidation(column);
       if (validation) cell.dataValidation = validation;
     });
@@ -1105,8 +1119,18 @@ function addBidTemplateInstructions(workbook) {
   instructions.addRows([
     {
       section: "Workflow",
-      en: "1) Review the readonly lane context. 2) Complete only the yellow editable columns. 3) Upload this workbook in Rateware. 4) Confirm submission only after validation passes.",
-      es: "1) Revisa el contexto readonly de la ruta. 2) Completa solo las columnas amarillas editables. 3) Sube este archivo en Rateware. 4) Confirma el envio solo cuando la validacion pase."
+      en: "1) Review the readonly lane context. 2) Complete the required offer columns. 3) Add recommended/optional details when available. 4) Upload this workbook in Rateware. 5) Confirm submission only after validation passes.",
+      es: "1) Revisa el contexto readonly de la ruta. 2) Completa las columnas obligatorias de oferta. 3) Agrega detalles recomendados/opcionales cuando existan. 4) Sube este archivo en Rateware. 5) Confirma el envio solo cuando la validacion pase."
+    },
+    {
+      section: "Required columns",
+      en: "Required to submit: All-in rate, Currency, Commercial model. Suggested margin % is required only for Direct / cost-plus. Carrier invoice share % is required only for Carrier invoice share.",
+      es: "Obligatorio para enviar: Tarifa all-in, Moneda, Modelo comercial. Margen sugerido % solo es obligatorio para Direct / cost-plus. Share factura carrier % solo es obligatorio para Carrier invoice share."
+    },
+    {
+      section: "Recommended columns",
+      en: "Weekly capacity, transit days, equipment availability, ETAs, unit details, alternatives, and notes improve scoring and procurement review, but they do not block submission unless the value entered is invalid.",
+      es: "Capacidad semanal, dias de transito, disponibilidad, ETAs, datos de unidad, alternativas y notas mejoran el scoring y la revision, pero no bloquean el envio salvo que el valor capturado sea invalido."
     },
     {
       section: "Dropdowns",
@@ -1120,8 +1144,8 @@ function addBidTemplateInstructions(workbook) {
     },
     {
       section: "Rate",
-      en: "All-in rate, weekly capacity, and transit days must be numeric and greater than zero.",
-      es: "Tarifa all-in, capacidad semanal y dias de transito deben ser numericos y mayores a cero."
+      en: "All-in rate is required and must be greater than zero. Weekly capacity and transit days are optional, but if entered they must also be numeric and greater than zero.",
+      es: "La tarifa all-in es obligatoria y debe ser mayor a cero. Capacidad semanal y dias de transito son opcionales, pero si se capturan tambien deben ser numericos y mayores a cero."
     },
     {
       section: "Availability",

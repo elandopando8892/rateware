@@ -426,6 +426,10 @@ assert.match(rfxBidSource, /function validateBidTemplateRow/, "Carrier portal sh
 assert.match(rfxBidSource, /dataValidation = validation/, "Carrier portal XLSX template should write dropdown and numeric validations");
 assert.match(rfxBidSource, /Instructions - Instrucciones/, "Carrier portal XLSX template should include bilingual instructions with an Excel-safe worksheet name");
 assert.match(rfxBidSource, /Commercial model \/ Modelo comercial/, "Carrier portal XLSX template should use bilingual headers");
+assert.match(rfxBidSource, /Required columns/, "Carrier portal XLSX instructions should explain only the required bid columns");
+assert.match(rfxBidSource, /recommended, but not required/i, "Carrier portal XLSX template should mark non-blocking recommended columns");
+assert.match(rfxBidSource, /validatePositiveNumberIssue\(draft\.weekly_capacity, "bid-capacity", "Weekly capacity", false\)/, "Carrier portal should not require weekly capacity to submit a bid");
+assert.match(rfxBidSource, /validatePositiveNumberIssue\(draft\.transit_days, "bid-transit-days", "Transit days", false\)/, "Carrier portal should not require transit days to submit a bid");
 assert.match(rfxBidSource, /data-download-bid-template/, "Carrier portal should render a bid template download action");
 assert.match(rfxBidSource, /data-submit-bid-template/, "Carrier portal should require confirmation before submitting XLSX bids");
 assert.match(rfxBidSource, /callBidApi\("submit_bid", \{ token: row\.invitation_token, \.\.\.row\.draft \}\)/, "Carrier portal should submit each XLSX row through the normal tokenized bid API");
@@ -507,8 +511,8 @@ assert.match(rfxBidSource, /detectPrivateChatSignals/, "Carrier portal should co
 assert.match(rfxBidSource, /function bidDraftWarnings/, "Carrier portal should validate bid completeness before submit");
 assert.match(rfxBidSource, /function validateBidDraft/, "Carrier portal should block invalid bid submissions before API submit");
 assert.match(rfxBidSource, /validatePositiveNumberIssue\(draft\.bid_rate, "bid-rate", "All-in rate"\)/, "Carrier portal should require numeric all-in rate");
-assert.match(rfxBidSource, /validatePositiveNumberIssue\(draft\.weekly_capacity, "bid-capacity", "Weekly capacity"\)/, "Carrier portal should require numeric capacity");
-assert.match(rfxBidSource, /validatePositiveNumberIssue\(draft\.transit_days, "bid-transit-days", "Transit days"\)/, "Carrier portal should require numeric transit days");
+assert.match(rfxBidSource, /validatePositiveNumberIssue\(draft\.weekly_capacity, "bid-capacity", "Weekly capacity", false\)/, "Carrier portal should validate capacity only when provided");
+assert.match(rfxBidSource, /validatePositiveNumberIssue\(draft\.transit_days, "bid-transit-days", "Transit days", false\)/, "Carrier portal should validate transit days only when provided");
 assert.match(rfxBidSource, /function commercialStructureConfig/, "Carrier portal should explain each commercial structure");
 assert.match(rfxBidSource, /syncCommercialStructureFields/, "Carrier portal should show only the applicable commercial percentage input");
 assert.match(rfxBidSource, /validatePercentIssue\(draft\.marksman_margin_pct, "bid-marksman-margin", "Suggested margin to share %", \{ required: true, procurementRange: true \}\)/, "Carrier portal should enforce suggested margin range for cost-plus");
