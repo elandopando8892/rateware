@@ -9,6 +9,7 @@ let bookSearchTimer = null;
 let lastCarrierBook = null;
 let lastCarrierChat = { rows: [], google_chat_configured: false };
 let lastInvitation = null;
+let lastLiveBoard = {};
 let pendingBidTemplateRows = [];
 const bookFilters = {
   view: "all",
@@ -44,6 +45,169 @@ const privateAlertState = {
   previousSnapshot: null,
   previousChatSnapshot: null
 };
+let excelJsModule = null;
+const BID_PORTAL_COPY = {
+  en: {
+    languageLabel: "English",
+    otherLanguageLabel: "Espanol",
+    privateRoom: "Private Bid Room v1",
+    requestFallback: "Bid request",
+    carrierCanReview: "{carrier} can review {lane_count}, request access to open opportunities, and submit all-in offers.",
+    invitedLanes: "{count} invited lanes",
+    selectedLane: "the selected lane",
+    customer: "Customer",
+    carrier: "Carrier",
+    visibility: "Visibility",
+    refresh: "Refresh",
+    multimediaAlerts: "Multimedia alerts",
+    rankingMovement: "Ranking, quote and chat movement",
+    enableSound: "Enable sound",
+    noMovement: "No movement yet. Enable sound to hear ranking, quote, chat, and deadline alerts.",
+    xlsxEyebrow: "XLSX bid template",
+    xlsxTitle: "Quote multiple invited lanes in Excel",
+    xlsxCopy: "Download the prefilled bid workbook, edit only the offer columns, upload it here, then confirm after validation.",
+    downloadXlsx: "Download XLSX template",
+    uploadXlsx: "Upload completed XLSX",
+    confirmXlsx: "Confirm and submit XLSX bids",
+    uploadXlsxStatus: "Upload the completed XLSX to validate it before submitting.",
+    selectedRows: "{count} selected",
+    errorRows: "{count} with errors",
+    skippedRows: "{count} skipped",
+    fixRequired: "Fix required",
+    ready: "Ready",
+    skipped: "Skipped",
+    currentLane: "Current lane",
+    selectedLaneFromBook: "Selected lane from book",
+    equipment: "Equipment",
+    operation: "Operation",
+    service: "Service",
+    weeklyVolume: "Weekly volume",
+    loadingLiveRoom: "Loading live bid room...",
+    loadingHistory: "Loading offer history...",
+    loadingChat: "Loading Bid Room Chat...",
+    submitOrUpdate: "Submit or update offer",
+    guidedBidFlow: "Guided bid flow",
+    primaryAlt: "Primary + alternatives",
+    submitPrimary: "Submit primary bid",
+    commercialModel: "Commercial model",
+    addAlternative: "Add alternative",
+    confirmCapacity: "Confirm capacity",
+    bestFinal: "Best and final",
+    primaryOffer: "Primary offer",
+    primaryOfferCopy: "Your compliant all-in bid for this lane.",
+    allInRate: "All-in rate",
+    currency: "Currency",
+    weeklyCapacity: "Weekly capacity",
+    transitDays: "Transit days",
+    commercialStructure: "Commercial structure",
+    suggestedMargin: "Suggested margin to share %",
+    carrierShare: "Carrier invoice share %",
+    bestAlternative: "Best alternative",
+    bestAlternativeOffer: "Best alternative offer",
+    alternativeEquipment: "Alternative equipment",
+    alternativeUnits: "Alternative units",
+    alternativeNotes: "Alternative notes",
+    liveCapacity: "Live capacity commitment",
+    liveCapacityCopy: "Confirm availability, unit details, validation and ETAs.",
+    equipmentAvailable: "Equipment available",
+    notDeclared: "Not declared",
+    available: "Available",
+    notAvailable: "Not available",
+    etaPickup: "ETA pickup",
+    etaDelivery: "ETA delivery",
+    mirrorAccount: "Mirror account enabled",
+    unitDetails: "Unit details",
+    reviewSubmit: "Review and submit",
+    reviewCopy: "This is what procurement will see.",
+    notes: "Notes",
+    confirmTerms: "Confirm capacity and commercial terms",
+    logisticsModel: "Logistics model",
+    operationCriteria: "Operation criteria",
+    businessRules: "Business rules",
+    serviceSpecifications: "Service specifications",
+    otherNotes: "Other notes"
+  },
+  es: {
+    languageLabel: "Espanol",
+    otherLanguageLabel: "English",
+    privateRoom: "Bid Room privado v1",
+    requestFallback: "Solicitud de cotizacion",
+    carrierCanReview: "{carrier} puede revisar {lane_count}, solicitar acceso a oportunidades abiertas y enviar tarifas all-in.",
+    invitedLanes: "{count} lanes invitadas",
+    selectedLane: "la lane seleccionada",
+    customer: "Cliente",
+    carrier: "Carrier",
+    visibility: "Visibilidad",
+    refresh: "Actualizacion",
+    multimediaAlerts: "Alertas multimedia",
+    rankingMovement: "Movimiento de ranking, cotizaciones y chat",
+    enableSound: "Activar sonido",
+    noMovement: "Sin movimiento todavia. Activa sonido para escuchar ranking, cotizaciones, chat y vencimientos.",
+    xlsxEyebrow: "Template XLSX de puja",
+    xlsxTitle: "Cotiza varias lanes invitadas en Excel",
+    xlsxCopy: "Descarga el libro prellenado, edita solo las columnas de oferta, subelo aqui y confirma despues de la validacion.",
+    downloadXlsx: "Descargar template XLSX",
+    uploadXlsx: "Subir XLSX completado",
+    confirmXlsx: "Confirmar y enviar pujas XLSX",
+    uploadXlsxStatus: "Sube el XLSX completado para validarlo antes de enviar.",
+    selectedRows: "{count} seleccionadas",
+    errorRows: "{count} con errores",
+    skippedRows: "{count} omitidas",
+    fixRequired: "Requiere correccion",
+    ready: "Listo",
+    skipped: "Omitido",
+    currentLane: "Lane actual",
+    selectedLaneFromBook: "Lane seleccionada del libro",
+    equipment: "Equipo",
+    operation: "Operacion",
+    service: "Servicio",
+    weeklyVolume: "Volumen semanal",
+    loadingLiveRoom: "Cargando Bid Room en vivo...",
+    loadingHistory: "Cargando historial de ofertas...",
+    loadingChat: "Cargando chat del Bid Room...",
+    submitOrUpdate: "Enviar o actualizar oferta",
+    guidedBidFlow: "Flujo guiado de puja",
+    primaryAlt: "Primaria + alternativas",
+    submitPrimary: "Enviar puja primaria",
+    commercialModel: "Modelo comercial",
+    addAlternative: "Agregar alternativa",
+    confirmCapacity: "Confirmar capacidad",
+    bestFinal: "Mejor y final",
+    primaryOffer: "Oferta primaria",
+    primaryOfferCopy: "Tu oferta all-in compliant para esta lane.",
+    allInRate: "Tarifa all-in",
+    currency: "Moneda",
+    weeklyCapacity: "Capacidad semanal",
+    transitDays: "Dias de transito",
+    commercialStructure: "Estructura comercial",
+    suggestedMargin: "Margen sugerido a compartir %",
+    carrierShare: "Carrier invoice share %",
+    bestAlternative: "Mejor alternativa",
+    bestAlternativeOffer: "Oferta alternativa",
+    alternativeEquipment: "Equipo alternativo",
+    alternativeUnits: "Unidades alternativas",
+    alternativeNotes: "Notas de alternativa",
+    liveCapacity: "Compromiso de capacidad en vivo",
+    liveCapacityCopy: "Confirma disponibilidad, datos de unidad, validacion y ETAs.",
+    equipmentAvailable: "Equipo disponible",
+    notDeclared: "No declarado",
+    available: "Disponible",
+    notAvailable: "No disponible",
+    etaPickup: "ETA pickup",
+    etaDelivery: "ETA delivery",
+    mirrorAccount: "Cuenta espejo habilitada",
+    unitDetails: "Datos de unidad",
+    reviewSubmit: "Revisar y enviar",
+    reviewCopy: "Esto es lo que procurement va a ver.",
+    notes: "Notas",
+    confirmTerms: "Confirmar capacidad y terminos comerciales",
+    logisticsModel: "Modelo logistico",
+    operationCriteria: "Criterios de operacion",
+    businessRules: "Reglas de negocio",
+    serviceSpecifications: "Especificaciones de servicio",
+    otherNotes: "Otras notas"
+  }
+};
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -55,6 +219,20 @@ function escapeHtml(value) {
 
 function escapeAttribute(value) {
   return escapeHtml(value).replace(/'/g, "&#39;");
+}
+
+function portalLanguage() {
+  return privateAlertState.language === "es" ? "es" : "en";
+}
+
+function t(key, params = {}) {
+  const dictionary = BID_PORTAL_COPY[portalLanguage()] || BID_PORTAL_COPY.en;
+  const fallback = BID_PORTAL_COPY.en[key] || key;
+  return String(dictionary[key] || fallback).replace(/\{(\w+)\}/g, (_match, name) => String(params[name] ?? ""));
+}
+
+function dualText(en, es) {
+  return portalLanguage() === "es" ? es : en;
 }
 
 function viewModeFromUrl() {
@@ -82,12 +260,12 @@ function formatLane(lane = {}) {
 
 function laneDetailSections(lane = {}) {
   return [
-    ["Logistics model", lane.logistics_model],
-    ["Operation criteria", lane.operation_criteria],
-    ["Business rules", lane.business_rules],
-    ["Service specifications", lane.service_specifications],
-    ["Other notes", lane.other_notes],
-    ["Notes", lane.notes]
+    [t("logisticsModel"), lane.logistics_model],
+    [t("operationCriteria"), lane.operation_criteria],
+    [t("businessRules"), lane.business_rules],
+    [t("serviceSpecifications"), lane.service_specifications],
+    [t("otherNotes"), lane.other_notes],
+    [t("notes"), lane.notes]
   ].filter(([, value]) => String(value || "").trim());
 }
 
@@ -145,21 +323,38 @@ function formatDate(value) {
 function statusLabel(status) {
   const value = String(status || "drafted").toLowerCase();
   const labels = {
-    drafted: "Drafted",
-    invited: "Invited",
-    viewed: "Viewed",
-    responded: "Responded",
-    quoted: "Quoted",
-    bid_submitted: "Quoted",
-    awarded: "Awarded",
-    backup: "Backup",
-    not_awarded: "Not awarded",
-    pending: "Pending",
-    declined: "Declined",
-    open: "Open",
-    not_invited: "Request invite"
+    en: {
+      drafted: "Drafted",
+      invited: "Invited",
+      viewed: "Viewed",
+      responded: "Responded",
+      quoted: "Quoted",
+      bid_submitted: "Quoted",
+      awarded: "Awarded",
+      backup: "Backup",
+      not_awarded: "Not awarded",
+      pending: "Pending",
+      declined: "Declined",
+      open: "Open",
+      not_invited: "Request invite"
+    },
+    es: {
+      drafted: "Borrador",
+      invited: "Invitado",
+      viewed: "Visto",
+      responded: "Respondido",
+      quoted: "Cotizado",
+      bid_submitted: "Cotizado",
+      awarded: "Asignado",
+      backup: "Backup",
+      not_awarded: "No asignado",
+      pending: "Pendiente",
+      declined: "Declinado",
+      open: "Abierto",
+      not_invited: "Solicitar invitacion"
+    }
   };
-  return labels[value] || value;
+  return (labels[portalLanguage()] || labels.en)[value] || value;
 }
 
 function statusTone(status) {
@@ -172,70 +367,96 @@ function statusTone(status) {
 }
 
 function deadlineCopy(event = {}) {
-  if (!event.due_date) return { label: "No deadline", tone: "muted", detail: "Procurement has not set a close date." };
+  if (!event.due_date) return { label: dualText("No deadline", "Sin fecha limite"), tone: "muted", detail: dualText("Procurement has not set a close date.", "Procurement no ha definido fecha de cierre.") };
   const dueAt = new Date(`${event.due_date}T23:59:59`);
-  if (Number.isNaN(dueAt.getTime())) return { label: formatDate(event.due_date), tone: "neutral", detail: "Deadline date needs review." };
+  if (Number.isNaN(dueAt.getTime())) return { label: formatDate(event.due_date), tone: "neutral", detail: dualText("Deadline date needs review.", "La fecha limite requiere revision.") };
   const days = Math.ceil((dueAt.getTime() - Date.now()) / 86400000);
-  if (days < 0) return { label: "Closed", tone: "danger", detail: `Closed ${Math.abs(days)} day(s) ago.` };
-  if (days === 0) return { label: "Closes today", tone: "warning", detail: "Submit or update your offer today." };
-  if (days === 1) return { label: "1 day left", tone: "warning", detail: `Due ${formatDate(event.due_date)}.` };
-  return { label: `${days} days left`, tone: "success", detail: `Due ${formatDate(event.due_date)}.` };
+  if (days < 0) return { label: dualText("Closed", "Cerrado"), tone: "danger", detail: dualText(`Closed ${Math.abs(days)} day(s) ago.`, `Cerro hace ${Math.abs(days)} dia(s).`) };
+  if (days === 0) return { label: dualText("Closes today", "Cierra hoy"), tone: "warning", detail: dualText("Submit or update your offer today.", "Envia o actualiza tu oferta hoy.") };
+  if (days === 1) return { label: dualText("1 day left", "Queda 1 dia"), tone: "warning", detail: dualText(`Due ${formatDate(event.due_date)}.`, `Vence ${formatDate(event.due_date)}.`) };
+  return { label: dualText(`${days} days left`, `Quedan ${days} dias`), tone: "success", detail: dualText(`Due ${formatDate(event.due_date)}.`, `Vence ${formatDate(event.due_date)}.`) };
 }
 
 function visibilityCopy(visibility = {}) {
   if (visibility.mode === "open_leaderboard") {
-    return "Open leaderboard - competitor names and exact submitted rates are visible.";
+    return dualText("Open leaderboard - competitor names and exact submitted rates are visible.", "Leaderboard abierto: nombres de competidores y tarifas exactas son visibles.");
   }
   if (visibility.mode === "anonymous_rank") {
-    return "Anonymous rank - competitor names and exact third-party rates are hidden.";
+    return dualText("Anonymous rank - competitor names and exact third-party rates are hidden.", "Ranking anonimo: nombres de competidores y tarifas exactas de terceros estan ocultas.");
   }
   if (visibility.mode === "private") {
-    return "Private - procurement sees all offers; carriers only see their own submitted bid.";
+    return dualText("Private - procurement sees all offers; carriers only see their own submitted bid.", "Privado: procurement ve todas las ofertas; los carriers solo ven su propia oferta.");
   }
-  return "Private visibility controlled by procurement.";
+  return dualText("Private visibility controlled by procurement.", "Visibilidad privada controlada por procurement.");
 }
 
 function visibilityLabel(visibility = {}) {
   const labels = {
-    private: "Private",
-    anonymous_rank: "Anonymous rank",
-    open_leaderboard: "Open leaderboard"
+    en: {
+      private: "Private",
+      anonymous_rank: "Anonymous rank",
+      open_leaderboard: "Open leaderboard"
+    },
+    es: {
+      private: "Privado",
+      anonymous_rank: "Ranking anonimo",
+      open_leaderboard: "Leaderboard abierto"
+    }
   };
-  return labels[visibility.mode] || "Private";
+  return (labels[portalLanguage()] || labels.en)[visibility.mode] || labels[portalLanguage()].private;
 }
 
 function commercialModelLabel(value) {
   const labels = {
-    direct_cost_plus: "Direct / cost-plus",
-    carrier_share: "Carrier invoice share",
-    xbf_buy_sell: "XBF buy-sell"
+    en: {
+      direct_cost_plus: "Direct / cost-plus",
+      carrier_share: "Carrier invoice share",
+      xbf_buy_sell: "XBF buy-sell"
+    },
+    es: {
+      direct_cost_plus: "Directo / cost-plus",
+      carrier_share: "Carrier invoice share",
+      xbf_buy_sell: "XBF compra-venta"
+    }
   };
-  return labels[String(value || "").toLowerCase()] || "Not declared";
+  return (labels[portalLanguage()] || labels.en)[String(value || "").toLowerCase()] || t("notDeclared");
 }
 
 function commercialStructureConfig(value) {
   const model = String(value || "direct_cost_plus").toLowerCase();
   const configs = {
     direct_cost_plus: {
-      tone: "Cost-plus",
+      tone: dualText("Cost-plus", "Cost-plus"),
       percentageField: "marksman",
-      percentageLabel: "Suggested margin to share %",
-      percentageTooltip: "Optional commercial guidance for MARKSMAN. The carrier shares the suggested margin MARKSMAN may add on top of the carrier all-in cost.",
-      copy: "Use when the carrier is quoting their direct all-in cost and can suggest the MARKSMAN margin to share with the customer."
+      percentageLabel: t("suggestedMargin"),
+      percentageTooltip: dualText(
+        "Optional commercial guidance for MARKSMAN. The carrier shares the suggested margin MARKSMAN may add on top of the carrier all-in cost.",
+        "Guia comercial opcional para MARKSMAN. El carrier sugiere el margen que MARKSMAN podria agregar sobre el costo all-in del carrier."
+      ),
+      copy: dualText(
+        "Use when the carrier is quoting their direct all-in cost and can suggest the MARKSMAN margin to share with the customer.",
+        "Usa esto cuando el carrier cotiza su costo directo all-in y puede sugerir el margen MARKSMAN a compartir con el cliente."
+      )
     },
     carrier_share: {
-      tone: "Carrier shares",
+      tone: dualText("Carrier shares", "Carrier comparte"),
       percentageField: "carrier",
-      percentageLabel: "Carrier invoice share %",
-      percentageTooltip: "Percentage of the customer billing amount the carrier is willing to share from the original quoted amount.",
-      copy: "Use when the carrier wants MARKSMAN to bill the customer and share a percentage of that billing based on the carrier quote."
+      percentageLabel: t("carrierShare"),
+      percentageTooltip: dualText(
+        "Percentage of the customer billing amount the carrier is willing to share from the original quoted amount.",
+        "Porcentaje de la facturacion al cliente que el carrier esta dispuesto a compartir basado en su cotizacion original."
+      ),
+      copy: dualText(
+        "Use when the carrier wants MARKSMAN to bill the customer and share a percentage of that billing based on the carrier quote.",
+        "Usa esto cuando el carrier quiere que MARKSMAN facture al cliente y comparta un porcentaje de esa facturacion segun la cotizacion del carrier."
+      )
     },
     xbf_buy_sell: {
-      tone: "XBF buy-sell",
+      tone: dualText("XBF buy-sell", "XBF compra-venta"),
       percentageField: "none",
       percentageLabel: "",
-      percentageTooltip: "No percentage is requested. XBF controls the customer markup at its discretion.",
-      copy: "Use when the carrier only submits their sell rate to XBF. No margin or share percentage is collected."
+      percentageTooltip: dualText("No percentage is requested. XBF controls the customer markup at its discretion.", "No se solicita porcentaje. XBF controla el markup al cliente a su discrecion."),
+      copy: dualText("Use when the carrier only submits their sell rate to XBF. No margin or share percentage is collected.", "Usa esto cuando el carrier solo envia su tarifa de venta a XBF. No se captura margen ni porcentaje.")
     }
   };
   return configs[model] || configs.direct_cost_plus;
@@ -243,10 +464,10 @@ function commercialStructureConfig(value) {
 
 function commercialPercentSummary(draft = {}) {
   const config = commercialStructureConfig(draft.commercial_model);
-  if (config.percentageField === "marksman" && draft.marksman_margin_pct) return `${draft.marksman_margin_pct}% suggested margin`;
-  if (config.percentageField === "carrier" && draft.carrier_share_pct) return `${draft.carrier_share_pct}% invoice share`;
-  if (config.percentageField === "none") return "No percentage applies";
-  return `${config.percentageLabel || "Percentage"} not declared`;
+  if (config.percentageField === "marksman" && draft.marksman_margin_pct) return dualText(`${draft.marksman_margin_pct}% suggested margin`, `${draft.marksman_margin_pct}% margen sugerido`);
+  if (config.percentageField === "carrier" && draft.carrier_share_pct) return dualText(`${draft.carrier_share_pct}% invoice share`, `${draft.carrier_share_pct}% share factura`);
+  if (config.percentageField === "none") return dualText("No percentage applies", "No aplica porcentaje");
+  return dualText(`${config.percentageLabel || "Percentage"} not declared`, `${config.percentageLabel || "Porcentaje"} no declarado`);
 }
 
 function formatDateTime(value) {
@@ -622,37 +843,39 @@ function validateBidDraft(draft) {
 }
 
 const BID_TEMPLATE_COLUMNS = [
-  { key: "rfx_id", label: "RFx", width: 16, readonly: true },
-  { key: "event_name", label: "Event", width: 28, readonly: true },
-  { key: "lane_number", label: "Lane #", width: 10, readonly: true },
-  { key: "origin", label: "Origin", width: 22, readonly: true },
-  { key: "destination", label: "Destination", width: 22, readonly: true },
-  { key: "equipment", label: "Equipment", width: 18, readonly: true },
-  { key: "trailer", label: "Trailer", width: 16, readonly: true },
-  { key: "config", label: "Config", width: 14, readonly: true },
-  { key: "operation", label: "Operation", width: 16, readonly: true },
-  { key: "service", label: "Service", width: 14, readonly: true },
-  { key: "weekly_volume", label: "Weekly volume", width: 14, readonly: true },
-  { key: "target_rate", label: "Target rate", width: 14, readonly: true },
-  { key: "target_currency", label: "Target currency", width: 14, readonly: true },
-  { key: "invitation_token", label: "Invitation token", width: 28, readonly: true, hidden: true },
-  { key: "submit_this_lane", label: "Submit this lane", width: 16 },
-  { key: "all_in_rate", label: "All-in rate", width: 14 },
-  { key: "currency", label: "Currency", width: 12 },
-  { key: "weekly_capacity", label: "Weekly capacity", width: 16 },
-  { key: "transit_days", label: "Transit days", width: 14 },
-  { key: "commercial_model", label: "Commercial model", width: 22 },
-  { key: "suggested_margin_pct", label: "Suggested margin %", width: 18 },
-  { key: "carrier_invoice_share_pct", label: "Carrier invoice share %", width: 22 },
-  { key: "best_alternative", label: "Best alternative", width: 16 },
-  { key: "alternative_equipment", label: "Alternative equipment", width: 24 },
-  { key: "alternative_units", label: "Alternative units", width: 16 },
-  { key: "alternative_notes", label: "Alternative notes", width: 36 },
-  { key: "equipment_available", label: "Equipment available", width: 18 },
-  { key: "eta_pickup", label: "Pickup ETA", width: 20 },
-  { key: "eta_delivery", label: "Delivery ETA", width: 20 },
-  { key: "unit_details", label: "Unit details", width: 34 },
-  { key: "notes", label: "Notes", width: 36 }
+  { key: "rfx_id", label: "RFx", aliases: ["RFx"], width: 16, readonly: true },
+  { key: "event_name", label: "Event / Evento", aliases: ["Event", "Evento"], width: 28, readonly: true },
+  { key: "lane_number", label: "Lane # / Ruta #", aliases: ["Lane #", "Ruta #"], width: 12, readonly: true },
+  { key: "origin", label: "Origin / Origen", aliases: ["Origin", "Origen"], width: 22, readonly: true },
+  { key: "destination", label: "Destination / Destino", aliases: ["Destination", "Destino"], width: 22, readonly: true },
+  { key: "equipment", label: "Equipment / Equipo", aliases: ["Equipment", "Equipo"], width: 18, readonly: true },
+  { key: "trailer", label: "Trailer / Remolque", aliases: ["Trailer", "Remolque"], width: 16, readonly: true },
+  { key: "config", label: "Config / Configuracion", aliases: ["Config", "Configuracion"], width: 16, readonly: true },
+  { key: "operation", label: "Operation / Operacion", aliases: ["Operation", "Operacion"], width: 18, readonly: true },
+  { key: "service", label: "Service / Servicio", aliases: ["Service", "Servicio"], width: 16, readonly: true },
+  { key: "weekly_volume", label: "Weekly volume / Volumen semanal", aliases: ["Weekly volume", "Volumen semanal"], width: 18, readonly: true },
+  { key: "target_rate", label: "Target rate / Tarifa objetivo", aliases: ["Target rate", "Tarifa objetivo"], width: 18, readonly: true },
+  { key: "target_currency", label: "Target currency / Moneda objetivo", aliases: ["Target currency", "Moneda objetivo"], width: 18, readonly: true },
+  { key: "invitation_token", label: "Invitation token / Token invitacion", aliases: ["Invitation token", "Token invitacion"], width: 28, readonly: true, hidden: true },
+  { key: "submit_this_lane", label: "Submit this lane / Enviar esta ruta", aliases: ["Submit this lane", "Enviar esta ruta"], width: 20, validation: "yesNo" },
+  { key: "all_in_rate", label: "All-in rate / Tarifa all-in", aliases: ["All-in rate", "Tarifa all-in"], width: 18, validation: "positiveNumber" },
+  { key: "currency", label: "Currency / Moneda", aliases: ["Currency", "Moneda"], width: 14, validation: "currency" },
+  { key: "weekly_capacity", label: "Weekly capacity / Capacidad semanal", aliases: ["Weekly capacity", "Capacidad semanal"], width: 20, validation: "positiveNumber" },
+  { key: "transit_days", label: "Transit days / Dias transito", aliases: ["Transit days", "Dias transito"], width: 18, validation: "positiveNumber" },
+  { key: "commercial_model", label: "Commercial model / Modelo comercial", aliases: ["Commercial model", "Modelo comercial"], width: 28, validation: "commercialModel" },
+  { key: "suggested_margin_pct", label: "Suggested margin % / Margen sugerido %", aliases: ["Suggested margin %", "Margen sugerido %"], width: 24, validation: "percent2to5" },
+  { key: "carrier_invoice_share_pct", label: "Carrier invoice share % / Share factura carrier %", aliases: ["Carrier invoice share %", "Share factura carrier %"], width: 28, validation: "percent2to5" },
+  { key: "best_alternative", label: "Best alternative / Mejor alternativa", aliases: ["Best alternative", "Mejor alternativa"], width: 22, validation: "yesNoBlank" },
+  { key: "alternative_equipment", label: "Alternative equipment / Equipo alternativo", aliases: ["Alternative equipment", "Equipo alternativo"], width: 26 },
+  { key: "alternative_units", label: "Alternative units / Unidades alternativas", aliases: ["Alternative units", "Unidades alternativas"], width: 22, validation: "positiveNumberBlank" },
+  { key: "alternative_notes", label: "Alternative notes / Notas alternativa", aliases: ["Alternative notes", "Notas alternativa"], width: 38 },
+  { key: "equipment_available", label: "Equipment available / Equipo disponible", aliases: ["Equipment available", "Equipo disponible"], width: 24, validation: "availability" },
+  { key: "eta_pickup", label: "Pickup ETA / ETA carga", aliases: ["Pickup ETA", "ETA carga"], width: 22 },
+  { key: "eta_delivery", label: "Delivery ETA / ETA entrega", aliases: ["Delivery ETA", "ETA entrega"], width: 22 },
+  { key: "mirror_account_enabled", label: "Mirror account / Cuenta espejo", aliases: ["Mirror account", "Cuenta espejo"], width: 22, validation: "yesNoBlank" },
+  { key: "unit_details", label: "Unit details / Datos unidad", aliases: ["Unit details", "Datos unidad"], width: 36 },
+  { key: "best_final", label: "Best and final / Mejor y final", aliases: ["Best and final", "Mejor y final"], width: 22, validation: "yesNoBlank" },
+  { key: "notes", label: "Notes / Notas", aliases: ["Notes", "Notas"], width: 38 }
 ];
 
 function bidTemplateColumn(key) {
@@ -661,7 +884,10 @@ function bidTemplateColumn(key) {
 
 function bidTemplateValue(row, key) {
   const column = bidTemplateColumn(key);
-  return row[column.label] ?? row[column.key] ?? "";
+  for (const candidate of [column.label, ...(column.aliases || []), column.key]) {
+    if (Object.prototype.hasOwnProperty.call(row, candidate)) return row[candidate];
+  }
+  return "";
 }
 
 function textValue(value) {
@@ -671,8 +897,8 @@ function textValue(value) {
 function normalizeTemplateBoolean(value, defaultValue = false) {
   const text = textValue(value).toLowerCase();
   if (!text) return defaultValue;
-  if (["true", "yes", "y", "si", "x", "1", "include", "submit", "available"].includes(text)) return true;
-  if (["false", "no", "n", "0", "exclude", "skip", "not available"].includes(text)) return false;
+  if (["true", "yes", "y", "si", "sí", "verdadero", "x", "1", "include", "submit", "enviar", "available", "disponible"].includes(text)) return true;
+  if (["false", "no", "n", "falso", "0", "exclude", "skip", "omitir", "not available", "no disponible"].includes(text)) return false;
   return defaultValue;
 }
 
@@ -687,8 +913,8 @@ function normalizeTemplateCommercialModel(value) {
 function normalizeTemplateAvailability(value) {
   const text = textValue(value).toLowerCase();
   if (!text) return "";
-  if (["true", "yes", "y", "si", "1", "available", "disponible"].includes(text)) return "true";
-  if (["false", "no", "n", "0", "not available", "no disponible"].includes(text)) return "false";
+  if (["true", "yes", "y", "si", "sí", "verdadero", "1", "available", "disponible"].includes(text)) return "true";
+  if (["false", "no", "n", "falso", "0", "not available", "no disponible"].includes(text)) return "false";
   return "";
 }
 
@@ -700,6 +926,13 @@ function normalizeTemplateDateTime(value) {
 function normalizeTemplateCurrency(value, fallback = "USD") {
   const currency = textValue(value || fallback).toUpperCase();
   return /^[A-Z]{3}$/.test(currency) ? currency : currency || fallback;
+}
+
+function bidTemplateCommercialModelValue(value) {
+  const model = String(value || "direct_cost_plus").toLowerCase();
+  if (model === "carrier_share") return "Carrier invoice share";
+  if (model === "xbf_buy_sell") return "XBF buy-sell";
+  return "Direct / cost-plus";
 }
 
 function bidTemplateRows(carrierBook = {}, invitation = {}) {
@@ -729,7 +962,7 @@ function bidTemplateRows(carrierBook = {}, invitation = {}) {
         currency: row.currency || lane.currency || "USD",
         weekly_capacity: row.weekly_capacity ?? "",
         transit_days: row.transit_days ?? "",
-        commercial_model: commercialModelLabel(row.commercial_model || "direct_cost_plus"),
+        commercial_model: bidTemplateCommercialModelValue(row.commercial_model),
         suggested_margin_pct: row.marksman_margin_pct ?? "",
         carrier_invoice_share_pct: row.carrier_share_pct ?? "",
         best_alternative: row.best_alternative_offered ? "TRUE" : "",
@@ -739,7 +972,9 @@ function bidTemplateRows(carrierBook = {}, invitation = {}) {
         equipment_available: row.equipment_available === true ? "Available" : row.equipment_available === false ? "Not available" : "",
         eta_pickup: dateTimeLocalValue(row.eta_pickup),
         eta_delivery: dateTimeLocalValue(row.eta_delivery),
+        mirror_account_enabled: row.mirror_account_enabled ? "TRUE" : "",
         unit_details: row.unit_details || "",
+        best_final: "",
         notes: row.notes || ""
       };
     });
@@ -750,39 +985,198 @@ function safeSheetName(value, fallback = "Bid Template") {
   return name || fallback;
 }
 
-function downloadBidTemplate(carrierBook = {}, invitation = {}) {
+async function loadExcelJs() {
+  if (!excelJsModule) {
+    excelJsModule = await import("https://esm.sh/exceljs@4.4.0?bundle");
+  }
+  return excelJsModule.default || excelJsModule;
+}
+
+function bidTemplateValidation(column) {
+  const common = {
+    showErrorMessage: true,
+    errorStyle: "error",
+    errorTitle: "Invalid value / Valor invalido",
+    error: "Choose a valid value from the dropdown or instructions. / Elige un valor valido de la lista o instrucciones."
+  };
+  if (column.validation === "yesNo") {
+    return { type: "list", allowBlank: false, formulae: ['"TRUE,FALSE"'], ...common };
+  }
+  if (column.validation === "yesNoBlank") {
+    return { type: "list", allowBlank: true, formulae: ['"TRUE,FALSE"'], ...common };
+  }
+  if (column.validation === "currency") {
+    return { type: "list", allowBlank: false, formulae: ['"USD,MXN,CAD"'], ...common };
+  }
+  if (column.validation === "availability") {
+    return { type: "list", allowBlank: true, formulae: ['"Available,Not available,Not declared"'], ...common };
+  }
+  if (column.validation === "commercialModel") {
+    return { type: "list", allowBlank: false, formulae: ['"Direct / cost-plus,Carrier invoice share,XBF buy-sell"'], ...common };
+  }
+  if (column.validation === "positiveNumber") {
+    return {
+      type: "decimal",
+      operator: "greaterThan",
+      allowBlank: false,
+      formulae: [0],
+      ...common,
+      error: "Enter a number greater than zero. / Captura un numero mayor a cero."
+    };
+  }
+  if (column.validation === "positiveNumberBlank") {
+    return {
+      type: "decimal",
+      operator: "greaterThan",
+      allowBlank: true,
+      formulae: [0],
+      ...common,
+      error: "Enter a number greater than zero or leave blank. / Captura un numero mayor a cero o deja en blanco."
+    };
+  }
+  if (column.validation === "percent2to5") {
+    return {
+      type: "decimal",
+      operator: "between",
+      allowBlank: true,
+      formulae: [2, 5],
+      ...common,
+      error: "Enter a percentage between 2 and 5. / Captura un porcentaje entre 2 y 5."
+    };
+  }
+  return null;
+}
+
+function applyBidTemplateWorksheetRules(worksheet, rowCount) {
+  worksheet.views = [{ state: "frozen", ySplit: 1 }];
+  worksheet.autoFilter = {
+    from: { row: 1, column: 1 },
+    to: { row: Math.max(rowCount + 1, 1), column: BID_TEMPLATE_COLUMNS.length }
+  };
+  worksheet.getRow(1).height = 34;
+  worksheet.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
+  worksheet.getRow(1).alignment = { vertical: "middle", wrapText: true };
+  worksheet.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF203040" } };
+  BID_TEMPLATE_COLUMNS.forEach((column, index) => {
+    const excelColumn = worksheet.getColumn(index + 1);
+    excelColumn.width = column.width || 16;
+    excelColumn.hidden = Boolean(column.hidden);
+    excelColumn.eachCell({ includeEmpty: true }, (cell, rowNumber) => {
+      cell.border = {
+        top: { style: "thin", color: { argb: "FFD8DEE8" } },
+        left: { style: "thin", color: { argb: "FFD8DEE8" } },
+        bottom: { style: "thin", color: { argb: "FFD8DEE8" } },
+        right: { style: "thin", color: { argb: "FFD8DEE8" } }
+      };
+      if (rowNumber === 1) {
+        cell.note = column.readonly
+          ? "Readonly / No editar"
+          : "Editable. Use dropdowns where available. / Editable. Usa las listas donde existan.";
+        return;
+      }
+      cell.alignment = { vertical: "middle", wrapText: true };
+      cell.fill = column.readonly
+        ? { type: "pattern", pattern: "solid", fgColor: { argb: "FFF3F6FA" } }
+        : { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFFBEA" } };
+      const validation = bidTemplateValidation(column);
+      if (validation) cell.dataValidation = validation;
+    });
+  });
+  for (const key of ["all_in_rate", "weekly_capacity", "transit_days", "suggested_margin_pct", "carrier_invoice_share_pct", "alternative_units"]) {
+    worksheet.getColumn(BID_TEMPLATE_COLUMNS.findIndex((column) => column.key === key) + 1).numFmt = "#,##0.00";
+  }
+}
+
+function addBidTemplateInstructions(workbook) {
+  const instructions = workbook.addWorksheet("Instructions / Instrucciones");
+  instructions.columns = [
+    { header: "Section / Seccion", key: "section", width: 28 },
+    { header: "English", key: "en", width: 70 },
+    { header: "Espanol", key: "es", width: 74 }
+  ];
+  instructions.addRows([
+    {
+      section: "Workflow",
+      en: "1) Review the readonly lane context. 2) Complete only the yellow editable columns. 3) Upload this workbook in Rateware. 4) Confirm submission only after validation passes.",
+      es: "1) Revisa el contexto readonly de la ruta. 2) Completa solo las columnas amarillas editables. 3) Sube este archivo en Rateware. 4) Confirma el envio solo cuando la validacion pase."
+    },
+    {
+      section: "Dropdowns",
+      en: "Use dropdowns for Submit this lane, Currency, Commercial model, Best alternative, Equipment available, Mirror account, and Best/final.",
+      es: "Usa las listas desplegables para Enviar ruta, Moneda, Modelo comercial, Mejor alternativa, Equipo disponible, Cuenta espejo y Mejor/final."
+    },
+    {
+      section: "Commercial model",
+      en: "Direct / cost-plus requires Suggested margin % between 2 and 5. Carrier invoice share requires Carrier invoice share % between 2 and 5. XBF buy-sell does not require a percentage.",
+      es: "Direct / cost-plus requiere Margen sugerido % entre 2 y 5. Carrier invoice share requiere Share factura carrier % entre 2 y 5. XBF buy-sell no requiere porcentaje."
+    },
+    {
+      section: "Rate",
+      en: "All-in rate, weekly capacity, and transit days must be numeric and greater than zero.",
+      es: "Tarifa all-in, capacidad semanal y dias de transito deben ser numericos y mayores a cero."
+    },
+    {
+      section: "Availability",
+      en: "If equipment is available, add pickup ETA, delivery ETA, and unit details when possible. Mirror account means procurement can validate availability.",
+      es: "Si el equipo esta disponible, agrega ETA de carga, ETA de entrega y datos de unidad cuando sea posible. Cuenta espejo permite validar disponibilidad."
+    },
+    {
+      section: "Important",
+      en: "Do not delete or overwrite the hidden invitation token. It links each row to the correct private lane.",
+      es: "No elimines ni sobrescribas el token oculto de invitacion. Vincula cada fila con la lane privada correcta."
+    }
+  ]);
+  instructions.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
+  instructions.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF203040" } };
+  instructions.eachRow((row) => {
+    row.alignment = { vertical: "top", wrapText: true };
+    row.eachCell((cell) => {
+      cell.border = {
+        top: { style: "thin", color: { argb: "FFD8DEE8" } },
+        left: { style: "thin", color: { argb: "FFD8DEE8" } },
+        bottom: { style: "thin", color: { argb: "FFD8DEE8" } },
+        right: { style: "thin", color: { argb: "FFD8DEE8" } }
+      };
+    });
+  });
+}
+
+function downloadWorkbookBuffer(buffer, filename) {
+  const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+async function downloadBidTemplate(carrierBook = {}, invitation = {}) {
   const rows = bidTemplateRows(carrierBook, invitation);
   if (!rows.length) {
-    window.alert("No invited lanes are available for this bid template.");
+    window.alert(dualText("No invited lanes are available for this bid template.", "No hay lanes invitadas disponibles para este template."));
     return;
   }
-  const workbook = XLSX.utils.book_new();
-  const headers = BID_TEMPLATE_COLUMNS.map((column) => column.label);
-  const body = rows.map((row) => BID_TEMPLATE_COLUMNS.map((column) => row[column.key] ?? ""));
-  const worksheet = XLSX.utils.aoa_to_sheet([headers, ...body]);
-  worksheet["!cols"] = BID_TEMPLATE_COLUMNS.map((column) => ({
-    wch: column.width || 16,
+  const ExcelJS = await loadExcelJs();
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = "Rateware";
+  workbook.created = new Date();
+  const worksheet = workbook.addWorksheet("Bid Template");
+  worksheet.columns = BID_TEMPLATE_COLUMNS.map((column) => ({
+    header: column.label,
+    key: column.key,
+    width: column.width || 16,
     hidden: Boolean(column.hidden)
   }));
-  worksheet["!autofilter"] = {
-    ref: XLSX.utils.encode_range({
-      s: { c: 0, r: 0 },
-      e: { c: BID_TEMPLATE_COLUMNS.length - 1, r: rows.length }
-    })
-  };
-  XLSX.utils.book_append_sheet(workbook, worksheet, "Bid Template");
-  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
-    ["How to use"],
-    ["1. Keep the readonly columns unchanged. The hidden invitation token links each row to the correct bid lane."],
-    ["2. Edit only Submit this lane, All-in rate, Currency, Weekly capacity, Transit days, commercial model, availability, ETA and notes."],
-    ["3. Submit this lane accepts TRUE/FALSE, YES/NO, X/blank."],
-    ["4. Commercial model accepts Direct / cost-plus, Carrier invoice share, or XBF buy-sell."],
-    ["5. Upload the completed workbook back into Rateware. The portal validates each row before sending."],
-    ["6. Nothing is submitted until you click Confirm and submit XLSX bids."]
-  ]), "Instructions");
+  rows.forEach((row) => worksheet.addRow(row));
+  applyBidTemplateWorksheetRules(worksheet, rows.length);
+  addBidTemplateInstructions(workbook);
   const event = invitation.rfx_events || {};
   const filename = safeSheetName(`${event.rfx_id || "rfx"} bid template`, "bid-template");
-  XLSX.writeFile(workbook, `${filename}.xlsx`);
+  const buffer = await workbook.xlsx.writeBuffer();
+  downloadWorkbookBuffer(buffer, `${filename}.xlsx`);
 }
 
 function draftFromBidTemplateRow(row) {
@@ -803,8 +1197,8 @@ function draftFromBidTemplateRow(row) {
     unit_details: textValue(row.unit_details),
     eta_pickup: normalizeTemplateDateTime(row.eta_pickup),
     eta_delivery: normalizeTemplateDateTime(row.eta_delivery),
-    mirror_account_enabled: false,
-    best_final: false,
+    mirror_account_enabled: normalizeTemplateBoolean(row.mirror_account_enabled),
+    best_final: normalizeTemplateBoolean(row.best_final),
     notes: textValue(row.notes)
   };
 }
@@ -849,35 +1243,35 @@ function renderBidTemplatePreview(rows = pendingBidTemplateRows) {
   if (!rows.length) {
     preview.innerHTML = "";
     if (status) {
-      status.textContent = "Upload the completed XLSX to validate it before submitting.";
+      status.textContent = t("uploadXlsxStatus");
       status.dataset.tone = "neutral";
     }
     return;
   }
   if (status) {
     status.textContent = invalidRows.length
-      ? `${invalidRows.length} row(s) need correction before submit.`
-      : `${selectedRows.length} row(s) ready. Review the preview, then confirm submission.`;
+      ? dualText(`${invalidRows.length} row(s) need correction before submit.`, `${invalidRows.length} fila(s) requieren correccion antes de enviar.`)
+      : dualText(`${selectedRows.length} row(s) ready. Review the preview, then confirm submission.`, `${selectedRows.length} fila(s) listas. Revisa la vista previa y confirma el envio.`);
     status.dataset.tone = invalidRows.length ? "error" : "success";
   }
   preview.innerHTML = `
     <div class="bid-template-preview-summary">
-      <span>${escapeHtml(selectedRows.length)} selected</span>
-      <span>${escapeHtml(invalidRows.length)} with errors</span>
-      <span>${escapeHtml(rows.length - selectedRows.length)} skipped</span>
+      <span>${escapeHtml(t("selectedRows", { count: selectedRows.length }))}</span>
+      <span>${escapeHtml(t("errorRows", { count: invalidRows.length }))}</span>
+      <span>${escapeHtml(t("skippedRows", { count: rows.length - selectedRows.length }))}</span>
     </div>
     <div class="table-wrap">
       <table class="bid-template-preview-table">
-        <thead><tr><th>Row</th><th>Lane</th><th>Rate</th><th>Capacity</th><th>Status</th></tr></thead>
+        <thead><tr><th>${escapeHtml(dualText("Row", "Fila"))}</th><th>Lane</th><th>${escapeHtml(dualText("Rate", "Tarifa"))}</th><th>${escapeHtml(dualText("Capacity", "Capacidad"))}</th><th>Status</th></tr></thead>
         <tbody>
           ${rows.slice(0, 12).map((row) => {
             const errors = row.validation.errors.map((issue) => issue.message);
             const lane = [row.origin, row.destination].filter(Boolean).join(" -> ") || row.lane_number || "-";
             const statusHtml = !row.submit_this_lane
-              ? '<span class="status-pill muted">Skipped</span>'
+              ? `<span class="status-pill muted">${escapeHtml(t("skipped"))}</span>`
               : errors.length
-                ? `<span class="status-pill danger">Fix required</span><small>${escapeHtml(errors.join(" | "))}</small>`
-                : '<span class="status-pill success">Ready</span>';
+                ? `<span class="status-pill danger">${escapeHtml(t("fixRequired"))}</span><small>${escapeHtml(errors.join(" | "))}</small>`
+                : `<span class="status-pill success">${escapeHtml(t("ready"))}</span>`;
             return `
               <tr>
                 <td>${escapeHtml(row.row_number)}</td>
@@ -891,7 +1285,7 @@ function renderBidTemplatePreview(rows = pendingBidTemplateRows) {
         </tbody>
       </table>
     </div>
-    ${rows.length > 12 ? `<p class="bid-board-note">Previewing first 12 of ${escapeHtml(rows.length)} rows.</p>` : ""}
+    ${rows.length > 12 ? `<p class="bid-board-note">${escapeHtml(dualText(`Previewing first 12 of ${rows.length} rows.`, `Mostrando primeras 12 de ${rows.length} filas.`))}</p>` : ""}
   `;
 }
 
@@ -902,7 +1296,7 @@ async function submitBidTemplateRows() {
   const invalidRows = rows.filter((row) => row.validation.errors.length);
   if (!rows.length) {
     if (status) {
-      status.textContent = "No XLSX rows selected for submit.";
+      status.textContent = dualText("No XLSX rows selected for submit.", "No hay filas XLSX seleccionadas para enviar.");
       status.dataset.tone = "error";
     }
     return;
@@ -913,7 +1307,7 @@ async function submitBidTemplateRows() {
   }
   if (button) button.disabled = true;
   if (status) {
-    status.textContent = `Submitting ${rows.length} XLSX bid row(s)...`;
+    status.textContent = dualText(`Submitting ${rows.length} XLSX bid row(s)...`, `Enviando ${rows.length} fila(s) de puja XLSX...`);
     status.dataset.tone = "neutral";
   }
   try {
@@ -922,10 +1316,10 @@ async function submitBidTemplateRows() {
     }
     pendingBidTemplateRows = [];
     if (status) {
-      status.textContent = `${rows.length} bid row(s) submitted. The private book will refresh now.`;
+      status.textContent = dualText(`${rows.length} bid row(s) submitted. The private book will refresh now.`, `${rows.length} fila(s) enviadas. El libro privado se actualizara ahora.`);
       status.dataset.tone = "success";
     }
-    queuePrivateBidAlert("bidSubmitted", `${rows.length} bid row(s) submitted from XLSX.`);
+    queuePrivateBidAlert("bidSubmitted", dualText(`${rows.length} bid row(s) submitted from XLSX.`, `${rows.length} fila(s) enviadas desde XLSX.`));
     await loadInvitation();
   } catch (error) {
     if (status) {
@@ -938,23 +1332,23 @@ async function submitBidTemplateRows() {
 
 function renderBidTemplateTools(carrierBook = {}, invitation = {}) {
   const rows = bidTemplateRows(carrierBook, invitation);
-  if (rows.length <= 1) return "";
+  if (!rows.length) return "";
   return `
     <section class="carrier-bid-template-tools">
       <div>
-        <p class="eyebrow">XLSX bid template</p>
-        <h3>Quote multiple invited lanes in Excel</h3>
-        <p>Download the prefilled bid workbook, edit only the offer columns, upload it here, then confirm after validation.</p>
+        <p class="eyebrow">${escapeHtml(t("xlsxEyebrow"))}</p>
+        <h3>${escapeHtml(t("xlsxTitle"))}</h3>
+        <p>${escapeHtml(t("xlsxCopy"))}</p>
       </div>
       <div class="carrier-bid-template-actions">
-        <button type="button" data-download-bid-template>Download XLSX template</button>
+        <button type="button" data-download-bid-template>${escapeHtml(t("downloadXlsx"))}</button>
         <label class="carrier-bid-template-upload">
-          <span>Upload completed XLSX</span>
+          <span>${escapeHtml(t("uploadXlsx"))}</span>
           <input id="carrier-bid-template-file" type="file" accept=".xlsx,.xls,.csv" />
         </label>
-        <button type="button" data-submit-bid-template disabled>Confirm and submit XLSX bids</button>
+        <button type="button" data-submit-bid-template disabled>${escapeHtml(t("confirmXlsx"))}</button>
       </div>
-      <p id="carrier-bid-template-status" class="status-message" role="status">Upload the completed XLSX to validate it before submitting.</p>
+      <p id="carrier-bid-template-status" class="status-message" role="status">${escapeHtml(t("uploadXlsxStatus"))}</p>
       <div id="carrier-bid-template-preview" class="carrier-bid-template-preview"></div>
     </section>
   `;
@@ -1364,20 +1758,20 @@ function filteredBookRows(carrierBook = {}) {
 
 function renderBookRows(rows = []) {
   if (!rows.length) {
-    return `<tr><td colspan="8">No opportunities match this view.</td></tr>`;
+    return `<tr><td colspan="8">${escapeHtml(dualText("No opportunities match this view.", "No hay oportunidades que coincidan con esta vista."))}</td></tr>`;
   }
   return rows.map((row) => {
     const lane = row.lane || {};
     const event = row.event || {};
     const amount = row.bid_rate !== null && row.bid_rate !== undefined ? formatMoney(row.bid_rate, row.currency || lane.currency) : "-";
     const action = row.is_invited
-      ? `<a class="secondary small-button" href="./rfx-bid.html?token=${encodeURIComponent(row.invitation_token || "")}">Open bid</a>`
-      : `<button class="secondary small-button" type="button" data-request-lane="${escapeHtml(lane.id || "")}">Request invite</button>`;
+      ? `<a class="secondary small-button" href="./rfx-bid.html?token=${encodeURIComponent(row.invitation_token || "")}">${escapeHtml(dualText("Open bid", "Abrir puja"))}</a>`
+      : `<button class="secondary small-button" type="button" data-request-lane="${escapeHtml(lane.id || "")}">${escapeHtml(statusLabel("not_invited"))}</button>`;
     return `
       <tr>
         <td>
           <strong>${escapeHtml(event.rfx_id || event.name || "-")}</strong>
-          <small>${escapeHtml(event.customer || "")}${event.due_date ? ` | Due ${escapeHtml(formatDate(event.due_date))}` : ""}</small>
+          <small>${escapeHtml(event.customer || "")}${event.due_date ? ` | ${escapeHtml(dualText("Due", "Vence"))} ${escapeHtml(formatDate(event.due_date))}` : ""}</small>
         </td>
         <td>
           ${escapeHtml(laneLabel(lane))}
@@ -1419,11 +1813,11 @@ function renderCarrierLaneSwitcher(carrierBook = {}, invitation = {}) {
       <div class="bid-room-section-heading">
         <div>
           <p class="eyebrow">Invited lane book</p>
-          <h3>${escapeHtml(rows.length)} lanes available in this RFx</h3>
+          <h3>${escapeHtml(dualText(`${rows.length} lanes available in this RFx`, `${rows.length} lanes disponibles en este RFx`))}</h3>
         </div>
-        <span class="status-pill neutral">Pick a lane to quote</span>
+        <span class="status-pill neutral">${escapeHtml(dualText("Pick a lane to quote", "Elige una lane para cotizar"))}</span>
       </div>
-      <p class="bid-board-note">Your private invitation covers multiple lanes. The form below is for the selected lane; use this list to switch routes.</p>
+      <p class="bid-board-note">${escapeHtml(dualText("Your private invitation covers multiple lanes. The form below is for the selected lane; use this list to switch routes.", "Tu invitacion privada cubre multiples lanes. El formulario inferior corresponde a la lane seleccionada; usa esta lista para cambiar de ruta."))}</p>
       <div class="carrier-lane-switcher-grid">
         ${rows.map((row) => {
           const lane = row.lane || {};
@@ -1431,12 +1825,12 @@ function renderCarrierLaneSwitcher(carrierBook = {}, invitation = {}) {
           return `
             <article class="${isCurrent ? "is-current" : ""}">
               <div>
-                <span class="status-pill ${statusTone(bookStatus(row))}">${escapeHtml(isCurrent ? "Selected lane" : statusLabel(bookStatus(row)))}</span>
+                <span class="status-pill ${statusTone(bookStatus(row))}">${escapeHtml(isCurrent ? dualText("Selected lane", "Lane seleccionada") : statusLabel(bookStatus(row)))}</span>
                 <strong>${escapeHtml(laneLabel(lane))}</strong>
                 <small>${escapeHtml([marketLabel(lane), [lane.equipment, lane.trailer, lane.config].filter(Boolean).join(" / "), [lane.operation, lane.service].filter(Boolean).join(" / ")].filter(Boolean).join(" | "))}</small>
               </div>
               <a class="${isCurrent ? "small-button" : "secondary small-button"}" href="./rfx-bid.html?token=${encodeURIComponent(row.invitation_token || "")}">
-                ${isCurrent ? "Current bid" : "Open lane"}
+                ${escapeHtml(isCurrent ? dualText("Current bid", "Puja actual") : dualText("Open lane", "Abrir lane"))}
               </a>
             </article>
           `;
@@ -1647,9 +2041,12 @@ function renderInvitation(invitation, liveBoard = {}, carrierBook = {}) {
   card.innerHTML = `
     <section class="bid-room-hero">
       <div>
-        <p class="eyebrow">Private Bid Room v1</p>
-        <h2>${escapeHtml(event.name || event.rfx_id || "Bid request")}</h2>
-        <p>${escapeHtml(vendor.vendor_name || vendor.domain || "Carrier")} can review ${escapeHtml(multiLaneRows.length > 1 ? `${multiLaneRows.length} invited lanes` : "the selected lane")}, request access to open opportunities, and submit all-in offers.</p>
+        <p class="eyebrow">${escapeHtml(t("privateRoom"))}</p>
+        <h2>${escapeHtml(event.name || event.rfx_id || t("requestFallback"))}</h2>
+        <p>${escapeHtml(t("carrierCanReview", {
+          carrier: vendor.vendor_name || vendor.domain || t("carrier"),
+          lane_count: multiLaneRows.length > 1 ? t("invitedLanes", { count: multiLaneRows.length }) : t("selectedLane")
+        }))}</p>
       </div>
       <aside>
         <span class="status-pill" data-tone="${deadline.tone}">${escapeHtml(deadline.label)}</span>
@@ -1659,26 +2056,26 @@ function renderInvitation(invitation, liveBoard = {}, carrierBook = {}) {
     </section>
 
     <div class="bid-context">
-      <article><span>Customer</span><strong>${escapeHtml(event.customer || "-")}</strong></article>
-      <article><span>Carrier</span><strong>${escapeHtml(vendor.vendor_name || vendor.domain || "-")}</strong></article>
-      <article><span>Visibility</span><strong>${escapeHtml(visibilityLabel(liveBoard.visibility || {}))}</strong></article>
-      <article><span>Refresh</span><strong>30 sec</strong></article>
+      <article><span>${escapeHtml(t("customer"))}</span><strong>${escapeHtml(event.customer || "-")}</strong></article>
+      <article><span>${escapeHtml(t("carrier"))}</span><strong>${escapeHtml(vendor.vendor_name || vendor.domain || "-")}</strong></article>
+      <article><span>${escapeHtml(t("visibility"))}</span><strong>${escapeHtml(visibilityLabel(liveBoard.visibility || {}))}</strong></article>
+      <article><span>${escapeHtml(t("refresh"))}</span><strong>30 sec</strong></article>
     </div>
 
     <section class="private-bid-alert-panel" aria-live="polite">
       <div>
-        <p class="eyebrow">Multimedia alerts</p>
-        <h3>Ranking, quote and chat movement</h3>
+        <p class="eyebrow">${escapeHtml(t("multimediaAlerts"))}</p>
+        <h3>${escapeHtml(t("rankingMovement"))}</h3>
       </div>
       <div class="private-bid-alert-actions">
-        <select id="private-bid-language" aria-label="Private Bid Room alert language">
-          <option value="en" ${privateAlertState.language === "en" ? "selected" : ""}>English alerts</option>
-          <option value="es" ${privateAlertState.language === "es" ? "selected" : ""}>Alertas en espanol</option>
+        <select id="private-bid-language" aria-label="Private Bid Room language">
+          <option value="en" ${privateAlertState.language === "en" ? "selected" : ""}>English</option>
+          <option value="es" ${privateAlertState.language === "es" ? "selected" : ""}>Espanol</option>
         </select>
-        <button id="private-bid-sound" type="button">Enable sound</button>
+        <button id="private-bid-sound" type="button">${escapeHtml(t("enableSound"))}</button>
       </div>
       <div id="private-bid-alerts" class="private-bid-alerts">
-        <p>No movement yet. Enable sound to hear ranking, quote, chat, and deadline alerts.</p>
+        <p>${escapeHtml(t("noMovement"))}</p>
       </div>
     </section>
 
@@ -1691,16 +2088,16 @@ function renderInvitation(invitation, liveBoard = {}, carrierBook = {}) {
     <section class="bid-lane-summary">
       <div class="bid-room-section-heading">
         <div>
-          <p class="eyebrow">${isBookView ? "Selected lane from book" : "Current lane"}</p>
+          <p class="eyebrow">${escapeHtml(isBookView ? t("selectedLaneFromBook") : t("currentLane"))}</p>
           <h2>${escapeHtml(formatLane(lane))}</h2>
         </div>
         <span class="status-pill neutral">${escapeHtml(statusLabel(invitation.invitation_status))}</span>
       </div>
       <dl>
-        <div><dt>Equipment</dt><dd>${escapeHtml([lane.equipment, lane.trailer, lane.config].filter(Boolean).join(" / ") || "-")}</dd></div>
-        <div><dt>Operation</dt><dd>${escapeHtml(lane.operation || "-")}</dd></div>
-        <div><dt>Service</dt><dd>${escapeHtml(lane.service || "-")}</dd></div>
-        <div><dt>Weekly volume</dt><dd>${escapeHtml(lane.weekly_volume ?? "-")}</dd></div>
+        <div><dt>${escapeHtml(t("equipment"))}</dt><dd>${escapeHtml([lane.equipment, lane.trailer, lane.config].filter(Boolean).join(" / ") || "-")}</dd></div>
+        <div><dt>${escapeHtml(t("operation"))}</dt><dd>${escapeHtml(lane.operation || "-")}</dd></div>
+        <div><dt>${escapeHtml(t("service"))}</dt><dd>${escapeHtml(lane.service || "-")}</dd></div>
+        <div><dt>${escapeHtml(t("weeklyVolume"))}</dt><dd>${escapeHtml(lane.weekly_volume ?? "-")}</dd></div>
       </dl>
       ${laneDetailSections(lane).length ? `
         <div class="bid-lane-detail-sections">
@@ -1715,82 +2112,82 @@ function renderInvitation(invitation, liveBoard = {}, carrierBook = {}) {
     </section>
 
     <section id="bid-live-board" class="bid-live-board">
-      <p class="status-message">Loading live bid room...</p>
+      <p class="status-message">${escapeHtml(t("loadingLiveRoom"))}</p>
     </section>
 
     <section id="carrier-bid-history" class="carrier-bid-history">
-      <p class="status-message">Loading offer history...</p>
+      <p class="status-message">${escapeHtml(t("loadingHistory"))}</p>
     </section>
 
     <section id="carrier-bid-chat" class="carrier-bid-chat">
-      <p class="status-message">Loading Bid Room Chat...</p>
+      <p class="status-message">${escapeHtml(t("loadingChat"))}</p>
     </section>
 
     <form id="bid-form" class="bid-form">
       <div class="bid-form-header">
         <div>
-          <p class="eyebrow">Submit or update offer</p>
-          <h3>Guided bid flow</h3>
+          <p class="eyebrow">${escapeHtml(t("submitOrUpdate"))}</p>
+          <h3>${escapeHtml(t("guidedBidFlow"))}</h3>
         </div>
-        <span class="status-pill muted">Primary + alternatives</span>
+        <span class="status-pill muted">${escapeHtml(t("primaryAlt"))}</span>
       </div>
       <div class="carrier-bid-workflow full-width" aria-label="Bid steps">
-        <button type="button" data-bid-section-target="primary">Submit primary bid</button>
-        <button type="button" data-bid-section-target="commercial">Commercial model</button>
-        <button type="button" data-bid-section-target="alternative">Add alternative</button>
-        <button type="button" data-bid-section-target="capacity">Confirm capacity</button>
-        <button type="button" data-bid-section-target="review">Best and final</button>
+        <button type="button" data-bid-section-target="primary">${escapeHtml(t("submitPrimary"))}</button>
+        <button type="button" data-bid-section-target="commercial">${escapeHtml(t("commercialModel"))}</button>
+        <button type="button" data-bid-section-target="alternative">${escapeHtml(t("addAlternative"))}</button>
+        <button type="button" data-bid-section-target="capacity">${escapeHtml(t("confirmCapacity"))}</button>
+        <button type="button" data-bid-section-target="review">${escapeHtml(t("bestFinal"))}</button>
       </div>
       <section class="guided-bid-section full-width" data-bid-section="primary">
         <div class="bid-form-section-title">
-          <strong>Primary offer</strong>
-          <span>Your compliant all-in bid for this lane.</span>
+          <strong>${escapeHtml(t("primaryOffer"))}</strong>
+          <span>${escapeHtml(t("primaryOfferCopy"))}</span>
         </div>
         <div class="guided-bid-fields">
           <label>
-            All-in rate
+            ${escapeHtml(t("allInRate"))}
             <input id="bid-rate" required inputmode="decimal" value="${escapeHtml(invitation.bid_rate ?? "")}" placeholder="2900" />
           </label>
           <label>
-            Currency
+            ${escapeHtml(t("currency"))}
             <select id="bid-currency">
               ${["USD", "MXN", "CAD"].map((currency) => `<option value="${currency}" ${currency === (invitation.currency || lane.currency || "USD") ? "selected" : ""}>${currency}</option>`).join("")}
             </select>
           </label>
           <label>
-            Weekly capacity
+            ${escapeHtml(t("weeklyCapacity"))}
             <input id="bid-capacity" inputmode="decimal" value="${escapeHtml(invitation.weekly_capacity ?? "")}" placeholder="5" />
           </label>
           <label>
-            Transit days
+            ${escapeHtml(t("transitDays"))}
             <input id="bid-transit-days" inputmode="decimal" value="${escapeHtml(invitation.transit_days ?? "")}" placeholder="2" />
           </label>
         </div>
       </section>
       <section class="guided-bid-section full-width" data-bid-section="commercial">
         <div class="bid-form-section-title">
-          <strong>Commercial structure</strong>
-          <span id="bid-commercial-active-percent">Suggested margin to share %</span>
+          <strong>${escapeHtml(t("commercialStructure"))}</strong>
+          <span id="bid-commercial-active-percent">${escapeHtml(t("suggestedMargin"))}</span>
         </div>
         <div id="bid-commercial-helper" class="commercial-structure-helper"></div>
         <div class="guided-bid-fields">
           <label>
-            Commercial model
+            ${escapeHtml(t("commercialModel"))}
             <select id="bid-commercial-model">
               ${[
-                ["direct_cost_plus", "Direct carrier / cost-plus"],
-                ["carrier_share", "Carrier shares billing %"],
-                ["xbf_buy_sell", "XBF buy-sell"]
+                ["direct_cost_plus", dualText("Direct carrier / cost-plus", "Carrier directo / cost-plus")],
+                ["carrier_share", dualText("Carrier shares billing %", "Carrier comparte facturacion %")],
+                ["xbf_buy_sell", dualText("XBF buy-sell", "XBF compra-venta")]
               ].map(([value, label]) => `<option value="${value}" ${value === (invitation.commercial_model || "direct_cost_plus") ? "selected" : ""}>${label}</option>`).join("")}
             </select>
           </label>
           <label data-commercial-field="marksman">
-            Suggested margin to share %
+            ${escapeHtml(t("suggestedMargin"))}
             <span class="field-help" title="Recommended MARKSMAN margin over your all-in cost. This is not a carrier invoice share.">?</span>
             <input id="bid-marksman-margin" inputmode="decimal" value="${escapeHtml(invitation.marksman_margin_pct ?? "")}" placeholder="2-5" />
           </label>
           <label data-commercial-field="carrier">
-            Carrier invoice share %
+            ${escapeHtml(t("carrierShare"))}
             <span class="field-help" title="Percent of customer billing the carrier is willing to share based on the original quote. This does not apply to cost-plus.">?</span>
             <input id="bid-carrier-share" inputmode="decimal" value="${escapeHtml(invitation.carrier_share_pct ?? "")}" placeholder="2-5" />
           </label>
@@ -1798,80 +2195,80 @@ function renderInvitation(invitation, liveBoard = {}, carrierBook = {}) {
       </section>
       <section class="guided-bid-section full-width" data-bid-section="alternative">
         <div class="bid-form-section-title">
-          <strong>Best alternative</strong>
+          <strong>${escapeHtml(t("bestAlternative"))}</strong>
           <span>Offer substitute equipment, multiple units, or a different capacity model.</span>
         </div>
         <div class="guided-bid-fields">
           <label class="bid-checkbox-label">
             <input id="bid-alt-enabled" type="checkbox" ${invitation.best_alternative_offered ? "checked" : ""} />
-            Best alternative offer
+            ${escapeHtml(t("bestAlternativeOffer"))}
           </label>
           <label>
-            Alternative equipment
+            ${escapeHtml(t("alternativeEquipment"))}
             <input id="bid-alt-equipment" value="${escapeHtml(invitation.alternative_equipment || "")}" placeholder="2 x 3.5 ton, 4 vans..." />
           </label>
           <label>
-            Alternative units
+            ${escapeHtml(t("alternativeUnits"))}
             <input id="bid-alt-units" inputmode="decimal" value="${escapeHtml(invitation.alternative_units ?? "")}" placeholder="2" />
           </label>
           <label class="wide-field">
-            Alternative notes
+            ${escapeHtml(t("alternativeNotes"))}
             <textarea id="bid-alt-notes" rows="2" placeholder="Capacity, restrictions, rate assumptions for the alternative...">${escapeHtml(invitation.alternative_notes || "")}</textarea>
           </label>
         </div>
       </section>
       <section class="guided-bid-section full-width" data-bid-section="capacity">
         <div class="bid-form-section-title">
-          <strong>Live capacity commitment</strong>
-          <span>Confirm availability, unit details, validation and ETAs.</span>
+          <strong>${escapeHtml(t("liveCapacity"))}</strong>
+          <span>${escapeHtml(t("liveCapacityCopy"))}</span>
         </div>
         <div class="guided-bid-fields">
           <label>
-            Equipment available
+            ${escapeHtml(t("equipmentAvailable"))}
             <select id="bid-equipment-available">
-              <option value="" ${invitation.equipment_available === null || invitation.equipment_available === undefined ? "selected" : ""}>Not declared</option>
-              <option value="true" ${invitation.equipment_available === true ? "selected" : ""}>Available</option>
-              <option value="false" ${invitation.equipment_available === false ? "selected" : ""}>Not available</option>
+              <option value="" ${invitation.equipment_available === null || invitation.equipment_available === undefined ? "selected" : ""}>${escapeHtml(t("notDeclared"))}</option>
+              <option value="true" ${invitation.equipment_available === true ? "selected" : ""}>${escapeHtml(t("available"))}</option>
+              <option value="false" ${invitation.equipment_available === false ? "selected" : ""}>${escapeHtml(t("notAvailable"))}</option>
             </select>
           </label>
           <label>
-            ETA pickup
+            ${escapeHtml(t("etaPickup"))}
             <input id="bid-eta-pickup" type="datetime-local" value="${escapeHtml(dateTimeLocalValue(invitation.eta_pickup))}" />
           </label>
           <label>
-            ETA delivery
+            ${escapeHtml(t("etaDelivery"))}
             <input id="bid-eta-delivery" type="datetime-local" value="${escapeHtml(dateTimeLocalValue(invitation.eta_delivery))}" />
           </label>
           <label class="bid-checkbox-label">
             <input id="bid-mirror-account" type="checkbox" ${invitation.mirror_account_enabled ? "checked" : ""} />
-            Mirror account enabled
+            ${escapeHtml(t("mirrorAccount"))}
           </label>
           <label class="wide-field">
-            Unit details
+            ${escapeHtml(t("unitDetails"))}
             <textarea id="bid-unit-details" rows="2" placeholder="Truck, trailer, driver, plate, tracking or mirror account validation details...">${escapeHtml(invitation.unit_details || "")}</textarea>
           </label>
         </div>
       </section>
       <section class="guided-bid-section full-width" data-bid-section="review">
         <div class="bid-form-section-title">
-          <strong>Review and submit</strong>
-          <span>This is what procurement will see.</span>
+          <strong>${escapeHtml(t("reviewSubmit"))}</strong>
+          <span>${escapeHtml(t("reviewCopy"))}</span>
         </div>
         <div id="bid-review-summary" class="bid-review-summary"></div>
         <label class="wide-field">
-          Notes
+          ${escapeHtml(t("notes"))}
           <textarea id="bid-notes" rows="3" placeholder="Assumptions, validity, accessorials...">${escapeHtml(invitation.notes || "")}</textarea>
         </label>
         <div class="bid-final-actions">
           <label class="bid-checkbox-label">
             <input id="bid-best-final" type="checkbox" />
-            Best and final offer
+            ${escapeHtml(t("bestFinal"))}
           </label>
           <label class="bid-checkbox-label">
             <input id="bid-confirm-review" type="checkbox" />
-            Confirm capacity and commercial terms
+            ${escapeHtml(t("confirmTerms"))}
           </label>
-          <button type="submit">Submit primary bid</button>
+          <button type="submit">${escapeHtml(t("submitPrimary"))}</button>
         </div>
       </section>
       <p id="bid-submit-status" class="status-message" role="status"></p>
@@ -1929,6 +2326,7 @@ async function loadInvitation(options = {}) {
   try {
     const data = await callBidApi("get_invitation");
     lastInvitation = data.invitation;
+    lastLiveBoard = data.live_board || {};
     if (options.refreshOnly && card.querySelector("#bid-form")) {
       renderLiveBoard(data.live_board);
       renderAwardOutcome(data.invitation, data.carrier_book, data.live_board);
@@ -2006,7 +2404,28 @@ card.addEventListener("click", async (event) => {
 
   const downloadTemplateButton = event.target.closest("[data-download-bid-template]");
   if (downloadTemplateButton) {
-    downloadBidTemplate(lastCarrierBook || {}, lastInvitation || {});
+    const status = card.querySelector("#carrier-bid-template-status");
+    downloadTemplateButton.disabled = true;
+    if (status) {
+      status.textContent = dualText("Preparing XLSX template with dropdowns...", "Preparando template XLSX con listas desplegables...");
+      status.dataset.tone = "neutral";
+    }
+    try {
+      await downloadBidTemplate(lastCarrierBook || {}, lastInvitation || {});
+      if (status) {
+        status.textContent = dualText("Template downloaded. Complete the yellow cells, then upload it here.", "Template descargado. Completa las celdas amarillas y despues subelo aqui.");
+        status.dataset.tone = "success";
+      }
+    } catch (error) {
+      if (status) {
+        status.textContent = error.message;
+        status.dataset.tone = "error";
+      } else {
+        window.alert(error.message);
+      }
+    } finally {
+      downloadTemplateButton.disabled = false;
+    }
     return;
   }
 
@@ -2093,6 +2512,12 @@ card.addEventListener("change", async (event) => {
     privateAlertState.language = privateLanguage.value || "en";
     localStorage.setItem("rateware.privateBidRoom.language", privateAlertState.language);
     renderPrivateBidAlerts();
+    if (lastInvitation) {
+      renderInvitation(lastInvitation, lastLiveBoard || {}, lastCarrierBook || {});
+      renderAwardOutcome(lastInvitation, lastCarrierBook || {}, lastLiveBoard || {});
+      renderCarrierBook(lastCarrierBook || {});
+      await loadCarrierChat({ suppressAlert: true });
+    }
     return;
   }
 
@@ -2102,7 +2527,7 @@ card.addEventListener("change", async (event) => {
     const file = templateFileInput.files?.[0];
     if (!file) return;
     if (status) {
-      status.textContent = "Reading XLSX bid template...";
+      status.textContent = dualText("Reading XLSX bid template...", "Leyendo template XLSX...");
       status.dataset.tone = "neutral";
     }
     try {
