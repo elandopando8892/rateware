@@ -1657,8 +1657,23 @@ function laneRowsText(targets = []) {
     `Equipment: ${[lane.equipment, lane.trailer, lane.config].filter(Boolean).join(" / ") || "-"}`,
     `Operation/Service: ${[lane.operation, lane.service].filter(Boolean).join(" / ") || "-"}`,
     `Volume: ${lane.weekly_volume || "-"} per week`,
-    `Target: ${lane.target_rate ? formatMoney(lane.target_rate, lane.currency) : "-"}`
-  ].join(" | ")).join("\n");
+    `Target: ${lane.target_rate ? formatMoney(lane.target_rate, lane.currency) : "-"}`,
+    laneBidInstructionSummary(lane) ? `Details: ${laneBidInstructionSummary(lane)}` : null
+  ].filter(Boolean).join(" | ")).join("\n");
+}
+
+function laneBidInstructionSummary(lane = {}) {
+  return [
+    ["Logistics model", lane.logistics_model],
+    ["Operation criteria", lane.operation_criteria],
+    ["Business rules", lane.business_rules],
+    ["Service specs", lane.service_specifications],
+    ["Notes", lane.other_notes || lane.notes]
+  ]
+    .map(([label, value]) => [label, String(value || "").trim()])
+    .filter(([, value]) => value)
+    .map(([label, value]) => `${label}: ${value}`)
+    .join(" | ");
 }
 
 function laneTableHtml(targets = []) {
@@ -1687,7 +1702,7 @@ function laneTableHtml(targets = []) {
       <td style="${quoteCellStyle}">${escapeHtml(lane.target_rate ? formatMoney(lane.target_rate, lane.currency) : "-")}</td>
       <td style="${bidCellStyle}">Por ofertar</td>
       <td style="${bidCellStyle}">Por estimar</td>
-      <td style="${cellStyle}">${escapeHtml(lane.notes || "")}</td>
+      <td style="${cellStyle}">${escapeHtml(laneBidInstructionSummary(lane) || "")}</td>
     </tr>
   `).join("");
   return `

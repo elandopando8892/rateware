@@ -8188,6 +8188,20 @@ function formatOutreachMoney(value: unknown, currency: unknown = "USD") {
   return `${new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(number)} ${cleanText(currency) || "USD"}`;
 }
 
+function outreachLaneBidInstructionSummary(lane: Record<string, unknown>) {
+  return [
+    ["Logistics model", lane.logistics_model],
+    ["Operation criteria", lane.operation_criteria],
+    ["Business rules", lane.business_rules],
+    ["Service specs", lane.service_specifications],
+    ["Notes", lane.other_notes || lane.notes]
+  ]
+    .map(([label, value]) => [label, cleanText(value)])
+    .filter(([, value]) => Boolean(value))
+    .map(([label, value]) => `${label}: ${value}`)
+    .join(" | ");
+}
+
 function laneRecordFromInvitation(invitation: Record<string, unknown>) {
   return typeof invitation.rfx_lanes === "object" && invitation.rfx_lanes
     ? invitation.rfx_lanes as Record<string, unknown>
@@ -8202,8 +8216,9 @@ function outreachLaneRowsText(invitations: Record<string, unknown>[]) {
       `Equipment: ${[lane.equipment, lane.trailer, lane.config].map(cleanText).filter(Boolean).join(" / ") || "-"}`,
       `Operation/Service: ${[lane.operation, lane.service].map(cleanText).filter(Boolean).join(" / ") || "-"}`,
       `Volume: ${cleanText(lane.weekly_volume) || "-"} per week`,
-      `Target: ${formatOutreachMoney(lane.target_rate, lane.currency)}`
-    ].join(" | ");
+      `Target: ${formatOutreachMoney(lane.target_rate, lane.currency)}`,
+      outreachLaneBidInstructionSummary(lane) ? `Details: ${outreachLaneBidInstructionSummary(lane)}` : null
+    ].filter(Boolean).join(" | ");
   }).join("\n");
 }
 
@@ -8235,7 +8250,7 @@ function outreachLaneTableHtml(invitations: Record<string, unknown>[]) {
         <td style="${quoteCellStyle}">${escapeHtmlText(formatOutreachMoney(lane.target_rate, lane.currency))}</td>
         <td style="${bidCellStyle}">Por ofertar</td>
         <td style="${bidCellStyle}">Por estimar</td>
-        <td style="${cellStyle}">${escapeHtmlText(lane.notes || "")}</td>
+        <td style="${cellStyle}">${escapeHtmlText(outreachLaneBidInstructionSummary(lane))}</td>
       </tr>
     `;
   }).join("");

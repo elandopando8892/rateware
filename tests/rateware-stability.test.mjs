@@ -67,6 +67,7 @@ const rfxBidSubmissionV2Migration = readFileSync(new URL("../supabase/migrations
 const vendorSegmentsCoverageMigration = readFileSync(new URL("../supabase/migrations/20260706143000_vendor_segments_coverage_filter.sql", import.meta.url), "utf8");
 const vendorProfileRequestsMigration = readFileSync(new URL("../supabase/migrations/20260706152000_vendor_profile_requests.sql", import.meta.url), "utf8");
 const rfxLaneDetailSectionsMigration = readFileSync(new URL("../supabase/migrations/20260707170000_rfx_lane_detail_sections.sql", import.meta.url), "utf8");
+const rfxDefaultTemplateMigration = readFileSync(new URL("../supabase/migrations/20260708093000_enrich_rfx_default_invitation_template.sql", import.meta.url), "utf8");
 
 for (const domain of ["gmail.com", "hotmail.com", "yahoo.com", "outlook.com", "yahoo.com.mx"]) {
   assert.match(apiSource, new RegExp(`"${domain.replace(".", "\\.")}"`), `generic domain ${domain} should be blocked`);
@@ -344,6 +345,12 @@ assert.match(rfxEventsSource, /function insertClipboardHtmlIntoTextarea/, "Bid R
 assert.match(rfxEventsSource, /getData\("text\/html"\)/, "Bid Room lane detail paste should prefer clipboard HTML when available");
 assert.match(rfxEventsSource, /manualLanesBody\?\.addEventListener\("paste"/, "Manual lane detail editor should support pasted HTML");
 assert.match(rfxEventsSource, /lanesBody\?\.addEventListener\("paste"/, "Loaded lane detail editor should support pasted HTML");
+assert.match(rfxEventsSource, /function laneBidInstructionSummary/, "Bid Room outreach preview should summarize lane detail sections in the email table");
+assert.match(apiSource, /function outreachLaneBidInstructionSummary/, "Rateware API outreach drafts should include lane detail sections in generated messages");
+assert.match(rfxDefaultTemplateMigration, /Please include/, "Default RFx carrier invitation should include quote instructions");
+assert.match(rfxDefaultTemplateMigration, /Commercial model/, "Default RFx carrier invitation should request commercial model details");
+assert.match(rfxDefaultTemplateMigration, /{{lane_table}}/, "Default RFx carrier invitation should include the full business book table");
+assert.match(rfxDefaultTemplateMigration, /is_default = false/, "Legacy basic RFx carrier invitation should no longer outrank the Marksman default");
 assert.match(rfxServiceSource, /update_rfx_lane/, "RFx service should expose loaded lane updates");
 assert.match(apiSource, /body\.action === "update_rfx_lane"/, "Rateware API should update existing RFx lanes");
 assert.match(apiSource, /function normalizeRfxLanePatch/, "Rateware API should normalize partial RFx lane updates");
