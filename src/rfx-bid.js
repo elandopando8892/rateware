@@ -1888,8 +1888,8 @@ function setCarrierChatOpen(open = true) {
 
 function bidSupportPromptList() {
   return portalLanguage() === "es"
-    ? ["Como mejoro mi ranking?", "Que modelo comercial debo elegir?", "Que detalles tiene esta lane?", "Como subo una alternativa?"]
-    : ["How do I improve my rank?", "Which commercial model should I use?", "What details are available for this lane?", "How do I submit an alternative?"];
+    ? ["Resumen de la oportunidad", "Que detalles tiene Guadalajara?", "Como mejoro mi ranking?", "Que modelo comercial debo elegir?", "Como subo una alternativa?"]
+    : ["Opportunity summary", "What details are available for Guadalajara?", "How do I improve my rank?", "Which commercial model should I use?", "How do I submit an alternative?"];
 }
 
 function renderBidSupportAgent(result = lastBidSupportResult) {
@@ -1914,8 +1914,8 @@ function renderBidSupportAgent(result = lastBidSupportResult) {
       <header>
         <div>
           <p class="eyebrow">${escapeHtml(dualText("Contextual support", "Soporte contextual"))}</p>
-          <h3>${escapeHtml(dualText("Ask about this bid", "Pregunta sobre esta puja"))}</h3>
-          <p>${escapeHtml(dualText("The assistant answers only from this visible Bid Room. If it needs procurement, it creates a ticket.", "El asistente responde solo con el contexto visible del Bid Room. Si requiere procurement, crea un ticket."))}</p>
+          <h3>${escapeHtml(dualText("Ask about this opportunity", "Pregunta sobre esta oportunidad"))}</h3>
+          <p>${escapeHtml(dualText("The assistant can answer from the event, invited lanes, visible business rules, ranking, and current bid context. If it needs procurement, it creates a ticket.", "El asistente puede responder sobre el evento, rutas invitadas, reglas visibles del negocio, ranking y puja actual. Si requiere procurement, crea un ticket."))}</p>
         </div>
         <button type="button" class="secondary small-button" data-bid-support-close>${escapeHtml(dualText("Close", "Cerrar"))}</button>
       </header>
@@ -1937,9 +1937,9 @@ function renderBidSupportAgent(result = lastBidSupportResult) {
           <article class="bid-support-answer">
             <div>
               <strong>${escapeHtml(dualText("How can I help?", "Como te puedo ayudar?"))}</strong>
-              <span>${escapeHtml(dualText("Private context", "Contexto privado"))}</span>
+              <span>${escapeHtml(dualText("Opportunity + lanes", "Oportunidad + rutas"))}</span>
             </div>
-            <p>${escapeHtml(dualText("Ask about ranking, commercial model, ETA, alternatives, lane details, or next steps.", "Pregunta sobre ranking, modelo comercial, ETA, alternativas, detalles de lane o siguientes pasos."))}</p>
+            <p>${escapeHtml(dualText("Ask about the full opportunity, a specific lane, business rules, ranking, commercial model, ETA, alternatives, or next steps.", "Pregunta sobre la oportunidad completa, una ruta especifica, reglas de negocio, ranking, modelo comercial, ETA, alternativas o siguientes pasos."))}</p>
           </article>
         `}
       </div>
@@ -1979,7 +1979,7 @@ async function askBidSupport(options = {}) {
   if (status) {
     status.textContent = options.createTicket
       ? dualText("Creating ticket...", "Creando ticket...")
-      : dualText("Checking bid context...", "Revisando contexto de la puja...");
+      : dualText("Checking opportunity context...", "Revisando contexto de la oportunidad...");
     status.dataset.tone = "neutral";
   }
   try {
@@ -1995,7 +1995,7 @@ async function askBidSupport(options = {}) {
         ? dualText("Ticket created for procurement follow-up.", "Ticket creado para seguimiento de procurement.")
         : result.needs_ticket
           ? dualText("Support recommends creating a ticket.", "Soporte recomienda crear un ticket.")
-          : dualText("Answered from visible Bid Room context.", "Respondido con contexto visible del Bid Room.");
+          : dualText("Answered from opportunity and lane context.", "Respondido con contexto de oportunidad y rutas.");
       nextStatus.dataset.tone = result.ticket?.id || !result.needs_ticket ? "success" : "warning";
     }
   } catch (error) {

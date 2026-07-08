@@ -683,11 +683,17 @@ assert.match(apiSource, /BULK_SHORTLIST_VENDOR_LIMIT = 1000/, "Bid Room particip
 assert.match(apiSource, /BULK_FILTER_CONFIRM_THRESHOLD = 250/, "API should require confirmation for large filtered database actions");
 assert.match(rfxBidApiSource, /bid_support_reply/, "Bid Room API should expose contextual support replies");
 assert.match(rfxBidApiSource, /function bidSupportAnswerFromContext/, "Bid Room support should answer from scoped context");
+assert.match(rfxBidApiSource, /function bidSupportAnswerFromOpportunityContext/, "Bid Room support should answer from full opportunity context");
+assert.match(rfxBidApiSource, /invited_lanes/, "Bid Room support should include all invited lanes in the private context");
+assert.match(rfxBidApiSource, /supportSelectLane\(question/, "Bid Room support should select a lane mentioned in the carrier question");
+assert.match(rfxBidApiSource, /supportCleanDetailText/, "Bid Room support should sanitize lane detail HTML before answering");
 assert.match(rfxBidApiSource, /status: "support_ticket"/, "Bid Room support should escalate unknown questions as support tickets");
 assert.match(rfxBidSource, /id="bid-support-agent"/, "Private Bid Room should render a contextual support agent");
 assert.match(rfxBidSource, /function askBidSupport/, "Private Bid Room should call the support agent");
 assert.match(rfxBidSource, /function setBidSupportOpen/, "Private Bid Room support should open as a chat pop-up");
 assert.match(rfxBidSource, /data-bid-support-toggle/, "Private Bid Room support should have a floating chat launcher");
+assert.match(rfxBidSource, /Ask about this opportunity/, "Private support should describe opportunity-level help, not only one bid");
+assert.match(rfxBidSource, /Opportunity summary/, "Private support should include an opportunity summary prompt");
 assert.match(rfxBidSource, /function setCarrierChatOpen/, "Private Bid Room chat should open as a pop-up");
 assert.match(rfxBidSource, /data-carrier-chat-toggle/, "Private Bid Room chat should have a floating chat launcher");
 assert.match(rfxBidSource, /renderBookFitSummary/, "Private business book should keep lane fit compact in each row");

@@ -1905,6 +1905,104 @@ function supportRouteLabel(lane: Record<string, unknown>) {
     .join(" -> ") || "selected lane";
 }
 
+function supportNormalizeSearch(value: unknown) {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function supportCleanDetailText(value: unknown, maxLength = 320) {
+  const text = cleanText(value);
+  if (!text) return null;
+  const withoutHtml = text
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<li[^>]*>/gi, " - ")
+    .replace(/<\/p>|<\/div>|<br\s*\/?>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!withoutHtml) return null;
+  return withoutHtml.length > maxLength ? `${withoutHtml.slice(0, maxLength - 1).trim()}...` : withoutHtml;
+}
+
+function supportLaneNumberLabel(lane: Record<string, unknown>, index = 0) {
+  const number = cleanText(lane.lane_number);
+  return number ? `#${number}` : `#${index + 1}`;
+}
+
+function supportLaneSummary(lane: Record<string, unknown>, language: string, index = 0) {
+  const pieces = [
+    supportLaneNumberLabel(lane, index),
+    supportRouteLabel(lane),
+    [lane.equipment, lane.trailer, lane.config, lane.operation, lane.service].map(cleanText).filter(Boolean).join(" / "),
+    lane.weekly_volume !== null && lane.weekly_volume !== undefined ? `${lane.weekly_volume}/wk` : null,
+    lane.target_rate ? `${lane.target_rate} ${cleanText(lane.currency) || ""}`.trim() : null
+  ].filter(Boolean);
+  return language === "es" ? pieces.join(" | ") : pieces.join(" | ");
+}
+
+function supportLaneDetailLines(lane: Record<string, unknown>, language: string) {
+  const labels = language === "es"
+    ? [
+        ["Modelo logistico", lane.logistics_model],
+        ["Criterios de operacion", lane.operation_criteria],
+        ["Reglas de negocio", lane.business_rules],
+        ["Especificaciones de servicio", lane.service_specifications],
+        ["Otras notas", lane.other_notes],
+        ["Notas", lane.notes]
+      ]
+    : [
+        ["Logistics model", lane.logistics_model],
+        ["Operation criteria", lane.operation_criteria],
+        ["Business rules", lane.business_rules],
+        ["Service specifications", lane.service_specifications],
+        ["Other notes", lane.other_notes],
+        ["Notes", lane.notes]
+      ];
+  return labels
+    .map(([label, value]) => {
+      const cleaned = supportCleanDetailText(value);
+      return cleaned ? `${label}: ${cleaned}` : null;
+    })
+    .filter(Boolean) as string[];
+}
+
+function supportSelectLane(question: string, currentLane: Record<string, unknown>, lanes: Record<string, unknown>[] = []) {
+  const haystack = supportNormalizeSearch(question);
+  if (!haystack || !lanes.length) return currentLane;
+  let bestLane = currentLane;
+  let bestScore = 0;
+  lanes.forEach((lane, index) => {
+    const candidates = [
+      lane.lane_number,
+      lane.origin,
+      lane.destination,
+      lane.origin_city,
+      lane.destination_city,
+      lane.origin_market,
+      lane.destination_market,
+      lane.origin_region,
+      lane.destination_region
+    ].map(supportNormalizeSearch).filter(Boolean);
+    const score = candidates.reduce((sum, candidate) => sum + (candidate && haystack.includes(candidate) ? Math.max(1, candidate.split(" ").length) : 0), 0);
+    const numbered = haystack.includes(`ruta ${index + 1}`) || haystack.includes(`lane ${index + 1}`) || haystack.includes(`#${index + 1}`);
+    const total = score + (numbered ? 3 : 0);
+    if (total > bestScore) {
+      bestScore = total;
+      bestLane = lane;
+    }
+  });
+  return bestScore > 0 ? bestLane : currentLane;
+}
+
 function supportEventLabel(event: Record<string, unknown>) {
   return [event.rfx_id, event.name].map(cleanText).filter(Boolean).join(" | ") || "Bid Room";
 }
@@ -1942,12 +2040,13 @@ function supportMissingContextCopy(language: string) {
     : "I do not have enough reliable context to answer that without guessing. I can create a procurement ticket with your question and the available context.";
 }
 
-function supportContextScope(input: { token?: string | null; lane?: Record<string, unknown>; event?: Record<string, unknown>; vendor?: Record<string, unknown> }, language: string) {
+function supportContextScope(input: { token?: string | null; lane?: Record<string, unknown>; event?: Record<string, unknown>; vendor?: Record<string, unknown>; lane_count?: number }, language: string) {
   const pieces = [];
   if (input.token) pieces.push(language === "es" ? "Bid Room privado" : "Private Bid Room");
   else pieces.push(language === "es" ? "Tablero publico" : "Public board");
   if (input.event) pieces.push(supportEventLabel(input.event));
-  if (input.lane) pieces.push(supportRouteLabel(input.lane));
+  if (input.lane_count && input.lane_count > 1) pieces.push(language === "es" ? `${input.lane_count} rutas invitadas` : `${input.lane_count} invited lanes`);
+  if (input.lane) pieces.push(language === "es" ? `Ruta enfocada: ${supportRouteLabel(input.lane)}` : `Focused lane: ${supportRouteLabel(input.lane)}`);
   if (input.vendor) pieces.push(cleanText(input.vendor.vendor_name) || cleanText(input.vendor.domain) || "Carrier");
   return pieces.filter(Boolean).join(" | ");
 }
@@ -2010,11 +2109,55 @@ async function loadPrivateSupportContext(supabase: ReturnType<typeof createClien
     .in("invitation_status", ["quoted", "bid_submitted", "awarded"])
     .limit(1000);
   if (peersResult.error) throw peersResult.error;
+  const invitedResult = await supabase
+    .from("rfx_lane_vendors")
+    .select(`
+      id,
+      rfx_lane_id,
+      invitation_status,
+      bid_rate,
+      currency,
+      weekly_capacity,
+      transit_days,
+      commercial_model,
+      marksman_margin_pct,
+      carrier_share_pct,
+      equipment_available,
+      responded_at,
+      updated_at,
+      notes,
+      rfx_lanes(*)
+    `)
+    .eq("rfx_event_id", context.rfx_event_id)
+    .eq("vendor_id", context.vendor_id)
+    .neq("invitation_status", "archived")
+    .order("updated_at", { ascending: false, nullsFirst: false })
+    .limit(500);
+  if (invitedResult.error) throw invitedResult.error;
+  const invitedLanes = (invitedResult.data || []).map((row) => {
+    const lane = relationRecord(row.rfx_lanes);
+    return {
+      ...lane,
+      invitation_id: row.id,
+      invitation_status: row.invitation_status,
+      bid_rate: row.bid_rate,
+      bid_currency: row.currency,
+      bid_weekly_capacity: row.weekly_capacity,
+      bid_transit_days: row.transit_days,
+      commercial_model: row.commercial_model || lane.commercial_model,
+      equipment_available: row.equipment_available,
+      responded_at: row.responded_at,
+      updated_at: row.updated_at,
+      carrier_notes: row.notes,
+      is_current_lane: cleanText(row.id) === cleanText(context.id)
+    };
+  });
   return {
     invitation: current,
     event: relationRecord(context.rfx_events),
     lane: relationRecord(context.rfx_lanes),
     vendor: relationRecord(context.vendors),
+    invited_lanes: invitedLanes,
     live_board: liveBoardFromRows(current, peersResult.data || [])
   };
 }
@@ -2106,6 +2249,109 @@ function bidSupportAnswerFromContext(
       scope
     };
   }
+  parts.push(language === "es"
+    ? "Si necesitas una decision comercial, excepcion o dato no visible, crea un ticket para procurement."
+    : "If you need a commercial decision, exception, or data that is not visible, create a ticket for procurement.");
+  return {
+    answer: parts.join(" "),
+    needs_ticket: false,
+    confidence: context.token ? "high" : "medium",
+    scope
+  };
+}
+
+function bidSupportAnswerFromOpportunityContext(
+  question: string,
+  context: {
+    language: string;
+    token?: string | null;
+    event?: Record<string, unknown> | null;
+    lane?: Record<string, unknown> | null;
+    vendor?: Record<string, unknown> | null;
+    invited_lanes?: Record<string, unknown>[];
+    live_board?: Record<string, unknown> | null;
+  }
+) {
+  const language = context.language;
+  const invitedLanes = Array.isArray(context.invited_lanes) ? context.invited_lanes : [];
+  const focusedLane = supportSelectLane(question, context.lane || {}, invitedLanes);
+  const reason = supportOutOfScopeReason(question, language);
+  const scope = supportContextScope({
+    token: context.token,
+    event: context.event || undefined,
+    lane: focusedLane || context.lane || undefined,
+    vendor: context.vendor || undefined,
+    lane_count: invitedLanes.length
+  }, language);
+  if (reason) {
+    return {
+      answer: `${reason} ${supportMissingContextCopy(language)}`,
+      needs_ticket: true,
+      confidence: "low",
+      scope
+    };
+  }
+
+  const event = context.event || {};
+  const lane = focusedLane || context.lane || {};
+  const liveBoard = context.live_board || {};
+  const parts: string[] = [];
+  const asksOverview = /(opportunity|oportunidad|general|evento|event|negocio|business|book|libro|all lanes|todas las rutas|rutas invitadas|lanes invitadas|resumen|summary)/i.test(question);
+  const asksSpecificLane = /(lane|ruta|origin|origen|destination|destino|equipment|equipo|service|servicio|operation|operacion|operaci.n|detalle|detail|criterio|criteria|regla|rule|nota|note|modelo|logistico|logistics)/i.test(question);
+
+  if (asksOverview || /^(que|what|describe|explica|explain)/i.test(question)) {
+    const lanePreview = invitedLanes.slice(0, 8).map((row, index) => supportLaneSummary(row, language, index)).join("; ");
+    parts.push(language === "es"
+      ? `Contexto general de la oportunidad: ${supportEventLabel(event)} para ${cleanText(event.customer) || "cliente no definido"}. ${invitedLanes.length ? `Tienes ${invitedLanes.length} ruta(s) invitadas: ${lanePreview}${invitedLanes.length > 8 ? "; ..." : ""}.` : "No hay un listado completo de rutas invitadas disponible en este contexto."}`
+      : `Opportunity context: ${supportEventLabel(event)} for ${cleanText(event.customer) || "customer not defined"}. ${invitedLanes.length ? `You have ${invitedLanes.length} invited lane(s): ${lanePreview}${invitedLanes.length > 8 ? "; ..." : ""}.` : "A full invited lane list is not available in this context."}`);
+  }
+
+  if (/(deadline|due|vence|vencimiento|fecha|cierre)/i.test(question)) {
+    const dueDate = cleanText(event.due_date);
+    parts.push(language === "es"
+      ? `La fecha limite visible para este Bid Room es ${dueDate || "no definida"}.`
+      : `The visible deadline for this Bid Room is ${dueDate || "not defined"}.`);
+  }
+
+  if (asksSpecificLane) {
+    const detailLines = supportLaneDetailLines(lane, language);
+    parts.push(language === "es"
+      ? `Contexto de ruta: ${supportRouteLabel(lane)}. Equipo/servicio visible: ${[lane.equipment, lane.trailer, lane.operation, lane.service].map(cleanText).filter(Boolean).join(" / ") || "no declarado"}. ${detailLines.length ? detailLines.join(" ") : "No hay detalles operativos adicionales capturados para esta ruta."}`
+      : `Lane context: ${supportRouteLabel(lane)}. Visible equipment/service: ${[lane.equipment, lane.trailer, lane.operation, lane.service].map(cleanText).filter(Boolean).join(" / ") || "not declared"}. ${detailLines.length ? detailLines.join(" ") : "No additional operational details are captured for this lane."}`);
+  }
+
+  if (/(rank|ranking|score|position|posicion|position|leader|lider|superado|displaced)/i.test(question) && context.token) {
+    parts.push(language === "es"
+      ? `Tu posicion visible es ${liveBoard.current_rank ? `#${liveBoard.current_rank}` : "no disponible aun"}. Senal actual: ${cleanText(liveBoard.marketplace_signal) || "sin senal"}.`
+      : `Your visible position is ${liveBoard.current_rank ? `#${liveBoard.current_rank}` : "not available yet"}. Current signal: ${cleanText(liveBoard.marketplace_signal) || "no signal"}.`);
+  }
+
+  const commercialCopy = supportCommercialModelCopy(question, language);
+  if (commercialCopy) parts.push(commercialCopy);
+  const bestPracticeCopy = supportBestPracticeCopy(question, language);
+  if (bestPracticeCopy) parts.push(bestPracticeCopy);
+
+  if (!context.token && /(invitation|invite|access|participate|private link|link privado|invitacion|invitar|acceso|participar)/i.test(question)) {
+    parts.push(language === "es"
+      ? "Para participar desde el tablero publico, abre una oportunidad y usa Request invitation. Si ya recibiste invitacion, usa Find my invitations con el mismo correo al que procurement te contacto; Rateware enviara tus links privados a ese inbox."
+      : "To participate from the public board, open an opportunity and use Request invitation. If you were already invited, use Find my invitations with the same email procurement contacted; Rateware will send your private links to that inbox.");
+  }
+
+  if (!context.token && /(bid|puja|quote|cotizar|tarifa|rate|submit|enviar)/i.test(question)) {
+    parts.push(language === "es"
+      ? "Desde el tablero publico no se puede pujar directamente. Solicita invitacion o usa tu link privado; si ya fuiste invitado, usa Find my invitations con el correo donde recibiste la invitacion."
+      : "You cannot bid directly from the public board. Request an invitation or use your private link; if you were already invited, use Find my invitations with the email that received the invite.");
+  }
+
+  if (!parts.length) {
+    return {
+      answer: supportMissingContextCopy(language),
+      needs_ticket: true,
+      confidence: "low",
+      scope
+    };
+  }
+
   parts.push(language === "es"
     ? "Si necesitas una decision comercial, excepcion o dato no visible, crea un ticket para procurement."
     : "If you need a commercial decision, exception, or data that is not visible, create a ticket for procurement.");
@@ -2286,21 +2532,24 @@ async function bidSupportReply(supabase: ReturnType<typeof createClient>, input:
   let lane: Record<string, unknown> | null = null;
   let vendor: Record<string, unknown> | null = null;
   let liveBoard: Record<string, unknown> | null = null;
+  let invitedLanes: Record<string, unknown>[] = [];
   if (token) {
     const privateContext = await loadPrivateSupportContext(supabase, token);
     event = privateContext.event;
     lane = privateContext.lane;
     vendor = privateContext.vendor;
     liveBoard = privateContext.live_board;
+    invitedLanes = Array.isArray(privateContext.invited_lanes) ? privateContext.invited_lanes : [];
   } else {
     const publicLane = await loadPublicSupportLane(supabase, input);
     if (publicLane) {
       event = relationRecord(publicLane.rfx_events);
       lane = publicLane;
+      invitedLanes = [publicLane];
     }
   }
 
-  const support = bidSupportAnswerFromContext(question, { language, token, event, lane, vendor, live_board: liveBoard });
+  const support = bidSupportAnswerFromOpportunityContext(question, { language, token, event, lane, vendor, invited_lanes: invitedLanes, live_board: liveBoard });
   let ticket = null;
   if (cleanBoolean(input.create_ticket) === true) {
     ticket = await createBidSupportTicket(supabase, input, support, { event, lane, vendor });
@@ -2310,8 +2559,8 @@ async function bidSupportReply(supabase: ReturnType<typeof createClient>, input:
     ticket,
     escalation_available: true,
     suggested_prompts: language === "es"
-      ? ["Como mejoro mi ranking?", "Como solicito invitacion?", "Que modelo comercial debo elegir?", "Que detalles tiene esta lane?"]
-      : ["How do I improve my rank?", "How do I request an invitation?", "Which commercial model should I use?", "What details are available for this lane?"]
+      ? ["Resumen de la oportunidad", "Que rutas tengo invitadas?", "Que detalles tiene esta ruta?", "Que modelo comercial debo elegir?"]
+      : ["Opportunity summary", "Which lanes am I invited to?", "What details are available for this lane?", "Which commercial model should I use?"]
   };
 }
 
