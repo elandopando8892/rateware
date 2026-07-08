@@ -19375,6 +19375,30 @@ textarea:focus,
   padding: 10px 12px;
 }
 
+.bid-support-suggestions {
+  display: grid;
+  gap: 6px;
+  border-top: 1px solid #e4ebf0;
+  padding-top: 8px;
+}
+
+.bid-support-suggestions > span {
+  color: #586977;
+  font-size: 0.66rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.bid-support-suggestion-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.bid-support-suggestion-actions .small-button {
+  min-height: 24px;
+}
+
 .bid-support-followup {
   display: grid;
   gap: 5px;

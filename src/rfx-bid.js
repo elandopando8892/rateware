@@ -2033,6 +2033,15 @@ function renderBidSupportAgent(result = lastBidSupportResult) {
             </div>
             <p>${escapeHtml(result.answer || "")}</p>
             ${result.ticket?.id ? `<small>${escapeHtml(dualText("Ticket created", "Ticket creado"))}: ${escapeHtml(result.ticket.id)}</small>` : ""}
+            ${result.needs_ticket && result.ticket_suggestion ? `<small>${escapeHtml(result.ticket_suggestion)}</small>` : ""}
+            ${Array.isArray(result.suggested_prompts) && result.suggested_prompts.length ? `
+              <div class="bid-support-suggestions">
+                <span>${escapeHtml(dualText("Suggested next questions", "Siguientes preguntas sugeridas"))}</span>
+                <div class="bid-support-suggestion-actions">
+                  ${result.suggested_prompts.map((prompt) => `<button type="button" class="secondary small-button" data-bid-support-prompt="${escapeAttribute(prompt)}">${escapeHtml(prompt)}</button>`).join("")}
+                </div>
+              </div>
+            ` : ""}
           </article>
         ` : `
           <article class="bid-support-answer">

@@ -687,6 +687,8 @@ assert.match(rfxBidApiSource, /function bidSupportAnswerFromOpportunityContext/,
 assert.match(rfxBidApiSource, /invited_lanes/, "Bid Room support should include all invited lanes in the private context");
 assert.match(rfxBidApiSource, /supportSelectLane\(question/, "Bid Room support should select a lane mentioned in the carrier question");
 assert.match(rfxBidApiSource, /supportCleanDetailText/, "Bid Room support should sanitize lane detail HTML before answering");
+assert.match(rfxBidApiSource, /function supportPromptOptions/, "Bid Room support should return guided next-question prompts");
+assert.match(rfxBidApiSource, /const support = bidSupportAnswerFromOpportunityContext/, "Bid Room support should keep answers concise and deterministic before ticket escalation");
 assert.match(rfxBidApiSource, /status: "support_ticket"/, "Bid Room support should escalate unknown questions as support tickets");
 assert.match(rfxBidSource, /id="bid-support-agent"/, "Private Bid Room should render a contextual support agent");
 assert.match(rfxBidSource, /function askBidSupport/, "Private Bid Room should call the support agent");
@@ -705,6 +707,8 @@ assert.match(bidRoomBoardHtml, /id="public-board-support-form"/, "Public Bid Roo
 assert.match(bidRoomBoardHtml, /public-board-support-widget/, "Public Bid Room support should be a floating assistant widget");
 assert.match(bidRoomBoardHtml, /public-board-support-followup/, "Public Bid Room support should show follow-up email only when a ticket is needed");
 assert.match(bidRoomBoardHtml, /id="public-board-support-jump"/, "Public Bid Room board should expose header support access");
+assert.match(rfxBidSource, /bid-support-suggestions/, "Private Bid Room support should render guided follow-up prompts");
+assert.match(bidRoomBoardSource, /data-public-support-prompt/, "Public Bid Room support should render guided follow-up prompts");
 assert.match(bidRoomBoardSource, /function setPublicSupportOpen/, "Public Bid Room support should open as a chat pop-up");
 assert.match(bidRoomBoardSource, /supportFollowup\?\.removeAttribute\("hidden"\)/, "Public support should reveal email follow-up only during ticket escalation");
 assert.match(bidRoomBoardSource, /function askPublicSupport/, "Public Bid Room board should call the support agent");

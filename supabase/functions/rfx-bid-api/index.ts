@@ -2038,8 +2038,74 @@ function supportOutOfScopeReason(question: string, language: string) {
 
 function supportMissingContextCopy(language: string) {
   return language === "es"
-    ? "No tengo suficiente contexto confiable para responder eso sin inventar. Puedo crear un ticket para procurement con tu pregunta y el contexto disponible."
-    : "I do not have enough reliable context to answer that without guessing. I can create a procurement ticket with your question and the available context.";
+    ? "No puedo confirmar eso con el contexto visible. Te sugiero crear un ticket para procurement."
+    : "I cannot confirm that from the visible context. I suggest creating a procurement ticket.";
+}
+
+function supportBriefAnswer(text: string, maxLength = 420) {
+  const cleaned = cleanText(text).replace(/\s+/g, " ").trim();
+  if (!cleaned) return "";
+  return cleaned.length > maxLength ? `${cleaned.slice(0, maxLength - 1).trim()}...` : cleaned;
+}
+
+function supportPromptOptions(input: {
+  language: string;
+  token?: string | null;
+  needs_ticket?: boolean;
+  question: string;
+  event?: Record<string, unknown> | null;
+  lane?: Record<string, unknown> | null;
+  invited_lanes?: Record<string, unknown>[];
+}) {
+  const language = input.language;
+  const privateContext = Boolean(input.token);
+  const question = String(input.question || "");
+  const prompts = language === "es"
+    ? (privateContext
+        ? ["Resumen de la oportunidad", "Que rutas tengo invitadas?", "Que detalles tiene esta ruta?", "Como mejoro mi ranking?"]
+        : ["Como solicito invitacion?", "Buscar mis invitaciones", "Que detalles tiene esta oportunidad?", "Como funciona el tablero publico?"])
+    : (privateContext
+        ? ["Opportunity summary", "Which lanes am I invited to?", "What details are available for this lane?", "How do I improve my rank?"]
+        : ["How do I request an invitation?", "Find my invitations", "What details are available for this opportunity?", "How does the public board work?"]);
+
+  if (/(commercial|cost|share|margin|markup|modelo|comercial|margen|facturacion|compra|venta|xbf)/i.test(question)) {
+    prompts.unshift(language === "es" ? "Que modelo comercial debo elegir?" : "Which commercial model should I use?");
+  }
+  if (/(alternative|alternativa|equipo|equipment|unidad|unit)/i.test(question)) {
+    prompts.unshift(language === "es" ? "Como subo una alternativa?" : "How do I submit an alternative?");
+  }
+  if (/(deadline|due|vence|vencimiento|fecha|cierre)/i.test(question)) {
+    prompts.unshift(language === "es" ? "Cual es la fecha limite?" : "What is the deadline?");
+  }
+  if (input.needs_ticket) {
+    prompts.unshift(language === "es" ? "Crear ticket para procurement" : "Create a procurement ticket");
+  }
+
+  return [...new Set(prompts.map(cleanText).filter(Boolean))].slice(0, 5);
+}
+
+function supportResult(input: {
+  answer: string;
+  needs_ticket: boolean;
+  confidence: "low" | "medium" | "high";
+  scope: string;
+  language: string;
+  token?: string | null;
+  question: string;
+  event?: Record<string, unknown> | null;
+  lane?: Record<string, unknown> | null;
+  invited_lanes?: Record<string, unknown>[];
+}) {
+  return {
+    answer: supportBriefAnswer(input.answer),
+    needs_ticket: input.needs_ticket,
+    confidence: input.confidence,
+    scope: input.scope,
+    ticket_suggestion: input.needs_ticket
+      ? (input.language === "es" ? "Puedo crear un ticket con esta pregunta y el contexto del Bid Room." : "I can create a ticket with this question and the Bid Room context.")
+      : "",
+    suggested_prompts: supportPromptOptions(input)
+  };
 }
 
 function supportContextScope(input: { token?: string | null; lane?: Record<string, unknown>; event?: Record<string, unknown>; vendor?: Record<string, unknown>; lane_count?: number }, language: string) {
@@ -2441,83 +2507,81 @@ function bidSupportAnswerFromOpportunityContext(
     lane_count: invitedLanes.length
   }, language);
   if (reason) {
-    return {
+    return supportResult({
       answer: `${reason} ${supportMissingContextCopy(language)}`,
       needs_ticket: true,
       confidence: "low",
-      scope
-    };
+      scope,
+      language,
+      token: context.token,
+      question,
+      event: context.event,
+      lane: focusedLane || context.lane,
+      invited_lanes: invitedLanes
+    });
   }
 
   const event = context.event || {};
   const lane = focusedLane || context.lane || {};
   const liveBoard = context.live_board || {};
-  const parts: string[] = [];
-  const asksOverview = /(opportunity|oportunidad|general|evento|event|negocio|business|book|libro|all lanes|todas las rutas|rutas invitadas|lanes invitadas|resumen|summary)/i.test(question);
-  const asksSpecificLane = /(lane|ruta|origin|origen|destination|destino|equipment|equipo|service|servicio|operation|operacion|operaci.n|detalle|detail|criterio|criteria|regla|rule|nota|note|modelo|logistico|logistics)/i.test(question);
-
-  if (asksOverview || /^(que|what|describe|explica|explain)/i.test(question)) {
-    const lanePreview = invitedLanes.slice(0, 8).map((row, index) => supportLaneSummary(row, language, index)).join("; ");
-    parts.push(language === "es"
-      ? `Contexto general de la oportunidad: ${supportEventLabel(event)} para ${cleanText(event.customer) || "cliente no definido"}. ${invitedLanes.length ? `Tienes ${invitedLanes.length} ruta(s) invitadas: ${lanePreview}${invitedLanes.length > 8 ? "; ..." : ""}.` : "No hay un listado completo de rutas invitadas disponible en este contexto."}`
-      : `Opportunity context: ${supportEventLabel(event)} for ${cleanText(event.customer) || "customer not defined"}. ${invitedLanes.length ? `You have ${invitedLanes.length} invited lane(s): ${lanePreview}${invitedLanes.length > 8 ? "; ..." : ""}.` : "A full invited lane list is not available in this context."}`);
-  }
+  const route = supportRouteLabel(lane);
+  const equipment = [lane.equipment, lane.trailer, lane.config, lane.operation, lane.service].map(cleanText).filter(Boolean).join(" / ");
+  const dueDate = cleanText(event.due_date);
+  let answer = "";
+  let needsTicket = false;
+  let confidence: "low" | "medium" | "high" = context.token ? "high" : "medium";
 
   if (/(deadline|due|vence|vencimiento|fecha|cierre)/i.test(question)) {
-    const dueDate = cleanText(event.due_date);
-    parts.push(language === "es"
-      ? `La fecha limite visible para este Bid Room es ${dueDate || "no definida"}.`
-      : `The visible deadline for this Bid Room is ${dueDate || "not defined"}.`);
+    answer = language === "es"
+      ? `La fecha limite visible es ${dueDate || "no definida"}. Si necesitas una extension, crea un ticket.`
+      : `The visible deadline is ${dueDate || "not defined"}. If you need an extension, create a ticket.`;
+  } else if (/(rank|ranking|score|position|posicion|position|leader|lider|superado|displaced)/i.test(question) && context.token) {
+    answer = language === "es"
+      ? `Tu ranking visible es ${liveBoard.current_rank ? `#${liveBoard.current_rank}` : "aun no disponible"}. Para mejorar, actualiza tarifa all-in, capacidad, ETA y disponibilidad real.`
+      : `Your visible rank is ${liveBoard.current_rank ? `#${liveBoard.current_rank}` : "not available yet"}. To improve it, update all-in rate, capacity, ETA, and real availability.`;
+  } else if (/(commercial|cost|share|margin|markup|modelo|comercial|margen|facturacion|facturacion|compra|venta|xbf)/i.test(question)) {
+    answer = language === "es"
+      ? "Cost-plus usa margen sugerido MARKSMAN; Carrier invoice share usa porcentaje sobre facturacion; XBF Buy-Sell no pide porcentaje al carrier."
+      : "Cost-plus uses suggested MARKSMAN margin; Carrier invoice share uses a billing-share percentage; XBF Buy-Sell asks only for the carrier sell rate.";
+  } else if (/(alternative|alternativa|equipo|equipment|unidad|unit)/i.test(question)) {
+    answer = language === "es"
+      ? "Puedes proponer una alternativa si cambia equipo, unidades o capacidad. Indica unidades, restricciones, ETA y si la tarifa aplica al sustituto."
+      : "You can propose an alternative if equipment, units, or capacity change. Include units, restrictions, ETA, and whether the rate applies to the substitute.";
+  } else if (!context.token && /(invitation|invite|access|participate|private link|link privado|invitacion|invitar|acceso|participar)/i.test(question)) {
+    answer = language === "es"
+      ? "Para participar necesitas invitacion. En el tablero publico puedes solicitar acceso o buscar tus links con el correo invitado."
+      : "To participate you need an invitation. From the public board you can request access or find your links with the invited email.";
+  } else if (!context.token && /(bid|puja|quote|cotizar|tarifa|rate|submit|enviar)/i.test(question)) {
+    answer = language === "es"
+      ? "La pagina publica no acepta pujas. La tarifa se captura desde el Bid Room privado con token."
+      : "The public page does not accept bids. Rates are submitted from the private tokenized Bid Room.";
+  } else if (/(lane|ruta|origin|origen|destination|destino|equipment|equipo|service|servicio|operation|operacion|operaci.n|detalle|detail|criterio|criteria|regla|rule|nota|note|modelo|logistico|logistics)/i.test(question)) {
+    const detailCount = supportLaneDetailLines(lane, language).length;
+    answer = language === "es"
+      ? `Ruta enfocada: ${route}. Equipo/servicio: ${equipment || "no declarado"}. Hay ${detailCount} seccion(es) de detalle visibles para revisar.`
+      : `Focused lane: ${route}. Equipment/service: ${equipment || "not declared"}. There are ${detailCount} visible detail section(s) to review.`;
+  } else if (/(opportunity|oportunidad|general|evento|event|negocio|business|book|libro|all lanes|todas las rutas|rutas invitadas|lanes invitadas|resumen|summary|que|what|describe|explica|explain)/i.test(question)) {
+    answer = language === "es"
+      ? `${supportEventLabel(event)}${cleanText(event.customer) ? ` para ${cleanText(event.customer)}` : ""}. ${invitedLanes.length ? `${invitedLanes.length} ruta(s) invitadas.` : `Ruta visible: ${route}.`} Cierre: ${dueDate || "no definido"}.`
+      : `${supportEventLabel(event)}${cleanText(event.customer) ? ` for ${cleanText(event.customer)}` : ""}. ${invitedLanes.length ? `${invitedLanes.length} invited lane(s).` : `Visible lane: ${route}.`} Deadline: ${dueDate || "not defined"}.`;
+  } else {
+    answer = supportMissingContextCopy(language);
+    needsTicket = true;
+    confidence = "low";
   }
 
-  if (asksSpecificLane) {
-    const detailLines = supportLaneDetailLines(lane, language);
-    parts.push(language === "es"
-      ? `Contexto de ruta: ${supportRouteLabel(lane)}. Equipo/servicio visible: ${[lane.equipment, lane.trailer, lane.operation, lane.service].map(cleanText).filter(Boolean).join(" / ") || "no declarado"}. ${detailLines.length ? detailLines.join(" ") : "No hay detalles operativos adicionales capturados para esta ruta."}`
-      : `Lane context: ${supportRouteLabel(lane)}. Visible equipment/service: ${[lane.equipment, lane.trailer, lane.operation, lane.service].map(cleanText).filter(Boolean).join(" / ") || "not declared"}. ${detailLines.length ? detailLines.join(" ") : "No additional operational details are captured for this lane."}`);
-  }
-
-  if (/(rank|ranking|score|position|posicion|position|leader|lider|superado|displaced)/i.test(question) && context.token) {
-    parts.push(language === "es"
-      ? `Tu posicion visible es ${liveBoard.current_rank ? `#${liveBoard.current_rank}` : "no disponible aun"}. Senal actual: ${cleanText(liveBoard.marketplace_signal) || "sin senal"}.`
-      : `Your visible position is ${liveBoard.current_rank ? `#${liveBoard.current_rank}` : "not available yet"}. Current signal: ${cleanText(liveBoard.marketplace_signal) || "no signal"}.`);
-  }
-
-  const commercialCopy = supportCommercialModelCopy(question, language);
-  if (commercialCopy) parts.push(commercialCopy);
-  const bestPracticeCopy = supportBestPracticeCopy(question, language);
-  if (bestPracticeCopy) parts.push(bestPracticeCopy);
-
-  if (!context.token && /(invitation|invite|access|participate|private link|link privado|invitacion|invitar|acceso|participar)/i.test(question)) {
-    parts.push(language === "es"
-      ? "Para participar desde el tablero publico, abre una oportunidad y usa Request invitation. Si ya recibiste invitacion, usa Find my invitations con el mismo correo al que procurement te contacto; Rateware enviara tus links privados a ese inbox."
-      : "To participate from the public board, open an opportunity and use Request invitation. If you were already invited, use Find my invitations with the same email procurement contacted; Rateware will send your private links to that inbox.");
-  }
-
-  if (!context.token && /(bid|puja|quote|cotizar|tarifa|rate|submit|enviar)/i.test(question)) {
-    parts.push(language === "es"
-      ? "Desde el tablero publico no se puede pujar directamente. Solicita invitacion o usa tu link privado; si ya fuiste invitado, usa Find my invitations con el correo donde recibiste la invitacion."
-      : "You cannot bid directly from the public board. Request an invitation or use your private link; if you were already invited, use Find my invitations with the email that received the invite.");
-  }
-
-  if (!parts.length) {
-    return {
-      answer: supportMissingContextCopy(language),
-      needs_ticket: true,
-      confidence: "low",
-      scope
-    };
-  }
-
-  parts.push(language === "es"
-    ? "Si necesitas una decision comercial, excepcion o dato no visible, crea un ticket para procurement."
-    : "If you need a commercial decision, exception, or data that is not visible, create a ticket for procurement.");
-  return {
-    answer: parts.join(" "),
-    needs_ticket: false,
-    confidence: context.token ? "high" : "medium",
-    scope
-  };
+  return supportResult({
+    answer,
+    needs_ticket: needsTicket,
+    confidence,
+    scope,
+    language,
+    token: context.token,
+    question,
+    event: context.event,
+    lane,
+    invited_lanes: invitedLanes
+  });
 }
 
 async function createBidSupportTicket(
@@ -2712,34 +2776,19 @@ async function bidSupportReply(supabase: ReturnType<typeof createClient>, input:
     }
   }
 
-  const deterministicSupport = bidSupportAnswerFromOpportunityContext(question, { language, token, event, lane, vendor, invited_lanes: invitedLanes, live_board: liveBoard });
-  const support = await bidSupportAiAnswer(question, {
-    language,
-    token,
-    event,
-    lane,
-    vendor,
-    invited_lanes: invitedLanes,
-    live_board: liveBoard,
-    scope: cleanText(deterministicSupport.scope) || supportContextScope({
-      token,
-      event: event || undefined,
-      lane: lane || undefined,
-      vendor: vendor || undefined,
-      lane_count: invitedLanes.length
-    }, language)
-  }, deterministicSupport).catch(() => null) || deterministicSupport;
+  const support = bidSupportAnswerFromOpportunityContext(question, { language, token, event, lane, vendor, invited_lanes: invitedLanes, live_board: liveBoard });
   let ticket = null;
   if (cleanBoolean(input.create_ticket) === true) {
     ticket = await createBidSupportTicket(supabase, input, support, { event, lane, vendor });
   }
+  const suggestedPrompts = Array.isArray(support.suggested_prompts) && support.suggested_prompts.length
+    ? support.suggested_prompts
+    : supportPromptOptions({ language, token, question, event, lane, invited_lanes: invitedLanes, needs_ticket: cleanBoolean(support.needs_ticket) === true });
   return {
     ...support,
     ticket,
     escalation_available: true,
-    suggested_prompts: language === "es"
-      ? ["Resumen de la oportunidad", "Que rutas tengo invitadas?", "Que detalles tiene esta ruta?", "Que modelo comercial debo elegir?"]
-      : ["Opportunity summary", "Which lanes am I invited to?", "What details are available for this lane?", "Which commercial model should I use?"]
+    suggested_prompts: suggestedPrompts
   };
 }
 

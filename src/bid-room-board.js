@@ -90,6 +90,10 @@ function escapeHtml(value) {
     .replaceAll("'", "&#39;");
 }
 
+function escapeAttribute(value) {
+  return escapeHtml(value).replaceAll("`", "&#96;");
+}
+
 function formatNumber(value) {
   const numberValue = Number(value);
   return Number.isFinite(numberValue) ? numberValue.toLocaleString() : "-";
@@ -276,6 +280,18 @@ async function callBidSupport(payload = {}) {
   return data;
 }
 
+function renderSupportSuggestions(prompts = []) {
+  if (!Array.isArray(prompts) || !prompts.length) return "";
+  return `
+    <div class="bid-support-suggestions">
+      <span>Suggested next questions</span>
+      <div class="bid-support-suggestion-actions">
+        ${prompts.map((prompt) => `<button type="button" class="secondary small-button" data-public-support-prompt="${escapeAttribute(prompt)}">${escapeHtml(prompt)}</button>`).join("")}
+      </div>
+    </div>
+  `;
+}
+
 function renderPublicSupportReply(result = null, status = "") {
   if (!supportReply) return;
   if (!result && !status) {
@@ -300,8 +316,10 @@ function renderPublicSupportReply(result = null, status = "") {
       </div>
       <p>${escapeHtml(result.answer || "")}</p>
       ${result.ticket?.id ? `<small>Ticket created: ${escapeHtml(result.ticket.id)}</small>` : ""}
+      ${result.needs_ticket && result.ticket_suggestion ? `<small>${escapeHtml(result.ticket_suggestion)}</small>` : ""}
+      ${renderSupportSuggestions(result.suggested_prompts)}
       ${result.needs_ticket && !result.ticket?.id ? `
-        <small>Add a follow-up email if procurement should respond directly.</small>
+        <small>Add a follow-up email only if procurement should respond directly.</small>
         <button type="button" class="secondary small-button" data-public-support-ticket>Create ticket</button>
       ` : ""}
     </article>
@@ -982,6 +1000,15 @@ supportForm?.addEventListener("submit", async (event) => {
 });
 
 supportReply?.addEventListener("click", async (event) => {
+  const promptButton = event.target.closest("[data-public-support-prompt]");
+  if (promptButton) {
+    const prompt = promptButton.dataset.publicSupportPrompt || promptButton.textContent || "";
+    if (supportMessage) supportMessage.value = prompt;
+    state.supportQuestion = prompt;
+    setPublicSupportOpen(true);
+    supportMessage?.focus();
+    return;
+  }
   if (!event.target.closest("[data-public-support-ticket]")) return;
   await askPublicSupport({ createTicket: true });
 });
