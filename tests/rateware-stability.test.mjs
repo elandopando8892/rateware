@@ -70,6 +70,7 @@ const rfxLaneDetailSectionsMigration = readFileSync(new URL("../supabase/migrati
 const rfxDefaultTemplateMigration = readFileSync(new URL("../supabase/migrations/20260708093000_enrich_rfx_default_invitation_template.sql", import.meta.url), "utf8");
 const rfxBilingualTemplateMigration = readFileSync(new URL("../supabase/migrations/20260708101500_simplify_bilingual_rfx_invitation_templates.sql", import.meta.url), "utf8");
 const rfxSpanishTemplateNameMigration = readFileSync(new URL("../supabase/migrations/20260708103000_normalize_spanish_template_name.sql", import.meta.url), "utf8");
+const rfxTemplateSignatureMigration = readFileSync(new URL("../supabase/migrations/20260708110000_add_marksman_signature_to_rfx_templates.sql", import.meta.url), "utf8");
 
 for (const domain of ["gmail.com", "hotmail.com", "yahoo.com", "outlook.com", "yahoo.com.mx"]) {
   assert.match(apiSource, new RegExp(`"${domain.replace(".", "\\.")}"`), `generic domain ${domain} should be blocked`);
@@ -355,6 +356,10 @@ assert.match(rfxBilingualTemplateMigration, /RFx carrier invitation - Spanish/, 
 assert.match(rfxBilingualTemplateMigration, /logistics model, operating criteria, business rules, service specifications, and additional notes/, "English template should direct carriers to the Bid Room for operational details");
 assert.match(rfxBilingualTemplateMigration, /modelo logistico, criterios de operacion, reglas de negocio, especificaciones de servicio y otras notas/, "Spanish template should direct carriers to the Bid Room for operational details");
 assert.match(rfxSpanishTemplateNameMigration, /name like 'RFx carrier invitation - Espa%'/, "Spanish template migration should normalize old accented or mojibake names");
+assert.match(rfxTemplateSignatureMigration, /https:\/\/www\.linkedin\.com\/in\/andresgzz88\//, "RFx email templates should include the Marksman LinkedIn signature link");
+assert.match(rfxTemplateSignatureMigration, /https:\/\/www\.heymarksman\.com\//, "RFx email templates should include the Marksman website signature link");
+assert.match(rfxTemplateSignatureMigration, /Confidentiality &amp; Privacy Notice/, "RFx email templates should include the confidentiality and privacy notice");
+assert.match(rfxTemplateSignatureMigration, /XBF SISTEMAS LOG&Iacute;STICOS/, "RFx email templates should include the full company privacy scope");
 assert.match(rfxBilingualTemplateMigration, /active = false[\s\S]*Marksman RFx lane book invitation/, "Long Marksman template should be hidden from the default workflow");
 assert.match(rfxServiceSource, /update_rfx_lane/, "RFx service should expose loaded lane updates");
 assert.match(apiSource, /body\.action === "update_rfx_lane"/, "Rateware API should update existing RFx lanes");
