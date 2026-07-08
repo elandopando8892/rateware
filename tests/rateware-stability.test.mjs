@@ -692,6 +692,9 @@ assert.match(rfxBidApiSource, /invited_lanes/, "Bid Room support should include 
 assert.match(rfxBidApiSource, /supportSelectLane\(question/, "Bid Room support should select a lane mentioned in the carrier question");
 assert.match(rfxBidApiSource, /supportCleanDetailText/, "Bid Room support should sanitize lane detail HTML before answering");
 assert.match(rfxBidApiSource, /function supportPromptOptions/, "Bid Room support should return guided next-question prompts");
+assert.match(rfxBidApiSource, /function supportQuestionIntent/, "Bid Room support prompts should change by question intent");
+assert.match(rfxBidApiSource, /lane_detail/, "Bid Room support should guide from route details into deeper lane sections");
+assert.match(rfxBidApiSource, /What should I change first\?/, "Bid Room support should suggest deeper ranking follow-up questions");
 assert.match(rfxBidApiSource, /const support = bidSupportAnswerFromOpportunityContext/, "Bid Room support should keep answers concise and deterministic before ticket escalation");
 assert.match(rfxBidApiSource, /status: "support_ticket"/, "Bid Room support should escalate unknown questions as support tickets");
 assert.match(rfxBidSource, /id="bid-support-agent"/, "Private Bid Room should render a contextual support agent");

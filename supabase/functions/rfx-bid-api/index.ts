@@ -2059,6 +2059,33 @@ function supportBriefAnswer(text: string, maxLength = 420) {
   return cleaned.length > maxLength ? `${cleaned.slice(0, maxLength - 1).trim()}...` : cleaned;
 }
 
+function supportQuestionIntent(question: string, needsTicket = false) {
+  const lower = supportNormalizeSearch(question);
+  if (needsTicket || /(ticket|humano|human|procurement|soporte|support|escalar|escalate)/i.test(lower)) return "ticket";
+  if (/(deadline|due|vence|vencimiento|fecha|cierre|cerrar|extension|prorroga)/i.test(lower)) return "deadline";
+  if (/(invitation|invite|access|participate|private link|link privado|invitacion|invitar|acceso|participar|correo|email)/i.test(lower)) return "access";
+  if (/(rank|ranking|score|position|posicion|leader|lider|superado|displaced|mejorar|competitivo)/i.test(lower)) return "ranking";
+  if (/(alternative|alternativa|sustituto|equipo|equipment|unidad|unit|eta|availability|disponibilidad)/i.test(lower)) return "alternative";
+  if (/(commercial|cost|share|margin|markup|modelo comercial|margen|facturacion|compra venta|xbf|cost plus|invoice share)/i.test(lower)) return "commercial";
+  if (/(bid|puja|quote|cotizar|tarifa|rate|submit|enviar|actualizar|xlsx|excel|capacidad)/i.test(lower)) return "bidding";
+  if (/(modelo logistico|logistics model|criterio|criteria|regla|rule|nota|note|servicio|service specification|detalle|detail|ruta enfocada)/i.test(lower)) return "lane_detail";
+  if (/(lane|ruta|origin|origen|destination|destino|rutas invitadas|lanes invitadas|all lanes|todas las rutas|business book|libro)/i.test(lower)) return "lane_list";
+  return "overview";
+}
+
+function supportPromptRoute(lane?: Record<string, unknown> | null, language = "en") {
+  const route = lane ? supportRouteLabel(lane) : "";
+  if (route && route !== "selected lane") {
+    return language === "es" ? `Detalles de ${route}` : `Details for ${route}`;
+  }
+  return language === "es" ? "Detalles de la ruta seleccionada" : "Details for the selected lane";
+}
+
+function supportPromptFocusedLane(input: { lane?: Record<string, unknown> | null; invited_lanes?: Record<string, unknown>[] }) {
+  if (input.lane && Object.keys(input.lane).length) return input.lane;
+  return Array.isArray(input.invited_lanes) && input.invited_lanes.length ? input.invited_lanes[0] : null;
+}
+
 function supportPromptOptions(input: {
   language: string;
   token?: string | null;
@@ -2070,28 +2097,146 @@ function supportPromptOptions(input: {
 }) {
   const language = input.language;
   const privateContext = Boolean(input.token);
-  const question = String(input.question || "");
-  const prompts = language === "es"
-    ? (privateContext
-        ? ["Resumen de la oportunidad", "Que rutas tengo invitadas?", "Que detalles tiene esta ruta?", "Como mejoro mi ranking?"]
-        : ["Como solicito invitacion?", "Buscar mis invitaciones", "Que detalles tiene esta oportunidad?", "Como funciona el tablero publico?"])
-    : (privateContext
-        ? ["Opportunity summary", "Which lanes am I invited to?", "What details are available for this lane?", "How do I improve my rank?"]
-        : ["How do I request an invitation?", "Find my invitations", "What details are available for this opportunity?", "How does the public board work?"]);
-
-  if (/(commercial|cost|share|margin|markup|modelo|comercial|margen|facturacion|compra|venta|xbf)/i.test(question)) {
-    prompts.unshift(language === "es" ? "Que modelo comercial debo elegir?" : "Which commercial model should I use?");
-  }
-  if (/(alternative|alternativa|equipo|equipment|unidad|unit)/i.test(question)) {
-    prompts.unshift(language === "es" ? "Como subo una alternativa?" : "How do I submit an alternative?");
-  }
-  if (/(deadline|due|vence|vencimiento|fecha|cierre)/i.test(question)) {
-    prompts.unshift(language === "es" ? "Cual es la fecha limite?" : "What is the deadline?");
-  }
-  if (input.needs_ticket) {
-    prompts.unshift(language === "es" ? "Crear ticket para procurement" : "Create a procurement ticket");
-  }
-
+  const intent = supportQuestionIntent(String(input.question || ""), input.needs_ticket === true);
+  const focusedLane = supportPromptFocusedLane(input);
+  const routePrompt = supportPromptRoute(focusedLane, language);
+  const laneCount = Array.isArray(input.invited_lanes) ? input.invited_lanes.length : 0;
+  const promptsByIntent: Record<string, string[]> = language === "es" ? {
+    overview: privateContext
+      ? ["Ver rutas invitadas", routePrompt, "Que debo capturar para cotizar?", "Como se calcula mi ranking?", "Que modelo comercial debo elegir?"]
+      : ["Ver oportunidades abiertas", "Como solicito invitacion?", routePrompt, "Buscar mis invitaciones", "Como funciona el tablero publico?"],
+    lane_list: [
+      laneCount > 1 ? "Comparar mis rutas invitadas" : routePrompt,
+      routePrompt,
+      "Modelo logistico de esta ruta",
+      "Reglas de negocio de esta ruta",
+      "Que tarifa y capacidad debo capturar?"
+    ],
+    lane_detail: [
+      "Modelo logistico de esta ruta",
+      "Criterios de operacion de esta ruta",
+      "Reglas de negocio de esta ruta",
+      "Especificaciones de servicio",
+      "Otras notas y riesgos"
+    ],
+    commercial: [
+      "Explicame Cost-plus",
+      "Explicame Carrier invoice share",
+      "Cuando usar XBF Buy-Sell?",
+      "Que porcentaje debo capturar?",
+      "Como impacta mi ranking?"
+    ],
+    ranking: [
+      "Que debo cambiar primero?",
+      "Como afecta la capacidad semanal?",
+      "Como afecta ETA y disponibilidad?",
+      "Puedo subir una alternativa?",
+      "Que me falta para mejorar score?"
+    ],
+    alternative: [
+      "Que datos pide una alternativa?",
+      "Como declaro multiples unidades?",
+      "Como capturo ETA y disponibilidad?",
+      "La alternativa afecta mi ranking?",
+      "Que restricciones debo explicar?"
+    ],
+    deadline: [
+      "Que debo completar antes del cierre?",
+      "Ver rutas pendientes",
+      "Actualizar mi oferta",
+      "Confirmar si mi bid fue recibido",
+      "Pedir extension via ticket"
+    ],
+    access: [
+      "Buscar mis invitaciones",
+      "Solicitar invitacion",
+      "Que correo debo usar?",
+      "Por que no puedo pujar desde publico?",
+      "Crear ticket para procurement"
+    ],
+    bidding: [
+      "Que campos son obligatorios?",
+      "Como actualizo mi tarifa?",
+      "Como confirmo capacidad?",
+      "Como subo una alternativa?",
+      "Como descargo/subo XLSX?"
+    ],
+    ticket: [
+      "Crear ticket para procurement",
+      "Que informacion debo incluir?",
+      routePrompt,
+      "Volver al resumen de la oportunidad",
+      "Ver reglas de negocio visibles"
+    ]
+  } : {
+    overview: privateContext
+      ? ["Show invited lanes", routePrompt, "What do I need to quote?", "How is my rank calculated?", "Which commercial model should I use?"]
+      : ["Show open opportunities", "How do I request an invitation?", routePrompt, "Find my invitations", "How does the public board work?"],
+    lane_list: [
+      laneCount > 1 ? "Compare my invited lanes" : routePrompt,
+      routePrompt,
+      "Logistics model for this lane",
+      "Business rules for this lane",
+      "What rate and capacity should I enter?"
+    ],
+    lane_detail: [
+      "Logistics model for this lane",
+      "Operation criteria for this lane",
+      "Business rules for this lane",
+      "Service specifications",
+      "Other notes and risks"
+    ],
+    commercial: [
+      "Explain Cost-plus",
+      "Explain Carrier invoice share",
+      "When should I use XBF Buy-Sell?",
+      "Which percentage should I enter?",
+      "How does this affect my rank?"
+    ],
+    ranking: [
+      "What should I change first?",
+      "How does weekly capacity affect rank?",
+      "How do ETA and availability affect rank?",
+      "Can I submit an alternative?",
+      "What is missing to improve my score?"
+    ],
+    alternative: [
+      "What data does an alternative need?",
+      "How do I declare multiple units?",
+      "How do I enter ETA and availability?",
+      "Does an alternative affect my rank?",
+      "Which restrictions should I explain?"
+    ],
+    deadline: [
+      "What must I complete before close?",
+      "Show pending lanes",
+      "Update my offer",
+      "Confirm my bid was received",
+      "Request an extension by ticket"
+    ],
+    access: [
+      "Find my invitations",
+      "Request an invitation",
+      "Which email should I use?",
+      "Why can't I bid from the public board?",
+      "Create a procurement ticket"
+    ],
+    bidding: [
+      "Which fields are required?",
+      "How do I update my rate?",
+      "How do I confirm capacity?",
+      "How do I submit an alternative?",
+      "How do I download/upload XLSX?"
+    ],
+    ticket: [
+      "Create a procurement ticket",
+      "What information should I include?",
+      routePrompt,
+      "Back to opportunity summary",
+      "Show visible business rules"
+    ]
+  };
+  const prompts = promptsByIntent[intent] || promptsByIntent.overview;
   return [...new Set(prompts.map(cleanText).filter(Boolean))].slice(0, 5);
 }
 
