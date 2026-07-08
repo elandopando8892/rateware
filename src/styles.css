@@ -1265,6 +1265,38 @@ a {
   min-width: 0;
 }
 
+.rfx-draft-filterbar {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) auto;
+  gap: 6px;
+  align-items: end;
+}
+
+.rfx-draft-filterbar label {
+  display: grid;
+  gap: 3px;
+  margin: 0;
+  min-width: 0;
+}
+
+.rfx-draft-filterbar label span {
+  color: #46545f;
+  font-size: 0.67rem;
+  font-weight: 900;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.rfx-draft-filterbar input {
+  width: 100%;
+  min-height: 28px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 4px 7px;
+  color: var(--ink);
+  font: inherit;
+}
+
 .rfx-draft-table-wrap {
   max-height: 360px;
   overflow: auto;

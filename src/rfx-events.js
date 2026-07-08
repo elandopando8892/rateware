@@ -142,6 +142,8 @@ const touchpointSummary = document.querySelector("#rfx-touchpoint-summary");
 const touchpointList = document.querySelector("#rfx-touchpoint-list");
 const draftSummary = document.querySelector("#rfx-draft-summary");
 const draftList = document.querySelector("#rfx-draft-list");
+const draftSearchInput = document.querySelector("#rfx-draft-search");
+const draftClearSearchButton = document.querySelector("#rfx-clear-draft-search");
 const draftSelectionLabel = document.querySelector("#rfx-draft-selection-label");
 const draftToggleVisible = document.querySelector("#rfx-toggle-visible-drafts");
 const draftSelectAllEmailsButton = document.querySelector("#rfx-select-all-email-drafts");
@@ -233,6 +235,7 @@ let pendingChatBidUpdate = null;
 let selectedLaneIds = new Set();
 let selectedInvitationIds = new Set();
 let selectedDraftMessageIds = new Set();
+let draftQueueSearch = "";
 let focusedLaneId = null;
 let activeLaneFilter = "all";
 let laneEditMode = false;
@@ -254,6 +257,7 @@ const requestedRfxEventId = rfxPageParams.get("rfx_event_id");
 const rfxWorkbench = initWorkbenchTabs({ defaultView: "setup" });
 const APPROVED_GMAIL_SENDER = "sales@heymarksman.com";
 const OUTREACH_SEND_BATCH_SIZE = 100;
+const DRAFT_QUEUE_VISIBLE_LIMIT = 1000;
 
 const RFX_LANE_TEMPLATE_COLUMNS = [
   { key: "lane_number", label: "Lane #", example: "1" },
@@ -4125,6 +4129,55 @@ function draftRowsForEvent() {
     : [];
 }
 
+function draftSearchText(message = {}) {
+  const metadata = message.metadata && typeof message.metadata === "object" ? message.metadata : {};
+  const lane = message.rfx_lanes && typeof message.rfx_lanes === "object" ? message.rfx_lanes : {};
+  const vendor = message.vendors && typeof message.vendors === "object" ? message.vendors : {};
+  const event = message.rfx_events && typeof message.rfx_events === "object" ? message.rfx_events : {};
+  return [
+    vendor.vendor_name,
+    vendor.legal_name,
+    vendor.domain,
+    vendor.primary_email,
+    message.recipient_email,
+    message.recipient_phone,
+    message.sender_email,
+    message.channel,
+    message.status,
+    message.subject,
+    message.text_body,
+    message.whatsapp_text,
+    message.delivery_error,
+    message.body_preview,
+    lane.origin,
+    lane.destination,
+    lane.origin_market,
+    lane.destination_market,
+    lane.equipment,
+    lane.trailer,
+    lane.operation,
+    lane.service,
+    event.rfx_id,
+    event.name,
+    metadata.bid_link,
+    metadata.profile_link
+  ].filter(Boolean).join(" ").toLowerCase();
+}
+
+function normalizeDraftSearch(value = "") {
+  return String(value || "").trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+function filteredDraftRows(rows = draftRowsForEvent()) {
+  const query = normalizeDraftSearch(draftQueueSearch);
+  if (!query) return rows;
+  const terms = query.split(" ").filter(Boolean);
+  return rows.filter((message) => {
+    const haystack = draftSearchText(message);
+    return terms.every((term) => haystack.includes(term));
+  });
+}
+
 function selectedDraftRows(rows = draftRowsForEvent()) {
   return rows.filter((message) => selectedDraftMessageIds.has(String(message.id)));
 }
@@ -4178,19 +4231,23 @@ function confirmDraftQueueAction(action, ids = []) {
   return true;
 }
 
-function updateDraftSendControls(rows = []) {
-  const visibleIds = new Set(rows.map((message) => String(message.id)));
-  selectedDraftMessageIds = new Set([...selectedDraftMessageIds].filter((id) => visibleIds.has(id)));
+function updateDraftSendControls(rows = [], allRows = draftRowsForEvent()) {
+  const eventIds = new Set(allRows.map((message) => String(message.id)));
+  selectedDraftMessageIds = new Set([...selectedDraftMessageIds].filter((id) => eventIds.has(id)));
   const selectable = selectableEmailDrafts(rows);
-  const selectedRows = selectedDraftRows(rows);
-  const sendableSelectedIds = selectedSendableDraftIds(rows);
+  const selectedVisibleRows = selectedDraftRows(rows);
+  const selectedRows = selectedDraftRows(allRows);
+  const sendableSelectedIds = selectedSendableDraftIds(allRows);
+  const hasSearch = Boolean(normalizeDraftSearch(draftQueueSearch));
   if (draftSelectionLabel) {
-    draftSelectionLabel.textContent = `${formatNumber(selectedRows.length)} selected`;
+    draftSelectionLabel.textContent = hasSearch
+      ? `${formatNumber(selectedRows.length)} selected | ${formatNumber(selectedVisibleRows.length)} in filter`
+      : `${formatNumber(selectedRows.length)} selected`;
     draftSelectionLabel.className = `status-pill ${selectedRows.length ? "success" : "muted"}`;
   }
   if (draftToggleVisible) {
     draftToggleVisible.checked = rows.length > 0 && rows.every((message) => selectedDraftMessageIds.has(String(message.id)));
-    draftToggleVisible.indeterminate = selectedRows.length > 0 && selectedRows.length < rows.length;
+    draftToggleVisible.indeterminate = selectedVisibleRows.length > 0 && selectedVisibleRows.length < rows.length;
     draftToggleVisible.disabled = !rows.length;
   }
   if (draftSelectAllEmailsButton) draftSelectAllEmailsButton.disabled = !selectable.length;
@@ -4208,26 +4265,35 @@ function updateDraftSendControls(rows = []) {
 function renderDraftQueue() {
   if (!draftSummary || !draftList) return;
   const rows = draftRowsForEvent();
+  const filteredRows = filteredDraftRows(rows);
   const actionable = rows.filter((message) => ["drafted", "queued", "failed"].includes(String(message.status || "").toLowerCase()));
   const emailSelectable = selectableEmailDrafts(rows);
-  updateDraftSendControls(rows);
+  const hasSearch = Boolean(normalizeDraftSearch(draftQueueSearch));
+  updateDraftSendControls(filteredRows, rows);
   draftSummary.textContent = rows.length
-    ? `${formatNumber(rows.length)} draft rows | ${formatNumber(actionable.length)} need action | ${formatNumber(selectedDraftMessageIds.size)} selected`
+    ? `${formatNumber(hasSearch ? filteredRows.length : rows.length)}${hasSearch ? ` of ${formatNumber(rows.length)}` : ""} draft rows | ${formatNumber(actionable.length)} need action | ${formatNumber(selectedDraftMessageIds.size)} selected`
     : "No drafts generated for this bid event.";
+  if (draftSearchInput && draftSearchInput.value !== draftQueueSearch) draftSearchInput.value = draftQueueSearch;
+  if (draftClearSearchButton) draftClearSearchButton.disabled = !hasSearch;
   if (!selectedEventId) {
-    updateDraftSendControls([]);
+    updateDraftSendControls([], []);
     draftList.innerHTML = `<tr><td colspan="8">Select a bid event to review invitation drafts.</td></tr>`;
     return;
   }
   if (!rows.length) {
-    updateDraftSendControls([]);
+    updateDraftSendControls([], []);
     draftList.innerHTML = `<tr><td colspan="8">Create invite drafts to review Gmail and WhatsApp messages inside this Bid Room.</td></tr>`;
     return;
   }
-  if (!emailSelectable.length && rows.length) {
-    updateDraftSendControls(rows);
+  if (!filteredRows.length) {
+    updateDraftSendControls([], rows);
+    draftList.innerHTML = `<tr><td colspan="8">No draft rows match "${escapeHtml(draftQueueSearch)}". Clear search or try carrier name, email, lane, RFx, channel, or status.</td></tr>`;
+    return;
   }
-  const visibleRows = rows.slice(0, 200);
+  if (!emailSelectable.length && rows.length) {
+    updateDraftSendControls(filteredRows, rows);
+  }
+  const visibleRows = filteredRows.slice(0, DRAFT_QUEUE_VISIBLE_LIMIT);
   draftList.innerHTML = visibleRows.map((message) => {
     const isEmail = message.channel === "email";
     const openUrl = isEmail ? message.gmail_compose_url : message.whatsapp_url;
@@ -4264,8 +4330,8 @@ function renderDraftQueue() {
         </td>
       </tr>
     `;
-  }).join("") + (rows.length > visibleRows.length
-    ? `<tr><td colspan="8">Showing first ${formatNumber(visibleRows.length)} of ${formatNumber(rows.length)} draft rows.</td></tr>`
+  }).join("") + (filteredRows.length > visibleRows.length
+    ? `<tr><td colspan="8">Showing first ${formatNumber(visibleRows.length)} of ${formatNumber(filteredRows.length)} matching draft rows. Narrow the search to find a specific carrier.</td></tr>`
     : "");
 }
 
@@ -5694,8 +5760,19 @@ draftList?.addEventListener("change", (event) => {
   renderDraftQueue();
 });
 
+draftSearchInput?.addEventListener("input", () => {
+  draftQueueSearch = draftSearchInput.value || "";
+  renderDraftQueue();
+});
+
+draftClearSearchButton?.addEventListener("click", () => {
+  draftQueueSearch = "";
+  if (draftSearchInput) draftSearchInput.value = "";
+  renderDraftQueue();
+});
+
 draftToggleVisible?.addEventListener("change", () => {
-  const rows = draftRowsForEvent().slice(0, 200);
+  const rows = filteredDraftRows().slice(0, DRAFT_QUEUE_VISIBLE_LIMIT);
   if (draftToggleVisible.checked) {
     rows.forEach((message) => selectedDraftMessageIds.add(String(message.id)));
   } else {
@@ -5705,8 +5782,8 @@ draftToggleVisible?.addEventListener("change", () => {
 });
 
 draftSelectAllEmailsButton?.addEventListener("click", () => {
-  const rows = draftRowsForEvent();
-  selectedDraftMessageIds = new Set(selectableEmailDrafts(rows).map((message) => String(message.id)));
+  const rows = filteredDraftRows();
+  selectableEmailDrafts(rows).forEach((message) => selectedDraftMessageIds.add(String(message.id)));
   renderDraftQueue();
 });
 
