@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 
 const apiSource = readFileSync(new URL("../supabase/functions/rateware-api/index.ts", import.meta.url), "utf8");
 const interpretUploadSource = readFileSync(new URL("../supabase/functions/interpret-upload/index.ts", import.meta.url), "utf8");
@@ -71,6 +71,10 @@ const rfxDefaultTemplateMigration = readFileSync(new URL("../supabase/migrations
 const rfxBilingualTemplateMigration = readFileSync(new URL("../supabase/migrations/20260708101500_simplify_bilingual_rfx_invitation_templates.sql", import.meta.url), "utf8");
 const rfxSpanishTemplateNameMigration = readFileSync(new URL("../supabase/migrations/20260708103000_normalize_spanish_template_name.sql", import.meta.url), "utf8");
 const rfxTemplateSignatureMigration = readFileSync(new URL("../supabase/migrations/20260708110000_add_marksman_signature_to_rfx_templates.sql", import.meta.url), "utf8");
+const rfxTemplateSignatureImageMigration = readFileSync(new URL("../supabase/migrations/20260708112500_add_signature_image_to_rfx_templates.sql", import.meta.url), "utf8");
+const rfxInvitationTableSource = rfxEventsSource.slice(rfxEventsSource.indexOf("function laneTableLabels"), rfxEventsSource.indexOf("function firstOutreachTarget"));
+const apiInvitationTableSource = apiSource.slice(apiSource.indexOf("function outreachLaneTableLabels"), apiSource.indexOf("function phoneForWhatsapp"));
+const marksmanSignatureAsset = new URL("../assets/marksman-email-signature.png", import.meta.url);
 
 for (const domain of ["gmail.com", "hotmail.com", "yahoo.com", "outlook.com", "yahoo.com.mx"]) {
   assert.match(apiSource, new RegExp(`"${domain.replace(".", "\\.")}"`), `generic domain ${domain} should be blocked`);
@@ -360,6 +364,14 @@ assert.match(rfxTemplateSignatureMigration, /https:\/\/www\.linkedin\.com\/in\/a
 assert.match(rfxTemplateSignatureMigration, /https:\/\/www\.heymarksman\.com\//, "RFx email templates should include the Marksman website signature link");
 assert.match(rfxTemplateSignatureMigration, /Confidentiality &amp; Privacy Notice/, "RFx email templates should include the confidentiality and privacy notice");
 assert.match(rfxTemplateSignatureMigration, /XBF SISTEMAS LOG&Iacute;STICOS/, "RFx email templates should include the full company privacy scope");
+assert.ok(existsSync(marksmanSignatureAsset), "RFx email templates should have a hosted Marksman signature image asset");
+assert.match(rfxTemplateSignatureImageMigration, /marksman-email-signature\.png/, "RFx email templates should render the Marksman signature image");
+for (const source of [rfxInvitationTableSource, apiInvitationTableSource]) {
+  assert.doesNotMatch(source, /Tu tarifa|Tu capacidad|Rango objetivo|Millas|Peso/, "RFx invitation lane table should not include carrier response or heavy analysis columns");
+  assert.match(source, /Weekly<br>volume/, "RFx invitation lane table should keep a compact weekly volume column");
+  assert.match(source, /Volumen<br>semanal/, "RFx invitation lane table should localize Spanish headers");
+  assert.match(source, /Target/, "RFx invitation lane table should keep the target rate column");
+}
 assert.match(rfxBilingualTemplateMigration, /active = false[\s\S]*Marksman RFx lane book invitation/, "Long Marksman template should be hidden from the default workflow");
 assert.match(rfxServiceSource, /update_rfx_lane/, "RFx service should expose loaded lane updates");
 assert.match(apiSource, /body\.action === "update_rfx_lane"/, "Rateware API should update existing RFx lanes");

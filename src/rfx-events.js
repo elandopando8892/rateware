@@ -1638,6 +1638,41 @@ function renderTemplateText(value, context = {}) {
   return String(value || "").replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_, key) => String(context[key] ?? ""));
 }
 
+function outreachTemplateLanguage(template) {
+  const source = [
+    template?.name,
+    template?.subject,
+    template?.html_body,
+    template?.whatsapp_body
+  ].filter(Boolean).join(" ").toLowerCase();
+  return /spanish|espanol|español|por favor|gracias|modelo logistico|modelo logístico/.test(source) ? "es" : "en";
+}
+
+function laneTableLabels(language = "en") {
+  if (language === "es") {
+    return {
+      lane: "Ruta",
+      origin: "Origen",
+      destination: "Destino",
+      equipment: "Equipo / Remolque / Config",
+      operation: "Operacion",
+      service: "Servicio",
+      weeklyVolume: "Volumen<br>semanal",
+      target: "Objetivo"
+    };
+  }
+  return {
+    lane: "Lane",
+    origin: "Origin",
+    destination: "Destination",
+    equipment: "Equipment / Trailer / Config",
+    operation: "Operation",
+    service: "Service",
+    weeklyVolume: "Weekly<br>volume",
+    target: "Target"
+  };
+}
+
 function sameVendorInvitation(left = {}, right = {}) {
   const leftVendor = left.vendors || {};
   const rightVendor = right.vendors || {};
@@ -1651,59 +1686,58 @@ function outreachTargetsForCarrier(target) {
   return outreachTargetInvitations().filter((item) => sameVendorInvitation(item.invitation, target.invitation));
 }
 
-function laneRowsText(targets = []) {
+function laneRowsText(targets = [], language = "en") {
   return targets.map(({ lane }, index) => [
-    `Route ${lane.lane_number || index + 1}: ${lane.origin || "-"} -> ${lane.destination || "-"}`,
-    `Equipment: ${[lane.equipment, lane.trailer, lane.config].filter(Boolean).join(" / ") || "-"}`,
-    `Operation/Service: ${[lane.operation, lane.service].filter(Boolean).join(" / ") || "-"}`,
-    `Volume: ${lane.weekly_volume || "-"} per week`,
-    `Target: ${lane.target_rate ? formatMoney(lane.target_rate, lane.currency) : "-"}`
+    `${language === "es" ? "Ruta" : "Lane"} ${index + 1}: ${lane.origin || "-"} -> ${lane.destination || "-"}`,
+    `${language === "es" ? "Equipo" : "Equipment"}: ${[lane.equipment, lane.trailer, lane.config].filter(Boolean).join(" / ") || "-"}`,
+    `${language === "es" ? "Operacion/Servicio" : "Operation/Service"}: ${[lane.operation, lane.service].filter(Boolean).join(" / ") || "-"}`,
+    `${language === "es" ? "Volumen" : "Volume"}: ${lane.weekly_volume || "-"} ${language === "es" ? "por semana" : "per week"}`,
+    `${language === "es" ? "Objetivo" : "Target"}: ${lane.target_rate ? formatMoney(lane.target_rate, lane.currency) : "-"}`
   ].join(" | ")).join("\n");
 }
 
-function laneTableHtml(targets = []) {
+function laneTableHtml(targets = [], language = "en") {
   if (!targets.length) return "";
+  const labels = laneTableLabels(language);
   const headerStyle = "background:rgb(31,78,121);color:rgb(255,255,255);border:1px solid rgb(183,201,217);padding:6px 8px;text-align:left;vertical-align:top;line-height:1.15;white-space:nowrap";
   const headerCenterStyle = `${headerStyle};text-align:center`;
   const cellStyle = "border:1px solid rgb(208,215,222);padding:6px 8px;vertical-align:top;line-height:1.22";
   const centerCellStyle = `${cellStyle};white-space:nowrap;text-align:center`;
-  const quoteCellStyle = `${centerCellStyle};background:rgb(234,243,248);font-weight:700`;
-  const bidCellStyle = `${centerCellStyle};background:rgb(255,247,237)`;
-  const equipmentLabel = (lane) => [lane.equipment, lane.trailer, lane.config].filter(Boolean).join(" / ") || "-";
+  const targetCellStyle = `${centerCellStyle};background:rgb(234,243,248);font-weight:700`;
   const hazmatTempLabel = (lane) => [
     lane.hazmat ? "Hazmat" : null,
     lane.temperature_controlled ? "Temp Ctrl" : null
   ].filter(Boolean).join(" / ") || "-";
+  const equipmentLabel = (lane) => [
+    lane.equipment,
+    lane.trailer,
+    lane.config,
+    hazmatTempLabel(lane) === "-" ? null : hazmatTempLabel(lane)
+  ].filter(Boolean).join(" / ") || "-";
   const rows = targets.map(({ lane }, index) => `
     <tr>
-      <td style="${cellStyle};white-space:nowrap">${escapeHtml(lane.lane_number || index + 1)}</td>
+      <td style="${centerCellStyle}">${escapeHtml(index + 1)}</td>
       <td style="${cellStyle};white-space:nowrap">${escapeHtml(lane.origin || "-")}<br>${escapeHtml(lane.origin_notes || lane.origin_site || "")}</td>
       <td style="${cellStyle}">${escapeHtml(lane.destination || "-")}<br>${escapeHtml(lane.destination_notes || lane.destination_site || "")}</td>
       <td style="${cellStyle}">${escapeHtml(equipmentLabel(lane))}</td>
-      <td style="${cellStyle}">${escapeHtml(hazmatTempLabel(lane))}</td>
-      <td style="${centerCellStyle}">${escapeHtml(lane.estimated_miles || lane.miles || "-")}</td>
+      <td style="${centerCellStyle}">${escapeHtml(lane.operation || "-")}</td>
+      <td style="${centerCellStyle}">${escapeHtml(lane.service || "-")}</td>
       <td style="${centerCellStyle}">${escapeHtml(lane.weekly_volume || "-")}</td>
-      <td style="${centerCellStyle}">${escapeHtml(lane.load_weight || lane.weight || "-")}</td>
-      <td style="${quoteCellStyle}">${escapeHtml(lane.target_rate ? formatMoney(lane.target_rate, lane.currency) : "-")}</td>
-      <td style="${bidCellStyle}">Por ofertar</td>
-      <td style="${bidCellStyle}">Por estimar</td>
+      <td style="${targetCellStyle}">${escapeHtml(lane.target_rate ? formatMoney(lane.target_rate, lane.currency) : "-")}</td>
     </tr>
   `).join("");
   return `
     <table style="color:rgb(31,41,55);font-family:-apple-system,BlinkMacSystemFont,&quot;Segoe UI&quot;,Roboto,Oxygen,Ubuntu,Cantarell,&quot;Helvetica Neue&quot;,Arial,sans-serif;border-collapse:collapse;width:auto;max-width:100%;table-layout:auto;font-size:12px;margin-bottom:14px">
       <thead>
         <tr>
-          <th style="${headerStyle}">Route ID</th>
-          <th style="${headerStyle}">Origen</th>
-          <th style="${headerStyle}">Destino</th>
-          <th style="${headerStyle}">Equipment / Trailer / Config</th>
-          <th style="${headerStyle}">Hazmat / Temp Ctrl</th>
-          <th style="${headerCenterStyle}">Millas<br>estimadas</th>
-          <th style="${headerCenterStyle}">Volumen<br>semanal</th>
-          <th style="${headerCenterStyle}">Peso<br>por carga</th>
-          <th style="${headerCenterStyle}">Rango objetivo<br>inicial</th>
-          <th style="${headerCenterStyle}">Tu tarifa</th>
-          <th style="${headerCenterStyle}">Tu capacidad<br>semanal</th>
+          <th style="${headerCenterStyle}">${labels.lane}</th>
+          <th style="${headerStyle}">${labels.origin}</th>
+          <th style="${headerStyle}">${labels.destination}</th>
+          <th style="${headerStyle}">${labels.equipment}</th>
+          <th style="${headerCenterStyle}">${labels.operation}</th>
+          <th style="${headerCenterStyle}">${labels.service}</th>
+          <th style="${headerCenterStyle}">${labels.weeklyVolume}</th>
+          <th style="${headerCenterStyle}">${labels.target}</th>
         </tr>
       </thead>
       <tbody>${rows}</tbody>
@@ -1717,11 +1751,13 @@ function firstOutreachTarget() {
     || null;
 }
 
-function sampleOutreachContext(target) {
+function sampleOutreachContext(target, template = selectedOutreachTemplateDraft()) {
   const invitation = target?.invitation || {};
   const lane = target?.lane || {};
   const vendor = invitation.vendors || {};
   const carrierTargets = outreachTargetsForCarrier(target);
+  const language = outreachTemplateLanguage(template);
+  const targetRows = carrierTargets.length ? carrierTargets : target ? [target] : [];
   return {
     vendor_name: vendor.vendor_name || vendor.domain || "Carrier",
     contact_name: vendor.contact_name || vendor.vendor_name || "team",
@@ -1745,8 +1781,8 @@ function sampleOutreachContext(target) {
     target_rate: lane.target_rate || "",
     currency: lane.currency || "USD",
     lane_count: carrierTargets.length || (target ? 1 : 0),
-    lane_table: laneTableHtml(carrierTargets.length ? carrierTargets : target ? [target] : []),
-    lane_rows_text: laneRowsText(carrierTargets.length ? carrierTargets : target ? [target] : []),
+    lane_table: laneTableHtml(targetRows, language),
+    lane_rows_text: laneRowsText(targetRows, language),
     bid_link: invitation.invitation_token ? portalUrl(invitation.invitation_token) : `${window.location.origin}/rfx-bid.html?token=preview`
   };
 }
@@ -1798,7 +1834,7 @@ function renderOutreachPreview() {
       : "All active shortlist";
   const placeholders = templatePlaceholders(template);
   const previewTarget = firstOutreachTarget();
-  const previewContext = sampleOutreachContext(previewTarget);
+  const previewContext = sampleOutreachContext(previewTarget, template);
   if (!template) {
     rfxOutreachPreview.innerHTML = `
       <strong>No template selected.</strong>
@@ -2458,7 +2494,7 @@ function renderWizardPreview() {
   if (!wizardPreview) return;
   const template = selectedOutreachTemplateDraft();
   const target = firstOutreachTarget();
-  const context = sampleOutreachContext(target);
+  const context = sampleOutreachContext(target, template);
   const subject = template ? renderTemplateText(template.subject || `${context.rfx_id} invitation`, context) : "No template selected";
   const htmlBody = template ? renderTemplateText(template.html_body || template.whatsapp_body || "", context) : "";
   const whatsappText = template ? renderTemplateText(template.whatsapp_body || htmlBody.replace(/<[^>]*>/g, " "), context) : "";

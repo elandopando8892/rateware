@@ -8194,47 +8194,79 @@ function laneRecordFromInvitation(invitation: Record<string, unknown>) {
     : {};
 }
 
-function outreachLaneRowsText(invitations: Record<string, unknown>[]) {
+function outreachTemplateLanguage(template: Record<string, unknown> | null | undefined) {
+  const source = [
+    template?.name,
+    template?.subject,
+    template?.html_body,
+    template?.whatsapp_body
+  ].map(cleanText).filter(Boolean).join(" ").toLowerCase();
+  return /spanish|espanol|español|por favor|gracias|modelo logistico|modelo logístico/.test(source) ? "es" : "en";
+}
+
+function outreachLaneTableLabels(language = "en") {
+  if (language === "es") {
+    return {
+      lane: "Ruta",
+      origin: "Origen",
+      destination: "Destino",
+      equipment: "Equipo / Remolque / Config",
+      operation: "Operacion",
+      service: "Servicio",
+      weeklyVolume: "Volumen<br>semanal",
+      target: "Objetivo"
+    };
+  }
+  return {
+    lane: "Lane",
+    origin: "Origin",
+    destination: "Destination",
+    equipment: "Equipment / Trailer / Config",
+    operation: "Operation",
+    service: "Service",
+    weeklyVolume: "Weekly<br>volume",
+    target: "Target"
+  };
+}
+
+function outreachLaneRowsText(invitations: Record<string, unknown>[], language = "en") {
   return invitations.map((invitation, index) => {
     const lane = laneRecordFromInvitation(invitation);
     return [
-      `Route ${cleanText(lane.lane_number) || index + 1}: ${cleanText(lane.origin) || "-"} -> ${cleanText(lane.destination) || "-"}`,
-      `Equipment: ${[lane.equipment, lane.trailer, lane.config].map(cleanText).filter(Boolean).join(" / ") || "-"}`,
-      `Operation/Service: ${[lane.operation, lane.service].map(cleanText).filter(Boolean).join(" / ") || "-"}`,
-      `Volume: ${cleanText(lane.weekly_volume) || "-"} per week`,
-      `Target: ${formatOutreachMoney(lane.target_rate, lane.currency)}`
+      `${language === "es" ? "Ruta" : "Lane"} ${index + 1}: ${cleanText(lane.origin) || "-"} -> ${cleanText(lane.destination) || "-"}`,
+      `${language === "es" ? "Equipo" : "Equipment"}: ${[lane.equipment, lane.trailer, lane.config].map(cleanText).filter(Boolean).join(" / ") || "-"}`,
+      `${language === "es" ? "Operacion/Servicio" : "Operation/Service"}: ${[lane.operation, lane.service].map(cleanText).filter(Boolean).join(" / ") || "-"}`,
+      `${language === "es" ? "Volumen" : "Volume"}: ${cleanText(lane.weekly_volume) || "-"} ${language === "es" ? "por semana" : "per week"}`,
+      `${language === "es" ? "Objetivo" : "Target"}: ${formatOutreachMoney(lane.target_rate, lane.currency)}`
     ].join(" | ");
   }).join("\n");
 }
 
-function outreachLaneTableHtml(invitations: Record<string, unknown>[]) {
+function outreachLaneTableHtml(invitations: Record<string, unknown>[], language = "en") {
   if (!invitations.length) return "";
+  const labels = outreachLaneTableLabels(language);
   const headerStyle = "background:rgb(31,78,121);color:rgb(255,255,255);border:1px solid rgb(183,201,217);padding:6px 8px;text-align:left;vertical-align:top;line-height:1.15;white-space:nowrap";
   const headerCenterStyle = `${headerStyle};text-align:center`;
   const cellStyle = "border:1px solid rgb(208,215,222);padding:6px 8px;vertical-align:top;line-height:1.22";
   const centerCellStyle = `${cellStyle};white-space:nowrap;text-align:center`;
-  const quoteCellStyle = `${centerCellStyle};background:rgb(234,243,248);font-weight:700`;
-  const bidCellStyle = `${centerCellStyle};background:rgb(255,247,237)`;
+  const targetCellStyle = `${centerCellStyle};background:rgb(234,243,248);font-weight:700`;
   const rows = invitations.map((invitation, index) => {
     const lane = laneRecordFromInvitation(invitation);
-    const equipment = [lane.equipment, lane.trailer, lane.config].map(cleanText).filter(Boolean).join(" / ") || "-";
     const hazmatTemp = [
       cleanBoolean(lane.hazmat) ? "Hazmat" : null,
       cleanBoolean(lane.temperature_controlled) ? "Temp Ctrl" : null
     ].filter(Boolean).join(" / ") || "-";
+    const equipment = [lane.equipment, lane.trailer, lane.config, hazmatTemp === "-" ? null : hazmatTemp].map(cleanText).filter(Boolean).join(" / ") || "-";
     return `
       <tr>
-        <td style="${cellStyle};white-space:nowrap">${escapeHtmlText(lane.lane_number || index + 1)}</td>
+        <td style="${centerCellStyle}">${escapeHtmlText(index + 1)}</td>
         <td style="${cellStyle};white-space:nowrap">${escapeHtmlText(lane.origin || "-")}<br>${escapeHtmlText(lane.origin_notes || lane.origin_site || "")}</td>
         <td style="${cellStyle}">${escapeHtmlText(lane.destination || "-")}<br>${escapeHtmlText(lane.destination_notes || lane.destination_site || "")}</td>
         <td style="${cellStyle}">${escapeHtmlText(equipment)}</td>
-        <td style="${cellStyle}">${escapeHtmlText(hazmatTemp)}</td>
-        <td style="${centerCellStyle}">${escapeHtmlText(lane.estimated_miles || lane.miles || "-")}</td>
+        <td style="${centerCellStyle}">${escapeHtmlText(lane.operation || "-")}</td>
+        <td style="${centerCellStyle}">${escapeHtmlText(lane.service || "-")}</td>
         <td style="${centerCellStyle}">${escapeHtmlText(lane.weekly_volume || "-")}</td>
-        <td style="${centerCellStyle}">${escapeHtmlText(lane.load_weight || lane.weight || "-")}</td>
-        <td style="${quoteCellStyle}">${escapeHtmlText(formatOutreachMoney(lane.target_rate, lane.currency))}</td>
-        <td style="${bidCellStyle}">Por ofertar</td>
-        <td style="${bidCellStyle}">Por estimar</td>
+        <td style="${targetCellStyle}">${escapeHtmlText(formatOutreachMoney(lane.target_rate, lane.currency))}</td>
       </tr>
     `;
   }).join("");
@@ -8242,17 +8274,14 @@ function outreachLaneTableHtml(invitations: Record<string, unknown>[]) {
     <table style="color:rgb(31,41,55);font-family:-apple-system,BlinkMacSystemFont,&quot;Segoe UI&quot;,Roboto,Oxygen,Ubuntu,Cantarell,&quot;Helvetica Neue&quot;,Arial,sans-serif;border-collapse:collapse;width:auto;max-width:100%;table-layout:auto;font-size:12px;margin-bottom:14px">
       <thead>
         <tr>
-          <th style="${headerStyle}">Route ID</th>
-          <th style="${headerStyle}">Origen</th>
-          <th style="${headerStyle}">Destino</th>
-          <th style="${headerStyle}">Equipment / Trailer / Config</th>
-          <th style="${headerStyle}">Hazmat / Temp Ctrl</th>
-          <th style="${headerCenterStyle}">Millas<br>estimadas</th>
-          <th style="${headerCenterStyle}">Volumen<br>semanal</th>
-          <th style="${headerCenterStyle}">Peso<br>por carga</th>
-          <th style="${headerCenterStyle}">Rango objetivo<br>inicial</th>
-          <th style="${headerCenterStyle}">Tu tarifa</th>
-          <th style="${headerCenterStyle}">Tu capacidad<br>semanal</th>
+          <th style="${headerCenterStyle}">${labels.lane}</th>
+          <th style="${headerStyle}">${labels.origin}</th>
+          <th style="${headerStyle}">${labels.destination}</th>
+          <th style="${headerStyle}">${labels.equipment}</th>
+          <th style="${headerCenterStyle}">${labels.operation}</th>
+          <th style="${headerCenterStyle}">${labels.service}</th>
+          <th style="${headerCenterStyle}">${labels.weeklyVolume}</th>
+          <th style="${headerCenterStyle}">${labels.target}</th>
         </tr>
       </thead>
       <tbody>${rows}</tbody>
@@ -8291,11 +8320,17 @@ function contactPreview(value: unknown) {
     .slice(0, 240);
 }
 
-function outreachContext(invitation: Record<string, unknown>, appOrigin: string, invitationGroup: Record<string, unknown>[] = [invitation]) {
+function outreachContext(
+  invitation: Record<string, unknown>,
+  appOrigin: string,
+  invitationGroup: Record<string, unknown>[] = [invitation],
+  template: Record<string, unknown> | null | undefined = null
+) {
   const vendor = typeof invitation.vendors === "object" && invitation.vendors ? invitation.vendors as Record<string, unknown> : {};
   const lane = typeof invitation.rfx_lanes === "object" && invitation.rfx_lanes ? invitation.rfx_lanes as Record<string, unknown> : {};
   const event = typeof invitation.rfx_events === "object" && invitation.rfx_events ? invitation.rfx_events as Record<string, unknown> : {};
   const bidLink = `${appOrigin.replace(/\/$/, "")}/rfx-bid.html?token=${encodeURIComponent(String(invitation.invitation_token || ""))}`;
+  const language = outreachTemplateLanguage(template);
   return {
     vendor_name: vendor.vendor_name || vendor.domain || "Carrier",
     contact_name: vendor.contact_name || vendor.vendor_name || "team",
@@ -8319,8 +8354,8 @@ function outreachContext(invitation: Record<string, unknown>, appOrigin: string,
     target_rate: lane.target_rate || "",
     currency: lane.currency || "USD",
     lane_count: invitationGroup.length,
-    lane_table: outreachLaneTableHtml(invitationGroup),
-    lane_rows_text: outreachLaneRowsText(invitationGroup),
+    lane_table: outreachLaneTableHtml(invitationGroup, language),
+    lane_rows_text: outreachLaneRowsText(invitationGroup, language),
     bid_link: bidLink
   };
 }
@@ -11733,7 +11768,7 @@ Deno.serve(async (request) => {
       for (const invitationGroup of invitationGroups.values()) {
         const invitation = invitationGroup[0];
         const vendor = typeof invitation.vendors === "object" && invitation.vendors ? invitation.vendors as Record<string, unknown> : {};
-        const context = outreachContext(invitation, appOrigin, invitationGroup);
+        const context = outreachContext(invitation, appOrigin, invitationGroup, template);
         const subject = renderTemplateText(template.subject || campaign.name, context);
         const htmlBody = renderTemplateText(template.html_body || template.whatsapp_body || "", context);
         const textBody = htmlToText(htmlBody);
