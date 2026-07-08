@@ -10,6 +10,7 @@ let lastCarrierBook = null;
 let lastCarrierChat = { rows: [], google_chat_configured: false };
 let lastInvitation = null;
 let lastLiveBoard = {};
+let lastQuickBidSaveStatus = null;
 let pendingBidTemplateRows = [];
 const bookFilters = {
   view: "all",
@@ -1925,6 +1926,203 @@ function renderBookRows(rows = []) {
   }).join("");
 }
 
+function quickBidRows(carrierBook = {}, invitation = {}) {
+  const event = invitation.rfx_events || {};
+  return currentEventBookRows(carrierBook, event).filter((row) => row.is_invited && row.invitation_token);
+}
+
+function quickBidCommercialPercent(row = {}) {
+  const model = String(row.commercial_model || "direct_cost_plus").toLowerCase();
+  if (model === "carrier_share") return row.carrier_share_pct ?? "";
+  if (model === "direct_cost_plus") return row.marksman_margin_pct ?? "";
+  return "";
+}
+
+function quickBidRowStatus(row = {}) {
+  if (!lastQuickBidSaveStatus || lastQuickBidSaveStatus.token !== row.invitation_token) return "";
+  return `<span class="status-message" data-tone="${escapeAttribute(lastQuickBidSaveStatus.tone || "neutral")}">${escapeHtml(lastQuickBidSaveStatus.message || "")}</span>`;
+}
+
+function renderQuickLaneBidGridShell(carrierBook = {}, invitation = {}) {
+  const rows = quickBidRows(carrierBook, invitation);
+  if (!rows.length) return "";
+  return `
+    <section id="carrier-quick-bid-grid" class="carrier-quick-bid-grid">
+      <div class="bid-room-section-heading">
+        <div>
+          <p class="eyebrow">${escapeHtml(dualText("Quick lane bids", "Pujas rapidas por ruta"))}</p>
+          <h3>${escapeHtml(dualText("Quote or edit every invited lane in rows", "Cotiza o edita cada ruta invitada en filas"))}</h3>
+        </div>
+        <span class="status-pill neutral">${escapeHtml(dualText(`${rows.length} editable lane(s)`, `${rows.length} ruta(s) editables`))}</span>
+      </div>
+      <p class="bid-board-note">${escapeHtml(dualText(
+        "Use this grid for fast price, capacity and transit updates. Open the guided form only when you need alternatives, ETA, unit details or full notes.",
+        "Usa esta grilla para actualizar rapido precio, capacidad y transito. Abre el formulario guiado solo si necesitas alternativas, ETA, datos de unidad o notas completas."
+      ))}</p>
+      <div class="table-wrap">
+        <table class="quick-bid-table">
+          <thead>
+            <tr>
+              <th>Lane</th>
+              <th>${escapeHtml(dualText("Equipment", "Equipo"))}</th>
+              <th>${escapeHtml(dualText("All-in", "All-in"))}</th>
+              <th>${escapeHtml(dualText("Currency", "Moneda"))}</th>
+              <th>${escapeHtml(dualText("Capacity", "Capacidad"))}</th>
+              <th>${escapeHtml(dualText("Transit", "Transito"))}</th>
+              <th>${escapeHtml(dualText("Commercial", "Comercial"))}</th>
+              <th>${escapeHtml(dualText("%", "%"))}</th>
+              <th>${escapeHtml(dualText("Status", "Estado"))}</th>
+              <th>${escapeHtml(dualText("Action", "Accion"))}</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.map((row) => {
+              const lane = row.lane || {};
+              const model = String(row.commercial_model || "direct_cost_plus").toLowerCase();
+              return `
+                <tr
+                  data-quick-bid-row
+                  data-invitation-token="${escapeAttribute(row.invitation_token || "")}"
+                  data-best-alternative="${escapeAttribute(row.best_alternative_offered ? "true" : "false")}"
+                  data-alternative-equipment="${escapeAttribute(row.alternative_equipment || "")}"
+                  data-alternative-units="${escapeAttribute(row.alternative_units ?? "")}"
+                  data-alternative-notes="${escapeAttribute(row.alternative_notes || "")}"
+                  data-equipment-available="${escapeAttribute(row.equipment_available === true ? "true" : row.equipment_available === false ? "false" : "")}"
+                  data-unit-details="${escapeAttribute(row.unit_details || "")}"
+                  data-eta-pickup="${escapeAttribute(row.eta_pickup || "")}"
+                  data-eta-delivery="${escapeAttribute(row.eta_delivery || "")}"
+                  data-mirror-account-enabled="${escapeAttribute(row.mirror_account_enabled ? "true" : "false")}"
+                  data-availability-validation-notes="${escapeAttribute(row.availability_validation_notes || "")}"
+                  data-notes="${escapeAttribute(row.notes || "")}"
+                >
+                  <td>
+                    <strong>${escapeHtml(laneLabel(lane))}</strong>
+                    <small>${escapeHtml([lane.lane_number ? `#${lane.lane_number}` : null, marketLabel(lane)].filter(Boolean).join(" | "))}</small>
+                  </td>
+                  <td>
+                    ${escapeHtml([lane.equipment, lane.trailer, lane.config].filter(Boolean).join(" / ") || "-")}
+                    <small>${escapeHtml([lane.operation, lane.service].filter(Boolean).join(" / ") || "-")}</small>
+                  </td>
+                  <td><input data-quick-bid-field="bid_rate" inputmode="decimal" value="${escapeAttribute(row.bid_rate ?? "")}" placeholder="2900" /></td>
+                  <td>
+                    <select data-quick-bid-field="currency">
+                      ${["USD", "MXN", "CAD"].map((currency) => `<option value="${currency}" ${currency === (row.currency || lane.currency || "USD") ? "selected" : ""}>${currency}</option>`).join("")}
+                    </select>
+                  </td>
+                  <td><input data-quick-bid-field="weekly_capacity" inputmode="decimal" value="${escapeAttribute(row.weekly_capacity ?? "")}" placeholder="5" /></td>
+                  <td><input data-quick-bid-field="transit_days" inputmode="decimal" value="${escapeAttribute(row.transit_days ?? "")}" placeholder="2" /></td>
+                  <td>
+                    <select data-quick-bid-field="commercial_model">
+                      <option value="direct_cost_plus" ${model === "direct_cost_plus" ? "selected" : ""}>Cost-plus</option>
+                      <option value="carrier_share" ${model === "carrier_share" ? "selected" : ""}>Carrier share</option>
+                      <option value="xbf_buy_sell" ${model === "xbf_buy_sell" ? "selected" : ""}>XBF buy-sell</option>
+                    </select>
+                  </td>
+                  <td><input data-quick-bid-field="commercial_pct" inputmode="decimal" value="${escapeAttribute(quickBidCommercialPercent(row))}" placeholder="${model === "xbf_buy_sell" ? "-" : "2-5"}" ${model === "xbf_buy_sell" ? "disabled" : ""} /></td>
+                  <td class="quick-bid-row-status">${quickBidRowStatus(row)}</td>
+                  <td><button type="button" class="small-button" data-save-quick-bid>${escapeHtml(row.bid_rate ? dualText("Update", "Actualizar") : dualText("Submit", "Enviar"))}</button></td>
+                </tr>
+              `;
+            }).join("")}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  `;
+}
+
+function renderQuickLaneBidGrid(carrierBook = lastCarrierBook || {}, invitation = lastInvitation || {}) {
+  const grid = card.querySelector("#carrier-quick-bid-grid");
+  const html = renderQuickLaneBidGridShell(carrierBook, invitation);
+  if (grid && html) {
+    grid.outerHTML = html;
+  } else if (grid && !html) {
+    grid.remove();
+  }
+}
+
+function quickBidField(rowElement, field) {
+  return rowElement.querySelector(`[data-quick-bid-field="${field}"]`)?.value || "";
+}
+
+function quickBidDraftFromRow(rowElement) {
+  const commercialModel = quickBidField(rowElement, "commercial_model") || "direct_cost_plus";
+  const commercialPercent = quickBidField(rowElement, "commercial_pct");
+  return {
+    bid_rate: quickBidField(rowElement, "bid_rate"),
+    currency: quickBidField(rowElement, "currency") || "USD",
+    weekly_capacity: quickBidField(rowElement, "weekly_capacity"),
+    transit_days: quickBidField(rowElement, "transit_days"),
+    commercial_model: commercialModel,
+    marksman_margin_pct: commercialModel === "direct_cost_plus" ? commercialPercent : "",
+    carrier_share_pct: commercialModel === "carrier_share" ? commercialPercent : "",
+    best_alternative_offered: rowElement.dataset.bestAlternative === "true",
+    alternative_equipment: rowElement.dataset.alternativeEquipment || "",
+    alternative_units: rowElement.dataset.alternativeUnits || "",
+    alternative_notes: rowElement.dataset.alternativeNotes || "",
+    equipment_available: rowElement.dataset.equipmentAvailable || "",
+    unit_details: rowElement.dataset.unitDetails || "",
+    eta_pickup: dateTimeLocalValue(rowElement.dataset.etaPickup || ""),
+    eta_delivery: dateTimeLocalValue(rowElement.dataset.etaDelivery || ""),
+    mirror_account_enabled: rowElement.dataset.mirrorAccountEnabled === "true",
+    availability_validation_notes: rowElement.dataset.availabilityValidationNotes || "",
+    best_final: false,
+    notes: rowElement.dataset.notes || ""
+  };
+}
+
+function setQuickBidRowStatus(rowElement, message, tone = "neutral") {
+  const status = rowElement.querySelector(".quick-bid-row-status");
+  if (!status) return;
+  status.innerHTML = `<span class="status-message" data-tone="${escapeAttribute(tone)}">${escapeHtml(message)}</span>`;
+}
+
+function markQuickBidRowInvalid(rowElement, field) {
+  rowElement.querySelectorAll("[aria-invalid='true']").forEach((input) => input.removeAttribute("aria-invalid"));
+  const map = {
+    "bid-rate": "bid_rate",
+    "bid-currency": "currency",
+    "bid-capacity": "weekly_capacity",
+    "bid-transit-days": "transit_days",
+    "bid-marksman-margin": "commercial_pct",
+    "bid-carrier-share": "commercial_pct"
+  };
+  const input = rowElement.querySelector(`[data-quick-bid-field="${map[field] || field}"]`);
+  input?.setAttribute("aria-invalid", "true");
+  input?.focus();
+}
+
+async function saveQuickBidRow(rowElement, button) {
+  const rowToken = rowElement.dataset.invitationToken || "";
+  const draft = quickBidDraftFromRow(rowElement);
+  const validation = validateBidDraft(draft);
+  rowElement.querySelectorAll("[aria-invalid='true']").forEach((input) => input.removeAttribute("aria-invalid"));
+  if (!rowToken) {
+    setQuickBidRowStatus(rowElement, dualText("Missing invitation token.", "Falta token de invitacion."), "error");
+    return;
+  }
+  if (validation.errors.length) {
+    setQuickBidRowStatus(rowElement, validation.errors[0].message, "error");
+    markQuickBidRowInvalid(rowElement, validation.errors[0].field);
+    return;
+  }
+  button.disabled = true;
+  setQuickBidRowStatus(rowElement, dualText("Saving lane offer...", "Guardando oferta de la ruta..."), "neutral");
+  try {
+    await callBidApi("submit_bid", { token: rowToken, ...draft });
+    lastQuickBidSaveStatus = {
+      token: rowToken,
+      tone: "success",
+      message: dualText("Saved. Published as the latest offer.", "Guardado. Publicado como la oferta mas reciente.")
+    };
+    queuePrivateBidAlert("bidSubmitted", dualText("Lane offer updated.", "Oferta de ruta actualizada."));
+    await loadInvitation({ refreshOnly: true, refreshForm: rowToken === tokenFromUrl(), refreshQuickGrid: true });
+  } catch (error) {
+    setQuickBidRowStatus(rowElement, error.message, "error");
+    button.disabled = false;
+  }
+}
+
 function currentEventBookRows(carrierBook = {}, event = {}) {
   const eventId = String(event.id || "");
   const rows = Array.isArray(carrierBook.invited) ? carrierBook.invited : [];
@@ -2219,6 +2417,8 @@ function renderInvitation(invitation, liveBoard = {}, carrierBook = {}) {
 
     ${renderBidTemplateTools(carrierBook, invitation)}
 
+    ${renderQuickLaneBidGridShell(carrierBook, invitation)}
+
     <section class="bid-lane-summary">
       <div class="bid-room-section-heading">
         <div>
@@ -2472,6 +2672,8 @@ async function loadInvitation(options = {}) {
       renderCarrierBook(data.carrier_book);
       if (options.refreshForm) hydrateBidFormFromOffer(currentSubmittedOffer(data.live_board), data.invitation);
       else syncBidFormMode();
+      const quickGridHasFocus = Boolean(document.activeElement?.closest?.("#carrier-quick-bid-grid"));
+      if (options.refreshQuickGrid || !quickGridHasFocus) renderQuickLaneBidGrid(data.carrier_book, data.invitation);
     } else {
       renderInvitation(data.invitation, data.live_board, data.carrier_book);
       renderAwardOutcome(data.invitation, data.carrier_book, data.live_board);
@@ -2515,6 +2717,13 @@ card.addEventListener("click", async (event) => {
   const editCurrentOfferButton = event.target.closest("[data-edit-current-offer]");
   if (editCurrentOfferButton) {
     focusCurrentOfferEditor();
+    return;
+  }
+
+  const quickBidSaveButton = event.target.closest("[data-save-quick-bid]");
+  if (quickBidSaveButton) {
+    const row = quickBidSaveButton.closest("[data-quick-bid-row]");
+    if (row) await saveQuickBidRow(row, quickBidSaveButton);
     return;
   }
 
@@ -2696,6 +2905,18 @@ card.addEventListener("change", async (event) => {
     }
     clearBidValidationState();
     updateBidReviewSummary();
+  }
+
+  const quickCommercialModel = event.target.closest("[data-quick-bid-field='commercial_model']");
+  if (quickCommercialModel) {
+    const row = quickCommercialModel.closest("[data-quick-bid-row]");
+    const pct = row?.querySelector("[data-quick-bid-field='commercial_pct']");
+    if (pct) {
+      const disabled = quickCommercialModel.value === "xbf_buy_sell";
+      pct.disabled = disabled;
+      if (disabled) pct.value = "";
+      pct.placeholder = disabled ? "-" : "2-5";
+    }
   }
 });
 
