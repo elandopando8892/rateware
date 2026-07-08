@@ -6312,6 +6312,48 @@ function normalizeRfxLane(input: Record<string, unknown>, index = 0) {
   };
 }
 
+function normalizeRfxLanePatch(input: Record<string, unknown>) {
+  const patch: Record<string, unknown> = {};
+  const textFields = [
+    "origin",
+    "origin_city",
+    "origin_state",
+    "origin_country",
+    "origin_market",
+    "origin_region",
+    "destination",
+    "destination_city",
+    "destination_state",
+    "destination_country",
+    "destination_market",
+    "destination_region",
+    "equipment",
+    "trailer",
+    "config",
+    "operation",
+    "service",
+    "incumbent_vendor",
+    "logistics_model",
+    "operation_criteria",
+    "business_rules",
+    "service_specifications",
+    "other_notes",
+    "notes"
+  ];
+  const numericFields = ["lane_number", "weekly_volume", "annual_volume", "target_rate"];
+  for (const field of textFields) {
+    if (Object.prototype.hasOwnProperty.call(input, field)) patch[field] = cleanText(input[field]);
+  }
+  for (const field of numericFields) {
+    if (Object.prototype.hasOwnProperty.call(input, field)) patch[field] = cleanNumber(input[field]);
+  }
+  if (Object.prototype.hasOwnProperty.call(input, "currency")) {
+    patch.currency = cleanText(input.currency)?.toUpperCase() || null;
+  }
+  if (Object.keys(patch).length) patch.updated_at = new Date().toISOString();
+  return patch;
+}
+
 function laneText(row: Record<string, unknown>) {
   return [
     row.origin,
@@ -10971,6 +11013,43 @@ Deno.serve(async (request) => {
         .order("lane_number", { ascending: true });
       if (result.error) throw result.error;
       return jsonResponse({ inserted: result.data?.length || 0, rows: result.data || [] });
+    }
+
+    if (body.action === "update_rfx_lane") {
+      const laneId = cleanText(body.id || body.lane_id);
+      if (!laneId) return jsonResponse({ error: "RFx lane id is required." }, 400);
+      const patch = normalizeRfxLanePatch(body.patch || body.lane || {});
+      if (!Object.keys(patch).length) return jsonResponse({ error: "No RFx lane changes were provided." }, 400);
+      const laneResult = await supabase
+        .from("rfx_lanes")
+        .select("*")
+        .eq("id", laneId)
+        .single();
+      if (laneResult.error) throw laneResult.error;
+      const lane = laneResult.data || {};
+      const event = await requireOwnedRfxEvent(supabase, user, lane.rfx_event_id);
+      const nextOrigin = Object.prototype.hasOwnProperty.call(patch, "origin") ? patch.origin : lane.origin;
+      const nextDestination = Object.prototype.hasOwnProperty.call(patch, "destination") ? patch.destination : lane.destination;
+      if (!cleanText(nextOrigin)) return jsonResponse({ error: "Origin is required before saving this lane." }, 400);
+      if (!cleanText(nextDestination)) return jsonResponse({ error: "Destination is required before saving this lane." }, 400);
+      const result = await supabase
+        .from("rfx_lanes")
+        .update(patch)
+        .eq("id", laneId)
+        .eq("rfx_event_id", event.id)
+        .select()
+        .single();
+      if (result.error) throw result.error;
+      await writeAuditLog(
+        supabase,
+        user,
+        "bid_room.lane.update",
+        "rfx_lanes",
+        laneId,
+        `Updated RFx lane ${result.data?.lane_number || ""}`.trim(),
+        { fields: Object.keys(patch).filter((field) => field !== "updated_at") }
+      );
+      return jsonResponse({ row: result.data });
     }
 
     if (body.action === "list_rfx_detail") {

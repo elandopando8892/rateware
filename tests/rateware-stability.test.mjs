@@ -328,10 +328,18 @@ assert.match(rfxEventsHtml, /rfx-manual-lanes-body/, "Bid Room Step 2 should all
 assert.match(rfxEventsHtml, /import-manual-rfx-lanes-button/, "Bid Room Step 2 should import manually captured lanes");
 assert.match(rfxEventsSource, /function manualLaneImportRows/, "Bid Room Step 2 should normalize manual lane rows before import");
 assert.match(rfxEventsSource, /importManualLanesButton\?\.addEventListener\("click"/, "Bid Room Step 2 should wire manual lane import to the RFx lane API");
+assert.match(rfxEventsHtml, /toggle-rfx-lane-edit/, "Bid Room Step 2 should allow editing loaded lanes");
+assert.match(rfxEventsHtml, /save-rfx-lane-edits/, "Bid Room Step 2 should save edits across loaded lanes");
+assert.match(rfxEventsSource, /function renderEditableLaneRow/, "Bid Room Step 2 should render imported lanes as editable rows");
+assert.match(rfxEventsSource, /function saveRfxLaneEdits/, "Bid Room Step 2 should save loaded lane edits");
+assert.match(rfxServiceSource, /update_rfx_lane/, "RFx service should expose loaded lane updates");
+assert.match(apiSource, /body\.action === "update_rfx_lane"/, "Rateware API should update existing RFx lanes");
+assert.match(apiSource, /function normalizeRfxLanePatch/, "Rateware API should normalize partial RFx lane updates");
 for (const field of ["logistics_model", "operation_criteria", "business_rules", "service_specifications", "other_notes"]) {
   assert.match(rfxLaneDetailSectionsMigration, new RegExp(`add column if not exists ${field} text`), `RFx lanes should persist ${field}`);
   assert.match(rfxEventsSource, new RegExp(`key: "${field}"`), `RFx lane template should expose ${field}`);
   assert.match(rfxEventsSource, new RegExp(`data-manual-lane-field="${field}"`), `manual lane detail should edit ${field}`);
+  assert.match(rfxEventsSource, new RegExp(`data-rfx-lane-field="\\$\\{escapeHtml\\(field\\)\\}"`), `loaded lane detail should edit ${field}`);
   assert.match(apiSource, new RegExp(`${field}: cleanText`), `Rateware API should normalize ${field}`);
 }
 assert.match(rfxEventsSource, /notas_adicionales: "other_notes"/, "RFx lane import should map Spanish RFI additional notes");

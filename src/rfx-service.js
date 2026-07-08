@@ -28,6 +28,10 @@ export async function importRfxLanes(eventId, rows) {
   return await callRatewareApi("import_rfx_lanes", { event_id: eventId, rows });
 }
 
+export async function updateRfxLane(id, patch) {
+  return (await callRatewareApi("update_rfx_lane", { id, patch })).row;
+}
+
 export async function fetchRfxDetail(eventId) {
   return await callRatewareApi("list_rfx_detail", { event_id: eventId });
 }

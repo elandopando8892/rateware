@@ -285,6 +285,12 @@
                   <button class="secondary small-button" type="button" data-rfx-lane-filter="has_bids">Has bids</button>
                   <button class="secondary small-button" type="button" data-rfx-lane-filter="above_benchmark">Above Rateware</button>
                 </div>
+                <div class="action-row compact-actions">
+                  <button id="toggle-rfx-lane-edit" class="secondary small-button" type="button" disabled>Edit loaded lanes</button>
+                  <button id="save-rfx-lane-edits" class="small-button" type="button" disabled>Save changes</button>
+                  <button id="cancel-rfx-lane-edits" class="secondary small-button" type="button" disabled>Revert changes</button>
+                  <span id="rfx-lane-edit-status" class="status-message" role="status"></span>
+                </div>
                 <input id="rfx-lane-search" type="search" placeholder="Search lane, market, equipment" />
               </div>
               <div class="table-wrap">

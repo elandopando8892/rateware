@@ -20,7 +20,8 @@ import {
   shortlistRfxLaneVendors,
   syncBidRoomEventThread,
   updateBidRoomChatThread,
-  updateRfxEvent
+  updateRfxEvent,
+  updateRfxLane
 } from "./rfx-service.js";
 import {
   createOutreachCampaign,
@@ -76,6 +77,10 @@ const autoShortlistButton = document.querySelector("#auto-shortlist-selected");
 const inviteSelectedButton = document.querySelector("#invite-selected-rfx");
 const archiveSelectedButton = document.querySelector("#archive-selected-rfx");
 const actionStatus = document.querySelector("#rfx-action-status");
+const toggleLaneEditButton = document.querySelector("#toggle-rfx-lane-edit");
+const saveLaneEditsButton = document.querySelector("#save-rfx-lane-edits");
+const cancelLaneEditsButton = document.querySelector("#cancel-rfx-lane-edits");
+const laneEditStatus = document.querySelector("#rfx-lane-edit-status");
 const metricEvents = document.querySelector("#rfx-metric-events");
 const metricLanes = document.querySelector("#rfx-metric-lanes");
 const metricInvites = document.querySelector("#rfx-metric-invites");
@@ -230,6 +235,8 @@ let selectedInvitationIds = new Set();
 let selectedDraftMessageIds = new Set();
 let focusedLaneId = null;
 let activeLaneFilter = "all";
+let laneEditMode = false;
+let pendingLaneEdits = new Map();
 let pendingLaneTemplateRows = [];
 let pendingLaneTemplateIssues = [];
 let manualLaneRows = [];
@@ -292,6 +299,26 @@ const MANUAL_LANE_DEFAULTS = {
 const MANUAL_LANE_OPERATIONS = ["D2D Export", "D2D Import", "Intra-Mex", "US Northbound", "US Southbound", "Domestic US", "Domestic MX"];
 const MANUAL_LANE_SERVICES = ["One Way", "Roundtrip", "Spot", "Dedicated"];
 const MANUAL_LANE_CURRENCIES = ["USD", "MXN", "CAD"];
+const EDITABLE_RFX_LANE_FIELDS = [
+  "lane_number",
+  "origin",
+  "destination",
+  "equipment",
+  "trailer",
+  "config",
+  "operation",
+  "service",
+  "weekly_volume",
+  "annual_volume",
+  "target_rate",
+  "currency",
+  "logistics_model",
+  "operation_criteria",
+  "business_rules",
+  "service_specifications",
+  "other_notes",
+  "notes"
+];
 
 const RFX_CARRIER_TEMPLATE_COLUMNS = [
   { key: "participate", label: "Participate", example: "TRUE" },
@@ -657,6 +684,130 @@ function manualLaneSelectOptions(values, selected) {
   const selectedValue = String(selected || "");
   const allValues = values.includes(selectedValue) || !selectedValue ? values : [selectedValue, ...values];
   return allValues.map((value) => `<option value="${escapeHtml(value)}" ${value === selectedValue ? "selected" : ""}>${escapeHtml(value)}</option>`).join("");
+}
+
+function laneEditPatch(laneId) {
+  return pendingLaneEdits.get(String(laneId)) || {};
+}
+
+function laneEditValue(lane, field) {
+  const patch = laneEditPatch(lane.id);
+  return Object.prototype.hasOwnProperty.call(patch, field) ? patch[field] : (lane[field] ?? "");
+}
+
+function laneHasPendingEdits(laneId) {
+  return Object.keys(laneEditPatch(laneId)).length > 0;
+}
+
+function updateLaneEditControls() {
+  const dirtyCount = pendingLaneEdits.size;
+  if (toggleLaneEditButton) {
+    toggleLaneEditButton.textContent = laneEditMode ? "Done editing" : "Edit loaded lanes";
+    toggleLaneEditButton.disabled = !selectedEventId || !currentLanes.length;
+  }
+  if (saveLaneEditsButton) saveLaneEditsButton.disabled = !laneEditMode || !dirtyCount;
+  if (cancelLaneEditsButton) cancelLaneEditsButton.disabled = !laneEditMode || !dirtyCount;
+  if (laneEditStatus) {
+    laneEditStatus.textContent = laneEditMode
+      ? dirtyCount
+        ? `${dirtyCount} modified lane${dirtyCount === 1 ? "" : "s"} not saved.`
+        : "Editing loaded lanes. Changes are saved only when you click Save."
+      : "";
+    laneEditStatus.dataset.tone = dirtyCount ? "warning" : "neutral";
+  }
+}
+
+function markLaneEdited(laneId, field, value) {
+  if (!EDITABLE_RFX_LANE_FIELDS.includes(field)) return;
+  const id = String(laneId || "");
+  if (!id) return;
+  const lane = currentLanes.find((item) => String(item.id) === id);
+  if (!lane) return;
+  const nextValue = String(value ?? "");
+  const originalValue = String(lane[field] ?? "");
+  const patch = { ...laneEditPatch(id) };
+  if (nextValue === originalValue) delete patch[field];
+  else patch[field] = nextValue;
+  if (Object.keys(patch).length) pendingLaneEdits.set(id, patch);
+  else pendingLaneEdits.delete(id);
+  updateLaneEditControls();
+  const row = lanesBody?.querySelector(`[data-rfx-lane-id="${CSS.escape(id)}"]`);
+  row?.classList.toggle("is-dirty-row", laneHasPendingEdits(id));
+}
+
+function laneEditInput(lane, field, options = {}) {
+  const value = laneEditValue(lane, field);
+  const attrs = `data-rfx-lane-field="${escapeHtml(field)}"`;
+  if (options.type === "select") {
+    return `<select ${attrs}>${manualLaneSelectOptions(options.values || [], value)}</select>`;
+  }
+  const inputType = options.type || "text";
+  return `<input ${attrs} type="${escapeHtml(inputType)}" value="${escapeHtml(value)}" ${options.inputmode ? `inputmode="${escapeHtml(options.inputmode)}"` : ""} placeholder="${escapeHtml(options.placeholder || "")}" />`;
+}
+
+function laneEditTextarea(lane, field, label, placeholder = "") {
+  return `
+    <label>
+      ${escapeHtml(label)}
+      <textarea data-rfx-lane-field="${escapeHtml(field)}" rows="2" placeholder="${escapeHtml(placeholder)}">${escapeHtml(laneEditValue(lane, field))}</textarea>
+    </label>
+  `;
+}
+
+function renderEditableLaneRow(lane, context = {}) {
+  const dirty = laneHasPendingEdits(lane.id);
+  return `
+    <tr data-rfx-lane-id="${escapeHtml(lane.id)}" class="rfx-lane-edit-row${lane.id === focusedLaneId ? " is-selected-lane" : ""}${dirty ? " is-dirty-row" : ""}">
+      <td>
+        <label class="table-checkbox">
+          <input type="checkbox" data-rfx-lane-select="${escapeHtml(lane.id)}" ${selectedLaneIds.has(lane.id) ? "checked" : ""} />
+        </label>
+      </td>
+      <td>
+        ${laneEditInput(lane, "lane_number", { inputmode: "numeric" })}
+        ${laneEditInput(lane, "service", { type: "select", values: MANUAL_LANE_SERVICES })}
+        <small>${escapeHtml(laneDecisionLabel(context.decision))}</small>
+      </td>
+      <td>${laneEditInput(lane, "origin", { placeholder: "Origin" })}<small>${escapeHtml([lane.origin_market, lane.origin_region].filter(Boolean).join(" | "))}</small></td>
+      <td>${laneEditInput(lane, "destination", { placeholder: "Destination" })}<small>${escapeHtml([lane.destination_market, lane.destination_region].filter(Boolean).join(" | "))}</small></td>
+      <td>
+        ${laneEditInput(lane, "equipment", { placeholder: "Equipment" })}
+        ${laneEditInput(lane, "trailer", { placeholder: "Trailer" })}
+        ${laneEditInput(lane, "config", { placeholder: "Config" })}
+        ${laneEditInput(lane, "operation", { type: "select", values: MANUAL_LANE_OPERATIONS })}
+      </td>
+      <td>
+        ${laneEditInput(lane, "weekly_volume", { inputmode: "decimal", placeholder: "Weekly" })}
+        ${laneEditInput(lane, "target_rate", { inputmode: "decimal", placeholder: "Target" })}
+        ${laneEditInput(lane, "currency", { type: "select", values: MANUAL_LANE_CURRENCIES })}
+      </td>
+      <td>
+        ${context.benchmark ? `${formatMoney(context.benchmark.all_in_rate, context.benchmark.currency)}<small>${escapeHtml(context.benchmark.vendor || "Rateware")} | ${context.benchmark.score}%</small>` : "-"}
+        ${context.bestBid ? `<small>Best bid ${formatMoney(context.bestBid.bid_rate, context.bestBid.currency || lane.currency)}</small>` : ""}
+      </td>
+      <td>
+        <div class="rfx-lane-progress-cell">
+          ${statusChip(dirty ? "Unsaved" : laneDecisionLabel(context.decision))}
+          <div class="action-row compact-actions">
+            <button class="small-button" type="button" data-rfx-save-lane="${escapeHtml(lane.id)}" ${dirty ? "" : "disabled"}>Save</button>
+            <button class="secondary small-button" type="button" data-rfx-cancel-lane="${escapeHtml(lane.id)}" ${dirty ? "" : "disabled"}>Revert</button>
+          </div>
+        </div>
+      </td>
+    </tr>
+    <tr class="rfx-lane-edit-detail-row${dirty ? " is-dirty-row" : ""}" data-rfx-lane-id="${escapeHtml(lane.id)}">
+      <td colspan="8">
+        <div class="manual-lane-detail-grid">
+          ${laneEditTextarea(lane, "logistics_model", "Modelo logistico", "Direct service, D2D, spot/scheduled, no transload...")}
+          ${laneEditTextarea(lane, "operation_criteria", "Criterios de operacion", "Pickup/delivery windows, load/unload type, schedule...")}
+          ${laneEditTextarea(lane, "business_rules", "Reglas de negocio", "Border included, driver assist, direct service only...")}
+          ${laneEditTextarea(lane, "service_specifications", "Especificaciones de servicio", "Equipment accessories, packaging, hazmat, straps...")}
+          ${laneEditTextarea(lane, "other_notes", "Otras notas", "Additional information from the RFI or customer...")}
+          ${laneEditTextarea(lane, "notes", "Internal notes", "Internal procurement context...")}
+        </div>
+      </td>
+    </tr>
+  `;
 }
 
 function updateManualLaneImportButton() {
@@ -4527,6 +4678,7 @@ function renderLanes() {
   selectedLaneIds = new Set([...selectedLaneIds].filter((id) => currentLanes.some((lane) => lane.id === id)));
   selectedInvitationIds = new Set([...selectedInvitationIds].filter((id) => currentLanes.some((lane) => (lane.invitations || []).some((invite) => invite.id === id))));
   updateSelectionControls();
+  updateLaneEditControls();
   renderManualShortlistControls();
   if (pendingCarrierTemplateRows.length) renderCarrierTemplatePreview();
   renderEventDashboard();
@@ -4539,6 +4691,7 @@ function renderLanes() {
   renderWizard();
 
   if (!selectedEventId) {
+    updateLaneEditControls();
     lanesBody.innerHTML = tableState(8, {
       tone: "neutral",
       eyebrow: "Business book",
@@ -4548,6 +4701,7 @@ function renderLanes() {
     return;
   }
   if (!currentLanes.length) {
+    updateLaneEditControls();
     lanesBody.innerHTML = tableState(8, {
       tone: "neutral",
       eyebrow: "Business book",
@@ -4573,6 +4727,7 @@ function renderLanes() {
     const decision = laneDecisionStatus(lane);
     const bidCount = bidInvitations(lane).length;
     const invitedCount = invitations.filter(hasInvitationStarted).length;
+    if (laneEditMode) return renderEditableLaneRow(lane, { benchmark, bestBid, decision });
     return `
       <tr data-rfx-lane-id="${escapeHtml(lane.id)}" class="${lane.id === focusedLaneId ? "is-selected-lane" : ""}">
         <td>
@@ -4716,8 +4871,45 @@ async function loadOutreachAssets() {
   }
 }
 
+function validateLaneEditPatch(laneId, patch = {}) {
+  const lane = currentLanes.find((item) => String(item.id) === String(laneId));
+  if (!lane) return "Lane no longer exists in this bid room.";
+  const origin = Object.prototype.hasOwnProperty.call(patch, "origin") ? patch.origin : lane.origin;
+  const destination = Object.prototype.hasOwnProperty.call(patch, "destination") ? patch.destination : lane.destination;
+  if (!String(origin || "").trim()) return "Origin is required before saving this lane.";
+  if (!String(destination || "").trim()) return "Destination is required before saving this lane.";
+  return "";
+}
+
+async function saveRfxLaneEdits(laneIds = []) {
+  const ids = laneIds.filter((id) => laneHasPendingEdits(id));
+  if (!ids.length) {
+    updateLaneEditControls();
+    return;
+  }
+  const invalid = ids.map((id) => validateLaneEditPatch(id, laneEditPatch(id))).find(Boolean);
+  if (invalid) {
+    setStatus(laneEditStatus, invalid, "error");
+    return;
+  }
+  if (saveLaneEditsButton) saveLaneEditsButton.disabled = true;
+  setStatus(laneEditStatus, `Saving ${ids.length} lane${ids.length === 1 ? "" : "s"}...`);
+  try {
+    await Promise.all(ids.map((id) => updateRfxLane(id, laneEditPatch(id))));
+    ids.forEach((id) => pendingLaneEdits.delete(String(id)));
+    if (selectedEventId) await loadDetail(selectedEventId);
+    setStatus(laneEditStatus, `${ids.length} loaded lane${ids.length === 1 ? "" : "s"} updated.`, "success");
+  } catch (error) {
+    setStatus(laneEditStatus, error.message, "error");
+    updateLaneEditControls();
+  }
+}
+
 async function loadDetail(eventId) {
-  if (selectedEventId !== eventId) selectedDraftMessageIds.clear();
+  if (selectedEventId !== eventId) {
+    selectedDraftMessageIds.clear();
+    pendingLaneEdits.clear();
+  }
   selectedEventId = eventId;
   if (bidRoomChatRefreshTimer) window.clearInterval(bidRoomChatRefreshTimer);
   setStatus(actionStatus, "Loading RFx detail...");
@@ -5442,6 +5634,23 @@ laneSearch?.addEventListener("input", () => {
   renderLanes();
 });
 
+toggleLaneEditButton?.addEventListener("click", () => {
+  if (laneEditMode && pendingLaneEdits.size && !window.confirm("Discard unsaved lane changes?")) return;
+  laneEditMode = !laneEditMode;
+  if (!laneEditMode) pendingLaneEdits.clear();
+  renderLanes();
+});
+
+saveLaneEditsButton?.addEventListener("click", () => {
+  saveRfxLaneEdits([...pendingLaneEdits.keys()]);
+});
+
+cancelLaneEditsButton?.addEventListener("click", () => {
+  pendingLaneEdits.clear();
+  renderLanes();
+  setStatus(laneEditStatus, "Lane edits reverted.", "neutral");
+});
+
 downloadLaneTemplateButton?.addEventListener("click", downloadRfxLaneTemplate);
 
 laneTemplateFileInput?.addEventListener("change", async () => {
@@ -5644,13 +5853,37 @@ lanesBody?.addEventListener("change", (event) => {
     if (laneInput.checked) selectedLaneIds.add(laneInput.dataset.rfxLaneSelect);
     else selectedLaneIds.delete(laneInput.dataset.rfxLaneSelect);
   }
+  const editField = event.target.closest("[data-rfx-lane-field]");
+  if (editField) {
+    const laneRow = editField.closest("[data-rfx-lane-id]");
+    markLaneEdited(laneRow?.dataset.rfxLaneId, editField.dataset.rfxLaneField, editField.value);
+  }
   updateSelectionControls();
   renderOutreachPreview();
 });
 
+lanesBody?.addEventListener("input", (event) => {
+  const editField = event.target.closest("[data-rfx-lane-field]");
+  if (!editField) return;
+  const laneRow = editField.closest("[data-rfx-lane-id]");
+  markLaneEdited(laneRow?.dataset.rfxLaneId, editField.dataset.rfxLaneField, editField.value);
+});
+
 lanesBody?.addEventListener("click", async (event) => {
+  const saveButton = event.target.closest("[data-rfx-save-lane]");
+  if (saveButton) {
+    saveButton.disabled = true;
+    await saveRfxLaneEdits([saveButton.dataset.rfxSaveLane]);
+    return;
+  }
+  const cancelButton = event.target.closest("[data-rfx-cancel-lane]");
+  if (cancelButton) {
+    pendingLaneEdits.delete(String(cancelButton.dataset.rfxCancelLane || ""));
+    renderLanes();
+    return;
+  }
   const laneRow = event.target.closest("[data-rfx-lane-id]");
-  if (laneRow && !event.target.closest("button") && !event.target.closest("input")) {
+  if (laneRow && !event.target.closest("button") && !event.target.closest("input") && !event.target.closest("select") && !event.target.closest("textarea")) {
     focusLane(laneRow.dataset.rfxLaneId);
   }
 });

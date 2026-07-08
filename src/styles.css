@@ -877,6 +877,42 @@ a {
   min-height: 28px;
 }
 
+.bid-room-table-toolbar.rfx-lane-toolbar {
+  grid-template-columns: minmax(360px, 1fr) auto minmax(220px, 320px);
+}
+
+.rfx-lane-edit-row td {
+  vertical-align: top;
+}
+
+.rfx-lane-edit-row input,
+.rfx-lane-edit-row select {
+  width: 100%;
+  min-height: 24px;
+  border: 1px solid #cbd6df;
+  border-radius: 5px;
+  background: #ffffff;
+  padding: 2px 5px;
+  font-size: 0.7rem;
+}
+
+.rfx-lane-edit-row td > input,
+.rfx-lane-edit-row td > select,
+.rfx-lane-edit-row td > div > input,
+.rfx-lane-edit-row td > div > select {
+  margin-bottom: 3px;
+}
+
+.rfx-lane-edit-row.is-dirty-row td,
+.rfx-lane-edit-detail-row.is-dirty-row td {
+  background: #fffaf0;
+}
+
+.rfx-lane-edit-detail-row td {
+  background: #f8fafc;
+  padding: 8px;
+}
+
 .rfx-lane-coverage-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
