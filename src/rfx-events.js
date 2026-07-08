@@ -754,6 +754,25 @@ function laneEditTextarea(lane, field, label, placeholder = "") {
   `;
 }
 
+function insertClipboardHtmlIntoTextarea(event, selector, statusElement) {
+  const field = event.target.closest(selector);
+  if (!field || field.tagName !== "TEXTAREA") return false;
+  const html = event.clipboardData?.getData("text/html") || "";
+  if (!html.trim()) return false;
+  event.preventDefault();
+  const start = Number.isInteger(field.selectionStart) ? field.selectionStart : field.value.length;
+  const end = Number.isInteger(field.selectionEnd) ? field.selectionEnd : start;
+  const before = field.value.slice(0, start);
+  const after = field.value.slice(end);
+  field.value = `${before}${html}${after}`;
+  const cursor = start + html.length;
+  field.selectionStart = cursor;
+  field.selectionEnd = cursor;
+  field.dispatchEvent(new Event("input", { bubbles: true }));
+  setStatus(statusElement, "HTML pasted as source text. Save changes to keep it.", "warning");
+  return true;
+}
+
 function renderEditableLaneRow(lane, context = {}) {
   const dirty = laneHasPendingEdits(lane.id);
   return `
@@ -5714,6 +5733,10 @@ clearManualLanesButton?.addEventListener("click", () => {
   resetManualLaneRows();
 });
 
+manualLanesBody?.addEventListener("paste", (event) => {
+  insertClipboardHtmlIntoTextarea(event, "[data-manual-lane-field]", manualLaneStatus);
+});
+
 manualLanesBody?.addEventListener("input", (event) => {
   const field = event.target.closest("[data-manual-lane-field]");
   if (!field) return;
@@ -5860,6 +5883,10 @@ lanesBody?.addEventListener("change", (event) => {
   }
   updateSelectionControls();
   renderOutreachPreview();
+});
+
+lanesBody?.addEventListener("paste", (event) => {
+  insertClipboardHtmlIntoTextarea(event, "[data-rfx-lane-field]", laneEditStatus);
 });
 
 lanesBody?.addEventListener("input", (event) => {

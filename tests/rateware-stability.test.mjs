@@ -332,6 +332,10 @@ assert.match(rfxEventsHtml, /toggle-rfx-lane-edit/, "Bid Room Step 2 should allo
 assert.match(rfxEventsHtml, /save-rfx-lane-edits/, "Bid Room Step 2 should save edits across loaded lanes");
 assert.match(rfxEventsSource, /function renderEditableLaneRow/, "Bid Room Step 2 should render imported lanes as editable rows");
 assert.match(rfxEventsSource, /function saveRfxLaneEdits/, "Bid Room Step 2 should save loaded lane edits");
+assert.match(rfxEventsSource, /function insertClipboardHtmlIntoTextarea/, "Bid Room lane detail editors should accept pasted HTML source");
+assert.match(rfxEventsSource, /getData\("text\/html"\)/, "Bid Room lane detail paste should prefer clipboard HTML when available");
+assert.match(rfxEventsSource, /manualLanesBody\?\.addEventListener\("paste"/, "Manual lane detail editor should support pasted HTML");
+assert.match(rfxEventsSource, /lanesBody\?\.addEventListener\("paste"/, "Loaded lane detail editor should support pasted HTML");
 assert.match(rfxServiceSource, /update_rfx_lane/, "RFx service should expose loaded lane updates");
 assert.match(apiSource, /body\.action === "update_rfx_lane"/, "Rateware API should update existing RFx lanes");
 assert.match(apiSource, /function normalizeRfxLanePatch/, "Rateware API should normalize partial RFx lane updates");
