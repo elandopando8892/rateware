@@ -541,6 +541,10 @@ assert.match(rfxBidSource, /clearBidValidationState/, "Carrier portal should cle
 assert.match(rfxBidSource, /function updateBidReviewSummary/, "Carrier portal should update the review summary as carriers edit");
 assert.match(rfxBidSource, /function renderBidHistory/, "Carrier portal should render offer revision history");
 assert.match(rfxBidSource, /carrier-bid-history/, "Carrier portal should include offer history in the bid room");
+assert.match(rfxBidSource, /data-edit-current-offer/, "Carrier portal should let carriers edit their submitted live offer row");
+assert.match(rfxBidSource, /function hydrateBidFormFromOffer/, "Carrier portal should preload the bid form from the current submitted offer");
+assert.match(rfxBidSource, /data-bid-submit-button/, "Carrier portal should relabel submit as update when a published offer exists");
+assert.match(rfxBidApiSource, /revisionType = bestFinal \? "best_final" : previousBidRate !== null \? "revision" : "initial"/, "Carrier portal API should classify repeated submitted bids as revisions");
 assert.match(stylesSource, /carrier-bid-workflow/, "Carrier portal guided bid flow should have compact navigation styling");
 assert.match(stylesSource, /bid-review-summary-grid/, "Carrier portal review summary should have card styling");
 assert.match(stylesSource, /private-bid-alert-panel/, "Carrier portal multimedia alerts should have compact panel styling");

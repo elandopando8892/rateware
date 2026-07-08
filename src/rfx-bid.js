@@ -86,6 +86,9 @@ const BID_PORTAL_COPY = {
     loadingHistory: "Loading offer history...",
     loadingChat: "Loading Bid Room Chat...",
     submitOrUpdate: "Submit or update offer",
+    updateOffer: "Update published offer",
+    editSubmittedOffer: "Edit price / capacity",
+    editingSubmittedOffer: "Editing your submitted offer",
     guidedBidFlow: "Guided bid flow",
     primaryAlt: "Primary + alternatives",
     submitPrimary: "Submit primary bid",
@@ -168,6 +171,9 @@ const BID_PORTAL_COPY = {
     loadingHistory: "Cargando historial de ofertas...",
     loadingChat: "Cargando chat del Bid Room...",
     submitOrUpdate: "Enviar o actualizar oferta",
+    updateOffer: "Actualizar oferta publicada",
+    editSubmittedOffer: "Editar tarifa / capacidad",
+    editingSubmittedOffer: "Editando tu oferta enviada",
     guidedBidFlow: "Flujo guiado de puja",
     primaryAlt: "Primaria + alternativas",
     submitPrimary: "Enviar puja primaria",
@@ -1473,6 +1479,92 @@ function signalTone(signal = "") {
   return "muted";
 }
 
+function currentSubmittedOffer(liveBoard = lastLiveBoard) {
+  const rows = Array.isArray(liveBoard?.rows) ? liveBoard.rows : [];
+  return rows.find((row) => row?.is_current) || null;
+}
+
+function firstDefined(...values) {
+  return values.find((value) => value !== undefined && value !== null && value !== "");
+}
+
+function setFormValue(selector, value) {
+  const input = card.querySelector(selector);
+  if (!input) return;
+  input.value = value === undefined || value === null ? "" : String(value);
+}
+
+function setFormChecked(selector, value) {
+  const input = card.querySelector(selector);
+  if (!input) return;
+  input.checked = value === true;
+}
+
+function hydrateBidFormFromOffer(offer = currentSubmittedOffer(), invitation = lastInvitation || {}) {
+  const lane = invitation.rfx_lanes || {};
+  const source = offer || {};
+  setFormValue("#bid-rate", firstDefined(source.amount, invitation.bid_rate, ""));
+  setFormValue("#bid-currency", firstDefined(source.currency, invitation.currency, lane.currency, "USD"));
+  setFormValue("#bid-capacity", firstDefined(source.weekly_capacity, invitation.weekly_capacity, ""));
+  setFormValue("#bid-transit-days", firstDefined(source.transit_days, invitation.transit_days, ""));
+  setFormValue("#bid-commercial-model", firstDefined(source.commercial_model, invitation.commercial_model, "direct_cost_plus"));
+  setFormValue("#bid-marksman-margin", firstDefined(source.marksman_margin_pct, invitation.marksman_margin_pct, ""));
+  setFormValue("#bid-carrier-share", firstDefined(source.carrier_share_pct, invitation.carrier_share_pct, ""));
+  setFormChecked("#bid-alt-enabled", firstDefined(source.best_alternative_offered, invitation.best_alternative_offered, false) === true);
+  setFormValue("#bid-alt-equipment", firstDefined(source.alternative_equipment, invitation.alternative_equipment, ""));
+  setFormValue("#bid-alt-units", firstDefined(source.alternative_units, invitation.alternative_units, ""));
+  setFormValue("#bid-alt-notes", invitation.alternative_notes || "");
+  const equipmentAvailable = firstDefined(source.equipment_available, invitation.equipment_available, "");
+  setFormValue("#bid-equipment-available", equipmentAvailable === true ? "true" : equipmentAvailable === false ? "false" : "");
+  setFormValue("#bid-eta-pickup", dateTimeLocalValue(firstDefined(source.eta_pickup, invitation.eta_pickup, "")));
+  setFormValue("#bid-eta-delivery", dateTimeLocalValue(firstDefined(source.eta_delivery, invitation.eta_delivery, "")));
+  setFormChecked("#bid-mirror-account", firstDefined(source.mirror_account_enabled, invitation.mirror_account_enabled, false) === true);
+  setFormValue("#bid-unit-details", firstDefined(source.unit_details, invitation.unit_details, ""));
+  setFormValue("#bid-notes", invitation.notes || "");
+  setFormChecked("#bid-confirm-review", false);
+  setFormChecked("#bid-best-final", false);
+  syncCommercialStructureFields();
+  updateBidReviewSummary();
+  syncBidFormMode();
+}
+
+function hasSubmittedOffer(invitation = lastInvitation, liveBoard = lastLiveBoard) {
+  const bidRate = invitation?.bid_rate;
+  return Boolean(currentSubmittedOffer(liveBoard) || (bidRate !== undefined && bidRate !== null && String(bidRate).trim() !== ""));
+}
+
+function syncBidFormMode() {
+  const form = card.querySelector("#bid-form");
+  if (!form) return;
+  const editing = hasSubmittedOffer();
+  form.dataset.editingSubmittedOffer = editing ? "true" : "false";
+  const mode = card.querySelector("[data-bid-form-mode]");
+  if (mode) {
+    mode.textContent = editing ? t("editingSubmittedOffer") : t("primaryAlt");
+    mode.dataset.tone = editing ? "neutral" : "muted";
+    mode.classList.toggle("neutral", editing);
+    mode.classList.toggle("muted", !editing);
+  }
+  const submitButton = card.querySelector("[data-bid-submit-button]");
+  if (submitButton) submitButton.textContent = editing ? t("updateOffer") : t("submitPrimary");
+}
+
+function focusCurrentOfferEditor() {
+  const offer = currentSubmittedOffer();
+  hydrateBidFormFromOffer(offer, lastInvitation || {});
+  const form = card.querySelector("#bid-form");
+  const status = card.querySelector("#bid-submit-status");
+  form?.scrollIntoView({ behavior: "smooth", block: "start" });
+  window.setTimeout(() => card.querySelector("#bid-rate")?.focus(), 220);
+  if (status) {
+    status.textContent = dualText(
+      "Update the fields you need, confirm terms, then save this revised offer.",
+      "Actualiza los campos necesarios, confirma terminos y guarda esta revision."
+    );
+    status.dataset.tone = "neutral";
+  }
+}
+
 function renderLiveBoard(liveBoard = {}) {
   const board = card.querySelector("#bid-live-board");
   if (!board) return;
@@ -1531,7 +1623,7 @@ function renderLiveBoard(liveBoard = {}) {
     </div>
     <div class="table-wrap">
       <table class="bid-live-table">
-        <thead><tr><th>Rank</th><th>Bidder</th><th>Score</th><th>Rate visibility</th><th>Commercial</th><th>Market signals</th><th>Capacity</th><th>Transit</th></tr></thead>
+        <thead><tr><th>Rank</th><th>Bidder</th><th>Score</th><th>Rate visibility</th><th>Commercial</th><th>Market signals</th><th>Capacity</th><th>Transit</th><th>Action</th></tr></thead>
         <tbody>
           ${rows.map((row) => `
             <tr class="${row.is_current ? "is-current" : ""}">
@@ -1543,6 +1635,11 @@ function renderLiveBoard(liveBoard = {}) {
               <td>${marketplaceBadgesHtml(row)}</td>
               <td>${escapeHtml(row.weekly_capacity ?? "-")}</td>
               <td>${escapeHtml(row.transit_days ?? "-")}</td>
+              <td class="bid-live-action-cell">
+                ${row.is_current
+                  ? `<button type="button" class="secondary small-button" data-edit-current-offer>${escapeHtml(t("editSubmittedOffer"))}</button>`
+                  : `<span class="muted-cell">-</span>`}
+              </td>
             </tr>
           `).join("")}
         </tbody>
@@ -2166,7 +2263,7 @@ function renderInvitation(invitation, liveBoard = {}, carrierBook = {}) {
           <p class="eyebrow">${escapeHtml(t("submitOrUpdate"))}</p>
           <h3>${escapeHtml(t("guidedBidFlow"))}</h3>
         </div>
-        <span class="status-pill muted">${escapeHtml(t("primaryAlt"))}</span>
+        <span class="status-pill muted" data-bid-form-mode>${escapeHtml(t("primaryAlt"))}</span>
       </div>
       <div class="carrier-bid-workflow full-width" aria-label="Bid steps">
         <button type="button" data-bid-section-target="primary">${escapeHtml(t("submitPrimary"))}</button>
@@ -2305,7 +2402,7 @@ function renderInvitation(invitation, liveBoard = {}, carrierBook = {}) {
             <input id="bid-confirm-review" type="checkbox" />
             ${escapeHtml(t("confirmTerms"))}
           </label>
-          <button type="submit">${escapeHtml(t("submitPrimary"))}</button>
+          <button type="submit" data-bid-submit-button>${escapeHtml(t("submitPrimary"))}</button>
         </div>
       </section>
       <p id="bid-submit-status" class="status-message" role="status"></p>
@@ -2339,12 +2436,15 @@ function renderInvitation(invitation, liveBoard = {}, carrierBook = {}) {
     }
     status.textContent = validation.warnings.length ? "Submitting bid with validation warnings..." : "Submitting bid...";
     status.dataset.tone = "neutral";
+    const wasUpdate = hasSubmittedOffer();
     try {
       await callBidApi("submit_bid", draft);
-      status.textContent = "Bid submitted with commercial and availability details. Your rank will refresh automatically.";
+      status.textContent = wasUpdate
+        ? dualText("Offer revision saved. Your updated price and capacity are now published.", "Revision guardada. Tu tarifa y capacidad actualizadas ya estan publicadas.")
+        : "Bid submitted with commercial and availability details. Your rank will refresh automatically.";
       status.dataset.tone = "success";
-      queuePrivateBidAlert("bidSubmitted", "Your bid was submitted. The live board will refresh your rank automatically.");
-      await loadInvitation({ refreshOnly: true });
+      queuePrivateBidAlert("bidSubmitted", wasUpdate ? dualText("Your offer was updated.", "Tu oferta fue actualizada.") : "Your bid was submitted. The live board will refresh your rank automatically.");
+      await loadInvitation({ refreshOnly: true, refreshForm: true });
     } catch (error) {
       status.textContent = error.message;
       status.dataset.tone = "error";
@@ -2353,6 +2453,7 @@ function renderInvitation(invitation, liveBoard = {}, carrierBook = {}) {
   renderLiveBoard(liveBoard);
   syncCommercialStructureFields();
   updateBidReviewSummary();
+  syncBidFormMode();
 }
 
 async function loadInvitation(options = {}) {
@@ -2369,6 +2470,8 @@ async function loadInvitation(options = {}) {
       renderAwardOutcome(data.invitation, data.carrier_book, data.live_board);
       renderBidHistory(data.bid_history);
       renderCarrierBook(data.carrier_book);
+      if (options.refreshForm) hydrateBidFormFromOffer(currentSubmittedOffer(data.live_board), data.invitation);
+      else syncBidFormMode();
     } else {
       renderInvitation(data.invitation, data.live_board, data.carrier_book);
       renderAwardOutcome(data.invitation, data.carrier_book, data.live_board);
@@ -2406,6 +2509,12 @@ card.addEventListener("click", async (event) => {
       target.scrollIntoView({ behavior: "smooth", block: "start" });
       target.querySelector("input, select, textarea, button")?.focus({ preventScroll: true });
     }
+    return;
+  }
+
+  const editCurrentOfferButton = event.target.closest("[data-edit-current-offer]");
+  if (editCurrentOfferButton) {
+    focusCurrentOfferEditor();
     return;
   }
 

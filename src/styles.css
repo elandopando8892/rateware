@@ -1588,6 +1588,16 @@ a {
   font-weight: 850;
 }
 
+.bid-live-action-cell {
+  text-align: right;
+}
+
+.bid-live-action-cell .small-button {
+  min-height: 24px;
+  padding: 3px 8px;
+  font-size: 0.7rem;
+}
+
 .bid-board-note {
   margin: 0;
   color: var(--muted);
@@ -2396,6 +2406,11 @@ a {
   background: #fff;
   padding: 12px;
   margin: 12px 0;
+}
+
+.bid-form[data-editing-submitted-offer="true"] {
+  border-color: rgba(20, 128, 115, 0.45);
+  box-shadow: inset 3px 0 0 var(--accent);
 }
 
 .bid-form-header {
