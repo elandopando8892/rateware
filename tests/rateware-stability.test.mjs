@@ -1153,6 +1153,11 @@ assert.match(apiSource, /profile_data: typeof vendor\.profile_data/, "Vendor int
 assert.match(vendorsSource, /key: "health"/, "Carrier CRM spreadsheet should include a health column");
 assert.match(vendorsSource, /key: "quotes"/, "Carrier CRM spreadsheet should include a quotes column");
 assert.match(vendorsSource, /key: "coverage_delta"/, "Carrier CRM spreadsheet should include a coverage fit column");
+assert.doesNotMatch(vendorsHtml, /id="(?:wizard-primary-email|primary-email|drawer-edit-email)"[^>]*type="email"/, "Carrier CRM email fields should accept multiple email addresses without native single-email blocking");
+assert.match(vendorsSource, /function splitVendorEmails/, "Carrier CRM should split pasted email lists into primary and secondary emails");
+assert.match(vendorsSource, /secondary_emails: emails\.slice\(1\)/, "Carrier CRM should preserve extra emails as secondary contacts");
+assert.match(apiSource, /function normalizeEmailList/, "Rateware API should accept multiple vendor emails");
+assert.match(apiSource, /secondary_emails: secondaryEmails/, "Rateware API should persist additional vendor emails");
 assert.match(vendorsSource, /function renderDrawerRatewareEvidence/, "Vendor drawer should explain Rateware evidence");
 assert.match(vendorsHtml, /drawer-rateware-evidence/, "Vendor drawer should have a Rateware evidence section");
 assert.match(vendorSegmentsCoverageMigration, /coverage_filter text/, "Vendor saved lists should persist a coverage filter");

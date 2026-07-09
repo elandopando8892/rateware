@@ -890,6 +890,34 @@ function isValidEmail(value) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value).trim());
 }
 
+function emailList(value) {
+  const emails = String(value || "")
+    .toLowerCase()
+    .match(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/g) || [];
+  return Array.from(new Set(emails));
+}
+
+function splitVendorEmails(value) {
+  const emails = emailList(value);
+  return {
+    primary_email: emails[0] || "",
+    secondary_emails: emails.slice(1)
+  };
+}
+
+function vendorEmailInputValue(row = {}) {
+  return [row.primary_email, ...(Array.isArray(row.secondary_emails) ? row.secondary_emails : [])]
+    .filter(Boolean)
+    .join("; ");
+}
+
+function isValidEmailList(value) {
+  if (!value) return true;
+  const rawTokens = String(value).split(/[,\s;]+/).map((token) => token.trim()).filter(Boolean);
+  const parsed = emailList(value);
+  return rawTokens.length === parsed.length && parsed.every(isValidEmail);
+}
+
 function isValidDomain(value) {
   if (!value) return true;
   return /^[a-z0-9.-]+\.[a-z]{2,}$/i.test(String(value).trim().replace(/^https?:\/\//, "").replace(/^www\./, ""));
@@ -899,7 +927,7 @@ function importIssues(row) {
   const issues = [];
   if (!row.vendor_name) issues.push("Missing vendor name");
   if (!row.primary_email && !row.whatsapp_phone) issues.push("Missing contact channel");
-  if (!isValidEmail(row.primary_email)) issues.push("Invalid email");
+  if (!isValidEmailList(vendorEmailInputValue(row) || row.primary_email)) issues.push("Invalid email");
   if (!isValidDomain(row.domain)) issues.push("Invalid domain");
   if (duplicateSignals(row).length) issues.push("Possible duplicate");
   return issues;
@@ -1271,13 +1299,14 @@ function resetQuickFilter() {
 function readWizard() {
   const profile_data = {};
   const tags = splitTags(document.querySelector("#wizard-tags").value);
+  const emails = splitVendorEmails(document.querySelector("#wizard-primary-email").value);
   return {
     vendor_name: document.querySelector("#wizard-vendor-name").value,
     legal_name: document.querySelector("#wizard-legal-name").value,
     domain: document.querySelector("#wizard-domain").value,
     logo_url: document.querySelector("#wizard-logo-url").value,
     contact_name: document.querySelector("#wizard-contact-name").value,
-    primary_email: document.querySelector("#wizard-primary-email").value,
+    ...emails,
     whatsapp_phone: document.querySelector("#wizard-whatsapp-phone").value,
     preferred_channel: document.querySelector("#wizard-preferred-channel").value,
     tags: Array.from(new Set([...tags, ...profileDerivedTags(profile_data)])),
@@ -1361,7 +1390,7 @@ function renderVendorIdentity(row) {
 function renderVendorContact(row) {
   const parts = [
     row.contact_name,
-    row.primary_email,
+    vendorEmailInputValue(row),
     row.whatsapp_phone
   ].filter(Boolean);
   return `
@@ -2451,8 +2480,8 @@ function renderVendorFilterRow(columns) {
   vendorsFilterRow.innerHTML = cells.join("");
 }
 
-function editableVendorInput(row, field, { type = "text", wide = false } = {}) {
-  const value = field === "tags" ? splitTags(row.tags).join(", ") : row[field] || "";
+function editableVendorInput(row, field, { type = "text", wide = false, value: explicitValue = undefined, title = "" } = {}) {
+  const value = explicitValue ?? (field === "tags" ? splitTags(row.tags).join(", ") : row[field] || "");
   return `
     <input
       class="vendor-cell-input ${wide ? "wide-input" : ""}"
@@ -2462,6 +2491,7 @@ function editableVendorInput(row, field, { type = "text", wide = false } = {}) {
       data-vendor-id="${escapeHtml(row.id)}"
       data-vendor-field="${escapeHtml(field)}"
       data-original-value="${escapeHtml(value)}"
+      ${title ? `title="${escapeHtml(title)}"` : ""}
     />
   `;
 }
@@ -2534,7 +2564,12 @@ function renderVendorSheetCell(row, columnKey) {
   }
   if (columnKey === "domain") return `<td>${editableVendorInput(row, "domain")}</td>`;
   if (columnKey === "contact") return `<td>${editableVendorInput(row, "contact_name")}</td>`;
-  if (columnKey === "email") return `<td>${editableVendorInput(row, "primary_email", { type: "email" })}</td>`;
+  if (columnKey === "email") {
+    return `<td>${editableVendorInput(row, "primary_email", {
+      value: vendorEmailInputValue(row),
+      title: "Use comma, semicolon, or space for multiple emails. First email is primary."
+    })}</td>`;
+  }
   if (columnKey === "whatsapp") return `<td>${editableVendorInput(row, "whatsapp_phone")}</td>`;
   if (columnKey === "health") return `<td>${renderHealthSummary(row, { compact: true })}</td>`;
   if (columnKey === "quotes") return `<td>${renderQuoteSignals(row)}</td>`;
@@ -2613,7 +2648,7 @@ function renderVendorCard(row) {
       <p>${escapeHtml(row.coverage_notes || "No coverage captured")}</p>
       <div class="tag-list">${renderTags(row.tags)}</div>
       <div class="vendor-card-footer">
-        <span>${escapeHtml([row.contact_name, row.primary_email, row.whatsapp_phone].filter(Boolean).join(" | ") || "Add contact")}</span>
+        <span>${escapeHtml([row.contact_name, vendorEmailInputValue(row), row.whatsapp_phone].filter(Boolean).join(" | ") || "Add contact")}</span>
         ${duplicateCount ? `<span class="warning-pill">${escapeHtml(duplicateCount)} duplicate</span>` : ""}
       </div>
     </article>
@@ -2630,12 +2665,13 @@ function renderVendorCards(rows) {
 function readForm() {
   const profile_data = {};
   const tags = splitTags(document.querySelector("#vendor-tags").value);
+  const emails = splitVendorEmails(document.querySelector("#primary-email").value);
   return {
     vendor_name: document.querySelector("#vendor-name").value,
     domain: document.querySelector("#vendor-domain").value,
     logo_url: document.querySelector("#vendor-logo-url").value,
     contact_name: document.querySelector("#contact-name").value,
-    primary_email: document.querySelector("#primary-email").value,
+    ...emails,
     whatsapp_phone: document.querySelector("#whatsapp-phone").value,
     preferred_channel: document.querySelector("#preferred-channel").value,
     tags: Array.from(new Set([...tags, ...profileDerivedTags(profile_data)])),
@@ -2736,6 +2772,11 @@ function vendorCellPatchValue(field, value) {
   return value;
 }
 
+function vendorCellPatch(field, value) {
+  if (field === "primary_email") return splitVendorEmails(value);
+  return { [field]: vendorCellPatchValue(field, value) };
+}
+
 function vendorProfileCellPatch(row, field, value) {
   const [, sectionKey, fieldKey] = field.split(".");
   if (!sectionKey || !fieldKey) return null;
@@ -2770,15 +2811,17 @@ async function saveVendorCell(control) {
     const current = findVendorById(vendorId) || {};
     const patch = field.startsWith("profile_data.")
       ? vendorProfileCellPatch(current, field, rawValue)
-      : { [field]: vendorCellPatchValue(field, rawValue) };
+      : vendorCellPatch(field, rawValue);
     if (!patch) throw new Error("Unsupported vendor field.");
     const updated = await updateVendor(vendorId, patch);
     replaceVendorInState(updated);
-    const storedValue = field === "tags"
-      ? splitTags(updated.tags).join(", ")
-      : field.startsWith("profile_data.")
-        ? profileColumnValue(updated, field.split(".")[1], field.split(".")[2])
-        : updated[field] || "";
+    const storedValue = field === "primary_email"
+      ? vendorEmailInputValue(updated)
+      : field === "tags"
+        ? splitTags(updated.tags).join(", ")
+        : field.startsWith("profile_data.")
+          ? profileColumnValue(updated, field.split(".")[1], field.split(".")[2])
+          : updated[field] || "";
     control.value = storedValue;
     control.dataset.originalValue = storedValue;
     control.classList.remove("is-saving");
@@ -2917,6 +2960,14 @@ function readSegmentForm() {
 
 function normalizeImportedRow(row) {
   const profile_data = readImportedProfileData(row);
+  const emails = splitVendorEmails([
+    row.primary_email,
+    row.email,
+    row["Email"],
+    row["Primary Email"],
+    row.secondary_emails,
+    row["Secondary Emails"]
+  ].filter(Boolean).join("; "));
   return {
     id: row.id || row.vendor_id || row["Vendor ID"],
     vendor_id: row.vendor_id || row.id || row["Vendor ID"],
@@ -2924,7 +2975,7 @@ function normalizeImportedRow(row) {
     legal_name: row.legal_name || row["Legal Name"],
     domain: row.domain || row.vendor_domain || row["Domain"],
     contact_name: row.contact_name || row.contact || row["Contact"],
-    primary_email: row.primary_email || row.email || row["Email"] || row["Primary Email"],
+    ...emails,
     whatsapp_phone: row.whatsapp_phone || row.whatsapp || row.phone || row["WhatsApp"] || row["Phone"],
     preferred_channel: row.preferred_channel || row.channel || row["Channel"],
     logo_url: row.logo_url || row.logo || row.image_url || row["Logo URL"] || row["Logo"] || row["Image URL"],
@@ -3492,7 +3543,7 @@ function openVendorDrawer(vendorId, options = {}) {
   setDrawerValue("#drawer-rateware-evidence", renderDrawerRatewareEvidence(vendor));
   setDrawerValue(
     "#drawer-contact",
-    [vendor.contact_name, vendor.primary_email, vendor.whatsapp_phone].filter(Boolean).map(escapeHtml).join("<br>")
+    [vendor.contact_name, vendorEmailInputValue(vendor), vendor.whatsapp_phone].filter(Boolean).map(escapeHtml).join("<br>")
   );
   setDrawerValue("#drawer-channel", escapeHtml(vendor.preferred_channel));
   setDrawerValue("#drawer-tags", `<div class="tag-list">${renderTags(vendor.tags)}</div>`);
@@ -3505,7 +3556,7 @@ function openVendorDrawer(vendorId, options = {}) {
   document.querySelector("#drawer-edit-domain").value = vendor.domain || "";
   document.querySelector("#drawer-edit-logo-url").value = vendor.logo_url || "";
   document.querySelector("#drawer-edit-contact").value = vendor.contact_name || "";
-  document.querySelector("#drawer-edit-email").value = vendor.primary_email || "";
+  document.querySelector("#drawer-edit-email").value = vendorEmailInputValue(vendor);
   document.querySelector("#drawer-edit-whatsapp").value = vendor.whatsapp_phone || "";
   document.querySelector("#drawer-edit-channel").value = vendor.preferred_channel || "email";
   document.querySelector("#drawer-edit-status").value = vendor.status || "active";
@@ -3524,12 +3575,13 @@ function openVendorDrawer(vendorId, options = {}) {
 function readDrawerPatch() {
   const profileData = readDrawerProfileData();
   const tags = Array.from(new Set([...splitTags(document.querySelector("#drawer-edit-tags").value), ...profileDerivedTags(profileData)]));
+  const emails = splitVendorEmails(document.querySelector("#drawer-edit-email").value);
   return {
     vendor_name: document.querySelector("#drawer-edit-name").value,
     domain: document.querySelector("#drawer-edit-domain").value,
     logo_url: document.querySelector("#drawer-edit-logo-url").value,
     contact_name: document.querySelector("#drawer-edit-contact").value,
-    primary_email: document.querySelector("#drawer-edit-email").value,
+    ...emails,
     whatsapp_phone: document.querySelector("#drawer-edit-whatsapp").value,
     preferred_channel: document.querySelector("#drawer-edit-channel").value,
     status: document.querySelector("#drawer-edit-status").value,

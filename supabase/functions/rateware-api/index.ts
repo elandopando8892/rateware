@@ -827,6 +827,12 @@ function normalizeEmail(value: unknown) {
   return text.match(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/)?.[0] || null;
 }
 
+function normalizeEmailList(value: unknown) {
+  const values = Array.isArray(value) ? value : [value];
+  const emails = values.flatMap((item) => String(item || "").toLowerCase().match(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/g) || []);
+  return Array.from(new Set(emails));
+}
+
 function memoryRuleIdsFromAudit(upload: Record<string, unknown>) {
   const audit = typeof upload.interpretation_audit === "object" && upload.interpretation_audit
     ? upload.interpretation_audit as Record<string, unknown>
@@ -5296,13 +5302,16 @@ function normalizeVendor(input: Record<string, unknown>, source = "manual") {
   const now = new Date().toISOString();
   const funnelStage = normalizeVendorFunnelStage(input.funnel_stage) || (baseStage === "procurement" ? "targeted" : null);
   const profileData = normalizeVendorProfileData(input.profile_data);
+  const emailList = normalizeEmailList(input.primary_email || input.email);
+  const secondaryEmails = Array.from(new Set([...emailList.slice(1), ...normalizeEmailList(input.secondary_emails)]));
 
   return {
     vendor_name: vendorName,
     legal_name: cleanText(input.legal_name),
     domain: normalizeDomain(input.domain || input.vendor_domain),
     contact_name: cleanText(input.contact_name || input.contact),
-    primary_email: cleanText(input.primary_email || input.email),
+    primary_email: emailList[0] || "",
+    secondary_emails: secondaryEmails,
     whatsapp_phone: cleanText(input.whatsapp_phone || input.phone || input.whatsapp),
     preferred_channel: ["email", "whatsapp", "portal"].includes(preferred) ? preferred : "email",
     status: ["active", "invited", "blocked", "inactive"].includes(status) ? status : "active",
@@ -5333,7 +5342,13 @@ function normalizeVendorPatch(input: Record<string, unknown>, current: Record<st
   if (input.legal_name !== undefined) patch.legal_name = cleanText(input.legal_name);
   if (input.domain !== undefined) patch.domain = normalizeDomain(input.domain);
   if (input.contact_name !== undefined) patch.contact_name = cleanText(input.contact_name);
-  if (input.primary_email !== undefined) patch.primary_email = cleanText(input.primary_email);
+  if (input.primary_email !== undefined || input.email !== undefined) {
+    const emailList = normalizeEmailList(input.primary_email ?? input.email);
+    patch.primary_email = emailList[0] || "";
+    patch.secondary_emails = Array.from(new Set([...emailList.slice(1), ...normalizeEmailList(input.secondary_emails)]));
+  } else if (input.secondary_emails !== undefined) {
+    patch.secondary_emails = normalizeEmailList(input.secondary_emails);
+  }
   if (input.whatsapp_phone !== undefined) patch.whatsapp_phone = cleanText(input.whatsapp_phone);
   if (input.logo_url !== undefined || input.logo !== undefined) {
     const nextLogoUrl = cleanUrl(input.logo_url ?? input.logo);
