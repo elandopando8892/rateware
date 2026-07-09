@@ -1,4 +1,3 @@
-import * as XLSX from "https://esm.sh/xlsx@0.18.5";
 import { applyPermissionState, initAuthControls, requirePrivatePage } from "./auth.js";
 import { humanizeError } from "./error-copy.js";
 import {
@@ -152,6 +151,8 @@ const drawerLogoFile = document.querySelector("#drawer-logo-file");
 const drawerOnboardingProfile = document.querySelector("#drawer-onboarding-profile");
 const drawerProfileFields = document.querySelector("#drawer-profile-fields");
 const drawerVendorSupport = document.querySelector("#drawer-vendor-support");
+const XLSX_MODULE_URL = "https://esm.sh/xlsx@0.18.5";
+let xlsxModulePromise = null;
 let allVendors = [];
 let currentVendors = [];
 let selectedVendorIds = new Set();
@@ -3669,7 +3670,13 @@ function applyDrawerSuggestion(type, value) {
   setStatus(drawerEditStatus, "Suggestion applied. Review and save changes.", "success");
 }
 
+async function loadXlsxModule() {
+  if (!xlsxModulePromise) xlsxModulePromise = import(XLSX_MODULE_URL);
+  return await xlsxModulePromise;
+}
+
 async function parseVendorFile(file) {
+  const XLSX = await loadXlsxModule();
   const workbook = XLSX.read(await file.arrayBuffer(), { type: "array" });
   const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
   return XLSX.utils.sheet_to_json(firstSheet, { defval: "" }).map(normalizeImportedRow);

@@ -408,6 +408,8 @@ export function initAuthControls() {
   const status = document.querySelector("#auth-status");
 
   if (!form || !authButton || !signOutButton || !status) return;
+  if (form.dataset.authReady === "true") return;
+  form.dataset.authReady = "true";
 
   initProxyActions();
   const userMenu = createUserMenu(form, signOutButton);
