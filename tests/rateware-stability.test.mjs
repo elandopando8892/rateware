@@ -545,6 +545,13 @@ assert.match(rfxBidSource, /function commercialStructureConfig/, "Carrier portal
 assert.match(rfxBidSource, /syncCommercialStructureFields/, "Carrier portal should show only the applicable commercial percentage input");
 assert.match(rfxBidSource, /validatePercentIssue\(draft\.marksman_margin_pct, "bid-marksman-margin", "Suggested margin to share %", \{ required: true, procurementRange: true \}\)/, "Carrier portal should enforce suggested margin range for cost-plus");
 assert.match(rfxBidSource, /validatePercentIssue\(draft\.carrier_share_pct, "bid-carrier-share", "Carrier invoice share %", \{ required: true, procurementRange: true \}\)/, "Carrier portal should enforce invoice share range for carrier-share");
+assert.match(rfxBidApiSource, /const XBF_BUY_SELL_MARKUP_PCT = 15/, "Carrier portal API should enforce the XBF buy-sell 15 percent board markup");
+assert.match(rfxBidApiSource, /function commercialRateEconomics/, "Carrier portal API should separate carrier rate, board rate, commission and markup economics");
+assert.match(rfxBidApiSource, /commercialModel === "carrier_share"[\s\S]*board_rate: roundMoney\(carrierRate\)[\s\S]*commission_fee: roundMoney\(commissionFee\)/, "Carrier-share bids should keep the carrier price unchanged and calculate invoice-share commission");
+assert.match(rfxBidApiSource, /commercialModel === "xbf_buy_sell"[\s\S]*boardRate = carrierRate \* \(1 \+ XBF_BUY_SELL_MARKUP_PCT \/ 100\)/, "XBF buy-sell bids should apply the automatic board markup");
+assert.match(rfxBidSource, /function commercialRateDetails/, "Carrier portal should explain carrier price, board price and commercial fee");
+assert.match(rfxBidSource, /setFormValue\("#bid-rate", firstDefined\(source\.carrier_bid_rate, invitation\.bid_rate, source\.amount, ""\)\)/, "Editing submitted bids should preload the carrier rate before the board rate");
+assert.match(rfxEventsSource, /function bidCommercialEconomics/, "Internal Bid Room should compare and award against commercial board economics");
 assert.match(rfxBidSource, /thread_type: threadType/, "Carrier portal chat should post to the selected chat scope");
 assert.match(rfxBidSource, /\["carrier_private", "event_group", "lane_group"\]/, "Carrier portal chat should expose private, event and lane scopes");
 assert.match(rfxBidSource, /carrierChatLabel\(type\)/, "Carrier portal chat should label each chat scope");

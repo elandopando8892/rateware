@@ -41,6 +41,8 @@ import { errorState, stateBlock, tableErrorState, tableState } from "./ui-state.
 import { initWorkbenchTabs } from "./workbench-tabs.js";
 import * as XLSX from "https://esm.sh/xlsx@0.18.5";
 
+const XBF_BUY_SELL_MARKUP_PCT = 15;
+
 const eventForm = document.querySelector("#rfx-event-form");
 const rfxIdInput = document.querySelector("#rfx-id");
 const rfxNameInput = document.querySelector("#rfx-name");
@@ -875,7 +877,7 @@ function renderEditableLaneRow(lane, context = {}) {
       </td>
       <td>
         ${renderSupplyDepthCell(lane)}
-        ${context.bestBid ? `<small>Best bid ${formatMoney(context.bestBid.bid_rate, context.bestBid.currency || lane.currency)}</small>` : ""}
+        ${context.bestBid ? `<small>Best bid ${formatMoney(context.bestBid.board_rate ?? context.bestBid.numeric_bid ?? context.bestBid.bid_rate, context.bestBid.currency || lane.currency)}</small>` : ""}
       </td>
       <td>
         <div class="rfx-lane-progress-cell">
@@ -1341,6 +1343,62 @@ function commercialModelLabel(value) {
   return labels[String(value || "").toLowerCase()] || "Not declared";
 }
 
+function bidCommercialEconomics(invitation = {}) {
+  const carrierRate = decisionNumber(invitation.bid_rate);
+  const model = String(invitation.commercial_model || "direct_cost_plus").toLowerCase();
+  const marginPct = decisionNumber(invitation.marksman_margin_pct);
+  const sharePct = decisionNumber(invitation.carrier_share_pct);
+  const currency = invitation.currency || "USD";
+  if (carrierRate === null) {
+    return {
+      model,
+      currency,
+      carrier_rate: null,
+      board_rate: null,
+      commission_fee: null,
+      markup_fee: null,
+      commission_pct: model === "carrier_share" ? sharePct : marginPct,
+      markup_pct: model === "xbf_buy_sell" ? XBF_BUY_SELL_MARKUP_PCT : null
+    };
+  }
+  if (model === "carrier_share") {
+    return {
+      model,
+      currency,
+      carrier_rate: carrierRate,
+      board_rate: carrierRate,
+      commission_fee: sharePct === null ? null : carrierRate * sharePct / 100,
+      markup_fee: null,
+      commission_pct: sharePct,
+      markup_pct: null
+    };
+  }
+  if (model === "xbf_buy_sell") {
+    const boardRate = carrierRate * (1 + XBF_BUY_SELL_MARKUP_PCT / 100);
+    return {
+      model,
+      currency,
+      carrier_rate: carrierRate,
+      board_rate: boardRate,
+      commission_fee: null,
+      markup_fee: boardRate - carrierRate,
+      commission_pct: null,
+      markup_pct: XBF_BUY_SELL_MARKUP_PCT
+    };
+  }
+  const boardRate = marginPct === null ? carrierRate : carrierRate * (1 + marginPct / 100);
+  return {
+    model: "direct_cost_plus",
+    currency,
+    carrier_rate: carrierRate,
+    board_rate: boardRate,
+    commission_fee: boardRate - carrierRate,
+    markup_fee: null,
+    commission_pct: marginPct,
+    markup_pct: null
+  };
+}
+
 function formatCompactDateTime(value) {
   if (!value) return "";
   const date = new Date(value);
@@ -1354,9 +1412,13 @@ function formatCompactDateTime(value) {
 }
 
 function offerCommercialSummary(invitation = {}) {
+  const economics = bidCommercialEconomics(invitation);
   const parts = [commercialModelLabel(invitation.commercial_model)];
   if (invitation.marksman_margin_pct !== null && invitation.marksman_margin_pct !== undefined) parts.push(`${invitation.marksman_margin_pct}% MARKSMAN`);
   if (invitation.carrier_share_pct !== null && invitation.carrier_share_pct !== undefined) parts.push(`${invitation.carrier_share_pct}% share`);
+  if (economics.board_rate !== null && economics.carrier_rate !== null && economics.board_rate !== economics.carrier_rate) parts.push(`Board ${formatMoney(economics.board_rate, economics.currency)}`);
+  if (economics.commission_fee !== null) parts.push(`Fee ${formatMoney(economics.commission_fee, economics.currency)}`);
+  if (economics.markup_fee !== null) parts.push(`Markup ${formatMoney(economics.markup_fee, economics.currency)}`);
   if (invitation.best_alternative_offered) parts.push(invitation.alternative_equipment ? `Alt: ${invitation.alternative_equipment}` : "Best alternative");
   return parts.filter(Boolean).join(" | ");
 }
@@ -2570,12 +2632,16 @@ function renderWizard() {
 
 function liveOfferRows() {
   return currentLanes.flatMap((lane) => bidInvitations(lane)
-    .map((invitation) => ({
-      lane,
-      invitation,
-      amount: Number(invitation.bid_rate),
-      currency: invitation.currency || lane.currency || "USD"
-    }))
+    .map((invitation) => {
+      const economics = bidCommercialEconomics(invitation);
+      return {
+        lane,
+        invitation,
+        amount: Number(economics.board_rate),
+        carrier_amount: Number(economics.carrier_rate),
+        currency: invitation.currency || lane.currency || "USD"
+      };
+    })
     .filter((row) => Number.isFinite(row.amount)));
 }
 
@@ -2678,12 +2744,16 @@ function awardLaneRows() {
   return currentLanes
     .map((lane) => {
       const rawBids = bidInvitations(lane)
-        .map((invitation) => ({
-          lane,
-          invitation,
-          amount: Number(invitation.bid_rate),
-          currency: invitation.currency || lane.currency || "USD"
-        }))
+        .map((invitation) => {
+          const economics = bidCommercialEconomics(invitation);
+          return {
+            lane,
+            invitation,
+            amount: Number(economics.board_rate),
+            carrier_amount: Number(economics.carrier_rate),
+            currency: invitation.currency || lane.currency || "USD"
+          };
+        })
         .filter((row) => Number.isFinite(row.amount));
       const bids = rawBids
         .map((row) => ({
@@ -2959,7 +3029,7 @@ function renderDecisionScorecard(row, index, laneRows = []) {
         <strong>${escapeHtml(decision.score)}/100</strong>
       </header>
       <h4>${escapeHtml(vendorLabel(row.invitation))}</h4>
-      <p>${formatMoney(row.amount, row.currency)} | ${escapeHtml(offerAvailabilitySummary(row.invitation))}</p>
+      <p>${formatMoney(row.amount, row.currency)}${Number.isFinite(row.carrier_amount) && row.carrier_amount !== row.amount ? ` | carrier ${formatMoney(row.carrier_amount, row.currency)}` : ""} | ${escapeHtml(offerAvailabilitySummary(row.invitation))}</p>
       <div class="rfx-decision-badges">
         ${badges.map(decisionBadgeHtml).join("") || '<span class="rfx-decision-badge" data-tone="neutral">Needs review</span>'}
       </div>
@@ -3044,7 +3114,8 @@ function renderAwardBoard() {
             </thead>
             <tbody>
               ${bids.map((row, index) => {
-                const delta = Number(row.invitation.bid_delta);
+                const benchmarkAmount = Number(row.lane.benchmark?.all_in_rate);
+                const delta = Number.isFinite(benchmarkAmount) ? row.amount - benchmarkAmount : Number(row.invitation.bid_delta);
                 const deltaTone = Number.isFinite(delta) && delta <= 0 ? "success" : Number.isFinite(delta) ? "danger" : "neutral";
                 const recommendedReason = decisionRecommendation(row, index + 1, bids);
                 return `
@@ -3121,7 +3192,10 @@ function bidInvitations(lane) {
 
 function bestBidForLane(lane) {
   return bidInvitations(lane)
-    .map((item) => ({ ...item, numeric_bid: Number(item.bid_rate) }))
+    .map((item) => {
+      const economics = bidCommercialEconomics(item);
+      return { ...item, numeric_bid: Number(economics.board_rate), carrier_bid_rate: economics.carrier_rate, board_rate: economics.board_rate };
+    })
     .filter((item) => Number.isFinite(item.numeric_bid))
     .sort((a, b) => a.numeric_bid - b.numeric_bid)[0] || null;
 }
@@ -3936,7 +4010,7 @@ function renderLaneCoverage() {
         <div class="coverage-meter" aria-label="Shortlist coverage">
           <span style="width: ${coverage}%"></span>
         </div>
-        <small>${formatNumber(invitations.length)} vendors | ${formatNumber(bids.length)} bids | ${formatNumber(responses)}% response${bestBid ? ` | best ${formatMoney(bestBid.bid_rate, bestBid.currency || lane.currency)}` : ""}</small>
+        <small>${formatNumber(invitations.length)} vendors | ${formatNumber(bids.length)} bids | ${formatNumber(responses)}% response${bestBid ? ` | best ${formatMoney(bestBid.board_rate ?? bestBid.numeric_bid ?? bestBid.bid_rate, bestBid.currency || lane.currency)}` : ""}</small>
       </article>
     `;
   }).join("");
@@ -3975,9 +4049,9 @@ function renderLaneDecision() {
   const bestBid = bestBidForLane(lane);
   const benchmark = lane.benchmark;
   const benchmarkAmount = Number(benchmark?.all_in_rate);
-  const bestBidAmount = Number(bestBid?.bid_rate);
+  const bestBidAmount = Number(bestBid?.board_rate ?? bestBid?.numeric_bid ?? bestBid?.bid_rate);
   const spread = bids.length
-    ? Math.max(...bids.map((item) => Number(item.bid_rate)).filter(Number.isFinite)) - Math.min(...bids.map((item) => Number(item.bid_rate)).filter(Number.isFinite))
+    ? Math.max(...bids.map((item) => Number(bidCommercialEconomics(item).board_rate)).filter(Number.isFinite)) - Math.min(...bids.map((item) => Number(bidCommercialEconomics(item).board_rate)).filter(Number.isFinite))
     : null;
   const decision = laneDecisionStatus(lane);
   laneDecisionTitle.textContent = `#${lane.lane_number || ""} ${laneRoute(lane)}`;
@@ -3992,7 +4066,7 @@ function renderLaneDecision() {
       </article>
       <article>
         <span>Best bid</span>
-        <strong>${bestBid ? formatMoney(bestBid.bid_rate, bestBid.currency || lane.currency) : "-"}</strong>
+        <strong>${bestBid ? formatMoney(bestBid.board_rate ?? bestBid.numeric_bid ?? bestBid.bid_rate, bestBid.currency || lane.currency) : "-"}</strong>
         <small>${escapeHtml(bestBid ? vendorLabel(bestBid) : "No response")}</small>
       </article>
       <article>
@@ -4051,18 +4125,23 @@ function renderResponseBoard() {
   }
   responseBody.innerHTML = rows.map(({ lane, invitation }) => {
     const laneRows = bidInvitations(lane)
-      .map((bidInvitation) => ({
-        lane,
-        invitation: bidInvitation,
-        amount: Number(bidInvitation.bid_rate),
-        currency: bidInvitation.currency || lane.currency || "USD"
-      }))
+      .map((bidInvitation) => {
+        const economics = bidCommercialEconomics(bidInvitation);
+        return {
+          lane,
+          invitation: bidInvitation,
+          amount: Number(economics.board_rate),
+          carrier_amount: Number(economics.carrier_rate),
+          currency: bidInvitation.currency || lane.currency || "USD"
+        };
+      })
       .filter((row) => Number.isFinite(row.amount));
     const currentRow = laneRows.find((row) => row.invitation.id === invitation.id);
     const decision = currentRow ? procurementDecisionForBid(currentRow, laneRows) : null;
     const badges = currentRow ? decisionBadgesForBid(currentRow, laneRows) : [];
     const benchmark = lane.benchmark;
-    const delta = Number(invitation.bid_delta);
+    const benchmarkAmount = Number(benchmark?.all_in_rate);
+    const delta = currentRow && Number.isFinite(benchmarkAmount) ? currentRow.amount - benchmarkAmount : Number(invitation.bid_delta);
     const deltaTone = Number.isFinite(delta) && delta <= 0 ? "success" : Number.isFinite(delta) ? "danger" : "neutral";
     return `
       <tr data-rfx-lane-id="${escapeHtml(lane.id)}">
@@ -4073,7 +4152,7 @@ function renderResponseBoard() {
           ${decision ? `<span class="rfx-decision-score" data-score-tone="${decision.score >= 75 ? "strong" : decision.score >= 55 ? "medium" : "weak"}">${escapeHtml(decision.score)}</span>` : "-"}
           <small>${badges.slice(0, 2).map((badge) => badge.label).join(" | ")}</small>
         </td>
-        <td>${invitation.bid_rate !== null ? formatMoney(invitation.bid_rate, invitation.currency || lane.currency) : "-"}</td>
+        <td>${currentRow ? formatMoney(currentRow.amount, currentRow.currency) : invitation.bid_rate !== null ? formatMoney(invitation.bid_rate, invitation.currency || lane.currency) : "-"}</td>
         <td>${benchmark ? formatMoney(benchmark.all_in_rate, benchmark.currency) : "-"}</td>
         <td><span class="rfx-bid-delta" data-tone="${deltaTone}">${Number.isFinite(delta) ? formatMoney(delta, invitation.currency || lane.currency) : "-"}</span></td>
         <td><small>${escapeHtml(offerCommercialSummary(invitation))}</small></td>
@@ -4922,7 +5001,7 @@ function renderLanes() {
         <td>${formatNumber(lane.weekly_volume)} / wk<small>Target ${formatMoney(lane.target_rate, lane.currency)}</small></td>
         <td>
           ${renderSupplyDepthCell(lane)}
-          ${bestBid ? `<small>Best bid ${formatMoney(bestBid.bid_rate, bestBid.currency || lane.currency)}</small>` : ""}
+          ${bestBid ? `<small>Best bid ${formatMoney(bestBid.board_rate ?? bestBid.numeric_bid ?? bestBid.bid_rate, bestBid.currency || lane.currency)}</small>` : ""}
         </td>
         <td>
           <div class="rfx-lane-progress-cell">
@@ -6195,7 +6274,7 @@ copyRfxSummaryButton?.addEventListener("click", async () => {
     "",
     ...currentLanes.slice(0, 30).map((lane) => {
       const bestBid = bestBidForLane(lane);
-      return `#${lane.lane_number || ""} ${laneRoute(lane)} | ${laneDecisionLabel(laneDecisionStatus(lane))} | Rateware ${lane.benchmark ? formatMoney(lane.benchmark.all_in_rate, lane.benchmark.currency) : "-"} | Best ${bestBid ? formatMoney(bestBid.bid_rate, bestBid.currency || lane.currency) : "-"}`;
+      return `#${lane.lane_number || ""} ${laneRoute(lane)} | ${laneDecisionLabel(laneDecisionStatus(lane))} | Rateware ${lane.benchmark ? formatMoney(lane.benchmark.all_in_rate, lane.benchmark.currency) : "-"} | Best ${bestBid ? formatMoney(bestBid.board_rate ?? bestBid.numeric_bid ?? bestBid.bid_rate, bestBid.currency || lane.currency) : "-"}`;
     })
   ];
   await navigator.clipboard.writeText(lines.join("\n"));

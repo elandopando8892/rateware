@@ -12,6 +12,7 @@ const GOOGLE_CHAT_ALLOWED_ACCOUNT = (Deno.env.get("GOOGLE_CHAT_ALLOWED_ACCOUNT")
 const GOOGLE_CHAT_WEBHOOK_URL = Deno.env.get("GOOGLE_CHAT_WEBHOOK_URL");
 const OPENAI_MODEL = Deno.env.get("OPENAI_MODEL");
 const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
+const XBF_BUY_SELL_MARKUP_PCT = 15;
 const GENERIC_EMAIL_DOMAINS = new Set([
   "gmail.com",
   "hotmail.com",
@@ -153,6 +154,82 @@ function normalizeCommercialModel(value: unknown) {
   };
   const normalized = aliases[text] || text;
   return ["direct_cost_plus", "carrier_share", "xbf_buy_sell"].includes(normalized) ? normalized : null;
+}
+
+function roundMoney(value: number | null) {
+  return value === null ? null : Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+function commercialRateEconomics(row: Record<string, unknown>) {
+  const carrierRate = cleanNumber(row.bid_rate);
+  const commercialModel = normalizeCommercialModel(row.commercial_model) || "direct_cost_plus";
+  const marksmanMarginPct = cleanNumber(row.marksman_margin_pct);
+  const carrierSharePct = cleanNumber(row.carrier_share_pct);
+  const currency = cleanText(row.currency) || "USD";
+  if (carrierRate === null) {
+    return {
+      commercial_model: commercialModel,
+      currency,
+      carrier_rate: null,
+      board_rate: null,
+      rate_visibility: null,
+      commission_fee: null,
+      commission_pct: null,
+      markup_fee: null,
+      markup_pct: commercialModel === "xbf_buy_sell" ? XBF_BUY_SELL_MARKUP_PCT : null,
+      rate_basis: "no_rate",
+      fee_label: null
+    };
+  }
+
+  if (commercialModel === "carrier_share") {
+    const commissionFee = carrierSharePct === null ? null : carrierRate * carrierSharePct / 100;
+    return {
+      commercial_model: commercialModel,
+      currency,
+      carrier_rate: roundMoney(carrierRate),
+      board_rate: roundMoney(carrierRate),
+      rate_visibility: roundMoney(carrierRate),
+      commission_fee: roundMoney(commissionFee),
+      commission_pct: carrierSharePct,
+      markup_fee: null,
+      markup_pct: null,
+      rate_basis: "carrier_share",
+      fee_label: "Carrier invoice share"
+    };
+  }
+
+  if (commercialModel === "xbf_buy_sell") {
+    const boardRate = carrierRate * (1 + XBF_BUY_SELL_MARKUP_PCT / 100);
+    return {
+      commercial_model: commercialModel,
+      currency,
+      carrier_rate: roundMoney(carrierRate),
+      board_rate: roundMoney(boardRate),
+      rate_visibility: roundMoney(boardRate),
+      commission_fee: null,
+      commission_pct: null,
+      markup_fee: roundMoney(boardRate - carrierRate),
+      markup_pct: XBF_BUY_SELL_MARKUP_PCT,
+      rate_basis: "xbf_buy_sell",
+      fee_label: "XBF buy-sell markup"
+    };
+  }
+
+  const boardRate = marksmanMarginPct === null ? carrierRate : carrierRate * (1 + marksmanMarginPct / 100);
+  return {
+    commercial_model: "direct_cost_plus",
+    currency,
+    carrier_rate: roundMoney(carrierRate),
+    board_rate: roundMoney(boardRate),
+    rate_visibility: roundMoney(boardRate),
+    commission_fee: roundMoney(boardRate - carrierRate),
+    commission_pct: marksmanMarginPct,
+    markup_fee: null,
+    markup_pct: null,
+    rate_basis: "direct_cost_plus",
+    fee_label: "Cost-plus commission"
+  };
 }
 
 function availabilityValidationStatus(value: unknown, mirrorEnabled: boolean) {
@@ -1142,30 +1219,42 @@ function liveBoardFromRows(currentInvitation: Record<string, unknown>, peerRows:
   const visibility = bidRoomVisibility(event);
   const baseRows = [currentInvitation, ...peerRows]
     .filter((row) => cleanNumber(row.bid_rate) !== null)
-    .map((row) => ({
-      id: row.id,
-      amount: cleanNumber(row.bid_rate) as number,
-      currency: cleanText(row.currency) || cleanText(currentInvitation.currency) || "USD",
-      weekly_capacity: cleanNumber(row.weekly_capacity),
-      transit_days: cleanNumber(row.transit_days),
-      notes: cleanText(row.notes),
-      commercial_model: cleanText(row.commercial_model),
-      marksman_margin_pct: cleanNumber(row.marksman_margin_pct),
-      carrier_share_pct: cleanNumber(row.carrier_share_pct),
-      best_alternative_offered: cleanBoolean(row.best_alternative_offered) === true,
-      alternative_equipment: cleanText(row.alternative_equipment),
-      alternative_units: cleanNumber(row.alternative_units),
-      equipment_available: cleanBoolean(row.equipment_available),
-      unit_details: cleanText(row.unit_details),
-      eta_pickup: cleanText(row.eta_pickup),
-      eta_delivery: cleanText(row.eta_delivery),
-      mirror_account_enabled: cleanBoolean(row.mirror_account_enabled),
-      availability_validation_status: cleanText(row.availability_validation_status),
-      responded_at: cleanText(row.responded_at || row.updated_at),
-      vendor_name: cleanText(relationRecord(row.vendors).vendor_name),
-      vendor_domain: cleanText(relationRecord(row.vendors).domain),
-      is_current: row.id === currentInvitation.id
-    }));
+    .map((row) => {
+      const economics = commercialRateEconomics(row as Record<string, unknown>);
+      return {
+        id: row.id,
+        amount: economics.board_rate as number,
+        currency: cleanText(row.currency) || cleanText(currentInvitation.currency) || "USD",
+        carrier_bid_rate: economics.carrier_rate,
+        board_rate: economics.board_rate,
+        rate_visibility: economics.rate_visibility,
+        commission_fee: economics.commission_fee,
+        commission_pct: economics.commission_pct,
+        markup_fee: economics.markup_fee,
+        markup_pct: economics.markup_pct,
+        rate_basis: economics.rate_basis,
+        fee_label: economics.fee_label,
+        weekly_capacity: cleanNumber(row.weekly_capacity),
+        transit_days: cleanNumber(row.transit_days),
+        notes: cleanText(row.notes),
+        commercial_model: economics.commercial_model,
+        marksman_margin_pct: cleanNumber(row.marksman_margin_pct),
+        carrier_share_pct: cleanNumber(row.carrier_share_pct),
+        best_alternative_offered: cleanBoolean(row.best_alternative_offered) === true,
+        alternative_equipment: cleanText(row.alternative_equipment),
+        alternative_units: cleanNumber(row.alternative_units),
+        equipment_available: cleanBoolean(row.equipment_available),
+        unit_details: cleanText(row.unit_details),
+        eta_pickup: cleanText(row.eta_pickup),
+        eta_delivery: cleanText(row.eta_delivery),
+        mirror_account_enabled: cleanBoolean(row.mirror_account_enabled),
+        availability_validation_status: cleanText(row.availability_validation_status),
+        responded_at: cleanText(row.responded_at || row.updated_at),
+        vendor_name: cleanText(relationRecord(row.vendors).vendor_name),
+        vendor_domain: cleanText(relationRecord(row.vendors).domain),
+        is_current: row.id === currentInvitation.id
+      };
+    });
   const context = liveBoardContext(baseRows);
   const rows = baseRows
     .map((row) => {
@@ -1183,7 +1272,8 @@ function liveBoardFromRows(currentInvitation: Record<string, unknown>, peerRows:
     })
     .sort((a, b) => b.marketplace_score - a.marketplace_score || a.amount - b.amount);
   const currentIndex = rows.findIndex((row) => row.is_current);
-  const currentAmount = cleanNumber(currentInvitation.bid_rate);
+  const currentEconomics = commercialRateEconomics(currentInvitation);
+  const currentAmount = currentEconomics.board_rate;
   const bestAmount = context.minAmount;
   const bestScore = rows[0]?.marketplace_score || null;
   const currentScore = currentIndex >= 0 ? rows[currentIndex].marketplace_score : null;
@@ -1263,6 +1353,15 @@ function liveBoardFromRows(currentInvitation: Record<string, unknown>, peerRows:
       amount: row.is_current || visibility.competitor_rates_visible ? row.amount : null,
       amount_display: amountDisplayFor(row),
       currency: row.currency,
+      carrier_bid_rate: row.is_current || visibility.competitor_rates_visible ? row.carrier_bid_rate : null,
+      board_rate: row.is_current || visibility.competitor_rates_visible ? row.board_rate : null,
+      rate_visibility: row.is_current || visibility.competitor_rates_visible ? row.rate_visibility : null,
+      commission_fee: row.is_current || visibility.competitor_rates_visible ? row.commission_fee : null,
+      commission_pct: row.is_current || visibility.competitor_rates_visible ? row.commission_pct : null,
+      markup_fee: row.is_current || visibility.competitor_rates_visible ? row.markup_fee : null,
+      markup_pct: row.is_current || visibility.competitor_rates_visible ? row.markup_pct : null,
+      rate_basis: row.rate_basis,
+      fee_label: row.is_current || visibility.competitor_rates_visible ? row.fee_label : null,
       weekly_capacity: row.weekly_capacity,
       transit_days: row.transit_days,
       marketplace_score: row.is_current || visibility.competitor_rates_visible ? row.marketplace_score : null,
@@ -1296,6 +1395,7 @@ function carrierBusinessBook(currentInvitation: Record<string, unknown>, invited
   const invited = invitedRows.map((row) => {
     const lane = relationRecord(row.rfx_lanes);
     const event = relationRecord(row.rfx_events);
+    const economics = commercialRateEconomics(row as Record<string, unknown>);
     return {
       participation_status: cleanText(row.invitation_status) || "drafted",
       business_status: businessBookStatus(row),
@@ -1304,6 +1404,15 @@ function carrierBusinessBook(currentInvitation: Record<string, unknown>, invited
       invitation_id: row.id,
       bid_rate: cleanNumber(row.bid_rate),
       currency: cleanText(row.currency) || cleanText(lane.currency) || "USD",
+      carrier_bid_rate: economics.carrier_rate,
+      board_rate: economics.board_rate,
+      rate_visibility: economics.rate_visibility,
+      commission_fee: economics.commission_fee,
+      commission_pct: economics.commission_pct,
+      markup_fee: economics.markup_fee,
+      markup_pct: economics.markup_pct,
+      rate_basis: economics.rate_basis,
+      fee_label: economics.fee_label,
       weekly_capacity: cleanNumber(row.weekly_capacity),
       transit_days: cleanNumber(row.transit_days),
       notes: cleanText(row.notes),
@@ -1385,18 +1494,23 @@ function publicBidBoardState(event: Record<string, unknown>) {
 function publicQuoteStats(rows: Record<string, unknown>[]) {
   const validRows = rows
     .filter((row) => String(cleanText(row.invitation_status) || "").toLowerCase() !== "archived")
-    .map((row) => ({
-      amount: cleanNumber(row.bid_rate),
-      currency: cleanText(row.currency) || "USD",
-      capacity: cleanNumber(row.weekly_capacity),
-      transit_days: cleanNumber(row.transit_days),
-      commercial_model: cleanText(row.commercial_model),
-      best_alternative_offered: cleanBoolean(row.best_alternative_offered) === true,
-      equipment_available: cleanBoolean(row.equipment_available),
-      eta_pickup: cleanText(row.eta_pickup),
-      responded_at: cleanText(row.responded_at || row.updated_at),
-      award_role: cleanText(row.award_role)
-    }))
+    .map((row) => {
+      const economics = commercialRateEconomics(row);
+      return {
+        amount: economics.board_rate,
+        carrier_bid_rate: economics.carrier_rate,
+        board_rate: economics.board_rate,
+        currency: cleanText(row.currency) || "USD",
+        capacity: cleanNumber(row.weekly_capacity),
+        transit_days: cleanNumber(row.transit_days),
+        commercial_model: economics.commercial_model,
+        best_alternative_offered: cleanBoolean(row.best_alternative_offered) === true,
+        equipment_available: cleanBoolean(row.equipment_available),
+        eta_pickup: cleanText(row.eta_pickup),
+        responded_at: cleanText(row.responded_at || row.updated_at),
+        award_role: cleanText(row.award_role)
+      };
+    })
     .filter((row) => row.amount !== null);
   const amounts = validRows.map((row) => row.amount as number).sort((a, b) => a - b);
   const capacities = validRows.map((row) => row.capacity).filter((value) => value !== null) as number[];
@@ -1411,6 +1525,7 @@ function publicQuoteStats(rows: Record<string, unknown>[]) {
   return {
     quote_count: validRows.length,
     best_rate: amounts[0] ?? null,
+    best_board_rate: amounts[0] ?? null,
     average_rate: avgRate === null ? null : Math.round(avgRate * 100) / 100,
     highest_rate: amounts.at(-1) ?? null,
     currency: validRows[0]?.currency || "USD",
@@ -1475,7 +1590,7 @@ async function publicBidRoomBoard(supabase: ReturnType<typeof createClient>, inp
       .order("lane_number", { ascending: true }),
     supabase
       .from("rfx_lane_vendors")
-      .select("id,rfx_event_id,rfx_lane_id,invitation_status,bid_rate,currency,weekly_capacity,transit_days,commercial_model,best_alternative_offered,equipment_available,eta_pickup,responded_at,updated_at,award_role")
+      .select("id,rfx_event_id,rfx_lane_id,invitation_status,bid_rate,currency,weekly_capacity,transit_days,commercial_model,marksman_margin_pct,carrier_share_pct,best_alternative_offered,equipment_available,eta_pickup,responded_at,updated_at,award_role")
       .in("rfx_event_id", eventIds)
       .not("bid_rate", "is", null)
       .neq("invitation_status", "archived")

@@ -560,12 +560,12 @@ function commercialStructureConfig(value) {
       percentageField: "marksman",
       percentageLabel: t("suggestedMargin"),
       percentageTooltip: dualText(
-        "Optional commercial guidance for MARKSMAN. The carrier shares the suggested margin MARKSMAN may add on top of the carrier all-in cost.",
-        "Guia comercial opcional para MARKSMAN. El carrier sugiere el margen que MARKSMAN podria agregar sobre el costo all-in del carrier."
+        "This percentage increases the board/customer comparable price over the carrier all-in rate. The calculated commission is invoiced after the customer pays.",
+        "Este porcentaje incrementa el precio comparable del board/cliente sobre la tarifa all-in del carrier. La comision calculada se factura cuando pague el cliente."
       ),
       copy: dualText(
-        "Use when the carrier is quoting their direct all-in cost and can suggest the MARKSMAN margin to share with the customer.",
-        "Usa esto cuando el carrier cotiza su costo directo all-in y puede sugerir el margen MARKSMAN a compartir con el cliente."
+        "Use when the carrier quotes its direct all-in cost and suggests the MARKSMAN margin to add on the Bid Board.",
+        "Usa esto cuando el carrier cotiza su costo directo all-in y sugiere el margen MARKSMAN a sumar en el Bid Board."
       )
     },
     carrier_share: {
@@ -573,20 +573,20 @@ function commercialStructureConfig(value) {
       percentageField: "carrier",
       percentageLabel: t("carrierShare"),
       percentageTooltip: dualText(
-        "Percentage of the customer billing amount the carrier is willing to share from the original quoted amount.",
-        "Porcentaje de la facturacion al cliente que el carrier esta dispuesto a compartir basado en su cotizacion original."
+        "This does not change the bid price. It calculates the carrier invoice-share fee to be billed after the customer pays.",
+        "Esto no modifica el precio de la puja. Calcula el fee de share factura carrier que se cobrara cuando pague el cliente."
       ),
       copy: dualText(
-        "Use when the carrier wants MARKSMAN to bill the customer and share a percentage of that billing based on the carrier quote.",
-        "Usa esto cuando el carrier quiere que MARKSMAN facture al cliente y comparta un porcentaje de esa facturacion segun la cotizacion del carrier."
+        "Use when the carrier keeps the same quoted price but agrees to share a billing percentage after payment.",
+        "Usa esto cuando el carrier conserva la misma tarifa cotizada pero acepta compartir un porcentaje de facturacion despues del pago."
       )
     },
     xbf_buy_sell: {
       tone: dualText("XBF buy-sell", "XBF compra-venta"),
       percentageField: "none",
       percentageLabel: "",
-      percentageTooltip: dualText("No percentage is requested. XBF controls the customer markup at its discretion.", "No se solicita porcentaje. XBF controla el markup al cliente a su discrecion."),
-      copy: dualText("Use when the carrier only submits their sell rate to XBF. No margin or share percentage is collected.", "Usa esto cuando el carrier solo envia su tarifa de venta a XBF. No se captura margen ni porcentaje.")
+      percentageTooltip: dualText("No percentage is requested from the carrier. The Bid Board applies an automatic 15% XBF buy-sell markup.", "No se solicita porcentaje al carrier. El Bid Board aplica un markup automatico XBF compra-venta de 15%."),
+      copy: dualText("Use when the carrier only submits its sell rate to XBF. The board price is automatically marked up by 15%.", "Usa esto cuando el carrier solo envia su tarifa de venta a XBF. El precio del board se incrementa automaticamente 15%.")
     }
   };
   return configs[model] || configs.direct_cost_plus;
@@ -598,6 +598,65 @@ function commercialPercentSummary(draft = {}) {
   if (config.percentageField === "carrier" && draft.carrier_share_pct) return dualText(`${draft.carrier_share_pct}% invoice share`, `${draft.carrier_share_pct}% share factura`);
   if (config.percentageField === "none") return dualText("No percentage applies", "No aplica porcentaje");
   return dualText(`${config.percentageLabel || "Percentage"} not declared`, `${config.percentageLabel || "Porcentaje"} no declarado`);
+}
+
+function commercialRateDetails(row = {}) {
+  const model = String(row.commercial_model || "direct_cost_plus").toLowerCase();
+  const carrierRate = numberOrNull(row.carrier_bid_rate ?? row.bid_rate ?? row.amount);
+  let boardRate = numberOrNull(row.board_rate ?? row.rate_visibility ?? row.amount);
+  let commissionFee = numberOrNull(row.commission_fee);
+  const commissionPct = numberOrNull(row.commission_pct ?? (model === "direct_cost_plus" ? row.marksman_margin_pct : row.carrier_share_pct));
+  let markupFee = numberOrNull(row.markup_fee);
+  const markupPct = numberOrNull(row.markup_pct) ?? (model === "xbf_buy_sell" ? 15 : null);
+  if (carrierRate !== null && boardRate === null) {
+    if (model === "carrier_share") boardRate = carrierRate;
+    else if (model === "xbf_buy_sell") boardRate = carrierRate * (1 + (markupPct ?? 15) / 100);
+    else boardRate = commissionPct !== null ? carrierRate * (1 + commissionPct / 100) : carrierRate;
+  }
+  if (carrierRate !== null && commissionFee === null && (model === "carrier_share" || model === "direct_cost_plus") && commissionPct !== null) {
+    commissionFee = model === "carrier_share" ? carrierRate * commissionPct / 100 : (boardRate ?? carrierRate) - carrierRate;
+  }
+  if (carrierRate !== null && markupFee === null && model === "xbf_buy_sell" && boardRate !== null) {
+    markupFee = boardRate - carrierRate;
+  }
+  return {
+    model,
+    currency: row.currency || "USD",
+    carrierRate,
+    boardRate,
+    commissionFee,
+    commissionPct,
+    markupFee,
+    markupPct
+  };
+}
+
+function commercialRateDisplay(row = {}) {
+  const details = commercialRateDetails(row);
+  return formatMoney(details.boardRate ?? details.carrierRate, details.currency);
+}
+
+function commercialFeeSummary(row = {}) {
+  const details = commercialRateDetails(row);
+  if (details.model === "carrier_share") {
+    const fee = details.commissionFee !== null ? formatMoney(details.commissionFee, details.currency) : "-";
+    return dualText(
+      `Carrier rate stays ${formatMoney(details.carrierRate, details.currency)}. Invoice share fee ${fee}${details.commissionPct !== null ? ` (${details.commissionPct}%)` : ""} after customer payment.`,
+      `La tarifa del carrier queda en ${formatMoney(details.carrierRate, details.currency)}. Fee share factura ${fee}${details.commissionPct !== null ? ` (${details.commissionPct}%)` : ""} cuando pague el cliente.`
+    );
+  }
+  if (details.model === "xbf_buy_sell") {
+    const markup = details.markupFee !== null ? formatMoney(details.markupFee, details.currency) : "-";
+    return dualText(
+      `Carrier rate ${formatMoney(details.carrierRate, details.currency)}. Board rate includes XBF buy-sell markup ${details.markupPct ?? 15}% (${markup}).`,
+      `Tarifa carrier ${formatMoney(details.carrierRate, details.currency)}. El board incluye markup compra-venta XBF ${details.markupPct ?? 15}% (${markup}).`
+    );
+  }
+  const fee = details.commissionFee !== null ? formatMoney(details.commissionFee, details.currency) : "-";
+  return dualText(
+    `Carrier rate ${formatMoney(details.carrierRate, details.currency)}. Board rate ${formatMoney(details.boardRate, details.currency)} includes suggested margin${details.commissionPct !== null ? ` ${details.commissionPct}%` : ""}; commission ${fee} after customer payment.`,
+    `Tarifa carrier ${formatMoney(details.carrierRate, details.currency)}. Board rate ${formatMoney(details.boardRate, details.currency)} incluye margen sugerido${details.commissionPct !== null ? ` ${details.commissionPct}%` : ""}; comision ${fee} cuando pague el cliente.`
+  );
 }
 
 function formatDateTime(value) {
@@ -837,6 +896,11 @@ function commercialSummary(row = {}) {
   const config = commercialStructureConfig(row.commercial_model);
   if (config.percentageField === "marksman" && row.marksman_margin_pct !== null && row.marksman_margin_pct !== undefined) parts.push(`${row.marksman_margin_pct}% suggested margin`);
   if (config.percentageField === "carrier" && row.carrier_share_pct !== null && row.carrier_share_pct !== undefined) parts.push(`${row.carrier_share_pct}% invoice share`);
+  if (row.board_rate !== null && row.board_rate !== undefined && row.carrier_bid_rate !== null && row.carrier_bid_rate !== undefined && Number(row.board_rate) !== Number(row.carrier_bid_rate)) {
+    parts.push(`Board ${formatMoney(row.board_rate, row.currency)}`);
+  }
+  if (row.commission_fee !== null && row.commission_fee !== undefined) parts.push(`Fee ${formatMoney(row.commission_fee, row.currency)}`);
+  if (row.markup_fee !== null && row.markup_fee !== undefined) parts.push(`Markup ${formatMoney(row.markup_fee, row.currency)}`);
   if (row.best_alternative_offered) {
     parts.push(row.alternative_equipment ? `Alt: ${row.alternative_equipment}` : "Best alternative");
   }
@@ -1570,7 +1634,7 @@ function bidReviewSummaryHtml(draft) {
   return `
     <div class="bid-review-summary-grid">
       <article><span>Primary offer</span><strong>${escapeHtml(formatMoney(draft.bid_rate, draft.currency))}</strong><small>${escapeHtml(draft.weekly_capacity || "-")} / wk | ${escapeHtml(draft.transit_days || "-")} day(s)</small></article>
-      <article><span>Commercial model</span><strong>${escapeHtml(commercialModelLabel(draft.commercial_model))}</strong><small>${escapeHtml(commercialPercentSummary(draft))}</small></article>
+      <article><span>Commercial model</span><strong>${escapeHtml(commercialModelLabel(draft.commercial_model))}</strong><small>${escapeHtml(commercialFeeSummary(draft))}</small></article>
       <article><span>Alternative</span><strong>${escapeHtml(alternative)}</strong><small>${escapeHtml(draft.alternative_notes || "No alternative notes")}</small></article>
       <article><span>Capacity</span><strong>${escapeHtml(availability)}</strong><small>${escapeHtml(draft.mirror_account_enabled ? "Mirror account requested" : draft.unit_details || "No unit details")}</small></article>
     </div>
@@ -1650,7 +1714,7 @@ function setFormChecked(selector, value) {
 function hydrateBidFormFromOffer(offer = currentSubmittedOffer(), invitation = lastInvitation || {}) {
   const lane = invitation.rfx_lanes || {};
   const source = offer || {};
-  setFormValue("#bid-rate", firstDefined(source.amount, invitation.bid_rate, ""));
+  setFormValue("#bid-rate", firstDefined(source.carrier_bid_rate, invitation.bid_rate, source.amount, ""));
   setFormValue("#bid-currency", firstDefined(source.currency, invitation.currency, lane.currency, "USD"));
   setFormValue("#bid-capacity", firstDefined(source.weekly_capacity, invitation.weekly_capacity, ""));
   setFormValue("#bid-transit-days", firstDefined(source.transit_days, invitation.transit_days, ""));
@@ -1799,8 +1863,12 @@ function renderLiveBoard(liveBoard = {}) {
               <td>#${escapeHtml(row.rank)}</td>
               <td>${escapeHtml(row.bidder)}</td>
               <td>${marketplaceScoreHtml(row)}</td>
-              <td>${row.amount !== null && row.amount !== undefined ? formatMoney(row.amount, row.currency) : `<span class="masked-rate">${escapeHtml(row.amount_display || "Hidden")}</span>`}</td>
-              <td>${escapeHtml(commercialSummary(row))}</td>
+              <td>
+                ${row.amount !== null && row.amount !== undefined
+                  ? `<strong>${escapeHtml(commercialRateDisplay(row))}</strong><small title="${escapeAttribute(commercialFeeSummary(row))}">${escapeHtml(row.carrier_bid_rate !== null && row.carrier_bid_rate !== undefined && Number(row.carrier_bid_rate) !== Number(row.amount) ? `Carrier ${formatMoney(row.carrier_bid_rate, row.currency)}` : row.amount_display || "Board rate")}</small>`
+                  : `<span class="masked-rate">${escapeHtml(row.amount_display || "Hidden")}</span>`}
+              </td>
+              <td title="${escapeAttribute(row.amount !== null && row.amount !== undefined ? commercialFeeSummary(row) : "")}">${escapeHtml(commercialSummary(row))}</td>
               <td>${marketplaceBadgesHtml(row)}</td>
               <td>${escapeHtml(row.weekly_capacity ?? "-")}</td>
               <td>${escapeHtml(row.transit_days ?? "-")}</td>
@@ -1861,6 +1929,9 @@ function bidHistoryDeltaHtml(metadata = {}) {
       : null,
     before.commercial_model !== after.commercial_model && after.commercial_model
       ? commercialModelLabel(after.commercial_model)
+      : null,
+    after.bid_rate !== undefined && after.commercial_model
+      ? commercialFeeSummary(after)
       : null,
     before.equipment_available !== after.equipment_available && after.equipment_available !== undefined
       ? `Equipment ${after.equipment_available ? "available" : "not available"}`
@@ -2320,6 +2391,7 @@ function renderBookRows(rows = []) {
     const lane = row.lane || {};
     const event = row.event || {};
     const amount = row.bid_rate !== null && row.bid_rate !== undefined ? formatMoney(row.bid_rate, row.currency || lane.currency) : "-";
+    const boardAmount = row.board_rate !== null && row.board_rate !== undefined ? formatMoney(row.board_rate, row.currency || lane.currency) : "";
     const action = row.is_invited
       ? `<a class="secondary small-button" href="./rfx-bid.html?token=${encodeURIComponent(row.invitation_token || "")}">${escapeHtml(dualText("Open bid", "Abrir puja"))}</a>`
       : `<button class="secondary small-button" type="button" data-request-lane="${escapeHtml(lane.id || "")}">${escapeHtml(statusLabel("not_invited"))}</button>`;
@@ -2339,8 +2411,9 @@ function renderBookRows(rows = []) {
         <td><span class="status-pill ${statusTone(bookStatus(row))}">${escapeHtml(statusLabel(bookStatus(row)))}</span></td>
         <td>
           ${amount}
+          ${boardAmount && boardAmount !== amount ? `<small>${escapeHtml(dualText(`Board ${boardAmount}`, `Board ${boardAmount}`))}</small>` : ""}
           <small>${row.weekly_capacity ? `${escapeHtml(row.weekly_capacity)} / wk` : ""}</small>
-          <small>${escapeHtml(commercialSummary(row))}</small>
+          <small title="${escapeAttribute(row.bid_rate !== null && row.bid_rate !== undefined ? commercialFeeSummary(row) : "")}">${escapeHtml(row.bid_rate !== null && row.bid_rate !== undefined ? commercialSummary(row) : "")}</small>
         </td>
         <td>${action}</td>
       </tr>
@@ -2976,12 +3049,12 @@ function renderInvitation(invitation, liveBoard = {}, carrierBook = {}) {
           </label>
           <label data-commercial-field="marksman">
             ${escapeHtml(t("suggestedMargin"))}
-            <span class="field-help" title="Recommended MARKSMAN margin over your all-in cost. This is not a carrier invoice share.">?</span>
+            <span class="field-help" title="Adds this percentage to the board/customer comparable price over your all-in rate.">?</span>
             <input id="bid-marksman-margin" inputmode="decimal" value="${escapeHtml(invitation.marksman_margin_pct ?? "")}" placeholder="2-5" />
           </label>
           <label data-commercial-field="carrier">
             ${escapeHtml(t("carrierShare"))}
-            <span class="field-help" title="Percent of customer billing the carrier is willing to share based on the original quote. This does not apply to cost-plus.">?</span>
+            <span class="field-help" title="Keeps your bid price unchanged and calculates the fee billed after the customer pays.">?</span>
             <input id="bid-carrier-share" inputmode="decimal" value="${escapeHtml(invitation.carrier_share_pct ?? "")}" placeholder="2-5" />
           </label>
         </div>
