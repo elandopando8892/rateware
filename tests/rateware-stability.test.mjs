@@ -217,7 +217,10 @@ assert.match(bidRoomBoardHtml, /Find my invitations/, "Public Bid Room board sho
 assert.match(bidRoomBoardSource, /Request invitation/, "Public Bid Room board should require invitation requests instead of direct bidding");
 assert.match(bidRoomBoardSource, /public_bid_room_request_invite/, "Public Bid Room board should call the public invitation request action");
 assert.match(bidRoomBoardSource, /public_bid_room_find_invitations/, "Public Bid Room board should call the public invitation lookup action");
-assert.match(bidRoomBoardSource, /Already invited\? Find my private link/, "Public Bid Room card detail should let already invited carriers retrieve their private link");
+assert.match(bidRoomBoardSource, /invitedLaneIds/, "Public Bid Room board should remember invited lanes after soft login");
+assert.match(bidRoomBoardSource, /data-public-board-private-link/, "Public Bid Room board should resend private links instead of requesting access for invited lanes");
+assert.match(bidRoomBoardSource, /Check access/, "Public Bid Room cards should check access before showing request invitation for unknown carriers");
+assert.match(bidRoomBoardSource, /You already have an invitation for this opportunity/, "Public Bid Room card detail should explain already invited access");
 assert.match(bidRoomBoardSource, /Private Bid Room links sent/, "Public Bid Room board should announce private link delivery");
 assert.match(bidRoomBoardSource, /New opportunity available/, "Public Bid Room board should announce new public opportunities");
 assert.match(bidRoomBoardSource, /soundEnabled: localStorage\.getItem\("rateware\.publicBidBoard\.sound"\) !== "off"/, "Public Bid Room board should start with sound enabled unless the user turns it off");
@@ -258,6 +261,9 @@ assert.match(publicBidFindInviteApiSource, /publicInvitationVendorIds/, "Public 
 assert.match(publicBidInviteVendorApiSource, /GENERIC_EMAIL_DOMAINS/, "Public invitation lookup should avoid generic-domain matching");
 assert.match(publicBidFindInviteApiSource, /eventOwnerMap/, "Public invitation lookup should resolve event owners directly when nested event data is incomplete");
 assert.match(publicBidFindInviteApiSource, /resolvedPublicInvitationEvent/, "Public invitation lookup should normalize event owner context before sending private links");
+assert.match(publicBidFindInviteApiSource, /matched_lane_ids/, "Public invitation lookup should return safe lane ids for card-level access state");
+assert.match(publicBidFindInviteApiSource, /matched_invitations/, "Public invitation lookup should return safe invitation metadata without exposing private tokens");
+assert.doesNotMatch(publicBidFindInviteApiSource, /matched_invitations:[\s\S]*privateBidLink/, "Public invitation access metadata should not expose private token links");
 assert.match(publicBidFindInviteApiSource, /GMAIL_ALLOWED_SENDER/, "Public invitation lookup should use the approved Gmail sender as a legacy fallback owner");
 assert.match(publicBidFindInviteApiSource, /sendGmailMessageForOwner/, "Public invitation lookup should email private links instead of returning tokens");
 assert.match(publicBidFindInviteApiSource, /status: "magic_link_sent"/, "Public invitation lookup should audit magic link sends");

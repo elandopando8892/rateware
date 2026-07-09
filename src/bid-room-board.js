@@ -30,6 +30,9 @@ const supportClose = document.querySelector("#public-board-support-close");
 const supportFollowup = document.querySelector("#public-board-support-followup");
 
 const API_URL = `${SUPABASE_URL}/functions/v1/rfx-bid-api`;
+const INVITE_ACCESS_EMAIL_KEY = "rateware.publicBidBoard.inviteEmail";
+const INVITE_ACCESS_LANES_KEY = "rateware.publicBidBoard.invitedLaneIds";
+const INVITE_ACCESS_EVENTS_KEY = "rateware.publicBidBoard.invitedEventIds";
 const PUBLIC_BOARD_SOUND_DEFAULT_VERSION = "2026-07-08-sound-on";
 if (localStorage.getItem("rateware.publicBidBoard.soundDefault") !== PUBLIC_BOARD_SOUND_DEFAULT_VERSION) {
   localStorage.setItem("rateware.publicBidBoard.sound", "on");
@@ -57,6 +60,19 @@ ANNOUNCEMENTS.es.closing = "La oportunidad esta por cerrar.";
 ANNOUNCEMENTS.es.inviteSent = "Solicitud de invitacion enviada.";
 ANNOUNCEMENTS.es.linksSent = "Links privados enviados.";
 
+function normalizePublicEmail(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function storedStringList(key) {
+  try {
+    const value = JSON.parse(localStorage.getItem(key) || "[]");
+    return Array.isArray(value) ? value.map((item) => String(item || "")).filter(Boolean) : [];
+  } catch {
+    return [];
+  }
+}
+
 const state = {
   rows: [],
   summary: {},
@@ -69,7 +85,11 @@ const state = {
   alerts: [],
   selectedRowId: null,
   supportLaneId: "",
-  supportQuestion: ""
+  supportQuestion: "",
+  inviteEmail: normalizePublicEmail(localStorage.getItem(INVITE_ACCESS_EMAIL_KEY) || ""),
+  inviteLookupComplete: Boolean(localStorage.getItem(INVITE_ACCESS_EMAIL_KEY)),
+  invitedLaneIds: new Set(storedStringList(INVITE_ACCESS_LANES_KEY)),
+  invitedEventIds: new Set(storedStringList(INVITE_ACCESS_EVENTS_KEY))
 };
 
 languageSelect.value = state.language;
@@ -603,7 +623,81 @@ function saveRequestProfile(profile) {
   localStorage.setItem("rateware.publicBidBoard.requestProfile", JSON.stringify(profile || {}));
 }
 
+function persistInvitationAccess() {
+  if (state.inviteEmail) localStorage.setItem(INVITE_ACCESS_EMAIL_KEY, state.inviteEmail);
+  else localStorage.removeItem(INVITE_ACCESS_EMAIL_KEY);
+  localStorage.setItem(INVITE_ACCESS_LANES_KEY, JSON.stringify([...state.invitedLaneIds]));
+  localStorage.setItem(INVITE_ACCESS_EVENTS_KEY, JSON.stringify([...state.invitedEventIds]));
+}
+
+function rememberInvitationAccess(email, data = {}) {
+  const normalizedEmail = normalizePublicEmail(email);
+  state.inviteEmail = normalizedEmail;
+  state.inviteLookupComplete = Boolean(normalizedEmail);
+  state.invitedLaneIds = new Set(
+    Array.isArray(data.matched_lane_ids)
+      ? data.matched_lane_ids.map((id) => String(id || "")).filter(Boolean)
+      : []
+  );
+  state.invitedEventIds = new Set(
+    Array.isArray(data.matched_event_ids)
+      ? data.matched_event_ids.map((id) => String(id || "")).filter(Boolean)
+      : []
+  );
+  persistInvitationAccess();
+}
+
+function invitationAccessForRow(row = {}) {
+  if (!state.inviteEmail || !state.inviteLookupComplete) return "unknown";
+  const laneId = String(row.id || "");
+  const eventId = String(row.event?.id || row.event_id || "");
+  if ((laneId && state.invitedLaneIds.has(laneId)) || (!laneId && eventId && state.invitedEventIds.has(eventId))) {
+    return "invited";
+  }
+  return "not_invited";
+}
+
+function invitationActionForRow(row = {}) {
+  const access = invitationAccessForRow(row);
+  if (access === "invited") {
+    return {
+      access,
+      label: state.language === "es" ? "Enviar link privado" : "Send private link",
+      attribute: "data-public-board-private-link"
+    };
+  }
+  if (access === "not_invited") {
+    return {
+      access,
+      label: state.language === "es" ? "Solicitar invitacion" : "Request invitation",
+      attribute: "data-public-board-request"
+    };
+  }
+  return {
+    access,
+    label: state.language === "es" ? "Verificar acceso" : "Check access",
+    attribute: "data-public-board-soft-login"
+  };
+}
+
+function renderInvitationAction(row = {}, primary = true) {
+  const action = invitationActionForRow(row);
+  const className = primary ? "page-primary-action" : "secondary";
+  return `<button type="button" class="${className}" ${action.attribute}="${escapeHtml(row.id || "")}">${escapeHtml(action.label)}</button>`;
+}
+
 function invitationRuleCopy(row) {
+  const access = invitationAccessForRow(row);
+  if (access === "invited") {
+    return state.language === "es"
+      ? "Ya tienes invitacion para esta oportunidad. Enviaremos de nuevo tu link privado al correo validado para que puedas entrar al Bid Room."
+      : "You already have an invitation for this opportunity. We can resend the private link to the verified email so you can enter the Bid Room.";
+  }
+  if (access === "unknown") {
+    return state.language === "es"
+      ? "Primero verifica el correo que procurement uso para invitarte. Si no hay invitacion activa, podras solicitar acceso."
+      : "First check the email procurement used to invite you. If no active invitation exists, you can request access.";
+  }
   if (row.board_status === "awarded") {
     return "This lane is awarded. You can still request access so procurement can consider you for future coverage.";
   }
@@ -617,6 +711,23 @@ function renderDetailDrawer(row, focusRequest = false) {
   if (!detailDrawer || !detailContent || !row) return;
   const profile = requestProfile();
   const tags = laneTags(row);
+  const access = invitationAccessForRow(row);
+  const requestForm = access === "not_invited" ? `
+    <form id="public-invite-request-form" class="public-board-request-form" data-event-id="${escapeHtml(row.event?.id || row.event_id || "")}" data-lane-id="${escapeHtml(row.id)}">
+      <h3>Request invitation</h3>
+      <div class="public-board-form-grid">
+        <label>Carrier company<input name="company" required value="${escapeHtml(profile.company || "")}" placeholder="Carrier legal or commercial name" /></label>
+        <label>Contact name<input name="contact_name" value="${escapeHtml(profile.contact_name || "")}" placeholder="Your name" /></label>
+        <label>Email<input name="email" type="email" required value="${escapeHtml(profile.email || state.inviteEmail || "")}" placeholder="name@carrier.com" /></label>
+        <label>Phone / WhatsApp<input name="phone" value="${escapeHtml(profile.phone || "")}" placeholder="+52..." /></label>
+      </div>
+      <label>Notes<textarea name="notes" rows="3" placeholder="Capacity, equipment fit, target corridor, or why your carrier should be invited."></textarea></label>
+      <div class="public-board-request-actions">
+        <button type="submit" class="page-primary-action">Send invitation request</button>
+        <span id="public-invite-request-status" class="row-save-status" role="status"></span>
+      </div>
+    </form>
+  ` : "";
   state.selectedRowId = row.id;
   detailContent.innerHTML = `
     <div class="public-board-drawer-header">
@@ -645,23 +756,10 @@ function renderDetailDrawer(row, focusRequest = false) {
     <section class="public-board-invite-rule">
       <strong>Invitation required to bid</strong>
       <p>${escapeHtml(invitationRuleCopy(row))}</p>
-      <button type="button" class="secondary" data-public-board-soft-login="${escapeHtml(row.id)}">Already invited? Find my private link</button>
+      ${renderInvitationAction(row, false)}
       <button type="button" class="secondary" data-public-board-support="${escapeHtml(row.id)}">Ask support about this opportunity</button>
     </section>
-    <form id="public-invite-request-form" class="public-board-request-form" data-event-id="${escapeHtml(row.event?.id || row.event_id || "")}" data-lane-id="${escapeHtml(row.id)}">
-      <h3>Request invitation</h3>
-      <div class="public-board-form-grid">
-        <label>Carrier company<input name="company" required value="${escapeHtml(profile.company || "")}" placeholder="Carrier legal or commercial name" /></label>
-        <label>Contact name<input name="contact_name" value="${escapeHtml(profile.contact_name || "")}" placeholder="Your name" /></label>
-        <label>Email<input name="email" type="email" required value="${escapeHtml(profile.email || "")}" placeholder="name@carrier.com" /></label>
-        <label>Phone / WhatsApp<input name="phone" value="${escapeHtml(profile.phone || "")}" placeholder="+52..." /></label>
-      </div>
-      <label>Notes<textarea name="notes" rows="3" placeholder="Capacity, equipment fit, target corridor, or why your carrier should be invited."></textarea></label>
-      <div class="public-board-request-actions">
-        <button type="submit" class="page-primary-action">Send invitation request</button>
-        <span id="public-invite-request-status" class="row-save-status" role="status"></span>
-      </div>
-    </form>
+    ${requestForm}
   `;
   detailDrawer.hidden = false;
   document.body.classList.add("has-public-board-drawer");
@@ -683,7 +781,7 @@ function openSoftLoginDrawer(row = null) {
   const status = softLoginDrawer.querySelector("#public-soft-login-status");
   softLoginDrawer.dataset.eventId = row?.event?.id || row?.event_id || "";
   softLoginDrawer.dataset.laneId = row?.id || "";
-  if (emailInput && profile.email) emailInput.value = profile.email;
+  if (emailInput) emailInput.value = state.inviteEmail || profile.email || "";
   if (status) status.textContent = "";
   softLoginDrawer.hidden = false;
   document.body.classList.add("has-public-board-drawer");
@@ -700,6 +798,7 @@ function closeSoftLoginDrawer() {
 
 function renderOpportunityCard(row) {
   const tags = laneTags(row);
+  const action = renderInvitationAction(row, true);
   return `
     <article class="public-opportunity-card is-${escapeHtml(row.board_status)}" data-public-board-card="${escapeHtml(row.id)}">
       <div class="public-opportunity-head">
@@ -720,7 +819,7 @@ function renderOpportunityCard(row) {
       ${renderBusinessDetailPreview(row)}
       <div class="public-opportunity-actions">
         <button type="button" class="secondary" data-public-board-details="${escapeHtml(row.id)}">View details</button>
-        <button type="button" class="page-primary-action" data-public-board-request="${escapeHtml(row.id)}">Request invitation</button>
+        ${action}
       </div>
       <footer>
         <span>Due: ${escapeHtml(countdownDueValue(row) || "No deadline")}</span>
@@ -792,7 +891,7 @@ function renderSheet(rows) {
               <td>${publicLaneDetailSections(row).length ? "Available" : "-"}</td>
               <td>${renderCountdown(row, true)}</td>
               <td>${escapeHtml(formatDateTime(row.last_quote_at))}</td>
-              <td><button type="button" class="secondary" data-public-board-request="${escapeHtml(row.id)}">Request invitation</button></td>
+              <td>${renderInvitationAction(row, false)}</td>
             </tr>
           `).join("")}
         </tbody>
@@ -820,6 +919,45 @@ function renderBoard() {
   else if (state.viewMode === "sheet") boardRoot.innerHTML = renderSheet(rows);
   else boardRoot.innerHTML = renderCards(rows);
   updateCountdowns();
+}
+
+async function sendPrivateLinksForRow(row, button = null) {
+  if (!row) return;
+  if (!state.inviteEmail) {
+    openSoftLoginDrawer(row);
+    return;
+  }
+  const originalText = button?.textContent || "";
+  if (button) {
+    button.disabled = true;
+    button.textContent = state.language === "es" ? "Enviando..." : "Sending...";
+  }
+  statusEl.textContent = state.language === "es"
+    ? `Enviando link privado a ${state.inviteEmail}...`
+    : `Sending private link to ${state.inviteEmail}...`;
+  try {
+    const data = await callFindInvitations({
+      email: state.inviteEmail,
+      event_id: row.event?.id || row.event_id || "",
+      lane_id: row.id || "",
+      language: state.language
+    });
+    rememberInvitationAccess(state.inviteEmail, data);
+    renderBoard();
+    statusEl.textContent = data.message || (
+      state.language === "es"
+        ? `Si existe invitacion, enviamos el link privado a ${state.inviteEmail}.`
+        : `If an invitation exists, the private link was sent to ${state.inviteEmail}.`
+    );
+    if (data.sent) queueAlert("linksSent", row);
+  } catch (error) {
+    statusEl.textContent = error.message || "Could not send private links right now.";
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = originalText;
+    }
+  }
 }
 
 async function loadBoard({ announceChanges = true } = {}) {
@@ -893,6 +1031,16 @@ boardRoot.addEventListener("click", (event) => {
     loadBoard();
     return;
   }
+  const softLoginButton = event.target.closest("[data-public-board-soft-login]");
+  if (softLoginButton) {
+    openSoftLoginDrawer(rowById(softLoginButton.dataset.publicBoardSoftLogin));
+    return;
+  }
+  const privateLinkButton = event.target.closest("[data-public-board-private-link]");
+  if (privateLinkButton) {
+    sendPrivateLinksForRow(rowById(privateLinkButton.dataset.publicBoardPrivateLink), privateLinkButton);
+    return;
+  }
   const requestButton = event.target.closest("[data-public-board-request]");
   if (requestButton) {
     renderDetailDrawer(rowById(requestButton.dataset.publicBoardRequest), true);
@@ -911,11 +1059,21 @@ boardRoot.addEventListener("click", (event) => {
 
 detailClose?.addEventListener("click", closeDetailDrawer);
 detailDrawer?.addEventListener("click", (event) => {
+  const privateLinkButton = event.target.closest("[data-public-board-private-link]");
+  if (privateLinkButton) {
+    sendPrivateLinksForRow(rowById(privateLinkButton.dataset.publicBoardPrivateLink), privateLinkButton);
+    return;
+  }
   const softLoginButton = event.target.closest("[data-public-board-soft-login]");
   if (softLoginButton) {
     const row = rowById(softLoginButton.dataset.publicBoardSoftLogin);
     closeDetailDrawer();
     openSoftLoginDrawer(row);
+    return;
+  }
+  const requestButton = event.target.closest("[data-public-board-request]");
+  if (requestButton) {
+    detailContent?.querySelector("#public-invite-request-form [name='company']")?.focus();
     return;
   }
   const supportButton = event.target.closest("[data-public-board-support]");
@@ -985,6 +1143,8 @@ softLoginDrawer?.addEventListener("submit", async (event) => {
     });
     const profile = requestProfile();
     saveRequestProfile({ ...profile, email });
+    rememberInvitationAccess(email, data);
+    renderBoard();
     status.textContent = data.message || "If invitations exist, private links were sent to that email.";
     if (data.sent) queueAlert("linksSent", { route_label: "Private Bid Room", event: { name: "Soft login" } });
   } catch (error) {

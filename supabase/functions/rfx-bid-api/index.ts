@@ -1707,6 +1707,23 @@ function publicInvitationSummary(row: Record<string, unknown>) {
   };
 }
 
+function publicInvitationAccessSummary(row: Record<string, unknown>) {
+  const item = publicInvitationSummary(row);
+  return {
+    invitation_id: item.invitation_id,
+    event_id: item.event_id,
+    lane_id: item.lane_id,
+    rfx_id: item.rfx_id,
+    customer: item.customer,
+    status: item.status,
+    route: item.route,
+    equipment: item.equipment,
+    service: item.service,
+    due_date: item.due_date,
+    vendor_id: item.vendor_id
+  };
+}
+
 function publicInvitationEmailHtml(rows: Record<string, unknown>[], recipientEmail: string) {
   const cards = rows.map((row) => {
     const item = publicInvitationSummary(row);
@@ -1784,6 +1801,9 @@ async function publicBidRoomFindInvitations(supabase: ReturnType<typeof createCl
     return {
       sent: false,
       matched: 0,
+      matched_lane_ids: [],
+      matched_event_ids: [],
+      matched_invitations: [],
       message: language === "es"
         ? "No encontramos invitaciones activas para ese correo. Solicita invitacion desde una oportunidad publica."
         : "No active invitations were found for that email. Request an invitation from a public opportunity."
@@ -1827,18 +1847,24 @@ async function publicBidRoomFindInvitations(supabase: ReturnType<typeof createCl
     }
   }
 
-  const invitations = invitationRows
+  const matchingInvitations = invitationRows
     .map((row) => ({
       ...row,
       rfx_events: resolvedPublicInvitationEvent(row, eventOwnerMap, fallbackOwnerEmail)
     }))
     .filter((row) => cleanText(row.invitation_token))
-    .filter((row) => ["draft", "open", "closed", "awarded"].includes(String(cleanText(relationRecord(row.rfx_events).status) || "").toLowerCase()))
-    .slice(0, 25);
-  if (!invitations.length) {
+    .filter((row) => ["draft", "open", "closed", "awarded"].includes(String(cleanText(relationRecord(row.rfx_events).status) || "").toLowerCase()));
+  const matchedLaneIds = [...new Set(matchingInvitations.map((row) => cleanText(row.rfx_lane_id)).filter(Boolean) as string[])];
+  const matchedEventIds = [...new Set(matchingInvitations.map((row) => cleanText(row.rfx_event_id)).filter(Boolean) as string[])];
+  const matchedInvitations = matchingInvitations.map(publicInvitationAccessSummary);
+  const invitations = matchingInvitations.slice(0, 25);
+  if (!matchingInvitations.length) {
     return {
       sent: false,
       matched: 0,
+      matched_lane_ids: [],
+      matched_event_ids: [],
+      matched_invitations: [],
       message: language === "es"
         ? "No encontramos invitaciones activas para ese correo. Solicita invitacion desde una oportunidad publica."
         : "No active invitations were found for that email. Request an invitation from a public opportunity."
@@ -1898,8 +1924,12 @@ async function publicBidRoomFindInvitations(supabase: ReturnType<typeof createCl
 
   return {
     sent: true,
-    matched: sent,
+    matched: matchingInvitations.length,
+    sent_count: sent,
     owners: sentOwners.length,
+    matched_lane_ids: matchedLaneIds,
+    matched_event_ids: matchedEventIds,
+    matched_invitations: matchedInvitations,
     message: language === "es"
       ? `Enviamos ${sent} link(s) privados a ${email}.`
       : `We sent ${sent} private Bid Room link(s) to ${email}.`
