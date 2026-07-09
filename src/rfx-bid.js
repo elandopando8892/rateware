@@ -27,6 +27,7 @@ const PRIVATE_BID_ANNOUNCEMENTS = {
     enabled: "Private Bid Room alerts enabled.",
     quote: "Quote Available.",
     displaced: "Place new bid. Your offer has been displaced.",
+    rankChanged: "Your rank changed. Review your offer.",
     leading: "You are currently leading.",
     chat: "New message in Bid Room chat.",
     bidSubmitted: "Bid submitted.",
@@ -38,6 +39,7 @@ const PRIVATE_BID_ANNOUNCEMENTS = {
     enabled: "Alertas del Bid Room privado activadas.",
     quote: "Cotizacion disponible.",
     displaced: "Necesitas pujar de nuevo. Has sido superado.",
+    rankChanged: "Tu ranking cambio. Revisa tu oferta.",
     leading: "Vas liderando.",
     chat: "Nuevo mensaje en el chat del Bid Room.",
     bidSubmitted: "Oferta enviada.",
@@ -701,6 +703,7 @@ function privateAlertLabel(type) {
     enabled: "Alerts enabled",
     quote: "Quote movement",
     displaced: "Rank changed",
+    rankChanged: "Rank changed",
     leading: "Leading offer",
     chat: "New chat message",
     bidSubmitted: "Bid submitted",
@@ -839,6 +842,7 @@ function privateBidRoomSnapshot(data = {}) {
     rank: numberOrNull(liveBoard.current_rank ?? currentRow.rank),
     bidCount: Number(liveBoard.bid_count || rows.length || 0),
     currentRate: numberOrNull(currentRow.amount ?? data.invitation?.bid_rate),
+    currentUpdatedAt: currentRow.responded_at || data.invitation?.responded_at || data.invitation?.updated_at || "",
     signal: liveBoard.marketplace_signal || liveBoard.position_signal || "",
     historyCount: Array.isArray(data.bid_history) ? data.bid_history.length : 0,
     deadlineTone: deadline.tone,
@@ -856,8 +860,16 @@ function detectPrivateBidRoomSignals(data = {}) {
     return;
   }
 
+  const ownOfferChanged = Boolean(snapshot.currentUpdatedAt && previous.currentUpdatedAt && snapshot.currentUpdatedAt !== previous.currentUpdatedAt);
   if (snapshot.rank && previous.rank && snapshot.rank > previous.rank) {
-    queuePrivateBidAlert("displaced", `Your rank moved from #${previous.rank} to #${snapshot.rank}. Review the live board and consider a new bid.`);
+    if (ownOfferChanged) {
+      queuePrivateBidAlert("rankChanged", dualText(
+        `Your rank moved from #${previous.rank} to #${snapshot.rank} after your latest offer update.`,
+        `Tu ranking cambio de #${previous.rank} a #${snapshot.rank} despues de tu ultima actualizacion.`
+      ));
+    } else {
+      queuePrivateBidAlert("displaced", `Your rank moved from #${previous.rank} to #${snapshot.rank}. Review the live board and consider a new bid.`);
+    }
   } else if (snapshot.rank === 1 && previous.rank !== 1) {
     queuePrivateBidAlert("leading", "Your offer moved into the leading position.");
   } else if (snapshot.bidCount > previous.bidCount) {

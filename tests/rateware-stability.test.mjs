@@ -244,7 +244,8 @@ assert.match(bidRoomBoardSource, /Deadline closing soon/, "Public Bid Room board
 assert.match(bidRoomBoardSource, /Invitation request sent/, "Public Bid Room board should announce invitation requests");
 assert.match(bidRoomBoardSource, /Quote Available/, "Public Bid Room board should announce new quotes in English");
 assert.match(bidRoomBoardSource, /Cotización disponible/, "Public Bid Room board should announce new quotes in Spanish");
-assert.match(bidRoomBoardSource, /Your offer has been displaced/, "Public Bid Room board should announce ranking displacement");
+assert.match(bidRoomBoardSource, /Best offer updated/, "Public Bid Room board should announce best offer movement without implying the viewer was displaced");
+assert.match(bidRoomBoardSource, /queueAlert\("bestUpdated", row\)/, "Public Bid Room board should treat best-rate changes as neutral market movement");
 assert.match(bidRoomBoardSource, /speechSynthesis/, "Public Bid Room board should use browser speech announcements");
 assert.match(rfxBidApiSource, /body\.action === "public_bid_room_board"[\s\S]*const token = cleanText\(body\.token\)/, "Public Bid Room board action should be handled before invitation token validation");
 assert.match(rfxBidApiSource, /body\.action === "public_bid_room_request_invite"[\s\S]*const token = cleanText\(body\.token\)/, "Public invitation requests should be handled before invitation token validation");
@@ -555,6 +556,10 @@ assert.match(rfxBidSource, /bid-confirm-review/, "Carrier portal should require 
 assert.match(rfxBidSource, /private-bid-sound/, "Carrier portal should expose private multimedia alert controls");
 assert.match(rfxBidSource, /PRIVATE_BID_ANNOUNCEMENTS/, "Carrier portal should define private bid room alert phrases");
 assert.match(rfxBidSource, /Place new bid\. Your offer has been displaced\./, "Carrier portal should announce rank displacement");
+assert.match(rfxBidSource, /rankChanged: "Your rank changed\. Review your offer\."/,
+  "Carrier portal should have a neutral rank-change alert for self-updates");
+assert.match(rfxBidSource, /ownOfferChanged[\s\S]*queuePrivateBidAlert\("rankChanged"/,
+  "Carrier portal should not announce displacement when the carrier's own update changed rank");
 assert.match(rfxBidSource, /Bid submitted\./, "Carrier portal should announce successful bid submission");
 assert.match(rfxBidSource, /New message in Bid Room chat\./, "Carrier portal should announce new chat messages");
 assert.match(rfxBidSource, /speechSynthesis/, "Carrier portal should use browser speech announcements");

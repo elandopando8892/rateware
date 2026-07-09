@@ -44,6 +44,7 @@ const ANNOUNCEMENTS = {
     enabled: "Rateware bid room alerts enabled.",
     opportunity: "New opportunity available.",
     quote: "Quote Available.",
+    bestUpdated: "Best offer updated.",
     closing: "Deadline closing soon.",
     displaced: "Place new bid. Your offer has been displaced.",
     inviteSent: "Invitation request sent.",
@@ -57,6 +58,7 @@ const ANNOUNCEMENTS = {
 };
 
 ANNOUNCEMENTS.es.opportunity = "Nueva oportunidad disponible.";
+ANNOUNCEMENTS.es.bestUpdated = "Mejor oferta actualizada.";
 ANNOUNCEMENTS.es.closing = "La oportunidad esta por cerrar.";
 ANNOUNCEMENTS.es.inviteSent = "Solicitud de invitacion enviada.";
 ANNOUNCEMENTS.es.linksSent = "Links privados enviados.";
@@ -522,7 +524,7 @@ function detectBoardSignals(rows) {
       queueAlert("closing", row);
       alertCount += 1;
     } else if (bestRate > 0 && Number(previous.best_rate || 0) > 0 && bestRate < Number(previous.best_rate)) {
-      queueAlert("displaced", row);
+      queueAlert("bestUpdated", row);
       alertCount += 1;
     }
   }
