@@ -1,6 +1,7 @@
 import { getKindeToken } from "./auth.js";
 import { SUPABASE_URL } from "./config.js";
 import { callRatewareApi } from "./rateware-api.js";
+import { apiErrorMessage } from "./error-copy.js";
 
 export async function syncRatewareCatalog(mode = "core") {
   const token = await getKindeToken();
@@ -22,7 +23,7 @@ export async function syncRatewareCatalog(mode = "core") {
   }
 
   if (!response.ok) {
-    throw new Error(data.error || `Catalog sync failed with HTTP ${response.status}.`);
+    throw new Error(apiErrorMessage(data, text, `Catalog sync failed with HTTP ${response.status}.`));
   }
   return data;
 }

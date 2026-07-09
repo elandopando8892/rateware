@@ -2,6 +2,22 @@ import { getKindeToken } from "./auth.js";
 import { SUPABASE_URL } from "./config.js";
 import { detectDocumentType } from "./file-rules.js";
 import { callRatewareApi } from "./rateware-api.js";
+import { apiErrorMessage } from "./error-copy.js";
+
+async function readApiJson(response) {
+  const text = await response.text();
+  try {
+    return {
+      data: text ? JSON.parse(text) : {},
+      text
+    };
+  } catch {
+    return {
+      data: { error: text },
+      text
+    };
+  }
+}
 
 export async function uploadRawFile(file, { vendorId = "", vendor = "", rfx = "" } = {}) {
   const documentType = detectDocumentType(file);
@@ -24,8 +40,8 @@ export async function uploadRawFile(file, { vendorId = "", vendor = "", rfx = ""
     body: formData
   });
 
-  const data = await response.json();
-  if (!response.ok) throw new Error(data.error || "Upload failed.");
+  const { data, text } = await readApiJson(response);
+  if (!response.ok) throw new Error(apiErrorMessage(data, text, "Upload failed."));
   return data.raw_upload;
 }
 
@@ -96,7 +112,7 @@ export async function interpretUpload(rawUploadId, { correctionNote = "" } = {})
     body: JSON.stringify({ raw_upload_id: rawUploadId, correction_note: correctionNote })
   });
 
-  const data = await response.json();
-  if (!response.ok) throw new Error(data.error || "Interpretation failed.");
+  const { data, text } = await readApiJson(response);
+  if (!response.ok) throw new Error(apiErrorMessage(data, text, "Interpretation failed."));
   return data;
 }

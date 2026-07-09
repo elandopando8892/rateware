@@ -1,4 +1,5 @@
 import { SUPABASE_URL } from "./config.js";
+import { apiErrorMessage } from "./error-copy.js";
 
 const title = document.querySelector("#carrier-profile-title");
 const card = document.querySelector("#carrier-profile-card");
@@ -324,8 +325,14 @@ async function callProfileApi(action, payload = {}) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ action, token: tokenFromUrl(), ...payload })
   });
-  const data = await response.json();
-  if (!response.ok) throw new Error(data.error || t("requestFailed"));
+  const text = await response.text();
+  let data = {};
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch {
+    data = { error: text };
+  }
+  if (!response.ok) throw new Error(apiErrorMessage(data, text, t("requestFailed")));
   return data;
 }
 

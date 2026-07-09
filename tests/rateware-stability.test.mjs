@@ -5,14 +5,17 @@ const apiSource = readFileSync(new URL("../supabase/functions/rateware-api/index
 const interpretUploadSource = readFileSync(new URL("../supabase/functions/interpret-upload/index.ts", import.meta.url), "utf8");
 const uploadHistorySource = readFileSync(new URL("../src/upload-history.js", import.meta.url), "utf8");
 const uploadCenterSource = readFileSync(new URL("../src/upload-center.js", import.meta.url), "utf8");
+const uploadServiceSource = readFileSync(new URL("../src/upload-service.js", import.meta.url), "utf8");
 const uploadHistoryHtml = readFileSync(new URL("../upload-history.html", import.meta.url), "utf8");
 const uploadCenterHtml = readFileSync(new URL("../upload-center.html", import.meta.url), "utf8");
 const appHtml = readFileSync(new URL("../app.html", import.meta.url), "utf8");
+const businessIntelligenceHtml = readFileSync(new URL("../business-intelligence.html", import.meta.url), "utf8");
 const bulkImportTemplateSource = readFileSync(new URL("../src/bulk-import-template.js", import.meta.url), "utf8");
 const stagingReviewSource = readFileSync(new URL("../src/staging-review.js", import.meta.url), "utf8");
 const ratewareSource = readFileSync(new URL("../src/rateware.js", import.meta.url), "utf8");
 const sheetUiSource = readFileSync(new URL("../src/sheet-ui.js", import.meta.url), "utf8");
 const catalogWorkbenchSource = readFileSync(new URL("../src/catalog-workbench.js", import.meta.url), "utf8");
+const catalogServiceSource = readFileSync(new URL("../src/catalog-service.js", import.meta.url), "utf8");
 const locationMatchDrawerSource = readFileSync(new URL("../src/location-match-drawer.js", import.meta.url), "utf8");
 const stagingReviewHtml = readFileSync(new URL("../staging-review.html", import.meta.url), "utf8");
 const ratewareHtml = readFileSync(new URL("../rateware.html", import.meta.url), "utf8");
@@ -24,6 +27,8 @@ const vendorSupportServiceSource = readFileSync(new URL("../src/vendor-support-s
 const vendorSupportHtml = readFileSync(new URL("../vendor-support.html", import.meta.url), "utf8");
 const carrierProfileSource = readFileSync(new URL("../src/carrier-profile.js", import.meta.url), "utf8");
 const carrierProfileHtml = readFileSync(new URL("../carrier-profile.html", import.meta.url), "utf8");
+const catalogWorkbenchHtml = readFileSync(new URL("../catalog-workbench.html", import.meta.url), "utf8");
+const interpretationMemoryHtml = readFileSync(new URL("../interpretation-memory.html", import.meta.url), "utf8");
 const carrierProfileApiSource = readFileSync(new URL("../supabase/functions/carrier-profile-api/index.ts", import.meta.url), "utf8");
 const rfxEventsSource = readFileSync(new URL("../src/rfx-events.js", import.meta.url), "utf8");
 const rfxEventsHtml = readFileSync(new URL("../rfx-events.html", import.meta.url), "utf8");
@@ -126,6 +131,30 @@ assert.match(stagingReviewSource, /downloadVendorMatchErrors/, "Staging should d
 assert.match(ratewareSource, /downloadVendorMatchErrors/, "Rateware should download unmatched vendor diagnostics");
 assert.match(stagingReviewSource, /Shipment ID/, "Staging should expose Shipment ID");
 assert.match(ratewareSource, /Shipment ID/, "Rateware should expose Shipment ID");
+for (const [label, html] of [
+  ["Command Center", appHtml],
+  ["Import", uploadCenterHtml],
+  ["Source Files", uploadHistoryHtml],
+  ["Review Queue", stagingReviewHtml],
+  ["Rateware", ratewareHtml],
+  ["Analyze", businessIntelligenceHtml],
+  ["Carrier CRM", vendorsHtml],
+  ["Bid Room", rfxEventsHtml],
+  ["Vendor Support", vendorSupportHtml],
+  ["Settings", settingsHtml],
+  ["Learning Rules", interpretationMemoryHtml],
+  ["Catalog", catalogWorkbenchHtml]
+]) {
+  const nav = html.match(/<nav class="nav-groups"[\s\S]*?<\/nav>/)?.[0] || "";
+  assert.match(nav, /data-nav-code="CC">Command Center/, `${label} shell should use the modern Command Center nav label`);
+  assert.match(nav, /data-nav-code="IM">Import/, `${label} shell should use the modern Import nav label`);
+  assert.match(nav, /data-nav-code="SF">Source Files/, `${label} shell should use the modern Source Files nav label`);
+  assert.match(nav, /data-nav-code="RQ">Review Queue/, `${label} shell should use the modern Review Queue nav label`);
+  assert.match(nav, /data-nav-code="CM">Carrier CRM/, `${label} shell should use the modern Carrier CRM nav label`);
+  assert.match(nav, /data-nav-code="LR">Learning Rules/, `${label} shell should use the modern Learning Rules nav label`);
+  assert.match(nav, /data-nav-code="CT">Catalog/, `${label} shell should use the modern Catalog nav label`);
+  assert.doesNotMatch(nav, />Dashboard<|>Upload Center<|>Upload History<|>Staging Review<|>AI Analyst<|>Vendors<|>Memory<|>Catalogs</, `${label} shell should not render legacy nav labels`);
+}
 assert.match(stagingReviewHtml, /staging-next-issue/, "Staging spreadsheet should expose a next-issue navigator");
 assert.match(stagingReviewHtml, /staging-select-issue-rows/, "Staging spreadsheet should select visible rows with validation issues");
 assert.match(ratewareHtml, /rateware-next-issue/, "Rateware spreadsheet should expose a next-issue navigator");
@@ -153,6 +182,19 @@ assert.match(ratewareApiClientSource, /function apiErrorMessage/, "Rateware API 
 assert.doesNotMatch(ratewareApiClientSource, /new Error\(data\.error \|\| data\.message/, "Rateware API client should not throw raw object errors that render as [object Object]");
 assert.match(errorCopySource, /function rawErrorMessage/, "Human error copy should convert nested object errors to readable text");
 assert.match(errorCopySource, /lower === "\[object object\]"/, "Human error copy should never display [object Object] to users");
+assert.match(errorCopySource, /export function apiErrorMessage/, "Shared UI modules should use a common API error formatter");
+for (const [label, source] of [
+  ["Upload service", uploadServiceSource],
+  ["Catalog service", catalogServiceSource],
+  ["Public Bid Room board", bidRoomBoardSource],
+  ["Private carrier Bid Room", rfxBidSource],
+  ["Carrier profile portal", carrierProfileSource]
+]) {
+  assert.doesNotMatch(source, /new Error\(data\.(error|message)\s*\|\|/, `${label} should not throw raw object API errors`);
+  assert.doesNotMatch(source, /data\.error\s*\|\|\s*data\.message/, `${label} should not prefer raw object API errors over normalized copy`);
+}
+assert.match(apiSource, /const BULK_SELECTED_ID_LIMIT = 1000;/, "General bulk actions should support up to 1,000 selected rows per request");
+assert.match(apiSource, /const BULK_SEND_LIMIT = 100;/, "Gmail sending should keep the smaller send batch size separate from general bulk actions");
 assert.match(rfxEventsSource, /Draft queue could not be generated/, "Bid Room Step 4 should show contextual outreach errors");
 assert.match(rfxEventsSource, /function eventLifecycleRiskSummary/, "Bid Room event lifecycle actions should summarize event risk before changes");
 assert.match(rfxEventsSource, /function confirmEventLifecycleAction/, "Bid Room event lifecycle actions should use a shared confirmation guard");

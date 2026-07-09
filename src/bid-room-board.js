@@ -1,4 +1,5 @@
 import { SUPABASE_URL } from "./config.js";
+import { apiErrorMessage } from "./error-copy.js";
 
 const boardRoot = document.querySelector("#public-board-root");
 const summaryRoot = document.querySelector("#public-board-summary");
@@ -268,7 +269,7 @@ async function callPublicBoard(payload = {}) {
   } catch {
     data = { error: text };
   }
-  if (!response.ok) throw new Error(data.error || data.message || text || `Bid Room board failed (${response.status})`);
+  if (!response.ok) throw new Error(apiErrorMessage(data, text, `Bid Room board failed (${response.status})`));
   return data;
 }
 
@@ -285,7 +286,7 @@ async function callInviteRequest(payload = {}) {
   } catch {
     data = { error: text };
   }
-  if (!response.ok) throw new Error(data.error || data.message || text || `Invitation request failed (${response.status})`);
+  if (!response.ok) throw new Error(apiErrorMessage(data, text, `Invitation request failed (${response.status})`));
   return data;
 }
 
@@ -302,7 +303,7 @@ async function callFindInvitations(payload = {}) {
   } catch {
     data = { error: text };
   }
-  if (!response.ok) throw new Error(data.error || data.message || text || `Invitation lookup failed (${response.status})`);
+  if (!response.ok) throw new Error(apiErrorMessage(data, text, `Invitation lookup failed (${response.status})`));
   return data;
 }
 
@@ -319,7 +320,7 @@ async function callBidSupport(payload = {}) {
   } catch {
     data = { error: text };
   }
-  if (!response.ok) throw new Error(data.error || data.message || text || `Support request failed (${response.status})`);
+  if (!response.ok) throw new Error(apiErrorMessage(data, text, `Support request failed (${response.status})`));
   return data;
 }
 
@@ -1042,11 +1043,11 @@ async function sendPrivateLinksForRow(row, button = null) {
     });
     rememberInvitationAccess(state.inviteEmail, data);
     renderBoard();
-    statusEl.textContent = data.message || (
+    statusEl.textContent = apiErrorMessage({ message: data.message }, "", (
       state.language === "es"
         ? `Si existe invitacion, enviamos el link privado a ${state.inviteEmail}.`
         : `If an invitation exists, the private link was sent to ${state.inviteEmail}.`
-    );
+    ));
     if (data.sent) queueAlert("linksSent", row);
   } catch (error) {
     statusEl.textContent = error.message || "Could not send private links right now.";
@@ -1229,7 +1230,7 @@ detailDrawer?.addEventListener("submit", async (event) => {
       email: payload.email,
       phone: payload.phone
     });
-    status.textContent = data.message || "Invitation request sent.";
+    status.textContent = apiErrorMessage({ message: data.message }, "", "Invitation request sent.");
     queueAlert("inviteSent", rowById(form.dataset.laneId) || { route_label: "Bid Room", event: { name: "Bid Room" } });
   } catch (error) {
     status.textContent = error.message || "Could not send the invitation request.";
@@ -1262,7 +1263,7 @@ softLoginDrawer?.addEventListener("submit", async (event) => {
     saveRequestProfile({ ...profile, email });
     rememberInvitationAccess(email, data);
     renderBoard();
-    status.textContent = data.message || "If invitations exist, private links were sent to that email.";
+    status.textContent = apiErrorMessage({ message: data.message }, "", "If invitations exist, private links were sent to that email.");
     if (data.sent) queueAlert("linksSent", { route_label: "Private Bid Room", event: { name: "Soft login" } });
   } catch (error) {
     status.textContent = error.message || "Could not find invitations right now.";

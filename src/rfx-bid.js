@@ -1,5 +1,6 @@
 import * as XLSX from "https://esm.sh/xlsx@0.18.5";
 import { SUPABASE_URL } from "./config.js";
+import { apiErrorMessage } from "./error-copy.js";
 
 const title = document.querySelector("#bid-event-title");
 const card = document.querySelector("#bid-invitation-card");
@@ -393,8 +394,14 @@ async function callBidApi(action, payload = {}) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ action, token: tokenFromUrl(), ...payload })
   });
-  const data = await response.json();
-  if (!response.ok) throw new Error(data.error || "Bid request failed.");
+  const text = await response.text();
+  let data = {};
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch {
+    data = { error: text };
+  }
+  if (!response.ok) throw new Error(apiErrorMessage(data, text, "Bid request failed."));
   return data;
 }
 

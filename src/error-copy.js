@@ -66,3 +66,14 @@ export function humanizeError(errorOrMessage) {
 
   return raw.length > 180 ? `${raw.slice(0, 177)}...` : raw;
 }
+
+export function apiErrorMessage(data = {}, text = "", fallback = "Request failed.") {
+  const raw = rawErrorMessage(data?.error)
+    || rawErrorMessage(data?.message)
+    || rawErrorMessage(data?.details)
+    || rawErrorMessage(data?.hint)
+    || rawErrorMessage(data)
+    || rawErrorMessage(text)
+    || fallback;
+  return humanizeError(raw);
+}
