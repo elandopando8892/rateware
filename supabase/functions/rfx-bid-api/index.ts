@@ -247,6 +247,51 @@ function objectRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }
 
+function normalizeDomain(value: unknown) {
+  const text = cleanText(value);
+  if (!text) return null;
+  const cleaned = text
+    .toLowerCase()
+    .replace(/^mailto:/, "")
+    .replace(/^https?:\/\//, "")
+    .replace(/^www\./, "")
+    .replace(/^@/, "")
+    .split(/[\/\s,;]+/)[0]
+    .replace(/^.*@/, "")
+    .replace(/[^a-z0-9.-]+$/g, "")
+    .replace(/\.+$/g, "");
+  return /^[a-z0-9]([a-z0-9.-]*[a-z0-9])?\.[a-z]{2,}$/i.test(cleaned) ? cleaned : null;
+}
+
+function carrierDomain(value: unknown) {
+  const domain = normalizeDomain(value);
+  if (!domain || GENERIC_EMAIL_DOMAINS.has(domain)) return null;
+  return domain;
+}
+
+function safeStorageSegment(value: unknown, fallback = "unknown") {
+  return String(value || fallback)
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 96) || fallback;
+}
+
+function cleanDate(value: unknown) {
+  const text = cleanText(value);
+  if (!text) return null;
+  const isoMatch = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (isoMatch) return `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`;
+  const parsed = new Date(text);
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString().slice(0, 10);
+}
+
+function rateText(value: unknown) {
+  const numberValue = cleanNumber(value);
+  return numberValue === null ? null : String(numberValue);
+}
+
 function base64ToBytes(value: string) {
   const binary = atob(value);
   const bytes = new Uint8Array(binary.length);
@@ -3267,6 +3312,269 @@ async function bidSupportReply(supabase: ReturnType<typeof createClient>, input:
   };
 }
 
+function bidRateStagingInput(
+  invitation: Record<string, unknown>,
+  updatedBid: Record<string, unknown>,
+  revisionType: string,
+  now: string
+) {
+  const event = relationRecord(invitation.rfx_events);
+  const lane = relationRecord(invitation.rfx_lanes);
+  const vendor = relationRecord(invitation.vendors);
+  const economics = commercialRateEconomics(updatedBid);
+  const vendorDomain = carrierDomain(vendor.domain) || carrierDomain(vendor.primary_email);
+  const vendorReference = cleanText(vendor.vendor_name || vendor.domain || vendor.primary_email || invitation.vendor_id);
+  const quoteDate = cleanDate(updatedBid.responded_at || now);
+  const rfxId = cleanText(event.rfx_id) || "RFx";
+  const laneNumber = cleanText(lane.lane_number || invitation.rfx_lane_id) || "lane";
+  const carrierKey = vendorDomain || safeStorageSegment(vendorReference || invitation.vendor_id, "carrier");
+  const routeKey = [cleanText(lane.origin), cleanText(lane.destination)].filter(Boolean).join(" -> ");
+  const businessKey = [rfxId, routeKey, carrierKey].filter(Boolean).join(" | ");
+  const sourceEvidence = {
+    import_method: "rfx_bid_submission",
+    revision_type: revisionType,
+    rfx_event_id: event.id || invitation.rfx_event_id,
+    rfx_lane_id: lane.id || invitation.rfx_lane_id,
+    rfx_lane_vendor_id: invitation.id,
+    vendor_id: invitation.vendor_id,
+    responded_at: updatedBid.responded_at || now
+  };
+
+  return {
+    vendor_id: invitation.vendor_id || null,
+    vendor_domain: vendorDomain,
+    vendor_reference: vendorReference,
+    rfx_id: rfxId,
+    row_id: [rfxId, laneNumber, carrierKey].filter(Boolean).join("-"),
+    rfx_key: rfxId,
+    route_key: routeKey || null,
+    business_key: businessKey || null,
+    quote_date: quoteDate,
+    origin: cleanText(lane.origin),
+    normalized_origin: cleanText(lane.normalized_origin || lane.origin),
+    origin_country: cleanText(lane.origin_country),
+    origin_zip_prefix: cleanText(lane.origin_zip_prefix || lane.origin_zip || lane.origin_postal_code),
+    origin_city: cleanText(lane.origin_city),
+    origin_state: cleanText(lane.origin_state),
+    origin_market: cleanText(lane.origin_market),
+    origin_region: cleanText(lane.origin_region),
+    destination: cleanText(lane.destination),
+    normalized_destination: cleanText(lane.normalized_destination || lane.destination),
+    destination_country: cleanText(lane.destination_country),
+    destination_zip_prefix: cleanText(lane.destination_zip_prefix || lane.destination_zip || lane.destination_postal_code),
+    destination_city: cleanText(lane.destination_city),
+    destination_state: cleanText(lane.destination_state),
+    destination_market: cleanText(lane.destination_market),
+    destination_region: cleanText(lane.destination_region),
+    equipment: cleanText(lane.equipment),
+    normalized_equipment: cleanText(lane.normalized_equipment || lane.equipment),
+    trailer: cleanText(lane.trailer),
+    normalized_trailer: cleanText(lane.normalized_trailer || lane.trailer),
+    config: cleanText(lane.config),
+    normalized_config: cleanText(lane.normalized_config || lane.config),
+    operation: cleanText(lane.operation),
+    normalized_operation: cleanText(lane.normalized_operation || lane.operation),
+    service: cleanText(lane.service),
+    normalized_service: cleanText(lane.normalized_service || lane.service),
+    all_in_rate: rateText(economics.carrier_rate ?? updatedBid.bid_rate),
+    currency: cleanText(economics.currency || updatedBid.currency || lane.currency) || "USD",
+    weekly_capacity: rateText(updatedBid.weekly_capacity),
+    notes: [
+      cleanText(updatedBid.notes),
+      `Source: RFx carrier bid ${revisionType}`,
+      `Carrier cost: ${economics.carrier_rate ?? "-"} ${economics.currency || updatedBid.currency || lane.currency || "USD"}`,
+      economics.board_rate !== null ? `Board rate: ${economics.board_rate} ${economics.currency || updatedBid.currency || lane.currency || "USD"}` : null,
+      normalizeCommercialModel(updatedBid.commercial_model) ? `Commercial model: ${normalizeCommercialModel(updatedBid.commercial_model)}` : null,
+      cleanNumber(updatedBid.marksman_margin_pct) !== null ? `Suggested margin: ${cleanNumber(updatedBid.marksman_margin_pct)}%` : null,
+      cleanNumber(updatedBid.carrier_share_pct) !== null ? `Carrier invoice share: ${cleanNumber(updatedBid.carrier_share_pct)}%` : null,
+      cleanBoolean(updatedBid.best_alternative_offered) ? `Best alternative: ${[cleanText(updatedBid.alternative_equipment), rateText(updatedBid.alternative_units) ? `${rateText(updatedBid.alternative_units)} unit(s)` : null, cleanText(updatedBid.alternative_notes)].filter(Boolean).join(" / ")}` : null,
+      cleanBoolean(updatedBid.equipment_available) !== null ? `Equipment available: ${cleanBoolean(updatedBid.equipment_available) ? "yes" : "no"}` : null,
+      cleanText(updatedBid.unit_details) ? `Unit details: ${cleanText(updatedBid.unit_details)}` : null,
+      cleanText(updatedBid.eta_pickup) ? `ETA pickup: ${cleanText(updatedBid.eta_pickup)}` : null,
+      cleanText(updatedBid.eta_delivery) ? `ETA delivery: ${cleanText(updatedBid.eta_delivery)}` : null
+    ].filter(Boolean).join(" | "),
+    carrier_cost_rate: economics.carrier_rate,
+    customer_board_rate: economics.board_rate,
+    commercial_model: economics.commercial_model,
+    commission_fee: economics.commission_fee,
+    commission_pct: economics.commission_pct,
+    markup_fee: economics.markup_fee,
+    markup_pct: economics.markup_pct,
+    rate_basis: economics.rate_basis,
+    source_bid_status: revisionType,
+    confidence: 1,
+    extraction_warnings: [],
+    audit_flags: [],
+    field_confidence: {
+      import_method: "rfx_bid_submission",
+      all_fields: 1,
+      carrier_cost_rate: 1,
+      customer_board_rate: 1,
+      commercial_model: 1
+    },
+    source_evidence: sourceEvidence,
+    extracted_payload: {
+      import_method: "rfx_bid_submission",
+      revision_type: revisionType,
+      rfx_event: {
+        id: event.id || invitation.rfx_event_id,
+        rfx_id: event.rfx_id || null,
+        name: event.name || null,
+        customer: event.customer || null
+      },
+      lane,
+      vendor: {
+        id: invitation.vendor_id || null,
+        vendor_name: vendor.vendor_name || null,
+        domain: vendor.domain || null,
+        primary_email: vendor.primary_email || null
+      },
+      bid: {
+        id: updatedBid.id || invitation.id,
+        bid_rate: updatedBid.bid_rate,
+        currency: updatedBid.currency,
+        weekly_capacity: updatedBid.weekly_capacity,
+        transit_days: updatedBid.transit_days,
+        notes: updatedBid.notes,
+        commercial_model: updatedBid.commercial_model,
+        marksman_margin_pct: updatedBid.marksman_margin_pct,
+        carrier_share_pct: updatedBid.carrier_share_pct,
+        best_alternative_offered: updatedBid.best_alternative_offered,
+        alternative_equipment: updatedBid.alternative_equipment,
+        alternative_units: updatedBid.alternative_units,
+        alternative_notes: updatedBid.alternative_notes,
+        equipment_available: updatedBid.equipment_available,
+        unit_details: updatedBid.unit_details,
+        eta_pickup: updatedBid.eta_pickup,
+        eta_delivery: updatedBid.eta_delivery,
+        responded_at: updatedBid.responded_at || now
+      },
+      economics
+    }
+  };
+}
+
+async function ensureBidRateStagingRow(
+  supabase: ReturnType<typeof createClient>,
+  invitation: Record<string, unknown>,
+  updatedBid: Record<string, unknown>,
+  revisionType: string,
+  now: string
+) {
+  const event = relationRecord(invitation.rfx_events);
+  if (!event.id) return { status: "skipped", reason: "missing_rfx_event" };
+  const row = bidRateStagingInput(invitation, updatedBid, revisionType, now);
+  const existingStagingId = cleanText(invitation.bid_rate_staging_id);
+  let targetStagingId: string | null = null;
+
+  if (existingStagingId) {
+    const existing = await supabase
+      .from("rate_staging")
+      .select("id,status")
+      .eq("id", existingStagingId)
+      .maybeSingle();
+    if (existing.error) throw existing.error;
+    if (existing.data?.status === "pending_review") targetStagingId = existing.data.id;
+  }
+
+  if (targetStagingId) {
+    const update = await supabase
+      .from("rate_staging")
+      .update({
+        ...row,
+        status: "pending_review",
+        updated_at: now
+      })
+      .eq("id", targetStagingId)
+      .select("id,status,row_id")
+      .single();
+    if (update.error) throw update.error;
+
+    const link = await supabase
+      .from("rfx_lane_vendors")
+      .update({ bid_rate_staging_id: update.data.id, bid_rate_staged_at: now, updated_at: now })
+      .eq("id", invitation.id);
+    if (link.error) throw link.error;
+    return { status: "updated", id: update.data.id, row: update.data };
+  }
+
+  const storageStamp = now.replace(/[^0-9T]/g, "").slice(0, 15);
+  const storageKey = `${storageStamp}-${safeStorageSegment(event.rfx_id || event.id)}-${safeStorageSegment(invitation.id)}-${crypto.randomUUID().slice(0, 8)}`;
+  const rawUpload = await supabase
+    .from("raw_uploads")
+    .insert({
+      original_filename: `${cleanText(event.rfx_id) || "rfx"}-carrier-bid-${safeStorageSegment(invitation.id)}.json`,
+      storage_bucket: "rfx-bids",
+      storage_path: `rfx-bids/${event.id}/${storageKey}.json`,
+      mime_type: "application/json",
+      file_size_bytes: 0,
+      document_type: "email",
+      vendor_id: invitation.vendor_id || null,
+      vendor_hint: row.vendor_domain || row.vendor_reference || null,
+      rfx_hint: event.rfx_id || null,
+      status: "staged",
+      staging_target: "rate_staging",
+      interpreted_at: now,
+      interpreted_rate_rows: 1,
+      expected_rate_rows: 1,
+      audit_status: "ok",
+      audit_warnings: [],
+      interpretation_audit: {
+        status: "ok",
+        import_method: "rfx_bid_submission",
+        revision_type: revisionType,
+        rfx_event_id: event.id,
+        rfx_id: event.rfx_id || null,
+        rfx_lane_id: invitation.rfx_lane_id || null,
+        rfx_lane_vendor_id: invitation.id,
+        target_status: "pending_review"
+      }
+    })
+    .select("id")
+    .single();
+  if (rawUpload.error) throw rawUpload.error;
+
+  const job = await supabase
+    .from("interpretation_jobs")
+    .insert({
+      raw_upload_id: rawUpload.data.id,
+      status: "completed",
+      completed_at: now,
+      model: "rfx-bid-capture",
+      extracted_rows: 1,
+      error_message: null
+    })
+    .select("id")
+    .single();
+  if (job.error) throw job.error;
+
+  const insert = await supabase
+    .from("rate_staging")
+    .insert({
+      ...row,
+      raw_upload_id: rawUpload.data.id,
+      interpretation_job_id: job.data.id,
+      status: "pending_review"
+    })
+    .select("id,status,row_id")
+    .single();
+  if (insert.error) throw insert.error;
+
+  const link = await supabase
+    .from("rfx_lane_vendors")
+    .update({ bid_rate_staging_id: insert.data.id, bid_rate_staged_at: now, updated_at: now })
+    .eq("id", invitation.id);
+  if (link.error) throw link.error;
+
+  return {
+    status: "created",
+    id: insert.data.id,
+    row: insert.data,
+    raw_upload_id: rawUpload.data.id,
+    job_id: job.data.id
+  };
+}
+
 Deno.serve(async (request) => {
   if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders() });
 
@@ -3318,6 +3626,7 @@ Deno.serve(async (request) => {
           viewed_at,
           responded_at,
           bid_rate,
+          bid_rate_staging_id,
           currency,
           weekly_capacity,
           transit_days,
@@ -3587,6 +3896,7 @@ Deno.serve(async (request) => {
         : revisionType === "revision"
           ? "Quote revision"
           : "Initial quote";
+      const now = new Date().toISOString();
 
       const patch = {
         invitation_status: "quoted",
@@ -3610,15 +3920,15 @@ Deno.serve(async (request) => {
         availability_validation_notes: cleanText(body.availability_validation_notes),
         notes: cleanText(body.notes),
         response_source: "carrier_portal",
-        responded_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
+        responded_at: now,
+        updated_at: now
       };
 
       const result = await supabase
         .from("rfx_lane_vendors")
         .update(patch)
         .eq("id", invitationResult.data.id)
-        .select("id,invitation_status,bid_rate,currency,weekly_capacity,transit_days,commercial_model,marksman_margin_pct,carrier_share_pct,best_alternative_offered,alternative_equipment,alternative_units,alternative_notes,equipment_available,unit_details,eta_pickup,eta_delivery,mirror_account_enabled,availability_validation_status,availability_validation_notes,notes,responded_at")
+        .select("id,invitation_status,bid_rate,bid_rate_staging_id,bid_rate_staged_at,currency,weekly_capacity,transit_days,commercial_model,marksman_margin_pct,carrier_share_pct,best_alternative_offered,alternative_equipment,alternative_units,alternative_notes,equipment_available,unit_details,eta_pickup,eta_delivery,mirror_account_enabled,availability_validation_status,availability_validation_notes,notes,responded_at")
         .single();
       if (result.error) throw result.error;
 
@@ -3631,6 +3941,13 @@ Deno.serve(async (request) => {
       const lane = Array.isArray(invitationResult.data.rfx_lanes)
         ? invitationResult.data.rfx_lanes[0]
         : invitationResult.data.rfx_lanes;
+      const ratewareCapture = await ensureBidRateStagingRow(
+        supabase,
+        invitationResult.data as Record<string, unknown>,
+        result.data as Record<string, unknown>,
+        revisionType,
+        now
+      );
       if (rfxEvent?.owner_email) {
         const historyResult = await supabase.from("contact_history").insert({
           owner_user_id: rfxEvent.owner_user_id || null,
@@ -3677,7 +3994,7 @@ Deno.serve(async (request) => {
         });
         if (historyResult.error) throw historyResult.error;
       }
-      return jsonResponse({ row: result.data });
+      return jsonResponse({ row: result.data, rateware_capture: ratewareCapture });
     }
 
     return jsonResponse({ error: "Unknown action." }, 400);

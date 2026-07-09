@@ -68,6 +68,7 @@ const bidRoomCommunicationActionsMigration = readFileSync(new URL("../supabase/m
 const bidRoomChatBidUpdatesMigration = readFileSync(new URL("../supabase/migrations/20260704070000_bid_room_chat_bid_updates.sql", import.meta.url), "utf8");
 const rfxAwardCloseoutMigration = readFileSync(new URL("../supabase/migrations/20260704080000_rfx_award_closeout.sql", import.meta.url), "utf8");
 const rfxBidSubmissionV2Migration = readFileSync(new URL("../supabase/migrations/20260704093000_rfx_bid_submission_v2.sql", import.meta.url), "utf8");
+const rfxBidRatewareCaptureMigration = readFileSync(new URL("../supabase/migrations/20260708162000_rfx_bid_rateware_capture.sql", import.meta.url), "utf8");
 const vendorSegmentsCoverageMigration = readFileSync(new URL("../supabase/migrations/20260706143000_vendor_segments_coverage_filter.sql", import.meta.url), "utf8");
 const vendorProfileRequestsMigration = readFileSync(new URL("../supabase/migrations/20260706152000_vendor_profile_requests.sql", import.meta.url), "utf8");
 const rfxLaneDetailSectionsMigration = readFileSync(new URL("../supabase/migrations/20260707170000_rfx_lane_detail_sections.sql", import.meta.url), "utf8");
@@ -307,9 +308,19 @@ assert.match(bidRoomChatBidUpdatesMigration, /bid_updated_from_chat_at/, "RFx bi
 assert.match(rfxAwardCloseoutMigration, /award_role text/, "RFx lane vendors should persist primary or backup award roles");
 assert.match(rfxAwardCloseoutMigration, /rate_staging_id uuid references public\.rate_staging/, "RFx awards should link to created Rateware rows");
 assert.match(rfxAwardCloseoutMigration, /rateware_closeout_at timestamptz/, "RFx awards should timestamp Rateware closeout");
+assert.match(rfxBidRatewareCaptureMigration, /bid_rate_staging_id uuid references public\.rate_staging/, "RFx carrier bids should link to their own Rateware staging rows before award");
+assert.match(rfxBidRatewareCaptureMigration, /carrier_cost_rate numeric/, "Rateware staging should persist the carrier cost rate from each bid");
+assert.match(rfxBidRatewareCaptureMigration, /customer_board_rate numeric/, "Rateware staging should persist the comparable board rate from commercial economics");
+assert.match(rfxBidRatewareCaptureMigration, /source_bid_status text/, "Rateware staging should identify initial, revision, or best-and-final bid captures");
 assert.match(apiSource, /async function awardRfxLaneVendor/, "API should save primary and backup RFx award decisions");
 assert.match(apiSource, /async function closeoutAwardedRfxToRateware/, "API should convert primary RFx awards into Rateware rows");
 assert.match(apiSource, /rfx_award_closeout/, "Rateware rows created from RFx awards should carry closeout source metadata");
+assert.match(rfxBidApiSource, /async function ensureBidRateStagingRow/, "Carrier portal should capture submitted bids into Rateware staging");
+assert.match(rfxBidApiSource, /\.from\("rate_staging"\)[\s\S]*status: "pending_review"/, "Carrier bid captures should remain pending review in Rateware staging");
+assert.match(rfxBidApiSource, /bid_rate_staging_id: insert\.data\.id/, "Carrier bid captures should link the invitation to the created staging row");
+assert.match(rfxBidApiSource, /bid_rate_staging_id: update\.data\.id/, "Carrier bid revisions should keep the invitation linked to the updated staging row");
+assert.match(rfxBidApiSource, /all_in_rate: rateText\(economics\.carrier_rate \?\? updatedBid\.bid_rate\)/, "Rateware staging all-in should store the carrier cost, not the adjusted board rate");
+assert.match(rfxBidApiSource, /customer_board_rate: economics\.board_rate/, "Rateware staging should retain the adjusted board rate separately");
 assert.match(apiSource, /rfx\.award\.closeout/, "API should audit RFx award closeout");
 assert.match(apiSource, /async function generateRfxAwardNotices/, "API should generate RFx award, backup, and not-awarded notice drafts");
 assert.match(apiSource, /notice_type: "rfx_award_closeout"/, "RFx award notices should be identifiable in outreach metadata");
