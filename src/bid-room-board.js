@@ -10,7 +10,6 @@ const languageSelect = document.querySelector("#public-board-language");
 const refreshButton = document.querySelector("#public-board-refresh");
 const fullscreenButton = document.querySelector("#public-board-fullscreen");
 const boardActions = document.querySelector(".public-board-actions");
-const statusFilter = document.querySelector("#public-board-status-filter");
 const searchInput = document.querySelector("#public-board-search");
 const autoRefreshInput = document.querySelector("#public-board-auto-refresh");
 const viewButtons = [...document.querySelectorAll("[data-board-view]")];

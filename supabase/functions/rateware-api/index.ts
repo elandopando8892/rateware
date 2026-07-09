@@ -10769,10 +10769,11 @@ Deno.serve(async (request) => {
     body = await request.json();
 
     if (body.action === "list_vendors") {
-      const limit = Math.min(Math.max(Number(body.limit) || 75, 1), 250);
       const offset = Math.max(Number(body.offset) || 0, 0);
       const view = cleanText(body.view)?.toLowerCase() || "all";
       const lightweight = body.lightweight === true || cleanText(body.lightweight)?.toLowerCase() === "true";
+      const maxLimit = lightweight ? 1000 : 250;
+      const limit = Math.min(Math.max(Number(body.limit) || 75, 1), maxLimit);
       const vendorSelect = lightweight
         ? "id,vendor_name,name,legal_name,contact_name,domain,primary_email,secondary_emails,whatsapp_phone,preferred_channel,base_stage,funnel_stage,status,tags,coverage_notes,notes,logo_url,created_at,updated_at"
         : "*";

@@ -182,6 +182,7 @@ assert.match(ratewareApiClientSource, /function apiErrorMessage/, "Rateware API 
 assert.doesNotMatch(ratewareApiClientSource, /new Error\(data\.error \|\| data\.message/, "Rateware API client should not throw raw object errors that render as [object Object]");
 assert.match(errorCopySource, /function rawErrorMessage/, "Human error copy should convert nested object errors to readable text");
 assert.match(errorCopySource, /lower === "\[object object\]"/, "Human error copy should never display [object Object] to users");
+assert.match(errorCopySource, /lower === "bad request"/, "Human error copy should not show bare Bad Request messages to users");
 assert.match(errorCopySource, /export function apiErrorMessage/, "Shared UI modules should use a common API error formatter");
 for (const [label, source] of [
   ["Upload service", uploadServiceSource],
@@ -252,6 +253,7 @@ assert.match(bidRoomBoardHtml, /data-board-view="sheet"/, "Public Bid Room board
 assert.match(bidRoomBoardSource, /public_bid_room_board/, "Public Bid Room board should call the public board action");
 assert.doesNotMatch(bidRoomBoardSource, /event_id: scopedEventId/, "Public Bid Room board should not filter opportunities by a scoped event");
 assert.doesNotMatch(bidRoomBoardHtml, /public-board-status-filter/, "Public Bid Room board should not hide opportunities behind a status filter");
+assert.doesNotMatch(bidRoomBoardSource, /public-board-status-filter/, "Public Bid Room board script should not keep a hidden status filter");
 assert.match(bidRoomBoardSource, /callPublicBoard\(\{ limit: 1000 \}\)/, "Public Bid Room board should request the full opportunity board");
 assert.match(rfxEventsSource, /marketplaceUrlForEvent/, "Bid Room should build event-specific marketplace links");
 assert.match(rfxEventsSource, /Public marketplace/, "Bid Room event links should open the full public opportunity board");
@@ -1126,6 +1128,7 @@ assert.match(listVendorsSource, /legal_name\.ilike/, "Carrier CRM search should 
 assert.match(listVendorsSource, /coverage_notes\.ilike/, "Carrier CRM search should include coverage notes");
 assert.match(listVendorsSource, /if \(!lightweight && rows\.length\)/, "Bid Room carrier selector should be able to skip heavy CRM metric enrichment");
 assert.match(listVendorsSource, /return jsonResponse\(\{ rows: enrichedRows[\s\S]*warnings/, "Carrier CRM directory should surface partial metric warnings");
+assert.match(listVendorsSource, /const maxLimit = lightweight \? 1000 : 250;/, "Lightweight CRM selectors should support up to 1,000 vendors without enabling heavy CRM payloads");
 assert.match(apiSource, /logo_url: cleanText\(vendor\.logo_url\)/, "Vendor intelligence rows should keep uploaded logo URLs");
 assert.match(apiSource, /profile_data: typeof vendor\.profile_data/, "Vendor intelligence rows should keep structured profile data");
 assert.match(vendorsSource, /key: "health"/, "Carrier CRM spreadsheet should include a health column");
@@ -1150,7 +1153,9 @@ assert.match(vendorDrawerSaveSource, /applyVendorUpdateToFunnel/, "Vendor drawer
 assert.doesNotMatch(vendorDrawerSaveSource, /loadVendors\(/, "Vendor drawer saves should not reload the whole Carrier CRM directory");
 assert.match(rfxEventsSource, /fetchVendors\(\{ limit: pageSize, offset, view: "all", lightweight: true \}\)/, "Bid Room should load CRM carriers through the lightweight vendor path");
 assert.match(rfxEventsSource, /function loadVendorSearchOptions/, "Bid Room should search the full CRM on participant search input");
-assert.match(rfxEventsSource, /fetchVendors\(\{ limit: 100, offset: 0, view: "all", lightweight: true, search: term \}\)/, "Bid Room participant search should call the CRM search endpoint");
+assert.match(rfxEventsSource, /const CRM_VENDOR_PAGE_SIZE = 1000;/, "Bid Room should load CRM candidates in larger lightweight pages");
+assert.match(rfxEventsSource, /const CRM_VENDOR_SEARCH_LIMIT = 1000;/, "Bid Room participant search should request enough CRM matches for large carrier bases");
+assert.match(rfxEventsSource, /fetchVendors\(\{ limit: CRM_VENDOR_SEARCH_LIMIT, offset: 0, view: "all", lightweight: true, search: term \}\)/, "Bid Room participant search should call the CRM search endpoint with the large lightweight limit");
 assert.match(rfxEventsSource, /row\.contact_name/, "Bid Room participant search should include CRM contact names");
 assert.match(rfxEventsSource, /\.normalize\("NFD"\)/, "Bid Room participant search should normalize accents for Spanish names");
 assert.match(rfxEventsSource, /<strong>\$\{escapeHtml\(vendorDisplayName\(row\)\)\}<\/strong>/, "Bid Room participant cards should stay focused on vendor name only");

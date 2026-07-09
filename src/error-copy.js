@@ -35,6 +35,9 @@ export function humanizeError(errorOrMessage) {
   if (lower.includes("rateware api request failed")) {
     return "Rateware services could not complete the request. Retry the action, and check the workspace connection if it happens again.";
   }
+  if (lower === "bad request" || lower.includes("bad request")) {
+    return "Rateware rejected the request because some required data is missing or invalid. Refresh the module and retry; if it repeats, check Observability for the exact API failure.";
+  }
   if (lower.includes("edge function") || lower.includes("function failed")) {
     return "A processing function failed before finishing. Retry the action; if it repeats, check the function logs.";
   }

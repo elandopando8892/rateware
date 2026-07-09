@@ -45,6 +45,8 @@ const DEFAULT_COMMERCIAL_SHARE_PCT = 3;
 const XBF_BUY_SELL_DEFAULT_MARKUP_PCT = 12;
 const XBF_BUY_SELL_MIN_MARKUP_PCT = 7.5;
 const XBF_BUY_SELL_MAX_MARKUP_PCT = 15;
+const CRM_VENDOR_PAGE_SIZE = 1000;
+const CRM_VENDOR_SEARCH_LIMIT = 1000;
 
 const eventForm = document.querySelector("#rfx-event-form");
 const rfxIdInput = document.querySelector("#rfx-id");
@@ -4578,7 +4580,7 @@ async function loadVendorSearchOptions() {
   vendorSearchLoading = true;
   renderManualShortlistControls();
   try {
-    const result = await fetchVendors({ limit: 100, offset: 0, view: "all", lightweight: true, search: term });
+    const result = await fetchVendors({ limit: CRM_VENDOR_SEARCH_LIMIT, offset: 0, view: "all", lightweight: true, search: term });
     if (sequence !== vendorSearchSequence) return;
     const rows = result.rows || [];
     mergeVendorOptionRows(rows);
@@ -5067,7 +5069,7 @@ async function loadVendorOptions() {
   vendorOptionsLoading = true;
   vendorOptions = [];
   renderManualShortlistControls();
-  const pageSize = 250;
+  const pageSize = CRM_VENDOR_PAGE_SIZE;
   const rows = [];
   const seenIds = new Set();
   let total = 0;
