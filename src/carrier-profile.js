@@ -1,5 +1,5 @@
 import { SUPABASE_URL } from "./config.js";
-import { apiErrorMessage } from "./error-copy.js";
+import { apiErrorMessage, humanizeError } from "./error-copy.js";
 
 const title = document.querySelector("#carrier-profile-title");
 const card = document.querySelector("#carrier-profile-card");
@@ -310,7 +310,7 @@ function tokenFromUrl() {
 
 function setStatus(message, tone = "neutral") {
   if (!statusMessage) return;
-  statusMessage.textContent = message || "";
+  statusMessage.textContent = tone === "error" ? humanizeError(message) : message || "";
   statusMessage.dataset.tone = tone;
 }
 
@@ -789,7 +789,7 @@ async function submitProfile(event) {
     setStatus(t("submittedStatus"), "success");
     renderProfile(result.vendor);
   } catch (error) {
-    saveStatus.textContent = error.message;
+    saveStatus.textContent = humanizeError(error);
     saveStatus.dataset.tone = "error";
   } finally {
     button.disabled = false;
@@ -811,7 +811,7 @@ async function saveTicketFollowup(ticketId) {
     setStatus(t("ticketFollowupSaved"), "success");
     if (currentVendor) renderProfile(currentVendor);
   } catch (error) {
-    setStatus(error.message || t("requestFailed"), "error");
+    setStatus(humanizeError(error) || t("requestFailed"), "error");
   } finally {
     if (button) button.disabled = false;
   }
@@ -847,7 +847,7 @@ async function init() {
     card.innerHTML = `
       <section class="carrier-profile-empty">
         ${renderLanguageToggle()}
-        <p class="status-message" data-tone="error">${escapeHtml(error.message)}</p>
+        <p class="status-message" data-tone="error">${escapeHtml(humanizeError(error))}</p>
       </section>
     `;
   }

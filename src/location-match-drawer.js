@@ -1,3 +1,5 @@
+import { humanizeError } from "./error-copy.js";
+
 const MX_STATE_CODES = new Set([
   "AG", "BC", "BS", "CH", "CL", "CM", "CO", "CS", "CU", "DF", "DG", "EM", "GT", "GR", "HG", "JA", "MI", "MO", "MX", "NA", "NL", "OA", "PU", "QE", "QR", "SI", "SL", "SO", "TB", "TL", "TM", "VE", "YU", "ZA"
 ]);
@@ -355,7 +357,7 @@ export function createLocationMatchDrawer(config) {
         config.onAliasSaved?.(result.location);
         config.setMessage?.("Alias saved to the Rateware location catalog.", "success");
       } catch (error) {
-        config.setMessage?.(error.message, "error");
+        config.setMessage?.(humanizeError(error), "error");
       } finally {
         aliasButton.disabled = false;
       }

@@ -19,6 +19,7 @@ import {
   updateSaasProfile
 } from "./settings-service.js";
 import { SUPABASE_URL } from "./config.js";
+import { humanizeError } from "./error-copy.js";
 import { initWorkbenchTabs } from "./workbench-tabs.js";
 
 const accessMode = document.querySelector("#settings-access-mode");
@@ -115,7 +116,7 @@ function escapeHtml(value) {
 
 function setStatus(element, message, tone = "neutral") {
   if (!element) return;
-  element.textContent = message;
+  element.textContent = tone === "error" ? humanizeError(message) : message;
   element.dataset.tone = tone;
 }
 
@@ -306,7 +307,7 @@ function humanGmailMessage(message = "") {
   if (/GOOGLE_CLIENT|GOOGLE_CLIENT_SECRET|GMAIL_TOKEN_ENCRYPTION_KEY|OAuth is not configured|OAuth client is not configured|Google secrets|Supabase secrets/i.test(text)) {
     return "Gmail connector is not enabled for this deployment yet. No user credentials are required.";
   }
-  return text || "Gmail action could not be completed.";
+  return humanizeError(text || "Gmail action could not be completed.");
 }
 
 function humanGoogleChatMessage(message = "") {
@@ -320,7 +321,7 @@ function humanGoogleChatMessage(message = "") {
   if (/Google Chat app not found|configure the app|Chat app/i.test(text)) {
     return "Google Chat is connected, but the Google Cloud Chat app is not configured yet. Configure the Chat API as an HTTP app using the endpoint shown below, then retry sync.";
   }
-  return text || "Google Chat action could not be completed.";
+  return humanizeError(text || "Google Chat action could not be completed.");
 }
 
 function applyOAuthUrlFeedback() {
@@ -530,7 +531,7 @@ async function loadObservability() {
         <tr>
           <td colspan="5">
             <strong>Observability could not load</strong>
-            <small>${escapeHtml(error.message || "The request could not reach Rateware services.")}</small>
+            <small>${escapeHtml(humanizeError(error) || "The request could not reach Rateware services.")}</small>
           </td>
         </tr>
       `;
@@ -548,7 +549,7 @@ async function loadSettings() {
       await loadGoogleChatConnections();
     }
   } catch (error) {
-    auditLogBody.innerHTML = `<tr><td colspan="5">${escapeHtml(error.message)}</td></tr>`;
+    auditLogBody.innerHTML = `<tr><td colspan="5">${escapeHtml(humanizeError(error))}</td></tr>`;
   }
 }
 
@@ -773,6 +774,6 @@ onboardingList?.addEventListener("click", async (event) => {
     renderAudit(currentSettings);
   } catch (error) {
     button.disabled = false;
-    button.textContent = error.message;
+    button.textContent = humanizeError(error);
   }
 });

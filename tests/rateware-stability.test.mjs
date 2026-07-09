@@ -189,6 +189,17 @@ assert.match(stagingReviewSource, /tone === "error" \? humanizeError\(message\) 
 assert.match(ratewareSource, /import \{ humanizeError \} from "\.\/error-copy\.js"/, "Rateware should use shared human error copy");
 assert.match(ratewareSource, /tone === "error" \? humanizeError\(message\) : message/, "Rateware status messages should humanize user-facing errors");
 assert.match(vendorSupportSource, /tone === "error" \? humanizeError\(message\) : message/, "Vendor Support should humanize user-facing errors");
+assert.match(bidRoomBoardSource, /import \{ apiErrorMessage, humanizeError \} from "\.\/error-copy\.js"/, "Public Bid Room board should use shared human error copy");
+assert.doesNotMatch(bidRoomBoardSource, /error\.message \|\| "Could/, "Public Bid Room board should not expose raw caught errors to carriers");
+assert.match(carrierProfileSource, /import \{ apiErrorMessage, humanizeError \} from "\.\/error-copy\.js"/, "Carrier profile portal should use shared human error copy");
+assert.doesNotMatch(carrierProfileSource, /saveStatus\.textContent = error\.message/, "Carrier profile portal should not expose raw save errors");
+assert.match(catalogWorkbenchSource, /import \{ humanizeError \} from "\.\/error-copy\.js"/, "Catalog workbench should use shared human error copy");
+assert.match(catalogWorkbenchSource, /tone === "error" \? humanizeError\(message\) : message/, "Catalog workbench status messages should humanize user-facing errors");
+assert.match(locationMatchDrawerSource, /import \{ humanizeError \} from "\.\/error-copy\.js"/, "Location match drawer should use shared human error copy");
+assert.doesNotMatch(locationMatchDrawerSource, /setMessage\?\.\(error\.message/, "Location match drawer should not expose raw alias-save errors");
+assert.match(settingsSource, /import \{ humanizeError \} from "\.\/error-copy\.js"/, "Settings should use shared human error copy");
+assert.match(settingsSource, /tone === "error" \? humanizeError\(message\) : message/, "Settings status messages should humanize integration and catalog errors");
+assert.doesNotMatch(settingsSource, /button\.textContent = error\.message/, "Settings onboarding actions should not replace button labels with raw errors");
 for (const [label, source] of [
   ["Upload service", uploadServiceSource],
   ["Catalog service", catalogServiceSource],

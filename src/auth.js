@@ -1,5 +1,6 @@
 import createKindeClient from "https://esm.sh/@kinde-oss/kinde-auth-pkce-js";
 import { KINDE_CLIENT_ID, KINDE_DOMAIN } from "./config.js";
+import { humanizeError } from "./error-copy.js";
 
 let kindePromise;
 
@@ -425,7 +426,7 @@ export function initAuthControls() {
   const userMenu = createUserMenu(form, signOutButton);
 
   function setStatus(message) {
-    status.textContent = message;
+    status.textContent = humanizeError(message);
   }
 
   async function renderSession(signedIn, user = null) {

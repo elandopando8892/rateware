@@ -12,6 +12,7 @@ import {
 } from "./catalog-service.js";
 import { fetchApprovedRatewarePage, updateApprovedRatewareRow } from "./rateware-service.js";
 import { fetchStagingOptions, fetchStagingPage, saveLocationAlias, updateStagingRow } from "./staging-service.js";
+import { humanizeError } from "./error-copy.js";
 import { initWorkbenchTabs } from "./workbench-tabs.js";
 
 const rowsChecked = document.querySelector("#catalog-rows-checked");
@@ -155,13 +156,13 @@ function escapeHtml(value) {
 
 function setStatus(message, tone = "neutral") {
   if (!statusMessage) return;
-  statusMessage.textContent = message;
+  statusMessage.textContent = tone === "error" ? humanizeError(message) : message;
   statusMessage.dataset.tone = tone;
 }
 
 function setElementStatus(element, message, tone = "neutral") {
   if (!element) return;
-  element.textContent = message;
+  element.textContent = tone === "error" ? humanizeError(message) : message;
   element.dataset.tone = tone;
 }
 
@@ -1263,7 +1264,7 @@ async function loadWorkbench() {
     renderRows();
     setStatus(`Catalog workbench loaded ${loadedRows.length.toLocaleString()} rate row(s) and ${locationOptions.length.toLocaleString()} catalog location(s).`, "success");
   } catch (error) {
-    body.innerHTML = `<tr><td colspan="7">${escapeHtml(error.message)}</td></tr>`;
+    body.innerHTML = `<tr><td colspan="7">${escapeHtml(humanizeError(error))}</td></tr>`;
     setStatus(error.message, "error");
   } finally {
     refreshButton.disabled = false;

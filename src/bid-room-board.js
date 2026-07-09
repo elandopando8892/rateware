@@ -1,5 +1,5 @@
 import { SUPABASE_URL } from "./config.js";
-import { apiErrorMessage } from "./error-copy.js";
+import { apiErrorMessage, humanizeError } from "./error-copy.js";
 
 const boardRoot = document.querySelector("#public-board-root");
 const summaryRoot = document.querySelector("#public-board-summary");
@@ -452,7 +452,7 @@ async function askPublicSupport(options = {}) {
     renderPublicSupportReply(result);
     queueSupportAlert(result.ticket?.id ? "supportTicket" : "supportAnswer", result.intent_label || result.answer);
   } catch (error) {
-    renderPublicSupportReply(null, error.message || "Support could not answer.");
+    renderPublicSupportReply(null, humanizeError(error) || "Support could not answer.");
   }
 }
 
@@ -1049,7 +1049,7 @@ async function sendPrivateLinksForRow(row, button = null) {
     ));
     if (data.sent) queueAlert("linksSent", row);
   } catch (error) {
-    statusEl.textContent = error.message || "Could not send private links right now.";
+    statusEl.textContent = humanizeError(error) || "Could not send private links right now.";
   } finally {
     if (button) {
       button.disabled = false;
@@ -1081,11 +1081,12 @@ async function loadBoard({ announceChanges = true } = {}) {
     renderBoard();
     statusEl.textContent = `${scopedEventLabel() || "Public marketplace"} | Updated ${formatDateTime(data.generated_at)} | ${formatNumber(state.rows.length)} opportunities`;
   } catch (error) {
-    statusEl.textContent = error.message || "Public board could not load.";
+    const message = humanizeError(error) || "Public board could not load.";
+    statusEl.textContent = message;
     boardRoot.innerHTML = `
       <section class="public-board-empty is-error">
         <strong>Bid Room board could not load</strong>
-        <p>${escapeHtml(error.message || "Check the connection and retry.")}</p>
+        <p>${escapeHtml(message || "Check the connection and retry.")}</p>
         <button type="button" class="secondary" data-retry-public-board>Retry</button>
       </section>
     `;
@@ -1232,7 +1233,7 @@ detailDrawer?.addEventListener("submit", async (event) => {
     status.textContent = apiErrorMessage({ message: data.message }, "", "Invitation request sent.");
     queueAlert("inviteSent", rowById(form.dataset.laneId) || { route_label: "Bid Room", event: { name: "Bid Room" } });
   } catch (error) {
-    status.textContent = error.message || "Could not send the invitation request.";
+    status.textContent = humanizeError(error) || "Could not send the invitation request.";
   } finally {
     submitButton.disabled = false;
   }
@@ -1265,7 +1266,7 @@ softLoginDrawer?.addEventListener("submit", async (event) => {
     status.textContent = apiErrorMessage({ message: data.message }, "", "If invitations exist, private links were sent to that email.");
     if (data.sent) queueAlert("linksSent", { route_label: "Private Bid Room", event: { name: "Soft login" } });
   } catch (error) {
-    status.textContent = error.message || "Could not find invitations right now.";
+    status.textContent = humanizeError(error) || "Could not find invitations right now.";
   } finally {
     submitButton.disabled = false;
   }
