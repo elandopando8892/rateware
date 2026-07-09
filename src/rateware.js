@@ -4,6 +4,7 @@ import { archiveApprovedRatewareByFilter, bulkUpdateApprovedRatewareRows, create
 import { initSpreadsheetColumnFilters } from "./spreadsheet-column-filters.js";
 import { installSpreadsheetGrid } from "./spreadsheet-grid.js";
 import { initColumnVisibility, initDrawer, initLocationAutocomplete } from "./sheet-ui.js";
+import { humanizeError } from "./error-copy.js";
 import { tableErrorState, tableLoadingState, tableState } from "./ui-state.js";
 
 const body = document.querySelector("#rateware-body");
@@ -428,7 +429,7 @@ function renderRatewareDatalists() {
 
 function setInlineStatus(element, message, tone = "neutral") {
   if (!element) return;
-  element.textContent = message;
+  element.textContent = tone === "error" ? humanizeError(message) : message;
   element.dataset.tone = tone;
 }
 
@@ -1091,7 +1092,7 @@ async function loadRatewareGovernance(rowId) {
     const rows = await fetchRatewareAudit(rowId);
     target.innerHTML = renderGovernanceTimeline(rows);
   } catch (error) {
-    target.innerHTML = `<p class="status-message" data-tone="error">${escapeHtml(error.message)}</p>`;
+    target.innerHTML = `<p class="status-message" data-tone="error">${escapeHtml(humanizeError(error))}</p>`;
   }
 }
 
@@ -1193,7 +1194,7 @@ async function openRatewareDrawer(id) {
     ratewareDetail.innerHTML = `
       <section class="rateware-detail-section">
         <h3>Could not load full detail</h3>
-        <p class="status-message" data-tone="error">${escapeHtml(error.message)}</p>
+        <p class="status-message" data-tone="error">${escapeHtml(humanizeError(error))}</p>
       </section>
     `;
   }
@@ -1318,7 +1319,7 @@ function rowById(id) {
 }
 
 function setActionStatus(message, tone = "neutral") {
-  actionStatus.textContent = message;
+  actionStatus.textContent = tone === "error" ? humanizeError(message) : message;
   actionStatus.dataset.tone = tone;
 }
 
@@ -1347,7 +1348,7 @@ function setRowStatus(id, message, tone = "neutral") {
   const status = body.querySelector(`[data-rateware-row-status="${CSS.escape(id)}"]`);
   if (!status) return;
   status.textContent = "";
-  status.title = message || "";
+  status.title = tone === "error" ? humanizeError(message) : message || "";
   if (!message) {
     delete status.dataset.tone;
     return;

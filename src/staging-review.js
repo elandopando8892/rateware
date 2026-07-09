@@ -4,6 +4,7 @@ import { initSpreadsheetColumnFilters } from "./spreadsheet-column-filters.js";
 import { installSpreadsheetGrid } from "./spreadsheet-grid.js";
 import { initColumnVisibility, initDrawer, initLocationAutocomplete } from "./sheet-ui.js";
 import { archiveStagingRows, archiveStagingRowsByFilter, enrichStagingLocationZips, fetchStagingDetail, fetchStagingFilterValues, fetchStagingOptions, fetchStagingPage, matchStagingVendors, matchStagingVendorsByFilter, removeStagingRows, removeStagingRowsByFilter, renormalizeStagingRows, saveLocationAlias, updateStagingRow, updateStagingRowsByFilter } from "./staging-service.js";
+import { humanizeError } from "./error-copy.js";
 import { loadingState, tableErrorState, tableLoadingState, tableState } from "./ui-state.js";
 
 const body = document.querySelector("#staging-body");
@@ -565,7 +566,7 @@ function selectOnlyStagingRow(tableRow) {
 }
 
 function setBulkStatus(message, tone = "neutral") {
-  bulkActionStatus.textContent = message;
+  bulkActionStatus.textContent = tone === "error" ? humanizeError(message) : message;
   bulkActionStatus.dataset.tone = tone;
 }
 
@@ -592,7 +593,7 @@ function setGridSelectionStatus(info) {
 
 function setBulkEditStatus(message, tone = "neutral") {
   if (!bulkEditStatus) return;
-  bulkEditStatus.textContent = message;
+  bulkEditStatus.textContent = tone === "error" ? humanizeError(message) : message;
   bulkEditStatus.dataset.tone = tone;
 }
 
@@ -1829,7 +1830,7 @@ function renderRows(rows, { append = false } = {}) {
 }
 
 function setStatus(message, tone = "neutral") {
-  editStatus.textContent = message;
+  editStatus.textContent = tone === "error" ? humanizeError(message) : message;
   editStatus.dataset.tone = tone;
 }
 
@@ -1919,7 +1920,7 @@ function setRowStatus(id, message, tone = "neutral") {
   const status = body.querySelector(`[data-row-status="${CSS.escape(id)}"]`);
   if (!status) return;
   status.textContent = "";
-  status.title = message || "";
+  status.title = tone === "error" ? humanizeError(message) : message || "";
   if (!message) {
     delete status.dataset.tone;
     return;

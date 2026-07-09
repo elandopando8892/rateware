@@ -184,6 +184,11 @@ assert.match(errorCopySource, /function rawErrorMessage/, "Human error copy shou
 assert.match(errorCopySource, /lower === "\[object object\]"/, "Human error copy should never display [object Object] to users");
 assert.match(errorCopySource, /lower === "bad request"/, "Human error copy should not show bare Bad Request messages to users");
 assert.match(errorCopySource, /export function apiErrorMessage/, "Shared UI modules should use a common API error formatter");
+assert.match(stagingReviewSource, /import \{ humanizeError \} from "\.\/error-copy\.js"/, "Staging should use shared human error copy");
+assert.match(stagingReviewSource, /tone === "error" \? humanizeError\(message\) : message/, "Staging status messages should humanize user-facing errors");
+assert.match(ratewareSource, /import \{ humanizeError \} from "\.\/error-copy\.js"/, "Rateware should use shared human error copy");
+assert.match(ratewareSource, /tone === "error" \? humanizeError\(message\) : message/, "Rateware status messages should humanize user-facing errors");
+assert.match(vendorSupportSource, /tone === "error" \? humanizeError\(message\) : message/, "Vendor Support should humanize user-facing errors");
 for (const [label, source] of [
   ["Upload service", uploadServiceSource],
   ["Catalog service", catalogServiceSource],
@@ -246,6 +251,7 @@ assert.match(rfxEventsSource, /bid_visibility_mode: rfxBidVisibilityInput/, "Bid
 assert.match(apiSource, /"private", "anonymous_rank", "open_leaderboard"/, "API should validate Bid Room visibility modes");
 assert.match(rfxBidApiSource, /competitor_names_visible: normalizedMode === "open_leaderboard"/, "Carrier portal should reveal competitor names only in open leaderboard mode");
 assert.match(rfxBidSource, /Open leaderboard - competitor names and exact submitted rates are visible/, "Carrier portal should explain open leaderboard visibility");
+assert.doesNotMatch(rfxBidSource, /window\.alert\(/, "Carrier Bid Room should use inline statuses instead of native browser alerts");
 assert.match(bidRoomBoardHtml, /Live Bid Room Board/, "Public Bid Room board page should exist");
 assert.match(rfxEventsHtml, /bid-room-board\.html/, "Internal Bid Room should link to the public board");
 assert.match(bidRoomBoardHtml, /data-board-view="pipeline"/, "Public Bid Room board should support pipeline view");
@@ -608,6 +614,8 @@ assert.match(rfxBidSource, /Bid submitted\./, "Carrier portal should announce su
 assert.match(rfxBidSource, /New message in Bid Room chat\./, "Carrier portal should announce new chat messages");
 assert.match(rfxBidSource, /speechSynthesis/, "Carrier portal should use browser speech announcements");
 assert.match(rfxBidSource, /detectPrivateBidRoomSignals/, "Carrier portal should compare live board snapshots before alerting");
+assert.match(rfxBidSource, /snapshot\.historyCount > previous\.historyCount/, "Carrier portal rank alerts should treat own bid history changes as self-updates");
+assert.match(rfxBidSource, /snapshot\.currentRate !== previous\.currentRate/, "Carrier portal rank alerts should not announce competitor displacement when the carrier changed its own rate");
 assert.match(rfxBidSource, /detectPrivateChatSignals/, "Carrier portal should compare chat snapshots before alerting");
 assert.match(rfxBidSource, /function bidDraftWarnings/, "Carrier portal should validate bid completeness before submit");
 assert.match(rfxBidSource, /function validateBidDraft/, "Carrier portal should block invalid bid submissions before API submit");

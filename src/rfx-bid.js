@@ -1,6 +1,6 @@
 import * as XLSX from "https://esm.sh/xlsx@0.18.5";
 import { SUPABASE_URL } from "./config.js";
-import { apiErrorMessage } from "./error-copy.js";
+import { apiErrorMessage, humanizeError } from "./error-copy.js";
 
 const title = document.querySelector("#bid-event-title");
 const card = document.querySelector("#bid-invitation-card");
@@ -867,7 +867,11 @@ function detectPrivateBidRoomSignals(data = {}) {
     return;
   }
 
-  const ownOfferChanged = Boolean(snapshot.currentUpdatedAt && previous.currentUpdatedAt && snapshot.currentUpdatedAt !== previous.currentUpdatedAt);
+  const ownOfferChanged = Boolean(
+    (snapshot.currentUpdatedAt && previous.currentUpdatedAt && snapshot.currentUpdatedAt !== previous.currentUpdatedAt)
+    || (snapshot.currentRate !== null && previous.currentRate !== null && snapshot.currentRate !== previous.currentRate)
+    || (snapshot.historyCount > previous.historyCount)
+  );
   if (snapshot.rank && previous.rank && snapshot.rank > previous.rank) {
     if (ownOfferChanged) {
       queuePrivateBidAlert("rankChanged", dualText(
@@ -1546,10 +1550,22 @@ function downloadWorkbookBuffer(buffer, filename) {
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+function setCarrierPortalStatus(selector, message, tone = "neutral") {
+  const status = card?.querySelector(selector);
+  if (!status) return false;
+  status.textContent = message;
+  status.dataset.tone = tone;
+  return true;
+}
+
 async function downloadBidTemplate(carrierBook = {}, invitation = {}) {
   const rows = bidTemplateRows(carrierBook, invitation);
   if (!rows.length) {
-    window.alert(dualText("No invited lanes are available for this bid template.", "No hay lanes invitadas disponibles para este template."));
+    setCarrierPortalStatus(
+      "#carrier-bid-template-status",
+      dualText("No invited lanes are available for this bid template.", "No hay lanes invitadas disponibles para este template."),
+      "error"
+    );
     return;
   }
   const ExcelJS = await loadExcelJs();
@@ -1721,7 +1737,7 @@ async function submitBidTemplateRows() {
     await loadInvitation();
   } catch (error) {
     if (status) {
-      status.textContent = error.message;
+      status.textContent = humanizeError(error);
       status.dataset.tone = "error";
     }
     if (button) button.disabled = false;
@@ -2483,7 +2499,7 @@ async function askBidSupport(options = {}) {
     }
   } catch (error) {
     if (status) {
-      status.textContent = error.message || dualText("Support could not answer.", "Soporte no pudo responder.");
+      status.textContent = humanizeError(error) || dualText("Support could not answer.", "Soporte no pudo responder.");
       status.dataset.tone = "error";
     }
   }
@@ -2813,7 +2829,7 @@ async function saveQuickBidRow(rowElement, button) {
     queuePrivateBidAlert("bidSubmitted", dualText("Lane offer updated.", "Oferta de ruta actualizada."));
     await loadInvitation({ refreshOnly: true, refreshForm: rowToken === tokenFromUrl(), refreshQuickGrid: true });
   } catch (error) {
-    setQuickBidRowStatus(rowElement, error.message, "error");
+    setQuickBidRowStatus(rowElement, humanizeError(error), "error");
     button.disabled = false;
   }
 }
@@ -3391,7 +3407,7 @@ function renderInvitation(invitation, liveBoard = {}, carrierBook = {}) {
       queuePrivateBidAlert("bidSubmitted", wasUpdate ? dualText("Your offer was updated.", "Tu oferta fue actualizada.") : "Your bid was submitted. The live board will refresh your rank automatically.");
       await loadInvitation({ refreshOnly: true, refreshForm: true });
     } catch (error) {
-      status.textContent = error.message;
+      status.textContent = humanizeError(error);
       status.dataset.tone = "error";
     }
   });
@@ -3432,7 +3448,7 @@ async function loadInvitation(options = {}) {
   } catch (error) {
     if (options.refreshOnly) return;
     title.textContent = "Bid request unavailable";
-    card.innerHTML = `<p class="status-message" data-tone="error">${escapeHtml(error.message)}</p>`;
+    card.innerHTML = `<p class="status-message" data-tone="error">${escapeHtml(humanizeError(error))}</p>`;
   }
 }
 
@@ -3608,10 +3624,8 @@ card.addEventListener("click", async (event) => {
       }
     } catch (error) {
       if (status) {
-        status.textContent = error.message;
+        status.textContent = humanizeError(error);
         status.dataset.tone = "error";
-      } else {
-        window.alert(error.message);
       }
     } finally {
       downloadTemplateButton.disabled = false;
@@ -3636,7 +3650,8 @@ card.addEventListener("click", async (event) => {
   } catch (error) {
     button.disabled = false;
     button.textContent = originalText;
-    window.alert(error.message);
+    setCarrierPortalStatus("#carrier-book-status", humanizeError(error), "error")
+      || setCarrierPortalStatus("#carrier-bid-template-status", humanizeError(error), "error");
   }
 });
 
@@ -3678,7 +3693,7 @@ card.addEventListener("submit", async (event) => {
     await loadCarrierChat({ suppressAlert: true });
   } catch (error) {
     if (status) {
-      status.textContent = error.message;
+      status.textContent = humanizeError(error);
       status.dataset.tone = "error";
     }
   }
@@ -3719,7 +3734,7 @@ card.addEventListener("change", async (event) => {
       pendingBidTemplateRows = [];
       renderBidTemplatePreview();
       if (status) {
-        status.textContent = error.message;
+        status.textContent = humanizeError(error);
         status.dataset.tone = "error";
       }
     }

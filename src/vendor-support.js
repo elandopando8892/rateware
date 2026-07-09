@@ -61,7 +61,7 @@ function googleChatLabel(row) {
 
 function setStatus(message = "", tone = "neutral") {
   if (!statusMessage) return;
-  statusMessage.textContent = message;
+  statusMessage.textContent = tone === "error" ? humanizeError(message) : message;
   statusMessage.dataset.tone = tone;
 }
 
