@@ -33,6 +33,7 @@ const API_URL = `${SUPABASE_URL}/functions/v1/rfx-bid-api`;
 const INVITE_ACCESS_EMAIL_KEY = "rateware.publicBidBoard.inviteEmail";
 const INVITE_ACCESS_LANES_KEY = "rateware.publicBidBoard.invitedLaneIds";
 const INVITE_ACCESS_EVENTS_KEY = "rateware.publicBidBoard.invitedEventIds";
+const VERIFIED_INVITES_KEY = "rateware.publicBidBoard.verifiedInvitations";
 const PUBLIC_BOARD_SOUND_DEFAULT_VERSION = "2026-07-08-sound-on";
 if (localStorage.getItem("rateware.publicBidBoard.soundDefault") !== PUBLIC_BOARD_SOUND_DEFAULT_VERSION) {
   localStorage.setItem("rateware.publicBidBoard.sound", "on");
@@ -73,6 +74,21 @@ function storedStringList(key) {
   }
 }
 
+function storedVerifiedInvitations() {
+  try {
+    const rows = JSON.parse(localStorage.getItem(VERIFIED_INVITES_KEY) || "[]");
+    return Array.isArray(rows)
+      ? rows.filter((row) => row && typeof row === "object" && row.lane_id && row.token)
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function refreshVerifiedInvitations() {
+  state.verifiedInvitations = storedVerifiedInvitations();
+}
+
 const state = {
   rows: [],
   summary: {},
@@ -89,7 +105,8 @@ const state = {
   inviteEmail: normalizePublicEmail(localStorage.getItem(INVITE_ACCESS_EMAIL_KEY) || ""),
   inviteLookupComplete: Boolean(localStorage.getItem(INVITE_ACCESS_EMAIL_KEY)),
   invitedLaneIds: new Set(storedStringList(INVITE_ACCESS_LANES_KEY)),
-  invitedEventIds: new Set(storedStringList(INVITE_ACCESS_EVENTS_KEY))
+  invitedEventIds: new Set(storedStringList(INVITE_ACCESS_EVENTS_KEY)),
+  verifiedInvitations: storedVerifiedInvitations()
 };
 
 languageSelect.value = state.language;
@@ -647,7 +664,14 @@ function rememberInvitationAccess(email, data = {}) {
   persistInvitationAccess();
 }
 
+function verifiedInvitationForRow(row = {}) {
+  const laneId = String(row.id || "");
+  if (!laneId) return null;
+  return state.verifiedInvitations.find((item) => String(item.lane_id || "") === laneId && item.token) || null;
+}
+
 function invitationAccessForRow(row = {}) {
+  if (verifiedInvitationForRow(row)) return "verified";
   if (!state.inviteEmail || !state.inviteLookupComplete) return "unknown";
   const laneId = String(row.id || "");
   const eventId = String(row.event?.id || row.event_id || "");
@@ -659,10 +683,17 @@ function invitationAccessForRow(row = {}) {
 
 function invitationActionForRow(row = {}) {
   const access = invitationAccessForRow(row);
+  if (access === "verified") {
+    return {
+      access,
+      label: state.language === "es" ? "Abrir puja" : "Open private bid",
+      attribute: "data-public-board-open-private"
+    };
+  }
   if (access === "invited") {
     return {
       access,
-      label: state.language === "es" ? "Enviar link privado" : "Send private link",
+      label: state.language === "es" ? "Recuperar link" : "Recover link",
       attribute: "data-public-board-private-link"
     };
   }
@@ -688,10 +719,15 @@ function renderInvitationAction(row = {}, primary = true) {
 
 function invitationRuleCopy(row) {
   const access = invitationAccessForRow(row);
+  if (access === "verified") {
+    return state.language === "es"
+      ? "Ya verificaste esta invitacion en este navegador. Puedes abrir el Bid Room privado y pujar directamente."
+      : "This invitation is already verified in this browser. You can open the private Bid Room and bid directly.";
+  }
   if (access === "invited") {
     return state.language === "es"
-      ? "Ya tienes invitacion para esta oportunidad. Enviaremos de nuevo tu link privado al correo validado para que puedas entrar al Bid Room."
-      : "You already have an invitation for this opportunity. We can resend the private link to the verified email so you can enter the Bid Room.";
+      ? "Ya tienes invitacion para esta oportunidad, pero este navegador aun no tiene el token privado. Recupera el link en tu correo para verificarlo una vez."
+      : "You already have an invitation for this opportunity, but this browser does not have the private token yet. Recover the link by email once to verify access.";
   }
   if (access === "unknown") {
     return state.language === "es"
@@ -901,6 +937,7 @@ function renderSheet(rows) {
 }
 
 function renderBoard() {
+  refreshVerifiedInvitations();
   const rows = visibleRows();
   viewButtons.forEach((button) => {
     const active = button.dataset.boardView === state.viewMode;
@@ -958,6 +995,15 @@ async function sendPrivateLinksForRow(row, button = null) {
       button.textContent = originalText;
     }
   }
+}
+
+function openVerifiedPrivateBid(row) {
+  const verified = verifiedInvitationForRow(row);
+  if (!verified?.token) {
+    openSoftLoginDrawer(row);
+    return;
+  }
+  window.location.href = `./rfx-bid.html?token=${encodeURIComponent(verified.token)}`;
 }
 
 async function loadBoard({ announceChanges = true } = {}) {
@@ -1041,6 +1087,11 @@ boardRoot.addEventListener("click", (event) => {
     sendPrivateLinksForRow(rowById(privateLinkButton.dataset.publicBoardPrivateLink), privateLinkButton);
     return;
   }
+  const openPrivateButton = event.target.closest("[data-public-board-open-private]");
+  if (openPrivateButton) {
+    openVerifiedPrivateBid(rowById(openPrivateButton.dataset.publicBoardOpenPrivate));
+    return;
+  }
   const requestButton = event.target.closest("[data-public-board-request]");
   if (requestButton) {
     renderDetailDrawer(rowById(requestButton.dataset.publicBoardRequest), true);
@@ -1062,6 +1113,11 @@ detailDrawer?.addEventListener("click", (event) => {
   const privateLinkButton = event.target.closest("[data-public-board-private-link]");
   if (privateLinkButton) {
     sendPrivateLinksForRow(rowById(privateLinkButton.dataset.publicBoardPrivateLink), privateLinkButton);
+    return;
+  }
+  const openPrivateButton = event.target.closest("[data-public-board-open-private]");
+  if (openPrivateButton) {
+    openVerifiedPrivateBid(rowById(openPrivateButton.dataset.publicBoardOpenPrivate));
     return;
   }
   const softLoginButton = event.target.closest("[data-public-board-soft-login]");

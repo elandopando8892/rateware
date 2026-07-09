@@ -14,6 +14,10 @@ let lastQuickBidSaveStatus = null;
 let lastBidSupportQuestion = "";
 let lastBidSupportResult = null;
 let pendingBidTemplateRows = [];
+const PUBLIC_BOARD_VERIFIED_INVITES_KEY = "rateware.publicBidBoard.verifiedInvitations";
+const PUBLIC_BOARD_INVITE_EMAIL_KEY = "rateware.publicBidBoard.inviteEmail";
+const PUBLIC_BOARD_INVITE_LANES_KEY = "rateware.publicBidBoard.invitedLaneIds";
+const PUBLIC_BOARD_INVITE_EVENTS_KEY = "rateware.publicBidBoard.invitedEventIds";
 const bookFilters = {
   view: "all",
   query: ""
@@ -298,6 +302,71 @@ function viewModeFromUrl() {
 
 function tokenFromUrl() {
   return new URLSearchParams(window.location.search).get("token") || "";
+}
+
+function publicBoardAccessText(value) {
+  return String(value ?? "").trim();
+}
+
+function publicBoardRelation(value) {
+  if (Array.isArray(value)) return value[0] || {};
+  return value && typeof value === "object" ? value : {};
+}
+
+function storedPublicBoardVerifiedInvitations() {
+  try {
+    const rows = JSON.parse(localStorage.getItem(PUBLIC_BOARD_VERIFIED_INVITES_KEY) || "[]");
+    return Array.isArray(rows) ? rows : [];
+  } catch {
+    return [];
+  }
+}
+
+function rememberPublicBoardInvitationAccess(invitation = {}, carrierBook = {}) {
+  const existing = new Map();
+  for (const row of storedPublicBoardVerifiedInvitations()) {
+    const laneId = publicBoardAccessText(row?.lane_id);
+    const token = publicBoardAccessText(row?.token);
+    if (laneId && token) existing.set(laneId, { ...row, lane_id: laneId, token });
+  }
+  const rowsToStore = [];
+  const vendor = publicBoardRelation(invitation.vendors);
+  const currentEvent = publicBoardRelation(invitation.rfx_events);
+  const currentLane = publicBoardRelation(invitation.rfx_lanes);
+  const currentToken = publicBoardAccessText(invitation.invitation_token) || tokenFromUrl();
+  const addRow = (row = {}) => {
+    const lane = publicBoardRelation(row.lane || row.rfx_lanes);
+    const event = publicBoardRelation(row.event || row.rfx_events);
+    const token = publicBoardAccessText(row.invitation_token || row.token || currentToken);
+    const laneId = publicBoardAccessText(row.rfx_lane_id || lane.id);
+    if (!laneId || !token) return;
+    const eventId = publicBoardAccessText(row.rfx_event_id || event.id);
+    rowsToStore.push({
+      lane_id: laneId,
+      event_id: eventId,
+      token,
+      rfx_id: publicBoardAccessText(event.rfx_id || event.name),
+      route_label: [lane.origin || lane.origin_city, lane.destination || lane.destination_city].filter(Boolean).join(" -> "),
+      updated_at: new Date().toISOString()
+    });
+  };
+  addRow({
+    rfx_lane_id: invitation.rfx_lane_id,
+    rfx_event_id: invitation.rfx_event_id,
+    invitation_token: currentToken,
+    rfx_lanes: currentLane,
+    rfx_events: currentEvent
+  });
+  for (const row of Array.isArray(carrierBook.invited) ? carrierBook.invited : []) addRow(row);
+  for (const row of rowsToStore) existing.set(row.lane_id, row);
+  const verifiedRows = [...existing.values()].slice(-250);
+  localStorage.setItem(PUBLIC_BOARD_VERIFIED_INVITES_KEY, JSON.stringify(verifiedRows));
+  const laneIds = [...new Set(verifiedRows.map((row) => publicBoardAccessText(row.lane_id)).filter(Boolean))];
+  const eventIds = [...new Set(verifiedRows.map((row) => publicBoardAccessText(row.event_id)).filter(Boolean))];
+  localStorage.setItem(PUBLIC_BOARD_INVITE_LANES_KEY, JSON.stringify(laneIds));
+  localStorage.setItem(PUBLIC_BOARD_INVITE_EVENTS_KEY, JSON.stringify(eventIds));
+  const email = publicBoardAccessText(vendor.primary_email).toLowerCase();
+  if (email) localStorage.setItem(PUBLIC_BOARD_INVITE_EMAIL_KEY, email);
 }
 
 async function callBidApi(action, payload = {}) {
@@ -3000,6 +3069,7 @@ async function loadInvitation(options = {}) {
     const data = await callBidApi("get_invitation");
     lastInvitation = data.invitation;
     lastLiveBoard = data.live_board || {};
+    rememberPublicBoardInvitationAccess(data.invitation || {}, data.carrier_book || {});
     if (options.refreshOnly && card.querySelector("#bid-form")) {
       renderLiveBoard(data.live_board);
       renderAwardOutcome(data.invitation, data.carrier_book, data.live_board);

@@ -219,8 +219,12 @@ assert.match(bidRoomBoardSource, /public_bid_room_request_invite/, "Public Bid R
 assert.match(bidRoomBoardSource, /public_bid_room_find_invitations/, "Public Bid Room board should call the public invitation lookup action");
 assert.match(bidRoomBoardSource, /invitedLaneIds/, "Public Bid Room board should remember invited lanes after soft login");
 assert.match(bidRoomBoardSource, /data-public-board-private-link/, "Public Bid Room board should resend private links instead of requesting access for invited lanes");
+assert.match(bidRoomBoardSource, /data-public-board-open-private/, "Public Bid Room board should open verified private bids directly");
+assert.match(bidRoomBoardSource, /Open private bid/, "Public Bid Room board should show direct access after a verified private invitation");
 assert.match(bidRoomBoardSource, /Check access/, "Public Bid Room cards should check access before showing request invitation for unknown carriers");
 assert.match(bidRoomBoardSource, /You already have an invitation for this opportunity/, "Public Bid Room card detail should explain already invited access");
+assert.match(rfxBidSource, /rememberPublicBoardInvitationAccess/, "Private Bid Room should remember verified public board access after token entry");
+assert.match(rfxBidSource, /rateware\.publicBidBoard\.verifiedInvitations/, "Private Bid Room should persist verified invitation tokens locally for direct marketplace access");
 assert.match(bidRoomBoardSource, /Private Bid Room links sent/, "Public Bid Room board should announce private link delivery");
 assert.match(bidRoomBoardSource, /New opportunity available/, "Public Bid Room board should announce new public opportunities");
 assert.match(bidRoomBoardSource, /soundEnabled: localStorage\.getItem\("rateware\.publicBidBoard\.sound"\) !== "off"/, "Public Bid Room board should start with sound enabled unless the user turns it off");
@@ -268,7 +272,8 @@ assert.match(publicBidFindInviteApiSource, /GMAIL_ALLOWED_SENDER/, "Public invit
 assert.match(publicBidFindInviteApiSource, /sendGmailMessageForOwner/, "Public invitation lookup should email private links instead of returning tokens");
 assert.match(publicBidFindInviteApiSource, /status: "magic_link_sent"/, "Public invitation lookup should audit magic link sends");
 assert.match(publicBidFindInviteApiSource, /source: "public_bid_room_soft_login"/, "Public invitation lookup should tag soft-login contact history");
-assert.doesNotMatch(bidRoomBoardSource, /rfx-bid\.html\?token/, "Public Bid Room board should not link directly into private bid tokens");
+assert.match(bidRoomBoardSource, /verifiedInvitationForRow/, "Public Bid Room board should only open private bid tokens after local token verification");
+assert.doesNotMatch(publicBidFindInviteApiSource, /link: privateBidLink/, "Public invitation lookup should not return private bid token links to the browser");
 assert.match(bidRoomChatMigration, /create table if not exists public\.bid_room_chat_threads/, "Bid Room chat should store durable threads");
 assert.match(bidRoomChatMigration, /thread_type in \('event_group', 'lane_group', 'carrier_private'\)/, "Bid Room chat should support group, lane, and private threads");
 assert.match(bidRoomChatMigration, /google_chat_thread_key/, "Bid Room chat should be ready for Google Chat thread mirroring");
