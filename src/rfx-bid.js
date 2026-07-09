@@ -63,6 +63,10 @@ if (localStorage.getItem("rateware.privateBidRoom.soundDefault") !== PRIVATE_BID
   privateAlertState.soundEnabled = true;
 }
 let excelJsModule = null;
+const DEFAULT_COMMERCIAL_SHARE_PCT = 3;
+const XBF_BUY_SELL_DEFAULT_MARKUP_PCT = 12;
+const XBF_BUY_SELL_MIN_MARKUP_PCT = 7.5;
+const XBF_BUY_SELL_MAX_MARKUP_PCT = 15;
 const BID_PORTAL_COPY = {
   en: {
     privateCarrierAccess: "Private carrier access",
@@ -591,10 +595,16 @@ function commercialStructureConfig(value) {
     },
     xbf_buy_sell: {
       tone: dualText("XBF buy-sell", "XBF compra-venta"),
-      percentageField: "none",
-      percentageLabel: "",
-      percentageTooltip: dualText("No percentage is requested from the carrier. The Bid Board applies an automatic 15% XBF buy-sell markup.", "No se solicita porcentaje al carrier. El Bid Board aplica un markup automatico XBF compra-venta de 15%."),
-      copy: dualText("Use when the carrier only submits its sell rate to XBF. The board price is automatically marked up by 15%.", "Usa esto cuando el carrier solo envia su tarifa de venta a XBF. El precio del board se incrementa automaticamente 15%.")
+      percentageField: "marksman",
+      percentageLabel: dualText("Suggested XBF margin %", "Margen sugerido XBF %"),
+      percentageTooltip: dualText(
+        "Optional. Enter a suggested XBF buy-sell margin from 7.5% to 15%. If blank, Rateware applies 12%.",
+        "Opcional. Captura un margen sugerido XBF compra-venta de 7.5% a 15%. Si queda vacio, Rateware aplica 12%."
+      ),
+      copy: dualText(
+        "Use when the carrier submits its sell rate to XBF. The board/customer comparable price uses the suggested buy-sell margin, or 12% by default.",
+        "Usa esto cuando el carrier envia su tarifa de venta a XBF. El precio comparable del board/cliente usa el margen compra-venta sugerido, o 12% por default."
+      )
     }
   };
   return configs[model] || configs.direct_cost_plus;
@@ -602,9 +612,10 @@ function commercialStructureConfig(value) {
 
 function commercialPercentSummary(draft = {}) {
   const config = commercialStructureConfig(draft.commercial_model);
-  if (config.percentageField === "marksman" && draft.marksman_margin_pct) return dualText(`${draft.marksman_margin_pct}% suggested margin`, `${draft.marksman_margin_pct}% margen sugerido`);
+  if (draft.commercial_model === "xbf_buy_sell") return dualText(`${draft.marksman_margin_pct || XBF_BUY_SELL_DEFAULT_MARKUP_PCT}% XBF buy-sell margin`, `${draft.marksman_margin_pct || XBF_BUY_SELL_DEFAULT_MARKUP_PCT}% margen XBF compra-venta`);
+  if (config.percentageField === "marksman") return dualText(`${draft.marksman_margin_pct || DEFAULT_COMMERCIAL_SHARE_PCT}% suggested margin`, `${draft.marksman_margin_pct || DEFAULT_COMMERCIAL_SHARE_PCT}% margen sugerido`);
   if (config.percentageField === "carrier" && draft.carrier_share_pct) return dualText(`${draft.carrier_share_pct}% invoice share`, `${draft.carrier_share_pct}% share factura`);
-  if (config.percentageField === "none") return dualText("No percentage applies", "No aplica porcentaje");
+  if (config.percentageField === "carrier") return dualText(`${DEFAULT_COMMERCIAL_SHARE_PCT}% invoice share`, `${DEFAULT_COMMERCIAL_SHARE_PCT}% share factura`);
   return dualText(`${config.percentageLabel || "Percentage"} not declared`, `${config.percentageLabel || "Porcentaje"} no declarado`);
 }
 
@@ -613,12 +624,13 @@ function commercialRateDetails(row = {}) {
   const carrierRate = numberOrNull(row.carrier_bid_rate ?? row.bid_rate ?? row.amount);
   let boardRate = numberOrNull(row.board_rate ?? row.rate_visibility ?? row.amount);
   let commissionFee = numberOrNull(row.commission_fee);
-  const commissionPct = numberOrNull(row.commission_pct ?? (model === "direct_cost_plus" ? row.marksman_margin_pct : row.carrier_share_pct));
+  const defaultPct = model === "xbf_buy_sell" ? XBF_BUY_SELL_DEFAULT_MARKUP_PCT : DEFAULT_COMMERCIAL_SHARE_PCT;
+  const commissionPct = numberOrNull(row.commission_pct ?? (model === "direct_cost_plus" ? row.marksman_margin_pct : row.carrier_share_pct)) ?? (model === "xbf_buy_sell" ? null : defaultPct);
   let markupFee = numberOrNull(row.markup_fee);
-  const markupPct = numberOrNull(row.markup_pct) ?? (model === "xbf_buy_sell" ? 15 : null);
+  const markupPct = numberOrNull(row.markup_pct) ?? (model === "xbf_buy_sell" ? (numberOrNull(row.marksman_margin_pct) ?? XBF_BUY_SELL_DEFAULT_MARKUP_PCT) : null);
   if (carrierRate !== null && boardRate === null) {
     if (model === "carrier_share") boardRate = carrierRate;
-    else if (model === "xbf_buy_sell") boardRate = carrierRate * (1 + (markupPct ?? 15) / 100);
+    else if (model === "xbf_buy_sell") boardRate = carrierRate * (1 + (markupPct ?? XBF_BUY_SELL_DEFAULT_MARKUP_PCT) / 100);
     else boardRate = commissionPct !== null ? carrierRate * (1 + commissionPct / 100) : carrierRate;
   }
   if (carrierRate !== null && commissionFee === null && (model === "carrier_share" || model === "direct_cost_plus") && commissionPct !== null) {
@@ -656,8 +668,8 @@ function commercialFeeSummary(row = {}) {
   if (details.model === "xbf_buy_sell") {
     const markup = details.markupFee !== null ? formatMoney(details.markupFee, details.currency) : "-";
     return dualText(
-      `Carrier rate ${formatMoney(details.carrierRate, details.currency)}. Board rate includes XBF buy-sell markup ${details.markupPct ?? 15}% (${markup}).`,
-      `Tarifa carrier ${formatMoney(details.carrierRate, details.currency)}. El board incluye markup compra-venta XBF ${details.markupPct ?? 15}% (${markup}).`
+      `Carrier rate ${formatMoney(details.carrierRate, details.currency)}. Board rate includes XBF buy-sell markup ${details.markupPct ?? XBF_BUY_SELL_DEFAULT_MARKUP_PCT}% (${markup}).`,
+      `Tarifa carrier ${formatMoney(details.carrierRate, details.currency)}. El board incluye markup compra-venta XBF ${details.markupPct ?? XBF_BUY_SELL_DEFAULT_MARKUP_PCT}% (${markup}).`
     );
   }
   const fee = details.commissionFee !== null ? formatMoney(details.commissionFee, details.currency) : "-";
@@ -912,7 +924,9 @@ function availabilitySummary(row = {}) {
 function commercialSummary(row = {}) {
   const parts = [commercialModelLabel(row.commercial_model)];
   const config = commercialStructureConfig(row.commercial_model);
-  if (config.percentageField === "marksman" && row.marksman_margin_pct !== null && row.marksman_margin_pct !== undefined) parts.push(`${row.marksman_margin_pct}% suggested margin`);
+  if (config.percentageField === "marksman" && row.marksman_margin_pct !== null && row.marksman_margin_pct !== undefined) {
+    parts.push(String(row.commercial_model).toLowerCase() === "xbf_buy_sell" ? `${row.marksman_margin_pct}% XBF margin` : `${row.marksman_margin_pct}% suggested margin`);
+  }
   if (config.percentageField === "carrier" && row.carrier_share_pct !== null && row.carrier_share_pct !== undefined) parts.push(`${row.carrier_share_pct}% invoice share`);
   if (row.board_rate !== null && row.board_rate !== undefined && row.carrier_bid_rate !== null && row.carrier_bid_rate !== undefined && Number(row.board_rate) !== Number(row.carrier_bid_rate)) {
     parts.push(`Board ${formatMoney(row.board_rate, row.currency)}`);
@@ -1001,6 +1015,8 @@ function validatePercentIssue(value, field, label, options = {}) {
   const number = numberFromInput(value);
   if (number === null) return validationIssue(field, `${label} must be numeric.`);
   if (number < 0 || number > 100) return validationIssue(field, `${label} must be between 0% and 100%.`);
+  if (options.min !== undefined && number < options.min) return validationIssue(field, `${label} must be at least ${options.min}%.`);
+  if (options.max !== undefined && number > options.max) return validationIssue(field, `${label} must be at most ${options.max}%.`);
   if (options.procurementRange && (number < 2 || number > 5)) return validationIssue(field, `${label} must be between 2% and 5%.`);
   return null;
 }
@@ -1063,13 +1079,18 @@ function validateBidDraft(draft) {
   }
 
   if (draft.commercial_model === "direct_cost_plus") {
-    const marginIssue = validatePercentIssue(draft.marksman_margin_pct, "bid-marksman-margin", "Suggested margin to share %", { required: true, procurementRange: true });
+    const marginIssue = validatePercentIssue(draft.marksman_margin_pct, "bid-marksman-margin", "Suggested margin to share %", { required: false, procurementRange: true });
     if (marginIssue) errors.push(marginIssue);
   }
 
   if (draft.commercial_model === "carrier_share") {
-    const shareIssue = validatePercentIssue(draft.carrier_share_pct, "bid-carrier-share", "Carrier invoice share %", { required: true, procurementRange: true });
+    const shareIssue = validatePercentIssue(draft.carrier_share_pct, "bid-carrier-share", "Carrier invoice share %", { required: false, procurementRange: true });
     if (shareIssue) errors.push(shareIssue);
+  }
+
+  if (draft.commercial_model === "xbf_buy_sell") {
+    const markupIssue = validatePercentIssue(draft.marksman_margin_pct, "bid-marksman-margin", "Suggested XBF margin %", { required: false, min: XBF_BUY_SELL_MIN_MARKUP_PCT, max: XBF_BUY_SELL_MAX_MARKUP_PCT });
+    if (markupIssue) errors.push(markupIssue);
   }
 
   const alternativeUnitsIssue = validatePositiveNumberIssue(draft.alternative_units, "bid-alt-units", "Alternative units", false);
@@ -1140,8 +1161,8 @@ const BID_TEMPLATE_COLUMNS = [
   { key: "transit_days", label: "Transit days / Dias transito", aliases: ["Transit days", "Dias transito"], width: 18, validation: "positiveNumberBlank", recommended: true },
   { key: "valid_through", label: "Valid through / Vigente hasta", aliases: ["Valid through", "Vigente hasta", "Offer valid through", "Vigencia"], width: 20, validation: "dateBlank", recommended: true },
   { key: "commercial_model", label: "Commercial model / Modelo comercial", aliases: ["Commercial model", "Modelo comercial"], width: 28, validation: "commercialModel", required: true },
-  { key: "suggested_margin_pct", label: "Suggested margin % / Margen sugerido %", aliases: ["Suggested margin %", "Margen sugerido %"], width: 24, validation: "percent2to5", conditional: "Required only for Direct / cost-plus. / Obligatorio solo para Direct / cost-plus." },
-  { key: "carrier_invoice_share_pct", label: "Carrier invoice share % / Share factura carrier %", aliases: ["Carrier invoice share %", "Share factura carrier %"], width: 28, validation: "percent2to5", conditional: "Required only for Carrier invoice share. / Obligatorio solo para Carrier invoice share." },
+  { key: "suggested_margin_pct", label: "Suggested / XBF margin % / Margen sugerido XBF %", aliases: ["Suggested margin %", "XBF margin %", "Margen sugerido %", "Margen XBF %"], width: 30, validation: "percent2to15Blank", conditional: "Optional. Direct/cost-plus defaults to 3%; XBF buy-sell defaults to 12%. / Opcional. Direct/cost-plus default 3%; XBF compra-venta default 12%." },
+  { key: "carrier_invoice_share_pct", label: "Carrier invoice share % / Share factura carrier %", aliases: ["Carrier invoice share %", "Share factura carrier %"], width: 28, validation: "percent2to5", conditional: "Optional. Defaults to 3% for Carrier invoice share. / Opcional. Default 3% para Carrier invoice share." },
   { key: "best_alternative", label: "Best alternative / Mejor alternativa", aliases: ["Best alternative", "Mejor alternativa"], width: 22, validation: "yesNoBlank" },
   { key: "alternative_equipment", label: "Alternative equipment / Equipo alternativo", aliases: ["Alternative equipment", "Equipo alternativo"], width: 26 },
   { key: "alternative_units", label: "Alternative units / Unidades alternativas", aliases: ["Alternative units", "Unidades alternativas"], width: 22, validation: "positiveNumberBlank" },
@@ -1357,6 +1378,16 @@ function bidTemplateValidation(column) {
       error: "Enter a percentage between 2 and 5. / Captura un porcentaje entre 2 y 5."
     };
   }
+  if (column.validation === "percent2to15Blank") {
+    return {
+      type: "decimal",
+      operator: "between",
+      allowBlank: true,
+      formulae: [2, 15],
+      ...common,
+      error: "Enter a valid percentage. Direct/cost-plus uses 2-5; XBF buy-sell uses 7.5-15. / Captura un porcentaje valido. Direct/cost-plus usa 2-5; XBF compra-venta usa 7.5-15."
+    };
+  }
   if (column.validation === "dateBlank") {
     return {
       type: "date",
@@ -1435,8 +1466,8 @@ function addBidTemplateInstructions(workbook) {
     },
     {
       section: "Required columns",
-      en: "Required to submit: All-in rate, Currency, Commercial model. Suggested margin % is required only for Direct / cost-plus. Carrier invoice share % is required only for Carrier invoice share.",
-      es: "Obligatorio para enviar: Tarifa all-in, Moneda, Modelo comercial. Margen sugerido % solo es obligatorio para Direct / cost-plus. Share factura carrier % solo es obligatorio para Carrier invoice share."
+      en: "Required to submit: All-in rate, Currency, Commercial model. Commercial percentages are optional; Rateware applies defaults when blank.",
+      es: "Obligatorio para enviar: Tarifa all-in, Moneda, Modelo comercial. Los porcentajes comerciales son opcionales; Rateware aplica defaults si quedan vacios."
     },
     {
       section: "Recommended columns",
@@ -1450,8 +1481,8 @@ function addBidTemplateInstructions(workbook) {
     },
     {
       section: "Commercial model",
-      en: "Direct / cost-plus requires Suggested margin % between 2 and 5. Carrier invoice share requires Carrier invoice share % between 2 and 5. XBF buy-sell does not require a percentage.",
-      es: "Direct / cost-plus requiere Margen sugerido % entre 2 y 5. Carrier invoice share requiere Share factura carrier % entre 2 y 5. XBF buy-sell no requiere porcentaje."
+      en: "Direct / cost-plus uses Suggested margin % between 2 and 5, default 3 if blank. Carrier invoice share uses 2 to 5, default 3 if blank. XBF buy-sell uses Suggested / XBF margin % between 7.5 and 15, default 12 if blank.",
+      es: "Direct / cost-plus usa Margen sugerido % entre 2 y 5, default 3 si queda vacio. Carrier invoice share usa 2 a 5, default 3 si queda vacio. XBF compra-venta usa Margen sugerido / XBF % entre 7.5 y 15, default 12 si queda vacio."
     },
     {
       section: "Rate",
@@ -1531,7 +1562,7 @@ function draftFromBidTemplateRow(row) {
     transit_days: textValue(row.transit_days),
     valid_through: normalizeTemplateDate(row.valid_through),
     commercial_model: commercialModel,
-    marksman_margin_pct: commercialModel === "direct_cost_plus" ? textValue(row.suggested_margin_pct) : "",
+    marksman_margin_pct: ["direct_cost_plus", "xbf_buy_sell"].includes(commercialModel) ? textValue(row.suggested_margin_pct) : "",
     carrier_share_pct: commercialModel === "carrier_share" ? textValue(row.carrier_invoice_share_pct) : "",
     best_alternative_offered: normalizeTemplateBoolean(row.best_alternative),
     alternative_equipment: textValue(row.alternative_equipment),
@@ -1763,6 +1794,7 @@ function syncCommercialStructureFields({ clearInapplicable = false } = {}) {
   const carrierGroup = card.querySelector("[data-commercial-field='carrier']");
   const marksmanInput = card.querySelector("#bid-marksman-margin");
   const carrierInput = card.querySelector("#bid-carrier-share");
+  const marksmanLabel = card.querySelector("#bid-marksman-margin-label");
   const helper = card.querySelector("#bid-commercial-helper");
   const activePercent = card.querySelector("#bid-commercial-active-percent");
 
@@ -1770,6 +1802,9 @@ function syncCommercialStructureFields({ clearInapplicable = false } = {}) {
   carrierGroup?.classList.toggle("hidden", config.percentageField !== "carrier");
   if (marksmanInput) marksmanInput.disabled = config.percentageField !== "marksman";
   if (carrierInput) carrierInput.disabled = config.percentageField !== "carrier";
+  if (marksmanInput) marksmanInput.placeholder = model === "xbf_buy_sell" ? "7.5-15 (default 12)" : "2-5 (default 3)";
+  if (carrierInput) carrierInput.placeholder = "2-5 (default 3)";
+  if (marksmanLabel) marksmanLabel.textContent = config.percentageLabel || t("suggestedMargin");
   if (clearInapplicable) {
     if (config.percentageField !== "marksman" && marksmanInput) marksmanInput.value = "";
     if (config.percentageField !== "carrier" && carrierInput) carrierInput.value = "";
@@ -1782,7 +1817,7 @@ function syncCommercialStructureFields({ clearInapplicable = false } = {}) {
     `;
   }
   if (activePercent) {
-    activePercent.textContent = config.percentageField === "none" ? "No percentage required" : config.percentageLabel;
+    activePercent.textContent = config.percentageLabel;
   }
 }
 
@@ -2559,8 +2594,14 @@ function quickBidRows(carrierBook = {}, invitation = {}) {
 function quickBidCommercialPercent(row = {}) {
   const model = String(row.commercial_model || "direct_cost_plus").toLowerCase();
   if (model === "carrier_share") return row.carrier_share_pct ?? "";
-  if (model === "direct_cost_plus") return row.marksman_margin_pct ?? "";
+  if (model === "direct_cost_plus" || model === "xbf_buy_sell") return row.marksman_margin_pct ?? "";
   return "";
+}
+
+function quickBidCommercialPlaceholder(model) {
+  const value = String(model || "direct_cost_plus").toLowerCase();
+  if (value === "xbf_buy_sell") return "7.5-15";
+  return "2-5";
 }
 
 function quickBidRowStatus(row = {}) {
@@ -2648,7 +2689,7 @@ function renderQuickLaneBidGridShell(carrierBook = {}, invitation = {}) {
                       <option value="xbf_buy_sell" ${model === "xbf_buy_sell" ? "selected" : ""}>XBF buy-sell</option>
                     </select>
                   </td>
-                  <td><input data-quick-bid-field="commercial_pct" inputmode="decimal" value="${escapeAttribute(quickBidCommercialPercent(row))}" placeholder="${model === "xbf_buy_sell" ? "-" : "2-5"}" ${model === "xbf_buy_sell" ? "disabled" : ""} /></td>
+                  <td><input data-quick-bid-field="commercial_pct" inputmode="decimal" value="${escapeAttribute(quickBidCommercialPercent(row))}" placeholder="${escapeAttribute(quickBidCommercialPlaceholder(model))}" /></td>
                   <td class="quick-bid-row-status">${quickBidRowStatus(row)}</td>
                   <td><button type="button" class="small-button" data-save-quick-bid>${escapeHtml(row.bid_rate ? dualText("Update", "Actualizar") : dualText("Submit", "Enviar"))}</button></td>
                 </tr>
@@ -2685,7 +2726,7 @@ function quickBidDraftFromRow(rowElement) {
     transit_days: quickBidField(rowElement, "transit_days"),
     valid_through: quickBidField(rowElement, "valid_through"),
     commercial_model: commercialModel,
-    marksman_margin_pct: commercialModel === "direct_cost_plus" ? commercialPercent : "",
+    marksman_margin_pct: ["direct_cost_plus", "xbf_buy_sell"].includes(commercialModel) ? commercialPercent : "",
     carrier_share_pct: commercialModel === "carrier_share" ? commercialPercent : "",
     best_alternative_offered: rowElement.dataset.bestAlternative === "true",
     alternative_equipment: rowElement.dataset.alternativeEquipment || "",
@@ -3185,14 +3226,14 @@ function renderInvitation(invitation, liveBoard = {}, carrierBook = {}) {
             </select>
           </label>
           <label data-commercial-field="marksman">
-            ${escapeHtml(t("suggestedMargin"))}
+            <span id="bid-marksman-margin-label">${escapeHtml(t("suggestedMargin"))}</span>
             <span class="field-help" title="Adds this percentage to the board/customer comparable price over your all-in rate.">?</span>
-            <input id="bid-marksman-margin" inputmode="decimal" value="${escapeHtml(invitation.marksman_margin_pct ?? "")}" placeholder="2-5" />
+            <input id="bid-marksman-margin" inputmode="decimal" value="${escapeHtml(invitation.marksman_margin_pct ?? "")}" placeholder="2-5 (default 3)" />
           </label>
           <label data-commercial-field="carrier">
             ${escapeHtml(t("carrierShare"))}
             <span class="field-help" title="Keeps your bid price unchanged and calculates the fee billed after the customer pays.">?</span>
-            <input id="bid-carrier-share" inputmode="decimal" value="${escapeHtml(invitation.carrier_share_pct ?? "")}" placeholder="2-5" />
+            <input id="bid-carrier-share" inputmode="decimal" value="${escapeHtml(invitation.carrier_share_pct ?? "")}" placeholder="2-5 (default 3)" />
           </label>
         </div>
       </section>
@@ -3679,10 +3720,9 @@ card.addEventListener("change", async (event) => {
     const row = quickCommercialModel.closest("[data-quick-bid-row]");
     const pct = row?.querySelector("[data-quick-bid-field='commercial_pct']");
     if (pct) {
-      const disabled = quickCommercialModel.value === "xbf_buy_sell";
-      pct.disabled = disabled;
-      if (disabled) pct.value = "";
-      pct.placeholder = disabled ? "-" : "2-5";
+      pct.disabled = false;
+      pct.value = "";
+      pct.placeholder = quickBidCommercialPlaceholder(quickCommercialModel.value);
     }
   }
 });

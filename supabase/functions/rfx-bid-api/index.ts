@@ -12,7 +12,10 @@ const GOOGLE_CHAT_ALLOWED_ACCOUNT = (Deno.env.get("GOOGLE_CHAT_ALLOWED_ACCOUNT")
 const GOOGLE_CHAT_WEBHOOK_URL = Deno.env.get("GOOGLE_CHAT_WEBHOOK_URL");
 const OPENAI_MODEL = Deno.env.get("OPENAI_MODEL");
 const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
-const XBF_BUY_SELL_MARKUP_PCT = 15;
+const DEFAULT_COMMERCIAL_SHARE_PCT = 3;
+const XBF_BUY_SELL_DEFAULT_MARKUP_PCT = 12;
+const XBF_BUY_SELL_MIN_MARKUP_PCT = 7.5;
+const XBF_BUY_SELL_MAX_MARKUP_PCT = 15;
 const GENERIC_EMAIL_DOMAINS = new Set([
   "gmail.com",
   "hotmail.com",
@@ -131,11 +134,11 @@ function strictPercentNumber(value: unknown, label: string) {
   return numberValue;
 }
 
-function strictCommercialSharePercent(value: unknown, label: string) {
-  const numberValue = strictBidNumber(value, label, { positive: false, required: true });
-  if (numberValue === null) throw new Error(`${label} is required for this commercial structure.`);
-  if (numberValue < 2 || numberValue > 5) throw new Error(`${label} must be between 2% and 5%.`);
-  return numberValue;
+function strictOptionalPercentWithDefault(value: unknown, label: string, min: number, max: number, defaultValue: number) {
+  const numberValue = strictBidNumber(value, label, { positive: false });
+  const effectiveValue = numberValue === null ? defaultValue : numberValue;
+  if (effectiveValue < min || effectiveValue > max) throw new Error(`${label} must be between ${min}% and ${max}%.`);
+  return effectiveValue;
 }
 
 function strictCurrencyCode(value: unknown, fallback = "USD") {
@@ -178,8 +181,8 @@ function roundMoney(value: number | null) {
 function commercialRateEconomics(row: Record<string, unknown>) {
   const carrierRate = cleanNumber(row.bid_rate);
   const commercialModel = normalizeCommercialModel(row.commercial_model) || "direct_cost_plus";
-  const marksmanMarginPct = cleanNumber(row.marksman_margin_pct);
-  const carrierSharePct = cleanNumber(row.carrier_share_pct);
+  const marksmanMarginPct = cleanNumber(row.marksman_margin_pct) ?? (commercialModel === "xbf_buy_sell" ? XBF_BUY_SELL_DEFAULT_MARKUP_PCT : DEFAULT_COMMERCIAL_SHARE_PCT);
+  const carrierSharePct = cleanNumber(row.carrier_share_pct) ?? DEFAULT_COMMERCIAL_SHARE_PCT;
   const currency = cleanText(row.currency) || "USD";
   if (carrierRate === null) {
     return {
@@ -191,7 +194,7 @@ function commercialRateEconomics(row: Record<string, unknown>) {
       commission_fee: null,
       commission_pct: null,
       markup_fee: null,
-      markup_pct: commercialModel === "xbf_buy_sell" ? XBF_BUY_SELL_MARKUP_PCT : null,
+      markup_pct: commercialModel === "xbf_buy_sell" ? marksmanMarginPct : null,
       rate_basis: "no_rate",
       fee_label: null
     };
@@ -215,7 +218,7 @@ function commercialRateEconomics(row: Record<string, unknown>) {
   }
 
   if (commercialModel === "xbf_buy_sell") {
-    const boardRate = carrierRate * (1 + XBF_BUY_SELL_MARKUP_PCT / 100);
+    const boardRate = carrierRate * (1 + marksmanMarginPct / 100);
     return {
       commercial_model: commercialModel,
       currency,
@@ -225,7 +228,7 @@ function commercialRateEconomics(row: Record<string, unknown>) {
       commission_fee: null,
       commission_pct: null,
       markup_fee: roundMoney(boardRate - carrierRate),
-      markup_pct: XBF_BUY_SELL_MARKUP_PCT,
+      markup_pct: marksmanMarginPct,
       rate_basis: "xbf_buy_sell",
       fee_label: "XBF buy-sell markup"
     };
@@ -1173,8 +1176,8 @@ function timestampValue(value: unknown) {
 
 function commercialModelScore(row: Record<string, unknown>) {
   const model = cleanText(row.commercial_model);
-  const marksmanMargin = cleanNumber(row.marksman_margin_pct);
-  const carrierShare = cleanNumber(row.carrier_share_pct);
+  const marksmanMargin = cleanNumber(row.marksman_margin_pct) ?? DEFAULT_COMMERCIAL_SHARE_PCT;
+  const carrierShare = cleanNumber(row.carrier_share_pct) ?? DEFAULT_COMMERCIAL_SHARE_PCT;
   if (model === "direct_cost_plus") {
     if (marksmanMargin !== null && marksmanMargin >= 2 && marksmanMargin <= 5) return 10;
     return marksmanMargin !== null ? 8 : 6;
@@ -1183,7 +1186,10 @@ function commercialModelScore(row: Record<string, unknown>) {
     if (carrierShare !== null && carrierShare >= 2 && carrierShare <= 5) return 9;
     return carrierShare !== null ? 7 : 5;
   }
-  if (model === "xbf_buy_sell") return 7;
+  if (model === "xbf_buy_sell") {
+    const xbfMargin = cleanNumber(row.marksman_margin_pct) ?? XBF_BUY_SELL_DEFAULT_MARKUP_PCT;
+    return xbfMargin >= XBF_BUY_SELL_MIN_MARKUP_PCT && xbfMargin <= XBF_BUY_SELL_MAX_MARKUP_PCT ? 8 : 4;
+  }
   return 3;
 }
 
@@ -2272,8 +2278,8 @@ function supportCommercialModelCopy(question: string, language: string) {
   const lower = question.toLowerCase();
   if (!/(commercial|cost|share|margin|markup|modelo|comercial|margen|facturacion|facturación|compra|venta|xbf)/i.test(lower)) return null;
   return language === "es"
-    ? "Estructura comercial: Cost-plus usa el margen sugerido MARKSMAN sobre tu costo all-in; Carrier invoice share usa el porcentaje de facturacion que el carrier acepta compartir; XBF Buy-Sell no requiere porcentaje porque el markup lo define XBF internamente. No mezcles share % con cost-plus."
-    : "Commercial structure: Cost-plus uses the suggested MARKSMAN margin over your all-in cost; Carrier invoice share uses the billing percentage the carrier agrees to share; XBF Buy-Sell does not require a percentage because XBF controls the markup internally. Do not mix share % with cost-plus.";
+    ? "Estructura comercial: Cost-plus usa margen sugerido sobre tu costo all-in, default 3% si lo omites; Carrier invoice share mantiene tu tarifa y calcula share de factura, default 3% si lo omites; XBF Buy-Sell usa margen sugerido de compra-venta entre 7.5% y 15%, default 12% si lo omites."
+    : "Commercial structure: Cost-plus uses suggested margin over your all-in cost, default 3% if blank; Carrier invoice share keeps your rate and calculates invoice share, default 3% if blank; XBF Buy-Sell uses a suggested buy-sell margin from 7.5% to 15%, default 12% if blank.";
 }
 
 function supportBestPracticeCopy(question: string, language: string) {
@@ -2592,8 +2598,8 @@ function supportNextSteps(input: {
       es: ["Revisa modelo logistico.", "Valida reglas de operacion y notas.", "Puja solo si tu operacion cumple."]
     },
     commercial: {
-      en: ["Choose the structure that matches billing.", "Enter only the percentage that applies.", "Use XBF Buy-Sell when you only share your sell rate."],
-      es: ["Elige la estructura que coincide con facturacion.", "Captura solo el porcentaje que aplica.", "Usa XBF Buy-Sell si solo compartes tu tarifa de venta."]
+      en: ["Choose the structure that matches billing.", "Leave cost-plus or invoice share blank to use 3%.", "Use XBF Buy-Sell with 7.5%-15% suggested margin, or blank for 12%."],
+      es: ["Elige la estructura que coincide con facturacion.", "Deja cost-plus o invoice share vacio para usar 3%.", "Usa XBF Buy-Sell con margen sugerido 7.5%-15%, o vacio para 12%."]
     },
     ranking: {
       en: ["Improve price first if capacity is equal.", "Confirm real weekly capacity.", "Add ETA and availability to reduce risk."],
@@ -3095,8 +3101,8 @@ function bidSupportAnswerFromOpportunityContext(
       : `Your visible rank is ${liveBoard.current_rank ? `#${liveBoard.current_rank}` : "not available yet"}. To improve it, update all-in rate, capacity, ETA, and real availability.`;
   } else if (/(commercial|cost|share|margin|markup|modelo|comercial|margen|facturacion|facturacion|compra|venta|xbf)/i.test(question)) {
     answer = language === "es"
-      ? "Cost-plus usa margen sugerido MARKSMAN; Carrier invoice share usa porcentaje sobre facturacion; XBF Buy-Sell no pide porcentaje al carrier."
-      : "Cost-plus uses suggested MARKSMAN margin; Carrier invoice share uses a billing-share percentage; XBF Buy-Sell asks only for the carrier sell rate.";
+      ? "Cost-plus usa margen sugerido sobre tu all-in y default 3% si queda vacio. Carrier invoice share mantiene tu tarifa y default 3% si queda vacio. XBF Buy-Sell usa margen 7.5%-15%; si queda vacio aplica 12%."
+      : "Cost-plus uses suggested margin over your all-in and defaults to 3% if blank. Carrier invoice share keeps your rate and defaults to 3% if blank. XBF Buy-Sell uses 7.5%-15%; if blank it applies 12%.";
   } else if (/(alternative|alternativa|alternativas|equipo|equipment|\bunidad(?:es)?\b|\bunit(?:s)?\b|\beta\b)/i.test(question)) {
     answer = language === "es"
       ? "Puedes proponer una alternativa si cambia equipo, unidades o capacidad. Indica unidades, restricciones, ETA y si la tarifa aplica al sustituto."
@@ -3984,10 +3990,12 @@ Deno.serve(async (request) => {
       const revisionType = bestFinal ? "best_final" : previousBidRate !== null ? "revision" : "initial";
       const commercialModel = normalizeCommercialModel(body.commercial_model) || "direct_cost_plus";
       const marksmanMarginPct = commercialModel === "direct_cost_plus"
-        ? strictCommercialSharePercent(body.marksman_margin_pct, "Suggested margin to share")
+        ? strictOptionalPercentWithDefault(body.marksman_margin_pct, "Suggested margin to share", 2, 5, DEFAULT_COMMERCIAL_SHARE_PCT)
+        : commercialModel === "xbf_buy_sell"
+          ? strictOptionalPercentWithDefault(body.marksman_margin_pct, "Suggested XBF buy-sell margin", XBF_BUY_SELL_MIN_MARKUP_PCT, XBF_BUY_SELL_MAX_MARKUP_PCT, XBF_BUY_SELL_DEFAULT_MARKUP_PCT)
         : null;
       const carrierSharePct = commercialModel === "carrier_share"
-        ? strictCommercialSharePercent(body.carrier_share_pct, "Carrier invoice share")
+        ? strictOptionalPercentWithDefault(body.carrier_share_pct, "Carrier invoice share", 2, 5, DEFAULT_COMMERCIAL_SHARE_PCT)
         : null;
       const revisionLabel = revisionType === "best_final"
         ? "Best and final"

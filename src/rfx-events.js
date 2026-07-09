@@ -41,7 +41,10 @@ import { errorState, stateBlock, tableErrorState, tableState } from "./ui-state.
 import { initWorkbenchTabs } from "./workbench-tabs.js";
 import * as XLSX from "https://esm.sh/xlsx@0.18.5";
 
-const XBF_BUY_SELL_MARKUP_PCT = 15;
+const DEFAULT_COMMERCIAL_SHARE_PCT = 3;
+const XBF_BUY_SELL_DEFAULT_MARKUP_PCT = 12;
+const XBF_BUY_SELL_MIN_MARKUP_PCT = 7.5;
+const XBF_BUY_SELL_MAX_MARKUP_PCT = 15;
 
 const eventForm = document.querySelector("#rfx-event-form");
 const rfxIdInput = document.querySelector("#rfx-id");
@@ -1346,8 +1349,8 @@ function commercialModelLabel(value) {
 function bidCommercialEconomics(invitation = {}) {
   const carrierRate = decisionNumber(invitation.bid_rate);
   const model = String(invitation.commercial_model || "direct_cost_plus").toLowerCase();
-  const marginPct = decisionNumber(invitation.marksman_margin_pct);
-  const sharePct = decisionNumber(invitation.carrier_share_pct);
+  const marginPct = decisionNumber(invitation.marksman_margin_pct) ?? (model === "xbf_buy_sell" ? XBF_BUY_SELL_DEFAULT_MARKUP_PCT : DEFAULT_COMMERCIAL_SHARE_PCT);
+  const sharePct = decisionNumber(invitation.carrier_share_pct) ?? DEFAULT_COMMERCIAL_SHARE_PCT;
   const currency = invitation.currency || "USD";
   if (carrierRate === null) {
     return {
@@ -1358,7 +1361,7 @@ function bidCommercialEconomics(invitation = {}) {
       commission_fee: null,
       markup_fee: null,
       commission_pct: model === "carrier_share" ? sharePct : marginPct,
-      markup_pct: model === "xbf_buy_sell" ? XBF_BUY_SELL_MARKUP_PCT : null
+      markup_pct: model === "xbf_buy_sell" ? marginPct : null
     };
   }
   if (model === "carrier_share") {
@@ -1374,7 +1377,7 @@ function bidCommercialEconomics(invitation = {}) {
     };
   }
   if (model === "xbf_buy_sell") {
-    const boardRate = carrierRate * (1 + XBF_BUY_SELL_MARKUP_PCT / 100);
+    const boardRate = carrierRate * (1 + marginPct / 100);
     return {
       model,
       currency,
@@ -1383,7 +1386,7 @@ function bidCommercialEconomics(invitation = {}) {
       commission_fee: null,
       markup_fee: boardRate - carrierRate,
       commission_pct: null,
-      markup_pct: XBF_BUY_SELL_MARKUP_PCT
+      markup_pct: marginPct
     };
   }
   const boardRate = marginPct === null ? carrierRate : carrierRate * (1 + marginPct / 100);
@@ -1414,7 +1417,9 @@ function formatCompactDateTime(value) {
 function offerCommercialSummary(invitation = {}) {
   const economics = bidCommercialEconomics(invitation);
   const parts = [commercialModelLabel(invitation.commercial_model)];
-  if (invitation.marksman_margin_pct !== null && invitation.marksman_margin_pct !== undefined) parts.push(`${invitation.marksman_margin_pct}% MARKSMAN`);
+  if (invitation.marksman_margin_pct !== null && invitation.marksman_margin_pct !== undefined) {
+    parts.push(String(invitation.commercial_model).toLowerCase() === "xbf_buy_sell" ? `${invitation.marksman_margin_pct}% XBF margin` : `${invitation.marksman_margin_pct}% MARKSMAN`);
+  }
   if (invitation.carrier_share_pct !== null && invitation.carrier_share_pct !== undefined) parts.push(`${invitation.carrier_share_pct}% share`);
   if (economics.board_rate !== null && economics.carrier_rate !== null && economics.board_rate !== economics.carrier_rate) parts.push(`Board ${formatMoney(economics.board_rate, economics.currency)}`);
   if (economics.commission_fee !== null) parts.push(`Fee ${formatMoney(economics.commission_fee, economics.currency)}`);
@@ -1473,15 +1478,17 @@ function laneDecisionContext(rows = []) {
 
 function commercialDecisionScore(invitation = {}) {
   const model = String(invitation.commercial_model || "").toLowerCase();
-  const marksmanMargin = decisionNumber(invitation.marksman_margin_pct);
-  const carrierShare = decisionNumber(invitation.carrier_share_pct);
+  const marksmanMargin = decisionNumber(invitation.marksman_margin_pct) ?? DEFAULT_COMMERCIAL_SHARE_PCT;
+  const carrierShare = decisionNumber(invitation.carrier_share_pct) ?? DEFAULT_COMMERCIAL_SHARE_PCT;
   let score = 0;
   if (model === "direct_cost_plus") score += 6;
   if (model === "carrier_share") score += 5;
   if (model === "xbf_buy_sell") score += 4;
   if (marksmanMargin !== null && marksmanMargin >= 2 && marksmanMargin <= 5) score += 3;
+  if (model === "xbf_buy_sell" && marksmanMargin >= XBF_BUY_SELL_MIN_MARKUP_PCT && marksmanMargin <= XBF_BUY_SELL_MAX_MARKUP_PCT) score += 3;
   if (carrierShare !== null && carrierShare >= 2 && carrierShare <= 5) score += 3;
-  if (marksmanMargin !== null && marksmanMargin > 5) score -= 2;
+  if (model !== "xbf_buy_sell" && marksmanMargin !== null && marksmanMargin > 5) score -= 2;
+  if (model === "xbf_buy_sell" && (marksmanMargin < XBF_BUY_SELL_MIN_MARKUP_PCT || marksmanMargin > XBF_BUY_SELL_MAX_MARKUP_PCT)) score -= 2;
   if (carrierShare !== null && carrierShare > 5) score -= 2;
   return clampScore(score, 0, 10);
 }
