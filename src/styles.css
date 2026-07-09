@@ -17688,6 +17688,44 @@ textarea:focus,
   padding: 9px;
 }
 
+.bid-support-thread {
+  display: grid;
+  gap: 8px;
+}
+
+.bid-support-message {
+  max-width: 94%;
+}
+
+.bid-support-message.is-user {
+  justify-self: end;
+  display: grid;
+  gap: 3px;
+  border: 1px solid #c6d3ff;
+  border-radius: 12px 12px 4px 12px;
+  background: #eef3ff;
+  padding: 8px 9px;
+}
+
+.bid-support-message.is-user span {
+  color: #3553d8;
+  font-size: 0.62rem;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.bid-support-message.is-user p {
+  margin: 0;
+  color: #17212b;
+  font-size: 0.76rem;
+  line-height: 1.35;
+}
+
+.bid-support-message.is-assistant {
+  justify-self: start;
+  border-radius: 12px 12px 12px 4px;
+}
+
 .bid-support-answer[data-needs-ticket="true"] {
   border-left-color: #c47b00;
   background: #fffaf0;

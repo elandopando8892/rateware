@@ -30,7 +30,9 @@ const PRIVATE_BID_ANNOUNCEMENTS = {
     leading: "You are currently leading.",
     chat: "New message in Bid Room chat.",
     bidSubmitted: "Bid submitted.",
-    closing: "Deadline closing soon."
+    closing: "Deadline closing soon.",
+    supportAnswer: "Bid assistant answered.",
+    supportTicket: "Support ticket created."
   },
   es: {
     enabled: "Alertas del Bid Room privado activadas.",
@@ -39,7 +41,9 @@ const PRIVATE_BID_ANNOUNCEMENTS = {
     leading: "Vas liderando.",
     chat: "Nuevo mensaje en el chat del Bid Room.",
     bidSubmitted: "Oferta enviada.",
-    closing: "La oportunidad esta por cerrar."
+    closing: "La oportunidad esta por cerrar.",
+    supportAnswer: "El asistente respondio.",
+    supportTicket: "Ticket de soporte creado."
   }
 };
 const privateAlertState = {
@@ -621,7 +625,9 @@ function privateAlertLabel(type) {
     leading: "Leading offer",
     chat: "New chat message",
     bidSubmitted: "Bid submitted",
-    closing: "Deadline risk"
+    closing: "Deadline risk",
+    supportAnswer: "Assistant answer",
+    supportTicket: "Support ticket"
   };
   return labels[type] || privateAlertPhrase(type);
 }
@@ -683,7 +689,9 @@ function playPrivateBidTone(type) {
     closing: [494, 659],
     chat: [587, 740],
     bidSubmitted: [659, 880],
-    leading: [784, 988]
+    leading: [784, 988],
+    supportAnswer: [659, 988],
+    supportTicket: [494, 740]
   };
   const [startFrequency, endFrequency] = tones[type] || [659, 880];
   oscillator.type = "sine";
@@ -2118,6 +2126,7 @@ function renderBidSupportAgent(result = lastBidSupportResult) {
     lane.origin && lane.destination ? `${lane.origin} -> ${lane.destination}` : null
   ].filter(Boolean).join(" | ");
   const starterPrompts = bidSupportPromptList();
+  const question = result?.question || lastBidSupportQuestion;
   panel.innerHTML = `
     <button type="button" class="bid-support-launcher" data-bid-support-toggle aria-expanded="${keepOpen ? "true" : "false"}">
       <span>${escapeHtml(dualText("Bid assistant", "Asistente de puja"))}</span>
@@ -2140,18 +2149,26 @@ function renderBidSupportAgent(result = lastBidSupportResult) {
       `}
       <div class="bid-support-chat-log">
         ${result ? `
-          <article class="bid-support-answer" data-needs-ticket="${result.needs_ticket ? "true" : "false"}">
-            <div>
-              <strong>${escapeHtml(result.intent_label || (result.needs_ticket ? dualText("Human follow-up recommended", "Requiere seguimiento humano") : dualText("Support answer", "Respuesta de soporte")))}</strong>
-              <span>${escapeHtml(result.confidence ? `${dualText("Confidence", "Confianza")}: ${result.confidence}` : "")}</span>
-            </div>
-            ${renderBidSupportHighlights(result.support_highlights)}
-            <p>${escapeHtml(result.answer || "")}</p>
-            ${renderBidSupportNextSteps(result.next_steps)}
-            ${result.ticket?.id ? `<small>${escapeHtml(dualText("Ticket created", "Ticket creado"))}: ${escapeHtml(result.ticket.id)}</small>` : ""}
-            ${result.needs_ticket && result.ticket_suggestion ? `<small>${escapeHtml(result.ticket_suggestion)}</small>` : ""}
-            ${renderBidSupportSuggestions(result.suggested_prompts)}
-          </article>
+          <div class="bid-support-thread">
+            ${question ? `
+              <article class="bid-support-message is-user">
+                <span>${escapeHtml(dualText("You asked", "Tu pregunta"))}</span>
+                <p>${escapeHtml(question)}</p>
+              </article>
+            ` : ""}
+            <article class="bid-support-answer bid-support-message is-assistant" data-needs-ticket="${result.needs_ticket ? "true" : "false"}">
+              <div>
+                <strong>${escapeHtml(result.intent_label || (result.needs_ticket ? dualText("Human follow-up recommended", "Requiere seguimiento humano") : dualText("Support answer", "Respuesta de soporte")))}</strong>
+                <span>${escapeHtml(result.confidence ? `${dualText("Confidence", "Confianza")}: ${result.confidence}` : "")}</span>
+              </div>
+              ${renderBidSupportHighlights(result.support_highlights)}
+              <p>${escapeHtml(result.answer || "")}</p>
+              ${renderBidSupportNextSteps(result.next_steps)}
+              ${result.ticket?.id ? `<small>${escapeHtml(dualText("Ticket created", "Ticket creado"))}: ${escapeHtml(result.ticket.id)}</small>` : ""}
+              ${result.needs_ticket && result.ticket_suggestion ? `<small>${escapeHtml(result.ticket_suggestion)}</small>` : ""}
+              ${renderBidSupportSuggestions(result.suggested_prompts)}
+            </article>
+          </div>
         ` : `
           <article class="bid-support-answer">
             <div>
@@ -2208,6 +2225,7 @@ async function askBidSupport(options = {}) {
       language: portalLanguage()
     });
     renderBidSupportAgent(result);
+    queuePrivateBidAlert(result.ticket?.id ? "supportTicket" : "supportAnswer", result.intent_label || result.answer || privateAlertPhrase("supportAnswer"));
     const nextStatus = card.querySelector("#bid-support-status");
     if (nextStatus) {
       nextStatus.textContent = result.ticket?.id

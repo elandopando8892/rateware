@@ -60,6 +60,10 @@ ANNOUNCEMENTS.es.opportunity = "Nueva oportunidad disponible.";
 ANNOUNCEMENTS.es.closing = "La oportunidad esta por cerrar.";
 ANNOUNCEMENTS.es.inviteSent = "Solicitud de invitacion enviada.";
 ANNOUNCEMENTS.es.linksSent = "Links privados enviados.";
+ANNOUNCEMENTS.en.supportAnswer = "Bid assistant answered.";
+ANNOUNCEMENTS.es.supportAnswer = "El asistente respondio.";
+ANNOUNCEMENTS.en.supportTicket = "Support ticket created.";
+ANNOUNCEMENTS.es.supportTicket = "Ticket de soporte creado.";
 
 function normalizePublicEmail(value) {
   return String(value || "").trim().toLowerCase();
@@ -371,24 +375,33 @@ function renderPublicSupportReply(result = null, status = "") {
   supportFollowup?.setAttribute("hidden", "");
   const title = result.intent_label || (result.needs_ticket ? "Human follow-up recommended" : "Support answer");
   const confidence = result.confidence ? `Confidence: ${result.confidence}` : "";
+  const question = result.question || state.supportQuestion;
   supportReply.innerHTML = `
-    <article class="bid-support-answer" data-needs-ticket="${result.needs_ticket ? "true" : "false"}">
-      <div>
-        <strong>${escapeHtml(title)}</strong>
-        <span>${escapeHtml(confidence)}</span>
-      </div>
-      <small>${escapeHtml(result.scope || "Public Bid Room")}</small>
-      ${renderSupportHighlights(result.support_highlights)}
-      <p>${escapeHtml(result.answer || "")}</p>
-      ${renderSupportNextSteps(result.next_steps)}
-      ${result.ticket?.id ? `<small>Ticket created: ${escapeHtml(result.ticket.id)}</small>` : ""}
-      ${result.needs_ticket && result.ticket_suggestion ? `<small>${escapeHtml(result.ticket_suggestion)}</small>` : ""}
-      ${renderSupportSuggestions(result.suggested_prompts)}
-      ${result.needs_ticket && !result.ticket?.id ? `
-        <small>${escapeHtml(state.language === "es" ? "Solo crea ticket si necesitas respuesta humana de procurement." : "Create a ticket only if procurement should answer directly.")}</small>
-        <button type="button" class="secondary small-button" data-public-support-ticket>${escapeHtml(state.language === "es" ? "Crear ticket" : "Create ticket")}</button>
+    <div class="bid-support-thread">
+      ${question ? `
+        <article class="bid-support-message is-user">
+          <span>${escapeHtml(state.language === "es" ? "Tu pregunta" : "You asked")}</span>
+          <p>${escapeHtml(question)}</p>
+        </article>
       ` : ""}
-    </article>
+      <article class="bid-support-answer bid-support-message is-assistant" data-needs-ticket="${result.needs_ticket ? "true" : "false"}">
+        <div>
+          <strong>${escapeHtml(title)}</strong>
+          <span>${escapeHtml(confidence)}</span>
+        </div>
+        <small>${escapeHtml(result.scope || "Public Bid Room")}</small>
+        ${renderSupportHighlights(result.support_highlights)}
+        <p>${escapeHtml(result.answer || "")}</p>
+        ${renderSupportNextSteps(result.next_steps)}
+        ${result.ticket?.id ? `<small>Ticket created: ${escapeHtml(result.ticket.id)}</small>` : ""}
+        ${result.needs_ticket && result.ticket_suggestion ? `<small>${escapeHtml(result.ticket_suggestion)}</small>` : ""}
+        ${renderSupportSuggestions(result.suggested_prompts)}
+        ${result.needs_ticket && !result.ticket?.id ? `
+          <small>${escapeHtml(state.language === "es" ? "Solo crea ticket si necesitas respuesta humana de procurement." : "Create a ticket only if procurement should answer directly.")}</small>
+          <button type="button" class="secondary small-button" data-public-support-ticket>${escapeHtml(state.language === "es" ? "Crear ticket" : "Create ticket")}</button>
+        ` : ""}
+      </article>
+    </div>
   `;
 }
 
@@ -435,6 +448,7 @@ async function askPublicSupport(options = {}) {
       email: supportEmail?.value || ""
     });
     renderPublicSupportReply(result);
+    queueSupportAlert(result.ticket?.id ? "supportTicket" : "supportAnswer", result.intent_label || result.answer);
   } catch (error) {
     renderPublicSupportReply(null, error.message || "Support could not answer.");
   }
@@ -463,6 +477,22 @@ function queueAlert(type, row) {
     label,
     route,
     event: row.event?.rfx_id || row.event?.name || "Bid Room",
+    created_at: new Date().toISOString()
+  };
+  state.alerts = [alert, ...state.alerts].slice(0, 8);
+  renderAlerts();
+  announce(type);
+}
+
+function queueSupportAlert(type, message = "") {
+  const language = ANNOUNCEMENTS[state.language] ? state.language : "en";
+  const label = ANNOUNCEMENTS[language][type] || ANNOUNCEMENTS.en[type] || "Bid support";
+  const alert = {
+    id: `${Date.now()}-${Math.random()}`,
+    type,
+    label,
+    route: message || (state.language === "es" ? "Soporte contextual" : "Contextual support"),
+    event: state.language === "es" ? "Asistente del Bid Room" : "Bid Room assistant",
     created_at: new Date().toISOString()
   };
   state.alerts = [alert, ...state.alerts].slice(0, 8);

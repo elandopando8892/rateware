@@ -2089,6 +2089,18 @@ function supportBriefAnswer(text: string, maxLength = 420) {
   return cleaned.length > maxLength ? `${cleaned.slice(0, maxLength - 1).trim()}...` : cleaned;
 }
 
+function supportConversationalAnswer(text: string, language: string, maxLength = 300) {
+  let cleaned = supportBriefAnswer(text, maxLength)
+    .replace(/\s*\d+\)\s*/g, " ")
+    .replace(/\s*[-•]\s*/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!cleaned) return "";
+  if (!/[.!?]$/.test(cleaned)) cleaned += ".";
+  if (cleaned.length < 40) return cleaned;
+  return cleaned;
+}
+
 function supportQuestionIntent(question: string, needsTicket = false) {
   const lower = supportNormalizeSearch(question);
   if (needsTicket || /(ticket|humano|human|procurement|soporte|support|escalar|escalate)/i.test(lower)) return "ticket";
@@ -2406,7 +2418,8 @@ function supportResult(input: {
 }) {
   const intent = supportQuestionIntent(input.question, input.needs_ticket === true);
   return {
-    answer: supportBriefAnswer(input.answer),
+    question: supportBriefAnswer(input.question, 140),
+    answer: supportConversationalAnswer(input.answer, input.language),
     needs_ticket: input.needs_ticket,
     confidence: input.confidence,
     scope: input.scope,
@@ -2538,7 +2551,9 @@ async function bidSupportAiAnswer(
               "You are Rateware Bid Room support for freight procurement.",
               "Answer only from the supplied Bid Room context. Do not invent carriers, lanes, prices, rankings, legal terms, or commercial approvals.",
               "If the context does not contain the answer, say that procurement should review it and set needs_ticket true.",
-              "Keep the answer concise, practical, and in the requested language.",
+              "Write like a helpful procurement chat assistant, not like a report.",
+              "Keep the answer conversational, practical, and in the requested language.",
+              "Use one or two short sentences, maximum 65 words. Do not use numbered lists unless the user explicitly asks for steps.",
               "Never promise an award, access, payment, capacity, or exception."
             ].join(" ")
           }]

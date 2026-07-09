@@ -708,11 +708,13 @@ assert.match(rfxBidApiSource, /lane_detail/, "Bid Room support should guide from
 assert.match(rfxBidApiSource, /What should I change first\?/, "Bid Room support should suggest deeper ranking follow-up questions");
 assert.match(rfxBidApiSource, /let support = bidSupportAnswerFromOpportunityContext/, "Bid Room support should keep a deterministic fallback before ticket escalation");
 assert.match(rfxBidApiSource, /bidSupportAiAnswer\(question/, "Bid Room support can use AI only after building deterministic context");
+assert.match(rfxBidApiSource, /supportConversationalAnswer/, "Bid Room support should normalize answers for conversational replies");
 assert.match(rfxBidApiSource, /status: "support_ticket"/, "Bid Room support should escalate unknown questions as support tickets");
 assert.match(rfxBidSource, /id="bid-support-agent"/, "Private Bid Room should render a contextual support agent");
 assert.match(rfxBidSource, /function askBidSupport/, "Private Bid Room should call the support agent");
 assert.match(rfxBidSource, /function setBidSupportOpen/, "Private Bid Room support should open as a chat pop-up");
 assert.match(rfxBidSource, /data-bid-support-toggle/, "Private Bid Room support should have a floating chat launcher");
+assert.match(rfxBidSource, /supportAnswer/, "Private Bid Room support should trigger multimedia support replies");
 assert.match(rfxBidSource, /Ask about this opportunity/, "Private support should describe opportunity-level help, not only one bid");
 assert.match(rfxBidSource, /Opportunity summary/, "Private support should include an opportunity summary prompt");
 assert.match(rfxBidSource, /function setCarrierChatOpen/, "Private Bid Room chat should open as a pop-up");
@@ -731,6 +733,8 @@ assert.match(bidRoomBoardSource, /data-public-support-prompt/, "Public Bid Room 
 assert.match(bidRoomBoardSource, /function setPublicSupportOpen/, "Public Bid Room support should open as a chat pop-up");
 assert.match(bidRoomBoardSource, /supportFollowup\?\.removeAttribute\("hidden"\)/, "Public support should reveal email follow-up only during ticket escalation");
 assert.match(bidRoomBoardSource, /function askPublicSupport/, "Public Bid Room board should call the support agent");
+assert.match(bidRoomBoardSource, /bid-support-thread/, "Public Bid Room support should render conversational turns");
+assert.match(bidRoomBoardSource, /queueSupportAlert/, "Public Bid Room support should trigger multimedia support replies");
 assert.match(bidRoomBoardSource, /PUBLIC_BOARD_SOUND_DEFAULT_VERSION/, "Public Bid Room board should reset old sound-off defaults");
 assert.match(bidRoomBoardSource, /function armPublicBoardAudio/, "Public Bid Room board should arm multimedia alerts on first interaction");
 assert.match(rfxBidApiSource, /async function mirrorSupportTicketToGoogleChat/, "Bid support tickets should mirror to the Bid Room Google Chat event thread");
