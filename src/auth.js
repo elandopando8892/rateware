@@ -147,7 +147,8 @@ const SHELL_NAV_GROUPS = [
     title: "Source",
     items: [
       { id: "crm", code: "CM", label: "Carrier CRM", href: "./vendors.html" },
-      { id: "rfx", code: "BR", label: "Bid Room", href: "./rfx-events.html" }
+      { id: "rfx", code: "BR", label: "Bid Room", href: "./rfx-events.html" },
+      { id: "support", code: "VS", label: "Vendor Support", href: "./vendor-support.html" }
     ]
   },
   {
@@ -215,6 +216,15 @@ const PAGE_META = {
       { label: "Source", href: "./app.html" },
       { label: "Carrier CRM", href: "./vendors.html" },
       { label: "Bid Room" }
+    ]
+  },
+  "vendor-support": {
+    title: "Vendor Support",
+    eyebrow: "Carrier assistance",
+    crumbs: [
+      { label: "Source", href: "./app.html" },
+      { label: "Carrier CRM", href: "./vendors.html" },
+      { label: "Vendor Support" }
     ]
   },
   outreach: {
