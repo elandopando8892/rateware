@@ -17714,6 +17714,59 @@ textarea:focus,
   line-height: 1.45;
 }
 
+.bid-support-highlights {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  gap: 5px;
+}
+
+.bid-support-highlights div {
+  display: grid;
+  gap: 1px;
+  border: 1px solid #dbe4eb;
+  border-radius: 7px;
+  background: #ffffff;
+  padding: 6px 7px;
+}
+
+.bid-support-highlights span,
+.bid-support-next-steps > span {
+  color: #647684;
+  font-size: 0.63rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.bid-support-highlights strong {
+  overflow: hidden;
+  color: #17212b;
+  font-size: 0.72rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bid-support-next-steps {
+  display: grid;
+  gap: 5px;
+  border: 1px solid #dbe8ff;
+  border-radius: 8px;
+  background: #f5f8ff;
+  padding: 7px 8px;
+}
+
+.bid-support-next-steps ol {
+  display: grid;
+  gap: 3px;
+  margin: 0;
+  padding-left: 18px;
+}
+
+.bid-support-next-steps li {
+  color: #2f4050;
+  font-size: 0.74rem;
+  line-height: 1.35;
+}
+
 .bid-support-agent.is-prominent {
   border-color: #b6c7ff;
   background: linear-gradient(180deg, #ffffff 0%, #f6f8ff 100%);

@@ -319,12 +319,40 @@ async function callBidSupport(payload = {}) {
 
 function renderSupportSuggestions(prompts = []) {
   if (!Array.isArray(prompts) || !prompts.length) return "";
+  const label = state.language === "es" ? "Preguntas para profundizar" : "Go deeper";
   return `
     <div class="bid-support-suggestions">
-      <span>Suggested next questions</span>
+      <span>${escapeHtml(label)}</span>
       <div class="bid-support-suggestion-actions">
         ${prompts.map((prompt) => `<button type="button" class="secondary small-button" data-public-support-prompt="${escapeAttribute(prompt)}">${escapeHtml(prompt)}</button>`).join("")}
       </div>
+    </div>
+  `;
+}
+
+function renderSupportHighlights(items = []) {
+  if (!Array.isArray(items) || !items.length) return "";
+  return `
+    <div class="bid-support-highlights">
+      ${items.map((item) => `
+        <div>
+          <span>${escapeHtml(item.label || "")}</span>
+          <strong>${escapeHtml(item.value || "-")}</strong>
+        </div>
+      `).join("")}
+    </div>
+  `;
+}
+
+function renderSupportNextSteps(steps = []) {
+  if (!Array.isArray(steps) || !steps.length) return "";
+  const label = state.language === "es" ? "Siguiente paso sugerido" : "Suggested next step";
+  return `
+    <div class="bid-support-next-steps">
+      <span>${escapeHtml(label)}</span>
+      <ol>
+        ${steps.slice(0, 3).map((step) => `<li>${escapeHtml(step)}</li>`).join("")}
+      </ol>
     </div>
   `;
 }
@@ -340,24 +368,25 @@ function renderPublicSupportReply(result = null, status = "") {
     supportReply.innerHTML = `<p class="status-message">${escapeHtml(status)}</p>`;
     return;
   }
-  if (result.needs_ticket && !result.ticket?.id) {
-    supportFollowup?.removeAttribute("hidden");
-  } else {
-    supportFollowup?.setAttribute("hidden", "");
-  }
+  supportFollowup?.setAttribute("hidden", "");
+  const title = result.intent_label || (result.needs_ticket ? "Human follow-up recommended" : "Support answer");
+  const confidence = result.confidence ? `Confidence: ${result.confidence}` : "";
   supportReply.innerHTML = `
     <article class="bid-support-answer" data-needs-ticket="${result.needs_ticket ? "true" : "false"}">
       <div>
-        <strong>${escapeHtml(result.needs_ticket ? "Human follow-up recommended" : "Support answer")}</strong>
-        <span>${escapeHtml(result.scope || "Public Bid Room")}</span>
+        <strong>${escapeHtml(title)}</strong>
+        <span>${escapeHtml(confidence)}</span>
       </div>
+      <small>${escapeHtml(result.scope || "Public Bid Room")}</small>
+      ${renderSupportHighlights(result.support_highlights)}
       <p>${escapeHtml(result.answer || "")}</p>
+      ${renderSupportNextSteps(result.next_steps)}
       ${result.ticket?.id ? `<small>Ticket created: ${escapeHtml(result.ticket.id)}</small>` : ""}
       ${result.needs_ticket && result.ticket_suggestion ? `<small>${escapeHtml(result.ticket_suggestion)}</small>` : ""}
       ${renderSupportSuggestions(result.suggested_prompts)}
       ${result.needs_ticket && !result.ticket?.id ? `
-        <small>Add a follow-up email only if procurement should respond directly.</small>
-        <button type="button" class="secondary small-button" data-public-support-ticket>Create ticket</button>
+        <small>${escapeHtml(state.language === "es" ? "Solo crea ticket si necesitas respuesta humana de procurement." : "Create a ticket only if procurement should answer directly.")}</small>
+        <button type="button" class="secondary small-button" data-public-support-ticket>${escapeHtml(state.language === "es" ? "Crear ticket" : "Create ticket")}</button>
       ` : ""}
     </article>
   `;

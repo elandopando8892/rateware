@@ -2057,9 +2057,51 @@ function setCarrierChatOpen(open = true) {
 }
 
 function bidSupportPromptList() {
+  const lane = lastInvitation?.rfx_lanes || {};
+  const route = lane.origin && lane.destination ? `${lane.origin} -> ${lane.destination}` : "";
+  const routePromptEs = route ? `Que detalles tiene ${route}?` : "Que detalles tiene esta ruta?";
+  const routePromptEn = route ? `What details are available for ${route}?` : "What details are available for this lane?";
   return portalLanguage() === "es"
-    ? ["Resumen de la oportunidad", "Que detalles tiene Guadalajara?", "Como mejoro mi ranking?", "Que modelo comercial debo elegir?", "Como subo una alternativa?"]
-    : ["Opportunity summary", "What details are available for Guadalajara?", "How do I improve my rank?", "Which commercial model should I use?", "How do I submit an alternative?"];
+    ? ["Resumen de la oportunidad", routePromptEs, "Como mejoro mi ranking?", "Que modelo comercial debo elegir?", "Como subo una alternativa?"]
+    : ["Opportunity summary", routePromptEn, "How do I improve my rank?", "Which commercial model should I use?", "How do I submit an alternative?"];
+}
+
+function renderBidSupportHighlights(items = []) {
+  if (!Array.isArray(items) || !items.length) return "";
+  return `
+    <div class="bid-support-highlights">
+      ${items.map((item) => `
+        <div>
+          <span>${escapeHtml(item.label || "")}</span>
+          <strong>${escapeHtml(item.value || "-")}</strong>
+        </div>
+      `).join("")}
+    </div>
+  `;
+}
+
+function renderBidSupportNextSteps(steps = []) {
+  if (!Array.isArray(steps) || !steps.length) return "";
+  return `
+    <div class="bid-support-next-steps">
+      <span>${escapeHtml(dualText("Suggested next step", "Siguiente paso sugerido"))}</span>
+      <ol>
+        ${steps.slice(0, 3).map((step) => `<li>${escapeHtml(step)}</li>`).join("")}
+      </ol>
+    </div>
+  `;
+}
+
+function renderBidSupportSuggestions(prompts = []) {
+  if (!Array.isArray(prompts) || !prompts.length) return "";
+  return `
+    <div class="bid-support-suggestions">
+      <span>${escapeHtml(dualText("Go deeper", "Preguntas para profundizar"))}</span>
+      <div class="bid-support-suggestion-actions">
+        ${prompts.map((prompt) => `<button type="button" class="secondary small-button" data-bid-support-prompt="${escapeAttribute(prompt)}">${escapeHtml(prompt)}</button>`).join("")}
+      </div>
+    </div>
+  `;
 }
 
 function renderBidSupportAgent(result = lastBidSupportResult) {
@@ -2075,6 +2117,7 @@ function renderBidSupportAgent(result = lastBidSupportResult) {
     event.rfx_id || event.name,
     lane.origin && lane.destination ? `${lane.origin} -> ${lane.destination}` : null
   ].filter(Boolean).join(" | ");
+  const starterPrompts = bidSupportPromptList();
   panel.innerHTML = `
     <button type="button" class="bid-support-launcher" data-bid-support-toggle aria-expanded="${keepOpen ? "true" : "false"}">
       <span>${escapeHtml(dualText("Bid assistant", "Asistente de puja"))}</span>
@@ -2090,27 +2133,24 @@ function renderBidSupportAgent(result = lastBidSupportResult) {
         <button type="button" class="secondary small-button" data-bid-support-close>${escapeHtml(dualText("Close", "Cerrar"))}</button>
       </header>
       <p class="bid-support-scope">${escapeHtml(scope || dualText("Private Bid Room context", "Contexto del Bid Room privado"))}</p>
-      <div class="bid-support-prompts">
-        ${bidSupportPromptList().map((prompt) => `<button type="button" class="secondary small-button" data-bid-support-prompt="${escapeAttribute(prompt)}">${escapeHtml(prompt)}</button>`).join("")}
-      </div>
+      ${result ? "" : `
+        <div class="bid-support-prompts">
+          ${starterPrompts.map((prompt) => `<button type="button" class="secondary small-button" data-bid-support-prompt="${escapeAttribute(prompt)}">${escapeHtml(prompt)}</button>`).join("")}
+        </div>
+      `}
       <div class="bid-support-chat-log">
         ${result ? `
           <article class="bid-support-answer" data-needs-ticket="${result.needs_ticket ? "true" : "false"}">
             <div>
-              <strong>${escapeHtml(result.needs_ticket ? dualText("Human follow-up recommended", "Requiere seguimiento humano") : dualText("Support answer", "Respuesta de soporte"))}</strong>
+              <strong>${escapeHtml(result.intent_label || (result.needs_ticket ? dualText("Human follow-up recommended", "Requiere seguimiento humano") : dualText("Support answer", "Respuesta de soporte")))}</strong>
               <span>${escapeHtml(result.confidence ? `${dualText("Confidence", "Confianza")}: ${result.confidence}` : "")}</span>
             </div>
+            ${renderBidSupportHighlights(result.support_highlights)}
             <p>${escapeHtml(result.answer || "")}</p>
+            ${renderBidSupportNextSteps(result.next_steps)}
             ${result.ticket?.id ? `<small>${escapeHtml(dualText("Ticket created", "Ticket creado"))}: ${escapeHtml(result.ticket.id)}</small>` : ""}
             ${result.needs_ticket && result.ticket_suggestion ? `<small>${escapeHtml(result.ticket_suggestion)}</small>` : ""}
-            ${Array.isArray(result.suggested_prompts) && result.suggested_prompts.length ? `
-              <div class="bid-support-suggestions">
-                <span>${escapeHtml(dualText("Suggested next questions", "Siguientes preguntas sugeridas"))}</span>
-                <div class="bid-support-suggestion-actions">
-                  ${result.suggested_prompts.map((prompt) => `<button type="button" class="secondary small-button" data-bid-support-prompt="${escapeAttribute(prompt)}">${escapeHtml(prompt)}</button>`).join("")}
-                </div>
-              </div>
-            ` : ""}
+            ${renderBidSupportSuggestions(result.suggested_prompts)}
           </article>
         ` : `
           <article class="bid-support-answer">

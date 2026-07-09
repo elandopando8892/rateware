@@ -2060,7 +2060,7 @@ function supportCommercialModelCopy(question: string, language: string) {
 
 function supportBestPracticeCopy(question: string, language: string) {
   const lower = question.toLowerCase();
-  if (/(alternative|alternativa|equipo|equipment|unidad|unit|eta|capacity|capacidad|ranking|rank|score|displaced|superado|price|tarifa|rate|puja|bid)/i.test(lower)) {
+  if (/(alternative|alternativa|alternativas|equipo|equipment|\bunidad(?:es)?\b|\bunit(?:s)?\b|\beta\b|capacity|capacidad|ranking|rank|score|displaced|superado|price|tarifa|rate|puja|bid)/i.test(lower)) {
     return language === "es"
       ? "Para mejorar una puja, captura tarifa all-in numerica, moneda, capacidad semanal, dias de transito, ETA de pickup/delivery si aplica, disponibilidad de equipo y cualquier alternativa real. Si ofreces una alternativa, explica unidades/equipo sustituto y restricciones. El ranking considera precio, capacidad, ETA, validacion y modelo comercial; no solo la tarifa mas baja."
       : "To improve a bid, enter numeric all-in rate, currency, weekly capacity, transit days, pickup/delivery ETA when available, equipment availability, and any real alternative. If you offer an alternative, describe substitute units/equipment and restrictions. Ranking considers price, capacity, ETA, validation, and commercial model, not only the lowest rate.";
@@ -2093,9 +2093,9 @@ function supportQuestionIntent(question: string, needsTicket = false) {
   const lower = supportNormalizeSearch(question);
   if (needsTicket || /(ticket|humano|human|procurement|soporte|support|escalar|escalate)/i.test(lower)) return "ticket";
   if (/(deadline|due|vence|vencimiento|fecha|cierre|cerrar|extension|prorroga)/i.test(lower)) return "deadline";
-  if (/(invitation|invite|access|participate|private link|link privado|invitacion|invitar|acceso|participar|correo|email)/i.test(lower)) return "access";
+  if (/(invitation|invite|access|participate|participating|participation|private link|link privado|invitacion|invitar|acceso|participa(?:r|cion|ción|ndo|do)?|participo|correo|email)/i.test(lower)) return "access";
   if (/(rank|ranking|score|position|posicion|leader|lider|superado|displaced|mejorar|competitivo)/i.test(lower)) return "ranking";
-  if (/(alternative|alternativa|sustituto|equipo|equipment|unidad|unit|eta|availability|disponibilidad)/i.test(lower)) return "alternative";
+  if (/(alternative|alternativa|alternativas|sustituto|equipo|equipment|\bunidad(?:es)?\b|\bunit(?:s)?\b|\beta\b|availability|disponibilidad)/i.test(lower)) return "alternative";
   if (/(commercial|cost|share|margin|markup|modelo comercial|margen|facturacion|compra venta|xbf|cost plus|invoice share)/i.test(lower)) return "commercial";
   if (/(bid|puja|quote|cotizar|tarifa|rate|submit|enviar|actualizar|xlsx|excel|capacidad)/i.test(lower)) return "bidding";
   if (/(modelo logistico|logistics model|criterio|criteria|regla|rule|nota|note|servicio|service specification|detalle|detail|ruta enfocada)/i.test(lower)) return "lane_detail";
@@ -2270,6 +2270,126 @@ function supportPromptOptions(input: {
   return [...new Set(prompts.map(cleanText).filter(Boolean))].slice(0, 5);
 }
 
+function supportIntentLabel(intent: string, language: string) {
+  const labels: Record<string, Record<string, string>> = {
+    overview: { en: "Opportunity overview", es: "Resumen de oportunidad" },
+    lane_list: { en: "Invited lanes", es: "Rutas invitadas" },
+    lane_detail: { en: "Lane details", es: "Detalles de ruta" },
+    commercial: { en: "Commercial model", es: "Modelo comercial" },
+    ranking: { en: "Ranking guidance", es: "Guia de ranking" },
+    alternative: { en: "Alternative offer", es: "Oferta alternativa" },
+    deadline: { en: "Deadline", es: "Fecha limite" },
+    access: { en: "Access and invitations", es: "Acceso e invitaciones" },
+    bidding: { en: "Bid submission", es: "Captura de puja" },
+    ticket: { en: "Procurement follow-up", es: "Seguimiento procurement" }
+  };
+  return labels[intent]?.[language === "es" ? "es" : "en"] || labels.overview[language === "es" ? "es" : "en"];
+}
+
+function supportHighlightItems(input: {
+  language: string;
+  token?: string | null;
+  event?: Record<string, unknown> | null;
+  lane?: Record<string, unknown> | null;
+  invited_lanes?: Record<string, unknown>[];
+  live_board?: Record<string, unknown> | null;
+}) {
+  const language = input.language;
+  const event = input.event || {};
+  const lane = input.lane || {};
+  const liveBoard = input.live_board || {};
+  const items = [
+    {
+      label: language === "es" ? "RFx" : "RFx",
+      value: supportEventLabel(event)
+    },
+    {
+      label: language === "es" ? "Cierre" : "Deadline",
+      value: cleanText(event.due_date) || (language === "es" ? "No definido" : "Not defined")
+    },
+    {
+      label: language === "es" ? "Ruta" : "Lane",
+      value: supportRouteLabel(lane)
+    }
+  ];
+  const laneCount = Array.isArray(input.invited_lanes) ? input.invited_lanes.length : 0;
+  if (input.token && laneCount > 1) {
+    items.push({
+      label: language === "es" ? "Rutas invitadas" : "Invited lanes",
+      value: String(laneCount)
+    });
+  }
+  if (input.token && liveBoard.current_rank) {
+    items.push({
+      label: language === "es" ? "Tu ranking" : "Your rank",
+      value: `#${liveBoard.current_rank}`
+    });
+  }
+  return items
+    .map((item) => ({ label: cleanText(item.label), value: cleanText(item.value) }))
+    .filter((item) => item.value && item.value !== "selected lane")
+    .slice(0, 4);
+}
+
+function supportNextSteps(input: {
+  language: string;
+  intent: string;
+  token?: string | null;
+  needs_ticket?: boolean;
+}) {
+  const language = input.language;
+  const privateContext = Boolean(input.token);
+  if (input.needs_ticket || input.intent === "ticket") {
+    return language === "es"
+      ? ["Resume que decision necesitas.", "Incluye RFx, ruta y correo de contacto.", "Crea ticket si el dato no esta visible."]
+      : ["Summarize the decision you need.", "Include RFx, lane, and contact email.", "Create a ticket if the data is not visible."];
+  }
+  const steps: Record<string, { en: string[]; es: string[] }> = {
+    overview: {
+      en: privateContext
+        ? ["Review all invited lanes.", "Open a lane detail if rules matter.", "Submit or update your bid before the deadline."]
+        : ["Review open opportunities.", "Request access or find your private invitations.", "Use a private link to submit a bid."],
+      es: privateContext
+        ? ["Revisa todas las rutas invitadas.", "Abre el detalle de ruta si importan las reglas.", "Envia o actualiza tu puja antes del cierre."]
+        : ["Revisa oportunidades abiertas.", "Solicita acceso o busca tus invitaciones privadas.", "Usa un link privado para pujar."]
+    },
+    lane_list: {
+      en: ["Compare route requirements.", "Open the lane with the closest fit.", "Bid each lane independently."],
+      es: ["Compara requisitos por ruta.", "Abre la ruta con mejor fit.", "Cotiza cada ruta de forma independiente."]
+    },
+    lane_detail: {
+      en: ["Check logistics model.", "Review operation rules and notes.", "Bid only if your operation can comply."],
+      es: ["Revisa modelo logistico.", "Valida reglas de operacion y notas.", "Puja solo si tu operacion cumple."]
+    },
+    commercial: {
+      en: ["Choose the structure that matches billing.", "Enter only the percentage that applies.", "Use XBF Buy-Sell when you only share your sell rate."],
+      es: ["Elige la estructura que coincide con facturacion.", "Captura solo el porcentaje que aplica.", "Usa XBF Buy-Sell si solo compartes tu tarifa de venta."]
+    },
+    ranking: {
+      en: ["Improve price first if capacity is equal.", "Confirm real weekly capacity.", "Add ETA and availability to reduce risk."],
+      es: ["Mejora precio primero si la capacidad es igual.", "Confirma capacidad semanal real.", "Agrega ETA y disponibilidad para reducir riesgo."]
+    },
+    alternative: {
+      en: ["Describe the substitute equipment.", "Add units, ETA, and restrictions.", "Clarify whether the same rate applies."],
+      es: ["Describe el equipo sustituto.", "Agrega unidades, ETA y restricciones.", "Aclara si aplica la misma tarifa."]
+    },
+    deadline: {
+      en: ["Finish required bid fields.", "Confirm capacity and ETA.", "Create a ticket only if you need an extension."],
+      es: ["Completa campos requeridos.", "Confirma capacidad y ETA.", "Crea ticket solo si necesitas extension."]
+    },
+    access: {
+      en: ["Use the invited email.", "Find private links if already invited.", "Request invitation only for opportunities without access."],
+      es: ["Usa el correo invitado.", "Busca links privados si ya fuiste invitado.", "Solicita invitacion solo en oportunidades sin acceso."]
+    },
+    bidding: {
+      en: ["Enter rate, currency, capacity, and transit.", "Save each update.", "Use XLSX upload for multiple lanes."],
+      es: ["Captura tarifa, moneda, capacidad y transito.", "Guarda cada actualizacion.", "Usa XLSX para multiples rutas."]
+    }
+  };
+  const selected = steps[input.intent] || steps.overview;
+  return selected[language === "es" ? "es" : "en"].slice(0, 3);
+}
+
 function supportResult(input: {
   answer: string;
   needs_ticket: boolean;
@@ -2281,12 +2401,20 @@ function supportResult(input: {
   event?: Record<string, unknown> | null;
   lane?: Record<string, unknown> | null;
   invited_lanes?: Record<string, unknown>[];
+  live_board?: Record<string, unknown> | null;
+  ai_assisted?: boolean;
 }) {
+  const intent = supportQuestionIntent(input.question, input.needs_ticket === true);
   return {
     answer: supportBriefAnswer(input.answer),
     needs_ticket: input.needs_ticket,
     confidence: input.confidence,
     scope: input.scope,
+    ai_assisted: input.ai_assisted === true,
+    intent,
+    intent_label: supportIntentLabel(intent, input.language),
+    support_highlights: supportHighlightItems(input),
+    next_steps: supportNextSteps({ ...input, intent }),
     ticket_suggestion: input.needs_ticket
       ? (input.language === "es" ? "Puedo crear un ticket con esta pregunta y el contexto del Bid Room." : "I can create a ticket with this question and the Bid Room context.")
       : "",
@@ -2623,7 +2751,7 @@ function bidSupportAnswerFromContext(
   }
   if (commercialCopy) parts.push(commercialCopy);
   if (bestPracticeCopy) parts.push(bestPracticeCopy);
-  if (!context.token && /(invitation|invite|access|participate|private link|link privado|invitacion|invitación|invitar|acceso|participar)/i.test(question)) {
+  if (!context.token && /(invitation|invite|access|participate|participating|participation|private link|link privado|invitacion|invitación|invitar|acceso|participa(?:r|cion|ción|ndo|do)?|participo)/i.test(question)) {
     parts.push(language === "es"
       ? "Para participar desde el tablero publico, abre una oportunidad y usa Request invitation. Si ya recibiste invitacion, usa Find my invitations con el mismo correo al que procurement te contacto; Rateware enviara tus links privados a ese inbox."
       : "To participate from the public board, open an opportunity and use Request invitation. If you were already invited, use Find my invitations with the same email procurement contacted; Rateware will send your private links to that inbox.");
@@ -2703,7 +2831,8 @@ function bidSupportAnswerFromOpportunityContext(
       question,
       event: context.event,
       lane: focusedLane || context.lane,
-      invited_lanes: invitedLanes
+      invited_lanes: invitedLanes,
+      live_board: context.live_board
     });
   }
 
@@ -2729,11 +2858,11 @@ function bidSupportAnswerFromOpportunityContext(
     answer = language === "es"
       ? "Cost-plus usa margen sugerido MARKSMAN; Carrier invoice share usa porcentaje sobre facturacion; XBF Buy-Sell no pide porcentaje al carrier."
       : "Cost-plus uses suggested MARKSMAN margin; Carrier invoice share uses a billing-share percentage; XBF Buy-Sell asks only for the carrier sell rate.";
-  } else if (/(alternative|alternativa|equipo|equipment|unidad|unit)/i.test(question)) {
+  } else if (/(alternative|alternativa|alternativas|equipo|equipment|\bunidad(?:es)?\b|\bunit(?:s)?\b|\beta\b)/i.test(question)) {
     answer = language === "es"
       ? "Puedes proponer una alternativa si cambia equipo, unidades o capacidad. Indica unidades, restricciones, ETA y si la tarifa aplica al sustituto."
       : "You can propose an alternative if equipment, units, or capacity change. Include units, restrictions, ETA, and whether the rate applies to the substitute.";
-  } else if (!context.token && /(invitation|invite|access|participate|private link|link privado|invitacion|invitar|acceso|participar)/i.test(question)) {
+  } else if (!context.token && /(invitation|invite|access|participate|participating|participation|private link|link privado|invitacion|invitar|acceso|participa(?:r|cion|ción|ndo|do)?|participo)/i.test(question)) {
     answer = language === "es"
       ? "Para participar necesitas invitacion. En el tablero publico puedes solicitar acceso o buscar tus links con el correo invitado."
       : "To participate you need an invitation. From the public board you can request access or find your links with the invited email.";
@@ -2766,7 +2895,8 @@ function bidSupportAnswerFromOpportunityContext(
     question,
     event: context.event,
     lane,
-    invited_lanes: invitedLanes
+    invited_lanes: invitedLanes,
+    live_board: context.live_board
   });
 }
 
@@ -2962,7 +3092,36 @@ async function bidSupportReply(supabase: ReturnType<typeof createClient>, input:
     }
   }
 
-  const support = bidSupportAnswerFromOpportunityContext(question, { language, token, event, lane, vendor, invited_lanes: invitedLanes, live_board: liveBoard });
+  let support = bidSupportAnswerFromOpportunityContext(question, { language, token, event, lane, vendor, invited_lanes: invitedLanes, live_board: liveBoard });
+  const aiSupport = await bidSupportAiAnswer(question, {
+    language,
+    token,
+    event,
+    lane,
+    vendor,
+    invited_lanes: invitedLanes,
+    live_board: liveBoard,
+    scope: cleanText(support.scope) || supportContextScope({ token, event: event || undefined, lane: lane || undefined, vendor: vendor || undefined, lane_count: invitedLanes.length }, language)
+  }, support).catch(() => null);
+  if (aiSupport) {
+    const aiConfidence = ["low", "medium", "high"].includes(String(aiSupport.confidence))
+      ? aiSupport.confidence as "low" | "medium" | "high"
+      : "medium";
+    support = supportResult({
+      answer: cleanText(aiSupport.answer) || cleanText(support.answer),
+      needs_ticket: cleanBoolean(support.needs_ticket) === true || aiSupport.needs_ticket === true,
+      confidence: aiConfidence,
+      scope: cleanText(aiSupport.scope) || cleanText(support.scope),
+      language,
+      token,
+      question,
+      event,
+      lane,
+      invited_lanes: invitedLanes,
+      live_board: liveBoard,
+      ai_assisted: true
+    });
+  }
   let ticket = null;
   if (cleanBoolean(input.create_ticket) === true) {
     ticket = await createBidSupportTicket(supabase, input, support, { event, lane, vendor });
