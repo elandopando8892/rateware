@@ -70,6 +70,7 @@ const rfxAwardCloseoutMigration = readFileSync(new URL("../supabase/migrations/2
 const rfxBidSubmissionV2Migration = readFileSync(new URL("../supabase/migrations/20260704093000_rfx_bid_submission_v2.sql", import.meta.url), "utf8");
 const rfxBidRatewareCaptureMigration = readFileSync(new URL("../supabase/migrations/20260708162000_rfx_bid_rateware_capture.sql", import.meta.url), "utf8");
 const rfxBidValidityMigration = readFileSync(new URL("../supabase/migrations/20260708170000_rfx_bid_validity.sql", import.meta.url), "utf8");
+const rfxBidDeadheadMigration = readFileSync(new URL("../supabase/migrations/20260709090000_rfx_bid_deadhead_commitment.sql", import.meta.url), "utf8");
 const vendorSegmentsCoverageMigration = readFileSync(new URL("../supabase/migrations/20260706143000_vendor_segments_coverage_filter.sql", import.meta.url), "utf8");
 const vendorProfileRequestsMigration = readFileSync(new URL("../supabase/migrations/20260706152000_vendor_profile_requests.sql", import.meta.url), "utf8");
 const rfxLaneDetailSectionsMigration = readFileSync(new URL("../supabase/migrations/20260707170000_rfx_lane_detail_sections.sql", import.meta.url), "utf8");
@@ -314,6 +315,9 @@ assert.match(rfxBidRatewareCaptureMigration, /carrier_cost_rate numeric/, "Ratew
 assert.match(rfxBidRatewareCaptureMigration, /customer_board_rate numeric/, "Rateware staging should persist the comparable board rate from commercial economics");
 assert.match(rfxBidRatewareCaptureMigration, /source_bid_status text/, "Rateware staging should identify initial, revision, or best-and-final bid captures");
 assert.match(rfxBidValidityMigration, /add column if not exists valid_through date/, "RFx carrier bids and Rateware staging should persist carrier offer validity dates");
+assert.match(rfxBidDeadheadMigration, /add column if not exists current_unit_location text/, "RFx carrier bids and Rateware staging should persist current unit location");
+assert.match(rfxBidDeadheadMigration, /add column if not exists deadhead_distance numeric/, "RFx carrier bids and Rateware staging should persist deadhead distance");
+assert.match(rfxBidDeadheadMigration, /deadhead_unit[\s\S]*in \('mi', 'km'\)/, "Deadhead unit should be constrained to miles or kilometers");
 assert.match(apiSource, /async function awardRfxLaneVendor/, "API should save primary and backup RFx award decisions");
 assert.match(apiSource, /async function closeoutAwardedRfxToRateware/, "API should convert primary RFx awards into Rateware rows");
 assert.match(apiSource, /rfx_award_closeout/, "Rateware rows created from RFx awards should carry closeout source metadata");
@@ -325,6 +329,9 @@ assert.match(rfxBidApiSource, /all_in_rate: rateText\(economics\.carrier_rate \?
 assert.match(rfxBidApiSource, /customer_board_rate: economics\.board_rate/, "Rateware staging should retain the adjusted board rate separately");
 assert.match(rfxBidApiSource, /valid_through: strictDateOnly\(body\.valid_through, "Valid through"\)/, "Carrier portal API should validate submitted offer validity dates");
 assert.match(rfxBidApiSource, /valid_through: validThrough/, "Carrier bid captures should copy validity into Rateware staging");
+assert.match(rfxBidApiSource, /strictNonNegativeBidNumber\(body\.deadhead_distance, "Deadhead distance"\)/, "Carrier portal API should reject invalid deadhead distances");
+assert.match(rfxBidApiSource, /current_unit_location: cleanText\(body\.current_unit_location\)/, "Carrier portal API should persist current unit location");
+assert.match(rfxBidApiSource, /deadhead_distance: deadheadDistance/, "Carrier bid captures should copy deadhead distance into Rateware staging");
 assert.match(apiSource, /rfx\.award\.closeout/, "API should audit RFx award closeout");
 assert.match(apiSource, /async function generateRfxAwardNotices/, "API should generate RFx award, backup, and not-awarded notice drafts");
 assert.match(apiSource, /notice_type: "rfx_award_closeout"/, "RFx award notices should be identifiable in outreach metadata");
@@ -560,6 +567,15 @@ assert.match(rfxBidSource, /id="bid-valid-through"/, "Carrier portal should ask 
 assert.match(rfxBidSource, /valid_through: card\.querySelector\("#bid-valid-through"\)\?\.value \|\| ""/, "Carrier portal should collect offer validity from the guided bid form");
 assert.match(rfxBidSource, /Valid through \/ Vigente hasta/, "Carrier XLSX bid template should include a bilingual validity column");
 assert.match(rfxBidSource, /valid_through: quickBidField\(rowElement, "valid_through"\)/, "Carrier quick bid rows should save offer validity");
+assert.match(rfxBidSource, /id="bid-current-unit-location"/, "Carrier portal should ask where the available unit is located");
+assert.match(rfxBidSource, /id="bid-deadhead-distance"/, "Carrier portal should ask for empty miles or kilometers to pickup");
+assert.match(rfxBidSource, /deadhead_distance: card\.querySelector\("#bid-deadhead-distance"\)\?\.value \|\| ""/, "Carrier portal should collect deadhead from the guided bid form");
+assert.match(rfxBidSource, /validateNonNegativeNumberIssue\(draft\.deadhead_distance, "bid-deadhead-distance", "Deadhead distance", false\)/, "Carrier portal should validate deadhead as optional non-negative distance");
+assert.match(rfxBidSource, /Current unit location \/ Ubicacion unidad/, "Carrier XLSX bid template should include current unit location");
+assert.match(rfxBidSource, /Deadhead distance \/ Vacio mi-km/, "Carrier XLSX bid template should include deadhead distance");
+assert.match(rfxBidSource, /Deadhead unit \/ Unidad deadhead/, "Carrier XLSX bid template should include deadhead unit");
+assert.match(rfxBidSource, /nonNegativeNumberBlank/, "Carrier XLSX bid template should validate optional deadhead distance");
+assert.match(rfxBidSource, /deadhead_distance: rowElement\.dataset\.deadheadDistance \|\| ""/, "Carrier quick bid rows should preserve deadhead details when saving inline");
 assert.match(rfxBidSource, /function commercialStructureConfig/, "Carrier portal should explain each commercial structure");
 assert.match(rfxBidSource, /syncCommercialStructureFields/, "Carrier portal should show only the applicable commercial percentage input");
 assert.match(rfxBidSource, /validatePercentIssue\(draft\.marksman_margin_pct, "bid-marksman-margin", "Suggested margin to share %", \{ required: true, procurementRange: true \}\)/, "Carrier portal should enforce suggested margin range for cost-plus");

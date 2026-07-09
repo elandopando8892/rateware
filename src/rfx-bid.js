@@ -140,6 +140,9 @@ const BID_PORTAL_COPY = {
     notDeclared: "Not declared",
     available: "Available",
     notAvailable: "Not available",
+    currentUnitLocation: "Current unit location",
+    deadheadDistance: "Deadhead distance",
+    deadheadUnit: "Deadhead unit",
     etaPickup: "ETA pickup",
     etaDelivery: "ETA delivery",
     mirrorAccount: "Mirror account enabled",
@@ -235,6 +238,9 @@ const BID_PORTAL_COPY = {
     notDeclared: "No declarado",
     available: "Disponible",
     notAvailable: "No disponible",
+    currentUnitLocation: "Ubicacion actual de unidad",
+    deadheadDistance: "Deadhead / vacio",
+    deadheadUnit: "Unidad deadhead",
     etaPickup: "ETA pickup",
     etaDelivery: "ETA delivery",
     mirrorAccount: "Cuenta espejo habilitada",
@@ -980,6 +986,15 @@ function validatePositiveNumberIssue(value, field, label, required = true) {
   return null;
 }
 
+function validateNonNegativeNumberIssue(value, field, label, required = true) {
+  const text = String(value ?? "").trim();
+  if (!text) return required ? validationIssue(field, `${label} is required and must be numeric.`) : null;
+  const number = numberFromInput(value);
+  if (number === null) return validationIssue(field, `${label} must be numeric.`);
+  if (number < 0) return validationIssue(field, `${label} must be zero or greater.`);
+  return null;
+}
+
 function validatePercentIssue(value, field, label, options = {}) {
   const text = String(value ?? "").trim();
   if (!text) return options.required ? validationIssue(field, `${label} is required for this commercial model.`) : null;
@@ -1023,6 +1038,9 @@ function collectBidDraft() {
     alternative_units: card.querySelector("#bid-alt-units")?.value || "",
     alternative_notes: card.querySelector("#bid-alt-notes")?.value || "",
     equipment_available: card.querySelector("#bid-equipment-available")?.value || "",
+    current_unit_location: card.querySelector("#bid-current-unit-location")?.value || "",
+    deadhead_distance: card.querySelector("#bid-deadhead-distance")?.value || "",
+    deadhead_unit: card.querySelector("#bid-deadhead-unit")?.value || "mi",
     unit_details: card.querySelector("#bid-unit-details")?.value || "",
     eta_pickup: card.querySelector("#bid-eta-pickup")?.value || "",
     eta_delivery: card.querySelector("#bid-eta-delivery")?.value || "",
@@ -1059,6 +1077,11 @@ function validateBidDraft(draft) {
   if (draft.best_alternative_offered && !draft.alternative_equipment.trim() && numberFromInput(draft.alternative_units) === null) {
     errors.push(validationIssue("bid-alt-equipment", "Best alternative needs equipment or a positive unit count."));
   }
+  const deadheadIssue = validateNonNegativeNumberIssue(draft.deadhead_distance, "bid-deadhead-distance", "Deadhead distance", false);
+  if (deadheadIssue) errors.push(deadheadIssue);
+  if (String(draft.deadhead_distance || "").trim() && !["mi", "km"].includes(String(draft.deadhead_unit || "").trim().toLowerCase())) {
+    errors.push(validationIssue("bid-deadhead-unit", "Deadhead unit must be mi or km."));
+  }
 
   const pickupEta = validDateTimeValue(draft.eta_pickup);
   const deliveryEta = validDateTimeValue(draft.eta_delivery);
@@ -1088,6 +1111,8 @@ function validateBidDraft(draft) {
   } else {
     if (!pickupEta) warnings.push("Pickup ETA is recommended when equipment is available.");
     if (!deliveryEta) warnings.push("Delivery ETA is recommended when equipment is available.");
+    if (!draft.current_unit_location.trim()) warnings.push("Current unit location helps procurement validate live capacity.");
+    if (!String(draft.deadhead_distance || "").trim()) warnings.push("Deadhead distance helps compare live capacity.");
     if (!draft.unit_details.trim()) warnings.push("Unit, trailer, driver or mirror details help procurement validate capacity.");
   }
   return { errors, warnings };
@@ -1122,6 +1147,9 @@ const BID_TEMPLATE_COLUMNS = [
   { key: "alternative_units", label: "Alternative units / Unidades alternativas", aliases: ["Alternative units", "Unidades alternativas"], width: 22, validation: "positiveNumberBlank" },
   { key: "alternative_notes", label: "Alternative notes / Notas alternativa", aliases: ["Alternative notes", "Notas alternativa"], width: 38 },
   { key: "equipment_available", label: "Equipment available / Equipo disponible", aliases: ["Equipment available", "Equipo disponible"], width: 24, validation: "availability" },
+  { key: "current_unit_location", label: "Current unit location / Ubicacion unidad", aliases: ["Current unit location", "Ubicacion unidad", "Unit location", "Ubicacion actual"], width: 28, recommended: true },
+  { key: "deadhead_distance", label: "Deadhead distance / Vacio mi-km", aliases: ["Deadhead distance", "Vacio mi-km", "Millas vacias", "Kms vacios"], width: 22, validation: "nonNegativeNumberBlank", recommended: true },
+  { key: "deadhead_unit", label: "Deadhead unit / Unidad deadhead", aliases: ["Deadhead unit", "Unidad deadhead"], width: 18, validation: "deadheadUnit", recommended: true },
   { key: "eta_pickup", label: "Pickup ETA / ETA carga", aliases: ["Pickup ETA", "ETA carga"], width: 22 },
   { key: "eta_delivery", label: "Delivery ETA / ETA entrega", aliases: ["Delivery ETA", "ETA entrega"], width: 22 },
   { key: "mirror_account_enabled", label: "Mirror account / Cuenta espejo", aliases: ["Mirror account", "Cuenta espejo"], width: 22, validation: "yesNoBlank" },
@@ -1168,6 +1196,14 @@ function normalizeTemplateAvailability(value) {
   if (["true", "yes", "y", "si", "sí", "verdadero", "1", "available", "disponible"].includes(text)) return "true";
   if (["false", "no", "n", "falso", "0", "not available", "no disponible"].includes(text)) return "false";
   return "";
+}
+
+function normalizeTemplateDeadheadUnit(value) {
+  const text = textValue(value).toLowerCase();
+  if (!text) return "mi";
+  if (["km", "kms", "kilometer", "kilometers", "kilometro", "kilometros"].includes(text)) return "km";
+  if (["mi", "mile", "miles", "milla", "millas"].includes(text)) return "mi";
+  return text;
 }
 
 function normalizeTemplateDateTime(value) {
@@ -1227,6 +1263,9 @@ function bidTemplateRows(carrierBook = {}, invitation = {}) {
         alternative_units: row.alternative_units ?? "",
         alternative_notes: row.alternative_notes || "",
         equipment_available: row.equipment_available === true ? "Available" : row.equipment_available === false ? "Not available" : "",
+        current_unit_location: row.current_unit_location || "",
+        deadhead_distance: row.deadhead_distance ?? "",
+        deadhead_unit: row.deadhead_unit || "mi",
         eta_pickup: dateTimeLocalValue(row.eta_pickup),
         eta_delivery: dateTimeLocalValue(row.eta_delivery),
         mirror_account_enabled: row.mirror_account_enabled ? "TRUE" : "",
@@ -1295,6 +1334,19 @@ function bidTemplateValidation(column) {
       error: "Enter a number greater than zero or leave blank. / Captura un numero mayor a cero o deja en blanco."
     };
   }
+  if (column.validation === "nonNegativeNumberBlank") {
+    return {
+      type: "decimal",
+      operator: "greaterThanOrEqual",
+      allowBlank: true,
+      formulae: [0],
+      ...common,
+      error: "Enter zero or a positive number, or leave blank. / Captura cero o un numero positivo, o deja en blanco."
+    };
+  }
+  if (column.validation === "deadheadUnit") {
+    return { type: "list", allowBlank: true, formulae: ['"mi,km"'], ...common };
+  }
   if (column.validation === "percent2to5") {
     return {
       type: "decimal",
@@ -1362,7 +1414,7 @@ function applyBidTemplateWorksheetRules(worksheet, rowCount) {
       if (validation) cell.dataValidation = validation;
     });
   });
-  for (const key of ["all_in_rate", "weekly_capacity", "transit_days", "suggested_margin_pct", "carrier_invoice_share_pct", "alternative_units"]) {
+  for (const key of ["all_in_rate", "weekly_capacity", "transit_days", "suggested_margin_pct", "carrier_invoice_share_pct", "alternative_units", "deadhead_distance"]) {
     worksheet.getColumn(BID_TEMPLATE_COLUMNS.findIndex((column) => column.key === key) + 1).numFmt = "#,##0.00";
   }
   worksheet.getColumn(BID_TEMPLATE_COLUMNS.findIndex((column) => column.key === "valid_through") + 1).numFmt = "yyyy-mm-dd";
@@ -1388,13 +1440,13 @@ function addBidTemplateInstructions(workbook) {
     },
     {
       section: "Recommended columns",
-      en: "Weekly capacity, transit days, valid through date, equipment availability, ETAs, unit details, alternatives, and notes improve scoring and procurement review, but they do not block submission unless the value entered is invalid.",
-      es: "Capacidad semanal, dias de transito, vigencia, disponibilidad, ETAs, datos de unidad, alternativas y notas mejoran el scoring y la revision, pero no bloquean el envio salvo que el valor capturado sea invalido."
+      en: "Weekly capacity, transit days, valid through date, equipment availability, current unit location, deadhead distance, ETAs, unit details, alternatives, and notes improve scoring and procurement review, but they do not block submission unless the value entered is invalid.",
+      es: "Capacidad semanal, dias de transito, vigencia, disponibilidad, ubicacion actual de unidad, deadhead/vacio, ETAs, datos de unidad, alternativas y notas mejoran el scoring y la revision, pero no bloquean el envio salvo que el valor capturado sea invalido."
     },
     {
       section: "Dropdowns",
-      en: "Use dropdowns for Submit this lane, Currency, Commercial model, Best alternative, Equipment available, Mirror account, and Best/final.",
-      es: "Usa las listas desplegables para Enviar ruta, Moneda, Modelo comercial, Mejor alternativa, Equipo disponible, Cuenta espejo y Mejor/final."
+      en: "Use dropdowns for Submit this lane, Currency, Commercial model, Best alternative, Equipment available, Deadhead unit, Mirror account, and Best/final.",
+      es: "Usa las listas desplegables para Enviar ruta, Moneda, Modelo comercial, Mejor alternativa, Equipo disponible, Unidad deadhead, Cuenta espejo y Mejor/final."
     },
     {
       section: "Commercial model",
@@ -1403,8 +1455,8 @@ function addBidTemplateInstructions(workbook) {
     },
     {
       section: "Rate",
-      en: "All-in rate is required and must be greater than zero. Weekly capacity and transit days are optional, but if entered they must also be numeric and greater than zero.",
-      es: "La tarifa all-in es obligatoria y debe ser mayor a cero. Capacidad semanal y dias de transito son opcionales, pero si se capturan tambien deben ser numericos y mayores a cero."
+      en: "All-in rate is required and must be greater than zero. Weekly capacity and transit days are optional, but if entered they must be numeric and greater than zero. Deadhead distance is optional and may be zero or positive.",
+      es: "La tarifa all-in es obligatoria y debe ser mayor a cero. Capacidad semanal y dias de transito son opcionales, pero si se capturan deben ser numericos y mayores a cero. Deadhead/vacio es opcional y puede ser cero o positivo."
     },
     {
       section: "Availability",
@@ -1486,6 +1538,9 @@ function draftFromBidTemplateRow(row) {
     alternative_units: textValue(row.alternative_units),
     alternative_notes: textValue(row.alternative_notes),
     equipment_available: normalizeTemplateAvailability(row.equipment_available),
+    current_unit_location: textValue(row.current_unit_location),
+    deadhead_distance: textValue(row.deadhead_distance),
+    deadhead_unit: normalizeTemplateDeadheadUnit(row.deadhead_unit),
     unit_details: textValue(row.unit_details),
     eta_pickup: normalizeTemplateDateTime(row.eta_pickup),
     eta_delivery: normalizeTemplateDateTime(row.eta_delivery),
@@ -1521,7 +1576,7 @@ async function parseBidTemplateFile(file) {
   const rows = XLSX.utils.sheet_to_json(worksheet, { defval: "", raw: false });
   return rows
     .map(normalizeBidTemplateRow)
-    .filter((row) => row.invitation_token || row.submit_this_lane || row.all_in_rate || row.weekly_capacity || row.valid_through);
+    .filter((row) => row.invitation_token || row.submit_this_lane || row.all_in_rate || row.weekly_capacity || row.valid_through || row.deadhead_distance || row.current_unit_location);
 }
 
 function renderBidTemplatePreview(rows = pendingBidTemplateRows) {
@@ -1675,12 +1730,17 @@ function bidReviewSummaryHtml(draft) {
     : draft.equipment_available === "false"
       ? "Not available"
       : "Not declared";
+  const deadhead = String(draft.deadhead_distance || "").trim()
+    ? `Deadhead ${draft.deadhead_distance} ${draft.deadhead_unit || "mi"}${draft.current_unit_location ? ` from ${draft.current_unit_location}` : ""}`
+    : draft.current_unit_location
+      ? `Unit at ${draft.current_unit_location}`
+      : "No deadhead details";
   return `
     <div class="bid-review-summary-grid">
       <article><span>Primary offer</span><strong>${escapeHtml(formatMoney(draft.bid_rate, draft.currency))}</strong><small>${escapeHtml(draft.weekly_capacity || "-")} / wk | ${escapeHtml(draft.transit_days || "-")} day(s) | ${escapeHtml(draft.valid_through || "no validity date")}</small></article>
       <article><span>Commercial model</span><strong>${escapeHtml(commercialModelLabel(draft.commercial_model))}</strong><small>${escapeHtml(commercialFeeSummary(draft))}</small></article>
       <article><span>Alternative</span><strong>${escapeHtml(alternative)}</strong><small>${escapeHtml(draft.alternative_notes || "No alternative notes")}</small></article>
-      <article><span>Capacity</span><strong>${escapeHtml(availability)}</strong><small>${escapeHtml(draft.mirror_account_enabled ? "Mirror account requested" : draft.unit_details || "No unit details")}</small></article>
+      <article><span>Capacity</span><strong>${escapeHtml(availability)}</strong><small>${escapeHtml([deadhead, draft.mirror_account_enabled ? "Mirror account requested" : draft.unit_details || "No unit details"].filter(Boolean).join(" | "))}</small></article>
     </div>
     <div class="bid-review-warnings" data-tone="${validation.errors.length ? "danger" : warnings.length ? "warning" : "success"}">
       ${warnings.length
@@ -1772,6 +1832,9 @@ function hydrateBidFormFromOffer(offer = currentSubmittedOffer(), invitation = l
   setFormValue("#bid-alt-notes", invitation.alternative_notes || "");
   const equipmentAvailable = firstDefined(source.equipment_available, invitation.equipment_available, "");
   setFormValue("#bid-equipment-available", equipmentAvailable === true ? "true" : equipmentAvailable === false ? "false" : "");
+  setFormValue("#bid-current-unit-location", firstDefined(source.current_unit_location, invitation.current_unit_location, ""));
+  setFormValue("#bid-deadhead-distance", firstDefined(source.deadhead_distance, invitation.deadhead_distance, ""));
+  setFormValue("#bid-deadhead-unit", firstDefined(source.deadhead_unit, invitation.deadhead_unit, "mi"));
   setFormValue("#bid-eta-pickup", dateTimeLocalValue(firstDefined(source.eta_pickup, invitation.eta_pickup, "")));
   setFormValue("#bid-eta-delivery", dateTimeLocalValue(firstDefined(source.eta_delivery, invitation.eta_delivery, "")));
   setFormChecked("#bid-mirror-account", firstDefined(source.mirror_account_enabled, invitation.mirror_account_enabled, false) === true);
@@ -1915,7 +1978,10 @@ function renderLiveBoard(liveBoard = {}) {
               </td>
               <td title="${escapeAttribute(row.amount !== null && row.amount !== undefined ? commercialFeeSummary(row) : "")}">${escapeHtml(commercialSummary(row))}</td>
               <td>${marketplaceBadgesHtml(row)}</td>
-              <td>${escapeHtml(row.weekly_capacity ?? "-")}</td>
+              <td>
+                ${escapeHtml(row.weekly_capacity ?? "-")}
+                ${row.deadhead_distance !== null && row.deadhead_distance !== undefined ? `<small>${escapeHtml(`DH ${row.deadhead_distance} ${row.deadhead_unit || "mi"}`)}</small>` : ""}
+              </td>
               <td>${escapeHtml(row.transit_days ?? "-")}</td>
               <td>${escapeHtml(row.valid_through ? formatDate(row.valid_through) : "-")}</td>
               <td class="bid-live-action-cell">
@@ -1984,6 +2050,12 @@ function bidHistoryDeltaHtml(metadata = {}) {
       : null,
     before.equipment_available !== after.equipment_available && after.equipment_available !== undefined
       ? `Equipment ${after.equipment_available ? "available" : "not available"}`
+      : null,
+    before.current_unit_location !== after.current_unit_location && after.current_unit_location
+      ? `Unit location ${after.current_unit_location}`
+      : null,
+    before.deadhead_distance !== after.deadhead_distance && after.deadhead_distance !== undefined
+      ? `Deadhead ${after.deadhead_distance ?? "-"} ${after.deadhead_unit || "mi"}`
       : null
   ].filter(Boolean);
   return deltas.length
@@ -2462,6 +2534,7 @@ function renderBookRows(rows = []) {
           ${amount}
           ${boardAmount && boardAmount !== amount ? `<small>${escapeHtml(dualText(`Board ${boardAmount}`, `Board ${boardAmount}`))}</small>` : ""}
           <small>${row.weekly_capacity ? `${escapeHtml(row.weekly_capacity)} / wk` : ""}</small>
+          <small>${row.deadhead_distance !== null && row.deadhead_distance !== undefined ? `${escapeHtml(dualText("Deadhead", "Vacio"))} ${escapeHtml(row.deadhead_distance)} ${escapeHtml(row.deadhead_unit || "mi")}` : ""}</small>
           <small>${row.valid_through ? `${escapeHtml(dualText("Valid through", "Vigente hasta"))} ${escapeHtml(formatDate(row.valid_through))}` : ""}</small>
           <small title="${escapeAttribute(row.bid_rate !== null && row.bid_rate !== undefined ? commercialFeeSummary(row) : "")}">${escapeHtml(row.bid_rate !== null && row.bid_rate !== undefined ? commercialSummary(row) : "")}</small>
         </td>
@@ -2508,8 +2581,8 @@ function renderQuickLaneBidGridShell(carrierBook = {}, invitation = {}) {
         <span class="status-pill neutral">${escapeHtml(dualText(`${rows.length} editable lane(s)`, `${rows.length} ruta(s) editables`))}</span>
       </div>
       <p class="bid-board-note">${escapeHtml(dualText(
-        "Use this grid for fast price, capacity and transit updates. Open the guided form only when you need alternatives, ETA, unit details or full notes.",
-        "Usa esta grilla para actualizar rapido precio, capacidad y transito. Abre el formulario guiado solo si necesitas alternativas, ETA, datos de unidad o notas completas."
+        "Use this grid for fast price, capacity and transit updates. Open the guided form only when you need alternatives, deadhead, ETA, unit details or full notes.",
+        "Usa esta grilla para actualizar rapido precio, capacidad y transito. Abre el formulario guiado solo si necesitas alternativas, deadhead, ETA, datos de unidad o notas completas."
       ))}</p>
       <div class="table-wrap">
         <table class="quick-bid-table">
@@ -2541,6 +2614,9 @@ function renderQuickLaneBidGridShell(carrierBook = {}, invitation = {}) {
                   data-alternative-units="${escapeAttribute(row.alternative_units ?? "")}"
                   data-alternative-notes="${escapeAttribute(row.alternative_notes || "")}"
                   data-equipment-available="${escapeAttribute(row.equipment_available === true ? "true" : row.equipment_available === false ? "false" : "")}"
+                  data-current-unit-location="${escapeAttribute(row.current_unit_location || "")}"
+                  data-deadhead-distance="${escapeAttribute(row.deadhead_distance ?? "")}"
+                  data-deadhead-unit="${escapeAttribute(row.deadhead_unit || "mi")}"
                   data-unit-details="${escapeAttribute(row.unit_details || "")}"
                   data-eta-pickup="${escapeAttribute(row.eta_pickup || "")}"
                   data-eta-delivery="${escapeAttribute(row.eta_delivery || "")}"
@@ -2616,6 +2692,9 @@ function quickBidDraftFromRow(rowElement) {
     alternative_units: rowElement.dataset.alternativeUnits || "",
     alternative_notes: rowElement.dataset.alternativeNotes || "",
     equipment_available: rowElement.dataset.equipmentAvailable || "",
+    current_unit_location: rowElement.dataset.currentUnitLocation || "",
+    deadhead_distance: rowElement.dataset.deadheadDistance || "",
+    deadhead_unit: rowElement.dataset.deadheadUnit || "mi",
     unit_details: rowElement.dataset.unitDetails || "",
     eta_pickup: dateTimeLocalValue(rowElement.dataset.etaPickup || ""),
     eta_delivery: dateTimeLocalValue(rowElement.dataset.etaDelivery || ""),
@@ -3153,6 +3232,20 @@ function renderInvitation(invitation, liveBoard = {}, carrierBook = {}) {
               <option value="" ${invitation.equipment_available === null || invitation.equipment_available === undefined ? "selected" : ""}>${escapeHtml(t("notDeclared"))}</option>
               <option value="true" ${invitation.equipment_available === true ? "selected" : ""}>${escapeHtml(t("available"))}</option>
               <option value="false" ${invitation.equipment_available === false ? "selected" : ""}>${escapeHtml(t("notAvailable"))}</option>
+            </select>
+          </label>
+          <label>
+            ${escapeHtml(t("currentUnitLocation"))}
+            <input id="bid-current-unit-location" value="${escapeHtml(invitation.current_unit_location || "")}" placeholder="Laredo, TX / Apodaca, NL" />
+          </label>
+          <label>
+            ${escapeHtml(t("deadheadDistance"))}
+            <input id="bid-deadhead-distance" inputmode="decimal" value="${escapeHtml(invitation.deadhead_distance ?? "")}" placeholder="80" />
+          </label>
+          <label>
+            ${escapeHtml(t("deadheadUnit"))}
+            <select id="bid-deadhead-unit">
+              ${["mi", "km"].map((unit) => `<option value="${unit}" ${unit === (invitation.deadhead_unit || "mi") ? "selected" : ""}>${unit}</option>`).join("")}
             </select>
           </label>
           <label>

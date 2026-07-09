@@ -117,6 +117,13 @@ function strictBidNumber(value: unknown, label: string, options: { required?: bo
   return numberValue;
 }
 
+function strictNonNegativeBidNumber(value: unknown, label: string) {
+  const numberValue = strictBidNumber(value, label, { positive: false });
+  if (numberValue === null) return null;
+  if (numberValue < 0) throw new Error(`${label} must be zero or greater.`);
+  return numberValue;
+}
+
 function strictPercentNumber(value: unknown, label: string) {
   const numberValue = strictBidNumber(value, label, { positive: false });
   if (numberValue === null) return null;
@@ -135,6 +142,14 @@ function strictCurrencyCode(value: unknown, fallback = "USD") {
   const currency = (cleanText(value) || fallback || "USD").toUpperCase();
   if (!/^[A-Z]{3}$/.test(currency)) throw new Error("Currency must be a 3-letter code like USD, MXN, or CAD.");
   return currency;
+}
+
+function normalizeDeadheadUnit(value: unknown) {
+  const text = cleanText(value)?.toLowerCase();
+  if (!text) return null;
+  if (["mi", "mile", "miles", "milla", "millas"].includes(text)) return "mi";
+  if (["km", "kms", "kilometer", "kilometers", "kilometro", "kilometros"].includes(text)) return "km";
+  throw new Error("Deadhead unit must be mi or km.");
 }
 
 function normalizeCommercialModel(value: unknown) {
@@ -982,6 +997,14 @@ async function currentInvitationContext(supabase: ReturnType<typeof createClient
       vendor_id,
       invitation_status,
       invitation_token,
+      bid_rate,
+      currency,
+      weekly_capacity,
+      transit_days,
+      valid_through,
+      current_unit_location,
+      deadhead_distance,
+      deadhead_unit,
       vendors(id,vendor_name,domain,primary_email),
       rfx_events(id,owner_user_id,owner_email,rfx_id,name,customer,event_type,status,due_date,bid_visibility_mode),
       rfx_lanes(*)
@@ -1168,6 +1191,7 @@ function liveBoardContext(rows: Record<string, unknown>[]) {
   const amounts = rows.map((row) => cleanNumber(row.amount)).filter((value): value is number => value !== null);
   const capacities = rows.map((row) => cleanNumber(row.weekly_capacity)).filter((value): value is number => value !== null);
   const transits = rows.map((row) => cleanNumber(row.transit_days)).filter((value): value is number => value !== null);
+  const deadheads = rows.map((row) => cleanNumber(row.deadhead_distance)).filter((value): value is number => value !== null);
   const pickupTimes = rows.map((row) => timestampValue(row.eta_pickup)).filter((value): value is number => value !== null);
   return {
     minAmount: amounts.length ? Math.min(...amounts) : null,
@@ -1176,6 +1200,8 @@ function liveBoardContext(rows: Record<string, unknown>[]) {
     minCapacity: capacities.length ? Math.min(...capacities) : null,
     minTransit: transits.length ? Math.min(...transits) : null,
     maxTransit: transits.length ? Math.max(...transits) : null,
+    minDeadhead: deadheads.length ? Math.min(...deadheads) : null,
+    maxDeadhead: deadheads.length ? Math.max(...deadheads) : null,
     minPickup: pickupTimes.length ? Math.min(...pickupTimes) : null,
     maxPickup: pickupTimes.length ? Math.max(...pickupTimes) : null
   };
@@ -1186,6 +1212,7 @@ function liveBoardRowScore(row: Record<string, unknown>, context: Record<string,
   const capacity = cleanNumber(row.weekly_capacity);
   const transit = cleanNumber(row.transit_days);
   const validThrough = cleanDate(row.valid_through);
+  const deadheadDistance = cleanNumber(row.deadhead_distance);
   const pickupTime = timestampValue(row.eta_pickup);
   const equipmentAvailable = cleanBoolean(row.equipment_available);
   const mirrorEnabled = cleanBoolean(row.mirror_account_enabled) === true;
@@ -1210,6 +1237,10 @@ function liveBoardRowScore(row: Record<string, unknown>, context: Record<string,
 
   if (validThrough) badges.push("Validity stated");
   else riskFlags.push("No validity");
+
+  const deadheadScore = rangeScore(deadheadDistance, context.minDeadhead || null, context.maxDeadhead || null, 5, true);
+  if (deadheadDistance !== null) badges.push("Deadhead stated");
+  else if (equipmentAvailable === true) riskFlags.push("No deadhead");
 
   const etaScore = rangeScore(pickupTime, context.minPickup || null, context.maxPickup || null, 5, true);
   if (pickupTime !== null) badges.push("Pickup ETA");
@@ -1253,6 +1284,7 @@ function liveBoardRowScore(row: Record<string, unknown>, context: Record<string,
     priceScore +
     capacityScore +
     transitScore +
+    deadheadScore +
     etaScore +
     availabilityScore +
     validationScore +
@@ -1302,6 +1334,9 @@ function liveBoardFromRows(currentInvitation: Record<string, unknown>, peerRows:
         alternative_equipment: cleanText(row.alternative_equipment),
         alternative_units: cleanNumber(row.alternative_units),
         equipment_available: cleanBoolean(row.equipment_available),
+        current_unit_location: cleanText(row.current_unit_location),
+        deadhead_distance: cleanNumber(row.deadhead_distance),
+        deadhead_unit: cleanText(row.deadhead_unit),
         unit_details: cleanText(row.unit_details),
         eta_pickup: cleanText(row.eta_pickup),
         eta_delivery: cleanText(row.eta_delivery),
@@ -1440,6 +1475,9 @@ function liveBoardFromRows(currentInvitation: Record<string, unknown>, peerRows:
       unit_details: row.is_current || visibility.competitor_rates_visible ? row.unit_details : null,
       eta_pickup: row.eta_pickup,
       eta_delivery: row.eta_delivery,
+      current_unit_location: row.current_unit_location,
+      deadhead_distance: row.deadhead_distance,
+      deadhead_unit: row.deadhead_unit,
       mirror_account_enabled: row.mirror_account_enabled,
       availability_validation_status: row.availability_validation_status,
       responded_at: row.responded_at,
@@ -1484,6 +1522,9 @@ function carrierBusinessBook(currentInvitation: Record<string, unknown>, invited
       alternative_units: cleanNumber(row.alternative_units),
       alternative_notes: cleanText(row.alternative_notes),
       equipment_available: cleanBoolean(row.equipment_available),
+      current_unit_location: cleanText(row.current_unit_location),
+      deadhead_distance: cleanNumber(row.deadhead_distance),
+      deadhead_unit: cleanText(row.deadhead_unit),
       unit_details: cleanText(row.unit_details),
       eta_pickup: row.eta_pickup,
       eta_delivery: row.eta_delivery,
@@ -1566,6 +1607,7 @@ function publicQuoteStats(rows: Record<string, unknown>[]) {
         commercial_model: economics.commercial_model,
         best_alternative_offered: cleanBoolean(row.best_alternative_offered) === true,
         equipment_available: cleanBoolean(row.equipment_available),
+        deadhead_distance: cleanNumber(row.deadhead_distance),
         eta_pickup: cleanText(row.eta_pickup),
         responded_at: cleanText(row.responded_at || row.updated_at),
         award_role: cleanText(row.award_role)
@@ -1593,6 +1635,7 @@ function publicQuoteStats(rows: Record<string, unknown>[]) {
     best_transit_days: transitDays.length ? Math.min(...transitDays) : null,
     alternative_offer_count: validRows.filter((row) => row.best_alternative_offered).length,
     available_equipment_count: validRows.filter((row) => row.equipment_available === true).length,
+    deadhead_count: validRows.filter((row) => row.deadhead_distance !== null).length,
     eta_count: validRows.filter((row) => Boolean(row.eta_pickup)).length,
     commercial_models: commercialModels,
     awarded_count: validRows.filter((row) => cleanText(row.award_role) === "primary").length,
@@ -1650,7 +1693,7 @@ async function publicBidRoomBoard(supabase: ReturnType<typeof createClient>, inp
       .order("lane_number", { ascending: true }),
     supabase
       .from("rfx_lane_vendors")
-      .select("id,rfx_event_id,rfx_lane_id,invitation_status,bid_rate,currency,weekly_capacity,transit_days,commercial_model,marksman_margin_pct,carrier_share_pct,best_alternative_offered,equipment_available,eta_pickup,responded_at,updated_at,award_role")
+      .select("id,rfx_event_id,rfx_lane_id,invitation_status,bid_rate,currency,weekly_capacity,transit_days,commercial_model,marksman_margin_pct,carrier_share_pct,best_alternative_offered,equipment_available,current_unit_location,deadhead_distance,deadhead_unit,eta_pickup,responded_at,updated_at,award_role")
       .in("rfx_event_id", eventIds)
       .not("bid_rate", "is", null)
       .neq("invitation_status", "archived")
@@ -2816,7 +2859,7 @@ async function loadPrivateSupportContext(supabase: ReturnType<typeof createClien
   const context = await currentInvitationContext(supabase, token);
   const currentResult = await supabase
     .from("rfx_lane_vendors")
-    .select("id,bid_rate,currency,weekly_capacity,transit_days,commercial_model,marksman_margin_pct,carrier_share_pct,best_alternative_offered,alternative_equipment,alternative_units,equipment_available,eta_pickup,eta_delivery,responded_at,updated_at,notes,vendors(vendor_name,domain)")
+    .select("id,bid_rate,currency,weekly_capacity,transit_days,commercial_model,marksman_margin_pct,carrier_share_pct,best_alternative_offered,alternative_equipment,alternative_units,equipment_available,current_unit_location,deadhead_distance,deadhead_unit,eta_pickup,eta_delivery,responded_at,updated_at,notes,vendors(vendor_name,domain)")
     .eq("id", context.id)
     .single();
   if (currentResult.error) throw currentResult.error;
@@ -2829,7 +2872,7 @@ async function loadPrivateSupportContext(supabase: ReturnType<typeof createClien
   };
   const peersResult = await supabase
     .from("rfx_lane_vendors")
-    .select("id,bid_rate,currency,weekly_capacity,transit_days,commercial_model,marksman_margin_pct,carrier_share_pct,best_alternative_offered,alternative_equipment,alternative_units,equipment_available,eta_pickup,eta_delivery,responded_at,updated_at,vendors(vendor_name,domain)")
+    .select("id,bid_rate,currency,weekly_capacity,transit_days,commercial_model,marksman_margin_pct,carrier_share_pct,best_alternative_offered,alternative_equipment,alternative_units,equipment_available,current_unit_location,deadhead_distance,deadhead_unit,eta_pickup,eta_delivery,responded_at,updated_at,vendors(vendor_name,domain)")
     .eq("rfx_lane_id", context.rfx_lane_id)
     .neq("id", context.id)
     .not("bid_rate", "is", null)
@@ -2850,6 +2893,9 @@ async function loadPrivateSupportContext(supabase: ReturnType<typeof createClien
       marksman_margin_pct,
       carrier_share_pct,
       equipment_available,
+      current_unit_location,
+      deadhead_distance,
+      deadhead_unit,
       responded_at,
       updated_at,
       notes,
@@ -2873,6 +2919,9 @@ async function loadPrivateSupportContext(supabase: ReturnType<typeof createClien
       bid_transit_days: row.transit_days,
       commercial_model: row.commercial_model || lane.commercial_model,
       equipment_available: row.equipment_available,
+      current_unit_location: row.current_unit_location,
+      deadhead_distance: row.deadhead_distance,
+      deadhead_unit: row.deadhead_unit,
       responded_at: row.responded_at,
       updated_at: row.updated_at,
       carrier_notes: row.notes,
@@ -3353,9 +3402,14 @@ function bidRateStagingInput(
     rfx_lane_vendor_id: invitation.id,
     vendor_id: invitation.vendor_id,
     responded_at: updatedBid.responded_at || now,
-    valid_through: cleanDate(updatedBid.valid_through)
+    valid_through: cleanDate(updatedBid.valid_through),
+    current_unit_location: cleanText(updatedBid.current_unit_location),
+    deadhead_distance: cleanNumber(updatedBid.deadhead_distance),
+    deadhead_unit: cleanText(updatedBid.deadhead_unit)
   };
   const validThrough = cleanDate(updatedBid.valid_through);
+  const deadheadDistance = cleanNumber(updatedBid.deadhead_distance);
+  const deadheadUnit = deadheadDistance !== null ? cleanText(updatedBid.deadhead_unit) || "mi" : null;
 
   return {
     vendor_id: invitation.vendor_id || null,
@@ -3397,9 +3451,14 @@ function bidRateStagingInput(
     currency: cleanText(economics.currency || updatedBid.currency || lane.currency) || "USD",
     weekly_capacity: rateText(updatedBid.weekly_capacity),
     valid_through: validThrough,
+    current_unit_location: cleanText(updatedBid.current_unit_location),
+    deadhead_distance: deadheadDistance,
+    deadhead_unit: deadheadUnit,
     notes: [
       cleanText(updatedBid.notes),
       validThrough ? `Valid through: ${validThrough}` : null,
+      cleanText(updatedBid.current_unit_location) ? `Current unit location: ${cleanText(updatedBid.current_unit_location)}` : null,
+      deadheadDistance !== null ? `Deadhead: ${deadheadDistance} ${deadheadUnit || "mi"}` : null,
       `Source: RFx carrier bid ${revisionType}`,
       `Carrier cost: ${economics.carrier_rate ?? "-"} ${economics.currency || updatedBid.currency || lane.currency || "USD"}`,
       economics.board_rate !== null ? `Board rate: ${economics.board_rate} ${economics.currency || updatedBid.currency || lane.currency || "USD"}` : null,
@@ -3430,7 +3489,8 @@ function bidRateStagingInput(
       carrier_cost_rate: 1,
       customer_board_rate: 1,
       commercial_model: 1,
-      valid_through: validThrough ? 1 : 0
+      valid_through: validThrough ? 1 : 0,
+      deadhead_distance: deadheadDistance !== null ? 1 : 0
     },
     source_evidence: sourceEvidence,
     extracted_payload: {
@@ -3456,6 +3516,9 @@ function bidRateStagingInput(
         weekly_capacity: updatedBid.weekly_capacity,
         transit_days: updatedBid.transit_days,
         valid_through: validThrough,
+        current_unit_location: cleanText(updatedBid.current_unit_location),
+        deadhead_distance: deadheadDistance,
+        deadhead_unit: deadheadUnit,
         notes: updatedBid.notes,
         commercial_model: updatedBid.commercial_model,
         marksman_margin_pct: updatedBid.marksman_margin_pct,
@@ -3661,6 +3724,9 @@ Deno.serve(async (request) => {
           alternative_units,
           alternative_notes,
           equipment_available,
+          current_unit_location,
+          deadhead_distance,
+          deadhead_unit,
           unit_details,
           eta_pickup,
           eta_delivery,
@@ -3694,7 +3760,7 @@ Deno.serve(async (request) => {
 
       const peersResult = await supabase
         .from("rfx_lane_vendors")
-        .select("id,bid_rate,currency,weekly_capacity,transit_days,valid_through,commercial_model,marksman_margin_pct,carrier_share_pct,best_alternative_offered,alternative_equipment,alternative_units,equipment_available,eta_pickup,eta_delivery,responded_at,updated_at,vendors(vendor_name,domain)")
+        .select("id,bid_rate,currency,weekly_capacity,transit_days,valid_through,commercial_model,marksman_margin_pct,carrier_share_pct,best_alternative_offered,alternative_equipment,alternative_units,equipment_available,current_unit_location,deadhead_distance,deadhead_unit,eta_pickup,eta_delivery,responded_at,updated_at,vendors(vendor_name,domain)")
         .eq("rfx_lane_id", result.data.rfx_lane_id)
         .neq("id", result.data.id)
         .not("bid_rate", "is", null)
@@ -3729,6 +3795,9 @@ Deno.serve(async (request) => {
               alternative_units,
               alternative_notes,
               equipment_available,
+              current_unit_location,
+              deadhead_distance,
+              deadhead_unit,
               unit_details,
               eta_pickup,
               eta_delivery,
@@ -3882,6 +3951,8 @@ Deno.serve(async (request) => {
       const bidRate = strictBidNumber(body.bid_rate, "Bid rate", { required: true });
       const mirrorEnabled = cleanBoolean(body.mirror_account_enabled) === true;
       const equipmentAvailable = cleanBoolean(body.equipment_available);
+      const deadheadDistance = strictNonNegativeBidNumber(body.deadhead_distance, "Deadhead distance");
+      const deadheadUnit = deadheadDistance !== null ? normalizeDeadheadUnit(body.deadhead_unit) || "mi" : null;
       const bestFinal = cleanBoolean(body.best_final) === true;
       const invitationResult = await supabase
         .from("rfx_lane_vendors")
@@ -3897,6 +3968,9 @@ Deno.serve(async (request) => {
           valid_through,
           commercial_model,
           equipment_available,
+          current_unit_location,
+          deadhead_distance,
+          deadhead_unit,
           responded_at,
           notes,
           vendors(vendor_name,domain,primary_email),
@@ -3937,6 +4011,9 @@ Deno.serve(async (request) => {
         alternative_units: strictBidNumber(body.alternative_units, "Alternative units"),
         alternative_notes: cleanText(body.alternative_notes),
         equipment_available: equipmentAvailable,
+        current_unit_location: cleanText(body.current_unit_location),
+        deadhead_distance: deadheadDistance,
+        deadhead_unit: deadheadUnit,
         unit_details: cleanText(body.unit_details),
         eta_pickup: cleanTimestamp(body.eta_pickup),
         eta_delivery: cleanTimestamp(body.eta_delivery),
@@ -3953,7 +4030,7 @@ Deno.serve(async (request) => {
         .from("rfx_lane_vendors")
         .update(patch)
         .eq("id", invitationResult.data.id)
-        .select("id,invitation_status,bid_rate,bid_rate_staging_id,bid_rate_staged_at,currency,weekly_capacity,transit_days,valid_through,commercial_model,marksman_margin_pct,carrier_share_pct,best_alternative_offered,alternative_equipment,alternative_units,alternative_notes,equipment_available,unit_details,eta_pickup,eta_delivery,mirror_account_enabled,availability_validation_status,availability_validation_notes,notes,responded_at")
+        .select("id,invitation_status,bid_rate,bid_rate_staging_id,bid_rate_staged_at,currency,weekly_capacity,transit_days,valid_through,commercial_model,marksman_margin_pct,carrier_share_pct,best_alternative_offered,alternative_equipment,alternative_units,alternative_notes,equipment_available,current_unit_location,deadhead_distance,deadhead_unit,unit_details,eta_pickup,eta_delivery,mirror_account_enabled,availability_validation_status,availability_validation_notes,notes,responded_at")
         .single();
       if (result.error) throw result.error;
 
@@ -3990,6 +4067,7 @@ Deno.serve(async (request) => {
             patch.valid_through ? `valid through ${patch.valid_through}` : null,
             patch.commercial_model ? `model ${patch.commercial_model}` : null,
             equipmentAvailable === null ? null : `available ${equipmentAvailable ? "yes" : "no"}`,
+            patch.deadhead_distance !== null ? `deadhead ${patch.deadhead_distance} ${patch.deadhead_unit || "mi"}` : null,
             lane?.origin && lane?.destination ? `${lane.origin} -> ${lane.destination}` : null
           ].filter(Boolean).join(" | "),
           metadata: {
@@ -4006,6 +4084,9 @@ Deno.serve(async (request) => {
               valid_through: cleanDate(invitationResult.data.valid_through),
               commercial_model: cleanText(invitationResult.data.commercial_model),
               equipment_available: cleanBoolean(invitationResult.data.equipment_available),
+              current_unit_location: cleanText(invitationResult.data.current_unit_location),
+              deadhead_distance: cleanNumber(invitationResult.data.deadhead_distance),
+              deadhead_unit: cleanText(invitationResult.data.deadhead_unit),
               responded_at: invitationResult.data.responded_at || null
             },
             after: {
@@ -4016,6 +4097,9 @@ Deno.serve(async (request) => {
               valid_through: patch.valid_through,
               commercial_model: patch.commercial_model,
               equipment_available: patch.equipment_available,
+              current_unit_location: patch.current_unit_location,
+              deadhead_distance: patch.deadhead_distance,
+              deadhead_unit: patch.deadhead_unit,
               responded_at: patch.responded_at
             }
           }
