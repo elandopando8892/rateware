@@ -287,6 +287,14 @@ function cleanDate(value: unknown) {
   return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString().slice(0, 10);
 }
 
+function strictDateOnly(value: unknown, label: string) {
+  const text = cleanText(value);
+  if (!text) return null;
+  const date = cleanDate(text);
+  if (!date) throw new Error(`${label} must be a valid date.`);
+  return date;
+}
+
 function rateText(value: unknown) {
   const numberValue = cleanNumber(value);
   return numberValue === null ? null : String(numberValue);
@@ -1177,6 +1185,7 @@ function liveBoardRowScore(row: Record<string, unknown>, context: Record<string,
   const amount = cleanNumber(row.amount);
   const capacity = cleanNumber(row.weekly_capacity);
   const transit = cleanNumber(row.transit_days);
+  const validThrough = cleanDate(row.valid_through);
   const pickupTime = timestampValue(row.eta_pickup);
   const equipmentAvailable = cleanBoolean(row.equipment_available);
   const mirrorEnabled = cleanBoolean(row.mirror_account_enabled) === true;
@@ -1198,6 +1207,9 @@ function liveBoardRowScore(row: Record<string, unknown>, context: Record<string,
   const transitScore = rangeScore(transit, context.minTransit || null, context.maxTransit || null, 10, true);
   if (transit === null) riskFlags.push("No transit");
   else if (context.minTransit !== null && transit <= context.minTransit) badges.push("Fast transit");
+
+  if (validThrough) badges.push("Validity stated");
+  else riskFlags.push("No validity");
 
   const etaScore = rangeScore(pickupTime, context.minPickup || null, context.maxPickup || null, 5, true);
   if (pickupTime !== null) badges.push("Pickup ETA");
@@ -1281,6 +1293,7 @@ function liveBoardFromRows(currentInvitation: Record<string, unknown>, peerRows:
         fee_label: economics.fee_label,
         weekly_capacity: cleanNumber(row.weekly_capacity),
         transit_days: cleanNumber(row.transit_days),
+        valid_through: cleanDate(row.valid_through),
         notes: cleanText(row.notes),
         commercial_model: economics.commercial_model,
         marksman_margin_pct: cleanNumber(row.marksman_margin_pct),
@@ -1409,6 +1422,7 @@ function liveBoardFromRows(currentInvitation: Record<string, unknown>, peerRows:
       fee_label: row.is_current || visibility.competitor_rates_visible ? row.fee_label : null,
       weekly_capacity: row.weekly_capacity,
       transit_days: row.transit_days,
+      valid_through: row.valid_through,
       marketplace_score: row.is_current || visibility.competitor_rates_visible ? row.marketplace_score : null,
       score_bucket: row.score_bucket,
       marketplace_badges: row.marketplace_badges,
@@ -1460,6 +1474,7 @@ function carrierBusinessBook(currentInvitation: Record<string, unknown>, invited
       fee_label: economics.fee_label,
       weekly_capacity: cleanNumber(row.weekly_capacity),
       transit_days: cleanNumber(row.transit_days),
+      valid_through: cleanDate(row.valid_through),
       notes: cleanText(row.notes),
       commercial_model: cleanText(row.commercial_model),
       marksman_margin_pct: cleanNumber(row.marksman_margin_pct),
@@ -3337,8 +3352,10 @@ function bidRateStagingInput(
     rfx_lane_id: lane.id || invitation.rfx_lane_id,
     rfx_lane_vendor_id: invitation.id,
     vendor_id: invitation.vendor_id,
-    responded_at: updatedBid.responded_at || now
+    responded_at: updatedBid.responded_at || now,
+    valid_through: cleanDate(updatedBid.valid_through)
   };
+  const validThrough = cleanDate(updatedBid.valid_through);
 
   return {
     vendor_id: invitation.vendor_id || null,
@@ -3379,8 +3396,10 @@ function bidRateStagingInput(
     all_in_rate: rateText(economics.carrier_rate ?? updatedBid.bid_rate),
     currency: cleanText(economics.currency || updatedBid.currency || lane.currency) || "USD",
     weekly_capacity: rateText(updatedBid.weekly_capacity),
+    valid_through: validThrough,
     notes: [
       cleanText(updatedBid.notes),
+      validThrough ? `Valid through: ${validThrough}` : null,
       `Source: RFx carrier bid ${revisionType}`,
       `Carrier cost: ${economics.carrier_rate ?? "-"} ${economics.currency || updatedBid.currency || lane.currency || "USD"}`,
       economics.board_rate !== null ? `Board rate: ${economics.board_rate} ${economics.currency || updatedBid.currency || lane.currency || "USD"}` : null,
@@ -3410,7 +3429,8 @@ function bidRateStagingInput(
       all_fields: 1,
       carrier_cost_rate: 1,
       customer_board_rate: 1,
-      commercial_model: 1
+      commercial_model: 1,
+      valid_through: validThrough ? 1 : 0
     },
     source_evidence: sourceEvidence,
     extracted_payload: {
@@ -3435,6 +3455,7 @@ function bidRateStagingInput(
         currency: updatedBid.currency,
         weekly_capacity: updatedBid.weekly_capacity,
         transit_days: updatedBid.transit_days,
+        valid_through: validThrough,
         notes: updatedBid.notes,
         commercial_model: updatedBid.commercial_model,
         marksman_margin_pct: updatedBid.marksman_margin_pct,
@@ -3630,6 +3651,7 @@ Deno.serve(async (request) => {
           currency,
           weekly_capacity,
           transit_days,
+          valid_through,
           notes,
           commercial_model,
           marksman_margin_pct,
@@ -3672,7 +3694,7 @@ Deno.serve(async (request) => {
 
       const peersResult = await supabase
         .from("rfx_lane_vendors")
-        .select("id,bid_rate,currency,weekly_capacity,transit_days,commercial_model,marksman_margin_pct,carrier_share_pct,best_alternative_offered,alternative_equipment,alternative_units,equipment_available,eta_pickup,eta_delivery,responded_at,updated_at,vendors(vendor_name,domain)")
+        .select("id,bid_rate,currency,weekly_capacity,transit_days,valid_through,commercial_model,marksman_margin_pct,carrier_share_pct,best_alternative_offered,alternative_equipment,alternative_units,equipment_available,eta_pickup,eta_delivery,responded_at,updated_at,vendors(vendor_name,domain)")
         .eq("rfx_lane_id", result.data.rfx_lane_id)
         .neq("id", result.data.id)
         .not("bid_rate", "is", null)
@@ -3697,6 +3719,7 @@ Deno.serve(async (request) => {
               currency,
               weekly_capacity,
               transit_days,
+              valid_through,
               notes,
               commercial_model,
               marksman_margin_pct,
@@ -3871,6 +3894,7 @@ Deno.serve(async (request) => {
           currency,
           weekly_capacity,
           transit_days,
+          valid_through,
           commercial_model,
           equipment_available,
           responded_at,
@@ -3904,6 +3928,7 @@ Deno.serve(async (request) => {
         currency: strictCurrencyCode(body.currency),
         weekly_capacity: strictBidNumber(body.weekly_capacity, "Weekly capacity"),
         transit_days: strictBidNumber(body.transit_days, "Transit days"),
+        valid_through: strictDateOnly(body.valid_through, "Valid through"),
         commercial_model: commercialModel,
         marksman_margin_pct: marksmanMarginPct,
         carrier_share_pct: carrierSharePct,
@@ -3928,7 +3953,7 @@ Deno.serve(async (request) => {
         .from("rfx_lane_vendors")
         .update(patch)
         .eq("id", invitationResult.data.id)
-        .select("id,invitation_status,bid_rate,bid_rate_staging_id,bid_rate_staged_at,currency,weekly_capacity,transit_days,commercial_model,marksman_margin_pct,carrier_share_pct,best_alternative_offered,alternative_equipment,alternative_units,alternative_notes,equipment_available,unit_details,eta_pickup,eta_delivery,mirror_account_enabled,availability_validation_status,availability_validation_notes,notes,responded_at")
+        .select("id,invitation_status,bid_rate,bid_rate_staging_id,bid_rate_staged_at,currency,weekly_capacity,transit_days,valid_through,commercial_model,marksman_margin_pct,carrier_share_pct,best_alternative_offered,alternative_equipment,alternative_units,alternative_notes,equipment_available,unit_details,eta_pickup,eta_delivery,mirror_account_enabled,availability_validation_status,availability_validation_notes,notes,responded_at")
         .single();
       if (result.error) throw result.error;
 
@@ -3962,6 +3987,7 @@ Deno.serve(async (request) => {
             revisionLabel,
             vendor?.vendor_name || vendor?.domain || "Carrier",
             `${bidRate} ${patch.currency}`,
+            patch.valid_through ? `valid through ${patch.valid_through}` : null,
             patch.commercial_model ? `model ${patch.commercial_model}` : null,
             equipmentAvailable === null ? null : `available ${equipmentAvailable ? "yes" : "no"}`,
             lane?.origin && lane?.destination ? `${lane.origin} -> ${lane.destination}` : null
@@ -3977,6 +4003,7 @@ Deno.serve(async (request) => {
               currency: cleanText(invitationResult.data.currency),
               weekly_capacity: cleanNumber(invitationResult.data.weekly_capacity),
               transit_days: cleanNumber(invitationResult.data.transit_days),
+              valid_through: cleanDate(invitationResult.data.valid_through),
               commercial_model: cleanText(invitationResult.data.commercial_model),
               equipment_available: cleanBoolean(invitationResult.data.equipment_available),
               responded_at: invitationResult.data.responded_at || null
@@ -3986,6 +4013,7 @@ Deno.serve(async (request) => {
               currency: patch.currency,
               weekly_capacity: patch.weekly_capacity,
               transit_days: patch.transit_days,
+              valid_through: patch.valid_through,
               commercial_model: patch.commercial_model,
               equipment_available: patch.equipment_available,
               responded_at: patch.responded_at

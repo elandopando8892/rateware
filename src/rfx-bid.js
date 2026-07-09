@@ -125,6 +125,7 @@ const BID_PORTAL_COPY = {
     currency: "Currency",
     weeklyCapacity: "Weekly capacity",
     transitDays: "Transit days",
+    validThrough: "Valid through",
     commercialStructure: "Commercial structure",
     suggestedMargin: "Suggested margin to share %",
     carrierShare: "Carrier invoice share %",
@@ -219,6 +220,7 @@ const BID_PORTAL_COPY = {
     currency: "Moneda",
     weeklyCapacity: "Capacidad semanal",
     transitDays: "Dias de transito",
+    validThrough: "Vigente hasta",
     commercialStructure: "Estructura comercial",
     suggestedMargin: "Margen sugerido a compartir %",
     carrierShare: "Carrier invoice share %",
@@ -883,6 +885,16 @@ function dateTimeLocalValue(value) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
+function dateOnlyValue(value) {
+  if (!value) return "";
+  if (value instanceof Date && !Number.isNaN(value.getTime())) return value.toISOString().slice(0, 10);
+  const text = String(value ?? "").trim();
+  const isoMatch = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (isoMatch) return `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`;
+  const parsed = new Date(text);
+  return Number.isNaN(parsed.getTime()) ? "" : parsed.toISOString().slice(0, 10);
+}
+
 function availabilitySummary(row = {}) {
   if (row.equipment_available === true) {
     return ["Available", row.eta_pickup ? `PU ${formatDateTime(row.eta_pickup)}` : null, row.eta_delivery ? `DEL ${formatDateTime(row.eta_delivery)}` : null].filter(Boolean).join(" | ");
@@ -985,6 +997,13 @@ function validDateTimeValue(value) {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
+function validDateValue(value) {
+  const text = String(value ?? "").trim();
+  if (!text) return null;
+  const date = new Date(`${text}T12:00:00`);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
 function collectBidDraft() {
   const bestFinal = card.querySelector("#bid-best-final")?.checked || false;
   const notes = card.querySelector("#bid-notes")?.value || "";
@@ -995,6 +1014,7 @@ function collectBidDraft() {
     currency: card.querySelector("#bid-currency")?.value || "USD",
     weekly_capacity: card.querySelector("#bid-capacity")?.value || "",
     transit_days: card.querySelector("#bid-transit-days")?.value || "",
+    valid_through: card.querySelector("#bid-valid-through")?.value || "",
     commercial_model: commercialModel,
     marksman_margin_pct: commercialConfig.percentageField === "marksman" ? card.querySelector("#bid-marksman-margin")?.value || "" : "",
     carrier_share_pct: commercialConfig.percentageField === "carrier" ? card.querySelector("#bid-carrier-share")?.value || "" : "",
@@ -1042,6 +1062,8 @@ function validateBidDraft(draft) {
 
   const pickupEta = validDateTimeValue(draft.eta_pickup);
   const deliveryEta = validDateTimeValue(draft.eta_delivery);
+  const validThrough = validDateValue(draft.valid_through);
+  if (draft.valid_through && !validThrough) errors.push(validationIssue("bid-valid-through", "Valid through must be a valid date."));
   if (draft.eta_pickup && !pickupEta) errors.push(validationIssue("bid-eta-pickup", "Pickup ETA must be a valid date and time."));
   if (draft.eta_delivery && !deliveryEta) errors.push(validationIssue("bid-eta-delivery", "Delivery ETA must be a valid date and time."));
   if (pickupEta && deliveryEta && deliveryEta.getTime() <= pickupEta.getTime()) {
@@ -1054,6 +1076,9 @@ function validateBidDraft(draft) {
   }
   if (!String(draft.transit_days || "").trim()) {
     warnings.push("Transit days are recommended for service comparison.");
+  }
+  if (!String(draft.valid_through || "").trim()) {
+    warnings.push("Offer validity date is recommended for procurement review.");
   }
   if (draft.best_alternative_offered && !draft.alternative_notes.trim()) {
     warnings.push("Alternative notes help procurement understand assumptions and restrictions.");
@@ -1088,6 +1113,7 @@ const BID_TEMPLATE_COLUMNS = [
   { key: "currency", label: "Currency / Moneda", aliases: ["Currency", "Moneda"], width: 14, validation: "currency", required: true },
   { key: "weekly_capacity", label: "Weekly capacity / Capacidad semanal", aliases: ["Weekly capacity", "Capacidad semanal"], width: 20, validation: "positiveNumberBlank", recommended: true },
   { key: "transit_days", label: "Transit days / Dias transito", aliases: ["Transit days", "Dias transito"], width: 18, validation: "positiveNumberBlank", recommended: true },
+  { key: "valid_through", label: "Valid through / Vigente hasta", aliases: ["Valid through", "Vigente hasta", "Offer valid through", "Vigencia"], width: 20, validation: "dateBlank", recommended: true },
   { key: "commercial_model", label: "Commercial model / Modelo comercial", aliases: ["Commercial model", "Modelo comercial"], width: 28, validation: "commercialModel", required: true },
   { key: "suggested_margin_pct", label: "Suggested margin % / Margen sugerido %", aliases: ["Suggested margin %", "Margen sugerido %"], width: 24, validation: "percent2to5", conditional: "Required only for Direct / cost-plus. / Obligatorio solo para Direct / cost-plus." },
   { key: "carrier_invoice_share_pct", label: "Carrier invoice share % / Share factura carrier %", aliases: ["Carrier invoice share %", "Share factura carrier %"], width: 28, validation: "percent2to5", conditional: "Required only for Carrier invoice share. / Obligatorio solo para Carrier invoice share." },
@@ -1149,6 +1175,10 @@ function normalizeTemplateDateTime(value) {
   return textValue(value);
 }
 
+function normalizeTemplateDate(value) {
+  return dateOnlyValue(value) || textValue(value);
+}
+
 function normalizeTemplateCurrency(value, fallback = "USD") {
   const currency = textValue(value || fallback).toUpperCase();
   return /^[A-Z]{3}$/.test(currency) ? currency : currency || fallback;
@@ -1188,6 +1218,7 @@ function bidTemplateRows(carrierBook = {}, invitation = {}) {
         currency: row.currency || lane.currency || "USD",
         weekly_capacity: row.weekly_capacity ?? "",
         transit_days: row.transit_days ?? "",
+        valid_through: dateOnlyValue(row.valid_through),
         commercial_model: bidTemplateCommercialModelValue(row.commercial_model),
         suggested_margin_pct: row.marksman_margin_pct ?? "",
         carrier_invoice_share_pct: row.carrier_share_pct ?? "",
@@ -1274,6 +1305,16 @@ function bidTemplateValidation(column) {
       error: "Enter a percentage between 2 and 5. / Captura un porcentaje entre 2 y 5."
     };
   }
+  if (column.validation === "dateBlank") {
+    return {
+      type: "date",
+      operator: "greaterThan",
+      allowBlank: true,
+      formulae: [new Date(2020, 0, 1)],
+      ...common,
+      error: "Enter a valid date or leave blank. / Captura una fecha valida o deja en blanco."
+    };
+  }
   return null;
 }
 
@@ -1324,6 +1365,7 @@ function applyBidTemplateWorksheetRules(worksheet, rowCount) {
   for (const key of ["all_in_rate", "weekly_capacity", "transit_days", "suggested_margin_pct", "carrier_invoice_share_pct", "alternative_units"]) {
     worksheet.getColumn(BID_TEMPLATE_COLUMNS.findIndex((column) => column.key === key) + 1).numFmt = "#,##0.00";
   }
+  worksheet.getColumn(BID_TEMPLATE_COLUMNS.findIndex((column) => column.key === "valid_through") + 1).numFmt = "yyyy-mm-dd";
 }
 
 function addBidTemplateInstructions(workbook) {
@@ -1346,8 +1388,8 @@ function addBidTemplateInstructions(workbook) {
     },
     {
       section: "Recommended columns",
-      en: "Weekly capacity, transit days, equipment availability, ETAs, unit details, alternatives, and notes improve scoring and procurement review, but they do not block submission unless the value entered is invalid.",
-      es: "Capacidad semanal, dias de transito, disponibilidad, ETAs, datos de unidad, alternativas y notas mejoran el scoring y la revision, pero no bloquean el envio salvo que el valor capturado sea invalido."
+      en: "Weekly capacity, transit days, valid through date, equipment availability, ETAs, unit details, alternatives, and notes improve scoring and procurement review, but they do not block submission unless the value entered is invalid.",
+      es: "Capacidad semanal, dias de transito, vigencia, disponibilidad, ETAs, datos de unidad, alternativas y notas mejoran el scoring y la revision, pero no bloquean el envio salvo que el valor capturado sea invalido."
     },
     {
       section: "Dropdowns",
@@ -1435,6 +1477,7 @@ function draftFromBidTemplateRow(row) {
     currency: normalizeTemplateCurrency(row.currency, row.target_currency || "USD"),
     weekly_capacity: textValue(row.weekly_capacity),
     transit_days: textValue(row.transit_days),
+    valid_through: normalizeTemplateDate(row.valid_through),
     commercial_model: commercialModel,
     marksman_margin_pct: commercialModel === "direct_cost_plus" ? textValue(row.suggested_margin_pct) : "",
     carrier_share_pct: commercialModel === "carrier_share" ? textValue(row.carrier_invoice_share_pct) : "",
@@ -1478,7 +1521,7 @@ async function parseBidTemplateFile(file) {
   const rows = XLSX.utils.sheet_to_json(worksheet, { defval: "", raw: false });
   return rows
     .map(normalizeBidTemplateRow)
-    .filter((row) => row.invitation_token || row.submit_this_lane || row.all_in_rate || row.weekly_capacity);
+    .filter((row) => row.invitation_token || row.submit_this_lane || row.all_in_rate || row.weekly_capacity || row.valid_through);
 }
 
 function renderBidTemplatePreview(rows = pendingBidTemplateRows) {
@@ -1511,7 +1554,7 @@ function renderBidTemplatePreview(rows = pendingBidTemplateRows) {
     </div>
     <div class="table-wrap">
       <table class="bid-template-preview-table">
-        <thead><tr><th>${escapeHtml(dualText("Row", "Fila"))}</th><th>Lane</th><th>${escapeHtml(dualText("Rate", "Tarifa"))}</th><th>${escapeHtml(dualText("Capacity", "Capacidad"))}</th><th>Status</th></tr></thead>
+        <thead><tr><th>${escapeHtml(dualText("Row", "Fila"))}</th><th>Lane</th><th>${escapeHtml(dualText("Rate", "Tarifa"))}</th><th>${escapeHtml(dualText("Capacity", "Capacidad"))}</th><th>${escapeHtml(dualText("Valid through", "Vigente hasta"))}</th><th>Status</th></tr></thead>
         <tbody>
           ${rows.slice(0, 12).map((row) => {
             const errors = row.validation.errors.map((issue) => issue.message);
@@ -1527,6 +1570,7 @@ function renderBidTemplatePreview(rows = pendingBidTemplateRows) {
                 <td>${escapeHtml(lane)}</td>
                 <td>${escapeHtml(row.draft.bid_rate || "-")} ${escapeHtml(row.draft.currency || "")}</td>
                 <td>${escapeHtml(row.draft.weekly_capacity || "-")} / wk</td>
+                <td>${escapeHtml(row.draft.valid_through || "-")}</td>
                 <td>${statusHtml}</td>
               </tr>
             `;
@@ -1633,7 +1677,7 @@ function bidReviewSummaryHtml(draft) {
       : "Not declared";
   return `
     <div class="bid-review-summary-grid">
-      <article><span>Primary offer</span><strong>${escapeHtml(formatMoney(draft.bid_rate, draft.currency))}</strong><small>${escapeHtml(draft.weekly_capacity || "-")} / wk | ${escapeHtml(draft.transit_days || "-")} day(s)</small></article>
+      <article><span>Primary offer</span><strong>${escapeHtml(formatMoney(draft.bid_rate, draft.currency))}</strong><small>${escapeHtml(draft.weekly_capacity || "-")} / wk | ${escapeHtml(draft.transit_days || "-")} day(s) | ${escapeHtml(draft.valid_through || "no validity date")}</small></article>
       <article><span>Commercial model</span><strong>${escapeHtml(commercialModelLabel(draft.commercial_model))}</strong><small>${escapeHtml(commercialFeeSummary(draft))}</small></article>
       <article><span>Alternative</span><strong>${escapeHtml(alternative)}</strong><small>${escapeHtml(draft.alternative_notes || "No alternative notes")}</small></article>
       <article><span>Capacity</span><strong>${escapeHtml(availability)}</strong><small>${escapeHtml(draft.mirror_account_enabled ? "Mirror account requested" : draft.unit_details || "No unit details")}</small></article>
@@ -1718,6 +1762,7 @@ function hydrateBidFormFromOffer(offer = currentSubmittedOffer(), invitation = l
   setFormValue("#bid-currency", firstDefined(source.currency, invitation.currency, lane.currency, "USD"));
   setFormValue("#bid-capacity", firstDefined(source.weekly_capacity, invitation.weekly_capacity, ""));
   setFormValue("#bid-transit-days", firstDefined(source.transit_days, invitation.transit_days, ""));
+  setFormValue("#bid-valid-through", dateOnlyValue(firstDefined(source.valid_through, invitation.valid_through, "")));
   setFormValue("#bid-commercial-model", firstDefined(source.commercial_model, invitation.commercial_model, "direct_cost_plus"));
   setFormValue("#bid-marksman-margin", firstDefined(source.marksman_margin_pct, invitation.marksman_margin_pct, ""));
   setFormValue("#bid-carrier-share", firstDefined(source.carrier_share_pct, invitation.carrier_share_pct, ""));
@@ -1856,7 +1901,7 @@ function renderLiveBoard(liveBoard = {}) {
     </div>
     <div class="table-wrap">
       <table class="bid-live-table">
-        <thead><tr><th>Rank</th><th>Bidder</th><th>Score</th><th>Rate visibility</th><th>Commercial</th><th>Market signals</th><th>Capacity</th><th>Transit</th><th>Action</th></tr></thead>
+        <thead><tr><th>Rank</th><th>Bidder</th><th>Score</th><th>Rate visibility</th><th>Commercial</th><th>Market signals</th><th>Capacity</th><th>Transit</th><th>Valid through</th><th>Action</th></tr></thead>
         <tbody>
           ${rows.map((row) => `
             <tr class="${row.is_current ? "is-current" : ""}">
@@ -1872,6 +1917,7 @@ function renderLiveBoard(liveBoard = {}) {
               <td>${marketplaceBadgesHtml(row)}</td>
               <td>${escapeHtml(row.weekly_capacity ?? "-")}</td>
               <td>${escapeHtml(row.transit_days ?? "-")}</td>
+              <td>${escapeHtml(row.valid_through ? formatDate(row.valid_through) : "-")}</td>
               <td class="bid-live-action-cell">
                 ${row.is_current
                   ? `<button type="button" class="secondary small-button" data-edit-current-offer>${escapeHtml(t("editSubmittedOffer"))}</button>`
@@ -1926,6 +1972,9 @@ function bidHistoryDeltaHtml(metadata = {}) {
       : null,
     before.transit_days !== after.transit_days && after.transit_days !== undefined
       ? `Transit ${after.transit_days ?? "-"} day(s)`
+      : null,
+    before.valid_through !== after.valid_through && after.valid_through !== undefined
+      ? `Valid through ${after.valid_through || "-"}`
       : null,
     before.commercial_model !== after.commercial_model && after.commercial_model
       ? commercialModelLabel(after.commercial_model)
@@ -2413,6 +2462,7 @@ function renderBookRows(rows = []) {
           ${amount}
           ${boardAmount && boardAmount !== amount ? `<small>${escapeHtml(dualText(`Board ${boardAmount}`, `Board ${boardAmount}`))}</small>` : ""}
           <small>${row.weekly_capacity ? `${escapeHtml(row.weekly_capacity)} / wk` : ""}</small>
+          <small>${row.valid_through ? `${escapeHtml(dualText("Valid through", "Vigente hasta"))} ${escapeHtml(formatDate(row.valid_through))}` : ""}</small>
           <small title="${escapeAttribute(row.bid_rate !== null && row.bid_rate !== undefined ? commercialFeeSummary(row) : "")}">${escapeHtml(row.bid_rate !== null && row.bid_rate !== undefined ? commercialSummary(row) : "")}</small>
         </td>
         <td>${action}</td>
@@ -2471,6 +2521,7 @@ function renderQuickLaneBidGridShell(carrierBook = {}, invitation = {}) {
               <th>${escapeHtml(dualText("Currency", "Moneda"))}</th>
               <th>${escapeHtml(dualText("Capacity", "Capacidad"))}</th>
               <th>${escapeHtml(dualText("Transit", "Transito"))}</th>
+              <th>${escapeHtml(dualText("Valid through", "Vigente hasta"))}</th>
               <th>${escapeHtml(dualText("Commercial", "Comercial"))}</th>
               <th>${escapeHtml(dualText("%", "%"))}</th>
               <th>${escapeHtml(dualText("Status", "Estado"))}</th>
@@ -2513,6 +2564,7 @@ function renderQuickLaneBidGridShell(carrierBook = {}, invitation = {}) {
                   </td>
                   <td><input data-quick-bid-field="weekly_capacity" inputmode="decimal" value="${escapeAttribute(row.weekly_capacity ?? "")}" placeholder="5" /></td>
                   <td><input data-quick-bid-field="transit_days" inputmode="decimal" value="${escapeAttribute(row.transit_days ?? "")}" placeholder="2" /></td>
+                  <td><input data-quick-bid-field="valid_through" type="date" value="${escapeAttribute(dateOnlyValue(row.valid_through))}" /></td>
                   <td>
                     <select data-quick-bid-field="commercial_model">
                       <option value="direct_cost_plus" ${model === "direct_cost_plus" ? "selected" : ""}>Cost-plus</option>
@@ -2555,6 +2607,7 @@ function quickBidDraftFromRow(rowElement) {
     currency: quickBidField(rowElement, "currency") || "USD",
     weekly_capacity: quickBidField(rowElement, "weekly_capacity"),
     transit_days: quickBidField(rowElement, "transit_days"),
+    valid_through: quickBidField(rowElement, "valid_through"),
     commercial_model: commercialModel,
     marksman_margin_pct: commercialModel === "direct_cost_plus" ? commercialPercent : "",
     carrier_share_pct: commercialModel === "carrier_share" ? commercialPercent : "",
@@ -2586,6 +2639,7 @@ function markQuickBidRowInvalid(rowElement, field) {
     "bid-currency": "currency",
     "bid-capacity": "weekly_capacity",
     "bid-transit-days": "transit_days",
+    "bid-valid-through": "valid_through",
     "bid-marksman-margin": "commercial_pct",
     "bid-carrier-share": "commercial_pct"
   };
@@ -3027,6 +3081,10 @@ function renderInvitation(invitation, liveBoard = {}, carrierBook = {}) {
           <label>
             ${escapeHtml(t("transitDays"))}
             <input id="bid-transit-days" inputmode="decimal" value="${escapeHtml(invitation.transit_days ?? "")}" placeholder="2" />
+          </label>
+          <label>
+            ${escapeHtml(t("validThrough"))}
+            <input id="bid-valid-through" type="date" value="${escapeHtml(dateOnlyValue(invitation.valid_through))}" />
           </label>
         </div>
       </section>

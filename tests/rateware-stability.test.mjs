@@ -69,6 +69,7 @@ const bidRoomChatBidUpdatesMigration = readFileSync(new URL("../supabase/migrati
 const rfxAwardCloseoutMigration = readFileSync(new URL("../supabase/migrations/20260704080000_rfx_award_closeout.sql", import.meta.url), "utf8");
 const rfxBidSubmissionV2Migration = readFileSync(new URL("../supabase/migrations/20260704093000_rfx_bid_submission_v2.sql", import.meta.url), "utf8");
 const rfxBidRatewareCaptureMigration = readFileSync(new URL("../supabase/migrations/20260708162000_rfx_bid_rateware_capture.sql", import.meta.url), "utf8");
+const rfxBidValidityMigration = readFileSync(new URL("../supabase/migrations/20260708170000_rfx_bid_validity.sql", import.meta.url), "utf8");
 const vendorSegmentsCoverageMigration = readFileSync(new URL("../supabase/migrations/20260706143000_vendor_segments_coverage_filter.sql", import.meta.url), "utf8");
 const vendorProfileRequestsMigration = readFileSync(new URL("../supabase/migrations/20260706152000_vendor_profile_requests.sql", import.meta.url), "utf8");
 const rfxLaneDetailSectionsMigration = readFileSync(new URL("../supabase/migrations/20260707170000_rfx_lane_detail_sections.sql", import.meta.url), "utf8");
@@ -312,6 +313,7 @@ assert.match(rfxBidRatewareCaptureMigration, /bid_rate_staging_id uuid reference
 assert.match(rfxBidRatewareCaptureMigration, /carrier_cost_rate numeric/, "Rateware staging should persist the carrier cost rate from each bid");
 assert.match(rfxBidRatewareCaptureMigration, /customer_board_rate numeric/, "Rateware staging should persist the comparable board rate from commercial economics");
 assert.match(rfxBidRatewareCaptureMigration, /source_bid_status text/, "Rateware staging should identify initial, revision, or best-and-final bid captures");
+assert.match(rfxBidValidityMigration, /add column if not exists valid_through date/, "RFx carrier bids and Rateware staging should persist carrier offer validity dates");
 assert.match(apiSource, /async function awardRfxLaneVendor/, "API should save primary and backup RFx award decisions");
 assert.match(apiSource, /async function closeoutAwardedRfxToRateware/, "API should convert primary RFx awards into Rateware rows");
 assert.match(apiSource, /rfx_award_closeout/, "Rateware rows created from RFx awards should carry closeout source metadata");
@@ -321,6 +323,8 @@ assert.match(rfxBidApiSource, /bid_rate_staging_id: insert\.data\.id/, "Carrier 
 assert.match(rfxBidApiSource, /bid_rate_staging_id: update\.data\.id/, "Carrier bid revisions should keep the invitation linked to the updated staging row");
 assert.match(rfxBidApiSource, /all_in_rate: rateText\(economics\.carrier_rate \?\? updatedBid\.bid_rate\)/, "Rateware staging all-in should store the carrier cost, not the adjusted board rate");
 assert.match(rfxBidApiSource, /customer_board_rate: economics\.board_rate/, "Rateware staging should retain the adjusted board rate separately");
+assert.match(rfxBidApiSource, /valid_through: strictDateOnly\(body\.valid_through, "Valid through"\)/, "Carrier portal API should validate submitted offer validity dates");
+assert.match(rfxBidApiSource, /valid_through: validThrough/, "Carrier bid captures should copy validity into Rateware staging");
 assert.match(apiSource, /rfx\.award\.closeout/, "API should audit RFx award closeout");
 assert.match(apiSource, /async function generateRfxAwardNotices/, "API should generate RFx award, backup, and not-awarded notice drafts");
 assert.match(apiSource, /notice_type: "rfx_award_closeout"/, "RFx award notices should be identifiable in outreach metadata");
@@ -552,6 +556,10 @@ assert.match(rfxBidSource, /function validateBidDraft/, "Carrier portal should b
 assert.match(rfxBidSource, /validatePositiveNumberIssue\(draft\.bid_rate, "bid-rate", "All-in rate"\)/, "Carrier portal should require numeric all-in rate");
 assert.match(rfxBidSource, /validatePositiveNumberIssue\(draft\.weekly_capacity, "bid-capacity", "Weekly capacity", false\)/, "Carrier portal should validate capacity only when provided");
 assert.match(rfxBidSource, /validatePositiveNumberIssue\(draft\.transit_days, "bid-transit-days", "Transit days", false\)/, "Carrier portal should validate transit days only when provided");
+assert.match(rfxBidSource, /id="bid-valid-through"/, "Carrier portal should ask carriers for offer validity in the guided bid form");
+assert.match(rfxBidSource, /valid_through: card\.querySelector\("#bid-valid-through"\)\?\.value \|\| ""/, "Carrier portal should collect offer validity from the guided bid form");
+assert.match(rfxBidSource, /Valid through \/ Vigente hasta/, "Carrier XLSX bid template should include a bilingual validity column");
+assert.match(rfxBidSource, /valid_through: quickBidField\(rowElement, "valid_through"\)/, "Carrier quick bid rows should save offer validity");
 assert.match(rfxBidSource, /function commercialStructureConfig/, "Carrier portal should explain each commercial structure");
 assert.match(rfxBidSource, /syncCommercialStructureFields/, "Carrier portal should show only the applicable commercial percentage input");
 assert.match(rfxBidSource, /validatePercentIssue\(draft\.marksman_margin_pct, "bid-marksman-margin", "Suggested margin to share %", \{ required: true, procurementRange: true \}\)/, "Carrier portal should enforce suggested margin range for cost-plus");
