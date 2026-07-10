@@ -75,6 +75,7 @@ let playbookRows = [];
 let activeTab = "cases";
 let searchTimer = null;
 let vendorSearchTimer = null;
+let vendorSearchSequence = 0;
 let selectedVendor = null;
 
 const CRM_VENDOR_SEARCH_LIMIT = 1000;
@@ -230,8 +231,10 @@ function selectVendorForCase(row) {
 }
 
 function renderVendorSearchResults(rows = [], query = "") {
-  if (!vendorResults) return;
-  const rankedRows = rows
+  if (!vendorResults) return 0;
+  const term = normalizeTerm(query);
+  const matchingRows = rows.filter((row) => !term || normalizeTerm(vendorSearchText(row)).includes(term));
+  const rankedRows = matchingRows
     .slice()
     .sort((left, right) => rankVendorForQuery(left, query) - rankVendorForQuery(right, query) || vendorLabel(left).localeCompare(vendorLabel(right)))
     .slice(0, CRM_VENDOR_RENDER_LIMIT);
@@ -244,7 +247,7 @@ function renderVendorSearchResults(rows = [], query = "") {
       </div>
     `;
     showVendorResults();
-    return;
+    return 0;
   }
 
   vendorRows = rankedRows;
@@ -255,6 +258,7 @@ function renderVendorSearchResults(rows = [], query = "") {
     </button>
   `).join("");
   showVendorResults();
+  return matchingRows.length;
 }
 
 function readFilters() {
@@ -439,6 +443,8 @@ function setActiveTab(nextTab) {
 async function searchCrmVendors(query = "") {
   if (!vendorResults) return;
   const term = query.trim();
+  vendorSearchSequence += 1;
+  const sequence = vendorSearchSequence;
   if (!term) {
     vendorResults.innerHTML = `
       <div class="vendor-ci-vendor-empty">
@@ -463,9 +469,11 @@ async function searchCrmVendors(query = "") {
   setVendorPickerMessage("Searching full Carrier CRM...");
   try {
     const result = await fetchVendors({ limit: CRM_VENDOR_SEARCH_LIMIT, offset: 0, view: "all", lightweight: true, search: term });
-    renderVendorSearchResults(result.rows || [], term);
-    setVendorPickerMessage(`${Number(result.total || result.rows?.length || 0).toLocaleString()} CRM match(es). Choose one to create the case.`);
+    if (sequence !== vendorSearchSequence || term !== String(vendorSearchInput?.value || "").trim()) return;
+    const renderedMatches = renderVendorSearchResults(result.rows || [], term);
+    setVendorPickerMessage(`${Number(renderedMatches || 0).toLocaleString()} CRM match(es). Choose one to create the case.`, renderedMatches ? "neutral" : "error");
   } catch (error) {
+    if (sequence !== vendorSearchSequence) return;
     vendorResults.innerHTML = `
       <div class="vendor-ci-vendor-empty error-state">
         <strong>CRM search failed</strong>

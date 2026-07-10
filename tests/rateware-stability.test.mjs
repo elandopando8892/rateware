@@ -901,6 +901,9 @@ assert.match(vendorImprovementSource, /upsertVendorValueScorecard/, "Vendor CI U
 assert.match(vendorImprovementSource, /function searchCrmVendors/, "Vendor CI should search the Carrier CRM dynamically when creating a case");
 assert.match(vendorImprovementSource, /function scorecardSignals/, "Vendor CI value curve should render Rateware, Bid Room, support, and chat evidence per carrier");
 assert.match(vendorImprovementSource, /fetchVendors\(\{ limit: CRM_VENDOR_SEARCH_LIMIT, offset: 0, view: "all", lightweight: true, search: term \}\)/, "Vendor CI search should query the full CRM, not a preloaded procurement-only list");
+assert.match(vendorImprovementSource, /let vendorSearchSequence = 0;/, "Vendor CI vendor search should ignore stale CRM responses");
+assert.match(vendorImprovementSource, /matchingRows = rows\.filter/, "Vendor CI vendor search should filter returned CRM rows before rendering");
+assert.match(vendorImprovementSource, /sequence !== vendorSearchSequence/, "Vendor CI vendor search should not render older searches over newer input");
 assert.doesNotMatch(vendorImprovementSource, /fetchVendors\(\{ base_stage: "procurement"/, "Vendor CI create-case picker should not be limited to Procurement vendors");
 assert.match(apiSource, /async function buildVendorValueCurve/, "Vendor CI API should compute the carrier value curve from all CRM vendors");
 assert.match(apiSource, /fetchVendorRateMetricsSafe\(supabase, user\)/, "Vendor CI value curve should include Rateware quote signals");
