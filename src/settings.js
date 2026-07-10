@@ -14,6 +14,7 @@ import {
   saveGoogleChatSettings,
   startGmailOAuth,
   startGoogleChatOAuth,
+  syncGmailBounces,
   updateOnboardingTask,
   updateSaasOrganization,
   updateSaasProfile
@@ -45,6 +46,7 @@ const gmailConnectionCard = document.querySelector("#gmail-connection-card");
 const gmailConnectionStatus = document.querySelector("#gmail-connection-status");
 const connectGmailButton = document.querySelector("#connect-gmail-button");
 const disconnectGmailButton = document.querySelector("#disconnect-gmail-button");
+const syncGmailBouncesButton = document.querySelector("#sync-gmail-bounces-button");
 const refreshGmailConnectionButton = document.querySelector("#refresh-gmail-connection");
 const googleChatConnectionCard = document.querySelector("#google-chat-connection-card");
 const googleChatConnectionStatus = document.querySelector("#google-chat-connection-status");
@@ -346,9 +348,13 @@ function renderGmailConnections(data = currentSettings?.gmail) {
   const row = data?.rows?.[0] || {};
   const connected = row.status === "connected";
   const configured = row.configured === true;
+  const scopes = Array.isArray(row.scopes) ? row.scopes : [];
+  const canReadDeliveryFailures = scopes.includes("https://www.googleapis.com/auth/gmail.readonly")
+    || scopes.includes("https://www.googleapis.com/auth/gmail.modify")
+    || scopes.includes("https://mail.google.com/");
   const statusLabel = connected ? "Connected" : row.status === "error" ? "Connection error" : row.status === "revoked" ? "Disconnected" : "Not connected";
   const connectionCopy = connected
-    ? "Ready to send individual Bid Room invitations from this approved Gmail account."
+    ? "Ready to send invitations and monitor delivery failures from this approved Gmail account."
     : configured
       ? "Connect once with Google consent. Users never type or share Gmail credentials inside Rateware."
       : "This Gmail connector is not enabled for the deployment yet. Once enabled, connecting is a one-click Google consent flow.";
@@ -358,6 +364,7 @@ function renderGmailConnections(data = currentSettings?.gmail) {
     <dl class="diagnostic-list compact-list">
       <div><dt>Status</dt><dd><span class="status-pill ${connected ? "success" : row.status === "error" ? "danger" : "neutral"}">${escapeHtml(statusLabel)}</span></dd></div>
       <div><dt>Sender</dt><dd>${escapeHtml(GMAIL_ALLOWED_SENDER)}</dd></div>
+      <div><dt>Delivery failures</dt><dd>${escapeHtml(canReadDeliveryFailures ? "Monitoring enabled" : connected ? "Reconnect once to enable" : "-")}</dd></div>
       <div><dt>Updated</dt><dd>${escapeHtml(row.updated_at ? new Date(row.updated_at).toLocaleString() : "-")}</dd></div>
     </dl>
     ${row.last_error ? `<p class="error-text">${escapeHtml(humanGmailMessage(row.last_error))}</p>` : ""}
@@ -367,12 +374,15 @@ function renderGmailConnections(data = currentSettings?.gmail) {
     connectGmailButton.textContent = connected ? "Gmail connected" : "Connect Gmail";
   }
   if (disconnectGmailButton) disconnectGmailButton.disabled = !connected && row.status !== "error";
+  if (syncGmailBouncesButton) syncGmailBouncesButton.disabled = !connected || !canReadDeliveryFailures;
   setStatus(
     gmailConnectionStatus,
     configured
-      ? (connected ? "Gmail is connected for outbound Bid Room invitations." : "Click Connect Gmail and approve access in Google.")
+      ? (connected
+        ? (canReadDeliveryFailures ? "Gmail is connected for invitations and delivery failure monitoring." : "Reconnect Gmail once to enable delivery failure monitoring.")
+        : "Click Connect Gmail and approve access in Google.")
       : "Gmail connector is not enabled yet. No user credentials are required.",
-    configured ? (connected ? "success" : "neutral") : "warning"
+    configured ? (connected && canReadDeliveryFailures ? "success" : "neutral") : "warning"
   );
 }
 
@@ -567,6 +577,8 @@ async function loadGmailConnections() {
   setStatus(gmailConnectionStatus, "Checking Gmail connection...");
   try {
     const data = await fetchGmailConnections();
+    currentSettings = currentSettings || {};
+    currentSettings.gmail = data;
     renderGmailConnections(data);
   } catch (error) {
     setStatus(gmailConnectionStatus, humanGmailMessage(error.message), "error");
@@ -629,6 +641,24 @@ disconnectGmailButton?.addEventListener("click", async () => {
     await loadGmailConnections();
   } catch (error) {
     setStatus(gmailConnectionStatus, humanGmailMessage(error.message), "error");
+  }
+});
+
+syncGmailBouncesButton?.addEventListener("click", async () => {
+  syncGmailBouncesButton.disabled = true;
+  setStatus(gmailConnectionStatus, "Checking Gmail delivery failures...");
+  try {
+    const result = await syncGmailBounces(50);
+    await loadGmailConnections();
+    setStatus(
+      gmailConnectionStatus,
+      `Delivery failure sync complete: ${Number(result.detected || 0).toLocaleString()} email(s) detected, ${Number(result.blocked || 0).toLocaleString()} blocked, ${Number(result.cleaned_vendors || 0).toLocaleString()} vendor contact(s) cleaned.`,
+      "success"
+    );
+  } catch (error) {
+    setStatus(gmailConnectionStatus, humanGmailMessage(error.message), "error");
+  } finally {
+    renderGmailConnections(currentSettings?.gmail);
   }
 });
 

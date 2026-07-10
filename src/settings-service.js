@@ -51,6 +51,10 @@ export async function disconnectGmailConnection() {
   return (await callRatewareApi("disconnect_gmail_connection")).row;
 }
 
+export async function syncGmailBounces(limit = 50) {
+  return await callRatewareApi("sync_gmail_bounces", { limit });
+}
+
 export async function fetchGoogleChatConnections() {
   return await callRatewareApi("list_google_chat_connections");
 }

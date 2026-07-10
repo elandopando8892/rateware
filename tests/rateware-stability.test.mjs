@@ -76,6 +76,7 @@ const rfxBidSubmissionV2Migration = readFileSync(new URL("../supabase/migrations
 const rfxBidRatewareCaptureMigration = readFileSync(new URL("../supabase/migrations/20260708162000_rfx_bid_rateware_capture.sql", import.meta.url), "utf8");
 const rfxBidValidityMigration = readFileSync(new URL("../supabase/migrations/20260708170000_rfx_bid_validity.sql", import.meta.url), "utf8");
 const rfxBidDeadheadMigration = readFileSync(new URL("../supabase/migrations/20260709090000_rfx_bid_deadhead_commitment.sql", import.meta.url), "utf8");
+const emailBounceSuppressionMigration = readFileSync(new URL("../supabase/migrations/20260709103000_email_bounce_suppression.sql", import.meta.url), "utf8");
 const vendorSegmentsCoverageMigration = readFileSync(new URL("../supabase/migrations/20260706143000_vendor_segments_coverage_filter.sql", import.meta.url), "utf8");
 const vendorProfileRequestsMigration = readFileSync(new URL("../supabase/migrations/20260706152000_vendor_profile_requests.sql", import.meta.url), "utf8");
 const rfxLaneDetailSectionsMigration = readFileSync(new URL("../supabase/migrations/20260707170000_rfx_lane_detail_sections.sql", import.meta.url), "utf8");
@@ -759,6 +760,14 @@ assert.match(apiSource, /delete_outreach_messages/, "API should delete selected 
 assert.match(apiSource, /sender_email: senderEmail/, "API should persist sender email on outreach draft rows");
 assert.match(apiSource, /\.from\("outreach_messages"\)[\s\S]*\.limit\(1000\)/, "Outreach draft queue should load up to 1000 rows for large Bid Room waves");
 assert.match(outreachSenderMigration, /add column if not exists sender_email text/, "Outreach schema should store sender identity");
+assert.match(settingsHtml, /sync-gmail-bounces-button/, "Settings should expose Gmail delivery failure sync");
+assert.match(settingsServiceSource, /sync_gmail_bounces/, "Settings service should call Gmail bounce sync");
+assert.match(apiSource, /https:\/\/www\.googleapis\.com\/auth\/gmail\.readonly/, "Gmail OAuth should request read access for delivery failure monitoring");
+assert.match(apiSource, /function syncGmailBounces/, "Rateware API should sync Gmail delivery failures");
+assert.match(apiSource, /email_suppression_list/, "Rateware API should maintain a suppressed email list");
+assert.match(apiSource, /status: "bounced"/, "Outreach send should mark hard bounced emails as bounced");
+assert.match(emailBounceSuppressionMigration, /create table if not exists public\.email_suppression_list/, "Email bounce suppression should have a durable table");
+assert.match(emailBounceSuppressionMigration, /'bounced'/, "Outreach message status should support bounced delivery failures");
 assert.doesNotMatch(settingsHtml, /Redirect URI|OAuth setup|Google secrets/i, "Settings UI should not expose deployment-level Gmail OAuth details to users");
 assert.doesNotMatch(settingsSource, /Redirect URI|OAuth setup|Missing Google secrets|Add Google OAuth secrets/i, "Settings copy should keep Gmail setup SaaS-like and non-technical");
 assert.doesNotMatch(apiSource, /Add GOOGLE_CLIENT_ID/i, "API errors should not instruct end users to manage deployment secrets");

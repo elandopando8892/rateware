@@ -7,7 +7,13 @@ const OPENAI_MODEL = Deno.env.get("OPENAI_MODEL");
 const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
 const VENDOR_LOGOS_BUCKET = "vendor-logos";
 const GMAIL_ALLOWED_SENDER = (Deno.env.get("GMAIL_ALLOWED_SENDER") || "sales@heymarksman.com").trim().toLowerCase();
-const GMAIL_OAUTH_SCOPES = ["openid", "email", "profile", "https://www.googleapis.com/auth/gmail.send"];
+const GMAIL_OAUTH_SCOPES = [
+  "openid",
+  "email",
+  "profile",
+  "https://www.googleapis.com/auth/gmail.send",
+  "https://www.googleapis.com/auth/gmail.readonly"
+];
 const GOOGLE_CHAT_ALLOWED_ACCOUNT = (Deno.env.get("GOOGLE_CHAT_ALLOWED_ACCOUNT") || GMAIL_ALLOWED_SENDER).trim().toLowerCase();
 const GOOGLE_CHAT_OAUTH_SCOPES = [
   "openid",
@@ -831,6 +837,36 @@ function normalizeEmailList(value: unknown) {
   const values = Array.isArray(value) ? value : [value];
   const emails = values.flatMap((item) => String(item || "").toLowerCase().match(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/g) || []);
   return Array.from(new Set(emails));
+}
+
+function vendorContactEmailCandidates(vendor: Record<string, unknown>) {
+  const secondary = Array.isArray(vendor.secondary_emails) ? vendor.secondary_emails : [];
+  return normalizeEmailList([vendor.primary_email, ...secondary]);
+}
+
+function blockedEmailStatuses() {
+  return ["hard_bounce", "complaint", "unsubscribed", "manual"];
+}
+
+async function suppressedEmailSet(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_email: string | null },
+  emails: string[]
+) {
+  const cleanEmails = normalizeEmailList(emails);
+  if (!cleanEmails.length) return new Set<string>();
+  const result = await supabase
+    .from("email_suppression_list")
+    .select("email,status")
+    .eq("owner_email", user.owner_email)
+    .in("email", cleanEmails)
+    .in("status", blockedEmailStatuses());
+  if (result.error) throw result.error;
+  return new Set((result.data || []).map((row) => cleanText(row.email)).filter(Boolean) as string[]);
+}
+
+function firstSendableVendorEmail(vendor: Record<string, unknown>, suppressedEmails = new Set<string>()) {
+  return vendorContactEmailCandidates(vendor).find((email) => !suppressedEmails.has(email)) || "";
 }
 
 function memoryRuleIdsFromAudit(upload: Record<string, unknown>) {
@@ -9113,6 +9149,362 @@ async function gmailAccessToken(supabase: ReturnType<typeof createClient>, user:
   return accessToken;
 }
 
+function gmailCanReadMailbox(connection: Record<string, unknown> | null | undefined) {
+  const scopes = Array.isArray(connection?.scopes) ? connection.scopes.map((scope) => String(scope)) : [];
+  return scopes.includes("https://www.googleapis.com/auth/gmail.readonly")
+    || scopes.includes("https://www.googleapis.com/auth/gmail.modify")
+    || scopes.includes("https://mail.google.com/");
+}
+
+function decodeGmailBody(data: unknown) {
+  const value = cleanText(data);
+  if (!value) return "";
+  try {
+    const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
+    const binary = atob(padded);
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+    return new TextDecoder().decode(bytes);
+  } catch {
+    return "";
+  }
+}
+
+function gmailMessageHeaders(message: Record<string, unknown>) {
+  const payload = objectRecord(message.payload);
+  const headers = Array.isArray(payload.headers) ? payload.headers : [];
+  const normalized: Record<string, string> = {};
+  for (const header of headers) {
+    const row = objectRecord(header);
+    const name = cleanText(row.name)?.toLowerCase();
+    if (name) normalized[name] = cleanText(row.value) || "";
+  }
+  return normalized;
+}
+
+function gmailPayloadText(payload: Record<string, unknown>): string {
+  const body = objectRecord(payload.body);
+  const direct = decodeGmailBody(body.data);
+  const parts = Array.isArray(payload.parts) ? payload.parts : [];
+  const nested = parts
+    .map((part) => gmailPayloadText(objectRecord(part)))
+    .filter(Boolean)
+    .join("\n");
+  return [direct, nested].filter(Boolean).join("\n");
+}
+
+function isDeliveryFailureNotice(headers: Record<string, string>, bodyText: string) {
+  const from = `${headers.from || ""} ${headers.sender || ""}`.toLowerCase();
+  const subject = String(headers.subject || "").toLowerCase();
+  const body = bodyText.toLowerCase();
+  return from.includes("mailer-daemon")
+    || from.includes("mail delivery subsystem")
+    || from.includes("postmaster")
+    || subject.includes("delivery status notification")
+    || subject.includes("delivery incomplete")
+    || subject.includes("undeliverable")
+    || subject.includes("message not delivered")
+    || body.includes("final-recipient:")
+    || body.includes("delivery has failed")
+    || body.includes("couldn't be delivered");
+}
+
+function bounceRecipientEmails(headers: Record<string, string>, bodyText: string) {
+  const directLines = [
+    headers["x-failed-recipients"],
+    ...(bodyText.match(/(?:final-recipient|original-recipient|x-failed-recipients|failed recipient|recipient address|recipient):[^\r\n]+/gi) || []),
+    ...(bodyText.match(/(?:message to|your message to)\s+[^\s<>;,"']+@[^\s<>;,"']+/gi) || [])
+  ].filter(Boolean).join("\n");
+  const candidates = normalizeEmailList(directLines || bodyText);
+  return candidates.filter((email) => {
+    if (email === GMAIL_ALLOWED_SENDER) return false;
+    if (email.startsWith("mailer-daemon@") || email.startsWith("postmaster@")) return false;
+    if (email.includes("googlemail.com") || email.includes("google.com")) return false;
+    return true;
+  });
+}
+
+function classifyBounce(headers: Record<string, string>, bodyText: string) {
+  const text = `${headers.subject || ""}\n${bodyText}`.toLowerCase();
+  if (/status:\s*5\./.test(text)
+    || /\b5\d\d\b/.test(text)
+    || /user unknown|no such user|does not exist|address not found|recipient address rejected|invalid recipient|mailbox unavailable|unknown recipient|unrouteable address/.test(text)) {
+    return "hard_bounce";
+  }
+  if (/status:\s*4\./.test(text)
+    || /delivery incomplete|temporar|deferred|delayed|mailbox full|quota|rate limit|greylist/.test(text)) {
+    return "delivery_incomplete";
+  }
+  return "soft_bounce";
+}
+
+function bounceReason(headers: Record<string, string>, bodyText: string) {
+  const diagnostic = bodyText.match(/diagnostic-code:[^\r\n]+/i)?.[0]
+    || bodyText.match(/status:\s*[245]\.[^\r\n]+/i)?.[0]
+    || bodyText.match(/(?:address not found|user unknown|does not exist|mailbox unavailable|delivery incomplete|couldn't be delivered)[^\r\n.]*/i)?.[0]
+    || headers.subject
+    || "Delivery failure detected.";
+  return cleanText(diagnostic)?.slice(0, 500) || "Delivery failure detected.";
+}
+
+async function vendorRowsForEmail(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_email: string | null },
+  email: string
+) {
+  const [primaryResult, secondaryResult] = await Promise.all([
+    supabase
+      .from("vendors")
+      .select("id,vendor_name,primary_email,secondary_emails,tags,profile_data")
+      .eq("owner_email", user.owner_email)
+      .eq("primary_email", email)
+      .limit(25),
+    supabase
+      .from("vendors")
+      .select("id,vendor_name,primary_email,secondary_emails,tags,profile_data")
+      .eq("owner_email", user.owner_email)
+      .contains("secondary_emails", [email])
+      .limit(25)
+  ]);
+  if (primaryResult.error) throw primaryResult.error;
+  if (secondaryResult.error) throw secondaryResult.error;
+  const byId = new Map<string, Record<string, unknown>>();
+  for (const row of [...(primaryResult.data || []), ...(secondaryResult.data || [])]) byId.set(String(row.id), row);
+  return [...byId.values()];
+}
+
+async function quarantineVendorEmail(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_email: string | null },
+  email: string,
+  reason: string
+) {
+  const rows = await vendorRowsForEmail(supabase, user, email);
+  const updatedVendorIds: string[] = [];
+  for (const vendor of rows) {
+    const secondary = normalizeEmailList(vendor.secondary_emails).filter((item) => item !== email);
+    let primary = cleanText(vendor.primary_email)?.toLowerCase() || "";
+    if (primary === email) primary = secondary.shift() || "";
+    const profileData = objectRecord(vendor.profile_data);
+    const bouncedEmails = Array.isArray(profileData.bounced_emails) ? profileData.bounced_emails : [];
+    const nextProfileData = {
+      ...profileData,
+      bounced_emails: [
+        { email, reason, detected_at: new Date().toISOString(), source: "gmail_bounce" },
+        ...bouncedEmails.filter((item) => objectRecord(item).email !== email)
+      ].slice(0, 25)
+    };
+    const tags = Array.from(new Set([...normalizeTags(vendor.tags), "email_bounce"]));
+    const update = await supabase
+      .from("vendors")
+      .update({
+        primary_email: primary,
+        secondary_emails: secondary,
+        tags,
+        profile_data: nextProfileData,
+        updated_at: new Date().toISOString()
+      })
+      .eq("id", vendor.id)
+      .eq("owner_email", user.owner_email);
+    if (update.error) throw update.error;
+    updatedVendorIds.push(String(vendor.id));
+  }
+  return updatedVendorIds;
+}
+
+async function syncGmailBounces(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_user_id: string | null; owner_email: string | null },
+  input: Record<string, unknown> = {}
+) {
+  const connectionResult = await supabase
+    .from("gmail_mailbox_connections")
+    .select("*")
+    .eq("owner_email", user.owner_email)
+    .eq("mailbox_email", GMAIL_ALLOWED_SENDER)
+    .eq("status", "connected")
+    .maybeSingle();
+  if (connectionResult.error) throw connectionResult.error;
+  const connection = connectionResult.data;
+  if (!connection) throw new Error(`Connect ${GMAIL_ALLOWED_SENDER} in Settings before syncing delivery failures.`);
+  if (!gmailCanReadMailbox(connection)) {
+    throw new Error("Reconnect Gmail in Settings to allow Rateware to read delivery failure notices. No password is required.");
+  }
+
+  const accessToken = await gmailAccessToken(supabase, user, GMAIL_ALLOWED_SENDER);
+  const limit = Math.max(1, Math.min(Number(input.limit) || 50, 100));
+  const query = cleanText(input.query) || 'newer_than:45d (from:mailer-daemon@googlemail.com OR from:postmaster OR "Delivery Status Notification" OR "Delivery incomplete" OR "Message not delivered" OR Undeliverable)';
+  const listUrl = new URL("https://gmail.googleapis.com/gmail/v1/users/me/messages");
+  listUrl.searchParams.set("q", query);
+  listUrl.searchParams.set("maxResults", String(limit));
+  const listResponse = await fetch(listUrl.toString(), {
+    headers: { Authorization: `Bearer ${accessToken}` }
+  });
+  const listData = await listResponse.json();
+  if (!listResponse.ok) {
+    throw new Error(cleanText(listData?.error?.message) || `Gmail delivery failure lookup failed (${listResponse.status}).`);
+  }
+
+  const now = new Date().toISOString();
+  const gmailMessages = Array.isArray(listData.messages) ? listData.messages : [];
+  const detected = new Map<string, Record<string, unknown>>();
+  let scanned = 0;
+
+  for (const gmailMessage of gmailMessages) {
+    const gmailMessageId = cleanText(objectRecord(gmailMessage).id);
+    if (!gmailMessageId) continue;
+    const detailResponse = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${encodeURIComponent(gmailMessageId)}?format=full`, {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    });
+    const detail = await detailResponse.json();
+    if (!detailResponse.ok) continue;
+    scanned += 1;
+    const headers = gmailMessageHeaders(detail);
+    const bodyText = gmailPayloadText(objectRecord(detail.payload));
+    if (!isDeliveryFailureNotice(headers, bodyText)) continue;
+    const status = classifyBounce(headers, bodyText);
+    const reason = bounceReason(headers, bodyText);
+    const recipients = bounceRecipientEmails(headers, bodyText);
+    for (const email of recipients) {
+      detected.set(email, {
+        email,
+        status,
+        reason,
+        gmail_message_id: gmailMessageId,
+        gmail_thread_id: cleanText(detail.threadId),
+        subject: headers.subject || "",
+        detected_at: now
+      });
+    }
+  }
+
+  if (!detected.size) {
+    return { scanned, detected: 0, blocked: 0, cleaned_vendors: 0, rows: [] };
+  }
+
+  const emails = [...detected.keys()];
+  const messagesResult = await supabase
+    .from("outreach_messages")
+    .select("id,vendor_id,recipient_email,status,subject,campaign_id,rfx_event_id,metadata")
+    .eq("owner_email", user.owner_email)
+    .in("recipient_email", emails)
+    .order("updated_at", { ascending: false })
+    .limit(1000);
+  if (messagesResult.error) throw messagesResult.error;
+  const messagesByEmail = new Map<string, Record<string, unknown>[]>();
+  for (const row of messagesResult.data || []) {
+    const email = cleanText(row.recipient_email)?.toLowerCase() || "";
+    const bucket = messagesByEmail.get(email) || [];
+    bucket.push(row);
+    messagesByEmail.set(email, bucket);
+  }
+
+  const suppressionRows: Record<string, unknown>[] = [];
+  const historyRows: Record<string, unknown>[] = [];
+  let cleanedVendors = 0;
+  for (const [email, notice] of detected) {
+    const relatedMessages = messagesByEmail.get(email) || [];
+    const primaryMessage = relatedMessages[0] || {};
+    const bounceStatus = cleanText(notice.status) || "soft_bounce";
+    const reason = cleanText(notice.reason) || "Delivery failure detected.";
+    suppressionRows.push(withOwner({
+      email,
+      status: bounceStatus,
+      reason,
+      source: "gmail_bounce",
+      outreach_message_id: primaryMessage.id || null,
+      vendor_id: primaryMessage.vendor_id || null,
+      last_seen_at: now,
+      updated_at: now,
+      metadata: {
+        gmail_message_id: notice.gmail_message_id,
+        gmail_thread_id: notice.gmail_thread_id,
+        subject: notice.subject
+      }
+    }, user));
+
+    if (bounceStatus === "hard_bounce") {
+      cleanedVendors += (await quarantineVendorEmail(supabase, user, email, reason)).length;
+    }
+
+    for (const message of relatedMessages) {
+      const nextStatus = bounceStatus === "hard_bounce" ? "bounced" : "failed";
+      const update = await supabase
+        .from("outreach_messages")
+        .update({
+          status: nextStatus,
+          delivery_error: reason,
+          bounce_status: bounceStatus,
+          bounce_detected_at: now,
+          updated_at: now,
+          metadata: {
+            ...objectRecord(message.metadata),
+            bounce: {
+              status: bounceStatus,
+              reason,
+              gmail_message_id: notice.gmail_message_id,
+              detected_at: now
+            }
+          }
+        })
+        .eq("id", message.id)
+        .eq("owner_email", user.owner_email);
+      if (update.error) throw update.error;
+      historyRows.push(withOwner({
+        outreach_message_id: message.id,
+        campaign_id: message.campaign_id,
+        vendor_id: message.vendor_id,
+        rfx_event_id: message.rfx_event_id,
+        channel: "email",
+        direction: "inbound",
+        status: nextStatus,
+        subject: cleanText(message.subject) || "Delivery failure",
+        body_preview: reason,
+        occurred_at: now,
+        metadata: {
+          source: "gmail_bounce_sync",
+          email,
+          bounce_status: bounceStatus,
+          gmail_message_id: notice.gmail_message_id
+        }
+      }, user));
+    }
+  }
+
+  for (const chunk of chunkValues(suppressionRows, 100)) {
+    const result = await supabase
+      .from("email_suppression_list")
+      .upsert(chunk, { onConflict: "owner_email,email" })
+      .select("email,status,reason,updated_at");
+    if (result.error) throw result.error;
+  }
+  if (historyRows.length) {
+    for (const chunk of chunkValues(historyRows, 200)) {
+      const history = await supabase.from("contact_history").insert(chunk);
+      if (history.error) throw history.error;
+    }
+  }
+
+  await writeAuditLog(
+    supabase,
+    user,
+    "gmail.bounces.sync",
+    "email_suppression_list",
+    null,
+    `Synced ${detected.size} Gmail delivery failure email(s)`,
+    { scanned, detected: detected.size, cleaned_vendors: cleanedVendors }
+  );
+
+  return {
+    scanned,
+    detected: detected.size,
+    blocked: suppressionRows.filter((row) => row.status === "hard_bounce").length,
+    cleaned_vendors: cleanedVendors,
+    rows: suppressionRows.map((row) => ({ email: row.email, status: row.status, reason: row.reason }))
+  };
+}
+
 async function googleChatAccessToken(supabase: ReturnType<typeof createClient>, user: { owner_email: string | null }) {
   const result = await supabase
     .from("google_chat_connections")
@@ -9341,6 +9733,11 @@ async function sendOutreachMessages(
   if (senderCandidates.size > 1 && !cleanText(input.sender_email)) throw new Error("Bulk send has multiple sender accounts. Select one sender before sending.");
   const senderEmail = (cleanText(input.sender_email) || cleanText(messages[0].sender_email) || GMAIL_ALLOWED_SENDER).toLowerCase();
   if (senderEmail !== GMAIL_ALLOWED_SENDER) throw new Error(`Gmail sender must be ${GMAIL_ALLOWED_SENDER}.`);
+  const suppressedEmails = await suppressedEmailSet(
+    supabase,
+    user,
+    messages.map((message) => cleanText(message.recipient_email)).filter(Boolean) as string[]
+  );
   const accessToken = await gmailAccessToken(supabase, user, senderEmail);
   const now = new Date().toISOString();
   const sentRows: Record<string, unknown>[] = [];
@@ -9356,6 +9753,17 @@ async function sendOutreachMessages(
       await supabase
         .from("outreach_messages")
         .update({ status: "failed", delivery_error: "Missing recipient email.", updated_at: now })
+        .eq("id", message.id)
+        .eq("owner_email", user.owner_email);
+      continue;
+    }
+    const recipientEmail = cleanText(message.recipient_email)?.toLowerCase() || "";
+    if (suppressedEmails.has(recipientEmail)) {
+      const reason = "Recipient email is blocked because a prior delivery failure was detected.";
+      failures.push({ id: message.id, recipient_email: message.recipient_email, reason });
+      await supabase
+        .from("outreach_messages")
+        .update({ status: "bounced", delivery_error: reason, bounce_status: "hard_bounce", updated_at: now })
         .eq("id", message.id)
         .eq("owner_email", user.owner_email);
       continue;
@@ -12007,7 +12415,7 @@ Deno.serve(async (request) => {
 
       const invitationSelect = `
         *,
-        vendors(id,vendor_name,domain,primary_email,whatsapp_phone,preferred_channel,contact_name),
+        vendors(id,vendor_name,domain,primary_email,secondary_emails,whatsapp_phone,preferred_channel,contact_name),
         rfx_events!inner(id,owner_email,rfx_id,name,customer,status,due_date,event_type),
         rfx_lanes(*)
       `;
@@ -12045,6 +12453,14 @@ Deno.serve(async (request) => {
         campaign_id: campaign.id,
         template_id: template.id
       });
+      const suppressedEmails = await suppressedEmailSet(
+        supabase,
+        user,
+        invitations.flatMap((invitation) => {
+          const vendor = typeof invitation.vendors === "object" && invitation.vendors ? invitation.vendors as Record<string, unknown> : {};
+          return vendorContactEmailCandidates(vendor);
+        })
+      );
 
       for (const invitationGroup of invitationGroups.values()) {
         const invitation = invitationGroup[0];
@@ -12060,7 +12476,7 @@ Deno.serve(async (request) => {
         const laneIds = invitationGroup.map((item) => item.rfx_lane_id).filter(Boolean);
 
         if (channels.includes("email")) {
-          const recipientEmail = cleanText(vendor.primary_email);
+          const recipientEmail = firstSendableVendorEmail(vendor, suppressedEmails);
           if (recipientEmail) {
             rows.push(withOwner({
               campaign_id: campaign.id,
@@ -12092,7 +12508,12 @@ Deno.serve(async (request) => {
               }
             }, user));
           } else {
-            skipped.push({ invitation_id: invitation.id, invitation_ids: groupInvitationIds, channel: "email", reason: "Missing vendor email" });
+            skipped.push({
+              invitation_id: invitation.id,
+              invitation_ids: groupInvitationIds,
+              channel: "email",
+              reason: vendorContactEmailCandidates(vendor).length ? "All vendor emails are suppressed" : "Missing vendor email"
+            });
           }
         }
 
@@ -12207,6 +12628,11 @@ Deno.serve(async (request) => {
       return jsonResponse(result);
     }
 
+    if (body.action === "sync_gmail_bounces") {
+      const result = await syncGmailBounces(supabase, user, body);
+      return jsonResponse(result);
+    }
+
     if (body.action === "delete_outreach_messages") {
       const ids = normalizeBulkIds(body.ids, { label: "Outreach message ids", limit: BULK_SELECTED_ID_LIMIT });
       if (!ids.length) return jsonResponse({ removed: 0, rows: [] });
@@ -12238,7 +12664,7 @@ Deno.serve(async (request) => {
       const ids = normalizeBulkIds(body.ids, { label: "Outreach message ids", limit: BULK_SELECTED_ID_LIMIT });
       const status = cleanText(body.status)?.toLowerCase();
       if (!ids.length) return jsonResponse({ updated: 0, rows: [] });
-      if (!status || !["drafted", "queued", "sent", "replied", "failed", "archived"].includes(status)) {
+      if (!status || !["drafted", "queued", "sent", "replied", "failed", "bounced", "archived"].includes(status)) {
         return jsonResponse({ error: "Valid message status is required." }, 400);
       }
       if (["sent", "replied", "archived"].includes(status) || ids.length >= 100) {
