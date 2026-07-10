@@ -273,8 +273,11 @@ assert.match(customerRfiSource, /Ubicacion de salida/, "Customer RFI route sched
 assert.match(customerRfiSource, /Ubicacion de llegada/, "Customer RFI route schedule should align to the customer RFI destination columns");
 assert.match(customerRfiSource, /Volumen semanal esperado/, "Customer RFI route schedule should include expected weekly volume from the RFI template");
 assert.match(customerRfiHtml, /rfi-segment-checklists/, "Customer RFI page should collect segment checklist rubrics");
-assert.match(customerRfiSource, /logistics_model_required/, "Customer RFI segment rubrics should use checkbox validation by rubric");
-assert.match(customerRfiSource, /Observaciones \/ criterios/, "Customer RFI segment rubrics should collect observations next to each checkbox");
+assert.match(customerRfiSource, /CHECKLIST_GROUPS/, "Customer RFI segment rubrics should use structured B-G checklist groups");
+assert.match(customerRfiSource, /rubric_items/, "Customer RFI segment rubrics should persist row-level checklist items");
+assert.match(customerRfiSource, /Que preguntar/, "Customer RFI segment rubrics should show the question to validate");
+assert.match(customerRfiSource, /Respuesta esperada/, "Customer RFI segment rubrics should show the expected answer type");
+assert.match(customerRfiSource, /d_border_wait/, "Customer RFI business rules should explicitly capture border wait risk");
 assert.match(customerRfiHtml, /rfi-carrier-requirements/, "Customer RFI page should collect required carrier profile details");
 assert.match(customerRfiHtml, /rfi-attachments/, "Customer RFI page should collect attachment references");
 assert.match(customerRfiSource, /submitCustomerRfi/, "Customer RFI UI should call the public submit API");

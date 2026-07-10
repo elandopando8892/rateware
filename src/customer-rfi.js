@@ -217,13 +217,125 @@ const CHECKLIST_FIELDS = [
   "attachment_links"
 ];
 
-const CHECKLIST_ITEMS = [
-  { key: "logistics_model", label: "Modelo logistico", note: "Directo, transfer, dedicado, drop, live load, border model." },
-  { key: "operation_criteria", label: "Criterios de operacion", note: "Ventanas, citas, carga/descarga, transito, capacidad y excepciones." },
-  { key: "business_rules", label: "Reglas de negocio", note: "Terminos de pago, fuel, accesoriales, free time, TONU, validez." },
-  { key: "service_specifications", label: "Especificaciones de servicio", note: "Unidad, equipo, hazmat, temperatura, seguros, documentos." },
-  { key: "carrier_requirements", label: "Perfil requerido del carrier", note: "Autoridad, seguro, flota, tracking, experiencia y escalacion." },
-  { key: "other_notes", label: "Otras notas", note: "Restricciones, rollout, exclusiones, riesgos o adjuntos." }
+const LOGISTICS_MODEL_ITEMS = {
+  expedited: [
+    { key: "b_expedited", category: "logistics_model", label: "Expeditados", question: "Que tan urgente es? Pickup same day? Team driver? Disponibilidad 24/7?", expected: "Horas maximas de respuesta, ventana pickup, transit time, nivel de escalamiento" }
+  ],
+  time_critical: [
+    { key: "b_time_critical", category: "logistics_model", label: "Time Critical", question: "Cual es el SLA? Hay penalidad? Ventanas fijas?", expected: "OTIF requerido, cut-off, citas, penalizacion" }
+  ],
+  crossborder: [
+    { key: "b_crossborder", category: "logistics_model", label: "Crossborder", question: "Cruce? Broker? Transfer? B1? Carta Porte?", expected: "Cruce, broker MX/US, documentos, modelo de cruce" }
+  ],
+  local: [
+    { key: "b_local", category: "logistics_model", label: "Locales", question: "Shuttle? Milk run? Drop? Horas por vuelta?", expected: "Frecuencia diaria, stops, tiempo ciclo" }
+  ],
+  regional: [
+    { key: "b_regional", category: "logistics_model", label: "Regionales", question: "Radio de cobertura? Retorno? Layover?", expected: "Distancia, dias transito, ventanas" }
+  ],
+  national: [
+    { key: "b_national", category: "logistics_model", label: "Nacionales", question: "Largo recorrido? Requiere seguridad? Team?", expected: "Transit time, tracking, paradas, seguro" }
+  ]
+};
+
+const CHECKLIST_GROUPS = [
+  {
+    key: "logistics_model",
+    title: "B. Modelo Logistico por Segmento Operativo",
+    help: "Define como se opera cada tipo de carga.",
+    rows: []
+  },
+  {
+    key: "operation_criteria",
+    title: "C. Criterios de Operacion",
+    help: "Documenta como debe ejecutarse el servicio.",
+    rows: [
+      { key: "c_pickup_window", label: "Ventana de pickup", question: "Cual es la ventana de recogida?", expected: "Hora inicio / fin" },
+      { key: "c_delivery_window", label: "Ventana de delivery", question: "Cual es la ventana de entrega?", expected: "Hora inicio / fin" },
+      { key: "c_appointment_required", label: "Cita requerida", question: "Se requiere cita? Quien agenda?", expected: "Si / No / quien agenda" },
+      { key: "c_loading_type", label: "Tipo de carga", question: "Como se carga?", expected: "Live / Drop / Preload" },
+      { key: "c_unloading_type", label: "Tipo de descarga", question: "Como se descarga?", expected: "Live / Drop / Drop & hook" },
+      { key: "c_loading_time", label: "Tiempo de carga", question: "Cuanto tarda la carga?", expected: "Horas" },
+      { key: "c_unloading_time", label: "Tiempo de descarga", question: "Cuanto tarda la descarga?", expected: "Horas" },
+      { key: "c_operational_contact", label: "Contacto operativo", question: "Quien coordina la operacion?", expected: "Nombre / telefono / email" },
+      { key: "c_site_instructions", label: "Instrucciones de sitio", question: "Que instrucciones debe seguir el carrier?", expected: "Texto" },
+      { key: "c_access_rules", label: "Reglas de acceso", question: "Que reglas de acceso aplican?", expected: "Texto / checklist" },
+      { key: "c_tracking_requirement", label: "Requerimiento de tracking", question: "Que tracking exige el cliente?", expected: "GPS / check calls / ambos" },
+      { key: "c_update_frequency", label: "Frecuencia de updates", question: "Cada cuanto se debe actualizar?", expected: "Cada 1h / 2h / 4h / por hito" },
+      { key: "c_escalation", label: "Escalamiento", question: "Como se escala una excepcion?", expected: "Contacto / SLA / canal" }
+    ]
+  },
+  {
+    key: "business_rules",
+    title: "D. Reglas de Negocio",
+    help: "Documenta condiciones que afectan margen, riesgo y ejecucion.",
+    rows: [
+      { key: "d_payment_terms", label: "Payment terms", question: "Que terminos de pago aplican?", expected: "Net 15 / 30 / 45 / otro" },
+      { key: "d_currency", label: "Moneda", question: "En que moneda debe cotizarse?", expected: "MXN / USD" },
+      { key: "d_fuel_surcharge", label: "Fuel surcharge", question: "Como se maneja fuel?", expected: "Incluido / indexado / separado" },
+      { key: "d_detention", label: "Detention", question: "Cual es el free time y tarifa?", expected: "Tiempo libre + tarifa" },
+      { key: "d_layover", label: "Layover", question: "Cuando aplica y cuanto cuesta?", expected: "Condicion + tarifa" },
+      { key: "d_tonu", label: "TONU", question: "Cuando aplica y cuanto cuesta?", expected: "Condicion + tarifa" },
+      { key: "d_redelivery", label: "Redelivery", question: "Aplica redelivery?", expected: "Aplica / no aplica" },
+      { key: "d_border_wait", label: "Border wait", question: "Quien paga espera en frontera y desde cuando?", expected: "Responsable, gatillo y tarifa" },
+      { key: "d_cancellation", label: "Cancelacion", question: "Cual es el plazo y cargo?", expected: "Plazo y cargo" },
+      { key: "d_claims", label: "Claims", question: "Como se procesan claims?", expected: "Proceso, tiempos, documentacion" },
+      { key: "d_insurance", label: "Seguro", question: "Que seguro se requiere?", expected: "Cargo value, liability, requerimientos especiales" },
+      { key: "d_penalties", label: "Penalizaciones", question: "Que penalizaciones aplican?", expected: "Late pickup, late delivery, no show" }
+    ]
+  },
+  {
+    key: "service_specifications",
+    title: "E. Especificaciones de Servicio",
+    help: "Define el estandar operativo requerido.",
+    rows: [
+      { key: "e_equipment", label: "Equipo", question: "Que tipo de unidad se requiere?", expected: "Tipo, largo, edad, configuracion" },
+      { key: "e_driver", label: "Driver", question: "Que tipo de driver aplica?", expected: "Single / team / B1 / hazmat" },
+      { key: "e_trailer", label: "Trailer", question: "Que trailer se requiere?", expected: "Dry van, reefer, flatbed, specialized" },
+      { key: "e_temperature", label: "Temperatura", question: "Requiere temperatura controlada?", expected: "Rango y tolerancia" },
+      { key: "e_seals", label: "Sellos", question: "Se requieren sellos?", expected: "Requeridos / tipo" },
+      { key: "e_security", label: "Seguridad", question: "Que protocolo de seguridad aplica?", expected: "GPS, rutas, paradas autorizadas" },
+      { key: "e_documents", label: "Documentos", question: "Que documentos son obligatorios?", expected: "BOL, POD, packing list, invoice, pedimento, Carta Porte" },
+      { key: "e_pod", label: "POD", question: "Cuando debe entregarse el POD?", expected: "Tiempo maximo de entrega" },
+      { key: "e_tracking", label: "Tracking", question: "Como se debe compartir tracking?", expected: "GPS link / ELD / app / check call" },
+      { key: "e_communication", label: "Comunicacion", question: "Que canal se usara?", expected: "TMS / email / WhatsApp / phone" },
+      { key: "e_reports", label: "Reportes", question: "Que reportes requiere el cliente?", expected: "Diario / por evento / dashboard" }
+    ]
+  },
+  {
+    key: "carrier_requirements",
+    title: "F. Perfil Requerido del Carrier",
+    help: "Define que tipo de carrier acepta el cliente.",
+    rows: [
+      { key: "f_carrier_type", label: "Tipo de carrier", question: "Que tipo de carrier acepta el cliente?", expected: "Asset-based / broker / 3PL / mixto" },
+      { key: "f_mc_dot", label: "MC/DOT", question: "Debe usar autoridad propia?", expected: "Propio / partner / no requerido" },
+      { key: "f_mx_permits", label: "Permisos MX", question: "Requiere permisos mexicanos?", expected: "Requeridos / no requeridos" },
+      { key: "f_mx_us_experience", label: "Experiencia MX-US", question: "Que experiencia crossborder se requiere?", expected: "Basica / comprobable / obligatoria" },
+      { key: "f_owned_fleet", label: "Flota propia", question: "Debe tener flota propia?", expected: "Si / no / preferente" },
+      { key: "f_cargo_insurance", label: "Seguro cargo", question: "Cual es el monto minimo?", expected: "Monto minimo" },
+      { key: "f_liability_insurance", label: "Seguro liability", question: "Cual es el monto minimo?", expected: "Monto minimo" },
+      { key: "f_gps", label: "GPS", question: "GPS es obligatorio?", expected: "Obligatorio / preferente" },
+      { key: "f_certifications", label: "Certificaciones", question: "Que certificaciones aplican?", expected: "CTPAT / FAST / OEA / Hazmat" },
+      { key: "f_prior_approval", label: "Aprobacion previa", question: "Requiere aprobacion previa?", expected: "Si / no" },
+      { key: "f_blocked_carriers", label: "Carrier vetado", question: "Hay carriers vetados?", expected: "Lista" },
+      { key: "f_preferred_carriers", label: "Carrier preferido", question: "Hay carriers preferidos?", expected: "Lista" }
+    ]
+  },
+  {
+    key: "other_notes",
+    title: "G. Notas y Excepciones Operativas",
+    help: "Estructura restricciones, excepciones y riesgos conocidos.",
+    rows: [
+      { key: "g_site_restriction", label: "Restriccion de sitio", question: "Hay restricciones de sitio?", expected: "No entrada antes de las 7:00" },
+      { key: "g_carrier_restriction", label: "Restriccion de carrier", question: "Hay restricciones por tipo de carrier?", expected: "No brokers, solo asset-based" },
+      { key: "g_document_restriction", label: "Restriccion documental", question: "Hay documentos obligatorios?", expected: "POD sellado obligatorio" },
+      { key: "g_security_restriction", label: "Restriccion de seguridad", question: "Hay reglas de seguridad?", expected: "No paradas en ruta" },
+      { key: "g_crossborder_restriction", label: "Restriccion crossborder", question: "Hay frontera obligatoria?", expected: "Solo cruce por Laredo" },
+      { key: "g_financial_restriction", label: "Restriccion financiera", question: "Hay reglas de aprobacion financiera?", expected: "No accessorial sin aprobacion" },
+      { key: "g_season_exception", label: "Excepcion por temporada", question: "Hay estacionalidad?", expected: "Volumen sube en Q4" },
+      { key: "g_known_risk", label: "Riesgo conocido", question: "Que riesgo debe conocer procurement?", expected: "Congestion en destino" }
+    ]
+  }
 ];
 
 const RFI_SEGMENT_SUGGESTIONS = {
@@ -395,6 +507,136 @@ function optionLabel(options, value) {
   const text = cleanText(value);
   const found = options.find((option) => option.value === text);
   return found?.label || text;
+}
+
+function objectValue(value) {
+  if (value && typeof value === "object" && !Array.isArray(value)) return value;
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+  return {};
+}
+
+function logisticsRowsForSegment(segmentKey) {
+  const key = cleanText(segmentKey) || "crossborder";
+  if (key === "expedited") return LOGISTICS_MODEL_ITEMS.expedited;
+  if (key === "time_critical") return LOGISTICS_MODEL_ITEMS.time_critical;
+  if (key === "crossborder") return LOGISTICS_MODEL_ITEMS.crossborder;
+  if (key === "mx_domestic" || key === "us_domestic") {
+    return [
+      ...LOGISTICS_MODEL_ITEMS.local,
+      ...LOGISTICS_MODEL_ITEMS.regional,
+      ...LOGISTICS_MODEL_ITEMS.national
+    ];
+  }
+  if (key === "dedicated") return LOGISTICS_MODEL_ITEMS.national;
+  return LOGISTICS_MODEL_ITEMS.crossborder;
+}
+
+function checklistGroupsForSegment(segmentKey) {
+  return CHECKLIST_GROUPS.map((group) => {
+    if (group.key !== "logistics_model") return group;
+    return { ...group, rows: logisticsRowsForSegment(segmentKey) };
+  });
+}
+
+function flattenChecklistItems(segmentKey) {
+  return checklistGroupsForSegment(segmentKey).flatMap((group) =>
+    group.rows.map((item) => ({
+      ...item,
+      category: item.category || group.key
+    }))
+  );
+}
+
+function defaultRubricItems(segmentKey, source = {}) {
+  const existing = objectValue(source);
+  const items = {};
+  for (const item of flattenChecklistItems(segmentKey)) {
+    const prior = objectValue(existing[item.key]);
+    items[item.key] = {
+      category: item.category,
+      label: item.label,
+      question: item.question,
+      expected: item.expected,
+      required: prior.required === undefined ? true : checkedBoolean(prior.required),
+      observation: cleanText(prior.observation || prior.answer || prior.notes)
+    };
+  }
+  return items;
+}
+
+function mergeRubricItemsForSegment(segmentKey, source = {}, defaults = {}) {
+  const sourceItems = defaultRubricItems(segmentKey, source);
+  const defaultItems = objectValue(defaults);
+  for (const [key, item] of Object.entries(sourceItems)) {
+    if (!cleanText(item.observation)) {
+      item.observation = cleanText(defaultItems[key]?.observation);
+    }
+  }
+  return sourceItems;
+}
+
+function seedRubricObservations(rubricItems, values = {}) {
+  const items = objectValue(rubricItems);
+  for (const field of CHECKLIST_FIELDS) {
+    if (field === "attachment_links") continue;
+    const text = cleanText(values[field]);
+    if (!text) continue;
+    const firstItem = Object.values(items).find((item) => item.category === field);
+    if (firstItem && !cleanText(firstItem.observation)) firstItem.observation = text;
+  }
+  return items;
+}
+
+function categorySummary(rubricItems, category) {
+  return Object.values(objectValue(rubricItems))
+    .filter((item) => item && item.category === category && (checkedBoolean(item.required) || cleanText(item.observation)))
+    .map((item) => `${cleanText(item.label)}: ${cleanText(item.observation) || cleanText(item.expected)}`)
+    .filter(Boolean)
+    .join("\n");
+}
+
+function categoryRequired(rubricItems, category) {
+  return Object.values(objectValue(rubricItems))
+    .some((item) => item && item.category === category && checkedBoolean(item.required));
+}
+
+function rubricSummaryFields(segment) {
+  const rubricItems = objectValue(segment.rubric_items);
+  return {
+    logistics_model_required: categoryRequired(rubricItems, "logistics_model"),
+    logistics_model: categorySummary(rubricItems, "logistics_model") || cleanText(segment.logistics_model),
+    operation_criteria_required: categoryRequired(rubricItems, "operation_criteria"),
+    operation_criteria: categorySummary(rubricItems, "operation_criteria") || cleanText(segment.operation_criteria),
+    business_rules_required: categoryRequired(rubricItems, "business_rules"),
+    business_rules: categorySummary(rubricItems, "business_rules") || cleanText(segment.business_rules),
+    service_specifications_required: categoryRequired(rubricItems, "service_specifications"),
+    service_specifications: categorySummary(rubricItems, "service_specifications") || cleanText(segment.service_specifications),
+    carrier_requirements_required: categoryRequired(rubricItems, "carrier_requirements"),
+    carrier_requirements: categorySummary(rubricItems, "carrier_requirements") || cleanText(segment.carrier_requirements),
+    other_notes_required: categoryRequired(rubricItems, "other_notes"),
+    other_notes: categorySummary(rubricItems, "other_notes") || cleanText(segment.other_notes)
+  };
+}
+
+function normalizeSegmentChecklist(segment) {
+  const segmentKey = cleanText(segment.segment_key) || "crossborder";
+  const rubricItems = defaultRubricItems(segmentKey, segment.rubric_items);
+  const normalized = {
+    ...segment,
+    segment_key: segmentKey,
+    rubric_items: rubricItems
+  };
+  return {
+    ...normalized,
+    ...rubricSummaryFields(normalized)
+  };
 }
 
 function routeLabel(row, prefix) {
@@ -699,48 +941,39 @@ function rowLane(row, index) {
 
 function makeSegmentChecklist(index = 0, segment = "crossborder") {
   const suggestion = RFI_SEGMENT_SUGGESTIONS[segment] || RFI_SEGMENT_SUGGESTIONS.crossborder;
-  return {
+  return normalizeSegmentChecklist({
     segment_key: segment,
     segment_name: suggestion.segment_name || `Segment ${index + 1}`,
     operation_type: suggestion.operation_type || "d2d_export",
-    logistics_model_required: true,
-    logistics_model: "",
-    operation_criteria_required: true,
-    operation_criteria: "",
-    business_rules_required: true,
-    business_rules: "",
-    service_specifications_required: true,
-    service_specifications: "",
-    carrier_requirements_required: true,
-    carrier_requirements: "",
-    other_notes_required: false,
-    other_notes: "",
+    rubric_items: defaultRubricItems(segment),
     attachment_links: ""
-  };
+  });
 }
 
 function rowSegmentChecklist(row, index) {
   const segment = cleanText(row.segment_key || row.operating_segment || row.segment || "crossborder");
   const base = makeSegmentChecklist(index, segment);
-  return {
+  const legacyValues = {
+    logistics_model: cleanText(row.logistics_model || row.logistic_model),
+    operation_criteria: cleanText(row.operation_criteria || row.operational_criteria),
+    business_rules: cleanText(row.business_rules),
+    service_specifications: cleanText(row.service_specifications || row.service_requirements || row.service_specs),
+    carrier_requirements: cleanText(row.carrier_requirements || row.required_carrier_profile),
+    other_notes: cleanText(row.other_notes || row.notes)
+  };
+  const next = {
     ...base,
     segment_key: segment,
     segment_name: cleanText(row.segment_name || row.name) || base.segment_name,
     operation_type: cleanText(row.operation_type || row.operation) || base.operation_type,
-    logistics_model_required: row.logistics_model_required !== false,
-    logistics_model: cleanText(row.logistics_model || row.logistic_model),
-    operation_criteria_required: row.operation_criteria_required !== false,
-    operation_criteria: cleanText(row.operation_criteria || row.operational_criteria),
-    business_rules_required: row.business_rules_required !== false,
-    business_rules: cleanText(row.business_rules),
-    service_specifications_required: row.service_specifications_required !== false,
-    service_specifications: cleanText(row.service_specifications || row.service_requirements || row.service_specs),
-    carrier_requirements_required: row.carrier_requirements_required !== false,
-    carrier_requirements: cleanText(row.carrier_requirements || row.required_carrier_profile),
-    other_notes_required: row.other_notes_required === true,
-    other_notes: cleanText(row.other_notes || row.notes),
+    ...legacyValues,
+    rubric_items: seedRubricObservations(
+      mergeRubricItemsForSegment(segment, row.rubric_items || row.rubricItems, base.rubric_items),
+      legacyValues
+    ),
     attachment_links: cleanText(row.attachment_links || row.attachments)
   };
+  return normalizeSegmentChecklist(next);
 }
 
 function checkedSegments() {
@@ -853,19 +1086,31 @@ function renderSegmentChecklists() {
             <tr>
               <th>Validar</th>
               <th>Rubro</th>
-              <th>Observaciones / criterios</th>
+              <th>Que preguntar</th>
+              <th>Respuesta esperada</th>
+              <th>Observaciones</th>
             </tr>
           </thead>
           <tbody>
-            ${CHECKLIST_ITEMS.map((item) => `
-              <tr class="rfi-checklist-row">
-                <td class="rfi-check-cell"><input type="checkbox" data-field="${item.key}_required" ${segment[`${item.key}_required`] === false ? "" : "checked"} /></td>
-                <td>
-                  <strong>${escapeHtml(item.label)}</strong>
-                  <small>${escapeHtml(item.note)}</small>
-                </td>
-                <td><textarea data-field="${item.key}" rows="1" placeholder="Que debe confirmar el carrier...">${escapeHtml(segment[item.key])}</textarea></td>
+            ${checklistGroupsForSegment(segment.segment_key).map((group) => `
+              <tr class="rfi-checklist-group-row">
+                <th colspan="5">
+                  <span>${escapeHtml(group.title)}</span>
+                  <small>${escapeHtml(group.help)}</small>
+                </th>
               </tr>
+              ${group.rows.map((item) => {
+                const saved = objectValue(segment.rubric_items)[item.key] || {};
+                return `
+                  <tr class="rfi-checklist-row" data-item-key="${escapeHtml(item.key)}" data-category="${escapeHtml(group.key)}">
+                    <td class="rfi-check-cell"><input type="checkbox" data-field="required" ${saved.required === false ? "" : "checked"} /></td>
+                    <td><strong>${escapeHtml(item.label)}</strong></td>
+                    <td><small>${escapeHtml(item.question)}</small></td>
+                    <td><small>${escapeHtml(item.expected)}</small></td>
+                    <td><textarea data-field="observation" rows="1" placeholder="Respuesta, criterio, excepcion o nota...">${escapeHtml(saved.observation)}</textarea></td>
+                  </tr>
+                `;
+              }).join("")}
             `).join("")}
           </tbody>
         </table>
@@ -976,26 +1221,28 @@ function collectSegmentChecklists() {
   return Array.from(els.segmentChecklists?.querySelectorAll(".rfi-segment-checklist") || [])
     .map((row, index) => {
       const get = (field) => cleanText(row.querySelector(`[data-field="${field}"]`)?.value);
-      const checked = (field) => row.querySelector(`[data-field="${field}"]`)?.checked === true;
       const segmentKey = get("segment_key") || "crossborder";
-      return {
+      const rubricDefinitions = Object.fromEntries(flattenChecklistItems(segmentKey).map((item) => [item.key, item]));
+      const rubricItems = {};
+      for (const itemRow of row.querySelectorAll(".rfi-checklist-row[data-item-key]")) {
+        const itemKey = cleanText(itemRow.dataset.itemKey);
+        const definition = rubricDefinitions[itemKey] || {};
+        rubricItems[itemKey] = {
+          category: cleanText(itemRow.dataset.category || definition.category),
+          label: cleanText(definition.label || itemRow.querySelector("strong")?.textContent),
+          question: cleanText(definition.question || itemRow.children[2]?.textContent),
+          expected: cleanText(definition.expected || itemRow.children[3]?.textContent),
+          required: itemRow.querySelector('[data-field="required"]')?.checked === true,
+          observation: cleanText(itemRow.querySelector('[data-field="observation"]')?.value)
+        };
+      }
+      return normalizeSegmentChecklist({
         segment_key: segmentKey,
         segment_name: get("segment_name") || optionLabel(SEGMENT_OPTIONS, segmentKey) || `Segment ${index + 1}`,
         operation_type: get("operation_type"),
-        logistics_model_required: checked("logistics_model_required"),
-        logistics_model: get("logistics_model"),
-        operation_criteria_required: checked("operation_criteria_required"),
-        operation_criteria: get("operation_criteria"),
-        business_rules_required: checked("business_rules_required"),
-        business_rules: get("business_rules"),
-        service_specifications_required: checked("service_specifications_required"),
-        service_specifications: get("service_specifications"),
-        carrier_requirements_required: checked("carrier_requirements_required"),
-        carrier_requirements: get("carrier_requirements"),
-        other_notes_required: checked("other_notes_required"),
-        other_notes: get("other_notes"),
+        rubric_items: rubricItems,
         attachment_links: get("attachment_links")
-      };
+      });
     })
     .filter((row) => Object.values(row).some((value) => cleanText(value)));
 }
@@ -1174,17 +1421,14 @@ function applyRubricSuggestion(index, key) {
   const current = collectSegmentChecklists();
   const suggestion = RFI_SEGMENT_SUGGESTIONS[key] || RFI_SEGMENT_SUGGESTIONS.crossborder;
   const segment = current[index] || makeSegmentChecklist(index, key);
-  const next = {
+  const rubricItems = seedRubricObservations(defaultRubricItems(key, segment.rubric_items), suggestion);
+  const next = normalizeSegmentChecklist({
     ...segment,
     segment_key: key,
     segment_name: suggestion.segment_name,
-    operation_type: suggestion.operation_type
-  };
-  for (const field of CHECKLIST_FIELDS) {
-    if (field === "attachment_links") continue;
-    if (field !== "other_notes") next[`${field}_required`] = true;
-    next[field] = cleanText(segment[field]) || cleanText(suggestion[field]);
-  }
+    operation_type: suggestion.operation_type,
+    rubric_items: rubricItems
+  });
   current[index] = next;
   state.segmentChecklists = current;
   render();
@@ -1231,6 +1475,10 @@ function initEvents() {
         if (!current.some((segment) => segment.segment_key === value)) current.push(makeSegmentChecklist(current.length, value));
       }
       state.segmentChecklists = current;
+      render();
+    }
+    if (event.target?.matches?.('.rfi-segment-checklist select[data-field="segment_key"]')) {
+      state.segmentChecklists = collectSegmentChecklists();
       render();
     }
   });

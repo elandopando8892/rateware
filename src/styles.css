@@ -966,7 +966,7 @@ a {
 }
 
 .rfi-checklist-table {
-  min-width: 900px;
+  min-width: 1180px;
   width: 100%;
   table-layout: fixed;
 }
@@ -987,13 +987,48 @@ a {
 
 .rfi-checklist-table th:first-child,
 .rfi-checklist-table td:first-child {
-  width: 68px;
+  width: 58px;
   text-align: center;
 }
 
 .rfi-checklist-table th:nth-child(2),
 .rfi-checklist-table td:nth-child(2) {
-  width: 260px;
+  width: 170px;
+}
+
+.rfi-checklist-table th:nth-child(3),
+.rfi-checklist-table td:nth-child(3),
+.rfi-checklist-table th:nth-child(4),
+.rfi-checklist-table td:nth-child(4) {
+  width: 250px;
+}
+
+.rfi-checklist-table th:nth-child(5),
+.rfi-checklist-table td:nth-child(5) {
+  width: auto;
+}
+
+.rfi-checklist-group-row th {
+  background: #f7fafc;
+  color: #0f2633;
+  border-top: 1px solid #d8e3ea;
+  text-transform: none;
+}
+
+.rfi-checklist-group-row span,
+.rfi-checklist-group-row small {
+  display: inline;
+}
+
+.rfi-checklist-group-row span {
+  margin-right: 8px;
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.rfi-checklist-group-row small {
+  color: #5b6d7b;
+  font-size: 0.66rem;
 }
 
 .rfi-checklist-table strong,
