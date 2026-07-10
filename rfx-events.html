@@ -431,9 +431,19 @@
                     <label>
                       Send channel
                       <select id="rfx-outreach-channel">
-                        <option value="multi">Email + WhatsApp</option>
+                        <option value="multi">Email + WhatsApp direct</option>
                         <option value="email">Gmail only</option>
-                        <option value="whatsapp">WhatsApp only</option>
+                        <option value="whatsapp">WhatsApp direct only</option>
+                        <option value="whatsapp_group">WhatsApp group manual</option>
+                        <option value="email_whatsapp_group">Email + WhatsApp direct + group</option>
+                      </select>
+                    </label>
+                    <label>
+                      WhatsApp target
+                      <select id="rfx-whatsapp-target-mode">
+                        <option value="direct_vendor">Direct vendor contact</option>
+                        <option value="vendor_group">Vendor group only</option>
+                        <option value="direct_and_group">Direct + vendor group</option>
                       </select>
                     </label>
                     <label>
@@ -445,6 +455,10 @@
                     <button id="create-rfx-outreach-campaign" type="submit" disabled>Generate draft queue</button>
                     <p id="rfx-outreach-status" class="status-message" role="status"></p>
                   </form>
+                  <section id="rfx-whatsapp-readiness" class="gmail-sender-note">
+                    <strong>WhatsApp Business model</strong>
+                    <span>Direct sends require approved Meta templates. Vendor group delivery is explicit and manual/API-ready only when configured.</span>
+                  </section>
                   <section class="gmail-sender-note">
                     <strong>Gmail sending model</strong>
                     <span>Step 4 uses sales@heymarksman.com as the only approved sender. Connect it in Settings before direct Gmail sending.</span>
@@ -496,6 +510,8 @@
                     <button id="rfx-select-all-email-drafts" type="button" class="secondary small-button">Select sendable</button>
                     <button id="rfx-clear-draft-selection" type="button" class="secondary small-button">Clear</button>
                     <button id="rfx-send-selected-email-drafts" type="button" class="small-button" disabled>Send selected emails</button>
+                    <button id="rfx-send-selected-whatsapp-drafts" type="button" class="secondary small-button" disabled>Send WhatsApp direct</button>
+                    <button id="rfx-mark-selected-whatsapp-groups" type="button" class="secondary small-button" disabled>Mark groups sent</button>
                     <button id="rfx-archive-selected-drafts" type="button" class="secondary small-button" disabled>Archive selected</button>
                     <button id="rfx-delete-selected-drafts" type="button" class="danger small-button" disabled>Delete selected</button>
                   </div>

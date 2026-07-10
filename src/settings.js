@@ -3,21 +3,28 @@ import {
   archiveCatalogValue,
   disconnectGmailConnection,
   disconnectGoogleChatConnection,
+  disconnectWhatsappBusinessConnection,
   fetchCatalogValues,
   fetchGmailConnections,
   fetchGoogleChatConnections,
   fetchGoogleChatSpaces,
   fetchObservabilityEvents,
   fetchSaasSettings,
+  fetchWhatsappConnections,
+  fetchWhatsappTemplates,
   retryGoogleChatSync,
   saveCatalogValue,
   saveGoogleChatSettings,
+  startWhatsappBusinessConnection,
   startGmailOAuth,
   startGoogleChatOAuth,
   syncGmailBounces,
+  syncWhatsappTemplates,
+  testWhatsappBusinessConnection,
   updateOnboardingTask,
   updateSaasOrganization,
-  updateSaasProfile
+  updateSaasProfile,
+  verifyWhatsappWebhook
 } from "./settings-service.js";
 import { SUPABASE_URL } from "./config.js";
 import { humanizeError } from "./error-copy.js";
@@ -59,6 +66,14 @@ const googleChatSpaceManualInput = document.querySelector("#google-chat-space-ma
 const googleChatSpaceHelp = document.querySelector("#google-chat-space-help");
 const saveGoogleChatSpaceButton = document.querySelector("#save-google-chat-space-button");
 const googleChatSpaceRow = document.querySelector("#google-chat-space-row");
+const whatsappConnectionCard = document.querySelector("#whatsapp-connection-card");
+const whatsappConnectionStatus = document.querySelector("#whatsapp-connection-status");
+const connectWhatsappButton = document.querySelector("#connect-whatsapp-button");
+const disconnectWhatsappButton = document.querySelector("#disconnect-whatsapp-button");
+const testWhatsappButton = document.querySelector("#test-whatsapp-button");
+const syncWhatsappTemplatesButton = document.querySelector("#sync-whatsapp-templates-button");
+const verifyWhatsappWebhookButton = document.querySelector("#verify-whatsapp-webhook-button");
+const refreshWhatsappConnectionButton = document.querySelector("#refresh-whatsapp-connection");
 const catalogValueForm = document.querySelector("#catalog-value-form");
 const catalogCategorySelect = document.querySelector("#catalog-category");
 const catalogCategoryFilter = document.querySelector("#catalog-category-filter");
@@ -95,6 +110,7 @@ initWorkbenchTabs({ defaultView: "access" });
 const GMAIL_ALLOWED_SENDER = "sales@heymarksman.com";
 const GOOGLE_CHAT_ALLOWED_ACCOUNT = "sales@heymarksman.com";
 const GOOGLE_CHAT_APP_ENDPOINT = `${SUPABASE_URL.replace(/\/$/, "")}/functions/v1/google-chat-app`;
+const WHATSAPP_WEBHOOK_ENDPOINT = `${SUPABASE_URL.replace(/\/$/, "")}/functions/v1/whatsapp-webhook`;
 
 const CATALOG_CATEGORIES = [
   { key: "equipment", label: "Equipment" },
@@ -155,6 +171,7 @@ function observabilitySourceLabel(source) {
   if (value === "rateware_api") return "Rateware API";
   if (value === "gmail") return "Gmail";
   if (value === "google_chat") return "Google Chat";
+  if (value === "whatsapp") return "WhatsApp";
   if (value === "bid_room") return "Bid Room";
   return value || "-";
 }
@@ -263,6 +280,7 @@ function renderObservability(data = currentObservability) {
       ["rateware_api", "Rateware API"],
       ["gmail", "Gmail"],
       ["google_chat", "Google Chat"],
+      ["whatsapp", "WhatsApp"],
       ["bid_room", "Bid Room"]
     ];
     observabilitySummary.innerHTML = cards.map(([key, label]) => {
@@ -326,6 +344,20 @@ function humanGoogleChatMessage(message = "") {
   return humanizeError(text || "Google Chat action could not be completed.");
 }
 
+function humanWhatsappMessage(message = "") {
+  const text = String(message || "");
+  if (/WHATSAPP_|META_|WABA|PHONE_NUMBER_ID|ACCESS_TOKEN|Meta secrets|not configured|connector is not fully configured/i.test(text)) {
+    return "WhatsApp Business connector is not enabled for this deployment yet. Add Meta WhatsApp secrets in Supabase before automated sends.";
+  }
+  if (/template mapping|Meta template|message template/i.test(text)) {
+    return "This message needs an approved Meta WhatsApp template. Sync templates in Settings and map the template before sending.";
+  }
+  if (/do-not-contact|do not contact|opted_out/i.test(text)) {
+    return "This vendor is blocked for WhatsApp automated sends. Review the vendor WhatsApp permission fields.";
+  }
+  return humanizeError(text || "WhatsApp action could not be completed.");
+}
+
 function applyOAuthUrlFeedback() {
   const params = new URLSearchParams(window.location.search);
   const chatStatus = params.get("chat");
@@ -340,6 +372,12 @@ function applyOAuthUrlFeedback() {
     setStatus(gmailConnectionStatus, "Gmail authorization completed.", "success");
   } else if (gmailStatus === "error") {
     setStatus(gmailConnectionStatus, humanGmailMessage(reason || "Gmail authorization failed."), "error");
+  }
+  const whatsappStatus = params.get("whatsapp");
+  if (whatsappStatus === "connected") {
+    setStatus(whatsappConnectionStatus, "WhatsApp Business connection completed.", "success");
+  } else if (whatsappStatus === "error") {
+    setStatus(whatsappConnectionStatus, humanWhatsappMessage(reason || "WhatsApp Business connection failed."), "error");
   }
 }
 
@@ -480,6 +518,64 @@ function renderGoogleChatConnections(data = currentSettings?.google_chat, spaces
   );
 }
 
+function renderWhatsappConnections(data = currentSettings?.whatsapp) {
+  if (!whatsappConnectionCard) return;
+  const row = data?.rows?.[0] || {};
+  const connected = row.status === "connected";
+  const configured = row.configured === true;
+  const manualSetup = row.status === "manual_setup";
+  const templateCount = Number(row.template_count || 0);
+  const statusLabel = connected
+    ? "Connected"
+    : manualSetup
+      ? "Manual setup"
+      : row.status === "error"
+        ? "Connection error"
+        : row.status === "revoked"
+          ? "Disconnected"
+          : "Not configured";
+  const connectionCopy = connected
+    ? "Ready to create direct WhatsApp Business drafts and send approved Meta templates to opted-in vendors."
+    : configured
+      ? "Meta WhatsApp server secrets are configured. Test the line and sync approved templates before sending."
+      : "Add Meta WhatsApp Business secrets in Supabase. Users should not paste access tokens inside Rateware.";
+  whatsappConnectionCard.innerHTML = `
+    <strong>Meta WhatsApp Business Platform</strong>
+    <p>${escapeHtml(connectionCopy)}</p>
+    <dl class="diagnostic-list compact-list">
+      <div><dt>Status</dt><dd><span class="status-pill ${connected ? "success" : row.status === "error" ? "danger" : configured ? "warning" : "neutral"}">${escapeHtml(statusLabel)}</span></dd></div>
+      <div><dt>Sender</dt><dd>${escapeHtml(row.display_phone_number || row.phone_number_id || "-")}</dd></div>
+      <div><dt>Business account</dt><dd>${escapeHtml(row.waba_id || row.business_account_id || "-")}</dd></div>
+      <div><dt>Templates</dt><dd>${escapeHtml(templateCount ? `${templateCount} synced` : row.templates_last_synced_at ? "Synced" : "-")}</dd></div>
+      <div><dt>Webhook</dt><dd>${escapeHtml(row.webhook_verified_at ? "Verified" : "Pending")}</dd></div>
+      <div><dt>Updated</dt><dd>${escapeHtml(row.updated_at ? new Date(row.updated_at).toLocaleString() : "-")}</dd></div>
+    </dl>
+    <div class="integration-callout">
+      <strong>Webhook endpoint</strong>
+      <p>Use this URL in Meta Webhooks for WhatsApp Business message statuses.</p>
+      <code>${escapeHtml(WHATSAPP_WEBHOOK_ENDPOINT)}</code>
+    </div>
+    ${row.last_error ? `<p class="error-text">${escapeHtml(humanWhatsappMessage(row.last_error))}</p>` : ""}
+  `;
+  if (connectWhatsappButton) {
+    connectWhatsappButton.disabled = !configured || connected;
+    connectWhatsappButton.textContent = connected ? "WhatsApp connected" : "Connect WhatsApp";
+  }
+  if (disconnectWhatsappButton) disconnectWhatsappButton.disabled = !connected && row.status !== "error" && !manualSetup;
+  if (testWhatsappButton) testWhatsappButton.disabled = !configured;
+  if (syncWhatsappTemplatesButton) syncWhatsappTemplatesButton.disabled = !configured;
+  if (verifyWhatsappWebhookButton) verifyWhatsappWebhookButton.disabled = !configured;
+  setStatus(
+    whatsappConnectionStatus,
+    configured
+      ? (connected
+          ? "WhatsApp Business is ready for approved template sends. Group delivery remains manual unless explicitly enabled."
+          : "Test the line and sync approved templates before enabling WhatsApp sends.")
+      : "WhatsApp Business connector is not enabled yet. Configure Meta secrets server-side.",
+    configured ? (connected ? "success" : "warning") : "warning"
+  );
+}
+
 function renderCatalogValues(rows = currentCatalogValues) {
   currentCatalogValues = rows || [];
   const category = catalogCategoryFilter?.value || "";
@@ -528,6 +624,7 @@ function renderSettings(settings) {
   renderAudit(settings);
   renderGmailConnections(settings.gmail);
   renderGoogleChatConnections(settings.google_chat);
+  renderWhatsappConnections(settings.whatsapp);
 }
 
 async function loadObservability() {
@@ -557,6 +654,9 @@ async function loadSettings() {
     await loadObservability();
     if (settings.google_chat?.rows?.[0]?.status === "connected") {
       await loadGoogleChatConnections();
+    }
+    if (settings.whatsapp?.rows?.[0]?.status === "connected") {
+      await loadWhatsappConnections();
     }
   } catch (error) {
     auditLogBody.innerHTML = `<tr><td colspan="5">${escapeHtml(humanizeError(error))}</td></tr>`;
@@ -606,6 +706,18 @@ async function loadGoogleChatConnections() {
   }
 }
 
+async function loadWhatsappConnections() {
+  setStatus(whatsappConnectionStatus, "Checking WhatsApp Business connection...");
+  try {
+    const data = await fetchWhatsappConnections();
+    currentSettings = currentSettings || {};
+    currentSettings.whatsapp = data;
+    renderWhatsappConnections(data);
+  } catch (error) {
+    setStatus(whatsappConnectionStatus, humanWhatsappMessage(error.message), "error");
+  }
+}
+
 initAuthControls();
 populateCatalogCategoryControls();
 requirePrivatePage().then((session) => {
@@ -622,6 +734,7 @@ observabilitySeverityFilter?.addEventListener("change", () => renderObservabilit
 refreshCatalogButton?.addEventListener("click", loadCatalogValues);
 refreshGmailConnectionButton?.addEventListener("click", loadGmailConnections);
 refreshGoogleChatConnectionButton?.addEventListener("click", loadGoogleChatConnections);
+refreshWhatsappConnectionButton?.addEventListener("click", loadWhatsappConnections);
 
 connectGmailButton?.addEventListener("click", async () => {
   setStatus(gmailConnectionStatus, `Preparing Google consent for ${GMAIL_ALLOWED_SENDER}...`);
@@ -719,6 +832,83 @@ saveGoogleChatSpaceButton?.addEventListener("click", async () => {
     await loadGoogleChatConnections();
   } catch (error) {
     setStatus(googleChatConnectionStatus, humanGoogleChatMessage(error.message), "error");
+  }
+});
+
+connectWhatsappButton?.addEventListener("click", async () => {
+  setStatus(whatsappConnectionStatus, "Preparing WhatsApp Business connection...");
+  try {
+    const result = await startWhatsappBusinessConnection("settings.html?view=integrations");
+    if (result.authorization_url) {
+      window.location.href = result.authorization_url;
+      return;
+    }
+    await loadWhatsappConnections();
+    setStatus(whatsappConnectionStatus, result.message || "WhatsApp Business connection is managed by server-side Meta secrets.", "success");
+  } catch (error) {
+    setStatus(whatsappConnectionStatus, humanWhatsappMessage(error.message), "error");
+  }
+});
+
+disconnectWhatsappButton?.addEventListener("click", async () => {
+  if (!window.confirm("Disconnect WhatsApp Business for this workspace? Existing draft rows stay unchanged.")) return;
+  setStatus(whatsappConnectionStatus, "Disconnecting WhatsApp Business...");
+  try {
+    await disconnectWhatsappBusinessConnection();
+    await loadWhatsappConnections();
+  } catch (error) {
+    setStatus(whatsappConnectionStatus, humanWhatsappMessage(error.message), "error");
+  }
+});
+
+testWhatsappButton?.addEventListener("click", async () => {
+  setStatus(whatsappConnectionStatus, "Testing WhatsApp Business sender...");
+  testWhatsappButton.disabled = true;
+  try {
+    const result = await testWhatsappBusinessConnection();
+    await loadWhatsappConnections();
+    setStatus(
+      whatsappConnectionStatus,
+      `WhatsApp line ready: ${result.display_phone_number || result.phone_number_id || "configured sender"}.`,
+      "success"
+    );
+  } catch (error) {
+    setStatus(whatsappConnectionStatus, humanWhatsappMessage(error.message), "error");
+  } finally {
+    renderWhatsappConnections(currentSettings?.whatsapp);
+  }
+});
+
+syncWhatsappTemplatesButton?.addEventListener("click", async () => {
+  setStatus(whatsappConnectionStatus, "Syncing approved Meta WhatsApp templates...");
+  syncWhatsappTemplatesButton.disabled = true;
+  try {
+    const result = await syncWhatsappTemplates();
+    await loadWhatsappConnections();
+    setStatus(
+      whatsappConnectionStatus,
+      `${Number(result.synced || result.rows?.length || 0).toLocaleString()} WhatsApp template(s) synced from Meta.`,
+      "success"
+    );
+  } catch (error) {
+    setStatus(whatsappConnectionStatus, humanWhatsappMessage(error.message), "error");
+  } finally {
+    renderWhatsappConnections(currentSettings?.whatsapp);
+  }
+});
+
+verifyWhatsappWebhookButton?.addEventListener("click", async () => {
+  setStatus(whatsappConnectionStatus, "Checking WhatsApp webhook configuration...");
+  try {
+    const result = await verifyWhatsappWebhook();
+    await loadWhatsappConnections();
+    setStatus(
+      whatsappConnectionStatus,
+      result.verified ? `Webhook configured: ${result.endpoint}` : `Webhook endpoint ready: ${result.endpoint}`,
+      result.verified ? "success" : "warning"
+    );
+  } catch (error) {
+    setStatus(whatsappConnectionStatus, humanWhatsappMessage(error.message), "error");
   }
 });
 catalogCategoryFilter?.addEventListener("change", loadCatalogValues);

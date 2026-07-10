@@ -24,6 +24,19 @@ const GOOGLE_CHAT_OAUTH_SCOPES = [
   "https://www.googleapis.com/auth/chat.spaces.readonly"
 ];
 const GOOGLE_CHAT_WEBHOOK_URL = Deno.env.get("GOOGLE_CHAT_WEBHOOK_URL");
+const WHATSAPP_PROVIDER = (Deno.env.get("WHATSAPP_PROVIDER") || "meta").trim().toLowerCase();
+const WHATSAPP_CONNECTION_MODE = (Deno.env.get("WHATSAPP_CONNECTION_MODE") || "internal_managed").trim().toLowerCase();
+const WHATSAPP_GRAPH_API_VERSION = (Deno.env.get("WHATSAPP_GRAPH_API_VERSION") || "v23.0").trim();
+const WHATSAPP_PHONE_NUMBER_ID = (Deno.env.get("WHATSAPP_PHONE_NUMBER_ID") || "").trim();
+const WHATSAPP_BUSINESS_ACCOUNT_ID = (Deno.env.get("WHATSAPP_BUSINESS_ACCOUNT_ID") || "").trim();
+const WHATSAPP_WABA_ID = (Deno.env.get("WHATSAPP_WABA_ID") || "").trim();
+const WHATSAPP_ACCESS_TOKEN = (Deno.env.get("WHATSAPP_ACCESS_TOKEN") || "").trim();
+const WHATSAPP_WEBHOOK_VERIFY_TOKEN = (Deno.env.get("WHATSAPP_WEBHOOK_VERIFY_TOKEN") || "").trim();
+const WHATSAPP_APP_SECRET = (Deno.env.get("WHATSAPP_APP_SECRET") || "").trim();
+const WHATSAPP_GROUPS_ENABLED = (Deno.env.get("WHATSAPP_GROUPS_ENABLED") || "false").trim().toLowerCase() === "true";
+const META_APP_ID = (Deno.env.get("META_APP_ID") || "").trim();
+const META_CONFIG_ID = (Deno.env.get("META_CONFIG_ID") || "").trim();
+const META_REDIRECT_URI = (Deno.env.get("META_REDIRECT_URI") || "").trim();
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const BULK_SELECTED_ID_LIMIT = 1000;
 const BULK_SEND_LIMIT = 100;
@@ -5333,6 +5346,9 @@ function normalizeVendor(input: Record<string, unknown>, source = "manual") {
   if (!vendorName) throw new Error("Vendor name is required.");
 
   const preferred = cleanText(input.preferred_channel)?.toLowerCase() || "email";
+  const whatsappPermissionBasis = cleanText(input.whatsapp_permission_basis)?.toLowerCase() || "contractual";
+  const whatsappOptInStatus = cleanText(input.whatsapp_opt_in_status)?.toLowerCase() || "contractual";
+  const whatsappGroupStatus = cleanText(input.whatsapp_group_status)?.toLowerCase() || "manual_only";
   const status = cleanText(input.status)?.toLowerCase() || "active";
   const baseStage = cleanText(input.base_stage)?.toLowerCase() || "sourcing";
   const now = new Date().toISOString();
@@ -5349,7 +5365,15 @@ function normalizeVendor(input: Record<string, unknown>, source = "manual") {
     primary_email: emailList[0] || "",
     secondary_emails: secondaryEmails,
     whatsapp_phone: cleanText(input.whatsapp_phone || input.phone || input.whatsapp),
-    preferred_channel: ["email", "whatsapp", "portal"].includes(preferred) ? preferred : "email",
+    preferred_channel: ["email", "whatsapp", "whatsapp_group", "multi", "portal"].includes(preferred) ? preferred : "email",
+    whatsapp_permission_basis: ["contractual", "consent", "manual", "unknown"].includes(whatsappPermissionBasis) ? whatsappPermissionBasis : "contractual",
+    whatsapp_do_not_contact: cleanBoolean(input.whatsapp_do_not_contact || input.do_not_contact_whatsapp),
+    whatsapp_opt_in_status: ["contractual", "opted_in", "manual", "unknown", "opted_out"].includes(whatsappOptInStatus) ? whatsappOptInStatus : "contractual",
+    whatsapp_group_url: cleanText(input.whatsapp_group_url || input.group_url),
+    whatsapp_group_name: cleanText(input.whatsapp_group_name || input.group_name),
+    whatsapp_meta_group_id: cleanText(input.whatsapp_meta_group_id || input.meta_group_id),
+    whatsapp_group_status: ["pending", "manual_only", "api_ready", "verified", "blocked", "error"].includes(whatsappGroupStatus) ? whatsappGroupStatus : "manual_only",
+    whatsapp_notes: cleanText(input.whatsapp_notes),
     status: ["active", "invited", "blocked", "inactive"].includes(status) ? status : "active",
     logo_url: cleanUrl(input.logo_url || input.logo),
     logo_source: cleanUrl(input.logo_url || input.logo) ? "url" : null,
@@ -5386,6 +5410,25 @@ function normalizeVendorPatch(input: Record<string, unknown>, current: Record<st
     patch.secondary_emails = normalizeEmailList(input.secondary_emails);
   }
   if (input.whatsapp_phone !== undefined) patch.whatsapp_phone = cleanText(input.whatsapp_phone);
+  if (input.whatsapp_permission_basis !== undefined) {
+    const basis = cleanText(input.whatsapp_permission_basis)?.toLowerCase();
+    if (basis && ["contractual", "consent", "manual", "unknown"].includes(basis)) patch.whatsapp_permission_basis = basis;
+  }
+  if (input.whatsapp_do_not_contact !== undefined || input.do_not_contact_whatsapp !== undefined) {
+    patch.whatsapp_do_not_contact = cleanBoolean(input.whatsapp_do_not_contact ?? input.do_not_contact_whatsapp);
+  }
+  if (input.whatsapp_opt_in_status !== undefined) {
+    const optIn = cleanText(input.whatsapp_opt_in_status)?.toLowerCase();
+    if (optIn && ["contractual", "opted_in", "manual", "unknown", "opted_out"].includes(optIn)) patch.whatsapp_opt_in_status = optIn;
+  }
+  if (input.whatsapp_group_url !== undefined || input.group_url !== undefined) patch.whatsapp_group_url = cleanText(input.whatsapp_group_url ?? input.group_url);
+  if (input.whatsapp_group_name !== undefined || input.group_name !== undefined) patch.whatsapp_group_name = cleanText(input.whatsapp_group_name ?? input.group_name);
+  if (input.whatsapp_meta_group_id !== undefined || input.meta_group_id !== undefined) patch.whatsapp_meta_group_id = cleanText(input.whatsapp_meta_group_id ?? input.meta_group_id);
+  if (input.whatsapp_group_status !== undefined) {
+    const groupStatus = cleanText(input.whatsapp_group_status)?.toLowerCase();
+    if (groupStatus && ["pending", "manual_only", "api_ready", "verified", "blocked", "error"].includes(groupStatus)) patch.whatsapp_group_status = groupStatus;
+  }
+  if (input.whatsapp_notes !== undefined) patch.whatsapp_notes = cleanText(input.whatsapp_notes);
   if (input.logo_url !== undefined || input.logo !== undefined) {
     const nextLogoUrl = cleanUrl(input.logo_url ?? input.logo);
     patch.logo_url = nextLogoUrl;
@@ -5423,7 +5466,7 @@ function normalizeVendorPatch(input: Record<string, unknown>, current: Record<st
   }
   if (input.preferred_channel !== undefined) {
     const preferred = cleanText(input.preferred_channel)?.toLowerCase();
-    if (preferred && ["email", "whatsapp", "portal"].includes(preferred)) patch.preferred_channel = preferred;
+    if (preferred && ["email", "whatsapp", "whatsapp_group", "multi", "portal"].includes(preferred)) patch.preferred_channel = preferred;
   }
   patch.updated_at = now;
   return patch;
@@ -5458,7 +5501,7 @@ function normalizeSegment(input: Record<string, unknown>, user?: { owner_user_id
     description: cleanText(input.description),
     tags: normalizeTags(input.tags),
     status: status && ["active", "invited", "blocked", "inactive"].includes(status) ? status : null,
-    preferred_channel: preferredChannel && ["email", "whatsapp", "portal"].includes(preferredChannel) ? preferredChannel : null,
+    preferred_channel: preferredChannel && ["email", "whatsapp", "whatsapp_group", "multi", "portal"].includes(preferredChannel) ? preferredChannel : null,
     coverage_filter: coverageFilter,
     segment_type: normalizedType,
     vendor_ids: vendorIds,
@@ -8150,10 +8193,17 @@ function normalizeOutreachTemplate(input: Record<string, unknown>) {
   if (!name) throw new Error("Template name is required.");
   return {
     name,
-    channel: ["email", "whatsapp", "multi"].includes(channel) ? channel : "multi",
+    channel: ["email", "whatsapp", "whatsapp_group", "multi", "email_whatsapp", "email_whatsapp_group", "whatsapp_direct_group"].includes(channel) ? channel : "multi",
     subject: cleanText(input.subject),
     html_body: cleanText(extractHtmlFromMime(input.html_body || input.body || input.email_body)),
     whatsapp_body: cleanText(input.whatsapp_body || input.whatsapp_text),
+    whatsapp_group_body: cleanText(input.whatsapp_group_body || input.group_body || input.whatsapp_body || input.whatsapp_text),
+    meta_template_name: cleanText(input.meta_template_name || input.whatsapp_template_name),
+    meta_template_language: cleanText(input.meta_template_language || input.whatsapp_template_language || "en_US"),
+    meta_template_namespace: cleanText(input.meta_template_namespace),
+    meta_template_status: cleanText(input.meta_template_status),
+    meta_template_category: cleanText(input.meta_template_category),
+    meta_template_components: Array.isArray(input.meta_template_components) ? input.meta_template_components : [],
     active: input.active === undefined ? true : cleanBoolean(input.active),
     is_default: input.is_default === undefined ? false : cleanBoolean(input.is_default),
     placeholders: Array.isArray(input.placeholders) ? input.placeholders.map(cleanText).filter(Boolean) : [],
@@ -8204,13 +8254,18 @@ function normalizeOutreachCampaign(input: Record<string, unknown>) {
   const channel = cleanText(input.channel)?.toLowerCase() || "multi";
   const status = cleanText(input.status)?.toLowerCase() || "draft";
   const senderConnectionStatus = cleanText(input.sender_connection_status)?.toLowerCase() || "draft_only";
+  const targetMode = cleanText(input.whatsapp_target_mode || input.target_mode)?.toLowerCase() || "direct_vendor";
+  const groupPolicy = cleanText(input.group_delivery_policy)?.toLowerCase() || "manual_or_api";
   const name = cleanText(input.name);
   if (!name) throw new Error("Campaign name is required.");
   return {
     rfx_event_id: cleanText(input.rfx_event_id || input.event_id),
     template_id: cleanText(input.template_id),
     name,
-    channel: ["email", "whatsapp", "multi"].includes(channel) ? channel : "multi",
+    channel: ["email", "whatsapp", "whatsapp_group", "multi", "email_whatsapp", "email_whatsapp_group", "whatsapp_direct_group"].includes(channel) ? channel : "multi",
+    whatsapp_target_mode: ["direct_vendor", "vendor_group", "direct_and_group"].includes(targetMode) ? targetMode : "direct_vendor",
+    group_delivery_policy: ["manual_only", "api_only", "manual_or_api"].includes(groupPolicy) ? groupPolicy : "manual_or_api",
+    whatsapp_connection_id: cleanText(input.whatsapp_connection_id),
     status: ["draft", "generated", "queued", "sent", "closed", "archived"].includes(status) ? status : "draft",
     sender_email: cleanText(input.sender_email),
     sender_label: cleanText(input.sender_label),
@@ -9991,6 +10046,10 @@ function messageChannels(channel: unknown) {
   const normalized = cleanText(channel)?.toLowerCase() || "multi";
   if (normalized === "email") return ["email"];
   if (normalized === "whatsapp") return ["whatsapp"];
+  if (normalized === "whatsapp_group") return ["whatsapp_group"];
+  if (normalized === "email_whatsapp" || normalized === "email+whatsapp") return ["email", "whatsapp"];
+  if (normalized === "whatsapp_direct_group" || normalized === "whatsapp+group") return ["whatsapp", "whatsapp_group"];
+  if (normalized === "email_whatsapp_group" || normalized === "all") return ["email", "whatsapp", "whatsapp_group"];
   return ["email", "whatsapp"];
 }
 
@@ -10163,6 +10222,378 @@ async function listGoogleChatConnections(supabase: ReturnType<typeof createClien
     allowed_account: GOOGLE_CHAT_ALLOWED_ACCOUNT,
     rows: [publicGoogleChatConnection(result.data)]
   };
+}
+
+function normalizeWhatsappPhone(value: unknown) {
+  const digits = String(value || "").replace(/\D/g, "");
+  if (!digits) return "";
+  if (digits.length === 10) return `+52${digits}`;
+  if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`;
+  return digits.startsWith("+") ? digits : `+${digits}`;
+}
+
+function whatsappIsConfigured() {
+  return Boolean(
+    WHATSAPP_PROVIDER === "meta"
+    && WHATSAPP_ACCESS_TOKEN
+    && WHATSAPP_PHONE_NUMBER_ID
+    && (WHATSAPP_WABA_ID || WHATSAPP_BUSINESS_ACCOUNT_ID)
+  );
+}
+
+function maskedSecret(value: unknown) {
+  const text = cleanText(value);
+  if (!text) return "";
+  return text.length <= 8 ? "configured" : `${text.slice(0, 4)}...${text.slice(-4)}`;
+}
+
+function publicWhatsappConnection(row: Record<string, unknown> | null | undefined) {
+  const status = cleanText(row?.status) || (whatsappIsConfigured() ? "connected" : "not_configured");
+  const connected = status === "connected";
+  const connectionMode = cleanText(row?.connection_mode) || WHATSAPP_CONNECTION_MODE || "internal_managed";
+  const meta = objectRecord(row?.metadata);
+  return {
+    id: row?.id || null,
+    provider: "meta",
+    connection_mode: connectionMode,
+    status,
+    connected,
+    configured: whatsappIsConfigured(),
+    groups_enabled: WHATSAPP_GROUPS_ENABLED,
+    phone_number_id: cleanText(row?.phone_number_id) || maskedSecret(WHATSAPP_PHONE_NUMBER_ID),
+    display_phone_number: cleanText(row?.display_phone_number),
+    verified_name: cleanText(row?.verified_name),
+    business_account_id: cleanText(row?.business_account_id) || maskedSecret(WHATSAPP_BUSINESS_ACCOUNT_ID),
+    waba_id: cleanText(row?.waba_id) || maskedSecret(WHATSAPP_WABA_ID),
+    graph_api_version: cleanText(row?.graph_api_version) || WHATSAPP_GRAPH_API_VERSION,
+    templates_last_synced_at: row?.templates_last_synced_at || null,
+    webhook_configured: Boolean(WHATSAPP_WEBHOOK_VERIFY_TOKEN),
+    webhook_verified_at: row?.webhook_verified_at || null,
+    quality_rating: cleanText(row?.quality_rating),
+    last_error: row?.last_error || null,
+    updated_at: row?.updated_at || null,
+    template_count: Array.isArray(meta.templates) ? meta.templates.length : 0
+  };
+}
+
+async function ensureInternalWhatsappConnection(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_user_id: string | null; owner_email: string | null }
+) {
+  const mode = ["internal_managed", "tenant_connected", "manual_setup"].includes(WHATSAPP_CONNECTION_MODE)
+    ? WHATSAPP_CONNECTION_MODE
+    : "internal_managed";
+  const status = whatsappIsConfigured()
+    ? "connected"
+    : mode === "manual_setup"
+      ? "manual_setup"
+      : "not_configured";
+  const metadata = {
+    secret_source: mode === "internal_managed" ? "server_env" : "tenant_oauth_pending",
+    meta_app_configured: Boolean(META_APP_ID && META_CONFIG_ID),
+    webhook_verify_token_configured: Boolean(WHATSAPP_WEBHOOK_VERIFY_TOKEN),
+    app_secret_configured: Boolean(WHATSAPP_APP_SECRET),
+    groups_enabled: WHATSAPP_GROUPS_ENABLED
+  };
+  const result = await supabase
+    .from("whatsapp_business_connections")
+    .upsert(withOwner({
+      provider: "meta",
+      connection_mode: mode,
+      status,
+      phone_number_id: WHATSAPP_PHONE_NUMBER_ID || null,
+      business_account_id: WHATSAPP_BUSINESS_ACCOUNT_ID || null,
+      waba_id: WHATSAPP_WABA_ID || WHATSAPP_BUSINESS_ACCOUNT_ID || null,
+      graph_api_version: WHATSAPP_GRAPH_API_VERSION,
+      last_error: status === "connected" ? null : "Meta WhatsApp Business secrets are not configured.",
+      metadata,
+      updated_at: new Date().toISOString()
+    }, user), { onConflict: "owner_email,provider,connection_mode" })
+    .select("*")
+    .single();
+  if (result.error) throw result.error;
+  return result.data;
+}
+
+async function listWhatsappConnections(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_user_id: string | null; owner_email: string | null }
+) {
+  let row: Record<string, unknown> | null = null;
+  if (WHATSAPP_CONNECTION_MODE === "internal_managed" || whatsappIsConfigured()) {
+    row = await ensureInternalWhatsappConnection(supabase, user);
+  } else {
+    const result = await supabase
+      .from("whatsapp_business_connections")
+      .select("*")
+      .eq("owner_email", user.owner_email)
+      .eq("provider", "meta")
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (result.error) throw result.error;
+    row = result.data;
+  }
+  return {
+    provider: "meta",
+    connection_mode: WHATSAPP_CONNECTION_MODE,
+    rows: [publicWhatsappConnection(row)]
+  };
+}
+
+async function activeWhatsappConnection(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_user_id: string | null; owner_email: string | null }
+) {
+  const row = await ensureInternalWhatsappConnection(supabase, user);
+  if (cleanText(row.status) !== "connected") {
+    throw new Error("WhatsApp Business is not connected. Configure Meta WhatsApp secrets in Settings before automated sends.");
+  }
+  return row;
+}
+
+async function startWhatsappBusinessConnection(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_user_id: string | null; owner_email: string | null },
+  input: Record<string, unknown> = {}
+) {
+  const row = await ensureInternalWhatsappConnection(supabase, user);
+  const redirectAfter = cleanText(input.redirect_after) || "settings.html?view=integrations&whatsapp=connected";
+  if (cleanText(row.status) === "connected") {
+    return { row: publicWhatsappConnection(row), connected: true, redirect_after: redirectAfter };
+  }
+  if (META_APP_ID && META_CONFIG_ID && META_REDIRECT_URI) {
+    const params = new URLSearchParams({
+      client_id: META_APP_ID,
+      redirect_uri: META_REDIRECT_URI,
+      state: crypto.randomUUID().replace(/-/g, ""),
+      config_id: META_CONFIG_ID,
+      response_type: "code"
+    });
+    return {
+      row: publicWhatsappConnection(row),
+      authorization_url: `https://www.facebook.com/${WHATSAPP_GRAPH_API_VERSION}/dialog/oauth?${params.toString()}`,
+      mode: "tenant_connected"
+    };
+  }
+  return {
+    row: publicWhatsappConnection(row),
+    mode: "manual_setup",
+    error: "Meta WhatsApp Business connector is not fully configured yet. Add server-side Meta secrets or configure Meta Business Login."
+  };
+}
+
+async function completeWhatsappBusinessConnection(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_user_id: string | null; owner_email: string | null },
+  input: Record<string, unknown> = {}
+) {
+  const code = cleanText(input.code);
+  if (!code) return await startWhatsappBusinessConnection(supabase, user, input);
+  const row = await ensureInternalWhatsappConnection(supabase, user);
+  return {
+    row: publicWhatsappConnection(row),
+    error: "Meta Business Login exchange is prepared but not enabled for this deployment. Use internal managed secrets for this sprint."
+  };
+}
+
+async function disconnectWhatsappBusinessConnection(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_email: string | null }
+) {
+  const result = await supabase
+    .from("whatsapp_business_connections")
+    .update({
+      status: "revoked",
+      access_token_encrypted: null,
+      refresh_token_encrypted: null,
+      last_error: null,
+      updated_at: new Date().toISOString()
+    })
+    .eq("owner_email", user.owner_email)
+    .eq("provider", "meta")
+    .select("*")
+    .maybeSingle();
+  if (result.error) throw result.error;
+  if (!result.data) return publicWhatsappConnection(null);
+  return publicWhatsappConnection(result.data);
+}
+
+async function whatsappGraphFetch(path: string, options: RequestInit = {}) {
+  if (!WHATSAPP_ACCESS_TOKEN) throw new Error("WHATSAPP_ACCESS_TOKEN is not configured.");
+  const url = `https://graph.facebook.com/${WHATSAPP_GRAPH_API_VERSION}/${path.replace(/^\//, "")}`;
+  const response = await fetch(url, {
+    ...options,
+    headers: {
+      Authorization: `Bearer ${WHATSAPP_ACCESS_TOKEN}`,
+      "Content-Type": "application/json",
+      ...(options.headers || {})
+    }
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const message = cleanText(data?.error?.message) || `Meta WhatsApp request failed (${response.status}).`;
+    throw new Error(message);
+  }
+  return data;
+}
+
+async function testWhatsappBusinessConnection(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_user_id: string | null; owner_email: string | null }
+) {
+  const row = await ensureInternalWhatsappConnection(supabase, user);
+  if (cleanText(row.status) !== "connected") return { row: publicWhatsappConnection(row), ok: false };
+  const data = await whatsappGraphFetch(`${WHATSAPP_PHONE_NUMBER_ID}?fields=id,display_phone_number,verified_name,quality_rating`);
+  const patch = {
+    display_phone_number: cleanText(data.display_phone_number),
+    verified_name: cleanText(data.verified_name),
+    quality_rating: cleanText(data.quality_rating),
+    last_error: null,
+    updated_at: new Date().toISOString()
+  };
+  const result = await supabase
+    .from("whatsapp_business_connections")
+    .update(patch)
+    .eq("id", row.id)
+    .select("*")
+    .single();
+  if (result.error) throw result.error;
+  return { ok: true, row: publicWhatsappConnection(result.data), provider_response: { id: data.id, display_phone_number: data.display_phone_number, verified_name: data.verified_name, quality_rating: data.quality_rating } };
+}
+
+async function syncWhatsappTemplates(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_user_id: string | null; owner_email: string | null }
+) {
+  const row = await activeWhatsappConnection(supabase, user);
+  const wabaId = WHATSAPP_WABA_ID || WHATSAPP_BUSINESS_ACCOUNT_ID || cleanText(row.waba_id);
+  if (!wabaId) throw new Error("WhatsApp WABA id is not configured.");
+  const data = await whatsappGraphFetch(`${wabaId}/message_templates?fields=name,language,status,category,components&limit=100`);
+  const templates = Array.isArray(data.data) ? data.data : [];
+  const result = await supabase
+    .from("whatsapp_business_connections")
+    .update({
+      templates_last_synced_at: new Date().toISOString(),
+      last_error: null,
+      metadata: { ...objectRecord(row.metadata), templates },
+      updated_at: new Date().toISOString()
+    })
+    .eq("id", row.id)
+    .select("*")
+    .single();
+  if (result.error) throw result.error;
+  return { synced: templates.length, rows: templates, connection: publicWhatsappConnection(result.data) };
+}
+
+async function listWhatsappTemplates(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_user_id: string | null; owner_email: string | null }
+) {
+  const connections = await listWhatsappConnections(supabase, user);
+  const rowResult = await supabase
+    .from("whatsapp_business_connections")
+    .select("metadata")
+    .eq("owner_email", user.owner_email)
+    .eq("provider", "meta")
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (rowResult.error) throw rowResult.error;
+  const templates = objectRecord(rowResult.data?.metadata).templates;
+  return { connection: connections.rows[0], rows: Array.isArray(templates) ? templates : [] };
+}
+
+async function listWhatsappPhoneNumbers() {
+  if (!whatsappIsConfigured()) return { rows: [] };
+  const wabaId = WHATSAPP_WABA_ID || WHATSAPP_BUSINESS_ACCOUNT_ID;
+  if (!wabaId) return { rows: [] };
+  const data = await whatsappGraphFetch(`${wabaId}/phone_numbers?fields=id,display_phone_number,verified_name,quality_rating`);
+  return { rows: Array.isArray(data.data) ? data.data : [] };
+}
+
+async function selectWhatsappSender(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_user_id: string | null; owner_email: string | null },
+  input: Record<string, unknown>
+) {
+  const row = await ensureInternalWhatsappConnection(supabase, user);
+  const phoneNumberId = cleanText(input.phone_number_id);
+  if (!phoneNumberId) throw new Error("WhatsApp phone number id is required.");
+  const result = await supabase
+    .from("whatsapp_business_connections")
+    .update({ phone_number_id: phoneNumberId, updated_at: new Date().toISOString() })
+    .eq("id", row.id)
+    .select("*")
+    .single();
+  if (result.error) throw result.error;
+  return publicWhatsappConnection(result.data);
+}
+
+async function verifyWhatsappWebhook(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_user_id: string | null; owner_email: string | null }
+) {
+  const row = await ensureInternalWhatsappConnection(supabase, user);
+  return {
+    row: publicWhatsappConnection(row),
+    endpoint: `${String(SUPABASE_URL || "").replace(/\/$/, "")}/functions/v1/whatsapp-webhook`,
+    verify_token_configured: Boolean(WHATSAPP_WEBHOOK_VERIFY_TOKEN),
+    app_secret_configured: Boolean(WHATSAPP_APP_SECRET)
+  };
+}
+
+async function verifyVendorWhatsappGroup(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_user_id: string | null; owner_email: string | null },
+  input: Record<string, unknown>
+) {
+  const vendorId = cleanText(input.vendor_id);
+  if (!vendorId) throw new Error("Vendor id is required.");
+  const groupUrl = cleanText(input.group_url || input.whatsapp_group_url);
+  const groupName = cleanText(input.group_name || input.whatsapp_group_name);
+  const metaGroupId = cleanText(input.meta_group_id || input.whatsapp_meta_group_id);
+  const verificationStatus = WHATSAPP_GROUPS_ENABLED && metaGroupId ? "api_ready" : "manual_only";
+  const row = withOwner({
+    vendor_id: vendorId,
+    group_name: groupName,
+    group_url: groupUrl,
+    meta_group_id: metaGroupId,
+    verification_status: verificationStatus,
+    permission_basis: cleanText(input.permission_basis) || "contractual",
+    do_not_contact: cleanBoolean(input.do_not_contact),
+    last_verified_at: new Date().toISOString(),
+    last_error: verificationStatus === "manual_only" ? "Meta group API is not enabled. Use manual send controls." : null,
+    updated_at: new Date().toISOString()
+  }, user);
+  let existingQuery = supabase
+    .from("vendor_whatsapp_groups")
+    .select("id")
+    .eq("owner_email", user.owner_email)
+    .eq("vendor_id", vendorId)
+    .limit(1);
+  if (metaGroupId) existingQuery = existingQuery.eq("meta_group_id", metaGroupId);
+  else if (groupUrl) existingQuery = existingQuery.eq("group_url", groupUrl);
+  else if (groupName) existingQuery = existingQuery.eq("group_name", groupName);
+  const existing = await existingQuery.maybeSingle();
+  if (existing.error) throw existing.error;
+  const result = existing.data?.id
+    ? await supabase.from("vendor_whatsapp_groups").update(row).eq("id", existing.data.id).select("*").single()
+    : await supabase.from("vendor_whatsapp_groups").insert(row).select("*").single();
+  if (result.error) throw result.error;
+  await supabase
+    .from("vendors")
+    .update({
+      whatsapp_group_url: groupUrl || null,
+      whatsapp_group_name: groupName || null,
+      whatsapp_meta_group_id: metaGroupId || null,
+      whatsapp_group_status: verificationStatus,
+      whatsapp_last_verified_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    })
+    .eq("id", vendorId)
+    .eq("owner_email", user.owner_email);
+  return { row: result.data, manual_only: verificationStatus === "manual_only", groups_enabled: WHATSAPP_GROUPS_ENABLED };
 }
 
 async function startGoogleChatOauth(
@@ -11180,6 +11611,231 @@ async function sendOutreachMessages(
   return { sent: sentRows.length, failed: failures.length, rows: sentRows, failures };
 }
 
+async function metaSendWhatsappTemplate(message: Record<string, unknown>) {
+  const to = normalizeWhatsappPhone(message.normalized_recipient_phone || message.recipient_phone);
+  const templateName = cleanText(message.whatsapp_template_name);
+  const language = cleanText(message.whatsapp_template_language) || "en_US";
+  if (!to) throw new Error("Missing WhatsApp recipient phone.");
+  if (!templateName) throw new Error("WhatsApp Meta template mapping is missing. Sync or map a Meta template before automated send.");
+  return await whatsappGraphFetch(`${WHATSAPP_PHONE_NUMBER_ID}/messages`, {
+    method: "POST",
+    body: JSON.stringify({
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to,
+      type: "template",
+      template: {
+        name: templateName,
+        language: { code: language }
+      }
+    })
+  });
+}
+
+async function updateWhatsappMessageFailure(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_email: string | null },
+  message: Record<string, unknown>,
+  reason: string,
+  now = new Date().toISOString()
+) {
+  await supabase
+    .from("outreach_messages")
+    .update({
+      status: "failed",
+      delivery_status: "failed",
+      failed_at: now,
+      delivery_error: reason,
+      provider: "meta",
+      updated_at: now
+    })
+    .eq("id", message.id)
+    .eq("owner_email", user.owner_email);
+}
+
+async function sendWhatsappOutreachMessages(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_user_id: string | null; owner_email: string | null },
+  input: Record<string, unknown>
+) {
+  const ids = normalizeBulkIds(input.ids, { label: "WhatsApp message ids", limit: BULK_SEND_LIMIT });
+  if (!ids.length) return { sent: 0, failed: 0, rows: [], failures: [] };
+  requireBulkConfirmation(input, {
+    action: "send_whatsapp_outreach_messages",
+    label: "WhatsApp bulk send",
+    count: ids.length
+  });
+
+  const connection = await activeWhatsappConnection(supabase, user);
+  const messagesResult = await supabase
+    .from("outreach_messages")
+    .select("*, vendors(id,vendor_name,domain,whatsapp_do_not_contact,whatsapp_permission_basis)")
+    .eq("owner_email", user.owner_email)
+    .in("id", ids)
+    .order("created_at", { ascending: true });
+  if (messagesResult.error) throw messagesResult.error;
+  const messages = (messagesResult.data || []).filter((message) => message.channel === "whatsapp");
+  if (!messages.length) throw new Error("Select at least one WhatsApp direct draft to send.");
+  if (messages.length !== ids.length) throw new Error("Only direct WhatsApp draft rows can be sent through this action.");
+
+  const now = new Date().toISOString();
+  const rows: Record<string, unknown>[] = [];
+  const failures: Record<string, unknown>[] = [];
+  for (const message of messages) {
+    const vendor = typeof message.vendors === "object" && message.vendors ? message.vendors as Record<string, unknown> : {};
+    const status = cleanText(message.status)?.toLowerCase();
+    if (!["drafted", "queued", "failed"].includes(status || "")) {
+      failures.push({ id: message.id, reason: `Message is ${status}.` });
+      continue;
+    }
+    if (cleanBoolean(vendor.whatsapp_do_not_contact)) {
+      const reason = "Vendor is marked do-not-contact for WhatsApp.";
+      failures.push({ id: message.id, reason });
+      await updateWhatsappMessageFailure(supabase, user, message, reason, now);
+      continue;
+    }
+    try {
+      const data = await metaSendWhatsappTemplate(message);
+      const providerMessageId = cleanText(data?.messages?.[0]?.id);
+      const updateResult = await supabase
+        .from("outreach_messages")
+        .update({
+          status: "sent",
+          delivery_status: "sent",
+          sent_at: now,
+          last_contacted_at: now,
+          provider: "meta",
+          whatsapp_connection_id: connection.id,
+          provider_message_id: providerMessageId,
+          delivery_error: null,
+          updated_at: now
+        })
+        .eq("id", message.id)
+        .eq("owner_email", user.owner_email)
+        .select("*")
+        .single();
+      if (updateResult.error) throw updateResult.error;
+      rows.push(updateResult.data);
+      const history = await supabase.from("contact_history").insert(withOwner({
+        outreach_message_id: message.id,
+        campaign_id: message.campaign_id,
+        vendor_id: message.vendor_id,
+        rfx_event_id: message.rfx_event_id,
+        channel: "whatsapp",
+        direction: "outbound",
+        status: "sent",
+        subject: message.subject,
+        body_preview: contactPreview(message.whatsapp_body || message.whatsapp_text || message.text_body),
+        occurred_at: now,
+        metadata: {
+          provider: "meta",
+          phone_number_id: WHATSAPP_PHONE_NUMBER_ID,
+          provider_message_id: providerMessageId,
+          template_name: message.whatsapp_template_name,
+          template_language: message.whatsapp_template_language
+        }
+      }, user));
+      if (history.error) throw history.error;
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      failures.push({ id: message.id, reason });
+      await updateWhatsappMessageFailure(supabase, user, message, reason, now);
+    }
+  }
+  return { sent: rows.length, failed: failures.length, rows, failures };
+}
+
+async function sendWhatsappGroupOutreachMessages(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_user_id: string | null; owner_email: string | null },
+  input: Record<string, unknown>
+) {
+  const ids = normalizeBulkIds(input.ids, { label: "WhatsApp group message ids", limit: BULK_SEND_LIMIT });
+  if (!ids.length) return { sent: 0, failed: 0, rows: [], failures: [] };
+  requireBulkConfirmation(input, {
+    action: "send_whatsapp_group_outreach_messages",
+    label: "WhatsApp group bulk send",
+    count: ids.length
+  });
+  await activeWhatsappConnection(supabase, user);
+  const messagesResult = await supabase
+    .from("outreach_messages")
+    .select("*, vendor_whatsapp_groups(*)")
+    .eq("owner_email", user.owner_email)
+    .in("id", ids);
+  if (messagesResult.error) throw messagesResult.error;
+  const messages = (messagesResult.data || []).filter((message) => message.channel === "whatsapp_group");
+  if (!messages.length) throw new Error("Select at least one WhatsApp group draft.");
+  const failures = messages.map((message) => ({
+    id: message.id,
+    reason: WHATSAPP_GROUPS_ENABLED
+      ? "Meta WhatsApp group API sending is not available in this deployment. Use manual group send controls."
+      : "WhatsApp group API is disabled. Use manual group send controls."
+  }));
+  const now = new Date().toISOString();
+  for (const failure of failures) {
+    await supabase
+      .from("outreach_messages")
+      .update({ status: "failed", delivery_status: "failed", failed_at: now, delivery_error: failure.reason, updated_at: now })
+      .eq("id", failure.id)
+      .eq("owner_email", user.owner_email);
+  }
+  return { sent: 0, failed: failures.length, rows: [], failures };
+}
+
+async function markWhatsappGroupMessageManuallySent(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_user_id: string | null; owner_email: string | null },
+  input: Record<string, unknown>
+) {
+  const ids = normalizeBulkIds(input.ids, { label: "WhatsApp group message ids", limit: BULK_SELECTED_ID_LIMIT });
+  if (!ids.length) return { updated: 0, rows: [] };
+  requireBulkConfirmation(input, {
+    action: "mark_whatsapp_group_message_manually_sent",
+    label: "WhatsApp group manual send",
+    count: ids.length
+  });
+  const now = new Date().toISOString();
+  const result = await supabase
+    .from("outreach_messages")
+    .update({
+      status: "manual_sent",
+      delivery_status: "manual_sent",
+      manual_sent_at: now,
+      manual_sent_by: user.owner_email,
+      sent_at: now,
+      last_contacted_at: now,
+      updated_at: now
+    })
+    .eq("owner_email", user.owner_email)
+    .eq("channel", "whatsapp_group")
+    .in("id", ids)
+    .select("*");
+  if (result.error) throw result.error;
+  const historyRows = (result.data || []).map((message) => withOwner({
+    outreach_message_id: message.id,
+    campaign_id: message.campaign_id,
+    vendor_id: message.vendor_id,
+    rfx_event_id: message.rfx_event_id,
+    channel: "whatsapp_group",
+    direction: "outbound",
+    status: "manual_sent",
+    subject: message.subject,
+    body_preview: contactPreview(message.whatsapp_body || message.whatsapp_text || message.text_body),
+    occurred_at: now,
+    metadata: {
+      marked_from: "manual_whatsapp_group",
+      manual_sent_by: user.owner_email,
+      group_url: objectRecord(message.metadata).group_url || message.whatsapp_url
+    }
+  }, user));
+  if (historyRows.length) {
+    const history = await supabase.from("contact_history").insert(historyRows);
+    if (history.error) throw history.error;
+  }
+  return { updated: result.data?.length || 0, rows: result.data || [] };
+}
+
 function onboardingDefinition(summary: Record<string, unknown>, profile: Record<string, unknown>, organization: Record<string, unknown>, manual: Map<string, Record<string, unknown>>) {
   const definitions = [
     {
@@ -11247,7 +11903,7 @@ function onboardingDefinition(summary: Record<string, unknown>, profile: Record<
 type ObservabilityEvent = {
   id: string;
   at: string | null;
-  source: "rateware_api" | "gmail" | "google_chat" | "bid_room";
+  source: "rateware_api" | "gmail" | "google_chat" | "whatsapp" | "bid_room";
   severity: "error" | "warning" | "info";
   title: string;
   detail: string;
@@ -11317,6 +11973,7 @@ function auditSource(row: Record<string, unknown>): ObservabilityEvent["source"]
   const entityType = cleanText(row.entity_type) || "";
   if (action.startsWith("gmail.") || entityType.includes("gmail")) return "gmail";
   if (action.startsWith("google_chat.") || entityType.includes("google_chat")) return "google_chat";
+  if (action.startsWith("whatsapp.") || entityType.includes("whatsapp")) return "whatsapp";
   if (action.startsWith("bid_room.") || action.startsWith("rfx.") || entityType.includes("rfx")) return "bid_room";
   return "rateware_api";
 }
@@ -11329,7 +11986,7 @@ function auditSeverity(row: Record<string, unknown>): ObservabilityEvent["severi
 }
 
 function observabilitySummary(events: ObservabilityEvent[]) {
-  const sources: ObservabilityEvent["source"][] = ["rateware_api", "gmail", "google_chat", "bid_room"];
+  const sources: ObservabilityEvent["source"][] = ["rateware_api", "gmail", "google_chat", "whatsapp", "bid_room"];
   const bySource = Object.fromEntries(sources.map((source) => [source, { total: 0, error: 0, warning: 0, info: 0 }]));
   const bySeverity = { error: 0, warning: 0, info: 0 };
   for (const event of events) {
@@ -11357,6 +12014,7 @@ async function buildObservabilityEvents(
   const apiNextAction = "Retry. If this repeats, check the Rateware API deployment and Supabase logs.";
   const gmailNextAction = "Open Settings > Integrations, confirm Gmail is connected, then retry the send queue.";
   const chatNextAction = "Open Settings > Integrations, confirm Google Chat and Space, then retry Chat sync.";
+  const whatsappNextAction = "Open Settings > Integrations, test WhatsApp Business, sync Meta templates, then retry the WhatsApp queue.";
   const bidRoomNextAction = "Open Bid Room, inspect the event thread, then retry or resolve the communication item.";
 
   const auditRows = await safeObservabilityQuery(events, "rateware_api", "Rateware API audit log", apiNextAction, () =>
@@ -11370,7 +12028,7 @@ async function buildObservabilityEvents(
 
   for (const row of auditRows) {
     const action = cleanText(row.action) || "";
-    if (!action.includes("error") && !action.startsWith("gmail.") && !action.startsWith("google_chat.") && !action.startsWith("bid_room.") && !action.startsWith("rfx.")) continue;
+    if (!action.includes("error") && !action.startsWith("gmail.") && !action.startsWith("google_chat.") && !action.startsWith("whatsapp.") && !action.startsWith("bid_room.") && !action.startsWith("rfx.")) continue;
     const source = auditSource(row);
     events.push(observabilityEvent({
       id: `audit-${row.id}`,
@@ -11383,7 +12041,7 @@ async function buildObservabilityEvents(
       entity_type: cleanText(row.entity_type),
       entity_id: cleanText(row.entity_id),
       action,
-      next_action: source === "gmail" ? gmailNextAction : source === "google_chat" ? chatNextAction : source === "bid_room" ? bidRoomNextAction : apiNextAction,
+      next_action: source === "gmail" ? gmailNextAction : source === "google_chat" ? chatNextAction : source === "whatsapp" ? whatsappNextAction : source === "bid_room" ? bidRoomNextAction : apiNextAction,
       metadata: objectRecord(row.metadata)
     }));
   }
@@ -11420,7 +12078,7 @@ async function buildObservabilityEvents(
   const outreachRows = await safeObservabilityQuery(events, "gmail", "Gmail delivery queue", gmailNextAction, () =>
     supabase
       .from("outreach_messages")
-      .select("id,created_at,updated_at,status,channel,recipient_email,subject,delivery_error,sender_email,sender_connection_status,rfx_event_id,campaign_id,metadata")
+      .select("id,created_at,updated_at,status,channel,recipient_email,normalized_recipient_phone,subject,delivery_error,sender_email,sender_connection_status,rfx_event_id,campaign_id,metadata")
       .eq("owner_email", user.owner_email)
       .order("updated_at", { ascending: false })
       .limit(120)
@@ -11428,18 +12086,20 @@ async function buildObservabilityEvents(
   for (const row of outreachRows) {
     const status = cleanText(row.status);
     if (status !== "failed" && !row.delivery_error) continue;
+    const channel = cleanText(row.channel) || "email";
+    const source = channel.startsWith("whatsapp") ? "whatsapp" : "gmail";
     events.push(observabilityEvent({
       id: `outreach-${row.id}`,
       at: cleanText(row.updated_at || row.created_at),
-      source: "gmail",
+      source,
       severity: "error",
-      title: `Invitation failed for ${cleanText(row.recipient_email) || "carrier"}`,
+      title: `${source === "whatsapp" ? "WhatsApp" : "Email"} invitation failed for ${cleanText(row.recipient_email || row.normalized_recipient_phone) || "carrier"}`,
       detail: cleanText(row.delivery_error) || cleanText(row.subject) || "Outbound invitation did not complete.",
       status,
       entity_type: "outreach_messages",
       entity_id: cleanText(row.id),
-      action: "gmail.delivery_failed",
-      next_action: gmailNextAction,
+      action: source === "whatsapp" ? "whatsapp.delivery_failed" : "gmail.delivery_failed",
+      next_action: source === "whatsapp" ? whatsappNextAction : gmailNextAction,
       metadata: {
         campaign_id: row.campaign_id,
         rfx_event_id: row.rfx_event_id,
@@ -11447,6 +12107,38 @@ async function buildObservabilityEvents(
         sender_connection_status: row.sender_connection_status,
         ...(objectRecord(row.metadata))
       }
+    }));
+  }
+
+  const whatsappConnectionRows = await safeObservabilityQuery(events, "whatsapp", "WhatsApp Business connection status", whatsappNextAction, () =>
+    supabase
+      .from("whatsapp_business_connections")
+      .select("id,updated_at,status,phone_number_id,display_phone_number,waba_id,templates_last_synced_at,webhook_verified_at,last_error,metadata")
+      .eq("owner_email", user.owner_email)
+      .eq("provider", "meta")
+      .order("updated_at", { ascending: false })
+      .limit(1)
+  );
+  for (const row of whatsappConnectionRows) {
+    const status = cleanText(row.status) || "not_configured";
+    const missingTemplates = status === "connected" && !row.templates_last_synced_at;
+    const missingWebhook = status === "connected" && !row.webhook_verified_at;
+    if (status === "connected" && !row.last_error && !missingTemplates && !missingWebhook) continue;
+    events.push(observabilityEvent({
+      id: `whatsapp-connection-${row.id || "meta"}`,
+      at: cleanText(row.updated_at),
+      source: "whatsapp",
+      severity: status === "error" || row.last_error ? "error" : "warning",
+      title: status === "connected"
+        ? missingTemplates ? "WhatsApp templates need sync" : "WhatsApp webhook is not verified"
+        : `WhatsApp Business is ${status.replace(/_/g, " ")}`,
+      detail: cleanText(row.last_error) || cleanText(row.display_phone_number || row.phone_number_id || row.waba_id) || "Meta WhatsApp sender is not ready.",
+      status,
+      entity_type: "whatsapp_business_connections",
+      entity_id: cleanText(row.id),
+      action: "whatsapp.connection_status",
+      next_action: whatsappNextAction,
+      metadata: objectRecord(row.metadata)
     }));
   }
 
@@ -11558,7 +12250,7 @@ async function buildObservabilityEvents(
 }
 
 async function buildSaasSettings(supabase: ReturnType<typeof createClient>, user: { owner_user_id: string | null; owner_email: string | null }) {
-  const [profile, organization, checklistResult, auditResult, uploads, vendors, pending, approved, rfxEvents, outreachMessages, gmailConnections, googleChatConnections] = await Promise.all([
+  const [profile, organization, checklistResult, auditResult, uploads, vendors, pending, approved, rfxEvents, outreachMessages, gmailConnections, googleChatConnections, whatsappConnections] = await Promise.all([
     ensureSaasProfile(supabase, user),
     ensureOrganization(supabase, user),
     supabase.from("onboarding_checklist").select("*").eq("owner_email", user.owner_email),
@@ -11570,7 +12262,8 @@ async function buildSaasSettings(supabase: ReturnType<typeof createClient>, user
     supabase.from("rfx_events").select("id", { count: "exact", head: true }).eq("owner_email", user.owner_email).neq("status", "archived"),
     supabase.from("outreach_messages").select("id", { count: "exact", head: true }).eq("owner_email", user.owner_email).neq("status", "archived"),
     listGmailConnections(supabase, user),
-    listGoogleChatConnections(supabase, user)
+    listGoogleChatConnections(supabase, user),
+    listWhatsappConnections(supabase, user)
   ]);
 
   for (const result of [checklistResult, auditResult, uploads, vendors, pending, approved, rfxEvents, outreachMessages]) {
@@ -11599,7 +12292,8 @@ async function buildSaasSettings(supabase: ReturnType<typeof createClient>, user
     onboarding,
     audit: auditResult.data || [],
     gmail: gmailConnections,
-    google_chat: googleChatConnections
+    google_chat: googleChatConnections,
+    whatsapp: whatsappConnections
   };
 }
 
@@ -13248,7 +13942,7 @@ Deno.serve(async (request) => {
       const maxLimit = lightweight ? 1000 : 250;
       const limit = Math.min(Math.max(Number(body.limit) || 75, 1), maxLimit);
       const vendorSelect = lightweight
-        ? "id,vendor_name,name,legal_name,contact_name,domain,primary_email,secondary_emails,whatsapp_phone,preferred_channel,base_stage,funnel_stage,status,tags,coverage_notes,notes,logo_url,created_at,updated_at"
+        ? "id,vendor_name,name,legal_name,contact_name,domain,primary_email,secondary_emails,whatsapp_phone,preferred_channel,whatsapp_permission_basis,whatsapp_do_not_contact,whatsapp_opt_in_status,whatsapp_group_url,whatsapp_group_name,whatsapp_meta_group_id,whatsapp_group_status,whatsapp_notes,base_stage,funnel_stage,status,tags,coverage_notes,notes,logo_url,created_at,updated_at"
         : "*";
       let query = supabase
         .from("vendors")
@@ -14462,10 +15156,14 @@ Deno.serve(async (request) => {
       const senderEmail = cleanText(body.sender_email || campaign.sender_email);
       const senderLabel = cleanText(body.sender_label || campaign.sender_label || senderEmail);
       const senderConnectionStatus = cleanText(body.sender_connection_status || campaign.sender_connection_status) || "draft_only";
+      const whatsappTargetMode = cleanText(body.whatsapp_target_mode || campaign.whatsapp_target_mode || "direct_vendor");
+      const targetMode = ["direct_vendor", "vendor_group", "direct_and_group"].includes(whatsappTargetMode) ? whatsappTargetMode : "direct_vendor";
+      const whatsappConnection = await listWhatsappConnections(supabase, user);
+      const whatsappConnectionRow = whatsappConnection.rows?.[0] || {};
 
       const invitationSelect = `
         *,
-        vendors(id,vendor_name,domain,primary_email,secondary_emails,whatsapp_phone,preferred_channel,contact_name),
+        vendors(id,vendor_name,domain,primary_email,secondary_emails,whatsapp_phone,preferred_channel,contact_name,whatsapp_permission_basis,whatsapp_do_not_contact,whatsapp_group_url,whatsapp_group_name,whatsapp_meta_group_id,whatsapp_group_status),
         rfx_events!inner(id,owner_email,rfx_id,name,customer,status,due_date,event_type),
         rfx_lanes(*)
       `;
@@ -14503,6 +15201,24 @@ Deno.serve(async (request) => {
         campaign_id: campaign.id,
         template_id: template.id
       });
+      const vendorIdsForGroups = [...new Set(invitations.map((invitation) => cleanText(invitation.vendor_id)).filter(Boolean))];
+      const vendorGroupsByVendor = new Map<string, Record<string, unknown>>();
+      if (vendorIdsForGroups.length) {
+        for (const vendorChunk of chunkValues(vendorIdsForGroups, 200)) {
+          const groupsResult = await supabase
+            .from("vendor_whatsapp_groups")
+            .select("*")
+            .eq("owner_email", user.owner_email)
+            .in("vendor_id", vendorChunk)
+            .neq("verification_status", "blocked")
+            .order("updated_at", { ascending: false });
+          if (groupsResult.error) throw groupsResult.error;
+          for (const group of groupsResult.data || []) {
+            const vendorId = cleanText(group.vendor_id);
+            if (vendorId && !vendorGroupsByVendor.has(vendorId)) vendorGroupsByVendor.set(vendorId, group);
+          }
+        }
+      }
       const suppressedEmails = await suppressedEmailSet(
         supabase,
         user,
@@ -14521,9 +15237,16 @@ Deno.serve(async (request) => {
         const htmlBody = renderTemplateText(template.html_body || template.whatsapp_body || "", context);
         const textBody = htmlToText(htmlBody);
         const whatsappText = renderTemplateText(template.whatsapp_body || textBody, context);
+        const whatsappGroupText = renderTemplateText(template.whatsapp_group_body || template.whatsapp_body || textBody, context);
         const channels = messageChannels(campaign.channel || template.channel);
         const groupInvitationIds = invitationGroup.map((item) => item.id).filter(Boolean);
         const laneIds = invitationGroup.map((item) => item.rfx_lane_id).filter(Boolean);
+        const vendorId = cleanText(invitation.vendor_id);
+        const permissionBasis = cleanText(vendor.whatsapp_permission_basis) || "contractual";
+        const doNotContact = cleanBoolean(vendor.whatsapp_do_not_contact);
+        const normalizedRecipientPhone = normalizeWhatsappPhone(vendor.whatsapp_phone);
+        const whatsappTemplateName = cleanText(template.meta_template_name);
+        const whatsappTemplateLanguage = cleanText(template.meta_template_language) || "en_US";
 
         if (channels.includes("email")) {
           const recipientEmail = firstSendableVendorEmail(vendor, suppressedEmails);
@@ -14567,9 +15290,11 @@ Deno.serve(async (request) => {
           }
         }
 
-        if (channels.includes("whatsapp")) {
+        if (channels.includes("whatsapp") && targetMode !== "vendor_group") {
           const recipientPhone = cleanText(vendor.whatsapp_phone);
-          if (phoneForWhatsapp(recipientPhone)) {
+          if (doNotContact) {
+            skipped.push({ invitation_id: invitation.id, invitation_ids: groupInvitationIds, channel: "whatsapp", reason: "Vendor is marked do-not-contact for WhatsApp" });
+          } else if (phoneForWhatsapp(recipientPhone)) {
             rows.push(withOwner({
               campaign_id: campaign.id,
               template_id: template.id,
@@ -14579,7 +15304,14 @@ Deno.serve(async (request) => {
               vendor_id: invitation.vendor_id,
               channel: "whatsapp",
               recipient_phone: recipientPhone,
+              normalized_recipient_phone: normalizedRecipientPhone,
+              whatsapp_target_mode: "direct_vendor",
+              provider: "meta",
+              whatsapp_connection_id: whatsappConnectionRow.id || null,
+              whatsapp_template_name: whatsappTemplateName,
+              whatsapp_template_language: whatsappTemplateLanguage,
               whatsapp_text: whatsappText,
+              whatsapp_body: whatsappText,
               text_body: whatsappText,
               whatsapp_url: whatsappDraftUrl(recipientPhone, whatsappText),
               sender_email: senderEmail,
@@ -14595,11 +15327,72 @@ Deno.serve(async (request) => {
                 rfx_lane_ids: laneIds,
                 sender_email: senderEmail,
                 sender_label: senderLabel,
-                sender_connection_status: senderConnectionStatus
+                sender_connection_status: senderConnectionStatus,
+                whatsapp_permission_basis: permissionBasis,
+                whatsapp_template_mapped: Boolean(whatsappTemplateName),
+                whatsapp_connection_status: whatsappConnectionRow.status || "not_configured"
               }
             }, user));
           } else {
             skipped.push({ invitation_id: invitation.id, invitation_ids: groupInvitationIds, channel: "whatsapp", reason: "Missing WhatsApp phone" });
+          }
+        }
+
+        if (channels.includes("whatsapp_group") && targetMode !== "direct_vendor") {
+          const groupRow = vendorId ? vendorGroupsByVendor.get(vendorId) : null;
+          const groupName = cleanText(groupRow?.group_name || vendor.whatsapp_group_name);
+          const groupUrl = cleanText(groupRow?.group_url || vendor.whatsapp_group_url);
+          const metaGroupId = cleanText(groupRow?.meta_group_id || vendor.whatsapp_meta_group_id);
+          const groupStatus = cleanText(groupRow?.verification_status || vendor.whatsapp_group_status || "manual_only");
+          const groupBlocked = cleanBoolean(groupRow?.do_not_contact) || doNotContact;
+          if (groupBlocked) {
+            skipped.push({ invitation_id: invitation.id, invitation_ids: groupInvitationIds, channel: "whatsapp_group", reason: "Vendor WhatsApp group is marked do-not-contact" });
+          } else if (groupName || groupUrl || metaGroupId) {
+            rows.push(withOwner({
+              campaign_id: campaign.id,
+              template_id: template.id,
+              rfx_event_id: invitation.rfx_event_id,
+              rfx_lane_id: invitation.rfx_lane_id,
+              rfx_lane_vendor_id: invitation.id,
+              vendor_id: invitation.vendor_id,
+              channel: "whatsapp_group",
+              vendor_whatsapp_group_id: groupRow?.id || null,
+              meta_whatsapp_group_id: metaGroupId,
+              whatsapp_target_mode: "vendor_group",
+              provider: "meta",
+              whatsapp_connection_id: whatsappConnectionRow.id || null,
+              whatsapp_template_name: whatsappTemplateName,
+              whatsapp_template_language: whatsappTemplateLanguage,
+              recipient_phone: "",
+              whatsapp_text: whatsappGroupText,
+              whatsapp_body: whatsappGroupText,
+              text_body: whatsappGroupText,
+              whatsapp_url: groupUrl,
+              sender_email: senderEmail,
+              sender_label: senderLabel,
+              sender_connection_status: senderConnectionStatus,
+              status: "drafted",
+              metadata: {
+                bid_link: context.bid_link,
+                profile_link: context.profile_link,
+                generated_at: new Date().toISOString(),
+                lane_count: invitationGroup.length,
+                rfx_lane_vendor_ids: groupInvitationIds,
+                rfx_lane_ids: laneIds,
+                group_name: groupName,
+                group_url: groupUrl,
+                group_status: groupStatus,
+                sender_email: senderEmail,
+                sender_label: senderLabel,
+                sender_connection_status: senderConnectionStatus,
+                whatsapp_permission_basis: cleanText(groupRow?.permission_basis) || permissionBasis,
+                whatsapp_group_delivery: WHATSAPP_GROUPS_ENABLED && metaGroupId && ["api_ready", "verified"].includes(groupStatus) ? "api_ready" : "manual_only",
+                whatsapp_template_mapped: Boolean(whatsappTemplateName),
+                whatsapp_connection_status: whatsappConnectionRow.status || "not_configured"
+              }
+            }, user));
+          } else {
+            skipped.push({ invitation_id: invitation.id, invitation_ids: groupInvitationIds, channel: "whatsapp_group", reason: "Missing vendor WhatsApp group" });
           }
         }
       }
@@ -14659,7 +15452,7 @@ Deno.serve(async (request) => {
     if (body.action === "list_outreach_messages") {
       let query = supabase
         .from("outreach_messages")
-        .select("*, vendors(vendor_name,domain,primary_email,whatsapp_phone), outreach_campaigns(name,notes), rfx_events(rfx_id,name), rfx_lanes(origin,destination,equipment,trailer,operation,service), rfx_lane_vendors(id,invitation_status,invitation_token,award_role,bid_rate,currency,responded_at)")
+        .select("*, vendors(vendor_name,domain,primary_email,whatsapp_phone,whatsapp_group_name,whatsapp_group_url,whatsapp_group_status,whatsapp_do_not_contact), vendor_whatsapp_groups(group_name,group_url,verification_status,do_not_contact), outreach_campaigns(name,notes,whatsapp_target_mode,group_delivery_policy), rfx_events(rfx_id,name), rfx_lanes(origin,destination,equipment,trailer,operation,service), rfx_lane_vendors(id,invitation_status,invitation_token,award_role,bid_rate,currency,responded_at)")
         .eq("owner_email", user.owner_email)
         .order("created_at", { ascending: false })
         .limit(1000);
@@ -14675,6 +15468,21 @@ Deno.serve(async (request) => {
 
     if (body.action === "send_outreach_messages") {
       const result = await sendOutreachMessages(supabase, user, body);
+      return jsonResponse(result);
+    }
+
+    if (body.action === "send_whatsapp_outreach_messages") {
+      const result = await sendWhatsappOutreachMessages(supabase, user, body);
+      return jsonResponse(result);
+    }
+
+    if (body.action === "send_whatsapp_group_outreach_messages") {
+      const result = await sendWhatsappGroupOutreachMessages(supabase, user, body);
+      return jsonResponse(result);
+    }
+
+    if (body.action === "mark_whatsapp_group_message_manually_sent") {
+      const result = await markWhatsappGroupMessageManuallySent(supabase, user, body);
       return jsonResponse(result);
     }
 
@@ -14874,6 +15682,62 @@ Deno.serve(async (request) => {
       const row = await saveGoogleChatSettings(supabase, user, body);
       await writeAuditLog(supabase, user, "google_chat.space.update", "google_chat_connections", row.default_space_name || GOOGLE_CHAT_ALLOWED_ACCOUNT, `Updated Google Chat default space to ${row.default_space_display_name || row.default_space_name || "selected space"}`);
       return jsonResponse({ row });
+    }
+
+    if (body.action === "list_whatsapp_connections") {
+      return jsonResponse(await listWhatsappConnections(supabase, user));
+    }
+
+    if (body.action === "get_whatsapp_connection_status") {
+      const connections = await listWhatsappConnections(supabase, user);
+      return jsonResponse({ row: connections.rows?.[0] || null });
+    }
+
+    if (body.action === "start_whatsapp_business_connection") {
+      const result = await startWhatsappBusinessConnection(supabase, user, body);
+      if ("error" in result && !result.authorization_url && !result.connected) return jsonResponse(result, 400);
+      return jsonResponse(result);
+    }
+
+    if (body.action === "complete_whatsapp_business_connection") {
+      const result = await completeWhatsappBusinessConnection(supabase, user, body);
+      if ("error" in result) return jsonResponse(result, 400);
+      return jsonResponse(result);
+    }
+
+    if (body.action === "disconnect_whatsapp_business_connection") {
+      const row = await disconnectWhatsappBusinessConnection(supabase, user);
+      await writeAuditLog(supabase, user, "whatsapp.disconnect", "whatsapp_business_connections", row.id || "meta", "Disconnected WhatsApp Business integration");
+      return jsonResponse({ row });
+    }
+
+    if (body.action === "test_whatsapp_business_connection") {
+      return jsonResponse(await testWhatsappBusinessConnection(supabase, user));
+    }
+
+    if (body.action === "sync_whatsapp_templates") {
+      return jsonResponse(await syncWhatsappTemplates(supabase, user));
+    }
+
+    if (body.action === "list_whatsapp_templates") {
+      return jsonResponse(await listWhatsappTemplates(supabase, user));
+    }
+
+    if (body.action === "list_whatsapp_phone_numbers") {
+      return jsonResponse(await listWhatsappPhoneNumbers());
+    }
+
+    if (body.action === "select_whatsapp_sender") {
+      const row = await selectWhatsappSender(supabase, user, body);
+      return jsonResponse({ row });
+    }
+
+    if (body.action === "verify_whatsapp_webhook") {
+      return jsonResponse(await verifyWhatsappWebhook(supabase, user));
+    }
+
+    if (body.action === "verify_vendor_whatsapp_group") {
+      return jsonResponse(await verifyVendorWhatsappGroup(supabase, user, body));
     }
 
     if (body.action === "update_saas_profile") {

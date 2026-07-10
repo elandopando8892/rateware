@@ -358,12 +358,14 @@
                   </label>
                   <label>
                     Preferred channel
-                    <select id="wizard-preferred-channel">
-                      <option value="email">Email</option>
-                      <option value="whatsapp">WhatsApp</option>
-                      <option value="portal">Portal</option>
-                    </select>
-                  </label>
+                <select id="wizard-preferred-channel">
+                  <option value="email">Email</option>
+                  <option value="whatsapp">WhatsApp</option>
+                  <option value="whatsapp_group">WhatsApp group</option>
+                  <option value="multi">Email + WhatsApp</option>
+                  <option value="portal">Portal</option>
+                </select>
+              </label>
                 </section>
                 <section class="wizard-panel hidden" data-step-panel="2">
                   <label>
@@ -431,6 +433,8 @@
                 <select id="preferred-channel">
                   <option value="email">Email</option>
                   <option value="whatsapp">WhatsApp</option>
+                  <option value="whatsapp_group">WhatsApp group</option>
+                  <option value="multi">Email + WhatsApp</option>
                   <option value="portal">Portal</option>
                 </select>
               </label>
@@ -507,7 +511,7 @@
             <button id="download-template-button" class="secondary" type="button">Download template</button>
             <label class="import-zone" for="vendor-import">
               <span>Choose vendor file</span>
-              <small>Columns: vendor_name, legal_name, domain, contact_name, primary_email, whatsapp_phone, preferred_channel, tags, coverage_notes, notes</small>
+              <small>Columns: vendor_name, legal_name, domain, contact_name, primary_email, whatsapp_phone, preferred_channel, whatsapp_permission_basis, whatsapp_do_not_contact, whatsapp_opt_in_status, whatsapp_group_name, whatsapp_group_url, whatsapp_group_status, tags, coverage_notes, notes</small>
               <input id="vendor-import" type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
             </label>
             <p id="import-status" class="status-message" role="status"></p>
@@ -546,6 +550,8 @@
                   <option value="">Any</option>
                   <option value="email">Email</option>
                   <option value="whatsapp">WhatsApp</option>
+                  <option value="whatsapp_group">WhatsApp group</option>
+                  <option value="multi">Email + WhatsApp</option>
                   <option value="portal">Portal</option>
                 </select>
               </label>
@@ -926,7 +932,55 @@
                 <select id="drawer-edit-channel">
                   <option value="email">Email</option>
                   <option value="whatsapp">WhatsApp</option>
+                  <option value="whatsapp_group">WhatsApp group</option>
+                  <option value="multi">Email + WhatsApp</option>
                   <option value="portal">Portal</option>
+                </select>
+              </label>
+              <label>
+                WhatsApp permission
+                <select id="drawer-edit-whatsapp-permission">
+                  <option value="contractual">Contractual</option>
+                  <option value="consent">Opt-in consent</option>
+                  <option value="manual">Manual permission</option>
+                  <option value="unknown">Unknown</option>
+                </select>
+              </label>
+              <label>
+                WhatsApp opt-in
+                <select id="drawer-edit-whatsapp-opt-in">
+                  <option value="contractual">Contractual</option>
+                  <option value="opted_in">Opted in</option>
+                  <option value="manual">Manual</option>
+                  <option value="unknown">Unknown</option>
+                  <option value="opted_out">Opted out</option>
+                </select>
+              </label>
+              <label class="checkbox-label">
+                <input id="drawer-edit-whatsapp-do-not-contact" type="checkbox" />
+                Do not contact by WhatsApp
+              </label>
+              <label>
+                WhatsApp group name
+                <input id="drawer-edit-whatsapp-group-name" placeholder="Carrier RFx group" />
+              </label>
+              <label>
+                WhatsApp group URL
+                <input id="drawer-edit-whatsapp-group-url" placeholder="https://chat.whatsapp.com/..." />
+              </label>
+              <label>
+                WhatsApp Meta group ID
+                <input id="drawer-edit-whatsapp-meta-group-id" placeholder="Optional Meta API group id" />
+              </label>
+              <label>
+                WhatsApp group status
+                <select id="drawer-edit-whatsapp-group-status">
+                  <option value="manual_only">Manual only</option>
+                  <option value="pending">Pending verification</option>
+                  <option value="api_ready">API ready</option>
+                  <option value="verified">Verified</option>
+                  <option value="blocked">Blocked</option>
+                  <option value="error">Error</option>
                 </select>
               </label>
               <label>
@@ -949,6 +1003,10 @@
               <label>
                 Notes
                 <textarea id="drawer-edit-notes" rows="3"></textarea>
+              </label>
+              <label class="wide-field">
+                WhatsApp notes
+                <textarea id="drawer-edit-whatsapp-notes" rows="3" placeholder="Permission source, group instructions, opt-out notes"></textarea>
               </label>
               <div class="drawer-profile-editor">
                 <div class="section-heading compact">

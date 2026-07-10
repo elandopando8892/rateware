@@ -946,6 +946,14 @@ function downloadVendorTemplate() {
     "primary_email",
     "whatsapp_phone",
     "preferred_channel",
+    "whatsapp_permission_basis",
+    "whatsapp_do_not_contact",
+    "whatsapp_opt_in_status",
+    "whatsapp_group_name",
+    "whatsapp_group_url",
+    "whatsapp_meta_group_id",
+    "whatsapp_group_status",
+    "whatsapp_notes",
     "logo_url",
     "tags",
     "coverage_notes",
@@ -988,7 +996,15 @@ function downloadVendorTemplate() {
       "Jane Doe",
       "pricing@abclogistics.com",
       "+5215550000000",
-      "email",
+      "multi",
+      "contractual",
+      "false",
+      "contractual",
+      "ABC Logistics RFx",
+      "https://chat.whatsapp.com/example",
+      "",
+      "manual_only",
+      "Use group only after manual verification",
       "https://abclogistics.com/logo.png",
       "mx, cross-border, ftl",
       "MX-US lanes, Laredo, dry van",
@@ -2468,6 +2484,8 @@ function renderVendorFilterRow(columns) {
           <option value="" ${channel ? "" : "selected"}>All</option>
           <option value="email" ${channel === "email" ? "selected" : ""}>Email</option>
           <option value="whatsapp" ${channel === "whatsapp" ? "selected" : ""}>WhatsApp</option>
+          <option value="whatsapp_group" ${channel === "whatsapp_group" ? "selected" : ""}>WhatsApp group</option>
+          <option value="multi" ${channel === "multi" ? "selected" : ""}>Email + WhatsApp</option>
           <option value="portal" ${channel === "portal" ? "selected" : ""}>Portal</option>
         </select>
       `);
@@ -2598,6 +2616,8 @@ function renderVendorSheetCell(row, columnKey) {
     return `<td>${editableVendorSelect(row, "preferred_channel", [
       { value: "email", label: "Email" },
       { value: "whatsapp", label: "WhatsApp" },
+      { value: "whatsapp_group", label: "WhatsApp group" },
+      { value: "multi", label: "Email + WhatsApp" },
       { value: "portal", label: "Portal" }
     ])}</td>`;
   }
@@ -2986,6 +3006,14 @@ function normalizeImportedRow(row) {
     ...emails,
     whatsapp_phone: row.whatsapp_phone || row.whatsapp || row.phone || row["WhatsApp"] || row["Phone"],
     preferred_channel: row.preferred_channel || row.channel || row["Channel"],
+    whatsapp_permission_basis: row.whatsapp_permission_basis || row["WhatsApp Permission"] || row["Whatsapp Permission"],
+    whatsapp_do_not_contact: row.whatsapp_do_not_contact || row.do_not_contact_whatsapp || row["WhatsApp Do Not Contact"] || row["Whatsapp Do Not Contact"],
+    whatsapp_opt_in_status: row.whatsapp_opt_in_status || row["WhatsApp Opt In"] || row["Whatsapp Opt In"],
+    whatsapp_group_name: row.whatsapp_group_name || row.group_name || row["WhatsApp Group Name"] || row["Whatsapp Group Name"],
+    whatsapp_group_url: row.whatsapp_group_url || row.group_url || row["WhatsApp Group URL"] || row["Whatsapp Group URL"],
+    whatsapp_meta_group_id: row.whatsapp_meta_group_id || row.meta_group_id || row["WhatsApp Meta Group ID"] || row["Whatsapp Meta Group ID"],
+    whatsapp_group_status: row.whatsapp_group_status || row.group_status || row["WhatsApp Group Status"] || row["Whatsapp Group Status"],
+    whatsapp_notes: row.whatsapp_notes || row["WhatsApp Notes"] || row["Whatsapp Notes"],
     logo_url: row.logo_url || row.logo || row.image_url || row["Logo URL"] || row["Logo"] || row["Image URL"],
     tags: Array.from(new Set([...splitTags(row.tags || row.tag || row.services || row.equipment || row.coverage || row["Tags"] || row["Equipment"]), ...profileDerivedTags(profile_data)])),
     coverage_notes: row.coverage_notes || row.coverage || row.lanes || row["Coverage"] || row["Lanes"],
@@ -3334,6 +3362,9 @@ function renderDrawerQuickActions(vendor) {
     const phone = String(vendor.whatsapp_phone).replace(/\D/g, "");
     if (phone) actions.push(`<a class="small-button secondary" href="https://wa.me/${escapeHtml(phone)}" target="_blank" rel="noreferrer">WhatsApp</a>`);
   }
+  if (vendor.whatsapp_group_url) {
+    actions.push(`<a class="small-button secondary" href="${escapeHtml(vendor.whatsapp_group_url)}" target="_blank" rel="noreferrer">WA group</a>`);
+  }
   actions.push(`<button class="small-button secondary" type="button" data-copy-profile-link="${escapeHtml(vendor.id || vendor.vendor_id)}">Copy profile link</button>`);
   return actions.length ? actions.join("") : '<span class="muted-text">No quick actions available</span>';
 }
@@ -3551,7 +3582,12 @@ function openVendorDrawer(vendorId, options = {}) {
   setDrawerValue("#drawer-rateware-evidence", renderDrawerRatewareEvidence(vendor));
   setDrawerValue(
     "#drawer-contact",
-    [vendor.contact_name, vendorEmailInputValue(vendor), vendor.whatsapp_phone].filter(Boolean).map(escapeHtml).join("<br>")
+    [
+      vendor.contact_name,
+      vendorEmailInputValue(vendor),
+      vendor.whatsapp_phone,
+      vendor.whatsapp_group_name || vendor.whatsapp_group_url
+    ].filter(Boolean).map(escapeHtml).join("<br>")
   );
   setDrawerValue("#drawer-channel", escapeHtml(vendor.preferred_channel));
   setDrawerValue("#drawer-tags", `<div class="tag-list">${renderTags(vendor.tags)}</div>`);
@@ -3567,10 +3603,18 @@ function openVendorDrawer(vendorId, options = {}) {
   document.querySelector("#drawer-edit-email").value = vendorEmailInputValue(vendor);
   document.querySelector("#drawer-edit-whatsapp").value = vendor.whatsapp_phone || "";
   document.querySelector("#drawer-edit-channel").value = vendor.preferred_channel || "email";
+  document.querySelector("#drawer-edit-whatsapp-permission").value = vendor.whatsapp_permission_basis || "contractual";
+  document.querySelector("#drawer-edit-whatsapp-opt-in").value = vendor.whatsapp_opt_in_status || "contractual";
+  document.querySelector("#drawer-edit-whatsapp-do-not-contact").checked = Boolean(vendor.whatsapp_do_not_contact);
+  document.querySelector("#drawer-edit-whatsapp-group-name").value = vendor.whatsapp_group_name || "";
+  document.querySelector("#drawer-edit-whatsapp-group-url").value = vendor.whatsapp_group_url || "";
+  document.querySelector("#drawer-edit-whatsapp-meta-group-id").value = vendor.whatsapp_meta_group_id || "";
+  document.querySelector("#drawer-edit-whatsapp-group-status").value = vendor.whatsapp_group_status || "manual_only";
   document.querySelector("#drawer-edit-status").value = vendor.status || "active";
   document.querySelector("#drawer-edit-tags").value = splitTags(vendor.tags).join(", ");
   document.querySelector("#drawer-edit-coverage").value = vendor.coverage_notes || "";
   document.querySelector("#drawer-edit-notes").value = vendor.notes || "";
+  document.querySelector("#drawer-edit-whatsapp-notes").value = vendor.whatsapp_notes || "";
   renderOnboardingEditor(vendor);
   if (drawerLogoFile) drawerLogoFile.value = "";
   drawerArchiveButton.textContent = vendor.base_stage === "archived" ? "Restore to Sourcing" : "Archive vendor";
@@ -3592,6 +3636,14 @@ function readDrawerPatch() {
     ...emails,
     whatsapp_phone: document.querySelector("#drawer-edit-whatsapp").value,
     preferred_channel: document.querySelector("#drawer-edit-channel").value,
+    whatsapp_permission_basis: document.querySelector("#drawer-edit-whatsapp-permission").value,
+    whatsapp_opt_in_status: document.querySelector("#drawer-edit-whatsapp-opt-in").value,
+    whatsapp_do_not_contact: document.querySelector("#drawer-edit-whatsapp-do-not-contact").checked,
+    whatsapp_group_name: document.querySelector("#drawer-edit-whatsapp-group-name").value,
+    whatsapp_group_url: document.querySelector("#drawer-edit-whatsapp-group-url").value,
+    whatsapp_meta_group_id: document.querySelector("#drawer-edit-whatsapp-meta-group-id").value,
+    whatsapp_group_status: document.querySelector("#drawer-edit-whatsapp-group-status").value,
+    whatsapp_notes: document.querySelector("#drawer-edit-whatsapp-notes").value,
     status: document.querySelector("#drawer-edit-status").value,
     tags,
     coverage_notes: document.querySelector("#drawer-edit-coverage").value,

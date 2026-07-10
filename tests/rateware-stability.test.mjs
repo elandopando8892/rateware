@@ -98,6 +98,8 @@ const rfxTemplateSignatureMigration = readFileSync(new URL("../supabase/migratio
 const rfxTemplateSignatureImageMigration = readFileSync(new URL("../supabase/migrations/20260708112500_add_signature_image_to_rfx_templates.sql", import.meta.url), "utf8");
 const rfxTemplateProfileLinkMigration = readFileSync(new URL("../supabase/migrations/20260708123000_add_profile_update_link_to_rfx_templates.sql", import.meta.url), "utf8");
 const vendorSupportMigration = readFileSync(new URL("../supabase/migrations/20260708143000_vendor_support_tickets.sql", import.meta.url), "utf8");
+const whatsappBusinessMigration = readFileSync(new URL("../supabase/migrations/20260710133000_whatsapp_business_integration.sql", import.meta.url), "utf8");
+const whatsappWebhookSource = readFileSync(new URL("../supabase/functions/whatsapp-webhook/index.ts", import.meta.url), "utf8");
 const rfxInvitationTableSource = rfxEventsSource.slice(rfxEventsSource.indexOf("function laneTableLabels"), rfxEventsSource.indexOf("function firstOutreachTarget"));
 const apiInvitationTableSource = apiSource.slice(apiSource.indexOf("function outreachLaneTableLabels"), apiSource.indexOf("function phoneForWhatsapp"));
 const marksmanSignatureAsset = new URL("../assets/marksman-email-signature.png", import.meta.url);
@@ -218,6 +220,40 @@ assert.match(rfxBidApiSource, /customer_rfi_submitted/, "Customer RFI submission
 assert.match(rfxBidApiSource, /rfx_rfi_business_rules/, "Customer RFI API should persist structured business rules");
 assert.match(rfxBidApiSource, /rfx_rfi_service_requirements/, "Customer RFI API should persist structured service requirements");
 assert.match(rfxBidApiSource, /rfx_rfi_carrier_requirements/, "Customer RFI API should persist structured carrier requirements");
+
+for (const table of ["whatsapp_business_connections", "vendor_whatsapp_contacts", "vendor_whatsapp_groups"]) {
+  assert.match(whatsappBusinessMigration, new RegExp(`create table if not exists public\\.${table}`), `WhatsApp migration should create ${table}`);
+}
+for (const column of [
+  "whatsapp_permission_basis",
+  "whatsapp_do_not_contact",
+  "whatsapp_opt_in_status",
+  "whatsapp_group_url",
+  "whatsapp_group_name",
+  "whatsapp_meta_group_id",
+  "whatsapp_group_status",
+  "whatsapp_notes"
+]) {
+  assert.match(whatsappBusinessMigration, new RegExp(`add column if not exists ${column}`), `WhatsApp migration should add vendors.${column}`);
+  assert.match(apiSource, new RegExp(column), `Rateware API should handle ${column}`);
+  assert.match(vendorsSource, new RegExp(column), `Carrier CRM should handle ${column}`);
+}
+assert.match(whatsappBusinessMigration, /email_whatsapp_group/, "Outreach templates and campaigns should support composite WhatsApp group channels");
+assert.match(whatsappBusinessMigration, /check \(channel in \('email', 'whatsapp', 'whatsapp_group'\)\)/, "Outreach messages should support WhatsApp message rows");
+assert.match(apiSource, /list_whatsapp_connections/, "Rateware API should expose WhatsApp connection status");
+assert.match(apiSource, /send_whatsapp_outreach_messages/, "Rateware API should send direct WhatsApp Business drafts");
+assert.match(apiSource, /mark_whatsapp_group_message_manually_sent/, "Rateware API should support manual WhatsApp group completion");
+assert.match(apiSource, /send_whatsapp_group_outreach_messages/, "Rateware API should explicitly guard WhatsApp group automation");
+assert.match(settingsHtml, /connect-whatsapp-button/, "Settings should expose WhatsApp Business connection controls");
+assert.match(settingsSource, /WHATSAPP_WEBHOOK_ENDPOINT/, "Settings should show the Meta webhook endpoint");
+assert.match(rfxEventsHtml, /rfx-send-selected-whatsapp-drafts/, "RFx Bid Room should expose selected WhatsApp draft sending");
+assert.match(rfxEventsHtml, /rfx-mark-selected-whatsapp-groups/, "RFx Bid Room should expose manual WhatsApp group completion");
+assert.match(rfxEventsSource, /selectableWhatsappDrafts/, "RFx Bid Room should calculate direct WhatsApp selectable drafts");
+assert.match(rfxEventsSource, /selectableWhatsappGroupDrafts/, "RFx Bid Room should calculate manual group selectable drafts");
+assert.match(outreachServiceSource, /sendWhatsappOutreachMessages/, "Outreach service should call direct WhatsApp sending action");
+assert.match(whatsappWebhookSource, /hub\.verify_token/, "WhatsApp webhook should implement Meta verification");
+assert.match(whatsappWebhookSource, /x-hub-signature-256/, "WhatsApp webhook should validate Meta signatures when configured");
+assert.match(whatsappWebhookSource, /provider_message_id/, "WhatsApp webhook should update outreach messages by provider message id");
 assert.match(rfxBidApiSource, /rfx_rfi_crossborder_details/, "Customer RFI API should persist structured crossborder details");
 assert.match(apiSource, /business_rules: businessRules\.data/, "RFx Process detail should expose structured business rules");
 assert.match(rfxProcessServiceSource, /fetchRfxProcessProjects/, "RFx Process service should expose project listing");

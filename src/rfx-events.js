@@ -31,8 +31,11 @@ import {
   fetchOutreachTemplates,
   generateOutreachDrafts,
   deleteOutreachMessages,
+  markWhatsappGroupMessageManuallySent,
   markOutreachMessages,
   sendOutreachMessages,
+  sendWhatsappOutreachMessages,
+  sendWhatsappGroupOutreachMessages,
   updateOutreachTemplate
 } from "./outreach-service.js";
 import { createVendorSegment, deleteVendorSegment, fetchVendorSegments, fetchVendors, updateVendorSegment } from "./vendor-service.js";
@@ -134,10 +137,12 @@ const rfxOutreachForm = document.querySelector("#rfx-outreach-form");
 const rfxOutreachCampaignName = document.querySelector("#rfx-outreach-campaign-name");
 const rfxOutreachTemplate = document.querySelector("#rfx-outreach-template");
 const rfxOutreachChannel = document.querySelector("#rfx-outreach-channel");
+const rfxWhatsappTargetMode = document.querySelector("#rfx-whatsapp-target-mode");
 const rfxOutreachSender = document.querySelector("#rfx-outreach-sender");
 const createRfxOutreachCampaignButton = document.querySelector("#create-rfx-outreach-campaign");
 const rfxOutreachStatus = document.querySelector("#rfx-outreach-status");
 const rfxOutreachPreview = document.querySelector("#rfx-outreach-preview");
+const rfxWhatsappReadiness = document.querySelector("#rfx-whatsapp-readiness");
 const rfxTemplateEditor = document.querySelector("#rfx-template-editor");
 const rfxTemplateSubject = document.querySelector("#rfx-template-subject");
 const rfxTemplateHtml = document.querySelector("#rfx-template-html");
@@ -156,6 +161,8 @@ const draftToggleVisible = document.querySelector("#rfx-toggle-visible-drafts");
 const draftSelectAllEmailsButton = document.querySelector("#rfx-select-all-email-drafts");
 const draftClearSelectionButton = document.querySelector("#rfx-clear-draft-selection");
 const draftSendSelectedButton = document.querySelector("#rfx-send-selected-email-drafts");
+const draftSendSelectedWhatsappButton = document.querySelector("#rfx-send-selected-whatsapp-drafts");
+const draftMarkSelectedWhatsappGroupsButton = document.querySelector("#rfx-mark-selected-whatsapp-groups");
 const draftArchiveSelectedButton = document.querySelector("#rfx-archive-selected-drafts");
 const draftDeleteSelectedButton = document.querySelector("#rfx-delete-selected-drafts");
 const wizardRefreshButton = document.querySelector("#rfx-wizard-refresh");
@@ -1884,9 +1891,29 @@ function outreachTargetInvitations() {
 
 function targetHasChannel(target, channel) {
   const vendor = target.invitation?.vendors || {};
-  if (channel === "email") return Boolean(vendor.primary_email);
-  if (channel === "whatsapp") return Boolean(vendor.whatsapp_phone);
-  return Boolean(vendor.primary_email || vendor.whatsapp_phone);
+  const hasEmail = Boolean(vendor.primary_email);
+  const hasWhatsapp = Boolean(vendor.whatsapp_phone);
+  const hasGroup = Boolean(vendor.whatsapp_group_url || vendor.whatsapp_group_name || vendor.whatsapp_meta_group_id);
+  if (channel === "email") return hasEmail;
+  if (channel === "whatsapp") return hasWhatsapp;
+  if (channel === "whatsapp_group") return hasGroup;
+  if (channel === "email_whatsapp_group") return hasEmail || hasWhatsapp || hasGroup;
+  return hasEmail || hasWhatsapp;
+}
+
+function outreachChannelLabel(channel = "") {
+  const value = String(channel || "multi");
+  if (value === "email") return "Gmail only";
+  if (value === "whatsapp") return "WhatsApp direct only";
+  if (value === "whatsapp_group") return "WhatsApp group manual";
+  if (value === "email_whatsapp_group") return "Email + WhatsApp direct + group";
+  return "Email + WhatsApp direct";
+}
+
+function whatsappTargetModeLabel(value = "") {
+  if (value === "vendor_group") return "vendor group only";
+  if (value === "direct_and_group") return "direct + vendor group";
+  return "direct vendor contact";
 }
 
 function renderOutreachTemplateSelect() {
@@ -1907,9 +1934,12 @@ function renderOutreachPreview() {
   renderRfxTemplateEditor();
   const template = selectedOutreachTemplateDraft();
   const channel = rfxOutreachChannel?.value || "multi";
+  const targetMode = rfxWhatsappTargetMode?.value || "direct_vendor";
   const senderEmail = rfxOutreachSender?.value || APPROVED_GMAIL_SENDER;
   const targets = outreachTargetInvitations();
   const ready = targets.filter((target) => targetHasChannel(target, channel)).length;
+  const whatsappDirectReady = targets.filter((target) => targetHasChannel(target, "whatsapp")).length;
+  const whatsappGroupReady = targets.filter((target) => targetHasChannel(target, "whatsapp_group")).length;
   const targetScope = selectedInvitationIds.size
     ? `${formatNumber(selectedInvitationIds.size)} selected vendor rows`
     : selectedLaneIds.size
@@ -1942,7 +1972,8 @@ function renderOutreachPreview() {
         </article>
         <article>
           <span>Channel</span>
-          <strong>${escapeHtml(channel)}</strong>
+          <strong>${escapeHtml(outreachChannelLabel(channel))}</strong>
+          ${channel.includes("whatsapp") || channel === "multi" ? `<small>${escapeHtml(whatsappTargetModeLabel(targetMode))}</small>` : ""}
         </article>
         <article>
           <span>Send from</span>
@@ -1976,6 +2007,13 @@ function renderOutreachPreview() {
   }
   if (createRfxOutreachCampaignButton) {
     createRfxOutreachCampaignButton.disabled = !selectedEventId || !template || !targets.length || Boolean(launchPreflightIssues().length) || rfxTemplateEditorDirty || rfxTemplateVisualEditing;
+  }
+  if (rfxWhatsappReadiness) {
+    const groupMode = channel === "whatsapp_group" || channel === "email_whatsapp_group" || targetMode !== "direct_vendor";
+    rfxWhatsappReadiness.innerHTML = `
+      <strong>WhatsApp Business model</strong>
+      <span>${escapeHtml(`${formatNumber(whatsappDirectReady)} direct phone target(s), ${formatNumber(whatsappGroupReady)} group target(s). ${groupMode ? "Group delivery is explicit and can be marked manual sent." : "Groups are not included unless explicitly selected."}`)}</span>
+    `;
   }
   renderWizard();
 }
@@ -2209,7 +2247,11 @@ function bidRoomReadinessSnapshot() {
   const channel = rfxOutreachChannel?.value || "multi";
   const template = selectedOutreachTemplateDraft();
   const drafts = draftRowsForEvent();
-  const sendableDrafts = selectableEmailDrafts(drafts);
+  const sendableDrafts = [
+    ...selectableEmailDrafts(drafts),
+    ...selectableWhatsappDrafts(drafts),
+    ...selectableWhatsappGroupDrafts(drafts)
+  ];
   const lanesMissingShortlist = currentLanes.filter((lane) => !activeInvitations(lane).length).length;
   const lanesMissingInvite = currentLanes.filter((lane) => activeInvitations(lane).length && !activeInvitations(lane).some(hasInvitationStarted)).length;
   const targetsMissingChannel = Math.max(0, stats.targets.length - stats.readyTargets.length);
@@ -2268,7 +2310,7 @@ function bidRoomReadinessSnapshot() {
       status: drafts.length ? sendableDrafts.length ? "ready" : "attention" : "attention",
       metric: formatNumber(drafts.length),
       detail: drafts.length
-        ? `${formatNumber(sendableDrafts.length)} email draft(s) sendable.`
+        ? `${formatNumber(sendableDrafts.length)} outreach draft(s) actionable.`
         : "Generate individualized invitation drafts.",
       action: "outreach"
     },
@@ -4179,15 +4221,35 @@ function renderTouchpoints() {
 }
 
 function messageRecipient(message) {
-  return message.channel === "email"
-    ? message.recipient_email || message.vendors?.primary_email || ""
-    : message.recipient_phone || message.vendors?.whatsapp_phone || "";
+  if (message.channel === "email") return message.recipient_email || message.vendors?.primary_email || "";
+  if (message.channel === "whatsapp_group") {
+    return message.vendor_whatsapp_groups?.group_name
+      || message.vendors?.whatsapp_group_name
+      || message.vendor_whatsapp_groups?.group_url
+      || message.vendors?.whatsapp_group_url
+      || "Vendor WhatsApp group";
+  }
+  return message.normalized_recipient_phone || message.recipient_phone || message.vendors?.whatsapp_phone || "";
 }
 
 function selectableEmailDrafts(rows = []) {
   return rows.filter((message) => {
     const status = String(message.status || "").toLowerCase();
     return message.channel === "email" && Boolean(message.recipient_email) && ["drafted", "queued", "failed"].includes(status);
+  });
+}
+
+function selectableWhatsappDrafts(rows = []) {
+  return rows.filter((message) => {
+    const status = String(message.status || "").toLowerCase();
+    return message.channel === "whatsapp" && Boolean(message.normalized_recipient_phone || message.recipient_phone || message.vendors?.whatsapp_phone) && ["drafted", "queued", "failed"].includes(status);
+  });
+}
+
+function selectableWhatsappGroupDrafts(rows = []) {
+  return rows.filter((message) => {
+    const status = String(message.status || "").toLowerCase();
+    return message.channel === "whatsapp_group" && ["drafted", "queued", "failed"].includes(status);
   });
 }
 
@@ -4258,6 +4320,14 @@ function selectedSendableDraftIds(rows = draftRowsForEvent()) {
   return selectableEmailDrafts(selectedDraftRows(rows)).map((message) => String(message.id));
 }
 
+function selectedWhatsappDraftIds(rows = draftRowsForEvent()) {
+  return selectableWhatsappDrafts(selectedDraftRows(rows)).map((message) => String(message.id));
+}
+
+function selectedWhatsappGroupDraftIds(rows = draftRowsForEvent()) {
+  return selectableWhatsappGroupDrafts(selectedDraftRows(rows)).map((message) => String(message.id));
+}
+
 function outreachMessageInvitationIds(message = {}) {
   const metadata = message.metadata && typeof message.metadata === "object" ? message.metadata : {};
   const ids = Array.isArray(metadata.rfx_lane_vendor_ids)
@@ -4297,6 +4367,13 @@ function confirmDraftQueueAction(action, ids = []) {
     const batches = Math.ceil(ids.length / OUTREACH_SEND_BATCH_SIZE);
     return window.confirm(`Send ${count} individual email(s) from ${APPROVED_GMAIL_SENDER}? Each selected carrier will receive its own message${batches > 1 ? ` in ${batches} batches` : ""}.`);
   }
+  if (action === "send_whatsapp") {
+    const batches = Math.ceil(ids.length / OUTREACH_SEND_BATCH_SIZE);
+    return window.confirm(`Send ${count} WhatsApp Business message(s) using the mapped Meta template${batches > 1 ? ` in ${batches} batches` : ""}?`);
+  }
+  if (action === "mark_group_sent") {
+    return window.confirm(`Mark ${count} WhatsApp group draft(s) as manually sent? Use this after posting them in the carrier group.`);
+  }
   if (action === "archive") {
     return window.confirm(`Archive ${count} selected draft row(s)? Drafts will be hidden from the active queue, but vendors and RFx lanes stay unchanged.`);
   }
@@ -4307,9 +4384,13 @@ function updateDraftSendControls(rows = [], allRows = draftRowsForEvent()) {
   const eventIds = new Set(allRows.map((message) => String(message.id)));
   selectedDraftMessageIds = new Set([...selectedDraftMessageIds].filter((id) => eventIds.has(id)));
   const selectable = selectableEmailDrafts(rows);
+  const whatsappSelectable = selectableWhatsappDrafts(rows);
+  const whatsappGroupSelectable = selectableWhatsappGroupDrafts(rows);
   const selectedVisibleRows = selectedDraftRows(rows);
   const selectedRows = selectedDraftRows(allRows);
   const sendableSelectedIds = selectedSendableDraftIds(allRows);
+  const sendableWhatsappIds = selectedWhatsappDraftIds(allRows);
+  const markableGroupIds = selectedWhatsappGroupDraftIds(allRows);
   const hasSearch = Boolean(normalizeDraftSearch(draftQueueSearch));
   if (draftSelectionLabel) {
     draftSelectionLabel.textContent = hasSearch
@@ -4330,6 +4411,22 @@ function updateDraftSendControls(rows = [], allRows = draftRowsForEvent()) {
       ? `Send ${formatNumber(sendableSelectedIds.length)} email${sendableSelectedIds.length === 1 ? "" : "s"}`
       : "Send selected emails";
   }
+  if (draftSendSelectedWhatsappButton) {
+    draftSendSelectedWhatsappButton.disabled = !sendableWhatsappIds.length;
+    draftSendSelectedWhatsappButton.textContent = sendableWhatsappIds.length
+      ? `Send ${formatNumber(sendableWhatsappIds.length)} WhatsApp`
+      : "Send WhatsApp direct";
+  }
+  if (draftMarkSelectedWhatsappGroupsButton) {
+    draftMarkSelectedWhatsappGroupsButton.disabled = !markableGroupIds.length;
+    draftMarkSelectedWhatsappGroupsButton.textContent = markableGroupIds.length
+      ? `Mark ${formatNumber(markableGroupIds.length)} group${markableGroupIds.length === 1 ? "" : "s"} sent`
+      : "Mark groups sent";
+  }
+  if (draftSelectAllEmailsButton) {
+    const selectableCount = selectable.length + whatsappSelectable.length + whatsappGroupSelectable.length;
+    draftSelectAllEmailsButton.textContent = selectableCount ? `Select sendable (${formatNumber(selectableCount)})` : "Select sendable";
+  }
   if (draftArchiveSelectedButton) draftArchiveSelectedButton.disabled = !selectedRows.length;
   if (draftDeleteSelectedButton) draftDeleteSelectedButton.disabled = !selectedRows.length;
 }
@@ -4340,6 +4437,8 @@ function renderDraftQueue() {
   const filteredRows = filteredDraftRows(rows);
   const actionable = rows.filter((message) => ["drafted", "queued", "failed"].includes(String(message.status || "").toLowerCase()));
   const emailSelectable = selectableEmailDrafts(rows);
+  const whatsappSelectable = selectableWhatsappDrafts(rows);
+  const whatsappGroupSelectable = selectableWhatsappGroupDrafts(rows);
   const hasSearch = Boolean(normalizeDraftSearch(draftQueueSearch));
   updateDraftSendControls(filteredRows, rows);
   draftSummary.textContent = rows.length
@@ -4362,13 +4461,19 @@ function renderDraftQueue() {
     draftList.innerHTML = `<tr><td colspan="8">No draft rows match "${escapeHtml(draftQueueSearch)}". Clear search or try carrier name, email, lane, RFx, channel, or status.</td></tr>`;
     return;
   }
-  if (!emailSelectable.length && rows.length) {
+  if (!emailSelectable.length && !whatsappSelectable.length && !whatsappGroupSelectable.length && rows.length) {
     updateDraftSendControls(filteredRows, rows);
   }
   const visibleRows = filteredRows.slice(0, DRAFT_QUEUE_VISIBLE_LIMIT);
   draftList.innerHTML = visibleRows.map((message) => {
     const isEmail = message.channel === "email";
-    const openUrl = isEmail ? message.gmail_compose_url : message.whatsapp_url;
+    const isWhatsapp = message.channel === "whatsapp";
+    const isWhatsappGroup = message.channel === "whatsapp_group";
+    const openUrl = isEmail
+      ? message.gmail_compose_url
+      : isWhatsappGroup
+        ? (message.vendor_whatsapp_groups?.group_url || message.vendors?.whatsapp_group_url || message.whatsapp_url)
+        : message.whatsapp_url;
     const checked = selectedDraftMessageIds.has(String(message.id));
     const preview = String(message.text_body || message.whatsapp_text || message.subject || "")
       .replace(/\s+/g, " ")
@@ -4377,6 +4482,10 @@ function renderDraftQueue() {
     const status = String(message.status || "-").toLowerCase();
     const recipient = messageRecipient(message) || "-";
     const updated = message.updated_at || message.sent_at || message.created_at;
+    const canSendEmail = isEmail && selectableEmailDrafts([message]).length;
+    const canSendWhatsapp = isWhatsapp && selectableWhatsappDrafts([message]).length;
+    const canMarkGroup = isWhatsappGroup && selectableWhatsappGroupDrafts([message]).length;
+    const openLabel = isEmail ? "Open Gmail" : isWhatsappGroup ? "Open group" : "Open WhatsApp";
     return `
       <tr class="${checked ? "is-selected-row" : ""}" data-rfx-draft-id="${escapeHtml(message.id)}">
         <td><input type="checkbox" data-rfx-draft-select="${escapeHtml(message.id)}" ${checked ? "checked" : ""} /></td>
@@ -4394,8 +4503,10 @@ function renderDraftQueue() {
         <td>${escapeHtml(updated ? new Date(updated).toLocaleString() : "-")}</td>
         <td>
           <div class="rfx-draft-row-actions">
-            <button class="small-button" type="button" data-rfx-send-draft-now="${escapeHtml(message.id)}" ${isEmail && selectableEmailDrafts([message]).length ? "" : "disabled"}>Send now</button>
-            <button class="secondary small-button" type="button" data-rfx-open-draft="${escapeHtml(openUrl || "")}" ${openUrl ? "" : "disabled"}>${isEmail ? "Open Gmail" : "Open WhatsApp"}</button>
+            ${isEmail ? `<button class="small-button" type="button" data-rfx-send-draft-now="${escapeHtml(message.id)}" ${canSendEmail ? "" : "disabled"}>Send email</button>` : ""}
+            ${isWhatsapp ? `<button class="small-button" type="button" data-rfx-send-whatsapp-now="${escapeHtml(message.id)}" ${canSendWhatsapp ? "" : "disabled"}>Send WhatsApp</button>` : ""}
+            ${isWhatsappGroup ? `<button class="small-button" type="button" data-rfx-mark-whatsapp-group-sent="${escapeHtml(message.id)}" ${canMarkGroup ? "" : "disabled"}>Manual sent</button>` : ""}
+            <button class="secondary small-button" type="button" data-rfx-open-draft="${escapeHtml(openUrl || "")}" ${openUrl ? "" : "disabled"}>${escapeHtml(openLabel)}</button>
             <button class="secondary small-button" type="button" data-rfx-mark-draft="${escapeHtml(message.id)}" data-rfx-draft-status="queued" ${status === "queued" || status === "sent" || status === "archived" ? "disabled" : ""}>Queue</button>
             <button class="secondary small-button" type="button" data-rfx-mark-draft="${escapeHtml(message.id)}" data-rfx-draft-status="archived" ${status === "archived" ? "disabled" : ""}>Archive</button>
           </div>
@@ -5290,11 +5401,16 @@ async function createCurrentOutreachDrafts(statusElement = rfxOutreachStatus) {
   const invitationIds = draftTargets.map(({ invitation }) => invitation.id);
   if (createRfxOutreachCampaignButton) createRfxOutreachCampaignButton.disabled = true;
   setStatus(statusElement, "Creating campaign and generating drafts...");
+  const outreachChannel = rfxOutreachChannel?.value || "multi";
+  const whatsappTargetMode = rfxWhatsappTargetMode?.value || "direct_vendor";
+  const groupDeliveryPolicy = whatsappTargetMode === "direct_vendor" ? "api_only" : "manual_or_api";
   const campaign = await createOutreachCampaign({
     name: rfxOutreachCampaignName?.value || `${selectedEvent?.rfx_id || "RFx"} invitation wave`,
     rfx_event_id: selectedEventId,
     template_id: template.id,
-    channel: rfxOutreachChannel?.value || "multi",
+    channel: outreachChannel,
+    whatsapp_target_mode: whatsappTargetMode,
+    group_delivery_policy: groupDeliveryPolicy,
     sender_email: rfxOutreachSender?.value || APPROVED_GMAIL_SENDER,
     sender_label: rfxOutreachSender?.selectedOptions?.[0]?.textContent || rfxOutreachSender?.value || APPROVED_GMAIL_SENDER,
     sender_connection_status: "draft_only"
@@ -5303,7 +5419,9 @@ async function createCurrentOutreachDrafts(statusElement = rfxOutreachStatus) {
     invitationIds,
     senderEmail: campaign.sender_email,
     senderLabel: campaign.sender_label,
-    senderConnectionStatus: campaign.sender_connection_status
+    senderConnectionStatus: campaign.sender_connection_status,
+    whatsappTargetMode: campaign.whatsapp_target_mode || whatsappTargetMode,
+    groupDeliveryPolicy: campaign.group_delivery_policy || groupDeliveryPolicy
   });
   [contactHistoryRows, outreachMessages] = await Promise.all([
     fetchContactHistory({ rfx_event_id: selectedEventId }),
@@ -5563,6 +5681,150 @@ async function sendSingleDraftEmail(id) {
   }
 }
 
+async function sendDraftWhatsappIds(ids = [], statusElement = rfxOutreachStatus) {
+  const batches = chunkRows(ids, OUTREACH_SEND_BATCH_SIZE);
+  const totals = { sent: 0, failed: 0, failures: [] };
+  for (let index = 0; index < batches.length; index += 1) {
+    const batch = batches[index];
+    setStatus(
+      statusElement,
+      `Sending WhatsApp batch ${formatNumber(index + 1)} of ${formatNumber(batches.length)} (${formatNumber(batch.length)} message${batch.length === 1 ? "" : "s"})...`
+    );
+    const result = await sendWhatsappOutreachMessages(batch);
+    totals.sent += Number(result.sent || 0);
+    totals.failed += Number(result.failed || 0);
+    if (Array.isArray(result.failures)) totals.failures.push(...result.failures);
+  }
+  return totals;
+}
+
+async function sendSelectedDraftWhatsapp() {
+  const ids = selectedWhatsappDraftIds();
+  if (!ids.length) {
+    setStatus(rfxOutreachStatus, "Select one or more WhatsApp direct drafts before sending.", "error");
+    return;
+  }
+  if (!confirmDraftQueueAction("send_whatsapp", ids)) return;
+  if (draftSendSelectedWhatsappButton) draftSendSelectedWhatsappButton.disabled = true;
+  try {
+    const result = await sendDraftWhatsappIds(ids, rfxOutreachStatus);
+    selectedDraftMessageIds.clear();
+    [contactHistoryRows, outreachMessages] = await Promise.all([
+      fetchContactHistory({ rfx_event_id: selectedEventId }),
+      fetchOutreachMessages({ rfx_event_id: selectedEventId })
+    ]);
+    renderOutreachLaunchpad();
+    setStatus(
+      rfxOutreachStatus,
+      `${formatNumber(result.sent || 0)} WhatsApp message(s) sent. ${formatNumber(result.failed || 0)} failed.`,
+      result.failed ? "warning" : "success"
+    );
+  } catch (error) {
+    setStatus(rfxOutreachStatus, error.message, "error");
+    renderDraftQueue();
+  }
+}
+
+async function sendSingleDraftWhatsapp(id) {
+  if (!id) return;
+  const row = draftRowsForEvent().find((message) => String(message.id) === String(id));
+  if (!row) {
+    setStatus(rfxOutreachStatus, "WhatsApp draft row could not be found. Refresh the Bid Room and try again.", "error");
+    return;
+  }
+  if (!selectableWhatsappDrafts([row]).length) {
+    setStatus(rfxOutreachStatus, "This WhatsApp draft needs a valid phone, Meta template mapping, and drafted/queued/failed status.", "error");
+    return;
+  }
+  const carrier = row.vendors?.vendor_name || row.vendors?.domain || messageRecipient(row) || "this carrier";
+  if (!window.confirm(`Send this WhatsApp Business invitation to ${carrier}?`)) return;
+  setStatus(rfxOutreachStatus, `Sending WhatsApp invitation to ${carrier}...`);
+  try {
+    const result = await sendDraftWhatsappIds([String(id)], rfxOutreachStatus);
+    selectedDraftMessageIds.delete(String(id));
+    [contactHistoryRows, outreachMessages] = await Promise.all([
+      fetchContactHistory({ rfx_event_id: selectedEventId }),
+      fetchOutreachMessages({ rfx_event_id: selectedEventId })
+    ]);
+    renderOutreachLaunchpad();
+    setStatus(
+      rfxOutreachStatus,
+      result.sent ? `WhatsApp invitation sent to ${carrier}.` : `WhatsApp invitation could not be sent to ${carrier}. ${formatNumber(result.failed || 0)} failed.`,
+      result.sent ? "success" : "warning"
+    );
+  } catch (error) {
+    setStatus(rfxOutreachStatus, error.message, "error");
+    renderDraftQueue();
+  }
+}
+
+async function markWhatsappGroupDraftIds(ids = [], statusElement = rfxOutreachStatus) {
+  const batches = chunkRows(ids, OUTREACH_SEND_BATCH_SIZE);
+  const totals = { updated: 0 };
+  for (let index = 0; index < batches.length; index += 1) {
+    const batch = batches[index];
+    setStatus(
+      statusElement,
+      `Marking WhatsApp group batch ${formatNumber(index + 1)} of ${formatNumber(batches.length)} (${formatNumber(batch.length)} group draft${batch.length === 1 ? "" : "s"})...`
+    );
+    const result = await markWhatsappGroupMessageManuallySent(batch);
+    totals.updated += Number(result.updated || 0);
+  }
+  return totals;
+}
+
+async function markSelectedWhatsappGroupsManuallySent() {
+  const ids = selectedWhatsappGroupDraftIds();
+  if (!ids.length) {
+    setStatus(rfxOutreachStatus, "Select one or more WhatsApp group drafts before marking them sent.", "error");
+    return;
+  }
+  if (!confirmDraftQueueAction("mark_group_sent", ids)) return;
+  if (draftMarkSelectedWhatsappGroupsButton) draftMarkSelectedWhatsappGroupsButton.disabled = true;
+  try {
+    const result = await markWhatsappGroupDraftIds(ids, rfxOutreachStatus);
+    selectedDraftMessageIds.clear();
+    [contactHistoryRows, outreachMessages] = await Promise.all([
+      fetchContactHistory({ rfx_event_id: selectedEventId }),
+      fetchOutreachMessages({ rfx_event_id: selectedEventId })
+    ]);
+    renderOutreachLaunchpad();
+    setStatus(rfxOutreachStatus, `${formatNumber(result.updated || 0)} WhatsApp group draft(s) marked as manually sent.`, "success");
+  } catch (error) {
+    setStatus(rfxOutreachStatus, error.message, "error");
+    renderDraftQueue();
+  }
+}
+
+async function markSingleWhatsappGroupManuallySent(id) {
+  if (!id) return;
+  const row = draftRowsForEvent().find((message) => String(message.id) === String(id));
+  if (!row) {
+    setStatus(rfxOutreachStatus, "WhatsApp group draft row could not be found. Refresh the Bid Room and try again.", "error");
+    return;
+  }
+  if (!selectableWhatsappGroupDrafts([row]).length) {
+    setStatus(rfxOutreachStatus, "This WhatsApp group draft cannot be marked sent in its current status.", "error");
+    return;
+  }
+  const group = messageRecipient(row);
+  if (!window.confirm(`Mark the WhatsApp group invitation for ${group} as manually sent?`)) return;
+  setStatus(rfxOutreachStatus, `Marking ${group} as manually sent...`);
+  try {
+    const result = await markWhatsappGroupDraftIds([String(id)], rfxOutreachStatus);
+    selectedDraftMessageIds.delete(String(id));
+    [contactHistoryRows, outreachMessages] = await Promise.all([
+      fetchContactHistory({ rfx_event_id: selectedEventId }),
+      fetchOutreachMessages({ rfx_event_id: selectedEventId })
+    ]);
+    renderOutreachLaunchpad();
+    setStatus(rfxOutreachStatus, `${formatNumber(result.updated || 0)} WhatsApp group draft marked as manually sent.`, "success");
+  } catch (error) {
+    setStatus(rfxOutreachStatus, error.message, "error");
+    renderDraftQueue();
+  }
+}
+
 async function archiveSelectedDrafts() {
   const ids = [...selectedDraftMessageIds];
   if (!ids.length) {
@@ -5791,6 +6053,26 @@ draftList?.addEventListener("click", async (event) => {
     }
     return;
   }
+  const sendWhatsappNowButton = event.target.closest("[data-rfx-send-whatsapp-now]");
+  if (sendWhatsappNowButton) {
+    sendWhatsappNowButton.disabled = true;
+    try {
+      await sendSingleDraftWhatsapp(sendWhatsappNowButton.dataset.rfxSendWhatsappNow);
+    } finally {
+      sendWhatsappNowButton.disabled = false;
+    }
+    return;
+  }
+  const markWhatsappGroupSentButton = event.target.closest("[data-rfx-mark-whatsapp-group-sent]");
+  if (markWhatsappGroupSentButton) {
+    markWhatsappGroupSentButton.disabled = true;
+    try {
+      await markSingleWhatsappGroupManuallySent(markWhatsappGroupSentButton.dataset.rfxMarkWhatsappGroupSent);
+    } finally {
+      markWhatsappGroupSentButton.disabled = false;
+    }
+    return;
+  }
   const openButton = event.target.closest("[data-rfx-open-draft]");
   if (openButton) {
     const url = openButton.dataset.rfxOpenDraft;
@@ -5875,6 +6157,8 @@ draftToggleVisible?.addEventListener("change", () => {
 draftSelectAllEmailsButton?.addEventListener("click", () => {
   const rows = filteredDraftRows();
   selectableEmailDrafts(rows).forEach((message) => selectedDraftMessageIds.add(String(message.id)));
+  selectableWhatsappDrafts(rows).forEach((message) => selectedDraftMessageIds.add(String(message.id)));
+  selectableWhatsappGroupDrafts(rows).forEach((message) => selectedDraftMessageIds.add(String(message.id)));
   renderDraftQueue();
 });
 
@@ -5885,6 +6169,14 @@ draftClearSelectionButton?.addEventListener("click", () => {
 
 draftSendSelectedButton?.addEventListener("click", () => {
   sendSelectedDraftEmails();
+});
+
+draftSendSelectedWhatsappButton?.addEventListener("click", () => {
+  sendSelectedDraftWhatsapp();
+});
+
+draftMarkSelectedWhatsappGroupsButton?.addEventListener("click", () => {
+  markSelectedWhatsappGroupsManuallySent();
 });
 
 draftArchiveSelectedButton?.addEventListener("click", () => {
@@ -6585,6 +6877,7 @@ rfxOutreachTemplate?.addEventListener("change", () => {
   renderOutreachPreview();
 });
 rfxOutreachChannel?.addEventListener("change", renderOutreachPreview);
+rfxWhatsappTargetMode?.addEventListener("change", renderOutreachPreview);
 rfxOutreachSender && (rfxOutreachSender.value = APPROVED_GMAIL_SENDER);
 rfxOutreachSender?.addEventListener("change", renderOutreachPreview);
 rfxOutreachCampaignName?.addEventListener("input", () => {

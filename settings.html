@@ -177,6 +177,26 @@
               </div>
               <p id="google-chat-space-help" class="helper-text"></p>
               <p id="google-chat-connection-status" class="status-message" role="status"></p>
+
+              <div class="split-heading integration-heading">
+                <div>
+                  <p class="eyebrow">Business messaging</p>
+                  <h2>WhatsApp Business</h2>
+                </div>
+                <button id="refresh-whatsapp-connection" type="button" class="secondary">Refresh</button>
+              </div>
+              <div id="whatsapp-connection-card" class="settings-access-card">
+                <strong>Meta WhatsApp Business Platform</strong>
+                <p>Checking WhatsApp Business connection...</p>
+              </div>
+              <div class="action-row whatsapp-action-row">
+                <button id="connect-whatsapp-button" type="button">Connect WhatsApp</button>
+                <button id="test-whatsapp-button" type="button" class="secondary">Test line</button>
+                <button id="sync-whatsapp-templates-button" type="button" class="secondary">Sync templates</button>
+                <button id="verify-whatsapp-webhook-button" type="button" class="secondary">Verify webhook</button>
+                <button id="disconnect-whatsapp-button" type="button" class="secondary">Disconnect</button>
+              </div>
+              <p id="whatsapp-connection-status" class="status-message" role="status"></p>
             </section>
 
             <section class="workspace-panel settings-observability-panel" data-workbench-view-panel="observability">
@@ -191,6 +211,7 @@
                 <article><span>Rateware API</span><strong>0</strong><small>incidents</small></article>
                 <article><span>Gmail</span><strong>0</strong><small>incidents</small></article>
                 <article><span>Google Chat</span><strong>0</strong><small>incidents</small></article>
+                <article><span>WhatsApp</span><strong>0</strong><small>incidents</small></article>
                 <article><span>Bid Room</span><strong>0</strong><small>incidents</small></article>
               </div>
               <div class="observability-toolbar">
@@ -200,6 +221,7 @@
                     <option value="rateware_api">Rateware API</option>
                     <option value="gmail">Gmail</option>
                     <option value="google_chat">Google Chat</option>
+                    <option value="whatsapp">WhatsApp</option>
                     <option value="bid_room">Bid Room</option>
                   </select>
                 </label>

@@ -55,7 +55,9 @@ export async function generateOutreachDrafts(campaignId, options = {}) {
     invitation_ids: options.invitationIds || [],
     sender_email: options.senderEmail || "",
     sender_label: options.senderLabel || "",
-    sender_connection_status: options.senderConnectionStatus || "draft_only"
+    sender_connection_status: options.senderConnectionStatus || "draft_only",
+    whatsapp_target_mode: options.whatsappTargetMode || options.targetMode || "",
+    group_delivery_policy: options.groupDeliveryPolicy || ""
   });
 }
 
@@ -71,6 +73,27 @@ export async function sendOutreachMessages(ids = [], options = {}) {
   return await callRatewareApi("send_outreach_messages", {
     ids,
     sender_email: options.senderEmail || "",
+    confirmed: true
+  });
+}
+
+export async function sendWhatsappOutreachMessages(ids = []) {
+  return await callRatewareApi("send_whatsapp_outreach_messages", {
+    ids,
+    confirmed: true
+  });
+}
+
+export async function sendWhatsappGroupOutreachMessages(ids = []) {
+  return await callRatewareApi("send_whatsapp_group_outreach_messages", {
+    ids,
+    confirmed: true
+  });
+}
+
+export async function markWhatsappGroupMessageManuallySent(ids = []) {
+  return await callRatewareApi("mark_whatsapp_group_message_manually_sent", {
+    ids,
     confirmed: true
   });
 }

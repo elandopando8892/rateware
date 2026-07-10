@@ -84,3 +84,41 @@ export async function saveGoogleChatSettings(defaultSpaceName, manualSpaceName =
 export async function retryGoogleChatSync(limit = 50) {
   return await callRatewareApi("retry_google_chat_sync", { limit });
 }
+
+export async function fetchWhatsappConnections() {
+  return await callRatewareApi("list_whatsapp_connections");
+}
+
+export async function startWhatsappBusinessConnection(redirectAfter = "settings.html?view=integrations") {
+  return await callRatewareApi("start_whatsapp_business_connection", {
+    redirect_after: redirectAfter
+  });
+}
+
+export async function disconnectWhatsappBusinessConnection() {
+  return (await callRatewareApi("disconnect_whatsapp_business_connection")).row;
+}
+
+export async function testWhatsappBusinessConnection() {
+  return await callRatewareApi("test_whatsapp_business_connection");
+}
+
+export async function syncWhatsappTemplates() {
+  return await callRatewareApi("sync_whatsapp_templates");
+}
+
+export async function fetchWhatsappTemplates() {
+  return await callRatewareApi("list_whatsapp_templates");
+}
+
+export async function fetchWhatsappPhoneNumbers() {
+  return await callRatewareApi("list_whatsapp_phone_numbers");
+}
+
+export async function selectWhatsappSender(phoneNumberId) {
+  return (await callRatewareApi("select_whatsapp_sender", { phone_number_id: phoneNumberId })).row;
+}
+
+export async function verifyWhatsappWebhook() {
+  return await callRatewareApi("verify_whatsapp_webhook");
+}
