@@ -207,6 +207,26 @@ const RFI_LANE_COLUMNS = [
   { key: "notes", label: "Notas operacion", type: "textarea", placeholder: "Informacion relevante", width: 230 }
 ];
 
+const WRAP_LANE_FIELDS = new Set([
+  "origin_location",
+  "origin_shipper",
+  "origin_service_window",
+  "destination_location",
+  "destination_consignee",
+  "destination_service_window",
+  "border_crossing",
+  "customs_broker",
+  "transfer",
+  "product",
+  "packaging",
+  "sourcing_priority",
+  "seasonality",
+  "scheduling_type",
+  "positioning_lead_time",
+  "service_specifications",
+  "notes"
+]);
+
 const CHECKLIST_FIELDS = [
   "logistics_model",
   "operation_criteria",
@@ -1022,23 +1042,33 @@ function renderLaneHead() {
   if (!els.laneHead) return;
   els.laneHead.innerHTML = `
     <tr>
-      ${RFI_LANE_COLUMNS.map((column) => `<th style="min-width:${column.width || 110}px">${escapeHtml(column.label)}${column.required ? " *" : ""}</th>`).join("")}
+      ${RFI_LANE_COLUMNS.map((column) => `<th style="min-width:${laneColumnWidth(column)}px" title="${escapeHtml(column.label)}">${escapeHtml(column.label)}${column.required ? " *" : ""}</th>`).join("")}
       <th class="rfi-action-column"></th>
     </tr>
   `;
 }
 
+function laneColumnWidth(column) {
+  if (column.type === "checkbox") return Math.max(46, Math.min(column.width || 52, 64));
+  if (column.type === "number") return Math.max(62, Math.min(column.width || 78, 86));
+  if (column.type === "select") return Math.max(84, Math.min(column.width || 100, 112));
+  if (column.type === "textarea") return Math.max(135, Math.min(column.width || 160, 170));
+  if (WRAP_LANE_FIELDS.has(column.key)) return Math.max(105, Math.min(column.width || 126, 132));
+  return Math.max(72, Math.min(column.width || 96, 108));
+}
+
 function renderLaneCell(column, row) {
   const value = row[column.key];
-  const width = column.width || 110;
+  const width = laneColumnWidth(column);
+  const wrapClass = WRAP_LANE_FIELDS.has(column.key) ? " rfi-wrap-cell" : "";
   if (column.type === "checkbox") {
     return `<td class="rfi-check-cell" style="min-width:${width}px"><input type="checkbox" data-field="${column.key}" ${checkedBoolean(value) ? "checked" : ""} /></td>`;
   }
   if (column.type === "select") {
     return `<td style="min-width:${width}px"><select data-field="${column.key}">${selectOptions(column.options || [], value)}</select></td>`;
   }
-  if (column.type === "textarea") {
-    return `<td style="min-width:${width}px"><textarea data-field="${column.key}" rows="1" placeholder="${escapeHtml(column.placeholder || "")}">${escapeHtml(value)}</textarea></td>`;
+  if (column.type === "textarea" || WRAP_LANE_FIELDS.has(column.key)) {
+    return `<td class="${wrapClass.trim()}" style="min-width:${width}px"><textarea data-field="${column.key}" rows="2" placeholder="${escapeHtml(column.placeholder || "")}">${escapeHtml(value)}</textarea></td>`;
   }
   const type = column.type === "number" ? "number" : "text";
   const step = type === "number" ? ' step="0.01"' : "";

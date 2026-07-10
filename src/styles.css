@@ -767,8 +767,8 @@ a {
 .customer-rfi-shell {
   display: grid;
   gap: 8px;
-  width: calc(100vw - 20px);
-  max-width: none;
+  width: min(1360px, calc(100vw - 20px));
+  max-width: 1360px;
   margin: 0 auto;
   padding: 10px 0 22px;
 }
@@ -788,7 +788,13 @@ a {
 }
 
 .customer-rfi-card {
+  min-width: 0;
+  overflow: hidden;
   padding: 8px 10px;
+}
+
+.customer-rfi-card .split-heading > div {
+  min-width: 0;
 }
 
 .customer-rfi-card h2,
@@ -863,7 +869,8 @@ a {
 }
 
 .customer-rfi-lane-table {
-  min-width: 7600px;
+  width: max-content;
+  min-width: 5000px;
   table-layout: fixed;
 }
 
@@ -877,7 +884,8 @@ a {
   font-size: 0.62rem;
   line-height: 1.1;
   text-align: left;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .customer-rfi-lane-table input,
@@ -892,8 +900,11 @@ a {
 }
 
 .customer-rfi-lane-table textarea {
-  overflow: hidden;
+  min-height: 34px;
+  max-height: 72px;
+  overflow: auto;
   resize: vertical;
+  white-space: pre-wrap;
 }
 
 .customer-rfi-lane-table td {
@@ -966,7 +977,7 @@ a {
 }
 
 .rfi-checklist-table {
-  min-width: 1180px;
+  min-width: 980px;
   width: 100%;
   table-layout: fixed;
 }
@@ -975,7 +986,7 @@ a {
 .rfi-checklist-table td {
   padding: 4px 6px;
   border-bottom: 1px solid #e7eef2;
-  vertical-align: middle;
+  vertical-align: top;
 }
 
 .rfi-checklist-table th {
@@ -993,14 +1004,14 @@ a {
 
 .rfi-checklist-table th:nth-child(2),
 .rfi-checklist-table td:nth-child(2) {
-  width: 170px;
+  width: 150px;
 }
 
 .rfi-checklist-table th:nth-child(3),
 .rfi-checklist-table td:nth-child(3),
 .rfi-checklist-table th:nth-child(4),
 .rfi-checklist-table td:nth-child(4) {
-  width: 250px;
+  width: 220px;
 }
 
 .rfi-checklist-table th:nth-child(5),
@@ -1048,8 +1059,63 @@ a {
 }
 
 .rfi-checklist-table textarea {
-  min-height: 28px;
+  min-height: 40px;
+  max-height: 96px;
+  overflow: auto;
   font-size: 0.68rem;
+  line-height: 1.22;
+  resize: vertical;
+  white-space: pre-wrap;
+}
+
+.rfi-checklist-table input[type="checkbox"] {
+  width: 15px;
+  min-width: 15px;
+  height: 15px;
+}
+
+.customer-rfi-advanced {
+  padding: 0;
+}
+
+.customer-rfi-advanced summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 10px;
+  cursor: pointer;
+}
+
+.customer-rfi-advanced summary::marker {
+  color: #526675;
+}
+
+.customer-rfi-advanced summary span:first-child {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.customer-rfi-advanced summary strong {
+  color: #17212b;
+  font-size: 0.82rem;
+}
+
+.customer-rfi-advanced summary small {
+  color: #667988;
+  font-size: 0.68rem;
+}
+
+.rfi-advanced-grid {
+  border-top: 1px solid #e2ebf0;
+  padding: 8px 10px 10px;
+}
+
+.rfi-advanced-grid article {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
 }
 
 .customer-rfi-actions {

@@ -75,22 +75,31 @@
         <div id="rfi-segment-checklists" class="rfi-segment-checklist-grid"></div>
       </section>
 
-      <section class="customer-rfi-grid">
-        <article class="customer-rfi-card">
-          <p class="eyebrow">Logistics model</p>
-          <label>Model by segment<textarea id="rfi-logistics-models" rows="4" placeholder="Direct, transfer, dedicated, drop, live load, border model by segment"></textarea></label>
-          <p class="eyebrow">Business rules</p>
-          <label>Commercial rules<textarea id="rfi-business-rules" rows="4" placeholder="Payment terms, tender rules, penalties, escalation expectations"></textarea></label>
-          <label>Operational criteria<textarea id="rfi-operational-criteria" rows="4" placeholder="Appointment rules, pickup/delivery windows, live/drop requirements"></textarea></label>
-        </article>
-        <article class="customer-rfi-card">
-          <p class="eyebrow">Service requirements</p>
-          <label>Service specs<textarea id="rfi-service-requirements" rows="4" placeholder="Equipment specs, hazmat, temperature control, insurance, documents"></textarea></label>
-          <label>Required carrier profile<textarea id="rfi-carrier-requirements" rows="4" placeholder="Authority, insurance, fleet, GPS, crossborder experience, certifications"></textarea></label>
-          <label>Notes / exceptions<textarea id="rfi-notes" rows="4" placeholder="Known constraints, phased rollout, exclusions, attachments"></textarea></label>
-          <label>Attachment links<textarea id="rfi-attachments" rows="3" placeholder="Paste Drive links, file names, or reference documents"></textarea></label>
-        </article>
-      </section>
+      <details class="customer-rfi-card customer-rfi-advanced">
+        <summary>
+          <span>
+            <strong>Global notes and attachments</strong>
+            <small>Optional free-text backup. The operational checklist above remains the source of truth.</small>
+          </span>
+          <span class="status-pill">Optional</span>
+        </summary>
+        <section class="customer-rfi-grid rfi-advanced-grid">
+          <article>
+            <p class="eyebrow">Logistics model</p>
+            <label>Model by segment<textarea id="rfi-logistics-models" rows="3" placeholder="Direct, transfer, dedicated, drop, live load, border model by segment"></textarea></label>
+            <p class="eyebrow">Business rules</p>
+            <label>Commercial rules<textarea id="rfi-business-rules" rows="3" placeholder="Payment terms, tender rules, penalties, escalation expectations"></textarea></label>
+            <label>Operational criteria<textarea id="rfi-operational-criteria" rows="3" placeholder="Appointment rules, pickup/delivery windows, live/drop requirements"></textarea></label>
+          </article>
+          <article>
+            <p class="eyebrow">Service requirements</p>
+            <label>Service specs<textarea id="rfi-service-requirements" rows="3" placeholder="Equipment specs, hazmat, temperature control, insurance, documents"></textarea></label>
+            <label>Required carrier profile<textarea id="rfi-carrier-requirements" rows="3" placeholder="Authority, insurance, fleet, GPS, crossborder experience, certifications"></textarea></label>
+            <label>Notes / exceptions<textarea id="rfi-notes" rows="3" placeholder="Known constraints, phased rollout, exclusions, attachments"></textarea></label>
+            <label>Attachment links<textarea id="rfi-attachments" rows="2" placeholder="Paste Drive links, file names, or reference documents"></textarea></label>
+          </article>
+        </section>
+      </details>
 
       <section class="customer-rfi-actions">
         <button id="save-customer-rfi" type="button" class="secondary">Save draft</button>
