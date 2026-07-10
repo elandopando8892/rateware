@@ -51,54 +51,13 @@
           <div>
             <p class="eyebrow">Route schedule</p>
             <h2>Cedula de rutas</h2>
-            <p class="field-help">Capture the route schedule directly by lane. Required per lane: origin, destination, equipment, and weekly volume.</p>
+            <p class="field-help">Columnas alineadas al RFI. Obligatorio: salida, llegada, tipo de camion y volumen semanal.</p>
           </div>
           <button id="add-lane-row" type="button">Add lane</button>
         </div>
         <div class="rfx-process-table-wrap">
           <table class="rfx-process-table customer-rfi-lane-table">
-            <thead>
-              <tr>
-                <th>Lane ID</th>
-                <th>Segment</th>
-                <th>Origin site</th>
-                <th>O city</th>
-                <th>O ST</th>
-                <th>O country</th>
-                <th>O ZIP</th>
-                <th>O address</th>
-                <th>O contact</th>
-                <th>O hours</th>
-                <th>O handling</th>
-                <th>O appt</th>
-                <th>Destination site</th>
-                <th>D city</th>
-                <th>D ST</th>
-                <th>D country</th>
-                <th>D ZIP</th>
-                <th>D address</th>
-                <th>D contact</th>
-                <th>D hours</th>
-                <th>D handling</th>
-                <th>D appt</th>
-                <th>Operation</th>
-                <th>Service</th>
-                <th>Equipment</th>
-                <th>Trailer</th>
-                <th>Config</th>
-                <th>Commodity</th>
-                <th>Hazmat</th>
-                <th>Temp ctrl</th>
-                <th>Weekly</th>
-                <th>Frequency</th>
-                <th>Target</th>
-                <th>Currency</th>
-                <th>Current rate</th>
-                <th>Transit</th>
-                <th>Notes</th>
-                <th></th>
-              </tr>
-            </thead>
+            <thead id="rfi-lanes-head"></thead>
             <tbody id="rfi-lanes"></tbody>
           </table>
         </div>
@@ -109,7 +68,7 @@
           <div>
             <p class="eyebrow">Segment rubrics</p>
             <h2>Checklist by operation segment</h2>
-            <p class="field-help">Define what carriers must confirm by segment before bidding: model, operation criteria, business rules, service specs, and notes.</p>
+            <p class="field-help">Marca los rubros que el carrier debe confirmar y agrega observaciones por segmento.</p>
           </div>
           <button id="add-segment-checklist" type="button" class="secondary">Add segment checklist</button>
         </div>

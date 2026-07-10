@@ -13335,19 +13335,10 @@ function rfxProjectPublicLink(token: string, appOrigin: unknown) {
 
 function rfxRequiredLaneIssues(lane: Record<string, unknown>) {
   const issues: string[] = [];
-  if (!cleanText(lane.origin_text || lane.origin || lane.origin_id)) issues.push("origin_missing");
-  if (!cleanText(lane.destination_text || lane.destination || lane.destination_id)) issues.push("destination_missing");
-  if (!cleanText(lane.equipment_type || lane.equipment)) issues.push("equipment_missing");
-  if (cleanNumber(lane.weekly_volume) === null && cleanNumber(lane.monthly_volume) === null) issues.push("volume_missing");
-  if (!cleanText(lane.frequency)) issues.push("frequency_missing");
-  const segment = cleanText(lane.operating_segment)?.toLowerCase();
-  const operation = cleanText(lane.operation_type)?.toLowerCase();
-  if (segment === "crossborder" || operation === "crossborder") {
-    if (!cleanText(lane.crossborder_model) && !cleanText(lane.crossborder_details)) issues.push("crossborder_details_missing");
-  }
-  if (segment === "time_critical" && cleanNumber(lane.expected_transit_time_hours) === null) issues.push("time_critical_transit_missing");
-  if (segment === "expedited" && cleanNumber(lane.pickup_lead_time_hours) === null) issues.push("expedited_pickup_lead_time_missing");
-  if (cleanOptionalBoolean(lane.hazmat) === true && !cleanText(lane.hazmat_certification_required)) issues.push("hazmat_carrier_requirement_warning");
+  if (!cleanText(lane.origin_location || lane.origin_text || lane.origin || lane.origin_id || lane.origin_name || lane.origin_city)) issues.push("origin_missing");
+  if (!cleanText(lane.destination_location || lane.destination_text || lane.destination || lane.destination_id || lane.destination_name || lane.destination_city)) issues.push("destination_missing");
+  if (!cleanText(lane.truck_type || lane.equipment_type || lane.equipment || lane.trailer_requirements || lane.trailer)) issues.push("equipment_missing");
+  if (cleanNumber(lane.weekly_volume) === null && cleanNumber(lane.monthly_volume) === null && cleanNumber(lane.last_annual_volume) === null && cleanNumber(lane.annual_volume) === null) issues.push("volume_missing");
   return issues;
 }
 
@@ -13763,28 +13754,28 @@ async function createRfxDemandSnapshot(supabase: ReturnType<typeof createClient>
       project_id: project.id,
       source_rfi_lane_id: lane.id,
       lane_key: cleanText(lane.lane_id) || `L${index + 1}`,
-      origin: firstCleanText(payload.origin_text, lane.origin_text, lane.origin_name, origin.name, [lane.origin_city || origin.city, lane.origin_state || origin.state].filter(Boolean).join(", ")),
-      origin_city: firstCleanText(payload.origin_city, lane.origin_city, origin.city),
+      origin: firstCleanText(payload.origin_location, payload.origin_text, lane.origin_text, lane.origin_name, origin.name, [lane.origin_city || origin.city, lane.origin_state || origin.state].filter(Boolean).join(", ")),
+      origin_city: firstCleanText(payload.origin_city, lane.origin_city, origin.city, String(payload.origin_location || "").split(",")[0]),
       origin_state: firstCleanText(payload.origin_state, lane.origin_state, origin.state),
       origin_country: firstCleanText(payload.origin_country, lane.origin_country, origin.country),
       origin_postal_code: firstCleanText(payload.origin_postal_code, lane.origin_postal_code, origin.postal_code),
-      destination: firstCleanText(payload.destination_text, lane.destination_text, lane.destination_name, destination.name, [lane.destination_city || destination.city, lane.destination_state || destination.state].filter(Boolean).join(", ")),
-      destination_city: firstCleanText(payload.destination_city, lane.destination_city, destination.city),
+      destination: firstCleanText(payload.destination_location, payload.destination_text, lane.destination_text, lane.destination_name, destination.name, [lane.destination_city || destination.city, lane.destination_state || destination.state].filter(Boolean).join(", ")),
+      destination_city: firstCleanText(payload.destination_city, lane.destination_city, destination.city, String(payload.destination_location || "").split(",")[0]),
       destination_state: firstCleanText(payload.destination_state, lane.destination_state, destination.state),
       destination_country: firstCleanText(payload.destination_country, lane.destination_country, destination.country),
       destination_postal_code: firstCleanText(payload.destination_postal_code, lane.destination_postal_code, destination.postal_code),
       operating_segment: firstCleanText(payload.operating_segment, lane.operating_segment),
       operation_type: firstCleanText(payload.operation_type, lane.operation_type),
       service_type: firstCleanText(payload.service_type, lane.service_type),
-      equipment_type: cleanText(lane.equipment_type),
-      trailer_requirements: cleanText(lane.trailer_requirements),
+      equipment_type: firstCleanText(payload.truck_type, lane.equipment_type),
+      trailer_requirements: firstCleanText(payload.trailer_requirements, lane.trailer_requirements, payload.equipment_type),
       weekly_volume: cleanNumber(lane.weekly_volume),
-      monthly_volume: cleanNumber(lane.monthly_volume) ?? (cleanNumber(lane.annual_volume) === null ? null : Number(lane.annual_volume) / 12),
-      frequency: cleanText(lane.frequency),
+      monthly_volume: cleanNumber(lane.monthly_volume) ?? (cleanNumber(payload.last_annual_volume || lane.annual_volume) === null ? null : Number(payload.last_annual_volume || lane.annual_volume) / 12),
+      frequency: firstCleanText(payload.frequency, payload.scheduling_type, lane.frequency),
       currency: cleanText(lane.currency),
       target_rate: cleanNumber(lane.target_rate),
       current_rate: cleanNumber(lane.current_rate),
-      internal_notes: firstCleanText(lane.notes, payload.notes, lane.other_notes, payload.other_notes),
+      internal_notes: firstCleanText(lane.notes, payload.notes, payload.service_specifications, lane.other_notes, payload.other_notes),
       validation_issues: issues,
       normalized_payload: normalizedPayload
     }, user);

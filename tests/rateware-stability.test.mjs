@@ -268,14 +268,20 @@ assert.match(rfxProcessHtml, /Demand/, "RFx Process page should include Demand t
 assert.match(rfxProcessHtml, /RFx Design/, "RFx Process page should include RFx Design tab");
 assert.match(rfxProcessHtml, /Evaluation/, "RFx Process page should include Bid Evaluation tab");
 assert.match(customerRfiHtml, /rfi-lanes/, "Customer RFI page should collect a structured route schedule");
-assert.match(customerRfiHtml, /Origin site/, "Customer RFI route schedule should collect origin details directly by lane");
-assert.match(customerRfiHtml, /Destination site/, "Customer RFI route schedule should collect destination details directly by lane");
+assert.match(customerRfiHtml, /rfi-lanes-head/, "Customer RFI route schedule should render a dynamic RFI spreadsheet header");
+assert.match(customerRfiSource, /Ubicacion de salida/, "Customer RFI route schedule should align to the customer RFI origin columns");
+assert.match(customerRfiSource, /Ubicacion de llegada/, "Customer RFI route schedule should align to the customer RFI destination columns");
+assert.match(customerRfiSource, /Volumen semanal esperado/, "Customer RFI route schedule should include expected weekly volume from the RFI template");
 assert.match(customerRfiHtml, /rfi-segment-checklists/, "Customer RFI page should collect segment checklist rubrics");
+assert.match(customerRfiSource, /logistics_model_required/, "Customer RFI segment rubrics should use checkbox validation by rubric");
+assert.match(customerRfiSource, /Observaciones \/ criterios/, "Customer RFI segment rubrics should collect observations next to each checkbox");
 assert.match(customerRfiHtml, /rfi-carrier-requirements/, "Customer RFI page should collect required carrier profile details");
 assert.match(customerRfiHtml, /rfi-attachments/, "Customer RFI page should collect attachment references");
 assert.match(customerRfiSource, /submitCustomerRfi/, "Customer RFI UI should call the public submit API");
-assert.match(customerRfiSource, /Complete origin, destination, equipment and weekly volume/, "Customer RFI UI should validate required lane fields before final submission");
+assert.match(customerRfiSource, /Complete salida, llegada, tipo de camion y volumen semanal/, "Customer RFI UI should validate required RFI lane fields before final submission");
 assert.match(customerRfiSource, /state\.submitted/, "Customer RFI UI should lock submitted responses");
+assert.doesNotMatch(apiSource, /frequency_missing/, "RFx Process demand readiness should not require non-template frequency fields as hard blockers");
+assert.doesNotMatch(apiSource, /crossborder_details_missing/, "RFx Process demand readiness should not require narrative crossborder details as hard blockers");
 assert.match(rfxProcessSource, /does not mutate the customer submission/, "RFx Process UI should explain that demand normalization does not mutate the submitted RFI");
 for (const [label, source] of [
   ["RFx Process UI", rfxProcessSource],

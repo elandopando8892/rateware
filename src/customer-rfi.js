@@ -26,6 +26,7 @@ const els = {
   contact: document.getElementById("rfi-account-contact"),
   scope: document.getElementById("rfi-account-scope"),
   crossborder: document.getElementById("rfi-crossborder"),
+  laneHead: document.getElementById("rfi-lanes-head"),
   lanes: document.getElementById("rfi-lanes"),
   segmentChecklists: document.getElementById("rfi-segment-checklists"),
   logisticsModels: document.getElementById("rfi-logistics-models"),
@@ -80,6 +81,132 @@ const HANDLING_OPTIONS = [
   { value: "other", label: "Other" }
 ];
 
+const FACILITY_TYPE_OPTIONS = [
+  { value: "", label: "Select" },
+  { value: "plant", label: "Plant" },
+  { value: "dc", label: "DC" },
+  { value: "warehouse", label: "Warehouse" },
+  { value: "crossdock", label: "Crossdock" },
+  { value: "yard", label: "Yard" },
+  { value: "port", label: "Port" },
+  { value: "rail_ramp", label: "Rail ramp" },
+  { value: "customer_site", label: "Customer site" },
+  { value: "supplier_site", label: "Supplier site" },
+  { value: "other", label: "Other" }
+];
+
+const SCHEDULE_TYPE_OPTIONS = [
+  { value: "", label: "Select" },
+  { value: "appointment", label: "Appointment" },
+  { value: "window", label: "Window" },
+  { value: "fcfs", label: "FCFS" },
+  { value: "open", label: "Open hours" },
+  { value: "scheduled", label: "Scheduled" },
+  { value: "tbd", label: "TBD" }
+];
+
+const TRUCK_TYPE_OPTIONS = [
+  { value: "", label: "Select" },
+  { value: "Truck Trailer", label: "Truck Trailer" },
+  { value: "Straight Truck", label: "Straight Truck" },
+  { value: "Sprinter Van", label: "Sprinter Van" },
+  { value: "Cargo Van", label: "Cargo Van" },
+  { value: "Box Truck", label: "Box Truck" },
+  { value: "Flatbed", label: "Flatbed" },
+  { value: "Other", label: "Other" }
+];
+
+const EQUIPMENT_TYPE_OPTIONS = [
+  { value: "", label: "Select" },
+  { value: "Dry Van", label: "Dry Van" },
+  { value: "Flatbed", label: "Flatbed" },
+  { value: "Reefer", label: "Reefer" },
+  { value: "Step Deck", label: "Step Deck" },
+  { value: "Tanker", label: "Tanker" },
+  { value: "Lowboy", label: "Lowboy" },
+  { value: "Other", label: "Other" }
+];
+
+const CONFIG_OPTIONS = [
+  { value: "", label: "Select" },
+  { value: "Single", label: "Single" },
+  { value: "Team", label: "Team" },
+  { value: "Dedicated", label: "Dedicated" },
+  { value: "Drop Trailer", label: "Drop Trailer" },
+  { value: "Through Trailer", label: "Through Trailer" },
+  { value: "Transfer", label: "Transfer" }
+];
+
+const YES_NO_OPTIONS = [
+  { value: "", label: "Select" },
+  { value: "yes", label: "Yes" },
+  { value: "no", label: "No" }
+];
+
+const CURRENCY_OPTIONS = [
+  { value: "USD", label: "USD" },
+  { value: "MXN", label: "MXN" }
+];
+
+const RFI_LANE_COLUMNS = [
+  { key: "lane_id", label: "ID Lane", placeholder: "ID #" },
+  { key: "origin_location", label: "Ubicacion de salida", placeholder: "City, State", width: 150, required: true },
+  { key: "origin_postal_code", label: "Codigo postal de salida", placeholder: "5-digit", width: 96 },
+  { key: "origin_shipper", label: "Remitente de salida", placeholder: "Company Name", width: 150 },
+  { key: "origin_facility_type", label: "Tipo de instalacion de salida", type: "select", options: FACILITY_TYPE_OPTIONS, width: 128 },
+  { key: "origin_load_type", label: "Tipo de carga", type: "select", options: HANDLING_OPTIONS, width: 110 },
+  { key: "origin_average_time_hours", label: "Tiempo prom. carga", type: "number", placeholder: "X hrs", width: 88 },
+  { key: "origin_schedule_type", label: "Horario recogida", type: "select", options: SCHEDULE_TYPE_OPTIONS, width: 118 },
+  { key: "origin_service_window", label: "Ventana recogida", placeholder: "00 AM - 00 PM", width: 132 },
+  { key: "destination_location", label: "Ubicacion de llegada", placeholder: "City, State", width: 150, required: true },
+  { key: "destination_postal_code", label: "Codigo postal llegada", placeholder: "5-digit", width: 96 },
+  { key: "destination_consignee", label: "Consignatario llegada", placeholder: "Company Name", width: 150 },
+  { key: "destination_facility_type", label: "Tipo instalacion llegada", type: "select", options: FACILITY_TYPE_OPTIONS, width: 128 },
+  { key: "destination_unload_type", label: "Tipo descarga", type: "select", options: HANDLING_OPTIONS, width: 110 },
+  { key: "destination_average_time_hours", label: "Tiempo prom. descarga", type: "number", placeholder: "X hrs", width: 88 },
+  { key: "destination_schedule_type", label: "Horario entrega", type: "select", options: SCHEDULE_TYPE_OPTIONS, width: 118 },
+  { key: "destination_service_window", label: "Ventana entrega", placeholder: "00 AM - 00 PM", width: 132 },
+  { key: "truck_type", label: "Tipo de camion", type: "select", options: TRUCK_TYPE_OPTIONS, width: 125, required: true },
+  { key: "trailer_requirements", label: "Tipo de equipo", type: "select", options: EQUIPMENT_TYPE_OPTIONS, width: 118 },
+  { key: "config", label: "Tipo configuracion", type: "select", options: CONFIG_OPTIONS, width: 118 },
+  { key: "operation_type", label: "Tipo operacion", type: "select", options: OPERATION_OPTIONS, width: 120 },
+  { key: "service_type", label: "Tipo servicio", type: "select", options: SERVICE_OPTIONS, width: 115 },
+  { key: "border_crossing", label: "Punto cruce fronterizo", placeholder: "Laredo / Nuevo Laredo", width: 150 },
+  { key: "average_border_days", label: "Prom. dias frontera", type: "number", placeholder: "X days", width: 88 },
+  { key: "customs_broker", label: "Agente Aduanal", placeholder: "Company Name", width: 140 },
+  { key: "transfer", label: "Transfer", placeholder: "Company Name", width: 130 },
+  { key: "product", label: "Producto", placeholder: "Description / HS Code", width: 150 },
+  { key: "hazmat", label: "Hazmat?", type: "checkbox", width: 54 },
+  { key: "hazmat_un_number", label: "UN number", placeholder: "UN ####", width: 90 },
+  { key: "cargo_value", label: "Valor carga/factura", type: "number", placeholder: "Cargo value", width: 105 },
+  { key: "packaging", label: "Embalaje", placeholder: "Dropdown", width: 105 },
+  { key: "pieces", label: "Piezas", type: "number", width: 72 },
+  { key: "stackable_beds", label: "Camas apilables", type: "checkbox", width: 72 },
+  { key: "average_weight", label: "Peso promedio", type: "number", placeholder: "Net lbs", width: 95 },
+  { key: "average_cubic_meters", label: "M3 prom.", type: "number", width: 78 },
+  { key: "mon_volume", label: "Lun", type: "number", width: 64 },
+  { key: "tue_volume", label: "Mar", type: "number", width: 64 },
+  { key: "wed_volume", label: "Mie", type: "number", width: 64 },
+  { key: "thu_volume", label: "Jue", type: "number", width: 64 },
+  { key: "fri_volume", label: "Vie", type: "number", width: 64 },
+  { key: "sat_volume", label: "Sab", type: "number", width: 64 },
+  { key: "sun_volume", label: "Dom", type: "number", width: 64 },
+  { key: "sourcing_priority", label: "Prioridad abastecimiento", placeholder: "Dropdown", width: 126 },
+  { key: "last_annual_volume", label: "Ultimo volumen anual", type: "number", width: 112 },
+  { key: "weekly_volume", label: "Volumen semanal esperado", type: "number", width: 118, required: true },
+  { key: "seasonality", label: "Estacionalidad", placeholder: "Dropdown", width: 112 },
+  { key: "scheduling_type", label: "Tipo programacion", placeholder: "Dropdown", width: 120 },
+  { key: "positioning_lead_time", label: "Lead time posicionar", placeholder: "Dropdown", width: 120 },
+  { key: "driver_assistance", label: "Asistencia conductor", type: "checkbox", width: 74 },
+  { key: "double_driver", label: "Doble chofer", type: "checkbox", width: 70 },
+  { key: "transit_days", label: "Transito estimado", type: "number", width: 88 },
+  { key: "average_distance", label: "Distancia promedio", type: "number", placeholder: "mi/km", width: 100 },
+  { key: "target_rate", label: "Tarifa objetivo compra", type: "number", width: 112 },
+  { key: "currency", label: "Moneda", type: "select", options: CURRENCY_OPTIONS, width: 82 },
+  { key: "service_specifications", label: "Especificaciones unidad", type: "textarea", placeholder: "Condiciones y caracteristicas de la unidad", width: 230 },
+  { key: "notes", label: "Notas operacion", type: "textarea", placeholder: "Informacion relevante", width: 230 }
+];
+
 const CHECKLIST_FIELDS = [
   "logistics_model",
   "operation_criteria",
@@ -88,6 +215,15 @@ const CHECKLIST_FIELDS = [
   "carrier_requirements",
   "other_notes",
   "attachment_links"
+];
+
+const CHECKLIST_ITEMS = [
+  { key: "logistics_model", label: "Modelo logistico", note: "Directo, transfer, dedicado, drop, live load, border model." },
+  { key: "operation_criteria", label: "Criterios de operacion", note: "Ventanas, citas, carga/descarga, transito, capacidad y excepciones." },
+  { key: "business_rules", label: "Reglas de negocio", note: "Terminos de pago, fuel, accesoriales, free time, TONU, validez." },
+  { key: "service_specifications", label: "Especificaciones de servicio", note: "Unidad, equipo, hazmat, temperatura, seguros, documentos." },
+  { key: "carrier_requirements", label: "Perfil requerido del carrier", note: "Autoridad, seguro, flota, tracking, experiencia y escalacion." },
+  { key: "other_notes", label: "Otras notas", note: "Restricciones, rollout, exclusiones, riesgos o adjuntos." }
 ];
 
 const RFI_SEGMENT_SUGGESTIONS = {
@@ -154,13 +290,12 @@ const RFI_SEGMENT_SUGGESTIONS = {
 };
 
 const LANE_FIELDS = [
-  "lane_id",
+  ...RFI_LANE_COLUMNS.map((column) => column.key),
   "operating_segment",
   "origin_name",
   "origin_city",
   "origin_state",
   "origin_country",
-  "origin_postal_code",
   "origin_address",
   "origin_contact_name",
   "origin_contact_phone",
@@ -172,7 +307,6 @@ const LANE_FIELDS = [
   "destination_city",
   "destination_state",
   "destination_country",
-  "destination_postal_code",
   "destination_address",
   "destination_contact_name",
   "destination_contact_phone",
@@ -180,32 +314,20 @@ const LANE_FIELDS = [
   "destination_hours",
   "destination_handling_type",
   "destination_appointment_required",
-  "operation_type",
-  "service_type",
   "equipment_type",
-  "trailer_requirements",
-  "config",
-  "commodity",
-  "hazmat",
   "temperature_controlled",
-  "weekly_volume",
   "monthly_volume",
   "annual_volume",
   "frequency",
-  "target_rate",
   "current_rate",
-  "currency",
   "pickup_lead_time_hours",
   "expected_transit_time_hours",
-  "transit_days",
-  "cargo_value",
   "cargo_value_currency",
   "weight",
   "pallets",
   "dimensions",
   "seasonality_notes",
   "special_requirements",
-  "notes",
   ...CHECKLIST_FIELDS
 ];
 
@@ -220,6 +342,21 @@ function escapeHtml(value) {
 function cleanText(value) {
   const text = String(value ?? "").trim();
   return text || "";
+}
+
+function firstCleanText(...values) {
+  for (const value of values) {
+    const text = cleanText(value);
+    if (text) return text;
+  }
+  return "";
+}
+
+function splitCityState(value) {
+  const text = cleanText(value);
+  if (!text.includes(",")) return { city: text, state: "" };
+  const [city, ...rest] = text.split(",");
+  return { city: cleanText(city), state: cleanText(rest.join(",")) };
 }
 
 function numberOrBlank(value) {
@@ -261,6 +398,13 @@ function optionLabel(options, value) {
 }
 
 function routeLabel(row, prefix) {
+  const location = cleanText(row[`${prefix}_location`]);
+  if (location) {
+    return [
+      location,
+      row[`${prefix}_postal_code`]
+    ].map(cleanText).filter(Boolean).join(" | ");
+  }
   return [
     row[`${prefix}_name`],
     [row[`${prefix}_city`], row[`${prefix}_state`]].map(cleanText).filter(Boolean).join(", "),
@@ -276,6 +420,12 @@ function makeLane(index = 0) {
   return {
     lane_id: `L${index + 1}`,
     operating_segment: "crossborder",
+    origin_location: "",
+    origin_shipper: "",
+    origin_facility_type: "",
+    origin_load_type: "",
+    origin_schedule_type: "",
+    origin_service_window: "",
     origin_name: "",
     origin_city: "",
     origin_state: "",
@@ -290,6 +440,12 @@ function makeLane(index = 0) {
     origin_appointment_required: false,
     origin_average_time_hours: "",
     origin_site_restrictions: "",
+    destination_location: "",
+    destination_consignee: "",
+    destination_facility_type: "",
+    destination_unload_type: "",
+    destination_schedule_type: "",
+    destination_service_window: "",
     destination_name: "",
     destination_city: "",
     destination_state: "",
@@ -310,24 +466,51 @@ function makeLane(index = 0) {
     destination_text: "",
     operation_type: "d2d_export",
     service_type: "standard",
+    truck_type: "Truck Trailer",
     equipment_type: "",
     trailer_requirements: "",
     config: "",
+    border_crossing: "",
+    average_border_days: "",
+    customs_broker: "",
+    transfer: "",
+    product: "",
     commodity: "",
     hazmat: false,
+    hazmat_un_number: "",
     temperature_controlled: false,
     cargo_value: "",
     cargo_value_currency: "",
+    packaging: "",
+    pieces: "",
+    stackable_beds: false,
+    average_weight: "",
+    average_cubic_meters: "",
     weight: "",
     pallets: "",
     dimensions: "",
+    mon_volume: "",
+    tue_volume: "",
+    wed_volume: "",
+    thu_volume: "",
+    fri_volume: "",
+    sat_volume: "",
+    sun_volume: "",
+    sourcing_priority: "",
     weekly_volume: "",
+    last_annual_volume: "",
     monthly_volume: "",
     annual_volume: "",
     frequency: "",
+    seasonality: "",
+    scheduling_type: "",
+    positioning_lead_time: "",
+    driver_assistance: false,
+    double_driver: false,
     pickup_lead_time_hours: "",
     expected_transit_time_hours: "",
     transit_days: "",
+    average_distance: "",
     target_rate: "",
     current_rate: "",
     currency: "USD",
@@ -412,43 +595,100 @@ function applyLocationFallback(lane, data, prefix) {
 
 function rowLane(row, index) {
   const payload = row.raw_payload && typeof row.raw_payload === "object" ? row.raw_payload : {};
+  const originLocation = firstCleanText(payload.origin_location, row.origin_location, payload.origin_text, row.origin_text, row.origin, [payload.origin_city || row.origin_city, payload.origin_state || row.origin_state].filter(Boolean).join(", "));
+  const destinationLocation = firstCleanText(payload.destination_location, row.destination_location, payload.destination_text, row.destination_text, row.destination, [payload.destination_city || row.destination_city, payload.destination_state || row.destination_state].filter(Boolean).join(", "));
+  const originParts = splitCityState(originLocation);
+  const destinationParts = splitCityState(destinationLocation);
   let lane = {
     ...makeLane(index),
     ...payload,
     ...row,
     lane_id: cleanText(payload.lane_id || row.lane_id || row.id) || `L${index + 1}`,
     origin_key: cleanText(payload.origin_key || row.origin_key || row.origin_id),
-    origin_text: cleanText(payload.origin_text || row.origin_text || row.origin),
+    origin_location: originLocation,
+    origin_text: originLocation,
+    origin_shipper: firstCleanText(payload.origin_shipper, row.origin_shipper, payload.origin_contact_name, row.origin_contact_name),
+    origin_facility_type: firstCleanText(payload.origin_facility_type, row.origin_facility_type),
+    origin_load_type: firstCleanText(payload.origin_load_type, row.origin_load_type, payload.origin_handling_type, row.origin_handling_type, payload.loading_type),
+    origin_schedule_type: firstCleanText(payload.origin_schedule_type, row.origin_schedule_type),
+    origin_service_window: firstCleanText(payload.origin_service_window, row.origin_service_window, payload.origin_hours, row.origin_hours),
     destination_key: cleanText(payload.destination_key || row.destination_key || row.destination_id),
-    destination_text: cleanText(payload.destination_text || row.destination_text || row.destination),
+    destination_location: destinationLocation,
+    destination_text: destinationLocation,
+    destination_consignee: firstCleanText(payload.destination_consignee, row.destination_consignee, payload.destination_contact_name, row.destination_contact_name),
+    destination_facility_type: firstCleanText(payload.destination_facility_type, row.destination_facility_type),
+    destination_unload_type: firstCleanText(payload.destination_unload_type, row.destination_unload_type, payload.destination_handling_type, row.destination_handling_type, payload.unloading_type),
+    destination_schedule_type: firstCleanText(payload.destination_schedule_type, row.destination_schedule_type),
+    destination_service_window: firstCleanText(payload.destination_service_window, row.destination_service_window, payload.destination_hours, row.destination_hours),
     operating_segment: cleanText(payload.operating_segment || row.operating_segment || row.segment) || "crossborder",
     operation_type: cleanText(payload.operation_type || row.operation_type || row.operation) || "d2d_export",
     service_type: cleanText(payload.service_type || row.service_type || row.service) || "standard",
-    equipment_type: cleanText(payload.equipment_type || row.equipment_type || row.equipment),
-    trailer_requirements: cleanText(payload.trailer_requirements || row.trailer_requirements || row.trailer),
+    truck_type: firstCleanText(payload.truck_type, row.truck_type, payload.equipment, row.equipment, payload.equipment_type, row.equipment_type, "Truck Trailer"),
+    equipment_type: firstCleanText(payload.truck_type, row.truck_type, payload.equipment, row.equipment, payload.equipment_type, row.equipment_type),
+    trailer_requirements: firstCleanText(payload.trailer_requirements, row.trailer_requirements, payload.trailer, row.trailer, payload.tipo_equipo),
     config: cleanText(payload.config || row.config),
-    commodity: cleanText(payload.commodity || row.commodity),
+    border_crossing: firstCleanText(payload.border_crossing, row.border_crossing, payload.crossing),
+    average_border_days: numberOrBlank(payload.average_border_days ?? row.average_border_days ?? payload.border_days),
+    customs_broker: firstCleanText(payload.customs_broker, row.customs_broker),
+    transfer: firstCleanText(payload.transfer, row.transfer),
+    product: firstCleanText(payload.product, row.product, payload.commodity, row.commodity),
+    commodity: firstCleanText(payload.product, row.product, payload.commodity, row.commodity),
     hazmat: checkedBoolean(payload.hazmat ?? row.hazmat),
+    hazmat_un_number: firstCleanText(payload.hazmat_un_number, row.hazmat_un_number, payload.un_number),
     temperature_controlled: checkedBoolean(payload.temperature_controlled ?? row.temperature_controlled),
     cargo_value: numberOrBlank(payload.cargo_value ?? row.cargo_value),
     cargo_value_currency: cleanText(payload.cargo_value_currency || row.cargo_value_currency),
-    weight: numberOrBlank(payload.weight ?? row.weight),
-    pallets: numberOrBlank(payload.pallets ?? row.pallets),
-    dimensions: cleanText(payload.dimensions || row.dimensions),
+    packaging: firstCleanText(payload.packaging, row.packaging),
+    pieces: numberOrBlank(payload.pieces ?? row.pieces),
+    stackable_beds: checkedBoolean(payload.stackable_beds ?? row.stackable_beds),
+    average_weight: numberOrBlank(payload.average_weight ?? row.average_weight ?? payload.weight ?? row.weight),
+    average_cubic_meters: numberOrBlank(payload.average_cubic_meters ?? row.average_cubic_meters),
+    weight: numberOrBlank(payload.average_weight ?? row.average_weight ?? payload.weight ?? row.weight),
+    pallets: numberOrBlank(payload.pallets ?? row.pallets ?? payload.pieces ?? row.pieces),
+    dimensions: cleanText(payload.dimensions || row.dimensions || payload.average_cubic_meters || row.average_cubic_meters),
+    mon_volume: numberOrBlank(payload.mon_volume ?? row.mon_volume),
+    tue_volume: numberOrBlank(payload.tue_volume ?? row.tue_volume),
+    wed_volume: numberOrBlank(payload.wed_volume ?? row.wed_volume),
+    thu_volume: numberOrBlank(payload.thu_volume ?? row.thu_volume),
+    fri_volume: numberOrBlank(payload.fri_volume ?? row.fri_volume),
+    sat_volume: numberOrBlank(payload.sat_volume ?? row.sat_volume),
+    sun_volume: numberOrBlank(payload.sun_volume ?? row.sun_volume),
+    sourcing_priority: firstCleanText(payload.sourcing_priority, row.sourcing_priority),
+    last_annual_volume: numberOrBlank(payload.last_annual_volume ?? row.last_annual_volume ?? payload.annual_volume ?? row.annual_volume),
     weekly_volume: numberOrBlank(payload.weekly_volume ?? row.weekly_volume),
     monthly_volume: numberOrBlank(payload.monthly_volume ?? row.monthly_volume),
     annual_volume: numberOrBlank(payload.annual_volume ?? row.annual_volume),
     frequency: cleanText(payload.frequency || row.frequency),
+    seasonality: firstCleanText(payload.seasonality, row.seasonality, payload.seasonality_notes, row.seasonality_notes),
+    scheduling_type: firstCleanText(payload.scheduling_type, row.scheduling_type),
+    positioning_lead_time: firstCleanText(payload.positioning_lead_time, row.positioning_lead_time, payload.pickup_lead_time_hours, row.pickup_lead_time_hours),
+    driver_assistance: checkedBoolean(payload.driver_assistance ?? row.driver_assistance),
+    double_driver: checkedBoolean(payload.double_driver ?? row.double_driver),
     pickup_lead_time_hours: numberOrBlank(payload.pickup_lead_time_hours ?? row.pickup_lead_time_hours),
     expected_transit_time_hours: numberOrBlank(payload.expected_transit_time_hours ?? row.expected_transit_time_hours),
     transit_days: numberOrBlank(payload.transit_days ?? row.transit_days),
+    average_distance: numberOrBlank(payload.average_distance ?? row.average_distance),
     target_rate: numberOrBlank(payload.target_rate ?? row.target_rate),
     current_rate: numberOrBlank(payload.current_rate ?? row.current_rate),
     currency: cleanText(payload.currency || row.currency) || "USD",
-    seasonality_notes: cleanText(payload.seasonality_notes || row.seasonality_notes),
+    seasonality_notes: cleanText(payload.seasonality_notes || row.seasonality_notes || payload.seasonality || row.seasonality),
     special_requirements: cleanText(payload.special_requirements || row.special_requirements),
     notes: cleanText(payload.notes || row.notes)
   };
+  lane.origin_name = firstCleanText(payload.origin_name, row.origin_name, lane.origin_location);
+  lane.origin_city = firstCleanText(payload.origin_city, row.origin_city, originParts.city);
+  lane.origin_state = firstCleanText(payload.origin_state, row.origin_state, originParts.state);
+  lane.origin_country = firstCleanText(payload.origin_country, row.origin_country);
+  lane.origin_contact_name = firstCleanText(payload.origin_contact_name, row.origin_contact_name, lane.origin_shipper);
+  lane.origin_hours = firstCleanText(payload.origin_hours, row.origin_hours, lane.origin_service_window);
+  lane.origin_handling_type = firstCleanText(payload.origin_handling_type, row.origin_handling_type, lane.origin_load_type);
+  lane.destination_name = firstCleanText(payload.destination_name, row.destination_name, lane.destination_location);
+  lane.destination_city = firstCleanText(payload.destination_city, row.destination_city, destinationParts.city);
+  lane.destination_state = firstCleanText(payload.destination_state, row.destination_state, destinationParts.state);
+  lane.destination_country = firstCleanText(payload.destination_country, row.destination_country);
+  lane.destination_contact_name = firstCleanText(payload.destination_contact_name, row.destination_contact_name, lane.destination_consignee);
+  lane.destination_hours = firstCleanText(payload.destination_hours, row.destination_hours, lane.destination_service_window);
+  lane.destination_handling_type = firstCleanText(payload.destination_handling_type, row.destination_handling_type, lane.destination_unload_type);
   for (const prefix of ["origin", "destination"]) {
     lane = applyLocationFallback(lane, row, prefix);
     lane[`${prefix}_text`] = routeLabelFallback(lane, prefix);
@@ -463,11 +703,17 @@ function makeSegmentChecklist(index = 0, segment = "crossborder") {
     segment_key: segment,
     segment_name: suggestion.segment_name || `Segment ${index + 1}`,
     operation_type: suggestion.operation_type || "d2d_export",
+    logistics_model_required: true,
     logistics_model: "",
+    operation_criteria_required: true,
     operation_criteria: "",
+    business_rules_required: true,
     business_rules: "",
+    service_specifications_required: true,
     service_specifications: "",
+    carrier_requirements_required: true,
     carrier_requirements: "",
+    other_notes_required: false,
     other_notes: "",
     attachment_links: ""
   };
@@ -481,11 +727,17 @@ function rowSegmentChecklist(row, index) {
     segment_key: segment,
     segment_name: cleanText(row.segment_name || row.name) || base.segment_name,
     operation_type: cleanText(row.operation_type || row.operation) || base.operation_type,
+    logistics_model_required: row.logistics_model_required !== false,
     logistics_model: cleanText(row.logistics_model || row.logistic_model),
+    operation_criteria_required: row.operation_criteria_required !== false,
     operation_criteria: cleanText(row.operation_criteria || row.operational_criteria),
+    business_rules_required: row.business_rules_required !== false,
     business_rules: cleanText(row.business_rules),
+    service_specifications_required: row.service_specifications_required !== false,
     service_specifications: cleanText(row.service_specifications || row.service_requirements || row.service_specs),
+    carrier_requirements_required: row.carrier_requirements_required !== false,
     carrier_requirements: cleanText(row.carrier_requirements || row.required_carrier_profile),
+    other_notes_required: row.other_notes_required === true,
     other_notes: cleanText(row.other_notes || row.notes),
     attachment_links: cleanText(row.attachment_links || row.attachments)
   };
@@ -533,56 +785,40 @@ function deriveSegmentChecklists(lanes) {
   return [...keys].map((segment, index) => makeSegmentChecklist(index, segment));
 }
 
+function renderLaneHead() {
+  if (!els.laneHead) return;
+  els.laneHead.innerHTML = `
+    <tr>
+      ${RFI_LANE_COLUMNS.map((column) => `<th style="min-width:${column.width || 110}px">${escapeHtml(column.label)}${column.required ? " *" : ""}</th>`).join("")}
+      <th class="rfi-action-column"></th>
+    </tr>
+  `;
+}
+
+function renderLaneCell(column, row) {
+  const value = row[column.key];
+  const width = column.width || 110;
+  if (column.type === "checkbox") {
+    return `<td class="rfi-check-cell" style="min-width:${width}px"><input type="checkbox" data-field="${column.key}" ${checkedBoolean(value) ? "checked" : ""} /></td>`;
+  }
+  if (column.type === "select") {
+    return `<td style="min-width:${width}px"><select data-field="${column.key}">${selectOptions(column.options || [], value)}</select></td>`;
+  }
+  if (column.type === "textarea") {
+    return `<td style="min-width:${width}px"><textarea data-field="${column.key}" rows="1" placeholder="${escapeHtml(column.placeholder || "")}">${escapeHtml(value)}</textarea></td>`;
+  }
+  const type = column.type === "number" ? "number" : "text";
+  const step = type === "number" ? ' step="0.01"' : "";
+  return `<td style="min-width:${width}px"><input type="${type}"${step} data-field="${column.key}" value="${escapeHtml(value)}" placeholder="${escapeHtml(column.placeholder || "")}" /></td>`;
+}
+
 function renderLaneRows() {
   if (!els.lanes) return;
+  renderLaneHead();
   els.lanes.innerHTML = state.lanes.map((row, index) => `
     <tr data-index="${index}" class="rfi-route-row">
-      <td><input data-field="lane_id" value="${escapeHtml(row.lane_id)}" /></td>
-      <td><select data-field="operating_segment">${selectOptions(SEGMENT_OPTIONS, row.operating_segment)}</select></td>
-      <td><input data-field="origin_name" value="${escapeHtml(row.origin_name)}" placeholder="Plant / DC / site" /></td>
-      <td><input data-field="origin_city" value="${escapeHtml(row.origin_city)}" /></td>
-      <td><input data-field="origin_state" value="${escapeHtml(row.origin_state)}" /></td>
-      <td><input data-field="origin_country" value="${escapeHtml(row.origin_country)}" placeholder="MX / US / CA" /></td>
-      <td><input data-field="origin_postal_code" value="${escapeHtml(row.origin_postal_code)}" /></td>
-      <td><input data-field="origin_address" value="${escapeHtml(row.origin_address)}" placeholder="Street / park / site" /></td>
-      <td>
-        <input data-field="origin_contact_name" value="${escapeHtml(row.origin_contact_name)}" placeholder="Name" />
-        <input data-field="origin_contact_phone" value="${escapeHtml(row.origin_contact_phone)}" placeholder="Phone" />
-        <input data-field="origin_contact_email" value="${escapeHtml(row.origin_contact_email)}" placeholder="Email" />
-      </td>
-      <td><input data-field="origin_hours" value="${escapeHtml(row.origin_hours)}" placeholder="Loading hours" /></td>
-      <td><select data-field="origin_handling_type">${selectOptions(HANDLING_OPTIONS, row.origin_handling_type)}</select></td>
-      <td class="rfi-check-cell"><input type="checkbox" data-field="origin_appointment_required" ${row.origin_appointment_required ? "checked" : ""} /></td>
-      <td><input data-field="destination_name" value="${escapeHtml(row.destination_name)}" placeholder="Plant / DC / site" /></td>
-      <td><input data-field="destination_city" value="${escapeHtml(row.destination_city)}" /></td>
-      <td><input data-field="destination_state" value="${escapeHtml(row.destination_state)}" /></td>
-      <td><input data-field="destination_country" value="${escapeHtml(row.destination_country)}" placeholder="MX / US / CA" /></td>
-      <td><input data-field="destination_postal_code" value="${escapeHtml(row.destination_postal_code)}" /></td>
-      <td><input data-field="destination_address" value="${escapeHtml(row.destination_address)}" placeholder="Street / park / site" /></td>
-      <td>
-        <input data-field="destination_contact_name" value="${escapeHtml(row.destination_contact_name)}" placeholder="Name" />
-        <input data-field="destination_contact_phone" value="${escapeHtml(row.destination_contact_phone)}" placeholder="Phone" />
-        <input data-field="destination_contact_email" value="${escapeHtml(row.destination_contact_email)}" placeholder="Email" />
-      </td>
-      <td><input data-field="destination_hours" value="${escapeHtml(row.destination_hours)}" placeholder="Receiving hours" /></td>
-      <td><select data-field="destination_handling_type">${selectOptions(HANDLING_OPTIONS, row.destination_handling_type)}</select></td>
-      <td class="rfi-check-cell"><input type="checkbox" data-field="destination_appointment_required" ${row.destination_appointment_required ? "checked" : ""} /></td>
-      <td><select data-field="operation_type">${selectOptions(OPERATION_OPTIONS, row.operation_type)}</select></td>
-      <td><select data-field="service_type">${selectOptions(SERVICE_OPTIONS, row.service_type)}</select></td>
-      <td><input data-field="equipment_type" value="${escapeHtml(row.equipment_type)}" placeholder="Truck Trailer" /></td>
-      <td><input data-field="trailer_requirements" value="${escapeHtml(row.trailer_requirements)}" placeholder="Dry Van / Flatbed" /></td>
-      <td><input data-field="config" value="${escapeHtml(row.config)}" placeholder="Single / team" /></td>
-      <td><input data-field="commodity" value="${escapeHtml(row.commodity)}" /></td>
-      <td class="rfi-check-cell"><input type="checkbox" data-field="hazmat" ${row.hazmat ? "checked" : ""} /></td>
-      <td class="rfi-check-cell"><input type="checkbox" data-field="temperature_controlled" ${row.temperature_controlled ? "checked" : ""} /></td>
-      <td><input type="number" step="1" data-field="weekly_volume" value="${escapeHtml(row.weekly_volume)}" /></td>
-      <td><input data-field="frequency" value="${escapeHtml(row.frequency)}" placeholder="Daily / weekly / seasonal" /></td>
-      <td><input type="number" step="0.01" data-field="target_rate" value="${escapeHtml(row.target_rate)}" /></td>
-      <td><input data-field="currency" value="${escapeHtml(row.currency)}" /></td>
-      <td><input type="number" step="0.01" data-field="current_rate" value="${escapeHtml(row.current_rate)}" /></td>
-      <td><input type="number" step="0.1" data-field="transit_days" value="${escapeHtml(row.transit_days)}" /></td>
-      <td><textarea data-field="notes" rows="1" placeholder="Lane notes">${escapeHtml(row.notes)}</textarea></td>
-      <td><button type="button" class="secondary small-button" data-remove-lane="${index}">Remove</button></td>
+      ${RFI_LANE_COLUMNS.map((column) => renderLaneCell(column, row)).join("")}
+      <td class="rfi-action-column"><button type="button" class="secondary small-button" data-remove-lane="${index}">Remove</button></td>
     </tr>
   `).join("");
 }
@@ -611,13 +847,30 @@ function renderSegmentChecklists() {
         <span>Suggestions</span>
         ${SEGMENT_OPTIONS.map((option) => `<button type="button" class="secondary small-button" data-suggest-rubrics="${option.value}" data-index="${index}">${escapeHtml(option.label)}</button>`).join("")}
       </div>
-      <label>Modelo logistico / Logistics model<textarea data-field="logistics_model" rows="4" placeholder="Direct, transfer, dedicated, drop, live load, border model by segment">${escapeHtml(segment.logistics_model)}</textarea></label>
-      <label>Criterios de operacion / Operation criteria<textarea data-field="operation_criteria" rows="4" placeholder="Pickup/delivery windows, loading model, schedule, appointment rules">${escapeHtml(segment.operation_criteria)}</textarea></label>
-      <label>Reglas de negocio / Business rules<textarea data-field="business_rules" rows="4" placeholder="Payment terms, tender rules, penalties, escalation expectations">${escapeHtml(segment.business_rules)}</textarea></label>
-      <label>Especificaciones de servicio / Service specifications<textarea data-field="service_specifications" rows="4" placeholder="Equipment specs, hazmat, temperature control, insurance, documents">${escapeHtml(segment.service_specifications)}</textarea></label>
-      <label>Required carrier profile<textarea data-field="carrier_requirements" rows="3" placeholder="Authority, insurance, fleet, GPS, crossborder experience, certifications">${escapeHtml(segment.carrier_requirements)}</textarea></label>
-      <label>Otras notas / Other notes<textarea data-field="other_notes" rows="3" placeholder="Known constraints, phased rollout, exclusions">${escapeHtml(segment.other_notes)}</textarea></label>
-      <label>Attachment links<textarea data-field="attachment_links" rows="2" placeholder="Drive links or file references">${escapeHtml(segment.attachment_links)}</textarea></label>
+      <div class="rfi-checklist-table-wrap">
+        <table class="rfi-checklist-table">
+          <thead>
+            <tr>
+              <th>Validar</th>
+              <th>Rubro</th>
+              <th>Observaciones / criterios</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${CHECKLIST_ITEMS.map((item) => `
+              <tr class="rfi-checklist-row">
+                <td class="rfi-check-cell"><input type="checkbox" data-field="${item.key}_required" ${segment[`${item.key}_required`] === false ? "" : "checked"} /></td>
+                <td>
+                  <strong>${escapeHtml(item.label)}</strong>
+                  <small>${escapeHtml(item.note)}</small>
+                </td>
+                <td><textarea data-field="${item.key}" rows="1" placeholder="Que debe confirmar el carrier...">${escapeHtml(segment[item.key])}</textarea></td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      </div>
+      <label>Attachment links<textarea data-field="attachment_links" rows="1" placeholder="Drive links or file references">${escapeHtml(segment.attachment_links)}</textarea></label>
     </article>
   `).join("");
 }
@@ -689,6 +942,27 @@ function collectLaneRows() {
         lane[field] = input.type === "checkbox" ? input.checked : cleanText(input.value);
       }
       lane.lane_id = cleanText(lane.lane_id) || `L${index + 1}`;
+      const originParts = splitCityState(lane.origin_location);
+      const destinationParts = splitCityState(lane.destination_location);
+      lane.origin_name = firstCleanText(lane.origin_name, lane.origin_location);
+      lane.origin_city = firstCleanText(lane.origin_city, originParts.city);
+      lane.origin_state = firstCleanText(lane.origin_state, originParts.state);
+      lane.origin_contact_name = firstCleanText(lane.origin_contact_name, lane.origin_shipper);
+      lane.origin_hours = firstCleanText(lane.origin_hours, lane.origin_service_window);
+      lane.origin_handling_type = firstCleanText(lane.origin_handling_type, lane.origin_load_type);
+      lane.destination_name = firstCleanText(lane.destination_name, lane.destination_location);
+      lane.destination_city = firstCleanText(lane.destination_city, destinationParts.city);
+      lane.destination_state = firstCleanText(lane.destination_state, destinationParts.state);
+      lane.destination_contact_name = firstCleanText(lane.destination_contact_name, lane.destination_consignee);
+      lane.destination_hours = firstCleanText(lane.destination_hours, lane.destination_service_window);
+      lane.destination_handling_type = firstCleanText(lane.destination_handling_type, lane.destination_unload_type);
+      lane.equipment_type = firstCleanText(lane.truck_type, lane.equipment_type);
+      lane.commodity = firstCleanText(lane.product, lane.commodity);
+      lane.weight = firstCleanText(lane.average_weight, lane.weight);
+      lane.pallets = firstCleanText(lane.pieces, lane.pallets);
+      lane.annual_volume = firstCleanText(lane.last_annual_volume, lane.annual_volume);
+      lane.seasonality_notes = firstCleanText(lane.seasonality, lane.seasonality_notes);
+      lane.pickup_lead_time_hours = firstCleanText(lane.positioning_lead_time, lane.pickup_lead_time_hours);
       lane.origin_text = routeLabelFallback(lane, "origin");
       lane.destination_text = routeLabelFallback(lane, "destination");
       lane.operating_segment = cleanText(lane.operating_segment) || segmentFromLane(lane);
@@ -702,16 +976,23 @@ function collectSegmentChecklists() {
   return Array.from(els.segmentChecklists?.querySelectorAll(".rfi-segment-checklist") || [])
     .map((row, index) => {
       const get = (field) => cleanText(row.querySelector(`[data-field="${field}"]`)?.value);
+      const checked = (field) => row.querySelector(`[data-field="${field}"]`)?.checked === true;
       const segmentKey = get("segment_key") || "crossborder";
       return {
         segment_key: segmentKey,
         segment_name: get("segment_name") || optionLabel(SEGMENT_OPTIONS, segmentKey) || `Segment ${index + 1}`,
         operation_type: get("operation_type"),
+        logistics_model_required: checked("logistics_model_required"),
         logistics_model: get("logistics_model"),
+        operation_criteria_required: checked("operation_criteria_required"),
         operation_criteria: get("operation_criteria"),
+        business_rules_required: checked("business_rules_required"),
         business_rules: get("business_rules"),
+        service_specifications_required: checked("service_specifications_required"),
         service_specifications: get("service_specifications"),
+        carrier_requirements_required: checked("carrier_requirements_required"),
         carrier_requirements: get("carrier_requirements"),
+        other_notes_required: checked("other_notes_required"),
         other_notes: get("other_notes"),
         attachment_links: get("attachment_links")
       };
@@ -875,7 +1156,7 @@ async function submitFinal() {
   const rfi = collectRfi();
   const missing = rfi.lanes.filter((lane) => !cleanText(routeLabelFallback(lane, "origin")) || !cleanText(routeLabelFallback(lane, "destination")) || !cleanText(lane.equipment_type) || !cleanText(lane.weekly_volume));
   if (missing.length) {
-    setStatus("Complete origin, destination, equipment and weekly volume for every lane before submitting.", "error");
+    setStatus("Complete salida, llegada, tipo de camion y volumen semanal for every lane before submitting.", "error");
     return;
   }
   if (!window.confirm("Submit this RFI as final? Procurement must reopen it before any edits.")) return;
@@ -901,6 +1182,7 @@ function applyRubricSuggestion(index, key) {
   };
   for (const field of CHECKLIST_FIELDS) {
     if (field === "attachment_links") continue;
+    if (field !== "other_notes") next[`${field}_required`] = true;
     next[field] = cleanText(segment[field]) || cleanText(suggestion[field]);
   }
   current[index] = next;

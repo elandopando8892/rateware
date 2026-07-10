@@ -3820,16 +3820,17 @@ function normalizeRfiService(value: unknown) {
 
 function rfiLaneIssues(row: Record<string, unknown>) {
   const issues: string[] = [];
-  if (!cleanText(row.origin_text || row.origin || row.origin_key || row.origin_name || row.origin_city)) issues.push("origin_missing");
-  if (!cleanText(row.destination_text || row.destination || row.destination_key || row.destination_name || row.destination_city)) issues.push("destination_missing");
-  if (!cleanText(row.equipment_type || row.equipment)) issues.push("equipment_missing");
-  if (cleanNumber(row.weekly_volume) === null && cleanNumber(row.monthly_volume) === null) issues.push("volume_missing");
+  if (!cleanText(row.origin_location || row.origin_text || row.origin || row.origin_key || row.origin_name || row.origin_city)) issues.push("origin_missing");
+  if (!cleanText(row.destination_location || row.destination_text || row.destination || row.destination_key || row.destination_name || row.destination_city)) issues.push("destination_missing");
+  if (!cleanText(row.truck_type || row.equipment_type || row.equipment || row.trailer_requirements || row.trailer)) issues.push("equipment_missing");
+  if (cleanNumber(row.weekly_volume) === null && cleanNumber(row.monthly_volume) === null && cleanNumber(row.last_annual_volume) === null) issues.push("volume_missing");
   return issues;
 }
 
 function rfiRouteText(row: Record<string, unknown>, prefix: "origin" | "destination") {
   return cleanText(
-    row[`${prefix}_text`]
+    row[`${prefix}_location`]
+    || row[`${prefix}_text`]
     || row[prefix]
     || [
       cleanText(row[`${prefix}_name`]),
@@ -3945,60 +3946,60 @@ function normalizeRfiLane(
     destination_id: destinationKey ? destinationIds.get(destinationKey) || null : null,
     origin_text: rfiRouteText(row, "origin"),
     destination_text: rfiRouteText(row, "destination"),
-    origin_name: cleanText(row.origin_name || row.origin_site || row.origin_location),
+    origin_name: cleanText(row.origin_location || row.origin_name || row.origin_site),
     origin_address: cleanText(row.origin_address || row.origin_street_address),
-    origin_city: cleanText(row.origin_city),
+    origin_city: cleanText(row.origin_city || String(row.origin_location || "").split(",")[0]),
     origin_state: cleanText(row.origin_state || row.origin_st || row.origin_province),
     origin_country: cleanText(row.origin_country),
     origin_postal_code: cleanText(row.origin_postal_code || row.origin_zip || row.origin_zip_code),
-    origin_contact_name: cleanText(row.origin_contact_name || row.origin_contact),
+    origin_contact_name: cleanText(row.origin_shipper || row.origin_contact_name || row.origin_contact),
     origin_contact_phone: cleanText(row.origin_contact_phone || row.origin_phone),
     origin_contact_email: cleanEmail(row.origin_contact_email || row.origin_email),
-    origin_hours: cleanText(row.origin_hours || row.origin_loading_hours || row.loading_hours),
-    origin_handling_type: cleanText(row.origin_handling_type || row.origin_loading_type || row.loading_type),
+    origin_hours: cleanText(row.origin_service_window || row.origin_hours || row.origin_loading_hours || row.loading_hours),
+    origin_handling_type: cleanText(row.origin_load_type || row.origin_handling_type || row.origin_loading_type || row.loading_type),
     origin_appointment_required: cleanBoolean(row.origin_appointment_required || row.appointment_required) === true,
     origin_average_time_hours: cleanNumber(row.origin_average_time_hours || row.average_loading_time_hours),
     origin_site_restrictions: cleanText(row.origin_site_restrictions || row.origin_notes),
-    destination_name: cleanText(row.destination_name || row.destination_site || row.destination_location),
+    destination_name: cleanText(row.destination_location || row.destination_name || row.destination_site),
     destination_address: cleanText(row.destination_address || row.destination_street_address),
-    destination_city: cleanText(row.destination_city),
+    destination_city: cleanText(row.destination_city || String(row.destination_location || "").split(",")[0]),
     destination_state: cleanText(row.destination_state || row.destination_st || row.destination_province),
     destination_country: cleanText(row.destination_country),
     destination_postal_code: cleanText(row.destination_postal_code || row.destination_zip || row.destination_zip_code),
-    destination_contact_name: cleanText(row.destination_contact_name || row.destination_contact),
+    destination_contact_name: cleanText(row.destination_consignee || row.destination_contact_name || row.destination_contact),
     destination_contact_phone: cleanText(row.destination_contact_phone || row.destination_phone),
     destination_contact_email: cleanEmail(row.destination_contact_email || row.destination_email),
-    destination_hours: cleanText(row.destination_hours || row.destination_receiving_hours || row.receiving_hours),
-    destination_handling_type: cleanText(row.destination_handling_type || row.destination_unloading_type || row.unloading_type),
+    destination_hours: cleanText(row.destination_service_window || row.destination_hours || row.destination_receiving_hours || row.receiving_hours),
+    destination_handling_type: cleanText(row.destination_unload_type || row.destination_handling_type || row.destination_unloading_type || row.unloading_type),
     destination_appointment_required: cleanBoolean(row.destination_appointment_required || row.destination_appt_required) === true,
     destination_average_time_hours: cleanNumber(row.destination_average_time_hours || row.average_unloading_time_hours),
     destination_site_restrictions: cleanText(row.destination_site_restrictions || row.destination_notes),
     operating_segment: normalizeRfiSegment(row.operating_segment || row.segment),
     operation_type: normalizeRfiOperation(row.operation_type || row.operation),
     service_type: normalizeRfiService(row.service_type || row.service),
-    equipment_type: cleanText(row.equipment_type || row.equipment),
-    trailer_requirements: cleanText(row.trailer_requirements || row.trailer),
+    equipment_type: cleanText(row.truck_type || row.equipment_type || row.equipment),
+    trailer_requirements: cleanText(row.trailer_requirements || row.equipment_type || row.trailer),
     config: cleanText(row.config || row.configuration),
-    commodity: cleanText(row.commodity),
+    commodity: cleanText(row.product || row.commodity),
     hazmat: cleanBoolean(row.hazmat) === true,
     temperature_controlled: cleanBoolean(row.temperature_controlled || row.temp_controlled || row.reefer) === true,
     cargo_value: cleanNumber(row.cargo_value),
     cargo_value_currency: cleanText(row.cargo_value_currency),
-    weight: cleanNumber(row.weight),
-    pallets: cleanNumber(row.pallets),
-    dimensions: cleanText(row.dimensions),
+    weight: cleanNumber(row.average_weight || row.weight),
+    pallets: cleanNumber(row.pieces || row.pallets),
+    dimensions: cleanText(row.average_cubic_meters || row.dimensions),
     weekly_volume: cleanNumber(row.weekly_volume),
     monthly_volume: cleanNumber(row.monthly_volume),
-    annual_volume: cleanNumber(row.annual_volume),
-    frequency: cleanText(row.frequency),
-    pickup_lead_time_hours: cleanNumber(row.pickup_lead_time_hours),
+    annual_volume: cleanNumber(row.last_annual_volume || row.annual_volume),
+    frequency: cleanText(row.frequency || row.scheduling_type),
+    pickup_lead_time_hours: cleanNumber(row.positioning_lead_time || row.pickup_lead_time_hours),
     expected_transit_time_hours: cleanNumber(row.expected_transit_time_hours),
     transit_days: cleanNumber(row.transit_days),
     target_rate: cleanNumber(row.target_rate),
     current_rate: cleanNumber(row.current_rate),
     currency: cleanText(row.currency),
-    seasonality_notes: cleanText(row.seasonality_notes),
-    special_requirements: cleanText(row.special_requirements),
+    seasonality_notes: cleanText(row.seasonality || row.seasonality_notes),
+    special_requirements: cleanText(row.service_specifications || row.special_requirements),
     notes: cleanText(row.notes),
     logistics_model: cleanText(row.logistics_model || row.logistic_model || row.modelo_logistico),
     operation_criteria: cleanText(row.operation_criteria || row.operational_criteria || row.criterios_de_operacion),
