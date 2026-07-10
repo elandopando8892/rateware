@@ -8662,7 +8662,15 @@ function vendorCiPlaybooks() {
       label: "Service quality",
       methodology: "8d",
       goal: "Stop recurring service failures and document corrective action before the carrier is used again at scale.",
+      default_title: "Service failure corrective action required",
+      vendor_request_template: "Please document the service failure, immediate containment, root cause, corrective action, owner, and proof that the next 3 loads will be controlled.",
+      suggested_severity: "high",
+      suggested_target_tier: "strategic",
+      due_days: 7,
+      success_metric: "Next 3 loads executed without repeat failure.",
+      owner_role: "Carrier operations lead",
       steps: ["Define the failure mode", "Contain impacted lanes or customers", "Confirm root cause", "Assign corrective action", "Verify next 3 loads"],
+      actions: ["Open CI case", "Request 8D response", "Track next 3 loads", "Decide vendor restriction or recovery"],
       evidence: "Use load history, late pickup/delivery notes, customer escalation and carrier response."
     },
     {
@@ -8670,7 +8678,15 @@ function vendorCiPlaybooks() {
       label: "Capacity commitment",
       methodology: "dmaic",
       goal: "Measure committed vs actual capacity and move the carrier toward reliable lane coverage.",
+      default_title: "Capacity commitment gap review",
+      vendor_request_template: "Please confirm committed weekly capacity, actual available units, rejection reasons, recovery plan, and the cadence for updating live capacity.",
+      suggested_severity: "medium",
+      suggested_target_tier: "strategic",
+      due_days: 10,
+      success_metric: "Committed vs actual capacity tracked weekly with variance below agreed threshold.",
+      owner_role: "Carrier capacity owner",
       steps: ["Define committed capacity", "Measure weekly accepted loads", "Analyze tender rejection", "Improve availability signal", "Control with recurring review"],
+      actions: ["Open CI case", "Request capacity proof", "Compare RFx bid vs actual", "Schedule weekly review"],
       evidence: "Use RFx bids, Rateware coverage, tender acceptance, ETA and unit availability."
     },
     {
@@ -8678,7 +8694,15 @@ function vendorCiPlaybooks() {
       label: "Compliance",
       methodology: "capa",
       goal: "Close compliance gaps before activation or before assigning sensitive freight.",
+      default_title: "Compliance documentation required",
+      vendor_request_template: "Please provide the missing compliance evidence, document owner, expiration dates, and confirmation that the carrier is authorized for the requested service.",
+      suggested_severity: "critical",
+      suggested_target_tier: "tactical",
+      due_days: 5,
+      success_metric: "All required compliance documents validated and attached before activation.",
+      owner_role: "Carrier compliance contact",
       steps: ["Identify missing document", "Request evidence", "Validate against policy", "Approve or restrict carrier", "Schedule next audit"],
+      actions: ["Open CI case", "Request documents", "Validate evidence", "Approve or restrict carrier"],
       evidence: "Use RMIS, insurance, W9/tax, authority, safety and document review evidence."
     },
     {
@@ -8686,7 +8710,15 @@ function vendorCiPlaybooks() {
       label: "Cost variance",
       methodology: "dmaic",
       goal: "Explain price outliers and decide whether the issue is market, lane fit, or carrier behavior.",
+      default_title: "Cost variance explanation required",
+      vendor_request_template: "Please explain the variance against target buy rate, including linehaul, fuel, border/crossing, accessorials, assumptions, and validity of the quoted rate.",
+      suggested_severity: "medium",
+      suggested_target_tier: "strategic",
+      due_days: 7,
+      success_metric: "Variance explained and pricing rule updated or exception approved.",
+      owner_role: "Carrier pricing contact",
       steps: ["Define target vs quote gap", "Measure lane market", "Analyze FSC/linehaul/accessorial split", "Improve pricing rule", "Control by quote review"],
+      actions: ["Open CI case", "Request cost breakdown", "Compare Rateware history", "Decide exception or repricing"],
       evidence: "Use Rateware, bid history, target buy rate and market benchmark."
     },
     {
@@ -8694,7 +8726,15 @@ function vendorCiPlaybooks() {
       label: "Technology / integration",
       methodology: "kaizen",
       goal: "Move strategic carriers toward better operational integration.",
+      default_title: "Technology integration improvement plan",
+      vendor_request_template: "Please confirm current technology workflow, portal/GPS/TMS readiness, required support contact, pilot lane, and target date for integration validation.",
+      suggested_severity: "medium",
+      suggested_target_tier: "collaborative",
+      due_days: 14,
+      success_metric: "Pilot lane validated with required visibility or workflow integration.",
+      owner_role: "Carrier technology owner",
       steps: ["Map current process", "Define minimum integration", "Pilot one lane", "Document support owner", "Scale after validation"],
+      actions: ["Open CI case", "Define integration minimum", "Assign pilot lane", "Validate visibility signal"],
       evidence: "Use portal usage, GPS mirror account, API/TMS readiness and response latency."
     },
     {
@@ -8702,7 +8742,15 @@ function vendorCiPlaybooks() {
       label: "Strategic growth",
       methodology: "a3",
       goal: "Move high-value carriers from tactical execution into strategic or collaborative partnership.",
+      default_title: "Strategic carrier growth plan",
+      vendor_request_template: "Please confirm strategic lanes, differentiated capacity, commercial model, executive owner, and the joint actions needed to expand the relationship.",
+      suggested_severity: "low",
+      suggested_target_tier: "collaborative",
+      due_days: 21,
+      success_metric: "Joint growth plan agreed with target lanes, owners, and review cadence.",
+      owner_role: "Carrier commercial owner",
       steps: ["State business opportunity", "Map carrier strengths", "Define joint value", "Agree action plan", "Review quarterly"],
+      actions: ["Open CI case", "Map growth opportunity", "Agree owners", "Schedule quarterly review"],
       evidence: "Use coverage depth, recurring lanes, service quality, bid responsiveness and commercial fit."
     }
   ];

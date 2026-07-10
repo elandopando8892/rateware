@@ -77,6 +77,7 @@ let searchTimer = null;
 let vendorSearchTimer = null;
 let vendorSearchSequence = 0;
 let selectedVendor = null;
+let activePlaybook = null;
 
 const CRM_VENDOR_SEARCH_LIMIT = 1000;
 const CRM_VENDOR_RENDER_LIMIT = 40;
@@ -133,6 +134,28 @@ function scorecardSignalText(row = {}) {
     `${compactNumber(signals.support_open)} open issues`,
     `${compactNumber(signals.chat_messages)} chat`
   ].join(" | ");
+}
+
+function isoDateAfterDays(days = 14) {
+  const date = new Date();
+  date.setDate(date.getDate() + Math.max(Number(days) || 14, 1));
+  return date.toISOString().slice(0, 10);
+}
+
+function playbookByType(caseType) {
+  return playbookRows.find((playbook) => playbook.case_type === caseType);
+}
+
+function playbookCaseTitle(playbook = {}) {
+  return playbook.default_title || `${playbook.label || labelFor(CASE_TYPES, playbook.case_type, "Improvement")} required`;
+}
+
+function playbookRequestText(playbook = {}) {
+  const actions = Array.isArray(playbook.actions) ? playbook.actions : [];
+  const metric = playbook.success_metric ? `\n\nSuccess metric: ${playbook.success_metric}` : "";
+  const owner = playbook.owner_role ? `\nOwner expected from vendor: ${playbook.owner_role}` : "";
+  const actionText = actions.length ? `\nRequired actions:\n- ${actions.join("\n- ")}` : "";
+  return `${playbook.vendor_request_template || playbook.goal || ""}${actionText}${metric}${owner}`.trim();
 }
 
 function setStatus(message = "", tone = "neutral") {
@@ -415,18 +438,63 @@ function renderValueCurve() {
 function renderPlaybooks() {
   if (!playbooksContainer) return;
   playbooksContainer.innerHTML = playbookRows.map((playbook) => `
-    <article class="vendor-ci-playbook-card">
+    <article class="vendor-ci-playbook-card" data-ci-playbook="${escapeHtml(playbook.case_type || "")}">
       <div>
         <p class="eyebrow">${escapeHtml((playbook.methodology || "dmaic").toUpperCase())}</p>
         <h3>${escapeHtml(playbook.label || labelFor(CASE_TYPES, playbook.case_type, playbook.case_type))}</h3>
       </div>
       <p>${escapeHtml(playbook.goal || "")}</p>
-      <ol>
-        ${(playbook.steps || []).map((step) => `<li>${escapeHtml(step)}</li>`).join("")}
-      </ol>
-      <small>${escapeHtml(playbook.evidence || "")}</small>
+      <div class="vendor-ci-playbook-meta">
+        <span>Due ${escapeHtml(playbook.due_days || 14)}d</span>
+        <span>${escapeHtml(playbook.suggested_severity || "medium")}</span>
+        <span>${escapeHtml(labelFor(TIERS, playbook.suggested_target_tier, "Strategic"))}</span>
+      </div>
+      <ul class="vendor-ci-playbook-actions">
+        ${(playbook.actions || []).map((action) => `<li>${escapeHtml(action)}</li>`).join("")}
+      </ul>
+      <details>
+        <summary>Checklist and evidence</summary>
+        <ol>
+          ${(playbook.steps || []).map((step) => `<li>${escapeHtml(step)}</li>`).join("")}
+        </ol>
+        <small>${escapeHtml(playbook.evidence || "")}</small>
+      </details>
+      <div class="vendor-ci-playbook-buttons">
+        <button class="small-button" type="button" data-ci-playbook-action="use" data-ci-playbook-type="${escapeHtml(playbook.case_type || "")}">Open case</button>
+        <button class="small-button secondary" type="button" data-ci-playbook-action="filter" data-ci-playbook-type="${escapeHtml(playbook.case_type || "")}">Show cases</button>
+        <button class="small-button secondary" type="button" data-ci-playbook-action="copy" data-ci-playbook-type="${escapeHtml(playbook.case_type || "")}">Copy request</button>
+      </div>
     </article>
   `).join("");
+}
+
+async function copyPlaybookRequest(playbook) {
+  const text = playbookRequestText(playbook);
+  try {
+    await navigator.clipboard.writeText(text);
+    setStatus("Playbook vendor request copied.", "success");
+  } catch {
+    setStatus(text, "neutral");
+  }
+}
+
+function applyPlaybookToCaseForm(playbook) {
+  activePlaybook = playbook;
+  setActiveTab("cases");
+  if (caseTypeInput) caseTypeInput.value = playbook.case_type || "service_quality";
+  if (severityInput) severityInput.value = playbook.suggested_severity || "medium";
+  if (targetTierInput) targetTierInput.value = playbook.suggested_target_tier || "strategic";
+  if (titleInput && !titleInput.value) titleInput.value = playbookCaseTitle(playbook);
+  if (vendorRequestInput) vendorRequestInput.value = playbookRequestText(playbook);
+  if (dueDateInput && !dueDateInput.value) dueDateInput.value = isoDateAfterDays(playbook.due_days || 14);
+  setStatus(`Playbook loaded: ${playbook.label || labelFor(CASE_TYPES, playbook.case_type, "Improvement")}. Choose a vendor and create the case.`, "success");
+  vendorSearchInput?.focus();
+}
+
+function filterCasesByPlaybook(playbook) {
+  setActiveTab("cases");
+  if (typeFilter) typeFilter.value = playbook.case_type || "all";
+  loadImprovementCases();
 }
 
 function setActiveTab(nextTab) {
@@ -539,9 +607,19 @@ async function createCase(event) {
       severity: severityInput?.value,
       target_tier: targetTierInput?.value,
       due_date: dueDateInput?.value,
-      vendor_request: vendorRequestInput?.value
+      vendor_request: vendorRequestInput?.value,
+      methodology: activePlaybook?.methodology,
+      success_metric: activePlaybook?.success_metric,
+      source: activePlaybook ? "playbook" : "manual",
+      source_ref: activePlaybook?.case_type,
+      metadata: activePlaybook ? {
+        playbook_label: activePlaybook.label,
+        playbook_actions: activePlaybook.actions || [],
+        owner_role: activePlaybook.owner_role || ""
+      } : {}
     });
     createForm.reset();
+    activePlaybook = null;
     clearVendorSelection();
     fillSelect(caseTypeInput, CASE_TYPES, "service_quality");
     await loadImprovementCases();
@@ -643,6 +721,16 @@ document.addEventListener("click", (event) => {
 });
 document.querySelectorAll("[data-ci-tab]").forEach((button) => {
   button.addEventListener("click", () => setActiveTab(button.dataset.ciTab || "cases"));
+});
+playbooksContainer?.addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-ci-playbook-action]");
+  if (!button) return;
+  const playbook = playbookByType(button.dataset.ciPlaybookType);
+  if (!playbook) return;
+  const action = button.dataset.ciPlaybookAction;
+  if (action === "use") applyPlaybookToCaseForm(playbook);
+  if (action === "filter") filterCasesByPlaybook(playbook);
+  if (action === "copy") await copyPlaybookRequest(playbook);
 });
 createForm?.addEventListener("submit", createCase);
 caseBody?.addEventListener("click", async (event) => {

@@ -890,6 +890,9 @@ assert.match(apiSource, /create_vendor_improvement_case/, "Rateware API should e
 assert.match(apiSource, /upsert_vendor_value_scorecard/, "Rateware API should expose Vendor CI scorecard upsert");
 assert.match(apiSource, /VENDOR_CI_CASE_TYPES/, "Vendor CI API should validate improvement case types");
 assert.match(apiSource, /vendorCiPlaybooks/, "Vendor CI API should provide process playbooks by case type");
+assert.match(apiSource, /vendor_request_template/, "Vendor CI playbooks should provide actionable vendor request templates");
+assert.match(apiSource, /success_metric/, "Vendor CI playbooks should provide measurable success metrics");
+assert.match(apiSource, /actions: \[/, "Vendor CI playbooks should expose recommended actions");
 assert.match(vendorImprovementHtml, /Vendor Continuous Improvement/, "Vendor CI module page should exist");
 assert.match(vendorImprovementHtml, /ci-case-body/, "Vendor CI module should render the case queue");
 assert.match(vendorImprovementHtml, /ci-value-curve/, "Vendor CI module should render the carrier value curve");
@@ -900,6 +903,10 @@ assert.match(vendorImprovementSource, /createVendorImprovementCase/, "Vendor CI 
 assert.match(vendorImprovementSource, /upsertVendorValueScorecard/, "Vendor CI UI should update scorecards");
 assert.match(vendorImprovementSource, /function searchCrmVendors/, "Vendor CI should search the Carrier CRM dynamically when creating a case");
 assert.match(vendorImprovementSource, /function scorecardSignals/, "Vendor CI value curve should render Rateware, Bid Room, support, and chat evidence per carrier");
+assert.match(vendorImprovementSource, /function applyPlaybookToCaseForm/, "Vendor CI playbooks should prefill an improvement case");
+assert.match(vendorImprovementSource, /data-ci-playbook-action="use"/, "Vendor CI playbooks should expose a create-case action");
+assert.match(vendorImprovementSource, /data-ci-playbook-action="filter"/, "Vendor CI playbooks should filter existing cases by playbook type");
+assert.match(vendorImprovementSource, /source: activePlaybook \? "playbook" : "manual"/, "Vendor CI cases should remember when they came from a playbook");
 assert.match(vendorImprovementSource, /fetchVendors\(\{ limit: CRM_VENDOR_SEARCH_LIMIT, offset: 0, view: "all", lightweight: true, search: term \}\)/, "Vendor CI search should query the full CRM, not a preloaded procurement-only list");
 assert.match(vendorImprovementSource, /let vendorSearchSequence = 0;/, "Vendor CI vendor search should ignore stale CRM responses");
 assert.match(vendorImprovementSource, /matchingRows = rows\.filter/, "Vendor CI vendor search should filter returned CRM rows before rendering");

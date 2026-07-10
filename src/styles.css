@@ -5015,12 +5015,43 @@ body.bid-editor-open {
   font-size: 0.86rem;
 }
 
+.vendor-ci-playbook-meta,
+.vendor-ci-playbook-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.vendor-ci-playbook-meta span {
+  border: 1px solid #dde7ee;
+  border-radius: 999px;
+  background: #f7fafc;
+  color: #263643;
+  font-size: 0.66rem;
+  font-weight: 700;
+  padding: 2px 7px;
+  text-transform: uppercase;
+}
+
+.vendor-ci-playbook-actions {
+  display: grid;
+  gap: 3px;
+  margin: 0;
+  padding-left: 16px;
+}
+
 .vendor-ci-playbook-card p,
 .vendor-ci-playbook-card li,
-.vendor-ci-playbook-card small {
+.vendor-ci-playbook-card small,
+.vendor-ci-playbook-card summary {
   color: var(--muted);
   font-size: 0.72rem;
   line-height: 1.35;
+}
+
+.vendor-ci-playbook-card summary {
+  cursor: pointer;
+  font-weight: 700;
 }
 
 .vendor-ci-playbook-card ol {
