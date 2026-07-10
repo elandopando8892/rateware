@@ -12496,6 +12496,612 @@ async function bulkImportCatalogValues(
   return { imported, skipped, warnings };
 }
 
+const RFX_PROCESS_STATUSES = new Set([
+  "draft",
+  "rfi_sent",
+  "rfi_in_progress",
+  "rfi_submitted",
+  "demand_review",
+  "rfx_design",
+  "bid_room_open",
+  "bid_room_closed",
+  "bid_evaluation",
+  "awarded",
+  "implementation_ready",
+  "archived"
+]);
+
+const RFX_PROCESS_OPPORTUNITY_TYPES = new Set([
+  "benchmark",
+  "new_provider",
+  "capacity_addition",
+  "dedicated",
+  "spot",
+  "contract",
+  "backup"
+]);
+
+const RFX_PROCESS_SEGMENTS = new Set(["expedited", "time_critical", "crossborder", "local", "regional", "national"]);
+
+function normalizeRfxProcessSegments(value: unknown) {
+  const raw = Array.isArray(value) ? value : String(value || "").split(/[,|]/);
+  return Array.from(new Set(raw
+    .map((item) => cleanText(item)?.toLowerCase().replace(/[\s-]+/g, "_"))
+    .filter((item): item is string => Boolean(item && RFX_PROCESS_SEGMENTS.has(item)))));
+}
+
+function normalizeRfxProjectInput(input: Record<string, unknown>) {
+  const opportunityType = cleanText(input.opportunity_type || input.opportunityType)?.toLowerCase() || "spot";
+  const status = cleanText(input.status)?.toLowerCase() || "draft";
+  const title = cleanText(input.title || input.name);
+  if (!title) throw new Error("RFx Project title is required.");
+  const customerEmail = cleanText(input.customer_contact_email || input.customerContactEmail)?.toLowerCase();
+  if (customerEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail)) throw new Error("Customer contact email is invalid.");
+  return {
+    title,
+    customer_id: cleanText(input.customer_id || input.customerId),
+    customer_name: cleanText(input.customer_name || input.customerName || input.customer),
+    customer_contact_name: cleanText(input.customer_contact_name || input.customerContactName),
+    customer_contact_email: customerEmail || null,
+    opportunity_type: RFX_PROCESS_OPPORTUNITY_TYPES.has(opportunityType) ? opportunityType : "spot",
+    operating_segments: normalizeRfxProcessSegments(input.operating_segments || input.operatingSegments),
+    status: RFX_PROCESS_STATUSES.has(status) ? status : "draft",
+    target_start_date: cleanDate(input.target_start_date || input.targetStartDate),
+    due_date: cleanDate(input.due_date || input.dueDate),
+    notes: cleanText(input.notes),
+    linked_rfx_event_id: cleanText(input.linked_rfx_event_id || input.linkedRfxEventId),
+    updated_at: new Date().toISOString()
+  };
+}
+
+function normalizeRfxProjectPatch(input: Record<string, unknown>) {
+  const patch: Record<string, unknown> = {};
+  if (input.title !== undefined || input.name !== undefined) patch.title = cleanText(input.title || input.name);
+  if (input.customer_id !== undefined || input.customerId !== undefined) patch.customer_id = cleanText(input.customer_id || input.customerId);
+  if (input.customer_name !== undefined || input.customerName !== undefined || input.customer !== undefined) patch.customer_name = cleanText(input.customer_name || input.customerName || input.customer);
+  if (input.customer_contact_name !== undefined || input.customerContactName !== undefined) patch.customer_contact_name = cleanText(input.customer_contact_name || input.customerContactName);
+  if (input.customer_contact_email !== undefined || input.customerContactEmail !== undefined) {
+    const email = cleanText(input.customer_contact_email || input.customerContactEmail)?.toLowerCase();
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error("Customer contact email is invalid.");
+    patch.customer_contact_email = email || null;
+  }
+  if (input.opportunity_type !== undefined || input.opportunityType !== undefined) {
+    const type = cleanText(input.opportunity_type || input.opportunityType)?.toLowerCase();
+    if (type && RFX_PROCESS_OPPORTUNITY_TYPES.has(type)) patch.opportunity_type = type;
+  }
+  if (input.operating_segments !== undefined || input.operatingSegments !== undefined) patch.operating_segments = normalizeRfxProcessSegments(input.operating_segments || input.operatingSegments);
+  if (input.status !== undefined) {
+    const status = cleanText(input.status)?.toLowerCase();
+    if (status && RFX_PROCESS_STATUSES.has(status)) patch.status = status;
+  }
+  if (input.target_start_date !== undefined || input.targetStartDate !== undefined) patch.target_start_date = cleanDate(input.target_start_date || input.targetStartDate);
+  if (input.due_date !== undefined || input.dueDate !== undefined) patch.due_date = cleanDate(input.due_date || input.dueDate);
+  if (input.notes !== undefined) patch.notes = cleanText(input.notes);
+  if (input.linked_rfx_event_id !== undefined || input.linkedRfxEventId !== undefined) patch.linked_rfx_event_id = cleanText(input.linked_rfx_event_id || input.linkedRfxEventId);
+  patch.updated_at = new Date().toISOString();
+  return patch;
+}
+
+async function requireOwnedRfxProcessProject(supabase: ReturnType<typeof createClient>, user: { owner_email: string | null }, projectId: unknown) {
+  const id = cleanText(projectId);
+  if (!id) throw new Error("RFx Project id is required.");
+  const result = await supabase
+    .from("rfx_projects")
+    .select("*")
+    .eq("id", id)
+    .eq("owner_email", user.owner_email)
+    .single();
+  if (result.error) throw result.error;
+  return result.data as Record<string, unknown>;
+}
+
+async function writeRfxProcessAudit(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_user_id: string | null; owner_email: string | null },
+  projectId: unknown,
+  action: string,
+  entityType: string,
+  entityId: unknown,
+  summary: string,
+  metadata: Record<string, unknown> = {}
+) {
+  const row = withOwner({
+    project_id: cleanText(projectId),
+    actor_email: user.owner_email,
+    action,
+    entity_type: entityType,
+    entity_id: cleanText(entityId),
+    summary,
+    metadata
+  }, user);
+  const result = await supabase.from("rfx_process_audit").insert(row);
+  if (result.error) throw result.error;
+  await writeAuditLog(supabase, user, action, entityType, entityId, summary, { ...metadata, rfx_project_id: cleanText(projectId) });
+}
+
+async function hashRfxMagicToken(token: string) {
+  const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token));
+  return Array.from(new Uint8Array(hash)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function rfxMagicToken() {
+  return `${randomToken()}${randomToken()}`;
+}
+
+function rfxProjectPublicLink(token: string, appOrigin: unknown) {
+  const origin = cleanText(appOrigin) || "https://rateware.vercel.app";
+  return `${origin.replace(/\/$/, "")}/customer-rfi.html?token=${encodeURIComponent(token)}`;
+}
+
+function rfxRequiredLaneIssues(lane: Record<string, unknown>) {
+  const issues: string[] = [];
+  if (!cleanText(lane.origin_text || lane.origin || lane.origin_id)) issues.push("origin_missing");
+  if (!cleanText(lane.destination_text || lane.destination || lane.destination_id)) issues.push("destination_missing");
+  if (!cleanText(lane.equipment_type || lane.equipment)) issues.push("equipment_missing");
+  if (cleanNumber(lane.weekly_volume) === null && cleanNumber(lane.monthly_volume) === null) issues.push("volume_missing");
+  if (!cleanText(lane.frequency)) issues.push("frequency_missing");
+  const segment = cleanText(lane.operating_segment)?.toLowerCase();
+  const operation = cleanText(lane.operation_type)?.toLowerCase();
+  if (segment === "crossborder" || operation === "crossborder") {
+    if (!cleanText(lane.crossborder_model) && !cleanText(lane.crossborder_details)) issues.push("crossborder_details_missing");
+  }
+  if (segment === "time_critical" && cleanNumber(lane.expected_transit_time_hours) === null) issues.push("time_critical_transit_missing");
+  if (segment === "expedited" && cleanNumber(lane.pickup_lead_time_hours) === null) issues.push("expedited_pickup_lead_time_missing");
+  if (cleanOptionalBoolean(lane.hazmat) === true && !cleanText(lane.hazmat_certification_required)) issues.push("hazmat_carrier_requirement_warning");
+  return issues;
+}
+
+function completenessScoreFromIssues(requiredCount: number, issueCount: number) {
+  if (!requiredCount) return 100;
+  return Math.max(0, Math.min(100, Math.round((requiredCount - issueCount) / requiredCount * 100)));
+}
+
+async function rfxProcessReadiness(supabase: ReturnType<typeof createClient>, projectId: unknown) {
+  const submissionResult = await supabase
+    .from("rfx_rfi_submissions")
+    .select("*")
+    .eq("project_id", projectId)
+    .maybeSingle();
+  if (submissionResult.error) throw submissionResult.error;
+
+  const snapshotResult = await supabase
+    .from("rfx_demand_snapshots")
+    .select("*, rfx_demand_lanes(*)")
+    .eq("project_id", projectId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (snapshotResult.error) throw snapshotResult.error;
+
+  const packageResult = await supabase
+    .from("rfx_packages")
+    .select("*")
+    .eq("project_id", projectId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (packageResult.error) throw packageResult.error;
+
+  return {
+    submission: submissionResult.data as Record<string, unknown> | null,
+    snapshot: snapshotResult.data as Record<string, unknown> | null,
+    package: packageResult.data as Record<string, unknown> | null
+  };
+}
+
+async function validateRfxProjectStatusChange(supabase: ReturnType<typeof createClient>, projectId: unknown, status: unknown) {
+  const nextStatus = cleanText(status);
+  if (!nextStatus) return;
+  const readiness = await rfxProcessReadiness(supabase, projectId);
+  if (["demand_review", "rfx_design", "bid_room_open", "bid_evaluation", "awarded", "implementation_ready"].includes(nextStatus)) {
+    if (readiness.submission?.status !== "submitted") throw new Error("RFx Project cannot move forward until the Customer RFI is submitted.");
+  }
+  if (["rfx_design", "bid_room_open", "bid_evaluation", "awarded", "implementation_ready"].includes(nextStatus)) {
+    const lanes = Array.isArray(readiness.snapshot?.rfx_demand_lanes) ? readiness.snapshot?.rfx_demand_lanes as Record<string, unknown>[] : [];
+    const hasIssues = lanes.some((lane) => Array.isArray(lane.validation_issues) && lane.validation_issues.length);
+    if (!readiness.snapshot || !lanes.length) throw new Error("Create a reviewed Demand Snapshot before RFx Design.");
+    if (hasIssues) throw new Error("Resolve incomplete demand lanes before RFx Design.");
+  }
+  if (["bid_room_open", "bid_evaluation", "awarded", "implementation_ready"].includes(nextStatus)) {
+    if (!readiness.package?.linked_rfx_event_id) throw new Error("Launch an RFx Package to Bid Room before marking the project as bid_room_open.");
+  }
+}
+
+function rfxPackageWeights(input: Record<string, unknown>) {
+  return {
+    price_weight: cleanNumber(input.price_weight) ?? 40,
+    capacity_weight: cleanNumber(input.capacity_weight) ?? 25,
+    service_weight: cleanNumber(input.service_weight) ?? 20,
+    compliance_weight: cleanNumber(input.compliance_weight) ?? 10,
+    risk_weight: cleanNumber(input.risk_weight) ?? 5
+  };
+}
+
+async function listRfxProcessProjects(supabase: ReturnType<typeof createClient>, user: { owner_email: string | null }, input: Record<string, unknown>) {
+  const limit = Math.min(Math.max(Number(input.limit) || 100, 1), 250);
+  const offset = Math.max(Number(input.offset) || 0, 0);
+  let query = supabase
+    .from("rfx_projects")
+    .select("*", { count: "exact" })
+    .eq("owner_email", user.owner_email)
+    .neq("status", "archived")
+    .order("updated_at", { ascending: false })
+    .range(offset, offset + limit - 1);
+  if (input.status) query = query.eq("status", cleanText(input.status));
+  if (input.search) {
+    const term = String(input.search).trim();
+    if (term) query = query.or(`title.ilike.%${term}%,customer_name.ilike.%${term}%,customer_contact_email.ilike.%${term}%`);
+  }
+  const result = await query;
+  if (result.error) throw result.error;
+  const projectIds = (result.data || []).map((row) => row.id);
+  const [lanesResult, packageResult, auditResult] = projectIds.length
+    ? await Promise.all([
+        supabase.from("rfx_rfi_lanes").select("project_id,id").in("project_id", projectIds),
+        supabase.from("rfx_packages").select("project_id,id,status,linked_rfx_event_id").in("project_id", projectIds),
+        supabase.from("rfx_process_audit").select("project_id,id").in("project_id", projectIds)
+      ])
+    : [{ data: [], error: null }, { data: [], error: null }, { data: [], error: null }];
+  if (lanesResult.error) throw lanesResult.error;
+  if (packageResult.error) throw packageResult.error;
+  if (auditResult.error) throw auditResult.error;
+  const laneCounts = new Map<string, number>();
+  const packageCounts = new Map<string, number>();
+  const auditCounts = new Map<string, number>();
+  for (const row of lanesResult.data || []) laneCounts.set(row.project_id, (laneCounts.get(row.project_id) || 0) + 1);
+  for (const row of packageResult.data || []) packageCounts.set(row.project_id, (packageCounts.get(row.project_id) || 0) + 1);
+  for (const row of auditResult.data || []) auditCounts.set(row.project_id, (auditCounts.get(row.project_id) || 0) + 1);
+  return {
+    rows: (result.data || []).map((row) => ({
+      ...row,
+      lane_count: laneCounts.get(row.id) || 0,
+      package_count: packageCounts.get(row.id) || 0,
+      audit_count: auditCounts.get(row.id) || 0
+    })),
+    total: result.count || 0,
+    limit,
+    offset
+  };
+}
+
+async function getRfxProcessProjectDetail(supabase: ReturnType<typeof createClient>, user: { owner_email: string | null }, projectId: unknown) {
+  const project = await requireOwnedRfxProcessProject(supabase, user, projectId);
+  const [
+    magicLinks,
+    submission,
+    origins,
+    destinations,
+    lanes,
+    businessRules,
+    serviceRequirements,
+    carrierRequirements,
+    crossborderDetails,
+    attachments,
+    exceptionNotes,
+    snapshots,
+    packages,
+    awards,
+    audit
+  ] = await Promise.all([
+    supabase.from("rfx_rfi_magic_links").select("id,status,expires_at,revoked_at,last_viewed_at,submitted_at,created_at").eq("project_id", project.id).order("created_at", { ascending: false }).limit(10),
+    supabase.from("rfx_rfi_submissions").select("*").eq("project_id", project.id).maybeSingle(),
+    supabase.from("rfx_rfi_origins").select("*").eq("project_id", project.id).order("created_at", { ascending: true }),
+    supabase.from("rfx_rfi_destinations").select("*").eq("project_id", project.id).order("created_at", { ascending: true }),
+    supabase.from("rfx_rfi_lanes").select("*").eq("project_id", project.id).order("created_at", { ascending: true }),
+    supabase.from("rfx_rfi_business_rules").select("*").eq("project_id", project.id).order("created_at", { ascending: true }),
+    supabase.from("rfx_rfi_service_requirements").select("*").eq("project_id", project.id).order("created_at", { ascending: true }),
+    supabase.from("rfx_rfi_carrier_requirements").select("*").eq("project_id", project.id).order("created_at", { ascending: true }),
+    supabase.from("rfx_rfi_crossborder_details").select("*").eq("project_id", project.id).order("created_at", { ascending: true }),
+    supabase.from("rfx_rfi_attachments").select("*").eq("project_id", project.id).order("created_at", { ascending: true }),
+    supabase.from("rfx_rfi_exception_notes").select("*").eq("project_id", project.id).order("created_at", { ascending: true }),
+    supabase.from("rfx_demand_snapshots").select("*, rfx_demand_lanes(*)").eq("project_id", project.id).order("created_at", { ascending: false }),
+    supabase.from("rfx_packages").select("*, rfx_package_lanes(*)").eq("project_id", project.id).order("created_at", { ascending: false }),
+    supabase.from("rfx_award_packages").select("*, rfx_award_package_lanes(*)").eq("project_id", project.id).order("created_at", { ascending: false }),
+    supabase.from("rfx_process_audit").select("*").eq("project_id", project.id).order("created_at", { ascending: false }).limit(100)
+  ]);
+  for (const result of [magicLinks, submission, origins, destinations, lanes, businessRules, serviceRequirements, carrierRequirements, crossborderDetails, attachments, exceptionNotes, snapshots, packages, awards, audit]) {
+    if (result.error) throw result.error;
+  }
+  return {
+    project,
+    magic_links: magicLinks.data || [],
+    rfi_submission: submission.data || null,
+    origins: origins.data || [],
+    destinations: destinations.data || [],
+    lanes: lanes.data || [],
+    business_rules: businessRules.data || [],
+    service_requirements: serviceRequirements.data || [],
+    carrier_requirements: carrierRequirements.data || [],
+    crossborder_details: crossborderDetails.data || [],
+    attachments: attachments.data || [],
+    exception_notes: exceptionNotes.data || [],
+    demand_snapshots: snapshots.data || [],
+    packages: packages.data || [],
+    award_packages: awards.data || [],
+    audit: audit.data || []
+  };
+}
+
+async function createRfxRfiMagicLink(supabase: ReturnType<typeof createClient>, user: { owner_user_id: string | null; owner_email: string | null }, input: Record<string, unknown>) {
+  const project = await requireOwnedRfxProcessProject(supabase, user, input.project_id || input.id);
+  const token = rfxMagicToken();
+  const tokenHash = await hashRfxMagicToken(token);
+  const days = Math.min(Math.max(Number(input.expires_in_days || input.expiresInDays) || 14, 1), 90);
+  const row = withOwner({
+    project_id: project.id,
+    token_hash: tokenHash,
+    expires_at: new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString(),
+    metadata: {
+      customer_email: project.customer_contact_email || null,
+      generated_from: "rfx_process"
+    }
+  }, user);
+  const result = await supabase.from("rfx_rfi_magic_links").insert(row).select("id,status,expires_at,created_at").single();
+  if (result.error) throw result.error;
+  await supabase
+    .from("rfx_projects")
+    .update({ status: "rfi_sent", updated_at: new Date().toISOString() })
+    .eq("id", project.id)
+    .eq("owner_email", user.owner_email);
+  const link = rfxProjectPublicLink(token, input.app_origin || input.appOrigin);
+  await writeRfxProcessAudit(supabase, user, project.id, "rfi_magic_link_sent", "rfx_rfi_magic_links", result.data.id, `Generated Customer RFI magic link for ${project.title}`, { expires_at: result.data.expires_at });
+  return { row: result.data, token, link };
+}
+
+async function createRfxDemandSnapshot(supabase: ReturnType<typeof createClient>, user: { owner_user_id: string | null; owner_email: string | null }, input: Record<string, unknown>) {
+  const project = await requireOwnedRfxProcessProject(supabase, user, input.project_id || input.id);
+  const submissionResult = await supabase
+    .from("rfx_rfi_submissions")
+    .select("*")
+    .eq("project_id", project.id)
+    .eq("status", "submitted")
+    .maybeSingle();
+  if (submissionResult.error) throw submissionResult.error;
+  const submission = submissionResult.data as Record<string, unknown> | null;
+  if (!submission) throw new Error("Customer RFI must be submitted before creating a Demand Snapshot.");
+
+  const lanesResult = await supabase
+    .from("rfx_rfi_lanes")
+    .select("*, rfx_rfi_origins(*), rfx_rfi_destinations(*)")
+    .eq("project_id", project.id)
+    .order("created_at", { ascending: true });
+  if (lanesResult.error) throw lanesResult.error;
+  const lanes = (lanesResult.data || []) as Record<string, unknown>[];
+  if (!lanes.length) throw new Error("No RFI lanes were found to normalize.");
+  const laneIssues = lanes.flatMap((lane) => rfxRequiredLaneIssues(lane));
+  const completeness = completenessScoreFromIssues(Math.max(lanes.length * 5, 1), laneIssues.length);
+  const snapshotRow = withOwner({
+    project_id: project.id,
+    rfi_submission_id: submission.id,
+    name: cleanText(input.name) || `Demand Snapshot ${new Date().toISOString().slice(0, 10)}`,
+    status: cleanOptionalBoolean(input.locked) === true ? "locked" : "draft",
+    completeness_score: completeness,
+    validation_issues: laneIssues.map((issue) => ({ issue })),
+    frozen_rfi_snapshot: submission.frozen_snapshot || submission.response || {},
+    metadata: { created_from: "submitted_customer_rfi" }
+  }, user);
+  const snapshotInsert = await supabase.from("rfx_demand_snapshots").insert(snapshotRow).select().single();
+  if (snapshotInsert.error) throw snapshotInsert.error;
+
+  const demandRows = lanes.map((lane, index) => {
+    const origin = objectRecord(lane.rfx_rfi_origins);
+    const destination = objectRecord(lane.rfx_rfi_destinations);
+    const issues = rfxRequiredLaneIssues(lane).map((issue) => ({ issue }));
+    return withOwner({
+      snapshot_id: snapshotInsert.data.id,
+      project_id: project.id,
+      source_rfi_lane_id: lane.id,
+      lane_key: cleanText(lane.lane_id) || `L${index + 1}`,
+      origin: cleanText(lane.origin_text || origin.name || [origin.city, origin.state].filter(Boolean).join(", ")),
+      origin_city: cleanText(origin.city),
+      origin_state: cleanText(origin.state),
+      origin_country: cleanText(origin.country),
+      origin_postal_code: cleanText(origin.postal_code),
+      destination: cleanText(lane.destination_text || destination.name || [destination.city, destination.state].filter(Boolean).join(", ")),
+      destination_city: cleanText(destination.city),
+      destination_state: cleanText(destination.state),
+      destination_country: cleanText(destination.country),
+      destination_postal_code: cleanText(destination.postal_code),
+      operating_segment: cleanText(lane.operating_segment),
+      operation_type: cleanText(lane.operation_type),
+      service_type: cleanText(lane.service_type),
+      equipment_type: cleanText(lane.equipment_type),
+      trailer_requirements: cleanText(lane.trailer_requirements),
+      weekly_volume: cleanNumber(lane.weekly_volume),
+      monthly_volume: cleanNumber(lane.monthly_volume),
+      frequency: cleanText(lane.frequency),
+      currency: cleanText(lane.currency),
+      target_rate: cleanNumber(lane.target_rate),
+      current_rate: cleanNumber(lane.current_rate),
+      internal_notes: cleanText(lane.notes),
+      validation_issues: issues,
+      normalized_payload: lane
+    }, user);
+  });
+  for (const batch of chunkValues(demandRows, 500)) {
+    const insert = await supabase.from("rfx_demand_lanes").insert(batch).select("id");
+    if (insert.error) throw insert.error;
+  }
+  await supabase
+    .from("rfx_projects")
+    .update({ status: "demand_review", updated_at: new Date().toISOString() })
+    .eq("id", project.id)
+    .eq("owner_email", user.owner_email);
+  await writeRfxProcessAudit(supabase, user, project.id, "demand_snapshot_created", "rfx_demand_snapshots", snapshotInsert.data.id, `Created Demand Snapshot with ${demandRows.length} lane(s)`, { completeness_score: completeness, issue_count: laneIssues.length });
+  return { row: snapshotInsert.data, lanes: demandRows.length, validation_issues: laneIssues };
+}
+
+async function createRfxProcessPackage(supabase: ReturnType<typeof createClient>, user: { owner_user_id: string | null; owner_email: string | null }, input: Record<string, unknown>) {
+  const project = await requireOwnedRfxProcessProject(supabase, user, input.project_id || input.id);
+  const snapshotId = cleanText(input.demand_snapshot_id || input.snapshot_id);
+  if (!snapshotId) throw new Error("Demand Snapshot id is required.");
+  const snapshotResult = await supabase
+    .from("rfx_demand_snapshots")
+    .select("*, rfx_demand_lanes(*)")
+    .eq("id", snapshotId)
+    .eq("project_id", project.id)
+    .single();
+  if (snapshotResult.error) throw snapshotResult.error;
+  const lanes = Array.isArray(snapshotResult.data.rfx_demand_lanes) ? snapshotResult.data.rfx_demand_lanes as Record<string, unknown>[] : [];
+  if (!lanes.length) throw new Error("Demand Snapshot has no lanes.");
+  const hasIssues = lanes.some((lane) => Array.isArray(lane.validation_issues) && lane.validation_issues.length);
+  if (hasIssues) throw new Error("Resolve Demand Snapshot validation issues before creating an RFx Package.");
+  const strategy = cleanText(input.sourcing_strategy || input.sourcingStrategy)?.toLowerCase() || "closed_bid";
+  const pricing = cleanText(input.pricing_structure || input.pricingStructure)?.toLowerCase() || "all_in";
+  const weights = rfxPackageWeights(input);
+  const packageRow = withOwner({
+    project_id: project.id,
+    demand_snapshot_id: snapshotId,
+    name: cleanText(input.name) || `${project.title} sourcing package`,
+    status: cleanOptionalBoolean(input.locked) === true ? "locked" : "draft",
+    sourcing_strategy: ["open_bid", "closed_bid", "semi_controlled", "direct_award", "csa_contract", "dedicated_capacity"].includes(strategy) ? strategy : "closed_bid",
+    pricing_structure: ["all_in", "linehaul_plus_fuel", "linehaul_plus_accessorials", "detailed_breakdown"].includes(pricing) ? pricing : "all_in",
+    ...weights,
+    carrier_eligibility_rules: objectRecord(input.carrier_eligibility_rules || input.carrierEligibilityRules),
+    accessorial_template: objectRecord(input.accessorial_template || input.accessorialTemplate),
+    rate_guidance: objectRecord(input.rate_guidance || input.rateGuidance),
+    bid_due_at: cleanTimestamp(input.bid_due_at || input.bidDueAt),
+    bid_validity_days: cleanNumber(input.bid_validity_days || input.bidValidityDays),
+    locked_at: cleanOptionalBoolean(input.locked) === true ? new Date().toISOString() : null,
+    notes: cleanText(input.notes)
+  }, user);
+  const packageInsert = await supabase.from("rfx_packages").insert(packageRow).select().single();
+  if (packageInsert.error) throw packageInsert.error;
+  const laneIds = normalizeBulkIds(input.demand_lane_ids || input.lane_ids || lanes.map((lane) => lane.id), { label: "Demand lane ids", limit: 1000 });
+  const laneRows = lanes
+    .filter((lane) => laneIds.includes(String(lane.id)))
+    .map((lane) => withOwner({ package_id: packageInsert.data.id, demand_lane_id: lane.id, lot_name: cleanText(input.lot_name || input.lotName) }, user));
+  for (const batch of chunkValues(laneRows, 500)) {
+    const insert = await supabase.from("rfx_package_lanes").insert(batch).select("id");
+    if (insert.error) throw insert.error;
+  }
+  await supabase
+    .from("rfx_projects")
+    .update({ status: "rfx_design", updated_at: new Date().toISOString() })
+    .eq("id", project.id)
+    .eq("owner_email", user.owner_email);
+  await writeRfxProcessAudit(supabase, user, project.id, "rfx_package_created", "rfx_packages", packageInsert.data.id, `Created RFx sourcing package with ${laneRows.length} lane(s)`, { weights, sourcing_strategy: packageRow.sourcing_strategy });
+  return { row: packageInsert.data, lanes: laneRows.length };
+}
+
+async function launchRfxProcessPackageToBidRoom(supabase: ReturnType<typeof createClient>, user: { owner_user_id: string | null; owner_email: string | null }, input: Record<string, unknown>) {
+  const packageId = cleanText(input.package_id || input.id);
+  if (!packageId) throw new Error("RFx Package id is required.");
+  const packageResult = await supabase
+    .from("rfx_packages")
+    .select("*, rfx_projects(*), rfx_package_lanes(*, rfx_demand_lanes(*))")
+    .eq("id", packageId)
+    .eq("owner_email", user.owner_email)
+    .single();
+  if (packageResult.error) throw packageResult.error;
+  const pack = packageResult.data as Record<string, unknown>;
+  if (pack.linked_rfx_event_id) return { launched: false, rfx_event_id: pack.linked_rfx_event_id, message: "RFx Package is already linked to a Bid Room." };
+  const project = objectRecord(pack.rfx_projects);
+  const packageLanes = Array.isArray(pack.rfx_package_lanes) ? pack.rfx_package_lanes as Record<string, unknown>[] : [];
+  if (!packageLanes.length) throw new Error("RFx Package has no lanes to launch.");
+
+  const rfxId = cleanText(input.rfx_id || input.rfxId) || `RFx-${new Date().toISOString().slice(5, 10).replace("-", "")}-${String(project.title || "Project").replace(/[^a-z0-9]+/gi, "").slice(0, 8)}`;
+  const eventRow = withOwner({
+    ...normalizeRfxEvent({
+      rfx_id: rfxId,
+      name: cleanText(input.name) || project.title || pack.name,
+      customer: project.customer_name,
+      event_type: "rfx",
+      status: cleanText(input.open_now || input.status) === "open" || cleanOptionalBoolean(input.open_now) === true ? "open" : "draft",
+      due_date: input.due_date || pack.bid_due_at || project.due_date,
+      notes: `Launched from RFx Process package ${pack.name || pack.id}. Target buy rates remain internal in RFx Package guidance.`
+    }),
+    source_rfx_process_project_id: project.id,
+    source_rfx_package_id: pack.id
+  }, user);
+  const eventInsert = await supabase.from("rfx_events").insert(eventRow).select().single();
+  if (eventInsert.error) throw eventInsert.error;
+
+  const laneRows = packageLanes.map((packageLane, index) => {
+    const lane = objectRecord(packageLane.rfx_demand_lanes);
+    return {
+      rfx_event_id: eventInsert.data.id,
+      lane_number: index + 1,
+      origin: cleanText(lane.origin),
+      origin_city: cleanText(lane.origin_city),
+      origin_state: cleanText(lane.origin_state),
+      origin_country: cleanText(lane.origin_country),
+      origin_market: cleanText(objectRecord(lane.normalized_payload).origin_market),
+      origin_region: cleanText(objectRecord(lane.normalized_payload).origin_region),
+      destination: cleanText(lane.destination),
+      destination_city: cleanText(lane.destination_city),
+      destination_state: cleanText(lane.destination_state),
+      destination_country: cleanText(lane.destination_country),
+      destination_market: cleanText(objectRecord(lane.normalized_payload).destination_market),
+      destination_region: cleanText(objectRecord(lane.normalized_payload).destination_region),
+      equipment: cleanText(lane.equipment_type),
+      trailer: cleanText(lane.trailer_requirements),
+      config: cleanText(objectRecord(lane.normalized_payload).config),
+      operation: cleanText(lane.operation_type),
+      service: cleanText(lane.service_type),
+      weekly_volume: cleanNumber(lane.weekly_volume),
+      annual_volume: cleanNumber(lane.monthly_volume) === null ? null : Number(lane.monthly_volume) * 12,
+      target_rate: null,
+      currency: cleanText(lane.currency) || "USD",
+      notes: cleanText(lane.internal_notes)
+    };
+  });
+  for (const batch of chunkValues(laneRows, 500)) {
+    const insert = await supabase.from("rfx_lanes").insert(batch).select("id");
+    if (insert.error) throw insert.error;
+  }
+  await Promise.all([
+    supabase.from("rfx_packages").update({ linked_rfx_event_id: eventInsert.data.id, status: "launched", updated_at: new Date().toISOString() }).eq("id", pack.id),
+    supabase.from("rfx_projects").update({ linked_rfx_event_id: eventInsert.data.id, status: "bid_room_open", updated_at: new Date().toISOString() }).eq("id", project.id)
+  ]);
+  await writeRfxProcessAudit(supabase, user, project.id, "bid_room_launched", "rfx_events", eventInsert.data.id, `Launched Bid Room from RFx Package ${pack.name || ""}`.trim(), { package_id: pack.id, lanes: laneRows.length });
+  return { launched: true, rfx_event_id: eventInsert.data.id, row: eventInsert.data, lanes: laneRows.length };
+}
+
+async function createRfxAwardPackage(supabase: ReturnType<typeof createClient>, user: { owner_user_id: string | null; owner_email: string | null }, input: Record<string, unknown>) {
+  const project = await requireOwnedRfxProcessProject(supabase, user, input.project_id || input.id);
+  const scenarioType = cleanText(input.scenario_type || input.scenarioType)?.toLowerCase() || "best_value";
+  const status = cleanText(input.status)?.toLowerCase() || "draft";
+  const awardRow = withOwner({
+    project_id: project.id,
+    rfx_package_id: cleanText(input.rfx_package_id || input.package_id),
+    linked_rfx_event_id: cleanText(input.linked_rfx_event_id || project.linked_rfx_event_id),
+    scenario_name: cleanText(input.scenario_name || input.name) || "Primary award scenario",
+    scenario_type: ["cheapest", "best_value", "primary_backup", "capacity_split", "incumbent_comparison"].includes(scenarioType) ? scenarioType : "best_value",
+    status: ["draft", "approved", "implementation_ready", "archived"].includes(status) ? status : "draft",
+    evaluation_summary: objectRecord(input.evaluation_summary || input.evaluationSummary),
+    implementation_checklist: objectRecord(input.implementation_checklist || input.implementationChecklist),
+    approved_at: ["approved", "implementation_ready"].includes(status) ? new Date().toISOString() : null,
+    notes: cleanText(input.notes)
+  }, user);
+  const awardInsert = await supabase.from("rfx_award_packages").insert(awardRow).select().single();
+  if (awardInsert.error) throw awardInsert.error;
+  const lines = Array.isArray(input.lines) ? input.lines : [];
+  const lineRows = lines.slice(0, 1000).map((line: Record<string, unknown>) => withOwner({
+    award_package_id: awardInsert.data.id,
+    lane_id: cleanText(line.lane_id || line.laneId),
+    awarded_carrier_id: cleanText(line.awarded_carrier_id || line.awardedCarrierId),
+    backup_carrier_id: cleanText(line.backup_carrier_id || line.backupCarrierId),
+    awarded_rate: cleanNumber(line.awarded_rate || line.awardedRate),
+    currency: cleanText(line.currency),
+    awarded_capacity: cleanNumber(line.awarded_capacity || line.awardedCapacity),
+    service_requirements: objectRecord(line.service_requirements || line.serviceRequirements),
+    accessorials: objectRecord(line.accessorials),
+    accepted_exceptions: Array.isArray(line.accepted_exceptions) ? line.accepted_exceptions : [],
+    implementation_notes: cleanText(line.implementation_notes || line.implementationNotes),
+    status: cleanText(line.status) || "draft"
+  }, user));
+  for (const batch of chunkValues(lineRows, 500)) {
+    const insert = await supabase.from("rfx_award_package_lanes").insert(batch).select("id");
+    if (insert.error) throw insert.error;
+  }
+  if (awardRow.status === "implementation_ready") {
+    await supabase.from("rfx_projects").update({ status: "implementation_ready", updated_at: new Date().toISOString() }).eq("id", project.id).eq("owner_email", user.owner_email);
+  }
+  await writeRfxProcessAudit(supabase, user, project.id, "award_scenario_created", "rfx_award_packages", awardInsert.data.id, `Created RFx Award Package ${awardInsert.data.scenario_name}`, { scenario_type: awardInsert.data.scenario_type, lines: lineRows.length });
+  return { row: awardInsert.data, lines: lineRows.length };
+}
+
 Deno.serve(async (request) => {
   if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders() });
 
@@ -12507,6 +13113,133 @@ Deno.serve(async (request) => {
     supabase = getClient();
     user = await resolveCanonicalUser(supabase, userContext(await requireKindeUser(request)));
     body = await request.json();
+
+    if (body.action === "list_rfx_process_projects") {
+      return jsonResponse(await listRfxProcessProjects(supabase, user, body));
+    }
+
+    if (body.action === "create_rfx_process_project") {
+      const row = withOwner(normalizeRfxProjectInput(objectRecord(body.project || body)), user);
+      const result = await supabase.from("rfx_projects").insert(row).select().single();
+      if (result.error) throw result.error;
+      await writeRfxProcessAudit(
+        supabase,
+        user,
+        result.data.id,
+        "rfx_project_created",
+        "rfx_projects",
+        result.data.id,
+        `Created RFx Project ${result.data.title}`,
+        { status: result.data.status, opportunity_type: result.data.opportunity_type }
+      );
+      return jsonResponse({ row: result.data });
+    }
+
+    if (body.action === "get_rfx_process_project") {
+      return jsonResponse(await getRfxProcessProjectDetail(supabase, user, body.project_id || body.id));
+    }
+
+    if (body.action === "update_rfx_process_project") {
+      const project = await requireOwnedRfxProcessProject(supabase, user, body.project_id || body.id);
+      const patch = normalizeRfxProjectPatch(objectRecord(body.patch || body.project || body));
+      if (patch.status) await validateRfxProjectStatusChange(supabase, project.id, patch.status);
+      const result = await supabase
+        .from("rfx_projects")
+        .update(patch)
+        .eq("id", project.id)
+        .eq("owner_email", user.owner_email)
+        .select()
+        .single();
+      if (result.error) throw result.error;
+      await writeRfxProcessAudit(
+        supabase,
+        user,
+        project.id,
+        "rfx_project_updated",
+        "rfx_projects",
+        project.id,
+        `Updated RFx Project ${result.data.title}`,
+        { changed_fields: Object.keys(patch), status: result.data.status }
+      );
+      return jsonResponse({ row: result.data });
+    }
+
+    if (body.action === "create_rfx_rfi_magic_link") {
+      return jsonResponse(await createRfxRfiMagicLink(supabase, user, body));
+    }
+
+    if (body.action === "revoke_rfx_rfi_magic_link") {
+      const linkId = cleanText(body.link_id || body.id);
+      if (!linkId) return jsonResponse({ error: "RFI magic link id is required." }, 400);
+      const linkResult = await supabase
+        .from("rfx_rfi_magic_links")
+        .select("id,project_id,rfx_projects!inner(id,title,owner_email)")
+        .eq("id", linkId)
+        .eq("rfx_projects.owner_email", user.owner_email)
+        .single();
+      if (linkResult.error) throw linkResult.error;
+      const result = await supabase
+        .from("rfx_rfi_magic_links")
+        .update({ status: "revoked", revoked_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+        .eq("id", linkId)
+        .select("id,project_id,status,revoked_at,expires_at")
+        .single();
+      if (result.error) throw result.error;
+      await writeRfxProcessAudit(
+        supabase,
+        user,
+        result.data.project_id,
+        "rfi_magic_link_revoked",
+        "rfx_rfi_magic_links",
+        result.data.id,
+        "Revoked Customer RFI magic link",
+        {}
+      );
+      return jsonResponse({ row: result.data });
+    }
+
+    if (body.action === "reopen_rfx_rfi") {
+      const project = await requireOwnedRfxProcessProject(supabase, user, body.project_id || body.id);
+      const result = await supabase
+        .from("rfx_rfi_submissions")
+        .update({ status: "reopened", reopened_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+        .eq("project_id", project.id)
+        .select()
+        .single();
+      if (result.error) throw result.error;
+      await supabase
+        .from("rfx_projects")
+        .update({ status: "rfi_in_progress", updated_at: new Date().toISOString() })
+        .eq("id", project.id)
+        .eq("owner_email", user.owner_email);
+      await writeRfxProcessAudit(
+        supabase,
+        user,
+        project.id,
+        "rfi_reopened",
+        "rfx_rfi_submissions",
+        result.data.id,
+        "Reopened submitted Customer RFI for customer edits",
+        {}
+      );
+      return jsonResponse({ row: result.data });
+    }
+
+    if (body.action === "create_rfx_demand_snapshot") {
+      return jsonResponse(await createRfxDemandSnapshot(supabase, user, body));
+    }
+
+    if (body.action === "create_rfx_package") {
+      return jsonResponse(await createRfxProcessPackage(supabase, user, body));
+    }
+
+    if (body.action === "launch_rfx_package_to_bid_room") {
+      return jsonResponse(await launchRfxProcessPackageToBidRoom(supabase, user, body));
+    }
+
+    if (body.action === "create_rfx_award_package") {
+      return jsonResponse(await createRfxAwardPackage(supabase, user, body));
+    }
 
     if (body.action === "list_vendors") {
       const offset = Math.max(Number(body.offset) || 0, 0);

@@ -35,6 +35,12 @@ const interpretationMemoryHtml = readFileSync(new URL("../interpretation-memory.
 const carrierProfileApiSource = readFileSync(new URL("../supabase/functions/carrier-profile-api/index.ts", import.meta.url), "utf8");
 const rfxEventsSource = readFileSync(new URL("../src/rfx-events.js", import.meta.url), "utf8");
 const rfxEventsHtml = readFileSync(new URL("../rfx-events.html", import.meta.url), "utf8");
+const rfxProcessSource = readFileSync(new URL("../src/rfx-process.js", import.meta.url), "utf8");
+const rfxProcessServiceSource = readFileSync(new URL("../src/rfx-process-service.js", import.meta.url), "utf8");
+const rfxProcessHtml = readFileSync(new URL("../rfx-process.html", import.meta.url), "utf8");
+const customerRfiSource = readFileSync(new URL("../src/customer-rfi.js", import.meta.url), "utf8");
+const customerRfiServiceSource = readFileSync(new URL("../src/customer-rfi-service.js", import.meta.url), "utf8");
+const customerRfiHtml = readFileSync(new URL("../customer-rfi.html", import.meta.url), "utf8");
 const rfxBidSource = readFileSync(new URL("../src/rfx-bid.js", import.meta.url), "utf8");
 const rfxBidApiSource = readFileSync(new URL("../supabase/functions/rfx-bid-api/index.ts", import.meta.url), "utf8");
 const ratewareApiClientSource = readFileSync(new URL("../src/rateware-api.js", import.meta.url), "utf8");
@@ -81,6 +87,7 @@ const rfxBidValidityMigration = readFileSync(new URL("../supabase/migrations/202
 const rfxBidDeadheadMigration = readFileSync(new URL("../supabase/migrations/20260709090000_rfx_bid_deadhead_commitment.sql", import.meta.url), "utf8");
 const emailBounceSuppressionMigration = readFileSync(new URL("../supabase/migrations/20260709103000_email_bounce_suppression.sql", import.meta.url), "utf8");
 const vendorContinuousImprovementMigration = readFileSync(new URL("../supabase/migrations/20260710100000_vendor_continuous_improvement.sql", import.meta.url), "utf8");
+const rfxProcessMigration = readFileSync(new URL("../supabase/migrations/20260710120000_rfx_process.sql", import.meta.url), "utf8");
 const vendorSegmentsCoverageMigration = readFileSync(new URL("../supabase/migrations/20260706143000_vendor_segments_coverage_filter.sql", import.meta.url), "utf8");
 const vendorProfileRequestsMigration = readFileSync(new URL("../supabase/migrations/20260706152000_vendor_profile_requests.sql", import.meta.url), "utf8");
 const rfxLaneDetailSectionsMigration = readFileSync(new URL("../supabase/migrations/20260707170000_rfx_lane_detail_sections.sql", import.meta.url), "utf8");
@@ -144,6 +151,7 @@ for (const [label, html] of [
   ["Rateware", ratewareHtml],
   ["Analyze", businessIntelligenceHtml],
   ["Carrier CRM", vendorsHtml],
+  ["RFx Process", rfxProcessHtml],
   ["Bid Room", rfxEventsHtml],
   ["Vendor Support", vendorSupportHtml],
   ["Settings", settingsHtml],
@@ -156,9 +164,89 @@ for (const [label, html] of [
   assert.match(nav, /data-nav-code="SF">Source Files/, `${label} shell should use the modern Source Files nav label`);
   assert.match(nav, /data-nav-code="RQ">Review Queue/, `${label} shell should use the modern Review Queue nav label`);
   assert.match(nav, /data-nav-code="CM">Carrier CRM/, `${label} shell should use the modern Carrier CRM nav label`);
+  assert.match(nav, /data-nav-code="RP">RFx Process/, `${label} shell should expose RFx Process before Bid Room`);
   assert.match(nav, /data-nav-code="LR">Learning Rules/, `${label} shell should use the modern Learning Rules nav label`);
   assert.match(nav, /data-nav-code="CT">Catalog/, `${label} shell should use the modern Catalog nav label`);
   assert.doesNotMatch(nav, />Dashboard<|>Upload Center<|>Upload History<|>Staging Review<|>AI Analyst<|>Vendors<|>Memory<|>Catalogs</, `${label} shell should not render legacy nav labels`);
+}
+
+for (const table of [
+  "rfx_projects",
+  "rfx_rfi_magic_links",
+  "rfx_rfi_submissions",
+  "rfx_rfi_origins",
+  "rfx_rfi_destinations",
+  "rfx_rfi_lanes",
+  "rfx_rfi_business_rules",
+  "rfx_rfi_service_requirements",
+  "rfx_rfi_carrier_requirements",
+  "rfx_rfi_crossborder_details",
+  "rfx_rfi_attachments",
+  "rfx_rfi_exception_notes",
+  "rfx_demand_snapshots",
+  "rfx_demand_lanes",
+  "rfx_packages",
+  "rfx_package_lanes",
+  "rfx_award_packages",
+  "rfx_award_package_lanes",
+  "rfx_process_audit"
+]) {
+  assert.match(rfxProcessMigration, new RegExp(`create table if not exists public\\.${table}`), `RFx Process migration should create ${table}`);
+}
+assert.match(rfxProcessMigration, /token_hash text not null unique/, "Customer RFI magic links should store only hashed tokens");
+assert.match(rfxProcessMigration, /source_rfx_process_project_id uuid references public\.rfx_projects/, "Bid Room events should link back to RFx Process projects");
+assert.doesNotMatch(rfxProcessMigration, /using\s*\(true\)\s*with check\s*\(true\)/i, "RFx Process migration should not expose broad direct table access");
+assert.match(apiSource, /list_rfx_process_projects/, "Rateware API should list RFx Process projects");
+assert.match(apiSource, /create_rfx_process_project/, "Rateware API should create RFx Process projects");
+assert.match(apiSource, /get_rfx_process_project/, "Rateware API should fetch RFx Process detail");
+assert.match(apiSource, /update_rfx_process_project/, "Rateware API should update RFx Process status and metadata");
+assert.match(apiSource, /create_rfx_rfi_magic_link/, "Rateware API should generate Customer RFI magic links");
+assert.match(apiSource, /revoke_rfx_rfi_magic_link/, "Rateware API should revoke Customer RFI magic links");
+assert.match(apiSource, /reopen_rfx_rfi/, "Rateware API should reopen submitted Customer RFIs");
+assert.match(apiSource, /create_rfx_demand_snapshot/, "Rateware API should create demand snapshots");
+assert.match(apiSource, /create_rfx_package/, "Rateware API should create RFx sourcing packages");
+assert.match(apiSource, /launch_rfx_package_to_bid_room/, "Rateware API should launch an RFx Package into Bid Room");
+assert.match(apiSource, /create_rfx_award_package/, "Rateware API should create RFx award packages");
+assert.match(apiSource, /validateRfxProjectStatusChange/, "RFx Process status changes should be guarded by workflow validation");
+assert.match(apiSource, /frozen_rfi_snapshot/, "Demand snapshots should preserve a frozen submitted RFI snapshot");
+assert.match(rfxBidApiSource, /get_customer_rfi/, "Public Bid Room API should expose Customer RFI read action before invite token validation");
+assert.match(rfxBidApiSource, /save_customer_rfi/, "Public Bid Room API should save Customer RFI drafts");
+assert.match(rfxBidApiSource, /submit_customer_rfi/, "Public Bid Room API should submit final Customer RFI responses");
+assert.match(rfxBidApiSource, /hashCustomerRfiToken/, "Public Customer RFI tokens should be hashed before lookup");
+assert.match(rfxBidApiSource, /already been submitted/, "Submitted Customer RFIs should be locked until internally reopened");
+assert.match(rfxBidApiSource, /customer_rfi_submitted/, "Customer RFI submission should be audit logged");
+assert.match(rfxBidApiSource, /rfx_rfi_business_rules/, "Customer RFI API should persist structured business rules");
+assert.match(rfxBidApiSource, /rfx_rfi_service_requirements/, "Customer RFI API should persist structured service requirements");
+assert.match(rfxBidApiSource, /rfx_rfi_carrier_requirements/, "Customer RFI API should persist structured carrier requirements");
+assert.match(rfxBidApiSource, /rfx_rfi_crossborder_details/, "Customer RFI API should persist structured crossborder details");
+assert.match(apiSource, /business_rules: businessRules\.data/, "RFx Process detail should expose structured business rules");
+assert.match(rfxProcessServiceSource, /fetchRfxProcessProjects/, "RFx Process service should expose project listing");
+assert.match(rfxProcessServiceSource, /launchRfxPackageToBidRoom/, "RFx Process service should expose Bid Room launch");
+assert.doesNotMatch(rfxProcessServiceSource, /fetchCustomerRfi|get_customer_rfi|PUBLIC_RFI_ENDPOINT/, "RFx Process internal service should not expose public Customer RFI wrappers");
+assert.match(customerRfiServiceSource, /fetchCustomerRfi/, "Customer RFI public service should expose public Customer RFI loading");
+assert.match(customerRfiServiceSource, /get_customer_rfi/, "Customer RFI public service should call the public API without Kinde");
+assert.doesNotMatch(customerRfiSource, /rfx-process-service/, "Customer RFI page should not import the internal authenticated RFx Process service");
+assert.doesNotMatch(customerRfiServiceSource, /callRatewareApi|getKindeToken|auth\.js/, "Customer RFI public service should not depend on authenticated Rateware APIs");
+assert.match(rfxProcessHtml, /Customer RFI/, "RFx Process page should include Customer RFI tab");
+assert.match(rfxProcessHtml, /Demand/, "RFx Process page should include Demand tab");
+assert.match(rfxProcessHtml, /RFx Design/, "RFx Process page should include RFx Design tab");
+assert.match(rfxProcessHtml, /Evaluation/, "RFx Process page should include Bid Evaluation tab");
+assert.match(customerRfiHtml, /rfi-origins/, "Customer RFI page should collect structured origins");
+assert.match(customerRfiHtml, /rfi-destinations/, "Customer RFI page should collect structured destinations");
+assert.match(customerRfiHtml, /rfi-lanes/, "Customer RFI page should collect a structured lane matrix");
+assert.match(customerRfiHtml, /rfi-carrier-requirements/, "Customer RFI page should collect required carrier profile details");
+assert.match(customerRfiHtml, /rfi-attachments/, "Customer RFI page should collect attachment references");
+assert.match(customerRfiSource, /submitCustomerRfi/, "Customer RFI UI should call the public submit API");
+assert.match(customerRfiSource, /Complete origin, destination, equipment and weekly volume/, "Customer RFI UI should validate required lane fields before final submission");
+assert.match(customerRfiSource, /state\.submitted/, "Customer RFI UI should lock submitted responses");
+assert.match(rfxProcessSource, /does not mutate the customer submission/, "RFx Process UI should explain that demand normalization does not mutate the submitted RFI");
+for (const [label, source] of [
+  ["RFx Process UI", rfxProcessSource],
+  ["Customer RFI UI", customerRfiSource],
+  ["RFx Process service", rfxProcessServiceSource],
+  ["RFx Process migration", rfxProcessMigration]
+]) {
+  assert.doesNotMatch(source, /dispatchShipment|loadTender|driverDispatch/i, `${label} should not implement shipment dispatching in the RFx Process scope`);
 }
 assert.match(stagingReviewHtml, /staging-next-issue/, "Staging spreadsheet should expose a next-issue navigator");
 assert.match(stagingReviewHtml, /staging-select-issue-rows/, "Staging spreadsheet should select visible rows with validation issues");

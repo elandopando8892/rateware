@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Rateware RFx Process</title>
+    <link rel="stylesheet" href="./src/styles.css" />
+  </head>
+  <body>
+    <div class="shell-layout">
+      <aside class="side-nav" aria-label="Rateware modules">
+        <a class="brand-mark" href="./app.html">Rateware</a>
+        <nav class="nav-groups">
+          <section class="nav-group">
+            <p>Operate</p>
+            <a href="./app.html" data-nav-code="CC">Command Center</a>
+            <a href="./upload-center.html" data-nav-code="IM">Import</a>
+            <a href="./upload-history.html" data-nav-code="SF">Source Files</a>
+            <a href="./staging-review.html" data-nav-code="RQ">Review Queue</a>
+            <a href="./rateware.html" data-nav-code="RW">Rateware</a>
+          </section>
+          <section class="nav-group">
+            <p>Analyze</p>
+            <a href="./business-intelligence.html" data-nav-code="AN">Analyze</a>
+          </section>
+          <section class="nav-group">
+            <p>Source</p>
+            <a href="./vendors.html" data-nav-code="CM">Carrier CRM</a>
+            <a aria-current="page" href="./rfx-process.html" data-nav-code="RP">RFx Process</a>
+            <a href="./rfx-events.html" data-nav-code="BR">Bid Room</a>
+            <a href="./vendor-support.html" data-nav-code="VS">Vendor Support</a>
+            <a href="./vendor-improvement.html" data-nav-code="CI">Vendor CI</a>
+          </section>
+          <section class="nav-group">
+            <p>Admin</p>
+            <a href="./settings.html" data-nav-code="ST">Settings</a>
+            <a href="./interpretation-memory.html" data-nav-code="LR">Learning Rules</a>
+            <a href="./catalog-workbench.html" data-nav-code="CT">Catalog</a>
+          </section>
+        </nav>
+      </aside>
+
+      <div class="page-frame">
+        <header class="page-header">
+          <div>
+            <p class="eyebrow">Procurement design</p>
+            <h1>RFx Process</h1>
+            <nav class="module-crumbs" aria-label="Module context">
+              <a href="./app.html">Command Center</a>
+              <a href="./vendors.html">Carrier CRM</a>
+              <span>RFx Process</span>
+            </nav>
+          </div>
+          <div class="page-header-actions">
+            <button id="new-rfx-project" class="page-primary-action" type="button">New RFx Project</button>
+            <form id="auth-form" class="auth-strip">
+              <button id="auth-button" type="submit">Sign in with Kinde</button>
+              <button id="sign-out-button" type="button" class="secondary hidden">Sign out</button>
+              <p id="auth-status" role="status"></p>
+            </form>
+          </div>
+        </header>
+
+        <main class="rfx-process-layout">
+          <aside class="rfx-process-list-panel">
+            <div class="split-heading compact">
+              <div>
+                <p class="eyebrow">Consultative RFx</p>
+                <h2>Projects</h2>
+              </div>
+              <button id="refresh-rfx-process" class="secondary small-button" type="button">Refresh</button>
+            </div>
+            <div class="rfx-process-toolbar">
+              <input id="rfx-process-search" type="search" placeholder="Customer, project, contact..." />
+              <select id="rfx-process-status">
+                <option value="">All active</option>
+                <option value="draft">Draft</option>
+                <option value="rfi_sent">RFI sent</option>
+                <option value="rfi_in_progress">RFI in progress</option>
+                <option value="rfi_submitted">RFI submitted</option>
+                <option value="demand_review">Demand review</option>
+                <option value="rfx_design">RFx design</option>
+                <option value="bid_room_open">Bid Room open</option>
+                <option value="bid_evaluation">Bid evaluation</option>
+                <option value="awarded">Awarded</option>
+                <option value="implementation_ready">Implementation ready</option>
+              </select>
+            </div>
+            <div id="rfx-process-project-list" class="rfx-process-project-list" aria-live="polite"></div>
+          </aside>
+
+          <section class="rfx-process-workspace">
+            <section id="rfx-process-empty" class="empty-state compact-empty">
+              <h2>Select or create an RFx Project</h2>
+              <p>Manage the consultative sales workflow from Customer RFI to Demand Normalization, RFx Design, Bid Room, evaluation, and implementation package.</p>
+            </section>
+
+            <section id="rfx-process-detail" class="hidden">
+              <div class="rfx-process-hero">
+                <div>
+                  <p class="eyebrow">RFx Project</p>
+                  <h2 id="rfx-process-title">-</h2>
+                  <p id="rfx-process-subtitle">-</p>
+                </div>
+                <div class="rfx-process-status-card">
+                  <span id="rfx-process-status-badge" class="status-pill">draft</span>
+                  <strong id="rfx-process-readiness">0%</strong>
+                  <small>RFI completeness</small>
+                </div>
+              </div>
+
+              <p id="rfx-process-status-message" class="row-save-status" role="status"></p>
+
+              <nav class="rfx-process-tabs" aria-label="RFx Process sections">
+                <button class="active" type="button" data-rfx-process-tab="overview">Overview</button>
+                <button type="button" data-rfx-process-tab="rfi">Customer RFI</button>
+                <button type="button" data-rfx-process-tab="demand">Demand</button>
+                <button type="button" data-rfx-process-tab="design">RFx Design</button>
+                <button type="button" data-rfx-process-tab="bidroom">Bid Room</button>
+                <button type="button" data-rfx-process-tab="evaluation">Evaluation</button>
+                <button type="button" data-rfx-process-tab="award">Award</button>
+                <button type="button" data-rfx-process-tab="audit">Audit</button>
+              </nav>
+
+              <div id="rfx-process-panels" class="rfx-process-panels"></div>
+            </section>
+          </section>
+        </main>
+      </div>
+    </div>
+
+    <dialog id="rfx-process-create-dialog" class="rateware-dialog">
+      <form id="rfx-process-create-form" method="dialog">
+        <h2>New RFx Project</h2>
+        <label>Project title<input name="title" required placeholder="Customer lane book refresh" /></label>
+        <label>Customer<input name="customer_name" placeholder="Customer name" /></label>
+        <label>Customer contact<input name="customer_contact_name" placeholder="Name" /></label>
+        <label>Customer email<input name="customer_contact_email" type="email" placeholder="name@customer.com" /></label>
+        <label>Opportunity type
+          <select name="opportunity_type">
+            <option value="spot">Spot</option>
+            <option value="contract">Contract</option>
+            <option value="benchmark">Benchmark</option>
+            <option value="capacity_addition">Capacity addition</option>
+            <option value="dedicated">Dedicated</option>
+            <option value="new_provider">New provider</option>
+            <option value="backup">Backup</option>
+          </select>
+        </label>
+        <label>Due date<input name="due_date" type="date" /></label>
+        <label>Notes<textarea name="notes" rows="3" placeholder="Context, scope, customer ask..."></textarea></label>
+        <menu>
+          <button type="button" value="cancel" class="secondary" data-dialog-close>Cancel</button>
+          <button type="submit" value="default">Create project</button>
+        </menu>
+      </form>
+    </dialog>
+
+    <script type="module" src="./src/rfx-process.js"></script>
+  </body>
+</html>

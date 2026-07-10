@@ -3665,6 +3665,536 @@ async function ensureBidRateStagingRow(
   };
 }
 
+async function hashCustomerRfiToken(token: string) {
+  const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token));
+  return Array.from(new Uint8Array(hash)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function rfiArrayRecords(value: unknown, limit = 1000) {
+  return Array.isArray(value)
+    ? value.slice(0, limit).filter((row) => row && typeof row === "object").map((row) => row as Record<string, unknown>)
+    : [];
+}
+
+function normalizeRfiSegment(value: unknown) {
+  const text = cleanText(value)?.toLowerCase().replace(/[\s-]+/g, "_");
+  return text && ["expedited", "time_critical", "crossborder", "local", "regional", "national"].includes(text) ? text : null;
+}
+
+function normalizeRfiOperation(value: unknown) {
+  const text = cleanText(value)?.toLowerCase().replace(/[\s-]+/g, "_");
+  const aliases: Record<string, string> = {
+    intra_mex: "mx_domestic",
+    mx: "mx_domestic",
+    mexico: "mx_domestic",
+    usa: "us_domestic",
+    us: "us_domestic",
+    cross_border: "crossborder"
+  };
+  const normalized = text ? aliases[text] || text : null;
+  return normalized && ["mx_domestic", "us_domestic", "crossborder", "local", "regional", "national"].includes(normalized) ? normalized : null;
+}
+
+function normalizeRfiService(value: unknown) {
+  const text = cleanText(value)?.toLowerCase().replace(/[\s-]+/g, "_");
+  return text && ["standard", "expedited", "time_critical", "dedicated", "spot", "recurring"].includes(text) ? text : null;
+}
+
+function rfiLaneIssues(row: Record<string, unknown>) {
+  const issues: string[] = [];
+  if (!cleanText(row.origin_text || row.origin || row.origin_key)) issues.push("origin_missing");
+  if (!cleanText(row.destination_text || row.destination || row.destination_key)) issues.push("destination_missing");
+  if (!cleanText(row.equipment_type || row.equipment)) issues.push("equipment_missing");
+  if (cleanNumber(row.weekly_volume) === null && cleanNumber(row.monthly_volume) === null) issues.push("volume_missing");
+  return issues;
+}
+
+function normalizeCustomerRfiPayload(input: Record<string, unknown>) {
+  const source = objectRecord(input.rfi || input.response || input);
+  const origins = rfiArrayRecords(source.origins, 500);
+  const destinations = rfiArrayRecords(source.destinations, 500);
+  const lanes = rfiArrayRecords(source.lanes, 1000);
+  const issues = lanes.flatMap((lane) => rfiLaneIssues(lane));
+  const required = Math.max(lanes.length * 4, 1);
+  return {
+    source,
+    origins,
+    destinations,
+    lanes,
+    issues,
+    completeness_score: Math.max(0, Math.round((required - issues.length) / required * 100)),
+    submission: {
+      account_overview: objectRecord(source.account_overview || source.accountOverview),
+      operating_segments: rfiArrayRecords(source.operating_segments || source.operatingSegments, 20).map((row) => cleanText(row.value || row.segment)).filter(Boolean),
+      logistics_models: objectRecord(source.logistics_models || source.logisticsModels),
+      operational_criteria: objectRecord(source.operational_criteria || source.operationalCriteria),
+      business_rules: objectRecord(source.business_rules || source.businessRules),
+      service_requirements: objectRecord(source.service_requirements || source.serviceRequirements),
+      carrier_requirements: objectRecord(source.carrier_requirements || source.carrierRequirements),
+      crossborder_details: objectRecord(source.crossborder_details || source.crossborderDetails),
+      notes_exceptions: objectRecord(source.notes_exceptions || source.notesExceptions),
+      attachments: Array.isArray(source.attachments) ? source.attachments : [],
+      response: source
+    }
+  };
+}
+
+function normalizeRfiOrigin(row: Record<string, unknown>, owner: Record<string, unknown>, projectId: string, submissionId: string) {
+  return {
+    owner_user_id: owner.owner_user_id || null,
+    owner_email: cleanEmail(owner.owner_email) || cleanText(owner.owner_email),
+    project_id: projectId,
+    submission_id: submissionId,
+    origin_key: cleanText(row.origin_key || row.key || row.id),
+    name: cleanText(row.name || row.origin || row.location),
+    address: cleanText(row.address),
+    city: cleanText(row.city),
+    state: cleanText(row.state || row.st),
+    country: cleanText(row.country),
+    postal_code: cleanText(row.postal_code || row.zip || row.zip_code),
+    contact_name: cleanText(row.contact_name || row.contact),
+    contact_phone: cleanText(row.contact_phone || row.phone),
+    contact_email: cleanEmail(row.contact_email || row.email),
+    loading_hours: cleanText(row.loading_hours || row.hours),
+    appointment_required: cleanBoolean(row.appointment_required),
+    loading_type: cleanText(row.loading_type),
+    average_loading_time_hours: cleanNumber(row.average_loading_time_hours),
+    site_restrictions: cleanText(row.site_restrictions),
+    notes: cleanText(row.notes)
+  };
+}
+
+function normalizeRfiDestination(row: Record<string, unknown>, owner: Record<string, unknown>, projectId: string, submissionId: string) {
+  return {
+    owner_user_id: owner.owner_user_id || null,
+    owner_email: cleanEmail(owner.owner_email) || cleanText(owner.owner_email),
+    project_id: projectId,
+    submission_id: submissionId,
+    destination_key: cleanText(row.destination_key || row.key || row.id),
+    name: cleanText(row.name || row.destination || row.location),
+    address: cleanText(row.address),
+    city: cleanText(row.city),
+    state: cleanText(row.state || row.st),
+    country: cleanText(row.country),
+    postal_code: cleanText(row.postal_code || row.zip || row.zip_code),
+    contact_name: cleanText(row.contact_name || row.contact),
+    contact_phone: cleanText(row.contact_phone || row.phone),
+    contact_email: cleanEmail(row.contact_email || row.email),
+    receiving_hours: cleanText(row.receiving_hours || row.hours),
+    appointment_required: cleanBoolean(row.appointment_required),
+    unloading_type: cleanText(row.unloading_type),
+    average_unloading_time_hours: cleanNumber(row.average_unloading_time_hours),
+    late_delivery_penalties: cleanText(row.late_delivery_penalties),
+    site_restrictions: cleanText(row.site_restrictions),
+    notes: cleanText(row.notes)
+  };
+}
+
+function normalizeRfiLane(
+  row: Record<string, unknown>,
+  owner: Record<string, unknown>,
+  projectId: string,
+  submissionId: string,
+  originIds: Map<string, string>,
+  destinationIds: Map<string, string>,
+  index: number
+) {
+  const originKey = cleanText(row.origin_key || row.origin_id);
+  const destinationKey = cleanText(row.destination_key || row.destination_id);
+  const issues = rfiLaneIssues(row).map((issue) => ({ issue }));
+  return {
+    owner_user_id: owner.owner_user_id || null,
+    owner_email: cleanEmail(owner.owner_email) || cleanText(owner.owner_email),
+    project_id: projectId,
+    submission_id: submissionId,
+    lane_id: cleanText(row.lane_id || row.id) || `L${index + 1}`,
+    origin_id: originKey ? originIds.get(originKey) || null : null,
+    destination_id: destinationKey ? destinationIds.get(destinationKey) || null : null,
+    origin_text: cleanText(row.origin_text || row.origin),
+    destination_text: cleanText(row.destination_text || row.destination),
+    operating_segment: normalizeRfiSegment(row.operating_segment || row.segment),
+    operation_type: normalizeRfiOperation(row.operation_type || row.operation),
+    service_type: normalizeRfiService(row.service_type || row.service),
+    equipment_type: cleanText(row.equipment_type || row.equipment),
+    trailer_requirements: cleanText(row.trailer_requirements || row.trailer),
+    commodity: cleanText(row.commodity),
+    hazmat: cleanBoolean(row.hazmat) === true,
+    cargo_value: cleanNumber(row.cargo_value),
+    cargo_value_currency: cleanText(row.cargo_value_currency),
+    weight: cleanNumber(row.weight),
+    pallets: cleanNumber(row.pallets),
+    dimensions: cleanText(row.dimensions),
+    weekly_volume: cleanNumber(row.weekly_volume),
+    monthly_volume: cleanNumber(row.monthly_volume),
+    frequency: cleanText(row.frequency),
+    pickup_lead_time_hours: cleanNumber(row.pickup_lead_time_hours),
+    expected_transit_time_hours: cleanNumber(row.expected_transit_time_hours),
+    target_rate: cleanNumber(row.target_rate),
+    current_rate: cleanNumber(row.current_rate),
+    currency: cleanText(row.currency),
+    seasonality_notes: cleanText(row.seasonality_notes),
+    special_requirements: cleanText(row.special_requirements),
+    notes: cleanText(row.notes),
+    validation_issues: issues,
+    completeness_score: Math.max(0, Math.round((4 - issues.length) / 4 * 100))
+  };
+}
+
+function rfiSectionRecords(value: unknown, limit = 50) {
+  const arrayRows = rfiArrayRecords(value, limit);
+  if (arrayRows.length) return arrayRows.filter((row) => rfiSectionHasContent(row));
+  const record = objectRecord(value);
+  return rfiSectionHasContent(record) ? [record] : [];
+}
+
+function rfiSectionHasContent(row: Record<string, unknown>) {
+  return Object.values(row).some((value) => {
+    if (Array.isArray(value)) return value.length > 0;
+    if (value && typeof value === "object") return Object.keys(value as Record<string, unknown>).length > 0;
+    if (typeof value === "boolean") return value === true;
+    return Boolean(cleanText(value));
+  });
+}
+
+function cleanJsonList(value: unknown) {
+  if (Array.isArray(value)) return value.map((item) => cleanText(item)).filter(Boolean);
+  const text = cleanText(value);
+  return text ? text.split(/[\n;,]+/).map((item) => item.trim()).filter(Boolean) : [];
+}
+
+function rfiOwnerFields(owner: Record<string, unknown>, projectId: string, submissionId: string) {
+  return {
+    owner_user_id: owner.owner_user_id || null,
+    owner_email: cleanEmail(owner.owner_email) || cleanText(owner.owner_email),
+    project_id: projectId,
+    submission_id: submissionId
+  };
+}
+
+function normalizeRfiBusinessRule(row: Record<string, unknown>, owner: Record<string, unknown>, projectId: string, submissionId: string) {
+  return {
+    ...rfiOwnerFields(owner, projectId, submissionId),
+    payment_terms: cleanText(row.payment_terms),
+    rate_currency: cleanText(row.rate_currency || row.currency),
+    fuel_surcharge_policy: cleanText(row.fuel_surcharge_policy || row.fsc_policy),
+    detention_loading_free_time_hours: cleanNumber(row.detention_loading_free_time_hours),
+    detention_loading_rate: cleanNumber(row.detention_loading_rate),
+    detention_unloading_free_time_hours: cleanNumber(row.detention_unloading_free_time_hours),
+    detention_unloading_rate: cleanNumber(row.detention_unloading_rate),
+    layover_policy: cleanText(row.layover_policy),
+    tonu_policy: cleanText(row.tonu_policy),
+    cancellation_policy: cleanText(row.cancellation_policy),
+    redelivery_policy: cleanText(row.redelivery_policy),
+    border_wait_policy: cleanText(row.border_wait_policy),
+    claims_process: cleanText(row.claims_process),
+    insurance_requirements: cleanText(row.insurance_requirements),
+    penalties: cleanText(row.penalties),
+    accessorial_approval_required: cleanBoolean(row.accessorial_approval_required),
+    notes: cleanText(row.notes),
+    raw_payload: row
+  };
+}
+
+function normalizeRfiServiceRequirement(row: Record<string, unknown>, owner: Record<string, unknown>, projectId: string, submissionId: string) {
+  return {
+    ...rfiOwnerFields(owner, projectId, submissionId),
+    gps_tracking_required: cleanBoolean(row.gps_tracking_required),
+    tracking_frequency: cleanText(row.tracking_frequency),
+    check_calls_required: cleanBoolean(row.check_calls_required),
+    pod_required: cleanBoolean(row.pod_required),
+    pod_submission_time_hours: cleanNumber(row.pod_submission_time_hours),
+    bol_required: cleanBoolean(row.bol_required),
+    appointment_management_owner: cleanText(row.appointment_management_owner),
+    support_24_7_required: cleanBoolean(row.support_24_7_required || row["24_7_support_required"]),
+    escalation_sla: cleanText(row.escalation_sla),
+    reporting_requirements: cleanText(row.reporting_requirements),
+    communication_channels: cleanJsonList(row.communication_channels),
+    notes: cleanText(row.notes),
+    raw_payload: row
+  };
+}
+
+function normalizeRfiCarrierRequirement(row: Record<string, unknown>, owner: Record<string, unknown>, projectId: string, submissionId: string) {
+  return {
+    ...rfiOwnerFields(owner, projectId, submissionId),
+    allowed_carrier_types: cleanJsonList(row.allowed_carrier_types),
+    mc_dot_required: cleanBoolean(row.mc_dot_required),
+    mx_authority_required: cleanBoolean(row.mx_authority_required),
+    crossborder_experience_required: cleanBoolean(row.crossborder_experience_required),
+    minimum_years_experience: cleanNumber(row.minimum_years_experience),
+    minimum_fleet_size: cleanNumber(row.minimum_fleet_size),
+    fleet_ownership_preference: cleanText(row.fleet_ownership_preference),
+    cargo_insurance_minimum: cleanNumber(row.cargo_insurance_minimum),
+    liability_insurance_minimum: cleanNumber(row.liability_insurance_minimum),
+    gps_required: cleanBoolean(row.gps_required),
+    certifications_required: cleanJsonList(row.certifications_required),
+    hazmat_certification_required: cleanBoolean(row.hazmat_certification_required),
+    customer_preapproval_required: cleanBoolean(row.customer_preapproval_required),
+    preferred_carriers: cleanJsonList(row.preferred_carriers),
+    blocked_carriers: cleanJsonList(row.blocked_carriers),
+    notes: cleanText(row.notes),
+    raw_payload: row
+  };
+}
+
+function normalizeRfiCrossborderDirection(value: unknown) {
+  const text = cleanText(value)?.toLowerCase().replace(/[\s-]+/g, "_");
+  if (["mx_to_us", "mexico_to_us", "northbound", "export"].includes(text || "")) return "mx_to_us";
+  if (["us_to_mx", "us_to_mexico", "southbound", "import"].includes(text || "")) return "us_to_mx";
+  return null;
+}
+
+function normalizeRfiCrossingModel(value: unknown) {
+  const text = cleanText(value)?.toLowerCase().replace(/[\s-]+/g, "_");
+  return text && ["direct", "transfer", "swap", "drayage", "b1"].includes(text) ? text : null;
+}
+
+function normalizeRfiCrossborderDetail(
+  row: Record<string, unknown>,
+  owner: Record<string, unknown>,
+  projectId: string,
+  submissionId: string,
+  laneIds: Map<string, string>
+) {
+  const laneKey = cleanText(row.lane_id || row.lane_key);
+  return {
+    ...rfiOwnerFields(owner, projectId, submissionId),
+    rfi_lane_id: laneKey ? laneIds.get(laneKey) || null : null,
+    lane_id: laneKey,
+    direction: normalizeRfiCrossborderDirection(row.direction),
+    border_crossing: cleanText(row.border_crossing || row.mx_crossing || row.us_crossing),
+    mx_customs_broker: cleanText(row.mx_customs_broker),
+    us_customs_broker: cleanText(row.us_customs_broker),
+    crossing_model: normalizeRfiCrossingModel(row.crossing_model),
+    carta_porte_required: cleanBoolean(row.carta_porte_required),
+    pedimento_required: cleanBoolean(row.pedimento_required),
+    documents_required: cleanJsonList(row.documents_required),
+    expected_border_time_hours: cleanNumber(row.expected_border_time_hours),
+    broker_coordination_owner: cleanText(row.broker_coordination_owner),
+    notes: cleanText(row.notes),
+    raw_payload: row
+  };
+}
+
+function normalizeRfiAttachment(row: Record<string, unknown>, owner: Record<string, unknown>, projectId: string, submissionId: string) {
+  return {
+    ...rfiOwnerFields(owner, projectId, submissionId),
+    name: cleanText(row.name),
+    url: cleanText(row.url),
+    reference: cleanText(row.reference || row.file || row.path),
+    attachment_type: cleanText(row.attachment_type || row.type),
+    notes: cleanText(row.notes),
+    raw_payload: row
+  };
+}
+
+function normalizeRfiExceptionNote(row: Record<string, unknown>, owner: Record<string, unknown>, projectId: string, submissionId: string) {
+  const severity = cleanText(row.severity)?.toLowerCase();
+  return {
+    ...rfiOwnerFields(owner, projectId, submissionId),
+    section: cleanText(row.section),
+    note_type: cleanText(row.note_type || row.type),
+    severity: severity && ["info", "warning", "critical"].includes(severity) ? severity : null,
+    note: cleanText(row.note || row.notes),
+    raw_payload: row
+  };
+}
+
+async function currentCustomerRfiContext(supabase: ReturnType<typeof createClient>, token: unknown) {
+  const rawToken = cleanText(token);
+  if (!rawToken) throw new Error("Customer RFI token is required.");
+  const tokenHash = await hashCustomerRfiToken(rawToken);
+  const result = await supabase
+    .from("rfx_rfi_magic_links")
+    .select("*, rfx_projects!inner(*)")
+    .eq("token_hash", tokenHash)
+    .single();
+  if (result.error) throw result.error;
+  const link = result.data as Record<string, unknown>;
+  const project = relationRecord(link.rfx_projects);
+  if (cleanText(link.status) !== "active" || link.revoked_at) throw new Error("Customer RFI link is not active.");
+  const expiresAt = cleanText(link.expires_at);
+  if (expiresAt && new Date(expiresAt).getTime() < Date.now()) {
+    await supabase.from("rfx_rfi_magic_links").update({ status: "expired", updated_at: new Date().toISOString() }).eq("id", link.id);
+    throw new Error("Customer RFI link has expired.");
+  }
+  return { link, project };
+}
+
+async function getCustomerRfi(supabase: ReturnType<typeof createClient>, token: unknown) {
+  const context = await currentCustomerRfiContext(supabase, token);
+  await supabase.from("rfx_rfi_magic_links").update({ last_viewed_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("id", context.link.id);
+  const [submission, origins, destinations, lanes] = await Promise.all([
+    supabase.from("rfx_rfi_submissions").select("*").eq("project_id", context.project.id).maybeSingle(),
+    supabase.from("rfx_rfi_origins").select("*").eq("project_id", context.project.id).order("created_at", { ascending: true }),
+    supabase.from("rfx_rfi_destinations").select("*").eq("project_id", context.project.id).order("created_at", { ascending: true }),
+    supabase.from("rfx_rfi_lanes").select("*").eq("project_id", context.project.id).order("created_at", { ascending: true })
+  ]);
+  for (const result of [submission, origins, destinations, lanes]) {
+    if (result.error) throw result.error;
+  }
+  return {
+    project: {
+      id: context.project.id,
+      title: context.project.title,
+      customer_name: context.project.customer_name,
+      customer_contact_name: context.project.customer_contact_name,
+      opportunity_type: context.project.opportunity_type,
+      operating_segments: context.project.operating_segments,
+      due_date: context.project.due_date,
+      status: context.project.status
+    },
+    link: {
+      id: context.link.id,
+      status: context.link.status,
+      expires_at: context.link.expires_at,
+      submitted_at: context.link.submitted_at
+    },
+    submission: submission.data || null,
+    origins: origins.data || [],
+    destinations: destinations.data || [],
+    lanes: lanes.data || []
+  };
+}
+
+async function saveCustomerRfi(supabase: ReturnType<typeof createClient>, input: Record<string, unknown>, submitting = false) {
+  const context = await currentCustomerRfiContext(supabase, input.token);
+  const projectId = cleanText(context.project.id) || "";
+  const owner = { owner_user_id: context.project.owner_user_id || null, owner_email: context.project.owner_email || null };
+  const existing = await supabase.from("rfx_rfi_submissions").select("*").eq("project_id", projectId).maybeSingle();
+  if (existing.error) throw existing.error;
+  if (existing.data?.status === "submitted") throw new Error("This Customer RFI has already been submitted. Ask procurement to reopen it before editing.");
+
+  const normalized = normalizeCustomerRfiPayload(input);
+  if (submitting && !normalized.lanes.length) throw new Error("Add at least one lane before submitting the Customer RFI.");
+  if (submitting && normalized.issues.length) throw new Error("Resolve required lane fields before submitting the Customer RFI.");
+  const now = new Date().toISOString();
+  const submissionRow = {
+    owner_user_id: owner.owner_user_id,
+    owner_email: owner.owner_email,
+    project_id: projectId,
+    magic_link_id: context.link.id,
+    status: submitting ? "submitted" : "draft",
+    ...normalized.submission,
+    frozen_snapshot: submitting ? normalized.source : objectRecord(existing.data?.frozen_snapshot),
+    completeness_score: normalized.completeness_score,
+    submitted_at: submitting ? now : existing.data?.submitted_at || null,
+    updated_at: now
+  };
+  const submissionResult = existing.data?.id
+    ? await supabase.from("rfx_rfi_submissions").update(submissionRow).eq("id", existing.data.id).select().single()
+    : await supabase.from("rfx_rfi_submissions").insert(submissionRow).select().single();
+  if (submissionResult.error) throw submissionResult.error;
+  const submissionId = submissionResult.data.id;
+
+  const deletes = await Promise.all([
+    supabase.from("rfx_rfi_crossborder_details").delete().eq("submission_id", submissionId),
+    supabase.from("rfx_rfi_attachments").delete().eq("submission_id", submissionId),
+    supabase.from("rfx_rfi_exception_notes").delete().eq("submission_id", submissionId),
+    supabase.from("rfx_rfi_business_rules").delete().eq("submission_id", submissionId),
+    supabase.from("rfx_rfi_service_requirements").delete().eq("submission_id", submissionId),
+    supabase.from("rfx_rfi_carrier_requirements").delete().eq("submission_id", submissionId),
+    supabase.from("rfx_rfi_lanes").delete().eq("submission_id", submissionId),
+    supabase.from("rfx_rfi_origins").delete().eq("submission_id", submissionId),
+    supabase.from("rfx_rfi_destinations").delete().eq("submission_id", submissionId)
+  ]);
+  for (const result of deletes) {
+    if (result.error) throw result.error;
+  }
+
+  const originRows = normalized.origins.map((row) => normalizeRfiOrigin(row, owner, projectId, submissionId));
+  const destinationRows = normalized.destinations.map((row) => normalizeRfiDestination(row, owner, projectId, submissionId));
+  const originInsert = originRows.length
+    ? await supabase.from("rfx_rfi_origins").insert(originRows).select("id,origin_key")
+    : { data: [], error: null };
+  if (originInsert.error) throw originInsert.error;
+  const destinationInsert = destinationRows.length
+    ? await supabase.from("rfx_rfi_destinations").insert(destinationRows).select("id,destination_key")
+    : { data: [], error: null };
+  if (destinationInsert.error) throw destinationInsert.error;
+  const originIds = new Map((originInsert.data || []).map((row) => [cleanText(row.origin_key) || cleanText(row.id) || "", row.id]));
+  const destinationIds = new Map((destinationInsert.data || []).map((row) => [cleanText(row.destination_key) || cleanText(row.id) || "", row.id]));
+  const laneRows = normalized.lanes.map((row, index) => normalizeRfiLane(row, owner, projectId, submissionId, originIds, destinationIds, index));
+  const laneInsert = laneRows.length
+    ? await supabase.from("rfx_rfi_lanes").insert(laneRows).select("id,lane_id")
+    : { data: [], error: null };
+  if (laneInsert.error) throw laneInsert.error;
+  const laneIds = new Map((laneInsert.data || []).map((row) => [cleanText(row.lane_id) || cleanText(row.id) || "", row.id]));
+
+  const businessRuleRows = rfiSectionRecords(normalized.submission.business_rules)
+    .map((row) => normalizeRfiBusinessRule(row, owner, projectId, submissionId));
+  const serviceRequirementRows = rfiSectionRecords(normalized.submission.service_requirements)
+    .map((row) => normalizeRfiServiceRequirement(row, owner, projectId, submissionId));
+  const carrierRequirementRows = rfiSectionRecords(normalized.submission.carrier_requirements)
+    .map((row) => normalizeRfiCarrierRequirement(row, owner, projectId, submissionId));
+  const crossborderRows = rfiSectionRecords(normalized.submission.crossborder_details, 1000)
+    .map((row) => normalizeRfiCrossborderDetail(row, owner, projectId, submissionId, laneIds));
+  const attachmentRows = rfiArrayRecords(normalized.submission.attachments, 1000)
+    .map((row) => normalizeRfiAttachment(row, owner, projectId, submissionId));
+  const exceptionRows = rfiSectionRecords(normalized.submission.notes_exceptions, 500)
+    .map((row) => normalizeRfiExceptionNote(row, owner, projectId, submissionId));
+  const structuredInserts = await Promise.all([
+    businessRuleRows.length ? supabase.from("rfx_rfi_business_rules").insert(businessRuleRows).select("id") : { data: [], error: null },
+    serviceRequirementRows.length ? supabase.from("rfx_rfi_service_requirements").insert(serviceRequirementRows).select("id") : { data: [], error: null },
+    carrierRequirementRows.length ? supabase.from("rfx_rfi_carrier_requirements").insert(carrierRequirementRows).select("id") : { data: [], error: null },
+    crossborderRows.length ? supabase.from("rfx_rfi_crossborder_details").insert(crossborderRows).select("id") : { data: [], error: null },
+    attachmentRows.length ? supabase.from("rfx_rfi_attachments").insert(attachmentRows).select("id") : { data: [], error: null },
+    exceptionRows.length ? supabase.from("rfx_rfi_exception_notes").insert(exceptionRows).select("id") : { data: [], error: null }
+  ]);
+  for (const result of structuredInserts) {
+    if (result.error) throw result.error;
+  }
+
+  const sideEffects = await Promise.all([
+    supabase.from("rfx_projects").update({ status: submitting ? "rfi_submitted" : "rfi_in_progress", updated_at: now }).eq("id", projectId),
+    submitting
+      ? supabase.from("rfx_rfi_magic_links").update({ submitted_at: now, updated_at: now }).eq("id", context.link.id)
+      : supabase.from("rfx_rfi_magic_links").update({ updated_at: now }).eq("id", context.link.id),
+    supabase.from("rfx_process_audit").insert({
+      owner_user_id: owner.owner_user_id,
+      owner_email: owner.owner_email,
+      project_id: projectId,
+      actor_email: cleanEmail(context.project.customer_contact_email),
+      action: submitting ? "customer_rfi_submitted" : "customer_rfi_saved",
+      entity_type: "rfx_rfi_submissions",
+      entity_id: submissionId,
+      summary: submitting ? "Customer submitted RFI" : "Customer saved RFI draft",
+      metadata: {
+        lanes: laneRows.length,
+        origins: originRows.length,
+        destinations: destinationRows.length,
+        business_rules: businessRuleRows.length,
+        service_requirements: serviceRequirementRows.length,
+        carrier_requirements: carrierRequirementRows.length,
+        crossborder_details: crossborderRows.length,
+        attachments: attachmentRows.length,
+        exception_notes: exceptionRows.length,
+        completeness_score: normalized.completeness_score
+      }
+    })
+  ]);
+  for (const result of sideEffects) {
+    if (result.error) throw result.error;
+  }
+
+  return {
+    saved: true,
+    submitted: submitting,
+    row: submissionResult.data,
+    origins: originRows.length,
+    destinations: destinationRows.length,
+    lanes: laneRows.length,
+    business_rules: businessRuleRows.length,
+    service_requirements: serviceRequirementRows.length,
+    carrier_requirements: carrierRequirementRows.length,
+    crossborder_details: crossborderRows.length,
+    attachments: attachmentRows.length,
+    exception_notes: exceptionRows.length,
+    validation_issues: normalized.issues,
+    completeness_score: normalized.completeness_score
+  };
+}
+
 Deno.serve(async (request) => {
   if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders() });
 
@@ -3697,6 +4227,18 @@ Deno.serve(async (request) => {
         return jsonResponse(payload, status as number);
       }
       return jsonResponse(result);
+    }
+
+    if (body.action === "get_customer_rfi") {
+      return jsonResponse(await getCustomerRfi(supabase, body.token));
+    }
+
+    if (body.action === "save_customer_rfi") {
+      return jsonResponse(await saveCustomerRfi(supabase, body, false));
+    }
+
+    if (body.action === "submit_customer_rfi") {
+      return jsonResponse(await saveCustomerRfi(supabase, body, true));
     }
 
     const token = cleanText(body.token);

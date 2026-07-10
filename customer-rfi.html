@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Rateware Customer RFI</title>
+    <link rel="stylesheet" href="./src/styles.css" />
+  </head>
+  <body class="public-rfi-page">
+    <main class="customer-rfi-shell">
+      <header class="customer-rfi-header">
+        <div>
+          <a class="brand-mark" href="./index.html">Rateware</a>
+          <p class="eyebrow">Customer RFI</p>
+          <h1 id="customer-rfi-title">Transportation requirements intake</h1>
+          <p id="customer-rfi-subtitle">Loading RFx Project...</p>
+        </div>
+        <div class="customer-rfi-status">
+          <span id="customer-rfi-status-pill" class="status-pill">draft</span>
+          <strong id="customer-rfi-completeness">0%</strong>
+          <small>Completeness</small>
+        </div>
+      </header>
+
+      <p id="customer-rfi-message" class="row-save-status" role="status"></p>
+
+      <section class="customer-rfi-grid">
+        <article class="customer-rfi-card">
+          <p class="eyebrow">Account overview</p>
+          <label>Company / business unit<input id="rfi-account-company" placeholder="Customer, plant, business unit" /></label>
+          <label>Primary contact<input id="rfi-account-contact" placeholder="Name, role, phone" /></label>
+          <label>Scope summary<textarea id="rfi-account-scope" rows="3" placeholder="What transportation scope should procurement quote?"></textarea></label>
+        </article>
+
+        <article class="customer-rfi-card">
+          <p class="eyebrow">Operating segments</p>
+          <div class="checkbox-grid">
+            <label><input type="checkbox" name="rfi-segment" value="crossborder" /> Crossborder</label>
+            <label><input type="checkbox" name="rfi-segment" value="mx_domestic" /> Mexico domestic</label>
+            <label><input type="checkbox" name="rfi-segment" value="us_domestic" /> US domestic</label>
+            <label><input type="checkbox" name="rfi-segment" value="expedited" /> Expedited</label>
+            <label><input type="checkbox" name="rfi-segment" value="time_critical" /> Time critical</label>
+            <label><input type="checkbox" name="rfi-segment" value="dedicated" /> Dedicated</label>
+          </div>
+          <label>Crossborder details<textarea id="rfi-crossborder" rows="3" placeholder="Border cities, customs model, import/export notes"></textarea></label>
+        </article>
+      </section>
+
+      <section class="customer-rfi-card">
+        <div class="split-heading compact">
+          <div>
+            <p class="eyebrow">Locations</p>
+            <h2>Origins and destinations</h2>
+          </div>
+          <div class="action-row">
+            <button id="add-origin-row" type="button" class="secondary small-button">Add origin</button>
+            <button id="add-destination-row" type="button" class="secondary small-button">Add destination</button>
+          </div>
+        </div>
+        <div class="customer-rfi-two-col">
+          <div>
+            <h3>Origins</h3>
+            <div id="rfi-origins" class="customer-rfi-row-list"></div>
+          </div>
+          <div>
+            <h3>Destinations</h3>
+            <div id="rfi-destinations" class="customer-rfi-row-list"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="customer-rfi-card">
+        <div class="split-heading compact">
+          <div>
+            <p class="eyebrow">Lane matrix</p>
+            <h2>Lanes to quote</h2>
+            <p class="field-help">Required per lane: origin, destination, equipment, and weekly volume.</p>
+          </div>
+          <button id="add-lane-row" type="button">Add lane</button>
+        </div>
+        <div class="rfx-process-table-wrap">
+          <table class="rfx-process-table customer-rfi-lane-table">
+            <thead>
+              <tr>
+                <th>Lane ID</th>
+                <th>Origin</th>
+                <th>Destination</th>
+                <th>Operation</th>
+                <th>Service</th>
+                <th>Equipment</th>
+                <th>Trailer</th>
+                <th>Weekly</th>
+                <th>Frequency</th>
+                <th>Currency</th>
+                <th>Current rate</th>
+                <th>Notes</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="rfi-lanes"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="customer-rfi-grid">
+        <article class="customer-rfi-card">
+          <p class="eyebrow">Logistics model</p>
+          <label>Model by segment<textarea id="rfi-logistics-models" rows="4" placeholder="Direct, transfer, dedicated, drop, live load, border model by segment"></textarea></label>
+          <p class="eyebrow">Business rules</p>
+          <label>Commercial rules<textarea id="rfi-business-rules" rows="4" placeholder="Payment terms, tender rules, penalties, escalation expectations"></textarea></label>
+          <label>Operational criteria<textarea id="rfi-operational-criteria" rows="4" placeholder="Appointment rules, pickup/delivery windows, live/drop requirements"></textarea></label>
+        </article>
+        <article class="customer-rfi-card">
+          <p class="eyebrow">Service requirements</p>
+          <label>Service specs<textarea id="rfi-service-requirements" rows="4" placeholder="Equipment specs, hazmat, temperature control, insurance, documents"></textarea></label>
+          <label>Required carrier profile<textarea id="rfi-carrier-requirements" rows="4" placeholder="Authority, insurance, fleet, GPS, crossborder experience, certifications"></textarea></label>
+          <label>Notes / exceptions<textarea id="rfi-notes" rows="4" placeholder="Known constraints, phased rollout, exclusions, attachments"></textarea></label>
+          <label>Attachment links<textarea id="rfi-attachments" rows="3" placeholder="Paste Drive links, file names, or reference documents"></textarea></label>
+        </article>
+      </section>
+
+      <section class="customer-rfi-actions">
+        <button id="save-customer-rfi" type="button" class="secondary">Save draft</button>
+        <button id="submit-customer-rfi" type="button" class="page-primary-action">Submit final RFI</button>
+      </section>
+    </main>
+
+    <script type="module" src="./src/customer-rfi.js"></script>
+  </body>
+</html>
