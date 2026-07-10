@@ -767,7 +767,7 @@ a {
 .customer-rfi-shell {
   display: grid;
   gap: 12px;
-  width: min(1280px, calc(100vw - 28px));
+  width: min(1560px, calc(100vw - 28px));
   margin: 0 auto;
   padding: 18px 0 28px;
 }
@@ -861,17 +861,95 @@ a {
   justify-content: space-between;
 }
 
+.customer-rfi-lane-table {
+  min-width: 2600px;
+}
+
+.customer-rfi-lane-table th {
+  white-space: nowrap;
+}
+
 .customer-rfi-lane-table input,
 .customer-rfi-lane-table select,
 .customer-rfi-lane-table textarea {
-  min-width: 120px;
-  padding: 5px 6px;
-  font-size: 0.72rem;
+  min-width: 94px;
+  min-height: 24px;
+  padding: 3px 5px;
+  font-size: 0.68rem;
 }
 
-.customer-rfi-lane-table td:nth-child(2),
-.customer-rfi-lane-table td:nth-child(3) {
-  min-width: 190px;
+.customer-rfi-lane-table textarea {
+  resize: vertical;
+}
+
+.customer-rfi-lane-table td {
+  vertical-align: top;
+}
+
+.customer-rfi-lane-table td:nth-child(3),
+.customer-rfi-lane-table td:nth-child(13) {
+  min-width: 150px;
+}
+
+.customer-rfi-lane-table td:nth-child(8),
+.customer-rfi-lane-table td:nth-child(18),
+.customer-rfi-lane-table td:nth-child(38) {
+  min-width: 180px;
+}
+
+.customer-rfi-lane-table td:nth-child(9) input,
+.customer-rfi-lane-table td:nth-child(19) input {
+  display: block;
+  margin-bottom: 3px;
+}
+
+.customer-rfi-lane-table .rfi-check-cell {
+  min-width: 54px;
+  text-align: center;
+}
+
+.customer-rfi-lane-table .rfi-check-cell input {
+  min-width: 0;
+  width: 16px;
+}
+
+.rfi-segment-checklist-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+  gap: 10px;
+}
+
+.rfi-segment-checklist {
+  display: grid;
+  gap: 8px;
+  border: 1px solid #d8e3ea;
+  border-radius: 8px;
+  background: #fbfcfd;
+  padding: 10px;
+}
+
+.rfi-segment-meta {
+  display: grid;
+  grid-template-columns: minmax(150px, 0.8fr) minmax(210px, 1.2fr) minmax(150px, 0.8fr);
+  gap: 8px;
+}
+
+.rfi-suggestion-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  border: 1px dashed #c7d6df;
+  border-radius: 7px;
+  background: #f4f8fb;
+  padding: 6px;
+}
+
+.rfi-suggestion-row span {
+  color: #526675;
+  font-size: 0.66rem;
+  font-weight: 900;
+  text-transform: uppercase;
 }
 
 .customer-rfi-actions {

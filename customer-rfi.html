@@ -49,32 +49,9 @@
       <section class="customer-rfi-card">
         <div class="split-heading compact">
           <div>
-            <p class="eyebrow">Locations</p>
-            <h2>Origins and destinations</h2>
-          </div>
-          <div class="action-row">
-            <button id="add-origin-row" type="button" class="secondary small-button">Add origin</button>
-            <button id="add-destination-row" type="button" class="secondary small-button">Add destination</button>
-          </div>
-        </div>
-        <div class="customer-rfi-two-col">
-          <div>
-            <h3>Origins</h3>
-            <div id="rfi-origins" class="customer-rfi-row-list"></div>
-          </div>
-          <div>
-            <h3>Destinations</h3>
-            <div id="rfi-destinations" class="customer-rfi-row-list"></div>
-          </div>
-        </div>
-      </section>
-
-      <section class="customer-rfi-card">
-        <div class="split-heading compact">
-          <div>
-            <p class="eyebrow">Lane matrix</p>
-            <h2>Lanes to quote</h2>
-            <p class="field-help">Required per lane: origin, destination, equipment, and weekly volume.</p>
+            <p class="eyebrow">Route schedule</p>
+            <h2>Cedula de rutas</h2>
+            <p class="field-help">Capture the route schedule directly by lane. Required per lane: origin, destination, equipment, and weekly volume.</p>
           </div>
           <button id="add-lane-row" type="button">Add lane</button>
         </div>
@@ -83,16 +60,41 @@
             <thead>
               <tr>
                 <th>Lane ID</th>
-                <th>Origin</th>
-                <th>Destination</th>
+                <th>Segment</th>
+                <th>Origin site</th>
+                <th>O city</th>
+                <th>O ST</th>
+                <th>O country</th>
+                <th>O ZIP</th>
+                <th>O address</th>
+                <th>O contact</th>
+                <th>O hours</th>
+                <th>O handling</th>
+                <th>O appt</th>
+                <th>Destination site</th>
+                <th>D city</th>
+                <th>D ST</th>
+                <th>D country</th>
+                <th>D ZIP</th>
+                <th>D address</th>
+                <th>D contact</th>
+                <th>D hours</th>
+                <th>D handling</th>
+                <th>D appt</th>
                 <th>Operation</th>
                 <th>Service</th>
                 <th>Equipment</th>
                 <th>Trailer</th>
+                <th>Config</th>
+                <th>Commodity</th>
+                <th>Hazmat</th>
+                <th>Temp ctrl</th>
                 <th>Weekly</th>
                 <th>Frequency</th>
+                <th>Target</th>
                 <th>Currency</th>
                 <th>Current rate</th>
+                <th>Transit</th>
                 <th>Notes</th>
                 <th></th>
               </tr>
@@ -100,6 +102,18 @@
             <tbody id="rfi-lanes"></tbody>
           </table>
         </div>
+      </section>
+
+      <section class="customer-rfi-card">
+        <div class="split-heading compact">
+          <div>
+            <p class="eyebrow">Segment rubrics</p>
+            <h2>Checklist by operation segment</h2>
+            <p class="field-help">Define what carriers must confirm by segment before bidding: model, operation criteria, business rules, service specs, and notes.</p>
+          </div>
+          <button id="add-segment-checklist" type="button" class="secondary">Add segment checklist</button>
+        </div>
+        <div id="rfi-segment-checklists" class="rfi-segment-checklist-grid"></div>
       </section>
 
       <section class="customer-rfi-grid">

@@ -6407,6 +6407,7 @@ function normalizeRfxLane(input: Record<string, unknown>, index = 0) {
     operation_criteria: cleanText(input.operation_criteria || input.operational_criteria || input.criterios_de_operacion),
     business_rules: cleanText(input.business_rules || input.reglas_de_negocio),
     service_specifications: cleanText(input.service_specifications || input.service_specs || input.especificaciones_de_servicio),
+    carrier_requirements: cleanText(input.carrier_requirements || input.required_carrier_profile || input.perfil_requerido || input.carrier_profile),
     other_notes: cleanText(input.other_notes || input.otras_notas || input.notas_adicionales || input.additional_notes),
     notes: cleanText(input.notes || input.lane_notes),
     updated_at: new Date().toISOString()
@@ -6440,6 +6441,7 @@ function normalizeRfxLanePatch(input: Record<string, unknown>) {
     "operation_criteria",
     "business_rules",
     "service_specifications",
+    "carrier_requirements",
     "other_notes",
     "notes"
   ];
@@ -13420,6 +13422,7 @@ const RFX_PACKAGE_RUBRICS = [
   { key: "operation_criteria", label: "Operation criteria", es_label: "Criterios de operacion" },
   { key: "business_rules", label: "Business rules", es_label: "Reglas de negocio" },
   { key: "service_specifications", label: "Service specifications", es_label: "Especificaciones de servicio" },
+  { key: "carrier_requirements", label: "Required carrier profile", es_label: "Perfil requerido del carrier" },
   { key: "other_notes", label: "Other notes", es_label: "Otras notas" }
 ];
 
@@ -13469,6 +13472,7 @@ function rfxDemandLaneDetail(lane: Record<string, unknown>, field: string) {
     operation_criteria: ["operational_criteria", "criterios_de_operacion", "criteria"],
     business_rules: ["reglas_de_negocio", "commercial_rules", "rules"],
     service_specifications: ["service_specs", "service_requirements", "especificaciones_de_servicio"],
+    carrier_requirements: ["required_carrier_profile", "carrier_profile", "perfil_requerido", "carrier_requirements_notes"],
     other_notes: ["otras_notas", "additional_notes", "lane_notes"]
   };
   const aliases = aliasMap[field] || [];
@@ -13535,6 +13539,7 @@ function buildRfxPackageSegments(
       operation_criteria: firstCleanText(...segmentLanes.map((lane) => rfxDemandLaneDetail(lane, "operation_criteria"))),
       business_rules: firstCleanText(...segmentLanes.map((lane) => rfxDemandLaneDetail(lane, "business_rules"))),
       service_specifications: firstCleanText(...segmentLanes.map((lane) => rfxDemandLaneDetail(lane, "service_specifications"))),
+      carrier_requirements: firstCleanText(...segmentLanes.map((lane) => rfxDemandLaneDetail(lane, "carrier_requirements"))),
       other_notes: firstCleanText(...segmentLanes.map((lane) => rfxDemandLaneDetail(lane, "other_notes"))),
       sort_order: index + 1
     }, user);
@@ -13570,6 +13575,7 @@ function rfxMasterPackagePayload(pack: Record<string, unknown>, project: Record<
       operation_criteria: segment.operation_criteria,
       business_rules: segment.business_rules,
       service_specifications: segment.service_specifications,
+      carrier_requirements: segment.carrier_requirements,
       other_notes: segment.other_notes,
       checklist: Array.isArray(segment.checklist) ? segment.checklist : rfxChecklistForSegment(segment)
     }))
@@ -13745,36 +13751,42 @@ async function createRfxDemandSnapshot(supabase: ReturnType<typeof createClient>
   const demandRows = lanes.map((lane, index) => {
     const origin = objectRecord(lane.rfx_rfi_origins);
     const destination = objectRecord(lane.rfx_rfi_destinations);
+    const payload = objectRecord(lane.raw_payload);
+    const normalizedPayload = {
+      ...lane,
+      ...payload,
+      rfi_submission_segment_checklists: submission.segment_checklists || []
+    };
     const issues = rfxRequiredLaneIssues(lane).map((issue) => ({ issue }));
     return withOwner({
       snapshot_id: snapshotInsert.data.id,
       project_id: project.id,
       source_rfi_lane_id: lane.id,
       lane_key: cleanText(lane.lane_id) || `L${index + 1}`,
-      origin: cleanText(lane.origin_text || origin.name || [origin.city, origin.state].filter(Boolean).join(", ")),
-      origin_city: cleanText(origin.city),
-      origin_state: cleanText(origin.state),
-      origin_country: cleanText(origin.country),
-      origin_postal_code: cleanText(origin.postal_code),
-      destination: cleanText(lane.destination_text || destination.name || [destination.city, destination.state].filter(Boolean).join(", ")),
-      destination_city: cleanText(destination.city),
-      destination_state: cleanText(destination.state),
-      destination_country: cleanText(destination.country),
-      destination_postal_code: cleanText(destination.postal_code),
-      operating_segment: cleanText(lane.operating_segment),
-      operation_type: cleanText(lane.operation_type),
-      service_type: cleanText(lane.service_type),
+      origin: firstCleanText(payload.origin_text, lane.origin_text, lane.origin_name, origin.name, [lane.origin_city || origin.city, lane.origin_state || origin.state].filter(Boolean).join(", ")),
+      origin_city: firstCleanText(payload.origin_city, lane.origin_city, origin.city),
+      origin_state: firstCleanText(payload.origin_state, lane.origin_state, origin.state),
+      origin_country: firstCleanText(payload.origin_country, lane.origin_country, origin.country),
+      origin_postal_code: firstCleanText(payload.origin_postal_code, lane.origin_postal_code, origin.postal_code),
+      destination: firstCleanText(payload.destination_text, lane.destination_text, lane.destination_name, destination.name, [lane.destination_city || destination.city, lane.destination_state || destination.state].filter(Boolean).join(", ")),
+      destination_city: firstCleanText(payload.destination_city, lane.destination_city, destination.city),
+      destination_state: firstCleanText(payload.destination_state, lane.destination_state, destination.state),
+      destination_country: firstCleanText(payload.destination_country, lane.destination_country, destination.country),
+      destination_postal_code: firstCleanText(payload.destination_postal_code, lane.destination_postal_code, destination.postal_code),
+      operating_segment: firstCleanText(payload.operating_segment, lane.operating_segment),
+      operation_type: firstCleanText(payload.operation_type, lane.operation_type),
+      service_type: firstCleanText(payload.service_type, lane.service_type),
       equipment_type: cleanText(lane.equipment_type),
       trailer_requirements: cleanText(lane.trailer_requirements),
       weekly_volume: cleanNumber(lane.weekly_volume),
-      monthly_volume: cleanNumber(lane.monthly_volume),
+      monthly_volume: cleanNumber(lane.monthly_volume) ?? (cleanNumber(lane.annual_volume) === null ? null : Number(lane.annual_volume) / 12),
       frequency: cleanText(lane.frequency),
       currency: cleanText(lane.currency),
       target_rate: cleanNumber(lane.target_rate),
       current_rate: cleanNumber(lane.current_rate),
-      internal_notes: cleanText(lane.notes),
+      internal_notes: firstCleanText(lane.notes, payload.notes, lane.other_notes, payload.other_notes),
       validation_issues: issues,
-      normalized_payload: lane
+      normalized_payload: normalizedPayload
     }, user);
   });
   for (const batch of chunkValues(demandRows, 500)) {
@@ -13928,6 +13940,7 @@ async function launchRfxProcessPackageToBidRoom(supabase: ReturnType<typeof crea
       operation_criteria: firstCleanText(rfxDemandLaneDetail(lane, "operation_criteria"), segment.operation_criteria),
       business_rules: firstCleanText(rfxDemandLaneDetail(lane, "business_rules"), segment.business_rules),
       service_specifications: firstCleanText(rfxDemandLaneDetail(lane, "service_specifications"), segment.service_specifications),
+      carrier_requirements: firstCleanText(rfxDemandLaneDetail(lane, "carrier_requirements"), segment.carrier_requirements),
       other_notes: firstCleanText(rfxDemandLaneDetail(lane, "other_notes"), segment.other_notes),
       notes: cleanText(lane.internal_notes)
     };

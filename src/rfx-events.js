@@ -303,6 +303,7 @@ const RFX_LANE_TEMPLATE_COLUMNS = [
   { key: "operation_criteria", label: "Operation Criteria", example: "Pickup Mon-Sat 07:00-18:00; 48h pickup notice" },
   { key: "business_rules", label: "Business Rules", example: "Border crossing included; no transload" },
   { key: "service_specifications", label: "Service Specifications", example: "53 ft dry van; standard jacks included" },
+  { key: "carrier_requirements", label: "Required Carrier Profile", example: "Authority, insurance, fleet, tracking and escalation contact" },
   { key: "other_notes", label: "Other Notes", example: "Carrier must quote direct service only" },
   { key: "notes", label: "Notes", example: "Hazmat allowed" }
 ];
@@ -336,6 +337,7 @@ const EDITABLE_RFX_LANE_FIELDS = [
   "operation_criteria",
   "business_rules",
   "service_specifications",
+  "carrier_requirements",
   "other_notes",
   "notes"
 ];
@@ -661,6 +663,12 @@ function mapHeader(header) {
     especificaciones_del_servicio: "service_specifications",
     elementos_adicionales_en_el_remolque_camion_almacenamiento_de_carga_etc: "service_specifications",
     additional_service_elements: "service_specifications",
+    carrier_requirements: "carrier_requirements",
+    required_carrier_profile: "carrier_requirements",
+    carrier_profile: "carrier_requirements",
+    perfil_requerido: "carrier_requirements",
+    perfil_requerido_del_carrier: "carrier_requirements",
+    requisitos_del_carrier: "carrier_requirements",
     other_notes: "other_notes",
     otras_notas: "other_notes",
     notas_adicionales: "other_notes",
@@ -734,6 +742,7 @@ function newManualLaneRow() {
     operation_criteria: "",
     business_rules: "",
     service_specifications: "",
+    carrier_requirements: "",
     other_notes: "",
     notes: ""
   };
@@ -749,6 +758,7 @@ function hasManualLaneUserInput(row = {}) {
     || String(row.operation_criteria || "").trim()
     || String(row.business_rules || "").trim()
     || String(row.service_specifications || "").trim()
+    || String(row.carrier_requirements || "").trim()
     || String(row.other_notes || "").trim()
     || String(row.notes || "").trim()
   );
@@ -908,6 +918,7 @@ function renderEditableLaneRow(lane, context = {}) {
           ${laneEditTextarea(lane, "operation_criteria", "Criterios de operacion", "Pickup/delivery windows, load/unload type, schedule...")}
           ${laneEditTextarea(lane, "business_rules", "Reglas de negocio", "Border included, driver assist, direct service only...")}
           ${laneEditTextarea(lane, "service_specifications", "Especificaciones de servicio", "Equipment accessories, packaging, hazmat, straps...")}
+          ${laneEditTextarea(lane, "carrier_requirements", "Perfil requerido del carrier", "Authority, insurance, fleet, tracking, escalation contact...")}
           ${laneEditTextarea(lane, "other_notes", "Otras notas", "Additional information from the RFI or customer...")}
           ${laneEditTextarea(lane, "notes", "Internal notes", "Internal procurement context...")}
         </div>
@@ -982,6 +993,10 @@ function renderManualLaneRows() {
             <label>
               Especificaciones de servicio
               <textarea data-manual-lane-field="service_specifications" rows="2" placeholder="Equipment accessories, packaging, hazmat instructions, jacks, straps...">${escapeHtml(row.service_specifications || "")}</textarea>
+            </label>
+            <label>
+              Perfil requerido del carrier
+              <textarea data-manual-lane-field="carrier_requirements" rows="2" placeholder="Authority, insurance, fleet, tracking, escalation contact...">${escapeHtml(row.carrier_requirements || "")}</textarea>
             </label>
             <label>
               Otras notas
@@ -4102,6 +4117,7 @@ function laneDetailSections(lane = {}) {
     ["Criterios de operacion", lane.operation_criteria],
     ["Reglas de negocio", lane.business_rules],
     ["Especificaciones de servicio", lane.service_specifications],
+    ["Perfil requerido del carrier", lane.carrier_requirements],
     ["Otras notas", lane.other_notes],
     ["Notas internas", lane.notes]
   ].filter(([, value]) => String(value || "").trim());

@@ -628,6 +628,7 @@ function publicLaneDetailSections(row = {}) {
     ["Operation criteria / Criterios de operacion", lane.operation_criteria],
     ["Business rules / Reglas de negocio", lane.business_rules],
     ["Service specifications / Especificaciones de servicio", lane.service_specifications],
+    ["Required carrier profile / Perfil requerido del carrier", lane.carrier_requirements],
     ["Other notes / Otras notas", lane.other_notes],
     ["Notes / Notas", lane.notes]
   ].filter(([, value]) => String(value || "").trim());

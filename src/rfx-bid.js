@@ -164,6 +164,7 @@ const BID_PORTAL_COPY = {
     operationCriteria: "Operation criteria",
     businessRules: "Business rules",
     serviceSpecifications: "Service specifications",
+    carrierRequirements: "Required carrier profile",
     otherNotes: "Other notes",
     talkToUs: "Talk to us",
     chatSupport: "Chat Support",
@@ -276,6 +277,7 @@ const BID_PORTAL_COPY = {
     operationCriteria: "Criterios de operacion",
     businessRules: "Reglas de negocio",
     serviceSpecifications: "Especificaciones de servicio",
+    carrierRequirements: "Perfil requerido del carrier",
     otherNotes: "Otras notas",
     talkToUs: "Hablar con nosotros",
     chatSupport: "Soporte",
@@ -444,6 +446,7 @@ function laneDetailSections(lane = {}) {
     [t("operationCriteria"), lane.operation_criteria],
     [t("businessRules"), lane.business_rules],
     [t("serviceSpecifications"), lane.service_specifications],
+    [t("carrierRequirements"), lane.carrier_requirements],
     [t("otherNotes"), lane.other_notes],
     [t("notes"), lane.notes]
   ].filter(([, value]) => String(value || "").trim());
@@ -492,6 +495,7 @@ const MASTER_PACKAGE_RUBRICS = [
   ["operation_criteria", () => t("operationCriteria")],
   ["business_rules", () => t("businessRules")],
   ["service_specifications", () => t("serviceSpecifications")],
+  ["carrier_requirements", () => t("carrierRequirements")],
   ["other_notes", () => t("otherNotes")]
 ];
 
@@ -537,6 +541,7 @@ function deriveMasterPackageFromRows(carrierBook = {}, invitation = {}) {
       operation_criteria: firstLane.operation_criteria || "",
       business_rules: firstLane.business_rules || "",
       service_specifications: firstLane.service_specifications || "",
+      carrier_requirements: firstLane.carrier_requirements || "",
       other_notes: firstLane.other_notes || "",
       checklist: MASTER_PACKAGE_RUBRICS.map(([key, label]) => ({
         key,

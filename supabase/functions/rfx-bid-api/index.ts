@@ -533,6 +533,7 @@ function publicLane(row: Record<string, unknown>) {
     operation_criteria: row.operation_criteria,
     business_rules: row.business_rules,
     service_specifications: row.service_specifications,
+    carrier_requirements: row.carrier_requirements,
     other_notes: row.other_notes,
     notes: row.notes,
     rfx_segment_key: row.rfx_segment_key,
@@ -1025,7 +1026,7 @@ async function currentInvitationContext(supabase: ReturnType<typeof createClient
 }
 
 const SEGMENT_CONFIRMATION_ANSWERS = new Set(["pending", "agree", "exception", "disagree", "not_applicable"]);
-const SEGMENT_CONFIRMATION_RUBRICS = new Set(["logistics_model", "operation_criteria", "business_rules", "service_specifications", "other_notes"]);
+const SEGMENT_CONFIRMATION_RUBRICS = new Set(["logistics_model", "operation_criteria", "business_rules", "service_specifications", "carrier_requirements", "other_notes"]);
 
 function normalizeSegmentConfirmationRows(input: unknown) {
   const rows = Array.isArray(input) ? input : [];
@@ -1790,7 +1791,7 @@ async function publicBidRoomBoard(supabase: ReturnType<typeof createClient>, inp
   const [lanesResult, quotesResult] = await Promise.all([
     supabase
       .from("rfx_lanes")
-      .select("id,rfx_event_id,lane_number,origin,destination,origin_city,origin_state,origin_market,origin_region,destination_city,destination_state,destination_market,destination_region,equipment,trailer,config,operation,service,weekly_volume,annual_volume,target_rate,currency,logistics_model,operation_criteria,business_rules,service_specifications,other_notes,notes,updated_at")
+      .select("id,rfx_event_id,lane_number,origin,destination,origin_city,origin_state,origin_market,origin_region,destination_city,destination_state,destination_market,destination_region,equipment,trailer,config,operation,service,weekly_volume,annual_volume,target_rate,currency,logistics_model,operation_criteria,business_rules,service_specifications,carrier_requirements,other_notes,notes,updated_at")
       .in("rfx_event_id", eventIds)
       .order("lane_number", { ascending: true }),
     supabase
@@ -2319,6 +2320,7 @@ function supportLaneDetailLines(lane: Record<string, unknown>, language: string)
         ["Criterios de operacion", lane.operation_criteria],
         ["Reglas de negocio", lane.business_rules],
         ["Especificaciones de servicio", lane.service_specifications],
+        ["Perfil requerido del carrier", lane.carrier_requirements],
         ["Otras notas", lane.other_notes],
         ["Notas", lane.notes]
       ]
@@ -2327,6 +2329,7 @@ function supportLaneDetailLines(lane: Record<string, unknown>, language: string)
         ["Operation criteria", lane.operation_criteria],
         ["Business rules", lane.business_rules],
         ["Service specifications", lane.service_specifications],
+        ["Required carrier profile", lane.carrier_requirements],
         ["Other notes", lane.other_notes],
         ["Notes", lane.notes]
       ];
@@ -2788,6 +2791,7 @@ function supportLanePayload(lane: Record<string, unknown>, language: string, ind
     operation_criteria: supportCleanDetailText(lane.operation_criteria, 800),
     business_rules: supportCleanDetailText(lane.business_rules, 800),
     service_specifications: supportCleanDetailText(lane.service_specifications, 800),
+    carrier_requirements: supportCleanDetailText(lane.carrier_requirements, 800),
     other_notes: supportCleanDetailText(lane.other_notes, 800),
     notes: supportCleanDetailText(lane.notes, 800)
   };
@@ -2947,6 +2951,7 @@ async function loadPublicSupportLane(supabase: ReturnType<typeof createClient>, 
       operation_criteria,
       business_rules,
       service_specifications,
+      carrier_requirements,
       other_notes,
       notes,
       rfx_events!inner(id,owner_user_id,owner_email,rfx_id,name,customer,event_type,status,due_date,bid_visibility_mode)
@@ -3113,6 +3118,7 @@ function bidSupportAnswerFromContext(
       lane.operation_criteria ? "operation criteria" : null,
       lane.business_rules ? "business rules" : null,
       lane.service_specifications ? "service specifications" : null,
+      lane.carrier_requirements ? "required carrier profile" : null,
       lane.other_notes || lane.notes ? "notes" : null
     ].filter(Boolean);
     parts.push(language === "es"
@@ -3774,18 +3780,34 @@ function rfiArrayRecords(value: unknown, limit = 1000) {
 
 function normalizeRfiSegment(value: unknown) {
   const text = cleanText(value)?.toLowerCase().replace(/[\s-]+/g, "_");
-  return text && ["expedited", "time_critical", "crossborder", "local", "regional", "national"].includes(text) ? text : null;
+  const aliases: Record<string, string> = {
+    mx_domestic: "national",
+    us_domestic: "national",
+    dedicated: "national",
+    d2d_export: "crossborder",
+    d2d_import: "crossborder",
+    intra_mex: "national"
+  };
+  const normalized = text ? aliases[text] || text : null;
+  return normalized && ["expedited", "time_critical", "crossborder", "local", "regional", "national"].includes(normalized) ? normalized : null;
 }
 
 function normalizeRfiOperation(value: unknown) {
   const text = cleanText(value)?.toLowerCase().replace(/[\s-]+/g, "_");
   const aliases: Record<string, string> = {
     intra_mex: "mx_domestic",
+    intra_mexico: "mx_domestic",
+    domestic_mx: "mx_domestic",
     mx: "mx_domestic",
     mexico: "mx_domestic",
+    domestic_us: "us_domestic",
     usa: "us_domestic",
     us: "us_domestic",
-    cross_border: "crossborder"
+    cross_border: "crossborder",
+    d2d_export: "crossborder",
+    d2d_import: "crossborder",
+    door_to_door_export: "crossborder",
+    door_to_door_import: "crossborder"
   };
   const normalized = text ? aliases[text] || text : null;
   return normalized && ["mx_domestic", "us_domestic", "crossborder", "local", "regional", "national"].includes(normalized) ? normalized : null;
@@ -3798,11 +3820,23 @@ function normalizeRfiService(value: unknown) {
 
 function rfiLaneIssues(row: Record<string, unknown>) {
   const issues: string[] = [];
-  if (!cleanText(row.origin_text || row.origin || row.origin_key)) issues.push("origin_missing");
-  if (!cleanText(row.destination_text || row.destination || row.destination_key)) issues.push("destination_missing");
+  if (!cleanText(row.origin_text || row.origin || row.origin_key || row.origin_name || row.origin_city)) issues.push("origin_missing");
+  if (!cleanText(row.destination_text || row.destination || row.destination_key || row.destination_name || row.destination_city)) issues.push("destination_missing");
   if (!cleanText(row.equipment_type || row.equipment)) issues.push("equipment_missing");
   if (cleanNumber(row.weekly_volume) === null && cleanNumber(row.monthly_volume) === null) issues.push("volume_missing");
   return issues;
+}
+
+function rfiRouteText(row: Record<string, unknown>, prefix: "origin" | "destination") {
+  return cleanText(
+    row[`${prefix}_text`]
+    || row[prefix]
+    || [
+      cleanText(row[`${prefix}_name`]),
+      [cleanText(row[`${prefix}_city`]), cleanText(row[`${prefix}_state`])].filter(Boolean).join(", "),
+      cleanText(row[`${prefix}_postal_code`] || row[`${prefix}_zip`] || row[`${prefix}_zip_code`])
+    ].filter(Boolean).join(" | ")
+  );
 }
 
 function normalizeCustomerRfiPayload(input: Record<string, unknown>) {
@@ -3810,6 +3844,7 @@ function normalizeCustomerRfiPayload(input: Record<string, unknown>) {
   const origins = rfiArrayRecords(source.origins, 500);
   const destinations = rfiArrayRecords(source.destinations, 500);
   const lanes = rfiArrayRecords(source.lanes, 1000);
+  const segmentChecklists = rfiArrayRecords(source.segment_checklists || source.segmentChecklists, 100);
   const issues = lanes.flatMap((lane) => rfiLaneIssues(lane));
   const required = Math.max(lanes.length * 4, 1);
   return {
@@ -3817,11 +3852,13 @@ function normalizeCustomerRfiPayload(input: Record<string, unknown>) {
     origins,
     destinations,
     lanes,
+    segment_checklists: segmentChecklists,
     issues,
     completeness_score: Math.max(0, Math.round((required - issues.length) / required * 100)),
     submission: {
       account_overview: objectRecord(source.account_overview || source.accountOverview),
       operating_segments: rfiArrayRecords(source.operating_segments || source.operatingSegments, 20).map((row) => cleanText(row.value || row.segment)).filter(Boolean),
+      segment_checklists: segmentChecklists,
       logistics_models: objectRecord(source.logistics_models || source.logisticsModels),
       operational_criteria: objectRecord(source.operational_criteria || source.operationalCriteria),
       business_rules: objectRecord(source.business_rules || source.businessRules),
@@ -3906,15 +3943,45 @@ function normalizeRfiLane(
     lane_id: cleanText(row.lane_id || row.id) || `L${index + 1}`,
     origin_id: originKey ? originIds.get(originKey) || null : null,
     destination_id: destinationKey ? destinationIds.get(destinationKey) || null : null,
-    origin_text: cleanText(row.origin_text || row.origin),
-    destination_text: cleanText(row.destination_text || row.destination),
+    origin_text: rfiRouteText(row, "origin"),
+    destination_text: rfiRouteText(row, "destination"),
+    origin_name: cleanText(row.origin_name || row.origin_site || row.origin_location),
+    origin_address: cleanText(row.origin_address || row.origin_street_address),
+    origin_city: cleanText(row.origin_city),
+    origin_state: cleanText(row.origin_state || row.origin_st || row.origin_province),
+    origin_country: cleanText(row.origin_country),
+    origin_postal_code: cleanText(row.origin_postal_code || row.origin_zip || row.origin_zip_code),
+    origin_contact_name: cleanText(row.origin_contact_name || row.origin_contact),
+    origin_contact_phone: cleanText(row.origin_contact_phone || row.origin_phone),
+    origin_contact_email: cleanEmail(row.origin_contact_email || row.origin_email),
+    origin_hours: cleanText(row.origin_hours || row.origin_loading_hours || row.loading_hours),
+    origin_handling_type: cleanText(row.origin_handling_type || row.origin_loading_type || row.loading_type),
+    origin_appointment_required: cleanBoolean(row.origin_appointment_required || row.appointment_required) === true,
+    origin_average_time_hours: cleanNumber(row.origin_average_time_hours || row.average_loading_time_hours),
+    origin_site_restrictions: cleanText(row.origin_site_restrictions || row.origin_notes),
+    destination_name: cleanText(row.destination_name || row.destination_site || row.destination_location),
+    destination_address: cleanText(row.destination_address || row.destination_street_address),
+    destination_city: cleanText(row.destination_city),
+    destination_state: cleanText(row.destination_state || row.destination_st || row.destination_province),
+    destination_country: cleanText(row.destination_country),
+    destination_postal_code: cleanText(row.destination_postal_code || row.destination_zip || row.destination_zip_code),
+    destination_contact_name: cleanText(row.destination_contact_name || row.destination_contact),
+    destination_contact_phone: cleanText(row.destination_contact_phone || row.destination_phone),
+    destination_contact_email: cleanEmail(row.destination_contact_email || row.destination_email),
+    destination_hours: cleanText(row.destination_hours || row.destination_receiving_hours || row.receiving_hours),
+    destination_handling_type: cleanText(row.destination_handling_type || row.destination_unloading_type || row.unloading_type),
+    destination_appointment_required: cleanBoolean(row.destination_appointment_required || row.destination_appt_required) === true,
+    destination_average_time_hours: cleanNumber(row.destination_average_time_hours || row.average_unloading_time_hours),
+    destination_site_restrictions: cleanText(row.destination_site_restrictions || row.destination_notes),
     operating_segment: normalizeRfiSegment(row.operating_segment || row.segment),
     operation_type: normalizeRfiOperation(row.operation_type || row.operation),
     service_type: normalizeRfiService(row.service_type || row.service),
     equipment_type: cleanText(row.equipment_type || row.equipment),
     trailer_requirements: cleanText(row.trailer_requirements || row.trailer),
+    config: cleanText(row.config || row.configuration),
     commodity: cleanText(row.commodity),
     hazmat: cleanBoolean(row.hazmat) === true,
+    temperature_controlled: cleanBoolean(row.temperature_controlled || row.temp_controlled || row.reefer) === true,
     cargo_value: cleanNumber(row.cargo_value),
     cargo_value_currency: cleanText(row.cargo_value_currency),
     weight: cleanNumber(row.weight),
@@ -3922,15 +3989,25 @@ function normalizeRfiLane(
     dimensions: cleanText(row.dimensions),
     weekly_volume: cleanNumber(row.weekly_volume),
     monthly_volume: cleanNumber(row.monthly_volume),
+    annual_volume: cleanNumber(row.annual_volume),
     frequency: cleanText(row.frequency),
     pickup_lead_time_hours: cleanNumber(row.pickup_lead_time_hours),
     expected_transit_time_hours: cleanNumber(row.expected_transit_time_hours),
+    transit_days: cleanNumber(row.transit_days),
     target_rate: cleanNumber(row.target_rate),
     current_rate: cleanNumber(row.current_rate),
     currency: cleanText(row.currency),
     seasonality_notes: cleanText(row.seasonality_notes),
     special_requirements: cleanText(row.special_requirements),
     notes: cleanText(row.notes),
+    logistics_model: cleanText(row.logistics_model || row.logistic_model || row.modelo_logistico),
+    operation_criteria: cleanText(row.operation_criteria || row.operational_criteria || row.criterios_de_operacion),
+    business_rules: cleanText(row.business_rules || row.reglas_de_negocio),
+    service_specifications: cleanText(row.service_specifications || row.service_requirements || row.service_specs || row.especificaciones_de_servicio),
+    carrier_requirements: cleanText(row.carrier_requirements || row.required_carrier_profile),
+    other_notes: cleanText(row.other_notes || row.otras_notas),
+    attachment_links: cleanText(row.attachment_links),
+    raw_payload: row,
     validation_issues: issues,
     completeness_score: Math.max(0, Math.round((4 - issues.length) / 4 * 100))
   };
@@ -4494,6 +4571,7 @@ Deno.serve(async (request) => {
               operation_criteria,
               business_rules,
               service_specifications,
+              carrier_requirements,
               other_notes,
               notes,
               rfx_events!inner(id,owner_email,rfx_id,name,customer,event_type,status,due_date,bid_visibility_mode,source_rfx_process_project_id,source_rfx_package_id,source_rfx_package_name,rfx_master_package)
