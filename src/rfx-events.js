@@ -4005,6 +4005,35 @@ async function ensureSelectedEventChatThread(eventId, options = {}) {
   }
 }
 
+function renderEventMasterPackageSummary() {
+  const payload = selectedEvent?.rfx_master_package && typeof selectedEvent.rfx_master_package === "object"
+    ? selectedEvent.rfx_master_package
+    : {};
+  const segments = Array.isArray(payload.segments) ? payload.segments : [];
+  if (!segments.length) return "";
+  return `
+    <section class="rfx-event-master-package">
+      <div class="bid-room-section-heading">
+        <div>
+          <p class="eyebrow">Master RFx package</p>
+          <h3>${escapeHtml(payload.package_name || selectedEvent?.name || "Golden Bid Room card")}</h3>
+        </div>
+        <span class="status-pill warning">${escapeHtml(`${segments.length} segment(s)`)}</span>
+      </div>
+      <p>Carriers see this as one RFx package with route schedule and segment checklists. Use lane rows below only for shortlist, bids and award decisions.</p>
+      <div class="rfx-event-segment-strip">
+        ${segments.map((segment) => `
+          <article>
+            <strong>${escapeHtml(segment.segment_name || "General segment")}</strong>
+            <span>${escapeHtml(`${segment.lane_count || 0} lane(s)`)}</span>
+            <small>${escapeHtml([segment.operation, segment.service, segment.equipment, segment.trailer].filter(Boolean).join(" | ") || "Segment")}</small>
+          </article>
+        `).join("")}
+      </div>
+    </section>
+  `;
+}
+
 function renderLaneCoverage() {
   if (!laneCoverage && !coverageSummary) return;
   if (!selectedEventId) {
@@ -4045,7 +4074,7 @@ function renderLaneCoverage() {
     });
     return;
   }
-  laneCoverage.innerHTML = lanes.map((lane) => {
+  laneCoverage.innerHTML = `${renderEventMasterPackageSummary()}${lanes.map((lane) => {
     const invitations = activeInvitations(lane);
     const bids = bidInvitations(lane);
     const bestBid = bestBidForLane(lane);
@@ -4064,7 +4093,7 @@ function renderLaneCoverage() {
         <small>${formatNumber(invitations.length)} vendors | ${formatNumber(bids.length)} bids | ${formatNumber(responses)}% response${bestBid ? ` | best ${formatMoney(bestBid.board_rate ?? bestBid.numeric_bid ?? bestBid.bid_rate, bestBid.currency || lane.currency)}` : ""}</small>
       </article>
     `;
-  }).join("");
+  }).join("")}`;
 }
 
 function laneDetailSections(lane = {}) {

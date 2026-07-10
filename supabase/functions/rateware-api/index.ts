@@ -6396,6 +6396,8 @@ function normalizeRfxLane(input: Record<string, unknown>, index = 0) {
     config: cleanText(input.config || input.configuration),
     operation: cleanText(input.operation),
     service: cleanText(input.service),
+    rfx_segment_key: cleanText(input.rfx_segment_key || input.segment_key),
+    rfx_segment_name: cleanText(input.rfx_segment_name || input.segment_name || input.operating_segment),
     weekly_volume: cleanNumber(input.weekly_volume || input.weekly_loads || input.loads_per_week || input.volume),
     annual_volume: cleanNumber(input.annual_volume || input.annual_loads),
     target_rate: cleanNumber(input.target_rate || input.target || input.budget),
@@ -6431,6 +6433,8 @@ function normalizeRfxLanePatch(input: Record<string, unknown>) {
     "config",
     "operation",
     "service",
+    "rfx_segment_key",
+    "rfx_segment_name",
     "incumbent_vendor",
     "logistics_model",
     "operation_criteria",
@@ -13411,6 +13415,167 @@ function rfxPackageWeights(input: Record<string, unknown>) {
   };
 }
 
+const RFX_PACKAGE_RUBRICS = [
+  { key: "logistics_model", label: "Logistics model", es_label: "Modelo logistico" },
+  { key: "operation_criteria", label: "Operation criteria", es_label: "Criterios de operacion" },
+  { key: "business_rules", label: "Business rules", es_label: "Reglas de negocio" },
+  { key: "service_specifications", label: "Service specifications", es_label: "Especificaciones de servicio" },
+  { key: "other_notes", label: "Other notes", es_label: "Otras notas" }
+];
+
+function firstCleanText(...values: unknown[]) {
+  for (const value of values) {
+    const text = cleanText(value);
+    if (text) return text;
+  }
+  return "";
+}
+
+function safeRfxSegmentSlug(value: string) {
+  return value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 120);
+}
+
+function rfxSegmentKeyForDemandLane(lane: Record<string, unknown>) {
+  const payload = objectRecord(lane.normalized_payload);
+  const label = [
+    firstCleanText(lane.operating_segment, payload.operating_segment, lane.operation_type, payload.operation),
+    firstCleanText(lane.service_type, payload.service),
+    firstCleanText(lane.equipment_type, payload.equipment),
+    firstCleanText(lane.trailer_requirements, payload.trailer)
+  ].filter(Boolean).join(" / ");
+  return safeRfxSegmentSlug(label) || "general";
+}
+
+function rfxSegmentNameForDemandLane(lane: Record<string, unknown>) {
+  const payload = objectRecord(lane.normalized_payload);
+  return [
+    firstCleanText(lane.operating_segment, payload.operating_segment, lane.operation_type, payload.operation),
+    firstCleanText(lane.service_type, payload.service),
+    firstCleanText(lane.equipment_type, payload.equipment),
+    firstCleanText(lane.trailer_requirements, payload.trailer)
+  ].filter(Boolean).join(" / ") || "General RFx segment";
+}
+
+function rfxDemandLaneDetail(lane: Record<string, unknown>, field: string) {
+  const payload = objectRecord(lane.normalized_payload);
+  const aliasMap: Record<string, string[]> = {
+    logistics_model: ["logistic_model", "modelo_logistico", "shipment_model", "operating_model"],
+    operation_criteria: ["operational_criteria", "criterios_de_operacion", "criteria"],
+    business_rules: ["reglas_de_negocio", "commercial_rules", "rules"],
+    service_specifications: ["service_specs", "service_requirements", "especificaciones_de_servicio"],
+    other_notes: ["otras_notas", "additional_notes", "lane_notes"]
+  };
+  const aliases = aliasMap[field] || [];
+  const candidates = [
+    payload[field],
+    ...aliases.map((alias) => payload[alias]),
+    lane[field],
+    ...aliases.map((alias) => lane[alias])
+  ];
+  if (field === "logistics_model") {
+    candidates.push([
+      firstCleanText(lane.operating_segment, lane.operation_type),
+      firstCleanText(lane.service_type),
+      firstCleanText(lane.currency) ? `Currency ${firstCleanText(lane.currency)}` : ""
+    ].filter(Boolean).join(" | "));
+  }
+  if (field === "service_specifications") {
+    candidates.push([
+      firstCleanText(lane.equipment_type),
+      firstCleanText(lane.trailer_requirements),
+      firstCleanText(lane.frequency),
+      cleanNumber(lane.weekly_volume) !== null ? `${cleanNumber(lane.weekly_volume)} / wk` : ""
+    ].filter(Boolean).join(" | "));
+  }
+  if (field === "other_notes") candidates.push(lane.internal_notes);
+  return firstCleanText(...candidates);
+}
+
+function rfxChecklistForSegment(segment: Record<string, unknown>) {
+  return RFX_PACKAGE_RUBRICS.map((rubric) => ({
+    key: rubric.key,
+    label: rubric.label,
+    es_label: rubric.es_label,
+    required: rubric.key !== "other_notes",
+    detail: cleanText(segment[rubric.key])
+  }));
+}
+
+function buildRfxPackageSegments(
+  packageId: unknown,
+  lanes: Record<string, unknown>[],
+  user: { owner_user_id: string | null; owner_email: string | null }
+) {
+  const groups = new Map<string, Record<string, unknown>[]>();
+  for (const lane of lanes) {
+    const key = rfxSegmentKeyForDemandLane(lane);
+    const bucket = groups.get(key) || [];
+    bucket.push(lane);
+    groups.set(key, bucket);
+  }
+  return [...groups.entries()].map(([segmentKey, segmentLanes], index) => {
+    const firstLane = segmentLanes[0] || {};
+    const segment: Record<string, unknown> = withOwner({
+      package_id: cleanText(packageId),
+      segment_key: segmentKey,
+      segment_name: rfxSegmentNameForDemandLane(firstLane),
+      operation: firstCleanText(firstLane.operation_type, objectRecord(firstLane.normalized_payload).operation),
+      service: firstCleanText(firstLane.service_type, objectRecord(firstLane.normalized_payload).service),
+      equipment: firstCleanText(firstLane.equipment_type, objectRecord(firstLane.normalized_payload).equipment),
+      trailer: firstCleanText(firstLane.trailer_requirements, objectRecord(firstLane.normalized_payload).trailer),
+      lane_count: segmentLanes.length,
+      lane_ids: segmentLanes.map((lane) => cleanText(lane.id || lane.lane_key)).filter(Boolean),
+      logistics_model: firstCleanText(...segmentLanes.map((lane) => rfxDemandLaneDetail(lane, "logistics_model"))),
+      operation_criteria: firstCleanText(...segmentLanes.map((lane) => rfxDemandLaneDetail(lane, "operation_criteria"))),
+      business_rules: firstCleanText(...segmentLanes.map((lane) => rfxDemandLaneDetail(lane, "business_rules"))),
+      service_specifications: firstCleanText(...segmentLanes.map((lane) => rfxDemandLaneDetail(lane, "service_specifications"))),
+      other_notes: firstCleanText(...segmentLanes.map((lane) => rfxDemandLaneDetail(lane, "other_notes"))),
+      sort_order: index + 1
+    }, user);
+    segment.checklist = rfxChecklistForSegment(segment);
+    return segment;
+  });
+}
+
+function rfxMasterPackagePayload(pack: Record<string, unknown>, project: Record<string, unknown>, segments: Record<string, unknown>[], laneCount: number) {
+  return {
+    mode: "master_package",
+    package_id: pack.id,
+    package_name: pack.name,
+    project_id: project.id,
+    project_title: project.title,
+    customer: project.customer_name,
+    strategy: pack.sourcing_strategy,
+    pricing_structure: pack.pricing_structure,
+    lane_count: laneCount,
+    segment_count: segments.length,
+    requires_carrier_confirmation: true,
+    rubrics: RFX_PACKAGE_RUBRICS,
+    segments: segments.map((segment) => ({
+      segment_key: segment.segment_key,
+      segment_name: segment.segment_name,
+      operation: segment.operation,
+      service: segment.service,
+      equipment: segment.equipment,
+      trailer: segment.trailer,
+      lane_count: segment.lane_count,
+      lane_ids: segment.lane_ids,
+      logistics_model: segment.logistics_model,
+      operation_criteria: segment.operation_criteria,
+      business_rules: segment.business_rules,
+      service_specifications: segment.service_specifications,
+      other_notes: segment.other_notes,
+      checklist: Array.isArray(segment.checklist) ? segment.checklist : rfxChecklistForSegment(segment)
+    }))
+  };
+}
+
 async function listRfxProcessProjects(supabase: ReturnType<typeof createClient>, user: { owner_email: string | null }, input: Record<string, unknown>) {
   const limit = Math.min(Math.max(Number(input.limit) || 100, 1), 250);
   const offset = Math.max(Number(input.offset) || 0, 0);
@@ -13489,7 +13654,7 @@ async function getRfxProcessProjectDetail(supabase: ReturnType<typeof createClie
     supabase.from("rfx_rfi_attachments").select("*").eq("project_id", project.id).order("created_at", { ascending: true }),
     supabase.from("rfx_rfi_exception_notes").select("*").eq("project_id", project.id).order("created_at", { ascending: true }),
     supabase.from("rfx_demand_snapshots").select("*, rfx_demand_lanes(*)").eq("project_id", project.id).order("created_at", { ascending: false }),
-    supabase.from("rfx_packages").select("*, rfx_package_lanes(*)").eq("project_id", project.id).order("created_at", { ascending: false }),
+    supabase.from("rfx_packages").select("*, rfx_package_lanes(*), rfx_package_segments(*)").eq("project_id", project.id).order("created_at", { ascending: false }),
     supabase.from("rfx_award_packages").select("*, rfx_award_package_lanes(*)").eq("project_id", project.id).order("created_at", { ascending: false }),
     supabase.from("rfx_process_audit").select("*").eq("project_id", project.id).order("created_at", { ascending: false }).limit(100)
   ]);
@@ -13669,13 +13834,19 @@ async function createRfxProcessPackage(supabase: ReturnType<typeof createClient>
     const insert = await supabase.from("rfx_package_lanes").insert(batch).select("id");
     if (insert.error) throw insert.error;
   }
+  const selectedLanes = lanes.filter((lane) => laneIds.includes(String(lane.id)));
+  const segmentRows = buildRfxPackageSegments(packageInsert.data.id, selectedLanes, user);
+  for (const batch of chunkValues(segmentRows, 250)) {
+    const insert = await supabase.from("rfx_package_segments").upsert(batch, { onConflict: "package_id,segment_key" }).select("id");
+    if (insert.error) throw insert.error;
+  }
   await supabase
     .from("rfx_projects")
     .update({ status: "rfx_design", updated_at: new Date().toISOString() })
     .eq("id", project.id)
     .eq("owner_email", user.owner_email);
-  await writeRfxProcessAudit(supabase, user, project.id, "rfx_package_created", "rfx_packages", packageInsert.data.id, `Created RFx sourcing package with ${laneRows.length} lane(s)`, { weights, sourcing_strategy: packageRow.sourcing_strategy });
-  return { row: packageInsert.data, lanes: laneRows.length };
+  await writeRfxProcessAudit(supabase, user, project.id, "rfx_package_created", "rfx_packages", packageInsert.data.id, `Created RFx sourcing package with ${laneRows.length} lane(s) and ${segmentRows.length} segment(s)`, { weights, sourcing_strategy: packageRow.sourcing_strategy, segments: segmentRows.length });
+  return { row: { ...packageInsert.data, rfx_package_segments: segmentRows }, lanes: laneRows.length, segments: segmentRows.length };
 }
 
 async function launchRfxProcessPackageToBidRoom(supabase: ReturnType<typeof createClient>, user: { owner_user_id: string | null; owner_email: string | null }, input: Record<string, unknown>) {
@@ -13683,7 +13854,7 @@ async function launchRfxProcessPackageToBidRoom(supabase: ReturnType<typeof crea
   if (!packageId) throw new Error("RFx Package id is required.");
   const packageResult = await supabase
     .from("rfx_packages")
-    .select("*, rfx_projects(*), rfx_package_lanes(*, rfx_demand_lanes(*))")
+    .select("*, rfx_projects(*), rfx_package_lanes(*, rfx_demand_lanes(*)), rfx_package_segments(*)")
     .eq("id", packageId)
     .eq("owner_email", user.owner_email)
     .single();
@@ -13693,6 +13864,16 @@ async function launchRfxProcessPackageToBidRoom(supabase: ReturnType<typeof crea
   const project = objectRecord(pack.rfx_projects);
   const packageLanes = Array.isArray(pack.rfx_package_lanes) ? pack.rfx_package_lanes as Record<string, unknown>[] : [];
   if (!packageLanes.length) throw new Error("RFx Package has no lanes to launch.");
+  const demandLanes = packageLanes.map((packageLane) => objectRecord(packageLane.rfx_demand_lanes)).filter((lane) => cleanText(lane.id));
+  let segmentRows = Array.isArray(pack.rfx_package_segments) ? pack.rfx_package_segments as Record<string, unknown>[] : [];
+  if (!segmentRows.length) {
+    segmentRows = buildRfxPackageSegments(pack.id, demandLanes, user);
+    for (const batch of chunkValues(segmentRows, 250)) {
+      const insert = await supabase.from("rfx_package_segments").upsert(batch, { onConflict: "package_id,segment_key" }).select("id");
+      if (insert.error) throw insert.error;
+    }
+  }
+  const segmentByKey = new Map(segmentRows.map((segment) => [cleanText(segment.segment_key), segment]));
 
   const rfxId = cleanText(input.rfx_id || input.rfxId) || `RFx-${new Date().toISOString().slice(5, 10).replace("-", "")}-${String(project.title || "Project").replace(/[^a-z0-9]+/gi, "").slice(0, 8)}`;
   const eventRow = withOwner({
@@ -13706,13 +13887,17 @@ async function launchRfxProcessPackageToBidRoom(supabase: ReturnType<typeof crea
       notes: `Launched from RFx Process package ${pack.name || pack.id}. Target buy rates remain internal in RFx Package guidance.`
     }),
     source_rfx_process_project_id: project.id,
-    source_rfx_package_id: pack.id
+    source_rfx_package_id: pack.id,
+    source_rfx_package_name: cleanText(pack.name),
+    rfx_master_package: rfxMasterPackagePayload(pack, project, segmentRows, packageLanes.length)
   }, user);
   const eventInsert = await supabase.from("rfx_events").insert(eventRow).select().single();
   if (eventInsert.error) throw eventInsert.error;
 
   const laneRows = packageLanes.map((packageLane, index) => {
     const lane = objectRecord(packageLane.rfx_demand_lanes);
+    const segmentKey = rfxSegmentKeyForDemandLane(lane);
+    const segment = objectRecord(segmentByKey.get(segmentKey));
     return {
       rfx_event_id: eventInsert.data.id,
       lane_number: index + 1,
@@ -13733,10 +13918,17 @@ async function launchRfxProcessPackageToBidRoom(supabase: ReturnType<typeof crea
       config: cleanText(objectRecord(lane.normalized_payload).config),
       operation: cleanText(lane.operation_type),
       service: cleanText(lane.service_type),
+      rfx_segment_key: segmentKey,
+      rfx_segment_name: cleanText(segment.segment_name) || rfxSegmentNameForDemandLane(lane),
       weekly_volume: cleanNumber(lane.weekly_volume),
       annual_volume: cleanNumber(lane.monthly_volume) === null ? null : Number(lane.monthly_volume) * 12,
       target_rate: null,
       currency: cleanText(lane.currency) || "USD",
+      logistics_model: firstCleanText(rfxDemandLaneDetail(lane, "logistics_model"), segment.logistics_model),
+      operation_criteria: firstCleanText(rfxDemandLaneDetail(lane, "operation_criteria"), segment.operation_criteria),
+      business_rules: firstCleanText(rfxDemandLaneDetail(lane, "business_rules"), segment.business_rules),
+      service_specifications: firstCleanText(rfxDemandLaneDetail(lane, "service_specifications"), segment.service_specifications),
+      other_notes: firstCleanText(rfxDemandLaneDetail(lane, "other_notes"), segment.other_notes),
       notes: cleanText(lane.internal_notes)
     };
   });
@@ -13748,8 +13940,8 @@ async function launchRfxProcessPackageToBidRoom(supabase: ReturnType<typeof crea
     supabase.from("rfx_packages").update({ linked_rfx_event_id: eventInsert.data.id, status: "launched", updated_at: new Date().toISOString() }).eq("id", pack.id),
     supabase.from("rfx_projects").update({ linked_rfx_event_id: eventInsert.data.id, status: "bid_room_open", updated_at: new Date().toISOString() }).eq("id", project.id)
   ]);
-  await writeRfxProcessAudit(supabase, user, project.id, "bid_room_launched", "rfx_events", eventInsert.data.id, `Launched Bid Room from RFx Package ${pack.name || ""}`.trim(), { package_id: pack.id, lanes: laneRows.length });
-  return { launched: true, rfx_event_id: eventInsert.data.id, row: eventInsert.data, lanes: laneRows.length };
+  await writeRfxProcessAudit(supabase, user, project.id, "bid_room_launched", "rfx_events", eventInsert.data.id, `Launched Bid Room from RFx Package ${pack.name || ""}`.trim(), { package_id: pack.id, lanes: laneRows.length, segments: segmentRows.length });
+  return { launched: true, rfx_event_id: eventInsert.data.id, row: eventInsert.data, lanes: laneRows.length, segments: segmentRows.length };
 }
 
 async function createRfxAwardPackage(supabase: ReturnType<typeof createClient>, user: { owner_user_id: string | null; owner_email: string | null }, input: Record<string, unknown>) {
@@ -14467,6 +14659,10 @@ Deno.serve(async (request) => {
         bid_visibility_mode: event.bid_visibility_mode || "anonymous_rank",
         due_date: null,
         notes: event.notes,
+        source_rfx_process_project_id: event.source_rfx_process_project_id || null,
+        source_rfx_package_id: event.source_rfx_package_id || null,
+        source_rfx_package_name: event.source_rfx_package_name || null,
+        rfx_master_package: event.rfx_master_package || {},
         updated_at: new Date().toISOString()
       }, user);
       const eventInsert = await supabase.from("rfx_events").insert(eventRow).select().single();

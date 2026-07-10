@@ -534,7 +534,9 @@ function publicLane(row: Record<string, unknown>) {
     business_rules: row.business_rules,
     service_specifications: row.service_specifications,
     other_notes: row.other_notes,
-    notes: row.notes
+    notes: row.notes,
+    rfx_segment_key: row.rfx_segment_key,
+    rfx_segment_name: row.rfx_segment_name
   };
 }
 
@@ -547,7 +549,11 @@ function publicEvent(row: Record<string, unknown>) {
     event_type: row.event_type,
     status: row.status,
     due_date: row.due_date,
-    bid_visibility_mode: cleanText(row.bid_visibility_mode) || "anonymous_rank"
+    bid_visibility_mode: cleanText(row.bid_visibility_mode) || "anonymous_rank",
+    source_rfx_process_project_id: row.source_rfx_process_project_id,
+    source_rfx_package_id: row.source_rfx_package_id,
+    source_rfx_package_name: row.source_rfx_package_name,
+    rfx_master_package: row.rfx_master_package && typeof row.rfx_master_package === "object" ? row.rfx_master_package : {}
   };
 }
 
@@ -1009,13 +1015,103 @@ async function currentInvitationContext(supabase: ReturnType<typeof createClient
       deadhead_distance,
       deadhead_unit,
       vendors(id,vendor_name,domain,primary_email),
-      rfx_events(id,owner_user_id,owner_email,rfx_id,name,customer,event_type,status,due_date,bid_visibility_mode),
+      rfx_events(id,owner_user_id,owner_email,rfx_id,name,customer,event_type,status,due_date,bid_visibility_mode,source_rfx_process_project_id,source_rfx_package_id,source_rfx_package_name,rfx_master_package),
       rfx_lanes(*)
     `)
     .eq("invitation_token", token)
     .single();
   if (result.error) throw result.error;
   return result.data;
+}
+
+const SEGMENT_CONFIRMATION_ANSWERS = new Set(["pending", "agree", "exception", "disagree", "not_applicable"]);
+const SEGMENT_CONFIRMATION_RUBRICS = new Set(["logistics_model", "operation_criteria", "business_rules", "service_specifications", "other_notes"]);
+
+function normalizeSegmentConfirmationRows(input: unknown) {
+  const rows = Array.isArray(input) ? input : [];
+  return rows.slice(0, 100).map((row) => {
+    const record = row && typeof row === "object" ? row as Record<string, unknown> : {};
+    const segmentKey = cleanText(record.segment_key);
+    const rubricKey = cleanText(record.rubric_key);
+    const answer = cleanText(record.answer)?.toLowerCase() || "pending";
+    if (!segmentKey) throw new Error("Segment key is required.");
+    if (!SEGMENT_CONFIRMATION_RUBRICS.has(rubricKey)) throw new Error("Invalid segment rubric.");
+    if (!SEGMENT_CONFIRMATION_ANSWERS.has(answer)) throw new Error("Invalid segment confirmation answer.");
+    return {
+      segment_key: segmentKey,
+      rubric_key: rubricKey,
+      answer,
+      comment: cleanText(record.comment).slice(0, 1200)
+    };
+  });
+}
+
+async function listSegmentConfirmations(
+  supabase: ReturnType<typeof createClient>,
+  invitationIds: string[]
+) {
+  const ids = [...new Set(invitationIds.map((id) => cleanText(id)).filter(Boolean))];
+  if (!ids.length) return [];
+  const result = await supabase
+    .from("rfx_segment_confirmations")
+    .select("*")
+    .in("rfx_lane_vendor_id", ids)
+    .order("updated_at", { ascending: false });
+  if (result.error) throw result.error;
+  return result.data || [];
+}
+
+async function saveSegmentConfirmations(
+  supabase: ReturnType<typeof createClient>,
+  token: string,
+  input: Record<string, unknown>
+) {
+  const invitation = await currentInvitationContext(supabase, token);
+  const event = relationRecord(invitation.rfx_events);
+  const rows = normalizeSegmentConfirmationRows(input.confirmations);
+  if (!rows.length) return { rows: [] };
+  const now = new Date().toISOString();
+  const payload = rows.map((row) => ({
+    owner_user_id: cleanText(event.owner_user_id) || null,
+    owner_email: cleanText(event.owner_email) || null,
+    rfx_event_id: cleanText(invitation.rfx_event_id),
+    rfx_lane_vendor_id: cleanText(invitation.id),
+    vendor_id: cleanText(invitation.vendor_id) || null,
+    segment_key: row.segment_key,
+    rubric_key: row.rubric_key,
+    answer: row.answer,
+    comment: row.comment,
+    source: "carrier_portal",
+    metadata: {
+      source: "rfx_master_package_fit",
+      invitation_token: cleanText(invitation.invitation_token),
+      lane_id: cleanText(invitation.rfx_lane_id)
+    },
+    updated_at: now
+  }));
+  const result = await supabase
+    .from("rfx_segment_confirmations")
+    .upsert(payload, { onConflict: "rfx_lane_vendor_id,segment_key,rubric_key" })
+    .select("*");
+  if (result.error) throw result.error;
+  const historyResult = await supabase.from("contact_history").insert({
+    owner_user_id: cleanText(event.owner_user_id) || null,
+    owner_email: cleanText(event.owner_email) || null,
+    vendor_id: cleanText(invitation.vendor_id) || null,
+    rfx_event_id: cleanText(invitation.rfx_event_id),
+    channel: "portal",
+    direction: "inbound",
+    status: "rfx_fit_confirmed",
+    subject: `${cleanText(event.rfx_id) || "RFx"} carrier fit checklist updated`,
+    body_preview: `${rows.length} checklist item(s) updated for RFx master package fit.`,
+    metadata: {
+      source: "rfx_master_package_fit",
+      rfx_lane_vendor_id: cleanText(invitation.id),
+      segment_keys: [...new Set(rows.map((row) => row.segment_key))]
+    }
+  });
+  if (historyResult.error) console.warn("segment confirmation history failed", historyResult.error.message);
+  return { rows: result.data || [] };
 }
 
 async function findOrCreateCarrierChatThread(
@@ -4288,7 +4384,7 @@ Deno.serve(async (request) => {
           rate_staging_id,
           rateware_closeout_at,
           vendors(vendor_name,domain,primary_email),
-          rfx_events(id,owner_user_id,owner_email,rfx_id,name,customer,event_type,status,due_date,bid_visibility_mode,notes),
+          rfx_events(id,owner_user_id,owner_email,rfx_id,name,customer,event_type,status,due_date,bid_visibility_mode,notes,source_rfx_process_project_id,source_rfx_package_id,source_rfx_package_name,rfx_master_package),
       rfx_lanes(*)
         `)
         .eq("invitation_token", token)
@@ -4358,7 +4454,7 @@ Deno.serve(async (request) => {
               awarded_at,
               rate_staging_id,
               rateware_closeout_at,
-              rfx_events!inner(id,owner_email,rfx_id,name,customer,event_type,status,due_date,bid_visibility_mode),
+              rfx_events!inner(id,owner_email,rfx_id,name,customer,event_type,status,due_date,bid_visibility_mode,source_rfx_process_project_id,source_rfx_package_id,source_rfx_package_name,rfx_master_package),
               rfx_lanes(*)
             `)
             .eq("vendor_id", result.data.vendor_id)
@@ -4400,7 +4496,7 @@ Deno.serve(async (request) => {
               service_specifications,
               other_notes,
               notes,
-              rfx_events!inner(id,owner_email,rfx_id,name,customer,event_type,status,due_date,bid_visibility_mode)
+              rfx_events!inner(id,owner_email,rfx_id,name,customer,event_type,status,due_date,bid_visibility_mode,source_rfx_process_project_id,source_rfx_package_id,source_rfx_package_name,rfx_master_package)
             `)
             .eq("rfx_events.owner_email", ownerEmail)
             .eq("rfx_events.status", "open")
@@ -4427,12 +4523,20 @@ Deno.serve(async (request) => {
             || cleanText(metadata.rfx_lane_id) === cleanText(result.data.rfx_lane_id);
         })
         .slice(0, 25);
+      const invitationIdsForEvent = [
+        cleanText(result.data.id),
+        ...(invitedResult.data || [])
+          .filter((row) => cleanText(row.rfx_event_id) === cleanText(result.data.rfx_event_id))
+          .map((row) => cleanText(row.id))
+      ].filter(Boolean);
+      const segmentConfirmations = await listSegmentConfirmations(supabase, invitationIdsForEvent);
 
       return jsonResponse({
         invitation: result.data,
         live_board: liveBoardFromRows(result.data, peersResult.data || []),
         carrier_book: carrierBusinessBook(result.data, invitedResult.data || [], openLanesResult.data || []),
-        bid_history: bidHistory
+        bid_history: bidHistory,
+        segment_confirmations: segmentConfirmations
       });
     }
 
@@ -4493,6 +4597,10 @@ Deno.serve(async (request) => {
       });
       if (history.error) throw history.error;
       return jsonResponse({ requested: true, message: "Access request recorded." });
+    }
+
+    if (body.action === "save_segment_confirmations") {
+      return jsonResponse(await saveSegmentConfirmations(supabase, token, body));
     }
 
     if (body.action === "submit_bid") {

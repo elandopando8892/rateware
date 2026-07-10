@@ -11,6 +11,7 @@ let lastCarrierBook = null;
 let lastCarrierChat = { rows: [], google_chat_configured: false };
 let lastInvitation = null;
 let lastLiveBoard = {};
+let lastSegmentConfirmations = [];
 let lastQuickBidSaveStatus = null;
 let lastBidSupportQuestion = "";
 let lastBidSupportResult = null;
@@ -112,6 +113,7 @@ const BID_PORTAL_COPY = {
     operation: "Operation",
     service: "Service",
     weeklyVolume: "Weekly volume",
+    status: "Status",
     loadingLiveRoom: "Loading live bid room...",
     loadingHistory: "Loading offer history...",
     loadingChat: "Loading Bid Room Chat...",
@@ -167,7 +169,20 @@ const BID_PORTAL_COPY = {
     chatSupport: "Chat Support",
     goMarketplace: "Go to Marketplace",
     publicLiveBoard: "Go to Marketplace",
-    publicLiveBoardHelp: "Open the real-time marketplace screen for this bid room."
+    publicLiveBoardHelp: "Open the real-time marketplace screen for this bid room.",
+    masterPackageEyebrow: "RFx master package",
+    masterPackageTitle: "Project requirements and route schedule",
+    masterPackageCopy: "Review the business book as one RFx package. Confirm each operating segment so procurement can measure operational fit before award.",
+    segmentChecklist: "Segment checklist",
+    routeSchedule: "Route schedule",
+    fitConfirmation: "Fit confirmation",
+    agree: "Agree",
+    exception: "Exception",
+    disagree: "Disagree",
+    notApplicable: "N/A",
+    saveFit: "Save fit checklist",
+    fitSaved: "Fit checklist saved.",
+    fitPending: "Confirm the rubrics that apply to your operation."
   },
   es: {
     privateCarrierAccess: "Acceso privado para carrier",
@@ -210,6 +225,7 @@ const BID_PORTAL_COPY = {
     operation: "Operacion",
     service: "Servicio",
     weeklyVolume: "Volumen semanal",
+    status: "Estado",
     loadingLiveRoom: "Cargando Bid Room en vivo...",
     loadingHistory: "Cargando historial de ofertas...",
     loadingChat: "Cargando chat del Bid Room...",
@@ -265,7 +281,20 @@ const BID_PORTAL_COPY = {
     chatSupport: "Soporte",
     goMarketplace: "Ir al Marketplace",
     publicLiveBoard: "Ir al Marketplace",
-    publicLiveBoardHelp: "Abrir la pantalla interactiva en tiempo real de este bid room."
+    publicLiveBoardHelp: "Abrir la pantalla interactiva en tiempo real de este bid room.",
+    masterPackageEyebrow: "Paquete maestro RFx",
+    masterPackageTitle: "Cedula del proyecto y rutas",
+    masterPackageCopy: "Revisa el libro de negocio como un solo paquete RFx. Confirma cada segmento operativo para que procurement mida el fit antes del award.",
+    segmentChecklist: "Checklist del segmento",
+    routeSchedule: "Cedula de rutas",
+    fitConfirmation: "Confirmacion de fit",
+    agree: "De acuerdo",
+    exception: "Excepcion",
+    disagree: "No de acuerdo",
+    notApplicable: "N/A",
+    saveFit: "Guardar checklist de fit",
+    fitSaved: "Checklist de fit guardado.",
+    fitPending: "Confirma los rubros que aplican a tu operacion."
   }
 };
 
@@ -455,6 +484,279 @@ function renderLaneDetailValue(value) {
     return html || escapeHtml(source.textContent || raw).replace(/\r?\n/g, "<br>");
   } catch (_error) {
     return escapeHtml(raw).replace(/\r?\n/g, "<br>");
+  }
+}
+
+const MASTER_PACKAGE_RUBRICS = [
+  ["logistics_model", () => t("logisticsModel")],
+  ["operation_criteria", () => t("operationCriteria")],
+  ["business_rules", () => t("businessRules")],
+  ["service_specifications", () => t("serviceSpecifications")],
+  ["other_notes", () => t("otherNotes")]
+];
+
+function safeMasterPackage(event = {}) {
+  const payload = event.rfx_master_package;
+  return payload && typeof payload === "object" && !Array.isArray(payload) ? payload : {};
+}
+
+function laneSegmentKey(lane = {}) {
+  return String(lane.rfx_segment_key || [lane.operation, lane.service, lane.equipment, lane.trailer].filter(Boolean).join("-") || "general")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "general";
+}
+
+function laneSegmentName(lane = {}) {
+  return lane.rfx_segment_name || [lane.operation, lane.service, lane.equipment, lane.trailer].filter(Boolean).join(" / ") || "General RFx segment";
+}
+
+function deriveMasterPackageFromRows(carrierBook = {}, invitation = {}) {
+  const event = invitation.rfx_events || {};
+  const rows = currentEventBookRows(carrierBook, event);
+  const groups = new Map();
+  rows.forEach((row) => {
+    const lane = row.lane || {};
+    const key = laneSegmentKey(lane);
+    const bucket = groups.get(key) || [];
+    bucket.push(row);
+    groups.set(key, bucket);
+  });
+  const segments = [...groups.entries()].map(([segmentKey, rowsForSegment]) => {
+    const firstLane = rowsForSegment[0]?.lane || {};
+    return {
+      segment_key: segmentKey,
+      segment_name: laneSegmentName(firstLane),
+      operation: firstLane.operation || "",
+      service: firstLane.service || "",
+      equipment: firstLane.equipment || "",
+      trailer: firstLane.trailer || "",
+      lane_count: rowsForSegment.length,
+      lane_ids: rowsForSegment.map((row) => row.lane?.id).filter(Boolean),
+      logistics_model: firstLane.logistics_model || "",
+      operation_criteria: firstLane.operation_criteria || "",
+      business_rules: firstLane.business_rules || "",
+      service_specifications: firstLane.service_specifications || "",
+      other_notes: firstLane.other_notes || "",
+      checklist: MASTER_PACKAGE_RUBRICS.map(([key, label]) => ({
+        key,
+        label: label(),
+        detail: firstLane[key] || ""
+      }))
+    };
+  });
+  return {
+    mode: "derived_package",
+    package_name: event.source_rfx_package_name || event.name || event.rfx_id,
+    lane_count: rows.length,
+    segment_count: segments.length,
+    requires_carrier_confirmation: Boolean(segments.length),
+    segments
+  };
+}
+
+function masterPackageForCarrier(carrierBook = {}, invitation = {}) {
+  const event = invitation.rfx_events || {};
+  const payload = safeMasterPackage(event);
+  if (Array.isArray(payload.segments) && payload.segments.length) return payload;
+  return deriveMasterPackageFromRows(carrierBook, invitation);
+}
+
+function segmentConfirmationMap() {
+  const map = new Map();
+  (Array.isArray(lastSegmentConfirmations) ? lastSegmentConfirmations : []).forEach((row) => {
+    const key = `${row.segment_key || ""}::${row.rubric_key || ""}`;
+    if (key !== "::" && !map.has(key)) map.set(key, row);
+  });
+  return map;
+}
+
+function confirmationStatusFor(segmentKey, rubricKey) {
+  return segmentConfirmationMap().get(`${segmentKey}::${rubricKey}`) || { answer: "pending", comment: "" };
+}
+
+function segmentFitSummary(packagePayload = {}) {
+  const segments = Array.isArray(packagePayload.segments) ? packagePayload.segments : [];
+  const total = segments.reduce((sum, segment) => {
+    const checklist = Array.isArray(segment.checklist) && segment.checklist.length
+      ? segment.checklist
+      : MASTER_PACKAGE_RUBRICS.map(([key, label]) => ({ key, label: label() }));
+    return sum + checklist.length;
+  }, 0);
+  if (!total) return { complete: 0, exceptions: 0, total: 0, score: 0 };
+  const confirmations = segmentConfirmationMap();
+  let complete = 0;
+  let exceptions = 0;
+  segments.forEach((segment) => {
+    const segmentKey = segment.segment_key || "general";
+    const checklist = Array.isArray(segment.checklist) && segment.checklist.length
+      ? segment.checklist
+      : MASTER_PACKAGE_RUBRICS.map(([key, label]) => ({ key, label: label() }));
+    checklist.forEach((rubric) => {
+      const answer = confirmations.get(`${segmentKey}::${rubric.key}`)?.answer || "pending";
+      if (answer && answer !== "pending") complete += 1;
+      if (answer === "exception" || answer === "disagree") exceptions += 1;
+    });
+  });
+  return { complete, exceptions, total, score: Math.round((complete / total) * 100) };
+}
+
+function renderMasterPackageRoutes(carrierBook = {}, invitation = {}) {
+  const event = invitation.rfx_events || {};
+  const rows = currentEventBookRows(carrierBook, event);
+  return `
+    <div class="master-package-routes">
+      <table>
+        <thead><tr><th>Lane</th><th>${escapeHtml(t("currentLane"))}</th><th>${escapeHtml(t("equipment"))}</th><th>${escapeHtml(t("weeklyVolume"))}</th><th>${escapeHtml(t("status"))}</th></tr></thead>
+        <tbody>
+          ${rows.map((row) => {
+            const lane = row.lane || {};
+            return `
+              <tr>
+                <td>#${escapeHtml(lane.lane_number || "")}</td>
+                <td>${escapeHtml(formatLane(lane))}</td>
+                <td>${escapeHtml([lane.equipment, lane.trailer, lane.config].filter(Boolean).join(" / ") || "-")}</td>
+                <td>${escapeHtml(lane.weekly_volume ?? "-")}</td>
+                <td>${escapeHtml(statusLabel(bookStatus(row)))}</td>
+              </tr>
+            `;
+          }).join("") || `<tr><td colspan="5">No lanes loaded.</td></tr>`}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderSegmentRubricControl(segment = {}, rubric = {}) {
+  const segmentKey = segment.segment_key || "general";
+  const rubricKey = rubric.key;
+  const confirmation = confirmationStatusFor(segmentKey, rubricKey);
+  const answer = confirmation.answer || "pending";
+  const label = rubric.es_label && portalLanguage() === "es" ? rubric.es_label : rubric.label || MASTER_PACKAGE_RUBRICS.find(([key]) => key === rubricKey)?.[1]?.() || rubricKey;
+  const detail = rubric.detail || segment[rubricKey] || "";
+  const controlName = `fit-${segmentKey}-${rubricKey}`;
+  return `
+    <article class="segment-rubric" data-segment-confirmation data-segment-key="${escapeAttribute(segmentKey)}" data-rubric-key="${escapeAttribute(rubricKey)}">
+      <div>
+        <strong>${escapeHtml(label)}</strong>
+        ${detail ? `<div class="bid-lane-rich-text">${renderLaneDetailValue(detail)}</div>` : `<p class="bid-board-note">${escapeHtml(dualText("No specific detail was loaded for this rubric.", "No se cargo detalle especifico para este rubro."))}</p>`}
+      </div>
+      <div class="segment-rubric-controls" role="radiogroup" aria-label="${escapeAttribute(label)}">
+        ${[
+          ["agree", t("agree")],
+          ["exception", t("exception")],
+          ["disagree", t("disagree")],
+          ["not_applicable", t("notApplicable")]
+        ].map(([value, text]) => `
+          <label>
+            <input type="radio" name="${escapeAttribute(controlName)}" value="${escapeAttribute(value)}" data-segment-answer ${answer === value ? "checked" : ""} />
+            <span>${escapeHtml(text)}</span>
+          </label>
+        `).join("")}
+      </div>
+      <textarea data-segment-comment rows="2" placeholder="${escapeAttribute(dualText("Comment exceptions or conditions...", "Comenta excepciones o condiciones..."))}">${escapeHtml(confirmation.comment || "")}</textarea>
+    </article>
+  `;
+}
+
+function renderMasterPackageSegments(packagePayload = {}) {
+  const segments = Array.isArray(packagePayload.segments) ? packagePayload.segments : [];
+  if (!segments.length) return "";
+  return `
+    <div class="master-package-segments">
+      ${segments.map((segment, index) => {
+        const checklist = Array.isArray(segment.checklist) && segment.checklist.length
+          ? segment.checklist
+          : MASTER_PACKAGE_RUBRICS.map(([key, label]) => ({ key, label: label(), detail: segment[key] || "" }));
+        return `
+          <details class="master-package-segment" ${index === 0 ? "open" : ""}>
+            <summary>
+              <div>
+                <span class="status-pill neutral">${escapeHtml(`${segment.lane_count || 0} lane(s)`)}</span>
+                <strong>${escapeHtml(segment.segment_name || "General RFx segment")}</strong>
+                <small>${escapeHtml([segment.operation, segment.service, segment.equipment, segment.trailer].filter(Boolean).join(" | ") || t("segmentChecklist"))}</small>
+              </div>
+            </summary>
+            <div class="segment-rubric-grid">
+              ${checklist.map((rubric) => renderSegmentRubricControl(segment, rubric)).join("")}
+            </div>
+          </details>
+        `;
+      }).join("")}
+    </div>
+  `;
+}
+
+function renderCarrierMasterPackage(carrierBook = {}, invitation = {}) {
+  const packagePayload = masterPackageForCarrier(carrierBook, invitation);
+  const segments = Array.isArray(packagePayload.segments) ? packagePayload.segments : [];
+  if (!segments.length) return "";
+  const summary = segmentFitSummary(packagePayload);
+  return `
+    <section class="rfx-master-package-card">
+      <div class="master-package-header">
+        <div>
+          <p class="eyebrow">${escapeHtml(t("masterPackageEyebrow"))}</p>
+          <h3>${escapeHtml(packagePayload.package_name || t("masterPackageTitle"))}</h3>
+          <p>${escapeHtml(t("masterPackageCopy"))}</p>
+        </div>
+        <aside>
+          <span>${escapeHtml(t("fitConfirmation"))}</span>
+          <strong>${formatNumber(summary.score)}%</strong>
+          <small>${escapeHtml(`${summary.complete}/${summary.total} ${dualText("rubrics confirmed", "rubros confirmados")}${summary.exceptions ? ` | ${summary.exceptions} ${dualText("exception(s)", "excepcion(es)")}` : ""}`)}</small>
+        </aside>
+      </div>
+      <div class="master-package-statline">
+        <article><span>${escapeHtml(t("routeSchedule"))}</span><strong>${formatNumber(packagePayload.lane_count || currentEventBookRows(carrierBook, invitation.rfx_events || {}).length)}</strong><small>lane(s)</small></article>
+        <article><span>${escapeHtml(t("segmentChecklist"))}</span><strong>${formatNumber(segments.length)}</strong><small>segment(s)</small></article>
+        <article><span>${escapeHtml(t("fitPending"))}</span><strong>${formatNumber(Math.max(summary.total - summary.complete, 0))}</strong><small>pending</small></article>
+      </div>
+      ${renderMasterPackageRoutes(carrierBook, invitation)}
+      ${renderMasterPackageSegments(packagePayload)}
+      <div class="master-package-actions">
+        <p id="segment-confirmation-status" class="status-message" role="status">${escapeHtml(t("fitPending"))}</p>
+        <button type="button" data-save-segment-confirmations>${escapeHtml(t("saveFit"))}</button>
+      </div>
+    </section>
+  `;
+}
+
+function collectSegmentConfirmations() {
+  return Array.from(card.querySelectorAll("[data-segment-confirmation]")).map((row) => {
+    const checked = row.querySelector("[data-segment-answer]:checked");
+    return {
+      segment_key: row.dataset.segmentKey || "",
+      rubric_key: row.dataset.rubricKey || "",
+      answer: checked?.value || "pending",
+      comment: row.querySelector("[data-segment-comment]")?.value || ""
+    };
+  });
+}
+
+async function saveSegmentConfirmations(button) {
+  const status = card.querySelector("#segment-confirmation-status");
+  button.disabled = true;
+  if (status) {
+    status.textContent = dualText("Saving fit checklist...", "Guardando checklist de fit...");
+    status.dataset.tone = "neutral";
+  }
+  try {
+    const result = await callBidApi("save_segment_confirmations", {
+      confirmations: collectSegmentConfirmations()
+    });
+    lastSegmentConfirmations = result.rows || [];
+    if (status) {
+      status.textContent = t("fitSaved");
+      status.dataset.tone = "success";
+    }
+    queuePrivateBidAlert("supportAnswer", dualText("Project fit checklist saved.", "Checklist de fit del proyecto guardado."));
+  } catch (error) {
+    if (status) {
+      status.textContent = humanizeError(error);
+      status.dataset.tone = "error";
+    }
+  } finally {
+    button.disabled = false;
   }
 }
 
@@ -3130,6 +3432,8 @@ function renderInvitation(invitation, liveBoard = {}, carrierBook = {}) {
       <article><span>${escapeHtml(t("refresh"))}</span><strong>30 sec</strong></article>
     </div>
 
+    ${renderCarrierMasterPackage(carrierBook, invitation)}
+
     <section id="bid-support-agent" class="bid-support-agent bid-support-widget private-bid-support-widget" data-open="false">
       <p class="status-message">${escapeHtml(dualText("Loading contextual support...", "Cargando soporte contextual..."))}</p>
     </section>
@@ -3427,6 +3731,7 @@ async function loadInvitation(options = {}) {
     const data = await callBidApi("get_invitation");
     lastInvitation = data.invitation;
     lastLiveBoard = data.live_board || {};
+    lastSegmentConfirmations = Array.isArray(data.segment_confirmations) ? data.segment_confirmations : [];
     rememberPublicBoardInvitationAccess(data.invitation || {}, data.carrier_book || {});
     if (options.refreshOnly && card.querySelector("#bid-form")) {
       renderLiveBoard(data.live_board);
@@ -3511,6 +3816,12 @@ card.addEventListener("click", async (event) => {
   if (quickBidSaveButton) {
     const row = quickBidSaveButton.closest("[data-quick-bid-row]");
     if (row) await saveQuickBidRow(row, quickBidSaveButton);
+    return;
+  }
+
+  const saveSegmentConfirmationsButton = event.target.closest("[data-save-segment-confirmations]");
+  if (saveSegmentConfirmationsButton) {
+    await saveSegmentConfirmations(saveSegmentConfirmationsButton);
     return;
   }
 
