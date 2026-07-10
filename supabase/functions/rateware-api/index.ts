@@ -8563,6 +8563,497 @@ async function updateVendorSupportTicket(
   return { row: serializeSupportTicket(result.data) };
 }
 
+const VENDOR_CI_CASE_TYPES = new Set([
+  "service_quality",
+  "cost_variance",
+  "capacity_commitment",
+  "compliance",
+  "documentation",
+  "technology",
+  "claims",
+  "billing",
+  "communication",
+  "strategic_growth"
+]);
+const VENDOR_CI_STATUSES = new Set(["open", "define", "measure", "analyze", "improve", "control", "resolved", "archived"]);
+const VENDOR_CI_SEVERITIES = new Set(["low", "medium", "high", "critical"]);
+const VENDOR_CI_METHODS = new Set(["dmaic", "8d", "capa", "kaizen", "a3"]);
+const VENDOR_CI_TIERS = new Set(["watchlist", "tactical", "strategic", "collaborative"]);
+
+function normalizedVendorCiCaseType(value: unknown) {
+  const normalized = cleanText(value)?.toLowerCase() || "service_quality";
+  return VENDOR_CI_CASE_TYPES.has(normalized) ? normalized : "service_quality";
+}
+
+function normalizedVendorCiStatus(value: unknown, fallback = "open") {
+  const normalized = cleanText(value)?.toLowerCase() || fallback;
+  if (!VENDOR_CI_STATUSES.has(normalized)) throw new Error("Unsupported vendor improvement status.");
+  return normalized;
+}
+
+function normalizedVendorCiSeverity(value: unknown) {
+  const normalized = cleanText(value)?.toLowerCase() || "medium";
+  if (!VENDOR_CI_SEVERITIES.has(normalized)) throw new Error("Unsupported vendor improvement severity.");
+  return normalized;
+}
+
+function normalizedVendorCiTier(value: unknown, fallback = "tactical") {
+  const normalized = cleanText(value)?.toLowerCase() || fallback;
+  if (!VENDOR_CI_TIERS.has(normalized)) throw new Error("Unsupported vendor value tier.");
+  return normalized;
+}
+
+function normalizedVendorCiMethod(value: unknown, caseType = "service_quality") {
+  const explicit = cleanText(value)?.toLowerCase();
+  if (explicit && VENDOR_CI_METHODS.has(explicit)) return explicit;
+  if (["compliance", "documentation", "billing"].includes(caseType)) return "capa";
+  if (["claims", "service_quality", "communication"].includes(caseType)) return "8d";
+  if (["strategic_growth", "technology"].includes(caseType)) return "kaizen";
+  return "dmaic";
+}
+
+function numericScore(value: unknown, fallback = 0) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return fallback;
+  return Math.max(0, Math.min(100, Math.round(number)));
+}
+
+function tierFromValueScore(score: number) {
+  if (score >= 85) return "collaborative";
+  if (score >= 65) return "strategic";
+  if (score >= 40) return "tactical";
+  return "watchlist";
+}
+
+function defaultScorecardForVendor(vendor: Record<string, unknown>) {
+  const hasContact = Boolean(cleanText(vendor.primary_email) || cleanText(vendor.whatsapp_phone));
+  const hasDomain = Boolean(cleanText(vendor.domain));
+  const hasCoverage = Boolean(cleanText(vendor.coverage_notes) || cleanText(vendor.notes));
+  const baseStage = cleanText(vendor.base_stage);
+  const operational = (baseStage === "procurement" ? 35 : 20) + (hasCoverage ? 20 : 0) + (hasContact ? 15 : 0);
+  const commercial = (baseStage === "procurement" ? 45 : 25) + (hasDomain ? 10 : 0);
+  const compliance = cleanText(vendor.status) === "active" ? 55 : 35;
+  const technology = hasDomain ? 40 : 25;
+  const relationship = hasContact ? 50 : 25;
+  const value = Math.round((operational + commercial + compliance + technology + relationship) / 5);
+  return {
+    operational_score: numericScore(operational),
+    commercial_score: numericScore(commercial),
+    financial_score: numericScore(commercial),
+    compliance_score: numericScore(compliance),
+    technology_score: numericScore(technology),
+    relationship_score: numericScore(relationship),
+    value_score: numericScore(value),
+    tier: tierFromValueScore(value),
+    attributes: {
+      auto_seeded: true,
+      source: "vendor_profile",
+      base_stage: baseStage,
+      contact_ready: hasContact,
+      coverage_ready: hasCoverage
+    }
+  };
+}
+
+function vendorCiPlaybooks() {
+  return [
+    {
+      case_type: "service_quality",
+      label: "Service quality",
+      methodology: "8d",
+      goal: "Stop recurring service failures and document corrective action before the carrier is used again at scale.",
+      steps: ["Define the failure mode", "Contain impacted lanes or customers", "Confirm root cause", "Assign corrective action", "Verify next 3 loads"],
+      evidence: "Use load history, late pickup/delivery notes, customer escalation and carrier response."
+    },
+    {
+      case_type: "capacity_commitment",
+      label: "Capacity commitment",
+      methodology: "dmaic",
+      goal: "Measure committed vs actual capacity and move the carrier toward reliable lane coverage.",
+      steps: ["Define committed capacity", "Measure weekly accepted loads", "Analyze tender rejection", "Improve availability signal", "Control with recurring review"],
+      evidence: "Use RFx bids, Rateware coverage, tender acceptance, ETA and unit availability."
+    },
+    {
+      case_type: "compliance",
+      label: "Compliance",
+      methodology: "capa",
+      goal: "Close compliance gaps before activation or before assigning sensitive freight.",
+      steps: ["Identify missing document", "Request evidence", "Validate against policy", "Approve or restrict carrier", "Schedule next audit"],
+      evidence: "Use RMIS, insurance, W9/tax, authority, safety and document review evidence."
+    },
+    {
+      case_type: "cost_variance",
+      label: "Cost variance",
+      methodology: "dmaic",
+      goal: "Explain price outliers and decide whether the issue is market, lane fit, or carrier behavior.",
+      steps: ["Define target vs quote gap", "Measure lane market", "Analyze FSC/linehaul/accessorial split", "Improve pricing rule", "Control by quote review"],
+      evidence: "Use Rateware, bid history, target buy rate and market benchmark."
+    },
+    {
+      case_type: "technology",
+      label: "Technology / integration",
+      methodology: "kaizen",
+      goal: "Move strategic carriers toward better operational integration.",
+      steps: ["Map current process", "Define minimum integration", "Pilot one lane", "Document support owner", "Scale after validation"],
+      evidence: "Use portal usage, GPS mirror account, API/TMS readiness and response latency."
+    },
+    {
+      case_type: "strategic_growth",
+      label: "Strategic growth",
+      methodology: "a3",
+      goal: "Move high-value carriers from tactical execution into strategic or collaborative partnership.",
+      steps: ["State business opportunity", "Map carrier strengths", "Define joint value", "Agree action plan", "Review quarterly"],
+      evidence: "Use coverage depth, recurring lanes, service quality, bid responsiveness and commercial fit."
+    }
+  ];
+}
+
+async function requireOwnedVendorForCi(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_email: string | null },
+  vendorId: unknown
+) {
+  const id = cleanText(vendorId);
+  if (!id) throw new Error("Vendor is required.");
+  const result = await supabase
+    .from("vendors")
+    .select("id,vendor_name,name,legal_name,domain,primary_email,whatsapp_phone,base_stage,status,coverage_notes,notes,tags")
+    .eq("id", id)
+    .eq("owner_email", user.owner_email)
+    .single();
+  if (result.error) throw result.error;
+  return result.data as Record<string, unknown>;
+}
+
+async function ensureVendorValueScorecard(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_user_id: string | null; owner_email: string | null },
+  vendor: Record<string, unknown>
+) {
+  const existing = await supabase
+    .from("vendor_value_scorecards")
+    .select("*")
+    .eq("owner_email", user.owner_email)
+    .eq("vendor_id", vendor.id)
+    .limit(1);
+  if (existing.error) throw existing.error;
+  if (existing.data?.[0]) return existing.data[0] as Record<string, unknown>;
+
+  const defaults = defaultScorecardForVendor(vendor);
+  const inserted = await supabase
+    .from("vendor_value_scorecards")
+    .insert(withOwner({
+      vendor_id: vendor.id,
+      ...defaults,
+      last_scored_at: new Date().toISOString()
+    }, user))
+    .select("*")
+    .single();
+  if (inserted.error) throw inserted.error;
+  return inserted.data as Record<string, unknown>;
+}
+
+function serializeVendorValueScorecard(row: Record<string, unknown>) {
+  const vendor = relationRecord(row.vendors);
+  return {
+    ...row,
+    vendor_name: cleanText(vendor.vendor_name || vendor.name || vendor.legal_name || vendor.domain),
+    vendor_domain: cleanText(vendor.domain),
+    vendor_email: cleanText(vendor.primary_email)
+  };
+}
+
+function vendorCiNextStep(row: Record<string, unknown>) {
+  const status = cleanText(row.status) || "open";
+  const method = cleanText(row.methodology)?.toUpperCase() || "DMAIC";
+  const map: Record<string, string> = {
+    open: `Open ${method} case and define the business requirement.`,
+    define: "Confirm problem statement, scope, owner and due date.",
+    measure: "Capture evidence, impact, frequency and baseline metric.",
+    analyze: "Document root cause and decide if this is process, carrier, market or compliance.",
+    improve: "Assign corrective action, target date and required proof.",
+    control: "Validate effectiveness and decide whether the vendor tier can improve.",
+    resolved: "Resolved. Keep evidence available in the vendor profile.",
+    archived: "Archived."
+  };
+  return map[status] || map.open;
+}
+
+function serializeVendorImprovementCase(row: Record<string, unknown>, scorecardByVendor = new Map<string, Record<string, unknown>>()) {
+  const vendor = relationRecord(row.vendors);
+  const vendorId = cleanText(row.vendor_id) || cleanText(vendor.id) || "";
+  const scorecard = scorecardByVendor.get(vendorId);
+  return {
+    ...row,
+    vendor_name: cleanText(vendor.vendor_name || vendor.name || vendor.legal_name || vendor.domain),
+    vendor_domain: cleanText(vendor.domain),
+    vendor_email: cleanText(vendor.primary_email),
+    current_tier: cleanText(scorecard?.tier || row.tier_at_open || "tactical"),
+    value_score: numericScore(scorecard?.value_score),
+    next_step: vendorCiNextStep(row)
+  };
+}
+
+function vendorImprovementMatchesSearch(row: Record<string, unknown>, search: string) {
+  if (!search) return true;
+  const haystack = [
+    row.title,
+    row.description,
+    row.vendor_request,
+    row.owner_notes,
+    row.root_cause,
+    row.corrective_action,
+    row.preventive_action,
+    row.success_metric,
+    row.vendor_name,
+    row.vendor_domain,
+    row.vendor_email,
+    row.case_type,
+    row.status,
+    row.methodology
+  ].map((value) => String(value || "").toLowerCase()).join(" ");
+  return haystack.includes(search.toLowerCase());
+}
+
+function summarizeVendorCi(rows: Record<string, unknown>[], scorecards: Record<string, unknown>[]) {
+  const now = new Date();
+  const sevenDays = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+  const activeRows = rows.filter((row) => !["resolved", "archived"].includes(cleanText(row.status) || ""));
+  const dueSoon = activeRows.filter((row) => {
+    const dateText = cleanText(row.due_date);
+    if (!dateText) return false;
+    const due = new Date(dateText);
+    return !Number.isNaN(due.getTime()) && due <= sevenDays;
+  });
+  const averageScore = scorecards.length
+    ? scorecards.reduce((sum, row) => sum + Number(row.value_score || 0), 0) / scorecards.length
+    : 0;
+  return {
+    total_cases: rows.length,
+    open_active: activeRows.length,
+    critical: activeRows.filter((row) => row.severity === "critical").length,
+    due_soon: dueSoon.length,
+    collaborative: scorecards.filter((row) => row.tier === "collaborative").length,
+    strategic: scorecards.filter((row) => row.tier === "strategic").length,
+    tactical: scorecards.filter((row) => row.tier === "tactical").length,
+    watchlist: scorecards.filter((row) => row.tier === "watchlist").length,
+    average_value_score: Math.round(averageScore)
+  };
+}
+
+async function listVendorImprovementCases(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_email: string | null },
+  input: Record<string, unknown>
+) {
+  const limit = Math.min(Math.max(Number(input.limit || 1000) || 1000, 1), 1000);
+  const statusFilter = cleanText(input.status)?.toLowerCase() || "all";
+  const typeFilter = cleanText(input.case_type || input.type)?.toLowerCase() || "all";
+  const tierFilter = cleanText(input.tier)?.toLowerCase() || "all";
+  const search = cleanText(input.search)?.toLowerCase() || "";
+
+  let caseQuery = supabase
+    .from("vendor_improvement_cases")
+    .select("*, vendors(id,vendor_name,name,legal_name,domain,primary_email,base_stage,status)")
+    .eq("owner_email", user.owner_email)
+    .order("updated_at", { ascending: false })
+    .limit(limit);
+  if (input.vendor_id) caseQuery = caseQuery.eq("vendor_id", cleanText(input.vendor_id));
+  if (statusFilter !== "all") caseQuery = caseQuery.eq("status", normalizedVendorCiStatus(statusFilter));
+  if (typeFilter !== "all") caseQuery = caseQuery.eq("case_type", normalizedVendorCiCaseType(typeFilter));
+
+  const casesResult = await caseQuery;
+  if (casesResult.error) throw casesResult.error;
+
+  const scorecardsResult = await supabase
+    .from("vendor_value_scorecards")
+    .select("*, vendors(id,vendor_name,name,legal_name,domain,primary_email,base_stage,status)")
+    .eq("owner_email", user.owner_email)
+    .order("value_score", { ascending: false })
+    .limit(1000);
+  if (scorecardsResult.error) throw scorecardsResult.error;
+
+  const scorecards = (scorecardsResult.data || []).map(serializeVendorValueScorecard);
+  const scorecardByVendor = new Map(scorecards.map((row) => [cleanText(row.vendor_id) || "", row]));
+  const rows = (casesResult.data || [])
+    .map((row) => serializeVendorImprovementCase(row, scorecardByVendor))
+    .filter((row) => tierFilter === "all" || row.current_tier === tierFilter)
+    .filter((row) => vendorImprovementMatchesSearch(row, search));
+
+  return {
+    rows,
+    scorecards,
+    summary: summarizeVendorCi(rows, scorecards),
+    playbooks: vendorCiPlaybooks(),
+    limit
+  };
+}
+
+async function createVendorImprovementCase(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_user_id: string | null; owner_email: string | null },
+  input: Record<string, unknown>
+) {
+  const source = objectRecord(input.case || input);
+  const vendor = await requireOwnedVendorForCi(supabase, user, source.vendor_id);
+  const scorecard = await ensureVendorValueScorecard(supabase, user, vendor);
+  const title = cleanText(source.title);
+  if (!title) throw new Error("Improvement case title is required.");
+  const caseType = normalizedVendorCiCaseType(source.case_type || source.type);
+  const row = withOwner({
+    vendor_id: vendor.id,
+    title,
+    description: cleanText(source.description),
+    case_type: caseType,
+    severity: normalizedVendorCiSeverity(source.severity),
+    status: normalizedVendorCiStatus(source.status, "open"),
+    methodology: normalizedVendorCiMethod(source.methodology, caseType),
+    tier_at_open: normalizedVendorCiTier(source.tier_at_open || scorecard.tier, "tactical"),
+    target_tier: source.target_tier ? normalizedVendorCiTier(source.target_tier, "strategic") : null,
+    vendor_request: cleanText(source.vendor_request),
+    owner_notes: cleanText(source.owner_notes),
+    root_cause: cleanText(source.root_cause),
+    containment_action: cleanText(source.containment_action),
+    corrective_action: cleanText(source.corrective_action),
+    preventive_action: cleanText(source.preventive_action),
+    success_metric: cleanText(source.success_metric),
+    due_date: cleanText(source.due_date),
+    source: cleanText(source.source) || "manual",
+    source_ref: cleanText(source.source_ref),
+    metadata: objectRecord(source.metadata)
+  }, user);
+
+  const result = await supabase
+    .from("vendor_improvement_cases")
+    .insert(row)
+    .select("*, vendors(id,vendor_name,name,legal_name,domain,primary_email,base_stage,status)")
+    .single();
+  if (result.error) throw result.error;
+
+  const scorecardByVendor = new Map([[cleanText(scorecard.vendor_id) || "", scorecard]]);
+  await writeAuditLog(
+    supabase,
+    user,
+    "vendor_ci.create",
+    "vendor_improvement_cases",
+    result.data.id,
+    `Created vendor CI case for ${cleanText(vendor.vendor_name || vendor.domain) || "vendor"}`,
+    { vendor_id: vendor.id, case_type: caseType, severity: row.severity }
+  );
+  return { row: serializeVendorImprovementCase(result.data, scorecardByVendor) };
+}
+
+async function updateVendorImprovementCase(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_user_id: string | null; owner_email: string | null },
+  input: Record<string, unknown>
+) {
+  const id = cleanText(input.id || input.case_id);
+  if (!id) throw new Error("Improvement case id is required.");
+  const patch = objectRecord(input.patch || input);
+  const updatePatch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  if ("title" in patch) updatePatch.title = cleanText(patch.title);
+  if ("description" in patch) updatePatch.description = cleanText(patch.description);
+  if ("case_type" in patch || "type" in patch) {
+    const caseType = normalizedVendorCiCaseType(patch.case_type || patch.type);
+    updatePatch.case_type = caseType;
+    updatePatch.methodology = normalizedVendorCiMethod(patch.methodology, caseType);
+  }
+  if ("severity" in patch) updatePatch.severity = normalizedVendorCiSeverity(patch.severity);
+  if ("status" in patch) {
+    const status = normalizedVendorCiStatus(patch.status);
+    updatePatch.status = status;
+    updatePatch.closed_at = status === "resolved" ? new Date().toISOString() : null;
+  }
+  if ("methodology" in patch) {
+    const method = cleanText(patch.methodology)?.toLowerCase() || "dmaic";
+    if (!VENDOR_CI_METHODS.has(method)) throw new Error("Unsupported improvement methodology.");
+    updatePatch.methodology = method;
+  }
+  if ("target_tier" in patch) updatePatch.target_tier = patch.target_tier ? normalizedVendorCiTier(patch.target_tier) : null;
+  if ("vendor_request" in patch) updatePatch.vendor_request = cleanText(patch.vendor_request);
+  if ("owner_notes" in patch) updatePatch.owner_notes = cleanText(patch.owner_notes);
+  if ("root_cause" in patch) updatePatch.root_cause = cleanText(patch.root_cause);
+  if ("containment_action" in patch) updatePatch.containment_action = cleanText(patch.containment_action);
+  if ("corrective_action" in patch) updatePatch.corrective_action = cleanText(patch.corrective_action);
+  if ("preventive_action" in patch) updatePatch.preventive_action = cleanText(patch.preventive_action);
+  if ("success_metric" in patch) updatePatch.success_metric = cleanText(patch.success_metric);
+  if ("due_date" in patch) updatePatch.due_date = cleanText(patch.due_date);
+  if ("metadata" in patch) updatePatch.metadata = objectRecord(patch.metadata);
+
+  const result = await supabase
+    .from("vendor_improvement_cases")
+    .update(updatePatch)
+    .eq("id", id)
+    .eq("owner_email", user.owner_email)
+    .select("*, vendors(id,vendor_name,name,legal_name,domain,primary_email,base_stage,status)")
+    .single();
+  if (result.error) throw result.error;
+
+  const scorecards = await supabase
+    .from("vendor_value_scorecards")
+    .select("*")
+    .eq("owner_email", user.owner_email)
+    .eq("vendor_id", result.data.vendor_id)
+    .limit(1);
+  if (scorecards.error) throw scorecards.error;
+  const scorecardByVendor = new Map((scorecards.data || []).map((row) => [cleanText(row.vendor_id) || "", row as Record<string, unknown>]));
+
+  await writeAuditLog(
+    supabase,
+    user,
+    "vendor_ci.update",
+    "vendor_improvement_cases",
+    id,
+    `Updated vendor CI case ${id}`,
+    { status: result.data.status, severity: result.data.severity }
+  );
+  return { row: serializeVendorImprovementCase(result.data, scorecardByVendor) };
+}
+
+async function upsertVendorValueScorecard(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_user_id: string | null; owner_email: string | null },
+  input: Record<string, unknown>
+) {
+  const source = objectRecord(input.scorecard || input);
+  const vendor = await requireOwnedVendorForCi(supabase, user, source.vendor_id);
+  const valueScore = "value_score" in source ? numericScore(source.value_score) : numericScore(defaultScorecardForVendor(vendor).value_score);
+  const tier = source.tier ? normalizedVendorCiTier(source.tier) : tierFromValueScore(valueScore);
+  const row = withOwner({
+    vendor_id: vendor.id,
+    tier,
+    value_score: valueScore,
+    operational_score: numericScore(source.operational_score),
+    commercial_score: numericScore(source.commercial_score),
+    financial_score: numericScore(source.financial_score || source.commercial_score),
+    compliance_score: numericScore(source.compliance_score),
+    technology_score: numericScore(source.technology_score),
+    relationship_score: numericScore(source.relationship_score),
+    attributes: objectRecord(source.attributes),
+    notes: cleanText(source.notes),
+    last_scored_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  }, user);
+  const result = await supabase
+    .from("vendor_value_scorecards")
+    .upsert(row, { onConflict: "owner_email,vendor_id" })
+    .select("*, vendors(id,vendor_name,name,legal_name,domain,primary_email,base_stage,status)")
+    .single();
+  if (result.error) throw result.error;
+
+  await writeAuditLog(
+    supabase,
+    user,
+    "vendor_ci.scorecard_upsert",
+    "vendor_value_scorecards",
+    result.data.id,
+    `Updated vendor value scorecard for ${cleanText(vendor.vendor_name || vendor.domain) || "vendor"}`,
+    { vendor_id: vendor.id, tier, value_score: valueScore }
+  );
+  return { row: serializeVendorValueScorecard(result.data) };
+}
+
 function carrierProfileUrl(appOrigin: unknown, token: unknown) {
   const baseUrl = (cleanText(appOrigin) || Deno.env.get("RATEWARE_PUBLIC_APP_URL") || "https://rateware.vercel.app").replace(/\/$/, "");
   const requestToken = cleanText(token);
@@ -12747,6 +13238,22 @@ Deno.serve(async (request) => {
 
     if (body.action === "update_vendor_support_ticket") {
       return jsonResponse(await updateVendorSupportTicket(supabase, user, body));
+    }
+
+    if (body.action === "list_vendor_improvement_cases") {
+      return jsonResponse(await listVendorImprovementCases(supabase, user, body));
+    }
+
+    if (body.action === "create_vendor_improvement_case") {
+      return jsonResponse(await createVendorImprovementCase(supabase, user, body));
+    }
+
+    if (body.action === "update_vendor_improvement_case") {
+      return jsonResponse(await updateVendorImprovementCase(supabase, user, body));
+    }
+
+    if (body.action === "upsert_vendor_value_scorecard") {
+      return jsonResponse(await upsertVendorValueScorecard(supabase, user, body));
     }
 
     if (body.action === "get_saas_settings") {

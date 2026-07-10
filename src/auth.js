@@ -149,7 +149,8 @@ const SHELL_NAV_GROUPS = [
     items: [
       { id: "crm", code: "CM", label: "Carrier CRM", href: "./vendors.html" },
       { id: "rfx", code: "BR", label: "Bid Room", href: "./rfx-events.html" },
-      { id: "support", code: "VS", label: "Vendor Support", href: "./vendor-support.html" }
+      { id: "support", code: "VS", label: "Vendor Support", href: "./vendor-support.html" },
+      { id: "improvement", code: "CI", label: "Vendor CI", href: "./vendor-improvement.html" }
     ]
   },
   {
@@ -226,6 +227,15 @@ const PAGE_META = {
       { label: "Source", href: "./app.html" },
       { label: "Carrier CRM", href: "./vendors.html" },
       { label: "Vendor Support" }
+    ]
+  },
+  "vendor-improvement": {
+    title: "Vendor Continuous Improvement",
+    eyebrow: "Vendor relationship management",
+    crumbs: [
+      { label: "Source", href: "./app.html" },
+      { label: "Carrier CRM", href: "./vendors.html" },
+      { label: "Vendor CI" }
     ]
   },
   outreach: {

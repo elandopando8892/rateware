@@ -4660,6 +4660,280 @@ body.bid-editor-open {
   font-size: 0.68rem;
 }
 
+.vendor-ci-layout {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+
+.vendor-ci-metrics {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.vendor-ci-metrics article {
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #fff;
+  padding: 8px 10px;
+}
+
+.vendor-ci-metrics span,
+.vendor-ci-toolbar label,
+.vendor-ci-case-form label {
+  color: var(--muted);
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.vendor-ci-metrics strong {
+  display: block;
+  margin-top: 4px;
+  color: var(--ink);
+  font-size: 1.3rem;
+}
+
+.vendor-ci-tabs,
+.vendor-ci-toolbar,
+.vendor-ci-case-form .two-col,
+.ci-action-plan {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.vendor-ci-toolbar {
+  display: grid;
+  grid-template-columns: 130px 170px 130px minmax(240px, 1fr) auto minmax(180px, auto);
+  align-items: end;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.vendor-ci-toolbar label,
+.vendor-ci-case-form label {
+  display: grid;
+  gap: 3px;
+}
+
+.vendor-ci-toolbar input,
+.vendor-ci-toolbar select,
+.vendor-ci-case-form input,
+.vendor-ci-case-form select,
+.vendor-ci-case-form textarea,
+.vendor-ci-table input,
+.vendor-ci-table select {
+  min-height: 28px;
+  border: 1px solid #c9d5df;
+  border-radius: 5px;
+  background: #fff;
+  padding: 4px 7px;
+  color: var(--ink);
+  font: inherit;
+  text-transform: none;
+}
+
+.vendor-ci-grid {
+  display: grid;
+  grid-template-columns: minmax(300px, 360px) minmax(0, 1fr);
+  gap: 10px;
+}
+
+.vendor-ci-case-form {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+}
+
+.vendor-ci-case-form .two-col {
+  align-items: start;
+}
+
+.vendor-ci-case-form .two-col > label {
+  flex: 1;
+}
+
+.vendor-ci-table-wrap {
+  max-height: calc(100vh - 310px);
+}
+
+.vendor-ci-table {
+  min-width: 1120px;
+}
+
+.vendor-ci-table th,
+.vendor-ci-table td {
+  padding: 5px 7px;
+  vertical-align: top;
+}
+
+.vendor-ci-table td strong,
+.vendor-ci-table td small,
+.vendor-ci-table td span {
+  display: block;
+}
+
+.vendor-ci-table td small {
+  color: var(--muted);
+  font-size: 0.62rem;
+}
+
+.vendor-ci-table input[type="number"] {
+  width: 74px;
+  min-height: 24px;
+}
+
+.vendor-ci-table select {
+  min-height: 24px;
+  max-width: 135px;
+  font-size: 0.68rem;
+}
+
+.ci-action-plan {
+  flex-wrap: wrap;
+  justify-content: flex-start;
+}
+
+.ci-action-plan small {
+  flex: 1 1 100%;
+}
+
+.vendor-ci-value-curve {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.vendor-ci-tier-card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.vendor-ci-tier-card > div {
+  display: grid;
+  gap: 2px;
+  border-bottom: 1px solid var(--line);
+  padding: 8px 10px;
+}
+
+.vendor-ci-tier-card span,
+.vendor-ci-tier-card small {
+  color: var(--muted);
+  font-size: 0.62rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.vendor-ci-tier-card strong {
+  color: var(--ink);
+  font-size: 1.35rem;
+}
+
+.vendor-ci-tier-card ul {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.vendor-ci-tier-card li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border-top: 1px solid #eef3f6;
+  padding: 6px 10px;
+  font-size: 0.72rem;
+}
+
+.vendor-ci-tier-card li:first-child {
+  border-top: 0;
+}
+
+.vendor-ci-tier-card li strong {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 0.72rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vendor-ci-tier-card[data-tier="watchlist"] {
+  border-top: 3px solid #b91c1c;
+}
+
+.vendor-ci-tier-card[data-tier="tactical"] {
+  border-top: 3px solid #64748b;
+}
+
+.vendor-ci-tier-card[data-tier="strategic"] {
+  border-top: 3px solid #2563eb;
+}
+
+.vendor-ci-tier-card[data-tier="collaborative"] {
+  border-top: 3px solid #0f766e;
+}
+
+.vendor-ci-playbook-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.vendor-ci-playbook-card {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  padding: 10px;
+}
+
+.vendor-ci-playbook-card h3,
+.vendor-ci-playbook-card p,
+.vendor-ci-playbook-card ol {
+  margin: 0;
+}
+
+.vendor-ci-playbook-card h3 {
+  font-size: 0.86rem;
+}
+
+.vendor-ci-playbook-card p,
+.vendor-ci-playbook-card li,
+.vendor-ci-playbook-card small {
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+
+.vendor-ci-playbook-card ol {
+  display: grid;
+  gap: 4px;
+  padding-left: 18px;
+}
+
+@media (max-width: 1100px) {
+  .vendor-ci-grid,
+  .vendor-ci-value-curve,
+  .vendor-ci-playbook-grid,
+  .vendor-ci-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .vendor-ci-toolbar {
+    grid-template-columns: 1fr;
+  }
+}
+
 .vendor-profile-kpis,
 .vendor-profile-list {
   display: grid;

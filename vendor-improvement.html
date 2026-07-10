@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Rateware Vendor CI</title>
+    <link rel="stylesheet" href="./src/styles.css" />
+  </head>
+  <body>
+    <div class="shell-layout">
+      <aside class="side-nav" aria-label="Rateware modules">
+        <a class="brand-mark" href="./app.html">Rateware</a>
+        <nav class="nav-groups">
+          <section class="nav-group">
+            <p>Operate</p>
+            <a href="./app.html" data-nav-code="CC">Command Center</a>
+            <a href="./upload-center.html" data-nav-code="IM">Import</a>
+            <a href="./upload-history.html" data-nav-code="SF">Source Files</a>
+            <a href="./staging-review.html" data-nav-code="RQ">Review Queue</a>
+            <a href="./rateware.html" data-nav-code="RW">Rateware</a>
+          </section>
+          <section class="nav-group">
+            <p>Analyze</p>
+            <a href="./business-intelligence.html" data-nav-code="AN">Analyze</a>
+          </section>
+          <section class="nav-group">
+            <p>Source</p>
+            <a href="./vendors.html" data-nav-code="CM">Carrier CRM</a>
+            <a href="./rfx-events.html" data-nav-code="BR">Bid Room</a>
+            <a href="./vendor-support.html" data-nav-code="VS">Vendor Support</a>
+            <a aria-current="page" href="./vendor-improvement.html" data-nav-code="CI">Vendor CI</a>
+          </section>
+          <section class="nav-group">
+            <p>Admin</p>
+            <a href="./settings.html" data-nav-code="ST">Settings</a>
+            <a href="./interpretation-memory.html" data-nav-code="LR">Learning Rules</a>
+            <a href="./catalog-workbench.html" data-nav-code="CT">Catalog</a>
+          </section>
+        </nav>
+      </aside>
+
+      <div class="page-frame">
+        <header class="page-header">
+          <div>
+            <p class="eyebrow">Vendor relationship management</p>
+            <h1>Vendor Continuous Improvement</h1>
+            <nav class="module-crumbs" aria-label="Module context">
+              <a href="./app.html">Command Center</a>
+              <a href="./vendors.html">Carrier CRM</a>
+              <span>Vendor CI</span>
+            </nav>
+          </div>
+          <div class="page-header-actions">
+            <button id="refresh-vendor-ci" class="page-primary-action" type="button">Refresh</button>
+            <form id="auth-form" class="auth-strip">
+              <button id="auth-button" type="submit">Sign in with Kinde</button>
+              <button id="sign-out-button" type="button" class="secondary hidden">Sign out</button>
+              <p id="auth-status" role="status"></p>
+            </form>
+          </div>
+        </header>
+
+        <main class="vendor-ci-layout">
+          <section class="vendor-ci-metrics wide-section" aria-label="Vendor improvement metrics">
+            <article><span>Open CI cases</span><strong id="ci-open">0</strong></article>
+            <article><span>Critical</span><strong id="ci-critical">0</strong></article>
+            <article><span>Due soon</span><strong id="ci-due-soon">0</strong></article>
+            <article><span>Collaborative</span><strong id="ci-collaborative">0</strong></article>
+            <article><span>Avg value score</span><strong id="ci-average-score">0</strong></article>
+          </section>
+
+          <section class="workspace-panel wide-section">
+            <div class="split-heading">
+              <div>
+                <p class="eyebrow">Value curve workbench</p>
+                <h2>Move carriers from incidents to measurable improvement</h2>
+              </div>
+              <div class="vendor-ci-tabs" role="tablist" aria-label="Vendor CI views">
+                <button class="small-button" type="button" data-ci-tab="cases">Cases</button>
+                <button class="small-button secondary" type="button" data-ci-tab="curve">Value curve</button>
+                <button class="small-button secondary" type="button" data-ci-tab="playbooks">Playbooks</button>
+                <button class="small-button secondary" type="button" data-ci-tab="scorecards">Scorecards</button>
+              </div>
+            </div>
+
+            <div class="vendor-ci-toolbar" aria-label="Vendor improvement filters">
+              <label>
+                Status
+                <select id="ci-status-filter">
+                  <option value="all">All active</option>
+                  <option value="open">Open</option>
+                  <option value="define">Define</option>
+                  <option value="measure">Measure</option>
+                  <option value="analyze">Analyze</option>
+                  <option value="improve">Improve</option>
+                  <option value="control">Control</option>
+                  <option value="resolved">Resolved</option>
+                  <option value="archived">Archived</option>
+                </select>
+              </label>
+              <label>
+                Type
+                <select id="ci-type-filter">
+                  <option value="all">All types</option>
+                </select>
+              </label>
+              <label>
+                Tier
+                <select id="ci-tier-filter">
+                  <option value="all">All tiers</option>
+                  <option value="watchlist">Watchlist</option>
+                  <option value="tactical">Tactical</option>
+                  <option value="strategic">Strategic</option>
+                  <option value="collaborative">Collaborative</option>
+                </select>
+              </label>
+              <label class="wide-field">
+                Search
+                <input id="ci-search" placeholder="Vendor, case, root cause, corrective action" />
+              </label>
+              <button id="clear-ci-filters" class="secondary small-button" type="button">Clear</button>
+              <p id="ci-status-message" class="status-message" role="status"></p>
+            </div>
+          </section>
+
+          <section class="vendor-ci-grid wide-section" data-ci-view="cases">
+            <form id="ci-create-form" class="workspace-panel vendor-ci-case-form">
+              <div>
+                <p class="eyebrow">Create improvement case</p>
+                <h2>Open a vendor requirement</h2>
+              </div>
+              <label>
+                Vendor
+                <select id="ci-vendor-select" required>
+                  <option value="">Loading vendors...</option>
+                </select>
+              </label>
+              <label>
+                Case title
+                <input id="ci-title" required placeholder="e.g. Missing mirror account validation before dispatch" />
+              </label>
+              <div class="two-col">
+                <label>
+                  Type
+                  <select id="ci-case-type"></select>
+                </label>
+                <label>
+                  Severity
+                  <select id="ci-severity">
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                    <option value="critical">Critical</option>
+                    <option value="low">Low</option>
+                  </select>
+                </label>
+              </div>
+              <div class="two-col">
+                <label>
+                  Target tier
+                  <select id="ci-target-tier">
+                    <option value="strategic">Strategic</option>
+                    <option value="collaborative">Collaborative</option>
+                    <option value="tactical">Tactical</option>
+                  </select>
+                </label>
+                <label>
+                  Due date
+                  <input id="ci-due-date" type="date" />
+                </label>
+              </div>
+              <label>
+                Vendor request
+                <textarea id="ci-vendor-request" rows="3" placeholder="What do we need the carrier to resolve, update, prove, or improve?"></textarea>
+              </label>
+              <button class="page-primary-action" type="submit">Create CI case</button>
+            </form>
+
+            <section class="workspace-panel vendor-ci-case-list">
+              <div class="split-heading">
+                <div>
+                  <p class="eyebrow">DMAIC queue</p>
+                  <h2>Continuous improvement cases</h2>
+                </div>
+                <a class="secondary link-button" href="./vendor-support.html">Open Support Queue</a>
+              </div>
+              <div class="table-wrap vendor-ci-table-wrap">
+                <table class="vendor-ci-table">
+                  <thead>
+                    <tr>
+                      <th>Vendor</th>
+                      <th>Case</th>
+                      <th>Type</th>
+                      <th>Method</th>
+                      <th>Status</th>
+                      <th>Severity</th>
+                      <th>Due</th>
+                      <th>Action plan</th>
+                    </tr>
+                  </thead>
+                  <tbody id="ci-case-body">
+                    <tr><td colspan="8">Loading improvement cases...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          </section>
+
+          <section class="workspace-panel wide-section hidden" data-ci-view="curve">
+            <div class="split-heading">
+              <div>
+                <p class="eyebrow">Carrier value curve</p>
+                <h2>Tactical, strategic, collaborative development</h2>
+              </div>
+              <span class="status-pill neutral">Scorecards feed this curve</span>
+            </div>
+            <div id="ci-value-curve" class="vendor-ci-value-curve"></div>
+          </section>
+
+          <section class="workspace-panel wide-section hidden" data-ci-view="playbooks">
+            <div class="split-heading">
+              <div>
+                <p class="eyebrow">Six Sigma playbooks</p>
+                <h2>Recommended process by ticket type</h2>
+              </div>
+              <span class="status-pill neutral">AI proposes, user confirms</span>
+            </div>
+            <div id="ci-playbooks" class="vendor-ci-playbook-grid"></div>
+          </section>
+
+          <section class="workspace-panel wide-section hidden" data-ci-view="scorecards">
+            <div class="split-heading">
+              <div>
+                <p class="eyebrow">VRM scorecards</p>
+                <h2>Commercial, operational and relationship value</h2>
+              </div>
+              <span class="status-pill neutral">Editable scoring v1</span>
+            </div>
+            <div class="table-wrap vendor-ci-table-wrap">
+              <table class="vendor-ci-table">
+                <thead>
+                  <tr>
+                    <th>Vendor</th>
+                    <th>Tier</th>
+                    <th>Value</th>
+                    <th>Operational</th>
+                    <th>Commercial</th>
+                    <th>Compliance</th>
+                    <th>Technology</th>
+                    <th>Relationship</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody id="ci-scorecard-body">
+                  <tr><td colspan="9">Loading scorecards...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </main>
+      </div>
+    </div>
+
+    <script type="module" src="./src/vendor-improvement.js"></script>
+  </body>
+</html>
