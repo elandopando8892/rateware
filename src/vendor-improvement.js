@@ -4,6 +4,8 @@ import { fetchVendors } from "./vendor-service.js";
 import {
   createVendorImprovementCase,
   fetchVendorImprovementCases,
+  processVendorCiReminders,
+  submitVendorImprovementCase,
   updateVendorImprovementCase,
   upsertVendorValueScorecard
 } from "./vendor-improvement-service.js";
@@ -40,6 +42,7 @@ const TIERS = [
 ];
 
 const refreshButton = document.querySelector("#refresh-vendor-ci");
+const runRemindersButton = document.querySelector("#run-vendor-ci-reminders");
 const statusFilter = document.querySelector("#ci-status-filter");
 const typeFilter = document.querySelector("#ci-type-filter");
 const tierFilter = document.querySelector("#ci-tier-filter");
@@ -100,6 +103,13 @@ function formatDate(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "-";
   return date.toLocaleDateString();
+}
+
+function formatDateTime(value) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return date.toLocaleString();
 }
 
 function scoreValue(value) {
@@ -310,6 +320,23 @@ function caseTone(row) {
   return "neutral";
 }
 
+function submissionTone(row = {}) {
+  if (row.submission_status === "sent") return "success";
+  if (row.submission_status === "failed") return "danger";
+  return "muted";
+}
+
+function submissionLabel(row = {}) {
+  if (row.submission_status === "sent") return `Submitted to ${row.submitted_to || "carrier"}`;
+  if (row.submission_status === "failed") return "Email failed";
+  return "Not submitted";
+}
+
+function reminderLabel(row = {}) {
+  if (!row.reminders_enabled || !row.next_reminder_at) return "Reminder off";
+  return `Next reminder ${formatDateTime(row.next_reminder_at)}`;
+}
+
 function renderCases() {
   if (!caseBody) return;
   if (!caseRows.length) {
@@ -359,7 +386,11 @@ function renderCases() {
           <small>Root cause: ${escapeHtml(row.root_cause || "pending")}</small>
           <small>Corrective: ${escapeHtml(row.corrective_action || "pending")}</small>
           <small>Metric: ${escapeHtml(row.success_metric || "pending")}</small>
-          <button class="small-button" type="button" data-ci-case-action="advance">Advance</button>
+          <span class="status-pill ${submissionTone(row)}">${escapeHtml(submissionLabel(row))}</span>
+          <small>${escapeHtml(reminderLabel(row))}</small>
+          ${row.last_submission_error ? `<small class="ci-submission-error">${escapeHtml(row.last_submission_error)}</small>` : ""}
+          <button class="small-button" type="button" data-ci-case-action="submit" ${["resolved", "archived"].includes(row.status) ? "disabled" : ""}>${row.submitted_at ? "Resubmit" : "Submit to carrier"}</button>
+          <button class="small-button secondary" type="button" data-ci-case-action="advance">Advance</button>
           <button class="small-button secondary" type="button" data-ci-case-action="resolved">Resolve</button>
           <a class="secondary small-button" href="./vendors.html?vendor_id=${encodeURIComponent(row.vendor_id || "")}">Vendor</a>
         </div>
@@ -649,6 +680,42 @@ async function updateCase(id, patch) {
   }
 }
 
+async function submitCase(id) {
+  if (!id) return;
+  setStatus("Submitting requirement by email and scheduling reminders...");
+  try {
+    await requirePrivatePage();
+    const result = await submitVendorImprovementCase(id, {
+      reminders_enabled: true,
+      reminder_interval_days: 3
+    });
+    if (result?.row) {
+      caseRows = caseRows.map((item) => (item.id === id ? { ...item, ...result.row } : item));
+      renderCases();
+    }
+    const nextReminder = result?.next_reminder_at ? ` Next reminder: ${formatDateTime(result.next_reminder_at)}.` : "";
+    setStatus(`Improvement case submitted to carrier.${nextReminder}`, "success");
+  } catch (error) {
+    setStatus(error, "error");
+    await loadImprovementCases();
+  }
+}
+
+async function runDueReminders() {
+  setStatus("Sending due Vendor CI reminders...");
+  if (runRemindersButton) runRemindersButton.disabled = true;
+  try {
+    await requirePrivatePage();
+    const result = await processVendorCiReminders({ limit: 50 });
+    await loadImprovementCases();
+    setStatus(`Vendor CI reminders processed. Sent: ${result?.sent || 0}. Failed: ${result?.failed || 0}.`, result?.failed ? "warning" : "success");
+  } catch (error) {
+    setStatus(error, "error");
+  } finally {
+    if (runRemindersButton) runRemindersButton.disabled = false;
+  }
+}
+
 async function saveScorecard(rowElement) {
   const vendorId = rowElement?.dataset.ciScorecardVendorId;
   if (!vendorId) return;
@@ -673,6 +740,7 @@ function initOptions() {
 }
 
 refreshButton?.addEventListener("click", loadImprovementCases);
+runRemindersButton?.addEventListener("click", runDueReminders);
 clearButton?.addEventListener("click", () => {
   statusFilter.value = "all";
   typeFilter.value = "all";
@@ -741,9 +809,14 @@ caseBody?.addEventListener("click", async (event) => {
   const button = event.target.closest("[data-ci-case-action]");
   if (!button) return;
   const row = button.closest("[data-ci-case-id]");
-  const current = caseRows.find((item) => item.id === row?.dataset.ciCaseId);
+  const caseId = row?.dataset.ciCaseId;
+  if (button.dataset.ciCaseAction === "submit") {
+    await submitCase(caseId);
+    return;
+  }
+  const current = caseRows.find((item) => item.id === caseId);
   const targetStatus = button.dataset.ciCaseAction === "advance" ? nextStatus(current?.status) : button.dataset.ciCaseAction;
-  await updateCase(row?.dataset.ciCaseId, { status: targetStatus });
+  await updateCase(caseId, { status: targetStatus });
 });
 caseBody?.addEventListener("change", async (event) => {
   const input = event.target.closest("[data-ci-case-field]");

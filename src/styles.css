@@ -4896,6 +4896,15 @@ body.bid-editor-open {
   flex: 1 1 100%;
 }
 
+.ci-action-plan .status-pill {
+  display: inline-flex;
+}
+
+.ci-submission-error {
+  color: #b91c1c !important;
+  font-weight: 700;
+}
+
 .vendor-ci-value-curve {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));

@@ -9179,6 +9179,7 @@ function serializeVendorImprovementCase(row: Record<string, unknown>, scorecardB
   const vendor = relationRecord(row.vendors);
   const vendorId = cleanText(row.vendor_id) || cleanText(vendor.id) || "";
   const scorecard = scorecardByVendor.get(vendorId);
+  const metadata = objectRecord(row.metadata);
   return {
     ...row,
     vendor_name: cleanText(vendor.vendor_name || vendor.name || vendor.legal_name || vendor.domain),
@@ -9186,7 +9187,15 @@ function serializeVendorImprovementCase(row: Record<string, unknown>, scorecardB
     vendor_email: cleanText(vendor.primary_email),
     current_tier: cleanText(scorecard?.tier || row.tier_at_open || "tactical"),
     value_score: numericScore(scorecard?.value_score),
-    next_step: vendorCiNextStep(row)
+    next_step: vendorCiNextStep(row),
+    submitted_at: cleanText(metadata.submitted_at),
+    submitted_to: cleanText(metadata.submitted_to),
+    submission_status: cleanText(metadata.submission_status),
+    next_reminder_at: cleanText(metadata.next_reminder_at),
+    reminders_enabled: cleanBoolean(metadata.reminders_enabled),
+    reminder_interval_days: Number(metadata.reminder_interval_days || 0) || null,
+    reminder_count: Number(metadata.reminder_count || 0) || 0,
+    last_submission_error: cleanText(metadata.last_submission_error)
   };
 }
 
@@ -9428,6 +9437,404 @@ async function updateVendorImprovementCase(
     { status: result.data.status, severity: result.data.severity }
   );
   return { row: serializeVendorImprovementCase(result.data, scorecardByVendor) };
+}
+
+function vendorCiEmailSubject(row: Record<string, unknown>, vendor: Record<string, unknown>) {
+  const title = cleanText(row.title) || "Continuous improvement request";
+  const vendorName = vendorCiVendorName(vendor);
+  return `Action required: ${title} - ${vendorName}`;
+}
+
+function vendorCiCaseLabel(row: Record<string, unknown>) {
+  const caseType = cleanText(row.case_type)?.replace(/_/g, " ") || "improvement";
+  const method = cleanText(row.methodology)?.toUpperCase() || "DMAIC";
+  return `${method} / ${caseType}`;
+}
+
+function vendorCiEmailText(row: Record<string, unknown>, vendor: Record<string, unknown>, nextReminderAt: string | null) {
+  const vendorName = vendorCiVendorName(vendor);
+  return [
+    `Hello ${vendorName},`,
+    "",
+    "MARKSMAN is opening a Vendor Continuous Improvement requirement for your team.",
+    "",
+    `Case: ${cleanText(row.title) || "Continuous improvement request"}`,
+    `Process: ${vendorCiCaseLabel(row)}`,
+    `Severity: ${cleanText(row.severity) || "medium"}`,
+    `Due date: ${cleanText(row.due_date) || "to be confirmed"}`,
+    "",
+    "Request:",
+    cleanText(row.vendor_request || row.description) || "Please review the requirement and confirm corrective actions, owner, target date, and evidence.",
+    "",
+    cleanText(row.success_metric) ? `Success metric: ${cleanText(row.success_metric)}` : null,
+    cleanText(row.corrective_action) ? `Corrective action expected: ${cleanText(row.corrective_action)}` : null,
+    nextReminderAt ? `Automatic reminder scheduled: ${nextReminderAt}` : null,
+    "",
+    "Please reply to this email with your action plan, evidence, and expected completion date.",
+    "",
+    "Thank you,",
+    "MARKSMAN Procurement"
+  ].filter(Boolean).join("\n");
+}
+
+function vendorCiEmailHtml(row: Record<string, unknown>, vendor: Record<string, unknown>, nextReminderAt: string | null) {
+  const escape = (value: unknown) => String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+  const request = cleanText(row.vendor_request || row.description) || "Please review the requirement and confirm corrective actions, owner, target date, and evidence.";
+  const successMetric = cleanText(row.success_metric);
+  const corrective = cleanText(row.corrective_action);
+  return `
+    <div style="font-family:Arial,sans-serif;color:#17212b;font-size:14px;line-height:1.45">
+      <p>Hello ${escape(vendorCiVendorName(vendor))},</p>
+      <p>MARKSMAN is opening a <strong>Vendor Continuous Improvement</strong> requirement for your team.</p>
+      <table style="border-collapse:collapse;width:100%;max-width:720px;margin:14px 0">
+        <tr><td style="border:1px solid #d8e1ea;padding:8px;font-weight:700;background:#f5f8fb">Case</td><td style="border:1px solid #d8e1ea;padding:8px">${escape(cleanText(row.title) || "Continuous improvement request")}</td></tr>
+        <tr><td style="border:1px solid #d8e1ea;padding:8px;font-weight:700;background:#f5f8fb">Process</td><td style="border:1px solid #d8e1ea;padding:8px">${escape(vendorCiCaseLabel(row))}</td></tr>
+        <tr><td style="border:1px solid #d8e1ea;padding:8px;font-weight:700;background:#f5f8fb">Severity</td><td style="border:1px solid #d8e1ea;padding:8px">${escape(cleanText(row.severity) || "medium")}</td></tr>
+        <tr><td style="border:1px solid #d8e1ea;padding:8px;font-weight:700;background:#f5f8fb">Due date</td><td style="border:1px solid #d8e1ea;padding:8px">${escape(cleanText(row.due_date) || "to be confirmed")}</td></tr>
+        <tr><td style="border:1px solid #d8e1ea;padding:8px;font-weight:700;background:#f5f8fb">Request</td><td style="border:1px solid #d8e1ea;padding:8px">${escape(request)}</td></tr>
+        ${successMetric ? `<tr><td style="border:1px solid #d8e1ea;padding:8px;font-weight:700;background:#f5f8fb">Success metric</td><td style="border:1px solid #d8e1ea;padding:8px">${escape(successMetric)}</td></tr>` : ""}
+        ${corrective ? `<tr><td style="border:1px solid #d8e1ea;padding:8px;font-weight:700;background:#f5f8fb">Corrective action</td><td style="border:1px solid #d8e1ea;padding:8px">${escape(corrective)}</td></tr>` : ""}
+        ${nextReminderAt ? `<tr><td style="border:1px solid #d8e1ea;padding:8px;font-weight:700;background:#f5f8fb">Reminder</td><td style="border:1px solid #d8e1ea;padding:8px">Automatic reminder scheduled: ${escape(nextReminderAt)}</td></tr>` : ""}
+      </table>
+      <p>Please reply to this email with your action plan, evidence, and expected completion date.</p>
+      <p>Thank you,<br/>MARKSMAN Procurement</p>
+    </div>
+  `;
+}
+
+function vendorCiNextReminderAt(now: Date, input: Record<string, unknown>) {
+  if (cleanOptionalBoolean(input.reminders_enabled) === false) return null;
+  const interval = Math.max(1, Math.min(Number(input.reminder_interval_days) || 3, 30));
+  return new Date(now.getTime() + interval * 24 * 60 * 60 * 1000).toISOString();
+}
+
+function vendorCiReminderEmailText(row: Record<string, unknown>, vendor: Record<string, unknown>, reminderCount: number) {
+  const vendorName = vendorCiVendorName(vendor);
+  return [
+    `Hello ${vendorName},`,
+    "",
+    `This is reminder #${reminderCount} for the Vendor Continuous Improvement requirement below.`,
+    "",
+    `Case: ${cleanText(row.title) || "Continuous improvement request"}`,
+    `Process: ${vendorCiCaseLabel(row)}`,
+    `Severity: ${cleanText(row.severity) || "medium"}`,
+    `Due date: ${cleanText(row.due_date) || "to be confirmed"}`,
+    "",
+    "Pending response:",
+    cleanText(row.vendor_request || row.description) || "Please send your action plan, evidence, and expected completion date.",
+    "",
+    "Please reply to this email with the current status or corrective action plan.",
+    "",
+    "Thank you,",
+    "MARKSMAN Procurement"
+  ].filter(Boolean).join("\n");
+}
+
+function vendorCiReminderEmailHtml(row: Record<string, unknown>, vendor: Record<string, unknown>, reminderCount: number) {
+  const escape = (value: unknown) => String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+  const request = cleanText(row.vendor_request || row.description) || "Please send your action plan, evidence, and expected completion date.";
+  return `
+    <div style="font-family:Arial,sans-serif;color:#17212b;font-size:14px;line-height:1.45">
+      <p>Hello ${escape(vendorCiVendorName(vendor))},</p>
+      <p>This is reminder <strong>#${reminderCount}</strong> for the Vendor Continuous Improvement requirement below.</p>
+      <table style="border-collapse:collapse;width:100%;max-width:720px;margin:14px 0">
+        <tr><td style="border:1px solid #d8e1ea;padding:8px;font-weight:700;background:#f5f8fb">Case</td><td style="border:1px solid #d8e1ea;padding:8px">${escape(cleanText(row.title) || "Continuous improvement request")}</td></tr>
+        <tr><td style="border:1px solid #d8e1ea;padding:8px;font-weight:700;background:#f5f8fb">Process</td><td style="border:1px solid #d8e1ea;padding:8px">${escape(vendorCiCaseLabel(row))}</td></tr>
+        <tr><td style="border:1px solid #d8e1ea;padding:8px;font-weight:700;background:#f5f8fb">Severity</td><td style="border:1px solid #d8e1ea;padding:8px">${escape(cleanText(row.severity) || "medium")}</td></tr>
+        <tr><td style="border:1px solid #d8e1ea;padding:8px;font-weight:700;background:#f5f8fb">Due date</td><td style="border:1px solid #d8e1ea;padding:8px">${escape(cleanText(row.due_date) || "to be confirmed")}</td></tr>
+        <tr><td style="border:1px solid #d8e1ea;padding:8px;font-weight:700;background:#f5f8fb">Pending response</td><td style="border:1px solid #d8e1ea;padding:8px">${escape(request)}</td></tr>
+      </table>
+      <p>Please reply to this email with the current status or corrective action plan.</p>
+      <p>Thank you,<br/>MARKSMAN Procurement</p>
+    </div>
+  `;
+}
+
+async function sendVendorCiGmail(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_email: string | null },
+  message: Record<string, unknown>
+) {
+  const accessToken = await gmailAccessToken(supabase, user, GMAIL_ALLOWED_SENDER);
+  const response = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ raw: gmailRawMessage(message, GMAIL_ALLOWED_SENDER) })
+  });
+  const payload = await response.json().catch(() => ({})) as Record<string, any>;
+  if (!response.ok) {
+    const reason = cleanText(payload?.error?.message) || cleanText(payload?.error_description) || `Gmail send failed (${response.status}).`;
+    throw new Error(reason);
+  }
+  return payload;
+}
+
+async function submitVendorImprovementCase(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_user_id: string | null; owner_email: string | null },
+  input: Record<string, unknown>
+) {
+  const id = cleanText(input.id || input.case_id);
+  if (!id) throw new Error("Improvement case id is required.");
+  const current = await supabase
+    .from("vendor_improvement_cases")
+    .select("*, vendors(id,vendor_name,name,legal_name,domain,primary_email,secondary_emails,whatsapp_phone,base_stage,status)")
+    .eq("id", id)
+    .eq("owner_email", user.owner_email)
+    .single();
+  if (current.error) throw current.error;
+
+  const row = current.data as Record<string, unknown>;
+  const vendor = relationRecord(row.vendors);
+  const suppressedEmails = await suppressedEmailSet(supabase, user, vendorContactEmailCandidates(vendor));
+  const recipientEmail = (cleanText(input.recipient_email) || firstSendableVendorEmail(vendor, suppressedEmails)).toLowerCase();
+  if (!recipientEmail) throw new Error("Vendor has no sendable email. Add or fix the carrier email before submitting this case.");
+  if (suppressedEmails.has(recipientEmail)) {
+    throw new Error("Selected vendor email is blocked because a delivery failure was detected.");
+  }
+
+  const now = new Date();
+  const nowIso = now.toISOString();
+  const nextReminderAt = vendorCiNextReminderAt(now, input);
+  const reminderIntervalDays = nextReminderAt ? Math.max(1, Math.min(Number(input.reminder_interval_days) || 3, 30)) : null;
+  const subject = vendorCiEmailSubject(row, vendor);
+  const textBody = vendorCiEmailText(row, vendor, nextReminderAt);
+  const htmlBody = vendorCiEmailHtml(row, vendor, nextReminderAt);
+  const message = { recipient_email: recipientEmail, subject, text_body: textBody, html_body: htmlBody };
+  const metadata = objectRecord(row.metadata);
+  const baseMetadata = {
+    ...metadata,
+    submitted_at: nowIso,
+    submitted_to: recipientEmail,
+    submitted_by: user.owner_email,
+    reminders_enabled: Boolean(nextReminderAt),
+    next_reminder_at: nextReminderAt,
+    reminder_interval_days: reminderIntervalDays,
+    reminder_count: Number(metadata.reminder_count || 0) || 0,
+    last_reminder_at: cleanText(metadata.last_reminder_at) || null,
+    email_subject: subject
+  };
+
+  let payload: Record<string, any>;
+  try {
+    payload = await sendVendorCiGmail(supabase, user, message);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    const update = await supabase
+      .from("vendor_improvement_cases")
+      .update({
+        metadata: {
+          ...baseMetadata,
+          submission_status: "failed",
+          last_submission_error: reason
+        },
+        updated_at: nowIso
+      })
+      .eq("id", id)
+      .eq("owner_email", user.owner_email)
+      .select("*, vendors(id,vendor_name,name,legal_name,domain,primary_email,base_stage,status)")
+      .single();
+    if (update.error) throw update.error;
+
+    const history = await supabase.from("contact_history").insert(withOwner({
+      vendor_id: row.vendor_id,
+      channel: "email",
+      direction: "outbound",
+      status: "vendor_ci_failed",
+      subject,
+      body_preview: reason,
+      occurred_at: nowIso,
+      metadata: {
+        source: "vendor_ci",
+        vendor_improvement_case_id: id,
+        case_type: row.case_type,
+        severity: row.severity,
+        sender_email: GMAIL_ALLOWED_SENDER,
+        error: reason
+      }
+    }, user));
+    if (history.error) throw history.error;
+    throw new Error(`Vendor CI case could not be submitted by email: ${reason}`);
+  }
+
+  const update = await supabase
+    .from("vendor_improvement_cases")
+    .update({
+      status: cleanText(row.status) === "open" ? "define" : row.status,
+      metadata: {
+        ...baseMetadata,
+        submission_status: "sent",
+        last_submission_error: null,
+        provider_message_id: cleanText(payload.id),
+        gmail_thread_id: cleanText(payload.threadId)
+      },
+      updated_at: nowIso
+    })
+    .eq("id", id)
+    .eq("owner_email", user.owner_email)
+    .select("*, vendors(id,vendor_name,name,legal_name,domain,primary_email,base_stage,status)")
+    .single();
+  if (update.error) throw update.error;
+
+  const history = await supabase.from("contact_history").insert(withOwner({
+    vendor_id: row.vendor_id,
+    channel: "email",
+    direction: "outbound",
+    status: "vendor_ci_sent",
+    subject,
+    body_preview: contactPreview(textBody),
+    occurred_at: nowIso,
+    metadata: {
+      source: "vendor_ci",
+      vendor_improvement_case_id: id,
+      case_type: row.case_type,
+      severity: row.severity,
+      reminders_enabled: Boolean(nextReminderAt),
+      next_reminder_at: nextReminderAt,
+      sent_from: "gmail_api",
+      sender_email: GMAIL_ALLOWED_SENDER,
+      provider_message_id: cleanText(payload.id),
+      gmail_thread_id: cleanText(payload.threadId)
+    }
+  }, user));
+  if (history.error) throw history.error;
+
+  await writeAuditLog(
+    supabase,
+    user,
+    "vendor_ci.submit",
+    "vendor_improvement_cases",
+    id,
+    `Submitted vendor CI case to ${recipientEmail}`,
+    { vendor_id: row.vendor_id, next_reminder_at: nextReminderAt }
+  );
+
+  return { row: serializeVendorImprovementCase(update.data), sent: true, next_reminder_at: nextReminderAt };}
+async function processVendorImprovementReminders(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_user_id: string | null; owner_email: string | null },
+  input: Record<string, unknown>
+) {
+  const limit = Math.max(1, Math.min(Number(input.limit) || 25, 100));
+  const now = new Date();
+  const nowIso = now.toISOString();
+  const dueCases = await supabase
+    .from("vendor_improvement_cases")
+    .select("*, vendors(id,vendor_name,name,legal_name,domain,primary_email,secondary_emails,whatsapp_phone,base_stage,status)")
+    .eq("owner_email", user.owner_email)
+    .in("status", ["open", "define", "measure", "analyze", "improve", "control"])
+    .eq("metadata->>reminders_enabled", "true")
+    .lte("metadata->>next_reminder_at", nowIso)
+    .order("updated_at", { ascending: true })
+    .limit(limit);
+  if (dueCases.error) throw dueCases.error;
+
+  const results: Array<Record<string, unknown>> = [];
+  for (const row of dueCases.data || []) {
+    const caseRow = row as Record<string, unknown>;
+    const vendor = relationRecord(caseRow.vendors);
+    const metadata = objectRecord(caseRow.metadata);
+    const reminderCount = (Number(metadata.reminder_count || 0) || 0) + 1;
+    const interval = Math.max(1, Math.min(Number(metadata.reminder_interval_days || input.reminder_interval_days) || 3, 30));
+    const nextReminderAt = new Date(now.getTime() + interval * 24 * 60 * 60 * 1000).toISOString();
+    const suppressedEmails = await suppressedEmailSet(supabase, user, vendorContactEmailCandidates(vendor));
+    const recipientEmail = (cleanText(metadata.submitted_to) || firstSendableVendorEmail(vendor, suppressedEmails)).toLowerCase();
+    const subject = `Reminder ${reminderCount}: ${vendorCiEmailSubject(caseRow, vendor)}`;
+    let emailSent = false;
+    let sentPayload: Record<string, any> | null = null;
+
+    try {
+      if (!recipientEmail) throw new Error("Vendor has no sendable email.");
+      if (suppressedEmails.has(recipientEmail)) throw new Error("Vendor email is blocked because a delivery failure was detected.");
+      const textBody = vendorCiReminderEmailText(caseRow, vendor, reminderCount);
+      const htmlBody = vendorCiReminderEmailHtml(caseRow, vendor, reminderCount);
+      const payload = await sendVendorCiGmail(supabase, user, { recipient_email: recipientEmail, subject, text_body: textBody, html_body: htmlBody });
+      emailSent = true;
+      sentPayload = payload;
+      const update = await supabase
+        .from("vendor_improvement_cases")
+        .update({
+          metadata: {
+            ...metadata,
+            reminder_count: reminderCount,
+            last_reminder_at: nowIso,
+            next_reminder_at: nextReminderAt,
+            last_reminder_to: recipientEmail,
+            last_reminder_error: null,
+            last_reminder_provider_message_id: cleanText(payload.id),
+            last_reminder_gmail_thread_id: cleanText(payload.threadId)
+          },
+          updated_at: nowIso
+        })
+        .eq("id", caseRow.id)
+        .eq("owner_email", user.owner_email);
+      if (update.error) throw update.error;
+
+      const history = await supabase.from("contact_history").insert(withOwner({
+        vendor_id: caseRow.vendor_id,
+        channel: "email",
+        direction: "outbound",
+        status: "vendor_ci_reminder_sent",
+        subject,
+        body_preview: contactPreview(textBody),
+        occurred_at: nowIso,
+        metadata: {
+          source: "vendor_ci",
+          vendor_improvement_case_id: caseRow.id,
+          reminder_count: reminderCount,
+          next_reminder_at: nextReminderAt,
+          sender_email: GMAIL_ALLOWED_SENDER,
+          provider_message_id: cleanText(payload.id),
+          gmail_thread_id: cleanText(payload.threadId)
+        }
+      }, user));
+      if (history.error) throw history.error;
+      results.push({ id: caseRow.id, status: "sent", next_reminder_at: nextReminderAt });
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      const failureMetadata = emailSent ? {
+        ...metadata,
+        reminder_count: reminderCount,
+        last_reminder_at: nowIso,
+        next_reminder_at: nextReminderAt,
+        last_reminder_to: recipientEmail,
+        last_reminder_error: reason,
+        last_reminder_provider_message_id: cleanText(sentPayload?.id),
+        last_reminder_gmail_thread_id: cleanText(sentPayload?.threadId)
+      } : {
+        ...metadata,
+        last_reminder_error: reason,
+        last_reminder_failed_at: nowIso
+      };
+      await supabase
+        .from("vendor_improvement_cases")
+        .update({
+          metadata: failureMetadata,
+          updated_at: nowIso
+        })
+        .eq("id", caseRow.id)
+        .eq("owner_email", user.owner_email);
+      results.push({ id: caseRow.id, status: "failed", error: reason });
+    }
+  }
+
+  return {
+    processed: results.length,
+    sent: results.filter((item) => item.status === "sent").length,
+    failed: results.filter((item) => item.status === "failed").length,
+    rows: results
+  };
 }
 
 async function upsertVendorValueScorecard(
@@ -13669,6 +14076,14 @@ Deno.serve(async (request) => {
 
     if (body.action === "update_vendor_improvement_case") {
       return jsonResponse(await updateVendorImprovementCase(supabase, user, body));
+    }
+
+    if (body.action === "submit_vendor_improvement_case") {
+      return jsonResponse(await submitVendorImprovementCase(supabase, user, body));
+    }
+
+    if (body.action === "process_vendor_ci_reminders") {
+      return jsonResponse(await processVendorImprovementReminders(supabase, user, body));
     }
 
     if (body.action === "upsert_vendor_value_scorecard") {

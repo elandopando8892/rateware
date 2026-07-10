@@ -887,6 +887,13 @@ assert.match(vendorContinuousImprovementMigration, /vendor_value_scorecards/, "V
 assert.match(vendorContinuousImprovementMigration, /vendor_improvement_cases_owner_status_idx/, "Vendor CI cases should have owner/status index");
 assert.match(apiSource, /list_vendor_improvement_cases/, "Rateware API should expose Vendor CI listing");
 assert.match(apiSource, /create_vendor_improvement_case/, "Rateware API should expose Vendor CI case creation");
+assert.match(apiSource, /submit_vendor_improvement_case/, "Rateware API should expose Vendor CI email submission");
+assert.match(apiSource, /process_vendor_ci_reminders/, "Rateware API should process automatic Vendor CI reminders");
+assert.match(apiSource, /vendor_ci_sent/, "Vendor CI submission should write contact history touchpoints");
+assert.match(apiSource, /vendor_ci_reminder_sent/, "Vendor CI reminders should write contact history touchpoints");
+assert.match(apiSource, /next_reminder_at/, "Vendor CI submission should schedule reminder metadata");
+assert.match(apiSource, /sendVendorCiGmail/, "Vendor CI submission and reminders should use a shared Gmail sender");
+assert.match(apiSource, /gmailRawMessage\(message, GMAIL_ALLOWED_SENDER\)/, "Vendor CI submission should send through the approved Gmail sender");
 assert.match(apiSource, /upsert_vendor_value_scorecard/, "Rateware API should expose Vendor CI scorecard upsert");
 assert.match(apiSource, /VENDOR_CI_CASE_TYPES/, "Vendor CI API should validate improvement case types");
 assert.match(apiSource, /vendorCiPlaybooks/, "Vendor CI API should provide process playbooks by case type");
@@ -897,6 +904,7 @@ assert.match(vendorImprovementHtml, /Vendor Continuous Improvement/, "Vendor CI 
 assert.match(vendorImprovementHtml, /ci-case-body/, "Vendor CI module should render the case queue");
 assert.match(vendorImprovementHtml, /ci-value-curve/, "Vendor CI module should render the carrier value curve");
 assert.match(vendorImprovementHtml, /ci-vendor-search/, "Vendor CI should use a CRM search picker instead of a static vendor dropdown");
+assert.match(vendorImprovementHtml, /run-vendor-ci-reminders/, "Vendor CI should expose a due reminder action");
 assert.match(vendorImprovementHtml, /CRM \+ Rateware \+ Bid Room \+ Support signals/, "Vendor CI value curve should explain its multi-source carrier signals");
 assert.match(vendorImprovementSource, /fetchVendorImprovementCases/, "Vendor CI UI should fetch cases from the API");
 assert.match(vendorImprovementSource, /createVendorImprovementCase/, "Vendor CI UI should create improvement cases");
@@ -906,6 +914,10 @@ assert.match(vendorImprovementSource, /function scorecardSignals/, "Vendor CI va
 assert.match(vendorImprovementSource, /function applyPlaybookToCaseForm/, "Vendor CI playbooks should prefill an improvement case");
 assert.match(vendorImprovementSource, /data-ci-playbook-action="use"/, "Vendor CI playbooks should expose a create-case action");
 assert.match(vendorImprovementSource, /data-ci-playbook-action="filter"/, "Vendor CI playbooks should filter existing cases by playbook type");
+assert.match(vendorImprovementSource, /data-ci-case-action="submit"/, "Vendor CI cases should expose a submit-to-carrier action");
+assert.match(vendorImprovementSource, /submitVendorImprovementCase/, "Vendor CI UI should submit cases by email");
+assert.match(vendorImprovementSource, /processVendorCiReminders/, "Vendor CI UI should run due reminders on demand");
+assert.match(vendorImprovementSource, /reminder_interval_days: 3/, "Vendor CI submit action should schedule automatic reminders");
 assert.match(vendorImprovementSource, /source: activePlaybook \? "playbook" : "manual"/, "Vendor CI cases should remember when they came from a playbook");
 assert.match(vendorImprovementSource, /fetchVendors\(\{ limit: CRM_VENDOR_SEARCH_LIMIT, offset: 0, view: "all", lightweight: true, search: term \}\)/, "Vendor CI search should query the full CRM, not a preloaded procurement-only list");
 assert.match(vendorImprovementSource, /let vendorSearchSequence = 0;/, "Vendor CI vendor search should ignore stale CRM responses");
@@ -919,6 +931,8 @@ assert.match(apiSource, /\.from\("contact_history"\)/, "Vendor CI value curve sh
 assert.match(apiSource, /\.from\("bid_room_chat_messages"\)/, "Vendor CI value curve should include carrier chat participation signals");
 assert.match(vendorImprovementServiceSource, /list_vendor_improvement_cases/, "Vendor CI service should call the listing action");
 assert.match(vendorImprovementServiceSource, /create_vendor_improvement_case/, "Vendor CI service should call the create action");
+assert.match(vendorImprovementServiceSource, /submit_vendor_improvement_case/, "Vendor CI service should call the email submit action");
+assert.match(vendorImprovementServiceSource, /process_vendor_ci_reminders/, "Vendor CI service should call the reminder processor action");
 assert.match(appHtml, /vendor-improvement\.html/, "Dashboard navigation should include Vendor CI");
 assert.match(apiSource, /const invitationIdChunks = invitationIds\.length \? chunkValues\(invitationIds, 100\) : \[\[\]\]/, "Outreach draft generation should read selected invitations in small id batches");
 assert.match(apiSource, /for \(const chunk of chunkValues\(rows, 100\)\)/, "Outreach draft generation should upsert draft messages in small batches");
