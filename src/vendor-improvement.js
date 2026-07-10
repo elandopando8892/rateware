@@ -105,6 +105,35 @@ function scoreValue(value) {
   return Number.isFinite(number) ? Math.round(number) : 0;
 }
 
+function compactNumber(value) {
+  const number = Number(value || 0);
+  return Number.isFinite(number) ? number.toLocaleString() : "0";
+}
+
+function scorecardSignals(row = {}) {
+  const signals = row.attributes?.signals || {};
+  return {
+    linked_rates: Number(row.linked_rates ?? signals.linked_rates ?? 0),
+    approved_rates: Number(row.approved_rates ?? signals.approved_rates ?? 0),
+    bid_responses: Number(row.bid_responses ?? signals.bid_responses ?? 0),
+    bid_invitations: Number(row.bid_invitations ?? signals.bid_invitations ?? 0),
+    awards: Number(row.awards ?? signals.awards ?? 0),
+    support_open: Number(row.support_open ?? signals.support_open ?? 0),
+    chat_messages: Number(row.chat_messages ?? signals.carrier_chat_messages ?? 0)
+  };
+}
+
+function scorecardSignalText(row = {}) {
+  const signals = scorecardSignals(row);
+  return [
+    `${compactNumber(signals.linked_rates)} rates`,
+    `${compactNumber(signals.bid_responses)}/${compactNumber(signals.bid_invitations)} bids`,
+    `${compactNumber(signals.awards)} awards`,
+    `${compactNumber(signals.support_open)} open issues`,
+    `${compactNumber(signals.chat_messages)} chat`
+  ].join(" | ");
+}
+
 function setStatus(message = "", tone = "neutral") {
   if (!statusMessage) return;
   statusMessage.textContent = tone === "error" ? humanizeError(message) : message;
@@ -316,7 +345,7 @@ function renderScorecards() {
   if (!scorecardBody) return;
   if (!scorecardRows.length) {
     scorecardBody.innerHTML = `
-      <tr><td colspan="9">No scorecards yet. Create an improvement case or save a vendor scorecard.</td></tr>
+      <tr><td colspan="9">No CRM vendors match current filters. Clear filters or sync Carrier CRM.</td></tr>
     `;
     return;
   }
@@ -326,6 +355,7 @@ function renderScorecards() {
       <td>
         <strong>${escapeHtml(row.vendor_name || "Unknown vendor")}</strong>
         <small>${escapeHtml(row.vendor_domain || row.vendor_email || "-")}</small>
+        <small>${escapeHtml(row.source_summary || scorecardSignalText(row))}</small>
       </td>
       <td>
         <select data-ci-scorecard-field="tier">
@@ -365,7 +395,10 @@ function renderValueCurve() {
         <ul>
           ${topRows.map((row) => `
             <li>
-              <strong>${escapeHtml(row.vendor_name || "Unknown vendor")}</strong>
+              <div>
+                <strong>${escapeHtml(row.vendor_name || "Unknown vendor")}</strong>
+                <small>${escapeHtml(scorecardSignalText(row))}</small>
+              </div>
               <span>${escapeHtml(scoreValue(row.value_score))}/100</span>
             </li>
           `).join("") || "<li><em>No vendors scored</em></li>"}

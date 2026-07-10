@@ -8763,6 +8763,354 @@ function serializeVendorValueScorecard(row: Record<string, unknown>) {
   };
 }
 
+const VENDOR_CI_VALUE_CURVE_LIMIT = 5000;
+
+function vendorCiVendorName(vendor: Record<string, unknown>) {
+  return cleanText(vendor.vendor_name || vendor.name || vendor.legal_name || vendor.domain || vendor.primary_email) || "Unknown vendor";
+}
+
+function vendorCiScoreBlend(autoScore: number, manualScore: unknown, manualWeight = 0.35) {
+  if (manualScore === null || manualScore === undefined || manualScore === "") return numericScore(autoScore);
+  const manual = Number(manualScore);
+  if (!Number.isFinite(manual)) return numericScore(autoScore);
+  return numericScore(autoScore * (1 - manualWeight) + numericScore(manual) * manualWeight);
+}
+
+function vendorCiSignalStats() {
+  return {
+    bid_invitations: 0,
+    bid_responses: 0,
+    awards: 0,
+    capacity_confirmations: 0,
+    outbound_contacts: 0,
+    inbound_contacts: 0,
+    failed_contacts: 0,
+    support_open: 0,
+    support_resolved: 0,
+    ci_open: 0,
+    ci_critical: 0,
+    ci_resolved: 0,
+    carrier_chat_messages: 0,
+    procurement_chat_messages: 0
+  };
+}
+
+function vendorCiStatsFor(map: Map<string, ReturnType<typeof vendorCiSignalStats>>, vendorId: unknown) {
+  const id = cleanText(vendorId) || "";
+  if (!id) return null;
+  if (!map.has(id)) map.set(id, vendorCiSignalStats());
+  return map.get(id) || null;
+}
+
+async function fetchVendorCiVendors(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_email: string | null },
+  limit = VENDOR_CI_VALUE_CURVE_LIMIT
+) {
+  const rows: Record<string, unknown>[] = [];
+  const pageSize = 1000;
+  for (let offset = 0; offset < limit; offset += pageSize) {
+    const result = await supabase
+      .from("vendors")
+      .select("id,vendor_name,name,legal_name,domain,primary_email,whatsapp_phone,preferred_channel,base_stage,status,tags,coverage_notes,notes,profile_data,created_at,updated_at")
+      .eq("owner_email", user.owner_email)
+      .order("vendor_name", { ascending: true, nullsFirst: false })
+      .range(offset, Math.min(offset + pageSize - 1, limit - 1));
+    if (result.error) throw result.error;
+    rows.push(...(result.data || []));
+    if ((result.data || []).length < pageSize) break;
+  }
+  return rows;
+}
+
+async function fetchVendorCiManualScorecards(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_email: string | null },
+  limit = VENDOR_CI_VALUE_CURVE_LIMIT
+) {
+  const rows: Record<string, unknown>[] = [];
+  const pageSize = 1000;
+  for (let offset = 0; offset < limit; offset += pageSize) {
+    const result = await supabase
+      .from("vendor_value_scorecards")
+      .select("*, vendors(id,vendor_name,name,legal_name,domain,primary_email,base_stage,status)")
+      .eq("owner_email", user.owner_email)
+      .order("value_score", { ascending: false })
+      .range(offset, Math.min(offset + pageSize - 1, limit - 1));
+    if (result.error) throw result.error;
+    rows.push(...(result.data || []).map(serializeVendorValueScorecard));
+    if ((result.data || []).length < pageSize) break;
+  }
+  return rows;
+}
+
+async function fetchVendorCiSignalRows(
+  label: string,
+  query: PromiseLike<{ data: unknown[] | null; error: unknown }>
+) {
+  try {
+    const result = await query;
+    if (result.error) throw result.error;
+    return { rows: (result.data || []) as Record<string, unknown>[], warning: null as string | null };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error || "Unknown signal error");
+    console.warn(`Vendor CI ${label} signals unavailable; continuing without them.`, message);
+    return {
+      rows: [] as Record<string, unknown>[],
+      warning: `${label} signals are temporarily unavailable.`
+    };
+  }
+}
+
+function vendorCiScoreFromSignals(
+  vendor: Record<string, unknown>,
+  metrics: Record<string, unknown>,
+  signals: ReturnType<typeof vendorCiSignalStats>,
+  manualScorecard?: Record<string, unknown>
+) {
+  const readiness = vendorReadinessScore(vendor);
+  const linkedRates = Number(metrics.linked_rates || 0);
+  const approvedRates = Number(metrics.approved_rates || 0);
+  const pendingRates = Number(metrics.pending_rates || 0);
+  const status = cleanText(vendor.status)?.toLowerCase();
+  const baseStage = cleanText(vendor.base_stage)?.toLowerCase();
+  const manualAttributes = objectRecord(manualScorecard?.attributes);
+  const manualWeight = manualScorecard && !manualAttributes.auto_seeded ? 0.35 : 0.15;
+
+  const operationalAuto = numericScore(
+    readiness * 0.3
+    + Math.min(24, linkedRates * 1.4)
+    + Math.min(18, signals.bid_responses * 5)
+    + Math.min(16, signals.capacity_confirmations * 8)
+    + Math.min(12, signals.awards * 10)
+    - Math.min(24, signals.support_open * 8 + signals.ci_critical * 10)
+  );
+  const commercialAuto = numericScore(
+    (baseStage === "procurement" ? 30 : 18)
+    + Math.min(26, approvedRates * 2.5)
+    + Math.min(18, pendingRates * 1.2)
+    + Math.min(20, signals.bid_responses * 5)
+    + Math.min(18, signals.awards * 12)
+  );
+  const complianceAuto = numericScore(
+    (status === "active" ? 64 : status === "blocked" ? 20 : 42)
+    + Math.min(14, signals.support_resolved * 5)
+    - Math.min(34, signals.support_open * 12 + signals.ci_critical * 10 + signals.failed_contacts * 3)
+  );
+  const technologyAuto = numericScore(
+    (vendor.domain ? 30 : 12)
+    + (vendor.primary_email ? 22 : 0)
+    + (vendor.whatsapp_phone ? 12 : 0)
+    + Math.min(18, signals.carrier_chat_messages * 3)
+    + Math.min(18, signals.bid_responses * 4)
+  );
+  const relationshipAuto = numericScore(
+    (vendor.primary_email || vendor.whatsapp_phone ? 35 : 18)
+    + Math.min(24, signals.inbound_contacts * 5)
+    + Math.min(24, signals.carrier_chat_messages * 4)
+    + Math.min(14, signals.ci_resolved * 7)
+    - Math.min(24, signals.support_open * 8 + signals.failed_contacts * 4)
+  );
+  const financialAuto = numericScore(
+    28
+    + Math.min(30, approvedRates * 3)
+    + Math.min(20, signals.awards * 14)
+    + Math.min(16, signals.bid_responses * 4)
+    - Math.min(18, signals.ci_open * 4)
+  );
+
+  const operational = vendorCiScoreBlend(operationalAuto, manualScorecard?.operational_score, manualWeight);
+  const commercial = vendorCiScoreBlend(commercialAuto, manualScorecard?.commercial_score, manualWeight);
+  const compliance = vendorCiScoreBlend(complianceAuto, manualScorecard?.compliance_score, manualWeight);
+  const technology = vendorCiScoreBlend(technologyAuto, manualScorecard?.technology_score, manualWeight);
+  const relationship = vendorCiScoreBlend(relationshipAuto, manualScorecard?.relationship_score, manualWeight);
+  const financial = vendorCiScoreBlend(financialAuto, manualScorecard?.financial_score, manualWeight);
+  const autoValue = Math.round(
+    operational * 0.22
+    + commercial * 0.22
+    + compliance * 0.16
+    + technology * 0.12
+    + relationship * 0.18
+    + financial * 0.1
+  );
+  const value = vendorCiScoreBlend(autoValue, manualScorecard?.value_score, manualWeight);
+  const tier = cleanText(manualScorecard?.tier) || tierFromValueScore(value);
+
+  return {
+    operational_score: operational,
+    commercial_score: commercial,
+    financial_score: financial,
+    compliance_score: compliance,
+    technology_score: technology,
+    relationship_score: relationship,
+    value_score: value,
+    tier
+  };
+}
+
+async function buildVendorValueCurve(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_email: string | null },
+  input: Record<string, unknown> = {}
+) {
+  const limit = Math.min(Math.max(Number(input.value_curve_limit || VENDOR_CI_VALUE_CURVE_LIMIT) || VENDOR_CI_VALUE_CURVE_LIMIT, 1), VENDOR_CI_VALUE_CURVE_LIMIT);
+  const vendors = await fetchVendorCiVendors(supabase, user, limit);
+  const manualRows = await fetchVendorCiManualScorecards(supabase, user, limit);
+  const manualByVendor = new Map(manualRows.map((row) => [cleanText(row.vendor_id) || "", row]));
+  const warnings: string[] = [];
+  const rateMetrics = await fetchVendorRateMetricsSafe(supabase, user);
+  warnings.push(...rateMetrics.warnings);
+
+  const [bidRowsResult, contactRowsResult, chatRowsResult, ciCaseRowsResult] = await Promise.all([
+    fetchVendorCiSignalRows(
+      "Bid Room",
+      supabase
+        .from("rfx_lane_vendors")
+        .select("vendor_id,invitation_status,bid_rate,weekly_capacity,responded_at,award_role,awarded_at,equipment_available,commercial_model,rfx_events!inner(owner_email)")
+        .eq("rfx_events.owner_email", user.owner_email)
+        .not("vendor_id", "is", null)
+        .limit(10000)
+    ),
+    fetchVendorCiSignalRows(
+      "contact history",
+      supabase
+        .from("contact_history")
+        .select("vendor_id,status,direction,channel,metadata,occurred_at")
+        .eq("owner_email", user.owner_email)
+        .not("vendor_id", "is", null)
+        .limit(10000)
+    ),
+    fetchVendorCiSignalRows(
+      "Bid Room chat",
+      supabase
+        .from("bid_room_chat_messages")
+        .select("vendor_id,sender_role,created_at")
+        .eq("owner_email", user.owner_email)
+        .not("vendor_id", "is", null)
+        .limit(10000)
+    ),
+    fetchVendorCiSignalRows(
+      "improvement case",
+      supabase
+        .from("vendor_improvement_cases")
+        .select("vendor_id,status,severity,case_type,updated_at")
+        .eq("owner_email", user.owner_email)
+        .not("vendor_id", "is", null)
+        .limit(10000)
+    )
+  ]);
+  for (const result of [bidRowsResult, contactRowsResult, chatRowsResult, ciCaseRowsResult]) {
+    if (result.warning) warnings.push(result.warning);
+  }
+
+  const signalMap = new Map<string, ReturnType<typeof vendorCiSignalStats>>();
+  for (const row of bidRowsResult.rows) {
+    const stats = vendorCiStatsFor(signalMap, row.vendor_id);
+    if (!stats) continue;
+    stats.bid_invitations += 1;
+    const status = cleanText(row.invitation_status)?.toLowerCase();
+    if (row.responded_at || row.bid_rate !== null || status === "bid_submitted" || status === "quoted") stats.bid_responses += 1;
+    if (row.award_role || row.awarded_at || status === "awarded") stats.awards += 1;
+    if (cleanBoolean(row.equipment_available) || row.weekly_capacity) stats.capacity_confirmations += 1;
+  }
+  for (const row of contactRowsResult.rows) {
+    const stats = vendorCiStatsFor(signalMap, row.vendor_id);
+    if (!stats) continue;
+    const direction = cleanText(row.direction)?.toLowerCase();
+    const status = cleanText(row.status)?.toLowerCase();
+    if (direction === "inbound") stats.inbound_contacts += 1;
+    if (direction === "outbound") stats.outbound_contacts += 1;
+    if (status === "failed" || status === "bounced" || status === "suppressed") stats.failed_contacts += 1;
+    if (["support_ticket", "support_open", "support_in_progress"].includes(status || "")) stats.support_open += 1;
+    if (status === "support_resolved") stats.support_resolved += 1;
+  }
+  for (const row of chatRowsResult.rows) {
+    const stats = vendorCiStatsFor(signalMap, row.vendor_id);
+    if (!stats) continue;
+    const role = cleanText(row.sender_role)?.toLowerCase();
+    if (role === "carrier") stats.carrier_chat_messages += 1;
+    if (role === "procurement") stats.procurement_chat_messages += 1;
+  }
+  for (const row of ciCaseRowsResult.rows) {
+    const stats = vendorCiStatsFor(signalMap, row.vendor_id);
+    if (!stats) continue;
+    const status = cleanText(row.status)?.toLowerCase();
+    if (!["resolved", "archived"].includes(status || "")) stats.ci_open += 1;
+    if (row.severity === "critical" && !["resolved", "archived"].includes(status || "")) stats.ci_critical += 1;
+    if (status === "resolved") stats.ci_resolved += 1;
+  }
+
+  const scorecards = vendors.map((vendor) => {
+    const vendorId = cleanText(vendor.id) || "";
+    const manual = manualByVendor.get(vendorId);
+    const metrics = normalizeVendorMetricRow(rateMetrics.metrics.get(vendorId));
+    const signals = signalMap.get(vendorId) || vendorCiSignalStats();
+    const score = vendorCiScoreFromSignals(vendor, metrics, signals, manual);
+    const sourceSummary = [
+      `${Number(metrics.linked_rates || 0)} rate(s)`,
+      `${signals.bid_responses}/${signals.bid_invitations} bid response(s)`,
+      `${signals.awards} award(s)`,
+      `${signals.support_open} open support/CI issue(s)`,
+      `${signals.carrier_chat_messages} carrier chat message(s)`
+    ].join(" | ");
+    return {
+      ...(manual || {}),
+      vendor_id: vendorId,
+      id: cleanText(manual?.id) || `computed:${vendorId}`,
+      vendor_name: vendorCiVendorName(vendor),
+      vendor_domain: cleanText(vendor.domain),
+      vendor_email: cleanText(vendor.primary_email),
+      ...score,
+      attributes: {
+        ...objectRecord(manual?.attributes),
+        computed_live_value_curve: true,
+        manual_scorecard: Boolean(manual && !objectRecord(manual.attributes).auto_seeded),
+        source_summary: sourceSummary,
+        signal_sources: {
+          crm: true,
+          rateware: true,
+          bid_room: true,
+          vendor_support: true,
+          bid_room_chat: true,
+          manual_scorecard: Boolean(manual)
+        },
+        signals: {
+          ...signals,
+          linked_rates: Number(metrics.linked_rates || 0),
+          approved_rates: Number(metrics.approved_rates || 0),
+          pending_rates: Number(metrics.pending_rates || 0),
+          crossborder_rates: Number(metrics.crossborder_rates || 0),
+          d2d_import_export_rates: Number(metrics.d2d_import_export_rates || 0),
+          mexico_rates: Number(metrics.mexico_rates || 0),
+          last_quote_date: cleanText(metrics.last_quote_date)
+        }
+      },
+      source_summary: sourceSummary,
+      linked_rates: Number(metrics.linked_rates || 0),
+      approved_rates: Number(metrics.approved_rates || 0),
+      bid_invitations: signals.bid_invitations,
+      bid_responses: signals.bid_responses,
+      awards: signals.awards,
+      support_open: signals.support_open + signals.ci_open,
+      chat_messages: signals.carrier_chat_messages,
+      last_scored_at: cleanText(manual?.last_scored_at) || new Date().toISOString()
+    };
+  });
+
+  return {
+    scorecards: scorecards.sort((left, right) => Number(right.value_score || 0) - Number(left.value_score || 0)),
+    warnings,
+    source_counts: {
+      vendors: vendors.length,
+      manual_scorecards: manualRows.length,
+      bid_rows: bidRowsResult.rows.length,
+      contact_rows: contactRowsResult.rows.length,
+      chat_rows: chatRowsResult.rows.length,
+      ci_case_rows: ciCaseRowsResult.rows.length
+    }
+  };
+}
+
 function vendorCiNextStep(row: Record<string, unknown>) {
   const status = cleanText(row.status) || "open";
   const method = cleanText(row.methodology)?.toUpperCase() || "DMAIC";
@@ -8815,6 +9163,26 @@ function vendorImprovementMatchesSearch(row: Record<string, unknown>, search: st
   return haystack.includes(search.toLowerCase());
 }
 
+function vendorValueScorecardMatchesSearch(row: Record<string, unknown>, search: string) {
+  if (!search) return true;
+  const attributes = objectRecord(row.attributes);
+  const signals = objectRecord(attributes.signals);
+  const haystack = [
+    row.vendor_name,
+    row.vendor_domain,
+    row.vendor_email,
+    row.tier,
+    row.source_summary,
+    signals.last_quote_date,
+    row.linked_rates,
+    row.bid_responses,
+    row.awards,
+    row.support_open,
+    row.chat_messages
+  ].map((value) => String(value || "").toLowerCase()).join(" ");
+  return haystack.includes(search.toLowerCase());
+}
+
 function summarizeVendorCi(rows: Record<string, unknown>[], scorecards: Record<string, unknown>[]) {
   const now = new Date();
   const sevenDays = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
@@ -8830,6 +9198,7 @@ function summarizeVendorCi(rows: Record<string, unknown>[], scorecards: Record<s
     : 0;
   return {
     total_cases: rows.length,
+    total_vendors_scored: scorecards.length,
     open_active: activeRows.length,
     critical: activeRows.filter((row) => row.severity === "critical").length,
     due_soon: dueSoon.length,
@@ -8865,16 +9234,12 @@ async function listVendorImprovementCases(
   const casesResult = await caseQuery;
   if (casesResult.error) throw casesResult.error;
 
-  const scorecardsResult = await supabase
-    .from("vendor_value_scorecards")
-    .select("*, vendors(id,vendor_name,name,legal_name,domain,primary_email,base_stage,status)")
-    .eq("owner_email", user.owner_email)
-    .order("value_score", { ascending: false })
-    .limit(1000);
-  if (scorecardsResult.error) throw scorecardsResult.error;
-
-  const scorecards = (scorecardsResult.data || []).map(serializeVendorValueScorecard);
-  const scorecardByVendor = new Map(scorecards.map((row) => [cleanText(row.vendor_id) || "", row]));
+  const valueCurve = await buildVendorValueCurve(supabase, user, input);
+  const allScorecards = valueCurve.scorecards;
+  const scorecardByVendor = new Map(allScorecards.map((row) => [cleanText(row.vendor_id) || "", row]));
+  const scorecards = allScorecards
+    .filter((row) => tierFilter === "all" || row.tier === tierFilter)
+    .filter((row) => vendorValueScorecardMatchesSearch(row, search));
   const rows = (casesResult.data || [])
     .map((row) => serializeVendorImprovementCase(row, scorecardByVendor))
     .filter((row) => tierFilter === "all" || row.current_tier === tierFilter)
@@ -8883,7 +9248,13 @@ async function listVendorImprovementCases(
   return {
     rows,
     scorecards,
-    summary: summarizeVendorCi(rows, scorecards),
+    summary: {
+      ...summarizeVendorCi(rows, scorecards),
+      total_vendors: valueCurve.source_counts.vendors,
+      manual_scorecards: valueCurve.source_counts.manual_scorecards,
+      signal_sources: valueCurve.source_counts,
+      warnings: valueCurve.warnings
+    },
     playbooks: vendorCiPlaybooks(),
     limit
   };

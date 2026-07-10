@@ -4948,6 +4948,12 @@ body.bid-editor-open {
   font-size: 0.72rem;
 }
 
+.vendor-ci-tier-card li > div {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
 .vendor-ci-tier-card li:first-child {
   border-top: 0;
 }
@@ -4957,6 +4963,13 @@ body.bid-editor-open {
   overflow: hidden;
   font-size: 0.72rem;
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vendor-ci-tier-card li small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-transform: none;
   white-space: nowrap;
 }
 
