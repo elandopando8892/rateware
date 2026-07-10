@@ -893,9 +893,13 @@ assert.match(apiSource, /vendorCiPlaybooks/, "Vendor CI API should provide proce
 assert.match(vendorImprovementHtml, /Vendor Continuous Improvement/, "Vendor CI module page should exist");
 assert.match(vendorImprovementHtml, /ci-case-body/, "Vendor CI module should render the case queue");
 assert.match(vendorImprovementHtml, /ci-value-curve/, "Vendor CI module should render the carrier value curve");
+assert.match(vendorImprovementHtml, /ci-vendor-search/, "Vendor CI should use a CRM search picker instead of a static vendor dropdown");
 assert.match(vendorImprovementSource, /fetchVendorImprovementCases/, "Vendor CI UI should fetch cases from the API");
 assert.match(vendorImprovementSource, /createVendorImprovementCase/, "Vendor CI UI should create improvement cases");
 assert.match(vendorImprovementSource, /upsertVendorValueScorecard/, "Vendor CI UI should update scorecards");
+assert.match(vendorImprovementSource, /function searchCrmVendors/, "Vendor CI should search the Carrier CRM dynamically when creating a case");
+assert.match(vendorImprovementSource, /fetchVendors\(\{ limit: CRM_VENDOR_SEARCH_LIMIT, offset: 0, view: "all", lightweight: true, search: term \}\)/, "Vendor CI search should query the full CRM, not a preloaded procurement-only list");
+assert.doesNotMatch(vendorImprovementSource, /fetchVendors\(\{ base_stage: "procurement"/, "Vendor CI create-case picker should not be limited to Procurement vendors");
 assert.match(vendorImprovementServiceSource, /list_vendor_improvement_cases/, "Vendor CI service should call the listing action");
 assert.match(vendorImprovementServiceSource, /create_vendor_improvement_case/, "Vendor CI service should call the create action");
 assert.match(appHtml, /vendor-improvement\.html/, "Dashboard navigation should include Vendor CI");

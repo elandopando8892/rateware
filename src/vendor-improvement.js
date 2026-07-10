@@ -47,7 +47,10 @@ const searchInput = document.querySelector("#ci-search");
 const clearButton = document.querySelector("#clear-ci-filters");
 const statusMessage = document.querySelector("#ci-status-message");
 const createForm = document.querySelector("#ci-create-form");
-const vendorSelect = document.querySelector("#ci-vendor-select");
+const vendorSearchInput = document.querySelector("#ci-vendor-search");
+const vendorIdInput = document.querySelector("#ci-vendor-id");
+const vendorResults = document.querySelector("#ci-vendor-results");
+const selectedVendorMessage = document.querySelector("#ci-selected-vendor");
 const titleInput = document.querySelector("#ci-title");
 const caseTypeInput = document.querySelector("#ci-case-type");
 const severityInput = document.querySelector("#ci-severity");
@@ -71,6 +74,11 @@ let scorecardRows = [];
 let playbookRows = [];
 let activeTab = "cases";
 let searchTimer = null;
+let vendorSearchTimer = null;
+let selectedVendor = null;
+
+const CRM_VENDOR_SEARCH_LIMIT = 1000;
+const CRM_VENDOR_RENDER_LIMIT = 40;
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -114,12 +122,110 @@ function vendorLabel(row) {
   return row.vendor_name || row.name || row.legal_name || row.domain || "Unnamed vendor";
 }
 
-function renderVendorOptions() {
-  if (!vendorSelect) return;
-  const options = vendorRows.map((row) => `
-    <option value="${escapeHtml(row.id)}">${escapeHtml(vendorLabel(row))}${row.domain ? ` (${escapeHtml(row.domain)})` : ""}</option>
-  `);
-  vendorSelect.innerHTML = `<option value="">Choose vendor</option>${options.join("")}`;
+function normalizeTerm(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
+function vendorSearchText(row) {
+  return [
+    row.vendor_name,
+    row.name,
+    row.legal_name,
+    row.contact_name,
+    row.domain,
+    row.primary_email,
+    Array.isArray(row.secondary_emails) ? row.secondary_emails.join(" ") : row.secondary_emails,
+    row.coverage_notes,
+    row.notes
+  ].filter(Boolean).join(" ");
+}
+
+function vendorMeta(row) {
+  return [
+    row.domain,
+    row.primary_email,
+    row.contact_name,
+    row.base_stage,
+    row.status
+  ].filter(Boolean).join(" | ");
+}
+
+function rankVendorForQuery(row, query) {
+  const term = normalizeTerm(query);
+  if (!term) return 10;
+  const label = normalizeTerm(vendorLabel(row));
+  const domain = normalizeTerm(row.domain);
+  const email = normalizeTerm(row.primary_email);
+  const contact = normalizeTerm(row.contact_name);
+  const searchText = normalizeTerm(vendorSearchText(row));
+  if (label === term || domain === term || email === term) return 0;
+  if (label.startsWith(term) || domain.startsWith(term)) return 1;
+  if (contact.startsWith(term)) return 2;
+  if (label.includes(term) || domain.includes(term) || email.includes(term)) return 3;
+  if (searchText.includes(term)) return 4;
+  return 20;
+}
+
+function setVendorPickerMessage(message, tone = "neutral") {
+  if (!selectedVendorMessage) return;
+  selectedVendorMessage.textContent = message;
+  selectedVendorMessage.dataset.tone = tone;
+}
+
+function hideVendorResults() {
+  vendorResults?.classList.add("hidden");
+  vendorSearchInput?.setAttribute("aria-expanded", "false");
+}
+
+function showVendorResults() {
+  vendorResults?.classList.remove("hidden");
+  vendorSearchInput?.setAttribute("aria-expanded", "true");
+}
+
+function clearVendorSelection(message = "Start typing to search the full Carrier CRM.") {
+  selectedVendor = null;
+  if (vendorIdInput) vendorIdInput.value = "";
+  setVendorPickerMessage(message);
+}
+
+function selectVendorForCase(row) {
+  selectedVendor = row;
+  if (vendorIdInput) vendorIdInput.value = row.id || "";
+  if (vendorSearchInput) vendorSearchInput.value = vendorLabel(row);
+  setVendorPickerMessage(`${vendorLabel(row)}${vendorMeta(row) ? ` - ${vendorMeta(row)}` : ""}`, "success");
+  hideVendorResults();
+}
+
+function renderVendorSearchResults(rows = [], query = "") {
+  if (!vendorResults) return;
+  const rankedRows = rows
+    .slice()
+    .sort((left, right) => rankVendorForQuery(left, query) - rankVendorForQuery(right, query) || vendorLabel(left).localeCompare(vendorLabel(right)))
+    .slice(0, CRM_VENDOR_RENDER_LIMIT);
+
+  if (!rankedRows.length) {
+    vendorResults.innerHTML = `
+      <div class="vendor-ci-vendor-empty">
+        <strong>No CRM carriers found</strong>
+        <span>Try vendor name, legal name, domain, contact, email, or coverage notes.</span>
+      </div>
+    `;
+    showVendorResults();
+    return;
+  }
+
+  vendorRows = rankedRows;
+  vendorResults.innerHTML = rankedRows.map((row, index) => `
+    <button type="button" role="option" data-ci-vendor-result="${escapeHtml(row.id || "")}" ${index === 0 ? 'aria-selected="true"' : ""}>
+      <strong>${escapeHtml(vendorLabel(row))}</strong>
+      <span>${escapeHtml(vendorMeta(row) || "Carrier CRM")}</span>
+    </button>
+  `).join("");
+  showVendorResults();
 }
 
 function readFilters() {
@@ -297,10 +403,45 @@ function setActiveTab(nextTab) {
   });
 }
 
-async function loadVendors() {
-  const result = await fetchVendors({ base_stage: "procurement", lightweight: true, limit: 1000 });
-  vendorRows = result.rows || [];
-  renderVendorOptions();
+async function searchCrmVendors(query = "") {
+  if (!vendorResults) return;
+  const term = query.trim();
+  if (!term) {
+    vendorResults.innerHTML = `
+      <div class="vendor-ci-vendor-empty">
+        <strong>Search the Carrier CRM</strong>
+        <span>Type a carrier name, domain, contact, email, or coverage keyword.</span>
+      </div>
+    `;
+    showVendorResults();
+    return;
+  }
+  if (term.length < 2) {
+    vendorResults.innerHTML = `
+      <div class="vendor-ci-vendor-empty">
+        <strong>Keep typing</strong>
+        <span>Use at least 2 characters to search the full CRM.</span>
+      </div>
+    `;
+    showVendorResults();
+    return;
+  }
+
+  setVendorPickerMessage("Searching full Carrier CRM...");
+  try {
+    const result = await fetchVendors({ limit: CRM_VENDOR_SEARCH_LIMIT, offset: 0, view: "all", lightweight: true, search: term });
+    renderVendorSearchResults(result.rows || [], term);
+    setVendorPickerMessage(`${Number(result.total || result.rows?.length || 0).toLocaleString()} CRM match(es). Choose one to create the case.`);
+  } catch (error) {
+    vendorResults.innerHTML = `
+      <div class="vendor-ci-vendor-empty error-state">
+        <strong>CRM search failed</strong>
+        <span>${escapeHtml(humanizeError(error))}</span>
+      </div>
+    `;
+    showVendorResults();
+    setVendorPickerMessage(humanizeError(error), "error");
+  }
 }
 
 async function loadImprovementCases() {
@@ -308,10 +449,7 @@ async function loadImprovementCases() {
   if (caseBody) caseBody.innerHTML = '<tr><td colspan="8">Loading improvement cases...</td></tr>';
   try {
     await requirePrivatePage();
-    const [improvementResult] = await Promise.all([
-      fetchVendorImprovementCases(readFilters()),
-      vendorRows.length ? Promise.resolve() : loadVendors()
-    ]);
+    const improvementResult = await fetchVendorImprovementCases(readFilters());
     caseRows = improvementResult.rows || [];
     scorecardRows = improvementResult.scorecards || [];
     playbookRows = improvementResult.playbooks || [];
@@ -344,9 +482,10 @@ async function loadImprovementCases() {
 
 async function createCase(event) {
   event.preventDefault();
-  const vendorId = vendorSelect?.value;
+  const vendorId = vendorIdInput?.value;
   if (!vendorId) {
-    setStatus("Choose a vendor before creating a case.", "error");
+    setStatus("Search the Carrier CRM and choose a vendor before creating a case.", "error");
+    setVendorPickerMessage("Choose one of the CRM search results before creating the case.", "error");
     return;
   }
   setStatus("Creating improvement case...");
@@ -362,6 +501,7 @@ async function createCase(event) {
       vendor_request: vendorRequestInput?.value
     });
     createForm.reset();
+    clearVendorSelection();
     fillSelect(caseTypeInput, CASE_TYPES, "service_quality");
     await loadImprovementCases();
     setStatus("Improvement case created.", "success");
@@ -425,6 +565,40 @@ clearButton?.addEventListener("click", () => {
 searchInput?.addEventListener("input", () => {
   window.clearTimeout(searchTimer);
   searchTimer = window.setTimeout(loadImprovementCases, 250);
+});
+vendorSearchInput?.addEventListener("input", () => {
+  if (selectedVendor && vendorSearchInput.value !== vendorLabel(selectedVendor)) {
+    clearVendorSelection("Search changed. Choose a CRM result again before creating the case.");
+  }
+  window.clearTimeout(vendorSearchTimer);
+  vendorSearchTimer = window.setTimeout(() => searchCrmVendors(vendorSearchInput.value), 250);
+});
+vendorSearchInput?.addEventListener("focus", () => {
+  if (vendorResults?.innerHTML) {
+    showVendorResults();
+    return;
+  }
+  searchCrmVendors(vendorSearchInput.value);
+});
+vendorSearchInput?.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    const firstResult = vendorResults?.querySelector("[data-ci-vendor-result]");
+    if (firstResult) {
+      event.preventDefault();
+      const row = vendorRows.find((item) => item.id === firstResult.dataset.ciVendorResult);
+      if (row) selectVendorForCase(row);
+    }
+  }
+  if (event.key === "Escape") hideVendorResults();
+});
+vendorResults?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-ci-vendor-result]");
+  if (!button) return;
+  const row = vendorRows.find((item) => item.id === button.dataset.ciVendorResult);
+  if (row) selectVendorForCase(row);
+});
+document.addEventListener("click", (event) => {
+  if (!event.target.closest(".vendor-ci-vendor-picker")) hideVendorResults();
 });
 document.querySelectorAll("[data-ci-tab]").forEach((button) => {
   button.addEventListener("click", () => setActiveTab(button.dataset.ciTab || "cases"));

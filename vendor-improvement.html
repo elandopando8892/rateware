@@ -129,12 +129,20 @@
                 <p class="eyebrow">Create improvement case</p>
                 <h2>Open a vendor requirement</h2>
               </div>
-              <label>
-                Vendor
-                <select id="ci-vendor-select" required>
-                  <option value="">Loading vendors...</option>
-                </select>
-              </label>
+              <div class="vendor-ci-vendor-picker">
+                <label for="ci-vendor-search">Vendor</label>
+                <input
+                  id="ci-vendor-search"
+                  autocomplete="off"
+                  placeholder="Search CRM by carrier, domain, contact, or email"
+                  role="combobox"
+                  aria-expanded="false"
+                  aria-controls="ci-vendor-results"
+                />
+                <input id="ci-vendor-id" type="hidden" />
+                <div id="ci-vendor-results" class="vendor-ci-vendor-results hidden" role="listbox"></div>
+                <p id="ci-selected-vendor" class="vendor-ci-selected-vendor">Start typing to search the full Carrier CRM.</p>
+              </div>
               <label>
                 Case title
                 <input id="ci-title" required placeholder="e.g. Missing mirror account validation before dispatch" />
