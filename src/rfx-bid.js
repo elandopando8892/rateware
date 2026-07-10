@@ -771,6 +771,14 @@ function formatMoney(value, currency = "USD") {
   return `${new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(number)} ${currency || "USD"}`;
 }
 
+function formatNumber(value, digits = 0) {
+  const number = typeof value === "number" ? value : numberFromInput(value);
+  if (!Number.isFinite(number)) return "-";
+  return new Intl.NumberFormat(undefined, {
+    maximumFractionDigits: digits
+  }).format(number);
+}
+
 function formatDate(value) {
   if (!value) return "-";
   const date = new Date(`${value}T12:00:00`);

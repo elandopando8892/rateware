@@ -402,6 +402,7 @@ assert.match(apiSource, /"private", "anonymous_rank", "open_leaderboard"/, "API 
 assert.match(rfxBidApiSource, /competitor_names_visible: normalizedMode === "open_leaderboard"/, "Carrier portal should reveal competitor names only in open leaderboard mode");
 assert.match(rfxBidSource, /Open leaderboard - competitor names and exact submitted rates are visible/, "Carrier portal should explain open leaderboard visibility");
 assert.doesNotMatch(rfxBidSource, /window\.alert\(/, "Carrier Bid Room should use inline statuses instead of native browser alerts");
+assert.match(rfxBidSource, /function formatNumber\(value, digits = 0\)/, "Carrier Bid Room should define number formatting before rendering RFx package summaries");
 assert.match(bidRoomBoardHtml, /Live Bid Room Board/, "Public Bid Room board page should exist");
 assert.match(rfxEventsHtml, /bid-room-board\.html/, "Internal Bid Room should link to the public board");
 assert.match(bidRoomBoardHtml, /data-board-view="pipeline"/, "Public Bid Room board should support pipeline view");
