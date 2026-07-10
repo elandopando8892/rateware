@@ -1967,8 +1967,9 @@ function refreshVendorFunnelLocal({ resetLimits = false } = {}) {
 
 function renderVendorFunnelStrip() {
   if (!vendorFunnelStrip) return;
-  const stages = funnelStages();
   const filteredRows = filteredVendorFunnelRows();
+  const stages = visibleFunnelStages(filteredRows);
+  vendorFunnelStrip.style.setProperty("--funnel-stage-count", String(Math.max(1, stages.length)));
   vendorFunnelStrip.innerHTML = stages
     .map((stage, index) => {
       const rows = funnelStageRows(stage.key, filteredRows);
@@ -1982,6 +1983,13 @@ function renderVendorFunnelStrip() {
       `;
     })
     .join("");
+}
+
+function visibleFunnelStages(filteredRows = filteredVendorFunnelRows()) {
+  const stages = funnelStages();
+  return vendorFunnelHideEmptyStages
+    ? stages.filter((stage) => stage.key === activeFunnelStage || funnelStageRows(stage.key, filteredRows).length)
+    : stages;
 }
 
 function renderVendorFunnelCard(row) {
@@ -2031,19 +2039,19 @@ function renderVendorFunnelCard(row) {
 
 function renderVendorFunnelBoard() {
   if (!vendorFunnelBoard) return;
-  const stages = funnelStages();
   const filteredRows = filteredVendorFunnelRows();
   if (!vendorFunnelRows.length) {
+    vendorFunnelBoard.style.setProperty("--funnel-stage-count", "1");
     vendorFunnelBoard.innerHTML = '<div class="empty-state"><strong>No procurement funnel yet</strong><span>Move vendors from Sourcing Base into Procurement Base to start the funnel.</span></div>';
     return;
   }
   if (!filteredRows.length) {
+    vendorFunnelBoard.style.setProperty("--funnel-stage-count", "1");
     vendorFunnelBoard.innerHTML = '<div class="empty-state"><strong>No vendors match these filters</strong><span>Clear pipeline filters or adjust the search.</span></div>';
     return;
   }
-  const visibleStages = vendorFunnelHideEmptyStages
-    ? stages.filter((stage) => stage.key === activeFunnelStage || funnelStageRows(stage.key, filteredRows).length)
-    : stages;
+  const visibleStages = visibleFunnelStages(filteredRows);
+  vendorFunnelBoard.style.setProperty("--funnel-stage-count", String(Math.max(1, visibleStages.length)));
   vendorFunnelBoard.innerHTML = visibleStages
     .map((stage) => {
       const rows = funnelStageRows(stage.key, filteredRows);

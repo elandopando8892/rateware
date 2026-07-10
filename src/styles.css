@@ -5710,8 +5710,8 @@ body.bid-editor-open {
 
 .vendor-funnel-strip {
   display: grid;
-  grid-template-columns: repeat(8, minmax(88px, 1fr));
-  gap: 4px;
+  grid-template-columns: repeat(var(--funnel-stage-count, 8), minmax(168px, 1fr));
+  gap: 5px;
   overflow-x: auto;
   padding-bottom: 1px;
 }
@@ -5771,12 +5771,15 @@ body.bid-editor-open {
 
 .vendor-funnel-board {
   display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: minmax(168px, 204px);
+  grid-template-columns: repeat(var(--funnel-stage-count, 8), minmax(168px, 1fr));
   gap: 5px;
   min-height: calc(100vh - 270px);
   overflow-x: auto;
   padding-bottom: 4px;
+}
+
+.vendor-funnel-board > .empty-state {
+  grid-column: 1 / -1;
 }
 
 .funnel-column {
@@ -14400,7 +14403,6 @@ tbody tr:hover {
 
   .vendor-funnel-metrics,
   .vendor-workflow-tabs,
-  .vendor-funnel-strip,
   .vendor-tool-grid,
   .funnel-workspace {
     grid-template-columns: 1fr;
@@ -14418,7 +14420,7 @@ tbody tr:hover {
   }
 
   .vendor-funnel-board {
-    grid-auto-columns: minmax(210px, 82vw);
+    grid-template-columns: repeat(var(--funnel-stage-count, 8), minmax(210px, 82vw));
   }
 
   .scope-banner {
