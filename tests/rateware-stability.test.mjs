@@ -667,6 +667,7 @@ assert.match(rfxEventsSource, /function laneDetailSections/, "Bid Room should re
 assert.match(rfxBidSource, /function laneDetailSections/, "Carrier portal should render lane detail sections");
 assert.match(rfxBidSource, /function renderLaneDetailValue/, "Carrier portal should render pasted HTML lane detail as readable rich text");
 assert.match(rfxBidSource, /sanitizeRichTextNode/, "Carrier portal should sanitize lane detail HTML before inserting it");
+assert.match(rfxBidSource, /bid-lane-detail-disclosure/, "Carrier portal should collapse selected-lane details so they do not duplicate the RFx master package");
 assert.doesNotMatch(rfxBidSource, /<p>\$\{escapeHtml\(value\)\}<\/p>/, "Carrier portal should not show pasted lane detail HTML as escaped source");
 assert.match(rfxBidSource, /function renderCarrierLaneSwitcher/, "Carrier portal should expose all invited event lanes before the selected lane bid form");
 assert.match(rfxBidSource, /import \* as XLSX from "https:\/\/esm\.sh\/xlsx@0\.18\.5"/, "Carrier portal should load XLSX support for bid templates");

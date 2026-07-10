@@ -3064,13 +3064,13 @@ a {
 
 .segment-rubric {
   display: grid;
-  grid-template-columns: minmax(260px, 1fr) minmax(220px, 0.62fr) minmax(220px, 0.72fr);
+  grid-template-columns: minmax(260px, 1fr) 190px minmax(220px, 0.62fr);
   gap: 8px;
   align-items: start;
   border: 1px solid #e2e8ef;
   border-radius: 7px;
   background: #fbfcfd;
-  padding: 8px;
+  padding: 7px;
 }
 
 .segment-rubric strong {
@@ -3088,19 +3088,24 @@ a {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  min-height: 26px;
+  min-height: 23px;
   border: 1px solid var(--line);
   border-radius: 6px;
   background: #ffffff;
-  padding: 3px 6px;
+  padding: 2px 5px;
   color: #263440;
-  font-size: 0.68rem;
+  font-size: 0.66rem;
   font-weight: 860;
+}
+
+.segment-rubric-controls input {
+  width: 14px;
+  height: 14px;
 }
 
 .segment-rubric textarea {
   width: 100%;
-  min-height: 54px;
+  min-height: 42px;
   border: 1px solid #c8d4df;
   border-radius: 7px;
   background: #ffffff;
@@ -3190,6 +3195,11 @@ a {
   padding: 12px;
 }
 
+.bid-lane-summary.is-compact {
+  gap: 8px;
+  padding: 10px;
+}
+
 .carrier-lane-switcher {
   display: grid;
   gap: 8px;
@@ -3244,13 +3254,13 @@ a {
 .bid-lane-summary dl {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
-  margin: 12px 0 0;
+  gap: 8px;
+  margin: 8px 0 0;
 }
 
 .bid-lane-summary dl > div {
   border-top: 1px solid var(--line);
-  padding-top: 8px;
+  padding-top: 6px;
 }
 
 .bid-lane-summary dt {
@@ -3264,11 +3274,40 @@ a {
   font-weight: 820;
 }
 
+.bid-lane-detail-disclosure {
+  border: 1px solid #dce6ee;
+  border-radius: 7px;
+  background: #fbfdff;
+}
+
+.bid-lane-detail-disclosure summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+  padding: 7px 9px;
+  color: var(--text);
+  font-size: 0.72rem;
+  font-weight: 850;
+}
+
+.bid-lane-detail-disclosure summary small {
+  color: var(--muted);
+  font-size: 0.66rem;
+  font-weight: 680;
+}
+
+.bid-lane-detail-disclosure[open] summary {
+  border-bottom: 1px solid #dce6ee;
+}
+
 .bid-lane-detail-sections {
   display: grid;
   grid-template-columns: minmax(280px, 0.95fr) minmax(340px, 1.05fr);
   align-items: start;
   gap: 8px;
+  padding: 8px;
 }
 
 .rfx-lane-detail-sections {
@@ -3286,7 +3325,7 @@ a {
 }
 
 .bid-lane-detail-sections article {
-  max-height: 235px;
+  max-height: 145px;
   overflow: auto;
 }
 

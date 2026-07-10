@@ -3390,6 +3390,7 @@ function renderInvitation(invitation, liveBoard = {}, carrierBook = {}) {
   const deadline = deadlineCopy(event);
   const multiLaneRows = currentEventBookRows(carrierBook, event);
   const isBookView = viewModeFromUrl() === "book" && multiLaneRows.length > 1;
+  const selectedLaneDetails = laneDetailSections(lane);
   syncPortalLanguageChrome();
   title.textContent = event.name || event.rfx_id || "Private Bid Room";
   card.innerHTML = `
@@ -3459,7 +3460,7 @@ function renderInvitation(invitation, liveBoard = {}, carrierBook = {}) {
 
     ${renderQuickLaneBidGridShell(carrierBook, invitation)}
 
-    <section class="bid-lane-summary">
+    <section class="bid-lane-summary is-compact">
       <div class="bid-room-section-heading">
         <div>
           <p class="eyebrow">${escapeHtml(isBookView ? t("selectedLaneFromBook") : t("currentLane"))}</p>
@@ -3473,15 +3474,21 @@ function renderInvitation(invitation, liveBoard = {}, carrierBook = {}) {
         <div><dt>${escapeHtml(t("service"))}</dt><dd>${escapeHtml(lane.service || "-")}</dd></div>
         <div><dt>${escapeHtml(t("weeklyVolume"))}</dt><dd>${escapeHtml(lane.weekly_volume ?? "-")}</dd></div>
       </dl>
-      ${laneDetailSections(lane).length ? `
-        <div class="bid-lane-detail-sections">
-          ${laneDetailSections(lane).map(([label, value]) => `
-            <article>
-              <span>${escapeHtml(label)}</span>
-              <div class="bid-lane-rich-text">${renderLaneDetailValue(value)}</div>
-            </article>
-          `).join("")}
-        </div>
+      ${selectedLaneDetails.length ? `
+        <details class="bid-lane-detail-disclosure">
+          <summary>
+            <span>${escapeHtml(dualText("Selected lane details", "Detalles de la ruta seleccionada"))}</span>
+            <small>${escapeHtml(dualText("Open only if you need lane-level notes. The RFx package above is the source of truth.", "Abre solo si necesitas notas por ruta. El paquete RFx superior es la fuente principal."))}</small>
+          </summary>
+          <div class="bid-lane-detail-sections">
+            ${selectedLaneDetails.map(([label, value]) => `
+              <article>
+                <span>${escapeHtml(label)}</span>
+                <div class="bid-lane-rich-text">${renderLaneDetailValue(value)}</div>
+              </article>
+            `).join("")}
+          </div>
+        </details>
       ` : ""}
     </section>
 
