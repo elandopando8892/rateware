@@ -85,6 +85,7 @@ const rfxBidSubmissionV2Migration = readFileSync(new URL("../supabase/migrations
 const rfxBidRatewareCaptureMigration = readFileSync(new URL("../supabase/migrations/20260708162000_rfx_bid_rateware_capture.sql", import.meta.url), "utf8");
 const rfxBidValidityMigration = readFileSync(new URL("../supabase/migrations/20260708170000_rfx_bid_validity.sql", import.meta.url), "utf8");
 const rfxBidDeadheadMigration = readFileSync(new URL("../supabase/migrations/20260709090000_rfx_bid_deadhead_commitment.sql", import.meta.url), "utf8");
+const rfxBidWithdrawnStatusMigration = readFileSync(new URL("../supabase/migrations/20260710183000_rfx_bid_withdrawn_status.sql", import.meta.url), "utf8");
 const emailBounceSuppressionMigration = readFileSync(new URL("../supabase/migrations/20260709103000_email_bounce_suppression.sql", import.meta.url), "utf8");
 const vendorContinuousImprovementMigration = readFileSync(new URL("../supabase/migrations/20260710100000_vendor_continuous_improvement.sql", import.meta.url), "utf8");
 const rfxProcessMigration = readFileSync(new URL("../supabase/migrations/20260710120000_rfx_process.sql", import.meta.url), "utf8");
@@ -825,6 +826,16 @@ assert.match(rfxBidSource, /data-save-quick-bid/, "Carrier portal should save or
 assert.match(rfxBidSource, /function saveQuickBidRow/, "Carrier portal should submit quick row edits through the tokenized bid API");
 assert.match(rfxBidSource, /callBidApi\("submit_bid", \{ token: rowToken, \.\.\.draft \}\)/, "Carrier quick bid grid should submit the selected row token instead of forcing lane navigation");
 assert.match(rfxBidApiSource, /notes: cleanText\(row\.notes\)/, "Carrier business book API should expose notes so quick row edits can preserve existing bid notes");
+assert.match(rfxBidSource, /data-decline-invitation/, "Carrier portal should let carriers reject an invited lane before bidding");
+assert.match(rfxBidSource, /data-withdraw-offer/, "Carrier portal should let carriers withdraw an active published offer");
+assert.match(rfxBidSource, /data-decline-quick-invitation/, "Carrier quick bid grid should expose lane-level rejection");
+assert.match(rfxBidSource, /data-withdraw-quick-bid/, "Carrier quick bid grid should expose lane-level offer withdrawal");
+assert.match(rfxBidSource, /callBidApi\(action, \{ token: actionToken \}\)/, "Carrier reject and withdraw actions should use the selected invitation token");
+assert.match(rfxBidApiSource, /body\.action === "decline_invitation" \|\| body\.action === "withdraw_bid"/, "Carrier portal API should expose separate reject and withdraw actions");
+assert.match(rfxBidApiSource, /invitation_status: "declined"/, "Rejecting an invitation should persist a declined status");
+assert.match(rfxBidApiSource, /invitation_status: "withdrawn"[\s\S]*bid_rate: null/, "Withdrawing an offer should remove the active bid rate while preserving history");
+assert.match(rfxBidApiSource, /status: "withdrawn"/, "Withdrawing an offer should audit a withdrawn contact history event");
+assert.match(rfxBidWithdrawnStatusMigration, /'withdrawn'/, "Bid Room status constraint should allow withdrawn offers");
 assert.match(stylesSource, /carrier-bid-workflow/, "Carrier portal guided bid flow should have compact navigation styling");
 assert.match(stylesSource, /bid-offer-launcher/, "Carrier portal should keep the advanced bid editor launcher compact");
 assert.match(stylesSource, /bid-editor-panel/, "Carrier portal should style the advanced offer editor as a focused popup panel");

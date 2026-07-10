@@ -610,6 +610,8 @@ function businessBookStatus(row: Record<string, unknown>) {
   if (awardRole === "backup") return "backup";
   if (String(cleanText(event.status) || "").toLowerCase() === "awarded" && (bidRate !== null || ["invited", "viewed", "responded", "quoted", "bid_submitted"].includes(status))) return "not_awarded";
   if (status === "awarded") return "awarded";
+  if (status === "declined") return "declined";
+  if (status === "withdrawn") return "withdrawn";
   if (bidRate !== null || ["quoted", "bid_submitted"].includes(status)) return "quoted";
   if (["invited", "viewed", "responded"].includes(status)) return "invited";
   return status || "drafted";
@@ -4680,6 +4682,173 @@ Deno.serve(async (request) => {
 
     if (body.action === "save_segment_confirmations") {
       return jsonResponse(await saveSegmentConfirmations(supabase, token, body));
+    }
+
+    if (body.action === "decline_invitation" || body.action === "withdraw_bid") {
+      const now = new Date().toISOString();
+      const invitationResult = await supabase
+        .from("rfx_lane_vendors")
+        .select(`
+          id,
+          rfx_event_id,
+          rfx_lane_id,
+          vendor_id,
+          invitation_status,
+          bid_rate,
+          currency,
+          weekly_capacity,
+          transit_days,
+          valid_through,
+          notes,
+          commercial_model,
+          marksman_margin_pct,
+          carrier_share_pct,
+          bid_rate_staging_id,
+          bid_rate_staged_at,
+          vendors(vendor_name,domain,primary_email),
+          rfx_events(id,owner_user_id,owner_email,rfx_id,name,customer),
+          rfx_lanes(id,lane_number,origin,destination)
+        `)
+        .eq("invitation_token", token)
+        .single();
+      if (invitationResult.error) throw invitationResult.error;
+
+      const currentStatus = String(cleanText(invitationResult.data.invitation_status) || "").toLowerCase();
+      const currentRate = cleanNumber(invitationResult.data.bid_rate);
+      const reason = cleanText(body.reason);
+      const rfxEvent = relationRecord(invitationResult.data.rfx_events);
+      const vendor = relationRecord(invitationResult.data.vendors);
+      const lane = relationRecord(invitationResult.data.rfx_lanes);
+
+      if (body.action === "decline_invitation") {
+        if (currentRate !== null || ["quoted", "bid_submitted", "awarded"].includes(currentStatus)) {
+          throw new Error("This lane already has an active offer. Withdraw the offer instead of rejecting the invitation.");
+        }
+        const result = await supabase
+          .from("rfx_lane_vendors")
+          .update({
+            invitation_status: "declined",
+            notes: reason || cleanText(invitationResult.data.notes),
+            response_source: "carrier_portal",
+            responded_at: now,
+            updated_at: now
+          })
+          .eq("id", invitationResult.data.id)
+          .select("id,invitation_status,notes,responded_at,updated_at")
+          .single();
+        if (result.error) throw result.error;
+
+        if (rfxEvent?.owner_email) {
+          const historyResult = await supabase.from("contact_history").insert({
+            owner_user_id: rfxEvent.owner_user_id || null,
+            owner_email: rfxEvent.owner_email || null,
+            vendor_id: invitationResult.data.vendor_id,
+            rfx_event_id: invitationResult.data.rfx_event_id,
+            channel: "portal",
+            direction: "inbound",
+            status: "declined",
+            subject: `${rfxEvent.rfx_id || "RFx"} invitation declined`,
+            body_preview: [
+              vendor?.vendor_name || vendor?.domain || "Carrier",
+              lane?.origin && lane?.destination ? `${lane.origin} -> ${lane.destination}` : null,
+              reason ? `reason: ${reason}` : null
+            ].filter(Boolean).join(" | "),
+            metadata: {
+              source: "rfx_bid_portal",
+              rfx_lane_vendor_id: invitationResult.data.id,
+              rfx_lane_id: invitationResult.data.rfx_lane_id,
+              previous_status: currentStatus || null,
+              reason
+            }
+          });
+          if (historyResult.error) throw historyResult.error;
+        }
+        return jsonResponse({ row: result.data });
+      }
+
+      if (currentStatus === "awarded") {
+        throw new Error("Awarded offers cannot be withdrawn from the portal. Contact procurement.");
+      }
+      if (currentRate === null && !["quoted", "bid_submitted"].includes(currentStatus)) {
+        throw new Error("No active offer is available to withdraw.");
+      }
+
+      const result = await supabase
+        .from("rfx_lane_vendors")
+        .update({
+          invitation_status: "withdrawn",
+          bid_rate: null,
+          weekly_capacity: null,
+          transit_days: null,
+          valid_through: null,
+          commercial_model: null,
+          marksman_margin_pct: null,
+          carrier_share_pct: null,
+          best_alternative_offered: false,
+          alternative_equipment: null,
+          alternative_units: null,
+          alternative_notes: null,
+          equipment_available: null,
+          current_unit_location: null,
+          deadhead_distance: null,
+          deadhead_unit: null,
+          unit_details: null,
+          eta_pickup: null,
+          eta_delivery: null,
+          mirror_account_enabled: false,
+          availability_validation_status: "not_requested",
+          availability_validation_notes: null,
+          bid_rate_staging_id: null,
+          bid_rate_staged_at: null,
+          notes: reason || cleanText(invitationResult.data.notes),
+          response_source: "carrier_portal",
+          responded_at: now,
+          updated_at: now
+        })
+        .eq("id", invitationResult.data.id)
+        .select("id,invitation_status,bid_rate,bid_rate_staging_id,bid_rate_staged_at,currency,weekly_capacity,transit_days,valid_through,commercial_model,marksman_margin_pct,carrier_share_pct,best_alternative_offered,alternative_equipment,alternative_units,alternative_notes,equipment_available,current_unit_location,deadhead_distance,deadhead_unit,unit_details,eta_pickup,eta_delivery,mirror_account_enabled,availability_validation_status,availability_validation_notes,notes,responded_at")
+        .single();
+      if (result.error) throw result.error;
+
+      if (rfxEvent?.owner_email) {
+        const historyResult = await supabase.from("contact_history").insert({
+          owner_user_id: rfxEvent.owner_user_id || null,
+          owner_email: rfxEvent.owner_email || null,
+          vendor_id: invitationResult.data.vendor_id,
+          rfx_event_id: invitationResult.data.rfx_event_id,
+          channel: "portal",
+          direction: "inbound",
+          status: "withdrawn",
+          subject: `${rfxEvent.rfx_id || "RFx"} offer withdrawn`,
+          body_preview: [
+            vendor?.vendor_name || vendor?.domain || "Carrier",
+            currentRate !== null ? `${currentRate} ${cleanText(invitationResult.data.currency) || "USD"}` : null,
+            lane?.origin && lane?.destination ? `${lane.origin} -> ${lane.destination}` : null,
+            reason ? `reason: ${reason}` : null
+          ].filter(Boolean).join(" | "),
+          metadata: {
+            source: "rfx_bid_portal",
+            rfx_lane_vendor_id: invitationResult.data.id,
+            rfx_lane_id: invitationResult.data.rfx_lane_id,
+            withdrawn_staging_id: cleanText(invitationResult.data.bid_rate_staging_id),
+            previous_status: currentStatus || null,
+            reason,
+            before: {
+              bid_rate: currentRate,
+              currency: cleanText(invitationResult.data.currency),
+              weekly_capacity: cleanNumber(invitationResult.data.weekly_capacity),
+              transit_days: cleanNumber(invitationResult.data.transit_days),
+              valid_through: cleanDate(invitationResult.data.valid_through),
+              commercial_model: cleanText(invitationResult.data.commercial_model),
+              marksman_margin_pct: cleanNumber(invitationResult.data.marksman_margin_pct),
+              carrier_share_pct: cleanNumber(invitationResult.data.carrier_share_pct),
+              bid_rate_staging_id: cleanText(invitationResult.data.bid_rate_staging_id)
+            }
+          }
+        });
+        if (historyResult.error) throw historyResult.error;
+      }
+      return jsonResponse({ row: result.data });
     }
 
     if (body.action === "submit_bid") {

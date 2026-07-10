@@ -3832,8 +3832,15 @@ body.bid-editor-open {
   gap: 8px;
 }
 
-.bid-final-actions button {
+.bid-final-actions [data-bid-submit-button] {
   margin-left: auto;
+}
+
+.quick-bid-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  align-items: center;
 }
 
 .masked-rate {

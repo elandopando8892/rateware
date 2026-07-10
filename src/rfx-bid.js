@@ -160,6 +160,8 @@ const BID_PORTAL_COPY = {
     reviewCopy: "This is what procurement will see.",
     notes: "Notes",
     confirmTerms: "Confirm capacity and commercial terms",
+    rejectInvitation: "Reject lane",
+    withdrawOffer: "Withdraw offer",
     logisticsModel: "Logistics model",
     operationCriteria: "Operation criteria",
     businessRules: "Business rules",
@@ -273,6 +275,8 @@ const BID_PORTAL_COPY = {
     reviewCopy: "Esto es lo que procurement va a ver.",
     notes: "Notas",
     confirmTerms: "Confirmar capacidad y terminos comerciales",
+    rejectInvitation: "Rechazar ruta",
+    withdrawOffer: "Retirar oferta",
     logisticsModel: "Modelo logistico",
     operationCriteria: "Criterios de operacion",
     businessRules: "Reglas de negocio",
@@ -801,6 +805,7 @@ function statusLabel(status) {
       not_awarded: "Not awarded",
       pending: "Pending",
       declined: "Declined",
+      withdrawn: "Withdrawn",
       open: "Open",
       not_invited: "Request invite"
     },
@@ -816,6 +821,7 @@ function statusLabel(status) {
       not_awarded: "No asignado",
       pending: "Pendiente",
       declined: "Declinado",
+      withdrawn: "Retirada",
       open: "Abierto",
       not_invited: "Solicitar invitacion"
     }
@@ -827,7 +833,7 @@ function statusTone(status) {
   const value = String(status || "").toLowerCase();
   if (value === "awarded") return "success";
   if (value === "backup" || value === "quoted" || value === "bid_submitted") return "neutral";
-  if (value === "not_awarded" || value === "declined") return "muted";
+  if (value === "not_awarded" || value === "declined" || value === "withdrawn") return "muted";
   if (value === "invited" || value === "viewed" || value === "responded") return "warning";
   return "muted";
 }
@@ -2241,6 +2247,9 @@ function syncBidFormMode() {
   const form = card.querySelector("#bid-form");
   if (!form) return;
   const editing = hasSubmittedOffer();
+  const participationStatus = String(lastInvitation?.invitation_status || "").toLowerCase();
+  const canReject = !editing && !["declined", "withdrawn", "awarded"].includes(participationStatus);
+  const canWithdraw = editing && participationStatus !== "awarded";
   form.dataset.editingSubmittedOffer = editing ? "true" : "false";
   const mode = card.querySelector("[data-bid-form-mode]");
   if (mode) {
@@ -2251,6 +2260,10 @@ function syncBidFormMode() {
   }
   const submitButton = card.querySelector("[data-bid-submit-button]");
   if (submitButton) submitButton.textContent = editing ? t("updateOffer") : t("submitPrimary");
+  const rejectButton = card.querySelector("[data-decline-invitation]");
+  if (rejectButton) rejectButton.hidden = !canReject;
+  const withdrawButton = card.querySelector("[data-withdraw-offer]");
+  if (withdrawButton) withdrawButton.hidden = !canWithdraw;
 }
 
 function openBidEditor(options = {}) {
@@ -2866,12 +2879,14 @@ function filteredBookRows(carrierBook = {}) {
     const lane = row.lane || {};
     const event = row.event || {};
     const viewMatches = bookFilters.view === "all"
-      || (bookFilters.view === "invited" && row.is_invited && !["quoted", "awarded", "backup", "not_awarded"].includes(status))
+      || (bookFilters.view === "invited" && row.is_invited && !["quoted", "awarded", "backup", "not_awarded", "declined", "withdrawn"].includes(status))
       || (bookFilters.view === "open" && !row.is_invited)
       || (bookFilters.view === "quoted" && status === "quoted")
       || (bookFilters.view === "awarded" && status === "awarded")
       || (bookFilters.view === "backup" && status === "backup")
-      || (bookFilters.view === "not_awarded" && status === "not_awarded");
+      || (bookFilters.view === "not_awarded" && status === "not_awarded")
+      || (bookFilters.view === "declined" && status === "declined")
+      || (bookFilters.view === "withdrawn" && status === "withdrawn");
     if (!viewMatches) return false;
     if (!term) return true;
     return [
@@ -3041,7 +3056,14 @@ function renderQuickLaneBidGridShell(carrierBook = {}, invitation = {}) {
                   </td>
                   <td><input data-quick-bid-field="commercial_pct" inputmode="decimal" value="${escapeAttribute(quickBidCommercialPercent(row))}" placeholder="${escapeAttribute(quickBidCommercialPlaceholder(model))}" /></td>
                   <td class="quick-bid-row-status">${quickBidRowStatus(row)}</td>
-                  <td><button type="button" class="small-button" data-save-quick-bid>${escapeHtml(row.bid_rate ? dualText("Update", "Actualizar") : dualText("Submit", "Enviar"))}</button></td>
+                  <td>
+                    <div class="quick-bid-actions">
+                      <button type="button" class="small-button" data-save-quick-bid>${escapeHtml(row.bid_rate ? dualText("Update", "Actualizar") : dualText("Submit", "Enviar"))}</button>
+                      ${row.bid_rate
+                        ? `<button type="button" class="secondary small-button" data-withdraw-quick-bid>${escapeHtml(t("withdrawOffer"))}</button>`
+                        : `<button type="button" class="secondary small-button" data-decline-quick-invitation>${escapeHtml(t("rejectInvitation"))}</button>`}
+                    </div>
+                  </td>
                 </tr>
               `;
             }).join("")}
@@ -3145,6 +3167,56 @@ async function saveQuickBidRow(rowElement, button) {
     await loadInvitation({ refreshOnly: true, refreshForm: rowToken === tokenFromUrl(), refreshQuickGrid: true });
   } catch (error) {
     setQuickBidRowStatus(rowElement, humanizeError(error), "error");
+    button.disabled = false;
+  }
+}
+
+async function updateBidParticipation(action, button, options = {}) {
+  const rowElement = options.rowElement || null;
+  const actionToken = options.token || rowElement?.dataset.invitationToken || tokenFromUrl();
+  const isWithdraw = action === "withdraw_bid";
+  const confirmation = isWithdraw
+    ? dualText(
+      "Withdraw this offer? The active price will leave the live board, but procurement keeps the history.",
+      "Retirar esta oferta? La tarifa activa saldra del tablero, pero procurement conserva el historial."
+    )
+    : dualText(
+      "Reject this lane? Procurement will see that you are not participating for now.",
+      "Rechazar esta ruta? Procurement vera que no participas por ahora."
+    );
+  if (!window.confirm(confirmation)) return;
+
+  const status = rowElement ? null : card.querySelector("#bid-submit-status");
+  const progressText = isWithdraw
+    ? dualText("Withdrawing offer...", "Retirando oferta...")
+    : dualText("Rejecting lane...", "Rechazando ruta...");
+  const successText = isWithdraw
+    ? dualText("Offer withdrawn. It is no longer active on the live board.", "Oferta retirada. Ya no esta activa en el tablero.")
+    : dualText("Lane rejected. Procurement can still invite or reopen it later.", "Ruta rechazada. Procurement puede invitar o reabrirla despues.");
+  button.disabled = true;
+  if (rowElement) setQuickBidRowStatus(rowElement, progressText, "neutral");
+  if (status) {
+    status.textContent = progressText;
+    status.dataset.tone = "neutral";
+  }
+  try {
+    await callBidApi(action, { token: actionToken });
+    if (rowElement) {
+      lastQuickBidSaveStatus = { token: actionToken, tone: "success", message: successText };
+    }
+    if (status) {
+      status.textContent = successText;
+      status.dataset.tone = "success";
+    }
+    queuePrivateBidAlert(isWithdraw ? "bidSubmitted" : "supportAnswer", successText);
+    await loadInvitation({ refreshOnly: true, refreshForm: actionToken === tokenFromUrl(), refreshQuickGrid: true });
+  } catch (error) {
+    const message = humanizeError(error);
+    if (rowElement) setQuickBidRowStatus(rowElement, message, "error");
+    if (status) {
+      status.textContent = message;
+      status.dataset.tone = "error";
+    }
     button.disabled = false;
   }
 }
@@ -3271,7 +3343,9 @@ function renderCarrierBook(carrierBook = {}) {
     ["quoted", "Quoted"],
     ["awarded", "Awarded"],
     ["backup", "Backup"],
-    ["not_awarded", "Not awarded"]
+    ["not_awarded", "Not awarded"],
+    ["declined", "Declined"],
+    ["withdrawn", "Withdrawn"]
   ];
   book.innerHTML = `
     <div class="bid-room-section-heading">
@@ -3685,6 +3759,8 @@ function renderInvitation(invitation, liveBoard = {}, carrierBook = {}) {
             <input id="bid-confirm-review" type="checkbox" />
             ${escapeHtml(t("confirmTerms"))}
           </label>
+          <button type="button" class="secondary small-button" data-decline-invitation>${escapeHtml(t("rejectInvitation"))}</button>
+          <button type="button" class="danger small-button" data-withdraw-offer hidden>${escapeHtml(t("withdrawOffer"))}</button>
           <button type="submit" data-bid-submit-button>${escapeHtml(t("submitPrimary"))}</button>
         </div>
       </section>
@@ -3836,6 +3912,32 @@ card.addEventListener("click", async (event) => {
   if (quickBidSaveButton) {
     const row = quickBidSaveButton.closest("[data-quick-bid-row]");
     if (row) await saveQuickBidRow(row, quickBidSaveButton);
+    return;
+  }
+
+  const quickBidWithdrawButton = event.target.closest("[data-withdraw-quick-bid]");
+  if (quickBidWithdrawButton) {
+    const row = quickBidWithdrawButton.closest("[data-quick-bid-row]");
+    if (row) await updateBidParticipation("withdraw_bid", quickBidWithdrawButton, { rowElement: row });
+    return;
+  }
+
+  const quickBidDeclineButton = event.target.closest("[data-decline-quick-invitation]");
+  if (quickBidDeclineButton) {
+    const row = quickBidDeclineButton.closest("[data-quick-bid-row]");
+    if (row) await updateBidParticipation("decline_invitation", quickBidDeclineButton, { rowElement: row });
+    return;
+  }
+
+  const withdrawOfferButton = event.target.closest("[data-withdraw-offer]");
+  if (withdrawOfferButton) {
+    await updateBidParticipation("withdraw_bid", withdrawOfferButton);
+    return;
+  }
+
+  const declineInvitationButton = event.target.closest("[data-decline-invitation]");
+  if (declineInvitationButton) {
+    await updateBidParticipation("decline_invitation", declineInvitationButton);
     return;
   }
 
