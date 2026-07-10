@@ -98,3 +98,82 @@ Use this when the XLSX is already a template/database, not an unstructured carri
 3. The backend reads the workbook from Storage, maps known headers like `Vendor Domain`, `Origen`, `Destino`, `Equipment`, `Trailer`, `Operation`, `Service`, `Rate`, and `Currency`.
 4. Existing pending/rejected rows for that upload are archived to avoid duplicates; approved rows are not touched.
 5. Imported rows are normalized and inserted into `rate_staging` for review before approval.
+
+## WhatsApp Business Meta setup
+
+Rateware supports Meta Cloud API WhatsApp sends through Supabase Edge Function secrets. Do not paste access tokens, app secrets, verify tokens, WABA ids, or phone number ids into source code, static config, README examples, screenshots, or Git commits.
+
+Required Supabase secrets:
+
+- `WHATSAPP_PROVIDER`
+- `WHATSAPP_CONNECTION_MODE`
+- `WHATSAPP_GRAPH_API_VERSION`
+- `WHATSAPP_PHONE_NUMBER_ID`
+- `WHATSAPP_BUSINESS_ACCOUNT_ID`
+- `WHATSAPP_WABA_ID`
+- `WHATSAPP_ACCESS_TOKEN`
+- `WHATSAPP_WEBHOOK_VERIFY_TOKEN`
+- `WHATSAPP_APP_SECRET`
+- `WHATSAPP_GROUPS_ENABLED`
+
+Recommended production values:
+
+- `WHATSAPP_PROVIDER=meta`
+- `WHATSAPP_CONNECTION_MODE=internal_managed`
+- `WHATSAPP_GRAPH_API_VERSION=v23.0`
+- `WHATSAPP_GROUPS_ENABLED=false`
+
+Set secrets from a local shell without committing them:
+
+```powershell
+$env:SUPABASE_ACCESS_TOKEN=[Environment]::GetEnvironmentVariable('SUPABASE_ACCESS_TOKEN','User')
+npx supabase@latest secrets set WHATSAPP_PROVIDER=meta --project-ref alqjqzqagdmcywpjtnnr
+npx supabase@latest secrets set WHATSAPP_CONNECTION_MODE=internal_managed --project-ref alqjqzqagdmcywpjtnnr
+npx supabase@latest secrets set WHATSAPP_GRAPH_API_VERSION=v23.0 --project-ref alqjqzqagdmcywpjtnnr
+npx supabase@latest secrets set WHATSAPP_GROUPS_ENABLED=false --project-ref alqjqzqagdmcywpjtnnr
+```
+
+Set the remaining values from your password manager or Supabase dashboard:
+
+```text
+WHATSAPP_PHONE_NUMBER_ID=<Meta phone number id>
+WHATSAPP_BUSINESS_ACCOUNT_ID=<Meta business account id>
+WHATSAPP_WABA_ID=<WhatsApp Business Account id>
+WHATSAPP_ACCESS_TOKEN=<Meta access token>
+WHATSAPP_WEBHOOK_VERIFY_TOKEN=<private verify token generated for this webhook>
+WHATSAPP_APP_SECRET=<Meta app secret>
+```
+
+After changing secrets, redeploy the Edge Functions that read them:
+
+```powershell
+$env:SUPABASE_ACCESS_TOKEN=[Environment]::GetEnvironmentVariable('SUPABASE_ACCESS_TOKEN','User')
+npx supabase@latest functions deploy rateware-api --project-ref alqjqzqagdmcywpjtnnr --no-verify-jwt
+npx supabase@latest functions deploy whatsapp-webhook --project-ref alqjqzqagdmcywpjtnnr --no-verify-jwt
+```
+
+Configure the Meta webhook:
+
+1. In Meta Business Manager, open the WhatsApp app webhook settings.
+2. Callback URL:
+   `https://alqjqzqagdmcywpjtnnr.supabase.co/functions/v1/whatsapp-webhook`
+3. Verify token: use the exact server-side value stored as `WHATSAPP_WEBHOOK_VERIFY_TOKEN`.
+4. Subscribe to WhatsApp message events/statuses for delivery tracking.
+5. Keep WhatsApp groups manual for now. `WHATSAPP_GROUPS_ENABLED=false` means Rateware can open/copy group messages but should not automate group delivery.
+
+Test in Rateware:
+
+1. Go to `Settings > Integrations > WhatsApp Business`.
+2. Click `Refresh`.
+3. Click `Test line`; the backend action `test_whatsapp_business_connection` should return the sender display phone, verified name, and quality rating.
+4. Click `Sync templates`; the backend action `sync_whatsapp_templates` reads `/{WHATSAPP_WABA_ID}/message_templates`.
+5. Click `Verify webhook`; the backend action `verify_whatsapp_webhook` confirms the endpoint and whether verify token/app secret are configured.
+
+Optional CLI check:
+
+```powershell
+$env:RATEWARE_API_BEARER="<current Kinde access token>"
+node tools/whatsapp-env-check.mjs
+```
+
+The check prints only configured/missing status and never prints secret values.

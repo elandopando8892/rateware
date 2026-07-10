@@ -347,7 +347,7 @@ function humanGoogleChatMessage(message = "") {
 function humanWhatsappMessage(message = "") {
   const text = String(message || "");
   if (/WHATSAPP_|META_|WABA|PHONE_NUMBER_ID|ACCESS_TOKEN|Meta secrets|not configured|connector is not fully configured/i.test(text)) {
-    return "WhatsApp Business connector is not enabled for this deployment yet. Add Meta WhatsApp secrets in Supabase before automated sends.";
+    return "WhatsApp Business connector is not enabled for this deployment. Configure Meta WhatsApp secrets server-side.";
   }
   if (/template mapping|Meta template|message template/i.test(text)) {
     return "This message needs an approved Meta WhatsApp template. Sync templates in Settings and map the template before sending.";
@@ -525,6 +525,20 @@ function renderWhatsappConnections(data = currentSettings?.whatsapp) {
   const configured = row.configured === true;
   const manualSetup = row.status === "manual_setup";
   const templateCount = Number(row.template_count || 0);
+  const senderLabel = row.display_phone_number
+    ? [row.display_phone_number, row.verified_name].filter(Boolean).join(" | ")
+    : row.phone_number_id_configured
+      ? "Configured. Run Test line to fetch sender phone."
+      : "-";
+  const accountLabel = [
+    row.waba_id_configured ? `WABA ${row.waba_id || "configured"}` : "",
+    row.business_account_id_configured ? `Account ${row.business_account_id || "configured"}` : ""
+  ].filter(Boolean).join(" | ") || "-";
+  const webhookLabel = row.webhook_configured
+    ? row.app_secret_configured
+      ? "Verify token + app secret configured"
+      : "Verify token configured; app secret missing"
+    : "Verify token missing";
   const statusLabel = connected
     ? "Connected"
     : manualSetup
@@ -538,16 +552,16 @@ function renderWhatsappConnections(data = currentSettings?.whatsapp) {
     ? "Ready to create direct WhatsApp Business drafts and send approved Meta templates to opted-in vendors."
     : configured
       ? "Meta WhatsApp server secrets are configured. Test the line and sync approved templates before sending."
-      : "Add Meta WhatsApp Business secrets in Supabase. Users should not paste access tokens inside Rateware.";
+      : "WhatsApp Business connector is not enabled for this deployment. Configure Meta WhatsApp secrets server-side.";
   whatsappConnectionCard.innerHTML = `
     <strong>Meta WhatsApp Business Platform</strong>
     <p>${escapeHtml(connectionCopy)}</p>
     <dl class="diagnostic-list compact-list">
       <div><dt>Status</dt><dd><span class="status-pill ${connected ? "success" : row.status === "error" ? "danger" : configured ? "warning" : "neutral"}">${escapeHtml(statusLabel)}</span></dd></div>
-      <div><dt>Sender</dt><dd>${escapeHtml(row.display_phone_number || row.phone_number_id || "-")}</dd></div>
-      <div><dt>Business account</dt><dd>${escapeHtml(row.waba_id || row.business_account_id || "-")}</dd></div>
+      <div><dt>Sender</dt><dd>${escapeHtml(senderLabel)}</dd></div>
+      <div><dt>WABA / account</dt><dd>${escapeHtml(accountLabel)}</dd></div>
       <div><dt>Templates</dt><dd>${escapeHtml(templateCount ? `${templateCount} synced` : row.templates_last_synced_at ? "Synced" : "-")}</dd></div>
-      <div><dt>Webhook</dt><dd>${escapeHtml(row.webhook_verified_at ? "Verified" : "Pending")}</dd></div>
+      <div><dt>Webhook</dt><dd>${escapeHtml(row.webhook_verified_at ? "Verified" : webhookLabel)}</dd></div>
       <div><dt>Updated</dt><dd>${escapeHtml(row.updated_at ? new Date(row.updated_at).toLocaleString() : "-")}</dd></div>
     </dl>
     <div class="integration-callout">
@@ -571,7 +585,7 @@ function renderWhatsappConnections(data = currentSettings?.whatsapp) {
       ? (connected
           ? "WhatsApp Business is ready for approved template sends. Group delivery remains manual unless explicitly enabled."
           : "Test the line and sync approved templates before enabling WhatsApp sends.")
-      : "WhatsApp Business connector is not enabled yet. Configure Meta secrets server-side.",
+      : "WhatsApp Business connector is not enabled for this deployment. Configure Meta WhatsApp secrets server-side.",
     configured ? (connected ? "success" : "warning") : "warning"
   );
 }

@@ -49,7 +49,9 @@ const bidRoomBoardSource = readFileSync(new URL("../src/bid-room-board.js", impo
 const bidRoomBoardHtml = readFileSync(new URL("../bid-room-board.html", import.meta.url), "utf8");
 const bidRoomE2eSource = readFileSync(new URL("../tools/bid-room-e2e.mjs", import.meta.url), "utf8");
 const integrationSmokeSource = readFileSync(new URL("../tools/integration-smoke.mjs", import.meta.url), "utf8");
+const whatsappEnvCheckSource = readFileSync(new URL("../tools/whatsapp-env-check.mjs", import.meta.url), "utf8");
 const packageJsonSource = readFileSync(new URL("../package.json", import.meta.url), "utf8");
+const readmeSource = readFileSync(new URL("../README.md", import.meta.url), "utf8");
 const gmailOauthCallbackSource = readFileSync(new URL("../supabase/functions/gmail-oauth-callback/index.ts", import.meta.url), "utf8");
 const googleChatAppSource = readFileSync(new URL("../supabase/functions/google-chat-app/index.ts", import.meta.url), "utf8");
 const rfxServiceSource = readFileSync(new URL("../src/rfx-service.js", import.meta.url), "utf8");
@@ -242,11 +244,45 @@ for (const column of [
 assert.match(whatsappBusinessMigration, /email_whatsapp_group/, "Outreach templates and campaigns should support composite WhatsApp group channels");
 assert.match(whatsappBusinessMigration, /check \(channel in \('email', 'whatsapp', 'whatsapp_group'\)\)/, "Outreach messages should support WhatsApp message rows");
 assert.match(apiSource, /list_whatsapp_connections/, "Rateware API should expose WhatsApp connection status");
+for (const envName of [
+  "WHATSAPP_PROVIDER",
+  "WHATSAPP_CONNECTION_MODE",
+  "WHATSAPP_GRAPH_API_VERSION",
+  "WHATSAPP_PHONE_NUMBER_ID",
+  "WHATSAPP_BUSINESS_ACCOUNT_ID",
+  "WHATSAPP_WABA_ID",
+  "WHATSAPP_ACCESS_TOKEN",
+  "WHATSAPP_WEBHOOK_VERIFY_TOKEN",
+  "WHATSAPP_APP_SECRET",
+  "WHATSAPP_GROUPS_ENABLED"
+]) {
+  assert.match(apiSource, new RegExp(`Deno\\.env\\.get\\("${envName}"\\)`), `Rateware API should read ${envName}`);
+  assert.match(readmeSource, new RegExp(envName), `README should document ${envName}`);
+  assert.match(whatsappEnvCheckSource, new RegExp(`"${envName}"`), `WhatsApp env check should verify ${envName}`);
+}
+const whatsappPublicConnectionSource = apiSource.slice(apiSource.indexOf("function publicWhatsappConnection"), apiSource.indexOf("async function ensureInternalWhatsappConnection"));
+assert.doesNotMatch(whatsappPublicConnectionSource, /WHATSAPP_ACCESS_TOKEN|access_token/i, "Public WhatsApp connection payload must not expose access tokens");
+assert.match(whatsappPublicConnectionSource, /maskedSecret\(storedPhoneNumberId\)/, "Public WhatsApp connection should mask phone number ids");
+assert.match(whatsappPublicConnectionSource, /app_secret_configured: Boolean\(WHATSAPP_APP_SECRET\)/, "Public WhatsApp connection should expose only app secret configured state");
+assert.match(apiSource, /display_phone_number: cleanText\(data\.display_phone_number\)/, "WhatsApp connection test should return display phone number at top level");
+assert.match(apiSource, /quality_rating: cleanText\(data\.quality_rating\)/, "WhatsApp connection test should return quality rating at top level");
+assert.doesNotMatch(apiSource, /provider_response:\s*\{\s*id:\s*data\.id/, "WhatsApp connection test should not expose raw provider phone number id");
 assert.match(apiSource, /send_whatsapp_outreach_messages/, "Rateware API should send direct WhatsApp Business drafts");
 assert.match(apiSource, /mark_whatsapp_group_message_manually_sent/, "Rateware API should support manual WhatsApp group completion");
 assert.match(apiSource, /send_whatsapp_group_outreach_messages/, "Rateware API should explicitly guard WhatsApp group automation");
+assert.match(apiSource, /test_whatsapp_business_connection/, "Rateware API should expose WhatsApp Business connection test");
+assert.match(apiSource, /sync_whatsapp_templates/, "Rateware API should expose WhatsApp template sync");
+assert.match(apiSource, /list_whatsapp_phone_numbers/, "Rateware API should expose WhatsApp sender phone listing");
+assert.match(apiSource, /verify_whatsapp_webhook/, "Rateware API should expose WhatsApp webhook verification");
+assert.match(apiSource, /message_templates\?fields=name,language,status,category,components&limit=100/, "WhatsApp template sync should call Meta message_templates endpoint");
 assert.match(settingsHtml, /connect-whatsapp-button/, "Settings should expose WhatsApp Business connection controls");
 assert.match(settingsSource, /WHATSAPP_WEBHOOK_ENDPOINT/, "Settings should show the Meta webhook endpoint");
+assert.match(settingsSource, /WhatsApp Business connector is not enabled for this deployment\. Configure Meta WhatsApp secrets server-side\./, "Settings should show clear missing WhatsApp secrets copy");
+assert.doesNotMatch(settingsSource, /WHATSAPP_ACCESS_TOKEN|WHATSAPP_APP_SECRET|WHATSAPP_WEBHOOK_VERIFY_TOKEN/, "Settings UI source should not reference secret values");
+assert.match(readmeSource, /## WhatsApp Business Meta setup/, "README should document WhatsApp Business Meta setup");
+assert.match(readmeSource, /never prints secret values/i, "README should explain that the WhatsApp check does not print secret values");
+assert.match(whatsappEnvCheckSource, /Secret values are never printed/, "WhatsApp env check should explicitly avoid printing secret values");
+assert.match(whatsappEnvCheckSource, /sync_whatsapp_templates/, "WhatsApp env check should call template sync when authenticated");
 assert.match(rfxEventsHtml, /rfx-send-selected-whatsapp-drafts/, "RFx Bid Room should expose selected WhatsApp draft sending");
 assert.match(rfxEventsHtml, /rfx-mark-selected-whatsapp-groups/, "RFx Bid Room should expose manual WhatsApp group completion");
 assert.match(rfxEventsSource, /selectableWhatsappDrafts/, "RFx Bid Room should calculate direct WhatsApp selectable drafts");

@@ -10258,6 +10258,9 @@ function publicWhatsappConnection(row: Record<string, unknown> | null | undefine
   const connected = status === "connected";
   const connectionMode = cleanText(row?.connection_mode) || WHATSAPP_CONNECTION_MODE || "internal_managed";
   const meta = objectRecord(row?.metadata);
+  const storedPhoneNumberId = cleanText(row?.phone_number_id) || WHATSAPP_PHONE_NUMBER_ID;
+  const storedBusinessAccountId = cleanText(row?.business_account_id) || WHATSAPP_BUSINESS_ACCOUNT_ID;
+  const storedWabaId = cleanText(row?.waba_id) || WHATSAPP_WABA_ID;
   return {
     id: row?.id || null,
     provider: "meta",
@@ -10266,14 +10269,18 @@ function publicWhatsappConnection(row: Record<string, unknown> | null | undefine
     connected,
     configured: whatsappIsConfigured(),
     groups_enabled: WHATSAPP_GROUPS_ENABLED,
-    phone_number_id: cleanText(row?.phone_number_id) || maskedSecret(WHATSAPP_PHONE_NUMBER_ID),
+    phone_number_id: maskedSecret(storedPhoneNumberId),
+    phone_number_id_configured: Boolean(storedPhoneNumberId),
     display_phone_number: cleanText(row?.display_phone_number),
     verified_name: cleanText(row?.verified_name),
-    business_account_id: cleanText(row?.business_account_id) || maskedSecret(WHATSAPP_BUSINESS_ACCOUNT_ID),
-    waba_id: cleanText(row?.waba_id) || maskedSecret(WHATSAPP_WABA_ID),
+    business_account_id: maskedSecret(storedBusinessAccountId),
+    business_account_id_configured: Boolean(storedBusinessAccountId),
+    waba_id: maskedSecret(storedWabaId),
+    waba_id_configured: Boolean(storedWabaId),
     graph_api_version: cleanText(row?.graph_api_version) || WHATSAPP_GRAPH_API_VERSION,
     templates_last_synced_at: row?.templates_last_synced_at || null,
     webhook_configured: Boolean(WHATSAPP_WEBHOOK_VERIFY_TOKEN),
+    app_secret_configured: Boolean(WHATSAPP_APP_SECRET),
     webhook_verified_at: row?.webhook_verified_at || null,
     quality_rating: cleanText(row?.quality_rating),
     last_error: row?.last_error || null,
@@ -10309,7 +10316,7 @@ async function ensureInternalWhatsappConnection(
       status,
       phone_number_id: WHATSAPP_PHONE_NUMBER_ID || null,
       business_account_id: WHATSAPP_BUSINESS_ACCOUNT_ID || null,
-      waba_id: WHATSAPP_WABA_ID || WHATSAPP_BUSINESS_ACCOUNT_ID || null,
+      waba_id: WHATSAPP_WABA_ID || null,
       graph_api_version: WHATSAPP_GRAPH_API_VERSION,
       last_error: status === "connected" ? null : "Meta WhatsApp Business secrets are not configured.",
       metadata,
@@ -10465,7 +10472,14 @@ async function testWhatsappBusinessConnection(
     .select("*")
     .single();
   if (result.error) throw result.error;
-  return { ok: true, row: publicWhatsappConnection(result.data), provider_response: { id: data.id, display_phone_number: data.display_phone_number, verified_name: data.verified_name, quality_rating: data.quality_rating } };
+  return {
+    ok: true,
+    display_phone_number: cleanText(data.display_phone_number),
+    verified_name: cleanText(data.verified_name),
+    quality_rating: cleanText(data.quality_rating),
+    phone_number_id: maskedSecret(data.id),
+    row: publicWhatsappConnection(result.data)
+  };
 }
 
 async function syncWhatsappTemplates(
