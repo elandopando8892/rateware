@@ -75,6 +75,8 @@ const syncWhatsappTemplatesButton = document.querySelector("#sync-whatsapp-templ
 const verifyWhatsappWebhookButton = document.querySelector("#verify-whatsapp-webhook-button");
 const refreshWhatsappConnectionButton = document.querySelector("#refresh-whatsapp-connection");
 const whatsappManualForm = document.querySelector("#whatsapp-manual-form");
+const whatsappMetaAppIdInput = document.querySelector("#whatsapp-meta-app-id");
+const whatsappAppSecretInput = document.querySelector("#whatsapp-app-secret");
 const whatsappMetaBusinessIdInput = document.querySelector("#whatsapp-meta-business-id");
 const whatsappMetaWabaIdInput = document.querySelector("#whatsapp-meta-waba-id");
 const whatsappMetaPhoneNumberIdInput = document.querySelector("#whatsapp-meta-phone-number-id");
@@ -534,6 +536,7 @@ function renderGoogleChatConnections(data = currentSettings?.google_chat, spaces
 function setWhatsappManualFormVisible(visible) {
   whatsappManualForm?.classList.toggle("hidden", !visible);
   if (!visible) {
+    if (whatsappAppSecretInput) whatsappAppSecretInput.value = "";
     if (whatsappAccessTokenInput) whatsappAccessTokenInput.value = "";
     if (whatsappWebhookVerifyTokenInput) whatsappWebhookVerifyTokenInput.value = "";
   }
@@ -553,6 +556,7 @@ function renderWhatsappConnections(data = currentSettings?.whatsapp) {
       ? "Configured. Run Test line to fetch sender phone."
       : "-";
   const accountLabel = [
+    row.app_id_configured ? `App ${row.app_id || "configured"}` : "",
     row.waba_id_configured ? `WABA ${row.waba_id || "configured"}` : "",
     row.business_account_id_configured ? `Account ${row.business_account_id || "configured"}` : ""
   ].filter(Boolean).join(" | ") || "-";
@@ -585,7 +589,7 @@ function renderWhatsappConnections(data = currentSettings?.whatsapp) {
     <dl class="diagnostic-list compact-list">
       <div><dt>Status</dt><dd><span class="status-pill ${connected ? "success" : row.status === "error" ? "danger" : configured ? "warning" : "neutral"}">${escapeHtml(statusLabel)}</span></dd></div>
       <div><dt>Sender</dt><dd>${escapeHtml(senderLabel)}</dd></div>
-      <div><dt>WABA / account</dt><dd>${escapeHtml(accountLabel)}</dd></div>
+      <div><dt>Meta app / account</dt><dd>${escapeHtml(accountLabel)}</dd></div>
       <div><dt>Templates</dt><dd>${escapeHtml(templateCount ? `${templateCount} synced` : row.templates_last_synced_at ? "Synced" : "-")}</dd></div>
       <div><dt>Webhook</dt><dd>${escapeHtml(row.webhook_verified_at ? "Verified" : webhookLabel)}</dd></div>
       <div><dt>Updated</dt><dd>${escapeHtml(row.updated_at ? new Date(row.updated_at).toLocaleString() : "-")}</dd></div>
@@ -610,8 +614,8 @@ function renderWhatsappConnections(data = currentSettings?.whatsapp) {
   if (testWhatsappButton) testWhatsappButton.disabled = !configured;
   if (syncWhatsappTemplatesButton) syncWhatsappTemplatesButton.disabled = !connected;
   if (verifyWhatsappWebhookButton) {
-    verifyWhatsappWebhookButton.classList.toggle("hidden", !internalWorkspace);
-    verifyWhatsappWebhookButton.disabled = !internalWorkspace || !configured;
+    verifyWhatsappWebhookButton.classList.remove("hidden");
+    verifyWhatsappWebhookButton.disabled = !configured;
   }
   setStatus(
     whatsappConnectionStatus,
@@ -911,6 +915,8 @@ whatsappManualForm?.addEventListener("submit", async (event) => {
   setStatus(whatsappConnectionStatus, "Saving encrypted workspace WhatsApp credentials...");
   try {
     await saveWhatsappBusinessConnection({
+      meta_app_id: whatsappMetaAppIdInput?.value?.trim() || "",
+      app_secret: whatsappAppSecretInput?.value?.trim() || "",
       meta_business_id: whatsappMetaBusinessIdInput?.value?.trim() || "",
       meta_waba_id: whatsappMetaWabaIdInput?.value?.trim() || "",
       meta_phone_number_id: whatsappMetaPhoneNumberIdInput?.value?.trim() || "",
@@ -924,6 +930,7 @@ whatsappManualForm?.addEventListener("submit", async (event) => {
   } catch (error) {
     setStatus(whatsappConnectionStatus, humanWhatsappMessage(error.message), "error");
   } finally {
+    if (whatsappAppSecretInput) whatsappAppSecretInput.value = "";
     if (whatsappAccessTokenInput) whatsappAccessTokenInput.value = "";
     if (whatsappWebhookVerifyTokenInput) whatsappWebhookVerifyTokenInput.value = "";
   }

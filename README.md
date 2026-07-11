@@ -156,7 +156,9 @@ WHATSAPP_INTERNAL_OWNER_EMAILS=<internal owner allowlist>
 WHATSAPP_INTERNAL_ORGANIZATION_IDS=<optional Kinde organization id allowlist>
 ```
 
-The global Meta identifiers and access token above belong only to the internal HeyMarksman workspace. An external workspace connects from `Settings > Integrations > WhatsApp Business > Connect your own WhatsApp Business` and enters its own Meta Business ID, WABA ID, Phone Number ID, Access Token, and Webhook Verify Token. The API encrypts both tokens before storage and never returns them to the browser. Replacing a token does not reveal the previous value.
+The global Meta identifiers and credentials above belong only to the internal HeyMarksman workspace. An external workspace connects from `Settings > Integrations > WhatsApp Business > Connect your own WhatsApp Business` and enters its own App ID, App Secret, Meta Business ID, WABA ID, Phone Number ID, Access Token, and Webhook Verify Token. The API encrypts App Secret, Access Token, and Webhook Verify Token before storage and never returns them to the browser. Replacing a credential does not reveal its previous value.
+
+The callback URL is the only shared value: every tenant configures the Rateware webhook URL in its own Meta app. In manual mode, Rateware resolves the incoming WABA/Phone Number ID first and validates the request signature with that tenant's encrypted App Secret. A future Meta Embedded Signup flow can remove the need for tenants to paste credentials, but it must still issue and store a workspace-scoped connection.
 
 After changing secrets, redeploy the Edge Functions that read them:
 

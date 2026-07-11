@@ -103,6 +103,7 @@ const rfxTemplateProfileLinkMigration = readFileSync(new URL("../supabase/migrat
 const vendorSupportMigration = readFileSync(new URL("../supabase/migrations/20260708143000_vendor_support_tickets.sql", import.meta.url), "utf8");
 const whatsappBusinessMigration = readFileSync(new URL("../supabase/migrations/20260710133000_whatsapp_business_integration.sql", import.meta.url), "utf8");
 const whatsappWorkspaceMigration = readFileSync(new URL("../supabase/migrations/20260710190000_whatsapp_workspace_connections.sql", import.meta.url), "utf8");
+const whatsappTenantAppMigration = readFileSync(new URL("../supabase/migrations/20260711190000_whatsapp_tenant_app_credentials.sql", import.meta.url), "utf8");
 const whatsappWebhookSource = readFileSync(new URL("../supabase/functions/whatsapp-webhook/index.ts", import.meta.url), "utf8");
 const rfxInvitationTableSource = rfxEventsSource.slice(rfxEventsSource.indexOf("function laneTableLabels"), rfxEventsSource.indexOf("function firstOutreachTarget"));
 const apiInvitationTableSource = apiSource.slice(apiSource.indexOf("function outreachLaneTableLabels"), apiSource.indexOf("function phoneForWhatsapp"));
@@ -265,6 +266,7 @@ for (const envName of [
 }
 const whatsappPublicConnectionSource = apiSource.slice(apiSource.indexOf("function publicWhatsappConnection"), apiSource.indexOf("async function ensureInternalWhatsappConnection"));
 assert.doesNotMatch(whatsappPublicConnectionSource, /access_token(?:_encrypted)?\s*:/i, "Public WhatsApp connection payload must not expose access tokens");
+assert.doesNotMatch(whatsappPublicConnectionSource, /app_secret_encrypted\s*:/i, "Public WhatsApp connection payload must not expose tenant app secrets");
 assert.match(whatsappPublicConnectionSource, /maskedSecret\(storedPhoneNumberId\)/, "Public WhatsApp connection should mask phone number ids");
 assert.doesNotMatch(whatsappPublicConnectionSource, /storedPhoneNumberId[^;]+\|\| WHATSAPP_PHONE_NUMBER_ID/, "External WhatsApp payload must not fall back to the internal phone id");
 assert.match(whatsappPublicConnectionSource, /app_secret_configured:/, "Public WhatsApp connection should expose only app secret configured state");
@@ -282,9 +284,12 @@ assert.doesNotMatch(whatsappWorkspaceMigration, /using\s*\(true\)/i, "WhatsApp c
 assert.match(apiSource, /function isInternalWhatsappWorkspace/, "WhatsApp resolver should explicitly identify the internal HeyMarksman workspace");
 assert.match(apiSource, /WHATSAPP_INTERNAL_OWNER_EMAILS\.has\(email\)/, "Internal WhatsApp access should require an allowed owner email");
 assert.match(apiSource, /WHATSAPP_INTERNAL_ORGANIZATION_IDS\.has\(organizationId\)/, "Internal WhatsApp access should support an allowed organization id");
-assert.match(apiSource, /\.from\("gmail_connections"\)[\s\S]+\.eq\("owner_email", user\.owner_email\)[\s\S]+\.eq\("mailbox_email", GMAIL_ALLOWED_SENDER\)[\s\S]+\.eq\("status", "connected"\)/, "Internal WhatsApp access may use the workspace's connected allowed Gmail mailbox as proof");
+assert.match(apiSource, /\.from\("gmail_mailbox_connections"\)[\s\S]+\.eq\("owner_email", user\.owner_email\)[\s\S]+\.eq\("mailbox_email", GMAIL_ALLOWED_SENDER\)[\s\S]+\.eq\("status", "connected"\)/, "Internal WhatsApp access may use the workspace's connected allowed Gmail mailbox as proof");
+assert.match(whatsappTenantAppMigration, /add column if not exists meta_app_id text/, "Tenant WhatsApp connections should store their own Meta App ID");
+assert.match(whatsappTenantAppMigration, /add column if not exists app_secret_encrypted text/, "Tenant WhatsApp connections should store only an encrypted Meta App Secret");
 assert.match(apiSource, /connection_mode: "tenant_connected"/, "External workspaces should save tenant-connected rows");
 assert.match(apiSource, /await encryptWhatsappSecret\(accessToken\)/, "Tenant WhatsApp access tokens should be encrypted before storage");
+assert.match(apiSource, /await encryptWhatsappSecret\(appSecret\)/, "Tenant Meta App Secrets should be encrypted before storage");
 assert.match(apiSource, /await decryptWhatsappSecret\(row\.access_token_encrypted/, "Tenant Meta requests should decrypt only the active workspace token server-side");
 assert.match(apiSource, /WHATSAPP_CONNECTION_REQUIRED_MESSAGE/, "External WhatsApp actions should fail closed without a tenant connection");
 assert.match(apiSource, /Authorization: `Bearer \$\{connection\.accessToken\}`/, "Meta calls should use the resolved workspace connection token");
@@ -306,6 +311,7 @@ assert.match(apiSource, /message_templates\?fields=name,language,status,category
 assert.match(settingsHtml, /connect-whatsapp-button/, "Settings should expose WhatsApp Business connection controls");
 assert.match(settingsHtml, /whatsapp-manual-form/, "External workspaces should have a manual WhatsApp Business setup form");
 assert.match(settingsHtml, /whatsapp-access-token[^>]+type="password"/, "WhatsApp access token should use a password input");
+assert.match(settingsHtml, /whatsapp-app-secret[^>]+type="password"/, "WhatsApp App Secret should use a password input");
 assert.match(settingsSource, /Connect your own WhatsApp Business/, "External Settings should ask tenants to connect their own WhatsApp Business account");
 assert.match(settingsSource, /Internal HeyMarksman WhatsApp Business sender/, "Internal Settings should label the managed HeyMarksman sender clearly");
 assert.match(settingsServiceSource, /save_whatsapp_business_connection/, "Settings should save tenant WhatsApp credentials server-side");
@@ -326,6 +332,8 @@ assert.match(whatsappWebhookSource, /x-hub-signature-256/, "WhatsApp webhook sho
 assert.doesNotMatch(whatsappWebhookSource, /if \(!WHATSAPP_APP_SECRET\) return true/, "WhatsApp webhook must reject unsigned POST requests when the Meta app secret is missing");
 assert.match(whatsappWebhookSource, /provider_message_id/, "WhatsApp webhook should update outreach messages by provider message id");
 assert.match(whatsappWebhookSource, /findWebhookConnection/, "WhatsApp webhook should resolve the workspace connection before routing events");
+assert.match(whatsappWebhookSource, /connectionAppSecret\(resolvedConnection\)/, "WhatsApp webhook should select the resolved workspace App Secret before signature validation");
+assert.match(whatsappWebhookSource, /signatureValid\(request, bodyText, appSecret\)/, "WhatsApp webhook should validate with the selected tenant App Secret");
 assert.match(whatsappWebhookSource, /meta_phone_number_id/, "WhatsApp webhook should route by Meta phone number id");
 assert.match(whatsappWebhookSource, /meta_waba_id/, "WhatsApp webhook should fall back to WABA routing");
 assert.match(whatsappWebhookSource, /whatsapp_connection_id/, "WhatsApp webhook should scope message updates to the resolved connection");

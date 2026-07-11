@@ -110,7 +110,7 @@ async function findWebhookConnection(
   const metadata = objectRecord(value.metadata);
   const phoneNumberId = cleanText(metadata.phone_number_id);
   const wabaId = cleanText(entry.id);
-  const select = "id,owner_user_id,owner_email,organization_id,connection_mode,status,meta_phone_number_id,phone_number_id,meta_waba_id,waba_id,display_phone_number";
+  const select = "id,owner_user_id,owner_email,organization_id,connection_mode,status,meta_phone_number_id,phone_number_id,meta_waba_id,waba_id,display_phone_number,app_secret_encrypted";
   if (phoneNumberId) {
     for (const column of ["meta_phone_number_id", "phone_number_id"]) {
       const result = await supabase
@@ -142,13 +142,19 @@ async function findWebhookConnection(
   return null;
 }
 
-async function signatureValid(request: Request, body: string) {
-  if (!WHATSAPP_APP_SECRET) return false;
+async function connectionAppSecret(connection: Record<string, unknown> | null) {
+  if (!connection) return "";
+  if (cleanText(connection.connection_mode) === "internal_managed") return WHATSAPP_APP_SECRET;
+  return await decryptWhatsappSecret(connection.app_secret_encrypted);
+}
+
+async function signatureValid(request: Request, body: string, appSecret: string) {
+  if (!appSecret) return false;
   const signature = cleanText(request.headers.get("x-hub-signature-256")).replace(/^sha256=/i, "");
   if (!signature) return false;
   const key = await crypto.subtle.importKey(
     "raw",
-    new TextEncoder().encode(WHATSAPP_APP_SECRET),
+    new TextEncoder().encode(appSecret),
     { name: "HMAC", hash: "SHA-256" },
     false,
     ["sign"]
@@ -334,23 +340,35 @@ Deno.serve(async (request) => {
 
   try {
     const bodyText = await request.text();
-    if (!(await signatureValid(request, bodyText))) {
-      return jsonResponse({ error: "Invalid Meta webhook signature." }, 403);
-    }
     const payload = bodyText ? JSON.parse(bodyText) : {};
     const supabase = getClient();
-    let processed = 0;
     const entries = arrayValue(payload.entry);
+    const resolvedChanges: Array<{ value: Record<string, unknown>; connection: Record<string, unknown> | null }> = [];
+    const connectionIds = new Set<string>();
     for (const entry of entries) {
       for (const change of arrayValue(entry.changes)) {
         const value = objectRecord(change.value);
         const connection = await findWebhookConnection(supabase, entry, value);
-        for (const status of arrayValue(value.statuses)) {
-          if (await recordStatusUpdate(supabase, status, connection)) processed += 1;
-        }
-        for (const message of arrayValue(value.messages)) {
-          if (await recordInboundMessage(supabase, message, connection)) processed += 1;
-        }
+        if (connection?.id) connectionIds.add(cleanText(connection.id));
+        resolvedChanges.push({ value, connection });
+      }
+    }
+    if (connectionIds.size !== 1) {
+      return jsonResponse({ error: "WhatsApp webhook connection could not be resolved uniquely." }, 403);
+    }
+    const resolvedConnection = resolvedChanges.find((item) => item.connection)?.connection || null;
+    const appSecret = await connectionAppSecret(resolvedConnection);
+    if (!(await signatureValid(request, bodyText, appSecret))) {
+      return jsonResponse({ error: "Invalid Meta webhook signature." }, 403);
+    }
+
+    let processed = 0;
+    for (const { value, connection } of resolvedChanges) {
+      for (const status of arrayValue(value.statuses)) {
+        if (await recordStatusUpdate(supabase, status, connection)) processed += 1;
+      }
+      for (const message of arrayValue(value.messages)) {
+        if (await recordInboundMessage(supabase, message, connection)) processed += 1;
       }
     }
     return jsonResponse({ ok: true, processed });

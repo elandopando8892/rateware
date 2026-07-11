@@ -10297,7 +10297,7 @@ async function isInternalWhatsappWorkspace(
   if (!user.owner_email || !GMAIL_ALLOWED_SENDER) return false;
 
   const result = await supabase
-    .from("gmail_connections")
+    .from("gmail_mailbox_connections")
     .select("id")
     .eq("owner_email", user.owner_email)
     .eq("mailbox_email", GMAIL_ALLOWED_SENDER)
@@ -10326,11 +10326,21 @@ function publicWhatsappConnection(
   const storedPhoneNumberId = cleanText(row?.meta_phone_number_id || row?.phone_number_id);
   const storedBusinessAccountId = cleanText(row?.meta_business_id || row?.business_account_id);
   const storedWabaId = cleanText(row?.meta_waba_id || row?.waba_id);
+  const storedAppId = cleanText(row?.meta_app_id);
   const tokenConfigured = internalWorkspace ? Boolean(WHATSAPP_ACCESS_TOKEN) : Boolean(row?.access_token_encrypted);
   const verifyTokenConfigured = internalWorkspace
     ? Boolean(WHATSAPP_WEBHOOK_VERIFY_TOKEN)
     : Boolean(row?.webhook_verify_token_encrypted);
-  const configured = Boolean(tokenConfigured && storedPhoneNumberId && (storedWabaId || storedBusinessAccountId));
+  const appSecretConfigured = internalWorkspace ? Boolean(WHATSAPP_APP_SECRET) : Boolean(row?.app_secret_encrypted);
+  const appIdConfigured = internalWorkspace ? Boolean(META_APP_ID) : Boolean(storedAppId);
+  const configured = Boolean(
+    tokenConfigured
+    && storedPhoneNumberId
+    && (storedWabaId || storedBusinessAccountId)
+    && verifyTokenConfigured
+    && appSecretConfigured
+    && appIdConfigured
+  );
   return {
     id: row?.id || null,
     provider: "meta",
@@ -10354,10 +10364,12 @@ function publicWhatsappConnection(
     business_account_id_configured: Boolean(storedBusinessAccountId),
     waba_id: maskedSecret(storedWabaId),
     waba_id_configured: Boolean(storedWabaId),
+    app_id: maskedSecret(storedAppId),
+    app_id_configured: appIdConfigured,
     graph_api_version: cleanText(row?.graph_api_version) || WHATSAPP_GRAPH_API_VERSION,
     templates_last_synced_at: row?.templates_last_synced_at || null,
     webhook_configured: verifyTokenConfigured,
-    app_secret_configured: internalWorkspace ? Boolean(WHATSAPP_APP_SECRET) : Boolean(meta.app_secret_configured),
+    app_secret_configured: appSecretConfigured,
     webhook_verified_at: row?.webhook_verified_at || null,
     quality_rating: cleanText(row?.quality_rating),
     last_error: row?.last_error || null,
@@ -10389,6 +10401,7 @@ async function ensureInternalWhatsappConnection(
       connection_mode: mode,
       status,
       organization_id: user.organization_id,
+      meta_app_id: META_APP_ID || null,
       phone_number_id: WHATSAPP_PHONE_NUMBER_ID || null,
       business_account_id: WHATSAPP_BUSINESS_ACCOUNT_ID || null,
       waba_id: WHATSAPP_WABA_ID || null,
@@ -10518,6 +10531,8 @@ async function saveTenantWhatsappBusinessConnection(
     throw new Error("The internal HeyMarksman WhatsApp Business sender is managed server-side.");
   }
   const existing = await findTenantWhatsappConnection(supabase, user);
+  const metaAppId = cleanText(input.meta_app_id || input.app_id)
+    || cleanText(existing?.meta_app_id);
   const metaBusinessId = cleanText(input.meta_business_id || input.business_account_id)
     || cleanText(existing?.meta_business_id || existing?.business_account_id);
   const metaWabaId = cleanText(input.meta_waba_id || input.waba_id)
@@ -10525,6 +10540,7 @@ async function saveTenantWhatsappBusinessConnection(
   const metaPhoneNumberId = cleanText(input.meta_phone_number_id || input.phone_number_id)
     || cleanText(existing?.meta_phone_number_id || existing?.phone_number_id);
   const accessToken = cleanText(input.access_token);
+  const appSecret = cleanText(input.app_secret);
   const webhookVerifyToken = cleanText(input.webhook_verify_token);
   const accessTokenEncrypted = accessToken
     ? await encryptWhatsappSecret(accessToken)
@@ -10532,10 +10548,14 @@ async function saveTenantWhatsappBusinessConnection(
   const webhookVerifyTokenEncrypted = webhookVerifyToken
     ? await encryptWhatsappSecret(webhookVerifyToken)
     : cleanText(existing?.webhook_verify_token_encrypted);
+  const appSecretEncrypted = appSecret
+    ? await encryptWhatsappSecret(appSecret)
+    : cleanText(existing?.app_secret_encrypted);
 
-  if (!metaBusinessId || !metaWabaId || !metaPhoneNumberId) {
-    throw new Error("Meta Business ID, WABA ID, and Phone Number ID are required.");
+  if (!metaAppId || !metaBusinessId || !metaWabaId || !metaPhoneNumberId) {
+    throw new Error("App ID, Meta Business ID, WABA ID, and Phone Number ID are required.");
   }
+  if (!appSecretEncrypted) throw new Error("App Secret is required.");
   if (!accessTokenEncrypted) throw new Error("Access Token is required.");
   if (!webhookVerifyTokenEncrypted) throw new Error("Webhook Verify Token is required.");
 
@@ -10545,6 +10565,7 @@ async function saveTenantWhatsappBusinessConnection(
     provider: "meta",
     connection_mode: "tenant_connected",
     status: "manual_setup",
+    meta_app_id: metaAppId,
     meta_business_id: metaBusinessId,
     meta_waba_id: metaWabaId,
     meta_phone_number_id: metaPhoneNumberId,
@@ -10552,6 +10573,7 @@ async function saveTenantWhatsappBusinessConnection(
     waba_id: metaWabaId,
     phone_number_id: metaPhoneNumberId,
     graph_api_version: WHATSAPP_GRAPH_API_VERSION,
+    app_secret_encrypted: appSecretEncrypted,
     access_token_encrypted: accessTokenEncrypted,
     webhook_verify_token_encrypted: webhookVerifyTokenEncrypted,
     last_error: null,
@@ -10559,6 +10581,7 @@ async function saveTenantWhatsappBusinessConnection(
       ...objectRecord(existing?.metadata),
       secret_source: "tenant_manual_setup",
       webhook_verify_token_configured: true,
+      app_secret_configured: true,
       groups_enabled: false
     },
     updated_at: now
@@ -10608,6 +10631,7 @@ async function disconnectWhatsappBusinessConnection(
     .from("whatsapp_business_connections")
     .update({
       status: "revoked",
+      app_secret_encrypted: null,
       access_token_encrypted: null,
       refresh_token_encrypted: null,
       webhook_verify_token_encrypted: null,
@@ -10765,13 +10789,16 @@ async function verifyWhatsappWebhook(
   const verifyTokenConfigured = connection.internalWorkspace
     ? Boolean(WHATSAPP_WEBHOOK_VERIFY_TOKEN)
     : Boolean(connection.row.webhook_verify_token_encrypted);
+  const appSecretConfigured = connection.internalWorkspace
+    ? Boolean(WHATSAPP_APP_SECRET)
+    : Boolean(connection.row.app_secret_encrypted);
   return {
     row: publicWhatsappConnection(connection.row, { internalWorkspace: connection.internalWorkspace }),
     endpoint: `${String(SUPABASE_URL || "").replace(/\/$/, "")}/functions/v1/whatsapp-webhook`,
     verify_token_configured: verifyTokenConfigured,
-    app_secret_configured: Boolean(WHATSAPP_APP_SECRET),
+    app_secret_configured: appSecretConfigured,
     connection_id: connection.row.id,
-    verified: verifyTokenConfigured && Boolean(WHATSAPP_APP_SECRET)
+    verified: verifyTokenConfigured && appSecretConfigured
   };
 }
 
