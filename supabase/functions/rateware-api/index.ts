@@ -10385,7 +10385,16 @@ async function ensureInternalWhatsappConnection(
   if (!await isInternalWhatsappWorkspace(supabase, user)) throw new Error(WHATSAPP_CONNECTION_REQUIRED_MESSAGE);
   const mode = "internal_managed";
   const status = whatsappInternalEnvConfigured() ? "connected" : "not_configured";
+  const existingResult = await supabase
+    .from("whatsapp_business_connections")
+    .select("metadata")
+    .eq("owner_email", user.owner_email)
+    .eq("provider", "meta")
+    .eq("connection_mode", mode)
+    .maybeSingle();
+  if (existingResult.error) throw existingResult.error;
   const metadata = {
+    ...objectRecord(existingResult.data?.metadata),
     secret_source: "server_env",
     deployment_connection_mode: WHATSAPP_CONNECTION_MODE,
     connection_label: "Internal HeyMarksman WhatsApp Business sender",
@@ -10667,6 +10676,253 @@ async function whatsappGraphFetch(
   return data;
 }
 
+function whatsappMetaStatus(value: unknown, fallback = "NOT_PUBLISHED") {
+  return (cleanText(value) || fallback).toUpperCase();
+}
+
+function whatsappMetaLanguage(template: Record<string, unknown>) {
+  const explicit = cleanText(template.meta_template_language);
+  if (explicit && /^[a-z]{2}_[A-Z]{2}$/.test(explicit)) return explicit;
+  return outreachTemplateLanguage(template) === "es" ? "es_MX" : "en_US";
+}
+
+function whatsappSourcePlaceholders(value: unknown) {
+  const rows: string[] = [];
+  const seen = new Set<string>();
+  String(value || "").replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_match, key) => {
+    const normalized = String(key || "").trim();
+    if (normalized && !seen.has(normalized)) {
+      seen.add(normalized);
+      rows.push(normalized);
+    }
+    return _match;
+  });
+  return rows;
+}
+
+function whatsappTemplateFingerprint(value: unknown) {
+  const source = String(value || "").replace(/\r\n/g, "\n").trim();
+  let hash = 2166136261;
+  for (let index = 0; index < source.length; index += 1) {
+    hash ^= source.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(16).padStart(8, "0");
+}
+
+function whatsappMetaTemplateName(template: Record<string, unknown>, fingerprint: string) {
+  const base = (cleanText(template.name) || "rfx_invitation")
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 80) || "rfx_invitation";
+  const templateId = String(template.id || "template").replace(/[^a-zA-Z0-9]/g, "").slice(0, 8).toLowerCase();
+  return `rateware_${base}_${templateId}_${fingerprint}`.slice(0, 512);
+}
+
+function whatsappMetaBody(source: unknown, placeholders: string[]) {
+  const indexes = new Map(placeholders.map((key, index) => [key, index + 1]));
+  return String(source || "")
+    .replace(/\r\n/g, "\n")
+    .trim()
+    .replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_match, key) => `{{${indexes.get(String(key)) || ""}}}`);
+}
+
+function whatsappPlaceholderExample(key: string) {
+  const examples: Record<string, string> = {
+    vendor_name: "Example Carrier",
+    contact_name: "Carrier team",
+    vendor_domain: "carrier.example",
+    vendor_email: "dispatch@carrier.example",
+    rfx_id: "RFx-000001",
+    event_name: "North America lane bid",
+    rfx_type: "RFx",
+    customer: "Example customer",
+    due_date: "2026-12-31",
+    lane_origin: "Monterrey, NL",
+    lane_destination: "Dallas, TX",
+    origin_market: "Monterrey Market",
+    destination_market: "Dallas Market",
+    equipment: "Truck Trailer",
+    trailer: "Dry Van",
+    config: "Single",
+    operation: "D2D Export",
+    service: "One Way",
+    weekly_volume: "5",
+    target_rate: "2500",
+    currency: "USD",
+    lane_count: "2",
+    lane_rows_text: "1. Monterrey, NL to Dallas, TX",
+    bid_link: "https://rateware.vercel.app/rfx-bid.html?token=example",
+    profile_link: "https://rateware.vercel.app/carrier-profile.html?token=example"
+  };
+  return examples[key] || `Example ${key.replace(/_/g, " ")}`;
+}
+
+function publicWhatsappTemplateMapping(row: Record<string, unknown> | null | undefined) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    whatsapp_connection_id: row.whatsapp_connection_id,
+    outreach_template_id: row.outreach_template_id,
+    meta_template_id: cleanText(row.meta_template_id),
+    meta_template_name: cleanText(row.meta_template_name),
+    meta_template_language: cleanText(row.meta_template_language),
+    meta_template_category: cleanText(row.meta_template_category),
+    meta_template_status: whatsappMetaStatus(row.meta_template_status),
+    source_fingerprint: cleanText(row.source_fingerprint),
+    source_placeholders: Array.isArray(row.source_placeholders) ? row.source_placeholders : [],
+    last_synced_at: row.last_synced_at,
+    last_error: cleanText(row.last_error),
+    updated_at: row.updated_at
+  };
+}
+
+function whatsappTemplateParameters(
+  mapping: Record<string, unknown> | null | undefined,
+  context: Record<string, unknown>
+) {
+  const placeholders = Array.isArray(mapping?.source_placeholders)
+    ? mapping.source_placeholders.map(cleanText).filter(Boolean) as string[]
+    : [];
+  return placeholders.map((key) => ({
+    key,
+    value: cleanText(context[key]) || "-"
+  }));
+}
+
+async function whatsappTemplateMapping(
+  supabase: ReturnType<typeof createClient>,
+  connectionId: unknown,
+  outreachTemplateId: unknown
+) {
+  const connection = cleanText(connectionId);
+  const template = cleanText(outreachTemplateId);
+  if (!connection || !template) return null;
+  const result = await supabase
+    .from("whatsapp_outreach_template_mappings")
+    .select("*")
+    .eq("whatsapp_connection_id", connection)
+    .eq("outreach_template_id", template)
+    .maybeSingle();
+  if (result.error) throw result.error;
+  return result.data as Record<string, unknown> | null;
+}
+
+async function whatsappTemplateMappingsForConnection(
+  supabase: ReturnType<typeof createClient>,
+  connectionId: unknown
+) {
+  const id = cleanText(connectionId);
+  if (!id) return [] as Record<string, unknown>[];
+  const result = await supabase
+    .from("whatsapp_outreach_template_mappings")
+    .select("*")
+    .eq("whatsapp_connection_id", id)
+    .order("updated_at", { ascending: false });
+  if (result.error) throw result.error;
+  return (result.data || []) as Record<string, unknown>[];
+}
+
+async function publishOutreachTemplateToWhatsapp(
+  supabase: ReturnType<typeof createClient>,
+  user: RatewareUser,
+  input: Record<string, unknown>
+) {
+  const template = await fetchOutreachTemplate(supabase, user, input.template_id || input.id);
+  const sourceBody = cleanText(template.whatsapp_body);
+  if (!sourceBody) throw new Error("Add WhatsApp copy to the Outreach template before publishing it to Meta.");
+  const placeholders = whatsappSourcePlaceholders(sourceBody);
+  if (placeholders.length > 20) {
+    throw new Error("WhatsApp copy uses too many dynamic fields. Keep no more than 20 placeholders.");
+  }
+  const metaBody = whatsappMetaBody(sourceBody, placeholders);
+  if (metaBody.length > 1024) {
+    throw new Error("WhatsApp copy is longer than Meta's 1,024 character template limit. Shorten it and publish again.");
+  }
+
+  const connection = await activeWhatsappConnection(supabase, user);
+  const fingerprint = whatsappTemplateFingerprint(sourceBody);
+  const name = whatsappMetaTemplateName(template, fingerprint);
+  const language = whatsappMetaLanguage(template);
+  const category = "UTILITY";
+  const components = [{
+    type: "BODY",
+    text: metaBody,
+    ...(placeholders.length ? {
+      example: { body_text: [placeholders.map(whatsappPlaceholderExample)] }
+    } : {})
+  }];
+
+  let metaRow: Record<string, unknown> | null = null;
+  const existingMeta = await whatsappGraphFetch(
+    connection,
+    `${connection.wabaId}/message_templates?name=${encodeURIComponent(name)}&fields=id,name,language,status,category,components&limit=10`
+  );
+  metaRow = Array.isArray(existingMeta.data)
+    ? existingMeta.data.find((row: Record<string, unknown>) => cleanText(row.name) === name && cleanText(row.language) === language) || null
+    : null;
+
+  if (!metaRow) {
+    const created = await whatsappGraphFetch(connection, `${connection.wabaId}/message_templates`, {
+      method: "POST",
+      body: JSON.stringify({
+        name,
+        language,
+        category,
+        allow_category_change: true,
+        components
+      })
+    });
+    metaRow = {
+      id: cleanText(created.id),
+      name,
+      language,
+      status: cleanText(created.status) || "PENDING",
+      category: cleanText(created.category) || category,
+      components
+    };
+  }
+
+  const now = new Date().toISOString();
+  const mapping = withOwner({
+    organization_id: user.organization_id,
+    whatsapp_connection_id: connection.row.id,
+    outreach_template_id: template.id,
+    meta_template_id: cleanText(metaRow.id),
+    meta_template_name: cleanText(metaRow.name) || name,
+    meta_template_language: cleanText(metaRow.language) || language,
+    meta_template_category: cleanText(metaRow.category) || category,
+    meta_template_status: whatsappMetaStatus(metaRow.status, "PENDING"),
+    source_fingerprint: fingerprint,
+    source_placeholders: placeholders,
+    meta_template_components: Array.isArray(metaRow.components) ? metaRow.components : components,
+    last_synced_at: now,
+    last_error: null,
+    metadata: {
+      source: "outreach_template",
+      source_template_name: cleanText(template.name),
+      published_from_rateware: true
+    },
+    updated_at: now
+  }, user);
+  const result = await supabase
+    .from("whatsapp_outreach_template_mappings")
+    .upsert(mapping, { onConflict: "whatsapp_connection_id,outreach_template_id" })
+    .select("*")
+    .single();
+  if (result.error) throw result.error;
+  return {
+    row: publicWhatsappTemplateMapping(result.data),
+    ready: whatsappMetaStatus(result.data.meta_template_status) === "APPROVED",
+    message: whatsappMetaStatus(result.data.meta_template_status) === "APPROVED"
+      ? "Outreach WhatsApp template is approved and ready to send."
+      : "Outreach WhatsApp template was submitted to Meta for approval. Sync templates after Meta finishes review."
+  };
+}
+
 async function testWhatsappBusinessConnection(
   supabase: ReturnType<typeof createClient>,
   user: RatewareUser
@@ -10694,7 +10950,7 @@ async function testWhatsappBusinessConnection(
   const result = await supabase
     .from("whatsapp_business_connections")
     .update(patch)
-    .eq("id", row.id)
+    .eq("id", connection.row.id)
     .select("*")
     .single();
   if (result.error) throw result.error;
@@ -10715,21 +10971,50 @@ async function syncWhatsappTemplates(
   const connection = await activeWhatsappConnection(supabase, user);
   const data = await whatsappGraphFetch(connection, `${connection.wabaId}/message_templates?fields=name,language,status,category,components&limit=100`);
   const templates = Array.isArray(data.data) ? data.data : [];
+  const now = new Date().toISOString();
   const result = await supabase
     .from("whatsapp_business_connections")
     .update({
-      templates_last_synced_at: new Date().toISOString(),
+      templates_last_synced_at: now,
       last_error: null,
       metadata: { ...objectRecord(connection.row.metadata), templates },
-      updated_at: new Date().toISOString()
+      updated_at: now
     })
     .eq("id", connection.row.id)
     .select("*")
     .single();
   if (result.error) throw result.error;
+
+  const mappings = await whatsappTemplateMappingsForConnection(supabase, connection.row.id);
+  const reconciled: Record<string, unknown>[] = [];
+  for (const mapping of mappings) {
+    const metaTemplate = templates.find((template: Record<string, unknown>) => (
+      cleanText(template.name) === cleanText(mapping.meta_template_name)
+      && cleanText(template.language) === cleanText(mapping.meta_template_language)
+    ));
+    if (!metaTemplate) continue;
+    const update = await supabase
+      .from("whatsapp_outreach_template_mappings")
+      .update({
+        meta_template_id: cleanText(metaTemplate.id) || cleanText(mapping.meta_template_id),
+        meta_template_status: whatsappMetaStatus(metaTemplate.status),
+        meta_template_category: cleanText(metaTemplate.category) || cleanText(mapping.meta_template_category) || "UTILITY",
+        meta_template_components: Array.isArray(metaTemplate.components) ? metaTemplate.components : mapping.meta_template_components,
+        last_synced_at: now,
+        last_error: null,
+        updated_at: now
+      })
+      .eq("id", mapping.id)
+      .select("*")
+      .single();
+    if (update.error) throw update.error;
+    reconciled.push(update.data);
+  }
   return {
     synced: templates.length,
     rows: templates,
+    mappings: reconciled.map(publicWhatsappTemplateMapping),
+    approved: templates.filter((template: Record<string, unknown>) => whatsappMetaStatus(template.status) === "APPROVED").length,
     connection: publicWhatsappConnection(result.data, { internalWorkspace: connection.internalWorkspace })
   };
 }
@@ -11906,8 +12191,27 @@ async function metaSendWhatsappTemplate(
   const to = normalizeWhatsappPhone(message.normalized_recipient_phone || message.recipient_phone);
   const templateName = cleanText(message.whatsapp_template_name);
   const language = cleanText(message.whatsapp_template_language) || "en_US";
+  const metadata = objectRecord(message.metadata);
+  const templateStatus = cleanText(metadata.whatsapp_template_status)
+    ? whatsappMetaStatus(metadata.whatsapp_template_status)
+    : templateName ? "APPROVED" : "NOT_PUBLISHED";
+  const parameterRows = Array.isArray(metadata.whatsapp_template_parameters)
+    ? metadata.whatsapp_template_parameters.filter((row) => row && typeof row === "object") as Record<string, unknown>[]
+    : [];
   if (!to) throw new Error("Missing WhatsApp recipient phone.");
-  if (!templateName) throw new Error("WhatsApp Meta template mapping is missing. Sync or map a Meta template before automated send.");
+  if (!templateName) throw new Error("Publish this Outreach template to Meta and wait for approval before sending WhatsApp messages.");
+  if (templateStatus !== "APPROVED") {
+    throw new Error(`WhatsApp template is ${templateStatus.toLowerCase().replace(/_/g, " ")}. Sync Meta templates after it is approved.`);
+  }
+  const components = parameterRows.length
+    ? [{
+        type: "body",
+        parameters: parameterRows.map((row) => ({
+          type: "text",
+          text: cleanText(row.value) || "-"
+        }))
+      }]
+    : [];
   return await whatsappGraphFetch(connection, `${connection.phoneNumberId}/messages`, {
     method: "POST",
     body: JSON.stringify({
@@ -11917,7 +12221,8 @@ async function metaSendWhatsappTemplate(
       type: "template",
       template: {
         name: templateName,
-        language: { code: language }
+        language: { code: language },
+        ...(components.length ? { components } : {})
       }
     })
   });
@@ -15459,7 +15764,23 @@ Deno.serve(async (request) => {
       ]);
       if (globalResult.error) throw globalResult.error;
       if (ownedResult.error) throw ownedResult.error;
-      return jsonResponse({ rows: [...(ownedResult.data || []), ...(globalResult.data || [])] });
+      const templates = [...(ownedResult.data || []), ...(globalResult.data || [])];
+      const internalWorkspace = await isInternalWhatsappWorkspace(supabase, user);
+      const connectionRow = internalWorkspace
+        ? await ensureInternalWhatsappConnection(supabase, user)
+        : await findTenantWhatsappConnection(supabase, user);
+      const mappings = connectionRow?.id
+        ? await whatsappTemplateMappingsForConnection(supabase, connectionRow.id)
+        : [];
+      const mappingsByTemplate = new Map(
+        mappings.map((mapping) => [cleanText(mapping.outreach_template_id), publicWhatsappTemplateMapping(mapping)])
+      );
+      return jsonResponse({
+        rows: templates.map((template) => ({
+          ...template,
+          whatsapp_meta: mappingsByTemplate.get(cleanText(template.id)) || null
+        }))
+      });
     }
 
     if (body.action === "create_outreach_template") {
@@ -15482,6 +15803,23 @@ Deno.serve(async (request) => {
         .single();
       if (result.error) throw result.error;
       return jsonResponse({ row: result.data });
+    }
+
+    if (body.action === "publish_outreach_template_to_whatsapp") {
+      const result = await publishOutreachTemplateToWhatsapp(supabase, user, body);
+      await writeAuditLog(
+        supabase,
+        user,
+        "outreach.template.whatsapp.publish",
+        "outreach_templates",
+        cleanText(body.template_id || body.id),
+        `Published Outreach WhatsApp template ${result.row?.meta_template_name || "template"} to Meta`,
+        {
+          meta_template_status: result.row?.meta_template_status,
+          meta_template_language: result.row?.meta_template_language
+        }
+      );
+      return jsonResponse(result);
     }
 
     if (body.action === "archive_outreach_template") {
@@ -15657,6 +15995,9 @@ Deno.serve(async (request) => {
       const targetMode = ["direct_vendor", "vendor_group", "direct_and_group"].includes(whatsappTargetMode) ? whatsappTargetMode : "direct_vendor";
       const whatsappConnection = await listWhatsappConnections(supabase, user);
       const whatsappConnectionRow = whatsappConnection.rows?.[0] || {};
+      const whatsappMapping = whatsappConnectionRow.id
+        ? await whatsappTemplateMapping(supabase, whatsappConnectionRow.id, template.id)
+        : null;
 
       const invitationSelect = `
         *,
@@ -15742,8 +16083,10 @@ Deno.serve(async (request) => {
         const permissionBasis = cleanText(vendor.whatsapp_permission_basis) || "contractual";
         const doNotContact = cleanBoolean(vendor.whatsapp_do_not_contact);
         const normalizedRecipientPhone = normalizeWhatsappPhone(vendor.whatsapp_phone);
-        const whatsappTemplateName = cleanText(template.meta_template_name);
-        const whatsappTemplateLanguage = cleanText(template.meta_template_language) || "en_US";
+        const whatsappTemplateName = cleanText(whatsappMapping?.meta_template_name || template.meta_template_name);
+        const whatsappTemplateLanguage = cleanText(whatsappMapping?.meta_template_language || template.meta_template_language) || "en_US";
+        const whatsappTemplateStatus = whatsappMetaStatus(whatsappMapping?.meta_template_status || template.meta_template_status);
+        const whatsappParameters = whatsappTemplateParameters(whatsappMapping, context);
 
         if (channels.includes("email")) {
           const recipientEmail = firstSendableVendorEmail(vendor, suppressedEmails);
@@ -15827,6 +16170,8 @@ Deno.serve(async (request) => {
                 sender_connection_status: senderConnectionStatus,
                 whatsapp_permission_basis: permissionBasis,
                 whatsapp_template_mapped: Boolean(whatsappTemplateName),
+                whatsapp_template_status: whatsappTemplateStatus,
+                whatsapp_template_parameters: whatsappParameters,
                 whatsapp_connection_status: whatsappConnectionRow.status || "not_configured"
               }
             }, user));
@@ -15885,6 +16230,7 @@ Deno.serve(async (request) => {
                 whatsapp_permission_basis: cleanText(groupRow?.permission_basis) || permissionBasis,
                 whatsapp_group_delivery: WHATSAPP_GROUPS_ENABLED && metaGroupId && ["api_ready", "verified"].includes(groupStatus) ? "api_ready" : "manual_only",
                 whatsapp_template_mapped: Boolean(whatsappTemplateName),
+                whatsapp_template_status: whatsappTemplateStatus,
                 whatsapp_connection_status: whatsappConnectionRow.status || "not_configured"
               }
             }, user));

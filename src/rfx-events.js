@@ -33,9 +33,11 @@ import {
   deleteOutreachMessages,
   markWhatsappGroupMessageManuallySent,
   markOutreachMessages,
+  publishOutreachTemplateToWhatsapp,
   sendOutreachMessages,
   sendWhatsappOutreachMessages,
   sendWhatsappGroupOutreachMessages,
+  syncOutreachWhatsappTemplates,
   updateOutreachTemplate
 } from "./outreach-service.js";
 import { createVendorSegment, deleteVendorSegment, fetchVendorSegments, fetchVendors, updateVendorSegment } from "./vendor-service.js";
@@ -143,6 +145,9 @@ const createRfxOutreachCampaignButton = document.querySelector("#create-rfx-outr
 const rfxOutreachStatus = document.querySelector("#rfx-outreach-status");
 const rfxOutreachPreview = document.querySelector("#rfx-outreach-preview");
 const rfxWhatsappReadiness = document.querySelector("#rfx-whatsapp-readiness");
+const rfxWhatsappTemplateReadinessCopy = document.querySelector("#rfx-whatsapp-template-readiness-copy");
+const publishWhatsappTemplateButton = document.querySelector("#rfx-publish-whatsapp-template");
+const syncWhatsappTemplateButton = document.querySelector("#rfx-sync-whatsapp-template");
 const rfxTemplateEditor = document.querySelector("#rfx-template-editor");
 const rfxTemplateSubject = document.querySelector("#rfx-template-subject");
 const rfxTemplateHtml = document.querySelector("#rfx-template-html");
@@ -2025,10 +2030,39 @@ function renderOutreachPreview() {
   }
   if (rfxWhatsappReadiness) {
     const groupMode = channel === "whatsapp_group" || channel === "email_whatsapp_group" || targetMode !== "direct_vendor";
-    rfxWhatsappReadiness.innerHTML = `
-      <strong>WhatsApp Business model</strong>
-      <span>${escapeHtml(`${formatNumber(whatsappDirectReady)} direct phone target(s), ${formatNumber(whatsappGroupReady)} group target(s). ${groupMode ? "Group delivery is explicit and can be marked manual sent." : "Groups are not included unless explicitly selected."}`)}</span>
-    `;
+    const mapping = template?.whatsapp_meta || null;
+    const metaStatus = String(mapping?.meta_template_status || "NOT_PUBLISHED").toUpperCase();
+    const whatsappChannel = channel === "multi" || channel.includes("whatsapp");
+    const targetSummary = `${formatNumber(whatsappDirectReady)} direct phone target(s), ${formatNumber(whatsappGroupReady)} group target(s).`;
+    let readinessCopy = `${targetSummary} Outreach copy is the source for the WhatsApp message.`;
+    let readinessTone = "neutral";
+    if (!template?.whatsapp_body) {
+      readinessCopy = `${targetSummary} Add WhatsApp copy to this Outreach template before publishing.`;
+      readinessTone = "warning";
+    } else if (metaStatus === "APPROVED") {
+      readinessCopy = `${targetSummary} Approved in Meta as ${mapping.meta_template_name}. Direct sends are ready.`;
+      readinessTone = "success";
+    } else if (["PENDING", "IN_APPEAL"].includes(metaStatus)) {
+      readinessCopy = `${targetSummary} Submitted to Meta (${metaStatus.toLowerCase().replace(/_/g, " ")}). Sync after review finishes.`;
+      readinessTone = "warning";
+    } else if (["REJECTED", "PAUSED", "DISABLED"].includes(metaStatus)) {
+      readinessCopy = `${targetSummary} Meta status is ${metaStatus.toLowerCase()}. Review the Outreach copy and publish a new version.`;
+      readinessTone = "error";
+    } else if (groupMode && !whatsappDirectReady) {
+      readinessCopy = `${targetSummary} Group delivery remains manual; publish only if direct WhatsApp sends are also required.`;
+    }
+    if (rfxWhatsappTemplateReadinessCopy) rfxWhatsappTemplateReadinessCopy.textContent = readinessCopy;
+    rfxWhatsappReadiness.dataset.tone = readinessTone;
+    if (publishWhatsappTemplateButton) {
+      publishWhatsappTemplateButton.disabled = !template?.id || !template?.whatsapp_body || rfxTemplateEditorDirty || !whatsappChannel;
+      publishWhatsappTemplateButton.textContent = metaStatus === "APPROVED"
+        ? "Publish updated version"
+        : ["PENDING", "IN_APPEAL"].includes(metaStatus)
+          ? "Submitted to Meta"
+          : "Publish to Meta";
+      if (["PENDING", "IN_APPEAL"].includes(metaStatus)) publishWhatsappTemplateButton.disabled = true;
+    }
+    if (syncWhatsappTemplateButton) syncWhatsappTemplateButton.disabled = !template?.id || !whatsappChannel;
   }
   renderWizard();
 }
@@ -4287,7 +4321,13 @@ function selectableEmailDrafts(rows = []) {
 function selectableWhatsappDrafts(rows = []) {
   return rows.filter((message) => {
     const status = String(message.status || "").toLowerCase();
-    return message.channel === "whatsapp" && Boolean(message.normalized_recipient_phone || message.recipient_phone || message.vendors?.whatsapp_phone) && ["drafted", "queued", "failed"].includes(status);
+    const metadata = message.metadata && typeof message.metadata === "object" ? message.metadata : {};
+    const templateStatus = String(metadata.whatsapp_template_status || (message.whatsapp_template_name ? "APPROVED" : "NOT_PUBLISHED")).toUpperCase();
+    return message.channel === "whatsapp"
+      && Boolean(message.normalized_recipient_phone || message.recipient_phone || message.vendors?.whatsapp_phone)
+      && Boolean(message.whatsapp_template_name)
+      && templateStatus === "APPROVED"
+      && ["drafted", "queued", "failed"].includes(status);
   });
 }
 
@@ -4531,6 +4571,12 @@ function renderDraftQueue() {
     const canSendWhatsapp = isWhatsapp && selectableWhatsappDrafts([message]).length;
     const canMarkGroup = isWhatsappGroup && selectableWhatsappGroupDrafts([message]).length;
     const openLabel = isEmail ? "Open Gmail" : isWhatsappGroup ? "Open group" : "Open WhatsApp";
+    const metadata = message.metadata && typeof message.metadata === "object" ? message.metadata : {};
+    const templateStatus = String(metadata.whatsapp_template_status || (message.whatsapp_template_name ? "APPROVED" : "NOT_PUBLISHED")).toUpperCase();
+    const draftTitle = message.subject || (isWhatsapp ? "WhatsApp RFx invitation" : isWhatsappGroup ? "WhatsApp group invitation" : "No subject");
+    const readinessDetail = isWhatsapp && templateStatus !== "APPROVED"
+      ? `Outreach WhatsApp template: ${templateStatus.toLowerCase().replace(/_/g, " ")}. Publish or sync above, then regenerate drafts.`
+      : "";
     return `
       <tr class="${checked ? "is-selected-row" : ""}" data-rfx-draft-id="${escapeHtml(message.id)}">
         <td><input type="checkbox" data-rfx-draft-select="${escapeHtml(message.id)}" ${checked ? "checked" : ""} /></td>
@@ -4542,8 +4588,8 @@ function renderDraftQueue() {
         <td>${escapeHtml(message.channel || "-")}</td>
         <td><span class="status-pill ${status === "sent" ? "success" : status === "failed" ? "danger" : status === "archived" ? "muted" : "neutral"}">${escapeHtml(status)}</span></td>
         <td>
-          <strong>${escapeHtml(message.subject || "No subject")}</strong>
-          <small>${escapeHtml(message.delivery_error || preview || "No preview")}</small>
+          <strong>${escapeHtml(draftTitle)}</strong>
+          <small>${escapeHtml(readinessDetail || message.delivery_error || preview || "No preview")}</small>
         </td>
         <td>${escapeHtml(updated ? new Date(updated).toLocaleString() : "-")}</td>
         <td>
@@ -5778,7 +5824,7 @@ async function sendSingleDraftWhatsapp(id) {
     return;
   }
   if (!selectableWhatsappDrafts([row]).length) {
-    setStatus(rfxOutreachStatus, "This WhatsApp draft needs a valid phone, Meta template mapping, and drafted/queued/failed status.", "error");
+    setStatus(rfxOutreachStatus, "This WhatsApp draft needs a valid phone and an approved Meta version of its Outreach template. Publish or sync the template above, then regenerate the draft queue.", "error");
     return;
   }
   const carrier = row.vendors?.vendor_name || row.vendors?.domain || messageRecipient(row) || "this carrier";
@@ -7110,6 +7156,47 @@ rfxChatForm?.addEventListener("submit", async (event) => {
 });
 
 saveRfxTemplateHtmlButton?.addEventListener("click", saveSelectedRfxTemplate);
+
+publishWhatsappTemplateButton?.addEventListener("click", async () => {
+  const template = selectedOutreachTemplate();
+  if (!template?.id) {
+    setStatus(rfxOutreachStatus, "Select an Outreach template first.", "error");
+    return;
+  }
+  if (rfxTemplateEditorDirty) {
+    setStatus(rfxOutreachStatus, "Save the Outreach template before publishing its WhatsApp version to Meta.", "error");
+    return;
+  }
+  publishWhatsappTemplateButton.disabled = true;
+  setStatus(rfxOutreachStatus, "Publishing the Outreach WhatsApp copy to Meta for review...");
+  try {
+    const result = await publishOutreachTemplateToWhatsapp(template.id);
+    await loadOutreachAssets();
+    setStatus(rfxOutreachStatus, result.message || "WhatsApp template submitted to Meta.", result.ready ? "success" : "warning");
+  } catch (error) {
+    setStatus(rfxOutreachStatus, humanizeError(error.message), "error");
+  } finally {
+    renderOutreachPreview();
+  }
+});
+
+syncWhatsappTemplateButton?.addEventListener("click", async () => {
+  syncWhatsappTemplateButton.disabled = true;
+  setStatus(rfxOutreachStatus, "Syncing WhatsApp template approval status from Meta...");
+  try {
+    const result = await syncOutreachWhatsappTemplates();
+    await loadOutreachAssets();
+    setStatus(
+      rfxOutreachStatus,
+      `${formatNumber(result.approved || 0)} approved of ${formatNumber(result.synced || 0)} Meta template(s).`,
+      result.approved ? "success" : "warning"
+    );
+  } catch (error) {
+    setStatus(rfxOutreachStatus, humanizeError(error.message), "error");
+  } finally {
+    renderOutreachPreview();
+  }
+});
 
 resetRfxTemplateHtmlButton?.addEventListener("click", () => {
   rfxTemplateEditorDirty = false;

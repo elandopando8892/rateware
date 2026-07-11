@@ -455,9 +455,15 @@
                     <button id="create-rfx-outreach-campaign" type="submit" disabled>Generate draft queue</button>
                     <p id="rfx-outreach-status" class="status-message" role="status"></p>
                   </form>
-                  <section id="rfx-whatsapp-readiness" class="gmail-sender-note">
-                    <strong>WhatsApp Business model</strong>
-                    <span>Direct sends require approved Meta templates. Vendor group delivery is explicit and manual/API-ready only when configured.</span>
+                  <section id="rfx-whatsapp-readiness" class="gmail-sender-note whatsapp-template-readiness">
+                    <div>
+                      <strong>WhatsApp from Outreach</strong>
+                      <span id="rfx-whatsapp-template-readiness-copy">Select an Outreach template to check its Meta approval status.</span>
+                    </div>
+                    <div class="action-row compact-actions">
+                      <button id="rfx-publish-whatsapp-template" type="button" class="secondary small-button" disabled>Publish to Meta</button>
+                      <button id="rfx-sync-whatsapp-template" type="button" class="secondary small-button">Sync status</button>
+                    </div>
                   </section>
                   <section class="gmail-sender-note">
                     <strong>Gmail sending model</strong>

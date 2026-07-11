@@ -12,6 +12,14 @@ export async function updateOutreachTemplate(id, patch) {
   return (await callRatewareApi("update_outreach_template", { id, patch })).row;
 }
 
+export async function publishOutreachTemplateToWhatsapp(templateId) {
+  return await callRatewareApi("publish_outreach_template_to_whatsapp", { template_id: templateId });
+}
+
+export async function syncOutreachWhatsappTemplates() {
+  return await callRatewareApi("sync_whatsapp_templates");
+}
+
 export async function archiveOutreachTemplate(id) {
   return (await callRatewareApi("archive_outreach_template", { id })).row;
 }

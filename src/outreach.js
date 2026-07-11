@@ -15,6 +15,8 @@ import {
   fetchOutreachTemplates,
   generateOutreachDrafts,
   markOutreachMessages,
+  publishOutreachTemplateToWhatsapp,
+  syncOutreachWhatsappTemplates,
   updateOutreachCampaign,
   updateOutreachTemplate
 } from "./outreach-service.js";
@@ -29,6 +31,9 @@ const templateSubject = document.querySelector("#template-subject");
 const templateHtml = document.querySelector("#template-html");
 const templateWhatsapp = document.querySelector("#template-whatsapp");
 const templateStatus = document.querySelector("#template-status");
+const outreachWhatsappTemplateStatus = document.querySelector("#outreach-whatsapp-template-status");
+const outreachPublishWhatsappTemplateButton = document.querySelector("#outreach-publish-whatsapp-template");
+const outreachSyncWhatsappTemplatesButton = document.querySelector("#outreach-sync-whatsapp-templates");
 const templateList = document.querySelector("#template-list");
 const campaignForm = document.querySelector("#outreach-campaign-form");
 const campaignName = document.querySelector("#campaign-name");
@@ -130,6 +135,7 @@ function resetTemplateForm() {
   templateForm?.reset();
   const submit = templateForm?.querySelector("button[type='submit']");
   if (submit) submit.textContent = "Save template";
+  renderOutreachWhatsappTemplateStatus();
 }
 
 function fillTemplateForm(template) {
@@ -142,8 +148,36 @@ function fillTemplateForm(template) {
   templateWhatsapp.value = template.whatsapp_body || "";
   const submit = templateForm?.querySelector("button[type='submit']");
   if (submit) submit.textContent = "Save changes";
+  renderOutreachWhatsappTemplateStatus(template);
   activateOutreachView("templates", "#template-name");
   templateForm?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function renderOutreachWhatsappTemplateStatus(template = templates.find((item) => item.id === editingTemplateId)) {
+  const mapping = template?.whatsapp_meta || null;
+  const status = String(mapping?.meta_template_status || "NOT_PUBLISHED").toUpperCase();
+  let copy = "Save the Outreach template, then publish its WhatsApp version to Meta.";
+  let tone = "neutral";
+  if (template && !template.whatsapp_body) {
+    copy = "Add WhatsApp copy before publishing this Outreach template to Meta.";
+    tone = "warning";
+  } else if (status === "APPROVED") {
+    copy = `Approved in Meta as ${mapping.meta_template_name}.`;
+    tone = "success";
+  } else if (["PENDING", "IN_APPEAL"].includes(status)) {
+    copy = `Submitted to Meta (${status.toLowerCase().replace(/_/g, " ")}). Sync after review finishes.`;
+    tone = "warning";
+  } else if (["REJECTED", "PAUSED", "DISABLED"].includes(status)) {
+    copy = `Meta status: ${status.toLowerCase()}. Update the copy and publish a new version.`;
+    tone = "error";
+  } else if (template) {
+    copy = "Outreach is the source. Publish its WhatsApp version to Meta before automated sends.";
+  }
+  setStatus(outreachWhatsappTemplateStatus, copy, tone);
+  if (outreachPublishWhatsappTemplateButton) {
+    outreachPublishWhatsappTemplateButton.disabled = !template?.id || !template?.whatsapp_body || ["PENDING", "IN_APPEAL"].includes(status);
+    outreachPublishWhatsappTemplateButton.textContent = status === "APPROVED" ? "Publish updated version" : ["PENDING", "IN_APPEAL"].includes(status) ? "Submitted to Meta" : "Publish to Meta";
+  }
 }
 
 function resetCampaignForm() {
@@ -553,21 +587,26 @@ function renderTemplates() {
     });
     return;
   }
-  templateList.innerHTML = templates.map((template) => `
-    <article>
-      <div>
-        <strong>${escapeHtml(template.name)}</strong>
-        <span>${escapeHtml(template.channel)}${template.owner_email ? "" : " | global default"}</span>
-      </div>
-      <small>${escapeHtml(template.subject || "No subject")}</small>
-      <div class="action-row">
-        <button class="secondary small-button" type="button" data-template-edit="${escapeHtml(template.id)}" ${template.owner_email ? "" : "disabled"}>Edit</button>
-        <button class="secondary small-button" type="button" data-template-duplicate="${escapeHtml(template.id)}">Duplicate</button>
-        <button class="secondary small-button" type="button" data-template-archive="${escapeHtml(template.id)}" ${template.owner_email ? "" : "disabled"}>Archive</button>
-        <button class="danger small-button" type="button" data-template-delete="${escapeHtml(template.id)}" ${template.owner_email ? "" : "disabled"}>Delete</button>
-      </div>
-    </article>
-  `).join("");
+  templateList.innerHTML = templates.map((template) => {
+    const metaStatus = String(template.whatsapp_meta?.meta_template_status || "NOT_PUBLISHED").toUpperCase();
+    const statusTone = metaStatus === "APPROVED" ? "success" : ["PENDING", "IN_APPEAL"].includes(metaStatus) ? "warning" : "muted";
+    return `
+      <article>
+        <div>
+          <strong>${escapeHtml(template.name)}</strong>
+          <span>${escapeHtml(template.channel)}${template.owner_email ? "" : " | global default"}</span>
+        </div>
+        <small>${escapeHtml(template.subject || "No subject")}</small>
+        <span class="status-pill ${statusTone}">WhatsApp: ${escapeHtml(metaStatus.toLowerCase().replace(/_/g, " "))}</span>
+        <div class="action-row">
+          <button class="secondary small-button" type="button" data-template-edit="${escapeHtml(template.id)}" ${template.owner_email ? "" : "disabled"}>Edit</button>
+          <button class="secondary small-button" type="button" data-template-duplicate="${escapeHtml(template.id)}">Duplicate</button>
+          <button class="secondary small-button" type="button" data-template-archive="${escapeHtml(template.id)}" ${template.owner_email ? "" : "disabled"}>Archive</button>
+          <button class="danger small-button" type="button" data-template-delete="${escapeHtml(template.id)}" ${template.owner_email ? "" : "disabled"}>Delete</button>
+        </div>
+      </article>
+    `;
+  }).join("");
 }
 
 function renderCampaigns() {
@@ -729,6 +768,7 @@ async function loadAll() {
     ]);
     renderRfxSelects();
     renderTemplates();
+    renderOutreachWhatsappTemplateStatus();
     renderTemplatePreview();
     renderCampaigns();
     renderHistory();
@@ -751,15 +791,57 @@ templateForm?.addEventListener("submit", async (event) => {
   const isEditing = Boolean(editingTemplateId);
   setStatus(templateStatus, isEditing ? "Saving template changes..." : "Saving template...");
   try {
-    await (isEditing
+    const saved = await (isEditing
       ? updateOutreachTemplate(editingTemplateId, templatePayload())
       : createOutreachTemplate(templatePayload()));
-    resetTemplateForm();
-    setStatus(templateStatus, isEditing ? "Template updated." : "Template saved.", "success");
     templates = await fetchOutreachTemplates();
     renderTemplates();
+    const refreshed = templates.find((template) => template.id === saved.id) || saved;
+    fillTemplateForm(refreshed);
+    setStatus(templateStatus, `${isEditing ? "Template updated" : "Template saved"}. Publish its WhatsApp version to Meta when ready.`, "success");
   } catch (error) {
     setStatus(templateStatus, error.message, "error");
+  }
+});
+
+outreachPublishWhatsappTemplateButton?.addEventListener("click", async () => {
+  if (!editingTemplateId) {
+    setStatus(outreachWhatsappTemplateStatus, "Save or select an Outreach template first.", "error");
+    return;
+  }
+  outreachPublishWhatsappTemplateButton.disabled = true;
+  setStatus(outreachWhatsappTemplateStatus, "Publishing the Outreach WhatsApp copy to Meta for review...");
+  try {
+    const result = await publishOutreachTemplateToWhatsapp(editingTemplateId);
+    templates = await fetchOutreachTemplates();
+    renderTemplates();
+    const refreshed = templates.find((template) => template.id === editingTemplateId);
+    renderOutreachWhatsappTemplateStatus(refreshed);
+    setStatus(outreachWhatsappTemplateStatus, result.message || "WhatsApp template submitted to Meta.", result.ready ? "success" : "warning");
+  } catch (error) {
+    setStatus(outreachWhatsappTemplateStatus, error.message, "error");
+  } finally {
+    renderOutreachWhatsappTemplateStatus(templates.find((template) => template.id === editingTemplateId));
+  }
+});
+
+outreachSyncWhatsappTemplatesButton?.addEventListener("click", async () => {
+  outreachSyncWhatsappTemplatesButton.disabled = true;
+  setStatus(outreachWhatsappTemplateStatus, "Syncing WhatsApp template status from Meta...");
+  try {
+    const result = await syncOutreachWhatsappTemplates();
+    templates = await fetchOutreachTemplates();
+    renderTemplates();
+    renderOutreachWhatsappTemplateStatus(templates.find((template) => template.id === editingTemplateId));
+    setStatus(
+      outreachWhatsappTemplateStatus,
+      `${formatCount(result.approved || 0)} approved of ${formatCount(result.synced || 0)} Meta template(s).`,
+      result.approved ? "success" : "warning"
+    );
+  } catch (error) {
+    setStatus(outreachWhatsappTemplateStatus, error.message, "error");
+  } finally {
+    outreachSyncWhatsappTemplatesButton.disabled = false;
   }
 });
 

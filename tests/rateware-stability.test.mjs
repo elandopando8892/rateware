@@ -104,6 +104,7 @@ const vendorSupportMigration = readFileSync(new URL("../supabase/migrations/2026
 const whatsappBusinessMigration = readFileSync(new URL("../supabase/migrations/20260710133000_whatsapp_business_integration.sql", import.meta.url), "utf8");
 const whatsappWorkspaceMigration = readFileSync(new URL("../supabase/migrations/20260710190000_whatsapp_workspace_connections.sql", import.meta.url), "utf8");
 const whatsappTenantAppMigration = readFileSync(new URL("../supabase/migrations/20260711190000_whatsapp_tenant_app_credentials.sql", import.meta.url), "utf8");
+const whatsappTemplateMappingMigration = readFileSync(new URL("../supabase/migrations/20260711203000_whatsapp_outreach_template_mappings.sql", import.meta.url), "utf8");
 const whatsappWebhookSource = readFileSync(new URL("../supabase/functions/whatsapp-webhook/index.ts", import.meta.url), "utf8");
 const rfxInvitationTableSource = rfxEventsSource.slice(rfxEventsSource.indexOf("function laneTableLabels"), rfxEventsSource.indexOf("function firstOutreachTarget"));
 const apiInvitationTableSource = apiSource.slice(apiSource.indexOf("function outreachLaneTableLabels"), apiSource.indexOf("function phoneForWhatsapp"));
@@ -285,6 +286,7 @@ assert.match(apiSource, /function isInternalWhatsappWorkspace/, "WhatsApp resolv
 assert.match(apiSource, /WHATSAPP_INTERNAL_OWNER_EMAILS\.has\(email\)/, "Internal WhatsApp access should require an allowed owner email");
 assert.match(apiSource, /WHATSAPP_INTERNAL_ORGANIZATION_IDS\.has\(organizationId\)/, "Internal WhatsApp access should support an allowed organization id");
 assert.match(apiSource, /\.from\("gmail_mailbox_connections"\)[\s\S]+\.eq\("owner_email", user\.owner_email\)[\s\S]+\.eq\("mailbox_email", GMAIL_ALLOWED_SENDER\)[\s\S]+\.eq\("status", "connected"\)/, "Internal WhatsApp access may use the workspace's connected allowed Gmail mailbox as proof");
+assert.match(apiSource, /\.\.\.objectRecord\(existingResult\.data\?\.metadata\)/, "Refreshing the internal WhatsApp connection must preserve synced Meta templates");
 assert.match(whatsappTenantAppMigration, /add column if not exists meta_app_id text/, "Tenant WhatsApp connections should store their own Meta App ID");
 assert.match(whatsappTenantAppMigration, /add column if not exists app_secret_encrypted text/, "Tenant WhatsApp connections should store only an encrypted Meta App Secret");
 assert.match(apiSource, /connection_mode: "tenant_connected"/, "External workspaces should save tenant-connected rows");
@@ -294,6 +296,15 @@ assert.match(apiSource, /await decryptWhatsappSecret\(row\.access_token_encrypte
 assert.match(apiSource, /WHATSAPP_CONNECTION_REQUIRED_MESSAGE/, "External WhatsApp actions should fail closed without a tenant connection");
 assert.match(apiSource, /Authorization: `Bearer \$\{connection\.accessToken\}`/, "Meta calls should use the resolved workspace connection token");
 assert.match(apiSource, /connection\.wabaId}\/message_templates/, "Template sync should use the resolved workspace WABA");
+assert.match(whatsappTemplateMappingMigration, /create table if not exists public\.whatsapp_outreach_template_mappings/, "WhatsApp Outreach mappings should have a dedicated workspace table");
+assert.match(whatsappTemplateMappingMigration, /unique \(whatsapp_connection_id, outreach_template_id\)/, "WhatsApp template mappings should be isolated by connection and Outreach template");
+assert.doesNotMatch(whatsappTemplateMappingMigration, /using\s*\(true\)/i, "WhatsApp template mapping RLS must not expose mappings across workspaces");
+assert.match(apiSource, /publish_outreach_template_to_whatsapp/, "Rateware API should publish Outreach copy to Meta templates");
+assert.match(apiSource, /whatsappMetaBody\(sourceBody, placeholders\)/, "Outreach named placeholders should be converted to Meta positional placeholders");
+assert.match(apiSource, /source_placeholders: placeholders/, "Workspace mappings should persist the ordered source placeholders");
+assert.match(apiSource, /whatsapp_template_parameters: whatsappParameters/, "Generated WhatsApp drafts should persist rendered Meta parameter values");
+assert.match(apiSource, /parameters: parameterRows\.map/, "WhatsApp sends should submit the rendered body parameters to Meta");
+assert.match(apiSource, /\.eq\("id", connection\.row\.id\)/, "WhatsApp connection tests and updates should target the resolved connection row");
 assert.match(apiSource, /whatsapp_connection_id: connection\.row\.id/, "WhatsApp sends should persist the resolved connection id");
 assert.match(apiSource, /sender_display_phone: senderDisplayPhone/, "WhatsApp contact history should persist the sender display phone");
 assert.match(readFileSync(new URL("../src/outreach.js", import.meta.url), "utf8"), /Sent from .*sender_display_phone/s, "Contact history should show the WhatsApp sender connection");
@@ -323,6 +334,9 @@ assert.match(readmeSource, /never prints secret values/i, "README should explain
 assert.match(whatsappEnvCheckSource, /Secret values are never printed/, "WhatsApp env check should explicitly avoid printing secret values");
 assert.match(whatsappEnvCheckSource, /sync_whatsapp_templates/, "WhatsApp env check should call template sync when authenticated");
 assert.match(rfxEventsHtml, /rfx-send-selected-whatsapp-drafts/, "RFx Bid Room should expose selected WhatsApp draft sending");
+assert.match(rfxEventsHtml, /rfx-publish-whatsapp-template/, "RFx Bid Room should publish the selected Outreach WhatsApp template to Meta");
+assert.match(rfxEventsHtml, /rfx-sync-whatsapp-template/, "RFx Bid Room should synchronize Meta approval status");
+assert.match(rfxEventsSource, /publishOutreachTemplateToWhatsapp/, "RFx Bid Room should use Outreach as the WhatsApp template source");
 assert.match(rfxEventsHtml, /rfx-mark-selected-whatsapp-groups/, "RFx Bid Room should expose manual WhatsApp group completion");
 assert.match(rfxEventsSource, /selectableWhatsappDrafts/, "RFx Bid Room should calculate direct WhatsApp selectable drafts");
 assert.match(rfxEventsSource, /selectableWhatsappGroupDrafts/, "RFx Bid Room should calculate manual group selectable drafts");

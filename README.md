@@ -194,6 +194,18 @@ Test an external tenant connection:
 5. Run `Sync templates`; the request must use the tenant row's `meta_waba_id`.
 6. Disconnect and confirm WhatsApp sends return `Connect your WhatsApp Business account before sending WhatsApp messages.`
 
+### Outreach templates and Meta approval
+
+The WhatsApp copy stored in an Outreach template is the editorial source of truth. Meta still requires a separately registered and approved message template for business-initiated WhatsApp sends outside the customer-service window.
+
+1. Edit and save the WhatsApp copy in `Bid Room > Outreach` or `Invitation Admin > Templates`.
+2. Click `Publish to Meta`. Rateware converts named placeholders such as `{{contact_name}}` and `{{bid_link}}` into Meta positional parameters and submits a workspace-scoped `UTILITY` template to the active WABA.
+3. While Meta shows `PENDING`, email drafts remain usable but automated WhatsApp sends remain disabled.
+4. Click `Sync status` after Meta review. Once the mapping is `APPROVED`, regenerate the Draft Queue so each row stores the approved template name and its rendered parameter values.
+5. Send from Draft Queue. Rateware uses the same workspace WhatsApp connection that owns the approved mapping.
+
+Mappings are stored per `whatsapp_connection_id` and `outreach_template_id`. A global/default Outreach template therefore does not share a Meta mapping across tenants, and external workspaces cannot inherit the internal HeyMarksman template or sender.
+
 Optional CLI check:
 
 ```powershell

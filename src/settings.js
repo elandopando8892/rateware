@@ -590,7 +590,7 @@ function renderWhatsappConnections(data = currentSettings?.whatsapp) {
       <div><dt>Status</dt><dd><span class="status-pill ${connected ? "success" : row.status === "error" ? "danger" : configured ? "warning" : "neutral"}">${escapeHtml(statusLabel)}</span></dd></div>
       <div><dt>Sender</dt><dd>${escapeHtml(senderLabel)}</dd></div>
       <div><dt>Meta app / account</dt><dd>${escapeHtml(accountLabel)}</dd></div>
-      <div><dt>Templates</dt><dd>${escapeHtml(templateCount ? `${templateCount} synced` : row.templates_last_synced_at ? "Synced" : "-")}</dd></div>
+      <div><dt>Templates</dt><dd>${escapeHtml(templateCount ? `${templateCount} synced` : row.templates_last_synced_at ? "0 synced" : "-")}</dd></div>
       <div><dt>Webhook</dt><dd>${escapeHtml(row.webhook_verified_at ? "Verified" : webhookLabel)}</dd></div>
       <div><dt>Updated</dt><dd>${escapeHtml(row.updated_at ? new Date(row.updated_at).toLocaleString() : "-")}</dd></div>
     </dl>
@@ -971,10 +971,14 @@ syncWhatsappTemplatesButton?.addEventListener("click", async () => {
   try {
     const result = await syncWhatsappTemplates();
     await loadWhatsappConnections();
+    const synced = Number(result.synced || result.rows?.length || 0);
+    const approved = Number(result.approved || 0);
     setStatus(
       whatsappConnectionStatus,
-      `${Number(result.synced || result.rows?.length || 0).toLocaleString()} WhatsApp template(s) synced from Meta.`,
-      "success"
+      synced
+        ? `${synced.toLocaleString()} Meta template(s) synced; ${approved.toLocaleString()} approved. Outreach templates are mapped from Bid Room or Invitation Admin.`
+        : "No Meta templates found. Publish the WhatsApp copy from an Outreach template, then sync again after Meta review.",
+      synced ? "success" : "warning"
     );
   } catch (error) {
     setStatus(whatsappConnectionStatus, humanWhatsappMessage(error.message), "error");

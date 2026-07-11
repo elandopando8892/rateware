@@ -1941,6 +1941,45 @@ a {
   line-height: 1.35;
 }
 
+.whatsapp-template-readiness {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.whatsapp-template-readiness > div:first-child {
+  display: grid;
+  gap: 3px;
+}
+
+.whatsapp-template-readiness[data-tone="success"] {
+  border-color: #9fd6c5;
+  background: #f4fbf8;
+}
+
+.whatsapp-template-readiness[data-tone="warning"] {
+  border-color: #e7cf8e;
+  background: #fffaf0;
+}
+
+.whatsapp-template-readiness[data-tone="error"] {
+  border-color: #e6aaa5;
+  background: #fff7f6;
+}
+
+.whatsapp-template-publish-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+}
+
+.whatsapp-template-publish-row .status-message {
+  margin: 0;
+}
+
 .rfx-touchpoint-panel {
   display: grid;
   grid-template-columns: minmax(190px, 0.26fr) minmax(0, 0.74fr);
