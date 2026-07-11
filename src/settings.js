@@ -961,7 +961,7 @@ testWhatsappButton?.addEventListener("click", async () => {
   } catch (error) {
     setStatus(whatsappConnectionStatus, humanWhatsappMessage(error.message), "error");
   } finally {
-    renderWhatsappConnections(currentSettings?.whatsapp);
+    testWhatsappButton.disabled = false;
   }
 });
 
@@ -983,7 +983,7 @@ syncWhatsappTemplatesButton?.addEventListener("click", async () => {
   } catch (error) {
     setStatus(whatsappConnectionStatus, humanWhatsappMessage(error.message), "error");
   } finally {
-    renderWhatsappConnections(currentSettings?.whatsapp);
+    syncWhatsappTemplatesButton.disabled = false;
   }
 });
 

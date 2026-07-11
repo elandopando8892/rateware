@@ -820,8 +820,7 @@ outreachPublishWhatsappTemplateButton?.addEventListener("click", async () => {
     setStatus(outreachWhatsappTemplateStatus, result.message || "WhatsApp template submitted to Meta.", result.ready ? "success" : "warning");
   } catch (error) {
     setStatus(outreachWhatsappTemplateStatus, error.message, "error");
-  } finally {
-    renderOutreachWhatsappTemplateStatus(templates.find((template) => template.id === editingTemplateId));
+    outreachPublishWhatsappTemplateButton.disabled = false;
   }
 });
 

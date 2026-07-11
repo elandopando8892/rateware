@@ -7175,8 +7175,7 @@ publishWhatsappTemplateButton?.addEventListener("click", async () => {
     setStatus(rfxOutreachStatus, result.message || "WhatsApp template submitted to Meta.", result.ready ? "success" : "warning");
   } catch (error) {
     setStatus(rfxOutreachStatus, humanizeError(error.message), "error");
-  } finally {
-    renderOutreachPreview();
+    publishWhatsappTemplateButton.disabled = false;
   }
 });
 
@@ -7194,7 +7193,7 @@ syncWhatsappTemplateButton?.addEventListener("click", async () => {
   } catch (error) {
     setStatus(rfxOutreachStatus, humanizeError(error.message), "error");
   } finally {
-    renderOutreachPreview();
+    syncWhatsappTemplateButton.disabled = false;
   }
 });
 
