@@ -365,6 +365,9 @@ function renderDraftPreview(message = null) {
       ${vendorHistory.length ? vendorHistory.map((item) => `
         <article>
           <span>${escapeHtml([item.channel, item.status, new Date(item.occurred_at || item.created_at).toLocaleString()].filter(Boolean).join(" | "))}</span>
+          ${item.channel === "whatsapp" && item.metadata?.sender_display_phone
+            ? `<small>Sent from ${escapeHtml(item.metadata.sender_display_phone)} (${escapeHtml(item.metadata.whatsapp_connection_mode || "workspace connection")})</small>`
+            : ""}
           <p>${escapeHtml(item.body_preview || item.subject || "")}</p>
         </article>
       `).join("") : "<article>No previous touchpoints for this vendor.</article>"}
@@ -691,6 +694,9 @@ function renderHistory() {
         <span>${escapeHtml(item.channel)} | ${escapeHtml(item.status)} | ${escapeHtml(new Date(item.occurred_at || item.created_at).toLocaleString())}</span>
         <strong>${escapeHtml(item.vendors?.vendor_name || item.vendors?.domain || "Vendor")}</strong>
         <small>${escapeHtml(item.outreach_campaigns?.name || "")}${item.rfx_events?.rfx_id ? ` | ${escapeHtml(item.rfx_events.rfx_id)}` : ""}</small>
+        ${item.channel === "whatsapp" && item.metadata?.sender_display_phone
+          ? `<small>Sent from ${escapeHtml(item.metadata.sender_display_phone)} (${escapeHtml(item.metadata.whatsapp_connection_mode || "workspace connection")})</small>`
+          : ""}
         <p>${escapeHtml(item.body_preview || item.subject || "")}</p>
       </div>
     </article>

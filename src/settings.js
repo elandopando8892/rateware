@@ -15,7 +15,7 @@ import {
   retryGoogleChatSync,
   saveCatalogValue,
   saveGoogleChatSettings,
-  startWhatsappBusinessConnection,
+  saveWhatsappBusinessConnection,
   startGmailOAuth,
   startGoogleChatOAuth,
   syncGmailBounces,
@@ -74,6 +74,13 @@ const testWhatsappButton = document.querySelector("#test-whatsapp-button");
 const syncWhatsappTemplatesButton = document.querySelector("#sync-whatsapp-templates-button");
 const verifyWhatsappWebhookButton = document.querySelector("#verify-whatsapp-webhook-button");
 const refreshWhatsappConnectionButton = document.querySelector("#refresh-whatsapp-connection");
+const whatsappManualForm = document.querySelector("#whatsapp-manual-form");
+const whatsappMetaBusinessIdInput = document.querySelector("#whatsapp-meta-business-id");
+const whatsappMetaWabaIdInput = document.querySelector("#whatsapp-meta-waba-id");
+const whatsappMetaPhoneNumberIdInput = document.querySelector("#whatsapp-meta-phone-number-id");
+const whatsappAccessTokenInput = document.querySelector("#whatsapp-access-token");
+const whatsappWebhookVerifyTokenInput = document.querySelector("#whatsapp-webhook-verify-token");
+const cancelWhatsappManualButton = document.querySelector("#cancel-whatsapp-manual-button");
 const catalogValueForm = document.querySelector("#catalog-value-form");
 const catalogCategorySelect = document.querySelector("#catalog-category");
 const catalogCategoryFilter = document.querySelector("#catalog-category-filter");
@@ -346,6 +353,12 @@ function humanGoogleChatMessage(message = "") {
 
 function humanWhatsappMessage(message = "") {
   const text = String(message || "");
+  if (/Connect your WhatsApp Business account before sending WhatsApp messages/i.test(text)) {
+    return "Connect your WhatsApp Business account before sending WhatsApp messages.";
+  }
+  if (/tenant credential storage is not enabled/i.test(text)) {
+    return "Workspace WhatsApp credential storage is not enabled for this deployment. Contact the Rateware administrator.";
+  }
   if (/WHATSAPP_|META_|WABA|PHONE_NUMBER_ID|ACCESS_TOKEN|Meta secrets|not configured|connector is not fully configured/i.test(text)) {
     return "WhatsApp Business connector is not enabled for this deployment. Configure Meta WhatsApp secrets server-side.";
   }
@@ -518,11 +531,20 @@ function renderGoogleChatConnections(data = currentSettings?.google_chat, spaces
   );
 }
 
+function setWhatsappManualFormVisible(visible) {
+  whatsappManualForm?.classList.toggle("hidden", !visible);
+  if (!visible) {
+    if (whatsappAccessTokenInput) whatsappAccessTokenInput.value = "";
+    if (whatsappWebhookVerifyTokenInput) whatsappWebhookVerifyTokenInput.value = "";
+  }
+}
+
 function renderWhatsappConnections(data = currentSettings?.whatsapp) {
   if (!whatsappConnectionCard) return;
   const row = data?.rows?.[0] || {};
+  const internalWorkspace = data?.is_internal_workspace === true || row.internal_managed === true;
   const connected = row.status === "connected";
-  const configured = row.configured === true;
+  const configured = row.credentials_configured === true || row.configured === true;
   const manualSetup = row.status === "manual_setup";
   const templateCount = Number(row.template_count || 0);
   const senderLabel = row.display_phone_number
@@ -537,24 +559,28 @@ function renderWhatsappConnections(data = currentSettings?.whatsapp) {
   const webhookLabel = row.webhook_configured
     ? row.app_secret_configured
       ? "Verify token + app secret configured"
-      : "Verify token configured; app secret missing"
+      : "Verify token configured"
     : "Verify token missing";
   const statusLabel = connected
     ? "Connected"
     : manualSetup
-      ? "Manual setup"
+      ? "Saved, test required"
       : row.status === "error"
         ? "Connection error"
         : row.status === "revoked"
           ? "Disconnected"
-          : "Not configured";
-  const connectionCopy = connected
-    ? "Ready to create direct WhatsApp Business drafts and send approved Meta templates to opted-in vendors."
-    : configured
-      ? "Meta WhatsApp server secrets are configured. Test the line and sync approved templates before sending."
-      : "WhatsApp Business connector is not enabled for this deployment. Configure Meta WhatsApp secrets server-side.";
+          : "Not connected";
+  const connectionCopy = internalWorkspace
+    ? connected
+      ? "This sender is reserved for the internal HeyMarksman workspace. External SaaS workspaces cannot access it."
+      : "The internal HeyMarksman connector is not fully configured on this deployment."
+    : connected
+      ? "Your workspace sends WhatsApp outreach through its own Meta WhatsApp Business account."
+      : configured
+        ? "Credentials are saved. Run Test line to validate the sender before syncing templates or sending."
+        : "Connect your own WhatsApp Business. The internal HeyMarksman sender is never available to external workspaces.";
   whatsappConnectionCard.innerHTML = `
-    <strong>Meta WhatsApp Business Platform</strong>
+    <strong>${escapeHtml(row.connection_label || (internalWorkspace ? "Internal HeyMarksman WhatsApp Business sender" : "Connect your own WhatsApp Business"))}</strong>
     <p>${escapeHtml(connectionCopy)}</p>
     <dl class="diagnostic-list compact-list">
       <div><dt>Status</dt><dd><span class="status-pill ${connected ? "success" : row.status === "error" ? "danger" : configured ? "warning" : "neutral"}">${escapeHtml(statusLabel)}</span></dd></div>
@@ -571,22 +597,34 @@ function renderWhatsappConnections(data = currentSettings?.whatsapp) {
     </div>
     ${row.last_error ? `<p class="error-text">${escapeHtml(humanWhatsappMessage(row.last_error))}</p>` : ""}
   `;
+  if (internalWorkspace) setWhatsappManualFormVisible(false);
   if (connectWhatsappButton) {
-    connectWhatsappButton.disabled = !configured || connected;
-    connectWhatsappButton.textContent = connected ? "WhatsApp connected" : "Connect WhatsApp";
+    connectWhatsappButton.disabled = internalWorkspace;
+    connectWhatsappButton.textContent = internalWorkspace
+      ? "Managed internally"
+      : configured
+        ? "Replace token or IDs"
+        : "Connect your own WhatsApp Business";
   }
-  if (disconnectWhatsappButton) disconnectWhatsappButton.disabled = !connected && row.status !== "error" && !manualSetup;
+  if (disconnectWhatsappButton) disconnectWhatsappButton.disabled = internalWorkspace || !configured;
   if (testWhatsappButton) testWhatsappButton.disabled = !configured;
-  if (syncWhatsappTemplatesButton) syncWhatsappTemplatesButton.disabled = !configured;
-  if (verifyWhatsappWebhookButton) verifyWhatsappWebhookButton.disabled = !configured;
+  if (syncWhatsappTemplatesButton) syncWhatsappTemplatesButton.disabled = !connected;
+  if (verifyWhatsappWebhookButton) {
+    verifyWhatsappWebhookButton.classList.toggle("hidden", !internalWorkspace);
+    verifyWhatsappWebhookButton.disabled = !internalWorkspace || !configured;
+  }
   setStatus(
     whatsappConnectionStatus,
-    configured
+    internalWorkspace
       ? (connected
-          ? "WhatsApp Business is ready for approved template sends. Group delivery remains manual unless explicitly enabled."
-          : "Test the line and sync approved templates before enabling WhatsApp sends.")
-      : "WhatsApp Business connector is not enabled for this deployment. Configure Meta WhatsApp secrets server-side.",
-    configured ? (connected ? "success" : "warning") : "warning"
+          ? "Internal HeyMarksman WhatsApp Business sender is ready."
+          : "Internal WhatsApp Business connector requires server-side configuration.")
+      : configured
+        ? (connected
+            ? "Workspace WhatsApp Business is ready for approved template sends."
+            : "Credentials saved. Test the line to activate this workspace connection.")
+        : "Connect your WhatsApp Business account before sending WhatsApp messages.",
+    connected ? "success" : "warning"
   );
 }
 
@@ -850,17 +888,44 @@ saveGoogleChatSpaceButton?.addEventListener("click", async () => {
 });
 
 connectWhatsappButton?.addEventListener("click", async () => {
-  setStatus(whatsappConnectionStatus, "Preparing WhatsApp Business connection...");
+  const data = currentSettings?.whatsapp || {};
+  if (data.is_internal_workspace === true) return;
+  setWhatsappManualFormVisible(true);
+  whatsappMetaBusinessIdInput?.focus();
+  setStatus(
+    whatsappConnectionStatus,
+    data?.rows?.[0]?.configured
+      ? "Enter only the token or IDs you want to replace. Blank saved fields remain unchanged."
+      : "Enter the Meta WhatsApp Business credentials for this workspace.",
+    "neutral"
+  );
+});
+
+cancelWhatsappManualButton?.addEventListener("click", () => {
+  setWhatsappManualFormVisible(false);
+  renderWhatsappConnections(currentSettings?.whatsapp);
+});
+
+whatsappManualForm?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  setStatus(whatsappConnectionStatus, "Saving encrypted workspace WhatsApp credentials...");
   try {
-    const result = await startWhatsappBusinessConnection("settings.html?view=integrations");
-    if (result.authorization_url) {
-      window.location.href = result.authorization_url;
-      return;
-    }
+    await saveWhatsappBusinessConnection({
+      meta_business_id: whatsappMetaBusinessIdInput?.value?.trim() || "",
+      meta_waba_id: whatsappMetaWabaIdInput?.value?.trim() || "",
+      meta_phone_number_id: whatsappMetaPhoneNumberIdInput?.value?.trim() || "",
+      access_token: whatsappAccessTokenInput?.value?.trim() || "",
+      webhook_verify_token: whatsappWebhookVerifyTokenInput?.value?.trim() || ""
+    });
+    whatsappManualForm.reset();
+    setWhatsappManualFormVisible(false);
     await loadWhatsappConnections();
-    setStatus(whatsappConnectionStatus, result.message || "WhatsApp Business connection is managed by server-side Meta secrets.", "success");
+    setStatus(whatsappConnectionStatus, "Credentials saved securely. Run Test line to activate this workspace connection.", "success");
   } catch (error) {
     setStatus(whatsappConnectionStatus, humanWhatsappMessage(error.message), "error");
+  } finally {
+    if (whatsappAccessTokenInput) whatsappAccessTokenInput.value = "";
+    if (whatsappWebhookVerifyTokenInput) whatsappWebhookVerifyTokenInput.value = "";
   }
 });
 

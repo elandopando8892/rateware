@@ -33,7 +33,20 @@ const WHATSAPP_WABA_ID = (Deno.env.get("WHATSAPP_WABA_ID") || "").trim();
 const WHATSAPP_ACCESS_TOKEN = (Deno.env.get("WHATSAPP_ACCESS_TOKEN") || "").trim();
 const WHATSAPP_WEBHOOK_VERIFY_TOKEN = (Deno.env.get("WHATSAPP_WEBHOOK_VERIFY_TOKEN") || "").trim();
 const WHATSAPP_APP_SECRET = (Deno.env.get("WHATSAPP_APP_SECRET") || "").trim();
+const WHATSAPP_TOKEN_ENCRYPTION_KEY = (Deno.env.get("WHATSAPP_TOKEN_ENCRYPTION_KEY") || "").trim();
 const WHATSAPP_GROUPS_ENABLED = (Deno.env.get("WHATSAPP_GROUPS_ENABLED") || "false").trim().toLowerCase() === "true";
+const WHATSAPP_INTERNAL_OWNER_EMAILS = new Set(
+  (Deno.env.get("WHATSAPP_INTERNAL_OWNER_EMAILS") || GMAIL_ALLOWED_SENDER)
+    .split(/[;,\s]+/)
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean)
+);
+const WHATSAPP_INTERNAL_ORGANIZATION_IDS = new Set(
+  (Deno.env.get("WHATSAPP_INTERNAL_ORGANIZATION_IDS") || "")
+    .split(/[;,\s]+/)
+    .map((value) => value.trim())
+    .filter(Boolean)
+);
 const META_APP_ID = (Deno.env.get("META_APP_ID") || "").trim();
 const META_CONFIG_ID = (Deno.env.get("META_CONFIG_ID") || "").trim();
 const META_REDIRECT_URI = (Deno.env.get("META_REDIRECT_URI") || "").trim();
@@ -175,13 +188,28 @@ const CARRIER_INTELLIGENCE_SCHEMA = {
   }
 };
 
-function userContext(payload: Record<string, unknown>) {
+type RatewareUser = {
+  owner_user_id: string | null;
+  owner_email: string | null;
+  organization_id: string | null;
+};
+
+function userContext(payload: Record<string, unknown>): RatewareUser {
   const email = cleanText(payload.email || payload.preferred_email || payload["https://kinde.com/email"])?.toLowerCase();
   const id = cleanText(payload.sub || payload.id || email);
+  const organization = objectRecord(payload.organization || payload.org);
+  const organizationId = cleanText(
+    payload.org_code
+      || payload.organization_id
+      || payload.org_id
+      || organization.code
+      || organization.id
+  );
   if (!id && !email) throw new Error("Authenticated user is missing an id or email.");
   return {
     owner_user_id: id || email,
-    owner_email: email || id
+    owner_email: email || id,
+    organization_id: organizationId || null
   };
 }
 
@@ -193,21 +221,23 @@ function withOwner(row: Record<string, unknown>, user: { owner_user_id: string |
   };
 }
 
-async function resolveCanonicalUser(supabase: ReturnType<typeof createClient>, user: { owner_user_id: string | null; owner_email: string | null }) {
-  if (user.owner_email?.includes("@")) return user;
-  if (!user.owner_user_id) return user;
+async function resolveCanonicalUser(supabase: ReturnType<typeof createClient>, user: RatewareUser): Promise<RatewareUser> {
+  let ownerEmail = user.owner_email;
+  if (!ownerEmail?.includes("@") && user.owner_user_id) {
+    const result = await supabase
+      .from("user_profiles")
+      .select("owner_user_id,owner_email")
+      .eq("owner_user_id", user.owner_user_id)
+      .limit(1);
+    if (result.error) throw result.error;
+    const email = cleanText(result.data?.[0]?.owner_email)?.toLowerCase();
+    if (email?.includes("@")) ownerEmail = email;
+  }
 
-  const result = await supabase
-    .from("user_profiles")
-    .select("owner_user_id,owner_email")
-    .eq("owner_user_id", user.owner_user_id)
-    .limit(1);
-  if (result.error) throw result.error;
-  const email = cleanText(result.data?.[0]?.owner_email)?.toLowerCase();
-  if (!email?.includes("@")) return user;
   return {
     ...user,
-    owner_email: email
+    owner_email: ownerEmail,
+    organization_id: user.organization_id
   };
 }
 
@@ -10238,12 +10268,24 @@ function normalizeWhatsappPhone(value: unknown) {
   return digits.startsWith("+") ? digits : `+${digits}`;
 }
 
-function whatsappIsConfigured() {
+const WHATSAPP_CONNECTION_REQUIRED_MESSAGE = "Connect your WhatsApp Business account before sending WhatsApp messages.";
+
+function whatsappInternalEnvConfigured() {
   return Boolean(
     WHATSAPP_PROVIDER === "meta"
+    && WHATSAPP_CONNECTION_MODE === "internal_managed"
     && WHATSAPP_ACCESS_TOKEN
     && WHATSAPP_PHONE_NUMBER_ID
     && (WHATSAPP_WABA_ID || WHATSAPP_BUSINESS_ACCOUNT_ID)
+  );
+}
+
+function isInternalWhatsappWorkspace(user: Pick<RatewareUser, "owner_email" | "organization_id">) {
+  const email = cleanText(user.owner_email).toLowerCase();
+  const organizationId = cleanText(user.organization_id);
+  return Boolean(
+    (email && WHATSAPP_INTERNAL_OWNER_EMAILS.has(email))
+    || (organizationId && WHATSAPP_INTERNAL_ORGANIZATION_IDS.has(organizationId))
   );
 }
 
@@ -10253,21 +10295,37 @@ function maskedSecret(value: unknown) {
   return text.length <= 8 ? "configured" : `${text.slice(0, 4)}...${text.slice(-4)}`;
 }
 
-function publicWhatsappConnection(row: Record<string, unknown> | null | undefined) {
-  const status = cleanText(row?.status) || (whatsappIsConfigured() ? "connected" : "not_configured");
+function publicWhatsappConnection(
+  row: Record<string, unknown> | null | undefined,
+  options: { internalWorkspace?: boolean } = {}
+) {
+  const internalWorkspace = options.internalWorkspace === true;
+  const status = cleanText(row?.status) || "not_configured";
   const connected = status === "connected";
-  const connectionMode = cleanText(row?.connection_mode) || WHATSAPP_CONNECTION_MODE || "internal_managed";
+  const connectionMode = cleanText(row?.connection_mode) || (internalWorkspace ? "internal_managed" : "tenant_connected");
   const meta = objectRecord(row?.metadata);
-  const storedPhoneNumberId = cleanText(row?.phone_number_id) || WHATSAPP_PHONE_NUMBER_ID;
-  const storedBusinessAccountId = cleanText(row?.business_account_id) || WHATSAPP_BUSINESS_ACCOUNT_ID;
-  const storedWabaId = cleanText(row?.waba_id) || WHATSAPP_WABA_ID;
+  const storedPhoneNumberId = cleanText(row?.meta_phone_number_id || row?.phone_number_id);
+  const storedBusinessAccountId = cleanText(row?.meta_business_id || row?.business_account_id);
+  const storedWabaId = cleanText(row?.meta_waba_id || row?.waba_id);
+  const tokenConfigured = internalWorkspace ? Boolean(WHATSAPP_ACCESS_TOKEN) : Boolean(row?.access_token_encrypted);
+  const verifyTokenConfigured = internalWorkspace
+    ? Boolean(WHATSAPP_WEBHOOK_VERIFY_TOKEN)
+    : Boolean(row?.webhook_verify_token_encrypted);
+  const configured = Boolean(tokenConfigured && storedPhoneNumberId && (storedWabaId || storedBusinessAccountId));
   return {
     id: row?.id || null,
     provider: "meta",
     connection_mode: connectionMode,
+    connection_label: internalWorkspace
+      ? "Internal HeyMarksman WhatsApp Business sender"
+      : "Workspace WhatsApp Business sender",
+    internal_managed: internalWorkspace,
+    manual_setup_available: !internalWorkspace,
     status,
     connected,
-    configured: whatsappIsConfigured(),
+    configured,
+    credentials_configured: configured,
+    token_configured: tokenConfigured,
     groups_enabled: WHATSAPP_GROUPS_ENABLED,
     phone_number_id: maskedSecret(storedPhoneNumberId),
     phone_number_id_configured: Boolean(storedPhoneNumberId),
@@ -10279,8 +10337,8 @@ function publicWhatsappConnection(row: Record<string, unknown> | null | undefine
     waba_id_configured: Boolean(storedWabaId),
     graph_api_version: cleanText(row?.graph_api_version) || WHATSAPP_GRAPH_API_VERSION,
     templates_last_synced_at: row?.templates_last_synced_at || null,
-    webhook_configured: Boolean(WHATSAPP_WEBHOOK_VERIFY_TOKEN),
-    app_secret_configured: Boolean(WHATSAPP_APP_SECRET),
+    webhook_configured: verifyTokenConfigured,
+    app_secret_configured: internalWorkspace ? Boolean(WHATSAPP_APP_SECRET) : Boolean(meta.app_secret_configured),
     webhook_verified_at: row?.webhook_verified_at || null,
     quality_rating: cleanText(row?.quality_rating),
     last_error: row?.last_error || null,
@@ -10291,18 +10349,15 @@ function publicWhatsappConnection(row: Record<string, unknown> | null | undefine
 
 async function ensureInternalWhatsappConnection(
   supabase: ReturnType<typeof createClient>,
-  user: { owner_user_id: string | null; owner_email: string | null }
+  user: RatewareUser
 ) {
-  const mode = ["internal_managed", "tenant_connected", "manual_setup"].includes(WHATSAPP_CONNECTION_MODE)
-    ? WHATSAPP_CONNECTION_MODE
-    : "internal_managed";
-  const status = whatsappIsConfigured()
-    ? "connected"
-    : mode === "manual_setup"
-      ? "manual_setup"
-      : "not_configured";
+  if (!isInternalWhatsappWorkspace(user)) throw new Error(WHATSAPP_CONNECTION_REQUIRED_MESSAGE);
+  const mode = "internal_managed";
+  const status = whatsappInternalEnvConfigured() ? "connected" : "not_configured";
   const metadata = {
-    secret_source: mode === "internal_managed" ? "server_env" : "tenant_oauth_pending",
+    secret_source: "server_env",
+    deployment_connection_mode: WHATSAPP_CONNECTION_MODE,
+    connection_label: "Internal HeyMarksman WhatsApp Business sender",
     meta_app_configured: Boolean(META_APP_ID && META_CONFIG_ID),
     webhook_verify_token_configured: Boolean(WHATSAPP_WEBHOOK_VERIFY_TOKEN),
     app_secret_configured: Boolean(WHATSAPP_APP_SECRET),
@@ -10314,9 +10369,13 @@ async function ensureInternalWhatsappConnection(
       provider: "meta",
       connection_mode: mode,
       status,
+      organization_id: user.organization_id,
       phone_number_id: WHATSAPP_PHONE_NUMBER_ID || null,
       business_account_id: WHATSAPP_BUSINESS_ACCOUNT_ID || null,
       waba_id: WHATSAPP_WABA_ID || null,
+      meta_phone_number_id: WHATSAPP_PHONE_NUMBER_ID || null,
+      meta_business_id: WHATSAPP_BUSINESS_ACCOUNT_ID || null,
+      meta_waba_id: WHATSAPP_WABA_ID || null,
       graph_api_version: WHATSAPP_GRAPH_API_VERSION,
       last_error: status === "connected" ? null : "Meta WhatsApp Business secrets are not configured.",
       metadata,
@@ -10328,117 +10387,231 @@ async function ensureInternalWhatsappConnection(
   return result.data;
 }
 
+function scopeWhatsappConnectionQuery(query: any, user: RatewareUser) {
+  return user.organization_id
+    ? query.eq("organization_id", user.organization_id)
+    : query.eq("owner_email", user.owner_email);
+}
+
+async function findTenantWhatsappConnection(
+  supabase: ReturnType<typeof createClient>,
+  user: RatewareUser
+) {
+  let query = supabase
+    .from("whatsapp_business_connections")
+    .select("*")
+    .eq("provider", "meta")
+    .eq("connection_mode", "tenant_connected")
+    .order("updated_at", { ascending: false })
+    .limit(1);
+  query = scopeWhatsappConnectionQuery(query, user);
+  const result = await query.maybeSingle();
+  if (result.error) throw result.error;
+  return result.data as Record<string, unknown> | null;
+}
+
 async function listWhatsappConnections(
   supabase: ReturnType<typeof createClient>,
-  user: { owner_user_id: string | null; owner_email: string | null }
+  user: RatewareUser
 ) {
-  let row: Record<string, unknown> | null = null;
-  if (WHATSAPP_CONNECTION_MODE === "internal_managed" || whatsappIsConfigured()) {
-    row = await ensureInternalWhatsappConnection(supabase, user);
-  } else {
-    const result = await supabase
-      .from("whatsapp_business_connections")
-      .select("*")
-      .eq("owner_email", user.owner_email)
-      .eq("provider", "meta")
-      .order("updated_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    if (result.error) throw result.error;
-    row = result.data;
-  }
+  const internalWorkspace = isInternalWhatsappWorkspace(user);
+  const row = internalWorkspace
+    ? await ensureInternalWhatsappConnection(supabase, user)
+    : await findTenantWhatsappConnection(supabase, user);
   return {
     provider: "meta",
-    connection_mode: WHATSAPP_CONNECTION_MODE,
-    rows: [publicWhatsappConnection(row)]
+    workspace_mode: internalWorkspace ? "internal_managed" : "tenant_connected",
+    is_internal_workspace: internalWorkspace,
+    rows: [publicWhatsappConnection(row, { internalWorkspace })]
   };
 }
 
 async function activeWhatsappConnection(
   supabase: ReturnType<typeof createClient>,
-  user: { owner_user_id: string | null; owner_email: string | null }
+  user: RatewareUser,
+  options: { requireConnected?: boolean } = {}
 ) {
-  const row = await ensureInternalWhatsappConnection(supabase, user);
-  if (cleanText(row.status) !== "connected") {
-    throw new Error("WhatsApp Business is not connected. Configure Meta WhatsApp secrets in Settings before automated sends.");
+  const internalWorkspace = isInternalWhatsappWorkspace(user);
+  const row = internalWorkspace
+    ? await ensureInternalWhatsappConnection(supabase, user)
+    : await findTenantWhatsappConnection(supabase, user);
+  if (!row || cleanText(row.status) === "revoked") throw new Error(WHATSAPP_CONNECTION_REQUIRED_MESSAGE);
+  if (options.requireConnected !== false && cleanText(row.status) !== "connected") {
+    throw new Error(WHATSAPP_CONNECTION_REQUIRED_MESSAGE);
   }
-  return row;
+
+  const accessToken = internalWorkspace
+    ? WHATSAPP_ACCESS_TOKEN
+    : await decryptWhatsappSecret(row.access_token_encrypted, "WhatsApp access token");
+  const phoneNumberId = internalWorkspace
+    ? WHATSAPP_PHONE_NUMBER_ID
+    : cleanText(row.meta_phone_number_id || row.phone_number_id);
+  const businessId = internalWorkspace
+    ? WHATSAPP_BUSINESS_ACCOUNT_ID
+    : cleanText(row.meta_business_id || row.business_account_id);
+  const wabaId = internalWorkspace
+    ? (WHATSAPP_WABA_ID || WHATSAPP_BUSINESS_ACCOUNT_ID)
+    : cleanText(row.meta_waba_id || row.waba_id || row.meta_business_id || row.business_account_id);
+  if (!accessToken || !phoneNumberId || !wabaId) throw new Error(WHATSAPP_CONNECTION_REQUIRED_MESSAGE);
+  return {
+    row,
+    internalWorkspace,
+    accessToken,
+    phoneNumberId,
+    businessId,
+    wabaId,
+    graphApiVersion: cleanText(row.graph_api_version) || WHATSAPP_GRAPH_API_VERSION
+  };
 }
 
 async function startWhatsappBusinessConnection(
   supabase: ReturnType<typeof createClient>,
-  user: { owner_user_id: string | null; owner_email: string | null },
+  user: RatewareUser,
   input: Record<string, unknown> = {}
 ) {
-  const row = await ensureInternalWhatsappConnection(supabase, user);
   const redirectAfter = cleanText(input.redirect_after) || "settings.html?view=integrations&whatsapp=connected";
-  if (cleanText(row.status) === "connected") {
-    return { row: publicWhatsappConnection(row), connected: true, redirect_after: redirectAfter };
-  }
-  if (META_APP_ID && META_CONFIG_ID && META_REDIRECT_URI) {
-    const params = new URLSearchParams({
-      client_id: META_APP_ID,
-      redirect_uri: META_REDIRECT_URI,
-      state: crypto.randomUUID().replace(/-/g, ""),
-      config_id: META_CONFIG_ID,
-      response_type: "code"
-    });
+  if (isInternalWhatsappWorkspace(user)) {
+    const row = await ensureInternalWhatsappConnection(supabase, user);
     return {
-      row: publicWhatsappConnection(row),
-      authorization_url: `https://www.facebook.com/${WHATSAPP_GRAPH_API_VERSION}/dialog/oauth?${params.toString()}`,
-      mode: "tenant_connected"
+      row: publicWhatsappConnection(row, { internalWorkspace: true }),
+      connected: cleanText(row.status) === "connected",
+      mode: "internal_managed",
+      redirect_after: redirectAfter,
+      message: "Internal HeyMarksman WhatsApp Business sender is managed server-side."
     };
   }
+  const row = await findTenantWhatsappConnection(supabase, user);
   return {
-    row: publicWhatsappConnection(row),
-    mode: "manual_setup",
-    error: "Meta WhatsApp Business connector is not fully configured yet. Add server-side Meta secrets or configure Meta Business Login."
+    row: publicWhatsappConnection(row, { internalWorkspace: false }),
+    mode: "tenant_connected",
+    manual_setup_required: true,
+    redirect_after: redirectAfter,
+    message: "Connect your own WhatsApp Business account using Manual setup."
   };
+}
+
+async function saveTenantWhatsappBusinessConnection(
+  supabase: ReturnType<typeof createClient>,
+  user: RatewareUser,
+  input: Record<string, unknown> = {}
+) {
+  if (isInternalWhatsappWorkspace(user)) {
+    throw new Error("The internal HeyMarksman WhatsApp Business sender is managed server-side.");
+  }
+  const existing = await findTenantWhatsappConnection(supabase, user);
+  const metaBusinessId = cleanText(input.meta_business_id || input.business_account_id)
+    || cleanText(existing?.meta_business_id || existing?.business_account_id);
+  const metaWabaId = cleanText(input.meta_waba_id || input.waba_id)
+    || cleanText(existing?.meta_waba_id || existing?.waba_id);
+  const metaPhoneNumberId = cleanText(input.meta_phone_number_id || input.phone_number_id)
+    || cleanText(existing?.meta_phone_number_id || existing?.phone_number_id);
+  const accessToken = cleanText(input.access_token);
+  const webhookVerifyToken = cleanText(input.webhook_verify_token);
+  const accessTokenEncrypted = accessToken
+    ? await encryptWhatsappSecret(accessToken)
+    : cleanText(existing?.access_token_encrypted);
+  const webhookVerifyTokenEncrypted = webhookVerifyToken
+    ? await encryptWhatsappSecret(webhookVerifyToken)
+    : cleanText(existing?.webhook_verify_token_encrypted);
+
+  if (!metaBusinessId || !metaWabaId || !metaPhoneNumberId) {
+    throw new Error("Meta Business ID, WABA ID, and Phone Number ID are required.");
+  }
+  if (!accessTokenEncrypted) throw new Error("Access Token is required.");
+  if (!webhookVerifyTokenEncrypted) throw new Error("Webhook Verify Token is required.");
+
+  const now = new Date().toISOString();
+  const patch = withOwner({
+    organization_id: user.organization_id,
+    provider: "meta",
+    connection_mode: "tenant_connected",
+    status: "manual_setup",
+    meta_business_id: metaBusinessId,
+    meta_waba_id: metaWabaId,
+    meta_phone_number_id: metaPhoneNumberId,
+    business_account_id: metaBusinessId,
+    waba_id: metaWabaId,
+    phone_number_id: metaPhoneNumberId,
+    graph_api_version: WHATSAPP_GRAPH_API_VERSION,
+    access_token_encrypted: accessTokenEncrypted,
+    webhook_verify_token_encrypted: webhookVerifyTokenEncrypted,
+    last_error: null,
+    metadata: {
+      ...objectRecord(existing?.metadata),
+      secret_source: "tenant_manual_setup",
+      webhook_verify_token_configured: true,
+      groups_enabled: false
+    },
+    updated_at: now
+  }, user);
+
+  const result = existing?.id
+    ? await supabase
+        .from("whatsapp_business_connections")
+        .update(patch)
+        .eq("id", existing.id)
+        .select("*")
+        .single()
+    : await supabase
+        .from("whatsapp_business_connections")
+        .insert(patch)
+        .select("*")
+        .single();
+  if (result.error) throw result.error;
+  return publicWhatsappConnection(result.data, { internalWorkspace: false });
 }
 
 async function completeWhatsappBusinessConnection(
   supabase: ReturnType<typeof createClient>,
-  user: { owner_user_id: string | null; owner_email: string | null },
+  user: RatewareUser,
   input: Record<string, unknown> = {}
 ) {
   const code = cleanText(input.code);
   if (!code) return await startWhatsappBusinessConnection(supabase, user, input);
-  const row = await ensureInternalWhatsappConnection(supabase, user);
   return {
-    row: publicWhatsappConnection(row),
-    error: "Meta Business Login exchange is prepared but not enabled for this deployment. Use internal managed secrets for this sprint."
+    row: publicWhatsappConnection(await findTenantWhatsappConnection(supabase, user), { internalWorkspace: false }),
+    mode: "tenant_connected",
+    manual_setup_required: true,
+    error: "Meta Business Login is not enabled yet. Use Manual setup for this workspace."
   };
 }
 
 async function disconnectWhatsappBusinessConnection(
   supabase: ReturnType<typeof createClient>,
-  user: { owner_email: string | null }
+  user: RatewareUser
 ) {
+  if (isInternalWhatsappWorkspace(user)) {
+    throw new Error("The internal HeyMarksman WhatsApp Business sender cannot be disconnected from workspace settings.");
+  }
+  const row = await findTenantWhatsappConnection(supabase, user);
+  if (!row?.id) return publicWhatsappConnection(null, { internalWorkspace: false });
   const result = await supabase
     .from("whatsapp_business_connections")
     .update({
       status: "revoked",
       access_token_encrypted: null,
       refresh_token_encrypted: null,
+      webhook_verify_token_encrypted: null,
       last_error: null,
       updated_at: new Date().toISOString()
     })
-    .eq("owner_email", user.owner_email)
-    .eq("provider", "meta")
+    .eq("id", row.id)
     .select("*")
-    .maybeSingle();
+    .single();
   if (result.error) throw result.error;
-  if (!result.data) return publicWhatsappConnection(null);
-  return publicWhatsappConnection(result.data);
+  return publicWhatsappConnection(result.data, { internalWorkspace: false });
 }
 
-async function whatsappGraphFetch(path: string, options: RequestInit = {}) {
-  if (!WHATSAPP_ACCESS_TOKEN) throw new Error("WHATSAPP_ACCESS_TOKEN is not configured.");
-  const url = `https://graph.facebook.com/${WHATSAPP_GRAPH_API_VERSION}/${path.replace(/^\//, "")}`;
+async function whatsappGraphFetch(
+  connection: Awaited<ReturnType<typeof activeWhatsappConnection>>,
+  path: string,
+  options: RequestInit = {}
+) {
+  const url = `https://graph.facebook.com/${connection.graphApiVersion}/${path.replace(/^\//, "")}`;
   const response = await fetch(url, {
     ...options,
     headers: {
-      Authorization: `Bearer ${WHATSAPP_ACCESS_TOKEN}`,
+      Authorization: `Bearer ${connection.accessToken}`,
       "Content-Type": "application/json",
       ...(options.headers || {})
     }
@@ -10453,12 +10626,22 @@ async function whatsappGraphFetch(path: string, options: RequestInit = {}) {
 
 async function testWhatsappBusinessConnection(
   supabase: ReturnType<typeof createClient>,
-  user: { owner_user_id: string | null; owner_email: string | null }
+  user: RatewareUser
 ) {
-  const row = await ensureInternalWhatsappConnection(supabase, user);
-  if (cleanText(row.status) !== "connected") return { row: publicWhatsappConnection(row), ok: false };
-  const data = await whatsappGraphFetch(`${WHATSAPP_PHONE_NUMBER_ID}?fields=id,display_phone_number,verified_name,quality_rating`);
+  const connection = await activeWhatsappConnection(supabase, user, { requireConnected: false });
+  let data: Record<string, unknown>;
+  try {
+    data = await whatsappGraphFetch(connection, `${connection.phoneNumberId}?fields=id,display_phone_number,verified_name,quality_rating`);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    await supabase
+      .from("whatsapp_business_connections")
+      .update({ status: "error", last_error: reason, updated_at: new Date().toISOString() })
+      .eq("id", connection.row.id);
+    throw error;
+  }
   const patch = {
+    status: "connected",
     display_phone_number: cleanText(data.display_phone_number),
     verified_name: cleanText(data.verified_name),
     quality_rating: cleanText(data.quality_rating),
@@ -10478,88 +10661,98 @@ async function testWhatsappBusinessConnection(
     verified_name: cleanText(data.verified_name),
     quality_rating: cleanText(data.quality_rating),
     phone_number_id: maskedSecret(data.id),
-    row: publicWhatsappConnection(result.data)
+    row: publicWhatsappConnection(result.data, { internalWorkspace: connection.internalWorkspace })
   };
 }
 
 async function syncWhatsappTemplates(
   supabase: ReturnType<typeof createClient>,
-  user: { owner_user_id: string | null; owner_email: string | null }
+  user: RatewareUser
 ) {
-  const row = await activeWhatsappConnection(supabase, user);
-  const wabaId = WHATSAPP_WABA_ID || WHATSAPP_BUSINESS_ACCOUNT_ID || cleanText(row.waba_id);
-  if (!wabaId) throw new Error("WhatsApp WABA id is not configured.");
-  const data = await whatsappGraphFetch(`${wabaId}/message_templates?fields=name,language,status,category,components&limit=100`);
+  const connection = await activeWhatsappConnection(supabase, user);
+  const data = await whatsappGraphFetch(connection, `${connection.wabaId}/message_templates?fields=name,language,status,category,components&limit=100`);
   const templates = Array.isArray(data.data) ? data.data : [];
   const result = await supabase
     .from("whatsapp_business_connections")
     .update({
       templates_last_synced_at: new Date().toISOString(),
       last_error: null,
-      metadata: { ...objectRecord(row.metadata), templates },
+      metadata: { ...objectRecord(connection.row.metadata), templates },
       updated_at: new Date().toISOString()
     })
-    .eq("id", row.id)
+    .eq("id", connection.row.id)
     .select("*")
     .single();
   if (result.error) throw result.error;
-  return { synced: templates.length, rows: templates, connection: publicWhatsappConnection(result.data) };
+  return {
+    synced: templates.length,
+    rows: templates,
+    connection: publicWhatsappConnection(result.data, { internalWorkspace: connection.internalWorkspace })
+  };
 }
 
 async function listWhatsappTemplates(
   supabase: ReturnType<typeof createClient>,
-  user: { owner_user_id: string | null; owner_email: string | null }
+  user: RatewareUser
 ) {
   const connections = await listWhatsappConnections(supabase, user);
-  const rowResult = await supabase
-    .from("whatsapp_business_connections")
-    .select("metadata")
-    .eq("owner_email", user.owner_email)
-    .eq("provider", "meta")
-    .order("updated_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (rowResult.error) throw rowResult.error;
-  const templates = objectRecord(rowResult.data?.metadata).templates;
+  const row = isInternalWhatsappWorkspace(user)
+    ? await ensureInternalWhatsappConnection(supabase, user)
+    : await findTenantWhatsappConnection(supabase, user);
+  const templates = objectRecord(row?.metadata).templates;
   return { connection: connections.rows[0], rows: Array.isArray(templates) ? templates : [] };
 }
 
-async function listWhatsappPhoneNumbers() {
-  if (!whatsappIsConfigured()) return { rows: [] };
-  const wabaId = WHATSAPP_WABA_ID || WHATSAPP_BUSINESS_ACCOUNT_ID;
-  if (!wabaId) return { rows: [] };
-  const data = await whatsappGraphFetch(`${wabaId}/phone_numbers?fields=id,display_phone_number,verified_name,quality_rating`);
+async function listWhatsappPhoneNumbers(
+  supabase: ReturnType<typeof createClient>,
+  user: RatewareUser
+) {
+  const connection = await activeWhatsappConnection(supabase, user, { requireConnected: false });
+  const data = await whatsappGraphFetch(connection, `${connection.wabaId}/phone_numbers?fields=id,display_phone_number,verified_name,quality_rating`);
   return { rows: Array.isArray(data.data) ? data.data : [] };
 }
 
 async function selectWhatsappSender(
   supabase: ReturnType<typeof createClient>,
-  user: { owner_user_id: string | null; owner_email: string | null },
+  user: RatewareUser,
   input: Record<string, unknown>
 ) {
-  const row = await ensureInternalWhatsappConnection(supabase, user);
+  if (isInternalWhatsappWorkspace(user)) {
+    throw new Error("The internal HeyMarksman sender is managed server-side.");
+  }
+  const connection = await activeWhatsappConnection(supabase, user, { requireConnected: false });
   const phoneNumberId = cleanText(input.phone_number_id);
   if (!phoneNumberId) throw new Error("WhatsApp phone number id is required.");
   const result = await supabase
     .from("whatsapp_business_connections")
-    .update({ phone_number_id: phoneNumberId, updated_at: new Date().toISOString() })
-    .eq("id", row.id)
+    .update({
+      phone_number_id: phoneNumberId,
+      meta_phone_number_id: phoneNumberId,
+      status: "manual_setup",
+      updated_at: new Date().toISOString()
+    })
+    .eq("id", connection.row.id)
     .select("*")
     .single();
   if (result.error) throw result.error;
-  return publicWhatsappConnection(result.data);
+  return publicWhatsappConnection(result.data, { internalWorkspace: false });
 }
 
 async function verifyWhatsappWebhook(
   supabase: ReturnType<typeof createClient>,
-  user: { owner_user_id: string | null; owner_email: string | null }
+  user: RatewareUser
 ) {
-  const row = await ensureInternalWhatsappConnection(supabase, user);
+  const connection = await activeWhatsappConnection(supabase, user, { requireConnected: false });
+  const verifyTokenConfigured = connection.internalWorkspace
+    ? Boolean(WHATSAPP_WEBHOOK_VERIFY_TOKEN)
+    : Boolean(connection.row.webhook_verify_token_encrypted);
   return {
-    row: publicWhatsappConnection(row),
+    row: publicWhatsappConnection(connection.row, { internalWorkspace: connection.internalWorkspace }),
     endpoint: `${String(SUPABASE_URL || "").replace(/\/$/, "")}/functions/v1/whatsapp-webhook`,
-    verify_token_configured: Boolean(WHATSAPP_WEBHOOK_VERIFY_TOKEN),
-    app_secret_configured: Boolean(WHATSAPP_APP_SECRET)
+    verify_token_configured: verifyTokenConfigured,
+    app_secret_configured: Boolean(WHATSAPP_APP_SECRET),
+    connection_id: connection.row.id,
+    verified: verifyTokenConfigured && Boolean(WHATSAPP_APP_SECRET)
   };
 }
 
@@ -10809,6 +11002,35 @@ async function decryptGmailToken(value: unknown) {
   const [version, ivText, ciphertextText] = text.split(":");
   if (version !== "v1" || !ivText || !ciphertextText) throw new Error("Gmail token format is invalid.");
   const key = await gmailCryptoKey(["decrypt"]);
+  const plain = await crypto.subtle.decrypt(
+    { name: "AES-GCM", iv: base64ToBytes(ivText) },
+    key,
+    base64ToBytes(ciphertextText)
+  );
+  return new TextDecoder().decode(plain);
+}
+
+async function whatsappCryptoKey(usages: KeyUsage[]) {
+  if (!WHATSAPP_TOKEN_ENCRYPTION_KEY) {
+    throw new Error("WhatsApp tenant credential storage is not enabled for this deployment.");
+  }
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(WHATSAPP_TOKEN_ENCRYPTION_KEY));
+  return crypto.subtle.importKey("raw", digest, "AES-GCM", false, usages);
+}
+
+async function encryptWhatsappSecret(value: string) {
+  const key = await whatsappCryptoKey(["encrypt"]);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ciphertext = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, new TextEncoder().encode(value));
+  return `v1:${bytesToBase64(iv)}:${bytesToBase64(new Uint8Array(ciphertext))}`;
+}
+
+async function decryptWhatsappSecret(value: unknown, label = "WhatsApp credential") {
+  const text = cleanText(value);
+  if (!text) throw new Error(`${label} is missing.`);
+  const [version, ivText, ciphertextText] = text.split(":");
+  if (version !== "v1" || !ivText || !ciphertextText) throw new Error(`${label} format is invalid.`);
+  const key = await whatsappCryptoKey(["decrypt"]);
   const plain = await crypto.subtle.decrypt(
     { name: "AES-GCM", iv: base64ToBytes(ivText) },
     key,
@@ -11631,13 +11853,16 @@ async function sendOutreachMessages(
   return { sent: sentRows.length, failed: failures.length, rows: sentRows, failures };
 }
 
-async function metaSendWhatsappTemplate(message: Record<string, unknown>) {
+async function metaSendWhatsappTemplate(
+  message: Record<string, unknown>,
+  connection: Awaited<ReturnType<typeof activeWhatsappConnection>>
+) {
   const to = normalizeWhatsappPhone(message.normalized_recipient_phone || message.recipient_phone);
   const templateName = cleanText(message.whatsapp_template_name);
   const language = cleanText(message.whatsapp_template_language) || "en_US";
   if (!to) throw new Error("Missing WhatsApp recipient phone.");
   if (!templateName) throw new Error("WhatsApp Meta template mapping is missing. Sync or map a Meta template before automated send.");
-  return await whatsappGraphFetch(`${WHATSAPP_PHONE_NUMBER_ID}/messages`, {
+  return await whatsappGraphFetch(connection, `${connection.phoneNumberId}/messages`, {
     method: "POST",
     body: JSON.stringify({
       messaging_product: "whatsapp",
@@ -11675,7 +11900,7 @@ async function updateWhatsappMessageFailure(
 
 async function sendWhatsappOutreachMessages(
   supabase: ReturnType<typeof createClient>,
-  user: { owner_user_id: string | null; owner_email: string | null },
+  user: RatewareUser,
   input: Record<string, unknown>
 ) {
   const ids = normalizeBulkIds(input.ids, { label: "WhatsApp message ids", limit: BULK_SEND_LIMIT });
@@ -11715,8 +11940,9 @@ async function sendWhatsappOutreachMessages(
       continue;
     }
     try {
-      const data = await metaSendWhatsappTemplate(message);
+      const data = await metaSendWhatsappTemplate(message, connection);
       const providerMessageId = cleanText(data?.messages?.[0]?.id);
+      const senderDisplayPhone = cleanText(connection.row.display_phone_number);
       const updateResult = await supabase
         .from("outreach_messages")
         .update({
@@ -11725,9 +11951,15 @@ async function sendWhatsappOutreachMessages(
           sent_at: now,
           last_contacted_at: now,
           provider: "meta",
-          whatsapp_connection_id: connection.id,
+          whatsapp_connection_id: connection.row.id,
           provider_message_id: providerMessageId,
           delivery_error: null,
+          metadata: {
+            ...objectRecord(message.metadata),
+            whatsapp_connection_id: connection.row.id,
+            whatsapp_connection_mode: cleanText(connection.row.connection_mode),
+            sender_display_phone: senderDisplayPhone
+          },
           updated_at: now
         })
         .eq("id", message.id)
@@ -11737,6 +11969,7 @@ async function sendWhatsappOutreachMessages(
       if (updateResult.error) throw updateResult.error;
       rows.push(updateResult.data);
       const history = await supabase.from("contact_history").insert(withOwner({
+        whatsapp_connection_id: connection.row.id,
         outreach_message_id: message.id,
         campaign_id: message.campaign_id,
         vendor_id: message.vendor_id,
@@ -11749,7 +11982,10 @@ async function sendWhatsappOutreachMessages(
         occurred_at: now,
         metadata: {
           provider: "meta",
-          phone_number_id: WHATSAPP_PHONE_NUMBER_ID,
+          whatsapp_connection_id: connection.row.id,
+          whatsapp_connection_mode: cleanText(connection.row.connection_mode),
+          sender_display_phone: senderDisplayPhone,
+          phone_number_id: maskedSecret(connection.phoneNumberId),
           provider_message_id: providerMessageId,
           template_name: message.whatsapp_template_name,
           template_language: message.whatsapp_template_language
@@ -11767,7 +12003,7 @@ async function sendWhatsappOutreachMessages(
 
 async function sendWhatsappGroupOutreachMessages(
   supabase: ReturnType<typeof createClient>,
-  user: { owner_user_id: string | null; owner_email: string | null },
+  user: RatewareUser,
   input: Record<string, unknown>
 ) {
   const ids = normalizeBulkIds(input.ids, { label: "WhatsApp group message ids", limit: BULK_SEND_LIMIT });
@@ -12026,7 +12262,7 @@ function observabilitySummary(events: ObservabilityEvent[]) {
 
 async function buildObservabilityEvents(
   supabase: ReturnType<typeof createClient>,
-  user: { owner_email: string | null },
+  user: RatewareUser,
   input: Record<string, unknown> = {}
 ) {
   const limit = Math.min(Math.max(Number(input.limit) || 150, 20), 300);
@@ -12130,15 +12366,16 @@ async function buildObservabilityEvents(
     }));
   }
 
-  const whatsappConnectionRows = await safeObservabilityQuery(events, "whatsapp", "WhatsApp Business connection status", whatsappNextAction, () =>
-    supabase
+  const whatsappConnectionRows = await safeObservabilityQuery(events, "whatsapp", "WhatsApp Business connection status", whatsappNextAction, () => {
+    let query = supabase
       .from("whatsapp_business_connections")
       .select("id,updated_at,status,phone_number_id,display_phone_number,waba_id,templates_last_synced_at,webhook_verified_at,last_error,metadata")
-      .eq("owner_email", user.owner_email)
       .eq("provider", "meta")
       .order("updated_at", { ascending: false })
-      .limit(1)
-  );
+      .limit(1);
+    query = scopeWhatsappConnectionQuery(query, user);
+    return query;
+  });
   for (const row of whatsappConnectionRows) {
     const status = cleanText(row.status) || "not_configured";
     const missingTemplates = status === "connected" && !row.templates_last_synced_at;
@@ -12269,7 +12506,7 @@ async function buildObservabilityEvents(
   };
 }
 
-async function buildSaasSettings(supabase: ReturnType<typeof createClient>, user: { owner_user_id: string | null; owner_email: string | null }) {
+async function buildSaasSettings(supabase: ReturnType<typeof createClient>, user: RatewareUser) {
   const [profile, organization, checklistResult, auditResult, uploads, vendors, pending, approved, rfxEvents, outreachMessages, gmailConnections, googleChatConnections, whatsappConnections] = await Promise.all([
     ensureSaasProfile(supabase, user),
     ensureOrganization(supabase, user),
@@ -14010,7 +14247,7 @@ Deno.serve(async (request) => {
   if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders() });
 
   let supabase: ReturnType<typeof createClient> | null = null;
-  let user: { owner_user_id: string | null; owner_email: string | null } | null = null;
+  let user: RatewareUser | null = null;
   let body: Record<string, unknown> = {};
 
   try {
@@ -15913,6 +16150,19 @@ Deno.serve(async (request) => {
       return jsonResponse(result);
     }
 
+    if (body.action === "save_whatsapp_business_connection") {
+      const row = await saveTenantWhatsappBusinessConnection(supabase, user, body);
+      await writeAuditLog(
+        supabase,
+        user,
+        "whatsapp.connection.save",
+        "whatsapp_business_connections",
+        row.id || "meta",
+        "Saved workspace WhatsApp Business connection"
+      );
+      return jsonResponse({ row });
+    }
+
     if (body.action === "complete_whatsapp_business_connection") {
       const result = await completeWhatsappBusinessConnection(supabase, user, body);
       if ("error" in result) return jsonResponse(result, 400);
@@ -15938,7 +16188,7 @@ Deno.serve(async (request) => {
     }
 
     if (body.action === "list_whatsapp_phone_numbers") {
-      return jsonResponse(await listWhatsappPhoneNumbers());
+      return jsonResponse(await listWhatsappPhoneNumbers(supabase, user));
     }
 
     if (body.action === "select_whatsapp_sender") {

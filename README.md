@@ -101,7 +101,12 @@ Use this when the XLSX is already a template/database, not an unstructured carri
 
 ## WhatsApp Business Meta setup
 
-Rateware supports Meta Cloud API WhatsApp sends through Supabase Edge Function secrets. Do not paste access tokens, app secrets, verify tokens, WABA ids, or phone number ids into source code, static config, README examples, screenshots, or Git commits.
+Rateware supports two isolated Meta Cloud API connection modes:
+
+- `internal_managed`: the HeyMarksman sender is read from Supabase Edge Function secrets and is available only to owner emails or Kinde organization ids explicitly allowlisted server-side.
+- `tenant_connected`: each external workspace stores its own Meta identifiers and encrypted credentials in `whatsapp_business_connections`. External tenants never fall back to the HeyMarksman sender.
+
+Do not paste access tokens, app secrets, verify tokens, WABA ids, phone number ids, or encryption keys into source code, static config, README examples, screenshots, or Git commits.
 
 Required Supabase secrets:
 
@@ -114,6 +119,9 @@ Required Supabase secrets:
 - `WHATSAPP_ACCESS_TOKEN`
 - `WHATSAPP_WEBHOOK_VERIFY_TOKEN`
 - `WHATSAPP_APP_SECRET`
+- `WHATSAPP_TOKEN_ENCRYPTION_KEY`
+- `WHATSAPP_INTERNAL_OWNER_EMAILS`
+- `WHATSAPP_INTERNAL_ORGANIZATION_IDS` (optional)
 - `WHATSAPP_GROUPS_ENABLED`
 
 Recommended production values:
@@ -121,6 +129,7 @@ Recommended production values:
 - `WHATSAPP_PROVIDER=meta`
 - `WHATSAPP_CONNECTION_MODE=internal_managed`
 - `WHATSAPP_GRAPH_API_VERSION=v23.0`
+- `WHATSAPP_INTERNAL_OWNER_EMAILS=<comma-separated internal owner emails>`
 - `WHATSAPP_GROUPS_ENABLED=false`
 
 Set secrets from a local shell without committing them:
@@ -142,7 +151,12 @@ WHATSAPP_WABA_ID=<WhatsApp Business Account id>
 WHATSAPP_ACCESS_TOKEN=<Meta access token>
 WHATSAPP_WEBHOOK_VERIFY_TOKEN=<private verify token generated for this webhook>
 WHATSAPP_APP_SECRET=<Meta app secret>
+WHATSAPP_TOKEN_ENCRYPTION_KEY=<independent random encryption secret>
+WHATSAPP_INTERNAL_OWNER_EMAILS=<internal owner allowlist>
+WHATSAPP_INTERNAL_ORGANIZATION_IDS=<optional Kinde organization id allowlist>
 ```
+
+The global Meta identifiers and access token above belong only to the internal HeyMarksman workspace. An external workspace connects from `Settings > Integrations > WhatsApp Business > Connect your own WhatsApp Business` and enters its own Meta Business ID, WABA ID, Phone Number ID, Access Token, and Webhook Verify Token. The API encrypts both tokens before storage and never returns them to the browser. Replacing a token does not reveal the previous value.
 
 After changing secrets, redeploy the Edge Functions that read them:
 
@@ -161,13 +175,22 @@ Configure the Meta webhook:
 4. Subscribe to WhatsApp message events/statuses for delivery tracking.
 5. Keep WhatsApp groups manual for now. `WHATSAPP_GROUPS_ENABLED=false` means Rateware can open/copy group messages but should not automate group delivery.
 
-Test in Rateware:
+Test the internal connection in Rateware:
 
 1. Go to `Settings > Integrations > WhatsApp Business`.
 2. Click `Refresh`.
 3. Click `Test line`; the backend action `test_whatsapp_business_connection` should return the sender display phone, verified name, and quality rating.
 4. Click `Sync templates`; the backend action `sync_whatsapp_templates` reads `/{WHATSAPP_WABA_ID}/message_templates`.
 5. Click `Verify webhook`; the backend action `verify_whatsapp_webhook` confirms the endpoint and whether verify token/app secret are configured.
+
+Test an external tenant connection:
+
+1. Sign in to the external workspace and open `Settings > Integrations > WhatsApp Business`.
+2. Confirm the HeyMarksman phone number is not displayed.
+3. Choose `Connect your own WhatsApp Business`, complete Manual setup, and save.
+4. Run `Test line`. A successful Meta response activates only that workspace connection.
+5. Run `Sync templates`; the request must use the tenant row's `meta_waba_id`.
+6. Disconnect and confirm WhatsApp sends return `Connect your WhatsApp Business account before sending WhatsApp messages.`
 
 Optional CLI check:
 

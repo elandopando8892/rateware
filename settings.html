@@ -189,8 +189,33 @@
                 <strong>Meta WhatsApp Business Platform</strong>
                 <p>Checking WhatsApp Business connection...</p>
               </div>
+              <form id="whatsapp-manual-form" class="settings-form compact-form integration-manual-form hidden" autocomplete="off">
+                <div class="wide-field integration-form-heading">
+                  <strong>Manual setup</strong>
+                  <span>Credentials are encrypted server-side and are never displayed again.</span>
+                </div>
+                <label>Meta Business ID
+                  <input id="whatsapp-meta-business-id" inputmode="numeric" autocomplete="off" />
+                </label>
+                <label>WABA ID
+                  <input id="whatsapp-meta-waba-id" inputmode="numeric" autocomplete="off" />
+                </label>
+                <label>Phone Number ID
+                  <input id="whatsapp-meta-phone-number-id" inputmode="numeric" autocomplete="off" />
+                </label>
+                <label>Access Token
+                  <input id="whatsapp-access-token" type="password" autocomplete="new-password" />
+                </label>
+                <label>Webhook Verify Token
+                  <input id="whatsapp-webhook-verify-token" type="password" autocomplete="new-password" />
+                </label>
+                <div class="action-row wide-field">
+                  <button id="save-whatsapp-manual-button" type="submit">Save connection</button>
+                  <button id="cancel-whatsapp-manual-button" type="button" class="secondary">Cancel</button>
+                </div>
+              </form>
               <div class="action-row whatsapp-action-row">
-                <button id="connect-whatsapp-button" type="button">Connect WhatsApp</button>
+                <button id="connect-whatsapp-button" type="button">Connect your own WhatsApp Business</button>
                 <button id="test-whatsapp-button" type="button" class="secondary">Test line</button>
                 <button id="sync-whatsapp-templates-button" type="button" class="secondary">Sync templates</button>
                 <button id="verify-whatsapp-webhook-button" type="button" class="secondary">Verify webhook</button>

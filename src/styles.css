@@ -13329,6 +13329,31 @@ select.staging-input {
   grid-template-columns: minmax(220px, 1fr) minmax(280px, 1fr) auto;
 }
 
+.settings-form.integration-manual-form {
+  grid-template-columns: repeat(3, minmax(160px, 1fr));
+  align-items: end;
+  padding: 12px;
+  border: 1px solid var(--border);
+  background: #f8fafc;
+}
+
+.settings-form.integration-manual-form .wide-field {
+  grid-column: 1 / -1;
+}
+
+.integration-form-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.integration-form-heading span {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 500;
+}
+
 .helper-text {
   margin: -4px 0 10px;
   color: var(--muted);

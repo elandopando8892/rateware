@@ -95,6 +95,10 @@ export async function startWhatsappBusinessConnection(redirectAfter = "settings.
   });
 }
 
+export async function saveWhatsappBusinessConnection(connection) {
+  return (await callRatewareApi("save_whatsapp_business_connection", connection)).row;
+}
+
 export async function disconnectWhatsappBusinessConnection() {
   return (await callRatewareApi("disconnect_whatsapp_business_connection")).row;
 }
