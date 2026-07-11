@@ -323,6 +323,7 @@ assert.match(rfxEventsSource, /selectableWhatsappGroupDrafts/, "RFx Bid Room sho
 assert.match(outreachServiceSource, /sendWhatsappOutreachMessages/, "Outreach service should call direct WhatsApp sending action");
 assert.match(whatsappWebhookSource, /hub\.verify_token/, "WhatsApp webhook should implement Meta verification");
 assert.match(whatsappWebhookSource, /x-hub-signature-256/, "WhatsApp webhook should validate Meta signatures when configured");
+assert.doesNotMatch(whatsappWebhookSource, /if \(!WHATSAPP_APP_SECRET\) return true/, "WhatsApp webhook must reject unsigned POST requests when the Meta app secret is missing");
 assert.match(whatsappWebhookSource, /provider_message_id/, "WhatsApp webhook should update outreach messages by provider message id");
 assert.match(whatsappWebhookSource, /findWebhookConnection/, "WhatsApp webhook should resolve the workspace connection before routing events");
 assert.match(whatsappWebhookSource, /meta_phone_number_id/, "WhatsApp webhook should route by Meta phone number id");

@@ -143,7 +143,7 @@ async function findWebhookConnection(
 }
 
 async function signatureValid(request: Request, body: string) {
-  if (!WHATSAPP_APP_SECRET) return true;
+  if (!WHATSAPP_APP_SECRET) return false;
   const signature = cleanText(request.headers.get("x-hub-signature-256")).replace(/^sha256=/i, "");
   if (!signature) return false;
   const key = await crypto.subtle.importKey(
