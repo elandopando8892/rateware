@@ -282,6 +282,7 @@ assert.doesNotMatch(whatsappWorkspaceMigration, /using\s*\(true\)/i, "WhatsApp c
 assert.match(apiSource, /function isInternalWhatsappWorkspace/, "WhatsApp resolver should explicitly identify the internal HeyMarksman workspace");
 assert.match(apiSource, /WHATSAPP_INTERNAL_OWNER_EMAILS\.has\(email\)/, "Internal WhatsApp access should require an allowed owner email");
 assert.match(apiSource, /WHATSAPP_INTERNAL_ORGANIZATION_IDS\.has\(organizationId\)/, "Internal WhatsApp access should support an allowed organization id");
+assert.match(apiSource, /\.from\("gmail_connections"\)[\s\S]+\.eq\("owner_email", user\.owner_email\)[\s\S]+\.eq\("mailbox_email", GMAIL_ALLOWED_SENDER\)[\s\S]+\.eq\("status", "connected"\)/, "Internal WhatsApp access may use the workspace's connected allowed Gmail mailbox as proof");
 assert.match(apiSource, /connection_mode: "tenant_connected"/, "External workspaces should save tenant-connected rows");
 assert.match(apiSource, /await encryptWhatsappSecret\(accessToken\)/, "Tenant WhatsApp access tokens should be encrypted before storage");
 assert.match(apiSource, /await decryptWhatsappSecret\(row\.access_token_encrypted/, "Tenant Meta requests should decrypt only the active workspace token server-side");

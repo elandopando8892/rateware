@@ -10280,13 +10280,32 @@ function whatsappInternalEnvConfigured() {
   );
 }
 
-function isInternalWhatsappWorkspace(user: Pick<RatewareUser, "owner_email" | "organization_id">) {
+function isInternalWhatsappWorkspaceIdentity(user: Pick<RatewareUser, "owner_email" | "organization_id">) {
   const email = cleanText(user.owner_email).toLowerCase();
   const organizationId = cleanText(user.organization_id);
   return Boolean(
     (email && WHATSAPP_INTERNAL_OWNER_EMAILS.has(email))
     || (organizationId && WHATSAPP_INTERNAL_ORGANIZATION_IDS.has(organizationId))
   );
+}
+
+async function isInternalWhatsappWorkspace(
+  supabase: ReturnType<typeof createClient>,
+  user: Pick<RatewareUser, "owner_email" | "organization_id">
+) {
+  if (isInternalWhatsappWorkspaceIdentity(user)) return true;
+  if (!user.owner_email || !GMAIL_ALLOWED_SENDER) return false;
+
+  const result = await supabase
+    .from("gmail_connections")
+    .select("id")
+    .eq("owner_email", user.owner_email)
+    .eq("mailbox_email", GMAIL_ALLOWED_SENDER)
+    .eq("status", "connected")
+    .limit(1)
+    .maybeSingle();
+  if (result.error) throw result.error;
+  return Boolean(result.data?.id);
 }
 
 function maskedSecret(value: unknown) {
@@ -10351,7 +10370,7 @@ async function ensureInternalWhatsappConnection(
   supabase: ReturnType<typeof createClient>,
   user: RatewareUser
 ) {
-  if (!isInternalWhatsappWorkspace(user)) throw new Error(WHATSAPP_CONNECTION_REQUIRED_MESSAGE);
+  if (!await isInternalWhatsappWorkspace(supabase, user)) throw new Error(WHATSAPP_CONNECTION_REQUIRED_MESSAGE);
   const mode = "internal_managed";
   const status = whatsappInternalEnvConfigured() ? "connected" : "not_configured";
   const metadata = {
@@ -10414,7 +10433,7 @@ async function listWhatsappConnections(
   supabase: ReturnType<typeof createClient>,
   user: RatewareUser
 ) {
-  const internalWorkspace = isInternalWhatsappWorkspace(user);
+  const internalWorkspace = await isInternalWhatsappWorkspace(supabase, user);
   const row = internalWorkspace
     ? await ensureInternalWhatsappConnection(supabase, user)
     : await findTenantWhatsappConnection(supabase, user);
@@ -10431,7 +10450,7 @@ async function activeWhatsappConnection(
   user: RatewareUser,
   options: { requireConnected?: boolean } = {}
 ) {
-  const internalWorkspace = isInternalWhatsappWorkspace(user);
+  const internalWorkspace = await isInternalWhatsappWorkspace(supabase, user);
   const row = internalWorkspace
     ? await ensureInternalWhatsappConnection(supabase, user)
     : await findTenantWhatsappConnection(supabase, user);
@@ -10470,7 +10489,7 @@ async function startWhatsappBusinessConnection(
   input: Record<string, unknown> = {}
 ) {
   const redirectAfter = cleanText(input.redirect_after) || "settings.html?view=integrations&whatsapp=connected";
-  if (isInternalWhatsappWorkspace(user)) {
+  if (await isInternalWhatsappWorkspace(supabase, user)) {
     const row = await ensureInternalWhatsappConnection(supabase, user);
     return {
       row: publicWhatsappConnection(row, { internalWorkspace: true }),
@@ -10495,7 +10514,7 @@ async function saveTenantWhatsappBusinessConnection(
   user: RatewareUser,
   input: Record<string, unknown> = {}
 ) {
-  if (isInternalWhatsappWorkspace(user)) {
+  if (await isInternalWhatsappWorkspace(supabase, user)) {
     throw new Error("The internal HeyMarksman WhatsApp Business sender is managed server-side.");
   }
   const existing = await findTenantWhatsappConnection(supabase, user);
@@ -10580,7 +10599,7 @@ async function disconnectWhatsappBusinessConnection(
   supabase: ReturnType<typeof createClient>,
   user: RatewareUser
 ) {
-  if (isInternalWhatsappWorkspace(user)) {
+  if (await isInternalWhatsappWorkspace(supabase, user)) {
     throw new Error("The internal HeyMarksman WhatsApp Business sender cannot be disconnected from workspace settings.");
   }
   const row = await findTenantWhatsappConnection(supabase, user);
@@ -10696,7 +10715,7 @@ async function listWhatsappTemplates(
   user: RatewareUser
 ) {
   const connections = await listWhatsappConnections(supabase, user);
-  const row = isInternalWhatsappWorkspace(user)
+  const row = await isInternalWhatsappWorkspace(supabase, user)
     ? await ensureInternalWhatsappConnection(supabase, user)
     : await findTenantWhatsappConnection(supabase, user);
   const templates = objectRecord(row?.metadata).templates;
@@ -10717,7 +10736,7 @@ async function selectWhatsappSender(
   user: RatewareUser,
   input: Record<string, unknown>
 ) {
-  if (isInternalWhatsappWorkspace(user)) {
+  if (await isInternalWhatsappWorkspace(supabase, user)) {
     throw new Error("The internal HeyMarksman sender is managed server-side.");
   }
   const connection = await activeWhatsappConnection(supabase, user, { requireConnected: false });
