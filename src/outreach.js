@@ -19,7 +19,7 @@ import {
   syncOutreachWhatsappTemplates,
   updateOutreachCampaign,
   updateOutreachTemplate
-} from "./outreach-service.js";
+} from "./outreach-service.js?v=20260711-whatsapp-outreach";
 import { humanizeError } from "./error-copy.js";
 import { stateBlock, tableState } from "./ui-state.js";
 import { initWorkbenchTabs } from "./workbench-tabs.js";

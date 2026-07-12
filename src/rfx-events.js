@@ -39,7 +39,7 @@ import {
   sendWhatsappGroupOutreachMessages,
   syncOutreachWhatsappTemplates,
   updateOutreachTemplate
-} from "./outreach-service.js";
+} from "./outreach-service.js?v=20260711-whatsapp-outreach";
 import { createVendorSegment, deleteVendorSegment, fetchVendorSegments, fetchVendors, updateVendorSegment } from "./vendor-service.js";
 import { humanizeError } from "./error-copy.js";
 import { errorState, stateBlock, tableErrorState, tableState } from "./ui-state.js";
