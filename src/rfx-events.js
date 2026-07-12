@@ -53,6 +53,20 @@ const XBF_BUY_SELL_MAX_MARKUP_PCT = 15;
 const CRM_VENDOR_PAGE_SIZE = 1000;
 const CRM_VENDOR_SEARCH_LIMIT = 1000;
 
+function metaNotifierStatus(value = "NOT_PUBLISHED") {
+  const normalized = String(value || "NOT_PUBLISHED").trim().toUpperCase().replace(/[\s-]+/g, "_");
+  if (["PENDING_REVIEW", "UNDER_REVIEW"].includes(normalized)) return "IN_REVIEW";
+  return normalized || "NOT_PUBLISHED";
+}
+
+function metaNotifierStatusLabel(value = "NOT_PUBLISHED") {
+  return metaNotifierStatus(value).toLowerCase().replace(/_/g, " ");
+}
+
+function metaNotifierPendingReview(value = "NOT_PUBLISHED") {
+  return ["PENDING", "IN_REVIEW", "IN_APPEAL"].includes(metaNotifierStatus(value));
+}
+
 const eventForm = document.querySelector("#rfx-event-form");
 const rfxIdInput = document.querySelector("#rfx-id");
 const rfxNameInput = document.querySelector("#rfx-name");
@@ -2032,7 +2046,7 @@ function renderOutreachPreview() {
   if (rfxWhatsappReadiness) {
     const groupMode = channel === "whatsapp_group" || channel === "email_whatsapp_group" || targetMode !== "direct_vendor";
     const mapping = template?.whatsapp_meta || null;
-    const metaStatus = String(mapping?.meta_template_status || "NOT_PUBLISHED").toUpperCase();
+    const metaStatus = metaNotifierStatus(mapping?.meta_template_status || "NOT_PUBLISHED");
     const whatsappChannel = channel === "multi" || channel.includes("whatsapp");
     const targetSummary = `${formatNumber(whatsappDirectReady)} direct phone target(s), ${formatNumber(whatsappGroupReady)} group target(s).`;
     let readinessCopy = `${targetSummary} Outreach copy is the source for the WhatsApp message.`;
@@ -2043,8 +2057,8 @@ function renderOutreachPreview() {
     } else if (metaStatus === "APPROVED") {
       readinessCopy = `${targetSummary} Meta notifier ${mapping.meta_template_name} is approved. The full content remains in Outreach and the Bid Room.`;
       readinessTone = "success";
-    } else if (["PENDING", "IN_APPEAL"].includes(metaStatus)) {
-      readinessCopy = `${targetSummary} Compact notifier submitted to Meta (${metaStatus.toLowerCase().replace(/_/g, " ")}). Sync after review finishes.`;
+    } else if (metaNotifierPendingReview(metaStatus)) {
+      readinessCopy = `${targetSummary} Compact notifier is ${metaNotifierStatusLabel(metaStatus)} at Meta. Direct WhatsApp sends unlock after approval; Rateware refreshes it when you generate or send again.`;
       readinessTone = "warning";
     } else if (["REJECTED", "PAUSED", "DISABLED"].includes(metaStatus)) {
       readinessCopy = `${targetSummary} Meta notifier status is ${metaStatus.toLowerCase()}. Review the integration before direct sending.`;
@@ -2058,10 +2072,10 @@ function renderOutreachPreview() {
       publishWhatsappTemplateButton.disabled = !template?.id || !template?.whatsapp_body || rfxTemplateEditorDirty || !whatsappChannel || metaStatus === "APPROVED";
       publishWhatsappTemplateButton.textContent = metaStatus === "APPROVED"
         ? "Meta notifier ready"
-        : ["PENDING", "IN_APPEAL"].includes(metaStatus)
+        : metaNotifierPendingReview(metaStatus)
           ? "Submitted to Meta"
           : "Create Meta notifier";
-      if (["PENDING", "IN_APPEAL"].includes(metaStatus)) publishWhatsappTemplateButton.disabled = true;
+      if (metaNotifierPendingReview(metaStatus)) publishWhatsappTemplateButton.disabled = true;
     }
     if (syncWhatsappTemplateButton) syncWhatsappTemplateButton.disabled = !template?.id || !whatsappChannel;
   }
@@ -4339,8 +4353,8 @@ function whatsappDraftStatusDetail(message = {}, templateStatus = "") {
   if (/message_templates|Tried accessing nonexistent field|WABA ID belongs|Business Management|Unsupported get request|OAuthException|permission/i.test(raw)) {
     return "Meta cannot read the WhatsApp template catalog for this sender. Confirm the WABA ID, token permissions, and WhatsApp Business Management access, then regenerate or send again.";
   }
-  if (/not approved|pending Meta approval|template is pending|Sync Meta templates/i.test(raw)) {
-    return "Meta template is still pending approval. Rateware will refresh it automatically when you generate or send the queue.";
+  if (/not approved|pending Meta approval|template is pending|template is in review|in review|pending review|under review|Sync Meta templates/i.test(raw)) {
+    return "Meta notifier is still under Meta review. Direct WhatsApp sends unlock after approval; Rateware will refresh it automatically when you generate or send the queue.";
   }
   if (/template mapping|Meta template|message template/i.test(raw)) {
     return "This draft needs the compact Meta notifier. Generate the draft queue or send again so Rateware can create or refresh it automatically.";
@@ -4348,7 +4362,7 @@ function whatsappDraftStatusDetail(message = {}, templateStatus = "") {
   if (raw) return humanizeError(raw);
   const status = String(templateStatus || "").toUpperCase();
   if (status === "ERROR") return "Meta notifier needs attention. Regenerate the draft queue or open Settings > WhatsApp Business to test the line.";
-  if (status === "PENDING") return "Meta notifier was submitted and is pending Meta approval. Try again after approval.";
+  if (metaNotifierPendingReview(status)) return `Meta notifier is ${metaNotifierStatusLabel(status)} at Meta. Direct WhatsApp sends unlock after approval.`;
   if (status === "NOT_PUBLISHED") return "Meta notifier has not been published yet. Generate the draft queue or send again to create it automatically.";
   return "";
 }
@@ -5542,18 +5556,18 @@ async function createCurrentOutreachDrafts(statusElement = rfxOutreachStatus) {
   ]);
   await loadDetail(selectedEventId);
   const notifier = result.whatsapp_notifier || {};
-  const notifierStatus = String(notifier.status || "not_requested").toUpperCase();
+  const notifierStatus = metaNotifierStatus(notifier.status || "not_requested");
   const notifierCopy = notifier.ready
     ? ` Meta notifier ${notifier.template_name || ""} is approved and attached.`
-    : notifierStatus === "PENDING"
-      ? " Meta notifier was created or refreshed and is pending Meta approval."
+    : metaNotifierPendingReview(notifierStatus)
+      ? ` Meta notifier is ${metaNotifierStatusLabel(notifierStatus)} at Meta; direct WhatsApp sends unlock after approval.`
       : notifierStatus === "ERROR"
         ? ` WhatsApp notifier needs attention: ${humanizeError(notifier.error || "Meta connection unavailable")}`
         : "";
   setStatus(
     statusElement,
     `${result.generated || 0} draft(s) created. ${result.skipped?.length || 0} skipped for missing contact data.${notifierCopy}`,
-    notifierStatus === "ERROR" ? "warning" : "success"
+    notifierStatus === "ERROR" || metaNotifierPendingReview(notifierStatus) ? "warning" : "success"
   );
   return result;
 }

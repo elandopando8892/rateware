@@ -33,6 +33,20 @@ const templateWhatsapp = document.querySelector("#template-whatsapp");
 const templateStatus = document.querySelector("#template-status");
 const outreachWhatsappTemplateStatus = document.querySelector("#outreach-whatsapp-template-status");
 const outreachPublishWhatsappTemplateButton = document.querySelector("#outreach-publish-whatsapp-template");
+
+function metaNotifierStatus(value = "NOT_PUBLISHED") {
+  const normalized = String(value || "NOT_PUBLISHED").trim().toUpperCase().replace(/[\s-]+/g, "_");
+  if (["PENDING_REVIEW", "UNDER_REVIEW"].includes(normalized)) return "IN_REVIEW";
+  return normalized || "NOT_PUBLISHED";
+}
+
+function metaNotifierStatusLabel(value = "NOT_PUBLISHED") {
+  return metaNotifierStatus(value).toLowerCase().replace(/_/g, " ");
+}
+
+function metaNotifierPendingReview(value = "NOT_PUBLISHED") {
+  return ["PENDING", "IN_REVIEW", "IN_APPEAL"].includes(metaNotifierStatus(value));
+}
 const outreachSyncWhatsappTemplatesButton = document.querySelector("#outreach-sync-whatsapp-templates");
 const templateList = document.querySelector("#template-list");
 const campaignForm = document.querySelector("#outreach-campaign-form");
@@ -155,7 +169,7 @@ function fillTemplateForm(template) {
 
 function renderOutreachWhatsappTemplateStatus(template = templates.find((item) => item.id === editingTemplateId)) {
   const mapping = template?.whatsapp_meta || null;
-  const status = String(mapping?.meta_template_status || "NOT_PUBLISHED").toUpperCase();
+  const status = metaNotifierStatus(mapping?.meta_template_status || "NOT_PUBLISHED");
   let copy = "Save the Outreach template, then publish its WhatsApp version to Meta.";
   let tone = "neutral";
   if (template && !template.whatsapp_body) {
@@ -164,8 +178,8 @@ function renderOutreachWhatsappTemplateStatus(template = templates.find((item) =
   } else if (status === "APPROVED") {
     copy = `Meta notifier ${mapping.meta_template_name} is approved. Outreach remains the source for the full message and Bid Room details.`;
     tone = "success";
-  } else if (["PENDING", "IN_APPEAL"].includes(status)) {
-    copy = `Compact Meta notifier submitted (${status.toLowerCase().replace(/_/g, " ")}). Sync after review finishes.`;
+  } else if (metaNotifierPendingReview(status)) {
+    copy = `Compact Meta notifier is ${metaNotifierStatusLabel(status)} at Meta. Direct WhatsApp sends unlock after approval.`;
     tone = "warning";
   } else if (["REJECTED", "PAUSED", "DISABLED"].includes(status)) {
     copy = `Meta notifier status: ${status.toLowerCase()}. Review the integration before direct WhatsApp sending.`;
@@ -175,8 +189,8 @@ function renderOutreachWhatsappTemplateStatus(template = templates.find((item) =
   }
   setStatus(outreachWhatsappTemplateStatus, copy, tone);
   if (outreachPublishWhatsappTemplateButton) {
-    outreachPublishWhatsappTemplateButton.disabled = !template?.id || !template?.whatsapp_body || ["APPROVED", "PENDING", "IN_APPEAL"].includes(status);
-    outreachPublishWhatsappTemplateButton.textContent = status === "APPROVED" ? "Meta notifier ready" : ["PENDING", "IN_APPEAL"].includes(status) ? "Submitted to Meta" : "Create Meta notifier";
+    outreachPublishWhatsappTemplateButton.disabled = !template?.id || !template?.whatsapp_body || status === "APPROVED" || metaNotifierPendingReview(status);
+    outreachPublishWhatsappTemplateButton.textContent = status === "APPROVED" ? "Meta notifier ready" : metaNotifierPendingReview(status) ? "Submitted to Meta" : "Create Meta notifier";
   }
 }
 
@@ -588,8 +602,8 @@ function renderTemplates() {
     return;
   }
   templateList.innerHTML = templates.map((template) => {
-    const metaStatus = String(template.whatsapp_meta?.meta_template_status || "NOT_PUBLISHED").toUpperCase();
-    const statusTone = metaStatus === "APPROVED" ? "success" : ["PENDING", "IN_APPEAL"].includes(metaStatus) ? "warning" : "muted";
+    const metaStatus = metaNotifierStatus(template.whatsapp_meta?.meta_template_status || "NOT_PUBLISHED");
+    const statusTone = metaStatus === "APPROVED" ? "success" : metaNotifierPendingReview(metaStatus) ? "warning" : "muted";
     return `
       <article>
         <div>

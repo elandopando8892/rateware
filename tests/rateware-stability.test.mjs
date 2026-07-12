@@ -59,6 +59,7 @@ const settingsSource = readFileSync(new URL("../src/settings.js", import.meta.ur
 const settingsServiceSource = readFileSync(new URL("../src/settings-service.js", import.meta.url), "utf8");
 const settingsHtml = readFileSync(new URL("../settings.html", import.meta.url), "utf8");
 const stylesSource = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
+const outreachSource = readFileSync(new URL("../src/outreach.js", import.meta.url), "utf8");
 const outreachServiceSource = readFileSync(new URL("../src/outreach-service.js", import.meta.url), "utf8");
 const stagingServiceSource = readFileSync(new URL("../src/staging-service.js", import.meta.url), "utf8");
 const rpcMigration = readFileSync(new URL("../supabase/migrations/20260626143000_rate_filter_rpc.sql", import.meta.url), "utf8");
@@ -314,6 +315,9 @@ assert.match(apiSource, /whatsapp_template_parameters: whatsappParameters/, "Gen
 assert.match(apiSource, /parameters: parameterRows\.map/, "WhatsApp sends should submit the rendered body parameters to Meta");
 assert.match(apiSource, /notifierByTemplate[\s\S]+publishOutreachTemplateToWhatsapp\(supabase, user, \{ template_id: outreachTemplateId \}\)/, "WhatsApp send should refresh Meta notifier status automatically");
 assert.match(apiSource, /whatsapp_template_auto_checked_at: now/, "WhatsApp drafts should record the automatic send-time Meta check");
+assert.match(apiSource, /whatsappMetaStatusNeedsApproval[\s\S]+IN_REVIEW/, "WhatsApp direct sends should recognize Meta in-review templates as pending approval");
+assert.match(rfxEventsSource, /metaNotifierPendingReview[\s\S]+IN_REVIEW/, "RFx Bid Room should show Meta in-review template status without treating it as unpublished");
+assert.match(outreachSource, /metaNotifierPendingReview[\s\S]+IN_REVIEW/, "Outreach should show Meta in-review template status without exposing secrets or raw provider errors");
 assert.match(apiSource, /\.eq\("id", connection\.row\.id\)/, "WhatsApp connection tests and updates should target the resolved connection row");
 assert.match(apiSource, /whatsapp_connection_id: connection\.row\.id/, "WhatsApp sends should persist the resolved connection id");
 assert.match(apiSource, /sender_display_phone: senderDisplayPhone/, "WhatsApp contact history should persist the sender display phone");

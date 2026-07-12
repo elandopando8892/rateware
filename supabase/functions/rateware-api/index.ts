@@ -10811,7 +10811,31 @@ async function whatsappTemplateGraphFetch(
 }
 
 function whatsappMetaStatus(value: unknown, fallback = "NOT_PUBLISHED") {
-  return (cleanText(value) || fallback).toUpperCase();
+  const normalized = (cleanText(value) || fallback).toUpperCase().replace(/[\s-]+/g, "_");
+  if (["PENDING_REVIEW", "UNDER_REVIEW"].includes(normalized)) return "IN_REVIEW";
+  return normalized || fallback.toUpperCase();
+}
+
+function whatsappMetaStatusLabel(value: unknown) {
+  return whatsappMetaStatus(value).toLowerCase().replace(/_/g, " ");
+}
+
+function whatsappMetaStatusNeedsApproval(value: unknown) {
+  return ["PENDING", "IN_REVIEW", "IN_APPEAL"].includes(whatsappMetaStatus(value));
+}
+
+function whatsappMetaStatusMessage(value: unknown) {
+  const status = whatsappMetaStatus(value);
+  if (status === "APPROVED") {
+    return "Meta's compact RFx notification is approved. Outreach remains the source for the full Bid Room content.";
+  }
+  if (whatsappMetaStatusNeedsApproval(status)) {
+    return `Meta's compact RFx notification is ${whatsappMetaStatusLabel(status)}. Direct WhatsApp sends unlock after Meta approves it. Outreach remains the source for the full Bid Room content.`;
+  }
+  if (["REJECTED", "PAUSED", "DISABLED"].includes(status)) {
+    return `Meta's compact RFx notification is ${whatsappMetaStatusLabel(status)}. Review it in Meta before direct WhatsApp sending.`;
+  }
+  return "Meta's compact RFx notification has not been published yet. Generate or send the queue again so Rateware can create or refresh it.";
 }
 
 function whatsappMetaLanguage(template: Record<string, unknown>) {
@@ -11086,9 +11110,7 @@ async function publishOutreachTemplateToWhatsapp(
   return {
     row: publicWhatsappTemplateMapping(result.data),
     ready: whatsappMetaStatus(result.data.meta_template_status) === "APPROVED",
-    message: whatsappMetaStatus(result.data.meta_template_status) === "APPROVED"
-      ? "Meta's compact RFx notification is approved. Outreach remains the source for the full Bid Room content."
-      : "Meta's compact RFx notification was submitted for approval. Outreach remains the source for the full Bid Room content."
+    message: whatsappMetaStatusMessage(result.data.meta_template_status)
   };
 }
 
@@ -12378,7 +12400,10 @@ async function metaSendWhatsappTemplate(
   if (templateStatus !== "APPROVED") {
     const templateError = cleanText(metadata.whatsapp_template_error);
     if (templateError) throw new Error(templateError);
-    throw new Error(`WhatsApp template is ${templateStatus.toLowerCase().replace(/_/g, " ")}. Sync Meta templates after it is approved.`);
+    if (whatsappMetaStatusNeedsApproval(templateStatus)) {
+      throw new Error(`WhatsApp Meta notifier is ${whatsappMetaStatusLabel(templateStatus)}. Direct WhatsApp sends unlock after Meta approves it; Rateware will refresh status when you generate or send the queue again.`);
+    }
+    throw new Error(`WhatsApp template is ${whatsappMetaStatusLabel(templateStatus)}. Sync Meta templates after it is approved.`);
   }
   const components = parameterRows.length
     ? [{
