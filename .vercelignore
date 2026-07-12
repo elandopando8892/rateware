@@ -1,0 +1,11 @@
+exports/
+supabase/
+tests/
+tools/
+.git/
+.github/
+.vercel/
+node_modules/
+.env
+.env.*
+*.log
