@@ -55,12 +55,14 @@ function tokenExpiresWithin(token, seconds = 60) {
 
 async function requestFreshKindeToken(kinde) {
   const refreshAttempts = [
-    () => kinde.getToken?.({ forceRefresh: true }),
-    () => kinde.getToken?.({ ignoreCache: true }),
+    () => kinde.getAccessToken?.({ forceRefresh: true }),
+    () => kinde.getAccessToken?.({ ignoreCache: true }),
+    () => kinde.getAccessToken?.(),
     () => kinde.getTokenSilently?.({ forceRefresh: true }),
     () => kinde.getTokenSilently?.({ ignoreCache: true }),
-    () => kinde.getAccessToken?.({ forceRefresh: true }),
-    () => kinde.getAccessToken?.({ ignoreCache: true })
+    // Compatibility only for sessions created by older Kinde SDK versions.
+    () => kinde.getToken?.({ forceRefresh: true }),
+    () => kinde.getToken?.({ ignoreCache: true })
   ];
 
   for (const attempt of refreshAttempts) {
@@ -79,7 +81,16 @@ export async function getKindeToken(options = {}) {
   const { forceRefresh = false, minTtlSeconds = 60 } = options;
   const kinde = await getKindeClient();
   let token = forceRefresh ? await requestFreshKindeToken(kinde) : null;
-  token ||= await kinde.getToken();
+  if (!token) {
+    try {
+      token = await kinde.getAccessToken?.();
+    } catch {
+      token = null;
+    }
+  }
+  // getToken is deprecated in Kinde v4.5+, but remains as a fallback for
+  // already-authenticated sessions created before the SDK upgrade.
+  if (!token) token = await kinde.getToken?.();
   if (token && tokenExpiresWithin(token, minTtlSeconds)) {
     token = await requestFreshKindeToken(kinde) || token;
   }

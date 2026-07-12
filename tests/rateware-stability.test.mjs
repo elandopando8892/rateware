@@ -43,6 +43,7 @@ const customerRfiServiceSource = readFileSync(new URL("../src/customer-rfi-servi
 const customerRfiHtml = readFileSync(new URL("../customer-rfi.html", import.meta.url), "utf8");
 const rfxBidSource = readFileSync(new URL("../src/rfx-bid.js", import.meta.url), "utf8");
 const rfxBidApiSource = readFileSync(new URL("../supabase/functions/rfx-bid-api/index.ts", import.meta.url), "utf8");
+const authSource = readFileSync(new URL("../src/auth.js", import.meta.url), "utf8");
 const ratewareApiClientSource = readFileSync(new URL("../src/rateware-api.js", import.meta.url), "utf8");
 const errorCopySource = readFileSync(new URL("../src/error-copy.js", import.meta.url), "utf8");
 const bidRoomBoardSource = readFileSync(new URL("../src/bid-room-board.js", import.meta.url), "utf8");
@@ -431,6 +432,12 @@ assert.match(rfxEventsSource, /confirmBidRoomBulkAction\("mark_invited", ids\)/,
 assert.match(rfxEventsSource, /confirmBidRoomBulkAction\("archive_participants", ids\)/, "Bid Room should confirm before archiving selected participants");
 assert.match(ratewareApiClientSource, /function apiErrorMessage/, "Rateware API client should normalize object error payloads before throwing");
 assert.doesNotMatch(ratewareApiClientSource, /new Error\(data\.error \|\| data\.message/, "Rateware API client should not throw raw object errors that render as [object Object]");
+assert.match(authSource, /token = await kinde\.getAccessToken\?\.\(\)/, "Kinde auth should use the supported access-token API for normal authenticated requests");
+assert.ok(
+  authSource.indexOf("kinde.getAccessToken?.({ forceRefresh: true })") < authSource.indexOf("kinde.getToken?.({ forceRefresh: true })"),
+  "Kinde auth refresh should prefer getAccessToken before the deprecated getToken compatibility fallback"
+);
+assert.match(ratewareApiClientSource, /response\.status === 401[\s\S]+forceRefresh: true/, "Rateware API client should retry one unauthorized request with a refreshed Kinde access token");
 assert.match(errorCopySource, /function rawErrorMessage/, "Human error copy should convert nested object errors to readable text");
 assert.match(errorCopySource, /lower === "\[object object\]"/, "Human error copy should never display [object Object] to users");
 assert.match(errorCopySource, /lower === "bad request"/, "Human error copy should not show bare Bad Request messages to users");
