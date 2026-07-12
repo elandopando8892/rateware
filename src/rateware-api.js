@@ -35,15 +35,23 @@ function apiErrorMessage(data, text, status) {
 }
 
 export async function callRatewareApi(action, payload = {}) {
-  const token = await getKindeToken();
-  const response = await fetch(`${SUPABASE_URL}/functions/v1/rateware-api`, {
+  const endpoint = `${SUPABASE_URL}/functions/v1/rateware-api`;
+  const body = JSON.stringify({ action, ...payload });
+  const request = async (token) => fetch(endpoint, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json"
     },
-    body: JSON.stringify({ action, ...payload })
+    body
   });
+
+  let token = await getKindeToken({ minTtlSeconds: 90 });
+  let response = await request(token);
+  if (response.status === 401) {
+    token = await getKindeToken({ forceRefresh: true, minTtlSeconds: 90 });
+    response = await request(token);
+  }
 
   const text = await response.text();
   let data = {};

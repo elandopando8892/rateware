@@ -46,10 +46,45 @@ export async function getKindeClient() {
   return kindePromise;
 }
 
-export async function getKindeToken() {
+function tokenExpiresWithin(token, seconds = 60) {
+  const claims = parseJwt(token);
+  const exp = Number(claims.exp || 0);
+  if (!exp) return false;
+  return exp <= Math.floor(Date.now() / 1000) + seconds;
+}
+
+async function requestFreshKindeToken(kinde) {
+  const refreshAttempts = [
+    () => kinde.getToken?.({ forceRefresh: true }),
+    () => kinde.getToken?.({ ignoreCache: true }),
+    () => kinde.getTokenSilently?.({ forceRefresh: true }),
+    () => kinde.getTokenSilently?.({ ignoreCache: true }),
+    () => kinde.getAccessToken?.({ forceRefresh: true }),
+    () => kinde.getAccessToken?.({ ignoreCache: true })
+  ];
+
+  for (const attempt of refreshAttempts) {
+    try {
+      const token = await attempt();
+      if (token && !tokenExpiresWithin(token, 10)) return token;
+    } catch {
+      // Kinde SDK method support differs by version; try the next safe option.
+    }
+  }
+
+  return null;
+}
+
+export async function getKindeToken(options = {}) {
+  const { forceRefresh = false, minTtlSeconds = 60 } = options;
   const kinde = await getKindeClient();
-  const token = await kinde.getToken();
+  let token = forceRefresh ? await requestFreshKindeToken(kinde) : null;
+  token ||= await kinde.getToken();
+  if (token && tokenExpiresWithin(token, minTtlSeconds)) {
+    token = await requestFreshKindeToken(kinde) || token;
+  }
   if (!token) throw new Error("Sign in with Kinde before using Rateware.");
+  if (tokenExpiresWithin(token, 0)) throw new Error("Sign in with Kinde before using Rateware.");
   return token;
 }
 
