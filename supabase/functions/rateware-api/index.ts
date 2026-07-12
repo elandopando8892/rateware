@@ -10387,14 +10387,20 @@ async function ensureInternalWhatsappConnection(
   const status = whatsappInternalEnvConfigured() ? "connected" : "not_configured";
   const existingResult = await supabase
     .from("whatsapp_business_connections")
-    .select("metadata")
+    .select("metadata,meta_waba_id,waba_id")
     .eq("owner_email", user.owner_email)
     .eq("provider", "meta")
     .eq("connection_mode", mode)
     .maybeSingle();
   if (existingResult.error) throw existingResult.error;
+  const existingMetadata = objectRecord(existingResult.data?.metadata);
+  const internalWabaId = cleanText(existingMetadata.template_waba_id)
+    || WHATSAPP_WABA_ID
+    || cleanText(existingResult.data?.meta_waba_id || existingResult.data?.waba_id)
+    || WHATSAPP_BUSINESS_ACCOUNT_ID
+    || null;
   const metadata = {
-    ...objectRecord(existingResult.data?.metadata),
+    ...existingMetadata,
     secret_source: "server_env",
     deployment_connection_mode: WHATSAPP_CONNECTION_MODE,
     connection_label: "Internal HeyMarksman WhatsApp Business sender",
@@ -10413,10 +10419,10 @@ async function ensureInternalWhatsappConnection(
       meta_app_id: META_APP_ID || null,
       phone_number_id: WHATSAPP_PHONE_NUMBER_ID || null,
       business_account_id: WHATSAPP_BUSINESS_ACCOUNT_ID || null,
-      waba_id: WHATSAPP_WABA_ID || null,
+      waba_id: internalWabaId,
       meta_phone_number_id: WHATSAPP_PHONE_NUMBER_ID || null,
       meta_business_id: WHATSAPP_BUSINESS_ACCOUNT_ID || null,
-      meta_waba_id: WHATSAPP_WABA_ID || null,
+      meta_waba_id: internalWabaId,
       graph_api_version: WHATSAPP_GRAPH_API_VERSION,
       last_error: status === "connected" ? null : "Meta WhatsApp Business secrets are not configured.",
       metadata,
@@ -10484,6 +10490,7 @@ async function activeWhatsappConnection(
   const accessToken = internalWorkspace
     ? WHATSAPP_ACCESS_TOKEN
     : await decryptWhatsappSecret(row.access_token_encrypted, "WhatsApp access token");
+  const metadata = objectRecord(row.metadata);
   const phoneNumberId = internalWorkspace
     ? WHATSAPP_PHONE_NUMBER_ID
     : cleanText(row.meta_phone_number_id || row.phone_number_id);
@@ -10491,8 +10498,8 @@ async function activeWhatsappConnection(
     ? WHATSAPP_BUSINESS_ACCOUNT_ID
     : cleanText(row.meta_business_id || row.business_account_id);
   const wabaId = internalWorkspace
-    ? (WHATSAPP_WABA_ID || WHATSAPP_BUSINESS_ACCOUNT_ID)
-    : cleanText(row.meta_waba_id || row.waba_id || row.meta_business_id || row.business_account_id);
+    ? (cleanText(metadata.template_waba_id) || WHATSAPP_WABA_ID || WHATSAPP_BUSINESS_ACCOUNT_ID)
+    : cleanText(metadata.template_waba_id || row.meta_waba_id || row.waba_id || row.meta_business_id || row.business_account_id);
   if (!accessToken || !phoneNumberId || !wabaId) throw new Error(WHATSAPP_CONNECTION_REQUIRED_MESSAGE);
   return {
     row,
@@ -10676,6 +10683,133 @@ async function whatsappGraphFetch(
   return data;
 }
 
+const WHATSAPP_TEMPLATE_SETUP_MESSAGE = "Meta cannot read WhatsApp templates for this connection. Confirm that the WABA ID belongs to the sender phone number and that the access token has WhatsApp Business Management permission.";
+
+function whatsappTemplateEndpointMessage(error: unknown) {
+  const text = error instanceof Error ? error.message : String(error || "");
+  if (/message_templates|Tried accessing nonexistent field|Unsupported get request|does not exist|cannot be loaded|permission|permissions|OAuthException/i.test(text)) {
+    return `${WHATSAPP_TEMPLATE_SETUP_MESSAGE} Meta said: ${text}`;
+  }
+  return cleanText(text) || "Meta WhatsApp template request failed.";
+}
+
+function whatsappTemplateWabaCandidates(connection: Awaited<ReturnType<typeof activeWhatsappConnection>>) {
+  const row = objectRecord(connection.row);
+  const metadata = objectRecord(row.metadata);
+  const candidates: Array<{ id: string; source: string }> = [];
+  const seen = new Set<string>();
+  const add = (value: unknown, source: string) => {
+    const id = cleanText(value);
+    if (!id || seen.has(id)) return;
+    seen.add(id);
+    candidates.push({ id, source });
+  };
+  add(metadata.template_waba_id, "saved_template_waba_id");
+  add(connection.wabaId, "resolved_connection_waba_id");
+  add(row.meta_waba_id, "connection_meta_waba_id");
+  add(row.waba_id, "connection_waba_id");
+  add(connection.businessId, "business_account_id_fallback");
+  add(row.meta_business_id, "connection_meta_business_id_fallback");
+  add(row.business_account_id, "connection_business_account_id_fallback");
+  return candidates;
+}
+
+async function discoverWhatsappWabaFromPhone(connection: Awaited<ReturnType<typeof activeWhatsappConnection>>) {
+  const discovered: Array<{ id: string; source: string }> = [];
+  for (const field of ["whatsapp_business_account", "account"]) {
+    try {
+      const data = await whatsappGraphFetch(
+        connection,
+        `${connection.phoneNumberId}?fields=id,display_phone_number,verified_name,quality_rating,${field}`
+      );
+      const record = objectRecord(data?.[field]);
+      const id = cleanText(record.id || data?.[field]);
+      if (id) discovered.push({ id, source: `phone_number_${field}` });
+    } catch {
+      // Meta Graph versions differ on phone-number relationship fields; failed probes are non-fatal.
+    }
+  }
+  return discovered;
+}
+
+async function persistWhatsappTemplateWaba(
+  supabase: ReturnType<typeof createClient>,
+  connection: Awaited<ReturnType<typeof activeWhatsappConnection>>,
+  candidate: { id: string; source: string }
+) {
+  if (!candidate.id || !connection.row?.id) return;
+  const metadata = {
+    ...objectRecord(connection.row.metadata),
+    template_waba_id: candidate.id,
+    template_waba_id_source: candidate.source,
+    template_waba_id_verified_at: new Date().toISOString()
+  };
+  await supabase
+    .from("whatsapp_business_connections")
+    .update({
+      meta_waba_id: candidate.id,
+      waba_id: candidate.id,
+      metadata,
+      last_error: null,
+      updated_at: new Date().toISOString()
+    })
+    .eq("id", connection.row.id);
+  connection.wabaId = candidate.id;
+  connection.row = {
+    ...connection.row,
+    meta_waba_id: candidate.id,
+    waba_id: candidate.id,
+    metadata
+  };
+}
+
+async function whatsappTemplateGraphFetch(
+  supabase: ReturnType<typeof createClient>,
+  connection: Awaited<ReturnType<typeof activeWhatsappConnection>>,
+  suffix: string,
+  options: RequestInit = {}
+) {
+  const initialCandidates = whatsappTemplateWabaCandidates(connection);
+  const discoveredCandidates = await discoverWhatsappWabaFromPhone(connection);
+  const candidates: Array<{ id: string; source: string }> = [];
+  const seen = new Set<string>();
+  for (const candidate of [...initialCandidates, ...discoveredCandidates]) {
+    if (!candidate.id || seen.has(candidate.id)) continue;
+    seen.add(candidate.id);
+    candidates.push(candidate);
+  }
+
+  const errors: string[] = [];
+  for (const candidate of candidates) {
+    try {
+      const data = await whatsappGraphFetch(connection, `${candidate.id}/message_templates${suffix}`, options);
+      if (candidate.id !== connection.wabaId || candidate.source !== "resolved_connection_waba_id") {
+        await persistWhatsappTemplateWaba(supabase, connection, candidate);
+      }
+      return { data, waba_id: candidate.id, source: candidate.source };
+    } catch (error) {
+      errors.push(`${candidate.source}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  const reason = whatsappTemplateEndpointMessage(errors[0] || "No WABA candidates could read message_templates.");
+  if (connection.row?.id) {
+    await supabase
+      .from("whatsapp_business_connections")
+      .update({
+        last_error: reason,
+        metadata: {
+          ...objectRecord(connection.row.metadata),
+          template_endpoint_errors: errors.slice(0, 5),
+          template_endpoint_checked_at: new Date().toISOString()
+        },
+        updated_at: new Date().toISOString()
+      })
+      .eq("id", connection.row.id);
+  }
+  throw new Error(reason);
+}
+
 function whatsappMetaStatus(value: unknown, fallback = "NOT_PUBLISHED") {
   return (cleanText(value) || fallback).toUpperCase();
 }
@@ -10850,32 +10984,72 @@ async function publishOutreachTemplateToWhatsapp(
   }];
 
   let metaRow: Record<string, unknown> | null = null;
-  const existingMeta = await whatsappGraphFetch(
-    connection,
-    `${connection.wabaId}/message_templates?name=${encodeURIComponent(name)}&fields=id,name,language,status,category,components&limit=10`
-  );
-  metaRow = Array.isArray(existingMeta.data)
-    ? existingMeta.data.find((row: Record<string, unknown>) => cleanText(row.name) === name && cleanText(row.language) === language) || null
-    : null;
+  try {
+    const existingMeta = await whatsappTemplateGraphFetch(
+      supabase,
+      connection,
+      `?name=${encodeURIComponent(name)}&fields=id,name,language,status,category,components&limit=10`
+    );
+    metaRow = Array.isArray(existingMeta.data.data)
+      ? existingMeta.data.data.find((row: Record<string, unknown>) => cleanText(row.name) === name && cleanText(row.language) === language) || null
+      : null;
 
-  if (!metaRow) {
-    const created = await whatsappGraphFetch(connection, `${connection.wabaId}/message_templates`, {
-      method: "POST",
-      body: JSON.stringify({
+    if (!metaRow) {
+      const created = await whatsappTemplateGraphFetch(supabase, connection, "", {
+        method: "POST",
+        body: JSON.stringify({
+          name,
+          language,
+          category,
+          allow_category_change: true,
+          components
+        })
+      });
+      metaRow = {
+        id: cleanText(created.data.id),
         name,
         language,
-        category,
-        allow_category_change: true,
+        status: cleanText(created.data.status) || "PENDING",
+        category: cleanText(created.data.category) || category,
         components
-      })
-    });
-    metaRow = {
-      id: cleanText(created.id),
-      name,
-      language,
-      status: cleanText(created.status) || "PENDING",
-      category: cleanText(created.category) || category,
-      components
+      };
+    }
+  } catch (error) {
+    const now = new Date().toISOString();
+    const reason = whatsappTemplateEndpointMessage(error);
+    const failedMapping = withOwner({
+      organization_id: user.organization_id,
+      whatsapp_connection_id: connection.row.id,
+      outreach_template_id: template.id,
+      meta_template_id: null,
+      meta_template_name: name,
+      meta_template_language: language,
+      meta_template_category: category,
+      meta_template_status: "ERROR",
+      source_fingerprint: fingerprint,
+      source_placeholders: placeholders,
+      meta_template_components: components,
+      last_synced_at: now,
+      last_error: reason,
+      metadata: {
+        source: "outreach_template",
+        source_template_name: cleanText(template.name),
+        published_from_rateware: false,
+        delivery_strategy: "stable_rfx_notification",
+        full_outreach_copy_location: "private_bid_room"
+      },
+      updated_at: now
+    }, user);
+    const result = await supabase
+      .from("whatsapp_outreach_template_mappings")
+      .upsert(failedMapping, { onConflict: "whatsapp_connection_id,outreach_template_id" })
+      .select("*")
+      .single();
+    if (result.error) throw result.error;
+    return {
+      row: publicWhatsappTemplateMapping(result.data),
+      ready: false,
+      message: reason
     };
   }
 
@@ -10964,8 +11138,14 @@ async function syncWhatsappTemplates(
   user: RatewareUser
 ) {
   const connection = await activeWhatsappConnection(supabase, user);
-  const data = await whatsappGraphFetch(connection, `${connection.wabaId}/message_templates?fields=name,language,status,category,components&limit=100`);
-  const templates = Array.isArray(data.data) ? data.data : [];
+  const data = await whatsappTemplateGraphFetch(
+    supabase,
+    connection,
+    "?fields=name,language,status,category,components&limit=100"
+  );
+  // Template sync reads the resolved workspace WABA through whatsappTemplateGraphFetch.
+  // The legacy direct path was: `${connection.wabaId}/message_templates?fields=name,language,status,category,components&limit=100`.
+  const templates = Array.isArray(data.data.data) ? data.data.data : [];
   const now = new Date().toISOString();
   const result = await supabase
     .from("whatsapp_business_connections")
@@ -12196,6 +12376,8 @@ async function metaSendWhatsappTemplate(
   if (!to) throw new Error("Missing WhatsApp recipient phone.");
   if (!templateName) throw new Error("Publish this Outreach template to Meta and wait for approval before sending WhatsApp messages.");
   if (templateStatus !== "APPROVED") {
+    const templateError = cleanText(metadata.whatsapp_template_error);
+    if (templateError) throw new Error(templateError);
     throw new Error(`WhatsApp template is ${templateStatus.toLowerCase().replace(/_/g, " ")}. Sync Meta templates after it is approved.`);
   }
   const components = parameterRows.length
@@ -12230,6 +12412,11 @@ async function updateWhatsappMessageFailure(
   reason: string,
   now = new Date().toISOString()
 ) {
+  const metadata = {
+    ...objectRecord(message.metadata),
+    whatsapp_last_error: reason,
+    whatsapp_last_error_at: now
+  };
   await supabase
     .from("outreach_messages")
     .update({
@@ -12238,6 +12425,7 @@ async function updateWhatsappMessageFailure(
       failed_at: now,
       delivery_error: reason,
       provider: "meta",
+      metadata,
       updated_at: now
     })
     .eq("id", message.id)
@@ -12304,6 +12492,7 @@ async function sendWhatsappOutreachMessages(
             ...objectRecord(message.metadata),
             whatsapp_template_mapped: true,
             whatsapp_template_status: whatsappMetaStatus(notifier.meta_template_status),
+            whatsapp_template_error: cleanText(notifier.last_error),
             whatsapp_template_auto_checked_at: now
           }
         };

@@ -4328,6 +4328,31 @@ function selectableWhatsappDrafts(rows = []) {
   });
 }
 
+function whatsappDraftStatusDetail(message = {}, templateStatus = "") {
+  const metadata = message.metadata && typeof message.metadata === "object" ? message.metadata : {};
+  const raw = String(
+    metadata.whatsapp_template_error
+      || metadata.whatsapp_last_error
+      || message.delivery_error
+      || ""
+  ).trim();
+  if (/message_templates|Tried accessing nonexistent field|WABA ID belongs|Business Management|Unsupported get request|OAuthException|permission/i.test(raw)) {
+    return "Meta cannot read the WhatsApp template catalog for this sender. Confirm the WABA ID, token permissions, and WhatsApp Business Management access, then regenerate or send again.";
+  }
+  if (/not approved|pending Meta approval|template is pending|Sync Meta templates/i.test(raw)) {
+    return "Meta template is still pending approval. Rateware will refresh it automatically when you generate or send the queue.";
+  }
+  if (/template mapping|Meta template|message template/i.test(raw)) {
+    return "This draft needs the compact Meta notifier. Generate the draft queue or send again so Rateware can create or refresh it automatically.";
+  }
+  if (raw) return humanizeError(raw);
+  const status = String(templateStatus || "").toUpperCase();
+  if (status === "ERROR") return "Meta notifier needs attention. Regenerate the draft queue or open Settings > WhatsApp Business to test the line.";
+  if (status === "PENDING") return "Meta notifier was submitted and is pending Meta approval. Try again after approval.";
+  if (status === "NOT_PUBLISHED") return "Meta notifier has not been published yet. Generate the draft queue or send again to create it automatically.";
+  return "";
+}
+
 function selectableWhatsappGroupDrafts(rows = []) {
   return rows.filter((message) => {
     const status = String(message.status || "").toLowerCase();
@@ -4572,7 +4597,7 @@ function renderDraftQueue() {
     const templateStatus = String(metadata.whatsapp_template_status || (message.whatsapp_template_name ? "APPROVED" : "NOT_PUBLISHED")).toUpperCase();
     const draftTitle = message.subject || (isWhatsapp ? "WhatsApp RFx invitation" : isWhatsappGroup ? "WhatsApp group invitation" : "No subject");
     const readinessDetail = isWhatsapp && templateStatus !== "APPROVED"
-      ? `Meta notifier: ${templateStatus.toLowerCase().replace(/_/g, " ")}. Rateware checks its live status automatically when you send.`
+      ? whatsappDraftStatusDetail(message, templateStatus)
       : "";
     return `
       <tr class="${checked ? "is-selected-row" : ""}" data-rfx-draft-id="${escapeHtml(message.id)}">

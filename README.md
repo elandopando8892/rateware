@@ -182,7 +182,7 @@ Test the internal connection in Rateware:
 1. Go to `Settings > Integrations > WhatsApp Business`.
 2. Click `Refresh`.
 3. Click `Test line`; the backend action `test_whatsapp_business_connection` should return the sender display phone, verified name, and quality rating.
-4. Click `Sync templates`; the backend action `sync_whatsapp_templates` reads `/{WHATSAPP_WABA_ID}/message_templates`.
+4. Click `Sync templates`; the backend action `sync_whatsapp_templates` reads the resolved active WABA `/{waba_id}/message_templates`. If the saved WABA is wrong, Rateware attempts to discover the WABA from the sender phone number and stores the working candidate. If Meta still rejects the call, confirm that the WABA ID belongs to the sender phone and that the token has WhatsApp Business Management permission.
 5. Click `Verify webhook`; the backend action `verify_whatsapp_webhook` confirms the endpoint and whether verify token/app secret are configured.
 
 Test an external tenant connection:

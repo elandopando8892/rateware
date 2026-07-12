@@ -286,7 +286,7 @@ assert.match(apiSource, /function isInternalWhatsappWorkspace/, "WhatsApp resolv
 assert.match(apiSource, /WHATSAPP_INTERNAL_OWNER_EMAILS\.has\(email\)/, "Internal WhatsApp access should require an allowed owner email");
 assert.match(apiSource, /WHATSAPP_INTERNAL_ORGANIZATION_IDS\.has\(organizationId\)/, "Internal WhatsApp access should support an allowed organization id");
 assert.match(apiSource, /\.from\("gmail_mailbox_connections"\)[\s\S]+\.eq\("owner_email", user\.owner_email\)[\s\S]+\.eq\("mailbox_email", GMAIL_ALLOWED_SENDER\)[\s\S]+\.eq\("status", "connected"\)/, "Internal WhatsApp access may use the workspace's connected allowed Gmail mailbox as proof");
-assert.match(apiSource, /\.\.\.objectRecord\(existingResult\.data\?\.metadata\)/, "Refreshing the internal WhatsApp connection must preserve synced Meta templates");
+assert.match(apiSource, /const existingMetadata = objectRecord\(existingResult\.data\?\.metadata\)/, "Refreshing the internal WhatsApp connection must preserve synced Meta templates");
 assert.match(whatsappTenantAppMigration, /add column if not exists meta_app_id text/, "Tenant WhatsApp connections should store their own Meta App ID");
 assert.match(whatsappTenantAppMigration, /add column if not exists app_secret_encrypted text/, "Tenant WhatsApp connections should store only an encrypted Meta App Secret");
 assert.match(apiSource, /connection_mode: "tenant_connected"/, "External workspaces should save tenant-connected rows");
@@ -296,6 +296,9 @@ assert.match(apiSource, /await decryptWhatsappSecret\(row\.access_token_encrypte
 assert.match(apiSource, /WHATSAPP_CONNECTION_REQUIRED_MESSAGE/, "External WhatsApp actions should fail closed without a tenant connection");
 assert.match(apiSource, /Authorization: `Bearer \$\{connection\.accessToken\}`/, "Meta calls should use the resolved workspace connection token");
 assert.match(apiSource, /connection\.wabaId}\/message_templates/, "Template sync should use the resolved workspace WABA");
+assert.match(apiSource, /discoverWhatsappWabaFromPhone/, "WhatsApp template sync should try to discover the WABA from the sender phone number");
+assert.match(apiSource, /template_waba_id/, "WhatsApp template sync should persist the working WABA candidate");
+assert.match(apiSource, /WHATSAPP_TEMPLATE_SETUP_MESSAGE/, "WhatsApp template errors should return actionable Meta setup guidance");
 assert.match(whatsappTemplateMappingMigration, /create table if not exists public\.whatsapp_outreach_template_mappings/, "WhatsApp Outreach mappings should have a dedicated workspace table");
 assert.match(whatsappTemplateMappingMigration, /unique \(whatsapp_connection_id, outreach_template_id\)/, "WhatsApp template mappings should be isolated by connection and Outreach template");
 assert.doesNotMatch(whatsappTemplateMappingMigration, /using\s*\(true\)/i, "WhatsApp template mapping RLS must not expose mappings across workspaces");
@@ -335,6 +338,7 @@ assert.match(settingsSource, /Internal HeyMarksman WhatsApp Business sender/, "I
 assert.match(settingsServiceSource, /save_whatsapp_business_connection/, "Settings should save tenant WhatsApp credentials server-side");
 assert.match(settingsSource, /WHATSAPP_WEBHOOK_ENDPOINT/, "Settings should show the Meta webhook endpoint");
 assert.match(settingsSource, /WhatsApp Business connector is not enabled for this deployment\. Configure Meta WhatsApp secrets server-side\./, "Settings should show clear missing WhatsApp secrets copy");
+assert.match(settingsSource, /Meta cannot read the WhatsApp template catalog for this sender/, "Settings should explain Meta template catalog errors");
 assert.doesNotMatch(settingsSource, /WHATSAPP_ACCESS_TOKEN|WHATSAPP_APP_SECRET|WHATSAPP_WEBHOOK_VERIFY_TOKEN/, "Settings UI source should not reference secret values");
 assert.match(readmeSource, /## WhatsApp Business Meta setup/, "README should document WhatsApp Business Meta setup");
 assert.match(readmeSource, /never prints secret values/i, "README should explain that the WhatsApp check does not print secret values");

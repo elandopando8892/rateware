@@ -361,6 +361,9 @@ function humanWhatsappMessage(message = "") {
   if (/tenant credential storage is not enabled/i.test(text)) {
     return "Workspace WhatsApp credential storage is not enabled for this deployment. Contact the Rateware administrator.";
   }
+  if (/message_templates|Tried accessing nonexistent field|WABA ID belongs|Business Management|Unsupported get request|OAuthException|template catalog/i.test(text)) {
+    return "Meta cannot read the WhatsApp template catalog for this sender. Confirm the WABA ID belongs to the sender phone, the token has WhatsApp Business Management permission, then sync templates again.";
+  }
   if (/WHATSAPP_|META_|WABA|PHONE_NUMBER_ID|ACCESS_TOKEN|Meta secrets|not configured|connector is not fully configured/i.test(text)) {
     return "WhatsApp Business connector is not enabled for this deployment. Configure Meta WhatsApp secrets server-side.";
   }
