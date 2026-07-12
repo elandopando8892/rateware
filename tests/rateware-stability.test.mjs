@@ -300,7 +300,10 @@ assert.match(whatsappTemplateMappingMigration, /create table if not exists publi
 assert.match(whatsappTemplateMappingMigration, /unique \(whatsapp_connection_id, outreach_template_id\)/, "WhatsApp template mappings should be isolated by connection and Outreach template");
 assert.doesNotMatch(whatsappTemplateMappingMigration, /using\s*\(true\)/i, "WhatsApp template mapping RLS must not expose mappings across workspaces");
 assert.match(apiSource, /publish_outreach_template_to_whatsapp/, "Rateware API should publish Outreach copy to Meta templates");
-assert.match(apiSource, /whatsappMetaBody\(sourceBody, placeholders\)/, "Outreach named placeholders should be converted to Meta positional placeholders");
+assert.match(apiSource, /rateware_rfx_invitation_en_v1/, "WhatsApp should use one stable English RFx notifier");
+assert.match(apiSource, /rateware_rfx_invitation_es_v1/, "WhatsApp should use one stable Spanish RFx notifier");
+assert.match(apiSource, /WHATSAPP_RFX_NOTIFICATION_PLACEHOLDERS[\s\S]+vendor_name[\s\S]+event_name[\s\S]+lane_count[\s\S]+due_date[\s\S]+bid_link/, "Stable Meta notifiers should use the five ordered RFx parameters");
+assert.match(apiSource, /delivery_strategy: "stable_rfx_notification"/, "WhatsApp mappings should identify the stable notifier strategy");
 assert.match(apiSource, /source_placeholders: placeholders/, "Workspace mappings should persist the ordered source placeholders");
 assert.match(apiSource, /whatsapp_template_parameters: whatsappParameters/, "Generated WhatsApp drafts should persist rendered Meta parameter values");
 assert.match(apiSource, /parameters: parameterRows\.map/, "WhatsApp sends should submit the rendered body parameters to Meta");
@@ -337,6 +340,7 @@ assert.match(rfxEventsHtml, /rfx-send-selected-whatsapp-drafts/, "RFx Bid Room s
 assert.match(rfxEventsHtml, /rfx-publish-whatsapp-template/, "RFx Bid Room should publish the selected Outreach WhatsApp template to Meta");
 assert.match(rfxEventsHtml, /rfx-sync-whatsapp-template/, "RFx Bid Room should synchronize Meta approval status");
 assert.match(rfxEventsSource, /publishOutreachTemplateToWhatsapp/, "RFx Bid Room should use Outreach as the WhatsApp template source");
+assert.match(rfxEventsSource, /Full Outreach \/ Bid Room copy/, "RFx Bid Room should distinguish editable Outreach copy from the Meta notifier");
 assert.match(rfxEventsHtml, /rfx-mark-selected-whatsapp-groups/, "RFx Bid Room should expose manual WhatsApp group completion");
 assert.match(rfxEventsSource, /selectableWhatsappDrafts/, "RFx Bid Room should calculate direct WhatsApp selectable drafts");
 assert.match(rfxEventsSource, /selectableWhatsappGroupDrafts/, "RFx Bid Room should calculate manual group selectable drafts");

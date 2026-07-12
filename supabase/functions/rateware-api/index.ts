@@ -10681,23 +10681,11 @@ function whatsappMetaStatus(value: unknown, fallback = "NOT_PUBLISHED") {
 }
 
 function whatsappMetaLanguage(template: Record<string, unknown>) {
+  const inferred = outreachTemplateLanguage(template) === "es" ? "es_MX" : "en_US";
   const explicit = cleanText(template.meta_template_language);
+  if (inferred === "es_MX") return inferred;
   if (explicit && /^[a-z]{2}_[A-Z]{2}$/.test(explicit)) return explicit;
-  return outreachTemplateLanguage(template) === "es" ? "es_MX" : "en_US";
-}
-
-function whatsappSourcePlaceholders(value: unknown) {
-  const rows: string[] = [];
-  const seen = new Set<string>();
-  String(value || "").replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_match, key) => {
-    const normalized = String(key || "").trim();
-    if (normalized && !seen.has(normalized)) {
-      seen.add(normalized);
-      rows.push(normalized);
-    }
-    return _match;
-  });
-  return rows;
+  return inferred;
 }
 
 function whatsappTemplateFingerprint(value: unknown) {
@@ -10710,24 +10698,37 @@ function whatsappTemplateFingerprint(value: unknown) {
   return (hash >>> 0).toString(16).padStart(8, "0");
 }
 
-function whatsappMetaTemplateName(template: Record<string, unknown>, fingerprint: string) {
-  const base = (cleanText(template.name) || "rfx_invitation")
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "")
-    .slice(0, 80) || "rfx_invitation";
-  const templateId = String(template.id || "template").replace(/[^a-zA-Z0-9]/g, "").slice(0, 8).toLowerCase();
-  return `rateware_${base}_${templateId}_${fingerprint}`.slice(0, 512);
-}
+const WHATSAPP_RFX_NOTIFICATION_PLACEHOLDERS = [
+  "vendor_name",
+  "event_name",
+  "lane_count",
+  "due_date",
+  "bid_link"
+] as const;
 
-function whatsappMetaBody(source: unknown, placeholders: string[]) {
-  const indexes = new Map(placeholders.map((key, index) => [key, index + 1]));
-  return String(source || "")
-    .replace(/\r\n/g, "\n")
-    .trim()
-    .replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_match, key) => `{{${indexes.get(String(key)) || ""}}}`);
+function whatsappStableRfxTemplate(language: string) {
+  if (language === "es_MX") {
+    return {
+      name: "rateware_rfx_invitation_es_v1",
+      language: "es_MX",
+      body: [
+        "Hola {{1}},",
+        "Te invitamos a cotizar {{2}} con {{3}} ruta(s). La fecha limite es {{4}}.",
+        "Revisa la cedula completa y envia tu puja: {{5}}",
+        "Gracias."
+      ].join("\n")
+    };
+  }
+  return {
+    name: "rateware_rfx_invitation_en_v1",
+    language: "en_US",
+    body: [
+      "Hello {{1}},",
+      "You are invited to quote {{2}} with {{3}} lane(s). The response deadline is {{4}}.",
+      "Review the complete business book and submit your bid: {{5}}",
+      "Thank you."
+    ].join("\n")
+  };
 }
 
 function whatsappPlaceholderExample(key: string) {
@@ -10834,26 +10835,18 @@ async function publishOutreachTemplateToWhatsapp(
   const template = await fetchOutreachTemplate(supabase, user, input.template_id || input.id);
   const sourceBody = cleanText(template.whatsapp_body);
   if (!sourceBody) throw new Error("Add WhatsApp copy to the Outreach template before publishing it to Meta.");
-  const placeholders = whatsappSourcePlaceholders(sourceBody);
-  if (placeholders.length > 20) {
-    throw new Error("WhatsApp copy uses too many dynamic fields. Keep no more than 20 placeholders.");
-  }
-  const metaBody = whatsappMetaBody(sourceBody, placeholders);
-  if (metaBody.length > 1024) {
-    throw new Error("WhatsApp copy is longer than Meta's 1,024 character template limit. Shorten it and publish again.");
-  }
 
   const connection = await activeWhatsappConnection(supabase, user);
   const fingerprint = whatsappTemplateFingerprint(sourceBody);
-  const name = whatsappMetaTemplateName(template, fingerprint);
-  const language = whatsappMetaLanguage(template);
+  const definition = whatsappStableRfxTemplate(whatsappMetaLanguage(template));
+  const name = definition.name;
+  const language = definition.language;
+  const placeholders = [...WHATSAPP_RFX_NOTIFICATION_PLACEHOLDERS];
   const category = "UTILITY";
   const components = [{
     type: "BODY",
-    text: metaBody,
-    ...(placeholders.length ? {
-      example: { body_text: [placeholders.map(whatsappPlaceholderExample)] }
-    } : {})
+    text: definition.body,
+    example: { body_text: [placeholders.map(whatsappPlaceholderExample)] }
   }];
 
   let metaRow: Record<string, unknown> | null = null;
@@ -10904,7 +10897,9 @@ async function publishOutreachTemplateToWhatsapp(
     metadata: {
       source: "outreach_template",
       source_template_name: cleanText(template.name),
-      published_from_rateware: true
+      published_from_rateware: true,
+      delivery_strategy: "stable_rfx_notification",
+      full_outreach_copy_location: "private_bid_room"
     },
     updated_at: now
   }, user);
@@ -10918,8 +10913,8 @@ async function publishOutreachTemplateToWhatsapp(
     row: publicWhatsappTemplateMapping(result.data),
     ready: whatsappMetaStatus(result.data.meta_template_status) === "APPROVED",
     message: whatsappMetaStatus(result.data.meta_template_status) === "APPROVED"
-      ? "Outreach WhatsApp template is approved and ready to send."
-      : "Outreach WhatsApp template was submitted to Meta for approval. Sync templates after Meta finishes review."
+      ? "Meta's compact RFx notification is approved. Outreach remains the source for the full Bid Room content."
+      : "Meta's compact RFx notification was submitted for approval. Outreach remains the source for the full Bid Room content."
   };
 }
 

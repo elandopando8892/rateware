@@ -39,7 +39,7 @@ import {
   sendWhatsappGroupOutreachMessages,
   syncOutreachWhatsappTemplates,
   updateOutreachTemplate
-} from "./outreach-service.js?v=20260711-whatsapp-outreach";
+} from "./outreach-service.js?v=20260711-whatsapp-stable-v2";
 import { createVendorSegment, deleteVendorSegment, fetchVendorSegments, fetchVendors, updateVendorSegment } from "./vendor-service.js";
 import { humanizeError } from "./error-copy.js";
 import { errorState, stateBlock, tableErrorState, tableState } from "./ui-state.js";
@@ -2017,8 +2017,9 @@ function renderOutreachPreview() {
           : renderedHtml ? `<iframe sandbox="" srcdoc="${escapeHtml(renderedHtml)}"></iframe>` : `<p>No HTML body configured for this template.</p>`}
       </article>
       <article class="outreach-text-preview">
-        <span>WhatsApp / text preview</span>
+        <span>Full Outreach / Bid Room copy</span>
         <p>${escapeHtml(renderedWhatsapp || "No WhatsApp body configured.")}</p>
+        <small>For a new WhatsApp conversation, Meta sends a compact approved notifier with the private Bid Room link. This full copy remains editable here.</small>
       </article>
       <div class="template-token-row">
         ${placeholders.length ? placeholders.slice(0, 12).map((item) => `<span>{{${escapeHtml(item)}}}</span>`).join("") : "<span>No placeholders detected</span>"}
@@ -2037,16 +2038,16 @@ function renderOutreachPreview() {
     let readinessCopy = `${targetSummary} Outreach copy is the source for the WhatsApp message.`;
     let readinessTone = "neutral";
     if (!template?.whatsapp_body) {
-      readinessCopy = `${targetSummary} Add WhatsApp copy to this Outreach template before publishing.`;
+      readinessCopy = `${targetSummary} Add the full Outreach copy. Meta will send a compact notifier linked to the Bid Room.`;
       readinessTone = "warning";
     } else if (metaStatus === "APPROVED") {
-      readinessCopy = `${targetSummary} Approved in Meta as ${mapping.meta_template_name}. Direct sends are ready.`;
+      readinessCopy = `${targetSummary} Meta notifier ${mapping.meta_template_name} is approved. The full content remains in Outreach and the Bid Room.`;
       readinessTone = "success";
     } else if (["PENDING", "IN_APPEAL"].includes(metaStatus)) {
-      readinessCopy = `${targetSummary} Submitted to Meta (${metaStatus.toLowerCase().replace(/_/g, " ")}). Sync after review finishes.`;
+      readinessCopy = `${targetSummary} Compact notifier submitted to Meta (${metaStatus.toLowerCase().replace(/_/g, " ")}). Sync after review finishes.`;
       readinessTone = "warning";
     } else if (["REJECTED", "PAUSED", "DISABLED"].includes(metaStatus)) {
-      readinessCopy = `${targetSummary} Meta status is ${metaStatus.toLowerCase()}. Review the Outreach copy and publish a new version.`;
+      readinessCopy = `${targetSummary} Meta notifier status is ${metaStatus.toLowerCase()}. Review the integration before direct sending.`;
       readinessTone = "error";
     } else if (groupMode && !whatsappDirectReady) {
       readinessCopy = `${targetSummary} Group delivery remains manual; publish only if direct WhatsApp sends are also required.`;
@@ -2054,12 +2055,12 @@ function renderOutreachPreview() {
     if (rfxWhatsappTemplateReadinessCopy) rfxWhatsappTemplateReadinessCopy.textContent = readinessCopy;
     rfxWhatsappReadiness.dataset.tone = readinessTone;
     if (publishWhatsappTemplateButton) {
-      publishWhatsappTemplateButton.disabled = !template?.id || !template?.whatsapp_body || rfxTemplateEditorDirty || !whatsappChannel;
+      publishWhatsappTemplateButton.disabled = !template?.id || !template?.whatsapp_body || rfxTemplateEditorDirty || !whatsappChannel || metaStatus === "APPROVED";
       publishWhatsappTemplateButton.textContent = metaStatus === "APPROVED"
-        ? "Publish updated version"
+        ? "Meta notifier ready"
         : ["PENDING", "IN_APPEAL"].includes(metaStatus)
           ? "Submitted to Meta"
-          : "Publish to Meta";
+          : "Create Meta notifier";
       if (["PENDING", "IN_APPEAL"].includes(metaStatus)) publishWhatsappTemplateButton.disabled = true;
     }
     if (syncWhatsappTemplateButton) syncWhatsappTemplateButton.disabled = !template?.id || !whatsappChannel;
@@ -6000,6 +6001,46 @@ async function saveSelectedRfxTemplate() {
   }
 }
 
+async function publishSelectedWhatsappTemplate() {
+  const template = selectedOutreachTemplate();
+  if (!template?.id) {
+    setStatus(rfxOutreachStatus, "Select an Outreach template first.", "error");
+    return;
+  }
+  if (rfxTemplateEditorDirty) {
+    setStatus(rfxOutreachStatus, "Save the Outreach template before publishing its WhatsApp version to Meta.", "error");
+    return;
+  }
+  if (publishWhatsappTemplateButton) publishWhatsappTemplateButton.disabled = true;
+  setStatus(rfxOutreachStatus, "Creating the compact Meta notifier from this Outreach template...");
+  try {
+    const result = await publishOutreachTemplateToWhatsapp(template.id);
+    await loadOutreachAssets();
+    setStatus(rfxOutreachStatus, result.message || "WhatsApp template submitted to Meta.", result.ready ? "success" : "warning");
+  } catch (error) {
+    setStatus(rfxOutreachStatus, humanizeError(error.message), "error");
+    if (publishWhatsappTemplateButton) publishWhatsappTemplateButton.disabled = false;
+  }
+}
+
+async function syncSelectedWhatsappTemplate() {
+  if (syncWhatsappTemplateButton) syncWhatsappTemplateButton.disabled = true;
+  setStatus(rfxOutreachStatus, "Syncing WhatsApp template approval status from Meta...");
+  try {
+    const result = await syncOutreachWhatsappTemplates();
+    await loadOutreachAssets();
+    setStatus(
+      rfxOutreachStatus,
+      `${formatNumber(result.approved || 0)} approved of ${formatNumber(result.synced || 0)} Meta template(s).`,
+      result.approved ? "success" : "warning"
+    );
+  } catch (error) {
+    setStatus(rfxOutreachStatus, humanizeError(error.message), "error");
+  } finally {
+    if (syncWhatsappTemplateButton) syncWhatsappTemplateButton.disabled = false;
+  }
+}
+
 initAuthControls();
 renderManualLaneRows();
 requirePrivatePage().then((session) => {
@@ -6036,6 +6077,20 @@ document.addEventListener("click", (event) => {
   const retryButton = event.target.closest("[data-retry-action]");
   if (retryButton?.dataset.retryAction === "load-rfx-events") {
     loadEvents();
+    return;
+  }
+
+  const publishWhatsappButton = event.target.closest("#rfx-publish-whatsapp-template");
+  if (publishWhatsappButton) {
+    event.preventDefault();
+    publishSelectedWhatsappTemplate();
+    return;
+  }
+
+  const syncWhatsappButton = event.target.closest("#rfx-sync-whatsapp-template");
+  if (syncWhatsappButton) {
+    event.preventDefault();
+    syncSelectedWhatsappTemplate();
     return;
   }
 
@@ -7156,46 +7211,6 @@ rfxChatForm?.addEventListener("submit", async (event) => {
 });
 
 saveRfxTemplateHtmlButton?.addEventListener("click", saveSelectedRfxTemplate);
-
-publishWhatsappTemplateButton?.addEventListener("click", async () => {
-  const template = selectedOutreachTemplate();
-  if (!template?.id) {
-    setStatus(rfxOutreachStatus, "Select an Outreach template first.", "error");
-    return;
-  }
-  if (rfxTemplateEditorDirty) {
-    setStatus(rfxOutreachStatus, "Save the Outreach template before publishing its WhatsApp version to Meta.", "error");
-    return;
-  }
-  publishWhatsappTemplateButton.disabled = true;
-  setStatus(rfxOutreachStatus, "Publishing the Outreach WhatsApp copy to Meta for review...");
-  try {
-    const result = await publishOutreachTemplateToWhatsapp(template.id);
-    await loadOutreachAssets();
-    setStatus(rfxOutreachStatus, result.message || "WhatsApp template submitted to Meta.", result.ready ? "success" : "warning");
-  } catch (error) {
-    setStatus(rfxOutreachStatus, humanizeError(error.message), "error");
-    publishWhatsappTemplateButton.disabled = false;
-  }
-});
-
-syncWhatsappTemplateButton?.addEventListener("click", async () => {
-  syncWhatsappTemplateButton.disabled = true;
-  setStatus(rfxOutreachStatus, "Syncing WhatsApp template approval status from Meta...");
-  try {
-    const result = await syncOutreachWhatsappTemplates();
-    await loadOutreachAssets();
-    setStatus(
-      rfxOutreachStatus,
-      `${formatNumber(result.approved || 0)} approved of ${formatNumber(result.synced || 0)} Meta template(s).`,
-      result.approved ? "success" : "warning"
-    );
-  } catch (error) {
-    setStatus(rfxOutreachStatus, humanizeError(error.message), "error");
-  } finally {
-    syncWhatsappTemplateButton.disabled = false;
-  }
-});
 
 resetRfxTemplateHtmlButton?.addEventListener("click", () => {
   rfxTemplateEditorDirty = false;

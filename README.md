@@ -196,10 +196,21 @@ Test an external tenant connection:
 
 ### Outreach templates and Meta approval
 
-The WhatsApp copy stored in an Outreach template is the editorial source of truth. Meta still requires a separately registered and approved message template for business-initiated WhatsApp sends outside the customer-service window.
+The WhatsApp copy stored in an Outreach template is the editorial source of truth. Meta still requires a separately registered and approved message template for business-initiated WhatsApp sends outside the customer-service window. Rateware deliberately separates those two responsibilities:
+
+- Outreach owns the editable message, RFx context, lane detail, and preview.
+- Meta sends one compact, reusable notification per language with a private Bid Room link.
+- The private Bid Room is the canonical location for the complete and current business book.
+
+Rateware uses these stable Meta templates instead of creating a new Meta template every time Outreach copy changes:
+
+- `rateware_rfx_invitation_en_v1` (`en_US`)
+- `rateware_rfx_invitation_es_v1` (`es_MX`)
+
+Both use the same ordered parameters: carrier name, event name, lane count, due date, and private Bid Room link. This keeps Meta approval operationally manageable while preserving Outreach as the user-editable source.
 
 1. Edit and save the WhatsApp copy in `Bid Room > Outreach` or `Invitation Admin > Templates`.
-2. Click `Publish to Meta`. Rateware converts named placeholders such as `{{contact_name}}` and `{{bid_link}}` into Meta positional parameters and submits a workspace-scoped `UTILITY` template to the active WABA.
+2. Click `Create Meta notifier`. Rateware selects the EN or ES notifier from the Outreach language and submits it as a workspace-scoped `UTILITY` template to the active WABA.
 3. While Meta shows `PENDING`, email drafts remain usable but automated WhatsApp sends remain disabled.
 4. Click `Sync status` after Meta review. Once the mapping is `APPROVED`, regenerate the Draft Queue so each row stores the approved template name and its rendered parameter values.
 5. Send from Draft Queue. Rateware uses the same workspace WhatsApp connection that owns the approved mapping.

@@ -19,7 +19,7 @@ import {
   syncOutreachWhatsappTemplates,
   updateOutreachCampaign,
   updateOutreachTemplate
-} from "./outreach-service.js?v=20260711-whatsapp-outreach";
+} from "./outreach-service.js?v=20260711-whatsapp-stable-v2";
 import { humanizeError } from "./error-copy.js";
 import { stateBlock, tableState } from "./ui-state.js";
 import { initWorkbenchTabs } from "./workbench-tabs.js";
@@ -159,24 +159,24 @@ function renderOutreachWhatsappTemplateStatus(template = templates.find((item) =
   let copy = "Save the Outreach template, then publish its WhatsApp version to Meta.";
   let tone = "neutral";
   if (template && !template.whatsapp_body) {
-    copy = "Add WhatsApp copy before publishing this Outreach template to Meta.";
+    copy = "Add the full WhatsApp copy in Outreach. Meta will use a compact approved notifier that links to the Bid Room.";
     tone = "warning";
   } else if (status === "APPROVED") {
-    copy = `Approved in Meta as ${mapping.meta_template_name}.`;
+    copy = `Meta notifier ${mapping.meta_template_name} is approved. Outreach remains the source for the full message and Bid Room details.`;
     tone = "success";
   } else if (["PENDING", "IN_APPEAL"].includes(status)) {
-    copy = `Submitted to Meta (${status.toLowerCase().replace(/_/g, " ")}). Sync after review finishes.`;
+    copy = `Compact Meta notifier submitted (${status.toLowerCase().replace(/_/g, " ")}). Sync after review finishes.`;
     tone = "warning";
   } else if (["REJECTED", "PAUSED", "DISABLED"].includes(status)) {
-    copy = `Meta status: ${status.toLowerCase()}. Update the copy and publish a new version.`;
+    copy = `Meta notifier status: ${status.toLowerCase()}. Review the integration before direct WhatsApp sending.`;
     tone = "error";
   } else if (template) {
-    copy = "Outreach is the source. Publish its WhatsApp version to Meta before automated sends.";
+    copy = "Outreach is the source. Create the reusable Meta notifier before automated WhatsApp sends.";
   }
   setStatus(outreachWhatsappTemplateStatus, copy, tone);
   if (outreachPublishWhatsappTemplateButton) {
-    outreachPublishWhatsappTemplateButton.disabled = !template?.id || !template?.whatsapp_body || ["PENDING", "IN_APPEAL"].includes(status);
-    outreachPublishWhatsappTemplateButton.textContent = status === "APPROVED" ? "Publish updated version" : ["PENDING", "IN_APPEAL"].includes(status) ? "Submitted to Meta" : "Publish to Meta";
+    outreachPublishWhatsappTemplateButton.disabled = !template?.id || !template?.whatsapp_body || ["APPROVED", "PENDING", "IN_APPEAL"].includes(status);
+    outreachPublishWhatsappTemplateButton.textContent = status === "APPROVED" ? "Meta notifier ready" : ["PENDING", "IN_APPEAL"].includes(status) ? "Submitted to Meta" : "Create Meta notifier";
   }
 }
 
@@ -798,7 +798,7 @@ templateForm?.addEventListener("submit", async (event) => {
     renderTemplates();
     const refreshed = templates.find((template) => template.id === saved.id) || saved;
     fillTemplateForm(refreshed);
-    setStatus(templateStatus, `${isEditing ? "Template updated" : "Template saved"}. Publish its WhatsApp version to Meta when ready.`, "success");
+    setStatus(templateStatus, `${isEditing ? "Template updated" : "Template saved"}. Create the reusable Meta notifier when direct WhatsApp sending is needed.`, "success");
   } catch (error) {
     setStatus(templateStatus, error.message, "error");
   }
@@ -810,7 +810,7 @@ outreachPublishWhatsappTemplateButton?.addEventListener("click", async () => {
     return;
   }
   outreachPublishWhatsappTemplateButton.disabled = true;
-  setStatus(outreachWhatsappTemplateStatus, "Publishing the Outreach WhatsApp copy to Meta for review...");
+  setStatus(outreachWhatsappTemplateStatus, "Creating the compact Meta notifier from this Outreach template...");
   try {
     const result = await publishOutreachTemplateToWhatsapp(editingTemplateId);
     templates = await fetchOutreachTemplates();
