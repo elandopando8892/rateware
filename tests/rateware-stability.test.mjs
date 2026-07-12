@@ -495,6 +495,9 @@ assert.match(rfxEventsSource, /chunkRows\(ids, OUTREACH_SEND_BATCH_SIZE\)/, "Bid
 assert.match(rfxEventsSource, /data-rfx-send-draft-now/, "Bid Room Step 4 should allow sending a single carrier invitation from the draft queue");
 assert.match(rfxEventsSource, /function sendSingleDraftEmail/, "Bid Room Step 4 should support individual same-day carrier invite sends");
 assert.match(rfxEventsSource, /targetHasActiveOutreachDraft/, "Bid Room Step 4 should generate missing drafts without duplicating the whole wave");
+assert.match(rfxEventsSource, /function outreachDraftChannels/, "Bid Room Step 4 should resolve draft coverage by the selected outreach channel");
+assert.match(rfxEventsSource, /targetHasActiveOutreachDraft\(target, requestedDraftChannels\)/, "A WhatsApp draft must not block creation of a missing Gmail draft for the same invitation");
+assert.match(rfxEventsSource, /requestedChannels\.every\(\(channel\) => activeChannels\.has/, "Draft deduplication should require coverage for every requested channel");
 assert.match(rfxEventsSource, /function confirmDraftQueueAction/, "Bid Room draft queue should require human confirmation for bulk queue actions");
 assert.match(rfxEventsSource, /confirmDraftQueueAction\("send", ids\)/, "Bid Room should confirm before sending selected draft emails");
 assert.match(rfxEventsSource, /confirmDraftQueueAction\("archive", ids\)/, "Bid Room should confirm before archiving selected draft rows");

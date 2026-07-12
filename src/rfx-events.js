@@ -4458,14 +4458,30 @@ function outreachMessageInvitationIds(message = {}) {
   return new Set(ids);
 }
 
-function targetHasActiveOutreachDraft(target) {
+function outreachDraftChannels(channel) {
+  const normalized = String(channel || "multi").trim().toLowerCase();
+  if (normalized === "email") return ["email"];
+  if (normalized === "whatsapp") return ["whatsapp"];
+  if (normalized === "whatsapp_group") return ["whatsapp_group"];
+  if (normalized === "email_whatsapp" || normalized === "email+whatsapp") return ["email", "whatsapp"];
+  if (normalized === "whatsapp_direct_group" || normalized === "whatsapp+group") return ["whatsapp", "whatsapp_group"];
+  if (normalized === "email_whatsapp_group" || normalized === "all") return ["email", "whatsapp", "whatsapp_group"];
+  return ["email", "whatsapp"];
+}
+
+function targetHasActiveOutreachDraft(target, requestedChannels = ["email"]) {
   const invitationId = String(target?.invitation?.id || "");
   if (!invitationId) return false;
-  return draftRowsForEvent().some((message) => {
-    const status = String(message.status || "").toLowerCase();
-    if (status === "archived") return false;
-    return outreachMessageInvitationIds(message).has(invitationId);
-  });
+  const activeChannels = new Set(
+    draftRowsForEvent()
+      .filter((message) => {
+        const status = String(message.status || "").toLowerCase();
+        return status !== "archived" && outreachMessageInvitationIds(message).has(invitationId);
+      })
+      .map((message) => String(message.channel || "").toLowerCase())
+      .filter(Boolean)
+  );
+  return requestedChannels.every((channel) => activeChannels.has(String(channel).toLowerCase()));
 }
 
 function confirmBidRoomBulkAction(action, ids = []) {
@@ -5517,18 +5533,19 @@ async function createCurrentOutreachDrafts(statusElement = rfxOutreachStatus) {
     setStatus(statusElement, "Save the edited email preview before generating draft queue.", "error");
     return null;
   }
+  const outreachChannel = rfxOutreachChannel?.value || "multi";
+  const requestedDraftChannels = outreachDraftChannels(outreachChannel);
   const draftTargets = selectedInvitationIds.size
     ? targets
-    : targets.filter((target) => !targetHasActiveOutreachDraft(target));
+    : targets.filter((target) => !targetHasActiveOutreachDraft(target, requestedDraftChannels));
   if (!draftTargets.length) {
-    setStatus(statusElement, "All shortlisted carriers already have active invitation drafts. Select a specific participant if you need to regenerate one.", "neutral");
+    setStatus(statusElement, `All shortlisted carriers already have active ${requestedDraftChannels.join(" + ")} invitation drafts. Select a specific participant if you need to regenerate one.`, "neutral");
     renderOutreachLaunchpad();
     return { generated: 0, skipped: [] };
   }
   const invitationIds = draftTargets.map(({ invitation }) => invitation.id);
   if (createRfxOutreachCampaignButton) createRfxOutreachCampaignButton.disabled = true;
   setStatus(statusElement, "Creating campaign and generating drafts...");
-  const outreachChannel = rfxOutreachChannel?.value || "multi";
   const whatsappTargetMode = rfxWhatsappTargetMode?.value || "direct_vendor";
   const groupDeliveryPolicy = whatsappTargetMode === "direct_vendor" ? "api_only" : "manual_or_api";
   const campaign = await createOutreachCampaign({
