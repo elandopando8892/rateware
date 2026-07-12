@@ -15988,11 +15988,38 @@ Deno.serve(async (request) => {
       const senderConnectionStatus = cleanText(body.sender_connection_status || campaign.sender_connection_status) || "draft_only";
       const whatsappTargetMode = cleanText(body.whatsapp_target_mode || campaign.whatsapp_target_mode || "direct_vendor");
       const targetMode = ["direct_vendor", "vendor_group", "direct_and_group"].includes(whatsappTargetMode) ? whatsappTargetMode : "direct_vendor";
+      const requestedChannels = messageChannels(campaign.channel || template.channel);
+      let whatsappNotifier: Record<string, unknown> = {
+        attempted: false,
+        status: "not_requested"
+      };
+      let whatsappMapping: Record<string, unknown> | null = null;
+      if (requestedChannels.includes("whatsapp")) {
+        try {
+          const notifier = await publishOutreachTemplateToWhatsapp(supabase, user, { template_id: template.id });
+          whatsappMapping = notifier.row as Record<string, unknown> | null;
+          whatsappNotifier = {
+            attempted: true,
+            status: cleanText(whatsappMapping?.meta_template_status)?.toLowerCase() || "pending",
+            ready: notifier.ready,
+            template_name: cleanText(whatsappMapping?.meta_template_name),
+            language: cleanText(whatsappMapping?.meta_template_language),
+            message: notifier.message
+          };
+        } catch (error) {
+          whatsappNotifier = {
+            attempted: true,
+            status: "error",
+            ready: false,
+            error: error instanceof Error ? error.message : String(error)
+          };
+        }
+      }
       const whatsappConnection = await listWhatsappConnections(supabase, user);
       const whatsappConnectionRow = whatsappConnection.rows?.[0] || {};
-      const whatsappMapping = whatsappConnectionRow.id
-        ? await whatsappTemplateMapping(supabase, whatsappConnectionRow.id, template.id)
-        : null;
+      if (!whatsappMapping && whatsappConnectionRow.id) {
+        whatsappMapping = await whatsappTemplateMapping(supabase, whatsappConnectionRow.id, template.id);
+      }
 
       const invitationSelect = `
         *,
@@ -16235,7 +16262,7 @@ Deno.serve(async (request) => {
         }
       }
 
-      if (!rows.length) return jsonResponse({ generated: 0, rows: [], skipped });
+      if (!rows.length) return jsonResponse({ generated: 0, rows: [], skipped, whatsapp_notifier: whatsappNotifier });
 
       const generatedMessages: Record<string, unknown>[] = [];
       for (const chunk of chunkValues(rows, 100)) {
@@ -16284,7 +16311,13 @@ Deno.serve(async (request) => {
         .eq("owner_email", user.owner_email);
       if (campaignUpdate.error) throw campaignUpdate.error;
 
-      return jsonResponse({ generated: generatedMessages.length, rows: [], skipped, campaign_id: campaign.id });
+      return jsonResponse({
+        generated: generatedMessages.length,
+        rows: [],
+        skipped,
+        campaign_id: campaign.id,
+        whatsapp_notifier: whatsappNotifier
+      });
     }
 
     if (body.action === "list_outreach_messages") {

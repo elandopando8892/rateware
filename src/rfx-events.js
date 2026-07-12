@@ -39,7 +39,7 @@ import {
   sendWhatsappGroupOutreachMessages,
   syncOutreachWhatsappTemplates,
   updateOutreachTemplate
-} from "./outreach-service.js?v=20260711-whatsapp-stable-v2";
+} from "./outreach-service.js?v=20260711-whatsapp-automatic-v3";
 import { createVendorSegment, deleteVendorSegment, fetchVendorSegments, fetchVendors, updateVendorSegment } from "./vendor-service.js";
 import { humanizeError } from "./error-copy.js";
 import { errorState, stateBlock, tableErrorState, tableState } from "./ui-state.js";
@@ -5519,13 +5519,21 @@ async function createCurrentOutreachDrafts(statusElement = rfxOutreachStatus) {
     fetchContactHistory({ rfx_event_id: selectedEventId }),
     fetchOutreachMessages({ rfx_event_id: selectedEventId })
   ]);
-  renderOutreachLaunchpad();
+  await loadDetail(selectedEventId);
+  const notifier = result.whatsapp_notifier || {};
+  const notifierStatus = String(notifier.status || "not_requested").toUpperCase();
+  const notifierCopy = notifier.ready
+    ? ` Meta notifier ${notifier.template_name || ""} is approved and attached.`
+    : notifierStatus === "PENDING"
+      ? " Meta notifier was created or refreshed and is pending Meta approval."
+      : notifierStatus === "ERROR"
+        ? ` WhatsApp notifier needs attention: ${humanizeError(notifier.error || "Meta connection unavailable")}`
+        : "";
   setStatus(
     statusElement,
-    `${result.generated || 0} draft(s) created. ${result.skipped?.length || 0} skipped for missing contact data.`,
-    "success"
+    `${result.generated || 0} draft(s) created. ${result.skipped?.length || 0} skipped for missing contact data.${notifierCopy}`,
+    notifierStatus === "ERROR" ? "warning" : "success"
   );
-  await loadDetail(selectedEventId);
   return result;
 }
 
@@ -5825,7 +5833,7 @@ async function sendSingleDraftWhatsapp(id) {
     return;
   }
   if (!selectableWhatsappDrafts([row]).length) {
-    setStatus(rfxOutreachStatus, "This WhatsApp draft needs a valid phone and an approved Meta version of its Outreach template. Publish or sync the template above, then regenerate the draft queue.", "error");
+    setStatus(rfxOutreachStatus, "This WhatsApp draft needs a valid phone and an approved Meta notifier. Generate the draft queue again; Rateware creates and syncs the notifier automatically.", "error");
     return;
   }
   const carrier = row.vendors?.vendor_name || row.vendors?.domain || messageRecipient(row) || "this carrier";

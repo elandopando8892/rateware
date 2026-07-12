@@ -305,6 +305,8 @@ assert.match(apiSource, /rateware_rfx_invitation_es_v1/, "WhatsApp should use on
 assert.match(apiSource, /WHATSAPP_RFX_NOTIFICATION_PLACEHOLDERS[\s\S]+vendor_name[\s\S]+event_name[\s\S]+lane_count[\s\S]+due_date[\s\S]+bid_link/, "Stable Meta notifiers should use the five ordered RFx parameters");
 assert.match(apiSource, /delivery_strategy: "stable_rfx_notification"/, "WhatsApp mappings should identify the stable notifier strategy");
 assert.match(apiSource, /source_placeholders: placeholders/, "Workspace mappings should persist the ordered source placeholders");
+assert.match(apiSource, /requestedChannels\.includes\("whatsapp"\)[\s\S]+publishOutreachTemplateToWhatsapp\(supabase, user, \{ template_id: template\.id \}\)/, "Generating a WhatsApp queue should automatically create or refresh the Meta notifier");
+assert.match(apiSource, /whatsapp_notifier: whatsappNotifier/, "Draft generation should return the automatic Meta notifier state");
 assert.match(apiSource, /whatsapp_template_parameters: whatsappParameters/, "Generated WhatsApp drafts should persist rendered Meta parameter values");
 assert.match(apiSource, /parameters: parameterRows\.map/, "WhatsApp sends should submit the rendered body parameters to Meta");
 assert.match(apiSource, /\.eq\("id", connection\.row\.id\)/, "WhatsApp connection tests and updates should target the resolved connection row");
@@ -337,8 +339,7 @@ assert.match(readmeSource, /never prints secret values/i, "README should explain
 assert.match(whatsappEnvCheckSource, /Secret values are never printed/, "WhatsApp env check should explicitly avoid printing secret values");
 assert.match(whatsappEnvCheckSource, /sync_whatsapp_templates/, "WhatsApp env check should call template sync when authenticated");
 assert.match(rfxEventsHtml, /rfx-send-selected-whatsapp-drafts/, "RFx Bid Room should expose selected WhatsApp draft sending");
-assert.match(rfxEventsHtml, /rfx-publish-whatsapp-template/, "RFx Bid Room should publish the selected Outreach WhatsApp template to Meta");
-assert.match(rfxEventsHtml, /rfx-sync-whatsapp-template/, "RFx Bid Room should synchronize Meta approval status");
+assert.match(rfxEventsHtml, /Generate draft queue creates or reuses the Meta notifier/, "RFx Bid Room should explain automatic Meta notifier setup");
 assert.match(rfxEventsSource, /publishOutreachTemplateToWhatsapp/, "RFx Bid Room should use Outreach as the WhatsApp template source");
 assert.match(rfxEventsSource, /Full Outreach \/ Bid Room copy/, "RFx Bid Room should distinguish editable Outreach copy from the Meta notifier");
 assert.match(rfxEventsHtml, /rfx-mark-selected-whatsapp-groups/, "RFx Bid Room should expose manual WhatsApp group completion");
@@ -1183,7 +1184,7 @@ assert.match(vendorImprovementServiceSource, /process_vendor_ci_reminders/, "Ven
 assert.match(appHtml, /vendor-improvement\.html/, "Dashboard navigation should include Vendor CI");
 assert.match(apiSource, /const invitationIdChunks = invitationIds\.length \? chunkValues\(invitationIds, 100\) : \[\[\]\]/, "Outreach draft generation should read selected invitations in small id batches");
 assert.match(apiSource, /for \(const chunk of chunkValues\(rows, 100\)\)/, "Outreach draft generation should upsert draft messages in small batches");
-assert.match(apiSource, /return jsonResponse\(\{ generated: generatedMessages\.length, rows: \[\], skipped, campaign_id: campaign\.id \}\)/, "Outreach draft generation should avoid returning large HTML draft payloads");
+assert.match(apiSource, /return jsonResponse\(\{\s*generated: generatedMessages\.length,\s*rows: \[\],\s*skipped,\s*campaign_id: campaign\.id,\s*whatsapp_notifier: whatsappNotifier\s*\}\)/, "Outreach draft generation should avoid returning large HTML draft payloads");
 const bulkActionSource = apiSource.slice(apiSource.indexOf('if (body.action === "bulk_rate_rows_by_filter")'));
 assert.ok(bulkActionSource.length > 100, "bulk filtered action block should be present");
 assert.doesNotMatch(

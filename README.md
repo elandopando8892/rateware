@@ -210,9 +210,9 @@ Rateware uses these stable Meta templates instead of creating a new Meta templat
 Both use the same ordered parameters: carrier name, event name, lane count, due date, and private Bid Room link. This keeps Meta approval operationally manageable while preserving Outreach as the user-editable source.
 
 1. Edit and save the WhatsApp copy in `Bid Room > Outreach` or `Invitation Admin > Templates`.
-2. Click `Create Meta notifier`. Rateware selects the EN or ES notifier from the Outreach language and submits it as a workspace-scoped `UTILITY` template to the active WABA.
+2. Generate the Draft Queue. Rateware automatically selects the EN or ES notifier, creates it in the active WABA if missing, and reads its current Meta status.
 3. While Meta shows `PENDING`, email drafts remain usable but automated WhatsApp sends remain disabled.
-4. Click `Sync status` after Meta review. Once the mapping is `APPROVED`, regenerate the Draft Queue so each row stores the approved template name and its rendered parameter values.
+4. Generate the Draft Queue again after Meta review. The same operation refreshes the status and stores the approved template name plus rendered parameter values in each WhatsApp draft.
 5. Send from Draft Queue. Rateware uses the same workspace WhatsApp connection that owns the approved mapping.
 
 Mappings are stored per `whatsapp_connection_id` and `outreach_template_id`. A global/default Outreach template therefore does not share a Meta mapping across tenants, and external workspaces cannot inherit the internal HeyMarksman template or sender.
