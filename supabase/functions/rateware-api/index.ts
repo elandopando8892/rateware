@@ -12272,6 +12272,7 @@ async function sendWhatsappOutreachMessages(
   const now = new Date().toISOString();
   const rows: Record<string, unknown>[] = [];
   const failures: Record<string, unknown>[] = [];
+  const notifierByTemplate = new Map<string, Record<string, unknown>>();
   for (const message of messages) {
     const vendor = typeof message.vendors === "object" && message.vendors ? message.vendors as Record<string, unknown> : {};
     const status = cleanText(message.status)?.toLowerCase();
@@ -12286,7 +12287,28 @@ async function sendWhatsappOutreachMessages(
       continue;
     }
     try {
-      const data = await metaSendWhatsappTemplate(message, connection);
+      let resolvedMessage = message;
+      const outreachTemplateId = cleanText(message.template_id);
+      if (outreachTemplateId) {
+        let notifier = notifierByTemplate.get(outreachTemplateId);
+        if (!notifier) {
+          const result = await publishOutreachTemplateToWhatsapp(supabase, user, { template_id: outreachTemplateId });
+          notifier = result.row as Record<string, unknown>;
+          notifierByTemplate.set(outreachTemplateId, notifier);
+        }
+        resolvedMessage = {
+          ...message,
+          whatsapp_template_name: cleanText(notifier.meta_template_name),
+          whatsapp_template_language: cleanText(notifier.meta_template_language),
+          metadata: {
+            ...objectRecord(message.metadata),
+            whatsapp_template_mapped: true,
+            whatsapp_template_status: whatsappMetaStatus(notifier.meta_template_status),
+            whatsapp_template_auto_checked_at: now
+          }
+        };
+      }
+      const data = await metaSendWhatsappTemplate(resolvedMessage, connection);
       const providerMessageId = cleanText(data?.messages?.[0]?.id);
       const senderDisplayPhone = cleanText(connection.row.display_phone_number);
       const updateResult = await supabase
@@ -12298,10 +12320,12 @@ async function sendWhatsappOutreachMessages(
           last_contacted_at: now,
           provider: "meta",
           whatsapp_connection_id: connection.row.id,
+          whatsapp_template_name: cleanText(resolvedMessage.whatsapp_template_name),
+          whatsapp_template_language: cleanText(resolvedMessage.whatsapp_template_language),
           provider_message_id: providerMessageId,
           delivery_error: null,
           metadata: {
-            ...objectRecord(message.metadata),
+            ...objectRecord(resolvedMessage.metadata),
             whatsapp_connection_id: connection.row.id,
             whatsapp_connection_mode: cleanText(connection.row.connection_mode),
             sender_display_phone: senderDisplayPhone
@@ -12333,8 +12357,8 @@ async function sendWhatsappOutreachMessages(
           sender_display_phone: senderDisplayPhone,
           phone_number_id: maskedSecret(connection.phoneNumberId),
           provider_message_id: providerMessageId,
-          template_name: message.whatsapp_template_name,
-          template_language: message.whatsapp_template_language
+          template_name: resolvedMessage.whatsapp_template_name,
+          template_language: resolvedMessage.whatsapp_template_language
         }
       }, user));
       if (history.error) throw history.error;

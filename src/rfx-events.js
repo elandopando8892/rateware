@@ -39,7 +39,7 @@ import {
   sendWhatsappGroupOutreachMessages,
   syncOutreachWhatsappTemplates,
   updateOutreachTemplate
-} from "./outreach-service.js?v=20260711-whatsapp-automatic-v3";
+} from "./outreach-service.js?v=20260711-whatsapp-automatic-v4";
 import { createVendorSegment, deleteVendorSegment, fetchVendorSegments, fetchVendors, updateVendorSegment } from "./vendor-service.js";
 import { humanizeError } from "./error-copy.js";
 import { errorState, stateBlock, tableErrorState, tableState } from "./ui-state.js";
@@ -4322,12 +4322,8 @@ function selectableEmailDrafts(rows = []) {
 function selectableWhatsappDrafts(rows = []) {
   return rows.filter((message) => {
     const status = String(message.status || "").toLowerCase();
-    const metadata = message.metadata && typeof message.metadata === "object" ? message.metadata : {};
-    const templateStatus = String(metadata.whatsapp_template_status || (message.whatsapp_template_name ? "APPROVED" : "NOT_PUBLISHED")).toUpperCase();
     return message.channel === "whatsapp"
       && Boolean(message.normalized_recipient_phone || message.recipient_phone || message.vendors?.whatsapp_phone)
-      && Boolean(message.whatsapp_template_name)
-      && templateStatus === "APPROVED"
       && ["drafted", "queued", "failed"].includes(status);
   });
 }
@@ -4576,7 +4572,7 @@ function renderDraftQueue() {
     const templateStatus = String(metadata.whatsapp_template_status || (message.whatsapp_template_name ? "APPROVED" : "NOT_PUBLISHED")).toUpperCase();
     const draftTitle = message.subject || (isWhatsapp ? "WhatsApp RFx invitation" : isWhatsappGroup ? "WhatsApp group invitation" : "No subject");
     const readinessDetail = isWhatsapp && templateStatus !== "APPROVED"
-      ? `Outreach WhatsApp template: ${templateStatus.toLowerCase().replace(/_/g, " ")}. Publish or sync above, then regenerate drafts.`
+      ? `Meta notifier: ${templateStatus.toLowerCase().replace(/_/g, " ")}. Rateware checks its live status automatically when you send.`
       : "";
     return `
       <tr class="${checked ? "is-selected-row" : ""}" data-rfx-draft-id="${escapeHtml(message.id)}">
@@ -5833,7 +5829,7 @@ async function sendSingleDraftWhatsapp(id) {
     return;
   }
   if (!selectableWhatsappDrafts([row]).length) {
-    setStatus(rfxOutreachStatus, "This WhatsApp draft needs a valid phone and an approved Meta notifier. Generate the draft queue again; Rateware creates and syncs the notifier automatically.", "error");
+    setStatus(rfxOutreachStatus, "This WhatsApp draft needs a valid phone and drafted, queued, or failed status. Rateware checks the Meta notifier automatically when you send.", "error");
     return;
   }
   const carrier = row.vendors?.vendor_name || row.vendors?.domain || messageRecipient(row) || "this carrier";

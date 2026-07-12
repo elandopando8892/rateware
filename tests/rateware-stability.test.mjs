@@ -309,6 +309,8 @@ assert.match(apiSource, /requestedChannels\.includes\("whatsapp"\)[\s\S]+publish
 assert.match(apiSource, /whatsapp_notifier: whatsappNotifier/, "Draft generation should return the automatic Meta notifier state");
 assert.match(apiSource, /whatsapp_template_parameters: whatsappParameters/, "Generated WhatsApp drafts should persist rendered Meta parameter values");
 assert.match(apiSource, /parameters: parameterRows\.map/, "WhatsApp sends should submit the rendered body parameters to Meta");
+assert.match(apiSource, /notifierByTemplate[\s\S]+publishOutreachTemplateToWhatsapp\(supabase, user, \{ template_id: outreachTemplateId \}\)/, "WhatsApp send should refresh Meta notifier status automatically");
+assert.match(apiSource, /whatsapp_template_auto_checked_at: now/, "WhatsApp drafts should record the automatic send-time Meta check");
 assert.match(apiSource, /\.eq\("id", connection\.row\.id\)/, "WhatsApp connection tests and updates should target the resolved connection row");
 assert.match(apiSource, /whatsapp_connection_id: connection\.row\.id/, "WhatsApp sends should persist the resolved connection id");
 assert.match(apiSource, /sender_display_phone: senderDisplayPhone/, "WhatsApp contact history should persist the sender display phone");
