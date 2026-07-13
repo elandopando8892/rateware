@@ -30,12 +30,11 @@
 
       <p id="customer-rfi-message" class="row-save-status" role="status"></p>
 
-      <section class="customer-rfi-card rfi-wizard-panel" id="rfi-wizard-panel">
-        <div class="rfi-wizard-copy">
-          <p class="eyebrow" data-i18n="rfiWizard">RFI Wizard</p>
-          <strong data-i18n="smartSetup">Build the intake by operating segment</strong>
+      <details class="customer-rfi-card rfi-wizard-panel" id="rfi-wizard-panel" open>
+        <summary class="rfi-wizard-copy">
+          <span class="rfi-wizard-title"><span class="eyebrow" data-i18n="rfiWizard">RFI Wizard</span><strong data-i18n="smartSetup">Build the intake by operating segment</strong></span>
           <span data-i18n="wizardHelp">Pick the operating models that apply. The route matrix and carrier checklist will follow the selected segment tabs.</span>
-        </div>
+        </summary>
         <div class="rfi-wizard-actions" aria-label="RFI operating segment presets">
           <button type="button" class="secondary small-button" data-rfi-wizard-segment="crossborder" data-i18n="wizardCrossborder">Crossborder D2D</button>
           <button type="button" class="secondary small-button" data-rfi-wizard-segment="mx_domestic" data-i18n="wizardMexico">Mexico domestic</button>
@@ -43,7 +42,7 @@
           <button type="button" class="secondary small-button" data-rfi-wizard-segment="expedited" data-i18n="wizardExpedited">Expedited / time critical</button>
           <button type="button" class="secondary small-button" data-rfi-wizard-segment="dedicated" data-i18n="wizardDedicated">Dedicated</button>
         </div>
-      </section>
+      </details>
 
       <section class="customer-rfi-grid rfi-overview-grid">
         <article class="customer-rfi-card rfi-section-card">
@@ -90,10 +89,17 @@
           </div>
           <button type="button" class="rfi-help-trigger" data-rfi-help="segment" title="About segment tabs" aria-label="About segment tabs">&#128214;</button>
         </div>
-        <div id="rfi-segment-tabs" class="rfi-segment-tabs" role="tablist" aria-label="Operating segments"></div>
+        <div class="rfi-workspace-controls">
+          <div id="rfi-segment-tabs" class="rfi-segment-tabs" role="tablist" aria-label="Operating segments"></div>
+          <div class="rfi-workspace-view-toggle" role="tablist" aria-label="Segment workspace view">
+            <button type="button" class="is-active" data-rfi-workspace-view="lanes" data-i18n="workspaceRoutes">Routes</button>
+            <button type="button" data-rfi-workspace-view="rubrics" data-i18n="workspaceRequirements">Requirements</button>
+            <button type="button" data-rfi-workspace-view="files" data-i18n="workspaceFiles">Files</button>
+          </div>
+        </div>
       </section>
 
-      <section class="customer-rfi-card rfi-route-card">
+      <section class="customer-rfi-card rfi-route-card" data-rfi-workspace-panel="lanes">
         <div class="split-heading compact">
           <div>
             <p class="eyebrow" data-i18n="routeSchedule">Route schedule</p>
@@ -102,6 +108,8 @@
           </div>
           <div class="rfi-heading-actions">
             <button type="button" class="rfi-help-trigger" data-rfi-help="routes" title="About route schedule" aria-label="About route schedule">&#128214;</button>
+            <button id="import-rfi-workbook" type="button" data-i18n="importWorkbook">Import XLSX</button>
+            <input id="import-rfi-workbook-file" type="file" accept=".xlsx,.xls,.csv" hidden />
             <button id="add-lane-row" type="button" data-i18n="addLane">Add lane</button>
           </div>
         </div>
@@ -113,7 +121,7 @@
         </div>
       </section>
 
-      <section class="customer-rfi-card rfi-rubrics-card">
+      <section class="customer-rfi-card rfi-rubrics-card" data-rfi-workspace-panel="rubrics" hidden>
         <div class="split-heading compact">
           <div>
             <p class="eyebrow" data-i18n="segmentRubrics">Segment rubrics</p>
@@ -125,6 +133,18 @@
           </div>
         </div>
         <div id="rfi-segment-checklists" class="rfi-segment-checklist-grid"></div>
+      </section>
+
+      <section class="customer-rfi-card rfi-files-card" data-rfi-workspace-panel="files" hidden>
+        <div class="split-heading compact">
+          <div>
+            <p class="eyebrow" data-i18n="fileVault">File vault</p>
+            <h2 data-i18n="workspaceFilesDetail">Instructions and supporting files</h2>
+            <p class="field-help" data-i18n="vaultHelp">Drop files here to keep their names with this segment, or paste a Drive / SharePoint link below.</p>
+          </div>
+          <button type="button" class="rfi-help-trigger" data-rfi-help="vault" title="About the file vault" aria-label="About the file vault">&#128214;</button>
+        </div>
+        <div id="rfi-segment-files"></div>
       </section>
 
       <section class="customer-rfi-actions">

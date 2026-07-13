@@ -13,6 +13,7 @@ const businessIntelligenceHtml = readFileSync(new URL("../business-intelligence.
 const bulkImportTemplateSource = readFileSync(new URL("../src/bulk-import-template.js", import.meta.url), "utf8");
 const stagingReviewSource = readFileSync(new URL("../src/staging-review.js", import.meta.url), "utf8");
 const ratewareSource = readFileSync(new URL("../src/rateware.js", import.meta.url), "utf8");
+const spreadsheetColumnFiltersSource = readFileSync(new URL("../src/spreadsheet-column-filters.js", import.meta.url), "utf8");
 const sheetUiSource = readFileSync(new URL("../src/sheet-ui.js", import.meta.url), "utf8");
 const catalogWorkbenchSource = readFileSync(new URL("../src/catalog-workbench.js", import.meta.url), "utf8");
 const catalogServiceSource = readFileSync(new URL("../src/catalog-service.js", import.meta.url), "utf8");
@@ -382,6 +383,7 @@ assert.match(rfxProcessHtml, /RFx Design/, "RFx Process page should include RFx 
 assert.match(rfxProcessHtml, /Evaluation/, "RFx Process page should include Bid Evaluation tab");
 assert.match(customerRfiHtml, /rfi-lanes/, "Customer RFI page should collect a structured route schedule");
 assert.match(customerRfiHtml, /rfi-lanes-head/, "Customer RFI route schedule should render a dynamic RFI spreadsheet header");
+assert.match(customerRfiHtml, /import-rfi-workbook/, "Customer RFI should import an existing route schedule workbook directly into the lane matrix");
 assert.match(customerRfiSource, /Ubicacion de salida/, "Customer RFI route schedule should align to the customer RFI origin columns");
 assert.match(customerRfiSource, /Ubicacion de llegada/, "Customer RFI route schedule should align to the customer RFI destination columns");
 assert.match(customerRfiSource, /Volumen semanal esperado/, "Customer RFI route schedule should include expected weekly volume from the RFI template");
@@ -393,18 +395,31 @@ assert.match(customerRfiSource, /Respuesta esperada/, "Customer RFI segment rubr
 assert.match(customerRfiSource, /d_border_wait/, "Customer RFI business rules should explicitly capture border wait risk");
 assert.match(customerRfiSource, /carrier_requirements/, "Customer RFI should persist required carrier profile rubric details");
 assert.match(customerRfiHtml, /rfi-segment-tabs/, "Customer RFI should organize work by operating-segment tabs");
+assert.match(customerRfiHtml, /data-rfi-workspace-view="lanes"/, "Customer RFI should expose a compact routes workspace view");
+assert.match(customerRfiHtml, /data-rfi-workspace-view="rubrics"/, "Customer RFI should expose a compact requirements workspace view");
+assert.match(customerRfiHtml, /data-rfi-workspace-view="files"/, "Customer RFI should expose a segment file-vault workspace view");
+assert.match(customerRfiHtml, /rfi-segment-files/, "Customer RFI should keep the active segment file vault separate from the checklist grid");
 assert.match(customerRfiHtml, /rfi-language-toggle/, "Customer RFI should provide an English and Spanish toggle");
 assert.match(customerRfiHtml, /rfi-wizard-panel/, "Customer RFI should expose a guided RFI wizard for operating segment setup");
 assert.match(customerRfiHtml, /data-rfi-wizard-segment/, "Customer RFI wizard should create segment workspaces from presets");
 assert.doesNotMatch(customerRfiHtml, /add-segment-checklist/, "Customer RFI should not expose a redundant add-segment button outside the operating scope");
 assert.match(customerRfiSource, /renderAutofillCatalogs/, "Customer RFI route fields should provide catalog autofill without blocking new values");
+assert.match(customerRfiSource, /RFI_IMPORT_ALIASES/, "Customer RFI workbook import should map the source RFI headings instead of relying on column position");
+assert.match(customerRfiSource, /findRfiImportSheet/, "Customer RFI workbook import should locate the schedule sheet and header automatically");
+assert.match(customerRfiSource, /importRfiWorkbook/, "Customer RFI workbook import should keep route parsing inside the public RFI workflow");
+assert.match(customerRfiSource, /laneHasMeaningfulData/, "Customer RFI should discard blank placeholder routes when importing or validating");
 assert.match(customerRfiSource, /syncSegmentWorkspaceFromScope/, "Customer RFI should sync segment tabs from operating scope changes");
+assert.match(customerRfiSource, /renderWorkspaceState/, "Customer RFI should show one active segment workspace panel at a time");
+assert.match(customerRfiSource, /rfi-route-group-head/, "Customer RFI route matrix should group the full workbook fields into scannable sections");
+assert.match(customerRfiSource, /rfi-rubric-group/, "Customer RFI should collapse structured B-G requirements by rubric group");
 assert.match(customerRfiSource, /rfi-file-vault/, "Customer RFI should keep file references within the relevant operating segment");
 assert.match(stylesSource, /rfi-route-head-label/, "Customer RFI route matrix should use compact wrapped route headers");
+assert.match(stylesSource, /data-rfi-workspace-panel\]\[hidden\]/, "Customer RFI should hide inactive workspace panels even when card styles are present");
 assert.match(stylesSource, /rfi-help-note/, "Customer RFI field guide copy should render as normal text rather than squeezed helper text");
 assert.doesNotMatch(customerRfiHtml, /Global notes and attachments/, "Customer RFI should not show a redundant global notes and attachments section");
 assert.match(customerRfiSource, /submitCustomerRfi/, "Customer RFI UI should call the public submit API");
-assert.match(customerRfiSource, /Complete salida, llegada, tipo de camion y volumen semanal/, "Customer RFI UI should validate required RFI lane fields before final submission");
+assert.match(customerRfiSource, /Completa salida, llegada, tipo de camion y volumen semanal/, "Customer RFI UI should validate only the essential RFI lane fields before final submission");
+assert.match(customerRfiSource, /validateFinalRfi/, "Customer RFI final validation should keep non-essential RFI fields as warnings");
 assert.match(customerRfiSource, /state\.submitted/, "Customer RFI UI should lock submitted responses");
 assert.doesNotMatch(apiSource, /frequency_missing/, "RFx Process demand readiness should not require non-template frequency fields as hard blockers");
 assert.doesNotMatch(apiSource, /crossborder_details_missing/, "RFx Process demand readiness should not require narrative crossborder details as hard blockers");
@@ -1307,6 +1322,76 @@ assert.match(
   apiSource,
   /function normalizedRpcRateFilters/,
   "Rateware RPC filters should normalize operation and service before calling database functions"
+);
+assert.match(
+  spreadsheetColumnFiltersSource,
+  /let searchRevision = 0/,
+  "Spreadsheet filters should track the latest search input revision"
+);
+assert.match(
+  spreadsheetColumnFiltersSource,
+  /revision !== searchRevision/,
+  "Spreadsheet filters should ignore stale delayed search updates"
+);
+assert.match(
+  spreadsheetColumnFiltersSource,
+  /event\.key === "Enter" && !event\.target\.matches\("\.sheet-filter-search"\)/,
+  "Spreadsheet filter search should not submit while a user is typing"
+);
+assert.match(
+  ratewareSource,
+  /const rowSaveChains = new Map\(\)/,
+  "Rateware should serialize writes to the same spreadsheet row"
+);
+assert.match(
+  ratewareSource,
+  /Newer edits are waiting to save/,
+  "Rateware should preserve newer row edits while a previous save is in flight"
+);
+assert.match(
+  stagingReviewSource,
+  /const rowSaveChains = new Map\(\)/,
+  "Staging should serialize writes to the same spreadsheet row"
+);
+assert.match(
+  stagingReviewSource,
+  /Newer edits are waiting to save/,
+  "Staging should preserve newer row edits while a previous save is in flight"
+);
+assert.match(
+  ratewareSource,
+  /Page selected:/,
+  "Rateware should make page-level selection distinct from database-wide actions"
+);
+assert.match(
+  stagingReviewSource,
+  /Page selected:/,
+  "Staging should make page-level selection distinct from database-wide actions"
+);
+assert.match(
+  ratewareSource,
+  /Global scope: \$\{filteredTotal\.toLocaleString\(\)\} filtered rates/,
+  "Rateware should make filtered database scope compact and explicit"
+);
+assert.match(
+  stagingReviewSource,
+  /Global scope: \$\{filteredTotal\.toLocaleString\(\)\} filtered rows/,
+  "Staging should make filtered database scope compact and explicit"
+);
+assert.match(
+  sheetUiSource,
+  /showStarterViews = false/,
+  "Spreadsheet layout menus should default to personal layouts instead of preconfigured presets"
+);
+assert.match(
+  sheetUiSource,
+  /showStarterViews && presetViews\(\)\.length/,
+  "Starter layouts should be opt-in instead of cluttering the column layout menu"
+);
+assert.match(
+  sheetUiSource,
+  /setActiveView\(name, "named", "View applied"\);\s*renderToggleInputs\(\);/,
+  "Applying a saved spreadsheet view should immediately refresh the visible layout state"
 );
 
 assert.match(uploadHistorySource, /const BULK_IMPORT_BATCH_SIZE = 250/, "structured upload import should use larger browser batches");
