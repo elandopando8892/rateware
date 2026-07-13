@@ -30,6 +30,21 @@
 
       <p id="customer-rfi-message" class="row-save-status" role="status"></p>
 
+      <section class="customer-rfi-card rfi-wizard-panel" id="rfi-wizard-panel">
+        <div class="rfi-wizard-copy">
+          <p class="eyebrow" data-i18n="rfiWizard">RFI Wizard</p>
+          <strong data-i18n="smartSetup">Build the intake by operating segment</strong>
+          <span data-i18n="wizardHelp">Pick the operating models that apply. The route matrix and carrier checklist will follow the selected segment tabs.</span>
+        </div>
+        <div class="rfi-wizard-actions" aria-label="RFI operating segment presets">
+          <button type="button" class="secondary small-button" data-rfi-wizard-segment="crossborder" data-i18n="wizardCrossborder">Crossborder D2D</button>
+          <button type="button" class="secondary small-button" data-rfi-wizard-segment="mx_domestic" data-i18n="wizardMexico">Mexico domestic</button>
+          <button type="button" class="secondary small-button" data-rfi-wizard-segment="us_domestic" data-i18n="wizardUs">US domestic</button>
+          <button type="button" class="secondary small-button" data-rfi-wizard-segment="expedited" data-i18n="wizardExpedited">Expedited / time critical</button>
+          <button type="button" class="secondary small-button" data-rfi-wizard-segment="dedicated" data-i18n="wizardDedicated">Dedicated</button>
+        </div>
+      </section>
+
       <section class="customer-rfi-grid rfi-overview-grid">
         <article class="customer-rfi-card rfi-section-card">
           <div class="rfi-section-heading">
@@ -71,6 +86,7 @@
           <div>
             <p class="eyebrow" data-i18n="operatingWorkspace">Operating workspace</p>
             <h2 id="rfi-active-segment-title">Segment details</h2>
+            <p class="field-help" data-i18n="segmentScopeHelp">Tabs are created from the operating scope selected above.</p>
           </div>
           <button type="button" class="rfi-help-trigger" data-rfi-help="segment" title="About segment tabs" aria-label="About segment tabs">&#128214;</button>
         </div>
@@ -106,7 +122,6 @@
           </div>
           <div class="rfi-heading-actions">
             <button type="button" class="rfi-help-trigger" data-rfi-help="rubrics" title="About segment rubrics" aria-label="About segment rubrics">&#128214;</button>
-            <button id="add-segment-checklist" type="button" class="secondary" data-i18n="addSegment">Add segment</button>
           </div>
         </div>
         <div id="rfi-segment-checklists" class="rfi-segment-checklist-grid"></div>

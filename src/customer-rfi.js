@@ -39,17 +39,16 @@ const els = {
   helpContent: document.getElementById("rfi-help-content"),
   closeHelp: document.getElementById("close-rfi-help"),
   addLane: document.getElementById("add-lane-row"),
-  addSegmentChecklist: document.getElementById("add-segment-checklist"),
   save: document.getElementById("save-customer-rfi"),
   submit: document.getElementById("submit-customer-rfi")
 };
 
 const UI_COPY = {
   en: {
-    customerRfi: "Customer RFI", completeness: "Completeness", accountOverview: "Account overview", accountOverviewDetail: "Project account details", companyUnit: "Company / business unit", primaryContact: "Primary contact", scopeSummary: "Scope summary", operatingSegments: "Operating segments", segmentSelection: "Select the operating scope", crossborderDetails: "Crossborder details", operatingWorkspace: "Operating workspace", routeSchedule: "Route schedule", routeScheduleDetail: "Lane schedule", routeHelp: "Type a catalog suggestion or enter a new value. Required: origin, destination, truck type, weekly volume.", addLane: "Add lane", segmentRubrics: "Segment rubrics", checklistDetail: "Carrier confirmation checklist", rubricHelp: "Select what must be confirmed and document the operational answer or exception.", addSegment: "Add segment", saveDraft: "Save draft", submitFinal: "Submit final RFI", close: "Close", fieldGuide: "Field guide", remove: "Remove", segment: "Segment", name: "Name", operationModel: "Operation model", suggestions: "Suggestions", validate: "Required", topic: "Topic", whatToAsk: "What to ask", expectedAnswer: "Expected answer", observations: "Notes", fileVault: "File vault", vaultHelp: "Drop files here to keep their names with this segment, or paste a Drive / SharePoint link below.", browse: "Browse", attachmentLinks: "Files and links", segmentDetails: "Segment details", noLanes: "No lanes in this segment yet.", workbookHelp: "This guide explains the data being requested. It does not replace customer-specific instructions.", language: "Language"
+    customerRfi: "Customer RFI", completeness: "Completeness", accountOverview: "Account overview", accountOverviewDetail: "Project account details", companyUnit: "Company / business unit", primaryContact: "Primary contact", scopeSummary: "Scope summary", operatingSegments: "Operating segments", segmentSelection: "Select the operating scope", crossborderDetails: "Crossborder details", rfiWizard: "RFI Wizard", smartSetup: "Build the intake by operating segment", wizardHelp: "Pick the operating models that apply. The route matrix and carrier checklist will follow the selected segment tabs.", wizardCrossborder: "Crossborder D2D", wizardMexico: "Mexico domestic", wizardUs: "US domestic", wizardExpedited: "Expedited / time critical", wizardDedicated: "Dedicated", operatingWorkspace: "Operating workspace", segmentScopeHelp: "Tabs are created from the operating scope selected above.", routeSchedule: "Route schedule", routeScheduleDetail: "Lane schedule", routeHelp: "Type a catalog suggestion or enter a new value. Required: origin, destination, truck type, weekly volume.", addLane: "Add lane", segmentRubrics: "Segment rubrics", checklistDetail: "Carrier confirmation checklist", rubricHelp: "Select what must be confirmed and document the operational answer or exception.", addSegment: "Add segment", saveDraft: "Save draft", submitFinal: "Submit final RFI", close: "Close", fieldGuide: "Field guide", remove: "Remove", segment: "Segment", name: "Name", operationModel: "Operation model", suggestions: "Suggestions", validate: "Required", topic: "Topic", whatToAsk: "What to ask", expectedAnswer: "Expected answer", observations: "Notes", fileVault: "File vault", vaultHelp: "Drop files here to keep their names with this segment, or paste a Drive / SharePoint link below.", browse: "Browse", attachmentLinks: "Files and links", segmentDetails: "Segment details", noLanes: "No lanes in this segment yet.", workbookHelp: "This guide explains the requested data. It does not replace customer-specific instructions.", language: "Language"
   },
   es: {
-    customerRfi: "RFI del cliente", completeness: "Completitud", accountOverview: "Resumen de cuenta", accountOverviewDetail: "Datos del proyecto", companyUnit: "Empresa / unidad de negocio", primaryContact: "Contacto principal", scopeSummary: "Resumen de alcance", operatingSegments: "Segmentos operativos", segmentSelection: "Selecciona el alcance operativo", crossborderDetails: "Detalles transfronterizos", operatingWorkspace: "Espacio de trabajo operativo", routeSchedule: "Cedula de rutas", routeScheduleDetail: "Matriz de rutas", routeHelp: "Elige una sugerencia del catalogo o escribe un valor nuevo. Obligatorio: origen, destino, tipo de camion y volumen semanal.", addLane: "Agregar ruta", segmentRubrics: "Rubros por segmento", checklistDetail: "Checklist de confirmacion del carrier", rubricHelp: "Marca lo que el carrier debe confirmar y documenta la respuesta o excepcion operativa.", addSegment: "Agregar segmento", saveDraft: "Guardar borrador", submitFinal: "Enviar RFI final", close: "Cerrar", fieldGuide: "Guia de campos", remove: "Eliminar", segment: "Segmento", name: "Nombre", operationModel: "Modelo operativo", suggestions: "Sugerencias", validate: "Validar", topic: "Rubro", whatToAsk: "Que preguntar", expectedAnswer: "Respuesta esperada", observations: "Observaciones", fileVault: "Boveda de archivos", vaultHelp: "Arrastra archivos para conservar sus nombres dentro del segmento o pega un enlace de Drive / SharePoint abajo.", browse: "Explorar", attachmentLinks: "Archivos y enlaces", segmentDetails: "Detalles del segmento", noLanes: "Aun no hay rutas en este segmento.", workbookHelp: "Esta guia explica la informacion solicitada. No reemplaza instrucciones especificas del cliente.", language: "Idioma"
+    customerRfi: "RFI del cliente", completeness: "Completitud", accountOverview: "Resumen de cuenta", accountOverviewDetail: "Datos del proyecto", companyUnit: "Empresa / unidad de negocio", primaryContact: "Contacto principal", scopeSummary: "Resumen de alcance", operatingSegments: "Segmentos operativos", segmentSelection: "Selecciona el alcance operativo", crossborderDetails: "Detalles transfronterizos", rfiWizard: "RFI Wizard", smartSetup: "Arma la captura por segmento operativo", wizardHelp: "Elige los modelos operativos que aplican. La matriz de rutas y el checklist seguiran los tabs seleccionados.", wizardCrossborder: "Crossborder D2D", wizardMexico: "Mexico domestico", wizardUs: "US domestico", wizardExpedited: "Expeditado / time critical", wizardDedicated: "Dedicado", operatingWorkspace: "Espacio de trabajo operativo", segmentScopeHelp: "Los tabs se crean desde el alcance operativo seleccionado arriba.", routeSchedule: "Cedula de rutas", routeScheduleDetail: "Matriz de rutas", routeHelp: "Elige una sugerencia del catalogo o escribe un valor nuevo. Obligatorio: origen, destino, tipo de camion y volumen semanal.", addLane: "Agregar ruta", segmentRubrics: "Rubros por segmento", checklistDetail: "Checklist de confirmacion del carrier", rubricHelp: "Marca lo que el carrier debe confirmar y documenta la respuesta o excepcion operativa.", addSegment: "Agregar segmento", saveDraft: "Guardar borrador", submitFinal: "Enviar RFI final", close: "Cerrar", fieldGuide: "Guia de campos", remove: "Eliminar", segment: "Segmento", name: "Nombre", operationModel: "Modelo operativo", suggestions: "Sugerencias", validate: "Validar", topic: "Rubro", whatToAsk: "Que preguntar", expectedAnswer: "Respuesta esperada", observations: "Observaciones", fileVault: "Boveda de archivos", vaultHelp: "Arrastra archivos para conservar sus nombres dentro del segmento o pega un enlace de Drive / SharePoint abajo.", browse: "Explorar", attachmentLinks: "Archivos y enlaces", segmentDetails: "Detalles del segmento", noLanes: "Aun no hay rutas en este segmento.", workbookHelp: "Esta guia explica la informacion solicitada. No reemplaza instrucciones especificas del cliente.", language: "Idioma"
   }
 };
 
@@ -1092,19 +1091,26 @@ function renderLaneHead() {
   if (!els.laneHead) return;
   els.laneHead.innerHTML = `
     <tr>
-      ${RFI_LANE_COLUMNS.map((column) => `<th style="min-width:${laneColumnWidth(column)}px" title="${escapeHtml(column.label)}">${escapeHtml(column.label)}${column.required ? " *" : ""}</th>`).join("")}
+      ${RFI_LANE_COLUMNS.map((column) => {
+        const width = laneColumnWidth(column);
+        return `<th ${laneCellStyle(width)} title="${escapeHtml(column.label)}"><span class="rfi-route-head-label">${escapeHtml(column.label)}${column.required ? " *" : ""}</span></th>`;
+      }).join("")}
       <th class="rfi-action-column"></th>
     </tr>
   `;
 }
 
 function laneColumnWidth(column) {
-  if (column.type === "checkbox") return Math.max(46, Math.min(column.width || 52, 64));
-  if (column.type === "number") return Math.max(62, Math.min(column.width || 78, 86));
-  if (column.type === "select") return Math.max(84, Math.min(column.width || 100, 112));
-  if (column.type === "textarea") return Math.max(135, Math.min(column.width || 160, 170));
-  if (WRAP_LANE_FIELDS.has(column.key)) return Math.max(105, Math.min(column.width || 126, 132));
-  return Math.max(72, Math.min(column.width || 96, 108));
+  if (column.type === "checkbox") return Math.max(42, Math.min(column.width || 48, 62));
+  if (column.type === "number") return Math.max(56, Math.min(column.width || 72, 86));
+  if (column.type === "select") return Math.max(78, Math.min(column.width || 96, 118));
+  if (column.type === "textarea") return Math.max(145, Math.min(column.width || 168, 210));
+  if (WRAP_LANE_FIELDS.has(column.key)) return Math.max(94, Math.min(column.width || 118, 145));
+  return Math.max(64, Math.min(column.width || 88, 112));
+}
+
+function laneCellStyle(width) {
+  return `style="width:${width}px;min-width:${width}px;max-width:${width}px"`;
 }
 
 function renderLaneCell(column, row) {
@@ -1112,17 +1118,17 @@ function renderLaneCell(column, row) {
   const width = laneColumnWidth(column);
   const wrapClass = WRAP_LANE_FIELDS.has(column.key) ? " rfi-wrap-cell" : "";
   if (column.type === "checkbox") {
-    return `<td class="rfi-check-cell" style="min-width:${width}px"><input type="checkbox" data-field="${column.key}" ${checkedBoolean(value) ? "checked" : ""} /></td>`;
+    return `<td class="rfi-check-cell" ${laneCellStyle(width)}><input type="checkbox" data-field="${column.key}" ${checkedBoolean(value) ? "checked" : ""} /></td>`;
   }
   if (column.type === "select") {
-    return `<td style="min-width:${width}px"><input type="text" list="${catalogId(column)}" data-field="${column.key}" value="${escapeHtml(value)}" placeholder="${escapeHtml(column.options?.find((option) => cleanText(option.value || option))?.label || "Select or type")}" /></td>`;
+    return `<td ${laneCellStyle(width)}><input type="text" list="${catalogId(column)}" data-field="${column.key}" value="${escapeHtml(value)}" placeholder="${escapeHtml(column.options?.find((option) => cleanText(option.value || option))?.label || "Select or type")}" /></td>`;
   }
   if (column.type === "textarea" || WRAP_LANE_FIELDS.has(column.key)) {
-    return `<td class="${wrapClass.trim()}" style="min-width:${width}px"><textarea data-field="${column.key}" rows="2" placeholder="${escapeHtml(column.placeholder || "")}">${escapeHtml(value)}</textarea></td>`;
+    return `<td class="${wrapClass.trim()}" ${laneCellStyle(width)}><textarea data-field="${column.key}" rows="1" placeholder="${escapeHtml(column.placeholder || "")}">${escapeHtml(value)}</textarea></td>`;
   }
   const type = column.type === "number" ? "number" : "text";
   const step = type === "number" ? ' step="0.01"' : "";
-  return `<td style="min-width:${width}px"><input type="${type}"${step} data-field="${column.key}" value="${escapeHtml(value)}" placeholder="${escapeHtml(column.placeholder || "")}" /></td>`;
+  return `<td ${laneCellStyle(width)}><input type="${type}"${step} data-field="${column.key}" value="${escapeHtml(value)}" placeholder="${escapeHtml(column.placeholder || "")}" /></td>`;
 }
 
 function renderLaneRows() {
@@ -1140,6 +1146,45 @@ function segmentDisplayName(segment) {
   return cleanText(segment.segment_name) || optionLabel(SEGMENT_OPTIONS, segment.segment_key) || ui("segment");
 }
 
+function setSegmentCheckbox(segmentKey, checked) {
+  const input = Array.from(document.querySelectorAll('input[name="rfi-segment"]')).find((row) => row.value === segmentKey);
+  if (input) input.checked = checked;
+}
+
+function ensureSegmentWorkspace(segmentKey) {
+  const key = cleanText(segmentKey) || "crossborder";
+  let current = collectSegmentChecklists();
+  if (!current.some((segment) => segment.segment_key === key)) {
+    current.push(makeSegmentChecklist(current.length, key));
+  }
+  state.segmentChecklists = current;
+  state.activeSegmentKey = key;
+  setSegmentCheckbox(key, true);
+}
+
+function syncSegmentWorkspaceFromScope() {
+  const current = collectSegmentChecklists();
+  const selected = new Set(checkedSegments());
+  const laneCounts = new Map();
+  for (const lane of state.lanes) {
+    const key = segmentFromLane(lane);
+    laneCounts.set(key, (laneCounts.get(key) || 0) + 1);
+  }
+  let next = current.filter((segment) => selected.has(segment.segment_key) || laneCounts.has(segment.segment_key));
+  for (const key of selected) {
+    if (!next.some((segment) => segment.segment_key === key)) next.push(makeSegmentChecklist(next.length, key));
+  }
+  if (!next.length) {
+    const fallback = selected.values().next().value || "crossborder";
+    next = [makeSegmentChecklist(0, fallback)];
+    setSegmentCheckbox(fallback, true);
+  }
+  state.segmentChecklists = next;
+  if (!next.some((segment) => segment.segment_key === state.activeSegmentKey)) {
+    state.activeSegmentKey = next[0]?.segment_key || "crossborder";
+  }
+}
+
 function renderSegmentTabs() {
   if (!els.segmentTabs) return;
   const segments = state.segmentChecklists;
@@ -1149,7 +1194,7 @@ function renderSegmentTabs() {
   els.segmentTabs.innerHTML = segments.map((segment, index) => {
     const laneCount = state.lanes.filter((lane) => segmentFromLane(lane) === segment.segment_key).length;
     const active = segment.segment_key === state.activeSegmentKey;
-    return `<button type="button" role="tab" aria-selected="${active}" class="${active ? "is-active" : ""}" data-rfi-segment-tab="${escapeHtml(segment.segment_key)}"><span>${ui("segment")} ${index + 1}</span><strong>${escapeHtml(segmentDisplayName(segment))}</strong><small>${laneCount} ${laneCount === 1 ? "lane" : "lanes"}</small></button>`;
+    return `<button type="button" role="tab" aria-selected="${active}" class="${active ? "is-active" : ""}" data-rfi-segment-tab="${escapeHtml(segment.segment_key)}"><span>${index + 1}</span><strong>${escapeHtml(segmentDisplayName(segment))}</strong><small>${laneCount} ${laneCount === 1 ? "lane" : "lanes"}</small></button>`;
   }).join("");
   const active = segments.find((segment) => segment.segment_key === state.activeSegmentKey);
   if (els.activeSegmentTitle) els.activeSegmentTitle.textContent = active ? segmentDisplayName(active) : ui("segmentDetails");
@@ -1250,7 +1295,7 @@ function setReadonlyMode() {
   document.querySelectorAll(".customer-rfi-shell input, .customer-rfi-shell select, .customer-rfi-shell textarea").forEach((element) => {
     element.disabled = readonly;
   });
-  document.querySelectorAll("#add-lane-row, #add-segment-checklist, [data-remove-lane], [data-remove-segment-checklist], [data-suggest-rubrics]").forEach((element) => {
+  document.querySelectorAll("#add-lane-row, [data-remove-lane], [data-remove-segment-checklist], [data-suggest-rubrics]").forEach((element) => {
     element.disabled = readonly;
   });
   if (els.save) els.save.disabled = readonly;
@@ -1546,7 +1591,12 @@ function showRfiHelp(key) {
   const content = RFI_HELP[key]?.[state.locale] || RFI_HELP[key]?.en;
   if (!content || !els.helpDialog || !els.helpTitle || !els.helpContent) return;
   els.helpTitle.textContent = content[0];
-  els.helpContent.innerHTML = `<p>${escapeHtml(content[1])}</p><p class="field-help">${escapeHtml(ui("workbookHelp"))}</p>`;
+  els.helpContent.innerHTML = `
+    <div class="rfi-help-body">
+      <p>${escapeHtml(content[1])}</p>
+      <p class="rfi-help-note">${escapeHtml(ui("workbookHelp"))}</p>
+    </div>
+  `;
   if (typeof els.helpDialog.showModal === "function") els.helpDialog.showModal();
 }
 
@@ -1568,12 +1618,6 @@ function initEvents() {
     state.lanes.push({ ...makeLane(state.lanes.length), operating_segment: state.activeSegmentKey });
     render();
   });
-  els.addSegmentChecklist?.addEventListener("click", () => {
-    collectRfi();
-    const nextSegment = checkedSegments().find((segment) => !state.segmentChecklists.some((row) => row.segment_key === segment)) || "crossborder";
-    state.segmentChecklists.push(makeSegmentChecklist(state.segmentChecklists.length, nextSegment));
-    render();
-  });
   document.addEventListener("click", (event) => {
     const localeButton = event.target.closest("[data-rfi-locale]");
     if (localeButton) {
@@ -1586,6 +1630,13 @@ function initEvents() {
     const helpButton = event.target.closest("[data-rfi-help]");
     if (helpButton) {
       showRfiHelp(helpButton.dataset.rfiHelp);
+      return;
+    }
+    const wizardButton = event.target.closest("[data-rfi-wizard-segment]");
+    if (wizardButton) {
+      collectRfi();
+      ensureSegmentWorkspace(wizardButton.dataset.rfiWizardSegment);
+      render();
       return;
     }
     const segmentTab = event.target.closest("[data-rfi-segment-tab]");
@@ -1627,11 +1678,8 @@ function initEvents() {
       return;
     }
     if (event.target?.matches?.('input[name="rfi-segment"]')) {
-      const current = collectSegmentChecklists();
-      for (const value of checkedSegments()) {
-        if (!current.some((segment) => segment.segment_key === value)) current.push(makeSegmentChecklist(current.length, value));
-      }
-      state.segmentChecklists = current;
+      collectRfi();
+      syncSegmentWorkspaceFromScope();
       render();
     }
     if (event.target?.matches?.('.rfi-segment-checklist [data-field="segment_key"]')) {

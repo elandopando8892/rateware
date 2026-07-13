@@ -394,8 +394,14 @@ assert.match(customerRfiSource, /d_border_wait/, "Customer RFI business rules sh
 assert.match(customerRfiSource, /carrier_requirements/, "Customer RFI should persist required carrier profile rubric details");
 assert.match(customerRfiHtml, /rfi-segment-tabs/, "Customer RFI should organize work by operating-segment tabs");
 assert.match(customerRfiHtml, /rfi-language-toggle/, "Customer RFI should provide an English and Spanish toggle");
+assert.match(customerRfiHtml, /rfi-wizard-panel/, "Customer RFI should expose a guided RFI wizard for operating segment setup");
+assert.match(customerRfiHtml, /data-rfi-wizard-segment/, "Customer RFI wizard should create segment workspaces from presets");
+assert.doesNotMatch(customerRfiHtml, /add-segment-checklist/, "Customer RFI should not expose a redundant add-segment button outside the operating scope");
 assert.match(customerRfiSource, /renderAutofillCatalogs/, "Customer RFI route fields should provide catalog autofill without blocking new values");
+assert.match(customerRfiSource, /syncSegmentWorkspaceFromScope/, "Customer RFI should sync segment tabs from operating scope changes");
 assert.match(customerRfiSource, /rfi-file-vault/, "Customer RFI should keep file references within the relevant operating segment");
+assert.match(stylesSource, /rfi-route-head-label/, "Customer RFI route matrix should use compact wrapped route headers");
+assert.match(stylesSource, /rfi-help-note/, "Customer RFI field guide copy should render as normal text rather than squeezed helper text");
 assert.doesNotMatch(customerRfiHtml, /Global notes and attachments/, "Customer RFI should not show a redundant global notes and attachments section");
 assert.match(customerRfiSource, /submitCustomerRfi/, "Customer RFI UI should call the public submit API");
 assert.match(customerRfiSource, /Complete salida, llegada, tipo de camion y volumen semanal/, "Customer RFI UI should validate required RFI lane fields before final submission");
