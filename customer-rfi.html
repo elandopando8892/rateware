@@ -8,33 +8,53 @@
   </head>
   <body class="public-rfi-page">
     <main class="customer-rfi-shell">
-      <header class="customer-rfi-header">
+      <header class="customer-rfi-header customer-rfi-header-dense">
         <div>
           <a class="brand-mark" href="./index.html">Rateware</a>
-          <p class="eyebrow">Customer RFI</p>
+          <p class="eyebrow" data-i18n="customerRfi">Customer RFI</p>
           <h1 id="customer-rfi-title">Transportation requirements intake</h1>
-          <p id="customer-rfi-subtitle">Loading RFx Project...</p>
+          <p id="customer-rfi-subtitle">Loading RFx project...</p>
         </div>
-        <div class="customer-rfi-status">
-          <span id="customer-rfi-status-pill" class="status-pill">draft</span>
-          <strong id="customer-rfi-completeness">0%</strong>
-          <small>Completeness</small>
+        <div class="customer-rfi-header-actions">
+          <div class="rfi-language-toggle" aria-label="Language">
+            <button type="button" class="is-active" data-rfi-locale="en">EN</button>
+            <button type="button" data-rfi-locale="es">ES</button>
+          </div>
+          <div class="customer-rfi-status">
+            <span id="customer-rfi-status-pill" class="status-pill">draft</span>
+            <strong id="customer-rfi-completeness">0%</strong>
+            <small data-i18n="completeness">Completeness</small>
+          </div>
         </div>
       </header>
 
       <p id="customer-rfi-message" class="row-save-status" role="status"></p>
 
-      <section class="customer-rfi-grid">
-        <article class="customer-rfi-card">
-          <p class="eyebrow">Account overview</p>
-          <label>Company / business unit<input id="rfi-account-company" placeholder="Customer, plant, business unit" /></label>
-          <label>Primary contact<input id="rfi-account-contact" placeholder="Name, role, phone" /></label>
-          <label>Scope summary<textarea id="rfi-account-scope" rows="3" placeholder="What transportation scope should procurement quote?"></textarea></label>
+      <section class="customer-rfi-grid rfi-overview-grid">
+        <article class="customer-rfi-card rfi-section-card">
+          <div class="rfi-section-heading">
+            <div>
+              <p class="eyebrow" data-i18n="accountOverview">Account overview</p>
+              <h2 data-i18n="accountOverviewDetail">Project account details</h2>
+            </div>
+            <button type="button" class="rfi-help-trigger" data-rfi-help="account" title="About account overview" aria-label="About account overview">&#128214;</button>
+          </div>
+          <div class="rfi-inline-fields rfi-account-fields">
+            <label><span data-i18n="companyUnit">Company / business unit</span><input id="rfi-account-company" placeholder="Customer, plant, business unit" /></label>
+            <label><span data-i18n="primaryContact">Primary contact</span><input id="rfi-account-contact" placeholder="Name, role, phone" /></label>
+            <label class="rfi-field-wide"><span data-i18n="scopeSummary">Scope summary</span><textarea id="rfi-account-scope" rows="2" placeholder="What transportation scope should procurement quote?"></textarea></label>
+          </div>
         </article>
 
-        <article class="customer-rfi-card">
-          <p class="eyebrow">Operating segments</p>
-          <div class="checkbox-grid">
+        <article class="customer-rfi-card rfi-section-card">
+          <div class="rfi-section-heading">
+            <div>
+              <p class="eyebrow" data-i18n="operatingSegments">Operating segments</p>
+              <h2 data-i18n="segmentSelection">Select the operating scope</h2>
+            </div>
+            <button type="button" class="rfi-help-trigger" data-rfi-help="segments" title="About operating segments" aria-label="About operating segments">&#128214;</button>
+          </div>
+          <div class="checkbox-grid rfi-segment-selector">
             <label><input type="checkbox" name="rfi-segment" value="crossborder" /> Crossborder</label>
             <label><input type="checkbox" name="rfi-segment" value="mx_domestic" /> Mexico domestic</label>
             <label><input type="checkbox" name="rfi-segment" value="us_domestic" /> US domestic</label>
@@ -42,20 +62,34 @@
             <label><input type="checkbox" name="rfi-segment" value="time_critical" /> Time critical</label>
             <label><input type="checkbox" name="rfi-segment" value="dedicated" /> Dedicated</label>
           </div>
-          <label>Crossborder details<textarea id="rfi-crossborder" rows="3" placeholder="Border cities, customs model, import/export notes"></textarea></label>
+          <label class="rfi-compact-textarea"><span data-i18n="crossborderDetails">Crossborder details</span><textarea id="rfi-crossborder" rows="2" placeholder="Border cities, customs model, import/export notes"></textarea></label>
         </article>
       </section>
 
-      <section class="customer-rfi-card">
+      <section class="customer-rfi-card rfi-segment-workspace">
+        <div class="rfi-section-heading">
+          <div>
+            <p class="eyebrow" data-i18n="operatingWorkspace">Operating workspace</p>
+            <h2 id="rfi-active-segment-title">Segment details</h2>
+          </div>
+          <button type="button" class="rfi-help-trigger" data-rfi-help="segment" title="About segment tabs" aria-label="About segment tabs">&#128214;</button>
+        </div>
+        <div id="rfi-segment-tabs" class="rfi-segment-tabs" role="tablist" aria-label="Operating segments"></div>
+      </section>
+
+      <section class="customer-rfi-card rfi-route-card">
         <div class="split-heading compact">
           <div>
-            <p class="eyebrow">Route schedule</p>
-            <h2>Cedula de rutas</h2>
-            <p class="field-help">Columnas alineadas al RFI. Obligatorio: salida, llegada, tipo de camion y volumen semanal.</p>
+            <p class="eyebrow" data-i18n="routeSchedule">Route schedule</p>
+            <h2 data-i18n="routeScheduleDetail">Lane schedule</h2>
+            <p class="field-help" data-i18n="routeHelp">Type a catalog suggestion or enter a new value. Required: origin, destination, truck type, weekly volume.</p>
           </div>
-          <button id="add-lane-row" type="button">Add lane</button>
+          <div class="rfi-heading-actions">
+            <button type="button" class="rfi-help-trigger" data-rfi-help="routes" title="About route schedule" aria-label="About route schedule">&#128214;</button>
+            <button id="add-lane-row" type="button" data-i18n="addLane">Add lane</button>
+          </div>
         </div>
-        <div class="rfx-process-table-wrap">
+        <div class="rfx-process-table-wrap rfi-route-scroll">
           <table class="rfx-process-table customer-rfi-lane-table">
             <thead id="rfi-lanes-head"></thead>
             <tbody id="rfi-lanes"></tbody>
@@ -63,49 +97,35 @@
         </div>
       </section>
 
-      <section class="customer-rfi-card">
+      <section class="customer-rfi-card rfi-rubrics-card">
         <div class="split-heading compact">
           <div>
-            <p class="eyebrow">Segment rubrics</p>
-            <h2>Checklist by operation segment</h2>
-            <p class="field-help">Marca los rubros que el carrier debe confirmar y agrega observaciones por segmento.</p>
+            <p class="eyebrow" data-i18n="segmentRubrics">Segment rubrics</p>
+            <h2 data-i18n="checklistDetail">Carrier confirmation checklist</h2>
+            <p class="field-help" data-i18n="rubricHelp">Select what must be confirmed and document the operational answer or exception.</p>
           </div>
-          <button id="add-segment-checklist" type="button" class="secondary">Add segment checklist</button>
+          <div class="rfi-heading-actions">
+            <button type="button" class="rfi-help-trigger" data-rfi-help="rubrics" title="About segment rubrics" aria-label="About segment rubrics">&#128214;</button>
+            <button id="add-segment-checklist" type="button" class="secondary" data-i18n="addSegment">Add segment</button>
+          </div>
         </div>
         <div id="rfi-segment-checklists" class="rfi-segment-checklist-grid"></div>
       </section>
 
-      <details class="customer-rfi-card customer-rfi-advanced">
-        <summary>
-          <span>
-            <strong>Global notes and attachments</strong>
-            <small>Optional free-text backup. The operational checklist above remains the source of truth.</small>
-          </span>
-          <span class="status-pill">Optional</span>
-        </summary>
-        <section class="customer-rfi-grid rfi-advanced-grid">
-          <article>
-            <p class="eyebrow">Logistics model</p>
-            <label>Model by segment<textarea id="rfi-logistics-models" rows="3" placeholder="Direct, transfer, dedicated, drop, live load, border model by segment"></textarea></label>
-            <p class="eyebrow">Business rules</p>
-            <label>Commercial rules<textarea id="rfi-business-rules" rows="3" placeholder="Payment terms, tender rules, penalties, escalation expectations"></textarea></label>
-            <label>Operational criteria<textarea id="rfi-operational-criteria" rows="3" placeholder="Appointment rules, pickup/delivery windows, live/drop requirements"></textarea></label>
-          </article>
-          <article>
-            <p class="eyebrow">Service requirements</p>
-            <label>Service specs<textarea id="rfi-service-requirements" rows="3" placeholder="Equipment specs, hazmat, temperature control, insurance, documents"></textarea></label>
-            <label>Required carrier profile<textarea id="rfi-carrier-requirements" rows="3" placeholder="Authority, insurance, fleet, GPS, crossborder experience, certifications"></textarea></label>
-            <label>Notes / exceptions<textarea id="rfi-notes" rows="3" placeholder="Known constraints, phased rollout, exclusions, attachments"></textarea></label>
-            <label>Attachment links<textarea id="rfi-attachments" rows="2" placeholder="Paste Drive links, file names, or reference documents"></textarea></label>
-          </article>
-        </section>
-      </details>
-
       <section class="customer-rfi-actions">
-        <button id="save-customer-rfi" type="button" class="secondary">Save draft</button>
-        <button id="submit-customer-rfi" type="button" class="page-primary-action">Submit final RFI</button>
+        <button id="save-customer-rfi" type="button" class="secondary" data-i18n="saveDraft">Save draft</button>
+        <button id="submit-customer-rfi" type="button" class="page-primary-action" data-i18n="submitFinal">Submit final RFI</button>
       </section>
     </main>
+
+    <div id="rfi-catalogs" hidden></div>
+    <dialog id="rfi-help-dialog" class="rfi-help-dialog">
+      <div class="rfi-help-dialog-head">
+        <div><p class="eyebrow" data-i18n="fieldGuide">Field guide</p><h2 id="rfi-help-title"></h2></div>
+        <button type="button" id="close-rfi-help" class="secondary" data-i18n="close">Close</button>
+      </div>
+      <div id="rfi-help-content" class="rfi-help-content"></div>
+    </dialog>
 
     <script type="module" src="./src/customer-rfi.js"></script>
   </body>

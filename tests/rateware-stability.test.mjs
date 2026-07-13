@@ -391,8 +391,12 @@ assert.match(customerRfiSource, /rubric_items/, "Customer RFI segment rubrics sh
 assert.match(customerRfiSource, /Que preguntar/, "Customer RFI segment rubrics should show the question to validate");
 assert.match(customerRfiSource, /Respuesta esperada/, "Customer RFI segment rubrics should show the expected answer type");
 assert.match(customerRfiSource, /d_border_wait/, "Customer RFI business rules should explicitly capture border wait risk");
-assert.match(customerRfiHtml, /rfi-carrier-requirements/, "Customer RFI page should collect required carrier profile details");
-assert.match(customerRfiHtml, /rfi-attachments/, "Customer RFI page should collect attachment references");
+assert.match(customerRfiSource, /carrier_requirements/, "Customer RFI should persist required carrier profile rubric details");
+assert.match(customerRfiHtml, /rfi-segment-tabs/, "Customer RFI should organize work by operating-segment tabs");
+assert.match(customerRfiHtml, /rfi-language-toggle/, "Customer RFI should provide an English and Spanish toggle");
+assert.match(customerRfiSource, /renderAutofillCatalogs/, "Customer RFI route fields should provide catalog autofill without blocking new values");
+assert.match(customerRfiSource, /rfi-file-vault/, "Customer RFI should keep file references within the relevant operating segment");
+assert.doesNotMatch(customerRfiHtml, /Global notes and attachments/, "Customer RFI should not show a redundant global notes and attachments section");
 assert.match(customerRfiSource, /submitCustomerRfi/, "Customer RFI UI should call the public submit API");
 assert.match(customerRfiSource, /Complete salida, llegada, tipo de camion y volumen semanal/, "Customer RFI UI should validate required RFI lane fields before final submission");
 assert.match(customerRfiSource, /state\.submitted/, "Customer RFI UI should lock submitted responses");

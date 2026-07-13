@@ -12,6 +12,8 @@ const state = {
   destinations: [],
   lanes: [],
   segmentChecklists: [],
+  activeSegmentKey: "crossborder",
+  locale: window.localStorage.getItem("rateware_customer_rfi_locale") === "es" ? "es" : "en",
   submitted: false,
   loading: false
 };
@@ -29,18 +31,46 @@ const els = {
   laneHead: document.getElementById("rfi-lanes-head"),
   lanes: document.getElementById("rfi-lanes"),
   segmentChecklists: document.getElementById("rfi-segment-checklists"),
-  logisticsModels: document.getElementById("rfi-logistics-models"),
-  businessRules: document.getElementById("rfi-business-rules"),
-  operationalCriteria: document.getElementById("rfi-operational-criteria"),
-  serviceRequirements: document.getElementById("rfi-service-requirements"),
-  carrierRequirements: document.getElementById("rfi-carrier-requirements"),
-  notes: document.getElementById("rfi-notes"),
-  attachments: document.getElementById("rfi-attachments"),
+  segmentTabs: document.getElementById("rfi-segment-tabs"),
+  activeSegmentTitle: document.getElementById("rfi-active-segment-title"),
+  catalogs: document.getElementById("rfi-catalogs"),
+  helpDialog: document.getElementById("rfi-help-dialog"),
+  helpTitle: document.getElementById("rfi-help-title"),
+  helpContent: document.getElementById("rfi-help-content"),
+  closeHelp: document.getElementById("close-rfi-help"),
   addLane: document.getElementById("add-lane-row"),
   addSegmentChecklist: document.getElementById("add-segment-checklist"),
   save: document.getElementById("save-customer-rfi"),
   submit: document.getElementById("submit-customer-rfi")
 };
+
+const UI_COPY = {
+  en: {
+    customerRfi: "Customer RFI", completeness: "Completeness", accountOverview: "Account overview", accountOverviewDetail: "Project account details", companyUnit: "Company / business unit", primaryContact: "Primary contact", scopeSummary: "Scope summary", operatingSegments: "Operating segments", segmentSelection: "Select the operating scope", crossborderDetails: "Crossborder details", operatingWorkspace: "Operating workspace", routeSchedule: "Route schedule", routeScheduleDetail: "Lane schedule", routeHelp: "Type a catalog suggestion or enter a new value. Required: origin, destination, truck type, weekly volume.", addLane: "Add lane", segmentRubrics: "Segment rubrics", checklistDetail: "Carrier confirmation checklist", rubricHelp: "Select what must be confirmed and document the operational answer or exception.", addSegment: "Add segment", saveDraft: "Save draft", submitFinal: "Submit final RFI", close: "Close", fieldGuide: "Field guide", remove: "Remove", segment: "Segment", name: "Name", operationModel: "Operation model", suggestions: "Suggestions", validate: "Required", topic: "Topic", whatToAsk: "What to ask", expectedAnswer: "Expected answer", observations: "Notes", fileVault: "File vault", vaultHelp: "Drop files here to keep their names with this segment, or paste a Drive / SharePoint link below.", browse: "Browse", attachmentLinks: "Files and links", segmentDetails: "Segment details", noLanes: "No lanes in this segment yet.", workbookHelp: "This guide explains the data being requested. It does not replace customer-specific instructions.", language: "Language"
+  },
+  es: {
+    customerRfi: "RFI del cliente", completeness: "Completitud", accountOverview: "Resumen de cuenta", accountOverviewDetail: "Datos del proyecto", companyUnit: "Empresa / unidad de negocio", primaryContact: "Contacto principal", scopeSummary: "Resumen de alcance", operatingSegments: "Segmentos operativos", segmentSelection: "Selecciona el alcance operativo", crossborderDetails: "Detalles transfronterizos", operatingWorkspace: "Espacio de trabajo operativo", routeSchedule: "Cedula de rutas", routeScheduleDetail: "Matriz de rutas", routeHelp: "Elige una sugerencia del catalogo o escribe un valor nuevo. Obligatorio: origen, destino, tipo de camion y volumen semanal.", addLane: "Agregar ruta", segmentRubrics: "Rubros por segmento", checklistDetail: "Checklist de confirmacion del carrier", rubricHelp: "Marca lo que el carrier debe confirmar y documenta la respuesta o excepcion operativa.", addSegment: "Agregar segmento", saveDraft: "Guardar borrador", submitFinal: "Enviar RFI final", close: "Cerrar", fieldGuide: "Guia de campos", remove: "Eliminar", segment: "Segmento", name: "Nombre", operationModel: "Modelo operativo", suggestions: "Sugerencias", validate: "Validar", topic: "Rubro", whatToAsk: "Que preguntar", expectedAnswer: "Respuesta esperada", observations: "Observaciones", fileVault: "Boveda de archivos", vaultHelp: "Arrastra archivos para conservar sus nombres dentro del segmento o pega un enlace de Drive / SharePoint abajo.", browse: "Explorar", attachmentLinks: "Archivos y enlaces", segmentDetails: "Detalles del segmento", noLanes: "Aun no hay rutas en este segmento.", workbookHelp: "Esta guia explica la informacion solicitada. No reemplaza instrucciones especificas del cliente.", language: "Idioma"
+  }
+};
+
+const RFI_HELP = {
+  account: { en: ["Account overview", "Identifies the customer, accountable contact, and the procurement scope. Keep this brief and operational."], es: ["Resumen de cuenta", "Identifica al cliente, contacto responsable y alcance de procurement. Mantenlo breve y operativo."] },
+  segments: { en: ["Operating segments", "Choose every operating model in scope. Each selected segment has its own route schedule, checklist, notes, and file references."], es: ["Segmentos operativos", "Selecciona cada modelo operativo incluido. Cada segmento tiene su propia cedula, checklist, notas y referencias de archivos."] },
+  segment: { en: ["Segment tabs", "Use one tab per operating segment. Route rows and carrier requirements remain isolated so a crossborder project does not mix with domestic or expedited rules."], es: ["Tabs de segmento", "Usa un tab por segmento operativo. Las rutas y requisitos quedan aislados para no mezclar reglas crossborder, domesticas o expeditadas."] },
+  routes: { en: ["Route schedule", "Capture one route per row. Catalog fields suggest standardized values, but you can type a value not yet in the catalog. The RFI preserves your exact input."], es: ["Cedula de rutas", "Captura una ruta por renglon. Los campos de catalogo sugieren valores estandarizados, pero puedes escribir uno nuevo. El RFI conserva tu entrada exacta."] },
+  rubrics: { en: ["Segment rubrics", "Mark only requirements that apply to this segment. Add a concise note beside each requirement so carriers know how to confirm compliance or declare an exception."], es: ["Rubros por segmento", "Marca solo los requisitos que aplican al segmento. Agrega una observacion breve para que el carrier confirme cumplimiento o declare una excepcion."] },
+  logistics_model: { en: ["Logistics model", "Defines how the freight should move: direct, transfer, border model, live or drop, dedicated, and urgency."], es: ["Modelo logistico", "Define como debe moverse la carga: directo, transfer, modelo de frontera, live o drop, dedicado y urgencia."] },
+  operation_criteria: { en: ["Operation criteria", "Documents the execution standard: appointment, pickup and delivery windows, handling, contacts, tracking, and escalation."], es: ["Criterios de operacion", "Documenta el estandar de ejecucion: citas, ventanas, manejo, contactos, tracking y escalamiento."] },
+  business_rules: { en: ["Business rules", "Captures commercial and risk conditions that can materially change the real cost of a lane."], es: ["Reglas de negocio", "Captura condiciones comerciales y de riesgo que pueden cambiar materialmente el costo real de una ruta."] },
+  service_specifications: { en: ["Service specifications", "Defines the physical and documentation standard for the unit, cargo, security, tracking, and POD."], es: ["Especificaciones de servicio", "Define el estandar fisico y documental de unidad, carga, seguridad, tracking y POD."] },
+  carrier_requirements: { en: ["Required carrier profile", "States the carrier eligibility criteria that later become RFx qualification filters."], es: ["Perfil requerido del carrier", "Establece criterios de elegibilidad que despues se convierten en filtros de calificacion RFx."] },
+  other_notes: { en: ["Notes and exceptions", "Use structured notes for site, carrier, financial, security, seasonal, and crossborder exceptions."], es: ["Notas y excepciones", "Usa notas estructuradas para excepciones de sitio, carrier, finanzas, seguridad, temporada y frontera."] },
+  vault: { en: ["File vault", "Add customer instructions, SOPs, maps, site guides, or supporting files by dropping a file name or pasting a durable file link. Files are not uploaded until a storage link is supplied."], es: ["Boveda de archivos", "Agrega instructivos, SOPs, mapas, guias de sitio o soportes dejando el nombre del archivo o pegando un enlace durable. Los archivos no se cargan hasta que exista un enlace de almacenamiento."] }
+};
+
+function ui(key) {
+  return UI_COPY[state.locale]?.[key] || UI_COPY.en[key] || key;
+}
 
 const SEGMENT_OPTIONS = [
   { value: "crossborder", label: "Crossborder" },
@@ -521,6 +551,26 @@ function selectOptions(options, selected) {
       return `<option value="${escapeHtml(value)}"${value === selectedText ? " selected" : ""}>${escapeHtml(label)}</option>`;
     })
     .join("");
+}
+
+function catalogId(column) {
+  return `rfi-catalog-${column.key}`;
+}
+
+function renderAutofillCatalogs() {
+  if (!els.catalogs) return;
+  const selectableColumns = RFI_LANE_COLUMNS.filter((column) => column.type === "select");
+  els.catalogs.innerHTML = `
+    <datalist id="rfi-catalog-segment-key">${SEGMENT_OPTIONS.map((option) => `<option value="${escapeHtml(option.value)}" label="${escapeHtml(option.label)}"></option>`).join("")}</datalist>
+    ${selectableColumns.map((column) => `
+    <datalist id="${catalogId(column)}">
+      ${(column.options || []).filter((option) => cleanText(typeof option === "string" ? option : option.value)).map((option) => {
+        const value = typeof option === "string" ? option : option.value;
+        const label = typeof option === "string" ? option : option.label || option.value;
+        return `<option value="${escapeHtml(value)}" label="${escapeHtml(label)}"></option>`;
+      }).join("")}
+    </datalist>
+  `).join("")}`;
 }
 
 function optionLabel(options, value) {
@@ -1065,7 +1115,7 @@ function renderLaneCell(column, row) {
     return `<td class="rfi-check-cell" style="min-width:${width}px"><input type="checkbox" data-field="${column.key}" ${checkedBoolean(value) ? "checked" : ""} /></td>`;
   }
   if (column.type === "select") {
-    return `<td style="min-width:${width}px"><select data-field="${column.key}">${selectOptions(column.options || [], value)}</select></td>`;
+    return `<td style="min-width:${width}px"><input type="text" list="${catalogId(column)}" data-field="${column.key}" value="${escapeHtml(value)}" placeholder="${escapeHtml(column.options?.find((option) => cleanText(option.value || option))?.label || "Select or type")}" /></td>`;
   }
   if (column.type === "textarea" || WRAP_LANE_FIELDS.has(column.key)) {
     return `<td class="${wrapClass.trim()}" style="min-width:${width}px"><textarea data-field="${column.key}" rows="2" placeholder="${escapeHtml(column.placeholder || "")}">${escapeHtml(value)}</textarea></td>`;
@@ -1079,46 +1129,65 @@ function renderLaneRows() {
   if (!els.lanes) return;
   renderLaneHead();
   els.lanes.innerHTML = state.lanes.map((row, index) => `
-    <tr data-index="${index}" class="rfi-route-row">
+    <tr data-index="${index}" data-segment="${escapeHtml(segmentFromLane(row))}" class="rfi-route-row${segmentFromLane(row) === state.activeSegmentKey ? "" : " is-hidden"}">
       ${RFI_LANE_COLUMNS.map((column) => renderLaneCell(column, row)).join("")}
       <td class="rfi-action-column"><button type="button" class="secondary small-button" data-remove-lane="${index}">Remove</button></td>
     </tr>
   `).join("");
 }
 
+function segmentDisplayName(segment) {
+  return cleanText(segment.segment_name) || optionLabel(SEGMENT_OPTIONS, segment.segment_key) || ui("segment");
+}
+
+function renderSegmentTabs() {
+  if (!els.segmentTabs) return;
+  const segments = state.segmentChecklists;
+  if (!segments.some((segment) => segment.segment_key === state.activeSegmentKey)) {
+    state.activeSegmentKey = segments[0]?.segment_key || "crossborder";
+  }
+  els.segmentTabs.innerHTML = segments.map((segment, index) => {
+    const laneCount = state.lanes.filter((lane) => segmentFromLane(lane) === segment.segment_key).length;
+    const active = segment.segment_key === state.activeSegmentKey;
+    return `<button type="button" role="tab" aria-selected="${active}" class="${active ? "is-active" : ""}" data-rfi-segment-tab="${escapeHtml(segment.segment_key)}"><span>${ui("segment")} ${index + 1}</span><strong>${escapeHtml(segmentDisplayName(segment))}</strong><small>${laneCount} ${laneCount === 1 ? "lane" : "lanes"}</small></button>`;
+  }).join("");
+  const active = segments.find((segment) => segment.segment_key === state.activeSegmentKey);
+  if (els.activeSegmentTitle) els.activeSegmentTitle.textContent = active ? segmentDisplayName(active) : ui("segmentDetails");
+}
+
 function renderSegmentChecklists() {
   if (!els.segmentChecklists) return;
   els.segmentChecklists.innerHTML = state.segmentChecklists.map((segment, index) => `
-    <article class="rfi-segment-checklist" data-segment-index="${index}">
+    <article class="rfi-segment-checklist${segment.segment_key === state.activeSegmentKey ? "" : " is-hidden"}" data-segment-index="${index}" data-segment-key="${escapeHtml(segment.segment_key)}">
       <div class="customer-rfi-row-head">
         <div>
-          <p class="eyebrow">Segment ${index + 1}</p>
+          <p class="eyebrow">${ui("segment")} ${index + 1}</p>
           <strong>${escapeHtml(segment.segment_name || optionLabel(SEGMENT_OPTIONS, segment.segment_key))}</strong>
         </div>
-        <button type="button" class="secondary small-button" data-remove-segment-checklist="${index}">Remove</button>
+        <div class="rfi-heading-actions"><button type="button" class="rfi-help-trigger" data-rfi-help="segment" title="${escapeHtml(ui("fieldGuide"))}">&#128214;</button><button type="button" class="secondary small-button" data-remove-segment-checklist="${index}">${ui("remove")}</button></div>
       </div>
       <div class="rfi-segment-meta">
-        <label>Segment
-          <select data-field="segment_key">${selectOptions(SEGMENT_OPTIONS, segment.segment_key)}</select>
+        <label>${ui("segment")}
+          <input type="text" list="rfi-catalog-segment-key" data-field="segment_key" value="${escapeHtml(segment.segment_key)}" />
         </label>
-        <label>Name<input data-field="segment_name" value="${escapeHtml(segment.segment_name)}" placeholder="Crossborder direct / Dedicated / Intra-Mex" /></label>
-        <label>Operation model
-          <select data-field="operation_type">${selectOptions(OPERATION_OPTIONS, segment.operation_type)}</select>
+        <label>${ui("name")}<input data-field="segment_name" value="${escapeHtml(segment.segment_name)}" placeholder="Crossborder direct / Dedicated / Intra-Mex" /></label>
+        <label>${ui("operationModel")}
+          <input type="text" list="rfi-catalog-operation_type" data-field="operation_type" value="${escapeHtml(segment.operation_type)}" />
         </label>
       </div>
       <div class="rfi-suggestion-row">
-        <span>Suggestions</span>
+        <span>${ui("suggestions")}</span>
         ${SEGMENT_OPTIONS.map((option) => `<button type="button" class="secondary small-button" data-suggest-rubrics="${option.value}" data-index="${index}">${escapeHtml(option.label)}</button>`).join("")}
       </div>
       <div class="rfi-checklist-table-wrap">
         <table class="rfi-checklist-table">
           <thead>
             <tr>
-              <th>Validar</th>
-              <th>Rubro</th>
-              <th>Que preguntar</th>
-              <th>Respuesta esperada</th>
-              <th>Observaciones</th>
+              <th>${ui("validate")}</th>
+              <th>${ui("topic")}</th>
+              <th>${ui("whatToAsk")}</th>
+              <th>${ui("expectedAnswer")}</th>
+              <th>${ui("observations")}</th>
             </tr>
           </thead>
           <tbody>
@@ -1126,6 +1195,7 @@ function renderSegmentChecklists() {
               <tr class="rfi-checklist-group-row">
                 <th colspan="5">
                   <span>${escapeHtml(group.title)}</span>
+                  <button type="button" class="rfi-inline-help" data-rfi-help="${escapeHtml(group.key)}" title="${escapeHtml(ui("fieldGuide"))}">&#128214;</button>
                   <small>${escapeHtml(group.help)}</small>
                 </th>
               </tr>
@@ -1145,7 +1215,11 @@ function renderSegmentChecklists() {
           </tbody>
         </table>
       </div>
-      <label>Attachment links<textarea data-field="attachment_links" rows="1" placeholder="Drive links or file references">${escapeHtml(segment.attachment_links)}</textarea></label>
+      <section class="rfi-file-vault">
+        <div class="rfi-vault-heading"><div><p class="eyebrow">${ui("fileVault")}</p><small>${ui("vaultHelp")}</small></div><button type="button" class="rfi-help-trigger" data-rfi-help="vault" title="${escapeHtml(ui("fieldGuide"))}">&#128214;</button></div>
+        <div class="rfi-drop-zone" data-rfi-drop-zone="${index}"><strong>${ui("fileVault")}</strong><span>${ui("vaultHelp")}</span><button type="button" class="secondary small-button" data-rfi-browse="${index}">${ui("browse")}</button><input type="file" data-rfi-file-input="${index}" multiple hidden /></div>
+        <label>${ui("attachmentLinks")}<textarea data-field="attachment_links" rows="1" placeholder="https://drive.google.com/...">${escapeHtml(segment.attachment_links)}</textarea></label>
+      </section>
     </article>
   `).join("");
 }
@@ -1201,7 +1275,10 @@ function renderSummary() {
 }
 
 function render() {
+  applyLocale();
+  renderAutofillCatalogs();
   renderSummary();
+  renderSegmentTabs();
   renderLaneRows();
   renderSegmentChecklists();
   setReadonlyMode();
@@ -1216,6 +1293,7 @@ function collectLaneRows() {
         if (!input) continue;
         lane[field] = input.type === "checkbox" ? input.checked : cleanText(input.value);
       }
+      lane.operating_segment = cleanText(row.dataset.segment) || lane.operating_segment || state.activeSegmentKey;
       lane.lane_id = cleanText(lane.lane_id) || `L${index + 1}`;
       const originParts = splitCityState(lane.origin_location);
       const destinationParts = splitCityState(lane.destination_location);
@@ -1336,15 +1414,14 @@ function collectRfi(updateState = true) {
       average_unloading_time_hours: row.average_time_hours
     })),
     lanes,
-    logistics_models: { notes: cleanText(els.logisticsModels?.value) || mergedText("logistics_model", cleanText(els.scope?.value)) },
-    operational_criteria: { notes: cleanText(els.operationalCriteria?.value) || mergedText("operation_criteria") },
-    business_rules: { notes: cleanText(els.businessRules?.value) || mergedText("business_rules") },
-    service_requirements: { notes: cleanText(els.serviceRequirements?.value) || mergedText("service_specifications") },
-    carrier_requirements: { notes: cleanText(els.carrierRequirements?.value) || mergedText("carrier_requirements") },
+    logistics_models: { notes: mergedText("logistics_model", cleanText(els.scope?.value)) },
+    operational_criteria: { notes: mergedText("operation_criteria") },
+    business_rules: { notes: mergedText("business_rules") },
+    service_requirements: { notes: mergedText("service_specifications") },
+    carrier_requirements: { notes: mergedText("carrier_requirements") },
     crossborder_details: { notes: cleanText(els.crossborder?.value) },
-    notes_exceptions: { notes: cleanText(els.notes?.value) || mergedText("other_notes") },
+    notes_exceptions: { notes: mergedText("other_notes") },
     attachments: [
-      ...cleanText(els.attachments?.value).split(/\n+/),
       ...segments.map((segment) => cleanText(segment.attachment_links))
     ]
       .map((line) => cleanText(line))
@@ -1358,18 +1435,7 @@ function fillStaticFields(response) {
   if (els.company) els.company.value = cleanText(account.company || account.customer || state.project?.customer_name);
   if (els.contact) els.contact.value = cleanText(account.contact || state.project?.customer_contact_name);
   if (els.scope) els.scope.value = cleanText(account.scope || account.summary);
-  if (els.logisticsModels) els.logisticsModels.value = cleanText((response.logistics_models || state.submission?.logistics_models || {}).notes);
   if (els.crossborder) els.crossborder.value = cleanText((response.crossborder_details || state.submission?.crossborder_details || {}).notes);
-  if (els.businessRules) els.businessRules.value = cleanText((response.business_rules || state.submission?.business_rules || {}).notes);
-  if (els.operationalCriteria) els.operationalCriteria.value = cleanText((response.operational_criteria || state.submission?.operational_criteria || {}).notes);
-  if (els.serviceRequirements) els.serviceRequirements.value = cleanText((response.service_requirements || state.submission?.service_requirements || {}).notes);
-  if (els.carrierRequirements) els.carrierRequirements.value = cleanText((response.carrier_requirements || state.submission?.carrier_requirements || {}).notes);
-  if (els.notes) els.notes.value = cleanText((response.notes_exceptions || state.submission?.notes_exceptions || {}).notes);
-  if (els.attachments) {
-    const attachments = response.attachments || state.submission?.attachments || [];
-    els.attachments.value = Array.isArray(attachments) ? attachments.map((row) => cleanText(row.reference || row.name || row.url || row)).filter(Boolean).join("\n") : "";
-  }
-
   const segmentValues = new Set(
     (response.operating_segments || state.submission?.operating_segments || state.project?.operating_segments || [])
       .map((row) => cleanText(row.value || row.segment || row))
@@ -1464,10 +1530,42 @@ function applyRubricSuggestion(index, key) {
   render();
 }
 
+function applyLocale() {
+  document.documentElement.lang = state.locale;
+  document.querySelectorAll("[data-i18n]").forEach((element) => {
+    const value = ui(element.dataset.i18n);
+    if (value) element.textContent = value;
+  });
+  document.querySelectorAll("[data-rfi-locale]").forEach((button) => {
+    button.classList.toggle("is-active", button.dataset.rfiLocale === state.locale);
+    button.setAttribute("aria-pressed", button.dataset.rfiLocale === state.locale ? "true" : "false");
+  });
+}
+
+function showRfiHelp(key) {
+  const content = RFI_HELP[key]?.[state.locale] || RFI_HELP[key]?.en;
+  if (!content || !els.helpDialog || !els.helpTitle || !els.helpContent) return;
+  els.helpTitle.textContent = content[0];
+  els.helpContent.innerHTML = `<p>${escapeHtml(content[1])}</p><p class="field-help">${escapeHtml(ui("workbookHelp"))}</p>`;
+  if (typeof els.helpDialog.showModal === "function") els.helpDialog.showModal();
+}
+
+function appendVaultFiles(index, files) {
+  const checklist = collectSegmentChecklists();
+  const segment = checklist[index];
+  if (!segment || !files?.length) return;
+  const names = Array.from(files).map((file) => cleanText(file.name)).filter(Boolean);
+  const existing = cleanText(segment.attachment_links).split(/\n+/).filter(Boolean);
+  segment.attachment_links = [...new Set([...existing, ...names])].join("\n");
+  state.segmentChecklists = checklist;
+  render();
+  setStatus(`${names.length} file reference(s) added. Add a shared link before final submission.`);
+}
+
 function initEvents() {
   els.addLane?.addEventListener("click", () => {
     collectRfi();
-    state.lanes.push(makeLane(state.lanes.length));
+    state.lanes.push({ ...makeLane(state.lanes.length), operating_segment: state.activeSegmentKey });
     render();
   });
   els.addSegmentChecklist?.addEventListener("click", () => {
@@ -1477,6 +1575,31 @@ function initEvents() {
     render();
   });
   document.addEventListener("click", (event) => {
+    const localeButton = event.target.closest("[data-rfi-locale]");
+    if (localeButton) {
+      collectRfi();
+      state.locale = localeButton.dataset.rfiLocale === "es" ? "es" : "en";
+      window.localStorage.setItem("rateware_customer_rfi_locale", state.locale);
+      render();
+      return;
+    }
+    const helpButton = event.target.closest("[data-rfi-help]");
+    if (helpButton) {
+      showRfiHelp(helpButton.dataset.rfiHelp);
+      return;
+    }
+    const segmentTab = event.target.closest("[data-rfi-segment-tab]");
+    if (segmentTab) {
+      collectRfi();
+      state.activeSegmentKey = segmentTab.dataset.rfiSegmentTab || "crossborder";
+      render();
+      return;
+    }
+    const browseButton = event.target.closest("[data-rfi-browse]");
+    if (browseButton) {
+      document.querySelector(`[data-rfi-file-input="${browseButton.dataset.rfiBrowse}"]`)?.click();
+      return;
+    }
     const laneButton = event.target.closest("[data-remove-lane]");
     if (laneButton) {
       const index = Number(laneButton.dataset.removeLane);
@@ -1499,6 +1622,10 @@ function initEvents() {
     }
   });
   document.addEventListener("change", (event) => {
+    if (event.target?.matches?.("[data-rfi-file-input]")) {
+      appendVaultFiles(Number(event.target.dataset.rfiFileInput), event.target.files);
+      return;
+    }
     if (event.target?.matches?.('input[name="rfi-segment"]')) {
       const current = collectSegmentChecklists();
       for (const value of checkedSegments()) {
@@ -1507,7 +1634,7 @@ function initEvents() {
       state.segmentChecklists = current;
       render();
     }
-    if (event.target?.matches?.('.rfi-segment-checklist select[data-field="segment_key"]')) {
+    if (event.target?.matches?.('.rfi-segment-checklist [data-field="segment_key"]')) {
       state.segmentChecklists = collectSegmentChecklists();
       render();
     }
@@ -1515,6 +1642,16 @@ function initEvents() {
   document.addEventListener("input", () => {
     if (els.completeness) els.completeness.textContent = `${clientCompleteness()}%`;
   });
+  document.addEventListener("dragover", (event) => {
+    if (event.target.closest?.("[data-rfi-drop-zone]")) event.preventDefault();
+  });
+  document.addEventListener("drop", (event) => {
+    const zone = event.target.closest?.("[data-rfi-drop-zone]");
+    if (!zone) return;
+    event.preventDefault();
+    appendVaultFiles(Number(zone.dataset.rfiDropZone), event.dataTransfer?.files);
+  });
+  els.closeHelp?.addEventListener("click", () => els.helpDialog?.close());
   els.save?.addEventListener("click", saveDraft);
   els.submit?.addEventListener("click", submitFinal);
 }
