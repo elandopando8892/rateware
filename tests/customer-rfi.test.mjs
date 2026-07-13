@@ -21,6 +21,8 @@ assert.match(source, /PACKAGING_OPTIONS|SOURCING_PRIORITY_OPTIONS|SEASONALITY_OP
 assert.match(source, /Route Schedule/, "RFI workbook contains the route schedule sheet.");
 assert.match(source, /Rubric Checklist/, "RFI workbook contains the carrier-confirmation rubric sheet.");
 assert.match(source, /function downloadRfiSegmentTemplate\(/, "RFI can download a template for the active operating segment.");
+assert.match(source, /function hasLoadedActiveRfiSegment\(/, "segment template requires a loaded signed RFI segment.");
+assert.match(source, /Open a signed RFI link and select an operating segment/, "segment template explains missing signed context.");
 assert.match(source, /function importRfiSegmentWorkbook\(/, "RFI can import a completed segment template.");
 assert.match(source, /Segment Details/, "Segment template stores editable segment identity details.");
 assert.match(source, /segment-v1/, "Segment template has an explicit version marker.");
@@ -31,6 +33,7 @@ assert.match(html, /id="download-rfi-segment-template"/, "RFI exposes the active
 assert.match(html, /id="import-rfi-segment-template"/, "RFI exposes the segment template import action.");
 assert.match(html, /id="rfi-segment-template-name"/, "RFI exposes an editable segment name.");
 assert.match(html, /id="rfi-import-as-new-segment"/, "RFI exposes the create-new-segment option.");
+assert.match(html, /id="rfi-segment-template-state"/, "RFI exposes segment template readiness state.");
 assert.match(source, /function canonicalSegmentKey\(/, "Legacy RFI segment values are normalized safely.");
 assert.match(source, /function speakRfiHelp\(/, "The field guide provides browser audio support.");
 

@@ -238,6 +238,17 @@
   line-height: 1.25;
 }
 
+.public-rfi-page .rfi-segment-template-state {
+  grid-column: 1 / -1;
+  min-height: 15px;
+  color: #617583;
+  font-size: .66rem;
+  line-height: 1.25;
+}
+
+.public-rfi-page .rfi-segment-template-state[data-tone="ready"] { color: #08734d; }
+.public-rfi-page .rfi-segment-template-state[data-tone="error"] { color: #b42318; }
+
 .public-rfi-page .rfi-workspace-view-toggle button {
   min-height: 28px;
   padding: 4px 10px;

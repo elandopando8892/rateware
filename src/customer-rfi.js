@@ -57,6 +57,7 @@ const els = {
   importSegmentTemplateFile: document.getElementById("import-rfi-segment-template-file"),
   segmentTemplateName: document.getElementById("rfi-segment-template-name"),
   importAsNewSegment: document.getElementById("rfi-import-as-new-segment"),
+  segmentTemplateState: document.getElementById("rfi-segment-template-state"),
   save: document.getElementById("save-customer-rfi"),
   submit: document.getElementById("submit-customer-rfi")
 };
@@ -69,6 +70,17 @@ const UI_COPY = {
     customerRfi: "RFI del cliente", completeness: "Completitud", accountOverview: "Resumen de cuenta", accountOverviewDetail: "Datos del proyecto", companyUnit: "Empresa / unidad de negocio", primaryContact: "Contacto principal", scopeSummary: "Resumen de alcance", operatingSegments: "Segmentos operativos", segmentSelection: "Selecciona el alcance operativo", crossborderDetails: "Detalles transfronterizos", rfiWizard: "RFI Wizard", smartSetup: "Arma la captura por segmento operativo", wizardHelp: "Elige los modelos operativos que aplican. La matriz de rutas y el checklist seguiran los tabs seleccionados.", wizardCrossborder: "Crossborder D2D", wizardLocal: "Local FTL", wizardRegional: "Regional FTL", wizardNational: "Nacional FTL", wizardExpedited: "Expeditado", wizardTimeCritical: "Time critical", wizardPort: "Port drayage", operatingWorkspace: "Espacio de trabajo operativo", segmentScopeHelp: "Los tabs se crean desde el alcance operativo seleccionado arriba.", workspaceRoutes: "Rutas", workspaceRequirements: "Requisitos", workspaceFiles: "Archivos", workspaceFilesDetail: "Instructivos y archivos de soporte", routeSchedule: "Cedula de rutas", routeScheduleDetail: "Matriz de rutas", routeHelp: "Elige una sugerencia del catalogo o escribe un valor nuevo. Obligatorio: origen, destino, tipo de camion y volumen semanal.", importWorkbook: "Importar XLSX", downloadTemplate: "Descargar template", downloadSegmentTemplate: "Descargar template del segmento", importSegmentTemplate: "Importar template del segmento", segmentTemplateName: "Nombre del segmento", importAsNewSegment: "Crear como segmento nuevo", segmentTemplateHelp: "Este libro contiene solo el segmento activo: rutas, rubros, instructivo y catalogo.", addLane: "Agregar ruta", addRubric: "Agregar rubro", removeRubric: "Eliminar", customRubric: "Rubro personalizado", listen: "Escuchar", stopReading: "Detener", audioUnavailable: "El audio no esta disponible en este navegador.", segmentLocal: "Local FTL", segmentRegional: "Regional FTL", segmentNational: "Nacional FTL", segmentCrossborder: "Crossborder FTL", segmentExpedited: "Expedited Ground", segmentTimeCritical: "Time Critical Ground", segmentPortUs: "Port Drayage US", segmentPortMx: "Port Drayage MX", segmentRubrics: "Rubros por segmento", checklistDetail: "Checklist de confirmacion del carrier", rubricHelp: "Marca lo que el carrier debe confirmar y documenta la respuesta o excepcion operativa.", addSegment: "Agregar segmento", saveDraft: "Guardar borrador", submitFinal: "Enviar RFI final", close: "Cerrar", fieldGuide: "Guia de campos", remove: "Eliminar", segment: "Segmento", name: "Nombre", operationModel: "Modelo operativo", suggestions: "Sugerencias", validate: "Validar", topic: "Rubro", whatToAsk: "Que preguntar", expectedAnswer: "Respuesta esperada", observations: "Observaciones", actions: "Acciones", rubricObservationPlaceholder: "Respuesta, criterio, excepcion o nota...", fileVault: "Boveda de archivos", vaultHelp: "Arrastra archivos para conservar sus nombres dentro del segmento o pega un enlace de Drive / SharePoint abajo.", browse: "Explorar", attachmentLinks: "Archivos y enlaces", segmentDetails: "Detalles del segmento", noLanes: "Aun no hay rutas en este segmento.", workbookHelp: "Esta guia explica la informacion solicitada. No reemplaza instrucciones especificas del cliente.", language: "Idioma", markAllRequired: "Requerir todos", clearRequired: "Limpiar grupo"
   }
 };
+
+Object.assign(UI_COPY.en, {
+  segmentTemplateReady: "Segment loaded. You can download its template or import an updated workbook.",
+  segmentTemplateNeedsSegment: "Select an operating segment to enable its template.",
+  segmentTemplateNeedsToken: "Open a signed RFI link to load a segment template."
+});
+Object.assign(UI_COPY.es, {
+  segmentTemplateReady: "Segmento cargado. Puedes descargar su template o importar un libro actualizado.",
+  segmentTemplateNeedsSegment: "Selecciona un segmento operativo para habilitar su template.",
+  segmentTemplateNeedsToken: "Abre un enlace RFI firmado para cargar un template de segmento."
+});
 
 const RFI_HELP = {
   account: { en: ["Account overview", "Identifies the customer, accountable contact, and the procurement scope. Keep this brief and operational."], es: ["Resumen de cuenta", "Identifica al cliente, contacto responsable y alcance de procurement. Mantenlo breve y operativo."] },
@@ -1215,6 +1227,14 @@ function activeRfiSegment() {
     || makeSegmentChecklist(0, state.activeSegmentKey);
 }
 
+function hasLoadedActiveRfiSegment() {
+  return Boolean(
+    token
+      && !state.loading
+      && state.segmentChecklists.some((segment) => segment.segment_key === state.activeSegmentKey)
+  );
+}
+
 function syncSegmentTemplateName() {
   const name = cleanText(els.segmentTemplateName?.value);
   if (!name) return;
@@ -1549,7 +1569,8 @@ async function downloadRfiTemplate() {
 
 async function downloadRfiSegmentTemplate() {
   const ExcelJS = await getExcelJs();
-  const segment = activeRfiSegment();
+  const segment = hasLoadedActiveRfiSegment() ? activeRfiSegment() : null;
+  if (!segment) throw new Error("Open a signed RFI link and select an operating segment before downloading its template.");
   const segmentKey = cleanText(segment.segment_key) || "crossborder";
   const segmentName = cleanText(els.segmentTemplateName?.value) || segment.segment_name || optionLabel(SEGMENT_OPTIONS, segmentKey) || segmentKey;
   const workbook = new ExcelJS.Workbook();
@@ -2503,6 +2524,7 @@ function clientCompleteness(rfi = null) {
 
 function setReadonlyMode() {
   const readonly = state.submitted;
+  const segmentTemplateReady = hasLoadedActiveRfiSegment();
   document.querySelectorAll(".customer-rfi-shell input, .customer-rfi-shell select, .customer-rfi-shell textarea").forEach((element) => {
     element.disabled = readonly;
   });
@@ -2513,6 +2535,17 @@ function setReadonlyMode() {
   if (els.submit) {
     els.submit.disabled = readonly;
     els.submit.textContent = readonly ? "Submitted" : "Submit final RFI";
+  }
+  if (els.downloadSegmentTemplate) els.downloadSegmentTemplate.disabled = readonly || !segmentTemplateReady;
+  if (els.importSegmentTemplate) els.importSegmentTemplate.disabled = readonly || !Boolean(token);
+  if (els.segmentTemplateName) els.segmentTemplateName.disabled = readonly || !segmentTemplateReady;
+  if (els.importAsNewSegment) els.importAsNewSegment.disabled = readonly || !Boolean(token);
+  if (els.segmentTemplateState) {
+    const copyKey = segmentTemplateReady
+      ? "segmentTemplateReady"
+      : token ? "segmentTemplateNeedsSegment" : "segmentTemplateNeedsToken";
+    els.segmentTemplateState.textContent = ui(copyKey);
+    els.segmentTemplateState.dataset.tone = segmentTemplateReady ? "ready" : token ? "muted" : "error";
   }
 }
 
@@ -2738,6 +2771,7 @@ function normalizeInitialRows(data) {
 
 async function load() {
   if (!token) {
+    render();
     setStatus("Customer RFI token is missing.", "error");
     return;
   }
@@ -2917,6 +2951,7 @@ function initEvents() {
   });
   els.downloadSegmentTemplate?.addEventListener("click", async () => {
     try {
+      if (!hasLoadedActiveRfiSegment()) throw new Error("Open a signed RFI link and select an operating segment before downloading its template.");
       syncSegmentTemplateName();
       collectRfi();
       setStatus(state.locale === "es" ? "Generando template del segmento..." : "Generating segment template...");
