@@ -184,6 +184,60 @@
   font-size: .63rem;
 }
 
+.public-rfi-page .rfi-segment-template-bar {
+  display: grid;
+  grid-template-columns: minmax(190px, 1fr) auto auto auto minmax(220px, 1.5fr);
+  align-items: end;
+  gap: 6px;
+  margin: 6px 0 8px;
+  padding: 6px 8px;
+  border: 1px solid #d7e2e8;
+  border-radius: 5px;
+  background: #f7fafb;
+}
+
+.public-rfi-page .rfi-segment-template-bar label {
+  min-width: 0;
+  color: #385264;
+  font-size: .65rem;
+  font-weight: 800;
+}
+
+.public-rfi-page .rfi-segment-template-bar input[type="text"] {
+  width: 100%;
+  min-height: 27px;
+  margin-top: 3px;
+  padding: 4px 6px;
+  font-size: .72rem;
+}
+
+.public-rfi-page .rfi-segment-template-bar button {
+  min-height: 27px;
+  padding: 4px 8px;
+  font-size: .67rem;
+  white-space: nowrap;
+}
+
+.public-rfi-page .rfi-segment-template-bar .rfi-template-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 27px;
+  white-space: nowrap;
+}
+
+.public-rfi-page .rfi-segment-template-bar .rfi-template-checkbox input {
+  margin: 0;
+}
+
+.public-rfi-page .rfi-segment-template-help {
+  align-self: center;
+  margin: 0;
+  color: #617583;
+  font-size: .66rem;
+  line-height: 1.25;
+}
+
 .public-rfi-page .rfi-workspace-view-toggle button {
   min-height: 28px;
   padding: 4px 10px;
@@ -506,5 +560,240 @@
   .public-rfi-page .rfi-segment-meta,
   .public-rfi-page .rfi-file-vault {
     grid-template-columns: 1fr;
+  }
+
+  .public-rfi-page .rfi-segment-template-bar {
+    grid-template-columns: 1fr 1fr;
+    align-items: center;
+  }
+
+  .public-rfi-page .rfi-segment-template-help {
+    grid-column: 1 / -1;
+  }
+}
+
+/* Final RFI readability pass. The shared app stylesheet uses field-help as a
+   compact tooltip/icon. RFI uses it as section copy, so keep it full-width. */
+.public-rfi-page .customer-rfi-card,
+.public-rfi-page .rfi-segment-workspace,
+.public-rfi-page .rfi-route-card,
+.public-rfi-page .rfi-rubrics-card,
+.public-rfi-page .rfi-files-card,
+.public-rfi-page .rfi-section-card {
+  min-width: 0;
+}
+
+.public-rfi-page .split-heading.compact,
+.public-rfi-page .rfi-section-heading {
+  display: flex !important;
+  width: 100%;
+  min-width: 0;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.public-rfi-page .split-heading.compact > div:first-child,
+.public-rfi-page .rfi-section-heading > div:first-child,
+.public-rfi-page .rfi-wizard-copy {
+  display: block;
+  width: auto;
+  min-width: 0;
+  max-width: none;
+  flex: 1 1 auto;
+}
+
+.public-rfi-page .split-heading.compact .field-help,
+.public-rfi-page .rfi-section-heading .field-help,
+.public-rfi-page .rfi-wizard-copy > span:not(.eyebrow),
+.public-rfi-page .rfi-help-content p {
+  display: block !important;
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+  height: auto;
+  margin: 2px 0 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #617583;
+  font-size: .72rem;
+  font-weight: 500;
+  line-height: 1.35;
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.public-rfi-page .rfi-heading-actions,
+.public-rfi-page .rfi-section-heading > .rfi-heading-actions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 5px;
+  min-width: max-content;
+}
+
+.public-rfi-page .rfi-route-card .split-heading.compact,
+.public-rfi-page .rfi-rubrics-card .split-heading.compact {
+  padding-bottom: 2px;
+  border-bottom: 1px solid #e1e9ed;
+}
+
+.public-rfi-page .rfi-route-card .field-help,
+.public-rfi-page .rfi-rubrics-card .field-help {
+  max-width: 72rem;
+}
+
+.public-rfi-page .rfi-route-scroll,
+.public-rfi-page .rfi-checklist-table-wrap {
+  min-width: 0;
+  border: 1px solid #d7e2e8;
+  border-radius: 5px;
+  background: #f8fafb;
+  scrollbar-gutter: stable both-edges;
+}
+
+.public-rfi-page .customer-rfi-lane-table {
+  width: max-content;
+  min-width: 2400px;
+  table-layout: fixed;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.public-rfi-page .customer-rfi-lane-table .rfi-route-column-head th {
+  height: 42px;
+  max-height: 42px;
+  padding: 3px 4px;
+  vertical-align: middle;
+  white-space: normal;
+}
+
+.public-rfi-page .customer-rfi-lane-table td {
+  height: 28px;
+  padding: 2px 3px;
+  vertical-align: middle;
+}
+
+.public-rfi-page .customer-rfi-lane-table input,
+.public-rfi-page .customer-rfi-lane-table select,
+.public-rfi-page .customer-rfi-lane-table textarea {
+  max-width: 100%;
+  min-height: 23px;
+  height: 23px;
+  padding: 3px 5px;
+  font-size: .67rem;
+  line-height: 1.15;
+}
+
+.public-rfi-page .customer-rfi-lane-table textarea {
+  height: 26px;
+  min-height: 26px;
+  line-height: 1.2;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.public-rfi-page .customer-rfi-lane-table textarea:focus {
+  height: 58px;
+}
+
+.public-rfi-page .rfi-rubric-group > summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  min-width: 0;
+  min-height: 38px;
+  padding: 5px 8px;
+}
+
+.public-rfi-page .rfi-rubric-group-copy {
+  display: block;
+  min-width: 0;
+}
+
+.public-rfi-page .rfi-rubric-group-copy strong,
+.public-rfi-page .rfi-rubric-group-copy small {
+  display: block;
+  max-width: none;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.public-rfi-page .rfi-rubric-group-copy strong {
+  font-size: .74rem;
+  line-height: 1.2;
+}
+
+.public-rfi-page .rfi-rubric-group-copy small {
+  margin-top: 2px;
+  color: #607482;
+  font-size: .66rem;
+  line-height: 1.25;
+}
+
+.public-rfi-page .rfi-checklist-table {
+  width: 100%;
+  min-width: 980px;
+  table-layout: fixed;
+  font-size: .68rem;
+}
+
+.public-rfi-page .rfi-checklist-table th,
+.public-rfi-page .rfi-checklist-table td {
+  height: 30px;
+  padding: 4px 6px;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+  vertical-align: middle;
+}
+
+.public-rfi-page .rfi-checklist-table th {
+  height: 34px;
+  white-space: normal;
+}
+
+.public-rfi-page .rfi-checklist-table textarea {
+  min-height: 25px;
+  height: 25px;
+  max-height: 72px;
+  padding: 4px 5px;
+  font-size: .67rem;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.public-rfi-page .rfi-checklist-table textarea:focus {
+  height: 58px;
+}
+
+.public-rfi-page .rfi-action-cell {
+  width: 68px;
+  min-width: 68px;
+  padding-inline: 4px !important;
+  text-align: center;
+}
+
+.public-rfi-page .rfi-action-cell button {
+  min-height: 24px;
+  padding: 3px 5px;
+  font-size: .62rem;
+}
+
+@media (max-width: 900px) {
+  .public-rfi-page .split-heading.compact,
+  .public-rfi-page .rfi-section-heading {
+    display: block !important;
+  }
+
+  .public-rfi-page .rfi-heading-actions,
+  .public-rfi-page .rfi-section-heading > .rfi-heading-actions {
+    margin-top: 6px;
+    justify-content: flex-start;
   }
 }

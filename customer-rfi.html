@@ -38,10 +38,12 @@
         </summary>
         <div class="rfi-wizard-actions" aria-label="RFI operating segment presets">
           <button type="button" class="secondary small-button" data-rfi-wizard-segment="crossborder" data-i18n="wizardCrossborder">Crossborder D2D</button>
-          <button type="button" class="secondary small-button" data-rfi-wizard-segment="mx_domestic" data-i18n="wizardMexico">Mexico domestic</button>
-          <button type="button" class="secondary small-button" data-rfi-wizard-segment="us_domestic" data-i18n="wizardUs">US domestic</button>
-          <button type="button" class="secondary small-button" data-rfi-wizard-segment="expedited" data-i18n="wizardExpedited">Expedited / time critical</button>
-          <button type="button" class="secondary small-button" data-rfi-wizard-segment="dedicated" data-i18n="wizardDedicated">Dedicated</button>
+          <button type="button" class="secondary small-button" data-rfi-wizard-segment="local_ftl" data-i18n="wizardLocal">Local FTL</button>
+          <button type="button" class="secondary small-button" data-rfi-wizard-segment="regional_ftl" data-i18n="wizardRegional">Regional FTL</button>
+          <button type="button" class="secondary small-button" data-rfi-wizard-segment="national_ftl" data-i18n="wizardNational">National FTL</button>
+          <button type="button" class="secondary small-button" data-rfi-wizard-segment="expedited" data-i18n="wizardExpedited">Expedited</button>
+          <button type="button" class="secondary small-button" data-rfi-wizard-segment="time_critical" data-i18n="wizardTimeCritical">Time critical</button>
+          <button type="button" class="secondary small-button" data-rfi-wizard-segment="port_drayage_mx" data-i18n="wizardPort">Port drayage</button>
         </div>
       </details>
 
@@ -70,12 +72,14 @@
             <button type="button" class="rfi-help-trigger" data-rfi-help="segments" title="About operating segments" aria-label="About operating segments">&#128214;</button>
           </div>
           <div class="checkbox-grid rfi-segment-selector">
-            <label><input type="checkbox" name="rfi-segment" value="crossborder" /> Crossborder</label>
-            <label><input type="checkbox" name="rfi-segment" value="mx_domestic" /> Mexico domestic</label>
-            <label><input type="checkbox" name="rfi-segment" value="us_domestic" /> US domestic</label>
-            <label><input type="checkbox" name="rfi-segment" value="expedited" /> Expedited</label>
-            <label><input type="checkbox" name="rfi-segment" value="time_critical" /> Time critical</label>
-            <label><input type="checkbox" name="rfi-segment" value="dedicated" /> Dedicated</label>
+            <label><input type="checkbox" name="rfi-segment" value="crossborder" /> <span data-i18n="segmentCrossborder">Crossborder FTL</span></label>
+            <label><input type="checkbox" name="rfi-segment" value="local_ftl" /> <span data-i18n="segmentLocal">Local FTL</span></label>
+            <label><input type="checkbox" name="rfi-segment" value="regional_ftl" /> <span data-i18n="segmentRegional">Regional FTL</span></label>
+            <label><input type="checkbox" name="rfi-segment" value="national_ftl" /> <span data-i18n="segmentNational">National FTL</span></label>
+            <label><input type="checkbox" name="rfi-segment" value="expedited" /> <span data-i18n="segmentExpedited">Expedited Ground</span></label>
+            <label><input type="checkbox" name="rfi-segment" value="time_critical" /> <span data-i18n="segmentTimeCritical">Time Critical Ground</span></label>
+            <label><input type="checkbox" name="rfi-segment" value="port_drayage_us" /> <span data-i18n="segmentPortUs">Port Drayage US</span></label>
+            <label><input type="checkbox" name="rfi-segment" value="port_drayage_mx" /> <span data-i18n="segmentPortMx">Port Drayage MX</span></label>
           </div>
           <label class="rfi-compact-textarea"><span data-i18n="crossborderDetails">Crossborder details</span><textarea id="rfi-crossborder" rows="2" placeholder="Border cities, customs model, import/export notes"></textarea></label>
         </article>
@@ -98,6 +102,17 @@
             <button type="button" data-rfi-workspace-view="files" data-i18n="workspaceFiles">Files</button>
           </div>
         </div>
+        <div class="rfi-segment-template-bar">
+          <label class="rfi-segment-template-name">
+            <span data-i18n="segmentTemplateName">Segment name</span>
+            <input id="rfi-segment-template-name" type="text" placeholder="Crossborder direct / Intra-Mex" />
+          </label>
+          <button id="download-rfi-segment-template" type="button" class="secondary" data-i18n="downloadSegmentTemplate">Download segment template</button>
+          <button id="import-rfi-segment-template" type="button" class="secondary" data-i18n="importSegmentTemplate">Import segment template</button>
+          <input id="import-rfi-segment-template-file" type="file" accept=".xlsx,.xls,.csv" hidden />
+          <label class="rfi-template-checkbox"><input id="rfi-import-as-new-segment" type="checkbox" /> <span data-i18n="importAsNewSegment">Create as new segment</span></label>
+          <span class="field-help rfi-segment-template-help" data-i18n="segmentTemplateHelp">This workbook contains only the active segment: routes, rubrics, instructions, and catalog.</span>
+        </div>
       </section>
 
       <section class="customer-rfi-card rfi-route-card" data-rfi-workspace-panel="lanes">
@@ -109,6 +124,7 @@
           </div>
           <div class="rfi-heading-actions">
             <button type="button" class="rfi-help-trigger" data-rfi-help="routes" title="About route schedule" aria-label="About route schedule">&#128214;</button>
+            <button id="download-rfi-template" type="button" class="secondary" data-i18n="downloadTemplate">Download template</button>
             <button id="import-rfi-workbook" type="button" data-i18n="importWorkbook">Import XLSX</button>
             <input id="import-rfi-workbook-file" type="file" accept=".xlsx,.xls,.csv" hidden />
             <button id="add-lane-row" type="button" data-i18n="addLane">Add lane</button>
