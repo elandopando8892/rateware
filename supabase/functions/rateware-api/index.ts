@@ -8681,7 +8681,7 @@ function normalizeOutreachTemplate(input: Record<string, unknown>) {
     whatsapp_body: cleanText(input.whatsapp_body || input.whatsapp_text),
     whatsapp_group_body: cleanText(input.whatsapp_group_body || input.group_body || input.whatsapp_body || input.whatsapp_text),
     meta_template_name: cleanText(input.meta_template_name || input.whatsapp_template_name),
-    meta_template_language: cleanText(input.meta_template_language || input.whatsapp_template_language || "en_US"),
+    meta_template_language: cleanText(input.meta_template_language || input.whatsapp_template_language),
     meta_template_namespace: cleanText(input.meta_template_namespace),
     meta_template_status: cleanText(input.meta_template_status),
     meta_template_category: cleanText(input.meta_template_category),
@@ -11374,10 +11374,11 @@ function whatsappMetaStatusMessage(value: unknown) {
 }
 
 function whatsappMetaLanguage(template: Record<string, unknown>) {
-  const inferred = outreachTemplateLanguage(template) === "es" ? "es_MX" : "en_US";
-  const explicit = cleanText(template.meta_template_language);
-  if (inferred === "es_MX") return inferred;
-  if (explicit && /^[a-z]{2}_[A-Z]{2}$/.test(explicit)) return explicit;
+  const inferred = outreachTemplateLanguage(template) === "es" ? "es_MX" : "en";
+  const explicit = cleanText(template.meta_template_language).replace(/-/g, "_");
+  if (explicit && /^[a-z]{2}(_[A-Z]{2})?$/.test(explicit)) {
+    return explicit.toLowerCase().startsWith("en") ? "en" : explicit;
+  }
   return inferred;
 }
 
@@ -11417,7 +11418,7 @@ function whatsappStableRfxTemplate(language: string) {
   return {
     // This is the approved HeyMarksman production template name.
     name: "rateware_rfx_invitation_en",
-    language: "en_US",
+    language: "en",
     body: [
       "Hello {{1}},",
       "You are invited to quote {{2}} with {{3}} lane(s). The response deadline is {{4}}.",
@@ -11455,6 +11456,21 @@ function whatsappTemplateLanguagesMatch(leftValue: unknown, rightValue: unknown)
   // `en_US`/`es_MX`. The stable RFx notifier only supports English and
   // Spanish, so matching by the language root is safe here.
   return left.split("_")[0] === right.split("_")[0];
+}
+
+function whatsappTemplateLanguageCandidates(value: unknown) {
+  const normalized = cleanText(value).replace(/-/g, "_") || "en";
+  const root = normalized.split("_")[0];
+  const candidates = [normalized];
+  if (root && root !== normalized) candidates.push(root);
+  if (root === "en" && !candidates.includes("en_US")) candidates.push("en_US");
+  if (root === "es" && !candidates.includes("es_MX")) candidates.push("es_MX");
+  return [...new Set(candidates.filter(Boolean))];
+}
+
+function isWhatsappTemplateTranslationError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error || "");
+  return message.includes("132001") || /translation/i.test(message);
 }
 
 function whatsappPlaceholderExample(key: string) {
@@ -11771,6 +11787,7 @@ async function syncWhatsappTemplates(
       .update({
         meta_template_id: cleanText(metaTemplate.id) || cleanText(mapping.meta_template_id),
         meta_template_name: cleanText(metaTemplate.name) || cleanText(mapping.meta_template_name),
+        meta_template_language: cleanText(metaTemplate.language) || cleanText(mapping.meta_template_language),
         meta_template_status: whatsappTemplateStatusFromRow(metaTemplate),
         meta_template_category: cleanText(metaTemplate.category) || cleanText(mapping.meta_template_category) || "UTILITY",
         meta_template_components: Array.isArray(metaTemplate.components) ? metaTemplate.components : mapping.meta_template_components,
@@ -13007,7 +13024,7 @@ async function metaSendWhatsappTemplate(
 ) {
   const to = normalizeWhatsappPhone(message.normalized_recipient_phone || message.recipient_phone);
   const templateName = cleanText(message.whatsapp_template_name);
-  const language = cleanText(message.whatsapp_template_language) || "en_US";
+  const language = cleanText(message.whatsapp_template_language) || "en";
   const metadata = objectRecord(message.metadata);
   const templateStatus = cleanText(metadata.whatsapp_template_status)
     ? whatsappMetaStatus(metadata.whatsapp_template_status)
@@ -13034,20 +13051,30 @@ async function metaSendWhatsappTemplate(
         }))
       }]
     : [];
-  return await whatsappGraphFetch(connection, `${connection.phoneNumberId}/messages`, {
-    method: "POST",
-    body: JSON.stringify({
-      messaging_product: "whatsapp",
-      recipient_type: "individual",
-      to,
-      type: "template",
-      template: {
-        name: templateName,
-        language: { code: language },
-        ...(components.length ? { components } : {})
-      }
-    })
-  });
+  const languages = whatsappTemplateLanguageCandidates(language);
+  let lastError: unknown = null;
+  for (const languageCode of languages) {
+    try {
+      return await whatsappGraphFetch(connection, `${connection.phoneNumberId}/messages`, {
+        method: "POST",
+        body: JSON.stringify({
+          messaging_product: "whatsapp",
+          recipient_type: "individual",
+          to,
+          type: "template",
+          template: {
+            name: templateName,
+            language: { code: languageCode },
+            ...(components.length ? { components } : {})
+          }
+        })
+      });
+    } catch (error) {
+      lastError = error;
+      if (!isWhatsappTemplateTranslationError(error)) throw error;
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error(String(lastError || "WhatsApp template send failed."));
 }
 
 async function updateWhatsappMessageFailure(
@@ -15776,7 +15803,50 @@ Deno.serve(async (request) => {
       }
       const result = await query;
       if (result.error) throw result.error;
-      return jsonResponse({ rows: result.data || [], total: result.count || 0, limit, offset });
+      const shippers = (result.data || []) as Record<string, unknown>[];
+      const shipperIds = shippers.map((row) => cleanText(row.id)).filter((value): value is string => Boolean(value));
+      if (!shipperIds.length) return jsonResponse({ rows: [], total: result.count || 0, limit, offset });
+
+      const actionRows: Record<string, unknown>[] = [];
+      for (const shipperIdChunk of chunkValues(shipperIds, 250)) {
+        const actions = await supabase
+          .from("shipper_account_actions")
+          .select("shipper_id,title,status,priority,due_date,created_at")
+          .eq("owner_email", user.owner_email)
+          .in("shipper_id", shipperIdChunk)
+          .in("status", ["open", "in_progress"])
+          .order("due_date", { ascending: true, nullsFirst: false })
+          .order("created_at", { ascending: true });
+        if (actions.error) throw actions.error;
+        actionRows.push(...((actions.data || []) as Record<string, unknown>[]));
+      }
+
+      const actionsByShipper = new Map<string, Record<string, unknown>[]>();
+      for (const action of actionRows) {
+        const shipperId = cleanText(action.shipper_id);
+        if (!shipperId) continue;
+        const actions = actionsByShipper.get(shipperId) || [];
+        actions.push(action);
+        actionsByShipper.set(shipperId, actions);
+      }
+      const today = new Date().toISOString().slice(0, 10);
+      const rows = shippers.map((shipper) => {
+        const actions = actionsByShipper.get(cleanText(shipper.id) || "") || [];
+        const nextAction = actions[0] || null;
+        const dueActionCount = actions.filter((action) => {
+          const dueDate = cleanText(action.due_date);
+          return Boolean(dueDate && dueDate <= today);
+        }).length;
+        return {
+          ...shipper,
+          open_action_count: actions.length,
+          due_action_count: dueActionCount,
+          next_action: cleanText(nextAction?.title),
+          next_due_date: cleanText(nextAction?.due_date),
+          next_action_priority: cleanText(nextAction?.priority)
+        };
+      });
+      return jsonResponse({ rows, total: result.count || 0, limit, offset });
     }
 
     if (body.action === "list_shipper_duplicates") {
@@ -18448,7 +18518,7 @@ Deno.serve(async (request) => {
         const doNotContact = cleanBoolean(vendor.whatsapp_do_not_contact);
         const normalizedRecipientPhone = normalizeWhatsappPhone(vendor.whatsapp_phone);
         const whatsappTemplateName = cleanText(whatsappMapping?.meta_template_name || template.meta_template_name);
-        const whatsappTemplateLanguage = cleanText(whatsappMapping?.meta_template_language || template.meta_template_language) || "en_US";
+        const whatsappTemplateLanguage = cleanText(whatsappMapping?.meta_template_language || template.meta_template_language) || whatsappMetaLanguage(template);
         const whatsappTemplateStatus = whatsappMetaStatus(whatsappMapping?.meta_template_status || template.meta_template_status);
         const whatsappParameters = whatsappTemplateParameters(whatsappMapping, context);
 

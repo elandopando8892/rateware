@@ -343,6 +343,10 @@ assert.match(apiSource, /sync_whatsapp_templates/, "Rateware API should expose W
 assert.match(apiSource, /rateware_rfx_invitation_en/, "WhatsApp RFx delivery should use the approved stable English Meta template name");
 assert.match(apiSource, /whatsappTemplateNamesMatch/, "WhatsApp template sync should reconcile legacy and current stable RFx template aliases");
 assert.match(apiSource, /whatsappTemplateLanguagesMatch/, "WhatsApp template sync should reconcile Meta language roots such as en and en_US");
+assert.match(apiSource, /name: "rateware_rfx_invitation_en"[\s\S]+language: "en"/, "WhatsApp approved English RFx notifier should send with Meta's English language code");
+assert.match(apiSource, /meta_template_language: cleanText\(metaTemplate\.language\)/, "WhatsApp template sync should persist Meta's real template language code");
+assert.match(apiSource, /whatsappTemplateLanguageCandidates/, "WhatsApp sending should retry equivalent Meta language codes for approved templates");
+assert.match(apiSource, /message\.includes\("132001"\)/, "WhatsApp sending should recognize Meta translation mismatch errors");
 assert.match(apiSource, /normalized\.startsWith\("ACTIVE_"\)[\s\S]+APPROVED/, "WhatsApp Active quality-pending templates should be treated as approved for sending");
 assert.match(apiSource, /replace\(\s*\/\[\^A-Z0-9\]\+\/g,\s*"_"\s*\)/, "WhatsApp Meta status normalization should handle punctuation and unicode separators");
 assert.match(apiSource, /function whatsappTemplateStatusFromRow[\s\S]+quality_score[\s\S]+quality_rating/, "WhatsApp template sync should derive sendable status from Meta template row variants");

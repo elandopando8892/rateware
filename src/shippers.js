@@ -652,6 +652,18 @@ function renderSelection() {
 function shipperRow(row) {
   const headquarters = [row.headquarters_city, row.headquarters_state, row.headquarters_country].filter(Boolean).join(", ") || "-";
   const contact = row.primary_contact_name || row.primary_contact_email || "Missing contact";
+  const nextAction = String(row.next_action || "").trim();
+  const actionDue = cadenceDueState(row.next_due_date);
+  const openActionCount = Number(row.open_action_count || 0);
+  const dueActionCount = Number(row.due_action_count || 0);
+  const actionMeta = dueActionCount > 0
+    ? `${dueActionCount} due · ${openActionCount} open`
+    : openActionCount > 0
+      ? `${openActionCount} open`
+      : "No open actions";
+  const actionCell = nextAction
+    ? `<button type="button" class="shipper-directory-action" data-open-shipper="${escapeHtml(row.id)}" data-open-shipper-tab="actions" title="Open account actions">${escapeHtml(nextAction)}</button><small><span class="shipper-cadence-due" data-tone="${escapeHtml(actionDue.tone)}">${escapeHtml(actionDue.label)}</span> ${escapeHtml(actionMeta)}</small>`
+    : `<button type="button" class="shipper-directory-action is-empty" data-open-shipper="${escapeHtml(row.id)}" data-open-shipper-tab="actions">Set next action</button><small>${escapeHtml(actionMeta)}</small>`;
   return `
     <tr data-shipper-id="${escapeHtml(row.id)}">
       <td class="select-column"><input type="checkbox" data-select-shipper="${escapeHtml(row.id)}" ${state.selected.has(row.id) ? "checked" : ""} aria-label="Select ${escapeHtml(row.shipper_name)}" /></td>
@@ -663,6 +675,7 @@ function shipperRow(row) {
       <td>${escapeHtml(humanLabel(row.relationship_stage))}</td>
       <td>${escapeHtml(row.industry || "-")}</td>
       <td><span>${escapeHtml(contact)}</span>${row.primary_contact_email && row.primary_contact_name ? `<small>${escapeHtml(row.primary_contact_email)}</small>` : ""}</td>
+      <td class="shipper-directory-action-cell">${actionCell}</td>
       <td>${escapeHtml(headquarters)}</td>
       <td>${escapeHtml(row.account_owner_email || "-")}</td>
       <td>${formatDate(row.updated_at)}</td>
@@ -685,7 +698,7 @@ function renderDirectory() {
 
 function renderLoadingRows() {
   elements.tableBody.innerHTML = Array.from({ length: 7 }, () => `
-    <tr class="shipper-loading-row"><td></td><td colspan="8"><span></span></td></tr>`).join("");
+    <tr class="shipper-loading-row"><td></td><td colspan="9"><span></span></td></tr>`).join("");
   elements.empty.classList.add("hidden");
 }
 
