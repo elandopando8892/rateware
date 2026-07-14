@@ -186,9 +186,12 @@
 
 .public-rfi-page .rfi-segment-template-bar {
   display: grid;
-  grid-template-columns: minmax(190px, 1fr) auto auto auto minmax(220px, 1.5fr);
+  grid-template-columns: minmax(180px, 1fr) auto auto minmax(150px, 1.1fr);
+  grid-template-areas:
+    "name download import options"
+    "copy copy copy copy";
   align-items: end;
-  gap: 6px;
+  gap: 6px 8px;
   margin: 6px 0 8px;
   padding: 6px 8px;
   border: 1px solid #d7e2e8;
@@ -202,6 +205,10 @@
   font-size: .65rem;
   font-weight: 800;
 }
+
+.public-rfi-page .rfi-segment-template-name { grid-area: name; }
+.public-rfi-page #download-rfi-segment-template { grid-area: download; }
+.public-rfi-page #import-rfi-segment-template { grid-area: import; }
 
 .public-rfi-page .rfi-segment-template-bar input[type="text"] {
   width: 100%;
@@ -219,11 +226,21 @@
 }
 
 .public-rfi-page .rfi-segment-template-bar .rfi-template-checkbox {
+  grid-area: options;
   display: inline-flex;
   align-items: center;
   gap: 4px;
   min-height: 27px;
   white-space: nowrap;
+}
+
+.public-rfi-page .rfi-segment-template-copy {
+  grid-area: copy;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 3px 10px;
+  min-width: 0;
 }
 
 .public-rfi-page .rfi-segment-template-bar .rfi-template-checkbox input {
@@ -233,17 +250,19 @@
 .public-rfi-page .rfi-segment-template-help {
   align-self: center;
   margin: 0;
+  min-width: 0;
   color: #617583;
   font-size: .66rem;
   line-height: 1.25;
+  overflow-wrap: anywhere;
 }
 
 .public-rfi-page .rfi-segment-template-state {
-  grid-column: 1 / -1;
   min-height: 15px;
   color: #617583;
   font-size: .66rem;
   line-height: 1.25;
+  overflow-wrap: anywhere;
 }
 
 .public-rfi-page .rfi-segment-template-state[data-tone="ready"] { color: #08734d; }
@@ -575,11 +594,16 @@
 
   .public-rfi-page .rfi-segment-template-bar {
     grid-template-columns: 1fr 1fr;
+    grid-template-areas:
+      "name name"
+      "download import"
+      "options options"
+      "copy copy";
     align-items: center;
   }
 
-  .public-rfi-page .rfi-segment-template-help {
-    grid-column: 1 / -1;
+  .public-rfi-page .rfi-segment-template-bar .rfi-template-checkbox {
+    justify-self: start;
   }
 }
 

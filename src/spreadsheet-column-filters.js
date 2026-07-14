@@ -31,6 +31,28 @@ function uniqueValues(rows, field, getValues) {
   return [...seen.values()].sort((a, b) => a.localeCompare(b));
 }
 
+function normalizeMenuValuesResponse(response) {
+  if (Array.isArray(response)) {
+    const values = response.map(valueLabel).sort((a, b) => a.localeCompare(b));
+    return {
+      values,
+      total: values.length,
+      databaseCount: values.length,
+      hardLimitReached: false,
+      remote: false
+    };
+  }
+  const rawValues = Array.isArray(response?.values) ? response.values : [];
+  const values = rawValues.map(valueLabel).sort((a, b) => a.localeCompare(b));
+  return {
+    values,
+    total: Number(response?.total ?? values.length),
+    databaseCount: Number(response?.database_count ?? response?.databaseCount ?? response?.total ?? values.length),
+    hardLimitReached: Boolean(response?.hard_limit_reached ?? response?.hardLimitReached),
+    remote: Boolean(response)
+  };
+}
+
 export function initSpreadsheetColumnFilters({ table, columns = [], getRows, getValues, getMenuValues = null, onChange, scope = "sheet" }) {
   if (!table || !columns.length) return null;
 
@@ -43,6 +65,7 @@ export function initSpreadsheetColumnFilters({ table, columns = [], getRows, get
   let activeMenu = null;
   let menuRequestId = 0;
   let searchTimer = 0;
+  let searchRevision = 0;
 
   filterRow.className = "sheet-column-filter-row";
   filterRow.innerHTML = columns.map((column) => {
@@ -111,10 +134,10 @@ export function initSpreadsheetColumnFilters({ table, columns = [], getRows, get
 
   async function menuValues(field, search = "") {
     if (typeof getMenuValues === "function") {
-      const values = await getMenuValues(field, search);
-      return Array.isArray(values) ? values.map(valueLabel).sort((a, b) => a.localeCompare(b)) : [];
+      return normalizeMenuValuesResponse(await getMenuValues(field, search));
     }
-    return uniqueValues(getRows(), field, getValues);
+    const values = uniqueValues(getRows(), field, getValues);
+    return normalizeMenuValuesResponse(values);
   }
 
   function renderLoadingMenu(field) {
@@ -145,13 +168,21 @@ export function initSpreadsheetColumnFilters({ table, columns = [], getRows, get
     const summary = popover.querySelector("[data-sheet-filter-summary]");
     if (!summary) return;
     const selectedCount = activeMenu.draft.size;
-    const totalCount = activeMenu.allKeys.length;
+    const loadedCount = activeMenu.allKeys.length;
     const visibleCount = menuVisibleValues(activeMenu.search).length;
     const matchingCount = matchingMenuValues(activeMenu.search).length;
     const shownText = matchingCount > visibleCount
       ? `${visibleCount.toLocaleString()} of ${matchingCount.toLocaleString()} shown`
       : `${visibleCount.toLocaleString()} shown`;
-    summary.textContent = `${selectedCount.toLocaleString()} of ${totalCount.toLocaleString()} selected | ${shownText} | Applies to all filtered database rows`;
+    const databaseTotal = Math.max(Number(activeMenu.total || 0), loadedCount);
+    const loadedText = activeMenu.remote
+      ? `${loadedCount.toLocaleString()} of ${databaseTotal.toLocaleString()} database value(s) loaded`
+      : `${loadedCount.toLocaleString()} value(s) from loaded rows`;
+    const searchHint = activeMenu.remote && (databaseTotal > loadedCount || activeMenu.hardLimitReached)
+      ? " | Search to narrow additional database values"
+      : "";
+    const scanHint = activeMenu.hardLimitReached ? " | Database scan capped" : "";
+    summary.textContent = `${selectedCount.toLocaleString()} of ${loadedCount.toLocaleString()} loaded selected | ${shownText} | ${loadedText}${searchHint}${scanHint} | Applies to all filtered database rows`;
   }
 
   function focusSearchAtEnd() {
@@ -188,6 +219,27 @@ export function initSpreadsheetColumnFilters({ table, columns = [], getRows, get
     updateDraftSummary();
   }
 
+  function renderOptionLoading(message = "Loading matching database values...") {
+    const options = popover.querySelector("[data-sheet-filter-options]");
+    if (!options) return;
+    options.innerHTML = `<p class="muted-text">${escapeHtml(message)}</p>`;
+  }
+
+  function applyMenuResult(menuResult, { preserveDraft = true } = {}) {
+    if (!activeMenu) return;
+    const values = menuResult.values;
+    const allKeys = values.map(valueKey);
+    activeMenu.values = values;
+    activeMenu.allKeys = allKeys;
+    activeMenu.total = menuResult.total;
+    activeMenu.databaseCount = menuResult.databaseCount;
+    activeMenu.hardLimitReached = menuResult.hardLimitReached;
+    activeMenu.remote = menuResult.remote;
+    if (!preserveDraft || activeMenu.defaultAll && !activeMenu.dirty) {
+      activeMenu.draft = new Set(allKeys);
+    }
+  }
+
   function renderMenuContent(search = activeMenu?.search || "") {
     if (!activeMenu) return;
     activeMenu.search = search;
@@ -204,7 +256,7 @@ export function initSpreadsheetColumnFilters({ table, columns = [], getRows, get
       </div>
       <input class="sheet-filter-search" type="search" placeholder="Search values..." value="${escapeHtml(search)}" />
       <div class="sheet-filter-popover-actions">
-        <button type="button" data-sheet-filter-all>Select all</button>
+        <button type="button" data-sheet-filter-all>Select loaded</button>
         <button type="button" data-sheet-filter-none>Clear all</button>
       </div>
       <div class="sheet-filter-popover-actions sheet-filter-visible-actions">
@@ -233,8 +285,9 @@ export function initSpreadsheetColumnFilters({ table, columns = [], getRows, get
     popover.style.top = `${rect.bottom + 4}px`;
     renderLoadingMenu(field);
 
-    const values = await menuValues(field, "");
+    const menuResult = await menuValues(field, "");
     if (requestId !== menuRequestId) return;
+    const values = menuResult.values;
     const active = selected(field);
     const allKeys = values.map(valueKey);
     activeMenu = {
@@ -242,6 +295,12 @@ export function initSpreadsheetColumnFilters({ table, columns = [], getRows, get
       column: filterableColumns.find((item) => item.key === field),
       values,
       allKeys,
+      total: menuResult.total,
+      databaseCount: menuResult.databaseCount,
+      hardLimitReached: menuResult.hardLimitReached,
+      remote: menuResult.remote,
+      defaultAll: !active.has("__none__") && !active.size,
+      dirty: false,
       draft: active.has("__none__")
         ? new Set()
         : active.size
@@ -277,11 +336,27 @@ export function initSpreadsheetColumnFilters({ table, columns = [], getRows, get
   popover.addEventListener("input", (event) => {
     const search = event.target.closest(".sheet-filter-search");
     if (!search) return;
+    const revision = ++searchRevision;
+    const query = search.value;
+    if (activeMenu) activeMenu.search = query;
     window.clearTimeout(searchTimer);
-    searchTimer = window.setTimeout(() => {
-      if (!activeMenu) return;
-      activeMenu.search = search.value;
-      renderOptionList(search.value);
+    searchTimer = window.setTimeout(async () => {
+      if (!activeMenu || revision !== searchRevision) return;
+      if (activeMenu.remote) {
+        const field = activeMenu.field;
+        renderOptionLoading();
+        try {
+          const menuResult = await menuValues(field, query);
+          if (!activeMenu || activeMenu.field !== field || revision !== searchRevision) return;
+          applyMenuResult(menuResult, { preserveDraft: true });
+        } catch {
+          if (!activeMenu || activeMenu.field !== field || revision !== searchRevision) return;
+          renderOptionLoading("Could not load matching database values.");
+          updateDraftSummary();
+          return;
+        }
+      }
+      renderOptionList(activeMenu.search);
     }, 120);
   });
 
@@ -290,11 +365,12 @@ export function initSpreadsheetColumnFilters({ table, columns = [], getRows, get
     if (event.key === "Escape") {
       event.preventDefault();
       menuRequestId += 1;
+      searchRevision += 1;
       popover.classList.add("hidden");
       activeMenu = null;
       return;
     }
-    if (event.key === "Enter") {
+    if (event.key === "Enter" && !event.target.matches(".sheet-filter-search")) {
       const applyButton = popover.querySelector("[data-sheet-filter-apply]");
       if (!applyButton) return;
       event.preventDefault();
@@ -311,6 +387,7 @@ export function initSpreadsheetColumnFilters({ table, columns = [], getRows, get
 
     if (event.target.closest("[data-sheet-filter-close], [data-sheet-filter-cancel]")) {
       menuRequestId += 1;
+      searchRevision += 1;
       popover.classList.add("hidden");
       activeMenu = null;
       return;
@@ -323,6 +400,7 @@ export function initSpreadsheetColumnFilters({ table, columns = [], getRows, get
       state.delete(field);
       updateButtons();
       menuRequestId += 1;
+      searchRevision += 1;
       popover.classList.add("hidden");
       activeMenu = null;
       onChange?.();
@@ -331,12 +409,14 @@ export function initSpreadsheetColumnFilters({ table, columns = [], getRows, get
 
     if (event.target.closest("[data-sheet-filter-all]")) {
       activeMenu.draft = new Set(activeMenu.allKeys);
+      activeMenu.dirty = true;
       renderOptionList(activeMenu.search);
       return;
     }
 
     if (event.target.closest("[data-sheet-filter-none]")) {
       activeMenu.draft = new Set();
+      activeMenu.dirty = true;
       renderOptionList(activeMenu.search);
       return;
     }
@@ -344,6 +424,7 @@ export function initSpreadsheetColumnFilters({ table, columns = [], getRows, get
     if (event.target.closest("[data-sheet-filter-visible-all]")) {
       const search = currentSearchValue();
       menuVisibleValues(search).forEach((value) => activeMenu.draft.add(valueKey(value)));
+      activeMenu.dirty = true;
       renderOptionList(search);
       return;
     }
@@ -351,16 +432,21 @@ export function initSpreadsheetColumnFilters({ table, columns = [], getRows, get
     if (event.target.closest("[data-sheet-filter-visible-none]")) {
       const search = currentSearchValue();
       menuVisibleValues(search).forEach((value) => activeMenu.draft.delete(valueKey(value)));
+      activeMenu.dirty = true;
       renderOptionList(search);
       return;
     }
 
     if (event.target.closest("[data-sheet-filter-apply]")) {
-      if (activeMenu.draft.size === activeMenu.allKeys.length) state.delete(field);
+      const allLoadedSelected = activeMenu.draft.size === activeMenu.allKeys.length
+        && activeMenu.allKeys.every((key) => activeMenu.draft.has(key));
+      if (!activeMenu.dirty && activeMenu.defaultAll) state.delete(field);
+      else if (!activeMenu.remote && allLoadedSelected) state.delete(field);
       else if (activeMenu.draft.size) state.set(field, new Set(activeMenu.draft));
       else state.set(field, new Set(["__none__"]));
       updateButtons();
       menuRequestId += 1;
+      searchRevision += 1;
       popover.classList.add("hidden");
       activeMenu = null;
       onChange?.();
@@ -371,6 +457,7 @@ export function initSpreadsheetColumnFilters({ table, columns = [], getRows, get
     if (!checkbox) return;
     if (checkbox.checked) activeMenu.draft.add(checkbox.dataset.sheetFilterValue);
     else activeMenu.draft.delete(checkbox.dataset.sheetFilterValue);
+    activeMenu.dirty = true;
     updateDraftSummary();
   });
 
@@ -378,6 +465,7 @@ export function initSpreadsheetColumnFilters({ table, columns = [], getRows, get
     if (popover.classList.contains("hidden")) return;
     if (popover.contains(event.target) || filterRow.contains(event.target)) return;
     menuRequestId += 1;
+    searchRevision += 1;
     popover.classList.add("hidden");
     activeMenu = null;
   });

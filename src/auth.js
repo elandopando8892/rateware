@@ -194,6 +194,7 @@ const SHELL_NAV_GROUPS = [
     title: "Source",
     items: [
       { id: "crm", code: "CM", label: "Carrier CRM", href: "./vendors.html" },
+      { id: "shipper-crm", code: "SM", label: "Shipper CRM", href: "./shipper-crm.html" },
       { id: "rfx-process", code: "RP", label: "RFx Process", href: "./rfx-process.html" },
       { id: "rfx", code: "BR", label: "Bid Room", href: "./rfx-events.html" },
       { id: "support", code: "VS", label: "Vendor Support", href: "./vendor-support.html" },
@@ -257,6 +258,11 @@ const PAGE_META = {
     title: "Carrier CRM",
     eyebrow: "Carrier master",
     crumbs: [{ label: "Source", href: "./app.html" }, { label: "Carrier CRM" }]
+  },
+  "shipper-crm": {
+    title: "Shipper CRM",
+    eyebrow: "Customer master",
+    crumbs: [{ label: "Source", href: "./app.html" }, { label: "Shipper CRM" }]
   },
   "rfx-process": {
     title: "RFx Process",

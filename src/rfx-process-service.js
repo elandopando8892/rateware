@@ -9,7 +9,10 @@ export async function createRfxProcessProject(project) {
 }
 
 export async function fetchRfxProcessProject(projectId) {
-  return await callRatewareApi("get_rfx_process_project", { project_id: projectId });
+  return await callRatewareApi("get_rfx_process_project", {
+    project_id: projectId,
+    app_origin: window.location.origin
+  });
 }
 
 export async function updateRfxProcessProject(projectId, patch) {
@@ -50,4 +53,8 @@ export async function launchRfxPackageToBidRoom(packageId, options = {}) {
 
 export async function createRfxAwardPackage(projectId, payload = {}) {
   return await callRatewareApi("create_rfx_award_package", { project_id: projectId, ...payload });
+}
+
+export async function markRfxAwardPackageImplementationReady(awardPackageId) {
+  return await callRatewareApi("mark_rfx_award_package_implementation_ready", { award_package_id: awardPackageId });
 }

@@ -78,7 +78,9 @@ let activeRowId = null;
 const selectedRowIds = new Set();
 let activeReviewFilter = "all";
 const autoSaveTimers = new Map();
-const FILTERED_BULK_BATCH_SIZE = 1000;
+const rowSaveChains = new Map();
+const rowEditVersions = new Map();
+const FILTERED_BULK_BATCH_SIZE = 5000;
 const STAGING_PAGE_SIZE_STORAGE_KEY = "rateware:staging:page-size:v1";
 const DEFAULT_STAGING_PAGE_SIZE = 200;
 let columnVisibilityController;
@@ -101,6 +103,9 @@ let stagingOptions = {
   us_crossings: [],
   currencies: ["USD", "MXN", "CAD"]
 };
+let stagingOptionsLoaded = false;
+let stagingOptionsLoad = null;
+let stagingOptionsRequest = 0;
 const STAGING_COLSPAN = 32;
 const SHEET_COLUMNS = [
   { key: "select", label: "Select", locked: true },
@@ -263,7 +268,7 @@ function confirmFilteredDatabaseAction({ actionLabel, matched, scope, keyword = 
 function readStoredPageSize(key, fallback) {
   try {
     const value = Number(window.localStorage.getItem(key));
-    return [50, 100, 200, 500].includes(value) ? value : fallback;
+    return [50, 100, 200, 500, 1000].includes(value) ? value : fallback;
   } catch {
     return fallback;
   }
@@ -636,13 +641,17 @@ function updateBulkControls() {
   const totalRows = body.querySelectorAll("[data-row-id]").length;
   const filteredTotal = Number(stagingTotalCount || 0);
   const hasFilteredRows = filteredTotal > 0;
-  if (bulkSelectionCount) bulkSelectionCount.textContent = `Selected: ${selectedCount.toLocaleString()}`;
-  if (stagingPageCountLabel) stagingPageCountLabel.textContent = `Page: ${totalRows.toLocaleString()}`;
-  if (stagingFilteredCountLabel) stagingFilteredCountLabel.textContent = `Filtered DB: ${filteredTotal.toLocaleString()}`;
+  if (bulkSelectionCount) bulkSelectionCount.textContent = `Page selected: ${selectedCount.toLocaleString()}`;
+  if (stagingPageCountLabel) stagingPageCountLabel.textContent = `Page rows: ${totalRows.toLocaleString()}`;
+  if (stagingFilteredCountLabel) stagingFilteredCountLabel.textContent = `Database matches: ${filteredTotal.toLocaleString()}`;
   if (stagingBulkScopeNote) {
+    const scopeDetail = hasFilteredRows
+      ? `Filtered database actions affect ${filteredTotal.toLocaleString()} row(s) matching the current filters.`
+      : "Filtered database actions run across every matching staging row.";
     stagingBulkScopeNote.textContent = hasFilteredRows
-      ? `Filtered DB actions affect ${filteredTotal.toLocaleString()} row(s) matching current filters.`
-      : "Filtered DB actions run across all matching database rows.";
+      ? `Global scope: ${filteredTotal.toLocaleString()} filtered rows`
+      : "Global scope: all matching rows";
+    stagingBulkScopeNote.title = scopeDetail;
   }
   bulkActionBar?.classList.toggle("is-empty", totalRows === 0);
   bulkActionBar?.classList.toggle("has-visible-page", totalRows > 0);
@@ -666,16 +675,16 @@ function updateBulkControls() {
   bulkRejectButton.disabled = selectedCount === 0;
   if (bulkApproveFilteredButton) bulkApproveFilteredButton.disabled = !hasFilteredRows;
   if (bulkRejectFilteredButton) bulkRejectFilteredButton.disabled = !hasFilteredRows;
-  setFilteredButtonLabel(bulkApproveFilteredButton, "Approve filtered DB", filteredTotal);
-  setFilteredButtonLabel(bulkRejectFilteredButton, "Reject filtered DB", filteredTotal);
+  setFilteredButtonLabel(bulkApproveFilteredButton, "Approve matching DB", filteredTotal);
+  setFilteredButtonLabel(bulkRejectFilteredButton, "Reject matching DB", filteredTotal);
   if (bulkEnrichZipsButton) bulkEnrichZipsButton.disabled = selectedCount === 0;
   if (bulkRenormalizeButton) bulkRenormalizeButton.disabled = selectedCount === 0;
   bulkArchiveButton.disabled = selectedCount === 0;
   bulkRemoveButton.disabled = selectedCount === 0;
   if (bulkArchiveFilteredButton) bulkArchiveFilteredButton.disabled = !hasFilteredRows;
   if (bulkRemoveFilteredButton) bulkRemoveFilteredButton.disabled = !hasFilteredRows;
-  setFilteredButtonLabel(bulkArchiveFilteredButton, "Archive filtered DB", filteredTotal);
-  setFilteredButtonLabel(bulkRemoveFilteredButton, "Remove filtered DB", filteredTotal);
+  setFilteredButtonLabel(bulkArchiveFilteredButton, "Archive matching DB", filteredTotal);
+  setFilteredButtonLabel(bulkRemoveFilteredButton, "Remove matching DB", filteredTotal);
   setFilteredButtonLabel(applyBulkEditFilteredButton, "Apply to filtered DB", filteredTotal);
   if (selectAllCheckbox) {
     selectAllCheckbox.checked = selectedCount > 0 && selectedCount === totalRows;
@@ -698,7 +707,7 @@ function updateStagingPaginationControls() {
   if (stagingPageSummary) {
     stagingPageSummary.textContent = total
       ? `Rows ${start.toLocaleString()}-${end.toLocaleString()} of ${total.toLocaleString()} | Page ${(stagingPageIndex + 1).toLocaleString()} of ${pageCount.toLocaleString()}`
-      : "No rows in current filters";
+      : "No matching staged rows. Use Clear filters above to reset the database view.";
   }
   if (stagingPageNumberInput) {
     stagingPageNumberInput.value = String(stagingPageIndex + 1);
@@ -733,7 +742,7 @@ async function goToStagingPage(index) {
 
 async function setStagingPageSize(value) {
   const nextSize = Number(value);
-  if (![50, 100, 200, 500].includes(nextSize)) return;
+  if (![50, 100, 200, 500, 1000].includes(nextSize)) return;
   stagingPageSize = nextSize;
   writeStoredPageSize(STAGING_PAGE_SIZE_STORAGE_KEY, stagingPageSize);
   stagingPageIndex = 0;
@@ -1850,9 +1859,39 @@ function stagingPageParams(offset = stagingPageOffset()) {
   };
 }
 
+async function loadStagingOptions({ force = false } = {}) {
+  if (force) {
+    stagingOptionsLoaded = false;
+    stagingOptionsLoad = null;
+  }
+  if (stagingOptionsLoaded) return stagingOptions;
+  if (!stagingOptionsLoad) {
+    const request = ++stagingOptionsRequest;
+    stagingOptionsLoad = fetchStagingOptions()
+      .then((options) => {
+        if (request !== stagingOptionsRequest) return stagingOptions;
+        stagingOptions = {
+          categories: options.categories || {},
+          vendors: options.vendors || [],
+          locations: options.locations || [],
+          mx_crossings: options.mx_crossings || [],
+          us_crossings: options.us_crossings || [],
+          currencies: options.currencies || ["USD", "MXN", "CAD"]
+        };
+        stagingOptionsLoaded = true;
+        return stagingOptions;
+      })
+      .catch((error) => {
+        stagingOptionsLoad = null;
+        throw error;
+      });
+  }
+  return await stagingOptionsLoad;
+}
+
 function applyStagingPage(page) {
   const rows = page.rows || [];
-  stagingTotalCount = Number(page.total || stagingTotalCount || rows.length || 0);
+  stagingTotalCount = Number(page.total ?? rows.length ?? 0);
   stagingHasMoreRows = Boolean(page.has_more);
   stagingLoadOffset = stagingPageOffset() + rows.length;
   stagingPageIndex = clampPageIndex(stagingPageIndex, stagingTotalCount);
@@ -1969,15 +2008,16 @@ function replaceStoredRow(updatedRow) {
 function markStagingRowDirty(tableRow) {
   const id = tableRow?.dataset.rowId;
   if (!id) return;
+  rowEditVersions.set(id, (rowEditVersions.get(id) || 0) + 1);
   tableRow.classList.add("dirty-row");
   setRowStatus(id, "Autosaves in 1s", "warning");
   setBulkStatus("");
 }
 
-async function saveStagingTableRow(tableRow, status = null) {
+async function performStagingTableRowSave(tableRow, status = null) {
   const id = tableRow?.dataset.rowId;
   if (!id) return null;
-  clearAutoSaveTimer(id);
+  const editVersion = rowEditVersions.get(id) || 0;
   const button = tableRow.querySelector(`[data-save-id="${CSS.escape(id)}"]`);
   if (button) button.disabled = true;
   setDirtyRowCellsState(tableRow, "saving");
@@ -1986,6 +2026,12 @@ async function saveStagingTableRow(tableRow, status = null) {
   try {
     await ensureSignedIn();
     const updated = await updateStagingRow(id, readInlinePatch(tableRow, status));
+    if ((rowEditVersions.get(id) || 0) !== editVersion) {
+      tableRow.classList.add("dirty-row");
+      setDirtyRowCellsState(tableRow, "dirty");
+      setRowStatus(id, "Newer edits are waiting to save", "warning");
+      return updated;
+    }
     replaceStoredRow(updated);
     tableRow.classList.remove("dirty-row");
     setDirtyRowCellsState(tableRow, "saved");
@@ -2000,6 +2046,23 @@ async function saveStagingTableRow(tableRow, status = null) {
   } finally {
     if (button) button.disabled = false;
   }
+}
+
+function saveStagingTableRow(tableRow, status = null) {
+  const id = tableRow?.dataset.rowId;
+  if (!id) return Promise.resolve(null);
+  clearAutoSaveTimer(id);
+
+  // Preserve write order for one row while keeping independent rows concurrent.
+  const previous = rowSaveChains.get(id) || Promise.resolve();
+  const task = previous
+    .catch(() => null)
+    .then(() => performStagingTableRowSave(tableRow, status));
+  rowSaveChains.set(id, task);
+
+  return task.finally(() => {
+    if (rowSaveChains.get(id) === task) rowSaveChains.delete(id);
+  });
 }
 
 function scheduleStagingAutoSave(tableRow, wait = 1000) {
@@ -2393,29 +2456,48 @@ async function saveActiveRow(status = null) {
   }
 }
 
-async function loadRows({ preservePage = false } = {}) {
+async function loadRows({ preservePage = false, refreshOptions = false } = {}) {
   if (!preservePage) stagingPageIndex = 0;
-  body.innerHTML = tableLoadingState(STAGING_COLSPAN, {
-    title: "Loading staging rows",
-    detail: "Reading interpreted quotes, catalog matches, validation flags, and editable spreadsheet columns."
-  });
+  if (refreshOptions) {
+    selectedRowIds.clear();
+    setBulkStatus("");
+  }
+  const stagingTable = body.closest("table");
+  const hasRenderedRows = currentRows.length > 0 || loadedRows.length > 0;
+  stagingTable?.setAttribute("aria-busy", "true");
+  body.setAttribute("aria-busy", "true");
+  if (hasRenderedRows) {
+    setBulkStatus("Updating staging rows...");
+  } else {
+    body.innerHTML = tableLoadingState(STAGING_COLSPAN, {
+      title: "Loading staging rows",
+      detail: "Reading interpreted quotes, catalog matches, validation flags, and editable spreadsheet columns."
+    });
+  }
   refreshButton.disabled = true;
   stagingLoadToken += 1;
   stagingLoadOffset = stagingPageOffset();
-  stagingTotalCount = 0;
-  stagingHasMoreRows = false;
+  if (!hasRenderedRows) {
+    stagingTotalCount = 0;
+    stagingHasMoreRows = false;
+  }
   stagingIsLoadingMore = true;
   updateStagingPaginationControls();
-  loadedRows = [];
-  currentRows = [];
+  if (!hasRenderedRows) {
+    loadedRows = [];
+    currentRows = [];
+  }
+  const token = stagingLoadToken;
 
   try {
     await requirePrivatePage();
-    const token = stagingLoadToken;
-    let [options, page] = await Promise.all([
-      fetchStagingOptions().catch(() => stagingOptions),
-      fetchStagingPage(stagingPageParams(stagingPageOffset()))
-    ]);
+    const refreshRowsAfterOptions = refreshOptions || !stagingOptionsLoaded;
+    let optionsError = null;
+    const optionsRequest = loadStagingOptions({ force: refreshOptions }).catch((error) => {
+      optionsError = error;
+      return stagingOptions;
+    });
+    let page = await fetchStagingPage(stagingPageParams(stagingPageOffset()));
     if (token !== stagingLoadToken) return;
     if (!(page.rows || []).length && Number(page.total || 0) > 0 && stagingPageOffset() >= Number(page.total || 0)) {
       stagingTotalCount = Number(page.total || 0);
@@ -2423,29 +2505,39 @@ async function loadRows({ preservePage = false } = {}) {
       page = await fetchStagingPage(stagingPageParams(stagingPageOffset()));
       if (token !== stagingLoadToken) return;
     }
-    stagingOptions = {
-      categories: options.categories || {},
-      vendors: options.vendors || [],
-      locations: options.locations || [],
-      mx_crossings: options.mx_crossings || [],
-      us_crossings: options.us_crossings || [],
-      currencies: options.currencies || ["USD", "MXN", "CAD"]
-    };
     populateBulkEditControls();
     stagingIsLoadingMore = false;
     applyStagingPage(page);
+    await optionsRequest;
+    if (token !== stagingLoadToken) return;
+    if (optionsError) {
+      setStatus("Staging rows loaded. Dropdown catalogs are temporarily unavailable; refresh to try again.", "warning");
+    } else if (hasRenderedRows) {
+      setBulkStatus("");
+    }
+    if (!refreshRowsAfterOptions) return;
+    renderRows(loadedRows);
     await applyPermissionState("[data-save-id], [data-approve-id], [data-reject-id], #save-staging-button, #approve-staging-button, #reject-staging-button, #bulk-save-button, #bulk-match-vendors-button, #bulk-approve-button, #bulk-reject-button, #bulk-approve-filtered-button, #bulk-reject-filtered-button, #bulk-enrich-zips-button, #bulk-renormalize-button, #bulk-archive-button, #bulk-remove-button, #bulk-archive-filtered-button, #bulk-remove-filtered-button, #apply-staging-bulk-edit-filtered", "staging:approve");
   } catch (error) {
+    if (token !== stagingLoadToken) return;
     stagingIsLoadingMore = false;
-    body.innerHTML = tableErrorState(STAGING_COLSPAN, error, {
-      title: "Staging Review could not load",
-      retryAction: "load-staging-rows",
-      meta: "No staged rates were changed."
-    });
+    if (hasRenderedRows) {
+      setBulkStatus(error.message, "error");
+      setStatus(error.message, "error");
+    } else {
+      body.innerHTML = tableErrorState(STAGING_COLSPAN, error, {
+        title: "Staging Review could not load",
+        retryAction: "load-staging-rows",
+        meta: "No staged rates were changed."
+      });
+    }
   } finally {
+    if (token !== stagingLoadToken) return;
     stagingIsLoadingMore = false;
     refreshButton.disabled = false;
     updateStagingPaginationControls();
+    stagingTable?.removeAttribute("aria-busy");
+    body.removeAttribute("aria-busy");
   }
 }
 
@@ -2621,7 +2713,7 @@ locationMatchDrawerController = createLocationMatchDrawer({
   }
 });
 
-refreshButton.addEventListener("click", loadRows);
+refreshButton.addEventListener("click", () => loadRows({ refreshOptions: true }));
 document.addEventListener("click", (event) => {
   const retryButton = event.target.closest("[data-retry-action='load-staging-rows']");
   if (retryButton) loadRows();
@@ -2738,10 +2830,11 @@ columnVisibilityController = initColumnVisibility({
   columns: SHEET_COLUMNS,
   storageKey: "rateware:staging:columns:v2",
   viewPresets: STAGING_VIEW_PRESETS,
+  showStarterViews: false,
   getExtraState: () => ({ pageSize: stagingPageSize }),
   applyExtraState: (extra = {}) => {
     const nextSize = Number(extra.pageSize);
-    if (![50, 100, 200, 500].includes(nextSize) || nextSize === stagingPageSize) return;
+    if (![50, 100, 200, 500, 1000].includes(nextSize) || nextSize === stagingPageSize) return;
     stagingPageSize = nextSize;
     writeStoredPageSize(STAGING_PAGE_SIZE_STORAGE_KEY, stagingPageSize);
     stagingPageIndex = 0;

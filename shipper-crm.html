@@ -1,0 +1,434 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Rateware Shipper CRM</title>
+    <link rel="stylesheet" href="./src/styles.css" />
+  </head>
+  <body>
+    <div class="shell-layout">
+      <aside class="side-nav" aria-label="Rateware modules">
+        <a class="brand-mark" href="./app.html">Rateware</a>
+        <nav class="nav-groups">
+          <section class="nav-group">
+            <p>Operate</p>
+            <a href="./app.html" data-nav-code="CC">Command Center</a>
+            <a href="./upload-center.html" data-nav-code="IM">Import</a>
+            <a href="./upload-history.html" data-nav-code="SF">Source Files</a>
+            <a href="./staging-review.html" data-nav-code="RQ">Review Queue</a>
+            <a href="./rateware.html" data-nav-code="RW">Rateware</a>
+          </section>
+          <section class="nav-group">
+            <p>Analyze</p>
+            <a href="./business-intelligence.html" data-nav-code="AN">Analyze</a>
+          </section>
+          <section class="nav-group">
+            <p>Source</p>
+            <a href="./vendors.html" data-nav-code="CM">Carrier CRM</a>
+            <a aria-current="page" href="./shipper-crm.html" data-nav-code="SM">Shipper CRM</a>
+            <a href="./rfx-process.html" data-nav-code="RP">RFx Process</a>
+            <a href="./rfx-events.html" data-nav-code="BR">Bid Room</a>
+            <a href="./vendor-support.html" data-nav-code="VS">Vendor Support</a>
+            <a href="./vendor-improvement.html" data-nav-code="CI">Vendor CI</a>
+          </section>
+          <section class="nav-group">
+            <p>Admin</p>
+            <a href="./settings.html" data-nav-code="ST">Settings</a>
+            <a href="./interpretation-memory.html" data-nav-code="LR">Learning Rules</a>
+            <a href="./catalog-workbench.html" data-nav-code="CT">Catalog</a>
+          </section>
+        </nav>
+      </aside>
+
+      <div class="page-frame shipper-crm-page">
+        <header class="page-header">
+          <div>
+            <p class="eyebrow">Customer master</p>
+            <h1>Shipper CRM</h1>
+            <nav class="module-crumbs" aria-label="Module context">
+              <a href="./app.html">Source</a>
+              <span>Shipper CRM</span>
+            </nav>
+          </div>
+          <div class="page-header-actions">
+            <button id="add-shipper-button" class="page-primary-action" type="button">Add shipper</button>
+            <form id="auth-form" class="auth-strip">
+              <button id="auth-button" type="submit">Sign in with Kinde</button>
+              <button id="sign-out-button" type="button" class="secondary hidden">Sign out</button>
+              <p id="auth-status" role="status"></p>
+            </form>
+          </div>
+        </header>
+
+        <main class="shipper-crm-workspace">
+          <section class="shipper-summary-strip" aria-label="Shipper CRM summary">
+            <article><span>Total shippers</span><strong id="shipper-total">-</strong></article>
+            <article><span>Active customers</span><strong id="shipper-active">-</strong></article>
+            <article><span>Prospects</span><strong id="shipper-prospects">-</strong></article>
+            <article><span>Missing contact</span><strong id="shipper-missing-contact">-</strong></article>
+            <article><span>Open opportunities</span><strong id="shipper-open-opportunities">-</strong></article>
+          </section>
+
+          <nav class="shipper-view-switcher" aria-label="Shipper CRM views">
+            <button class="active" type="button" data-shipper-view="directory">Directory <span>Accounts</span></button>
+            <button type="button" data-shipper-view="pipeline">Relationship pipeline <span>Commercial work</span></button>
+            <button type="button" data-shipper-view="commercial">RFIs and deals <span>Next actions</span></button>
+            <button type="button" data-shipper-view="cadence">Action queue <span>Today and overdue</span></button>
+            <button type="button" data-shipper-view="intelligence">Intelligence <span>Account signals</span></button>
+            <button type="button" data-shipper-view="import">Import <span>Shipper Base</span></button>
+            <button type="button" data-shipper-view="duplicates">Duplicates <span>Review matches</span></button>
+          </nav>
+
+          <section id="shipper-pipeline" class="shipper-pipeline hidden" aria-labelledby="shipper-pipeline-title">
+            <div class="shipper-pipeline-toolbar">
+              <div>
+                <p class="eyebrow">Commercial operations</p>
+                <h2 id="shipper-pipeline-title">Account relationship pipeline</h2>
+              </div>
+              <label class="shipper-search-field">
+                <span>Search accounts</span>
+                <input id="shipper-pipeline-search" type="search" placeholder="Company, domain, contact, city..." autocomplete="off" />
+              </label>
+              <label>
+                <span>Status</span>
+                <select id="shipper-pipeline-status-filter">
+                  <option value="all">All current</option>
+                  <option value="prospect">Prospect</option>
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                </select>
+              </label>
+              <button id="refresh-shipper-pipeline" class="secondary" type="button">Refresh</button>
+            </div>
+            <div id="shipper-pipeline-status" class="shipper-inline-status" role="status">Open the pipeline to review account movement.</div>
+            <div id="shipper-pipeline-board" class="shipper-pipeline-board" aria-live="polite"></div>
+          </section>
+
+          <section id="shipper-commercial" class="shipper-commercial hidden" aria-labelledby="shipper-commercial-title">
+            <div class="shipper-commercial-toolbar">
+              <div>
+                <p class="eyebrow">Commercial execution</p>
+                <h2 id="shipper-commercial-title">RFIs and deals</h2>
+              </div>
+              <label class="shipper-search-field">
+                <span>Search commercial work</span>
+                <input id="shipper-commercial-search" type="search" placeholder="Account, RFI, reference, deal..." autocomplete="off" />
+              </label>
+              <label>
+                <span>Focus</span>
+                <select id="shipper-commercial-filter">
+                  <option value="all">All live work</option>
+                  <option value="needs_rfi">RFIs without a deal</option>
+                  <option value="rfi_due">RFIs due soon</option>
+                  <option value="deal_due">Deals due soon</option>
+                  <option value="won">Won / implementation</option>
+                  <option value="lost">Closed lost</option>
+                </select>
+              </label>
+              <button id="refresh-shipper-commercial" class="secondary" type="button">Refresh</button>
+            </div>
+            <div class="shipper-commercial-summary" aria-label="Commercial work summary">
+              <article><span>Open RFIs</span><strong id="shipper-commercial-rfis">-</strong></article>
+              <article><span>RFIs without deal</span><strong id="shipper-commercial-unlinked">-</strong></article>
+              <article><span>Open deals</span><strong id="shipper-commercial-opportunities">-</strong></article>
+              <article><span>Won / implementation</span><strong id="shipper-commercial-won">-</strong></article>
+              <article><span>Due in 14 days</span><strong id="shipper-commercial-due">-</strong></article>
+            </div>
+            <div id="shipper-commercial-status" class="shipper-inline-status" role="status">Open commercial work to prioritize RFIs and deals.</div>
+            <div class="shipper-commercial-grid">
+              <section class="shipper-commercial-panel" aria-labelledby="shipper-commercial-rfi-title">
+                <header><div><p class="eyebrow">Source requests</p><h3 id="shipper-commercial-rfi-title">Open RFIs</h3></div><span id="shipper-commercial-rfi-count">0</span></header>
+                <div class="shipper-commercial-table-wrap">
+                  <table class="shipper-commercial-table">
+                    <thead><tr><th>Account</th><th>RFI</th><th>Due</th><th>Status</th><th>Deal</th><th></th></tr></thead>
+                    <tbody id="shipper-commercial-rfi-body"></tbody>
+                  </table>
+                </div>
+              </section>
+              <section class="shipper-commercial-panel" aria-labelledby="shipper-commercial-opportunity-title">
+                <header><div><p class="eyebrow" id="shipper-commercial-opportunity-kicker">Pipeline</p><h3 id="shipper-commercial-opportunity-title">Open deals</h3></div><span id="shipper-commercial-opportunity-count">0</span></header>
+                <div class="shipper-commercial-table-wrap">
+                  <table class="shipper-commercial-table">
+                    <thead><tr><th>Account</th><th>Deal</th><th>Stage</th><th>Value</th><th>Due</th><th>RFx workspace</th></tr></thead>
+                    <tbody id="shipper-commercial-opportunity-body"></tbody>
+                  </table>
+                </div>
+              </section>
+            </div>
+          </section>
+
+          <section id="shipper-cadence" class="shipper-cadence hidden" aria-labelledby="shipper-cadence-title">
+            <div class="shipper-cadence-toolbar">
+              <div>
+                <p class="eyebrow">Commercial cadence</p>
+                <h2 id="shipper-cadence-title">Account action queue</h2>
+              </div>
+              <label class="shipper-search-field">
+                <span>Search actions</span>
+                <input id="shipper-cadence-search" type="search" placeholder="Account, action, owner..." autocomplete="off" />
+              </label>
+              <label>
+                <span>Show</span>
+                <select id="shipper-cadence-focus">
+                  <option value="open">Open actions</option>
+                  <option value="overdue">Overdue</option>
+                  <option value="today">Due today</option>
+                  <option value="upcoming">Next 7 days</option>
+                  <option value="done">Completed</option>
+                </select>
+              </label>
+              <button id="refresh-shipper-cadence" class="secondary" type="button">Refresh</button>
+            </div>
+            <div class="shipper-cadence-summary" aria-label="Account action queue summary">
+              <article><span>Open</span><strong id="shipper-cadence-open">-</strong></article>
+              <article><span>Due today</span><strong id="shipper-cadence-today">-</strong></article>
+              <article><span>Overdue</span><strong id="shipper-cadence-overdue">-</strong></article>
+              <article><span>Completed shown</span><strong id="shipper-cadence-done">-</strong></article>
+            </div>
+            <div id="shipper-cadence-status" class="shipper-inline-status" role="status">Open Action queue to plan commercial follow-up.</div>
+            <div class="shipper-cadence-table-wrap">
+              <table class="shipper-cadence-table">
+                <thead><tr><th>Account</th><th>Next action</th><th>Due</th><th>Owner</th><th>Priority</th><th>Status</th><th></th></tr></thead>
+                <tbody id="shipper-cadence-body"></tbody>
+              </table>
+            </div>
+          </section>
+
+          <section id="shipper-intelligence" class="shipper-intelligence hidden" aria-labelledby="shipper-intelligence-title">
+            <div class="shipper-intelligence-toolbar">
+              <div>
+                <p class="eyebrow">Account prioritization</p>
+                <h2 id="shipper-intelligence-title">Shipper Intelligence</h2>
+                <p>Prioritize account cleanup, coverage expansion, and commercial follow-up from live Shipper CRM activity.</p>
+              </div>
+              <label class="shipper-search-field">
+                <span>Search accounts</span>
+                <input id="shipper-intelligence-search" type="search" placeholder="Company, domain, contact, market..." autocomplete="off" />
+              </label>
+              <label>
+                <span>Focus</span>
+                <select id="shipper-intelligence-focus">
+                  <option value="all">All accounts</option>
+                  <option value="ready">Ready to engage</option>
+                  <option value="needs_contact">Needs contact</option>
+                  <option value="needs_lane">Needs lane coverage</option>
+                  <option value="due_action">Due action</option>
+                  <option value="at_risk">At risk</option>
+                </select>
+              </label>
+              <button id="refresh-shipper-intelligence" class="secondary" type="button">Refresh</button>
+            </div>
+            <div class="shipper-intelligence-summary" aria-label="Shipper intelligence summary">
+              <article><span>Accounts scanned</span><strong id="shipper-intelligence-scanned">-</strong></article>
+              <article><span>Ready to engage</span><strong id="shipper-intelligence-ready">-</strong></article>
+              <article><span>Needs data</span><strong id="shipper-intelligence-needs-data">-</strong></article>
+              <article><span>Due action</span><strong id="shipper-intelligence-due">-</strong></article>
+              <article><span>Open pipeline</span><strong id="shipper-intelligence-value">-</strong></article>
+            </div>
+            <p id="shipper-intelligence-status" class="shipper-inline-status" role="status">Open Intelligence to prioritize account actions.</p>
+            <div class="shipper-intelligence-table-wrap">
+              <table class="shipper-intelligence-table">
+                <thead><tr><th>Account</th><th>Health</th><th>Coverage</th><th>Commercial</th><th>Priority</th><th>Last activity</th></tr></thead>
+                <tbody id="shipper-intelligence-body"></tbody>
+              </table>
+            </div>
+          </section>
+
+          <section id="shipper-import" class="shipper-import hidden" aria-labelledby="shipper-import-title">
+            <div class="shipper-import-toolbar">
+              <div>
+                <p class="eyebrow">Shipper Base</p>
+                <h2 id="shipper-import-title">Import CRM workbook</h2>
+                <p>Use CSV for account-only imports, or an XLSX with <strong>Accounts</strong>, <strong>Contacts</strong>, and <strong>Opportunities</strong> sheets. A relational workbook preserves external IDs and updates links without creating duplicate accounts, contacts, or deals.</p>
+              </div>
+              <button id="download-shipper-template" class="secondary" type="button">Download template</button>
+            </div>
+            <label class="shipper-import-source" for="shipper-import-file">
+              <strong>Choose CRM export or migration workbook</strong>
+              <span>CSV: up to 1,000 accounts. XLSX: up to 1,000 Accounts, Contacts, and Opportunities each. Relational workbooks link records through <code>external_account_id</code>.</span>
+              <input id="shipper-import-file" type="file" accept=".csv,.xlsx,.xls" />
+            </label>
+            <p id="shipper-import-status" class="shipper-inline-status" role="status">Download the template or choose a file to start.</p>
+            <section id="shipper-import-preview" class="shipper-import-preview hidden" aria-labelledby="shipper-import-preview-title">
+              <header>
+                <div>
+                  <p class="eyebrow">Review before save</p>
+                  <h3 id="shipper-import-preview-title">Import preview</h3>
+                </div>
+                <div class="shipper-import-actions">
+                  <button id="cancel-shipper-import" class="secondary" type="button">Clear file</button>
+                  <button id="confirm-shipper-import" type="button">Import ready rows</button>
+                </div>
+              </header>
+              <div class="shipper-import-metrics" aria-label="Shipper import summary">
+                <article><span>Records read</span><strong id="shipper-import-total">0</strong></article>
+                <article><span>Ready to link</span><strong id="shipper-import-ready">0</strong></article>
+                <article><span>External keys</span><strong id="shipper-import-matches">0</strong></article>
+                <article><span>Needs review</span><strong id="shipper-import-issues">0</strong></article>
+              </div>
+              <div class="shipper-import-table-wrap">
+                <table class="shipper-import-table">
+                  <thead><tr><th>Row</th><th>Account</th><th>Domain</th><th>Contact</th><th>Location</th><th>Tags</th><th>Import result</th></tr></thead>
+                  <tbody id="shipper-import-preview-body"></tbody>
+                </table>
+              </div>
+              <p id="shipper-import-confirm-status" class="shipper-inline-status" role="status"></p>
+            </section>
+          </section>
+
+          <section id="shipper-duplicates" class="shipper-duplicates hidden" aria-labelledby="shipper-duplicates-title">
+            <div class="shipper-duplicates-toolbar">
+              <div>
+                <p class="eyebrow">Data quality</p>
+                <h2 id="shipper-duplicates-title">Potential duplicate accounts</h2>
+                <p>Only exact domains, contact emails, or normalized legal names are shown. Review each pair before consolidating it.</p>
+              </div>
+              <button id="refresh-shipper-duplicates" class="secondary" type="button">Refresh candidates</button>
+            </div>
+            <div class="shipper-duplicates-metrics" aria-label="Duplicate review summary">
+              <article><span>Accounts scanned</span><strong id="shipper-duplicates-scanned">0</strong></article>
+              <article><span>Review candidates</span><strong id="shipper-duplicates-count">0</strong></article>
+              <article><span>Rules</span><strong>Exact only</strong></article>
+            </div>
+            <p id="shipper-duplicates-status" class="shipper-inline-status" role="status">Open duplicate review to scan the active Shipper Base.</p>
+            <div id="shipper-duplicates-list" class="shipper-duplicates-list" aria-live="polite"></div>
+          </section>
+
+          <section id="shipper-directory" class="shipper-directory" aria-labelledby="shipper-directory-title">
+            <div class="shipper-toolbar">
+              <div>
+                <p class="eyebrow">Account directory</p>
+                <h2 id="shipper-directory-title">Shippers</h2>
+              </div>
+              <label class="shipper-search-field">
+                <span>Search</span>
+                <input id="shipper-search" type="search" placeholder="Company, domain, contact, city..." autocomplete="off" />
+              </label>
+              <label>
+                <span>Status</span>
+                <select id="shipper-status-filter">
+                  <option value="all">All current</option>
+                  <option value="prospect">Prospect</option>
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                  <option value="archived">Archived</option>
+                </select>
+              </label>
+              <label>
+                <span>Relationship</span>
+                <select id="shipper-stage-filter">
+                  <option value="all">All</option>
+                  <option value="target">Target</option>
+                  <option value="qualified">Qualified</option>
+                  <option value="customer">Customer</option>
+                  <option value="at_risk">At risk</option>
+                  <option value="inactive">Inactive</option>
+                </select>
+              </label>
+              <button id="refresh-shippers" class="secondary" type="button">Refresh</button>
+            </div>
+
+            <div id="shipper-bulk-bar" class="shipper-bulk-bar hidden">
+              <strong><span id="shipper-selected-count">0</span> selected</strong>
+              <button id="archive-shippers" class="secondary" type="button">Archive selected</button>
+              <button id="clear-shipper-selection" class="secondary" type="button">Clear</button>
+            </div>
+
+            <div id="shipper-directory-status" class="shipper-inline-status" role="status">Ready.</div>
+
+            <div class="shipper-table-wrap">
+              <table class="shipper-table">
+                <thead>
+                  <tr>
+                    <th class="select-column"><input id="select-all-shippers" type="checkbox" aria-label="Select all shippers on this page" /></th>
+                    <th>Shipper</th>
+                    <th>Status</th>
+                    <th>Relationship</th>
+                    <th>Industry</th>
+                    <th>Primary contact</th>
+                    <th>Headquarters</th>
+                    <th>Owner</th>
+                    <th>Updated</th>
+                  </tr>
+                </thead>
+                <tbody id="shipper-table-body"></tbody>
+              </table>
+              <div id="shipper-empty-state" class="shipper-empty-state hidden">
+                <strong>No shippers found</strong>
+                <span>Adjust the filters or create the first shipper account.</span>
+                <button id="empty-add-shipper" type="button">Add shipper</button>
+              </div>
+            </div>
+
+            <footer class="shipper-pagination">
+              <span id="shipper-page-summary">0 records</span>
+              <div>
+                <button id="shipper-prev-page" class="secondary" type="button">Previous</button>
+                <span id="shipper-page-number">Page 1</span>
+                <button id="shipper-next-page" class="secondary" type="button">Next</button>
+              </div>
+              <label>
+                <span>Rows</span>
+                <select id="shipper-page-size">
+                  <option value="50">50</option>
+                  <option value="100" selected>100</option>
+                  <option value="200">200</option>
+                </select>
+              </label>
+            </footer>
+          </section>
+        </main>
+      </div>
+    </div>
+
+    <div id="shipper-modal-backdrop" class="shipper-overlay hidden"></div>
+
+    <section id="create-shipper-modal" class="shipper-modal hidden" role="dialog" aria-modal="true" aria-labelledby="create-shipper-title">
+      <header>
+        <div>
+          <p class="eyebrow">Quick create</p>
+          <h2 id="create-shipper-title">Add shipper</h2>
+        </div>
+        <button id="close-create-shipper" class="secondary" type="button">Close</button>
+      </header>
+      <form id="create-shipper-form" class="shipper-form-grid">
+        <label class="span-2"><span>Shipper name *</span><input name="shipper_name" required /></label>
+        <label><span>Domain</span><input name="domain" placeholder="company.com" /></label>
+        <label><span>Industry</span><input name="industry" /></label>
+        <label><span>Primary contact</span><input name="primary_contact_name" /></label>
+        <label><span>Email</span><input name="primary_contact_email" type="email" /></label>
+        <label><span>City</span><input name="headquarters_city" /></label>
+        <label><span>State</span><input name="headquarters_state" /></label>
+        <div class="span-2 shipper-form-actions">
+          <p id="create-shipper-status" role="status"></p>
+          <button type="submit">Create shipper</button>
+        </div>
+      </form>
+    </section>
+
+    <aside id="shipper-drawer" class="shipper-drawer hidden" aria-label="Shipper profile">
+      <header>
+        <div>
+          <p class="eyebrow">Shipper account</p>
+          <h2 id="shipper-drawer-title">Shipper</h2>
+          <p id="shipper-drawer-subtitle"></p>
+        </div>
+        <button id="close-shipper-drawer" class="secondary" type="button">Close</button>
+      </header>
+      <nav id="shipper-drawer-tabs" class="shipper-tabs" aria-label="Shipper profile sections">
+        <button class="active" data-shipper-tab="overview" type="button">Overview</button>
+        <button data-shipper-tab="contacts" type="button">Contacts</button>
+        <button data-shipper-tab="locations" type="button">Locations</button>
+        <button data-shipper-tab="lanes" type="button">Lanes</button>
+          <button data-shipper-tab="rfis" type="button">RFIs</button>
+          <button data-shipper-tab="opportunities" type="button">Opportunities</button>
+          <button data-shipper-tab="actions" type="button">Next actions</button>
+          <button data-shipper-tab="activity" type="button">Activity</button>
+      </nav>
+      <div id="shipper-drawer-content" class="shipper-drawer-content"></div>
+    </aside>
+
+    <script type="module" src="./src/shippers.js"></script>
+  </body>
+</html>

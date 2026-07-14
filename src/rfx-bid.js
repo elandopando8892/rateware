@@ -610,29 +610,65 @@ function segmentFitSummary(packagePayload = {}) {
   return { complete, exceptions, total, score: Math.round((complete / total) * 100) };
 }
 
+function segmentFitProgress(segment = {}) {
+  const segmentKey = segment.segment_key || "general";
+  const checklist = Array.isArray(segment.checklist) && segment.checklist.length
+    ? segment.checklist
+    : MASTER_PACKAGE_RUBRICS.map(([key, label]) => ({ key, label: label() }));
+  const confirmations = segmentConfirmationMap();
+  let complete = 0;
+  let exceptions = 0;
+  checklist.forEach((rubric) => {
+    const answer = confirmations.get(`${segmentKey}::${rubric.key}`)?.answer || "pending";
+    if (answer !== "pending") complete += 1;
+    if (answer === "exception" || answer === "disagree") exceptions += 1;
+  });
+  return {
+    total: checklist.length,
+    complete,
+    exceptions,
+    pending: Math.max(checklist.length - complete, 0)
+  };
+}
+
+function activeMasterSegmentIndex(segments = []) {
+  return segments.findIndex((segment) => {
+    const progress = segmentFitProgress(segment);
+    return progress.pending > 0 || progress.exceptions > 0;
+  });
+}
+
 function renderMasterPackageRoutes(carrierBook = {}, invitation = {}) {
   const event = invitation.rfx_events || {};
   const rows = currentEventBookRows(carrierBook, event);
+  const collapseRoutes = rows.length > 4;
   return `
-    <div class="master-package-routes">
-      <table>
-        <thead><tr><th>Lane</th><th>${escapeHtml(t("currentLane"))}</th><th>${escapeHtml(t("equipment"))}</th><th>${escapeHtml(t("weeklyVolume"))}</th><th>${escapeHtml(t("status"))}</th></tr></thead>
-        <tbody>
-          ${rows.map((row) => {
-            const lane = row.lane || {};
-            return `
-              <tr>
-                <td>#${escapeHtml(lane.lane_number || "")}</td>
-                <td>${escapeHtml(formatLane(lane))}</td>
-                <td>${escapeHtml([lane.equipment, lane.trailer, lane.config].filter(Boolean).join(" / ") || "-")}</td>
-                <td>${escapeHtml(lane.weekly_volume ?? "-")}</td>
-                <td>${escapeHtml(statusLabel(bookStatus(row)))}</td>
-              </tr>
-            `;
-          }).join("") || `<tr><td colspan="5">No lanes loaded.</td></tr>`}
-        </tbody>
-      </table>
-    </div>
+    <details class="master-package-route-disclosure" ${collapseRoutes ? "" : "open"}>
+      <summary>
+        <span>${escapeHtml(t("routeSchedule"))}</span>
+        <strong>${escapeHtml(`${rows.length} ${dualText("lane(s)", "ruta(s)")}`)}</strong>
+        <small>${escapeHtml(collapseRoutes ? dualText("Open the route schedule when you need it.", "Abre la cedula solo cuando la necesites.") : dualText("All invited routes are shown below.", "Todas las rutas invitadas se muestran abajo."))}</small>
+      </summary>
+      <div class="master-package-routes">
+        <table>
+          <thead><tr><th>Lane</th><th>${escapeHtml(t("currentLane"))}</th><th>${escapeHtml(t("equipment"))}</th><th>${escapeHtml(t("weeklyVolume"))}</th><th>${escapeHtml(t("status"))}</th></tr></thead>
+          <tbody>
+            ${rows.map((row) => {
+              const lane = row.lane || {};
+              return `
+                <tr>
+                  <td>#${escapeHtml(lane.lane_number || "")}</td>
+                  <td>${escapeHtml(formatLane(lane))}</td>
+                  <td>${escapeHtml([lane.equipment, lane.trailer, lane.config].filter(Boolean).join(" / ") || "-")}</td>
+                  <td>${escapeHtml(lane.weekly_volume ?? "-")}</td>
+                  <td>${escapeHtml(statusLabel(bookStatus(row)))}</td>
+                </tr>
+              `;
+            }).join("") || `<tr><td colspan="5">No lanes loaded.</td></tr>`}
+          </tbody>
+        </table>
+      </div>
+    </details>
   `;
 }
 
@@ -657,7 +693,7 @@ function renderSegmentRubricControl(segment = {}, rubric = {}) {
           ["disagree", t("disagree")],
           ["not_applicable", t("notApplicable")]
         ].map(([value, text]) => `
-          <label>
+          <label class="${answer === value ? "is-selected" : ""}">
             <input type="radio" name="${escapeAttribute(controlName)}" value="${escapeAttribute(value)}" data-segment-answer ${answer === value ? "checked" : ""} />
             <span>${escapeHtml(text)}</span>
           </label>
@@ -671,20 +707,24 @@ function renderSegmentRubricControl(segment = {}, rubric = {}) {
 function renderMasterPackageSegments(packagePayload = {}) {
   const segments = Array.isArray(packagePayload.segments) ? packagePayload.segments : [];
   if (!segments.length) return "";
+  const activeIndex = activeMasterSegmentIndex(segments);
   return `
     <div class="master-package-segments">
       ${segments.map((segment, index) => {
         const checklist = Array.isArray(segment.checklist) && segment.checklist.length
           ? segment.checklist
           : MASTER_PACKAGE_RUBRICS.map(([key, label]) => ({ key, label: label(), detail: segment[key] || "" }));
+        const progress = segmentFitProgress(segment);
+        const progressLabel = `${progress.complete}/${progress.total} ${dualText("confirmed", "confirmados")}${progress.exceptions ? ` | ${progress.exceptions} ${dualText("exception(s)", "excepcion(es)")}` : ""}`;
         return `
-          <details class="master-package-segment" ${index === 0 ? "open" : ""}>
+          <details class="master-package-segment" ${index === activeIndex ? "open" : ""}>
             <summary>
               <div>
                 <span class="status-pill neutral">${escapeHtml(`${segment.lane_count || 0} lane(s)`)}</span>
                 <strong>${escapeHtml(segment.segment_name || "General RFx segment")}</strong>
                 <small>${escapeHtml([segment.operation, segment.service, segment.equipment, segment.trailer].filter(Boolean).join(" | ") || t("segmentChecklist"))}</small>
               </div>
+              <span class="master-package-segment-progress ${progress.pending ? "is-pending" : ""}">${escapeHtml(progressLabel)}</span>
             </summary>
             <div class="segment-rubric-grid">
               ${checklist.map((rubric) => renderSegmentRubricControl(segment, rubric)).join("")}

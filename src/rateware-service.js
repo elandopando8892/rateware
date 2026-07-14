@@ -16,8 +16,10 @@ export async function fetchApprovedRateware({ search = "", operation = "", servi
   return (await fetchApprovedRatewarePage({ search, operation, service, quickFilter, columnFilters, limit, offset })).rows;
 }
 
-export async function fetchRatewareFilterValues({ field, search = "", valueSearch = "", operation = "", service = "", quickFilter = "all", columnFilters = {}, limit = 1000 } = {}) {
-  return (await callRatewareApi("list_rateware_filter_values", {
+const FILTER_VALUE_LIMIT = 5000;
+
+export async function fetchRatewareFilterValues({ field, search = "", valueSearch = "", operation = "", service = "", quickFilter = "all", columnFilters = {}, limit = FILTER_VALUE_LIMIT } = {}) {
+  const result = await callRatewareApi("list_rateware_filter_values", {
     field,
     search,
     value_search: valueSearch,
@@ -26,7 +28,15 @@ export async function fetchRatewareFilterValues({ field, search = "", valueSearc
     quick_filter: quickFilter,
     column_filters: columnFilters,
     limit
-  })).values;
+  });
+  const values = Array.isArray(result?.values) ? result.values : [];
+  return {
+    values,
+    total: Number(result?.total ?? values.length),
+    database_count: Number(result?.database_count ?? result?.total ?? values.length),
+    hard_limit_reached: Boolean(result?.hard_limit_reached),
+    limit
+  };
 }
 
 export async function fetchRatewareAudit(id, limit = 80) {

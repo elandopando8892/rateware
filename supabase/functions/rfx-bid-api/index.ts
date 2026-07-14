@@ -1044,7 +1044,9 @@ function normalizeSegmentConfirmationRows(input: unknown) {
       segment_key: segmentKey,
       rubric_key: rubricKey,
       answer,
-      comment: cleanText(record.comment).slice(0, 1200)
+      // A blank textarea can arrive as null from a carrier portal submission.
+      // Keep the checklist save path valid when no exception note is needed.
+      comment: (cleanText(record.comment) || "").slice(0, 1200)
     };
   });
 }

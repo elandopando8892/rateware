@@ -1,0 +1,632 @@
+
+> rateware-upload-center@1.0.0 dev
+> npx serve . -l 3000
+
+ UPDATE  The latest version of `serve` is 14.2.6
+ INFO  Accepting connections at http://localhost:3000
+ HTTP  7/12/2026 11:26:41 PM 127.0.0.1 GET /shipper-crm.html
+ HTTP  7/12/2026 11:26:41 PM 127.0.0.1 Returned 301 in 35 ms
+ HTTP  7/12/2026 11:26:41 PM 127.0.0.1 GET /shipper-crm
+ HTTP  7/12/2026 11:26:41 PM 127.0.0.1 Returned 200 in 11 ms
+ HTTP  7/12/2026 11:28:20 PM 127.0.0.1 GET /shipper-crm.html
+ HTTP  7/12/2026 11:28:20 PM 127.0.0.1 Returned 301 in 4 ms
+ HTTP  7/12/2026 11:28:20 PM 127.0.0.1 GET /shipper-crm
+ HTTP  7/12/2026 11:28:20 PM 127.0.0.1 Returned 200 in 9 ms
+ HTTP  7/12/2026 11:28:20 PM 127.0.0.1 GET /src/shippers.js
+ HTTP  7/12/2026 11:28:20 PM 127.0.0.1 GET /src/styles.css
+ HTTP  7/12/2026 11:28:20 PM 127.0.0.1 Returned 200 in 8 ms
+ HTTP  7/12/2026 11:28:20 PM 127.0.0.1 Returned 200 in 13 ms
+ HTTP  7/12/2026 11:28:20 PM 127.0.0.1 GET /src/auth.js
+ HTTP  7/12/2026 11:28:20 PM 127.0.0.1 GET /src/shipper-service.js
+ HTTP  7/12/2026 11:28:20 PM 127.0.0.1 GET /src/error-copy.js
+ HTTP  7/12/2026 11:28:20 PM 127.0.0.1 Returned 200 in 12 ms
+ HTTP  7/12/2026 11:28:20 PM 127.0.0.1 Returned 200 in 10 ms
+ HTTP  7/12/2026 11:28:20 PM 127.0.0.1 Returned 200 in 10 ms
+ HTTP  7/12/2026 11:28:20 PM 127.0.0.1 GET /src/config.js
+ HTTP  7/12/2026 11:28:20 PM 127.0.0.1 GET /src/rateware-api.js
+ HTTP  7/12/2026 11:28:20 PM 127.0.0.1 Returned 200 in 8 ms
+ HTTP  7/12/2026 11:28:20 PM 127.0.0.1 Returned 200 in 8 ms
+ HTTP  7/12/2026 11:28:21 PM 127.0.0.1 GET /index.html
+ HTTP  7/12/2026 11:28:21 PM 127.0.0.1 Returned 301 in 4 ms
+ HTTP  7/12/2026 11:28:21 PM 127.0.0.1 GET /favicon.ico
+ HTTP  7/12/2026 11:28:21 PM 127.0.0.1 Returned 404 in 6 ms
+ HTTP  7/12/2026 11:28:21 PM 127.0.0.1 GET /
+ HTTP  7/12/2026 11:28:21 PM 127.0.0.1 Returned 200 in 5 ms
+ HTTP  7/12/2026 11:28:21 PM 127.0.0.1 GET /src/styles.css
+ HTTP  7/12/2026 11:28:21 PM 127.0.0.1 GET /src/landing.js
+ HTTP  7/12/2026 11:28:21 PM 127.0.0.1 Returned 304 in 5 ms
+ HTTP  7/12/2026 11:28:21 PM 127.0.0.1 Returned 200 in 7 ms
+ HTTP  7/12/2026 11:28:21 PM 127.0.0.1 GET /src/auth.js
+ HTTP  7/12/2026 11:28:21 PM 127.0.0.1 GET /src/error-copy.js
+ HTTP  7/12/2026 11:28:21 PM 127.0.0.1 Returned 304 in 6 ms
+ HTTP  7/12/2026 11:28:21 PM 127.0.0.1 Returned 304 in 7 ms
+ HTTP  7/12/2026 11:28:21 PM 127.0.0.1 GET /src/config.js
+ HTTP  7/12/2026 11:28:21 PM 127.0.0.1 Returned 304 in 3 ms
+ HTTP  7/12/2026 11:31:07 PM 127.0.0.1 GET /
+ HTTP  7/12/2026 11:31:07 PM 127.0.0.1 Returned 304 in 6 ms
+ HTTP  7/12/2026 11:31:07 PM 127.0.0.1 GET /src/styles.css
+ HTTP  7/12/2026 11:31:07 PM 127.0.0.1 GET /src/landing.js
+ HTTP  7/12/2026 11:31:07 PM 127.0.0.1 Returned 304 in 6 ms
+ HTTP  7/12/2026 11:31:07 PM 127.0.0.1 Returned 304 in 5 ms
+ HTTP  7/12/2026 11:31:07 PM 127.0.0.1 GET /src/auth.js
+ HTTP  7/12/2026 11:31:07 PM 127.0.0.1 GET /src/error-copy.js
+ HTTP  7/12/2026 11:31:07 PM 127.0.0.1 Returned 304 in 5 ms
+ HTTP  7/12/2026 11:31:07 PM 127.0.0.1 Returned 304 in 4 ms
+ HTTP  7/12/2026 11:31:07 PM 127.0.0.1 GET /src/config.js
+ HTTP  7/12/2026 11:31:07 PM 127.0.0.1 Returned 304 in 3 ms
+ HTTP  7/12/2026 11:34:33 PM 127.0.0.1 GET /
+ HTTP  7/12/2026 11:34:33 PM 127.0.0.1 Returned 304 in 4 ms
+ HTTP  7/12/2026 11:34:33 PM 127.0.0.1 GET /src/styles.css
+ HTTP  7/12/2026 11:34:33 PM 127.0.0.1 Returned 304 in 3 ms
+ HTTP  7/12/2026 11:34:33 PM 127.0.0.1 GET /src/landing.js
+ HTTP  7/12/2026 11:34:33 PM 127.0.0.1 Returned 304 in 4 ms
+ HTTP  7/12/2026 11:34:33 PM 127.0.0.1 GET /src/auth.js
+ HTTP  7/12/2026 11:34:33 PM 127.0.0.1 GET /src/error-copy.js
+ HTTP  7/12/2026 11:34:33 PM 127.0.0.1 Returned 304 in 4 ms
+ HTTP  7/12/2026 11:34:33 PM 127.0.0.1 Returned 304 in 4 ms
+ HTTP  7/12/2026 11:34:33 PM 127.0.0.1 GET /src/config.js
+ HTTP  7/12/2026 11:34:33 PM 127.0.0.1 Returned 304 in 4 ms
+ HTTP  7/12/2026 11:34:55 PM 127.0.0.1 GET /
+ HTTP  7/12/2026 11:34:55 PM 127.0.0.1 Returned 200 in 3 ms
+ HTTP  7/12/2026 11:36:02 PM 127.0.0.1 GET /
+ HTTP  7/12/2026 11:36:02 PM 127.0.0.1 Returned 304 in 5 ms
+ HTTP  7/12/2026 11:36:03 PM 127.0.0.1 GET /src/styles.css
+ HTTP  7/12/2026 11:36:03 PM 127.0.0.1 GET /src/landing.js
+ HTTP  7/12/2026 11:36:03 PM 127.0.0.1 Returned 304 in 7 ms
+ HTTP  7/12/2026 11:36:03 PM 127.0.0.1 Returned 304 in 6 ms
+ HTTP  7/12/2026 11:36:03 PM 127.0.0.1 GET /src/auth.js
+ HTTP  7/12/2026 11:36:03 PM 127.0.0.1 GET /src/error-copy.js
+ HTTP  7/12/2026 11:36:03 PM 127.0.0.1 Returned 304 in 5 ms
+ HTTP  7/12/2026 11:36:03 PM 127.0.0.1 Returned 304 in 4 ms
+ HTTP  7/12/2026 11:36:03 PM 127.0.0.1 GET /src/config.js
+ HTTP  7/12/2026 11:36:03 PM 127.0.0.1 Returned 304 in 3 ms
+ HTTP  7/12/2026 11:37:25 PM 127.0.0.1 GET /rateware.html
+ HTTP  7/12/2026 11:37:25 PM 127.0.0.1 Returned 301 in 4 ms
+ HTTP  7/12/2026 11:37:25 PM 127.0.0.1 GET /rateware
+ HTTP  7/12/2026 11:37:25 PM 127.0.0.1 Returned 200 in 6 ms
+ HTTP  7/12/2026 11:37:25 PM 127.0.0.1 GET /src/rateware.js
+ HTTP  7/12/2026 11:37:25 PM 127.0.0.1 GET /src/styles.css
+ HTTP  7/12/2026 11:37:25 PM 127.0.0.1 Returned 304 in 2 ms
+ HTTP  7/12/2026 11:37:25 PM 127.0.0.1 Returned 200 in 8 ms
+ HTTP  7/12/2026 11:37:25 PM 127.0.0.1 GET /src/auth.js
+ HTTP  7/12/2026 11:37:25 PM 127.0.0.1 Returned 304 in 2 ms
+ HTTP  7/12/2026 11:37:25 PM 127.0.0.1 GET /src/rateware-service.js
+ HTTP  7/12/2026 11:37:25 PM 127.0.0.1 GET /src/location-match-drawer.js
+ HTTP  7/12/2026 11:37:25 PM 127.0.0.1 GET /src/spreadsheet-column-filters.js
+ HTTP  7/12/2026 11:37:25 PM 127.0.0.1 GET /src/spreadsheet-grid.js
+ HTTP  7/12/2026 11:37:25 PM 127.0.0.1 GET /src/sheet-ui.js
+ HTTP  7/12/2026 11:37:25 PM 127.0.0.1 GET /src/error-copy.js
+ HTTP  7/12/2026 11:37:25 PM 127.0.0.1 Returned 304 in 4 ms
+ HTTP  7/12/2026 11:37:25 PM 127.0.0.1 Returned 200 in 25 ms
+ HTTP  7/12/2026 11:37:25 PM 127.0.0.1 GET /src/ui-state.js
+ HTTP  7/12/2026 11:37:25 PM 127.0.0.1 Returned 200 in 28 ms
+ HTTP  7/12/2026 11:37:25 PM 127.0.0.1 Returned 200 in 28 ms
+ HTTP  7/12/2026 11:37:25 PM 127.0.0.1 Returned 200 in 26 ms
+ HTTP  7/12/2026 11:37:25 PM 127.0.0.1 Returned 200 in 27 ms
+ HTTP  7/12/2026 11:37:25 PM 127.0.0.1 GET /src/config.js
+ HTTP  7/12/2026 11:37:25 PM 127.0.0.1 Returned 304 in 7 ms
+ HTTP  7/12/2026 11:37:25 PM 127.0.0.1 Returned 200 in 27 ms
+ HTTP  7/12/2026 11:37:25 PM 127.0.0.1 GET /src/rateware-api.js
+ HTTP  7/12/2026 11:37:25 PM 127.0.0.1 Returned 304 in 4 ms
+ HTTP  7/12/2026 11:37:25 PM 127.0.0.1 GET /
+ HTTP  7/12/2026 11:37:25 PM 127.0.0.1 Returned 304 in 4 ms
+ HTTP  7/12/2026 11:37:25 PM 127.0.0.1 GET /src/styles.css
+ HTTP  7/12/2026 11:37:25 PM 127.0.0.1 Returned 304 in 3 ms
+ HTTP  7/12/2026 11:37:25 PM 127.0.0.1 GET /src/landing.js
+ HTTP  7/12/2026 11:37:25 PM 127.0.0.1 Returned 304 in 4 ms
+ HTTP  7/12/2026 11:37:25 PM 127.0.0.1 GET /src/auth.js
+ HTTP  7/12/2026 11:37:25 PM 127.0.0.1 GET /src/error-copy.js
+ HTTP  7/12/2026 11:37:25 PM 127.0.0.1 Returned 304 in 4 ms
+ HTTP  7/12/2026 11:37:25 PM 127.0.0.1 Returned 304 in 4 ms
+ HTTP  7/12/2026 11:37:26 PM 127.0.0.1 GET /src/config.js
+ HTTP  7/12/2026 11:37:26 PM 127.0.0.1 Returned 304 in 5 ms
+ HTTP  7/12/2026 11:47:42 PM 127.0.0.1 GET /
+ HTTP  7/12/2026 11:47:42 PM 127.0.0.1 Returned 304 in 10 ms
+ HTTP  7/12/2026 11:47:42 PM 127.0.0.1 GET /src/styles.css
+ HTTP  7/12/2026 11:47:42 PM 127.0.0.1 GET /src/landing.js
+ HTTP  7/12/2026 11:47:42 PM 127.0.0.1 Returned 304 in 5 ms
+ HTTP  7/12/2026 11:47:42 PM 127.0.0.1 Returned 304 in 4 ms
+ HTTP  7/12/2026 11:47:42 PM 127.0.0.1 GET /src/auth.js
+ HTTP  7/12/2026 11:47:42 PM 127.0.0.1 GET /src/error-copy.js
+ HTTP  7/12/2026 11:47:42 PM 127.0.0.1 Returned 304 in 6 ms
+ HTTP  7/12/2026 11:47:42 PM 127.0.0.1 Returned 304 in 5 ms
+ HTTP  7/12/2026 11:47:42 PM 127.0.0.1 GET /src/config.js
+ HTTP  7/12/2026 11:47:42 PM 127.0.0.1 Returned 304 in 6 ms
+ HTTP  7/12/2026 11:47:47 PM 127.0.0.1 GET /
+ HTTP  7/12/2026 11:47:47 PM 127.0.0.1 Returned 304 in 3 ms
+ HTTP  7/12/2026 11:47:47 PM 127.0.0.1 GET /src/styles.css
+ HTTP  7/12/2026 11:47:47 PM 127.0.0.1 GET /src/landing.js
+ HTTP  7/12/2026 11:47:47 PM 127.0.0.1 Returned 304 in 7 ms
+ HTTP  7/12/2026 11:47:47 PM 127.0.0.1 Returned 304 in 5 ms
+ HTTP  7/12/2026 11:47:47 PM 127.0.0.1 GET /src/auth.js
+ HTTP  7/12/2026 11:47:47 PM 127.0.0.1 GET /src/error-copy.js
+ HTTP  7/12/2026 11:47:47 PM 127.0.0.1 Returned 304 in 6 ms
+ HTTP  7/12/2026 11:47:47 PM 127.0.0.1 Returned 304 in 6 ms
+ HTTP  7/12/2026 11:47:47 PM 127.0.0.1 GET /src/config.js
+ HTTP  7/12/2026 11:47:47 PM 127.0.0.1 Returned 304 in 4 ms
+ HTTP  7/12/2026 11:47:59 PM 127.0.0.1 GET /
+ HTTP  7/12/2026 11:47:59 PM 127.0.0.1 Returned 304 in 3 ms
+ HTTP  7/12/2026 11:47:59 PM 127.0.0.1 GET /src/styles.css
+ HTTP  7/12/2026 11:47:59 PM 127.0.0.1 GET /src/landing.js
+ HTTP  7/12/2026 11:47:59 PM 127.0.0.1 Returned 304 in 5 ms
+ HTTP  7/12/2026 11:47:59 PM 127.0.0.1 Returned 304 in 4 ms
+ HTTP  7/12/2026 11:47:59 PM 127.0.0.1 GET /src/auth.js
+ HTTP  7/12/2026 11:47:59 PM 127.0.0.1 GET /src/error-copy.js
+ HTTP  7/12/2026 11:47:59 PM 127.0.0.1 Returned 304 in 4 ms
+ HTTP  7/12/2026 11:47:59 PM 127.0.0.1 Returned 304 in 3 ms
+ HTTP  7/12/2026 11:47:59 PM 127.0.0.1 GET /src/config.js
+ HTTP  7/12/2026 11:47:59 PM 127.0.0.1 Returned 304 in 3 ms
+ HTTP  7/12/2026 11:48:04 PM 127.0.0.1 GET /
+ HTTP  7/12/2026 11:48:04 PM 127.0.0.1 Returned 304 in 3 ms
+ HTTP  7/12/2026 11:48:04 PM 127.0.0.1 GET /src/styles.css
+ HTTP  7/12/2026 11:48:04 PM 127.0.0.1 GET /src/landing.js
+ HTTP  7/12/2026 11:48:04 PM 127.0.0.1 Returned 304 in 5 ms
+ HTTP  7/12/2026 11:48:04 PM 127.0.0.1 Returned 304 in 5 ms
+ HTTP  7/12/2026 11:48:04 PM 127.0.0.1 GET /src/auth.js
+ HTTP  7/12/2026 11:48:04 PM 127.0.0.1 GET /src/error-copy.js
+ HTTP  7/12/2026 11:48:04 PM 127.0.0.1 Returned 304 in 4 ms
+ HTTP  7/12/2026 11:48:04 PM 127.0.0.1 Returned 304 in 3 ms
+ HTTP  7/12/2026 11:48:04 PM 127.0.0.1 GET /src/config.js
+ HTTP  7/12/2026 11:48:04 PM 127.0.0.1 Returned 304 in 3 ms
+ HTTP  7/12/2026 11:50:01 PM 127.0.0.1 GET /
+ HTTP  7/12/2026 11:50:01 PM 127.0.0.1 Returned 304 in 13 ms
+ HTTP  7/12/2026 11:50:02 PM 127.0.0.1 GET /src/styles.css
+ HTTP  7/12/2026 11:50:02 PM 127.0.0.1 GET /src/landing.js
+ HTTP  7/12/2026 11:50:02 PM 127.0.0.1 Returned 304 in 8 ms
+ HTTP  7/12/2026 11:50:02 PM 127.0.0.1 Returned 304 in 7 ms
+ HTTP  7/12/2026 11:50:02 PM 127.0.0.1 GET /src/auth.js
+ HTTP  7/12/2026 11:50:02 PM 127.0.0.1 GET /src/error-copy.js
+ HTTP  7/12/2026 11:50:02 PM 127.0.0.1 Returned 304 in 5 ms
+ HTTP  7/12/2026 11:50:02 PM 127.0.0.1 Returned 304 in 4 ms
+ HTTP  7/12/2026 11:50:02 PM 127.0.0.1 GET /src/config.js
+ HTTP  7/12/2026 11:50:02 PM 127.0.0.1 Returned 304 in 4 ms
+ HTTP  7/12/2026 11:50:10 PM 127.0.0.1 GET /
+ HTTP  7/12/2026 11:50:10 PM 127.0.0.1 Returned 304 in 3 ms
+ HTTP  7/12/2026 11:50:10 PM 127.0.0.1 GET /src/styles.css
+ HTTP  7/12/2026 11:50:10 PM 127.0.0.1 GET /src/landing.js
+ HTTP  7/12/2026 11:50:10 PM 127.0.0.1 Returned 304 in 8 ms
+ HTTP  7/12/2026 11:50:10 PM 127.0.0.1 Returned 304 in 5 ms
+ HTTP  7/12/2026 11:50:11 PM 127.0.0.1 GET /src/auth.js
+ HTTP  7/12/2026 11:50:11 PM 127.0.0.1 GET /src/error-copy.js
+ HTTP  7/12/2026 11:50:11 PM 127.0.0.1 Returned 304 in 5 ms
+ HTTP  7/12/2026 11:50:11 PM 127.0.0.1 Returned 304 in 3 ms
+ HTTP  7/12/2026 11:50:11 PM 127.0.0.1 GET /src/config.js
+ HTTP  7/12/2026 11:50:11 PM 127.0.0.1 Returned 304 in 3 ms
+ HTTP  7/12/2026 11:50:32 PM 127.0.0.1 GET /
+ HTTP  7/12/2026 11:50:32 PM 127.0.0.1 Returned 304 in 2 ms
+ HTTP  7/12/2026 11:50:32 PM 127.0.0.1 GET /src/styles.css
+ HTTP  7/12/2026 11:50:32 PM 127.0.0.1 GET /src/landing.js
+ HTTP  7/12/2026 11:50:32 PM 127.0.0.1 Returned 304 in 5 ms
+ HTTP  7/12/2026 11:50:32 PM 127.0.0.1 Returned 304 in 3 ms
+ HTTP  7/12/2026 11:50:32 PM 127.0.0.1 GET /src/auth.js
+ HTTP  7/12/2026 11:50:32 PM 127.0.0.1 GET /src/error-copy.js
+ HTTP  7/12/2026 11:50:32 PM 127.0.0.1 Returned 304 in 5 ms
+ HTTP  7/12/2026 11:50:32 PM 127.0.0.1 Returned 304 in 3 ms
+ HTTP  7/12/2026 11:50:32 PM 127.0.0.1 GET /src/config.js
+ HTTP  7/12/2026 11:50:32 PM 127.0.0.1 Returned 304 in 2 ms
+ HTTP  7/12/2026 11:50:35 PM 127.0.0.1 GET /
+ HTTP  7/12/2026 11:50:35 PM 127.0.0.1 Returned 304 in 12 ms
+ HTTP  7/12/2026 11:50:35 PM 127.0.0.1 GET /src/styles.css
+ HTTP  7/12/2026 11:50:35 PM 127.0.0.1 GET /src/landing.js
+ HTTP  7/12/2026 11:50:35 PM 127.0.0.1 Returned 304 in 4 ms
+ HTTP  7/12/2026 11:50:35 PM 127.0.0.1 Returned 304 in 4 ms
+ HTTP  7/12/2026 11:50:35 PM 127.0.0.1 GET /src/auth.js
+ HTTP  7/12/2026 11:50:35 PM 127.0.0.1 GET /src/error-copy.js
+ HTTP  7/12/2026 11:50:35 PM 127.0.0.1 Returned 304 in 5 ms
+ HTTP  7/12/2026 11:50:35 PM 127.0.0.1 Returned 304 in 4 ms
+ HTTP  7/12/2026 11:50:35 PM 127.0.0.1 GET /src/config.js
+ HTTP  7/12/2026 11:50:35 PM 127.0.0.1 Returned 304 in 3 ms
+ HTTP  7/12/2026 11:58:23 PM 127.0.0.1 GET /
+ HTTP  7/12/2026 11:58:23 PM 127.0.0.1 Returned 304 in 13 ms
+ HTTP  7/12/2026 11:58:23 PM 127.0.0.1 GET /src/styles.css
+ HTTP  7/12/2026 11:58:23 PM 127.0.0.1 GET /src/landing.js
+ HTTP  7/12/2026 11:58:23 PM 127.0.0.1 Returned 304 in 9 ms
+ HTTP  7/12/2026 11:58:23 PM 127.0.0.1 Returned 304 in 5 ms
+ HTTP  7/12/2026 11:58:24 PM 127.0.0.1 GET /src/auth.js
+ HTTP  7/12/2026 11:58:24 PM 127.0.0.1 GET /src/error-copy.js
+ HTTP  7/12/2026 11:58:24 PM 127.0.0.1 Returned 304 in 6 ms
+ HTTP  7/12/2026 11:58:24 PM 127.0.0.1 Returned 304 in 5 ms
+ HTTP  7/12/2026 11:58:24 PM 127.0.0.1 GET /src/config.js
+ HTTP  7/12/2026 11:58:24 PM 127.0.0.1 Returned 304 in 3 ms
+ HTTP  7/12/2026 11:59:13 PM 127.0.0.1 GET /
+ HTTP  7/12/2026 11:59:13 PM 127.0.0.1 Returned 304 in 4 ms
+ HTTP  7/12/2026 11:59:13 PM 127.0.0.1 GET /src/styles.css
+ HTTP  7/12/2026 11:59:13 PM 127.0.0.1 GET /src/landing.js
+ HTTP  7/12/2026 11:59:13 PM 127.0.0.1 Returned 304 in 7 ms
+ HTTP  7/12/2026 11:59:13 PM 127.0.0.1 Returned 304 in 5 ms
+ HTTP  7/12/2026 11:59:13 PM 127.0.0.1 GET /src/auth.js
+ HTTP  7/12/2026 11:59:13 PM 127.0.0.1 GET /src/error-copy.js
+ HTTP  7/12/2026 11:59:13 PM 127.0.0.1 Returned 304 in 4 ms
+ HTTP  7/12/2026 11:59:13 PM 127.0.0.1 Returned 304 in 4 ms
+ HTTP  7/12/2026 11:59:13 PM 127.0.0.1 GET /src/config.js
+ HTTP  7/12/2026 11:59:13 PM 127.0.0.1 Returned 304 in 3 ms
+ HTTP  7/13/2026 12:10:41 AM 127.0.0.1 GET /shipper-crm.html
+ HTTP  7/13/2026 12:10:41 AM 127.0.0.1 Returned 301 in 3 ms
+ HTTP  7/13/2026 12:10:41 AM 127.0.0.1 GET /shipper-crm
+ HTTP  7/13/2026 12:10:41 AM 127.0.0.1 Returned 200 in 5 ms
+ HTTP  7/13/2026 12:12:58 AM 127.0.0.1 GET /
+ HTTP  7/13/2026 12:12:58 AM 127.0.0.1 Returned 304 in 3 ms
+ HTTP  7/13/2026 12:12:58 AM 127.0.0.1 GET /src/styles.css
+ HTTP  7/13/2026 12:12:58 AM 127.0.0.1 GET /src/landing.js
+ HTTP  7/13/2026 12:12:58 AM 127.0.0.1 Returned 304 in 3 ms
+ HTTP  7/13/2026 12:12:58 AM 127.0.0.1 Returned 200 in 17 ms
+ HTTP  7/13/2026 12:12:58 AM 127.0.0.1 GET /src/auth.js
+ HTTP  7/13/2026 12:12:58 AM 127.0.0.1 GET /src/error-copy.js
+ HTTP  7/13/2026 12:12:58 AM 127.0.0.1 Returned 304 in 5 ms
+ HTTP  7/13/2026 12:12:58 AM 127.0.0.1 Returned 304 in 4 ms
+ HTTP  7/13/2026 12:12:58 AM 127.0.0.1 GET /src/config.js
+ HTTP  7/13/2026 12:12:58 AM 127.0.0.1 Returned 304 in 2 ms
+ HTTP  7/13/2026 12:13:05 AM 127.0.0.1 GET /customer-rfi.html
+ HTTP  7/13/2026 12:13:05 AM 127.0.0.1 Returned 301 in 2 ms
+ HTTP  7/13/2026 12:13:05 AM 127.0.0.1 GET /customer-rfi
+ HTTP  7/13/2026 12:13:05 AM 127.0.0.1 Returned 200 in 5 ms
+ HTTP  7/13/2026 12:22:20 AM 127.0.0.1 GET /
+ HTTP  7/13/2026 12:22:20 AM 127.0.0.1 Returned 304 in 3 ms
+ HTTP  7/13/2026 12:22:20 AM 127.0.0.1 GET /src/styles.css
+ HTTP  7/13/2026 12:22:20 AM 127.0.0.1 GET /src/landing.js
+ HTTP  7/13/2026 12:22:20 AM 127.0.0.1 Returned 304 in 3 ms
+ HTTP  7/13/2026 12:22:20 AM 127.0.0.1 Returned 200 in 13 ms
+ HTTP  7/13/2026 12:22:20 AM 127.0.0.1 GET /src/auth.js
+ HTTP  7/13/2026 12:22:20 AM 127.0.0.1 Returned 304 in 4 ms
+ HTTP  7/13/2026 12:22:20 AM 127.0.0.1 GET /src/error-copy.js
+ HTTP  7/13/2026 12:22:20 AM 127.0.0.1 Returned 304 in 4 ms
+ HTTP  7/13/2026 12:22:20 AM 127.0.0.1 GET /src/config.js
+ HTTP  7/13/2026 12:22:20 AM 127.0.0.1 Returned 304 in 3 ms
+ HTTP  7/13/2026 12:29:21 AM 127.0.0.1 GET /
+ HTTP  7/13/2026 12:29:21 AM 127.0.0.1 Returned 304 in 5 ms
+ HTTP  7/13/2026 12:29:21 AM 127.0.0.1 GET /src/styles.css
+ HTTP  7/13/2026 12:29:21 AM 127.0.0.1 GET /src/landing.js
+ HTTP  7/13/2026 12:29:21 AM 127.0.0.1 Returned 304 in 4 ms
+ HTTP  7/13/2026 12:29:21 AM 127.0.0.1 Returned 200 in 29 ms
+ HTTP  7/13/2026 12:29:21 AM 127.0.0.1 GET /src/auth.js
+ HTTP  7/13/2026 12:29:21 AM 127.0.0.1 GET /src/error-copy.js
+ HTTP  7/13/2026 12:29:21 AM 127.0.0.1 Returned 304 in 5 ms
+ HTTP  7/13/2026 12:29:21 AM 127.0.0.1 Returned 304 in 4 ms
+ HTTP  7/13/2026 12:29:21 AM 127.0.0.1 GET /src/config.js
+ HTTP  7/13/2026 12:29:21 AM 127.0.0.1 Returned 304 in 2 ms
+ HTTP  7/13/2026 12:36:34 AM 127.0.0.1 GET /
+ HTTP  7/13/2026 12:36:34 AM 127.0.0.1 Returned 304 in 19 ms
+ HTTP  7/13/2026 12:36:35 AM 127.0.0.1 GET /src/styles.css
+ HTTP  7/13/2026 12:36:35 AM 127.0.0.1 GET /src/landing.js
+ HTTP  7/13/2026 12:36:35 AM 127.0.0.1 Returned 304 in 4 ms
+ HTTP  7/13/2026 12:36:35 AM 127.0.0.1 Returned 304 in 4 ms
+ HTTP  7/13/2026 12:36:35 AM 127.0.0.1 GET /src/auth.js
+ HTTP  7/13/2026 12:36:35 AM 127.0.0.1 GET /src/error-copy.js
+ HTTP  7/13/2026 12:36:35 AM 127.0.0.1 Returned 304 in 6 ms
+ HTTP  7/13/2026 12:36:35 AM 127.0.0.1 Returned 304 in 5 ms
+ HTTP  7/13/2026 12:36:35 AM 127.0.0.1 GET /src/config.js
+ HTTP  7/13/2026 12:36:35 AM 127.0.0.1 Returned 304 in 3 ms
+ HTTP  7/13/2026 12:40:23 AM 127.0.0.1 GET /
+ HTTP  7/13/2026 12:40:23 AM 127.0.0.1 Returned 304 in 19 ms
+ HTTP  7/13/2026 12:40:23 AM 127.0.0.1 GET /src/styles.css
+ HTTP  7/13/2026 12:40:23 AM 127.0.0.1 GET /src/landing.js
+ HTTP  7/13/2026 12:40:23 AM 127.0.0.1 Returned 304 in 21 ms
+ HTTP  7/13/2026 12:40:23 AM 127.0.0.1 Returned 304 in 5 ms
+ HTTP  7/13/2026 12:40:23 AM 127.0.0.1 GET /src/auth.js
+ HTTP  7/13/2026 12:40:23 AM 127.0.0.1 GET /src/error-copy.js
+ HTTP  7/13/2026 12:40:23 AM 127.0.0.1 Returned 304 in 3 ms
+ HTTP  7/13/2026 12:40:23 AM 127.0.0.1 Returned 304 in 2 ms
+ HTTP  7/13/2026 12:40:24 AM 127.0.0.1 GET /src/config.js
+ HTTP  7/13/2026 12:40:24 AM 127.0.0.1 Returned 304 in 3 ms
+ HTTP  7/13/2026 12:40:55 AM 127.0.0.1 GET /
+ HTTP  7/13/2026 12:40:55 AM 127.0.0.1 Returned 304 in 3 ms
+ HTTP  7/13/2026 12:40:55 AM 127.0.0.1 GET /src/styles.css
+ HTTP  7/13/2026 12:40:55 AM 127.0.0.1 GET /src/landing.js
+ HTTP  7/13/2026 12:40:55 AM 127.0.0.1 Returned 304 in 24 ms
+ HTTP  7/13/2026 12:40:55 AM 127.0.0.1 Returned 304 in 8 ms
+ HTTP  7/13/2026 12:40:55 AM 127.0.0.1 GET /src/auth.js
+ HTTP  7/13/2026 12:40:55 AM 127.0.0.1 GET /src/error-copy.js
+ HTTP  7/13/2026 12:40:55 AM 127.0.0.1 Returned 304 in 3 ms
+ HTTP  7/13/2026 12:40:55 AM 127.0.0.1 Returned 304 in 2 ms
+ HTTP  7/13/2026 12:40:55 AM 127.0.0.1 GET /src/config.js
+ HTTP  7/13/2026 12:40:55 AM 127.0.0.1 Returned 304 in 3 ms
+ HTTP  7/13/2026 12:40:58 AM 127.0.0.1 GET /
+ HTTP  7/13/2026 12:40:58 AM 127.0.0.1 Returned 304 in 4 ms
+ HTTP  7/13/2026 12:40:58 AM 127.0.0.1 GET /src/styles.css
+ HTTP  7/13/2026 12:40:58 AM 127.0.0.1 GET /src/landing.js
+ HTTP  7/13/2026 12:40:58 AM 127.0.0.1 Returned 304 in 19 ms
+ HTTP  7/13/2026 12:40:58 AM 127.0.0.1 Returned 304 in 4 ms
+ HTTP  7/13/2026 12:40:58 AM 127.0.0.1 GET /src/auth.js
+ HTTP  7/13/2026 12:40:58 AM 127.0.0.1 GET /src/error-copy.js
+ HTTP  7/13/2026 12:40:58 AM 127.0.0.1 Returned 304 in 2 ms
+ HTTP  7/13/2026 12:40:58 AM 127.0.0.1 Returned 304 in 2 ms
+ HTTP  7/13/2026 12:40:58 AM 127.0.0.1 GET /src/config.js
+ HTTP  7/13/2026 12:40:58 AM 127.0.0.1 Returned 304 in 3 ms
+ HTTP  7/13/2026 12:45:23 AM 127.0.0.1 GET /
+ HTTP  7/13/2026 12:45:23 AM 127.0.0.1 Returned 304 in 5 ms
+ HTTP  7/13/2026 12:45:23 AM 127.0.0.1 GET /src/styles.css
+ HTTP  7/13/2026 12:45:23 AM 127.0.0.1 GET /src/landing.js
+ HTTP  7/13/2026 12:45:23 AM 127.0.0.1 Returned 304 in 7 ms
+ HTTP  7/13/2026 12:45:23 AM 127.0.0.1 Returned 304 in 6 ms
+ HTTP  7/13/2026 12:45:23 AM 127.0.0.1 GET /src/auth.js
+ HTTP  7/13/2026 12:45:23 AM 127.0.0.1 GET /src/error-copy.js
+ HTTP  7/13/2026 12:45:23 AM 127.0.0.1 Returned 304 in 6 ms
+ HTTP  7/13/2026 12:45:23 AM 127.0.0.1 Returned 304 in 4 ms
+ HTTP  7/13/2026 12:45:23 AM 127.0.0.1 GET /src/config.js
+ HTTP  7/13/2026 12:45:23 AM 127.0.0.1 Returned 304 in 4 ms
+ HTTP  7/13/2026 1:07:07 AM 127.0.0.1 GET /
+ HTTP  7/13/2026 1:07:07 AM 127.0.0.1 Returned 304 in 5 ms
+ HTTP  7/13/2026 1:07:07 AM 127.0.0.1 GET /src/styles.css
+ HTTP  7/13/2026 1:07:07 AM 127.0.0.1 GET /src/landing.js
+ HTTP  7/13/2026 1:07:07 AM 127.0.0.1 Returned 304 in 2 ms
+ HTTP  7/13/2026 1:07:07 AM 127.0.0.1 Returned 200 in 10 ms
+ HTTP  7/13/2026 1:07:07 AM 127.0.0.1 GET /src/auth.js
+ HTTP  7/13/2026 1:07:07 AM 127.0.0.1 GET /src/error-copy.js
+ HTTP  7/13/2026 1:07:07 AM 127.0.0.1 Returned 304 in 3 ms
+ HTTP  7/13/2026 1:07:07 AM 127.0.0.1 Returned 304 in 4 ms
+ HTTP  7/13/2026 1:07:07 AM 127.0.0.1 GET /src/config.js
+ HTTP  7/13/2026 1:07:07 AM 127.0.0.1 Returned 304 in 2 ms
+ HTTP  7/13/2026 1:11:20 AM 127.0.0.1 GET /
+ HTTP  7/13/2026 1:11:20 AM 127.0.0.1 Returned 304 in 20 ms
+ HTTP  7/13/2026 1:11:20 AM 127.0.0.1 GET /src/styles.css
+ HTTP  7/13/2026 1:11:20 AM 127.0.0.1 GET /src/landing.js
+ HTTP  7/13/2026 1:11:20 AM 127.0.0.1 Returned 304 in 7 ms
+ HTTP  7/13/2026 1:11:20 AM 127.0.0.1 Returned 304 in 4 ms
+ HTTP  7/13/2026 1:11:20 AM 127.0.0.1 GET /src/auth.js
+ HTTP  7/13/2026 1:11:20 AM 127.0.0.1 GET /src/error-copy.js
+ HTTP  7/13/2026 1:11:20 AM 127.0.0.1 Returned 304 in 5 ms
+ HTTP  7/13/2026 1:11:20 AM 127.0.0.1 Returned 304 in 4 ms
+ HTTP  7/13/2026 1:11:20 AM 127.0.0.1 GET /src/config.js
+ HTTP  7/13/2026 1:11:20 AM 127.0.0.1 Returned 304 in 2 ms
+ HTTP  7/13/2026 1:18:03 AM 127.0.0.1 GET /
+ HTTP  7/13/2026 1:18:03 AM 127.0.0.1 Returned 304 in 3 ms
+ HTTP  7/13/2026 1:18:03 AM 127.0.0.1 GET /src/styles.css
+ HTTP  7/13/2026 1:18:03 AM 127.0.0.1 GET /src/landing.js
+ HTTP  7/13/2026 1:18:03 AM 127.0.0.1 Returned 304 in 6 ms
+ HTTP  7/13/2026 1:18:03 AM 127.0.0.1 Returned 304 in 5 ms
+ HTTP  7/13/2026 1:18:03 AM 127.0.0.1 GET /src/auth.js
+ HTTP  7/13/2026 1:18:03 AM 127.0.0.1 GET /src/error-copy.js
+ HTTP  7/13/2026 1:18:03 AM 127.0.0.1 Returned 304 in 5 ms
+ HTTP  7/13/2026 1:18:03 AM 127.0.0.1 Returned 304 in 3 ms
+ HTTP  7/13/2026 1:18:03 AM 127.0.0.1 GET /src/config.js
+ HTTP  7/13/2026 1:18:03 AM 127.0.0.1 Returned 304 in 3 ms
+ HTTP  7/13/2026 1:22:53 AM 127.0.0.1 GET /
+ HTTP  7/13/2026 1:22:53 AM 127.0.0.1 Returned 304 in 6 ms
+ HTTP  7/13/2026 1:22:53 AM 127.0.0.1 GET /src/styles.css
+ HTTP  7/13/2026 1:22:53 AM 127.0.0.1 GET /src/landing.js
+ HTTP  7/13/2026 1:22:53 AM 127.0.0.1 Returned 304 in 21 ms
+ HTTP  7/13/2026 1:22:53 AM 127.0.0.1 Returned 304 in 4 ms
+ HTTP  7/13/2026 1:22:53 AM 127.0.0.1 GET /src/auth.js
+ HTTP  7/13/2026 1:22:53 AM 127.0.0.1 GET /src/error-copy.js
+ HTTP  7/13/2026 1:22:53 AM 127.0.0.1 Returned 304 in 5 ms
+ HTTP  7/13/2026 1:22:53 AM 127.0.0.1 Returned 304 in 4 ms
+ HTTP  7/13/2026 1:22:53 AM 127.0.0.1 GET /src/config.js
+ HTTP  7/13/2026 1:22:53 AM 127.0.0.1 Returned 304 in 3 ms
+ HTTP  7/13/2026 1:23:43 AM 127.0.0.1 GET /
+ HTTP  7/13/2026 1:23:43 AM 127.0.0.1 Returned 304 in 10 ms
+ HTTP  7/13/2026 1:23:43 AM 127.0.0.1 GET /src/styles.css
+ HTTP  7/13/2026 1:23:43 AM 127.0.0.1 GET /src/landing.js
+ HTTP  7/13/2026 1:23:43 AM 127.0.0.1 Returned 304 in 8 ms
+ HTTP  7/13/2026 1:23:43 AM 127.0.0.1 Returned 304 in 4 ms
+ HTTP  7/13/2026 1:23:43 AM 127.0.0.1 GET /src/auth.js
+ HTTP  7/13/2026 1:23:43 AM 127.0.0.1 GET /src/error-copy.js
+ HTTP  7/13/2026 1:23:43 AM 127.0.0.1 Returned 304 in 4 ms
+ HTTP  7/13/2026 1:23:43 AM 127.0.0.1 Returned 304 in 3 ms
+ HTTP  7/13/2026 1:23:43 AM 127.0.0.1 GET /src/config.js
+ HTTP  7/13/2026 1:23:43 AM 127.0.0.1 Returned 304 in 2 ms
+ HTTP  7/13/2026 1:24:37 AM 127.0.0.1 GET /
+ HTTP  7/13/2026 1:24:37 AM 127.0.0.1 Returned 304 in 4 ms
+ HTTP  7/13/2026 1:24:37 AM 127.0.0.1 GET /src/styles.css
+ HTTP  7/13/2026 1:24:37 AM 127.0.0.1 GET /src/landing.js
+ HTTP  7/13/2026 1:24:37 AM 127.0.0.1 Returned 304 in 6 ms
+ HTTP  7/13/2026 1:24:37 AM 127.0.0.1 Returned 304 in 6 ms
+ HTTP  7/13/2026 1:24:37 AM 127.0.0.1 GET /src/auth.js
+ HTTP  7/13/2026 1:24:37 AM 127.0.0.1 GET /src/error-copy.js
+ HTTP  7/13/2026 1:24:37 AM 127.0.0.1 Returned 304 in 4 ms
+ HTTP  7/13/2026 1:24:37 AM 127.0.0.1 Returned 304 in 3 ms
+ HTTP  7/13/2026 1:24:37 AM 127.0.0.1 GET /src/config.js
+ HTTP  7/13/2026 1:24:37 AM 127.0.0.1 Returned 304 in 3 ms
+ HTTP  7/13/2026 1:24:58 AM 127.0.0.1 GET /
+ HTTP  7/13/2026 1:24:58 AM 127.0.0.1 Returned 304 in 5 ms
+ HTTP  7/13/2026 1:24:58 AM 127.0.0.1 GET /src/styles.css
+ HTTP  7/13/2026 1:24:58 AM 127.0.0.1 GET /src/landing.js
+ HTTP  7/13/2026 1:24:58 AM 127.0.0.1 Returned 304 in 22 ms
+ HTTP  7/13/2026 1:24:58 AM 127.0.0.1 Returned 304 in 4 ms
+ HTTP  7/13/2026 1:24:59 AM 127.0.0.1 GET /src/auth.js
+ HTTP  7/13/2026 1:24:59 AM 127.0.0.1 GET /src/error-copy.js
+ HTTP  7/13/2026 1:24:59 AM 127.0.0.1 Returned 304 in 5 ms
+ HTTP  7/13/2026 1:24:59 AM 127.0.0.1 Returned 304 in 4 ms
+ HTTP  7/13/2026 1:24:59 AM 127.0.0.1 GET /src/config.js
+ HTTP  7/13/2026 1:24:59 AM 127.0.0.1 Returned 304 in 3 ms
+ HTTP  7/13/2026 1:27:18 AM 127.0.0.1 GET /
+ HTTP  7/13/2026 1:27:18 AM 127.0.0.1 Returned 304 in 4 ms
+ HTTP  7/13/2026 1:27:18 AM 127.0.0.1 GET /src/styles.css
+ HTTP  7/13/2026 1:27:19 AM 127.0.0.1 GET /src/landing.js
+ HTTP  7/13/2026 1:27:18 AM 127.0.0.1 Returned 304 in 21 ms
+ HTTP  7/13/2026 1:27:19 AM 127.0.0.1 Returned 304 in 4 ms
+ HTTP  7/13/2026 1:27:19 AM 127.0.0.1 GET /src/auth.js
+ HTTP  7/13/2026 1:27:19 AM 127.0.0.1 GET /src/error-copy.js
+ HTTP  7/13/2026 1:27:19 AM 127.0.0.1 Returned 304 in 5 ms
+ HTTP  7/13/2026 1:27:19 AM 127.0.0.1 Returned 304 in 3 ms
+ HTTP  7/13/2026 1:27:19 AM 127.0.0.1 GET /src/config.js
+ HTTP  7/13/2026 1:27:19 AM 127.0.0.1 Returned 304 in 2 ms
+ HTTP  7/13/2026 1:28:36 AM 127.0.0.1 GET /
+ HTTP  7/13/2026 1:28:36 AM 127.0.0.1 Returned 304 in 3 ms
+ HTTP  7/13/2026 1:28:36 AM 127.0.0.1 GET /src/styles.css
+ HTTP  7/13/2026 1:28:36 AM 127.0.0.1 GET /src/landing.js
+ HTTP  7/13/2026 1:28:36 AM 127.0.0.1 Returned 304 in 24 ms
+ HTTP  7/13/2026 1:28:36 AM 127.0.0.1 Returned 304 in 5 ms
+ HTTP  7/13/2026 1:28:36 AM 127.0.0.1 GET /src/auth.js
+ HTTP  7/13/2026 1:28:36 AM 127.0.0.1 GET /src/error-copy.js
+ HTTP  7/13/2026 1:28:36 AM 127.0.0.1 Returned 304 in 4 ms
+ HTTP  7/13/2026 1:28:36 AM 127.0.0.1 Returned 304 in 3 ms
+ HTTP  7/13/2026 1:28:36 AM 127.0.0.1 GET /src/config.js
+ HTTP  7/13/2026 1:28:36 AM 127.0.0.1 Returned 304 in 3 ms
+ HTTP  7/13/2026 1:28:59 AM 127.0.0.1 GET /
+ HTTP  7/13/2026 1:28:59 AM 127.0.0.1 Returned 304 in 24 ms
+ HTTP  7/13/2026 1:28:59 AM 127.0.0.1 GET /src/styles.css
+ HTTP  7/13/2026 1:28:59 AM 127.0.0.1 GET /src/landing.js
+ HTTP  7/13/2026 1:28:59 AM 127.0.0.1 Returned 304 in 4 ms
+ HTTP  7/13/2026 1:28:59 AM 127.0.0.1 Returned 304 in 4 ms
+ HTTP  7/13/2026 1:28:59 AM 127.0.0.1 GET /src/auth.js
+ HTTP  7/13/2026 1:28:59 AM 127.0.0.1 GET /src/error-copy.js
+ HTTP  7/13/2026 1:28:59 AM 127.0.0.1 Returned 304 in 4 ms
+ HTTP  7/13/2026 1:28:59 AM 127.0.0.1 Returned 304 in 5 ms
+ HTTP  7/13/2026 1:28:59 AM 127.0.0.1 GET /src/config.js
+ HTTP  7/13/2026 1:28:59 AM 127.0.0.1 Returned 304 in 2 ms
+ HTTP  7/13/2026 1:29:55 AM 127.0.0.1 GET /
+ HTTP  7/13/2026 1:29:55 AM 127.0.0.1 Returned 304 in 7 ms
+ HTTP  7/13/2026 1:29:55 AM 127.0.0.1 GET /src/styles.css
+ HTTP  7/13/2026 1:29:55 AM 127.0.0.1 GET /src/landing.js
+ HTTP  7/13/2026 1:29:55 AM 127.0.0.1 Returned 304 in 20 ms
+ HTTP  7/13/2026 1:29:55 AM 127.0.0.1 Returned 304 in 3 ms
+ HTTP  7/13/2026 1:29:55 AM 127.0.0.1 GET /src/auth.js
+ HTTP  7/13/2026 1:29:55 AM 127.0.0.1 GET /src/error-copy.js
+ HTTP  7/13/2026 1:29:55 AM 127.0.0.1 Returned 304 in 4 ms
+ HTTP  7/13/2026 1:29:55 AM 127.0.0.1 Returned 304 in 3 ms
+ HTTP  7/13/2026 1:29:55 AM 127.0.0.1 GET /src/config.js
+ HTTP  7/13/2026 1:29:55 AM 127.0.0.1 Returned 304 in 2 ms
+ HTTP  7/13/2026 1:34:11 AM 127.0.0.1 GET /
+ HTTP  7/13/2026 1:34:11 AM 127.0.0.1 Returned 304 in 18 ms
+ HTTP  7/13/2026 1:34:11 AM 127.0.0.1 GET /src/styles.css
+ HTTP  7/13/2026 1:34:11 AM 127.0.0.1 GET /src/landing.js
+ HTTP  7/13/2026 1:34:11 AM 127.0.0.1 Returned 304 in 6 ms
+ HTTP  7/13/2026 1:34:11 AM 127.0.0.1 Returned 304 in 4 ms
+ HTTP  7/13/2026 1:34:11 AM 127.0.0.1 GET /src/auth.js
+ HTTP  7/13/2026 1:34:11 AM 127.0.0.1 GET /src/error-copy.js
+ HTTP  7/13/2026 1:34:11 AM 127.0.0.1 Returned 304 in 4 ms
+ HTTP  7/13/2026 1:34:11 AM 127.0.0.1 Returned 304 in 4 ms
+ HTTP  7/13/2026 1:34:11 AM 127.0.0.1 GET /src/config.js
+ HTTP  7/13/2026 1:34:11 AM 127.0.0.1 Returned 304 in 3 ms
+ HTTP  7/13/2026 1:39:38 AM 127.0.0.1 GET /
+ HTTP  7/13/2026 1:39:38 AM 127.0.0.1 Returned 304 in 14 ms
+ HTTP  7/13/2026 1:39:39 AM 127.0.0.1 GET /src/styles.css
+ HTTP  7/13/2026 1:39:39 AM 127.0.0.1 GET /src/landing.js
+ HTTP  7/13/2026 1:39:39 AM 127.0.0.1 Returned 304 in 2 ms
+ HTTP  7/13/2026 1:39:39 AM 127.0.0.1 Returned 200 in 12 ms
+ HTTP  7/13/2026 1:39:39 AM 127.0.0.1 GET /src/auth.js
+ HTTP  7/13/2026 1:39:39 AM 127.0.0.1 GET /src/error-copy.js
+ HTTP  7/13/2026 1:39:39 AM 127.0.0.1 Returned 304 in 5 ms
+ HTTP  7/13/2026 1:39:39 AM 127.0.0.1 Returned 304 in 4 ms
+ HTTP  7/13/2026 1:39:39 AM 127.0.0.1 GET /src/config.js
+ HTTP  7/13/2026 1:39:39 AM 127.0.0.1 Returned 304 in 3 ms
+ HTTP  7/13/2026 1:46:47 AM 127.0.0.1 GET /
+ HTTP  7/13/2026 1:46:47 AM 127.0.0.1 Returned 304 in 7 ms
+ HTTP  7/13/2026 1:46:47 AM 127.0.0.1 GET /src/styles.css
+ HTTP  7/13/2026 1:46:47 AM 127.0.0.1 GET /src/landing.js
+ HTTP  7/13/2026 1:46:47 AM 127.0.0.1 Returned 304 in 5 ms
+ HTTP  7/13/2026 1:46:47 AM 127.0.0.1 Returned 304 in 3 ms
+ HTTP  7/13/2026 1:46:47 AM 127.0.0.1 GET /src/auth.js
+ HTTP  7/13/2026 1:46:47 AM 127.0.0.1 GET /src/error-copy.js
+ HTTP  7/13/2026 1:46:47 AM 127.0.0.1 Returned 304 in 5 ms
+ HTTP  7/13/2026 1:46:47 AM 127.0.0.1 Returned 304 in 5 ms
+ HTTP  7/13/2026 1:46:47 AM 127.0.0.1 GET /src/config.js
+ HTTP  7/13/2026 1:46:47 AM 127.0.0.1 Returned 304 in 3 ms
+ HTTP  7/13/2026 1:48:30 AM 127.0.0.1 GET /
+ HTTP  7/13/2026 1:48:30 AM 127.0.0.1 Returned 304 in 5 ms
+ HTTP  7/13/2026 1:48:30 AM 127.0.0.1 GET /src/styles.css
+ HTTP  7/13/2026 1:48:30 AM 127.0.0.1 GET /src/landing.js
+ HTTP  7/13/2026 1:48:30 AM 127.0.0.1 Returned 304 in 5 ms
+ HTTP  7/13/2026 1:48:30 AM 127.0.0.1 Returned 304 in 4 ms
+ HTTP  7/13/2026 1:48:30 AM 127.0.0.1 GET /src/auth.js
+ HTTP  7/13/2026 1:48:30 AM 127.0.0.1 GET /src/error-copy.js
+ HTTP  7/13/2026 1:48:30 AM 127.0.0.1 Returned 304 in 4 ms
+ HTTP  7/13/2026 1:48:30 AM 127.0.0.1 Returned 304 in 3 ms
+ HTTP  7/13/2026 1:48:30 AM 127.0.0.1 GET /src/config.js
+ HTTP  7/13/2026 1:48:30 AM 127.0.0.1 Returned 304 in 3 ms
+ HTTP  7/13/2026 1:50:00 AM 127.0.0.1 GET /
+ HTTP  7/13/2026 1:50:00 AM 127.0.0.1 Returned 304 in 12 ms
+ HTTP  7/13/2026 1:50:00 AM 127.0.0.1 GET /src/styles.css
+ HTTP  7/13/2026 1:50:00 AM 127.0.0.1 GET /src/landing.js
+ HTTP  7/13/2026 1:50:00 AM 127.0.0.1 Returned 304 in 6 ms
+ HTTP  7/13/2026 1:50:00 AM 127.0.0.1 Returned 304 in 4 ms
+ HTTP  7/13/2026 1:50:00 AM 127.0.0.1 GET /src/auth.js
+ HTTP  7/13/2026 1:50:00 AM 127.0.0.1 GET /src/error-copy.js
+ HTTP  7/13/2026 1:50:00 AM 127.0.0.1 Returned 304 in 4 ms
+ HTTP  7/13/2026 1:50:00 AM 127.0.0.1 Returned 304 in 3 ms
+ HTTP  7/13/2026 1:50:00 AM 127.0.0.1 GET /src/config.js
+ HTTP  7/13/2026 1:50:00 AM 127.0.0.1 Returned 304 in 2 ms
+ HTTP  7/13/2026 1:56:47 AM 127.0.0.1 GET /
+ HTTP  7/13/2026 1:56:47 AM 127.0.0.1 Returned 304 in 4 ms
+ HTTP  7/13/2026 1:56:47 AM 127.0.0.1 GET /src/styles.css
+ HTTP  7/13/2026 1:56:47 AM 127.0.0.1 GET /src/landing.js
+ HTTP  7/13/2026 1:56:47 AM 127.0.0.1 Returned 304 in 5 ms
+ HTTP  7/13/2026 1:56:47 AM 127.0.0.1 Returned 304 in 3 ms
+ HTTP  7/13/2026 1:56:48 AM 127.0.0.1 GET /src/auth.js
+ HTTP  7/13/2026 1:56:48 AM 127.0.0.1 GET /src/error-copy.js
+ HTTP  7/13/2026 1:56:48 AM 127.0.0.1 Returned 304 in 4 ms
+ HTTP  7/13/2026 1:56:48 AM 127.0.0.1 Returned 304 in 4 ms
+ HTTP  7/13/2026 1:56:48 AM 127.0.0.1 GET /src/config.js
+ HTTP  7/13/2026 1:56:48 AM 127.0.0.1 Returned 304 in 4 ms
+ HTTP  7/13/2026 2:01:40 AM 127.0.0.1 GET /
+ HTTP  7/13/2026 2:01:40 AM 127.0.0.1 Returned 304 in 6 ms
+ HTTP  7/13/2026 2:01:40 AM 127.0.0.1 GET /src/styles.css
+ HTTP  7/13/2026 2:01:40 AM 127.0.0.1 GET /src/landing.js
+ HTTP  7/13/2026 2:01:40 AM 127.0.0.1 Returned 304 in 6 ms
+ HTTP  7/13/2026 2:01:40 AM 127.0.0.1 Returned 304 in 5 ms
+ HTTP  7/13/2026 2:01:40 AM 127.0.0.1 GET /src/auth.js
+ HTTP  7/13/2026 2:01:40 AM 127.0.0.1 GET /src/error-copy.js
+ HTTP  7/13/2026 2:01:40 AM 127.0.0.1 Returned 304 in 4 ms
+ HTTP  7/13/2026 2:01:40 AM 127.0.0.1 Returned 304 in 4 ms
+ HTTP  7/13/2026 2:01:40 AM 127.0.0.1 GET /src/config.js
+ HTTP  7/13/2026 2:01:40 AM 127.0.0.1 Returned 304 in 3 ms
+ HTTP  7/13/2026 2:02:46 AM 127.0.0.1 GET /
+ HTTP  7/13/2026 2:02:46 AM 127.0.0.1 Returned 304 in 3 ms
+ HTTP  7/13/2026 2:02:46 AM 127.0.0.1 GET /src/styles.css
+ HTTP  7/13/2026 2:02:46 AM 127.0.0.1 GET /src/landing.js
+ HTTP  7/13/2026 2:02:46 AM 127.0.0.1 Returned 304 in 5 ms
+ HTTP  7/13/2026 2:02:46 AM 127.0.0.1 Returned 304 in 5 ms
+ HTTP  7/13/2026 2:02:46 AM 127.0.0.1 GET /src/auth.js
+ HTTP  7/13/2026 2:02:46 AM 127.0.0.1 GET /src/error-copy.js
+ HTTP  7/13/2026 2:02:46 AM 127.0.0.1 Returned 304 in 4 ms
+ HTTP  7/13/2026 2:02:46 AM 127.0.0.1 Returned 304 in 3 ms
+ HTTP  7/13/2026 2:02:46 AM 127.0.0.1 GET /src/config.js
+ HTTP  7/13/2026 2:02:46 AM 127.0.0.1 Returned 304 in 3 ms
+ HTTP  7/13/2026 2:15:49 AM 127.0.0.1 GET /
+ HTTP  7/13/2026 2:15:49 AM 127.0.0.1 Returned 304 in 4 ms
+ HTTP  7/13/2026 2:15:50 AM 127.0.0.1 GET /src/styles.css
+ HTTP  7/13/2026 2:15:50 AM 127.0.0.1 GET /src/landing.js
+ HTTP  7/13/2026 2:15:50 AM 127.0.0.1 Returned 304 in 3 ms
+ HTTP  7/13/2026 2:15:50 AM 127.0.0.1 Returned 200 in 10 ms
+ HTTP  7/13/2026 2:15:50 AM 127.0.0.1 GET /src/auth.js
+ HTTP  7/13/2026 2:15:50 AM 127.0.0.1 GET /src/error-copy.js
+ HTTP  7/13/2026 2:15:50 AM 127.0.0.1 Returned 304 in 4 ms
+ HTTP  7/13/2026 2:15:50 AM 127.0.0.1 Returned 304 in 4 ms
+ HTTP  7/13/2026 2:15:50 AM 127.0.0.1 GET /src/config.js
+ HTTP  7/13/2026 2:15:50 AM 127.0.0.1 Returned 304 in 3 ms
+ HTTP  7/13/2026 2:21:19 AM 127.0.0.1 GET /
+ HTTP  7/13/2026 2:21:19 AM 127.0.0.1 Returned 304 in 4 ms
+ HTTP  7/13/2026 2:21:20 AM 127.0.0.1 GET /src/styles.css
+ HTTP  7/13/2026 2:21:20 AM 127.0.0.1 Returned 304 in 2 ms
+ HTTP  7/13/2026 2:21:20 AM 127.0.0.1 GET /src/landing.js
+ HTTP  7/13/2026 2:21:20 AM 127.0.0.1 Returned 304 in 3 ms
+ HTTP  7/13/2026 2:21:20 AM 127.0.0.1 GET /src/auth.js
+ HTTP  7/13/2026 2:21:20 AM 127.0.0.1 GET /src/error-copy.js
+ HTTP  7/13/2026 2:21:20 AM 127.0.0.1 Returned 304 in 4 ms
+ HTTP  7/13/2026 2:21:20 AM 127.0.0.1 Returned 304 in 3 ms
+ HTTP  7/13/2026 2:21:20 AM 127.0.0.1 GET /src/config.js
+ HTTP  7/13/2026 2:21:20 AM 127.0.0.1 Returned 304 in 2 ms
+ HTTP  7/13/2026 5:37:12 AM 127.0.0.1 GET /customer-rfi.html
+ HTTP  7/13/2026 5:37:12 AM 127.0.0.1 Returned 301 in 1 ms
+ HTTP  7/13/2026 5:37:12 AM 127.0.0.1 GET /customer-rfi
+ HTTP  7/13/2026 5:37:12 AM 127.0.0.1 Returned 200 in 2 ms
+ HTTP  7/13/2026 5:38:55 AM 127.0.0.1 GET /customer-rfi.html
+ HTTP  7/13/2026 5:38:55 AM 127.0.0.1 Returned 301 in 1 ms
+ HTTP  7/13/2026 5:38:55 AM 127.0.0.1 GET /customer-rfi
+ HTTP  7/13/2026 5:38:55 AM 127.0.0.1 Returned 200 in 2 ms
+ HTTP  7/13/2026 5:38:55 AM 127.0.0.1 GET /src/customer-rfi-ui.css
+ HTTP  7/13/2026 5:38:55 AM 127.0.0.1 GET /src/styles.css
+ HTTP  7/13/2026 5:38:55 AM 127.0.0.1 GET /src/customer-rfi.js
+ HTTP  7/13/2026 5:38:55 AM 127.0.0.1 Returned 200 in 8 ms
+ HTTP  7/13/2026 5:38:55 AM 127.0.0.1 Returned 200 in 7 ms
+ HTTP  7/13/2026 5:38:55 AM 127.0.0.1 Returned 200 in 11 ms
+ HTTP  7/13/2026 5:38:55 AM 127.0.0.1 GET /src/customer-rfi-service.js
+ HTTP  7/13/2026 5:38:55 AM 127.0.0.1 GET /src/error-copy.js
+ HTTP  7/13/2026 5:38:55 AM 127.0.0.1 Returned 304 in 0 ms
+ HTTP  7/13/2026 5:38:55 AM 127.0.0.1 Returned 200 in 2 ms
+ HTTP  7/13/2026 5:38:55 AM 127.0.0.1 GET /src/config.js
+ HTTP  7/13/2026 5:38:55 AM 127.0.0.1 Returned 304 in 1 ms
+ HTTP  7/13/2026 9:22:27 AM 127.0.0.1 GET /customer-rfi
+ HTTP  7/13/2026 9:22:27 AM 127.0.0.1 Returned 200 in 7 ms
+ HTTP  7/13/2026 9:22:27 AM 127.0.0.1 GET /src/styles.css
+ HTTP  7/13/2026 9:22:27 AM 127.0.0.1 GET /src/customer-rfi-ui.css
+ HTTP  7/13/2026 9:22:27 AM 127.0.0.1 GET /src/customer-rfi.js
+ HTTP  7/13/2026 9:22:27 AM 127.0.0.1 Returned 200 in 5 ms
+ HTTP  7/13/2026 9:22:27 AM 127.0.0.1 Returned 200 in 5 ms
+ HTTP  7/13/2026 9:22:27 AM 127.0.0.1 Returned 200 in 13 ms
+ HTTP  7/13/2026 9:22:27 AM 127.0.0.1 GET /src/error-copy.js
+ HTTP  7/13/2026 9:22:27 AM 127.0.0.1 GET /src/customer-rfi-service.js
+ HTTP  7/13/2026 9:22:27 AM 127.0.0.1 Returned 304 in 2 ms
+ HTTP  7/13/2026 9:22:27 AM 127.0.0.1 Returned 304 in 2 ms
+ HTTP  7/13/2026 9:22:27 AM 127.0.0.1 GET /src/config.js
+ HTTP  7/13/2026 9:22:27 AM 127.0.0.1 Returned 304 in 1 ms

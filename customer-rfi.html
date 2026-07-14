@@ -111,8 +111,10 @@
           <button id="import-rfi-segment-template" type="button" class="secondary" data-i18n="importSegmentTemplate" disabled>Import segment template</button>
           <input id="import-rfi-segment-template-file" type="file" accept=".xlsx,.xls,.csv" hidden />
           <label class="rfi-template-checkbox"><input id="rfi-import-as-new-segment" type="checkbox" disabled /> <span data-i18n="importAsNewSegment">Create as new segment</span></label>
-          <span class="field-help rfi-segment-template-help" data-i18n="segmentTemplateHelp">This workbook contains only the active segment: routes, rubrics, instructions, and catalog.</span>
-          <span id="rfi-segment-template-state" class="rfi-segment-template-state" role="status" data-i18n="segmentTemplateNeedsToken">Open a signed RFI link to load a segment template.</span>
+          <div class="rfi-segment-template-copy">
+            <span class="field-help rfi-segment-template-help" data-i18n="segmentTemplateHelp">This workbook contains only the active segment: routes, rubrics, instructions, and catalog.</span>
+            <span id="rfi-segment-template-state" class="rfi-segment-template-state" role="status" data-i18n="segmentTemplateNeedsToken">Open a signed RFI link to load a segment template.</span>
+          </div>
         </div>
       </section>
 
@@ -125,9 +127,6 @@
           </div>
           <div class="rfi-heading-actions">
             <button type="button" class="rfi-help-trigger" data-rfi-help="routes" title="About route schedule" aria-label="About route schedule">&#128214;</button>
-            <button id="download-rfi-template" type="button" class="secondary" data-i18n="downloadTemplate">Download template</button>
-            <button id="import-rfi-workbook" type="button" data-i18n="importWorkbook">Import XLSX</button>
-            <input id="import-rfi-workbook-file" type="file" accept=".xlsx,.xls,.csv" hidden />
             <button id="add-lane-row" type="button" data-i18n="addLane">Add lane</button>
           </div>
         </div>

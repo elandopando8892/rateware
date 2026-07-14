@@ -82,7 +82,7 @@ const ratewarePageSizeSelect = document.querySelector("#rateware-page-size");
 const activeFiltersStrip = document.querySelector("#rateware-active-filters");
 
 const RATEWARE_COLSPAN = 31;
-const FILTERED_RATEWARE_BULK_BATCH_SIZE = 1000;
+const FILTERED_RATEWARE_BULK_BATCH_SIZE = 5000;
 const RATEWARE_PAGE_SIZE_STORAGE_KEY = "rateware:approved:page-size:v1";
 const DEFAULT_RATEWARE_PAGE_SIZE = 200;
 let currentRows = [];
@@ -90,6 +90,8 @@ let loadedRows = [];
 let activeQuickFilter = "all";
 let ratewareQualityIndex = new Map();
 const autoSaveTimers = new Map();
+const rowSaveChains = new Map();
+const rowEditVersions = new Map();
 let columnVisibilityController;
 let locationMatchDrawerController;
 let columnFilterController;
@@ -110,6 +112,8 @@ let ratewareOptions = {
   currencies: ["USD", "MXN", "CAD"]
 };
 let ratewareOptionsLoaded = false;
+let ratewareOptionsLoad = null;
+let ratewareOptionsRequest = 0;
 const selectedRowIds = new Set();
 const SHEET_COLUMNS = [
   { key: "select", label: "Select", locked: true },
@@ -247,7 +251,7 @@ function confirmFilteredDatabaseAction({ actionLabel, matched, scope, keyword = 
 function readStoredPageSize(key, fallback) {
   try {
     const value = Number(window.localStorage.getItem(key));
-    return [50, 100, 200, 500].includes(value) ? value : fallback;
+    return [50, 100, 200, 500, 1000].includes(value) ? value : fallback;
   } catch {
     return fallback;
   }
@@ -1547,6 +1551,7 @@ function clearAutoSaveTimer(id) {
 function markRatewareRowDirty(tableRow) {
   const rowId = tableRow?.dataset.ratewareId;
   if (!rowId) return;
+  rowEditVersions.set(rowId, (rowEditVersions.get(rowId) || 0) + 1);
   tableRow.classList.add("dirty-row");
   setRowStatus(rowId, "Autosaves in 1s", "warning");
   setActionStatus("");
@@ -1558,13 +1563,17 @@ function updateBulkControls() {
   const totalRows = body.querySelectorAll("[data-rateware-id]").length;
   const filteredTotal = Number(ratewareTotalCount || 0);
   const hasFilteredRows = filteredTotal > 0;
-  if (selectionCount) selectionCount.textContent = `Selected: ${selectedCount.toLocaleString()}`;
-  if (ratewarePageCountLabel) ratewarePageCountLabel.textContent = `Page: ${totalRows.toLocaleString()}`;
-  if (ratewareFilteredCountLabel) ratewareFilteredCountLabel.textContent = `Filtered DB: ${filteredTotal.toLocaleString()}`;
+  if (selectionCount) selectionCount.textContent = `Page selected: ${selectedCount.toLocaleString()}`;
+  if (ratewarePageCountLabel) ratewarePageCountLabel.textContent = `Page rows: ${totalRows.toLocaleString()}`;
+  if (ratewareFilteredCountLabel) ratewareFilteredCountLabel.textContent = `Database matches: ${filteredTotal.toLocaleString()}`;
   if (ratewareBulkScopeNote) {
+    const scopeDetail = hasFilteredRows
+      ? `Filtered database actions affect ${filteredTotal.toLocaleString()} approved rate(s) matching the current filters.`
+      : "Filtered database actions run across every matching approved rate.";
     ratewareBulkScopeNote.textContent = hasFilteredRows
-      ? `Filtered DB actions affect ${filteredTotal.toLocaleString()} approved rate(s) matching current filters.`
-      : "Filtered DB actions run across all matching approved rates.";
+      ? `Global scope: ${filteredTotal.toLocaleString()} filtered rates`
+      : "Global scope: all matching rates";
+    ratewareBulkScopeNote.title = scopeDetail;
   }
   bulkActionBar?.classList.toggle("is-empty", totalRows === 0);
   bulkActionBar?.classList.toggle("has-visible-page", totalRows > 0);
@@ -1591,16 +1600,16 @@ function updateBulkControls() {
   if (exportFilteredButton) exportFilteredButton.disabled = !hasFilteredRows && currentRows.length === 0;
   if (exportClientFilteredButton) exportClientFilteredButton.disabled = !hasFilteredRows && currentRows.length === 0;
   if (exportRfxFilteredButton) exportRfxFilteredButton.disabled = !hasFilteredRows && currentRows.length === 0;
-  setFilteredButtonLabel(exportFilteredButton, "Export filtered CSV", filteredTotal);
-  setFilteredButtonLabel(exportClientFilteredButton, "Client filtered", filteredTotal);
-  setFilteredButtonLabel(exportRfxFilteredButton, "RFx filtered", filteredTotal);
+  setFilteredButtonLabel(exportFilteredButton, "Export matching CSV", filteredTotal);
+  setFilteredButtonLabel(exportClientFilteredButton, "Client matching", filteredTotal);
+  setFilteredButtonLabel(exportRfxFilteredButton, "RFx matching", filteredTotal);
   if (applyBulkEditButton) applyBulkEditButton.disabled = selectedCount === 0;
   if (applyBulkEditFilteredButton) applyBulkEditFilteredButton.disabled = !bulkFieldSelect?.value || !hasFilteredRows;
   if (archiveFilteredButton) archiveFilteredButton.disabled = !hasFilteredRows;
   if (removeFilteredButton) removeFilteredButton.disabled = !hasFilteredRows;
   setFilteredButtonLabel(applyBulkEditFilteredButton, "Apply to filtered DB", filteredTotal);
-  setFilteredButtonLabel(archiveFilteredButton, "Archive filtered DB", filteredTotal);
-  setFilteredButtonLabel(removeFilteredButton, "Remove filtered DB", filteredTotal);
+  setFilteredButtonLabel(archiveFilteredButton, "Archive matching DB", filteredTotal);
+  setFilteredButtonLabel(removeFilteredButton, "Remove matching DB", filteredTotal);
   if (compareSelectedButton) compareSelectedButton.disabled = selectedCount === 0;
   if (compareVisibleButton) compareVisibleButton.disabled = currentRows.length === 0;
   if (snapshotSelectedButton) snapshotSelectedButton.disabled = selectedCount === 0;
@@ -1626,7 +1635,7 @@ function updateRatewarePaginationControls() {
   if (ratewarePageSummary) {
     ratewarePageSummary.textContent = total
       ? `Rows ${start.toLocaleString()}-${end.toLocaleString()} of ${total.toLocaleString()} | Page ${(ratewarePageIndex + 1).toLocaleString()} of ${pageCount.toLocaleString()}`
-      : "No rows in current filters";
+      : "No matching rates. Use Clear filters above to reset the database view.";
   }
   if (ratewarePageNumberInput) {
     ratewarePageNumberInput.value = String(ratewarePageIndex + 1);
@@ -1661,7 +1670,7 @@ async function goToRatewarePage(index) {
 
 async function setRatewarePageSize(value) {
   const nextSize = Number(value);
-  if (![50, 100, 200, 500].includes(nextSize)) return;
+  if (![50, 100, 200, 500, 1000].includes(nextSize)) return;
   ratewarePageSize = nextSize;
   writeStoredPageSize(RATEWARE_PAGE_SIZE_STORAGE_KEY, ratewarePageSize);
   ratewarePageIndex = 0;
@@ -1670,10 +1679,10 @@ async function setRatewarePageSize(value) {
   await loadRateware({ preservePage: true });
 }
 
-async function saveRatewareTableRow(tableRow) {
+async function performRatewareTableRowSave(tableRow) {
   const rowId = tableRow?.dataset.ratewareId;
   if (!rowId) return null;
-  clearAutoSaveTimer(rowId);
+  const editVersion = rowEditVersions.get(rowId) || 0;
   const button = tableRow.querySelector(`[data-save-rateware-id="${CSS.escape(rowId)}"]`);
   if (button) button.disabled = true;
   setDirtyRowCellsState(tableRow, "saving");
@@ -1681,6 +1690,12 @@ async function saveRatewareTableRow(tableRow) {
 
   try {
     const updatedRow = await updateApprovedRatewareRow(rowId, readRatewarePatch(tableRow));
+    if ((rowEditVersions.get(rowId) || 0) !== editVersion) {
+      tableRow.classList.add("dirty-row");
+      setDirtyRowCellsState(tableRow, "dirty");
+      setRowStatus(rowId, "Newer edits are waiting to save", "warning");
+      return updatedRow;
+    }
     replaceStoredRatewareRow(updatedRow);
     tableRow.classList.remove("dirty-row");
     setDirtyRowCellsState(tableRow, "saved");
@@ -1695,6 +1710,23 @@ async function saveRatewareTableRow(tableRow) {
   } finally {
     if (button) button.disabled = false;
   }
+}
+
+function saveRatewareTableRow(tableRow) {
+  const rowId = tableRow?.dataset.ratewareId;
+  if (!rowId) return Promise.resolve(null);
+  clearAutoSaveTimer(rowId);
+
+  // Preserve the order of writes per row so a slow previous request cannot overwrite a newer edit.
+  const previous = rowSaveChains.get(rowId) || Promise.resolve();
+  const task = previous
+    .catch(() => null)
+    .then(() => performRatewareTableRowSave(tableRow));
+  rowSaveChains.set(rowId, task);
+
+  return task.finally(() => {
+    if (rowSaveChains.get(rowId) === task) rowSaveChains.delete(rowId);
+  });
 }
 
 function scheduleRatewareAutoSave(tableRow, wait = 1000) {
@@ -2373,7 +2405,7 @@ function ratewarePageParams(offset = ratewarePageOffset()) {
 
 function applyRatewarePage(page) {
   const rows = page.rows || [];
-  ratewareTotalCount = Number(page.total || ratewareTotalCount || rows.length || 0);
+  ratewareTotalCount = Number(page.total ?? rows.length ?? 0);
   ratewareHasMoreRows = Boolean(page.has_more);
   ratewareLoadOffset = ratewarePageOffset() + rows.length;
   ratewarePageIndex = clampRatewarePageIndex(ratewarePageIndex, ratewareTotalCount);
@@ -2381,27 +2413,37 @@ function applyRatewarePage(page) {
   renderRows(rows);
 }
 
-async function loadRateware({ preservePage = false } = {}) {
+async function loadRateware({ preservePage = false, refreshOptions = false } = {}) {
   if (!preservePage) ratewarePageIndex = 0;
-  body.innerHTML = tableLoadingState(RATEWARE_COLSPAN, {
-    title: "Loading Rateware",
-    detail: "Reading approved rates, versions, conflicts, filters, and spreadsheet columns."
-  });
+  if (refreshOptions) resetRatewareSelectionForFilter();
+  const ratewareTable = body.closest("table");
+  const hasRenderedRows = currentRows.length > 0 || loadedRows.length > 0;
+  ratewareTable?.setAttribute("aria-busy", "true");
+  body.setAttribute("aria-busy", "true");
+  if (hasRenderedRows) {
+    setActionStatus("Updating Rateware rows...");
+  } else {
+    body.innerHTML = tableLoadingState(RATEWARE_COLSPAN, {
+      title: "Loading Rateware",
+      detail: "Reading approved rates, versions, conflicts, filters, and spreadsheet columns."
+    });
+  }
   refreshButton.disabled = true;
   ratewareLoadToken += 1;
   ratewareLoadOffset = ratewarePageOffset();
-  ratewareTotalCount = 0;
-  ratewareHasMoreRows = false;
+  if (!hasRenderedRows) {
+    ratewareTotalCount = 0;
+    ratewareHasMoreRows = false;
+  }
   ratewareIsLoadingMore = true;
   updateRatewarePaginationControls();
   const token = ratewareLoadToken;
 
   try {
     await requirePrivatePage();
-    let [, page] = await Promise.all([
-      loadRatewareOptions(),
-      fetchApprovedRatewarePage(ratewarePageParams(ratewarePageOffset()))
-    ]);
+    const refreshRowsAfterOptions = refreshOptions || !ratewareOptionsLoaded;
+    const optionsRequest = loadRatewareOptions({ force: refreshOptions });
+    let page = await fetchApprovedRatewarePage(ratewarePageParams(ratewarePageOffset()));
     if (token !== ratewareLoadToken) return;
     if (!(page.rows || []).length && Number(page.total || 0) > 0 && ratewarePageOffset() >= Number(page.total || 0)) {
       ratewareTotalCount = Number(page.total || 0);
@@ -2411,18 +2453,35 @@ async function loadRateware({ preservePage = false } = {}) {
     }
     ratewareIsLoadingMore = false;
     applyRatewarePage(page);
+    try {
+      await optionsRequest;
+    } catch (optionsError) {
+      if (token !== ratewareLoadToken) return;
+      setActionStatus("Rateware rows loaded. Dropdown catalogs are temporarily unavailable; refresh to try again.", "warning");
+      return;
+    }
+    if (token !== ratewareLoadToken) return;
+    if (hasRenderedRows) setActionStatus("");
+    if (!refreshRowsAfterOptions) return;
+    renderRows(loadedRows);
   } catch (error) {
     if (token !== ratewareLoadToken) return;
-    body.innerHTML = tableErrorState(RATEWARE_COLSPAN, error, {
-      title: "Rateware could not load",
-      retryAction: "load-rateware",
-      meta: "Approved rates were not changed."
-    });
+    if (hasRenderedRows) {
+      setActionStatus(error.message, "error");
+    } else {
+      body.innerHTML = tableErrorState(RATEWARE_COLSPAN, error, {
+        title: "Rateware could not load",
+        retryAction: "load-rateware",
+        meta: "Approved rates were not changed."
+      });
+    }
   } finally {
     if (token === ratewareLoadToken) {
       ratewareIsLoadingMore = false;
       refreshButton.disabled = false;
       updateRatewarePaginationControls();
+      ratewareTable?.removeAttribute("aria-busy");
+      body.removeAttribute("aria-busy");
     }
   }
 }
@@ -2625,32 +2684,50 @@ function debounce(fn, wait = 250) {
   };
 }
 
-async function loadRatewareOptions() {
-  if (ratewareOptionsLoaded) return ratewareOptions;
-  try {
-    const options = await fetchRatewareOptions();
-    ratewareOptions = {
-      categories: options.categories || {},
-      vendors: options.vendors || [],
-      locations: options.locations || [],
-      mx_crossings: options.mx_crossings || [],
-      us_crossings: options.us_crossings || [],
-      currencies: options.currencies || ["USD", "MXN", "CAD"]
-    };
-  } catch {
-    ratewareOptions = {
-      categories: ratewareOptions.categories || {},
-      vendors: ratewareOptions.vendors || [],
-      locations: ratewareOptions.locations || [],
-      mx_crossings: ratewareOptions.mx_crossings || [],
-      us_crossings: ratewareOptions.us_crossings || [],
-      currencies: ratewareOptions.currencies || ["USD", "MXN", "CAD"]
-    };
+async function loadRatewareOptions({ force = false } = {}) {
+  if (force) {
+    ratewareOptionsLoaded = false;
+    ratewareOptionsLoad = null;
   }
-  ratewareOptionsLoaded = true;
-  renderRatewareDatalists();
-  populateBulkEditControls();
-  return ratewareOptions;
+  if (ratewareOptionsLoaded) return ratewareOptions;
+  if (!ratewareOptionsLoad) {
+    const request = ++ratewareOptionsRequest;
+    ratewareOptionsLoad = fetchRatewareOptions()
+      .then((options) => {
+        if (request !== ratewareOptionsRequest) return ratewareOptions;
+        ratewareOptions = {
+          categories: options.categories || {},
+          vendors: options.vendors || [],
+          locations: options.locations || [],
+          mx_crossings: options.mx_crossings || [],
+          us_crossings: options.us_crossings || [],
+          currencies: options.currencies || ["USD", "MXN", "CAD"]
+        };
+      })
+      .catch(() => {
+        if (request !== ratewareOptionsRequest) return ratewareOptions;
+        ratewareOptions = {
+          categories: ratewareOptions.categories || {},
+          vendors: ratewareOptions.vendors || [],
+          locations: ratewareOptions.locations || [],
+          mx_crossings: ratewareOptions.mx_crossings || [],
+          us_crossings: ratewareOptions.us_crossings || [],
+          currencies: ratewareOptions.currencies || ["USD", "MXN", "CAD"]
+        };
+      })
+      .then(() => {
+        if (request !== ratewareOptionsRequest) return ratewareOptions;
+        ratewareOptionsLoaded = true;
+        renderRatewareDatalists();
+        populateBulkEditControls();
+        return ratewareOptions;
+      })
+      .catch((error) => {
+        ratewareOptionsLoad = null;
+        throw error;
+      });
+  }
+  return await ratewareOptionsLoad;
 }
 
 columnVisibilityController = initColumnVisibility({
@@ -2659,10 +2736,11 @@ columnVisibilityController = initColumnVisibility({
   columns: SHEET_COLUMNS,
   storageKey: "rateware:approved:columns:v2",
   viewPresets: RATEWARE_VIEW_PRESETS,
+  showStarterViews: false,
   getExtraState: () => ({ pageSize: ratewarePageSize }),
   applyExtraState: (extra = {}) => {
     const nextSize = Number(extra.pageSize);
-    if (![50, 100, 200, 500].includes(nextSize) || nextSize === ratewarePageSize) return;
+    if (![50, 100, 200, 500, 1000].includes(nextSize) || nextSize === ratewarePageSize) return;
     ratewarePageSize = nextSize;
     writeStoredPageSize(RATEWARE_PAGE_SIZE_STORAGE_KEY, ratewarePageSize);
     ratewarePageIndex = 0;
@@ -2679,8 +2757,7 @@ columnFilterController = initSpreadsheetColumnFilters({
   getMenuValues: ratewareFilterMenuValues,
   scope: "rateware",
   onChange: () => {
-    selectedRowIds.clear();
-    setActionStatus("");
+    resetRatewareSelectionForFilter();
     loadRateware();
   }
 });
@@ -2696,7 +2773,7 @@ requirePrivatePage().catch(() => {});
 loadRateware();
 loadRatewareVersions();
 
-refreshButton.addEventListener("click", loadRateware);
+refreshButton.addEventListener("click", () => loadRateware({ refreshOptions: true }));
 document.addEventListener("click", (event) => {
   const retryButton = event.target.closest("[data-retry-action='load-rateware']");
   if (retryButton) loadRateware();
@@ -2720,9 +2797,23 @@ activeFiltersStrip?.addEventListener("click", (event) => {
   if (!button) return;
   removeRatewareFilter(button.dataset.removeRatewareFilter, button.dataset.filterField || "");
 });
-searchInput.addEventListener("input", debounce(loadRateware));
-operationFilter.addEventListener("change", loadRateware);
-serviceFilter.addEventListener("change", loadRateware);
+function resetRatewareSelectionForFilter() {
+  selectedRowIds.clear();
+  setActionStatus("");
+}
+
+searchInput.addEventListener("input", debounce(() => {
+  resetRatewareSelectionForFilter();
+  loadRateware();
+}));
+operationFilter.addEventListener("change", () => {
+  resetRatewareSelectionForFilter();
+  loadRateware();
+});
+serviceFilter.addEventListener("change", () => {
+  resetRatewareSelectionForFilter();
+  loadRateware();
+});
 quickFilterButtons.forEach((button) => {
   button.addEventListener("click", () => {
     activeQuickFilter = button.dataset.ratewareFilter || "all";

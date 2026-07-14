@@ -122,7 +122,7 @@
                 <button id="refresh-staging-button" class="secondary" type="button">Refresh</button>
                 <button id="clear-staging-filters" class="secondary" type="button">Clear filters</button>
                 <details id="staging-column-menu" class="column-visibility-menu">
-                  <summary>View</summary>
+                  <summary title="Show or hide spreadsheet columns">Columns</summary>
                   <div data-column-toggle-list class="column-toggle-grid"></div>
                 </details>
               </div>
@@ -130,9 +130,9 @@
 
               <div class="bulk-action-bar is-empty" aria-live="polite">
                 <div class="bulk-scope-strip" aria-label="Bulk action scope">
-                  <span id="bulk-selection-count" class="bulk-scope-pill">Selected: 0</span>
-                  <span id="staging-page-count" class="bulk-scope-pill">Page: 0</span>
-                  <span id="staging-filtered-count" class="bulk-scope-pill">Filtered DB: 0</span>
+                  <span id="bulk-selection-count" class="bulk-scope-pill">Page selected: 0</span>
+                  <span id="staging-page-count" class="bulk-scope-pill">Page rows: 0</span>
+                  <span id="staging-filtered-count" class="bulk-scope-pill">Database matches: 0</span>
                   <button id="select-staging-page" type="button" class="secondary small-button">Select page</button>
                   <button id="clear-staging-selection" type="button" class="secondary small-button" disabled>Clear selection</button>
                 </div>
@@ -142,18 +142,18 @@
                 <button id="bulk-save-button" type="button" class="secondary small-button" disabled>Save selected</button>
                 <button id="bulk-approve-button" type="button" class="small-button" disabled>Approve selected</button>
                 <details class="sheet-more-actions">
-                  <summary>More</summary>
+                  <summary title="Additional bulk, export, and lifecycle actions">More actions</summary>
                   <div>
                     <button id="bulk-match-vendors-button" type="button" class="secondary small-button" disabled>Match vendors</button>
                     <button id="bulk-reject-button" type="button" class="danger small-button" disabled>Reject selected</button>
-                    <button id="bulk-approve-filtered-button" type="button" class="small-button">Approve filtered</button>
-                    <button id="bulk-reject-filtered-button" type="button" class="danger small-button">Reject filtered</button>
+                    <button id="bulk-approve-filtered-button" type="button" class="small-button" title="Approve every staged row matching the active database filters">Approve matching</button>
+                    <button id="bulk-reject-filtered-button" type="button" class="danger small-button" title="Reject every staged row matching the active database filters">Reject matching</button>
                     <button id="bulk-enrich-zips-button" type="button" class="secondary small-button" disabled>Find missing ZIPs</button>
                     <button id="bulk-renormalize-button" type="button" class="secondary small-button" disabled>Re-normalize selected</button>
                     <button id="bulk-archive-button" type="button" class="secondary small-button" disabled>Archive selected</button>
                     <button id="bulk-remove-button" type="button" class="danger small-button" disabled>Remove selected</button>
-                    <button id="bulk-archive-filtered-button" type="button" class="secondary small-button">Archive filtered</button>
-                    <button id="bulk-remove-filtered-button" type="button" class="danger small-button">Remove filtered</button>
+                    <button id="bulk-archive-filtered-button" type="button" class="secondary small-button" title="Archive every staged row matching the active database filters">Archive matching</button>
+                    <button id="bulk-remove-filtered-button" type="button" class="danger small-button" title="Remove every staged row matching the active database filters">Remove matching</button>
                   </div>
                 </details>
                 <span id="bulk-action-status" class="row-save-status"></span>
@@ -177,6 +177,7 @@
                     <option value="100">100</option>
                     <option value="200" selected>200</option>
                     <option value="500">500</option>
+                    <option value="1000">1,000</option>
                   </select>
                 </label>
               </div>
@@ -197,6 +198,9 @@
                   <span>Drag across cells selects a range</span>
                   <span>Paste over a range applies values in bulk</span>
                   <span>Drag the corner handle fills down</span>
+                  <span><kbd>Ctrl</kbd> + <kbd>A</kbd> selects visible cells</span>
+                  <span><kbd>Shift</kbd> + <kbd>Space</kbd> selects the active row</span>
+                  <span><kbd>Ctrl</kbd> + <kbd>Space</kbd> selects the active column</span>
                   <span><kbd>Shift</kbd> + arrows selects a range</span>
                   <span><kbd>Ctrl</kbd> + <kbd>C</kbd> copies cells</span>
                   <span><kbd>Ctrl</kbd> + <kbd>Enter</kbd> applies value to range</span>

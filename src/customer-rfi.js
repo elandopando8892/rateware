@@ -45,14 +45,11 @@ const els = {
   helpDialog: document.getElementById("rfi-help-dialog"),
   helpTitle: document.getElementById("rfi-help-title"),
   helpContent: document.getElementById("rfi-help-content"),
-  downloadTemplate: document.getElementById("download-rfi-template"),
   downloadSegmentTemplate: document.getElementById("download-rfi-segment-template"),
   playHelp: document.getElementById("play-rfi-help"),
   stopHelp: document.getElementById("stop-rfi-help"),
   closeHelp: document.getElementById("close-rfi-help"),
   addLane: document.getElementById("add-lane-row"),
-  importWorkbook: document.getElementById("import-rfi-workbook"),
-  importWorkbookFile: document.getElementById("import-rfi-workbook-file"),
   importSegmentTemplate: document.getElementById("import-rfi-segment-template"),
   importSegmentTemplateFile: document.getElementById("import-rfi-segment-template-file"),
   segmentTemplateName: document.getElementById("rfi-segment-template-name"),
@@ -2528,7 +2525,7 @@ function setReadonlyMode() {
   document.querySelectorAll(".customer-rfi-shell input, .customer-rfi-shell select, .customer-rfi-shell textarea").forEach((element) => {
     element.disabled = readonly;
   });
-  document.querySelectorAll("#add-lane-row, #import-rfi-workbook, #download-rfi-template, #download-rfi-segment-template, #import-rfi-segment-template, #rfi-segment-template-name, #rfi-import-as-new-segment, [data-remove-lane], [data-remove-segment-checklist], [data-suggest-rubrics], [data-rfi-wizard-segment], [data-rfi-group-required], [data-add-rubric-to-segment], [data-remove-rubric]").forEach((element) => {
+  document.querySelectorAll("#add-lane-row, #download-rfi-segment-template, #import-rfi-segment-template, #rfi-segment-template-name, #rfi-import-as-new-segment, [data-remove-lane], [data-remove-segment-checklist], [data-suggest-rubrics], [data-rfi-wizard-segment], [data-rfi-group-required], [data-add-rubric-to-segment], [data-remove-rubric]").forEach((element) => {
     element.disabled = readonly;
   });
   if (els.save) els.save.disabled = readonly;
@@ -2938,17 +2935,7 @@ function appendVaultFiles(index, files) {
 }
 
 function initEvents() {
-  els.importWorkbook?.addEventListener("click", () => els.importWorkbookFile?.click());
   els.importSegmentTemplate?.addEventListener("click", () => els.importSegmentTemplateFile?.click());
-  els.downloadTemplate?.addEventListener("click", async () => {
-    try {
-      setStatus(state.locale === "es" ? "Generando template RFI..." : "Generating RFI template...");
-      await downloadRfiTemplate();
-      setStatus(state.locale === "es" ? "Template descargado con instructivo y catalogo." : "Template downloaded with instructions and catalog.");
-    } catch (error) {
-      setStatus(error, "error");
-    }
-  });
   els.downloadSegmentTemplate?.addEventListener("click", async () => {
     try {
       if (!hasLoadedActiveRfiSegment()) throw new Error("Open a signed RFI link and select an operating segment before downloading its template.");
@@ -2959,18 +2946,6 @@ function initEvents() {
       setStatus(state.locale === "es" ? "Template del segmento descargado con instructivo, catalogo y checklist." : "Segment template downloaded with instructions, catalog, and checklist.");
     } catch (error) {
       setStatus(error, "error");
-    }
-  });
-  els.importWorkbookFile?.addEventListener("change", async (event) => {
-    const [file] = Array.from(event.target.files || []);
-    if (!file) return;
-    setStatus(state.locale === "es" ? "Importando cedula de rutas..." : "Importing route schedule...");
-    try {
-      await importRfiWorkbook(file);
-    } catch (error) {
-      setStatus(error, "error");
-    } finally {
-      event.target.value = "";
     }
   });
   els.importSegmentTemplateFile?.addEventListener("change", async (event) => {

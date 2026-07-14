@@ -56,7 +56,16 @@ function normalizeStoredLayout(raw, columns) {
   };
 }
 
-export function initColumnVisibility({ table, menu, columns = [], storageKey = "", viewPresets = [], getExtraState = null, applyExtraState = null }) {
+export function initColumnVisibility({
+  table,
+  menu,
+  columns = [],
+  storageKey = "",
+  viewPresets = [],
+  showStarterViews = false,
+  getExtraState = null,
+  applyExtraState = null
+}) {
   if (!table || !menu || !columns.length) return;
   const list = menu.querySelector("[data-column-toggle-list]");
   const stored = normalizeStoredLayout(readStoredVisibility(storageKey), columns);
@@ -71,6 +80,7 @@ export function initColumnVisibility({ table, menu, columns = [], storageKey = "
   let order = [...stored.order];
   let widths = { ...stored.widths };
   let draggedColumn = "";
+  let draggedMenuColumn = "";
   let resizingColumn = null;
   let layoutStatus = "";
   let savedViews = storedViews && typeof storedViews === "object" && !Array.isArray(storedViews) ? storedViews : {};
@@ -198,7 +208,8 @@ export function initColumnVisibility({ table, menu, columns = [], storageKey = "
       .map((key) => columns.find((column) => column.key === key))
       .filter((column) => column && !column.locked)
       .map((column) => `
-        <label>
+        <label class="column-toggle-row" draggable="true" data-column-order-key="${column.key}">
+          <span class="column-order-grip" aria-hidden="true" title="Drag to reorder">::</span>
           <input type="checkbox" data-column-toggle="${column.key}" ${visibility[column.key] !== false ? "checked" : ""} />
           ${column.label}
         </label>
@@ -211,18 +222,18 @@ export function initColumnVisibility({ table, menu, columns = [], storageKey = "
         <small data-column-active-meta>${htmlEscape(activeViewMeta())}</small>
       </div>
       <div class="column-layout-tools">
-        <button type="button" data-column-save-layout>Save current</button>
+        <button type="button" data-column-save-layout>Save layout</button>
         <button type="button" data-column-autofit>Auto-fit visible</button>
         <button type="button" data-column-reset-layout>Reset default</button>
         <span class="column-layout-status" data-column-layout-status>${layoutStatus}</span>
       </div>
       <div class="column-save-view-row">
-        <input data-column-view-name placeholder="Save as named view" value="${activeView.kind === "named" ? htmlEscape(activeView.name) : ""}" />
-        <button type="button" data-column-save-named-view>Save named</button>
+        <input data-column-view-name placeholder="Name this view" value="${activeView.kind === "named" ? htmlEscape(activeView.name) : ""}" />
+        <button type="button" data-column-save-named-view>Save as view</button>
       </div>
       ${viewNames().length ? `
         <div class="column-saved-views">
-          <strong>Saved views</strong>
+          <strong>My saved views</strong>
           ${viewNames().map((name) => `
             <span>
               <button type="button" data-column-apply-view="${htmlEscape(name)}">${htmlEscape(name)}</button>
@@ -231,7 +242,7 @@ export function initColumnVisibility({ table, menu, columns = [], storageKey = "
           `).join("")}
         </div>
       ` : ""}
-      ${presetViews().length ? `
+      ${showStarterViews && presetViews().length ? `
         <details class="column-starter-views">
           <summary>Starter layouts</summary>
           <div>
@@ -241,7 +252,7 @@ export function initColumnVisibility({ table, menu, columns = [], storageKey = "
           </div>
         </details>
       ` : ""}
-      <p class="column-layout-help">Drag headers to reorder. Pull the right edge to resize. Double-click a header to auto-fit one column.</p>
+      <p class="column-layout-help">Changes auto-save in this browser. Drag column names or headers to reorder. Pull a header edge to resize. Double-click a header to auto-fit one column.</p>
       ${labels}
     `;
     updateViewIndicator();
@@ -359,6 +370,9 @@ export function initColumnVisibility({ table, menu, columns = [], storageKey = "
     });
     order = columns.map((column) => column.key);
     widths = {};
+    if (activeViewStorageKey && storageAvailable()) {
+      window.localStorage.removeItem(activeViewStorageKey);
+    }
     applyVisibility();
     markCustomLayout("Default saved");
   }
@@ -398,6 +412,7 @@ export function initColumnVisibility({ table, menu, columns = [], storageKey = "
       if (!savedViews[name]) return;
       applyStoredLayout(savedViews[name]);
       setActiveView(name, "named", "View applied");
+      renderToggleInputs();
       return;
     }
     const applyPresetButton = event.target.closest("[data-column-apply-preset]");
@@ -407,6 +422,7 @@ export function initColumnVisibility({ table, menu, columns = [], storageKey = "
       if (!preset) return;
       applyStoredLayout(preset.layout);
       setActiveView(name, "starter", "Layout applied");
+      renderToggleInputs();
       return;
     }
     const deleteViewButton = event.target.closest("[data-column-delete-view]");
@@ -430,6 +446,47 @@ export function initColumnVisibility({ table, menu, columns = [], storageKey = "
     if (event.target.closest("[data-column-reset-layout]")) {
       resetLayout();
     }
+  });
+
+  list?.addEventListener("dragstart", (event) => {
+    const item = event.target.closest("[data-column-order-key]");
+    if (!item) return;
+    draggedMenuColumn = item.dataset.columnOrderKey || "";
+    if (!draggedMenuColumn) return;
+    item.classList.add("is-dragging-column");
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", draggedMenuColumn);
+  });
+
+  list?.addEventListener("dragover", (event) => {
+    const item = event.target.closest("[data-column-order-key]");
+    if (!item || !draggedMenuColumn || item.dataset.columnOrderKey === draggedMenuColumn) return;
+    event.preventDefault();
+    const rect = item.getBoundingClientRect();
+    item.classList.toggle("column-drop-before", event.clientY < rect.top + rect.height / 2);
+    item.classList.toggle("column-drop-after", event.clientY >= rect.top + rect.height / 2);
+  });
+
+  list?.addEventListener("drop", (event) => {
+    const item = event.target.closest("[data-column-order-key]");
+    const target = item?.dataset.columnOrderKey;
+    if (!item || !target || !draggedMenuColumn || target === draggedMenuColumn) return;
+    event.preventDefault();
+    const nextOrder = orderedColumns().filter((key) => key !== draggedMenuColumn);
+    const targetIndex = nextOrder.indexOf(target);
+    const rect = item.getBoundingClientRect();
+    nextOrder.splice(targetIndex + (event.clientY >= rect.top + rect.height / 2 ? 1 : 0), 0, draggedMenuColumn);
+    order = nextOrder;
+    draggedMenuColumn = "";
+    applyVisibility();
+    markCustomLayout("Order saved");
+  });
+
+  list?.addEventListener("dragend", () => {
+    draggedMenuColumn = "";
+    list.querySelectorAll(".is-dragging-column, .column-drop-before, .column-drop-after").forEach((item) => {
+      item.classList.remove("is-dragging-column", "column-drop-before", "column-drop-after");
+    });
   });
 
   labelRow?.addEventListener("pointerdown", (event) => {

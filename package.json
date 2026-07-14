@@ -7,6 +7,6 @@
     "dev": "npx serve .",
     "e2e:bid-room": "node tools/bid-room-e2e.mjs",
     "smoke:integrations": "node tools/integration-smoke.mjs",
-    "test": "node tests/upload-center.test.mjs && node tests/rateware-stability.test.mjs"
+    "test": "node tests/upload-center.test.mjs && node tests/rateware-stability.test.mjs && node tests/customer-rfi.test.mjs && node tests/shipper-crm.test.mjs"
   }
 }

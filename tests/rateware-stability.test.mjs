@@ -13,6 +13,7 @@ const businessIntelligenceHtml = readFileSync(new URL("../business-intelligence.
 const bulkImportTemplateSource = readFileSync(new URL("../src/bulk-import-template.js", import.meta.url), "utf8");
 const stagingReviewSource = readFileSync(new URL("../src/staging-review.js", import.meta.url), "utf8");
 const ratewareSource = readFileSync(new URL("../src/rateware.js", import.meta.url), "utf8");
+const spreadsheetGridSource = readFileSync(new URL("../src/spreadsheet-grid.js", import.meta.url), "utf8");
 const spreadsheetColumnFiltersSource = readFileSync(new URL("../src/spreadsheet-column-filters.js", import.meta.url), "utf8");
 const sheetUiSource = readFileSync(new URL("../src/sheet-ui.js", import.meta.url), "utf8");
 const catalogWorkbenchSource = readFileSync(new URL("../src/catalog-workbench.js", import.meta.url), "utf8");
@@ -63,6 +64,7 @@ const settingsHtml = readFileSync(new URL("../settings.html", import.meta.url), 
 const stylesSource = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
 const outreachSource = readFileSync(new URL("../src/outreach.js", import.meta.url), "utf8");
 const outreachServiceSource = readFileSync(new URL("../src/outreach-service.js", import.meta.url), "utf8");
+const ratewareServiceSource = readFileSync(new URL("../src/rateware-service.js", import.meta.url), "utf8");
 const stagingServiceSource = readFileSync(new URL("../src/staging-service.js", import.meta.url), "utf8");
 const rpcMigration = readFileSync(new URL("../supabase/migrations/20260626143000_rate_filter_rpc.sql", import.meta.url), "utf8");
 const compositeRpcMigration = readFileSync(new URL("../supabase/migrations/20260626153000_composite_rate_filter_values.sql", import.meta.url), "utf8");
@@ -205,6 +207,8 @@ for (const table of [
   assert.match(rfxProcessMigration, new RegExp(`create table if not exists public\\.${table}`), `RFx Process migration should create ${table}`);
 }
 assert.match(rfxProcessMigration, /token_hash text not null unique/, "Customer RFI magic links should store only hashed tokens");
+const rfxRecoverableLinkMigration = readFileSync(new URL("../supabase/migrations/20260713220000_rfx_rfi_recoverable_links.sql", import.meta.url), "utf8");
+assert.match(rfxRecoverableLinkMigration, /token_encrypted text/, "New Customer RFI links should retain an encrypted token for fixed owner-visible URLs.");
 assert.match(rfxProcessMigration, /source_rfx_process_project_id uuid references public\.rfx_projects/, "Bid Room events should link back to RFx Process projects");
 assert.doesNotMatch(rfxProcessMigration, /using\s*\(true\)\s*with check\s*\(true\)/i, "RFx Process migration should not expose broad direct table access");
 assert.match(apiSource, /list_rfx_process_projects/, "Rateware API should list RFx Process projects");
@@ -212,6 +216,8 @@ assert.match(apiSource, /create_rfx_process_project/, "Rateware API should creat
 assert.match(apiSource, /get_rfx_process_project/, "Rateware API should fetch RFx Process detail");
 assert.match(apiSource, /update_rfx_process_project/, "Rateware API should update RFx Process status and metadata");
 assert.match(apiSource, /create_rfx_rfi_magic_link/, "Rateware API should generate Customer RFI magic links");
+assert.match(apiSource, /encryptRfxMagicLinkToken/, "Rateware API should encrypt new Customer RFI tokens for fixed link retrieval.");
+assert.match(apiSource, /recoverable: Boolean\(linkUrl\)/, "Rateware API should never expose stored ciphertext and only return a recoverable owner link.");
 assert.match(apiSource, /revoke_rfx_rfi_magic_link/, "Rateware API should revoke Customer RFI magic links");
 assert.match(apiSource, /reopen_rfx_rfi/, "Rateware API should reopen submitted Customer RFIs");
 assert.match(apiSource, /create_rfx_demand_snapshot/, "Rateware API should create demand snapshots");
@@ -290,6 +296,8 @@ assert.match(apiSource, /WHATSAPP_INTERNAL_OWNER_EMAILS\.has\(email\)/, "Interna
 assert.match(apiSource, /WHATSAPP_INTERNAL_ORGANIZATION_IDS\.has\(organizationId\)/, "Internal WhatsApp access should support an allowed organization id");
 assert.match(apiSource, /\.from\("gmail_mailbox_connections"\)[\s\S]+\.eq\("owner_email", user\.owner_email\)[\s\S]+\.eq\("mailbox_email", GMAIL_ALLOWED_SENDER\)[\s\S]+\.eq\("status", "connected"\)/, "Internal WhatsApp access may use the workspace's connected allowed Gmail mailbox as proof");
 assert.match(apiSource, /const existingMetadata = objectRecord\(existingResult\.data\?\.metadata\)/, "Refreshing the internal WhatsApp connection must preserve synced Meta templates");
+assert.match(apiSource, /const internalWabaId = WHATSAPP_WABA_ID[\s\S]+cleanText\(existingMetadata\.template_waba_id\)/, "Internal WhatsApp refresh must prefer the server WABA over stale stored template metadata");
+assert.match(apiSource, /const wabaId = internalWorkspace\s+\?\s+\(WHATSAPP_WABA_ID \|\| cleanText\(metadata\.template_waba_id\) \|\| WHATSAPP_BUSINESS_ACCOUNT_ID\)/, "Internal WhatsApp actions must resolve templates against the server WABA first");
 assert.match(whatsappTenantAppMigration, /add column if not exists meta_app_id text/, "Tenant WhatsApp connections should store their own Meta App ID");
 assert.match(whatsappTenantAppMigration, /add column if not exists app_secret_encrypted text/, "Tenant WhatsApp connections should store only an encrypted Meta App Secret");
 assert.match(apiSource, /connection_mode: "tenant_connected"/, "External workspaces should save tenant-connected rows");
@@ -306,8 +314,8 @@ assert.match(whatsappTemplateMappingMigration, /create table if not exists publi
 assert.match(whatsappTemplateMappingMigration, /unique \(whatsapp_connection_id, outreach_template_id\)/, "WhatsApp template mappings should be isolated by connection and Outreach template");
 assert.doesNotMatch(whatsappTemplateMappingMigration, /using\s*\(true\)/i, "WhatsApp template mapping RLS must not expose mappings across workspaces");
 assert.match(apiSource, /publish_outreach_template_to_whatsapp/, "Rateware API should publish Outreach copy to Meta templates");
-assert.match(apiSource, /rateware_rfx_invitation_en_v1/, "WhatsApp should use one stable English RFx notifier");
-assert.match(apiSource, /rateware_rfx_invitation_es_v1/, "WhatsApp should use one stable Spanish RFx notifier");
+assert.match(apiSource, /rateware_rfx_invitation_en/, "WhatsApp should use the active stable English RFx notifier");
+assert.match(apiSource, /rateware_rfx_invitation_es/, "WhatsApp should use the active stable Spanish RFx notifier");
 assert.match(apiSource, /WHATSAPP_RFX_NOTIFICATION_PLACEHOLDERS[\s\S]+vendor_name[\s\S]+event_name[\s\S]+lane_count[\s\S]+due_date[\s\S]+bid_link/, "Stable Meta notifiers should use the five ordered RFx parameters");
 assert.match(apiSource, /delivery_strategy: "stable_rfx_notification"/, "WhatsApp mappings should identify the stable notifier strategy");
 assert.match(apiSource, /source_placeholders: placeholders/, "Workspace mappings should persist the ordered source placeholders");
@@ -332,8 +340,13 @@ assert.match(apiSource, /mark_whatsapp_group_message_manually_sent/, "Rateware A
 assert.match(apiSource, /send_whatsapp_group_outreach_messages/, "Rateware API should explicitly guard WhatsApp group automation");
 assert.match(apiSource, /test_whatsapp_business_connection/, "Rateware API should expose WhatsApp Business connection test");
 assert.match(apiSource, /sync_whatsapp_templates/, "Rateware API should expose WhatsApp template sync");
+assert.match(apiSource, /rateware_rfx_invitation_en/, "WhatsApp RFx delivery should use the approved stable English Meta template name");
+assert.match(apiSource, /whatsappTemplateNamesMatch/, "WhatsApp template sync should reconcile legacy and current stable RFx template aliases");
+assert.match(apiSource, /whatsappTemplateLanguagesMatch/, "WhatsApp template sync should reconcile Meta language roots such as en and en_US");
+assert.match(apiSource, /ACTIVE_QUALITY_PENDING[\s\S]+APPROVED/, "WhatsApp Active quality-pending templates should be treated as approved for sending");
 assert.match(apiSource, /list_whatsapp_phone_numbers/, "Rateware API should expose WhatsApp sender phone listing");
 assert.match(apiSource, /verify_whatsapp_webhook/, "Rateware API should expose WhatsApp webhook verification");
+assert.match(apiSource, /webhook_verified_at: verified \? now : null/, "Webhook verification should persist its result on the resolved WhatsApp connection");
 assert.match(apiSource, /message_templates\?fields=name,language,status,category,components&limit=100/, "WhatsApp template sync should call Meta message_templates endpoint");
 assert.match(settingsHtml, /connect-whatsapp-button/, "Settings should expose WhatsApp Business connection controls");
 assert.match(settingsHtml, /whatsapp-manual-form/, "External workspaces should have a manual WhatsApp Business setup form");
@@ -383,7 +396,11 @@ assert.match(rfxProcessHtml, /RFx Design/, "RFx Process page should include RFx 
 assert.match(rfxProcessHtml, /Evaluation/, "RFx Process page should include Bid Evaluation tab");
 assert.match(customerRfiHtml, /rfi-lanes/, "Customer RFI page should collect a structured route schedule");
 assert.match(customerRfiHtml, /rfi-lanes-head/, "Customer RFI route schedule should render a dynamic RFI spreadsheet header");
-assert.match(customerRfiHtml, /import-rfi-workbook/, "Customer RFI should import an existing route schedule workbook directly into the lane matrix");
+assert.match(customerRfiHtml, /import-rfi-segment-template/, "Customer RFI should import an existing segment workbook through the active segment workspace");
+assert.match(customerRfiHtml, /rfi-segment-template-copy/, "Customer RFI template help and status should use a dedicated layout row");
+assert.doesNotMatch(customerRfiHtml, /id="download-rfi-template"/, "Customer RFI should not expose a duplicate route-level template download");
+assert.doesNotMatch(customerRfiHtml, /id="import-rfi-workbook"/, "Customer RFI should not expose a duplicate route-level workbook import");
+assert.match(apiSource, /The active Customer RFI link is still valid/, "RFx Process should reuse an active Customer RFI link instead of issuing duplicates");
 assert.match(customerRfiSource, /Ubicacion de salida/, "Customer RFI route schedule should align to the customer RFI origin columns");
 assert.match(customerRfiSource, /Ubicacion de llegada/, "Customer RFI route schedule should align to the customer RFI destination columns");
 assert.match(customerRfiSource, /Volumen semanal esperado/, "Customer RFI route schedule should include expected weekly volume from the RFI template");
@@ -813,10 +830,16 @@ assert.match(rfxEventsSource, /elementos_adicionales_en_el_remolque_camion_almac
 assert.match(rfxEventsSource, /function laneDetailSections/, "Bid Room should render lane detail sections");
 assert.match(rfxBidSource, /function laneDetailSections/, "Carrier portal should render lane detail sections");
 assert.match(rfxBidSource, /function renderLaneDetailValue/, "Carrier portal should render pasted HTML lane detail as readable rich text");
+assert.match(rfxBidSource, /label class="\$\{answer === value \? "is-selected" : ""\}"/, "Carrier fit confirmations should expose a clear selected response state");
+assert.match(stylesSource, /\.segment-rubric-controls \{[\s\S]*grid-template-columns: repeat\(4, minmax\(0, 1fr\)\)/, "Carrier fit confirmations should keep all four answers aligned in one desktop row");
+assert.match(rfxBidApiSource, /comment: \(cleanText\(record\.comment\) \|\| ""\)\.slice\(0, 1200\)/, "Carrier fit checklist saves should allow blank exception comments");
 assert.match(rfxBidSource, /sanitizeRichTextNode/, "Carrier portal should sanitize lane detail HTML before inserting it");
 assert.match(rfxBidSource, /bid-lane-detail-disclosure/, "Carrier portal should collapse selected-lane details so they do not duplicate the RFx master package");
 assert.doesNotMatch(rfxBidSource, /<p>\$\{escapeHtml\(value\)\}<\/p>/, "Carrier portal should not show pasted lane detail HTML as escaped source");
 assert.match(rfxBidSource, /function renderCarrierLaneSwitcher/, "Carrier portal should expose all invited event lanes before the selected lane bid form");
+assert.match(rfxBidSource, /function segmentFitProgress/, "Carrier master package should summarize confirmations by segment");
+assert.match(rfxBidSource, /function activeMasterSegmentIndex/, "Carrier master package should open the first segment that still needs action");
+assert.match(rfxBidSource, /master-package-route-disclosure/, "Carrier route schedule should collapse when the RFx package has many lanes");
 assert.match(rfxBidSource, /import \* as XLSX from "https:\/\/esm\.sh\/xlsx@0\.18\.5"/, "Carrier portal should load XLSX support for bid templates");
 assert.match(rfxBidSource, /import\("https:\/\/esm\.sh\/exceljs@4\.4\.0\?bundle"\)/, "Carrier portal should use ExcelJS for XLSX dropdown data validations");
 assert.match(rfxBidSource, /const BID_TEMPLATE_COLUMNS = \[/, "Carrier portal should define a prefilled XLSX bid template schema");
@@ -1339,6 +1362,51 @@ assert.match(
   "Spreadsheet filter search should not submit while a user is typing"
 );
 assert.match(
+  spreadsheetColumnFiltersSource,
+  /function normalizeMenuValuesResponse/,
+  "Spreadsheet filters should preserve backend value metadata"
+);
+assert.match(
+  spreadsheetColumnFiltersSource,
+  /Select loaded/,
+  "Spreadsheet filter menus should not imply that a capped value list is the whole database"
+);
+assert.match(
+  spreadsheetColumnFiltersSource,
+  /database value\(s\) loaded/,
+  "Spreadsheet filter menus should explain how many database values were loaded"
+);
+assert.match(
+  spreadsheetColumnFiltersSource,
+  /Search to narrow additional database values/,
+  "Spreadsheet filter menus should tell operators how to find values beyond the loaded menu page"
+);
+assert.match(
+  spreadsheetColumnFiltersSource,
+  /await menuValues\(field, query\)/,
+  "Spreadsheet filter search should query backend values instead of only filtering the loaded menu slice"
+);
+assert.match(
+  spreadsheetColumnFiltersSource,
+  /defaultAll && !activeMenu\.dirty/,
+  "Spreadsheet filter search should keep the unfiltered default from becoming a partial loaded-value filter"
+);
+assert.match(
+  apiSource,
+  /Number\(body\.limit\) \|\| 5000, 1\), 5000\)/,
+  "Filter-value APIs should allow a 5000-value menu page for large Rateware datasets"
+);
+assert.match(
+  ratewareServiceSource,
+  /hard_limit_reached: Boolean\(result\?\.hard_limit_reached\)/,
+  "Rateware service should keep filter-value truncation metadata"
+);
+assert.match(
+  stagingServiceSource,
+  /hard_limit_reached: Boolean\(result\?\.hard_limit_reached\)/,
+  "Staging service should keep filter-value truncation metadata"
+);
+assert.match(
   ratewareSource,
   /const rowSaveChains = new Map\(\)/,
   "Rateware should serialize writes to the same spreadsheet row"
@@ -1359,6 +1427,11 @@ assert.match(
   "Staging should preserve newer row edits while a previous save is in flight"
 );
 assert.match(
+  stagingReviewSource,
+  /const token = stagingLoadToken;[\s\S]*if \(token !== stagingLoadToken\) return;[\s\S]*catch \(error\) \{[\s\S]*if \(token !== stagingLoadToken\) return;/,
+  "Staging should ignore stale load failures instead of overwriting newer filter results"
+);
+assert.match(
   ratewareSource,
   /Page selected:/,
   "Rateware should make page-level selection distinct from database-wide actions"
@@ -1368,6 +1441,12 @@ assert.match(
   /Page selected:/,
   "Staging should make page-level selection distinct from database-wide actions"
 );
+assert.match(ratewareSource, /Database matches:/, "Rateware should label global matches separately from the loaded page");
+assert.match(stagingReviewSource, /Database matches:/, "Staging should label global matches separately from the loaded page");
+assert.match(ratewareSource, /\[50, 100, 200, 500, 1000\]\.includes\(value\)/, "Rateware should allow the backend-supported 1000-row page size");
+assert.match(stagingReviewSource, /\[50, 100, 200, 500, 1000\]\.includes\(value\)/, "Staging should allow the backend-supported 1000-row page size");
+assert.match(ratewareHtml, /<option value="1000">1,000<\/option>/, "Rateware should expose the 1000-row page size");
+assert.match(stagingReviewHtml, /<option value="1000">1,000<\/option>/, "Staging should expose the 1000-row page size");
 assert.match(
   ratewareSource,
   /Global scope: \$\{filteredTotal\.toLocaleString\(\)\} filtered rates/,
@@ -1392,6 +1471,94 @@ assert.match(
   sheetUiSource,
   /setActiveView\(name, "named", "View applied"\);\s*renderToggleInputs\(\);/,
   "Applying a saved spreadsheet view should immediately refresh the visible layout state"
+);
+assert.match(
+  sheetUiSource,
+  /data-column-order-key=/,
+  "Spreadsheet column menus should support direct drag-to-reorder controls"
+);
+assert.match(
+  sheetUiSource,
+  /list\?\.addEventListener\("drop"/,
+  "Spreadsheet column menus should save reorder drops without relying only on header dragging"
+);
+assert.match(
+  spreadsheetGridSource,
+  /event\.key\.toLowerCase\(\) === "a"/,
+  "Spreadsheet grids should support selecting the visible grid with Ctrl or Cmd+A"
+);
+assert.match(
+  spreadsheetGridSource,
+  /event\.shiftKey && event\.key === " "/,
+  "Spreadsheet grids should support selecting an active row with Shift+Space"
+);
+assert.match(
+  spreadsheetGridSource,
+  /\(event\.ctrlKey \|\| event\.metaKey\) && event\.key === " "/,
+  "Spreadsheet grids should support selecting an active column with Ctrl or Cmd+Space"
+);
+assert.match(stagingReviewHtml, /selects visible cells/, "Staging should document visible-cell selection.");
+assert.match(ratewareHtml, /selects the active row/, "Rateware should document active-row selection.");
+assert.match(ratewareHtml, /Export matching CSV/, "Rateware export should state that it covers every matching database row");
+assert.match(ratewareHtml, /Archive matching/, "Rateware lifecycle actions should state matching database scope");
+assert.match(stagingReviewHtml, /Approve matching/, "Staging approval should state matching database scope");
+assert.match(stagingReviewHtml, /Remove matching/, "Staging removal should state matching database scope");
+assert.match(
+  ratewareSource,
+  /columnFilters: activeColumnFilters\(\)/,
+  "Rateware paginated loads should carry the active column filters"
+);
+assert.match(
+  stagingReviewSource,
+  /columnFilters: activeColumnFilters\(\)/,
+  "Staging paginated loads should carry the active column filters"
+);
+assert.match(
+  stagingReviewSource,
+  /async function loadStagingOptions\(\{ force = false \} = \{\}\)/,
+  "Staging should cache auxiliary options instead of refetching them for every page or filter change"
+);
+assert.match(
+  stagingReviewSource,
+  /refreshButton\.addEventListener\("click", \(\) => loadRows\(\{ refreshOptions: true \}\)\)/,
+  "Staging refresh should explicitly reload catalogs and vendor options"
+);
+assert.match(
+  ratewareSource,
+  /async function loadRatewareOptions\(\{ force = false \} = \{\}\)/,
+  "Rateware should cache auxiliary options instead of refetching them for every page or filter change"
+);
+assert.match(
+  ratewareSource,
+  /refreshButton\.addEventListener\("click", \(\) => loadRateware\(\{ refreshOptions: true \}\)\)/,
+  "Rateware refresh should explicitly reload catalogs and vendor options"
+);
+assert.match(
+  ratewareServiceSource,
+  /column_filters: columnFilters/,
+  "Rateware service calls should send column filters to the API"
+);
+assert.match(
+  stagingServiceSource,
+  /column_filters: columnFilters/,
+  "Staging service calls should send column filters to the API"
+);
+assert.match(
+  apiSource,
+  /if \(body\.action === "list_rateware"\)[\s\S]*column_filters: columnFilters[\s\S]*fetchRatewareRowsBySql/,
+  "Rateware API pagination should apply column filters server-side"
+);
+assert.match(
+  apiSource,
+  /if \(body\.action === "list_staging"\)[\s\S]*column_filters: columnFilters[\s\S]*fetchRateRowIdsByFilter/,
+  "Staging API pagination should apply column filters server-side when needed"
+);
+assert.match(ratewareSource, /No matching rates\. Use Clear filters above/, "Rateware empty state should explain how to recover from filters");
+assert.match(stagingReviewSource, /No matching staged rows\. Use Clear filters above/, "Staging empty state should explain how to recover from filters");
+assert.match(
+  stylesSource,
+  /\.column-order-grip/,
+  "Spreadsheet column menus should provide a visible reorder affordance"
 );
 
 assert.match(uploadHistorySource, /const BULK_IMPORT_BATCH_SIZE = 250/, "structured upload import should use larger browser batches");
@@ -1733,5 +1900,59 @@ for (const [helperName, nextHelperName] of [
 const carrierIntelligenceSource = apiSource.slice(apiSource.indexOf("async function buildCarrierIntelligence"), apiSource.indexOf("function recommendationIntentFromConfig"));
 assert.doesNotMatch(carrierIntelligenceSource, /\.from\("rate_staging"\)/, "AI Analyst should not query rate_staging directly");
 assert.doesNotMatch(carrierIntelligenceSource, /\.limit\(1500\)/, "AI Analyst should not rely on a 1500-row rate sample");
+assert.match(stylesSource, /\.bulk-action-bar \{[\s\S]*?overflow-x: auto/, "Spreadsheet bulk actions should scroll inside their own toolbar on narrow laptop layouts");
+assert.match(stylesSource, /\.bulk-action-bar:has\(\.sheet-more-actions\[open\]\)[\s\S]*?overflow: visible/, "The More actions menu should not be clipped by the compact toolbar");
+assert.match(ratewareSource, /showStarterViews: false/, "Rateware should not surface starter column presets by default");
+assert.match(stagingReviewSource, /showStarterViews: false/, "Staging should not surface starter column presets by default");
+assert.match(sheetUiSource, /Changes auto-save in this browser/, "Column layout storage should be explicit to operators");
+assert.match(sheetUiSource, /data-column-reset-layout>Reset default/, "Column controls should provide an explicit default-layout recovery action");
+assert.match(sheetUiSource, /window\.localStorage\.removeItem\(activeViewStorageKey\)/, "Resetting a layout should clear a stale saved-view marker");
+assert.match(ratewareSource, /let ratewareOptionsRequest = 0/, "Rateware option refreshes should be versioned");
+assert.match(ratewareSource, /request !== ratewareOptionsRequest/, "Rateware should ignore stale option responses");
+assert.match(stagingReviewSource, /let stagingOptionsRequest = 0/, "Staging option refreshes should be versioned");
+assert.match(stagingReviewSource, /request !== stagingOptionsRequest/, "Staging should ignore stale option responses");
+assert.match(ratewareSource, /const optionsRequest = loadRatewareOptions/, "Rateware should begin option hydration without blocking its page query");
+assert.match(ratewareSource, /let page = await fetchApprovedRatewarePage/, "Rateware should render its page before waiting on option hydration");
+assert.match(ratewareSource, /Rateware rows loaded\. Dropdown catalogs are temporarily unavailable/, "Rateware should retain rendered rows when secondary dropdown hydration fails");
+assert.match(ratewareSource, /const hasRenderedRows = currentRows\.length > 0 \|\| loadedRows\.length > 0/, "Rateware should preserve visible rows while loading another page or filter result");
+assert.match(ratewareSource, /if \(hasRenderedRows\) \{\s+setActionStatus\("Updating Rateware rows\.\.\."\);/, "Rateware should show inline loading instead of blanking rendered rows");
+assert.match(ratewareSource, /if \(hasRenderedRows\) setActionStatus\(""\)/, "Rateware should clear temporary inline loading after a successful preserved-row refresh");
+assert.match(ratewareSource, /ratewareTotalCount = Number\(page\.total \?\? rows\.length \?\? 0\)/, "Rateware should treat a zero database count as a real zero");
+assert.match(ratewareSource, /ratewareTable\?\.setAttribute\("aria-busy", "true"\)/, "Rateware should expose loading state to assistive technology");
+assert.match(ratewareSource, /ratewareTable\?\.removeAttribute\("aria-busy"\)/, "Rateware should clear its loading state after requests finish");
+assert.match(ratewareSource, /function resetRatewareSelectionForFilter\(\)/, "Rateware should clear selection when the result set changes");
+assert.match(ratewareSource, /searchInput\.addEventListener\("input", debounce\(\(\) =>/, "Rateware search should reset selection before loading new results");
+assert.match(ratewareSource, /operationFilter\.addEventListener\("change", \(\) =>/, "Rateware operation filtering should reset selection before loading new results");
+assert.match(ratewareSource, /serviceFilter\.addEventListener\("change", \(\) =>/, "Rateware service filtering should reset selection before loading new results");
+assert.match(ratewareSource, /if \(refreshOptions\) resetRatewareSelectionForFilter\(\)/, "Rateware refresh should clear stale selection before reloading data");
+const ratewarePageNavigationSource = ratewareSource.slice(ratewareSource.indexOf("async function goToRatewarePage"), ratewareSource.indexOf("function ratewarePageParams"));
+assert.ok(ratewarePageNavigationSource.length > 100, "Rateware page navigation block should be present");
+assert.match(ratewarePageNavigationSource, /selectedRowIds\.clear\(\)/, "Rateware should clear page selections when changing pages");
+const ratewarePageSizeSource = ratewareSource.slice(ratewareSource.indexOf("async function setRatewarePageSize"), ratewareSource.indexOf("async function performRatewareTableRowSave"));
+assert.ok(ratewarePageSizeSource.length > 100, "Rateware page-size block should be present");
+assert.match(ratewarePageSizeSource, /selectedRowIds\.clear\(\)/, "Rateware should clear page selections when page size changes");
+const ratewareSavedViewSource = ratewareSource.slice(ratewareSource.indexOf("columnVisibilityController = initColumnVisibility"), ratewareSource.indexOf("columnFilterController = initSpreadsheetColumnFilters"));
+assert.ok(ratewareSavedViewSource.length > 100, "Rateware saved-view controller block should be present");
+assert.match(ratewareSavedViewSource, /selectedRowIds\.clear\(\)/, "Rateware saved views should clear stale page selections before reloading");
+assert.match(stagingReviewSource, /const optionsRequest = loadStagingOptions/, "Staging should begin option hydration without blocking its page query");
+assert.match(stagingReviewSource, /let page = await fetchStagingPage/, "Staging should render its page before waiting on option hydration");
+assert.match(stagingReviewSource, /Staging rows loaded\. Dropdown catalogs are temporarily unavailable/, "Staging should retain rendered rows when secondary dropdown hydration fails");
+assert.match(stagingReviewSource, /const hasRenderedRows = currentRows\.length > 0 \|\| loadedRows\.length > 0/, "Staging should preserve visible rows while loading another page or filter result");
+assert.match(stagingReviewSource, /if \(hasRenderedRows\) \{\s+setBulkStatus\("Updating staging rows\.\.\."\);/, "Staging should show inline loading instead of blanking rendered rows");
+assert.match(stagingReviewSource, /else if \(hasRenderedRows\) \{\s+setBulkStatus\(""\);/, "Staging should clear temporary inline loading after a successful preserved-row refresh");
+assert.match(stagingReviewSource, /await optionsRequest;\s+if \(token !== stagingLoadToken\) return;\s+if \(optionsError\)/, "Staging should ignore stale option responses before updating status");
+assert.match(stagingReviewSource, /stagingTotalCount = Number\(page\.total \?\? rows\.length \?\? 0\)/, "Staging should treat a zero database count as a real zero");
+assert.match(stagingReviewSource, /stagingTable\?\.setAttribute\("aria-busy", "true"\)/, "Staging should expose loading state to assistive technology");
+assert.match(stagingReviewSource, /stagingTable\?\.removeAttribute\("aria-busy"\)/, "Staging should clear its loading state after requests finish");
+assert.match(stagingReviewSource, /if \(refreshOptions\) \{\s+selectedRowIds\.clear\(\);\s+setBulkStatus\(""\);/, "Staging refresh should clear stale selection before reloading data");
+const stagingPageNavigationSource = stagingReviewSource.slice(stagingReviewSource.indexOf("async function goToStagingPage"), stagingReviewSource.indexOf("async function setStagingPageSize"));
+assert.ok(stagingPageNavigationSource.length > 100, "Staging page navigation block should be present");
+assert.match(stagingPageNavigationSource, /selectedRowIds\.clear\(\)/, "Staging should clear page selections when changing pages");
+const stagingPageSizeSource = stagingReviewSource.slice(stagingReviewSource.indexOf("async function setStagingPageSize"), stagingReviewSource.indexOf("function detailLine"));
+assert.ok(stagingPageSizeSource.length > 100, "Staging page-size block should be present");
+assert.match(stagingPageSizeSource, /selectedRowIds\.clear\(\)/, "Staging should clear page selections when page size changes");
+const stagingSavedViewSource = stagingReviewSource.slice(stagingReviewSource.indexOf("columnVisibilityController = initColumnVisibility"), stagingReviewSource.indexOf("columnFilterController = initSpreadsheetColumnFilters"));
+assert.ok(stagingSavedViewSource.length > 100, "Staging saved-view controller block should be present");
+assert.match(stagingSavedViewSource, /selectedRowIds\.clear\(\)/, "Staging saved views should clear stale page selections before reloading");
 
 console.log("Rateware stability guards passed.");

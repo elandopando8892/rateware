@@ -221,6 +221,445 @@ function withOwner(row: Record<string, unknown>, user: { owner_user_id: string |
   };
 }
 
+const SHIPPER_CHILD_CONFIG = {
+  contacts: {
+    table: "shipper_contacts",
+    required: "contact_name",
+    text: ["contact_name", "title", "department", "email", "phone", "whatsapp_phone", "preferred_channel", "status", "notes"],
+    booleans: ["is_primary"],
+    numbers: []
+  },
+  locations: {
+    table: "shipper_locations",
+    required: "location_name",
+    text: ["location_name", "location_type", "address_line_1", "address_line_2", "city", "state_code", "country_code", "postal_code", "market", "region", "contact_name", "contact_email", "contact_phone", "operating_hours", "handling_type", "notes"],
+    booleans: ["appointment_required"],
+    numbers: []
+  },
+  lanes: {
+    table: "shipper_lanes",
+    required: "origin",
+    text: ["lane_name", "origin", "origin_postal_code", "origin_state_code", "origin_market", "origin_region", "destination", "destination_postal_code", "destination_state_code", "destination_market", "destination_region", "equipment", "trailer", "configuration", "operation", "service", "currency", "status", "notes"],
+    booleans: [],
+    numbers: ["weekly_volume", "current_rate"]
+  },
+  rfis: {
+    table: "shipper_rfis",
+    required: "rfi_name",
+    text: ["rfi_name", "external_reference", "status", "due_date", "source_url", "notes"],
+    booleans: [],
+    numbers: []
+  },
+  opportunities: {
+    table: "shipper_opportunities",
+    required: "opportunity_name",
+    text: ["opportunity_name", "stage", "currency", "due_date", "next_action", "account_owner_email", "notes"],
+    booleans: [],
+    numbers: ["probability", "estimated_value", "estimated_weekly_volume", "target_margin"]
+  },
+  actions: {
+    table: "shipper_account_actions",
+    required: "title",
+    text: ["title", "action_type", "status", "priority", "due_date", "owner_email_assignee", "notes"],
+    booleans: [],
+    numbers: []
+  }
+} as const;
+
+const SHIPPER_ENUMS = {
+  status: new Set<string>(["prospect", "active", "inactive", "archived"]),
+  relationship_stage: new Set<string>(["target", "qualified", "customer", "at_risk", "inactive"]),
+  contact_status: new Set<string>(["active", "inactive"]),
+  lane_status: new Set<string>(["active", "inactive", "archived"]),
+  rfi_status: new Set<string>(["draft", "sent", "in_progress", "submitted", "approved", "archived"]),
+  opportunity_stage: new Set<string>(["identified", "discovery", "rfi", "rfx", "proposal", "negotiation", "won", "lost", "archived"]),
+  shipper_action_status: new Set<string>(["open", "in_progress", "done", "cancelled"]),
+  shipper_action_priority: new Set<string>(["low", "normal", "high", "urgent"]),
+  shipper_action_type: new Set<string>(["follow_up", "call", "email", "meeting", "rfi_follow_up", "rate_review", "data_cleanup", "other"])
+} as const;
+
+const SHIPPER_ACTION_PLAYBOOKS: Record<string, {
+  label: string;
+  description: string;
+  steps: { title: string; action_type: string; priority: string; due_in_days: number; notes: string }[];
+}> = {
+  discovery: {
+    label: "Qualify a new account",
+    description: "Confirm the commercial owner, operating footprint, and first opportunity before committing procurement effort.",
+    steps: [
+      { title: "Confirm commercial and operating contacts", action_type: "data_cleanup", priority: "high", due_in_days: 1, notes: "Confirm the primary commercial contact, operational contact, email, and preferred channel." },
+      { title: "Schedule discovery call", action_type: "call", priority: "normal", due_in_days: 3, notes: "Validate shipping profile, procurement calendar, lanes, and decision process." },
+      { title: "Capture initial lane and RFI scope", action_type: "rfi_follow_up", priority: "normal", due_in_days: 5, notes: "Record candidate lanes, equipment, volume, target dates, and requested commercial model." }
+    ]
+  },
+  rfi_follow_up: {
+    label: "Advance an RFI",
+    description: "Move an open request into a qualified deal with a complete scope and clear commercial owner.",
+    steps: [
+      { title: "Review RFI completeness", action_type: "rfi_follow_up", priority: "high", due_in_days: 1, notes: "Confirm lanes, volume, due date, service requirements, and missing commercial assumptions." },
+      { title: "Confirm RFI timeline with shipper", action_type: "email", priority: "high", due_in_days: 2, notes: "Confirm response deadline, award timing, communication channel, and evaluation criteria." },
+      { title: "Create or update commercial deal", action_type: "follow_up", priority: "normal", due_in_days: 3, notes: "Link the RFI to an opportunity and document the next decision point." }
+    ]
+  },
+  proposal: {
+    label: "Follow up a proposal",
+    description: "Protect a live commercial proposal by confirming feedback, objections, and the next decision date.",
+    steps: [
+      { title: "Confirm proposal receipt", action_type: "email", priority: "high", due_in_days: 1, notes: "Confirm the commercial proposal reached the intended decision maker." },
+      { title: "Collect commercial feedback", action_type: "call", priority: "high", due_in_days: 3, notes: "Capture price, service, coverage, implementation, and contract objections." },
+      { title: "Set the next decision checkpoint", action_type: "meeting", priority: "normal", due_in_days: 5, notes: "Agree on decision date, required revisions, and accountable shipper stakeholders." }
+    ]
+  },
+  implementation: {
+    label: "Prepare implementation",
+    description: "Coordinate a won deal into a documented operational handoff before launch.",
+    steps: [
+      { title: "Confirm implementation owner and kickoff", action_type: "meeting", priority: "urgent", due_in_days: 1, notes: "Name commercial and operational owners on both sides and schedule the kickoff." },
+      { title: "Validate operating data and lanes", action_type: "data_cleanup", priority: "high", due_in_days: 3, notes: "Verify locations, lanes, service requirements, contacts, and escalation paths." },
+      { title: "Confirm launch readiness", action_type: "rate_review", priority: "high", due_in_days: 7, notes: "Confirm capacity, commercial terms, systems, operating checklist, and launch date." }
+    ]
+  },
+  reengagement: {
+    label: "Re-engage an account",
+    description: "Re-open a quiet or at-risk relationship with a defined commercial reason and time-boxed follow-up.",
+    steps: [
+      { title: "Review last commercial activity", action_type: "data_cleanup", priority: "normal", due_in_days: 1, notes: "Review prior RFIs, proposals, awarded work, unresolved issues, and active contacts." },
+      { title: "Send re-engagement message", action_type: "email", priority: "normal", due_in_days: 2, notes: "Share a relevant coverage, capacity, or commercial reason to reconnect." },
+      { title: "Confirm re-engagement outcome", action_type: "follow_up", priority: "normal", due_in_days: 7, notes: "Record whether the account should advance, remain nurtured, or be marked inactive." }
+    ]
+  }
+};
+
+type ShipperChildEntity = keyof typeof SHIPPER_CHILD_CONFIG;
+
+function shipperChildEntity(value: unknown): ShipperChildEntity {
+  const entity = cleanText(value)?.toLowerCase() as ShipperChildEntity;
+  if (!entity || !SHIPPER_CHILD_CONFIG[entity]) throw new Error("Unknown Shipper CRM detail type.");
+  return entity;
+}
+
+function normalizeShipper(input: Record<string, unknown>, partial = false) {
+  const row: Record<string, unknown> = {};
+  const textFields = [
+    "shipper_name", "legal_name", "domain", "website", "logo_url", "industry", "status",
+    "relationship_stage", "segment", "revenue_tier", "account_owner_email", "primary_contact_name",
+    "primary_contact_email", "primary_contact_phone", "headquarters_city", "headquarters_state",
+    "headquarters_country", "notes", "source"
+  ];
+  for (const field of textFields) {
+    if (!partial || Object.prototype.hasOwnProperty.call(input, field)) row[field] = cleanText(input[field]);
+  }
+  if (!partial || Object.prototype.hasOwnProperty.call(input, "tags")) row.tags = normalizeTags(input.tags);
+  if (!partial || Object.prototype.hasOwnProperty.call(input, "metadata")) row.metadata = objectRecord(input.metadata);
+  if (!partial) {
+    row.status = row.status || "prospect";
+    row.relationship_stage = row.relationship_stage || "target";
+    row.source = row.source || "manual";
+  }
+  if (row.domain) row.domain = cleanText(row.domain)?.toLowerCase();
+  if (row.primary_contact_email) row.primary_contact_email = cleanText(row.primary_contact_email)?.toLowerCase();
+  if (row.account_owner_email) row.account_owner_email = cleanText(row.account_owner_email)?.toLowerCase();
+  row.updated_at = new Date().toISOString();
+  return row;
+}
+
+function normalizeShipperChild(entity: ShipperChildEntity, input: Record<string, unknown>) {
+  const config = SHIPPER_CHILD_CONFIG[entity];
+  const row: Record<string, unknown> = {};
+  for (const field of config.text) {
+    if (Object.prototype.hasOwnProperty.call(input, field)) row[field] = cleanText(input[field]);
+  }
+  for (const field of config.booleans) {
+    if (Object.prototype.hasOwnProperty.call(input, field)) row[field] = cleanOptionalBoolean(input[field]) ?? false;
+  }
+  for (const field of config.numbers) {
+    if (Object.prototype.hasOwnProperty.call(input, field)) row[field] = cleanNumber(input[field]);
+  }
+  if (entity === "rfis" && Object.prototype.hasOwnProperty.call(input, "response")) row.response = objectRecord(input.response);
+  if (Object.prototype.hasOwnProperty.call(input, "metadata")) row.metadata = objectRecord(input.metadata);
+  row.updated_at = new Date().toISOString();
+  return row;
+}
+
+function invalidShipperValue(row: Record<string, unknown>) {
+  const status = cleanText(row.status)?.toLowerCase();
+  const relationshipStage = cleanText(row.relationship_stage)?.toLowerCase();
+  if (status && !SHIPPER_ENUMS.status.has(status)) return "Unknown shipper status.";
+  if (relationshipStage && !SHIPPER_ENUMS.relationship_stage.has(relationshipStage)) return "Unknown shipper relationship stage.";
+  return null;
+}
+
+const SHIPPER_IMPORT_COLUMNS: Record<string, string[]> = {
+  shipper_name: ["shipper_name", "shipper", "customer", "company", "company_name", "account_name", "name"],
+  legal_name: ["legal_name", "legal_entity", "registered_name"],
+  domain: ["domain", "company_domain"],
+  website: ["website", "web_site", "url"],
+  industry: ["industry", "vertical"],
+  status: ["status"],
+  relationship_stage: ["relationship_stage", "relationship", "account_stage"],
+  segment: ["segment"],
+  revenue_tier: ["revenue_tier", "tier"],
+  account_owner_email: ["account_owner_email", "account_owner", "owner_email"],
+  primary_contact_name: ["primary_contact_name", "primary_contact", "contact_name"],
+  primary_contact_email: ["primary_contact_email", "primary_email", "contact_email", "email"],
+  primary_contact_phone: ["primary_contact_phone", "primary_phone", "contact_phone", "phone"],
+  headquarters_city: ["headquarters_city", "city", "hq_city"],
+  headquarters_state: ["headquarters_state", "state", "state_code", "hq_state"],
+  headquarters_country: ["headquarters_country", "country", "country_code", "hq_country"],
+  tags: ["tags", "tag", "labels", "label"],
+  notes: ["notes", "note"]
+};
+
+function canonicalShipperImportKey(value: unknown) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+function importedShipperValue(source: Record<string, unknown>, aliases: string[]) {
+  const normalized = new Map(Object.entries(source).map(([key, value]) => [canonicalShipperImportKey(key), value]));
+  for (const alias of aliases) {
+    const value = cleanText(normalized.get(alias));
+    if (value) return value;
+  }
+  return null;
+}
+
+function importedShipperDomain(value: unknown) {
+  return cleanText(value)
+    ?.replace(/^https?:\/\//i, "")
+    .replace(/^www\./i, "")
+    .replace(/\/.*$/, "")
+    .toLowerCase() || null;
+}
+
+function normalizeImportedShipper(source: Record<string, unknown>) {
+  const input: Record<string, unknown> = {};
+  for (const [field, aliases] of Object.entries(SHIPPER_IMPORT_COLUMNS)) {
+    const value = importedShipperValue(source, aliases);
+    if (value) input[field] = value;
+  }
+  if (input.domain) input.domain = importedShipperDomain(input.domain);
+  if (input.status) input.status = cleanText(input.status)?.toLowerCase();
+  if (input.relationship_stage) input.relationship_stage = cleanText(input.relationship_stage)?.toLowerCase();
+  if (input.tags) input.tags = normalizeTags(String(input.tags).split(/[;,|]/));
+  input.source = "import";
+  input.metadata = { import: { imported_at: new Date().toISOString() } };
+  const patch = normalizeShipper(input, true);
+  const insert = normalizeShipper(input);
+  if (!cleanText(insert.shipper_name)) return { error: "Shipper name is required." };
+  const invalid = invalidShipperValue(patch);
+  if (invalid) return { error: invalid };
+  return { patch, insert };
+}
+
+function mergedImportedShipper(existing: Record<string, unknown>, imported: Record<string, unknown>) {
+  const patch = { ...imported };
+  patch.tags = Array.from(new Set([...normalizeTags(existing.tags), ...normalizeTags(imported.tags)]));
+  patch.metadata = { ...objectRecord(existing.metadata), ...objectRecord(imported.metadata) };
+  patch.source = cleanText(existing.source) || "import";
+  return patch;
+}
+
+function normalizeShipperCrmImportSource(value: unknown) {
+  return canonicalShipperImportKey(value) || "pipedrive";
+}
+
+function shipperCrmImportMetadata(source: Record<string, unknown>, externalSource: string, externalSourceId: string | null) {
+  return {
+    external_import: {
+      source: externalSource,
+      external_source_id: externalSourceId,
+      imported_at: new Date().toISOString(),
+      source_created_at: importedShipperValue(source, ["source_created_at", "created_at"]),
+      source_updated_at: importedShipperValue(source, ["source_updated_at", "updated_at"])
+    },
+    source_fields: source
+  };
+}
+
+function normalizeShipperCrmWorkbookAccount(source: Record<string, unknown>, externalSource: string) {
+  const normalized = normalizeImportedShipper(source);
+  if ("error" in normalized) return normalized;
+  const externalSourceId = importedShipperValue(source, ["external_account_id", "account_id", "organization_id", "org_id", "id"]);
+  const metadata = shipperCrmImportMetadata(source, externalSource, externalSourceId);
+  return {
+    patch: { ...normalized.patch, external_source: externalSource, external_source_id: externalSourceId, metadata },
+    insert: { ...normalized.insert, external_source: externalSource, external_source_id: externalSourceId, metadata },
+    externalSourceId
+  };
+}
+
+function normalizeShipperCrmWorkbookContact(source: Record<string, unknown>, externalSource: string) {
+  const firstName = importedShipperValue(source, ["first_name"]);
+  const lastName = importedShipperValue(source, ["last_name"]);
+  const contactName = importedShipperValue(source, ["contact_name", "person_name", "name"])
+    || [firstName, lastName].filter(Boolean).join(" ");
+  const externalSourceId = importedShipperValue(source, ["external_contact_id", "contact_id", "person_id", "id"]);
+  const externalAccountId = importedShipperValue(source, ["external_account_id", "account_id", "organization_id", "org_id"]);
+  if (!contactName) return { error: "Contact name is required." };
+  if (!externalAccountId) return { error: "External account id is required to link a contact." };
+  const status = cleanText(importedShipperValue(source, ["status"]))?.toLowerCase();
+  const row = applyShipperChildDefaults("contacts", normalizeShipperChild("contacts", {
+    contact_name: contactName,
+    title: importedShipperValue(source, ["title", "job_title"]),
+    department: importedShipperValue(source, ["department"]),
+    email: importedShipperValue(source, ["work_email", "email", "home_email", "other_email"]),
+    phone: importedShipperValue(source, ["work_phone", "mobile_phone", "phone", "home_phone", "other_phone"]),
+    whatsapp_phone: importedShipperValue(source, ["whatsapp_phone", "mobile_phone"]),
+    preferred_channel: importedShipperValue(source, ["preferred_channel"]),
+    status: status && SHIPPER_ENUMS.contact_status.has(status) ? status : "active",
+    notes: importedShipperValue(source, ["notes", "note"]),
+    metadata: shipperCrmImportMetadata(source, externalSource, externalSourceId)
+  }), true);
+  row.external_source = externalSource;
+  row.external_source_id = externalSourceId;
+  const invalid = invalidShipperChildValue("contacts", row);
+  return invalid ? { error: invalid } : { row, externalSourceId, externalAccountId };
+}
+
+function normalizeShipperCrmOpportunityStage(value: unknown, status: unknown) {
+  const text = `${cleanText(value) || ""} ${cleanText(status) || ""}`.toLowerCase();
+  if (text.includes("won")) return "won";
+  if (text.includes("lost")) return "lost";
+  if (text.includes("negotiat")) return "negotiation";
+  if (text.includes("proposal") || text.includes("onboard")) return "proposal";
+  if (text.includes("rfx") || text.includes("rfq") || text.includes("bid")) return "rfx";
+  if (text.includes("rfi")) return "rfi";
+  if (text.includes("discover") || text.includes("intro") || text.includes("call")) return "discovery";
+  return "identified";
+}
+
+function normalizeShipperCrmWorkbookOpportunity(source: Record<string, unknown>, externalSource: string) {
+  const opportunityName = importedShipperValue(source, ["opportunity_name", "deal_name", "title", "name"]);
+  const externalSourceId = importedShipperValue(source, ["external_opportunity_id", "opportunity_id", "deal_id", "id"]);
+  const externalAccountId = importedShipperValue(source, ["external_account_id", "account_id", "organization_id", "org_id"]);
+  if (!opportunityName) return { error: "Opportunity name is required." };
+  if (!externalAccountId) return { error: "External account id is required to link an opportunity." };
+  const row = applyShipperChildDefaults("opportunities", normalizeShipperChild("opportunities", {
+    opportunity_name: opportunityName,
+    stage: normalizeShipperCrmOpportunityStage(importedShipperValue(source, ["stage", "source_stage"]), importedShipperValue(source, ["status"])),
+    probability: importedShipperValue(source, ["probability"]),
+    estimated_value: importedShipperValue(source, ["value", "estimated_value", "weighted_value"]),
+    currency: importedShipperValue(source, ["currency", "weighted_value_currency"]),
+    estimated_weekly_volume: importedShipperValue(source, ["estimated_weekly_volume"]),
+    target_margin: importedShipperValue(source, ["target_margin"]),
+    due_date: cleanDate(importedShipperValue(source, ["expected_close_date", "due_date", "next_action_date"])),
+    next_action: importedShipperValue(source, ["next_action", "next_action_date"]),
+    account_owner_email: importedShipperValue(source, ["owner", "account_owner", "account_owner_email"]),
+    notes: importedShipperValue(source, ["notes", "lost_reason", "operational_pain"]),
+    metadata: shipperCrmImportMetadata(source, externalSource, externalSourceId)
+  }), true);
+  row.external_source = externalSource;
+  row.external_source_id = externalSourceId;
+  const invalid = invalidShipperChildValue("opportunities", row);
+  return invalid ? { error: invalid } : { row, externalSourceId, externalAccountId };
+}
+
+function canonicalShipperDuplicateDomain(value: unknown) {
+  return cleanText(value)
+    ?.replace(/^https?:\/\//i, "")
+    .replace(/^www\./i, "")
+    .replace(/\/.*$/, "")
+    .toLowerCase() || null;
+}
+
+function canonicalShipperDuplicateName(value: unknown) {
+  const normalized = cleanText(value)
+    ?.toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim() || null;
+  return normalized && normalized.length >= 4 ? normalized : null;
+}
+
+function buildShipperDuplicateCandidates(rows: Record<string, unknown>[]) {
+  const indexes = new Map<string, { reason: string; rows: Record<string, unknown>[] }>();
+  const add = (reason: string, value: string | null, row: Record<string, unknown>) => {
+    if (!value) return;
+    const key = `${reason}:${value}`;
+    const current = indexes.get(key) || { reason, rows: [] };
+    current.rows.push(row);
+    indexes.set(key, current);
+  };
+  for (const row of rows) {
+    add("domain", canonicalShipperDuplicateDomain(row.domain), row);
+    add("email", cleanText(row.primary_contact_email)?.toLowerCase() || null, row);
+    add("legal_name", canonicalShipperDuplicateName(row.legal_name || row.shipper_name), row);
+  }
+  const pairs = new Map<string, { key: string; reasons: string[]; shippers: Record<string, unknown>[] }>();
+  for (const index of indexes.values()) {
+    if (index.rows.length < 2) continue;
+    for (let left = 0; left < index.rows.length - 1; left += 1) {
+      for (let right = left + 1; right < index.rows.length; right += 1) {
+        const shippers = [index.rows[left], index.rows[right]].sort((a, b) => String(a.id).localeCompare(String(b.id)));
+        const key = shippers.map((row) => String(row.id)).join(":");
+        const current = pairs.get(key) || { key, reasons: [], shippers };
+        if (!current.reasons.includes(index.reason)) current.reasons.push(index.reason);
+        pairs.set(key, current);
+      }
+    }
+  }
+  return Array.from(pairs.values()).sort((left, right) => {
+    const leftName = cleanText(left.shippers[0]?.shipper_name) || "";
+    const rightName = cleanText(right.shippers[0]?.shipper_name) || "";
+    return leftName.localeCompare(rightName) || (cleanText(left.shippers[1]?.shipper_name) || "").localeCompare(cleanText(right.shippers[1]?.shipper_name) || "");
+  });
+}
+
+function applyShipperChildDefaults(entity: ShipperChildEntity, row: Record<string, unknown>, inserting: boolean) {
+  if (!inserting) return row;
+  if (entity === "contacts") row.status = cleanText(row.status) || "active";
+  if (entity === "lanes") row.status = cleanText(row.status) || "active";
+  if (entity === "rfis") row.status = cleanText(row.status) || "draft";
+  if (entity === "opportunities") {
+    row.stage = cleanText(row.stage) || "identified";
+    if (row.probability === null || row.probability === undefined) row.probability = 0;
+  }
+  if (entity === "actions") {
+    row.action_type = cleanText(row.action_type) || "follow_up";
+    row.status = cleanText(row.status) || "open";
+    row.priority = cleanText(row.priority) || "normal";
+  }
+  return row;
+}
+
+function invalidShipperChildValue(entity: ShipperChildEntity, row: Record<string, unknown>) {
+  const status = cleanText(row.status)?.toLowerCase();
+  const stage = cleanText(row.stage)?.toLowerCase();
+  if (entity === "contacts" && status && !SHIPPER_ENUMS.contact_status.has(status)) return "Unknown contact status.";
+  if (entity === "lanes" && status && !SHIPPER_ENUMS.lane_status.has(status)) return "Unknown lane status.";
+  if (entity === "rfis" && status && !SHIPPER_ENUMS.rfi_status.has(status)) return "Unknown RFI status.";
+  if (entity === "opportunities" && stage && !SHIPPER_ENUMS.opportunity_stage.has(stage)) return "Unknown opportunity stage.";
+  if (entity === "actions" && status && !SHIPPER_ENUMS.shipper_action_status.has(status)) return "Unknown account action status.";
+  if (entity === "actions" && cleanText(row.priority)?.toLowerCase() && !SHIPPER_ENUMS.shipper_action_priority.has(cleanText(row.priority)!.toLowerCase())) return "Unknown account action priority.";
+  if (entity === "actions" && cleanText(row.action_type)?.toLowerCase() && !SHIPPER_ENUMS.shipper_action_type.has(cleanText(row.action_type)!.toLowerCase())) return "Unknown account action type.";
+  const probability = row.probability;
+  if (entity === "opportunities" && probability !== null && probability !== undefined && (Number(probability) < 0 || Number(probability) > 100)) {
+    return "Opportunity probability must be between 0 and 100.";
+  }
+  return null;
+}
+
+function safeShipperSearch(value: unknown) {
+  return (cleanText(value) || "").replace(/[%_,()]/g, " ").replace(/\s+/g, " ").trim().slice(0, 120);
+}
+
+async function requireOwnedShipper(
+  supabase: ReturnType<typeof createClient>,
+  user: RatewareUser,
+  shipperId: unknown
+) {
+  const id = cleanText(shipperId);
+  if (!id || !UUID_PATTERN.test(id)) throw new Error("A valid shipper id is required.");
+  const result = await supabase.from("shippers").select("*").eq("owner_email", user.owner_email).eq("id", id).single();
+  if (result.error) throw result.error;
+  return result.data as Record<string, unknown>;
+}
+
 async function resolveCanonicalUser(supabase: ReturnType<typeof createClient>, user: RatewareUser): Promise<RatewareUser> {
   let ownerEmail = user.owner_email;
   if (!ownerEmail?.includes("@") && user.owner_user_id) {
@@ -5810,6 +6249,13 @@ function cleanDate(value: unknown) {
   return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString().slice(0, 10);
 }
 
+function shipperActionDueDate(daysFromNow: number) {
+  const date = new Date();
+  date.setUTCHours(0, 0, 0, 0);
+  date.setUTCDate(date.getUTCDate() + Math.max(0, Math.round(daysFromNow)));
+  return date.toISOString().slice(0, 10);
+}
+
 function cleanNumber(value: unknown) {
   if (value === null || value === undefined || value === "") return null;
   const rateText = cleanRateText(value);
@@ -10394,9 +10840,9 @@ async function ensureInternalWhatsappConnection(
     .maybeSingle();
   if (existingResult.error) throw existingResult.error;
   const existingMetadata = objectRecord(existingResult.data?.metadata);
-  const internalWabaId = cleanText(existingMetadata.template_waba_id)
-    || WHATSAPP_WABA_ID
+  const internalWabaId = WHATSAPP_WABA_ID
     || cleanText(existingResult.data?.meta_waba_id || existingResult.data?.waba_id)
+    || cleanText(existingMetadata.template_waba_id)
     || WHATSAPP_BUSINESS_ACCOUNT_ID
     || null;
   const metadata = {
@@ -10407,7 +10853,10 @@ async function ensureInternalWhatsappConnection(
     meta_app_configured: Boolean(META_APP_ID && META_CONFIG_ID),
     webhook_verify_token_configured: Boolean(WHATSAPP_WEBHOOK_VERIFY_TOKEN),
     app_secret_configured: Boolean(WHATSAPP_APP_SECRET),
-    groups_enabled: WHATSAPP_GROUPS_ENABLED
+    groups_enabled: WHATSAPP_GROUPS_ENABLED,
+    template_waba_id: internalWabaId,
+    template_waba_id_source: WHATSAPP_WABA_ID ? "server_env_whatsapp_waba_id" : cleanText(existingMetadata.template_waba_id_source || "stored_or_business_fallback"),
+    template_waba_id_verified_at: WHATSAPP_WABA_ID ? new Date().toISOString() : existingMetadata.template_waba_id_verified_at
   };
   const result = await supabase
     .from("whatsapp_business_connections")
@@ -10498,7 +10947,7 @@ async function activeWhatsappConnection(
     ? WHATSAPP_BUSINESS_ACCOUNT_ID
     : cleanText(row.meta_business_id || row.business_account_id);
   const wabaId = internalWorkspace
-    ? (cleanText(metadata.template_waba_id) || WHATSAPP_WABA_ID || WHATSAPP_BUSINESS_ACCOUNT_ID)
+    ? (WHATSAPP_WABA_ID || cleanText(metadata.template_waba_id) || WHATSAPP_BUSINESS_ACCOUNT_ID)
     : cleanText(metadata.template_waba_id || row.meta_waba_id || row.waba_id || row.meta_business_id || row.business_account_id);
   if (!accessToken || !phoneNumberId || !wabaId) throw new Error(WHATSAPP_CONNECTION_REQUIRED_MESSAGE);
   return {
@@ -10813,6 +11262,10 @@ async function whatsappTemplateGraphFetch(
 function whatsappMetaStatus(value: unknown, fallback = "NOT_PUBLISHED") {
   const normalized = (cleanText(value) || fallback).toUpperCase().replace(/[\s-]+/g, "_");
   if (["PENDING_REVIEW", "UNDER_REVIEW"].includes(normalized)) return "IN_REVIEW";
+  // WhatsApp Manager may present an approved template as "Active" (for
+  // example, "Active - Quality pending"). Treat that provider label as an
+  // approved template so a synced mapping does not remain stuck in pending.
+  if (["ACTIVE", "ACTIVE_QUALITY_PENDING"].includes(normalized)) return "APPROVED";
   return normalized || fallback.toUpperCase();
 }
 
@@ -10867,7 +11320,9 @@ const WHATSAPP_RFX_NOTIFICATION_PLACEHOLDERS = [
 function whatsappStableRfxTemplate(language: string) {
   if (language === "es_MX") {
     return {
-      name: "rateware_rfx_invitation_es_v1",
+      // Meta template names are immutable once submitted. Keep the current
+      // production name stable and accept the older _v1 alias during sync.
+      name: "rateware_rfx_invitation_es",
       language: "es_MX",
       body: [
         "Hola {{1}},",
@@ -10878,7 +11333,8 @@ function whatsappStableRfxTemplate(language: string) {
     };
   }
   return {
-    name: "rateware_rfx_invitation_en_v1",
+    // This is the approved HeyMarksman production template name.
+    name: "rateware_rfx_invitation_en",
     language: "en_US",
     body: [
       "Hello {{1}},",
@@ -10887,6 +11343,36 @@ function whatsappStableRfxTemplate(language: string) {
       "Thank you."
     ].join("\n")
   };
+}
+
+function whatsappTemplateNamesMatch(
+  metaName: unknown,
+  mappedName: unknown,
+  language: unknown
+) {
+  const left = cleanText(metaName).toLowerCase();
+  const right = cleanText(mappedName).toLowerCase();
+  if (!left || !right) return false;
+  if (left === right) return true;
+
+  const normalizedLanguage = cleanText(language).toLowerCase();
+  const suffix = normalizedLanguage.startsWith("es") ? "es" : "en";
+  const stableNames = new Set([
+    `rateware_rfx_invitation_${suffix}`,
+    `rateware_rfx_invitation_${suffix}_v1`
+  ]);
+  return stableNames.has(left) && stableNames.has(right);
+}
+
+function whatsappTemplateLanguagesMatch(leftValue: unknown, rightValue: unknown) {
+  const left = cleanText(leftValue).toLowerCase().replace(/-/g, "_");
+  const right = cleanText(rightValue).toLowerCase().replace(/-/g, "_");
+  if (!left || !right) return false;
+  if (left === right) return true;
+  // Meta can return `en`/`es` for a template that Rateware created as
+  // `en_US`/`es_MX`. The stable RFx notifier only supports English and
+  // Spanish, so matching by the language root is safe here.
+  return left.split("_")[0] === right.split("_")[0];
 }
 
 function whatsappPlaceholderExample(key: string) {
@@ -11186,14 +11672,15 @@ async function syncWhatsappTemplates(
   const reconciled: Record<string, unknown>[] = [];
   for (const mapping of mappings) {
     const metaTemplate = templates.find((template: Record<string, unknown>) => (
-      cleanText(template.name) === cleanText(mapping.meta_template_name)
-      && cleanText(template.language) === cleanText(mapping.meta_template_language)
+      whatsappTemplateNamesMatch(template.name, mapping.meta_template_name, mapping.meta_template_language)
+      && whatsappTemplateLanguagesMatch(template.language, mapping.meta_template_language)
     ));
     if (!metaTemplate) continue;
     const update = await supabase
       .from("whatsapp_outreach_template_mappings")
       .update({
         meta_template_id: cleanText(metaTemplate.id) || cleanText(mapping.meta_template_id),
+        meta_template_name: cleanText(metaTemplate.name) || cleanText(mapping.meta_template_name),
         meta_template_status: whatsappMetaStatus(metaTemplate.status),
         meta_template_category: cleanText(metaTemplate.category) || cleanText(mapping.meta_template_category) || "UTILITY",
         meta_template_components: Array.isArray(metaTemplate.components) ? metaTemplate.components : mapping.meta_template_components,
@@ -11274,13 +11761,26 @@ async function verifyWhatsappWebhook(
   const appSecretConfigured = connection.internalWorkspace
     ? Boolean(WHATSAPP_APP_SECRET)
     : Boolean(connection.row.app_secret_encrypted);
+  const verified = verifyTokenConfigured && appSecretConfigured;
+  const now = new Date().toISOString();
+  const update = await supabase
+    .from("whatsapp_business_connections")
+    .update({
+      webhook_verified_at: verified ? now : null,
+      last_error: verified ? null : "Webhook verify token or app secret is missing.",
+      updated_at: now
+    })
+    .eq("id", connection.row.id)
+    .select("*")
+    .single();
+  if (update.error) throw update.error;
   return {
-    row: publicWhatsappConnection(connection.row, { internalWorkspace: connection.internalWorkspace }),
+    row: publicWhatsappConnection(update.data, { internalWorkspace: connection.internalWorkspace }),
     endpoint: `${String(SUPABASE_URL || "").replace(/\/$/, "")}/functions/v1/whatsapp-webhook`,
     verify_token_configured: verifyTokenConfigured,
     app_secret_configured: appSecretConfigured,
     connection_id: connection.row.id,
-    verified: verifyTokenConfigured && appSecretConfigured
+    verified
   };
 }
 
@@ -11530,6 +12030,36 @@ async function decryptGmailToken(value: unknown) {
   const [version, ivText, ciphertextText] = text.split(":");
   if (version !== "v1" || !ivText || !ciphertextText) throw new Error("Gmail token format is invalid.");
   const key = await gmailCryptoKey(["decrypt"]);
+  const plain = await crypto.subtle.decrypt(
+    { name: "AES-GCM", iv: base64ToBytes(ivText) },
+    key,
+    base64ToBytes(ciphertextText)
+  );
+  return new TextDecoder().decode(plain);
+}
+
+async function rfxMagicLinkCryptoKey(usages: KeyUsage[]) {
+  // Keep RFI link recovery independent where possible, while preserving
+  // compatibility with deployments that already protect Gmail credentials.
+  const secret = Deno.env.get("RFX_RFI_LINK_ENCRYPTION_KEY") || Deno.env.get("GMAIL_TOKEN_ENCRYPTION_KEY");
+  if (!secret) throw new Error("Customer RFI link encryption is not configured.");
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(secret));
+  return crypto.subtle.importKey("raw", digest, "AES-GCM", false, usages);
+}
+
+async function encryptRfxMagicLinkToken(value: string) {
+  const key = await rfxMagicLinkCryptoKey(["encrypt"]);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ciphertext = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, new TextEncoder().encode(value));
+  return `v1:${bytesToBase64(iv)}:${bytesToBase64(new Uint8Array(ciphertext))}`;
+}
+
+async function decryptRfxMagicLinkToken(value: unknown) {
+  const text = cleanText(value);
+  if (!text) return null;
+  const [version, ivText, ciphertextText] = text.split(":");
+  if (version !== "v1" || !ivText || !ciphertextText) throw new Error("Customer RFI link token format is invalid.");
+  const key = await rfxMagicLinkCryptoKey(["decrypt"]);
   const plain = await crypto.subtle.decrypt(
     { name: "AES-GCM", iv: base64ToBytes(ivText) },
     key,
@@ -14455,7 +14985,7 @@ async function listRfxProcessProjects(supabase: ReturnType<typeof createClient>,
   };
 }
 
-async function getRfxProcessProjectDetail(supabase: ReturnType<typeof createClient>, user: { owner_email: string | null }, projectId: unknown) {
+async function getRfxProcessProjectDetail(supabase: ReturnType<typeof createClient>, user: { owner_email: string | null }, projectId: unknown, appOrigin?: unknown) {
   const project = await requireOwnedRfxProcessProject(supabase, user, projectId);
   const [
     magicLinks,
@@ -14474,7 +15004,7 @@ async function getRfxProcessProjectDetail(supabase: ReturnType<typeof createClie
     awards,
     audit
   ] = await Promise.all([
-    supabase.from("rfx_rfi_magic_links").select("id,status,expires_at,revoked_at,last_viewed_at,submitted_at,created_at").eq("project_id", project.id).order("created_at", { ascending: false }).limit(10),
+    supabase.from("rfx_rfi_magic_links").select("id,status,expires_at,revoked_at,last_viewed_at,submitted_at,created_at,token_encrypted").eq("project_id", project.id).order("created_at", { ascending: false }).limit(10),
     supabase.from("rfx_rfi_submissions").select("*").eq("project_id", project.id).maybeSingle(),
     supabase.from("rfx_rfi_origins").select("*").eq("project_id", project.id).order("created_at", { ascending: true }),
     supabase.from("rfx_rfi_destinations").select("*").eq("project_id", project.id).order("created_at", { ascending: true }),
@@ -14493,9 +15023,22 @@ async function getRfxProcessProjectDetail(supabase: ReturnType<typeof createClie
   for (const result of [magicLinks, submission, origins, destinations, lanes, businessRules, serviceRequirements, carrierRequirements, crossborderDetails, attachments, exceptionNotes, snapshots, packages, awards, audit]) {
     if (result.error) throw result.error;
   }
+  const visibleMagicLinks = await Promise.all((magicLinks.data || []).map(async (link) => {
+    let linkUrl: string | null = null;
+    if (cleanText(link.token_encrypted)) {
+      try {
+        const token = await decryptRfxMagicLinkToken(link.token_encrypted);
+        if (token) linkUrl = rfxProjectPublicLink(token, appOrigin);
+      } catch (error) {
+        console.error("Could not recover Customer RFI link token", error);
+      }
+    }
+    const { token_encrypted: _tokenEncrypted, ...safeLink } = link;
+    return { ...safeLink, link: linkUrl, recoverable: Boolean(linkUrl) };
+  }));
   return {
     project,
-    magic_links: magicLinks.data || [],
+    magic_links: visibleMagicLinks,
     rfi_submission: submission.data || null,
     origins: origins.data || [],
     destinations: destinations.data || [],
@@ -14515,12 +15058,36 @@ async function getRfxProcessProjectDetail(supabase: ReturnType<typeof createClie
 
 async function createRfxRfiMagicLink(supabase: ReturnType<typeof createClient>, user: { owner_user_id: string | null; owner_email: string | null }, input: Record<string, unknown>) {
   const project = await requireOwnedRfxProcessProject(supabase, user, input.project_id || input.id);
+  const now = new Date().toISOString();
+  const existing = await supabase
+    .from("rfx_rfi_magic_links")
+    .select("id,status,expires_at,created_at,token_encrypted")
+    .eq("project_id", project.id)
+    .eq("status", "active")
+    .gt("expires_at", now)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (existing.error) throw existing.error;
+  if (existing.data) {
+    const recoveredToken = await decryptRfxMagicLinkToken(existing.data.token_encrypted);
+    return {
+      reused: true,
+      row: { id: existing.data.id, status: existing.data.status, expires_at: existing.data.expires_at, created_at: existing.data.created_at },
+      link: recoveredToken ? rfxProjectPublicLink(recoveredToken, input.app_origin || input.appOrigin) : null,
+      recoverable: Boolean(recoveredToken),
+      message: recoveredToken
+        ? "The active Customer RFI link is still valid."
+        : "This legacy Customer RFI link cannot be displayed because its original token was not retained. Revoke it once to issue a fixed, copyable link."
+    };
+  }
   const token = rfxMagicToken();
   const tokenHash = await hashRfxMagicToken(token);
   const days = Math.min(Math.max(Number(input.expires_in_days || input.expiresInDays) || 14, 1), 90);
   const row = withOwner({
     project_id: project.id,
     token_hash: tokenHash,
+    token_encrypted: await encryptRfxMagicLinkToken(token),
     expires_at: new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString(),
     metadata: {
       customer_email: project.customer_contact_email || null,
@@ -14783,6 +15350,40 @@ async function launchRfxProcessPackageToBidRoom(supabase: ReturnType<typeof crea
   return { launched: true, rfx_event_id: eventInsert.data.id, row: eventInsert.data, lanes: laneRows.length, segments: segmentRows.length };
 }
 
+async function syncShipperOpportunityFromImplementationReadyAward(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_user_id: string | null; owner_email: string | null },
+  projectId: unknown,
+  awardId: unknown
+) {
+  const projectRef = cleanText(projectId);
+  if (!projectRef) return null;
+  const result = await supabase.from("shipper_opportunities")
+    .update({
+      stage: "won",
+      probability: 100,
+      next_action: "Begin award implementation and commercial onboarding.",
+      updated_at: new Date().toISOString()
+    })
+    .eq("owner_email", user.owner_email)
+    .eq("rfx_project_id", projectRef)
+    .not("stage", "in", '("lost","archived")')
+    .select("id,shipper_id,opportunity_name,stage,probability,rfx_project_id")
+    .maybeSingle();
+  if (result.error) throw result.error;
+  if (!result.data) return null;
+  await writeAuditLog(
+    supabase,
+    user,
+    "shipper_opportunity_won_from_rfx_award",
+    "shipper_opportunity",
+    result.data.id,
+    `Marked shipper opportunity ${cleanText(result.data.opportunity_name) || result.data.id} as won from an implementation-ready RFx award.`,
+    { rfx_project_id: projectRef, rfx_award_package_id: cleanText(awardId) }
+  );
+  return result.data as Record<string, unknown>;
+}
+
 async function createRfxAwardPackage(supabase: ReturnType<typeof createClient>, user: { owner_user_id: string | null; owner_email: string | null }, input: Record<string, unknown>) {
   const project = await requireOwnedRfxProcessProject(supabase, user, input.project_id || input.id);
   const scenarioType = cleanText(input.scenario_type || input.scenarioType)?.toLowerCase() || "best_value";
@@ -14820,11 +15421,70 @@ async function createRfxAwardPackage(supabase: ReturnType<typeof createClient>, 
     const insert = await supabase.from("rfx_award_package_lanes").insert(batch).select("id");
     if (insert.error) throw insert.error;
   }
+  let shipperOpportunity: Record<string, unknown> | null = null;
   if (awardRow.status === "implementation_ready") {
-    await supabase.from("rfx_projects").update({ status: "implementation_ready", updated_at: new Date().toISOString() }).eq("id", project.id).eq("owner_email", user.owner_email);
+    const projectUpdate = await supabase.from("rfx_projects")
+      .update({ status: "implementation_ready", updated_at: new Date().toISOString() })
+      .eq("id", project.id)
+      .eq("owner_email", user.owner_email);
+    if (projectUpdate.error) throw projectUpdate.error;
+    shipperOpportunity = await syncShipperOpportunityFromImplementationReadyAward(supabase, user, project.id, awardInsert.data.id);
   }
-  await writeRfxProcessAudit(supabase, user, project.id, "award_scenario_created", "rfx_award_packages", awardInsert.data.id, `Created RFx Award Package ${awardInsert.data.scenario_name}`, { scenario_type: awardInsert.data.scenario_type, lines: lineRows.length });
-  return { row: awardInsert.data, lines: lineRows.length };
+  await writeRfxProcessAudit(supabase, user, project.id, "award_scenario_created", "rfx_award_packages", awardInsert.data.id, `Created RFx Award Package ${awardInsert.data.scenario_name}`, {
+    scenario_type: awardInsert.data.scenario_type,
+    lines: lineRows.length,
+    shipper_opportunity_id: shipperOpportunity?.id || null
+  });
+  return { row: awardInsert.data, lines: lineRows.length, shipper_opportunity: shipperOpportunity };
+}
+
+async function markRfxAwardPackageImplementationReady(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_user_id: string | null; owner_email: string | null },
+  input: Record<string, unknown>
+) {
+  const awardId = cleanText(input.award_package_id || input.id);
+  if (!awardId || !UUID_PATTERN.test(awardId)) throw new Error("A valid RFx Award Package id is required.");
+  const awardResult = await supabase.from("rfx_award_packages").select("*")
+    .eq("owner_email", user.owner_email)
+    .eq("id", awardId)
+    .single();
+  if (awardResult.error) throw awardResult.error;
+  const award = awardResult.data as Record<string, unknown>;
+  if (cleanText(award.status)?.toLowerCase() === "archived") {
+    throw new Error("Archived award packages cannot be marked implementation ready.");
+  }
+  const project = await requireOwnedRfxProcessProject(supabase, user, award.project_id);
+  await validateRfxProjectStatusChange(supabase, project.id, "implementation_ready");
+  const now = new Date().toISOString();
+  const awardUpdate = await supabase.from("rfx_award_packages")
+    .update({
+      status: "implementation_ready",
+      approved_at: cleanText(award.approved_at) || now,
+      updated_at: now
+    })
+    .eq("owner_email", user.owner_email)
+    .eq("id", awardId)
+    .select()
+    .single();
+  if (awardUpdate.error) throw awardUpdate.error;
+  const projectUpdate = await supabase.from("rfx_projects")
+    .update({ status: "implementation_ready", updated_at: now })
+    .eq("owner_email", user.owner_email)
+    .eq("id", project.id);
+  if (projectUpdate.error) throw projectUpdate.error;
+  const shipperOpportunity = await syncShipperOpportunityFromImplementationReadyAward(supabase, user, project.id, awardId);
+  await writeRfxProcessAudit(
+    supabase,
+    user,
+    project.id,
+    "award_package_implementation_ready",
+    "rfx_award_packages",
+    awardId,
+    `Marked RFx Award Package ${cleanText(awardUpdate.data.scenario_name) || awardId} implementation ready.`,
+    { shipper_opportunity_id: shipperOpportunity?.id || null }
+  );
+  return { row: awardUpdate.data, project_id: project.id, shipper_opportunity: shipperOpportunity };
 }
 
 Deno.serve(async (request) => {
@@ -14861,7 +15521,7 @@ Deno.serve(async (request) => {
     }
 
     if (body.action === "get_rfx_process_project") {
-      return jsonResponse(await getRfxProcessProjectDetail(supabase, user, body.project_id || body.id));
+      return jsonResponse(await getRfxProcessProjectDetail(supabase, user, body.project_id || body.id, body.app_origin || body.appOrigin));
     }
 
     if (body.action === "update_rfx_process_project") {
@@ -14964,6 +15624,1360 @@ Deno.serve(async (request) => {
 
     if (body.action === "create_rfx_award_package") {
       return jsonResponse(await createRfxAwardPackage(supabase, user, body));
+    }
+
+    if (body.action === "mark_rfx_award_package_implementation_ready") {
+      return jsonResponse(await markRfxAwardPackageImplementationReady(supabase, user, body));
+    }
+
+    if (body.action === "shipper_crm_summary") {
+      const scopedCount = (configure: (query: any) => any = (query) => query) => configure(
+        supabase.from("shippers").select("id", { count: "exact", head: true }).eq("owner_email", user.owner_email)
+      );
+      const [total, active, prospects, missingContact, opportunities] = await Promise.all([
+        scopedCount((query) => query.neq("status", "archived")),
+        scopedCount((query) => query.eq("status", "active")),
+        scopedCount((query) => query.eq("status", "prospect")),
+        scopedCount((query) => query.neq("status", "archived").is("primary_contact_email", null)),
+        supabase.from("shipper_opportunities").select("id", { count: "exact", head: true })
+          .eq("owner_email", user.owner_email).not("stage", "in", '("won","lost","archived")')
+      ]);
+      for (const result of [total, active, prospects, missingContact, opportunities]) {
+        if (result.error) throw result.error;
+      }
+      return jsonResponse({
+        total: total.count || 0,
+        active: active.count || 0,
+        prospects: prospects.count || 0,
+        missing_contact: missingContact.count || 0,
+        open_opportunities: opportunities.count || 0
+      });
+    }
+
+    if (body.action === "list_shippers") {
+      const offset = Math.max(Number(body.offset) || 0, 0);
+      const limit = Math.min(Math.max(Number(body.limit) || 100, 1), 250);
+      const search = safeShipperSearch(body.search);
+      let query = supabase
+        .from("shippers")
+        .select("id,shipper_name,legal_name,domain,website,logo_url,industry,status,relationship_stage,segment,revenue_tier,account_owner_email,primary_contact_name,primary_contact_email,primary_contact_phone,headquarters_city,headquarters_state,headquarters_country,tags,notes,source,created_at,updated_at", { count: "exact" })
+        .eq("owner_email", user.owner_email)
+        .order(cleanText(body.sort_by) === "shipper_name" ? "shipper_name" : "updated_at", { ascending: cleanText(body.sort_direction)?.toLowerCase() === "asc" })
+        .range(offset, offset + limit - 1);
+      const status = cleanText(body.status)?.toLowerCase();
+      const relationshipStage = cleanText(body.relationship_stage)?.toLowerCase();
+      const segment = cleanText(body.segment);
+      if (status && status !== "all") query = query.eq("status", status);
+      else query = query.neq("status", "archived");
+      if (relationshipStage && relationshipStage !== "all") query = query.eq("relationship_stage", relationshipStage);
+      if (segment && segment.toLowerCase() !== "all") query = query.eq("segment", segment);
+      if (search) {
+        query = query.or([
+          `shipper_name.ilike.%${search}%`,
+          `legal_name.ilike.%${search}%`,
+          `domain.ilike.%${search}%`,
+          `industry.ilike.%${search}%`,
+          `primary_contact_name.ilike.%${search}%`,
+          `primary_contact_email.ilike.%${search}%`,
+          `headquarters_city.ilike.%${search}%`,
+          `headquarters_state.ilike.%${search}%`,
+          `notes.ilike.%${search}%`
+        ].join(","));
+      }
+      const result = await query;
+      if (result.error) throw result.error;
+      return jsonResponse({ rows: result.data || [], total: result.count || 0, limit, offset });
+    }
+
+    if (body.action === "list_shipper_duplicates") {
+      const batchSize = 1000;
+      const scanLimit = 5000;
+      const rows: Record<string, unknown>[] = [];
+      let offset = 0;
+      let truncated = false;
+      while (rows.length < scanLimit) {
+        const result = await supabase
+          .from("shippers")
+          .select("id,shipper_name,legal_name,domain,website,status,relationship_stage,primary_contact_name,primary_contact_email,primary_contact_phone,headquarters_city,headquarters_state,headquarters_country,tags,source,updated_at")
+          .eq("owner_email", user.owner_email)
+          .neq("status", "archived")
+          .order("shipper_name", { ascending: true })
+          .range(offset, offset + batchSize - 1);
+        if (result.error) throw result.error;
+        const batch = (result.data || []) as Record<string, unknown>[];
+        rows.push(...batch);
+        if (batch.length < batchSize) break;
+        offset += batchSize;
+        if (rows.length >= scanLimit) truncated = true;
+      }
+      return jsonResponse({ groups: buildShipperDuplicateCandidates(rows), scanned: rows.length, truncated });
+    }
+
+    if (body.action === "merge_shipper_accounts") {
+      if (body.confirmed !== true) return jsonResponse({ error: "Confirm the duplicate consolidation before saving." }, 400);
+      const primaryId = cleanText(body.primary_shipper_id);
+      const duplicateId = cleanText(body.duplicate_shipper_id);
+      if (!primaryId || !duplicateId) return jsonResponse({ error: "Choose both accounts before consolidating." }, 400);
+      if (primaryId === duplicateId) return jsonResponse({ error: "Choose two different shipper accounts." }, 400);
+
+      const [primary, duplicate] = await Promise.all([
+        requireOwnedShipper(supabase, user, primaryId),
+        requireOwnedShipper(supabase, user, duplicateId)
+      ]);
+      if (cleanText(primary.status)?.toLowerCase() === "archived") return jsonResponse({ error: "The account of record is archived." }, 400);
+      if (cleanText(duplicate.status)?.toLowerCase() === "archived") return jsonResponse({ error: "The duplicate account is already archived." }, 400);
+
+      const now = new Date().toISOString();
+      const firstValue = (...values: unknown[]) => values.map(cleanText).find(Boolean) || null;
+      const existingMergedFrom = Array.isArray(objectRecord(primary.metadata).merged_from_shipper_ids)
+        ? objectRecord(primary.metadata).merged_from_shipper_ids.map(String)
+        : [];
+      const mergedMetadata = {
+        ...objectRecord(duplicate.metadata),
+        ...objectRecord(primary.metadata),
+        merged_from_shipper_ids: Array.from(new Set([...existingMergedFrom, duplicateId])),
+        merged_at: now,
+        merged_by: user.owner_email
+      };
+      const primaryPatch = normalizeShipper({
+        legal_name: firstValue(primary.legal_name, duplicate.legal_name),
+        domain: firstValue(primary.domain, duplicate.domain),
+        website: firstValue(primary.website, duplicate.website),
+        logo_url: firstValue(primary.logo_url, duplicate.logo_url),
+        industry: firstValue(primary.industry, duplicate.industry),
+        segment: firstValue(primary.segment, duplicate.segment),
+        revenue_tier: firstValue(primary.revenue_tier, duplicate.revenue_tier),
+        account_owner_email: firstValue(primary.account_owner_email, duplicate.account_owner_email),
+        primary_contact_name: firstValue(primary.primary_contact_name, duplicate.primary_contact_name),
+        primary_contact_email: firstValue(primary.primary_contact_email, duplicate.primary_contact_email),
+        primary_contact_phone: firstValue(primary.primary_contact_phone, duplicate.primary_contact_phone),
+        headquarters_city: firstValue(primary.headquarters_city, duplicate.headquarters_city),
+        headquarters_state: firstValue(primary.headquarters_state, duplicate.headquarters_state),
+        headquarters_country: firstValue(primary.headquarters_country, duplicate.headquarters_country),
+        tags: Array.from(new Set([...normalizeTags(primary.tags), ...normalizeTags(duplicate.tags)])),
+        notes: [cleanText(primary.notes), cleanText(duplicate.notes)].filter((value, index, values) => value && values.indexOf(value) === index).join("\n\n") || null,
+        metadata: mergedMetadata
+      }, true);
+      const primaryBackup = Object.fromEntries(
+        Object.keys(primaryPatch).filter((key) => key !== "updated_at").map((key) => [key, primary[key]])
+      );
+      const moved: Record<string, string[]> = {};
+      let primaryUpdated = false;
+      try {
+        for (const [entity, config] of Object.entries(SHIPPER_CHILD_CONFIG)) {
+          const transfer = await supabase
+            .from(config.table)
+            .update({ shipper_id: primaryId, updated_at: now })
+            .eq("owner_email", user.owner_email)
+            .eq("shipper_id", duplicateId)
+            .select("id");
+          if (transfer.error) throw transfer.error;
+          moved[entity] = (transfer.data || []).map((row: { id: string }) => row.id);
+        }
+        const updatedPrimary = await supabase
+          .from("shippers")
+          .update({ ...primaryPatch, updated_at: now })
+          .eq("owner_email", user.owner_email)
+          .eq("id", primaryId)
+          .select()
+          .single();
+        if (updatedPrimary.error) throw updatedPrimary.error;
+        primaryUpdated = true;
+        const archivedDuplicate = await supabase
+          .from("shippers")
+          .update({
+            status: "archived",
+            updated_at: now,
+            metadata: { ...objectRecord(duplicate.metadata), merged_into_shipper_id: primaryId, merged_at: now }
+          })
+          .eq("owner_email", user.owner_email)
+          .eq("id", duplicateId)
+          .select("id,shipper_name,status")
+          .single();
+        if (archivedDuplicate.error) throw archivedDuplicate.error;
+        try {
+          await writeAuditLog(
+            supabase,
+            user,
+            "shipper_accounts_merged",
+            "shipper",
+            primaryId,
+            `Consolidated shipper ${duplicate.shipper_name} into ${primary.shipper_name}.`,
+            { duplicate_shipper_id: duplicateId, moved_records: Object.fromEntries(Object.entries(moved).map(([entity, ids]) => [entity, ids.length])) }
+          );
+        } catch (auditError) {
+          console.error("Could not record shipper consolidation audit", auditError);
+        }
+        return jsonResponse({
+          target: updatedPrimary.data,
+          archived_source: archivedDuplicate.data,
+          moved_records: Object.fromEntries(Object.entries(moved).map(([entity, ids]) => [entity, ids.length]))
+        });
+      } catch (error) {
+        if (primaryUpdated) {
+          await supabase.from("shippers").update({ ...primaryBackup, updated_at: new Date().toISOString() })
+            .eq("owner_email", user.owner_email).eq("id", primaryId);
+        }
+        for (const [entity, ids] of Object.entries(moved)) {
+          if (!ids.length) continue;
+          await supabase.from(SHIPPER_CHILD_CONFIG[entity as ShipperChildEntity].table)
+            .update({ shipper_id: duplicateId, updated_at: new Date().toISOString() })
+            .eq("owner_email", user.owner_email).in("id", ids);
+        }
+        throw error;
+      }
+    }
+
+    if (body.action === "shipper_relationship_pipeline") {
+      const limit = Math.min(Math.max(Number(body.limit) || 500, 1), 750);
+      const search = safeShipperSearch(body.search);
+      const status = cleanText(body.status)?.toLowerCase();
+      let query = supabase
+        .from("shippers")
+        .select("id,shipper_name,domain,logo_url,industry,status,relationship_stage,primary_contact_name,primary_contact_email,headquarters_city,headquarters_state,headquarters_country,updated_at", { count: "exact" })
+        .eq("owner_email", user.owner_email)
+        .neq("status", "archived")
+        .order("updated_at", { ascending: false })
+        .range(0, limit - 1);
+      if (status && status !== "all") query = query.eq("status", status);
+      if (search) {
+        query = query.or([
+          `shipper_name.ilike.%${search}%`,
+          `domain.ilike.%${search}%`,
+          `industry.ilike.%${search}%`,
+          `primary_contact_name.ilike.%${search}%`,
+          `primary_contact_email.ilike.%${search}%`,
+          `headquarters_city.ilike.%${search}%`,
+          `headquarters_state.ilike.%${search}%`
+        ].join(","));
+      }
+      const shipperResult = await query;
+      if (shipperResult.error) throw shipperResult.error;
+      const shippers = shipperResult.data || [];
+      const shipperIds = shippers.map((row) => row.id).filter(Boolean);
+      let opportunities: Record<string, unknown>[] = [];
+      let rfis: Record<string, unknown>[] = [];
+      let actions: Record<string, unknown>[] = [];
+      if (shipperIds.length) {
+        const [opportunityResult, rfiResult, actionResult] = await Promise.all([
+          supabase.from("shipper_opportunities")
+            .select("shipper_id,stage,estimated_value,currency,due_date,next_action")
+            .eq("owner_email", user.owner_email)
+            .in("shipper_id", shipperIds),
+          supabase.from("shipper_rfis")
+            .select("shipper_id,status,due_date")
+            .eq("owner_email", user.owner_email)
+            .in("shipper_id", shipperIds),
+          supabase.from("shipper_account_actions")
+            .select("shipper_id,title,action_type,status,priority,due_date")
+            .eq("owner_email", user.owner_email)
+            .in("shipper_id", shipperIds)
+            .in("status", ["open", "in_progress"])
+            .order("due_date", { ascending: true, nullsFirst: false })
+        ]);
+        if (opportunityResult.error) throw opportunityResult.error;
+        if (rfiResult.error) throw rfiResult.error;
+        if (actionResult.error) throw actionResult.error;
+        opportunities = opportunityResult.data || [];
+        rfis = rfiResult.data || [];
+        actions = actionResult.data || [];
+      }
+      const openOpportunityStages = new Set(["identified", "discovery", "rfi", "rfx", "proposal", "negotiation"]);
+      const activeRfiStatuses = new Set(["draft", "sent", "in_progress", "submitted"]);
+      const opportunityByShipper = new Map<string, Record<string, unknown>[]>();
+      const rfiByShipper = new Map<string, Record<string, unknown>[]>();
+      const actionByShipper = new Map<string, Record<string, unknown>[]>();
+      opportunities.forEach((row) => {
+        const shipperId = cleanText(row.shipper_id);
+        if (!shipperId) return;
+        opportunityByShipper.set(shipperId, [...(opportunityByShipper.get(shipperId) || []), row]);
+      });
+      rfis.forEach((row) => {
+        const shipperId = cleanText(row.shipper_id);
+        if (!shipperId) return;
+        rfiByShipper.set(shipperId, [...(rfiByShipper.get(shipperId) || []), row]);
+      });
+      actions.forEach((row) => {
+        const shipperId = cleanText(row.shipper_id);
+        if (!shipperId) return;
+        actionByShipper.set(shipperId, [...(actionByShipper.get(shipperId) || []), row]);
+      });
+      const today = new Date().toISOString().slice(0, 10);
+      const rows = shippers.map((shipper) => {
+        const accountOpportunities = opportunityByShipper.get(shipper.id) || [];
+        const accountRfis = rfiByShipper.get(shipper.id) || [];
+        const accountActions = actionByShipper.get(shipper.id) || [];
+        const openOpportunities = accountOpportunities.filter((row) => openOpportunityStages.has(cleanText(row.stage)?.toLowerCase() || ""));
+        const activeRfis = accountRfis.filter((row) => activeRfiStatuses.has(cleanText(row.status)?.toLowerCase() || ""));
+        const nextOpportunity = openOpportunities[0] || null;
+        const dueActions = accountActions.filter((row) => {
+          const dueDate = cleanText(row.due_date);
+          return Boolean(dueDate && dueDate <= today);
+        });
+        const nextAccountAction = accountActions[0] || null;
+        const opportunityCurrencies = [...new Set(openOpportunities.map((row) => cleanText(row.currency)?.toUpperCase()).filter(Boolean))];
+        const pipelineCurrency = opportunityCurrencies.length === 1 ? opportunityCurrencies[0] : opportunityCurrencies.length ? "mixed" : null;
+        return {
+          ...shipper,
+          open_opportunity_count: openOpportunities.length,
+          active_rfi_count: activeRfis.length,
+          open_action_count: accountActions.length,
+          due_action_count: dueActions.length,
+          next_action: cleanText(nextAccountAction?.title) || cleanText(nextOpportunity?.next_action),
+          next_due_date: cleanText(nextAccountAction?.due_date) || cleanText(nextOpportunity?.due_date),
+          next_action_priority: cleanText(nextAccountAction?.priority),
+          pipeline_value: pipelineCurrency === "mixed" ? null : openOpportunities.reduce((sum, row) => sum + (Number(row.estimated_value) || 0), 0),
+          pipeline_currency: pipelineCurrency
+        };
+      });
+      const stages = ["target", "qualified", "customer", "at_risk", "inactive"].map((stage) => ({
+        stage,
+        count: rows.filter((row) => row.relationship_stage === stage).length
+      }));
+      return jsonResponse({ rows, total: shipperResult.count || 0, loaded: rows.length, limit, stages });
+    }
+
+    if (body.action === "shipper_intelligence") {
+      const focus = cleanText(body.focus)?.toLowerCase() || "all";
+      const allowedFocus = new Set(["all", "ready", "needs_contact", "needs_lane", "due_action", "at_risk"]);
+      if (!allowedFocus.has(focus)) return jsonResponse({ error: "Unknown shipper intelligence focus." }, 400);
+      const limit = Math.min(Math.max(Number(body.limit) || 1000, 1), 1000);
+      const search = cleanText(body.search)?.toLowerCase() || "";
+      const shipperResult = await supabase
+        .from("shippers")
+        .select("id,shipper_name,legal_name,domain,industry,status,relationship_stage,primary_contact_name,primary_contact_email,headquarters_city,headquarters_state,headquarters_country,updated_at", { count: "exact" })
+        .eq("owner_email", user.owner_email)
+        .neq("status", "archived")
+        .order("updated_at", { ascending: false })
+        .range(0, limit - 1);
+      if (shipperResult.error) throw shipperResult.error;
+      const shippers = (shipperResult.data || []) as Record<string, unknown>[];
+      const shipperIds = shippers.map((row) => cleanText(row.id)).filter(Boolean) as string[];
+      if (!shipperIds.length) {
+        return jsonResponse({
+          rows: [],
+          total: shipperResult.count || 0,
+          loaded: 0,
+          truncated: false,
+          counts: { ready: 0, needs_data: 0, due_action: 0, open_pipeline_value: 0, open_pipeline_currency: null }
+        });
+      }
+
+      const fetchRows = async (table: string, columns: string) => {
+        const rows: Record<string, unknown>[] = [];
+        for (const ids of chunkValues(shipperIds, 300)) {
+          const result = await supabase.from(table).select(columns)
+            .eq("owner_email", user.owner_email)
+            .in("shipper_id", ids);
+          if (result.error) throw result.error;
+          rows.push(...((result.data || []) as Record<string, unknown>[]));
+        }
+        return rows;
+      };
+
+      const [contacts, locations, lanes, rfis, opportunities, actions] = await Promise.all([
+        fetchRows("shipper_contacts", "shipper_id,contact_name,email,status,updated_at"),
+        fetchRows("shipper_locations", "shipper_id,market,region,city,state_code,country_code,updated_at"),
+        fetchRows("shipper_lanes", "shipper_id,origin,origin_market,destination,destination_market,status,updated_at"),
+        fetchRows("shipper_rfis", "shipper_id,status,due_date,updated_at"),
+        fetchRows("shipper_opportunities", "shipper_id,stage,estimated_value,currency,due_date,next_action,updated_at"),
+        fetchRows("shipper_account_actions", "shipper_id,title,action_type,status,priority,due_date,notes,updated_at")
+      ]);
+
+      const groupByShipper = (rows: Record<string, unknown>[]) => {
+        const grouped = new Map<string, Record<string, unknown>[]>();
+        rows.forEach((row) => {
+          const shipperId = cleanText(row.shipper_id);
+          if (!shipperId) return;
+          grouped.set(shipperId, [...(grouped.get(shipperId) || []), row]);
+        });
+        return grouped;
+      };
+      const contactByShipper = groupByShipper(contacts);
+      const locationByShipper = groupByShipper(locations);
+      const laneByShipper = groupByShipper(lanes);
+      const rfiByShipper = groupByShipper(rfis);
+      const opportunityByShipper = groupByShipper(opportunities);
+      const actionByShipper = groupByShipper(actions);
+      const openOpportunityStages = new Set(["identified", "discovery", "rfi", "rfx", "proposal", "negotiation"]);
+      const activeRfiStatuses = new Set(["draft", "sent", "in_progress", "submitted"]);
+      const now = new Date();
+      const dueSoon = new Date(now);
+      dueSoon.setDate(dueSoon.getDate() + 14);
+      const dueBy = (value: unknown) => {
+        const text = cleanText(value);
+        const date = text ? new Date(text) : null;
+        return Boolean(date && !Number.isNaN(date.getTime()) && date <= dueSoon);
+      };
+      const latestDate = (values: unknown[]) => values
+        .map((value) => {
+          const text = cleanText(value);
+          const timestamp = text ? new Date(text).getTime() : Number.NaN;
+          return { text, timestamp };
+        })
+        .filter((value) => value.text && Number.isFinite(value.timestamp))
+        .sort((left, right) => right.timestamp - left.timestamp)[0]?.text || null;
+      const includesSearch = (values: unknown[]) => !search || values.some((value) => String(value || "").toLowerCase().includes(search));
+
+      const allRows = shippers.map((shipper) => {
+        const shipperId = cleanText(shipper.id) || "";
+        const accountContacts = contactByShipper.get(shipperId) || [];
+        const accountLocations = locationByShipper.get(shipperId) || [];
+        const accountLanes = laneByShipper.get(shipperId) || [];
+        const accountRfis = rfiByShipper.get(shipperId) || [];
+        const accountOpportunities = opportunityByShipper.get(shipperId) || [];
+        const accountActions = actionByShipper.get(shipperId) || [];
+        const activeRfis = accountRfis.filter((row) => activeRfiStatuses.has(cleanText(row.status)?.toLowerCase() || ""));
+        const openOpportunities = accountOpportunities.filter((row) => openOpportunityStages.has(cleanText(row.stage)?.toLowerCase() || ""));
+        const openActions = accountActions.filter((row) => ["open", "in_progress"].includes(cleanText(row.status)?.toLowerCase() || ""));
+        const dueActions = openActions.filter((row) => dueBy(row.due_date));
+        const hasContact = Boolean(cleanText(shipper.primary_contact_email) || accountContacts.some((row) => cleanText(row.email)));
+        const activeLocations = accountLocations.filter((row) => cleanText(row.country_code) || cleanText(row.city) || cleanText(row.market));
+        const activeLanes = accountLanes.filter((row) => cleanText(row.status)?.toLowerCase() !== "archived");
+        const markets = new Set([
+          ...activeLocations.map((row) => cleanText(row.market)),
+          ...activeLanes.flatMap((row) => [cleanText(row.origin_market), cleanText(row.destination_market)])
+        ].filter(Boolean));
+        const hasProfile = Boolean(cleanText(shipper.domain) || cleanText(shipper.headquarters_city) || cleanText(shipper.industry));
+        const healthScore = Math.min(100,
+          (hasContact ? 28 : 0) +
+          (activeLocations.length ? 24 : 0) +
+          (activeLanes.length ? 24 : 0) +
+          (hasProfile ? 14 : 0) +
+          (activeRfis.length || openOpportunities.length ? 10 : 0)
+        );
+        const accountDue = Boolean(dueActions.length) || [...activeRfis, ...openOpportunities].some((row) => dueBy(row.due_date));
+        const relationshipStage = cleanText(shipper.relationship_stage)?.toLowerCase() || "target";
+        let priority = "complete";
+        let priorityDetail = "Complete profile coverage before outbound work.";
+        if (accountDue) {
+          priority = "due_action";
+          priorityDetail = dueActions[0] && cleanText(dueActions[0].title)
+            ? `Action due: ${cleanText(dueActions[0].title)}.`
+            : "Due date reached or within the next 14 days.";
+        } else if (relationshipStage === "at_risk") {
+          priority = "at_risk";
+          priorityDetail = "Relationship stage needs commercial attention.";
+        } else if (!hasContact) {
+          priority = "needs_contact";
+          priorityDetail = "Add a working primary contact before outreach.";
+        } else if (!activeLanes.length) {
+          priority = "needs_lane";
+          priorityDetail = "Add declared lanes or quoted coverage.";
+        } else if (healthScore >= 60) {
+          priority = "ready";
+          priorityDetail = "Profile, contact, and coverage are ready to engage.";
+        }
+        const currencies = Array.from(new Set(openOpportunities.map((row) => cleanText(row.currency)?.toUpperCase()).filter(Boolean) as string[]));
+        const pipelineCurrency = currencies.length === 1 ? currencies[0] : currencies.length > 1 ? "mixed" : null;
+        const pipelineValue = pipelineCurrency === "mixed" ? null : openOpportunities.reduce((sum, row) => sum + (Number(row.estimated_value) || 0), 0);
+        const activity = latestDate([
+          shipper.updated_at,
+          ...accountContacts.map((row) => row.updated_at),
+          ...accountLocations.map((row) => row.updated_at),
+          ...accountLanes.map((row) => row.updated_at),
+          ...accountRfis.map((row) => row.updated_at),
+          ...accountOpportunities.map((row) => row.updated_at),
+          ...accountActions.map((row) => row.updated_at)
+        ]);
+        const searchValues = [
+          shipper.shipper_name,
+          shipper.legal_name,
+          shipper.domain,
+          shipper.primary_contact_name,
+          shipper.primary_contact_email,
+          shipper.headquarters_city,
+          shipper.headquarters_state,
+          ...accountContacts.flatMap((row) => [row.contact_name, row.email]),
+          ...activeLocations.flatMap((row) => [row.market, row.region, row.city, row.state_code]),
+          ...activeLanes.flatMap((row) => [row.origin, row.origin_market, row.destination, row.destination_market]),
+          ...accountActions.flatMap((row) => [row.title, row.action_type, row.notes])
+        ];
+        return {
+          id: shipperId,
+          shipper_name: cleanText(shipper.shipper_name),
+          legal_name: cleanText(shipper.legal_name),
+          domain: cleanText(shipper.domain),
+          headquarters_city: cleanText(shipper.headquarters_city),
+          headquarters_state: cleanText(shipper.headquarters_state),
+          relationship_stage: relationshipStage,
+          contact_count: accountContacts.length,
+          location_count: activeLocations.length,
+          lane_count: activeLanes.length,
+          market_count: markets.size,
+          active_rfi_count: activeRfis.length,
+          open_opportunity_count: openOpportunities.length,
+          open_action_count: openActions.length,
+          due_action_count: dueActions.length,
+          pipeline_value: pipelineValue,
+          pipeline_currency: pipelineCurrency,
+          health_score: healthScore,
+          health_label: healthScore >= 80 ? "Operationally complete" : healthScore >= 60 ? "Ready with minor gaps" : healthScore >= 35 ? "Needs cleanup" : "Profile incomplete",
+          priority,
+          priority_detail: priorityDetail,
+          next_action: cleanText(openActions.find((row) => cleanText(row.title))?.title) || cleanText(openOpportunities.find((row) => cleanText(row.next_action))?.next_action),
+          last_activity_at: activity,
+          _search_values: searchValues,
+          _pipeline_currencies: currencies
+        };
+      }).filter((row) => includesSearch(row._search_values));
+
+      const pipelineCurrencies = Array.from(new Set(allRows.flatMap((row) => row._pipeline_currencies)));
+      const pipelineCurrency = pipelineCurrencies.length === 1 ? pipelineCurrencies[0] : pipelineCurrencies.length > 1 ? "mixed" : null;
+      const counts = {
+        ready: allRows.filter((row) => row.priority === "ready").length,
+        needs_data: allRows.filter((row) => ["needs_contact", "needs_lane", "complete"].includes(row.priority)).length,
+        due_action: allRows.filter((row) => row.priority === "due_action" || row.priority === "at_risk").length,
+        open_pipeline_value: pipelineCurrency === "mixed" ? null : allRows.reduce((sum, row) => sum + (Number(row.pipeline_value) || 0), 0),
+        open_pipeline_currency: pipelineCurrency
+      };
+      const focusedRows = focus === "all" ? allRows : allRows.filter((row) => row.priority === focus);
+      const rows = focusedRows.map(({ _search_values, _pipeline_currencies, ...row }) => row);
+      return jsonResponse({
+        rows,
+        total: shipperResult.count || 0,
+        loaded: shippers.length,
+        truncated: Number(shipperResult.count || 0) > shippers.length,
+        counts
+      });
+    }
+
+    if (body.action === "shipper_commercial_work") {
+      const search = safeShipperSearch(body.search);
+      const focus = cleanText(body.focus)?.toLowerCase() || "all";
+      const allowedFocus = new Set(["all", "needs_rfi", "rfi_due", "deal_due", "won", "lost"]);
+      if (!allowedFocus.has(focus)) return jsonResponse({ error: "Unknown commercial work focus." }, 400);
+      const limit = Math.min(Math.max(Number(body.limit) || 1000, 1), 1000);
+      const shipperResult = await supabase.from("shippers")
+        .select("id,shipper_name,domain,relationship_stage,status")
+        .eq("owner_email", user.owner_email)
+        .neq("status", "archived")
+        .order("updated_at", { ascending: false })
+        .range(0, limit - 1);
+      if (shipperResult.error) throw shipperResult.error;
+      const shippers = shipperResult.data || [];
+      const shipperIds = shippers.map((row) => cleanText(row.id)).filter(Boolean) as string[];
+      if (!shipperIds.length) return jsonResponse({ rfis: [], opportunities: [], counts: { open_rfis: 0, unlinked_rfis: 0, open_opportunities: 0, due_soon: 0 }, loaded: 0 });
+      const [rfiResult, opportunityResult] = await Promise.all([
+        supabase.from("shipper_rfis")
+          .select("id,shipper_id,rfi_name,external_reference,status,due_date,updated_at")
+          .eq("owner_email", user.owner_email)
+          .in("shipper_id", shipperIds)
+          .neq("status", "archived")
+          .order("due_date", { ascending: true, nullsFirst: false }),
+        supabase.from("shipper_opportunities")
+          .select("id,shipper_id,rfi_id,rfx_project_id,opportunity_name,stage,probability,estimated_value,currency,estimated_weekly_volume,due_date,next_action,updated_at")
+          .eq("owner_email", user.owner_email)
+          .in("shipper_id", shipperIds)
+          .neq("stage", "archived")
+          .order("due_date", { ascending: true, nullsFirst: false })
+      ]);
+      if (rfiResult.error) throw rfiResult.error;
+      if (opportunityResult.error) throw opportunityResult.error;
+      const shipperById = new Map(shippers.map((row) => [cleanText(row.id), row]));
+      const rfxProjectIds = Array.from(new Set((opportunityResult.data || [])
+        .map((row) => cleanText(row.rfx_project_id))
+        .filter((id): id is string => Boolean(id))));
+      const rfxProjectResult = rfxProjectIds.length
+        ? await supabase.from("rfx_projects")
+          .select("id,title,status,linked_rfx_event_id,due_date,updated_at")
+          .eq("owner_email", user.owner_email)
+          .in("id", rfxProjectIds)
+        : { data: [], error: null };
+      if (rfxProjectResult.error) throw rfxProjectResult.error;
+      const rfxProjectById = new Map((rfxProjectResult.data || []).map((row) => [cleanText(row.id), row]));
+      const allOpportunities = (opportunityResult.data || []).map((row) => ({
+        ...row,
+        shipper_name: cleanText(shipperById.get(cleanText(row.shipper_id))?.shipper_name),
+        shipper_domain: cleanText(shipperById.get(cleanText(row.shipper_id))?.domain),
+        relationship_stage: cleanText(shipperById.get(cleanText(row.shipper_id))?.relationship_stage),
+        rfx_project: rfxProjectById.get(cleanText(row.rfx_project_id)) || null
+      }));
+      const opportunityByRfiId = new Map(allOpportunities.map((row) => [cleanText(row.rfi_id), row]).filter(([id]) => Boolean(id)));
+      const rfis = (rfiResult.data || []).map((row) => ({
+        ...row,
+        shipper_name: cleanText(shipperById.get(cleanText(row.shipper_id))?.shipper_name),
+        shipper_domain: cleanText(shipperById.get(cleanText(row.shipper_id))?.domain),
+        linked_opportunity: opportunityByRfiId.get(cleanText(row.id)) || null
+      }));
+      const matchesSearch = (row: Record<string, unknown>, fields: string[]) => !search || fields.some((field) => String(row[field] || "").toLowerCase().includes(search.toLowerCase()));
+      const now = new Date();
+      const dueSoon = new Date(now);
+      dueSoon.setDate(dueSoon.getDate() + 14);
+      const dueBy = (value: unknown) => {
+        const date = value ? new Date(String(value)) : null;
+        return Boolean(date && !Number.isNaN(date.getTime()) && date <= dueSoon);
+      };
+      const openOpportunityStages = new Set(["identified", "discovery", "rfi", "rfx", "proposal", "negotiation"]);
+      const openOpportunities = allOpportunities.filter((row) => openOpportunityStages.has(cleanText(row.stage)?.toLowerCase() || ""));
+      const wonOpportunities = allOpportunities.filter((row) => cleanText(row.stage)?.toLowerCase() === "won");
+      const lostOpportunities = allOpportunities.filter((row) => cleanText(row.stage)?.toLowerCase() === "lost");
+      let filteredRfis = rfis.filter((row) => matchesSearch(row, ["shipper_name", "shipper_domain", "rfi_name", "external_reference", "status"]));
+      let filteredOpportunities = openOpportunities.filter((row) => matchesSearch(row, ["shipper_name", "shipper_domain", "opportunity_name", "stage", "next_action"]));
+      if (focus === "needs_rfi") filteredRfis = filteredRfis.filter((row) => !row.linked_opportunity);
+      if (focus === "rfi_due") filteredRfis = filteredRfis.filter((row) => dueBy(row.due_date));
+      if (focus === "deal_due") filteredOpportunities = filteredOpportunities.filter((row) => dueBy(row.due_date));
+      if (focus === "won") {
+        filteredRfis = [];
+        filteredOpportunities = wonOpportunities.filter((row) => matchesSearch(row, ["shipper_name", "shipper_domain", "opportunity_name", "next_action"]));
+      }
+      if (focus === "lost") {
+        filteredRfis = [];
+        filteredOpportunities = lostOpportunities.filter((row) => matchesSearch(row, ["shipper_name", "shipper_domain", "opportunity_name", "next_action"]));
+      }
+      const allRfis = rfis;
+      const totalDueSoon = [...allRfis, ...openOpportunities].filter((row) => dueBy(row.due_date)).length;
+      return jsonResponse({
+        rfis: filteredRfis,
+        opportunities: filteredOpportunities,
+        counts: {
+          open_rfis: allRfis.length,
+          unlinked_rfis: allRfis.filter((row) => !row.linked_opportunity).length,
+          open_opportunities: openOpportunities.length,
+          won_opportunities: wonOpportunities.length,
+          lost_opportunities: lostOpportunities.length,
+          due_soon: totalDueSoon
+        },
+        loaded: shippers.length
+      });
+    }
+
+    if (body.action === "launch_shipper_opportunity_rfx") {
+      const opportunityId = cleanText(body.id || body.opportunity_id);
+      if (!opportunityId || !UUID_PATTERN.test(opportunityId)) return jsonResponse({ error: "A valid opportunity id is required." }, 400);
+      const opportunityResult = await supabase.from("shipper_opportunities").select("*")
+        .eq("owner_email", user.owner_email).eq("id", opportunityId).single();
+      if (opportunityResult.error) throw opportunityResult.error;
+      const opportunity = opportunityResult.data as Record<string, unknown>;
+      const shipper = await requireOwnedShipper(supabase, user, opportunity.shipper_id);
+      const existingProjectId = cleanText(opportunity.rfx_project_id);
+      if (existingProjectId) {
+        const existingProjectResult = await supabase.from("rfx_projects").select("*")
+          .eq("owner_email", user.owner_email).eq("id", existingProjectId).single();
+        if (existingProjectResult.error) throw existingProjectResult.error;
+        return jsonResponse({ row: opportunity, project: existingProjectResult.data, created: false });
+      }
+      if (["won", "lost", "archived"].includes(cleanText(opportunity.stage)?.toLowerCase() || "")) {
+        return jsonResponse({ error: "Closed opportunities cannot start a new RFx workspace." }, 400);
+      }
+
+      const projectInput = normalizeRfxProjectInput({
+        title: `${cleanText(opportunity.opportunity_name) || "Commercial opportunity"} RFx`,
+        customer_id: cleanText(shipper.id),
+        customer_name: cleanText(shipper.shipper_name),
+        customer_contact_name: cleanText(shipper.primary_contact_name),
+        customer_contact_email: cleanText(shipper.primary_contact_email),
+        opportunity_type: "contract",
+        status: "draft",
+        due_date: cleanText(opportunity.due_date),
+        notes: [
+          `Created from Shipper CRM opportunity ${cleanText(opportunity.opportunity_name) || opportunityId}.`,
+          cleanText(opportunity.next_action) ? `Commercial next action: ${cleanText(opportunity.next_action)}.` : "",
+          cleanText(opportunity.notes) ? `Commercial notes: ${cleanText(opportunity.notes)}.` : ""
+        ].filter(Boolean).join("\n")
+      });
+      const projectResult = await supabase.from("rfx_projects")
+        .insert(withOwner(projectInput, user)).select().single();
+      if (projectResult.error) throw projectResult.error;
+      const project = projectResult.data as Record<string, unknown>;
+      const updateResult = await supabase.from("shipper_opportunities")
+        .update({
+          stage: "rfx",
+          rfx_project_id: project.id,
+          next_action: "Complete the RFx demand snapshot and package before launching Bid Room.",
+          updated_at: new Date().toISOString()
+        })
+        .eq("owner_email", user.owner_email)
+        .eq("id", opportunityId)
+        .select()
+        .single();
+      if (updateResult.error) {
+        await supabase.from("rfx_projects").delete().eq("owner_email", user.owner_email).eq("id", project.id);
+        throw updateResult.error;
+      }
+      await writeRfxProcessAudit(
+        supabase,
+        user,
+        project.id,
+        "shipper_opportunity_rfx_created",
+        "shipper_opportunity",
+        opportunityId,
+        `Created RFx workspace from shipper opportunity ${cleanText(opportunity.opportunity_name) || opportunityId}.`,
+        { shipper_id: shipper.id, shipper_opportunity_id: opportunityId, rfi_id: cleanText(opportunity.rfi_id) }
+      );
+      await writeAuditLog(
+        supabase,
+        user,
+        "shipper_opportunity_rfx_created",
+        "shipper_opportunity",
+        opportunityId,
+        `Linked shipper opportunity to RFx workspace ${project.title}.`,
+        { shipper_id: shipper.id, rfx_project_id: project.id, rfi_id: cleanText(opportunity.rfi_id) }
+      );
+      return jsonResponse({ row: updateResult.data, project, created: true });
+    }
+
+    if (body.action === "promote_shipper_rfi_to_opportunity") {
+      const rfiId = cleanText(body.rfi_id);
+      if (!rfiId || !UUID_PATTERN.test(rfiId)) return jsonResponse({ error: "A valid RFI id is required." }, 400);
+      const rfiResult = await supabase.from("shipper_rfis").select("*")
+        .eq("owner_email", user.owner_email).eq("id", rfiId).single();
+      if (rfiResult.error) throw rfiResult.error;
+      const rfi = rfiResult.data as Record<string, unknown>;
+      if (cleanText(rfi.status)?.toLowerCase() === "archived") return jsonResponse({ error: "Archived RFIs cannot be promoted." }, 400);
+      await requireOwnedShipper(supabase, user, rfi.shipper_id);
+      const existingResult = await supabase.from("shipper_opportunities").select("*")
+        .eq("owner_email", user.owner_email).eq("rfi_id", rfiId).limit(1);
+      if (existingResult.error) throw existingResult.error;
+      const existing = existingResult.data?.[0] as Record<string, unknown> | undefined;
+      if (existing) return jsonResponse({ row: existing, rfi, created: false });
+      const result = await supabase.from("shipper_opportunities").insert({
+        ...withOwner({
+          shipper_id: rfi.shipper_id,
+          rfi_id: rfiId,
+          opportunity_name: cleanText(rfi.rfi_name) || "Shipper RFI",
+          stage: "rfi",
+          probability: 20,
+          due_date: cleanText(rfi.due_date),
+          next_action: "Review RFI scope and qualify the commercial opportunity.",
+          notes: cleanText(rfi.notes),
+          metadata: { source: "shipper_rfi", external_reference: cleanText(rfi.external_reference) }
+        }, user),
+        organization_id: user.organization_id
+      }).select().single();
+      if (result.error) throw result.error;
+      if (["draft", "sent"].includes(cleanText(rfi.status)?.toLowerCase() || "")) {
+        const statusResult = await supabase.from("shipper_rfis").update({ status: "in_progress", updated_at: new Date().toISOString() })
+          .eq("owner_email", user.owner_email).eq("id", rfiId);
+        if (statusResult.error) throw statusResult.error;
+        rfi.status = "in_progress";
+      }
+      await writeAuditLog(supabase, user, "shipper_rfi_promoted", "shipper_opportunity", result.data.id,
+        `Promoted RFI ${cleanText(rfi.rfi_name) || rfiId} into a commercial opportunity.`, { rfi_id: rfiId, shipper_id: rfi.shipper_id });
+      return jsonResponse({ row: result.data, rfi, created: true });
+    }
+
+    if (body.action === "move_shipper_opportunity_stage") {
+      const opportunityId = cleanText(body.id || body.opportunity_id);
+      const stage = cleanText(body.stage)?.toLowerCase();
+      if (!opportunityId || !UUID_PATTERN.test(opportunityId)) return jsonResponse({ error: "A valid opportunity id is required." }, 400);
+      if (!stage || !SHIPPER_ENUMS.opportunity_stage.has(stage)) return jsonResponse({ error: "Unknown opportunity stage." }, 400);
+      const currentResult = await supabase.from("shipper_opportunities").select("*")
+        .eq("owner_email", user.owner_email).eq("id", opportunityId).single();
+      if (currentResult.error) throw currentResult.error;
+      const current = currentResult.data as Record<string, unknown>;
+      await requireOwnedShipper(supabase, user, current.shipper_id);
+      const result = await supabase.from("shipper_opportunities").update({ stage, updated_at: new Date().toISOString() })
+        .eq("owner_email", user.owner_email).eq("id", opportunityId).select().single();
+      if (result.error) throw result.error;
+      await writeAuditLog(supabase, user, "shipper_opportunity_stage_moved", "shipper_opportunity", opportunityId,
+        `Moved shipper opportunity ${cleanText(result.data.opportunity_name) || opportunityId} to ${stage}.`, { from: current.stage, to: stage });
+      return jsonResponse({ row: result.data });
+    }
+
+    if (body.action === "apply_shipper_action_playbook") {
+      const shipper = await requireOwnedShipper(supabase, user, body.shipper_id || body.id);
+      const playbookKey = cleanText(body.playbook)?.toLowerCase();
+      const playbook = playbookKey ? SHIPPER_ACTION_PLAYBOOKS[playbookKey] : null;
+      if (!playbook || !playbookKey) return jsonResponse({ error: "Unknown Shipper CRM action playbook." }, 400);
+
+      const existingResult = await supabase
+        .from("shipper_account_actions")
+        .select("id,title,status")
+        .eq("owner_email", user.owner_email)
+        .eq("shipper_id", shipper.id)
+        .in("status", ["open", "in_progress"]);
+      if (existingResult.error) throw existingResult.error;
+
+      const existingTitles = new Set(
+        (existingResult.data || [])
+          .map((row) => cleanText(row.title)?.toLowerCase())
+          .filter(Boolean) as string[]
+      );
+      const assignee = cleanText(body.owner_email_assignee)
+        || cleanText(shipper.account_owner_email)
+        || user.owner_email;
+      const actions = playbook.steps
+        .filter((step) => !existingTitles.has(step.title.toLowerCase()))
+        .map((step) => ({
+          ...withOwner({
+            shipper_id: shipper.id,
+            title: step.title,
+            action_type: step.action_type,
+            status: "open",
+            priority: step.priority,
+            due_date: shipperActionDueDate(step.due_in_days),
+            owner_email_assignee: assignee,
+            notes: step.notes,
+            metadata: { source: "shipper_action_playbook", playbook: playbookKey }
+          }, user),
+          organization_id: user.organization_id
+        }));
+
+      let createdRows: Record<string, unknown>[] = [];
+      if (actions.length) {
+        const insertResult = await supabase.from("shipper_account_actions").insert(actions).select();
+        if (insertResult.error) throw insertResult.error;
+        createdRows = (insertResult.data || []) as Record<string, unknown>[];
+      }
+      const skipped = playbook.steps.length - createdRows.length;
+      await writeAuditLog(
+        supabase,
+        user,
+        "shipper_account_playbook_applied",
+        "shipper",
+        shipper.id,
+        `Applied ${playbook.label}: created ${createdRows.length} account action(s) and skipped ${skipped} existing action(s).`,
+        { playbook: playbookKey, created: createdRows.length, skipped }
+      );
+      return jsonResponse({
+        playbook: { key: playbookKey, label: playbook.label, description: playbook.description },
+        created: createdRows.length,
+        skipped,
+        rows: createdRows
+      });
+    }
+
+    if (body.action === "shipper_action_queue") {
+      const focus = cleanText(body.focus)?.toLowerCase() || "open";
+      const allowedFocus = new Set(["open", "overdue", "today", "upcoming", "done"]);
+      if (!allowedFocus.has(focus)) return jsonResponse({ error: "Unknown account action queue focus." }, 400);
+      const limit = Math.max(1, Math.min(1000, Number(body.limit) || 250));
+      const today = new Date().toISOString().slice(0, 10);
+      const upcomingDate = new Date();
+      upcomingDate.setUTCDate(upcomingDate.getUTCDate() + 7);
+      const nextWeek = upcomingDate.toISOString().slice(0, 10);
+      const openStatuses = ["open", "in_progress"];
+
+      let actionQuery = supabase
+        .from("shipper_account_actions")
+        .select("id,shipper_id,title,action_type,status,priority,due_date,owner_email_assignee,notes,updated_at")
+        .eq("owner_email", user.owner_email)
+        .order("due_date", { ascending: true, nullsFirst: false })
+        .order("updated_at", { ascending: false })
+        .limit(limit);
+      if (focus === "done") actionQuery = actionQuery.eq("status", "done");
+      else actionQuery = actionQuery.in("status", openStatuses);
+      if (focus === "overdue") actionQuery = actionQuery.lt("due_date", today);
+      if (focus === "today") actionQuery = actionQuery.eq("due_date", today);
+      if (focus === "upcoming") actionQuery = actionQuery.gte("due_date", today).lte("due_date", nextWeek);
+
+      const [actionsResult, countsResult] = await Promise.all([
+        actionQuery,
+        supabase.from("shipper_account_actions").select("status,due_date")
+          .eq("owner_email", user.owner_email).limit(5000)
+      ]);
+      if (actionsResult.error) throw actionsResult.error;
+      if (countsResult.error) throw countsResult.error;
+
+      const actions = (actionsResult.data || []) as Record<string, unknown>[];
+      const shipperIds = [...new Set(actions.map((row) => cleanText(row.shipper_id)).filter(Boolean))] as string[];
+      let accounts: Record<string, unknown>[] = [];
+      if (shipperIds.length) {
+        const accountsResult = await supabase.from("shippers")
+          .select("id,shipper_name,domain,primary_contact_email")
+          .eq("owner_email", user.owner_email)
+          .in("id", shipperIds);
+        if (accountsResult.error) throw accountsResult.error;
+        accounts = (accountsResult.data || []) as Record<string, unknown>[];
+      }
+      const accountById = new Map(accounts.map((row) => [cleanText(row.id), row]));
+      const search = cleanText(body.search)?.toLowerCase();
+      const rows = actions.map((row) => {
+        const account = accountById.get(cleanText(row.shipper_id)) || {};
+        return {
+          ...row,
+          shipper_name: cleanText(account.shipper_name),
+          shipper_domain: cleanText(account.domain),
+          primary_contact_email: cleanText(account.primary_contact_email)
+        };
+      }).filter((row) => {
+        if (!search) return true;
+        return [row.shipper_name, row.shipper_domain, row.primary_contact_email, row.title, row.notes, row.owner_email_assignee]
+          .map(cleanText).filter(Boolean).join(" ").toLowerCase().includes(search);
+      });
+      const counts = { open: 0, today: 0, overdue: 0, done: 0 };
+      (countsResult.data || []).forEach((row) => {
+        const status = cleanText(row.status)?.toLowerCase();
+        const dueDate = cleanText(row.due_date);
+        if (["open", "in_progress"].includes(status || "")) {
+          counts.open += 1;
+          if (dueDate === today) counts.today += 1;
+          if (dueDate && dueDate < today) counts.overdue += 1;
+        }
+        if (status === "done") counts.done += 1;
+      });
+      return jsonResponse({ rows, counts, focus, loaded: rows.length });
+    }
+
+    if (body.action === "update_shipper_account_action_status") {
+      const actionId = cleanText(body.id);
+      const status = cleanText(body.status)?.toLowerCase();
+      if (!actionId || !UUID_PATTERN.test(actionId)) return jsonResponse({ error: "A valid account action id is required." }, 400);
+      if (!status || !SHIPPER_ENUMS.shipper_action_status.has(status)) return jsonResponse({ error: "Unknown account action status." }, 400);
+      const currentResult = await supabase.from("shipper_account_actions").select("*")
+        .eq("owner_email", user.owner_email).eq("id", actionId).single();
+      if (currentResult.error) throw currentResult.error;
+      const current = currentResult.data as Record<string, unknown>;
+      await requireOwnedShipper(supabase, user, current.shipper_id);
+      const result = await supabase.from("shipper_account_actions")
+        .update({ status, updated_at: new Date().toISOString() })
+        .eq("owner_email", user.owner_email).eq("id", actionId).select().single();
+      if (result.error) throw result.error;
+      await writeAuditLog(supabase, user, "shipper_account_action_status_updated", "shipper_account_action", actionId,
+        `Updated account action ${cleanText(result.data.title) || actionId} to ${status}.`, {
+          shipper_id: current.shipper_id,
+          from: current.status,
+          to: status
+        });
+      return jsonResponse({ row: result.data });
+    }
+
+    if (body.action === "get_shipper") {
+      const shipper = await requireOwnedShipper(supabase, user, body.id || body.shipper_id);
+      const shipperId = cleanText(shipper.id);
+      const entries = Object.entries(SHIPPER_CHILD_CONFIG) as [ShipperChildEntity, typeof SHIPPER_CHILD_CONFIG[ShipperChildEntity]][];
+      const results = await Promise.all(entries.map(([entity, config]) => supabase
+        .from(config.table)
+        .select("*")
+        .eq("owner_email", user.owner_email)
+        .eq("shipper_id", shipperId)
+        .order("updated_at", { ascending: false })));
+      results.forEach((result) => {
+        if (result.error) throw result.error;
+      });
+      const details = Object.fromEntries(entries.map(([entity], index) => [entity, results[index].data || []]));
+      return jsonResponse({ row: shipper, ...details });
+    }
+
+    if (body.action === "shipper_account_activity") {
+      const shipper = await requireOwnedShipper(supabase, user, body.id || body.shipper_id);
+      const shipperId = cleanText(shipper.id);
+      const [opportunitiesResult, rfisResult, actionsResult, auditResult] = await Promise.all([
+        supabase.from("shipper_opportunities").select("id,rfx_project_id")
+          .eq("owner_email", user.owner_email).eq("shipper_id", shipperId),
+        supabase.from("shipper_rfis").select("id")
+          .eq("owner_email", user.owner_email).eq("shipper_id", shipperId),
+        supabase.from("shipper_account_actions").select("id")
+          .eq("owner_email", user.owner_email).eq("shipper_id", shipperId),
+        supabase.from("saas_audit_log")
+          .select("id,created_at,actor_email,action,entity_type,entity_id,summary,metadata")
+          .eq("owner_email", user.owner_email)
+          .order("created_at", { ascending: false })
+          .limit(300)
+      ]);
+      if (opportunitiesResult.error) throw opportunitiesResult.error;
+      if (rfisResult.error) throw rfisResult.error;
+      if (actionsResult.error) throw actionsResult.error;
+      if (auditResult.error) throw auditResult.error;
+      const opportunityIds = new Set((opportunitiesResult.data || []).map((row) => cleanText(row.id)).filter(Boolean));
+      const rfiIds = new Set((rfisResult.data || []).map((row) => cleanText(row.id)).filter(Boolean));
+      const actionIds = new Set((actionsResult.data || []).map((row) => cleanText(row.id)).filter(Boolean));
+      const projectIds = new Set((opportunitiesResult.data || []).map((row) => cleanText(row.rfx_project_id)).filter(Boolean));
+      const rows = (auditResult.data || []).filter((row) => {
+        const entityId = cleanText(row.entity_id);
+        const metadata = row.metadata && typeof row.metadata === "object" ? row.metadata as Record<string, unknown> : {};
+        return (row.entity_type === "shipper" && entityId === shipperId)
+          || (row.entity_type === "shipper_opportunity" && opportunityIds.has(entityId))
+          || (row.entity_type === "shipper_rfi" && rfiIds.has(entityId))
+          || (row.entity_type === "shipper_account_action" && actionIds.has(entityId))
+          || (row.entity_type === "rfx_project" && projectIds.has(entityId))
+          || cleanText(metadata.shipper_id) === shipperId
+          || opportunityIds.has(cleanText(metadata.shipper_opportunity_id));
+      }).slice(0, 120);
+      return jsonResponse({ rows, shipper_id: shipperId, loaded: rows.length });
+    }
+
+    if (body.action === "create_shipper") {
+      const input = objectRecord(body.shipper);
+      const row = normalizeShipper(input);
+      if (!cleanText(row.shipper_name)) return jsonResponse({ error: "Shipper name is required." }, 400);
+      const invalid = invalidShipperValue(row);
+      if (invalid) return jsonResponse({ error: invalid }, 400);
+      const result = await supabase.from("shippers").insert({
+        ...withOwner(row, user),
+        organization_id: user.organization_id
+      }).select().single();
+      if (result.error) throw result.error;
+      await writeAuditLog(supabase, user, "shipper_created", "shipper", result.data.id, `Created shipper ${result.data.shipper_name}.`);
+      return jsonResponse({ row: result.data });
+    }
+
+    if (body.action === "import_shippers") {
+      if (body.confirmed !== true) return jsonResponse({ error: "Confirm the Shipper Base import before saving." }, 400);
+      const sourceRows = Array.isArray(body.rows) ? body.rows : [];
+      if (!sourceRows.length) return jsonResponse({ error: "Choose at least one Shipper Base row to import." }, 400);
+      if (sourceRows.length > 1000) return jsonResponse({ error: "Import up to 1,000 shippers per file. Split larger files into smaller batches." }, 400);
+
+      const importRows: { patch: Record<string, unknown>; insert: Record<string, unknown>; sourceIndex: number }[] = [];
+      const skippedRows: { row: number; reason: string }[] = [];
+      const seenDomains = new Set<string>();
+      sourceRows.forEach((source, index) => {
+        const normalized = normalizeImportedShipper(objectRecord(source));
+        if ("error" in normalized) {
+          skippedRows.push({ row: index + 1, reason: normalized.error });
+          return;
+        }
+        const domain = cleanText(normalized.insert.domain)?.toLowerCase();
+        if (domain && seenDomains.has(domain)) {
+          skippedRows.push({ row: index + 1, reason: "Duplicate domain in this import." });
+          return;
+        }
+        if (domain) seenDomains.add(domain);
+        importRows.push({ patch: normalized.patch, insert: normalized.insert, sourceIndex: index + 1 });
+      });
+
+      const domains = importRows.map(({ insert }) => cleanText(insert.domain)?.toLowerCase()).filter(Boolean) as string[];
+      const existingByDomain = new Map<string, Record<string, unknown>>();
+      for (const domainChunk of chunkValues(Array.from(new Set(domains)), 250)) {
+        const existingResult = await supabase.from("shippers").select("*")
+          .eq("owner_email", user.owner_email).in("domain", domainChunk);
+        if (existingResult.error) throw existingResult.error;
+        for (const existing of existingResult.data || []) {
+          if (cleanText(existing.status)?.toLowerCase() === "archived") continue;
+          const domain = cleanText(existing.domain)?.toLowerCase();
+          if (domain) existingByDomain.set(domain, existing as Record<string, unknown>);
+        }
+      }
+
+      const inserts: Record<string, unknown>[] = [];
+      const updates: { id: string; row: Record<string, unknown> }[] = [];
+      for (const item of importRows) {
+        const domain = cleanText(item.insert.domain)?.toLowerCase();
+        const existing = domain ? existingByDomain.get(domain) : null;
+        if (existing && cleanText(existing.id)) {
+          updates.push({ id: String(existing.id), row: mergedImportedShipper(existing, item.patch) });
+        } else {
+          inserts.push({ ...withOwner(item.insert, user), organization_id: user.organization_id });
+        }
+      }
+
+      let inserted = 0;
+      for (const insertChunk of chunkValues(inserts, 100)) {
+        if (!insertChunk.length) continue;
+        const result = await supabase.from("shippers").insert(insertChunk).select("id");
+        if (result.error) throw result.error;
+        inserted += result.data?.length || 0;
+      }
+
+      let updated = 0;
+      for (const updateChunk of chunkValues(updates, 25)) {
+        const results = await Promise.all(updateChunk.map(async (item) => await supabase.from("shippers")
+          .update(item.row).eq("owner_email", user.owner_email).eq("id", item.id).select("id").single()));
+        results.forEach((result) => {
+          if (result.error) throw result.error;
+          updated += 1;
+        });
+      }
+
+      await writeAuditLog(
+        supabase,
+        user,
+        "shipper_base_imported",
+        "shipper_import",
+        null,
+        `Imported ${inserted} Shipper Base account(s) and updated ${updated} existing domain match(es).`,
+        { inserted, updated, skipped: skippedRows.length, total_rows: sourceRows.length }
+      );
+      return jsonResponse({
+        inserted,
+        updated,
+        skipped: skippedRows.length,
+        total_rows: sourceRows.length,
+        skipped_rows: skippedRows.slice(0, 100)
+      });
+    }
+
+    if (body.action === "import_shipper_crm_workbook") {
+      if (body.confirmed !== true) return jsonResponse({ error: "Confirm the relational Shipper CRM import before saving." }, 400);
+      const accountSources = Array.isArray(body.accounts) ? body.accounts : [];
+      const contactSources = Array.isArray(body.contacts) ? body.contacts : [];
+      const opportunitySources = Array.isArray(body.opportunities) ? body.opportunities : [];
+      const totalRows = accountSources.length + contactSources.length + opportunitySources.length;
+      if (!accountSources.length) return jsonResponse({ error: "A relational workbook needs at least one Accounts row." }, 400);
+      if (accountSources.length > 1000 || contactSources.length > 1000 || opportunitySources.length > 1000 || totalRows > 3000) {
+        return jsonResponse({ error: "Import up to 1,000 Accounts, Contacts, and Opportunities per workbook (3,000 total rows)." }, 400);
+      }
+
+      const externalSource = normalizeShipperCrmImportSource(body.source_system || "pipedrive");
+      const skippedRows: { entity: string; row: number; reason: string }[] = [];
+      const accounts: { sourceIndex: number; patch: Record<string, unknown>; insert: Record<string, unknown>; externalSourceId: string | null }[] = [];
+      const seenAccountIds = new Set<string>();
+      accountSources.forEach((source, index) => {
+        const normalized = normalizeShipperCrmWorkbookAccount(objectRecord(source), externalSource);
+        if ("error" in normalized) {
+          skippedRows.push({ entity: "account", row: index + 1, reason: normalized.error });
+          return;
+        }
+        if (normalized.externalSourceId && seenAccountIds.has(normalized.externalSourceId)) {
+          skippedRows.push({ entity: "account", row: index + 1, reason: "Duplicate external account id in this workbook." });
+          return;
+        }
+        if (normalized.externalSourceId) seenAccountIds.add(normalized.externalSourceId);
+        accounts.push({ sourceIndex: index + 1, ...normalized });
+      });
+
+      const referencedAccountIds = [
+        ...accounts.map((item) => item.externalSourceId),
+        ...contactSources.map((source) => importedShipperValue(objectRecord(source), ["external_account_id", "account_id", "organization_id", "org_id"])),
+        ...opportunitySources.map((source) => importedShipperValue(objectRecord(source), ["external_account_id", "account_id", "organization_id", "org_id"]))
+      ].filter(Boolean) as string[];
+      const existingByExternalKey = new Map<string, Record<string, unknown>>();
+      for (const idChunk of chunkValues(Array.from(new Set(referencedAccountIds)), 250)) {
+        const existingResult = await supabase.from("shippers").select("*")
+          .eq("owner_email", user.owner_email).eq("external_source", externalSource).in("external_source_id", idChunk);
+        if (existingResult.error) throw existingResult.error;
+        for (const existing of existingResult.data || []) {
+          const id = cleanText(existing.external_source_id);
+          if (id && cleanText(existing.status)?.toLowerCase() !== "archived") existingByExternalKey.set(`${externalSource}:${id}`, existing as Record<string, unknown>);
+        }
+      }
+      const domains = accounts.map((item) => cleanText(item.insert.domain)?.toLowerCase()).filter(Boolean) as string[];
+      const existingByDomain = new Map<string, Record<string, unknown>>();
+      for (const domainChunk of chunkValues(Array.from(new Set(domains)), 250)) {
+        const existingResult = await supabase.from("shippers").select("*")
+          .eq("owner_email", user.owner_email).in("domain", domainChunk);
+        if (existingResult.error) throw existingResult.error;
+        for (const existing of existingResult.data || []) {
+          const domain = cleanText(existing.domain)?.toLowerCase();
+          if (domain && cleanText(existing.status)?.toLowerCase() !== "archived") existingByDomain.set(domain, existing as Record<string, unknown>);
+        }
+      }
+
+      const accountInserts: Record<string, unknown>[] = [];
+      const accountUpdates: { id: string; row: Record<string, unknown> }[] = [];
+      for (const item of accounts) {
+        const domain = cleanText(item.insert.domain)?.toLowerCase();
+        const existing = (item.externalSourceId ? existingByExternalKey.get(`${externalSource}:${item.externalSourceId}`) : null)
+          || (domain ? existingByDomain.get(domain) : null);
+        if (existing && cleanText(existing.id)) {
+          const patch = mergedImportedShipper(existing, item.patch);
+          patch.external_source = externalSource;
+          patch.external_source_id = item.externalSourceId || cleanText(existing.external_source_id);
+          accountUpdates.push({ id: String(existing.id), row: patch });
+        } else {
+          accountInserts.push({ ...withOwner(item.insert, user), organization_id: user.organization_id });
+        }
+      }
+      const accountRows: Record<string, unknown>[] = [];
+      for (const insertChunk of chunkValues(accountInserts, 100)) {
+        if (!insertChunk.length) continue;
+        const result = await supabase.from("shippers").insert(insertChunk).select();
+        if (result.error) throw result.error;
+        accountRows.push(...(result.data || []) as Record<string, unknown>[]);
+      }
+      for (const updateChunk of chunkValues(accountUpdates, 25)) {
+        const results = await Promise.all(updateChunk.map((item) => supabase.from("shippers").update(item.row)
+          .eq("owner_email", user.owner_email).eq("id", item.id).select().single()));
+        for (const result of results) {
+          if (result.error) throw result.error;
+          if (result.data) accountRows.push(result.data as Record<string, unknown>);
+        }
+      }
+      const accountIdByExternalKey = new Map<string, string>();
+      for (const row of [...existingByExternalKey.values(), ...accountRows]) {
+        const id = cleanText(row.id);
+        const sourceId = cleanText(row.external_source_id);
+        if (id && sourceId && cleanText(row.external_source) === externalSource) accountIdByExternalKey.set(`${externalSource}:${sourceId}`, id);
+      }
+
+      const contactItems: { sourceIndex: number; row: Record<string, unknown>; externalSourceId: string | null; shipperId: string }[] = [];
+      contactSources.forEach((source, index) => {
+        const normalized = normalizeShipperCrmWorkbookContact(objectRecord(source), externalSource);
+        if ("error" in normalized) {
+          skippedRows.push({ entity: "contact", row: index + 1, reason: normalized.error });
+          return;
+        }
+        const shipperId = accountIdByExternalKey.get(`${externalSource}:${normalized.externalAccountId}`);
+        if (!shipperId) {
+          skippedRows.push({ entity: "contact", row: index + 1, reason: "Linked account was not found in this workspace." });
+          return;
+        }
+        contactItems.push({ sourceIndex: index + 1, row: normalized.row, externalSourceId: normalized.externalSourceId, shipperId });
+      });
+
+      const opportunityItems: { sourceIndex: number; row: Record<string, unknown>; externalSourceId: string | null; shipperId: string }[] = [];
+      opportunitySources.forEach((source, index) => {
+        const normalized = normalizeShipperCrmWorkbookOpportunity(objectRecord(source), externalSource);
+        if ("error" in normalized) {
+          skippedRows.push({ entity: "opportunity", row: index + 1, reason: normalized.error });
+          return;
+        }
+        const shipperId = accountIdByExternalKey.get(`${externalSource}:${normalized.externalAccountId}`);
+        if (!shipperId) {
+          skippedRows.push({ entity: "opportunity", row: index + 1, reason: "Linked account was not found in this workspace." });
+          return;
+        }
+        opportunityItems.push({ sourceIndex: index + 1, row: normalized.row, externalSourceId: normalized.externalSourceId, shipperId });
+      });
+
+      const importChildren = async (table: "shipper_contacts" | "shipper_opportunities", items: { row: Record<string, unknown>; externalSourceId: string | null; shipperId: string }[]) => {
+        const shipperIds = Array.from(new Set(items.map((item) => item.shipperId)));
+        const existingByKey = new Map<string, Record<string, unknown>>();
+        for (const shipperChunk of chunkValues(shipperIds, 250)) {
+          const result = await supabase.from(table).select("id,shipper_id,external_source,external_source_id,metadata")
+            .eq("owner_email", user.owner_email).eq("external_source", externalSource).in("shipper_id", shipperChunk);
+          if (result.error) throw result.error;
+          for (const row of result.data || []) {
+            const externalId = cleanText(row.external_source_id);
+            if (externalId) existingByKey.set(`${row.shipper_id}:${externalSource}:${externalId}`, row as Record<string, unknown>);
+          }
+        }
+        const inserts: Record<string, unknown>[] = [];
+        const updates: { id: string; row: Record<string, unknown> }[] = [];
+        for (const item of items) {
+          const existing = item.externalSourceId ? existingByKey.get(`${item.shipperId}:${externalSource}:${item.externalSourceId}`) : null;
+          if (existing && cleanText(existing.id)) {
+            updates.push({
+              id: String(existing.id),
+              row: { ...item.row, metadata: { ...objectRecord(existing.metadata), ...objectRecord(item.row.metadata) } }
+            });
+          } else {
+            inserts.push({ ...withOwner({ ...item.row, shipper_id: item.shipperId }, user), organization_id: user.organization_id });
+          }
+        }
+        let inserted = 0;
+        let updated = 0;
+        for (const insertChunk of chunkValues(inserts, 100)) {
+          if (!insertChunk.length) continue;
+          const result = await supabase.from(table).insert(insertChunk).select("id");
+          if (result.error) throw result.error;
+          inserted += result.data?.length || 0;
+        }
+        for (const updateChunk of chunkValues(updates, 25)) {
+          const results = await Promise.all(updateChunk.map((item) => supabase.from(table).update(item.row)
+            .eq("owner_email", user.owner_email).eq("id", item.id).select("id").single()));
+          for (const result of results) {
+            if (result.error) throw result.error;
+            updated += 1;
+          }
+        }
+        return { inserted, updated };
+      };
+
+      const [contactResult, opportunityResult] = await Promise.all([
+        importChildren("shipper_contacts", contactItems),
+        importChildren("shipper_opportunities", opportunityItems)
+      ]);
+      const accountInserted = accountInserts.length;
+      const accountUpdated = accountUpdates.length;
+      await writeAuditLog(
+        supabase,
+        user,
+        "shipper_crm_workbook_imported",
+        "shipper_import",
+        null,
+        `Imported Shipper CRM workbook: ${accountInserted} account(s), ${contactResult.inserted} contact(s), and ${opportunityResult.inserted} opportunity record(s).`,
+        { external_source: externalSource, accounts: { inserted: accountInserted, updated: accountUpdated }, contacts: contactResult, opportunities: opportunityResult, skipped: skippedRows.length, total_rows: totalRows }
+      );
+      return jsonResponse({
+        source_system: externalSource,
+        accounts: { inserted: accountInserted, updated: accountUpdated },
+        contacts: contactResult,
+        opportunities: opportunityResult,
+        skipped: skippedRows.length,
+        total_rows: totalRows,
+        skipped_rows: skippedRows.slice(0, 100)
+      });
+    }
+
+    if (body.action === "update_shipper") {
+      const current = await requireOwnedShipper(supabase, user, body.id || body.shipper_id);
+      const patch = normalizeShipper(objectRecord(body.patch), true);
+      if (Object.prototype.hasOwnProperty.call(patch, "shipper_name") && !cleanText(patch.shipper_name)) {
+        return jsonResponse({ error: "Shipper name is required." }, 400);
+      }
+      const invalid = invalidShipperValue(patch);
+      if (invalid) return jsonResponse({ error: invalid }, 400);
+      const result = await supabase.from("shippers").update(patch)
+        .eq("owner_email", user.owner_email).eq("id", current.id).select().single();
+      if (result.error) throw result.error;
+      await writeAuditLog(supabase, user, "shipper_updated", "shipper", result.data.id, `Updated shipper ${result.data.shipper_name}.`);
+      return jsonResponse({ row: result.data });
+    }
+
+    if (body.action === "move_shipper_relationship_stage") {
+      const current = await requireOwnedShipper(supabase, user, body.id || body.shipper_id);
+      const relationshipStage = cleanText(body.relationship_stage)?.toLowerCase();
+      if (!relationshipStage || !SHIPPER_ENUMS.relationship_stage.has(relationshipStage)) {
+        return jsonResponse({ error: "Unknown shipper relationship stage." }, 400);
+      }
+      const result = await supabase.from("shippers")
+        .update({ relationship_stage: relationshipStage, updated_at: new Date().toISOString() })
+        .eq("owner_email", user.owner_email).eq("id", current.id).select().single();
+      if (result.error) throw result.error;
+      await writeAuditLog(
+        supabase,
+        user,
+        "shipper_relationship_stage_moved",
+        "shipper",
+        result.data.id,
+        `Moved shipper ${result.data.shipper_name} to ${relationshipStage}.`,
+        { from: current.relationship_stage, to: relationshipStage }
+      );
+      return jsonResponse({ row: result.data });
+    }
+
+    if (body.action === "archive_shippers") {
+      const ids = normalizeBulkIds(body.ids, { label: "Shipper ids", limit: BULK_SELECTED_ID_LIMIT });
+      if (!ids.length) return jsonResponse({ updated: 0, rows: [] });
+      requireBulkConfirmation(body, { action: "archive_shippers", label: "Shipper archive", count: ids.length, threshold: 1 });
+      const result = await supabase.from("shippers")
+        .update({ status: "archived", updated_at: new Date().toISOString() })
+        .eq("owner_email", user.owner_email).in("id", ids).select("id,shipper_name,status");
+      if (result.error) throw result.error;
+      return jsonResponse({ updated: result.data?.length || 0, rows: result.data || [] });
+    }
+
+    if (body.action === "save_shipper_record") {
+      const entity = shipperChildEntity(body.entity);
+      const config = SHIPPER_CHILD_CONFIG[entity];
+      const shipper = await requireOwnedShipper(supabase, user, body.shipper_id);
+      const recordId = cleanText(body.id || objectRecord(body.row).id);
+      const patch = applyShipperChildDefaults(entity, normalizeShipperChild(entity, objectRecord(body.row)), !recordId);
+      if (!cleanText(patch[config.required])) return jsonResponse({ error: `${config.required.replace(/_/g, " ")} is required.` }, 400);
+      if (entity === "lanes" && !cleanText(patch.destination)) return jsonResponse({ error: "destination is required." }, 400);
+      const invalid = invalidShipperChildValue(entity, patch);
+      if (invalid) return jsonResponse({ error: invalid }, 400);
+      if (recordId) {
+        if (!UUID_PATTERN.test(recordId)) return jsonResponse({ error: "A valid record id is required." }, 400);
+        const result = await supabase.from(config.table).update(patch)
+          .eq("owner_email", user.owner_email).eq("shipper_id", shipper.id).eq("id", recordId).select().single();
+        if (result.error) throw result.error;
+        if (entity === "actions") {
+          await writeAuditLog(supabase, user, "shipper_account_action_updated", "shipper_account_action", result.data.id,
+            `Updated account action ${cleanText(result.data.title) || result.data.id}.`, { shipper_id: shipper.id });
+        }
+        return jsonResponse({ row: result.data });
+      }
+      const result = await supabase.from(config.table).insert({
+        ...withOwner(patch, user),
+        organization_id: user.organization_id,
+        shipper_id: shipper.id
+      }).select().single();
+      if (result.error) throw result.error;
+      if (entity === "actions") {
+        await writeAuditLog(supabase, user, "shipper_account_action_created", "shipper_account_action", result.data.id,
+          `Created account action ${cleanText(result.data.title) || result.data.id}.`, { shipper_id: shipper.id });
+      }
+      return jsonResponse({ row: result.data });
+    }
+
+    if (body.action === "delete_shipper_record") {
+      const entity = shipperChildEntity(body.entity);
+      const config = SHIPPER_CHILD_CONFIG[entity];
+      const shipper = await requireOwnedShipper(supabase, user, body.shipper_id);
+      const recordId = cleanText(body.id);
+      if (!recordId || !UUID_PATTERN.test(recordId)) return jsonResponse({ error: "A valid record id is required." }, 400);
+      const deletedColumns = entity === "actions" ? "id,title" : "id";
+      const result = await supabase.from(config.table).delete()
+        .eq("owner_email", user.owner_email).eq("shipper_id", shipper.id).eq("id", recordId).select(deletedColumns).single();
+      if (result.error) throw result.error;
+      if (entity === "actions") {
+        await writeAuditLog(supabase, user, "shipper_account_action_deleted", "shipper_account_action", result.data.id,
+          `Deleted account action ${cleanText(result.data.title) || result.data.id}.`, { shipper_id: shipper.id });
+      }
+      return jsonResponse({ row: result.data });
     }
 
     if (body.action === "list_vendors") {
@@ -17805,7 +19819,7 @@ Deno.serve(async (request) => {
     if (body.action === "list_staging_filter_values") {
       const field = cleanText(body.field);
       if (!field) return jsonResponse({ error: "Filter field is required." }, 400);
-      const limit = Math.min(Math.max(Number(body.limit) || 1000, 1), 2000);
+      const limit = Math.min(Math.max(Number(body.limit) || 5000, 1), 5000);
       const valueSearch = cleanText(body.value_search)?.toLowerCase() || "";
       const columnFilters = objectRecord(body.column_filters);
       delete columnFilters[field];
@@ -17871,7 +19885,7 @@ Deno.serve(async (request) => {
     if (body.action === "list_rateware_filter_values") {
       const field = cleanText(body.field);
       if (!field) return jsonResponse({ error: "Filter field is required." }, 400);
-      const limit = Math.min(Math.max(Number(body.limit) || 1000, 1), 2000);
+      const limit = Math.min(Math.max(Number(body.limit) || 5000, 1), 5000);
       const valueSearch = cleanText(body.value_search)?.toLowerCase() || "";
       const columnFilters = objectRecord(body.column_filters);
       delete columnFilters[field];

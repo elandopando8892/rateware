@@ -9,6 +9,7 @@ import {
   fetchRfxProcessProject,
   fetchRfxProcessProjects,
   launchRfxPackageToBidRoom,
+  markRfxAwardPackageImplementationReady,
   reopenRfxRfi,
   revokeRfxRfiMagicLink,
   updateRfxProcessProject
@@ -60,6 +61,15 @@ function statusLabel(status) {
 
 function latest(rows = []) {
   return Array.isArray(rows) && rows.length ? rows[0] : null;
+}
+
+function activeRfiLink(rows = []) {
+  return (Array.isArray(rows) ? rows : []).find((link) => {
+    if (link?.status !== "active" || link?.revoked_at || link?.submitted_at) return false;
+    if (!link?.expires_at) return true;
+    const expiresAt = new Date(link.expires_at).getTime();
+    return Number.isFinite(expiresAt) && expiresAt > Date.now();
+  }) || null;
 }
 
 function selectedProject() {
@@ -156,7 +166,9 @@ function overviewPanel() {
 
 function rfiPanel() {
   const detail = state.detail;
-  const latestLink = latest(detail.magic_links);
+  const currentLink = activeRfiLink(detail.magic_links);
+  const latestLink = currentLink || latest(detail.magic_links);
+  const activeLinkUrl = String(currentLink?.link || "");
   const submitted = detail.rfi_submission?.status === "submitted";
   return `
     <section class="rfx-process-panel active">
@@ -167,15 +179,21 @@ function rfiPanel() {
             <h3>Customer RFI magic link</h3>
           </div>
           <div class="action-row">
-            <button type="button" data-rfx-action="create-rfi-link">Generate link</button>
+            ${currentLink ? (activeLinkUrl ? `
+              <button type="button" data-rfx-action="copy-rfi-link" data-rfi-link="${escapeHtml(activeLinkUrl)}">Copy active link</button>
+              <a class="secondary-link" href="${escapeHtml(activeLinkUrl)}" target="_blank" rel="noreferrer">Open RFI</a>
+            ` : `<button type="button" class="secondary" data-rfx-action="replace-legacy-rfi-link" data-link-id="${escapeHtml(currentLink.id)}">Replace legacy link</button>`)
+              : `<button type="button" data-rfx-action="create-rfi-link">Generate link</button>`}
             ${submitted ? `<button type="button" data-rfx-action="reopen-rfi" class="secondary">Reopen RFI</button>` : ""}
           </div>
         </div>
-        <p>Tokens are stored as SHA-256 hashes. Submitted RFI responses are frozen and never mutated by demand normalization.</p>
+        <p>One fixed active link is kept per RFI. Only the authenticated project owner can copy or open it; revoke it to invalidate access and issue a replacement.</p>
         ${latestLink ? `
           <div class="rfx-process-link-row">
             <span class="status-pill">${escapeHtml(latestLink.status)}</span>
             <span>Expires ${escapeHtml(latestLink.expires_at || "-")}</span>
+            ${currentLink && activeLinkUrl ? `<input class="rfx-process-link-input" value="${escapeHtml(activeLinkUrl)}" readonly aria-label="Active Customer RFI link">` : ""}
+            ${currentLink && !activeLinkUrl ? `<span class="warning-text">Legacy link: replace once to make the fixed URL available.</span>` : ""}
             <button type="button" class="secondary small-button" data-rfx-action="revoke-rfi-link" data-link-id="${escapeHtml(latestLink.id)}">Revoke</button>
           </div>
         ` : `<p class="empty-note">No active RFI link generated yet.</p>`}
@@ -329,10 +347,14 @@ function awardPanel() {
         </div>
         <div class="rfx-process-table-wrap">
           <table class="rfx-process-table">
-            <thead><tr><th>Scenario</th><th>Status</th><th>Type</th><th>Created</th></tr></thead>
-            <tbody>${awards.map((row) => `<tr><td>${escapeHtml(row.scenario_name)}</td><td>${escapeHtml(row.status)}</td><td>${escapeHtml(row.scenario_type)}</td><td>${escapeHtml(row.created_at)}</td></tr>`).join("") || `<tr><td colspan="4">No award packages created yet.</td></tr>`}</tbody>
+            <thead><tr><th>Scenario</th><th>Status</th><th>Type</th><th>Created</th><th>Action</th></tr></thead>
+            <tbody>${awards.map((row) => {
+              const canPrepare = row.status !== "implementation_ready" && row.status !== "archived";
+              return `<tr><td>${escapeHtml(row.scenario_name)}</td><td>${escapeHtml(row.status)}</td><td>${escapeHtml(row.scenario_type)}</td><td>${escapeHtml(row.created_at)}</td><td>${canPrepare ? `<button type="button" class="secondary" data-rfx-action="mark-award-implementation-ready" data-award-id="${escapeHtml(row.id)}">Mark implementation ready</button>` : "-"}</td></tr>`;
+            }).join("") || `<tr><td colspan="5">No award packages created yet.</td></tr>`}</tbody>
           </table>
         </div>
+        <p class="rfx-process-hint">This is the final commercial action. It moves the linked Shipper CRM opportunity to Won at 100% only after the RFx package is implementation ready.</p>
       </section>
     </section>
   `;
@@ -407,8 +429,25 @@ async function handleProjectAction(action, target) {
   try {
     if (action === "create-rfi-link") {
       const result = await createRfxRfiMagicLink(project.id);
+      if (result.reused) {
+        if (result.link) await navigator.clipboard?.writeText(result.link).catch(() => {});
+        setStatus(result.link ? `${result.message} Copied: ${result.link}` : (result.message || "An active Customer RFI link already exists."));
+        return;
+      }
       await navigator.clipboard?.writeText(result.link).catch(() => {});
       setStatus(`Customer RFI link generated and copied: ${result.link}`);
+    } else if (action === "copy-rfi-link") {
+      const link = target.dataset.rfiLink || "";
+      if (!link) throw new Error("The active Customer RFI link is unavailable.");
+      await navigator.clipboard?.writeText(link);
+      setStatus("Active Customer RFI link copied.");
+      return;
+    } else if (action === "replace-legacy-rfi-link") {
+      if (!window.confirm("The previous active link cannot be recovered because it was created before fixed-link storage. Revoke it and create one replacement link?")) return;
+      await revokeRfxRfiMagicLink(project.id, target.dataset.linkId);
+      const result = await createRfxRfiMagicLink(project.id);
+      await navigator.clipboard?.writeText(result.link).catch(() => {});
+      setStatus(`Replacement Customer RFI link generated and copied: ${result.link}`);
     } else if (action === "revoke-rfi-link") {
       await revokeRfxRfiMagicLink(project.id, target.dataset.linkId);
       setStatus("Customer RFI link revoked.");
@@ -440,6 +479,12 @@ async function handleProjectAction(action, target) {
         status: "draft"
       });
       setStatus("Award package created.");
+    } else if (action === "mark-award-implementation-ready") {
+      if (!window.confirm("Mark this award package implementation ready? This moves the linked Shipper CRM opportunity to Won at 100%.")) return;
+      const result = await markRfxAwardPackageImplementationReady(target.dataset.awardId);
+      setStatus(result.shipper_opportunity
+        ? "Award package is implementation ready. The linked Shipper CRM opportunity is now Won at 100%."
+        : "Award package is implementation ready.");
     } else if (action === "mark-demand") {
       await updateRfxProcessProject(project.id, { status: "demand_review" });
       setStatus("Project moved to demand review.");

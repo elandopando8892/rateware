@@ -466,6 +466,61 @@ export function installSpreadsheetGrid({
       return;
     }
 
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "a") {
+      event.preventDefault();
+      const rows = visibleRows(container, rowSelector);
+      const first = rows[0] ? editableCells(rows[0], cellSelector)[0] : null;
+      const last = rows.at(-1) ? editableCells(rows.at(-1), cellSelector).at(-1) : null;
+      if (!first || !last) {
+        onGridMessage?.("No visible cells to select.");
+        return;
+      }
+
+      selection.keyboardSelecting = true;
+      selection.anchor = first;
+      selection.focus = last;
+      emitSelection(paintSheetSelection(container, selection.anchor, selection.focus, rowSelector, cellSelector));
+      onGridMessage?.(`${rows.length} visible row(s) selected.`);
+      window.setTimeout(() => {
+        selection.keyboardSelecting = false;
+      });
+      return;
+    }
+
+    if (event.shiftKey && event.key === " ") {
+      event.preventDefault();
+      const row = control.closest(rowSelector);
+      const controls = row ? controlsForRow(row, cellSelector) : [];
+      if (!controls.length) return;
+
+      selection.keyboardSelecting = true;
+      selection.anchor = controls[0];
+      selection.focus = controls.at(-1);
+      emitSelection(paintSheetSelection(container, selection.anchor, selection.focus, rowSelector, cellSelector));
+      onGridMessage?.("Row selected.");
+      window.setTimeout(() => {
+        selection.keyboardSelecting = false;
+      });
+      return;
+    }
+
+    if ((event.ctrlKey || event.metaKey) && event.key === " ") {
+      event.preventDefault();
+      const columnKey = control.closest("td")?.dataset.col;
+      const controls = columnKey ? controlsForColumn(container, columnKey, rowSelector, cellSelector) : [];
+      if (!controls.length) return;
+
+      selection.keyboardSelecting = true;
+      selection.anchor = controls[0];
+      selection.focus = controls.at(-1);
+      emitSelection(paintSheetSelection(container, selection.anchor, selection.focus, rowSelector, cellSelector));
+      onGridMessage?.("Column selected.");
+      window.setTimeout(() => {
+        selection.keyboardSelecting = false;
+      });
+      return;
+    }
+
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") {
       event.preventDefault();
       const entry = undoStack.pop();

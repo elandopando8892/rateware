@@ -20,8 +20,10 @@ export async function fetchStagingDetail(id) {
   return (await callRatewareApi("get_rate_row_detail", { id })).row;
 }
 
-export async function fetchStagingFilterValues({ field, status = "pending_review", rawUploadId = "", search = "", valueSearch = "", reviewFilter = "all", columnFilters = {}, limit = 1000 } = {}) {
-  return (await callRatewareApi("list_staging_filter_values", {
+const FILTER_VALUE_LIMIT = 5000;
+
+export async function fetchStagingFilterValues({ field, status = "pending_review", rawUploadId = "", search = "", valueSearch = "", reviewFilter = "all", columnFilters = {}, limit = FILTER_VALUE_LIMIT } = {}) {
+  const result = await callRatewareApi("list_staging_filter_values", {
     field,
     status,
     raw_upload_id: rawUploadId,
@@ -30,7 +32,15 @@ export async function fetchStagingFilterValues({ field, status = "pending_review
     review_filter: reviewFilter,
     column_filters: columnFilters,
     limit
-  })).values;
+  });
+  const values = Array.isArray(result?.values) ? result.values : [];
+  return {
+    values,
+    total: Number(result?.total ?? values.length),
+    database_count: Number(result?.database_count ?? result?.total ?? values.length),
+    hard_limit_reached: Boolean(result?.hard_limit_reached),
+    limit
+  };
 }
 
 export async function fetchStagingOptions() {

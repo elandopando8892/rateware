@@ -52,7 +52,7 @@
             </nav>
           </div>
           <div class="page-header-actions">
-            <button class="page-primary-action" type="button" data-click-target="#export-filtered-button">Export filtered</button>
+            <button class="page-primary-action" type="button" data-click-target="#export-filtered-button" title="Export every rate matching the active database filters">Export matching</button>
             <form id="auth-form" class="auth-strip">
               <button id="auth-button" type="submit">Sign in with Kinde</button>
               <button id="sign-out-button" type="button" class="secondary hidden">Sign out</button>
@@ -120,7 +120,7 @@
                 <button id="refresh-rateware-button" class="secondary" type="button">Refresh</button>
                 <button id="clear-rateware-filters" class="secondary" type="button">Clear filters</button>
                 <details id="rateware-column-menu" class="column-visibility-menu">
-                  <summary>View</summary>
+                  <summary title="Show or hide spreadsheet columns">Columns</summary>
                   <div data-column-toggle-list class="column-toggle-grid"></div>
                 </details>
               </div>
@@ -128,9 +128,9 @@
 
               <div class="bulk-action-bar is-empty" aria-live="polite">
                 <div class="bulk-scope-strip" aria-label="Bulk action scope">
-                  <span id="rateware-selection-count" class="bulk-scope-pill">Selected: 0</span>
-                  <span id="rateware-page-count" class="bulk-scope-pill">Page: 0</span>
-                  <span id="rateware-filtered-count" class="bulk-scope-pill">Filtered DB: 0</span>
+                  <span id="rateware-selection-count" class="bulk-scope-pill">Page selected: 0</span>
+                  <span id="rateware-page-count" class="bulk-scope-pill">Page rows: 0</span>
+                  <span id="rateware-filtered-count" class="bulk-scope-pill">Database matches: 0</span>
                   <button id="select-rateware-page" type="button" class="secondary small-button">Select page</button>
                   <button id="clear-rateware-selection" type="button" class="secondary small-button" disabled>Clear selection</button>
                 </div>
@@ -139,7 +139,7 @@
                 <button id="open-rateware-bulk-drawer" type="button" class="secondary small-button" disabled>Bulk edit</button>
                 <button id="save-selected-rateware" type="button" class="small-button" disabled>Save selected</button>
                 <details class="sheet-more-actions">
-                  <summary>More</summary>
+                  <summary title="Additional bulk, export, and lifecycle actions">More actions</summary>
                   <div>
                     <button id="match-selected-vendors-rateware" type="button" class="secondary small-button" disabled>Match vendors</button>
                     <button id="enrich-selected-zips-rateware" type="button" class="secondary small-button" disabled>Find missing ZIPs</button>
@@ -147,13 +147,13 @@
                     <button id="return-selected-button" type="button" class="secondary small-button" disabled>Return to staging</button>
                     <button id="export-selected-button" type="button" class="secondary small-button" disabled>Export selected CSV</button>
                     <button id="export-visible-button" type="button" class="secondary small-button">Export loaded CSV</button>
-                    <button id="export-filtered-button" type="button" class="secondary small-button">Export filtered CSV</button>
+                    <button id="export-filtered-button" type="button" class="secondary small-button" title="Export every rate matching the active database filters">Export matching CSV</button>
                     <button id="export-client-visible-button" type="button" class="secondary small-button">Client loaded</button>
-                    <button id="export-client-filtered-button" type="button" class="secondary small-button">Client filtered</button>
+                    <button id="export-client-filtered-button" type="button" class="secondary small-button" title="Export a client-ready file for every rate matching the active database filters">Client matching</button>
                     <button id="export-rfx-visible-button" type="button" class="secondary small-button">RFx loaded</button>
-                    <button id="export-rfx-filtered-button" type="button" class="secondary small-button">RFx filtered</button>
-                    <button id="archive-filtered-rateware" type="button" class="secondary small-button">Archive filtered</button>
-                    <button id="remove-filtered-rateware" type="button" class="danger small-button">Remove filtered</button>
+                    <button id="export-rfx-filtered-button" type="button" class="secondary small-button" title="Export an RFx file for every rate matching the active database filters">RFx matching</button>
+                    <button id="archive-filtered-rateware" type="button" class="secondary small-button" title="Archive every rate matching the active database filters">Archive matching</button>
+                    <button id="remove-filtered-rateware" type="button" class="danger small-button" title="Remove every rate matching the active database filters">Remove matching</button>
                   </div>
                 </details>
                 <span id="rateware-action-status" class="row-save-status"></span>
@@ -177,6 +177,7 @@
                     <option value="100">100</option>
                     <option value="200" selected>200</option>
                     <option value="500">500</option>
+                    <option value="1000">1,000</option>
                   </select>
                 </label>
               </div>
@@ -197,6 +198,9 @@
                   <span>Drag across cells selects a range</span>
                   <span>Paste over a range applies values in bulk</span>
                   <span>Drag the corner handle fills down</span>
+                  <span><kbd>Ctrl</kbd> + <kbd>A</kbd> selects visible cells</span>
+                  <span><kbd>Shift</kbd> + <kbd>Space</kbd> selects the active row</span>
+                  <span><kbd>Ctrl</kbd> + <kbd>Space</kbd> selects the active column</span>
                   <span><kbd>Shift</kbd> + arrows selects a range</span>
                   <span><kbd>Ctrl</kbd> + <kbd>C</kbd> copies cells</span>
                   <span><kbd>Ctrl</kbd> + <kbd>Enter</kbd> applies value to range</span>

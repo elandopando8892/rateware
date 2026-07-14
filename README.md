@@ -225,3 +225,25 @@ node tools/whatsapp-env-check.mjs
 ```
 
 The check prints only configured/missing status and never prints secret values.
+
+## Shipper CRM relational import
+
+Use `Shipper CRM > Import` to migrate an account, contact, and deal export without flattening the relationships into one spreadsheet. The downloadable `rateware-shipper-crm-template.xlsx` contains these worksheets:
+
+- `Accounts`: one customer/prospect organization per row. `external_account_id` is the stable source key.
+- `Contacts`: one person per row. `external_account_id` links it to `Accounts`.
+- `Opportunities`: one deal per row. `external_account_id` links it to `Accounts`; `external_contact_id` preserves the primary contact relationship when available.
+
+The importer accepts up to 1,000 rows per worksheet (3,000 total). It first saves Accounts, then links Contacts and Opportunities. Source identities are scoped to the signed-in workspace, so re-importing the same source IDs updates the existing records rather than creating duplicates. Records with missing parent account IDs are skipped and reported in the import result; no orphan contact or opportunity is created.
+
+For the supplied Pipedrive exports, regenerate the structured migration workbook locally:
+
+```powershell
+$node='C:\Users\andre\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe'
+& $node tools\build-shipper-crm-import-kit.mjs `
+  "C:\path\to\organizations.xlsx" `
+  "C:\path\to\people.xlsx" `
+  "C:\path\to\deals.xlsx"
+```
+
+Before using relational import in a deployed workspace, apply the migration `supabase/migrations/20260713210000_shipper_crm_relational_import.sql`. It adds workspace-scoped external source IDs and unique indexes for Accounts, Contacts, and Opportunities. Existing single-sheet CSV imports remain supported as account-only imports.
