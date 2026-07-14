@@ -1216,6 +1216,7 @@ function canonicalImportedSelectValue(column, value) {
 function mapRfiImportHeaders(values) {
   const headers = values.map(normalizeRfiImportHeader);
   const mapping = {};
+  const usedIndexes = new Set();
   for (const column of RFI_LANE_COLUMNS) {
     const candidates = [
       column.key,
@@ -1226,10 +1227,15 @@ function mapRfiImportHeaders(values) {
     ]
       .map(normalizeRfiImportHeader)
       .filter(Boolean);
-    const index = headers.findIndex((header) => candidates.some((candidate) => (
-      header === candidate || (candidate.length >= 5 && (header.includes(candidate) || candidate.includes(header)))
+    const exactIndex = headers.findIndex((header, index) => !usedIndexes.has(index) && candidates.includes(header));
+    const fuzzyIndex = exactIndex >= 0 ? -1 : headers.findIndex((header, index) => !usedIndexes.has(index) && candidates.some((candidate) => (
+      candidate.length >= 8 && (header.includes(candidate) || candidate.includes(header))
     )));
-    if (index >= 0) mapping[column.key] = index;
+    const index = exactIndex >= 0 ? exactIndex : fuzzyIndex;
+    if (index >= 0) {
+      mapping[column.key] = index;
+      usedIndexes.add(index);
+    }
   }
   return mapping;
 }
@@ -1249,16 +1255,35 @@ const RFI_RUBRIC_IMPORT_ALIASES = {
 function mapRfiRubricHeaders(values) {
   const headers = values.map(normalizeRfiImportHeader);
   const mapping = {};
+  const usedIndexes = new Set();
   for (const key of Object.keys(RFI_RUBRIC_IMPORT_ALIASES)) {
     const candidates = [key, ...(RFI_RUBRIC_IMPORT_ALIASES[key])]
       .map(normalizeRfiImportHeader)
       .filter(Boolean);
-    const index = headers.findIndex((header) => candidates.some((candidate) => (
-      header === candidate || (candidate.length >= 5 && (header.includes(candidate) || candidate.includes(header)))
+    const exactIndex = headers.findIndex((header, index) => !usedIndexes.has(index) && candidates.includes(header));
+    const fuzzyIndex = exactIndex >= 0 ? -1 : headers.findIndex((header, index) => !usedIndexes.has(index) && candidates.some((candidate) => (
+      candidate.length >= 8 && (header.includes(candidate) || candidate.includes(header))
     )));
-    if (index >= 0) mapping[key] = index;
+    const index = exactIndex >= 0 ? exactIndex : fuzzyIndex;
+    if (index >= 0) {
+      mapping[key] = index;
+      usedIndexes.add(index);
+    }
   }
   return mapping;
+}
+
+function isRfiWorkbookSheet(sheetName, key) {
+  const normalized = normalizeRfiImportHeader(sheetName);
+  return Object.values(RFI_WORKBOOK_SHEETS).some((sheets) => (
+    normalizeRfiImportHeader(sheets[key]) === normalized
+  ));
+}
+
+function isRfiAuxiliaryImportSheet(sheetName) {
+  return ["validation", "rubric", "catalog", "instructions", "details"].some((key) => (
+    isRfiWorkbookSheet(sheetName, key)
+  ));
 }
 
 function findRfiRubricSheet(workbook, XLSX, excludedSheet = "") {
@@ -1315,16 +1340,23 @@ function findRfiSegmentDetails(workbook, XLSX) {
 
 function findRfiImportSheet(workbook, XLSX) {
   let best = null;
+  let preferredRoute = null;
   for (const sheetName of workbook.SheetNames || []) {
+    if (isRfiAuxiliaryImportSheet(sheetName)) continue;
     const sheet = workbook.Sheets[sheetName];
     const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "", raw: false, blankrows: false });
     for (let headerIndex = 0; headerIndex < Math.min(rows.length, 20); headerIndex += 1) {
       const mapping = mapRfiImportHeaders(rows[headerIndex] || []);
       const score = Object.keys(mapping).length;
-      if (!best || score > best.score) best = { sheetName, rows, headerIndex, mapping, score };
+      const candidate = { sheetName, rows, headerIndex, mapping, score };
+      if (isRfiWorkbookSheet(sheetName, "route")) {
+        if (!preferredRoute || score > preferredRoute.score) preferredRoute = candidate;
+      } else if (!best || score > best.score) {
+        best = candidate;
+      }
     }
   }
-  return best;
+  return preferredRoute || best;
 }
 
 function isRfiImportGuideRow(lane) {

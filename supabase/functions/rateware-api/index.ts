@@ -11264,8 +11264,19 @@ async function whatsappTemplateGraphFetch(
   throw new Error(reason);
 }
 
+function normalizeWhatsappMetaStatus(value: unknown, fallback = "NOT_PUBLISHED") {
+  const source = cleanText(value) || fallback;
+  const normalized = source
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  return normalized || fallback.toUpperCase();
+}
+
 function whatsappMetaStatus(value: unknown, fallback = "NOT_PUBLISHED") {
-  const normalized = (cleanText(value) || fallback).toUpperCase().replace(/[\s-]+/g, "_");
+  const normalized = normalizeWhatsappMetaStatus(value, fallback);
   if (["PENDING_REVIEW", "UNDER_REVIEW"].includes(normalized)) return "IN_REVIEW";
   // WhatsApp Manager may present an approved template as "Active" (for
   // example, "Active - Quality pending"). Treat that provider label as an
@@ -11281,6 +11292,63 @@ function whatsappMetaStatus(value: unknown, fallback = "NOT_PUBLISHED") {
     || normalized.startsWith("APPROVED_")
   ) return "APPROVED";
   return normalized || fallback.toUpperCase();
+}
+
+function whatsappMetaQualityStatusIsSendable(value: unknown) {
+  const normalized = normalizeWhatsappMetaStatus(value, "");
+  return [
+    "ACTIVE",
+    "GREEN",
+    "HIGH",
+    "YELLOW",
+    "MEDIUM",
+    "RED",
+    "LOW",
+    "UNKNOWN",
+    "QUALITY_PENDING"
+  ].includes(normalized) || normalized.startsWith("ACTIVE_");
+}
+
+function whatsappTemplateStatusFromRow(row: unknown, fallback = "NOT_PUBLISHED") {
+  const record = objectRecord(row);
+  const qualityScore = objectRecord(record.quality_score);
+  const qualityRating = objectRecord(record.quality_rating);
+  const metadata = objectRecord(record.metadata);
+  const qualityCandidates = [
+    qualityScore.status,
+    qualityScore.score,
+    qualityRating.status,
+    qualityRating.score,
+    metadata.quality_status,
+    metadata.quality_rating
+  ];
+  if (qualityCandidates.some((candidate) => whatsappMetaQualityStatusIsSendable(candidate))) return "APPROVED";
+
+  const candidates = [
+    record.status,
+    record.template_status,
+    record.review_status,
+    record.lifecycle_status,
+    qualityScore.status,
+    qualityScore.score,
+    qualityRating.status,
+    qualityRating.score,
+    metadata.status,
+    metadata.meta_template_status,
+    metadata.review_status,
+    metadata.quality_status,
+    metadata.quality_rating
+  ]
+    .map((candidate) => cleanText(candidate))
+    .filter(Boolean)
+    .map((candidate) => whatsappMetaStatus(candidate, fallback));
+
+  if (candidates.includes("APPROVED")) return "APPROVED";
+  const blocker = candidates.find((status) => ["REJECTED", "PAUSED", "DISABLED"].includes(status));
+  if (blocker) return blocker;
+  const pending = candidates.find((status) => whatsappMetaStatusNeedsApproval(status));
+  if (pending) return pending;
+  return candidates[0] || whatsappMetaStatus(fallback, fallback);
 }
 
 function whatsappMetaStatusLabel(value: unknown) {
@@ -11512,7 +11580,7 @@ async function publishOutreachTemplateToWhatsapp(
     const existingMeta = await whatsappTemplateGraphFetch(
       supabase,
       connection,
-      `?name=${encodeURIComponent(name)}&fields=id,name,language,status,category,components&limit=10`
+      `?name=${encodeURIComponent(name)}&fields=id,name,language,status,category,components,quality_score&limit=10`
     );
     metaRow = Array.isArray(existingMeta.data.data)
       ? existingMeta.data.data.find((row: Record<string, unknown>) => (
@@ -11589,7 +11657,7 @@ async function publishOutreachTemplateToWhatsapp(
     meta_template_name: cleanText(metaRow.name) || name,
     meta_template_language: cleanText(metaRow.language) || language,
     meta_template_category: cleanText(metaRow.category) || category,
-    meta_template_status: whatsappMetaStatus(metaRow.status, "PENDING"),
+    meta_template_status: whatsappTemplateStatusFromRow(metaRow, "PENDING"),
     source_fingerprint: fingerprint,
     source_placeholders: placeholders,
     meta_template_components: Array.isArray(metaRow.components) ? metaRow.components : components,
@@ -11666,11 +11734,16 @@ async function syncWhatsappTemplates(
   const data = await whatsappTemplateGraphFetch(
     supabase,
     connection,
-    "?fields=name,language,status,category,components&limit=100"
+    "?fields=name,language,status,category,components,quality_score&limit=100"
   );
   // Template sync reads the resolved workspace WABA through whatsappTemplateGraphFetch.
   // The legacy direct path was: `${connection.wabaId}/message_templates?fields=name,language,status,category,components&limit=100`.
-  const templates = Array.isArray(data.data.data) ? data.data.data : [];
+  const templates = Array.isArray(data.data.data)
+    ? data.data.data.map((template: Record<string, unknown>) => ({
+      ...template,
+      rateware_status: whatsappTemplateStatusFromRow(template)
+    }))
+    : [];
   const now = new Date().toISOString();
   const result = await supabase
     .from("whatsapp_business_connections")
@@ -11698,7 +11771,7 @@ async function syncWhatsappTemplates(
       .update({
         meta_template_id: cleanText(metaTemplate.id) || cleanText(mapping.meta_template_id),
         meta_template_name: cleanText(metaTemplate.name) || cleanText(mapping.meta_template_name),
-        meta_template_status: whatsappMetaStatus(metaTemplate.status),
+        meta_template_status: whatsappTemplateStatusFromRow(metaTemplate),
         meta_template_category: cleanText(metaTemplate.category) || cleanText(mapping.meta_template_category) || "UTILITY",
         meta_template_components: Array.isArray(metaTemplate.components) ? metaTemplate.components : mapping.meta_template_components,
         last_synced_at: now,
@@ -11715,7 +11788,7 @@ async function syncWhatsappTemplates(
     synced: templates.length,
     rows: templates,
     mappings: reconciled.map(publicWhatsappTemplateMapping),
-    approved: templates.filter((template: Record<string, unknown>) => whatsappMetaStatus(template.status) === "APPROVED").length,
+    approved: templates.filter((template: Record<string, unknown>) => whatsappTemplateStatusFromRow(template) === "APPROVED").length,
     connection: publicWhatsappConnection(result.data, { internalWorkspace: connection.internalWorkspace })
   };
 }

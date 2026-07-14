@@ -344,12 +344,17 @@ assert.match(apiSource, /rateware_rfx_invitation_en/, "WhatsApp RFx delivery sho
 assert.match(apiSource, /whatsappTemplateNamesMatch/, "WhatsApp template sync should reconcile legacy and current stable RFx template aliases");
 assert.match(apiSource, /whatsappTemplateLanguagesMatch/, "WhatsApp template sync should reconcile Meta language roots such as en and en_US");
 assert.match(apiSource, /normalized\.startsWith\("ACTIVE_"\)[\s\S]+APPROVED/, "WhatsApp Active quality-pending templates should be treated as approved for sending");
+assert.match(apiSource, /replace\(\s*\/\[\^A-Z0-9\]\+\/g,\s*"_"\s*\)/, "WhatsApp Meta status normalization should handle punctuation and unicode separators");
+assert.match(apiSource, /function whatsappTemplateStatusFromRow[\s\S]+quality_score[\s\S]+quality_rating/, "WhatsApp template sync should derive sendable status from Meta template row variants");
+assert.match(apiSource, /function whatsappMetaQualityStatusIsSendable[\s\S]+"GREEN"[\s\S]+"QUALITY_PENDING"/, "WhatsApp quality score signals should unlock approved Meta templates");
+assert.match(apiSource, /candidates\.includes\("APPROVED"\)[\s\S]+return "APPROVED"/, "WhatsApp template status should prefer approved or active quality signals over stale pending values");
+assert.match(apiSource, /approved: templates\.filter\(\(template: Record<string, unknown>\) => whatsappTemplateStatusFromRow\(template\) === "APPROVED"\)\.length/, "WhatsApp template sync approved count should use Rateware's normalized Meta status");
 assert.match(apiSource, /whatsappTemplateLanguagesMatch\(row\.language, language\)/, "WhatsApp publish should reuse a Meta template when Meta returns a language root such as en instead of en_US");
 assert.match(apiSource, /normalized\.startsWith\("APPROVED_"\)/, "WhatsApp approved quality variants should remain sendable");
 assert.match(apiSource, /list_whatsapp_phone_numbers/, "Rateware API should expose WhatsApp sender phone listing");
 assert.match(apiSource, /verify_whatsapp_webhook/, "Rateware API should expose WhatsApp webhook verification");
 assert.match(apiSource, /webhook_verified_at: verified \? now : null/, "Webhook verification should persist its result on the resolved WhatsApp connection");
-assert.match(apiSource, /message_templates\?fields=name,language,status,category,components&limit=100/, "WhatsApp template sync should call Meta message_templates endpoint");
+assert.match(apiSource, /\?fields=name,language,status,category,components,quality_score&limit=100/, "WhatsApp template sync should read Meta quality status from message_templates");
 assert.match(settingsHtml, /connect-whatsapp-button/, "Settings should expose WhatsApp Business connection controls");
 assert.match(settingsHtml, /whatsapp-manual-form/, "External workspaces should have a manual WhatsApp Business setup form");
 assert.match(settingsHtml, /whatsapp-access-token[^>]+type="password"/, "WhatsApp access token should use a password input");

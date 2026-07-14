@@ -46,6 +46,11 @@ assert.match(source, /function rfiWorkbookPlaceholder\(/, "RFI workbook guide ro
 assert.match(source, /rfiWorkbookPlaceholder\(column, locale\)/, "Both RFI workbook downloads use localized guide-row placeholders.");
 assert.match(source, /clave_plantilla_rubros/, "Spanish segment detail headers are accepted during import.");
 assert.match(source, /rfiWorkbookOptionLabel\(candidate, \"es\"\)/, "Localized Spanish catalog labels normalize back to canonical values.");
+assert.match(source, /function isRfiAuxiliaryImportSheet\(/, "RFI import excludes workbook helper sheets from route detection.");
+assert.match(source, /if \(isRfiAuxiliaryImportSheet\(sheetName\)\) continue;/, "Validation lists, catalogs, rubrics, and instructions cannot be imported as routes.");
+assert.match(source, /preferredRoute \|\| best/, "RFI import prioritizes the localized Route Schedule sheet over generic matches.");
+assert.match(source, /const usedIndexes = new Set\(\);/, "Route and rubric imports map each source column only once.");
+assert.match(source, /const exactIndex = headers\.findIndex/, "RFI import resolves exact localized headers before fuzzy aliases.");
 
 for (const segment of [
   "local_ftl",
