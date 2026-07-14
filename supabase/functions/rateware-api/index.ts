@@ -11384,11 +11384,38 @@ function whatsappMetaStatusMessage(value: unknown) {
 
 function whatsappMetaLanguage(template: Record<string, unknown>) {
   const inferred = outreachTemplateLanguage(template) === "es" ? "es_MX" : "en";
-  const explicit = (cleanText(template.meta_template_language) || "").replace(/-/g, "_");
-  if (explicit && /^[a-z]{2}(_[A-Z]{2})?$/.test(explicit)) {
-    return explicit.toLowerCase().startsWith("en") ? "en" : explicit;
-  }
+  const explicitRaw = (cleanText(template.meta_template_language) || "").replace(/-/g, "_");
+  const explicit = normalizeWhatsappLocale(explicitRaw);
+  if (explicit) return explicit;
   return inferred;
+}
+
+function normalizeWhatsappLocale(value: unknown) {
+  const raw = (cleanText(value) || "").trim().replace(/-/g, "_");
+  if (!raw) return "";
+  const compact = raw.toLowerCase().replace(/[^a-z_]/g, "");
+  const aliases: Record<string, string> = {
+    english: "en_US",
+    englishus: "en_US",
+    en: "en_US",
+    us: "en_US",
+    enus: "en_US",
+    englishuk: "en_GB",
+    engb: "en_GB",
+    spanish: "es",
+    espanol: "es_MX",
+    spanishmexico: "es_MX",
+    es: "es_MX",
+    esmx: "es_MX"
+  };
+  if (aliases[compact]) return aliases[compact];
+  const match = raw.match(/^([a-z]{2})(?:_([a-z]{2}))?$/i);
+  if (!match) return "";
+  const language = match[1].toLowerCase();
+  const region = match[2]?.toUpperCase();
+  if (language === "en") return region === "GB" ? "en_GB" : "en_US";
+  if (language === "es") return region === "MX" ? "es_MX" : "es";
+  return region ? `${language}_${region}` : language;
 }
 
 function whatsappTemplateFingerprint(value: unknown) {
@@ -11483,6 +11510,12 @@ function whatsappTemplateLanguagesMatch(leftValue: unknown, rightValue: unknown)
 }
 
 function whatsappTemplateLanguageCandidates(value: unknown) {
+  const canonicalLocale = normalizeWhatsappLocale(value) || "en_US";
+  // Meta translations are exact locales. Avoid probing unrelated locales such
+  // as en_GB when the approved HeyMarksman template is en_US.
+  if (canonicalLocale === "en_US") return ["en_US", "en"];
+  if (canonicalLocale === "en_GB") return ["en_GB", "en"];
+  if (canonicalLocale === "es_MX") return ["es_MX", "es"];
   const raw = (cleanText(value) || "").trim().replace(/-/g, "_");
   // Meta's API expects a locale code. Older mappings and UI labels can contain
   // human-readable values such as "English", which otherwise cause #132001.
