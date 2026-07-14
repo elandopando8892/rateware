@@ -9,6 +9,7 @@ assert.match(source, /function rfiImportDiagnostics\(/, "RFI imports provide a p
 assert.match(source, /dataValidations\.add\(/, "RFI template creates spreadsheet dropdown validations.");
 assert.match(source, /workbook\.definedNames\.add\(/, "RFI template stores dropdowns as workbook named ranges.");
 assert.match(source, /workbook\.definedNames\.add\(range,\s*name\)/, "RFI template registers named ranges with the ExcelJS address/name argument order.");
+assert.match(source, /const column = excelColumnName\(columnIndex - 1\)/, "RFI named ranges align with the validation-list column where values are written.");
 assert.match(source, /showDropDown:\s*false/, "RFI template keeps the dropdown arrow visible.");
 assert.match(source, /showErrorMessage:\s*false/, "RFI template permits catalog overrides entered by the user.");
 assert.match(source, /RFI_RUBRIC_RESPONSE_CATALOGS/, "RFI templates provide contextual dropdown suggestions for rubric responses.");

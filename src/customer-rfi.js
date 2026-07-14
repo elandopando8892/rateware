@@ -1633,7 +1633,8 @@ function rfiValidationName(key) {
 function addRfiValidationList(workbook, sheet, key, values, columnIndex) {
   const cleanValues = [...new Set(values.map(cleanText).filter(Boolean))];
   if (!cleanValues.length) return "";
-  const column = excelColumnName(columnIndex);
+  // columnIndex is the worksheet's 1-based column index; excelColumnName is 0-based.
+  const column = excelColumnName(columnIndex - 1);
   const range = `'${sheet.name}'!$${column}$2:$${column}$${cleanValues.length + 1}`;
   const name = rfiValidationName(key);
   // ExcelJS expects the address first and the defined-name second.

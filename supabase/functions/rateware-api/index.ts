@@ -11222,7 +11222,12 @@ async function whatsappTemplateGraphFetch(
   const discoveredCandidates = await discoverWhatsappWabaFromPhone(connection);
   const candidates: Array<{ id: string; source: string }> = [];
   const seen = new Set<string>();
-  for (const candidate of [...initialCandidates, ...discoveredCandidates]) {
+  // The phone number relationship is authoritative. A stale WABA saved in
+  // metadata can still expose a template with the same name, but its status
+  // may not match the sender that will actually deliver the message. Probe
+  // the WABA attached to the phone first, then use saved values only as
+  // fallbacks for older Graph versions that do not expose the relationship.
+  for (const candidate of [...discoveredCandidates, ...initialCandidates]) {
     if (!candidate.id || seen.has(candidate.id)) continue;
     seen.add(candidate.id);
     candidates.push(candidate);
