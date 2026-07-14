@@ -11457,6 +11457,20 @@ function whatsappTemplateNamesMatch(
   return stableNames.has(left) && stableNames.has(right);
 }
 
+function whatsappCanonicalTemplateName(value: unknown, language: unknown) {
+  const name = cleanText(value);
+  const normalizedLanguage = (cleanText(language) || "").toLowerCase();
+  const suffix = normalizedLanguage.startsWith("es") ? "es" : "en";
+  const stableNames = new Set([
+    `rateware_rfx_invitation_${suffix}`,
+    `rateware_rfx_invitation_${suffix}_v1`,
+    `rateware_rfx_invitation_${suffix}rateware_rfx_invitation_${suffix}`
+  ]);
+  return stableNames.has((name || "").toLowerCase())
+    ? `rateware_rfx_invitation_${suffix}`
+    : name;
+}
+
 function whatsappTemplateLanguagesMatch(leftValue: unknown, rightValue: unknown) {
   const left = (cleanText(leftValue) || "").toLowerCase().replace(/-/g, "_");
   const right = (cleanText(rightValue) || "").toLowerCase().replace(/-/g, "_");
@@ -13053,8 +13067,8 @@ async function metaSendWhatsappTemplate(
   connection: Awaited<ReturnType<typeof activeWhatsappConnection>>
 ) {
   const to = normalizeWhatsappPhone(message.normalized_recipient_phone || message.recipient_phone);
-  const templateName = cleanText(message.whatsapp_template_name);
   const language = cleanText(message.whatsapp_template_language) || "en";
+  const templateName = whatsappCanonicalTemplateName(message.whatsapp_template_name, language);
   const metadata = objectRecord(message.metadata);
   const templateStatus = cleanText(metadata.whatsapp_template_status)
     ? whatsappMetaStatus(metadata.whatsapp_template_status)
@@ -13104,7 +13118,8 @@ async function metaSendWhatsappTemplate(
       if (!isWhatsappTemplateTranslationError(error)) throw error;
     }
   }
-  throw lastError instanceof Error ? lastError : new Error(String(lastError || "WhatsApp template send failed."));
+  const detail = lastError instanceof Error ? lastError.message : String(lastError || "WhatsApp template send failed.");
+  throw new Error(`Meta could not find template "${templateName}" for language(s) ${languages.join(", ")}. ${detail}`);
 }
 
 async function updateWhatsappMessageFailure(
