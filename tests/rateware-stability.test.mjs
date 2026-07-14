@@ -324,6 +324,8 @@ const generateOutreachDraftsSource = apiSource.slice(
   apiSource.indexOf('if (body.action === "list_outreach_messages")')
 );
 assert.match(apiSource, /if \(normalized === "email" \|\| normalized === "gmail" \|\| normalized === "gmail_only"\) return \["email"\]/, "Gmail-only outreach should resolve to email only");
+assert.match(apiSource, /const channel = cleanText\(input\.channel\)\?\.toLowerCase\(\) \|\| "email"/, "Outreach templates and campaigns should default to Gmail only");
+assert.match(apiSource, /const normalized = cleanText\(channel\)\?\.toLowerCase\(\) \|\| "email"/, "Unknown outreach channels should default to Gmail only");
 assert.match(generateOutreachDraftsSource, /const wantsDirectWhatsapp = requestedChannels\.includes\("whatsapp"\)/, "Draft generation should explicitly gate direct WhatsApp work");
 assert.doesNotMatch(
   generateOutreachDraftsSource.slice(0, generateOutreachDraftsSource.indexOf("if (wantsDirectWhatsapp)")),
@@ -387,9 +389,13 @@ assert.match(readmeSource, /never prints secret values/i, "README should explain
 assert.match(whatsappEnvCheckSource, /Secret values are never printed/, "WhatsApp env check should explicitly avoid printing secret values");
 assert.match(whatsappEnvCheckSource, /sync_whatsapp_templates/, "WhatsApp env check should call template sync when authenticated");
 assert.match(rfxEventsHtml, /rfx-send-selected-whatsapp-drafts/, "RFx Bid Room should expose selected WhatsApp draft sending");
-assert.match(rfxEventsHtml, /Generate draft queue creates or reuses the Meta notifier/, "RFx Bid Room should explain automatic Meta notifier setup");
+assert.match(rfxEventsHtml, /Generate one channel at a time\. Gmail, WhatsApp Business, and WhatsApp groups use separate queues\./, "Bid Room Step 4 should make channel separation explicit");
+assert.doesNotMatch(rfxEventsHtml, /<option value="multi">/, "Bid Room Step 4 should not expose mixed Email + WhatsApp as the default workflow");
+assert.match(rfxEventsHtml, /WhatsApp Business readiness/, "RFx Bid Room should explain WhatsApp Business readiness separately from Gmail");
 assert.match(rfxEventsSource, /publishOutreachTemplateToWhatsapp/, "RFx Bid Room should use Outreach as the WhatsApp template source");
 assert.match(rfxEventsSource, /Full Outreach \/ Bid Room copy/, "RFx Bid Room should distinguish editable Outreach copy from the Meta notifier");
+assert.match(rfxEventsSource, /function draftRowsForSelectedOutreachChannel/, "Draft queue should isolate visible rows by selected outreach channel");
+assert.match(rfxEventsSource, /const rows = draftRowsForSelectedOutreachChannel\(allRows\)/, "Draft queue should render only the selected channel's drafts");
 assert.match(rfxEventsHtml, /rfx-mark-selected-whatsapp-groups/, "RFx Bid Room should expose manual WhatsApp group completion");
 assert.match(rfxEventsSource, /selectableWhatsappDrafts/, "RFx Bid Room should calculate direct WhatsApp selectable drafts");
 assert.match(rfxEventsSource, /selectableWhatsappGroupDrafts/, "RFx Bid Room should calculate manual group selectable drafts");

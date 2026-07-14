@@ -8670,12 +8670,12 @@ async function syncBidRoomEventThread(
 }
 
 function normalizeOutreachTemplate(input: Record<string, unknown>) {
-  const channel = cleanText(input.channel)?.toLowerCase() || "multi";
+  const channel = cleanText(input.channel)?.toLowerCase() || "email";
   const name = cleanText(input.name);
   if (!name) throw new Error("Template name is required.");
   return {
     name,
-    channel: ["email", "whatsapp", "whatsapp_group", "multi", "email_whatsapp", "email_whatsapp_group", "whatsapp_direct_group"].includes(channel) ? channel : "multi",
+    channel: ["email", "whatsapp", "whatsapp_group", "multi", "email_whatsapp", "email_whatsapp_group", "whatsapp_direct_group"].includes(channel) ? channel : "email",
     subject: cleanText(input.subject),
     html_body: cleanText(extractHtmlFromMime(input.html_body || input.body || input.email_body)),
     whatsapp_body: cleanText(input.whatsapp_body || input.whatsapp_text),
@@ -8733,7 +8733,7 @@ function extractHtmlFromMime(value: unknown) {
 }
 
 function normalizeOutreachCampaign(input: Record<string, unknown>) {
-  const channel = cleanText(input.channel)?.toLowerCase() || "multi";
+  const channel = cleanText(input.channel)?.toLowerCase() || "email";
   const status = cleanText(input.status)?.toLowerCase() || "draft";
   const senderConnectionStatus = cleanText(input.sender_connection_status)?.toLowerCase() || "draft_only";
   const targetMode = cleanText(input.whatsapp_target_mode || input.target_mode)?.toLowerCase() || "direct_vendor";
@@ -8744,7 +8744,7 @@ function normalizeOutreachCampaign(input: Record<string, unknown>) {
     rfx_event_id: cleanText(input.rfx_event_id || input.event_id),
     template_id: cleanText(input.template_id),
     name,
-    channel: ["email", "whatsapp", "whatsapp_group", "multi", "email_whatsapp", "email_whatsapp_group", "whatsapp_direct_group"].includes(channel) ? channel : "multi",
+    channel: ["email", "whatsapp", "whatsapp_group", "multi", "email_whatsapp", "email_whatsapp_group", "whatsapp_direct_group"].includes(channel) ? channel : "email",
     whatsapp_target_mode: ["direct_vendor", "vendor_group", "direct_and_group"].includes(targetMode) ? targetMode : "direct_vendor",
     group_delivery_policy: ["manual_only", "api_only", "manual_or_api"].includes(groupPolicy) ? groupPolicy : "manual_or_api",
     whatsapp_connection_id: cleanText(input.whatsapp_connection_id),
@@ -10525,7 +10525,7 @@ function outreachContext(
 }
 
 function messageChannels(channel: unknown) {
-  const normalized = cleanText(channel)?.toLowerCase() || "multi";
+  const normalized = cleanText(channel)?.toLowerCase() || "email";
   if (normalized === "email" || normalized === "gmail" || normalized === "gmail_only") return ["email"];
   if (normalized === "whatsapp") return ["whatsapp"];
   if (normalized === "whatsapp_group") return ["whatsapp_group"];
@@ -18263,7 +18263,7 @@ Deno.serve(async (request) => {
       const source = await fetchOutreachTemplate(supabase, user, id);
       const row = withOwner({
         name: `${source.name || "Template"} Copy`,
-        channel: source.channel || "multi",
+        channel: source.channel || "email",
         subject: source.subject,
         html_body: source.html_body,
         whatsapp_body: source.whatsapp_body,
@@ -18377,7 +18377,7 @@ Deno.serve(async (request) => {
         rfx_event_id: campaign.rfx_event_id,
         template_id: campaign.template_id,
         name: `${campaign.name || "Campaign"} Copy`,
-        channel: campaign.channel || "multi",
+        channel: campaign.channel || "email",
         sender_email: campaign.sender_email,
         sender_label: campaign.sender_label,
         sender_connection_status: campaign.sender_connection_status || "draft_only",

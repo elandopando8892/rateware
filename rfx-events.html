@@ -431,12 +431,11 @@
                     <label>
                       Send channel
                       <select id="rfx-outreach-channel">
-                        <option value="multi">Email + WhatsApp direct</option>
                         <option value="email">Gmail only</option>
-                        <option value="whatsapp">WhatsApp direct only</option>
+                        <option value="whatsapp">WhatsApp Business direct only</option>
                         <option value="whatsapp_group">WhatsApp group manual</option>
-                        <option value="email_whatsapp_group">Email + WhatsApp direct + group</option>
                       </select>
+                      <small>Generate one channel at a time. Gmail, WhatsApp Business, and WhatsApp groups use separate queues.</small>
                     </label>
                     <label>
                       WhatsApp target
@@ -457,8 +456,8 @@
                   </form>
                   <section id="rfx-whatsapp-readiness" class="gmail-sender-note whatsapp-template-readiness">
                     <div>
-                      <strong>WhatsApp from Outreach</strong>
-                      <span id="rfx-whatsapp-template-readiness-copy">Automatic: Generate draft queue creates or reuses the Meta notifier and reads its current approval status.</span>
+                      <strong>WhatsApp Business readiness</strong>
+                      <span id="rfx-whatsapp-template-readiness-copy">Only applies when the WhatsApp Business channel is selected. Gmail queues do not depend on WhatsApp status. Generate draft queue creates or reuses the Meta notifier automatically.</span>
                     </div>
                   </section>
                   <section class="gmail-sender-note">

@@ -1651,7 +1651,7 @@ function selectedOutreachTemplateDraft() {
 function templateSavePayload(template) {
   return {
     name: template?.name || "RFx invitation template",
-    channel: template?.channel || rfxOutreachChannel?.value || "multi",
+    channel: template?.channel || rfxOutreachChannel?.value || "email",
     subject: rfxTemplateSubject?.value || "",
     html_body: rfxTemplateHtml?.value || "",
     whatsapp_body: rfxTemplateWhatsapp?.value || ""
@@ -1869,7 +1869,7 @@ function laneTableHtml(targets = [], language = "en") {
 }
 
 function firstOutreachTarget() {
-  return outreachTargetInvitations().find((target) => targetHasChannel(target, rfxOutreachChannel?.value || "multi"))
+  return outreachTargetInvitations().find((target) => targetHasChannel(target, rfxOutreachChannel?.value || "email"))
     || outreachTargetInvitations()[0]
     || null;
 }
@@ -1925,23 +1925,27 @@ function outreachTargetInvitations() {
 
 function targetHasChannel(target, channel) {
   const vendor = target.invitation?.vendors || {};
+  const normalized = String(channel || "email").toLowerCase();
   const hasEmail = Boolean(vendor.primary_email);
   const hasWhatsapp = Boolean(vendor.whatsapp_phone);
   const hasGroup = Boolean(vendor.whatsapp_group_url || vendor.whatsapp_group_name || vendor.whatsapp_meta_group_id);
-  if (channel === "email") return hasEmail;
-  if (channel === "whatsapp") return hasWhatsapp;
-  if (channel === "whatsapp_group") return hasGroup;
-  if (channel === "email_whatsapp_group") return hasEmail || hasWhatsapp || hasGroup;
-  return hasEmail || hasWhatsapp;
+  if (normalized === "email" || normalized === "gmail" || normalized === "gmail_only") return hasEmail;
+  if (normalized === "whatsapp") return hasWhatsapp;
+  if (normalized === "whatsapp_group") return hasGroup;
+  if (normalized === "multi" || normalized === "email_whatsapp" || normalized === "email+whatsapp") return hasEmail && hasWhatsapp;
+  if (normalized === "whatsapp_direct_group" || normalized === "whatsapp+group") return hasWhatsapp && hasGroup;
+  if (normalized === "email_whatsapp_group" || normalized === "all") return hasEmail && hasWhatsapp && hasGroup;
+  return hasEmail;
 }
 
 function outreachChannelLabel(channel = "") {
-  const value = String(channel || "multi");
+  const value = String(channel || "email");
   if (value === "email") return "Gmail only";
-  if (value === "whatsapp") return "WhatsApp direct only";
+  if (value === "whatsapp") return "WhatsApp Business direct only";
   if (value === "whatsapp_group") return "WhatsApp group manual";
+  if (value === "multi" || value === "email_whatsapp") return "Email + WhatsApp direct";
   if (value === "email_whatsapp_group") return "Email + WhatsApp direct + group";
-  return "Email + WhatsApp direct";
+  return "Gmail only";
 }
 
 function whatsappTargetModeLabel(value = "") {
@@ -1967,7 +1971,7 @@ function renderOutreachPreview() {
   if (!rfxOutreachPreview) return;
   renderRfxTemplateEditor();
   const template = selectedOutreachTemplateDraft();
-  const channel = rfxOutreachChannel?.value || "multi";
+  const channel = rfxOutreachChannel?.value || "email";
   const targetMode = rfxWhatsappTargetMode?.value || "direct_vendor";
   const senderEmail = rfxOutreachSender?.value || APPROVED_GMAIL_SENDER;
   const targets = outreachTargetInvitations();
@@ -1994,7 +1998,7 @@ function renderOutreachPreview() {
     const visualEditorHtml = tokenizedHtmlForVisualEditor(template.html_body || template.whatsapp_body || "");
     rfxOutreachPreview.innerHTML = `
       <div>
-        <span class="status-pill">${escapeHtml(template.channel || "multi")}</span>
+        <span class="status-pill">${escapeHtml(template.channel || "email")}</span>
         <strong>${escapeHtml(template.name || "Template")}</strong>
         <small>${escapeHtml(renderedSubject || "No email subject")}</small>
       </div>
@@ -2085,7 +2089,7 @@ function renderOutreachPreview() {
 function rfxWizardStats() {
   const invitations = currentLanes.flatMap((lane) => activeInvitations(lane));
   const targets = outreachTargetInvitations();
-  const channel = rfxOutreachChannel?.value || "multi";
+  const channel = selectedOutreachChannel();
   const readyTargets = targets.filter((target) => targetHasChannel(target, channel));
   const bids = currentLanes.flatMap((lane) => bidInvitations(lane));
   return {
@@ -2308,7 +2312,7 @@ function readinessActionButton(action, label = "Open") {
 
 function bidRoomReadinessSnapshot() {
   const stats = processStats();
-  const channel = rfxOutreachChannel?.value || "multi";
+  const channel = rfxOutreachChannel?.value || "email";
   const template = selectedOutreachTemplateDraft();
   const drafts = draftRowsForEvent();
   const sendableDrafts = [
@@ -2687,7 +2691,7 @@ function renderWizardPreview() {
   const subject = template ? renderTemplateText(template.subject || `${context.rfx_id} invitation`, context) : "No template selected";
   const htmlBody = template ? renderTemplateText(template.html_body || template.whatsapp_body || "", context) : "";
   const whatsappText = template ? renderTemplateText(template.whatsapp_body || htmlBody.replace(/<[^>]*>/g, " "), context) : "";
-  const channel = rfxOutreachChannel?.value || "multi";
+  const channel = rfxOutreachChannel?.value || "email";
   wizardPreview.innerHTML = `
     <div class="split-heading compact">
       <div>
@@ -3427,7 +3431,7 @@ function renderRfxOpsStrip() {
   const activeInviteRows = currentLanes.flatMap((lane) => activeInvitations(lane));
   const bids = currentLanes.flatMap((lane) => bidInvitations(lane));
   const targets = outreachTargetInvitations();
-  const readyTargets = targets.filter((target) => targetHasChannel(target, rfxOutreachChannel?.value || "multi"));
+  const readyTargets = targets.filter((target) => targetHasChannel(target, rfxOutreachChannel?.value || "email"));
   const lanesWithShortlist = currentLanes.filter((lane) => activeInvitations(lane).length).length;
   const lanesWithBids = currentLanes.filter((lane) => bidInvitations(lane).length).length;
   const due = selectedEvent.due_date ? `Due ${selectedEvent.due_date}` : "No due date";
@@ -4380,6 +4384,15 @@ function draftRowsForEvent() {
     : [];
 }
 
+function selectedOutreachChannel() {
+  return rfxOutreachChannel?.value || "email";
+}
+
+function draftRowsForSelectedOutreachChannel(rows = draftRowsForEvent()) {
+  const channels = new Set(outreachDraftChannels(selectedOutreachChannel()).map((channel) => String(channel).toLowerCase()));
+  return rows.filter((message) => channels.has(String(message.channel || "email").toLowerCase()));
+}
+
 function draftSearchText(message = {}) {
   const metadata = message.metadata && typeof message.metadata === "object" ? message.metadata : {};
   const lane = message.rfx_lanes && typeof message.rfx_lanes === "object" ? message.rfx_lanes : {};
@@ -4459,7 +4472,7 @@ function outreachMessageInvitationIds(message = {}) {
 }
 
 function outreachDraftChannels(channel) {
-  const normalized = String(channel || "multi").trim().toLowerCase();
+  const normalized = String(channel || "email").trim().toLowerCase();
   if (normalized === "email" || normalized === "gmail" || normalized === "gmail_only") return ["email"];
   if (normalized === "whatsapp") return ["whatsapp"];
   if (normalized === "whatsapp_group") return ["whatsapp_group"];
@@ -4570,7 +4583,8 @@ function updateDraftSendControls(rows = [], allRows = draftRowsForEvent()) {
 
 function renderDraftQueue() {
   if (!draftSummary || !draftList) return;
-  const rows = draftRowsForEvent();
+  const allRows = draftRowsForEvent();
+  const rows = draftRowsForSelectedOutreachChannel(allRows);
   const filteredRows = filteredDraftRows(rows);
   const actionable = rows.filter((message) => ["drafted", "queued", "failed"].includes(String(message.status || "").toLowerCase()));
   const emailSelectable = selectableEmailDrafts(rows);
@@ -4578,9 +4592,12 @@ function renderDraftQueue() {
   const whatsappGroupSelectable = selectableWhatsappGroupDrafts(rows);
   const hasSearch = Boolean(normalizeDraftSearch(draftQueueSearch));
   updateDraftSendControls(filteredRows, rows);
+  const channelLabel = outreachChannelLabel(selectedOutreachChannel());
   draftSummary.textContent = rows.length
-    ? `${formatNumber(hasSearch ? filteredRows.length : rows.length)}${hasSearch ? ` of ${formatNumber(rows.length)}` : ""} draft rows | ${formatNumber(actionable.length)} need action | ${formatNumber(selectedDraftMessageIds.size)} selected`
-    : "No drafts generated for this bid event.";
+    ? `${formatNumber(hasSearch ? filteredRows.length : rows.length)}${hasSearch ? ` of ${formatNumber(rows.length)}` : ""} ${channelLabel} draft rows | ${formatNumber(actionable.length)} need action | ${formatNumber(selectedDraftMessageIds.size)} selected${allRows.length !== rows.length ? ` | ${formatNumber(allRows.length)} total all channels` : ""}`
+    : selectedEventId && allRows.length
+      ? `No ${channelLabel} drafts for this bid event. Switch channel or generate this queue.`
+      : "No drafts generated for this bid event.";
   if (draftSearchInput && draftSearchInput.value !== draftQueueSearch) draftSearchInput.value = draftQueueSearch;
   if (draftClearSearchButton) draftClearSearchButton.disabled = !hasSearch;
   if (!selectedEventId) {
@@ -4590,7 +4607,7 @@ function renderDraftQueue() {
   }
   if (!rows.length) {
     updateDraftSendControls([], []);
-    draftList.innerHTML = `<tr><td colspan="8">Create invite drafts to review Gmail and WhatsApp messages inside this Bid Room.</td></tr>`;
+    draftList.innerHTML = `<tr><td colspan="8">No ${escapeHtml(channelLabel)} drafts yet. Select this channel and generate its draft queue.</td></tr>`;
     return;
   }
   if (!filteredRows.length) {
@@ -5533,7 +5550,7 @@ async function createCurrentOutreachDrafts(statusElement = rfxOutreachStatus) {
     setStatus(statusElement, "Save the edited email preview before generating draft queue.", "error");
     return null;
   }
-  const outreachChannel = rfxOutreachChannel?.value || "multi";
+  const outreachChannel = selectedOutreachChannel();
   const requestedDraftChannels = outreachDraftChannels(outreachChannel);
   const draftTargets = selectedInvitationIds.size
     ? targets
@@ -6351,7 +6368,7 @@ draftClearSearchButton?.addEventListener("click", () => {
 });
 
 draftToggleVisible?.addEventListener("change", () => {
-  const rows = filteredDraftRows().slice(0, DRAFT_QUEUE_VISIBLE_LIMIT);
+  const rows = filteredDraftRows(draftRowsForSelectedOutreachChannel()).slice(0, DRAFT_QUEUE_VISIBLE_LIMIT);
   if (draftToggleVisible.checked) {
     rows.forEach((message) => selectedDraftMessageIds.add(String(message.id)));
   } else {
@@ -6361,7 +6378,7 @@ draftToggleVisible?.addEventListener("change", () => {
 });
 
 draftSelectAllEmailsButton?.addEventListener("click", () => {
-  const rows = filteredDraftRows();
+  const rows = filteredDraftRows(draftRowsForSelectedOutreachChannel());
   selectableEmailDrafts(rows).forEach((message) => selectedDraftMessageIds.add(String(message.id)));
   selectableWhatsappDrafts(rows).forEach((message) => selectedDraftMessageIds.add(String(message.id)));
   selectableWhatsappGroupDrafts(rows).forEach((message) => selectedDraftMessageIds.add(String(message.id)));
@@ -7082,7 +7099,7 @@ rfxOutreachTemplate?.addEventListener("change", () => {
   renderRfxTemplateEditor({ force: true });
   renderOutreachPreview();
 });
-rfxOutreachChannel?.addEventListener("change", renderOutreachPreview);
+rfxOutreachChannel?.addEventListener("change", renderOutreachLaunchpad);
 rfxWhatsappTargetMode?.addEventListener("change", renderOutreachPreview);
 rfxOutreachSender && (rfxOutreachSender.value = APPROVED_GMAIL_SENDER);
 rfxOutreachSender?.addEventListener("change", renderOutreachPreview);
