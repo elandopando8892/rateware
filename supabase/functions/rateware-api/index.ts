@@ -10526,13 +10526,13 @@ function outreachContext(
 
 function messageChannels(channel: unknown) {
   const normalized = cleanText(channel)?.toLowerCase() || "multi";
-  if (normalized === "email") return ["email"];
+  if (normalized === "email" || normalized === "gmail" || normalized === "gmail_only") return ["email"];
   if (normalized === "whatsapp") return ["whatsapp"];
   if (normalized === "whatsapp_group") return ["whatsapp_group"];
-  if (normalized === "email_whatsapp" || normalized === "email+whatsapp") return ["email", "whatsapp"];
+  if (normalized === "multi" || normalized === "email_whatsapp" || normalized === "email+whatsapp") return ["email", "whatsapp"];
   if (normalized === "whatsapp_direct_group" || normalized === "whatsapp+group") return ["whatsapp", "whatsapp_group"];
   if (normalized === "email_whatsapp_group" || normalized === "all") return ["email", "whatsapp", "whatsapp_group"];
-  return ["email", "whatsapp"];
+  return ["email"];
 }
 
 async function fetchOutreachTemplate(supabase: ReturnType<typeof createClient>, user: { owner_email: string | null }, id: unknown) {
@@ -18401,12 +18401,14 @@ Deno.serve(async (request) => {
       const whatsappTargetMode = cleanText(body.whatsapp_target_mode || campaign.whatsapp_target_mode || "direct_vendor");
       const targetMode = ["direct_vendor", "vendor_group", "direct_and_group"].includes(whatsappTargetMode) ? whatsappTargetMode : "direct_vendor";
       const requestedChannels = messageChannels(campaign.channel || template.channel);
+      const wantsDirectWhatsapp = requestedChannels.includes("whatsapp");
       let whatsappNotifier: Record<string, unknown> = {
         attempted: false,
         status: "not_requested"
       };
       let whatsappMapping: Record<string, unknown> | null = null;
-      if (requestedChannels.includes("whatsapp")) {
+      let whatsappConnectionRow: Record<string, unknown> = {};
+      if (wantsDirectWhatsapp) {
         try {
           const notifier = await publishOutreachTemplateToWhatsapp(supabase, user, { template_id: template.id });
           whatsappMapping = notifier.row as Record<string, unknown> | null;
@@ -18426,11 +18428,20 @@ Deno.serve(async (request) => {
             error: error instanceof Error ? error.message : String(error)
           };
         }
-      }
-      const whatsappConnection = await listWhatsappConnections(supabase, user);
-      const whatsappConnectionRow = whatsappConnection.rows?.[0] || {};
-      if (!whatsappMapping && whatsappConnectionRow.id) {
-        whatsappMapping = await whatsappTemplateMapping(supabase, whatsappConnectionRow.id, template.id);
+        try {
+          const whatsappConnection = await listWhatsappConnections(supabase, user);
+          whatsappConnectionRow = whatsappConnection.rows?.[0] || {};
+          if (!whatsappMapping && whatsappConnectionRow.id) {
+            whatsappMapping = await whatsappTemplateMapping(supabase, whatsappConnectionRow.id, template.id);
+          }
+        } catch (error) {
+          whatsappNotifier = {
+            attempted: true,
+            status: "error",
+            ready: false,
+            error: error instanceof Error ? error.message : String(error)
+          };
+        }
       }
 
       const invitationSelect = `

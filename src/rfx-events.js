@@ -4460,13 +4460,13 @@ function outreachMessageInvitationIds(message = {}) {
 
 function outreachDraftChannels(channel) {
   const normalized = String(channel || "multi").trim().toLowerCase();
-  if (normalized === "email") return ["email"];
+  if (normalized === "email" || normalized === "gmail" || normalized === "gmail_only") return ["email"];
   if (normalized === "whatsapp") return ["whatsapp"];
   if (normalized === "whatsapp_group") return ["whatsapp_group"];
-  if (normalized === "email_whatsapp" || normalized === "email+whatsapp") return ["email", "whatsapp"];
+  if (normalized === "multi" || normalized === "email_whatsapp" || normalized === "email+whatsapp") return ["email", "whatsapp"];
   if (normalized === "whatsapp_direct_group" || normalized === "whatsapp+group") return ["whatsapp", "whatsapp_group"];
   if (normalized === "email_whatsapp_group" || normalized === "all") return ["email", "whatsapp", "whatsapp_group"];
-  return ["email", "whatsapp"];
+  return ["email"];
 }
 
 function targetHasActiveOutreachDraft(target, requestedChannels = ["email"]) {

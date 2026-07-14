@@ -319,7 +319,19 @@ assert.match(apiSource, /rateware_rfx_invitation_es/, "WhatsApp should use the a
 assert.match(apiSource, /WHATSAPP_RFX_NOTIFICATION_PLACEHOLDERS[\s\S]+vendor_name[\s\S]+event_name[\s\S]+lane_count[\s\S]+due_date[\s\S]+bid_link/, "Stable Meta notifiers should use the five ordered RFx parameters");
 assert.match(apiSource, /delivery_strategy: "stable_rfx_notification"/, "WhatsApp mappings should identify the stable notifier strategy");
 assert.match(apiSource, /source_placeholders: placeholders/, "Workspace mappings should persist the ordered source placeholders");
-assert.match(apiSource, /requestedChannels\.includes\("whatsapp"\)[\s\S]+publishOutreachTemplateToWhatsapp\(supabase, user, \{ template_id: template\.id \}\)/, "Generating a WhatsApp queue should automatically create or refresh the Meta notifier");
+const generateOutreachDraftsSource = apiSource.slice(
+  apiSource.indexOf('if (body.action === "generate_outreach_drafts")'),
+  apiSource.indexOf('if (body.action === "list_outreach_messages")')
+);
+assert.match(apiSource, /if \(normalized === "email" \|\| normalized === "gmail" \|\| normalized === "gmail_only"\) return \["email"\]/, "Gmail-only outreach should resolve to email only");
+assert.match(generateOutreachDraftsSource, /const wantsDirectWhatsapp = requestedChannels\.includes\("whatsapp"\)/, "Draft generation should explicitly gate direct WhatsApp work");
+assert.doesNotMatch(
+  generateOutreachDraftsSource.slice(0, generateOutreachDraftsSource.indexOf("if (wantsDirectWhatsapp)")),
+  /listWhatsappConnections/,
+  "Gmail-only draft generation must not resolve WhatsApp connections before the WhatsApp gate"
+);
+assert.match(generateOutreachDraftsSource, /if \(wantsDirectWhatsapp\) \{[\s\S]+publishOutreachTemplateToWhatsapp\(supabase, user, \{ template_id: template\.id \}\)/, "Generating a WhatsApp queue should automatically create or refresh the Meta notifier");
+assert.match(generateOutreachDraftsSource, /if \(wantsDirectWhatsapp\) \{[\s\S]+listWhatsappConnections/, "WhatsApp connection lookup should only run for direct WhatsApp queues");
 assert.match(apiSource, /whatsapp_notifier: whatsappNotifier/, "Draft generation should return the automatic Meta notifier state");
 assert.match(apiSource, /whatsapp_template_parameters: whatsappParameters/, "Generated WhatsApp drafts should persist rendered Meta parameter values");
 assert.match(apiSource, /parameters: parameterRows\.map/, "WhatsApp sends should submit the rendered body parameters to Meta");
