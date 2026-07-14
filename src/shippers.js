@@ -4,6 +4,7 @@ import {
   applyShipperActionPlaybook,
   archiveShippers,
   createShipper,
+  createShipperProfileRequest,
   deleteShipperRecord,
   fetchShipper,
   fetchShipperAccountActivity,
@@ -23,7 +24,8 @@ import {
   promoteShipperRfiToOpportunity,
   saveShipperRecord,
   updateShipper,
-  updateShipperAccountActionStatus
+  updateShipperAccountActionStatus,
+  revokeShipperProfileRequest
 } from "./shipper-service.js";
 
 const state = {
@@ -879,9 +881,12 @@ function renderCadence() {
     ? state.cadenceRows.map((row) => {
       const due = cadenceDueState(row.due_date);
       const isDone = String(row.status || "").toLowerCase() === "done";
+      const isInProgress = String(row.status || "").toLowerCase() === "in_progress";
       const statusAction = isDone
         ? `<button class="secondary" type="button" data-shipper-action-status="open" data-shipper-action-id="${escapeHtml(row.id)}">Reopen</button>`
-        : `<button type="button" data-shipper-action-status="done" data-shipper-action-id="${escapeHtml(row.id)}">Complete</button>`;
+        : isInProgress
+          ? `<button type="button" data-shipper-action-status="done" data-shipper-action-id="${escapeHtml(row.id)}">Complete</button>`
+          : `<button class="secondary" type="button" data-shipper-action-status="in_progress" data-shipper-action-id="${escapeHtml(row.id)}">Start</button>`;
       return `<tr>
         <td><button class="shipper-inline-link" type="button" data-open-shipper="${escapeHtml(row.shipper_id)}" data-open-shipper-tab="actions">${escapeHtml(row.shipper_name || "Shipper")}</button><small>${escapeHtml(row.shipper_domain || row.primary_contact_email || "No domain or primary contact")}</small></td>
         <td><strong>${escapeHtml(row.title || "Account action")}</strong><small>${escapeHtml(humanLabel(row.action_type || "follow_up"))}${row.notes ? ` | ${escapeHtml(row.notes)}` : ""}</small></td>
@@ -926,7 +931,12 @@ async function updateCadenceActionStatus(id, status, button) {
   const row = state.cadenceRows.find((item) => item.id === id);
   if (!row) return;
   button.disabled = true;
-  setStatus(elements.cadenceStatus, status === "done" ? "Completing account action..." : "Reopening account action...");
+  const actionMessage = status === "done"
+    ? "Completing account action..."
+    : status === "in_progress"
+      ? "Starting account action..."
+      : "Reopening account action...";
+  setStatus(elements.cadenceStatus, actionMessage);
   try {
     const updated = await updateShipperAccountActionStatus(id, status);
     state.cadenceRows = state.cadenceRows.map((item) => item.id === id ? { ...item, ...updated } : item);
@@ -936,7 +946,12 @@ async function updateCadenceActionStatus(id, status, button) {
     }
     await Promise.all([loadSummary(), state.intelligenceReady ? loadShipperIntelligence() : Promise.resolve()]);
     await loadCadence();
-    setStatus(elements.cadenceStatus, status === "done" ? "Account action completed." : "Account action reopened.", "success");
+    const successMessage = status === "done"
+      ? "Account action completed."
+      : status === "in_progress"
+        ? "Account action started."
+        : "Account action reopened.";
+    setStatus(elements.cadenceStatus, successMessage, "success");
   } catch (error) {
     setStatus(elements.cadenceStatus, humanizeError(error), "error");
   } finally {
@@ -1310,15 +1325,39 @@ function renderOverview() {
   const row = state.detail?.row || {};
   const rfis = state.detail?.rfis || [];
   const opportunities = state.detail?.opportunities || [];
+  const accountActions = state.detail?.actions || [];
   const openStages = new Set(["identified", "discovery", "rfi", "rfx", "proposal", "negotiation"]);
   const openDeals = opportunities.filter((item) => openStages.has(String(item.stage || "").toLowerCase()));
   const wonDeals = opportunities.filter((item) => String(item.stage || "").toLowerCase() === "won");
   const lostDeals = opportunities.filter((item) => String(item.stage || "").toLowerCase() === "lost");
   const activeRfis = rfis.filter((item) => !["approved", "archived"].includes(String(item.status || "").toLowerCase()));
+  const openActions = accountActions
+    .filter((item) => ["open", "in_progress"].includes(String(item.status || "").toLowerCase()))
+    .sort((left, right) => String(left.due_date || "9999-12-31").localeCompare(String(right.due_date || "9999-12-31")));
+  const nextAction = openActions[0];
+  const nextActionDue = cadenceDueState(nextAction?.due_date);
+  const readinessChecks = [
+    Boolean(row.primary_contact_email || (state.detail?.contacts || []).some((item) => item.email)),
+    Boolean((state.detail?.lanes || []).length),
+    Boolean(activeRfis.length || openDeals.length)
+  ];
+  const readinessScore = Math.round((readinessChecks.filter(Boolean).length / readinessChecks.length) * 100);
+  const readinessLabel = readinessScore === 100
+    ? "Ready for commercial execution"
+    : readinessScore >= 67
+      ? "Partially prepared"
+      : "Needs account setup";
   const linkedProject = [...openDeals, ...wonDeals, ...lostDeals].find((item) => item.rfx_project_id);
   const rfxAction = linkedProject
     ? `<button class="secondary" type="button" data-open-shipper-rfx-project="${escapeHtml(linkedProject.rfx_project_id)}">Open linked RFx</button>`
     : `<button class="secondary" type="button" data-open-shipper-tab="opportunities">Open commercial work</button>`;
+  const profileRequest = (state.detail?.profile_requests || []).find((item) => ["active", "viewed", "submitted"].includes(String(item.status || "").toLowerCase()));
+  const profileLink = profileRequest
+    ? `<section class="shipper-profile-link-panel"><div><p class="eyebrow">Customer self-service</p><h3>Secure profile link</h3><p>Active until ${escapeHtml(String(profileRequest.expires_at || "").slice(0, 10))}. It updates this account, contacts and onboarding record without creating a duplicate profile.</p></div><div class="shipper-profile-link-actions"><button type="button" class="secondary" data-apply-shipper-playbook="profile_refresh">Plan profile follow-up</button><button type="button" class="secondary" data-create-shipper-profile-link>Renew and copy link</button><button type="button" class="danger" data-revoke-shipper-profile-link="${escapeHtml(profileRequest.id)}">Revoke</button></div></section>`
+    : `<section class="shipper-profile-link-panel"><div><p class="eyebrow">Customer self-service</p><h3>Invite the shipper to complete its profile</h3><p>Creates a 30-day magic link for legal identity, billing, contacts, service scope and TMS onboarding. RFIs, lanes and opportunities remain internal.</p></div><button type="button" data-create-shipper-profile-link>Create secure link</button></section>`;
+  const actionSummary = nextAction
+    ? `<button type="button" class="shipper-account-next-action" data-open-shipper-tab="actions"><span>Next action</span><strong>${escapeHtml(nextAction.title || "Account follow-up")}</strong><small><span class="shipper-cadence-due" data-tone="${escapeHtml(nextActionDue.tone)}">${escapeHtml(nextActionDue.label)}</span>${nextAction.priority ? ` ${escapeHtml(humanLabel(nextAction.priority))}` : ""}</small></button>`
+    : `<button type="button" class="shipper-account-next-action is-empty" data-open-shipper-tab="actions"><span>Next action</span><strong>Plan a follow-up</strong><small>No open account action</small></button>`;
   elements.drawerContent.innerHTML = `
     <section class="shipper-account-command" aria-label="Commercial account summary">
       <div class="shipper-account-command-heading">
@@ -1326,13 +1365,15 @@ function renderOverview() {
         ${rfxAction}
       </div>
       <div class="shipper-account-command-stats">
+        <div><span>Readiness</span><strong>${readinessScore}%</strong><small>${readinessLabel}</small></div>
         <div><span>Active RFIs</span><strong>${activeRfis.length}</strong></div>
         <div><span>Open deals</span><strong>${openDeals.length}</strong></div>
-        <div><span>Won</span><strong>${wonDeals.length}</strong></div>
-        <div><span>Closed lost</span><strong>${lostDeals.length}</strong></div>
+        <div><span>Won / lost</span><strong>${wonDeals.length} / ${lostDeals.length}</strong></div>
       </div>
+      ${actionSummary}
       <p class="shipper-account-command-note">${linkedProject ? "A linked RFx workspace is available for this account." : "Create a deal from an RFI when this account is ready to enter procurement."}</p>
     </section>
+    ${profileLink}
     <form id="shipper-overview-form" class="shipper-form-grid shipper-drawer-form">
       ${overviewField("shipper_name", "Shipper name", row.shipper_name, { required: true, wide: true })}
       ${overviewField("legal_name", "Legal name", row.legal_name)}
@@ -1371,7 +1412,8 @@ const ACTION_PLAYBOOKS = [
   { key: "rfi_follow_up", label: "Advance RFI", detail: "Scope, deadline, commercial deal" },
   { key: "proposal", label: "Follow up proposal", detail: "Receipt, feedback, decision" },
   { key: "implementation", label: "Prepare implementation", detail: "Owners, data, launch readiness" },
-  { key: "reengagement", label: "Re-engage account", detail: "Reconnect with a clear outcome" }
+  { key: "reengagement", label: "Re-engage account", detail: "Reconnect with a clear outcome" },
+  { key: "profile_refresh", label: "Refresh profile", detail: "Link, review, and resolve account data" }
 ];
 
 function childField(field, row = {}, entity = "") {
@@ -1886,6 +1928,36 @@ elements.drawerContent.addEventListener("submit", (event) => {
 });
 
 elements.drawerContent.addEventListener("click", async (event) => {
+  const createProfileLink = event.target.closest("[data-create-shipper-profile-link]");
+  if (createProfileLink) {
+    const status = elements.drawerContent.querySelector("#shipper-drawer-status");
+    createProfileLink.disabled = true;
+    try {
+      const result = await createShipperProfileRequest(state.activeShipperId, { expires_in_days: 30, origin: window.location.origin });
+      if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(result.url);
+      state.detail = await fetchShipper(state.activeShipperId);
+      renderDrawer();
+      window.prompt("Secure shipper profile link. It was copied when your browser permits it:", result.url);
+    } catch (error) {
+      if (status) setStatus(status, humanizeError(error), "error");
+    } finally {
+      createProfileLink.disabled = false;
+    }
+    return;
+  }
+  const revokeProfileLink = event.target.closest("[data-revoke-shipper-profile-link]");
+  if (revokeProfileLink) {
+    if (!window.confirm("Revoke this customer profile link?")) return;
+    try {
+      await revokeShipperProfileRequest(revokeProfileLink.dataset.revokeShipperProfileLink);
+      state.detail = await fetchShipper(state.activeShipperId);
+      renderDrawer();
+    } catch (error) {
+      const status = elements.drawerContent.querySelector("#shipper-drawer-status");
+      if (status) setStatus(status, humanizeError(error), "error");
+    }
+    return;
+  }
   const playbook = event.target.closest("[data-apply-shipper-playbook]");
   if (playbook) return applyActionPlaybook(playbook.dataset.applyShipperPlaybook, playbook);
   const retry = event.target.closest("[data-retry-shipper]");

@@ -32,6 +32,14 @@ export async function fetchShipperAccountActivity(id) {
   return await callRatewareApi("shipper_account_activity", { id });
 }
 
+export async function createShipperProfileRequest(id, options = {}) {
+  return await callRatewareApi("create_shipper_profile_request", { shipper_id: id, ...options });
+}
+
+export async function revokeShipperProfileRequest(id) {
+  return await callRatewareApi("revoke_shipper_profile_request", { id });
+}
+
 export async function createShipper(shipper) {
   return (await callRatewareApi("create_shipper", { shipper })).row;
 }

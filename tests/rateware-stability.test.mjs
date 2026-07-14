@@ -360,6 +360,8 @@ assert.match(apiSource, /whatsappTemplateLanguagesMatch/, "WhatsApp template syn
 assert.match(apiSource, /name: "rateware_rfx_invitation_en"[\s\S]+language: "en"/, "WhatsApp approved English RFx notifier should send with Meta's English language code");
 assert.match(apiSource, /meta_template_language: cleanText\(metaTemplate\.language\)/, "WhatsApp template sync should persist Meta's real template language code");
 assert.match(apiSource, /whatsappTemplateLanguageCandidates/, "WhatsApp sending should retry equivalent Meta language codes for approved templates");
+assert.match(apiSource, /\(cleanText\(template\.meta_template_language\) \|\| ""\)\.replace/, "WhatsApp template publishing must tolerate an omitted template language");
+assert.match(apiSource, /\(cleanText\(value\) \|\| ""\)\.replace\(\/-\/g, "_"\) \|\| "en"/, "WhatsApp template language candidates must tolerate null values");
 assert.match(apiSource, /message\.includes\("132001"\)/, "WhatsApp sending should recognize Meta translation mismatch errors");
 assert.match(apiSource, /normalized\.startsWith\("ACTIVE_"\)[\s\S]+APPROVED/, "WhatsApp Active quality-pending templates should be treated as approved for sending");
 assert.match(apiSource, /replace\(\s*\/\[\^A-Z0-9\]\+\/g,\s*"_"\s*\)/, "WhatsApp Meta status normalization should handle punctuation and unicode separators");

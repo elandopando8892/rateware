@@ -327,6 +327,15 @@ const SHIPPER_ACTION_PLAYBOOKS: Record<string, {
       { title: "Send re-engagement message", action_type: "email", priority: "normal", due_in_days: 2, notes: "Share a relevant coverage, capacity, or commercial reason to reconnect." },
       { title: "Confirm re-engagement outcome", action_type: "follow_up", priority: "normal", due_in_days: 7, notes: "Record whether the account should advance, remain nurtured, or be marked inactive." }
     ]
+  },
+  profile_refresh: {
+    label: "Refresh customer profile",
+    description: "Keep the customer record current before commercial outreach, RFIs, or implementation work.",
+    steps: [
+      { title: "Send secure profile update link", action_type: "email", priority: "normal", due_in_days: 0, notes: "Share the secure customer profile link and ask the shipper to confirm legal identity, contacts, operating sites, billing, and onboarding details." },
+      { title: "Review submitted customer profile", action_type: "data_cleanup", priority: "normal", due_in_days: 5, notes: "Review submitted changes, confirm primary contacts and locations, and resolve any missing onboarding information." },
+      { title: "Confirm profile refresh outcome", action_type: "follow_up", priority: "low", due_in_days: 7, notes: "Record whether the profile is complete or assign the remaining owner and due date." }
+    ]
   }
 };
 
@@ -11375,7 +11384,7 @@ function whatsappMetaStatusMessage(value: unknown) {
 
 function whatsappMetaLanguage(template: Record<string, unknown>) {
   const inferred = outreachTemplateLanguage(template) === "es" ? "es_MX" : "en";
-  const explicit = cleanText(template.meta_template_language).replace(/-/g, "_");
+  const explicit = (cleanText(template.meta_template_language) || "").replace(/-/g, "_");
   if (explicit && /^[a-z]{2}(_[A-Z]{2})?$/.test(explicit)) {
     return explicit.toLowerCase().startsWith("en") ? "en" : explicit;
   }
@@ -11433,12 +11442,12 @@ function whatsappTemplateNamesMatch(
   mappedName: unknown,
   language: unknown
 ) {
-  const left = cleanText(metaName).toLowerCase();
-  const right = cleanText(mappedName).toLowerCase();
+  const left = (cleanText(metaName) || "").toLowerCase();
+  const right = (cleanText(mappedName) || "").toLowerCase();
   if (!left || !right) return false;
   if (left === right) return true;
 
-  const normalizedLanguage = cleanText(language).toLowerCase();
+  const normalizedLanguage = (cleanText(language) || "").toLowerCase();
   const suffix = normalizedLanguage.startsWith("es") ? "es" : "en";
   const stableNames = new Set([
     `rateware_rfx_invitation_${suffix}`,
@@ -11448,8 +11457,8 @@ function whatsappTemplateNamesMatch(
 }
 
 function whatsappTemplateLanguagesMatch(leftValue: unknown, rightValue: unknown) {
-  const left = cleanText(leftValue).toLowerCase().replace(/-/g, "_");
-  const right = cleanText(rightValue).toLowerCase().replace(/-/g, "_");
+  const left = (cleanText(leftValue) || "").toLowerCase().replace(/-/g, "_");
+  const right = (cleanText(rightValue) || "").toLowerCase().replace(/-/g, "_");
   if (!left || !right) return false;
   if (left === right) return true;
   // Meta can return `en`/`es` for a template that Rateware created as
@@ -11459,7 +11468,7 @@ function whatsappTemplateLanguagesMatch(leftValue: unknown, rightValue: unknown)
 }
 
 function whatsappTemplateLanguageCandidates(value: unknown) {
-  const normalized = cleanText(value).replace(/-/g, "_") || "en";
+  const normalized = (cleanText(value) || "").replace(/-/g, "_") || "en";
   const root = normalized.split("_")[0];
   const candidates = [normalized];
   if (root && root !== normalized) candidates.push(root);
@@ -16706,8 +16715,54 @@ Deno.serve(async (request) => {
       results.forEach((result) => {
         if (result.error) throw result.error;
       });
+      const profileRequestsResult = await supabase.from("shipper_profile_requests")
+        .select("id,status,expires_at,viewed_at,submitted_at,created_at,updated_at")
+        .eq("owner_email", user.owner_email).eq("shipper_id", shipperId).order("created_at", { ascending: false }).limit(10);
+      if (profileRequestsResult.error && profileRequestsResult.error.code !== "42P01") throw profileRequestsResult.error;
       const details = Object.fromEntries(entries.map(([entity], index) => [entity, results[index].data || []]));
+      details.profile_requests = profileRequestsResult.data || [];
       return jsonResponse({ row: shipper, ...details });
+    }
+
+    if (body.action === "create_shipper_profile_request") {
+      const shipper = await requireOwnedShipper(supabase, user, body.shipper_id || body.id);
+      const shipperId = cleanText(shipper.id)!;
+      const expiresInDays = Math.min(Math.max(Number(body.expires_in_days) || 30, 1), 90);
+      const rawToken = `${crypto.randomUUID().replaceAll("-", "")}${crypto.randomUUID().replaceAll("-", "")}`;
+      const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(rawToken));
+      const tokenHash = Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+      const expiresAt = new Date(Date.now() + expiresInDays * 86400000).toISOString();
+      const revokeExisting = await supabase.from("shipper_profile_requests")
+        .update({ status: "revoked", updated_at: new Date().toISOString() })
+        .eq("owner_email", user.owner_email).eq("shipper_id", shipperId).in("status", ["active", "viewed", "submitted"]);
+      if (revokeExisting.error && revokeExisting.error.code !== "42P01") throw revokeExisting.error;
+      const result = await supabase.from("shipper_profile_requests").insert({
+        owner_user_id: user.owner_user_id,
+        owner_email: user.owner_email,
+        organization_id: user.organization_id,
+        shipper_id: shipperId,
+        token_hash: tokenHash,
+        expires_at: expiresAt,
+        metadata: { generated_from: "shipper_crm", shipper_name: shipper.shipper_name }
+      }).select("id,status,expires_at,created_at").single();
+      if (result.error) throw result.error;
+      await writeAuditLog(supabase, user, "shipper.profile_request.create", "shipper", shipperId,
+        `Created shipper profile request for ${cleanText(shipper.shipper_name) || "shipper"}.`, { request_id: result.data.id, expires_at: expiresAt });
+      const baseUrl = (cleanUrl(body.origin) || Deno.env.get("RATEWARE_PUBLIC_APP_URL") || "https://rateware.vercel.app").replace(/\/$/, "");
+      return jsonResponse({ row: result.data, url: `${baseUrl}/shipper-profile.html?token=${encodeURIComponent(rawToken)}` });
+    }
+
+    if (body.action === "revoke_shipper_profile_request") {
+      const requestId = cleanText(body.id);
+      if (!requestId || !UUID_PATTERN.test(requestId)) return jsonResponse({ error: "A valid profile request id is required." }, 400);
+      const current = await supabase.from("shipper_profile_requests").select("id,shipper_id")
+        .eq("owner_email", user.owner_email).eq("id", requestId).single();
+      if (current.error) throw current.error;
+      await requireOwnedShipper(supabase, user, current.data.shipper_id);
+      const result = await supabase.from("shipper_profile_requests").update({ status: "revoked", updated_at: new Date().toISOString() })
+        .eq("owner_email", user.owner_email).eq("id", requestId).select("id,status").single();
+      if (result.error) throw result.error;
+      return jsonResponse({ row: result.data });
     }
 
     if (body.action === "shipper_account_activity") {
