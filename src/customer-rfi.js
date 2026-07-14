@@ -51,9 +51,9 @@ const els = {
   closeHelp: document.getElementById("close-rfi-help"),
   addLane: document.getElementById("add-lane-row"),
   importSegmentTemplate: document.getElementById("import-rfi-segment-template"),
+  importSegmentTemplateNew: document.getElementById("import-rfi-segment-template-new"),
   importSegmentTemplateFile: document.getElementById("import-rfi-segment-template-file"),
   segmentTemplateName: document.getElementById("rfi-segment-template-name"),
-  importAsNewSegment: document.getElementById("rfi-import-as-new-segment"),
   segmentTemplateState: document.getElementById("rfi-segment-template-state"),
   save: document.getElementById("save-customer-rfi"),
   submit: document.getElementById("submit-customer-rfi")
@@ -69,11 +69,29 @@ const UI_COPY = {
 };
 
 Object.assign(UI_COPY.en, {
+  saveSegment: "Save segment",
+  saveAsNewSegment: "Save as new",
+  deleteSegment: "Delete segment",
+  rubricSelectionHelp: "Check a row only when the carrier must confirm it. Unchecked rows remain optional guidance.",
+  lastSegment: "At least one segment is required.",
+  segmentSaved: "Segment saved.",
+  segmentSavedNew: "New segment saved.",
+  segmentDeleted: "Segment deleted.",
+  importIntoSegment: "Import into segment",
   segmentTemplateReady: "Segment loaded. You can download its template or import an updated workbook.",
   segmentTemplateNeedsSegment: "Select an operating segment to enable its template.",
   segmentTemplateNeedsToken: "Open a signed RFI link to load a segment template."
 });
 Object.assign(UI_COPY.es, {
+  saveSegment: "Guardar segmento",
+  saveAsNewSegment: "Guardar como nuevo",
+  deleteSegment: "Eliminar segmento",
+  rubricSelectionHelp: "Marca una fila solo cuando el carrier deba confirmarla. Las filas desmarcadas quedan como guia opcional.",
+  lastSegment: "Se requiere al menos un segmento.",
+  segmentSaved: "Segmento guardado.",
+  segmentSavedNew: "Nuevo segmento guardado.",
+  segmentDeleted: "Segmento eliminado.",
+  importIntoSegment: "Importar al segmento",
   segmentTemplateReady: "Segmento cargado. Puedes descargar su template o importar un libro actualizado.",
   segmentTemplateNeedsSegment: "Selecciona un segmento operativo para habilitar su template.",
   segmentTemplateNeedsToken: "Abre un enlace RFI firmado para cargar un template de segmento."
@@ -119,6 +137,7 @@ function canonicalSegmentKey(value) {
   return SEGMENT_OPTIONS.find((option) => (
     normalizeRfiImportHeader(option.value) === normalized
     || normalizeRfiImportHeader(option.label) === normalized
+    || normalizeRfiImportHeader(rfiWorkbookSegmentLabel(option.value, "es")) === normalized
   ))?.value || aliased;
 }
 
@@ -325,6 +344,235 @@ const RFI_LANE_COLUMNS = [
   { key: "service_specifications", label: "Especificaciones unidad", type: "textarea", placeholder: "Condiciones y caracteristicas de la unidad", width: 230 },
   { key: "notes", label: "Notas operacion", type: "textarea", placeholder: "Informacion relevante", width: 230 }
 ];
+
+// Workbooks are localized at presentation time. Import keeps the canonical
+// keys/values so an English or Spanish workbook has the same data contract.
+const RFI_WORKBOOK_COLUMN_LABELS = {
+  en: {
+    lane_id: "Lane ID", origin_location: "Origin location", origin_postal_code: "Origin postal code",
+    origin_shipper: "Origin shipper", origin_facility_type: "Origin facility type", origin_load_type: "Load type",
+    origin_average_time_hours: "Average loading time", origin_schedule_type: "Pickup schedule type", origin_service_window: "Pickup service window",
+    destination_location: "Destination location", destination_postal_code: "Destination postal code", destination_consignee: "Destination consignee",
+    destination_facility_type: "Destination facility type", destination_unload_type: "Unload type", destination_average_time_hours: "Average unloading time",
+    destination_schedule_type: "Delivery schedule type", destination_service_window: "Delivery service window", truck_type: "Truck type",
+    trailer_requirements: "Equipment type", config: "Configuration", operation_type: "Operation type", service_type: "Service type",
+    border_crossing: "Border crossing", average_border_days: "Average border days", customs_broker: "Customs broker", transfer: "Transfer",
+    product: "Product", hazmat: "Hazmat?", hazmat_un_number: "UN number", cargo_value: "Cargo value / invoice", packaging: "Packaging",
+    pieces: "Pieces", stackable_beds: "Stackable beds", average_weight: "Average weight", average_cubic_meters: "Average cubic meters",
+    mon_volume: "Mon", tue_volume: "Tue", wed_volume: "Wed", thu_volume: "Thu", fri_volume: "Fri", sat_volume: "Sat", sun_volume: "Sun",
+    sourcing_priority: "Sourcing priority", last_annual_volume: "Last annual volume", weekly_volume: "Expected weekly volume",
+    seasonality: "Seasonality", scheduling_type: "Scheduling type", positioning_lead_time: "Positioning lead time",
+    driver_assistance: "Driver assistance", double_driver: "Team driver", transit_days: "Estimated transit time",
+    average_distance: "Average distance", target_rate: "Target purchase rate", currency: "Currency",
+    service_specifications: "Service specifications", notes: "Operational notes"
+  },
+  es: {
+    lane_id: "ID de ruta", origin_location: "Ubicación de salida", origin_postal_code: "Código postal de salida",
+    origin_shipper: "Remitente de salida", origin_facility_type: "Tipo de instalación de salida", origin_load_type: "Tipo de carga",
+    origin_average_time_hours: "Tiempo promedio de carga", origin_schedule_type: "Tipo de horario de recogida", origin_service_window: "Ventana de servicio de recogida",
+    destination_location: "Ubicación de llegada", destination_postal_code: "Código postal de llegada", destination_consignee: "Consignatario de llegada",
+    destination_facility_type: "Tipo de instalación de llegada", destination_unload_type: "Tipo de descarga", destination_average_time_hours: "Tiempo promedio de descarga",
+    destination_schedule_type: "Tipo de horario de entrega", destination_service_window: "Ventana de servicio de entrega", truck_type: "Tipo de camión",
+    trailer_requirements: "Tipo de equipo", config: "Tipo de configuración", operation_type: "Tipo de operación", service_type: "Tipo de servicio",
+    border_crossing: "Punto de cruce fronterizo", average_border_days: "Promedio de días en frontera", customs_broker: "Agente aduanal", transfer: "Transfer",
+    product: "Producto", hazmat: "¿Hazmat?", hazmat_un_number: "Número UN", cargo_value: "Valor de carga / factura", packaging: "Embalaje",
+    pieces: "Piezas", stackable_beds: "Camas apilables", average_weight: "Peso promedio", average_cubic_meters: "Metros cúbicos promedio",
+    mon_volume: "Lun", tue_volume: "Mar", wed_volume: "Mié", thu_volume: "Jue", fri_volume: "Vie", sat_volume: "Sáb", sun_volume: "Dom",
+    sourcing_priority: "Prioridad de abastecimiento", last_annual_volume: "Último volumen anual", weekly_volume: "Volumen semanal esperado",
+    seasonality: "Estacionalidad", scheduling_type: "Tipo de programación", positioning_lead_time: "Lead time para posicionar",
+    driver_assistance: "Asistencia del conductor", double_driver: "Doble chofer", transit_days: "Tiempo estimado de tránsito",
+    average_distance: "Distancia promedio", target_rate: "Tarifa objetivo de compra", currency: "Moneda",
+    service_specifications: "Especificaciones de servicio", notes: "Notas adicionales de operación"
+  }
+};
+
+const RFI_WORKBOOK_SHEETS = {
+  en: { validation: "Validation Lists", route: "Route Schedule", rubric: "Rubric Checklist", catalog: "Catalog", instructions: "Instructions", details: "Segment Details" },
+  es: { validation: "Listas de validación", route: "Cédula de rutas", rubric: "Checklist de rubros", catalog: "Catálogo", instructions: "Instructivo", details: "Detalles del segmento" }
+};
+
+const RFI_WORKBOOK_OPTION_LABELS_ES = {
+  "": "Seleccionar", select: "Seleccionar", yes: "Sí", no: "No", true: "VERDADERO", false: "FALSO",
+  plant: "Planta", dc: "Centro de distribución", warehouse: "Almacén", crossdock: "Cross-dock", yard: "Patio",
+  port: "Puerto", rail_ramp: "Terminal ferroviaria", customer_site: "Sitio del cliente", supplier_site: "Sitio del proveedor",
+  other: "Otro", live: "En vivo", drop: "Drop", preload: "Preload", drop_and_hook: "Drop & hook",
+  appointment: "Cita", window: "Ventana", fcfs: "FCFS", open: "Horario abierto", scheduled: "Programado", tbd: "Por definir",
+  "Truck Trailer": "Tractocamión", "Straight Truck": "Camión rígido", "Sprinter Van": "Van Sprinter", "Cargo Van": "Van de carga",
+  "Box Truck": "Camión tipo caja", Flatbed: "Plataforma", "Dry Van": "Caja seca", Reefer: "Refrigerado", "Step Deck": "Step deck",
+  Tanker: "Pipa", Lowboy: "Lowboy", Single: "Sencillo", Team: "Doble operador", Dedicated: "Dedicado",
+  "Drop Trailer": "Remolque drop", "Through Trailer": "Through trailer", Transfer: "Transfer", Standard: "Estándar",
+  Expedited: "Expeditado", "Time critical": "Time critical", Spot: "Spot", Recurring: "Recurrente", Local: "Local",
+  Regional: "Regional", National: "Nacional", critical: "Crítica", high: "Alta", medium: "Media", low: "Baja",
+  palletized: "Paletizado", loose: "Suelto", crated: "En caja", drums: "Tambores", totes: "Contenedores tote",
+  steady: "Estable", seasonal: "Estacional", peak: "Pico", launch_ramp: "Lanzamiento / rampa", unknown: "Desconocida",
+  same_day: "Mismo día", "24_hours": "24 horas", "48_hours": "48 horas", "72_hours": "72 horas", one_week: "Una semana",
+  appointment_required: "Cita", recurring: "Recurrente", as_required: "Según necesidad", "d2d_export": "D2D Export",
+  "d2d_import": "D2D Import", intra_mex: "Intra-México", mx_domestic: "Doméstico MX", us_domestic: "Doméstico US",
+  crossborder: "Crossborder", local: "Local", regional: "Regional", national: "Nacional", expedited: "Expeditado",
+  time_critical: "Time critical", port_drayage_us: "Drayage portuario US", port_drayage_mx: "Drayage portuario MX"
+};
+
+const RFI_WORKBOOK_RUBRIC_HEADERS = {
+  en: ["segment_key", "segment_name", "rubric_key", "category", "label", "question", "expected", "required", "response / notes"],
+  es: ["clave_segmento", "nombre_segmento", "clave_rubro", "categoria", "rubro", "que_preguntar", "respuesta_esperada", "obligatorio", "respuesta / observaciones"]
+};
+
+function rfiWorkbookLocale() {
+  return state.locale === "es" ? "es" : "en";
+}
+
+function rfiWorkbookSheetName(key, locale = rfiWorkbookLocale()) {
+  return RFI_WORKBOOK_SHEETS[locale][key];
+}
+
+function rfiWorkbookColumnLabel(column, locale = rfiWorkbookLocale()) {
+  return RFI_WORKBOOK_COLUMN_LABELS[locale][column.key] || column.label;
+}
+
+const RFI_WORKBOOK_PLACEHOLDERS_EN = {
+  lane_id: "ID #", origin_location: "City, State", origin_postal_code: "5-digit ZIP", origin_shipper: "Company name",
+  origin_average_time_hours: "X hrs", origin_service_window: "00 AM - 00 PM", destination_location: "City, State",
+  destination_postal_code: "5-digit ZIP", destination_consignee: "Company name", destination_average_time_hours: "X hrs",
+  destination_service_window: "00 AM - 00 PM", border_crossing: "Laredo / Nuevo Laredo", average_border_days: "X days",
+  customs_broker: "Company name", transfer: "Company name", product: "Description / HS code", hazmat_un_number: "UN ####",
+  cargo_value: "Cargo value", average_weight: "Net lbs", average_distance: "mi / km",
+  service_specifications: "Unit conditions and characteristics", notes: "Relevant operational information"
+};
+
+function rfiWorkbookPlaceholder(column, locale = rfiWorkbookLocale()) {
+  if (column.type === "checkbox") return "FALSE";
+  if (locale === "en") return RFI_WORKBOOK_PLACEHOLDERS_EN[column.key] || column.placeholder || "";
+  return column.placeholder || "";
+}
+
+function rfiWorkbookOptionLabel(option, locale = rfiWorkbookLocale()) {
+  const value = typeof option === "string" ? option : option?.value;
+  const label = typeof option === "string" ? option : option?.label || option?.value;
+  if (locale === "es") return RFI_WORKBOOK_OPTION_LABELS_ES[value] || RFI_WORKBOOK_OPTION_LABELS_ES[label] || label;
+  return label;
+}
+
+function rfiWorkbookColumnOptions(column, locale = rfiWorkbookLocale()) {
+  return (column.options || []).map((option) => rfiWorkbookOptionLabel(option, locale));
+}
+
+function rfiWorkbookCellValue(column, value, locale = rfiWorkbookLocale()) {
+  if (column.type === "checkbox") return value === true || cleanText(value).toLowerCase() === "true" ? "TRUE" : "FALSE";
+  const text = cleanText(value);
+  if (!text || column.type !== "select") return text;
+  const option = (column.options || []).find((candidate) => {
+    const candidateValue = typeof candidate === "string" ? candidate : candidate.value;
+    const candidateLabel = typeof candidate === "string" ? candidate : candidate.label || candidate.value;
+    return normalizeRfiImportHeader(candidateValue) === normalizeRfiImportHeader(text)
+      || normalizeRfiImportHeader(candidateLabel) === normalizeRfiImportHeader(text)
+      || normalizeRfiImportHeader(rfiWorkbookOptionLabel(candidate, "en")) === normalizeRfiImportHeader(text)
+      || normalizeRfiImportHeader(rfiWorkbookOptionLabel(candidate, "es")) === normalizeRfiImportHeader(text);
+  });
+  return option ? rfiWorkbookOptionLabel(option, locale) : text;
+}
+
+function rfiWorkbookSegmentLabel(value, locale = rfiWorkbookLocale()) {
+  const raw = cleanText(value);
+  const normalized = normalizeRfiImportHeader(SEGMENT_KEY_ALIASES[raw] || raw);
+  const option = SEGMENT_OPTIONS.find((candidate) => (
+    normalizeRfiImportHeader(candidate.value) === normalized || normalizeRfiImportHeader(candidate.label) === normalized
+  ));
+  const key = option?.value || SEGMENT_KEY_ALIASES[raw] || raw;
+  return locale === "es" ? ({
+    local_ftl: "FTL local", regional_ftl: "FTL regional", national_ftl: "FTL nacional", crossborder: "FTL transfronterizo",
+    expedited: "Terrestre expeditado", time_critical: "Terrestre de tiempo crítico", port_drayage_us: "Drayage portuario US",
+    port_drayage_mx: "Drayage portuario MX"
+  }[key] || option?.label || value) : option?.label || value;
+}
+
+function rfiWorkbookCategoryLabel(value, locale = rfiWorkbookLocale()) {
+  const group = CHECKLIST_GROUPS.find((candidate) => candidate.key === value);
+  if (locale === "es") return group?.title || value;
+  return ({ logistics_model: "Logistics model by operating segment", operation_criteria: "Operation criteria", business_rules: "Business rules", service_specifications: "Service specifications", carrier_requirements: "Required carrier profile", other_notes: "Notes and operational exceptions" }[value] || value);
+}
+
+const RFI_WORKBOOK_ENGLISH_TEXT = {
+  "Modelo Logistico por Segmento Operativo": "Logistics model by operating segment",
+  "Modelo Logístico por Segmento Operativo": "Logistics model by operating segment",
+  "Criterios de Operacion": "Operation criteria",
+  "Criterios de Operación": "Operation criteria",
+  "Reglas de Negocio": "Business rules",
+  "Especificaciones de Servicio": "Service specifications",
+  "Perfil Requerido del Carrier": "Required carrier profile",
+  "Notas y Excepciones Operativas": "Notes and operational exceptions",
+  "Ventana de pickup": "Pickup window",
+  "Ventana de delivery": "Delivery window",
+  "Cita requerida": "Appointment required",
+  "Tipo de carga": "Load type",
+  "Tipo de descarga": "Unload type",
+  "Tiempo de carga": "Loading time",
+  "Tiempo de descarga": "Unloading time",
+  "Contacto operativo": "Operational contact",
+  "Instrucciones de sitio": "Site instructions",
+  "Reglas de acceso": "Access rules",
+  "Requerimiento de tracking": "Tracking requirement",
+  "Frecuencia de updates": "Update frequency",
+  "Escalamiento": "Escalation",
+  "Moneda": "Currency",
+  "Seguro": "Insurance",
+  "Penalizaciones": "Penalties",
+  "Equipo": "Equipment",
+  "Driver": "Driver",
+  "Trailer": "Trailer",
+  "Temperatura": "Temperature",
+  "Sellos": "Seals",
+  "Seguridad": "Security",
+  "Documentos": "Documents",
+  "Comunicacion": "Communication",
+  "Reportes": "Reports",
+  "Tipo de carrier": "Carrier type",
+  "Permisos MX": "Mexico permits",
+  "Experiencia MX-US": "Mexico-US experience",
+  "Flota propia": "Owned fleet",
+  "Certificaciones": "Certifications",
+  "Aprobacion previa": "Prior approval",
+  "Carrier vetado": "Blocked carrier",
+  "Carrier preferido": "Preferred carrier",
+  "Restriccion de sitio": "Site restriction",
+  "Restriccion de carrier": "Carrier restriction",
+  "Restriccion documental": "Document restriction",
+  "Restriccion de seguridad": "Security restriction",
+  "Restriccion crossborder": "Crossborder restriction",
+  "Restriccion financiera": "Financial restriction",
+  "Excepcion por temporada": "Seasonal exception",
+  "Riesgo conocido": "Known risk",
+  "Que tan urgente es?": "How urgent is it?",
+  "Cual es la ventana de recogida?": "What is the pickup window?",
+  "Cual es la ventana de entrega?": "What is the delivery window?",
+  "Se requiere cita? Quien agenda?": "Is an appointment required? Who schedules it?",
+  "Como se carga?": "How is the freight loaded?",
+  "Como se descarga?": "How is the freight unloaded?",
+  "Cuanto tarda la carga?": "How long does loading take?",
+  "Cuanto tarda la descarga?": "How long does unloading take?",
+  "Nombre / telefono / email": "Name / phone / email",
+  "Hora inicio / fin": "Start / end time",
+  "Si / No / quien agenda": "Yes / No / who schedules it",
+  "Texto / checklist": "Text / checklist",
+  "Cada 1h / 2h / 4h / por hito": "Every 1h / 2h / 4h / by milestone"
+};
+
+function rfiWorkbookText(value, locale = rfiWorkbookLocale()) {
+  const text = cleanText(value);
+  if (locale !== "en" || !text) return text;
+  return RFI_WORKBOOK_ENGLISH_TEXT[text] || text;
+}
+
+function rfiWorkbookRubricItem(item, locale = rfiWorkbookLocale()) {
+  return {
+    ...item,
+    segment_name: rfiWorkbookSegmentLabel(item.segment_key, locale),
+    category: rfiWorkbookCategoryLabel(item.category, locale),
+    label: rfiWorkbookText(item.label, locale),
+    question: rfiWorkbookText(item.question, locale),
+    expected: rfiWorkbookText(item.expected, locale),
+    observation: rfiWorkbookText(item.observation, locale)
+  };
+}
 
 const RFI_IMPORT_ALIASES = {
   lane_id: ["id lane", "lane id", "id #", "id"],
@@ -957,7 +1205,10 @@ function canonicalImportedSelectValue(column, value) {
   const option = (column.options || []).find((candidate) => {
     const candidateValue = typeof candidate === "string" ? candidate : candidate.value;
     const candidateLabel = typeof candidate === "string" ? candidate : candidate.label || candidate.value;
-    return normalizeRfiImportHeader(candidateValue) === normalized || normalizeRfiImportHeader(candidateLabel) === normalized;
+    return normalizeRfiImportHeader(candidateValue) === normalized
+      || normalizeRfiImportHeader(candidateLabel) === normalized
+      || normalizeRfiImportHeader(rfiWorkbookOptionLabel(candidate, "en")) === normalized
+      || normalizeRfiImportHeader(rfiWorkbookOptionLabel(candidate, "es")) === normalized;
   });
   return option ? (typeof option === "string" ? option : option.value) : text;
 }
@@ -966,7 +1217,13 @@ function mapRfiImportHeaders(values) {
   const headers = values.map(normalizeRfiImportHeader);
   const mapping = {};
   for (const column of RFI_LANE_COLUMNS) {
-    const candidates = [column.key, column.label, ...(RFI_IMPORT_ALIASES[column.key] || [])]
+    const candidates = [
+      column.key,
+      column.label,
+      rfiWorkbookColumnLabel(column, "en"),
+      rfiWorkbookColumnLabel(column, "es"),
+      ...(RFI_IMPORT_ALIASES[column.key] || [])
+    ]
       .map(normalizeRfiImportHeader)
       .filter(Boolean);
     const index = headers.findIndex((header) => candidates.some((candidate) => (
@@ -978,15 +1235,15 @@ function mapRfiImportHeaders(values) {
 }
 
 const RFI_RUBRIC_IMPORT_ALIASES = {
-  segment_key: ["segment key", "segment", "operating segment", "segmento", "segmento operativo"],
-  segment_name: ["segment name", "nombre segmento", "nombre del segmento"],
-  rubric_key: ["rubric key", "rubro key", "item key", "key", "clave"],
-  category: ["category", "categoria", "rubric category", "tipo de rubro"],
+  segment_key: ["segment key", "segment", "operating segment", "segmento", "segmento operativo", "clave segmento", "clave de segmento"],
+  segment_name: ["segment name", "nombre segmento", "nombre del segmento", "nombre de segmento"],
+  rubric_key: ["rubric key", "rubro key", "item key", "key", "clave", "clave rubro", "clave de rubro"],
+  category: ["category", "categoria", "rubric category", "tipo de rubro", "categoria de rubro"],
   label: ["label", "topic", "rubro", "nombre", "rubric"],
-  question: ["question", "what to ask", "que preguntar"],
-  expected: ["expected", "expected answer", "respuesta esperada"],
+  question: ["question", "what to ask", "que preguntar", "qué preguntar"],
+  expected: ["expected", "expected answer", "respuesta esperada", "respuesta esperada"],
   required: ["required", "obligatorio", "validar", "required?"],
-  observation: ["observation", "observaciones", "notes", "respuesta", "answer"]
+  observation: ["observation", "observaciones", "notes", "respuesta", "answer", "respuesta observaciones", "respuesta notes"]
 };
 
 function mapRfiRubricHeaders(values) {
@@ -1038,7 +1295,7 @@ function importedRfiRubric(cells, mapping, index) {
 }
 
 function findRfiSegmentDetails(workbook, XLSX) {
-  const sheetName = (workbook.SheetNames || []).find((name) => normalizeRfiImportHeader(name) === "segment details");
+  const sheetName = (workbook.SheetNames || []).find((name) => ["segment details", "detalles del segmento", "detalles segmento"].includes(normalizeRfiImportHeader(name)));
   if (!sheetName) return {};
   const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { header: 1, defval: "", raw: false, blankrows: false });
   const headers = rows[0] || [];
@@ -1048,10 +1305,11 @@ function findRfiSegmentDetails(workbook, XLSX) {
     return index >= 0 ? cleanText(rows[1]?.[index]) : "";
   };
   return {
-    segment_key: valueAt(["segment_key", "segment key", "segment"]),
-    segment_name: valueAt(["segment_name", "segment name", "name", "nombre"]),
-    operation_type: valueAt(["operation_type", "operation type", "operation model"]),
-    source_template_version: valueAt(["source_template_version", "template version"])
+    segment_key: valueAt(["segment_key", "segment key", "segment", "clave_segmento", "clave segmento"]),
+    segment_name: valueAt(["segment_name", "segment name", "name", "nombre", "nombre_segmento", "nombre segmento"]),
+    operation_type: valueAt(["operation_type", "operation type", "operation model", "tipo_operacion", "tipo operacion"]),
+    rubric_template_key: valueAt(["rubric_template_key", "rubric template key", "clave_plantilla_rubros", "clave plantilla rubros"]),
+    source_template_version: valueAt(["source_template_version", "template version", "version_plantilla", "version plantilla"])
   };
 }
 
@@ -1239,7 +1497,7 @@ function syncSegmentTemplateName() {
   if (segment) segment.segment_name = name;
 }
 
-async function importRfiSegmentWorkbook(file) {
+async function importRfiSegmentWorkbook(file, { createNew = false } = {}) {
   if (!file) return;
   if (!/\.(xlsx|xls|csv)$/i.test(file.name || "")) {
     throw new Error("Choose an XLSX, XLS, or CSV segment template.");
@@ -1268,7 +1526,6 @@ async function importRfiSegmentWorkbook(file) {
   const currentSegments = [...state.segmentChecklists];
   const sourceKey = canonicalSegmentKey(details.segment_key || importedRubrics[0]?.segment_key || imported[0]?.operating_segment || state.activeSegmentKey);
   const requestedName = cleanText(els.segmentTemplateName?.value) || cleanText(details.segment_name) || activeRfiSegment().segment_name || optionLabel(SEGMENT_OPTIONS, sourceKey) || sourceKey;
-  const createNew = Boolean(els.importAsNewSegment?.checked);
   const targetKey = createNew ? uniqueSegmentKey(requestedName, currentSegments) : state.activeSegmentKey;
   const existingIndex = currentSegments.findIndex((segment) => segment.segment_key === targetKey);
   const target = existingIndex >= 0
@@ -1327,10 +1584,10 @@ function excelColumnName(index) {
   return output;
 }
 
-function rfiExcelOptions(column) {
+function rfiExcelOptions(column, locale = rfiWorkbookLocale()) {
   if (column.type === "checkbox") return ["TRUE", "FALSE"];
   return (column.options || [])
-    .map((option) => cleanText(typeof option === "string" ? option : option.value))
+    .map((option) => cleanText(rfiWorkbookOptionLabel(option, locale)))
     .filter(Boolean);
 }
 
@@ -1460,18 +1717,19 @@ async function getExcelJs() {
 
 async function downloadRfiTemplate() {
   const ExcelJS = await getExcelJs();
+  const locale = rfiWorkbookLocale();
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "Rateware";
   workbook.created = new Date();
-  const validationSheet = workbook.addWorksheet("Validation Lists");
+  const validationSheet = workbook.addWorksheet(rfiWorkbookSheetName("validation", locale));
   const validationNames = new Map();
   const validationColumns = [
     ...RFI_LANE_COLUMNS.filter((column) => column.type === "select" || column.type === "checkbox")
-      .map((column) => ({ key: column.key, values: rfiExcelOptions(column) })),
+      .map((column) => ({ key: column.key, values: rfiExcelOptions(column, locale) })),
     { key: "segment_key", values: SEGMENT_OPTIONS.map((option) => option.value) },
-    { key: "rubric_category", values: CHECKLIST_GROUPS.map((group) => group.key) },
+    { key: "rubric_category", values: CHECKLIST_GROUPS.map((group) => rfiWorkbookCategoryLabel(group.key, locale)) },
     { key: "required", values: ["TRUE", "FALSE"] },
-    ...Object.entries(RFI_RUBRIC_RESPONSE_CATALOGS).map(([key, values]) => ({ key, values }))
+    ...Object.entries(RFI_RUBRIC_RESPONSE_CATALOGS).map(([key, values]) => ({ key, values: values.map((value) => rfiWorkbookText(value, locale)) }))
   ];
   validationColumns.forEach((list, index) => {
     const name = addRfiValidationList(workbook, validationSheet, list.key, list.values, index + 1);
@@ -1480,9 +1738,9 @@ async function downloadRfiTemplate() {
   styleRfiWorkbookSheet(validationSheet, validationColumns.map(() => 22), { filterToColumn: validationColumns.length });
   validationSheet.state = "hidden";
 
-  const routeHeaders = RFI_LANE_COLUMNS.map((column) => column.label);
-  const routeGuide = RFI_LANE_COLUMNS.map((column) => column.type === "checkbox" ? "FALSE" : column.placeholder || "");
-  const routeSheet = workbook.addWorksheet("Route Schedule");
+  const routeHeaders = RFI_LANE_COLUMNS.map((column) => rfiWorkbookColumnLabel(column, locale));
+  const routeGuide = RFI_LANE_COLUMNS.map((column) => rfiWorkbookPlaceholder(column, locale));
+  const routeSheet = workbook.addWorksheet(rfiWorkbookSheetName("route", locale));
   routeSheet.addRow(routeHeaders);
   routeSheet.addRow(routeGuide);
   styleRfiWorkbookSheet(routeSheet, RFI_LANE_COLUMNS.map((column) => Math.min(30, Math.max(11, Math.round((column.width || 110) / 6)))), { headerRows: 1, filterToColumn: routeHeaders.length });
@@ -1493,24 +1751,27 @@ async function downloadRfiTemplate() {
     routeSheet.dataValidations.add(range, rfiListValidation(validationName));
   });
 
-  const rubricHeaders = ["segment_key", "segment_name", "rubric_key", "category", "label", "question", "expected", "required", "response / notes"];
+  const rubricHeaders = RFI_WORKBOOK_RUBRIC_HEADERS[locale];
   const rubricItems = SEGMENT_OPTIONS.flatMap((option) => flattenChecklistItems(option.value).map((item) => ({
     ...item,
     segment_key: option.value,
     segment_name: option.label
   })));
-  const rubricRows = rubricItems.map((item) => [
+  const rubricRows = rubricItems.map((item) => {
+    const localized = rfiWorkbookRubricItem(item, locale);
+    return [
     item.segment_key,
-    item.segment_name,
+    localized.segment_name,
     item.key,
-    item.category,
-    item.label,
-    item.question,
-    item.expected,
+    localized.category,
+    localized.label,
+    localized.question,
+    localized.expected,
     "TRUE",
-    item.observation || ""
-  ]);
-  const rubricSheet = workbook.addWorksheet("Rubric Checklist");
+    localized.observation || ""
+  ];
+  });
+  const rubricSheet = workbook.addWorksheet(rfiWorkbookSheetName("rubric", locale));
   rubricSheet.addRow(rubricHeaders);
   rubricRows.forEach((row) => rubricSheet.addRow(row));
   styleRfiWorkbookSheet(rubricSheet, [16, 22, 30, 24, 28, 52, 42, 12, 44], { filterToColumn: rubricHeaders.length });
@@ -1519,38 +1780,44 @@ async function downloadRfiTemplate() {
   rubricSheet.dataValidations.add("H2:H502", rfiListValidation(validationNames.get("required"), { allowBlank: false, prompt: "Choose TRUE or FALSE." }));
   addRfiRubricResponseValidations(rubricSheet, 2, rubricItems, validationNames, 9);
 
-  const catalogRows = [["catalog_type", "value", "label", "notes"]];
-  for (const option of SEGMENT_OPTIONS) catalogRows.push(["segment", option.value, option.label, "You can type a new value in the RFI."]);
+  const catalogHeaders = locale === "es" ? ["tipo_catalogo", "valor", "etiqueta", "notas"] : ["catalog_type", "value", "label", "notes"];
+  const catalogRows = [catalogHeaders];
+  for (const option of SEGMENT_OPTIONS) catalogRows.push(["segment", option.value, rfiWorkbookSegmentLabel(option.value, locale), locale === "es" ? "Puedes escribir un valor nuevo en el RFI." : "You can type a new value in the RFI."]);
   for (const column of RFI_LANE_COLUMNS.filter((item) => item.type === "select")) {
     for (const option of column.options || []) {
       const value = typeof option === "string" ? option : option.value;
-      const label = typeof option === "string" ? option : option.label || option.value;
-      if (cleanText(value)) catalogRows.push([column.key, value, label, "Suggested value; free text is allowed."]);
+      const label = rfiWorkbookOptionLabel(option, locale);
+      if (cleanText(value)) catalogRows.push([column.key, value, label, locale === "es" ? "Valor sugerido; se permite texto libre." : "Suggested value; free text is allowed."]);
     }
   }
-  for (const group of CHECKLIST_GROUPS) catalogRows.push(["rubric_category", group.key, group.title, group.help]);
+  for (const group of CHECKLIST_GROUPS) catalogRows.push(["rubric_category", group.key, rfiWorkbookCategoryLabel(group.key, locale), rfiWorkbookText(group.help, locale)]);
   for (const [key, values] of Object.entries(RFI_RUBRIC_RESPONSE_CATALOGS)) {
-    for (const value of values) catalogRows.push([key, value, value, "Rubric response suggestion; free text is allowed."]);
+    for (const value of values) catalogRows.push([key, value, rfiWorkbookText(value, locale), locale === "es" ? "Sugerencia de respuesta; se permite texto libre." : "Rubric response suggestion; free text is allowed."]);
   }
-  const catalogSheet = workbook.addWorksheet("Catalog");
+  const catalogSheet = workbook.addWorksheet(rfiWorkbookSheetName("catalog", locale));
   catalogRows.forEach((row) => catalogSheet.addRow(row));
   styleRfiWorkbookSheet(catalogSheet, [24, 30, 34, 56], { filterToColumn: 4 });
 
-  const instructions = [
-    ["RATEWARE CUSTOMER RFI TEMPLATE / PLANTILLA RFI RATEWARE"],
-    ["Instructions / Instructivo"],
-    ["1", "Complete Route Schedule with one lane per row. Delete the guide row before importing if you do not need it."],
-    ["2", "Complete Rubric Checklist. Each response / notes cell has contextual suggestions, while keeping customer-specific free text available."],
-    ["3", "You may edit any rubric line, add a new line, or set required to TRUE/FALSE. Free text is accepted even when a catalog suggestion exists."],
-    ["4", "Use Catalog as a reference for suggested values. Dropdowns use a hidden named-list sheet and do not block a new value."],
-    ["5", "Save this workbook as XLSX and upload it from the RFI. The app preserves route and rubric data for review before final submission."],
-    ["6", "Las rubricas se pueden modificar, agregar o dejar como no obligatorias. Las respuestas y observaciones se revisan antes de enviar el RFI."],
-    ["Required route fields / Campos esenciales", "Origin, destination, truck type and weekly volume / Origen, destino, tipo de camion y volumen semanal"],
-    ["Required rubric fields / Campos de rubrica", "segment_key, category, label and required. Question, expected and response / notes may be edited."],
-    ["Do not enter carrier rates in this template. This is a customer RFI requirements workbook."],
-    ["No incluyas tarifas de carriers en esta plantilla. Es un libro de requisitos del cliente."]
+  const instructions = locale === "es" ? [
+    ["PLANTILLA RFI DE CLIENTE RATEWARE"], ["Instructivo"],
+    ["1", "Completa la Cedula de rutas con una ruta por renglon. Puedes eliminar el renglon guia antes de importar."],
+    ["2", "Completa el Checklist de rubros. Las respuestas tienen sugerencias de catalogo, pero permiten texto libre."],
+    ["3", "Puedes editar, agregar o eliminar rubros y definir Obligatorio como TRUE/FALSE."],
+    ["4", "Consulta el Catalogo para conocer las opciones sugeridas. Los dropdowns no bloquean valores nuevos."],
+    ["5", "Guarda el libro como XLSX y subelo desde el RFI. Rateware conserva rutas y rubros para revision."],
+    ["Campos esenciales", "Origen, destino, tipo de camion y volumen semanal."],
+    ["Importante", "No incluyas tarifas de carriers. Esta plantilla captura requisitos del cliente."]
+  ] : [
+    ["RATEWARE CUSTOMER RFI TEMPLATE"], ["Instructions"],
+    ["1", "Complete Route Schedule with one lane per row. You may remove the guide row before importing."],
+    ["2", "Complete Rubric Checklist. Response cells include catalog suggestions but allow free text."],
+    ["3", "Edit, add, or remove rubric lines and set Required to TRUE/FALSE."],
+    ["4", "Use Catalog to review suggested values. Dropdowns do not block new values."],
+    ["5", "Save as XLSX and upload it from the RFI. Rateware preserves routes and rubrics for review."],
+    ["Required route fields", "Origin, destination, truck type, and weekly volume."],
+    ["Important", "Do not enter carrier rates. This workbook captures customer requirements."]
   ];
-  const instructionSheet = workbook.addWorksheet("Instructions");
+  const instructionSheet = workbook.addWorksheet(rfiWorkbookSheetName("instructions", locale));
   instructions.forEach((row) => instructionSheet.addRow(row));
   instructionSheet.mergeCells("A1:B1");
   styleRfiWorkbookSheet(instructionSheet, [28, 120], { filterToColumn: 2 });
@@ -1561,11 +1828,12 @@ async function downloadRfiTemplate() {
     row.alignment = { vertical: "top", wrapText: true };
     row.height = 32;
   });
-  saveWorkbookBuffer(await workbook.xlsx.writeBuffer(), "rateware-customer-rfi-template.xlsx");
+  saveWorkbookBuffer(await workbook.xlsx.writeBuffer(), `rateware-customer-rfi-template-${locale}.xlsx`);
 }
 
 async function downloadRfiSegmentTemplate() {
   const ExcelJS = await getExcelJs();
+  const locale = rfiWorkbookLocale();
   const segment = hasLoadedActiveRfiSegment() ? activeRfiSegment() : null;
   if (!segment) throw new Error("Open a signed RFI link and select an operating segment before downloading its template.");
   const segmentKey = cleanText(segment.segment_key) || "crossborder";
@@ -1574,14 +1842,14 @@ async function downloadRfiSegmentTemplate() {
   workbook.creator = "Rateware";
   workbook.created = new Date();
 
-  const validationSheet = workbook.addWorksheet("Validation Lists");
+  const validationSheet = workbook.addWorksheet(rfiWorkbookSheetName("validation", locale));
   const validationNames = new Map();
   const validationColumns = [
     ...RFI_LANE_COLUMNS.filter((column) => column.type === "select" || column.type === "checkbox")
-      .map((column) => ({ key: column.key, values: rfiExcelOptions(column) })),
-    { key: "rubric_category", values: CHECKLIST_GROUPS.map((group) => group.key) },
+      .map((column) => ({ key: column.key, values: rfiExcelOptions(column, locale) })),
+    { key: "rubric_category", values: CHECKLIST_GROUPS.map((group) => rfiWorkbookCategoryLabel(group.key, locale)) },
     { key: "required", values: ["TRUE", "FALSE"] },
-    ...Object.entries(RFI_RUBRIC_RESPONSE_CATALOGS).map(([key, values]) => ({ key, values }))
+    ...Object.entries(RFI_RUBRIC_RESPONSE_CATALOGS).map(([key, values]) => ({ key, values: values.map((value) => rfiWorkbookText(value, locale)) }))
   ];
   validationColumns.forEach((list, index) => {
     const name = addRfiValidationList(workbook, validationSheet, list.key, list.values, index + 1);
@@ -1590,19 +1858,21 @@ async function downloadRfiSegmentTemplate() {
   styleRfiWorkbookSheet(validationSheet, validationColumns.map(() => 22), { filterToColumn: validationColumns.length });
   validationSheet.state = "hidden";
 
-  const detailsSheet = workbook.addWorksheet("Segment Details");
-  detailsSheet.addRow(["segment_key", "segment_name", "operation_type", "rubric_template_key", "source_template_version"]);
+  const detailsSheet = workbook.addWorksheet(rfiWorkbookSheetName("details", locale));
+  detailsSheet.addRow(locale === "es"
+    ? ["clave_segmento", "nombre_segmento", "tipo_operacion", "clave_plantilla_rubros", "version_plantilla"]
+    : ["segment_key", "segment_name", "operation_type", "rubric_template_key", "source_template_version"]);
   detailsSheet.addRow([segmentKey, segmentName, cleanText(segment.operation_type), cleanText(segment.rubric_template_key || segmentKey), "segment-v1"]);
   styleRfiWorkbookSheet(detailsSheet, [24, 42, 28, 30, 28], { filterToColumn: 5 });
   detailsSheet.getRow(2).alignment = { vertical: "top", wrapText: true };
 
-  const routeHeaders = RFI_LANE_COLUMNS.map((column) => column.label);
-  const routeSheet = workbook.addWorksheet("Route Schedule");
+  const routeHeaders = RFI_LANE_COLUMNS.map((column) => rfiWorkbookColumnLabel(column, locale));
+  const routeSheet = workbook.addWorksheet(rfiWorkbookSheetName("route", locale));
   routeSheet.addRow(routeHeaders);
   const segmentLanes = state.lanes.filter((lane) => segmentFromLane(lane) === segmentKey);
   const routeRows = segmentLanes.length
-    ? segmentLanes.map((lane) => RFI_LANE_COLUMNS.map((column) => lane[column.key] ?? ""))
-    : [RFI_LANE_COLUMNS.map((column) => column.type === "checkbox" ? "FALSE" : column.placeholder || "")];
+    ? segmentLanes.map((lane) => RFI_LANE_COLUMNS.map((column) => rfiWorkbookCellValue(column, lane[column.key], locale)))
+    : [RFI_LANE_COLUMNS.map((column) => rfiWorkbookPlaceholder(column, locale))];
   routeRows.forEach((row) => routeSheet.addRow(row));
   styleRfiWorkbookSheet(routeSheet, RFI_LANE_COLUMNS.map((column) => Math.min(30, Math.max(11, Math.round((column.width || 110) / 6)))), { filterToColumn: routeHeaders.length });
   RFI_LANE_COLUMNS.forEach((column, index) => {
@@ -1612,55 +1882,68 @@ async function downloadRfiSegmentTemplate() {
     routeSheet.dataValidations.add(range, rfiListValidation(validationName));
   });
 
-  const rubricHeaders = ["segment_key", "segment_name", "rubric_key", "category", "label", "question", "expected", "required", "response / notes"];
+  const rubricHeaders = RFI_WORKBOOK_RUBRIC_HEADERS[locale];
   const rubricItems = flattenChecklistItems(segmentKey, segment.rubric_items, segment.removed_rubric_keys);
-  const rubricRows = rubricItems.map((item) => [
+  const rubricRows = rubricItems.map((item) => {
+    const localized = rfiWorkbookRubricItem({ ...item, segment_key: segmentKey }, locale);
+    return [
     segmentKey,
-    segmentName,
+    localized.segment_name,
     item.key,
-    item.category,
-    item.label,
-    item.question,
-    item.expected,
+    localized.category,
+    localized.label,
+    localized.question,
+    localized.expected,
     item.required === false ? "FALSE" : "TRUE",
-    item.observation || ""
-  ]);
-  const rubricSheet = workbook.addWorksheet("Rubric Checklist");
+    localized.observation || ""
+  ];
+  });
+  const rubricSheet = workbook.addWorksheet(rfiWorkbookSheetName("rubric", locale));
   rubricSheet.addRow(rubricHeaders);
-  (rubricRows.length ? rubricRows : [[segmentKey, segmentName, "custom_rubric", "other_notes", "Custom rubric", "", "", "TRUE", ""]]).forEach((row) => rubricSheet.addRow(row));
+  const emptyRubric = locale === "es"
+    ? [segmentKey, segmentName, "custom_rubric", rfiWorkbookCategoryLabel("other_notes", locale), "Rubro personalizado", "", "", "TRUE", ""]
+    : [segmentKey, segmentName, "custom_rubric", rfiWorkbookCategoryLabel("other_notes", locale), "Custom rubric", "", "", "TRUE", ""];
+  (rubricRows.length ? rubricRows : [emptyRubric]).forEach((row) => rubricSheet.addRow(row));
   styleRfiWorkbookSheet(rubricSheet, [20, 30, 30, 24, 30, 56, 44, 12, 48], { filterToColumn: rubricHeaders.length });
   rubricSheet.dataValidations.add("D2:D502", rfiListValidation(validationNames.get("rubric_category"), { allowBlank: false, prompt: "Choose a rubric category or type a custom category." }));
   rubricSheet.dataValidations.add("H2:H502", rfiListValidation(validationNames.get("required"), { allowBlank: false, prompt: "Choose TRUE or FALSE." }));
   addRfiRubricResponseValidations(rubricSheet, 2, rubricItems.length ? rubricItems : [{ key: "custom_rubric" }], validationNames, 9);
 
-  const catalogRows = [["catalog_type", "value", "label", "notes"]];
+  const catalogHeaders = locale === "es" ? ["tipo_catalogo", "valor", "etiqueta", "notas"] : ["catalog_type", "value", "label", "notes"];
+  const catalogRows = [catalogHeaders];
   for (const column of RFI_LANE_COLUMNS.filter((item) => item.type === "select")) {
     for (const option of column.options || []) {
       const value = typeof option === "string" ? option : option.value;
-      const label = typeof option === "string" ? option : option.label || option.value;
-      if (cleanText(value)) catalogRows.push([column.key, value, label, "Suggested value; free text is allowed."]);
+      const label = rfiWorkbookOptionLabel(option, locale);
+      if (cleanText(value)) catalogRows.push([column.key, value, label, locale === "es" ? "Valor sugerido; se permite texto libre." : "Suggested value; free text is allowed."]);
     }
   }
-  for (const group of CHECKLIST_GROUPS) catalogRows.push(["rubric_category", group.key, group.title, group.help]);
+  for (const group of CHECKLIST_GROUPS) catalogRows.push(["rubric_category", group.key, rfiWorkbookCategoryLabel(group.key, locale), rfiWorkbookText(group.help, locale)]);
   for (const [key, values] of Object.entries(RFI_RUBRIC_RESPONSE_CATALOGS)) {
-    for (const value of values) catalogRows.push([key, value, value, "Rubric response suggestion; free text is allowed."]);
+    for (const value of values) catalogRows.push([key, value, rfiWorkbookText(value, locale), locale === "es" ? "Sugerencia de respuesta; se permite texto libre." : "Rubric response suggestion; free text is allowed."]);
   }
-  const catalogSheet = workbook.addWorksheet("Catalog");
+  const catalogSheet = workbook.addWorksheet(rfiWorkbookSheetName("catalog", locale));
   catalogRows.forEach((row) => catalogSheet.addRow(row));
   styleRfiWorkbookSheet(catalogSheet, [24, 30, 38, 56], { filterToColumn: 4 });
 
-  const instructions = [
-    ["RATEWARE SEGMENT TEMPLATE / PLANTILLA DE SEGMENTO"],
-    ["Segment", segmentName],
-    ["1", "Complete only the routes and requirements for this operating segment. / Completa solo las rutas y requisitos de este segmento operativo."],
-    ["2", "Use Segment Details to edit the segment name and operation model. / Usa Segment Details para editar el nombre y modelo operativo."],
-    ["3", "Add or remove rubric rows as needed. Required TRUE/FALSE controls carrier confirmation. Use response / notes to record the operating requirement. / Agrega o elimina rubros. Required TRUE/FALSE controla la confirmacion del carrier. Usa respuesta / notas para registrar el requisito operativo."],
-    ["4", "Every route category and rubric response has contextual dropdown suggestions. You can type a custom value when the catalog does not fit. / Cada categoria de ruta y respuesta de rubrica tiene sugerencias. Puedes escribir valores personalizados."],
-    ["5", "Upload this workbook with Import segment template. Choose Create as new segment to keep similar operations separate. / Sube el libro con Importar template del segmento y marca Crear como segmento nuevo para separar operaciones similares."],
-    ["6", "Review the imported routes and checklist in the app before saving the RFI draft. / Revisa rutas y checklist en la app antes de guardar el borrador."],
-    ["Required route fields / Campos esenciales", "Origin, destination, truck type and weekly volume / Origen, destino, tipo de camion y volumen semanal"]
+  const instructions = locale === "es" ? [
+    ["PLANTILLA DE SEGMENTO RATEWARE"], ["Segmento", segmentName],
+    ["1", "Completa solo rutas y requisitos de este segmento operativo."],
+    ["2", "Usa Detalles del segmento para editar el nombre y modelo operativo."],
+    ["3", "Agrega o elimina rubros. TRUE/FALSE define si el rubro es obligatorio."],
+    ["4", "Cada categoria y respuesta tiene sugerencias de dropdown. Puedes escribir un valor nuevo."],
+    ["5", "Sube este libro con Importar template del segmento y revisa el resultado antes de guardar."],
+    ["Campos esenciales", "Origen, destino, tipo de camion y volumen semanal."]
+  ] : [
+    ["RATEWARE SEGMENT TEMPLATE"], ["Segment", segmentName],
+    ["1", "Complete only the routes and requirements for this operating segment."],
+    ["2", "Use Segment Details to edit the segment name and operating model."],
+    ["3", "Add or remove rubric rows. TRUE/FALSE defines whether a rubric is required."],
+    ["4", "Each route category and rubric response has dropdown suggestions. You can type a new value."],
+    ["5", "Upload this workbook with Import segment template and review it before saving."],
+    ["Required route fields", "Origin, destination, truck type, and weekly volume."]
   ];
-  const instructionSheet = workbook.addWorksheet("Instructions");
+  const instructionSheet = workbook.addWorksheet(rfiWorkbookSheetName("instructions", locale));
   instructions.forEach((row) => instructionSheet.addRow(row));
   instructionSheet.mergeCells("A1:B1");
   styleRfiWorkbookSheet(instructionSheet, [30, 125], { filterToColumn: 2 });
@@ -1671,7 +1954,7 @@ async function downloadRfiSegmentTemplate() {
     row.alignment = { vertical: "top", wrapText: true };
     row.height = 34;
   });
-  saveWorkbookBuffer(await workbook.xlsx.writeBuffer(), `rateware-segment-${segmentTemplateIdentity(segmentName)}.xlsx`);
+  saveWorkbookBuffer(await workbook.xlsx.writeBuffer(), `rateware-segment-${segmentTemplateIdentity(segmentName)}-${locale}.xlsx`);
 }
 
 function setStatus(message, tone = "info") {
@@ -1748,6 +2031,15 @@ function canonicalRubricCategory(value) {
     service_specifications: "service_specifications",
     perfil_requerido_del_carrier: "carrier_requirements",
     carrier_requirements: "carrier_requirements",
+    modelo_logistico_por_segmento_operativo: "logistics_model",
+    logistica_modelo_por_segmento_operativo: "logistics_model",
+    modelo_logistico_por_segmento: "logistics_model",
+    logistics_model_by_operating_segment: "logistics_model",
+    operation_criteria: "operation_criteria",
+    business_rules: "business_rules",
+    service_specifications: "service_specifications",
+    required_carrier_profile: "carrier_requirements",
+    notes_and_operational_exceptions: "other_notes",
     notas_y_excepciones_operativas: "other_notes",
     other_notes: "other_notes"
   };
@@ -1804,7 +2096,7 @@ function defaultRubricItems(segmentKey, source = {}, removed = []) {
       label: cleanText(prior.label) || item.label,
       question: cleanText(prior.question) || item.question,
       expected: cleanText(prior.expected) || item.expected,
-      required: prior.required === undefined ? true : checkedBoolean(prior.required),
+      required: prior.required === undefined ? false : checkedBoolean(prior.required),
       observation: cleanText(prior.observation || prior.answer || prior.notes)
     };
   }
@@ -1816,7 +2108,7 @@ function defaultRubricItems(segmentKey, source = {}, removed = []) {
       label: cleanText(prior.label) || key,
       question: cleanText(prior.question),
       expected: cleanText(prior.expected),
-      required: prior.required === undefined ? true : checkedBoolean(prior.required),
+      required: prior.required === undefined ? false : checkedBoolean(prior.required),
       observation: cleanText(prior.observation || prior.answer || prior.notes)
     };
   }
@@ -2388,10 +2680,14 @@ function renderSegmentTabs() {
   if (!segments.some((segment) => segment.segment_key === state.activeSegmentKey)) {
     state.activeSegmentKey = segments[0]?.segment_key || "crossborder";
   }
+  const canRemove = segments.length > 1;
   els.segmentTabs.innerHTML = segments.map((segment, index) => {
     const laneCount = state.lanes.filter((lane) => segmentFromLane(lane) === segment.segment_key).length;
     const active = segment.segment_key === state.activeSegmentKey;
-    return `<button type="button" role="tab" aria-selected="${active}" class="${active ? "is-active" : ""}" data-rfi-segment-tab="${escapeHtml(segment.segment_key)}"><span>${index + 1}</span><strong>${escapeHtml(segmentDisplayName(segment))}</strong><small>${laneCount} ${laneCount === 1 ? "lane" : "lanes"}</small></button>`;
+    return `<div class="rfi-segment-tab-item ${active ? "is-active" : ""}">
+      <button type="button" role="tab" aria-selected="${active}" class="rfi-segment-tab" data-rfi-segment-tab="${escapeHtml(segment.segment_key)}"><span>${index + 1}</span><strong>${escapeHtml(segmentDisplayName(segment))}</strong><small>${laneCount} ${laneCount === 1 ? "lane" : "lanes"}</small></button>
+      <button type="button" class="rfi-segment-tab-remove" data-remove-rfi-segment="${escapeHtml(segment.segment_key)}" ${canRemove ? "" : "disabled"} title="${escapeHtml(canRemove ? ui("deleteSegment") : ui("lastSegment"))}" aria-label="${escapeHtml(ui("deleteSegment"))}">&times;</button>
+    </div>`;
   }).join("");
   const active = segments.find((segment) => segment.segment_key === state.activeSegmentKey);
   if (els.activeSegmentTitle) els.activeSegmentTitle.textContent = active ? segmentDisplayName(active) : ui("segmentDetails");
@@ -2409,7 +2705,7 @@ function renderSegmentChecklists() {
           <p class="eyebrow">${ui("segment")} ${index + 1}</p>
           <strong>${escapeHtml(segment.segment_name || optionLabel(SEGMENT_OPTIONS, segment.segment_key))}</strong>
         </div>
-        <div class="rfi-heading-actions"><button type="button" class="rfi-help-trigger" data-rfi-help="segment" title="${escapeHtml(ui("fieldGuide"))}">&#128214;</button><button type="button" class="secondary small-button" data-remove-segment-checklist="${index}">${ui("remove")}</button></div>
+        <div class="rfi-heading-actions"><button type="button" class="rfi-help-trigger" data-rfi-help="segment" title="${escapeHtml(ui("fieldGuide"))}">&#128214;</button></div>
       </div>
       <div class="rfi-segment-meta">
         <label>${ui("segment")}
@@ -2426,7 +2722,7 @@ function renderSegmentChecklists() {
       </div>
       <div class="rfi-rubric-groups">
         ${checklistGroupsForSegment(segment.segment_key, segment.rubric_items, segment.removed_rubric_keys).map((group, groupIndex) => {
-          const requiredCount = group.rows.filter((item) => objectValue(segment.rubric_items)[item.key]?.required !== false).length;
+          const requiredCount = group.rows.filter((item) => objectValue(segment.rubric_items)[item.key]?.required === true).length;
           return `
             <details class="rfi-rubric-group" data-rubric-group="${escapeHtml(group.key)}" ${groupIndex === 0 ? "open" : ""}>
               <summary>
@@ -2434,6 +2730,7 @@ function renderSegmentChecklists() {
                 <span class="rfi-rubric-group-progress">${requiredCount}/${group.rows.length}</span>
               </summary>
               <div class="rfi-rubric-group-toolbar">
+                <span class="rfi-rubric-selection-help">${escapeHtml(ui("rubricSelectionHelp"))}</span>
                 <button type="button" class="rfi-inline-help" data-rfi-help="${escapeHtml(group.key)}" title="${escapeHtml(ui("fieldGuide"))}">&#128214;</button>
                 <button type="button" class="secondary small-button" data-rfi-group-required="all" data-segment-index="${index}" data-category="${escapeHtml(group.key)}">${ui("markAllRequired")}</button>
                 <button type="button" class="secondary small-button" data-rfi-group-required="none" data-segment-index="${index}" data-category="${escapeHtml(group.key)}">${ui("clearRequired")}</button>
@@ -2450,7 +2747,7 @@ function renderSegmentChecklists() {
                       const expected = cleanText(saved.expected) || item.expected;
                       return `
                         <tr class="rfi-checklist-row" data-item-key="${escapeHtml(item.key)}" data-category="${escapeHtml(group.key)}">
-                          <td class="rfi-check-cell"><input type="checkbox" data-field="required" ${saved.required === false ? "" : "checked"} /></td>
+                          <td class="rfi-check-cell"><input type="checkbox" data-field="required" ${saved.required === true ? "checked" : ""} aria-label="${escapeHtml(ui("validate"))}" /></td>
                           <td><input type="text" data-field="label" value="${escapeHtml(label)}" /></td>
                           <td><textarea data-field="question" rows="1">${escapeHtml(question)}</textarea></td>
                           <td><textarea data-field="expected" rows="1">${escapeHtml(expected)}</textarea></td>
@@ -2525,7 +2822,7 @@ function setReadonlyMode() {
   document.querySelectorAll(".customer-rfi-shell input, .customer-rfi-shell select, .customer-rfi-shell textarea").forEach((element) => {
     element.disabled = readonly;
   });
-  document.querySelectorAll("#add-lane-row, #download-rfi-segment-template, #import-rfi-segment-template, #rfi-segment-template-name, #rfi-import-as-new-segment, [data-remove-lane], [data-remove-segment-checklist], [data-suggest-rubrics], [data-rfi-wizard-segment], [data-rfi-group-required], [data-add-rubric-to-segment], [data-remove-rubric]").forEach((element) => {
+  document.querySelectorAll("#add-lane-row, #download-rfi-segment-template, #import-rfi-segment-template, #import-rfi-segment-template-new, #rfi-segment-template-name, [data-remove-lane], [data-remove-rfi-segment], [data-rfi-save-segment], [data-rfi-save-segment-new], [data-rfi-delete-segment], [data-suggest-rubrics], [data-rfi-group-required], [data-add-rubric-to-segment], [data-remove-rubric]").forEach((element) => {
     element.disabled = readonly;
   });
   if (els.save) els.save.disabled = readonly;
@@ -2535,8 +2832,8 @@ function setReadonlyMode() {
   }
   if (els.downloadSegmentTemplate) els.downloadSegmentTemplate.disabled = readonly || !segmentTemplateReady;
   if (els.importSegmentTemplate) els.importSegmentTemplate.disabled = readonly || !Boolean(token);
+  if (els.importSegmentTemplateNew) els.importSegmentTemplateNew.disabled = readonly || !Boolean(token);
   if (els.segmentTemplateName) els.segmentTemplateName.disabled = readonly || !segmentTemplateReady;
-  if (els.importAsNewSegment) els.importAsNewSegment.disabled = readonly || !Boolean(token);
   if (els.segmentTemplateState) {
     const copyKey = segmentTemplateReady
       ? "segmentTemplateReady"
@@ -2544,6 +2841,54 @@ function setReadonlyMode() {
     els.segmentTemplateState.textContent = ui(copyKey);
     els.segmentTemplateState.dataset.tone = segmentTemplateReady ? "ready" : token ? "muted" : "error";
   }
+}
+
+function removeRfiSegment(segmentKey) {
+  const currentSegments = collectSegmentChecklists();
+  if (currentSegments.length <= 1) {
+    setStatus(ui("lastSegment"), "error");
+    return false;
+  }
+  const removed = currentSegments.find((segment) => segment.segment_key === segmentKey);
+  if (!removed) return false;
+  const currentLanes = collectLaneRows();
+  const laneCount = currentLanes.filter((lane) => segmentFromLane(lane) === removed.segment_key).length;
+  if (laneCount) {
+    const prompt = state.locale === "es"
+      ? `Este segmento contiene ${laneCount} ruta(s). ¿Eliminar el segmento y sus rutas?`
+      : `This segment contains ${laneCount} route(s). Remove the segment and its routes?`;
+    if (!window.confirm(prompt)) return false;
+  }
+  state.lanes = currentLanes.filter((lane) => segmentFromLane(lane) !== removed.segment_key);
+  state.segmentChecklists = currentSegments.filter((segment) => segment.segment_key !== removed.segment_key);
+  setSegmentCheckbox(removed.segment_key, false);
+  state.activeSegmentKey = state.segmentChecklists[0]?.segment_key || "crossborder";
+  render();
+  setStatus(ui("segmentDeleted"));
+  return true;
+}
+
+async function saveActiveSegment({ asNew = false } = {}) {
+  syncSegmentTemplateName();
+  collectRfi();
+  const source = state.segmentChecklists.find((segment) => segment.segment_key === state.activeSegmentKey);
+  if (!source) return;
+  if (asNew) {
+    const suffix = state.locale === "es" ? " copia" : " copy";
+    const name = `${segmentDisplayName(source)}${suffix}`;
+    const key = uniqueSegmentKey(name, state.segmentChecklists);
+    const clone = JSON.parse(JSON.stringify({ ...source, segment_key: key, segment_name: name }));
+    const clonedLanes = state.lanes
+      .filter((lane) => segmentFromLane(lane) === source.segment_key)
+      .map((lane, index) => ({ ...lane, operating_segment: key, lane_id: `${cleanText(lane.lane_id) || `L${index + 1}`}-${key}` }));
+    state.segmentChecklists = [...state.segmentChecklists, normalizeSegmentChecklist(clone)];
+    state.lanes = [...state.lanes, ...clonedLanes];
+    state.activeSegmentKey = key;
+    render();
+    await saveDraft();
+    return;
+  }
+  await saveDraft();
 }
 
 function renderSummary() {
@@ -2642,7 +2987,7 @@ function collectSegmentChecklists() {
           label: cleanText(item.label) || itemKey,
           question: cleanText(item.question),
           expected: cleanText(item.expected),
-          required: item.required === false ? false : true,
+          required: item.required === true,
           observation: cleanText(item.observation || item.answer || item.notes)
         };
       }
@@ -2935,7 +3280,13 @@ function appendVaultFiles(index, files) {
 }
 
 function initEvents() {
-  els.importSegmentTemplate?.addEventListener("click", () => els.importSegmentTemplateFile?.click());
+  const chooseSegmentImport = (createNew) => {
+    if (!els.importSegmentTemplateFile) return;
+    els.importSegmentTemplateFile.dataset.importAsNew = createNew ? "true" : "false";
+    els.importSegmentTemplateFile.click();
+  };
+  els.importSegmentTemplate?.addEventListener("click", () => chooseSegmentImport(false));
+  els.importSegmentTemplateNew?.addEventListener("click", () => chooseSegmentImport(true));
   els.downloadSegmentTemplate?.addEventListener("click", async () => {
     try {
       if (!hasLoadedActiveRfiSegment()) throw new Error("Open a signed RFI link and select an operating segment before downloading its template.");
@@ -2953,11 +3304,12 @@ function initEvents() {
     if (!file) return;
     setStatus(state.locale === "es" ? "Importando template del segmento..." : "Importing segment template...");
     try {
-      await importRfiSegmentWorkbook(file);
+      await importRfiSegmentWorkbook(file, { createNew: event.target.dataset.importAsNew === "true" });
     } catch (error) {
       setStatus(error, "error");
     } finally {
       event.target.value = "";
+      delete event.target.dataset.importAsNew;
     }
   });
   els.addLane?.addEventListener("click", () => {
@@ -2979,11 +3331,24 @@ function initEvents() {
       showRfiHelp(helpButton.dataset.rfiHelp);
       return;
     }
-    const wizardButton = event.target.closest("[data-rfi-wizard-segment]");
-    if (wizardButton) {
-      collectRfi();
-      ensureSegmentWorkspace(wizardButton.dataset.rfiWizardSegment);
-      render();
+    const removeTabButton = event.target.closest("[data-remove-rfi-segment]");
+    if (removeTabButton) {
+      removeRfiSegment(removeTabButton.dataset.removeRfiSegment);
+      return;
+    }
+    const saveSegmentButton = event.target.closest("[data-rfi-save-segment]");
+    if (saveSegmentButton) {
+      saveActiveSegment().catch((error) => setStatus(error, "error"));
+      return;
+    }
+    const saveSegmentNewButton = event.target.closest("[data-rfi-save-segment-new]");
+    if (saveSegmentNewButton) {
+      saveActiveSegment({ asNew: true }).catch((error) => setStatus(error, "error"));
+      return;
+    }
+    const deleteSegmentButton = event.target.closest("[data-rfi-delete-segment]");
+    if (deleteSegmentButton) {
+      removeRfiSegment(state.activeSegmentKey);
       return;
     }
     const segmentTab = event.target.closest("[data-rfi-segment-tab]");
@@ -3028,7 +3393,7 @@ function initEvents() {
         label,
         question: "",
         expected: "",
-        required: true,
+        required: false,
         observation: ""
       };
       segment.rubric_items = rubricItems;

@@ -2442,6 +2442,8 @@ async function loadRateware({ preservePage = false, refreshOptions = false } = {
   try {
     await requirePrivatePage();
     const refreshRowsAfterOptions = refreshOptions || !ratewareOptionsLoaded;
+    // The row query is the critical path. Catalogs populate controls in the
+    // background so filtering never makes the spreadsheet wait on metadata.
     const optionsRequest = loadRatewareOptions({ force: refreshOptions });
     let page = await fetchApprovedRatewarePage(ratewarePageParams(ratewarePageOffset()));
     if (token !== ratewareLoadToken) return;
@@ -2453,17 +2455,21 @@ async function loadRateware({ preservePage = false, refreshOptions = false } = {
     }
     ratewareIsLoadingMore = false;
     applyRatewarePage(page);
-    try {
-      await optionsRequest;
-    } catch (optionsError) {
-      if (token !== ratewareLoadToken) return;
-      setActionStatus("Rateware rows loaded. Dropdown catalogs are temporarily unavailable; refresh to try again.", "warning");
-      return;
-    }
-    if (token !== ratewareLoadToken) return;
     if (hasRenderedRows) setActionStatus("");
-    if (!refreshRowsAfterOptions) return;
-    renderRows(loadedRows);
+    updateRatewarePaginationControls();
+
+    // Do not block the filtered page on the catalog request. Once the
+    // dropdown options arrive, refresh only the controls that depend on them.
+    optionsRequest
+      .then(() => {
+        if (token !== ratewareLoadToken || !refreshRowsAfterOptions) return;
+        renderRows(loadedRows);
+      })
+      .catch(() => {
+        if (token === ratewareLoadToken) {
+          setActionStatus("Rateware rows loaded. Dropdown catalogs are temporarily unavailable; refresh to try again.", "warning");
+        }
+      });
   } catch (error) {
     if (token !== ratewareLoadToken) return;
     if (hasRenderedRows) {

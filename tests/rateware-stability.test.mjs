@@ -343,7 +343,9 @@ assert.match(apiSource, /sync_whatsapp_templates/, "Rateware API should expose W
 assert.match(apiSource, /rateware_rfx_invitation_en/, "WhatsApp RFx delivery should use the approved stable English Meta template name");
 assert.match(apiSource, /whatsappTemplateNamesMatch/, "WhatsApp template sync should reconcile legacy and current stable RFx template aliases");
 assert.match(apiSource, /whatsappTemplateLanguagesMatch/, "WhatsApp template sync should reconcile Meta language roots such as en and en_US");
-assert.match(apiSource, /ACTIVE_QUALITY_PENDING[\s\S]+APPROVED/, "WhatsApp Active quality-pending templates should be treated as approved for sending");
+assert.match(apiSource, /normalized\.startsWith\("ACTIVE_"\)[\s\S]+APPROVED/, "WhatsApp Active quality-pending templates should be treated as approved for sending");
+assert.match(apiSource, /whatsappTemplateLanguagesMatch\(row\.language, language\)/, "WhatsApp publish should reuse a Meta template when Meta returns a language root such as en instead of en_US");
+assert.match(apiSource, /normalized\.startsWith\("APPROVED_"\)/, "WhatsApp approved quality variants should remain sendable");
 assert.match(apiSource, /list_whatsapp_phone_numbers/, "Rateware API should expose WhatsApp sender phone listing");
 assert.match(apiSource, /verify_whatsapp_webhook/, "Rateware API should expose WhatsApp webhook verification");
 assert.match(apiSource, /webhook_verified_at: verified \? now : null/, "Webhook verification should persist its result on the resolved WhatsApp connection");
@@ -417,8 +419,11 @@ assert.match(customerRfiHtml, /data-rfi-workspace-view="rubrics"/, "Customer RFI
 assert.match(customerRfiHtml, /data-rfi-workspace-view="files"/, "Customer RFI should expose a segment file-vault workspace view");
 assert.match(customerRfiHtml, /rfi-segment-files/, "Customer RFI should keep the active segment file vault separate from the checklist grid");
 assert.match(customerRfiHtml, /rfi-language-toggle/, "Customer RFI should provide an English and Spanish toggle");
-assert.match(customerRfiHtml, /rfi-wizard-panel/, "Customer RFI should expose a guided RFI wizard for operating segment setup");
-assert.match(customerRfiHtml, /data-rfi-wizard-segment/, "Customer RFI wizard should create segment workspaces from presets");
+assert.doesNotMatch(customerRfiHtml, /rfi-wizard-panel/, "Customer RFI should not show a redundant wizard ribbon");
+assert.match(customerRfiHtml, /rfi-segment-selector/, "Customer RFI should select operating segments from the compact scope control");
+assert.match(customerRfiSource, /data-remove-rfi-segment/, "Customer RFI should expose removable selected segment tabs");
+assert.match(customerRfiHtml, /data-rfi-save-segment/, "Customer RFI should expose explicit segment save controls");
+assert.match(customerRfiHtml, /data-rfi-delete-segment/, "Customer RFI should expose explicit segment delete controls");
 assert.doesNotMatch(customerRfiHtml, /add-segment-checklist/, "Customer RFI should not expose a redundant add-segment button outside the operating scope");
 assert.match(customerRfiSource, /renderAutofillCatalogs/, "Customer RFI route fields should provide catalog autofill without blocking new values");
 assert.match(customerRfiSource, /RFI_IMPORT_ALIASES/, "Customer RFI workbook import should map the source RFI headings instead of relying on column position");
@@ -1358,8 +1363,28 @@ assert.match(
 );
 assert.match(
   spreadsheetColumnFiltersSource,
-  /event\.key === "Enter" && !event\.target\.matches\("\.sheet-filter-search"\)/,
-  "Spreadsheet filter search should not submit while a user is typing"
+  /event\.key === "Enter"/,
+  "Spreadsheet filter search should let operators apply a typed filter with Enter"
+);
+assert.match(
+  spreadsheetColumnFiltersSource,
+  /MENU_VALUES_TIMEOUT_MS = 8000/,
+  "Spreadsheet filter value requests should time out instead of leaving the menu stuck loading"
+);
+assert.match(
+  spreadsheetColumnFiltersSource,
+  /data-sheet-filter-apply-search/,
+  "Spreadsheet filter menus should offer applying typed search text across the full database"
+);
+assert.match(
+  spreadsheetColumnFiltersSource,
+  /state\.set\(field, query\)/,
+  "Spreadsheet filter text searches should serialize as database contains filters"
+);
+assert.match(
+  spreadsheetColumnFiltersSource,
+  /isTextFilter\(values\)[\s\S]*result\[field\] = values\.trim\(\)/,
+  "Spreadsheet filter serialization should preserve text filters for backend-wide matching"
 );
 assert.match(
   spreadsheetColumnFiltersSource,
@@ -1648,8 +1673,15 @@ const listRatewareFilterValuesSource = apiSource.slice(apiSource.indexOf('if (bo
 assert.ok(listRatewareFilterValuesSource.length > 100, "Rateware filter value block should be present");
 assert.match(
   listRatewareFilterValuesSource,
-  /fetchRateFilterValuesByRpc[\s\S]*catch[\s\S]*fetchSqlRateFilterValues/,
-  "Rateware filter dropdown values should use normalized RPC first and SQL only as a fallback"
+  /const sqlValues = await fetchSqlRateFilterValues[\s\S]*if \(sqlValues\) return jsonResponse\(sqlValues\)[\s\S]*fetchRateFilterValuesByRpc/,
+  "Rateware filter dropdown values should use SQL first for simple database-backed menus and RPC only as fallback"
+);
+const fetchRateIdsSource = apiSource.slice(apiSource.indexOf("async function fetchRateRowIdsByFilter"), apiSource.indexOf("async function fetchRateRowsForIds"));
+assert.ok(fetchRateIdsSource.length > 100, "Rateware filtered id helper should be present");
+assert.match(
+  fetchRateIdsSource,
+  /if \(canUseSqlRateFilters\(filters\)\)/,
+  "Rateware compatible filtered actions should use SQL directly instead of waiting on RPC"
 );
 
 assert.match(apiSource, /body\.action === "get_rate_row_detail"/, "Rateware should lazy-load row detail");

@@ -2703,7 +2703,7 @@ async function fetchRateRowIdsByFilter(
   const limit = Math.min(Math.max(Number(options.limit) || 50000, 1), 50000);
   const offset = Math.max(Number(options.offset) || 0, 0);
 
-  if (filters.needs_vendor === true && canUseSqlRateFilters(filters)) {
+  if (canUseSqlRateFilters(filters)) {
     let query = supabase
       .from("rate_staging")
       .select("id", { count: "exact" })
@@ -11265,7 +11265,16 @@ function whatsappMetaStatus(value: unknown, fallback = "NOT_PUBLISHED") {
   // WhatsApp Manager may present an approved template as "Active" (for
   // example, "Active - Quality pending"). Treat that provider label as an
   // approved template so a synced mapping does not remain stuck in pending.
-  if (["ACTIVE", "ACTIVE_QUALITY_PENDING"].includes(normalized)) return "APPROVED";
+  // Meta's APIs and Manager UI use a few equivalent labels around the
+  // approval lifecycle. Any active or approved quality-pending variant is
+  // sendable; do not leave an existing approved notifier blocked by a stale
+  // pending mapping.
+  if (
+    normalized === "ACTIVE"
+    || normalized === "APPROVED"
+    || normalized.startsWith("ACTIVE_")
+    || normalized.startsWith("APPROVED_")
+  ) return "APPROVED";
   return normalized || fallback.toUpperCase();
 }
 
@@ -11501,7 +11510,10 @@ async function publishOutreachTemplateToWhatsapp(
       `?name=${encodeURIComponent(name)}&fields=id,name,language,status,category,components&limit=10`
     );
     metaRow = Array.isArray(existingMeta.data.data)
-      ? existingMeta.data.data.find((row: Record<string, unknown>) => cleanText(row.name) === name && cleanText(row.language) === language) || null
+      ? existingMeta.data.data.find((row: Record<string, unknown>) => (
+        whatsappTemplateNamesMatch(row.name, name, language)
+        && whatsappTemplateLanguagesMatch(row.language, language)
+      )) || null
       : null;
 
     if (!metaRow) {
@@ -19898,6 +19910,9 @@ Deno.serve(async (request) => {
         column_filters: columnFilters
       };
 
+      const sqlValues = await fetchSqlRateFilterValues(supabase, filterPayload, field, valueSearch, limit);
+      if (sqlValues) return jsonResponse(sqlValues);
+
       try {
         return jsonResponse(await fetchRateFilterValuesByRpc(supabase, filterPayload, field, valueSearch, limit));
       } catch (error) {
@@ -19905,8 +19920,6 @@ Deno.serve(async (request) => {
           field,
           message: error instanceof Error ? error.message : String(error)
         });
-        const sqlValues = await fetchSqlRateFilterValues(supabase, filterPayload, field, valueSearch, limit);
-        if (sqlValues) return jsonResponse(sqlValues);
         throw error;
       }
     }

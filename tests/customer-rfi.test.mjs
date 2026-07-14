@@ -26,16 +26,25 @@ assert.match(source, /Open a signed RFI link and select an operating segment/, "
 assert.match(source, /function importRfiSegmentWorkbook\(/, "RFI can import a completed segment template.");
 assert.match(source, /Segment Details/, "Segment template stores editable segment identity details.");
 assert.match(source, /segment-v1/, "Segment template has an explicit version marker.");
-assert.match(source, /rfi-import-as-new-segment/, "Segment import can create a separate segment for similar operations.");
+assert.match(source, /importRfiSegmentWorkbook\(file, \{ createNew = false \}/, "Segment import can create a separate segment for similar operations.");
 assert.match(source, /rubric_template_key/, "Imported segments preserve the rubric source segment.");
 assert.match(source, /rateware-segment-/, "Segment downloads use a segment-specific filename.");
 assert.match(html, /id="download-rfi-segment-template"/, "RFI exposes the active-segment template download action.");
 assert.match(html, /id="import-rfi-segment-template"/, "RFI exposes the segment template import action.");
 assert.match(html, /id="rfi-segment-template-name"/, "RFI exposes an editable segment name.");
-assert.match(html, /id="rfi-import-as-new-segment"/, "RFI exposes the create-new-segment option.");
+assert.match(html, /id="import-rfi-segment-template-new"/, "RFI exposes the create-new-segment import action.");
+assert.match(html, /data-rfi-save-segment/, "RFI exposes the active-segment save action.");
+assert.match(html, /data-rfi-save-segment-new/, "RFI exposes the save-as-new segment action.");
+assert.match(html, /data-rfi-delete-segment/, "RFI exposes the segment delete action.");
+assert.match(source, /data-remove-rfi-segment/, "RFI exposes removable segment tabs.");
+assert.match(source, /rubricSelectionHelp/, "RFI explains that unchecked rubrics remain optional.");
 assert.match(html, /id="rfi-segment-template-state"/, "RFI exposes segment template readiness state.");
 assert.match(source, /function canonicalSegmentKey\(/, "Legacy RFI segment values are normalized safely.");
 assert.match(source, /function speakRfiHelp\(/, "The field guide provides browser audio support.");
+assert.match(source, /function rfiWorkbookPlaceholder\(/, "RFI workbook guide rows use locale-aware placeholders.");
+assert.match(source, /rfiWorkbookPlaceholder\(column, locale\)/, "Both RFI workbook downloads use localized guide-row placeholders.");
+assert.match(source, /clave_plantilla_rubros/, "Spanish segment detail headers are accepted during import.");
+assert.match(source, /rfiWorkbookOptionLabel\(candidate, \"es\"\)/, "Localized Spanish catalog labels normalize back to canonical values.");
 
 for (const segment of [
   "local_ftl",

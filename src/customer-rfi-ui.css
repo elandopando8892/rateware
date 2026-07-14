@@ -247,6 +247,73 @@
   margin: 0;
 }
 
+/* Segment lifecycle controls are deliberately explicit and compact. */
+.public-rfi-page .rfi-segment-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+}
+
+.public-rfi-page .rfi-segment-tab-item {
+  display: inline-flex;
+  min-width: 0;
+}
+
+.public-rfi-page .rfi-segment-tab-item .rfi-segment-tab {
+  min-width: 138px;
+  border-radius: 5px 0 0 5px;
+}
+
+.public-rfi-page .rfi-segment-tab-remove {
+  width: 25px;
+  min-width: 25px;
+  padding: 0;
+  border: 1px solid #b9cbd5;
+  border-left: 0;
+  border-radius: 0 5px 5px 0;
+  background: #fff;
+  color: #8a3b3b;
+  font-size: .9rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.public-rfi-page .rfi-segment-tab-remove:hover:not(:disabled) {
+  background: #fff1f1;
+}
+
+.public-rfi-page .rfi-segment-tab-remove:disabled {
+  color: #aab8bf;
+  cursor: not-allowed;
+}
+
+.public-rfi-page .rfi-rubric-group-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+}
+
+.public-rfi-page .rfi-rubric-selection-help {
+  flex: 1 1 280px;
+  min-width: 180px;
+  color: #617583;
+  font-size: .64rem;
+  line-height: 1.3;
+}
+
+.public-rfi-page .rfi-segment-template-bar {
+  grid-template-columns: minmax(180px, 1fr) repeat(6, max-content);
+  grid-template-areas:
+    "name download import import-new save save-new delete"
+    "copy copy copy copy copy copy copy";
+}
+
+.public-rfi-page #import-rfi-segment-template-new { grid-area: import-new; }
+.public-rfi-page #save-rfi-segment { grid-area: save; }
+.public-rfi-page #save-rfi-segment-new { grid-area: save-new; }
+.public-rfi-page #delete-rfi-segment { grid-area: delete; }
+
 .public-rfi-page .rfi-segment-template-help {
   align-self: center;
   margin: 0;
@@ -597,13 +664,10 @@
     grid-template-areas:
       "name name"
       "download import"
-      "options options"
+      "import-new save"
+      "save-new delete"
       "copy copy";
     align-items: center;
-  }
-
-  .public-rfi-page .rfi-segment-template-bar .rfi-template-checkbox {
-    justify-self: start;
   }
 }
 

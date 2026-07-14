@@ -31,22 +31,6 @@
 
       <p id="customer-rfi-message" class="row-save-status" role="status"></p>
 
-      <details class="customer-rfi-card rfi-wizard-panel" id="rfi-wizard-panel" open>
-        <summary class="rfi-wizard-copy">
-          <span class="rfi-wizard-title"><span class="eyebrow" data-i18n="rfiWizard">RFI Wizard</span><strong data-i18n="smartSetup">Build the intake by operating segment</strong></span>
-          <span data-i18n="wizardHelp">Pick the operating models that apply. The route matrix and carrier checklist will follow the selected segment tabs.</span>
-        </summary>
-        <div class="rfi-wizard-actions" aria-label="RFI operating segment presets">
-          <button type="button" class="secondary small-button" data-rfi-wizard-segment="crossborder" data-i18n="wizardCrossborder">Crossborder D2D</button>
-          <button type="button" class="secondary small-button" data-rfi-wizard-segment="local_ftl" data-i18n="wizardLocal">Local FTL</button>
-          <button type="button" class="secondary small-button" data-rfi-wizard-segment="regional_ftl" data-i18n="wizardRegional">Regional FTL</button>
-          <button type="button" class="secondary small-button" data-rfi-wizard-segment="national_ftl" data-i18n="wizardNational">National FTL</button>
-          <button type="button" class="secondary small-button" data-rfi-wizard-segment="expedited" data-i18n="wizardExpedited">Expedited</button>
-          <button type="button" class="secondary small-button" data-rfi-wizard-segment="time_critical" data-i18n="wizardTimeCritical">Time critical</button>
-          <button type="button" class="secondary small-button" data-rfi-wizard-segment="port_drayage_mx" data-i18n="wizardPort">Port drayage</button>
-        </div>
-      </details>
-
       <section class="customer-rfi-grid rfi-overview-grid">
         <article class="customer-rfi-card rfi-section-card">
           <div class="rfi-section-heading">
@@ -81,7 +65,6 @@
             <label><input type="checkbox" name="rfi-segment" value="port_drayage_us" /> <span data-i18n="segmentPortUs">Port Drayage US</span></label>
             <label><input type="checkbox" name="rfi-segment" value="port_drayage_mx" /> <span data-i18n="segmentPortMx">Port Drayage MX</span></label>
           </div>
-          <label class="rfi-compact-textarea"><span data-i18n="crossborderDetails">Crossborder details</span><textarea id="rfi-crossborder" rows="2" placeholder="Border cities, customs model, import/export notes"></textarea></label>
         </article>
       </section>
 
@@ -108,9 +91,12 @@
             <input id="rfi-segment-template-name" type="text" placeholder="Crossborder direct / Intra-Mex" />
           </label>
           <button id="download-rfi-segment-template" type="button" class="secondary" data-i18n="downloadSegmentTemplate" disabled>Download segment template</button>
-          <button id="import-rfi-segment-template" type="button" class="secondary" data-i18n="importSegmentTemplate" disabled>Import segment template</button>
+          <button id="import-rfi-segment-template" type="button" class="secondary" data-i18n="importIntoSegment" disabled>Import into segment</button>
+          <button id="import-rfi-segment-template-new" type="button" class="secondary" data-i18n="importAsNewSegment" disabled>Import as new segment</button>
           <input id="import-rfi-segment-template-file" type="file" accept=".xlsx,.xls,.csv" hidden />
-          <label class="rfi-template-checkbox"><input id="rfi-import-as-new-segment" type="checkbox" disabled /> <span data-i18n="importAsNewSegment">Create as new segment</span></label>
+          <button id="save-rfi-segment" type="button" class="secondary" data-rfi-save-segment data-i18n="saveSegment">Save segment</button>
+          <button id="save-rfi-segment-new" type="button" class="secondary" data-rfi-save-segment-new data-i18n="saveAsNewSegment">Save as new</button>
+          <button id="delete-rfi-segment" type="button" class="danger" data-rfi-delete-segment data-i18n="deleteSegment">Delete segment</button>
           <div class="rfi-segment-template-copy">
             <span class="field-help rfi-segment-template-help" data-i18n="segmentTemplateHelp">This workbook contains only the active segment: routes, rubrics, instructions, and catalog.</span>
             <span id="rfi-segment-template-state" class="rfi-segment-template-state" role="status" data-i18n="segmentTemplateNeedsToken">Open a signed RFI link to load a segment template.</span>
