@@ -356,12 +356,16 @@ assert.match(apiSource, /test_whatsapp_business_connection/, "Rateware API shoul
 assert.match(apiSource, /sync_whatsapp_templates/, "Rateware API should expose WhatsApp template sync");
 assert.match(apiSource, /rateware_rfx_invitation_en/, "WhatsApp RFx delivery should use the approved stable English Meta template name");
 assert.match(apiSource, /whatsappTemplateNamesMatch/, "WhatsApp template sync should reconcile legacy and current stable RFx template aliases");
+assert.match(apiSource, /rateware_rfx_invitation_\$\{suffix\}rateware_rfx_invitation_\$\{suffix\}/, "WhatsApp publishing should reconcile duplicated legacy notifier names");
 assert.match(apiSource, /whatsappTemplateLanguagesMatch/, "WhatsApp template sync should reconcile Meta language roots such as en and en_US");
 assert.match(apiSource, /name: "rateware_rfx_invitation_en"[\s\S]+language: "en"/, "WhatsApp approved English RFx notifier should send with Meta's English language code");
 assert.match(apiSource, /meta_template_language: cleanText\(metaTemplate\.language\)/, "WhatsApp template sync should persist Meta's real template language code");
 assert.match(apiSource, /whatsappTemplateLanguageCandidates/, "WhatsApp sending should retry equivalent Meta language codes for approved templates");
 assert.match(apiSource, /\(cleanText\(template\.meta_template_language\) \|\| ""\)\.replace/, "WhatsApp template publishing must tolerate an omitted template language");
-assert.match(apiSource, /\(cleanText\(value\) \|\| ""\)\.replace\(\/-\/g, "_"\) \|\| "en"/, "WhatsApp template language candidates must tolerate null values");
+assert.match(apiSource, /const raw = \(cleanText\(value\) \|\| ""\)\.trim\(\)\.replace/, "WhatsApp template language candidates must tolerate null values");
+assert.match(apiSource, /english: "en"/, "WhatsApp template sending must normalize human-readable English mappings before calling Meta");
+assert.match(apiSource, /replace\(\/\[\(\)\]\/g, ""\)/, "WhatsApp template sending must normalize Meta language labels such as English (US)");
+assert.match(apiSource, /en_GB/, "WhatsApp template sending should retry equivalent English Meta locale codes");
 assert.match(apiSource, /message\.includes\("132001"\)/, "WhatsApp sending should recognize Meta translation mismatch errors");
 assert.match(apiSource, /normalized\.startsWith\("ACTIVE_"\)[\s\S]+APPROVED/, "WhatsApp Active quality-pending templates should be treated as approved for sending");
 assert.match(apiSource, /replace\(\s*\/\[\^A-Z0-9\]\+\/g,\s*"_"\s*\)/, "WhatsApp Meta status normalization should handle punctuation and unicode separators");
@@ -375,6 +379,7 @@ assert.match(apiSource, /list_whatsapp_phone_numbers/, "Rateware API should expo
 assert.match(apiSource, /verify_whatsapp_webhook/, "Rateware API should expose WhatsApp webhook verification");
 assert.match(apiSource, /webhook_verified_at: verified \? now : null/, "Webhook verification should persist its result on the resolved WhatsApp connection");
 assert.match(apiSource, /\?fields=name,language,status,category,components,quality_score&limit=100/, "WhatsApp template sync should read Meta quality status from message_templates");
+assert.match(apiSource, /"\?fields=id,name,language,status,category,components,quality_score&limit=100"/, "WhatsApp publishing should resolve the exact approved Meta template from the catalog");
 assert.match(settingsHtml, /connect-whatsapp-button/, "Settings should expose WhatsApp Business connection controls");
 assert.match(settingsHtml, /whatsapp-manual-form/, "External workspaces should have a manual WhatsApp Business setup form");
 assert.match(settingsHtml, /whatsapp-access-token[^>]+type="password"/, "WhatsApp access token should use a password input");

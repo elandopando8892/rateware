@@ -11451,7 +11451,8 @@ function whatsappTemplateNamesMatch(
   const suffix = normalizedLanguage.startsWith("es") ? "es" : "en";
   const stableNames = new Set([
     `rateware_rfx_invitation_${suffix}`,
-    `rateware_rfx_invitation_${suffix}_v1`
+    `rateware_rfx_invitation_${suffix}_v1`,
+    `rateware_rfx_invitation_${suffix}rateware_rfx_invitation_${suffix}`
   ]);
   return stableNames.has(left) && stableNames.has(right);
 }
@@ -11468,11 +11469,31 @@ function whatsappTemplateLanguagesMatch(leftValue: unknown, rightValue: unknown)
 }
 
 function whatsappTemplateLanguageCandidates(value: unknown) {
-  const normalized = (cleanText(value) || "").replace(/-/g, "_") || "en";
-  const root = normalized.split("_")[0];
+  const raw = (cleanText(value) || "").trim().replace(/-/g, "_");
+  // Meta's API expects a locale code. Older mappings and UI labels can contain
+  // human-readable values such as "English", which otherwise cause #132001.
+  const aliases: Record<string, string> = {
+    english: "en",
+    english_us: "en_US",
+    english_uk: "en_GB",
+    spanish: "es",
+    spanish_mexico: "es_MX",
+    espanol: "es",
+    español: "es"
+  };
+  const aliasKey = raw
+    .toLowerCase()
+    .replace(/[()]/g, "")
+    .replace(/\s+/g, "_")
+    .replace(/_+/g, "_");
+  const normalized = aliases[aliasKey] || raw || "en";
+  const root = normalized.split("_")[0].toLowerCase();
   const candidates = [normalized];
   if (root && root !== normalized) candidates.push(root);
-  if (root === "en" && !candidates.includes("en_US")) candidates.push("en_US");
+  if (root === "en") {
+    if (!candidates.includes("en_US")) candidates.push("en_US");
+    if (!candidates.includes("en_GB")) candidates.push("en_GB");
+  }
   if (root === "es" && !candidates.includes("es_MX")) candidates.push("es_MX");
   return [...new Set(candidates.filter(Boolean))];
 }
@@ -11605,7 +11626,7 @@ async function publishOutreachTemplateToWhatsapp(
     const existingMeta = await whatsappTemplateGraphFetch(
       supabase,
       connection,
-      `?name=${encodeURIComponent(name)}&fields=id,name,language,status,category,components,quality_score&limit=10`
+      "?fields=id,name,language,status,category,components,quality_score&limit=100"
     );
     metaRow = Array.isArray(existingMeta.data.data)
       ? existingMeta.data.data.find((row: Record<string, unknown>) => (
