@@ -13051,7 +13051,10 @@ async function sendOutreachMessages(
           sent_from: "gmail_api",
           sender_email: senderEmail,
           provider_message_id: cleanText(data.id),
-          gmail_thread_id: cleanText(data.threadId)
+          gmail_thread_id: cleanText(data.threadId),
+          source: cleanText(objectRecord(message.metadata).source),
+          ratebook_id: cleanText(objectRecord(message.metadata).ratebook_id),
+          ratebook_share_id: cleanText(objectRecord(message.metadata).ratebook_share_id)
         }
       }, user));
       if (history.error) throw history.error;
@@ -14884,6 +14887,20 @@ async function hashRfxMagicToken(token: string) {
   return Array.from(new Uint8Array(hash)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
+async function hashRatebookCarrierAccessToken(token: string) {
+  const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token));
+  return Array.from(new Uint8Array(hash)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function hashRatebookSourceSnapshot(snapshot: string) {
+  const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(snapshot));
+  return Array.from(new Uint8Array(hash)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function ratebookCarrierAccessToken() {
+  return `${crypto.randomUUID().replaceAll("-", "")}${crypto.randomUUID().replaceAll("-", "")}`;
+}
+
 function rfxMagicToken() {
   return `${randomToken()}${randomToken()}`;
 }
@@ -15445,8 +15462,16 @@ async function createRfxProcessPackage(supabase: ReturnType<typeof createClient>
     .update({ status: "rfx_design", updated_at: new Date().toISOString() })
     .eq("id", project.id)
     .eq("owner_email", user.owner_email);
+  const shipperContexts = await getRatebookShipperContexts(supabase, user, [cleanText(project.id)]);
+  const ratebook = await upsertRatebookForPackage(supabase, user, {
+    pack: packageInsert.data as Record<string, unknown>,
+    project,
+    package_lanes: laneRows,
+    package_segments: segmentRows,
+    shipper: shipperContexts.get(cleanText(project.id))
+  });
   await writeRfxProcessAudit(supabase, user, project.id, "rfx_package_created", "rfx_packages", packageInsert.data.id, `Created RFx sourcing package with ${laneRows.length} lane(s) and ${segmentRows.length} segment(s)`, { weights, sourcing_strategy: packageRow.sourcing_strategy, segments: segmentRows.length });
-  return { row: { ...packageInsert.data, rfx_package_segments: segmentRows }, lanes: laneRows.length, segments: segmentRows.length };
+  return { row: { ...packageInsert.data, rfx_package_segments: segmentRows }, ratebook, lanes: laneRows.length, segments: segmentRows.length };
 }
 
 async function launchRfxProcessPackageToBidRoom(supabase: ReturnType<typeof createClient>, user: { owner_user_id: string | null; owner_email: string | null }, input: Record<string, unknown>) {
@@ -15500,6 +15525,7 @@ async function launchRfxProcessPackageToBidRoom(supabase: ReturnType<typeof crea
     const segment = objectRecord(segmentByKey.get(segmentKey));
     return {
       rfx_event_id: eventInsert.data.id,
+      source_rfx_demand_lane_id: cleanText(lane.id),
       lane_number: index + 1,
       origin: cleanText(lane.origin),
       origin_city: cleanText(lane.origin_city),
@@ -15541,8 +15567,1508 @@ async function launchRfxProcessPackageToBidRoom(supabase: ReturnType<typeof crea
     supabase.from("rfx_packages").update({ linked_rfx_event_id: eventInsert.data.id, status: "launched", updated_at: new Date().toISOString() }).eq("id", pack.id),
     supabase.from("rfx_projects").update({ linked_rfx_event_id: eventInsert.data.id, status: "bid_room_open", updated_at: new Date().toISOString() }).eq("id", project.id)
   ]);
+  const shipperContexts = await getRatebookShipperContexts(supabase, user, [cleanText(project.id)]);
+  const ratebook = await upsertRatebookForPackage(supabase, user, {
+    pack: { ...pack, linked_rfx_event_id: eventInsert.data.id, status: "launched" },
+    project,
+    package_lanes: packageLanes,
+    package_segments: segmentRows,
+    shipper: shipperContexts.get(cleanText(project.id))
+  });
   await writeRfxProcessAudit(supabase, user, project.id, "bid_room_launched", "rfx_events", eventInsert.data.id, `Launched Bid Room from RFx Package ${pack.name || ""}`.trim(), { package_id: pack.id, lanes: laneRows.length, segments: segmentRows.length });
-  return { launched: true, rfx_event_id: eventInsert.data.id, row: eventInsert.data, lanes: laneRows.length, segments: segmentRows.length };
+  return { launched: true, rfx_event_id: eventInsert.data.id, row: eventInsert.data, ratebook, lanes: laneRows.length, segments: segmentRows.length };
+}
+
+function ratebookOrigin(input: Record<string, unknown>) {
+  return (cleanUrl(input.app_origin || input.appOrigin || input.origin) || Deno.env.get("RATEWARE_PUBLIC_APP_URL") || "https://rateware.vercel.app").replace(/\/$/, "");
+}
+
+function ratebookStatusForPackage(pack: Record<string, unknown>) {
+  if (cleanText(pack.status)?.toLowerCase() === "archived") return "archived";
+  if (cleanText(pack.linked_rfx_event_id)) return "shared";
+  if (cleanText(pack.status)?.toLowerCase() === "locked") return "ready";
+  return "draft";
+}
+
+const RATEBOOK_SOURCE_TYPES = new Set(["rfi", "rfx", "spot", "bid_room"]);
+const RATEBOOK_LIFECYCLE_STATUSES = new Set(["draft", "published", "superseded", "archived"]);
+
+function ratebookSourceType(project: Record<string, unknown>, pack: Record<string, unknown>) {
+  const metadata = objectRecord(project.metadata);
+  const source = cleanText(pack.source_type || project.source_type || metadata.source_type || metadata.source)?.toLowerCase();
+  if (source === "bid" || source === "bidroom" || source === "bid_room") return "bid_room";
+  if (source && RATEBOOK_SOURCE_TYPES.has(source)) return source;
+  return "rfx";
+}
+
+function ratebookLifecycleStatus(value: unknown, fallback = "draft") {
+  const normalized = cleanText(value)?.toLowerCase();
+  return normalized && RATEBOOK_LIFECYCLE_STATUSES.has(normalized) ? normalized : fallback;
+}
+
+function ratebookLegacyStatus(lifecycle: string, pack: Record<string, unknown>, existingStatus?: unknown) {
+  if (lifecycle === "archived" || lifecycle === "superseded") return "archived";
+  if (lifecycle === "draft") return "draft";
+  if (cleanText(existingStatus)?.toLowerCase() === "shared" || cleanText(pack.linked_rfx_event_id)) return "shared";
+  return "ready";
+}
+
+function ratebookSourceFingerprint(project: Record<string, unknown>, pack: Record<string, unknown>, sourceType: string) {
+  return `${sourceType}:${cleanText(project.id) || "project"}:${cleanText(pack.id) || "package"}`;
+}
+
+function ratebookSourceSnapshot(
+  project: Record<string, unknown>,
+  pack: Record<string, unknown>,
+  packageLanes: Record<string, unknown>[],
+  packageSegments: Record<string, unknown>[] = []
+) {
+  const lanes = packageLanes.map((packageLane) => {
+    const demand = objectRecord(packageLane.rfx_demand_lanes);
+    return {
+      id: cleanText(packageLane.id),
+      demand_id: cleanText(demand.id || packageLane.demand_lane_id),
+      lane_key: cleanText(demand.lane_key),
+      origin: firstCleanText(demand.origin, [demand.origin_city, demand.origin_state].filter(Boolean).join(", ")),
+      destination: firstCleanText(demand.destination, [demand.destination_city, demand.destination_state].filter(Boolean).join(", ")),
+      origin_zip: cleanText(demand.origin_zip),
+      destination_zip: cleanText(demand.destination_zip),
+      equipment: cleanText(demand.equipment_type),
+      trailer: cleanText(demand.trailer_requirements),
+      config: cleanText(demand.configuration_type),
+      operation: cleanText(demand.operation_type),
+      service: cleanText(demand.service_type),
+      weekly_volume: cleanText(demand.weekly_volume),
+      frequency: cleanText(demand.frequency),
+      target_rate: cleanText(demand.target_rate),
+      currency: cleanText(demand.currency),
+      segment_key: firstCleanText(demand.rfx_segment_key, demand.operating_segment)
+    };
+  }).sort((left, right) => `${left.lane_key}|${left.id}`.localeCompare(`${right.lane_key}|${right.id}`));
+  const segments = packageSegments.map((segment) => ({
+    id: cleanText(segment.id),
+    key: cleanText(segment.segment_key),
+    name: firstCleanText(segment.segment_name, segment.name),
+    operation: cleanText(segment.operation),
+    service: cleanText(segment.service),
+    equipment: cleanText(segment.equipment),
+    trailer: cleanText(segment.trailer),
+    checklist: Array.isArray(segment.checklist) ? segment.checklist : []
+  })).sort((left, right) => `${left.key}|${left.id}`.localeCompare(`${right.key}|${right.id}`));
+  return JSON.stringify({
+    project: {
+      id: cleanText(project.id), title: cleanText(project.title), customer_name: cleanText(project.customer_name),
+      status: cleanText(project.status), due_date: cleanText(project.due_date)
+    },
+    package: {
+      id: cleanText(pack.id), name: cleanText(pack.name), status: cleanText(pack.status),
+      bid_due_at: cleanText(pack.bid_due_at), valid_from: cleanText(pack.valid_from), valid_until: cleanText(pack.valid_until)
+    },
+    lanes,
+    segments
+  });
+}
+
+function ratebookSourceFreshness(ratebook: Record<string, unknown>, currentSnapshotHash: string) {
+  const storedSnapshotHash = cleanText(ratebook.source_snapshot_hash);
+  if (!storedSnapshotHash) return "unknown";
+  return storedSnapshotHash === currentSnapshotHash ? "current" : "outdated";
+}
+
+type RatebookShipperContext = {
+  shipper_id: string | null;
+  shipper_name: string | null;
+  opportunity_name: string | null;
+};
+
+async function getRatebookShipperContexts(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_email: string | null },
+  projectIds: string[]
+) {
+  const ids = Array.from(new Set(projectIds.map((id) => cleanText(id)).filter(Boolean)));
+  const contexts = new Map<string, RatebookShipperContext>();
+  if (!ids.length) return contexts;
+  const opportunitiesResult = await supabase.from("shipper_opportunities")
+    .select("rfx_project_id,shipper_id,opportunity_name")
+    .eq("owner_email", user.owner_email)
+    .in("rfx_project_id", ids);
+  if (opportunitiesResult.error) throw opportunitiesResult.error;
+  const opportunities = (opportunitiesResult.data || []) as Record<string, unknown>[];
+  const shipperIds = Array.from(new Set(opportunities.map((row) => cleanText(row.shipper_id)).filter(Boolean)));
+  const shipperById = new Map<string, Record<string, unknown>>();
+  if (shipperIds.length) {
+    const shippersResult = await supabase.from("shippers")
+      .select("id,shipper_name,legal_name")
+      .eq("owner_email", user.owner_email)
+      .in("id", shipperIds);
+    if (shippersResult.error) throw shippersResult.error;
+    ((shippersResult.data || []) as Record<string, unknown>[]).forEach((shipper) => shipperById.set(cleanText(shipper.id), shipper));
+  }
+  opportunities.forEach((opportunity) => {
+    const shipper = shipperById.get(cleanText(opportunity.shipper_id)) || {};
+    contexts.set(cleanText(opportunity.rfx_project_id), {
+      shipper_id: cleanText(opportunity.shipper_id) || null,
+      shipper_name: firstCleanText(shipper.shipper_name, shipper.legal_name) || null,
+      opportunity_name: cleanText(opportunity.opportunity_name) || null
+    });
+  });
+  return contexts;
+}
+
+async function getOwnedRatebookPackage(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_email: string | null },
+  packageId: unknown
+) {
+  const id = cleanText(packageId);
+  if (!id || !UUID_PATTERN.test(id)) throw new Error("A valid RFx Package id is required.");
+  const packResult = await supabase.from("rfx_packages").select("*")
+    .eq("id", id).eq("owner_email", user.owner_email).single();
+  if (packResult.error) throw packResult.error;
+  const pack = packResult.data as Record<string, unknown>;
+  const [projectResult, packageLanesResult, packageSegmentsResult] = await Promise.all([
+    supabase.from("rfx_projects").select("*")
+      .eq("id", pack.project_id).eq("owner_email", user.owner_email).single(),
+    supabase.from("rfx_package_lanes").select("*, rfx_demand_lanes(*)")
+      .eq("package_id", id).order("created_at", { ascending: true }),
+    supabase.from("rfx_package_segments").select("*")
+      .eq("package_id", id).eq("owner_email", user.owner_email).order("sort_order", { ascending: true })
+  ]);
+  if (projectResult.error) throw projectResult.error;
+  if (packageLanesResult.error) throw packageLanesResult.error;
+  if (packageSegmentsResult.error) throw packageSegmentsResult.error;
+  return {
+    pack,
+    project: projectResult.data as Record<string, unknown>,
+    package_lanes: (packageLanesResult.data || []) as Record<string, unknown>[],
+    package_segments: (packageSegmentsResult.data || []) as Record<string, unknown>[]
+  };
+}
+
+async function upsertRatebookForPackage(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_user_id: string | null; owner_email: string | null; organization_id?: string | null },
+  packageContext: {
+    pack: Record<string, unknown>;
+    project: Record<string, unknown>;
+    package_lanes: Record<string, unknown>[];
+    package_segments?: Record<string, unknown>[];
+    shipper?: RatebookShipperContext;
+  }
+) {
+  const { pack, project, package_lanes: packageLanes, package_segments: packageSegments = [] } = packageContext;
+  const sourceType = ratebookSourceType(project, pack);
+  const sourceFingerprint = ratebookSourceFingerprint(project, pack, sourceType);
+  const sourceSnapshotHash = await hashRatebookSourceSnapshot(ratebookSourceSnapshot(project, pack, packageLanes, packageSegments));
+  const structuralRow = {
+    ...withOwner({
+      project_id: project.id,
+      rfx_package_id: pack.id,
+      rfx_event_id: cleanText(pack.linked_rfx_event_id) || null,
+      name: firstCleanText(pack.name, project.title, "RFx Ratebook") || "RFx Ratebook",
+      lane_count: packageLanes.length,
+      shipper_id: packageContext.shipper?.shipper_id || null,
+      shipper_name: packageContext.shipper?.shipper_name || cleanText(project.customer_name) || null,
+      source_type: sourceType,
+      source_reference: firstCleanText(packageContext.shipper?.opportunity_name, project.title, project.customer_name),
+      source_fingerprint: sourceFingerprint,
+      source_snapshot_hash: sourceSnapshotHash,
+      metadata: {
+        source: "rfx_process_package",
+        source_type: sourceType,
+        project_title: cleanText(project.title),
+        customer_name: cleanText(project.customer_name),
+        shipper_opportunity: packageContext.shipper?.opportunity_name || null,
+        bid_due_at: cleanText(pack.bid_due_at)
+      },
+      updated_at: new Date().toISOString()
+    }, user),
+    organization_id: user.organization_id || null
+  };
+  const existingResult = await supabase.from("rfx_ratebooks").select("*")
+    .eq("owner_email", user.owner_email).eq("rfx_package_id", pack.id)
+    .order("version_number", { ascending: false }).limit(1).maybeSingle();
+  if (existingResult.error) throw existingResult.error;
+  const existing = existingResult.data as Record<string, unknown> | null;
+  const existingLifecycle = ratebookLifecycleStatus(existing?.lifecycle_status);
+  if (existing && existingLifecycle === "published") {
+    const freshness = ratebookSourceFreshness(existing, sourceSnapshotHash);
+    const now = new Date().toISOString();
+    const publishedPatch = freshness === "unknown"
+      ? {
+        source_snapshot_hash: sourceSnapshotHash,
+        metadata: { ...objectRecord(existing.metadata), source_snapshot_seeded_at: now },
+        updated_at: now
+      }
+      : freshness === "outdated"
+        ? {
+          source_changed_at: existing.source_changed_at || now,
+          metadata: { ...objectRecord(existing.metadata), source_change_detected_at: now, current_source_snapshot_hash: sourceSnapshotHash },
+          updated_at: now
+        }
+        : null;
+    if (!publishedPatch) return { ...existing, source_freshness: "current" };
+    const preserved = await supabase.from("rfx_ratebooks").update(publishedPatch)
+      .eq("id", existing.id).eq("owner_email", user.owner_email).select().single();
+    if (preserved.error) throw preserved.error;
+    return { ...(preserved.data as Record<string, unknown>), source_freshness: freshness === "unknown" ? "current" : "outdated" };
+  }
+  if (existing && (existingLifecycle === "archived" || existingLifecycle === "superseded")) {
+    return existing;
+  }
+  const result = existing
+    ? await supabase.from("rfx_ratebooks").update({
+      ...structuralRow,
+      source_changed_at: null,
+      metadata: { ...objectRecord(existing.metadata), ...objectRecord(structuralRow.metadata) },
+      status: ratebookLegacyStatus(existingLifecycle, pack, existing.status)
+    }).eq("id", existing.id).eq("owner_email", user.owner_email).select().single()
+    : await supabase.from("rfx_ratebooks").insert({
+      ...structuralRow,
+      status: ratebookStatusForPackage(pack),
+      lifecycle_status: "draft",
+      version_number: 1
+    }).select().single();
+  if (result.error) throw result.error;
+  const ratebook = result.data as Record<string, unknown>;
+  await syncRatebookSegments(supabase, user, ratebook, packageContext);
+  return ratebook;
+}
+
+function fallbackRatebookSegments(packageLanes: Record<string, unknown>[]) {
+  const grouped = new Map<string, Record<string, unknown>[]>();
+  packageLanes.forEach((packageLane) => {
+    const demand = objectRecord(packageLane.rfx_demand_lanes);
+    const key = cleanText(demand.rfx_segment_key) || cleanText(demand.operating_segment) || "all_routes";
+    const rows = grouped.get(key) || [];
+    rows.push(packageLane);
+    grouped.set(key, rows);
+  });
+  return Array.from(grouped.entries()).map(([segmentKey, rows], index) => {
+    const firstDemand = objectRecord(rows[0]?.rfx_demand_lanes);
+    return {
+      id: null,
+      segment_key: segmentKey,
+      segment_name: firstCleanText(firstDemand.rfx_segment_name, firstDemand.operating_segment, "All routes") || "All routes",
+      operation: cleanText(firstDemand.operation_type),
+      service: cleanText(firstDemand.service_type),
+      equipment: cleanText(firstDemand.equipment_type),
+      trailer: cleanText(firstDemand.trailer_requirements),
+      lane_count: rows.length,
+      sort_order: index + 1
+    };
+  });
+}
+
+async function syncRatebookSegments(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_user_id: string | null; owner_email: string | null; organization_id?: string | null },
+  ratebook: Record<string, unknown>,
+  packageContext: { pack: Record<string, unknown>; project: Record<string, unknown>; package_lanes: Record<string, unknown>[]; package_segments?: Record<string, unknown>[] }
+) {
+  const sourceType = ratebookSourceType(packageContext.project, packageContext.pack);
+  const segments = packageContext.package_segments?.length
+    ? packageContext.package_segments
+    : fallbackRatebookSegments(packageContext.package_lanes);
+  if (!segments.length) return [];
+  const now = new Date().toISOString();
+  const rows = segments.map((segment, index) => ({
+    ...withOwner({
+      ratebook_id: ratebook.id,
+      source_package_segment_id: cleanText(segment.id) || null,
+      segment_key: cleanText(segment.segment_key) || `segment_${index + 1}`,
+      segment_name: firstCleanText(segment.segment_name, segment.name, "Operating segment") || "Operating segment",
+      source_type: sourceType,
+      operation: cleanText(segment.operation),
+      service: cleanText(segment.service),
+      equipment: cleanText(segment.equipment),
+      trailer: cleanText(segment.trailer),
+      lane_count: Number(segment.lane_count || 0),
+      valid_from: cleanText(ratebook.valid_from) || null,
+      valid_until: cleanText(ratebook.valid_until) || null,
+      metadata: {
+        checklist_count: Array.isArray(segment.checklist) ? segment.checklist.length : 0,
+        source_package_id: packageContext.pack.id,
+        sort_order: Number(segment.sort_order || index + 1)
+      },
+      updated_at: now
+    }, user),
+    organization_id: user.organization_id || null
+  }));
+  const existingResult = await supabase.from("rfx_ratebook_segments")
+    .select("id,segment_key")
+    .eq("ratebook_id", ratebook.id)
+    .eq("owner_email", user.owner_email);
+  if (existingResult.error) throw existingResult.error;
+  const activeSegmentKeys = new Set(rows.map((row) => cleanText(row.segment_key)));
+  const staleSegmentIds = ((existingResult.data || []) as Record<string, unknown>[])
+    .filter((segment) => !activeSegmentKeys.has(cleanText(segment.segment_key)))
+    .map((segment) => cleanText(segment.id))
+    .filter(Boolean);
+  for (const batch of chunkValues(staleSegmentIds, 500)) {
+    const staleDelete = await supabase.from("rfx_ratebook_segments")
+      .delete()
+      .eq("ratebook_id", ratebook.id)
+      .eq("owner_email", user.owner_email)
+      .in("id", batch);
+    if (staleDelete.error) throw staleDelete.error;
+  }
+  const result = await supabase.from("rfx_ratebook_segments")
+    .upsert(rows, { onConflict: "ratebook_id,segment_key" }).select("id,segment_key");
+  if (result.error) throw result.error;
+  return result.data || [];
+}
+
+async function requireOwnedRatebook(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_email: string | null },
+  ratebookId: unknown
+) {
+  const id = cleanText(ratebookId);
+  if (!id || !UUID_PATTERN.test(id)) throw new Error("A valid Ratebook id is required.");
+  const result = await supabase.from("rfx_ratebooks").select("*")
+    .eq("id", id).eq("owner_email", user.owner_email).single();
+  if (result.error) throw result.error;
+  return result.data as Record<string, unknown>;
+}
+
+async function listRatebooks(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_user_id: string | null; owner_email: string | null; organization_id?: string | null },
+  input: Record<string, unknown>
+) {
+  const requestedPackageId = cleanText(input.package_id || input.rfx_package_id);
+  const requestedProjectId = cleanText(input.project_id);
+  const requestedShipperId = cleanText(input.shipper_id);
+  const requestedSourceType = cleanText(input.source_type)?.toLowerCase();
+  const requestedSegmentKey = cleanText(input.segment_key)?.toLowerCase();
+  if (requestedPackageId && !UUID_PATTERN.test(requestedPackageId)) throw new Error("A valid RFx Package id is required.");
+  if (requestedProjectId && !UUID_PATTERN.test(requestedProjectId)) throw new Error("A valid RFx Project id is required.");
+  let packageQuery = supabase.from("rfx_packages").select("*")
+    .eq("owner_email", user.owner_email)
+    .order("updated_at", { ascending: false }).limit(1000);
+  if (requestedPackageId) packageQuery = packageQuery.eq("id", requestedPackageId);
+  if (requestedProjectId) packageQuery = packageQuery.eq("project_id", requestedProjectId);
+  const packageResult = await packageQuery;
+  if (packageResult.error) throw packageResult.error;
+  const packs = (packageResult.data || []) as Record<string, unknown>[];
+  if (!packs.length) return {
+    rows: [],
+    loaded: 0,
+    total: 0,
+    facets: { shippers: [], sources: [], segments: [] }
+  };
+  const projectIds = Array.from(new Set(packs.map((pack) => cleanText(pack.project_id)).filter(Boolean)));
+  const packageIds = packs.map((pack) => cleanText(pack.id)).filter(Boolean);
+  const [projectsResult, packageLanesResult, packageSegmentsResult] = await Promise.all([
+    supabase.from("rfx_projects").select("*").eq("owner_email", user.owner_email).in("id", projectIds),
+    supabase.from("rfx_package_lanes").select("package_id,id,demand_lane_id,rfx_demand_lanes(*)").in("package_id", packageIds),
+    supabase.from("rfx_package_segments").select("*").eq("owner_email", user.owner_email).in("package_id", packageIds)
+  ]);
+  if (projectsResult.error) throw projectsResult.error;
+  if (packageLanesResult.error) throw packageLanesResult.error;
+  if (packageSegmentsResult.error) throw packageSegmentsResult.error;
+  const projectById = new Map(((projectsResult.data || []) as Record<string, unknown>[]).map((project) => [cleanText(project.id), project]));
+  const shipperContexts = await getRatebookShipperContexts(supabase, user, projectIds);
+  const laneCountByPackage = new Map<string, number>();
+  const lanesByPackage = new Map<string, Record<string, unknown>[]>();
+  ((packageLanesResult.data || []) as Record<string, unknown>[]).forEach((row) => {
+    const key = cleanText(row.package_id);
+    laneCountByPackage.set(key, (laneCountByPackage.get(key) || 0) + 1);
+    const lanes = lanesByPackage.get(key) || [];
+    lanes.push(row);
+    lanesByPackage.set(key, lanes);
+  });
+  const segmentsByPackage = new Map<string, Record<string, unknown>[]>();
+  ((packageSegmentsResult.data || []) as Record<string, unknown>[]).forEach((segment) => {
+    const key = cleanText(segment.package_id);
+    const rows = segmentsByPackage.get(key) || [];
+    rows.push(segment);
+    segmentsByPackage.set(key, rows);
+  });
+  const materializedRatebooks: Record<string, unknown>[] = [];
+  for (const pack of packs) {
+    const project = projectById.get(cleanText(pack.project_id));
+    if (!project) continue;
+    materializedRatebooks.push(await upsertRatebookForPackage(supabase, user, {
+      pack,
+      project,
+      package_lanes: lanesByPackage.get(cleanText(pack.id)) || [],
+      package_segments: segmentsByPackage.get(cleanText(pack.id)) || [],
+      shipper: shipperContexts.get(cleanText(project.id))
+    }));
+  }
+  const persistedRatebooksResult = await supabase.from("rfx_ratebooks").select("*")
+    .eq("owner_email", user.owner_email).in("rfx_package_id", packageIds)
+    .order("updated_at", { ascending: false });
+  if (persistedRatebooksResult.error) throw persistedRatebooksResult.error;
+  const ratebooks = (persistedRatebooksResult.data || materializedRatebooks) as Record<string, unknown>[];
+  const ratebookIds = ratebooks.map((row) => cleanText(row.id)).filter(Boolean);
+  const shareResult = ratebookIds.length
+    ? await supabase.from("rfx_ratebook_shares").select("ratebook_id,status").in("ratebook_id", ratebookIds).eq("status", "active")
+    : { data: [], error: null };
+  if (shareResult.error) throw shareResult.error;
+  const shareCountByRatebook = new Map<string, number>();
+  ((shareResult.data || []) as Record<string, unknown>[]).forEach((share) => {
+    const key = cleanText(share.ratebook_id);
+    shareCountByRatebook.set(key, (shareCountByRatebook.get(key) || 0) + 1);
+  });
+  const search = cleanText(input.search)?.toLowerCase();
+  const requestedStatus = cleanText(input.lifecycle_status || input.status)?.toLowerCase();
+  const allRows = ratebooks.map((ratebook) => {
+    const pack = packs.find((item) => cleanText(item.id) === cleanText(ratebook.rfx_package_id)) || {};
+    const project = projectById.get(cleanText(ratebook.project_id)) || {};
+    const segments = (segmentsByPackage.get(cleanText(pack.id)) || []).map((segment) => ({
+      id: segment.id,
+      segment_key: cleanText(segment.segment_key),
+      segment_name: cleanText(segment.segment_name),
+      operation: cleanText(segment.operation),
+      service: cleanText(segment.service),
+      equipment: cleanText(segment.equipment),
+      lane_count: Number(segment.lane_count || 0)
+    }));
+    return {
+      ...ratebook,
+      lane_count: Number(ratebook.lane_count || 0),
+      shared_carrier_count: shareCountByRatebook.get(cleanText(ratebook.id)) || 0,
+      segments,
+      segment_count: segments.length,
+      project: {
+        id: project.id,
+        title: project.title,
+        customer_name: project.customer_name,
+        due_date: project.due_date,
+        status: project.status
+      },
+      package: {
+        id: pack.id,
+        name: pack.name,
+        status: pack.status,
+        bid_due_at: pack.bid_due_at,
+        linked_rfx_event_id: pack.linked_rfx_event_id
+      }
+    };
+  });
+  const facetCounts = {
+    shippers: new Map<string, { value: string; label: string; count: number }>(),
+    sources: new Map<string, { value: string; label: string; count: number }>(),
+    segments: new Map<string, { value: string; label: string; count: number }>()
+  };
+  allRows.forEach((row) => {
+    const shipperId = cleanText(row.shipper_id);
+    const shipperLabel = firstCleanText(row.shipper_name, row.project?.customer_name, row.project?.title, "Unassigned shipper") || "Unassigned shipper";
+    const shipperKey = shipperId || "__unassigned__";
+    const shipperFacet = facetCounts.shippers.get(shipperKey) || { value: shipperId || "__unassigned__", label: shipperLabel, count: 0 };
+    shipperFacet.count += 1;
+    facetCounts.shippers.set(shipperKey, shipperFacet);
+
+    const sourceValue = cleanText(row.source_type)?.toLowerCase() || "rfx";
+    const sourceFacet = facetCounts.sources.get(sourceValue) || { value: sourceValue, label: sourceValue, count: 0 };
+    sourceFacet.count += 1;
+    facetCounts.sources.set(sourceValue, sourceFacet);
+
+    (Array.isArray(row.segments) ? row.segments : []).forEach((segment) => {
+      const segmentValue = cleanText(segment.segment_key)?.toLowerCase();
+      if (!segmentValue) return;
+      const segmentLabel = firstCleanText(segment.segment_name, segment.segment_key) || segmentValue;
+      const segmentFacet = facetCounts.segments.get(segmentValue) || { value: segmentValue, label: segmentLabel, count: 0 };
+      segmentFacet.count += 1;
+      facetCounts.segments.set(segmentValue, segmentFacet);
+    });
+  });
+  const facets = {
+    shippers: Array.from(facetCounts.shippers.values()).sort((left, right) => left.label.localeCompare(right.label)),
+    sources: Array.from(facetCounts.sources.values()).sort((left, right) => left.label.localeCompare(right.label)),
+    segments: Array.from(facetCounts.segments.values()).sort((left, right) => left.label.localeCompare(right.label))
+  };
+  const rows = allRows.filter((row) => {
+    if (requestedStatus && requestedStatus !== ratebookLifecycleStatus(row.lifecycle_status, cleanText(row.status)?.toLowerCase() || "draft")) return false;
+    if (requestedShipperId === "__unassigned__" && cleanText(row.shipper_id)) return false;
+    if (requestedShipperId && requestedShipperId !== "__unassigned__" && cleanText(row.shipper_id) !== requestedShipperId) return false;
+    if (requestedSourceType && cleanText(row.source_type)?.toLowerCase() !== requestedSourceType) return false;
+    if (requestedSegmentKey && !(Array.isArray(row.segments) ? row.segments : []).some((segment) => cleanText(segment.segment_key)?.toLowerCase() === requestedSegmentKey)) return false;
+    if (!search) return true;
+    return [row.name, row.shipper_name, row.source_type, row.project?.title, row.project?.customer_name, row.package?.name]
+      .map(cleanText).filter(Boolean).join(" ").toLowerCase().includes(search);
+  });
+  return { rows, loaded: rows.length, total: allRows.length, facets };
+}
+
+async function materializeRatebooksForProjects(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_user_id: string | null; owner_email: string | null; organization_id?: string | null },
+  projectIds: string[]
+) {
+  const ids = Array.from(new Set(projectIds.map((id) => cleanText(id)).filter(Boolean)));
+  if (!ids.length) return [];
+  const [projectsResult, packagesResult] = await Promise.all([
+    supabase.from("rfx_projects").select("*")
+      .eq("owner_email", user.owner_email).in("id", ids),
+    supabase.from("rfx_packages").select("*")
+      .eq("owner_email", user.owner_email).in("project_id", ids)
+      .order("updated_at", { ascending: false })
+  ]);
+  if (projectsResult.error) throw projectsResult.error;
+  if (packagesResult.error) throw packagesResult.error;
+  const projects = (projectsResult.data || []) as Record<string, unknown>[];
+  const packs = (packagesResult.data || []) as Record<string, unknown>[];
+  if (!packs.length) return [];
+  const packageIds = packs.map((pack) => cleanText(pack.id)).filter(Boolean);
+  const [packageLanesResult, packageSegmentsResult] = await Promise.all([
+    supabase.from("rfx_package_lanes").select("package_id,id,demand_lane_id,rfx_demand_lanes(*)").in("package_id", packageIds),
+    supabase.from("rfx_package_segments").select("*").eq("owner_email", user.owner_email).in("package_id", packageIds)
+  ]);
+  if (packageLanesResult.error) throw packageLanesResult.error;
+  if (packageSegmentsResult.error) throw packageSegmentsResult.error;
+  const projectById = new Map(projects.map((project) => [cleanText(project.id), project]));
+  const shipperContexts = await getRatebookShipperContexts(supabase, user, ids);
+  const laneCountByPackage = new Map<string, number>();
+  const lanesByPackage = new Map<string, Record<string, unknown>[]>();
+  ((packageLanesResult.data || []) as Record<string, unknown>[]).forEach((row) => {
+    const key = cleanText(row.package_id);
+    laneCountByPackage.set(key, (laneCountByPackage.get(key) || 0) + 1);
+    const lanes = lanesByPackage.get(key) || [];
+    lanes.push(row);
+    lanesByPackage.set(key, lanes);
+  });
+  const segmentsByPackage = new Map<string, Record<string, unknown>[]>();
+  ((packageSegmentsResult.data || []) as Record<string, unknown>[]).forEach((segment) => {
+    const key = cleanText(segment.package_id);
+    const rows = segmentsByPackage.get(key) || [];
+    rows.push(segment);
+    segmentsByPackage.set(key, rows);
+  });
+  const ratebooks: Record<string, unknown>[] = [];
+  for (const pack of packs) {
+    const project = projectById.get(cleanText(pack.project_id));
+    if (!project) continue;
+    const ratebook = await upsertRatebookForPackage(supabase, user, {
+      pack,
+      project,
+      package_lanes: lanesByPackage.get(cleanText(pack.id)) || [],
+      package_segments: segmentsByPackage.get(cleanText(pack.id)) || [],
+      shipper: shipperContexts.get(cleanText(project.id))
+    });
+    ratebooks.push({
+      ...ratebook,
+      lane_count: laneCountByPackage.get(cleanText(pack.id)) || 0,
+      project: {
+        id: project.id,
+        title: project.title,
+        customer_name: project.customer_name,
+        due_date: project.due_date,
+        status: project.status
+      },
+      package: {
+        id: pack.id,
+        name: pack.name,
+        status: pack.status,
+        bid_due_at: pack.bid_due_at,
+        linked_rfx_event_id: pack.linked_rfx_event_id
+      }
+    });
+  }
+  return ratebooks;
+}
+
+function ratebookRouteSummary(
+  packageLane: Record<string, unknown>,
+  index: number,
+  eventLaneByDemandId: Map<string, Record<string, unknown>>,
+  participantsByLaneId: Map<string, Record<string, unknown>[]>
+) {
+  const demand = objectRecord(packageLane.rfx_demand_lanes);
+  const eventLane = eventLaneByDemandId.get(cleanText(demand.id)) || {};
+  const laneId = cleanText(eventLane.id) || cleanText(demand.id);
+  const participants = participantsByLaneId.get(cleanText(eventLane.id)) || [];
+  const hasBid = participants.some((participant) => cleanText(participant.invitation_status) === "bid_submitted" || cleanNumber(participant.bid_rate) !== null);
+  return {
+    id: laneId,
+    package_lane_id: cleanText(packageLane.id),
+    source_demand_lane_id: cleanText(demand.id),
+    source_rfi_lane_id: cleanText(demand.source_rfi_lane_id),
+    transaction_id: cleanText(demand.lane_key) || `L${index + 1}`,
+    origin: firstCleanText(demand.origin, [demand.origin_city, demand.origin_state].filter(Boolean).join(", ")),
+    destination: firstCleanText(demand.destination, [demand.destination_city, demand.destination_state].filter(Boolean).join(", ")),
+    equipment: firstCleanText(demand.equipment_type, eventLane.equipment),
+    trailer: firstCleanText(demand.trailer_requirements, eventLane.trailer),
+    operation: firstCleanText(demand.operation_type, eventLane.operation),
+    service: firstCleanText(demand.service_type, eventLane.service),
+    weekly_volume: cleanNumber(demand.weekly_volume),
+    frequency: cleanText(demand.frequency),
+    currency: firstCleanText(demand.currency, eventLane.currency) || "USD",
+    segment_key: cleanText(demand.rfx_segment_key) || cleanText(demand.operating_segment) || "all_routes",
+    segment_name: firstCleanText(demand.rfx_segment_name, demand.operating_segment, "All routes") || "All routes",
+    rfx_lane_id: cleanText(eventLane.id),
+    carrier_count: participants.length,
+    bid_count: participants.filter((participant) => cleanText(participant.invitation_status) === "bid_submitted" || cleanNumber(participant.bid_rate) !== null).length,
+    status: hasBid ? "quoted" : participants.length ? "shared" : "ready"
+  };
+}
+
+function evaluateRatebookReadiness(packageLanes: Record<string, unknown>[]) {
+  const issues: Record<string, unknown>[] = [];
+  if (!packageLanes.length) {
+    issues.push({ type: "missing_routes", message: "Add at least one route before publishing this Ratebook." });
+  }
+  packageLanes.forEach((packageLane, index) => {
+    const demand = objectRecord(packageLane.rfx_demand_lanes);
+    const missing = [
+      ["origin", firstCleanText(demand.origin, demand.origin_city)],
+      ["destination", firstCleanText(demand.destination, demand.destination_city)],
+      ["equipment", demand.equipment_type],
+      ["operation", demand.operation_type],
+      ["service", demand.service_type],
+      ["currency", demand.currency]
+    ].filter(([, value]) => !cleanText(value)).map(([key]) => key);
+    if (missing.length) {
+      issues.push({
+        type: "incomplete_route",
+        transaction_id: cleanText(demand.lane_key) || `L${index + 1}`,
+        source_demand_lane_id: cleanText(demand.id),
+        missing
+      });
+    }
+  });
+  return { ready: !issues.length, route_count: packageLanes.length, issues };
+}
+
+async function createRatebookRevision(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_user_id: string | null; owner_email: string | null; organization_id?: string | null },
+  input: Record<string, unknown>
+) {
+  const previousRatebook = await requireOwnedRatebook(supabase, user, input.ratebook_id || input.id);
+  if (ratebookLifecycleStatus(previousRatebook.lifecycle_status) !== "published") {
+    throw new Error("Only a published Ratebook can create a revision.");
+  }
+  const context = await getOwnedRatebookPackage(supabase, user, previousRatebook.rfx_package_id);
+  const shipperContexts = await getRatebookShipperContexts(supabase, user, [cleanText(context.project.id)]);
+  const sourceType = ratebookSourceType(context.project, context.pack);
+  const sourceFingerprint = ratebookSourceFingerprint(context.project, context.pack, sourceType);
+  const sourceSnapshotHash = await hashRatebookSourceSnapshot(ratebookSourceSnapshot(
+    context.project, context.pack, context.package_lanes, context.package_segments
+  ));
+  const existingDraftResult = await supabase.from("rfx_ratebooks").select("*")
+    .eq("owner_email", user.owner_email).eq("rfx_package_id", context.pack.id)
+    .eq("lifecycle_status", "draft").eq("source_snapshot_hash", sourceSnapshotHash)
+    .order("version_number", { ascending: false }).limit(1).maybeSingle();
+  if (existingDraftResult.error) throw existingDraftResult.error;
+  if (existingDraftResult.data) {
+    return { ratebook: existingDraftResult.data, reused_existing_draft: true };
+  }
+  const versionsResult = await supabase.from("rfx_ratebooks").select("version_number")
+    .eq("owner_email", user.owner_email).eq("rfx_package_id", context.pack.id)
+    .order("version_number", { ascending: false }).limit(1).maybeSingle();
+  if (versionsResult.error) throw versionsResult.error;
+  const nextVersion = Number(versionsResult.data?.version_number || previousRatebook.version_number || 1) + 1;
+  const shipper = shipperContexts.get(cleanText(context.project.id));
+  const now = new Date().toISOString();
+  const insert = await supabase.from("rfx_ratebooks").insert({
+    ...withOwner({
+      parent_ratebook_id: previousRatebook.id,
+      project_id: context.project.id,
+      rfx_package_id: context.pack.id,
+      rfx_event_id: cleanText(context.pack.linked_rfx_event_id) || null,
+      name: firstCleanText(context.pack.name, context.project.title, "RFx Ratebook") || "RFx Ratebook",
+      lane_count: context.package_lanes.length,
+      shipper_id: shipper?.shipper_id || cleanText(previousRatebook.shipper_id) || null,
+      shipper_name: shipper?.shipper_name || cleanText(previousRatebook.shipper_name) || cleanText(context.project.customer_name) || null,
+      source_type: sourceType,
+      source_reference: firstCleanText(shipper?.opportunity_name, context.project.title, context.project.customer_name),
+      source_fingerprint: sourceFingerprint,
+      source_snapshot_hash: sourceSnapshotHash,
+      status: "draft",
+      lifecycle_status: "draft",
+      version_number: nextVersion,
+      valid_from: previousRatebook.valid_from || null,
+      valid_until: previousRatebook.valid_until || null,
+      metadata: {
+        ...objectRecord(previousRatebook.metadata),
+        source: "rfx_process_package",
+        source_type: sourceType,
+        revision_of_ratebook_id: previousRatebook.id,
+        revision_created_at: now,
+        project_title: cleanText(context.project.title),
+        customer_name: cleanText(context.project.customer_name),
+        shipper_opportunity: shipper?.opportunity_name || null,
+        bid_due_at: cleanText(context.pack.bid_due_at)
+      },
+      updated_at: now
+    }, user),
+    organization_id: user.organization_id || null
+  }).select().single();
+  if (insert.error) throw insert.error;
+  const ratebook = insert.data as Record<string, unknown>;
+  await syncRatebookSegments(supabase, user, ratebook, context);
+  await writeRfxProcessAudit(supabase, user, context.project.id, "ratebook_revision_created", "rfx_ratebooks", ratebook.id,
+    `Created Ratebook v${nextVersion} from published v${Number(previousRatebook.version_number || 1)}.`, {
+      rfx_package_id: context.pack.id,
+      parent_ratebook_id: previousRatebook.id,
+      source_snapshot_hash: sourceSnapshotHash
+    });
+  return { ratebook, reused_existing_draft: false };
+}
+
+async function getRatebookAudit(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_email: string | null },
+  input: Record<string, unknown>
+) {
+  const ratebook = await requireOwnedRatebook(supabase, user, input.ratebook_id || input.id);
+  const context = await getOwnedRatebookPackage(supabase, user, ratebook.rfx_package_id);
+  const currentSourceSnapshotHash = await hashRatebookSourceSnapshot(ratebookSourceSnapshot(
+    context.project, context.pack, context.package_lanes, context.package_segments
+  ));
+  const readiness = evaluateRatebookReadiness(context.package_lanes);
+  const segmentsResult = await supabase.from("rfx_ratebook_segments").select("*")
+    .eq("ratebook_id", ratebook.id).eq("owner_email", user.owner_email).order("created_at", { ascending: true });
+  if (segmentsResult.error) throw segmentsResult.error;
+  return {
+    ratebook_id: ratebook.id,
+    lifecycle_status: ratebookLifecycleStatus(ratebook.lifecycle_status),
+    source: {
+      type: cleanText(ratebook.source_type) || "rfx",
+      fingerprint: cleanText(ratebook.source_fingerprint),
+      project_id: cleanText(ratebook.project_id),
+      rfx_package_id: cleanText(ratebook.rfx_package_id),
+      shipper_id: cleanText(ratebook.shipper_id),
+      shipper_name: cleanText(ratebook.shipper_name),
+      freshness: ratebookSourceFreshness(ratebook, currentSourceSnapshotHash),
+      changed_at: ratebook.source_changed_at || null
+    },
+    version: Number(ratebook.version_number || 1),
+    validity: { valid_from: ratebook.valid_from || null, valid_until: ratebook.valid_until || null },
+    readiness,
+    segments: segmentsResult.data || []
+  };
+}
+
+async function getRatebookHealth(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_email: string | null },
+) {
+  const ratebooksResult = await supabase.from("rfx_ratebooks")
+    .select("id,name,shipper_name,lifecycle_status,status,valid_until,source_changed_at,rfx_package_id,lane_count,version_number,updated_at")
+    .eq("owner_email", user.owner_email)
+    .in("lifecycle_status", ["draft", "published"])
+    .order("updated_at", { ascending: false })
+    .limit(1000);
+  if (ratebooksResult.error) throw ratebooksResult.error;
+  const ratebooks = (ratebooksResult.data || []) as Record<string, unknown>[];
+  if (!ratebooks.length) {
+    return {
+      generated_at: new Date().toISOString(),
+      summary: { active_ratebooks: 0, priority_issues: 0, expiring: 0, routes_without_offers: 0, offers_to_review: 0 },
+      rows: [],
+      queue: []
+    };
+  }
+
+  const ratebookIds = ratebooks.map((row) => cleanText(row.id)).filter(Boolean);
+  const packageIds = ratebooks.map((row) => cleanText(row.rfx_package_id)).filter(Boolean);
+  const [packageLanesResult, sharesResult, quotesResult, reviewsResult, campaignsResult] = await Promise.all([
+    supabase.from("rfx_package_lanes").select("id,package_id").in("package_id", packageIds),
+    supabase.from("rfx_ratebook_shares")
+      .select("id,ratebook_id,status,access_count,last_accessed_at,last_viewed_at,last_quote_at")
+      .eq("owner_email", user.owner_email).in("ratebook_id", ratebookIds),
+    supabase.from("rfx_ratebook_carrier_quotes")
+      .select("id,ratebook_id,package_lane_id,status,updated_at")
+      .eq("owner_email", user.owner_email).in("ratebook_id", ratebookIds).eq("status", "submitted"),
+    supabase.from("rfx_ratebook_quote_reviews")
+      .select("quote_id,ratebook_id,package_lane_id,decision")
+      .eq("owner_email", user.owner_email).in("ratebook_id", ratebookIds),
+    supabase.from("outreach_campaigns")
+      .select("id,ratebook_id").eq("owner_email", user.owner_email).in("ratebook_id", ratebookIds)
+  ]);
+  for (const result of [packageLanesResult, sharesResult, quotesResult, reviewsResult, campaignsResult]) {
+    if (result.error) throw result.error;
+  }
+  const campaigns = (campaignsResult.data || []) as Record<string, unknown>[];
+  const campaignIds = campaigns.map((row) => cleanText(row.id)).filter(Boolean);
+  const messagesResult = campaignIds.length
+    ? await supabase.from("outreach_messages")
+      .select("campaign_id,status")
+      .eq("owner_email", user.owner_email).in("campaign_id", campaignIds)
+    : { data: [], error: null };
+  if (messagesResult.error) throw messagesResult.error;
+
+  const packageToRatebook = new Map(ratebooks.map((row) => [cleanText(row.rfx_package_id), cleanText(row.id)]));
+  const campaignToRatebook = new Map(campaigns.map((row) => [cleanText(row.id), cleanText(row.ratebook_id)]));
+  const counter = () => new Map<string, number>();
+  const increment = (map: Map<string, number>, id: string) => map.set(id, (map.get(id) || 0) + 1);
+  const laneCountByRatebook = counter();
+  const shareCountByRatebook = counter();
+  const accessedByRatebook = counter();
+  const quotedLaneIdsByRatebook = new Map<string, Set<string>>();
+  const reviewPendingByRatebook = counter();
+  const firstPendingRouteByRatebook = new Map<string, string>();
+  const failedDeliveryByRatebook = counter();
+  const reviewByQuoteId = new Map<string, Record<string, unknown>>();
+
+  ((reviewsResult.data || []) as Record<string, unknown>[]).forEach((review) => reviewByQuoteId.set(cleanText(review.quote_id), review));
+  ((packageLanesResult.data || []) as Record<string, unknown>[]).forEach((lane) => {
+    const ratebookId = packageToRatebook.get(cleanText(lane.package_id));
+    if (ratebookId) increment(laneCountByRatebook, ratebookId);
+  });
+  ((sharesResult.data || []) as Record<string, unknown>[]).forEach((share) => {
+    const ratebookId = cleanText(share.ratebook_id);
+    if (!ratebookId || cleanText(share.status)?.toLowerCase() !== "active") return;
+    increment(shareCountByRatebook, ratebookId);
+    if (Number(share.access_count || 0) > 0 || cleanText(share.last_accessed_at || share.last_viewed_at)) increment(accessedByRatebook, ratebookId);
+  });
+  ((quotesResult.data || []) as Record<string, unknown>[]).forEach((quote) => {
+    const ratebookId = cleanText(quote.ratebook_id);
+    const packageLaneId = cleanText(quote.package_lane_id);
+    if (!ratebookId || !packageLaneId) return;
+    const quotedLaneIds = quotedLaneIdsByRatebook.get(ratebookId) || new Set<string>();
+    quotedLaneIds.add(packageLaneId);
+    quotedLaneIdsByRatebook.set(ratebookId, quotedLaneIds);
+    const review = reviewByQuoteId.get(cleanText(quote.id));
+    if (!review || cleanText(review.decision)?.toLowerCase() === "pending") {
+      increment(reviewPendingByRatebook, ratebookId);
+      if (!firstPendingRouteByRatebook.has(ratebookId)) firstPendingRouteByRatebook.set(ratebookId, packageLaneId);
+    }
+  });
+  ((messagesResult.data || []) as Record<string, unknown>[]).forEach((message) => {
+    if (!["failed", "bounced"].includes(cleanText(message.status)?.toLowerCase() || "")) return;
+    const ratebookId = campaignToRatebook.get(cleanText(message.campaign_id));
+    if (ratebookId) increment(failedDeliveryByRatebook, ratebookId);
+  });
+
+  const now = Date.now();
+  const expiringThreshold = now + (30 * 24 * 60 * 60 * 1000);
+  const priorityOrder: Record<string, number> = { high: 0, medium: 1, low: 2 };
+  const queue: Record<string, unknown>[] = [];
+  const rows = ratebooks.map((ratebook) => {
+    const id = cleanText(ratebook.id);
+    const lifecycle = ratebookLifecycleStatus(ratebook.lifecycle_status, cleanText(ratebook.status)?.toLowerCase() || "draft");
+    const laneCount = laneCountByRatebook.get(id) || Number(ratebook.lane_count || 0);
+    const quotedLaneCount = quotedLaneIdsByRatebook.get(id)?.size || 0;
+    const routesWithoutOffers = Math.max(0, laneCount - quotedLaneCount);
+    const shares = shareCountByRatebook.get(id) || 0;
+    const accesses = accessedByRatebook.get(id) || 0;
+    const pendingReviews = reviewPendingByRatebook.get(id) || 0;
+    const failedDelivery = failedDeliveryByRatebook.get(id) || 0;
+    const validUntil = cleanText(ratebook.valid_until);
+    const validUntilTime = validUntil ? new Date(validUntil).getTime() : Number.NaN;
+    const expired = lifecycle === "published" && Number.isFinite(validUntilTime) && validUntilTime < now;
+    const expiring = lifecycle === "published" && Number.isFinite(validUntilTime) && validUntilTime >= now && validUntilTime <= expiringThreshold;
+    const sourceOutdated = lifecycle === "published" && Boolean(cleanText(ratebook.source_changed_at));
+    const carrierAccessPending = lifecycle === "published" && shares > 0 && accesses === 0;
+    const name = firstCleanText(ratebook.name, ratebook.shipper_name, "Ratebook") || "Ratebook";
+    const context = { ratebook_id: id, ratebook_name: name, shipper_name: cleanText(ratebook.shipper_name), version_number: Number(ratebook.version_number || 1) };
+    if (sourceOutdated) queue.push({ ...context, priority: "high", type: "source_outdated", title: "Source changed after publish", detail: "Create a controlled revision before using newer RFx/RFI data.", action: "revision" });
+    if (expired) queue.push({ ...context, priority: "high", type: "expired", title: "Ratebook validity expired", detail: "Confirm validity and create a revision or archive this release.", action: "audit" });
+    if (failedDelivery) queue.push({ ...context, priority: "high", type: "delivery_failed", title: `${failedDelivery} carrier delivery failure${failedDelivery === 1 ? "" : "s"}`, detail: "Open carrier distribution to replace failed delivery with a new controlled invitation.", action: "share" });
+    if (pendingReviews) queue.push({ ...context, priority: "medium", type: "offers_to_review", title: `${pendingReviews} submitted offer${pendingReviews === 1 ? "" : "s"} need review`, detail: "Review or shortlist carrier offers without awarding a Rateware rate.", action: "review", package_lane_id: firstPendingRouteByRatebook.get(id) || null });
+    if (lifecycle === "published" && routesWithoutOffers && shares > 0) queue.push({ ...context, priority: "medium", type: "coverage_gap", title: `${routesWithoutOffers} route${routesWithoutOffers === 1 ? "" : "s"} without offers`, detail: "Share the Ratebook with additional carriers or follow up on the existing private links.", action: "share" });
+    if (carrierAccessPending) queue.push({ ...context, priority: "low", type: "carrier_access_pending", title: `${shares} carrier link${shares === 1 ? "" : "s"} not opened`, detail: "Carrier access has not been used yet. Review delivery timing before following up.", action: "share" });
+    return {
+      ...context,
+      lifecycle_status: lifecycle,
+      valid_until: validUntil || null,
+      source_outdated: sourceOutdated,
+      expired,
+      expiring,
+      lane_count: laneCount,
+      routes_without_offers: routesWithoutOffers,
+      active_shares: shares,
+      accessed_shares: accesses,
+      offers_to_review: pendingReviews,
+      delivery_failed: failedDelivery
+    };
+  });
+  queue.sort((left, right) => (priorityOrder[cleanText(left.priority) || "low"] || 9) - (priorityOrder[cleanText(right.priority) || "low"] || 9));
+  return {
+    generated_at: new Date().toISOString(),
+    summary: {
+      active_ratebooks: rows.filter((row) => row.lifecycle_status === "published").length,
+      priority_issues: queue.filter((item) => cleanText(item.priority) === "high").length,
+      expiring: rows.filter((row) => row.expiring || row.expired).length,
+      routes_without_offers: rows.reduce((total, row) => total + Number(row.routes_without_offers || 0), 0),
+      offers_to_review: rows.reduce((total, row) => total + Number(row.offers_to_review || 0), 0)
+    },
+    rows,
+    queue: queue.slice(0, 50)
+  };
+}
+
+async function updateRatebookLifecycle(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_user_id: string | null; owner_email: string | null },
+  input: Record<string, unknown>,
+  lifecycle: "published" | "archived" | "superseded"
+) {
+  const ratebook = await requireOwnedRatebook(supabase, user, input.ratebook_id || input.id);
+  const context = await getOwnedRatebookPackage(supabase, user, ratebook.rfx_package_id);
+  const readiness = evaluateRatebookReadiness(context.package_lanes);
+  if (lifecycle === "published" && !readiness.ready) {
+    throw new Error(`Ratebook cannot publish until ${readiness.issues.length} route issue(s) are resolved.`);
+  }
+  const now = new Date().toISOString();
+  const patch: Record<string, unknown> = {
+    lifecycle_status: lifecycle,
+    status: ratebookLegacyStatus(lifecycle, context.pack, ratebook.status),
+    updated_at: now
+  };
+  if (lifecycle === "published") patch.published_at = ratebook.published_at || now;
+  if (lifecycle === "archived") patch.archived_at = now;
+  if (lifecycle === "superseded") patch.superseded_at = now;
+  const update = await supabase.from("rfx_ratebooks").update(patch)
+    .eq("id", ratebook.id).eq("owner_email", user.owner_email).select().single();
+  if (update.error) throw update.error;
+  let supersededRatebookIds: string[] = [];
+  if (lifecycle === "published") {
+    const previousPublished = await supabase.from("rfx_ratebooks").select("id")
+      .eq("owner_email", user.owner_email).eq("rfx_package_id", ratebook.rfx_package_id)
+      .eq("lifecycle_status", "published").neq("id", ratebook.id);
+    if (previousPublished.error) throw previousPublished.error;
+    supersededRatebookIds = ((previousPublished.data || []) as Record<string, unknown>[]).map((row) => cleanText(row.id)).filter(Boolean);
+    if (supersededRatebookIds.length) {
+      const supersede = await supabase.from("rfx_ratebooks").update({
+        lifecycle_status: "superseded",
+        status: "archived",
+        superseded_at: now,
+        updated_at: now
+      }).eq("owner_email", user.owner_email).in("id", supersededRatebookIds);
+      if (supersede.error) throw supersede.error;
+      const revokeShares = await supabase.from("rfx_ratebook_shares").update({ status: "revoked", updated_at: now })
+        .eq("owner_email", user.owner_email).in("ratebook_id", supersededRatebookIds).eq("status", "active");
+      if (revokeShares.error) throw revokeShares.error;
+    }
+  }
+  if (lifecycle === "archived") {
+    const shares = await supabase.from("rfx_ratebook_shares").update({ status: "archived", updated_at: now })
+      .eq("ratebook_id", ratebook.id).eq("owner_email", user.owner_email).eq("status", "active");
+    if (shares.error) throw shares.error;
+  }
+  await writeRfxProcessAudit(supabase, user, context.project.id, `ratebook_${lifecycle}`, "rfx_ratebooks", ratebook.id,
+    `${lifecycle === "published" ? "Published" : lifecycle === "archived" ? "Archived" : "Superseded"} Ratebook ${cleanText(ratebook.name) || ratebook.id}.`, {
+      rfx_package_id: context.pack.id,
+      route_count: readiness.route_count,
+      source_type: cleanText(ratebook.source_type) || "rfx",
+      superseded_ratebook_count: supersededRatebookIds.length
+    });
+  return { ratebook: update.data, readiness };
+}
+
+async function getRatebook(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_email: string | null },
+  input: Record<string, unknown>
+) {
+  const ratebook = await requireOwnedRatebook(supabase, user, input.ratebook_id || input.id);
+  const context = await getOwnedRatebookPackage(supabase, user, ratebook.rfx_package_id);
+  const currentSourceSnapshotHash = await hashRatebookSourceSnapshot(ratebookSourceSnapshot(
+    context.project, context.pack, context.package_lanes, context.package_segments
+  ));
+  const eventId = cleanText(ratebook.rfx_event_id || context.pack.linked_rfx_event_id);
+  const [eventResult, eventLanesResult, participantsResult, sharesResult, segmentsResult, ratebookQuotesResult, quoteReviewsResult, campaignsResult] = await Promise.all([
+    eventId ? supabase.from("rfx_events").select("*").eq("id", eventId).eq("owner_email", user.owner_email).maybeSingle() : { data: null, error: null },
+    eventId ? supabase.from("rfx_lanes").select("*").eq("rfx_event_id", eventId).order("lane_number", { ascending: true }) : { data: [], error: null },
+    eventId ? supabase.from("rfx_lane_vendors").select("id,rfx_lane_id,vendor_id,invitation_status,invitation_token,invited_at,viewed_at,responded_at,bid_rate,weekly_capacity,currency").eq("rfx_event_id", eventId) : { data: [], error: null },
+    supabase.from("rfx_ratebook_shares").select("*, vendors(id,vendor_name,domain,primary_email)").eq("ratebook_id", ratebook.id).order("updated_at", { ascending: false }),
+    supabase.from("rfx_ratebook_segments").select("*").eq("ratebook_id", ratebook.id)
+      .eq("owner_email", user.owner_email).order("created_at", { ascending: true }),
+    supabase.from("rfx_ratebook_carrier_quotes")
+      .select("package_lane_id,status,all_in_rate,currency,updated_at")
+      .eq("ratebook_id", ratebook.id).eq("status", "submitted"),
+    supabase.from("rfx_ratebook_quote_reviews")
+      .select("package_lane_id,decision")
+      .eq("ratebook_id", ratebook.id),
+    supabase.from("outreach_campaigns")
+      .select("id,name,status,channel,created_at,updated_at")
+      .eq("owner_email", user.owner_email)
+      .eq("ratebook_id", ratebook.id)
+      .order("created_at", { ascending: false })
+  ]);
+  for (const result of [eventResult, eventLanesResult, participantsResult, sharesResult, segmentsResult, ratebookQuotesResult, quoteReviewsResult, campaignsResult]) if (result.error) throw result.error;
+  const eventLanes = (eventLanesResult.data || []) as Record<string, unknown>[];
+  const eventLaneByDemandId = new Map(eventLanes.map((lane) => [cleanText(lane.source_rfx_demand_lane_id), lane]).filter(([id]) => Boolean(id)));
+  const participantsByLaneId = new Map<string, Record<string, unknown>[]>();
+  ((participantsResult.data || []) as Record<string, unknown>[]).forEach((participant) => {
+    const key = cleanText(participant.rfx_lane_id);
+    const rows = participantsByLaneId.get(key) || [];
+    rows.push(participant);
+    participantsByLaneId.set(key, rows);
+  });
+  const ratebookQuoteCounts = new Map<string, number>();
+  ((ratebookQuotesResult.data || []) as Record<string, unknown>[]).forEach((quote) => {
+    const key = cleanText(quote.package_lane_id);
+    if (key) ratebookQuoteCounts.set(key, (ratebookQuoteCounts.get(key) || 0) + 1);
+  });
+  const shortlistedRatebookQuotes = new Map<string, number>();
+  ((quoteReviewsResult.data || []) as Record<string, unknown>[]).forEach((review) => {
+    if (cleanText(review.decision) !== "shortlisted") return;
+    const key = cleanText(review.package_lane_id);
+    if (key) shortlistedRatebookQuotes.set(key, (shortlistedRatebookQuotes.get(key) || 0) + 1);
+  });
+  const routes = context.package_lanes.map((packageLane, index) => {
+    const route = ratebookRouteSummary(packageLane, index, eventLaneByDemandId, participantsByLaneId);
+    const ratebookQuoteCount = ratebookQuoteCounts.get(cleanText(route.package_lane_id)) || 0;
+    const shortlistedQuoteCount = shortlistedRatebookQuotes.get(cleanText(route.package_lane_id)) || 0;
+    return {
+      ...route,
+      ratebook_quote_count: ratebookQuoteCount,
+      shortlisted_quote_count: shortlistedQuoteCount,
+      live_bid_count: Number(route.bid_count || 0),
+      carrier_response_count: Number(route.bid_count || 0) + ratebookQuoteCount,
+      bid_count: Number(route.bid_count || 0) + ratebookQuoteCount,
+      status: ratebookQuoteCount ? "quoted" : route.status
+    };
+  });
+  const safeShares = ((sharesResult.data || []) as Record<string, unknown>[]).map((share) => {
+    const { access_token_hash: _accessTokenHash, ...safeShare } = share;
+    return safeShare;
+  });
+  const campaigns = (campaignsResult.data || []) as Record<string, unknown>[];
+  const campaignIds = campaigns.map((campaign) => cleanText(campaign.id)).filter(Boolean) as string[];
+  const messagesResult = campaignIds.length
+    ? await supabase.from("outreach_messages")
+      .select("id,campaign_id,ratebook_share_id,vendor_id,channel,status,recipient_email,sent_at,last_contacted_at,delivery_error,created_at,updated_at")
+      .eq("owner_email", user.owner_email)
+      .in("campaign_id", campaignIds)
+      .order("updated_at", { ascending: false })
+    : { data: [], error: null };
+  if (messagesResult.error) throw messagesResult.error;
+  const messages = (messagesResult.data || []) as Record<string, unknown>[];
+  const messageCount = (statuses: string[]) => messages.filter((message) => statuses.includes(cleanText(message.status)?.toLowerCase() || "")).length;
+  const accessed = safeShares.filter((share) => cleanText(share.last_accessed_at || share.last_viewed_at) || Number(share.access_count || 0) > 0).length;
+  const quoted = safeShares.filter((share) => cleanText(share.last_quote_at)).length;
+  return {
+    ratebook: {
+      ...ratebook,
+      source_freshness: ratebookSourceFreshness(ratebook, currentSourceSnapshotHash),
+      shared_carrier_count: (sharesResult.data || []).filter((share) => cleanText(share.status) === "active").length
+    },
+    project: context.project,
+    package: context.pack,
+    event: eventResult.data || null,
+    routes,
+    shares: safeShares,
+    segments: segmentsResult.data || [],
+    distribution: {
+      campaigns,
+      messages,
+      summary: {
+        drafts: messageCount(["drafted", "queued"]),
+        sent: messageCount(["sent", "replied"]),
+        failed: messageCount(["failed", "bounced"]),
+        accessed,
+        quoted
+      }
+    },
+    readiness: evaluateRatebookReadiness(context.package_lanes)
+  };
+}
+
+async function getRatebookRouteQuotes(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_email: string | null },
+  input: Record<string, unknown>
+) {
+  const ratebook = await requireOwnedRatebook(supabase, user, input.ratebook_id || input.id);
+  const packageLaneId = cleanText(input.package_lane_id);
+  if (!packageLaneId || !UUID_PATTERN.test(packageLaneId)) throw new Error("A valid Ratebook route is required.");
+  const packageLaneResult = await supabase.from("rfx_package_lanes").select("id,demand_lane_id,rfx_demand_lanes(*)")
+    .eq("id", packageLaneId).eq("package_id", ratebook.rfx_package_id).maybeSingle();
+  if (packageLaneResult.error) throw packageLaneResult.error;
+  if (!packageLaneResult.data) throw new Error("This route is not part of the selected Ratebook.");
+  const [quotesResult, reviewsResult] = await Promise.all([
+    supabase.from("rfx_ratebook_carrier_quotes")
+      .select("id,vendor_id,package_lane_id,status,all_in_rate,currency,weekly_capacity,transit_days,valid_until,quote_reference,notes,revision_number,updated_at")
+      .eq("ratebook_id", ratebook.id).eq("package_lane_id", packageLaneId).eq("status", "submitted")
+      .order("all_in_rate", { ascending: true }).order("updated_at", { ascending: false }),
+    supabase.from("rfx_ratebook_quote_reviews")
+      .select("quote_id,decision,decision_note,decided_at,decided_by_email,updated_at")
+      .eq("ratebook_id", ratebook.id).eq("package_lane_id", packageLaneId)
+  ]);
+  if (quotesResult.error) throw quotesResult.error;
+  if (reviewsResult.error) throw reviewsResult.error;
+  const quotes = (quotesResult.data || []) as Record<string, unknown>[];
+  const vendorIds = quotes.map((quote) => cleanText(quote.vendor_id)).filter(Boolean) as string[];
+  const vendorsResult = vendorIds.length
+    ? await supabase.from("vendors").select("id,vendor_name,domain,primary_email").eq("owner_email", user.owner_email).in("id", vendorIds)
+    : { data: [], error: null };
+  if (vendorsResult.error) throw vendorsResult.error;
+  const vendorsById = new Map(((vendorsResult.data || []) as Record<string, unknown>[]).map((vendor) => [cleanText(vendor.id), vendor]));
+  const reviewsByQuoteId = new Map(((reviewsResult.data || []) as Record<string, unknown>[]).map((review) => [cleanText(review.quote_id), review]));
+  const demandLane = objectRecord(packageLaneResult.data.rfx_demand_lanes);
+  return {
+    ratebook_id: ratebook.id,
+    route: {
+      package_lane_id: packageLaneId,
+      transaction_id: cleanText(demandLane.lane_key) || packageLaneId,
+      origin: firstCleanText(demandLane.origin, [demandLane.origin_city, demandLane.origin_state].filter(Boolean).join(", ")),
+      destination: firstCleanText(demandLane.destination, [demandLane.destination_city, demandLane.destination_state].filter(Boolean).join(", ")),
+      currency: cleanText(demandLane.currency)
+    },
+    quotes: quotes.map((quote) => ({
+      ...quote,
+      vendor: vendorsById.get(cleanText(quote.vendor_id)) || null,
+      review: reviewsByQuoteId.get(cleanText(quote.id)) || { decision: "pending" }
+    }))
+  };
+}
+
+async function updateRatebookQuoteReview(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_user_id: string | null; owner_email: string | null; organization_id?: string | null },
+  input: Record<string, unknown>
+) {
+  const ratebook = await requireOwnedRatebook(supabase, user, input.ratebook_id || input.id);
+  const quoteId = cleanText(input.quote_id);
+  if (!quoteId || !UUID_PATTERN.test(quoteId)) throw new Error("A valid carrier offer is required.");
+  const decision = cleanText(input.decision)?.toLowerCase() || "pending";
+  if (!["pending", "shortlisted", "not_selected"].includes(decision)) {
+    throw new Error("Choose pending, shortlisted, or not selected for this carrier offer.");
+  }
+  const decisionNote = cleanText(input.decision_note || input.note);
+  if (decisionNote && decisionNote.length > 4000) throw new Error("Review note must be 4,000 characters or less.");
+  const quoteResult = await supabase.from("rfx_ratebook_carrier_quotes")
+    .select("id,ratebook_id,package_lane_id,vendor_id,status")
+    .eq("id", quoteId).eq("ratebook_id", ratebook.id).maybeSingle();
+  if (quoteResult.error) throw quoteResult.error;
+  const quote = quoteResult.data as Record<string, unknown> | null;
+  if (!quote || cleanText(quote.status) !== "submitted") {
+    throw new Error("This carrier offer is no longer available for Ratebook review.");
+  }
+  const now = new Date().toISOString();
+  const reviewRow = {
+    ...withOwner({
+      ratebook_id: ratebook.id,
+      package_lane_id: quote.package_lane_id,
+      quote_id: quote.id,
+      vendor_id: quote.vendor_id,
+      decision,
+      decision_note: decisionNote || null,
+      decided_at: decision === "pending" ? null : now,
+      decided_by_email: decision === "pending" ? null : user.owner_email,
+      metadata: { source: "ratebook_quote_review", decision_updated_at: now },
+      updated_at: now
+    }, user),
+    organization_id: user.organization_id || null
+  };
+  const result = await supabase.from("rfx_ratebook_quote_reviews")
+    .upsert(reviewRow, { onConflict: "quote_id" }).select().single();
+  if (result.error) throw result.error;
+  const context = await getOwnedRatebookPackage(supabase, user, ratebook.rfx_package_id);
+  await writeRfxProcessAudit(supabase, user, context.project.id, `ratebook_quote_${decision}`, "rfx_ratebook_carrier_quotes", quote.id,
+    `${decision === "shortlisted" ? "Shortlisted" : decision === "not_selected" ? "Marked not selected" : "Reset review for"} a carrier Ratebook offer.`, {
+      ratebook_id: ratebook.id,
+      package_lane_id: quote.package_lane_id,
+      vendor_id: quote.vendor_id,
+      decision
+    });
+  return { review: result.data };
+}
+
+async function getRatebookRouteDetail(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_email: string | null },
+  input: Record<string, unknown>
+) {
+  const ratebook = await requireOwnedRatebook(supabase, user, input.ratebook_id);
+  const sourceDemandLaneId = cleanText(input.source_demand_lane_id || input.demand_lane_id);
+  if (!sourceDemandLaneId || !UUID_PATTERN.test(sourceDemandLaneId)) throw new Error("A valid Ratebook route is required.");
+  const packageLaneResult = await supabase.from("rfx_package_lanes").select("id")
+    .eq("package_id", ratebook.rfx_package_id).eq("demand_lane_id", sourceDemandLaneId).maybeSingle();
+  if (packageLaneResult.error) throw packageLaneResult.error;
+  if (!packageLaneResult.data) throw new Error("This route is not part of the selected Ratebook.");
+  const laneResult = await supabase.from("rfx_demand_lanes").select("*")
+    .eq("id", sourceDemandLaneId).eq("project_id", ratebook.project_id).eq("owner_email", user.owner_email).single();
+  if (laneResult.error) throw laneResult.error;
+  const lane = laneResult.data as Record<string, unknown>;
+  const rfiLaneId = cleanText(lane.source_rfi_lane_id);
+  const rfiResult = rfiLaneId
+    ? await supabase.from("rfx_rfi_lanes").select("*").eq("id", rfiLaneId).eq("project_id", ratebook.project_id).eq("owner_email", user.owner_email).maybeSingle()
+    : { data: null, error: null };
+  if (rfiResult.error) throw rfiResult.error;
+  const detail = {
+    logistics_model: rfxDemandLaneDetail(lane, "logistics_model"),
+    operation_criteria: rfxDemandLaneDetail(lane, "operation_criteria"),
+    business_rules: rfxDemandLaneDetail(lane, "business_rules"),
+    service_specifications: rfxDemandLaneDetail(lane, "service_specifications"),
+    carrier_requirements: rfxDemandLaneDetail(lane, "carrier_requirements"),
+    other_notes: rfxDemandLaneDetail(lane, "other_notes")
+  };
+  return { ratebook_id: ratebook.id, demand_lane: lane, rfi_lane: rfiResult.data || null, detail };
+}
+
+async function listRatebookCarriers(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_email: string | null },
+  input: Record<string, unknown>
+) {
+  await requireOwnedRatebook(supabase, user, input.ratebook_id);
+  const result = await supabase.from("vendors")
+    .select("id,vendor_name,domain,primary_email,whatsapp_phone,preferred_channel,base_stage,status,tags,coverage_notes")
+    .eq("owner_email", user.owner_email).or("base_stage.is.null,base_stage.neq.archived")
+    .order("vendor_name", { ascending: true }).limit(1000);
+  if (result.error) throw result.error;
+  const search = cleanText(input.search)?.toLowerCase();
+  const rows = ((result.data || []) as Record<string, unknown>[]).filter((vendor) => {
+    if (!search) return true;
+    return [vendor.vendor_name, vendor.domain, vendor.primary_email, vendor.coverage_notes, Array.isArray(vendor.tags) ? vendor.tags.join(" ") : vendor.tags]
+      .map(cleanText).filter(Boolean).join(" ").toLowerCase().includes(search);
+  });
+  return { rows, loaded: rows.length, limited: (result.data || []).length >= 1000 };
+}
+
+async function shareRatebookWithCarriers(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_user_id: string | null; owner_email: string | null; organization_id?: string | null },
+  input: Record<string, unknown>
+) {
+  const ratebook = await requireOwnedRatebook(supabase, user, input.ratebook_id);
+  if (ratebookLifecycleStatus(ratebook.lifecycle_status) !== "published") {
+    throw new Error("Publish this Ratebook before distributing private carrier links.");
+  }
+  const vendorIds = normalizeBulkIds(input.vendor_ids || input.vendorIds, { label: "Carrier ids", limit: 1000 });
+  if (!vendorIds.length) throw new Error("Select at least one Carrier CRM record to share this Ratebook.");
+  const context = await getOwnedRatebookPackage(supabase, user, ratebook.rfx_package_id);
+  if (!context.package_lanes.length) throw new Error("This Ratebook has no routes to share.");
+  const vendorsResult = await supabase.from("vendors")
+    .select("id,vendor_name,domain,primary_email")
+    .eq("owner_email", user.owner_email)
+    .in("id", vendorIds);
+  if (vendorsResult.error) throw vendorsResult.error;
+  const vendors = (vendorsResult.data || []) as Record<string, unknown>[];
+  if (vendors.length !== vendorIds.length) throw new Error("One or more selected Carrier CRM records are no longer available.");
+  const now = new Date().toISOString();
+  const generatedLinks = await Promise.all(vendors.map(async (vendor) => {
+    const token = ratebookCarrierAccessToken();
+    return {
+      vendor,
+      token,
+      row: {
+      ...withOwner({
+        ratebook_id: ratebook.id,
+        vendor_id: vendor.id,
+        primary_rfx_lane_vendor_id: null,
+        status: "active",
+        access_token_hash: await hashRatebookCarrierAccessToken(token),
+        access_token_last4: token.slice(-4),
+        access_granted_at: now,
+        access_revoked_at: null,
+        metadata: { shared_at: now, shared_from: "ratebook", delivery_mode: "private_ratebook_link" },
+        updated_at: now
+      }, user),
+      organization_id: user.organization_id || null
+      }
+    };
+  }));
+  const shareRows = generatedLinks.map((link) => link.row);
+  const shares = await supabase.from("rfx_ratebook_shares")
+    .upsert(shareRows, { onConflict: "ratebook_id,vendor_id" }).select("id,vendor_id,status,access_token_last4,access_granted_at");
+  if (shares.error) throw shares.error;
+  const activeSharesResult = await supabase.from("rfx_ratebook_shares").select("id")
+    .eq("ratebook_id", ratebook.id).eq("status", "active");
+  if (activeSharesResult.error) throw activeSharesResult.error;
+  const bookUpdate = await supabase.from("rfx_ratebooks").update({
+    status: "shared",
+    shared_carrier_count: (activeSharesResult.data || []).length,
+    updated_at: now
+  }).eq("id", ratebook.id).eq("owner_email", user.owner_email).select().single();
+  if (bookUpdate.error) throw bookUpdate.error;
+  const appOrigin = ratebookOrigin(input);
+  const sharesByVendorId = new Map(((shares.data || []) as Record<string, unknown>[]).map((share) => [cleanText(share.vendor_id), share]));
+  const magic_links = generatedLinks.map(({ vendor, token }) => {
+    const share = sharesByVendorId.get(cleanText(vendor.id)) || {};
+    return {
+      share_id: cleanText(share.id),
+      vendor_id: vendor.id,
+      vendor_name: vendor.vendor_name,
+      email: vendor.primary_email,
+      access_token_created: true,
+      url: `${appOrigin}/ratebook-carrier.html?token=${encodeURIComponent(token)}`
+    };
+  });
+  await writeRfxProcessAudit(supabase, user, context.project.id, "ratebook_shared", "rfx_ratebooks", ratebook.id,
+    `Shared Ratebook ${cleanText(ratebook.name) || ratebook.id} with ${vendors.length} carrier(s).`, {
+      rfx_package_id: context.pack.id,
+      carrier_count: vendors.length,
+      route_count: context.package_lanes.length,
+      delivery_mode: "private_ratebook_link"
+    });
+  return {
+    ratebook: bookUpdate.data,
+    carriers_shared: vendors.length,
+    carrier_links_rotated: generatedLinks.length,
+    magic_links
+  };
+}
+
+function ratebookDistributionCopy(ratebook: Record<string, unknown>, link: Record<string, unknown>) {
+  const ratebookName = cleanText(ratebook.name) || "Ratebook";
+  const carrierName = cleanText(link.vendor_name) || "Carrier";
+  const privateUrl = cleanText(link.url);
+  const subject = `Ratebook invitation | ${ratebookName}`;
+  const textBody = [
+    `Hello ${carrierName},`,
+    "",
+    `You have been invited to review and quote the asynchronous Ratebook: ${ratebookName}.`,
+    "This private link is assigned to your Carrier CRM profile. You can review the route book and submit or update offers at any time while the Ratebook remains active.",
+    "",
+    `Open your private Ratebook: ${privateUrl}`,
+    "",
+    "Thank you,",
+    "Rateware Procurement"
+  ].join("\n");
+  return {
+    subject,
+    text_body: textBody,
+    html_body: `<p>Hello ${escapeHtmlText(carrierName)},</p><p>You have been invited to review and quote the asynchronous <strong>${escapeHtmlText(ratebookName)}</strong> Ratebook.</p><p>This private link is assigned to your Carrier CRM profile. You can review the route book and submit or update offers while the Ratebook remains active.</p><p><a href="${escapeHtmlText(privateUrl)}">Open your private Ratebook</a></p><p>Thank you,<br>Rateware Procurement</p>`
+  };
+}
+
+async function queueRatebookDistribution(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_user_id: string | null; owner_email: string | null; organization_id?: string | null },
+  input: Record<string, unknown>
+) {
+  const ratebook = await requireOwnedRatebook(supabase, user, input.ratebook_id || input.id);
+  if (ratebookLifecycleStatus(ratebook.lifecycle_status) !== "published") {
+    throw new Error("Publish this Ratebook before creating its delivery queue.");
+  }
+  const shared = await shareRatebookWithCarriers(supabase, user, { ...input, ratebook_id: ratebook.id });
+  const magicLinks = Array.isArray(shared.magic_links) ? shared.magic_links as Record<string, unknown>[] : [];
+  const deliverableLinks = magicLinks.filter((link) => cleanText(link.share_id) && cleanText(link.email));
+  if (!deliverableLinks.length) {
+    return { ...shared, campaign: null, message_ids: [], queued: 0, skipped_missing_email: magicLinks.length };
+  }
+  const existingCampaignResult = await supabase.from("outreach_campaigns")
+    .select("id,name,status")
+    .eq("owner_email", user.owner_email)
+    .eq("ratebook_id", ratebook.id)
+    .neq("status", "archived")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (existingCampaignResult.error) throw existingCampaignResult.error;
+  const now = new Date().toISOString();
+  let campaign = existingCampaignResult.data as Record<string, unknown> | null;
+  if (!campaign) {
+    const campaignResult = await supabase.from("outreach_campaigns").insert(withOwner({
+      rfx_event_id: ratebook.rfx_event_id || null,
+      ratebook_id: ratebook.id,
+      name: `Ratebook delivery | ${cleanText(ratebook.name) || ratebook.id}`,
+      channel: "email",
+      status: "generated",
+      notes: "Controlled Ratebook distribution. Each message is tied to one private carrier share.",
+      sender_email: GMAIL_ALLOWED_SENDER,
+      sender_label: "Rateware Procurement",
+      sender_connection_status: "draft_only"
+    }, user)).select("id,name,status").single();
+    if (campaignResult.error) throw campaignResult.error;
+    campaign = campaignResult.data as Record<string, unknown>;
+  }
+  const campaignId = cleanText(campaign.id);
+  const shareIds = deliverableLinks.map((link) => cleanText(link.share_id)).filter(Boolean) as string[];
+  const pendingResult = await supabase.from("outreach_messages")
+    .select("id,ratebook_share_id,status")
+    .eq("owner_email", user.owner_email)
+    .eq("campaign_id", campaignId)
+    .eq("channel", "email")
+    .in("ratebook_share_id", shareIds)
+    .in("status", ["drafted", "queued", "failed"]);
+  if (pendingResult.error) throw pendingResult.error;
+  const existingByShareId = new Map(((pendingResult.data || []) as Record<string, unknown>[]).map((row) => [cleanText(row.ratebook_share_id), row]));
+  const messageRows = deliverableLinks.map((link) => {
+    const existing = existingByShareId.get(cleanText(link.share_id));
+    const copy = ratebookDistributionCopy(ratebook, link);
+    return withOwner({
+      ...(existing ? { id: existing.id } : {}),
+      campaign_id: campaignId,
+      rfx_event_id: ratebook.rfx_event_id || null,
+      vendor_id: link.vendor_id,
+      ratebook_share_id: link.share_id,
+      channel: "email",
+      recipient_email: cleanText(link.email)?.toLowerCase(),
+      subject: copy.subject,
+      html_body: copy.html_body,
+      text_body: copy.text_body,
+      status: "drafted",
+      sender_email: GMAIL_ALLOWED_SENDER,
+      sender_label: "Rateware Procurement",
+      sender_connection_status: "draft_only",
+      delivery_error: null,
+      metadata: {
+        source: "ratebook_distribution",
+        ratebook_id: ratebook.id,
+        ratebook_share_id: link.share_id,
+        ratebook_version: Number(ratebook.version_number) || 1,
+        private_ratebook_url: cleanText(link.url),
+        regenerated_at: now
+      },
+      updated_at: now
+    }, user);
+  });
+  const messagesResult = await supabase.from("outreach_messages").upsert(messageRows).select("id,ratebook_share_id,recipient_email,status");
+  if (messagesResult.error) throw messagesResult.error;
+  const campaignUpdate = await supabase.from("outreach_campaigns")
+    .update({ status: "generated", updated_at: now })
+    .eq("id", campaignId).eq("owner_email", user.owner_email);
+  if (campaignUpdate.error) throw campaignUpdate.error;
+  const context = await getOwnedRatebookPackage(supabase, user, ratebook.rfx_package_id);
+  await writeRfxProcessAudit(supabase, user, context.project.id, "ratebook_distribution_queued", "outreach_campaigns", campaignId,
+    `Generated ${messageRows.length} controlled Ratebook delivery draft(s).`, {
+      ratebook_id: ratebook.id,
+      campaign_id: campaignId,
+      carrier_count: messageRows.length,
+      skipped_missing_email: magicLinks.length - deliverableLinks.length
+    });
+  return {
+    ...shared,
+    campaign,
+    message_ids: (messagesResult.data || []).map((row: Record<string, unknown>) => row.id),
+    queued: messageRows.length,
+    skipped_missing_email: magicLinks.length - deliverableLinks.length
+  };
+}
+
+async function sendRatebookDistribution(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_user_id: string | null; owner_email: string | null; organization_id?: string | null },
+  input: Record<string, unknown>
+) {
+  const ratebook = await requireOwnedRatebook(supabase, user, input.ratebook_id || input.id);
+  const messageIds = normalizeBulkIds(input.ids, { label: "Ratebook delivery message ids", limit: BULK_SEND_LIMIT });
+  if (!messageIds.length) throw new Error("Select at least one Ratebook email draft to send.");
+  const messagesResult = await supabase.from("outreach_messages")
+    .select("id,campaign_id,ratebook_share_id,channel")
+    .eq("owner_email", user.owner_email)
+    .in("id", messageIds);
+  if (messagesResult.error) throw messagesResult.error;
+  const messages = (messagesResult.data || []) as Record<string, unknown>[];
+  if (messages.length !== messageIds.length || messages.some((message) => cleanText(message.channel) !== "email" || !cleanText(message.ratebook_share_id))) {
+    throw new Error("Every selected row must be an email draft created for this Ratebook.");
+  }
+  const campaignIds = [...new Set(messages.map((message) => cleanText(message.campaign_id)).filter(Boolean))];
+  const campaignResult = await supabase.from("outreach_campaigns")
+    .select("id,ratebook_id")
+    .eq("owner_email", user.owner_email)
+    .eq("ratebook_id", ratebook.id)
+    .in("id", campaignIds);
+  if (campaignResult.error) throw campaignResult.error;
+  if ((campaignResult.data || []).length !== campaignIds.length) {
+    throw new Error("Ratebook delivery drafts must belong to the selected Ratebook campaign.");
+  }
+  const result = await sendOutreachMessages(supabase, user, {
+    ...input,
+    ids: messageIds,
+    confirmation_action: "send_outreach_messages"
+  });
+  const context = await getOwnedRatebookPackage(supabase, user, ratebook.rfx_package_id);
+  await writeRfxProcessAudit(supabase, user, context.project.id, "ratebook_distribution_sent", "rfx_ratebooks", ratebook.id,
+    `Sent ${Number(result.sent) || 0} Ratebook delivery email(s).`, {
+      campaign_ids: campaignIds,
+      sent: result.sent,
+      failed: result.failed
+    });
+  return result;
 }
 
 async function syncShipperOpportunityFromImplementationReadyAward(
@@ -15815,6 +17341,66 @@ Deno.serve(async (request) => {
 
     if (body.action === "launch_rfx_package_to_bid_room") {
       return jsonResponse(await launchRfxProcessPackageToBidRoom(supabase, user, body));
+    }
+
+    if (body.action === "list_ratebooks") {
+      return jsonResponse(await listRatebooks(supabase, user, body));
+    }
+
+    if (body.action === "get_ratebook") {
+      return jsonResponse(await getRatebook(supabase, user, body));
+    }
+
+    if (body.action === "get_ratebook_route_detail") {
+      return jsonResponse(await getRatebookRouteDetail(supabase, user, body));
+    }
+
+    if (body.action === "get_ratebook_route_quotes") {
+      return jsonResponse(await getRatebookRouteQuotes(supabase, user, body));
+    }
+
+    if (body.action === "update_ratebook_quote_review") {
+      return jsonResponse(await updateRatebookQuoteReview(supabase, user, body));
+    }
+
+    if (body.action === "list_ratebook_carriers") {
+      return jsonResponse(await listRatebookCarriers(supabase, user, body));
+    }
+
+    if (body.action === "share_ratebook_with_carriers") {
+      return jsonResponse(await shareRatebookWithCarriers(supabase, user, body));
+    }
+
+    if (body.action === "queue_ratebook_distribution") {
+      return jsonResponse(await queueRatebookDistribution(supabase, user, body));
+    }
+
+    if (body.action === "send_ratebook_distribution") {
+      return jsonResponse(await sendRatebookDistribution(supabase, user, body));
+    }
+
+    if (body.action === "get_ratebook_audit") {
+      return jsonResponse(await getRatebookAudit(supabase, user, body));
+    }
+
+    if (body.action === "get_ratebook_health") {
+      return jsonResponse(await getRatebookHealth(supabase, user));
+    }
+
+    if (body.action === "create_ratebook_revision") {
+      return jsonResponse(await createRatebookRevision(supabase, user, body));
+    }
+
+    if (body.action === "publish_ratebook") {
+      return jsonResponse(await updateRatebookLifecycle(supabase, user, body, "published"));
+    }
+
+    if (body.action === "archive_ratebook") {
+      return jsonResponse(await updateRatebookLifecycle(supabase, user, body, "archived"));
+    }
+
+    if (body.action === "supersede_ratebook") {
+      return jsonResponse(await updateRatebookLifecycle(supabase, user, body, "superseded"));
     }
 
     if (body.action === "create_rfx_award_package") {
@@ -16790,6 +18376,18 @@ Deno.serve(async (request) => {
       if (profileRequestsResult.error && profileRequestsResult.error.code !== "42P01") throw profileRequestsResult.error;
       const details = Object.fromEntries(entries.map(([entity], index) => [entity, results[index].data || []]));
       details.profile_requests = profileRequestsResult.data || [];
+      const linkedProjectIds = Array.from(new Set(
+        ((details.opportunities || []) as Record<string, unknown>[])
+          .map((opportunity) => cleanText(opportunity.rfx_project_id))
+          .filter(Boolean)
+      ));
+      try {
+        details.ratebooks = await materializeRatebooksForProjects(supabase, user, linkedProjectIds);
+      } catch (error) {
+        // Keep the shipper profile usable until the Ratebook migration is present in every deployment.
+        if ((error as { code?: string } | null)?.code !== "42P01") throw error;
+        details.ratebooks = [];
+      }
       return jsonResponse({ row: shipper, ...details });
     }
 

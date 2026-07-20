@@ -196,6 +196,7 @@ const SHELL_NAV_GROUPS = [
       { id: "crm", code: "CM", label: "Carrier CRM", href: "./vendors.html" },
       { id: "shipper-crm", code: "SM", label: "Shipper CRM", href: "./shipper-crm.html" },
       { id: "rfx-process", code: "RP", label: "RFx Process", href: "./rfx-process.html" },
+      { id: "ratebook", code: "RB", label: "Ratebook", href: "./ratebook.html" },
       { id: "rfx", code: "BR", label: "Bid Room", href: "./rfx-events.html" },
       { id: "support", code: "VS", label: "Vendor Support", href: "./vendor-support.html" },
       { id: "improvement", code: "CI", label: "Vendor CI", href: "./vendor-improvement.html" }
@@ -271,6 +272,15 @@ const PAGE_META = {
       { label: "Source", href: "./app.html" },
       { label: "Carrier CRM", href: "./vendors.html" },
       { label: "RFx Process" }
+    ]
+  },
+  ratebook: {
+    title: "Ratebook",
+    eyebrow: "RFx route books",
+    crumbs: [
+      { label: "Source", href: "./app.html" },
+      { label: "Shipper CRM", href: "./shipper-crm.html" },
+      { label: "Ratebook" }
     ]
   },
   "rfx-events": {

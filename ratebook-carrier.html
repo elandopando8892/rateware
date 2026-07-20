@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Private Ratebook | Rateware</title>
+    <link rel="stylesheet" href="./src/styles.css" />
+  </head>
+  <body class="ratebook-carrier-page">
+    <main class="ratebook-carrier-shell">
+      <header class="ratebook-carrier-header">
+        <a class="ratebook-carrier-brand" href="./bid-room-board.html">Rateware</a>
+        <p>Private carrier access</p>
+      </header>
+      <section class="ratebook-carrier-hero">
+        <div>
+          <p class="eyebrow">Private Ratebook</p>
+          <h1 id="ratebook-carrier-title">Loading Ratebook...</h1>
+          <p id="ratebook-carrier-subtitle">Checking your carrier access.</p>
+        </div>
+        <dl class="ratebook-carrier-meta">
+          <div><dt>Carrier</dt><dd id="ratebook-carrier-vendor">-</dd></div>
+          <div><dt>Valid until</dt><dd id="ratebook-carrier-validity">-</dd></div>
+        </dl>
+      </section>
+      <p class="ratebook-carrier-status" id="ratebook-carrier-status" role="status">Loading private routes...</p>
+      <section class="ratebook-carrier-workspace" id="ratebook-carrier-workspace" hidden>
+        <div class="ratebook-carrier-toolbar">
+          <label><span>Segment</span><select id="ratebook-carrier-segment"><option value="">All segments</option></select></label>
+          <label class="ratebook-carrier-search"><span>Search routes</span><input id="ratebook-carrier-search" type="search" placeholder="Transaction ID, origin, destination..." /></label>
+        </div>
+        <p class="ratebook-carrier-guidance">This is an asynchronous Ratebook. Submit or update one offer per route. Your offer remains tied to your Carrier CRM profile and does not enter the live Bid Room or Rateware production automatically.</p>
+        <div class="ratebook-carrier-grid-wrap">
+          <table class="ratebook-carrier-grid">
+            <thead><tr><th>Transaction ID</th><th>Segment</th><th>Origin</th><th>Destination</th><th>Equipment</th><th>Operation</th><th>Service</th><th>Weekly volume</th><th>Your offer</th><th></th></tr></thead>
+            <tbody id="ratebook-carrier-routes"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+    <dialog class="ratebook-carrier-dialog" id="ratebook-carrier-route-dialog">
+      <div class="ratebook-carrier-dialog-head"><div><p class="eyebrow">RFI route detail</p><h2 id="ratebook-carrier-route-title">Route</h2></div><button type="button" id="ratebook-carrier-close-detail">Close</button></div>
+      <div class="ratebook-carrier-detail" id="ratebook-carrier-route-detail"></div>
+    </dialog>
+    <dialog class="ratebook-carrier-dialog ratebook-carrier-quote-dialog" id="ratebook-carrier-quote-dialog">
+      <div class="ratebook-carrier-dialog-head"><div><p class="eyebrow">Asynchronous offer</p><h2 id="ratebook-carrier-quote-title">Submit offer</h2></div><button type="button" id="ratebook-carrier-close-quote">Close</button></div>
+      <form class="ratebook-carrier-quote-form" id="ratebook-carrier-quote-form">
+        <p class="ratebook-carrier-quote-route" id="ratebook-carrier-quote-route"></p>
+        <div class="ratebook-carrier-quote-fields">
+          <label>All-in rate<input name="all_in_rate" type="number" min="0.01" step="0.01" required inputmode="decimal" /></label>
+          <label>Currency<select name="currency"><option value="USD">USD</option><option value="MXN">MXN</option><option value="CAD">CAD</option></select></label>
+          <label>Weekly capacity<input name="weekly_capacity" type="number" min="0" step="0.01" inputmode="decimal" /></label>
+          <label>Transit days<input name="transit_days" type="number" min="0" step="0.1" inputmode="decimal" /></label>
+          <label>Valid until<input name="valid_until" type="date" /></label>
+          <label>Quote reference<input name="quote_reference" maxlength="180" placeholder="Optional reference" /></label>
+        </div>
+        <label class="ratebook-carrier-quote-notes">Offer notes<textarea name="notes" maxlength="5000" placeholder="Assumptions, exclusions, capacity conditions, or service notes."></textarea></label>
+        <p class="ratebook-carrier-quote-feedback" id="ratebook-carrier-quote-feedback" role="status"></p>
+        <div class="ratebook-carrier-quote-actions"><button type="button" id="ratebook-carrier-withdraw-quote" hidden>Withdraw offer</button><button type="submit" class="ratebook-carrier-primary" id="ratebook-carrier-submit-quote">Submit offer</button></div>
+      </form>
+    </dialog>
+    <script type="module" src="./src/ratebook-carrier.js"></script>
+  </body>
+</html>

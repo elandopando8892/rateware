@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Ratebook | Rateware</title>
+    <link rel="stylesheet" href="./src/styles.css" />
+  </head>
+  <body class="app-shell-page">
+    <div class="shell-layout">
+      <aside class="side-nav" aria-label="Primary navigation">
+        <a class="brand" href="./app.html">Rateware</a>
+        <div class="side-nav-group">
+          <span>Operate</span>
+          <a href="./app.html">Command Center</a>
+          <a href="./upload-center.html">Import</a>
+          <a href="./upload-history.html">Source Files</a>
+          <a href="./staging-review.html">Review Queue</a>
+          <a href="./rateware.html">Rateware</a>
+        </div>
+        <div class="side-nav-group">
+          <span>Analyze</span>
+          <a href="./business-intelligence.html">Analyze</a>
+        </div>
+        <div class="side-nav-group">
+          <span>Source</span>
+          <a href="./vendors.html">Carrier CRM</a>
+          <a href="./shipper-crm.html">Shipper CRM</a>
+          <a href="./rfx-process.html">RFx Process</a>
+          <a class="is-active" href="./ratebook.html">Ratebook</a>
+          <a href="./rfx-events.html">Bid Room</a>
+        </div>
+        <div class="side-nav-group">
+          <span>Admin</span>
+          <a href="./settings.html">Settings</a>
+          <a href="./catalogs.html">Catalog</a>
+        </div>
+      </aside>
+
+      <main class="page-frame ratebook-workspace">
+        <header class="page-header">
+          <div>
+            <p class="eyebrow">RFx Route Books</p>
+            <h1>Ratebook</h1>
+            <p class="page-subtitle">Consolidated route books across shippers and RFx sources.</p>
+          </div>
+          <div class="page-header-actions">
+            <button class="button button-secondary" id="refresh-ratebooks" type="button">Refresh</button>
+          </div>
+        </header>
+
+        <section class="ratebook-toolbar" aria-label="Ratebook filters">
+          <label class="ratebook-filter-field ratebook-search-field">
+            <span>Search</span>
+            <input id="ratebook-search" type="search" placeholder="Ratebook, shipper, RFx, route..." autocomplete="off" />
+          </label>
+          <label class="ratebook-filter-field">
+            <span>Status</span>
+            <select id="ratebook-status-filter">
+              <option value="">All status</option>
+              <option value="draft">Draft</option>
+              <option value="published">Published</option>
+              <option value="superseded">Superseded</option>
+              <option value="archived">Archived</option>
+            </select>
+          </label>
+          <label class="ratebook-filter-field">
+            <span>Shipper</span>
+            <select id="ratebook-shipper-filter">
+              <option value="">All shippers</option>
+            </select>
+          </label>
+          <label class="ratebook-filter-field">
+            <span>Source</span>
+            <select id="ratebook-source-filter">
+              <option value="">All sources</option>
+            </select>
+          </label>
+          <label class="ratebook-filter-field">
+            <span>Segment</span>
+            <select id="ratebook-segment-filter">
+              <option value="">All segments</option>
+            </select>
+          </label>
+          <p class="ratebook-toolbar-status" id="ratebook-status" role="status">Loading route books...</p>
+        </section>
+
+        <section class="ratebook-overview" aria-label="Ratebook scope">
+          <article><span>Ratebooks</span><strong id="ratebook-overview-books">0</strong></article>
+          <article><span>Shippers</span><strong id="ratebook-overview-shippers">0</strong></article>
+          <article><span>Routes in scope</span><strong id="ratebook-overview-routes">0</strong></article>
+          <article><span>Published</span><strong id="ratebook-overview-published">0</strong></article>
+        </section>
+
+        <section class="ratebook-health" aria-label="Ratebook health and decision queue">
+          <div class="ratebook-health-summary">
+            <article><span>Priority issues</span><strong id="ratebook-health-priority">0</strong></article>
+            <article><span>Validity attention</span><strong id="ratebook-health-expiring">0</strong></article>
+            <article><span>Routes without offers</span><strong id="ratebook-health-unquoted">0</strong></article>
+            <article><span>Offers to review</span><strong id="ratebook-health-review">0</strong></article>
+          </div>
+          <div class="ratebook-decision-queue" id="ratebook-decision-queue" aria-live="polite">
+            <span>Checking Ratebook health...</span>
+          </div>
+        </section>
+
+        <section class="ratebook-layout" aria-label="Ratebook workspace">
+          <aside class="ratebook-list-panel">
+            <div class="ratebook-panel-heading">
+              <div>
+                <p class="eyebrow">Available books</p>
+                <h2>RFx route books</h2>
+              </div>
+              <span class="ratebook-count" id="ratebook-count">0</span>
+            </div>
+            <div class="ratebook-list" id="ratebook-list" aria-live="polite"></div>
+          </aside>
+
+          <section class="ratebook-detail-panel" id="ratebook-detail" aria-live="polite">
+            <div class="ratebook-empty-state">
+              <h2>Select a Ratebook</h2>
+              <p>Choose an RFx route book to review routes, inspect the RFI behind each transaction, and share it with carriers.</p>
+            </div>
+          </section>
+        </section>
+      </main>
+    </div>
+
+    <div class="ratebook-drawer-backdrop hidden" id="ratebook-drawer-backdrop"></div>
+    <aside class="ratebook-route-drawer hidden" id="ratebook-route-drawer" aria-label="RFI route detail" aria-live="polite">
+      <div class="ratebook-drawer-heading">
+        <div>
+          <p class="eyebrow">RFI route detail</p>
+          <h2>Route requirements</h2>
+        </div>
+        <button class="button button-secondary" id="close-ratebook-route" type="button">Close</button>
+      </div>
+      <div id="ratebook-route-content"></div>
+    </aside>
+
+    <dialog class="ratebook-share-dialog" id="ratebook-share-dialog" aria-labelledby="ratebook-share-title">
+      <div class="ratebook-dialog-heading">
+        <div>
+          <p class="eyebrow">Carrier distribution</p>
+          <h2 id="ratebook-share-title">Share private Ratebook</h2>
+          <p id="ratebook-share-description">Select Carrier CRM records. Every carrier receives its own private link and an optional email draft in Outreach.</p>
+        </div>
+        <button class="button button-secondary" id="close-ratebook-share" type="button">Close</button>
+      </div>
+      <div class="ratebook-share-controls">
+        <label class="ratebook-filter-field ratebook-search-field">
+          <span>Search carriers</span>
+          <input id="ratebook-carrier-search" type="search" placeholder="Carrier name or domain..." autocomplete="off" />
+        </label>
+        <button class="button button-secondary" id="select-visible-ratebook-carriers" type="button">Select visible</button>
+        <span class="ratebook-selection-count" id="ratebook-selection-count">0 selected</span>
+      </div>
+      <div class="ratebook-carrier-list" id="ratebook-carrier-list"></div>
+      <div class="ratebook-share-footer">
+        <label class="ratebook-distribution-option"><input id="ratebook-create-email-drafts" type="checkbox" checked /> Create email drafts in Outreach</label>
+        <p id="ratebook-share-status" role="status"></p>
+        <div class="ratebook-share-actions">
+          <button class="button button-secondary hidden" id="send-ratebook-distribution" type="button">Send draft emails now</button>
+          <button class="button button-primary" id="share-ratebook-with-carriers" type="button" disabled>Create links and drafts</button>
+        </div>
+      </div>
+      <div class="ratebook-magic-links hidden" id="ratebook-magic-links"></div>
+    </dialog>
+
+    <dialog class="ratebook-audit-dialog" id="ratebook-audit-dialog" aria-labelledby="ratebook-audit-title">
+      <div class="ratebook-dialog-heading">
+        <div>
+          <p class="eyebrow">Ratebook control</p>
+          <h2 id="ratebook-audit-title">Source and publish audit</h2>
+          <p>Confirm the source, operating segments and route completeness before distribution.</p>
+        </div>
+        <button class="button button-secondary" id="close-ratebook-audit" type="button">Close</button>
+      </div>
+      <div id="ratebook-audit-content" class="ratebook-audit-content"></div>
+    </dialog>
+
+    <dialog class="ratebook-quote-review-dialog" id="ratebook-quote-review-dialog" aria-labelledby="ratebook-quote-review-title">
+      <div class="ratebook-dialog-heading">
+        <div>
+          <p class="eyebrow">Procurement review</p>
+          <h2 id="ratebook-quote-review-title">Carrier offers</h2>
+          <p id="ratebook-quote-review-description">Compare asynchronous offers for one Ratebook route. Shortlisting does not award or promote a rate.</p>
+        </div>
+        <button class="button button-secondary" id="close-ratebook-quote-review" type="button">Close</button>
+      </div>
+      <div id="ratebook-quote-review-content" class="ratebook-quote-review-content"></div>
+    </dialog>
+
+    <script type="module" src="./src/ratebook.js"></script>
+  </body>
+</html>

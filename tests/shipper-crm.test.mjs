@@ -134,7 +134,7 @@ assert.match(api, /\.eq\("owner_email", user\.owner_email\)\.eq\("id", rfiId\)\.
 for (const id of ["shipper-search", "shipper-table-body", "shipper-drawer", "shipper-pipeline", "shipper-pipeline-board", "shipper-commercial", "shipper-commercial-rfi-body", "shipper-commercial-opportunity-body", "shipper-commercial-won", "shipper-intelligence", "shipper-intelligence-search", "shipper-intelligence-focus", "shipper-intelligence-body", "refresh-shipper-intelligence", "shipper-import", "shipper-import-file", "shipper-import-preview", "confirm-shipper-import", "shipper-duplicates", "shipper-duplicates-list", "refresh-shipper-duplicates"]) {
   assert.match(page, new RegExp(`id="${id}"`));
 }
-for (const tab of ["overview", "contacts", "locations", "lanes", "rfis", "opportunities", "actions", "activity"]) {
+for (const tab of ["overview", "contacts", "locations", "ratebook", "rfis", "opportunities", "actions", "activity"]) {
   assert.match(page, new RegExp(`data-shipper-tab="${tab}"`));
 }
 
@@ -181,6 +181,10 @@ assert.match(client, /data-promote-shipper-rfi/);
 assert.match(client, /data-launch-shipper-rfx/);
 assert.match(client, /rfx-process\.html\?project=/);
 assert.match(client, /rfx-events\.html\?rfx_event_id=/);
+assert.match(client, /function renderRatebookTab/);
+assert.match(client, /Open Ratebook/);
+assert.match(client, /Create Ratebook/);
+assert.match(client, /openRatebookWorkspace/);
 assert.match(client, /This RFI already has a commercial deal/);
 assert.match(client, /won_opportunities/);
 assert.match(client, /Commercial outcome/);

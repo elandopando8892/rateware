@@ -1115,6 +1115,14 @@ function openRfxWorkspace(projectId, eventId = "") {
   window.location.assign(path);
 }
 
+function openRatebookWorkspace(ratebookId = "", projectId = "") {
+  const query = new URLSearchParams();
+  if (ratebookId) query.set("ratebook", ratebookId);
+  else if (projectId) query.set("project", projectId);
+  const suffix = query.toString();
+  window.location.assign(`./ratebook.html${suffix ? `?${suffix}` : ""}`);
+}
+
 async function launchCommercialRfx(opportunityId, projectId = "", eventId = "") {
   if (projectId) return openRfxWorkspace(projectId, eventId);
   const row = state.commercialOpportunities.find((item) => item.id === opportunityId);
@@ -1125,6 +1133,23 @@ async function launchCommercialRfx(opportunityId, projectId = "", eventId = "") 
     const project = result.project || {};
     setStatus(elements.commercialStatus, result.created ? "RFx workspace created. Opening the demand workspace..." : "Opening the existing RFx workspace...", "success");
     openRfxWorkspace(project.id, project.linked_rfx_event_id);
+  } catch (error) {
+    setStatus(elements.commercialStatus, humanizeError(error), "error");
+  }
+}
+
+async function startCommercialRatebook(opportunityId, projectId = "") {
+  if (projectId) return openRatebookWorkspace("", projectId);
+  const row = state.commercialOpportunities.find((item) => item.id === opportunityId)
+    || (state.detail?.opportunities || []).find((item) => item.id === opportunityId);
+  if (!row) return;
+  setStatus(elements.commercialStatus, `Creating a Ratebook from ${row.opportunity_name || "this opportunity"}...`);
+  try {
+    const result = await launchShipperOpportunityRfx(opportunityId);
+    const project = result.project || {};
+    if (!project.id) throw new Error("The RFx project was created without a Ratebook source.");
+    setStatus(elements.commercialStatus, "Ratebook source created. Opening the route book...", "success");
+    openRatebookWorkspace("", project.id);
   } catch (error) {
     setStatus(elements.commercialStatus, humanizeError(error), "error");
   }
@@ -1447,17 +1472,22 @@ function renderChildTab(entity) {
     ];
     if (entity === "rfis") {
       const linked = (state.detail?.opportunities || []).find((opportunity) => opportunity.rfi_id === row.id);
-      controls.push(linked
-        ? `<button class="secondary" type="button" data-open-opportunity-from-rfi="${escapeHtml(linked.id)}">Open deal</button>`
-        : `<button class="secondary" type="button" data-promote-shipper-rfi="${escapeHtml(row.id)}">Create deal</button>`);
+      if (linked?.rfx_project_id) {
+        controls.push(`<button class="secondary" type="button" data-open-shipper-ratebook="${escapeHtml(linked.rfx_project_id)}">Open Ratebook</button>`);
+      } else if (linked) {
+        controls.push(`<button class="secondary" type="button" data-start-shipper-ratebook="${escapeHtml(linked.id)}">Create Ratebook</button>`);
+      } else {
+        controls.push(`<button class="secondary" type="button" data-start-rfi-ratebook="${escapeHtml(row.id)}">Start Ratebook</button>`);
+        controls.push(`<button class="secondary" type="button" data-promote-shipper-rfi="${escapeHtml(row.id)}">Create deal</button>`);
+      }
     }
     if (entity === "opportunities") {
       const closed = ["won", "lost", "archived"].includes(String(row.stage || "").toLowerCase());
       controls.push(row.rfx_project_id
-        ? `<button class="secondary" type="button" data-launch-shipper-rfx="${escapeHtml(row.id)}" data-rfx-project="${escapeHtml(row.rfx_project_id)}">Open RFx</button>`
+        ? `<button class="secondary" type="button" data-open-shipper-ratebook="${escapeHtml(row.rfx_project_id)}">Open Ratebook</button>`
         : closed
           ? `<span class="shipper-table-muted">Closed outcome</span>`
-          : `<button class="secondary" type="button" data-launch-shipper-rfx="${escapeHtml(row.id)}">Create RFx</button>`);
+          : `<button class="secondary" type="button" data-start-shipper-ratebook="${escapeHtml(row.id)}">Create Ratebook</button>`);
     }
     controls.push(`<button class="secondary" type="button" data-delete-shipper-record="${escapeHtml(row.id)}">Delete</button>`);
     return controls.join("");
@@ -1488,6 +1518,31 @@ function renderChildTab(entity) {
         ${config.fields.map((field) => childField(field, editing, entity)).join("")}
         <div class="span-2 shipper-form-actions"><p id="shipper-drawer-status" role="status"></p><button type="submit">${state.editingRecordId ? "Save changes" : `Add ${config.noun}`}</button></div>
       </form>
+    </section>`;
+}
+
+function renderRatebookTab() {
+  const rows = state.detail?.ratebooks || [];
+  const sourceLabel = (row) => [row.project?.customer_name, row.project?.title].filter(Boolean).join(" | ") || "RFx route book";
+  elements.drawerContent.innerHTML = `
+    <section class="shipper-ratebook-workspace">
+      <div class="shipper-child-heading">
+        <div><p class="eyebrow">RFx route books</p><h3>Ratebooks</h3></div>
+        <span>${rows.length} book(s)</span>
+      </div>
+      <p class="shipper-ratebook-intro">Each book is derived from an RFx package. Open a route to review RFI requirements, then share the book through carrier-specific Bid Room invitations.</p>
+      <div class="shipper-ratebook-list">
+        ${rows.length ? rows.map((row) => `
+          <article class="shipper-ratebook-card">
+            <div>
+              <strong>${escapeHtml(row.name || row.package?.name || "Untitled Ratebook")}</strong>
+              <span>${escapeHtml(sourceLabel(row))}</span>
+              <small>${escapeHtml(humanLabel(row.status || "draft"))} | ${Number(row.lane_count || 0)} route(s) | ${Number(row.shared_carrier_count || 0)} carrier share(s)</small>
+            </div>
+            <button type="button" data-open-ratebook-id="${escapeHtml(row.id)}">Open Ratebook</button>
+          </article>`).join("") : `
+          <div class="shipper-empty-activity"><strong>No Ratebook yet</strong><span>Start an RFx from an open commercial opportunity to create the first route book for this shipper.</span></div>`}
+      </div>
     </section>`;
 }
 
@@ -1539,6 +1594,7 @@ function renderDrawer() {
     button.classList.toggle("active", button.dataset.shipperTab === state.activeTab);
   });
   if (state.activeTab === "overview") renderOverview();
+  else if (state.activeTab === "ratebook") renderRatebookTab();
   else if (state.activeTab === "activity") {
     renderActivityTab();
     void loadAccountActivity();
@@ -1547,7 +1603,7 @@ function renderDrawer() {
 
 async function openDrawer(id, tab = "overview") {
   state.activeShipperId = id;
-  state.activeTab = tab === "overview" || tab === "activity" || CHILD_CONFIG[tab] ? tab : "overview";
+  state.activeTab = tab === "overview" || tab === "ratebook" || tab === "activity" || CHILD_CONFIG[tab] ? tab : "overview";
   state.editingRecordId = null;
   state.accountActivity = [];
   state.accountActivityReady = false;
@@ -1643,6 +1699,22 @@ async function promoteRfiFromDrawer(rfiId) {
     renderDrawer();
     await refreshAccountWorkspace({ directory: false });
     setStatus(elements.commercialStatus, result.created ? "Commercial deal created from the RFI." : "This RFI already has a commercial deal.", "success");
+  } catch (error) {
+    if (status) setStatus(status, humanizeError(error), "error");
+  }
+}
+
+async function startRfiRatebookFromDrawer(rfiId) {
+  const status = elements.drawerContent.querySelector("#shipper-drawer-status");
+  if (status) setStatus(status, "Preparing the RFx source for this Ratebook...");
+  try {
+    let opportunity = (state.detail?.opportunities || []).find((row) => row.rfi_id === rfiId) || null;
+    if (!opportunity) {
+      const result = await promoteShipperRfiToOpportunity(rfiId);
+      opportunity = result.row || result.opportunity || null;
+    }
+    if (!opportunity?.id) throw new Error("The commercial deal could not be created from this RFI.");
+    await startCommercialRatebook(opportunity.id, opportunity.rfx_project_id || "");
   } catch (error) {
     if (status) setStatus(status, humanizeError(error), "error");
   }
@@ -1861,6 +1933,8 @@ elements.commercial.addEventListener("click", (event) => {
   if (promote) promoteCommercialRfi(promote.dataset.promoteShipperRfi);
   const launch = event.target.closest("[data-launch-shipper-rfx]");
   if (launch) launchCommercialRfx(launch.dataset.launchShipperRfx, launch.dataset.rfxProject, launch.dataset.rfxEvent);
+  const ratebook = event.target.closest("[data-start-shipper-ratebook]");
+  if (ratebook) startCommercialRatebook(ratebook.dataset.startShipperRatebook, ratebook.dataset.rfxProject);
 });
 
 elements.commercial.addEventListener("change", (event) => {
@@ -1964,6 +2038,14 @@ elements.drawerContent.addEventListener("click", async (event) => {
   if (retry) return openDrawer(state.activeShipperId);
   const promote = event.target.closest("[data-promote-shipper-rfi]");
   if (promote) return promoteRfiFromDrawer(promote.dataset.promoteShipperRfi);
+  const startRfiRatebook = event.target.closest("[data-start-rfi-ratebook]");
+  if (startRfiRatebook) return startRfiRatebookFromDrawer(startRfiRatebook.dataset.startRfiRatebook);
+  const startRatebook = event.target.closest("[data-start-shipper-ratebook]");
+  if (startRatebook) return startCommercialRatebook(startRatebook.dataset.startShipperRatebook, startRatebook.dataset.rfxProject);
+  const openRatebook = event.target.closest("[data-open-shipper-ratebook]");
+  if (openRatebook) return openRatebookWorkspace("", openRatebook.dataset.openShipperRatebook);
+  const openRatebookId = event.target.closest("[data-open-ratebook-id]");
+  if (openRatebookId) return openRatebookWorkspace(openRatebookId.dataset.openRatebookId);
   const launch = event.target.closest("[data-launch-shipper-rfx]");
   if (launch) return launchCommercialRfx(launch.dataset.launchShipperRfx, launch.dataset.rfxProject);
   const openRfx = event.target.closest("[data-open-shipper-rfx-project]");

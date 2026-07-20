@@ -424,6 +424,1436 @@ a {
   cursor: pointer;
 }
 
+/* Ratebook workspace */
+.ratebook-workspace {
+  min-width: 0;
+}
+
+.ratebook-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  align-items: end;
+  gap: 10px;
+  min-height: 58px;
+  padding: 8px 0;
+  background: var(--surface, #f7f9fb);
+  border-bottom: 1px solid var(--line, #d7dee7);
+}
+
+.ratebook-filter-field {
+  display: grid;
+  gap: 3px;
+  min-width: 150px;
+  color: var(--muted, #596b7a);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.ratebook-filter-field input,
+.ratebook-filter-field select {
+  min-height: 30px;
+  padding: 4px 8px;
+  border: 1px solid #bcc9d6;
+  border-radius: 4px;
+  background: #fff;
+  color: #162433;
+  font: inherit;
+}
+
+.ratebook-search-field {
+  flex: 1 1 330px;
+}
+
+.ratebook-toolbar-status {
+  flex: 0 1 310px;
+  margin: 0 0 5px;
+  color: #5c6d7d;
+  font-size: 12px;
+}
+
+.ratebook-toolbar-status[data-tone="success"],
+.ratebook-share-footer p[data-tone="success"] {
+  color: #08765a;
+}
+
+.ratebook-toolbar-status[data-tone="error"],
+.ratebook-share-footer p[data-tone="error"] {
+  color: #b42318;
+}
+
+.ratebook-overview {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-top: 10px;
+  border: 1px solid #d3dde7;
+  border-radius: 6px;
+  background: #fff;
+}
+
+.ratebook-overview article {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 8px 12px;
+  border-right: 1px solid #dce4ec;
+}
+
+.ratebook-overview article:last-child {
+  border-right: 0;
+}
+
+.ratebook-overview span {
+  color: #617283;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.ratebook-overview strong {
+  color: #172635;
+  font-size: 17px;
+}
+
+.ratebook-health {
+  display: grid;
+  grid-template-columns: minmax(360px, 0.72fr) minmax(0, 1.28fr);
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.ratebook-health-summary,
+.ratebook-decision-queue {
+  min-width: 0;
+  border: 1px solid #d3dde7;
+  border-radius: 6px;
+  background: #fff;
+}
+
+.ratebook-health-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.ratebook-health-summary article {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 8px 10px;
+  border-right: 1px solid #e1e8ef;
+  border-bottom: 1px solid #e1e8ef;
+}
+
+.ratebook-health-summary article:nth-child(2n) { border-right: 0; }
+.ratebook-health-summary article:nth-child(n + 3) { border-bottom: 0; }
+
+.ratebook-health-summary span,
+.ratebook-queue-heading,
+.ratebook-queue-priority {
+  color: #617283;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.ratebook-health-summary strong { color: #172635; font-size: 16px; }
+
+.ratebook-decision-queue { padding: 8px 10px; }
+
+.ratebook-queue-heading,
+.ratebook-queue-empty {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 28px;
+}
+
+.ratebook-queue-heading strong,
+.ratebook-queue-empty strong { color: #1b2b3a; font-size: 12px; }
+.ratebook-queue-heading span,
+.ratebook-queue-empty span { color: #66788a; font-size: 11px; }
+.ratebook-queue-empty.is-error strong { color: #b42318; }
+
+.ratebook-queue-items { display: grid; gap: 4px; margin-top: 6px; }
+
+.ratebook-queue-item {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 5px 0;
+  border-top: 1px solid #e5ebf0;
+}
+
+.ratebook-queue-item strong,
+.ratebook-queue-item small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ratebook-queue-item strong { color: #253848; font-size: 12px; }
+.ratebook-queue-item small { margin-top: 2px; color: #66788a; font-size: 11px; }
+.ratebook-queue-item .button { min-height: 26px; padding: 3px 7px; font-size: 11px; }
+.ratebook-queue-item.is-high .ratebook-queue-priority { color: #b42318; }
+.ratebook-queue-item.is-medium .ratebook-queue-priority { color: #a86400; }
+.ratebook-queue-item.is-low .ratebook-queue-priority { color: #53697c; }
+
+.ratebook-layout {
+  display: grid;
+  grid-template-columns: minmax(250px, 310px) minmax(0, 1fr);
+  gap: 12px;
+  padding-top: 12px;
+  min-width: 0;
+}
+
+.ratebook-list-panel,
+.ratebook-detail-panel {
+  min-width: 0;
+  border: 1px solid #d3dde7;
+  border-radius: 6px;
+  background: #fff;
+}
+
+.ratebook-list-panel {
+  align-self: start;
+  max-height: calc(100vh - 155px);
+  overflow: auto;
+}
+
+.ratebook-panel-heading,
+.ratebook-detail-heading,
+.ratebook-grid-heading,
+.ratebook-drawer-heading,
+.ratebook-dialog-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ratebook-panel-heading {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 12px;
+  background: #fff;
+  border-bottom: 1px solid #dce4ec;
+}
+
+.ratebook-panel-heading h2,
+.ratebook-detail-heading h2,
+.ratebook-grid-heading h3,
+.ratebook-drawer-heading h2,
+.ratebook-dialog-heading h2 {
+  margin: 0;
+  color: #152333;
+  font-size: 15px;
+  line-height: 1.25;
+}
+
+.ratebook-count {
+  min-width: 27px;
+  padding: 3px 7px;
+  border-radius: 10px;
+  background: #edf2f6;
+  color: #415466;
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.ratebook-list {
+  display: grid;
+}
+
+.ratebook-shipper-group + .ratebook-shipper-group {
+  border-top: 4px solid #eef2f5;
+}
+
+.ratebook-shipper-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px 5px;
+  background: #fbfcfd;
+  color: #43586a;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.ratebook-shipper-heading span {
+  color: #718293;
+  font-size: 10px;
+}
+
+.ratebook-list-row {
+  display: grid;
+  gap: 3px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 0;
+  border-bottom: 1px solid #e3e9ef;
+  background: #fff;
+  color: #1d2e3e;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ratebook-list-row:hover,
+.ratebook-list-row.is-selected {
+  background: #eef6f7;
+  box-shadow: inset 3px 0 0 #16827b;
+}
+
+.ratebook-list-row strong {
+  font-size: 12px;
+}
+
+.ratebook-list-row span,
+.ratebook-list-row small,
+.ratebook-list-empty,
+.ratebook-carrier-empty {
+  color: #596b7a;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.ratebook-list-empty,
+.ratebook-carrier-empty {
+  padding: 16px;
+}
+
+.ratebook-list-empty {
+  display: grid;
+  gap: 4px;
+}
+
+.ratebook-detail-panel {
+  overflow: hidden;
+}
+
+.ratebook-detail-heading {
+  padding: 14px 16px 10px;
+  border-bottom: 1px solid #dce4ec;
+}
+
+.ratebook-detail-heading > div:first-child > p:not(.eyebrow) {
+  margin: 4px 0 0;
+  color: #5c6d7d;
+  font-size: 12px;
+}
+
+.ratebook-detail-heading > div:first-child > .ratebook-source-freshness {
+  max-width: 720px;
+  margin-top: 7px;
+  color: #597084;
+  font-size: 11px;
+}
+
+.ratebook-detail-heading > div:first-child > .ratebook-source-freshness.is-outdated {
+  color: #9b5b00;
+}
+
+.ratebook-detail-heading > div:first-child > .ratebook-source-freshness.is-current {
+  color: #34735d;
+}
+
+.ratebook-detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.ratebook-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  border-bottom: 1px solid #dce4ec;
+}
+
+.ratebook-summary-grid article {
+  display: grid;
+  gap: 3px;
+  padding: 10px 14px;
+  border-right: 1px solid #dce4ec;
+}
+
+.ratebook-summary-grid article:last-child {
+  border-right: 0;
+}
+
+.ratebook-summary-grid span {
+  color: #617283;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.ratebook-summary-grid strong {
+  color: #172635;
+  font-size: 16px;
+}
+
+.ratebook-grid-heading {
+  padding: 12px 16px 8px;
+}
+
+.ratebook-grid-heading p {
+  max-width: 430px;
+  margin: 0;
+  color: #596b7a;
+  font-size: 11px;
+  text-align: right;
+}
+
+.ratebook-route-toolbar {
+  display: flex;
+  align-items: end;
+  gap: 8px;
+  padding: 8px 16px;
+  border-top: 1px solid #edf1f4;
+  border-bottom: 1px solid #dce4ec;
+  background: #fbfcfd;
+}
+
+.ratebook-route-toolbar .ratebook-filter-field {
+  min-width: 130px;
+}
+
+.ratebook-route-toolbar .ratebook-search-field {
+  flex: 1 1 260px;
+}
+
+.ratebook-route-filter-status {
+  margin: 0 0 5px;
+  color: #617283;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.ratebook-segment-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 16px;
+  border-top: 1px solid #edf1f4;
+  border-bottom: 1px solid #dce4ec;
+  background: #fbfcfd;
+}
+
+.ratebook-segment-chip,
+.ratebook-audit-segments span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  padding: 4px 7px;
+  border: 1px solid #d6e1e7;
+  border-radius: 4px;
+  background: #fff;
+  color: #385064;
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+.ratebook-segment-chip b,
+.ratebook-audit-segments b {
+  color: #1b735f;
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.ratebook-grid-wrap {
+  overflow: auto;
+  max-height: calc(100vh - 330px);
+  border-top: 1px solid #dce4ec;
+}
+
+.ratebook-routes-table {
+  width: 100%;
+  min-width: 1100px;
+  border-collapse: collapse;
+  color: #203040;
+  font-size: 11px;
+}
+
+.ratebook-routes-table th,
+.ratebook-routes-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid #e0e7ee;
+  vertical-align: middle;
+  text-align: left;
+}
+
+.ratebook-routes-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #edf2f6;
+  color: #33475a;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.ratebook-routes-table tbody tr:hover {
+  background: #f8fbfc;
+}
+
+.ratebook-transaction-link {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #146f8b;
+  font: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.ratebook-status-pill {
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: 9px;
+  background: #eef2f5;
+  color: #405365;
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.ratebook-offer-count {
+  padding: 2px 6px;
+  border: 1px solid #b5cbd7;
+  border-radius: 4px;
+  background: #fff;
+  color: #176b83;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.ratebook-offer-count:hover { background: #edf7f9; }
+
+.ratebook-shortlist-pill,
+.ratebook-review-decision {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 7px;
+  border-radius: 9px;
+  background: #edf2f5;
+  color: #405365;
+  font-size: 10px;
+  font-weight: 750;
+  white-space: nowrap;
+}
+
+.ratebook-shortlist-pill,
+.ratebook-review-decision.is-shortlisted {
+  background: #e7f6ef;
+  color: #087154;
+}
+
+.ratebook-review-decision.is-not_selected { background: #f8ece9; color: #a24736; }
+
+.ratebook-no-routes {
+  padding: 28px !important;
+  color: #647687;
+  text-align: center !important;
+}
+
+.ratebook-empty-state,
+.ratebook-detail-loading,
+.ratebook-detail-error {
+  display: grid;
+  gap: 6px;
+  min-height: 120px;
+  padding: 22px;
+  align-content: center;
+}
+
+.ratebook-empty-state h2,
+.ratebook-empty-state p,
+.ratebook-detail-error strong,
+.ratebook-detail-error span {
+  margin: 0;
+}
+
+.ratebook-empty-state p,
+.ratebook-detail-error span {
+  color: #5c6d7d;
+  font-size: 12px;
+}
+
+.ratebook-detail-error {
+  color: #b42318;
+  background: #fff8f7;
+}
+
+.ratebook-drawer-backdrop {
+  position: fixed;
+  z-index: 40;
+  inset: 0;
+  background: rgba(24, 38, 53, 0.22);
+}
+
+.ratebook-route-drawer {
+  position: fixed;
+  z-index: 41;
+  top: 0;
+  right: 0;
+  width: min(620px, 94vw);
+  height: 100vh;
+  overflow: auto;
+  background: #fff;
+  border-left: 1px solid #cbd6e1;
+  box-shadow: -10px 0 24px rgba(24, 38, 53, 0.16);
+}
+
+.ratebook-drawer-heading {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 14px 16px;
+  background: #fff;
+  border-bottom: 1px solid #dce4ec;
+}
+
+.ratebook-route-title {
+  display: grid;
+  gap: 3px;
+  padding: 14px 16px;
+  border-bottom: 1px solid #e2e8ef;
+}
+
+.ratebook-route-title strong {
+  color: #152333;
+  font-size: 14px;
+}
+
+.ratebook-route-title span {
+  color: #5b6f80;
+  font-size: 12px;
+}
+
+.ratebook-route-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0;
+  margin: 0;
+  border-bottom: 1px solid #dce4ec;
+}
+
+.ratebook-route-fields div {
+  padding: 9px 14px;
+  border-right: 1px solid #e3e9ef;
+  border-bottom: 1px solid #e3e9ef;
+}
+
+.ratebook-route-fields dt {
+  color: #66798a;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.ratebook-route-fields dd {
+  margin: 3px 0 0;
+  color: #1d2f40;
+  font-size: 12px;
+  white-space: pre-wrap;
+}
+
+.ratebook-rfi-sections {
+  display: grid;
+  gap: 9px;
+  padding: 14px;
+}
+
+.ratebook-rfi-section {
+  padding: 10px 12px;
+  border: 1px solid #dce4ec;
+  border-radius: 5px;
+  background: #fbfcfd;
+}
+
+.ratebook-rfi-section h3 {
+  margin: 0;
+  color: #30495c;
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.ratebook-rfi-section p {
+  margin: 6px 0 0;
+  color: #2a3c4d;
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+.ratebook-drawer-loading,
+.ratebook-drawer-error {
+  padding: 18px;
+  color: #5c6d7d;
+  font-size: 13px;
+}
+
+.ratebook-drawer-error {
+  color: #b42318;
+}
+
+.ratebook-share-dialog {
+  width: min(800px, 92vw);
+  max-height: min(780px, 92vh);
+  padding: 0;
+  border: 1px solid #bcc9d6;
+  border-radius: 6px;
+  background: #fff;
+  color: #172635;
+  box-shadow: 0 18px 44px rgba(24, 38, 53, 0.2);
+}
+
+.ratebook-audit-dialog {
+  width: min(680px, 92vw);
+  max-height: min(720px, 92vh);
+  padding: 0;
+  overflow: auto;
+  border: 1px solid #bcc9d6;
+  border-radius: 6px;
+  background: #fff;
+  color: #172635;
+  box-shadow: 0 18px 44px rgba(24, 38, 53, 0.2);
+}
+
+.ratebook-quote-review-dialog {
+  width: min(920px, 94vw);
+  max-height: min(780px, 94vh);
+  padding: 0;
+  overflow: auto;
+  border: 1px solid #bcc9d6;
+  border-radius: 6px;
+  background: #fff;
+  color: #172635;
+  box-shadow: 0 18px 44px rgba(24, 38, 53, 0.2);
+}
+
+.ratebook-quote-review-dialog::backdrop { background: rgba(24, 38, 53, 0.25); }
+
+.ratebook-quote-review-content { display: grid; gap: 10px; padding: 14px 16px 16px; }
+
+.ratebook-quote-review-guidance {
+  padding: 8px 10px;
+  border: 1px solid #d7e5eb;
+  border-radius: 5px;
+  background: #f7fbfc;
+  color: #526a77;
+  font-size: 11px;
+}
+
+.ratebook-quote-review-list { display: grid; gap: 9px; }
+
+.ratebook-quote-review-row {
+  display: grid;
+  gap: 9px;
+  padding: 11px;
+  border: 1px solid #dbe4eb;
+  border-radius: 5px;
+  background: #fff;
+}
+
+.ratebook-quote-review-row > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ratebook-quote-review-row > header > div { display: grid; gap: 2px; min-width: 0; }
+.ratebook-quote-review-row strong { color: #193447; font-size: 12px; }
+.ratebook-quote-review-row header span:not(.ratebook-review-decision) { color: #617583; font-size: 11px; overflow-wrap: anywhere; }
+
+.ratebook-quote-review-metrics {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  margin: 0;
+  border: 1px solid #e0e7ec;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.ratebook-quote-review-metrics div { min-width: 0; padding: 7px 8px; border-right: 1px solid #e0e7ec; background: #fbfcfd; }
+.ratebook-quote-review-metrics div:last-child { border-right: 0; }
+.ratebook-quote-review-metrics dt { color: #687b88; font-size: 9px; font-weight: 750; text-transform: uppercase; }
+.ratebook-quote-review-metrics dd { margin: 3px 0 0; color: #20394a; font-size: 11px; font-weight: 700; overflow-wrap: anywhere; }
+
+.ratebook-quote-review-notes { margin: 0; color: #465d6a; font-size: 11px; line-height: 1.35; white-space: pre-wrap; }
+
+.ratebook-quote-review-controls {
+  display: grid;
+  grid-template-columns: minmax(150px, .45fr) minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 8px;
+}
+
+.ratebook-quote-review-controls label { display: grid; gap: 4px; color: #586f7c; font-size: 10px; font-weight: 750; text-transform: uppercase; }
+.ratebook-quote-review-controls select,
+.ratebook-quote-review-controls textarea { width: 100%; box-sizing: border-box; border: 1px solid #b9cbd5; border-radius: 4px; padding: 5px 7px; color: #1d3545; font: inherit; font-size: 11px; text-transform: none; }
+.ratebook-quote-review-controls textarea { min-height: 32px; resize: vertical; }
+.ratebook-quote-review-controls button { min-height: 31px; white-space: nowrap; }
+
+.ratebook-quote-review-empty { display: grid; gap: 4px; min-height: 100px; padding: 18px; align-content: center; border: 1px dashed #c9d7df; border-radius: 5px; color: #5c7180; font-size: 12px; text-align: center; }
+.ratebook-quote-review-empty strong { color: #274051; }
+.ratebook-quote-review-empty.is-error { color: #b42318; border-color: #ebc1b9; background: #fff8f7; }
+
+.ratebook-audit-dialog::backdrop {
+  background: rgba(24, 38, 53, 0.25);
+}
+
+.ratebook-audit-content {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+}
+
+.ratebook-audit-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid #e5bf73;
+  border-radius: 5px;
+  background: #fff8ea;
+  color: #75500a;
+  font-size: 12px;
+}
+
+.ratebook-audit-summary.is-ready {
+  border-color: #a9d9ca;
+  background: #effaf5;
+  color: #08765a;
+}
+
+.ratebook-audit-summary span {
+  color: inherit;
+  font-size: 11px;
+}
+
+.ratebook-audit-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0;
+  border: 1px solid #dce4ec;
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+.ratebook-audit-fields div {
+  padding: 8px 10px;
+  border-right: 1px solid #e3e9ef;
+  border-bottom: 1px solid #e3e9ef;
+}
+
+.ratebook-audit-fields dt {
+  color: #66798a;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.ratebook-audit-fields dd {
+  margin: 3px 0 0;
+  color: #1d2f40;
+  font-size: 12px;
+}
+
+.ratebook-audit-section h3 {
+  margin: 0 0 6px;
+  color: #30495c;
+  font-size: 12px;
+}
+
+.ratebook-audit-section p {
+  margin: 0;
+  color: #5c6d7d;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.ratebook-audit-segments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.ratebook-audit-issues {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ratebook-audit-issues li {
+  padding: 8px 10px;
+  border-left: 3px solid #d77b57;
+  background: #fff8f6;
+  color: #7d3321;
+  font-size: 12px;
+}
+
+.ratebook-share-dialog::backdrop {
+  background: rgba(24, 38, 53, 0.25);
+}
+
+.ratebook-dialog-heading {
+  padding: 16px;
+  border-bottom: 1px solid #dce4ec;
+}
+
+.ratebook-dialog-heading p:not(.eyebrow) {
+  max-width: 520px;
+  margin: 5px 0 0;
+  color: #596b7a;
+  font-size: 12px;
+}
+
+.ratebook-share-controls {
+  display: flex;
+  align-items: end;
+  gap: 8px;
+  padding: 12px 16px;
+  border-bottom: 1px solid #dce4ec;
+}
+
+.ratebook-selection-count {
+  padding-bottom: 7px;
+  color: #526577;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.ratebook-carrier-list {
+  max-height: 330px;
+  overflow: auto;
+}
+
+.ratebook-carrier-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 16px;
+  border-bottom: 1px solid #e4eaf0;
+  cursor: pointer;
+}
+
+.ratebook-carrier-row:hover {
+  background: #f7fafb;
+}
+
+.ratebook-carrier-row input {
+  width: 15px;
+  height: 15px;
+}
+
+.ratebook-carrier-row span {
+  display: grid;
+  gap: 2px;
+}
+
+.ratebook-carrier-row strong {
+  color: #203142;
+  font-size: 12px;
+}
+
+.ratebook-carrier-row small {
+  color: #66798a;
+  font-size: 11px;
+}
+
+.ratebook-share-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 16px;
+  border-top: 1px solid #dce4ec;
+}
+
+.ratebook-share-footer p {
+  margin: 0;
+  color: #596b7a;
+  font-size: 12px;
+}
+
+.ratebook-magic-links {
+  max-height: 180px;
+  overflow: auto;
+  padding: 12px 16px;
+  border-top: 1px solid #dce4ec;
+  background: #f8fbfc;
+}
+
+.ratebook-magic-links-heading {
+  display: grid;
+  gap: 2px;
+  margin-bottom: 8px;
+}
+
+.ratebook-magic-links-heading strong {
+  font-size: 12px;
+}
+
+.ratebook-magic-links-heading span {
+  color: #5e7182;
+  font-size: 11px;
+}
+
+.ratebook-distribution-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: #34495e;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.ratebook-share-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.ratebook-distribution-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(88px, 1fr));
+  gap: 8px;
+  margin: 12px 0 0;
+}
+
+.ratebook-distribution-summary span {
+  display: grid;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 1px solid #d8e2e9;
+  border-radius: 4px;
+  color: #617385;
+  font-size: 11px;
+}
+
+.ratebook-distribution-summary strong {
+  color: #162a3c;
+  font-size: 16px;
+}
+
+@media (max-width: 720px) {
+  .ratebook-distribution-summary { grid-template-columns: repeat(2, minmax(88px, 1fr)); }
+}
+
+.ratebook-magic-link-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 0;
+  border-top: 1px solid #e1e8ee;
+  color: #24384a;
+  font-size: 12px;
+}
+
+@media (max-width: 980px) {
+  .ratebook-toolbar,
+  .ratebook-share-controls,
+  .ratebook-share-footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .ratebook-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .ratebook-health { grid-template-columns: 1fr; }
+
+  .ratebook-list-panel {
+    max-height: 280px;
+  }
+
+  .ratebook-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .ratebook-audit-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .ratebook-grid-heading,
+  .ratebook-detail-heading {
+    flex-direction: column;
+  }
+
+  .ratebook-grid-heading p {
+    text-align: left;
+  }
+
+  .ratebook-detail-actions {
+    justify-content: flex-start;
+  }
+}
+
+/* Ratebook UI/UX final pass: keep the route workspace visible and dense. */
+.ratebook-workspace > .page-header {
+  min-height: auto;
+  padding: 10px 0 7px;
+}
+
+.ratebook-workspace > .page-header h1 {
+  font-size: 24px;
+  line-height: 1.05;
+}
+
+.ratebook-workspace > .page-header .page-subtitle {
+  max-width: none;
+  margin-top: 3px;
+  font-size: 11px;
+}
+
+.ratebook-workspace > .page-header-actions,
+.ratebook-workspace .page-header-actions {
+  gap: 5px;
+}
+
+.ratebook-workspace .page-header-actions .button {
+  min-height: 27px;
+  padding: 4px 8px;
+  font-size: 11px;
+}
+
+.ratebook-workspace .ratebook-toolbar {
+  display: grid;
+  grid-template-columns: minmax(240px, 1.7fr) repeat(4, minmax(112px, .75fr)) minmax(170px, .9fr);
+  align-items: end;
+  gap: 6px;
+  min-height: 0;
+  padding: 6px 8px;
+  border: 1px solid #d3dde7;
+  border-radius: 6px;
+  background: #fff;
+}
+
+.ratebook-workspace .ratebook-filter-field {
+  min-width: 0;
+  gap: 2px;
+  font-size: 10px;
+}
+
+.ratebook-workspace .ratebook-filter-field input,
+.ratebook-workspace .ratebook-filter-field select {
+  min-height: 27px;
+  padding: 3px 7px;
+  font-size: 11px;
+}
+
+.ratebook-workspace .ratebook-toolbar-status {
+  min-width: 0;
+  margin: 0 0 3px;
+  overflow: hidden;
+  color: #5c6d7d;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ratebook-workspace .ratebook-overview {
+  margin-top: 7px;
+}
+
+.ratebook-workspace .ratebook-overview article {
+  padding: 6px 9px;
+}
+
+.ratebook-workspace .ratebook-overview strong {
+  font-size: 15px;
+}
+
+.ratebook-workspace .ratebook-health {
+  grid-template-columns: minmax(360px, .85fr) minmax(0, 1.15fr);
+  gap: 7px;
+  margin-top: 7px;
+}
+
+.ratebook-workspace .ratebook-health-summary article {
+  padding: 6px 8px;
+}
+
+.ratebook-workspace .ratebook-health-summary strong {
+  font-size: 14px;
+}
+
+.ratebook-workspace .ratebook-decision-queue {
+  max-height: 106px;
+  overflow: auto;
+  padding: 6px 8px;
+}
+
+.ratebook-workspace .ratebook-queue-items {
+  gap: 2px;
+  margin-top: 3px;
+}
+
+.ratebook-workspace .ratebook-queue-item {
+  grid-template-columns: 48px minmax(0, 1fr) auto;
+  gap: 6px;
+  min-height: 28px;
+  padding: 3px 0;
+}
+
+.ratebook-workspace .ratebook-queue-item strong {
+  font-size: 11px;
+}
+
+.ratebook-workspace .ratebook-queue-item small,
+.ratebook-workspace .ratebook-queue-heading span,
+.ratebook-workspace .ratebook-queue-empty span {
+  font-size: 10px;
+}
+
+.ratebook-workspace .ratebook-queue-item .button {
+  min-height: 23px;
+  padding: 2px 6px;
+  font-size: 10px;
+}
+
+.ratebook-workspace .ratebook-layout {
+  grid-template-columns: minmax(238px, 270px) minmax(0, 1fr);
+  gap: 8px;
+  padding-top: 8px;
+  min-height: 0;
+}
+
+.ratebook-workspace .ratebook-list-panel,
+.ratebook-workspace .ratebook-detail-panel {
+  min-height: 0;
+}
+
+.ratebook-workspace .ratebook-list-panel {
+  max-height: calc(100vh - 285px);
+}
+
+.ratebook-workspace .ratebook-panel-heading {
+  padding: 8px 9px;
+}
+
+.ratebook-workspace .ratebook-panel-heading h2 {
+  font-size: 13px;
+}
+
+.ratebook-workspace .ratebook-list-row {
+  gap: 2px;
+  padding: 7px 9px;
+}
+
+.ratebook-workspace .ratebook-list-row strong {
+  font-size: 11px;
+}
+
+.ratebook-workspace .ratebook-list-row span,
+.ratebook-workspace .ratebook-list-row small {
+  font-size: 10px;
+  line-height: 1.25;
+}
+
+.ratebook-workspace .ratebook-shipper-heading {
+  padding: 5px 9px 3px;
+}
+
+.ratebook-workspace .ratebook-detail-panel {
+  max-height: calc(100vh - 285px);
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.ratebook-workspace .ratebook-detail-heading {
+  gap: 8px;
+  padding: 9px 11px 7px;
+}
+
+.ratebook-workspace .ratebook-detail-heading h2 {
+  font-size: 14px;
+}
+
+.ratebook-workspace .ratebook-detail-heading > div:first-child > p:not(.eyebrow) {
+  margin-top: 2px;
+  font-size: 11px;
+}
+
+.ratebook-workspace .ratebook-detail-heading > div:first-child > .ratebook-source-freshness {
+  margin-top: 4px;
+  font-size: 10px;
+}
+
+.ratebook-workspace .ratebook-detail-actions {
+  gap: 4px;
+}
+
+.ratebook-workspace .ratebook-detail-actions .button {
+  min-height: 25px;
+  padding: 3px 6px;
+  font-size: 10px;
+}
+
+.ratebook-workspace .ratebook-summary-grid {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.ratebook-workspace .ratebook-summary-grid article {
+  gap: 2px;
+  padding: 6px 8px;
+}
+
+.ratebook-workspace .ratebook-summary-grid strong {
+  font-size: 14px;
+}
+
+.ratebook-workspace .ratebook-grid-heading {
+  gap: 8px;
+  padding: 8px 11px 5px;
+}
+
+.ratebook-workspace .ratebook-grid-heading h3 {
+  font-size: 13px;
+}
+
+.ratebook-workspace .ratebook-grid-heading p {
+  max-width: 520px;
+  font-size: 10px;
+}
+
+.ratebook-workspace .ratebook-route-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  gap: 5px;
+  padding: 5px 8px;
+}
+
+.ratebook-workspace .ratebook-route-toolbar .ratebook-filter-field {
+  min-width: 0;
+}
+
+.ratebook-workspace .ratebook-route-filter-status {
+  margin-bottom: 3px;
+  font-size: 10px;
+}
+
+.ratebook-workspace .ratebook-segment-strip {
+  gap: 4px;
+  padding: 5px 8px;
+}
+
+.ratebook-workspace .ratebook-segment-chip {
+  padding: 3px 5px;
+  font-size: 10px;
+}
+
+.ratebook-workspace .ratebook-grid-wrap {
+  max-height: none;
+  overflow: visible;
+}
+
+.ratebook-workspace .ratebook-routes-table {
+  min-width: 980px;
+  font-size: 10px;
+}
+
+.ratebook-workspace .ratebook-routes-table th,
+.ratebook-workspace .ratebook-routes-table td {
+  padding: 4px 6px;
+}
+
+.ratebook-workspace .ratebook-routes-table th {
+  top: 40px;
+  font-size: 9px;
+  white-space: nowrap;
+}
+
+.ratebook-workspace .ratebook-status-pill,
+.ratebook-workspace .ratebook-offer-count {
+  padding: 1px 5px;
+  font-size: 9px;
+}
+
+@media (max-width: 1100px) {
+  .ratebook-workspace .ratebook-toolbar {
+    grid-template-columns: minmax(220px, 1.6fr) repeat(4, minmax(110px, 1fr));
+  }
+
+  .ratebook-workspace .ratebook-toolbar-status {
+    grid-column: 1 / -1;
+  }
+
+  .ratebook-workspace .ratebook-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .ratebook-workspace .ratebook-list-panel {
+    max-height: 220px;
+  }
+
+  .ratebook-workspace .ratebook-detail-panel {
+    max-height: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .ratebook-workspace .ratebook-toolbar {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .ratebook-workspace .ratebook-search-field,
+  .ratebook-workspace .ratebook-toolbar-status {
+    grid-column: 1 / -1;
+  }
+
+  .ratebook-workspace .ratebook-overview,
+  .ratebook-workspace .ratebook-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .ratebook-workspace .ratebook-overview article:nth-child(2n),
+  .ratebook-workspace .ratebook-summary-grid article:nth-child(2n) {
+    border-right: 0;
+  }
+
+  .ratebook-workspace .ratebook-overview article:nth-child(n + 3),
+  .ratebook-workspace .ratebook-summary-grid article:nth-child(n + 3) {
+    border-top: 1px solid #dce4ec;
+  }
+
+  .ratebook-workspace .ratebook-health {
+    grid-template-columns: 1fr;
+  }
+
+  .ratebook-workspace .ratebook-detail-heading,
+  .ratebook-workspace .ratebook-grid-heading {
+    flex-direction: column;
+  }
+
+  .ratebook-workspace .ratebook-detail-actions {
+    justify-content: flex-start;
+  }
+
+  .ratebook-workspace .ratebook-route-toolbar {
+    display: grid;
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+}
+
 /* RFx Process */
 .rfx-process-layout {
   display: grid;
@@ -25276,7 +26706,69 @@ textarea:focus,
 .shipper-profile-submit p { margin: 0; font-size: .8rem; }
 .shipper-profile-expiry { align-self: flex-start; padding: 5px 8px; border-radius: 999px; background: #e7f5ef; color: #15724c; font-size: .72rem; font-weight: 700; }
 
+/* Private Ratebook carrier access stays compact and intentionally separate from live Bid Room screens. */
+.ratebook-carrier-page { min-height: 100vh; margin: 0; background: #edf3f6; color: #132e3d; font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
+.ratebook-carrier-shell { width: min(1240px, calc(100% - 32px)); margin: 0 auto; padding: 18px 0 42px; }
+.ratebook-carrier-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; color: #516975; font-size: .78rem; }
+.ratebook-carrier-brand { color: #183e55; font-weight: 800; text-decoration: none; }
+.ratebook-carrier-header p { margin: 0; text-transform: uppercase; letter-spacing: .05em; font-size: .66rem; font-weight: 800; }
+.ratebook-carrier-hero { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; border: 1px solid #c5d6de; border-radius: 7px; padding: 18px; background: #fff; }
+.ratebook-carrier-hero h1 { margin: 3px 0 6px; font-size: clamp(1.35rem, 3vw, 2rem); line-height: 1.1; }
+.ratebook-carrier-hero p { margin: 0; color: #516975; }
+.ratebook-carrier-meta { display: grid; grid-template-columns: repeat(2, minmax(140px, 1fr)); gap: 8px; margin: 0; }
+.ratebook-carrier-meta div { padding: 9px 11px; border: 1px solid #d7e2e7; border-radius: 5px; background: #f7fafb; }
+.ratebook-carrier-meta dt { color: #58717e; font-size: .66rem; font-weight: 800; text-transform: uppercase; }
+.ratebook-carrier-meta dd { margin: 3px 0 0; font-size: .82rem; font-weight: 750; }
+.ratebook-carrier-status { min-height: 18px; margin: 10px 0; color: #315466; font-size: .82rem; }
+.ratebook-carrier-workspace { border: 1px solid #c5d6de; border-radius: 7px; background: #fff; overflow: hidden; }
+.ratebook-carrier-toolbar { display: flex; align-items: end; gap: 10px; padding: 10px 12px; border-bottom: 1px solid #dce7eb; background: #f8fbfc; }
+.ratebook-carrier-toolbar label { display: grid; gap: 3px; color: #4c6572; font-size: .67rem; font-weight: 800; text-transform: uppercase; }
+.ratebook-carrier-toolbar select, .ratebook-carrier-toolbar input { min-height: 30px; border: 1px solid #aec3ce; border-radius: 4px; padding: 4px 7px; font: inherit; color: #183440; background: #fff; }
+.ratebook-carrier-search { flex: 1; }
+.ratebook-carrier-guidance { margin: 0; padding: 8px 12px; border-bottom: 1px solid #e4ecef; color: #55707d; font-size: .76rem; }
+.ratebook-carrier-grid-wrap { overflow: auto; }
+.ratebook-carrier-grid { width: 100%; min-width: 950px; border-collapse: collapse; font-size: .78rem; }
+.ratebook-carrier-grid th { padding: 7px 9px; border-bottom: 1px solid #c7d8df; background: #edf4f7; color: #41606f; text-align: left; font-size: .64rem; text-transform: uppercase; letter-spacing: .025em; white-space: nowrap; }
+.ratebook-carrier-grid td { max-width: 220px; padding: 7px 9px; border-bottom: 1px solid #e1eaee; vertical-align: top; line-height: 1.3; }
+.ratebook-carrier-grid td strong { color: #173d52; }
+.ratebook-carrier-grid button, .ratebook-carrier-dialog button { border: 1px solid #9db4bf; border-radius: 4px; padding: 4px 7px; background: #fff; color: #173d52; font: inherit; font-size: .72rem; font-weight: 750; cursor: pointer; white-space: nowrap; }
+.ratebook-carrier-grid button:hover, .ratebook-carrier-dialog button:hover { background: #eef7f7; }
+.ratebook-carrier-empty { padding: 24px !important; color: #58717e; text-align: center; }
+.ratebook-carrier-dialog { width: min(900px, calc(100% - 30px)); max-height: min(760px, calc(100% - 30px)); border: 1px solid #aebfc8; border-radius: 8px; padding: 0; color: #163241; box-shadow: 0 18px 60px rgba(20, 48, 62, .22); }
+.ratebook-carrier-dialog::backdrop { background: rgba(20, 43, 54, .42); }
+.ratebook-carrier-dialog-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 14px 16px; border-bottom: 1px solid #d5e2e7; }
+.ratebook-carrier-dialog-head h2 { margin: 2px 0 0; font-size: 1.05rem; }
+.ratebook-carrier-detail { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; padding: 14px 16px; overflow: auto; }
+.ratebook-carrier-detail article { min-width: 0; border: 1px solid #d4e0e5; border-radius: 5px; background: #fbfcfd; }
+.ratebook-carrier-detail h3 { margin: 0; padding: 7px 9px; border-bottom: 1px solid #dbe6ea; color: #42616f; font-size: .68rem; text-transform: uppercase; }
+.ratebook-carrier-detail p { margin: 0; padding: 9px; white-space: pre-wrap; word-break: break-word; color: #253f4c; font-size: .78rem; line-height: 1.45; }
+.ratebook-carrier-row-actions { display: inline-flex; gap: 5px; }
+.ratebook-carrier-primary { border-color: #195c71 !important; background: #19687c !important; color: #fff !important; }
+.ratebook-carrier-primary:hover { background: #134f60 !important; }
+.ratebook-carrier-offer { display: grid; gap: 2px; min-width: 105px; color: #214a5a; }
+.ratebook-carrier-offer strong { color: #13586c; }
+.ratebook-carrier-offer small { color: #607a85; font-size: .66rem; }
+.ratebook-carrier-offer.is-empty, .ratebook-carrier-offer.is-withdrawn { display: inline-flex; width: auto; padding: 2px 6px; border-radius: 10px; font-size: .67rem; font-weight: 750; }
+.ratebook-carrier-offer.is-empty { color: #5d707a; background: #edf2f4; }
+.ratebook-carrier-offer.is-withdrawn { color: #8b4e25; background: #fff1e5; }
+.ratebook-carrier-quote-dialog { width: min(640px, calc(100% - 30px)); }
+.ratebook-carrier-quote-form { display: grid; gap: 12px; padding: 14px 16px 16px; }
+.ratebook-carrier-quote-route { margin: 0; padding: 8px 10px; border: 1px solid #d5e2e7; border-radius: 5px; background: #f7fafb; color: #294b58; font-size: .78rem; font-weight: 750; }
+.ratebook-carrier-quote-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; }
+.ratebook-carrier-quote-form label { display: grid; gap: 4px; color: #4e6874; font-size: .67rem; font-weight: 800; text-transform: uppercase; }
+.ratebook-carrier-quote-form input, .ratebook-carrier-quote-form select, .ratebook-carrier-quote-form textarea { min-height: 31px; border: 1px solid #aec3ce; border-radius: 4px; padding: 5px 7px; background: #fff; color: #183440; font: inherit; font-size: .8rem; text-transform: none; }
+.ratebook-carrier-quote-form textarea { min-height: 84px; resize: vertical; }
+.ratebook-carrier-quote-notes { grid-column: 1 / -1; }
+.ratebook-carrier-quote-feedback { min-height: 18px; margin: 0; color: #466471; font-size: .75rem; }
+.ratebook-carrier-quote-actions { display: flex; justify-content: space-between; gap: 8px; }
+.ratebook-carrier-quote-actions button:first-child { border-color: #c6714b; color: #9a421e; }
+
 @media (max-width: 800px) {
+  .ratebook-carrier-shell { width: min(100% - 18px, 1240px); padding-top: 10px; }
+  .ratebook-carrier-hero { flex-direction: column; }
+  .ratebook-carrier-meta, .ratebook-carrier-detail { grid-template-columns: 1fr; width: 100%; }
+  .ratebook-carrier-quote-fields { grid-template-columns: 1fr 1fr; }
+  .ratebook-carrier-toolbar { align-items: stretch; flex-direction: column; }
   .shipper-profile-link-panel { align-items: flex-start; flex-direction: column; }
   .shipper-profile-grid, .shipper-profile-contact, .shipper-profile-location { grid-template-columns: 1fr; }
   .shipper-profile-submit, .shipper-profile-submit > div, .shipper-profile-form > header { align-items: stretch; flex-direction: column; }
