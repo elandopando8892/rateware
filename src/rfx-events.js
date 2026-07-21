@@ -186,6 +186,7 @@ const draftSelectionLabel = document.querySelector("#rfx-draft-selection-label")
 const draftToggleVisible = document.querySelector("#rfx-toggle-visible-drafts");
 const draftSelectAllEmailsButton = document.querySelector("#rfx-select-all-email-drafts");
 const draftClearSelectionButton = document.querySelector("#rfx-clear-draft-selection");
+const draftRefreshSelectedButton = document.querySelector("#rfx-refresh-selected-drafts");
 const draftSendSelectedButton = document.querySelector("#rfx-send-selected-email-drafts");
 const draftSendSelectedWhatsappButton = document.querySelector("#rfx-send-selected-whatsapp-drafts");
 const draftMarkSelectedWhatsappGroupsButton = document.querySelector("#rfx-mark-selected-whatsapp-groups");
@@ -4661,6 +4662,19 @@ function selectedWhatsappGroupDraftIds(rows = draftRowsForEvent()) {
   return selectableWhatsappGroupDrafts(selectedDraftRows(rows)).map((message) => String(message.id));
 }
 
+function refreshableOutreachDrafts(rows = []) {
+  return rows.filter((message) => {
+    const status = String(message.status || "").toLowerCase();
+    return status !== "archived"
+      && Boolean(String(message.campaign_id || "").trim())
+      && outreachMessageInvitationIds(message).size > 0;
+  });
+}
+
+function selectedRefreshableDraftRows(rows = draftRowsForEvent()) {
+  return refreshableOutreachDrafts(selectedDraftRows(rows));
+}
+
 function outreachMessageInvitationIds(message = {}) {
   const metadata = message.metadata && typeof message.metadata === "object" ? message.metadata : {};
   const ids = Array.isArray(metadata.rfx_lane_vendor_ids)
@@ -4725,6 +4739,9 @@ function confirmDraftQueueAction(action, ids = []) {
   if (action === "mark_group_sent") {
     return window.confirm(`Mark ${count} WhatsApp group draft(s) as manually sent? Use this after posting them in the carrier group.`);
   }
+  if (action === "refresh") {
+    return window.confirm(`Refresh ${count} selected draft row(s) from the current Business Book? Existing send history stays intact and the selected carriers will be ready to send again.`);
+  }
   if (action === "archive") {
     return window.confirm(`Archive ${count} selected draft row(s)? Drafts will be hidden from the active queue, but vendors and RFx lanes stay unchanged.`);
   }
@@ -4742,6 +4759,7 @@ function updateDraftSendControls(rows = [], allRows = draftRowsForEvent()) {
   const sendableSelectedIds = selectedSendableDraftIds(allRows);
   const sendableWhatsappIds = selectedWhatsappDraftIds(allRows);
   const markableGroupIds = selectedWhatsappGroupDraftIds(allRows);
+  const refreshableSelectedRows = selectedRefreshableDraftRows(allRows);
   const hasSearch = Boolean(normalizeDraftSearch(draftQueueSearch));
   if (draftSelectionLabel) {
     draftSelectionLabel.textContent = hasSearch
@@ -4756,6 +4774,12 @@ function updateDraftSendControls(rows = [], allRows = draftRowsForEvent()) {
   }
   if (draftSelectAllEmailsButton) draftSelectAllEmailsButton.disabled = !selectable.length;
   if (draftClearSelectionButton) draftClearSelectionButton.disabled = !selectedDraftMessageIds.size;
+  if (draftRefreshSelectedButton) {
+    draftRefreshSelectedButton.disabled = !refreshableSelectedRows.length;
+    draftRefreshSelectedButton.textContent = refreshableSelectedRows.length
+      ? `Refresh ${formatNumber(refreshableSelectedRows.length)} selected`
+      : "Refresh selected";
+  }
   if (draftSendSelectedButton) {
     draftSendSelectedButton.disabled = !sendableSelectedIds.length;
     draftSendSelectedButton.textContent = sendableSelectedIds.length
@@ -4868,7 +4892,7 @@ function renderDraftQueue() {
         <td>${escapeHtml(updated ? new Date(updated).toLocaleString() : "-")}</td>
         <td>
           <div class="rfx-draft-row-actions">
-            ${staleDraft ? `<button class="small-button" type="button" data-rfx-refresh-draft="${escapeHtml(message.id)}">Refresh draft</button>` : ""}
+            ${staleDraft || ["sent", "replied"].includes(status) ? `<button class="small-button" type="button" data-rfx-refresh-draft="${escapeHtml(message.id)}">${staleDraft ? "Refresh draft" : "Create resend"}</button>` : ""}
             ${isEmail ? `<button class="small-button" type="button" data-rfx-send-draft-now="${escapeHtml(message.id)}" ${canSendEmail ? "" : "disabled"}>Send email</button>` : ""}
             ${isWhatsapp ? `<button class="small-button" type="button" data-rfx-send-whatsapp-now="${escapeHtml(message.id)}" ${canSendWhatsapp ? "" : "disabled"}>Send WhatsApp</button>` : ""}
             ${isWhatsappGroup ? `<button class="small-button" type="button" data-rfx-mark-whatsapp-group-sent="${escapeHtml(message.id)}" ${canMarkGroup ? "" : "disabled"}>Manual sent</button>` : ""}
@@ -6139,35 +6163,72 @@ async function refreshSingleOutreachDraft(id) {
     setStatus(rfxOutreachStatus, "This draft is no longer available. Refresh the Bid Room and try again.", "error");
     return;
   }
-  const campaignId = String(message.campaign_id || "").trim();
-  const invitationIds = [...outreachMessageInvitationIds(message)];
-  if (!campaignId || !invitationIds.length) {
+  if (!refreshableOutreachDrafts([message]).length) {
     setStatus(rfxOutreachStatus, "This draft cannot be refreshed because its campaign or invited lanes are missing. Generate a new draft for this carrier.", "error");
     return;
   }
   const carrier = message.vendors?.vendor_name || message.vendors?.domain || messageRecipient(message) || "this carrier";
   if (!window.confirm(`Refresh the invitation draft for ${carrier} with the current Business Book?`)) return;
-  setStatus(rfxOutreachStatus, `Refreshing invitation draft for ${carrier}...`);
+  await refreshOutreachDraftRows([message], { statusLabel: `Refreshing invitation draft for ${carrier}...` });
+}
+
+function groupedOutreachDraftRefreshes(rows = []) {
+  const grouped = new Map();
+  refreshableOutreachDrafts(rows).forEach((message) => {
+    const campaignId = String(message.campaign_id || "").trim();
+    const invitationIds = [...outreachMessageInvitationIds(message)].sort();
+    const key = `${campaignId}:${invitationIds.join(",")}`;
+    if (!grouped.has(key)) {
+      grouped.set(key, {
+        campaignId,
+        invitationIds,
+        senderEmail: message.sender_email || "",
+        senderLabel: message.sender_label || "",
+        senderConnectionStatus: message.sender_connection_status || "draft_only",
+        whatsappTargetMode: message.whatsapp_target_mode || message.metadata?.whatsapp_target_mode || "",
+        groupDeliveryPolicy: message.group_delivery_policy || message.metadata?.group_delivery_policy || ""
+      });
+    }
+  });
+  return [...grouped.values()];
+}
+
+async function refreshOutreachDraftRows(rows = [], { statusLabel = "Refreshing selected invitation drafts..." } = {}) {
+  const refreshes = groupedOutreachDraftRefreshes(rows);
+  if (!refreshes.length) {
+    setStatus(rfxOutreachStatus, "Select draft rows with a campaign and invited lanes before refreshing.", "error");
+    return 0;
+  }
+  setStatus(rfxOutreachStatus, statusLabel);
   try {
-    await generateOutreachDrafts(campaignId, {
-      invitationIds,
-      senderEmail: message.sender_email || "",
-      senderLabel: message.sender_label || "",
-      senderConnectionStatus: message.sender_connection_status || "draft_only",
-      whatsappTargetMode: message.whatsapp_target_mode || message.metadata?.whatsapp_target_mode || "",
-      groupDeliveryPolicy: message.group_delivery_policy || message.metadata?.group_delivery_policy || ""
-    });
-    selectedDraftMessageIds.delete(String(id));
+    for (let index = 0; index < refreshes.length; index += 1) {
+      const refresh = refreshes[index];
+      setStatus(rfxOutreachStatus, `${statusLabel} ${formatNumber(index + 1)} of ${formatNumber(refreshes.length)}...`);
+      await generateOutreachDrafts(refresh.campaignId, refresh);
+    }
     [contactHistoryRows, outreachMessages] = await Promise.all([
       fetchContactHistory({ rfx_event_id: selectedEventId }),
       fetchOutreachMessages({ rfx_event_id: selectedEventId })
     ]);
-    await loadDetail(selectedEventId);
-    setStatus(rfxOutreachStatus, `Invitation draft refreshed for ${carrier}. It is ready to send.`, "success");
+    renderOutreachLaunchpad();
+    setStatus(rfxOutreachStatus, `${formatNumber(refreshes.length)} selected carrier draft${refreshes.length === 1 ? "" : "s"} refreshed. Their send history is preserved and the queue is ready to send.`, "success");
+    return refreshes.length;
   } catch (error) {
     setStatus(rfxOutreachStatus, `Draft could not be refreshed. ${humanizeError(error)}`, "error");
     renderDraftQueue();
+    return 0;
   }
+}
+
+async function refreshSelectedOutreachDrafts() {
+  const rows = selectedRefreshableDraftRows();
+  if (!rows.length) {
+    setStatus(rfxOutreachStatus, "Select one or more active draft rows before refreshing.", "error");
+    return;
+  }
+  if (!confirmDraftQueueAction("refresh", rows.map((message) => String(message.id)))) return;
+  if (draftRefreshSelectedButton) draftRefreshSelectedButton.disabled = true;
+  await refreshOutreachDraftRows(rows);
 }
 
 async function markWhatsappGroupDraftIds(ids = [], statusElement = rfxOutreachStatus) {
@@ -6689,6 +6750,10 @@ draftSelectAllEmailsButton?.addEventListener("click", () => {
 draftClearSelectionButton?.addEventListener("click", () => {
   selectedDraftMessageIds.clear();
   renderDraftQueue();
+});
+
+draftRefreshSelectedButton?.addEventListener("click", () => {
+  refreshSelectedOutreachDrafts();
 });
 
 draftSendSelectedButton?.addEventListener("click", () => {

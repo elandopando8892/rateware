@@ -568,10 +568,13 @@ assert.match(rfxEventsSource, /sender_email: rfxOutreachSender/, "Bid Room shoul
 assert.match(outreachServiceSource, /sender_email: options\.senderEmail/, "Outreach draft generation should send selected sender metadata to the API");
 assert.match(outreachServiceSource, /send_outreach_messages/, "Outreach service should expose direct Gmail send for selected draft messages");
 assert.match(rfxEventsHtml, /rfx-send-selected-email-drafts/, "Bid Room draft queue should include a bulk send selected emails action");
+assert.match(rfxEventsHtml, /rfx-refresh-selected-drafts/, "Bid Room draft queue should support refreshing selected sent or stale drafts without regenerating the full queue");
 assert.match(rfxEventsHtml, /rfx-archive-selected-drafts/, "Bid Room draft queue should include archive selected action");
 assert.match(rfxEventsHtml, /rfx-delete-selected-drafts/, "Bid Room draft queue should include delete selected action");
 assert.match(rfxEventsSource, /const OUTREACH_SEND_BATCH_SIZE = 100/, "Bid Room Step 4 should respect the backend Gmail send batch size");
 assert.match(rfxEventsSource, /function sendDraftEmailIds/, "Bid Room Step 4 should send selected emails through automatic batches");
+assert.match(rfxEventsSource, /function refreshSelectedOutreachDrafts/, "Bid Room should refresh selected draft rows within the existing campaign");
+assert.match(rfxEventsSource, /Existing send history stays intact/, "Bid Room should explain that refresh preserves send history");
 assert.match(rfxEventsSource, /chunkRows\(ids, OUTREACH_SEND_BATCH_SIZE\)/, "Bid Room Step 4 should split large sends before calling the API");
 assert.match(rfxEventsSource, /data-rfx-send-draft-now/, "Bid Room Step 4 should allow sending a single carrier invitation from the draft queue");
 assert.match(rfxEventsSource, /function sendSingleDraftEmail/, "Bid Room Step 4 should support individual same-day carrier invite sends");
@@ -1318,7 +1321,7 @@ assert.match(rfxEventsSource, /function draftMatchesCurrentLaneTable/, "Bid Room
 assert.match(rfxEventsSource, /Business book changed\. Refresh this draft to update its route table\./, "Draft queue should explain how to refresh a stale route table");
 assert.match(rfxEventsSource, /data-rfx-refresh-draft/, "Draft queue should expose a targeted refresh action for stale drafts");
 assert.match(rfxEventsSource, /async function refreshSingleOutreachDraft/, "Stale drafts should be refreshable without rebuilding the full outreach queue");
-assert.match(rfxEventsSource, /await generateOutreachDrafts\(campaignId, \{/, "Draft refresh should reuse the original outreach campaign");
+assert.match(rfxEventsSource, /await generateOutreachDrafts\(refresh\.campaignId, refresh\)/, "Draft refresh should reuse the original outreach campaign for each selected carrier group");
 const outreachSignatureMatch = apiSource.match(/function outreachLaneTableSignature[\s\S]*?\n}\r?\n\r?\nfunction /);
 const outreachSignatureSource = outreachSignatureMatch?.[0] || "";
 assert.ok(outreachSignatureSource, "Outreach lane signature helper should be present");
