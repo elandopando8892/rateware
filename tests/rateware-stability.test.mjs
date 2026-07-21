@@ -129,6 +129,27 @@ assert.match(rfxEventsSource, /let rfxDetailLoadVersion = 0/, "Bid Room detail s
 assert.match(rfxEventsSource, /let bidRoomChatLoadVersion = 0/, "Bid Room chat should guard against stale refreshes");
 assert.match(rfxEventsSource, /loadVersion !== rfxDetailLoadVersion \|\| selectedEventId !== eventId/, "Bid Room detail should retain the active event context");
 assert.match(rfxEventsSource, /loadVersion !== bidRoomChatLoadVersion \|\| selectedEventId !== eventId/, "Bid Room chat should retain the active event context");
+assert.match(rfxEventsSource, /async function refreshOutreachStateForEvent\(eventId\)/, "Bid Room outreach mutations should share one event-scoped refresh guard");
+assert.match(rfxEventsSource, /if \(selectedEventId !== eventId\) return false;[\s\S]*contactHistoryRows = historyRows \|\| \[\];[\s\S]*outreachMessages = messageRows \|\| \[\];/, "Bid Room outreach refreshes should discard results after the active event changes");
+for (const mutationName of [
+  "generateAwardNoticeDrafts",
+  "sendAwardNoticeDrafts",
+  "sendSelectedDraftEmails",
+  "sendSingleDraftEmail",
+  "sendSelectedDraftWhatsapp",
+  "sendSingleDraftWhatsapp",
+  "archiveSelectedDrafts",
+  "deleteSelectedDrafts"
+]) {
+  const start = rfxEventsSource.indexOf(`async function ${mutationName}`);
+  const end = rfxEventsSource.indexOf("\nasync function ", start + 1);
+  const mutationSource = rfxEventsSource.slice(start, end > start ? end : undefined);
+  assert.ok(start >= 0, `${mutationName} should exist`);
+  assert.match(mutationSource, /const eventId = selectedEventId;/, `${mutationName} should capture its initiating Bid Room`);
+  assert.match(mutationSource, /refreshOutreachStateForEvent\(eventId\)/, `${mutationName} should refresh only its initiating Bid Room`);
+  assert.doesNotMatch(mutationSource, /fetchContactHistory\(\{ rfx_event_id: selectedEventId/, `${mutationName} should not query whichever Bid Room happens to be active later`);
+}
+assert.match(rfxEventsSource, /async function createCurrentOutreachDrafts[\s\S]*const eventId = selectedEventId;[\s\S]*rfx_event_id: eventId[\s\S]*if \(selectedEventId !== eventId\) return result;/, "Draft generation should not reselect or overwrite a different Bid Room after a slow request");
 assert.match(dashboardSource, /let dashboardLoadVersion = 0/, "Command Center should guard against stale dashboard responses");
 assert.match(dashboardSource, /loadVersion !== dashboardLoadVersion/, "Command Center should ignore stale dashboard responses");
 

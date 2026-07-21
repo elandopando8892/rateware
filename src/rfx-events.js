@@ -5756,6 +5756,18 @@ function activateWorkbenchView(view, focusTarget = null) {
   window.history.replaceState({}, "", url);
 }
 
+async function refreshOutreachStateForEvent(eventId) {
+  if (!eventId) return false;
+  const [historyRows, messageRows] = await Promise.all([
+    fetchContactHistory({ rfx_event_id: eventId }),
+    fetchOutreachMessages({ rfx_event_id: eventId })
+  ]);
+  if (selectedEventId !== eventId) return false;
+  contactHistoryRows = historyRows || [];
+  outreachMessages = messageRows || [];
+  return true;
+}
+
 async function autoShortlistLane(laneId) {
   setStatus(actionStatus, "Building shortlist...");
   const result = await autoShortlistRfxLane(laneId, 10);
@@ -5782,6 +5794,8 @@ async function createCurrentOutreachDrafts(statusElement = rfxOutreachStatus) {
     blockIfLaunchPreflightFails(statusElement);
     return null;
   }
+  const eventId = selectedEventId;
+  const eventSnapshot = selectedEvent;
   if (blockIfLaunchPreflightFails(statusElement)) return null;
   const template = selectedOutreachTemplate();
   const targets = outreachTargetInvitations();
@@ -5813,8 +5827,8 @@ async function createCurrentOutreachDrafts(statusElement = rfxOutreachStatus) {
   const whatsappTargetMode = rfxWhatsappTargetMode?.value || "direct_vendor";
   const groupDeliveryPolicy = whatsappTargetMode === "direct_vendor" ? "api_only" : "manual_or_api";
   const campaign = await createOutreachCampaign({
-    name: rfxOutreachCampaignName?.value || `${selectedEvent?.rfx_id || "RFx"} invitation wave`,
-    rfx_event_id: selectedEventId,
+    name: rfxOutreachCampaignName?.value || `${eventSnapshot?.rfx_id || "RFx"} invitation wave`,
+    rfx_event_id: eventId,
     template_id: template.id,
     channel: outreachChannel,
     whatsapp_target_mode: whatsappTargetMode,
@@ -5831,11 +5845,9 @@ async function createCurrentOutreachDrafts(statusElement = rfxOutreachStatus) {
     whatsappTargetMode: campaign.whatsapp_target_mode || whatsappTargetMode,
     groupDeliveryPolicy: campaign.group_delivery_policy || groupDeliveryPolicy
   });
-  [contactHistoryRows, outreachMessages] = await Promise.all([
-    fetchContactHistory({ rfx_event_id: selectedEventId }),
-    fetchOutreachMessages({ rfx_event_id: selectedEventId })
-  ]);
-  await loadDetail(selectedEventId);
+  if (selectedEventId !== eventId) return result;
+  await loadDetail(eventId);
+  if (selectedEventId !== eventId) return result;
   const notifier = result.whatsapp_notifier || {};
   const notifierStatus = metaNotifierStatus(notifier.status || "not_requested");
   const notifierCopy = notifier.ready
@@ -5965,17 +5977,15 @@ async function generateAwardNoticeDrafts() {
     setStatus(rfxAwardStatus, "There are no carrier bids to close out yet.", "error");
     return;
   }
+  const eventId = selectedEventId;
   if (rfxGenerateAwardNoticesButton) rfxGenerateAwardNoticesButton.disabled = true;
   setStatus(rfxAwardStatus, "Generating award, backup, and not-awarded email drafts...");
   try {
-    const result = await generateRfxAwardNotices(selectedEventId, {
+    const result = await generateRfxAwardNotices(eventId, {
       senderEmail: APPROVED_GMAIL_SENDER,
       senderLabel: APPROVED_GMAIL_SENDER
     });
-    [contactHistoryRows, outreachMessages] = await Promise.all([
-      fetchContactHistory({ rfx_event_id: selectedEventId }),
-      fetchOutreachMessages({ rfx_event_id: selectedEventId })
-    ]);
+    if (!(await refreshOutreachStateForEvent(eventId))) return;
     renderOutreachLaunchpad();
     renderAwardBoard();
     setStatus(
@@ -5998,14 +6008,12 @@ async function sendAwardNoticeDrafts() {
     return;
   }
   if (!window.confirm(`Send ${ids.length} individual award notice email(s) from ${APPROVED_GMAIL_SENDER}?`)) return;
+  const eventId = selectedEventId;
   if (rfxSendAwardNoticesButton) rfxSendAwardNoticesButton.disabled = true;
   setStatus(rfxAwardStatus, `Sending ${formatNumber(ids.length)} award notice email(s)...`);
   try {
     const result = await sendOutreachMessages(ids, { senderEmail: APPROVED_GMAIL_SENDER });
-    [contactHistoryRows, outreachMessages] = await Promise.all([
-      fetchContactHistory({ rfx_event_id: selectedEventId }),
-      fetchOutreachMessages({ rfx_event_id: selectedEventId })
-    ]);
+    if (!(await refreshOutreachStateForEvent(eventId))) return;
     renderOutreachLaunchpad();
     renderAwardBoard();
     setStatus(
@@ -6043,14 +6051,12 @@ async function sendSelectedDraftEmails() {
     return;
   }
   if (!confirmDraftQueueAction("send", ids)) return;
+  const eventId = selectedEventId;
   if (draftSendSelectedButton) draftSendSelectedButton.disabled = true;
   try {
     const result = await sendDraftEmailIds(ids, rfxOutreachStatus);
     selectedDraftMessageIds.clear();
-    [contactHistoryRows, outreachMessages] = await Promise.all([
-      fetchContactHistory({ rfx_event_id: selectedEventId }),
-      fetchOutreachMessages({ rfx_event_id: selectedEventId })
-    ]);
+    if (!(await refreshOutreachStateForEvent(eventId))) return;
     renderOutreachLaunchpad();
     setStatus(
       rfxOutreachStatus,
@@ -6075,16 +6081,14 @@ async function sendSingleDraftEmail(id) {
     setStatus(rfxOutreachStatus, "This draft cannot be sent directly. It needs an email recipient and drafted/queued/failed status.", "error");
     return;
   }
+  const eventId = selectedEventId;
   const carrier = row.vendors?.vendor_name || row.vendors?.domain || row.recipient_email || "this carrier";
   if (!window.confirm(`Send this invitation now to ${carrier} from ${APPROVED_GMAIL_SENDER}?`)) return;
   setStatus(rfxOutreachStatus, `Sending invitation to ${carrier}...`);
   try {
     const result = await sendDraftEmailIds([String(id)], rfxOutreachStatus);
     selectedDraftMessageIds.delete(String(id));
-    [contactHistoryRows, outreachMessages] = await Promise.all([
-      fetchContactHistory({ rfx_event_id: selectedEventId }),
-      fetchOutreachMessages({ rfx_event_id: selectedEventId })
-    ]);
+    if (!(await refreshOutreachStateForEvent(eventId))) return;
     renderOutreachLaunchpad();
     setStatus(
       rfxOutreachStatus,
@@ -6121,14 +6125,12 @@ async function sendSelectedDraftWhatsapp() {
     return;
   }
   if (!confirmDraftQueueAction("send_whatsapp", ids)) return;
+  const eventId = selectedEventId;
   if (draftSendSelectedWhatsappButton) draftSendSelectedWhatsappButton.disabled = true;
   try {
     const result = await sendDraftWhatsappIds(ids, rfxOutreachStatus);
     selectedDraftMessageIds.clear();
-    [contactHistoryRows, outreachMessages] = await Promise.all([
-      fetchContactHistory({ rfx_event_id: selectedEventId }),
-      fetchOutreachMessages({ rfx_event_id: selectedEventId })
-    ]);
+    if (!(await refreshOutreachStateForEvent(eventId))) return;
     renderOutreachLaunchpad();
     setStatus(
       rfxOutreachStatus,
@@ -6152,16 +6154,14 @@ async function sendSingleDraftWhatsapp(id) {
     setStatus(rfxOutreachStatus, "This WhatsApp draft needs a valid phone and drafted, queued, or failed status. Rateware checks the Meta notifier automatically when you send.", "error");
     return;
   }
+  const eventId = selectedEventId;
   const carrier = row.vendors?.vendor_name || row.vendors?.domain || messageRecipient(row) || "this carrier";
   if (!window.confirm(`Send this WhatsApp Business invitation to ${carrier}?`)) return;
   setStatus(rfxOutreachStatus, `Sending WhatsApp invitation to ${carrier}...`);
   try {
     const result = await sendDraftWhatsappIds([String(id)], rfxOutreachStatus);
     selectedDraftMessageIds.delete(String(id));
-    [contactHistoryRows, outreachMessages] = await Promise.all([
-      fetchContactHistory({ rfx_event_id: selectedEventId }),
-      fetchOutreachMessages({ rfx_event_id: selectedEventId })
-    ]);
+    if (!(await refreshOutreachStateForEvent(eventId))) return;
     renderOutreachLaunchpad();
     setStatus(
       rfxOutreachStatus,
@@ -6216,6 +6216,7 @@ async function refreshOutreachDraftRows(rows = [], { statusLabel = "Refreshing s
     setStatus(rfxOutreachStatus, "Select draft rows with a campaign and invited lanes before refreshing.", "error");
     return 0;
   }
+  const eventId = selectedEventId;
   setStatus(rfxOutreachStatus, statusLabel);
   try {
     for (let index = 0; index < refreshes.length; index += 1) {
@@ -6223,10 +6224,7 @@ async function refreshOutreachDraftRows(rows = [], { statusLabel = "Refreshing s
       setStatus(rfxOutreachStatus, `${statusLabel} ${formatNumber(index + 1)} of ${formatNumber(refreshes.length)}...`);
       await generateOutreachDrafts(refresh.campaignId, refresh);
     }
-    [contactHistoryRows, outreachMessages] = await Promise.all([
-      fetchContactHistory({ rfx_event_id: selectedEventId }),
-      fetchOutreachMessages({ rfx_event_id: selectedEventId })
-    ]);
+    if (!(await refreshOutreachStateForEvent(eventId))) return refreshes.length;
     renderOutreachLaunchpad();
     setStatus(rfxOutreachStatus, `${formatNumber(refreshes.length)} selected carrier draft${refreshes.length === 1 ? "" : "s"} refreshed. Their send history is preserved and the queue is ready to send.`, "success");
     return refreshes.length;
@@ -6270,14 +6268,12 @@ async function markSelectedWhatsappGroupsManuallySent() {
     return;
   }
   if (!confirmDraftQueueAction("mark_group_sent", ids)) return;
+  const eventId = selectedEventId;
   if (draftMarkSelectedWhatsappGroupsButton) draftMarkSelectedWhatsappGroupsButton.disabled = true;
   try {
     const result = await markWhatsappGroupDraftIds(ids, rfxOutreachStatus);
     selectedDraftMessageIds.clear();
-    [contactHistoryRows, outreachMessages] = await Promise.all([
-      fetchContactHistory({ rfx_event_id: selectedEventId }),
-      fetchOutreachMessages({ rfx_event_id: selectedEventId })
-    ]);
+    if (!(await refreshOutreachStateForEvent(eventId))) return;
     renderOutreachLaunchpad();
     setStatus(rfxOutreachStatus, `${formatNumber(result.updated || 0)} WhatsApp group draft(s) marked as manually sent.`, "success");
   } catch (error) {
@@ -6297,16 +6293,14 @@ async function markSingleWhatsappGroupManuallySent(id) {
     setStatus(rfxOutreachStatus, "This WhatsApp group draft cannot be marked sent in its current status.", "error");
     return;
   }
+  const eventId = selectedEventId;
   const group = messageRecipient(row);
   if (!window.confirm(`Mark the WhatsApp group invitation for ${group} as manually sent?`)) return;
   setStatus(rfxOutreachStatus, `Marking ${group} as manually sent...`);
   try {
     const result = await markWhatsappGroupDraftIds([String(id)], rfxOutreachStatus);
     selectedDraftMessageIds.delete(String(id));
-    [contactHistoryRows, outreachMessages] = await Promise.all([
-      fetchContactHistory({ rfx_event_id: selectedEventId }),
-      fetchOutreachMessages({ rfx_event_id: selectedEventId })
-    ]);
+    if (!(await refreshOutreachStateForEvent(eventId))) return;
     renderOutreachLaunchpad();
     setStatus(rfxOutreachStatus, `${formatNumber(result.updated || 0)} WhatsApp group draft marked as manually sent.`, "success");
   } catch (error) {
@@ -6322,15 +6316,13 @@ async function archiveSelectedDrafts() {
     return;
   }
   if (!confirmDraftQueueAction("archive", ids)) return;
+  const eventId = selectedEventId;
   if (draftArchiveSelectedButton) draftArchiveSelectedButton.disabled = true;
   setStatus(rfxOutreachStatus, `Archiving ${formatNumber(ids.length)} draft row(s)...`);
   try {
     await markOutreachMessages(ids, "archived");
     selectedDraftMessageIds.clear();
-    [contactHistoryRows, outreachMessages] = await Promise.all([
-      fetchContactHistory({ rfx_event_id: selectedEventId }),
-      fetchOutreachMessages({ rfx_event_id: selectedEventId })
-    ]);
+    if (!(await refreshOutreachStateForEvent(eventId))) return;
     renderOutreachLaunchpad();
     setStatus(rfxOutreachStatus, `${formatNumber(ids.length)} draft row(s) archived.`, "success");
   } catch (error) {
@@ -6347,15 +6339,13 @@ async function deleteSelectedDrafts() {
   }
   const confirmed = window.confirm(`Delete ${ids.length} selected draft row(s)? This only removes the queue rows, not vendors or RFx lanes.`);
   if (!confirmed) return;
+  const eventId = selectedEventId;
   if (draftDeleteSelectedButton) draftDeleteSelectedButton.disabled = true;
   setStatus(rfxOutreachStatus, `Deleting ${formatNumber(ids.length)} draft row(s)...`);
   try {
     const result = await deleteOutreachMessages(ids);
     selectedDraftMessageIds.clear();
-    [contactHistoryRows, outreachMessages] = await Promise.all([
-      fetchContactHistory({ rfx_event_id: selectedEventId }),
-      fetchOutreachMessages({ rfx_event_id: selectedEventId })
-    ]);
+    if (!(await refreshOutreachStateForEvent(eventId))) return;
     renderOutreachLaunchpad();
     setStatus(rfxOutreachStatus, `${formatNumber(result.removed || 0)} draft row(s) deleted.`, "success");
   } catch (error) {
@@ -6686,14 +6676,12 @@ draftList?.addEventListener("click", async (event) => {
   const id = statusButton.dataset.rfxMarkDraft;
   const status = statusButton.dataset.rfxDraftStatus;
   if (!id || !status) return;
+  const eventId = selectedEventId;
   statusButton.disabled = true;
   setStatus(rfxOutreachStatus, `Marking draft ${status}...`);
   try {
     await markOutreachMessages([id], status);
-    [contactHistoryRows, outreachMessages] = await Promise.all([
-      fetchContactHistory({ rfx_event_id: selectedEventId }),
-      fetchOutreachMessages({ rfx_event_id: selectedEventId })
-    ]);
+    if (!(await refreshOutreachStateForEvent(eventId))) return;
     renderOutreachLaunchpad();
     setStatus(rfxOutreachStatus, "Draft updated.", "success");
   } catch (error) {
@@ -7151,14 +7139,12 @@ rfxAwardNoticeQueue?.addEventListener("click", async (event) => {
   const id = statusButton.dataset.rfxMarkAwardNotice;
   const status = statusButton.dataset.rfxAwardNoticeStatus;
   if (!id || !status) return;
+  const eventId = selectedEventId;
   statusButton.disabled = true;
   setStatus(rfxAwardStatus, `Marking award notice ${status}...`);
   try {
     await markOutreachMessages([id], status);
-    [contactHistoryRows, outreachMessages] = await Promise.all([
-      fetchContactHistory({ rfx_event_id: selectedEventId }),
-      fetchOutreachMessages({ rfx_event_id: selectedEventId })
-    ]);
+    if (!(await refreshOutreachStateForEvent(eventId))) return;
     renderOutreachLaunchpad();
     renderAwardBoard();
     setStatus(rfxAwardStatus, "Award notice updated.", "success");
