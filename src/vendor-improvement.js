@@ -79,6 +79,7 @@ let activeTab = "cases";
 let searchTimer = null;
 let vendorSearchTimer = null;
 let vendorSearchSequence = 0;
+let improvementLoadVersion = 0;
 let selectedVendor = null;
 let activePlaybook = null;
 
@@ -585,11 +586,13 @@ async function searchCrmVendors(query = "") {
 }
 
 async function loadImprovementCases() {
+  const loadVersion = ++improvementLoadVersion;
   setStatus("Loading vendor continuous improvement...");
   if (caseBody) caseBody.innerHTML = '<tr><td colspan="8">Loading improvement cases...</td></tr>';
   try {
     await requirePrivatePage();
     const improvementResult = await fetchVendorImprovementCases(readFilters());
+    if (loadVersion !== improvementLoadVersion) return;
     caseRows = improvementResult.rows || [];
     scorecardRows = improvementResult.scorecards || [];
     playbookRows = improvementResult.playbooks || [];
@@ -600,6 +603,7 @@ async function loadImprovementCases() {
     renderPlaybooks();
     setStatus(`${caseRows.length.toLocaleString()} CI case(s) loaded.`, "success");
   } catch (error) {
+    if (loadVersion !== improvementLoadVersion) return;
     caseRows = [];
     scorecardRows = [];
     renderMetrics();

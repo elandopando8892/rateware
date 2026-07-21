@@ -17,6 +17,7 @@ const metricGoogleChat = document.querySelector("#support-google-chat");
 
 let supportRows = [];
 let searchTimer = null;
+let supportLoadVersion = 0;
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -147,16 +148,19 @@ function readFilters() {
 }
 
 async function loadSupportTickets() {
+  const loadVersion = ++supportLoadVersion;
   setStatus("Loading support tickets...");
   if (supportBody) supportBody.innerHTML = '<tr><td colspan="8">Loading support tickets...</td></tr>';
   try {
     await requirePrivatePage();
     const result = await fetchVendorSupportTickets(readFilters());
+    if (loadVersion !== supportLoadVersion) return;
     supportRows = result.rows || [];
     renderMetrics(result.summary || {});
     renderRows();
     setStatus(`${supportRows.length.toLocaleString()} ticket(s) loaded.`, "success");
   } catch (error) {
+    if (loadVersion !== supportLoadVersion) return;
     supportRows = [];
     renderMetrics();
     supportBody.innerHTML = `

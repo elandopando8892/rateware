@@ -79,6 +79,11 @@ let selectedGeoPointKey = null;
 let currentAnalystResult = null;
 let queuedActionIndexes = new Set();
 const selectedVendorIds = new Set();
+let analystLoadVersion = 0;
+let recommendationLoadVersion = 0;
+let pivotLoadVersion = 0;
+let drilldownLoadVersion = 0;
+let geoLoadVersion = 0;
 
 const PIVOT_DIMENSIONS = [
   ["", "None"],
@@ -592,17 +597,21 @@ function renderPivot(result) {
 }
 
 async function runPivot() {
+  const loadVersion = ++pivotLoadVersion;
   runPivotButton.disabled = true;
   setPivotStatus("Building pivot...");
 
   try {
     await requirePrivatePage();
     const result = await fetchBusinessIntelligencePivot(readPivotConfig());
+    if (loadVersion !== pivotLoadVersion) return;
     renderPivot(result);
     setPivotStatus(`${formatNumber(result.summary?.transactions)} transaction(s), ${formatNumber((result.rows || []).length)} pivot row(s).`, "success");
   } catch (error) {
+    if (loadVersion !== pivotLoadVersion) return;
     setPivotStatus(error.message, "error");
   } finally {
+    if (loadVersion !== pivotLoadVersion) return;
     runPivotButton.disabled = false;
   }
 }
@@ -674,6 +683,7 @@ function renderDrilldown(result) {
 }
 
 async function runDrilldown(rowValues, columnValue) {
+  const loadVersion = ++drilldownLoadVersion;
   setDrilldownStatus("Loading detail...");
   try {
     await requirePrivatePage();
@@ -681,9 +691,11 @@ async function runDrilldown(rowValues, columnValue) {
       row_values: rowValues,
       column_value: columnValue
     });
+    if (loadVersion !== drilldownLoadVersion) return;
     renderDrilldown(result);
     setDrilldownStatus(`${formatNumber(result.total || 0)} source rate row(s).`, "success");
   } catch (error) {
+    if (loadVersion !== drilldownLoadVersion) return;
     setDrilldownStatus(error.message, "error");
   }
 }
@@ -926,16 +938,20 @@ function renderGeoDensity(result) {
 
 async function runGeoDensity() {
   if (!runGeoButton) return;
+  const loadVersion = ++geoLoadVersion;
   runGeoButton.disabled = true;
   setGeoStatus("Building North America density map...");
   try {
     await requirePrivatePage();
     const result = await fetchBusinessIntelligenceGeoDensity(readGeoConfig());
+    if (loadVersion !== geoLoadVersion) return;
     renderGeoDensity(result);
     setGeoStatus(`${formatNumber(result.summary?.transactions || 0)} transaction(s), ${formatNumber(result.summary?.zones || 0)} zone(s).`, "success");
   } catch (error) {
+    if (loadVersion !== geoLoadVersion) return;
     setGeoStatus(error.message, "error");
   } finally {
+    if (loadVersion !== geoLoadVersion) return;
     runGeoButton.disabled = false;
   }
 }
@@ -1201,6 +1217,7 @@ function renderAnswer(result) {
 }
 
 async function runIntelligenceQuery(message) {
+  const loadVersion = ++analystLoadVersion;
   const prompt = String(message || promptInput.value || "").trim();
   if (!prompt) {
     setStatus("Add a carrier intelligence request.", "error");
@@ -1214,13 +1231,16 @@ async function runIntelligenceQuery(message) {
   try {
     await requirePrivatePage();
     const result = await askCarrierIntelligence(`${prompt}\n\nCurrent Rateware analysis context: ${analystContextText()}`);
+    if (loadVersion !== analystLoadVersion) return;
     renderAnswer(result);
     renderRecommendations(result.recommendations || []);
     if (!result.model_error) setStatus(`${formatNumber((result.recommendations || []).length)} recommendation(s) ready.`, "success");
   } catch (error) {
+    if (loadVersion !== analystLoadVersion) return;
     setModelStatus("Unavailable", "danger");
     setStatus(error.message, "error");
   } finally {
+    if (loadVersion !== analystLoadVersion) return;
     submitButton.disabled = false;
   }
 }
@@ -1234,17 +1254,21 @@ function renderRecommendationResult(result) {
 }
 
 async function runStructuredRecommendations() {
+  const loadVersion = ++recommendationLoadVersion;
   runRecommendationsButton.disabled = true;
   setRecommendationStatus("Ranking carriers...");
 
   try {
     await requirePrivatePage();
     const result = await fetchCarrierRecommendations(readRecommendationConfig());
+    if (loadVersion !== recommendationLoadVersion) return;
     renderRecommendationResult(result);
     setRecommendationStatus(`${formatNumber((result.recommendations || []).length)} carrier(s) ranked by ${result.filters?.ranking_mode || "fit"}.`, "success");
   } catch (error) {
+    if (loadVersion !== recommendationLoadVersion) return;
     setRecommendationStatus(error.message, "error");
   } finally {
+    if (loadVersion !== recommendationLoadVersion) return;
     runRecommendationsButton.disabled = false;
   }
 }

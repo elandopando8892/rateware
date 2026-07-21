@@ -9,6 +9,7 @@ const uploadServiceSource = readFileSync(new URL("../src/upload-service.js", imp
 const uploadHistoryHtml = readFileSync(new URL("../upload-history.html", import.meta.url), "utf8");
 const uploadCenterHtml = readFileSync(new URL("../upload-center.html", import.meta.url), "utf8");
 const appHtml = readFileSync(new URL("../app.html", import.meta.url), "utf8");
+const businessIntelligenceSource = readFileSync(new URL("../src/business-intelligence.js", import.meta.url), "utf8");
 const businessIntelligenceHtml = readFileSync(new URL("../business-intelligence.html", import.meta.url), "utf8");
 const bulkImportTemplateSource = readFileSync(new URL("../src/bulk-import-template.js", import.meta.url), "utf8");
 const stagingReviewSource = readFileSync(new URL("../src/staging-review.js", import.meta.url), "utf8");
@@ -30,6 +31,7 @@ const vendorSupportHtml = readFileSync(new URL("../vendor-support.html", import.
 const vendorImprovementSource = readFileSync(new URL("../src/vendor-improvement.js", import.meta.url), "utf8");
 const vendorImprovementServiceSource = readFileSync(new URL("../src/vendor-improvement-service.js", import.meta.url), "utf8");
 const vendorImprovementHtml = readFileSync(new URL("../vendor-improvement.html", import.meta.url), "utf8");
+const shippersSource = readFileSync(new URL("../src/shippers.js", import.meta.url), "utf8");
 const carrierProfileSource = readFileSync(new URL("../src/carrier-profile.js", import.meta.url), "utf8");
 const carrierProfileHtml = readFileSync(new URL("../carrier-profile.html", import.meta.url), "utf8");
 const catalogWorkbenchHtml = readFileSync(new URL("../catalog-workbench.html", import.meta.url), "utf8");
@@ -1267,6 +1269,8 @@ assert.match(vendorSupportHtml, /Vendor Support/, "Vendor Support module page sh
 assert.match(vendorSupportHtml, /support-ticket-body/, "Vendor Support module should render a ticket table");
 assert.match(vendorSupportSource, /fetchVendorSupportTickets/, "Vendor Support UI should fetch tickets from the API");
 assert.match(vendorSupportSource, /updateVendorSupportTicket/, "Vendor Support UI should update ticket state");
+assert.match(vendorSupportSource, /let supportLoadVersion = 0;/, "Vendor Support filters should version concurrent loads");
+assert.match(vendorSupportSource, /loadVersion !== supportLoadVersion/, "Vendor Support should ignore stale filter responses");
 assert.match(vendorSupportServiceSource, /list_vendor_support_tickets/, "Vendor Support service should call the ticket listing action");
 assert.match(vendorSupportServiceSource, /update_vendor_support_ticket/, "Vendor Support service should call the ticket update action");
 assert.match(vendorsHtml, /drawer-vendor-support/, "Vendor profile drawer should include a Vendor Support section");
@@ -1314,6 +1318,8 @@ assert.match(vendorImprovementSource, /fetchVendors\(\{ limit: CRM_VENDOR_SEARCH
 assert.match(vendorImprovementSource, /let vendorSearchSequence = 0;/, "Vendor CI vendor search should ignore stale CRM responses");
 assert.match(vendorImprovementSource, /matchingRows = rows\.filter/, "Vendor CI vendor search should filter returned CRM rows before rendering");
 assert.match(vendorImprovementSource, /sequence !== vendorSearchSequence/, "Vendor CI vendor search should not render older searches over newer input");
+assert.match(vendorImprovementSource, /let improvementLoadVersion = 0;/, "Vendor CI case filters should version concurrent loads");
+assert.match(vendorImprovementSource, /loadVersion !== improvementLoadVersion/, "Vendor CI should ignore stale case responses");
 assert.doesNotMatch(vendorImprovementSource, /fetchVendors\(\{ base_stage: "procurement"/, "Vendor CI create-case picker should not be limited to Procurement vendors");
 assert.match(apiSource, /async function buildVendorValueCurve/, "Vendor CI API should compute the carrier value curve from all CRM vendors");
 assert.match(apiSource, /fetchVendorRateMetricsSafe\(supabase, user\)/, "Vendor CI value curve should include Rateware quote signals");
@@ -2078,5 +2084,18 @@ assert.match(stagingPageSizeSource, /selectedRowIds\.clear\(\)/, "Staging should
 const stagingSavedViewSource = stagingReviewSource.slice(stagingReviewSource.indexOf("columnVisibilityController = initColumnVisibility"), stagingReviewSource.indexOf("columnFilterController = initSpreadsheetColumnFilters"));
 assert.ok(stagingSavedViewSource.length > 100, "Staging saved-view controller block should be present");
 assert.match(stagingSavedViewSource, /selectedRowIds\.clear\(\)/, "Staging saved views should clear stale page selections before reloading");
+assert.match(shippersSource, /let directoryLoadVersion = 0;/, "Shipper directory should version concurrent searches");
+assert.match(shippersSource, /loadVersion !== directoryLoadVersion/, "Shipper directory should ignore stale search responses");
+assert.match(shippersSource, /loadVersion !== pipelineLoadVersion/, "Shipper pipeline should ignore stale filter responses");
+assert.match(shippersSource, /loadVersion !== commercialLoadVersion/, "Shipper commercial workspace should ignore stale filter responses");
+assert.match(shippersSource, /loadVersion !== cadenceLoadVersion/, "Shipper cadence should ignore stale filter responses");
+assert.match(shippersSource, /loadVersion !== intelligenceLoadVersion/, "Shipper intelligence should ignore stale filter responses");
+assert.match(shippersSource, /loadVersion !== drawerLoadVersion \|\| state\.activeShipperId !== id/, "Shipper profile drawer should not render a previously requested account");
+assert.doesNotMatch(shippersSource, /if \(state\.(?:cadence|intelligence)Loading\) return;/, "Shipper filtered views should allow a newer request to supersede an in-flight request");
+assert.match(businessIntelligenceSource, /let analystLoadVersion = 0;/, "AI Analyst should version concurrent prompts");
+assert.match(businessIntelligenceSource, /loadVersion !== recommendationLoadVersion/, "Carrier recommendations should ignore stale results");
+assert.match(businessIntelligenceSource, /loadVersion !== pivotLoadVersion/, "BI pivots should ignore stale results");
+assert.match(businessIntelligenceSource, /loadVersion !== drilldownLoadVersion/, "BI drilldowns should ignore stale results");
+assert.match(businessIntelligenceSource, /loadVersion !== geoLoadVersion/, "BI geo density should ignore stale results");
 
 console.log("Rateware stability guards passed.");

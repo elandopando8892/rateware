@@ -89,6 +89,12 @@ const state = {
 
 const SHIPPER_XLSX_MODULE_URL = "https://esm.sh/xlsx@0.18.5";
 let shipperXlsxModulePromise = null;
+let directoryLoadVersion = 0;
+let pipelineLoadVersion = 0;
+let commercialLoadVersion = 0;
+let cadenceLoadVersion = 0;
+let intelligenceLoadVersion = 0;
+let drawerLoadVersion = 0;
 
 const elements = {
   total: document.querySelector("#shipper-total"),
@@ -705,6 +711,7 @@ function renderLoadingRows() {
 }
 
 async function loadRows({ reset = false } = {}) {
+  const loadVersion = ++directoryLoadVersion;
   if (reset) state.offset = 0;
   setStatus(elements.directoryStatus, "Loading shippers...");
   renderLoadingRows();
@@ -716,11 +723,13 @@ async function loadRows({ reset = false } = {}) {
       offset: state.offset,
       limit: state.limit
     });
+    if (loadVersion !== directoryLoadVersion) return;
     state.rows = result.rows || [];
     state.total = Number(result.total || 0);
     renderDirectory();
     setStatus(elements.directoryStatus, `${state.total.toLocaleString()} shipper account(s).`, "success");
   } catch (error) {
+    if (loadVersion !== directoryLoadVersion) return;
     state.rows = [];
     state.total = 0;
     renderDirectory();
@@ -777,6 +786,7 @@ function renderPipeline() {
 }
 
 async function loadPipeline() {
+  const loadVersion = ++pipelineLoadVersion;
   setStatus(elements.pipelineStatus, "Loading account pipeline...");
   elements.pipelineBoard.innerHTML = `<div class="shipper-pipeline-loading">Loading account stages...</div>`;
   try {
@@ -785,6 +795,7 @@ async function loadPipeline() {
       status: state.pipelineStatus,
       limit: 750
     });
+    if (loadVersion !== pipelineLoadVersion) return;
     state.pipelineRows = result.rows || [];
     state.pipelineLoaded = Number(result.loaded || state.pipelineRows.length);
     state.pipelineTotal = Number(result.total || state.pipelineRows.length);
@@ -793,6 +804,7 @@ async function loadPipeline() {
     const suffix = state.pipelineTotal > state.pipelineLoaded ? ` Showing the most recently updated ${state.pipelineLoaded.toLocaleString()}.` : "";
     setStatus(elements.pipelineStatus, `${state.pipelineTotal.toLocaleString()} account(s) in the current pipeline.${suffix}`, "success");
   } catch (error) {
+    if (loadVersion !== pipelineLoadVersion) return;
     state.pipelineRows = [];
     state.pipelineReady = false;
     elements.pipelineBoard.innerHTML = `<div class="shipper-pipeline-loading shipper-pipeline-error"><strong>Pipeline could not load</strong><span>${escapeHtml(humanizeError(error))}</span></div>`;
@@ -901,7 +913,7 @@ function renderCadence() {
 }
 
 async function loadCadence() {
-  if (state.cadenceLoading) return;
+  const loadVersion = ++cadenceLoadVersion;
   state.cadenceLoading = true;
   setStatus(elements.cadenceStatus, "Loading account actions...");
   elements.cadenceBody.innerHTML = `<tr><td colspan="7" class="shipper-commercial-empty">Loading actions...</td></tr>`;
@@ -911,18 +923,21 @@ async function loadCadence() {
       focus: state.cadenceFocus,
       limit: 1000
     });
+    if (loadVersion !== cadenceLoadVersion) return;
     state.cadenceRows = result.rows || [];
     state.cadenceCounts = result.counts || {};
     state.cadenceReady = true;
     renderCadence();
     setStatus(elements.cadenceStatus, `${state.cadenceRows.length.toLocaleString()} action(s) loaded for this queue.`, "success");
   } catch (error) {
+    if (loadVersion !== cadenceLoadVersion) return;
     state.cadenceRows = [];
     state.cadenceCounts = {};
     state.cadenceReady = false;
     renderCadence();
     setStatus(elements.cadenceStatus, humanizeError(error), "error");
   } finally {
+    if (loadVersion !== cadenceLoadVersion) return;
     state.cadenceLoading = false;
   }
 }
@@ -960,6 +975,7 @@ async function updateCadenceActionStatus(id, status, button) {
 }
 
 async function loadCommercialWork() {
+  const loadVersion = ++commercialLoadVersion;
   setStatus(elements.commercialStatus, "Loading RFIs and deals...");
   elements.commercialRfiBody.innerHTML = `<tr><td colspan="6" class="shipper-commercial-empty">Loading RFIs...</td></tr>`;
   elements.commercialOpportunityBody.innerHTML = `<tr><td colspan="5" class="shipper-commercial-empty">Loading deals...</td></tr>`;
@@ -969,6 +985,7 @@ async function loadCommercialWork() {
       focus: state.commercialFocus,
       limit: 1000
     });
+    if (loadVersion !== commercialLoadVersion) return;
     state.commercialRfis = result.rfis || [];
     state.commercialOpportunities = result.opportunities || [];
     state.commercialCounts = result.counts || {};
@@ -977,6 +994,7 @@ async function loadCommercialWork() {
     const resultLabel = state.commercialFocus === "won" ? "won deal(s)" : state.commercialFocus === "lost" ? "closed-lost deal(s)" : "open deal(s)";
     setStatus(elements.commercialStatus, `${state.commercialRfis.length.toLocaleString()} RFI(s) and ${state.commercialOpportunities.length.toLocaleString()} ${resultLabel} in the current focus.`, "success");
   } catch (error) {
+    if (loadVersion !== commercialLoadVersion) return;
     state.commercialRfis = [];
     state.commercialOpportunities = [];
     state.commercialCounts = {};
@@ -1042,7 +1060,7 @@ function renderShipperIntelligence() {
 }
 
 async function loadShipperIntelligence() {
-  if (state.intelligenceLoading) return;
+  const loadVersion = ++intelligenceLoadVersion;
   state.intelligenceLoading = true;
   elements.intelligenceRefresh.disabled = true;
   setStatus(elements.intelligenceStatus, "Reading account health, coverage, RFIs, and open deals...");
@@ -1053,6 +1071,7 @@ async function loadShipperIntelligence() {
       focus: state.intelligenceFocus,
       limit: 1000
     });
+    if (loadVersion !== intelligenceLoadVersion) return;
     state.intelligenceRows = Array.isArray(result.rows) ? result.rows : [];
     state.intelligenceCounts = result.counts || {};
     state.intelligenceScanned = Number(result.loaded || state.intelligenceRows.length);
@@ -1063,6 +1082,7 @@ async function loadShipperIntelligence() {
     const suffix = state.intelligenceTruncated ? ` Showing ${state.intelligenceScanned.toLocaleString()} most recently updated accounts.` : "";
     setStatus(elements.intelligenceStatus, `${state.intelligenceRows.length.toLocaleString()} account signal(s) in the current focus.${suffix}`, "success");
   } catch (error) {
+    if (loadVersion !== intelligenceLoadVersion) return;
     state.intelligenceRows = [];
     state.intelligenceCounts = {};
     state.intelligenceScanned = 0;
@@ -1070,6 +1090,7 @@ async function loadShipperIntelligence() {
     renderShipperIntelligence();
     setStatus(elements.intelligenceStatus, humanizeError(error), "error");
   } finally {
+    if (loadVersion !== intelligenceLoadVersion) return;
     state.intelligenceLoading = false;
     elements.intelligenceRefresh.disabled = false;
   }
@@ -1602,6 +1623,7 @@ function renderDrawer() {
 }
 
 async function openDrawer(id, tab = "overview") {
+  const loadVersion = ++drawerLoadVersion;
   state.activeShipperId = id;
   state.activeTab = tab === "overview" || tab === "ratebook" || tab === "activity" || CHILD_CONFIG[tab] ? tab : "overview";
   state.editingRecordId = null;
@@ -1612,9 +1634,12 @@ async function openDrawer(id, tab = "overview") {
   showOverlay();
   elements.drawerContent.innerHTML = `<div class="shipper-drawer-loading">Loading shipper profile...</div>`;
   try {
-    state.detail = await fetchShipper(id);
+    const detail = await fetchShipper(id);
+    if (loadVersion !== drawerLoadVersion || state.activeShipperId !== id) return;
+    state.detail = detail;
     renderDrawer();
   } catch (error) {
+    if (loadVersion !== drawerLoadVersion || state.activeShipperId !== id) return;
     elements.drawerContent.innerHTML = `<div class="shipper-drawer-error"><strong>Profile could not load</strong><span>${escapeHtml(humanizeError(error))}</span><button type="button" data-retry-shipper>Retry</button></div>`;
   }
 }
