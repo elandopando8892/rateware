@@ -350,6 +350,8 @@ assert.match(apiSource, /display_phone_number: cleanText\(data\.display_phone_nu
 assert.match(apiSource, /quality_rating: cleanText\(data\.quality_rating\)/, "WhatsApp connection test should return quality rating at top level");
 assert.doesNotMatch(apiSource, /provider_response:\s*\{\s*id:\s*data\.id/, "WhatsApp connection test should not expose raw provider phone number id");
 assert.match(apiSource, /send_whatsapp_outreach_messages/, "Rateware API should send direct WhatsApp Business drafts");
+assert.match(apiSource, /whatsapp_template_name: cleanText\(message\.whatsapp_template_name\) \|\| null/, "WhatsApp failures should preserve the mapped Meta template name for retriable diagnostics");
+assert.match(apiSource, /updateWhatsappMessageFailure\(supabase, user, resolvedMessage, reason, now\)/, "WhatsApp failures should persist the resolved message mapping instead of discarding it");
 assert.match(apiSource, /mark_whatsapp_group_message_manually_sent/, "Rateware API should support manual WhatsApp group completion");
 assert.match(apiSource, /send_whatsapp_group_outreach_messages/, "Rateware API should explicitly guard WhatsApp group automation");
 assert.match(apiSource, /test_whatsapp_business_connection/, "Rateware API should expose WhatsApp Business connection test");
@@ -376,6 +378,8 @@ assert.match(apiSource, /approved: templates\.filter\(\(template: Record<string,
 assert.match(apiSource, /whatsappTemplateLanguagesMatch\(row\.language, language\)/, "WhatsApp publish should reuse a Meta template when Meta returns a language root such as en instead of en_US");
 assert.match(apiSource, /normalized\.startsWith\("APPROVED_"\)/, "WhatsApp approved quality variants should remain sendable");
 assert.match(apiSource, /list_whatsapp_phone_numbers/, "Rateware API should expose WhatsApp sender phone listing");
+assert.match(apiSource, /whatsappWabaGraphFetch\([\s\S]+phone_numbers\?fields=id,display_phone_number,verified_name,quality_rating/, "WhatsApp phone listing should resolve the WABA from the sender phone relationship before falling back to saved account ids");
+assert.match(apiSource, /resolved_waba_id/, "WhatsApp WABA resolution should persist the verified sender account without exposing credentials");
 assert.match(apiSource, /verify_whatsapp_webhook/, "Rateware API should expose WhatsApp webhook verification");
 assert.match(apiSource, /webhook_verified_at: verified \? now : null/, "Webhook verification should persist its result on the resolved WhatsApp connection");
 assert.match(apiSource, /\?fields=name,language,status,category,components,quality_score&limit=100/, "WhatsApp template sync should read Meta quality status from message_templates");

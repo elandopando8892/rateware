@@ -11219,6 +11219,7 @@ function whatsappTemplateWabaCandidates(connection: Awaited<ReturnType<typeof ac
     seen.add(id);
     candidates.push({ id, source });
   };
+  add(metadata.resolved_waba_id, "saved_resolved_waba_id");
   add(metadata.template_waba_id, "saved_template_waba_id");
   add(connection.wabaId, "resolved_connection_waba_id");
   add(row.meta_waba_id, "connection_meta_waba_id");
@@ -11247,7 +11248,7 @@ async function discoverWhatsappWabaFromPhone(connection: Awaited<ReturnType<type
   return discovered;
 }
 
-async function persistWhatsappTemplateWaba(
+async function persistWhatsappResolvedWaba(
   supabase: ReturnType<typeof createClient>,
   connection: Awaited<ReturnType<typeof activeWhatsappConnection>>,
   candidate: { id: string; source: string }
@@ -11255,6 +11256,9 @@ async function persistWhatsappTemplateWaba(
   if (!candidate.id || !connection.row?.id) return;
   const metadata = {
     ...objectRecord(connection.row.metadata),
+    resolved_waba_id: candidate.id,
+    resolved_waba_id_source: candidate.source,
+    resolved_waba_id_verified_at: new Date().toISOString(),
     template_waba_id: candidate.id,
     template_waba_id_source: candidate.source,
     template_waba_id_verified_at: new Date().toISOString()
@@ -11278,11 +11282,12 @@ async function persistWhatsappTemplateWaba(
   };
 }
 
-async function whatsappTemplateGraphFetch(
+async function whatsappWabaGraphFetch(
   supabase: ReturnType<typeof createClient>,
   connection: Awaited<ReturnType<typeof activeWhatsappConnection>>,
   suffix: string,
-  options: RequestInit = {}
+  options: RequestInit = {},
+  endpointError: (error: unknown) => string = (error) => cleanText(error instanceof Error ? error.message : String(error)) || "Meta WhatsApp request failed."
 ) {
   const initialCandidates = whatsappTemplateWabaCandidates(connection);
   const discoveredCandidates = await discoverWhatsappWabaFromPhone(connection);
@@ -11302,9 +11307,9 @@ async function whatsappTemplateGraphFetch(
   const errors: string[] = [];
   for (const candidate of candidates) {
     try {
-      const data = await whatsappGraphFetch(connection, `${candidate.id}/message_templates${suffix}`, options);
+      const data = await whatsappGraphFetch(connection, `${candidate.id}/${suffix.replace(/^\//, "")}`, options);
       if (candidate.id !== connection.wabaId || candidate.source !== "resolved_connection_waba_id") {
-        await persistWhatsappTemplateWaba(supabase, connection, candidate);
+        await persistWhatsappResolvedWaba(supabase, connection, candidate);
       }
       return { data, waba_id: candidate.id, source: candidate.source };
     } catch (error) {
@@ -11312,7 +11317,7 @@ async function whatsappTemplateGraphFetch(
     }
   }
 
-  const reason = whatsappTemplateEndpointMessage(errors[0] || "No WABA candidates could read message_templates.");
+  const reason = endpointError(errors[0] || "No WABA candidates could complete this request.");
   if (connection.row?.id) {
     await supabase
       .from("whatsapp_business_connections")
@@ -11328,6 +11333,15 @@ async function whatsappTemplateGraphFetch(
       .eq("id", connection.row.id);
   }
   throw new Error(reason);
+}
+
+async function whatsappTemplateGraphFetch(
+  supabase: ReturnType<typeof createClient>,
+  connection: Awaited<ReturnType<typeof activeWhatsappConnection>>,
+  suffix: string,
+  options: RequestInit = {}
+) {
+  return await whatsappWabaGraphFetch(supabase, connection, `message_templates${suffix}`, options, whatsappTemplateEndpointMessage);
 }
 
 function normalizeWhatsappMetaStatus(value: unknown, fallback = "NOT_PUBLISHED") {
@@ -11961,8 +11975,18 @@ async function listWhatsappPhoneNumbers(
   user: RatewareUser
 ) {
   const connection = await activeWhatsappConnection(supabase, user, { requireConnected: false });
-  const data = await whatsappGraphFetch(connection, `${connection.wabaId}/phone_numbers?fields=id,display_phone_number,verified_name,quality_rating`);
-  return { rows: Array.isArray(data.data) ? data.data : [] };
+  const result = await whatsappWabaGraphFetch(
+    supabase,
+    connection,
+    "phone_numbers?fields=id,display_phone_number,verified_name,quality_rating",
+    {},
+    (error) => `Meta cannot read WhatsApp phone numbers for this connection. Confirm that the WABA belongs to the sender phone number and that the token has WhatsApp Business Management permission. Meta said: ${error instanceof Error ? error.message : String(error)}`
+  );
+  return {
+    rows: Array.isArray(result.data.data) ? result.data.data : [],
+    waba_id: result.waba_id,
+    source: result.source
+  };
 }
 
 async function selectWhatsappSender(
@@ -13235,6 +13259,11 @@ async function updateWhatsappMessageFailure(
       failed_at: now,
       delivery_error: reason,
       provider: "meta",
+      // Keep the resolved Meta mapping on retriable failures. Without this, the
+      // draft queue loses the template name/status that explains why Meta blocked it.
+      whatsapp_connection_id: cleanText(message.whatsapp_connection_id) || null,
+      whatsapp_template_name: cleanText(message.whatsapp_template_name) || null,
+      whatsapp_template_language: cleanText(message.whatsapp_template_language) || null,
       metadata,
       updated_at: now
     })
@@ -13284,8 +13313,8 @@ async function sendWhatsappOutreachMessages(
       await updateWhatsappMessageFailure(supabase, user, message, reason, now);
       continue;
     }
+    let resolvedMessage = message;
     try {
-      let resolvedMessage = message;
       const outreachTemplateId = cleanText(message.template_id);
       if (outreachTemplateId) {
         let notifier = notifierByTemplate.get(outreachTemplateId);
@@ -13364,7 +13393,7 @@ async function sendWhatsappOutreachMessages(
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
       failures.push({ id: message.id, reason });
-      await updateWhatsappMessageFailure(supabase, user, message, reason, now);
+      await updateWhatsappMessageFailure(supabase, user, resolvedMessage, reason, now);
     }
   }
   return { sent: rows.length, failed: failures.length, rows, failures };
