@@ -175,6 +175,11 @@ let vendorIntelligenceHasMore = false;
 let vendorDirectoryLoadVersion = 0;
 let vendorIntelligenceLoadVersion = 0;
 let vendorFunnelLoadVersion = 0;
+let vendorDrawerContextVersion = 0;
+let vendorDrawerSupportLoadVersion = 0;
+const vendorCellSaveQueues = new Map();
+const vendorCellSaveVersions = new Map();
+const vendorFunnelMutationIds = new Set();
 const vendorIntelligencePageSize = 500;
 let vendorFunnelStages = [];
 let vendorFunnelRows = [];
@@ -2343,8 +2348,10 @@ async function runVendorMatchScope(scope) {
 
 async function moveVendorFunnelStage(vendorId, stageKey) {
   if (!vendorId || !stageKey) return false;
+  if (vendorFunnelMutationIds.has(vendorId)) return false;
   const stage = DEFAULT_FUNNEL_STAGES.find((item) => item.key === stageKey) || vendorFunnelStages.find((item) => item.key === stageKey);
   if (!stage) return false;
+  vendorFunnelMutationIds.add(vendorId);
   setStatus(vendorFunnelStatus, `Moving vendor to ${stage.label}...`);
   try {
     await requirePrivatePage();
@@ -2366,6 +2373,8 @@ async function moveVendorFunnelStage(vendorId, stageKey) {
   } catch (error) {
     setStatus(vendorFunnelStatus, error.message, "error");
     return false;
+  } finally {
+    vendorFunnelMutationIds.delete(vendorId);
   }
 }
 
@@ -2843,9 +2852,14 @@ async function saveVendorCell(control) {
   const original = control.dataset.originalValue || "";
   if (!vendorId || !field || rawValue === original) return;
 
+  const saveKey = `${vendorId}:${field}`;
+  const saveVersion = (vendorCellSaveVersions.get(saveKey) || 0) + 1;
+  vendorCellSaveVersions.set(saveKey, saveVersion);
+
   control.classList.remove("is-saved", "is-error");
   control.classList.add("is-saving");
-  try {
+  const previousSave = vendorCellSaveQueues.get(saveKey) || Promise.resolve();
+  const saveTask = previousSave.catch(() => {}).then(async () => {
     await requirePrivatePage();
     const current = findVendorById(vendorId) || {};
     const patch = field.startsWith("profile_data.")
@@ -2854,6 +2868,16 @@ async function saveVendorCell(control) {
     if (!patch) throw new Error("Unsupported vendor field.");
     const updated = await updateVendor(vendorId, patch);
     replaceVendorInState(updated);
+    if (["base_stage", "status", "funnel_stage"].includes(field)) {
+      applyVendorUpdateToFunnel(updated);
+    }
+    return updated;
+  });
+  vendorCellSaveQueues.set(saveKey, saveTask);
+
+  try {
+    const updated = await saveTask;
+    if (vendorCellSaveVersions.get(saveKey) !== saveVersion) return;
     const storedValue = field === "primary_email"
       ? vendorEmailInputValue(updated)
       : field === "tags"
@@ -2861,19 +2885,26 @@ async function saveVendorCell(control) {
         : field.startsWith("profile_data.")
           ? profileColumnValue(updated, field.split(".")[1], field.split(".")[2])
           : updated[field] || "";
-    control.value = storedValue;
-    control.dataset.originalValue = storedValue;
-    control.classList.remove("is-saving");
-    control.classList.add("is-saved");
+    if (control.isConnected) {
+      control.value = storedValue;
+      control.dataset.originalValue = storedValue;
+      control.classList.remove("is-saving");
+      control.classList.add("is-saved");
+    }
     setStatus(bulkStatusMessage, "Cell saved.", "success");
     if (["base_stage", "status", "funnel_stage"].includes(field)) {
-      applyVendorUpdateToFunnel(updated);
       renderVendors(currentVendors);
     }
   } catch (error) {
-    control.classList.remove("is-saving");
-    control.classList.add("is-error");
-    setStatus(bulkStatusMessage, error.message, "error");
+    if (vendorCellSaveVersions.get(saveKey) === saveVersion) {
+      if (control.isConnected) {
+        control.classList.remove("is-saving");
+        control.classList.add("is-error");
+      }
+      setStatus(bulkStatusMessage, error.message, "error");
+    }
+  } finally {
+    if (vendorCellSaveQueues.get(saveKey) === saveTask) vendorCellSaveQueues.delete(saveKey);
   }
 }
 
@@ -3567,11 +3598,14 @@ function renderDrawerSupportTickets(rows = []) {
 
 async function loadDrawerVendorSupport(vendorId) {
   if (!drawerVendorSupport || !vendorId) return;
+  const loadVersion = ++vendorDrawerSupportLoadVersion;
   drawerVendorSupport.innerHTML = '<p class="status-message">Loading support tickets...</p>';
   try {
     const result = await fetchVendorSupportTickets({ vendor_id: vendorId, limit: 25 });
+    if (loadVersion !== vendorDrawerSupportLoadVersion || activeDrawerVendorId !== vendorId) return;
     renderDrawerSupportTickets(result.rows || []);
   } catch (error) {
+    if (loadVersion !== vendorDrawerSupportLoadVersion || activeDrawerVendorId !== vendorId) return;
     drawerVendorSupport.innerHTML = `
       <div class="empty-state error-state compact-empty">
         <strong>Support could not load</strong>
@@ -3587,6 +3621,7 @@ function openVendorDrawer(vendorId, options = {}) {
   const health = combinedVendorHealth(vendor);
 
   activeDrawerVendorId = vendor.id;
+  vendorDrawerContextVersion += 1;
   document.querySelector("#drawer-vendor-name").textContent = vendor.vendor_name || "Vendor";
   if (drawerLogoPreview) drawerLogoPreview.innerHTML = renderVendorAvatar(vendor, "drawer");
   document.querySelector("#drawer-badges").innerHTML = renderDrawerBadges(vendor);
@@ -3632,6 +3667,9 @@ function openVendorDrawer(vendorId, options = {}) {
   document.querySelector("#drawer-edit-whatsapp-notes").value = vendor.whatsapp_notes || "";
   renderOnboardingEditor(vendor);
   if (drawerLogoFile) drawerLogoFile.value = "";
+  const saveButton = document.querySelector("#drawer-save-button");
+  if (saveButton) saveButton.disabled = false;
+  drawerArchiveButton.disabled = false;
   drawerArchiveButton.textContent = vendor.base_stage === "archived" ? "Restore to Sourcing" : "Archive vendor";
   setStatus(drawerEditStatus, "");
   drawer.classList.remove("hidden");
@@ -4462,7 +4500,12 @@ vendorsFilterRow?.addEventListener("click", (event) => {
   if (!clear) return;
   resetVendorWorkspace();
 });
-closeDrawerButton.addEventListener("click", () => drawer.classList.add("hidden"));
+closeDrawerButton.addEventListener("click", () => {
+  activeDrawerVendorId = null;
+  vendorDrawerContextVersion += 1;
+  vendorDrawerSupportLoadVersion += 1;
+  drawer.classList.add("hidden");
+});
 drawerEditToggle?.addEventListener("click", () => {
   const isEditing = drawer.dataset.mode === "edit";
   setDrawerMode(isEditing ? "view" : "edit", { focus: !isEditing });
@@ -4499,29 +4542,37 @@ drawer.addEventListener("click", (event) => {
 drawerEditForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (!activeDrawerVendorId) return;
+  const vendorId = activeDrawerVendorId;
+  const contextVersion = vendorDrawerContextVersion;
+  const patch = readDrawerPatch();
   const button = document.querySelector("#drawer-save-button");
   button.disabled = true;
   setStatus(drawerEditStatus, "Saving vendor...");
 
   try {
     await requirePrivatePage();
-    const current = findVendorById(activeDrawerVendorId) || {};
-    const updated = await updateVendor(activeDrawerVendorId, readDrawerPatch());
+    const current = findVendorById(vendorId) || {};
+    const updated = await updateVendor(vendorId, patch);
     const nextVendor = { ...current, ...updated };
     replaceVendorInState(nextVendor);
     applyVendorUpdateToFunnel(nextVendor);
     renderVendors(currentVendors);
+    if (activeDrawerVendorId !== vendorId || vendorDrawerContextVersion !== contextVersion) return;
     setStatus(drawerEditStatus, "Vendor updated.", "success");
     openVendorDrawer(nextVendor.id, { mode: "edit" });
   } catch (error) {
-    setStatus(drawerEditStatus, error.message, "error");
+    if (activeDrawerVendorId === vendorId && vendorDrawerContextVersion === contextVersion) {
+      setStatus(drawerEditStatus, error.message, "error");
+    }
   } finally {
-    button.disabled = false;
+    if (activeDrawerVendorId === vendorId && vendorDrawerContextVersion === contextVersion) button.disabled = false;
   }
 });
 drawerArchiveButton.addEventListener("click", async () => {
   if (!activeDrawerVendorId) return;
-  const vendor = findVendorById(activeDrawerVendorId);
+  const vendorId = activeDrawerVendorId;
+  const contextVersion = vendorDrawerContextVersion;
+  const vendor = findVendorById(vendorId);
   const restoring = vendor?.base_stage === "archived";
   const patch = restoring ? { base_stage: "sourcing", status: "active" } : { base_stage: "archived" };
   drawerArchiveButton.disabled = true;
@@ -4529,18 +4580,21 @@ drawerArchiveButton.addEventListener("click", async () => {
 
   try {
     await requirePrivatePage();
-    const current = findVendorById(activeDrawerVendorId) || {};
-    const updated = await updateVendor(activeDrawerVendorId, patch);
+    const current = findVendorById(vendorId) || {};
+    const updated = await updateVendor(vendorId, patch);
     const nextVendor = { ...current, ...updated };
     replaceVendorInState(nextVendor);
     applyVendorUpdateToFunnel(nextVendor);
     renderVendors(currentVendors);
+    if (activeDrawerVendorId !== vendorId || vendorDrawerContextVersion !== contextVersion) return;
     setStatus(drawerEditStatus, restoring ? "Vendor restored to Sourcing Base." : "Vendor archived.", "success");
     openVendorDrawer(nextVendor.id);
   } catch (error) {
-    setStatus(drawerEditStatus, error.message, "error");
+    if (activeDrawerVendorId === vendorId && vendorDrawerContextVersion === contextVersion) {
+      setStatus(drawerEditStatus, error.message, "error");
+    }
   } finally {
-    drawerArchiveButton.disabled = false;
+    if (activeDrawerVendorId === vendorId && vendorDrawerContextVersion === contextVersion) drawerArchiveButton.disabled = false;
   }
 });
 

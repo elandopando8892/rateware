@@ -275,6 +275,7 @@ let bidRoomChatRefreshTimer = null;
 let bidRoomChatLoadVersion = 0;
 let rfxEventsLoadVersion = 0;
 let rfxDetailLoadVersion = 0;
+let participantBulkMutationRunning = false;
 let pendingChatBidUpdate = null;
 let selectedLaneIds = new Set();
 let selectedInvitationIds = new Set();
@@ -4973,8 +4974,8 @@ function updateSelectionControls() {
   const inviteCount = selectedInvitationIds.size;
   if (selectionCount) selectionCount.textContent = `${laneCount} lanes / ${inviteCount} vendors selected`;
   if (autoShortlistButton) autoShortlistButton.disabled = !laneCount;
-  if (inviteSelectedButton) inviteSelectedButton.disabled = !inviteCount;
-  if (archiveSelectedButton) archiveSelectedButton.disabled = !inviteCount;
+  if (inviteSelectedButton) inviteSelectedButton.disabled = participantBulkMutationRunning || !inviteCount;
+  if (archiveSelectedButton) archiveSelectedButton.disabled = participantBulkMutationRunning || !inviteCount;
 }
 
 function splitTags(value) {
@@ -7202,32 +7203,50 @@ autoShortlistButton?.addEventListener("click", async () => {
 });
 
 inviteSelectedButton?.addEventListener("click", async () => {
+  if (participantBulkMutationRunning) return;
   const ids = [...selectedInvitationIds];
   if (!ids.length) return;
   if (!confirmBidRoomBulkAction("mark_invited", ids)) return;
+  const eventId = selectedEventId;
+  participantBulkMutationRunning = true;
+  updateSelectionControls();
   setStatus(actionStatus, "Marking invitations as sent...");
   try {
     const result = await inviteRfxLaneVendors(ids);
-    setStatus(actionStatus, `${result.updated || 0} invitation(s) marked invited.`, "success");
-    selectedInvitationIds.clear();
-    await loadDetail(selectedEventId);
+    if (selectedEventId === eventId) {
+      setStatus(actionStatus, `${result.updated || 0} invitation(s) marked invited.`, "success");
+      selectedInvitationIds.clear();
+      await loadDetail(eventId);
+    }
   } catch (error) {
-    setStatus(actionStatus, error.message, "error");
+    if (selectedEventId === eventId) setStatus(actionStatus, error.message, "error");
+  } finally {
+    participantBulkMutationRunning = false;
+    updateSelectionControls();
   }
 });
 
 archiveSelectedButton?.addEventListener("click", async () => {
+  if (participantBulkMutationRunning) return;
   const ids = [...selectedInvitationIds];
   if (!ids.length) return;
   if (!confirmBidRoomBulkAction("archive_participants", ids)) return;
+  const eventId = selectedEventId;
+  participantBulkMutationRunning = true;
+  updateSelectionControls();
   setStatus(actionStatus, "Archiving invitation rows...");
   try {
     const result = await archiveRfxLaneVendors(ids);
-    setStatus(actionStatus, `${result.updated || 0} invitation row(s) archived.`, "success");
-    selectedInvitationIds.clear();
-    await loadDetail(selectedEventId);
+    if (selectedEventId === eventId) {
+      setStatus(actionStatus, `${result.updated || 0} invitation row(s) archived.`, "success");
+      selectedInvitationIds.clear();
+      await loadDetail(eventId);
+    }
   } catch (error) {
-    setStatus(actionStatus, error.message, "error");
+    if (selectedEventId === eventId) setStatus(actionStatus, error.message, "error");
+  } finally {
+    participantBulkMutationRunning = false;
+    updateSelectionControls();
   }
 });
 

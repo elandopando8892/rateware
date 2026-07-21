@@ -1896,6 +1896,10 @@ assert.doesNotMatch(vendorFunnelMoveSource, /loadVendorFunnel\(/, "Vendor Pipeli
 const vendorDrawerSaveSource = vendorsSource.slice(vendorsSource.indexOf("drawerEditForm.addEventListener"), vendorsSource.indexOf("drawerArchiveButton.addEventListener"));
 assert.match(vendorDrawerSaveSource, /applyVendorUpdateToFunnel/, "Vendor drawer saves should refresh funnel cards from local state");
 assert.doesNotMatch(vendorDrawerSaveSource, /loadVendors\(/, "Vendor drawer saves should not reload the whole Carrier CRM directory");
+assert.match(vendorsSource, /const vendorCellSaveQueues = new Map\(\)/, "Carrier CRM should serialize overlapping saves for the same cell");
+assert.match(vendorsSource, /vendorCellSaveVersions\.get\(saveKey\) !== saveVersion/, "Carrier CRM should ignore stale cell-save completions");
+assert.match(vendorsSource, /loadVersion !== vendorDrawerSupportLoadVersion \|\| activeDrawerVendorId !== vendorId/, "Carrier CRM support should stay scoped to the open vendor drawer");
+assert.match(vendorsSource, /if \(vendorFunnelMutationIds\.has\(vendorId\)\) return false/, "Carrier CRM should reject duplicate per-vendor funnel moves");
 assert.match(rfxEventsSource, /fetchVendors\(\{ limit: pageSize, offset, view: "all", lightweight: true \}\)/, "Bid Room should load CRM carriers through the lightweight vendor path");
 assert.match(rfxEventsSource, /function loadVendorSearchOptions/, "Bid Room should search the full CRM on participant search input");
 assert.match(rfxEventsSource, /const CRM_VENDOR_PAGE_SIZE = 1000;/, "Bid Room should load CRM candidates in larger lightweight pages");
@@ -1905,6 +1909,8 @@ assert.match(rfxEventsSource, /row\.contact_name/, "Bid Room participant search 
 assert.match(rfxEventsSource, /\.normalize\("NFD"\)/, "Bid Room participant search should normalize accents for Spanish names");
 assert.match(rfxEventsSource, /<strong>\$\{escapeHtml\(vendorDisplayName\(row\)\)\}<\/strong>/, "Bid Room participant cards should stay focused on vendor name only");
 assert.match(rfxEventsSource, /Carrier CRM partially loaded/, "Bid Room should keep partial CRM carrier results when a later page fails");
+assert.match(rfxEventsSource, /if \(participantBulkMutationRunning\) return;/, "Bid Room participant bulk actions should reject duplicate submissions");
+assert.match(rfxEventsSource, /if \(selectedEventId === eventId\)[\s\S]*?selectedInvitationIds\.clear\(\);[\s\S]*?await loadDetail\(eventId\)/, "Bid Room participant mutations should only refresh the event that initiated them");
 assert.match(rfxEventsSource, /fetchShippers/, "Bid Room event setup should source customers from Shipper CRM");
 assert.match(rfxEventsSource, /function loadRfxCustomerOptions/, "Bid Room should load customer options through the Shipper CRM API");
 assert.match(rfxEventsSource, /function selectedRfxCustomerName/, "Bid Room should normalize selected Shipper CRM customers before saving");
