@@ -829,6 +829,16 @@ assert.match(apiSource, /function vendorProfileLinksForInvitations/, "RFx outrea
 assert.match(apiSource, /generated_from: "rfx_outreach"/, "RFx-created profile links should be traceable to outreach");
 assert.match(apiSource, /profile_link: context\.profile_link/, "RFx outreach messages should preserve the profile link in metadata");
 assert.match(rfxEventsSource, /Carrier profile link \{\{profile_link\}\}/, "RFx template editor should label the profile link token");
+assert.match(rfxEventsSource, /function canonicalRfxInvitationTemplateName/, "Bid Room templates should canonicalize RFx invitation template names by language");
+assert.match(rfxEventsSource, /function visibleOutreachTemplates/, "Bid Room template select should collapse duplicate RFx invitation templates by language");
+{
+  const saveTemplateStart = rfxEventsSource.indexOf("async function saveSelectedRfxTemplate");
+  const saveTemplateEnd = rfxEventsSource.indexOf("async function publishSelectedWhatsappTemplate", saveTemplateStart);
+  const saveTemplateBody = rfxEventsSource.slice(saveTemplateStart, saveTemplateEnd);
+  assert.match(saveTemplateBody, /ownedCanonicalTemplate/, "Saving a default RFx invitation template should reuse the workspace canonical template");
+  assert.match(saveTemplateBody, /await updateOutreachTemplate\(targetTemplate\.id, payload\)/, "Saving an existing RFx invitation template should update it instead of creating another copy");
+  assert.doesNotMatch(saveTemplateBody, /`[^`]*- custom[^`]*`/, "Saving RFx invitation templates should not create named custom copies");
+}
 assert.match(rfxEventsHtml, /id="rfx-draft-search"/, "Bid Room draft queue should expose a vendor/email search box");
 assert.doesNotMatch(rfxEventsHtml, /rfx-touchpoint-summary/, "Bid Room Step 4 should not duplicate drafts in an invitation tracking section");
 assert.match(rfxEventsSource, /function filteredDraftRows/, "Bid Room draft queue should filter rows before rendering");

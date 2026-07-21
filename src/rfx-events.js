@@ -1631,7 +1631,11 @@ function hasInvitationStarted(invitation) {
 }
 
 function selectedOutreachTemplate() {
-  return outreachTemplates.find((template) => template.id === rfxOutreachTemplate?.value) || outreachTemplates[0] || null;
+  const visibleTemplates = visibleOutreachTemplates();
+  return visibleTemplates.find((template) => template.id === rfxOutreachTemplate?.value)
+    || outreachTemplates.find((template) => template.id === rfxOutreachTemplate?.value)
+    || visibleTemplates[0]
+    || null;
 }
 
 function selectedOutreachTemplateDraft() {
@@ -1650,12 +1654,46 @@ function selectedOutreachTemplateDraft() {
 
 function templateSavePayload(template) {
   return {
-    name: template?.name || "RFx invitation template",
+    name: canonicalRfxInvitationTemplateName(template) || template?.name || "RFx invitation template",
     channel: template?.channel || rfxOutreachChannel?.value || "email",
     subject: rfxTemplateSubject?.value || "",
     html_body: rfxTemplateHtml?.value || "",
-    whatsapp_body: rfxTemplateWhatsapp?.value || ""
+    whatsapp_body: rfxTemplateWhatsapp?.value || "",
+    meta_template_name: template?.meta_template_name || "",
+    meta_template_language: template?.meta_template_language || "",
+    meta_template_namespace: template?.meta_template_namespace || "",
+    meta_template_status: template?.meta_template_status || "",
+    meta_template_category: template?.meta_template_category || "",
+    meta_template_components: Array.isArray(template?.meta_template_components) ? template.meta_template_components : [],
+    placeholders: templatePlaceholders({
+      ...template,
+      subject: rfxTemplateSubject?.value || "",
+      html_body: rfxTemplateHtml?.value || "",
+      whatsapp_body: rfxTemplateWhatsapp?.value || ""
+    })
   };
+}
+
+function canonicalRfxInvitationTemplateName(template) {
+  const name = String(template?.name || "").trim();
+  const match = name.match(/^RFx carrier invitation - (English|Spanish)(?:\s+-\s+custom.*)?$/i);
+  if (!match) return name;
+  const language = match[1].toLowerCase() === "spanish" ? "Spanish" : "English";
+  return `RFx carrier invitation - ${language}`;
+}
+
+function visibleOutreachTemplates() {
+  const templates = [];
+  const seenCanonicalNames = new Set();
+  for (const template of outreachTemplates) {
+    const canonicalName = canonicalRfxInvitationTemplateName(template);
+    const key = canonicalName.toLowerCase();
+    const isCanonicalRfxTemplate = /^rfx carrier invitation - (english|spanish)$/i.test(canonicalName);
+    if (isCanonicalRfxTemplate && seenCanonicalNames.has(key)) continue;
+    if (isCanonicalRfxTemplate) seenCanonicalNames.add(key);
+    templates.push({ ...template, name: canonicalName });
+  }
+  return templates;
 }
 
 function renderRfxTemplateEditor({ force = false } = {}) {
@@ -1681,7 +1719,7 @@ function renderRfxTemplateEditor({ force = false } = {}) {
     if (rfxTemplateSubject) rfxTemplateSubject.value = template.subject || "";
     rfxTemplateHtml.value = template.html_body || "";
     if (rfxTemplateWhatsapp) rfxTemplateWhatsapp.value = template.whatsapp_body || "";
-    const scope = template.owner_email ? "Editable user template." : "Default template: saving creates your editable copy.";
+    const scope = template.owner_email ? "Editable workspace template." : "Default template: saving keeps one workspace copy for this language.";
     setStatus(rfxTemplateEditorStatus, scope, "neutral");
   }
 }
@@ -1957,12 +1995,13 @@ function whatsappTargetModeLabel(value = "") {
 function renderOutreachTemplateSelect() {
   if (!rfxOutreachTemplate) return;
   const currentValue = rfxOutreachTemplate.value;
-  rfxOutreachTemplate.innerHTML = outreachTemplates.length
-    ? outreachTemplates.map((template) => `
+  const templates = visibleOutreachTemplates();
+  rfxOutreachTemplate.innerHTML = templates.length
+    ? templates.map((template) => `
       <option value="${escapeHtml(template.id)}">${escapeHtml(template.name)}${template.owner_email ? "" : " (default)"}</option>
     `).join("")
     : "<option value=\"\">No templates available</option>";
-  if (currentValue && outreachTemplates.some((template) => template.id === currentValue)) {
+  if (currentValue && templates.some((template) => template.id === currentValue)) {
     rfxOutreachTemplate.value = currentValue;
   }
 }
@@ -6049,17 +6088,20 @@ async function saveSelectedRfxTemplate() {
     setStatus(rfxTemplateEditorStatus, "Select a template before saving HTML.", "error");
     return;
   }
-  const isDefaultTemplate = !template.owner_email;
-  const payload = templateSavePayload({
-    ...template,
-    name: isDefaultTemplate ? `${template.name || "RFx invitation template"} - custom` : template.name
-  });
+  const canonicalName = canonicalRfxInvitationTemplateName(template);
+  const ownedCanonicalTemplate = outreachTemplates.find((row) =>
+    row.owner_email
+    && row.id !== template.id
+    && canonicalRfxInvitationTemplateName(row).toLowerCase() === canonicalName.toLowerCase()
+  );
+  const targetTemplate = template.owner_email ? template : ownedCanonicalTemplate;
+  const payload = templateSavePayload({ ...template, name: canonicalName });
   if (saveRfxTemplateHtmlButton) saveRfxTemplateHtmlButton.disabled = true;
-  setStatus(rfxTemplateEditorStatus, isDefaultTemplate ? "Saving editable copy..." : "Saving template...");
+  setStatus(rfxTemplateEditorStatus, "Saving template...");
   try {
-    const row = isDefaultTemplate
-      ? await createOutreachTemplate(payload)
-      : await updateOutreachTemplate(template.id, payload);
+    const row = targetTemplate
+      ? await updateOutreachTemplate(targetTemplate.id, payload)
+      : await createOutreachTemplate(payload);
     outreachTemplates = await fetchOutreachTemplates();
     if (rfxOutreachTemplate && row?.id) rfxOutreachTemplate.value = row.id;
     rfxTemplateEditorTemplateId = row?.id || template.id;
@@ -6068,7 +6110,7 @@ async function saveSelectedRfxTemplate() {
     if (rfxOutreachTemplate && row?.id) rfxOutreachTemplate.value = row.id;
     renderRfxTemplateEditor({ force: true });
     renderOutreachPreview();
-    setStatus(rfxTemplateEditorStatus, isDefaultTemplate ? "Editable copy saved and selected." : "Template saved.", "success");
+    setStatus(rfxTemplateEditorStatus, "Template saved.", "success");
     setStatus(rfxOutreachStatus, "Email template changes saved. Draft queue is ready to generate.", "success");
   } catch (error) {
     setStatus(rfxTemplateEditorStatus, error.message, "error");
