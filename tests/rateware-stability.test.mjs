@@ -1315,7 +1315,14 @@ assert.match(rfxEventsSource, /function laneTableSignatureForTargets/, "Bid Room
 assert.match(rfxEventsSource, /function allOutreachTargetInvitations/, "Bid Room preview should be able to render every active event lane for the selected carrier");
 assert.match(rfxEventsSource, /const sourceTargets = selectedOnly \? outreachTargetInvitations\(\) : allOutreachTargetInvitations\(\)/, "Bid Room preview should default to the full carrier lane package, not only the selected row");
 assert.match(rfxEventsSource, /function draftMatchesCurrentLaneTable/, "Bid Room UI should compare draft route-table signatures against current lanes");
-assert.match(rfxEventsSource, /Business book changed\. Regenerate draft queue to refresh the route table\./, "Draft queue should warn when the rendered route table is stale");
+assert.match(rfxEventsSource, /Business book changed\. Refresh this draft to update its route table\./, "Draft queue should explain how to refresh a stale route table");
+assert.match(rfxEventsSource, /data-rfx-refresh-draft/, "Draft queue should expose a targeted refresh action for stale drafts");
+assert.match(rfxEventsSource, /async function refreshSingleOutreachDraft/, "Stale drafts should be refreshable without rebuilding the full outreach queue");
+assert.match(rfxEventsSource, /await generateOutreachDrafts\(campaignId, \{/, "Draft refresh should reuse the original outreach campaign");
+const outreachSignatureMatch = apiSource.match(/function outreachLaneTableSignature[\s\S]*?\n}\r?\n\r?\nfunction /);
+const outreachSignatureSource = outreachSignatureMatch?.[0] || "";
+assert.ok(outreachSignatureSource, "Outreach lane signature helper should be present");
+assert.doesNotMatch(outreachSignatureSource, /updated_at:/, "Outreach draft freshness should not change for an unrelated row update timestamp");
 assert.match(rfxEventsSource, /&& !isStaleOutreachDraft\(message\)/, "Stale outreach drafts should not be selectable for email, WhatsApp, or group sends");
 const bulkActionSource = apiSource.slice(apiSource.indexOf('if (body.action === "bulk_rate_rows_by_filter")'));
 assert.ok(bulkActionSource.length > 100, "bulk filtered action block should be present");

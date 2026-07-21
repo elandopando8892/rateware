@@ -8914,7 +8914,6 @@ function outreachLaneTableSignature(invitations: Record<string, unknown>[]) {
     return {
       invitation_id: outreachLaneSignatureValue(invitation.id),
       lane_id: outreachLaneSignatureValue(lane.id || invitation.rfx_lane_id),
-      updated_at: outreachLaneSignatureValue(lane.updated_at),
       origin: outreachLaneSignatureValue(lane.origin || lane.origin_city),
       destination: outreachLaneSignatureValue(lane.destination || lane.destination_city),
       origin_site: outreachLaneSignatureValue(lane.origin_notes || lane.origin_site),
