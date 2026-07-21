@@ -5870,31 +5870,37 @@ async function applyRfxAwardDecision(invitationId, role, defaultReason = "") {
   const label = role === "primary" ? "primary award" : "backup";
   const reason = window.prompt(`Reason for ${label}:`, defaultReason || "Procurement decision");
   if (reason === null) return;
+  const eventId = selectedEventId;
   setStatus(rfxAwardStatus, role === "primary" ? "Saving primary award..." : "Saving backup carrier...");
   try {
     await awardRfxLaneVendor(invitationId, {
       award_role: role,
       award_reason: reason || defaultReason || "Procurement decision"
     });
+    if (selectedEventId !== eventId) return;
     setStatus(rfxAwardStatus, role === "primary" ? "Primary award saved." : "Backup carrier saved.", "success");
-    await loadDetail(selectedEventId);
+    await loadDetail(eventId);
+    if (selectedEventId !== eventId) return;
     activateWorkbenchView("award");
   } catch (error) {
-    setStatus(rfxAwardStatus, error.message, "error");
+    if (selectedEventId === eventId) setStatus(rfxAwardStatus, error.message, "error");
   }
 }
 
 async function clearRfxAwardDecision(invitationId) {
   if (!selectedEventId || !invitationId) return;
   if (!window.confirm("Clear this award or backup role? The carrier bid stays in the Bid Room.")) return;
+  const eventId = selectedEventId;
   setStatus(rfxAwardStatus, "Clearing award role...");
   try {
     await clearRfxAward(invitationId);
+    if (selectedEventId !== eventId) return;
     setStatus(rfxAwardStatus, "Award role cleared.", "success");
-    await loadDetail(selectedEventId);
+    await loadDetail(eventId);
+    if (selectedEventId !== eventId) return;
     activateWorkbenchView("award");
   } catch (error) {
-    setStatus(rfxAwardStatus, error.message, "error");
+    if (selectedEventId === eventId) setStatus(rfxAwardStatus, error.message, "error");
   }
 }
 
@@ -5910,11 +5916,13 @@ async function applyRecommendedAwardDecisions() {
     ? `Award ${candidates.length} recommended carrier(s)? ${weak} have weak scores and should be reviewed.`
     : `Award ${candidates.length} recommended carrier(s) as primary awards?`;
   if (!window.confirm(copy)) return;
+  const eventId = selectedEventId;
   if (rfxApplyRecommendedAwardsButton) rfxApplyRecommendedAwardsButton.disabled = true;
   setStatus(rfxAwardStatus, `Applying ${formatNumber(candidates.length)} recommended award(s)...`);
   let saved = 0;
   const failed = [];
   for (const candidate of candidates) {
+    if (selectedEventId !== eventId) return;
     const row = candidate.recommended;
     const reason = decisionRecommendation(row, 1, candidate.bids) || awardReasonDefault(row, 1);
     try {
@@ -5927,7 +5935,9 @@ async function applyRecommendedAwardDecisions() {
       failed.push(`${laneRoute(candidate.lane)}: ${error.message}`);
     }
   }
-  await loadDetail(selectedEventId);
+  if (selectedEventId !== eventId) return;
+  await loadDetail(eventId);
+  if (selectedEventId !== eventId) return;
   activateWorkbenchView("award");
   setStatus(
     rfxAwardStatus,
@@ -5949,11 +5959,14 @@ async function closeoutSelectedAwardsToRateware() {
     return;
   }
   if (!window.confirm(`Create ${pending.length} approved Rateware row(s) from primary awards?`)) return;
+  const eventId = selectedEventId;
   if (rfxCloseoutAwardsButton) rfxCloseoutAwardsButton.disabled = true;
   setStatus(rfxAwardStatus, "Creating Rateware rows from awards...");
   try {
-    const result = await closeoutAwardedRfxToRateware(selectedEventId, { target_status: "approved" });
+    const result = await closeoutAwardedRfxToRateware(eventId, { target_status: "approved" });
+    if (selectedEventId !== eventId) return;
     await loadEvents();
+    if (selectedEventId !== eventId) return;
     activateWorkbenchView("award");
     setStatus(
       rfxAwardStatus,
@@ -5961,8 +5974,10 @@ async function closeoutSelectedAwardsToRateware() {
       result.inserted ? "success" : "neutral"
     );
   } catch (error) {
-    setStatus(rfxAwardStatus, error.message, "error");
-    renderAwardBoard();
+    if (selectedEventId === eventId) {
+      setStatus(rfxAwardStatus, error.message, "error");
+      renderAwardBoard();
+    }
   }
 }
 
@@ -7400,19 +7415,23 @@ manualShortlistButton?.addEventListener("click", async () => {
     setStatus(manualShortlistStatus, "Import the lane book before creating bid invitations. Your selected carriers stay selected and can be saved as a template.", "error");
     return;
   }
+  const eventId = selectedEventId;
+  const lanes = [...currentLanes];
   manualShortlistButton.disabled = true;
   setStatus(manualShortlistStatus, `Adding ${vendorIds.length} participant carrier(s) to this bid...`);
   try {
     let inserted = 0;
-    for (const lane of currentLanes) {
+    for (const lane of lanes) {
+      if (selectedEventId !== eventId) return;
       const result = await shortlistRfxLaneVendors(lane.id, vendorIds);
       inserted += Number(result.inserted || 0);
     }
+    if (selectedEventId !== eventId) return;
     selectedManualVendorIdsState.clear();
     setStatus(manualShortlistStatus, `${inserted} invitation row(s) created for this bid.`, "success");
-    await loadDetail(selectedEventId);
+    await loadDetail(eventId);
   } catch (error) {
-    setStatus(manualShortlistStatus, error.message, "error");
+    if (selectedEventId === eventId) setStatus(manualShortlistStatus, error.message, "error");
   } finally {
     renderManualShortlistControls();
   }
@@ -7454,6 +7473,7 @@ importCarrierTemplateButton?.addEventListener("click", async () => {
     setStatus(carrierTemplateStatus, "Upload the edited CRM catalog with at least one TRUE carrier before importing.", "error");
     return;
   }
+  const eventId = selectedEventId;
   const laneGroups = new Map();
   readyRows.forEach((item) => {
     item.lanes.forEach((lane) => {
@@ -7466,15 +7486,18 @@ importCarrierTemplateButton?.addEventListener("click", async () => {
   try {
     let inserted = 0;
     for (const [laneId, vendorIds] of laneGroups.entries()) {
+      if (selectedEventId !== eventId) return;
       const result = await shortlistRfxLaneVendors(laneId, [...vendorIds]);
       inserted += Number(result.inserted || 0);
     }
+    if (selectedEventId !== eventId) return;
     setStatus(carrierTemplateStatus, `${inserted} invitation row(s) created from the CRM participant catalog.`, "success");
     clearCarrierTemplateImport({ preserveStatus: true });
-    await loadDetail(selectedEventId);
+    await loadDetail(eventId);
+    if (selectedEventId !== eventId) return;
     await loadEvents();
   } catch (error) {
-    setStatus(carrierTemplateStatus, error.message, "error");
+    if (selectedEventId === eventId) setStatus(carrierTemplateStatus, error.message, "error");
   } finally {
     updateCarrierTemplateButton();
   }

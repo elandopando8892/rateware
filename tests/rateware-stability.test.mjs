@@ -150,6 +150,27 @@ for (const mutationName of [
   assert.doesNotMatch(mutationSource, /fetchContactHistory\(\{ rfx_event_id: selectedEventId/, `${mutationName} should not query whichever Bid Room happens to be active later`);
 }
 assert.match(rfxEventsSource, /async function createCurrentOutreachDrafts[\s\S]*const eventId = selectedEventId;[\s\S]*rfx_event_id: eventId[\s\S]*if \(selectedEventId !== eventId\) return result;/, "Draft generation should not reselect or overwrite a different Bid Room after a slow request");
+for (const mutationName of [
+  "applyRfxAwardDecision",
+  "clearRfxAwardDecision",
+  "applyRecommendedAwardDecisions",
+  "closeoutSelectedAwardsToRateware"
+]) {
+  const start = rfxEventsSource.indexOf(`async function ${mutationName}`);
+  const end = rfxEventsSource.indexOf("\nasync function ", start + 1);
+  const mutationSource = rfxEventsSource.slice(start, end > start ? end : undefined);
+  assert.ok(start >= 0, `${mutationName} should exist`);
+  assert.match(mutationSource, /const eventId = selectedEventId;/, `${mutationName} should capture its initiating Bid Room`);
+  assert.match(mutationSource, /selectedEventId !== eventId/, `${mutationName} should stop stale updates after navigation`);
+}
+for (const listenerName of ["manualShortlistButton", "importCarrierTemplateButton"]) {
+  const start = rfxEventsSource.indexOf(`${listenerName}?.addEventListener`);
+  const end = rfxEventsSource.indexOf("\n\n", start + 1);
+  const listenerSource = rfxEventsSource.slice(start, end > start ? end : undefined);
+  assert.ok(start >= 0, `${listenerName} handler should exist`);
+  assert.match(listenerSource, /const eventId = selectedEventId;/, `${listenerName} should capture its initiating Bid Room`);
+  assert.match(listenerSource, /selectedEventId !== eventId/, `${listenerName} should stop stale updates after navigation`);
+}
 assert.match(dashboardSource, /let dashboardLoadVersion = 0/, "Command Center should guard against stale dashboard responses");
 assert.match(dashboardSource, /loadVersion !== dashboardLoadVersion/, "Command Center should ignore stale dashboard responses");
 
