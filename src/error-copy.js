@@ -46,8 +46,8 @@ export function humanizeError(errorOrMessage) {
     return "A processing function failed before finishing. Retry the action; if it repeats, check the function logs.";
   }
   if (
-    lower.includes("401")
-    || lower.includes("unauthorized")
+    lower.includes("http 401")
+    || lower.startsWith("401:")
     || lower.includes("bearer token is required")
     || lower.includes("invalid bearer token")
     || lower.includes("jwt expired")

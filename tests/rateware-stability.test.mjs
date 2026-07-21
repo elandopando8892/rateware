@@ -641,6 +641,7 @@ assert.match(apiSource, /const BULK_SEND_LIMIT = 100;/, "Gmail sending should ke
 assert.match(rfxEventsSource, /Draft queue could not be generated/, "Bid Room Step 4 should show contextual outreach errors");
 assert.match(ratewareApiClientSource, /HTTP \$\{response\.status\}: \$\{apiErrorMessage\(data, text, response\.status\)\}/, "Rateware API client should preserve HTTP status for accurate session error handling");
 assert.match(errorCopySource, /lower\.includes\("invalid bearer token"\)/, "Shared error copy should reserve session messaging for explicit authentication errors");
+assert.doesNotMatch(errorCopySource, /lower\.includes\("unauthorized"\)/, "Shared error copy should not classify arbitrary unauthorized text as a session failure");
 assert.match(rfxEventsSource, /function eventLifecycleRiskSummary/, "Bid Room event lifecycle actions should summarize event risk before changes");
 assert.match(rfxEventsSource, /function confirmEventLifecycleAction/, "Bid Room event lifecycle actions should use a shared confirmation guard");
 assert.match(rfxEventsSource, /confirmEventLifecycleAction\("open"\)/, "Bid Room should confirm before opening an event");
