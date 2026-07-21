@@ -272,6 +272,9 @@ let outreachMessages = [];
 let bidRoomChatThreads = { rows: [], google_chat_configured: false };
 let bidRoomChatFilter = "all";
 let bidRoomChatRefreshTimer = null;
+let bidRoomChatLoadVersion = 0;
+let rfxEventsLoadVersion = 0;
+let rfxDetailLoadVersion = 0;
 let pendingChatBidUpdate = null;
 let selectedLaneIds = new Set();
 let selectedInvitationIds = new Set();
@@ -4213,15 +4216,20 @@ function renderBidRoomChat() {
 }
 
 async function loadBidRoomChat() {
-  if (!selectedEventId) {
+  const loadVersion = ++bidRoomChatLoadVersion;
+  const eventId = selectedEventId;
+  if (!eventId) {
     bidRoomChatThreads = emptyBidRoomChatThreads();
     renderBidRoomChat();
     return;
   }
   try {
-    bidRoomChatThreads = await fetchBidRoomChat(selectedEventId) || emptyBidRoomChatThreads();
+    const threads = await fetchBidRoomChat(eventId);
+    if (loadVersion !== bidRoomChatLoadVersion || selectedEventId !== eventId) return;
+    bidRoomChatThreads = threads || emptyBidRoomChatThreads();
     renderBidRoomChat();
   } catch (error) {
+    if (loadVersion !== bidRoomChatLoadVersion || selectedEventId !== eventId) return;
     bidRoomChatThreads = emptyBidRoomChatThreads();
     renderBidRoomChat();
     setStatus(rfxChatStatus, error.message, "error");
@@ -5525,8 +5533,11 @@ function renderLanes() {
 }
 
 async function loadEvents() {
+  const loadVersion = ++rfxEventsLoadVersion;
   try {
-    events = await fetchRfxEvents();
+    const loadedEvents = await fetchRfxEvents();
+    if (loadVersion !== rfxEventsLoadVersion) return;
+    events = loadedEvents;
     if (!selectedEventId && requestedRfxEventId && events.some((event) => event.id === requestedRfxEventId)) {
       selectedEventId = requestedRfxEventId;
     }
@@ -5553,6 +5564,7 @@ async function loadEvents() {
       renderWizard();
     }
   } catch (error) {
+    if (loadVersion !== rfxEventsLoadVersion) return;
     eventList.innerHTML = errorState(error, {
       title: "Bid events could not load",
       retryAction: "load-rfx-events",
@@ -5671,6 +5683,7 @@ async function saveRfxLaneEdits(laneIds = []) {
 }
 
 async function loadDetail(eventId) {
+  const loadVersion = ++rfxDetailLoadVersion;
   if (selectedEventId !== eventId) {
     selectedDraftMessageIds.clear();
     pendingLaneEdits.clear();
@@ -5680,6 +5693,7 @@ async function loadDetail(eventId) {
   setStatus(actionStatus, "Loading RFx detail...");
   try {
     const detail = await fetchRfxDetail(eventId);
+    if (loadVersion !== rfxDetailLoadVersion || selectedEventId !== eventId) return;
     selectedEvent = detail.event;
     currentLanes = detail.lanes || [];
     contactHistoryRows = [];
@@ -5702,6 +5716,7 @@ async function loadDetail(eventId) {
       fetchOutreachMessages({ rfx_event_id: eventId }),
       fetchBidRoomChat(eventId)
     ]);
+    if (loadVersion !== rfxDetailLoadVersion || selectedEventId !== eventId) return;
     contactHistoryRows = getSettledValue(historyResult, []) || [];
     outreachMessages = getSettledValue(messagesResult, []) || [];
     bidRoomChatThreads = getSettledValue(chatResult, emptyBidRoomChatThreads()) || emptyBidRoomChatThreads();
@@ -5711,7 +5726,7 @@ async function loadDetail(eventId) {
     renderOutreachLaunchpad();
 
     bidRoomChatRefreshTimer = window.setInterval(() => {
-      if (selectedEventId === eventId) loadBidRoomChat();
+      if (selectedEventId === eventId && loadVersion === rfxDetailLoadVersion) loadBidRoomChat();
     }, 15000);
     const warnings = [
       getSettledWarning(historyResult, "Contact history"),
@@ -5727,6 +5742,7 @@ async function loadDetail(eventId) {
     );
     ensureSelectedEventChatThread(eventId, { silent: true });
   } catch (error) {
+    if (loadVersion !== rfxDetailLoadVersion || selectedEventId !== eventId) return;
     setStatus(actionStatus, humanizeError(error.message), "error");
     updateEventActionState();
   }

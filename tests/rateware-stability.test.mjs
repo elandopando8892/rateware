@@ -36,6 +36,7 @@ const catalogWorkbenchHtml = readFileSync(new URL("../catalog-workbench.html", i
 const interpretationMemoryHtml = readFileSync(new URL("../interpretation-memory.html", import.meta.url), "utf8");
 const carrierProfileApiSource = readFileSync(new URL("../supabase/functions/carrier-profile-api/index.ts", import.meta.url), "utf8");
 const rfxEventsSource = readFileSync(new URL("../src/rfx-events.js", import.meta.url), "utf8");
+const dashboardSource = readFileSync(new URL("../src/dashboard.js", import.meta.url), "utf8");
 const rfxEventsHtml = readFileSync(new URL("../rfx-events.html", import.meta.url), "utf8");
 const rfxProcessSource = readFileSync(new URL("../src/rfx-process.js", import.meta.url), "utf8");
 const rfxProcessServiceSource = readFileSync(new URL("../src/rfx-process-service.js", import.meta.url), "utf8");
@@ -114,6 +115,20 @@ const whatsappWebhookSource = readFileSync(new URL("../supabase/functions/whatsa
 const rfxInvitationTableSource = rfxEventsSource.slice(rfxEventsSource.indexOf("function laneTableLabels"), rfxEventsSource.indexOf("function firstOutreachTarget"));
 const apiInvitationTableSource = apiSource.slice(apiSource.indexOf("function outreachLaneTableLabels"), apiSource.indexOf("function phoneForWhatsapp"));
 const marksmanSignatureAsset = new URL("../assets/marksman-email-signature.png", import.meta.url);
+
+assert.match(vendorsSource, /let vendorDirectoryLoadVersion = 0/, "Carrier CRM should guard against stale directory responses");
+assert.match(vendorsSource, /let vendorFunnelLoadVersion = 0/, "Carrier CRM should guard against stale funnel responses");
+assert.match(vendorsSource, /let vendorIntelligenceLoadVersion = 0/, "Carrier CRM should guard against stale intelligence responses");
+assert.match(vendorsSource, /loadVersion !== vendorDirectoryLoadVersion/, "Carrier directory should ignore stale response rendering");
+assert.match(vendorsSource, /loadVersion !== vendorFunnelLoadVersion/, "Procurement funnel should ignore stale response rendering");
+assert.match(vendorsSource, /loadVersion !== vendorIntelligenceLoadVersion/, "Vendor intelligence should ignore stale response rendering");
+assert.match(rfxEventsSource, /let rfxEventsLoadVersion = 0/, "Bid Room event list should guard against stale responses");
+assert.match(rfxEventsSource, /let rfxDetailLoadVersion = 0/, "Bid Room detail should guard against stale event responses");
+assert.match(rfxEventsSource, /let bidRoomChatLoadVersion = 0/, "Bid Room chat should guard against stale refreshes");
+assert.match(rfxEventsSource, /loadVersion !== rfxDetailLoadVersion \|\| selectedEventId !== eventId/, "Bid Room detail should retain the active event context");
+assert.match(rfxEventsSource, /loadVersion !== bidRoomChatLoadVersion \|\| selectedEventId !== eventId/, "Bid Room chat should retain the active event context");
+assert.match(dashboardSource, /let dashboardLoadVersion = 0/, "Command Center should guard against stale dashboard responses");
+assert.match(dashboardSource, /loadVersion !== dashboardLoadVersion/, "Command Center should ignore stale dashboard responses");
 
 for (const domain of ["gmail.com", "hotmail.com", "yahoo.com", "outlook.com", "yahoo.com.mx"]) {
   assert.match(apiSource, new RegExp(`"${domain.replace(".", "\\.")}"`), `generic domain ${domain} should be blocked`);

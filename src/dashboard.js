@@ -317,14 +317,19 @@ function renderLoadError(error) {
   }
 }
 
+let dashboardLoadVersion = 0;
+
 async function loadDashboard() {
+  const loadVersion = ++dashboardLoadVersion;
   renderDashboardLoading();
   try {
     const session = await requirePrivatePage();
-    if (!session?.token) return;
+    if (loadVersion !== dashboardLoadVersion || !session?.token) return;
     const summary = await callRatewareApi("dashboard_summary");
+    if (loadVersion !== dashboardLoadVersion) return;
     renderSummary(summary);
   } catch (error) {
+    if (loadVersion !== dashboardLoadVersion) return;
     renderLoadError(error);
   }
 }

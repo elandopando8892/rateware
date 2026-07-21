@@ -172,6 +172,9 @@ let currentVendorIntelligenceRows = [];
 let selectedVendorIntelligenceIds = new Set();
 let vendorIntelligenceTotal = 0;
 let vendorIntelligenceHasMore = false;
+let vendorDirectoryLoadVersion = 0;
+let vendorIntelligenceLoadVersion = 0;
+let vendorFunnelLoadVersion = 0;
 const vendorIntelligencePageSize = 500;
 let vendorFunnelStages = [];
 let vendorFunnelRows = [];
@@ -1733,6 +1736,7 @@ function loadedVendorIntelligenceSummary(sourceSummary = {}) {
 
 async function loadVendorIntelligence(options = {}) {
   if (!vendorIntelligenceBody) return;
+  const loadVersion = ++vendorIntelligenceLoadVersion;
   const append = options?.append === true;
   if (!append) {
     vendorIntelligenceBody.innerHTML = tableLoadingState(9, {
@@ -1754,6 +1758,7 @@ async function loadVendorIntelligence(options = {}) {
       offset: append ? vendorIntelligenceRows.length : 0,
       search: vendorIntelligenceSearch?.value || ""
     });
+    if (loadVersion !== vendorIntelligenceLoadVersion) return;
     const nextRows = result.rows || [];
     vendorIntelligenceRows = append ? [...vendorIntelligenceRows, ...nextRows] : nextRows;
     vendorIntelligenceTotal = result.total || result.summary?.total_vendors || vendorIntelligenceRows.length;
@@ -1768,6 +1773,7 @@ async function loadVendorIntelligence(options = {}) {
       warning ? "warning" : "success"
     );
   } catch (error) {
+    if (loadVersion !== vendorIntelligenceLoadVersion) return;
     vendorIntelligenceBody.innerHTML = tableErrorState(9, error, {
       title: "Vendor intelligence could not load",
       retryAction: "refresh-vendor-intelligence",
@@ -1775,6 +1781,7 @@ async function loadVendorIntelligence(options = {}) {
     });
     setStatus(vendorIntelligenceStatus, error.message, "error");
   } finally {
+    if (loadVersion !== vendorIntelligenceLoadVersion) return;
     if (refreshVendorIntelligenceButton) refreshVendorIntelligenceButton.disabled = false;
     if (loadMoreVendorIntelligenceButton) loadMoreVendorIntelligenceButton.disabled = !vendorIntelligenceHasMore;
   }
@@ -2163,6 +2170,7 @@ function clearVendorFunnelFilters() {
 
 async function loadVendorFunnel() {
   if (!vendorFunnelBoard) return;
+  const loadVersion = ++vendorFunnelLoadVersion;
   if (refreshVendorFunnelButton) refreshVendorFunnelButton.disabled = true;
   vendorFunnelBoard.innerHTML = loadingState({
     title: "Loading procurement funnel",
@@ -2173,6 +2181,7 @@ async function loadVendorFunnel() {
   try {
     await requirePrivatePage();
     const result = await fetchVendorFunnel();
+    if (loadVersion !== vendorFunnelLoadVersion) return;
     renderVendorFunnel(result);
     renderVendorFunnelFilters();
     const warning = Array.isArray(result.warnings) ? result.warnings.find(Boolean) : "";
@@ -2182,6 +2191,7 @@ async function loadVendorFunnel() {
       warning ? "warning" : "success"
     );
   } catch (error) {
+    if (loadVersion !== vendorFunnelLoadVersion) return;
     vendorFunnelBoard.innerHTML = errorState(error, {
       title: "Procurement funnel could not load",
       retryAction: "refresh-vendor-funnel",
@@ -2189,6 +2199,7 @@ async function loadVendorFunnel() {
     });
     setStatus(vendorFunnelStatus, error.message, "error");
   } finally {
+    if (loadVersion !== vendorFunnelLoadVersion) return;
     if (refreshVendorFunnelButton) refreshVendorFunnelButton.disabled = false;
   }
 }
@@ -2932,6 +2943,7 @@ async function loadSegments() {
 }
 
 async function loadVendors() {
+  const loadVersion = ++vendorDirectoryLoadVersion;
   renderVendorTableHeader();
   vendorsBody.innerHTML = tableLoadingState(vendorTableColumnCount(), {
     title: `Loading ${baseStageLabel()}`,
@@ -2955,6 +2967,7 @@ async function loadVendors() {
       limit: vendorPageSize,
       offset: vendorPageOffset
     });
+    if (loadVersion !== vendorDirectoryLoadVersion) return;
     const rows = result.rows || [];
     vendorTotalCount = result.total ?? rows.length;
     allVendors = rows;
@@ -2964,6 +2977,7 @@ async function loadVendors() {
       renderVendors(rows);
     }
   } catch (error) {
+    if (loadVersion !== vendorDirectoryLoadVersion) return;
     vendorsBody.innerHTML = tableErrorState(vendorTableColumnCount(), error, {
       title: `${baseStageLabel()} could not load`,
       retryAction: "load-vendors",
@@ -2971,6 +2985,7 @@ async function loadVendors() {
     });
     vendorTotalCount = 0;
   } finally {
+    if (loadVersion !== vendorDirectoryLoadVersion) return;
     refreshButton.disabled = false;
     updatePaginationState();
   }
