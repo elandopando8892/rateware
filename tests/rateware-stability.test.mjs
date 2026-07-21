@@ -1271,6 +1271,8 @@ assert.match(vendorSupportSource, /fetchVendorSupportTickets/, "Vendor Support U
 assert.match(vendorSupportSource, /updateVendorSupportTicket/, "Vendor Support UI should update ticket state");
 assert.match(vendorSupportSource, /let supportLoadVersion = 0;/, "Vendor Support filters should version concurrent loads");
 assert.match(vendorSupportSource, /loadVersion !== supportLoadVersion/, "Vendor Support should ignore stale filter responses");
+assert.match(vendorSupportSource, /const supportTicketMutationQueues = new Map\(\)/, "Vendor Support should serialize updates per ticket");
+assert.match(vendorSupportSource, /supportTicketMutationVersions\.get\(id\) === mutationVersion/, "Vendor Support should suppress stale mutation status updates");
 assert.match(vendorSupportServiceSource, /list_vendor_support_tickets/, "Vendor Support service should call the ticket listing action");
 assert.match(vendorSupportServiceSource, /update_vendor_support_ticket/, "Vendor Support service should call the ticket update action");
 assert.match(vendorsHtml, /drawer-vendor-support/, "Vendor profile drawer should include a Vendor Support section");
@@ -1320,6 +1322,10 @@ assert.match(vendorImprovementSource, /matchingRows = rows\.filter/, "Vendor CI 
 assert.match(vendorImprovementSource, /sequence !== vendorSearchSequence/, "Vendor CI vendor search should not render older searches over newer input");
 assert.match(vendorImprovementSource, /let improvementLoadVersion = 0;/, "Vendor CI case filters should version concurrent loads");
 assert.match(vendorImprovementSource, /loadVersion !== improvementLoadVersion/, "Vendor CI should ignore stale case responses");
+assert.match(vendorImprovementSource, /if \(createCaseRunning\) return;/, "Vendor CI should prevent duplicate case creation");
+assert.match(vendorImprovementSource, /const improvementCaseMutationQueues = new Map\(\)/, "Vendor CI should serialize updates per case");
+assert.match(vendorImprovementSource, /improvementCaseSubmissionIds\.has\(id\)/, "Vendor CI should prevent duplicate carrier submissions");
+assert.match(vendorImprovementSource, /scorecardMutationIds\.has\(vendorId\)/, "Vendor CI should prevent duplicate scorecard saves");
 assert.doesNotMatch(vendorImprovementSource, /fetchVendors\(\{ base_stage: "procurement"/, "Vendor CI create-case picker should not be limited to Procurement vendors");
 assert.match(apiSource, /async function buildVendorValueCurve/, "Vendor CI API should compute the carrier value curve from all CRM vendors");
 assert.match(apiSource, /fetchVendorRateMetricsSafe\(supabase, user\)/, "Vendor CI value curve should include Rateware quote signals");

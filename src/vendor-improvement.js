@@ -82,6 +82,11 @@ let vendorSearchSequence = 0;
 let improvementLoadVersion = 0;
 let selectedVendor = null;
 let activePlaybook = null;
+let createCaseRunning = false;
+const improvementCaseMutationQueues = new Map();
+const improvementCaseMutationVersions = new Map();
+const improvementCaseSubmissionIds = new Set();
+const scorecardMutationIds = new Set();
 
 const CRM_VENDOR_SEARCH_LIMIT = 1000;
 const CRM_VENDOR_RENDER_LIMIT = 40;
@@ -626,12 +631,16 @@ async function loadImprovementCases() {
 
 async function createCase(event) {
   event.preventDefault();
+  if (createCaseRunning) return;
   const vendorId = vendorIdInput?.value;
   if (!vendorId) {
     setStatus("Search the Carrier CRM and choose a vendor before creating a case.", "error");
     setVendorPickerMessage("Choose one of the CRM search results before creating the case.", "error");
     return;
   }
+  const submitButton = createForm?.querySelector('[type="submit"]');
+  createCaseRunning = true;
+  if (submitButton) submitButton.disabled = true;
   setStatus("Creating improvement case...");
   try {
     await requirePrivatePage();
@@ -661,6 +670,9 @@ async function createCase(event) {
     setStatus("Improvement case created.", "success");
   } catch (error) {
     setStatus(error, "error");
+  } finally {
+    createCaseRunning = false;
+    if (submitButton) submitButton.disabled = false;
   }
 }
 
@@ -672,20 +684,37 @@ function nextStatus(current) {
 
 async function updateCase(id, patch) {
   if (!id) return;
-  setStatus("Updating improvement case...");
+  const mutationVersion = (improvementCaseMutationVersions.get(id) || 0) + 1;
+  improvementCaseMutationVersions.set(id, mutationVersion);
+  const priorMutation = improvementCaseMutationQueues.get(id) || Promise.resolve();
+  const mutation = priorMutation.catch(() => {}).then(async () => {
+    setStatus("Updating improvement case...");
+    try {
+      await requirePrivatePage();
+      const row = await updateVendorImprovementCase(id, patch);
+      caseRows = caseRows.map((item) => (item.id === id ? { ...item, ...row } : item));
+      renderCases();
+      if (improvementCaseMutationVersions.get(id) === mutationVersion) {
+        setStatus("Improvement case updated.", "success");
+      }
+    } catch (error) {
+      if (improvementCaseMutationVersions.get(id) === mutationVersion) setStatus(error, "error");
+      throw error;
+    }
+  });
+  improvementCaseMutationQueues.set(id, mutation);
   try {
-    await requirePrivatePage();
-    const row = await updateVendorImprovementCase(id, patch);
-    caseRows = caseRows.map((item) => (item.id === id ? { ...item, ...row } : item));
-    renderCases();
-    setStatus("Improvement case updated.", "success");
-  } catch (error) {
-    setStatus(error, "error");
+    await mutation;
+  } catch {
+    // The latest mutation reports its own user-facing error.
+  } finally {
+    if (improvementCaseMutationQueues.get(id) === mutation) improvementCaseMutationQueues.delete(id);
   }
 }
 
 async function submitCase(id) {
-  if (!id) return;
+  if (!id || improvementCaseSubmissionIds.has(id)) return;
+  improvementCaseSubmissionIds.add(id);
   setStatus("Submitting requirement by email and scheduling reminders...");
   try {
     await requirePrivatePage();
@@ -702,6 +731,8 @@ async function submitCase(id) {
   } catch (error) {
     setStatus(error, "error");
     await loadImprovementCases();
+  } finally {
+    improvementCaseSubmissionIds.delete(id);
   }
 }
 
@@ -722,7 +753,8 @@ async function runDueReminders() {
 
 async function saveScorecard(rowElement) {
   const vendorId = rowElement?.dataset.ciScorecardVendorId;
-  if (!vendorId) return;
+  if (!vendorId || scorecardMutationIds.has(vendorId)) return;
+  scorecardMutationIds.add(vendorId);
   const scorecard = { vendor_id: vendorId };
   rowElement.querySelectorAll("[data-ci-scorecard-field]").forEach((input) => {
     scorecard[input.dataset.ciScorecardField] = input.value;
@@ -735,6 +767,8 @@ async function saveScorecard(rowElement) {
     setStatus("Scorecard saved.", "success");
   } catch (error) {
     setStatus(error, "error");
+  } finally {
+    scorecardMutationIds.delete(vendorId);
   }
 }
 

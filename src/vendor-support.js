@@ -18,6 +18,8 @@ const metricGoogleChat = document.querySelector("#support-google-chat");
 let supportRows = [];
 let searchTimer = null;
 let supportLoadVersion = 0;
+const supportTicketMutationQueues = new Map();
+const supportTicketMutationVersions = new Map();
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -180,15 +182,33 @@ async function loadSupportTickets() {
 
 async function updateTicket(id, patch) {
   if (!id) return;
-  setStatus("Updating support ticket...");
+  const mutationVersion = (supportTicketMutationVersions.get(id) || 0) + 1;
+  supportTicketMutationVersions.set(id, mutationVersion);
+  const priorMutation = supportTicketMutationQueues.get(id) || Promise.resolve();
+  const mutation = priorMutation.catch(() => {}).then(async () => {
+    setStatus("Updating support ticket...");
+    try {
+      await requirePrivatePage();
+      const row = await updateVendorSupportTicket(id, patch);
+      supportRows = supportRows.map((item) => (item.id === id ? { ...item, ...row } : item));
+      renderRows();
+      if (supportTicketMutationVersions.get(id) === mutationVersion) {
+        setStatus("Support ticket updated.", "success");
+      }
+    } catch (error) {
+      if (supportTicketMutationVersions.get(id) === mutationVersion) {
+        setStatus(humanizeError(error), "error");
+      }
+      throw error;
+    }
+  });
+  supportTicketMutationQueues.set(id, mutation);
   try {
-    await requirePrivatePage();
-    const row = await updateVendorSupportTicket(id, patch);
-    supportRows = supportRows.map((item) => (item.id === id ? { ...item, ...row } : item));
-    renderRows();
-    setStatus("Support ticket updated.", "success");
-  } catch (error) {
-    setStatus(humanizeError(error), "error");
+    await mutation;
+  } catch {
+    // The latest mutation reports its own user-facing error.
+  } finally {
+    if (supportTicketMutationQueues.get(id) === mutation) supportTicketMutationQueues.delete(id);
   }
 }
 
