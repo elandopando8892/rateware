@@ -48,6 +48,7 @@ export function humanizeError(errorOrMessage) {
   if (
     lower.includes("http 401")
     || lower.startsWith("401:")
+    || lower.startsWith("401 ")
     || lower.includes("bearer token is required")
     || lower.includes("invalid bearer token")
     || lower.includes("jwt expired")
