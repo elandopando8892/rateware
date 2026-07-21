@@ -61,7 +61,10 @@ export async function callRatewareApi(action, payload = {}) {
     data = { error: text };
   }
   if (!response.ok) {
-    throw new Error(apiErrorMessage(data, text, response.status));
+    const error = new Error(`HTTP ${response.status}: ${apiErrorMessage(data, text, response.status)}`);
+    error.status = response.status;
+    error.code = data?.code || data?.status || response.status;
+    throw error;
   }
   return data;
 }

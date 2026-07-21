@@ -639,6 +639,8 @@ for (const [label, source] of [
 assert.match(apiSource, /const BULK_SELECTED_ID_LIMIT = 1000;/, "General bulk actions should support up to 1,000 selected rows per request");
 assert.match(apiSource, /const BULK_SEND_LIMIT = 100;/, "Gmail sending should keep the smaller send batch size separate from general bulk actions");
 assert.match(rfxEventsSource, /Draft queue could not be generated/, "Bid Room Step 4 should show contextual outreach errors");
+assert.match(ratewareApiClientSource, /HTTP \$\{response\.status\}: \$\{apiErrorMessage\(data, text, response\.status\)\}/, "Rateware API client should preserve HTTP status for accurate session error handling");
+assert.match(errorCopySource, /lower\.includes\("invalid bearer token"\)/, "Shared error copy should reserve session messaging for explicit authentication errors");
 assert.match(rfxEventsSource, /function eventLifecycleRiskSummary/, "Bid Room event lifecycle actions should summarize event risk before changes");
 assert.match(rfxEventsSource, /function confirmEventLifecycleAction/, "Bid Room event lifecycle actions should use a shared confirmation guard");
 assert.match(rfxEventsSource, /confirmEventLifecycleAction\("open"\)/, "Bid Room should confirm before opening an event");
@@ -1280,6 +1282,10 @@ assert.match(apiSource, /function requireBulkConfirmation/, "API should require 
 assert.match(apiSource, /function requirePreviewCountForFilteredBulk/, "API should require dry-run preview counts before large filtered bulk actions");
 assert.match(apiSource, /function apiErrorInfo/, "Rateware API should serialize object errors before returning them to the UI");
 assert.match(apiSource, /function apiErrorStatus/, "Rateware API should return appropriate status codes for serialized backend errors");
+assert.match(apiSource, /function safeOperationalError/, "Rateware API errors should be sanitized before returning or auditing them");
+assert.match(apiSource, /const explicitAuthFailure = \[/, "Rateware API should classify only explicit authentication failures as 401");
+assert.doesNotMatch(apiSource.slice(apiSource.indexOf("function apiErrorStatus"), apiSource.indexOf("function bulkFilterKey")), /message\.includes\("kinde"\)|message\.includes\("jwt"\)/, "Database errors mentioning Kinde or JWT should not be misclassified as session failures");
+assert.match(apiSource, /action === "api\.error" \? safeOperationalError\(objectRecord\(row\.metadata\)\.error/, "Observability should expose a sanitized API error detail");
 assert.match(apiSource, /BULK_SEND_LIMIT = 100/, "API should cap direct Gmail send batches");
 assert.match(apiSource, /BULK_SHORTLIST_VENDOR_LIMIT = 1000/, "Bid Room participant shortlist should support up to 1,000 vendors per request");
 assert.match(apiSource, /BULK_FILTER_CONFIRM_THRESHOLD = 250/, "API should require confirmation for large filtered database actions");

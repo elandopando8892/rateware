@@ -2366,10 +2366,27 @@ function apiErrorInfo(error: unknown) {
   return { message, name: null, code: null, details: null, hint: null };
 }
 
+function safeOperationalError(value: unknown, limit = 500) {
+  const raw = cleanText(value) || "Rateware API request failed.";
+  return raw
+    .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [redacted]")
+    .replace(/((?:access|refresh|client|app|api|verify)[_-]?(?:token|secret|key)|authorization)\s*[:=]\s*[^\s,;]+/gi, "$1=[redacted]")
+    .slice(0, limit);
+}
+
 function apiErrorStatus(info: ReturnType<typeof apiErrorInfo>) {
   const code = cleanText(info.code)?.toLowerCase() || "";
   const message = cleanText(info.message)?.toLowerCase() || "";
-  if (code === "401" || message.includes("bearer token") || message.includes("kinde") || message.includes("jwt")) return 401;
+  const explicitAuthFailure = [
+    "bearer token is required",
+    "invalid bearer token",
+    "jwt expired",
+    "invalid jwt",
+    "token has expired",
+    "authentication required",
+    "unauthorized"
+  ].some((marker) => message.includes(marker));
+  if (code === "401" || explicitAuthFailure) return 401;
   if (code === "403" || message.includes("forbidden") || message.includes("not allowed")) return 403;
   if (code === "404" || message.includes("not found")) return 404;
   return 500;
@@ -13690,7 +13707,12 @@ async function buildObservabilityEvents(
       source,
       severity: auditSeverity(row),
       title: cleanText(row.summary) || cleanText(row.action) || "Workspace activity",
-      detail: [row.actor_email, row.entity_type, row.entity_id].filter(Boolean).join(" / "),
+      detail: [
+        row.actor_email,
+        row.entity_type,
+        row.entity_id,
+        action === "api.error" ? safeOperationalError(objectRecord(row.metadata).error || objectRecord(row.metadata).details || objectRecord(row.metadata).hint) : ""
+      ].filter(Boolean).join(" / "),
       status: cleanText(row.action),
       entity_type: cleanText(row.entity_type),
       entity_id: cleanText(row.entity_id),
@@ -22561,7 +22583,7 @@ Deno.serve(async (request) => {
     return jsonResponse({ error: "Unknown action." }, 400);
   } catch (error) {
     const errorInfo = apiErrorInfo(error);
-    const errorMessage = errorInfo.message;
+    const errorMessage = safeOperationalError(errorInfo.message);
     if (supabase && user) {
       try {
         await writeAuditLog(
@@ -22573,7 +22595,7 @@ Deno.serve(async (request) => {
           `Rateware API action failed: ${cleanText(body.action) || "unknown action"}`,
           {
             action: cleanText(body.action),
-            error: errorMessage.slice(0, 500),
+            error: errorMessage,
             code: errorInfo.code,
             details: errorInfo.details,
             hint: errorInfo.hint,

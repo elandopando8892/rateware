@@ -1,7 +1,11 @@
 function rawErrorMessage(errorOrMessage) {
   if (!errorOrMessage) return "";
   if (typeof errorOrMessage === "string") return errorOrMessage;
-  if (errorOrMessage instanceof Error) return rawErrorMessage(errorOrMessage.message);
+  if (errorOrMessage instanceof Error) {
+    const status = errorOrMessage.status || errorOrMessage.code;
+    const message = rawErrorMessage(errorOrMessage.message);
+    return status && message ? `${status}: ${message}` : message;
+  }
   if (typeof errorOrMessage !== "object") return String(errorOrMessage);
 
   const nested = errorOrMessage.message || errorOrMessage.error || errorOrMessage.details || errorOrMessage.hint;
@@ -41,7 +45,17 @@ export function humanizeError(errorOrMessage) {
   if (lower.includes("edge function") || lower.includes("function failed")) {
     return "A processing function failed before finishing. Retry the action; if it repeats, check the function logs.";
   }
-  if (lower.includes("401") || lower.includes("unauthorized") || lower.includes("jwt") || lower.includes("sign in")) {
+  if (
+    lower.includes("401")
+    || lower.includes("unauthorized")
+    || lower.includes("bearer token is required")
+    || lower.includes("invalid bearer token")
+    || lower.includes("jwt expired")
+    || lower.includes("invalid jwt")
+    || lower.includes("token has expired")
+    || lower.includes("sign in with kinde")
+    || lower.includes("authentication required")
+  ) {
     return "Your session needs to be refreshed. Sign in again and retry the action.";
   }
   if (lower.includes("403") || lower.includes("forbidden")) {
