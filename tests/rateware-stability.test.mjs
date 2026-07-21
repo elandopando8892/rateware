@@ -2190,5 +2190,7 @@ assert.match(uploadHistorySource, /if \(uploadBulkActionRunning\) return;/, "Upl
 assert.match(outreachSource, /let outreachLoadVersion = 0;/, "Outreach should version full workspace loads");
 assert.match(outreachSource, /loadVersion !== outreachMessagesLoadVersion \|\| selectedCampaignId !== campaignId/, "Outreach should not render messages from a previously selected campaign");
 assert.match(outreachSource, /if \(outreachMessageMutationRunning\) return;/, "Outreach bulk message updates should reject duplicate submissions while running");
+assert.match(apiSource, /for \(const emailBatch of chunkValues\(cleanEmails, 75\)\)/, "Outreach suppression checks should batch large recipient lists before querying PostgREST");
+assert.match(apiSource, /\.in\("email", emailBatch\)/, "Outreach suppression checks should query each bounded recipient batch");
 
 console.log("Rateware stability guards passed.");

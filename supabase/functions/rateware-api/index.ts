@@ -1346,14 +1346,21 @@ async function suppressedEmailSet(
 ) {
   const cleanEmails = normalizeEmailList(emails);
   if (!cleanEmails.length) return new Set<string>();
-  const result = await supabase
-    .from("email_suppression_list")
-    .select("email,status")
-    .eq("owner_email", user.owner_email)
-    .in("email", cleanEmails)
-    .in("status", blockedEmailStatuses());
-  if (result.error) throw result.error;
-  return new Set((result.data || []).map((row) => cleanText(row.email)).filter(Boolean) as string[]);
+
+  // PostgREST serializes `.in()` values in the URL. Keep the request safely below
+  // proxy URL limits when a Bid Room outreach wave contains hundreds of contacts.
+  const rows: Record<string, unknown>[] = [];
+  for (const emailBatch of chunkValues(cleanEmails, 75)) {
+    const result = await supabase
+      .from("email_suppression_list")
+      .select("email,status")
+      .eq("owner_email", user.owner_email)
+      .in("email", emailBatch)
+      .in("status", blockedEmailStatuses());
+    if (result.error) throw result.error;
+    rows.push(...(result.data || []));
+  }
+  return new Set(rows.map((row) => cleanText(row.email)).filter(Boolean) as string[]);
 }
 
 function firstSendableVendorEmail(vendor: Record<string, unknown>, suppressedEmails = new Set<string>()) {
