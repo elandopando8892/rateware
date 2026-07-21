@@ -831,6 +831,10 @@ assert.match(apiSource, /profile_link: context\.profile_link/, "RFx outreach mes
 assert.match(rfxEventsSource, /Carrier profile link \{\{profile_link\}\}/, "RFx template editor should label the profile link token");
 assert.match(rfxEventsSource, /function canonicalRfxInvitationTemplateName/, "Bid Room templates should canonicalize RFx invitation template names by language");
 assert.match(rfxEventsSource, /function visibleOutreachTemplates/, "Bid Room template select should collapse duplicate RFx invitation templates by language");
+assert.match(rfxEventsHtml, /id="restore-rfx-template-original"/, "Bid Room template editor should offer a persistent restore-original action");
+assert.match(rfxEventsSource, /function originalRfxInvitationTemplate/, "Bid Room template restore should resolve the system default by language");
+assert.match(rfxEventsSource, /await deleteOutreachTemplate\(template\.id\)/, "Restoring a saved workspace template should remove only the workspace override");
+assert.match(rfxEventsSource, /Original template restored/, "Bid Room template restore should confirm the active system template");
 {
   const saveTemplateStart = rfxEventsSource.indexOf("async function saveSelectedRfxTemplate");
   const saveTemplateEnd = rfxEventsSource.indexOf("async function publishSelectedWhatsappTemplate", saveTemplateStart);

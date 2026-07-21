@@ -26,6 +26,7 @@ import {
 import {
   createOutreachCampaign,
   createOutreachTemplate,
+  deleteOutreachTemplate,
   fetchContactHistory,
   fetchOutreachMessages,
   fetchOutreachTemplates,
@@ -173,6 +174,7 @@ const rfxTemplateHtml = document.querySelector("#rfx-template-html");
 const rfxTemplateWhatsapp = document.querySelector("#rfx-template-whatsapp");
 const saveRfxTemplateHtmlButton = document.querySelector("#save-rfx-template-html");
 const resetRfxTemplateHtmlButton = document.querySelector("#reset-rfx-template-html");
+const restoreRfxTemplateOriginalButton = document.querySelector("#restore-rfx-template-original");
 const rfxTemplateEditorStatus = document.querySelector("#rfx-template-editor-status");
 const touchpointSummary = document.querySelector("#rfx-touchpoint-summary");
 const touchpointList = document.querySelector("#rfx-touchpoint-list");
@@ -1771,6 +1773,13 @@ function canonicalRfxInvitationTemplateName(template) {
   return `RFx carrier invitation - ${language}`;
 }
 
+function originalRfxInvitationTemplate(template) {
+  const canonicalName = canonicalRfxInvitationTemplateName(template).toLowerCase();
+  if (!canonicalName) return null;
+  return outreachTemplates.find((row) => !row.owner_email
+    && canonicalRfxInvitationTemplateName(row).toLowerCase() === canonicalName) || null;
+}
+
 function visibleOutreachTemplates() {
   const templates = [];
   const seenCanonicalNames = new Set();
@@ -1790,7 +1799,7 @@ function renderRfxTemplateEditor({ force = false } = {}) {
   const template = selectedOutreachTemplate();
   const hasTemplate = Boolean(template);
   rfxTemplateEditor.toggleAttribute("data-empty", !hasTemplate);
-  [rfxTemplateSubject, rfxTemplateHtml, rfxTemplateWhatsapp, saveRfxTemplateHtmlButton, resetRfxTemplateHtmlButton].forEach((field) => {
+  [rfxTemplateSubject, rfxTemplateHtml, rfxTemplateWhatsapp, saveRfxTemplateHtmlButton, resetRfxTemplateHtmlButton, restoreRfxTemplateOriginalButton].forEach((field) => {
     if (field) field.disabled = !hasTemplate;
   });
   if (!template) {
@@ -6278,6 +6287,43 @@ async function saveSelectedRfxTemplate() {
   }
 }
 
+async function restoreSelectedRfxTemplateOriginal() {
+  const template = selectedOutreachTemplate();
+  const original = originalRfxInvitationTemplate(template);
+  if (!template || !original) {
+    setStatus(rfxTemplateEditorStatus, "The original system template is not available for this language.", "error");
+    return;
+  }
+  const hasWorkspaceOverride = Boolean(template.owner_email);
+  const confirmation = hasWorkspaceOverride
+    ? "Restore the original system template? This removes the saved workspace version for this language and discards unsaved changes."
+    : "Discard unsaved changes and restore the original system template?";
+  if ((hasWorkspaceOverride || rfxTemplateEditorDirty) && !window.confirm(confirmation)) return;
+  if (restoreRfxTemplateOriginalButton) restoreRfxTemplateOriginalButton.disabled = true;
+  if (saveRfxTemplateHtmlButton) saveRfxTemplateHtmlButton.disabled = true;
+  setStatus(rfxTemplateEditorStatus, hasWorkspaceOverride ? "Removing workspace override..." : "Restoring original template...");
+  try {
+    if (hasWorkspaceOverride) await deleteOutreachTemplate(template.id);
+    outreachTemplates = await fetchOutreachTemplates();
+    const restored = originalRfxInvitationTemplate(original) || original;
+    renderOutreachTemplateSelect();
+    if (rfxOutreachTemplate) rfxOutreachTemplate.value = restored.id;
+    rfxTemplateEditorTemplateId = restored.id;
+    rfxTemplateEditorDirty = false;
+    rfxTemplateVisualEditing = false;
+    renderRfxTemplateEditor({ force: true });
+    renderOutreachPreview();
+    setStatus(rfxTemplateEditorStatus, "Original template restored. You can edit it again and save a new workspace version.", "success");
+    setStatus(rfxOutreachStatus, "Original English/Spanish invitation template is active.", "success");
+  } catch (error) {
+    setStatus(rfxTemplateEditorStatus, error.message, "error");
+    setStatus(rfxOutreachStatus, error.message, "error");
+  } finally {
+    if (restoreRfxTemplateOriginalButton) restoreRfxTemplateOriginalButton.disabled = false;
+    if (saveRfxTemplateHtmlButton) saveRfxTemplateHtmlButton.disabled = false;
+  }
+}
+
 async function publishSelectedWhatsappTemplate() {
   const template = selectedOutreachTemplate();
   if (!template?.id) {
@@ -7502,6 +7548,10 @@ resetRfxTemplateHtmlButton?.addEventListener("click", () => {
   rfxTemplateVisualEditing = false;
   renderRfxTemplateEditor({ force: true });
   renderOutreachPreview();
+});
+
+restoreRfxTemplateOriginalButton?.addEventListener("click", () => {
+  restoreSelectedRfxTemplateOriginal().catch((error) => setStatus(rfxTemplateEditorStatus, error.message, "error"));
 });
 
 rfxOutreachForm?.addEventListener("submit", async (event) => {
