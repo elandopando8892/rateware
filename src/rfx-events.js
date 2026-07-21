@@ -1906,6 +1906,41 @@ function laneTableHtml(targets = [], language = "en") {
   `;
 }
 
+function laneSignatureValue(value) {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "boolean") return value ? "1" : "0";
+  return String(value).trim();
+}
+
+function laneTableSignatureForTargets(targets = []) {
+  const rows = targets.map(({ lane = {}, invitation = {} }) => ({
+    invitation_id: laneSignatureValue(invitation.id),
+    lane_id: laneSignatureValue(lane.id || invitation.rfx_lane_id),
+    updated_at: laneSignatureValue(lane.updated_at),
+    origin: laneSignatureValue(lane.origin || lane.origin_city),
+    destination: laneSignatureValue(lane.destination || lane.destination_city),
+    origin_site: laneSignatureValue(lane.origin_notes || lane.origin_site),
+    destination_site: laneSignatureValue(lane.destination_notes || lane.destination_site),
+    equipment: laneSignatureValue(lane.equipment),
+    trailer: laneSignatureValue(lane.trailer),
+    config: laneSignatureValue(lane.config),
+    hazmat: laneSignatureValue(lane.hazmat),
+    temperature_controlled: laneSignatureValue(lane.temperature_controlled),
+    operation: laneSignatureValue(lane.operation),
+    service: laneSignatureValue(lane.service),
+    weekly_volume: laneSignatureValue(lane.weekly_volume),
+    target_rate: laneSignatureValue(lane.target_rate),
+    currency: laneSignatureValue(lane.currency)
+  })).sort((left, right) => `${left.invitation_id}:${left.lane_id}`.localeCompare(`${right.invitation_id}:${right.lane_id}`));
+  return JSON.stringify(rows);
+}
+
+function targetLaneTableSignature(target) {
+  const carrierTargets = outreachTargetsForCarrier(target);
+  const targetRows = carrierTargets.length ? carrierTargets : target ? [target] : [];
+  return laneTableSignatureForTargets(targetRows);
+}
+
 function firstOutreachTarget() {
   return outreachTargetInvitations().find((target) => targetHasChannel(target, rfxOutreachChannel?.value || "email"))
     || outreachTargetInvitations()[0]
@@ -1944,6 +1979,7 @@ function sampleOutreachContext(target, template = selectedOutreachTemplateDraft(
     lane_count: carrierTargets.length || (target ? 1 : 0),
     lane_table: laneTableHtml(targetRows, language),
     lane_rows_text: laneRowsText(targetRows, language),
+    lane_table_signature: laneTableSignatureForTargets(targetRows),
     bid_link: invitation.invitation_token ? portalUrl(invitation.invitation_token, targetRows.length) : `${window.location.origin}/rfx-bid.html?token=preview`,
     profile_link: `${window.location.origin}/carrier-profile.html?token=profile-preview`
   };
@@ -4369,10 +4405,31 @@ function messageRecipient(message) {
   return message.normalized_recipient_phone || message.recipient_phone || message.vendors?.whatsapp_phone || "";
 }
 
+function draftPrimaryTarget(message = {}) {
+  const invitationIds = outreachMessageInvitationIds(message);
+  if (!invitationIds.size) return null;
+  return outreachTargetInvitations().find((target) => invitationIds.has(String(target.invitation?.id || ""))) || null;
+}
+
+function draftMatchesCurrentLaneTable(message = {}, target = draftPrimaryTarget(message)) {
+  const metadata = message.metadata && typeof message.metadata === "object" ? message.metadata : {};
+  const storedSignature = String(metadata.lane_table_signature || "").trim();
+  if (!storedSignature) return false;
+  const currentSignature = targetLaneTableSignature(target);
+  return Boolean(currentSignature && storedSignature === currentSignature);
+}
+
+function isStaleOutreachDraft(message = {}) {
+  const status = String(message.status || "").toLowerCase();
+  if (status === "archived" || status === "sent" || status === "replied") return false;
+  const target = draftPrimaryTarget(message);
+  return Boolean(target && !draftMatchesCurrentLaneTable(message, target));
+}
+
 function selectableEmailDrafts(rows = []) {
   return rows.filter((message) => {
     const status = String(message.status || "").toLowerCase();
-    return message.channel === "email" && Boolean(message.recipient_email) && ["drafted", "queued", "failed"].includes(status);
+    return message.channel === "email" && Boolean(message.recipient_email) && ["drafted", "queued", "failed"].includes(status) && !isStaleOutreachDraft(message);
   });
 }
 
@@ -4381,7 +4438,8 @@ function selectableWhatsappDrafts(rows = []) {
     const status = String(message.status || "").toLowerCase();
     return message.channel === "whatsapp"
       && Boolean(message.normalized_recipient_phone || message.recipient_phone || message.vendors?.whatsapp_phone)
-      && ["drafted", "queued", "failed"].includes(status);
+      && ["drafted", "queued", "failed"].includes(status)
+      && !isStaleOutreachDraft(message);
   });
 }
 
@@ -4413,7 +4471,7 @@ function whatsappDraftStatusDetail(message = {}, templateStatus = "") {
 function selectableWhatsappGroupDrafts(rows = []) {
   return rows.filter((message) => {
     const status = String(message.status || "").toLowerCase();
-    return message.channel === "whatsapp_group" && ["drafted", "queued", "failed"].includes(status);
+    return message.channel === "whatsapp_group" && ["drafted", "queued", "failed"].includes(status) && !isStaleOutreachDraft(message);
   });
 }
 
@@ -4528,7 +4586,9 @@ function targetHasActiveOutreachDraft(target, requestedChannels = ["email"]) {
     draftRowsForEvent()
       .filter((message) => {
         const status = String(message.status || "").toLowerCase();
-        return status !== "archived" && outreachMessageInvitationIds(message).has(invitationId);
+        return status !== "archived"
+          && outreachMessageInvitationIds(message).has(invitationId)
+          && draftMatchesCurrentLaneTable(message, target);
       })
       .map((message) => String(message.channel || "").toLowerCase())
       .filter(Boolean)
@@ -4626,6 +4686,7 @@ function renderDraftQueue() {
   const rows = draftRowsForSelectedOutreachChannel(allRows);
   const filteredRows = filteredDraftRows(rows);
   const actionable = rows.filter((message) => ["drafted", "queued", "failed"].includes(String(message.status || "").toLowerCase()));
+  const staleRows = rows.filter(isStaleOutreachDraft);
   const emailSelectable = selectableEmailDrafts(rows);
   const whatsappSelectable = selectableWhatsappDrafts(rows);
   const whatsappGroupSelectable = selectableWhatsappGroupDrafts(rows);
@@ -4633,7 +4694,7 @@ function renderDraftQueue() {
   updateDraftSendControls(filteredRows, rows);
   const channelLabel = outreachChannelLabel(selectedOutreachChannel());
   draftSummary.textContent = rows.length
-    ? `${formatNumber(hasSearch ? filteredRows.length : rows.length)}${hasSearch ? ` of ${formatNumber(rows.length)}` : ""} ${channelLabel} draft rows | ${formatNumber(actionable.length)} need action | ${formatNumber(selectedDraftMessageIds.size)} selected${allRows.length !== rows.length ? ` | ${formatNumber(allRows.length)} total all channels` : ""}`
+    ? `${formatNumber(hasSearch ? filteredRows.length : rows.length)}${hasSearch ? ` of ${formatNumber(rows.length)}` : ""} ${channelLabel} draft rows | ${formatNumber(actionable.length)} need action${staleRows.length ? ` | ${formatNumber(staleRows.length)} stale` : ""} | ${formatNumber(selectedDraftMessageIds.size)} selected${allRows.length !== rows.length ? ` | ${formatNumber(allRows.length)} total all channels` : ""}`
     : selectedEventId && allRows.length
       ? `No ${channelLabel} drafts for this bid event. Switch channel or generate this queue.`
       : "No drafts generated for this bid event.";
@@ -4682,11 +4743,14 @@ function renderDraftQueue() {
     const metadata = message.metadata && typeof message.metadata === "object" ? message.metadata : {};
     const templateStatus = String(metadata.whatsapp_template_status || (message.whatsapp_template_name ? "APPROVED" : "NOT_PUBLISHED")).toUpperCase();
     const draftTitle = message.subject || (isWhatsapp ? "WhatsApp RFx invitation" : isWhatsappGroup ? "WhatsApp group invitation" : "No subject");
-    const readinessDetail = isWhatsapp && templateStatus !== "APPROVED"
-      ? whatsappDraftStatusDetail(message, templateStatus)
-      : "";
+    const staleDraft = isStaleOutreachDraft(message);
+    const readinessDetail = staleDraft
+      ? "Business book changed. Regenerate draft queue to refresh the route table."
+      : isWhatsapp && templateStatus !== "APPROVED"
+        ? whatsappDraftStatusDetail(message, templateStatus)
+        : "";
     return `
-      <tr class="${checked ? "is-selected-row" : ""}" data-rfx-draft-id="${escapeHtml(message.id)}">
+      <tr class="${checked ? "is-selected-row" : ""}${staleDraft ? " is-stale-row" : ""}" data-rfx-draft-id="${escapeHtml(message.id)}">
         <td><input type="checkbox" data-rfx-draft-select="${escapeHtml(message.id)}" ${checked ? "checked" : ""} /></td>
         <td>
           <strong>${escapeHtml(message.vendors?.vendor_name || message.vendors?.domain || "Vendor")}</strong>
@@ -4694,7 +4758,7 @@ function renderDraftQueue() {
         </td>
         <td>${escapeHtml(recipient)}</td>
         <td>${escapeHtml(message.channel || "-")}</td>
-        <td><span class="status-pill ${status === "sent" ? "success" : status === "failed" ? "danger" : status === "archived" ? "muted" : "neutral"}">${escapeHtml(status)}</span></td>
+        <td><span class="status-pill ${staleDraft ? "warning" : status === "sent" ? "success" : status === "failed" ? "danger" : status === "archived" ? "muted" : "neutral"}">${escapeHtml(staleDraft ? "stale" : status)}</span></td>
         <td>
           <strong>${escapeHtml(draftTitle)}</strong>
           <small>${escapeHtml(readinessDetail || message.delivery_error || preview || "No preview")}</small>

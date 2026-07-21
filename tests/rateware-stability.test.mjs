@@ -1302,6 +1302,12 @@ assert.match(appHtml, /vendor-improvement\.html/, "Dashboard navigation should i
 assert.match(apiSource, /const invitationIdChunks = invitationIds\.length \? chunkValues\(invitationIds, 100\) : \[\[\]\]/, "Outreach draft generation should read selected invitations in small id batches");
 assert.match(apiSource, /for \(const chunk of chunkValues\(rows, 100\)\)/, "Outreach draft generation should upsert draft messages in small batches");
 assert.match(apiSource, /return jsonResponse\(\{\s*generated: generatedMessages\.length,\s*rows: \[\],\s*skipped,\s*campaign_id: campaign\.id,\s*whatsapp_notifier: whatsappNotifier\s*\}\)/, "Outreach draft generation should avoid returning large HTML draft payloads");
+assert.match(apiSource, /function outreachLaneTableSignature/, "Outreach draft generation should fingerprint the current Business Book route table");
+assert.match(apiSource, /lane_table_signature: context\.lane_table_signature/, "Outreach drafts should persist the Business Book route-table signature in metadata");
+assert.match(rfxEventsSource, /function laneTableSignatureForTargets/, "Bid Room UI should fingerprint current carrier lane groups");
+assert.match(rfxEventsSource, /function draftMatchesCurrentLaneTable/, "Bid Room UI should compare draft route-table signatures against current lanes");
+assert.match(rfxEventsSource, /Business book changed\. Regenerate draft queue to refresh the route table\./, "Draft queue should warn when the rendered route table is stale");
+assert.match(rfxEventsSource, /&& !isStaleOutreachDraft\(message\)/, "Stale outreach drafts should not be selectable for email, WhatsApp, or group sends");
 const bulkActionSource = apiSource.slice(apiSource.indexOf('if (body.action === "bulk_rate_rows_by_filter")'));
 assert.ok(bulkActionSource.length > 100, "bulk filtered action block should be present");
 assert.doesNotMatch(

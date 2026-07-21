@@ -8902,6 +8902,38 @@ function outreachLaneTableHtml(invitations: Record<string, unknown>[], language 
   `;
 }
 
+function outreachLaneSignatureValue(value: unknown) {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "boolean") return value ? "1" : "0";
+  return String(value).trim();
+}
+
+function outreachLaneTableSignature(invitations: Record<string, unknown>[]) {
+  const rows = invitations.map((invitation) => {
+    const lane = laneRecordFromInvitation(invitation);
+    return {
+      invitation_id: outreachLaneSignatureValue(invitation.id),
+      lane_id: outreachLaneSignatureValue(lane.id || invitation.rfx_lane_id),
+      updated_at: outreachLaneSignatureValue(lane.updated_at),
+      origin: outreachLaneSignatureValue(lane.origin || lane.origin_city),
+      destination: outreachLaneSignatureValue(lane.destination || lane.destination_city),
+      origin_site: outreachLaneSignatureValue(lane.origin_notes || lane.origin_site),
+      destination_site: outreachLaneSignatureValue(lane.destination_notes || lane.destination_site),
+      equipment: outreachLaneSignatureValue(lane.equipment),
+      trailer: outreachLaneSignatureValue(lane.trailer),
+      config: outreachLaneSignatureValue(lane.config),
+      hazmat: outreachLaneSignatureValue(cleanBoolean(lane.hazmat)),
+      temperature_controlled: outreachLaneSignatureValue(cleanBoolean(lane.temperature_controlled)),
+      operation: outreachLaneSignatureValue(lane.operation),
+      service: outreachLaneSignatureValue(lane.service),
+      weekly_volume: outreachLaneSignatureValue(lane.weekly_volume),
+      target_rate: outreachLaneSignatureValue(lane.target_rate),
+      currency: outreachLaneSignatureValue(lane.currency)
+    };
+  }).sort((left, right) => `${left.invitation_id}:${left.lane_id}`.localeCompare(`${right.invitation_id}:${right.lane_id}`));
+  return JSON.stringify(rows);
+}
+
 function phoneForWhatsapp(value: unknown) {
   const digits = String(value || "").replace(/[^\d]/g, "");
   return digits.length >= 10 ? digits : null;
@@ -10528,6 +10560,7 @@ function outreachContext(
     lane_count: invitationGroup.length,
     lane_table: outreachLaneTableHtml(invitationGroup, language),
     lane_rows_text: outreachLaneRowsText(invitationGroup, language),
+    lane_table_signature: outreachLaneTableSignature(invitationGroup),
     bid_link: bidLink,
     profile_link: profileLink || carrierProfileUrl(appOrigin, "")
   };
@@ -20280,6 +20313,7 @@ Deno.serve(async (request) => {
                 profile_link: context.profile_link,
                 generated_at: new Date().toISOString(),
                 lane_count: invitationGroup.length,
+                lane_table_signature: context.lane_table_signature,
                 rfx_lane_vendor_ids: groupInvitationIds,
                 rfx_lane_ids: laneIds,
                 sender_email: senderEmail,
@@ -20330,6 +20364,7 @@ Deno.serve(async (request) => {
                 profile_link: context.profile_link,
                 generated_at: new Date().toISOString(),
                 lane_count: invitationGroup.length,
+                lane_table_signature: context.lane_table_signature,
                 rfx_lane_vendor_ids: groupInvitationIds,
                 rfx_lane_ids: laneIds,
                 sender_email: senderEmail,
@@ -20386,6 +20421,7 @@ Deno.serve(async (request) => {
                 profile_link: context.profile_link,
                 generated_at: new Date().toISOString(),
                 lane_count: invitationGroup.length,
+                lane_table_signature: context.lane_table_signature,
                 rfx_lane_vendor_ids: groupInvitationIds,
                 rfx_lane_ids: laneIds,
                 group_name: groupName,
