@@ -92,6 +92,12 @@ const elements = {
 let searchTimer;
 let carrierSearchTimer;
 let routeSearchTimer;
+let ratebookListLoadVersion = 0;
+let ratebookDetailLoadVersion = 0;
+let ratebookRouteLoadVersion = 0;
+let ratebookQuoteReviewLoadVersion = 0;
+let ratebookCarrierLoadVersion = 0;
+let ratebookAuditLoadVersion = 0;
 
 function text(value, fallback = "-") {
   const normalized = String(value ?? "").trim();
@@ -486,12 +492,16 @@ function closeRouteDrawer() {
 
 async function showRouteDetail(sourceDemandLaneId) {
   if (!state.activeRatebookId || !sourceDemandLaneId) return;
+  const ratebookId = state.activeRatebookId;
+  const loadVersion = ++ratebookRouteLoadVersion;
   openRouteDrawer();
   elements.drawerContent.innerHTML = `<div class="ratebook-drawer-loading">Loading RFI route details...</div>`;
   try {
-    const result = await fetchRatebookRouteDetail(state.activeRatebookId, sourceDemandLaneId);
+    const result = await fetchRatebookRouteDetail(ratebookId, sourceDemandLaneId);
+    if (loadVersion !== ratebookRouteLoadVersion || state.activeRatebookId !== ratebookId) return;
     renderRouteDetail(result);
   } catch (error) {
+    if (loadVersion !== ratebookRouteLoadVersion || state.activeRatebookId !== ratebookId) return;
     elements.drawerContent.innerHTML = `<div class="ratebook-drawer-error">${escapeHtml(humanizeError(error))}</div>`;
   }
 }
@@ -558,14 +568,19 @@ function closeRatebookQuoteReview() {
 
 async function showRatebookQuoteReview(packageLaneId, open = true) {
   if (!state.activeRatebookId || !packageLaneId) return;
+  const ratebookId = state.activeRatebookId;
+  const loadVersion = ++ratebookQuoteReviewLoadVersion;
   state.quoteReviewPackageLaneId = packageLaneId;
   if (open && !elements.quoteReviewDialog.open) elements.quoteReviewDialog.showModal();
   elements.quoteReviewDescription.textContent = "Loading carrier offers for this route...";
   elements.quoteReviewContent.innerHTML = `<div class="ratebook-quote-review-empty">Loading submitted carrier offers...</div>`;
   try {
-    state.quoteReview = await fetchRatebookRouteQuotes(state.activeRatebookId, packageLaneId);
+    const result = await fetchRatebookRouteQuotes(ratebookId, packageLaneId);
+    if (loadVersion !== ratebookQuoteReviewLoadVersion || state.activeRatebookId !== ratebookId || state.quoteReviewPackageLaneId !== packageLaneId) return;
+    state.quoteReview = result;
     renderRatebookQuoteReview(state.quoteReview);
   } catch (error) {
+    if (loadVersion !== ratebookQuoteReviewLoadVersion || state.activeRatebookId !== ratebookId || state.quoteReviewPackageLaneId !== packageLaneId) return;
     elements.quoteReviewContent.innerHTML = `<div class="ratebook-quote-review-empty is-error">${escapeHtml(humanizeError(error))}</div>`;
   }
 }
@@ -641,12 +656,16 @@ function renderMagicLinks() {
 
 async function loadCarriers() {
   if (!state.activeRatebookId) return;
+  const ratebookId = state.activeRatebookId;
+  const loadVersion = ++ratebookCarrierLoadVersion;
   elements.carrierList.innerHTML = `<div class="ratebook-carrier-empty">Loading Carrier CRM...</div>`;
   try {
-    const result = await fetchRatebookCarriers(state.activeRatebookId, { search: state.carrierSearch });
+    const result = await fetchRatebookCarriers(ratebookId, { search: state.carrierSearch });
+    if (loadVersion !== ratebookCarrierLoadVersion || state.activeRatebookId !== ratebookId) return;
     state.carriers = result.rows || [];
     renderCarrierList();
   } catch (error) {
+    if (loadVersion !== ratebookCarrierLoadVersion || state.activeRatebookId !== ratebookId) return;
     elements.carrierList.innerHTML = `<div class="ratebook-carrier-empty">${escapeHtml(humanizeError(error))}</div>`;
   }
 }
@@ -709,12 +728,17 @@ function renderRatebookAudit(audit) {
 
 async function showRatebookAudit() {
   if (!state.activeRatebookId) return;
+  const ratebookId = state.activeRatebookId;
+  const loadVersion = ++ratebookAuditLoadVersion;
   elements.auditContent.innerHTML = `<div class="ratebook-drawer-loading">Checking Ratebook source and routes...</div>`;
   elements.auditDialog.showModal();
   try {
-    state.audit = await fetchRatebookAudit(state.activeRatebookId);
+    const result = await fetchRatebookAudit(ratebookId);
+    if (loadVersion !== ratebookAuditLoadVersion || state.activeRatebookId !== ratebookId) return;
+    state.audit = result;
     renderRatebookAudit(state.audit);
   } catch (error) {
+    if (loadVersion !== ratebookAuditLoadVersion || state.activeRatebookId !== ratebookId) return;
     elements.auditContent.innerHTML = `<div class="ratebook-drawer-error">${escapeHtml(humanizeError(error))}</div>`;
   }
 }
@@ -823,6 +847,7 @@ async function sendRatebookDistributionDrafts() {
 }
 
 async function selectRatebook(ratebookId, updateList = true) {
+  const loadVersion = ++ratebookDetailLoadVersion;
   state.activeRatebookId = ratebookId;
   state.routeSearch = "";
   state.routeSegmentKey = "";
@@ -830,19 +855,23 @@ async function selectRatebook(ratebookId, updateList = true) {
   if (updateList) renderBookList();
   elements.detail.innerHTML = `<div class="ratebook-detail-loading">Loading Ratebook routes...</div>`;
   try {
-    state.detail = await fetchRatebook(ratebookId);
+    const detail = await fetchRatebook(ratebookId);
+    if (loadVersion !== ratebookDetailLoadVersion || state.activeRatebookId !== ratebookId) return;
+    state.detail = detail;
     renderRatebookDetail();
     const url = new URL(window.location.href);
     url.searchParams.set("ratebook", ratebookId);
     url.searchParams.delete("project");
     window.history.replaceState({}, "", url);
   } catch (error) {
+    if (loadVersion !== ratebookDetailLoadVersion || state.activeRatebookId !== ratebookId) return;
     state.detail = null;
     elements.detail.innerHTML = `<div class="ratebook-detail-error"><strong>Ratebook could not load</strong><span>${escapeHtml(humanizeError(error))}</span></div>`;
   }
 }
 
 async function loadRatebooks() {
+  const loadVersion = ++ratebookListLoadVersion;
   setStatus(elements.status, "Loading route books...");
   try {
     const result = await fetchRatebooks({
@@ -853,6 +882,7 @@ async function loadRatebooks() {
       segment_key: state.segmentKey || undefined,
       project_id: state.projectId || undefined,
     });
+    if (loadVersion !== ratebookListLoadVersion) return;
     state.rows = result.rows || [];
     state.facets = result.facets || { shippers: [], sources: [], segments: [] };
     renderBookFilters();
@@ -864,6 +894,7 @@ async function loadRatebooks() {
     if (state.activeRatebookId) await selectRatebook(state.activeRatebookId, false);
     else renderEmptyDetail("No Ratebooks found");
   } catch (error) {
+    if (loadVersion !== ratebookListLoadVersion) return;
     state.rows = [];
     state.facets = { shippers: [], sources: [], segments: [] };
     renderBookFilters();
