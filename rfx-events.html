@@ -173,7 +173,9 @@
                   </label>
                   <label>
                     Customer
-                    <input id="rfx-customer" placeholder="Customer / shipper" />
+                    <input id="rfx-customer" list="rfx-customer-options" autocomplete="off" placeholder="Search Shipper CRM customer" />
+                    <datalist id="rfx-customer-options"></datalist>
+                    <small id="rfx-customer-status" class="form-hint">Searches Shipper CRM customers.</small>
                   </label>
                   <label>
                     Type

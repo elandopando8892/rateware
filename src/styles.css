@@ -22716,6 +22716,25 @@ textarea:focus,
   min-height: 30px;
 }
 
+.bid-room-form .form-hint {
+  display: block;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.64rem;
+  font-weight: 720;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bid-room-form .form-hint[data-tone="error"] {
+  color: var(--danger);
+}
+
+.bid-room-form .form-hint[data-tone="warning"] {
+  color: #9a6700;
+}
+
 .bid-room-form button,
 .bid-room-form .status-message {
   grid-column: span 2;

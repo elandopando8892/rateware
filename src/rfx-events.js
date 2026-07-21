@@ -41,6 +41,7 @@ import {
   updateOutreachTemplate
 } from "./outreach-service.js?v=20260711-whatsapp-automatic-v4";
 import { createVendorSegment, deleteVendorSegment, fetchVendorSegments, fetchVendors, updateVendorSegment } from "./vendor-service.js";
+import { fetchShippers } from "./shipper-service.js";
 import { humanizeError } from "./error-copy.js";
 import { errorState, stateBlock, tableErrorState, tableState } from "./ui-state.js";
 import { initWorkbenchTabs } from "./workbench-tabs.js";
@@ -52,6 +53,8 @@ const XBF_BUY_SELL_MIN_MARKUP_PCT = 7.5;
 const XBF_BUY_SELL_MAX_MARKUP_PCT = 15;
 const CRM_VENDOR_PAGE_SIZE = 1000;
 const CRM_VENDOR_SEARCH_LIMIT = 1000;
+const RFX_CUSTOMER_SEARCH_LIMIT = 50;
+const RFX_CUSTOMER_SEARCH_DEBOUNCE_MS = 180;
 
 function metaNotifierStatus(value = "NOT_PUBLISHED") {
   const normalized = String(value || "NOT_PUBLISHED").trim().toUpperCase().replace(/[\s-]+/g, "_");
@@ -71,6 +74,8 @@ const eventForm = document.querySelector("#rfx-event-form");
 const rfxIdInput = document.querySelector("#rfx-id");
 const rfxNameInput = document.querySelector("#rfx-name");
 const rfxCustomerInput = document.querySelector("#rfx-customer");
+const rfxCustomerOptions = document.querySelector("#rfx-customer-options");
+const rfxCustomerStatus = document.querySelector("#rfx-customer-status");
 const rfxTypeInput = document.querySelector("#rfx-type");
 const rfxBidVisibilityInput = document.querySelector("#rfx-bid-visibility");
 const rfxDueDateInput = document.querySelector("#rfx-due-date");
@@ -283,6 +288,8 @@ let vendorOptionsLoading = true;
 let vendorSearchLoading = false;
 let vendorSearchTimer = null;
 let vendorSearchSequence = 0;
+let rfxCustomerRows = [];
+let rfxCustomerSearchTimer = null;
 let vendorSegmentsLoading = true;
 let savedVendorSegments = [];
 let selectedManualVendorIdsState = new Set();
@@ -390,11 +397,93 @@ function setStatus(element, message, tone = "neutral") {
   element.dataset.tone = tone;
 }
 
+function shipperCustomerName(row = {}) {
+  return String(row.shipper_name || row.legal_name || row.domain || "").trim();
+}
+
+function shipperCustomerLabel(row = {}) {
+  const location = [row.headquarters_city, row.headquarters_state, row.headquarters_country].filter(Boolean).join(", ");
+  return [
+    row.legal_name && row.legal_name !== row.shipper_name ? row.legal_name : "",
+    row.domain,
+    row.relationship_stage,
+    row.segment,
+    location
+  ].filter(Boolean).join(" | ");
+}
+
+function renderRfxCustomerOptions(rows = []) {
+  if (!rfxCustomerOptions) return;
+  rfxCustomerOptions.innerHTML = rows.map((row) => {
+    const name = shipperCustomerName(row);
+    if (!name) return "";
+    const label = shipperCustomerLabel(row);
+    return `<option value="${escapeHtml(name)}"${label ? ` label="${escapeHtml(label)}"` : ""}></option>`;
+  }).join("");
+
+  if (rfxCustomerStatus) {
+    rfxCustomerStatus.textContent = rows.length
+      ? `${formatNumber(rows.length)} Shipper CRM customer(s) available.`
+      : "No Shipper CRM customers found. You can still type a customer name.";
+    rfxCustomerStatus.dataset.tone = rows.length ? "neutral" : "warning";
+  }
+}
+
+async function loadRfxCustomerOptions(search = "") {
+  if (!rfxCustomerOptions) return;
+  const term = String(search || "").trim();
+  if (rfxCustomerStatus) {
+    rfxCustomerStatus.textContent = term ? "Searching Shipper CRM customers..." : "Loading Shipper CRM customers...";
+    rfxCustomerStatus.dataset.tone = "neutral";
+  }
+  try {
+    const result = await fetchShippers({
+      search: term,
+      status: "all",
+      limit: RFX_CUSTOMER_SEARCH_LIMIT,
+      offset: 0
+    });
+    rfxCustomerRows = Array.isArray(result?.rows) ? result.rows : [];
+    renderRfxCustomerOptions(rfxCustomerRows);
+  } catch (error) {
+    if (rfxCustomerStatus) {
+      rfxCustomerStatus.textContent = `Shipper CRM customer lookup failed: ${humanizeError(error.message)}`;
+      rfxCustomerStatus.dataset.tone = "error";
+    }
+  }
+}
+
+function queueRfxCustomerSearch() {
+  if (!rfxCustomerInput) return;
+  window.clearTimeout(rfxCustomerSearchTimer);
+  rfxCustomerSearchTimer = window.setTimeout(() => {
+    loadRfxCustomerOptions(rfxCustomerInput.value);
+  }, RFX_CUSTOMER_SEARCH_DEBOUNCE_MS);
+}
+
+function selectedRfxCustomerName() {
+  const value = String(rfxCustomerInput?.value || "").trim();
+  if (!value) return "";
+  const normalized = normalizeLookupText(value);
+  const matched = rfxCustomerRows.find((row) => {
+    return [row.shipper_name, row.legal_name, row.domain]
+      .filter(Boolean)
+      .some((candidate) => normalizeLookupText(candidate) === normalized);
+  });
+  return shipperCustomerName(matched) || value;
+}
+
+function normalizeSelectedRfxCustomer() {
+  if (!rfxCustomerInput) return;
+  const selectedName = selectedRfxCustomerName();
+  if (selectedName) rfxCustomerInput.value = selectedName;
+}
+
 function rfxEventPayload() {
   return {
     rfx_id: rfxIdInput.value,
     name: rfxNameInput.value,
-    customer: rfxCustomerInput.value,
+    customer: selectedRfxCustomerName(),
     event_type: rfxTypeInput.value,
     bid_visibility_mode: rfxBidVisibilityInput?.value || "anonymous_rank",
     due_date: rfxDueDateInput.value
@@ -1842,9 +1931,15 @@ function sameVendorInvitation(left = {}, right = {}) {
   return Boolean(leftKey && rightKey && String(leftKey).toLowerCase() === String(rightKey).toLowerCase());
 }
 
-function outreachTargetsForCarrier(target) {
+function allOutreachTargetInvitations() {
+  return currentLanes
+    .flatMap((lane) => activeInvitations(lane).map((invitation) => ({ lane, invitation })));
+}
+
+function outreachTargetsForCarrier(target, { selectedOnly = false } = {}) {
   if (!target?.invitation) return [];
-  return outreachTargetInvitations().filter((item) => sameVendorInvitation(item.invitation, target.invitation));
+  const sourceTargets = selectedOnly ? outreachTargetInvitations() : allOutreachTargetInvitations();
+  return sourceTargets.filter((item) => sameVendorInvitation(item.invitation, target.invitation));
 }
 
 function laneRowsText(targets = [], language = "en") {
@@ -1988,8 +2083,7 @@ function sampleOutreachContext(target, template = selectedOutreachTemplateDraft(
 function outreachTargetInvitations() {
   const selectedIds = selectedInvitationIds.size ? selectedInvitationIds : null;
   const selectedLaneSet = !selectedIds && selectedLaneIds.size ? selectedLaneIds : null;
-  return currentLanes
-    .flatMap((lane) => activeInvitations(lane).map((invitation) => ({ lane, invitation })))
+  return allOutreachTargetInvitations()
     .filter(({ lane, invitation }) => {
       if (selectedIds) return selectedIds.has(invitation.id);
       if (selectedLaneSet) return selectedLaneSet.has(lane.id);
@@ -6228,6 +6322,7 @@ initAuthControls();
 renderManualLaneRows();
 requirePrivatePage().then((session) => {
   if (session?.token) {
+    loadRfxCustomerOptions();
     loadVendorOptions();
     loadVendorSegments();
     loadOutreachAssets();
@@ -6235,8 +6330,15 @@ requirePrivatePage().then((session) => {
   }
 });
 
+rfxCustomerInput?.addEventListener("focus", () => {
+  if (!rfxCustomerRows.length) loadRfxCustomerOptions(rfxCustomerInput.value);
+});
+rfxCustomerInput?.addEventListener("input", queueRfxCustomerSearch);
+rfxCustomerInput?.addEventListener("change", normalizeSelectedRfxCustomer);
+
 eventForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
+  normalizeSelectedRfxCustomer();
   const isEditing = Boolean(editingEventId);
   setStatus(eventStatus, isEditing ? "Saving bid event..." : "Creating bid event...");
   try {

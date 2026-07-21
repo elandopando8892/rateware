@@ -1304,7 +1304,12 @@ assert.match(apiSource, /for \(const chunk of chunkValues\(rows, 100\)\)/, "Outr
 assert.match(apiSource, /return jsonResponse\(\{\s*generated: generatedMessages\.length,\s*rows: \[\],\s*skipped,\s*campaign_id: campaign\.id,\s*whatsapp_notifier: whatsappNotifier\s*\}\)/, "Outreach draft generation should avoid returning large HTML draft payloads");
 assert.match(apiSource, /function outreachLaneTableSignature/, "Outreach draft generation should fingerprint the current Business Book route table");
 assert.match(apiSource, /lane_table_signature: context\.lane_table_signature/, "Outreach drafts should persist the Business Book route-table signature in metadata");
+assert.match(apiSource, /const completeInvitationGroups = new Map/, "Outreach draft generation should hydrate complete event/vendor lane groups before rendering templates");
+assert.match(apiSource, /requestedGroupKeys\.has\(key\)/, "Outreach draft generation should only expand lane groups for requested event/vendor participants");
+assert.match(apiSource, /sortRfxInvitationGroup\(completeInvitationGroups\.get\(groupKey\) \|\| requestedInvitationGroup\)/, "Outreach drafts should render stable complete route tables per carrier");
 assert.match(rfxEventsSource, /function laneTableSignatureForTargets/, "Bid Room UI should fingerprint current carrier lane groups");
+assert.match(rfxEventsSource, /function allOutreachTargetInvitations/, "Bid Room preview should be able to render every active event lane for the selected carrier");
+assert.match(rfxEventsSource, /const sourceTargets = selectedOnly \? outreachTargetInvitations\(\) : allOutreachTargetInvitations\(\)/, "Bid Room preview should default to the full carrier lane package, not only the selected row");
 assert.match(rfxEventsSource, /function draftMatchesCurrentLaneTable/, "Bid Room UI should compare draft route-table signatures against current lanes");
 assert.match(rfxEventsSource, /Business book changed\. Regenerate draft queue to refresh the route table\./, "Draft queue should warn when the rendered route table is stale");
 assert.match(rfxEventsSource, /&& !isStaleOutreachDraft\(message\)/, "Stale outreach drafts should not be selectable for email, WhatsApp, or group sends");
@@ -1861,6 +1866,10 @@ assert.match(rfxEventsSource, /row\.contact_name/, "Bid Room participant search 
 assert.match(rfxEventsSource, /\.normalize\("NFD"\)/, "Bid Room participant search should normalize accents for Spanish names");
 assert.match(rfxEventsSource, /<strong>\$\{escapeHtml\(vendorDisplayName\(row\)\)\}<\/strong>/, "Bid Room participant cards should stay focused on vendor name only");
 assert.match(rfxEventsSource, /Carrier CRM partially loaded/, "Bid Room should keep partial CRM carrier results when a later page fails");
+assert.match(rfxEventsSource, /fetchShippers/, "Bid Room event setup should source customers from Shipper CRM");
+assert.match(rfxEventsSource, /function loadRfxCustomerOptions/, "Bid Room should load customer options through the Shipper CRM API");
+assert.match(rfxEventsSource, /function selectedRfxCustomerName/, "Bid Room should normalize selected Shipper CRM customers before saving");
+assert.match(rfxEventsHtml, /rfx-customer-options/, "Bid Room customer field should expose Shipper CRM autocomplete options");
 assert.match(vendorsSource, /data-copy-profile-link/, "Vendor drawer should expose profile link creation");
 assert.match(carrierProfileHtml, /carrier-profile\.js/, "Carrier profile page should load the public profile script");
 assert.match(carrierProfileHtml, /carrier-profile-eyebrow/, "Carrier profile page header should be translatable");

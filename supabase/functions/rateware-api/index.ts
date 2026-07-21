@@ -8934,6 +8934,31 @@ function outreachLaneTableSignature(invitations: Record<string, unknown>[]) {
   return JSON.stringify(rows);
 }
 
+function rfxInvitationVendorGroupKey(invitation: Record<string, unknown>) {
+  const vendor = typeof invitation.vendors === "object" && invitation.vendors ? invitation.vendors as Record<string, unknown> : {};
+  const vendorKey = cleanText(invitation.vendor_id) || cleanText(vendor.id) || cleanText(vendor.primary_email) || cleanText(vendor.domain) || cleanText(invitation.id);
+  const eventKey = cleanText(invitation.rfx_event_id);
+  return eventKey && vendorKey ? `${eventKey}:${vendorKey}` : "";
+}
+
+function sortRfxInvitationGroup(invitations: Record<string, unknown>[]) {
+  return [...invitations].sort((left, right) => {
+    const leftLane = laneRecordFromInvitation(left);
+    const rightLane = laneRecordFromInvitation(right);
+    const leftKey = [
+      cleanText(leftLane.lane_number).padStart(8, "0"),
+      cleanText(leftLane.lane_id || leftLane.id || left.rfx_lane_id),
+      cleanText(left.id)
+    ].join(":");
+    const rightKey = [
+      cleanText(rightLane.lane_number).padStart(8, "0"),
+      cleanText(rightLane.lane_id || rightLane.id || right.rfx_lane_id),
+      cleanText(right.id)
+    ].join(":");
+    return leftKey.localeCompare(rightKey);
+  });
+}
+
 function phoneForWhatsapp(value: unknown) {
   const digits = String(value || "").replace(/[^\d]/g, "");
   return digits.length >= 10 ? digits : null;
@@ -20226,12 +20251,31 @@ Deno.serve(async (request) => {
       const skipped: Record<string, unknown>[] = [];
       const invitationGroups = new Map<string, Record<string, unknown>[]>();
       for (const invitation of invitations) {
-        const vendor = typeof invitation.vendors === "object" && invitation.vendors ? invitation.vendors as Record<string, unknown> : {};
-        const vendorKey = cleanText(invitation.vendor_id) || cleanText(vendor.primary_email) || cleanText(vendor.domain) || cleanText(invitation.id);
-        const key = [cleanText(invitation.rfx_event_id), vendorKey].filter(Boolean).join(":");
+        const key = rfxInvitationVendorGroupKey(invitation);
+        if (!key) continue;
         const bucket = invitationGroups.get(key) || [];
         bucket.push(invitation);
         invitationGroups.set(key, bucket);
+      }
+
+      const completeInvitationGroups = new Map<string, Record<string, unknown>[]>();
+      if (campaign.rfx_event_id && invitations.length) {
+        const completeResult = await supabase
+          .from("rfx_lane_vendors")
+          .select(invitationSelect)
+          .eq("rfx_event_id", campaign.rfx_event_id)
+          .eq("rfx_events.owner_email", user.owner_email)
+          .neq("invitation_status", "archived")
+          .limit(5000);
+        if (completeResult.error) throw completeResult.error;
+        const requestedGroupKeys = new Set(invitationGroups.keys());
+        for (const invitation of completeResult.data || []) {
+          const key = rfxInvitationVendorGroupKey(invitation);
+          if (!key || !requestedGroupKeys.has(key)) continue;
+          const bucket = completeInvitationGroups.get(key) || [];
+          bucket.push(invitation);
+          completeInvitationGroups.set(key, bucket);
+        }
       }
 
       const profileLinksByVendor = await vendorProfileLinksForInvitations(supabase, user, invitations, appOrigin, {
@@ -20266,7 +20310,8 @@ Deno.serve(async (request) => {
         })
       );
 
-      for (const invitationGroup of invitationGroups.values()) {
+      for (const [groupKey, requestedInvitationGroup] of invitationGroups.entries()) {
+        const invitationGroup = sortRfxInvitationGroup(completeInvitationGroups.get(groupKey) || requestedInvitationGroup);
         const invitation = invitationGroup[0];
         const vendor = typeof invitation.vendors === "object" && invitation.vendors ? invitation.vendors as Record<string, unknown> : {};
         const profileLink = profileLinksByVendor.get(cleanText(invitation.vendor_id) || "") || "";
