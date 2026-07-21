@@ -2097,5 +2097,13 @@ assert.match(businessIntelligenceSource, /loadVersion !== recommendationLoadVers
 assert.match(businessIntelligenceSource, /loadVersion !== pivotLoadVersion/, "BI pivots should ignore stale results");
 assert.match(businessIntelligenceSource, /loadVersion !== drilldownLoadVersion/, "BI drilldowns should ignore stale results");
 assert.match(businessIntelligenceSource, /loadVersion !== geoLoadVersion/, "BI geo density should ignore stale results");
+assert.match(uploadHistorySource, /let uploadHistoryLoadVersion = 0;/, "Upload History should version concurrent list loads");
+assert.match(uploadHistorySource, /loadVersion !== uploadHistoryLoadVersion/, "Upload History should ignore stale list responses");
+assert.match(uploadHistorySource, /activeUploadDetailId !== row\.id/, "Upload source comparison should stay scoped to the open drawer row");
+assert.match(uploadHistorySource, /pendingReprocessIds\[0\] !== rawUploadId/, "Upload interpretation memory should stay scoped to the active reprocess selection");
+assert.match(uploadHistorySource, /if \(uploadBulkActionRunning\) return;/, "Upload bulk actions should reject duplicate submissions while running");
+assert.match(outreachSource, /let outreachLoadVersion = 0;/, "Outreach should version full workspace loads");
+assert.match(outreachSource, /loadVersion !== outreachMessagesLoadVersion \|\| selectedCampaignId !== campaignId/, "Outreach should not render messages from a previously selected campaign");
+assert.match(outreachSource, /if \(outreachMessageMutationRunning\) return;/, "Outreach bulk message updates should reject duplicate submissions while running");
 
 console.log("Rateware stability guards passed.");

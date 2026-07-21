@@ -101,6 +101,9 @@ let editingTemplateId = null;
 let previewMessageId = null;
 let selectedMessageIds = new Set();
 let activeMessageFilter = "all";
+let outreachLoadVersion = 0;
+let outreachMessagesLoadVersion = 0;
+let outreachMessageMutationRunning = false;
 const outreachWorkbench = initWorkbenchTabs({ defaultView: requestedRfxEventId ? "campaigns" : "dashboard" });
 
 function escapeHtml(value) {
@@ -565,10 +568,10 @@ function renderCampaignDashboard() {
 function updateSelection() {
   const count = selectedMessageIds.size;
   selectionCount.textContent = `${count} selected`;
-  markQueuedButton.disabled = !count;
-  markSentButton.disabled = !count;
-  markRepliedButton.disabled = !count;
-  archiveMessagesButton.disabled = !count;
+  markQueuedButton.disabled = outreachMessageMutationRunning || !count;
+  markSentButton.disabled = outreachMessageMutationRunning || !count;
+  markRepliedButton.disabled = outreachMessageMutationRunning || !count;
+  archiveMessagesButton.disabled = outreachMessageMutationRunning || !count;
 }
 
 function renderTemplateSelects() {
@@ -757,6 +760,7 @@ function renderHistory() {
 }
 
 async function loadMessages(campaignId = selectedCampaignId) {
+  const loadVersion = ++outreachMessagesLoadVersion;
   if (!campaignId) {
     messages = [];
     renderMessages();
@@ -765,21 +769,29 @@ async function loadMessages(campaignId = selectedCampaignId) {
   selectedCampaignId = campaignId;
   const campaign = campaigns.find((item) => item.id === campaignId);
   draftTitle.textContent = campaign ? `${campaign.name} drafts` : "Generated messages";
-  messages = await fetchOutreachMessages({ campaign_id: campaignId });
+  const nextMessages = await fetchOutreachMessages({ campaign_id: campaignId });
+  if (loadVersion !== outreachMessagesLoadVersion || selectedCampaignId !== campaignId) return;
+  messages = nextMessages;
   selectedMessageIds = new Set([...selectedMessageIds].filter((id) => messages.some((message) => message.id === id)));
   if (!messages.some((message) => message.id === previewMessageId)) previewMessageId = messages[0]?.id || null;
   renderMessages();
 }
 
 async function loadAll() {
+  const loadVersion = ++outreachLoadVersion;
   setStatus(actionStatus, "Loading outreach...");
   try {
-    [rfxEvents, templates, campaigns, historyRows] = await Promise.all([
+    const [nextRfxEvents, nextTemplates, nextCampaigns, nextHistoryRows] = await Promise.all([
       fetchRfxEvents(),
       fetchOutreachTemplates(),
       fetchOutreachCampaigns(),
       fetchContactHistory()
     ]);
+    if (loadVersion !== outreachLoadVersion) return;
+    rfxEvents = nextRfxEvents;
+    templates = nextTemplates;
+    campaigns = nextCampaigns;
+    historyRows = nextHistoryRows;
     renderRfxSelects();
     renderTemplates();
     renderOutreachWhatsappTemplateStatus();
@@ -787,8 +799,10 @@ async function loadAll() {
     renderCampaigns();
     renderHistory();
     await loadMessages(selectedCampaignId);
+    if (loadVersion !== outreachLoadVersion) return;
     setStatus(actionStatus, "Invitation admin ready.", "success");
   } catch (error) {
+    if (loadVersion !== outreachLoadVersion) return;
     setStatus(actionStatus, error.message, "error");
   }
 }
@@ -1126,20 +1140,30 @@ messageSearch?.addEventListener("input", () => {
 });
 
 async function markSelected(status) {
+  if (outreachMessageMutationRunning) return;
   const ids = [...selectedMessageIds];
   if (!ids.length) return;
+  outreachMessageMutationRunning = true;
+  updateSelection();
   setStatus(actionStatus, `Marking ${ids.length} message(s) ${status}...`);
   try {
     const result = await markOutreachMessages(ids, status);
     setStatus(actionStatus, `${result.updated || 0} message(s) updated.`, "success");
     selectedMessageIds.clear();
-    historyRows = await fetchContactHistory();
-    campaigns = await fetchOutreachCampaigns();
+    const [nextHistoryRows, nextCampaigns] = await Promise.all([
+      fetchContactHistory(),
+      fetchOutreachCampaigns()
+    ]);
+    historyRows = nextHistoryRows;
+    campaigns = nextCampaigns;
     renderCampaigns();
     renderHistory();
     await loadMessages(selectedCampaignId);
   } catch (error) {
     setStatus(actionStatus, error.message, "error");
+  } finally {
+    outreachMessageMutationRunning = false;
+    updateSelection();
   }
 }
 

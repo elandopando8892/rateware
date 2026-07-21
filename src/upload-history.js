@@ -104,6 +104,11 @@ let currentRows = [];
 let activeQuickFilter = "all";
 const selectedUploadIds = new Set();
 let pendingReprocessIds = [];
+let activeUploadDetailId = null;
+let uploadHistoryLoadVersion = 0;
+let uploadComparisonLoadVersion = 0;
+let uploadMemoryLoadVersion = 0;
+let uploadBulkActionRunning = false;
 
 function applyUrlFilters() {
   const params = new URLSearchParams(window.location.search);
@@ -488,10 +493,10 @@ function updateBulkControls() {
   const spreadsheetCount = selectedVisibleRows().filter(isSpreadsheetUpload).length;
   const totalRows = historyBody.querySelectorAll("[data-upload-id]").length;
   uploadSelectionCount.textContent = `${selectedCount} selected`;
-  reprocessSelectedButton.disabled = selectedCount === 0;
-  if (bulkImportSelectedButton) bulkImportSelectedButton.disabled = spreadsheetCount === 0;
-  archiveSelectedButton.disabled = selectedCount === 0;
-  removeSelectedButton.disabled = selectedCount === 0;
+  reprocessSelectedButton.disabled = uploadBulkActionRunning || selectedCount === 0;
+  if (bulkImportSelectedButton) bulkImportSelectedButton.disabled = uploadBulkActionRunning || spreadsheetCount === 0;
+  archiveSelectedButton.disabled = uploadBulkActionRunning || selectedCount === 0;
+  removeSelectedButton.disabled = uploadBulkActionRunning || selectedCount === 0;
   if (selectAllUploads) {
     selectAllUploads.checked = selectedCount > 0 && selectedCount === totalRows;
     selectAllUploads.indeterminate = selectedCount > 0 && selectedCount < totalRows;
@@ -903,11 +908,13 @@ function renderStagedComparisonTable(rows = []) {
 }
 
 async function loadSourceComparison(row) {
+  const loadVersion = ++uploadComparisonLoadVersion;
   const target = document.querySelector("#upload-source-comparison");
   if (!target) return;
   target.innerHTML = '<p class="detail-note">Loading staged rows for source comparison...</p>';
   try {
     const rows = await fetchUploadStagedRows(row.id);
+    if (loadVersion !== uploadComparisonLoadVersion || activeUploadDetailId !== row.id) return;
     target.innerHTML = `
       <div class="source-compare-layout">
         <section>
@@ -932,6 +939,7 @@ async function loadSourceComparison(row) {
       </div>
     `;
   } catch (error) {
+    if (loadVersion !== uploadComparisonLoadVersion || activeUploadDetailId !== row.id) return;
     target.innerHTML = `<p class="detail-note">${escapeHtml(humanizeError(error))}</p>`;
   }
 }
@@ -1089,6 +1097,7 @@ function openUploadDrawer(rowId) {
   const row = currentRows.find((candidate) => candidate.id === rowId) || loadedRows.find((candidate) => candidate.id === rowId);
   if (!row || !uploadDrawer || !uploadDetail) return;
 
+  activeUploadDetailId = row.id;
   uploadDrawerTitle.textContent = row.original_filename || "Upload detail";
   uploadDetail.innerHTML = `
     <section class="upload-detail-section">
@@ -1249,6 +1258,7 @@ function renderRows(rows) {
 }
 
 async function loadHistory() {
+  const loadVersion = ++uploadHistoryLoadVersion;
   historyBody.innerHTML = tableLoadingState(HISTORY_COLSPAN, {
     title: "Loading source files",
     detail: "Reading preserved uploads, staged row counts, and audit signals."
@@ -1258,21 +1268,25 @@ async function loadHistory() {
   try {
     await requirePrivatePage();
     const rows = await fetchUploadHistory({ status: statusFilter.value });
+    if (loadVersion !== uploadHistoryLoadVersion) return;
     loadedRows = rows;
     renderRows(applyUploadFilters(rows));
     await applyPermissionState(UPLOAD_ACTION_SELECTOR, "uploads:interpret");
+    if (loadVersion !== uploadHistoryLoadVersion) return;
   } catch (error) {
+    if (loadVersion !== uploadHistoryLoadVersion) return;
     historyBody.innerHTML = tableErrorState(HISTORY_COLSPAN, error, {
       title: "Upload History could not load",
       retryAction: "load-upload-history",
       meta: "Your files are preserved in storage. This only affects the current view."
     });
   } finally {
-    refreshButton.disabled = false;
+    if (loadVersion === uploadHistoryLoadVersion) refreshButton.disabled = false;
   }
 }
 
 async function runBulkUploadAction(action) {
+  if (uploadBulkActionRunning) return;
   const ids = selectedVisibleIds();
   if (!ids.length) return;
   if (action === "reprocess") {
@@ -1284,6 +1298,7 @@ async function runBulkUploadAction(action) {
     if (!confirmed) return;
   }
 
+  uploadBulkActionRunning = true;
   archiveSelectedButton.disabled = true;
   reprocessSelectedButton.disabled = true;
   if (bulkImportSelectedButton) bulkImportSelectedButton.disabled = true;
@@ -1302,6 +1317,8 @@ async function runBulkUploadAction(action) {
     await loadHistory();
   } catch (error) {
     setBulkStatus(humanizeError(error), "error");
+  } finally {
+    uploadBulkActionRunning = false;
     updateBulkControls();
   }
 }
@@ -1432,13 +1449,16 @@ function renderApplicableMemory(rules = []) {
 }
 
 async function loadApplicableMemory(rawUploadId) {
+  const loadVersion = ++uploadMemoryLoadVersion;
   if (!applicableMemoryCount || !applicableMemoryList) return;
   applicableMemoryCount.textContent = "Loading rules...";
   applicableMemoryList.innerHTML = "";
   try {
     const rules = await listInterpretationMemory(rawUploadId);
+    if (loadVersion !== uploadMemoryLoadVersion || pendingReprocessIds[0] !== rawUploadId) return;
     renderApplicableMemory(rules);
   } catch (error) {
+    if (loadVersion !== uploadMemoryLoadVersion || pendingReprocessIds[0] !== rawUploadId) return;
     applicableMemoryCount.textContent = "Could not load memory rules.";
     applicableMemoryList.innerHTML = `<p class="detail-note">${escapeHtml(humanizeError(error))}</p>`;
   }
@@ -1595,8 +1615,16 @@ downloadBulkTemplateButton?.addEventListener("click", async () => {
   }
 });
 removeSelectedButton?.addEventListener("click", () => runBulkUploadAction("remove"));
-closeUploadDrawerButton?.addEventListener("click", () => uploadDrawer?.classList.add("hidden"));
-closeReprocessDrawerButton?.addEventListener("click", () => reprocessDrawer?.classList.add("hidden"));
+closeUploadDrawerButton?.addEventListener("click", () => {
+  activeUploadDetailId = null;
+  uploadComparisonLoadVersion += 1;
+  uploadDrawer?.classList.add("hidden");
+});
+closeReprocessDrawerButton?.addEventListener("click", () => {
+  pendingReprocessIds = [];
+  uploadMemoryLoadVersion += 1;
+  reprocessDrawer?.classList.add("hidden");
+});
 reprocessForm?.addEventListener("submit", runReprocessWithNote);
 document.addEventListener("click", async (event) => {
   const retryButton = event.target.closest("[data-retry-action]");
