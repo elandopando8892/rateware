@@ -504,6 +504,11 @@ assert.match(apiSource, /business_rules: businessRules\.data/, "RFx Process deta
 assert.match(rfxProcessServiceSource, /fetchRfxProcessProjects/, "RFx Process service should expose project listing");
 assert.match(rfxProcessServiceSource, /launchRfxPackageToBidRoom/, "RFx Process service should expose Bid Room launch");
 assert.doesNotMatch(rfxProcessServiceSource, /fetchCustomerRfi|get_customer_rfi|PUBLIC_RFI_ENDPOINT/, "RFx Process internal service should not expose public Customer RFI wrappers");
+assert.match(rfxProcessSource, /let projectLoadVersion = 0/, "RFx Process project listing should guard against stale responses");
+assert.match(rfxProcessSource, /let projectDetailLoadVersion = 0/, "RFx Process detail should guard against stale responses");
+assert.match(rfxProcessSource, /loadVersion !== projectLoadVersion/, "RFx Process should ignore stale project list responses");
+assert.match(rfxProcessSource, /loadVersion !== projectDetailLoadVersion \|\| state\.selectedId !== projectId/, "RFx Process should ignore stale project detail responses");
+assert.match(rfxProcessSource, /const projectId = project\.id/, "RFx Process actions should capture the initiating project");
 assert.match(customerRfiServiceSource, /fetchCustomerRfi/, "Customer RFI public service should expose public Customer RFI loading");
 assert.match(customerRfiServiceSource, /get_customer_rfi/, "Customer RFI public service should call the public API without Kinde");
 assert.doesNotMatch(customerRfiSource, /rfx-process-service/, "Customer RFI page should not import the internal authenticated RFx Process service");

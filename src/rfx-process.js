@@ -23,6 +23,9 @@ const state = {
   loading: false
 };
 
+let projectLoadVersion = 0;
+let projectDetailLoadVersion = 0;
+
 const els = {
   list: document.getElementById("rfx-process-project-list"),
   search: document.getElementById("rfx-process-search"),
@@ -389,6 +392,7 @@ function renderPanels() {
 }
 
 async function loadProjects() {
+  const loadVersion = ++projectLoadVersion;
   state.loading = true;
   renderProjectList();
   try {
@@ -397,34 +401,43 @@ async function loadProjects() {
       status: els.status?.value || "",
       limit: 100
     });
+    if (loadVersion !== projectLoadVersion) return;
     state.projects = result.rows || [];
+    if (state.selectedId && !state.projects.some((project) => project.id === state.selectedId)) {
+      state.selectedId = state.projects[0]?.id || "";
+    }
     if (!state.selectedId && state.projects[0]) state.selectedId = state.projects[0].id;
     renderProjectList();
     if (state.selectedId) await loadDetail(state.selectedId);
   } catch (error) {
+    if (loadVersion !== projectLoadVersion) return;
     els.list.innerHTML = `<article class="empty-state compact-empty"><strong>RFx Projects could not load</strong><span>${escapeHtml(humanizeError(error))}</span></article>`;
   } finally {
-    state.loading = false;
+    if (loadVersion === projectLoadVersion) state.loading = false;
   }
 }
 
 async function loadDetail(projectId) {
+  const loadVersion = ++projectDetailLoadVersion;
   try {
     state.selectedId = projectId;
     const url = new URL(window.location.href);
     url.searchParams.set("project", projectId);
     window.history.replaceState({}, "", url);
-    state.detail = await fetchRfxProcessProject(projectId);
+    const detail = await fetchRfxProcessProject(projectId);
+    if (loadVersion !== projectDetailLoadVersion || state.selectedId !== projectId) return;
+    state.detail = detail;
     renderProjectList();
     renderShell();
   } catch (error) {
-    setStatus(error, "error");
+    if (loadVersion === projectDetailLoadVersion && state.selectedId === projectId) setStatus(error, "error");
   }
 }
 
 async function handleProjectAction(action, target) {
   const project = selectedProject();
   if (!project) return;
+  const projectId = project.id;
   setStatus("Working...");
   try {
     if (action === "create-rfi-link") {
@@ -493,12 +506,11 @@ async function handleProjectAction(action, target) {
       setStatus("Project moved to bid evaluation.");
     } else if (action === "archive-project") {
       if (!window.confirm("Archive this RFx Project?")) return;
-      await updateRfxProcessProject(project.id, { status: "archived" });
+      await updateRfxProcessProject(projectId, { status: "archived" });
       setStatus("Project archived.");
-      state.selectedId = "";
+      if (state.selectedId === projectId) state.selectedId = "";
     }
     await loadProjects();
-    if (state.selectedId) await loadDetail(state.selectedId);
   } catch (error) {
     setStatus(error, "error");
   }
