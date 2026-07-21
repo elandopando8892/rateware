@@ -171,6 +171,25 @@ for (const listenerName of ["manualShortlistButton", "importCarrierTemplateButto
   assert.match(listenerSource, /const eventId = selectedEventId;/, `${listenerName} should capture its initiating Bid Room`);
   assert.match(listenerSource, /selectedEventId !== eventId/, `${listenerName} should stop stale updates after navigation`);
 }
+for (const laneImportButton of ["importLanesButton", "importManualLanesButton"]) {
+  const start = rfxEventsSource.indexOf(`${laneImportButton}?.addEventListener`);
+  const end = rfxEventsSource.indexOf("\n\n", start + 1);
+  const handlerSource = rfxEventsSource.slice(start, end > start ? end : undefined);
+  assert.ok(start >= 0, `${laneImportButton} handler should exist`);
+  assert.match(handlerSource, /const eventId = selectedEventId;/, `${laneImportButton} should capture its initiating Bid Room`);
+  assert.match(handlerSource, /importRfxLanes\(eventId, rows\)/, `${laneImportButton} should import into its initiating Bid Room`);
+  assert.match(handlerSource, /selectedEventId !== eventId/, `${laneImportButton} should ignore stale results after navigation`);
+}
+for (const lifecycleButton of ["openRfxButton", "closeRfxButton", "duplicateRfxButton", "archiveRfxButton", "deleteRfxButton"]) {
+  const start = rfxEventsSource.indexOf(`${lifecycleButton}?.addEventListener`);
+  const end = rfxEventsSource.indexOf("\n\n", start + 1);
+  const handlerSource = rfxEventsSource.slice(start, end > start ? end : undefined);
+  assert.ok(start >= 0, `${lifecycleButton} handler should exist`);
+  assert.match(handlerSource, /const eventId = selectedEventId;/, `${lifecycleButton} should capture its initiating Bid Room`);
+  assert.match(handlerSource, /selectedEventId === eventId|selectedEventId !== eventId/, `${lifecycleButton} should not hijack a different Bid Room after navigation`);
+}
+assert.match(rfxEventsSource, /async function saveRfxLaneEdits[\s\S]*const eventId = selectedEventId;[\s\S]*selectedEventId !== eventId/, "Lane edits should ignore stale responses after navigation");
+assert.match(rfxEventsSource, /async function autoShortlistLaneIds[\s\S]*const eventId = selectedEventId;[\s\S]*selectedEventId !== eventId/, "Bulk shortlisting should ignore stale responses after navigation");
 assert.match(dashboardSource, /let dashboardLoadVersion = 0/, "Command Center should guard against stale dashboard responses");
 assert.match(dashboardSource, /loadVersion !== dashboardLoadVersion/, "Command Center should ignore stale dashboard responses");
 

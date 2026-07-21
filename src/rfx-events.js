@@ -5660,6 +5660,7 @@ function validateLaneEditPatch(laneId, patch = {}) {
 }
 
 async function saveRfxLaneEdits(laneIds = []) {
+  const eventId = selectedEventId;
   const ids = laneIds.filter((id) => laneHasPendingEdits(id));
   if (!ids.length) {
     updateLaneEditControls();
@@ -5674,12 +5675,15 @@ async function saveRfxLaneEdits(laneIds = []) {
   setStatus(laneEditStatus, `Saving ${ids.length} lane${ids.length === 1 ? "" : "s"}...`);
   try {
     await Promise.all(ids.map((id) => updateRfxLane(id, laneEditPatch(id))));
+    if (!eventId || selectedEventId !== eventId) return;
     ids.forEach((id) => pendingLaneEdits.delete(String(id)));
-    if (selectedEventId) await loadDetail(selectedEventId);
+    await loadDetail(eventId);
     setStatus(laneEditStatus, `${ids.length} loaded lane${ids.length === 1 ? "" : "s"} updated.`, "success");
   } catch (error) {
-    setStatus(laneEditStatus, error.message, "error");
-    updateLaneEditControls();
+    if (selectedEventId === eventId) {
+      setStatus(laneEditStatus, error.message, "error");
+      updateLaneEditControls();
+    }
   }
 }
 
@@ -5769,12 +5773,14 @@ async function refreshOutreachStateForEvent(eventId) {
 }
 
 async function autoShortlistLane(laneId) {
+  const eventId = selectedEventId;
   setStatus(actionStatus, "Building shortlist...");
   const result = await autoShortlistRfxLane(laneId, 10);
-  setStatus(actionStatus, `${result.inserted || 0} vendor(s) shortlisted.`, "success");
+  if (selectedEventId === eventId) setStatus(actionStatus, `${result.inserted || 0} vendor(s) shortlisted.`, "success");
 }
 
 async function autoShortlistLaneIds(ids, statusElement = actionStatus) {
+  const eventId = selectedEventId;
   const laneIds = ids.filter(Boolean);
   if (!laneIds.length) return 0;
   setStatus(statusElement, "Building shortlists...");
@@ -5782,10 +5788,12 @@ async function autoShortlistLaneIds(ids, statusElement = actionStatus) {
   for (const id of laneIds) {
     const result = await autoShortlistRfxLane(id, 10);
     inserted += Number(result.inserted || 0);
+    if (selectedEventId !== eventId) return inserted;
   }
+  if (!eventId || selectedEventId !== eventId) return inserted;
   setStatus(statusElement, `${inserted} vendor shortlist row(s) created.`, "success");
   selectedLaneIds.clear();
-  await loadDetail(selectedEventId);
+  await loadDetail(eventId);
   return inserted;
 }
 
@@ -6875,6 +6883,7 @@ laneTemplateFileInput?.addEventListener("change", async () => {
 
 importLanesButton?.addEventListener("click", async () => {
   if (!selectedEventId) return;
+  const eventId = selectedEventId;
   const rows = readyLaneTemplateRows();
   if (!rows.length) {
     setStatus(laneImportStatus, "Upload a completed RFx lane template before importing, or use quick manual entry below.", "error");
@@ -6883,13 +6892,15 @@ importLanesButton?.addEventListener("click", async () => {
   importLanesButton.disabled = true;
   setStatus(laneImportStatus, `Importing ${rows.length} lane(s)...`);
   try {
-    const result = await importRfxLanes(selectedEventId, rows);
+    const result = await importRfxLanes(eventId, rows);
+    if (selectedEventId !== eventId) return;
     setStatus(laneImportStatus, `${result.inserted || 0} lane(s) imported.`, "success");
     clearLaneTemplateImport({ preserveStatus: true });
-    await loadDetail(selectedEventId);
+    await loadDetail(eventId);
+    if (selectedEventId !== eventId) return;
     await loadEvents();
   } catch (error) {
-    setStatus(laneImportStatus, error.message, "error");
+    if (selectedEventId === eventId) setStatus(laneImportStatus, error.message, "error");
   } finally {
     importLanesButton.disabled = false;
   }
@@ -6944,6 +6955,7 @@ manualLanesBody?.addEventListener("click", (event) => {
 
 importManualLanesButton?.addEventListener("click", async () => {
   if (!selectedEventId) return;
+  const eventId = selectedEventId;
   const rows = manualLaneImportRows();
   const invalidRows = manualLaneRows.filter(hasManualLaneUserInput).filter((row) => manualLaneIssues(row).length);
   if (!rows.length) {
@@ -6957,14 +6969,16 @@ importManualLanesButton?.addEventListener("click", async () => {
   importManualLanesButton.disabled = true;
   setStatus(manualLaneStatus, `Importing ${rows.length} manual lane(s)...`);
   try {
-    const result = await importRfxLanes(selectedEventId, rows);
+    const result = await importRfxLanes(eventId, rows);
+    if (selectedEventId !== eventId) return;
     const importedMessage = `${result.inserted || 0} manual lane(s) imported.`;
     resetManualLaneRows({ preserveStatus: true });
     setStatus(manualLaneStatus, importedMessage, "success");
-    await loadDetail(selectedEventId);
+    await loadDetail(eventId);
+    if (selectedEventId !== eventId) return;
     await loadEvents();
   } catch (error) {
-    setStatus(manualLaneStatus, error.message, "error");
+    if (selectedEventId === eventId) setStatus(manualLaneStatus, error.message, "error");
   } finally {
     importManualLanesButton.disabled = false;
     updateManualLaneImportButton();
@@ -6973,16 +6987,26 @@ importManualLanesButton?.addEventListener("click", async () => {
 
 openRfxButton?.addEventListener("click", async () => {
   if (!selectedEventId) return;
+  const eventId = selectedEventId;
   if (!confirmEventLifecycleAction("open")) return;
-  await updateRfxEvent(selectedEventId, { status: "open" });
-  await loadEvents();
+  try {
+    await updateRfxEvent(eventId, { status: "open" });
+    if (selectedEventId === eventId) await loadEvents();
+  } catch (error) {
+    if (selectedEventId === eventId) setStatus(actionStatus, error.message, "error");
+  }
 });
 
 closeRfxButton?.addEventListener("click", async () => {
   if (!selectedEventId) return;
+  const eventId = selectedEventId;
   if (!confirmEventLifecycleAction("close")) return;
-  await updateRfxEvent(selectedEventId, { status: "closed" });
-  await loadEvents();
+  try {
+    await updateRfxEvent(eventId, { status: "closed" });
+    if (selectedEventId === eventId) await loadEvents();
+  } catch (error) {
+    if (selectedEventId === eventId) setStatus(actionStatus, error.message, "error");
+  }
 });
 
 editRfxButton?.addEventListener("click", () => {
@@ -6992,17 +7016,19 @@ editRfxButton?.addEventListener("click", () => {
 
 duplicateRfxButton?.addEventListener("click", async () => {
   if (!selectedEventId) return;
+  const eventId = selectedEventId;
   if (!confirmEventLifecycleAction("duplicate")) return;
   duplicateRfxButton.disabled = true;
   setStatus(actionStatus, "Duplicating bid event...");
   try {
-    const result = await duplicateRfxEvent(selectedEventId);
-    selectedEventId = result.row?.id || selectedEventId;
+    const result = await duplicateRfxEvent(eventId);
+    if (selectedEventId !== eventId) return;
+    selectedEventId = result.row?.id || eventId;
     resetRfxEventForm();
     setStatus(actionStatus, `RFx duplicated with ${result.lanes || 0} lane(s).`, "success");
     await loadEvents();
   } catch (error) {
-    setStatus(actionStatus, error.message, "error");
+    if (selectedEventId === eventId) setStatus(actionStatus, error.message, "error");
   } finally {
     updateEventActionState();
   }
@@ -7010,18 +7036,20 @@ duplicateRfxButton?.addEventListener("click", async () => {
 
 archiveRfxButton?.addEventListener("click", async () => {
   if (!selectedEventId) return;
+  const eventId = selectedEventId;
   if (!confirmEventLifecycleAction("archive")) return;
   archiveRfxButton.disabled = true;
   setStatus(actionStatus, "Archiving bid event...");
   try {
-    await archiveRfxEvent(selectedEventId);
+    await archiveRfxEvent(eventId);
+    if (selectedEventId !== eventId) return;
     selectedEventId = null;
     selectedEvent = null;
     resetRfxEventForm();
     setStatus(actionStatus, "Bid event archived.", "success");
     await loadEvents();
   } catch (error) {
-    setStatus(actionStatus, error.message, "error");
+    if (selectedEventId === eventId) setStatus(actionStatus, error.message, "error");
   } finally {
     updateEventActionState();
   }
@@ -7029,18 +7057,20 @@ archiveRfxButton?.addEventListener("click", async () => {
 
 deleteRfxButton?.addEventListener("click", async () => {
   if (!selectedEventId) return;
+  const eventId = selectedEventId;
   if (!confirmEventLifecycleAction("delete")) return;
   deleteRfxButton.disabled = true;
   setStatus(actionStatus, "Deleting bid event...");
   try {
-    await deleteRfxEvent(selectedEventId);
+    await deleteRfxEvent(eventId);
+    if (selectedEventId !== eventId) return;
     selectedEventId = null;
     selectedEvent = null;
     resetRfxEventForm();
     setStatus(actionStatus, "Bid event deleted.", "success");
     await loadEvents();
   } catch (error) {
-    setStatus(actionStatus, error.message, "error");
+    if (selectedEventId === eventId) setStatus(actionStatus, error.message, "error");
   } finally {
     updateEventActionState();
   }
