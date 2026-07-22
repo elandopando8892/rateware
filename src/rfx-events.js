@@ -43,6 +43,7 @@ import {
 } from "./outreach-service.js?v=20260711-whatsapp-automatic-v4";
 import { createVendorSegment, deleteVendorSegment, fetchVendorSegments, fetchVendors, updateVendorSegment } from "./vendor-service.js";
 import { fetchShippers } from "./shipper-service.js";
+import { fetchWhatsappConnections } from "./settings-service.js";
 import { humanizeError } from "./error-copy.js";
 import { errorState, stateBlock, tableErrorState, tableState } from "./ui-state.js";
 import { initWorkbenchTabs } from "./workbench-tabs.js";
@@ -300,6 +301,11 @@ let rfxCustomerSearchTimer = null;
 let vendorSegmentsLoading = true;
 let savedVendorSegments = [];
 let selectedManualVendorIdsState = new Set();
+let whatsappConnectionReadiness = {
+  loaded: false,
+  ready: false,
+  message: "Validate WhatsApp Business in Settings before sending."
+};
 const rfxPageParams = new URLSearchParams(window.location.search);
 const requestedRfxEventId = rfxPageParams.get("rfx_event_id");
 const rfxWorkbench = initWorkbenchTabs({ defaultView: "setup" });
@@ -2234,6 +2240,7 @@ function renderOutreachPreview() {
     const mapping = template?.whatsapp_meta || null;
     const metaStatus = metaNotifierStatus(mapping?.meta_template_status || "NOT_PUBLISHED");
     const whatsappChannel = channel === "multi" || channel.includes("whatsapp");
+    const directWhatsappChannel = outreachDraftChannels(channel).includes("whatsapp");
     const targetSummary = `${formatNumber(whatsappDirectReady)} direct phone target(s), ${formatNumber(whatsappGroupReady)} group target(s).`;
     let readinessCopy = `${targetSummary} Outreach copy is the source for the WhatsApp message.`;
     let readinessTone = "neutral";
@@ -2251,6 +2258,10 @@ function renderOutreachPreview() {
       readinessTone = "error";
     } else if (groupMode && !whatsappDirectReady) {
       readinessCopy = `${targetSummary} Group delivery remains manual; publish only if direct WhatsApp sends are also required.`;
+    }
+    if (directWhatsappChannel && whatsappConnectionReadiness.ready !== true) {
+      readinessCopy = `${targetSummary} ${whatsappConnectionReadiness.message}`;
+      readinessTone = "warning";
     }
     if (rfxWhatsappTemplateReadinessCopy) rfxWhatsappTemplateReadinessCopy.textContent = readinessCopy;
     rfxWhatsappReadiness.dataset.tone = readinessTone;
@@ -4597,6 +4608,35 @@ function selectedOutreachChannel() {
   return rfxOutreachChannel?.value || "email";
 }
 
+function selectedChannelUsesDirectWhatsapp() {
+  return outreachDraftChannels(selectedOutreachChannel()).includes("whatsapp");
+}
+
+async function loadWhatsappConnectionReadiness({ render = true } = {}) {
+  try {
+    const data = await fetchWhatsappConnections();
+    const row = data?.rows?.[0] || {};
+    const ready = row.status === "connected" && row.connection_validated === true;
+    whatsappConnectionReadiness = {
+      loaded: true,
+      ready,
+      message: ready
+        ? `WhatsApp Business verified${row.display_phone_number ? ` for ${row.display_phone_number}` : ""}.`
+        : row.credentials_configured
+          ? "Run Test line in Settings to verify the token, Phone Number ID and WABA before sending."
+          : "Connect WhatsApp Business in Settings before sending."
+    };
+  } catch (error) {
+    whatsappConnectionReadiness = {
+      loaded: true,
+      ready: false,
+      message: `WhatsApp Business readiness could not be verified. ${humanizeError(error)}`
+    };
+  }
+  if (render) renderOutreachLaunchpad();
+  return whatsappConnectionReadiness;
+}
+
 function draftRowsForSelectedOutreachChannel(rows = draftRowsForEvent()) {
   const channels = new Set(outreachDraftChannels(selectedOutreachChannel()).map((channel) => String(channel).toLowerCase()));
   return rows.filter((message) => channels.has(String(message.channel || "email").toLowerCase()));
@@ -4767,6 +4807,7 @@ function updateDraftSendControls(rows = [], allRows = draftRowsForEvent()) {
   const selectedRows = selectedDraftRows(allRows);
   const sendableSelectedIds = selectedSendableDraftIds(allRows);
   const sendableWhatsappIds = selectedWhatsappDraftIds(allRows);
+  const whatsappSendingReady = whatsappConnectionReadiness.ready === true;
   const markableGroupIds = selectedWhatsappGroupDraftIds(allRows);
   const refreshableSelectedRows = selectedRefreshableDraftRows(allRows);
   const hasSearch = Boolean(normalizeDraftSearch(draftQueueSearch));
@@ -4796,10 +4837,11 @@ function updateDraftSendControls(rows = [], allRows = draftRowsForEvent()) {
       : "Send selected emails";
   }
   if (draftSendSelectedWhatsappButton) {
-    draftSendSelectedWhatsappButton.disabled = !sendableWhatsappIds.length;
+    draftSendSelectedWhatsappButton.disabled = !sendableWhatsappIds.length || !whatsappSendingReady;
     draftSendSelectedWhatsappButton.textContent = sendableWhatsappIds.length
       ? `Send ${formatNumber(sendableWhatsappIds.length)} WhatsApp`
       : "Send WhatsApp direct";
+    draftSendSelectedWhatsappButton.title = whatsappSendingReady ? "" : whatsappConnectionReadiness.message;
   }
   if (draftMarkSelectedWhatsappGroupsButton) {
     draftMarkSelectedWhatsappGroupsButton.disabled = !markableGroupIds.length;
@@ -4872,7 +4914,7 @@ function renderDraftQueue() {
     const recipient = messageRecipient(message) || "-";
     const updated = message.updated_at || message.sent_at || message.created_at;
     const canSendEmail = isEmail && selectableEmailDrafts([message]).length;
-    const canSendWhatsapp = isWhatsapp && selectableWhatsappDrafts([message]).length;
+    const canSendWhatsapp = isWhatsapp && whatsappConnectionReadiness.ready === true && selectableWhatsappDrafts([message]).length;
     const canMarkGroup = isWhatsappGroup && selectableWhatsappGroupDrafts([message]).length;
     const openLabel = isEmail ? "Open Gmail" : isWhatsappGroup ? "Open group" : "Open WhatsApp";
     const metadata = message.metadata && typeof message.metadata === "object" ? message.metadata : {};
@@ -4881,6 +4923,8 @@ function renderDraftQueue() {
     const staleDraft = isStaleOutreachDraft(message);
     const readinessDetail = staleDraft
       ? "Business book changed. Refresh this draft to update its route table."
+      : isWhatsapp && whatsappConnectionReadiness.ready !== true
+        ? whatsappConnectionReadiness.message
       : isWhatsapp && templateStatus !== "APPROVED"
         ? whatsappDraftStatusDetail(message, templateStatus)
         : "";
@@ -6199,6 +6243,12 @@ async function sendSelectedDraftWhatsapp() {
     setStatus(rfxOutreachStatus, "Select one or more WhatsApp direct drafts before sending.", "error");
     return;
   }
+  const readiness = await loadWhatsappConnectionReadiness({ render: false });
+  if (!readiness.ready) {
+    setStatus(rfxOutreachStatus, readiness.message, "error");
+    renderOutreachLaunchpad();
+    return;
+  }
   if (!confirmDraftQueueAction("send_whatsapp", ids)) return;
   const eventId = selectedEventId;
   if (draftSendSelectedWhatsappButton) draftSendSelectedWhatsappButton.disabled = true;
@@ -6220,6 +6270,12 @@ async function sendSelectedDraftWhatsapp() {
 
 async function sendSingleDraftWhatsapp(id) {
   if (!id) return;
+  const readiness = await loadWhatsappConnectionReadiness({ render: false });
+  if (!readiness.ready) {
+    setStatus(rfxOutreachStatus, readiness.message, "error");
+    renderOutreachLaunchpad();
+    return;
+  }
   const row = draftRowsForEvent().find((message) => String(message.id) === String(id));
   if (!row) {
     setStatus(rfxOutreachStatus, "WhatsApp draft row could not be found. Refresh the Bid Room and try again.", "error");
@@ -6554,6 +6610,7 @@ requirePrivatePage().then((session) => {
     loadVendorOptions();
     loadVendorSegments();
     loadOutreachAssets();
+    loadWhatsappConnectionReadiness();
     loadEvents();
   }
 });
@@ -7593,7 +7650,10 @@ rfxOutreachTemplate?.addEventListener("change", () => {
   renderRfxTemplateEditor({ force: true });
   renderOutreachPreview();
 });
-rfxOutreachChannel?.addEventListener("change", renderOutreachLaunchpad);
+rfxOutreachChannel?.addEventListener("change", () => {
+  renderOutreachLaunchpad();
+  if (selectedChannelUsesDirectWhatsapp()) loadWhatsappConnectionReadiness();
+});
 rfxWhatsappTargetMode?.addEventListener("change", renderOutreachPreview);
 rfxOutreachSender && (rfxOutreachSender.value = APPROVED_GMAIL_SENDER);
 rfxOutreachSender?.addEventListener("change", renderOutreachPreview);

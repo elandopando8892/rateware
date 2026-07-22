@@ -549,7 +549,8 @@ function renderWhatsappConnections(data = currentSettings?.whatsapp) {
   if (!whatsappConnectionCard) return;
   const row = data?.rows?.[0] || {};
   const internalWorkspace = data?.is_internal_workspace === true || row.internal_managed === true;
-  const connected = row.status === "connected";
+  const connectionValidated = row.connection_validated === true;
+  const connected = row.status === "connected" && connectionValidated;
   const configured = row.credentials_configured === true || row.configured === true;
   const manualSetup = row.status === "manual_setup";
   const templateCount = Number(row.template_count || 0);
@@ -568,8 +569,17 @@ function renderWhatsappConnections(data = currentSettings?.whatsapp) {
       ? "Verify token + app secret configured"
       : "Verify token configured"
     : "Verify token missing";
+  const validationLabel = connected
+    ? `Token, Phone Number ID and WABA verified${row.connection_validated_at ? ` | ${new Date(row.connection_validated_at).toLocaleString()}` : ""}`
+    : configured
+      ? row.connection_validation_status === "failed"
+        ? "Validation failed. Run Test line after correcting the Meta credentials."
+        : "Not validated. Run Test line before sending."
+      : "Not configured";
   const statusLabel = connected
     ? "Connected"
+    : row.status === "connected" && !connectionValidated
+      ? "Validation required"
     : manualSetup
       ? "Saved, test required"
       : row.status === "error"
@@ -593,6 +603,7 @@ function renderWhatsappConnections(data = currentSettings?.whatsapp) {
       <div><dt>Status</dt><dd><span class="status-pill ${connected ? "success" : row.status === "error" ? "danger" : configured ? "warning" : "neutral"}">${escapeHtml(statusLabel)}</span></dd></div>
       <div><dt>Sender</dt><dd>${escapeHtml(senderLabel)}</dd></div>
       <div><dt>Meta app / account</dt><dd>${escapeHtml(accountLabel)}</dd></div>
+      <div><dt>Validation</dt><dd>${escapeHtml(validationLabel)}</dd></div>
       <div><dt>Templates</dt><dd>${escapeHtml(templateCount ? `${templateCount} synced` : row.templates_last_synced_at ? "0 synced" : "-")}</dd></div>
       <div><dt>Webhook</dt><dd>${escapeHtml(row.webhook_verified_at ? "Verified" : webhookLabel)}</dd></div>
       <div><dt>Updated</dt><dd>${escapeHtml(row.updated_at ? new Date(row.updated_at).toLocaleString() : "-")}</dd></div>
@@ -714,7 +725,7 @@ async function loadSettings() {
     if (settings.google_chat?.rows?.[0]?.status === "connected") {
       await loadGoogleChatConnections();
     }
-    if (settings.whatsapp?.rows?.[0]?.status === "connected") {
+    if (settings.whatsapp?.rows?.[0]?.connection_validated === true) {
       await loadWhatsappConnections();
     }
   } catch (error) {
@@ -986,7 +997,8 @@ syncWhatsappTemplatesButton?.addEventListener("click", async () => {
   } catch (error) {
     setStatus(whatsappConnectionStatus, humanWhatsappMessage(error.message), "error");
   } finally {
-    syncWhatsappTemplatesButton.disabled = false;
+    const row = currentSettings?.whatsapp?.rows?.[0] || {};
+    syncWhatsappTemplatesButton.disabled = row.status !== "connected" || row.connection_validated !== true;
   }
 });
 

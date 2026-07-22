@@ -10871,6 +10871,7 @@ function normalizeWhatsappPhone(value: unknown) {
 }
 
 const WHATSAPP_CONNECTION_REQUIRED_MESSAGE = "Connect your WhatsApp Business account before sending WhatsApp messages.";
+const WHATSAPP_CONNECTION_VALIDATION_MESSAGE = "Validate the WhatsApp Business connection in Settings before sending. Confirm that the access token can read the Phone Number ID and that the phone belongs to the configured WABA.";
 
 function whatsappInternalEnvConfigured() {
   return Boolean(
@@ -10906,13 +10907,31 @@ function maskedSecret(value: unknown) {
   return text.length <= 8 ? "configured" : `${text.slice(0, 4)}...${text.slice(-4)}`;
 }
 
+function whatsappConnectionValidation(row: Record<string, unknown> | null | undefined) {
+  return objectRecord(objectRecord(row?.metadata).connection_validation);
+}
+
+function whatsappConnectionIsValidated(row: Record<string, unknown> | null | undefined) {
+  const validation = whatsappConnectionValidation(row);
+  const phoneNumberId = cleanText(row?.meta_phone_number_id || row?.phone_number_id);
+  const wabaId = cleanText(row?.meta_waba_id || row?.waba_id);
+  return cleanText(validation.status) === "validated"
+    && validation.token_access === true
+    && validation.phone_number_id_match === true
+    && validation.waba_phone_match === true
+    && cleanText(validation.phone_number_id) === phoneNumberId
+    && cleanText(validation.waba_id) === wabaId;
+}
+
 function publicWhatsappConnection(
   row: Record<string, unknown> | null | undefined,
   options: { internalWorkspace?: boolean } = {}
 ) {
   const internalWorkspace = options.internalWorkspace === true;
   const status = cleanText(row?.status) || "not_configured";
-  const connected = status === "connected";
+  const connectionValidation = whatsappConnectionValidation(row);
+  const connectionValidated = whatsappConnectionIsValidated(row);
+  const connected = status === "connected" && connectionValidated;
   const connectionMode = cleanText(row?.connection_mode) || (internalWorkspace ? "internal_managed" : "tenant_connected");
   const meta = objectRecord(row?.metadata);
   const storedPhoneNumberId = cleanText(row?.meta_phone_number_id || row?.phone_number_id);
@@ -10946,6 +10965,12 @@ function publicWhatsappConnection(
     connected,
     configured,
     credentials_configured: configured,
+    connection_validated: connectionValidated,
+    connection_validation_status: cleanText(connectionValidation.status) || "not_validated",
+    connection_validated_at: connectionValidation.validated_at || null,
+    token_access_validated: connectionValidation.token_access === true,
+    phone_number_validated: connectionValidation.phone_number_id_match === true,
+    waba_phone_validated: connectionValidation.waba_phone_match === true,
     token_configured: tokenConfigured,
     groups_enabled: WHATSAPP_GROUPS_ENABLED,
     phone_number_id: maskedSecret(storedPhoneNumberId),
@@ -11078,8 +11103,11 @@ async function activeWhatsappConnection(
     ? await ensureInternalWhatsappConnection(supabase, user)
     : await findTenantWhatsappConnection(supabase, user);
   if (!row || cleanText(row.status) === "revoked") throw new Error(WHATSAPP_CONNECTION_REQUIRED_MESSAGE);
-  if (options.requireConnected !== false && cleanText(row.status) !== "connected") {
-    throw new Error(WHATSAPP_CONNECTION_REQUIRED_MESSAGE);
+  if (options.requireConnected !== false && (
+    cleanText(row.status) !== "connected"
+    || !whatsappConnectionIsValidated(row)
+  )) {
+    throw new Error(WHATSAPP_CONNECTION_VALIDATION_MESSAGE);
   }
 
   const accessToken = internalWorkspace
@@ -11115,9 +11143,10 @@ async function startWhatsappBusinessConnection(
   const redirectAfter = cleanText(input.redirect_after) || "settings.html?view=integrations&whatsapp=connected";
   if (await isInternalWhatsappWorkspace(supabase, user)) {
     const row = await ensureInternalWhatsappConnection(supabase, user);
+    const publicRow = publicWhatsappConnection(row, { internalWorkspace: true });
     return {
-      row: publicWhatsappConnection(row, { internalWorkspace: true }),
-      connected: cleanText(row.status) === "connected",
+      row: publicRow,
+      connected: publicRow.connected,
       mode: "internal_managed",
       redirect_after: redirectAfter,
       message: "Internal HeyMarksman WhatsApp Business sender is managed server-side."
@@ -11193,7 +11222,16 @@ async function saveTenantWhatsappBusinessConnection(
       secret_source: "tenant_manual_setup",
       webhook_verify_token_configured: true,
       app_secret_configured: true,
-      groups_enabled: false
+      groups_enabled: false,
+      connection_validation: {
+        status: "pending",
+        phone_number_id: metaPhoneNumberId,
+        waba_id: metaWabaId,
+        token_access: false,
+        phone_number_id_match: false,
+        waba_phone_match: false,
+        validated_at: null
+      }
     },
     updated_at: now
   }, user);
@@ -11286,6 +11324,110 @@ async function whatsappGraphFetch(
     throw responseError;
   }
   return data;
+}
+
+async function validateWhatsappConnectionAgainstMeta(
+  supabase: ReturnType<typeof createClient>,
+  connection: Awaited<ReturnType<typeof activeWhatsappConnection>>
+) {
+  const now = new Date().toISOString();
+  const configuredPhoneNumberId = cleanText(
+    connection.row.meta_phone_number_id
+    || connection.row.phone_number_id
+    || connection.phoneNumberId
+  );
+  const configuredWabaId = cleanText(
+    connection.row.meta_waba_id
+    || connection.row.waba_id
+    || connection.wabaId
+  );
+  if (!configuredPhoneNumberId || !configuredWabaId) {
+    throw new Error(WHATSAPP_CONNECTION_VALIDATION_MESSAGE);
+  }
+
+  try {
+    const phone = await whatsappGraphFetch(
+      connection,
+      `${configuredPhoneNumberId}?fields=id,display_phone_number,verified_name,quality_rating`
+    );
+    const returnedPhoneNumberId = cleanText(phone.id);
+    if (!returnedPhoneNumberId || returnedPhoneNumberId !== configuredPhoneNumberId) {
+      throw new Error("Meta returned a different Phone Number ID than the one configured for this workspace.");
+    }
+
+    const wabaPhonesResponse = await whatsappGraphFetch(
+      connection,
+      `${configuredWabaId}/phone_numbers?fields=id,display_phone_number,verified_name,quality_rating&limit=100`
+    );
+    const wabaPhones = Array.isArray(wabaPhonesResponse.data)
+      ? wabaPhonesResponse.data as Record<string, unknown>[]
+      : [];
+    const wabaPhone = wabaPhones.find((candidate) => cleanText(candidate.id) === configuredPhoneNumberId);
+    if (!wabaPhone) {
+      throw new Error("The configured Phone Number ID does not belong to the configured WABA, or the token cannot read that WABA.");
+    }
+
+    const metadata = {
+      ...objectRecord(connection.row.metadata),
+      connection_validation: {
+        status: "validated",
+        phone_number_id: configuredPhoneNumberId,
+        waba_id: configuredWabaId,
+        token_access: true,
+        phone_number_id_match: true,
+        waba_phone_match: true,
+        validated_at: now
+      }
+    };
+    const result = await supabase
+      .from("whatsapp_business_connections")
+      .update({
+        status: "connected",
+        display_phone_number: cleanText(wabaPhone.display_phone_number || phone.display_phone_number),
+        verified_name: cleanText(wabaPhone.verified_name || phone.verified_name),
+        quality_rating: cleanText(wabaPhone.quality_rating || phone.quality_rating),
+        metadata,
+        last_error: null,
+        updated_at: now
+      })
+      .eq("id", connection.row.id)
+      .select("*")
+      .single();
+    if (result.error) throw result.error;
+    connection.row = result.data;
+    connection.phoneNumberId = configuredPhoneNumberId;
+    connection.wabaId = configuredWabaId;
+    return { connection, phone: { ...phone, ...wabaPhone }, row: result.data };
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    const metadata = {
+      ...objectRecord(connection.row.metadata),
+      connection_validation: {
+        status: "failed",
+        phone_number_id: configuredPhoneNumberId,
+        waba_id: configuredWabaId,
+        token_access: false,
+        phone_number_id_match: false,
+        waba_phone_match: false,
+        failed_at: now,
+        validated_at: null
+      }
+    };
+    await supabase
+      .from("whatsapp_business_connections")
+      .update({ status: "error", last_error: reason, metadata, updated_at: now })
+      .eq("id", connection.row.id);
+    throw new Error(`WhatsApp Business validation failed: ${reason}`);
+  }
+}
+
+async function validatedWhatsappConnection(
+  supabase: ReturnType<typeof createClient>,
+  user: RatewareUser
+) {
+  const connection = await activeWhatsappConnection(supabase, user, { requireConnected: false });
+  const validated = await validateWhatsappConnectionAgainstMeta(supabase, connection);
+  return validated.connection;
 }
 
 const WHATSAPP_TEMPLATE_SETUP_MESSAGE = "Meta cannot read WhatsApp templates for this connection. Confirm that the WABA ID belongs to the sender phone number and that the access token has WhatsApp Business Management permission.";
@@ -11816,7 +11958,7 @@ async function publishOutreachTemplateToWhatsapp(
   const sourceBody = cleanText(template.whatsapp_body);
   if (!sourceBody) throw new Error("Add WhatsApp copy to the Outreach template before publishing it to Meta.");
 
-  const connection = await activeWhatsappConnection(supabase, user);
+  const connection = await validatedWhatsappConnection(supabase, user);
   const fingerprint = whatsappTemplateFingerprint(sourceBody);
   const definition = whatsappStableRfxTemplate(whatsappMetaLanguage(template));
   const name = definition.name;
@@ -11944,39 +12086,16 @@ async function testWhatsappBusinessConnection(
   user: RatewareUser
 ) {
   const connection = await activeWhatsappConnection(supabase, user, { requireConnected: false });
-  let data: Record<string, unknown>;
-  try {
-    data = await whatsappGraphFetch(connection, `${connection.phoneNumberId}?fields=id,display_phone_number,verified_name,quality_rating`);
-  } catch (error) {
-    const reason = error instanceof Error ? error.message : String(error);
-    await supabase
-      .from("whatsapp_business_connections")
-      .update({ status: "error", last_error: reason, updated_at: new Date().toISOString() })
-      .eq("id", connection.row.id);
-    throw error;
-  }
-  const patch = {
-    status: "connected",
-    display_phone_number: cleanText(data.display_phone_number),
-    verified_name: cleanText(data.verified_name),
-    quality_rating: cleanText(data.quality_rating),
-    last_error: null,
-    updated_at: new Date().toISOString()
-  };
-  const result = await supabase
-    .from("whatsapp_business_connections")
-    .update(patch)
-    .eq("id", connection.row.id)
-    .select("*")
-    .single();
-  if (result.error) throw result.error;
+  const validated = await validateWhatsappConnectionAgainstMeta(supabase, connection);
+  const data = validated.phone;
   return {
     ok: true,
     display_phone_number: cleanText(data.display_phone_number),
     verified_name: cleanText(data.verified_name),
     quality_rating: cleanText(data.quality_rating),
     phone_number_id: maskedSecret(data.id),
-    row: publicWhatsappConnection(result.data, { internalWorkspace: connection.internalWorkspace })
+    waba_validated: true,
+    row: publicWhatsappConnection(validated.row, { internalWorkspace: connection.internalWorkspace })
   };
 }
 
@@ -11984,7 +12103,7 @@ async function syncWhatsappTemplates(
   supabase: ReturnType<typeof createClient>,
   user: RatewareUser
 ) {
-  const connection = await activeWhatsappConnection(supabase, user);
+  const connection = await validatedWhatsappConnection(supabase, user);
   const data = await whatsappTemplateGraphFetch(
     supabase,
     connection,
@@ -12090,12 +12209,29 @@ async function selectWhatsappSender(
   const connection = await activeWhatsappConnection(supabase, user, { requireConnected: false });
   const phoneNumberId = cleanText(input.phone_number_id);
   if (!phoneNumberId) throw new Error("WhatsApp phone number id is required.");
+  const metadata = {
+    ...objectRecord(connection.row.metadata),
+    connection_validation: {
+      status: "pending",
+      phone_number_id: phoneNumberId,
+      waba_id: cleanText(connection.row.meta_waba_id || connection.row.waba_id),
+      token_access: false,
+      phone_number_id_match: false,
+      waba_phone_match: false,
+      validated_at: null
+    }
+  };
   const result = await supabase
     .from("whatsapp_business_connections")
     .update({
       phone_number_id: phoneNumberId,
       meta_phone_number_id: phoneNumberId,
       status: "manual_setup",
+      display_phone_number: null,
+      verified_name: null,
+      quality_rating: null,
+      metadata,
+      last_error: null,
       updated_at: new Date().toISOString()
     })
     .eq("id", connection.row.id)
@@ -13494,7 +13630,7 @@ async function sendWhatsappOutreachMessages(
     count: ids.length
   });
 
-  const connection = await activeWhatsappConnection(supabase, user);
+  const connection = await validatedWhatsappConnection(supabase, user);
   const messagesResult = await supabase
     .from("outreach_messages")
     .select("*, vendors(id,vendor_name,domain,whatsapp_do_not_contact,whatsapp_permission_basis)")

@@ -359,6 +359,10 @@ assert.doesNotMatch(whatsappPublicConnectionSource, /app_secret_encrypted\s*:/i,
 assert.match(whatsappPublicConnectionSource, /maskedSecret\(storedPhoneNumberId\)/, "Public WhatsApp connection should mask phone number ids");
 assert.doesNotMatch(whatsappPublicConnectionSource, /storedPhoneNumberId[^;]+\|\| WHATSAPP_PHONE_NUMBER_ID/, "External WhatsApp payload must not fall back to the internal phone id");
 assert.match(whatsappPublicConnectionSource, /app_secret_configured:/, "Public WhatsApp connection should expose only app secret configured state");
+assert.match(whatsappPublicConnectionSource, /status === "connected" && connectionValidated/, "WhatsApp should be connected only after Meta validation succeeds");
+assert.match(whatsappPublicConnectionSource, /connection_validated: connectionValidated/, "Public WhatsApp status should expose safe validation readiness without secrets");
+assert.match(whatsappPublicConnectionSource, /token_access_validated:/, "Public WhatsApp status should report whether Meta accepted the workspace token");
+assert.match(whatsappPublicConnectionSource, /waba_phone_validated:/, "Public WhatsApp status should report whether the phone belongs to the configured WABA");
 for (const column of [
   "organization_id",
   "meta_business_id",
@@ -392,6 +396,14 @@ assert.match(apiSource, /await encryptWhatsappSecret\(accessToken\)/, "Tenant Wh
 assert.match(apiSource, /await encryptWhatsappSecret\(appSecret\)/, "Tenant Meta App Secrets should be encrypted before storage");
 assert.match(apiSource, /await decryptWhatsappSecret\(row\.access_token_encrypted/, "Tenant Meta requests should decrypt only the active workspace token server-side");
 assert.match(apiSource, /WHATSAPP_CONNECTION_REQUIRED_MESSAGE/, "External WhatsApp actions should fail closed without a tenant connection");
+assert.match(apiSource, /WHATSAPP_CONNECTION_VALIDATION_MESSAGE/, "Unvalidated WhatsApp connections should return an actionable validation error");
+assert.match(apiSource, /function whatsappConnectionIsValidated[\s\S]+token_access === true[\s\S]+phone_number_id_match === true[\s\S]+waba_phone_match === true/, "WhatsApp readiness should require token, exact Phone Number ID, and WABA membership validation");
+assert.match(apiSource, /async function validateWhatsappConnectionAgainstMeta/, "Rateware API should centralize live Meta connection validation");
+assert.match(apiSource, /configuredPhoneNumberId}\?fields=id,display_phone_number,verified_name,quality_rating/, "WhatsApp validation should read the exact configured Phone Number ID from Meta");
+assert.match(apiSource, /configuredWabaId}\/phone_numbers\?fields=id,display_phone_number,verified_name,quality_rating&limit=100/, "WhatsApp validation should verify the sender belongs to the exact configured WABA");
+assert.match(apiSource, /returnedPhoneNumberId !== configuredPhoneNumberId/, "WhatsApp validation should reject a different Phone Number ID returned by Meta");
+assert.match(apiSource, /wabaPhones\.find\(\(candidate\) => cleanText\(candidate\.id\) === configuredPhoneNumberId\)/, "WhatsApp validation should reject phones outside the configured WABA");
+assert.match(apiSource, /async function validatedWhatsappConnection[\s\S]+validateWhatsappConnectionAgainstMeta/, "Provider operations should use a live validated WhatsApp connection");
 assert.match(apiSource, /Authorization: `Bearer \$\{connection\.accessToken\}`/, "Meta calls should use the resolved workspace connection token");
 assert.match(apiSource, /connection\.wabaId}\/message_templates/, "Template sync should use the resolved workspace WABA");
 assert.match(apiSource, /discoverWhatsappWabaFromPhone/, "WhatsApp template sync should try to discover the WABA from the sender phone number");
@@ -459,7 +471,10 @@ assert.match(apiSource, /updateWhatsappMessageFailure\(supabase, user, resolvedM
 assert.match(apiSource, /mark_whatsapp_group_message_manually_sent/, "Rateware API should support manual WhatsApp group completion");
 assert.match(apiSource, /send_whatsapp_group_outreach_messages/, "Rateware API should explicitly guard WhatsApp group automation");
 assert.match(apiSource, /test_whatsapp_business_connection/, "Rateware API should expose WhatsApp Business connection test");
+assert.match(apiSource, /testWhatsappBusinessConnection[\s\S]+validateWhatsappConnectionAgainstMeta/, "Test line should validate token, Phone Number ID, and WABA together");
 assert.match(apiSource, /sync_whatsapp_templates/, "Rateware API should expose WhatsApp template sync");
+assert.match(apiSource, /syncWhatsappTemplates[\s\S]+validatedWhatsappConnection/, "Template sync should require a live validated WhatsApp connection");
+assert.match(apiSource, /sendWhatsappOutreachMessages[\s\S]+validatedWhatsappConnection/, "Direct WhatsApp sends should revalidate the workspace sender before delivery");
 assert.match(apiSource, /rateware_rfx_invitation_en/, "WhatsApp RFx delivery should use the approved stable English Meta template name");
 assert.match(apiSource, /whatsappTemplateNamesMatch/, "WhatsApp template sync should reconcile legacy and current stable RFx template aliases");
 assert.match(apiSource, /rateware_rfx_invitation_\$\{suffix\}rateware_rfx_invitation_\$\{suffix\}/, "WhatsApp publishing should reconcile duplicated legacy notifier names");
@@ -494,6 +509,9 @@ assert.match(settingsHtml, /whatsapp-access-token[^>]+type="password"/, "WhatsAp
 assert.match(settingsHtml, /whatsapp-app-secret[^>]+type="password"/, "WhatsApp App Secret should use a password input");
 assert.match(settingsSource, /Connect your own WhatsApp Business/, "External Settings should ask tenants to connect their own WhatsApp Business account");
 assert.match(settingsSource, /Internal HeyMarksman WhatsApp Business sender/, "Internal Settings should label the managed HeyMarksman sender clearly");
+assert.match(settingsSource, /row\.status === "connected" && connectionValidated/, "Settings should not display WhatsApp as connected from stored ids alone");
+assert.match(settingsSource, /Token, Phone Number ID and WABA verified/, "Settings should explain successful WhatsApp sender validation");
+assert.match(settingsSource, /Not validated\. Run Test line before sending\./, "Settings should guide configured but unvalidated WhatsApp workspaces");
 assert.match(settingsServiceSource, /save_whatsapp_business_connection/, "Settings should save tenant WhatsApp credentials server-side");
 assert.match(settingsSource, /WHATSAPP_WEBHOOK_ENDPOINT/, "Settings should show the Meta webhook endpoint");
 assert.match(settingsSource, /WhatsApp Business connector is not enabled for this deployment\. Configure Meta WhatsApp secrets server-side\./, "Settings should show clear missing WhatsApp secrets copy");
@@ -715,6 +733,10 @@ assert.match(rfxEventsSource, /data-rfx-send-draft-now/, "Bid Room Step 4 should
 assert.match(rfxEventsSource, /function sendSingleDraftEmail/, "Bid Room Step 4 should support individual same-day carrier invite sends");
 assert.match(rfxEventsSource, /targetHasActiveOutreachDraft/, "Bid Room Step 4 should generate missing drafts without duplicating the whole wave");
 assert.match(rfxEventsSource, /function outreachDraftChannels/, "Bid Room Step 4 should resolve draft coverage by the selected outreach channel");
+assert.match(rfxEventsSource, /async function loadWhatsappConnectionReadiness/, "Bid Room should load server-validated WhatsApp readiness");
+assert.match(rfxEventsSource, /row\.status === "connected" && row\.connection_validated === true/, "Bid Room should enable WhatsApp only after server-side Meta validation");
+assert.match(rfxEventsSource, /sendSelectedDraftWhatsapp[\s\S]+loadWhatsappConnectionReadiness\(\{ render: false \}\)/, "Bulk WhatsApp sends should refresh connection validation immediately before sending");
+assert.match(rfxEventsSource, /sendSingleDraftWhatsapp[\s\S]+loadWhatsappConnectionReadiness\(\{ render: false \}\)/, "Single WhatsApp sends should refresh connection validation immediately before sending");
 assert.match(rfxEventsSource, /targetHasActiveOutreachDraft\(target, requestedDraftChannels\)/, "A WhatsApp draft must not block creation of a missing Gmail draft for the same invitation");
 assert.match(rfxEventsSource, /requestedChannels\.every\(\(channel\) => activeChannels\.has/, "Draft deduplication should require coverage for every requested channel");
 assert.match(rfxEventsSource, /function confirmDraftQueueAction/, "Bid Room draft queue should require human confirmation for bulk queue actions");
