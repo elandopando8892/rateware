@@ -5797,6 +5797,36 @@ async function autoShortlistLaneIds(ids, statusElement = actionStatus) {
   return inserted;
 }
 
+function outreachDraftRequestStorageKey(eventId, templateId, channel, invitationIds) {
+  const source = [eventId, templateId, channel, ...invitationIds.map(String).sort()].join("|");
+  let hash = 2166136261;
+  for (let index = 0; index < source.length; index += 1) {
+    hash ^= source.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `rateware:outreach-draft:${(hash >>> 0).toString(16)}`;
+}
+
+function outreachDraftIdempotencyKey(storageKey) {
+  try {
+    const existing = window.sessionStorage.getItem(storageKey);
+    if (existing) return existing;
+    const key = window.crypto?.randomUUID?.() || `outreach-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    window.sessionStorage.setItem(storageKey, key);
+    return key;
+  } catch (_) {
+    return window.crypto?.randomUUID?.() || `outreach-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  }
+}
+
+function clearOutreachDraftIdempotencyKey(storageKey) {
+  try {
+    window.sessionStorage.removeItem(storageKey);
+  } catch (_) {
+    // Storage is optional; backend idempotency still protects the active request.
+  }
+}
+
 async function createCurrentOutreachDrafts(statusElement = rfxOutreachStatus) {
   if (!selectedEventId) {
     blockIfLaunchPreflightFails(statusElement);
@@ -5830,6 +5860,8 @@ async function createCurrentOutreachDrafts(statusElement = rfxOutreachStatus) {
     return { generated: 0, skipped: [] };
   }
   const invitationIds = draftTargets.map(({ invitation }) => invitation.id);
+  const idempotencyStorageKey = outreachDraftRequestStorageKey(eventId, template.id, outreachChannel, invitationIds);
+  const idempotencyKey = outreachDraftIdempotencyKey(idempotencyStorageKey);
   if (createRfxOutreachCampaignButton) createRfxOutreachCampaignButton.disabled = true;
   setStatus(statusElement, "Creating campaign and generating drafts...");
   const whatsappTargetMode = rfxWhatsappTargetMode?.value || "direct_vendor";
@@ -5841,6 +5873,7 @@ async function createCurrentOutreachDrafts(statusElement = rfxOutreachStatus) {
     channel: outreachChannel,
     whatsapp_target_mode: whatsappTargetMode,
     group_delivery_policy: groupDeliveryPolicy,
+    idempotency_key: idempotencyKey,
     sender_email: rfxOutreachSender?.value || APPROVED_GMAIL_SENDER,
     sender_label: rfxOutreachSender?.selectedOptions?.[0]?.textContent || rfxOutreachSender?.value || APPROVED_GMAIL_SENDER,
     sender_connection_status: "draft_only"
@@ -5854,6 +5887,7 @@ async function createCurrentOutreachDrafts(statusElement = rfxOutreachStatus) {
     whatsappTargetMode: campaign.whatsapp_target_mode || whatsappTargetMode,
     groupDeliveryPolicy: campaign.group_delivery_policy || groupDeliveryPolicy
   });
+  clearOutreachDraftIdempotencyKey(idempotencyStorageKey);
   if (selectedEventId !== eventId) return result;
   await loadDetail(eventId);
   if (selectedEventId !== eventId) return result;

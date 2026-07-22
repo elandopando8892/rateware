@@ -8844,6 +8844,7 @@ function normalizeOutreachCampaign(input: Record<string, unknown>) {
     channel: ["email", "whatsapp", "whatsapp_group", "multi", "email_whatsapp", "email_whatsapp_group", "whatsapp_direct_group"].includes(channel) ? channel : "email",
     whatsapp_target_mode: ["direct_vendor", "vendor_group", "direct_and_group"].includes(targetMode) ? targetMode : "direct_vendor",
     group_delivery_policy: ["manual_only", "api_only", "manual_or_api"].includes(groupPolicy) ? groupPolicy : "manual_or_api",
+    idempotency_key: cleanText(input.idempotency_key),
     whatsapp_connection_id: cleanText(input.whatsapp_connection_id),
     status: ["draft", "generated", "queued", "sent", "closed", "archived"].includes(status) ? status : "draft",
     sender_email: cleanText(input.sender_email),
@@ -11271,18 +11272,28 @@ async function whatsappGraphFetch(
   options: RequestInit = {}
 ) {
   const url = `https://graph.facebook.com/${connection.graphApiVersion}/${path.replace(/^\//, "")}`;
-  const response = await fetch(url, {
-    ...options,
-    headers: {
-      Authorization: `Bearer ${connection.accessToken}`,
-      "Content-Type": "application/json",
-      ...(options.headers || {})
-    }
-  });
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      ...options,
+      headers: {
+        Authorization: `Bearer ${connection.accessToken}`,
+        "Content-Type": "application/json",
+        ...(options.headers || {})
+      }
+    });
+  } catch (error) {
+    const requestError = new Error(error instanceof Error ? error.message : "Meta WhatsApp request did not return a response.");
+    (requestError as Error & { deliveryUncertain?: boolean }).deliveryUncertain = options.method === "POST";
+    throw requestError;
+  }
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
     const message = cleanText(data?.error?.message) || `Meta WhatsApp request failed (${response.status}).`;
-    throw new Error(message);
+    const responseError = new Error(message);
+    (responseError as Error & { deliveryUncertain?: boolean }).deliveryUncertain =
+      options.method === "POST" && (response.status === 408 || response.status >= 500);
+    throw responseError;
   }
   return data;
 }
@@ -13101,6 +13112,83 @@ function messageInvitationIds(message: Record<string, unknown>) {
   return [...new Set([directId, ...ids].filter(Boolean))];
 }
 
+const OUTREACH_SENDABLE_STATUSES = new Set(["drafted", "queued", "failed"]);
+
+async function claimOutreachMessageForSend(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_email: string | null },
+  message: Record<string, unknown>
+) {
+  const status = cleanText(message.status)?.toLowerCase() || "";
+  if (!OUTREACH_SENDABLE_STATUSES.has(status)) return null;
+  const attemptId = crypto.randomUUID();
+  const startedAt = new Date().toISOString();
+  const result = await supabase
+    .from("outreach_messages")
+    .update({
+      status: "sending",
+      send_attempt_id: attemptId,
+      send_started_at: startedAt,
+      send_completed_at: null,
+      delivery_error: null,
+      updated_at: startedAt
+    })
+    .eq("id", message.id)
+    .eq("owner_email", user.owner_email)
+    .eq("status", status)
+    .select("*")
+    .maybeSingle();
+  if (result.error) throw result.error;
+  return result.data ? { row: result.data as Record<string, unknown>, attemptId, startedAt } : null;
+}
+
+async function updateClaimedOutreachMessage(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_email: string | null },
+  messageId: unknown,
+  attemptId: string,
+  patch: Record<string, unknown>
+) {
+  const result = await supabase
+    .from("outreach_messages")
+    .update({ ...patch, updated_at: new Date().toISOString() })
+    .eq("id", messageId)
+    .eq("owner_email", user.owner_email)
+    .eq("status", "sending")
+    .eq("send_attempt_id", attemptId)
+    .select("*")
+    .maybeSingle();
+  if (result.error) throw result.error;
+  return result.data as Record<string, unknown> | null;
+}
+
+async function markClaimedOutreachFailure(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_email: string | null },
+  message: Record<string, unknown>,
+  attemptId: string,
+  reason: string,
+  uncertain = false,
+  extra: Record<string, unknown> = {}
+) {
+  const now = new Date().toISOString();
+  return await updateClaimedOutreachMessage(supabase, user, message.id, attemptId, {
+    status: uncertain ? "delivery_unknown" : "failed",
+    delivery_status: uncertain ? "delivery_unknown" : "failed",
+    failed_at: uncertain ? null : now,
+    delivery_error: reason,
+    ...extra
+  });
+}
+
+async function writeOutreachSentHistory(
+  supabase: ReturnType<typeof createClient>,
+  row: Record<string, unknown>
+) {
+  const result = await supabase.from("contact_history").insert(row);
+  if (result.error && String(result.error.code || "") !== "23505") throw result.error;
+}
+
 async function sendOutreachMessages(
   supabase: ReturnType<typeof createClient>,
   user: { owner_user_id: string | null; owner_email: string | null },
@@ -13144,6 +13232,8 @@ async function sendOutreachMessages(
   const now = new Date().toISOString();
   const sentRows: Record<string, unknown>[] = [];
   const failures: Record<string, unknown>[] = [];
+  const skipped: Record<string, unknown>[] = [];
+  let deliveryUnknown = 0;
 
   for (const message of messages) {
     if (message.status === "sent" || message.status === "archived") {
@@ -13171,87 +13261,114 @@ async function sendOutreachMessages(
       continue;
     }
 
+    let claim: Awaited<ReturnType<typeof claimOutreachMessageForSend>> = null;
     try {
-      const response = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ raw: gmailRawMessage(message, senderEmail) })
-      });
-      const data = await response.json();
+      claim = await claimOutreachMessageForSend(supabase, user, message);
+    } catch (error) {
+      failures.push({ id: message.id, recipient_email: message.recipient_email, reason: error instanceof Error ? error.message : String(error) });
+      continue;
+    }
+    if (!claim) {
+      skipped.push({ id: message.id, reason: "Message was already claimed or completed by another request." });
+      continue;
+    }
+
+    let providerAccepted = false;
+    try {
+      let response: Response;
+      try {
+        response = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ raw: gmailRawMessage(message, senderEmail) })
+        });
+      } catch (error) {
+        const requestError = new Error(error instanceof Error ? error.message : "Gmail did not return a response.");
+        (requestError as Error & { deliveryUncertain?: boolean }).deliveryUncertain = true;
+        throw requestError;
+      }
+      const data = await response.json().catch(() => ({}));
       if (!response.ok) {
         const reason = cleanText(data?.error?.message) || cleanText(data?.error_description) || `Gmail send failed (${response.status}).`;
-        throw new Error(reason);
+        const responseError = new Error(reason);
+        (responseError as Error & { deliveryUncertain?: boolean }).deliveryUncertain = response.status === 408 || response.status >= 500;
+        throw responseError;
       }
+      providerAccepted = true;
 
-      const updateResult = await supabase
-        .from("outreach_messages")
-        .update({
-          status: "sent",
-          sent_at: now,
-          last_contacted_at: now,
-          sender_email: senderEmail,
-          sender_connection_status: "connected",
-          provider_message_id: cleanText(data.id),
-          delivery_error: null,
-          delivered_by: GMAIL_ALLOWED_SENDER,
-          updated_at: now
-        })
-        .eq("id", message.id)
-        .eq("owner_email", user.owner_email)
-        .select("*")
-        .single();
-      if (updateResult.error) throw updateResult.error;
-      sentRows.push(updateResult.data);
-
-      const history = await supabase.from("contact_history").insert(withOwner({
-        outreach_message_id: message.id,
-        campaign_id: message.campaign_id,
-        vendor_id: message.vendor_id,
-        rfx_event_id: message.rfx_event_id,
-        channel: "email",
-        direction: "outbound",
+      const updateResult = await updateClaimedOutreachMessage(supabase, user, message.id, claim.attemptId, {
         status: "sent",
-        subject: message.subject,
-        body_preview: contactPreview(message.text_body || message.html_body),
-        occurred_at: now,
-        metadata: {
-          sent_from: "gmail_api",
-          sender_email: senderEmail,
-          provider_message_id: cleanText(data.id),
-          gmail_thread_id: cleanText(data.threadId),
-          source: cleanText(objectRecord(message.metadata).source),
-          ratebook_id: cleanText(objectRecord(message.metadata).ratebook_id),
-          ratebook_share_id: cleanText(objectRecord(message.metadata).ratebook_share_id)
-        }
-      }, user));
-      if (history.error) throw history.error;
+        delivery_status: "sent",
+        sent_at: now,
+        send_completed_at: now,
+        last_contacted_at: now,
+        sender_email: senderEmail,
+        sender_connection_status: "connected",
+        provider_message_id: cleanText(data.id),
+        delivery_error: null,
+        delivered_by: GMAIL_ALLOWED_SENDER
+      });
+      if (!updateResult) throw new Error("Gmail accepted the message, but its delivery claim could not be finalized.");
+      sentRows.push(updateResult);
 
-      const invitationIds = messageInvitationIds(message);
-      if (invitationIds.length) {
-        const invitationUpdate = await supabase
-          .from("rfx_lane_vendors")
-          .update({ invitation_status: "invited", invited_at: now, updated_at: now })
-          .in("id", invitationIds)
-          .not("invitation_status", "in", "(quoted,bid_submitted,awarded,archived)");
-        if (invitationUpdate.error) throw invitationUpdate.error;
+      try {
+        await writeOutreachSentHistory(supabase, withOwner({
+          outreach_message_id: message.id,
+          campaign_id: message.campaign_id,
+          vendor_id: message.vendor_id,
+          rfx_event_id: message.rfx_event_id,
+          channel: "email",
+          direction: "outbound",
+          status: "sent",
+          subject: message.subject,
+          body_preview: contactPreview(message.text_body || message.html_body),
+          occurred_at: now,
+          metadata: {
+            sent_from: "gmail_api",
+            sender_email: senderEmail,
+            provider_message_id: cleanText(data.id),
+            gmail_thread_id: cleanText(data.threadId),
+            source: cleanText(objectRecord(message.metadata).source),
+            ratebook_id: cleanText(objectRecord(message.metadata).ratebook_id),
+            ratebook_share_id: cleanText(objectRecord(message.metadata).ratebook_share_id)
+          }
+        }, user));
+
+        const invitationIds = messageInvitationIds(message);
+        if (invitationIds.length) {
+          const invitationUpdate = await supabase
+            .from("rfx_lane_vendors")
+            .update({ invitation_status: "invited", invited_at: now, updated_at: now })
+            .in("id", invitationIds)
+            .not("invitation_status", "in", "(quoted,bid_submitted,awarded,archived)");
+          if (invitationUpdate.error) throw invitationUpdate.error;
+        }
+      } catch (error) {
+        try {
+          await writeAuditLog(supabase, user, "gmail.post_send_sync_failed", "outreach_messages", String(message.id), "Gmail accepted outreach, but follow-up synchronization failed", {
+            provider_message_id: cleanText(data.id),
+            error: safeOperationalError(error)
+          });
+        } catch (_) {
+          // Provider acceptance is authoritative; diagnostics cannot make the message retryable.
+        }
       }
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
-      failures.push({ id: message.id, recipient_email: message.recipient_email, reason });
-      await supabase
-        .from("outreach_messages")
-        .update({
-          status: "failed",
-          delivery_error: reason,
+      const uncertain = providerAccepted || Boolean((error as Error & { deliveryUncertain?: boolean })?.deliveryUncertain);
+      if (uncertain) deliveryUnknown += 1;
+      failures.push({ id: message.id, recipient_email: message.recipient_email, reason, delivery_unknown: uncertain });
+      try {
+        await markClaimedOutreachFailure(supabase, user, message, claim.attemptId, reason, uncertain, {
           sender_email: senderEmail,
-          sender_connection_status: "connected",
-          updated_at: now
-        })
-        .eq("id", message.id)
-        .eq("owner_email", user.owner_email);
+          sender_connection_status: "connected"
+        });
+      } catch (_) {
+        // The send claim remains locked if persistence is unavailable, preventing an unsafe retry.
+      }
     }
   }
 
@@ -13262,10 +13379,18 @@ async function sendOutreachMessages(
       .update({ status: "sent", sender_email: senderEmail, sender_connection_status: "connected", updated_at: now })
       .eq("owner_email", user.owner_email)
       .in("id", sentCampaignIds);
-    if (campaignUpdate.error) throw campaignUpdate.error;
+    if (campaignUpdate.error) {
+      try {
+        await writeAuditLog(supabase, user, "outreach.campaign_status_sync_failed", "outreach_campaigns", sentCampaignIds.join(","), "Messages were sent but campaign status synchronization failed", {
+          error: safeOperationalError(campaignUpdate.error)
+        });
+      } catch (_) {
+        // Message delivery must not be reported as failed after provider acceptance.
+      }
+    }
   }
 
-  return { sent: sentRows.length, failed: failures.length, rows: sentRows, failures };
+  return { sent: sentRows.length, failed: failures.length, skipped: skipped.length, delivery_unknown: deliveryUnknown, rows: sentRows, failures, skipped_rows: skipped };
 }
 
 async function metaSendWhatsappTemplate(
@@ -13388,6 +13513,8 @@ async function sendWhatsappOutreachMessages(
   const now = new Date().toISOString();
   const rows: Record<string, unknown>[] = [];
   const failures: Record<string, unknown>[] = [];
+  const skipped: Record<string, unknown>[] = [];
+  let deliveryUnknown = 0;
   const notifierByTemplate = new Map<string, Record<string, unknown>>();
   for (const message of messages) {
     const vendor = typeof message.vendors === "object" && message.vendors ? message.vendors as Record<string, unknown> : {};
@@ -13425,67 +13552,112 @@ async function sendWhatsappOutreachMessages(
           }
         };
       }
-      const data = await metaSendWhatsappTemplate(resolvedMessage, connection);
-      const providerMessageId = cleanText(data?.messages?.[0]?.id);
-      const senderDisplayPhone = cleanText(connection.row.display_phone_number);
-      const updateResult = await supabase
-        .from("outreach_messages")
-        .update({
-          status: "sent",
-          delivery_status: "sent",
-          sent_at: now,
-          last_contacted_at: now,
-          provider: "meta",
-          whatsapp_connection_id: connection.row.id,
-          whatsapp_template_name: cleanText(resolvedMessage.whatsapp_template_name),
-          whatsapp_template_language: cleanText(resolvedMessage.whatsapp_template_language),
-          provider_message_id: providerMessageId,
-          delivery_error: null,
-          metadata: {
-            ...objectRecord(resolvedMessage.metadata),
-            whatsapp_connection_id: connection.row.id,
-            whatsapp_connection_mode: cleanText(connection.row.connection_mode),
-            sender_display_phone: senderDisplayPhone
-          },
-          updated_at: now
-        })
-        .eq("id", message.id)
-        .eq("owner_email", user.owner_email)
-        .select("*")
-        .single();
-      if (updateResult.error) throw updateResult.error;
-      rows.push(updateResult.data);
-      const history = await supabase.from("contact_history").insert(withOwner({
-        whatsapp_connection_id: connection.row.id,
-        outreach_message_id: message.id,
-        campaign_id: message.campaign_id,
-        vendor_id: message.vendor_id,
-        rfx_event_id: message.rfx_event_id,
-        channel: "whatsapp",
-        direction: "outbound",
-        status: "sent",
-        subject: message.subject,
-        body_preview: contactPreview(message.whatsapp_body || message.whatsapp_text || message.text_body),
-        occurred_at: now,
-        metadata: {
-          provider: "meta",
-          whatsapp_connection_id: connection.row.id,
-          whatsapp_connection_mode: cleanText(connection.row.connection_mode),
-          sender_display_phone: senderDisplayPhone,
-          phone_number_id: maskedSecret(connection.phoneNumberId),
-          provider_message_id: providerMessageId,
-          template_name: resolvedMessage.whatsapp_template_name,
-          template_language: resolvedMessage.whatsapp_template_language
-        }
-      }, user));
-      if (history.error) throw history.error;
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
       failures.push({ id: message.id, reason });
       await updateWhatsappMessageFailure(supabase, user, resolvedMessage, reason, now);
+      continue;
+    }
+
+    let claim: Awaited<ReturnType<typeof claimOutreachMessageForSend>> = null;
+    try {
+      claim = await claimOutreachMessageForSend(supabase, user, resolvedMessage);
+    } catch (error) {
+      failures.push({ id: message.id, reason: error instanceof Error ? error.message : String(error) });
+      continue;
+    }
+    if (!claim) {
+      skipped.push({ id: message.id, reason: "Message was already claimed or completed by another request." });
+      continue;
+    }
+
+    let providerAccepted = false;
+    try {
+      const data = await metaSendWhatsappTemplate(resolvedMessage, connection);
+      providerAccepted = true;
+      const providerMessageId = cleanText(data?.messages?.[0]?.id);
+      const senderDisplayPhone = cleanText(connection.row.display_phone_number);
+      const updateResult = await updateClaimedOutreachMessage(supabase, user, message.id, claim.attemptId, {
+        status: "sent",
+        delivery_status: "sent",
+        sent_at: now,
+        send_completed_at: now,
+        last_contacted_at: now,
+        provider: "meta",
+        whatsapp_connection_id: connection.row.id,
+        whatsapp_template_name: cleanText(resolvedMessage.whatsapp_template_name),
+        whatsapp_template_language: cleanText(resolvedMessage.whatsapp_template_language),
+        provider_message_id: providerMessageId,
+        delivery_error: null,
+        metadata: {
+          ...objectRecord(resolvedMessage.metadata),
+          whatsapp_connection_id: connection.row.id,
+          whatsapp_connection_mode: cleanText(connection.row.connection_mode),
+          sender_display_phone: senderDisplayPhone
+        }
+      });
+      if (!updateResult) throw new Error("Meta accepted the message, but its delivery claim could not be finalized.");
+      rows.push(updateResult);
+
+      try {
+        await writeOutreachSentHistory(supabase, withOwner({
+          whatsapp_connection_id: connection.row.id,
+          outreach_message_id: message.id,
+          campaign_id: message.campaign_id,
+          vendor_id: message.vendor_id,
+          rfx_event_id: message.rfx_event_id,
+          channel: "whatsapp",
+          direction: "outbound",
+          status: "sent",
+          subject: message.subject,
+          body_preview: contactPreview(message.whatsapp_body || message.whatsapp_text || message.text_body),
+          occurred_at: now,
+          metadata: {
+            provider: "meta",
+            whatsapp_connection_id: connection.row.id,
+            whatsapp_connection_mode: cleanText(connection.row.connection_mode),
+            sender_display_phone: senderDisplayPhone,
+            phone_number_id: maskedSecret(connection.phoneNumberId),
+            provider_message_id: providerMessageId,
+            template_name: resolvedMessage.whatsapp_template_name,
+            template_language: resolvedMessage.whatsapp_template_language
+          }
+        }, user));
+      } catch (error) {
+        try {
+          await writeAuditLog(supabase, user, "whatsapp.post_send_sync_failed", "outreach_messages", String(message.id), "Meta accepted outreach, but contact history synchronization failed", {
+            provider_message_id: providerMessageId,
+            error: safeOperationalError(error)
+          });
+        } catch (_) {
+          // Provider acceptance is authoritative; diagnostics cannot make the message retryable.
+        }
+      }
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      const uncertain = providerAccepted || Boolean((error as Error & { deliveryUncertain?: boolean })?.deliveryUncertain);
+      if (uncertain) deliveryUnknown += 1;
+      failures.push({ id: message.id, reason, delivery_unknown: uncertain });
+      try {
+        await markClaimedOutreachFailure(supabase, user, resolvedMessage, claim.attemptId, reason, uncertain, {
+          provider: "meta",
+          whatsapp_connection_id: connection.row.id,
+          whatsapp_template_name: cleanText(resolvedMessage.whatsapp_template_name) || null,
+          whatsapp_template_language: cleanText(resolvedMessage.whatsapp_template_language) || null,
+          metadata: {
+            ...objectRecord(resolvedMessage.metadata),
+            whatsapp_connection_id: connection.row.id,
+            whatsapp_connection_mode: cleanText(connection.row.connection_mode),
+            whatsapp_last_error: reason,
+            whatsapp_last_error_at: now
+          }
+        });
+      } catch (_) {
+        // The send claim remains locked if persistence is unavailable, preventing an unsafe retry.
+      }
     }
   }
-  return { sent: rows.length, failed: failures.length, rows, failures };
+  return { sent: rows.length, failed: failures.length, skipped: skipped.length, delivery_unknown: deliveryUnknown, rows, failures, skipped_rows: skipped };
 }
 
 async function sendWhatsappGroupOutreachMessages(
@@ -20239,8 +20411,28 @@ Deno.serve(async (request) => {
       const normalized = normalizeOutreachCampaign(body.campaign || {});
       if (normalized.rfx_event_id) await requireOwnedRfxEvent(supabase, user, normalized.rfx_event_id);
       if (normalized.template_id) await fetchOutreachTemplate(supabase, user, normalized.template_id);
+      if (normalized.idempotency_key) {
+        const existing = await supabase
+          .from("outreach_campaigns")
+          .select("*")
+          .eq("owner_email", user.owner_email)
+          .eq("idempotency_key", normalized.idempotency_key)
+          .maybeSingle();
+        if (existing.error) throw existing.error;
+        if (existing.data) return jsonResponse({ row: existing.data, reused: true });
+      }
       const row = withOwner(normalized, user);
       const result = await supabase.from("outreach_campaigns").insert(row).select().single();
+      if (result.error && normalized.idempotency_key && String(result.error.code || "") === "23505") {
+        const existing = await supabase
+          .from("outreach_campaigns")
+          .select("*")
+          .eq("owner_email", user.owner_email)
+          .eq("idempotency_key", normalized.idempotency_key)
+          .single();
+        if (existing.error) throw existing.error;
+        return jsonResponse({ row: existing.data, reused: true });
+      }
       if (result.error) throw result.error;
       return jsonResponse({ row: result.data });
     }
@@ -20748,7 +20940,7 @@ Deno.serve(async (request) => {
       });
       for (const existing of existingBatches.flat()) existingMessagesByKey.set(draftKey(existing), existing);
 
-      const protectedStatuses = new Set(["queued", "sent", "delivered", "read", "replied", "bounced", "manual_sent", "archived"]);
+      const protectedStatuses = new Set(["queued", "sending", "sent", "delivered", "read", "replied", "delivery_unknown", "bounced", "manual_sent", "archived"]);
       const preservedMessages: Record<string, unknown>[] = [];
       const rowsToUpsert = rows.filter((row) => {
         const existing = existingMessagesByKey.get(draftKey(row));
