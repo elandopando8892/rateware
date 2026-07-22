@@ -405,6 +405,16 @@ assert.match(apiSource, /if \(normalized === "email" \|\| normalized === "gmail"
 assert.match(apiSource, /const channel = cleanText\(input\.channel\)\?\.toLowerCase\(\) \|\| "email"/, "Outreach templates and campaigns should default to Gmail only");
 assert.match(apiSource, /const normalized = cleanText\(channel\)\?\.toLowerCase\(\) \|\| "email"/, "Unknown outreach channels should default to Gmail only");
 assert.match(generateOutreachDraftsSource, /const wantsDirectWhatsapp = requestedChannels\.includes\("whatsapp"\)/, "Draft generation should explicitly gate direct WhatsApp work");
+assert.match(generateOutreachDraftsSource, /messageChannels\(body\.channel \|\| campaign\.channel \|\| template\.channel\)/, "The channel selected in the launchpad should be authoritative for draft generation");
+assert.match(generateOutreachDraftsSource, /const wantsEmail = requestedChannels\.includes\("email"\)/, "Draft generation should explicitly gate Gmail preparation");
+assert.match(generateOutreachDraftsSource, /const wantsWhatsappGroup = requestedChannels\.includes\("whatsapp_group"\)/, "Draft generation should explicitly gate WhatsApp group preparation");
+assert.match(generateOutreachDraftsSource, /const vendorIdsForGroups = wantsWhatsappGroup[\s\S]+\? \[\.\.\.new Set/, "Gmail and direct WhatsApp queues must not load WhatsApp groups");
+assert.match(generateOutreachDraftsSource, /if \(wantsEmail\) \{[\s\S]+suppressedEmailSet/, "Only Gmail queues should load email suppressions");
+assert.match(generateOutreachDraftsSource, /const channels = requestedChannels/, "Every carrier group should use the request-scoped channel selection");
+assert.match(generateOutreachDraftsSource, /requested_channels: requestedChannels[\s\S]+channel_errors: channelPreparationErrors[\s\S]+channel_results: channelResults/, "Draft generation should report isolated results and errors per channel");
+assert.match(apiSource, /gmail\.queue_preparation_error/, "Gmail queue preparation failures should have their own audit source");
+assert.match(apiSource, /whatsapp\.queue_preparation_error/, "WhatsApp queue preparation failures should have their own audit source");
+assert.match(apiSource, /outreach_queue\.error/, "Queue creation failures should not be reported as generic provider API failures");
 assert.doesNotMatch(
   generateOutreachDraftsSource.slice(0, generateOutreachDraftsSource.indexOf("if (wantsDirectWhatsapp)")),
   /listWhatsappConnections/,
@@ -656,6 +666,11 @@ assert.doesNotMatch(rfxEventsHtml, /carriers@xbfreight\.com/, "Bid Room Step 4 s
 assert.doesNotMatch(rfxEventsHtml, /Advanced source editor/, "Bid Room Step 4 should not expose the advanced source editor in the main flow");
 assert.match(rfxEventsSource, /sender_email: rfxOutreachSender/, "Bid Room should pass the selected sender into outreach campaign creation");
 assert.match(outreachServiceSource, /sender_email: options\.senderEmail/, "Outreach draft generation should send selected sender metadata to the API");
+assert.match(outreachServiceSource, /channel: options\.channel \|\| ""/, "Outreach service should pass the selected channel explicitly to the API");
+assert.match(rfxEventsSource, /generateOutreachDrafts\(campaign\.id, \{[\s\S]+channel: outreachChannel/, "Bid Room queue creation should pass the launchpad channel explicitly");
+assert.match(rfxEventsSource, /const isWhatsappQueue = requestedDraftChannels\.includes\("whatsapp"\)/, "Bid Room should only interpret Meta notifier state for direct WhatsApp queues");
+assert.match(rfxEventsSource, /const key = `\$\{campaignId\}:\$\{channel\}:\$\{invitationIds\.join\(","\)\}`/, "Targeted draft refresh should keep Gmail and WhatsApp groups separate");
+assert.match(rfxEventsSource, /campaignId,[\s\S]+channel: message\.channel \|\| "email",[\s\S]+invitationIds/, "Targeted draft refresh should preserve the original message channel");
 assert.match(outreachServiceSource, /send_outreach_messages/, "Outreach service should expose direct Gmail send for selected draft messages");
 assert.match(rfxEventsHtml, /rfx-send-selected-email-drafts/, "Bid Room draft queue should include a bulk send selected emails action");
 assert.match(rfxEventsHtml, /rfx-refresh-selected-drafts/, "Bid Room draft queue should support refreshing selected sent or stale drafts without regenerating the full queue");
@@ -1286,7 +1301,7 @@ assert.match(apiSource, /function apiErrorStatus/, "Rateware API should return a
 assert.match(apiSource, /function safeOperationalError/, "Rateware API errors should be sanitized before returning or auditing them");
 assert.match(apiSource, /const explicitAuthFailure = \[/, "Rateware API should classify only explicit authentication failures as 401");
 assert.doesNotMatch(apiSource.slice(apiSource.indexOf("function apiErrorStatus"), apiSource.indexOf("function bulkFilterKey")), /message\.includes\("kinde"\)|message\.includes\("jwt"\)/, "Database errors mentioning Kinde or JWT should not be misclassified as session failures");
-assert.match(apiSource, /action === "api\.error" \? safeOperationalError\(objectRecord\(row\.metadata\)\.error/, "Observability should expose a sanitized API error detail");
+assert.match(apiSource, /action\.endsWith\("\.error"\) \? safeOperationalError\(objectRecord\(row\.metadata\)\.error/, "Observability should expose sanitized details for provider and queue errors");
 assert.match(apiSource, /BULK_SEND_LIMIT = 100/, "API should cap direct Gmail send batches");
 assert.match(apiSource, /BULK_SHORTLIST_VENDOR_LIMIT = 1000/, "Bid Room participant shortlist should support up to 1,000 vendors per request");
 assert.match(apiSource, /BULK_FILTER_CONFIRM_THRESHOLD = 250/, "API should require confirmation for large filtered database actions");

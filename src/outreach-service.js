@@ -59,6 +59,7 @@ export async function duplicateOutreachCampaign(id) {
 export async function generateOutreachDrafts(campaignId, options = {}) {
   return await callRatewareApi("generate_outreach_drafts", {
     campaign_id: campaignId,
+    channel: options.channel || "",
     app_origin: options.appOrigin || window.location.origin,
     invitation_ids: options.invitationIds || [],
     sender_email: options.senderEmail || "",

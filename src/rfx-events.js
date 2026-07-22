@@ -5846,6 +5846,7 @@ async function createCurrentOutreachDrafts(statusElement = rfxOutreachStatus) {
     sender_connection_status: "draft_only"
   });
   const result = await generateOutreachDrafts(campaign.id, {
+    channel: outreachChannel,
     invitationIds,
     senderEmail: campaign.sender_email,
     senderLabel: campaign.sender_label,
@@ -5858,17 +5859,27 @@ async function createCurrentOutreachDrafts(statusElement = rfxOutreachStatus) {
   if (selectedEventId !== eventId) return result;
   const notifier = result.whatsapp_notifier || {};
   const notifierStatus = metaNotifierStatus(notifier.status || "not_requested");
-  const notifierCopy = notifier.ready
-    ? ` Meta notifier ${notifier.template_name || ""} is approved and attached.`
-    : metaNotifierPendingReview(notifierStatus)
-      ? ` Meta notifier is ${metaNotifierStatusLabel(notifierStatus)} at Meta; direct WhatsApp sends unlock after approval.`
-      : notifierStatus === "ERROR"
-        ? ` WhatsApp notifier needs attention: ${humanizeError(notifier.error || "Meta connection unavailable")}`
-        : "";
+  const isWhatsappQueue = requestedDraftChannels.includes("whatsapp");
+  const channelError = requestedDraftChannels
+    .map((channel) => result.channel_results?.[channel]?.preparation_error || result.channel_errors?.[channel] || "")
+    .find(Boolean) || "";
+  const notifierCopy = !isWhatsappQueue
+    ? ""
+    : notifier.ready
+      ? ` Meta notifier ${notifier.template_name || ""} is approved and attached.`
+      : metaNotifierPendingReview(notifierStatus)
+        ? ` Drafts are ready; Meta notifier is ${metaNotifierStatusLabel(notifierStatus)} and sending unlocks after approval.`
+        : notifierStatus === "ERROR"
+          ? ` Drafts are ready; WhatsApp sending needs attention: ${humanizeError(notifier.error || "Meta connection unavailable")}`
+          : "";
+  const hasQueueWarnings = (result.skipped?.length || 0) > 0
+    || (isWhatsappQueue && (notifierStatus === "ERROR" || metaNotifierPendingReview(notifierStatus)));
   setStatus(
     statusElement,
-    `${result.generated || 0} draft(s) created. ${result.skipped?.length || 0} skipped for missing contact data.${notifierCopy}`,
-    notifierStatus === "ERROR" || metaNotifierPendingReview(notifierStatus) ? "warning" : "success"
+    channelError
+      ? `This channel could not prepare its draft queue. ${humanizeError(channelError)}`
+      : `${result.generated || 0} draft(s) created. ${result.skipped?.length || 0} skipped.${notifierCopy}`,
+    channelError ? "error" : hasQueueWarnings ? "warning" : "success"
   );
   return result;
 }
@@ -6217,10 +6228,12 @@ function groupedOutreachDraftRefreshes(rows = []) {
   refreshableOutreachDrafts(rows).forEach((message) => {
     const campaignId = String(message.campaign_id || "").trim();
     const invitationIds = [...outreachMessageInvitationIds(message)].sort();
-    const key = `${campaignId}:${invitationIds.join(",")}`;
+    const channel = String(message.channel || "email").toLowerCase();
+    const key = `${campaignId}:${channel}:${invitationIds.join(",")}`;
     if (!grouped.has(key)) {
       grouped.set(key, {
         campaignId,
+        channel: message.channel || "email",
         invitationIds,
         senderEmail: message.sender_email || "",
         senderLabel: message.sender_label || "",

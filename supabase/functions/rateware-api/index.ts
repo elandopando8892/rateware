@@ -13673,7 +13673,7 @@ function auditSource(row: Record<string, unknown>): ObservabilityEvent["source"]
   if (action.startsWith("gmail.") || entityType.includes("gmail")) return "gmail";
   if (action.startsWith("google_chat.") || entityType.includes("google_chat")) return "google_chat";
   if (action.startsWith("whatsapp.") || entityType.includes("whatsapp")) return "whatsapp";
-  if (action.startsWith("bid_room.") || action.startsWith("rfx.") || entityType.includes("rfx")) return "bid_room";
+  if (action.startsWith("bid_room.") || action.startsWith("rfx.") || action.startsWith("outreach_queue.") || entityType.includes("rfx") || entityType.includes("outreach_queue")) return "bid_room";
   return "rateware_api";
 }
 
@@ -13727,7 +13727,7 @@ async function buildObservabilityEvents(
 
   for (const row of auditRows) {
     const action = cleanText(row.action) || "";
-    if (!action.includes("error") && !action.startsWith("gmail.") && !action.startsWith("google_chat.") && !action.startsWith("whatsapp.") && !action.startsWith("bid_room.") && !action.startsWith("rfx.")) continue;
+    if (!action.includes("error") && !action.startsWith("gmail.") && !action.startsWith("google_chat.") && !action.startsWith("whatsapp.") && !action.startsWith("bid_room.") && !action.startsWith("rfx.") && !action.startsWith("outreach_queue.")) continue;
     const source = auditSource(row);
     events.push(observabilityEvent({
       id: `audit-${row.id}`,
@@ -13739,7 +13739,7 @@ async function buildObservabilityEvents(
         row.actor_email,
         row.entity_type,
         row.entity_id,
-        action === "api.error" ? safeOperationalError(objectRecord(row.metadata).error || objectRecord(row.metadata).details || objectRecord(row.metadata).hint) : ""
+        action.endsWith(".error") ? safeOperationalError(objectRecord(row.metadata).error || objectRecord(row.metadata).details || objectRecord(row.metadata).hint) : ""
       ].filter(Boolean).join(" / "),
       status: cleanText(row.action),
       entity_type: cleanText(row.entity_type),
@@ -20258,8 +20258,12 @@ Deno.serve(async (request) => {
       const senderConnectionStatus = cleanText(body.sender_connection_status || campaign.sender_connection_status) || "draft_only";
       const whatsappTargetMode = cleanText(body.whatsapp_target_mode || campaign.whatsapp_target_mode || "direct_vendor");
       const targetMode = ["direct_vendor", "vendor_group", "direct_and_group"].includes(whatsappTargetMode) ? whatsappTargetMode : "direct_vendor";
-      const requestedChannels = messageChannels(campaign.channel || template.channel);
+      // The queue request is authoritative. A stale campaign/template channel must
+      // never make Gmail draft generation execute WhatsApp preparation (or vice versa).
+      const requestedChannels = messageChannels(body.channel || campaign.channel || template.channel);
+      const wantsEmail = requestedChannels.includes("email");
       const wantsDirectWhatsapp = requestedChannels.includes("whatsapp");
+      const wantsWhatsappGroup = requestedChannels.includes("whatsapp_group");
       let whatsappNotifier: Record<string, unknown> = {
         attempted: false,
         status: "not_requested"
@@ -20336,6 +20340,7 @@ Deno.serve(async (request) => {
 
       const rows: Record<string, unknown>[] = [];
       const skipped: Record<string, unknown>[] = [];
+      const channelPreparationErrors: Record<string, string> = {};
       const invitationGroups = new Map<string, Record<string, unknown>[]>();
       for (const invitation of invitations) {
         const key = rfxInvitationVendorGroupKey(invitation);
@@ -20384,33 +20389,85 @@ Deno.serve(async (request) => {
         campaign_id: campaign.id,
         template_id: template.id
       });
-      const vendorIdsForGroups = [...new Set(invitations.map((invitation) => cleanText(invitation.vendor_id)).filter(Boolean))];
+      const vendorIdsForGroups = wantsWhatsappGroup
+        ? [...new Set(invitations.map((invitation) => cleanText(invitation.vendor_id)).filter(Boolean))]
+        : [];
       const vendorGroupsByVendor = new Map<string, Record<string, unknown>>();
       if (vendorIdsForGroups.length) {
-        const groupBatches = await mapWithConcurrency(chunkValues(vendorIdsForGroups, 200), 4, async (vendorChunk) => {
-          const groupsResult = await supabase
-            .from("vendor_whatsapp_groups")
-            .select("*")
-            .eq("owner_email", user.owner_email)
-            .in("vendor_id", vendorChunk)
-            .neq("verification_status", "blocked")
-            .order("updated_at", { ascending: false });
-          if (groupsResult.error) throw new Error(`Outreach WhatsApp group load failed: ${groupsResult.error.message}`);
-          return groupsResult.data || [];
-        });
-        for (const group of groupBatches.flat()) {
+        try {
+          const groupBatches = await mapWithConcurrency(chunkValues(vendorIdsForGroups, 200), 4, async (vendorChunk) => {
+            const groupsResult = await supabase
+              .from("vendor_whatsapp_groups")
+              .select("*")
+              .eq("owner_email", user.owner_email)
+              .in("vendor_id", vendorChunk)
+              .neq("verification_status", "blocked")
+              .order("updated_at", { ascending: false });
+            if (groupsResult.error) throw new Error(`Outreach WhatsApp group load failed: ${groupsResult.error.message}`);
+            return groupsResult.data || [];
+          });
+          for (const group of groupBatches.flat()) {
             const vendorId = cleanText(group.vendor_id);
             if (vendorId && !vendorGroupsByVendor.has(vendorId)) vendorGroupsByVendor.set(vendorId, group);
+          }
+        } catch (error) {
+          channelPreparationErrors.whatsapp_group = error instanceof Error ? error.message : String(error);
         }
       }
-      const suppressedEmails = await suppressedEmailSet(
-        supabase,
-        user,
-        invitations.flatMap((invitation) => {
-          const vendor = typeof invitation.vendors === "object" && invitation.vendors ? invitation.vendors as Record<string, unknown> : {};
-          return vendorContactEmailCandidates(vendor);
-        })
-      );
+      let suppressedEmails = new Set<string>();
+      if (wantsEmail) {
+        try {
+          suppressedEmails = await suppressedEmailSet(
+            supabase,
+            user,
+            invitations.flatMap((invitation) => {
+              const vendor = typeof invitation.vendors === "object" && invitation.vendors ? invitation.vendors as Record<string, unknown> : {};
+              return vendorContactEmailCandidates(vendor);
+            })
+          );
+        } catch (error) {
+          channelPreparationErrors.email = `Email suppression check failed: ${error instanceof Error ? error.message : String(error)}`;
+        }
+      }
+      for (const [channel, preparationError] of Object.entries(channelPreparationErrors)) {
+        try {
+          const sourceAction = channel === "email" ? "gmail.queue_preparation_error" : "whatsapp.queue_preparation_error";
+          await writeAuditLog(
+            supabase,
+            user,
+            sourceAction,
+            channel === "email" ? "gmail_outreach_queue" : "whatsapp_outreach_queue",
+            campaign.id,
+            `${channel === "email" ? "Gmail" : "WhatsApp"} draft preparation failed`,
+            { campaign_id: campaign.id, requested_channels: requestedChannels, error: safeOperationalError(preparationError) }
+          );
+        } catch (_) {
+          // Channel diagnostics must never turn a recoverable provider issue into a queue failure.
+        }
+      }
+
+      const channelResults = (
+        generatedRows: Record<string, unknown>[] = [],
+        preservedRows: Record<string, unknown>[] = []
+      ) => Object.fromEntries(requestedChannels.map((channel) => {
+        const candidateDrafts = rows.filter((row) => cleanText(row.channel) === channel).length;
+        const generated = generatedRows.filter((row) => cleanText(row.channel) === channel).length;
+        const preserved = preservedRows.filter((row) => cleanText(row.channel) === channel).length;
+        const channelSkipped = skipped.filter((row) => cleanText(row.channel) === channel).length;
+        return [channel, {
+          requested: true,
+          queue_status: candidateDrafts || generated || preserved ? "ready" : channelSkipped ? "needs_contact" : "empty",
+          candidate_drafts: candidateDrafts,
+          generated,
+          preserved,
+          skipped: channelSkipped,
+          preparation_error: channelPreparationErrors[channel] || "",
+          ...(channel === "whatsapp" ? {
+            provider_status: cleanText(whatsappNotifier.status) || "not_requested",
+            provider_ready: Boolean(whatsappNotifier.ready)
+          } : {})
+        }];
+      }));
 
       for (const [groupKey, requestedInvitationGroup] of invitationGroups.entries()) {
         const invitationGroup = sortRfxInvitationGroup(completeInvitationGroups.get(groupKey) || requestedInvitationGroup);
@@ -20423,7 +20480,7 @@ Deno.serve(async (request) => {
         const textBody = htmlToText(htmlBody);
         const whatsappText = renderTemplateText(template.whatsapp_body || textBody, context);
         const whatsappGroupText = renderTemplateText(template.whatsapp_group_body || template.whatsapp_body || textBody, context);
-        const channels = messageChannels(campaign.channel || template.channel);
+        const channels = requestedChannels;
         const groupInvitationIds = invitationGroup.map((item) => item.id).filter(Boolean);
         const laneIds = invitationGroup.map((item) => item.rfx_lane_id).filter(Boolean);
         const vendorId = cleanText(invitation.vendor_id);
@@ -20436,8 +20493,10 @@ Deno.serve(async (request) => {
         const whatsappParameters = whatsappTemplateParameters(whatsappMapping, context);
 
         if (channels.includes("email")) {
-          const recipientEmail = firstSendableVendorEmail(vendor, suppressedEmails);
-          if (recipientEmail) {
+          const recipientEmail = channelPreparationErrors.email ? "" : firstSendableVendorEmail(vendor, suppressedEmails);
+          if (channelPreparationErrors.email) {
+            skipped.push({ invitation_id: invitation.id, invitation_ids: groupInvitationIds, channel: "email", reason: channelPreparationErrors.email });
+          } else if (recipientEmail) {
             rows.push(withOwner({
               campaign_id: campaign.id,
               template_id: template.id,
@@ -20536,7 +20595,9 @@ Deno.serve(async (request) => {
           const metaGroupId = cleanText(groupRow?.meta_group_id || vendor.whatsapp_meta_group_id);
           const groupStatus = cleanText(groupRow?.verification_status || vendor.whatsapp_group_status || "manual_only");
           const groupBlocked = cleanBoolean(groupRow?.do_not_contact) || doNotContact;
-          if (groupBlocked) {
+          if (channelPreparationErrors.whatsapp_group) {
+            skipped.push({ invitation_id: invitation.id, invitation_ids: groupInvitationIds, channel: "whatsapp_group", reason: channelPreparationErrors.whatsapp_group });
+          } else if (groupBlocked) {
             skipped.push({ invitation_id: invitation.id, invitation_ids: groupInvitationIds, channel: "whatsapp_group", reason: "Vendor WhatsApp group is marked do-not-contact" });
           } else if (groupName || groupUrl || metaGroupId) {
             rows.push(withOwner({
@@ -20594,6 +20655,9 @@ Deno.serve(async (request) => {
         generated: 0,
         rows: [],
         skipped,
+        requested_channels: requestedChannels,
+        channel_errors: channelPreparationErrors,
+        channel_results: channelResults(),
         whatsapp_notifier: whatsappNotifier,
         metrics: {
           requested_invitation_ids: invitationIds.length,
@@ -20690,6 +20754,9 @@ Deno.serve(async (request) => {
         rows: [],
         skipped,
         campaign_id: campaign.id,
+        requested_channels: requestedChannels,
+        channel_errors: channelPreparationErrors,
+        channel_results: channelResults(generatedMessages, preservedMessages),
         whatsapp_notifier: whatsappNotifier,
         metrics: {
           requested_invitation_ids: invitationIds.length,
@@ -22693,13 +22760,17 @@ Deno.serve(async (request) => {
     const errorMessage = safeOperationalError(errorInfo.message);
     if (supabase && user) {
       try {
+        const failedAction = cleanText(body.action) === "generate_outreach_drafts" ? "outreach_queue.error" : "api.error";
+        const failedEntityType = failedAction === "outreach_queue.error" ? "outreach_queue" : "rateware_api";
         await writeAuditLog(
           supabase,
           user,
-          "api.error",
-          "rateware_api",
+          failedAction,
+          failedEntityType,
           cleanText(body.action) || "unknown",
-          `Rateware API action failed: ${cleanText(body.action) || "unknown action"}`,
+          failedAction === "outreach_queue.error"
+            ? "Outreach draft queue failed"
+            : `Rateware API action failed: ${cleanText(body.action) || "unknown action"}`,
           {
             action: cleanText(body.action),
             error: errorMessage,
