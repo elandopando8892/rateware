@@ -1307,9 +1307,15 @@ assert.match(apiSource, /function requirePreviewCountForFilteredBulk/, "API shou
 assert.match(apiSource, /function apiErrorInfo/, "Rateware API should serialize object errors before returning them to the UI");
 assert.match(apiSource, /function apiErrorStatus/, "Rateware API should return appropriate status codes for serialized backend errors");
 assert.match(apiSource, /function safeOperationalError/, "Rateware API errors should be sanitized before returning or auditing them");
+assert.match(apiSource, /event: "rateware_api\.error"/, "Rateware API should emit structured server-side error logs");
+assert.match(apiSource, /incident_id: incidentId/, "Rateware API failures should carry a correlation incident ID");
+assert.match(apiSource, /cause_chain: errorCauseChain/, "Rateware API should preserve the nested backend cause chain");
+assert.match(apiSource, /stack: safeOperationalValue\(errorInfo\.stack/, "Backend stacks should remain sanitized and server-side only");
+assert.match(ratewareApiClientSource, /error\.incidentId = data\?\.incident_id/, "Rateware API client should preserve backend incident IDs");
+assert.match(apiSource, /function observabilityAuditErrorDetail/, "Observability should render exact sanitized backend diagnostics");
 assert.match(apiSource, /const explicitAuthFailure = \[/, "Rateware API should classify only explicit authentication failures as 401");
 assert.doesNotMatch(apiSource.slice(apiSource.indexOf("function apiErrorStatus"), apiSource.indexOf("function bulkFilterKey")), /message\.includes\("kinde"\)|message\.includes\("jwt"\)/, "Database errors mentioning Kinde or JWT should not be misclassified as session failures");
-assert.match(apiSource, /action\.endsWith\("\.error"\) \? safeOperationalError\(objectRecord\(row\.metadata\)\.error/, "Observability should expose sanitized details for provider and queue errors");
+assert.match(apiSource, /action\.endsWith\("\.error"\)[\s\S]*observabilityAuditErrorDetail\(auditMetadata\)/, "Observability should expose sanitized details for provider and queue errors");
 assert.match(apiSource, /BULK_SEND_LIMIT = 100/, "API should cap direct Gmail send batches");
 assert.match(apiSource, /BULK_SHORTLIST_VENDOR_LIMIT = 1000/, "Bid Room participant shortlist should support up to 1,000 vendors per request");
 assert.match(apiSource, /BULK_FILTER_CONFIRM_THRESHOLD = 250/, "API should require confirmation for large filtered database actions");

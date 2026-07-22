@@ -27,8 +27,10 @@ function stringifyApiError(value) {
 }
 
 function apiErrorMessage(data, text, status) {
-  return stringifyApiError(data?.error)
-    || stringifyApiError(data?.message)
+  const parts = [data?.error, data?.cause, data?.details, data?.hint, data?.message]
+    .map(stringifyApiError)
+    .filter((value, index, values) => value && values.indexOf(value) === index);
+  return parts.join(" | ")
     || stringifyApiError(data)
     || stringifyApiError(text)
     || `Rateware API request failed (${status})`;
@@ -56,6 +58,12 @@ export async function callRatewareApi(action, payload = {}) {
     const error = new Error(`HTTP ${response.status}: ${apiErrorMessage(data, text, response.status)}`);
     error.status = response.status;
     error.code = data?.code || data?.status || response.status;
+    error.details = data?.details || "";
+    error.hint = data?.hint || "";
+    error.causeDetail = data?.cause || "";
+    error.incidentId = data?.incident_id || response.headers.get("x-request-id") || "";
+    error.action = data?.action || action;
+    error.stage = data?.stage || "";
     throw error;
   }
   return data;

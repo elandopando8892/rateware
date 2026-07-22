@@ -2339,46 +2339,90 @@ function relationRecord(value: unknown): Record<string, unknown> {
   return objectRecord(value);
 }
 
-function apiErrorInfo(error: unknown) {
-  if (error instanceof Error) {
-    return {
-      message: cleanText(error.message) || "Rateware API request failed.",
-      name: cleanText(error.name),
-      code: null,
-      details: null,
-      hint: null
-    };
-  }
+type ApiErrorInfo = {
+  message: string;
+  name: string | null;
+  code: string | null;
+  details: string | null;
+  hint: string | null;
+  stage: string | null;
+  table: string | null;
+  constraint: string | null;
+  cause_chain: string[];
+  stack: string | null;
+};
+
+function apiErrorInfo(error: unknown, depth = 0, seen = new Set<unknown>()): ApiErrorInfo {
+  const fallback: ApiErrorInfo = {
+    message: "Rateware API request failed.",
+    name: null,
+    code: null,
+    details: null,
+    hint: null,
+    stage: null,
+    table: null,
+    constraint: null,
+    cause_chain: [],
+    stack: null
+  };
+  if (depth > 5 || (typeof error === "object" && error !== null && seen.has(error))) return fallback;
+  if (typeof error === "object" && error !== null) seen.add(error);
 
   const record = objectRecord(error);
-  if (Object.keys(record).length) {
-    const nested = record.error && typeof record.error === "object" ? apiErrorInfo(record.error) : null;
-    const scalarError = record.error && typeof record.error !== "object" ? cleanText(record.error) : null;
-    const message = cleanText(record.message)
-      || nested?.message
-      || scalarError
-      || cleanText(record.details)
-      || cleanText(record.hint)
-      || "Rateware API request failed.";
-    return {
-      message,
-      name: cleanText(record.name) || nested?.name || null,
-      code: cleanText(record.code) || cleanText(record.status) || nested?.code || null,
-      details: cleanText(record.details) || nested?.details || null,
-      hint: cleanText(record.hint) || nested?.hint || null
-    };
-  }
+  const nestedValue = record.cause ?? record.error;
+  const nested = nestedValue !== undefined && nestedValue !== null && nestedValue !== error
+    ? apiErrorInfo(nestedValue, depth + 1, seen)
+    : null;
+  const scalarError = nestedValue !== undefined && nestedValue !== null && typeof nestedValue !== "object"
+    ? cleanText(nestedValue)
+    : null;
+  const message = cleanText(error instanceof Error ? error.message : record.message)
+    || nested?.message
+    || scalarError
+    || cleanText(record.details)
+    || cleanText(record.hint)
+    || cleanText(error)
+    || fallback.message;
+  const causeChain = [message, ...(nested?.cause_chain || [])]
+    .map((value) => cleanText(value))
+    .filter((value, index, values): value is string => Boolean(value) && values.indexOf(value) === index)
+    .slice(0, 6);
 
-  const message = cleanText(error) || "Rateware API request failed.";
-  return { message, name: null, code: null, details: null, hint: null };
+  return {
+    message,
+    name: cleanText(error instanceof Error ? error.name : record.name) || nested?.name || null,
+    code: cleanText(record.code) || cleanText(record.status) || nested?.code || null,
+    details: cleanText(record.details) || nested?.details || null,
+    hint: cleanText(record.hint) || nested?.hint || null,
+    stage: cleanText(record.stage) || cleanText(record.operation) || nested?.stage || null,
+    table: cleanText(record.table) || nested?.table || null,
+    constraint: cleanText(record.constraint) || nested?.constraint || null,
+    cause_chain: causeChain,
+    stack: cleanText(error instanceof Error ? error.stack : record.stack) || nested?.stack || null
+  };
 }
 
 function safeOperationalError(value: unknown, limit = 500) {
   const raw = cleanText(value) || "Rateware API request failed.";
   return raw
     .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [redacted]")
+    .replace(/([?&](?:token|access_token|refresh_token|api_key|key|secret)=)[^&\s]+/gi, "$1[redacted]")
+    .replace(/\b(?:sk|sb_secret|GOCSPX)-[A-Za-z0-9._~-]+\b/gi, "[redacted-secret]")
+    .replace(/\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g, "[redacted-jwt]")
     .replace(/((?:access|refresh|client|app|api|verify)[_-]?(?:token|secret|key)|authorization)\s*[:=]\s*[^\s,;]+/gi, "$1=[redacted]")
     .slice(0, limit);
+}
+
+function safeOperationalValue(value: unknown, limit = 500) {
+  const text = cleanText(value);
+  return text ? safeOperationalError(text, limit) : null;
+}
+
+function safeOperationalList(values: unknown[], limit = 500) {
+  return values
+    .map((value) => safeOperationalValue(value, limit))
+    .filter((value, index, list): value is string => Boolean(value) && list.indexOf(value) === index)
+    .slice(0, 6);
 }
 
 function apiErrorStatus(info: ReturnType<typeof apiErrorInfo>) {
@@ -13684,6 +13728,27 @@ function auditSeverity(row: Record<string, unknown>): ObservabilityEvent["severi
   return "info";
 }
 
+function observabilityAuditErrorDetail(metadataValue: unknown) {
+  const metadata = objectRecord(metadataValue);
+  const causeChain = Array.isArray(metadata.cause_chain) ? metadata.cause_chain : [];
+  const cause = causeChain.find((value) => cleanText(value) && cleanText(value) !== cleanText(metadata.error));
+  const diagnostic = [
+    metadata.error,
+    cause,
+    metadata.details,
+    metadata.hint
+  ]
+    .map((value) => safeOperationalValue(value, 700))
+    .filter((value, index, values): value is string => Boolean(value) && values.indexOf(value) === index)
+    .join(" | ");
+  const context = [
+    metadata.code ? `Code ${safeOperationalValue(metadata.code, 80)}` : "",
+    metadata.stage ? `Stage ${safeOperationalValue(metadata.stage, 120)}` : "",
+    metadata.incident_id ? `Incident ${safeOperationalValue(metadata.incident_id, 80)}` : ""
+  ].filter(Boolean).join(" | ");
+  return [diagnostic, context].filter(Boolean).join(" | ");
+}
+
 function observabilitySummary(events: ObservabilityEvent[]) {
   const sources: ObservabilityEvent["source"][] = ["rateware_api", "gmail", "google_chat", "whatsapp", "bid_room"];
   const bySource = Object.fromEntries(sources.map((source) => [source, { total: 0, error: 0, warning: 0, info: 0 }]));
@@ -13729,24 +13794,22 @@ async function buildObservabilityEvents(
     const action = cleanText(row.action) || "";
     if (!action.includes("error") && !action.startsWith("gmail.") && !action.startsWith("google_chat.") && !action.startsWith("whatsapp.") && !action.startsWith("bid_room.") && !action.startsWith("rfx.") && !action.startsWith("outreach_queue.")) continue;
     const source = auditSource(row);
+    const auditMetadata = objectRecord(row.metadata);
     events.push(observabilityEvent({
       id: `audit-${row.id}`,
       at: cleanText(row.created_at),
       source,
       severity: auditSeverity(row),
       title: cleanText(row.summary) || cleanText(row.action) || "Workspace activity",
-      detail: [
-        row.actor_email,
-        row.entity_type,
-        row.entity_id,
-        action.endsWith(".error") ? safeOperationalError(objectRecord(row.metadata).error || objectRecord(row.metadata).details || objectRecord(row.metadata).hint) : ""
-      ].filter(Boolean).join(" / "),
+      detail: action.endsWith(".error")
+        ? observabilityAuditErrorDetail(auditMetadata)
+        : [row.actor_email, row.entity_type, row.entity_id].filter(Boolean).join(" / "),
       status: cleanText(row.action),
       entity_type: cleanText(row.entity_type),
       entity_id: cleanText(row.entity_id),
       action,
       next_action: source === "gmail" ? gmailNextAction : source === "google_chat" ? chatNextAction : source === "whatsapp" ? whatsappNextAction : source === "bid_room" ? bidRoomNextAction : apiNextAction,
-      metadata: objectRecord(row.metadata)
+      metadata: auditMetadata
     }));
   }
 
@@ -22758,26 +22821,66 @@ Deno.serve(async (request) => {
   } catch (error) {
     const errorInfo = apiErrorInfo(error);
     const errorMessage = safeOperationalError(errorInfo.message);
+    const errorDetails = safeOperationalValue(errorInfo.details, 900);
+    const errorHint = safeOperationalValue(errorInfo.hint, 700);
+    const errorStage = safeOperationalValue(errorInfo.stage, 160);
+    const errorTable = safeOperationalValue(errorInfo.table, 120);
+    const errorConstraint = safeOperationalValue(errorInfo.constraint, 160);
+    const errorCauseChain = safeOperationalList(errorInfo.cause_chain, 900);
+    const errorCause = errorCauseChain.find((value) => value !== errorMessage) || null;
+    const incidentId = crypto.randomUUID();
+    const failedApiAction = cleanText(body.action) || "unknown";
+    const errorStatus = apiErrorStatus(errorInfo);
+    console.error(JSON.stringify({
+      event: "rateware_api.error",
+      incident_id: incidentId,
+      action: failedApiAction,
+      status: errorStatus,
+      actor: user ? {
+        owner_email: user.owner_email,
+        organization_id: user.organization_id
+      } : null,
+      error: {
+        message: errorMessage,
+        cause: errorCause,
+        cause_chain: errorCauseChain,
+        code: safeOperationalValue(errorInfo.code, 80),
+        details: errorDetails,
+        hint: errorHint,
+        stage: errorStage,
+        table: errorTable,
+        constraint: errorConstraint,
+        name: safeOperationalValue(errorInfo.name, 80),
+        stack: safeOperationalValue(errorInfo.stack, 2400)
+      }
+    }));
     if (supabase && user) {
       try {
-        const failedAction = cleanText(body.action) === "generate_outreach_drafts" ? "outreach_queue.error" : "api.error";
+        const failedAction = failedApiAction === "generate_outreach_drafts" ? "outreach_queue.error" : "api.error";
         const failedEntityType = failedAction === "outreach_queue.error" ? "outreach_queue" : "rateware_api";
         await writeAuditLog(
           supabase,
           user,
           failedAction,
           failedEntityType,
-          cleanText(body.action) || "unknown",
+          failedApiAction,
           failedAction === "outreach_queue.error"
             ? "Outreach draft queue failed"
-            : `Rateware API action failed: ${cleanText(body.action) || "unknown action"}`,
+            : `Rateware API action failed: ${failedApiAction}`,
           {
-            action: cleanText(body.action),
+            incident_id: incidentId,
+            action: failedApiAction,
+            status: errorStatus,
             error: errorMessage,
-            code: errorInfo.code,
-            details: errorInfo.details,
-            hint: errorInfo.hint,
-            name: errorInfo.name
+            cause: errorCause,
+            cause_chain: errorCauseChain,
+            code: safeOperationalValue(errorInfo.code, 80),
+            details: errorDetails,
+            hint: errorHint,
+            stage: errorStage,
+            table: errorTable,
+            constraint: errorConstraint,
+            name: safeOperationalValue(errorInfo.name, 80)
           }
         );
       } catch (_) {
@@ -22786,9 +22889,13 @@ Deno.serve(async (request) => {
     }
     return jsonResponse({
       error: errorMessage,
-      code: errorInfo.code,
-      details: errorInfo.details,
-      hint: errorInfo.hint
-    }, apiErrorStatus(errorInfo));
+      cause: errorCause,
+      code: safeOperationalValue(errorInfo.code, 80),
+      details: errorDetails,
+      hint: errorHint,
+      incident_id: incidentId,
+      action: failedApiAction,
+      stage: errorStage
+    }, errorStatus);
   }
 });

@@ -33,5 +33,14 @@ assert.equal(normalizeConfidence(2), 1);
 assert.equal(normalizeConfidence(-1), 0);
 assert.match(humanizeError({ message: "insufficient_quota" }), /OpenAI quota/);
 assert.match(humanizeError("401 unauthorized"), /session/);
+const structuredBackendError = Object.assign(new Error("HTTP 500: outreach insert failed"), {
+  status: 500,
+  code: "23505",
+  details: "Duplicate outreach recipient",
+  hint: "Reuse the existing draft",
+  incidentId: "incident-test-123"
+});
+assert.match(humanizeError(structuredBackendError), /outreach insert failed/, "Structured backend causes should not collapse into a generic server error");
+assert.match(humanizeError(structuredBackendError), /incident-test-123/, "Backend incident IDs should remain visible to the user");
 
 console.log("Upload Center file rules passed.");

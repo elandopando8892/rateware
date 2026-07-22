@@ -4,7 +4,15 @@ function rawErrorMessage(errorOrMessage) {
   if (errorOrMessage instanceof Error) {
     const status = errorOrMessage.status || errorOrMessage.code;
     const message = rawErrorMessage(errorOrMessage.message);
-    return status && message ? `${status}: ${message}` : message;
+    const details = [errorOrMessage.causeDetail, errorOrMessage.details, errorOrMessage.hint]
+      .map((value) => rawErrorMessage(value))
+      .filter((value, index, values) => value && value !== message && values.indexOf(value) === index);
+    const incident = rawErrorMessage(errorOrMessage.incidentId);
+    const diagnostic = [message, ...details].filter(Boolean).join(" | ");
+    const withStatus = status && diagnostic && !diagnostic.startsWith(`${status}:`) && !diagnostic.startsWith(`HTTP ${status}:`)
+      ? `${status}: ${diagnostic}`
+      : diagnostic;
+    return incident ? `${withStatus} | Incident ${incident}` : withStatus;
   }
   if (typeof errorOrMessage !== "object") return String(errorOrMessage);
 
@@ -67,7 +75,9 @@ export function humanizeError(errorOrMessage) {
     return "The request could not reach Rateware services. Check the connection and retry.";
   }
   if (lower.includes("500") || lower.includes("internal server error")) {
-    return "Rateware hit a server error while processing the request. Retry once, then check logs if it repeats.";
+    const hasBackendCause = lower.includes("incident ") || raw.includes(" | ");
+    if (hasBackendCause) return raw.length > 420 ? `${raw.slice(0, 417)}...` : raw;
+    return "Rateware hit a server error while processing the request. Retry once, then check Observability if it repeats.";
   }
   if (lower.includes("unsupported") || lower.includes("accepted source type") || lower.includes("document type")) {
     return "This file type is not supported. Upload XLSX, PDF, image, or EML email files.";
