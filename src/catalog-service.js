@@ -1,14 +1,12 @@
-import { getKindeToken } from "./auth.js";
+import { authenticatedFetch } from "./auth.js";
 import { SUPABASE_URL } from "./config.js";
 import { callRatewareApi } from "./rateware-api.js";
 import { apiErrorMessage } from "./error-copy.js";
 
 export async function syncRatewareCatalog(mode = "core") {
-  const token = await getKindeToken();
-  const response = await fetch(`${SUPABASE_URL}/functions/v1/sync-rateware-catalog`, {
+  const response = await authenticatedFetch(`${SUPABASE_URL}/functions/v1/sync-rateware-catalog`, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${token}`,
       "Content-Type": "application/json"
     },
     body: JSON.stringify({ mode })

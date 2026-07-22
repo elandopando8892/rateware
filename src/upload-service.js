@@ -1,4 +1,4 @@
-import { getKindeToken } from "./auth.js";
+import { authenticatedFetch } from "./auth.js";
 import { SUPABASE_URL } from "./config.js";
 import { detectDocumentType } from "./file-rules.js";
 import { callRatewareApi } from "./rateware-api.js";
@@ -26,7 +26,6 @@ export async function uploadRawFile(file, { vendorId = "", vendor = "", rfx = ""
     throw new Error(`${file.name} is not an accepted source type.`);
   }
 
-  const token = await getKindeToken();
   const formData = new FormData();
   formData.append("file", file);
   formData.append("vendor_id", vendorId);
@@ -34,9 +33,8 @@ export async function uploadRawFile(file, { vendorId = "", vendor = "", rfx = ""
   formData.append("rfx", rfx);
   formData.append("document_type", documentType);
 
-  const response = await fetch(`${SUPABASE_URL}/functions/v1/create-raw-upload`, {
+  const response = await authenticatedFetch(`${SUPABASE_URL}/functions/v1/create-raw-upload`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${token}` },
     body: formData
   });
 
@@ -102,11 +100,9 @@ export async function createInterpretationMemory({ rawUploadId = "", scope = "gl
 }
 
 export async function interpretUpload(rawUploadId, { correctionNote = "" } = {}) {
-  const token = await getKindeToken();
-  const response = await fetch(`${SUPABASE_URL}/functions/v1/interpret-upload`, {
+  const response = await authenticatedFetch(`${SUPABASE_URL}/functions/v1/interpret-upload`, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${token}`,
       "Content-Type": "application/json"
     },
     body: JSON.stringify({ raw_upload_id: rawUploadId, correction_note: correctionNote })

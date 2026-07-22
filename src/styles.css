@@ -26782,6 +26782,39 @@ textarea:focus,
 .ratebook-carrier-quote-actions { display: flex; justify-content: space-between; gap: 8px; }
 .ratebook-carrier-quote-actions button:first-child { border-color: #c6714b; color: #9a421e; }
 
+.session-recovery-banner {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: min(440px, calc(100vw - 32px));
+  padding: 11px 12px;
+  border: 1px solid #d4a62e;
+  border-radius: 6px;
+  background: #fff8dc;
+  color: #493809;
+  box-shadow: 0 12px 30px rgba(30, 43, 51, .2);
+}
+.session-recovery-banner div { display: grid; gap: 2px; min-width: 0; }
+.session-recovery-banner strong { font-size: .82rem; }
+.session-recovery-banner span { font-size: .72rem; line-height: 1.35; }
+.session-recovery-banner button {
+  flex: 0 0 auto;
+  min-height: 30px;
+  border: 1px solid #243743;
+  border-radius: 4px;
+  padding: 5px 9px;
+  background: #243743;
+  color: #fff;
+  font: inherit;
+  font-size: .72rem;
+  font-weight: 750;
+  cursor: pointer;
+}
+
 @media (max-width: 800px) {
   .ratebook-carrier-shell { width: min(100% - 18px, 1240px); padding-top: 10px; }
   .ratebook-carrier-hero { flex-direction: column; }

@@ -610,12 +610,20 @@ assert.match(rfxEventsSource, /confirmBidRoomBulkAction\("mark_invited", ids\)/,
 assert.match(rfxEventsSource, /confirmBidRoomBulkAction\("archive_participants", ids\)/, "Bid Room should confirm before archiving selected participants");
 assert.match(ratewareApiClientSource, /function apiErrorMessage/, "Rateware API client should normalize object error payloads before throwing");
 assert.doesNotMatch(ratewareApiClientSource, /new Error\(data\.error \|\| data\.message/, "Rateware API client should not throw raw object errors that render as [object Object]");
-assert.match(authSource, /token = await kinde\.getAccessToken\?\.\(\)/, "Kinde auth should use the supported access-token API for normal authenticated requests");
-assert.ok(
-  authSource.indexOf("kinde.getAccessToken?.({ forceRefresh: true })") < authSource.indexOf("kinde.getToken?.({ forceRefresh: true })"),
-  "Kinde auth refresh should prefer getAccessToken before the deprecated getToken compatibility fallback"
-);
-assert.match(ratewareApiClientSource, /response\.status === 401[\s\S]+forceRefresh: true/, "Rateware API client should retry one unauthorized request with a refreshed Kinde access token");
+assert.match(authSource, /return await kinde\.getAccessToken\?\.\(\)/, "Kinde auth should use the supported access-token API for normal authenticated requests");
+assert.match(authSource, /let kindeRefreshPromise/, "Kinde session restoration should be single-flight across concurrent bulk requests");
+assert.match(authSource, /kindePromise = null;[\s\S]+await getKindeClient\(\)/, "Kinde session restoration should reinitialize the PKCE client so checkAuth can renew the cached token");
+assert.match(authSource, /export async function authenticatedFetch/, "Authenticated requests should use one shared session-aware fetch executor");
+assert.match(authSource, /response\.status !== 401[\s\S]+forceRefresh: true[\s\S]+fetch\(input, withBearerToken\(init, freshToken\)\)/, "Authenticated fetch should retry one unauthorized request after session restoration");
+assert.match(authSource, /rateware:session-required/, "Failed silent restoration should raise one controlled reauthentication signal");
+assert.match(authSource, /app_state: \{ returnTo \}/, "Kinde reauthentication should preserve the current module route");
+assert.match(ratewareApiClientSource, /import \{ authenticatedFetch \} from "\.\/auth\.js"/, "Rateware API calls should use the shared authenticated request executor");
+assert.doesNotMatch(ratewareApiClientSource, /getKindeToken|response\.status === 401/, "Rateware API calls should not duplicate token refresh and retry logic");
+for (const [label, source] of [["Upload service", uploadServiceSource], ["Catalog service", catalogServiceSource]]) {
+  assert.match(source, /authenticatedFetch/, `${label} should recover Kinde sessions through the shared request executor`);
+  assert.doesNotMatch(source, /getKindeToken/, `${label} should not bypass shared Kinde session recovery`);
+}
+assert.match(stylesSource, /session-recovery-banner/, "Expired sessions should expose a compact reauthentication prompt without clearing the current page");
 assert.match(errorCopySource, /function rawErrorMessage/, "Human error copy should convert nested object errors to readable text");
 assert.match(errorCopySource, /lower === "\[object object\]"/, "Human error copy should never display [object Object] to users");
 assert.match(errorCopySource, /lower === "bad request"/, "Human error copy should not show bare Bad Request messages to users");

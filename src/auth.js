@@ -3,6 +3,10 @@ import { KINDE_CLIENT_ID, KINDE_DOMAIN } from "./config.js";
 import { humanizeError } from "./error-copy.js";
 
 let kindePromise;
+let kindeRefreshPromise;
+
+const AUTH_RETURN_URL_KEY = "rateware:kinde-return-url";
+const SESSION_RECOVERY_ID = "rateware-session-recovery";
 
 function getAppUrl() {
   const localHosts = new Set(["localhost", "127.0.0.1"]);
@@ -37,13 +41,35 @@ export async function getKindeClient() {
       redirect_uri: getAppUrl(),
       logout_uri: window.location.origin,
       is_dangerously_use_local_storage: true,
-      on_redirect_callback: () => {
-        window.history.replaceState({}, document.title, window.location.pathname);
+      on_redirect_callback: (_user, appState = {}) => {
+        const returnUrl = safeReturnUrl(appState?.returnTo || window.sessionStorage.getItem(AUTH_RETURN_URL_KEY));
+        window.sessionStorage.removeItem(AUTH_RETURN_URL_KEY);
+        const cleanUrl = returnUrl || window.location.pathname;
+        if (new URL(cleanUrl, window.location.origin).pathname !== window.location.pathname) {
+          window.location.replace(cleanUrl);
+          return;
+        }
+        window.history.replaceState({}, document.title, cleanUrl);
       }
     });
   }
 
   return kindePromise;
+}
+
+function safeReturnUrl(value = "") {
+  if (!value) return "";
+  try {
+    const url = new URL(value, window.location.origin);
+    if (url.origin !== window.location.origin) return "";
+    return `${url.pathname}${url.search}${url.hash}`;
+  } catch {
+    return "";
+  }
+}
+
+function currentReturnUrl() {
+  return safeReturnUrl(`${window.location.pathname}${window.location.search}${window.location.hash}`) || getAppUrl();
 }
 
 function tokenExpiresWithin(token, seconds = 60) {
@@ -53,50 +79,126 @@ function tokenExpiresWithin(token, seconds = 60) {
   return exp <= Math.floor(Date.now() / 1000) + seconds;
 }
 
-async function requestFreshKindeToken(kinde) {
-  const refreshAttempts = [
-    () => kinde.getAccessToken?.({ forceRefresh: true }),
-    () => kinde.getAccessToken?.({ ignoreCache: true }),
-    () => kinde.getAccessToken?.(),
-    () => kinde.getTokenSilently?.({ forceRefresh: true }),
-    () => kinde.getTokenSilently?.({ ignoreCache: true }),
-    // Compatibility only for sessions created by older Kinde SDK versions.
-    () => kinde.getToken?.({ forceRefresh: true }),
-    () => kinde.getToken?.({ ignoreCache: true })
-  ];
+async function readCachedKindeToken(kinde) {
+  try {
+    return await kinde.getAccessToken?.() || null;
+  } catch {
+    return null;
+  }
+}
 
-  for (const attempt of refreshAttempts) {
-    try {
-      const token = await attempt();
-      if (token && !tokenExpiresWithin(token, 10)) return token;
-    } catch {
-      // Kinde SDK method support differs by version; try the next safe option.
-    }
+async function requestFreshKindeToken(rejectedToken = "") {
+  if (!kindeRefreshPromise) {
+    kindeRefreshPromise = (async () => {
+      // Recreating the PKCE client runs Kinde's supported checkAuth/session
+      // restore path. getAccessToken itself only reads the cached JWT.
+      kindePromise = null;
+      const kinde = await getKindeClient();
+      if (!(await kinde.isAuthenticated())) return null;
+
+      for (let attempt = 0; attempt < 8; attempt += 1) {
+        const token = await readCachedKindeToken(kinde);
+        if (token && !tokenExpiresWithin(token, 5) && (!rejectedToken || token !== rejectedToken)) return token;
+        await new Promise((resolve) => window.setTimeout(resolve, 250));
+      }
+
+      const token = await readCachedKindeToken(kinde);
+      return token && !tokenExpiresWithin(token, 0) ? token : null;
+    })().finally(() => {
+      kindeRefreshPromise = null;
+    });
   }
 
-  return null;
+  return kindeRefreshPromise;
 }
 
 export async function getKindeToken(options = {}) {
-  const { forceRefresh = false, minTtlSeconds = 60 } = options;
+  const { forceRefresh = false, minTtlSeconds = 15, rejectedToken = "" } = options;
   const kinde = await getKindeClient();
-  let token = forceRefresh ? await requestFreshKindeToken(kinde) : null;
-  if (!token) {
-    try {
-      token = await kinde.getAccessToken?.();
-    } catch {
-      token = null;
-    }
-  }
-  // getToken is deprecated in Kinde v4.5+, but remains as a fallback for
-  // already-authenticated sessions created before the SDK upgrade.
-  if (!token) token = await kinde.getToken?.();
+  let token = forceRefresh ? await requestFreshKindeToken(rejectedToken) : await readCachedKindeToken(kinde);
   if (token && tokenExpiresWithin(token, minTtlSeconds)) {
-    token = await requestFreshKindeToken(kinde) || token;
+    token = await requestFreshKindeToken(token) || token;
   }
   if (!token) throw new Error("Sign in with Kinde before using Rateware.");
   if (tokenExpiresWithin(token, 0)) throw new Error("Sign in with Kinde before using Rateware.");
   return token;
+}
+
+export class KindeSessionError extends Error {
+  constructor(message = "Your session expired. Sign in again to continue.") {
+    super(message);
+    this.name = "KindeSessionError";
+    this.status = 401;
+    this.code = "KINDE_SESSION_REQUIRED";
+  }
+}
+
+function clearSessionRecovery() {
+  document.querySelector(`#${SESSION_RECOVERY_ID}`)?.remove();
+}
+
+function showSessionRecovery() {
+  if (document.querySelector(`#${SESSION_RECOVERY_ID}`)) return;
+
+  const banner = document.createElement("aside");
+  banner.id = SESSION_RECOVERY_ID;
+  banner.className = "session-recovery-banner";
+  banner.setAttribute("role", "alert");
+  banner.innerHTML = `
+    <div>
+      <strong>Session expired</strong>
+      <span>Your current page is preserved. Sign in again to continue the action.</span>
+    </div>
+    <button type="button">Sign in again</button>
+  `;
+  banner.querySelector("button").addEventListener("click", () => reauthenticateKinde());
+  document.body.append(banner);
+  window.dispatchEvent(new CustomEvent("rateware:session-required"));
+}
+
+export async function reauthenticateKinde() {
+  const returnTo = currentReturnUrl();
+  window.sessionStorage.setItem(AUTH_RETURN_URL_KEY, returnTo);
+  const kinde = await getKindeClient();
+  await kinde.login({ app_state: { returnTo } });
+}
+
+function withBearerToken(init, token) {
+  const headers = new Headers(init?.headers || {});
+  headers.set("Authorization", `Bearer ${token}`);
+  return { ...init, headers };
+}
+
+export async function authenticatedFetch(input, init = {}, options = {}) {
+  const { minTtlSeconds = 15 } = options;
+  let token;
+  try {
+    token = await getKindeToken({ minTtlSeconds });
+  } catch (error) {
+    showSessionRecovery();
+    throw error;
+  }
+
+  let response = await fetch(input, withBearerToken(init, token));
+  if (response.status !== 401) {
+    clearSessionRecovery();
+    return response;
+  }
+
+  const freshToken = await getKindeToken({
+    forceRefresh: true,
+    minTtlSeconds,
+    rejectedToken: token
+  }).catch(() => null);
+
+  if (freshToken) response = await fetch(input, withBearerToken(init, freshToken));
+  if (response.status !== 401) {
+    clearSessionRecovery();
+    return response;
+  }
+
+  showSessionRecovery();
+  throw new KindeSessionError();
 }
 
 export async function ensureSignedIn() {
