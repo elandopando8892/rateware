@@ -373,7 +373,15 @@ assert.doesNotMatch(whatsappWorkspaceMigration, /using\s*\(true\)/i, "WhatsApp c
 assert.match(apiSource, /function isInternalWhatsappWorkspace/, "WhatsApp resolver should explicitly identify the internal HeyMarksman workspace");
 assert.match(apiSource, /WHATSAPP_INTERNAL_OWNER_EMAILS\.has\(email\)/, "Internal WhatsApp access should require an allowed owner email");
 assert.match(apiSource, /WHATSAPP_INTERNAL_ORGANIZATION_IDS\.has\(organizationId\)/, "Internal WhatsApp access should support an allowed organization id");
-assert.match(apiSource, /\.from\("gmail_mailbox_connections"\)[\s\S]+\.eq\("owner_email", user\.owner_email\)[\s\S]+\.eq\("mailbox_email", GMAIL_ALLOWED_SENDER\)[\s\S]+\.eq\("status", "connected"\)/, "Internal WhatsApp access may use the workspace's connected allowed Gmail mailbox as proof");
+const internalWhatsappWorkspaceSource = apiSource.slice(
+  apiSource.indexOf("async function isInternalWhatsappWorkspace"),
+  apiSource.indexOf("function maskedSecret")
+);
+assert.match(internalWhatsappWorkspaceSource, /return isInternalWhatsappWorkspaceIdentity\(user\)/, "Internal WhatsApp access should resolve only from the authenticated workspace identity");
+assert.doesNotMatch(internalWhatsappWorkspaceSource, /gmail_mailbox_connections|GMAIL_ALLOWED_SENDER/, "A connected Gmail mailbox must never grant access to the internal WhatsApp sender");
+assert.match(apiSource, /\.eq\("connection_mode", "tenant_connected"\)[\s\S]+scopeWhatsappConnectionQuery\(query, user\)/, "External WhatsApp connections should be scoped to the authenticated workspace");
+assert.match(apiSource, /const accessToken = internalWorkspace\s+\? WHATSAPP_ACCESS_TOKEN\s+: await decryptWhatsappSecret\(row\.access_token_encrypted/, "External workspaces must use only their tenant WhatsApp token");
+assert.match(apiSource, /if \(await isInternalWhatsappWorkspace\(supabase, user\)\) \{\s+throw new Error\("The internal HeyMarksman WhatsApp Business sender is managed server-side\."\)/, "Internal workspaces should not overwrite the managed sender with tenant credentials");
 assert.match(apiSource, /const existingMetadata = objectRecord\(existingResult\.data\?\.metadata\)/, "Refreshing the internal WhatsApp connection must preserve synced Meta templates");
 assert.match(apiSource, /const internalWabaId = WHATSAPP_WABA_ID[\s\S]+cleanText\(existingMetadata\.template_waba_id\)/, "Internal WhatsApp refresh must prefer the server WABA over stale stored template metadata");
 assert.match(apiSource, /const wabaId = internalWorkspace\s+\?\s+\(WHATSAPP_WABA_ID \|\| cleanText\(metadata\.template_waba_id\) \|\| WHATSAPP_BUSINESS_ACCOUNT_ID\)/, "Internal WhatsApp actions must resolve templates against the server WABA first");

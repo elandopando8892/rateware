@@ -10892,22 +10892,12 @@ function isInternalWhatsappWorkspaceIdentity(user: Pick<RatewareUser, "owner_ema
 }
 
 async function isInternalWhatsappWorkspace(
-  supabase: ReturnType<typeof createClient>,
+  _supabase: ReturnType<typeof createClient>,
   user: Pick<RatewareUser, "owner_email" | "organization_id">
 ) {
-  if (isInternalWhatsappWorkspaceIdentity(user)) return true;
-  if (!user.owner_email || !GMAIL_ALLOWED_SENDER) return false;
-
-  const result = await supabase
-    .from("gmail_mailbox_connections")
-    .select("id")
-    .eq("owner_email", user.owner_email)
-    .eq("mailbox_email", GMAIL_ALLOWED_SENDER)
-    .eq("status", "connected")
-    .limit(1)
-    .maybeSingle();
-  if (result.error) throw result.error;
-  return Boolean(result.data?.id);
+  // Internal sender access is an authorization decision. Only authenticated
+  // workspace identity plus server-side allowlists may grant it.
+  return isInternalWhatsappWorkspaceIdentity(user);
 }
 
 function maskedSecret(value: unknown) {
