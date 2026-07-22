@@ -1411,13 +1411,19 @@ assert.match(vendorImprovementServiceSource, /submit_vendor_improvement_case/, "
 assert.match(vendorImprovementServiceSource, /process_vendor_ci_reminders/, "Vendor CI service should call the reminder processor action");
 assert.match(appHtml, /vendor-improvement\.html/, "Dashboard navigation should include Vendor CI");
 assert.match(apiSource, /const invitationIdChunks = invitationIds\.length \? chunkValues\(invitationIds, 100\) : \[\[\]\]/, "Outreach draft generation should read selected invitations in small id batches");
-assert.match(apiSource, /for \(const chunk of chunkValues\(rows, 100\)\)/, "Outreach draft generation should upsert draft messages in small batches");
-assert.match(apiSource, /return jsonResponse\(\{\s*generated: generatedMessages\.length,\s*rows: \[\],\s*skipped,\s*campaign_id: campaign\.id,\s*whatsapp_notifier: whatsappNotifier\s*\}\)/, "Outreach draft generation should avoid returning large HTML draft payloads");
+assert.match(apiSource, /label: "RFx invitation ids", limit: 5000/, "Outreach draft generation should support large carrier waves without unbounded requests");
+assert.match(apiSource, /mapWithConcurrency\(invitationIdChunks, 4/, "Outreach draft generation should load invitation batches with bounded concurrency");
+assert.match(apiSource, /mapWithConcurrency\(chunkValues\(rowsToUpsert, 100\), 4/, "Outreach draft generation should upsert draft messages in bounded batches");
+assert.match(apiSource, /generated: generatedMessages\.length,[\s\S]+rows: \[\]/, "Outreach draft generation should avoid returning large HTML draft payloads");
 assert.match(apiSource, /function outreachLaneTableSignature/, "Outreach draft generation should fingerprint the current Business Book route table");
 assert.match(apiSource, /lane_table_signature: context\.lane_table_signature/, "Outreach drafts should persist the Business Book route-table signature in metadata");
 assert.match(apiSource, /const completeInvitationGroups = new Map/, "Outreach draft generation should hydrate complete event/vendor lane groups before rendering templates");
 assert.match(apiSource, /requestedGroupKeys\.has\(key\)/, "Outreach draft generation should only expand lane groups for requested event/vendor participants");
+assert.match(apiSource, /\.in\("vendor_id", vendorChunk\)[\s\S]+\.range\(offset, offset \+ 999\)/, "Outreach lane hydration should paginate only the requested carriers instead of scanning the full event");
 assert.match(apiSource, /sortRfxInvitationGroup\(completeInvitationGroups\.get\(groupKey\) \|\| requestedInvitationGroup\)/, "Outreach drafts should render stable complete route tables per carrier");
+assert.match(apiSource, /const protectedStatuses = new Set\(\["queued", "sent", "delivered", "read", "replied", "bounced", "manual_sent", "archived"\]\)/, "Outreach regeneration must preserve messages that already moved beyond draft state");
+assert.match(apiSource, /const createdMessages = generatedMessages\.filter/, "Outreach history should distinguish newly created drafts from refreshed drafts");
+assert.match(apiSource, /const historyRows = createdMessages\.map/, "Outreach regeneration should not duplicate contact history for refreshed drafts");
 assert.match(rfxEventsSource, /function laneTableSignatureForTargets/, "Bid Room UI should fingerprint current carrier lane groups");
 assert.match(rfxEventsSource, /function allOutreachTargetInvitations/, "Bid Room preview should be able to render every active event lane for the selected carrier");
 assert.match(rfxEventsSource, /const sourceTargets = selectedOnly \? outreachTargetInvitations\(\) : allOutreachTargetInvitations\(\)/, "Bid Room preview should default to the full carrier lane package, not only the selected row");
@@ -2190,7 +2196,7 @@ assert.match(uploadHistorySource, /if \(uploadBulkActionRunning\) return;/, "Upl
 assert.match(outreachSource, /let outreachLoadVersion = 0;/, "Outreach should version full workspace loads");
 assert.match(outreachSource, /loadVersion !== outreachMessagesLoadVersion \|\| selectedCampaignId !== campaignId/, "Outreach should not render messages from a previously selected campaign");
 assert.match(outreachSource, /if \(outreachMessageMutationRunning\) return;/, "Outreach bulk message updates should reject duplicate submissions while running");
-assert.match(apiSource, /for \(const emailBatch of chunkValues\(cleanEmails, 75\)\)/, "Outreach suppression checks should batch large recipient lists before querying PostgREST");
+assert.match(apiSource, /mapWithConcurrency\(chunkValues\(cleanEmails, 75\), 4/, "Outreach suppression checks should batch large recipient lists with bounded concurrency");
 assert.match(apiSource, /\.in\("email", emailBatch\)/, "Outreach suppression checks should query each bounded recipient batch");
 
 console.log("Rateware stability guards passed.");

@@ -1349,8 +1349,7 @@ async function suppressedEmailSet(
 
   // PostgREST serializes `.in()` values in the URL. Keep the request safely below
   // proxy URL limits when a Bid Room outreach wave contains hundreds of contacts.
-  const rows: Record<string, unknown>[] = [];
-  for (const emailBatch of chunkValues(cleanEmails, 75)) {
+  const batches = await mapWithConcurrency(chunkValues(cleanEmails, 75), 4, async (emailBatch) => {
     const result = await supabase
       .from("email_suppression_list")
       .select("email,status")
@@ -1358,8 +1357,9 @@ async function suppressedEmailSet(
       .in("email", emailBatch)
       .in("status", blockedEmailStatuses());
     if (result.error) throw result.error;
-    rows.push(...(result.data || []));
-  }
+    return result.data || [];
+  });
+  const rows = batches.flat() as Record<string, unknown>[];
   return new Set(rows.map((row) => cleanText(row.email)).filter(Boolean) as string[]);
 }
 
@@ -2905,6 +2905,26 @@ function chunkValues<T>(values: T[], size = 500) {
   const chunks: T[][] = [];
   for (let index = 0; index < values.length; index += size) chunks.push(values.slice(index, index + size));
   return chunks;
+}
+
+async function mapWithConcurrency<T, R>(
+  values: T[],
+  concurrency: number,
+  worker: (value: T, index: number) => Promise<R>
+) {
+  if (!values.length) return [] as R[];
+  const results = new Array<R>(values.length);
+  let nextIndex = 0;
+  const run = async () => {
+    while (nextIndex < values.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      results[index] = await worker(values[index], index);
+    }
+  };
+  const workerCount = Math.min(Math.max(1, Math.floor(concurrency)), values.length);
+  await Promise.all(Array.from({ length: workerCount }, () => run()));
+  return results;
 }
 
 function numericAmount(value: unknown) {
@@ -10524,8 +10544,7 @@ async function vendorProfileLinksForInvitations(
   if (!vendorIds.length) return links;
 
   const nowIso = new Date().toISOString();
-  const existingRows: Record<string, unknown>[] = [];
-  for (const chunk of chunkValues(vendorIds, 100)) {
+  const existingBatches = await mapWithConcurrency(chunkValues(vendorIds, 100), 4, async (chunk) => {
     const existing = await supabase
       .from("vendor_profile_requests")
       .select("id,vendor_id,request_token,status,expires_at,created_at")
@@ -10535,8 +10554,9 @@ async function vendorProfileLinksForInvitations(
       .gt("expires_at", nowIso)
       .order("created_at", { ascending: false });
     if (existing.error) throw existing.error;
-    existingRows.push(...(existing.data || []));
-  }
+    return existing.data || [];
+  });
+  const existingRows = existingBatches.flat() as Record<string, unknown>[];
 
   for (const row of existingRows) {
     const vendorId = cleanText(row.vendor_id);
@@ -10563,10 +10583,11 @@ async function vendorProfileLinksForInvitations(
     }, user);
   });
 
-  for (const chunk of chunkValues(rows, 250)) {
+  await mapWithConcurrency(chunkValues(rows, 250), 4, async (chunk) => {
     const created = await supabase.from("vendor_profile_requests").insert(chunk).select("id,vendor_id,request_token");
     if (created.error) throw created.error;
-  }
+    return created.data || [];
+  });
 
   return links;
 }
@@ -20230,7 +20251,7 @@ Deno.serve(async (request) => {
     if (body.action === "generate_outreach_drafts") {
       const campaign = await requireOwnedOutreachCampaign(supabase, user, body.campaign_id);
       const template = await fetchOutreachTemplate(supabase, user, body.template_id || campaign.template_id);
-      const invitationIds = normalizeBulkIds(body.invitation_ids, { label: "RFx invitation ids", limit: 1000 });
+      const invitationIds = normalizeBulkIds(body.invitation_ids, { label: "RFx invitation ids", limit: 5000 });
       const appOrigin = cleanText(body.app_origin) || Deno.env.get("RATEWARE_APP_URL") || "https://rateware.vercel.app";
       const senderEmail = cleanText(body.sender_email || campaign.sender_email);
       const senderLabel = cleanText(body.sender_label || campaign.sender_label || senderEmail);
@@ -20287,22 +20308,31 @@ Deno.serve(async (request) => {
         rfx_events!inner(id,owner_email,rfx_id,name,customer,status,due_date,event_type),
         rfx_lanes(*)
       `;
-      const invitations: Record<string, unknown>[] = [];
       const invitationIdChunks = invitationIds.length ? chunkValues(invitationIds, 100) : [[]];
-      for (const chunk of invitationIdChunks) {
-        let invitationQuery = supabase
-          .from("rfx_lane_vendors")
-          .select(invitationSelect)
-          .eq("rfx_events.owner_email", user.owner_email)
-          .neq("invitation_status", "archived")
-          .limit(1000);
-        if (campaign.rfx_event_id) invitationQuery = invitationQuery.eq("rfx_event_id", campaign.rfx_event_id);
-        if (chunk.length) invitationQuery = invitationQuery.in("id", chunk);
+      const invitationBatches = await mapWithConcurrency(invitationIdChunks, 4, async (chunk) => {
+        const batch: Record<string, unknown>[] = [];
+        let offset = 0;
+        while (true) {
+          let invitationQuery = supabase
+            .from("rfx_lane_vendors")
+            .select(invitationSelect)
+            .eq("rfx_events.owner_email", user.owner_email)
+            .neq("invitation_status", "archived")
+            .range(offset, offset + 999);
+          if (campaign.rfx_event_id) invitationQuery = invitationQuery.eq("rfx_event_id", campaign.rfx_event_id);
+          if (chunk.length) invitationQuery = invitationQuery.in("id", chunk);
 
-        const invitationsResult = await invitationQuery;
-        if (invitationsResult.error) throw invitationsResult.error;
-        invitations.push(...(invitationsResult.data || []));
-      }
+          const invitationsResult = await invitationQuery;
+          if (invitationsResult.error) throw new Error(`Outreach invitation load failed: ${invitationsResult.error.message}`);
+          const page = (invitationsResult.data || []) as Record<string, unknown>[];
+          batch.push(...page);
+          if (chunk.length || page.length < 1000) break;
+          offset += 1000;
+          if (offset >= 5000) throw new Error("Outreach invitation load exceeded 5000 active rows. Generate a narrower wave.");
+        }
+        return batch;
+      });
+      const invitations = invitationBatches.flat() as Record<string, unknown>[];
 
       const rows: Record<string, unknown>[] = [];
       const skipped: Record<string, unknown>[] = [];
@@ -20317,16 +20347,30 @@ Deno.serve(async (request) => {
 
       const completeInvitationGroups = new Map<string, Record<string, unknown>[]>();
       if (campaign.rfx_event_id && invitations.length) {
-        const completeResult = await supabase
-          .from("rfx_lane_vendors")
-          .select(invitationSelect)
-          .eq("rfx_event_id", campaign.rfx_event_id)
-          .eq("rfx_events.owner_email", user.owner_email)
-          .neq("invitation_status", "archived")
-          .limit(5000);
-        if (completeResult.error) throw completeResult.error;
         const requestedGroupKeys = new Set(invitationGroups.keys());
-        for (const invitation of completeResult.data || []) {
+        const requestedVendorIds = [...new Set(invitations.map((invitation) => cleanText(invitation.vendor_id)).filter(Boolean))] as string[];
+        const completeBatches = await mapWithConcurrency(chunkValues(requestedVendorIds, 100), 4, async (vendorChunk) => {
+          const batch: Record<string, unknown>[] = [];
+          let offset = 0;
+          while (true) {
+            const completeResult = await supabase
+              .from("rfx_lane_vendors")
+              .select(invitationSelect)
+              .eq("rfx_event_id", campaign.rfx_event_id)
+              .eq("rfx_events.owner_email", user.owner_email)
+              .in("vendor_id", vendorChunk)
+              .neq("invitation_status", "archived")
+              .range(offset, offset + 999);
+            if (completeResult.error) throw new Error(`Outreach lane hydration failed: ${completeResult.error.message}`);
+            const page = (completeResult.data || []) as Record<string, unknown>[];
+            batch.push(...page);
+            if (page.length < 1000) break;
+            offset += 1000;
+            if (offset >= 25000) throw new Error("Outreach lane hydration exceeded the safe per-batch limit.");
+          }
+          return batch;
+        });
+        for (const invitation of completeBatches.flat()) {
           const key = rfxInvitationVendorGroupKey(invitation);
           if (!key || !requestedGroupKeys.has(key)) continue;
           const bucket = completeInvitationGroups.get(key) || [];
@@ -20343,7 +20387,7 @@ Deno.serve(async (request) => {
       const vendorIdsForGroups = [...new Set(invitations.map((invitation) => cleanText(invitation.vendor_id)).filter(Boolean))];
       const vendorGroupsByVendor = new Map<string, Record<string, unknown>>();
       if (vendorIdsForGroups.length) {
-        for (const vendorChunk of chunkValues(vendorIdsForGroups, 200)) {
+        const groupBatches = await mapWithConcurrency(chunkValues(vendorIdsForGroups, 200), 4, async (vendorChunk) => {
           const groupsResult = await supabase
             .from("vendor_whatsapp_groups")
             .select("*")
@@ -20351,11 +20395,12 @@ Deno.serve(async (request) => {
             .in("vendor_id", vendorChunk)
             .neq("verification_status", "blocked")
             .order("updated_at", { ascending: false });
-          if (groupsResult.error) throw groupsResult.error;
-          for (const group of groupsResult.data || []) {
+          if (groupsResult.error) throw new Error(`Outreach WhatsApp group load failed: ${groupsResult.error.message}`);
+          return groupsResult.data || [];
+        });
+        for (const group of groupBatches.flat()) {
             const vendorId = cleanText(group.vendor_id);
             if (vendorId && !vendorGroupsByVendor.has(vendorId)) vendorGroupsByVendor.set(vendorId, group);
-          }
         }
       }
       const suppressedEmails = await suppressedEmailSet(
@@ -20545,19 +20590,64 @@ Deno.serve(async (request) => {
         }
       }
 
-      if (!rows.length) return jsonResponse({ generated: 0, rows: [], skipped, whatsapp_notifier: whatsappNotifier });
+      if (!rows.length) return jsonResponse({
+        generated: 0,
+        rows: [],
+        skipped,
+        whatsapp_notifier: whatsappNotifier,
+        metrics: {
+          requested_invitation_ids: invitationIds.length,
+          loaded_invitations: invitations.length,
+          carrier_groups: invitationGroups.size,
+          candidate_drafts: 0,
+          created: 0,
+          refreshed: 0,
+          preserved: 0
+        }
+      });
 
-      const generatedMessages: Record<string, unknown>[] = [];
-      for (const chunk of chunkValues(rows, 100)) {
+      const draftKey = (row: Record<string, unknown>) => `${cleanText(row.rfx_lane_vendor_id) || ""}|${cleanText(row.channel) || ""}`;
+      const existingMessagesByKey = new Map<string, Record<string, unknown>>();
+      const candidateInvitationIds = [...new Set(rows.map((row) => cleanText(row.rfx_lane_vendor_id)).filter(Boolean))] as string[];
+      const existingBatches = await mapWithConcurrency(chunkValues(candidateInvitationIds, 100), 4, async (idChunk) => {
+        const existingResult = await supabase
+          .from("outreach_messages")
+          .select("id,rfx_lane_vendor_id,channel,status")
+          .eq("owner_email", user.owner_email)
+          .eq("campaign_id", campaign.id)
+          .in("rfx_lane_vendor_id", idChunk);
+        if (existingResult.error) throw new Error(`Outreach existing draft load failed: ${existingResult.error.message}`);
+        return existingResult.data || [];
+      });
+      for (const existing of existingBatches.flat()) existingMessagesByKey.set(draftKey(existing), existing);
+
+      const protectedStatuses = new Set(["queued", "sent", "delivered", "read", "replied", "bounced", "manual_sent", "archived"]);
+      const preservedMessages: Record<string, unknown>[] = [];
+      const rowsToUpsert = rows.filter((row) => {
+        const existing = existingMessagesByKey.get(draftKey(row));
+        const status = cleanText(existing?.status)?.toLowerCase() || "";
+        if (!existing || !protectedStatuses.has(status)) return true;
+        preservedMessages.push(existing);
+        skipped.push({
+          invitation_id: row.rfx_lane_vendor_id,
+          channel: row.channel,
+          reason: `Existing ${status} outreach message preserved`
+        });
+        return false;
+      });
+
+      const generatedBatches = await mapWithConcurrency(chunkValues(rowsToUpsert, 100), 4, async (chunk) => {
         const result = await supabase
           .from("outreach_messages")
           .upsert(chunk, { onConflict: "campaign_id,rfx_lane_vendor_id,channel" })
-          .select("id,campaign_id,vendor_id,rfx_event_id,channel,subject,text_body,whatsapp_text,html_body,sender_email,sender_label,sender_connection_status");
-        if (result.error) throw result.error;
-        generatedMessages.push(...(result.data || []));
-      }
+          .select("id,campaign_id,vendor_id,rfx_event_id,rfx_lane_vendor_id,channel,subject,text_body,whatsapp_text,html_body,sender_email,sender_label,sender_connection_status");
+        if (result.error) throw new Error(`Outreach draft upsert failed: ${result.error.message}`);
+        return result.data || [];
+      });
+      const generatedMessages = generatedBatches.flat() as Record<string, unknown>[];
+      const createdMessages = generatedMessages.filter((message) => !existingMessagesByKey.has(draftKey(message)));
 
-      const historyRows = generatedMessages.map((message) => withOwner({
+      const historyRows = createdMessages.map((message) => withOwner({
         outreach_message_id: message.id,
         campaign_id: campaign.id,
         vendor_id: message.vendor_id,
@@ -20575,10 +20665,11 @@ Deno.serve(async (request) => {
         }
       }, user));
       if (historyRows.length) {
-        for (const chunk of chunkValues(historyRows, 200)) {
+        await mapWithConcurrency(chunkValues(historyRows, 200), 4, async (chunk) => {
           const history = await supabase.from("contact_history").insert(chunk);
-          if (history.error) throw history.error;
-        }
+          if (history.error) throw new Error(`Outreach contact history insert failed: ${history.error.message}`);
+          return true;
+        });
       }
 
       const campaignUpdate = await supabase
@@ -20599,7 +20690,16 @@ Deno.serve(async (request) => {
         rows: [],
         skipped,
         campaign_id: campaign.id,
-        whatsapp_notifier: whatsappNotifier
+        whatsapp_notifier: whatsappNotifier,
+        metrics: {
+          requested_invitation_ids: invitationIds.length,
+          loaded_invitations: invitations.length,
+          carrier_groups: invitationGroups.size,
+          candidate_drafts: rows.length,
+          created: createdMessages.length,
+          refreshed: generatedMessages.length - createdMessages.length,
+          preserved: preservedMessages.length
+        }
       });
     }
 
