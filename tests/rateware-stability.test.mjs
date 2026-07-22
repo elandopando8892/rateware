@@ -402,6 +402,10 @@ const generateOutreachDraftsSource = apiSource.slice(
   apiSource.indexOf('if (body.action === "generate_outreach_drafts")'),
   apiSource.indexOf('if (body.action === "list_outreach_messages")')
 );
+const sendGmailOutreachSource = apiSource.slice(
+  apiSource.indexOf("async function sendOutreachMessages("),
+  apiSource.indexOf("async function metaSendWhatsappTemplate(")
+);
 assert.match(apiSource, /if \(normalized === "email" \|\| normalized === "gmail" \|\| normalized === "gmail_only"\) return \["email"\]/, "Gmail-only outreach should resolve to email only");
 assert.match(apiSource, /const channel = cleanText\(input\.channel\)\?\.toLowerCase\(\) \|\| "email"/, "Outreach templates and campaigns should default to Gmail only");
 assert.match(apiSource, /const normalized = cleanText\(channel\)\?\.toLowerCase\(\) \|\| "email"/, "Unknown outreach channels should default to Gmail only");
@@ -409,6 +413,9 @@ assert.match(generateOutreachDraftsSource, /const wantsDirectWhatsapp = requeste
 assert.match(generateOutreachDraftsSource, /messageChannels\(body\.channel \|\| campaign\.channel \|\| template\.channel\)/, "The channel selected in the launchpad should be authoritative for draft generation");
 assert.match(generateOutreachDraftsSource, /const wantsEmail = requestedChannels\.includes\("email"\)/, "Draft generation should explicitly gate Gmail preparation");
 assert.match(generateOutreachDraftsSource, /const wantsWhatsappGroup = requestedChannels\.includes\("whatsapp_group"\)/, "Draft generation should explicitly gate WhatsApp group preparation");
+assert.match(generateOutreachDraftsSource, /const whatsappText = wantsDirectWhatsapp[\s\S]+: ""/, "Gmail-only draft generation should not render direct WhatsApp copy");
+assert.match(generateOutreachDraftsSource, /const whatsappGroupText = wantsWhatsappGroup[\s\S]+: ""/, "Gmail-only draft generation should not render WhatsApp group copy");
+assert.match(generateOutreachDraftsSource, /const whatsappParameters = wantsDirectWhatsapp[\s\S]+: \[\]/, "Gmail-only draft generation should not resolve Meta template parameters");
 assert.match(generateOutreachDraftsSource, /const vendorIdsForGroups = wantsWhatsappGroup[\s\S]+\? \[\.\.\.new Set/, "Gmail and direct WhatsApp queues must not load WhatsApp groups");
 assert.match(generateOutreachDraftsSource, /if \(wantsEmail\) \{[\s\S]+suppressedEmailSet/, "Only Gmail queues should load email suppressions");
 assert.match(generateOutreachDraftsSource, /const channels = requestedChannels/, "Every carrier group should use the request-scoped channel selection");
@@ -677,10 +684,16 @@ assert.match(rfxEventsSource, /sender_email: rfxOutreachSender/, "Bid Room shoul
 assert.match(outreachServiceSource, /sender_email: options\.senderEmail/, "Outreach draft generation should send selected sender metadata to the API");
 assert.match(outreachServiceSource, /channel: options\.channel \|\| ""/, "Outreach service should pass the selected channel explicitly to the API");
 assert.match(rfxEventsSource, /generateOutreachDrafts\(campaign\.id, \{[\s\S]+channel: outreachChannel/, "Bid Room queue creation should pass the launchpad channel explicitly");
+assert.match(rfxEventsSource, /const includesWhatsappChannel = requestedDraftChannels\.some/, "Bid Room should detect whether the selected queue actually needs WhatsApp configuration");
+assert.match(rfxEventsSource, /\.\.\.\(includesWhatsappChannel \? \{[\s\S]+whatsapp_target_mode:[\s\S]+group_delivery_policy:[\s\S]+\} : \{\}\)/, "Gmail campaign creation should omit WhatsApp-only settings");
 assert.match(rfxEventsSource, /const isWhatsappQueue = requestedDraftChannels\.includes\("whatsapp"\)/, "Bid Room should only interpret Meta notifier state for direct WhatsApp queues");
 assert.match(rfxEventsSource, /const key = `\$\{campaignId\}:\$\{channel\}:\$\{invitationIds\.join\(","\)\}`/, "Targeted draft refresh should keep Gmail and WhatsApp groups separate");
 assert.match(rfxEventsSource, /campaignId,[\s\S]+channel: message\.channel \|\| "email",[\s\S]+invitationIds/, "Targeted draft refresh should preserve the original message channel");
 assert.match(outreachServiceSource, /send_outreach_messages/, "Outreach service should expose direct Gmail send for selected draft messages");
+assert.match(outreachServiceSource, /send_outreach_messages[\s\S]+provider: "gmail"[\s\S]+channel: "email"/, "Gmail send requests should explicitly identify the provider and channel");
+assert.match(sendGmailOutreachSource, /requestedProvider !== "gmail"/, "Gmail send should reject non-Gmail provider requests");
+assert.match(sendGmailOutreachSource, /\.eq\("channel", "email"\)/, "Gmail send should load only email outreach rows");
+assert.doesNotMatch(sendGmailOutreachSource, /activeWhatsappConnection|listWhatsappConnections|whatsappGraphFetch/, "Gmail send must not resolve or call WhatsApp providers");
 assert.match(rfxEventsHtml, /rfx-send-selected-email-drafts/, "Bid Room draft queue should include a bulk send selected emails action");
 assert.match(rfxEventsHtml, /rfx-refresh-selected-drafts/, "Bid Room draft queue should support refreshing selected sent or stale drafts without regenerating the full queue");
 assert.match(rfxEventsHtml, /rfx-archive-selected-drafts/, "Bid Room draft queue should include archive selected action");

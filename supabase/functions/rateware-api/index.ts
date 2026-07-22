@@ -13194,6 +13194,11 @@ async function sendOutreachMessages(
   user: { owner_user_id: string | null; owner_email: string | null },
   input: Record<string, unknown>
 ) {
+  const requestedProvider = cleanText(input.provider)?.toLowerCase() || "gmail";
+  const requestedChannel = cleanText(input.channel)?.toLowerCase() || "email";
+  if (requestedProvider !== "gmail" || !["email", "gmail", "gmail_only"].includes(requestedChannel)) {
+    throw new Error("Gmail send only accepts email outreach drafts.");
+  }
   const ids = normalizeBulkIds(input.ids, { label: "Outreach message ids", limit: BULK_SEND_LIMIT });
   if (!ids.length) return { sent: 0, failed: 0, rows: [], failures: [] };
   requireBulkConfirmation(input, {
@@ -13206,13 +13211,14 @@ async function sendOutreachMessages(
     .from("outreach_messages")
     .select("*")
     .eq("owner_email", user.owner_email)
+    .eq("channel", "email")
     .in("id", ids)
     .order("created_at", { ascending: true });
   if (messagesResult.error) throw messagesResult.error;
 
-  const messages = (messagesResult.data || []).filter((message) => message.channel === "email");
+  const messages = messagesResult.data || [];
   if (!messages.length) throw new Error("Select at least one email draft to send.");
-  if (messages.length !== ids.length) throw new Error("Only email draft rows can be sent through Gmail.");
+  if (messages.length !== ids.length) throw new Error("One or more selected rows are not email drafts or do not belong to this workspace.");
   const blockedStatuses = messages
     .map((message) => cleanText(message.status)?.toLowerCase())
     .filter((status) => status && !["drafted", "queued", "failed"].includes(status));
@@ -20733,8 +20739,14 @@ Deno.serve(async (request) => {
         const subject = renderTemplateText(template.subject || campaign.name, context);
         const htmlBody = renderTemplateText(template.html_body || template.whatsapp_body || "", context);
         const textBody = htmlToText(htmlBody);
-        const whatsappText = renderTemplateText(template.whatsapp_body || textBody, context);
-        const whatsappGroupText = renderTemplateText(template.whatsapp_group_body || template.whatsapp_body || textBody, context);
+        // Gmail queues must remain usable when Meta is disconnected or misconfigured.
+        // Do not render or resolve WhatsApp-specific state unless that channel was requested.
+        const whatsappText = wantsDirectWhatsapp
+          ? renderTemplateText(template.whatsapp_body || textBody, context)
+          : "";
+        const whatsappGroupText = wantsWhatsappGroup
+          ? renderTemplateText(template.whatsapp_group_body || template.whatsapp_body || textBody, context)
+          : "";
         const channels = requestedChannels;
         const groupInvitationIds = invitationGroup.map((item) => item.id).filter(Boolean);
         const laneIds = invitationGroup.map((item) => item.rfx_lane_id).filter(Boolean);
@@ -20742,10 +20754,19 @@ Deno.serve(async (request) => {
         const permissionBasis = cleanText(vendor.whatsapp_permission_basis) || "contractual";
         const doNotContact = cleanBoolean(vendor.whatsapp_do_not_contact);
         const normalizedRecipientPhone = normalizeWhatsappPhone(vendor.whatsapp_phone);
-        const whatsappTemplateName = cleanText(whatsappMapping?.meta_template_name || template.meta_template_name);
-        const whatsappTemplateLanguage = cleanText(whatsappMapping?.meta_template_language || template.meta_template_language) || whatsappMetaLanguage(template);
-        const whatsappTemplateStatus = whatsappMetaStatus(whatsappMapping?.meta_template_status || template.meta_template_status);
-        const whatsappParameters = whatsappTemplateParameters(whatsappMapping, context);
+        const needsWhatsappTemplate = wantsDirectWhatsapp || wantsWhatsappGroup;
+        const whatsappTemplateName = needsWhatsappTemplate
+          ? cleanText(whatsappMapping?.meta_template_name || template.meta_template_name)
+          : "";
+        const whatsappTemplateLanguage = needsWhatsappTemplate
+          ? cleanText(whatsappMapping?.meta_template_language || template.meta_template_language) || whatsappMetaLanguage(template)
+          : "";
+        const whatsappTemplateStatus = needsWhatsappTemplate
+          ? whatsappMetaStatus(whatsappMapping?.meta_template_status || template.meta_template_status)
+          : "NOT_REQUESTED";
+        const whatsappParameters = wantsDirectWhatsapp
+          ? whatsappTemplateParameters(whatsappMapping, context)
+          : [];
 
         if (channels.includes("email")) {
           const recipientEmail = channelPreparationErrors.email ? "" : firstSendableVendorEmail(vendor, suppressedEmails);

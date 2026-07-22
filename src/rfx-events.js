@@ -5851,6 +5851,7 @@ async function createCurrentOutreachDrafts(statusElement = rfxOutreachStatus) {
   }
   const outreachChannel = selectedOutreachChannel();
   const requestedDraftChannels = outreachDraftChannels(outreachChannel);
+  const includesWhatsappChannel = requestedDraftChannels.some((channel) => channel === "whatsapp" || channel === "whatsapp_group");
   const draftTargets = selectedInvitationIds.size
     ? targets
     : targets.filter((target) => !targetHasActiveOutreachDraft(target, requestedDraftChannels));
@@ -5864,15 +5865,19 @@ async function createCurrentOutreachDrafts(statusElement = rfxOutreachStatus) {
   const idempotencyKey = outreachDraftIdempotencyKey(idempotencyStorageKey);
   if (createRfxOutreachCampaignButton) createRfxOutreachCampaignButton.disabled = true;
   setStatus(statusElement, "Creating campaign and generating drafts...");
-  const whatsappTargetMode = rfxWhatsappTargetMode?.value || "direct_vendor";
-  const groupDeliveryPolicy = whatsappTargetMode === "direct_vendor" ? "api_only" : "manual_or_api";
+  const whatsappTargetMode = includesWhatsappChannel ? rfxWhatsappTargetMode?.value || "direct_vendor" : "";
+  const groupDeliveryPolicy = includesWhatsappChannel
+    ? whatsappTargetMode === "direct_vendor" ? "api_only" : "manual_or_api"
+    : "";
   const campaign = await createOutreachCampaign({
     name: rfxOutreachCampaignName?.value || `${eventSnapshot?.rfx_id || "RFx"} invitation wave`,
     rfx_event_id: eventId,
     template_id: template.id,
     channel: outreachChannel,
-    whatsapp_target_mode: whatsappTargetMode,
-    group_delivery_policy: groupDeliveryPolicy,
+    ...(includesWhatsappChannel ? {
+      whatsapp_target_mode: whatsappTargetMode,
+      group_delivery_policy: groupDeliveryPolicy
+    } : {}),
     idempotency_key: idempotencyKey,
     sender_email: rfxOutreachSender?.value || APPROVED_GMAIL_SENDER,
     sender_label: rfxOutreachSender?.selectedOptions?.[0]?.textContent || rfxOutreachSender?.value || APPROVED_GMAIL_SENDER,
@@ -5884,8 +5889,10 @@ async function createCurrentOutreachDrafts(statusElement = rfxOutreachStatus) {
     senderEmail: campaign.sender_email,
     senderLabel: campaign.sender_label,
     senderConnectionStatus: campaign.sender_connection_status,
-    whatsappTargetMode: campaign.whatsapp_target_mode || whatsappTargetMode,
-    groupDeliveryPolicy: campaign.group_delivery_policy || groupDeliveryPolicy
+    ...(includesWhatsappChannel ? {
+      whatsappTargetMode: campaign.whatsapp_target_mode || whatsappTargetMode,
+      groupDeliveryPolicy: campaign.group_delivery_policy || groupDeliveryPolicy
+    } : {})
   });
   clearOutreachDraftIdempotencyKey(idempotencyStorageKey);
   if (selectedEventId !== eventId) return result;
