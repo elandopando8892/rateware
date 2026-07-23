@@ -319,6 +319,7 @@ const requestedRfxEventId = rfxPageParams.get("rfx_event_id");
 const rfxWorkbench = initWorkbenchTabs({ defaultView: "setup" });
 const APPROVED_GMAIL_SENDER = "sales@heymarksman.com";
 const OUTREACH_SEND_BATCH_SIZE = 100;
+const BID_ROOM_PARTICIPANT_BATCH_SIZE = 1000;
 const DRAFT_QUEUE_VISIBLE_LIMIT = 1000;
 const DRAFT_QUEUE_SEARCH_DEBOUNCE_MS = 120;
 
@@ -5894,6 +5895,41 @@ async function autoShortlistLaneIds(ids, statusElement = actionStatus) {
   return inserted;
 }
 
+async function shortlistVendorsByLane(laneId, vendorIds = [], statusElement = manualShortlistStatus, context = {}) {
+  const batches = chunkRows(vendorIds, BID_ROOM_PARTICIPANT_BATCH_SIZE);
+  let inserted = 0;
+  for (let index = 0; index < batches.length; index += 1) {
+    if (context.eventId && selectedEventId !== context.eventId) return inserted;
+    const batch = batches[index];
+    if (batches.length > 1) {
+      setStatus(
+        statusElement,
+        `Adding carrier batch ${formatNumber(index + 1)} of ${formatNumber(batches.length)} (${formatNumber(batch.length)} carriers)${context.laneLabel ? ` to ${context.laneLabel}` : ""}...`
+      );
+    }
+    const result = await shortlistRfxLaneVendors(laneId, batch);
+    inserted += Number(result.inserted || 0);
+  }
+  return inserted;
+}
+
+async function mutateRfxParticipantsInBatches(ids = [], action, statusElement = actionStatus) {
+  const batches = chunkRows(ids, BID_ROOM_PARTICIPANT_BATCH_SIZE);
+  const operation = action === "archive" ? archiveRfxLaneVendors : inviteRfxLaneVendors;
+  const verb = action === "archive" ? "Archiving" : "Marking";
+  let updated = 0;
+  for (let index = 0; index < batches.length; index += 1) {
+    const batch = batches[index];
+    setStatus(
+      statusElement,
+      `${verb} participant batch ${formatNumber(index + 1)} of ${formatNumber(batches.length)} (${formatNumber(batch.length)} rows)...`
+    );
+    const result = await operation(batch);
+    updated += Number(result.updated || 0);
+  }
+  return updated;
+}
+
 function outreachDraftRequestStorageKey(eventId, templateId, channel, invitationIds) {
   const source = [eventId, templateId, channel, ...invitationIds.map(String).sort()].join("|");
   let hash = 2166136261;
@@ -7407,9 +7443,9 @@ inviteSelectedButton?.addEventListener("click", async () => {
   updateSelectionControls();
   setStatus(actionStatus, "Marking invitations as sent...");
   try {
-    const result = await inviteRfxLaneVendors(ids);
+    const updated = await mutateRfxParticipantsInBatches(ids, "invite", actionStatus);
     if (selectedEventId === eventId) {
-      setStatus(actionStatus, `${result.updated || 0} invitation(s) marked invited.`, "success");
+      setStatus(actionStatus, `${updated} invitation(s) marked invited.`, "success");
       selectedInvitationIds.clear();
       await loadDetail(eventId);
     }
@@ -7431,9 +7467,9 @@ archiveSelectedButton?.addEventListener("click", async () => {
   updateSelectionControls();
   setStatus(actionStatus, "Archiving invitation rows...");
   try {
-    const result = await archiveRfxLaneVendors(ids);
+    const updated = await mutateRfxParticipantsInBatches(ids, "archive", actionStatus);
     if (selectedEventId === eventId) {
-      setStatus(actionStatus, `${result.updated || 0} invitation row(s) archived.`, "success");
+      setStatus(actionStatus, `${updated} invitation row(s) archived.`, "success");
       selectedInvitationIds.clear();
       await loadDetail(eventId);
     }
@@ -7634,8 +7670,10 @@ manualShortlistButton?.addEventListener("click", async () => {
     let inserted = 0;
     for (const lane of lanes) {
       if (selectedEventId !== eventId) return;
-      const result = await shortlistRfxLaneVendors(lane.id, vendorIds);
-      inserted += Number(result.inserted || 0);
+      inserted += await shortlistVendorsByLane(lane.id, vendorIds, manualShortlistStatus, {
+        eventId,
+        laneLabel: lane.lane_id || "lane"
+      });
     }
     if (selectedEventId !== eventId) return;
     selectedManualVendorIdsState.clear();
@@ -7698,8 +7736,11 @@ importCarrierTemplateButton?.addEventListener("click", async () => {
     let inserted = 0;
     for (const [laneId, vendorIds] of laneGroups.entries()) {
       if (selectedEventId !== eventId) return;
-      const result = await shortlistRfxLaneVendors(laneId, [...vendorIds]);
-      inserted += Number(result.inserted || 0);
+      const lane = currentLanes.find((item) => String(item.id) === String(laneId));
+      inserted += await shortlistVendorsByLane(laneId, [...vendorIds], carrierTemplateStatus, {
+        eventId,
+        laneLabel: lane?.lane_id || "lane"
+      });
     }
     if (selectedEventId !== eventId) return;
     setStatus(carrierTemplateStatus, `${inserted} invitation row(s) created from the CRM participant catalog.`, "success");

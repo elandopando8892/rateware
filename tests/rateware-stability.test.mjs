@@ -746,6 +746,12 @@ assert.match(rfxEventsHtml, /rfx-refresh-selected-drafts/, "Bid Room draft queue
 assert.match(rfxEventsHtml, /rfx-archive-selected-drafts/, "Bid Room draft queue should include archive selected action");
 assert.match(rfxEventsHtml, /rfx-delete-selected-drafts/, "Bid Room draft queue should include delete selected action");
 assert.match(rfxEventsSource, /const OUTREACH_SEND_BATCH_SIZE = 100/, "Bid Room Step 4 should respect the backend Gmail send batch size");
+assert.match(rfxEventsSource, /const BID_ROOM_PARTICIPANT_BATCH_SIZE = 1000/, "Bid Room participant mutations should use 1,000-row backend batches");
+assert.match(rfxEventsSource, /async function shortlistVendorsByLane/, "Bid Room should batch large carrier shortlists by lane");
+assert.match(rfxEventsSource, /chunkRows\(vendorIds, BID_ROOM_PARTICIPANT_BATCH_SIZE\)/, "Bid Room should split selected carriers into 1,000-row shortlist batches");
+assert.match(rfxEventsSource, /async function mutateRfxParticipantsInBatches/, "Bid Room should batch participant invite and archive operations");
+assert.match(rfxEventsSource, /mutateRfxParticipantsInBatches\(ids, "invite", actionStatus\)/, "Bid Room should batch-mark invitations over 1,000 rows");
+assert.match(rfxEventsSource, /mutateRfxParticipantsInBatches\(ids, "archive", actionStatus\)/, "Bid Room should batch-archive participants over 1,000 rows");
 assert.match(rfxEventsSource, /function sendDraftEmailIds/, "Bid Room Step 4 should send selected emails through automatic batches");
 assert.match(rfxEventsSource, /function refreshSelectedOutreachDrafts/, "Bid Room should refresh selected draft rows within the existing campaign");
 assert.match(rfxEventsSource, /Existing send history stays intact/, "Bid Room should explain that refresh preserves send history");
