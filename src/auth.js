@@ -87,6 +87,18 @@ async function readCachedKindeToken(kinde) {
   }
 }
 
+async function hasUsableKindeSession() {
+  const kinde = await getKindeClient();
+  if (!(await kinde.isAuthenticated())) return false;
+
+  try {
+    await getKindeToken({ minTtlSeconds: 15 });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function requestFreshKindeToken(rejectedToken = "") {
   if (!kindeRefreshPromise) {
     kindeRefreshPromise = (async () => {
@@ -159,6 +171,11 @@ function showSessionRecovery() {
 export async function reauthenticateKinde() {
   const returnTo = currentReturnUrl();
   window.sessionStorage.setItem(AUTH_RETURN_URL_KEY, returnTo);
+  clearSessionRecovery();
+
+  // A stale PKCE client can report an old local session as authenticated.
+  // Start a clean authorization request so Kinde evaluates its browser session.
+  kindePromise = null;
   const kinde = await getKindeClient();
   await kinde.login({ app_state: { returnTo } });
 }
@@ -237,13 +254,17 @@ export async function requirePrivatePage() {
   }
 
   const signedIn = await kinde.isAuthenticated();
-
   if (!signedIn) {
     window.location.replace("./index.html");
     throw new Error("Authentication required.");
   }
 
-  return ensureSignedIn();
+  try {
+    return await ensureSignedIn();
+  } catch (error) {
+    showSessionRecovery();
+    throw error;
+  }
 }
 
 export async function canUse() {
@@ -613,13 +634,14 @@ export function initAuthControls() {
     status.textContent = humanizeError(message);
   }
 
-  async function renderSession(signedIn, user = null) {
+  async function renderSession(signedIn, user = null, { expired = false } = {}) {
     authButton.classList.toggle("hidden", signedIn);
     signOutButton.classList.toggle("hidden", !signedIn);
     userMenu?.menu.classList.toggle("hidden", !signedIn);
 
     if (!signedIn) {
-      setStatus("Sign in to upload and view source files.");
+      document.body.dataset.role = "";
+      setStatus(expired ? "Your session expired. Sign in again to continue." : "Sign in to upload and view source files.");
       return;
     }
 
@@ -636,8 +658,12 @@ export function initAuthControls() {
 
   getKindeClient()
     .then(async (kinde) => {
-      const signedIn = await kinde.isAuthenticated();
-      await renderSession(signedIn, signedIn ? kinde.getUser() : null);
+      const locallyAuthenticated = await kinde.isAuthenticated();
+      const signedIn = locallyAuthenticated && await hasUsableKindeSession();
+      await renderSession(signedIn, signedIn ? kinde.getUser() : null, {
+        expired: locallyAuthenticated && !signedIn
+      });
+      if (locallyAuthenticated && !signedIn) showSessionRecovery();
     })
     .catch((error) => {
       authButton.disabled = true;
@@ -646,8 +672,7 @@ export function initAuthControls() {
 
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const kinde = await getKindeClient();
-    await kinde.login();
+    await reauthenticateKinde();
   });
 
   signOutButton.addEventListener("click", async () => {
