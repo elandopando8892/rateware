@@ -2,6 +2,7 @@ import { callRatewareApi } from "./rateware-api.js";
 
 export async function fetchVendors({
   search = "",
+  ids = [],
   status = "",
   base_stage = "",
   view = "all",
@@ -12,7 +13,7 @@ export async function fetchVendors({
   limit = 75,
   offset = 0
 } = {}) {
-  return await callRatewareApi("list_vendors", { search, status, base_stage, view, channel, tag, coverage, lightweight, limit, offset });
+  return await callRatewareApi("list_vendors", { search, ids, status, base_stage, view, channel, tag, coverage, lightweight, limit, offset });
 }
 
 export async function fetchVendorIntelligence(options = {}) {

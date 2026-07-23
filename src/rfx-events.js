@@ -268,6 +268,10 @@ let selectedEvent = null;
 let editingEventId = null;
 let currentLanes = [];
 let vendorOptions = [];
+const vendorOptionCache = new Map();
+let vendorSearchRows = [];
+let vendorSearchTotal = 0;
+let vendorInitialTotal = 0;
 let outreachTemplates = [];
 let rfxTemplateEditorTemplateId = null;
 let rfxTemplateEditorDirty = false;
@@ -5134,17 +5138,49 @@ function mergeVendorOptionRows(rows = []) {
   rows.forEach((row) => {
     const id = String(row.id || "");
     if (!id) return;
-    byId.set(id, { ...(byId.get(id) || {}), ...row });
+    const merged = { ...(vendorOptionCache.get(id) || {}), ...(byId.get(id) || {}), ...row };
+    vendorOptionCache.set(id, merged);
+    byId.set(id, merged);
   });
   vendorOptions = sortedVendorOptions([...byId.values()]);
 }
 
+function activeVendorSearchTerm() {
+  return String(manualShortlistSearch?.value || "").trim().replace(/\s+/g, " ");
+}
+
+function rememberSelectedVendorRows(rows = []) {
+  rows.forEach((row) => {
+    const id = String(row?.id || "");
+    if (id) vendorOptionCache.set(id, { ...(vendorOptionCache.get(id) || {}), ...row });
+  });
+}
+
+async function hydrateVendorOptionIds(ids = []) {
+  const requestedIds = [...new Set(ids.map((id) => String(id || "").trim()).filter(Boolean))];
+  const rows = [];
+  for (let offset = 0; offset < requestedIds.length; offset += CRM_VENDOR_SEARCH_LIMIT) {
+    const result = await fetchVendors({
+      ids: requestedIds.slice(offset, offset + CRM_VENDOR_SEARCH_LIMIT),
+      limit: CRM_VENDOR_SEARCH_LIMIT,
+      offset: 0,
+      view: "all",
+      lightweight: true
+    });
+    const pageRows = result.rows || [];
+    rows.push(...pageRows);
+    mergeVendorOptionRows(pageRows);
+  }
+  return sortedVendorOptions(rows);
+}
+
 async function loadVendorSearchOptions() {
-  const rawTerm = String(manualShortlistSearch?.value || "").trim();
-  const term = rawTerm.replace(/\s+/g, " ");
+  const term = activeVendorSearchTerm();
   vendorSearchSequence += 1;
   const sequence = vendorSearchSequence;
   if (term.length < 2) {
+    vendorSearchRows = [];
+    vendorSearchTotal = 0;
     vendorSearchLoading = false;
     renderManualShortlistControls();
     return;
@@ -5156,11 +5192,17 @@ async function loadVendorSearchOptions() {
     if (sequence !== vendorSearchSequence) return;
     const rows = result.rows || [];
     mergeVendorOptionRows(rows);
+    vendorSearchRows = sortedVendorOptions(rows);
+    vendorSearchTotal = Number(result.total || rows.length);
     vendorSearchLoading = false;
     renderManualShortlistControls();
-    if (rows.length) {
-      setStatus(manualShortlistStatus, `${formatNumber(rows.length)} CRM match(es) loaded for "${term}".`, "success");
-    }
+    setStatus(
+      manualShortlistStatus,
+      rows.length
+        ? `${formatNumber(vendorSearchTotal)} CRM match(es) found for "${term}". Showing the first ${formatNumber(rows.length)}.`
+        : `No CRM carriers match "${term}".`,
+      rows.length ? "success" : "neutral"
+    );
   } catch (error) {
     if (sequence !== vendorSearchSequence) return;
     vendorSearchLoading = false;
@@ -5205,8 +5247,9 @@ function segmentCandidateRows(segmentId = selectedSegmentId()) {
 }
 
 function shortlistCandidateRows() {
-  const term = normalizeLookupText(manualShortlistSearch?.value || "");
-  const segmentRows = segmentCandidateRows();
+  const rawTerm = activeVendorSearchTerm();
+  const term = normalizeLookupText(rawTerm);
+  const segmentRows = rawTerm.length >= 2 ? vendorSearchRows : segmentCandidateRows();
   const filtered = segmentRows.filter((vendor) => !term || vendorSearchText(vendor).includes(term));
   return sortedVendorOptions(filtered);
 }
@@ -5334,7 +5377,6 @@ function renderCrmVendorCandidate(row) {
 }
 
 function selectedManualVendorIds() {
-  selectedManualVendorIdsState = new Set([...selectedManualVendorIdsState].filter((id) => vendorOptions.some((vendor) => vendor.id === id)));
   return [...selectedManualVendorIdsState];
 }
 
@@ -5343,6 +5385,8 @@ function visibleManualVendorIds() {
 }
 
 function selectManualVendorIds(ids = []) {
+  const candidates = shortlistCandidateRows();
+  rememberSelectedVendorRows(candidates.filter((vendor) => ids.includes(vendor.id)));
   ids.forEach((id) => {
     if (id) selectedManualVendorIdsState.add(id);
   });
@@ -5365,7 +5409,7 @@ function participantTemplatePayload(segment, vendorIds, name) {
 function selectedManualVendorRows() {
   const selectedIds = selectedManualVendorIds();
   const rows = selectedIds
-    .map((id) => vendorOptions.find((vendor) => vendor.id === id))
+    .map((id) => vendorOptionCache.get(String(id)) || vendorOptions.find((vendor) => String(vendor.id) === String(id)))
     .filter(Boolean);
   return sortedVendorOptions(rows);
 }
@@ -5415,9 +5459,11 @@ function updateParticipantTemplateControls() {
   if (loadManualShortlistTemplateButton) {
     const segmentId = selectedSegmentId();
     const rows = segmentId === "all" ? [] : segmentCandidateRows(segmentId);
-    loadManualShortlistTemplateButton.disabled = vendorOptionsLoading || vendorSegmentsLoading || !rows.length;
-    loadManualShortlistTemplateButton.textContent = rows.length
-      ? `Load ${formatNumber(rows.length)} from saved list`
+    const savedIds = segmentVendorIds(selectedSegment);
+    const availableCount = savedIds.length || rows.length;
+    loadManualShortlistTemplateButton.disabled = vendorOptionsLoading || vendorSegmentsLoading || !availableCount;
+    loadManualShortlistTemplateButton.textContent = availableCount
+      ? `Load ${formatNumber(availableCount)} from saved list`
       : "Load saved list";
   }
   if (updateManualShortlistTemplateButton) {
@@ -5436,12 +5482,15 @@ function renderManualShortlistControls() {
     <option value="${escapeHtml(lane.id)}">#${escapeHtml(lane.lane_number || "")} ${escapeHtml(lane.origin || "-")} -> ${escapeHtml(lane.destination || "-")}</option>
   `).join("");
   const procurementCount = vendorOptions.filter(isProcurementCarrier).length;
+  const activeSearch = activeVendorSearchTerm();
   if (manualShortlistSourceSummary) {
     manualShortlistSourceSummary.textContent = vendorOptionsLoading
       ? `Loading Carrier CRM${vendorOptions.length ? `... ${formatNumber(vendorOptions.length)} carrier(s) ready so far` : "..."}`
       : vendorSearchLoading
-        ? `Searching Carrier CRM... ${formatNumber(vendorOptions.length)} carrier(s) loaded`
-      : `${vendorOptions.length} CRM carrier(s) loaded | ${procurementCount} in Procurement/Pipeline | ${vendorSegmentsLoading ? "loading segments" : `${savedVendorSegments.length} saved segment(s)`}`;
+        ? "Searching the full Carrier CRM..."
+        : activeSearch.length >= 2
+          ? `${formatNumber(vendorSearchTotal)} CRM match(es) for "${activeSearch}" | ${vendorSegmentsLoading ? "loading segments" : `${savedVendorSegments.length} saved segment(s)`}`
+          : `${formatNumber(vendorOptions.length)} of ${formatNumber(vendorInitialTotal || vendorOptions.length)} CRM carrier(s) ready | ${procurementCount} in Procurement/Pipeline | ${vendorSegmentsLoading ? "loading segments" : `${savedVendorSegments.length} saved segment(s)}`}`;
   }
   if (vendorOptionsLoading && !vendorOptions.length) {
     if (selectVisibleCarriersButton) selectVisibleCarriersButton.disabled = true;
@@ -5486,10 +5535,11 @@ function renderManualShortlistControls() {
   `).join("");
   if (manualShortlistVendorList) {
     const visibleRows = rows.slice(0, 80);
+    const totalMatches = activeSearch.length >= 2 ? vendorSearchTotal : rows.length;
     const listSummary = `
       <div class="bid-room-crm-list-summary">
         <strong>Carrier CRM candidates</strong>
-        <span>${vendorSearchLoading ? "Searching CRM..." : `Showing ${Math.min(visibleRows.length, rows.length)} of ${rows.length}.`} Select carriers now, save them as a template, then add them after the event and lane book are ready.</span>
+        <span>${vendorSearchLoading ? "Searching CRM..." : `Showing ${Math.min(visibleRows.length, rows.length)} of ${formatNumber(totalMatches)} matching carriers.`} Select carriers now, save them as a template, then add them after the event and lane book are ready.</span>
       </div>
     `;
     manualShortlistVendorList.innerHTML = visibleRows.length ? `${listSummary}${visibleRows.map(renderCrmVendorCandidate).join("")}` : vendorSearchLoading ? `
@@ -5504,7 +5554,7 @@ function renderManualShortlistControls() {
         <span>Clear the search or add/update carriers in Carrier CRM.</span>
       </article>
     `;
-    manualShortlistVendorList.dataset.totalMatches = String(rows.length);
+    manualShortlistVendorList.dataset.totalMatches = String(totalMatches);
   }
   updateManualShortlistButtonState();
   updateParticipantTemplateControls();
@@ -5644,44 +5694,29 @@ async function loadEvents() {
 async function loadVendorOptions() {
   vendorOptionsLoading = true;
   vendorOptions = [];
+  vendorSearchRows = [];
+  vendorSearchTotal = 0;
+  vendorInitialTotal = 0;
   renderManualShortlistControls();
   const pageSize = CRM_VENDOR_PAGE_SIZE;
-  const rows = [];
-  const seenIds = new Set();
-  let total = 0;
   try {
-    for (let offset = 0; offset < 10000; offset += pageSize) {
-      const result = await fetchVendors({ limit: pageSize, offset, view: "all", lightweight: true });
-      const pageRows = result.rows || [];
-      total = Number(result.total || 0);
-      for (const row of pageRows) {
-        const id = String(row.id || "");
-        if (id && seenIds.has(id)) continue;
-        if (id) seenIds.add(id);
-        rows.push(row);
-      }
-      mergeVendorOptionRows(pageRows);
-      renderManualShortlistControls();
-      if (pendingCarrierTemplateRows.length) renderCarrierTemplatePreview();
-      if (!pageRows.length) break;
-      if (total && rows.length >= total) break;
-      if (pageRows.length < pageSize) break;
-    }
+    const result = await fetchVendors({ limit: pageSize, offset: 0, view: "all", lightweight: true });
+    const rows = result.rows || [];
+    vendorInitialTotal = Number(result.total || rows.length);
     mergeVendorOptionRows(rows);
     vendorOptionsLoading = false;
     renderManualShortlistControls();
     if (pendingCarrierTemplateRows.length) renderCarrierTemplatePreview();
   } catch (error) {
-    mergeVendorOptionRows(rows);
     vendorOptionsLoading = false;
     renderManualShortlistControls();
     if (pendingCarrierTemplateRows.length) renderCarrierTemplatePreview();
     setStatus(
       manualShortlistStatus,
-      rows.length
-        ? `Carrier CRM partially loaded with ${formatNumber(rows.length)} carrier(s). ${humanizeError(error.message)}`
+      vendorOptions.length
+        ? `Carrier CRM partially loaded with ${formatNumber(vendorOptions.length)} carrier(s). ${humanizeError(error.message)}`
         : `Carrier CRM could not load. ${humanizeError(error.message)}`,
-      rows.length ? "warning" : "error"
+      vendorOptions.length ? "warning" : "error"
     );
   }
 }
@@ -7459,23 +7494,40 @@ saveManualShortlistTemplateButton?.addEventListener("click", async () => {
     renderManualShortlistControls();
   }
 });
-loadManualShortlistTemplateButton?.addEventListener("click", () => {
+loadManualShortlistTemplateButton?.addEventListener("click", async () => {
   const segmentId = selectedSegmentId();
   if (segmentId === "all") {
     setStatus(manualShortlistStatus, "Choose a saved list or procurement segment before loading participants.", "error");
     return;
   }
-  const rows = sortedVendorOptions(segmentCandidateRows(segmentId));
-  if (!rows.length) {
-    setStatus(manualShortlistStatus, "No carriers were found for the selected saved list.", "error");
-    return;
-  }
-  selectedManualVendorIdsState = new Set(rows.map((vendor) => vendor.id).filter(Boolean));
-  renderManualShortlistControls();
   const segment = savedVendorSegments.find((item) => item.id === segmentId);
   const label = segment?.segment_name || (segmentId === "procurement" ? "Procurement / Pipeline" : "saved list");
-  if (manualShortlistTemplateName && segment?.segment_name) manualShortlistTemplateName.value = segment.segment_name;
-  setStatus(manualShortlistStatus, `${formatNumber(rows.length)} carrier(s) loaded from ${label}.`, "success");
+  const savedIds = segmentVendorIds(segment);
+  loadManualShortlistTemplateButton.disabled = true;
+  setStatus(manualShortlistStatus, savedIds.length ? `Loading ${formatNumber(savedIds.length)} saved carrier(s) from Carrier CRM...` : "Loading carriers from Carrier CRM...");
+  try {
+    const rows = savedIds.length
+      ? await hydrateVendorOptionIds(savedIds)
+      : sortedVendorOptions(segmentCandidateRows(segmentId));
+    if (!rows.length) {
+      setStatus(manualShortlistStatus, "No active carriers were found for the selected saved list.", "error");
+      return;
+    }
+    rememberSelectedVendorRows(rows);
+    selectedManualVendorIdsState = new Set(rows.map((vendor) => vendor.id).filter(Boolean));
+    if (manualShortlistTemplateName && segment?.segment_name) manualShortlistTemplateName.value = segment.segment_name;
+    const missingCount = Math.max(savedIds.length - rows.length, 0);
+    renderManualShortlistControls();
+    setStatus(
+      manualShortlistStatus,
+      `${formatNumber(rows.length)} carrier(s) loaded from ${label}.${missingCount ? ` ${formatNumber(missingCount)} saved carrier(s) are no longer available in this workspace.` : ""}`,
+      missingCount ? "warning" : "success"
+    );
+  } catch (error) {
+    setStatus(manualShortlistStatus, `Saved list could not load from Carrier CRM. ${humanizeError(error.message)}`, "error");
+  } finally {
+    renderManualShortlistControls();
+  }
 });
 updateManualShortlistTemplateButton?.addEventListener("click", async () => {
   const segment = selectedSavedVendorSegment();
