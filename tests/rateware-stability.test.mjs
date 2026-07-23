@@ -1068,6 +1068,13 @@ assert.match(rfxEventsSource, /Original template restored/, "Bid Room template r
   assert.doesNotMatch(saveTemplateBody, /`[^`]*- custom[^`]*`/, "Saving RFx invitation templates should not create named custom copies");
 }
 assert.match(rfxEventsHtml, /id="rfx-draft-search"/, "Bid Room draft queue should expose a vendor/email search box");
+assert.match(rfxEventsHtml, /id="rfx-draft-tracking-filters"/, "Bid Room draft queue should expose lifecycle tracking filters");
+assert.match(outreachServiceSource, /fetchOutreachTrackingSummary/, "Outreach service should fetch lifecycle counts separately from paginated rows");
+assert.match(rfxEventsSource, /tracking_status: draftQueueTrackingStatus/, "Draft queue lifecycle filters should be evaluated by the backend");
+assert.match(rfxEventsSource, /function outreachTrackingState/, "Draft queue should render one useful lifecycle state per outreach row");
+assert.match(apiSource, /body\.action === "get_outreach_tracking_summary"/, "Rateware API should return full-event outreach lifecycle counts");
+assert.match(apiSource, /function outreachMessageTrackingState/, "Rateware API should derive lifecycle states from delivery, reply, and quote signals");
+assert.match(apiSource, /allScopedOutreachMessages/, "Lifecycle filters should evaluate all matching outreach rows, not just the visible page");
 assert.doesNotMatch(rfxEventsHtml, /rfx-touchpoint-summary/, "Bid Room Step 4 should not duplicate drafts in an invitation tracking section");
 assert.match(rfxEventsSource, /async function loadDraftQueuePage/, "Bid Room draft queue should load a page from the backend before rendering");
 assert.doesNotMatch(rfxEventsSource, /function filteredDraftRows/, "Draft queue should not filter an already loaded browser-side message list");

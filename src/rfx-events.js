@@ -30,6 +30,7 @@ import {
   fetchContactHistory,
   fetchOutreachMessages,
   fetchOutreachMessagesPage,
+  fetchOutreachTrackingSummary,
   fetchOutreachTemplates,
   generateOutreachDrafts,
   deleteOutreachMessages,
@@ -197,6 +198,7 @@ const draftSummary = document.querySelector("#rfx-draft-summary");
 const draftList = document.querySelector("#rfx-draft-list");
 const draftSearchInput = document.querySelector("#rfx-draft-search");
 const draftClearSearchButton = document.querySelector("#rfx-clear-draft-search");
+const draftTrackingFilters = document.querySelector("#rfx-draft-tracking-filters");
 const draftPageSummary = document.querySelector("#rfx-draft-page-summary");
 const draftPageSize = document.querySelector("#rfx-draft-page-size");
 const draftPreviousPageButton = document.querySelector("#rfx-draft-page-previous");
@@ -312,6 +314,10 @@ let draftQueueOffset = 0;
 let draftQueuePageSize = 100;
 let draftQueueLoading = false;
 let draftQueueLoadVersion = 0;
+let draftQueueTrackingStatus = "all";
+let draftQueueTrackingSummary = { total: 0, states: {} };
+let draftQueueTrackingScopeKey = "";
+let draftQueueTrackingLoading = false;
 let focusedLaneId = null;
 let activeLaneFilter = "all";
 let laneEditMode = false;
@@ -343,6 +349,16 @@ const requestedRfxEventId = rfxPageParams.get("rfx_event_id");
 const rfxWorkbench = initWorkbenchTabs({ defaultView: "setup" });
 const APPROVED_GMAIL_SENDER = "sales@heymarksman.com";
 const OUTREACH_SEND_BATCH_SIZE = 100;
+const DRAFT_TRACKING_STATES = [
+  ["all", "All"],
+  ["drafted", "Drafted"],
+  ["sent", "Sent"],
+  ["delivered", "Delivered"],
+  ["failed", "Failed"],
+  ["replied", "Replied"],
+  ["quoted", "Quoted"],
+  ["bounced", "Bounced"]
+];
 const BID_ROOM_PARTICIPANT_BATCH_SIZE = 1000;
 const BID_ROOM_PARTICIPANT_SELECTION_STORAGE_PREFIX = "rateware:bid-room:participant-selection:";
 const DRAFT_QUEUE_SEARCH_DEBOUNCE_MS = 120;
@@ -4694,6 +4710,8 @@ function resetDraftQueue({ clearSelection = false } = {}) {
   draftQueueTotal = 0;
   draftQueueOffset = 0;
   draftQueueLoading = false;
+  draftQueueTrackingSummary = { total: 0, states: {} };
+  draftQueueTrackingScopeKey = "";
   if (clearSelection) clearDraftQueueSelection();
 }
 
@@ -4719,13 +4737,77 @@ function findDraftRow(id) {
     || null;
 }
 
-async function loadDraftQueuePage(eventId = selectedEventId, { reset = false, render = true } = {}) {
+function draftTrackingScopeKey(eventId = selectedEventId) {
+  return `${eventId || ""}|${outreachDraftChannels(selectedOutreachChannel()).join(",")}`;
+}
+
+function normalizeDraftTrackingStatus(value = "all") {
+  const normalized = String(value || "all").toLowerCase();
+  return DRAFT_TRACKING_STATES.some(([status]) => status === normalized) ? normalized : "all";
+}
+
+function draftTrackingCount(status) {
+  if (status === "all") return Number(draftQueueTrackingSummary.total || 0);
+  return Number(draftQueueTrackingSummary.states?.[status] || 0);
+}
+
+function renderDraftTrackingFilters() {
+  if (!draftTrackingFilters) return;
+  draftTrackingFilters.innerHTML = `
+    <span class="rfx-draft-tracking-label">Lifecycle</span>
+    ${DRAFT_TRACKING_STATES.map(([status, label]) => `
+      <button type="button" data-rfx-draft-tracking="${status}" class="${draftQueueTrackingStatus === status ? "is-active" : ""}" aria-pressed="${draftQueueTrackingStatus === status}">
+        ${escapeHtml(label)} <span>${formatNumber(draftTrackingCount(status))}</span>
+      </button>
+    `).join("")}
+  `;
+}
+
+async function loadDraftQueueTrackingSummary(eventId = selectedEventId, { force = false } = {}) {
+  if (!eventId) {
+    draftQueueTrackingSummary = { total: 0, states: {} };
+    draftQueueTrackingScopeKey = "";
+    renderDraftTrackingFilters();
+    return;
+  }
+  const scopeKey = draftTrackingScopeKey(eventId);
+  if (!force && draftQueueTrackingScopeKey === scopeKey && !draftQueueTrackingLoading) return;
+  if (draftQueueTrackingScopeKey !== scopeKey) {
+    draftQueueTrackingSummary = { total: 0, states: {} };
+  }
+  draftQueueTrackingLoading = true;
+  renderDraftTrackingFilters();
+  try {
+    const result = await fetchOutreachTrackingSummary({
+      rfx_event_id: eventId,
+      channels: outreachDraftChannels(selectedOutreachChannel())
+    });
+    if (selectedEventId !== eventId || draftTrackingScopeKey(eventId) !== scopeKey) return;
+    draftQueueTrackingSummary = {
+      total: Number(result?.total || 0),
+      states: result?.states || {}
+    };
+    draftQueueTrackingScopeKey = scopeKey;
+  } catch (error) {
+    if (selectedEventId === eventId && draftTrackingScopeKey(eventId) === scopeKey) {
+      setStatus(rfxOutreachStatus, `Lifecycle counts could not load. ${humanizeError(error)}`, "warning");
+    }
+  } finally {
+    if (draftTrackingScopeKey(eventId) === scopeKey || !draftQueueTrackingScopeKey) {
+      draftQueueTrackingLoading = false;
+      renderDraftTrackingFilters();
+    }
+  }
+}
+
+async function loadDraftQueuePage(eventId = selectedEventId, { reset = false, render = true, refreshTracking = false } = {}) {
   if (!eventId) {
     resetDraftQueue();
     if (render) renderDraftQueue();
     return;
   }
   if (reset) draftQueueOffset = 0;
+  if (refreshTracking) void loadDraftQueueTrackingSummary(eventId, { force: true });
   const loadVersion = ++draftQueueLoadVersion;
   draftQueueLoading = true;
   if (render) renderDraftQueue();
@@ -4734,6 +4816,7 @@ async function loadDraftQueuePage(eventId = selectedEventId, { reset = false, re
       rfx_event_id: eventId,
       channels: outreachDraftChannels(selectedOutreachChannel()),
       search: draftQueueSearch,
+      tracking_status: draftQueueTrackingStatus,
       offset: draftQueueOffset,
       limit: draftQueuePageSize
     });
@@ -4743,7 +4826,7 @@ async function loadDraftQueuePage(eventId = selectedEventId, { reset = false, re
     draftQueueOffset = Number(result.offset || 0);
     if (!draftQueueRows.length && draftQueueTotal && draftQueueOffset >= draftQueueTotal) {
       draftQueueOffset = Math.max(0, Math.floor((draftQueueTotal - 1) / draftQueuePageSize) * draftQueuePageSize);
-      return await loadDraftQueuePage(eventId, { render });
+      return await loadDraftQueuePage(eventId, { render, refreshTracking });
     }
   } catch (error) {
     if (loadVersion !== draftQueueLoadVersion || selectedEventId !== eventId) return;
@@ -4765,6 +4848,35 @@ function normalizeDraftSearch(value = "") {
     .trim()
     .replace(/\s+/g, " ")
     .toLowerCase();
+}
+
+function outreachTrackingState(message = {}) {
+  const metadata = message.metadata && typeof message.metadata === "object" ? message.metadata : {};
+  const invitation = Array.isArray(message.rfx_lane_vendors) ? message.rfx_lane_vendors[0] || {} : message.rfx_lane_vendors || {};
+  const invitationStatus = String(invitation.invitation_status || "").toLowerCase();
+  const bidRate = Number(invitation.bid_rate);
+  if (["quoted", "bid_submitted", "awarded", "award_pending"].includes(invitationStatus) || Number.isFinite(bidRate)) return "quoted";
+  const signal = [
+    message.status,
+    message.provider_response_status,
+    message.delivery_error,
+    metadata.delivery_status,
+    metadata.provider_response_status,
+    metadata.last_event
+  ].map((value) => String(value || "").toLowerCase()).join(" ");
+  if (/bounc|mailer-daemon|undeliverable/.test(signal)) return "bounced";
+  if (/failed|error|rejected/.test(signal)) return "failed";
+  if (["replied", "responded"].includes(invitationStatus) || invitation.responded_at || /replied|responded/.test(signal)) return "replied";
+  if (/delivered|read/.test(signal)) return "delivered";
+  if (/sent|accepted|manual_sent|delivery_unknown/.test(signal)) return "sent";
+  return "drafted";
+}
+
+function trackingStatusTone(status) {
+  if (["quoted", "delivered", "sent"].includes(status)) return "success";
+  if (["failed", "bounced"].includes(status)) return "danger";
+  if (status === "replied") return "warning";
+  return "neutral";
 }
 
 function selectedDraftRows(rows = null) {
@@ -4930,6 +5042,7 @@ function updateDraftSendControls(rows = []) {
 
 function renderDraftQueue() {
   if (!draftSummary || !draftList) return;
+  renderDraftTrackingFilters();
   const rows = draftQueueRows;
   const actionable = rows.filter((message) => ["drafted", "queued", "failed"].includes(String(message.status || "").toLowerCase()));
   const staleRows = rows.filter(isStaleOutreachDraft);
@@ -4939,14 +5052,15 @@ function renderDraftQueue() {
   const hasSearch = Boolean(normalizeDraftSearch(draftQueueSearch));
   updateDraftSendControls(rows);
   const channelLabel = outreachChannelLabel(selectedOutreachChannel());
+  const trackingLabel = DRAFT_TRACKING_STATES.find(([status]) => status === draftQueueTrackingStatus)?.[1] || "All";
   const first = draftQueueTotal ? draftQueueOffset + 1 : 0;
   const last = draftQueueOffset + rows.length;
   draftSummary.textContent = draftQueueLoading
     ? `Loading ${channelLabel} draft queue...`
     : draftQueueTotal
-      ? `${formatNumber(draftQueueTotal)} ${channelLabel} draft rows | showing ${formatNumber(first)}-${formatNumber(last)} | ${formatNumber(actionable.length)} need action on this page${staleRows.length ? ` | ${formatNumber(staleRows.length)} stale` : ""}`
+      ? `${formatNumber(draftQueueTotal)} ${trackingLabel.toLowerCase()} ${channelLabel} draft rows | showing ${formatNumber(first)}-${formatNumber(last)} | ${formatNumber(actionable.length)} need action on this page${staleRows.length ? ` | ${formatNumber(staleRows.length)} stale` : ""}`
       : selectedEventId
-        ? `No ${channelLabel} drafts match this queue filter. Generate this channel or clear the search.`
+        ? `No ${trackingLabel.toLowerCase()} ${channelLabel} drafts match this queue filter. Generate this channel or clear the filters.`
         : "No drafts generated for this bid event.";
   if (draftSearchInput && draftSearchInput.value !== draftQueueSearch) draftSearchInput.value = draftQueueSearch;
   if (draftClearSearchButton) draftClearSearchButton.disabled = !hasSearch;
@@ -4977,7 +5091,7 @@ function renderDraftQueue() {
   }
   if (!rows.length) {
     updateDraftSendControls([]);
-    draftList.innerHTML = `<tr><td colspan="8">No ${escapeHtml(channelLabel)} draft rows match this search. Clear search or generate this queue.</td></tr>`;
+    draftList.innerHTML = `<tr><td colspan="8">No ${escapeHtml(trackingLabel.toLowerCase())} ${escapeHtml(channelLabel)} draft rows match these filters. Clear search or select All.</td></tr>`;
     return;
   }
   if (!emailSelectable.length && !whatsappSelectable.length && !whatsappGroupSelectable.length && rows.length) {
@@ -4998,6 +5112,7 @@ function renderDraftQueue() {
       .trim()
       .slice(0, 120);
     const status = String(message.status || "-").toLowerCase();
+    const trackingStatus = outreachTrackingState(message);
     const recipient = messageRecipient(message) || "-";
     const updated = message.updated_at || message.sent_at || message.created_at;
     const canSendEmail = isEmail && selectableEmailDrafts([message]).length;
@@ -5024,7 +5139,7 @@ function renderDraftQueue() {
         </td>
         <td>${escapeHtml(recipient)}</td>
         <td>${escapeHtml(message.channel || "-")}</td>
-        <td><span class="status-pill ${staleDraft ? "warning" : status === "sent" ? "success" : status === "failed" ? "danger" : status === "archived" ? "muted" : "neutral"}">${escapeHtml(staleDraft ? "stale" : status)}</span></td>
+        <td><span class="status-pill ${staleDraft ? "warning" : trackingStatusTone(trackingStatus)}" title="Queue state: ${escapeHtml(status)}">${escapeHtml(staleDraft ? "stale" : trackingStatus)}</span></td>
         <td>
           <strong>${escapeHtml(draftTitle)}</strong>
           <small>${escapeHtml(readinessDetail || message.delivery_error || preview || "No preview")}</small>
@@ -6049,7 +6164,7 @@ async function loadDetail(eventId) {
     contactHistoryRows = getSettledValue(historyResult, []) || [];
     outreachMessages = getSettledValue(messagesResult, []) || [];
     bidRoomChatThreads = getSettledValue(chatResult, emptyBidRoomChatThreads()) || emptyBidRoomChatThreads();
-    await loadDraftQueuePage(eventId, { reset: true, render: false });
+    await loadDraftQueuePage(eventId, { reset: true, render: false, refreshTracking: true });
     if (loadVersion !== rfxDetailLoadVersion || selectedEventId !== eventId) return;
     renderEventDashboard();
     renderLanes();
@@ -6095,7 +6210,7 @@ async function refreshOutreachStateForEvent(eventId) {
   if (selectedEventId !== eventId) return false;
   contactHistoryRows = historyRows || [];
   outreachMessages = messageRows || [];
-  await loadDraftQueuePage(eventId, { render: false });
+  await loadDraftQueuePage(eventId, { render: false, refreshTracking: true });
   if (selectedEventId !== eventId) return false;
   return true;
 }
@@ -7189,6 +7304,15 @@ draftClearSearchButton?.addEventListener("click", () => {
   loadDraftQueuePage(selectedEventId, { reset: true });
 });
 
+draftTrackingFilters?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-rfx-draft-tracking]");
+  if (!button || draftQueueLoading) return;
+  const nextStatus = normalizeDraftTrackingStatus(button.dataset.rfxDraftTracking);
+  if (nextStatus === draftQueueTrackingStatus) return;
+  draftQueueTrackingStatus = nextStatus;
+  loadDraftQueuePage(selectedEventId, { reset: true });
+});
+
 draftToggleVisible?.addEventListener("change", () => {
   const rows = draftQueueRows;
   if (draftToggleVisible.checked) {
@@ -8080,8 +8204,9 @@ rfxOutreachTemplate?.addEventListener("change", () => {
   renderOutreachPreview();
 });
 rfxOutreachChannel?.addEventListener("change", () => {
+  draftQueueTrackingScopeKey = "";
   renderOutreachLaunchpad();
-  loadDraftQueuePage(selectedEventId, { reset: true });
+  loadDraftQueuePage(selectedEventId, { reset: true, refreshTracking: true });
   if (selectedChannelUsesDirectWhatsapp()) loadWhatsappConnectionReadiness();
 });
 rfxWhatsappTargetMode?.addEventListener("change", renderOutreachPreview);

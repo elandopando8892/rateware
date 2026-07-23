@@ -78,6 +78,10 @@ export async function fetchOutreachMessagesPage(filters = {}) {
   return await callRatewareApi("list_outreach_messages", filters);
 }
 
+export async function fetchOutreachTrackingSummary(filters = {}) {
+  return await callRatewareApi("get_outreach_tracking_summary", filters);
+}
+
 export async function markOutreachMessages(ids = [], status) {
   return await callRatewareApi("mark_outreach_messages", { ids, status, confirmed: true, confirmation_action: "mark_outreach_messages" });
 }

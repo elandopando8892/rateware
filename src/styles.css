@@ -4172,6 +4172,53 @@ a {
   font: inherit;
 }
 
+.rfx-draft-tracking {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  min-height: 30px;
+  padding: 4px 6px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #f8fafb;
+}
+
+.rfx-draft-tracking-label {
+  margin-right: 2px;
+  color: #46545f;
+  font-size: 0.66rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.rfx-draft-tracking button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 22px;
+  padding: 2px 6px;
+  border: 1px solid #cdd8df;
+  border-radius: 4px;
+  background: #fff;
+  color: #34434f;
+  font-size: 0.68rem;
+  font-weight: 800;
+}
+
+.rfx-draft-tracking button.is-active {
+  border-color: #2f5da8;
+  background: #e9f0ff;
+  color: #173f80;
+}
+
+.rfx-draft-tracking button span {
+  min-width: 14px;
+  color: inherit;
+  font-size: 0.64rem;
+  font-variant-numeric: tabular-nums;
+}
+
 .rfx-draft-table-wrap {
   max-height: 360px;
   overflow: auto;

@@ -2396,6 +2396,107 @@ function relationRecord(value: unknown): Record<string, unknown> {
   return objectRecord(value);
 }
 
+const OUTREACH_MESSAGE_SELECT = "*, vendors(vendor_name,domain,primary_email,whatsapp_phone,whatsapp_group_name,whatsapp_group_url,whatsapp_group_status,whatsapp_do_not_contact), vendor_whatsapp_groups(group_name,group_url,verification_status,do_not_contact), outreach_campaigns(name,notes,whatsapp_target_mode,group_delivery_policy), rfx_events(rfx_id,name), rfx_lanes(origin,destination,equipment,trailer,operation,service), rfx_lane_vendors(id,invitation_status,invitation_token,award_role,bid_rate,currency,responded_at)";
+const OUTREACH_TRACKING_STATES = ["drafted", "sent", "delivered", "failed", "replied", "quoted", "bounced"] as const;
+type OutreachTrackingState = typeof OUTREACH_TRACKING_STATES[number];
+
+function normalizeOutreachTrackingStatus(value: unknown): OutreachTrackingState | null {
+  const normalized = cleanText(value)?.toLowerCase();
+  return OUTREACH_TRACKING_STATES.includes(normalized as OutreachTrackingState) ? normalized as OutreachTrackingState : null;
+}
+
+function outreachMessageTrackingState(message: Record<string, unknown>): OutreachTrackingState {
+  const metadata = objectRecord(message.metadata);
+  const invitation = relationRecord(message.rfx_lane_vendors);
+  const invitationStatus = cleanText(invitation.invitation_status)?.toLowerCase() || "";
+  const bidRate = Number(invitation.bid_rate);
+  if (["quoted", "bid_submitted", "awarded", "award_pending"].includes(invitationStatus) || Number.isFinite(bidRate)) return "quoted";
+  const signal = [
+    message.status,
+    message.provider_response_status,
+    message.delivery_error,
+    metadata.delivery_status,
+    metadata.provider_response_status,
+    metadata.last_event
+  ].map((value) => String(value || "").toLowerCase()).join(" ");
+  if (/bounc|mailer-daemon|undeliverable/.test(signal)) return "bounced";
+  if (/failed|error|rejected/.test(signal)) return "failed";
+  if (["replied", "responded"].includes(invitationStatus) || invitation.responded_at || /replied|responded/.test(signal)) return "replied";
+  if (/delivered|read/.test(signal)) return "delivered";
+  if (/sent|accepted|manual_sent|delivery_unknown/.test(signal)) return "sent";
+  return "drafted";
+}
+
+function outreachMessageMatchesSearch(message: Record<string, unknown>, searchTerms: string[]) {
+  if (!searchTerms.length) return true;
+  const metadata = objectRecord(message.metadata);
+  const vendor = relationRecord(message.vendors);
+  const lane = relationRecord(message.rfx_lanes);
+  const event = relationRecord(message.rfx_events);
+  const invitation = relationRecord(message.rfx_lane_vendors);
+  const haystack = [
+    message.recipient_email,
+    message.recipient_phone,
+    message.subject,
+    message.status,
+    message.channel,
+    metadata.vendor_name,
+    metadata.vendor_domain,
+    metadata.contact_name,
+    metadata.recipient_email,
+    metadata.lane_rows_text,
+    metadata.event_name,
+    metadata.rfx_id,
+    vendor.vendor_name,
+    vendor.domain,
+    vendor.primary_email,
+    lane.origin,
+    lane.destination,
+    event.rfx_id,
+    event.name,
+    invitation.invitation_status
+  ].map((value) => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()).join(" ");
+  return searchTerms.every((term) => haystack.includes(term));
+}
+
+function scopedOutreachMessagesQuery(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_email: string | null },
+  body: Record<string, unknown>
+) {
+  const channels = Array.isArray(body.channels)
+    ? body.channels.map((value: unknown) => cleanText(value)?.toLowerCase()).filter(Boolean)
+    : [];
+  let query: any = supabase
+    .from("outreach_messages")
+    .select(OUTREACH_MESSAGE_SELECT)
+    .eq("owner_email", user.owner_email)
+    .order("created_at", { ascending: false });
+  if (body.campaign_id) query = query.eq("campaign_id", body.campaign_id);
+  if (body.rfx_event_id) query = query.eq("rfx_event_id", body.rfx_event_id);
+  if (body.status) query = query.eq("status", body.status);
+  if (!body.status && !body.include_archived) query = query.neq("status", "archived");
+  if (body.channel) query = query.eq("channel", body.channel);
+  if (channels.length) query = query.in("channel", channels);
+  return query;
+}
+
+async function allScopedOutreachMessages(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_email: string | null },
+  body: Record<string, unknown>
+) {
+  const rows: Record<string, unknown>[] = [];
+  const pageSize = 1000;
+  for (let offset = 0; ; offset += pageSize) {
+    const result = await scopedOutreachMessagesQuery(supabase, user, body).range(offset, offset + pageSize - 1);
+    if (result.error) throw result.error;
+    const pageRows = (result.data || []) as Record<string, unknown>[];
+    rows.push(...pageRows);
+    if (pageRows.length < pageSize) return rows;
+  }
+}
+
 type ApiErrorInfo = {
   message: string;
   name: string | null;
@@ -21778,6 +21879,20 @@ Deno.serve(async (request) => {
       });
     }
 
+    if (body.action === "get_outreach_tracking_summary") {
+      const rows = await allScopedOutreachMessages(supabase, user, body);
+      const states = Object.fromEntries(OUTREACH_TRACKING_STATES.map((status) => [status, 0])) as Record<OutreachTrackingState, number>;
+      for (const row of rows) {
+        const status = outreachMessageTrackingState(row);
+        states[status] += 1;
+      }
+      return jsonResponse({
+        total: rows.length,
+        states,
+        updated_at: new Date().toISOString()
+      });
+    }
+
     if (body.action === "list_outreach_messages") {
       // Existing admin views still call this action without paging. Preserve their
       // previous 1,000-row response while the Draft Queue always passes a bounded
@@ -21798,6 +21913,23 @@ Deno.serve(async (request) => {
         .map((value) => value.replace(/[^a-z0-9@.+_-]/g, "").trim())
         .filter(Boolean)
         .slice(0, 6);
+      const trackingStatus = normalizeOutreachTrackingStatus(body.tracking_status);
+      if (trackingStatus) {
+        const rows = await allScopedOutreachMessages(supabase, user, body);
+        const matchingRows = rows.filter((row) => (
+          outreachMessageTrackingState(row) === trackingStatus
+          && outreachMessageMatchesSearch(row, searchTerms)
+        ));
+        const pageRows = matchingRows.slice(offset, offset + limit);
+        return jsonResponse({
+          rows: pageRows,
+          total: matchingRows.length,
+          offset,
+          limit,
+          has_more: offset + pageRows.length < matchingRows.length,
+          tracking_status: trackingStatus
+        });
+      }
       let query = supabase
         .from("outreach_messages")
         .select("*, vendors(vendor_name,domain,primary_email,whatsapp_phone,whatsapp_group_name,whatsapp_group_url,whatsapp_group_status,whatsapp_do_not_contact), vendor_whatsapp_groups(group_name,group_url,verification_status,do_not_contact), outreach_campaigns(name,notes,whatsapp_target_mode,group_delivery_policy), rfx_events(rfx_id,name), rfx_lanes(origin,destination,equipment,trailer,operation,service), rfx_lane_vendors(id,invitation_status,invitation_token,award_role,bid_rate,currency,responded_at)", { count: "exact" })
