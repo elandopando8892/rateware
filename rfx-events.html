@@ -419,6 +419,39 @@
                   <h3>Outreach launchpad</h3>
                 </div>
               </div>
+              <details id="rfx-outreach-carrier-adder" class="rfx-outreach-carrier-adder">
+                <summary>
+                  <span>Add carriers to this wave</span>
+                  <small>Search Carrier CRM and create drafts only for new participants. Existing outreach stays unchanged.</small>
+                </summary>
+                <div class="rfx-outreach-carrier-adder-body">
+                  <label>
+                    Search Carrier CRM
+                    <input id="rfx-outreach-carrier-search" type="search" placeholder="Carrier name, domain, or contact..." autocomplete="off" />
+                  </label>
+                  <div class="rfx-outreach-carrier-picker-grid">
+                    <section>
+                      <div class="rfx-outreach-carrier-picker-heading">
+                        <strong>CRM matches</strong>
+                        <span id="rfx-outreach-carrier-match-count">Type 2+ characters to search</span>
+                      </div>
+                      <div id="rfx-outreach-carrier-candidates" class="rfx-outreach-carrier-list"></div>
+                    </section>
+                    <section>
+                      <div class="rfx-outreach-carrier-picker-heading">
+                        <strong>Selected carriers</strong>
+                        <span id="rfx-outreach-carrier-selected-count">0 selected</span>
+                      </div>
+                      <div id="rfx-outreach-carrier-selected" class="rfx-outreach-carrier-list"></div>
+                    </section>
+                  </div>
+                  <div class="action-row">
+                    <button id="rfx-add-outreach-carriers" type="button" disabled>Add selected carriers</button>
+                    <button id="rfx-clear-outreach-carrier-selection" class="secondary" type="button" disabled>Clear selection</button>
+                  </div>
+                  <p id="rfx-outreach-carrier-status" class="status-message" role="status"></p>
+                </div>
+              </details>
               <div class="rfx-outreach-grid bid-room-invite-grid">
                 <div class="rfx-outreach-controls">
                   <form id="rfx-outreach-form" class="rfx-outreach-form">

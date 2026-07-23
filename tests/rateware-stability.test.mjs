@@ -167,7 +167,7 @@ for (const mutationName of [
   assert.match(mutationSource, /const eventId = selectedEventId;/, `${mutationName} should capture its initiating Bid Room`);
   assert.match(mutationSource, /selectedEventId !== eventId/, `${mutationName} should stop stale updates after navigation`);
 }
-for (const listenerName of ["manualShortlistButton", "importCarrierTemplateButton"]) {
+for (const listenerName of ["importCarrierTemplateButton"]) {
   const start = rfxEventsSource.indexOf(`${listenerName}?.addEventListener`);
   const end = rfxEventsSource.indexOf("\n\n", start + 1);
   const listenerSource = rfxEventsSource.slice(start, end > start ? end : undefined);
@@ -175,6 +175,14 @@ for (const listenerName of ["manualShortlistButton", "importCarrierTemplateButto
   assert.match(listenerSource, /const eventId = selectedEventId;/, `${listenerName} should capture its initiating Bid Room`);
   assert.match(listenerSource, /selectedEventId !== eventId/, `${listenerName} should stop stale updates after navigation`);
 }
+const addParticipantsStart = rfxEventsSource.indexOf("async function addSelectedManualCarriersToBid");
+const addParticipantsEnd = rfxEventsSource.indexOf("\nasync function ", addParticipantsStart + 1);
+const addParticipantsSource = rfxEventsSource.slice(addParticipantsStart, addParticipantsEnd > addParticipantsStart ? addParticipantsEnd : undefined);
+assert.ok(addParticipantsStart >= 0, "Shared Bid Room participant add flow should exist");
+assert.match(addParticipantsSource, /const eventId = selectedEventId;/, "Shared participant add flow should capture its initiating Bid Room");
+assert.match(addParticipantsSource, /selectedEventId !== eventId/, "Shared participant add flow should stop stale updates after navigation");
+assert.match(rfxEventsSource, /manualShortlistButton\?\.addEventListener\("click", async \(\) => \{\s+await addSelectedManualCarriersToBid\(manualShortlistStatus\);/, "Step 3 should use the shared participant add flow");
+assert.match(rfxEventsSource, /rfxAddOutreachCarriersButton\?\.addEventListener\("click", async \(\) => \{\s+await addSelectedManualCarriersToBid\(rfxOutreachCarrierStatus\);/, "Step 4 should use the shared participant add flow");
 for (const laneImportButton of ["importLanesButton", "importManualLanesButton"]) {
   const start = rfxEventsSource.indexOf(`${laneImportButton}?.addEventListener`);
   const end = rfxEventsSource.indexOf("\n\n", start + 1);
@@ -737,6 +745,8 @@ assert.match(rfxEventsSource, /confirmEventLifecycleAction\("archive"\)/, "Bid R
 assert.match(rfxEventsSource, /confirmEventLifecycleAction\("delete"\)/, "Bid Room should require typed confirmation before deleting an event");
 assert.match(rfxEventsSource, /window\.prompt\(`Type "\$\{label\}" to delete/, "Bid Room event delete should require typing the RFx label");
 assert.match(rfxEventsHtml, /rfx-outreach-sender/, "Bid Room Step 4 should include a sender account selector");
+assert.match(rfxEventsHtml, /rfx-outreach-carrier-adder/, "Bid Room Step 4 should let procurement add late carriers without leaving outreach");
+assert.match(rfxEventsHtml, /rfx-add-outreach-carriers/, "Bid Room Step 4 should provide a direct action to add selected CRM carriers");
 assert.match(rfxEventsHtml, /sales@heymarksman\.com/, "Bid Room Step 4 should use sales@heymarksman.com as the approved sender");
 assert.doesNotMatch(rfxEventsHtml, /carriers@xbfreight\.com/, "Bid Room Step 4 should not offer legacy sender accounts");
 assert.doesNotMatch(rfxEventsHtml, /Advanced source editor/, "Bid Room Step 4 should not expose the advanced source editor in the main flow");
@@ -767,6 +777,8 @@ assert.match(rfxEventsSource, /hydrateVendorOptionIds\(missingIds\)/, "Restored 
 assert.match(rfxEventsSource, /const unassignedSelection = !previousEventId/, "Participant selections made before an RFx is chosen should transfer to that RFx");
 assert.match(rfxEventsSource, /selectedManualVendorIdsState\.clear\(\);\s+persistManualParticipantSelection\(eventId\);/, "Persisted participant selections should clear only after confirmed shortlist creation");
 assert.match(rfxEventsSource, /async function shortlistVendorsByLane/, "Bid Room should batch large carrier shortlists by lane");
+assert.match(rfxEventsSource, /async function addSelectedManualCarriersToBid/, "Bid Room should reuse one safe participant add flow from shortlist and outreach");
+assert.match(rfxEventsSource, /selectedInvitationIds\.clear\(\);[\s\S]{0,180}Generate the draft queue to reach only new carriers/, "Adding carriers from Step 4 should clear stale scope and preserve existing outreach history");
 assert.match(rfxEventsSource, /chunkRows\(vendorIds, BID_ROOM_PARTICIPANT_BATCH_SIZE\)/, "Bid Room should split selected carriers into 1,000-row shortlist batches");
 assert.match(rfxEventsSource, /async function mutateRfxParticipantsInBatches/, "Bid Room should batch participant invite and archive operations");
 assert.match(rfxEventsSource, /mutateRfxParticipantsInBatches\(ids, "invite", actionStatus\)/, "Bid Room should batch-mark invitations over 1,000 rows");

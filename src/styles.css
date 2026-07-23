@@ -3885,6 +3885,121 @@ a {
   align-items: start;
 }
 
+.rfx-outreach-carrier-adder {
+  border: 1px solid #d7e0e7;
+  border-radius: 7px;
+  background: #ffffff;
+  margin: 0 0 10px;
+}
+
+.rfx-outreach-carrier-adder summary {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  cursor: pointer;
+  padding: 8px 10px;
+  color: #26323d;
+  font-size: 0.78rem;
+  font-weight: 780;
+}
+
+.rfx-outreach-carrier-adder summary small {
+  color: #63717d;
+  font-size: 0.69rem;
+  font-weight: 600;
+}
+
+.rfx-outreach-carrier-adder-body {
+  display: grid;
+  gap: 8px;
+  padding: 0 10px 10px;
+}
+
+.rfx-outreach-carrier-adder-body > label {
+  display: grid;
+  gap: 4px;
+  max-width: 460px;
+  color: #40505d;
+  font-size: 0.72rem;
+  font-weight: 760;
+}
+
+.rfx-outreach-carrier-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.rfx-outreach-carrier-picker-grid > section {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.rfx-outreach-carrier-picker-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: #40505d;
+  font-size: 0.71rem;
+}
+
+.rfx-outreach-carrier-picker-heading span {
+  color: #687681;
+  font-weight: 600;
+}
+
+.rfx-outreach-carrier-list {
+  display: grid;
+  gap: 4px;
+  max-height: 176px;
+  overflow: auto;
+  padding: 5px;
+  border: 1px solid #dce4ea;
+  border-radius: 5px;
+  background: #f8fafb;
+}
+
+.rfx-outreach-carrier-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 28px;
+  padding: 4px 6px;
+  border: 1px solid #e0e7ec;
+  border-radius: 4px;
+  background: #ffffff;
+}
+
+.rfx-outreach-carrier-row strong {
+  min-width: 0;
+  overflow: hidden;
+  color: #26323d;
+  font-size: 0.72rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rfx-outreach-carrier-row.is-selected {
+  border-color: #9fd6c5;
+  background: #f4fbf8;
+}
+
+.rfx-outreach-carrier-empty {
+  margin: 0;
+  padding: 7px;
+  color: #687681;
+  font-size: 0.71rem;
+}
+
+@media (max-width: 900px) {
+  .rfx-outreach-carrier-picker-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .rfx-outreach-form {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
