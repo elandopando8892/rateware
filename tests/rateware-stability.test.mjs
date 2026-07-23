@@ -681,12 +681,18 @@ assert.match(authSource, /rateware:session-required/, "Failed silent restoration
 assert.match(authSource, /app_state: \{ returnTo \}/, "Kinde reauthentication should preserve the current module route");
 assert.match(ratewareApiClientSource, /import \{ authenticatedFetch \} from "\.\/auth\.js"/, "Rateware API calls should use the shared authenticated request executor");
 assert.doesNotMatch(ratewareApiClientSource, /getKindeToken|response\.status === 401/, "Rateware API calls should not duplicate token refresh and retry logic");
+assert.match(apiSource, /function errorMessage\(value: unknown/, "Rateware API should reduce nested provider errors to readable text");
+assert.doesNotMatch(apiSource, /error instanceof Error \? error\.message : String\(error\)/, "Rateware API should not serialize caught objects as [object Object]");
+assert.match(apiSource, /safeOperationalError\(error\)/, "Rateware API should sanitize caught provider errors before returning or logging them");
 for (const [label, source] of [["Upload service", uploadServiceSource], ["Catalog service", catalogServiceSource]]) {
   assert.match(source, /authenticatedFetch/, `${label} should recover Kinde sessions through the shared request executor`);
   assert.doesNotMatch(source, /getKindeToken/, `${label} should not bypass shared Kinde session recovery`);
 }
 assert.match(stylesSource, /session-recovery-banner/, "Expired sessions should expose a compact reauthentication prompt without clearing the current page");
 assert.match(errorCopySource, /function rawErrorMessage/, "Human error copy should convert nested object errors to readable text");
+assert.match(errorCopySource, /record\.reason/, "Human error copy should read provider reason fields instead of rendering an object");
+assert.match(errorCopySource, /record\.description/, "Human error copy should read provider description fields instead of rendering an object");
+assert.doesNotMatch(errorCopySource, /JSON\.stringify\(errorOrMessage\)/, "Human error copy should not render raw JSON error payloads to users");
 assert.match(errorCopySource, /lower === "\[object object\]"/, "Human error copy should never display [object Object] to users");
 assert.match(errorCopySource, /lower === "bad request"/, "Human error copy should not show bare Bad Request messages to users");
 assert.match(errorCopySource, /export function apiErrorMessage/, "Shared UI modules should use a common API error formatter");

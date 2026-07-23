@@ -726,7 +726,7 @@ async function tryWriteAuditLog(
       action,
       entity_type: entityType,
       entity_id: cleanText(entityId),
-      error: error instanceof Error ? error.message : String(error)
+      error: safeOperationalError(error)
     });
   }
 }
@@ -735,6 +735,41 @@ function cleanText(value: unknown) {
   if (value === null || value === undefined) return null;
   const text = String(value).trim();
   return text ? text : null;
+}
+
+function errorMessage(value: unknown, fallback = "", depth = 0, seen = new Set<unknown>()): string {
+  if (value === null || value === undefined || depth > 5) return fallback;
+  if (typeof value === "string") return value.trim() || fallback;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (typeof value !== "object") return fallback;
+  if (seen.has(value)) return fallback;
+  seen.add(value);
+
+  if (Array.isArray(value)) {
+    const messages = value
+      .map((item) => errorMessage(item, "", depth + 1, seen))
+      .filter(Boolean)
+      .slice(0, 3);
+    return messages.join(" | ") || fallback;
+  }
+
+  const record = value as Record<string, unknown>;
+  const message = [
+    value instanceof Error ? value.message : null,
+    record.message,
+    record.error,
+    record.reason,
+    record.description,
+    record.detail,
+    record.details,
+    record.hint,
+    record.cause
+  ]
+    .map((item) => item === value ? "" : errorMessage(item, "", depth + 1, seen))
+    .find(Boolean) || "";
+  const code = errorMessage(record.code ?? record.status ?? record.statusCode, "", depth + 1, seen);
+  if (code && message && !message.startsWith(`${code}:`) && !message.startsWith(`HTTP ${code}:`)) return `${code}: ${message}`;
+  return message || code || fallback;
 }
 
 function uniqueCleanValues(value: unknown) {
@@ -2398,12 +2433,11 @@ function apiErrorInfo(error: unknown, depth = 0, seen = new Set<unknown>()): Api
   const scalarError = nestedValue !== undefined && nestedValue !== null && typeof nestedValue !== "object"
     ? cleanText(nestedValue)
     : null;
-  const message = cleanText(error instanceof Error ? error.message : record.message)
+  const message = cleanText(errorMessage(error))
     || nested?.message
     || scalarError
-    || cleanText(record.details)
-    || cleanText(record.hint)
-    || cleanText(error)
+    || cleanText(errorMessage(record.details))
+    || cleanText(errorMessage(record.hint))
     || fallback.message;
   const causeChain = [message, ...(nested?.cause_chain || [])]
     .map((value) => cleanText(value))
@@ -2414,8 +2448,8 @@ function apiErrorInfo(error: unknown, depth = 0, seen = new Set<unknown>()): Api
     message,
     name: cleanText(error instanceof Error ? error.name : record.name) || nested?.name || null,
     code: cleanText(record.code) || cleanText(record.status) || nested?.code || null,
-    details: cleanText(record.details) || nested?.details || null,
-    hint: cleanText(record.hint) || nested?.hint || null,
+    details: cleanText(errorMessage(record.details)) || nested?.details || null,
+    hint: cleanText(errorMessage(record.hint)) || nested?.hint || null,
     stage: cleanText(record.stage) || cleanText(record.operation) || nested?.stage || null,
     table: cleanText(record.table) || nested?.table || null,
     constraint: cleanText(record.constraint) || nested?.constraint || null,
@@ -2425,7 +2459,7 @@ function apiErrorInfo(error: unknown, depth = 0, seen = new Set<unknown>()): Api
 }
 
 function safeOperationalError(value: unknown, limit = 500) {
-  const raw = cleanText(value) || "Rateware API request failed.";
+  const raw = errorMessage(value) || "Rateware API request failed.";
   return raw
     .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [redacted]")
     .replace(/([?&](?:token|access_token|refresh_token|api_key|key|secret)=)[^&\s]+/gi, "$1[redacted]")
@@ -2436,7 +2470,7 @@ function safeOperationalError(value: unknown, limit = 500) {
 }
 
 function safeOperationalValue(value: unknown, limit = 500) {
-  const text = cleanText(value);
+  const text = errorMessage(value);
   return text ? safeOperationalError(text, limit) : null;
 }
 
@@ -10391,7 +10425,7 @@ async function submitVendorImprovementCase(
   try {
     payload = await sendVendorCiGmail(supabase, user, message);
   } catch (error) {
-    const reason = error instanceof Error ? error.message : String(error);
+    const reason = safeOperationalError(error);
     const update = await supabase
       .from("vendor_improvement_cases")
       .update({
@@ -10563,7 +10597,7 @@ async function processVendorImprovementReminders(
       if (history.error) throw history.error;
       results.push({ id: caseRow.id, status: "sent", next_reminder_at: nextReminderAt });
     } catch (error) {
-      const reason = error instanceof Error ? error.message : String(error);
+      const reason = safeOperationalError(error);
       const failureMetadata = emailSent ? {
         ...metadata,
         reminder_count: reminderCount,
@@ -11469,7 +11503,7 @@ async function validateWhatsappConnectionAgainstMeta(
     connection.wabaId = configuredWabaId;
     return { connection, phone: { ...phone, ...wabaPhone }, row: result.data };
   } catch (error) {
-    const reason = error instanceof Error ? error.message : String(error);
+    const reason = safeOperationalError(error);
     const metadata = {
       ...objectRecord(connection.row.metadata),
       connection_validation: {
@@ -11589,7 +11623,7 @@ async function whatsappWabaGraphFetch(
   connection: Awaited<ReturnType<typeof activeWhatsappConnection>>,
   suffix: string,
   options: RequestInit = {},
-  endpointError: (error: unknown) => string = (error) => cleanText(error instanceof Error ? error.message : String(error)) || "Meta WhatsApp request failed."
+  endpointError: (error: unknown) => string = (error) => safeOperationalError(error) || "Meta WhatsApp request failed."
 ) {
   const initialCandidates = whatsappTemplateWabaCandidates(connection);
   const discoveredCandidates = await discoverWhatsappWabaFromPhone(connection);
@@ -11615,7 +11649,7 @@ async function whatsappWabaGraphFetch(
       }
       return { data, waba_id: candidate.id, source: candidate.source };
     } catch (error) {
-      errors.push(`${candidate.source}: ${error instanceof Error ? error.message : String(error)}`);
+      errors.push(`${candidate.source}: ${safeOperationalError(error)}`);
     }
   }
 
@@ -12321,7 +12355,7 @@ async function listWhatsappPhoneNumbers(
     connection,
     "phone_numbers?fields=id,display_phone_number,verified_name,quality_rating",
     {},
-    (error) => `Meta cannot read WhatsApp phone numbers for this connection. Confirm that the WABA belongs to the sender phone number and that the token has WhatsApp Business Management permission. Meta said: ${error instanceof Error ? error.message : String(error)}`
+    (error) => `Meta cannot read WhatsApp phone numbers for this connection. Confirm that the WABA belongs to the sender phone number and that the token has WhatsApp Business Management permission. Meta said: ${safeOperationalError(error)}`
   );
   return {
     rows: Array.isArray(result.data.data) ? result.data.data : [],
@@ -13622,7 +13656,7 @@ async function sendOutreachMessages(
         }
       });
     } catch (error) {
-      failures.push({ id: message.id, recipient_email: message.recipient_email, reason: error instanceof Error ? error.message : String(error) });
+      failures.push({ id: message.id, recipient_email: message.recipient_email, reason: safeOperationalError(error) });
       continue;
     }
     if (!claim) {
@@ -13735,7 +13769,7 @@ async function sendOutreachMessages(
         }
       }
     } catch (error) {
-      const reason = error instanceof Error ? error.message : String(error);
+      const reason = safeOperationalError(error);
       const uncertain = providerAccepted || Boolean((error as Error & { deliveryUncertain?: boolean })?.deliveryUncertain);
       if (uncertain) deliveryUnknown += 1;
       failures.push({ id: message.id, recipient_email: message.recipient_email, reason, delivery_unknown: uncertain });
@@ -13979,7 +14013,7 @@ async function sendWhatsappOutreachMessages(
         };
       }
     } catch (error) {
-      const reason = error instanceof Error ? error.message : String(error);
+      const reason = safeOperationalError(error);
       failures.push({ id: message.id, reason });
       await updateWhatsappMessageFailure(supabase, user, resolvedMessage, reason, now, connection);
       continue;
@@ -13999,7 +14033,7 @@ async function sendWhatsappOutreachMessages(
         }
       });
     } catch (error) {
-      failures.push({ id: message.id, reason: error instanceof Error ? error.message : String(error) });
+      failures.push({ id: message.id, reason: safeOperationalError(error) });
       continue;
     }
     if (!claim) {
@@ -14085,7 +14119,7 @@ async function sendWhatsappOutreachMessages(
         }
       }
     } catch (error) {
-      const reason = error instanceof Error ? error.message : String(error);
+      const reason = safeOperationalError(error);
       const uncertain = providerAccepted || Boolean((error as Error & { deliveryUncertain?: boolean })?.deliveryUncertain);
       if (uncertain) deliveryUnknown += 1;
       failures.push({ id: message.id, reason, delivery_unknown: uncertain });
@@ -14408,7 +14442,7 @@ async function safeObservabilityQuery(
       source,
       severity: "error",
       title: `${label} could not load`,
-      detail: error instanceof Error ? error.message : String(error),
+      detail: safeOperationalError(error),
       entity_type: "observability_query",
       action: "observability.query_failed",
       next_action: nextAction
@@ -21201,7 +21235,7 @@ Deno.serve(async (request) => {
             attempted: true,
             status: "error",
             ready: false,
-            error: error instanceof Error ? error.message : String(error)
+            error: safeOperationalError(error)
           };
         }
         try {
@@ -21215,7 +21249,7 @@ Deno.serve(async (request) => {
             attempted: true,
             status: "error",
             ready: false,
-            error: error instanceof Error ? error.message : String(error)
+            error: safeOperationalError(error)
           };
         }
       }
@@ -21325,7 +21359,7 @@ Deno.serve(async (request) => {
             if (vendorId && !vendorGroupsByVendor.has(vendorId)) vendorGroupsByVendor.set(vendorId, group);
           }
         } catch (error) {
-          channelPreparationErrors.whatsapp_group = error instanceof Error ? error.message : String(error);
+          channelPreparationErrors.whatsapp_group = safeOperationalError(error);
         }
       }
       let suppressedEmails = new Set<string>();
@@ -21340,7 +21374,7 @@ Deno.serve(async (request) => {
             })
           );
         } catch (error) {
-          channelPreparationErrors.email = `Email suppression check failed: ${error instanceof Error ? error.message : String(error)}`;
+          channelPreparationErrors.email = `Email suppression check failed: ${safeOperationalError(error)}`;
         }
       }
       for (const [channel, preparationError] of Object.entries(channelPreparationErrors)) {
@@ -23083,7 +23117,7 @@ Deno.serve(async (request) => {
           });
         } catch (error) {
           console.warn("rateware list RPC failed; attempting SQL fallback", {
-            message: error instanceof Error ? error.message : String(error)
+            message: safeOperationalError(error)
           });
           if (canUseSqlRateFilters(filterPayload)) {
             return jsonResponse(await fetchRatewareRowsBySql(supabase, filterPayload, limit, offset, user.owner_email));
@@ -23119,7 +23153,7 @@ Deno.serve(async (request) => {
       } catch (error) {
         console.warn("rateware filter values RPC failed; using SQL fallback", {
           field,
-          message: error instanceof Error ? error.message : String(error)
+          message: safeOperationalError(error)
         });
         throw error;
       }

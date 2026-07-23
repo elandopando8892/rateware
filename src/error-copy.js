@@ -1,33 +1,33 @@
-function rawErrorMessage(errorOrMessage) {
-  if (!errorOrMessage) return "";
-  if (typeof errorOrMessage === "string") return errorOrMessage;
-  if (errorOrMessage instanceof Error) {
-    const status = errorOrMessage.status || errorOrMessage.code;
-    const message = rawErrorMessage(errorOrMessage.message);
-    const details = [errorOrMessage.causeDetail, errorOrMessage.details, errorOrMessage.hint]
-      .map((value) => rawErrorMessage(value))
-      .filter((value, index, values) => value && value !== message && values.indexOf(value) === index);
-    const incident = rawErrorMessage(errorOrMessage.incidentId);
-    const diagnostic = [message, ...details].filter(Boolean).join(" | ");
-    const withStatus = status && diagnostic && !diagnostic.startsWith(`${status}:`) && !diagnostic.startsWith(`HTTP ${status}:`)
-      ? `${status}: ${diagnostic}`
-      : diagnostic;
-    return incident ? `${withStatus} | Incident ${incident}` : withStatus;
-  }
-  if (typeof errorOrMessage !== "object") return String(errorOrMessage);
+function rawErrorMessage(errorOrMessage, depth = 0, seen = new Set()) {
+  if (errorOrMessage === null || errorOrMessage === undefined || depth > 5) return "";
+  if (typeof errorOrMessage === "string") return errorOrMessage.trim();
+  if (typeof errorOrMessage === "number" || typeof errorOrMessage === "boolean") return String(errorOrMessage);
+  if (typeof errorOrMessage !== "object") return "";
+  if (seen.has(errorOrMessage)) return "";
+  seen.add(errorOrMessage);
 
-  const nested = errorOrMessage.message || errorOrMessage.error || errorOrMessage.details || errorOrMessage.hint;
-  if (nested && nested !== errorOrMessage) {
-    const message = rawErrorMessage(nested);
-    if (message && message !== "[object Object]") return message;
+  const read = (value) => rawErrorMessage(value, depth + 1, seen);
+  if (Array.isArray(errorOrMessage)) {
+    return errorOrMessage.map(read).filter(Boolean).slice(0, 3).join(" | ");
   }
 
-  try {
-    const json = JSON.stringify(errorOrMessage);
-    return json === "{}" ? "" : json;
-  } catch {
-    return "";
-  }
+  const record = errorOrMessage;
+  const status = read(record.status || record.statusCode || record.code);
+  const message = [
+    record.message,
+    record.error,
+    record.reason,
+    record.description,
+    record.detail,
+    record.details,
+    record.hint,
+    record.cause
+  ].map(read).find(Boolean) || "";
+  const diagnostic = status && message && !message.startsWith(`${status}:`) && !message.startsWith(`HTTP ${status}:`)
+    ? `${status}: ${message}`
+    : (message || status);
+  const incident = read(record.incidentId || record.incident_id);
+  return incident && diagnostic ? `${diagnostic} | Incident ${incident}` : diagnostic;
 }
 
 export function humanizeError(errorOrMessage) {
