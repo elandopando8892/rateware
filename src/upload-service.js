@@ -75,11 +75,11 @@ export async function bulkImportUploadTemplate(rawUploadId, {
 }
 
 export async function archiveUpload(rawUploadId) {
-  return (await callRatewareApi("archive_upload", { id: rawUploadId })).row;
+  return (await callRatewareApi("archive_upload", { id: rawUploadId, confirmed: true, confirmation_action: "archive_upload" })).row;
 }
 
 export async function removeUpload(rawUploadId) {
-  return (await callRatewareApi("remove_upload", { id: rawUploadId })).removed;
+  return (await callRatewareApi("remove_upload", { id: rawUploadId, confirmed: true, confirmation_action: "remove_upload" })).removed;
 }
 
 export async function getUploadSourceUrl(rawUploadId) {

@@ -21,11 +21,11 @@ export async function syncOutreachWhatsappTemplates() {
 }
 
 export async function archiveOutreachTemplate(id) {
-  return (await callRatewareApi("archive_outreach_template", { id })).row;
+  return (await callRatewareApi("archive_outreach_template", { id, confirmed: true, confirmation_action: "archive_outreach_template" })).row;
 }
 
 export async function deleteOutreachTemplate(id) {
-  return (await callRatewareApi("delete_outreach_template", { id })).removed;
+  return (await callRatewareApi("delete_outreach_template", { id, confirmed: true, confirmation_action: "delete_outreach_template" })).removed;
 }
 
 export async function duplicateOutreachTemplate(id) {
@@ -45,11 +45,11 @@ export async function updateOutreachCampaign(id, patch) {
 }
 
 export async function archiveOutreachCampaign(id) {
-  return (await callRatewareApi("archive_outreach_campaign", { id })).row;
+  return (await callRatewareApi("archive_outreach_campaign", { id, confirmed: true, confirmation_action: "archive_outreach_campaign" })).row;
 }
 
 export async function deleteOutreachCampaign(id) {
-  return (await callRatewareApi("delete_outreach_campaign", { id })).removed;
+  return (await callRatewareApi("delete_outreach_campaign", { id, confirmed: true, confirmation_action: "delete_outreach_campaign" })).removed;
 }
 
 export async function duplicateOutreachCampaign(id) {
@@ -75,7 +75,7 @@ export async function fetchOutreachMessages(filters = {}) {
 }
 
 export async function markOutreachMessages(ids = [], status) {
-  return await callRatewareApi("mark_outreach_messages", { ids, status, confirmed: true });
+  return await callRatewareApi("mark_outreach_messages", { ids, status, confirmed: true, confirmation_action: "mark_outreach_messages" });
 }
 
 export async function sendOutreachMessages(ids = [], options = {}) {
@@ -84,33 +84,37 @@ export async function sendOutreachMessages(ids = [], options = {}) {
     provider: "gmail",
     channel: "email",
     sender_email: options.senderEmail || "",
-    confirmed: true
+    confirmed: true,
+    confirmation_action: "send_outreach_messages"
   });
 }
 
 export async function sendWhatsappOutreachMessages(ids = []) {
   return await callRatewareApi("send_whatsapp_outreach_messages", {
     ids,
-    confirmed: true
+    confirmed: true,
+    confirmation_action: "send_whatsapp_outreach_messages"
   });
 }
 
 export async function sendWhatsappGroupOutreachMessages(ids = []) {
   return await callRatewareApi("send_whatsapp_group_outreach_messages", {
     ids,
-    confirmed: true
+    confirmed: true,
+    confirmation_action: "send_whatsapp_group_outreach_messages"
   });
 }
 
 export async function markWhatsappGroupMessageManuallySent(ids = []) {
   return await callRatewareApi("mark_whatsapp_group_message_manually_sent", {
     ids,
-    confirmed: true
+    confirmed: true,
+    confirmation_action: "mark_whatsapp_group_message_manually_sent"
   });
 }
 
 export async function deleteOutreachMessages(ids = []) {
-  return await callRatewareApi("delete_outreach_messages", { ids, confirmed: true });
+  return await callRatewareApi("delete_outreach_messages", { ids, confirmed: true, confirmation_action: "delete_outreach_messages" });
 }
 
 export async function fetchContactHistory(filters = {}) {

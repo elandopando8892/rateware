@@ -587,6 +587,7 @@ memoryBody?.addEventListener("click", async (event) => {
     }
 
     if (archiveButton) {
+      if (!window.confirm("Archive this interpretation rule? New uploads will stop using it.")) return;
       archiveButton.disabled = true;
       await archiveMemoryRules([id]);
       setStatus(memoryTableStatus, "Rule archived.", "success");
@@ -597,6 +598,7 @@ memoryBody?.addEventListener("click", async (event) => {
       applyButton.disabled = true;
       const action = applyButton.dataset.recommendationAction;
       if (action === "archive") {
+        if (!window.confirm("Apply this recommendation and archive the interpretation rule?")) return;
         await archiveMemoryRules([id]);
         setStatus(memoryTableStatus, "Recommendation applied: rule archived.", "success");
       }
@@ -626,6 +628,7 @@ memoryBody?.addEventListener("click", async (event) => {
 archiveSelectedButton?.addEventListener("click", async () => {
   const ids = [...selectedIds];
   if (!ids.length) return;
+  if (!window.confirm(`Archive ${ids.length} selected interpretation rule(s)? New uploads will stop using them.`)) return;
   setStatus(memoryTableStatus, `Archiving ${ids.length} rule(s)...`);
   try {
     await archiveMemoryRules(ids);

@@ -56,11 +56,11 @@ export async function updateStagingRow(id, patch) {
 }
 
 export async function renormalizeStagingRows(ids = []) {
-  return await callRatewareApi("renormalize_rate_rows", { ids });
+  return await callRatewareApi("renormalize_rate_rows", { ids, confirmed: true, confirmation_action: "renormalize_rate_rows" });
 }
 
 export async function matchStagingVendors(ids = []) {
-  return await callRatewareApi("match_rate_vendors", { ids });
+  return await callRatewareApi("match_rate_vendors", { ids, confirmed: true, confirmation_action: "match_rate_vendors" });
 }
 
 export async function matchStagingVendorsByFilter(filters = {}, { dryRun = false, maxRows = undefined, confirmed = false, previewCount = undefined } = {}) {
@@ -69,20 +69,21 @@ export async function matchStagingVendorsByFilter(filters = {}, { dryRun = false
     dry_run: dryRun,
     max_rows: maxRows,
     confirmed,
+    confirmation_action: "bulk_filter",
     preview_count: previewCount
   });
 }
 
 export async function enrichStagingLocationZips(ids = []) {
-  return await callRatewareApi("enrich_missing_location_zips", { ids });
+  return await callRatewareApi("enrich_missing_location_zips", { ids, confirmed: true, confirmation_action: "enrich_missing_location_zips" });
 }
 
 export async function archiveStagingRows(ids = []) {
-  return await callRatewareApi("archive_staging", { ids, confirmed: true });
+  return await callRatewareApi("archive_staging", { ids, confirmed: true, confirmation_action: "archive_staging" });
 }
 
 export async function removeStagingRows(ids = []) {
-  return await callRatewareApi("remove_staging", { ids, confirmed: true });
+  return await callRatewareApi("remove_staging", { ids, confirmed: true, confirmation_action: "remove_staging" });
 }
 
 export async function archiveStagingRowsByFilter(filters = {}, { dryRun = false, maxRows = undefined, confirmed = false, previewCount = undefined } = {}) {
@@ -92,6 +93,7 @@ export async function archiveStagingRowsByFilter(filters = {}, { dryRun = false,
     dry_run: dryRun,
     max_rows: maxRows,
     confirmed,
+    confirmation_action: "archive",
     preview_count: previewCount
   });
 }
@@ -103,6 +105,7 @@ export async function removeStagingRowsByFilter(filters = {}, { dryRun = false, 
     dry_run: dryRun,
     max_rows: maxRows,
     confirmed,
+    confirmation_action: "remove",
     preview_count: previewCount
   });
 }
@@ -114,6 +117,7 @@ export async function updateStagingRowsByFilter(filters = {}, patch = {}, { dryR
     dry_run: dryRun,
     max_rows: maxRows,
     confirmed,
+    confirmation_action: "bulk_filter",
     preview_count: previewCount
   });
 }

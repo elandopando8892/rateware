@@ -4153,6 +4153,9 @@ segmentsList.addEventListener("click", async (event) => {
   }
 
   if (deleteButton) {
+    const segment = savedSegments.find((item) => item.id === deleteButton.dataset.segmentDelete);
+    const segmentLabel = segment?.name || segment?.segment_name || "this saved list";
+    if (!window.confirm(`Delete ${segmentLabel}? Vendors will not be removed from Carrier CRM.`)) return;
     deleteButton.disabled = true;
     try {
       await requirePrivatePage();

@@ -71,7 +71,7 @@ export async function publishRatebook(ratebookId) {
 }
 
 export async function archiveRatebook(ratebookId) {
-  return callRatewareApi("archive_ratebook", { ratebook_id: ratebookId });
+  return callRatewareApi("archive_ratebook", { ratebook_id: ratebookId, confirmed: true, confirmation_action: "archive_ratebook" });
 }
 
 export async function createRatebookRevision(ratebookId) {

@@ -88,11 +88,11 @@ export async function importVendorsFromGoogleSheet(url) {
 }
 
 export async function bulkUpdateVendors(ids, patch) {
-  return await callRatewareApi("bulk_update_vendors", { ids, patch, confirmed: true });
+  return await callRatewareApi("bulk_update_vendors", { ids, patch, confirmed: true, confirmation_action: "bulk_update_vendors" });
 }
 
 export async function removeVendors(ids) {
-  return await callRatewareApi("remove_vendors", { ids, confirmed: true });
+  return await callRatewareApi("remove_vendors", { ids, confirmed: true, confirmation_action: "remove_vendors" });
 }
 
 export async function fetchVendorSegments() {
@@ -108,7 +108,7 @@ export async function updateVendorSegment(id, segment) {
 }
 
 export async function deleteVendorSegment(id) {
-  return (await callRatewareApi("delete_vendor_segment", { id })).row;
+  return (await callRatewareApi("delete_vendor_segment", { id, confirmed: true, confirmation_action: "delete_vendor_segment" })).row;
 }
 
 export async function fetchVendorSupportTickets(filters = {}) {

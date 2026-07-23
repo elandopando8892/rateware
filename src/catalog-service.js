@@ -35,7 +35,7 @@ export async function saveCatalogValue(catalogValue) {
 }
 
 export async function archiveCatalogValue(id) {
-  return (await callRatewareApi("archive_catalog_value", { id })).row;
+  return (await callRatewareApi("archive_catalog_value", { id, confirmed: true, confirmation_action: "archive_catalog_value" })).row;
 }
 
 export async function fetchLocationCatalogValues(filters = {}) {
@@ -47,7 +47,7 @@ export async function saveLocationCatalogValue(locationValue) {
 }
 
 export async function archiveLocationCatalogValue(id) {
-  return (await callRatewareApi("archive_location_catalog_value", { id })).row;
+  return (await callRatewareApi("archive_location_catalog_value", { id, confirmed: true, confirmation_action: "archive_location_catalog_value" })).row;
 }
 
 export async function bulkImportCatalogValues({ importType, rows, fileName = "", sheetName = "" } = {}) {

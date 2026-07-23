@@ -103,6 +103,7 @@ Deno.serve(async (request) => {
       vendor_hint: vendor || selectedVendorHint || null,
       vendor_match_source: resolvedVendorId ? "manual" : null,
       rfx_hint: rfx || null,
+      owner_email: ownerEmail,
       status: "uploaded",
       staging_target: "rate_staging"
     };

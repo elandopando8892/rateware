@@ -1293,6 +1293,10 @@ async function runBulkUploadAction(action) {
     openReprocessDrawer(ids);
     return;
   }
+  if (action === "archive") {
+    const confirmed = window.confirm(`Archive ${ids.length} upload version(s)? Their source files remain preserved and can no longer be processed from the active queue.`);
+    if (!confirmed) return;
+  }
   if (action === "remove") {
     const confirmed = window.confirm(`Remove ${ids.length} upload version(s) and their staged rows? This cannot be undone.`);
     if (!confirmed) return;
@@ -1715,6 +1719,11 @@ historyBody.addEventListener("click", async (event) => {
     }
 
     if (archiveButton) {
+      const confirmed = window.confirm("Archive this upload version? Its source file remains preserved.");
+      if (!confirmed) {
+        button.disabled = false;
+        return;
+      }
       button.textContent = "Archiving...";
       await archiveUpload(rowId);
       if (status) {

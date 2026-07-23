@@ -33,7 +33,7 @@ export async function saveCatalogValue(catalogValue) {
 }
 
 export async function archiveCatalogValue(id) {
-  return (await callRatewareApi("archive_catalog_value", { id })).row;
+  return (await callRatewareApi("archive_catalog_value", { id, confirmed: true, confirmation_action: "archive_catalog_value" })).row;
 }
 
 export async function fetchGmailConnections() {

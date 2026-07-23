@@ -60,7 +60,7 @@ export async function updateApprovedRatewareRow(id, patch) {
 }
 
 export async function bulkUpdateApprovedRatewareRows(ids = [], patch = {}) {
-  return await callRatewareApi("bulk_update_rateware", { ids, patch, confirmed: true });
+  return await callRatewareApi("bulk_update_rateware", { ids, patch, confirmed: true, confirmation_action: "bulk_update_rateware" });
 }
 
 export async function updateApprovedRatewareByFilter(filters = {}, patch = {}, { dryRun = false, maxRows = undefined, confirmed = false, previewCount = undefined } = {}) {
@@ -70,6 +70,7 @@ export async function updateApprovedRatewareByFilter(filters = {}, patch = {}, {
     dry_run: dryRun,
     max_rows: maxRows,
     confirmed,
+    confirmation_action: "bulk_filter",
     preview_count: previewCount
   });
 }
@@ -88,6 +89,7 @@ export async function matchApprovedRatewareVendorsByFilter(filters = {}, { dryRu
     dry_run: dryRun,
     max_rows: maxRows,
     confirmed,
+    confirmation_action: "bulk_filter",
     preview_count: previewCount
   });
 }
@@ -97,7 +99,7 @@ export async function enrichApprovedRatewareLocationZips(ids = []) {
 }
 
 export async function returnApprovedRatesToStaging(ids = [], reason = "") {
-  return await callRatewareApi("return_rateware_to_staging", { ids, reason, confirmed: true });
+  return await callRatewareApi("return_rateware_to_staging", { ids, reason, confirmed: true, confirmation_action: "return_rateware_to_staging" });
 }
 
 export async function archiveApprovedRatewareByFilter(filters = {}, { dryRun = false, maxRows = undefined, confirmed = false, previewCount = undefined } = {}) {
@@ -107,6 +109,7 @@ export async function archiveApprovedRatewareByFilter(filters = {}, { dryRun = f
     dry_run: dryRun,
     max_rows: maxRows,
     confirmed,
+    confirmation_action: "archive",
     preview_count: previewCount
   });
 }
@@ -118,6 +121,7 @@ export async function removeApprovedRatewareByFilter(filters = {}, { dryRun = fa
     dry_run: dryRun,
     max_rows: maxRows,
     confirmed,
+    confirmation_action: "remove",
     preview_count: previewCount
   });
 }

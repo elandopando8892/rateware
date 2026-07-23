@@ -709,6 +709,28 @@ async function writeAuditLog(
   if (result.error) throw result.error;
 }
 
+async function tryWriteAuditLog(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_user_id: string | null; owner_email: string | null },
+  action: string,
+  entityType: string,
+  entityId: unknown,
+  summary: string,
+  metadata: Record<string, unknown> = {}
+) {
+  try {
+    await writeAuditLog(supabase, user, action, entityType, entityId, summary, metadata);
+  } catch (error) {
+    // A completed destructive/provider action must not look failed and become unsafe to retry.
+    console.error("audit_log_write_failed", {
+      action,
+      entity_type: entityType,
+      entity_id: cleanText(entityId),
+      error: error instanceof Error ? error.message : String(error)
+    });
+  }
+}
+
 function cleanText(value: unknown) {
   if (value === null || value === undefined) return null;
   const text = String(value).trim();
@@ -741,10 +763,10 @@ function normalizeBulkIds(
 function bulkConfirmed(input: Record<string, unknown>, actionKey = "") {
   const confirmation = objectRecord(input.confirmation);
   const actionText = cleanText(confirmation.action || input.confirmation_action)?.toLowerCase();
-  return input.confirmed === true
+  const explicitlyConfirmed = input.confirmed === true
     || input.confirm_bulk === true
-    || cleanOptionalBoolean(input.confirmed) === true
-    || (Boolean(actionKey) && actionText === actionKey.toLowerCase());
+    || cleanOptionalBoolean(input.confirmed) === true;
+  return explicitlyConfirmed && Boolean(actionKey) && actionText === actionKey.toLowerCase();
 }
 
 function requireBulkConfirmation(
@@ -2775,15 +2797,18 @@ function normalizedRpcRateFilters(filters: Record<string, unknown>) {
 async function fetchRateRowIdsByFilter(
   supabase: ReturnType<typeof createClient>,
   filters: Record<string, unknown>,
-  options: { limit?: number; offset?: number } = {}
+  options: { limit?: number; offset?: number; ownerEmail?: string | null } = {}
 ) {
   const limit = Math.min(Math.max(Number(options.limit) || 50000, 1), 50000);
   const offset = Math.max(Number(options.offset) || 0, 0);
+  const ownerEmail = cleanText(options.ownerEmail)?.toLowerCase();
+  if (!ownerEmail) throw new Error("Workspace owner is required for rate filtering.");
 
   if (canUseSqlRateFilters(filters)) {
     let query = supabase
       .from("rate_staging")
       .select("id", { count: "exact" })
+      .eq("owner_email", ownerEmail)
       .order("created_at", { ascending: false })
       .order("id", { ascending: false })
       .range(offset, offset + limit - 1);
@@ -2813,6 +2838,7 @@ async function fetchRateRowIdsByFilter(
     p_review_filter: rpcFilters.review_filter,
     p_column_filters: rpcFilters.column_filters,
     p_exclude_archived: rpcFilters.exclude_archived,
+    p_owner_email: ownerEmail,
     p_limit: limit,
     p_offset: offset
   });
@@ -2832,7 +2858,7 @@ async function fetchRateRowIdsByFilter(
 async function collectRateRowIdsByFilter(
   supabase: ReturnType<typeof createClient>,
   filters: Record<string, unknown>,
-  options: { maxRows?: number; pageSize?: number } = {}
+  options: { maxRows?: number; pageSize?: number; ownerEmail?: string | null } = {}
 ) {
   const maxRows = Math.min(Math.max(Number(options.maxRows) || 100000, 1), 100000);
   const pageSize = Math.min(Math.max(Number(options.pageSize) || 5000, 1), 5000);
@@ -2843,7 +2869,11 @@ async function collectRateRowIdsByFilter(
 
   while (ids.length < maxRows) {
     const limit = Math.min(pageSize, maxRows - ids.length);
-    const filtered = await fetchRateRowIdsByFilter(supabase, filters, { limit, offset });
+    const filtered = await fetchRateRowIdsByFilter(supabase, filters, {
+      limit,
+      offset,
+      ownerEmail: options.ownerEmail
+    });
     if (!databaseCount) databaseCount = filtered.database_count;
     hardLimitReached = hardLimitReached || filtered.hard_limit_reached;
     if (!filtered.ids.length) break;
@@ -2863,13 +2893,17 @@ async function collectRateRowIdsByFilter(
 async function fetchRateRowsForIds(
   supabase: ReturnType<typeof createClient>,
   ids: string[],
-  select = RATE_ROW_LIST_SELECT
+  select = RATE_ROW_LIST_SELECT,
+  ownerEmail: string | null = null
 ) {
+  const scopedOwnerEmail = cleanText(ownerEmail)?.toLowerCase();
+  if (!scopedOwnerEmail) throw new Error("Workspace owner is required for rate rows.");
   const rows: Record<string, unknown>[] = [];
   for (const chunk of chunkValues(ids, 500)) {
     const result = await supabase
       .from("rate_staging")
       .select(select)
+      .eq("owner_email", scopedOwnerEmail)
       .in("id", chunk);
     if (result.error) throw result.error;
     rows.push(...(result.data || []));
@@ -2882,11 +2916,15 @@ async function fetchRatewareRowsBySql(
   supabase: ReturnType<typeof createClient>,
   filterPayload: Record<string, unknown>,
   limit: number,
-  offset: number
+  offset: number,
+  ownerEmail: string | null
 ) {
+  const scopedOwnerEmail = cleanText(ownerEmail)?.toLowerCase();
+  if (!scopedOwnerEmail) throw new Error("Workspace owner is required for Rateware rows.");
   let query = supabase
     .from("rate_staging")
     .select(RATE_ROW_LIST_SELECT, { count: "exact" })
+    .eq("owner_email", scopedOwnerEmail)
     .eq("status", "approved")
     .order("quote_date", { ascending: false, nullsFirst: false })
     .order("created_at", { ascending: false })
@@ -6677,6 +6715,7 @@ async function bulkImportStructuredUpload(
     .from("raw_uploads")
     .select("*, vendors(vendor_name,domain,primary_email)")
     .eq("id", rawUploadId)
+    .eq("owner_email", user.owner_email)
     .single();
   if (uploadResult.error) throw uploadResult.error;
   const upload = uploadResult.data || {};
@@ -6768,6 +6807,7 @@ async function bulkImportStructuredUpload(
 
     rowsToInsert.push({
       ...patch,
+      owner_email: user.owner_email,
       raw_upload_id: rawUploadId,
       interpretation_job_id: jobResult.data.id,
       status: "pending_review",
@@ -7542,7 +7582,8 @@ async function closeoutAwardedRfxToRateware(
         target_status: targetStatus,
         awarded_rows: pendingAwards.length,
         skipped_rows: skipped
-      }
+      },
+      owner_email: user.owner_email
     })
     .select("id")
     .single();
@@ -7588,6 +7629,7 @@ async function closeoutAwardedRfxToRateware(
       .from("rate_staging")
       .insert({
         ...patch,
+        owner_email: user.owner_email,
         raw_upload_id: rawUpload.data.id,
         interpretation_job_id: job.data.id,
         status: targetStatus,
@@ -13708,6 +13750,22 @@ async function sendOutreachMessages(
     }
   }
 
+  await tryWriteAuditLog(
+    supabase,
+    user,
+    "outreach.gmail.bulk_send",
+    "outreach_messages",
+    cleanText(messages[0]?.campaign_id),
+    `Processed ${ids.length} Gmail outreach message(s)`,
+    {
+      requested: ids.length,
+      sent: sentRows.length,
+      failed: failures.length,
+      skipped: skipped.length,
+      delivery_unknown: deliveryUnknown,
+      sender_email: senderEmail
+    }
+  );
   return { sent: sentRows.length, failed: failures.length, skipped: skipped.length, delivery_unknown: deliveryUnknown, rows: sentRows, failures, skipped_rows: skipped };
 }
 
@@ -14032,6 +14090,23 @@ async function sendWhatsappOutreachMessages(
       }
     }
   }
+  await tryWriteAuditLog(
+    supabase,
+    user,
+    "outreach.whatsapp.bulk_send",
+    "outreach_messages",
+    connection.row.id,
+    `Processed ${ids.length} WhatsApp outreach message(s)`,
+    {
+      requested: ids.length,
+      sent: rows.length,
+      failed: failures.length,
+      skipped: skipped.length,
+      delivery_unknown: deliveryUnknown,
+      whatsapp_connection_id: connection.row.id,
+      sender_address: cleanText(connection.row.display_phone_number) || null
+    }
+  );
   return { sent: rows.length, failed: failures.length, skipped: skipped.length, delivery_unknown: deliveryUnknown, rows, failures, skipped_rows: skipped };
 }
 
@@ -14088,6 +14163,21 @@ async function sendWhatsappGroupOutreachMessages(
       .eq("id", failure.id)
       .eq("owner_email", user.owner_email);
   }
+  await tryWriteAuditLog(
+    supabase,
+    user,
+    "outreach.whatsapp_group.bulk_send",
+    "outreach_messages",
+    connection.row.id,
+    `Processed ${ids.length} WhatsApp group message(s)`,
+    {
+      requested: ids.length,
+      sent: 0,
+      failed: failures.length,
+      whatsapp_connection_id: connection.row.id,
+      manual_only: true
+    }
+  );
   return { sent: 0, failed: failures.length, rows: [], failures };
 }
 
@@ -14155,6 +14245,15 @@ async function markWhatsappGroupMessageManuallySent(
     const history = await supabase.from("contact_history").insert(historyRows);
     if (history.error) throw history.error;
   }
+  await tryWriteAuditLog(
+    supabase,
+    user,
+    "outreach.whatsapp_group.manual_send",
+    "outreach_messages",
+    ids.slice(0, 50).join(","),
+    `Marked ${result.data?.length || 0} WhatsApp group message(s) as manually sent`,
+    { requested: ids.length, updated: result.data?.length || 0 }
+  );
   return { updated: result.data?.length || 0, rows: result.data || [] };
 }
 
@@ -14861,10 +14960,17 @@ function patchLookupLocation(prefix: "origin" | "destination", lookup: Record<st
   return patch;
 }
 
-async function enrichMissingLocationZips(supabase: ReturnType<typeof createClient>, ids: string[], status: string | null = null) {
+async function enrichMissingLocationZips(
+  supabase: ReturnType<typeof createClient>,
+  ownerEmail: string | null,
+  ids: string[],
+  status: string | null = null
+) {
   if (!ids.length) throw new Error("At least one rate row id is required.");
+  const scopedOwnerEmail = cleanText(ownerEmail)?.toLowerCase();
+  if (!scopedOwnerEmail) throw new Error("Workspace owner is required for rate normalization.");
 
-  let rowQuery = supabase.from("rate_staging").select("*").in("id", ids).limit(250);
+  let rowQuery = supabase.from("rate_staging").select("*").eq("owner_email", scopedOwnerEmail).in("id", ids).limit(250);
   if (status) rowQuery = rowQuery.eq("status", status);
 
   const [rowsResult, locationsResult] = await Promise.all([
@@ -14912,6 +15018,7 @@ async function enrichMissingLocationZips(supabase: ReturnType<typeof createClien
       .from("rate_staging")
       .update(patch)
       .eq("id", row.id)
+      .eq("owner_email", scopedOwnerEmail)
       .select("*, vendors(vendor_name, domain)")
       .single();
     if (result.error) throw result.error;
@@ -15052,7 +15159,13 @@ function planRawUploadVendorMatches(uploads: Record<string, unknown>[], vendors:
   return { candidates, matchable, groups };
 }
 
-async function applyPlannedRawUploadVendorMatches(supabase: ReturnType<typeof createClient>, plan: ReturnType<typeof planRawUploadVendorMatches>) {
+async function applyPlannedRawUploadVendorMatches(
+  supabase: ReturnType<typeof createClient>,
+  plan: ReturnType<typeof planRawUploadVendorMatches>,
+  ownerEmail: string | null
+) {
+  const scopedOwnerEmail = cleanText(ownerEmail)?.toLowerCase();
+  if (!scopedOwnerEmail) throw new Error("Workspace owner is required for upload vendor matching.");
   let updated = 0;
   const rows: Record<string, unknown>[] = [];
 
@@ -15061,6 +15174,7 @@ async function applyPlannedRawUploadVendorMatches(supabase: ReturnType<typeof cr
       const result = await supabase
         .from("raw_uploads")
         .update(group.patch)
+        .eq("owner_email", scopedOwnerEmail)
         .in("id", chunk)
         .is("vendor_id", null)
         .select("id,vendor_id,vendor_hint,vendor_match_source");
@@ -15140,7 +15254,13 @@ function planRateVendorMatches(rows: Record<string, unknown>[], vendors: Record<
   return { candidates, matchable, groups, unmatched_errors: unmatchedErrors, unmatched_errors_truncated: errorLimit > 0 && unmatchedErrors.length >= errorLimit };
 }
 
-async function applyPlannedRateVendorMatches(supabase: ReturnType<typeof createClient>, plan: ReturnType<typeof planRateVendorMatches>) {
+async function applyPlannedRateVendorMatches(
+  supabase: ReturnType<typeof createClient>,
+  plan: ReturnType<typeof planRateVendorMatches>,
+  ownerEmail: string | null
+) {
+  const scopedOwnerEmail = cleanText(ownerEmail)?.toLowerCase();
+  if (!scopedOwnerEmail) throw new Error("Workspace owner is required for rate vendor matching.");
   const rows: Record<string, unknown>[] = [];
   let updated = 0;
 
@@ -15149,6 +15269,7 @@ async function applyPlannedRateVendorMatches(supabase: ReturnType<typeof createC
       const result = await supabase
         .from("rate_staging")
         .update(group.patch)
+        .eq("owner_email", scopedOwnerEmail)
         .in("id", chunk)
         .select("id,status,vendor_id,vendor_domain");
       if (result.error) throw result.error;
@@ -15166,6 +15287,7 @@ async function matchRateVendorRows(supabase: ReturnType<typeof createClient>, us
   let rowQuery = supabase
     .from("rate_staging")
     .select("id,row_id,vendor_id,vendor_domain,status,raw_upload_id,rfx_id,quote_date,origin,destination,normalized_origin,normalized_destination")
+    .eq("owner_email", user.owner_email)
     .in("id", ids)
     .limit(500);
   if (status) rowQuery = rowQuery.eq("status", status);
@@ -15177,9 +15299,9 @@ async function matchRateVendorRows(supabase: ReturnType<typeof createClient>, us
   const rows = await attachUploadVendorHints(supabase, (rowsResult.data || []) as Record<string, unknown>[]);
   const uploads = rows.map((row) => row.raw_upload).filter((upload) => upload && typeof upload === "object") as Record<string, unknown>[];
   const uploadPlan = planRawUploadVendorMatches(uploads, vendors);
-  const uploadApplied = await applyPlannedRawUploadVendorMatches(supabase, uploadPlan);
+  const uploadApplied = await applyPlannedRawUploadVendorMatches(supabase, uploadPlan, user.owner_email);
   const plan = planRateVendorMatches(rows, vendors, { collectErrors: 1000 });
-  const applied = await applyPlannedRateVendorMatches(supabase, plan);
+  const applied = await applyPlannedRateVendorMatches(supabase, plan, user.owner_email);
   return {
     ...applied,
     candidates: plan.candidates,
@@ -15210,12 +15332,21 @@ async function matchRateVendorRowsByFilter(
   const sampleRows: Record<string, unknown>[] = [];
   const unmatchedErrors: Record<string, unknown>[] = [];
   let unmatchedErrorsTruncated = false;
-  const filtered = await collectRateRowIdsByFilter(supabase, filters, { maxRows, pageSize });
+  const filtered = await collectRateRowIdsByFilter(supabase, filters, {
+    maxRows,
+    pageSize,
+    ownerEmail: user.owner_email
+  });
   const ids = filtered.ids;
   const seenUploadIds = new Set<string>();
 
   for (const chunk of chunkValues(ids, pageSize)) {
-    const rawRows = await fetchRateRowsForIds(supabase, chunk, "id,row_id,vendor_id,vendor_domain,status,raw_upload_id,rfx_id,quote_date,origin,destination,normalized_origin,normalized_destination");
+    const rawRows = await fetchRateRowsForIds(
+      supabase,
+      chunk,
+      "id,row_id,vendor_id,vendor_domain,status,raw_upload_id,rfx_id,quote_date,origin,destination,normalized_origin,normalized_destination",
+      user.owner_email
+    );
     const rows = await attachUploadVendorHints(supabase, rawRows as Record<string, unknown>[]);
     const uploads = rows.map((row) => row.raw_upload).filter((upload) => upload && typeof upload === "object") as Record<string, unknown>[];
     const uploadPlan = planRawUploadVendorMatches(uploads, vendors, seenUploadIds);
@@ -15230,9 +15361,9 @@ async function matchRateVendorRowsByFilter(
     unmatchedErrorsTruncated = unmatchedErrorsTruncated || Boolean(plan.unmatched_errors_truncated);
 
     if (!options.dryRun) {
-      const uploadApplied = await applyPlannedRawUploadVendorMatches(supabase, uploadPlan);
+      const uploadApplied = await applyPlannedRawUploadVendorMatches(supabase, uploadPlan, user.owner_email);
       uploadUpdated += uploadApplied.updated;
-      const applied = await applyPlannedRateVendorMatches(supabase, plan);
+      const applied = await applyPlannedRateVendorMatches(supabase, plan, user.owner_email);
       updated += applied.updated;
       if (sampleRows.length < 100) sampleRows.push(...applied.rows.slice(0, 100 - sampleRows.length));
     }
@@ -15275,10 +15406,17 @@ async function matchRateVendorRowsByFilter(
   };
 }
 
-async function renormalizeRateRows(supabase: ReturnType<typeof createClient>, ids: string[], status: string | null = null) {
+async function renormalizeRateRows(
+  supabase: ReturnType<typeof createClient>,
+  ownerEmail: string | null,
+  ids: string[],
+  status: string | null = null
+) {
   if (!ids.length) throw new Error("At least one rate row id is required.");
+  const scopedOwnerEmail = cleanText(ownerEmail)?.toLowerCase();
+  if (!scopedOwnerEmail) throw new Error("Workspace owner is required for rate normalization.");
 
-  let rowQuery = supabase.from("rate_staging").select("*").in("id", ids).limit(500);
+  let rowQuery = supabase.from("rate_staging").select("*").eq("owner_email", scopedOwnerEmail).in("id", ids).limit(500);
   if (status) rowQuery = rowQuery.eq("status", status);
 
   const [rowsResult, catalogResult] = await Promise.all([
@@ -15311,6 +15449,7 @@ async function renormalizeRateRows(supabase: ReturnType<typeof createClient>, id
       .from("rate_staging")
       .update(patch)
       .eq("id", row.id)
+      .eq("owner_email", scopedOwnerEmail)
       .select("*, vendors(vendor_name, domain)")
       .single();
     if (result.error) throw result.error;
@@ -18174,6 +18313,11 @@ Deno.serve(async (request) => {
     }
 
     if (body.action === "archive_ratebook") {
+      requireBulkConfirmation(body, {
+        action: "archive_ratebook",
+        label: "Ratebook archive",
+        count: 1
+      });
       return jsonResponse(await updateRatebookLifecycle(supabase, user, body, "archived"));
     }
 
@@ -19586,6 +19730,8 @@ Deno.serve(async (request) => {
         .update({ status: "archived", updated_at: new Date().toISOString() })
         .eq("owner_email", user.owner_email).in("id", ids).select("id,shipper_name,status");
       if (result.error) throw result.error;
+      await tryWriteAuditLog(supabase, user, "shipper.bulk.archive", "shippers", ids.join(","),
+        `Archived ${result.data?.length || 0} shipper account(s)`, { requested: ids.length, updated: result.data?.length || 0, ids });
       return jsonResponse({ updated: result.data?.length || 0, rows: result.data || [] });
     }
 
@@ -19629,13 +19775,18 @@ Deno.serve(async (request) => {
       const shipper = await requireOwnedShipper(supabase, user, body.shipper_id);
       const recordId = cleanText(body.id);
       if (!recordId || !UUID_PATTERN.test(recordId)) return jsonResponse({ error: "A valid record id is required." }, 400);
+      requireBulkConfirmation(body, { action: "delete_shipper_record", label: "Shipper record deletion", count: 1 });
       const deletedColumns = entity === "actions" ? "id,title" : "id";
       const result = await supabase.from(config.table).delete()
         .eq("owner_email", user.owner_email).eq("shipper_id", shipper.id).eq("id", recordId).select(deletedColumns).single();
       if (result.error) throw result.error;
       if (entity === "actions") {
-        await writeAuditLog(supabase, user, "shipper_account_action_deleted", "shipper_account_action", result.data.id,
+        await tryWriteAuditLog(supabase, user, "shipper_account_action_deleted", "shipper_account_action", result.data.id,
           `Deleted account action ${cleanText(result.data.title) || result.data.id}.`, { shipper_id: shipper.id });
+      }
+      if (entity !== "actions") {
+        await tryWriteAuditLog(supabase, user, "shipper.record.delete", `shipper_${entity}`, result.data.id,
+          `Deleted ${entity} record from shipper account`, { shipper_id: shipper.id, entity });
       }
       return jsonResponse({ row: result.data });
     }
@@ -19903,6 +20054,8 @@ Deno.serve(async (request) => {
       });
       const result = await supabase.from("vendors").delete().eq("owner_email", user.owner_email).in("id", ids).select("id");
       if (result.error) throw result.error;
+      await tryWriteAuditLog(supabase, user, "vendor.bulk.remove", "vendors", ids.join(","),
+        `Removed ${result.data.length} vendor(s)`, { requested: ids.length, removed: result.data.length, ids });
       return jsonResponse({ removed: result.data.length, rows: result.data });
     }
 
@@ -20049,8 +20202,11 @@ Deno.serve(async (request) => {
 
     if (body.action === "delete_vendor_segment") {
       if (!body.id) return jsonResponse({ error: "Segment id is required." }, 400);
+      requireBulkConfirmation(body, { action: "delete_vendor_segment", label: "Vendor segment deletion", count: 1 });
       const result = await supabase.from("vendor_segments").delete().eq("owner_email", user.owner_email).eq("id", body.id).select().single();
       if (result.error) throw result.error;
+      await tryWriteAuditLog(supabase, user, "vendor.segment.delete", "vendor_segments", result.data.id,
+        `Deleted vendor segment ${cleanText(result.data.segment_name || result.data.name) || result.data.id}`);
       return jsonResponse({ row: result.data });
     }
 
@@ -20120,6 +20276,7 @@ Deno.serve(async (request) => {
     if (body.action === "archive_rfx_event") {
       const eventId = cleanText(body.id || body.event_id);
       if (!eventId) return jsonResponse({ error: "RFx event id is required." }, 400);
+      requireBulkConfirmation(body, { action: "archive_rfx_event", label: "RFx event archive", count: 1 });
       const result = await supabase
         .from("rfx_events")
         .update({ status: "archived", updated_at: new Date().toISOString() })
@@ -20128,12 +20285,15 @@ Deno.serve(async (request) => {
         .select()
         .single();
       if (result.error) throw result.error;
+      await tryWriteAuditLog(supabase, user, "rfx.event.archive", "rfx_events", result.data.id,
+        `Archived RFx event ${cleanText(result.data.rfx_id || result.data.name) || result.data.id}`);
       return jsonResponse({ row: result.data });
     }
 
     if (body.action === "delete_rfx_event") {
       const eventId = cleanText(body.id || body.event_id);
       if (!eventId) return jsonResponse({ error: "RFx event id is required." }, 400);
+      requireBulkConfirmation(body, { action: "delete_rfx_event", label: "RFx event deletion", count: 1 });
       const result = await supabase
         .from("rfx_events")
         .delete()
@@ -20142,6 +20302,8 @@ Deno.serve(async (request) => {
         .select("id,rfx_id,name")
         .single();
       if (result.error) throw result.error;
+      await tryWriteAuditLog(supabase, user, "rfx.event.delete", "rfx_events", result.data.id,
+        `Deleted RFx event ${cleanText(result.data.rfx_id || result.data.name) || result.data.id}`);
       return jsonResponse({ removed: result.data });
     }
 
@@ -20497,6 +20659,8 @@ Deno.serve(async (request) => {
         .in("id", ownedIds)
         .select("*, vendors(id,vendor_name,domain,primary_email,whatsapp_phone,preferred_channel,base_stage,status)");
       if (result.error) throw result.error;
+      await tryWriteAuditLog(supabase, user, "rfx.participants.invite", "rfx_lane_vendors", ownedIds.join(","),
+        `Marked ${result.data?.length || 0} RFx participant(s) invited`, { requested: ids.length, updated: result.data?.length || 0, ids: ownedIds });
       return jsonResponse({ updated: result.data?.length || 0, rows: result.data || [] });
     }
 
@@ -20650,6 +20814,8 @@ Deno.serve(async (request) => {
         .in("id", ownedIds)
         .select("id");
       if (result.error) throw result.error;
+      await tryWriteAuditLog(supabase, user, "rfx.participants.archive", "rfx_lane_vendors", ownedIds.join(","),
+        `Archived ${result.data?.length || 0} RFx participant(s)`, { requested: ids.length, updated: result.data?.length || 0, ids: ownedIds });
       return jsonResponse({ updated: result.data?.length || 0, rows: result.data || [] });
     }
 
@@ -20732,6 +20898,7 @@ Deno.serve(async (request) => {
     if (body.action === "archive_outreach_template") {
       const id = cleanText(body.id || body.template_id);
       if (!id) return jsonResponse({ error: "Template id is required." }, 400);
+      requireBulkConfirmation(body, { action: "archive_outreach_template", label: "Outreach template archive", count: 1 });
       const result = await supabase
         .from("outreach_templates")
         .update({ active: false, updated_at: new Date().toISOString() })
@@ -20740,12 +20907,15 @@ Deno.serve(async (request) => {
         .select()
         .single();
       if (result.error) throw result.error;
+      await tryWriteAuditLog(supabase, user, "outreach.template.archive", "outreach_templates", result.data.id,
+        `Archived outreach template ${cleanText(result.data.name) || result.data.id}`);
       return jsonResponse({ row: result.data });
     }
 
     if (body.action === "delete_outreach_template") {
       const id = cleanText(body.id || body.template_id);
       if (!id) return jsonResponse({ error: "Template id is required." }, 400);
+      requireBulkConfirmation(body, { action: "delete_outreach_template", label: "Outreach template deletion", count: 1 });
       const result = await supabase
         .from("outreach_templates")
         .delete()
@@ -20754,6 +20924,8 @@ Deno.serve(async (request) => {
         .select("id,name")
         .single();
       if (result.error) throw result.error;
+      await tryWriteAuditLog(supabase, user, "outreach.template.delete", "outreach_templates", result.data.id,
+        `Deleted outreach template ${cleanText(result.data.name) || result.data.id}`);
       return jsonResponse({ removed: result.data });
     }
 
@@ -20864,6 +21036,7 @@ Deno.serve(async (request) => {
     if (body.action === "archive_outreach_campaign") {
       const campaignId = cleanText(body.id || body.campaign_id);
       if (!campaignId) return jsonResponse({ error: "Campaign id is required." }, 400);
+      requireBulkConfirmation(body, { action: "archive_outreach_campaign", label: "Outreach campaign archive", count: 1 });
       const result = await supabase
         .from("outreach_campaigns")
         .update({ status: "archived", updated_at: new Date().toISOString() })
@@ -20872,12 +21045,15 @@ Deno.serve(async (request) => {
         .select()
         .single();
       if (result.error) throw result.error;
+      await tryWriteAuditLog(supabase, user, "outreach.campaign.archive", "outreach_campaigns", result.data.id,
+        `Archived outreach campaign ${cleanText(result.data.name) || result.data.id}`);
       return jsonResponse({ row: result.data });
     }
 
     if (body.action === "delete_outreach_campaign") {
       const campaignId = cleanText(body.id || body.campaign_id);
       if (!campaignId) return jsonResponse({ error: "Campaign id is required." }, 400);
+      requireBulkConfirmation(body, { action: "delete_outreach_campaign", label: "Outreach campaign deletion", count: 1 });
       const result = await supabase
         .from("outreach_campaigns")
         .delete()
@@ -20886,6 +21062,8 @@ Deno.serve(async (request) => {
         .select("id,name")
         .single();
       if (result.error) throw result.error;
+      await tryWriteAuditLog(supabase, user, "outreach.campaign.delete", "outreach_campaigns", result.data.id,
+        `Deleted outreach campaign ${cleanText(result.data.name) || result.data.id}`);
       return jsonResponse({ removed: result.data });
     }
 
@@ -21559,7 +21737,7 @@ Deno.serve(async (request) => {
         .in("id", ids)
         .select("id,campaign_id,rfx_event_id,vendor_id,channel,recipient_email,recipient_phone,status");
       if (result.error) throw result.error;
-      await writeAuditLog(
+      await tryWriteAuditLog(
         supabase,
         user,
         "outreach.messages.delete",
@@ -21968,6 +22146,7 @@ Deno.serve(async (request) => {
     if (body.action === "archive_catalog_value") {
       const id = cleanText(body.id);
       if (!id) return jsonResponse({ error: "Catalog value id is required." }, 400);
+      requireBulkConfirmation(body, { action: "archive_catalog_value", label: "Catalog value archive", count: 1 });
       const current = await supabase
         .from("rateware_catalog_items")
         .select("id,source,category,raw_value,normalized_value,metadata,active")
@@ -22075,6 +22254,7 @@ Deno.serve(async (request) => {
     if (body.action === "archive_location_catalog_value") {
       const id = cleanText(body.id);
       if (!id) return jsonResponse({ error: "Location catalog id is required." }, 400);
+      requireBulkConfirmation(body, { action: "archive_location_catalog_value", label: "Location catalog archive", count: 1 });
       const current = await supabase
         .from("rateware_locations")
         .select("id,source,raw_value,metadata,active")
@@ -22639,10 +22819,12 @@ Deno.serve(async (request) => {
     }
 
     if (body.action === "archive_interpretation_memory") {
-      const ids = Array.isArray(body.ids)
-        ? body.ids.map(String).filter(Boolean).slice(0, 250)
-        : ([cleanText(body.id)].filter(Boolean) as string[]);
+      const ids = normalizeBulkIds(Array.isArray(body.ids) ? body.ids : [body.id], {
+        label: "Interpretation memory ids",
+        limit: 250
+      });
       if (!ids.length) return jsonResponse({ updated: 0, rows: [] });
+      requireBulkConfirmation(body, { action: "archive_interpretation_memory", label: "Interpretation memory archive", count: ids.length });
       const result = await supabase
         .from("interpretation_memory")
         .update({ active: false, updated_at: new Date().toISOString() })
@@ -22650,7 +22832,7 @@ Deno.serve(async (request) => {
         .in("id", ids)
         .select();
       if (result.error) throw result.error;
-      await writeAuditLog(supabase, user, "archive", "interpretation_memory", ids.join(","), `Archived ${result.data?.length || 0} interpretation memory rule(s)`, {
+      await tryWriteAuditLog(supabase, user, "archive", "interpretation_memory", ids.join(","), `Archived ${result.data?.length || 0} interpretation memory rule(s)`, {
         ids,
         archived_count: result.data?.length || 0
       });
@@ -22659,13 +22841,17 @@ Deno.serve(async (request) => {
 
     if (body.action === "archive_upload") {
       if (!body.id) return jsonResponse({ error: "Upload id is required." }, 400);
+      requireBulkConfirmation(body, { action: "archive_upload", label: "Upload archive", count: 1 });
       const result = await supabase
         .from("raw_uploads")
         .update({ status: "archived" })
         .eq("id", body.id)
+        .eq("owner_email", user.owner_email)
         .select("*, vendors(vendor_name, domain)")
         .single();
       if (result.error) throw result.error;
+      await tryWriteAuditLog(supabase, user, "upload.archive", "raw_uploads", result.data.id,
+        `Archived upload ${cleanText(result.data.original_filename) || result.data.id}`);
       return jsonResponse({ row: result.data });
     }
 
@@ -22675,6 +22861,7 @@ Deno.serve(async (request) => {
         .from("raw_uploads")
         .select("id,original_filename,storage_bucket,storage_path,mime_type")
         .eq("id", body.id)
+        .eq("owner_email", user.owner_email)
         .single();
       if (upload.error) throw upload.error;
       if (!upload.data?.storage_bucket || !upload.data?.storage_path) {
@@ -22697,10 +22884,12 @@ Deno.serve(async (request) => {
 
     if (body.action === "remove_upload") {
       if (!body.id) return jsonResponse({ error: "Upload id is required." }, 400);
+      requireBulkConfirmation(body, { action: "remove_upload", label: "Upload removal", count: 1 });
       const upload = await supabase
         .from("raw_uploads")
-        .select("id,storage_bucket,storage_path")
+        .select("id,original_filename,storage_bucket,storage_path")
         .eq("id", body.id)
+        .eq("owner_email", user.owner_email)
         .single();
       if (upload.error) throw upload.error;
 
@@ -22709,8 +22898,10 @@ Deno.serve(async (request) => {
         if (storage.error) throw storage.error;
       }
 
-      const result = await supabase.from("raw_uploads").delete().eq("id", body.id).select("id").single();
+      const result = await supabase.from("raw_uploads").delete().eq("id", body.id).eq("owner_email", user.owner_email).select("id").single();
       if (result.error) throw result.error;
+      await tryWriteAuditLog(supabase, user, "upload.remove", "raw_uploads", result.data.id,
+        `Removed upload ${cleanText(upload.data.original_filename) || result.data.id}`, { storage_removed: Boolean(upload.data.storage_path) });
       return jsonResponse({ removed: result.data });
     }
 
@@ -22731,8 +22922,12 @@ Deno.serve(async (request) => {
       };
 
       if (usesGlobalFilters && !canUseSqlRateFilters(filterPayload)) {
-        const filtered = await fetchRateRowIdsByFilter(supabase, filterPayload, { limit, offset });
-        const rows = await fetchRateRowsForIds(supabase, filtered.ids, RATE_ROW_LIST_SELECT);
+        const filtered = await fetchRateRowIdsByFilter(supabase, filterPayload, {
+          limit,
+          offset,
+          ownerEmail: user.owner_email
+        });
+        const rows = await fetchRateRowsForIds(supabase, filtered.ids, RATE_ROW_LIST_SELECT, user.owner_email);
 
         return jsonResponse({
           rows,
@@ -22748,6 +22943,7 @@ Deno.serve(async (request) => {
       let query = supabase
         .from("rate_staging")
         .select(RATE_ROW_LIST_SELECT, { count: "exact" })
+        .eq("owner_email", user.owner_email)
         .order("created_at", { ascending: false })
         .order("id", { ascending: false })
         .range(offset, offset + limit - 1);
@@ -22805,8 +23001,12 @@ Deno.serve(async (request) => {
 
       if (usesGlobalFilters) {
         try {
-          const filtered = await fetchRateRowIdsByFilter(supabase, filterPayload, { limit, offset });
-          const rows = await fetchRateRowsForIds(supabase, filtered.ids, RATE_ROW_LIST_SELECT);
+          const filtered = await fetchRateRowIdsByFilter(supabase, filterPayload, {
+            limit,
+            offset,
+            ownerEmail: user.owner_email
+          });
+          const rows = await fetchRateRowsForIds(supabase, filtered.ids, RATE_ROW_LIST_SELECT, user.owner_email);
 
           return jsonResponse({
             rows,
@@ -22822,13 +23022,13 @@ Deno.serve(async (request) => {
             message: error instanceof Error ? error.message : String(error)
           });
           if (canUseSqlRateFilters(filterPayload)) {
-            return jsonResponse(await fetchRatewareRowsBySql(supabase, filterPayload, limit, offset));
+            return jsonResponse(await fetchRatewareRowsBySql(supabase, filterPayload, limit, offset, user.owner_email));
           }
           throw error;
         }
       }
 
-      return jsonResponse(await fetchRatewareRowsBySql(supabase, filterPayload, limit, offset));
+      return jsonResponse(await fetchRatewareRowsBySql(supabase, filterPayload, limit, offset, user.owner_email));
     }
 
     if (body.action === "list_rateware_filter_values") {
@@ -22883,6 +23083,7 @@ Deno.serve(async (request) => {
         .from("rate_staging")
         .select(RATE_ROW_RESPONSE_WITH_LEGS_SELECT)
         .eq("id", rateId)
+        .eq("owner_email", user.owner_email)
         .single();
       const status = cleanText(body.status);
       if (status) query = query.eq("status", status);
@@ -22906,6 +23107,7 @@ Deno.serve(async (request) => {
       const currentResult = await supabase
         .from("rate_staging")
         .select("id,trailer,hazmat,temperature_controlled,status,vendor_id,vendor_domain")
+        .eq("owner_email", user.owner_email)
         .in("id", ids)
         .eq("status", "approved")
         .limit(500);
@@ -22922,6 +23124,7 @@ Deno.serve(async (request) => {
           .from("rate_staging")
           .update(patch)
           .eq("id", current.id)
+          .eq("owner_email", user.owner_email)
           .eq("status", "approved")
           .select("*, vendors(vendor_name, domain, primary_email, base_stage, status)")
           .single();
@@ -22930,7 +23133,7 @@ Deno.serve(async (request) => {
       }
 
       if (updatedRows.length) {
-        await writeAuditLog(supabase, user, "rateware.bulk_update", "rate_staging", updatedRows.map((row) => row.id).join(","), `Bulk updated ${updatedRows.length} approved Rateware row(s)`, {
+        await tryWriteAuditLog(supabase, user, "rateware.bulk_update", "rate_staging", updatedRows.map((row) => row.id).join(","), `Bulk updated ${updatedRows.length} approved Rateware row(s)`, {
           ids: updatedRows.map((row) => row.id),
           changed_fields: Object.keys(body.patch || {})
         });
@@ -22975,6 +23178,7 @@ Deno.serve(async (request) => {
         let query = supabase
           .from("rate_staging")
           .select("*, vendors(vendor_name, domain, primary_email, base_stage, status)")
+          .eq("owner_email", user.owner_email)
           .eq("status", "approved")
           .order("quote_date", { ascending: false, nullsFirst: false })
           .order("created_at", { ascending: false })
@@ -22984,12 +23188,22 @@ Deno.serve(async (request) => {
         if (rowsResult.error) throw rowsResult.error;
         rows = rowsResult.data || [];
       } else if (Object.keys(filters).length) {
-        const filtered = await fetchRateRowIdsByFilter(supabase, { ...filters, mode: "rateware" }, { limit: 50000 });
-        rows = await fetchRateRowsForIds(supabase, filtered.ids, "*, vendors(vendor_name, domain, primary_email, base_stage, status)");
+        const filtered = await fetchRateRowIdsByFilter(
+          supabase,
+          { ...filters, mode: "rateware" },
+          { limit: 50000, ownerEmail: user.owner_email }
+        );
+        rows = await fetchRateRowsForIds(
+          supabase,
+          filtered.ids,
+          "*, vendors(vendor_name, domain, primary_email, base_stage, status)",
+          user.owner_email
+        );
       } else {
         const rowsResult = await supabase
           .from("rate_staging")
           .select("*, vendors(vendor_name, domain, primary_email, base_stage, status)")
+          .eq("owner_email", user.owner_email)
           .eq("status", "approved")
           .order("quote_date", { ascending: false, nullsFirst: false })
           .order("created_at", { ascending: false })
@@ -23026,15 +23240,21 @@ Deno.serve(async (request) => {
 
     if (body.action === "renormalize_rate_rows") {
       const ids = normalizeBulkIds(body.ids, { label: "Rate row ids", limit: BULK_SELECTED_ID_LIMIT });
+      requireBulkConfirmation(body, { action: "renormalize_rate_rows", label: "Rate row normalization", count: ids.length });
       const status = cleanText(body.status);
-      const rows = await renormalizeRateRows(supabase, ids, status);
+      const rows = await renormalizeRateRows(supabase, user.owner_email, ids, status);
+      await tryWriteAuditLog(supabase, user, "rateware.bulk_renormalize", "rate_staging", ids.slice(0, 50).join(","),
+        `Renormalized ${rows.length} rate row(s)`, { requested: ids.length, affected: rows.length });
       return jsonResponse({ updated: rows.length, rows });
     }
 
     if (body.action === "match_rate_vendors") {
       const ids = normalizeBulkIds(body.ids, { label: "Rate row ids", limit: BULK_SELECTED_ID_LIMIT });
+      requireBulkConfirmation(body, { action: "match_rate_vendors", label: "Rate vendor match", count: ids.length });
       const status = cleanText(body.status);
       const result = await matchRateVendorRows(supabase, user, ids, status);
+      await tryWriteAuditLog(supabase, user, "rateware.bulk_match_vendors", "rate_staging", ids.slice(0, 50).join(","),
+        `Matched vendors on ${result.updated || 0} rate row(s)`, { requested: ids.length, affected: result.updated || 0 });
       return jsonResponse(result);
     }
 
@@ -23044,13 +23264,13 @@ Deno.serve(async (request) => {
       const maxRows = normalizeBulkMaxRows(body.max_rows);
       const mode = cleanText(filters.mode) === "rateware" ? "rateware" : "staging";
       if (!dryRun) {
-        const preview = await fetchRateRowIdsByFilter(supabase, filters, { limit: 1 });
+        const preview = await fetchRateRowIdsByFilter(supabase, filters, { limit: 1, ownerEmail: user.owner_email });
         requirePreviewCountForFilteredBulk(body, preview.database_count || 0, `${mode} filtered vendor match`);
       }
       const result = await matchRateVendorRowsByFilter(supabase, user, filters, { dryRun, maxRows });
 
       if (!dryRun && result.updated) {
-        await writeAuditLog(
+        await tryWriteAuditLog(
           supabase,
           user,
           `${mode}.bulk_match_vendors_filtered`,
@@ -23073,8 +23293,11 @@ Deno.serve(async (request) => {
 
     if (body.action === "enrich_missing_location_zips") {
       const ids = normalizeBulkIds(body.ids, { label: "Rate row ids", limit: 250 });
+      requireBulkConfirmation(body, { action: "enrich_missing_location_zips", label: "Location ZIP enrichment", count: ids.length });
       const status = cleanText(body.status);
-      const result = await enrichMissingLocationZips(supabase, ids, status);
+      const result = await enrichMissingLocationZips(supabase, user.owner_email, ids, status);
+      await tryWriteAuditLog(supabase, user, "rateware.bulk_enrich_locations", "rate_staging", ids.slice(0, 50).join(","),
+        `Enriched locations on ${result.rows.length} rate row(s)`, { requested: ids.length, affected: result.rows.length, enriched_fields: result.enriched });
       return jsonResponse({ updated: result.rows.length, enriched: result.enriched, rows: result.rows });
     }
 
@@ -23084,6 +23307,7 @@ Deno.serve(async (request) => {
         .from("rate_staging")
         .select("trailer,hazmat,temperature_controlled,status,vendor_id,vendor_domain")
         .eq("id", body.id)
+        .eq("owner_email", user.owner_email)
         .eq("status", "approved")
         .single();
       if (currentResult.error) throw currentResult.error;
@@ -23097,11 +23321,12 @@ Deno.serve(async (request) => {
         .from("rate_staging")
         .update(patch)
         .eq("id", body.id)
+        .eq("owner_email", user.owner_email)
         .eq("status", "approved")
         .select("*, vendors(vendor_name, domain, primary_email, base_stage, status)")
         .single();
       if (result.error) throw result.error;
-      await writeAuditLog(supabase, user, "rateware.update", "rate_staging", body.id, "Updated approved Rateware row", {
+      await tryWriteAuditLog(supabase, user, "rateware.update", "rate_staging", body.id, "Updated approved Rateware row", {
         changed_fields: Object.keys(patch)
       });
       return jsonResponse({ row: result.data });
@@ -23121,6 +23346,7 @@ Deno.serve(async (request) => {
       const currentResult = await supabase
         .from("rate_staging")
         .select("id,notes")
+        .eq("owner_email", user.owner_email)
         .in("id", ids)
         .eq("status", "approved");
       if (currentResult.error) throw currentResult.error;
@@ -23132,6 +23358,7 @@ Deno.serve(async (request) => {
           .from("rate_staging")
           .update({ status: "pending_review", notes })
           .eq("id", current.id)
+          .eq("owner_email", user.owner_email)
           .eq("status", "approved")
           .select("id");
         if (result.error) throw result.error;
@@ -23139,7 +23366,7 @@ Deno.serve(async (request) => {
       }
 
       if (updatedRows.length) {
-        await writeAuditLog(supabase, user, "rateware.return_to_staging", "rate_staging", updatedRows.map((row) => row.id).join(","), `Returned ${updatedRows.length} approved Rateware row(s) to staging`, {
+        await tryWriteAuditLog(supabase, user, "rateware.return_to_staging", "rate_staging", updatedRows.map((row) => row.id).join(","), `Returned ${updatedRows.length} approved Rateware row(s) to staging`, {
           ids: updatedRows.map((row) => row.id),
           reason
         });
@@ -23160,12 +23387,12 @@ Deno.serve(async (request) => {
         exclude_archived: targetAction === "archive"
       };
       if (!dryRun) {
-        const preview = await fetchRateRowIdsByFilter(supabase, actionFilters, { limit: 1 });
+        const preview = await fetchRateRowIdsByFilter(supabase, actionFilters, { limit: 1, ownerEmail: user.owner_email });
         requirePreviewCountForFilteredBulk(body, preview.database_count || 0, `${targetAction} filtered rate rows`);
       }
       const filtered = dryRun
-        ? await fetchRateRowIdsByFilter(supabase, actionFilters, { limit: 1 })
-        : await collectRateRowIdsByFilter(supabase, actionFilters, { maxRows });
+        ? await fetchRateRowIdsByFilter(supabase, actionFilters, { limit: 1, ownerEmail: user.owner_email })
+        : await collectRateRowIdsByFilter(supabase, actionFilters, { maxRows, ownerEmail: user.owner_email });
       const ids = filtered.ids;
       if (dryRun) {
         return jsonResponse({
@@ -23189,14 +23416,14 @@ Deno.serve(async (request) => {
       let affected = 0;
       for (const chunk of chunkValues(ids, 500)) {
         const result = targetAction === "archive"
-          ? await supabase.from("rate_staging").update({ status: "archived" }).in("id", chunk).select("id")
-          : await supabase.from("rate_staging").delete().in("id", chunk).select("id");
+          ? await supabase.from("rate_staging").update({ status: "archived" }).eq("owner_email", user.owner_email).in("id", chunk).select("id")
+          : await supabase.from("rate_staging").delete().eq("owner_email", user.owner_email).in("id", chunk).select("id");
         if (result.error) throw result.error;
         affected += result.data?.length || 0;
       }
 
       const mode = cleanText(filters.mode) === "rateware" ? "rateware" : "staging";
-      await writeAuditLog(
+      await tryWriteAuditLog(
         supabase,
         user,
         `${mode}.bulk_${targetAction}_filtered`,
@@ -23234,12 +23461,12 @@ Deno.serve(async (request) => {
       }
 
       if (!dryRun) {
-        const preview = await fetchRateRowIdsByFilter(supabase, filters, { limit: 1 });
+        const preview = await fetchRateRowIdsByFilter(supabase, filters, { limit: 1, ownerEmail: user.owner_email });
         requirePreviewCountForFilteredBulk(body, preview.database_count || 0, `${mode} filtered rate update`);
       }
       const filtered = dryRun
-        ? await fetchRateRowIdsByFilter(supabase, filters, { limit: 1 })
-        : await collectRateRowIdsByFilter(supabase, filters, { maxRows });
+        ? await fetchRateRowIdsByFilter(supabase, filters, { limit: 1, ownerEmail: user.owner_email })
+        : await collectRateRowIdsByFilter(supabase, filters, { maxRows, ownerEmail: user.owner_email });
       const ids = filtered.ids;
       if (dryRun) {
         return jsonResponse({
@@ -23264,7 +23491,7 @@ Deno.serve(async (request) => {
       const updatedRows: Record<string, unknown>[] = [];
 
       if (requiresRowSpecificPatch) {
-        const currentRows = await fetchRateRowsForIds(supabase, ids, BULK_RATE_ROW_SELECT);
+        const currentRows = await fetchRateRowsForIds(supabase, ids, BULK_RATE_ROW_SELECT, user.owner_email);
         for (const current of currentRows) {
           const patch = normalizeStagingPatch(patchInput, current || {});
           Object.assign(patch, await vendorLinkPatch(supabase, user, patchInput, current || {}));
@@ -23275,6 +23502,7 @@ Deno.serve(async (request) => {
             .from("rate_staging")
             .update(patch)
             .eq("id", current.id)
+            .eq("owner_email", user.owner_email)
             .select("id,status")
             .single();
           if (result.error) throw result.error;
@@ -23289,6 +23517,7 @@ Deno.serve(async (request) => {
           const result = await supabase
             .from("rate_staging")
             .update(patch)
+            .eq("owner_email", user.owner_email)
             .in("id", chunk)
             .select("id,status");
           if (result.error) throw result.error;
@@ -23296,7 +23525,7 @@ Deno.serve(async (request) => {
         }
       }
 
-      await writeAuditLog(
+      await tryWriteAuditLog(
         supabase,
         user,
         `${mode}.bulk_update_filtered`,
@@ -23335,9 +23564,12 @@ Deno.serve(async (request) => {
       const result = await supabase
         .from("rate_staging")
         .update({ status: "archived" })
+        .eq("owner_email", user.owner_email)
         .in("id", ids)
         .select("id");
       if (result.error) throw result.error;
+      await tryWriteAuditLog(supabase, user, "staging.archive", "rate_staging", ids.slice(0, 50).join(","),
+        `Archived ${result.data?.length || 0} staging row(s)`, { requested: ids.length, affected: result.data?.length || 0 });
       return jsonResponse({ updated: result.data?.length || 0, rows: result.data || [] });
     }
 
@@ -23353,9 +23585,12 @@ Deno.serve(async (request) => {
       const result = await supabase
         .from("rate_staging")
         .delete()
+        .eq("owner_email", user.owner_email)
         .in("id", ids)
         .select("id");
       if (result.error) throw result.error;
+      await tryWriteAuditLog(supabase, user, "staging.remove", "rate_staging", ids.slice(0, 50).join(","),
+        `Removed ${result.data?.length || 0} staging row(s)`, { requested: ids.length, affected: result.data?.length || 0 });
       return jsonResponse({ removed: result.data?.length || 0, rows: result.data || [] });
     }
 
@@ -23471,6 +23706,7 @@ Deno.serve(async (request) => {
         .from("rate_staging")
         .select("trailer,hazmat,temperature_controlled,vendor_id,vendor_domain,status")
         .eq("id", body.id)
+        .eq("owner_email", user.owner_email)
         .single();
       if (currentResult.error) throw currentResult.error;
 
@@ -23482,13 +23718,14 @@ Deno.serve(async (request) => {
         .from("rate_staging")
         .update(patch)
         .eq("id", body.id)
+        .eq("owner_email", user.owner_email)
         .select("*, vendors(vendor_name, domain, primary_email, base_stage, status)")
         .single();
       if (result.error) throw result.error;
       const priorStatus = cleanText(currentResult.data?.status);
       const nextStatus = cleanText(result.data?.status);
       if (priorStatus !== nextStatus || nextStatus === "approved") {
-        await writeAuditLog(
+        await tryWriteAuditLog(
           supabase,
           user,
           nextStatus === "approved" ? "rateware.approve" : "staging.status_update",
@@ -23546,7 +23783,7 @@ Deno.serve(async (request) => {
       try {
         const failedAction = failedApiAction === "generate_outreach_drafts" ? "outreach_queue.error" : "api.error";
         const failedEntityType = failedAction === "outreach_queue.error" ? "outreach_queue" : "rateware_api";
-        await writeAuditLog(
+      await tryWriteAuditLog(
           supabase,
           user,
           failedAction,

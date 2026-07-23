@@ -2323,7 +2323,12 @@ Deno.serve(async (request) => {
   if (job.error) return jsonResponse({ error: job.error.message }, 500);
 
   try {
-    const uploadResult = await supabase.from("raw_uploads").select("*").eq("id", raw_upload_id).single();
+    const uploadResult = await supabase
+      .from("raw_uploads")
+      .select("*")
+      .eq("id", raw_upload_id)
+      .eq("owner_email", user.owner_email)
+      .single();
     if (uploadResult.error) throw uploadResult.error;
 
     const rawUpload = uploadResult.data;
@@ -2375,7 +2380,7 @@ Deno.serve(async (request) => {
       .filter((row: Record<string, unknown>) => isCarrierRateRow(row))
       .map((row: Record<string, unknown>) => normalizeRow(row, rawUpload, job.data.id, vendorId, vendorDomain, forceVendorDomain)), catalogItems, laneMileage, locations, fuelRegions, fscTrend);
     const normalizedRows = (await enrichRowsWithExternalPostalPrefixes(catalogNormalizedRows, locations))
-      .map((row) => addRowAudit(row, rawUpload));
+      .map((row) => ({ ...addRowAudit(row, rawUpload), owner_email: user.owner_email }));
     const rows = mergeConnectedD2DAllInRows(normalizedRows, [
       rawUpload.original_filename,
       rawUpload.vendor_hint,

@@ -45,11 +45,11 @@ export async function createShipper(shipper) {
 }
 
 export async function importShippers(rows) {
-  return await callRatewareApi("import_shippers", { rows, confirmed: true });
+  return await callRatewareApi("import_shippers", { rows, confirmed: true, confirmation_action: "import_shippers" });
 }
 
 export async function importShipperCrmWorkbook(workbook) {
-  return await callRatewareApi("import_shipper_crm_workbook", { ...workbook, confirmed: true });
+  return await callRatewareApi("import_shipper_crm_workbook", { ...workbook, confirmed: true, confirmation_action: "import_shipper_crm_workbook" });
 }
 
 export async function fetchShipperDuplicates() {
@@ -60,7 +60,8 @@ export async function mergeShipperAccounts(primaryShipperId, duplicateShipperId)
   return await callRatewareApi("merge_shipper_accounts", {
     primary_shipper_id: primaryShipperId,
     duplicate_shipper_id: duplicateShipperId,
-    confirmed: true
+    confirmed: true,
+    confirmation_action: "merge_shipper_accounts"
   });
 }
 
@@ -88,7 +89,7 @@ export async function launchShipperOpportunityRfx(id) {
 }
 
 export async function archiveShippers(ids) {
-  return await callRatewareApi("archive_shippers", { ids, confirmed: true });
+  return await callRatewareApi("archive_shippers", { ids, confirmed: true, confirmation_action: "archive_shippers" });
 }
 
 export async function saveShipperRecord(entity, shipperId, row, id = null) {
@@ -104,7 +105,9 @@ export async function deleteShipperRecord(entity, shipperId, id) {
   return (await callRatewareApi("delete_shipper_record", {
     entity,
     shipper_id: shipperId,
-    id
+    id,
+    confirmed: true,
+    confirmation_action: "delete_shipper_record"
   })).row;
 }
 

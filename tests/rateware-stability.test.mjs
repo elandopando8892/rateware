@@ -117,6 +117,7 @@ const outreachDeliveryIdempotencyMigration = readFileSync(new URL("../supabase/m
 const outreachDeliveryTraceMigration = readFileSync(new URL("../supabase/migrations/20260723002150_outreach_delivery_trace.sql", import.meta.url), "utf8");
 const whatsappWebhookSource = readFileSync(new URL("../supabase/functions/whatsapp-webhook/index.ts", import.meta.url), "utf8");
 const whatsappWebhookRoutingMigration = readFileSync(new URL("../supabase/migrations/20260723005859_whatsapp_webhook_routing_indexes.sql", import.meta.url), "utf8");
+const workspaceRateScopeMigration = readFileSync(new URL("../supabase/migrations/20260722120000_scope_uploads_and_rates_by_workspace.sql", import.meta.url), "utf8");
 const rfxInvitationTableSource = rfxEventsSource.slice(rfxEventsSource.indexOf("function laneTableLabels"), rfxEventsSource.indexOf("function firstOutreachTarget"));
 const apiInvitationTableSource = apiSource.slice(apiSource.indexOf("function outreachLaneTableLabels"), apiSource.indexOf("function phoneForWhatsapp"));
 const marksmanSignatureAsset = new URL("../assets/marksman-email-signature.png", import.meta.url);
@@ -2315,5 +2316,29 @@ assert.match(outreachSource, /loadVersion !== outreachMessagesLoadVersion \|\| s
 assert.match(outreachSource, /if \(outreachMessageMutationRunning\) return;/, "Outreach bulk message updates should reject duplicate submissions while running");
 assert.match(apiSource, /mapWithConcurrency\(chunkValues\(cleanEmails, 75\), 4/, "Outreach suppression checks should batch large recipient lists with bounded concurrency");
 assert.match(apiSource, /\.in\("email", emailBatch\)/, "Outreach suppression checks should query each bounded recipient batch");
+
+assert.match(apiSource, /const BULK_SELECTED_ID_LIMIT = 1000;/, "Selected-row mutations should have a bounded request limit");
+assert.match(apiSource, /const BULK_SEND_LIMIT = 100;/, "Provider sends should use a smaller bounded request limit");
+assert.match(apiSource, /const BULK_FILTER_CONFIRM_THRESHOLD = 250;/, "Large filtered mutations should require reviewed preview confirmation");
+assert.match(apiSource, /return explicitlyConfirmed && Boolean\(actionKey\) && actionText === actionKey\.toLowerCase\(\);/, "Bulk confirmations should be bound to the exact requested action");
+assert.match(apiSource, /requires a fresh dry-run preview count before applying changes/, "Large full-dataset actions should require a fresh database preview");
+assert.match(apiSource, /A completed destructive\/provider action must not look failed and become unsafe to retry/, "Audit failures should not make completed destructive or provider actions retryable");
+assert.match(apiSource, /outreach\.gmail\.bulk_send/, "Gmail bulk sends should be audited separately");
+assert.match(apiSource, /outreach\.whatsapp\.bulk_send/, "WhatsApp bulk sends should be audited separately");
+assert.match(apiSource, /outreach\.whatsapp_group\.bulk_send/, "Manual WhatsApp group sends should be audited separately");
+assert.match(workspaceRateScopeMigration, /add column if not exists owner_email text/, "Uploads and staged rates should persist workspace ownership");
+assert.match(workspaceRateScopeMigration, /lower\(trim\(rs\.owner_email\)\) = lower\(trim\(p_owner_email\)\)/, "Filtered rate mutations should resolve ids only within the active workspace");
+assert.match(workspaceRateScopeMigration, /revoke all on function public\.rateware_filtered_rate_ids[\s\S]*from public, anon, authenticated/, "The filtered mutation RPC should not be callable by browser roles");
+assert.match(workspaceRateScopeMigration, /grant execute on function public\.rateware_filtered_rate_ids[\s\S]*to service_role/, "The filtered mutation RPC should remain available to the trusted API only");
+for (const [source, action] of [
+  [outreachServiceSource, "send_outreach_messages"],
+  [outreachServiceSource, "send_whatsapp_outreach_messages"],
+  [outreachServiceSource, "delete_outreach_messages"],
+  [vendorServiceSource, "remove_vendors"],
+  [stagingServiceSource, "remove_staging"],
+  [ratewareServiceSource, "return_rateware_to_staging"]
+]) {
+  assert.match(source, new RegExp(`confirmed: true,[\\s\\S]{0,120}confirmation_action: "${action}"`), `${action} should send an action-bound confirmation`);
+}
 
 console.log("Rateware stability guards passed.");

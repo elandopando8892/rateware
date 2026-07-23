@@ -13,11 +13,11 @@ export async function updateRfxEvent(id, patch) {
 }
 
 export async function archiveRfxEvent(id) {
-  return (await callRatewareApi("archive_rfx_event", { id })).row;
+  return (await callRatewareApi("archive_rfx_event", { id, confirmed: true, confirmation_action: "archive_rfx_event" })).row;
 }
 
 export async function deleteRfxEvent(id) {
-  return (await callRatewareApi("delete_rfx_event", { id })).removed;
+  return (await callRatewareApi("delete_rfx_event", { id, confirmed: true, confirmation_action: "delete_rfx_event" })).removed;
 }
 
 export async function duplicateRfxEvent(id) {
@@ -45,7 +45,7 @@ export async function shortlistRfxLaneVendors(laneId, vendorIds = []) {
 }
 
 export async function inviteRfxLaneVendors(ids = []) {
-  return await callRatewareApi("invite_rfx_lane_vendors", { ids, confirmed: true });
+  return await callRatewareApi("invite_rfx_lane_vendors", { ids, confirmed: true, confirmation_action: "invite_rfx_lane_vendors" });
 }
 
 export async function updateRfxBid(id, patch) {
@@ -78,7 +78,7 @@ export async function applyBidUpdateFromChat(payload = {}) {
 }
 
 export async function archiveRfxLaneVendors(ids = []) {
-  return await callRatewareApi("archive_rfx_lane_vendors", { ids, confirmed: true });
+  return await callRatewareApi("archive_rfx_lane_vendors", { ids, confirmed: true, confirmation_action: "archive_rfx_lane_vendors" });
 }
 
 export async function fetchBidRoomChat(eventId, filters = {}) {
