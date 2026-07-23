@@ -414,3 +414,9 @@ s3_secret_key = "env(S3_SECRET_KEY)"
 
 [functions.shipper-profile-api]
 verify_jwt = false
+
+# Rateware uses Kinde RS256 access tokens. The Edge gateway only understands
+# Supabase-issued JWTs, so authentication is performed inside rateware-api by
+# requireKindeUser against Kinde's issuer and remote JWKS.
+[functions.rateware-api]
+verify_jwt = false

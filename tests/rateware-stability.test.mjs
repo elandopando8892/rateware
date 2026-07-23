@@ -58,6 +58,7 @@ const integrationSmokeSource = readFileSync(new URL("../tools/integration-smoke.
 const whatsappEnvCheckSource = readFileSync(new URL("../tools/whatsapp-env-check.mjs", import.meta.url), "utf8");
 const packageJsonSource = readFileSync(new URL("../package.json", import.meta.url), "utf8");
 const readmeSource = readFileSync(new URL("../README.md", import.meta.url), "utf8");
+const supabaseConfigSource = readFileSync(new URL("../supabase/config.toml", import.meta.url), "utf8");
 const gmailOauthCallbackSource = readFileSync(new URL("../supabase/functions/gmail-oauth-callback/index.ts", import.meta.url), "utf8");
 const googleChatAppSource = readFileSync(new URL("../supabase/functions/google-chat-app/index.ts", import.meta.url), "utf8");
 const rfxServiceSource = readFileSync(new URL("../src/rfx-service.js", import.meta.url), "utf8");
@@ -697,6 +698,8 @@ assert.match(authSource, /async function hasUsableKindeSession\(\)/, "The shell 
 assert.match(authSource, /locallyAuthenticated && await hasUsableKindeSession\(\)/, "The shell should not render a stale Kinde session as an authenticated user");
 assert.match(authSource, /kindePromise = null;[\s\S]+await kinde\.login\(\{ app_state: \{ returnTo \} \}\)/, "Reauthentication should recreate the Kinde client before restarting OAuth");
 assert.match(authSource, /showSessionRecovery\(\);\s*throw error;/, "Protected modules should expose session recovery rather than continuing with an expired token");
+assert.match(supabaseConfigSource, /\[functions\.rateware-api\]\s*verify_jwt\s*=\s*false/, "Rateware API must bypass Supabase gateway JWT verification so its Kinde RS256 verifier can authenticate requests");
+assert.match(apiSource, /requireKindeUser\(request\)/, "Rateware API must authenticate every request with the custom Kinde verifier when gateway JWT verification is disabled");
 assert.match(ratewareApiClientSource, /import \{ authenticatedFetch \} from "\.\/auth\.js"/, "Rateware API calls should use the shared authenticated request executor");
 assert.doesNotMatch(ratewareApiClientSource, /getKindeToken|response\.status === 401/, "Rateware API calls should not duplicate token refresh and retry logic");
 assert.match(apiSource, /function errorMessage\(value: unknown/, "Rateware API should reduce nested provider errors to readable text");
