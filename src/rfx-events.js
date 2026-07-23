@@ -29,6 +29,7 @@ import {
   deleteOutreachTemplate,
   fetchContactHistory,
   fetchOutreachMessages,
+  fetchOutreachMessagesPage,
   fetchOutreachTemplates,
   generateOutreachDrafts,
   deleteOutreachMessages,
@@ -196,6 +197,10 @@ const draftSummary = document.querySelector("#rfx-draft-summary");
 const draftList = document.querySelector("#rfx-draft-list");
 const draftSearchInput = document.querySelector("#rfx-draft-search");
 const draftClearSearchButton = document.querySelector("#rfx-clear-draft-search");
+const draftPageSummary = document.querySelector("#rfx-draft-page-summary");
+const draftPageSize = document.querySelector("#rfx-draft-page-size");
+const draftPreviousPageButton = document.querySelector("#rfx-draft-page-previous");
+const draftNextPageButton = document.querySelector("#rfx-draft-page-next");
 const draftSelectionLabel = document.querySelector("#rfx-draft-selection-label");
 const draftToggleVisible = document.querySelector("#rfx-toggle-visible-drafts");
 const draftSelectAllEmailsButton = document.querySelector("#rfx-select-all-email-drafts");
@@ -298,8 +303,15 @@ let pendingChatBidUpdate = null;
 let selectedLaneIds = new Set();
 let selectedInvitationIds = new Set();
 let selectedDraftMessageIds = new Set();
+const selectedDraftMessageRows = new Map();
 let draftQueueSearch = "";
 let draftSearchRenderTimer = null;
+let draftQueueRows = [];
+let draftQueueTotal = 0;
+let draftQueueOffset = 0;
+let draftQueuePageSize = 100;
+let draftQueueLoading = false;
+let draftQueueLoadVersion = 0;
 let focusedLaneId = null;
 let activeLaneFilter = "all";
 let laneEditMode = false;
@@ -333,7 +345,6 @@ const APPROVED_GMAIL_SENDER = "sales@heymarksman.com";
 const OUTREACH_SEND_BATCH_SIZE = 100;
 const BID_ROOM_PARTICIPANT_BATCH_SIZE = 1000;
 const BID_ROOM_PARTICIPANT_SELECTION_STORAGE_PREFIX = "rateware:bid-room:participant-selection:";
-const DRAFT_QUEUE_VISIBLE_LIMIT = 1000;
 const DRAFT_QUEUE_SEARCH_DEBOUNCE_MS = 120;
 
 const RFX_LANE_TEMPLATE_COLUMNS = [
@@ -4673,43 +4684,78 @@ async function loadWhatsappConnectionReadiness({ render = true } = {}) {
   return whatsappConnectionReadiness;
 }
 
-function draftRowsForSelectedOutreachChannel(rows = draftRowsForEvent()) {
-  const channels = new Set(outreachDraftChannels(selectedOutreachChannel()).map((channel) => String(channel).toLowerCase()));
-  return rows.filter((message) => channels.has(String(message.channel || "email").toLowerCase()));
+function clearDraftQueueSelection() {
+  selectedDraftMessageIds.clear();
+  selectedDraftMessageRows.clear();
 }
 
-function draftSearchText(message = {}) {
-  const metadata = message.metadata && typeof message.metadata === "object" ? message.metadata : {};
-  const lane = message.rfx_lanes && typeof message.rfx_lanes === "object" ? message.rfx_lanes : {};
-  const vendor = message.vendors && typeof message.vendors === "object" ? message.vendors : {};
-  const event = message.rfx_events && typeof message.rfx_events === "object" ? message.rfx_events : {};
-  return normalizeDraftSearch([
-    vendor.vendor_name,
-    vendor.legal_name,
-    vendor.domain,
-    vendor.primary_email,
-    vendor.whatsapp_phone,
-    message.recipient_email,
-    message.recipient_phone,
-    message.channel,
-    message.status,
-    message.subject,
-    message.delivery_error,
-    lane.origin,
-    lane.destination,
-    lane.origin_market,
-    lane.destination_market,
-    lane.equipment,
-    lane.trailer,
-    lane.operation,
-    lane.service,
-    event.rfx_id,
-    event.name,
-    metadata.vendor_name,
-    metadata.vendor_domain,
-    metadata.recipient_email,
-    metadata.contact_name
-  ].filter(Boolean).join(" "));
+function resetDraftQueue({ clearSelection = false } = {}) {
+  draftQueueRows = [];
+  draftQueueTotal = 0;
+  draftQueueOffset = 0;
+  draftQueueLoading = false;
+  if (clearSelection) clearDraftQueueSelection();
+}
+
+function rememberDraftRow(message) {
+  const id = String(message?.id || "");
+  if (!id) return;
+  selectedDraftMessageIds.add(id);
+  selectedDraftMessageRows.set(id, message);
+}
+
+function forgetDraftRow(id) {
+  const normalizedId = String(id || "");
+  selectedDraftMessageIds.delete(normalizedId);
+  selectedDraftMessageRows.delete(normalizedId);
+}
+
+function findDraftRow(id) {
+  const normalizedId = String(id || "");
+  if (!normalizedId) return null;
+  return selectedDraftMessageRows.get(normalizedId)
+    || draftQueueRows.find((message) => String(message.id) === normalizedId)
+    || outreachMessages.find((message) => String(message.id) === normalizedId)
+    || null;
+}
+
+async function loadDraftQueuePage(eventId = selectedEventId, { reset = false, render = true } = {}) {
+  if (!eventId) {
+    resetDraftQueue();
+    if (render) renderDraftQueue();
+    return;
+  }
+  if (reset) draftQueueOffset = 0;
+  const loadVersion = ++draftQueueLoadVersion;
+  draftQueueLoading = true;
+  if (render) renderDraftQueue();
+  try {
+    const result = await fetchOutreachMessagesPage({
+      rfx_event_id: eventId,
+      channels: outreachDraftChannels(selectedOutreachChannel()),
+      search: draftQueueSearch,
+      offset: draftQueueOffset,
+      limit: draftQueuePageSize
+    });
+    if (loadVersion !== draftQueueLoadVersion || selectedEventId !== eventId) return;
+    draftQueueRows = result.rows || [];
+    draftQueueTotal = Number(result.total || 0);
+    draftQueueOffset = Number(result.offset || 0);
+    if (!draftQueueRows.length && draftQueueTotal && draftQueueOffset >= draftQueueTotal) {
+      draftQueueOffset = Math.max(0, Math.floor((draftQueueTotal - 1) / draftQueuePageSize) * draftQueuePageSize);
+      return await loadDraftQueuePage(eventId, { render });
+    }
+  } catch (error) {
+    if (loadVersion !== draftQueueLoadVersion || selectedEventId !== eventId) return;
+    draftQueueRows = [];
+    draftQueueTotal = 0;
+    setStatus(rfxOutreachStatus, `Draft queue could not load. ${humanizeError(error)}`, "error");
+  } finally {
+    if (loadVersion === draftQueueLoadVersion) {
+      draftQueueLoading = false;
+      if (render) renderDraftQueue();
+    }
+  }
 }
 
 function normalizeDraftSearch(value = "") {
@@ -4721,29 +4767,20 @@ function normalizeDraftSearch(value = "") {
     .toLowerCase();
 }
 
-function filteredDraftRows(rows = draftRowsForEvent()) {
-  const query = normalizeDraftSearch(draftQueueSearch);
-  if (!query) return rows;
-  const terms = query.split(" ").filter(Boolean);
-  return rows.filter((message) => {
-    const haystack = draftSearchText(message);
-    return terms.every((term) => haystack.includes(term));
-  });
+function selectedDraftRows(rows = null) {
+  const source = rows || [...selectedDraftMessageRows.values()];
+  return source.filter((message) => selectedDraftMessageIds.has(String(message.id)));
 }
 
-function selectedDraftRows(rows = draftRowsForEvent()) {
-  return rows.filter((message) => selectedDraftMessageIds.has(String(message.id)));
-}
-
-function selectedSendableDraftIds(rows = draftRowsForEvent()) {
+function selectedSendableDraftIds(rows = null) {
   return selectableEmailDrafts(selectedDraftRows(rows)).map((message) => String(message.id));
 }
 
-function selectedWhatsappDraftIds(rows = draftRowsForEvent()) {
+function selectedWhatsappDraftIds(rows = null) {
   return selectableWhatsappDrafts(selectedDraftRows(rows)).map((message) => String(message.id));
 }
 
-function selectedWhatsappGroupDraftIds(rows = draftRowsForEvent()) {
+function selectedWhatsappGroupDraftIds(rows = null) {
   return selectableWhatsappGroupDrafts(selectedDraftRows(rows)).map((message) => String(message.id));
 }
 
@@ -4756,7 +4793,7 @@ function refreshableOutreachDrafts(rows = []) {
   });
 }
 
-function selectedRefreshableDraftRows(rows = draftRowsForEvent()) {
+function selectedRefreshableDraftRows(rows = null) {
   return refreshableOutreachDrafts(selectedDraftRows(rows));
 }
 
@@ -4833,24 +4870,22 @@ function confirmDraftQueueAction(action, ids = []) {
   return true;
 }
 
-function updateDraftSendControls(rows = [], allRows = draftRowsForEvent()) {
-  const eventIds = new Set(allRows.map((message) => String(message.id)));
-  selectedDraftMessageIds = new Set([...selectedDraftMessageIds].filter((id) => eventIds.has(id)));
+function updateDraftSendControls(rows = []) {
   const selectable = selectableEmailDrafts(rows);
   const whatsappSelectable = selectableWhatsappDrafts(rows);
   const whatsappGroupSelectable = selectableWhatsappGroupDrafts(rows);
   const selectedVisibleRows = selectedDraftRows(rows);
-  const selectedRows = selectedDraftRows(allRows);
-  const sendableSelectedIds = selectedSendableDraftIds(allRows);
-  const sendableWhatsappIds = selectedWhatsappDraftIds(allRows);
+  const selectedRows = selectedDraftRows();
+  const sendableSelectedIds = selectedSendableDraftIds();
+  const sendableWhatsappIds = selectedWhatsappDraftIds();
   const whatsappSendingReady = whatsappConnectionReadiness.ready === true;
-  const markableGroupIds = selectedWhatsappGroupDraftIds(allRows);
-  const refreshableSelectedRows = selectedRefreshableDraftRows(allRows);
+  const markableGroupIds = selectedWhatsappGroupDraftIds();
+  const refreshableSelectedRows = selectedRefreshableDraftRows();
   const hasSearch = Boolean(normalizeDraftSearch(draftQueueSearch));
   if (draftSelectionLabel) {
-    draftSelectionLabel.textContent = hasSearch
-      ? `${formatNumber(selectedRows.length)} selected | ${formatNumber(selectedVisibleRows.length)} in filter`
-      : `${formatNumber(selectedRows.length)} selected`;
+    draftSelectionLabel.textContent = selectedRows.length
+      ? `${formatNumber(selectedRows.length)} selected${hasSearch ? ` | ${formatNumber(selectedVisibleRows.length)} on page` : ""}`
+      : "0 selected";
     draftSelectionLabel.className = `status-pill ${selectedRows.length ? "success" : "muted"}`;
   }
   if (draftToggleVisible) {
@@ -4895,44 +4930,60 @@ function updateDraftSendControls(rows = [], allRows = draftRowsForEvent()) {
 
 function renderDraftQueue() {
   if (!draftSummary || !draftList) return;
-  const allRows = draftRowsForEvent();
-  const rows = draftRowsForSelectedOutreachChannel(allRows);
-  const filteredRows = filteredDraftRows(rows);
+  const rows = draftQueueRows;
   const actionable = rows.filter((message) => ["drafted", "queued", "failed"].includes(String(message.status || "").toLowerCase()));
   const staleRows = rows.filter(isStaleOutreachDraft);
   const emailSelectable = selectableEmailDrafts(rows);
   const whatsappSelectable = selectableWhatsappDrafts(rows);
   const whatsappGroupSelectable = selectableWhatsappGroupDrafts(rows);
   const hasSearch = Boolean(normalizeDraftSearch(draftQueueSearch));
-  updateDraftSendControls(filteredRows, rows);
+  updateDraftSendControls(rows);
   const channelLabel = outreachChannelLabel(selectedOutreachChannel());
-  draftSummary.textContent = rows.length
-    ? `${formatNumber(hasSearch ? filteredRows.length : rows.length)}${hasSearch ? ` of ${formatNumber(rows.length)}` : ""} ${channelLabel} draft rows | ${formatNumber(actionable.length)} need action${staleRows.length ? ` | ${formatNumber(staleRows.length)} stale` : ""} | ${formatNumber(selectedDraftMessageIds.size)} selected${allRows.length !== rows.length ? ` | ${formatNumber(allRows.length)} total all channels` : ""}`
-    : selectedEventId && allRows.length
-      ? `No ${channelLabel} drafts for this bid event. Switch channel or generate this queue.`
-      : "No drafts generated for this bid event.";
+  const first = draftQueueTotal ? draftQueueOffset + 1 : 0;
+  const last = draftQueueOffset + rows.length;
+  draftSummary.textContent = draftQueueLoading
+    ? `Loading ${channelLabel} draft queue...`
+    : draftQueueTotal
+      ? `${formatNumber(draftQueueTotal)} ${channelLabel} draft rows | showing ${formatNumber(first)}-${formatNumber(last)} | ${formatNumber(actionable.length)} need action on this page${staleRows.length ? ` | ${formatNumber(staleRows.length)} stale` : ""}`
+      : selectedEventId
+        ? `No ${channelLabel} drafts match this queue filter. Generate this channel or clear the search.`
+        : "No drafts generated for this bid event.";
   if (draftSearchInput && draftSearchInput.value !== draftQueueSearch) draftSearchInput.value = draftQueueSearch;
   if (draftClearSearchButton) draftClearSearchButton.disabled = !hasSearch;
+  if (draftPageSummary) {
+    draftPageSummary.textContent = draftQueueLoading
+      ? "Loading page..."
+      : draftQueueTotal
+        ? `Rows ${formatNumber(first)}-${formatNumber(last)} of ${formatNumber(draftQueueTotal)}`
+        : "No matching draft rows";
+  }
+  if (draftPageSize && String(draftPageSize.value) !== String(draftQueuePageSize)) draftPageSize.value = String(draftQueuePageSize);
+  if (draftPreviousPageButton) draftPreviousPageButton.disabled = draftQueueLoading || draftQueueOffset <= 0;
+  if (draftNextPageButton) draftNextPageButton.disabled = draftQueueLoading || last >= draftQueueTotal;
+  if (draftToggleVisible) {
+    const selectedOnPage = rows.filter((message) => selectedDraftMessageIds.has(String(message.id))).length;
+    draftToggleVisible.checked = Boolean(rows.length) && selectedOnPage === rows.length;
+    draftToggleVisible.indeterminate = selectedOnPage > 0 && selectedOnPage < rows.length;
+    draftToggleVisible.disabled = draftQueueLoading || !rows.length;
+  }
   if (!selectedEventId) {
-    updateDraftSendControls([], []);
+    updateDraftSendControls([]);
     draftList.innerHTML = `<tr><td colspan="8">Select a bid event to review invitation drafts.</td></tr>`;
     return;
   }
-  if (!rows.length) {
-    updateDraftSendControls([], []);
-    draftList.innerHTML = `<tr><td colspan="8">No ${escapeHtml(channelLabel)} drafts yet. Select this channel and generate its draft queue.</td></tr>`;
+  if (draftQueueLoading) {
+    draftList.innerHTML = `<tr><td colspan="8">Loading draft queue...</td></tr>`;
     return;
   }
-  if (!filteredRows.length) {
-    updateDraftSendControls([], rows);
-    draftList.innerHTML = `<tr><td colspan="8">No draft rows match "${escapeHtml(draftQueueSearch)}". Clear search or try carrier name, email, lane, RFx, channel, or status.</td></tr>`;
+  if (!rows.length) {
+    updateDraftSendControls([]);
+    draftList.innerHTML = `<tr><td colspan="8">No ${escapeHtml(channelLabel)} draft rows match this search. Clear search or generate this queue.</td></tr>`;
     return;
   }
   if (!emailSelectable.length && !whatsappSelectable.length && !whatsappGroupSelectable.length && rows.length) {
-    updateDraftSendControls(filteredRows, rows);
+    updateDraftSendControls(rows);
   }
-  const visibleRows = filteredRows.slice(0, DRAFT_QUEUE_VISIBLE_LIMIT);
-  draftList.innerHTML = visibleRows.map((message) => {
+  draftList.innerHTML = rows.map((message) => {
     const isEmail = message.channel === "email";
     const isWhatsapp = message.channel === "whatsapp";
     const isWhatsappGroup = message.channel === "whatsapp_group";
@@ -4992,9 +5043,7 @@ function renderDraftQueue() {
         </td>
       </tr>
     `;
-  }).join("") + (filteredRows.length > visibleRows.length
-    ? `<tr><td colspan="8">Showing first ${formatNumber(visibleRows.length)} of ${formatNumber(filteredRows.length)} matching draft rows. Narrow the search to find a specific carrier.</td></tr>`
-    : "");
+  }).join("");
 }
 
 function renderOutreachLaunchpad() {
@@ -5953,7 +6002,7 @@ async function loadDetail(eventId) {
     ? (selectedManualVendorIds().length ? selectedManualVendorIds() : readStoredManualParticipantIds())
     : [];
   if (eventChanged) {
-    selectedDraftMessageIds.clear();
+    resetDraftQueue({ clearSelection: true });
     pendingLaneEdits.clear();
     selectedManualVendorIdsState = new Set();
   }
@@ -6000,6 +6049,8 @@ async function loadDetail(eventId) {
     contactHistoryRows = getSettledValue(historyResult, []) || [];
     outreachMessages = getSettledValue(messagesResult, []) || [];
     bidRoomChatThreads = getSettledValue(chatResult, emptyBidRoomChatThreads()) || emptyBidRoomChatThreads();
+    await loadDraftQueuePage(eventId, { reset: true, render: false });
+    if (loadVersion !== rfxDetailLoadVersion || selectedEventId !== eventId) return;
     renderEventDashboard();
     renderLanes();
     renderBidRoomChat();
@@ -6044,6 +6095,8 @@ async function refreshOutreachStateForEvent(eventId) {
   if (selectedEventId !== eventId) return false;
   contactHistoryRows = historyRows || [];
   outreachMessages = messageRows || [];
+  await loadDraftQueuePage(eventId, { render: false });
+  if (selectedEventId !== eventId) return false;
   return true;
 }
 
@@ -6440,7 +6493,7 @@ async function sendSelectedDraftEmails() {
   if (draftSendSelectedButton) draftSendSelectedButton.disabled = true;
   try {
     const result = await sendDraftEmailIds(ids, rfxOutreachStatus);
-    selectedDraftMessageIds.clear();
+    clearDraftQueueSelection();
     if (!(await refreshOutreachStateForEvent(eventId))) return;
     renderOutreachLaunchpad();
     setStatus(
@@ -6456,7 +6509,7 @@ async function sendSelectedDraftEmails() {
 
 async function sendSingleDraftEmail(id) {
   if (!id) return;
-  const row = draftRowsForEvent().find((message) => String(message.id) === String(id));
+  const row = findDraftRow(id);
   if (!row) {
     setStatus(rfxOutreachStatus, "Draft row could not be found. Refresh the Bid Room and try again.", "error");
     return;
@@ -6472,7 +6525,7 @@ async function sendSingleDraftEmail(id) {
   setStatus(rfxOutreachStatus, `Sending invitation to ${carrier}...`);
   try {
     const result = await sendDraftEmailIds([String(id)], rfxOutreachStatus);
-    selectedDraftMessageIds.delete(String(id));
+    forgetDraftRow(id);
     if (!(await refreshOutreachStateForEvent(eventId))) return;
     renderOutreachLaunchpad();
     setStatus(
@@ -6520,7 +6573,7 @@ async function sendSelectedDraftWhatsapp() {
   if (draftSendSelectedWhatsappButton) draftSendSelectedWhatsappButton.disabled = true;
   try {
     const result = await sendDraftWhatsappIds(ids, rfxOutreachStatus);
-    selectedDraftMessageIds.clear();
+    clearDraftQueueSelection();
     if (!(await refreshOutreachStateForEvent(eventId))) return;
     renderOutreachLaunchpad();
     setStatus(
@@ -6542,7 +6595,7 @@ async function sendSingleDraftWhatsapp(id) {
     renderOutreachLaunchpad();
     return;
   }
-  const row = draftRowsForEvent().find((message) => String(message.id) === String(id));
+  const row = findDraftRow(id);
   if (!row) {
     setStatus(rfxOutreachStatus, "WhatsApp draft row could not be found. Refresh the Bid Room and try again.", "error");
     return;
@@ -6557,7 +6610,7 @@ async function sendSingleDraftWhatsapp(id) {
   setStatus(rfxOutreachStatus, `Sending WhatsApp invitation to ${carrier}...`);
   try {
     const result = await sendDraftWhatsappIds([String(id)], rfxOutreachStatus);
-    selectedDraftMessageIds.delete(String(id));
+    forgetDraftRow(id);
     if (!(await refreshOutreachStateForEvent(eventId))) return;
     renderOutreachLaunchpad();
     setStatus(
@@ -6572,7 +6625,7 @@ async function sendSingleDraftWhatsapp(id) {
 }
 
 async function refreshSingleOutreachDraft(id) {
-  const message = draftRowsForEvent().find((row) => String(row.id) === String(id));
+  const message = findDraftRow(id);
   if (!message) {
     setStatus(rfxOutreachStatus, "This draft is no longer available. Refresh the Bid Room and try again.", "error");
     return;
@@ -6623,6 +6676,7 @@ async function refreshOutreachDraftRows(rows = [], { statusLabel = "Refreshing s
       setStatus(rfxOutreachStatus, `${statusLabel} ${formatNumber(index + 1)} of ${formatNumber(refreshes.length)}...`);
       await generateOutreachDrafts(refresh.campaignId, refresh);
     }
+    clearDraftQueueSelection();
     if (!(await refreshOutreachStateForEvent(eventId))) return refreshes.length;
     renderOutreachLaunchpad();
     setStatus(rfxOutreachStatus, `${formatNumber(refreshes.length)} selected carrier draft${refreshes.length === 1 ? "" : "s"} refreshed. Their send history is preserved and the queue is ready to send.`, "success");
@@ -6671,7 +6725,7 @@ async function markSelectedWhatsappGroupsManuallySent() {
   if (draftMarkSelectedWhatsappGroupsButton) draftMarkSelectedWhatsappGroupsButton.disabled = true;
   try {
     const result = await markWhatsappGroupDraftIds(ids, rfxOutreachStatus);
-    selectedDraftMessageIds.clear();
+    clearDraftQueueSelection();
     if (!(await refreshOutreachStateForEvent(eventId))) return;
     renderOutreachLaunchpad();
     setStatus(rfxOutreachStatus, `${formatNumber(result.updated || 0)} WhatsApp group draft(s) marked as manually sent.`, "success");
@@ -6683,7 +6737,7 @@ async function markSelectedWhatsappGroupsManuallySent() {
 
 async function markSingleWhatsappGroupManuallySent(id) {
   if (!id) return;
-  const row = draftRowsForEvent().find((message) => String(message.id) === String(id));
+  const row = findDraftRow(id);
   if (!row) {
     setStatus(rfxOutreachStatus, "WhatsApp group draft row could not be found. Refresh the Bid Room and try again.", "error");
     return;
@@ -6698,7 +6752,7 @@ async function markSingleWhatsappGroupManuallySent(id) {
   setStatus(rfxOutreachStatus, `Marking ${group} as manually sent...`);
   try {
     const result = await markWhatsappGroupDraftIds([String(id)], rfxOutreachStatus);
-    selectedDraftMessageIds.delete(String(id));
+    forgetDraftRow(id);
     if (!(await refreshOutreachStateForEvent(eventId))) return;
     renderOutreachLaunchpad();
     setStatus(rfxOutreachStatus, `${formatNumber(result.updated || 0)} WhatsApp group draft marked as manually sent.`, "success");
@@ -6720,7 +6774,7 @@ async function archiveSelectedDrafts() {
   setStatus(rfxOutreachStatus, `Archiving ${formatNumber(ids.length)} draft row(s)...`);
   try {
     await markOutreachMessages(ids, "archived");
-    selectedDraftMessageIds.clear();
+    clearDraftQueueSelection();
     if (!(await refreshOutreachStateForEvent(eventId))) return;
     renderOutreachLaunchpad();
     setStatus(rfxOutreachStatus, `${formatNumber(ids.length)} draft row(s) archived.`, "success");
@@ -6743,7 +6797,7 @@ async function deleteSelectedDrafts() {
   setStatus(rfxOutreachStatus, `Deleting ${formatNumber(ids.length)} draft row(s)...`);
   try {
     const result = await deleteOutreachMessages(ids);
-    selectedDraftMessageIds.clear();
+    clearDraftQueueSelection();
     if (!(await refreshOutreachStateForEvent(eventId))) return;
     renderOutreachLaunchpad();
     setStatus(rfxOutreachStatus, `${formatNumber(result.removed || 0)} draft row(s) deleted.`, "success");
@@ -7081,6 +7135,7 @@ draftList?.addEventListener("click", async (event) => {
   setStatus(rfxOutreachStatus, `Marking draft ${status}...`);
   try {
     await markOutreachMessages([id], status);
+    forgetDraftRow(id);
     if (!(await refreshOutreachStateForEvent(eventId))) return;
     renderOutreachLaunchpad();
     setStatus(rfxOutreachStatus, "Draft updated.", "success");
@@ -7097,9 +7152,9 @@ draftList?.addEventListener("change", (event) => {
   const id = checkbox.dataset.rfxDraftSelect;
   if (!id) return;
   if (checkbox.checked) {
-    selectedDraftMessageIds.add(id);
+    rememberDraftRow(draftQueueRows.find((message) => String(message.id) === String(id)));
   } else {
-    selectedDraftMessageIds.delete(id);
+    forgetDraftRow(id);
   }
   renderDraftQueue();
 });
@@ -7111,7 +7166,7 @@ function applyDraftQueueSearch() {
     draftSearchRenderTimer = null;
   }
   draftQueueSearch = draftSearchInput.value || "";
-  renderDraftQueue();
+  loadDraftQueuePage(selectedEventId, { reset: true });
 }
 
 function scheduleDraftQueueSearch() {
@@ -7131,30 +7186,47 @@ draftClearSearchButton?.addEventListener("click", () => {
   }
   draftQueueSearch = "";
   if (draftSearchInput) draftSearchInput.value = "";
-  renderDraftQueue();
+  loadDraftQueuePage(selectedEventId, { reset: true });
 });
 
 draftToggleVisible?.addEventListener("change", () => {
-  const rows = filteredDraftRows(draftRowsForSelectedOutreachChannel()).slice(0, DRAFT_QUEUE_VISIBLE_LIMIT);
+  const rows = draftQueueRows;
   if (draftToggleVisible.checked) {
-    rows.forEach((message) => selectedDraftMessageIds.add(String(message.id)));
+    rows.forEach(rememberDraftRow);
   } else {
-    rows.forEach((message) => selectedDraftMessageIds.delete(String(message.id)));
+    rows.forEach((message) => forgetDraftRow(message.id));
   }
   renderDraftQueue();
 });
 
 draftSelectAllEmailsButton?.addEventListener("click", () => {
-  const rows = filteredDraftRows(draftRowsForSelectedOutreachChannel());
-  selectableEmailDrafts(rows).forEach((message) => selectedDraftMessageIds.add(String(message.id)));
-  selectableWhatsappDrafts(rows).forEach((message) => selectedDraftMessageIds.add(String(message.id)));
-  selectableWhatsappGroupDrafts(rows).forEach((message) => selectedDraftMessageIds.add(String(message.id)));
+  const rows = draftQueueRows;
+  selectableEmailDrafts(rows).forEach(rememberDraftRow);
+  selectableWhatsappDrafts(rows).forEach(rememberDraftRow);
+  selectableWhatsappGroupDrafts(rows).forEach(rememberDraftRow);
   renderDraftQueue();
 });
 
 draftClearSelectionButton?.addEventListener("click", () => {
-  selectedDraftMessageIds.clear();
+  clearDraftQueueSelection();
   renderDraftQueue();
+});
+
+draftPageSize?.addEventListener("change", () => {
+  draftQueuePageSize = Number(draftPageSize.value || 100);
+  loadDraftQueuePage(selectedEventId, { reset: true });
+});
+
+draftPreviousPageButton?.addEventListener("click", () => {
+  if (draftQueueOffset <= 0 || draftQueueLoading) return;
+  draftQueueOffset = Math.max(0, draftQueueOffset - draftQueuePageSize);
+  loadDraftQueuePage(selectedEventId);
+});
+
+draftNextPageButton?.addEventListener("click", () => {
+  if (draftQueueLoading || draftQueueOffset + draftQueueRows.length >= draftQueueTotal) return;
+  draftQueueOffset += draftQueuePageSize;
+  loadDraftQueuePage(selectedEventId);
 });
 
 draftRefreshSelectedButton?.addEventListener("click", () => {
@@ -8009,6 +8081,7 @@ rfxOutreachTemplate?.addEventListener("change", () => {
 });
 rfxOutreachChannel?.addEventListener("change", () => {
   renderOutreachLaunchpad();
+  loadDraftQueuePage(selectedEventId, { reset: true });
   if (selectedChannelUsesDirectWhatsapp()) loadWhatsappConnectionReadiness();
 });
 rfxWhatsappTargetMode?.addEventListener("change", renderOutreachPreview);

@@ -548,8 +548,14 @@ assert.doesNotMatch(rfxEventsHtml, /<option value="multi">/, "Bid Room Step 4 sh
 assert.match(rfxEventsHtml, /WhatsApp Business readiness/, "RFx Bid Room should explain WhatsApp Business readiness separately from Gmail");
 assert.match(rfxEventsSource, /publishOutreachTemplateToWhatsapp/, "RFx Bid Room should use Outreach as the WhatsApp template source");
 assert.match(rfxEventsSource, /Full Outreach \/ Bid Room copy/, "RFx Bid Room should distinguish editable Outreach copy from the Meta notifier");
-assert.match(rfxEventsSource, /function draftRowsForSelectedOutreachChannel/, "Draft queue should isolate visible rows by selected outreach channel");
-assert.match(rfxEventsSource, /const rows = draftRowsForSelectedOutreachChannel\(allRows\)/, "Draft queue should render only the selected channel's drafts");
+assert.match(rfxEventsSource, /fetchOutreachMessagesPage/, "Draft queue should use a paginated backend query instead of filtering the loaded browser rows");
+assert.match(rfxEventsSource, /channels: outreachDraftChannels\(selectedOutreachChannel\(\)\)/, "Draft queue should request only the selected outreach channel");
+assert.match(rfxEventsSource, /search: draftQueueSearch[\s\S]+offset: draftQueueOffset[\s\S]+limit: draftQueuePageSize/, "Draft queue should send search, offset, and limit to the backend");
+assert.match(rfxEventsSource, /draftPageSize\?\.addEventListener\("change"/, "Draft queue should expose a rows-per-page control");
+assert.match(rfxEventsSource, /draftPreviousPageButton\?\.addEventListener\("click"[\s\S]+draftNextPageButton\?\.addEventListener\("click"/, "Draft queue should support previous and next page navigation");
+assert.match(rfxEventsHtml, /rfx-draft-page-summary/, "Draft queue should display page totals");
+assert.match(apiSource, /if \(body\.action === "list_outreach_messages"\)[\s\S]+count: "exact"[\s\S]+\.range\(offset, offset \+ limit - 1\)/, "Outreach messages should return an exact scoped total and a backend page");
+assert.match(apiSource, /const searchTerms = String\(body\.search \|\| ""\)/, "Outreach message search should run server-side");
 assert.match(rfxEventsHtml, /rfx-mark-selected-whatsapp-groups/, "RFx Bid Room should expose manual WhatsApp group completion");
 assert.match(rfxEventsSource, /selectableWhatsappDrafts/, "RFx Bid Room should calculate direct WhatsApp selectable drafts");
 assert.match(rfxEventsSource, /selectableWhatsappGroupDrafts/, "RFx Bid Room should calculate manual group selectable drafts");
@@ -1063,14 +1069,10 @@ assert.match(rfxEventsSource, /Original template restored/, "Bid Room template r
 }
 assert.match(rfxEventsHtml, /id="rfx-draft-search"/, "Bid Room draft queue should expose a vendor/email search box");
 assert.doesNotMatch(rfxEventsHtml, /rfx-touchpoint-summary/, "Bid Room Step 4 should not duplicate drafts in an invitation tracking section");
-assert.match(rfxEventsSource, /function filteredDraftRows/, "Bid Room draft queue should filter rows before rendering");
-assert.match(rfxEventsSource, /draftSearchText\(message\)/, "Draft queue search should match against each message payload");
-{
-  const draftSearchStart = rfxEventsSource.indexOf("function draftSearchText");
-  const draftSearchEnd = rfxEventsSource.indexOf("function normalizeDraftSearch", draftSearchStart);
-  const draftSearchBody = rfxEventsSource.slice(draftSearchStart, draftSearchEnd);
-  assert.doesNotMatch(draftSearchBody, /message\.text_body|message\.whatsapp_text|message\.sender_email|metadata\.bid_link|metadata\.profile_link/, "Draft queue search should not match common email body, signature, sender, or shared links");
-}
+assert.match(rfxEventsSource, /async function loadDraftQueuePage/, "Bid Room draft queue should load a page from the backend before rendering");
+assert.doesNotMatch(rfxEventsSource, /function filteredDraftRows/, "Draft queue should not filter an already loaded browser-side message list");
+assert.doesNotMatch(rfxEventsSource, /function draftSearchText/, "Draft queue search should remain server-side instead of scanning email bodies in the browser");
+assert.doesNotMatch(apiSource, /metadata->>bid_link|metadata->>profile_link/, "Draft queue search should not match shared invitation links");
 assert.match(rfxEventsSource, /\.normalize\("NFD"\)/, "Draft queue search should be accent-insensitive");
 assert.match(rfxEventsSource, /addEventListener\("search", applyDraftQueueSearch\)/, "Draft queue search should react when the browser clears a search input");
 assert.match(rfxEventsSource, /addEventListener\("input", scheduleDraftQueueSearch\)/, "Draft queue search should debounce typing before rerendering the table");

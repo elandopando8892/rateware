@@ -21779,20 +21779,64 @@ Deno.serve(async (request) => {
     }
 
     if (body.action === "list_outreach_messages") {
+      // Existing admin views still call this action without paging. Preserve their
+      // previous 1,000-row response while the Draft Queue always passes a bounded
+      // page size for responsive server-side pagination.
+      const requestedLimit = Number(body.limit);
+      const limit = Number.isFinite(requestedLimit) && requestedLimit > 0
+        ? Math.min(Math.max(requestedLimit, 25), 250)
+        : 1000;
+      const offset = Math.max(Number(body.offset || 0), 0);
+      const channels = Array.isArray(body.channels)
+        ? body.channels.map((value: unknown) => cleanText(value)?.toLowerCase()).filter(Boolean)
+        : [];
+      const searchTerms = String(body.search || "")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .split(/\s+/)
+        .map((value) => value.replace(/[^a-z0-9@.+_-]/g, "").trim())
+        .filter(Boolean)
+        .slice(0, 6);
       let query = supabase
         .from("outreach_messages")
-        .select("*, vendors(vendor_name,domain,primary_email,whatsapp_phone,whatsapp_group_name,whatsapp_group_url,whatsapp_group_status,whatsapp_do_not_contact), vendor_whatsapp_groups(group_name,group_url,verification_status,do_not_contact), outreach_campaigns(name,notes,whatsapp_target_mode,group_delivery_policy), rfx_events(rfx_id,name), rfx_lanes(origin,destination,equipment,trailer,operation,service), rfx_lane_vendors(id,invitation_status,invitation_token,award_role,bid_rate,currency,responded_at)")
+        .select("*, vendors(vendor_name,domain,primary_email,whatsapp_phone,whatsapp_group_name,whatsapp_group_url,whatsapp_group_status,whatsapp_do_not_contact), vendor_whatsapp_groups(group_name,group_url,verification_status,do_not_contact), outreach_campaigns(name,notes,whatsapp_target_mode,group_delivery_policy), rfx_events(rfx_id,name), rfx_lanes(origin,destination,equipment,trailer,operation,service), rfx_lane_vendors(id,invitation_status,invitation_token,award_role,bid_rate,currency,responded_at)", { count: "exact" })
         .eq("owner_email", user.owner_email)
-        .order("created_at", { ascending: false })
-        .limit(1000);
+        .order("created_at", { ascending: false });
       if (body.campaign_id) query = query.eq("campaign_id", body.campaign_id);
       if (body.rfx_event_id) query = query.eq("rfx_event_id", body.rfx_event_id);
       if (body.status) query = query.eq("status", body.status);
       if (!body.status && !body.include_archived) query = query.neq("status", "archived");
       if (body.channel) query = query.eq("channel", body.channel);
+      if (channels.length) query = query.in("channel", channels);
+      for (const term of searchTerms) {
+        const pattern = `*${term}*`;
+        query = query.or([
+          `recipient_email.ilike.${pattern}`,
+          `recipient_phone.ilike.${pattern}`,
+          `subject.ilike.${pattern}`,
+          `status.ilike.${pattern}`,
+          `channel.ilike.${pattern}`,
+          `metadata->>vendor_name.ilike.${pattern}`,
+          `metadata->>vendor_domain.ilike.${pattern}`,
+          `metadata->>contact_name.ilike.${pattern}`,
+          `metadata->>recipient_email.ilike.${pattern}`,
+          `metadata->>lane_rows_text.ilike.${pattern}`,
+          `metadata->>event_name.ilike.${pattern}`,
+          `metadata->>rfx_id.ilike.${pattern}`
+        ].join(","));
+      }
+      query = query.range(offset, offset + limit - 1);
       const result = await query;
       if (result.error) throw result.error;
-      return jsonResponse({ rows: result.data || [] });
+      const total = Number(result.count || 0);
+      return jsonResponse({
+        rows: result.data || [],
+        total,
+        offset,
+        limit,
+        has_more: offset + (result.data || []).length < total
+      });
     }
 
     if (body.action === "send_outreach_messages") {

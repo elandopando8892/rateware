@@ -542,9 +542,23 @@
                     </label>
                     <button id="rfx-clear-draft-search" type="button" class="secondary small-button">Clear search</button>
                   </div>
+                  <div id="rfx-draft-pager" class="rfx-draft-pager" aria-label="Draft queue pagination">
+                    <span id="rfx-draft-page-summary">No draft rows loaded.</span>
+                    <div>
+                      <label>Rows
+                        <select id="rfx-draft-page-size" aria-label="Rows per page">
+                          <option value="50">50</option>
+                          <option value="100" selected>100</option>
+                          <option value="250">250</option>
+                        </select>
+                      </label>
+                      <button id="rfx-draft-page-previous" type="button" class="secondary small-button">Previous</button>
+                      <button id="rfx-draft-page-next" type="button" class="secondary small-button">Next</button>
+                    </div>
+                  </div>
                   <div class="rfx-draft-actions">
                     <span id="rfx-draft-selection-label" class="status-pill muted">0 selected</span>
-                    <button id="rfx-select-all-email-drafts" type="button" class="secondary small-button">Select sendable</button>
+                    <button id="rfx-select-all-email-drafts" type="button" class="secondary small-button">Select sendable page</button>
                     <button id="rfx-clear-draft-selection" type="button" class="secondary small-button">Clear</button>
                     <button id="rfx-refresh-selected-drafts" type="button" class="secondary small-button" disabled>Refresh selected</button>
                     <button id="rfx-send-selected-email-drafts" type="button" class="small-button" disabled>Send selected emails</button>
@@ -778,6 +792,6 @@
       </div>
     </div>
 
-    <script type="module" src="./src/rfx-events.js?v=20260722-meta-template-readiness-v1"></script>
+    <script type="module" src="./src/rfx-events.js?v=20260723-draft-queue-pagination-v1"></script>
   </body>
 </html>

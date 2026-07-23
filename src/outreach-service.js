@@ -71,7 +71,11 @@ export async function generateOutreachDrafts(campaignId, options = {}) {
 }
 
 export async function fetchOutreachMessages(filters = {}) {
-  return (await callRatewareApi("list_outreach_messages", filters)).rows;
+  return (await fetchOutreachMessagesPage(filters)).rows;
+}
+
+export async function fetchOutreachMessagesPage(filters = {}) {
+  return await callRatewareApi("list_outreach_messages", filters);
 }
 
 export async function markOutreachMessages(ids = [], status) {
