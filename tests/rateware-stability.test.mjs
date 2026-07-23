@@ -747,6 +747,12 @@ assert.match(rfxEventsHtml, /rfx-archive-selected-drafts/, "Bid Room draft queue
 assert.match(rfxEventsHtml, /rfx-delete-selected-drafts/, "Bid Room draft queue should include delete selected action");
 assert.match(rfxEventsSource, /const OUTREACH_SEND_BATCH_SIZE = 100/, "Bid Room Step 4 should respect the backend Gmail send batch size");
 assert.match(rfxEventsSource, /const BID_ROOM_PARTICIPANT_BATCH_SIZE = 1000/, "Bid Room participant mutations should use 1,000-row backend batches");
+assert.match(rfxEventsSource, /const BID_ROOM_PARTICIPANT_SELECTION_STORAGE_PREFIX = "rateware:bid-room:participant-selection:";/, "Bid Room should store participant selections per RFx");
+assert.match(rfxEventsSource, /function persistManualParticipantSelection\(/, "Bid Room should persist a participant selection while the user changes steps");
+assert.match(rfxEventsSource, /function restoreManualParticipantSelection\(/, "Bid Room should restore a participant selection when RFx detail reloads");
+assert.match(rfxEventsSource, /hydrateVendorOptionIds\(missingIds\)/, "Restored participant IDs should rehydrate their Carrier CRM names");
+assert.match(rfxEventsSource, /const unassignedSelection = !previousEventId/, "Participant selections made before an RFx is chosen should transfer to that RFx");
+assert.match(rfxEventsSource, /selectedManualVendorIdsState\.clear\(\);\s+persistManualParticipantSelection\(eventId\);/, "Persisted participant selections should clear only after confirmed shortlist creation");
 assert.match(rfxEventsSource, /async function shortlistVendorsByLane/, "Bid Room should batch large carrier shortlists by lane");
 assert.match(rfxEventsSource, /chunkRows\(vendorIds, BID_ROOM_PARTICIPANT_BATCH_SIZE\)/, "Bid Room should split selected carriers into 1,000-row shortlist batches");
 assert.match(rfxEventsSource, /async function mutateRfxParticipantsInBatches/, "Bid Room should batch participant invite and archive operations");

@@ -320,6 +320,7 @@ const rfxWorkbench = initWorkbenchTabs({ defaultView: "setup" });
 const APPROVED_GMAIL_SENDER = "sales@heymarksman.com";
 const OUTREACH_SEND_BATCH_SIZE = 100;
 const BID_ROOM_PARTICIPANT_BATCH_SIZE = 1000;
+const BID_ROOM_PARTICIPANT_SELECTION_STORAGE_PREFIX = "rateware:bid-room:participant-selection:";
 const DRAFT_QUEUE_VISIBLE_LIMIT = 1000;
 const DRAFT_QUEUE_SEARCH_DEBOUNCE_MS = 120;
 
@@ -5150,6 +5151,56 @@ function activeVendorSearchTerm() {
   return String(manualShortlistSearch?.value || "").trim().replace(/\s+/g, " ");
 }
 
+function participantSelectionStorageKey(eventId = selectedEventId) {
+  return `${BID_ROOM_PARTICIPANT_SELECTION_STORAGE_PREFIX}${eventId || "unassigned"}`;
+}
+
+function readStoredManualParticipantIds(eventId = selectedEventId) {
+  try {
+    const parsed = JSON.parse(window.sessionStorage.getItem(participantSelectionStorageKey(eventId)) || "[]");
+    return Array.isArray(parsed)
+      ? [...new Set(parsed.map((id) => String(id || "").trim()).filter(Boolean))]
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function persistManualParticipantSelection(eventId = selectedEventId) {
+  try {
+    const ids = [...selectedManualVendorIdsState].map((id) => String(id || "").trim()).filter(Boolean);
+    if (ids.length) {
+      window.sessionStorage.setItem(participantSelectionStorageKey(eventId), JSON.stringify(ids));
+    } else {
+      window.sessionStorage.removeItem(participantSelectionStorageKey(eventId));
+    }
+  } catch {
+    // The current in-memory selection remains usable if browser storage is unavailable.
+  }
+}
+
+function restoreManualParticipantSelection(eventId = selectedEventId) {
+  const ids = readStoredManualParticipantIds(eventId);
+  selectedManualVendorIdsState = new Set(ids);
+  if (!ids.length) return;
+
+  const missingIds = ids.filter((id) => !vendorOptionCache.has(id) && !vendorOptions.some((vendor) => String(vendor.id) === id));
+  if (!missingIds.length) return;
+  hydrateVendorOptionIds(missingIds)
+    .then((rows) => {
+      if (selectedEventId !== eventId) return;
+      rememberSelectedVendorRows(rows);
+      const loadedIds = new Set(rows.map((vendor) => String(vendor.id || "")).filter(Boolean));
+      const retainedIds = [...selectedManualVendorIdsState].filter((id) => loadedIds.has(String(id)) || vendorOptionCache.has(String(id)));
+      selectedManualVendorIdsState = new Set(retainedIds);
+      persistManualParticipantSelection(eventId);
+      renderManualShortlistControls();
+    })
+    .catch(() => {
+      // Keep the stored selection intact; Carrier CRM can be retried without losing the bid draft.
+    });
+}
+
 function rememberSelectedVendorRows(rows = []) {
   rows.forEach((row) => {
     const id = String(row?.id || "");
@@ -5391,6 +5442,7 @@ function selectManualVendorIds(ids = []) {
   ids.forEach((id) => {
     if (id) selectedManualVendorIdsState.add(id);
   });
+  persistManualParticipantSelection();
   renderManualShortlistControls();
 }
 
@@ -5417,9 +5469,10 @@ function selectedManualVendorRows() {
 
 function renderSelectedManualVendors() {
   if (!manualShortlistSelectedList || !manualShortlistSelectedCount) return;
+  const selectedIds = selectedManualVendorIds();
   const rows = selectedManualVendorRows();
-  manualShortlistSelectedCount.textContent = `${formatNumber(rows.length)} selected`;
-  if (!rows.length) {
+  manualShortlistSelectedCount.textContent = `${formatNumber(selectedIds.length)} selected`;
+  if (!selectedIds.length) {
     manualShortlistSelectedList.innerHTML = `
       <article class="bid-room-selected-empty">
         <strong>No carriers selected</strong>
@@ -5428,12 +5481,19 @@ function renderSelectedManualVendors() {
     `;
     return;
   }
-  manualShortlistSelectedList.innerHTML = rows.map((vendor) => `
+  const loadedIds = new Set(rows.map((vendor) => String(vendor.id)));
+  const pendingRows = selectedIds.filter((id) => !loadedIds.has(String(id))).map((id) => `
+    <article class="bid-room-selected-row is-loading">
+      <strong>Loading selected carrier...</strong>
+      <button class="secondary small-button" type="button" data-remove-manual-vendor="${escapeHtml(id)}">Move back</button>
+    </article>
+  `).join("");
+  manualShortlistSelectedList.innerHTML = `${rows.map((vendor) => `
     <article class="bid-room-selected-row">
       <strong>${escapeHtml(vendorDisplayName(vendor))}</strong>
       <button class="secondary small-button" type="button" data-remove-manual-vendor="${escapeHtml(vendor.id)}">Move back</button>
     </article>
-  `).join("");
+  `).join("")}${pendingRows}`;
 }
 
 function updateManualShortlistButtonState() {
@@ -5787,11 +5847,28 @@ async function saveRfxLaneEdits(laneIds = []) {
 
 async function loadDetail(eventId) {
   const loadVersion = ++rfxDetailLoadVersion;
-  if (selectedEventId !== eventId) {
+  const previousEventId = selectedEventId;
+  const eventChanged = selectedEventId !== eventId;
+  const unassignedSelection = !previousEventId
+    ? (selectedManualVendorIds().length ? selectedManualVendorIds() : readStoredManualParticipantIds())
+    : [];
+  if (eventChanged) {
     selectedDraftMessageIds.clear();
     pendingLaneEdits.clear();
+    selectedManualVendorIdsState = new Set();
   }
   selectedEventId = eventId;
+  if (unassignedSelection.length) {
+    selectedManualVendorIdsState = new Set(unassignedSelection);
+    persistManualParticipantSelection(eventId);
+    try {
+      window.sessionStorage.removeItem(participantSelectionStorageKey(null));
+    } catch {
+      // The selection was already persisted under the RFx; retaining the temporary entry is harmless.
+    }
+  } else if (eventChanged || !selectedManualVendorIdsState.size) {
+    restoreManualParticipantSelection(eventId);
+  }
   if (bidRoomChatRefreshTimer) window.clearInterval(bidRoomChatRefreshTimer);
   setStatus(actionStatus, "Loading RFx detail...");
   try {
@@ -7500,6 +7577,7 @@ selectSegmentCarriersButton?.addEventListener("click", () => {
 });
 clearCarrierSelectionButton?.addEventListener("click", () => {
   selectedManualVendorIdsState.clear();
+  persistManualParticipantSelection();
   renderManualShortlistControls();
   setStatus(manualShortlistStatus, "Carrier selection cleared.", "neutral");
 });
@@ -7551,6 +7629,7 @@ loadManualShortlistTemplateButton?.addEventListener("click", async () => {
     }
     rememberSelectedVendorRows(rows);
     selectedManualVendorIdsState = new Set(rows.map((vendor) => vendor.id).filter(Boolean));
+    persistManualParticipantSelection();
     if (manualShortlistTemplateName && segment?.segment_name) manualShortlistTemplateName.value = segment.segment_name;
     const missingCount = Math.max(savedIds.length - rows.length, 0);
     renderManualShortlistControls();
@@ -7628,6 +7707,7 @@ manualShortlistVendorList?.addEventListener("change", (event) => {
   if (input) {
     if (input.checked) selectedManualVendorIdsState.add(input.value);
     else selectedManualVendorIdsState.delete(input.value);
+    persistManualParticipantSelection();
   }
   renderManualShortlistControls();
 });
@@ -7637,6 +7717,7 @@ manualShortlistVendorList?.addEventListener("click", (event) => {
   const vendorId = addButton.dataset.addManualVendor;
   if (!vendorId) return;
   selectedManualVendorIdsState.add(vendorId);
+  persistManualParticipantSelection();
   renderManualShortlistControls();
   setStatus(manualShortlistStatus, "Carrier moved to selected participants.", "success");
 });
@@ -7644,6 +7725,7 @@ manualShortlistSelectedList?.addEventListener("click", (event) => {
   const removeButton = event.target.closest("[data-remove-manual-vendor]");
   if (!removeButton) return;
   selectedManualVendorIdsState.delete(removeButton.dataset.removeManualVendor);
+  persistManualParticipantSelection();
   renderManualShortlistControls();
   setStatus(manualShortlistStatus, "Carrier moved back to CRM candidates.", "neutral");
 });
@@ -7677,6 +7759,7 @@ manualShortlistButton?.addEventListener("click", async () => {
     }
     if (selectedEventId !== eventId) return;
     selectedManualVendorIdsState.clear();
+    persistManualParticipantSelection(eventId);
     setStatus(manualShortlistStatus, `${inserted} invitation row(s) created for this bid.`, "success");
     await loadDetail(eventId);
   } catch (error) {
