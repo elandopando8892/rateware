@@ -116,6 +116,7 @@ const whatsappTemplateMappingMigration = readFileSync(new URL("../supabase/migra
 const outreachDeliveryIdempotencyMigration = readFileSync(new URL("../supabase/migrations/20260722210449_outreach_delivery_idempotency.sql", import.meta.url), "utf8");
 const outreachDeliveryTraceMigration = readFileSync(new URL("../supabase/migrations/20260723002150_outreach_delivery_trace.sql", import.meta.url), "utf8");
 const whatsappWebhookSource = readFileSync(new URL("../supabase/functions/whatsapp-webhook/index.ts", import.meta.url), "utf8");
+const whatsappWebhookRoutingMigration = readFileSync(new URL("../supabase/migrations/20260723005859_whatsapp_webhook_routing_indexes.sql", import.meta.url), "utf8");
 const rfxInvitationTableSource = rfxEventsSource.slice(rfxEventsSource.indexOf("function laneTableLabels"), rfxEventsSource.indexOf("function firstOutreachTarget"));
 const apiInvitationTableSource = apiSource.slice(apiSource.indexOf("function outreachLaneTableLabels"), apiSource.indexOf("function phoneForWhatsapp"));
 const marksmanSignatureAsset = new URL("../assets/marksman-email-signature.png", import.meta.url);
@@ -549,11 +550,19 @@ assert.match(whatsappWebhookSource, /x-hub-signature-256/, "WhatsApp webhook sho
 assert.doesNotMatch(whatsappWebhookSource, /if \(!WHATSAPP_APP_SECRET\) return true/, "WhatsApp webhook must reject unsigned POST requests when the Meta app secret is missing");
 assert.match(whatsappWebhookSource, /provider_message_id/, "WhatsApp webhook should update outreach messages by provider message id");
 assert.match(whatsappWebhookSource, /findWebhookConnection/, "WhatsApp webhook should resolve the workspace connection before routing events");
-assert.match(whatsappWebhookSource, /connectionAppSecret\(resolvedConnection\)/, "WhatsApp webhook should select the resolved workspace App Secret before signature validation");
+assert.match(whatsappWebhookSource, /connectionAppSecret\(item\.connection\)/, "WhatsApp webhook should select each resolved workspace App Secret before signature validation");
 assert.match(whatsappWebhookSource, /signatureValid\(request, bodyText, appSecret\)/, "WhatsApp webhook should validate with the selected tenant App Secret");
 assert.match(whatsappWebhookSource, /meta_phone_number_id/, "WhatsApp webhook should route by Meta phone number id");
 assert.match(whatsappWebhookSource, /meta_waba_id/, "WhatsApp webhook should fall back to WABA routing");
 assert.match(whatsappWebhookSource, /whatsapp_connection_id/, "WhatsApp webhook should scope message updates to the resolved connection");
+assert.match(whatsappWebhookSource, /connectionPhone\(row\) === phoneNumberId[\s\S]+connectionWaba\(row\) === wabaId/, "WhatsApp webhook should require the saved phone number and WABA to match the same connection");
+assert.match(whatsappWebhookSource, /if \(phoneNumberId\) return \{ connection: null, phoneNumberId, wabaId \}/, "WhatsApp webhook should reject WABA fallback when Meta supplies a mismatched phone number id");
+assert.match(whatsappWebhookSource, /\.is\("whatsapp_connection_id", null\)[\s\S]+\.eq\("owner_user_id", ownerUserId\)/, "Legacy WhatsApp callback fallback should remain scoped to the connection owner");
+assert.doesNotMatch(whatsappWebhookSource, /whatsapp_connection_id\.eq\.\$\{connection\.id\},whatsapp_connection_id\.is\.null/, "WhatsApp webhook should not update exact and unscoped legacy messages in one query");
+assert.match(whatsappWebhookSource, /appSecrets\.size !== 1/, "WhatsApp webhook should reject a payload spanning different Meta apps");
+assert.match(whatsappWebhookSource, /webhook_phone_number_id:[\s\S]+webhook_waba_id:/, "WhatsApp webhook should persist the Meta routing identity with delivery results");
+assert.match(whatsappWebhookRoutingMigration, /whatsapp_business_connections_webhook_route_idx/, "WhatsApp connection lookup should have a phone and WABA routing index");
+assert.match(whatsappWebhookRoutingMigration, /outreach_messages_whatsapp_webhook_route_idx/, "WhatsApp delivery callbacks should have a connection and provider message index");
 assert.match(rfxBidApiSource, /rfx_rfi_crossborder_details/, "Customer RFI API should persist structured crossborder details");
 assert.match(apiSource, /business_rules: businessRules\.data/, "RFx Process detail should expose structured business rules");
 assert.match(rfxProcessServiceSource, /fetchRfxProcessProjects/, "RFx Process service should expose project listing");

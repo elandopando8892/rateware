@@ -118,36 +118,53 @@ async function findWebhookConnection(
   const metadata = objectRecord(value.metadata);
   const phoneNumberId = cleanText(metadata.phone_number_id);
   const wabaId = cleanText(entry.id);
-  const select = "id,owner_user_id,owner_email,organization_id,connection_mode,status,meta_phone_number_id,phone_number_id,meta_waba_id,waba_id,display_phone_number,app_secret_encrypted";
+  const select = "id,owner_user_id,owner_email,organization_id,connection_mode,status,meta_phone_number_id,phone_number_id,meta_waba_id,waba_id,display_phone_number,app_secret_encrypted,updated_at";
+  const candidates = new Map<string, Record<string, unknown>>();
+  const addMatches = async (column: string, valueToMatch: string) => {
+    if (!valueToMatch) return;
+    const result = await supabase
+      .from("whatsapp_business_connections")
+      .select(select)
+      .eq(column, valueToMatch)
+      .neq("status", "revoked")
+      .order("updated_at", { ascending: false });
+    if (result.error) throw result.error;
+    for (const row of result.data || []) {
+      const id = cleanText(row.id);
+      if (id) candidates.set(id, row);
+    }
+  };
   if (phoneNumberId) {
     for (const column of ["meta_phone_number_id", "phone_number_id"]) {
-      const result = await supabase
-        .from("whatsapp_business_connections")
-        .select(select)
-        .eq(column, phoneNumberId)
-        .neq("status", "revoked")
-        .order("updated_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (result.error) throw result.error;
-      if (result.data) return result.data;
+      await addMatches(column, phoneNumberId);
     }
   }
   if (wabaId) {
     for (const column of ["meta_waba_id", "waba_id"]) {
-      const result = await supabase
-        .from("whatsapp_business_connections")
-        .select(select)
-        .eq(column, wabaId)
-        .neq("status", "revoked")
-        .order("updated_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (result.error) throw result.error;
-      if (result.data) return result.data;
+      await addMatches(column, wabaId);
     }
   }
-  return null;
+  const rows = [...candidates.values()];
+  const connectionPhone = (row: Record<string, unknown>) => cleanText(row.meta_phone_number_id || row.phone_number_id);
+  const connectionWaba = (row: Record<string, unknown>) => cleanText(row.meta_waba_id || row.waba_id);
+  const exactMatches = rows.filter((row) => (
+    (!phoneNumberId || connectionPhone(row) === phoneNumberId)
+    && (!wabaId || connectionWaba(row) === wabaId)
+  ));
+  if (exactMatches.length > 1) {
+    throw new Error(`Ambiguous WhatsApp webhook connection for phone_number_id ${phoneNumberId || "-"} and WABA ${wabaId || "-"}.`);
+  }
+  if (exactMatches.length === 1) {
+    return { connection: exactMatches[0], phoneNumberId, wabaId };
+  }
+  // Never route by WABA alone when Meta supplied a phone id that does not
+  // belong to that exact saved connection.
+  if (phoneNumberId) return { connection: null, phoneNumberId, wabaId };
+  const wabaMatches = rows.filter((row) => wabaId && connectionWaba(row) === wabaId);
+  if (wabaMatches.length > 1) {
+    throw new Error(`Ambiguous WhatsApp webhook connection for WABA ${wabaId}.`);
+  }
+  return { connection: wabaMatches[0] || null, phoneNumberId, wabaId };
 }
 
 async function connectionAppSecret(connection: Record<string, unknown> | null) {
@@ -169,6 +186,77 @@ async function signatureValid(request: Request, body: string, appSecret: string)
   );
   const digest = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(body));
   return constantTimeEquals(hex(digest), signature);
+}
+
+async function outreachMessageByProviderId(
+  supabase: ReturnType<typeof createClient>,
+  providerMessageId: string,
+  connection: Record<string, unknown>
+) {
+  const connectionId = cleanText(connection.id);
+  const exact = await supabase
+    .from("outreach_messages")
+    .select("*")
+    .eq("provider_message_id", providerMessageId)
+    .eq("whatsapp_connection_id", connectionId)
+    .limit(2);
+  if (exact.error) throw exact.error;
+  if ((exact.data || []).length > 1) throw new Error("Ambiguous WhatsApp delivery status target.");
+  if (exact.data?.[0]) return exact.data[0];
+
+  // Backfill compatibility is owner-scoped. It must never attach an old
+  // connection-less message owned by a different workspace.
+  let legacyQuery = supabase
+    .from("outreach_messages")
+    .select("*")
+    .eq("provider_message_id", providerMessageId)
+    .is("whatsapp_connection_id", null);
+  const ownerUserId = cleanText(connection.owner_user_id);
+  const ownerEmail = cleanText(connection.owner_email);
+  if (ownerUserId) legacyQuery = legacyQuery.eq("owner_user_id", ownerUserId);
+  else if (ownerEmail) legacyQuery = legacyQuery.eq("owner_email", ownerEmail);
+  else return null;
+  const legacy = await legacyQuery.limit(2);
+  if (legacy.error) throw legacy.error;
+  if ((legacy.data || []).length > 1) throw new Error("Ambiguous legacy WhatsApp delivery status target.");
+  return legacy.data?.[0] || null;
+}
+
+async function latestOutboundForInbound(
+  supabase: ReturnType<typeof createClient>,
+  fromPhone: string,
+  connection: Record<string, unknown>
+) {
+  const connectionId = cleanText(connection.id);
+  const exact = await supabase
+    .from("outreach_messages")
+    .select("*")
+    .eq("channel", "whatsapp")
+    .eq("normalized_recipient_phone", fromPhone)
+    .eq("whatsapp_connection_id", connectionId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (exact.error) throw exact.error;
+  if (exact.data) return exact.data;
+
+  let legacyQuery = supabase
+    .from("outreach_messages")
+    .select("*")
+    .eq("channel", "whatsapp")
+    .eq("normalized_recipient_phone", fromPhone)
+    .is("whatsapp_connection_id", null);
+  const ownerUserId = cleanText(connection.owner_user_id);
+  const ownerEmail = cleanText(connection.owner_email);
+  if (ownerUserId) legacyQuery = legacyQuery.eq("owner_user_id", ownerUserId);
+  else if (ownerEmail) legacyQuery = legacyQuery.eq("owner_email", ownerEmail);
+  else return null;
+  const legacy = await legacyQuery
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (legacy.error) throw legacy.error;
+  return legacy.data || null;
 }
 
 function statusPatch(statusRow: Record<string, unknown>, now: string) {
@@ -208,16 +296,17 @@ function statusPatch(statusRow: Record<string, unknown>, now: string) {
 async function recordStatusUpdate(
   supabase: ReturnType<typeof createClient>,
   statusRow: Record<string, unknown>,
-  connection: Record<string, unknown> | null
+  connection: Record<string, unknown>,
+  webhookIdentity: { phoneNumberId: string; wabaId: string }
 ) {
   const now = new Date().toISOString();
   const { providerMessageId, providerStatus, patch, errorText } = statusPatch(statusRow, now);
   if (!providerMessageId || !providerStatus) return false;
-  const connectionId = cleanText(connection?.id) || null;
-  const senderAddress = cleanText(connection?.display_phone_number) || null;
+  const connectionId = cleanText(connection.id);
+  const senderAddress = cleanText(connection.display_phone_number) || null;
   patch.whatsapp_connection_id = connectionId;
   patch.sender_address = senderAddress;
-  patch.sender_connection_type = cleanText(connection?.connection_mode) || "unresolved";
+  patch.sender_connection_type = cleanText(connection.connection_mode) || "unresolved";
   patch.provider_response_status = providerStatus;
   patch.send_result = deliveryResult("webhook_status", {
     channel: "whatsapp",
@@ -226,26 +315,25 @@ async function recordStatusUpdate(
     connection_id: connectionId,
     sender: senderAddress,
     provider_message_id: providerMessageId,
+    webhook_phone_number_id: webhookIdentity.phoneNumberId,
+    webhook_waba_id: webhookIdentity.wabaId,
     ...(errorText ? { error: errorText } : {})
   });
-  let updateQuery = supabase
+  const target = await outreachMessageByProviderId(supabase, providerMessageId, connection);
+  if (!target) return false;
+  const update = await supabase
     .from("outreach_messages")
     .update(patch)
-    .eq("provider_message_id", providerMessageId);
-  if (connection?.id) {
-    updateQuery = updateQuery.or(`whatsapp_connection_id.eq.${connection.id},whatsapp_connection_id.is.null`);
-  }
-  const update = await updateQuery
+    .eq("id", target.id)
     .select("*")
-    .limit(1)
-    .maybeSingle();
+    .single();
   if (update.error) throw update.error;
   const message = update.data;
   if (!message) return false;
   const history = await supabase.from("contact_history").insert({
     owner_user_id: message.owner_user_id,
     owner_email: message.owner_email,
-    whatsapp_connection_id: connection?.id || message.whatsapp_connection_id || null,
+    whatsapp_connection_id: connectionId,
     outreach_message_id: message.id,
     campaign_id: message.campaign_id,
     vendor_id: message.vendor_id,
@@ -258,10 +346,12 @@ async function recordStatusUpdate(
     occurred_at: now,
     metadata: {
       provider: "meta",
-      whatsapp_connection_id: connection?.id || message.whatsapp_connection_id || null,
+      whatsapp_connection_id: connectionId,
       sender_address: senderAddress,
-      sender_connection_type: cleanText(connection?.connection_mode) || "unresolved",
-      sender_display_phone: connection?.display_phone_number || null,
+      sender_connection_type: cleanText(connection.connection_mode) || "unresolved",
+      sender_display_phone: connection.display_phone_number || null,
+      webhook_phone_number_id: webhookIdentity.phoneNumberId,
+      webhook_waba_id: webhookIdentity.wabaId,
       provider_message_id: providerMessageId,
       result: objectRecord(patch.send_result)
     }
@@ -284,31 +374,19 @@ function inboundText(message: Record<string, unknown>) {
 async function recordInboundMessage(
   supabase: ReturnType<typeof createClient>,
   inbound: Record<string, unknown>,
-  connection: Record<string, unknown> | null
+  connection: Record<string, unknown>,
+  webhookIdentity: { phoneNumberId: string; wabaId: string }
 ) {
   const now = new Date().toISOString();
   const fromPhone = normalizeWhatsappPhone(inbound.from);
   if (!fromPhone) return false;
-  let latestQuery = supabase
-    .from("outreach_messages")
-    .select("*")
-    .eq("channel", "whatsapp")
-    .eq("normalized_recipient_phone", fromPhone);
-  if (connection?.id) {
-    latestQuery = latestQuery.or(`whatsapp_connection_id.eq.${connection.id},whatsapp_connection_id.is.null`);
-  }
-  const latest = await latestQuery
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (latest.error) throw latest.error;
-  const message = latest.data;
+  const message = await latestOutboundForInbound(supabase, fromPhone, connection);
   if (!message) return false;
   const body = inboundText(inbound);
   const history = await supabase.from("contact_history").insert({
     owner_user_id: message.owner_user_id,
     owner_email: message.owner_email,
-    whatsapp_connection_id: connection?.id || message.whatsapp_connection_id || null,
+    whatsapp_connection_id: connection.id,
     outreach_message_id: message.id,
     campaign_id: message.campaign_id,
     vendor_id: message.vendor_id,
@@ -321,8 +399,10 @@ async function recordInboundMessage(
     occurred_at: now,
     metadata: {
       provider: "meta",
-      whatsapp_connection_id: connection?.id || message.whatsapp_connection_id || null,
-      sender_display_phone: connection?.display_phone_number || null,
+      whatsapp_connection_id: connection.id,
+      sender_display_phone: connection.display_phone_number || null,
+      webhook_phone_number_id: webhookIdentity.phoneNumberId,
+      webhook_waba_id: webhookIdentity.wabaId,
       provider_message_id: cleanText(inbound.id),
       from_phone: fromPhone,
       inbound_payload: inbound
@@ -334,17 +414,19 @@ async function recordInboundMessage(
     .update({
       status: "replied",
       delivery_status: "replied",
-      whatsapp_connection_id: connection?.id || message.whatsapp_connection_id || null,
-      sender_address: cleanText(connection?.display_phone_number || message.sender_address) || null,
-      sender_connection_type: cleanText(connection?.connection_mode || message.sender_connection_type) || "unresolved",
+      whatsapp_connection_id: connection.id,
+      sender_address: cleanText(connection.display_phone_number || message.sender_address) || null,
+      sender_connection_type: cleanText(connection.connection_mode || message.sender_connection_type) || "unresolved",
       provider_response_status: "replied",
       send_result: deliveryResult("inbound_reply", {
         channel: "whatsapp",
         provider: "meta",
         outcome: "replied",
-        connection_id: connection?.id || message.whatsapp_connection_id || null,
-        sender: cleanText(connection?.display_phone_number || message.sender_address) || null,
-        provider_message_id: cleanText(inbound.id)
+        connection_id: connection.id,
+        sender: cleanText(connection.display_phone_number || message.sender_address) || null,
+        provider_message_id: cleanText(inbound.id),
+        webhook_phone_number_id: webhookIdentity.phoneNumberId,
+        webhook_waba_id: webhookIdentity.wabaId
       }),
       updated_at: now
     })
@@ -379,32 +461,49 @@ Deno.serve(async (request) => {
     const payload = bodyText ? JSON.parse(bodyText) : {};
     const supabase = getClient();
     const entries = arrayValue(payload.entry);
-    const resolvedChanges: Array<{ value: Record<string, unknown>; connection: Record<string, unknown> | null }> = [];
-    const connectionIds = new Set<string>();
+    const resolvedChanges: Array<{
+      value: Record<string, unknown>;
+      connection: Record<string, unknown>;
+      phoneNumberId: string;
+      wabaId: string;
+    }> = [];
     for (const entry of entries) {
       for (const change of arrayValue(entry.changes)) {
         const value = objectRecord(change.value);
-        const connection = await findWebhookConnection(supabase, entry, value);
-        if (connection?.id) connectionIds.add(cleanText(connection.id));
-        resolvedChanges.push({ value, connection });
+        const resolved = await findWebhookConnection(supabase, entry, value);
+        if (!resolved.connection) {
+          return jsonResponse({
+            error: "WhatsApp webhook connection could not be resolved for the supplied phone_number_id and WABA."
+          }, 403);
+        }
+        resolvedChanges.push({ value, ...resolved, connection: resolved.connection });
       }
     }
-    if (connectionIds.size !== 1) {
-      return jsonResponse({ error: "WhatsApp webhook connection could not be resolved uniquely." }, 403);
+    if (!resolvedChanges.length) {
+      return jsonResponse({ error: "WhatsApp webhook did not include routable changes." }, 400);
     }
-    const resolvedConnection = resolvedChanges.find((item) => item.connection)?.connection || null;
-    const appSecret = await connectionAppSecret(resolvedConnection);
+    const appSecrets = new Set<string>();
+    for (const item of resolvedChanges) {
+      const secret = await connectionAppSecret(item.connection);
+      if (!secret) return jsonResponse({ error: "WhatsApp webhook App Secret is not configured for the resolved connection." }, 403);
+      appSecrets.add(secret);
+    }
+    if (appSecrets.size !== 1) {
+      return jsonResponse({ error: "WhatsApp webhook payload spans connections with different Meta apps." }, 403);
+    }
+    const appSecret = [...appSecrets][0];
     if (!(await signatureValid(request, bodyText, appSecret))) {
       return jsonResponse({ error: "Invalid Meta webhook signature." }, 403);
     }
 
     let processed = 0;
-    for (const { value, connection } of resolvedChanges) {
+    for (const { value, connection, phoneNumberId, wabaId } of resolvedChanges) {
+      const webhookIdentity = { phoneNumberId, wabaId };
       for (const status of arrayValue(value.statuses)) {
-        if (await recordStatusUpdate(supabase, status, connection)) processed += 1;
+        if (await recordStatusUpdate(supabase, status, connection, webhookIdentity)) processed += 1;
       }
       for (const message of arrayValue(value.messages)) {
-        if (await recordInboundMessage(supabase, message, connection)) processed += 1;
+        if (await recordInboundMessage(supabase, message, connection, webhookIdentity)) processed += 1;
       }
     }
     return jsonResponse({ ok: true, processed });
