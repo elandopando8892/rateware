@@ -72,6 +72,10 @@ function metaNotifierPendingReview(value = "NOT_PUBLISHED") {
   return ["PENDING", "IN_REVIEW", "IN_APPEAL"].includes(metaNotifierStatus(value));
 }
 
+function metaNotifierNeedsSync(value = "NOT_PUBLISHED") {
+  return ["NOT_SYNCED", "NOT_FOUND", "LANGUAGE_MISMATCH"].includes(metaNotifierStatus(value));
+}
+
 const eventForm = document.querySelector("#rfx-event-form");
 const rfxIdInput = document.querySelector("#rfx-id");
 const rfxNameInput = document.querySelector("#rfx-name");
@@ -2256,6 +2260,12 @@ function renderOutreachPreview() {
     } else if (["REJECTED", "PAUSED", "DISABLED"].includes(metaStatus)) {
       readinessCopy = `${targetSummary} Meta notifier status is ${metaStatus.toLowerCase()}. Review the integration before direct sending.`;
       readinessTone = "error";
+    } else if (metaStatus === "LANGUAGE_MISMATCH") {
+      readinessCopy = `${targetSummary} No approved Meta translation matches this Outreach language. Add or approve that language in Meta, then sync templates.`;
+      readinessTone = "warning";
+    } else if (metaNotifierNeedsSync(metaStatus)) {
+      readinessCopy = `${targetSummary} Rateware has not verified this notifier in the current sender's Meta catalog. Sync templates or generate the queue again.`;
+      readinessTone = "warning";
     } else if (groupMode && !whatsappDirectReady) {
       readinessCopy = `${targetSummary} Group delivery remains manual; publish only if direct WhatsApp sends are also required.`;
     }
@@ -4580,6 +4590,12 @@ function whatsappDraftStatusDetail(message = {}, templateStatus = "") {
   if (/not approved|pending Meta approval|template is pending|template is in review|in review|pending review|under review|Sync Meta templates/i.test(raw)) {
     return "Meta notifier is still under Meta review. Direct WhatsApp sends unlock after approval; Rateware will refresh it automatically when you generate or send the queue.";
   }
+  if (/compatible Meta translation|compatible language|translation.*available|language mismatch/i.test(raw)) {
+    return "No approved Meta translation matches this Outreach language. Add or approve that language in Meta, then sync templates.";
+  }
+  if (/not been verified|not found in this sender|not synced/i.test(raw)) {
+    return "Rateware has not verified this notifier in the current sender's Meta catalog. Sync templates or regenerate the queue before sending.";
+  }
   if (/template mapping|Meta template|message template/i.test(raw)) {
     return "This draft needs the compact Meta notifier. Generate the draft queue or send again so Rateware can create or refresh it automatically.";
   }
@@ -4587,6 +4603,8 @@ function whatsappDraftStatusDetail(message = {}, templateStatus = "") {
   const status = String(templateStatus || "").toUpperCase();
   if (status === "ERROR") return "Meta notifier needs attention. Regenerate the draft queue or open Settings > WhatsApp Business to test the line.";
   if (metaNotifierPendingReview(status)) return `Meta notifier is ${metaNotifierStatusLabel(status)} at Meta. Direct WhatsApp sends unlock after approval.`;
+  if (status === "LANGUAGE_MISMATCH") return "No approved Meta translation matches this Outreach language. Add or approve it in Meta, then sync templates.";
+  if (["NOT_SYNCED", "NOT_FOUND"].includes(status)) return "Rateware has not verified this notifier in the current sender's Meta catalog.";
   if (status === "NOT_PUBLISHED") return "Meta notifier has not been published yet. Generate the draft queue or send again to create it automatically.";
   return "";
 }
@@ -4918,7 +4936,7 @@ function renderDraftQueue() {
     const canMarkGroup = isWhatsappGroup && selectableWhatsappGroupDrafts([message]).length;
     const openLabel = isEmail ? "Open Gmail" : isWhatsappGroup ? "Open group" : "Open WhatsApp";
     const metadata = message.metadata && typeof message.metadata === "object" ? message.metadata : {};
-    const templateStatus = String(metadata.whatsapp_template_status || (message.whatsapp_template_name ? "APPROVED" : "NOT_PUBLISHED")).toUpperCase();
+    const templateStatus = String(metadata.whatsapp_template_status || (message.whatsapp_template_name ? "NOT_SYNCED" : "NOT_PUBLISHED")).toUpperCase();
     const draftTitle = message.subject || (isWhatsapp ? "WhatsApp RFx invitation" : isWhatsappGroup ? "WhatsApp group invitation" : "No subject");
     const staleDraft = isStaleOutreachDraft(message);
     const readinessDetail = staleDraft

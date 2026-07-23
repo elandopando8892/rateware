@@ -47,6 +47,10 @@ function metaNotifierStatusLabel(value = "NOT_PUBLISHED") {
 function metaNotifierPendingReview(value = "NOT_PUBLISHED") {
   return ["PENDING", "IN_REVIEW", "IN_APPEAL"].includes(metaNotifierStatus(value));
 }
+
+function metaNotifierNeedsSync(value = "NOT_PUBLISHED") {
+  return ["NOT_SYNCED", "NOT_FOUND", "LANGUAGE_MISMATCH"].includes(metaNotifierStatus(value));
+}
 const outreachSyncWhatsappTemplatesButton = document.querySelector("#outreach-sync-whatsapp-templates");
 const templateList = document.querySelector("#template-list");
 const campaignForm = document.querySelector("#outreach-campaign-form");
@@ -187,6 +191,12 @@ function renderOutreachWhatsappTemplateStatus(template = templates.find((item) =
   } else if (["REJECTED", "PAUSED", "DISABLED"].includes(status)) {
     copy = `Meta notifier status: ${status.toLowerCase()}. Review the integration before direct WhatsApp sending.`;
     tone = "error";
+  } else if (status === "LANGUAGE_MISMATCH") {
+    copy = "No approved Meta translation matches this Outreach language. Add or approve that language in Meta, then sync templates.";
+    tone = "warning";
+  } else if (metaNotifierNeedsSync(status)) {
+    copy = "Rateware has not verified this notifier in the current sender's Meta catalog. Sync templates or publish it again.";
+    tone = "warning";
   } else if (template) {
     copy = "Outreach is the source. Create the reusable Meta notifier before automated WhatsApp sends.";
   }

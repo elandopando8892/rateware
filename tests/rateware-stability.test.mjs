@@ -457,7 +457,10 @@ assert.match(apiSource, /notifierByTemplate[\s\S]+publishOutreachTemplateToWhats
 assert.match(apiSource, /whatsapp_template_auto_checked_at: now/, "WhatsApp drafts should record the automatic send-time Meta check");
 assert.match(apiSource, /whatsappMetaStatusNeedsApproval[\s\S]+IN_REVIEW/, "WhatsApp direct sends should recognize Meta in-review templates as pending approval");
 assert.match(rfxEventsSource, /metaNotifierPendingReview[\s\S]+IN_REVIEW/, "RFx Bid Room should show Meta in-review template status without treating it as unpublished");
+assert.match(rfxEventsSource, /function metaNotifierNeedsSync[\s\S]+LANGUAGE_MISMATCH/, "RFx Bid Room should distinguish unsynced and language-incompatible Meta templates");
+assert.match(rfxEventsSource, /message\.whatsapp_template_name \? "NOT_SYNCED" : "NOT_PUBLISHED"/, "RFx draft rows must not display an unverified template name as approved");
 assert.match(outreachSource, /metaNotifierPendingReview[\s\S]+IN_REVIEW/, "Outreach should show Meta in-review template status without exposing secrets or raw provider errors");
+assert.match(outreachSource, /No approved Meta translation matches this Outreach language/, "Outreach should explain incompatible Meta template languages");
 assert.match(apiSource, /\.eq\("id", connection\.row\.id\)/, "WhatsApp connection tests and updates should target the resolved connection row");
 assert.match(apiSource, /whatsapp_connection_id: connection\.row\.id/, "WhatsApp sends should persist the resolved connection id");
 assert.match(apiSource, /sender_display_phone: senderDisplayPhone/, "WhatsApp contact history should persist the sender display phone");
@@ -479,8 +482,15 @@ assert.match(apiSource, /rateware_rfx_invitation_en/, "WhatsApp RFx delivery sho
 assert.match(apiSource, /whatsappTemplateNamesMatch/, "WhatsApp template sync should reconcile legacy and current stable RFx template aliases");
 assert.match(apiSource, /rateware_rfx_invitation_\$\{suffix\}rateware_rfx_invitation_\$\{suffix\}/, "WhatsApp publishing should reconcile duplicated legacy notifier names");
 assert.match(apiSource, /whatsappTemplateLanguagesMatch/, "WhatsApp template sync should reconcile Meta language roots such as en and en_US");
+assert.match(apiSource, /function selectWhatsappMetaTemplate[\s\S]+whatsappTemplateStatusPriority/, "WhatsApp template resolution should rank compatible Meta catalog rows by approval status");
+assert.match(apiSource, /status === "APPROVED"[\s\S]+return 40/, "An approved Meta translation should win over pending or rejected duplicates");
+assert.match(apiSource, /selection\.availableLanguages\.length \? "LANGUAGE_MISMATCH" : "NOT_FOUND"/, "Template sync should distinguish a missing translation from a missing template");
+assert.match(apiSource, /last_error: metaTemplate \? null : missingError/, "Template sync should persist an actionable missing-template or language diagnostic");
+assert.match(apiSource, /templateName \? "NOT_SYNCED" : "NOT_PUBLISHED"/, "A saved Meta template name must not imply approval when its status is absent");
+assert.match(apiSource, /templateStatus === "LANGUAGE_MISMATCH"[\s\S]+no approved translation compatible/, "WhatsApp sending should block an incompatible Meta translation before provider delivery");
+assert.match(apiSource, /\["NOT_SYNCED", "NOT_FOUND"\]\.includes\(templateStatus\)/, "WhatsApp sending should block catalog-unverified templates");
 assert.match(apiSource, /name: "rateware_rfx_invitation_en"[\s\S]+language: "en"/, "WhatsApp approved English RFx notifier should send with Meta's English language code");
-assert.match(apiSource, /meta_template_language: cleanText\(metaTemplate\.language\)/, "WhatsApp template sync should persist Meta's real template language code");
+assert.match(apiSource, /meta_template_language: metaTemplate \? cleanText\(metaTemplate\.language\)/, "WhatsApp template sync should persist Meta's real template language code");
 assert.match(apiSource, /whatsappTemplateLanguageCandidates/, "WhatsApp sending should retry equivalent Meta language codes for approved templates");
 assert.match(apiSource, /\(cleanText\(template\.meta_template_language\) \|\| ""\)\.replace/, "WhatsApp template publishing must tolerate an omitted template language");
 assert.match(apiSource, /const raw = \(cleanText\(value\) \|\| ""\)\.trim\(\)\.replace/, "WhatsApp template language candidates must tolerate null values");
@@ -494,7 +504,7 @@ assert.match(apiSource, /function whatsappTemplateStatusFromRow[\s\S]+quality_sc
 assert.match(apiSource, /function whatsappMetaQualityStatusIsSendable[\s\S]+"GREEN"[\s\S]+"QUALITY_PENDING"/, "WhatsApp quality score signals should unlock approved Meta templates");
 assert.match(apiSource, /candidates\.includes\("APPROVED"\)[\s\S]+return "APPROVED"/, "WhatsApp template status should prefer approved or active quality signals over stale pending values");
 assert.match(apiSource, /approved: templates\.filter\(\(template: Record<string, unknown>\) => whatsappTemplateStatusFromRow\(template\) === "APPROVED"\)\.length/, "WhatsApp template sync approved count should use Rateware's normalized Meta status");
-assert.match(apiSource, /whatsappTemplateLanguagesMatch\(row\.language, language\)/, "WhatsApp publish should reuse a Meta template when Meta returns a language root such as en instead of en_US");
+assert.match(apiSource, /selectWhatsappMetaTemplate\(catalogRows, name, language\)/, "WhatsApp publish should select the best compatible Meta translation instead of trusting the first catalog row");
 assert.match(apiSource, /normalized\.startsWith\("APPROVED_"\)/, "WhatsApp approved quality variants should remain sendable");
 assert.match(apiSource, /list_whatsapp_phone_numbers/, "Rateware API should expose WhatsApp sender phone listing");
 assert.match(apiSource, /whatsappWabaGraphFetch\([\s\S]+phone_numbers\?fields=id,display_phone_number,verified_name,quality_rating/, "WhatsApp phone listing should resolve the WABA from the sender phone relationship before falling back to saved account ids");

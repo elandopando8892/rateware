@@ -11682,6 +11682,12 @@ function whatsappMetaStatusMessage(value: unknown) {
   if (["REJECTED", "PAUSED", "DISABLED"].includes(status)) {
     return `Meta's compact RFx notification is ${whatsappMetaStatusLabel(status)}. Review it in Meta before direct WhatsApp sending.`;
   }
+  if (status === "LANGUAGE_MISMATCH") {
+    return "Meta has this RFx notifier in another language, but no approved compatible translation exists. Add or approve the required language in Meta, then sync templates.";
+  }
+  if (["NOT_SYNCED", "NOT_FOUND"].includes(status)) {
+    return "Rateware has not verified this RFx notifier in the current sender's Meta catalog. Sync templates or generate the queue again before sending.";
+  }
   return "Meta's compact RFx notification has not been published yet. Generate or send the queue again so Rateware can create or refresh it.";
 }
 
@@ -11810,6 +11816,48 @@ function whatsappTemplateLanguagesMatch(leftValue: unknown, rightValue: unknown)
   // `en_US`/`es_MX`. The stable RFx notifier only supports English and
   // Spanish, so matching by the language root is safe here.
   return left.split("_")[0] === right.split("_")[0];
+}
+
+function whatsappTemplateStatusPriority(value: unknown) {
+  const status = whatsappMetaStatus(value);
+  if (status === "APPROVED") return 40;
+  if (whatsappMetaStatusNeedsApproval(status)) return 30;
+  if (["REJECTED", "PAUSED", "DISABLED"].includes(status)) return 10;
+  return 20;
+}
+
+function whatsappTemplateLanguagePriority(value: unknown, requestedLanguage: unknown) {
+  const actual = (cleanText(value) || "").toLowerCase().replace(/-/g, "_");
+  const requested = (cleanText(requestedLanguage) || "").toLowerCase().replace(/-/g, "_");
+  if (!actual || !requested) return 0;
+  if (actual === requested) return 6;
+  if (normalizeWhatsappLocale(actual) === normalizeWhatsappLocale(requested)) return 5;
+  return whatsappTemplateLanguagesMatch(actual, requested) ? 3 : 0;
+}
+
+function selectWhatsappMetaTemplate(
+  templates: Record<string, unknown>[],
+  templateName: unknown,
+  requestedLanguage: unknown
+) {
+  const named = templates.filter((template) => (
+    whatsappTemplateNamesMatch(template.name, templateName, requestedLanguage)
+  ));
+  const compatible = named.filter((template) => (
+    whatsappTemplateLanguagesMatch(template.language, requestedLanguage)
+  ));
+  const rows = [...compatible].sort((left, right) => {
+    const statusDifference = whatsappTemplateStatusPriority(whatsappTemplateStatusFromRow(right))
+      - whatsappTemplateStatusPriority(whatsappTemplateStatusFromRow(left));
+    if (statusDifference) return statusDifference;
+    return whatsappTemplateLanguagePriority(right.language, requestedLanguage)
+      - whatsappTemplateLanguagePriority(left.language, requestedLanguage);
+  });
+  return {
+    row: rows[0] || null,
+    named,
+    availableLanguages: [...new Set(named.map((template) => cleanText(template.language)).filter(Boolean))]
+  };
 }
 
 function whatsappTemplateLanguageCandidates(value: unknown) {
@@ -11978,24 +12026,33 @@ async function publishOutreachTemplateToWhatsapp(
       connection,
       "?fields=id,name,language,status,category,components,quality_score&limit=100"
     );
-    metaRow = Array.isArray(existingMeta.data.data)
-      ? existingMeta.data.data.find((row: Record<string, unknown>) => (
-        whatsappTemplateNamesMatch(row.name, name, language)
-        && whatsappTemplateLanguagesMatch(row.language, language)
-      )) || null
-      : null;
+    const catalogRows = Array.isArray(existingMeta.data.data)
+      ? existingMeta.data.data as Record<string, unknown>[]
+      : [];
+    const selection = selectWhatsappMetaTemplate(catalogRows, name, language);
+    metaRow = selection.row;
 
     if (!metaRow) {
-      const created = await whatsappTemplateGraphFetch(supabase, connection, "", {
-        method: "POST",
-        body: JSON.stringify({
-          name,
-          language,
-          category,
-          allow_category_change: true,
-          components
-        })
-      });
+      let created;
+      try {
+        created = await whatsappTemplateGraphFetch(supabase, connection, "", {
+          method: "POST",
+          body: JSON.stringify({
+            name,
+            language,
+            category,
+            allow_category_change: true,
+            components
+          })
+        });
+      } catch (error) {
+        if (selection.availableLanguages.length) {
+          const requested = String(language).replace(/_/g, "-");
+          const available = selection.availableLanguages.map((item) => String(item).replace(/_/g, "-")).join(", ");
+          throw new Error(`Meta has notifier "${name}" in ${available}, but not in compatible language ${requested}. Add that translation in Meta or allow Rateware to create it, then sync templates. ${whatsappTemplateEndpointMessage(error)}`);
+        }
+        throw error;
+      }
       metaRow = {
         id: cleanText(created.data.id),
         name,
@@ -12134,22 +12191,27 @@ async function syncWhatsappTemplates(
   const mappings = await whatsappTemplateMappingsForConnection(supabase, connection.row.id);
   const reconciled: Record<string, unknown>[] = [];
   for (const mapping of mappings) {
-    const metaTemplate = templates.find((template: Record<string, unknown>) => (
-      whatsappTemplateNamesMatch(template.name, mapping.meta_template_name, mapping.meta_template_language)
-      && whatsappTemplateLanguagesMatch(template.language, mapping.meta_template_language)
-    ));
-    if (!metaTemplate) continue;
+    const selection = selectWhatsappMetaTemplate(
+      templates,
+      mapping.meta_template_name,
+      mapping.meta_template_language
+    );
+    const metaTemplate = selection.row;
+    const missingStatus = selection.availableLanguages.length ? "LANGUAGE_MISMATCH" : "NOT_FOUND";
+    const missingError = selection.availableLanguages.length
+      ? `No compatible Meta translation for ${String(mapping.meta_template_language || "the requested language").replace(/_/g, "-")}. Available: ${selection.availableLanguages.map((item) => String(item).replace(/_/g, "-")).join(", ")}.`
+      : `Template "${cleanText(mapping.meta_template_name) || "unknown"}" was not found in this sender's synced Meta catalog.`;
     const update = await supabase
       .from("whatsapp_outreach_template_mappings")
       .update({
-        meta_template_id: cleanText(metaTemplate.id) || cleanText(mapping.meta_template_id),
-        meta_template_name: cleanText(metaTemplate.name) || cleanText(mapping.meta_template_name),
-        meta_template_language: cleanText(metaTemplate.language) || cleanText(mapping.meta_template_language),
-        meta_template_status: whatsappTemplateStatusFromRow(metaTemplate),
-        meta_template_category: cleanText(metaTemplate.category) || cleanText(mapping.meta_template_category) || "UTILITY",
-        meta_template_components: Array.isArray(metaTemplate.components) ? metaTemplate.components : mapping.meta_template_components,
+        meta_template_id: metaTemplate ? cleanText(metaTemplate.id) || cleanText(mapping.meta_template_id) : null,
+        meta_template_name: metaTemplate ? cleanText(metaTemplate.name) || cleanText(mapping.meta_template_name) : cleanText(mapping.meta_template_name),
+        meta_template_language: metaTemplate ? cleanText(metaTemplate.language) || cleanText(mapping.meta_template_language) : cleanText(mapping.meta_template_language),
+        meta_template_status: metaTemplate ? whatsappTemplateStatusFromRow(metaTemplate) : missingStatus,
+        meta_template_category: metaTemplate ? cleanText(metaTemplate.category) || cleanText(mapping.meta_template_category) || "UTILITY" : cleanText(mapping.meta_template_category) || "UTILITY",
+        meta_template_components: metaTemplate && Array.isArray(metaTemplate.components) ? metaTemplate.components : mapping.meta_template_components,
         last_synced_at: now,
-        last_error: null,
+        last_error: metaTemplate ? null : missingError,
         updated_at: now
       })
       .eq("id", mapping.id)
@@ -13535,7 +13597,7 @@ async function metaSendWhatsappTemplate(
   const metadata = objectRecord(message.metadata);
   const templateStatus = cleanText(metadata.whatsapp_template_status)
     ? whatsappMetaStatus(metadata.whatsapp_template_status)
-    : templateName ? "APPROVED" : "NOT_PUBLISHED";
+    : templateName ? "NOT_SYNCED" : "NOT_PUBLISHED";
   const parameterRows = Array.isArray(metadata.whatsapp_template_parameters)
     ? metadata.whatsapp_template_parameters.filter((row) => row && typeof row === "object") as Record<string, unknown>[]
     : [];
@@ -13546,6 +13608,12 @@ async function metaSendWhatsappTemplate(
     if (templateError) throw new Error(templateError);
     if (whatsappMetaStatusNeedsApproval(templateStatus)) {
       throw new Error(`WhatsApp Meta notifier is ${whatsappMetaStatusLabel(templateStatus)}. Direct WhatsApp sends unlock after Meta approves it; Rateware will refresh status when you generate or send the queue again.`);
+    }
+    if (templateStatus === "LANGUAGE_MISMATCH") {
+      throw new Error(`WhatsApp Meta notifier has no approved translation compatible with ${String(language).replace(/_/g, "-")}. Add or approve that language in Meta, then sync templates.`);
+    }
+    if (["NOT_SYNCED", "NOT_FOUND"].includes(templateStatus)) {
+      throw new Error("WhatsApp Meta notifier has not been verified in this sender's current template catalog. Sync Meta templates or regenerate the queue before sending.");
     }
     throw new Error(`WhatsApp template is ${whatsappMetaStatusLabel(templateStatus)}. Sync Meta templates after it is approved.`);
   }
