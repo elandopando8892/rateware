@@ -308,6 +308,8 @@ let rfxCustomerRows = [];
 let rfxCustomerSearchTimer = null;
 let vendorSegmentsLoading = true;
 let savedVendorSegments = [];
+let vendorSegmentsLoadVersion = 0;
+let participantTemplateMutationRunning = false;
 let selectedManualVendorIdsState = new Set();
 let whatsappConnectionReadiness = {
   loaded: false,
@@ -5061,7 +5063,26 @@ function selectedSegmentId() {
 function selectedSavedVendorSegment() {
   const segmentId = selectedSegmentId();
   if (!segmentId || segmentId === "all" || segmentId === "procurement") return null;
-  return savedVendorSegments.find((item) => item.id === segmentId) || null;
+  return participantTemplates().find((item) => item.id === segmentId) || null;
+}
+
+function participantTemplates() {
+  return savedVendorSegments.filter((segment) => String(segment?.segment_type || "").toLowerCase() === "participant_template");
+}
+
+function participantTemplateNameKey(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLocaleLowerCase();
+}
+
+function participantTemplateByName(name, exceptId = "") {
+  const key = participantTemplateNameKey(name);
+  if (!key) return null;
+  return participantTemplates().find((segment) => segment.id !== exceptId && participantTemplateNameKey(segment.segment_name) === key) || null;
 }
 
 function segmentVendorIds(segment) {
@@ -5271,12 +5292,10 @@ function queueVendorSearchLoad() {
 function renderManualSegmentOptions() {
   if (!manualShortlistSegment) return;
   const currentValue = manualShortlistSegment.value || "all";
-  const segmentOptions = savedVendorSegments.map((segment) => {
-    const matchCount = vendorOptions.filter((vendor) => vendorStageRank(vendor) < 9 && segmentMatchesVendor(segment, vendor)).length;
-    const isParticipantTemplate = segment.segment_type === "participant_template" || segmentVendorIds(segment).length;
-    const suffix = matchCount ? ` (${formatNumber(matchCount)})` : "";
-    const labelSuffix = isParticipantTemplate ? " · template" : "";
-    return `<option value="${escapeHtml(segment.id)}">${escapeHtml(segment.segment_name || "Saved segment")}${labelSuffix}${suffix}</option>`;
+  const segmentOptions = participantTemplates().map((segment) => {
+    const savedCount = segmentVendorIds(segment).length;
+    const suffix = savedCount ? ` (${formatNumber(savedCount)})` : "";
+    return `<option value="${escapeHtml(segment.id)}">${escapeHtml(segment.segment_name || "Saved participant template")}${suffix}</option>`;
   }).join("");
   manualShortlistSegment.innerHTML = `
     <option value="all">All active CRM carriers</option>
@@ -5290,7 +5309,7 @@ function renderManualSegmentOptions() {
 
 function segmentCandidateRows(segmentId = selectedSegmentId()) {
   const activeRows = vendorOptions.filter((vendor) => vendorStageRank(vendor) < 9);
-  const segment = savedVendorSegments.find((item) => item.id === segmentId);
+  const segment = participantTemplates().find((item) => item.id === segmentId);
   return segmentId === "procurement"
     ? activeRows.filter(isProcurementCarrier)
     : segment
@@ -5515,7 +5534,7 @@ function updateParticipantTemplateControls() {
   const selectedCount = selectedManualVendorIds().length;
   const selectedSegment = selectedSavedVendorSegment();
   if (saveManualShortlistTemplateButton) {
-    saveManualShortlistTemplateButton.disabled = !selectedCount || vendorSegmentsLoading;
+    saveManualShortlistTemplateButton.disabled = !selectedCount || vendorSegmentsLoading || participantTemplateMutationRunning;
   }
   if (loadManualShortlistTemplateButton) {
     const segmentId = selectedSegmentId();
@@ -5528,10 +5547,10 @@ function updateParticipantTemplateControls() {
       : "Load saved list";
   }
   if (updateManualShortlistTemplateButton) {
-    updateManualShortlistTemplateButton.disabled = !selectedSegment || !selectedCount || vendorSegmentsLoading;
+    updateManualShortlistTemplateButton.disabled = !selectedSegment || !selectedCount || vendorSegmentsLoading || participantTemplateMutationRunning;
   }
   if (deleteManualShortlistTemplateButton) {
-    deleteManualShortlistTemplateButton.disabled = !selectedSegment || vendorSegmentsLoading;
+    deleteManualShortlistTemplateButton.disabled = !selectedSegment || vendorSegmentsLoading || participantTemplateMutationRunning;
   }
 }
 
@@ -5783,14 +5802,24 @@ async function loadVendorOptions() {
 }
 
 async function loadVendorSegments() {
+  const loadVersion = ++vendorSegmentsLoadVersion;
+  const previousSelection = selectedSegmentId();
   vendorSegmentsLoading = true;
   renderManualShortlistControls();
   try {
-    savedVendorSegments = await fetchVendorSegments();
+    const rows = await fetchVendorSegments({ segmentType: "participant_template" });
+    if (loadVersion !== vendorSegmentsLoadVersion) return;
+    savedVendorSegments = rows;
+    if (manualShortlistSegment && previousSelection !== "all" && previousSelection !== "procurement") {
+      manualShortlistSegment.value = participantTemplates().some((segment) => segment.id === previousSelection)
+        ? previousSelection
+        : "all";
+    }
   } catch (error) {
-    savedVendorSegments = [];
+    if (loadVersion !== vendorSegmentsLoadVersion) return;
     setStatus(manualShortlistStatus, `Carrier segments could not load: ${humanizeError(error.message)}`, "error");
   } finally {
+    if (loadVersion !== vendorSegmentsLoadVersion) return;
     vendorSegmentsLoading = false;
     renderManualShortlistControls();
   }
@@ -7593,18 +7622,25 @@ saveManualShortlistTemplateButton?.addEventListener("click", async () => {
     manualShortlistTemplateName?.focus();
     return;
   }
+  if (participantTemplateMutationRunning) return;
+  const existingTemplate = participantTemplateByName(name);
+  participantTemplateMutationRunning = true;
   saveManualShortlistTemplateButton.disabled = true;
-  setStatus(manualShortlistStatus, `Saving participant template "${name}"...`);
+  setStatus(manualShortlistStatus, `${existingTemplate ? "Updating" : "Saving"} participant template "${name}"...`);
   try {
-    const row = await createVendorSegment(participantTemplatePayload(null, vendorIds, name));
-    savedVendorSegments = [row, ...savedVendorSegments.filter((segment) => segment.id !== row.id)];
+    const row = existingTemplate
+      ? await updateVendorSegment(existingTemplate.id, participantTemplatePayload(existingTemplate, vendorIds, name))
+      : await createVendorSegment(participantTemplatePayload(null, vendorIds, name));
+    if (manualShortlistSegment) manualShortlistSegment.value = row.id;
+    await loadVendorSegments();
     if (manualShortlistSegment) manualShortlistSegment.value = row.id;
     if (manualShortlistTemplateName) manualShortlistTemplateName.value = "";
     renderManualShortlistControls();
-    setStatus(manualShortlistStatus, `Template "${row.segment_name || name}" saved with ${formatNumber(vendorIds.length)} carrier(s).`, "success");
+    setStatus(manualShortlistStatus, `Template "${row.segment_name || name}" ${existingTemplate ? "updated" : "saved"} with ${formatNumber(vendorIds.length)} carrier(s).`, "success");
   } catch (error) {
     setStatus(manualShortlistStatus, humanizeError(error.message), "error");
   } finally {
+    participantTemplateMutationRunning = false;
     renderManualShortlistControls();
   }
 });
@@ -7614,7 +7650,7 @@ loadManualShortlistTemplateButton?.addEventListener("click", async () => {
     setStatus(manualShortlistStatus, "Choose a saved list or procurement segment before loading participants.", "error");
     return;
   }
-  const segment = savedVendorSegments.find((item) => item.id === segmentId);
+  const segment = participantTemplates().find((item) => item.id === segmentId);
   const label = segment?.segment_name || (segmentId === "procurement" ? "Procurement / Pipeline" : "saved list");
   const savedIds = segmentVendorIds(segment);
   loadManualShortlistTemplateButton.disabled = true;
@@ -7661,17 +7697,26 @@ updateManualShortlistTemplateButton?.addEventListener("click", async () => {
     manualShortlistTemplateName?.focus();
     return;
   }
+  if (participantTemplateMutationRunning) return;
+  const duplicateTemplate = participantTemplateByName(name, segment.id);
+  if (duplicateTemplate) {
+    setStatus(manualShortlistStatus, `A participant template named "${duplicateTemplate.segment_name}" already exists. Select it or choose a different name.`, "error");
+    return;
+  }
+  participantTemplateMutationRunning = true;
   updateManualShortlistTemplateButton.disabled = true;
   setStatus(manualShortlistStatus, `Updating participant template "${name}"...`);
   try {
     const row = await updateVendorSegment(segment.id, participantTemplatePayload(segment, vendorIds, name));
-    savedVendorSegments = [row, ...savedVendorSegments.filter((item) => item.id !== row.id)];
+    if (manualShortlistSegment) manualShortlistSegment.value = row.id;
+    await loadVendorSegments();
     if (manualShortlistSegment) manualShortlistSegment.value = row.id;
     renderManualShortlistControls();
     setStatus(manualShortlistStatus, `Template "${row.segment_name || name}" updated with ${formatNumber(vendorIds.length)} carrier(s).`, "success");
   } catch (error) {
     setStatus(manualShortlistStatus, humanizeError(error.message), "error");
   } finally {
+    participantTemplateMutationRunning = false;
     renderManualShortlistControls();
   }
 });
@@ -7683,11 +7728,14 @@ deleteManualShortlistTemplateButton?.addEventListener("click", async () => {
   }
   const label = segment.segment_name || "this participant template";
   if (!window.confirm(`Delete "${label}"? This will not remove carriers from CRM or existing bid invitations.`)) return;
+  if (participantTemplateMutationRunning) return;
+  participantTemplateMutationRunning = true;
   deleteManualShortlistTemplateButton.disabled = true;
   setStatus(manualShortlistStatus, `Deleting participant template "${label}"...`);
   try {
-    await deleteVendorSegment(segment.id);
-    savedVendorSegments = savedVendorSegments.filter((item) => item.id !== segment.id);
+    await deleteVendorSegment(segment.id, { segmentType: "participant_template" });
+    if (manualShortlistSegment) manualShortlistSegment.value = "all";
+    await loadVendorSegments();
     if (manualShortlistSegment) manualShortlistSegment.value = "all";
     if (manualShortlistTemplateName) manualShortlistTemplateName.value = "";
     renderManualShortlistControls();
@@ -7695,6 +7743,7 @@ deleteManualShortlistTemplateButton?.addEventListener("click", async () => {
   } catch (error) {
     setStatus(manualShortlistStatus, humanizeError(error.message), "error");
   } finally {
+    participantTemplateMutationRunning = false;
     renderManualShortlistControls();
   }
 });

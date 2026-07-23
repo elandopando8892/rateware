@@ -655,10 +655,17 @@ assert.match(rfxEventsSource, /createVendorSegment/, "Bid Room should save selec
 assert.match(rfxEventsSource, /updateVendorSegment/, "Bid Room should update saved participant templates after carrier changes");
 assert.match(rfxEventsSource, /deleteVendorSegment/, "Bid Room should delete saved participant templates without touching CRM carriers");
 assert.match(rfxEventsSource, /segmentVendorIds/, "Bid Room should preload exact vendor id templates");
+assert.match(rfxEventsSource, /fetchVendorSegments\(\{ segmentType: "participant_template" \}\)/, "Bid Room should load only reusable participant templates, not unrelated CRM segments");
+assert.match(rfxEventsSource, /participantTemplateNameKey/, "Bid Room should normalize participant template names before creating duplicates");
+assert.match(rfxEventsSource, /participantTemplateMutationRunning/, "Bid Room should serialize participant template save, update, and delete actions");
 assert.match(rfxEventsHtml, /manual-shortlist-template-name/, "Bid Room should render a named participant template input");
 assert.match(rfxEventsHtml, /load-manual-shortlist-template/, "Bid Room should render a saved participant template loader");
 assert.match(rfxEventsHtml, /update-manual-shortlist-template/, "Bid Room should render an update button for selected participant templates");
 assert.match(rfxEventsHtml, /delete-manual-shortlist-template/, "Bid Room should render a delete button for selected participant templates");
+assert.match(apiSource, /findParticipantTemplateNameConflict/, "Rateware API should reject duplicate participant template names server-side");
+assert.match(apiSource, /vendor\.segment\.create/, "Rateware API should audit participant template creation");
+assert.match(apiSource, /vendor\.segment\.update/, "Rateware API should audit participant template updates");
+assert.match(apiSource, /requestedSegmentType === "participant_template"/, "Rateware API should scope reusable participant templates to their owner");
 assert.match(rfxEventsSource, /function confirmBidRoomBulkAction/, "Bid Room should require human confirmation for shortlist and participant bulk actions");
 assert.match(rfxEventsSource, /confirmBidRoomBulkAction\("auto_shortlist", ids\)/, "Bid Room should confirm before auto-shortlisting selected lanes");
 assert.match(rfxEventsSource, /confirmBidRoomBulkAction\("mark_invited", ids\)/, "Bid Room should confirm before marking selected participants invited");

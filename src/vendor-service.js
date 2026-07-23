@@ -96,8 +96,8 @@ export async function removeVendors(ids) {
   return await callRatewareApi("remove_vendors", { ids, confirmed: true, confirmation_action: "remove_vendors" });
 }
 
-export async function fetchVendorSegments() {
-  return (await callRatewareApi("list_vendor_segments")).rows;
+export async function fetchVendorSegments({ segmentType = "" } = {}) {
+  return (await callRatewareApi("list_vendor_segments", { segment_type: segmentType })).rows;
 }
 
 export async function createVendorSegment(segment) {
@@ -108,8 +108,13 @@ export async function updateVendorSegment(id, segment) {
   return (await callRatewareApi("update_vendor_segment", { id, segment })).row;
 }
 
-export async function deleteVendorSegment(id) {
-  return (await callRatewareApi("delete_vendor_segment", { id, confirmed: true, confirmation_action: "delete_vendor_segment" })).row;
+export async function deleteVendorSegment(id, { segmentType = "" } = {}) {
+  return (await callRatewareApi("delete_vendor_segment", {
+    id,
+    segment_type: segmentType,
+    confirmed: true,
+    confirmation_action: "delete_vendor_segment"
+  })).row;
 }
 
 export async function fetchVendorSupportTickets(filters = {}) {

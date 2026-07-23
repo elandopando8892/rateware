@@ -6116,6 +6116,34 @@ function normalizeSegment(input: Record<string, unknown>, user?: { owner_user_id
   };
 }
 
+function participantTemplateNameKey(value: unknown) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLocaleLowerCase();
+}
+
+async function findParticipantTemplateNameConflict(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_email: string | null },
+  segmentName: string,
+  excludeId = ""
+) {
+  const result = await supabase
+    .from("vendor_segments")
+    .select("id, segment_name")
+    .eq("owner_email", user.owner_email)
+    .eq("segment_type", "participant_template")
+    .limit(250);
+  if (result.error) throw result.error;
+  const key = participantTemplateNameKey(segmentName);
+  return (result.data || []).find((segment) =>
+    segment.id !== excludeId && participantTemplateNameKey(segment.segment_name) === key
+  ) || null;
+}
+
 function cleanBoolean(value: unknown) {
   if (typeof value === "boolean") return value;
   const text = String(value ?? "").trim().toLowerCase();
@@ -20172,26 +20200,51 @@ Deno.serve(async (request) => {
     }
 
     if (body.action === "list_vendor_segments") {
-      const result = await supabase
+      const requestedSegmentType = cleanText(body.segment_type)?.toLowerCase();
+      let query = supabase
         .from("vendor_segments")
         .select("*")
-        .or(`owner_email.is.null,owner_email.eq.${user.owner_email}`)
         .order("created_at", { ascending: false })
         .limit(100);
+      if (requestedSegmentType === "participant_template") {
+        query = query.eq("owner_email", user.owner_email).eq("segment_type", "participant_template");
+      } else {
+        query = query.or(`owner_email.is.null,owner_email.eq.${user.owner_email}`);
+      }
+      const result = await query;
       if (result.error) throw result.error;
       return jsonResponse({ rows: result.data });
     }
 
     if (body.action === "create_vendor_segment") {
       const row = normalizeSegment(body.segment || {}, user);
+      if (row.segment_type === "participant_template") {
+        if (!row.vendor_ids.length) return jsonResponse({ error: "Participant templates must include at least one carrier." }, 400);
+        const conflict = await findParticipantTemplateNameConflict(supabase, user, row.segment_name);
+        if (conflict) {
+          return jsonResponse({ error: `A participant template named "${conflict.segment_name}" already exists. Update the existing template instead.` }, 409);
+        }
+      }
       const result = await supabase.from("vendor_segments").insert(row).select().single();
       if (result.error) throw result.error;
+      await tryWriteAuditLog(supabase, user, "vendor.segment.create", "vendor_segments", result.data.id,
+        `Created vendor segment ${cleanText(result.data.segment_name) || result.data.id}`, {
+          segment_type: result.data.segment_type,
+          vendor_count: result.data.vendor_ids?.length || 0
+        });
       return jsonResponse({ row: result.data });
     }
 
     if (body.action === "update_vendor_segment") {
       if (!body.id) return jsonResponse({ error: "Segment id is required." }, 400);
       const patch = normalizeSegment(body.segment || body.patch || {}, user);
+      if (patch.segment_type === "participant_template") {
+        if (!patch.vendor_ids.length) return jsonResponse({ error: "Participant templates must include at least one carrier." }, 400);
+        const conflict = await findParticipantTemplateNameConflict(supabase, user, patch.segment_name, String(body.id));
+        if (conflict) {
+          return jsonResponse({ error: `A participant template named "${conflict.segment_name}" already exists. Choose a different name.` }, 409);
+        }
+      }
       const result = await supabase
         .from("vendor_segments")
         .update(patch)
@@ -20200,13 +20253,21 @@ Deno.serve(async (request) => {
         .select()
         .single();
       if (result.error) throw result.error;
+      await tryWriteAuditLog(supabase, user, "vendor.segment.update", "vendor_segments", result.data.id,
+        `Updated vendor segment ${cleanText(result.data.segment_name) || result.data.id}`, {
+          segment_type: result.data.segment_type,
+          vendor_count: result.data.vendor_ids?.length || 0
+        });
       return jsonResponse({ row: result.data });
     }
 
     if (body.action === "delete_vendor_segment") {
       if (!body.id) return jsonResponse({ error: "Segment id is required." }, 400);
       requireBulkConfirmation(body, { action: "delete_vendor_segment", label: "Vendor segment deletion", count: 1 });
-      const result = await supabase.from("vendor_segments").delete().eq("owner_email", user.owner_email).eq("id", body.id).select().single();
+      const requestedSegmentType = cleanText(body.segment_type)?.toLowerCase();
+      let query = supabase.from("vendor_segments").delete().eq("owner_email", user.owner_email).eq("id", body.id);
+      if (requestedSegmentType) query = query.eq("segment_type", requestedSegmentType);
+      const result = await query.select().single();
       if (result.error) throw result.error;
       await tryWriteAuditLog(supabase, user, "vendor.segment.delete", "vendor_segments", result.data.id,
         `Deleted vendor segment ${cleanText(result.data.segment_name || result.data.name) || result.data.id}`);
