@@ -41,6 +41,12 @@ const WHATSAPP_INTERNAL_OWNER_EMAILS = new Set(
     .map((value) => value.trim().toLowerCase())
     .filter(Boolean)
 );
+const WHATSAPP_INTERNAL_USER_IDS = new Set(
+  (Deno.env.get("WHATSAPP_INTERNAL_USER_IDS") || "")
+    .split(/[;,\s]+/)
+    .map((value) => value.trim())
+    .filter(Boolean)
+);
 const WHATSAPP_INTERNAL_ORGANIZATION_IDS = new Set(
   (Deno.env.get("WHATSAPP_INTERNAL_ORGANIZATION_IDS") || "")
     .split(/[;,\s]+/)
@@ -11088,18 +11094,20 @@ function whatsappInternalEnvConfigured() {
   );
 }
 
-function isInternalWhatsappWorkspaceIdentity(user: Pick<RatewareUser, "owner_email" | "organization_id">) {
+function isInternalWhatsappWorkspaceIdentity(user: Pick<RatewareUser, "owner_user_id" | "owner_email" | "organization_id">) {
+  const ownerUserId = cleanText(user.owner_user_id);
   const email = cleanText(user.owner_email).toLowerCase();
   const organizationId = cleanText(user.organization_id);
   return Boolean(
-    (email && WHATSAPP_INTERNAL_OWNER_EMAILS.has(email))
+    (ownerUserId && WHATSAPP_INTERNAL_USER_IDS.has(ownerUserId))
+    || (email && WHATSAPP_INTERNAL_OWNER_EMAILS.has(email))
     || (organizationId && WHATSAPP_INTERNAL_ORGANIZATION_IDS.has(organizationId))
   );
 }
 
 async function isInternalWhatsappWorkspace(
   _supabase: ReturnType<typeof createClient>,
-  user: Pick<RatewareUser, "owner_email" | "organization_id">
+  user: Pick<RatewareUser, "owner_user_id" | "owner_email" | "organization_id">
 ) {
   // Internal sender access is an authorization decision. Only authenticated
   // workspace identity plus server-side allowlists may grant it.
@@ -11206,16 +11214,22 @@ async function ensureInternalWhatsappConnection(
 ) {
   if (!await isInternalWhatsappWorkspace(supabase, user)) throw new Error(WHATSAPP_CONNECTION_REQUIRED_MESSAGE);
   const mode = "internal_managed";
-  const status = whatsappInternalEnvConfigured() ? "connected" : "not_configured";
   const existingResult = await supabase
     .from("whatsapp_business_connections")
-    .select("metadata,meta_waba_id,waba_id")
+    .select("metadata,meta_waba_id,waba_id,status,last_error")
     .eq("owner_email", user.owner_email)
     .eq("provider", "meta")
     .eq("connection_mode", mode)
     .maybeSingle();
   if (existingResult.error) throw existingResult.error;
   const existingMetadata = objectRecord(existingResult.data?.metadata);
+  const existingValidationStatus = cleanText(
+    objectRecord(existingMetadata.connection_validation).status
+  );
+  const deploymentStatus = whatsappInternalEnvConfigured() ? "connected" : "not_configured";
+  const status = deploymentStatus === "connected" && existingValidationStatus === "failed"
+    ? "error"
+    : deploymentStatus;
   const internalWabaId = WHATSAPP_WABA_ID
     || cleanText(existingResult.data?.meta_waba_id || existingResult.data?.waba_id)
     || cleanText(existingMetadata.template_waba_id)
@@ -11249,7 +11263,11 @@ async function ensureInternalWhatsappConnection(
       meta_business_id: WHATSAPP_BUSINESS_ACCOUNT_ID || null,
       meta_waba_id: internalWabaId,
       graph_api_version: WHATSAPP_GRAPH_API_VERSION,
-      last_error: status === "connected" ? null : "Meta WhatsApp Business secrets are not configured.",
+      last_error: status === "connected"
+        ? null
+        : status === "error"
+          ? existingResult.data?.last_error || "Meta WhatsApp Business validation failed."
+          : "Meta WhatsApp Business secrets are not configured.",
       metadata,
       updated_at: new Date().toISOString()
     }, user), { onConflict: "owner_email,provider,connection_mode" })
@@ -11287,9 +11305,28 @@ async function listWhatsappConnections(
   user: RatewareUser
 ) {
   const internalWorkspace = await isInternalWhatsappWorkspace(supabase, user);
-  const row = internalWorkspace
+  let row = internalWorkspace
     ? await ensureInternalWhatsappConnection(supabase, user)
     : await findTenantWhatsappConnection(supabase, user);
+  if (
+    internalWorkspace
+    && row
+    && cleanText(row.status) === "connected"
+    && !whatsappConnectionIsValidated(row)
+    && cleanText(whatsappConnectionValidation(row).status) !== "failed"
+  ) {
+    try {
+      const connection = await activeWhatsappConnection(supabase, user, { requireConnected: false });
+      row = (await validateWhatsappConnectionAgainstMeta(supabase, connection)).row;
+    } catch {
+      const refreshed = await supabase
+        .from("whatsapp_business_connections")
+        .select("*")
+        .eq("id", row.id)
+        .maybeSingle();
+      if (!refreshed.error && refreshed.data) row = refreshed.data;
+    }
+  }
   return {
     provider: "meta",
     workspace_mode: internalWorkspace ? "internal_managed" : "tenant_connected",
@@ -11505,10 +11542,18 @@ async function whatsappGraphFetch(
   options: RequestInit = {}
 ) {
   const url = `https://graph.facebook.com/${connection.graphApiVersion}/${path.replace(/^\//, "")}`;
+  const controller = new AbortController();
+  const timeoutMs = 15_000;
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  if (options.signal) {
+    if (options.signal.aborted) controller.abort();
+    else options.signal.addEventListener("abort", () => controller.abort(), { once: true });
+  }
   let response: Response;
   try {
     response = await fetch(url, {
       ...options,
+      signal: controller.signal,
       headers: {
         Authorization: `Bearer ${connection.accessToken}`,
         "Content-Type": "application/json",
@@ -11516,9 +11561,17 @@ async function whatsappGraphFetch(
       }
     });
   } catch (error) {
-    const requestError = new Error(error instanceof Error ? error.message : "Meta WhatsApp request did not return a response.");
+    const requestError = new Error(
+      controller.signal.aborted
+        ? `Meta WhatsApp request timed out after ${timeoutMs / 1000} seconds.`
+        : error instanceof Error
+          ? error.message
+          : "Meta WhatsApp request did not return a response."
+    );
     (requestError as Error & { deliveryUncertain?: boolean }).deliveryUncertain = options.method === "POST";
     throw requestError;
+  } finally {
+    clearTimeout(timeoutId);
   }
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {

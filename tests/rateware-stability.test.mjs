@@ -359,6 +359,7 @@ for (const envName of [
   "WHATSAPP_APP_SECRET",
   "WHATSAPP_TOKEN_ENCRYPTION_KEY",
   "WHATSAPP_INTERNAL_OWNER_EMAILS",
+  "WHATSAPP_INTERNAL_USER_IDS",
   "WHATSAPP_GROUPS_ENABLED"
 ]) {
   assert.match(apiSource, new RegExp(`Deno\\.env\\.get\\("${envName}"\\)`), `Rateware API should read ${envName}`);
@@ -387,6 +388,7 @@ for (const column of [
 assert.match(whatsappWorkspaceMigration, /add column if not exists whatsapp_connection_id uuid/, "Contact history should link to the WhatsApp connection used");
 assert.doesNotMatch(whatsappWorkspaceMigration, /using\s*\(true\)/i, "WhatsApp connection RLS must not allow every authenticated workspace");
 assert.match(apiSource, /function isInternalWhatsappWorkspace/, "WhatsApp resolver should explicitly identify the internal HeyMarksman workspace");
+assert.match(apiSource, /WHATSAPP_INTERNAL_USER_IDS\.has\(ownerUserId\)/, "Internal WhatsApp access should support an allowed stable Kinde user id");
 assert.match(apiSource, /WHATSAPP_INTERNAL_OWNER_EMAILS\.has\(email\)/, "Internal WhatsApp access should require an allowed owner email");
 assert.match(apiSource, /WHATSAPP_INTERNAL_ORGANIZATION_IDS\.has\(organizationId\)/, "Internal WhatsApp access should support an allowed organization id");
 const internalWhatsappWorkspaceSource = apiSource.slice(
@@ -487,6 +489,9 @@ assert.match(apiSource, /mark_whatsapp_group_message_manually_sent/, "Rateware A
 assert.match(apiSource, /send_whatsapp_group_outreach_messages/, "Rateware API should explicitly guard WhatsApp group automation");
 assert.match(apiSource, /test_whatsapp_business_connection/, "Rateware API should expose WhatsApp Business connection test");
 assert.match(apiSource, /testWhatsappBusinessConnection[\s\S]+validateWhatsappConnectionAgainstMeta/, "Test line should validate token, Phone Number ID, and WABA together");
+assert.match(apiSource, /listWhatsappConnections[\s\S]+validateWhatsappConnectionAgainstMeta/, "Internal WhatsApp settings should auto-validate a configured sender once");
+assert.match(apiSource, /Meta WhatsApp request timed out after/, "Meta WhatsApp requests should fail with a bounded, actionable timeout");
+assert.match(apiSource, /existingValidationStatus === "failed"[\s\S]+existingResult\.data\?\.last_error/, "Internal WhatsApp refresh should preserve a failed validation diagnosis");
 assert.match(apiSource, /sync_whatsapp_templates/, "Rateware API should expose WhatsApp template sync");
 assert.match(apiSource, /syncWhatsappTemplates[\s\S]+validatedWhatsappConnection/, "Template sync should require a live validated WhatsApp connection");
 assert.match(apiSource, /sendWhatsappOutreachMessages[\s\S]+validatedWhatsappConnection/, "Direct WhatsApp sends should revalidate the workspace sender before delivery");

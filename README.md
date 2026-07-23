@@ -121,6 +121,7 @@ Required Supabase secrets:
 - `WHATSAPP_APP_SECRET`
 - `WHATSAPP_TOKEN_ENCRYPTION_KEY`
 - `WHATSAPP_INTERNAL_OWNER_EMAILS`
+- `WHATSAPP_INTERNAL_USER_IDS`
 - `WHATSAPP_INTERNAL_ORGANIZATION_IDS` (optional)
 - `WHATSAPP_GROUPS_ENABLED`
 
@@ -130,6 +131,7 @@ Recommended production values:
 - `WHATSAPP_CONNECTION_MODE=internal_managed`
 - `WHATSAPP_GRAPH_API_VERSION=v23.0`
 - `WHATSAPP_INTERNAL_OWNER_EMAILS=<comma-separated internal owner emails>`
+- `WHATSAPP_INTERNAL_USER_IDS=<comma-separated internal Kinde user ids>`
 - `WHATSAPP_GROUPS_ENABLED=false`
 
 Set secrets from a local shell without committing them:
@@ -153,8 +155,11 @@ WHATSAPP_WEBHOOK_VERIFY_TOKEN=<private verify token generated for this webhook>
 WHATSAPP_APP_SECRET=<Meta app secret>
 WHATSAPP_TOKEN_ENCRYPTION_KEY=<independent random encryption secret>
 WHATSAPP_INTERNAL_OWNER_EMAILS=<internal owner allowlist>
+WHATSAPP_INTERNAL_USER_IDS=<internal Kinde user id allowlist>
 WHATSAPP_INTERNAL_ORGANIZATION_IDS=<optional Kinde organization id allowlist>
 ```
+
+`WHATSAPP_INTERNAL_USER_IDS` is required when the Kinde access token omits the email claim. It grants access only to the listed stable Kinde subjects and does not replace tenant isolation. Keep the list in Supabase secrets; do not put real user ids in source code.
 
 The global Meta identifiers and credentials above belong only to the internal HeyMarksman workspace. An external workspace connects from `Settings > Integrations > WhatsApp Business > Connect your own WhatsApp Business` and enters its own App ID, App Secret, Meta Business ID, WABA ID, Phone Number ID, Access Token, and Webhook Verify Token. The API encrypts App Secret, Access Token, and Webhook Verify Token before storage and never returns them to the browser. Replacing a credential does not reveal its previous value.
 
