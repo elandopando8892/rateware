@@ -114,6 +114,7 @@ const whatsappWorkspaceMigration = readFileSync(new URL("../supabase/migrations/
 const whatsappTenantAppMigration = readFileSync(new URL("../supabase/migrations/20260711190000_whatsapp_tenant_app_credentials.sql", import.meta.url), "utf8");
 const whatsappTemplateMappingMigration = readFileSync(new URL("../supabase/migrations/20260711203000_whatsapp_outreach_template_mappings.sql", import.meta.url), "utf8");
 const outreachDeliveryIdempotencyMigration = readFileSync(new URL("../supabase/migrations/20260722210449_outreach_delivery_idempotency.sql", import.meta.url), "utf8");
+const outreachDeliveryTraceMigration = readFileSync(new URL("../supabase/migrations/20260723002150_outreach_delivery_trace.sql", import.meta.url), "utf8");
 const whatsappWebhookSource = readFileSync(new URL("../supabase/functions/whatsapp-webhook/index.ts", import.meta.url), "utf8");
 const rfxInvitationTableSource = rfxEventsSource.slice(rfxEventsSource.indexOf("function laneTableLabels"), rfxEventsSource.indexOf("function firstOutreachTarget"));
 const apiInvitationTableSource = apiSource.slice(apiSource.indexOf("function outreachLaneTableLabels"), apiSource.indexOf("function phoneForWhatsapp"));
@@ -470,7 +471,7 @@ assert.match(apiSource, /quality_rating: cleanText\(data\.quality_rating\)/, "Wh
 assert.doesNotMatch(apiSource, /provider_response:\s*\{\s*id:\s*data\.id/, "WhatsApp connection test should not expose raw provider phone number id");
 assert.match(apiSource, /send_whatsapp_outreach_messages/, "Rateware API should send direct WhatsApp Business drafts");
 assert.match(apiSource, /whatsapp_template_name: cleanText\(message\.whatsapp_template_name\) \|\| null/, "WhatsApp failures should preserve the mapped Meta template name for retriable diagnostics");
-assert.match(apiSource, /updateWhatsappMessageFailure\(supabase, user, resolvedMessage, reason, now\)/, "WhatsApp failures should persist the resolved message mapping instead of discarding it");
+assert.match(apiSource, /updateWhatsappMessageFailure\(supabase, user, resolvedMessage, reason, now, connection\)/, "WhatsApp failures should persist the resolved message and connection mapping instead of discarding them");
 assert.match(apiSource, /mark_whatsapp_group_message_manually_sent/, "Rateware API should support manual WhatsApp group completion");
 assert.match(apiSource, /send_whatsapp_group_outreach_messages/, "Rateware API should explicitly guard WhatsApp group automation");
 assert.match(apiSource, /test_whatsapp_business_connection/, "Rateware API should expose WhatsApp Business connection test");
@@ -1511,10 +1512,21 @@ assert.match(outreachDeliveryIdempotencyMigration, /add column if not exists ide
 assert.match(outreachDeliveryIdempotencyMigration, /outreach_campaigns_owner_idempotency_unique[\s\S]+owner_email, idempotency_key/, "Outreach campaign retry keys should be unique per workspace owner");
 assert.match(outreachDeliveryIdempotencyMigration, /add column if not exists send_attempt_id uuid/, "Outreach messages should persist an atomic provider-send claim");
 assert.match(outreachDeliveryIdempotencyMigration, /'sending'[\s\S]+'delivery_unknown'/, "Outreach delivery states should distinguish active and uncertain provider attempts");
+for (const column of ["gmail_connection_id", "sender_address", "sender_connection_type", "provider_response_status", "provider_thread_id", "send_result"]) {
+  assert.match(outreachDeliveryTraceMigration, new RegExp(`add column if not exists ${column}`), `Outreach delivery trace should persist ${column}`);
+}
+assert.match(outreachDeliveryTraceMigration, /alter table public\.contact_history[\s\S]+add column if not exists gmail_connection_id uuid/, "Contact history should link Gmail sends to the resolved mailbox connection");
+assert.match(outreachDeliveryTraceMigration, /Must not contain access tokens, secrets, or raw provider payloads/, "Delivery trace schema should forbid provider secrets and raw payload storage");
+assert.match(apiSource, /function outreachSendResult[\s\S]+recorded_at: new Date\(\)\.toISOString\(\)/, "Outreach drafts and sends should use a normalized timestamped delivery result");
+assert.match(generateOutreachDraftsSource, /channel: "email"[\s\S]+provider: "gmail"[\s\S]+gmail_connection_id:[\s\S]+sender_address:[\s\S]+provider_response_status: "drafted"[\s\S]+send_result: outreachSendResult/, "Gmail drafts should persist channel, provider, connection, sender, and initial result");
+assert.match(generateOutreachDraftsSource, /channel: "whatsapp"[\s\S]+provider: "meta"[\s\S]+whatsapp_connection_id:[\s\S]+sender_address:[\s\S]+provider_response_status: "drafted"[\s\S]+send_result: outreachSendResult/, "WhatsApp drafts should persist channel, provider, connection, sender, and initial result");
+assert.match(apiSource, /provider_thread_id: cleanText\(data\.threadId\)[\s\S]+provider_response_status: "accepted"[\s\S]+send_result: outreachSendResult/, "Gmail success should persist provider ids and normalized acceptance result");
+assert.match(apiSource, /whatsapp_connection_id: connection\.row\.id[\s\S]+provider_response_status: "accepted"[\s\S]+send_result: outreachSendResult/, "WhatsApp success should persist the resolved connection and normalized acceptance result");
+assert.match(whatsappWebhookSource, /provider_response_status = providerStatus[\s\S]+send_result = deliveryResult\("webhook_status"/, "WhatsApp webhook statuses should update the original outreach delivery result");
 assert.match(apiSource, /async function claimOutreachMessageForSend[\s\S]+\.eq\("status", status\)/, "Provider sends should atomically claim a message from its current status");
 assert.match(apiSource, /async function updateClaimedOutreachMessage[\s\S]+\.eq\("send_attempt_id", attemptId\)/, "Provider results should only be finalized by the attempt that owns the claim");
-assert.match(apiSource, /sendOutreachMessages[\s\S]+claimOutreachMessageForSend\(supabase, user, message\)/, "Gmail sends should acquire the persistent send claim before invoking the provider");
-assert.match(apiSource, /sendWhatsappOutreachMessages[\s\S]+claimOutreachMessageForSend\(supabase, user, resolvedMessage\)/, "WhatsApp sends should acquire the persistent send claim before invoking Meta");
+assert.match(apiSource, /sendOutreachMessages[\s\S]+claimOutreachMessageForSend\(supabase, user, message, \{/, "Gmail sends should acquire the persistent send claim with its delivery trace before invoking the provider");
+assert.match(apiSource, /sendWhatsappOutreachMessages[\s\S]+claimOutreachMessageForSend\(supabase, user, resolvedMessage, \{/, "WhatsApp sends should acquire the persistent send claim with its delivery trace before invoking Meta");
 assert.match(apiSource, /deliveryUncertain[\s\S]+delivery_unknown/, "Ambiguous provider responses should be held for reconciliation instead of automatic resend");
 assert.match(apiSource, /response\.status === 408 \|\| response\.status >= 500/, "Timeout and provider server responses should remain blocked as uncertain delivery");
 assert.match(apiSource, /body\.action === "create_outreach_campaign"[\s\S]+normalized\.idempotency_key[\s\S]+reused: true/, "Campaign creation retries should reuse the original outreach wave");

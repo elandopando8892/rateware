@@ -13302,10 +13302,37 @@ function messageInvitationIds(message: Record<string, unknown>) {
 
 const OUTREACH_SENDABLE_STATUSES = new Set(["drafted", "queued", "failed"]);
 
+function outreachSendResult(
+  stage: string,
+  details: Record<string, unknown> = {}
+) {
+  return {
+    stage,
+    recorded_at: new Date().toISOString(),
+    ...details
+  };
+}
+
+async function gmailConnectionIdentity(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_email: string | null },
+  senderEmail: string
+) {
+  const result = await supabase
+    .from("gmail_mailbox_connections")
+    .select("id,mailbox_email,provider,status")
+    .eq("owner_email", user.owner_email)
+    .eq("mailbox_email", senderEmail.toLowerCase())
+    .maybeSingle();
+  if (result.error) throw result.error;
+  return (result.data || null) as Record<string, unknown> | null;
+}
+
 async function claimOutreachMessageForSend(
   supabase: ReturnType<typeof createClient>,
   user: { owner_email: string | null },
-  message: Record<string, unknown>
+  message: Record<string, unknown>,
+  trace: Record<string, unknown> = {}
 ) {
   const status = cleanText(message.status)?.toLowerCase() || "";
   if (!OUTREACH_SENDABLE_STATUSES.has(status)) return null;
@@ -13314,11 +13341,19 @@ async function claimOutreachMessageForSend(
   const result = await supabase
     .from("outreach_messages")
     .update({
+      ...trace,
       status: "sending",
       send_attempt_id: attemptId,
       send_started_at: startedAt,
       send_completed_at: null,
       delivery_error: null,
+      provider_response_status: "sending",
+      send_result: outreachSendResult("sending", {
+        ...objectRecord(trace.send_result),
+        attempt_id: attemptId,
+        channel: cleanText(trace.channel || message.channel),
+        provider: cleanText(trace.provider || message.provider)
+      }),
       updated_at: startedAt
     })
     .eq("id", message.id)
@@ -13360,12 +13395,22 @@ async function markClaimedOutreachFailure(
   extra: Record<string, unknown> = {}
 ) {
   const now = new Date().toISOString();
+  const { send_result: extraSendResult, ...extraPatch } = extra;
   return await updateClaimedOutreachMessage(supabase, user, message.id, attemptId, {
     status: uncertain ? "delivery_unknown" : "failed",
     delivery_status: uncertain ? "delivery_unknown" : "failed",
     failed_at: uncertain ? null : now,
+    send_completed_at: now,
     delivery_error: reason,
-    ...extra
+    provider_response_status: uncertain ? "delivery_unknown" : "failed",
+    ...extraPatch,
+    send_result: outreachSendResult("completed", {
+      ...objectRecord(message.send_result),
+      ...objectRecord(extraSendResult),
+      attempt_id: attemptId,
+      outcome: uncertain ? "delivery_unknown" : "failed",
+      error: reason
+    })
   });
 }
 
@@ -13423,6 +13468,9 @@ async function sendOutreachMessages(
     messages.map((message) => cleanText(message.recipient_email)).filter(Boolean) as string[]
   );
   const accessToken = await gmailAccessToken(supabase, user, senderEmail);
+  const gmailConnection = await gmailConnectionIdentity(supabase, user, senderEmail);
+  const gmailConnectionId = cleanText(gmailConnection?.id) || null;
+  const gmailConnectionType = "gmail_oauth";
   const now = new Date().toISOString();
   const sentRows: Record<string, unknown>[] = [];
   const failures: Record<string, unknown>[] = [];
@@ -13438,7 +13486,24 @@ async function sendOutreachMessages(
       failures.push({ id: message.id, reason: "Missing recipient email." });
       await supabase
         .from("outreach_messages")
-        .update({ status: "failed", delivery_error: "Missing recipient email.", updated_at: now })
+        .update({
+          status: "failed",
+          delivery_status: "failed",
+          failed_at: now,
+          delivery_error: "Missing recipient email.",
+          provider: "gmail",
+          gmail_connection_id: gmailConnectionId,
+          sender_address: senderEmail,
+          sender_connection_type: gmailConnectionType,
+          provider_response_status: "validation_failed",
+          send_result: outreachSendResult("completed", {
+            channel: "email",
+            provider: "gmail",
+            outcome: "validation_failed",
+            error: "Missing recipient email."
+          }),
+          updated_at: now
+        })
         .eq("id", message.id)
         .eq("owner_email", user.owner_email);
       continue;
@@ -13449,7 +13514,24 @@ async function sendOutreachMessages(
       failures.push({ id: message.id, recipient_email: message.recipient_email, reason });
       await supabase
         .from("outreach_messages")
-        .update({ status: "bounced", delivery_error: reason, bounce_status: "hard_bounce", updated_at: now })
+        .update({
+          status: "bounced",
+          delivery_status: "bounced",
+          delivery_error: reason,
+          bounce_status: "hard_bounce",
+          provider: "gmail",
+          gmail_connection_id: gmailConnectionId,
+          sender_address: senderEmail,
+          sender_connection_type: gmailConnectionType,
+          provider_response_status: "suppressed",
+          send_result: outreachSendResult("completed", {
+            channel: "email",
+            provider: "gmail",
+            outcome: "suppressed",
+            error: reason
+          }),
+          updated_at: now
+        })
         .eq("id", message.id)
         .eq("owner_email", user.owner_email);
       continue;
@@ -13457,7 +13539,18 @@ async function sendOutreachMessages(
 
     let claim: Awaited<ReturnType<typeof claimOutreachMessageForSend>> = null;
     try {
-      claim = await claimOutreachMessageForSend(supabase, user, message);
+      claim = await claimOutreachMessageForSend(supabase, user, message, {
+        channel: "email",
+        provider: "gmail",
+        gmail_connection_id: gmailConnectionId,
+        sender_email: senderEmail,
+        sender_address: senderEmail,
+        sender_connection_type: gmailConnectionType,
+        send_result: {
+          connection_id: gmailConnectionId,
+          sender: senderEmail
+        }
+      });
     } catch (error) {
       failures.push({ id: message.id, recipient_email: message.recipient_email, reason: error instanceof Error ? error.message : String(error) });
       continue;
@@ -13501,15 +13594,32 @@ async function sendOutreachMessages(
         last_contacted_at: now,
         sender_email: senderEmail,
         sender_connection_status: "connected",
+        sender_address: senderEmail,
+        sender_connection_type: gmailConnectionType,
+        provider: "gmail",
+        gmail_connection_id: gmailConnectionId,
         provider_message_id: cleanText(data.id),
+        provider_thread_id: cleanText(data.threadId),
+        provider_response_status: "accepted",
         delivery_error: null,
-        delivered_by: GMAIL_ALLOWED_SENDER
+        delivered_by: GMAIL_ALLOWED_SENDER,
+        send_result: outreachSendResult("completed", {
+          attempt_id: claim.attemptId,
+          channel: "email",
+          provider: "gmail",
+          outcome: "accepted",
+          connection_id: gmailConnectionId,
+          sender: senderEmail,
+          provider_message_id: cleanText(data.id),
+          provider_thread_id: cleanText(data.threadId)
+        })
       });
       if (!updateResult) throw new Error("Gmail accepted the message, but its delivery claim could not be finalized.");
       sentRows.push(updateResult);
 
       try {
         await writeOutreachSentHistory(supabase, withOwner({
+          gmail_connection_id: gmailConnectionId,
           outreach_message_id: message.id,
           campaign_id: message.campaign_id,
           vendor_id: message.vendor_id,
@@ -13522,9 +13632,13 @@ async function sendOutreachMessages(
           occurred_at: now,
           metadata: {
             sent_from: "gmail_api",
+            provider: "gmail",
+            gmail_connection_id: gmailConnectionId,
+            sender_connection_type: gmailConnectionType,
             sender_email: senderEmail,
             provider_message_id: cleanText(data.id),
             gmail_thread_id: cleanText(data.threadId),
+            result: "accepted",
             source: cleanText(objectRecord(message.metadata).source),
             ratebook_id: cleanText(objectRecord(message.metadata).ratebook_id),
             ratebook_share_id: cleanText(objectRecord(message.metadata).ratebook_share_id)
@@ -13558,7 +13672,17 @@ async function sendOutreachMessages(
       try {
         await markClaimedOutreachFailure(supabase, user, message, claim.attemptId, reason, uncertain, {
           sender_email: senderEmail,
-          sender_connection_status: "connected"
+          sender_connection_status: "connected",
+          sender_address: senderEmail,
+          sender_connection_type: gmailConnectionType,
+          provider: "gmail",
+          gmail_connection_id: gmailConnectionId,
+          send_result: {
+            channel: "email",
+            provider: "gmail",
+            connection_id: gmailConnectionId,
+            sender: senderEmail
+          }
         });
       } catch (_) {
         // The send claim remains locked if persistence is unavailable, preventing an unsafe retry.
@@ -13658,8 +13782,12 @@ async function updateWhatsappMessageFailure(
   user: { owner_email: string | null },
   message: Record<string, unknown>,
   reason: string,
-  now = new Date().toISOString()
+  now = new Date().toISOString(),
+  connection: { row: Record<string, unknown> } | null = null
 ) {
+  const connectionId = cleanText(connection?.row?.id || message.whatsapp_connection_id) || null;
+  const connectionType = cleanText(connection?.row?.connection_mode) || "unresolved";
+  const senderAddress = cleanText(connection?.row?.display_phone_number) || null;
   const metadata = {
     ...objectRecord(message.metadata),
     whatsapp_last_error: reason,
@@ -13675,9 +13803,21 @@ async function updateWhatsappMessageFailure(
       provider: "meta",
       // Keep the resolved Meta mapping on retriable failures. Without this, the
       // draft queue loses the template name/status that explains why Meta blocked it.
-      whatsapp_connection_id: cleanText(message.whatsapp_connection_id) || null,
+      whatsapp_connection_id: connectionId,
       whatsapp_template_name: cleanText(message.whatsapp_template_name) || null,
       whatsapp_template_language: cleanText(message.whatsapp_template_language) || null,
+      sender_address: senderAddress,
+      sender_connection_type: connectionType,
+      provider_response_status: "failed",
+      send_completed_at: now,
+      send_result: outreachSendResult("completed", {
+        channel: cleanText(message.channel) || "whatsapp",
+        provider: "meta",
+        outcome: "failed",
+        connection_id: connectionId,
+        sender: senderAddress,
+        error: reason
+      }),
       metadata,
       updated_at: now
     })
@@ -13726,7 +13866,7 @@ async function sendWhatsappOutreachMessages(
     if (cleanBoolean(vendor.whatsapp_do_not_contact)) {
       const reason = "Vendor is marked do-not-contact for WhatsApp.";
       failures.push({ id: message.id, reason });
-      await updateWhatsappMessageFailure(supabase, user, message, reason, now);
+      await updateWhatsappMessageFailure(supabase, user, message, reason, now, connection);
       continue;
     }
     let resolvedMessage = message;
@@ -13755,13 +13895,23 @@ async function sendWhatsappOutreachMessages(
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
       failures.push({ id: message.id, reason });
-      await updateWhatsappMessageFailure(supabase, user, resolvedMessage, reason, now);
+      await updateWhatsappMessageFailure(supabase, user, resolvedMessage, reason, now, connection);
       continue;
     }
 
     let claim: Awaited<ReturnType<typeof claimOutreachMessageForSend>> = null;
     try {
-      claim = await claimOutreachMessageForSend(supabase, user, resolvedMessage);
+      claim = await claimOutreachMessageForSend(supabase, user, resolvedMessage, {
+        channel: "whatsapp",
+        provider: "meta",
+        whatsapp_connection_id: connection.row.id,
+        sender_address: cleanText(connection.row.display_phone_number) || null,
+        sender_connection_type: cleanText(connection.row.connection_mode) || "unresolved",
+        send_result: {
+          connection_id: connection.row.id,
+          sender: cleanText(connection.row.display_phone_number) || null
+        }
+      });
     } catch (error) {
       failures.push({ id: message.id, reason: error instanceof Error ? error.message : String(error) });
       continue;
@@ -13785,10 +13935,24 @@ async function sendWhatsappOutreachMessages(
         last_contacted_at: now,
         provider: "meta",
         whatsapp_connection_id: connection.row.id,
+        sender_address: senderDisplayPhone || null,
+        sender_connection_type: cleanText(connection.row.connection_mode) || "unresolved",
         whatsapp_template_name: cleanText(resolvedMessage.whatsapp_template_name),
         whatsapp_template_language: cleanText(resolvedMessage.whatsapp_template_language),
         provider_message_id: providerMessageId,
+        provider_response_status: "accepted",
         delivery_error: null,
+        send_result: outreachSendResult("completed", {
+          attempt_id: claim.attemptId,
+          channel: "whatsapp",
+          provider: "meta",
+          outcome: "accepted",
+          connection_id: connection.row.id,
+          sender: senderDisplayPhone || null,
+          provider_message_id: providerMessageId,
+          template_name: cleanText(resolvedMessage.whatsapp_template_name),
+          template_language: cleanText(resolvedMessage.whatsapp_template_language)
+        }),
         metadata: {
           ...objectRecord(resolvedMessage.metadata),
           whatsapp_connection_id: connection.row.id,
@@ -13816,6 +13980,7 @@ async function sendWhatsappOutreachMessages(
             provider: "meta",
             whatsapp_connection_id: connection.row.id,
             whatsapp_connection_mode: cleanText(connection.row.connection_mode),
+            sender_connection_type: cleanText(connection.row.connection_mode),
             sender_display_phone: senderDisplayPhone,
             phone_number_id: maskedSecret(connection.phoneNumberId),
             provider_message_id: providerMessageId,
@@ -13842,6 +14007,8 @@ async function sendWhatsappOutreachMessages(
         await markClaimedOutreachFailure(supabase, user, resolvedMessage, claim.attemptId, reason, uncertain, {
           provider: "meta",
           whatsapp_connection_id: connection.row.id,
+          sender_address: cleanText(connection.row.display_phone_number) || null,
+          sender_connection_type: cleanText(connection.row.connection_mode) || "unresolved",
           whatsapp_template_name: cleanText(resolvedMessage.whatsapp_template_name) || null,
           whatsapp_template_language: cleanText(resolvedMessage.whatsapp_template_language) || null,
           metadata: {
@@ -13850,6 +14017,14 @@ async function sendWhatsappOutreachMessages(
             whatsapp_connection_mode: cleanText(connection.row.connection_mode),
             whatsapp_last_error: reason,
             whatsapp_last_error_at: now
+          },
+          send_result: {
+            channel: "whatsapp",
+            provider: "meta",
+            connection_id: connection.row.id,
+            sender: cleanText(connection.row.display_phone_number) || null,
+            template_name: cleanText(resolvedMessage.whatsapp_template_name),
+            template_language: cleanText(resolvedMessage.whatsapp_template_language)
           }
         });
       } catch (_) {
@@ -13872,7 +14047,7 @@ async function sendWhatsappGroupOutreachMessages(
     label: "WhatsApp group bulk send",
     count: ids.length
   });
-  await activeWhatsappConnection(supabase, user);
+  const connection = await activeWhatsappConnection(supabase, user);
   const messagesResult = await supabase
     .from("outreach_messages")
     .select("*, vendor_whatsapp_groups(*)")
@@ -13891,7 +14066,25 @@ async function sendWhatsappGroupOutreachMessages(
   for (const failure of failures) {
     await supabase
       .from("outreach_messages")
-      .update({ status: "failed", delivery_status: "failed", failed_at: now, delivery_error: failure.reason, updated_at: now })
+      .update({
+        status: "failed",
+        delivery_status: "failed",
+        failed_at: now,
+        delivery_error: failure.reason,
+        provider: "meta",
+        whatsapp_connection_id: connection.row.id,
+        sender_address: cleanText(connection.row.display_phone_number) || null,
+        sender_connection_type: "manual_group",
+        provider_response_status: "manual_required",
+        send_result: outreachSendResult("completed", {
+          channel: "whatsapp_group",
+          provider: "meta",
+          outcome: "manual_required",
+          connection_id: connection.row.id,
+          sender: cleanText(connection.row.display_phone_number) || null
+        }),
+        updated_at: now
+      })
       .eq("id", failure.id)
       .eq("owner_email", user.owner_email);
   }
@@ -13920,6 +14113,15 @@ async function markWhatsappGroupMessageManuallySent(
       manual_sent_by: user.owner_email,
       sent_at: now,
       last_contacted_at: now,
+      provider: "meta",
+      sender_connection_type: "manual_group",
+      provider_response_status: "manual_sent",
+      send_result: outreachSendResult("completed", {
+        channel: "whatsapp_group",
+        provider: "meta",
+        outcome: "manual_sent",
+        sender: user.owner_email
+      }),
       updated_at: now
     })
     .eq("owner_email", user.owner_email)
@@ -13941,6 +14143,11 @@ async function markWhatsappGroupMessageManuallySent(
     metadata: {
       marked_from: "manual_whatsapp_group",
       manual_sent_by: user.owner_email,
+      provider: message.provider || "meta",
+      whatsapp_connection_id: message.whatsapp_connection_id || null,
+      sender_address: message.sender_address || null,
+      sender_connection_type: message.sender_connection_type || "manual_group",
+      result: objectRecord(message.send_result),
       group_url: objectRecord(message.metadata).group_url || message.whatsapp_url
     }
   }, user));
@@ -20719,6 +20926,16 @@ Deno.serve(async (request) => {
       const wantsEmail = requestedChannels.includes("email");
       const wantsDirectWhatsapp = requestedChannels.includes("whatsapp");
       const wantsWhatsappGroup = requestedChannels.includes("whatsapp_group");
+      let gmailConnectionRow: Record<string, unknown> = {};
+      if (wantsEmail && senderEmail) {
+        try {
+          gmailConnectionRow = await gmailConnectionIdentity(supabase, user, senderEmail) || {};
+        } catch (_) {
+          // Queue creation remains available in draft-only mode. Direct Gmail send
+          // resolves and validates the connection again before provider delivery.
+          gmailConnectionRow = {};
+        }
+      }
       let whatsappNotifier: Record<string, unknown> = {
         attempted: false,
         status: "not_requested"
@@ -20983,6 +21200,18 @@ Deno.serve(async (request) => {
               sender_email: senderEmail,
               sender_label: senderLabel,
               sender_connection_status: senderConnectionStatus,
+              provider: "gmail",
+              gmail_connection_id: gmailConnectionRow.id || null,
+              sender_address: senderEmail || null,
+              sender_connection_type: gmailConnectionRow.id ? "gmail_oauth" : "gmail_draft_only",
+              provider_response_status: "drafted",
+              send_result: outreachSendResult("drafted", {
+                channel: "email",
+                provider: "gmail",
+                outcome: "drafted",
+                connection_id: gmailConnectionRow.id || null,
+                sender: senderEmail || null
+              }),
               status: "drafted",
               metadata: {
                 bid_link: context.bid_link,
@@ -21025,6 +21254,8 @@ Deno.serve(async (request) => {
               whatsapp_target_mode: "direct_vendor",
               provider: "meta",
               whatsapp_connection_id: whatsappConnectionRow.id || null,
+              sender_address: cleanText(whatsappConnectionRow.display_phone_number) || null,
+              sender_connection_type: cleanText(whatsappConnectionRow.connection_mode) || "unresolved",
               whatsapp_template_name: whatsappTemplateName,
               whatsapp_template_language: whatsappTemplateLanguage,
               whatsapp_text: whatsappText,
@@ -21034,6 +21265,16 @@ Deno.serve(async (request) => {
               sender_email: senderEmail,
               sender_label: senderLabel,
               sender_connection_status: senderConnectionStatus,
+              provider_response_status: "drafted",
+              send_result: outreachSendResult("drafted", {
+                channel: "whatsapp",
+                provider: "meta",
+                outcome: "drafted",
+                connection_id: whatsappConnectionRow.id || null,
+                sender: cleanText(whatsappConnectionRow.display_phone_number) || null,
+                template_name: whatsappTemplateName || null,
+                template_language: whatsappTemplateLanguage || null
+              }),
               status: "drafted",
               metadata: {
                 bid_link: context.bid_link,
@@ -21083,6 +21324,8 @@ Deno.serve(async (request) => {
               whatsapp_target_mode: "vendor_group",
               provider: "meta",
               whatsapp_connection_id: whatsappConnectionRow.id || null,
+              sender_address: cleanText(whatsappConnectionRow.display_phone_number) || null,
+              sender_connection_type: "manual_group",
               whatsapp_template_name: whatsappTemplateName,
               whatsapp_template_language: whatsappTemplateLanguage,
               recipient_phone: "",
@@ -21093,6 +21336,15 @@ Deno.serve(async (request) => {
               sender_email: senderEmail,
               sender_label: senderLabel,
               sender_connection_status: senderConnectionStatus,
+              provider_response_status: "drafted",
+              send_result: outreachSendResult("drafted", {
+                channel: "whatsapp_group",
+                provider: "meta",
+                outcome: "drafted",
+                connection_id: whatsappConnectionRow.id || null,
+                sender: cleanText(whatsappConnectionRow.display_phone_number) || null,
+                delivery_mode: "manual_group"
+              }),
               status: "drafted",
               metadata: {
                 bid_link: context.bid_link,
@@ -21174,7 +21426,7 @@ Deno.serve(async (request) => {
         const result = await supabase
           .from("outreach_messages")
           .upsert(chunk, { onConflict: "campaign_id,rfx_lane_vendor_id,channel" })
-          .select("id,campaign_id,vendor_id,rfx_event_id,rfx_lane_vendor_id,channel,subject,text_body,whatsapp_text,html_body,sender_email,sender_label,sender_connection_status");
+          .select("id,campaign_id,vendor_id,rfx_event_id,rfx_lane_vendor_id,channel,provider,gmail_connection_id,whatsapp_connection_id,subject,text_body,whatsapp_text,html_body,sender_email,sender_label,sender_address,sender_connection_type,sender_connection_status,provider_response_status,send_result");
         if (result.error) throw new Error(`Outreach draft upsert failed: ${result.error.message}`);
         return result.data || [];
       });
@@ -21191,11 +21443,21 @@ Deno.serve(async (request) => {
         status: "drafted",
         subject: message.subject,
         body_preview: contactPreview(message.text_body || message.whatsapp_text || message.html_body),
+        gmail_connection_id: message.gmail_connection_id || null,
+        whatsapp_connection_id: message.whatsapp_connection_id || null,
         metadata: {
           generated_from: "outreach_engine",
+          channel: message.channel,
+          provider: message.provider,
+          gmail_connection_id: message.gmail_connection_id || null,
+          whatsapp_connection_id: message.whatsapp_connection_id || null,
           sender_email: message.sender_email,
+          sender_address: message.sender_address,
+          sender_connection_type: message.sender_connection_type,
           sender_label: message.sender_label,
-          sender_connection_status: message.sender_connection_status
+          sender_connection_status: message.sender_connection_status,
+          provider_response_status: message.provider_response_status,
+          result: objectRecord(message.send_result)
         }
       }, user));
       if (historyRows.length) {
@@ -21324,7 +21586,15 @@ Deno.serve(async (request) => {
         });
       }
       const now = new Date().toISOString();
-      const patch: Record<string, unknown> = { status, updated_at: now };
+      const patch: Record<string, unknown> = {
+        status,
+        provider_response_status: status,
+        send_result: outreachSendResult("manual_status", {
+          outcome: status,
+          source: "outreach_engine"
+        }),
+        updated_at: now
+      };
       if (status === "sent") {
         patch.sent_at = now;
         patch.last_contacted_at = now;
@@ -21347,7 +21617,18 @@ Deno.serve(async (request) => {
         status,
         subject: message.subject,
         body_preview: contactPreview(message.text_body || message.whatsapp_text || message.html_body),
-        metadata: { marked_from: "outreach_engine" }
+        gmail_connection_id: message.gmail_connection_id || null,
+        whatsapp_connection_id: message.whatsapp_connection_id || null,
+        metadata: {
+          marked_from: "outreach_engine",
+          channel: message.channel,
+          provider: message.provider,
+          gmail_connection_id: message.gmail_connection_id || null,
+          whatsapp_connection_id: message.whatsapp_connection_id || null,
+          sender_address: message.sender_address,
+          sender_connection_type: message.sender_connection_type,
+          result: objectRecord(message.send_result)
+        }
       }, user));
       if (historyRows.length) {
         const history = await supabase.from("contact_history").insert(historyRows);

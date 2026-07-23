@@ -30,6 +30,14 @@ function objectRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }
 
+function deliveryResult(stage: string, details: Record<string, unknown> = {}) {
+  return {
+    stage,
+    recorded_at: new Date().toISOString(),
+    ...details
+  };
+}
+
 function arrayValue(value: unknown): Record<string, unknown>[] {
   return Array.isArray(value) ? value.filter((item) => item && typeof item === "object") as Record<string, unknown>[] : [];
 }
@@ -205,6 +213,21 @@ async function recordStatusUpdate(
   const now = new Date().toISOString();
   const { providerMessageId, providerStatus, patch, errorText } = statusPatch(statusRow, now);
   if (!providerMessageId || !providerStatus) return false;
+  const connectionId = cleanText(connection?.id) || null;
+  const senderAddress = cleanText(connection?.display_phone_number) || null;
+  patch.whatsapp_connection_id = connectionId;
+  patch.sender_address = senderAddress;
+  patch.sender_connection_type = cleanText(connection?.connection_mode) || "unresolved";
+  patch.provider_response_status = providerStatus;
+  patch.send_result = deliveryResult("webhook_status", {
+    channel: "whatsapp",
+    provider: "meta",
+    outcome: providerStatus,
+    connection_id: connectionId,
+    sender: senderAddress,
+    provider_message_id: providerMessageId,
+    ...(errorText ? { error: errorText } : {})
+  });
   let updateQuery = supabase
     .from("outreach_messages")
     .update(patch)
@@ -236,9 +259,11 @@ async function recordStatusUpdate(
     metadata: {
       provider: "meta",
       whatsapp_connection_id: connection?.id || message.whatsapp_connection_id || null,
+      sender_address: senderAddress,
+      sender_connection_type: cleanText(connection?.connection_mode) || "unresolved",
       sender_display_phone: connection?.display_phone_number || null,
       provider_message_id: providerMessageId,
-      whatsapp_status_payload: statusRow
+      result: objectRecord(patch.send_result)
     }
   });
   if (history.error) throw history.error;
@@ -310,6 +335,17 @@ async function recordInboundMessage(
       status: "replied",
       delivery_status: "replied",
       whatsapp_connection_id: connection?.id || message.whatsapp_connection_id || null,
+      sender_address: cleanText(connection?.display_phone_number || message.sender_address) || null,
+      sender_connection_type: cleanText(connection?.connection_mode || message.sender_connection_type) || "unresolved",
+      provider_response_status: "replied",
+      send_result: deliveryResult("inbound_reply", {
+        channel: "whatsapp",
+        provider: "meta",
+        outcome: "replied",
+        connection_id: connection?.id || message.whatsapp_connection_id || null,
+        sender: cleanText(connection?.display_phone_number || message.sender_address) || null,
+        provider_message_id: cleanText(inbound.id)
+      }),
       updated_at: now
     })
     .eq("id", message.id);
