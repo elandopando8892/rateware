@@ -2403,8 +2403,12 @@ function relationRecord(value: unknown): Record<string, unknown> {
 }
 
 const OUTREACH_MESSAGE_SELECT = "*, vendors(vendor_name,domain,primary_email,whatsapp_phone,whatsapp_group_name,whatsapp_group_url,whatsapp_group_status,whatsapp_do_not_contact), vendor_whatsapp_groups(group_name,group_url,verification_status,do_not_contact), outreach_campaigns(name,notes,whatsapp_target_mode,group_delivery_policy), rfx_events(rfx_id,name), rfx_lanes(origin,destination,equipment,trailer,operation,service), rfx_lane_vendors(id,invitation_status,invitation_token,award_role,bid_rate,currency,responded_at)";
-const OUTREACH_TRACKING_STATES = ["drafted", "sent", "delivered", "failed", "replied", "quoted", "bounced"] as const;
+const OUTREACH_TRACKING_STATES = ["drafted", "sent", "delivered", "read", "failed", "replied", "quoted", "bounced"] as const;
 type OutreachTrackingState = typeof OUTREACH_TRACKING_STATES[number];
+const OUTREACH_SENT_OR_RESOLVED_STATUSES = new Set(["sent", "delivered", "read", "replied", "quoted", "manual_sent"]);
+const OUTREACH_DO_NOT_AUTO_REQUEUE_STATUSES = new Set(["queued", "sending", "delivery_unknown", "failed", "bounced", ...OUTREACH_SENT_OR_RESOLVED_STATUSES]);
+const OUTREACH_AUDIENCE_MODES = new Set(["all_eligible", "saved_segment", "selected_carriers"]);
+const OUTREACH_SEQUENCE_MODES = new Set(["manual", "email_then_whatsapp"]);
 
 function normalizeOutreachTrackingStatus(value: unknown): OutreachTrackingState | null {
   const normalized = cleanText(value)?.toLowerCase();
@@ -2428,9 +2432,122 @@ function outreachMessageTrackingState(message: Record<string, unknown>): Outreac
   if (/bounc|mailer-daemon|undeliverable/.test(signal)) return "bounced";
   if (/failed|error|rejected/.test(signal)) return "failed";
   if (["replied", "responded"].includes(invitationStatus) || invitation.responded_at || /replied|responded/.test(signal)) return "replied";
-  if (/delivered|read/.test(signal)) return "delivered";
+  if (/read/.test(signal)) return "read";
+  if (/delivered/.test(signal)) return "delivered";
   if (/sent|accepted|manual_sent|delivery_unknown/.test(signal)) return "sent";
   return "drafted";
+}
+
+function outreachDedupeContactKey(message: Record<string, unknown>) {
+  const vendorId = cleanText(message.vendor_id);
+  const email = cleanText(message.recipient_email)?.toLowerCase();
+  const phone = phoneForWhatsapp(message.normalized_recipient_phone || message.recipient_phone);
+  if (vendorId && email) return `vendor:${vendorId}|email:${email}`;
+  if (vendorId && phone) return `vendor:${vendorId}|phone:${phone}`;
+  if (vendorId) return `vendor:${vendorId}`;
+  if (email) return `email:${email}`;
+  if (phone) return `phone:${phone}`;
+  return "";
+}
+
+function outreachEventDedupeKey(message: Record<string, unknown>) {
+  const eventId = cleanText(message.rfx_event_id);
+  const channel = cleanText(message.channel)?.toLowerCase();
+  const contactKey = outreachDedupeContactKey(message);
+  return eventId && channel && contactKey ? `${eventId}|${channel}|${contactKey}` : "";
+}
+
+function outreachHistoryByContact(rows: Record<string, unknown>[]) {
+  const index = new Map<string, Record<string, unknown>>();
+  for (const row of rows) {
+    if (!outreachBlocksAutoDraft(row)) continue;
+    const key = outreachEventDedupeKey(row);
+    if (key && !index.has(key)) index.set(key, row);
+  }
+  return index;
+}
+
+function firstEligibleOutreachEmail(
+  vendor: Record<string, unknown>,
+  suppressedEmails: Set<string>,
+  eventId: string,
+  vendorId: string,
+  historyByContact = new Map<string, Record<string, unknown>>()
+) {
+  for (const email of vendorContactEmailCandidates(vendor)) {
+    if (suppressedEmails.has(email)) continue;
+    const history = historyByContact.get(outreachEventDedupeKey({
+      rfx_event_id: eventId,
+      channel: "email",
+      vendor_id: vendorId,
+      recipient_email: email
+    }));
+    if (!history || !outreachBlocksAutoDraft(history)) return email;
+  }
+  return "";
+}
+
+function outreachBlocksAutoDraft(message: Record<string, unknown>) {
+  const status = cleanText(message.status)?.toLowerCase() || "";
+  const trackingState = outreachMessageTrackingState(message);
+  return OUTREACH_DO_NOT_AUTO_REQUEUE_STATUSES.has(status) || ["sent", "delivered", "read", "replied", "quoted", "failed", "bounced"].includes(trackingState);
+}
+
+function outreachAutoDraftSkipReason(message: Record<string, unknown>) {
+  const status = cleanText(message.status)?.toLowerCase() || "";
+  const trackingState = outreachMessageTrackingState(message);
+  if (status === "bounced" || trackingState === "bounced") return "This contact bounced. Choose or add another valid carrier contact to create a recovery invitation.";
+  if (status === "failed" || trackingState === "failed") return "Previous delivery failed. Review or retry the existing contact instead of creating a duplicate invitation.";
+  if (["queued", "sending"].includes(status)) return "Existing outreach send is already in progress for this contact.";
+  if (status === "delivery_unknown") return "Previous outreach delivery is still unknown. Review it before sending again.";
+  if (OUTREACH_SENT_OR_RESOLVED_STATUSES.has(status) || ["sent", "delivered", "read", "replied", "quoted"].includes(trackingState)) {
+    return "Already sent for this RFx, contact, and channel. Preserved to prevent a duplicate invitation.";
+  }
+  return "Existing outreach preserved to prevent duplicate carrier contact.";
+}
+
+function outreachNextAction(message: Record<string, unknown>) {
+  const stored = cleanText(message.next_action);
+  if (stored) return stored;
+  const status = cleanText(message.status)?.toLowerCase() || "drafted";
+  const tracking = outreachMessageTrackingState(message);
+  if (status === "archived") return "No action";
+  if (tracking === "bounced") return "Replace contact";
+  if (tracking === "failed") return "Review delivery failure";
+  if (tracking === "replied") return "Review reply";
+  if (tracking === "quoted") return "Review quote";
+  if (["sent", "delivered", "read"].includes(tracking)) return "Await response";
+  if (["queued", "sending"].includes(status)) return "Wait for delivery result";
+  return "Review and send";
+}
+
+function outreachOutcomeReason(message: Record<string, unknown>) {
+  const stored = cleanText(message.outcome_reason);
+  if (stored) return stored;
+  const status = cleanText(message.status)?.toLowerCase() || "drafted";
+  const tracking = outreachMessageTrackingState(message);
+  if (tracking === "bounced") return "Delivery bounced or address is no longer valid";
+  if (tracking === "failed") return "Provider rejected or failed to deliver the message";
+  if (tracking === "quoted") return "Carrier submitted a bid";
+  if (tracking === "replied") return "Carrier replied";
+  if (tracking === "read") return "Carrier opened the WhatsApp message; awaiting carrier response";
+  if (["sent", "delivered"].includes(tracking)) return "Delivered to provider; awaiting carrier response";
+  if (["queued", "sending"].includes(status)) return "Queued for the selected channel";
+  return "Eligible contact ready for review";
+}
+
+function outreachContactKey(message: Record<string, unknown>) {
+  return cleanText(message.contact_key) || outreachDedupeContactKey(message);
+}
+
+function enrichOutreachMessage(message: Record<string, unknown>) {
+  return {
+    ...message,
+    contact_key: outreachContactKey(message),
+    tracking_state: outreachMessageTrackingState(message),
+    next_action: outreachNextAction(message),
+    outcome_reason: outreachOutcomeReason(message)
+  };
 }
 
 function outreachMessageMatchesSearch(message: Record<string, unknown>, searchTerms: string[]) {
@@ -2482,6 +2599,7 @@ function scopedOutreachMessagesQuery(
   if (body.rfx_event_id) query = query.eq("rfx_event_id", body.rfx_event_id);
   if (body.status) query = query.eq("status", body.status);
   if (!body.status && !body.include_archived) query = query.neq("status", "archived");
+  if (body.created_after) query = query.gte("created_at", body.created_after);
   if (body.channel) query = query.eq("channel", body.channel);
   if (channels.length) query = query.in("channel", channels);
   return query;
@@ -2501,6 +2619,65 @@ async function allScopedOutreachMessages(
     rows.push(...pageRows);
     if (pageRows.length < pageSize) return rows;
   }
+}
+
+function outreachSuppressionContactValues(vendor: Record<string, unknown>, channel: string) {
+  const values = new Set<string>();
+  if (channel === "email") {
+    vendorContactEmailCandidates(vendor).forEach((value) => values.add(value));
+  }
+  if (channel === "whatsapp") {
+    const phone = phoneForWhatsapp(vendor.whatsapp_phone);
+    if (phone) values.add(phone);
+  }
+  return values;
+}
+
+async function outreachSuppressionsForVendors(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_email: string | null },
+  vendorIds: string[]
+) {
+  const rows: Record<string, unknown>[] = [];
+  const globalResult = await supabase
+    .from("outreach_contact_suppressions")
+    .select("id,vendor_id,channel,contact_value,reason,active")
+    .eq("owner_email", user.owner_email)
+    .eq("active", true)
+    .is("vendor_id", null);
+  if (globalResult.error) throw new Error(`Outreach suppression load failed: ${globalResult.error.message}`);
+  rows.push(...((globalResult.data || []) as Record<string, unknown>[]));
+  if (!vendorIds.length) return rows;
+  for (const vendorChunk of chunkValues(vendorIds, 200)) {
+    const result = await supabase
+      .from("outreach_contact_suppressions")
+      .select("id,vendor_id,channel,contact_value,reason,active")
+      .eq("owner_email", user.owner_email)
+      .eq("active", true)
+      .in("vendor_id", vendorChunk);
+    if (result.error) throw new Error(`Outreach suppression load failed: ${result.error.message}`);
+    rows.push(...((result.data || []) as Record<string, unknown>[]));
+  }
+  return rows;
+}
+
+function outreachSuppressionReason(
+  suppressions: Record<string, unknown>[],
+  channel: string,
+  contactValue: string,
+  vendorId = ""
+) {
+  const normalizedContact = cleanText(contactValue)?.toLowerCase() || "";
+  const normalizedVendorId = cleanText(vendorId) || "";
+  const match = suppressions.find((suppression) => {
+    const suppressionChannel = cleanText(suppression.channel)?.toLowerCase() || "all";
+    const value = cleanText(suppression.contact_value)?.toLowerCase() || "";
+    const suppressionVendorId = cleanText(suppression.vendor_id) || "";
+    return (!suppressionVendorId || suppressionVendorId === normalizedVendorId)
+      && ["all", channel].includes(suppressionChannel)
+      && (value === "*" || Boolean(normalizedContact && value === normalizedContact));
+  });
+  return match ? cleanText(match.reason) || "Contact is suppressed" : "";
 }
 
 type ApiErrorInfo = {
@@ -8089,6 +8266,7 @@ async function generateRfxAwardNotices(
       vendor_id: first.vendor_id,
       channel: "email",
       recipient_email: recipientEmail,
+      contact_key: outreachDedupeContactKey({ vendor_id: first.vendor_id, recipient_email: recipientEmail }),
       subject,
       html_body: htmlBody,
       text_body: textBody,
@@ -8114,7 +8292,7 @@ async function generateRfxAwardNotices(
 
   const result = await supabase
     .from("outreach_messages")
-    .upsert(messageRows, { onConflict: "campaign_id,rfx_lane_vendor_id,channel" })
+    .upsert(messageRows, { onConflict: "campaign_id,rfx_lane_vendor_id,channel,contact_key" })
     .select("*, vendors(vendor_name,domain,primary_email,whatsapp_phone), outreach_campaigns(name), rfx_events(rfx_id,name), rfx_lanes(origin,destination,equipment,trailer,operation,service), rfx_lane_vendors(id,invitation_status,award_role,bid_rate,currency,responded_at)");
   if (result.error) throw result.error;
 
@@ -9040,6 +9218,46 @@ function extractHtmlFromMime(value: unknown) {
   return htmlPart;
 }
 
+function boundedOutreachNumber(value: unknown, fallback: number, min: number, max: number) {
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.min(Math.max(Math.round(number), min), max) : fallback;
+}
+
+function normalizeOutreachAudiencePolicy(value: unknown) {
+  const source = objectRecord(value);
+  const mode = cleanText(source.mode)?.toLowerCase() || "all_eligible";
+  return {
+    mode: OUTREACH_AUDIENCE_MODES.has(mode) ? mode : "all_eligible",
+    require_contact: source.require_contact !== false,
+    saved_segment_id: cleanText(source.saved_segment_id),
+    vendor_ids: Array.isArray(source.vendor_ids)
+      ? source.vendor_ids.map(cleanText).filter(Boolean).slice(0, 5000)
+      : [],
+    exclude_previously_contacted: source.exclude_previously_contacted !== false,
+    exclude_bounced: source.exclude_bounced !== false
+  };
+}
+
+function normalizeOutreachContactPolicy(value: unknown) {
+  const source = objectRecord(value);
+  return {
+    max_touches_per_event: boundedOutreachNumber(source.max_touches_per_event, 1, 1, 12),
+    cooldown_hours: boundedOutreachNumber(source.cooldown_hours, 72, 0, 24 * 365),
+    daily_limit: boundedOutreachNumber(source.daily_limit, 100, 1, 5000)
+  };
+}
+
+function normalizeOutreachSequencePolicy(value: unknown) {
+  const source = objectRecord(value);
+  const mode = cleanText(source.mode)?.toLowerCase() || "manual";
+  const followUpChannel = cleanText(source.follow_up_channel)?.toLowerCase() || "whatsapp";
+  return {
+    mode: OUTREACH_SEQUENCE_MODES.has(mode) ? mode : "manual",
+    follow_up_delay_hours: boundedOutreachNumber(source.follow_up_delay_hours, 48, 1, 24 * 365),
+    follow_up_channel: ["email", "whatsapp"].includes(followUpChannel) ? followUpChannel : "whatsapp"
+  };
+}
+
 function normalizeOutreachCampaign(input: Record<string, unknown>) {
   const channel = cleanText(input.channel)?.toLowerCase() || "email";
   const status = cleanText(input.status)?.toLowerCase() || "draft";
@@ -9062,6 +9280,10 @@ function normalizeOutreachCampaign(input: Record<string, unknown>) {
     sender_label: cleanText(input.sender_label),
     sender_connection_status: ["draft_only", "oauth_connected", "workspace_delegated"].includes(senderConnectionStatus) ? senderConnectionStatus : "draft_only",
     notes: cleanText(input.notes),
+    audience_policy: normalizeOutreachAudiencePolicy(input.audience_policy),
+    contact_policy: normalizeOutreachContactPolicy(input.contact_policy),
+    sequence_policy: normalizeOutreachSequencePolicy(input.sequence_policy),
+    audience_snapshot: objectRecord(input.audience_snapshot),
     updated_at: new Date().toISOString()
   };
 }
@@ -21201,6 +21423,225 @@ Deno.serve(async (request) => {
       return jsonResponse({ row: result.data });
     }
 
+    if (body.action === "list_outreach_audience_segments") {
+      let query = supabase
+        .from("outreach_audience_segments")
+        .select("*")
+        .eq("owner_email", user.owner_email)
+        .eq("active", true)
+        .order("updated_at", { ascending: false });
+      if (body.rfx_event_id) query = query.eq("rfx_event_id", body.rfx_event_id);
+      const result = await query.limit(100);
+      if (result.error) throw result.error;
+      return jsonResponse({ rows: result.data || [] });
+    }
+
+    if (body.action === "save_outreach_audience_segment") {
+      const segment = objectRecord(body.segment);
+      const name = cleanText(segment.name);
+      const vendorIds = normalizeBulkIds(segment.vendor_ids, { label: "Audience vendor ids", limit: 5000 });
+      const eventId = cleanText(segment.rfx_event_id || body.rfx_event_id);
+      if (!name) return jsonResponse({ error: "Audience segment name is required." }, 400);
+      if (!vendorIds.length) return jsonResponse({ error: "Select at least one carrier before saving an audience segment." }, 400);
+      if (eventId) await requireOwnedRfxEvent(supabase, user, eventId);
+      const row = withOwner({
+        name,
+        rfx_event_id: eventId || null,
+        vendor_ids: vendorIds,
+        filters: objectRecord(segment.filters),
+        metadata: { source: cleanText(segment.source) || "outreach_control_center" },
+        active: true,
+        updated_at: new Date().toISOString()
+      }, user);
+      const result = await supabase.from("outreach_audience_segments").insert(row).select().single();
+      if (result.error) throw result.error;
+      await tryWriteAuditLog(supabase, user, "outreach.audience_segment.save", "outreach_audience_segments", result.data.id,
+        `Saved outreach audience segment ${name}`, { rfx_event_id: eventId, vendor_count: vendorIds.length });
+      return jsonResponse({ row: result.data });
+    }
+
+    if (body.action === "archive_outreach_audience_segment") {
+      const segmentId = cleanText(body.id || body.segment_id);
+      if (!segmentId) return jsonResponse({ error: "Audience segment id is required." }, 400);
+      requireBulkConfirmation(body, { action: "archive_outreach_audience_segment", label: "Outreach audience segment archive", count: 1 });
+      const result = await supabase
+        .from("outreach_audience_segments")
+        .update({ active: false, updated_at: new Date().toISOString() })
+        .eq("id", segmentId)
+        .eq("owner_email", user.owner_email)
+        .select()
+        .single();
+      if (result.error) throw result.error;
+      return jsonResponse({ row: result.data });
+    }
+
+    if (body.action === "suppress_outreach_contact") {
+      const contactValue = cleanText(body.contact_value)?.toLowerCase();
+      const reason = cleanText(body.reason) || "Manual suppression";
+      const channel = cleanText(body.channel)?.toLowerCase() || "all";
+      const vendorId = cleanText(body.vendor_id);
+      if (!contactValue) return jsonResponse({ error: "Contact value is required for suppression." }, 400);
+      if (!["all", "email", "whatsapp", "whatsapp_group"].includes(channel)) return jsonResponse({ error: "Invalid suppression channel." }, 400);
+      if (vendorId) await requireOwnedVendorForCi(supabase, user, vendorId);
+      const row = withOwner({
+        vendor_id: vendorId || null,
+        channel,
+        contact_value: contactValue,
+        reason,
+        source: cleanText(body.source) || "manual",
+        active: true,
+        metadata: objectRecord(body.metadata),
+        updated_at: new Date().toISOString()
+      }, user);
+      const existing = supabase
+        .from("outreach_contact_suppressions")
+        .select("id")
+        .eq("owner_email", user.owner_email)
+        .eq("channel", channel)
+        .eq("contact_value", contactValue)
+        .eq("active", true);
+      const existingForVendor = vendorId
+        ? await existing.eq("vendor_id", vendorId).maybeSingle()
+        : await existing.is("vendor_id", null).maybeSingle();
+      if (existingForVendor.error) throw existingForVendor.error;
+      const result = existingForVendor.data?.id
+        ? await supabase
+          .from("outreach_contact_suppressions")
+          .update(row)
+          .eq("id", existingForVendor.data.id)
+          .eq("owner_email", user.owner_email)
+          .select()
+          .single()
+        : await supabase
+          .from("outreach_contact_suppressions")
+          .insert(row)
+        .select()
+        .single();
+      if (result.error) throw result.error;
+      return jsonResponse({ row: result.data });
+    }
+
+    if (body.action === "preview_outreach_audience") {
+      const eventId = cleanText(body.rfx_event_id || body.event_id);
+      const channel = cleanText(body.channel)?.toLowerCase() || "email";
+      const search = cleanText(body.search)?.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase() || "";
+      const statusFilter = cleanText(body.status_filter)?.toLowerCase() || "all";
+      const policy = normalizeOutreachAudiencePolicy(body.audience_policy);
+      if (!eventId) return jsonResponse({ error: "Select an RFx event to build an audience." }, 400);
+      if (!["email", "whatsapp", "whatsapp_group"].includes(channel)) return jsonResponse({ error: "Select one outreach channel." }, 400);
+      await requireOwnedRfxEvent(supabase, user, eventId);
+      let selectedVendorIds = policy.vendor_ids;
+      if (policy.mode === "saved_segment" && policy.saved_segment_id) {
+        const segment = await supabase
+          .from("outreach_audience_segments")
+          .select("vendor_ids")
+          .eq("id", policy.saved_segment_id)
+          .eq("owner_email", user.owner_email)
+          .eq("active", true)
+          .maybeSingle();
+        if (segment.error) throw segment.error;
+        selectedVendorIds = Array.isArray(segment.data?.vendor_ids) ? segment.data.vendor_ids : [];
+      }
+      const invitationsResult = await supabase
+        .from("rfx_lane_vendors")
+        .select("id,vendor_id,rfx_lane_id,invitation_status,vendors(id,vendor_name,domain,primary_email,secondary_emails,whatsapp_phone,whatsapp_do_not_contact),rfx_lanes(origin,destination,equipment,operation,service)")
+        .eq("rfx_event_id", eventId)
+        .neq("invitation_status", "archived");
+      if (invitationsResult.error) throw invitationsResult.error;
+      const invitations = (invitationsResult.data || []) as Record<string, unknown>[];
+      const vendorIds = [...new Set(invitations.map((row) => cleanText(row.vendor_id)).filter(Boolean))] as string[];
+      const [historyRows, suppressions] = await Promise.all([
+        allScopedOutreachMessages(supabase, user, { rfx_event_id: eventId, channel, include_archived: false }),
+        outreachSuppressionsForVendors(supabase, user, vendorIds)
+      ]);
+      const historyByContact = outreachHistoryByContact(historyRows);
+      const groups = new Map<string, Record<string, unknown>[]>();
+      for (const invitation of invitations) {
+        const vendorId = cleanText(invitation.vendor_id) || `invitation:${invitation.id}`;
+        const bucket = groups.get(vendorId) || [];
+        bucket.push(invitation);
+        groups.set(vendorId, bucket);
+      }
+      const rows = [...groups.entries()].map(([vendorId, group]) => {
+        const first = group[0];
+        const vendor = relationRecord(first.vendors);
+        const emailCandidates = vendorContactEmailCandidates(vendor);
+        const suppressedEmailContacts = new Set(
+          suppressions
+            .filter((suppression) => {
+              const suppressionVendorId = cleanText(suppression.vendor_id) || "";
+              return ["all", "email"].includes(cleanText(suppression.channel)?.toLowerCase() || "all")
+                && (!suppressionVendorId || suppressionVendorId === vendorId);
+            })
+            .map((suppression) => cleanText(suppression.contact_value)?.toLowerCase())
+            .filter((value) => value && value !== "*") as string[]
+        );
+        const firstHistoricalEmail = emailCandidates.find((email) => historyByContact.has(outreachEventDedupeKey({
+          rfx_event_id: eventId,
+          channel: "email",
+          vendor_id: vendorId,
+          recipient_email: email
+        }))) || "";
+        const recipientEmail = channel === "email"
+          ? firstEligibleOutreachEmail(vendor, suppressedEmailContacts, eventId, vendorId, historyByContact)
+          : "";
+        const recipientPhone = channel === "whatsapp" ? phoneForWhatsapp(vendor.whatsapp_phone) : "";
+        const contactValue = channel === "email" ? (recipientEmail || firstHistoricalEmail) : recipientPhone;
+        const history = contactValue ? historyByContact.get(outreachEventDedupeKey({
+          rfx_event_id: eventId,
+          channel,
+          vendor_id: vendorId,
+          recipient_email: channel === "email" ? contactValue : undefined,
+          recipient_phone: recipientPhone || undefined
+        })) : null;
+        const hasContact = channel === "email" ? emailCandidates.length > 0 : Boolean(contactValue) || channel === "whatsapp_group";
+        const suppressionReason = outreachSuppressionReason(suppressions, channel, contactValue, vendorId);
+        let audienceStatus = "ready";
+        let reason = "Eligible contact ready for review";
+        if (policy.mode !== "all_eligible" && selectedVendorIds.length && !selectedVendorIds.includes(vendorId)) {
+          audienceStatus = "excluded";
+          reason = "Not included in the selected audience segment";
+        } else if (suppressionReason || cleanBoolean(vendor.whatsapp_do_not_contact)) {
+          audienceStatus = "suppressed";
+          reason = suppressionReason || "Vendor is marked do-not-contact";
+        } else if (policy.require_contact && !hasContact) {
+          audienceStatus = "no_contact";
+          reason = channel === "email" ? "No valid email contact" : "No valid WhatsApp contact";
+        } else if (history && outreachBlocksAutoDraft(history)) {
+          const tracking = outreachMessageTrackingState(history);
+          audienceStatus = tracking === "bounced" ? "bounced" : tracking === "quoted" ? "quoted" : tracking === "replied" ? "replied" : "already_contacted";
+          reason = outreachAutoDraftSkipReason(history);
+        }
+        const lanePreview = group.slice(0, 2).map((row) => {
+          const lane = relationRecord(row.rfx_lanes);
+          return `${cleanText(lane.origin) || "-"} -> ${cleanText(lane.destination) || "-"}`;
+        });
+        return {
+          vendor_id: vendorId.startsWith("invitation:") ? null : vendorId,
+          vendor_name: cleanText(vendor.vendor_name) || "Unnamed carrier",
+          vendor_domain: cleanText(vendor.domain),
+          email: recipientEmail || cleanText(vendor.primary_email),
+          phone: recipientPhone,
+          invitation_ids: group.map((row) => row.id).filter(Boolean),
+          lane_count: group.length,
+          lane_preview: lanePreview,
+          audience_status: audienceStatus,
+          reason,
+          next_action: history ? outreachNextAction(history) : audienceStatus === "ready" ? "Review and send" : audienceStatus === "bounced" ? "Replace contact" : "Review carrier contact",
+          last_contact_at: history?.updated_at || null,
+          last_message_status: history ? outreachMessageTrackingState(history) : null
+        };
+      }).filter((row) => {
+        const haystack = `${row.vendor_name} ${row.vendor_domain} ${row.email} ${row.phone} ${row.lane_preview.join(" ")}`.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+        return (!search || haystack.includes(search)) && (statusFilter === "all" || row.audience_status === statusFilter);
+      });
+      const counts = rows.reduce((acc, row) => {
+        acc[row.audience_status] = (acc[row.audience_status] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>);
+      return jsonResponse({ rows, counts, total: rows.length, channel, rfx_event_id: eventId });
+    }
+
     if (body.action === "list_outreach_campaigns") {
       const campaignsResult = await supabase
         .from("outreach_campaigns")
@@ -21333,6 +21774,10 @@ Deno.serve(async (request) => {
         sender_connection_status: campaign.sender_connection_status || "draft_only",
         status: "draft",
         notes: campaign.notes,
+        audience_policy: normalizeOutreachAudiencePolicy(campaign.audience_policy),
+        contact_policy: normalizeOutreachContactPolicy(campaign.contact_policy),
+        sequence_policy: normalizeOutreachSequencePolicy(campaign.sequence_policy),
+        audience_snapshot: {},
         updated_at: new Date().toISOString()
       }, user);
       const result = await supabase.from("outreach_campaigns").insert(row).select().single();
@@ -21344,15 +21789,38 @@ Deno.serve(async (request) => {
       const campaign = await requireOwnedOutreachCampaign(supabase, user, body.campaign_id);
       const template = await fetchOutreachTemplate(supabase, user, body.template_id || campaign.template_id);
       const invitationIds = normalizeBulkIds(body.invitation_ids, { label: "RFx invitation ids", limit: 5000 });
+      const audiencePolicy = normalizeOutreachAudiencePolicy(body.audience_policy || campaign.audience_policy);
+      const contactPolicy = normalizeOutreachContactPolicy(body.contact_policy || campaign.contact_policy);
+      const sequencePolicy = normalizeOutreachSequencePolicy(body.sequence_policy || campaign.sequence_policy);
+      let audienceVendorIds = audiencePolicy.vendor_ids;
+      if (audiencePolicy.mode === "saved_segment" && audiencePolicy.saved_segment_id) {
+        const segment = await supabase
+          .from("outreach_audience_segments")
+          .select("vendor_ids")
+          .eq("id", audiencePolicy.saved_segment_id)
+          .eq("owner_email", user.owner_email)
+          .eq("active", true)
+          .maybeSingle();
+        if (segment.error) throw segment.error;
+        audienceVendorIds = Array.isArray(segment.data?.vendor_ids) ? segment.data.vendor_ids : [];
+      }
+      const hasExplicitAudience = audienceVendorIds.length > 0;
+      if (!invitationIds.length && audiencePolicy.mode !== "all_eligible" && !hasExplicitAudience) {
+        return jsonResponse({ error: "The selected audience has no carriers. Select carriers or choose an active saved segment." }, 400);
+      }
       const appOrigin = cleanText(body.app_origin) || Deno.env.get("RATEWARE_APP_URL") || "https://rateware.vercel.app";
       const senderEmail = cleanText(body.sender_email || campaign.sender_email);
       const senderLabel = cleanText(body.sender_label || campaign.sender_label || senderEmail);
       const senderConnectionStatus = cleanText(body.sender_connection_status || campaign.sender_connection_status) || "draft_only";
-      const whatsappTargetMode = cleanText(body.whatsapp_target_mode || campaign.whatsapp_target_mode || "direct_vendor");
-      const targetMode = ["direct_vendor", "vendor_group", "direct_and_group"].includes(whatsappTargetMode) ? whatsappTargetMode : "direct_vendor";
       // The queue request is authoritative. A stale campaign/template channel must
       // never make Gmail draft generation execute WhatsApp preparation (or vice versa).
       const requestedChannels = messageChannels(body.channel || campaign.channel || template.channel);
+      if (requestedChannels.length !== 1) {
+        throw new Error("Generate one outreach channel at a time. Gmail, WhatsApp Business direct, and WhatsApp groups use separate queues.");
+      }
+      // The selected channel owns its recipient model. This prevents a stale target
+      // mode from mixing direct WhatsApp and manual group drafts into one queue.
+      const targetMode = requestedChannels[0] === "whatsapp_group" ? "vendor_group" : "direct_vendor";
       const wantsEmail = requestedChannels.includes("email");
       const wantsDirectWhatsapp = requestedChannels.includes("whatsapp");
       const wantsWhatsappGroup = requestedChannels.includes("whatsapp_group");
@@ -21427,6 +21895,11 @@ Deno.serve(async (request) => {
             .range(offset, offset + 999);
           if (campaign.rfx_event_id) invitationQuery = invitationQuery.eq("rfx_event_id", campaign.rfx_event_id);
           if (chunk.length) invitationQuery = invitationQuery.in("id", chunk);
+          // An explicit selection always wins, including when the user starts from
+          // "all eligible" and then narrows the wave in the audience ledger.
+          if (!chunk.length && hasExplicitAudience) {
+            invitationQuery = invitationQuery.in("vendor_id", audienceVendorIds);
+          }
 
           const invitationsResult = await invitationQuery;
           if (invitationsResult.error) throw new Error(`Outreach invitation load failed: ${invitationsResult.error.message}`);
@@ -21439,6 +21912,17 @@ Deno.serve(async (request) => {
         return batch;
       });
       const invitations = invitationBatches.flat() as Record<string, unknown>[];
+
+      // The ledger is keyed by the actual contact, not just the carrier. This lets a
+      // bounced primary email fall through to a valid secondary email without ever
+      // recreating a message for a contact that was already sent or replied.
+      const eventHistoryByContact = campaign.rfx_event_id
+        ? outreachHistoryByContact(await allScopedOutreachMessages(supabase, user, {
+          rfx_event_id: campaign.rfx_event_id,
+          channels: requestedChannels,
+          include_archived: false
+        }))
+        : new Map<string, Record<string, unknown>>();
 
       const rows: Record<string, unknown>[] = [];
       const skipped: Record<string, unknown>[] = [];
@@ -21516,10 +22000,21 @@ Deno.serve(async (request) => {
           channelPreparationErrors.whatsapp_group = safeOperationalError(error);
         }
       }
-      let suppressedEmails = new Set<string>();
+      let globallySuppressedEmails = new Set<string>();
+      const vendorSuppressedEmails = new Map<string, Set<string>>();
+      let audienceSuppressions: Record<string, unknown>[] = [];
+      try {
+        audienceSuppressions = await outreachSuppressionsForVendors(
+          supabase,
+          user,
+          [...new Set(invitations.map((invitation) => cleanText(invitation.vendor_id)).filter(Boolean))] as string[]
+        );
+      } catch (error) {
+        throw new Error(`Outreach suppression load failed: ${safeOperationalError(error)}`);
+      }
       if (wantsEmail) {
         try {
-          suppressedEmails = await suppressedEmailSet(
+          globallySuppressedEmails = await suppressedEmailSet(
             supabase,
             user,
             invitations.flatMap((invitation) => {
@@ -21529,6 +22024,19 @@ Deno.serve(async (request) => {
           );
         } catch (error) {
           channelPreparationErrors.email = `Email suppression check failed: ${safeOperationalError(error)}`;
+        }
+        for (const suppression of audienceSuppressions) {
+          const suppressionChannel = cleanText(suppression.channel)?.toLowerCase() || "all";
+          const email = cleanText(suppression.contact_value)?.toLowerCase();
+          if (!["all", "email"].includes(suppressionChannel) || !email || email === "*") continue;
+          const vendorId = cleanText(suppression.vendor_id);
+          if (!vendorId) {
+            globallySuppressedEmails.add(email);
+            continue;
+          }
+          const vendorEmails = vendorSuppressedEmails.get(vendorId) || new Set<string>();
+          vendorEmails.add(email);
+          vendorSuppressedEmails.set(vendorId, vendorEmails);
         }
       }
       for (const [channel, preparationError] of Object.entries(channelPreparationErrors)) {
@@ -21610,7 +22118,17 @@ Deno.serve(async (request) => {
           : [];
 
         if (channels.includes("email")) {
-          const recipientEmail = channelPreparationErrors.email ? "" : firstSendableVendorEmail(vendor, suppressedEmails);
+          const suppressedEmails = new Set([
+            ...globallySuppressedEmails,
+            ...(vendorSuppressedEmails.get(vendorId || "") || new Set<string>())
+          ]);
+          const recipientEmail = channelPreparationErrors.email ? "" : firstEligibleOutreachEmail(
+            vendor,
+            suppressedEmails,
+            cleanText(invitation.rfx_event_id) || "",
+            vendorId || "",
+            eventHistoryByContact
+          );
           if (channelPreparationErrors.email) {
             skipped.push({ invitation_id: invitation.id, invitation_ids: groupInvitationIds, channel: "email", reason: channelPreparationErrors.email });
           } else if (recipientEmail) {
@@ -21661,7 +22179,9 @@ Deno.serve(async (request) => {
               invitation_id: invitation.id,
               invitation_ids: groupInvitationIds,
               channel: "email",
-              reason: vendorContactEmailCandidates(vendor).length ? "All vendor emails are suppressed" : "Missing vendor email"
+          reason: vendorContactEmailCandidates(vendor).length
+            ? "Every carrier email is suppressed or was already contacted for this RFx"
+            : "Missing vendor email"
             });
           }
         }
@@ -21822,13 +22342,123 @@ Deno.serve(async (request) => {
         }
       });
 
-      const draftKey = (row: Record<string, unknown>) => `${cleanText(row.rfx_lane_vendor_id) || ""}|${cleanText(row.channel) || ""}`;
+      const historicalPreservedMessages: Record<string, unknown>[] = [];
+      if (campaign.rfx_event_id && rows.length) {
+        const candidateChannels = [...new Set(rows.map((row) => cleanText(row.channel)?.toLowerCase()).filter(Boolean))] as string[];
+        const candidateVendorIds = [...new Set(rows.map((row) => cleanText(row.vendor_id)).filter(Boolean))] as string[];
+        const historicalMessagesByKey = new Map<string, Record<string, unknown>>();
+        if (candidateChannels.length && candidateVendorIds.length) {
+          const historicalBatches = await mapWithConcurrency(chunkValues(candidateVendorIds, 100), 4, async (vendorChunk) => {
+            const batch: Record<string, unknown>[] = [];
+            let offset = 0;
+            while (true) {
+              const historicalResult = await supabase
+                .from("outreach_messages")
+                .select("id,campaign_id,rfx_event_id,rfx_lane_vendor_id,vendor_id,channel,status,recipient_email,recipient_phone,normalized_recipient_phone,sent_at,bounce_detected_at,delivery_status,provider_response_status,updated_at,metadata")
+                .eq("owner_email", user.owner_email)
+                .eq("rfx_event_id", campaign.rfx_event_id)
+                .in("vendor_id", vendorChunk)
+                .in("channel", candidateChannels)
+                .neq("status", "archived")
+                .order("updated_at", { ascending: false })
+                .range(offset, offset + 999);
+              if (historicalResult.error) throw new Error(`Outreach history load failed: ${historicalResult.error.message}`);
+              const page = (historicalResult.data || []) as Record<string, unknown>[];
+              batch.push(...page);
+              if (page.length < 1000) break;
+              offset += 1000;
+              if (offset >= 25000) throw new Error("Outreach history load exceeded the safe per-batch limit.");
+            }
+            return batch;
+          });
+          for (const historicalMessage of historicalBatches.flat()) {
+            if (!outreachBlocksAutoDraft(historicalMessage)) continue;
+            const key = outreachEventDedupeKey(historicalMessage);
+            if (key && !historicalMessagesByKey.has(key)) historicalMessagesByKey.set(key, historicalMessage);
+          }
+        }
+        if (historicalMessagesByKey.size) {
+          const filteredRows = rows.filter((row) => {
+            const existing = historicalMessagesByKey.get(outreachEventDedupeKey(row));
+            if (!existing) return true;
+            historicalPreservedMessages.push(existing);
+            skipped.push({
+              invitation_id: row.rfx_lane_vendor_id,
+              channel: row.channel,
+              reason: outreachAutoDraftSkipReason(existing),
+              reason_code: cleanText(existing.status)?.toLowerCase() === "bounced" ? "previous_bounce" : "previous_outreach",
+              existing_message_id: existing.id,
+              existing_campaign_id: existing.campaign_id,
+              existing_status: existing.status,
+              existing_updated_at: existing.updated_at
+            });
+            return false;
+          });
+          rows.length = 0;
+          rows.push(...filteredRows);
+        }
+      }
+
+      const suppressedRows = rows.filter((row) => {
+        const channel = cleanText(row.channel)?.toLowerCase() || "";
+        const recipient = channel === "email"
+          ? cleanText(row.recipient_email)?.toLowerCase()
+          : phoneForWhatsapp(row.normalized_recipient_phone || row.recipient_phone);
+        const suppression = audienceSuppressions.find((item) => {
+          const suppressionChannel = cleanText(item.channel)?.toLowerCase() || "all";
+          const suppressionValue = cleanText(item.contact_value)?.toLowerCase() || "";
+          const suppressionVendorId = cleanText(item.vendor_id) || "";
+          return (!suppressionVendorId || suppressionVendorId === cleanText(row.vendor_id))
+            && ["all", channel].includes(suppressionChannel)
+            && (suppressionValue === "*" || Boolean(recipient && suppressionValue === recipient));
+        });
+        if (!suppression) return false;
+        skipped.push({
+          invitation_id: row.rfx_lane_vendor_id,
+          channel: row.channel,
+          reason: cleanText(suppression.reason) || "Contact is suppressed",
+          reason_code: "suppressed_contact"
+        });
+        return true;
+      });
+      if (suppressedRows.length) {
+        const suppressedSet = new Set(suppressedRows);
+        rows.splice(0, rows.length, ...rows.filter((row) => !suppressedSet.has(row)));
+      }
+      for (const row of rows) {
+        row.contact_key = outreachDedupeContactKey(row);
+        row.outcome_reason = "Eligible contact ready for review";
+        row.next_action = "Review and send";
+      }
+
+      if (!rows.length) return jsonResponse({
+        generated: 0,
+        rows: [],
+        skipped,
+        campaign_id: campaign.id,
+        requested_channels: requestedChannels,
+        channel_errors: channelPreparationErrors,
+        channel_results: channelResults([], historicalPreservedMessages),
+        whatsapp_notifier: whatsappNotifier,
+        metrics: {
+          requested_invitation_ids: invitationIds.length,
+          loaded_invitations: invitations.length,
+          carrier_groups: invitationGroups.size,
+          candidate_drafts: 0,
+          created: 0,
+          refreshed: 0,
+          preserved: historicalPreservedMessages.length,
+          preserved_from_history: historicalPreservedMessages.length
+        }
+      });
+
+      const draftKey = (row: Record<string, unknown>) => `${cleanText(row.rfx_lane_vendor_id) || ""}|${cleanText(row.channel) || ""}|${outreachContactKey(row)}`;
       const existingMessagesByKey = new Map<string, Record<string, unknown>>();
       const candidateInvitationIds = [...new Set(rows.map((row) => cleanText(row.rfx_lane_vendor_id)).filter(Boolean))] as string[];
       const existingBatches = await mapWithConcurrency(chunkValues(candidateInvitationIds, 100), 4, async (idChunk) => {
         const existingResult = await supabase
           .from("outreach_messages")
-          .select("id,rfx_lane_vendor_id,channel,status")
+          .select("id,rfx_lane_vendor_id,channel,contact_key,recipient_email,recipient_phone,normalized_recipient_phone,vendor_id,status,metadata,next_action,outcome_reason")
           .eq("owner_email", user.owner_email)
           .eq("campaign_id", campaign.id)
           .in("rfx_lane_vendor_id", idChunk);
@@ -21839,11 +22469,17 @@ Deno.serve(async (request) => {
 
       const protectedStatuses = new Set(["queued", "sending", "sent", "delivered", "read", "replied", "delivery_unknown", "bounced", "manual_sent", "archived"]);
       const preservedMessages: Record<string, unknown>[] = [];
+      const sentBookRevisions: Record<string, unknown>[] = [];
       const rowsToUpsert = rows.filter((row) => {
         const existing = existingMessagesByKey.get(draftKey(row));
         const status = cleanText(existing?.status)?.toLowerCase() || "";
         if (!existing || !protectedStatuses.has(status)) return true;
         preservedMessages.push(existing);
+        const priorSignature = cleanText(objectRecord(existing.metadata).lane_table_signature);
+        const nextSignature = cleanText(objectRecord(row.metadata).lane_table_signature);
+        if (priorSignature && nextSignature && priorSignature !== nextSignature && OUTREACH_SENT_OR_RESOLVED_STATUSES.has(status)) {
+          sentBookRevisions.push(existing);
+        }
         skipped.push({
           invitation_id: row.rfx_lane_vendor_id,
           channel: row.channel,
@@ -21852,11 +22488,59 @@ Deno.serve(async (request) => {
         return false;
       });
 
-      const generatedBatches = await mapWithConcurrency(chunkValues(rowsToUpsert, 100), 4, async (chunk) => {
+      // Keep the first invitation touch intentional. Existing drafts may still be
+      // refreshed, but new carrier contacts respect the workspace's rolling daily
+      // cap so a large audience cannot flood a carrier base by accident.
+      const rollingWindowStart = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      const messagesInRollingWindow = await allScopedOutreachMessages(supabase, user, {
+        channels: requestedChannels,
+        created_after: rollingWindowStart,
+        include_archived: false
+      });
+      let remainingDailyCapacity = Math.max(0, contactPolicy.daily_limit - messagesInRollingWindow.length);
+      const dailyLimitedRows = rowsToUpsert.filter((row) => {
+        const existing = existingMessagesByKey.get(draftKey(row));
+        if (existing) return true;
+        if (remainingDailyCapacity > 0) {
+          remainingDailyCapacity -= 1;
+          return true;
+        }
+        skipped.push({
+          invitation_id: row.rfx_lane_vendor_id,
+          channel: row.channel,
+          reason: `Daily outreach cap of ${contactPolicy.daily_limit} contacts is reached. This carrier remains eligible for the next wave.`,
+          reason_code: "daily_cap"
+        });
+        return false;
+      });
+
+      // A sent invitation is immutable evidence of what the carrier received. When the
+      // business book changes, surface a deliberate revision action instead of silently
+      // overwriting or resending the original message.
+      if (sentBookRevisions.length) {
+        await mapWithConcurrency(chunkValues(sentBookRevisions, 100), 4, async (chunk) => {
+          const ids = chunk.map((item) => cleanText(item.id)).filter(Boolean);
+          if (!ids.length) return true;
+          const revisionResult = await supabase
+            .from("outreach_messages")
+            .update({
+              next_action: "Send revision",
+              outcome_reason: "Business Book changed after the original invitation.",
+              next_action_at: new Date().toISOString(),
+              updated_at: new Date().toISOString()
+            })
+            .eq("owner_email", user.owner_email)
+            .in("id", ids);
+          if (revisionResult.error) throw new Error(`Outreach revision flag failed: ${revisionResult.error.message}`);
+          return true;
+        });
+      }
+
+      const generatedBatches = await mapWithConcurrency(chunkValues(dailyLimitedRows, 100), 4, async (chunk) => {
         const result = await supabase
           .from("outreach_messages")
-          .upsert(chunk, { onConflict: "campaign_id,rfx_lane_vendor_id,channel" })
-          .select("id,campaign_id,vendor_id,rfx_event_id,rfx_lane_vendor_id,channel,provider,gmail_connection_id,whatsapp_connection_id,subject,text_body,whatsapp_text,html_body,sender_email,sender_label,sender_address,sender_connection_type,sender_connection_status,provider_response_status,send_result");
+          .upsert(chunk, { onConflict: "campaign_id,rfx_lane_vendor_id,channel,contact_key" })
+          .select("id,campaign_id,vendor_id,rfx_event_id,rfx_lane_vendor_id,channel,provider,gmail_connection_id,whatsapp_connection_id,subject,text_body,whatsapp_text,html_body,sender_email,sender_label,sender_address,sender_connection_type,sender_connection_status,provider_response_status,send_result,contact_key,outcome_reason,next_action,next_action_at");
         if (result.error) throw new Error(`Outreach draft upsert failed: ${result.error.message}`);
         return result.data || [];
       });
@@ -21905,6 +22589,19 @@ Deno.serve(async (request) => {
           sender_email: senderEmail || campaign.sender_email,
           sender_label: senderLabel || campaign.sender_label,
           sender_connection_status: senderConnectionStatus,
+          audience_policy: audiencePolicy,
+          contact_policy: contactPolicy,
+          sequence_policy: sequencePolicy,
+          audience_snapshot: {
+            generated_at: new Date().toISOString(),
+            channel: requestedChannels[0],
+            requested_invitation_ids: invitationIds.length,
+            selected_vendor_count: audienceVendorIds.length,
+          generated_candidates: dailyLimitedRows.length,
+          rolling_window_contacts: messagesInRollingWindow.length,
+          daily_limit: contactPolicy.daily_limit,
+          skipped: skipped.length
+          },
           updated_at: new Date().toISOString()
         })
         .eq("id", campaign.id)
@@ -21918,16 +22615,17 @@ Deno.serve(async (request) => {
         campaign_id: campaign.id,
         requested_channels: requestedChannels,
         channel_errors: channelPreparationErrors,
-        channel_results: channelResults(generatedMessages, preservedMessages),
+        channel_results: channelResults(generatedMessages, [...historicalPreservedMessages, ...preservedMessages]),
         whatsapp_notifier: whatsappNotifier,
         metrics: {
           requested_invitation_ids: invitationIds.length,
           loaded_invitations: invitations.length,
           carrier_groups: invitationGroups.size,
-          candidate_drafts: rows.length,
+          candidate_drafts: dailyLimitedRows.length,
           created: createdMessages.length,
           refreshed: generatedMessages.length - createdMessages.length,
-          preserved: preservedMessages.length
+          preserved: preservedMessages.length + historicalPreservedMessages.length,
+          preserved_from_history: historicalPreservedMessages.length
         }
       });
     }
@@ -21935,13 +22633,21 @@ Deno.serve(async (request) => {
     if (body.action === "get_outreach_tracking_summary") {
       const rows = await allScopedOutreachMessages(supabase, user, body);
       const states = Object.fromEntries(OUTREACH_TRACKING_STATES.map((status) => [status, 0])) as Record<OutreachTrackingState, number>;
+      const nextActions: Record<string, number> = {};
+      const outcomes: Record<string, number> = {};
       for (const row of rows) {
         const status = outreachMessageTrackingState(row);
         states[status] += 1;
+        const nextAction = outreachNextAction(row);
+        const outcome = outreachOutcomeReason(row);
+        nextActions[nextAction] = (nextActions[nextAction] || 0) + 1;
+        outcomes[outcome] = (outcomes[outcome] || 0) + 1;
       }
       return jsonResponse({
         total: rows.length,
         states,
+        next_actions: nextActions,
+        outcomes,
         updated_at: new Date().toISOString()
       });
     }
@@ -21975,7 +22681,7 @@ Deno.serve(async (request) => {
         ));
         const pageRows = matchingRows.slice(offset, offset + limit);
         return jsonResponse({
-          rows: pageRows,
+          rows: pageRows.map(enrichOutreachMessage),
           total: matchingRows.length,
           offset,
           limit,
@@ -22016,7 +22722,7 @@ Deno.serve(async (request) => {
       if (result.error) throw result.error;
       const total = Number(result.count || 0);
       return jsonResponse({
-        rows: result.data || [],
+        rows: (result.data || []).map(enrichOutreachMessage),
         total,
         offset,
         limit,
@@ -22180,6 +22886,10 @@ Deno.serve(async (request) => {
       return jsonResponse(await listVendorSupportTickets(supabase, user, body));
     }
 
+    if (body.action === "get_vendor_relationship_activity") {
+      return jsonResponse(await getVendorRelationshipActivity(supabase, user, body));
+    }
+
     if (body.action === "update_vendor_support_ticket") {
       return jsonResponse(await updateVendorSupportTicket(supabase, user, body));
     }
@@ -22200,12 +22910,24 @@ Deno.serve(async (request) => {
       return jsonResponse(await submitVendorImprovementCase(supabase, user, body));
     }
 
+    if (body.action === "record_vendor_improvement_response") {
+      return jsonResponse(await recordVendorImprovementResponse(supabase, user, body));
+    }
+
+    if (body.action === "resolve_vendor_improvement_case") {
+      return jsonResponse(await resolveVendorImprovementCase(supabase, user, body));
+    }
+
     if (body.action === "process_vendor_ci_reminders") {
       return jsonResponse(await processVendorImprovementReminders(supabase, user, body));
     }
 
     if (body.action === "upsert_vendor_value_scorecard") {
       return jsonResponse(await upsertVendorValueScorecard(supabase, user, body));
+    }
+
+    if (body.action === "refresh_vendor_value_curve") {
+      return jsonResponse(await refreshVendorValueCurve(supabase, user, body));
     }
 
     if (body.action === "get_saas_settings") {

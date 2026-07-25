@@ -66,8 +66,43 @@ export async function generateOutreachDrafts(campaignId, options = {}) {
     sender_label: options.senderLabel || "",
     sender_connection_status: options.senderConnectionStatus || "draft_only",
     whatsapp_target_mode: options.whatsappTargetMode || options.targetMode || "",
-    group_delivery_policy: options.groupDeliveryPolicy || ""
+    group_delivery_policy: options.groupDeliveryPolicy || "",
+    audience_policy: options.audiencePolicy || undefined,
+    contact_policy: options.contactPolicy || undefined,
+    sequence_policy: options.sequencePolicy || undefined
   });
+}
+
+export async function previewOutreachAudience(filters = {}) {
+  return await callRatewareApi("preview_outreach_audience", filters);
+}
+
+export async function fetchOutreachAudienceSegments(rfxEventId = "") {
+  return (await callRatewareApi("list_outreach_audience_segments", {
+    rfx_event_id: rfxEventId || undefined
+  })).rows;
+}
+
+export async function saveOutreachAudienceSegment(segment) {
+  return (await callRatewareApi("save_outreach_audience_segment", { segment })).row;
+}
+
+export async function archiveOutreachAudienceSegment(id) {
+  return (await callRatewareApi("archive_outreach_audience_segment", {
+    id,
+    confirmed: true,
+    confirmation_action: "archive_outreach_audience_segment"
+  })).row;
+}
+
+export async function suppressOutreachContact({ vendorId, channel = "all", contactValue = "", reason = "Manual suppression" }) {
+  return (await callRatewareApi("suppress_outreach_contact", {
+    vendor_id: vendorId,
+    channel,
+    contact_value: contactValue,
+    reason,
+    source: "outreach_control_center"
+  })).row;
 }
 
 export async function fetchOutreachMessages(filters = {}) {

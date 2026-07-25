@@ -452,6 +452,73 @@
                   <p id="rfx-outreach-carrier-status" class="status-message" role="status"></p>
                 </div>
               </details>
+              <section class="rfx-outreach-control-center" aria-labelledby="rfx-outreach-audience-title">
+                <div class="rfx-outreach-control-heading">
+                  <div>
+                    <p class="eyebrow">Audience builder</p>
+                    <h4 id="rfx-outreach-audience-title">Contact policy and carrier ledger</h4>
+                    <span>Build the next wave from eligible CRM carriers. Sent, replied, bounced, and suppressed contacts remain visible with their next action.</span>
+                  </div>
+                  <button id="rfx-refresh-outreach-audience" type="button" class="secondary small-button">Refresh audience</button>
+                </div>
+                <div class="rfx-outreach-audience-controls">
+                  <label>
+                    Audience
+                    <select id="rfx-outreach-audience-mode">
+                      <option value="all_eligible">All eligible carriers</option>
+                      <option value="saved_segment">Saved segment</option>
+                    </select>
+                  </label>
+                  <label>
+                    Saved segment
+                    <select id="rfx-outreach-audience-segment">
+                      <option value="">Choose a saved segment</option>
+                    </select>
+                  </label>
+                  <label>
+                    Search audience
+                    <input id="rfx-outreach-audience-search" type="search" placeholder="Carrier, domain, contact..." autocomplete="off" />
+                  </label>
+                  <label>
+                    Outcome
+                    <select id="rfx-outreach-audience-status-filter">
+                      <option value="all">All outcomes</option>
+                      <option value="ready">Ready</option>
+                      <option value="already_contacted">Already contacted</option>
+                      <option value="bounced">Bounced</option>
+                      <option value="suppressed">Suppressed</option>
+                      <option value="no_contact">No contact</option>
+                      <option value="replied">Replied</option>
+                      <option value="quoted">Quoted</option>
+                    </select>
+                  </label>
+                </div>
+                <div class="rfx-outreach-audience-segment-controls">
+                  <input id="rfx-outreach-audience-segment-name" placeholder="Save selected carriers as a segment" autocomplete="off" />
+                  <button id="rfx-save-outreach-audience-segment" type="button" class="secondary small-button">Save segment</button>
+                  <button id="rfx-archive-outreach-audience-segment" type="button" class="secondary small-button">Archive segment</button>
+                  <span id="rfx-outreach-audience-summary" class="status-pill muted">No audience loaded</span>
+                </div>
+                <p id="rfx-outreach-audience-status" class="status-message" role="status"></p>
+                <div class="table-wrap rfx-outreach-audience-table-wrap">
+                  <table class="rfx-outreach-audience-table">
+                    <thead>
+                      <tr>
+                        <th>Select</th>
+                        <th>Carrier</th>
+                        <th>Contact</th>
+                        <th>Lanes</th>
+                        <th>Outcome</th>
+                        <th>Reason</th>
+                        <th>Next action</th>
+                      </tr>
+                    </thead>
+                    <tbody id="rfx-outreach-audience-list">
+                      <tr><td colspan="7">Select a Bid Room to load the audience ledger.</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              </section>
               <div class="rfx-outreach-grid bid-room-invite-grid">
                 <div class="rfx-outreach-controls">
                   <form id="rfx-outreach-form" class="rfx-outreach-form">
@@ -472,7 +539,7 @@
                       </select>
                       <small>Generate one channel at a time. Gmail, WhatsApp Business, and WhatsApp groups use separate queues.</small>
                     </label>
-                    <label>
+                    <label id="rfx-whatsapp-target-mode-field">
                       WhatsApp target
                       <select id="rfx-whatsapp-target-mode">
                         <option value="direct_vendor">Direct vendor contact</option>
@@ -562,9 +629,9 @@
                     <button id="rfx-select-all-email-drafts" type="button" class="secondary small-button">Select sendable page</button>
                     <button id="rfx-clear-draft-selection" type="button" class="secondary small-button">Clear</button>
                     <button id="rfx-refresh-selected-drafts" type="button" class="secondary small-button" disabled>Refresh selected</button>
-                    <button id="rfx-send-selected-email-drafts" type="button" class="small-button" disabled>Send selected emails</button>
-                    <button id="rfx-send-selected-whatsapp-drafts" type="button" class="secondary small-button" disabled>Send WhatsApp direct</button>
-                    <button id="rfx-mark-selected-whatsapp-groups" type="button" class="secondary small-button" disabled>Mark groups sent</button>
+                    <button id="rfx-send-selected-email-drafts" type="button" class="small-button" data-rfx-draft-action-channel="email" disabled>Send selected emails</button>
+                    <button id="rfx-send-selected-whatsapp-drafts" type="button" class="secondary small-button" data-rfx-draft-action-channel="whatsapp" disabled>Send WhatsApp direct</button>
+                    <button id="rfx-mark-selected-whatsapp-groups" type="button" class="secondary small-button" data-rfx-draft-action-channel="whatsapp_group" disabled>Mark groups sent</button>
                     <button id="rfx-archive-selected-drafts" type="button" class="secondary small-button" disabled>Archive selected</button>
                     <button id="rfx-delete-selected-drafts" type="button" class="danger small-button" disabled>Delete selected</button>
                   </div>
@@ -577,13 +644,14 @@
                           <th>To</th>
                           <th>Channel</th>
                           <th>Status</th>
+                          <th>Next action</th>
                           <th>Subject / preview</th>
                           <th>Updated</th>
                           <th>Action</th>
                         </tr>
                       </thead>
                       <tbody id="rfx-draft-list">
-                        <tr><td colspan="8">Create invite drafts to review Gmail and WhatsApp messages inside this Bid Room.</td></tr>
+                        <tr><td colspan="9">Create invite drafts to review Gmail and WhatsApp messages inside this Bid Room.</td></tr>
                       </tbody>
                     </table>
                   </div>

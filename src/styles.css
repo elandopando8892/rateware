@@ -3885,6 +3885,153 @@ a {
   align-items: start;
 }
 
+.rfx-outreach-control-center {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 10px;
+  padding: 9px 10px;
+  border: 1px solid #d7e0e7;
+  border-radius: 7px;
+  background: #fbfcfd;
+}
+
+.rfx-outreach-control-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.rfx-outreach-control-heading h4 {
+  margin: 1px 0 2px;
+  color: #1e2c38;
+  font-size: 0.85rem;
+}
+
+.rfx-outreach-control-heading span {
+  display: block;
+  max-width: 780px;
+  color: #64727d;
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+
+.rfx-outreach-audience-controls {
+  display: grid;
+  grid-template-columns: 150px minmax(170px, 0.8fr) minmax(210px, 1.25fr) 150px;
+  gap: 7px;
+}
+
+.rfx-outreach-audience-controls label {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  color: #53616d;
+  font-size: 0.66rem;
+  font-weight: 760;
+  text-transform: uppercase;
+}
+
+.rfx-outreach-audience-controls input,
+.rfx-outreach-audience-controls select,
+.rfx-outreach-audience-segment-controls input {
+  min-height: 28px;
+  font-size: 0.76rem;
+}
+
+.rfx-outreach-audience-segment-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.rfx-outreach-audience-segment-controls input {
+  width: min(330px, 100%);
+}
+
+.rfx-outreach-audience-segment-controls .status-pill {
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.rfx-outreach-audience-table-wrap {
+  max-height: 208px;
+  overflow: auto;
+  border: 1px solid #dce4ea;
+  border-radius: 5px;
+  background: #ffffff;
+}
+
+.rfx-outreach-audience-table {
+  width: 100%;
+  min-width: 740px;
+  border-collapse: collapse;
+  font-size: 0.72rem;
+}
+
+.rfx-outreach-audience-table th,
+.rfx-outreach-audience-table td {
+  padding: 5px 6px;
+  border-bottom: 1px solid #e7edf1;
+  text-align: left;
+  vertical-align: middle;
+}
+
+.rfx-outreach-audience-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  color: #53616d;
+  background: #f3f6f8;
+  font-size: 0.64rem;
+  font-weight: 780;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+}
+
+.rfx-outreach-audience-table td small {
+  display: block;
+  max-width: 240px;
+  overflow: hidden;
+  color: #667580;
+  font-size: 0.66rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rfx-outreach-audience-table tr.is-selected-row td {
+  background: #f0f8f6;
+}
+
+.rfx-draft-next-action {
+  display: block;
+  min-width: 112px;
+  color: #40505d;
+  font-weight: 700;
+}
+
+@media (max-width: 900px) {
+  .rfx-outreach-audience-controls {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .rfx-outreach-control-heading,
+  .rfx-outreach-audience-segment-controls {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .rfx-outreach-audience-segment-controls input {
+    width: 100%;
+  }
+
+  .rfx-outreach-audience-segment-controls .status-pill {
+    margin-left: 0;
+    width: fit-content;
+  }
+}
+
 .rfx-outreach-carrier-adder {
   border: 1px solid #d7e0e7;
   border-radius: 7px;
