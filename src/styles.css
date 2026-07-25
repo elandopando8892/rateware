@@ -3887,39 +3887,35 @@ a {
 
 .rfx-outreach-control-center {
   display: grid;
-  gap: 7px;
+  gap: 6px;
   margin: 0 0 10px;
-  padding: 8px 10px;
+  padding: 7px 9px;
   border: 1px solid #d7e0e7;
   border-radius: 6px;
   background: #fbfcfd;
 }
 
 .rfx-outreach-control-heading {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(108px, auto) minmax(0, 1fr) auto;
   align-items: center;
-  justify-content: space-between;
-  gap: 9px;
+  gap: 7px;
 }
 
 .rfx-outreach-control-heading h4 {
-  margin: 1px 0 2px;
+  margin: 0;
   color: #1e2c38;
   font-size: 0.85rem;
 }
 
-.rfx-outreach-control-heading span {
-  display: block;
-  max-width: 620px;
-  color: #64727d;
-  font-size: 0.68rem;
-  line-height: 1.35;
+.rfx-outreach-control-title .eyebrow {
+  margin-bottom: 1px;
 }
 
 .rfx-outreach-audience-metrics {
   display: inline-flex;
-  flex: 0 0 auto;
   align-items: center;
+  justify-content: center;
   gap: 4px;
 }
 
@@ -3939,9 +3935,16 @@ a {
   font-size: 0.7rem;
 }
 
+.rfx-outreach-audience-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
 .rfx-outreach-audience-controls {
   display: grid;
-  grid-template-columns: 145px minmax(170px, 0.75fr) minmax(240px, 1.4fr) 145px;
+  grid-template-columns: 150px minmax(160px, 0.8fr) minmax(240px, 1.5fr) 140px;
   gap: 5px;
 }
 
@@ -3958,8 +3961,60 @@ a {
 .rfx-outreach-audience-controls input,
 .rfx-outreach-audience-controls select,
 .rfx-outreach-audience-segment-controls input {
-  min-height: 26px;
+  min-height: 24px;
   font-size: 0.72rem;
+}
+
+.rfx-outreach-audience-feedback {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.rfx-outreach-audience-feedback > .status-pill {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.rfx-outreach-audience-feedback > .status-message {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  font-size: 0.66rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rfx-outreach-audience-list-tools {
+  margin-left: auto;
+  min-width: 0;
+  color: #53616d;
+  font-size: 0.66rem;
+}
+
+.rfx-outreach-audience-list-tools summary {
+  cursor: pointer;
+  font-weight: 760;
+  list-style-position: inside;
+  white-space: nowrap;
+}
+
+.rfx-outreach-audience-list-tools[open] {
+  position: relative;
+  z-index: 3;
+}
+
+.rfx-outreach-audience-list-tools[open] .rfx-outreach-audience-segment-controls {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  width: min(430px, calc(100vw - 50px));
+  padding: 7px;
+  border: 1px solid #d7e0e7;
+  border-radius: 5px;
+  background: #ffffff;
+  box-shadow: 0 8px 18px rgba(34, 51, 65, 0.12);
 }
 
 .rfx-outreach-audience-segment-controls {
@@ -3967,20 +4022,14 @@ a {
   align-items: center;
   gap: 5px;
   min-width: 0;
-  padding-top: 1px;
 }
 
 .rfx-outreach-audience-segment-controls input {
   width: min(330px, 100%);
 }
 
-.rfx-outreach-audience-segment-controls .status-pill {
-  margin-left: auto;
-  white-space: nowrap;
-}
-
 .rfx-outreach-audience-table-wrap {
-  max-height: 224px;
+  max-height: 174px;
   overflow: auto;
   border: 1px solid #dbe4ea;
   border-radius: 4px;
@@ -3996,7 +4045,7 @@ a {
 
 .rfx-outreach-audience-table th,
 .rfx-outreach-audience-table td {
-  padding: 4px 6px;
+  padding: 3px 6px;
   border-bottom: 1px solid #e7edf1;
   text-align: left;
   vertical-align: middle;
@@ -4040,24 +4089,44 @@ a {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .rfx-outreach-control-heading,
-  .rfx-outreach-audience-segment-controls {
-    align-items: stretch;
-    flex-direction: column;
+  .rfx-outreach-control-heading {
+    grid-template-columns: 1fr;
   }
 
   .rfx-outreach-audience-metrics {
-    align-self: flex-start;
     flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+
+  .rfx-outreach-audience-actions {
+    justify-content: flex-start;
+  }
+
+  .rfx-outreach-audience-feedback {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .rfx-outreach-audience-feedback > .status-message {
+    flex-basis: 100%;
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
   }
 
   .rfx-outreach-audience-segment-controls input {
     width: 100%;
   }
 
-  .rfx-outreach-audience-segment-controls .status-pill {
+  .rfx-outreach-audience-list-tools {
     margin-left: 0;
-    width: fit-content;
+  }
+
+  .rfx-outreach-audience-list-tools[open] .rfx-outreach-audience-segment-controls {
+    position: static;
+    width: 100%;
+    margin-top: 4px;
+    box-shadow: none;
   }
 }
 
@@ -12979,6 +13048,31 @@ textarea {
 
 .import-zone input {
   margin-top: 8px;
+}
+
+.import-zone.compact {
+  padding: 10px;
+  gap: 4px;
+}
+
+.template-update-panel {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+  margin-top: 14px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f7fafc;
+}
+
+.template-update-panel .import-zone {
+  grid-column: 1 / -1;
+}
+
+.template-update-panel .status-message {
+  grid-column: 1 / -1;
 }
 
 .drop-zone {

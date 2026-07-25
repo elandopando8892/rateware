@@ -186,10 +186,13 @@ const rfxClearOutreachCarrierSelectionButton = document.querySelector("#rfx-clea
 const rfxOutreachCarrierStatus = document.querySelector("#rfx-outreach-carrier-status");
 const rfxOutreachAudienceMode = document.querySelector("#rfx-outreach-audience-mode");
 const rfxOutreachAudienceSegment = document.querySelector("#rfx-outreach-audience-segment");
+const rfxOutreachAudienceSegmentField = document.querySelector("#rfx-outreach-audience-segment-field");
 const rfxOutreachAudienceSearch = document.querySelector("#rfx-outreach-audience-search");
 const rfxOutreachAudienceStatusFilter = document.querySelector("#rfx-outreach-audience-status-filter");
 const rfxOutreachAudienceSegmentName = document.querySelector("#rfx-outreach-audience-segment-name");
 const rfxRefreshOutreachAudienceButton = document.querySelector("#rfx-refresh-outreach-audience");
+const rfxSelectReadyOutreachAudienceButton = document.querySelector("#rfx-select-ready-outreach-audience");
+const rfxClearOutreachAudienceSelectionButton = document.querySelector("#rfx-clear-outreach-audience-selection");
 const rfxSaveOutreachAudienceSegmentButton = document.querySelector("#rfx-save-outreach-audience-segment");
 const rfxArchiveOutreachAudienceSegmentButton = document.querySelector("#rfx-archive-outreach-audience-segment");
 const rfxOutreachAudienceSummary = document.querySelector("#rfx-outreach-audience-summary");
@@ -5156,6 +5159,7 @@ function currentOutreachSequencePolicy() {
 
 function renderOutreachAudienceSegments() {
   if (!rfxOutreachAudienceSegment) return;
+  const savedListMode = String(rfxOutreachAudienceMode?.value || "all_eligible") === "saved_segment";
   const currentValue = rfxOutreachAudienceSegment.value;
   rfxOutreachAudienceSegment.innerHTML = [
     '<option value="">Choose a saved segment</option>',
@@ -5164,9 +5168,10 @@ function renderOutreachAudienceSegments() {
   if (currentValue && outreachAudienceSegments.some((segment) => String(segment.id) === String(currentValue))) {
     rfxOutreachAudienceSegment.value = currentValue;
   }
-  rfxOutreachAudienceSegment.disabled = String(rfxOutreachAudienceMode?.value || "all_eligible") !== "saved_segment";
+  rfxOutreachAudienceSegment.disabled = !savedListMode;
+  if (rfxOutreachAudienceSegmentField) rfxOutreachAudienceSegmentField.hidden = !savedListMode;
   if (rfxArchiveOutreachAudienceSegmentButton) {
-    rfxArchiveOutreachAudienceSegmentButton.disabled = !rfxOutreachAudienceSegment.value;
+    rfxArchiveOutreachAudienceSegmentButton.disabled = !savedListMode || !rfxOutreachAudienceSegment.value;
   }
 }
 
@@ -5177,6 +5182,10 @@ function renderOutreachAudience() {
   const eligibleCount = outreachAudienceRows.filter((row) => row.audience_status === "ready").length;
   const contactedCount = outreachAudienceRows.filter((row) => ["already_contacted", "replied", "quoted"].includes(String(row.audience_status || "").toLowerCase())).length;
   const attentionCount = outreachAudienceRows.filter((row) => ["bounced", "suppressed", "no_contact", "needs_review", "failed"].includes(String(row.audience_status || "").toLowerCase())).length;
+  const readyVendorIds = outreachAudienceRows
+    .filter((row) => String(row.audience_status || "").toLowerCase() === "ready")
+    .map((row) => String(row.vendor_id || ""))
+    .filter(Boolean);
   if (rfxOutreachAudienceReadyCount) rfxOutreachAudienceReadyCount.textContent = outreachAudienceLoading ? "-" : formatNumber(eligibleCount);
   if (rfxOutreachAudienceContactedCount) rfxOutreachAudienceContactedCount.textContent = outreachAudienceLoading ? "-" : formatNumber(contactedCount);
   if (rfxOutreachAudienceAttentionCount) rfxOutreachAudienceAttentionCount.textContent = outreachAudienceLoading ? "-" : formatNumber(attentionCount);
@@ -5187,6 +5196,8 @@ function renderOutreachAudience() {
   if (rfxSaveOutreachAudienceSegmentButton) {
     rfxSaveOutreachAudienceSegmentButton.disabled = !selectedCount || !String(rfxOutreachAudienceSegmentName?.value || "").trim();
   }
+  if (rfxSelectReadyOutreachAudienceButton) rfxSelectReadyOutreachAudienceButton.disabled = outreachAudienceLoading || !readyVendorIds.length;
+  if (rfxClearOutreachAudienceSelectionButton) rfxClearOutreachAudienceSelectionButton.disabled = !selectedCount;
   if (!selectedEventId) {
     rfxOutreachAudienceList.innerHTML = '<tr><td colspan="5">Select a Bid Room to load the outreach audience.</td></tr>';
     return;
@@ -8568,6 +8579,18 @@ rfxOutreachChannel?.addEventListener("change", () => {
 });
 rfxRefreshOutreachAudienceButton?.addEventListener("click", () => {
   void loadOutreachAudience({ reloadSegments: true });
+});
+rfxSelectReadyOutreachAudienceButton?.addEventListener("click", () => {
+  outreachAudienceRows
+    .filter((row) => String(row.audience_status || "").toLowerCase() === "ready")
+    .map((row) => String(row.vendor_id || ""))
+    .filter(Boolean)
+    .forEach((vendorId) => selectedOutreachAudienceVendorIds.add(vendorId));
+  renderOutreachAudience();
+});
+rfxClearOutreachAudienceSelectionButton?.addEventListener("click", () => {
+  selectedOutreachAudienceVendorIds.clear();
+  renderOutreachAudience();
 });
 rfxOutreachAudienceMode?.addEventListener("change", () => {
   selectedOutreachAudienceVendorIds.clear();

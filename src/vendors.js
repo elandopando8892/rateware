@@ -1,6 +1,7 @@
 import { applyPermissionState, initAuthControls, requirePrivatePage } from "./auth.js";
 import { humanizeError } from "./error-copy.js";
 import {
+  applyVendorTemplateUpdates,
   applyVendorIntelligenceTags,
   bulkUpdateVendors,
   createVendor,
@@ -57,6 +58,16 @@ const importPreviewBody = document.querySelector("#import-preview-body");
 const confirmImportButton = document.querySelector("#confirm-import-button");
 const cancelImportButton = document.querySelector("#cancel-import-button");
 const confirmImportStatus = document.querySelector("#confirm-import-status");
+const updateTemplateButton = document.querySelector("#download-vendor-update-template-button");
+const vendorUpdateInput = document.querySelector("#vendor-update-import");
+const vendorUpdateStatus = document.querySelector("#vendor-update-status");
+const vendorUpdatePreviewPanel = document.querySelector("#vendor-update-preview-panel");
+const vendorUpdatePreviewSummary = document.querySelector("#vendor-update-preview-summary");
+const vendorUpdatePreviewBody = document.querySelector("#vendor-update-preview-body");
+const applyVendorUpdateButton = document.querySelector("#apply-vendor-update-button");
+const cancelVendorUpdateButton = document.querySelector("#cancel-vendor-update-button");
+const downloadVendorUpdateErrorsButton = document.querySelector("#download-vendor-update-errors-button");
+const applyVendorUpdateStatus = document.querySelector("#apply-vendor-update-status");
 const vendorsBody = document.querySelector("#vendors-body");
 const vendorsHeadRow = document.querySelector("#vendors-head-row");
 const vendorsFilterRow = document.querySelector("#vendors-filter-row");
@@ -165,6 +176,8 @@ let allVendors = [];
 let currentVendors = [];
 let selectedVendorIds = new Set();
 let pendingImportRows = [];
+let pendingVendorUpdateRows = [];
+let vendorUpdatePreview = null;
 let savedSegments = [];
 let wizardStep = 0;
 let activeQuickFilter = "all";
@@ -1093,6 +1106,220 @@ function downloadVendorTemplate() {
   link.download = "rateware-vendor-template.csv";
   link.click();
   URL.revokeObjectURL(url);
+}
+
+const VENDOR_UPDATE_TEMPLATE_HEADERS = [
+  "vendor_id",
+  "vendor_name",
+  "legal_name",
+  "domain",
+  "contact_name",
+  "primary_email",
+  "secondary_emails",
+  "whatsapp_phone",
+  "preferred_channel",
+  "status",
+  "base_stage",
+  "funnel_stage",
+  "tags",
+  "add_tags",
+  "coverage_notes",
+  "notes",
+  "logo_url",
+  "whatsapp_permission_basis",
+  "whatsapp_do_not_contact",
+  "whatsapp_opt_in_status",
+  "whatsapp_group_name",
+  "whatsapp_group_url",
+  "whatsapp_group_status",
+  "whatsapp_notes",
+  "clear_fields",
+  "update_note"
+];
+
+const VENDOR_UPDATE_FIELD_ALIASES = {
+  vendor_id: ["vendor_id", "vendor id", "id", "vendorid"],
+  vendor_name: ["vendor_name", "vendor name", "vendor", "carrier", "carrier name", "name"],
+  legal_name: ["legal_name", "legal name", "legal", "razon social", "razon_social"],
+  domain: ["domain", "vendor_domain", "vendor domain", "carrier domain"],
+  contact_name: ["contact_name", "contact name", "contact", "contacto"],
+  primary_email: ["primary_email", "primary email", "email", "main email"],
+  secondary_emails: ["secondary_emails", "secondary emails", "additional emails", "extra emails"],
+  whatsapp_phone: ["whatsapp_phone", "whatsapp phone", "whatsapp", "phone", "telefono"],
+  preferred_channel: ["preferred_channel", "preferred channel", "channel"],
+  status: ["status", "estado"],
+  base_stage: ["base_stage", "base stage", "base"],
+  funnel_stage: ["funnel_stage", "funnel stage", "pipeline stage"],
+  tags: ["tags", "tag"],
+  add_tags: ["add_tags", "add tags", "append tags"],
+  coverage_notes: ["coverage_notes", "coverage notes", "coverage", "cobertura"],
+  notes: ["notes", "notas"],
+  logo_url: ["logo_url", "logo url", "logo"],
+  whatsapp_permission_basis: ["whatsapp_permission_basis", "whatsapp permission basis", "whatsapp permission"],
+  whatsapp_do_not_contact: ["whatsapp_do_not_contact", "whatsapp do not contact", "do_not_contact_whatsapp"],
+  whatsapp_opt_in_status: ["whatsapp_opt_in_status", "whatsapp opt in status", "whatsapp opt in"],
+  whatsapp_group_name: ["whatsapp_group_name", "whatsapp group name", "group name"],
+  whatsapp_group_url: ["whatsapp_group_url", "whatsapp group url", "group url"],
+  whatsapp_group_status: ["whatsapp_group_status", "whatsapp group status", "group status"],
+  whatsapp_notes: ["whatsapp_notes", "whatsapp notes"],
+  clear_fields: ["clear_fields", "clear fields", "fields to clear"],
+  update_note: ["update_note", "update note", "comment", "comments"]
+};
+
+function csvEscape(value) {
+  return `"${String(value ?? "").replace(/"/g, '""')}"`;
+}
+
+function downloadCsv(filename, headers, rows) {
+  const csv = [headers, ...rows]
+    .map((row) => row.map(csvEscape).join(","))
+    .join("\n");
+  const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function normalizeHeaderKey(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ");
+}
+
+function pickTemplateValue(row, field) {
+  const aliases = VENDOR_UPDATE_FIELD_ALIASES[field] || [field];
+  const normalized = new Map(Object.entries(row || {}).map(([key, value]) => [normalizeHeaderKey(key), value]));
+  for (const alias of aliases) {
+    if (normalized.has(normalizeHeaderKey(alias))) return normalized.get(normalizeHeaderKey(alias));
+  }
+  return "";
+}
+
+function normalizeVendorUpdateRow(row, index = 0) {
+  const normalized = { row_number: index + 2 };
+  for (const field of VENDOR_UPDATE_TEMPLATE_HEADERS) {
+    normalized[field] = pickTemplateValue(row, field);
+  }
+  normalized.vendor_id = String(normalized.vendor_id || "").trim();
+  return normalized;
+}
+
+async function fetchAllVendorsForUpdateTemplate() {
+  const rows = [];
+  const limit = 1000;
+  let offset = 0;
+  for (let guard = 0; guard < 60; guard += 1) {
+    const result = await fetchVendors({ view: "all", lightweight: true, limit, offset });
+    const batch = Array.isArray(result.rows) ? result.rows : [];
+    rows.push(...batch);
+    if (!batch.length || rows.length >= Number(result.total || 0)) break;
+    offset += limit;
+  }
+  return rows;
+}
+
+async function downloadVendorUpdateTemplate() {
+  if (!updateTemplateButton) return;
+  updateTemplateButton.disabled = true;
+  setStatus(vendorUpdateStatus, "Preparing CRM update template...");
+  try {
+    await requirePrivatePage();
+    const rows = await fetchAllVendorsForUpdateTemplate();
+    const csvRows = rows.map((row) => [
+      row.id || "",
+      row.vendor_name || "",
+      row.legal_name || "",
+      row.domain || "",
+      row.contact_name || "",
+      row.primary_email || "",
+      Array.isArray(row.secondary_emails) ? row.secondary_emails.join("; ") : "",
+      row.whatsapp_phone || "",
+      row.preferred_channel || "",
+      row.status || "",
+      row.base_stage || "",
+      row.funnel_stage || "",
+      Array.isArray(row.tags) ? row.tags.join("; ") : "",
+      "",
+      row.coverage_notes || "",
+      row.notes || "",
+      row.logo_url || "",
+      row.whatsapp_permission_basis || "",
+      row.whatsapp_do_not_contact === true ? "true" : row.whatsapp_do_not_contact === false ? "false" : "",
+      row.whatsapp_opt_in_status || "",
+      row.whatsapp_group_name || "",
+      row.whatsapp_group_url || "",
+      row.whatsapp_group_status || "",
+      row.whatsapp_notes || "",
+      "",
+      ""
+    ]);
+    downloadCsv(`rateware-carrier-crm-update-${new Date().toISOString().slice(0, 10)}.csv`, VENDOR_UPDATE_TEMPLATE_HEADERS, csvRows);
+    setStatus(vendorUpdateStatus, `Template downloaded with ${rows.length} vendor(s). Edit only the fields you need to change.`, "success");
+  } catch (error) {
+    setStatus(vendorUpdateStatus, error.message, "error");
+  } finally {
+    updateTemplateButton.disabled = false;
+  }
+}
+
+async function parseVendorUpdateFile(file) {
+  const XLSX = await loadXlsxModule();
+  const workbook = XLSX.read(await file.arrayBuffer(), { type: "array" });
+  const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+  return XLSX.utils.sheet_to_json(firstSheet, { defval: "" })
+    .map(normalizeVendorUpdateRow)
+    .filter((row) => row.vendor_id || VENDOR_UPDATE_TEMPLATE_HEADERS.some((field) => String(row[field] || "").trim()));
+}
+
+function renderVendorUpdatePreview(result = {}) {
+  vendorUpdatePreview = result;
+  const rows = Array.isArray(result.rows) ? result.rows : [];
+  const valid = Number(result.valid || 0);
+  const invalid = Number(result.invalid || 0);
+  vendorUpdatePreviewSummary.innerHTML = `
+    <article><strong>${Number(result.received || rows.length)}</strong><span>Rows reviewed</span></article>
+    <article><strong>${valid}</strong><span>Ready to update</span></article>
+    <article><strong>${invalid}</strong><span>Need correction</span></article>
+    <article><strong>${rows.reduce((sum, row) => sum + Number(row.change_count || 0), 0)}</strong><span>Field changes</span></article>
+  `;
+  vendorUpdatePreviewBody.innerHTML = rows.slice(0, 100).map((row) => {
+    const errors = Array.isArray(row.errors) ? row.errors : [];
+    const warnings = Array.isArray(row.warnings) ? row.warnings : [];
+    return `
+      <tr>
+        <td>${escapeHtml(row.row_number || "")}</td>
+        <td>${escapeHtml(row.vendor_name || row.vendor_id || "")}</td>
+        <td>${escapeHtml((row.changed_fields || []).join(", ") || "No changes")}</td>
+        <td>${errors.length ? errors.map((item) => `<span class="warning-pill">${escapeHtml(item)}</span>`).join(" ") : '<span class="score-pill strong">Ready</span>'}</td>
+        <td>${warnings.map((item) => `<span class="status-pill">${escapeHtml(item)}</span>`).join(" ")}</td>
+      </tr>
+    `;
+  }).join("");
+  if (!rows.length) vendorUpdatePreviewBody.innerHTML = '<tr><td colspan="5">No rows found.</td></tr>';
+  applyVendorUpdateButton.disabled = !valid;
+  downloadVendorUpdateErrorsButton.disabled = !invalid;
+  vendorUpdatePreviewPanel.classList.remove("hidden");
+  activateVendorTab("import");
+}
+
+function downloadVendorUpdateErrors() {
+  const rows = Array.isArray(vendorUpdatePreview?.rows) ? vendorUpdatePreview.rows : [];
+  const errorRows = rows.filter((row) => Array.isArray(row.errors) && row.errors.length);
+  downloadCsv(
+    `rateware-carrier-crm-update-errors-${new Date().toISOString().slice(0, 10)}.csv`,
+    ["row_number", "vendor_id", "vendor_name", "errors", "changed_fields"],
+    errorRows.map((row) => [
+      row.row_number || "",
+      row.vendor_id || "",
+      row.vendor_name || "",
+      row.errors.join("; "),
+      (row.changed_fields || []).join("; ")
+    ])
+  );
 }
 
 function vendorReadiness(row) {
@@ -4243,6 +4470,60 @@ importInput.addEventListener("change", async () => {
 });
 
 templateButton.addEventListener("click", downloadVendorTemplate);
+updateTemplateButton?.addEventListener("click", downloadVendorUpdateTemplate);
+
+vendorUpdateInput?.addEventListener("change", async () => {
+  const [file] = vendorUpdateInput.files || [];
+  if (!file) return;
+
+  setStatus(vendorUpdateStatus, "Reading CRM update file...");
+  try {
+    await requirePrivatePage();
+    pendingVendorUpdateRows = await parseVendorUpdateFile(file);
+    const result = await applyVendorTemplateUpdates(pendingVendorUpdateRows, { dryRun: true });
+    renderVendorUpdatePreview(result);
+    setStatus(vendorUpdateStatus, "Review the update preview before applying changes.", "success");
+  } catch (error) {
+    pendingVendorUpdateRows = [];
+    vendorUpdatePreview = null;
+    vendorUpdatePreviewPanel?.classList.add("hidden");
+    setStatus(vendorUpdateStatus, error.message, "error");
+  } finally {
+    vendorUpdateInput.value = "";
+  }
+});
+
+applyVendorUpdateButton?.addEventListener("click", async () => {
+  if (!pendingVendorUpdateRows.length) {
+    setStatus(applyVendorUpdateStatus, "Upload a CRM update template first.", "error");
+    return;
+  }
+  applyVendorUpdateButton.disabled = true;
+  setStatus(applyVendorUpdateStatus, "Applying vendor updates...");
+  try {
+    await requirePrivatePage();
+    const result = await applyVendorTemplateUpdates(pendingVendorUpdateRows, { dryRun: false });
+    pendingVendorUpdateRows = [];
+    vendorUpdatePreview = result;
+    renderVendorUpdatePreview(result);
+    setStatus(applyVendorUpdateStatus, `${result.updated || 0} vendor(s) updated. ${result.skipped || 0} row(s) skipped.`, "success");
+    await loadVendors();
+  } catch (error) {
+    setStatus(applyVendorUpdateStatus, error.message, "error");
+  } finally {
+    applyVendorUpdateButton.disabled = false;
+  }
+});
+
+cancelVendorUpdateButton?.addEventListener("click", () => {
+  pendingVendorUpdateRows = [];
+  vendorUpdatePreview = null;
+  vendorUpdatePreviewPanel?.classList.add("hidden");
+  setStatus(vendorUpdateStatus, "CRM update canceled.");
+  setStatus(applyVendorUpdateStatus, "");
+});
+
+downloadVendorUpdateErrorsButton?.addEventListener("click", downloadVendorUpdateErrors);
 
 importOnboardingGapsButton?.addEventListener("click", () => {
   vendorGapsImportInput?.click();

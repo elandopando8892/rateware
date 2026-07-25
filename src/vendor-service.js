@@ -96,6 +96,15 @@ export async function importVendorsFromGoogleSheet(url) {
   return await callRatewareApi("import_vendors_google_sheet", { url });
 }
 
+export async function applyVendorTemplateUpdates(rows, { dryRun = true } = {}) {
+  return await callRatewareApi("apply_vendor_template_updates", {
+    rows,
+    dry_run: dryRun,
+    confirmed: !dryRun,
+    confirmation_action: "apply_vendor_template_updates"
+  });
+}
+
 export async function bulkUpdateVendors(ids, patch) {
   return await callRatewareApi("bulk_update_vendors", { ids, patch, confirmed: true, confirmation_action: "bulk_update_vendors" });
 }

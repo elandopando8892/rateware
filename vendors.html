@@ -517,6 +517,20 @@
               <input id="vendor-import" type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
             </label>
             <p id="import-status" class="status-message" role="status"></p>
+            <div class="template-update-panel">
+              <div>
+                <p class="eyebrow">Bulk update existing</p>
+                <h3>Update Carrier CRM from template</h3>
+                <small>Download the current CRM with vendor_id, edit only the columns you need, then upload it back. Blank cells are ignored; use clear_fields to remove values.</small>
+              </div>
+              <button id="download-vendor-update-template-button" class="secondary" type="button">Download CRM update template</button>
+              <label class="import-zone compact" for="vendor-update-import">
+                <span>Choose update file</span>
+                <small>Required: vendor_id. Editable: name, domain, emails, WhatsApp, tags, status, base, funnel, notes, logo.</small>
+                <input id="vendor-update-import" type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
+              </label>
+              <p id="vendor-update-status" class="status-message" role="status"></p>
+            </div>
           </section>
 
           <section class="queue-panel wide-section hidden" data-tab-panel="segments">
@@ -608,6 +622,38 @@
             <div class="next-step-strip">
               <span>After import review</span>
               <a href="./vendors.html">Open Sourcing Base</a>
+            </div>
+          </section>
+
+          <section id="vendor-update-preview-panel" class="workspace-panel wide-section hidden" data-tab-panel="import">
+            <div class="section-heading compact">
+              <p class="eyebrow">Update review</p>
+              <h2>Carrier CRM template update</h2>
+            </div>
+            <div class="preview-summary" id="vendor-update-preview-summary"></div>
+            <div class="action-row">
+              <button id="apply-vendor-update-button" type="button" disabled>Apply updates</button>
+              <button id="download-vendor-update-errors-button" class="secondary" type="button" disabled>Download errors</button>
+              <button id="cancel-vendor-update-button" class="secondary" type="button">Cancel update</button>
+              <p id="apply-vendor-update-status" class="status-message" role="status"></p>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Row</th>
+                    <th>Vendor</th>
+                    <th>Changed fields</th>
+                    <th>Errors</th>
+                    <th>Warnings</th>
+                  </tr>
+                </thead>
+                <tbody id="vendor-update-preview-body">
+                  <tr>
+                    <td colspan="5">No update file selected.</td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
           </section>
 

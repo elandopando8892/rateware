@@ -21145,6 +21145,199 @@ Deno.serve(async (request) => {
       return jsonResponse({ updated: updatedRows.length, rows: updatedRows });
     }
 
+    if (body.action === "apply_vendor_template_updates") {
+      const rawRows = Array.isArray(body.rows) ? body.rows.map((row) => objectRecord(row)) : [];
+      const dryRun = body.dry_run !== false;
+      const maxRows = 10000;
+      if (!rawRows.length) return jsonResponse({ received: 0, valid: 0, invalid: 0, updated: 0, skipped: 0, rows: [] });
+      if (rawRows.length > maxRows) {
+        return jsonResponse({ error: `Vendor CRM template update is limited to ${maxRows} row(s) per upload.` }, 400);
+      }
+      if (!dryRun) {
+        requireBulkConfirmation(body, {
+          action: "apply_vendor_template_updates",
+          label: "Vendor CRM template update",
+          count: rawRows.length,
+          threshold: 1
+        });
+      }
+
+      const editableFields = [
+        "vendor_name",
+        "legal_name",
+        "domain",
+        "contact_name",
+        "primary_email",
+        "secondary_emails",
+        "whatsapp_phone",
+        "preferred_channel",
+        "status",
+        "base_stage",
+        "funnel_stage",
+        "tags",
+        "coverage_notes",
+        "notes",
+        "logo_url",
+        "whatsapp_permission_basis",
+        "whatsapp_do_not_contact",
+        "whatsapp_opt_in_status",
+        "whatsapp_group_name",
+        "whatsapp_group_url",
+        "whatsapp_group_status",
+        "whatsapp_notes"
+      ];
+      const clearableFields = new Set(editableFields.filter((field) => !["vendor_name", "base_stage", "funnel_stage", "status"].includes(field)));
+      const aliases: Record<string, string[]> = {
+        vendor_id: ["vendor_id", "vendor id", "id", "vendorid"],
+        vendor_name: ["vendor_name", "vendor name", "vendor", "carrier", "carrier name", "name"],
+        legal_name: ["legal_name", "legal name", "legal", "razon social", "razon_social"],
+        domain: ["domain", "vendor_domain", "vendor domain", "carrier domain"],
+        contact_name: ["contact_name", "contact name", "contact", "contacto"],
+        primary_email: ["primary_email", "primary email", "email", "main email"],
+        secondary_emails: ["secondary_emails", "secondary emails", "additional emails", "extra emails"],
+        whatsapp_phone: ["whatsapp_phone", "whatsapp phone", "whatsapp", "phone", "telefono"],
+        preferred_channel: ["preferred_channel", "preferred channel", "channel"],
+        status: ["status", "estado"],
+        base_stage: ["base_stage", "base stage", "base"],
+        funnel_stage: ["funnel_stage", "funnel stage", "pipeline stage"],
+        tags: ["tags", "tag"],
+        add_tags: ["add_tags", "add tags", "append tags"],
+        coverage_notes: ["coverage_notes", "coverage notes", "coverage", "cobertura"],
+        notes: ["notes", "notas"],
+        logo_url: ["logo_url", "logo url", "logo"],
+        whatsapp_permission_basis: ["whatsapp_permission_basis", "whatsapp permission basis", "whatsapp permission"],
+        whatsapp_do_not_contact: ["whatsapp_do_not_contact", "whatsapp do not contact", "do_not_contact_whatsapp"],
+        whatsapp_opt_in_status: ["whatsapp_opt_in_status", "whatsapp opt in status", "whatsapp opt in"],
+        whatsapp_group_name: ["whatsapp_group_name", "whatsapp group name", "group name"],
+        whatsapp_group_url: ["whatsapp_group_url", "whatsapp group url", "group url"],
+        whatsapp_group_status: ["whatsapp_group_status", "whatsapp group status", "group status"],
+        whatsapp_notes: ["whatsapp_notes", "whatsapp notes"],
+        clear_fields: ["clear_fields", "clear fields", "fields to clear"]
+      };
+      const normalizeTemplateKey = (value: string) => cleanText(value)?.toLowerCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ") || "";
+      const templateValue = (row: Record<string, unknown>, field: string) => {
+        const byKey = new Map(Object.entries(row).map(([key, value]) => [normalizeTemplateKey(key), value]));
+        for (const alias of aliases[field] || [field]) {
+          const key = normalizeTemplateKey(alias);
+          if (byKey.has(key)) return byKey.get(key);
+        }
+        return undefined;
+      };
+      const splitTemplateList = (value: unknown) => String(value || "").split(/[;,|]+/).map((item) => cleanText(item)).filter(Boolean) as string[];
+      const valuesMatch = (left: unknown, right: unknown) => JSON.stringify(left ?? null) === JSON.stringify(right ?? null);
+
+      const stagedRows = rawRows.map((row, index) => ({
+        raw: row,
+        row_number: Number(row.row_number || row.Row || row.row || index + 2),
+        vendor_id: cleanText(templateValue(row, "vendor_id"))
+      }));
+      const ids = Array.from(new Set(stagedRows.map((row) => row.vendor_id).filter(Boolean) as string[]));
+      const currentRows = ids.length
+        ? await supabase.from("vendors").select("*").eq("owner_email", user.owner_email).in("id", ids)
+        : { data: [], error: null };
+      if (currentRows.error) throw currentRows.error;
+      const currentById = new Map((currentRows.data || []).map((row) => [String(row.id), row]));
+
+      const previewRows: Record<string, unknown>[] = [];
+      const validUpdates: { id: string; patch: Record<string, unknown> }[] = [];
+
+      for (const staged of stagedRows) {
+        const errors: string[] = [];
+        const warnings: string[] = [];
+        const changedFields: string[] = [];
+        const patchInput: Record<string, unknown> = {};
+        const current = staged.vendor_id ? currentById.get(staged.vendor_id) : null;
+
+        if (!staged.vendor_id) errors.push("Missing vendor_id.");
+        if (staged.vendor_id && !UUID_PATTERN.test(staged.vendor_id)) errors.push("vendor_id must be a valid Rateware row id.");
+        if (staged.vendor_id && !current) errors.push("Vendor not found in this workspace.");
+
+        for (const field of editableFields) {
+          const value = templateValue(staged.raw, field);
+          if (value === undefined) continue;
+          if (String(value ?? "").trim() === "") continue;
+          patchInput[field] = value;
+        }
+
+        const addTags = normalizeTags(templateValue(staged.raw, "add_tags"));
+        const clearFields = splitTemplateList(templateValue(staged.raw, "clear_fields"));
+        for (const field of clearFields) {
+          const normalizedField = normalizeTemplateKey(field).replace(/\s+/g, "_");
+          if (!clearableFields.has(normalizedField)) {
+            warnings.push(`${field} cannot be cleared by template.`);
+            continue;
+          }
+          patchInput[normalizedField] = normalizedField === "tags" || normalizedField === "secondary_emails" ? [] : "";
+        }
+
+        let patch: Record<string, unknown> = {};
+        if (current && !errors.length) {
+          try {
+            patch = normalizeVendorPatch(patchInput, current);
+            if (addTags.length) {
+              patch.tags = Array.from(new Set([...normalizeTags(patch.tags ?? current.tags), ...addTags]));
+            }
+            for (const [field, value] of Object.entries(patch)) {
+              if (field === "updated_at") continue;
+              if (!valuesMatch(value, current[field])) changedFields.push(field);
+            }
+            if (!changedFields.length) warnings.push("No changed fields detected.");
+          } catch (error) {
+            errors.push(error instanceof Error ? error.message : "Vendor update could not be normalized.");
+          }
+        }
+
+        const preview = {
+          row_number: staged.row_number,
+          vendor_id: staged.vendor_id,
+          vendor_name: cleanText(current?.vendor_name || templateValue(staged.raw, "vendor_name")),
+          changed_fields: changedFields,
+          change_count: changedFields.length,
+          errors,
+          warnings
+        };
+        previewRows.push(preview);
+        if (current && !errors.length && changedFields.length) validUpdates.push({ id: staged.vendor_id as string, patch });
+      }
+
+      if (dryRun) {
+        const invalid = previewRows.filter((row) => (row.errors as string[]).length).length;
+        return jsonResponse({
+          received: rawRows.length,
+          valid: validUpdates.length,
+          invalid,
+          updated: 0,
+          skipped: rawRows.length - validUpdates.length,
+          rows: previewRows
+        });
+      }
+
+      const updatedRows: Record<string, unknown>[] = [];
+      for (const updateBatch of chunkValues(validUpdates, 50)) {
+        const updates = await Promise.all(updateBatch.map((item) => supabase
+          .from("vendors")
+          .update(item.patch)
+          .eq("owner_email", user.owner_email)
+          .eq("id", item.id)
+          .select()
+          .single()));
+        for (const update of updates) {
+          if (update.error) throw update.error;
+          if (update.data) updatedRows.push(update.data);
+        }
+      }
+      await tryWriteAuditLog(supabase, user, "vendor.template_update", "vendors", "bulk",
+        `Updated ${updatedRows.length} vendor(s) from CRM template`, { requested: rawRows.length, updated: updatedRows.length });
+      return jsonResponse({
+        received: rawRows.length,
+        valid: validUpdates.length,
+        invalid: previewRows.filter((row) => (row.errors as string[]).length).length,
+        updated: updatedRows.length,
+        skipped: rawRows.length - updatedRows.length,
+        rows: previewRows
+      });
+    }
+
     if (body.action === "remove_vendors") {
       const ids = normalizeBulkIds(body.ids, { label: "Vendor ids", limit: BULK_SELECTED_ID_LIMIT });
       if (!ids.length) return jsonResponse({ removed: 0, rows: [] });

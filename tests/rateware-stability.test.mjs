@@ -1705,7 +1705,7 @@ assert.match(rfxEventsSource, /function currentOutreachAudiencePolicy/, "Bid Roo
 assert.match(rfxEventsSource, /selectedOutreachAudienceVendorIds/, "Bid Room should retain manual audience selections before creating a wave");
 assert.match(rfxEventsHtml, /rfx-outreach-audience-builder|rfx-outreach-audience-mode/, "Bid Room should render the audience builder controls");
 assert.match(rfxEventsHtml, /rfx-outreach-audience-ready-count/, "Outreach controls should show compact audience state counts");
-assert.match(rfxEventsHtml, /Choose who should receive this wave/, "Outreach controls should use decision-focused copy instead of a diagnostic heading");
+assert.match(rfxEventsHtml, /rfx-select-ready-outreach-audience/, "Outreach controls should support compact ready-carrier selection");
 assert.match(rfxEventsHtml, /bid-room-side-checklist/, "Operating checklist should live in the Bid Room right-side command panel");
 assert.match(rfxEventsSource, /Outreach service is behind this app version/, "Outreach controls should explain an undeployed API action without exposing a raw backend error");
 assert.match(outreachServiceSource, /previewOutreachAudience/, "Outreach service should load the audience ledger");

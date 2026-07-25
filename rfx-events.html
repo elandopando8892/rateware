@@ -469,27 +469,30 @@
               </details>
               <section id="rfx-outreach-audience-builder" class="rfx-outreach-control-center" aria-labelledby="rfx-outreach-audience-title">
                 <div class="rfx-outreach-control-heading">
-                  <div>
-                    <p class="eyebrow">Outreach control</p>
-                    <h4 id="rfx-outreach-audience-title">Choose who should receive this wave</h4>
-                    <span>Each carrier stays in one contact history: ready, contacted, bounced, suppressed, or awaiting review.</span>
+                  <div class="rfx-outreach-control-title">
+                    <p class="eyebrow">Outreach</p>
+                    <h4 id="rfx-outreach-audience-title">Audience</h4>
                   </div>
                   <div class="rfx-outreach-audience-metrics" aria-live="polite">
                     <span><strong id="rfx-outreach-audience-ready-count">0</strong> ready</span>
                     <span><strong id="rfx-outreach-audience-contacted-count">0</strong> contacted</span>
                     <span><strong id="rfx-outreach-audience-attention-count">0</strong> attention</span>
                   </div>
-                  <button id="rfx-refresh-outreach-audience" type="button" class="secondary small-button">Refresh audience</button>
+                  <div class="rfx-outreach-audience-actions">
+                    <button id="rfx-select-ready-outreach-audience" type="button" class="secondary small-button" title="Select all ready carriers currently shown">Select ready</button>
+                    <button id="rfx-clear-outreach-audience-selection" type="button" class="secondary small-button" title="Clear selected carriers">Clear</button>
+                    <button id="rfx-refresh-outreach-audience" type="button" class="secondary small-button">Refresh</button>
+                  </div>
                 </div>
                 <div class="rfx-outreach-audience-controls">
                   <label class="rfx-outreach-audience-source">
-                    Source
+                    Audience
                     <select id="rfx-outreach-audience-mode">
                       <option value="all_eligible">All eligible carriers</option>
-                      <option value="saved_segment">Saved segment</option>
+                      <option value="saved_segment">Saved list</option>
                     </select>
                   </label>
-                  <label class="rfx-outreach-audience-segment-field">
+                  <label id="rfx-outreach-audience-segment-field" class="rfx-outreach-audience-segment-field">
                     List
                     <select id="rfx-outreach-audience-segment">
                       <option value="">Choose a saved segment</option>
@@ -513,13 +516,18 @@
                     </select>
                   </label>
                 </div>
-                <div class="rfx-outreach-audience-segment-controls">
-                  <input id="rfx-outreach-audience-segment-name" placeholder="Save selected as a list" autocomplete="off" />
-                  <button id="rfx-save-outreach-audience-segment" type="button" class="secondary small-button">Save list</button>
-                  <button id="rfx-archive-outreach-audience-segment" type="button" class="secondary small-button">Archive list</button>
+                <div class="rfx-outreach-audience-feedback">
                   <span id="rfx-outreach-audience-summary" class="status-pill muted">No audience loaded</span>
+                  <p id="rfx-outreach-audience-status" class="status-message" role="status"></p>
+                  <details class="rfx-outreach-audience-list-tools">
+                    <summary>Save or manage a list</summary>
+                    <div class="rfx-outreach-audience-segment-controls">
+                      <input id="rfx-outreach-audience-segment-name" placeholder="List name" autocomplete="off" />
+                      <button id="rfx-save-outreach-audience-segment" type="button" class="secondary small-button">Save list</button>
+                      <button id="rfx-archive-outreach-audience-segment" type="button" class="secondary small-button">Archive selected list</button>
+                    </div>
+                  </details>
                 </div>
-                <p id="rfx-outreach-audience-status" class="status-message" role="status"></p>
                 <div class="table-wrap rfx-outreach-audience-table-wrap">
                   <table class="rfx-outreach-audience-table">
                     <thead>
