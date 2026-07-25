@@ -68,6 +68,14 @@ export async function updateVendor(id, patch) {
   return (await callRatewareApi("update_vendor", { id, patch })).row;
 }
 
+export async function replaceBouncedVendorEmail(id, { bouncedEmail, replacementEmail }) {
+  return (await callRatewareApi("replace_bounced_vendor_email", {
+    id,
+    bounced_email: bouncedEmail,
+    replacement_email: replacementEmail
+  })).row;
+}
+
 export async function uploadVendorLogo(vendorId, filePayload) {
   return await callRatewareApi("upload_vendor_logo", { vendor_id: vendorId, ...filePayload });
 }
@@ -119,6 +127,10 @@ export async function deleteVendorSegment(id, { segmentType = "" } = {}) {
 
 export async function fetchVendorSupportTickets(filters = {}) {
   return await callRatewareApi("list_vendor_support_tickets", filters);
+}
+
+export async function fetchVendorRelationshipActivity(vendorId, { limit = 20 } = {}) {
+  return await callRatewareApi("get_vendor_relationship_activity", { vendor_id: vendorId, limit });
 }
 
 export async function updateVendorSupportTicket(id, patch = {}) {

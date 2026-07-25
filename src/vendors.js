@@ -10,6 +10,7 @@ import {
   fetchVendorFunnel,
   fetchVendorIntelligence,
   fetchVendorOnboardingGaps,
+  fetchVendorRelationshipActivity,
   fetchVendorSegments,
   fetchVendorSupportTickets,
   fetchVendors,
@@ -18,6 +19,7 @@ import {
   importVendors,
   matchVendorRateRowsByScope,
   removeVendors,
+  replaceBouncedVendorEmail,
   updateVendor,
   updateVendorSupportTicket,
   uploadVendorLogo
@@ -146,11 +148,17 @@ const drawerEditToggle = document.querySelector("#drawer-edit-toggle");
 const drawerEditForm = document.querySelector("#drawer-edit-form");
 const drawerArchiveButton = document.querySelector("#drawer-archive-button");
 const drawerEditStatus = document.querySelector("#drawer-edit-status-message");
+const drawerSaveProfileButton = document.querySelector("#drawer-save-profile-button");
+const drawerProfileDirtyMessage = document.querySelector("#drawer-profile-dirty-message");
+const drawerEditDirtyMessage = document.querySelector("#drawer-edit-dirty-message");
 const drawerLogoPreview = document.querySelector("#drawer-logo-preview");
 const drawerLogoFile = document.querySelector("#drawer-logo-file");
 const drawerOnboardingProfile = document.querySelector("#drawer-onboarding-profile");
 const drawerProfileFields = document.querySelector("#drawer-profile-fields");
 const drawerVendorSupport = document.querySelector("#drawer-vendor-support");
+const drawerVendorRelationship = document.querySelector("#drawer-vendor-relationship");
+const drawerEmailDelivery = document.querySelector("#drawer-email-delivery");
+const drawerEmailDeliveryCard = document.querySelector("#drawer-email-delivery-card");
 const XLSX_MODULE_URL = "https://esm.sh/xlsx@0.18.5";
 let xlsxModulePromise = null;
 let allVendors = [];
@@ -177,6 +185,9 @@ let vendorIntelligenceLoadVersion = 0;
 let vendorFunnelLoadVersion = 0;
 let vendorDrawerContextVersion = 0;
 let vendorDrawerSupportLoadVersion = 0;
+let vendorDrawerRelationshipLoadVersion = 0;
+let drawerEditBaseline = null;
+let drawerSaveInFlight = false;
 const vendorCellSaveQueues = new Map();
 const vendorCellSaveVersions = new Map();
 const vendorFunnelMutationIds = new Set();
@@ -893,16 +904,44 @@ function readImportedProfileData(row) {
   return profile;
 }
 
-function isValidEmail(value) {
-  if (!value) return true;
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value).trim());
+const VENDOR_EMAIL_PATTERN = /^[a-z0-9._%+-]+@[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$/i;
+
+function vendorEmailTokens(value) {
+  const values = Array.isArray(value) ? value : [value];
+  return values.flatMap((item) => String(item || "")
+    .split(/[,;\r\n]+/)
+    .flatMap((part) => {
+      const trimmed = part.trim();
+      if (!trimmed) return [];
+      const bracketed = trimmed.match(/^.*<\s*([^<>\s]+@[^<>\s]+)\s*>\s*$/);
+      return bracketed ? [bracketed[1]] : trimmed.split(/\s+/);
+    })
+    .map((token) => token.trim())
+    .filter(Boolean));
+}
+
+function parseVendorEmailList(value) {
+  const emails = [];
+  const invalid = [];
+  vendorEmailTokens(value).forEach((token) => {
+    const email = token.replace(/^mailto:/i, "").toLowerCase();
+    if (VENDOR_EMAIL_PATTERN.test(email)) emails.push(email);
+    else invalid.push(token);
+  });
+  return {
+    emails: Array.from(new Set(emails)),
+    invalid: Array.from(new Set(invalid))
+  };
+}
+
+function emailValidationMessage(value) {
+  const { invalid } = parseVendorEmailList(value);
+  if (!invalid.length) return "";
+  return `Correct invalid email ${invalid.length === 1 ? "address" : "addresses"}: ${invalid.join(", ")}`;
 }
 
 function emailList(value) {
-  const emails = String(value || "")
-    .toLowerCase()
-    .match(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/g) || [];
-  return Array.from(new Set(emails));
+  return parseVendorEmailList(value).emails;
 }
 
 function splitVendorEmails(value) {
@@ -920,10 +959,7 @@ function vendorEmailInputValue(row = {}) {
 }
 
 function isValidEmailList(value) {
-  if (!value) return true;
-  const rawTokens = String(value).split(/[,\s;]+/).map((token) => token.trim()).filter(Boolean);
-  const parsed = emailList(value);
-  return rawTokens.length === parsed.length && parsed.every(isValidEmail);
+  return !emailValidationMessage(value);
 }
 
 function isValidDomain(value) {
@@ -1860,7 +1896,8 @@ function funnelRowMatchesHealth(row) {
 function funnelRowMatchesQuotes(row) {
   if (!vendorFunnelQuoteValue) return true;
   const metrics = rateMetrics(row);
-  const linked = numberValue(metrics.linked_rates);
+  const bidMetrics = row?.bid_metrics && typeof row.bid_metrics === "object" ? row.bid_metrics : {};
+  const linked = numberValue(metrics.linked_rates) + numberValue(bidMetrics.quoted);
   const approved = numberValue(metrics.approved_rates);
   if (vendorFunnelQuoteValue === "linked") return linked > 0;
   if (vendorFunnelQuoteValue === "approved") return approved > 0;
@@ -1868,9 +1905,25 @@ function funnelRowMatchesQuotes(row) {
   return true;
 }
 
+function funnelRowKey(row, index = 0) {
+  return String(row?.id || row?.vendor_id || row?.domain || row?.primary_email || `pipeline-row-${index}`);
+}
+
+function uniqueVendorFunnelRows(rows = []) {
+  const uniqueRows = new Map();
+  rows.forEach((row, index) => {
+    const key = funnelRowKey(row, index);
+    const existing = uniqueRows.get(key);
+    if (!existing || funnelStageIndex(row?.effective_funnel_stage || row?.funnel_stage || "targeted") >= funnelStageIndex(existing?.effective_funnel_stage || existing?.funnel_stage || "targeted")) {
+      uniqueRows.set(key, row);
+    }
+  });
+  return Array.from(uniqueRows.values());
+}
+
 function filteredVendorFunnelRows() {
   const term = vendorFunnelSearchTerm.trim().toLowerCase();
-  return vendorFunnelRows.filter((row) => {
+  return uniqueVendorFunnelRows(vendorFunnelRows).filter((row) => {
     const matchesSearch = !term || funnelSearchText(row).includes(term);
     return matchesSearch && funnelRowMatchesHealth(row) && funnelRowMatchesQuotes(row);
   });
@@ -1943,17 +1996,22 @@ function funnelStageAge(row) {
 
 function funnelQuoteSignal(row) {
   const metrics = rateMetrics(row);
-  const linked = numberValue(metrics.linked_rates);
+  const bidMetrics = row?.bid_metrics && typeof row.bid_metrics === "object" ? row.bid_metrics : {};
+  const rateLinked = numberValue(metrics.linked_rates);
+  const bidLinked = numberValue(bidMetrics.quoted);
+  const linked = rateLinked + bidLinked;
   const approved = numberValue(metrics.approved_rates);
   const markets = Array.isArray(metrics.markets) ? metrics.markets.slice(0, 2).join(", ") : "";
   if (!linked) return "No linked quotes";
-  return `${linked} linked / ${approved} approved${markets ? ` | ${markets}` : ""}`;
+  const quoteSource = bidLinked ? ` | ${rateLinked} rateware + ${bidLinked} Bid Room` : "";
+  return `${linked} linked / ${approved} approved${quoteSource}${markets ? ` | ${markets}` : ""}`;
 }
 
 function funnelStageRecommendation(row) {
   const stage = row.effective_funnel_stage || row.funnel_stage || "targeted";
   const metrics = rateMetrics(row);
-  if (stage === "targeted" && numberValue(metrics.linked_rates) > 0) return "Review quotes";
+  const bidMetrics = row?.bid_metrics && typeof row.bid_metrics === "object" ? row.bid_metrics : {};
+  if (stage === "targeted" && (numberValue(metrics.linked_rates) > 0 || numberValue(bidMetrics.quoted) > 0)) return "Review quotes";
   if (stage === "targeted") return "Link first quote";
   if (stage === "nested") return "Draft onboarding";
   if (stage === "drafted") return row.primary_email ? "Send invite" : "Add contact";
@@ -1972,16 +2030,20 @@ function renderVendorFunnelMetrics(summary = {}) {
 }
 
 function vendorFunnelSummaryFromRows(rows = vendorFunnelRows) {
-  const total = rows.length;
+  const canonicalRows = uniqueVendorFunnelRows(rows);
+  const total = canonicalRows.length;
   const activeStages = new Set(["activated", "completed"]);
-  const activated = rows.filter((row) => activeStages.has(row.effective_funnel_stage || row.funnel_stage)).length;
-  const quoted = rows.filter((row) => numberValue(rateMetrics(row).linked_rates) > 0).length;
-  const stuck = rows.filter((row) => numberValue(row.stage_days) >= 14).length;
+  const activated = canonicalRows.filter((row) => activeStages.has(row.effective_funnel_stage || row.funnel_stage)).length;
+  const quoted = canonicalRows.filter((row) => {
+    const bidMetrics = row?.bid_metrics && typeof row.bid_metrics === "object" ? row.bid_metrics : {};
+    return numberValue(rateMetrics(row).linked_rates) > 0 || numberValue(bidMetrics.quoted) > 0;
+  }).length;
+  const stuck = canonicalRows.filter((row) => numberValue(row.stage_days) >= 14).length;
   return {
     total,
     activation_rate: total ? Math.round((activated / total) * 100) : 0,
     quoted,
-    nested: funnelStageRows("nested", rows).length,
+    nested: funnelStageRows("nested", canonicalRows).length,
     stuck
   };
 }
@@ -1999,12 +2061,13 @@ function renderVendorFunnelStrip() {
   const stages = visibleFunnelStages(filteredRows);
   vendorFunnelStrip.style.setProperty("--funnel-stage-count", String(Math.max(1, stages.length)));
   vendorFunnelStrip.innerHTML = stages
-    .map((stage, index) => {
+    .map((stage) => {
       const rows = funnelStageRows(stage.key, filteredRows);
       const denominator = filteredRows.length || 1;
+      const stageNumber = funnelStages().findIndex((item) => item.key === stage.key) + 1;
       return `
         <button class="funnel-stage-step ${stage.key === activeFunnelStage ? "is-active" : ""}" type="button" data-funnel-stage-filter="${escapeHtml(stage.key)}">
-          <span>${escapeHtml(index + 1)}</span>
+          <span>${escapeHtml(stageNumber)}</span>
           <strong>${escapeHtml(stage.label)}</strong>
           <small>${escapeHtml(rows.length)} vendors | ${escapeHtml(Math.round((rows.length / denominator) * 100))}%</small>
         </button>
@@ -2090,9 +2153,9 @@ function renderVendorFunnelBoard() {
           <header>
             <div>
               <strong>${escapeHtml(stage.label)}</strong>
-              <small>${escapeHtml(visibleRows.length)} shown of ${escapeHtml(rows.length)}</small>
+              <small>${escapeHtml(visibleRows.length)} visible of ${escapeHtml(rows.length)}</small>
             </div>
-            <span>${escapeHtml(rows.length)}</span>
+            <span title="Total vendors in ${escapeHtml(stage.label)}">${escapeHtml(rows.length)}</span>
           </header>
           <div class="funnel-card-stack">
             ${visibleRows.length ? visibleRows.map(renderVendorFunnelCard).join("") : '<div class="funnel-empty-column">Drop vendor here</div>'}
@@ -2852,6 +2915,16 @@ async function saveVendorCell(control) {
   const original = control.dataset.originalValue || "";
   if (!vendorId || !field || rawValue === original) return;
 
+  if (field === "primary_email") {
+    const validationMessage = emailValidationMessage(rawValue);
+    if (validationMessage) {
+      control.classList.remove("is-saving", "is-saved");
+      control.classList.add("is-error");
+      setStatus(bulkStatusMessage, validationMessage, "error");
+      return;
+    }
+  }
+
   const saveKey = `${vendorId}:${field}`;
   const saveVersion = (vendorCellSaveVersions.get(saveKey) || 0) + 1;
   vendorCellSaveVersions.set(saveKey, saveVersion);
@@ -3415,6 +3488,32 @@ function renderDrawerQuickActions(vendor) {
   return actions.length ? actions.join("") : '<span class="muted-text">No quick actions available</span>';
 }
 
+function unresolvedDeliveryFailures(vendor) {
+  const profileData = vendor?.profile_data && typeof vendor.profile_data === "object" ? vendor.profile_data : {};
+  const bouncedEmails = Array.isArray(profileData.bounced_emails) ? profileData.bounced_emails : [];
+  return bouncedEmails
+    .filter((item) => item && typeof item === "object" && item.email && !item.resolved_at)
+    .slice(0, 5);
+}
+
+function renderDrawerEmailDelivery(vendor) {
+  const failures = unresolvedDeliveryFailures(vendor);
+  if (drawerEmailDeliveryCard) drawerEmailDeliveryCard.classList.toggle("hidden", !failures.length);
+  if (!drawerEmailDelivery) return;
+  drawerEmailDelivery.innerHTML = failures.map((failure) => `
+    <article class="email-delivery-issue" data-email-delivery-issue>
+      <div>
+        <strong>${escapeHtml(failure.email)}</strong>
+        <span>${escapeHtml(failure.reason || "Gmail reported this address could not receive delivery.")}</span>
+      </div>
+      <div class="email-delivery-replace">
+        <input data-replacement-email type="email" autocomplete="email" placeholder="Replacement email" aria-label="Replacement email for ${escapeHtml(failure.email)}" />
+        <button class="small-button" type="button" data-replace-bounced-email="${escapeHtml(failure.email)}">Replace</button>
+      </div>
+    </article>
+  `).join("");
+}
+
 function renderVendorSource(vendor) {
   const parts = [
     vendor.source ? String(vendor.source).replace(/_/g, " ") : null,
@@ -3596,6 +3695,59 @@ function renderDrawerSupportTickets(rows = []) {
   `).join("");
 }
 
+function relationshipTypeLabel(type) {
+  return {
+    support: "Support",
+    improvement: "Vendor CI",
+    chat: "Bid Room chat"
+  }[type] || "Activity";
+}
+
+function relationshipStatusLabel(status) {
+  return String(status || "open").replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function relationshipDate(value) {
+  const date = new Date(value || "");
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+function renderDrawerVendorRelationship(result = {}) {
+  if (!drawerVendorRelationship) return;
+  const summary = result.summary || {};
+  const timeline = result.timeline || [];
+  drawerVendorRelationship.innerHTML = `
+    <div class="vendor-relationship-summary" aria-label="Carrier relationship summary">
+      <span><strong>${Number(summary.open_support_tickets || 0)}</strong> support</span>
+      <span><strong>${Number(summary.active_improvement_cases || 0)}</strong> CI cases</span>
+      <span><strong>${Number(summary.bid_room_threads || 0)}</strong> chats</span>
+    </div>
+    ${timeline.length ? `
+      <div class="vendor-relationship-list">
+        ${timeline.slice(0, 6).map((item) => `
+          <article class="vendor-relationship-mini-card">
+            <div>
+              <span class="relationship-type">${escapeHtml(relationshipTypeLabel(item.type))}</span>
+              <strong title="${escapeHtml(item.title)}">${escapeHtml(item.title)}</strong>
+              <small title="${escapeHtml(item.detail || "")}">${escapeHtml(item.detail || "No additional context")}</small>
+            </div>
+            <div class="relationship-meta">
+              <span class="status-pill ${item.severity === "critical" || item.severity === "urgent" || item.severity === "high" ? "warning" : "neutral"}">${escapeHtml(relationshipStatusLabel(item.status))}</span>
+              <small>${escapeHtml(relationshipDate(item.activity_at))}</small>
+            </div>
+          </article>
+        `).join("")}
+      </div>
+    ` : `
+      <div class="empty-state compact-empty">
+        <strong>No linked activity</strong>
+        <span>Tickets, CI cases, and Bid Room chats will stay connected to this carrier here.</span>
+      </div>
+    `}
+  `;
+}
+
 async function loadDrawerVendorSupport(vendorId) {
   if (!drawerVendorSupport || !vendorId) return;
   const loadVersion = ++vendorDrawerSupportLoadVersion;
@@ -3609,6 +3761,25 @@ async function loadDrawerVendorSupport(vendorId) {
     drawerVendorSupport.innerHTML = `
       <div class="empty-state error-state compact-empty">
         <strong>Support could not load</strong>
+        <span>${escapeHtml(humanizeError(error))}</span>
+      </div>
+    `;
+  }
+}
+
+async function loadDrawerVendorRelationship(vendorId) {
+  if (!drawerVendorRelationship || !vendorId) return;
+  const loadVersion = ++vendorDrawerRelationshipLoadVersion;
+  drawerVendorRelationship.innerHTML = '<p class="status-message">Loading carrier activity...</p>';
+  try {
+    const result = await fetchVendorRelationshipActivity(vendorId, { limit: 20 });
+    if (loadVersion !== vendorDrawerRelationshipLoadVersion || activeDrawerVendorId !== vendorId) return;
+    renderDrawerVendorRelationship(result);
+  } catch (error) {
+    if (loadVersion !== vendorDrawerRelationshipLoadVersion || activeDrawerVendorId !== vendorId) return;
+    drawerVendorRelationship.innerHTML = `
+      <div class="empty-state error-state compact-empty">
+        <strong>Carrier activity could not load</strong>
         <span>${escapeHtml(humanizeError(error))}</span>
       </div>
     `;
@@ -3630,6 +3801,7 @@ function openVendorDrawer(vendorId, options = {}) {
   setDrawerValue("#drawer-completeness", `${health.score}% ${health.label}`);
   setDrawerValue("#drawer-readiness", renderReadinessBreakdown(vendor));
   setDrawerValue("#drawer-rateware-evidence", renderDrawerRatewareEvidence(vendor));
+  renderDrawerEmailDelivery(vendor);
   setDrawerValue(
     "#drawer-contact",
     [
@@ -3667,27 +3839,70 @@ function openVendorDrawer(vendorId, options = {}) {
   document.querySelector("#drawer-edit-whatsapp-notes").value = vendor.whatsapp_notes || "";
   renderOnboardingEditor(vendor);
   if (drawerLogoFile) drawerLogoFile.value = "";
-  const saveButton = document.querySelector("#drawer-save-button");
-  if (saveButton) saveButton.disabled = false;
+  drawerSaveInFlight = false;
   drawerArchiveButton.disabled = false;
   drawerArchiveButton.textContent = vendor.base_stage === "archived" ? "Restore to Sourcing" : "Archive vendor";
   setStatus(drawerEditStatus, "");
   drawer.classList.remove("hidden");
   setDrawerMode(options.mode || "view");
+  setDrawerBaseline();
   loadDrawerVendorSupport(vendor.id);
+  loadDrawerVendorRelationship(vendor.id);
 }
 
-function readDrawerPatch() {
+const DRAWER_BASE_PATCH_FIELDS = [
+  "vendor_name",
+  "domain",
+  "logo_url",
+  "contact_name",
+  "primary_email",
+  "secondary_emails",
+  "whatsapp_phone",
+  "preferred_channel",
+  "whatsapp_permission_basis",
+  "whatsapp_opt_in_status",
+  "whatsapp_do_not_contact",
+  "whatsapp_group_name",
+  "whatsapp_group_url",
+  "whatsapp_meta_group_id",
+  "whatsapp_group_status",
+  "whatsapp_notes",
+  "status",
+  "tags",
+  "coverage_notes",
+  "notes"
+];
+
+function normalizeDrawerComparableValue(value) {
+  if (Array.isArray(value)) return [...value].map((item) => normalizeDrawerComparableValue(item)).filter((item) => item !== "").sort();
+  if (value && typeof value === "object") {
+    return Object.keys(value).sort().reduce((next, key) => {
+      next[key] = normalizeDrawerComparableValue(value[key]);
+      return next;
+    }, {});
+  }
+  return String(value ?? "").trim();
+}
+
+function drawerComparableValue(value) {
+  return JSON.stringify(normalizeDrawerComparableValue(value));
+}
+
+function drawerValuesMatch(left, right) {
+  return drawerComparableValue(left) === drawerComparableValue(right);
+}
+
+function readDrawerSnapshot() {
   const profileData = readDrawerProfileData();
   const tags = Array.from(new Set([...splitTags(document.querySelector("#drawer-edit-tags").value), ...profileDerivedTags(profileData)]));
   const emails = splitVendorEmails(document.querySelector("#drawer-edit-email").value);
   return {
-    vendor_name: document.querySelector("#drawer-edit-name").value,
-    domain: document.querySelector("#drawer-edit-domain").value,
-    logo_url: document.querySelector("#drawer-edit-logo-url").value,
-    contact_name: document.querySelector("#drawer-edit-contact").value,
+    vendor_name: document.querySelector("#drawer-edit-name").value.trim(),
+    domain: document.querySelector("#drawer-edit-domain").value.trim(),
+    logo_url: document.querySelector("#drawer-edit-logo-url").value.trim(),
+    contact_name: document.querySelector("#drawer-edit-contact").value.trim(),
     ...emails,
-    whatsapp_phone: document.querySelector("#drawer-edit-whatsapp").value,
+    whatsapp_phone: document.querySelector("#drawer-edit-whatsapp").value.trim(),
     preferred_channel: document.querySelector("#drawer-edit-channel").value,
     whatsapp_permission_basis: document.querySelector("#drawer-edit-whatsapp-permission").value,
     whatsapp_opt_in_status: document.querySelector("#drawer-edit-whatsapp-opt-in").value,
@@ -3703,6 +3918,60 @@ function readDrawerPatch() {
     notes: document.querySelector("#drawer-edit-notes").value,
     profile_data: profileData
   };
+}
+
+function buildDrawerProfilePatch(baselineProfile = {}, nextProfile = {}) {
+  const patch = {};
+  VENDOR_ONBOARDING_SECTIONS.forEach((section) => {
+    const sectionPatch = {};
+    section.fields.forEach((field) => {
+      const before = profileFieldValue(baselineProfile, section.key, field.key);
+      const after = profileFieldValue(nextProfile, section.key, field.key);
+      if (!drawerValuesMatch(before, after)) {
+        sectionPatch[field.key] = field.type === "checks" ? profileArrayValue(after) : profileScalarValue(after);
+      }
+    });
+    if (Object.keys(sectionPatch).length) patch[section.key] = sectionPatch;
+  });
+  return patch;
+}
+
+function buildDrawerPartialPatch(scope = "all") {
+  const baseline = drawerEditBaseline || {};
+  const snapshot = readDrawerSnapshot();
+  const patch = {};
+  if (scope !== "profile") {
+    DRAWER_BASE_PATCH_FIELDS.forEach((field) => {
+      if (!drawerValuesMatch(baseline[field], snapshot[field])) patch[field] = snapshot[field];
+    });
+  }
+  if (scope !== "base") {
+    const profilePatch = buildDrawerProfilePatch(baseline.profile_data || {}, snapshot.profile_data || {});
+    if (Object.keys(profilePatch).length) patch.profile_data_patch = profilePatch;
+  }
+  return patch;
+}
+
+function setDrawerBaseline() {
+  drawerEditBaseline = readDrawerSnapshot();
+  renderDrawerDirtyState();
+}
+
+function renderDrawerDirtyState() {
+  if (!drawerEditForm || !activeDrawerVendorId) return;
+  const patch = buildDrawerPartialPatch();
+  const profilePatch = buildDrawerPartialPatch("profile");
+  const changeCount = Object.keys(patch).length;
+  const profileChangeCount = Object.keys(profilePatch.profile_data_patch || {}).length;
+  const saveButton = document.querySelector("#drawer-save-button");
+  if (saveButton) saveButton.disabled = drawerSaveInFlight || changeCount === 0;
+  if (drawerSaveProfileButton) drawerSaveProfileButton.disabled = drawerSaveInFlight || profileChangeCount === 0;
+  if (drawerEditDirtyMessage) {
+    drawerEditDirtyMessage.textContent = changeCount ? `${changeCount} unsaved ${changeCount === 1 ? "change" : "changes"}` : "No unsaved changes";
+  }
+  if (drawerProfileDirtyMessage) {
+    drawerProfileDirtyMessage.textContent = profileChangeCount ? `${profileChangeCount} profile section${profileChangeCount === 1 ? "" : "s"} changed` : "No profile changes";
+  }
 }
 
 function replaceVendorInState(updated) {
@@ -3884,6 +4153,11 @@ async function importOnboardingGapCorrections(file) {
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
   const button = document.querySelector("#save-vendor-button");
+  const validationMessage = emailValidationMessage(document.querySelector("#primary-email")?.value);
+  if (validationMessage) {
+    setStatus(statusMessage, validationMessage, "error");
+    return;
+  }
   button.disabled = true;
   setStatus(statusMessage, "Saving vendor...");
 
@@ -3924,6 +4198,11 @@ wizardNextButton.addEventListener("click", () => {
 
 wizardForm.addEventListener("submit", async (event) => {
   event.preventDefault();
+  const validationMessage = emailValidationMessage(document.querySelector("#wizard-primary-email")?.value);
+  if (validationMessage) {
+    setStatus(wizardStatus, validationMessage, "error");
+    return;
+  }
   wizardSaveButton.disabled = true;
   setStatus(wizardStatus, "Saving vendor...");
 
@@ -4507,6 +4786,7 @@ closeDrawerButton.addEventListener("click", () => {
   activeDrawerVendorId = null;
   vendorDrawerContextVersion += 1;
   vendorDrawerSupportLoadVersion += 1;
+  vendorDrawerRelationshipLoadVersion += 1;
   drawer.classList.add("hidden");
 });
 drawerEditToggle?.addEventListener("click", () => {
@@ -4528,7 +4808,10 @@ drawer.addEventListener("click", (event) => {
     if (ticketId && status) {
       supportButton.disabled = true;
       updateVendorSupportTicket(ticketId, { status })
-        .then(() => loadDrawerVendorSupport(activeDrawerVendorId))
+        .then(() => {
+          loadDrawerVendorSupport(activeDrawerVendorId);
+          loadDrawerVendorRelationship(activeDrawerVendorId);
+        })
         .catch((error) => {
           setStatus(drawerEditStatus, humanizeError(error), "error");
         })
@@ -4538,19 +4821,64 @@ drawer.addEventListener("click", (event) => {
     }
     return;
   }
+  const replaceEmailButton = event.target.closest("[data-replace-bounced-email]");
+  if (replaceEmailButton) {
+    const issue = replaceEmailButton.closest("[data-email-delivery-issue]");
+    const replacementEmail = issue?.querySelector("[data-replacement-email]")?.value?.trim();
+    const bouncedEmail = replaceEmailButton.dataset.replaceBouncedEmail;
+    if (!bouncedEmail || !replacementEmail) {
+      setStatus(drawerEditStatus, "Enter a replacement email before resolving this delivery failure.", "error");
+      return;
+    }
+    replaceEmailButton.disabled = true;
+    setStatus(drawerEditStatus, "Replacing bounced email...");
+    requirePrivatePage()
+      .then(() => replaceBouncedVendorEmail(activeDrawerVendorId, { bouncedEmail, replacementEmail }))
+      .then((updated) => {
+        replaceVendorInState(updated);
+        applyVendorUpdateToFunnel(updated);
+        renderVendors(currentVendors);
+        openVendorDrawer(updated.id, { mode: "edit" });
+        setStatus(drawerEditStatus, "Replacement email saved and re-enabled for future outreach.", "success");
+      })
+      .catch((error) => setStatus(drawerEditStatus, humanizeError(error), "error"))
+      .finally(() => {
+        replaceEmailButton.disabled = false;
+      });
+    return;
+  }
   const button = event.target.closest("[data-ai-suggestion-type]");
   if (!button) return;
   applyDrawerSuggestion(button.dataset.aiSuggestionType, button.dataset.aiSuggestionValue);
 });
-drawerEditForm.addEventListener("submit", async (event) => {
-  event.preventDefault();
+function refreshDrawerIdentity(vendor) {
+  if (!vendor || activeDrawerVendorId !== vendor.id) return;
+  document.querySelector("#drawer-vendor-name").textContent = vendor.vendor_name || "Vendor";
+  if (drawerLogoPreview) drawerLogoPreview.innerHTML = renderVendorAvatar(vendor, "drawer");
+  document.querySelector("#drawer-badges").innerHTML = renderDrawerBadges(vendor);
+  document.querySelector("#drawer-quick-actions").innerHTML = renderDrawerQuickActions(vendor);
+}
+
+async function saveDrawerChanges(scope = "all") {
   if (!activeDrawerVendorId) return;
   const vendorId = activeDrawerVendorId;
   const contextVersion = vendorDrawerContextVersion;
-  const patch = readDrawerPatch();
-  const button = document.querySelector("#drawer-save-button");
-  button.disabled = true;
-  setStatus(drawerEditStatus, "Saving vendor...");
+  const patch = buildDrawerPartialPatch(scope);
+  if (!Object.keys(patch).length) {
+    setStatus(drawerEditStatus, "No changes to save.", "success");
+    renderDrawerDirtyState();
+    return;
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, "primary_email") || Object.prototype.hasOwnProperty.call(patch, "secondary_emails")) {
+    const validationMessage = emailValidationMessage(document.querySelector("#drawer-edit-email")?.value);
+    if (validationMessage) {
+      setStatus(drawerEditStatus, validationMessage, "error");
+      return;
+    }
+  }
+  drawerSaveInFlight = true;
+  renderDrawerDirtyState();
+  setStatus(drawerEditStatus, scope === "profile" ? "Saving carrier profile..." : "Saving vendor changes...");
 
   try {
     await requirePrivatePage();
@@ -4561,16 +4889,28 @@ drawerEditForm.addEventListener("submit", async (event) => {
     applyVendorUpdateToFunnel(nextVendor);
     renderVendors(currentVendors);
     if (activeDrawerVendorId !== vendorId || vendorDrawerContextVersion !== contextVersion) return;
-    setStatus(drawerEditStatus, "Vendor updated.", "success");
-    openVendorDrawer(nextVendor.id, { mode: "edit" });
+    refreshDrawerIdentity(nextVendor);
+    setDrawerBaseline();
+    setStatus(drawerEditStatus, scope === "profile" ? "Carrier profile saved." : "Vendor changes saved.", "success");
   } catch (error) {
     if (activeDrawerVendorId === vendorId && vendorDrawerContextVersion === contextVersion) {
-      setStatus(drawerEditStatus, error.message, "error");
+      setStatus(drawerEditStatus, humanizeError(error), "error");
     }
   } finally {
-    if (activeDrawerVendorId === vendorId && vendorDrawerContextVersion === contextVersion) button.disabled = false;
+    if (activeDrawerVendorId === vendorId && vendorDrawerContextVersion === contextVersion) {
+      drawerSaveInFlight = false;
+      renderDrawerDirtyState();
+    }
   }
+}
+
+drawerEditForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  await saveDrawerChanges("all");
 });
+drawerSaveProfileButton?.addEventListener("click", () => saveDrawerChanges("profile"));
+drawerEditForm?.addEventListener("input", renderDrawerDirtyState);
+drawerEditForm?.addEventListener("change", renderDrawerDirtyState);
 drawerArchiveButton.addEventListener("click", async () => {
   if (!activeDrawerVendorId) return;
   const vendorId = activeDrawerVendorId;
@@ -4605,7 +4945,7 @@ initAuthControls();
 requirePrivatePage()
   .then(() =>
     applyPermissionState(
-      "#save-vendor-button, #wizard-save-button, #vendor-import, #vendor-gaps-import, #import-google-sheet-button, #download-onboarding-gaps-button, #import-onboarding-gaps-button, #select-visible-vendors-button, #clear-vendor-selection-button, #bulk-update-button, #bulk-procurement-button, #bulk-archive-vendors-button, #bulk-remove-vendors-button, #confirm-import-button, #save-segment-button, #drawer-save-button, #drawer-archive-button, #apply-intelligence-tags, #promote-intelligence-selected, #vendor-funnel-bulk-stage, #vendor-funnel-move-stage, #vendor-funnel-advance-stage, #vendor-funnel-regress-stage, #match-staging-vendors, #match-rateware-vendors, [data-duplicate-inactive], [data-funnel-stage-select]",
+      "#save-vendor-button, #wizard-save-button, #vendor-import, #vendor-gaps-import, #import-google-sheet-button, #download-onboarding-gaps-button, #import-onboarding-gaps-button, #select-visible-vendors-button, #clear-vendor-selection-button, #bulk-update-button, #bulk-procurement-button, #bulk-archive-vendors-button, #bulk-remove-vendors-button, #confirm-import-button, #save-segment-button, #drawer-save-button, #drawer-save-profile-button, #drawer-archive-button, #apply-intelligence-tags, #promote-intelligence-selected, #vendor-funnel-bulk-stage, #vendor-funnel-move-stage, #vendor-funnel-advance-stage, #vendor-funnel-regress-stage, #match-staging-vendors, #match-rateware-vendors, [data-duplicate-inactive], [data-funnel-stage-select]",
       "vendors:manage"
     )
   )

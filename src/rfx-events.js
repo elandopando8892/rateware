@@ -193,6 +193,9 @@ const rfxRefreshOutreachAudienceButton = document.querySelector("#rfx-refresh-ou
 const rfxSaveOutreachAudienceSegmentButton = document.querySelector("#rfx-save-outreach-audience-segment");
 const rfxArchiveOutreachAudienceSegmentButton = document.querySelector("#rfx-archive-outreach-audience-segment");
 const rfxOutreachAudienceSummary = document.querySelector("#rfx-outreach-audience-summary");
+const rfxOutreachAudienceReadyCount = document.querySelector("#rfx-outreach-audience-ready-count");
+const rfxOutreachAudienceContactedCount = document.querySelector("#rfx-outreach-audience-contacted-count");
+const rfxOutreachAudienceAttentionCount = document.querySelector("#rfx-outreach-audience-attention-count");
 const rfxOutreachAudienceList = document.querySelector("#rfx-outreach-audience-list");
 const rfxOutreachAudienceStatus = document.querySelector("#rfx-outreach-audience-status");
 const rfxOutreachPreview = document.querySelector("#rfx-outreach-preview");
@@ -1831,6 +1834,8 @@ function templateSavePayload(template) {
   return {
     name: canonicalRfxInvitationTemplateName(template) || template?.name || "RFx invitation template",
     channel: template?.channel || rfxOutreachChannel?.value || "email",
+    template_scope: "canonical",
+    canonical_language: canonicalRfxInvitationTemplateLanguage(template),
     subject: rfxTemplateSubject?.value || "",
     html_body: rfxTemplateHtml?.value || "",
     whatsapp_body: rfxTemplateWhatsapp?.value || "",
@@ -1855,6 +1860,12 @@ function canonicalRfxInvitationTemplateName(template) {
   if (!match) return name;
   const language = match[1].toLowerCase() === "spanish" ? "Spanish" : "English";
   return `RFx carrier invitation - ${language}`;
+}
+
+function canonicalRfxInvitationTemplateLanguage(template) {
+  const requested = String(template?.canonical_language || template?.language || "").trim().toLowerCase();
+  if (requested === "en" || requested === "es") return requested;
+  return /spanish/i.test(canonicalRfxInvitationTemplateName(template)) ? "es" : "en";
 }
 
 function originalRfxInvitationTemplate(template) {
@@ -5164,23 +5175,28 @@ function renderOutreachAudience() {
   renderOutreachAudienceSegments();
   const selectedCount = selectedOutreachAudienceVendorIds.size;
   const eligibleCount = outreachAudienceRows.filter((row) => row.audience_status === "ready").length;
+  const contactedCount = outreachAudienceRows.filter((row) => ["already_contacted", "replied", "quoted"].includes(String(row.audience_status || "").toLowerCase())).length;
+  const attentionCount = outreachAudienceRows.filter((row) => ["bounced", "suppressed", "no_contact", "needs_review", "failed"].includes(String(row.audience_status || "").toLowerCase())).length;
+  if (rfxOutreachAudienceReadyCount) rfxOutreachAudienceReadyCount.textContent = outreachAudienceLoading ? "-" : formatNumber(eligibleCount);
+  if (rfxOutreachAudienceContactedCount) rfxOutreachAudienceContactedCount.textContent = outreachAudienceLoading ? "-" : formatNumber(contactedCount);
+  if (rfxOutreachAudienceAttentionCount) rfxOutreachAudienceAttentionCount.textContent = outreachAudienceLoading ? "-" : formatNumber(attentionCount);
   rfxOutreachAudienceSummary.textContent = outreachAudienceLoading
     ? "Loading audience..."
-    : `${formatNumber(selectedCount)} selected | ${formatNumber(eligibleCount)} ready | ${formatNumber(outreachAudienceRows.length)} shown`;
+    : `${formatNumber(selectedCount)} selected | ${formatNumber(outreachAudienceRows.length)} shown`;
   rfxOutreachAudienceSummary.className = `status-pill ${selectedCount ? "success" : "muted"}`;
   if (rfxSaveOutreachAudienceSegmentButton) {
     rfxSaveOutreachAudienceSegmentButton.disabled = !selectedCount || !String(rfxOutreachAudienceSegmentName?.value || "").trim();
   }
   if (!selectedEventId) {
-    rfxOutreachAudienceList.innerHTML = '<tr><td colspan="7">Select a Bid Room to load the audience ledger.</td></tr>';
+    rfxOutreachAudienceList.innerHTML = '<tr><td colspan="5">Select a Bid Room to load the outreach audience.</td></tr>';
     return;
   }
   if (outreachAudienceLoading) {
-    rfxOutreachAudienceList.innerHTML = '<tr><td colspan="7">Loading audience ledger...</td></tr>';
+    rfxOutreachAudienceList.innerHTML = '<tr><td colspan="5">Loading carrier contact history...</td></tr>';
     return;
   }
   if (!outreachAudienceRows.length) {
-    rfxOutreachAudienceList.innerHTML = '<tr><td colspan="7">No carriers match this audience filter. Adjust outcome, search, or selected segment.</td></tr>';
+    rfxOutreachAudienceList.innerHTML = '<tr><td colspan="5">No carriers match this audience. Adjust status, search, or saved list.</td></tr>';
     return;
   }
   rfxOutreachAudienceList.innerHTML = outreachAudienceRows.map((row) => {
@@ -5189,14 +5205,13 @@ function renderOutreachAudience() {
     const status = String(row.audience_status || "needs_review").toLowerCase();
     const lanes = Number(row.lane_count || 0);
     const contact = row.email || row.phone || "No verified contact";
+    const reason = String(row.reason || row.last_message_status || "Eligible contact");
     return `
       <tr class="${selected ? "is-selected-row" : ""}">
         <td><input type="checkbox" data-rfx-audience-select="${escapeHtml(vendorId)}" ${selected ? "checked" : ""} ${vendorId ? "" : "disabled"} /></td>
-        <td><strong>${escapeHtml(row.vendor_name || row.vendor_domain || "Carrier")}</strong><small>${escapeHtml(row.vendor_domain || "")}</small></td>
+        <td><strong>${escapeHtml(row.vendor_name || row.vendor_domain || "Carrier")}</strong><small>${escapeHtml(row.vendor_domain || "")} ${lanes ? `| ${formatNumber(lanes)} lane${lanes === 1 ? "" : "s"}` : ""}</small></td>
         <td>${escapeHtml(contact)}</td>
-        <td>${formatNumber(lanes)}</td>
-        <td><span class="status-pill ${outreachAudienceStatusTone(status)}">${escapeHtml(outreachAudienceStatusLabel(status))}</span></td>
-        <td><small>${escapeHtml(row.reason || row.last_message_status || "Eligible contact")}</small></td>
+        <td><span class="status-pill ${outreachAudienceStatusTone(status)}" title="${escapeHtml(reason)}">${escapeHtml(outreachAudienceStatusLabel(status))}</span></td>
         <td><small class="rfx-draft-next-action">${escapeHtml(row.next_action || "Review")}</small></td>
       </tr>
     `;
@@ -5236,7 +5251,11 @@ async function loadOutreachAudience({ reloadSegments = false } = {}) {
   } catch (error) {
     if (loadVersion !== outreachAudienceLoadVersion || eventId !== selectedEventId) return;
     outreachAudienceRows = [];
-    setStatus(rfxOutreachAudienceStatus, `Audience ledger could not load. ${humanizeError(error)}`, "error");
+    const raw = String(error?.message || error || "");
+    const message = /unknown action/i.test(raw)
+      ? "The Outreach service is behind this app version. Deploy the latest Rateware API, then refresh this audience."
+      : `Audience could not load. ${humanizeError(error)}`;
+    setStatus(rfxOutreachAudienceStatus, message, "error");
   } finally {
     if (loadVersion === outreachAudienceLoadVersion) {
       outreachAudienceLoading = false;
@@ -5767,7 +5786,11 @@ function shortlistCandidateRows() {
   const rawTerm = activeVendorSearchTerm();
   const term = normalizeLookupText(rawTerm);
   const segmentRows = rawTerm.length >= 2 ? vendorSearchRows : segmentCandidateRows();
-  const filtered = segmentRows.filter((vendor) => !term || vendorSearchText(vendor).includes(term));
+  // The server owns filtered search. Re-filtering here caused valid matches such
+  // as accented legal names, secondary emails, and multi-word carrier names to vanish.
+  const filtered = rawTerm.length >= 2
+    ? segmentRows
+    : segmentRows.filter((vendor) => !term || vendorSearchText(vendor).includes(term));
   return sortedVendorOptions(filtered);
 }
 
@@ -5941,7 +5964,7 @@ function renderSelectedManualVendors() {
     manualShortlistSelectedList.innerHTML = `
       <article class="bid-room-selected-empty">
         <strong>No carriers selected</strong>
-        <span>Select carriers from the left list or use a saved segment.</span>
+        <span>Use the CRM list or load a saved carrier list.</span>
       </article>
     `;
     return;
@@ -6124,7 +6147,7 @@ function renderManualShortlistControls() {
     const listSummary = `
       <div class="bid-room-crm-list-summary">
         <strong>Carrier CRM candidates</strong>
-        <span>${vendorSearchLoading ? "Searching CRM..." : `Showing ${Math.min(visibleRows.length, rows.length)} of ${formatNumber(totalMatches)} matching carriers.`} Select carriers now, save them as a template, then add them after the event and lane book are ready.</span>
+        <span>${vendorSearchLoading ? "Searching CRM..." : `Showing ${Math.min(visibleRows.length, rows.length)} of ${formatNumber(totalMatches)} matching carriers.`}</span>
       </div>
     `;
     manualShortlistVendorList.innerHTML = visibleRows.length ? `${listSummary}${visibleRows.map(renderCrmVendorCandidate).join("")}` : vendorSearchLoading ? `

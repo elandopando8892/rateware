@@ -123,7 +123,17 @@ function normalizedStateCode(value) {
 }
 
 function inferCountry(value, row, prefix) {
-  const explicit = String(row?.[`${prefix}_country`] || "").toUpperCase();
+  const explicitRaw = String(row?.[`${prefix}_country`] || "").toUpperCase();
+  const explicit = explicitRaw === "USA" || explicitRaw === "UNITED STATES"
+    ? "US"
+    : explicitRaw === "CAN" || explicitRaw === "CANADA"
+      ? "CA"
+      : explicitRaw === "MEX" || explicitRaw === "MEXICO"
+        ? "MX"
+        : explicitRaw;
+  // A confirmed row country is authoritative in the review drawer. Do not let
+  // an overlapping state code or ZIP reinterpret a Mexican row as US/CA.
+  if (["MX", "US", "CA"].includes(explicit)) return explicit;
   const tokens = textTokens(value);
   const tokenSet = new Set(tokens);
   const lookup = lookupKey(value).toUpperCase();
@@ -140,8 +150,6 @@ function inferCountry(value, row, prefix) {
   if (hasMxState && (hasMxCityHint || (!hasUsState && !hasCaProvince) || (hasFiveDigitPostal && !strongUsText && !strongCaText))) return "MX";
   if (strongUsText) return "US";
   if (strongCaText || hasCanadianPostalCode) return "CA";
-  if (explicit) return explicit;
-
   const state = inferState(value);
   if (state && MX_STATE_CODES.has(state) && !US_STATE_CODES.has(state)) return "MX";
   if (state && US_STATE_CODES.has(state) && !MX_STATE_CODES.has(state)) return "US";

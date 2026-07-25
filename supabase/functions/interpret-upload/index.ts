@@ -1082,7 +1082,9 @@ function catalogMatch(index: Map<string, Map<string, Record<string, unknown>>>, 
 }
 
 function buildLocationIndex(locations: Record<string, unknown>[]) {
-  const index = new Map<string, Record<string, unknown>>();
+  // Do not overwrite same-name locations across MX, US, and CA. Country is part
+  // of matching, not a tiebreaker after the candidate has already been lost.
+  const index = new Map<string, Record<string, unknown>[]>();
 
   for (const location of locations) {
     const keys = [
@@ -1098,8 +1100,10 @@ function buildLocationIndex(locations: Record<string, unknown>[]) {
     if (locationCountry(location) !== "MX") keys.push(location.zip_prefix);
 
     for (const key of keys.map(catalogKey).filter(Boolean)) {
-      const existing = index.get(key);
-      if (!existing || locationQuality(location) > locationQuality(existing)) index.set(key, location);
+      const bucket = index.get(key) || [];
+      if (!bucket.includes(location)) bucket.push(location);
+      bucket.sort((left, right) => locationQuality(right) - locationQuality(left));
+      index.set(key, bucket);
     }
   }
 
@@ -1141,12 +1145,12 @@ function locationCandidate(location: Record<string, unknown>, score: number, rea
   };
 }
 
-function locationMatch(index: Map<string, Record<string, unknown>>, value: unknown) {
+function locationMatch(index: Map<string, Record<string, unknown>[]>, value: unknown, countryHint: unknown = null) {
   const lookup = catalogKey(value);
   if (!lookup) return null;
-  const profile = locationTextProfile(value);
+  const profile = locationTextProfile([value, countryHint].filter(Boolean).join(" "));
 
-  const direct = index.get(lookup);
+  const direct = (index.get(lookup) || []).find((location) => locationMatchesProfile(location, profile));
   if (direct && locationMatchesProfile(direct, profile)) {
     return {
       location: direct,
@@ -1162,8 +1166,10 @@ function locationMatch(index: Map<string, Record<string, unknown>>, value: unkno
     && !profile.explicitMx
     && (profile.explicitUs || profile.explicitCa || (!profile.hasMxEvidence && !profile.hasFiveDigitPostal));
   if (allowZipShortcut && index.get(catalogKey(zip))) {
-    const zipMatch = index.get(catalogKey(zip))!;
-    if (locationMatchesProfile(zipMatch, profile) && locationCountry(zipMatch) !== "MX") {
+    const zipMatch = (index.get(catalogKey(zip)) || []).find((location) =>
+      locationMatchesProfile(location, profile) && locationCountry(location) !== "MX"
+    );
+    if (zipMatch) {
       return {
         location: zipMatch,
         score: 92,
@@ -1175,61 +1181,63 @@ function locationMatch(index: Map<string, Record<string, unknown>>, value: unkno
 
   const candidates: Array<{ location: Record<string, unknown>; score: number; reason: string }> = [];
   const seen = new Set<Record<string, unknown>>();
-  for (const [, location] of index) {
-    if (seen.has(location)) continue;
-    seen.add(location);
-    if (!locationMatchesProfile(location, profile)) continue;
-    let score = 0;
-    const reasons: string[] = [];
-    const country = locationCountry(location);
-    if ((profile.explicitMx && country === "MX") || (profile.explicitUs && country === "US") || (profile.explicitCa && country === "CA")) {
-      score += 12;
-      reasons.push("country hint");
-    }
-    const zipPrefix = catalogKey(location.zip_prefix);
-    if (zipPrefix && locationZipPrefixMatches(profile, zipPrefix)) {
-      const zipCompatible = country === "MX"
-        || profile.explicitUs
-        || profile.explicitCa
-        || (!profile.hasMxEvidence && !profile.hasFiveDigitPostal);
-      if (zipCompatible) {
-        score += country === "MX" ? 12 : 55;
-        reasons.push(country === "MX" ? "mx postal auxiliary" : "zip prefix");
+  for (const bucket of index.values()) {
+    for (const location of bucket) {
+      if (seen.has(location)) continue;
+      seen.add(location);
+      if (!locationMatchesProfile(location, profile)) continue;
+      let score = 0;
+      const reasons: string[] = [];
+      const country = locationCountry(location);
+      if ((profile.explicitMx && country === "MX") || (profile.explicitUs && country === "US") || (profile.explicitCa && country === "CA")) {
+        score += 12;
+        reasons.push("country hint");
       }
+      const zipPrefix = catalogKey(location.zip_prefix);
+      if (zipPrefix && locationZipPrefixMatches(profile, zipPrefix)) {
+        const zipCompatible = country === "MX"
+          || profile.explicitUs
+          || profile.explicitCa
+          || (!profile.hasMxEvidence && !profile.hasFiveDigitPostal);
+        if (zipCompatible) {
+          score += country === "MX" ? 12 : 55;
+          reasons.push(country === "MX" ? "mx postal auxiliary" : "zip prefix");
+        }
+      }
+      const state = catalogKey(location.state_code);
+      const stateMatches = state && profile.tokens.some((token) => normalizedLocationStateCode(token) === normalizedLocationStateCode(state));
+      if (state && (lookup.includes(state) || stateMatches)) {
+        score += country === "MX" ? 38 : 30;
+        reasons.push("state match");
+      }
+      const stateName = catalogKey(location.state_name);
+      if (stateName && lookup.includes(stateName)) {
+        score += country === "MX" ? 32 : 20;
+        reasons.push("state name");
+      }
+      const city = catalogKey(location.city);
+      if (city && lookup.includes(city)) {
+        score += country === "MX" ? 48 : 38;
+        reasons.push("city match");
+      }
+      const metro = catalogKey(location.metro_city);
+      if (metro && (lookup.includes(metro) || metro.includes(lookup))) {
+        score += country === "MX" ? 42 : 30;
+        reasons.push("metro match");
+      }
+      const market = catalogKey(location.market);
+      if (market && (lookup.includes(market) || market.includes(lookup))) {
+        score += country === "MX" ? 30 : 20;
+        reasons.push("market match");
+      }
+      const region = catalogKey(location.region);
+      if (region && (lookup.includes(region) || region.includes(lookup))) {
+        score += country === "MX" ? 18 : 10;
+        reasons.push("region match");
+      }
+      score += Math.max(0, 6 - sourceRank(location.source));
+      if (score >= 25) candidates.push({ location, score, reason: reasons.join(", ") || "catalog match" });
     }
-    const state = catalogKey(location.state_code);
-    const stateMatches = state && profile.tokens.some((token) => normalizedLocationStateCode(token) === normalizedLocationStateCode(state));
-    if (state && (lookup.includes(state) || stateMatches)) {
-      score += country === "MX" ? 38 : 30;
-      reasons.push("state match");
-    }
-    const stateName = catalogKey(location.state_name);
-    if (stateName && lookup.includes(stateName)) {
-      score += country === "MX" ? 32 : 20;
-      reasons.push("state name");
-    }
-    const city = catalogKey(location.city);
-    if (city && lookup.includes(city)) {
-      score += country === "MX" ? 48 : 38;
-      reasons.push("city match");
-    }
-    const metro = catalogKey(location.metro_city);
-    if (metro && (lookup.includes(metro) || metro.includes(lookup))) {
-      score += country === "MX" ? 42 : 30;
-      reasons.push("metro match");
-    }
-    const market = catalogKey(location.market);
-    if (market && (lookup.includes(market) || market.includes(lookup))) {
-      score += country === "MX" ? 30 : 20;
-      reasons.push("market match");
-    }
-    const region = catalogKey(location.region);
-    if (region && (lookup.includes(region) || region.includes(lookup))) {
-      score += country === "MX" ? 18 : 10;
-      reasons.push("region match");
-    }
-    score += Math.max(0, 6 - sourceRank(location.source));
-    if (score >= 25) candidates.push({ location, score, reason: reasons.join(", ") || "catalog match" });
   }
 
   candidates.sort((a, b) => b.score - a.score);
@@ -1606,8 +1614,12 @@ function normalizeWithCatalog(rows: Record<string, unknown>[], catalogItems: Rec
   const mileage = new Map(laneMileage.map((lane) => [catalogKey(lane.route_key), lane]));
 
   return rows.map((row) => {
-    const originResolution = locationMatch(locationIndex, row.origin);
-    const destinationResolution = locationMatch(locationIndex, row.destination);
+    // Only a reviewer-confirmed country may guide re-normalization. An automatic
+    // country value can itself be wrong, so source text must be allowed to repair it.
+    const originCountryHint = cleanBoolean(row.origin_match_manual) ? row.origin_country : null;
+    const destinationCountryHint = cleanBoolean(row.destination_match_manual) ? row.destination_country : null;
+    const originResolution = locationMatch(locationIndex, row.origin, originCountryHint);
+    const destinationResolution = locationMatch(locationIndex, row.destination, destinationCountryHint);
     const originLocation = originResolution?.location || null;
     const destinationLocation = destinationResolution?.location || null;
     const originMatch = originLocation || catalogMatch(catalog, ["zip_market", "mx_production"], row.origin);
@@ -1753,9 +1765,9 @@ async function lookupPostalPrefix(value: unknown, fallbackState: unknown = null,
   }
 }
 
-function patchExternalLocation(prefix: "origin" | "destination", lookup: Record<string, unknown> | null, locationIndex: Map<string, Record<string, unknown>>) {
+function patchExternalLocation(prefix: "origin" | "destination", lookup: Record<string, unknown> | null, locationIndex: Map<string, Record<string, unknown>[]>) {
   if (!lookup) return {};
-  const catalogResolution = locationMatch(locationIndex, lookup.zip_prefix);
+  const catalogResolution = locationMatch(locationIndex, lookup.zip_prefix, lookup.country);
   const catalogLocation = catalogResolution?.location || null;
   const patch: Record<string, unknown> = {
     [`${prefix}_zip_prefix`]: lookup.zip_prefix,

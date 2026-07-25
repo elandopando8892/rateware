@@ -1450,6 +1450,7 @@ function liveBoardFromRows(currentInvitation: Record<string, unknown>, peerRows:
         mirror_account_enabled: cleanBoolean(row.mirror_account_enabled),
         availability_validation_status: cleanText(row.availability_validation_status),
         responded_at: cleanText(row.responded_at || row.updated_at),
+        offer_revision_at: cleanText(row.updated_at || row.responded_at),
         vendor_name: cleanText(relationRecord(row.vendors).vendor_name),
         vendor_domain: cleanText(relationRecord(row.vendors).domain),
         is_current: row.id === currentInvitation.id
@@ -1507,8 +1508,16 @@ function liveBoardFromRows(currentInvitation: Record<string, unknown>, peerRows:
     return "Above your offer";
   };
   const visibleRows = visibility.mode === "private" ? rows.filter((row) => row.is_current) : rows;
+  const currentRow = currentIndex >= 0 ? rows[currentIndex] : null;
+  const latestCompetitorActivity = rows
+    .filter((row) => !row.is_current && row.offer_revision_at)
+    .sort((left, right) => new Date(right.offer_revision_at).getTime() - new Date(left.offer_revision_at).getTime())[0] || null;
   return {
     updated_at: new Date().toISOString(),
+    current_invitation_id: cleanText(currentInvitation.id) || null,
+    current_invitation_token: cleanText(currentInvitation.invitation_token) || null,
+    current_offer_revision_at: currentRow?.offer_revision_at || cleanText(currentInvitation.updated_at || currentInvitation.responded_at) || null,
+    latest_competitor_activity_at: latestCompetitorActivity?.offer_revision_at || null,
     visibility,
     marketplace_mode: "capacity_score",
     award_outcome: {
@@ -1562,6 +1571,7 @@ function liveBoardFromRows(currentInvitation: Record<string, unknown>, peerRows:
       markup_pct: row.is_current || visibility.competitor_rates_visible ? row.markup_pct : null,
       rate_basis: row.rate_basis,
       fee_label: row.is_current || visibility.competitor_rates_visible ? row.fee_label : null,
+      offer_revision_at: row.is_current ? row.offer_revision_at : null,
       weekly_capacity: row.weekly_capacity,
       transit_days: row.transit_days,
       valid_through: row.valid_through,
@@ -2116,6 +2126,7 @@ function resolvedPublicInvitationEvent(
 
 async function publicBidRoomFindInvitations(supabase: ReturnType<typeof createClient>, input: Record<string, unknown>) {
   const email = cleanEmail(input.email);
+  const sendLinks = cleanBoolean(input.send_links) === true;
   const language = ["en", "es"].includes(String(cleanText(input.language) || "").toLowerCase())
     ? String(cleanText(input.language)).toLowerCase()
     : "en";
@@ -2193,6 +2204,20 @@ async function publicBidRoomFindInvitations(supabase: ReturnType<typeof createCl
       message: language === "es"
         ? "No encontramos invitaciones activas para ese correo. Solicita invitacion desde una oportunidad publica."
         : "No active invitations were found for that email. Request an invitation from a public opportunity."
+    };
+  }
+
+  if (!sendLinks) {
+    return {
+      sent: false,
+      access_checked: true,
+      matched: matchingInvitations.length,
+      matched_lane_ids: matchedLaneIds,
+      matched_event_ids: matchedEventIds,
+      matched_invitations: matchedInvitations,
+      message: language === "es"
+        ? `Encontramos ${matchingInvitations.length} invitacion(es) activa(s). Si ya abriste un link privado en este navegador, abre la puja directamente. Recupera un link solo cuando lo necesites.`
+        : `We found ${matchingInvitations.length} active invitation(s). If you already opened a private link in this browser, open the bid directly. Recover a link only when you need one.`
     };
   }
 
@@ -3501,6 +3526,12 @@ function bidRateStagingInput(
   const vendorDomain = carrierDomain(vendor.domain) || carrierDomain(vendor.primary_email);
   const vendorReference = cleanText(vendor.vendor_name || vendor.domain || vendor.primary_email || invitation.vendor_id);
   const quoteDate = cleanDate(updatedBid.responded_at || now);
+  const ownerEmail = cleanText(event.owner_email);
+  const bidOutcome = revisionType === "best_final"
+    ? "best_and_final"
+    : revisionType === "revision"
+      ? "revised"
+      : "submitted";
   const rfxId = cleanText(event.rfx_id) || "RFx";
   const laneNumber = cleanText(lane.lane_number || invitation.rfx_lane_id) || "lane";
   const carrierKey = vendorDomain || safeStorageSegment(vendorReference || invitation.vendor_id, "carrier");
@@ -3524,6 +3555,7 @@ function bidRateStagingInput(
   const deadheadUnit = deadheadDistance !== null ? cleanText(updatedBid.deadhead_unit) || "mi" : null;
 
   return {
+    owner_email: ownerEmail,
     vendor_id: invitation.vendor_id || null,
     vendor_domain: vendorDomain,
     vendor_reference: vendorReference,
@@ -3592,6 +3624,7 @@ function bidRateStagingInput(
     markup_pct: economics.markup_pct,
     rate_basis: economics.rate_basis,
     source_bid_status: revisionType,
+    rfx_bid_outcome: bidOutcome,
     confidence: 1,
     extraction_warnings: [],
     audit_flags: [],
@@ -3706,6 +3739,7 @@ async function ensureBidRateStagingRow(
       file_size_bytes: 0,
       document_type: "email",
       vendor_id: invitation.vendor_id || null,
+      owner_email: cleanText(event.owner_email),
       vendor_hint: row.vendor_domain || row.vendor_reference || null,
       rfx_hint: event.rfx_id || null,
       status: "staged",
@@ -3769,6 +3803,29 @@ async function ensureBidRateStagingRow(
     raw_upload_id: rawUpload.data.id,
     job_id: job.data.id
   };
+}
+
+async function archiveWithdrawnBidRateStaging(
+  supabase: ReturnType<typeof createClient>,
+  invitation: Record<string, unknown>,
+  now: string
+) {
+  const stagingId = cleanText(invitation.bid_rate_staging_id);
+  if (!stagingId) return null;
+
+  const result = await supabase
+    .from("rate_staging")
+    .update({
+      status: "archived",
+      source_bid_status: "withdrawn",
+      rfx_bid_outcome: "withdrawn",
+      updated_at: now
+    })
+    .eq("id", stagingId)
+    .select("id,status,rfx_bid_outcome")
+    .maybeSingle();
+  if (result.error) throw result.error;
+  return result.data || null;
 }
 
 async function hashCustomerRfiToken(token: string) {
@@ -4435,6 +4492,7 @@ Deno.serve(async (request) => {
           invited_at,
           viewed_at,
           responded_at,
+          updated_at,
           bid_rate,
           bid_rate_staging_id,
           currency,
@@ -4775,6 +4833,9 @@ Deno.serve(async (request) => {
         throw new Error("No active offer is available to withdraw.");
       }
 
+      // Preserve the submitted carrier cost for audit and comparison; a later re-bid creates a new staging row.
+      const archivedBidStaging = await archiveWithdrawnBidRateStaging(supabase, invitationResult.data, now);
+
       const result = await supabase
         .from("rfx_lane_vendors")
         .update({
@@ -4800,8 +4861,6 @@ Deno.serve(async (request) => {
           mirror_account_enabled: false,
           availability_validation_status: "not_requested",
           availability_validation_notes: null,
-          bid_rate_staging_id: null,
-          bid_rate_staged_at: null,
           notes: reason || cleanText(invitationResult.data.notes),
           response_source: "carrier_portal",
           responded_at: now,
@@ -4845,7 +4904,8 @@ Deno.serve(async (request) => {
               marksman_margin_pct: cleanNumber(invitationResult.data.marksman_margin_pct),
               carrier_share_pct: cleanNumber(invitationResult.data.carrier_share_pct),
               bid_rate_staging_id: cleanText(invitationResult.data.bid_rate_staging_id)
-            }
+            },
+            rate_staging: archivedBidStaging
           }
         });
         if (historyResult.error) throw historyResult.error;
@@ -4873,11 +4933,24 @@ Deno.serve(async (request) => {
           transit_days,
           valid_through,
           commercial_model,
+          marksman_margin_pct,
+          carrier_share_pct,
+          best_alternative_offered,
+          alternative_equipment,
+          alternative_units,
+          alternative_notes,
           equipment_available,
           current_unit_location,
           deadhead_distance,
           deadhead_unit,
+          unit_details,
+          eta_pickup,
+          eta_delivery,
+          mirror_account_enabled,
+          availability_validation_status,
+          availability_validation_notes,
           responded_at,
+          response_source,
           notes,
           vendors(vendor_name,domain,primary_email),
           rfx_events(id,owner_user_id,owner_email,rfx_id,name,customer),
@@ -4991,10 +5064,24 @@ Deno.serve(async (request) => {
               transit_days: cleanNumber(invitationResult.data.transit_days),
               valid_through: cleanDate(invitationResult.data.valid_through),
               commercial_model: cleanText(invitationResult.data.commercial_model),
+              marksman_margin_pct: cleanNumber(invitationResult.data.marksman_margin_pct),
+              carrier_share_pct: cleanNumber(invitationResult.data.carrier_share_pct),
+              best_alternative_offered: cleanBoolean(invitationResult.data.best_alternative_offered),
+              alternative_equipment: cleanText(invitationResult.data.alternative_equipment),
+              alternative_units: cleanNumber(invitationResult.data.alternative_units),
+              alternative_notes: cleanText(invitationResult.data.alternative_notes),
               equipment_available: cleanBoolean(invitationResult.data.equipment_available),
               current_unit_location: cleanText(invitationResult.data.current_unit_location),
               deadhead_distance: cleanNumber(invitationResult.data.deadhead_distance),
               deadhead_unit: cleanText(invitationResult.data.deadhead_unit),
+              unit_details: cleanText(invitationResult.data.unit_details),
+              eta_pickup: cleanTimestamp(invitationResult.data.eta_pickup),
+              eta_delivery: cleanTimestamp(invitationResult.data.eta_delivery),
+              mirror_account_enabled: cleanBoolean(invitationResult.data.mirror_account_enabled),
+              availability_validation_status: cleanText(invitationResult.data.availability_validation_status),
+              availability_validation_notes: cleanText(invitationResult.data.availability_validation_notes),
+              notes: cleanText(invitationResult.data.notes),
+              response_source: cleanText(invitationResult.data.response_source),
               responded_at: invitationResult.data.responded_at || null
             },
             after: {
@@ -5004,10 +5091,24 @@ Deno.serve(async (request) => {
               transit_days: patch.transit_days,
               valid_through: patch.valid_through,
               commercial_model: patch.commercial_model,
+              marksman_margin_pct: patch.marksman_margin_pct,
+              carrier_share_pct: patch.carrier_share_pct,
+              best_alternative_offered: patch.best_alternative_offered,
+              alternative_equipment: patch.alternative_equipment,
+              alternative_units: patch.alternative_units,
+              alternative_notes: patch.alternative_notes,
               equipment_available: patch.equipment_available,
               current_unit_location: patch.current_unit_location,
               deadhead_distance: patch.deadhead_distance,
               deadhead_unit: patch.deadhead_unit,
+              unit_details: patch.unit_details,
+              eta_pickup: patch.eta_pickup,
+              eta_delivery: patch.eta_delivery,
+              mirror_account_enabled: patch.mirror_account_enabled,
+              availability_validation_status: patch.availability_validation_status,
+              availability_validation_notes: patch.availability_validation_notes,
+              notes: patch.notes,
+              response_source: patch.response_source,
               responded_at: patch.responded_at
             }
           }

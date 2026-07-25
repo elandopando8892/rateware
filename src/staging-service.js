@@ -55,6 +55,15 @@ export async function updateStagingRow(id, patch) {
   return (await callRatewareApi("update_staging", { id, patch })).row;
 }
 
+export async function bulkUpdateStagingRows(ids = [], patch = {}) {
+  return await callRatewareApi("bulk_update_staging", {
+    ids,
+    patch,
+    confirmed: true,
+    confirmation_action: "bulk_update_staging"
+  });
+}
+
 export async function renormalizeStagingRows(ids = []) {
   return await callRatewareApi("renormalize_rate_rows", { ids, confirmed: true, confirmation_action: "renormalize_rate_rows" });
 }

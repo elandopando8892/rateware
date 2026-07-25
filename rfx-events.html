@@ -80,39 +80,34 @@
 
           <section class="bid-room-workspace">
             <section class="bid-room-control-panel">
-              <div class="bid-room-title-row">
-                <div>
-                  <p class="eyebrow">Active bid room</p>
-                  <h2 id="rfx-detail-title">Select or create an event</h2>
-                  <p id="rfx-ops-subtitle">One workflow: event setup, lane book, participants, outreach, auction, award.</p>
-                </div>
-                <details class="bid-room-action-menu">
-                  <summary>Event actions</summary>
-                  <div class="action-row">
-                    <button id="edit-rfx-button" class="secondary small-button" type="button" disabled>Edit</button>
-                    <button id="duplicate-rfx-button" class="secondary small-button" type="button" disabled>Duplicate</button>
-                    <button id="open-rfx-button" class="secondary small-button" type="button" disabled>Mark open</button>
-                    <button id="close-rfx-button" class="secondary small-button" type="button" disabled>Close</button>
-                    <button id="archive-rfx-button" class="secondary small-button" type="button" disabled>Archive</button>
-                    <button id="delete-rfx-button" class="danger small-button" type="button" disabled>Delete</button>
+              <div class="bid-room-event-overview">
+                <div class="bid-room-title-row">
+                  <div>
+                    <p class="eyebrow">Active bid room</p>
+                    <h2 id="rfx-detail-title">Select or create an event</h2>
+                    <p id="rfx-ops-subtitle">One workflow: event setup, lane book, participants, outreach, auction, award.</p>
                   </div>
-                </details>
+                  <details class="bid-room-action-menu">
+                    <summary>Event actions</summary>
+                    <div class="action-row">
+                      <button id="edit-rfx-button" class="secondary small-button" type="button" disabled>Edit</button>
+                      <button id="duplicate-rfx-button" class="secondary small-button" type="button" disabled>Duplicate</button>
+                      <button id="open-rfx-button" class="secondary small-button" type="button" disabled>Mark open</button>
+                      <button id="close-rfx-button" class="secondary small-button" type="button" disabled>Close</button>
+                      <button id="archive-rfx-button" class="secondary small-button" type="button" disabled>Archive</button>
+                      <button id="delete-rfx-button" class="danger small-button" type="button" disabled>Delete</button>
+                    </div>
+                  </details>
+                </div>
+
+                <div id="rfx-ops-health" class="bid-room-metrics">
+                  <article><span>Event</span><strong>-</strong><small>No bid event selected.</small></article>
+                  <article><span>Lanes</span><strong>0</strong><small>Paste or import the book.</small></article>
+                  <article><span>Targets</span><strong>0</strong><small>No carriers shortlisted.</small></article>
+                  <article><span>Bids</span><strong>0</strong><small>No live offers yet.</small></article>
+                </div>
               </div>
               <p id="rfx-action-status" class="row-save-status bid-room-action-status" role="status"></p>
-
-              <div id="rfx-ops-health" class="bid-room-metrics">
-                <article><span>Event</span><strong>-</strong><small>No bid event selected.</small></article>
-                <article><span>Lanes</span><strong>0</strong><small>Paste or import the book.</small></article>
-                <article><span>Targets</span><strong>0</strong><small>No carriers shortlisted.</small></article>
-                <article><span>Bids</span><strong>0</strong><small>No live offers yet.</small></article>
-              </div>
-
-              <section id="rfx-launch-readiness" class="bid-room-readiness-panel" aria-live="polite">
-                <div>
-                  <p class="eyebrow">Launch QA</p>
-                  <h3>Select a bid event to inspect readiness</h3>
-                </div>
-              </section>
 
               <div class="bid-room-flow-shell">
                 <nav id="rfx-ops-stage-rail" class="bid-room-stage-rail" role="tablist" aria-label="Bid Room stages">
@@ -149,6 +144,18 @@
                   <div class="bid-room-workflow-meter" aria-label="0 of 6 workflow steps ready"><i style="width: 0%"></i></div>
                   <strong>Step 1: Create or select the bid room</strong>
                   <small>Start the private procurement workflow.</small>
+                  <details class="bid-room-readiness-disclosure bid-room-side-checklist" open>
+                    <summary>
+                      <span>Operating checklist</span>
+                      <small>Readiness and blockers</small>
+                    </summary>
+                    <section id="rfx-launch-readiness" class="bid-room-readiness-panel" aria-live="polite">
+                      <div>
+                        <p class="eyebrow">Launch QA</p>
+                        <h3>Select a bid event to inspect readiness</h3>
+                      </div>
+                    </section>
+                  </details>
                 </aside>
               </div>
             </section>
@@ -327,20 +334,23 @@
                   <p class="eyebrow">Step 3</p>
                   <h3>Participants</h3>
                 </div>
+                <span class="status-pill muted">CRM shortlist</span>
               </div>
               <div class="bid-room-carrier-grid">
                 <section class="rfx-shortlist-box">
-                  <div>
-                    <p class="eyebrow">Carrier CRM participants</p>
-                    <h3>Select carriers for this bid</h3>
+                  <div class="bid-room-participant-heading">
+                    <div>
+                      <p class="eyebrow">Carrier CRM</p>
+                      <h3>Select participants</h3>
+                    </div>
                     <span id="manual-shortlist-source-summary">Loading Carrier CRM...</span>
                   </div>
                   <select id="manual-shortlist-lane" hidden></select>
-                  <label>
-                    Search Carrier CRM
-                    <input id="manual-shortlist-search" placeholder="Carrier, domain, email, coverage..." />
-                  </label>
                   <div class="bid-room-participant-filters">
+                    <label class="bid-room-participant-search">
+                      Search Carrier CRM
+                      <input id="manual-shortlist-search" placeholder="Carrier, domain, email, coverage..." />
+                    </label>
                     <label>
                       Saved list / segment
                       <select id="manual-shortlist-segment">
@@ -360,15 +370,22 @@
                   <select id="manual-shortlist-vendors" multiple size="4" hidden></select>
                 </section>
                 <section class="bid-room-selected-participants">
-                  <div>
-                    <p class="eyebrow">Selected participants</p>
-                    <h3>Bid carrier list</h3>
+                  <div class="bid-room-participant-heading">
+                    <div>
+                      <p class="eyebrow">Invite list</p>
+                      <h3>Selected participants</h3>
+                    </div>
                     <span id="manual-shortlist-selected-count">0 selected</span>
                   </div>
                   <div id="manual-shortlist-selected-list" class="bid-room-selected-list">
                     <article>Select carriers from the CRM list.</article>
                   </div>
-                  <div class="bid-room-participant-template-actions">
+                  <div class="bid-room-participant-commit">
+                    <button id="manual-shortlist-button" class="page-primary-action" type="button" disabled>Add selected to bid</button>
+                    <p id="manual-shortlist-status" class="status-message" role="status"></p>
+                  </div>
+                  <details class="bid-room-participant-template-actions">
+                    <summary>Saved carrier list</summary>
                     <label>
                       Save selected list as template
                       <input id="manual-shortlist-template-name" placeholder="Template name, e.g. Crossborder NL targets" />
@@ -379,9 +396,7 @@
                       <button id="update-manual-shortlist-template" class="secondary small-button" type="button" disabled>Update template</button>
                       <button id="delete-manual-shortlist-template" class="danger small-button" type="button" disabled>Delete template</button>
                     </div>
-                  </div>
-                  <button id="manual-shortlist-button" class="secondary" type="button" disabled>Add selected to bid</button>
-                  <p id="manual-shortlist-status" class="status-message" role="status"></p>
+                  </details>
                   <details class="bid-room-participant-template">
                     <summary>Bulk import participant template</summary>
                     <div>
@@ -452,35 +467,40 @@
                   <p id="rfx-outreach-carrier-status" class="status-message" role="status"></p>
                 </div>
               </details>
-              <section class="rfx-outreach-control-center" aria-labelledby="rfx-outreach-audience-title">
+              <section id="rfx-outreach-audience-builder" class="rfx-outreach-control-center" aria-labelledby="rfx-outreach-audience-title">
                 <div class="rfx-outreach-control-heading">
                   <div>
-                    <p class="eyebrow">Audience builder</p>
-                    <h4 id="rfx-outreach-audience-title">Contact policy and carrier ledger</h4>
-                    <span>Build the next wave from eligible CRM carriers. Sent, replied, bounced, and suppressed contacts remain visible with their next action.</span>
+                    <p class="eyebrow">Outreach control</p>
+                    <h4 id="rfx-outreach-audience-title">Choose who should receive this wave</h4>
+                    <span>Each carrier stays in one contact history: ready, contacted, bounced, suppressed, or awaiting review.</span>
+                  </div>
+                  <div class="rfx-outreach-audience-metrics" aria-live="polite">
+                    <span><strong id="rfx-outreach-audience-ready-count">0</strong> ready</span>
+                    <span><strong id="rfx-outreach-audience-contacted-count">0</strong> contacted</span>
+                    <span><strong id="rfx-outreach-audience-attention-count">0</strong> attention</span>
                   </div>
                   <button id="rfx-refresh-outreach-audience" type="button" class="secondary small-button">Refresh audience</button>
                 </div>
                 <div class="rfx-outreach-audience-controls">
-                  <label>
-                    Audience
+                  <label class="rfx-outreach-audience-source">
+                    Source
                     <select id="rfx-outreach-audience-mode">
                       <option value="all_eligible">All eligible carriers</option>
                       <option value="saved_segment">Saved segment</option>
                     </select>
                   </label>
-                  <label>
-                    Saved segment
+                  <label class="rfx-outreach-audience-segment-field">
+                    List
                     <select id="rfx-outreach-audience-segment">
                       <option value="">Choose a saved segment</option>
                     </select>
                   </label>
-                  <label>
-                    Search audience
+                  <label class="rfx-outreach-audience-search-field">
+                    Search
                     <input id="rfx-outreach-audience-search" type="search" placeholder="Carrier, domain, contact..." autocomplete="off" />
                   </label>
-                  <label>
-                    Outcome
+                  <label class="rfx-outreach-audience-outcome-field">
+                    Status
                     <select id="rfx-outreach-audience-status-filter">
                       <option value="all">All outcomes</option>
                       <option value="ready">Ready</option>
@@ -494,9 +514,9 @@
                   </label>
                 </div>
                 <div class="rfx-outreach-audience-segment-controls">
-                  <input id="rfx-outreach-audience-segment-name" placeholder="Save selected carriers as a segment" autocomplete="off" />
-                  <button id="rfx-save-outreach-audience-segment" type="button" class="secondary small-button">Save segment</button>
-                  <button id="rfx-archive-outreach-audience-segment" type="button" class="secondary small-button">Archive segment</button>
+                  <input id="rfx-outreach-audience-segment-name" placeholder="Save selected as a list" autocomplete="off" />
+                  <button id="rfx-save-outreach-audience-segment" type="button" class="secondary small-button">Save list</button>
+                  <button id="rfx-archive-outreach-audience-segment" type="button" class="secondary small-button">Archive list</button>
                   <span id="rfx-outreach-audience-summary" class="status-pill muted">No audience loaded</span>
                 </div>
                 <p id="rfx-outreach-audience-status" class="status-message" role="status"></p>
@@ -507,31 +527,37 @@
                         <th>Select</th>
                         <th>Carrier</th>
                         <th>Contact</th>
-                        <th>Lanes</th>
-                        <th>Outcome</th>
-                        <th>Reason</th>
+                        <th>Status</th>
                         <th>Next action</th>
                       </tr>
                     </thead>
                     <tbody id="rfx-outreach-audience-list">
-                      <tr><td colspan="7">Select a Bid Room to load the audience ledger.</td></tr>
+                      <tr><td colspan="5">Select a Bid Room to load the outreach audience.</td></tr>
                     </tbody>
                   </table>
                 </div>
               </section>
               <div class="rfx-outreach-grid bid-room-invite-grid">
                 <div class="rfx-outreach-controls">
+                  <div class="rfx-outreach-section-heading">
+                    <div>
+                      <p class="eyebrow">Message setup</p>
+                      <h4>Compose this invitation</h4>
+                      <span>Choose the language, sender, and delivery channel. Preparing a queue never sends a message automatically.</span>
+                    </div>
+                    <span class="status-pill muted">Draft first</span>
+                  </div>
                   <form id="rfx-outreach-form" class="rfx-outreach-form">
                     <label>
-                      Invitation wave
+                      Wave name
                       <input id="rfx-outreach-campaign-name" placeholder="RFx invitation wave" />
                     </label>
                     <label>
-                      Invite template
+                      Message language
                       <select id="rfx-outreach-template"></select>
                     </label>
                     <label>
-                      Send channel
+                      Delivery channel
                       <select id="rfx-outreach-channel">
                         <option value="email">Gmail only</option>
                         <option value="whatsapp">WhatsApp Business direct only</option>
@@ -540,7 +566,7 @@
                       <small>Generate one channel at a time. Gmail, WhatsApp Business, and WhatsApp groups use separate queues.</small>
                     </label>
                     <label id="rfx-whatsapp-target-mode-field">
-                      WhatsApp target
+                      WhatsApp contact
                       <select id="rfx-whatsapp-target-mode">
                         <option value="direct_vendor">Direct vendor contact</option>
                         <option value="vendor_group">Vendor group only</option>
@@ -548,12 +574,12 @@
                       </select>
                     </label>
                     <label>
-                      Send from
+                      Sender
                       <select id="rfx-outreach-sender">
                         <option value="sales@heymarksman.com">sales@heymarksman.com</option>
                       </select>
                     </label>
-                    <button id="create-rfx-outreach-campaign" type="submit" disabled>Generate draft queue</button>
+                    <button id="create-rfx-outreach-campaign" type="submit" disabled>Prepare delivery queue</button>
                     <p id="rfx-outreach-status" class="status-message" role="status"></p>
                   </form>
                   <section id="rfx-whatsapp-readiness" class="gmail-sender-note whatsapp-template-readiness">
@@ -591,15 +617,26 @@
                     </div>
                   </details>
                 </div>
-                <div id="rfx-outreach-preview" class="outreach-template-preview">
-                  <strong>No template selected.</strong>
-                  <span>Select a template to preview the carrier invite before creating drafts.</span>
+                <div class="rfx-outreach-preview-panel">
+                  <div class="rfx-outreach-section-heading rfx-outreach-preview-heading">
+                    <div>
+                      <p class="eyebrow">Live preview</p>
+                      <h4>What the carrier will receive</h4>
+                    </div>
+                    <span class="status-pill muted">Preview only</span>
+                  </div>
+                  <div id="rfx-outreach-preview" class="outreach-template-preview">
+                    <strong>No message selected.</strong>
+                    <span>Choose a language to preview the carrier invitation before preparing drafts.</span>
+                  </div>
                 </div>
               </div>
               <div class="rfx-touchpoint-panel rfx-draft-queue-panel">
-                <div>
-                  <strong>Draft queue</strong>
+                <div class="rfx-draft-queue-intro">
+                  <p class="eyebrow">Delivery queue</p>
+                  <strong>Review before sending</strong>
                   <span id="rfx-draft-summary">No drafts generated for this bid event.</span>
+                  <small>One contact record per carrier, message channel, and RFx. Sent history remains preserved.</small>
                 </div>
                 <div class="rfx-draft-workbench">
                   <div class="rfx-draft-filterbar">

@@ -711,25 +711,36 @@ function persistInvitationAccess() {
 
 function rememberInvitationAccess(email, data = {}) {
   const normalizedEmail = normalizePublicEmail(email);
+  const emailChanged = Boolean(state.inviteEmail && normalizedEmail && state.inviteEmail !== normalizedEmail);
+  if (emailChanged) {
+    // A shared browser must not retain another carrier's private bid tokens.
+    state.invitedLaneIds = new Set();
+    state.invitedEventIds = new Set();
+    state.verifiedInvitations = [];
+    localStorage.removeItem(VERIFIED_INVITES_KEY);
+  }
   state.inviteEmail = normalizedEmail;
   state.inviteLookupComplete = Boolean(normalizedEmail);
-  state.invitedLaneIds = new Set(
-    Array.isArray(data.matched_lane_ids)
-      ? data.matched_lane_ids.map((id) => String(id || "")).filter(Boolean)
-      : []
-  );
-  state.invitedEventIds = new Set(
-    Array.isArray(data.matched_event_ids)
-      ? data.matched_event_ids.map((id) => String(id || "")).filter(Boolean)
-      : []
-  );
+  for (const laneId of Array.isArray(data.matched_lane_ids) ? data.matched_lane_ids : []) {
+    const normalizedLaneId = String(laneId || "");
+    if (normalizedLaneId) state.invitedLaneIds.add(normalizedLaneId);
+  }
+  for (const eventId of Array.isArray(data.matched_event_ids) ? data.matched_event_ids : []) {
+    const normalizedEventId = String(eventId || "");
+    if (normalizedEventId) state.invitedEventIds.add(normalizedEventId);
+  }
   persistInvitationAccess();
 }
 
 function verifiedInvitationForRow(row = {}) {
   const laneId = String(row.id || "");
+  const eventId = String(row.event?.id || row.event_id || "");
   if (!laneId) return null;
-  return state.verifiedInvitations.find((item) => String(item.lane_id || "") === laneId && item.token) || null;
+  return state.verifiedInvitations.find((item) => (
+    String(item.lane_id || "") === laneId
+    && (!eventId || !item.event_id || String(item.event_id || "") === eventId)
+    && item.token
+  )) || null;
 }
 
 function invitationAccessForRow(row = {}) {
@@ -1039,7 +1050,8 @@ async function sendPrivateLinksForRow(row, button = null) {
       email: state.inviteEmail,
       event_id: row.event?.id || row.event_id || "",
       lane_id: row.id || "",
-      language: state.language
+      language: state.language,
+      send_links: true
     });
     rememberInvitationAccess(state.inviteEmail, data);
     renderBoard();
@@ -1258,14 +1270,14 @@ softLoginDrawer?.addEventListener("submit", async (event) => {
       email,
       event_id: softLoginDrawer.dataset.eventId || "",
       lane_id: softLoginDrawer.dataset.laneId || "",
-      language: state.language
+      language: state.language,
+      send_links: false
     });
     const profile = requestProfile();
     saveRequestProfile({ ...profile, email });
     rememberInvitationAccess(email, data);
     renderBoard();
-    status.textContent = apiErrorMessage({ message: data.message }, "", "If invitations exist, private links were sent to that email.");
-    if (data.sent) queueAlert("linksSent", { route_label: "Private Bid Room", event: { name: "Soft login" } });
+    status.textContent = apiErrorMessage({ message: data.message }, "", "Invitation access was checked. Recover a private link only when you need one.");
   } catch (error) {
     status.textContent = humanizeError(error) || "Could not find invitations right now.";
   } finally {

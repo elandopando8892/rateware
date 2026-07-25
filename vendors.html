@@ -178,9 +178,11 @@
                 <button id="vendor-funnel-regress-stage" class="secondary small-button" type="button">Back one stage</button>
               </div>
             </div>
-            <div id="vendor-funnel-strip" class="vendor-funnel-strip" aria-label="Vendor funnel stages"></div>
-            <div class="funnel-workspace">
-              <div id="vendor-funnel-board" class="vendor-funnel-board" aria-label="Vendor funnel Kanban"></div>
+            <div id="vendor-funnel-scroll" class="vendor-funnel-scroll" aria-label="Procurement pipeline board">
+              <div id="vendor-funnel-strip" class="vendor-funnel-strip" aria-label="Vendor funnel stages"></div>
+              <div class="funnel-workspace">
+                <div id="vendor-funnel-board" class="vendor-funnel-board" aria-label="Vendor funnel Kanban"></div>
+              </div>
             </div>
             <p id="vendor-funnel-status" class="status-message" role="status"></p>
           </section>
@@ -839,6 +841,13 @@
               </div>
               <div id="drawer-rateware-evidence">-</div>
             </section>
+            <section id="drawer-email-delivery-card" class="vendor-drawer-card vendor-email-delivery-card hidden">
+              <div class="section-heading compact">
+                <p class="eyebrow">Email delivery</p>
+                <h2>Correct undeliverable contacts</h2>
+              </div>
+              <div id="drawer-email-delivery" class="drawer-email-delivery"></div>
+            </section>
             <section class="vendor-drawer-card">
               <div class="section-heading compact">
                 <div>
@@ -849,6 +858,21 @@
               </div>
               <div id="drawer-vendor-support" class="drawer-vendor-support">
                 <p class="status-message">Open a vendor to load support tickets.</p>
+              </div>
+            </section>
+            <section class="vendor-drawer-card">
+              <div class="section-heading compact">
+                <div>
+                  <p class="eyebrow">Carrier 360</p>
+                  <h2>Relationship activity</h2>
+                </div>
+                <div class="action-row">
+                  <a class="secondary small-button" href="./vendor-improvement.html">Vendor CI</a>
+                  <a class="secondary small-button" href="./bid-room.html">Bid Room</a>
+                </div>
+              </div>
+              <div id="drawer-vendor-relationship" class="drawer-vendor-relationship">
+                <p class="status-message">Open a vendor to load linked support, improvement, and Bid Room activity.</p>
               </div>
             </section>
             <section class="vendor-drawer-card">
@@ -1014,10 +1038,15 @@
                   <h2>Carrier setup fields</h2>
                 </div>
                 <div id="drawer-profile-fields" class="drawer-profile-fields"></div>
+                <div class="drawer-profile-save-row">
+                  <span id="drawer-profile-dirty-message" class="muted-text">No profile changes</span>
+                  <button id="drawer-save-profile-button" class="secondary small-button" type="button">Save carrier profile</button>
+                </div>
               </div>
               <div class="action-row">
                 <button id="drawer-save-button" type="submit">Save changes</button>
                 <button id="drawer-archive-button" class="secondary" type="button">Archive vendor</button>
+                <span id="drawer-edit-dirty-message" class="muted-text">No unsaved changes</span>
                 <p id="drawer-edit-status-message" class="status-message" role="status"></p>
               </div>
             </form>

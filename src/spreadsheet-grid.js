@@ -71,8 +71,11 @@ function setControlValue(control, value) {
     control.checked = booleanValue(value);
   } else if (control.tagName === "SELECT") {
     const text = String(value ?? "").trim();
-    if (text && ![...control.options].some((option) => option.value === text)) {
+    const isKnownOption = !text || [...control.options].some((option) => option.value === text);
+    if (!isKnownOption) {
       control.add(new Option(text, text));
+      // Preserve pasted data, but let the host grid flag it until the user confirms a catalog value.
+      control.dataset.gridInvalidOption = text;
     }
     control.value = text;
   } else {

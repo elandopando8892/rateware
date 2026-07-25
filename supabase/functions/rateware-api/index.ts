@@ -1160,7 +1160,9 @@ function catalogMatch(index: Map<string, Map<string, Record<string, unknown>>>, 
 }
 
 function buildLocationIndex(locations: Record<string, unknown>[]) {
-  const index = new Map<string, Record<string, unknown>>();
+  // A city, metro, market, or state key can legitimately exist in more than one
+  // country. Keep every candidate so the country profile can decide the match.
+  const index = new Map<string, Record<string, unknown>[]>();
   for (const location of locations) {
     const keys = [
       location.location_key,
@@ -1175,8 +1177,10 @@ function buildLocationIndex(locations: Record<string, unknown>[]) {
     if (locationCountry(location) !== "MX") keys.push(location.zip_prefix);
 
     for (const lookup of keys.map(catalogKey).filter(Boolean)) {
-      const existing = index.get(lookup);
-      if (!existing || optionQuality(location) > optionQuality(existing)) index.set(lookup, location);
+      const bucket = index.get(lookup) || [];
+      if (!bucket.includes(location)) bucket.push(location);
+      bucket.sort((left, right) => optionQuality(right) - optionQuality(left));
+      index.set(lookup, bucket);
     }
   }
   return index;
@@ -1197,12 +1201,12 @@ function locationCandidate(location: Record<string, unknown>, score: number, rea
   };
 }
 
-function locationMatch(index: Map<string, Record<string, unknown>>, value: unknown) {
+function locationMatch(index: Map<string, Record<string, unknown>[]>, value: unknown, countryHint: unknown = null) {
   const lookup = catalogKey(value);
   if (!lookup) return null;
-  const profile = locationTextProfile(value);
+  const profile = locationTextProfile([value, countryHint].filter(Boolean).join(" "));
 
-  const direct = index.get(lookup);
+  const direct = (index.get(lookup) || []).find((location) => locationMatchesProfile(location, profile));
   if (direct && locationMatchesProfile(direct, profile)) {
     return {
       location: direct,
@@ -1218,8 +1222,10 @@ function locationMatch(index: Map<string, Record<string, unknown>>, value: unkno
     && !profile.explicitMx
     && (profile.explicitUs || profile.explicitCa || (!profile.hasMxEvidence && !profile.hasFiveDigitPostal));
   if (allowZipShortcut && index.get(catalogKey(zip))) {
-    const zipMatch = index.get(catalogKey(zip))!;
-    if (locationMatchesProfile(zipMatch, profile) && locationCountry(zipMatch) !== "MX") {
+    const zipMatch = (index.get(catalogKey(zip)) || []).find((location) =>
+      locationMatchesProfile(location, profile) && locationCountry(location) !== "MX"
+    );
+    if (zipMatch) {
       return {
         location: zipMatch,
         score: 92,
@@ -1231,61 +1237,63 @@ function locationMatch(index: Map<string, Record<string, unknown>>, value: unkno
 
   const candidates: Array<{ location: Record<string, unknown>; score: number; reason: string }> = [];
   const seen = new Set<Record<string, unknown>>();
-  for (const [, location] of index) {
-    if (seen.has(location)) continue;
-    seen.add(location);
-    if (!locationMatchesProfile(location, profile)) continue;
-    let score = 0;
-    const reasons: string[] = [];
-    const country = locationCountry(location);
-    if ((profile.explicitMx && country === "MX") || (profile.explicitUs && country === "US") || (profile.explicitCa && country === "CA")) {
-      score += 12;
-      reasons.push("country hint");
-    }
-    const zipPrefix = catalogKey(location.zip_prefix);
-    if (zipPrefix && locationZipPrefixMatches(profile, zipPrefix)) {
-      const zipCompatible = country === "MX"
-        || profile.explicitUs
-        || profile.explicitCa
-        || (!profile.hasMxEvidence && !profile.hasFiveDigitPostal);
-      if (zipCompatible) {
-        score += country === "MX" ? 12 : 55;
-        reasons.push(country === "MX" ? "mx postal auxiliary" : "zip prefix");
+  for (const bucket of index.values()) {
+    for (const location of bucket) {
+      if (seen.has(location)) continue;
+      seen.add(location);
+      if (!locationMatchesProfile(location, profile)) continue;
+      let score = 0;
+      const reasons: string[] = [];
+      const country = locationCountry(location);
+      if ((profile.explicitMx && country === "MX") || (profile.explicitUs && country === "US") || (profile.explicitCa && country === "CA")) {
+        score += 12;
+        reasons.push("country hint");
       }
+      const zipPrefix = catalogKey(location.zip_prefix);
+      if (zipPrefix && locationZipPrefixMatches(profile, zipPrefix)) {
+        const zipCompatible = country === "MX"
+          || profile.explicitUs
+          || profile.explicitCa
+          || (!profile.hasMxEvidence && !profile.hasFiveDigitPostal);
+        if (zipCompatible) {
+          score += country === "MX" ? 12 : 55;
+          reasons.push(country === "MX" ? "mx postal auxiliary" : "zip prefix");
+        }
+      }
+      const state = catalogKey(location.state_code);
+      const stateMatches = state && profile.tokens.some((token) => normalizedLocationStateCode(token) === normalizedLocationStateCode(state));
+      if (state && (lookup.includes(state) || stateMatches)) {
+        score += country === "MX" ? 38 : 30;
+        reasons.push("state match");
+      }
+      const stateName = catalogKey(location.state_name);
+      if (stateName && lookup.includes(stateName)) {
+        score += country === "MX" ? 32 : 20;
+        reasons.push("state name");
+      }
+      const city = catalogKey(location.city);
+      if (city && lookup.includes(city)) {
+        score += country === "MX" ? 48 : 38;
+        reasons.push("city match");
+      }
+      const metro = catalogKey(location.metro_city);
+      if (metro && (lookup.includes(metro) || metro.includes(lookup))) {
+        score += country === "MX" ? 42 : 30;
+        reasons.push("metro match");
+      }
+      const market = catalogKey(location.market);
+      if (market && (lookup.includes(market) || market.includes(lookup))) {
+        score += country === "MX" ? 30 : 20;
+        reasons.push("market match");
+      }
+      const region = catalogKey(location.region);
+      if (region && (lookup.includes(region) || region.includes(lookup))) {
+        score += country === "MX" ? 18 : 10;
+        reasons.push("region match");
+      }
+      score += Math.max(0, 6 - sourceRank(location.source));
+      if (score >= 25) candidates.push({ location, score, reason: reasons.join(", ") || "catalog match" });
     }
-    const state = catalogKey(location.state_code);
-    const stateMatches = state && profile.tokens.some((token) => normalizedLocationStateCode(token) === normalizedLocationStateCode(state));
-    if (state && (lookup.includes(state) || stateMatches)) {
-      score += country === "MX" ? 38 : 30;
-      reasons.push("state match");
-    }
-    const stateName = catalogKey(location.state_name);
-    if (stateName && lookup.includes(stateName)) {
-      score += country === "MX" ? 32 : 20;
-      reasons.push("state name");
-    }
-    const city = catalogKey(location.city);
-    if (city && lookup.includes(city)) {
-      score += country === "MX" ? 48 : 38;
-      reasons.push("city match");
-    }
-    const metro = catalogKey(location.metro_city);
-    if (metro && (lookup.includes(metro) || metro.includes(lookup))) {
-      score += country === "MX" ? 42 : 30;
-      reasons.push("metro match");
-    }
-    const market = catalogKey(location.market);
-    if (market && (lookup.includes(market) || market.includes(lookup))) {
-      score += country === "MX" ? 30 : 20;
-      reasons.push("market match");
-    }
-    const region = catalogKey(location.region);
-    if (region && (lookup.includes(region) || region.includes(lookup))) {
-      score += country === "MX" ? 18 : 10;
-      reasons.push("region match");
-    }
-    score += Math.max(0, 6 - sourceRank(location.source));
-    if (score >= 25) candidates.push({ location, score, reason: reasons.join(", ") || "catalog match" });
   }
 
   candidates.sort((a, b) => b.score - a.score);
@@ -1393,6 +1401,52 @@ function normalizeEmailList(value: unknown) {
   return Array.from(new Set(emails));
 }
 
+// Vendor contact fields accept pasted lists. Unlike parser extraction, these values
+// must be entirely valid so a typo is never silently discarded during CRM updates.
+const VENDOR_EMAIL_PATTERN = /^[a-z0-9._%+-]+@[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$/i;
+
+function vendorEmailTokens(value: unknown) {
+  const values = Array.isArray(value) ? value : [value];
+  return values.flatMap((item) => String(item || "")
+    .split(/[,;\r\n]+/)
+    .flatMap((part) => {
+      const trimmed = part.trim();
+      if (!trimmed) return [];
+      const bracketed = trimmed.match(/^.*<\s*([^<>\s]+@[^<>\s]+)\s*>\s*$/);
+      return bracketed ? [bracketed[1]] : trimmed.split(/\s+/);
+    })
+    .map((token) => token.trim())
+    .filter(Boolean));
+}
+
+function parseVendorEmailList(value: unknown) {
+  const emails: string[] = [];
+  const invalid: string[] = [];
+  vendorEmailTokens(value).forEach((token) => {
+    const email = token.replace(/^mailto:/i, "").toLowerCase();
+    if (VENDOR_EMAIL_PATTERN.test(email)) emails.push(email);
+    else invalid.push(token);
+  });
+  return {
+    emails: Array.from(new Set(emails)),
+    invalid: Array.from(new Set(invalid))
+  };
+}
+
+function normalizeVendorEmails(primaryValue: unknown, secondaryValue: unknown = []) {
+  const primary = parseVendorEmailList(primaryValue);
+  const secondary = parseVendorEmailList(secondaryValue);
+  const invalid = Array.from(new Set([...primary.invalid, ...secondary.invalid]));
+  if (invalid.length) {
+    throw new Error(`Correct invalid email ${invalid.length === 1 ? "address" : "addresses"}: ${invalid.join(", ")}`);
+  }
+  const emails = Array.from(new Set([...primary.emails, ...secondary.emails]));
+  return {
+    primary_email: emails[0] || "",
+    secondary_emails: emails.slice(1)
+  };
+}
+
 function vendorContactEmailCandidates(vendor: Record<string, unknown>) {
   const secondary = Array.isArray(vendor.secondary_emails) ? vendor.secondary_emails : [];
   return normalizeEmailList([vendor.primary_email, ...secondary]);
@@ -1415,9 +1469,10 @@ async function suppressedEmailSet(
   const batches = await mapWithConcurrency(chunkValues(cleanEmails, 75), 4, async (emailBatch) => {
     const result = await supabase
       .from("email_suppression_list")
-      .select("email,status")
+      .select("email,status,resolved_at")
       .eq("owner_email", user.owner_email)
       .in("email", emailBatch)
+      .is("resolved_at", null)
       .in("status", blockedEmailStatuses());
     if (result.error) throw result.error;
     return result.data || [];
@@ -1708,6 +1763,25 @@ function vendorEmails(vendor: Record<string, unknown>) {
     .filter(Boolean) as string[];
 }
 
+function vendorBusinessNameCandidates(vendor: Record<string, unknown>) {
+  const profile = objectRecord(vendor.profile_data);
+  const international = objectRecord(profile.international);
+  const mexico = objectRecord(profile.mexico);
+  const candidates = [
+    { value: vendor.vendor_name, source: "vendor_name" },
+    { value: vendor.legal_name, source: "legal_name" },
+    { value: profile.commercial_name, source: "commercial_name" },
+    { value: profile.dba_name, source: "dba_name" },
+    { value: profile.trade_name, source: "trade_name" },
+    { value: international.dba_name, source: "dba_name" },
+    { value: mexico.commercial_name, source: "commercial_name" }
+  ]
+    .map((item) => ({ ...item, value: cleanText(item.value), key: businessNameKey(item.value) }))
+    .filter((item) => item.value && item.key && item.key.length >= 4);
+
+  return candidates.filter((item, index) => candidates.findIndex((candidate) => candidate.key === item.key) === index);
+}
+
 function vendorBusinessNameCandidateFromText(value: unknown) {
   const text = cleanText(value);
   if (!text) return null;
@@ -1740,15 +1814,13 @@ function nameMatchScore(vendor: Record<string, unknown>, reference: unknown) {
   const referenceKey = businessNameKey(reference);
   if (!referenceKey || referenceKey.length < 4) return { score: 0, source: null as string | null };
 
-  const vendorKeys = [
-    { value: vendor.vendor_name, source: "vendor_name" },
-    { value: vendor.legal_name, source: "legal_name" }
-  ]
-    .map((item) => ({ ...item, key: businessNameKey(item.value) }))
-    .filter((item) => item.key && item.key.length >= 4);
+  const vendorKeys = vendorBusinessNameCandidates(vendor);
 
   for (const item of vendorKeys) {
-    if (item.key === referenceKey) return { score: 88, source: item.source };
+    if (item.key === referenceKey) {
+      const score = item.source === "commercial_name" ? 90 : item.source === "dba_name" || item.source === "trade_name" ? 89 : 88;
+      return { score, source: item.source };
+    }
   }
 
   for (const item of vendorKeys) {
@@ -1817,7 +1889,7 @@ function scoreVendorReference(vendor: Record<string, unknown>, reference: unknow
   return { score, source, domain, email };
 }
 
-const VENDOR_REFERENCE_SELECT = "id,vendor_name,legal_name,domain,primary_email,secondary_emails,status,base_stage";
+const VENDOR_REFERENCE_SELECT = "id,vendor_name,legal_name,domain,primary_email,secondary_emails,profile_data,status,base_stage";
 
 async function fetchVendorReferenceRows(
   supabase: ReturnType<typeof createClient>,
@@ -1849,6 +1921,28 @@ async function resolveVendorReference(supabase: ReturnType<typeof createClient>,
   return resolveVendorReferenceFromRows(await fetchVendorReferenceRows(supabase, user), reference);
 }
 
+function vendorReferenceValues(record: Record<string, unknown>) {
+  return [
+    record.vendor_domain,
+    record.vendor_reference,
+    record.vendor_email,
+    record.vendor_name,
+    record.legal_name,
+    record.commercial_name,
+    record.dba_name
+  ]
+    .flatMap((value) => vendorReferenceCandidatesFromText(value))
+    .filter((value, index, values) => values.indexOf(value) === index);
+}
+
+function resolveVendorReferencesFromRows(vendors: Record<string, unknown>[], references: unknown[]) {
+  const matches = references
+    .map((reference) => resolveVendorReferenceFromRows(vendors, reference))
+    .filter((match): match is NonNullable<ReturnType<typeof resolveVendorReferenceFromRows>> => Boolean(match))
+    .sort((a, b) => b.score - a.score);
+  return matches[0] || null;
+}
+
 async function vendorLinkPatch(
   supabase: ReturnType<typeof createClient>,
   user: { owner_email: string | null },
@@ -1856,21 +1950,22 @@ async function vendorLinkPatch(
   current: Record<string, unknown>,
   vendors?: Record<string, unknown>[]
 ) {
-  const explicitVendorUpdate = input.vendor_domain !== undefined;
-  const reference = explicitVendorUpdate ? input.vendor_domain : current.vendor_domain;
+  const explicitVendorUpdate = ["vendor_domain", "vendor_reference", "vendor_email", "vendor_name", "legal_name", "commercial_name", "dba_name"]
+    .some((field) => input[field] !== undefined);
+  const references = vendorReferenceValues(explicitVendorUpdate ? input : current);
   const hasExistingLink = Boolean(current.vendor_id);
 
-  if (!cleanText(reference)) {
+  if (!references.length) {
     return explicitVendorUpdate ? { vendor_id: null, vendor_domain: null } : {};
   }
   if (!explicitVendorUpdate && hasExistingLink) return {};
 
   const match = vendors
-    ? resolveVendorReferenceFromRows(vendors, reference)
-    : await resolveVendorReference(supabase, user, reference);
-  const fallbackDomain = domainFromVendorReference(reference);
+    ? resolveVendorReferencesFromRows(vendors, references)
+    : resolveVendorReferencesFromRows(await fetchVendorReferenceRows(supabase, user), references);
+  const fallbackDomain = references.map((reference) => domainFromVendorReference(reference)).find(Boolean) || null;
   if (!match) {
-    return explicitVendorUpdate ? { vendor_id: null, vendor_domain: fallbackDomain || cleanText(reference) } : {};
+    return explicitVendorUpdate ? { vendor_id: null, vendor_domain: fallbackDomain || cleanText(references[0]) } : {};
   }
 
   return {
@@ -1995,6 +2090,16 @@ const BULK_RATE_ROW_SELECT = [
   "operation",
   "service",
   "all_in_rate",
+  "carrier_cost_rate",
+  "customer_board_rate",
+  "commercial_model",
+  "commission_fee",
+  "commission_pct",
+  "markup_fee",
+  "markup_pct",
+  "rate_basis",
+  "source_bid_status",
+  "rfx_bid_outcome",
   "currency",
   "mx_linehaul",
   "us_linehaul",
@@ -2059,6 +2164,16 @@ const RATE_ROW_RESPONSE_COLUMNS = [
   "border_crossing_fee",
   "flat_rate",
   "all_in_rate",
+  "carrier_cost_rate",
+  "customer_board_rate",
+  "commercial_model",
+  "commission_fee",
+  "commission_pct",
+  "markup_fee",
+  "markup_pct",
+  "rate_basis",
+  "source_bid_status",
+  "rfx_bid_outcome",
   "currency",
   "weekly_capacity",
   "notes",
@@ -2147,6 +2262,11 @@ const RATE_ROW_LIST_COLUMNS = [
   "fsc",
   "border_crossing_fee",
   "all_in_rate",
+  "carrier_cost_rate",
+  "customer_board_rate",
+  "commercial_model",
+  "source_bid_status",
+  "rfx_bid_outcome",
   "currency",
   "weekly_capacity",
   "quote_date",
@@ -2995,10 +3115,13 @@ async function fetchSqlRateFilterValues(
   filters: Record<string, unknown>,
   field: string,
   valueSearch = "",
-  limit = 1000
+  limit = 1000,
+  ownerEmail: string | null = null
 ) {
   const column = sqlRateFilterField(field);
   if (!column || !canUseSqlRateFilters(filters)) return null;
+  const scopedOwnerEmail = cleanText(ownerEmail)?.toLowerCase();
+  if (!scopedOwnerEmail) throw new Error("Workspace owner is required for rate filter values.");
 
   const values = new Map<string, string>();
   const pageSize = 1000;
@@ -3011,6 +3134,7 @@ async function fetchSqlRateFilterValues(
     let query = supabase
       .from("rate_staging")
       .select(column, { count: offset === 0 ? "exact" : undefined })
+      .eq("owner_email", scopedOwnerEmail)
       .order(column, { ascending: true, nullsFirst: true })
       .range(offset, offset + pageSize - 1);
     query = applySqlRateFilters(query, filters);
@@ -3269,8 +3393,11 @@ async function fetchRateFilterValuesByRpc(
   filters: Record<string, unknown>,
   field: string,
   valueSearch = "",
-  limit = 1000
+  limit = 1000,
+  ownerEmail: string | null = null
 ) {
+  const scopedOwnerEmail = cleanText(ownerEmail)?.toLowerCase();
+  if (!scopedOwnerEmail) throw new Error("Workspace owner is required for rate filter values.");
   const rpcFilters = normalizedRpcRateFilters(filters);
   const result = await supabase.rpc("rateware_filtered_rate_values", {
     p_field: field,
@@ -3284,6 +3411,7 @@ async function fetchRateFilterValuesByRpc(
     p_review_filter: rpcFilters.review_filter,
     p_column_filters: rpcFilters.column_filters,
     p_exclude_archived: rpcFilters.exclude_archived,
+    p_owner_email: scopedOwnerEmail,
     p_value_search: cleanText(valueSearch),
     p_limit: Math.min(Math.max(Number(limit) || 1000, 1), 5000)
   });
@@ -3481,6 +3609,81 @@ async function fetchVendorRateMetricsSafe(
       warnings: [
         "Quote metrics are temporarily unavailable. Showing vendor CRM data without linked-rate enrichment."
       ]
+    };
+  }
+}
+
+function emptyVendorBidMetrics() {
+  return {
+    shortlisted: 0,
+    drafted: 0,
+    invited: 0,
+    viewed: 0,
+    quoted: 0,
+    awarded: 0,
+    last_activity_at: null as string | null
+  };
+}
+
+function normalizeVendorBidMetrics(row: Record<string, unknown> | undefined) {
+  const source = row || {};
+  return {
+    shortlisted: Number(source.shortlisted || 0),
+    drafted: Number(source.drafted || 0),
+    invited: Number(source.invited || 0),
+    viewed: Number(source.viewed || 0),
+    quoted: Number(source.quoted || 0),
+    awarded: Number(source.awarded || 0),
+    last_activity_at: cleanText(source.last_activity_at)
+  };
+}
+
+async function fetchVendorBidMetrics(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_email: string | null }
+) {
+  const result = await supabase
+    .from("rfx_lane_vendors")
+    .select("vendor_id, invitation_status, bid_rate, invited_at, viewed_at, responded_at, awarded_at, updated_at, rfx_events!inner(owner_email)")
+    .eq("rfx_events.owner_email", user.owner_email)
+    .neq("invitation_status", "archived")
+    .limit(10000);
+  if (result.error) throw result.error;
+
+  const metrics = new Map<string, Record<string, unknown>>();
+  for (const rawRow of result.data || []) {
+    const row = rawRow as Record<string, unknown>;
+    const vendorId = cleanText(row.vendor_id);
+    if (!vendorId) continue;
+    const current = normalizeVendorBidMetrics(metrics.get(vendorId));
+    const status = cleanText(row.invitation_status)?.toLowerCase() || "shortlisted";
+    current.shortlisted += 1;
+    if (status === "drafted") current.drafted += 1;
+    if (["invited", "viewed", "responded", "quoted", "bid_submitted", "awarded"].includes(status)) current.invited += 1;
+    if (["viewed", "responded", "quoted", "bid_submitted", "awarded"].includes(status)) current.viewed += 1;
+    if ((row.bid_rate !== null && row.bid_rate !== undefined) || ["quoted", "bid_submitted", "awarded"].includes(status)) current.quoted += 1;
+    if (status === "awarded") current.awarded += 1;
+    const activity = cleanText(row.awarded_at || row.responded_at || row.viewed_at || row.invited_at || row.updated_at);
+    if (activity && (!current.last_activity_at || new Date(activity).getTime() > new Date(current.last_activity_at).getTime())) {
+      current.last_activity_at = activity;
+    }
+    metrics.set(vendorId, current);
+  }
+  return metrics;
+}
+
+async function fetchVendorBidMetricsSafe(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_email: string | null }
+) {
+  try {
+    return { metrics: await fetchVendorBidMetrics(supabase, user), warnings: [] as string[] };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error || "Unknown Bid Room metric error");
+    console.warn("Vendor Bid Room metrics unavailable; continuing with CRM and Rateware data.", message);
+    return {
+      metrics: new Map<string, Record<string, unknown>>(),
+      warnings: ["Bid Room activity is temporarily unavailable. Showing CRM and Rateware signals only."]
     };
   }
 }
@@ -3706,7 +3909,7 @@ function vendorReadinessScore(vendor: Record<string, unknown>) {
   return Math.max(0, Math.min(100, score));
 }
 
-function vendorSuggestedTags(vendor: Record<string, unknown>, metrics: Record<string, unknown>, declared: string[], quoted: string[]) {
+function vendorSuggestedTags(vendor: Record<string, unknown>, metrics: Record<string, unknown>, declared: string[], quoted: string[], bidMetrics: Record<string, unknown> = {}) {
   const current = new Set(arrayValues(vendor.tags).map((tag) => tag.toLowerCase()));
   const suggestions = new Set<string>();
   const add = (tag: string, condition: boolean) => {
@@ -3723,7 +3926,7 @@ function vendorSuggestedTags(vendor: Record<string, unknown>, metrics: Record<st
   add("hazmat", combined.has("hazmat"));
   add("laredo", combined.has("laredo"));
   add("monterrey", combined.has("monterrey"));
-  add("quoted", Number(metrics.linked_rates || 0) > 0);
+  add("quoted", Number(metrics.linked_rates || 0) > 0 || Number(bidMetrics.quoted || 0) > 0);
   add("rateware-approved", Number(metrics.approved_rates || 0) > 0);
   return [...suggestions].slice(0, 8);
 }
@@ -3737,7 +3940,8 @@ function vendorHealthLabel(score: number) {
 
 function buildVendorIntelligenceRows(
   vendors: Record<string, unknown>[],
-  metricsSource: Map<string, Record<string, unknown>> | Record<string, unknown>[]
+  metricsSource: Map<string, Record<string, unknown>> | Record<string, unknown>[],
+  bidMetricsSource: Map<string, Record<string, unknown>> = new Map()
 ) {
   const duplicates = vendorDuplicateMap(vendors);
   const metricsByVendor = metricsSource instanceof Map ? metricsSource : null;
@@ -3747,25 +3951,26 @@ function buildVendorIntelligenceRows(
     const metrics = metricsByVendor
       ? normalizeVendorMetricRow(metricsByVendor.get(vendorId))
       : createVendorMetricsFromLinkedRates(rateGroups?.get(vendorId) || []);
+    const bidMetrics = normalizeVendorBidMetrics(bidMetricsSource.get(vendorId));
     const declared = vendorDeclaredSignals(vendor);
     const quoted = vendorQuotedSignals(metrics);
     const alignment = vendorCoverageAlignment(declared, quoted);
     const duplicateMatches = duplicates.get(vendorId) || [];
     const readiness = vendorReadinessScore(vendor);
-    const quoteScore = Math.min(22, Number(metrics.approved_rates || 0) * 6 + Number(metrics.linked_rates || 0) * 2);
+    const quoteScore = Math.min(22, Number(metrics.approved_rates || 0) * 6 + Number(metrics.linked_rates || 0) * 2 + Number(bidMetrics.quoted || 0) * 3);
     const alignmentScore = alignment.matched.length ? Math.min(14, alignment.matched.length * 5) : alignment.quoted_only.length ? 8 : 0;
     const duplicatePenalty = duplicateMatches.length ? 14 : 0;
     const blockedPenalty = cleanText(vendor.status)?.toLowerCase() === "blocked" ? 50 : cleanText(vendor.status)?.toLowerCase() === "inactive" ? 12 : 0;
     const healthScore = Math.max(0, Math.min(100, Math.round(readiness * 0.62 + quoteScore + alignmentScore - duplicatePenalty - blockedPenalty)));
     const health = vendorHealthLabel(healthScore);
-    const suggestedTags = vendorSuggestedTags(vendor, metrics, declared, quoted);
+    const suggestedTags = vendorSuggestedTags(vendor, metrics, declared, quoted, bidMetrics);
     const recommendedAction = healthScore >= 85 && cleanText(vendor.base_stage) !== "procurement"
       ? "Promote to Procurement Base"
       : duplicateMatches.length
         ? "Review duplicate before RFx"
         : readiness < 70
           ? "Complete contact and coverage"
-          : Number(metrics.linked_rates || 0) > 0
+          : Number(metrics.linked_rates || 0) > 0 || Number(bidMetrics.quoted || 0) > 0
             ? "Keep active and include in matching RFx"
             : "Validate coverage with first quote";
 
@@ -3816,6 +4021,7 @@ function buildVendorIntelligenceRows(
       coverage_alignment: alignment,
       suggested_tags: suggestedTags,
       rate_metrics: metrics,
+      bid_metrics: bidMetrics,
       recommended_action: recommendedAction
     };
   }).sort((a, b) => Number(b.health_score || 0) - Number(a.health_score || 0) || String(a.vendor_name || "").localeCompare(String(b.vendor_name || "")));
@@ -3862,14 +4068,15 @@ async function buildVendorIntelligence(
   user: { owner_email: string | null },
   options: Record<string, unknown> = {}
 ) {
-  const [vendorPage, metricsResult] = await Promise.all([
+  const [vendorPage, metricsResult, bidMetricsResult] = await Promise.all([
     fetchVendorIntelligenceVendors(supabase, user, options),
-    fetchVendorRateMetricsSafe(supabase, user)
+    fetchVendorRateMetricsSafe(supabase, user),
+    fetchVendorBidMetricsSafe(supabase, user)
   ]);
-  const rows = buildVendorIntelligenceRows(vendorPage.rows, metricsResult.metrics);
+  const rows = buildVendorIntelligenceRows(vendorPage.rows, metricsResult.metrics, bidMetricsResult.metrics);
   return {
     rows,
-    warnings: metricsResult.warnings,
+    warnings: [...metricsResult.warnings, ...bidMetricsResult.warnings],
     total: vendorPage.total,
     limit: vendorPage.limit,
     offset: vendorPage.offset,
@@ -3880,7 +4087,7 @@ async function buildVendorIntelligence(
       visible_vendors: rows.length,
       procurement_ready: rows.filter((row) => Number(row.health_score || 0) >= 85).length,
       duplicates: rows.filter((row) => Number(row.duplicate_count || 0) > 0).length,
-      quoted: rows.filter((row) => Number((row.rate_metrics as Record<string, unknown>)?.linked_rates || 0) > 0).length,
+      quoted: rows.filter((row) => Number((row.rate_metrics as Record<string, unknown>)?.linked_rates || 0) > 0 || Number((row.bid_metrics as Record<string, unknown>)?.quoted || 0) > 0).length,
       coverage_gaps: rows.filter((row) => {
         const alignment = row.coverage_alignment as Record<string, unknown>;
         return arrayValues(alignment.quoted_only).length || arrayValues(alignment.declared_only).length;
@@ -3892,8 +4099,9 @@ async function buildVendorIntelligence(
 function vendorEffectiveFunnelStage(row: Record<string, unknown>) {
   const savedStage = normalizeVendorFunnelStage(row.funnel_stage) || "targeted";
   const metrics = typeof row.rate_metrics === "object" && row.rate_metrics ? row.rate_metrics as Record<string, unknown> : {};
+  const bidMetrics = typeof row.bid_metrics === "object" && row.bid_metrics ? row.bid_metrics as Record<string, unknown> : {};
   const savedIndex = Math.max(0, VENDOR_FUNNEL_STAGES.indexOf(savedStage));
-  const hasLinkedQuotes = Number(metrics.linked_rates || 0) > 0;
+  const hasLinkedQuotes = Number(metrics.linked_rates || 0) > 0 || Number(bidMetrics.quoted || 0) > 0;
   if (hasLinkedQuotes && savedIndex < VENDOR_FUNNEL_STAGES.indexOf("nested")) return "nested";
   return savedStage;
 }
@@ -3914,10 +4122,10 @@ async function buildVendorFunnel(supabase: ReturnType<typeof createClient>, user
   if (vendorsResult.error) throw vendorsResult.error;
 
   const procurementVendors = vendorsResult.data || [];
-  const metricsResult = procurementVendors.length
-    ? await fetchVendorRateMetricsSafe(supabase, user, { baseStage: "procurement" })
-    : { metrics: new Map<string, Record<string, unknown>>(), warnings: [] as string[] };
-  const procurementRows = buildVendorIntelligenceRows(procurementVendors, metricsResult.metrics)
+  const [metricsResult, bidMetricsResult] = procurementVendors.length
+    ? await Promise.all([fetchVendorRateMetricsSafe(supabase, user, { baseStage: "procurement" }), fetchVendorBidMetricsSafe(supabase, user)])
+    : [{ metrics: new Map<string, Record<string, unknown>>(), warnings: [] as string[] }, { metrics: new Map<string, Record<string, unknown>>(), warnings: [] as string[] }];
+  const procurementRows = buildVendorIntelligenceRows(procurementVendors, metricsResult.metrics, bidMetricsResult.metrics)
     .map((row: Record<string, unknown>) => {
       const stage = vendorEffectiveFunnelStage(row);
       return {
@@ -3932,7 +4140,7 @@ async function buildVendorFunnel(supabase: ReturnType<typeof createClient>, user
   const activated = Number(counts.activated || 0) + Number(counts.completed || 0);
   const targeted = procurementRows.length || 1;
   return {
-    warnings: metricsResult.warnings,
+    warnings: [...metricsResult.warnings, ...bidMetricsResult.warnings],
     stages: VENDOR_FUNNEL_STAGES.map((stage, index) => ({
       key: stage,
       label: VENDOR_FUNNEL_STAGE_LABELS[stage],
@@ -3953,7 +4161,7 @@ async function buildVendorFunnel(supabase: ReturnType<typeof createClient>, user
       completed: counts.completed || 0,
       activation_rate: procurementRows.length ? Math.round((activated / targeted) * 100) : 0,
       stuck: procurementRows.filter((row) => Number(row.stage_days || 0) >= 14 && !["activated", "completed"].includes(String(row.effective_funnel_stage))).length,
-      quoted: procurementRows.filter((row) => Number((row.rate_metrics as Record<string, unknown>)?.linked_rates || 0) > 0).length
+      quoted: procurementRows.filter((row) => Number((row.rate_metrics as Record<string, unknown>)?.linked_rates || 0) > 0 || Number((row.bid_metrics as Record<string, unknown>)?.quoted || 0) > 0).length
     }
   };
 }
@@ -6014,6 +6222,32 @@ function mergeVendorProfileData(current: Record<string, unknown>, correction: Re
   return merged;
 }
 
+function mergeVendorProfilePatch(current: Record<string, unknown>, partial: Record<string, unknown>) {
+  const merged: Record<string, Record<string, unknown>> = {};
+  for (const [sectionKey, sectionValue] of Object.entries(current)) {
+    const section = objectRecord(sectionValue);
+    if (Object.keys(section).length) merged[sectionKey] = { ...section };
+  }
+  for (const [sectionKey, sectionValue] of Object.entries(objectRecord(partial))) {
+    const incomingSection = objectRecord(sectionValue);
+    const target = { ...(merged[sectionKey] || {}) };
+    for (const [fieldKey, value] of Object.entries(incomingSection)) {
+      if (Array.isArray(value)) {
+        const normalized = value.map((item) => cleanText(item)).filter(Boolean);
+        if (normalized.length) target[fieldKey] = normalized;
+        else delete target[fieldKey];
+        continue;
+      }
+      const normalized = cleanText(value);
+      if (normalized) target[fieldKey] = normalized;
+      else delete target[fieldKey];
+    }
+    if (Object.keys(target).length) merged[sectionKey] = target;
+    else delete merged[sectionKey];
+  }
+  return merged;
+}
+
 function compactVendorCorrectionInput(input: Record<string, unknown>, current: Record<string, unknown>) {
   const patch: Record<string, unknown> = {};
   const cleanFields = [
@@ -6276,16 +6510,14 @@ function normalizeVendor(input: Record<string, unknown>, source = "manual") {
   const now = new Date().toISOString();
   const funnelStage = normalizeVendorFunnelStage(input.funnel_stage) || (baseStage === "procurement" ? "targeted" : null);
   const profileData = normalizeVendorProfileData(input.profile_data);
-  const emailList = normalizeEmailList(input.primary_email || input.email);
-  const secondaryEmails = Array.from(new Set([...emailList.slice(1), ...normalizeEmailList(input.secondary_emails)]));
+  const emails = normalizeVendorEmails(input.primary_email || input.email, input.secondary_emails);
 
   return {
     vendor_name: vendorName,
     legal_name: cleanText(input.legal_name),
     domain: normalizeDomain(input.domain || input.vendor_domain),
     contact_name: cleanText(input.contact_name || input.contact),
-    primary_email: emailList[0] || "",
-    secondary_emails: secondaryEmails,
+    ...emails,
     whatsapp_phone: cleanText(input.whatsapp_phone || input.phone || input.whatsapp),
     preferred_channel: ["email", "whatsapp", "whatsapp_group", "multi", "portal"].includes(preferred) ? preferred : "email",
     whatsapp_permission_basis: ["contractual", "consent", "manual", "unknown"].includes(whatsappPermissionBasis) ? whatsappPermissionBasis : "contractual",
@@ -6320,16 +6552,20 @@ function normalizeVendor(input: Record<string, unknown>, source = "manual") {
 function normalizeVendorPatch(input: Record<string, unknown>, current: Record<string, unknown> = {}) {
   const patch: Record<string, unknown> = {};
   const now = new Date().toISOString();
+  let resolvedProfileData: Record<string, unknown> | null = null;
   if (input.vendor_name !== undefined) patch.vendor_name = cleanText(input.vendor_name);
   if (input.legal_name !== undefined) patch.legal_name = cleanText(input.legal_name);
   if (input.domain !== undefined) patch.domain = normalizeDomain(input.domain);
   if (input.contact_name !== undefined) patch.contact_name = cleanText(input.contact_name);
   if (input.primary_email !== undefined || input.email !== undefined) {
-    const emailList = normalizeEmailList(input.primary_email ?? input.email);
-    patch.primary_email = emailList[0] || "";
-    patch.secondary_emails = Array.from(new Set([...emailList.slice(1), ...normalizeEmailList(input.secondary_emails)]));
+    Object.assign(patch, normalizeVendorEmails(input.primary_email ?? input.email, input.secondary_emails));
   } else if (input.secondary_emails !== undefined) {
-    patch.secondary_emails = normalizeEmailList(input.secondary_emails);
+    const secondary = parseVendorEmailList(input.secondary_emails);
+    if (secondary.invalid.length) {
+      throw new Error(`Correct invalid email ${secondary.invalid.length === 1 ? "address" : "addresses"}: ${secondary.invalid.join(", ")}`);
+    }
+    const primaryEmail = normalizeEmail(current.primary_email);
+    patch.secondary_emails = Array.from(new Set(secondary.emails.filter((email) => email !== primaryEmail)));
   }
   if (input.whatsapp_phone !== undefined) patch.whatsapp_phone = cleanText(input.whatsapp_phone);
   if (input.whatsapp_permission_basis !== undefined) {
@@ -6360,6 +6596,15 @@ function normalizeVendorPatch(input: Record<string, unknown>, current: Record<st
   if (input.notes !== undefined) patch.notes = cleanText(input.notes);
   if (input.profile_data !== undefined) {
     const profileData = normalizeVendorProfileData(input.profile_data);
+    resolvedProfileData = profileData;
+    patch.profile_data = profileData;
+    if (input.tags === undefined) {
+      patch.tags = Array.from(new Set([...normalizeTags(current.tags), ...vendorProfileDerivedTags(profileData)]));
+    }
+  }
+  if (input.profile_data_patch !== undefined && input.profile_data === undefined) {
+    const profileData = mergeVendorProfilePatch(normalizeVendorProfileData(current.profile_data), objectRecord(input.profile_data_patch));
+    resolvedProfileData = profileData;
     patch.profile_data = profileData;
     if (input.tags === undefined) {
       patch.tags = Array.from(new Set([...normalizeTags(current.tags), ...vendorProfileDerivedTags(profileData)]));
@@ -6383,7 +6628,7 @@ function normalizeVendorPatch(input: Record<string, unknown>, current: Record<st
     Object.assign(patch, vendorFunnelUpdatePatch(normalizeVendorFunnelStage(input.funnel_stage), current, now));
   }
   if (input.tags !== undefined) {
-    const profileData = input.profile_data !== undefined ? normalizeVendorProfileData(input.profile_data) : normalizeVendorProfileData(current.profile_data);
+    const profileData = resolvedProfileData || normalizeVendorProfileData(current.profile_data);
     patch.tags = Array.from(new Set([...normalizeTags(input.tags), ...vendorProfileDerivedTags(profileData)]));
   }
   if (input.preferred_channel !== undefined) {
@@ -6760,7 +7005,13 @@ function resolveVendorReferenceFromRows(vendors: Record<string, unknown>[], refe
     .map((vendor) => ({ vendor, ...scoreVendorReference(vendor, reference) }))
     .filter((match) => match.score >= 75)
     .sort((a, b) => b.score - a.score);
-  return ranked[0] || null;
+  const top = ranked[0];
+  const runnerUp = ranked[1];
+  if (!top) return null;
+  // Domain/email matches are authoritative only when they identify one clear
+  // carrier. Name-based matches must not silently choose between near-duplicates.
+  if (runnerUp && runnerUp.score >= top.score - 4) return null;
+  return top;
 }
 
 function vendorById(vendors: Record<string, unknown>[]) {
@@ -6768,13 +7019,16 @@ function vendorById(vendors: Record<string, unknown>[]) {
 }
 
 function vendorLinkPatchFromRows(vendors: Record<string, unknown>[], reference: unknown) {
-  if (!cleanText(reference)) return {};
-  const match = resolveVendorReferenceFromRows(vendors, reference);
-  const fallbackDomain = domainFromVendorReference(reference);
-  if (!match) return { vendor_id: null, vendor_domain: fallbackDomain || cleanText(reference) };
+  const references = typeof reference === "object" && reference !== null && !Array.isArray(reference)
+    ? vendorReferenceValues(reference as Record<string, unknown>)
+    : vendorReferenceCandidatesFromText(reference);
+  if (!references.length) return {};
+  const match = resolveVendorReferencesFromRows(vendors, references);
+  const fallbackDomain = references.map((candidate) => domainFromVendorReference(candidate)).find(Boolean) || null;
+  if (!match) return { vendor_id: null, vendor_domain: fallbackDomain || cleanText(references[0]) };
   return {
     vendor_id: match.vendor.id,
-    vendor_domain: normalizeDomain(match.vendor.domain) || match.domain || fallbackDomain || cleanText(reference)
+    vendor_domain: normalizeDomain(match.vendor.domain) || match.domain || fallbackDomain || cleanText(references[0])
   };
 }
 
@@ -7084,12 +7338,8 @@ async function bulkImportStructuredUpload(
   }
 
   const vendorsPromise = inheritedVendorId
-    ? Promise.resolve({ data: [], error: null })
-    : supabase
-        .from("vendors")
-        .select("id,vendor_name,legal_name,domain,primary_email,secondary_emails,status,base_stage")
-        .eq("owner_email", user.owner_email)
-        .limit(5000);
+    ? Promise.resolve([] as Record<string, unknown>[])
+    : fetchVendorReferenceRows(supabase, user);
 
   const [catalogResult, scopedLocations, scopedMileage, vendorsResult] = await Promise.all([
     supabase
@@ -7101,9 +7351,7 @@ async function bulkImportStructuredUpload(
     fetchScopedTemplateMileage(supabase, parsed.rows),
     vendorsPromise
   ]);
-  for (const result of [catalogResult, vendorsResult]) {
-    if (result.error) throw result.error;
-  }
+  if (catalogResult.error) throw catalogResult.error;
 
   const jobResult = await supabase
     .from("interpretation_jobs")
@@ -7119,7 +7367,7 @@ async function bulkImportStructuredUpload(
   const catalog = buildCatalogIndex(catalogResult.data || []);
   const locationIndex = buildLocationIndex(scopedLocations || []);
   const mileage = new Map((scopedMileage || []).map((lane) => [catalogKey(lane.route_key), lane]));
-  const vendors = vendorsResult.data || [];
+  const vendors = vendorsResult || [];
   const rowsToInsert: Record<string, unknown>[] = [];
   const warnings = [...parsed.warnings];
   let skipped = 0;
@@ -7140,11 +7388,19 @@ async function bulkImportStructuredUpload(
       continue;
     }
 
-    const vendorReference = patch.vendor_domain || mapped.vendor_domain || mapped.vendor_name || upload.vendor_hint;
+    const vendorReference = {
+      vendor_domain: patch.vendor_domain || mapped.vendor_domain,
+      vendor_reference: patch.vendor_reference || mapped.vendor_reference,
+      vendor_email: mapped.vendor_email || mapped.primary_email || mapped.email,
+      vendor_name: mapped.vendor_name,
+      legal_name: mapped.legal_name || mapped.vendor_legal_name,
+      commercial_name: mapped.commercial_name || mapped.vendor_commercial_name || mapped.trade_name,
+      dba_name: mapped.dba_name || mapped.vendor_dba_name
+    };
     if (inheritedVendorId) {
       Object.assign(patch, {
         vendor_id: inheritedVendorId,
-        vendor_domain: inheritedVendorDomain || domainFromVendorReference(vendorReference) || patch.vendor_domain || null
+        vendor_domain: inheritedVendorDomain || vendorReferenceValues(vendorReference).map((reference) => domainFromVendorReference(reference)).find(Boolean) || patch.vendor_domain || null
       });
     } else {
       Object.assign(patch, vendorLinkPatchFromRows(vendors, vendorReference));
@@ -7712,6 +7968,25 @@ function normalizeAwardRole(value: unknown) {
   return role === "backup" ? "backup" : "primary";
 }
 
+async function setRfxBidRateHistoryOutcome(
+  supabase: ReturnType<typeof createClient>,
+  invitation: Record<string, unknown>,
+  outcome: "submitted" | "awarded" | "backup" | "not_awarded",
+  now: string
+) {
+  const stagingId = cleanText(invitation.bid_rate_staging_id);
+  if (!stagingId) return null;
+
+  const result = await supabase
+    .from("rate_staging")
+    .update({ rfx_bid_outcome: outcome, updated_at: now })
+    .eq("id", stagingId)
+    .select("id,status,rfx_bid_outcome")
+    .maybeSingle();
+  if (result.error) throw result.error;
+  return result.data || null;
+}
+
 async function awardRfxLaneVendor(
   supabase: ReturnType<typeof createClient>,
   user: { owner_user_id: string | null; owner_email: string | null },
@@ -7723,6 +7998,14 @@ async function awardRfxLaneVendor(
   const now = new Date().toISOString();
 
   if (role === "primary") {
+    const previousPrimary = await supabase
+      .from("rfx_lane_vendors")
+      .select("id,bid_rate_staging_id")
+      .eq("rfx_lane_id", invitation.rfx_lane_id)
+      .eq("award_role", "primary")
+      .neq("id", invitation.id);
+    if (previousPrimary.error) throw previousPrimary.error;
+
     const clearResult = await supabase
       .from("rfx_lane_vendors")
       .update({
@@ -7737,6 +8020,10 @@ async function awardRfxLaneVendor(
       .eq("award_role", "primary")
       .neq("id", invitation.id);
     if (clearResult.error) throw clearResult.error;
+
+    for (const previous of previousPrimary.data || []) {
+      await setRfxBidRateHistoryOutcome(supabase, previous, "not_awarded", now);
+    }
   }
 
   const result = await supabase
@@ -7754,6 +8041,8 @@ async function awardRfxLaneVendor(
     .select("*, vendors(id,vendor_name,domain,primary_email,base_stage,status)")
     .single();
   if (result.error) throw result.error;
+
+  await setRfxBidRateHistoryOutcome(supabase, invitation, role === "primary" ? "awarded" : "backup", now);
 
   if (role === "primary") {
     const eventId = cleanText(invitation.rfx_event_id);
@@ -7794,6 +8083,8 @@ async function clearRfxAward(
     .select("*, vendors(id,vendor_name,domain,primary_email,base_stage,status)")
     .single();
   if (result.error) throw result.error;
+
+  await setRfxBidRateHistoryOutcome(supabase, invitation, "submitted", now);
 
   if (wasPrimary && cleanText(invitation.rfx_event_id)) {
     const remaining = await supabase
@@ -7856,6 +8147,11 @@ function rfxAwardRateInput(invitation: Record<string, unknown>, event: Record<st
     operation: lane.operation,
     service: lane.service,
     all_in_rate: invitation.bid_rate,
+    carrier_cost_rate: cleanNumber(invitation.bid_rate),
+    commercial_model: normalizeCommercialModel(invitation.commercial_model),
+    rate_basis: "rfx_award_closeout",
+    source_bid_status: "awarded",
+    rfx_bid_outcome: "awarded",
     currency: invitation.currency || lane.currency || "USD",
     weekly_capacity: invitation.weekly_capacity,
     notes: [
@@ -9159,6 +9455,11 @@ function normalizeOutreachTemplate(input: Record<string, unknown>) {
   const channel = cleanText(input.channel)?.toLowerCase() || "email";
   const name = cleanText(input.name);
   if (!name) throw new Error("Template name is required.");
+  const templateScope = cleanText(input.template_scope)?.toLowerCase() === "canonical" ? "canonical" : "legacy";
+  const requestedLanguage = cleanText(input.canonical_language || input.language)?.toLowerCase();
+  const canonicalLanguage = templateScope === "canonical" && ["en", "es"].includes(requestedLanguage || "")
+    ? requestedLanguage
+    : null;
   return {
     name,
     channel: ["email", "whatsapp", "whatsapp_group", "multi", "email_whatsapp", "email_whatsapp_group", "whatsapp_direct_group"].includes(channel) ? channel : "email",
@@ -9174,6 +9475,8 @@ function normalizeOutreachTemplate(input: Record<string, unknown>) {
     meta_template_components: Array.isArray(input.meta_template_components) ? input.meta_template_components : [],
     active: input.active === undefined ? true : cleanBoolean(input.active),
     is_default: input.is_default === undefined ? false : cleanBoolean(input.is_default),
+    template_scope: templateScope,
+    canonical_language: canonicalLanguage,
     placeholders: Array.isArray(input.placeholders) ? input.placeholders.map(cleanText).filter(Boolean) : [],
     updated_at: new Date().toISOString()
   };
@@ -9626,6 +9929,112 @@ async function listVendorSupportTickets(
   return { rows, summary, limit };
 }
 
+async function getVendorRelationshipActivity(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_email: string | null },
+  input: Record<string, unknown>
+) {
+  const vendor = await requireOwnedVendorForCi(supabase, user, input.vendor_id || input.id);
+  const vendorId = cleanText(vendor.id);
+  const limit = Math.min(Math.max(Number(input.limit || 20) || 20, 1), 100);
+
+  const [support, improvementResult, chatResult] = await Promise.all([
+    listVendorSupportTickets(supabase, user, { vendor_id: vendorId, limit }),
+    supabase
+      .from("vendor_improvement_cases")
+      .select("id,title,case_type,severity,status,methodology,due_date,created_at,updated_at,source")
+      .eq("owner_email", user.owner_email)
+      .eq("vendor_id", vendorId)
+      .order("updated_at", { ascending: false })
+      .limit(limit),
+    supabase
+      .from("bid_room_chat_threads")
+      .select("id,rfx_event_id,rfx_lane_id,thread_type,title,status,google_chat_sync_status,created_at,updated_at,rfx_events(rfx_id,name,customer),rfx_lanes(lane_number,origin,destination)")
+      .eq("owner_email", user.owner_email)
+      .eq("vendor_id", vendorId)
+      .neq("status", "archived")
+      .order("updated_at", { ascending: false })
+      .limit(limit)
+  ]);
+  if (improvementResult.error) throw improvementResult.error;
+  if (chatResult.error) throw chatResult.error;
+
+  const improvementCases = (improvementResult.data || []).map((row) => ({
+    id: row.id,
+    title: cleanText(row.title) || "Improvement case",
+    case_type: cleanText(row.case_type) || "service_quality",
+    severity: cleanText(row.severity) || "medium",
+    status: cleanText(row.status) || "open",
+    methodology: cleanText(row.methodology) || "dmaic",
+    due_date: cleanText(row.due_date),
+    source: cleanText(row.source),
+    created_at: cleanText(row.created_at),
+    updated_at: cleanText(row.updated_at)
+  }));
+  const chatThreads = (chatResult.data || []).map((row) => {
+    const event = relationRecord(row.rfx_events);
+    const lane = relationRecord(row.rfx_lanes);
+    const route = [cleanText(lane.origin), cleanText(lane.destination)].filter(Boolean).join(" -> ");
+    return {
+      id: row.id,
+      title: cleanText(row.title) || "Bid Room conversation",
+      thread_type: cleanText(row.thread_type) || "event_group",
+      status: cleanText(row.status) || "open",
+      google_chat_sync_status: cleanText(row.google_chat_sync_status) || "not_configured",
+      rfx_id: cleanText(event.rfx_id),
+      rfx_name: cleanText(event.name),
+      route,
+      created_at: cleanText(row.created_at),
+      updated_at: cleanText(row.updated_at)
+    };
+  });
+  const timeline = [
+    ...(support.rows || []).map((row) => ({
+      type: "support",
+      id: row.id,
+      title: row.question || row.subject || "Support ticket",
+      detail: [row.rfx_id, row.route].filter(Boolean).join(" | "),
+      status: row.support_status,
+      severity: row.priority,
+      activity_at: row.occurred_at
+    })),
+    ...improvementCases.map((row) => ({
+      type: "improvement",
+      id: row.id,
+      title: row.title,
+      detail: [row.methodology?.toUpperCase(), row.case_type, row.due_date ? `Due ${row.due_date}` : ""].filter(Boolean).join(" | "),
+      status: row.status,
+      severity: row.severity,
+      activity_at: row.updated_at || row.created_at
+    })),
+    ...chatThreads.map((row) => ({
+      type: "chat",
+      id: row.id,
+      title: row.title,
+      detail: [row.rfx_id, row.route, row.google_chat_sync_status === "synced" ? "Google Chat linked" : "Bid Room"].filter(Boolean).join(" | "),
+      status: row.status,
+      severity: "normal",
+      activity_at: row.updated_at || row.created_at
+    }))
+  ]
+    .sort((left, right) => Date.parse(String(right.activity_at || "")) - Date.parse(String(left.activity_at || "")))
+    .slice(0, limit);
+
+  return {
+    vendor: { id: vendorId, vendor_name: cleanText(vendor.vendor_name || vendor.name || vendor.domain) },
+    summary: {
+      open_support_tickets: (support.rows || []).filter((row) => !["resolved", "archived"].includes(row.support_status)).length,
+      active_improvement_cases: improvementCases.filter((row) => !["resolved", "archived"].includes(row.status)).length,
+      bid_room_threads: chatThreads.length,
+      synced_chat_threads: chatThreads.filter((row) => row.google_chat_sync_status === "synced").length
+    },
+    tickets: support.rows || [],
+    improvement_cases: improvementCases,
+    chat_threads: chatThreads,
+    timeline
+  };
+}
+
 async function updateVendorSupportTicket(
   supabase: ReturnType<typeof createClient>,
   user: { owner_user_id: string | null; owner_email: string | null },
@@ -10047,7 +10456,9 @@ function vendorCiScoreFromSignals(
   const status = cleanText(vendor.status)?.toLowerCase();
   const baseStage = cleanText(vendor.base_stage)?.toLowerCase();
   const manualAttributes = objectRecord(manualScorecard?.attributes);
-  const manualWeight = manualScorecard && !manualAttributes.auto_seeded ? 0.35 : 0.15;
+  // Persisted automatic scorecards are a cache of live signals, not a manual override.
+  const manualOverride = Boolean(manualScorecard && !cleanBoolean(manualAttributes.auto_seeded));
+  const manualWeight = manualOverride ? 0.35 : 0;
 
   const operationalAuto = numericScore(
     readiness * 0.3
@@ -10106,7 +10517,9 @@ function vendorCiScoreFromSignals(
     + financial * 0.1
   );
   const value = vendorCiScoreBlend(autoValue, manualScorecard?.value_score, manualWeight);
-  const tier = cleanText(manualScorecard?.tier) || tierFromValueScore(value);
+  const tier = manualOverride && cleanText(manualScorecard?.tier)
+    ? cleanText(manualScorecard?.tier)
+    : tierFromValueScore(value);
 
   return {
     operational_score: operational,
@@ -10218,6 +10631,8 @@ async function buildVendorValueCurve(
     const metrics = normalizeVendorMetricRow(rateMetrics.metrics.get(vendorId));
     const signals = signalMap.get(vendorId) || vendorCiSignalStats();
     const score = vendorCiScoreFromSignals(vendor, metrics, signals, manual);
+    const manualAttributes = objectRecord(manual?.attributes);
+    const manualOverride = Boolean(manual && !cleanBoolean(manualAttributes.auto_seeded));
     const sourceSummary = [
       `${Number(metrics.linked_rates || 0)} rate(s)`,
       `${signals.bid_responses}/${signals.bid_invitations} bid response(s)`,
@@ -10234,9 +10649,11 @@ async function buildVendorValueCurve(
       vendor_email: cleanText(vendor.primary_email),
       ...score,
       attributes: {
-        ...objectRecord(manual?.attributes),
+        ...manualAttributes,
+        auto_seeded: !manualOverride,
         computed_live_value_curve: true,
-        manual_scorecard: Boolean(manual && !objectRecord(manual.attributes).auto_seeded),
+        manual_scorecard: manualOverride,
+        value_curve_version: 2,
         source_summary: sourceSummary,
         signal_sources: {
           crm: true,
@@ -10244,7 +10661,7 @@ async function buildVendorValueCurve(
           bid_room: true,
           vendor_support: true,
           bid_room_chat: true,
-          manual_scorecard: Boolean(manual)
+          manual_scorecard: manualOverride
         },
         signals: {
           ...signals,
@@ -10265,7 +10682,7 @@ async function buildVendorValueCurve(
       awards: signals.awards,
       support_open: signals.support_open + signals.ci_open,
       chat_messages: signals.carrier_chat_messages,
-      last_scored_at: cleanText(manual?.last_scored_at) || new Date().toISOString()
+      last_scored_at: new Date().toISOString()
     };
   });
 
@@ -10280,6 +10697,66 @@ async function buildVendorValueCurve(
       chat_rows: chatRowsResult.rows.length,
       ci_case_rows: ciCaseRowsResult.rows.length
     }
+  };
+}
+
+async function refreshVendorValueCurve(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_user_id: string | null; owner_email: string | null },
+  input: Record<string, unknown>
+) {
+  const curve = await buildVendorValueCurve(supabase, user, input);
+  const refreshedAt = new Date().toISOString();
+  const rows = curve.scorecards
+    .filter((scorecard) => cleanText(scorecard.vendor_id))
+    .map((scorecard) => withOwner({
+      vendor_id: cleanText(scorecard.vendor_id),
+      tier: normalizedVendorCiTier(scorecard.tier),
+      value_score: numericScore(scorecard.value_score),
+      operational_score: numericScore(scorecard.operational_score),
+      commercial_score: numericScore(scorecard.commercial_score),
+      financial_score: numericScore(scorecard.financial_score),
+      compliance_score: numericScore(scorecard.compliance_score),
+      technology_score: numericScore(scorecard.technology_score),
+      relationship_score: numericScore(scorecard.relationship_score),
+      attributes: objectRecord(scorecard.attributes),
+      notes: cleanText(scorecard.notes),
+      last_scored_at: refreshedAt,
+      updated_at: refreshedAt
+    }, user));
+
+  let processed = 0;
+  for (const batch of chunkValues(rows, 250)) {
+    const result = await supabase
+      .from("vendor_value_scorecards")
+      .upsert(batch, { onConflict: "owner_email,vendor_id" });
+    if (result.error) {
+      throw new Error(`Value Curve refresh stopped after ${processed} carrier(s): ${safeOperationalError(result.error)}`);
+    }
+    processed += batch.length;
+  }
+
+  await writeAuditLog(
+    supabase,
+    user,
+    "vendor_ci.value_curve_refreshed",
+    "vendor_value_scorecards",
+    null,
+    `Recalculated Value Curve for ${processed} carrier(s)`,
+    {
+      processed,
+      source_counts: curve.source_counts,
+      warnings: curve.warnings,
+      refreshed_at: refreshedAt,
+      value_curve_version: 2
+    }
+  );
+
+  return {
+    processed,
+    refreshed_at: refreshedAt,
+    source_counts: curve.source_counts,
+    warnings: curve.warnings
   };
 }
 
@@ -10315,6 +10792,12 @@ function serializeVendorImprovementCase(row: Record<string, unknown>, scorecardB
     submitted_at: cleanText(metadata.submitted_at),
     submitted_to: cleanText(metadata.submitted_to),
     submission_status: cleanText(metadata.submission_status),
+    vendor_response: cleanText(metadata.vendor_response),
+    responded_at: cleanText(metadata.responded_at),
+    response_channel: cleanText(metadata.response_channel),
+    response_evidence: cleanText(metadata.response_evidence),
+    closure_note: cleanText(metadata.closure_note),
+    closure_evidence: cleanText(metadata.closure_evidence),
     next_reminder_at: cleanText(metadata.next_reminder_at),
     reminders_enabled: cleanBoolean(metadata.reminders_enabled),
     reminder_interval_days: Number(metadata.reminder_interval_days || 0) || null,
@@ -10503,6 +10986,14 @@ async function updateVendorImprovementCase(
   const id = cleanText(input.id || input.case_id);
   if (!id) throw new Error("Improvement case id is required.");
   const patch = objectRecord(input.patch || input);
+  const current = await supabase
+    .from("vendor_improvement_cases")
+    .select("metadata")
+    .eq("id", id)
+    .eq("owner_email", user.owner_email)
+    .single();
+  if (current.error) throw current.error;
+  const currentMetadata = objectRecord(current.data.metadata);
   const updatePatch: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if ("title" in patch) updatePatch.title = cleanText(patch.title);
   if ("description" in patch) updatePatch.description = cleanText(patch.description);
@@ -10512,10 +11003,26 @@ async function updateVendorImprovementCase(
     updatePatch.methodology = normalizedVendorCiMethod(patch.methodology, caseType);
   }
   if ("severity" in patch) updatePatch.severity = normalizedVendorCiSeverity(patch.severity);
+  if ("metadata" in patch) updatePatch.metadata = { ...currentMetadata, ...objectRecord(patch.metadata) };
   if ("status" in patch) {
     const status = normalizedVendorCiStatus(patch.status);
+    const closureNote = cleanText(patch.closure_note || objectRecord(patch.metadata).closure_note || currentMetadata.closure_note);
+    if (status === "resolved" && !closureNote) {
+      throw new Error("Add a closure note before resolving a Vendor CI case.");
+    }
     updatePatch.status = status;
     updatePatch.closed_at = status === "resolved" ? new Date().toISOString() : null;
+    if (status === "resolved") {
+      updatePatch.metadata = {
+        ...currentMetadata,
+        ...objectRecord(updatePatch.metadata),
+        closure_note: closureNote,
+        reminders_enabled: false,
+        next_reminder_at: null,
+        resolved_at: new Date().toISOString(),
+        resolved_by: user.owner_email
+      };
+    }
   }
   if ("methodology" in patch) {
     const method = cleanText(patch.methodology)?.toLowerCase() || "dmaic";
@@ -10531,7 +11038,6 @@ async function updateVendorImprovementCase(
   if ("preventive_action" in patch) updatePatch.preventive_action = cleanText(patch.preventive_action);
   if ("success_metric" in patch) updatePatch.success_metric = cleanText(patch.success_metric);
   if ("due_date" in patch) updatePatch.due_date = cleanText(patch.due_date);
-  if ("metadata" in patch) updatePatch.metadata = objectRecord(patch.metadata);
 
   const result = await supabase
     .from("vendor_improvement_cases")
@@ -10563,6 +11069,155 @@ async function updateVendorImprovementCase(
   return { row: serializeVendorImprovementCase(result.data, scorecardByVendor) };
 }
 
+async function recordVendorImprovementResponse(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_user_id: string | null; owner_email: string | null },
+  input: Record<string, unknown>
+) {
+  const id = cleanText(input.id || input.case_id);
+  const response = cleanText(input.response || input.vendor_response);
+  if (!id) throw new Error("Improvement case id is required.");
+  if (!response) throw new Error("Record the carrier response before saving it.");
+
+  const current = await supabase
+    .from("vendor_improvement_cases")
+    .select("*, vendors(id,vendor_name,name,legal_name,domain,primary_email,base_stage,status)")
+    .eq("id", id)
+    .eq("owner_email", user.owner_email)
+    .single();
+  if (current.error) throw current.error;
+
+  const caseRow = current.data as Record<string, unknown>;
+  if (["resolved", "archived"].includes(cleanText(caseRow.status))) {
+    throw new Error("Archived or resolved Vendor CI cases cannot receive a new response.");
+  }
+  const nowIso = new Date().toISOString();
+  const responseChannel = cleanText(input.response_channel || input.channel)?.toLowerCase() || "email";
+  const metadata = objectRecord(caseRow.metadata);
+  const nextStatus = ["open", "define"].includes(cleanText(caseRow.status)) ? "measure" : caseRow.status;
+  const update = await supabase
+    .from("vendor_improvement_cases")
+    .update({
+      status: nextStatus,
+      metadata: {
+        ...metadata,
+        vendor_response: response,
+        responded_at: nowIso,
+        responded_by: cleanText(input.responded_by) || "carrier",
+        response_channel: responseChannel,
+        response_evidence: cleanText(input.response_evidence),
+        reminders_enabled: false,
+        next_reminder_at: null,
+        last_reminder_error: null
+      },
+      updated_at: nowIso
+    })
+    .eq("id", id)
+    .eq("owner_email", user.owner_email)
+    .select("*, vendors(id,vendor_name,name,legal_name,domain,primary_email,base_stage,status)")
+    .single();
+  if (update.error) throw update.error;
+
+  const history = await supabase.from("contact_history").insert(withOwner({
+    vendor_id: caseRow.vendor_id,
+    channel: responseChannel,
+    direction: "inbound",
+    status: "vendor_ci_response_recorded",
+    subject: `Vendor CI response: ${cleanText(caseRow.title) || id}`,
+    body_preview: contactPreview(response),
+    occurred_at: nowIso,
+    metadata: {
+      source: "vendor_ci",
+      vendor_improvement_case_id: id,
+      response_evidence: cleanText(input.response_evidence),
+      recorded_by: user.owner_email
+    }
+  }, user));
+  // The case response is already durable. A best-effort contact-history write
+  // must never make the operator believe the carrier response was lost.
+  if (history.error) {
+    await writeAuditLog(
+      supabase,
+      user,
+      "vendor_ci.response_history_failed",
+      "vendor_improvement_cases",
+      id,
+      "Carrier response was saved, but its contact-history entry could not be written.",
+      { vendor_id: caseRow.vendor_id, error: safeOperationalError(history.error) }
+    );
+  }
+
+  await writeAuditLog(
+    supabase,
+    user,
+    "vendor_ci.response_recorded",
+    "vendor_improvement_cases",
+    id,
+    "Recorded carrier response and paused Vendor CI reminders.",
+    { vendor_id: caseRow.vendor_id, response_channel: responseChannel }
+  );
+  return { row: serializeVendorImprovementCase(update.data), responded: true };
+}
+
+async function resolveVendorImprovementCase(
+  supabase: ReturnType<typeof createClient>,
+  user: { owner_user_id: string | null; owner_email: string | null },
+  input: Record<string, unknown>
+) {
+  const id = cleanText(input.id || input.case_id);
+  const closureNote = cleanText(input.closure_note || input.resolution || input.note);
+  if (!id) throw new Error("Improvement case id is required.");
+  if (!closureNote) throw new Error("Add a closure note that explains the verification or decision.");
+
+  const current = await supabase
+    .from("vendor_improvement_cases")
+    .select("*, vendors(id,vendor_name,name,legal_name,domain,primary_email,base_stage,status)")
+    .eq("id", id)
+    .eq("owner_email", user.owner_email)
+    .single();
+  if (current.error) throw current.error;
+
+  const caseRow = current.data as Record<string, unknown>;
+  const nowIso = new Date().toISOString();
+  const metadata = objectRecord(caseRow.metadata);
+  const updatePatch: Record<string, unknown> = {
+    status: "resolved",
+    closed_at: nowIso,
+    updated_at: nowIso,
+    metadata: {
+      ...metadata,
+      closure_note: closureNote,
+      closure_evidence: cleanText(input.closure_evidence),
+      resolved_at: nowIso,
+      resolved_by: user.owner_email,
+      reminders_enabled: false,
+      next_reminder_at: null
+    }
+  };
+  for (const field of ["root_cause", "corrective_action", "preventive_action", "success_metric"]) {
+    if (field in input) updatePatch[field] = cleanText(input[field]);
+  }
+  const update = await supabase
+    .from("vendor_improvement_cases")
+    .update(updatePatch)
+    .eq("id", id)
+    .eq("owner_email", user.owner_email)
+    .select("*, vendors(id,vendor_name,name,legal_name,domain,primary_email,base_stage,status)")
+    .single();
+  if (update.error) throw update.error;
+
+  await writeAuditLog(
+    supabase,
+    user,
+    "vendor_ci.resolve",
+    "vendor_improvement_cases",
+    id,
+    "Resolved Vendor CI case and stopped future reminders.",
+    { vendor_id: caseRow.vendor_id, closure_evidence: cleanText(input.closure_evidence) }
+  );
+  return { row: serializeVendorImprovementCase(update.data), resolved: true };
+}
+
 function vendorCiEmailSubject(row: Record<string, unknown>, vendor: Record<string, unknown>) {
   const title = cleanText(row.title) || "Continuous improvement request";
   const vendorName = vendorCiVendorName(vendor);
@@ -10592,7 +11247,7 @@ function vendorCiEmailText(row: Record<string, unknown>, vendor: Record<string, 
     "",
     cleanText(row.success_metric) ? `Success metric: ${cleanText(row.success_metric)}` : null,
     cleanText(row.corrective_action) ? `Corrective action expected: ${cleanText(row.corrective_action)}` : null,
-    nextReminderAt ? `Automatic reminder scheduled: ${nextReminderAt}` : null,
+    nextReminderAt ? `Next follow-up scheduled: ${nextReminderAt}` : null,
     "",
     "Please reply to this email with your action plan, evidence, and expected completion date.",
     "",
@@ -13297,7 +13952,9 @@ function bounceRecipientEmails(headers: Record<string, string>, bodyText: string
     ...(bodyText.match(/(?:final-recipient|original-recipient|x-failed-recipients|failed recipient|recipient address|recipient):[^\r\n]+/gi) || []),
     ...(bodyText.match(/(?:message to|your message to)\s+[^\s<>;,"']+@[^\s<>;,"']+/gi) || [])
   ].filter(Boolean).join("\n");
-  const candidates = normalizeEmailList(directLines || bodyText);
+  // Delivery notices often contain sender, postmaster, and forwarded addresses.
+  // Only act on an explicitly declared failed recipient.
+  const candidates = normalizeEmailList(directLines);
   return candidates.filter((email) => {
     if (email === GMAIL_ALLOWED_SENDER) return false;
     if (email.startsWith("mailer-daemon@") || email.startsWith("postmaster@")) return false;
@@ -13498,6 +14155,9 @@ async function syncGmailBounces(
       vendor_id: primaryMessage.vendor_id || null,
       last_seen_at: now,
       updated_at: now,
+      resolved_at: null,
+      resolved_by: null,
+      replacement_email: null,
       metadata: {
         gmail_message_id: notice.gmail_message_id,
         gmail_thread_id: notice.gmail_thread_id,
@@ -14560,63 +15220,22 @@ async function sendWhatsappGroupOutreachMessages(
     label: "WhatsApp group bulk send",
     count: ids.length
   });
-  const connection = await activeWhatsappConnection(supabase, user);
-  const messagesResult = await supabase
-    .from("outreach_messages")
-    .select("*, vendor_whatsapp_groups(*)")
-    .eq("owner_email", user.owner_email)
-    .in("id", ids);
-  if (messagesResult.error) throw messagesResult.error;
-  const messages = (messagesResult.data || []).filter((message) => message.channel === "whatsapp_group");
-  if (!messages.length) throw new Error("Select at least one WhatsApp group draft.");
-  const failures = messages.map((message) => ({
-    id: message.id,
-    reason: WHATSAPP_GROUPS_ENABLED
-      ? "Meta WhatsApp group API sending is not available in this deployment. Use manual group send controls."
-      : "WhatsApp group API is disabled. Use manual group send controls."
-  }));
-  const now = new Date().toISOString();
-  for (const failure of failures) {
-    await supabase
-      .from("outreach_messages")
-      .update({
-        status: "failed",
-        delivery_status: "failed",
-        failed_at: now,
-        delivery_error: failure.reason,
-        provider: "meta",
-        whatsapp_connection_id: connection.row.id,
-        sender_address: cleanText(connection.row.display_phone_number) || null,
-        sender_connection_type: "manual_group",
-        provider_response_status: "manual_required",
-        send_result: outreachSendResult("completed", {
-          channel: "whatsapp_group",
-          provider: "meta",
-          outcome: "manual_required",
-          connection_id: connection.row.id,
-          sender: cleanText(connection.row.display_phone_number) || null
-        }),
-        updated_at: now
-      })
-      .eq("id", failure.id)
-      .eq("owner_email", user.owner_email);
-  }
   await tryWriteAuditLog(
     supabase,
     user,
     "outreach.whatsapp_group.bulk_send",
     "outreach_messages",
-    connection.row.id,
-    `Processed ${ids.length} WhatsApp group message(s)`,
+    ids.slice(0, 50).join(","),
+    `Blocked automated send for ${ids.length} WhatsApp group message(s)`,
     {
       requested: ids.length,
       sent: 0,
-      failed: failures.length,
-      whatsapp_connection_id: connection.row.id,
-      manual_only: true
+      blocked: true,
+      manual_only: true,
+      groups_enabled: WHATSAPP_GROUPS_ENABLED
     }
   );
-  return { sent: 0, failed: failures.length, rows: [], failures };
+  throw new Error("WhatsApp groups are manual-only. Open the group, copy the message, then mark the draft as manually sent.");
 }
 
 async function markWhatsappGroupMessageManuallySent(
@@ -15240,7 +15859,7 @@ function normalizeCatalogValues(row: Record<string, unknown>, catalog: Map<strin
   return { patch, matchCount };
 }
 
-function normalizeLocations(row: Record<string, unknown>, locationIndex: Map<string, Record<string, unknown>>) {
+function normalizeLocations(row: Record<string, unknown>, locationIndex: Map<string, Record<string, unknown>[]>) {
   const preserveOriginManual = cleanBoolean(row.origin_match_manual) && (row.origin_zip_prefix || row.origin_state || row.origin_market || row.origin_region || row.origin_country);
   const preserveDestinationManual = cleanBoolean(row.destination_match_manual) && (row.destination_zip_prefix || row.destination_state || row.destination_market || row.destination_region || row.destination_country);
   const originResolution = locationMatch(locationIndex, row.origin || row.normalized_origin);
@@ -15297,7 +15916,7 @@ function applyMileage(row: Record<string, unknown>, patch: Record<string, unknow
   return mileagePatch;
 }
 
-function normalizeRowWithCurrentCatalog(row: Record<string, unknown>, catalog: Map<string, Map<string, Record<string, unknown>>>, locationIndex: Map<string, Record<string, unknown>>, mileage: Map<string, Record<string, unknown>>) {
+function normalizeRowWithCurrentCatalog(row: Record<string, unknown>, catalog: Map<string, Map<string, Record<string, unknown>>>, locationIndex: Map<string, Record<string, unknown>[]>, mileage: Map<string, Record<string, unknown>>) {
   const categoryResult = normalizeCatalogValues(row, catalog);
   const locationResult = normalizeLocations({ ...row, ...categoryResult.patch }, locationIndex);
   const patch: Record<string, unknown> = {
@@ -15373,9 +15992,9 @@ async function lookupPostalPrefix(value: unknown, fallbackState: unknown = null,
   }
 }
 
-function patchLookupLocation(prefix: "origin" | "destination", lookup: Record<string, unknown> | null, locationIndex: Map<string, Record<string, unknown>>) {
+function patchLookupLocation(prefix: "origin" | "destination", lookup: Record<string, unknown> | null, locationIndex: Map<string, Record<string, unknown>[]>) {
   if (!lookup) return {};
-  const catalogResolution = locationMatch(locationIndex, lookup.zip_prefix);
+  const catalogResolution = locationMatch(locationIndex, lookup.zip_prefix, lookup.country);
   const catalogLocation = catalogResolution?.location || null;
   const patch: Record<string, unknown> = {
     [`${prefix}_zip_prefix`]: lookup.zip_prefix,
@@ -15494,6 +16113,12 @@ function rateVendorReferenceCandidates(row: Record<string, unknown>) {
   const upload = typeof row.raw_upload === "object" && row.raw_upload ? row.raw_upload as Record<string, unknown> : {};
   return [
     ...vendorReferenceCandidatesFromText(row.vendor_domain),
+    ...vendorReferenceCandidatesFromText(row.vendor_reference),
+    ...vendorReferenceCandidatesFromText(row.vendor_email),
+    ...vendorReferenceCandidatesFromText(row.vendor_name),
+    ...vendorReferenceCandidatesFromText(row.legal_name || row.vendor_legal_name),
+    ...vendorReferenceCandidatesFromText(row.commercial_name || row.vendor_commercial_name || row.trade_name),
+    ...vendorReferenceCandidatesFromText(row.dba_name || row.vendor_dba_name),
     ...vendorReferenceCandidatesFromText(upload.vendor_hint),
     ...vendorReferenceCandidatesFromText(upload.original_filename)
   ]
@@ -15506,6 +16131,12 @@ function rawRateVendorReferenceCandidates(row: Record<string, unknown>) {
   const upload = typeof row.raw_upload === "object" && row.raw_upload ? row.raw_upload as Record<string, unknown> : {};
   return [
     cleanText(row.vendor_domain),
+    cleanText(row.vendor_reference),
+    cleanText(row.vendor_email),
+    cleanText(row.vendor_name),
+    cleanText(row.legal_name || row.vendor_legal_name),
+    cleanText(row.commercial_name || row.vendor_commercial_name || row.trade_name),
+    cleanText(row.dba_name || row.vendor_dba_name),
     cleanText(upload.vendor_hint),
     cleanText(upload.original_filename)
   ].filter(Boolean) as string[];
@@ -15822,6 +16453,8 @@ async function matchRateVendorRowsByFilter(
       rows: [],
       database_count: filtered.database_count || ids.length,
       hard_limit_reached: filtered.hard_limit_reached,
+      remaining: Math.max(0, (filtered.database_count || ids.length) - ids.length),
+      completed: ids.length >= (filtered.database_count || ids.length),
       max_rows: maxRows
     };
   }
@@ -15840,6 +16473,8 @@ async function matchRateVendorRowsByFilter(
     rows: sampleRows,
     database_count: filtered.database_count || ids.length,
     hard_limit_reached: filtered.hard_limit_reached,
+    remaining: Math.max(0, (filtered.database_count || ids.length) - ids.length),
+    completed: ids.length >= (filtered.database_count || ids.length),
     max_rows: maxRows
   };
 }
@@ -20234,11 +20869,32 @@ Deno.serve(async (request) => {
       const view = cleanText(body.view)?.toLowerCase() || "all";
       const lightweight = body.lightweight === true || cleanText(body.lightweight)?.toLowerCase() === "true";
       const requestedIds = normalizeUuidList(body.ids || body.vendor_ids);
+      const vendorSearch = cleanText(body.search);
       const maxLimit = lightweight ? 1000 : 250;
       const limit = Math.min(Math.max(Number(body.limit) || 75, 1), maxLimit);
       const vendorSelect = lightweight
         ? "id,vendor_name,name,legal_name,contact_name,domain,primary_email,secondary_emails,whatsapp_phone,preferred_channel,whatsapp_permission_basis,whatsapp_do_not_contact,whatsapp_opt_in_status,whatsapp_group_url,whatsapp_group_name,whatsapp_meta_group_id,whatsapp_group_status,whatsapp_notes,base_stage,funnel_stage,status,tags,coverage_notes,notes,logo_url,created_at,updated_at"
         : "*";
+      let searchIds: string[] | null = null;
+      let searchTotal = 0;
+      let searchCapped = false;
+
+      if (vendorSearch) {
+        const searchResult = await supabase.rpc("search_workspace_vendors", {
+          p_owner_email: user.owner_email,
+          p_search: vendorSearch,
+          p_limit: 1000,
+          p_offset: 0
+        });
+        if (searchResult.error) throw new Error(`Vendor search failed: ${searchResult.error.message}`);
+        const matches = (searchResult.data || []) as Array<Record<string, unknown>>;
+        searchIds = matches.map((row) => cleanText(row.id)).filter((id): id is string => Boolean(id));
+        searchTotal = Number(matches[0]?.total_count || searchIds.length);
+        searchCapped = searchTotal > searchIds.length;
+        if (!searchIds.length) {
+          return jsonResponse({ rows: [], total: 0, limit, offset, warnings: [], search_total: 0, search_capped: false });
+        }
+      }
       let query = supabase
         .from("vendors")
         .select(vendorSelect, { count: "exact" })
@@ -20246,7 +20902,15 @@ Deno.serve(async (request) => {
         .order("created_at", { ascending: false })
         .range(offset, offset + limit - 1);
 
-      if (requestedIds.length) query = query.in("id", requestedIds);
+      const scopedIds = requestedIds.length && searchIds
+        ? requestedIds.filter((id) => searchIds?.includes(id))
+        : requestedIds.length
+          ? requestedIds
+          : searchIds;
+      if (scopedIds) {
+        if (!scopedIds.length) return jsonResponse({ rows: [], total: 0, limit, offset, warnings: [], search_total: searchTotal, search_capped: searchCapped });
+        query = query.in("id", scopedIds);
+      }
 
       if (body.status) query = query.eq("status", body.status);
       if (view === "archived") {
@@ -20277,37 +20941,33 @@ Deno.serve(async (request) => {
         const coverage = String(body.coverage).trim();
         if (coverage) query = query.or(`coverage_notes.ilike.%${coverage}%,notes.ilike.%${coverage}%`);
       }
-      if (body.search) {
-        const term = String(body.search).trim().replace(/[,]/g, " ");
-        query = query.or([
-          `vendor_name.ilike.%${term}%`,
-          `name.ilike.%${term}%`,
-          `legal_name.ilike.%${term}%`,
-          `contact_name.ilike.%${term}%`,
-          `domain.ilike.%${term}%`,
-          `primary_email.ilike.%${term}%`,
-          `whatsapp_phone.ilike.%${term}%`,
-          `coverage_notes.ilike.%${term}%`,
-          `notes.ilike.%${term}%`
-        ].join(","));
-      }
-
       const result = await query;
       if (result.error) throw result.error;
       const rows = (result.data || []) as Record<string, unknown>[];
       let enrichedRows = rows;
       let warnings: string[] = [];
       if (!lightweight && rows.length) {
-        const metricsResult = await fetchVendorRateMetricsSafe(supabase, user);
-        warnings = metricsResult.warnings;
-        const intelligenceRows = buildVendorIntelligenceRows(rows, metricsResult.metrics);
+        const [metricsResult, bidMetricsResult] = await Promise.all([
+          fetchVendorRateMetricsSafe(supabase, user),
+          fetchVendorBidMetricsSafe(supabase, user)
+        ]);
+        warnings = [...metricsResult.warnings, ...bidMetricsResult.warnings];
+        const intelligenceRows = buildVendorIntelligenceRows(rows, metricsResult.metrics, bidMetricsResult.metrics);
         const intelligenceById = new Map(intelligenceRows.map((row) => [cleanText(row.id || row.vendor_id), row]));
         enrichedRows = rows.map((row) => ({
           ...row,
           ...(intelligenceById.get(cleanText(row.id)) || {})
         }));
       }
-      return jsonResponse({ rows: enrichedRows, total: result.count || 0, limit, offset, warnings });
+      return jsonResponse({
+        rows: enrichedRows,
+        total: result.count || 0,
+        limit,
+        offset,
+        warnings,
+        search_total: vendorSearch ? searchTotal : result.count || 0,
+        search_capped: searchCapped
+      });
     }
 
     if (body.action === "vendor_intelligence") {
@@ -20509,6 +21169,110 @@ Deno.serve(async (request) => {
       const result = await supabase.from("vendors").update(patch).eq("owner_email", user.owner_email).eq("id", body.id).select().single();
       if (result.error) throw result.error;
       return jsonResponse({ row: result.data });
+    }
+
+    if (body.action === "replace_bounced_vendor_email") {
+      const vendorId = cleanText(body.id || body.vendor_id);
+      const rawBouncedEmail = cleanText(body.bounced_email).toLowerCase();
+      const rawReplacementEmail = cleanText(body.replacement_email).toLowerCase();
+      const bouncedEmail = normalizeEmail(rawBouncedEmail);
+      const replacementEmail = normalizeEmail(rawReplacementEmail);
+      if (!vendorId) return jsonResponse({ error: "Vendor id is required." }, 400);
+      if (!bouncedEmail || !replacementEmail || bouncedEmail !== rawBouncedEmail || replacementEmail !== rawReplacementEmail) {
+        return jsonResponse({ error: "Enter a valid bounced email and replacement email." }, 400);
+      }
+      if (bouncedEmail === replacementEmail) {
+        return jsonResponse({ error: "The replacement email must be different from the bounced email." }, 400);
+      }
+
+      const current = await supabase
+        .from("vendors")
+        .select("*")
+        .eq("owner_email", user.owner_email)
+        .eq("id", vendorId)
+        .single();
+      if (current.error) throw current.error;
+
+      const profileData = objectRecord(current.data?.profile_data);
+      const bouncedEmails = Array.isArray(profileData.bounced_emails) ? profileData.bounced_emails : [];
+      const hasBounceRecord = bouncedEmails.some((item) => normalizeEmail(objectRecord(item).email) === bouncedEmail && !objectRecord(item).resolved_at);
+      if (!hasBounceRecord) {
+        return jsonResponse({ error: "This vendor does not have an unresolved delivery failure for that email." }, 400);
+      }
+
+      const replacementSuppression = await supabase
+        .from("email_suppression_list")
+        .select("id")
+        .eq("owner_email", user.owner_email)
+        .eq("email", replacementEmail)
+        .is("resolved_at", null)
+        .in("status", blockedEmailStatuses())
+        .maybeSingle();
+      if (replacementSuppression.error) throw replacementSuppression.error;
+      if (replacementSuppression.data) {
+        return jsonResponse({ error: "That replacement email is blocked by a delivery failure. Use a different address." }, 400);
+      }
+
+      const now = new Date().toISOString();
+      const primaryEmail = normalizeEmail(current.data?.primary_email);
+      const secondaryEmails = normalizeEmailList(current.data?.secondary_emails)
+        .filter((email) => email !== bouncedEmail && email !== replacementEmail);
+      const nextPrimaryEmail = primaryEmail === bouncedEmail || !primaryEmail ? replacementEmail : primaryEmail;
+      const nextSecondaryEmails = primaryEmail === bouncedEmail
+        ? secondaryEmails
+        : Array.from(new Set([replacementEmail, ...secondaryEmails]));
+      const nextBouncedEmails = bouncedEmails.map((item) => {
+        const record = objectRecord(item);
+        if (normalizeEmail(record.email) !== bouncedEmail || record.resolved_at) return record;
+        return {
+          ...record,
+          resolved_at: now,
+          resolved_by: user.owner_email,
+          replacement_email: replacementEmail
+        };
+      });
+      const unresolvedBouncesRemain = nextBouncedEmails.some((item) => !objectRecord(item).resolved_at);
+      const tags = normalizeTags(current.data?.tags).filter((tag) => tag !== "email_bounce");
+      if (unresolvedBouncesRemain) tags.push("email_bounce");
+
+      const result = await supabase
+        .from("vendors")
+        .update({
+          primary_email: nextPrimaryEmail,
+          secondary_emails: nextSecondaryEmails,
+          tags: Array.from(new Set(tags)),
+          profile_data: { ...profileData, bounced_emails: nextBouncedEmails },
+          updated_at: now
+        })
+        .eq("owner_email", user.owner_email)
+        .eq("id", vendorId)
+        .select()
+        .single();
+      if (result.error) throw result.error;
+
+      const suppressionUpdate = await supabase
+        .from("email_suppression_list")
+        .update({
+          resolved_at: now,
+          resolved_by: user.owner_email,
+          replacement_email: replacementEmail,
+          updated_at: now
+        })
+        .eq("owner_email", user.owner_email)
+        .eq("email", bouncedEmail)
+        .is("resolved_at", null);
+      if (suppressionUpdate.error) throw suppressionUpdate.error;
+
+      await tryWriteAuditLog(
+        supabase,
+        user,
+        "vendor.email_bounce.resolve",
+        "vendors",
+        vendorId,
+        `Replaced bounced email for ${current.data?.vendor_name || "vendor"}`,
+        { bounced_email: bouncedEmail, replacement_email: replacementEmail }
+      );
+      return jsonResponse({ row: result.data, bounced_email: bouncedEmail, replacement_email: replacementEmail });
     }
 
     if (body.action === "create_vendor_profile_request") {
@@ -21332,6 +22096,31 @@ Deno.serve(async (request) => {
 
     if (body.action === "create_outreach_template") {
       const row = withOwner(normalizeOutreachTemplate(body.template || {}), user);
+      // Canonical templates are the reusable base by channel and locale. An event
+      // renders a snapshot from this base; it must never create another template.
+      if (row.template_scope === "canonical" && row.canonical_language) {
+        const existing = await supabase
+          .from("outreach_templates")
+          .select("id")
+          .eq("owner_email", user.owner_email)
+          .eq("channel", row.channel)
+          .eq("template_scope", "canonical")
+          .eq("canonical_language", row.canonical_language)
+          .eq("active", true)
+          .maybeSingle();
+        if (existing.error) throw existing.error;
+        if (existing.data?.id) {
+          const updated = await supabase
+            .from("outreach_templates")
+            .update(row)
+            .eq("id", existing.data.id)
+            .eq("owner_email", user.owner_email)
+            .select()
+            .single();
+          if (updated.error) throw updated.error;
+          return jsonResponse({ row: updated.data, reused: true });
+        }
+      }
       const result = await supabase.from("outreach_templates").insert(row).select().single();
       if (result.error) throw result.error;
       return jsonResponse({ row: result.data });
@@ -22323,6 +23112,38 @@ Deno.serve(async (request) => {
         }
       }
 
+      const suppressedRows = rows.filter((row) => {
+        const channel = cleanText(row.channel)?.toLowerCase() || "";
+        const recipient = channel === "email"
+          ? cleanText(row.recipient_email)?.toLowerCase()
+          : phoneForWhatsapp(row.normalized_recipient_phone || row.recipient_phone);
+        const suppression = audienceSuppressions.find((item) => {
+          const suppressionChannel = cleanText(item.channel)?.toLowerCase() || "all";
+          const suppressionValue = cleanText(item.contact_value)?.toLowerCase() || "";
+          const suppressionVendorId = cleanText(item.vendor_id) || "";
+          return (!suppressionVendorId || suppressionVendorId === cleanText(row.vendor_id))
+            && ["all", channel].includes(suppressionChannel)
+            && (suppressionValue === "*" || Boolean(recipient && suppressionValue === recipient));
+        });
+        if (!suppression) return false;
+        skipped.push({
+          invitation_id: row.rfx_lane_vendor_id,
+          channel: row.channel,
+          reason: cleanText(suppression.reason) || "Contact is suppressed",
+          reason_code: "suppressed_contact"
+        });
+        return true;
+      });
+      if (suppressedRows.length) {
+        const suppressedSet = new Set(suppressedRows);
+        rows.splice(0, rows.length, ...rows.filter((row) => !suppressedSet.has(row)));
+      }
+      for (const row of rows) {
+        row.contact_key = outreachDedupeContactKey(row);
+        row.outcome_reason = "Eligible contact ready for review";
+        row.next_action = "Review and send";
+      }
+
       if (!rows.length) return jsonResponse({
         generated: 0,
         rows: [],
@@ -22397,38 +23218,6 @@ Deno.serve(async (request) => {
           rows.length = 0;
           rows.push(...filteredRows);
         }
-      }
-
-      const suppressedRows = rows.filter((row) => {
-        const channel = cleanText(row.channel)?.toLowerCase() || "";
-        const recipient = channel === "email"
-          ? cleanText(row.recipient_email)?.toLowerCase()
-          : phoneForWhatsapp(row.normalized_recipient_phone || row.recipient_phone);
-        const suppression = audienceSuppressions.find((item) => {
-          const suppressionChannel = cleanText(item.channel)?.toLowerCase() || "all";
-          const suppressionValue = cleanText(item.contact_value)?.toLowerCase() || "";
-          const suppressionVendorId = cleanText(item.vendor_id) || "";
-          return (!suppressionVendorId || suppressionVendorId === cleanText(row.vendor_id))
-            && ["all", channel].includes(suppressionChannel)
-            && (suppressionValue === "*" || Boolean(recipient && suppressionValue === recipient));
-        });
-        if (!suppression) return false;
-        skipped.push({
-          invitation_id: row.rfx_lane_vendor_id,
-          channel: row.channel,
-          reason: cleanText(suppression.reason) || "Contact is suppressed",
-          reason_code: "suppressed_contact"
-        });
-        return true;
-      });
-      if (suppressedRows.length) {
-        const suppressedSet = new Set(suppressedRows);
-        rows.splice(0, rows.length, ...rows.filter((row) => !suppressedSet.has(row)));
-      }
-      for (const row of rows) {
-        row.contact_key = outreachDedupeContactKey(row);
-        row.outcome_reason = "Eligible contact ready for review";
-        row.next_action = "Review and send";
       }
 
       if (!rows.length) return jsonResponse({
@@ -24026,10 +24815,10 @@ Deno.serve(async (request) => {
         column_filters: columnFilters
       };
 
-      const sqlValues = await fetchSqlRateFilterValues(supabase, filterPayload, field, valueSearch, limit);
+      const sqlValues = await fetchSqlRateFilterValues(supabase, filterPayload, field, valueSearch, limit, user.owner_email);
       if (sqlValues) return jsonResponse(sqlValues);
 
-      return jsonResponse(await fetchRateFilterValuesByRpc(supabase, filterPayload, field, valueSearch, limit));
+      return jsonResponse(await fetchRateFilterValuesByRpc(supabase, filterPayload, field, valueSearch, limit, user.owner_email));
     }
 
     if (body.action === "list_rateware") {
@@ -24096,11 +24885,11 @@ Deno.serve(async (request) => {
         column_filters: columnFilters
       };
 
-      const sqlValues = await fetchSqlRateFilterValues(supabase, filterPayload, field, valueSearch, limit);
+      const sqlValues = await fetchSqlRateFilterValues(supabase, filterPayload, field, valueSearch, limit, user.owner_email);
       if (sqlValues) return jsonResponse(sqlValues);
 
       try {
-        return jsonResponse(await fetchRateFilterValuesByRpc(supabase, filterPayload, field, valueSearch, limit));
+        return jsonResponse(await fetchRateFilterValuesByRpc(supabase, filterPayload, field, valueSearch, limit, user.owner_email));
       } catch (error) {
         console.warn("rateware filter values RPC failed; using SQL fallback", {
           field,
@@ -24153,17 +24942,15 @@ Deno.serve(async (request) => {
         });
       }
 
-      const currentResult = await supabase
-        .from("rate_staging")
-        .select("id,trailer,hazmat,temperature_controlled,status,vendor_id,vendor_domain")
-        .eq("owner_email", user.owner_email)
-        .in("id", ids)
-        .eq("status", "approved")
-        .limit(500);
-      if (currentResult.error) throw currentResult.error;
+      const currentRows = (await fetchRateRowsForIds(
+        supabase,
+        ids,
+        "id,trailer,hazmat,temperature_controlled,status,vendor_id,vendor_domain",
+        user.owner_email
+      )).filter((row) => cleanText(row.status) === "approved");
 
       const updatedRows: Record<string, unknown>[] = [];
-      for (const current of currentResult.data || []) {
+      for (const current of currentRows) {
         const patch = normalizeStagingPatch(body.patch || {}, current || {});
         Object.assign(patch, await vendorLinkPatch(supabase, user, body.patch || {}, current || {}));
         delete patch.status;
@@ -24188,6 +24975,18 @@ Deno.serve(async (request) => {
         });
       }
       return jsonResponse({ updated: updatedRows.length, rows: updatedRows });
+    }
+
+    if (body.action === "list_rateware_rows_by_ids") {
+      const ids = normalizeBulkIds(body.ids, { label: "Approved rate ids", limit: BULK_SELECTED_ID_LIMIT });
+      if (!ids.length) return jsonResponse({ rows: [] });
+      const rows = (await fetchRateRowsForIds(
+        supabase,
+        ids,
+        RATE_ROW_LIST_SELECT,
+        user.owner_email
+      )).filter((row) => cleanText(row.status) === "approved");
+      return jsonResponse({ rows });
     }
 
     if (body.action === "list_rateware_versions") {
@@ -24456,8 +25255,11 @@ Deno.serve(async (request) => {
         return jsonResponse({
           action: targetAction,
           matched: 0,
+          targeted: 0,
           updated: 0,
           removed: 0,
+          remaining: 0,
+          completed: true,
           rows: []
         });
       }
@@ -24493,6 +25295,8 @@ Deno.serve(async (request) => {
         targeted: ids.length,
         updated: targetAction === "archive" ? affected : 0,
         removed: targetAction === "remove" ? affected : 0,
+        remaining: Math.max(0, (filtered.database_count || ids.length) - ids.length),
+        completed: ids.length >= (filtered.database_count || ids.length),
         max_rows: maxRows,
         hard_limit_reached: filtered.hard_limit_reached
       });
@@ -24528,7 +25332,10 @@ Deno.serve(async (request) => {
       if (!ids.length) {
         return jsonResponse({
           matched: 0,
+          targeted: 0,
           updated: 0,
+          remaining: 0,
+          completed: true,
           rows: []
         });
       }
@@ -24596,6 +25403,8 @@ Deno.serve(async (request) => {
         targeted: ids.length,
         updated: updatedRows.length,
         rows: updatedRows.slice(0, 100),
+        remaining: Math.max(0, (filtered.database_count || ids.length) - ids.length),
+        completed: ids.length >= (filtered.database_count || ids.length),
         max_rows: maxRows,
         hard_limit_reached: filtered.hard_limit_reached
       });
@@ -24789,6 +25598,51 @@ Deno.serve(async (request) => {
         );
       }
       return jsonResponse({ row: result.data });
+    }
+
+    if (body.action === "bulk_update_staging") {
+      const ids = normalizeBulkIds(body.ids, { label: "Staging row ids", limit: BULK_SELECTED_ID_LIMIT });
+      if (!ids.length) return jsonResponse({ error: "At least one staging row id is required." }, 400);
+      requireBulkConfirmation(body, {
+        action: "bulk_update_staging",
+        label: "Staging selected bulk update",
+        count: ids.length
+      });
+      const patchInput = objectRecord(body.patch);
+      if (!Object.keys(patchInput).length) return jsonResponse({ error: "No staging updates provided." }, 400);
+
+      const currentRows = await fetchRateRowsForIds(
+        supabase,
+        ids,
+        "id,trailer,hazmat,temperature_controlled,vendor_id,vendor_domain,status",
+        user.owner_email
+      );
+      const updatedRows: Record<string, unknown>[] = [];
+      for (const current of currentRows) {
+        const patch = normalizeStagingPatch(patchInput, current || {});
+        Object.assign(patch, await vendorLinkPatch(supabase, user, patchInput, current || {}));
+        if (!Object.keys(patch).length) continue;
+        const result = await supabase
+          .from("rate_staging")
+          .update(patch)
+          .eq("id", current.id)
+          .eq("owner_email", user.owner_email)
+          .select("id,status")
+          .single();
+        if (result.error) throw result.error;
+        updatedRows.push(result.data);
+      }
+
+      await tryWriteAuditLog(
+        supabase,
+        user,
+        "staging.bulk_update",
+        "rate_staging",
+        ids.slice(0, 50).join(","),
+        `Bulk updated ${updatedRows.length} staging row(s)`,
+        { ids_count: ids.length, changed_fields: Object.keys(patchInput) }
+      );
+      return jsonResponse({ updated: updatedRows.length, rows: updatedRows });
     }
 
     return jsonResponse({ error: "Unknown action." }, 400);

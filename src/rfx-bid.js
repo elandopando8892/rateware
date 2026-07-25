@@ -58,7 +58,8 @@ const privateAlertState = {
   loaded: false,
   chatLoaded: false,
   previousSnapshot: null,
-  previousChatSnapshot: null
+  previousChatSnapshot: null,
+  pendingOwnOfferRevisionTokens: new Set()
 };
 const PRIVATE_BID_SOUND_DEFAULT_VERSION = "2026-07-08-sound-on";
 if (localStorage.getItem("rateware.privateBidRoom.soundDefault") !== PRIVATE_BID_SOUND_DEFAULT_VERSION) {
@@ -419,8 +420,12 @@ function rememberPublicBoardInvitationAccess(invitation = {}, carrierBook = {}) 
   const eventIds = [...new Set(verifiedRows.map((row) => publicBoardAccessText(row.event_id)).filter(Boolean))];
   localStorage.setItem(PUBLIC_BOARD_INVITE_LANES_KEY, JSON.stringify(laneIds));
   localStorage.setItem(PUBLIC_BOARD_INVITE_EVENTS_KEY, JSON.stringify(eventIds));
+  const savedEmail = publicBoardAccessText(localStorage.getItem(PUBLIC_BOARD_INVITE_EMAIL_KEY)).toLowerCase();
   const email = publicBoardAccessText(vendor.primary_email).toLowerCase();
-  if (email) localStorage.setItem(PUBLIC_BOARD_INVITE_EMAIL_KEY, email);
+  // Keep the email explicitly verified through soft login. A vendor can have
+  // multiple valid contacts, so replacing it with the primary CRM email would
+  // make a previously verified invitation look unavailable.
+  if (!savedEmail && email) localStorage.setItem(PUBLIC_BOARD_INVITE_EMAIL_KEY, email);
 }
 
 async function callBidApi(action, payload = {}) {
@@ -1181,6 +1186,17 @@ function queuePrivateBidAlert(type, message = "") {
   announcePrivateBidAlert(type);
 }
 
+function clearPrivateBidAlerts(types = []) {
+  const blocked = new Set(types);
+  privateAlertState.alerts = privateAlertState.alerts.filter((alert) => !blocked.has(alert.type));
+  renderPrivateBidAlerts();
+}
+
+function markOwnOfferRevisionPending(invitationToken = tokenFromUrl()) {
+  const token = String(invitationToken || "").trim();
+  if (token) privateAlertState.pendingOwnOfferRevisionTokens.add(token);
+}
+
 async function enablePrivateBidAlerts() {
   privateAlertState.soundEnabled = true;
   localStorage.setItem("rateware.privateBidRoom.sound", "on");
@@ -1206,11 +1222,34 @@ function privateBidRoomSnapshot(data = {}) {
   const currentRow = rows.find((row) => row.is_current) || {};
   const event = data.invitation?.rfx_events || {};
   const deadline = deadlineCopy(event);
+  const currentInvitationId = String(liveBoard.current_invitation_id || data.invitation?.id || currentRow.id || "");
+  const currentInvitationToken = String(liveBoard.current_invitation_token || data.invitation?.invitation_token || "");
+  const currentOfferRevisionAt = String(
+    liveBoard.current_offer_revision_at
+      || currentRow.offer_revision_at
+      || data.invitation?.updated_at
+      || data.invitation?.responded_at
+      || ""
+  );
+  const currentOfferFingerprint = JSON.stringify({
+    invitation_id: currentInvitationId,
+    amount: numberOrNull(currentRow.amount ?? data.invitation?.bid_rate),
+    capacity: numberOrNull(currentRow.weekly_capacity ?? data.invitation?.weekly_capacity),
+    transit: numberOrNull(currentRow.transit_days ?? data.invitation?.transit_days),
+    valid_through: currentRow.valid_through || data.invitation?.valid_through || "",
+    commercial_model: currentRow.commercial_model || data.invitation?.commercial_model || "",
+    suggested_margin: numberOrNull(currentRow.marksman_margin_pct ?? data.invitation?.marksman_margin_pct),
+    carrier_share: numberOrNull(currentRow.carrier_share_pct ?? data.invitation?.carrier_share_pct)
+  });
   return {
+    currentInvitationId,
+    currentInvitationToken,
     rank: numberOrNull(liveBoard.current_rank ?? currentRow.rank),
     bidCount: Number(liveBoard.bid_count || rows.length || 0),
     currentRate: numberOrNull(currentRow.amount ?? data.invitation?.bid_rate),
-    currentUpdatedAt: currentRow.responded_at || data.invitation?.responded_at || data.invitation?.updated_at || "",
+    currentUpdatedAt: currentOfferRevisionAt,
+    currentOfferFingerprint,
+    competitorActivityAt: String(liveBoard.latest_competitor_activity_at || ""),
     signal: liveBoard.marketplace_signal || liveBoard.position_signal || "",
     historyCount: Array.isArray(data.bid_history) ? data.bid_history.length : 0,
     deadlineTone: deadline.tone,
@@ -1229,18 +1268,33 @@ function detectPrivateBidRoomSignals(data = {}) {
   }
 
   const ownOfferChanged = Boolean(
-    (snapshot.currentUpdatedAt && previous.currentUpdatedAt && snapshot.currentUpdatedAt !== previous.currentUpdatedAt)
+    (snapshot.currentUpdatedAt && snapshot.currentUpdatedAt !== previous.currentUpdatedAt)
+    || snapshot.currentOfferFingerprint !== previous.currentOfferFingerprint
     || (snapshot.currentRate !== null && previous.currentRate !== null && snapshot.currentRate !== previous.currentRate)
     || (snapshot.historyCount > previous.historyCount)
   );
+  const ownRevisionPending = privateAlertState.pendingOwnOfferRevisionTokens.has(snapshot.currentInvitationToken);
+  const competitorActivityAdvanced = Boolean(
+    snapshot.competitorActivityAt
+    && snapshot.competitorActivityAt !== previous.competitorActivityAt
+  );
+  if (ownOfferChanged || ownRevisionPending) {
+    privateAlertState.pendingOwnOfferRevisionTokens.delete(snapshot.currentInvitationToken);
+    clearPrivateBidAlerts(["displaced"]);
+  }
   if (snapshot.rank && previous.rank && snapshot.rank > previous.rank) {
-    if (ownOfferChanged) {
+    if (ownOfferChanged || ownRevisionPending) {
       queuePrivateBidAlert("rankChanged", dualText(
         `Your rank moved from #${previous.rank} to #${snapshot.rank} after your latest offer update.`,
         `Tu ranking cambio de #${previous.rank} a #${snapshot.rank} despues de tu ultima actualizacion.`
       ));
-    } else {
+    } else if (competitorActivityAdvanced) {
       queuePrivateBidAlert("displaced", `Your rank moved from #${previous.rank} to #${snapshot.rank}. Review the live board and consider a new bid.`);
+    } else {
+      queuePrivateBidAlert("rankChanged", dualText(
+        `Your rank changed from #${previous.rank} to #${snapshot.rank}. Review the live board for the latest activity.`,
+        `Tu ranking cambio de #${previous.rank} a #${snapshot.rank}. Revisa el tablero para ver la actividad mas reciente.`
+      ));
     }
   } else if (snapshot.rank === 1 && previous.rank !== 1) {
     queuePrivateBidAlert("leading", "Your offer moved into the leading position.");
@@ -2088,6 +2142,7 @@ async function submitBidTemplateRows() {
   try {
     for (const row of rows) {
       await callBidApi("submit_bid", { token: row.invitation_token, ...row.draft });
+      markOwnOfferRevisionPending(row.invitation_token);
     }
     pendingBidTemplateRows = [];
     if (status) {
@@ -2494,11 +2549,41 @@ function bidHistoryDeltaHtml(metadata = {}) {
       : null,
     before.deadhead_distance !== after.deadhead_distance && after.deadhead_distance !== undefined
       ? `Deadhead ${after.deadhead_distance ?? "-"} ${after.deadhead_unit || "mi"}`
+      : null,
+    before.eta_pickup !== after.eta_pickup && after.eta_pickup !== undefined
+      ? `Pickup ETA ${after.eta_pickup ? formatDateTime(after.eta_pickup) : "-"}`
+      : null,
+    before.eta_delivery !== after.eta_delivery && after.eta_delivery !== undefined
+      ? `Delivery ETA ${after.eta_delivery ? formatDateTime(after.eta_delivery) : "-"}`
+      : null,
+    before.unit_details !== after.unit_details && after.unit_details !== undefined
+      ? `Unit details ${after.unit_details || "-"}`
+      : null,
+    before.availability_validation_status !== after.availability_validation_status && after.availability_validation_status !== undefined
+      ? `Availability validation ${after.availability_validation_status || "-"}`
+      : null,
+    before.mirror_account_enabled !== after.mirror_account_enabled && after.mirror_account_enabled !== undefined
+      ? `Mirror account ${after.mirror_account_enabled ? "requested" : "not requested"}`
       : null
   ].filter(Boolean);
   return deltas.length
     ? deltas.map((delta) => `<span>${escapeHtml(delta)}</span>`).join("")
     : "<span>No field-level delta captured</span>";
+}
+
+function bidCommitmentSnapshotHtml(metadata = {}) {
+  const after = metadata.after || {};
+  const commitments = [
+    after.valid_through ? `Valid through ${after.valid_through}` : null,
+    after.weekly_capacity !== null && after.weekly_capacity !== undefined ? `Capacity ${after.weekly_capacity} / wk` : null,
+    after.equipment_available === true ? "Equipment available" : after.equipment_available === false ? "Equipment unavailable" : null,
+    after.deadhead_distance !== null && after.deadhead_distance !== undefined ? `Deadhead ${after.deadhead_distance} ${after.deadhead_unit || "mi"}` : null,
+    after.eta_pickup ? `Pickup ${formatDateTime(after.eta_pickup)}` : null,
+    after.eta_delivery ? `Delivery ${formatDateTime(after.eta_delivery)}` : null
+  ].filter(Boolean);
+  return commitments.length
+    ? `<small class="carrier-bid-history-commitments">${escapeHtml(commitments.join(" | "))}</small>`
+    : "";
 }
 
 function renderBidHistory(rows = []) {
@@ -2528,6 +2613,7 @@ function renderBidHistory(rows = []) {
                 </header>
                 <p>${escapeHtml(row.body_preview || row.subject || "Carrier offer update")}</p>
                 <div class="carrier-bid-history-deltas">${bidHistoryDeltaHtml(metadata)}</div>
+                ${bidCommitmentSnapshotHtml(metadata)}
                 ${after.responded_at ? `<small>Submitted ${escapeHtml(formatDateTime(after.responded_at))}</small>` : ""}
               </div>
             </article>
@@ -3198,6 +3284,7 @@ async function saveQuickBidRow(rowElement, button) {
   setQuickBidRowStatus(rowElement, dualText("Saving lane offer...", "Guardando oferta de la ruta..."), "neutral");
   try {
     await callBidApi("submit_bid", { token: rowToken, ...draft });
+    markOwnOfferRevisionPending(rowToken);
     lastQuickBidSaveStatus = {
       token: rowToken,
       tone: "success",
@@ -3840,6 +3927,7 @@ function renderInvitation(invitation, liveBoard = {}, carrierBook = {}) {
     const wasUpdate = hasSubmittedOffer();
     try {
       await callBidApi("submit_bid", draft);
+      markOwnOfferRevisionPending();
       status.textContent = wasUpdate
         ? dualText("Offer revision saved. Your updated price and capacity are now published.", "Revision guardada. Tu tarifa y capacidad actualizadas ya estan publicadas.")
         : "Bid submitted with commercial and availability details. Your rank will refresh automatically.";

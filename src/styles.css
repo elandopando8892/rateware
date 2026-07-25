@@ -3887,19 +3887,19 @@ a {
 
 .rfx-outreach-control-center {
   display: grid;
-  gap: 8px;
+  gap: 7px;
   margin: 0 0 10px;
-  padding: 9px 10px;
+  padding: 8px 10px;
   border: 1px solid #d7e0e7;
-  border-radius: 7px;
+  border-radius: 6px;
   background: #fbfcfd;
 }
 
 .rfx-outreach-control-heading {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 9px;
 }
 
 .rfx-outreach-control-heading h4 {
@@ -3910,16 +3910,39 @@ a {
 
 .rfx-outreach-control-heading span {
   display: block;
-  max-width: 780px;
+  max-width: 620px;
   color: #64727d;
-  font-size: 0.72rem;
+  font-size: 0.68rem;
   line-height: 1.35;
+}
+
+.rfx-outreach-audience-metrics {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+}
+
+.rfx-outreach-audience-metrics span {
+  border: 1px solid #dfe7ed;
+  border-radius: 4px;
+  padding: 3px 5px;
+  color: #64727d;
+  font-size: 0.61rem;
+  font-weight: 720;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.rfx-outreach-audience-metrics strong {
+  color: #172633;
+  font-size: 0.7rem;
 }
 
 .rfx-outreach-audience-controls {
   display: grid;
-  grid-template-columns: 150px minmax(170px, 0.8fr) minmax(210px, 1.25fr) 150px;
-  gap: 7px;
+  grid-template-columns: 145px minmax(170px, 0.75fr) minmax(240px, 1.4fr) 145px;
+  gap: 5px;
 }
 
 .rfx-outreach-audience-controls label {
@@ -3935,15 +3958,16 @@ a {
 .rfx-outreach-audience-controls input,
 .rfx-outreach-audience-controls select,
 .rfx-outreach-audience-segment-controls input {
-  min-height: 28px;
-  font-size: 0.76rem;
+  min-height: 26px;
+  font-size: 0.72rem;
 }
 
 .rfx-outreach-audience-segment-controls {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   min-width: 0;
+  padding-top: 1px;
 }
 
 .rfx-outreach-audience-segment-controls input {
@@ -3956,23 +3980,23 @@ a {
 }
 
 .rfx-outreach-audience-table-wrap {
-  max-height: 208px;
+  max-height: 224px;
   overflow: auto;
-  border: 1px solid #dce4ea;
-  border-radius: 5px;
+  border: 1px solid #dbe4ea;
+  border-radius: 4px;
   background: #ffffff;
 }
 
 .rfx-outreach-audience-table {
   width: 100%;
-  min-width: 740px;
+  min-width: 620px;
   border-collapse: collapse;
-  font-size: 0.72rem;
+  font-size: 0.69rem;
 }
 
 .rfx-outreach-audience-table th,
 .rfx-outreach-audience-table td {
-  padding: 5px 6px;
+  padding: 4px 6px;
   border-bottom: 1px solid #e7edf1;
   text-align: left;
   vertical-align: middle;
@@ -3984,7 +4008,7 @@ a {
   z-index: 1;
   color: #53616d;
   background: #f3f6f8;
-  font-size: 0.64rem;
+  font-size: 0.6rem;
   font-weight: 780;
   letter-spacing: 0.01em;
   text-transform: uppercase;
@@ -3995,7 +4019,7 @@ a {
   max-width: 240px;
   overflow: hidden;
   color: #667580;
-  font-size: 0.66rem;
+  font-size: 0.62rem;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -4006,7 +4030,7 @@ a {
 
 .rfx-draft-next-action {
   display: block;
-  min-width: 112px;
+  min-width: 102px;
   color: #40505d;
   font-weight: 700;
 }
@@ -4020,6 +4044,11 @@ a {
   .rfx-outreach-audience-segment-controls {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .rfx-outreach-audience-metrics {
+    align-self: flex-start;
+    flex-wrap: wrap;
   }
 
   .rfx-outreach-audience-segment-controls input {
@@ -4154,6 +4183,65 @@ a {
   align-items: end;
 }
 
+.rfx-outreach-controls,
+.rfx-outreach-preview-panel {
+  display: grid;
+  min-width: 0;
+  gap: 8px;
+  border: 1px solid #d6e0e7;
+  border-radius: 7px;
+  background: #ffffff;
+  padding: 9px;
+}
+
+.rfx-outreach-preview-panel {
+  background: #f8fafb;
+}
+
+.rfx-outreach-section-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  padding-bottom: 7px;
+  border-bottom: 1px solid #e2e9ee;
+}
+
+.rfx-outreach-section-heading > div {
+  display: grid;
+  gap: 2px;
+}
+
+.rfx-outreach-section-heading .eyebrow {
+  margin: 0;
+}
+
+.rfx-outreach-section-heading h4 {
+  margin: 0;
+  color: #172633;
+  font-size: 0.86rem;
+}
+
+.rfx-outreach-section-heading > div > span {
+  color: #64727d;
+  font-size: 0.68rem;
+  line-height: 1.35;
+}
+
+.rfx-outreach-preview-heading {
+  align-items: center;
+}
+
+.rfx-outreach-preview-panel .outreach-template-preview {
+  min-height: 420px;
+  max-height: 670px;
+  margin: 0;
+  overflow: auto;
+  border-color: #d3e1e6;
+  background: #ffffff;
+  box-shadow: none;
+}
+
 .rfx-outreach-form label {
   display: grid;
   gap: 5px;
@@ -4162,9 +4250,89 @@ a {
   font-weight: 780;
 }
 
-.rfx-outreach-form label:first-child,
 .rfx-outreach-form .status-message {
   grid-column: 1 / -1;
+}
+
+.rfx-outreach-form label:first-child {
+  grid-column: auto;
+}
+
+.rfx-outreach-form .status-message,
+.rfx-outreach-controls > .gmail-sender-note,
+.rfx-outreach-controls > .rfx-template-editor {
+  margin: 0;
+}
+
+.rfx-outreach-controls > .gmail-sender-note {
+  padding: 7px 8px;
+}
+
+.rfx-outreach-controls > .gmail-sender-note strong {
+  font-size: 0.71rem;
+}
+
+.rfx-outreach-controls > .gmail-sender-note span {
+  font-size: 0.66rem;
+}
+
+.rfx-draft-queue-intro {
+  display: grid;
+  align-content: start;
+  gap: 3px;
+}
+
+.rfx-draft-queue-intro .eyebrow {
+  margin: 0;
+}
+
+.rfx-draft-queue-intro small {
+  color: #64727d;
+  font-size: 0.66rem;
+  line-height: 1.35;
+}
+
+.rfx-draft-queue-panel .rfx-draft-workbench {
+  min-width: 0;
+}
+
+.rfx-draft-queue-panel .rfx-draft-actions {
+  min-height: 30px;
+  padding: 4px 0;
+  border-top: 1px solid #e2e9ee;
+  border-bottom: 1px solid #e2e9ee;
+}
+
+.rfx-draft-queue-panel .rfx-draft-table-wrap {
+  border-radius: 5px;
+}
+
+.rfx-outreach-form .status-message {
+  min-height: 17px;
+}
+
+@media (max-width: 720px) {
+  .rfx-touchpoint-panel > .rfx-draft-queue-intro {
+    position: static;
+  }
+
+  .rfx-outreach-form {
+    grid-template-columns: 1fr;
+  }
+
+  .rfx-outreach-section-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .rfx-outreach-preview-panel .outreach-template-preview {
+    min-height: 260px;
+    max-height: 460px;
+  }
+
+  .rfx-draft-queue-intro {
+    position: static;
+  }
 }
 
 .gmail-sender-note {
@@ -9956,7 +10124,7 @@ body.bid-editor-open {
   display: none;
 }
 
-.vendor-profile-drawer[data-mode="edit"] .vendor-drawer-card:not(.vendor-drawer-summary):not(.drawer-edit-form),
+.vendor-profile-drawer[data-mode="edit"] .vendor-drawer-card:not(.vendor-drawer-summary):not(.drawer-edit-form):not(.vendor-email-delivery-card),
 .vendor-profile-drawer[data-mode="edit"] .ai-suggestion-panel {
   display: none;
 }
@@ -9976,9 +10144,130 @@ body.bid-editor-open {
   font-size: 0.64rem;
 }
 
+.drawer-email-delivery {
+  display: grid;
+  gap: 6px;
+}
+
+.email-delivery-issue {
+  display: grid;
+  gap: 6px;
+  border: 1px solid #f0c9bd;
+  border-left: 3px solid var(--danger);
+  border-radius: 6px;
+  background: #fffaf8;
+  padding: 7px;
+}
+
+.email-delivery-issue strong,
+.email-delivery-issue span {
+  display: block;
+}
+
+.email-delivery-issue strong {
+  font-size: 0.68rem;
+}
+
+.email-delivery-issue span {
+  color: var(--muted);
+  font-size: 0.6rem;
+  line-height: 1.35;
+}
+
+.email-delivery-replace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 5px;
+}
+
+.email-delivery-replace input,
+.email-delivery-replace .small-button {
+  min-height: 24px;
+  font-size: 0.65rem;
+}
+
 .drawer-vendor-support {
   display: grid;
   gap: 6px;
+}
+
+.drawer-vendor-relationship {
+  display: grid;
+  gap: 6px;
+}
+
+.vendor-relationship-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.vendor-relationship-summary span {
+  min-width: 0;
+  border: 1px solid #d9e3ec;
+  border-radius: 5px;
+  background: #fbfcfd;
+  color: var(--muted);
+  font-size: 0.6rem;
+  padding: 4px 5px;
+  white-space: nowrap;
+}
+
+.vendor-relationship-summary strong {
+  color: var(--ink);
+  font-size: 0.7rem;
+}
+
+.vendor-relationship-list {
+  display: grid;
+  gap: 4px;
+}
+
+.vendor-relationship-mini-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px;
+  align-items: center;
+  border-bottom: 1px solid #e4ebf1;
+  padding: 4px 0;
+}
+
+.vendor-relationship-mini-card:last-child {
+  border-bottom: 0;
+}
+
+.vendor-relationship-mini-card strong,
+.vendor-relationship-mini-card small,
+.relationship-type {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vendor-relationship-mini-card strong {
+  color: var(--ink);
+  font-size: 0.67rem;
+}
+
+.vendor-relationship-mini-card small,
+.relationship-type,
+.relationship-meta small {
+  color: var(--muted);
+  font-size: 0.58rem;
+}
+
+.relationship-type {
+  color: var(--teal-700);
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.relationship-meta {
+  display: grid;
+  justify-items: end;
+  gap: 2px;
 }
 
 .vendor-support-mini-card {
@@ -10352,6 +10641,52 @@ body.bid-editor-open {
 .ci-submission-error {
   color: #b91c1c !important;
   font-weight: 700;
+}
+
+.ci-case-follow-up {
+  flex: 1 1 100%;
+  margin-top: 3px;
+  border: 1px solid var(--border-subtle, #d9e2ec);
+  border-radius: 4px;
+  padding: 4px 6px;
+}
+
+.ci-case-follow-up summary {
+  cursor: pointer;
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+.ci-case-follow-up label {
+  display: grid;
+  gap: 3px;
+  margin-top: 5px;
+  font-size: 0.64rem;
+  font-weight: 700;
+}
+
+.ci-case-follow-up textarea,
+.ci-case-follow-up input,
+.ci-case-follow-up select {
+  min-height: 24px;
+  font-size: 0.68rem;
+}
+
+.ci-case-follow-up textarea {
+  min-height: 52px;
+  resize: vertical;
+}
+
+.ci-case-follow-up-row {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  margin-top: 4px;
+}
+
+.ci-case-follow-up-row input {
+  min-width: 0;
+  flex: 1 1 130px;
 }
 
 .vendor-ci-value-curve {
@@ -10753,6 +11088,11 @@ body.bid-editor-open {
   font-size: 0.68rem;
 }
 
+.vendor-profile-drawer .action-row #drawer-edit-dirty-message {
+  margin-left: auto;
+  white-space: nowrap;
+}
+
 .vendor-profile-drawer .action-row .status-message {
   flex: 1;
   min-width: 120px;
@@ -10824,6 +11164,22 @@ body.bid-editor-open {
 .vendor-profile-drawer .drawer-profile-fields {
   display: grid;
   gap: 7px;
+}
+
+.vendor-profile-drawer .drawer-profile-save-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border-top: 1px solid var(--line);
+  padding-top: 7px;
+}
+
+.vendor-profile-drawer .drawer-profile-save-row .muted-text,
+.vendor-profile-drawer #drawer-edit-dirty-message {
+  color: var(--muted);
+  font-size: 0.63rem;
+  font-weight: 760;
 }
 
 .vendor-profile-drawer .drawer-profile-grid {
@@ -11579,11 +11935,20 @@ body.bid-editor-open {
   min-height: 28px;
 }
 
+.vendor-funnel-scroll {
+  --funnel-column-width: 210px;
+  overflow: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-gutter: stable;
+  padding-bottom: 5px;
+}
+
 .vendor-funnel-strip {
   display: grid;
-  grid-template-columns: repeat(var(--funnel-stage-count, 8), minmax(168px, 1fr));
+  grid-template-columns: repeat(var(--funnel-stage-count, 8), var(--funnel-column-width));
   gap: 5px;
-  overflow-x: auto;
+  width: max-content;
+  min-width: 100%;
   padding-bottom: 1px;
 }
 
@@ -11634,18 +11999,18 @@ body.bid-editor-open {
 }
 
 .funnel-workspace {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 8px;
-  align-items: start;
+  display: block;
+  width: max-content;
+  min-width: 100%;
 }
 
 .vendor-funnel-board {
   display: grid;
-  grid-template-columns: repeat(var(--funnel-stage-count, 8), minmax(168px, 1fr));
+  grid-template-columns: repeat(var(--funnel-stage-count, 8), var(--funnel-column-width));
   gap: 5px;
   min-height: calc(100vh - 270px);
-  overflow-x: auto;
+  width: max-content;
+  min-width: 100%;
   padding-bottom: 4px;
 }
 
@@ -20367,8 +20732,8 @@ tbody tr:hover {
     width: 100%;
   }
 
-  .vendor-funnel-board {
-    grid-template-columns: repeat(var(--funnel-stage-count, 8), minmax(210px, 82vw));
+  .vendor-funnel-scroll {
+    --funnel-column-width: min(82vw, 280px);
   }
 
   .scope-banner {
@@ -26289,6 +26654,17 @@ textarea:focus,
   vertical-align: middle;
 }
 
+.sheet-table-wrap .sheet-readonly-value {
+  display: block;
+  min-width: 72px;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 0.66rem;
+  line-height: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .public-rfi-page .rfi-route-head-label {
   display: -webkit-box;
   max-height: 29px;
@@ -27195,5 +27571,487 @@ textarea:focus,
   .public-rfi-page .rfi-segment-meta,
   .public-rfi-page .rfi-file-vault {
     grid-template-columns: 1fr;
+  }
+}
+
+/* Bid Room workspace hierarchy: dense operational flow with the active task first. */
+.bid-room-product {
+  grid-template-columns: minmax(184px, 210px) minmax(0, 1fr);
+  gap: 10px;
+}
+
+.bid-room-event-rail {
+  top: 56px;
+  max-height: calc(100vh - 68px);
+}
+
+.bid-room-rail-card {
+  border-radius: 7px;
+  padding: 8px;
+}
+
+.bid-room-control-panel {
+  gap: 6px;
+  padding: 8px;
+  border-radius: 8px;
+}
+
+.bid-room-event-overview {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.33fr) minmax(0, 0.67fr);
+  gap: 10px;
+  align-items: stretch;
+}
+
+.bid-room-event-overview .bid-room-title-row {
+  min-width: 0;
+  align-items: flex-start;
+  padding: 1px 0;
+}
+
+.bid-room-event-overview .bid-room-title-row h2 {
+  max-width: 430px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bid-room-event-overview .bid-room-title-row p:not(.eyebrow) {
+  display: -webkit-box;
+  max-width: 480px;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.bid-room-event-overview .bid-room-metrics {
+  align-self: stretch;
+  margin: 0;
+  grid-template-columns: repeat(4, minmax(86px, 1fr));
+}
+
+.bid-room-event-overview .bid-room-metrics article {
+  min-height: 47px;
+  align-content: center;
+  padding: 5px 7px;
+}
+
+.bid-room-readiness-disclosure {
+  border-top: 1px solid #dfe7ed;
+  padding-top: 6px;
+}
+
+.bid-room-readiness-disclosure > summary {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  cursor: pointer;
+  color: #263b49;
+  font-size: 0.72rem;
+  font-weight: 800;
+  list-style: none;
+}
+
+.bid-room-readiness-disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+
+.bid-room-readiness-disclosure > summary::after {
+  content: "+";
+  color: #607281;
+  font-size: 0.88rem;
+  line-height: 1;
+}
+
+.bid-room-readiness-disclosure[open] > summary::after {
+  content: "-";
+}
+
+.bid-room-readiness-disclosure > summary small {
+  flex: 1;
+  color: #6a7b88;
+  font-size: 0.66rem;
+  font-weight: 600;
+  text-align: right;
+}
+
+.bid-room-readiness-disclosure[open] .bid-room-readiness-panel {
+  margin-top: 6px;
+}
+
+.bid-room-next-action .bid-room-side-checklist {
+  width: 100%;
+  margin-top: 8px;
+  border-top: 1px solid #d7e1e8;
+  padding-top: 7px;
+}
+
+.bid-room-next-action .bid-room-side-checklist > summary {
+  align-items: center;
+}
+
+.bid-room-next-action .bid-room-side-checklist > summary small {
+  padding-right: 14px;
+}
+
+.bid-room-next-action .bid-room-readiness-panel {
+  margin-top: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 7px 0 0;
+}
+
+.bid-room-next-action .bid-room-readiness-header {
+  align-items: flex-start;
+}
+
+.bid-room-next-action .bid-room-readiness-header h3 {
+  font-size: 0.78rem;
+}
+
+.bid-room-next-action .bid-room-readiness-header small {
+  max-height: 34px;
+  overflow: hidden;
+}
+
+.bid-room-next-action .bid-room-readiness-actions {
+  max-width: none;
+  justify-content: flex-start;
+}
+
+.bid-room-next-action .bid-room-readiness-grid {
+  grid-template-columns: 1fr;
+  overflow: visible;
+}
+
+.bid-room-next-action .bid-room-readiness-grid article {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  min-width: 0;
+  padding: 5px 6px;
+}
+
+.bid-room-next-action .bid-room-readiness-grid span {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.bid-room-next-action .bid-room-readiness-grid strong {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.bid-room-next-action .bid-room-readiness-grid small {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  min-height: 0;
+  max-height: 28px;
+  overflow: hidden;
+}
+
+.bid-room-next-action .bid-room-readiness-grid article > div {
+  grid-column: 1 / -1;
+  grid-row: 3;
+}
+
+.bid-room-flow-shell {
+  grid-template-columns: minmax(0, 1fr) minmax(215px, 255px);
+  gap: 8px;
+}
+
+.bid-room-flow-shell .bid-room-stage-rail {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  min-width: 0;
+  padding: 4px;
+}
+
+.bid-room-flow-shell .bid-room-stage-rail button {
+  min-height: 38px;
+  padding: 4px 5px;
+}
+
+.bid-room-flow-shell .bid-room-stage-rail button::after {
+  top: 10px;
+  height: 16px;
+}
+
+.bid-room-flow-shell .bid-room-stage-rail .stage-copy {
+  min-width: 0;
+}
+
+.bid-room-flow-shell .bid-room-stage-rail strong,
+.bid-room-flow-shell .bid-room-stage-rail small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bid-room-next-action {
+  padding: 7px 8px;
+}
+
+.bid-room-next-action strong {
+  font-size: 0.75rem;
+}
+
+.bid-room-next-action small {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.bid-room-stage-panel {
+  padding: 8px;
+}
+
+.bid-room-stage-header {
+  min-height: 28px;
+  padding-bottom: 5px;
+}
+
+.bid-room-carrier-grid {
+  grid-template-columns: minmax(0, 0.48fr) minmax(380px, 0.52fr);
+  align-items: stretch;
+  gap: 8px;
+}
+
+.bid-room-carrier-grid > .rfx-shortlist-box,
+.bid-room-carrier-grid > .bid-room-selected-participants {
+  min-height: 0;
+  border-radius: 7px;
+  padding: 8px;
+}
+
+.bid-room-carrier-grid .rfx-shortlist-box {
+  display: grid;
+  grid-template-rows: auto auto minmax(250px, 1fr);
+  gap: 7px;
+}
+
+.bid-room-selected-participants {
+  display: grid;
+  grid-template-rows: auto minmax(172px, 1fr) auto auto auto;
+  gap: 7px;
+}
+
+.bid-room-participant-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+  border-bottom: 1px solid #e2e9ee;
+  padding-bottom: 6px;
+}
+
+.bid-room-participant-heading h3 {
+  margin: 1px 0 0;
+  font-size: 0.89rem;
+}
+
+.bid-room-participant-heading > span {
+  max-width: 56%;
+  color: #637481;
+  font-size: 0.64rem;
+  line-height: 1.25;
+  text-align: right;
+}
+
+.bid-room-participant-heading .status-pill {
+  max-width: none;
+  white-space: nowrap;
+}
+
+.bid-room-participant-filters {
+  grid-template-columns: minmax(0, 1fr) minmax(148px, 0.4fr) auto;
+  gap: 6px;
+  align-items: end;
+}
+
+.bid-room-participant-filters .bid-room-participant-search {
+  min-width: 0;
+}
+
+.bid-room-participant-filters .action-row {
+  flex-wrap: nowrap;
+}
+
+.bid-room-participant-filters .action-row button {
+  min-height: 30px;
+  padding-inline: 7px;
+  white-space: nowrap;
+}
+
+.bid-room-crm-vendor-list {
+  max-height: min(54vh, 480px);
+  border-radius: 6px;
+  padding: 4px;
+}
+
+.bid-room-crm-list-summary {
+  gap: 6px;
+  padding: 3px 2px 6px;
+}
+
+.bid-room-crm-list-summary span {
+  max-width: 56%;
+}
+
+.bid-room-crm-vendor-option {
+  min-height: 29px;
+  border-radius: 5px;
+  padding: 3px 5px;
+}
+
+.bid-room-crm-vendor-option button,
+.bid-room-selected-row button {
+  min-height: 23px;
+  padding: 3px 6px;
+  font-size: 0.64rem;
+}
+
+.bid-room-selected-list {
+  max-height: min(42vh, 350px);
+  border-radius: 6px;
+  padding: 4px;
+}
+
+.bid-room-selected-row {
+  min-height: 30px;
+  padding: 4px 5px;
+}
+
+.bid-room-selected-empty {
+  min-height: 108px;
+  align-content: center;
+}
+
+.bid-room-participant-commit {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 6px;
+  border: 1px solid #d9e4eb;
+  border-radius: 6px;
+  background: #f8fafc;
+}
+
+.bid-room-participant-commit .page-primary-action {
+  min-height: 30px;
+}
+
+.bid-room-participant-commit .status-message {
+  min-width: 0;
+  max-width: 250px;
+  margin: 0;
+  color: #607281;
+  font-size: 0.65rem;
+}
+
+.bid-room-participant-template-actions,
+.bid-room-participant-template {
+  border: 1px solid #d9e4eb;
+  border-radius: 6px;
+  background: #fbfcfd;
+}
+
+.bid-room-participant-template-actions > summary,
+.bid-room-participant-template > summary {
+  padding: 6px 7px;
+  cursor: pointer;
+  color: #334b5c;
+  font-size: 0.68rem;
+  font-weight: 800;
+}
+
+.bid-room-participant-template-actions > :not(summary),
+.bid-room-participant-template > :not(summary) {
+  margin-inline: 7px;
+}
+
+.bid-room-participant-template-actions .action-row {
+  padding-bottom: 7px;
+}
+
+@media (max-width: 1320px) {
+  .bid-room-event-overview {
+    grid-template-columns: 1fr;
+  }
+
+  .bid-room-event-overview .bid-room-title-row h2 {
+    max-width: none;
+  }
+
+  .bid-room-event-overview .bid-room-title-row p:not(.eyebrow) {
+    max-width: 820px;
+  }
+
+  .bid-room-carrier-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(340px, 0.58fr);
+  }
+}
+
+@media (max-width: 1120px) {
+  .bid-room-product {
+    grid-template-columns: 1fr;
+  }
+
+  .bid-room-event-rail {
+    position: static;
+    max-height: none;
+  }
+
+  .bid-room-flow-shell,
+  .bid-room-carrier-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .bid-room-flow-shell .bid-room-stage-rail {
+    overflow-x: auto;
+    grid-template-columns: repeat(6, minmax(126px, 1fr));
+  }
+
+  .bid-room-carrier-grid .rfx-shortlist-box {
+    grid-template-rows: auto auto minmax(200px, 1fr);
+  }
+
+  .bid-room-crm-vendor-list,
+  .bid-room-selected-list {
+    max-height: 320px;
+  }
+}
+
+@media (max-width: 760px) {
+  .bid-room-event-overview .bid-room-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .bid-room-readiness-disclosure > summary {
+    align-items: flex-start;
+  }
+
+  .bid-room-readiness-disclosure > summary small {
+    text-align: left;
+  }
+
+  .bid-room-participant-filters {
+    grid-template-columns: 1fr;
+  }
+
+  .bid-room-participant-filters .action-row {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+
+  .bid-room-participant-commit {
+    grid-template-columns: 1fr;
+  }
+
+  .bid-room-participant-commit .status-message {
+    max-width: none;
   }
 }

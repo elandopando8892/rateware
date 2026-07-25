@@ -47,6 +47,11 @@ export async function fetchApprovedRatewareDetail(id) {
   return (await callRatewareApi("get_rate_row_detail", { id, status: "approved" })).row;
 }
 
+export async function fetchRatewareRowsByIds(ids = []) {
+  if (!Array.isArray(ids) || !ids.length) return [];
+  return (await callRatewareApi("list_rateware_rows_by_ids", { ids })).rows || [];
+}
+
 export async function fetchRatewareOptions() {
   return await callRatewareApi("list_staging_options");
 }

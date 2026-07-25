@@ -3,7 +3,7 @@ import { createLocationMatchDrawer } from "./location-match-drawer.js";
 import { initSpreadsheetColumnFilters } from "./spreadsheet-column-filters.js";
 import { installSpreadsheetGrid } from "./spreadsheet-grid.js";
 import { initColumnVisibility, initDrawer, initLocationAutocomplete } from "./sheet-ui.js";
-import { archiveStagingRows, archiveStagingRowsByFilter, enrichStagingLocationZips, fetchStagingDetail, fetchStagingFilterValues, fetchStagingOptions, fetchStagingPage, matchStagingVendors, matchStagingVendorsByFilter, removeStagingRows, removeStagingRowsByFilter, renormalizeStagingRows, saveLocationAlias, updateStagingRow, updateStagingRowsByFilter } from "./staging-service.js";
+import { archiveStagingRows, archiveStagingRowsByFilter, bulkUpdateStagingRows, enrichStagingLocationZips, fetchStagingDetail, fetchStagingFilterValues, fetchStagingOptions, fetchStagingPage, matchStagingVendors, matchStagingVendorsByFilter, removeStagingRows, removeStagingRowsByFilter, renormalizeStagingRows, saveLocationAlias, updateStagingRow, updateStagingRowsByFilter } from "./staging-service.js";
 import { humanizeError } from "./error-copy.js";
 import { loadingState, tableErrorState, tableLoadingState, tableState } from "./ui-state.js";
 
@@ -106,13 +106,18 @@ let stagingOptions = {
 let stagingOptionsLoaded = false;
 let stagingOptionsLoad = null;
 let stagingOptionsRequest = 0;
-const STAGING_COLSPAN = 32;
+const STAGING_COLSPAN = 37;
 const SHEET_COLUMNS = [
   { key: "select", label: "Select", locked: true },
   { key: "vendor", label: "Vendor" },
   { key: "origin", label: "Origin" },
   { key: "destination", label: "Destination" },
   { key: "all_in_rate", label: "All-in" },
+  { key: "carrier_cost_rate", label: "Carrier cost" },
+  { key: "customer_board_rate", label: "Board rate" },
+  { key: "commercial_model", label: "Commercial model" },
+  { key: "source_bid_status", label: "Bid revision" },
+  { key: "rfx_bid_outcome", label: "Bid outcome" },
   { key: "quote_date", label: "Quote date" },
   { key: "rfx_id", label: "RFx" },
   { key: "row_id", label: "Shipment ID" },
@@ -153,7 +158,8 @@ const STAGING_VIEW_PRESETS = [
   sheetViewPreset("Operations", ["vendor", "quote_date", "rfx_id", "row_id", "origin", "origin_state", "origin_market", "destination", "destination_state", "destination_market", "equipment", "trailer", "operation", "service", "weekly_capacity", "status"], { pageSize: 200 }),
   sheetViewPreset("Pricing", ["vendor", "quote_date", "rfx_id", "row_id", "origin", "destination", "equipment", "trailer", "operation", "service", "mx_linehaul", "us_linehaul", "fsc", "border_crossing_fee", "all_in_rate", "currency", "weekly_capacity", "status"], { pageSize: 200 }),
   sheetViewPreset("Lane Normalization", ["vendor", "origin", "origin_zip_prefix", "origin_state", "origin_market", "origin_region", "destination", "destination_zip_prefix", "destination_state", "destination_market", "destination_region", "mx_border_crossing_point", "us_border_crossing_point", "operation", "service", "status"], { pageSize: 100 }),
-  sheetViewPreset("Finance", ["vendor", "quote_date", "rfx_id", "origin", "destination", "mx_linehaul", "us_linehaul", "fsc", "border_crossing_fee", "all_in_rate", "currency", "status"], { pageSize: 200 })
+  sheetViewPreset("Finance", ["vendor", "quote_date", "rfx_id", "origin", "destination", "carrier_cost_rate", "customer_board_rate", "commercial_model", "rfx_bid_outcome", "mx_linehaul", "us_linehaul", "fsc", "border_crossing_fee", "all_in_rate", "currency", "status"], { pageSize: 200 }),
+  sheetViewPreset("RFx bid history", ["vendor", "quote_date", "rfx_id", "row_id", "origin", "destination", "carrier_cost_rate", "customer_board_rate", "commercial_model", "source_bid_status", "rfx_bid_outcome", "currency", "status"], { pageSize: 200 })
 ];
 const STAGING_BULK_EDIT_FIELDS = [
   { field: "operation", label: "Operation", source: "operation" },
@@ -392,6 +398,46 @@ function checkboxCell(row, field, label) {
   `;
 }
 
+function readOnlyCell(value, { money = false, label = "" } = {}) {
+  const display = money
+    ? (hasNumericValue(value) ? moneyValue(value) : "-")
+    : (String(value || "-").replace(/_/g, " "));
+  return `<span class="sheet-readonly-value" title="${escapeHtml(label || display)}">${escapeHtml(display)}</span>`;
+}
+
+function rfxBidOutcomeLabel(value) {
+  const labels = {
+    awarded: "Awarded",
+    backup: "Backup",
+    not_awarded: "Not awarded",
+    withdrawn: "Withdrawn",
+    active: "Active"
+  };
+  return labels[String(value || "").trim().toLowerCase()] || String(value || "-").replace(/_/g, " ");
+}
+
+function hasRfxBidProvenance(row) {
+  return ["carrier_cost_rate", "customer_board_rate", "commercial_model", "source_bid_status", "rfx_bid_outcome"]
+    .some((field) => row[field] !== null && row[field] !== undefined && String(row[field]).trim() !== "");
+}
+
+function renderRfxBidProvenance(row) {
+  if (!hasRfxBidProvenance(row)) return "";
+  return `
+    <section>
+      <h3>RFx bid provenance</h3>
+      <dl>
+        ${detailLine("Carrier cost", hasNumericValue(row.carrier_cost_rate) ? moneyValue(row.carrier_cost_rate) : "")}
+        ${detailLine("Board rate", hasNumericValue(row.customer_board_rate) ? moneyValue(row.customer_board_rate) : "")}
+        ${detailLine("Commercial model", row.commercial_model)}
+        ${detailLine("Bid revision", row.source_bid_status ? String(row.source_bid_status).replace(/_/g, " ") : "")}
+        ${detailLine("Bid outcome", rfxBidOutcomeLabel(row.rfx_bid_outcome))}
+      </dl>
+      <p class="muted-text">This is historical carrier cost context. Archived rows remain available for audit and are not active Rateware rates.</p>
+    </section>
+  `;
+}
+
 function locationOptionValue(option) {
   return typeof option === "string" ? option : option.value || option.label || "";
 }
@@ -470,7 +516,7 @@ function lookupKey(value) {
     .trim();
 }
 
-function locationOptionMatch(value) {
+function locationOptionMatch(value, { allowPartial = false } = {}) {
   const lookup = lookupKey(value);
   if (!lookup) return null;
   const scored = stagingOptions.locations
@@ -488,7 +534,7 @@ function locationOptionMatch(value) {
         option.zip_prefix
       ].filter(Boolean);
       const exact = values.some((candidate) => lookupKey(candidate) === lookup);
-      const partial = values.some((candidate) => lookupKey(candidate).includes(lookup) || lookup.includes(lookupKey(candidate)));
+      const partial = allowPartial && values.some((candidate) => lookupKey(candidate).includes(lookup) || lookup.includes(lookupKey(candidate)));
       return { option, score: exact ? 100 : partial ? 70 : 0 };
     })
     .filter((item) => item.score > 0)
@@ -509,8 +555,12 @@ function locationManualReason(option) {
 
 function setTableField(tableRow, field, value) {
   const input = tableRow?.querySelector(`[data-field="${CSS.escape(field)}"]`);
-  if (!input) return;
-  input.value = value || "";
+  if (!input) return false;
+  const nextValue = value ?? "";
+  if (String(input.value ?? "") === String(nextValue)) return false;
+  input.value = nextValue;
+  markEditedCellDirty(input);
+  return true;
 }
 
 function applyLocationSuggestion(tableRow, prefix, value) {
@@ -537,11 +587,12 @@ function applySuggestionFromField(tableRow, field, value) {
   return false;
 }
 
+function selectedStagingIds() {
+  return [...selectedRowIds];
+}
+
 function selectedRows() {
-  return [...body.querySelectorAll("[data-row-id]")].filter((row) => {
-    const checkbox = row.querySelector("[data-select-row]");
-    return checkbox?.checked;
-  });
+  return [...body.querySelectorAll("[data-row-id]")].filter((row) => selectedRowIds.has(row.dataset.rowId));
 }
 
 function visibleStagingCheckboxes() {
@@ -549,14 +600,19 @@ function visibleStagingCheckboxes() {
 }
 
 function setVisibleStagingSelection(checked) {
-  if (!checked) selectedRowIds.clear();
   visibleStagingCheckboxes().forEach((checkbox) => {
     checkbox.checked = checked;
-    if (checked) {
-      selectedRowIds.add(checkbox.dataset.selectRow);
-    }
+    if (checked) selectedRowIds.add(checkbox.dataset.selectRow);
+    else selectedRowIds.delete(checkbox.dataset.selectRow);
   });
-  setBulkStatus(checked ? "Current page selected." : "Selection cleared.");
+  setBulkStatus(checked ? "Current page selected. Previous page selections are preserved." : "Current page selection cleared. Other pages remain selected.");
+  updateBulkControls();
+}
+
+function clearStagingSelection(message = "Selection cleared.") {
+  selectedRowIds.clear();
+  visibleStagingCheckboxes().forEach((checkbox) => { checkbox.checked = false; });
+  setBulkStatus(message);
   updateBulkControls();
 }
 
@@ -637,11 +693,12 @@ function bulkPatchValue(field, rawValue) {
 }
 
 function updateBulkControls() {
-  const selectedCount = selectedRows().length;
+  const selectedCount = selectedRowIds.size;
+  const visibleSelectedCount = selectedRows().length;
   const totalRows = body.querySelectorAll("[data-row-id]").length;
   const filteredTotal = Number(stagingTotalCount || 0);
   const hasFilteredRows = filteredTotal > 0;
-  if (bulkSelectionCount) bulkSelectionCount.textContent = `Page selected: ${selectedCount.toLocaleString()}`;
+  if (bulkSelectionCount) bulkSelectionCount.textContent = `Selected: ${selectedCount.toLocaleString()}${visibleSelectedCount ? ` | this page: ${visibleSelectedCount.toLocaleString()}` : ""}`;
   if (stagingPageCountLabel) stagingPageCountLabel.textContent = `Page rows: ${totalRows.toLocaleString()}`;
   if (stagingFilteredCountLabel) stagingFilteredCountLabel.textContent = `Database matches: ${filteredTotal.toLocaleString()}`;
   if (stagingBulkScopeNote) {
@@ -655,7 +712,7 @@ function updateBulkControls() {
   }
   bulkActionBar?.classList.toggle("is-empty", totalRows === 0);
   bulkActionBar?.classList.toggle("has-visible-page", totalRows > 0);
-  if (selectStagingPageButton) selectStagingPageButton.disabled = totalRows === 0 || selectedCount === totalRows;
+  if (selectStagingPageButton) selectStagingPageButton.disabled = totalRows === 0 || visibleSelectedCount === totalRows;
   if (clearStagingSelectionButton) clearStagingSelectionButton.disabled = selectedCount === 0;
   if (openSelectedDetailButton) openSelectedDetailButton.disabled = selectedCount !== 1;
   if (openBulkDrawerButton) openBulkDrawerButton.disabled = false;
@@ -687,8 +744,8 @@ function updateBulkControls() {
   setFilteredButtonLabel(bulkRemoveFilteredButton, "Remove matching DB", filteredTotal);
   setFilteredButtonLabel(applyBulkEditFilteredButton, "Apply to filtered DB", filteredTotal);
   if (selectAllCheckbox) {
-    selectAllCheckbox.checked = selectedCount > 0 && selectedCount === totalRows;
-    selectAllCheckbox.indeterminate = selectedCount > 0 && selectedCount < totalRows;
+    selectAllCheckbox.checked = visibleSelectedCount > 0 && visibleSelectedCount === totalRows;
+    selectAllCheckbox.indeterminate = visibleSelectedCount > 0 && visibleSelectedCount < totalRows;
   }
   updateReviewMetrics();
   updateIssueNavigator();
@@ -735,8 +792,7 @@ async function goToStagingPage(index) {
     return;
   }
   stagingPageIndex = nextIndex;
-  selectedRowIds.clear();
-  setBulkStatus("");
+  setBulkStatus(selectedRowIds.size ? `${selectedRowIds.size.toLocaleString()} selected row(s) retained across pages.` : "");
   await loadRows({ preservePage: true });
 }
 
@@ -746,8 +802,7 @@ async function setStagingPageSize(value) {
   stagingPageSize = nextSize;
   writeStoredPageSize(STAGING_PAGE_SIZE_STORAGE_KEY, stagingPageSize);
   stagingPageIndex = 0;
-  selectedRowIds.clear();
-  setBulkStatus("");
+  setBulkStatus(selectedRowIds.size ? `${selectedRowIds.size.toLocaleString()} selected row(s) retained after page-size change.` : "");
   await loadRows({ preservePage: true });
 }
 
@@ -1104,6 +1159,14 @@ function applyInlineValidation(tableRow, row = null) {
     delete cell.dataset.validationStatus;
   });
   const issues = rowCellValidationIssues(validationRowData);
+  tableRow.querySelectorAll("select[data-field][data-grid-invalid-option]").forEach((input) => {
+    addCellIssue(
+      issues,
+      input.dataset.field,
+      "warning",
+      `Pasted value \"${input.dataset.gridInvalidOption}\" is not in this dropdown. Choose a catalog value or add it in Settings.`
+    );
+  });
   let critical = 0;
   let warning = 0;
   issues.forEach((fieldIssues, field) => {
@@ -1387,7 +1450,7 @@ function updateReviewMetrics() {
   if (stagingMetricLocation) stagingMetricLocation.textContent = String(scopedRows.filter(needsLocationMatch).length);
   if (stagingMetricRate) stagingMetricRate.textContent = String(scopedRows.filter(needsNumericRate).length);
   setStagingValidationMetric(validation);
-  if (stagingMetricSelected) stagingMetricSelected.textContent = String(selectedRows().length);
+  if (stagingMetricSelected) stagingMetricSelected.textContent = String(selectedRowIds.size);
 }
 
 function updateUploadScopeBanner() {
@@ -1682,6 +1745,7 @@ function renderRowDetail(row) {
     <div class="source-evidence-workbench">
       <div class="staged-review-panel">
         ${renderDrawerBrief(row)}
+        ${renderRfxBidProvenance(row)}
         ${renderFixChecklist(row)}
         ${renderSourceComparison(row)}
         <section>
@@ -1772,6 +1836,11 @@ function renderStagingTableRow(row) {
             ${inputCell(row, "all_in_rate", { money: true })}
             <span class="row-save-status sheet-row-save-dot" data-row-status="${escapeHtml(row.id)}"></span>
           </td>
+          <td class="rate-cell" data-col="carrier_cost_rate">${readOnlyCell(row.carrier_cost_rate, { money: true, label: "Carrier cost from RFx bid" })}</td>
+          <td class="rate-cell" data-col="customer_board_rate">${readOnlyCell(row.customer_board_rate, { money: true, label: "Comparable customer board rate" })}</td>
+          <td data-col="commercial_model">${readOnlyCell(row.commercial_model, { label: "Commercial model from RFx bid" })}</td>
+          <td data-col="source_bid_status">${readOnlyCell(row.source_bid_status, { label: "Bid revision type" })}</td>
+          <td data-col="rfx_bid_outcome">${readOnlyCell(rfxBidOutcomeLabel(row.rfx_bid_outcome), { label: "Historical RFx bid outcome" })}</td>
           <td data-col="quote_date">${inputCell(row, "quote_date", { type: "date", short: true })}</td>
           <td data-col="rfx_id">${inputCell(row, "rfx_id", { short: true })}</td>
           <td data-col="row_id">${inputCell(row, "row_id", { short: true })}</td>
@@ -2080,7 +2149,8 @@ function scheduleStagingAutoSave(tableRow, wait = 1000) {
 
 async function runBulkAction(status = null) {
   const rows = selectedRows();
-  if (!rows.length) return;
+  const ids = selectedStagingIds();
+  if (!ids.length) return;
 
   if (status === "approved") {
     const blockedRows = rows
@@ -2116,7 +2186,11 @@ async function runBulkAction(status = null) {
   }
 
   const label = status ? status.replace("_", " ") : "save";
-  setBulkStatus(`Processing ${rows.length} rows...`);
+  if (!status && !rows.length) {
+    setBulkStatus("Selected rows are on other pages. Cell edits only exist on loaded rows; open that page to save its local edits.", "warning");
+    return;
+  }
+  setBulkStatus(`Processing ${ids.length} rows...`);
   bulkSaveButton.disabled = true;
   if (bulkMatchVendorsButton) bulkMatchVendorsButton.disabled = true;
   bulkApproveButton.disabled = true;
@@ -2127,13 +2201,19 @@ async function runBulkAction(status = null) {
   bulkRemoveButton.disabled = true;
 
   try {
-    await Promise.all(rows.map(async (tableRow) => {
-      const id = tableRow.dataset.rowId;
-      setRowStatus(id, status ? `Marking ${label}...` : "Saving...");
-      await saveStagingTableRow(tableRow, status);
-      selectedRowIds.delete(id);
-    }));
-    setBulkStatus(`${rows.length} rows updated.`, "success");
+    if (status) {
+      const result = await bulkUpdateStagingRows(ids, { status });
+      ids.forEach((id) => selectedRowIds.delete(id));
+      setBulkStatus(`${result.updated || ids.length} rows updated.`, "success");
+    } else {
+      await Promise.all(rows.map(async (tableRow) => {
+        const id = tableRow.dataset.rowId;
+        setRowStatus(id, "Saving...");
+        await saveStagingTableRow(tableRow, status);
+        selectedRowIds.delete(id);
+      }));
+      setBulkStatus(`${rows.length} loaded row(s) saved.`, "success");
+    }
     await loadRows({ preservePage: true });
   } catch (error) {
     setBulkStatus(error.message, "error");
@@ -2144,8 +2224,9 @@ async function runBulkAction(status = null) {
 
 async function applySelectedBulkEdit() {
   const rows = selectedRows();
+  const ids = selectedStagingIds();
   const field = bulkFieldSelect?.value;
-  if (!rows.length || !field) return;
+  if (!ids.length || !field) return;
   const patch = { [field]: bulkPatchValue(field, bulkValueInput?.value) };
   const criticalRows = rowsWithCriticalValidation(rows, (tableRow) => ({ ...readInlinePatch(tableRow), ...patch }));
   if (criticalRows.length) {
@@ -2156,14 +2237,14 @@ async function applySelectedBulkEdit() {
     }
   }
   if (applyBulkEditButton) applyBulkEditButton.disabled = true;
-  setBulkEditStatus(`Updating ${rows.length} selected row(s)...`);
+  setBulkEditStatus(`Updating ${ids.length} selected row(s)...`);
 
   try {
     await ensureSignedIn();
-    await Promise.all(rows.map((tableRow) => updateStagingRow(tableRow.dataset.rowId, patch)));
-    rows.forEach((row) => selectedRowIds.delete(row.dataset.rowId));
-    setBulkEditStatus(`${rows.length} selected row(s) updated.`, "success");
-    setBulkStatus(`${rows.length} selected row(s) updated.`, "success");
+    const result = await bulkUpdateStagingRows(ids, patch);
+    ids.forEach((id) => selectedRowIds.delete(id));
+    setBulkEditStatus(`${result.updated || ids.length} selected row(s) updated.`, "success");
+    setBulkStatus(`${result.updated || ids.length} selected row(s) updated.`, "success");
     await loadRows({ preservePage: true });
   } catch (error) {
     setBulkEditStatus(error.message, "error");
@@ -2172,9 +2253,8 @@ async function applySelectedBulkEdit() {
 }
 
 async function runBulkArchive() {
-  const rows = selectedRows();
-  if (!rows.length) return;
-  const ids = rows.map((row) => row.dataset.rowId);
+  const ids = selectedStagingIds();
+  if (!ids.length) return;
 
   setBulkStatus(`Archiving ${ids.length} rows...`);
   bulkArchiveButton.disabled = true;
@@ -2194,9 +2274,8 @@ async function runBulkArchive() {
 }
 
 async function runBulkRemove() {
-  const rows = selectedRows();
-  if (!rows.length) return;
-  const ids = rows.map((row) => row.dataset.rowId);
+  const ids = selectedStagingIds();
+  if (!ids.length) return;
   const confirmed = window.confirm(`Remove ${ids.length} staging rows? This cannot be undone.`);
   if (!confirmed) return;
 
@@ -2250,6 +2329,7 @@ async function runFilteredStagingAction(targetAction) {
 
     let affected = 0;
     let batch = 0;
+    let remaining = matched;
     while (affected < matched) {
       batch += 1;
       setBulkStatus(`${isRemove ? "Removing" : "Archiving"} filtered staging rows... ${affected.toLocaleString()} / ${matched.toLocaleString()}`);
@@ -2257,11 +2337,17 @@ async function runFilteredStagingAction(targetAction) {
       const count = Number(result.updated || result.removed || 0);
       if (!count) break;
       affected += count;
+      remaining = Number(result.remaining ?? Math.max(0, matched - affected));
       setBulkStatus(`${isRemove ? "Removed" : "Archived"} ${Math.min(affected, matched).toLocaleString()} / ${matched.toLocaleString()} filtered staging rows (${batch} batch${batch === 1 ? "" : "es"}).`);
-      if (count < FILTERED_BULK_BATCH_SIZE) break;
+      if (!remaining) break;
     }
     selectedRowIds.clear();
-    setBulkStatus(`${affected.toLocaleString()} filtered staging row(s) ${isRemove ? "removed" : "archived"}.`, "success");
+    const unresolved = Math.max(0, matched - affected);
+    if (unresolved > 0) {
+      setBulkStatus(`${affected.toLocaleString()} filtered staging row(s) ${isRemove ? "removed" : "archived"}. ${unresolved.toLocaleString()} matching row(s) remain; retry the filtered action.`, "warning");
+    } else {
+      setBulkStatus(`${affected.toLocaleString()} filtered staging row(s) ${isRemove ? "removed" : "archived"} across the full filtered set.`, "success");
+    }
     await loadRows({ preservePage: true });
   } catch (error) {
     setBulkStatus(error.message, "error");
@@ -2299,10 +2385,14 @@ async function runFilteredStagingUpdate(patch, label) {
     setBulkStatus(`Applying filtered ${normalizedLabel} to ${matched.toLocaleString()} staging row(s)...`);
     const result = await updateStagingRowsByFilter(filters, patch, { dryRun: false, maxRows: matched, confirmed: true, previewCount: matched });
     const affected = Number(result.updated || 0);
+    const remaining = Number(result.remaining ?? Math.max(0, matched - Number(result.targeted || affected)));
 
     selectedRowIds.clear();
-    const capped = result.hard_limit_reached ? " API safety limit reached; narrow the filters and run again for the remainder." : "";
-    setBulkStatus(`${affected.toLocaleString()} filtered staging row(s) updated.${capped}`, result.hard_limit_reached ? "warning" : "success");
+    if (remaining > 0 || result.completed === false) {
+      setBulkStatus(`${affected.toLocaleString()} filtered staging row(s) updated. ${remaining.toLocaleString()} matching row(s) remain; refine the filters and run the update again.`, "warning");
+    } else {
+      setBulkStatus(`${affected.toLocaleString()} filtered staging row(s) updated across the full filtered set.`, "success");
+    }
     await loadRows({ preservePage: true });
   } catch (error) {
     setBulkStatus(error.message, "error");
@@ -2316,9 +2406,8 @@ async function runFilteredStagingUpdate(patch, label) {
 }
 
 async function runBulkRenormalize() {
-  const rows = selectedRows();
-  if (!rows.length) return;
-  const ids = rows.map((row) => row.dataset.rowId);
+  const ids = selectedStagingIds();
+  if (!ids.length) return;
 
   setBulkStatus(`Re-normalizing ${ids.length} rows...`);
   if (bulkRenormalizeButton) bulkRenormalizeButton.disabled = true;
@@ -2336,8 +2425,7 @@ async function runBulkRenormalize() {
 }
 
 async function runBulkMatchVendors() {
-  const rows = selectedRows();
-  const ids = rows.map((row) => row.dataset.rowId);
+  const ids = selectedStagingIds();
 
   if (bulkMatchVendorsButton) bulkMatchVendorsButton.disabled = true;
 
@@ -2377,7 +2465,9 @@ async function runBulkMatchVendors() {
     const result = await matchStagingVendorsByFilter(filters, { dryRun: false, maxRows: matched, confirmed: true, previewCount: matched });
     selectedRowIds.clear();
     const downloaded = downloadVendorMatchErrors("staging-vendor-match-errors", result.unmatched_errors, result.unmatched_errors_truncated);
-    setBulkStatus(`${Number(result.updated || 0).toLocaleString()} staging row(s) linked to vendors. ${Number(result.upload_updated || 0).toLocaleString()} source upload(s) repaired. ${Number(result.candidates || 0).toLocaleString()} row(s) and ${Number(result.upload_candidates || 0).toLocaleString()} upload(s) had vendor references.${downloaded ? " Vendor match errors CSV downloaded." : ""}`, "success");
+    const remaining = Number(result.remaining ?? Math.max(0, matched - Number(result.scanned || 0)));
+    const summary = `${Number(result.updated || 0).toLocaleString()} staging row(s) linked to vendors. ${Number(result.upload_updated || 0).toLocaleString()} source upload(s) repaired. ${Number(result.candidates || 0).toLocaleString()} row(s) and ${Number(result.upload_candidates || 0).toLocaleString()} upload(s) had vendor references.${downloaded ? " Vendor match errors CSV downloaded." : ""}`;
+    setBulkStatus(remaining > 0 || result.completed === false ? `${summary} ${remaining.toLocaleString()} matching row(s) remain; refine the filters and retry.` : `${summary} Matched across the full filtered set.`, remaining > 0 || result.completed === false ? "warning" : "success");
     await loadRows({ preservePage: true });
   } catch (error) {
     setBulkStatus(error.message, "error");
@@ -2387,9 +2477,8 @@ async function runBulkMatchVendors() {
 }
 
 async function runBulkEnrichZips() {
-  const rows = selectedRows();
-  if (!rows.length) return;
-  const ids = rows.map((row) => row.dataset.rowId);
+  const ids = selectedStagingIds();
+  if (!ids.length) return;
 
   setBulkStatus(`Finding missing ZIPs for ${ids.length} rows...`);
   if (bulkEnrichZipsButton) bulkEnrichZipsButton.disabled = true;
@@ -2630,7 +2719,6 @@ body.addEventListener("input", (event) => {
   if (!field) return;
   const tableRow = field.closest("[data-row-id]");
   markEditedCellDirty(field);
-  applySuggestionFromField(tableRow, field.dataset.field, field.value);
   applyInlineValidation(tableRow);
   updateVisibleValidationMetric();
   markStagingRowDirty(tableRow);
@@ -2641,6 +2729,7 @@ body.addEventListener("change", (event) => {
   const field = event.target.closest("[data-field]");
   if (field) {
     const tableRow = field.closest("[data-row-id]");
+    if (field.tagName === "SELECT" && event.isTrusted) delete field.dataset.gridInvalidOption;
     markEditedCellDirty(field);
     applySuggestionFromField(tableRow, field.dataset.field, field.value);
     applyInlineValidation(tableRow);
@@ -2684,7 +2773,12 @@ initLocationAutocomplete({
     const tableRow = input.closest("[data-row-id]");
     const prefix = input.dataset.locationField;
     if (!tableRow || !prefix) return;
-    applyLocationSuggestion(tableRow, prefix, locationOptionValue(option));
+    markEditedCellDirty(input);
+    if (!applyLocationSuggestion(tableRow, prefix, locationOptionValue(option))) return;
+    applyInlineValidation(tableRow);
+    updateVisibleValidationMetric();
+    markStagingRowDirty(tableRow);
+    scheduleStagingAutoSave(tableRow, 200);
   }
 });
 locationMatchDrawerController = createLocationMatchDrawer({
@@ -2758,8 +2852,8 @@ stagingSearchInput?.addEventListener("input", () => {
   stagingSearchTimer = window.setTimeout(loadRows, 250);
 });
 openSelectedDetailButton?.addEventListener("click", () => {
-  const row = selectedRows()[0];
-  if (row?.dataset.rowId) openEditDrawer(row.dataset.rowId);
+  const id = selectedStagingIds()[0];
+  if (id) openEditDrawer(id);
 });
 selectAllCheckbox?.addEventListener("change", () => {
   visibleStagingCheckboxes().forEach((checkbox) => {
@@ -2774,7 +2868,7 @@ selectAllCheckbox?.addEventListener("change", () => {
   updateBulkControls();
 });
 selectStagingPageButton?.addEventListener("click", () => setVisibleStagingSelection(true));
-clearStagingSelectionButton?.addEventListener("click", () => setVisibleStagingSelection(false));
+clearStagingSelectionButton?.addEventListener("click", () => clearStagingSelection());
 stagingNextIssueButton?.addEventListener("click", focusNextVisibleIssue);
 stagingSelectIssueRowsButton?.addEventListener("click", selectVisibleIssueRows);
 bulkSaveButton?.addEventListener("click", () => runBulkAction());

@@ -5,9 +5,12 @@ import {
   createVendorImprovementCase,
   fetchVendorImprovementCases,
   processVendorCiReminders,
+  recordVendorImprovementResponse,
+  resolveVendorImprovementCase,
   submitVendorImprovementCase,
   updateVendorImprovementCase,
-  upsertVendorValueScorecard
+  upsertVendorValueScorecard,
+  refreshVendorValueCurve
 } from "./vendor-improvement-service.js";
 
 const CASE_TYPES = [
@@ -271,8 +274,10 @@ function selectVendorForCase(row) {
 
 function renderVendorSearchResults(rows = [], query = "") {
   if (!vendorResults) return 0;
-  const term = normalizeTerm(query);
-  const matchingRows = rows.filter((row) => !term || normalizeTerm(vendorSearchText(row)).includes(term));
+  // Results are already filtered by the workspace-scoped API. Keeping a second
+  // client predicate here dropped valid server matches when accents or secondary
+  // emails were involved.
+  const matchingRows = rows;
   const rankedRows = matchingRows
     .slice()
     .sort((left, right) => rankVendorForQuery(left, query) - rankVendorForQuery(right, query) || vendorLabel(left).localeCompare(vendorLabel(right)))
@@ -343,6 +348,11 @@ function reminderLabel(row = {}) {
   return `Next reminder ${formatDateTime(row.next_reminder_at)}`;
 }
 
+function responseLabel(row = {}) {
+  if (!row.responded_at) return "No carrier response recorded";
+  return `Carrier response ${formatDateTime(row.responded_at)}${row.response_channel ? ` via ${row.response_channel}` : ""}`;
+}
+
 function renderCases() {
   if (!caseBody) return;
   if (!caseRows.length) {
@@ -394,10 +404,26 @@ function renderCases() {
           <small>Metric: ${escapeHtml(row.success_metric || "pending")}</small>
           <span class="status-pill ${submissionTone(row)}">${escapeHtml(submissionLabel(row))}</span>
           <small>${escapeHtml(reminderLabel(row))}</small>
+          <small>${escapeHtml(responseLabel(row))}</small>
           ${row.last_submission_error ? `<small class="ci-submission-error">${escapeHtml(row.last_submission_error)}</small>` : ""}
           <button class="small-button" type="button" data-ci-case-action="submit" ${["resolved", "archived"].includes(row.status) ? "disabled" : ""}>${row.submitted_at ? "Resubmit" : "Submit to carrier"}</button>
           <button class="small-button secondary" type="button" data-ci-case-action="advance">Advance</button>
-          <button class="small-button secondary" type="button" data-ci-case-action="resolved">Resolve</button>
+          <details class="ci-case-follow-up">
+            <summary>Response and closure</summary>
+            <label>Carrier response<textarea data-ci-case-response placeholder="Paste the carrier reply, action plan, or evidence summary...">${escapeHtml(row.vendor_response || "")}</textarea></label>
+            <div class="ci-case-follow-up-row">
+              <select data-ci-case-response-channel>
+                ${["email", "whatsapp", "phone", "meeting", "portal"].map((channel) => `<option value="${channel}" ${row.response_channel === channel ? "selected" : ""}>${channel}</option>`).join("")}
+              </select>
+              <input data-ci-case-response-evidence value="${escapeHtml(row.response_evidence || "")}" placeholder="Evidence link or reference" />
+              <button class="small-button secondary" type="button" data-ci-case-action="record-response">Save response</button>
+            </div>
+            <label>Closure note<textarea data-ci-case-closure-note placeholder="What was verified, accepted, or decided before closing this case?">${escapeHtml(row.closure_note || "")}</textarea></label>
+            <div class="ci-case-follow-up-row">
+              <input data-ci-case-closure-evidence value="${escapeHtml(row.closure_evidence || "")}" placeholder="Closure evidence or reference" />
+              <button class="small-button secondary" type="button" data-ci-case-action="close" ${["resolved", "archived"].includes(row.status) ? "disabled" : ""}>Close case</button>
+            </div>
+          </details>
           <a class="secondary small-button" href="./vendors.html?vendor_id=${encodeURIComponent(row.vendor_id || "")}">Vendor</a>
         </div>
       </td>
@@ -629,6 +655,23 @@ async function loadImprovementCases() {
   }
 }
 
+async function recalculateValueCurve() {
+  if (refreshButton?.disabled) return;
+  if (refreshButton) refreshButton.disabled = true;
+  setStatus("Recalculating the Value Curve from CRM, Rateware, Bid Room, support and CI signals...");
+  try {
+    await requirePrivatePage();
+    const result = await refreshVendorValueCurve({ value_curve_limit: CRM_VENDOR_SEARCH_LIMIT });
+    await loadImprovementCases();
+    const warning = result?.warnings?.length ? ` ${result.warnings.length} source warning(s) were recorded.` : "";
+    setStatus(`Value Curve recalculated and saved for ${(result?.processed || 0).toLocaleString()} carrier(s).${warning}`, result?.warnings?.length ? "warning" : "success");
+  } catch (error) {
+    setStatus(error, "error");
+  } finally {
+    if (refreshButton) refreshButton.disabled = false;
+  }
+}
+
 async function createCase(event) {
   event.preventDefault();
   if (createCaseRunning) return;
@@ -751,6 +794,49 @@ async function runDueReminders() {
   }
 }
 
+async function recordCaseResponse(rowElement, caseId) {
+  const response = rowElement?.querySelector("[data-ci-case-response]")?.value?.trim();
+  if (!response) {
+    setStatus("Paste or summarize the carrier response before saving it.", "error");
+    return;
+  }
+  setStatus("Recording carrier response and pausing reminders...");
+  try {
+    await requirePrivatePage();
+    const result = await recordVendorImprovementResponse(caseId, {
+      response,
+      response_channel: rowElement?.querySelector("[data-ci-case-response-channel]")?.value,
+      response_evidence: rowElement?.querySelector("[data-ci-case-response-evidence]")?.value
+    });
+    if (result?.row) caseRows = caseRows.map((item) => (item.id === caseId ? { ...item, ...result.row } : item));
+    renderCases();
+    setStatus("Carrier response recorded. Scheduled follow-ups are paused.", "success");
+  } catch (error) {
+    setStatus(error, "error");
+  }
+}
+
+async function closeCase(rowElement, caseId) {
+  const closureNote = rowElement?.querySelector("[data-ci-case-closure-note]")?.value?.trim();
+  if (!closureNote) {
+    setStatus("Add a closure note before resolving the case.", "error");
+    return;
+  }
+  setStatus("Closing Vendor CI case...");
+  try {
+    await requirePrivatePage();
+    const result = await resolveVendorImprovementCase(caseId, {
+      closure_note: closureNote,
+      closure_evidence: rowElement?.querySelector("[data-ci-case-closure-evidence]")?.value
+    });
+    if (result?.row) caseRows = caseRows.map((item) => (item.id === caseId ? { ...item, ...result.row } : item));
+    renderCases();
+    setStatus("Vendor CI case resolved. Future reminders were stopped.", "success");
+  } catch (error) {
+    setStatus(error, "error");
+  }
+}
+
 async function saveScorecard(rowElement) {
   const vendorId = rowElement?.dataset.ciScorecardVendorId;
   if (!vendorId || scorecardMutationIds.has(vendorId)) return;
@@ -777,7 +863,7 @@ function initOptions() {
   fillSelect(caseTypeInput, CASE_TYPES, "service_quality");
 }
 
-refreshButton?.addEventListener("click", loadImprovementCases);
+refreshButton?.addEventListener("click", recalculateValueCurve);
 runRemindersButton?.addEventListener("click", runDueReminders);
 clearButton?.addEventListener("click", () => {
   statusFilter.value = "all";
@@ -850,6 +936,14 @@ caseBody?.addEventListener("click", async (event) => {
   const caseId = row?.dataset.ciCaseId;
   if (button.dataset.ciCaseAction === "submit") {
     await submitCase(caseId);
+    return;
+  }
+  if (button.dataset.ciCaseAction === "record-response") {
+    await recordCaseResponse(row, caseId);
+    return;
+  }
+  if (button.dataset.ciCaseAction === "close") {
+    await closeCase(row, caseId);
     return;
   }
   const current = caseRows.find((item) => item.id === caseId);
