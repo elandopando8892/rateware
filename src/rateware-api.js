@@ -7,23 +7,18 @@ function stringifyApiError(value) {
   if (value instanceof Error) return value.message || "";
   if (typeof value !== "object") return String(value);
 
-  const nested = value.error || value.message || value.details || value.hint;
+  const nested = value.error || value.message || value.reason || value.description || value.detail || value.details || value.hint || value.cause;
   if (nested && nested !== value) {
     const message = stringifyApiError(nested);
     if (message) return message;
   }
 
-  const parts = ["code", "type", "status", "name"]
+  const parts = ["code", "type", "status", "name", "stage", "action", "incident_id", "incidentId"]
     .map((key) => value[key] ? `${key}: ${value[key]}` : "")
     .filter(Boolean);
   if (parts.length) return parts.join(" | ");
 
-  try {
-    const json = JSON.stringify(value);
-    return json === "{}" ? "" : json;
-  } catch {
-    return "";
-  }
+  return "";
 }
 
 function apiErrorMessage(data, text, status) {

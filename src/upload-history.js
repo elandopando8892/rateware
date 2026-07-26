@@ -109,6 +109,9 @@ let uploadHistoryLoadVersion = 0;
 let uploadComparisonLoadVersion = 0;
 let uploadMemoryLoadVersion = 0;
 let uploadBulkActionRunning = false;
+let uploadReprocessRunning = false;
+const uploadRowMutationIds = new Set();
+const uploadSourceRequestIds = new Set();
 
 function applyUrlFilters() {
   const params = new URLSearchParams(window.location.search);
@@ -654,31 +657,39 @@ function renderNextUploadStep(row) {
 }
 
 function renderPrimaryUploadAction(row) {
-  if (row.status === "uploaded" && isSpreadsheetUpload(row)) {
+  if (primaryUploadActionKey(row) === "bulk-import") {
     return `<button type="button" class="small-button" data-bulk-import-id="${escapeHtml(row.id)}">Bulk import</button>`;
   }
-  if (row.status === "uploaded" || row.status === "failed") {
+  if (primaryUploadActionKey(row) === "interpret") {
     return `<button type="button" class="small-button" data-interpret-id="${escapeHtml(row.id)}">${row.status === "failed" ? "Reprocess" : "Interpret"}</button>`;
   }
-  if (stagedRows(row) > 0 || row.status === "staged") {
+  if (primaryUploadActionKey(row) === "rows") {
     return `<a class="small-button" href="${escapeHtml(sourceRowsUrl(row))}">View rows</a>`;
   }
   return `<button type="button" class="small-button secondary" data-upload-detail="${escapeHtml(row.id)}">Details</button>`;
 }
 
+function primaryUploadActionKey(row) {
+  if (row.status === "uploaded" && isSpreadsheetUpload(row)) return "bulk-import";
+  if (row.status === "uploaded" || row.status === "failed") return "interpret";
+  if (stagedRows(row) > 0 || row.status === "staged") return "rows";
+  return "details";
+}
+
 function renderUploadActions(row) {
   const archived = row.status === "archived";
+  const primaryAction = primaryUploadActionKey(row);
   return `
     <div class="history-actions">
       ${renderPrimaryUploadAction(row)}
       <details class="row-more-menu">
         <summary>More</summary>
         <div>
-          <button type="button" class="small-button secondary" data-upload-detail="${escapeHtml(row.id)}">Details</button>
+          ${primaryAction === "details" ? "" : `<button type="button" class="small-button secondary" data-upload-detail="${escapeHtml(row.id)}">Details</button>`}
           <button type="button" class="small-button secondary" data-source-id="${escapeHtml(row.id)}">View source</button>
-          <a class="small-button secondary" href="${escapeHtml(sourceRowsUrl(row))}">View rows</a>
-          ${isSpreadsheetUpload(row) && !archived ? `<button type="button" class="small-button secondary" data-bulk-import-id="${escapeHtml(row.id)}">Bulk import</button>` : ""}
-          ${archived ? "" : `<button type="button" class="small-button secondary" data-interpret-id="${escapeHtml(row.id)}">${row.status === "uploaded" ? "Interpret" : "Reprocess"}</button>`}
+          ${primaryAction === "rows" ? "" : `<a class="small-button secondary" href="${escapeHtml(sourceRowsUrl(row))}">View rows</a>`}
+          ${isSpreadsheetUpload(row) && !archived && primaryAction !== "bulk-import" ? `<button type="button" class="small-button secondary" data-bulk-import-id="${escapeHtml(row.id)}">Bulk import</button>` : ""}
+          ${archived || primaryAction === "interpret" ? "" : `<button type="button" class="small-button secondary" data-interpret-id="${escapeHtml(row.id)}">${row.status === "uploaded" ? "Interpret" : "Reprocess"}</button>`}
           ${archived ? "" : `<button type="button" class="small-button secondary" data-archive-id="${escapeHtml(row.id)}">Archive</button>`}
           <button type="button" class="small-button danger" data-remove-id="${escapeHtml(row.id)}">Remove</button>
         </div>
@@ -1336,6 +1347,7 @@ function bulkImportSummary(result) {
 }
 
 async function runBulkTemplateImport(ids = selectedVisibleIds(), sourceButton = null) {
+  if (uploadBulkActionRunning) return;
   const spreadsheetIds = ids
     .map((id) => currentRows.find((row) => row.id === id) || loadedRows.find((row) => row.id === id))
     .filter((row) => row && isSpreadsheetUpload(row) && row.status !== "archived")
@@ -1352,6 +1364,8 @@ async function runBulkTemplateImport(ids = selectedVisibleIds(), sourceButton = 
   );
   if (!confirmed) return;
 
+  uploadBulkActionRunning = true;
+  updateBulkControls();
   const originalText = sourceButton?.textContent || "";
   if (sourceButton) {
     sourceButton.disabled = true;
@@ -1417,6 +1431,7 @@ async function runBulkTemplateImport(ids = selectedVisibleIds(), sourceButton = 
     setBulkStatus(humanizeError(error), "error");
     if (sourceButton) sourceButton.title = humanizeError(error);
   } finally {
+    uploadBulkActionRunning = false;
     if (sourceButton) {
       sourceButton.disabled = false;
       sourceButton.textContent = originalText;
@@ -1485,9 +1500,11 @@ function openReprocessDrawer(ids = [], { note = "" } = {}) {
 
 async function runReprocessWithNote(event) {
   event.preventDefault();
+  if (uploadReprocessRunning) return;
   const ids = pendingReprocessIds.slice();
   if (!ids.length) return;
   const correctionNote = reprocessNoteInput?.value || "";
+  uploadReprocessRunning = true;
   if (confirmReprocessButton) confirmReprocessButton.disabled = true;
   setReprocessStatus(`Reprocessing ${ids.length} upload(s)...`);
 
@@ -1526,6 +1543,7 @@ async function runReprocessWithNote(event) {
     setReprocessStatus(humanizeError(error), "error");
     setBulkStatus(humanizeError(error), "error");
   } finally {
+    uploadReprocessRunning = false;
     if (confirmReprocessButton) confirmReprocessButton.disabled = false;
     updateBulkControls();
   }
@@ -1533,9 +1551,11 @@ async function runReprocessWithNote(event) {
 
 async function openUploadSource(rowId, sourceButton = null) {
   if (!rowId) return;
+  if (uploadSourceRequestIds.has(rowId)) return;
   const originalText = sourceButton?.textContent || "";
   const sourceWindow = window.open("", "_blank");
   if (sourceWindow) sourceWindow.opener = null;
+  uploadSourceRequestIds.add(rowId);
   if (sourceButton) {
     sourceButton.disabled = true;
     sourceButton.textContent = "Opening...";
@@ -1554,6 +1574,7 @@ async function openUploadSource(rowId, sourceButton = null) {
     if (sourceWindow && !sourceWindow.closed) sourceWindow.close();
     setBulkStatus(humanizeError(error), "error");
   } finally {
+    uploadSourceRequestIds.delete(rowId);
     if (sourceButton) {
       sourceButton.disabled = false;
       sourceButton.textContent = originalText;
@@ -1696,8 +1717,11 @@ historyBody.addEventListener("click", async (event) => {
   const button = interpretButton || bulkImportButton || archiveButton || removeButton;
   if (!button) return;
 
-  button.disabled = true;
   const rowId = interpretButton?.dataset.interpretId || bulkImportButton?.dataset.bulkImportId || archiveButton?.dataset.archiveId || removeButton?.dataset.removeId;
+  const mutationKey = `row-action:${rowId}`;
+  if (uploadRowMutationIds.has(mutationKey)) return;
+  uploadRowMutationIds.add(mutationKey);
+  button.disabled = true;
   const status = historyBody.querySelector(`[data-upload-status="${CSS.escape(rowId)}"]`);
 
   try {
@@ -1748,6 +1772,9 @@ historyBody.addEventListener("click", async (event) => {
     button.textContent = "Failed";
     button.title = humanizeError(error);
     button.insertAdjacentHTML("afterend", `<small class="error-detail">${escapeHtml(humanizeError(error))}</small>`);
+  } finally {
+    uploadRowMutationIds.delete(mutationKey);
+    if (!archiveButton && !removeButton) button.disabled = false;
   }
 });
 

@@ -29,6 +29,12 @@ const supportLauncher = document.querySelector("#public-board-support-launcher")
 const supportClose = document.querySelector("#public-board-support-close");
 const supportFollowup = document.querySelector("#public-board-support-followup");
 
+let publicBoardLoading = false;
+let publicSupportSubmitting = false;
+let publicSoftLoginSubmitting = false;
+const publicInviteRequestMutationKeys = new Set();
+const publicPrivateLinkMutationKeys = new Set();
+
 const API_URL = `${SUPABASE_URL}/functions/v1/rfx-bid-api`;
 const INVITE_ACCESS_EMAIL_KEY = "rateware.publicBidBoard.inviteEmail";
 const INVITE_ACCESS_LANES_KEY = "rateware.publicBidBoard.invitedLaneIds";
@@ -426,6 +432,7 @@ function openPublicSupportForRow(row = null) {
 }
 
 async function askPublicSupport(options = {}) {
+  if (publicSupportSubmitting) return;
   const message = String(options.createTicket ? state.supportQuestion : supportMessage?.value || "").trim();
   if (!message) {
     renderPublicSupportReply(null, "Write a support question first.");
@@ -438,6 +445,9 @@ async function askPublicSupport(options = {}) {
     supportEmail?.focus();
     return;
   }
+  publicSupportSubmitting = true;
+  const supportButtons = Array.from(document.querySelectorAll("#public-board-support-form button, #public-board-support-reply button"));
+  supportButtons.forEach((button) => { button.disabled = true; });
   state.supportQuestion = message;
   if (!options.createTicket) supportFollowup?.setAttribute("hidden", "");
   renderPublicSupportReply(null, options.createTicket ? "Creating ticket..." : "Checking public Bid Room context...");
@@ -453,6 +463,10 @@ async function askPublicSupport(options = {}) {
     queueSupportAlert(result.ticket?.id ? "supportTicket" : "supportAnswer", result.intent_label || result.answer);
   } catch (error) {
     renderPublicSupportReply(null, humanizeError(error) || "Support could not answer.");
+  } finally {
+    publicSupportSubmitting = false;
+    const nextSupportButtons = Array.from(document.querySelectorAll("#public-board-support-form button, #public-board-support-reply button"));
+    nextSupportButtons.forEach((button) => { button.disabled = false; });
   }
 }
 
@@ -1037,6 +1051,9 @@ async function sendPrivateLinksForRow(row, button = null) {
     openSoftLoginDrawer(row);
     return;
   }
+  const linkKey = `${row.event?.id || row.event_id || ""}:${row.id || ""}:${state.inviteEmail}`;
+  if (publicPrivateLinkMutationKeys.has(linkKey)) return;
+  publicPrivateLinkMutationKeys.add(linkKey);
   const originalText = button?.textContent || "";
   if (button) {
     button.disabled = true;
@@ -1064,6 +1081,7 @@ async function sendPrivateLinksForRow(row, button = null) {
   } catch (error) {
     statusEl.textContent = humanizeError(error) || "Could not send private links right now.";
   } finally {
+    publicPrivateLinkMutationKeys.delete(linkKey);
     if (button) {
       button.disabled = false;
       button.textContent = originalText;
@@ -1081,6 +1099,8 @@ function openVerifiedPrivateBid(row) {
 }
 
 async function loadBoard({ announceChanges = true } = {}) {
+  if (publicBoardLoading) return;
+  publicBoardLoading = true;
   refreshButton.disabled = true;
   statusEl.textContent = "Refreshing all public Bid Room opportunities...";
   try {
@@ -1104,6 +1124,7 @@ async function loadBoard({ announceChanges = true } = {}) {
       </section>
     `;
   } finally {
+    publicBoardLoading = false;
     refreshButton.disabled = false;
   }
 }
@@ -1233,6 +1254,9 @@ detailDrawer?.addEventListener("submit", async (event) => {
     notes: formData.get("notes"),
     language: state.language
   };
+  const requestKey = `${payload.event_id || ""}:${payload.lane_id || ""}:${normalizePublicEmail(payload.email)}`;
+  if (publicInviteRequestMutationKeys.has(requestKey)) return;
+  publicInviteRequestMutationKeys.add(requestKey);
   submitButton.disabled = true;
   status.textContent = "Sending request...";
   try {
@@ -1248,6 +1272,7 @@ detailDrawer?.addEventListener("submit", async (event) => {
   } catch (error) {
     status.textContent = humanizeError(error) || "Could not send the invitation request.";
   } finally {
+    publicInviteRequestMutationKeys.delete(requestKey);
     submitButton.disabled = false;
   }
 });
@@ -1263,6 +1288,8 @@ softLoginDrawer?.addEventListener("submit", async (event) => {
   const status = form.querySelector("#public-soft-login-status");
   const formData = new FormData(form);
   const email = formData.get("email");
+  if (publicSoftLoginSubmitting) return;
+  publicSoftLoginSubmitting = true;
   submitButton.disabled = true;
   status.textContent = "Looking up invitations...";
   try {
@@ -1281,6 +1308,7 @@ softLoginDrawer?.addEventListener("submit", async (event) => {
   } catch (error) {
     status.textContent = humanizeError(error) || "Could not find invitations right now.";
   } finally {
+    publicSoftLoginSubmitting = false;
     submitButton.disabled = false;
   }
 });

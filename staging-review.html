@@ -54,7 +54,7 @@
           <div class="page-header-actions">
             <button class="page-primary-action" type="button" data-click-target="#bulk-approve-button">Approve selected</button>
             <form id="auth-form" class="auth-strip">
-              <button id="auth-button" type="submit">Sign in with Kinde</button>
+              <button id="auth-button" type="submit">Log in</button>
               <button id="sign-out-button" type="button" class="secondary hidden">Sign out</button>
               <p id="auth-status" role="status"></p>
             </form>
@@ -175,7 +175,7 @@
                   <select id="staging-page-size">
                     <option value="50">50</option>
                     <option value="100">100</option>
-                    <option value="200" selected>200</option>
+                    <option value="200">200</option>
                     <option value="500">500</option>
                     <option value="1000">1,000</option>
                   </select>
@@ -261,7 +261,7 @@
                 </thead>
                 <tbody id="staging-body">
                   <tr>
-                    <td colspan="37">Loading staging rows...</td>
+                    <td colspan="37"><div class="ui-state ui-state-loading" data-tone="loading"><strong>Loading staging rows</strong><p>Reading rates awaiting review.</p><div class="ui-skeleton-list" aria-hidden="true"><i><b></b><b></b><b></b></i></div></div></td>
                   </tr>
                 </tbody>
               </table>
@@ -280,7 +280,7 @@
               <button id="close-staging-drawer" class="secondary small-button" type="button">Close</button>
             </div>
             <div id="staging-row-detail" class="staging-row-detail"></div>
-            <form id="staging-edit-form" class="drawer-edit-form">
+            <form id="staging-edit-form" class="drawer-edit-form" data-unsaved-guard>
               <label>
                 Vendor domain
                 <input id="edit-vendor-domain" />

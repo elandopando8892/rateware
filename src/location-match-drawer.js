@@ -255,6 +255,8 @@ function renderCandidate(candidate, index) {
 export function createLocationMatchDrawer(config) {
   let drawer = null;
   let state = { tableRow: null, prefix: "", row: {}, candidates: [] };
+  let drawerActionRunning = false;
+  const aliasSaveMutationKeys = new Set();
 
   function ensureDrawer() {
     if (drawer) return drawer;
@@ -350,7 +352,10 @@ export function createLocationMatchDrawer(config) {
     if (aliasButton) {
       const candidate = state.candidates[Number(aliasButton.dataset.locationSaveAlias)];
       const alias = state.row[state.prefix] || "";
+      const aliasKey = `${state.prefix}:${lookupKey(alias)}:${candidate?.option?.id || ""}`;
+      if (aliasSaveMutationKeys.has(aliasKey)) return;
       if (!candidate?.option?.id || !alias.trim()) return;
+      aliasSaveMutationKeys.add(aliasKey);
       aliasButton.disabled = true;
       try {
         const applied = config.applyCandidate(state.tableRow, state.prefix, candidate.option);
@@ -367,20 +372,33 @@ export function createLocationMatchDrawer(config) {
       } catch (error) {
         config.setMessage?.(humanizeError(error), "error");
       } finally {
+        aliasSaveMutationKeys.delete(aliasKey);
         aliasButton.disabled = false;
       }
       return;
     }
 
     if (event.target.closest("[data-location-find-zip]")) {
+      if (drawerActionRunning) return;
+      drawerActionRunning = true;
       close();
-      await config.onFindZip(state.tableRow, state.prefix);
+      try {
+        await config.onFindZip(state.tableRow, state.prefix);
+      } finally {
+        drawerActionRunning = false;
+      }
       return;
     }
 
     if (event.target.closest("[data-location-renormalize]")) {
+      if (drawerActionRunning) return;
+      drawerActionRunning = true;
       close();
-      await config.onRenormalize(state.tableRow);
+      try {
+        await config.onRenormalize(state.tableRow);
+      } finally {
+        drawerActionRunning = false;
+      }
     }
   }
 

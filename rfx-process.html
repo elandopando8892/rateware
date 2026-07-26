@@ -54,7 +54,7 @@
           <div class="page-header-actions">
             <button id="new-rfx-project" class="page-primary-action" type="button">New RFx Project</button>
             <form id="auth-form" class="auth-strip">
-              <button id="auth-button" type="submit">Sign in with Kinde</button>
+              <button id="auth-button" type="submit">Log in</button>
               <button id="sign-out-button" type="button" class="secondary hidden">Sign out</button>
               <p id="auth-status" role="status"></p>
             </form>
@@ -130,7 +130,7 @@
     </div>
 
     <dialog id="rfx-process-create-dialog" class="rateware-dialog">
-      <form id="rfx-process-create-form" method="dialog">
+      <form id="rfx-process-create-form" method="dialog" data-unsaved-guard>
         <h2>New RFx Project</h2>
         <label>Project title<input name="title" required placeholder="Customer lane book refresh" /></label>
         <label>Customer<input name="customer_name" placeholder="Customer name" /></label>

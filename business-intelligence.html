@@ -53,7 +53,7 @@
           <div class="page-header-actions">
             <button class="page-primary-action" type="button" data-bi-view-button="copilot" data-bi-focus-target="#bi-prompt">Ask AI</button>
             <form id="auth-form" class="auth-strip">
-              <button id="auth-button" type="submit">Sign in with Kinde</button>
+              <button id="auth-button" type="submit">Log in</button>
               <button id="sign-out-button" type="button" class="secondary hidden">Sign out</button>
               <p id="auth-status" role="status"></p>
             </form>
@@ -73,7 +73,7 @@
             <button type="button" role="tab" aria-selected="false" data-bi-view-button="ranking">Carrier Ranking</button>
           </nav>
 
-          <section class="workspace-panel bi-copilot-brief bi-view-panel" data-bi-view-panel="copilot">
+          <section class="workspace-panel bi-copilot-brief bi-view-panel" data-bi-view-panel="copilot" hidden>
             <div class="section-heading compact split-heading">
               <div>
                 <p class="eyebrow">Guided analysis</p>
@@ -115,7 +115,7 @@
             </div>
           </section>
 
-          <section class="workspace-panel bi-command-panel bi-view-panel" data-bi-view-panel="copilot">
+          <section class="workspace-panel bi-command-panel bi-view-panel" data-bi-view-panel="copilot" hidden>
             <div class="section-heading compact split-heading">
               <div>
                 <p class="eyebrow">AI query</p>
@@ -267,8 +267,8 @@
                       <tr>
                         <td colspan="5">
                           <div class="empty-state">
-                            <strong>No zones yet</strong>
-                            <span>Run the geo density view.</span>
+                            <strong>No route density yet</strong>
+                            <span>Run the geo density view to map transaction concentration by region, market or location.</span>
                           </div>
                         </td>
                       </tr>
@@ -279,7 +279,7 @@
             </div>
           </section>
 
-          <section id="bi-analyst-panel" class="workspace-panel bi-analyst-panel bi-view-panel" data-bi-view-panel="copilot">
+          <section id="bi-analyst-panel" class="workspace-panel bi-analyst-panel bi-view-panel" data-bi-view-panel="copilot" hidden>
             <div class="section-heading compact split-heading">
               <div>
                 <p class="eyebrow">AI Analyst Layer</p>
@@ -303,7 +303,7 @@
               </div>
               <p id="bi-action-queue-status" class="status-message">No proposed action has been queued.</p>
               <div id="bi-proposed-actions" class="bi-analyst-list bi-action-plan-list">
-                <article>No proposed actions yet.</article>
+                <article><strong>No actions proposed</strong><span>Ask the analyst a commercial question to generate a reviewable action plan.</span></article>
               </div>
             </section>
 
@@ -314,7 +314,7 @@
                   <h3>Validate the answer</h3>
                 </div>
                 <div id="bi-suggested-pivots" class="bi-analyst-list">
-                  <article>No pivot suggestions yet.</article>
+                  <article><strong>No pivot suggestions yet</strong><span>Run an analyst question first; suggested pivots will appear with the evidence.</span></article>
                 </div>
               </section>
 
@@ -324,7 +324,7 @@
                   <h3>What weakens confidence</h3>
                 </div>
                 <div id="bi-data-gaps" class="bi-analyst-list">
-                  <article>No gap analysis yet.</article>
+                  <article><strong>No gap analysis yet</strong><span>The analyst will flag missing rates, coverage or comparable currency after a query.</span></article>
                 </div>
               </section>
 
@@ -334,13 +334,13 @@
                   <h3>Proposed invite set</h3>
                 </div>
                 <div id="bi-rfx-shortlist" class="bi-analyst-list">
-                  <article>No shortlist yet.</article>
+                  <article><strong>No shortlist yet</strong><span>Ask for a carrier recommendation to build a proposed RFx invite set.</span></article>
                 </div>
               </section>
             </div>
           </section>
 
-          <section id="bi-recommendation-panel" class="workspace-panel bi-recommendation-panel bi-view-panel" data-bi-view-panel="ranking">
+          <section id="bi-recommendation-panel" class="workspace-panel bi-recommendation-panel bi-view-panel" data-bi-view-panel="ranking" hidden>
             <div class="section-heading compact split-heading">
               <div>
                 <p class="eyebrow">Recommendation engine</p>
@@ -386,7 +386,7 @@
             <p id="bi-rec-status" class="status-message" role="status">Ready to rank carriers.</p>
           </section>
 
-          <section id="bi-pivot-panel" class="workspace-panel bi-pivot-panel bi-view-panel" data-bi-view-panel="pivots">
+          <section id="bi-pivot-panel" class="workspace-panel bi-pivot-panel bi-view-panel" data-bi-view-panel="pivots" hidden>
             <div class="section-heading compact split-heading">
               <div>
                 <p class="eyebrow">Analytics workspace</p>
@@ -434,7 +434,12 @@
               </section>
             </div>
 
-            <div class="bi-filter-grid">
+            <details class="bi-filter-disclosure">
+              <summary>
+                <span>Advanced filters</span>
+                <small>Route, market, carrier, equipment and border</small>
+              </summary>
+              <div class="bi-filter-grid">
               <label>
                 Search
                 <input id="bi-filter-search" placeholder="Carrier, route, RFx, market" />
@@ -507,12 +512,13 @@
                 US crossing
                 <input id="bi-filter-us-crossing" placeholder="Laredo, TX" />
               </label>
-            </div>
+              </div>
 
-            <div class="bi-toggle-row">
-              <label><input id="bi-filter-crossborder" type="checkbox" /> Crossborder only</label>
-              <label><input id="bi-filter-d2d" type="checkbox" /> D2D Import/Export only</label>
-            </div>
+              <div class="bi-toggle-row">
+                <label><input id="bi-filter-crossborder" type="checkbox" /> Crossborder only</label>
+                <label><input id="bi-filter-d2d" type="checkbox" /> D2D Import/Export only</label>
+              </div>
+            </details>
 
             <div class="review-insight-grid bi-pivot-summary" aria-label="Pivot summary">
               <article>
@@ -545,9 +551,9 @@
                 <tbody id="bi-pivot-body">
                   <tr>
                     <td colspan="2">
-                      <div class="empty-state">
-                        <strong>No pivot yet</strong>
-                        <span>Choose dimensions, filters, and a metric.</span>
+                        <div class="empty-state">
+                          <strong>Pivot not built</strong>
+                          <span>Choose dimensions, filters and a metric, then run the pivot.</span>
                       </div>
                     </td>
                   </tr>
@@ -596,7 +602,7 @@
             </div>
           </section>
 
-          <section id="bi-results-panel" class="workspace-panel bi-view-panel" data-bi-view-panel="ranking">
+          <section id="bi-results-panel" class="workspace-panel bi-view-panel" data-bi-view-panel="ranking" hidden>
             <div class="review-insight-grid bi-metrics" aria-label="Carrier intelligence summary">
               <article>
                 <span>Recommendations</span>
@@ -645,9 +651,9 @@
                 <tbody id="bi-results-body">
                   <tr>
                     <td colspan="7">
-                      <div class="empty-state">
-                        <strong>No recommendations yet</strong>
-                        <span>Run a BI query to rank carriers.</span>
+                        <div class="empty-state">
+                        <strong>No carrier ranking yet</strong>
+                        <span>Run a recommendation template or ask AI Analyst to rank carriers.</span>
                       </div>
                     </td>
                   </tr>

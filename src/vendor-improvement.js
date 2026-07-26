@@ -86,6 +86,8 @@ let improvementLoadVersion = 0;
 let selectedVendor = null;
 let activePlaybook = null;
 let createCaseRunning = false;
+let valueCurveRefreshRunning = false;
+let ciReminderRunRunning = false;
 const improvementCaseMutationQueues = new Map();
 const improvementCaseMutationVersions = new Map();
 const improvementCaseSubmissionIds = new Set();
@@ -431,6 +433,16 @@ function renderCases() {
   `).join("");
 }
 
+function setCaseRowBusy(id, busy = false) {
+  if (!id || !caseBody) return;
+  const row = caseBody.querySelector(`[data-ci-case-id="${CSS.escape(id)}"]`);
+  if (!row) return;
+  row.classList.toggle("is-mutating", busy);
+  row.querySelectorAll("[data-ci-case-action], [data-ci-case-field], [data-ci-case-response], [data-ci-case-response-channel], [data-ci-case-response-evidence], [data-ci-case-closure-note], [data-ci-case-closure-evidence]").forEach((control) => {
+    control.disabled = busy;
+  });
+}
+
 function renderScorecards() {
   if (!scorecardBody) return;
   if (!scorecardRows.length) {
@@ -656,7 +668,8 @@ async function loadImprovementCases() {
 }
 
 async function recalculateValueCurve() {
-  if (refreshButton?.disabled) return;
+  if (valueCurveRefreshRunning) return;
+  valueCurveRefreshRunning = true;
   if (refreshButton) refreshButton.disabled = true;
   setStatus("Recalculating the Value Curve from CRM, Rateware, Bid Room, support and CI signals...");
   try {
@@ -668,6 +681,7 @@ async function recalculateValueCurve() {
   } catch (error) {
     setStatus(error, "error");
   } finally {
+    valueCurveRefreshRunning = false;
     if (refreshButton) refreshButton.disabled = false;
   }
 }
@@ -729,6 +743,7 @@ async function updateCase(id, patch) {
   if (!id) return;
   const mutationVersion = (improvementCaseMutationVersions.get(id) || 0) + 1;
   improvementCaseMutationVersions.set(id, mutationVersion);
+  setCaseRowBusy(id, true);
   const priorMutation = improvementCaseMutationQueues.get(id) || Promise.resolve();
   const mutation = priorMutation.catch(() => {}).then(async () => {
     setStatus("Updating improvement case...");
@@ -752,12 +767,14 @@ async function updateCase(id, patch) {
     // The latest mutation reports its own user-facing error.
   } finally {
     if (improvementCaseMutationQueues.get(id) === mutation) improvementCaseMutationQueues.delete(id);
+    if (!improvementCaseMutationQueues.has(id)) setCaseRowBusy(id, false);
   }
 }
 
 async function submitCase(id) {
   if (!id || improvementCaseSubmissionIds.has(id)) return;
   improvementCaseSubmissionIds.add(id);
+  setCaseRowBusy(id, true);
   setStatus("Submitting requirement by email and scheduling reminders...");
   try {
     await requirePrivatePage();
@@ -776,10 +793,13 @@ async function submitCase(id) {
     await loadImprovementCases();
   } finally {
     improvementCaseSubmissionIds.delete(id);
+    setCaseRowBusy(id, false);
   }
 }
 
 async function runDueReminders() {
+  if (ciReminderRunRunning) return;
+  ciReminderRunRunning = true;
   setStatus("Sending due Vendor CI reminders...");
   if (runRemindersButton) runRemindersButton.disabled = true;
   try {
@@ -790,16 +810,20 @@ async function runDueReminders() {
   } catch (error) {
     setStatus(error, "error");
   } finally {
+    ciReminderRunRunning = false;
     if (runRemindersButton) runRemindersButton.disabled = false;
   }
 }
 
 async function recordCaseResponse(rowElement, caseId) {
+  if (!caseId || improvementCaseSubmissionIds.has(caseId)) return;
   const response = rowElement?.querySelector("[data-ci-case-response]")?.value?.trim();
   if (!response) {
     setStatus("Paste or summarize the carrier response before saving it.", "error");
     return;
   }
+  improvementCaseSubmissionIds.add(caseId);
+  setCaseRowBusy(caseId, true);
   setStatus("Recording carrier response and pausing reminders...");
   try {
     await requirePrivatePage();
@@ -813,15 +837,21 @@ async function recordCaseResponse(rowElement, caseId) {
     setStatus("Carrier response recorded. Scheduled follow-ups are paused.", "success");
   } catch (error) {
     setStatus(error, "error");
+  } finally {
+    improvementCaseSubmissionIds.delete(caseId);
+    setCaseRowBusy(caseId, false);
   }
 }
 
 async function closeCase(rowElement, caseId) {
+  if (!caseId || improvementCaseSubmissionIds.has(caseId)) return;
   const closureNote = rowElement?.querySelector("[data-ci-case-closure-note]")?.value?.trim();
   if (!closureNote) {
     setStatus("Add a closure note before resolving the case.", "error");
     return;
   }
+  improvementCaseSubmissionIds.add(caseId);
+  setCaseRowBusy(caseId, true);
   setStatus("Closing Vendor CI case...");
   try {
     await requirePrivatePage();
@@ -834,6 +864,9 @@ async function closeCase(rowElement, caseId) {
     setStatus("Vendor CI case resolved. Future reminders were stopped.", "success");
   } catch (error) {
     setStatus(error, "error");
+  } finally {
+    improvementCaseSubmissionIds.delete(caseId);
+    setCaseRowBusy(caseId, false);
   }
 }
 

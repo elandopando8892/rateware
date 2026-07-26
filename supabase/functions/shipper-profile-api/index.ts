@@ -15,6 +15,21 @@ function text(value: unknown, maxLength = 2000) {
   return result ? result.slice(0, maxLength) : null;
 }
 
+function publicErrorMessage(value: unknown, fallback = "Unable to update profile.") {
+  if (value === null || value === undefined) return fallback;
+  if (value instanceof Error) return text(value.message) || fallback;
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return text(value) || fallback;
+  if (typeof value !== "object") return fallback;
+  const source = value as Record<string, unknown>;
+  for (const key of ["error", "message", "reason", "description", "detail", "details", "hint", "cause"]) {
+    if (source[key] && source[key] !== value) {
+      const message = publicErrorMessage(source[key], "");
+      if (message) return message;
+    }
+  }
+  return fallback;
+}
+
 function record(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }
@@ -176,6 +191,6 @@ Deno.serve(async (request) => {
     }
     return jsonResponse({ error: "Unknown profile action." }, 400);
   } catch (error) {
-    return jsonResponse({ error: error instanceof Error ? error.message : "Unable to update profile." }, 500);
+    return jsonResponse({ error: publicErrorMessage(error) }, 500);
   }
 });

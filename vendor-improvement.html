@@ -55,7 +55,7 @@
             <button id="run-vendor-ci-reminders" class="secondary" type="button">Run reminders</button>
             <button id="refresh-vendor-ci" class="page-primary-action" type="button">Recalculate Value Curve</button>
             <form id="auth-form" class="auth-strip">
-              <button id="auth-button" type="submit">Sign in with Kinde</button>
+              <button id="auth-button" type="submit">Log in</button>
               <button id="sign-out-button" type="button" class="secondary hidden">Sign out</button>
               <p id="auth-status" role="status"></p>
             </form>
@@ -126,7 +126,7 @@
           </section>
 
           <section class="vendor-ci-grid wide-section" data-ci-view="cases">
-            <form id="ci-create-form" class="workspace-panel vendor-ci-case-form">
+            <form id="ci-create-form" class="workspace-panel vendor-ci-case-form" data-unsaved-guard>
               <div>
                 <p class="eyebrow">Create improvement case</p>
                 <h2>Open a vendor requirement</h2>

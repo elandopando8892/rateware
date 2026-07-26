@@ -55,7 +55,7 @@
             <button class="page-primary-action" type="button" data-rfx-focus-create>New bid event</button>
             <a class="secondary-link" href="./bid-room-board.html" target="_blank" rel="noreferrer">Public board</a>
             <form id="auth-form" class="auth-strip">
-              <button id="auth-button" type="submit">Sign in with Kinde</button>
+              <button id="auth-button" type="submit">Log in</button>
               <button id="sign-out-button" type="button" class="secondary hidden">Sign out</button>
               <p id="auth-status" role="status"></p>
             </form>
@@ -73,7 +73,7 @@
                 <button id="refresh-rfx-events" class="secondary small-button" type="button">Refresh</button>
               </div>
               <div id="rfx-event-list" class="rfx-event-list">
-                <article>Loading bid events...</article>
+                <article class="ui-state ui-state-loading" data-tone="loading"><strong>Loading bid events</strong><p>Reading active and archived opportunities.</p><div class="ui-skeleton-list" aria-hidden="true"><i><b></b><b></b><b></b></i></div></article>
               </div>
             </section>
           </aside>
@@ -111,29 +111,21 @@
 
               <div class="bid-room-flow-shell">
                 <nav id="rfx-ops-stage-rail" class="bid-room-stage-rail" role="tablist" aria-label="Bid Room stages">
-                  <button type="button" role="tab" aria-selected="true" data-workbench-view-button="setup" data-stage-key="event">
+                  <button type="button" role="tab" aria-selected="true" data-workbench-view-button="setup" data-workbench-view-group="setup lanes carriers" data-workbench-activate="setup" data-stage-key="build">
                     <span class="stage-index">1</span>
-                    <span class="stage-copy"><strong>Event</strong><small>Room | Next</small></span>
-                  </button>
-                  <button type="button" role="tab" aria-selected="false" data-workbench-view-button="lanes" data-stage-key="lanes">
-                    <span class="stage-index">2</span>
-                    <span class="stage-copy"><strong>Book</strong><small>Lanes | Pending</small></span>
-                  </button>
-                  <button type="button" role="tab" aria-selected="false" data-workbench-view-button="carriers" data-stage-key="carriers">
-                    <span class="stage-index">3</span>
-                    <span class="stage-copy"><strong>Participants</strong><small>CRM | Pending</small></span>
+                    <span class="stage-copy"><strong>Build</strong><small>Event | Book | CRM</small></span>
                   </button>
                   <button type="button" role="tab" aria-selected="false" data-workbench-view-button="outreach" data-stage-key="launch">
+                    <span class="stage-index">2</span>
+                    <span class="stage-copy"><strong>Launch</strong><small>Invites | Queue</small></span>
+                  </button>
+                  <button type="button" role="tab" aria-selected="false" data-workbench-view-button="responses" data-stage-key="operate">
+                    <span class="stage-index">3</span>
+                    <span class="stage-copy"><strong>Operate</strong><small>Auction | Live</small></span>
+                  </button>
+                  <button type="button" role="tab" aria-selected="false" data-workbench-view-button="award" data-stage-key="close">
                     <span class="stage-index">4</span>
-                    <span class="stage-copy"><strong>Outreach</strong><small>Invites | Pending</small></span>
-                  </button>
-                  <button type="button" role="tab" aria-selected="false" data-workbench-view-button="responses" data-stage-key="offers">
-                    <span class="stage-index">5</span>
-                    <span class="stage-copy"><strong>Auction</strong><small>Live | Pending</small></span>
-                  </button>
-                  <button type="button" role="tab" aria-selected="false" data-workbench-view-button="award" data-stage-key="award">
-                    <span class="stage-index">6</span>
-                    <span class="stage-copy"><strong>Award</strong><small>Closeout | Pending</small></span>
+                    <span class="stage-copy"><strong>Close</strong><small>Award | Rateware</small></span>
                   </button>
                 </nav>
                 <aside id="rfx-ops-next-action" class="bid-room-next-action" aria-live="polite">
@@ -141,10 +133,10 @@
                     <span>Command center</span>
                     <b>0%</b>
                   </div>
-                  <div class="bid-room-workflow-meter" aria-label="0 of 6 workflow steps ready"><i style="width: 0%"></i></div>
-                  <strong>Step 1: Create or select the bid room</strong>
+                  <div class="bid-room-workflow-meter" aria-label="0 of 4 operating stages ready"><i style="width: 0%"></i></div>
+                  <strong>Next: Create or select the bid room</strong>
                   <small>Start the private procurement workflow.</small>
-                  <details class="bid-room-readiness-disclosure bid-room-side-checklist" open>
+                  <details class="bid-room-readiness-disclosure bid-room-side-checklist">
                     <summary>
                       <span>Operating checklist</span>
                       <small>Readiness and blockers</small>
@@ -163,13 +155,18 @@
             <section class="bid-room-stage-panel" data-workbench-view-panel="setup">
               <div class="bid-room-stage-header">
                 <div>
-                  <p class="eyebrow">Step 1</p>
+                  <p class="eyebrow">Build / Event</p>
                   <h3>Event setup</h3>
                 </div>
                 <span class="status-pill muted">Required before lanes</span>
               </div>
+              <nav class="bid-room-build-tabs" role="tablist" aria-label="Build stages">
+                <button type="button" role="tab" aria-selected="true" class="secondary small-button" data-workbench-view-button="setup">Event</button>
+                <button type="button" role="tab" aria-selected="false" class="secondary small-button" data-workbench-view-button="lanes">Business book</button>
+                <button type="button" role="tab" aria-selected="false" class="secondary small-button" data-workbench-view-button="carriers">Participants</button>
+              </nav>
               <div class="bid-room-setup-grid">
-                <form id="rfx-event-form" class="rfx-event-form bid-room-form">
+                <form id="rfx-event-form" class="rfx-event-form bid-room-form" data-unsaved-guard>
                   <label>
                     RFx ID
                     <input id="rfx-id" required placeholder="RFx-04302602" />
@@ -210,10 +207,10 @@
               </div>
             </section>
 
-            <section class="bid-room-stage-panel" data-workbench-view-panel="lanes">
+            <section class="bid-room-stage-panel" data-workbench-view-panel="lanes" hidden>
               <div class="bid-room-stage-header">
                 <div>
-                  <p class="eyebrow">Step 2</p>
+                  <p class="eyebrow">Build / Book</p>
                   <h3>Business book</h3>
                 </div>
                 <span id="rfx-coverage-summary" class="status-pill muted">No lanes</span>
@@ -328,10 +325,10 @@
               </div>
             </section>
 
-            <section class="bid-room-stage-panel" data-workbench-view-panel="carriers">
+            <section class="bid-room-stage-panel" data-workbench-view-panel="carriers" hidden>
               <div class="bid-room-stage-header">
                 <div>
-                  <p class="eyebrow">Step 3</p>
+                  <p class="eyebrow">Build / Participants</p>
                   <h3>Participants</h3>
                 </div>
                 <span class="status-pill muted">CRM shortlist</span>
@@ -365,7 +362,7 @@
                     </div>
                   </div>
                   <div id="manual-shortlist-vendor-list" class="bid-room-crm-vendor-list">
-                    <article>Loading Carrier CRM...</article>
+                    <article class="ui-state ui-state-loading" data-tone="loading"><strong>Loading Carrier CRM</strong><p>Searching carriers available for this bid room.</p><div class="ui-skeleton-list" aria-hidden="true"><i><b></b><b></b><b></b></i></div></article>
                   </div>
                   <select id="manual-shortlist-vendors" multiple size="4" hidden></select>
                 </section>
@@ -427,10 +424,10 @@
               </div>
             </section>
 
-            <section class="bid-room-stage-panel" data-workbench-view-panel="outreach">
+            <section class="bid-room-stage-panel" data-workbench-view-panel="outreach" hidden>
               <div class="bid-room-stage-header">
                 <div>
-                  <p class="eyebrow">Step 4</p>
+                  <p class="eyebrow">Launch</p>
                   <h3>Outreach launchpad</h3>
                 </div>
               </div>
@@ -555,7 +552,7 @@
                     </div>
                     <span class="status-pill muted">Draft first</span>
                   </div>
-                  <form id="rfx-outreach-form" class="rfx-outreach-form">
+                  <form id="rfx-outreach-form" class="rfx-outreach-form" data-unsaved-guard>
                     <label>
                       Wave name
                       <input id="rfx-outreach-campaign-name" placeholder="RFx invitation wave" />
@@ -598,7 +595,7 @@
                   </section>
                   <section class="gmail-sender-note">
                     <strong>Gmail sending model</strong>
-                    <span>Step 4 uses sales@heymarksman.com as the only approved sender. Connect it in Settings before direct Gmail sending.</span>
+                    <span>Launch uses sales@heymarksman.com as the only approved sender. Connect it in Settings before direct Gmail sending.</span>
                   </section>
                   <details id="rfx-template-editor" class="rfx-template-editor is-source-admin">
                     <summary>HTML source fallback</summary>
@@ -704,16 +701,16 @@
               </div>
             </section>
 
-            <section class="bid-room-stage-panel" data-workbench-view-panel="responses">
+            <section class="bid-room-stage-panel" data-workbench-view-panel="responses" hidden>
               <div class="bid-room-stage-header">
                 <div>
-                  <p class="eyebrow">Step 5</p>
+                  <p class="eyebrow">Operate</p>
                   <h3>Auction room</h3>
                 </div>
                 <span id="rfx-response-summary" class="status-pill muted">No bids</span>
               </div>
               <div id="rfx-live-offer-manager" class="rfx-live-offer-manager">
-                <article>No live bids yet.</article>
+                <article class="ui-state" data-tone="neutral"><span>Auction room</span><strong>No live bids yet</strong><p>Offers will appear here after invited carriers submit a bid.</p></article>
               </div>
               <section class="bid-room-chat-panel">
                 <div class="bid-room-stage-header compact">
@@ -756,7 +753,7 @@
                   Select a bid event to load the communication queue.
                 </div>
                 <div id="rfx-chat-signal-queue" class="bid-room-signal-queue">
-                  No communication signals detected yet.
+                  <div class="ui-state" data-tone="neutral"><strong>No communication signals yet</strong><p>Signals appear when a carrier asks a question, changes a bid or needs a follow-up.</p></div>
                 </div>
                 <div class="bid-room-chat-controls">
                   <label>
@@ -769,7 +766,7 @@
                   <button id="rfx-chat-start-event-thread" type="button" class="secondary small-button">Start event thread</button>
                 </div>
                 <div id="rfx-chat-thread-list" class="bid-room-chat-thread-list">
-                  Select a bid event to load chat threads.
+                  <div class="ui-state" data-tone="neutral"><strong>Select a bid event</strong><p>Event and carrier threads will appear here after an opportunity is selected.</p></div>
                 </div>
                 <form id="rfx-chat-form" class="bid-room-chat-form">
                   <textarea id="rfx-chat-message" rows="2" placeholder="Write message to carriers or selected carrier..."></textarea>
@@ -841,17 +838,17 @@
                   </thead>
                   <tbody id="rfx-response-body">
                     <tr>
-                      <td colspan="11">No carrier bids yet.</td>
+                      <td colspan="11"><div class="ui-state" data-tone="neutral"><span>Responses</span><strong>No carrier bids yet</strong><p>Invited carriers will appear here once they submit or reject an offer.</p></div></td>
                     </tr>
                   </tbody>
                 </table>
               </div>
             </section>
 
-            <section class="bid-room-stage-panel" data-workbench-view-panel="award">
+            <section class="bid-room-stage-panel" data-workbench-view-panel="award" hidden>
               <div class="bid-room-stage-header">
                 <div>
-                  <p class="eyebrow">Step 6</p>
+                  <p class="eyebrow">Close</p>
                   <h3>Award & closeout</h3>
                 </div>
                 <span id="rfx-award-status-pill" class="status-pill muted">Decision room</span>

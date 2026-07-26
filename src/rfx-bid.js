@@ -16,6 +16,14 @@ let lastQuickBidSaveStatus = null;
 let lastBidSupportQuestion = "";
 let lastBidSupportResult = null;
 let pendingBidTemplateRows = [];
+let segmentConfirmationsSaving = false;
+let bidTemplateSubmitting = false;
+let bidFormSubmitting = false;
+let bidSupportSubmitting = false;
+let carrierChatSubmitting = false;
+const quickBidRowMutationKeys = new Set();
+const bidParticipationMutationKeys = new Set();
+const laneAccessRequestMutationKeys = new Set();
 const PUBLIC_BOARD_VERIFIED_INVITES_KEY = "rateware.publicBidBoard.verifiedInvitations";
 const PUBLIC_BOARD_INVITE_EMAIL_KEY = "rateware.publicBidBoard.inviteEmail";
 const PUBLIC_BOARD_INVITE_LANES_KEY = "rateware.publicBidBoard.invitedLaneIds";
@@ -788,7 +796,9 @@ function collectSegmentConfirmations() {
 }
 
 async function saveSegmentConfirmations(button) {
+  if (segmentConfirmationsSaving) return;
   const status = card.querySelector("#segment-confirmation-status");
+  segmentConfirmationsSaving = true;
   button.disabled = true;
   if (status) {
     status.textContent = dualText("Saving fit checklist...", "Guardando checklist de fit...");
@@ -810,6 +820,7 @@ async function saveSegmentConfirmations(button) {
       status.dataset.tone = "error";
     }
   } finally {
+    segmentConfirmationsSaving = false;
     button.disabled = false;
   }
 }
@@ -2119,6 +2130,7 @@ function renderBidTemplatePreview(rows = pendingBidTemplateRows) {
 }
 
 async function submitBidTemplateRows() {
+  if (bidTemplateSubmitting) return;
   const status = card.querySelector("#carrier-bid-template-status");
   const button = card.querySelector("[data-submit-bid-template]");
   const rows = pendingBidTemplateRows.filter((row) => row.submit_this_lane);
@@ -2134,6 +2146,7 @@ async function submitBidTemplateRows() {
     renderBidTemplatePreview();
     return;
   }
+  bidTemplateSubmitting = true;
   if (button) button.disabled = true;
   if (status) {
     status.textContent = dualText(`Submitting ${rows.length} XLSX bid row(s)...`, `Enviando ${rows.length} fila(s) de puja XLSX...`);
@@ -2157,6 +2170,8 @@ async function submitBidTemplateRows() {
       status.dataset.tone = "error";
     }
     if (button) button.disabled = false;
+  } finally {
+    bidTemplateSubmitting = false;
   }
 }
 
@@ -2916,8 +2931,10 @@ function setBidSupportOpen(open = true) {
 }
 
 async function askBidSupport(options = {}) {
+  if (bidSupportSubmitting) return;
   const status = card.querySelector("#bid-support-status");
   const input = card.querySelector("#bid-support-message");
+  const buttons = Array.from(card.querySelectorAll("#bid-support-form button"));
   const message = String(options.createTicket ? lastBidSupportQuestion : input?.value || "").trim();
   if (!message) {
     if (status) {
@@ -2927,6 +2944,8 @@ async function askBidSupport(options = {}) {
     input?.focus();
     return;
   }
+  bidSupportSubmitting = true;
+  buttons.forEach((button) => { button.disabled = true; });
   lastBidSupportQuestion = message;
   if (status) {
     status.textContent = options.createTicket
@@ -2956,6 +2975,10 @@ async function askBidSupport(options = {}) {
       status.textContent = humanizeError(error) || dualText("Support could not answer.", "Soporte no pudo responder.");
       status.dataset.tone = "error";
     }
+  } finally {
+    bidSupportSubmitting = false;
+    const nextButtons = Array.from(card.querySelectorAll("#bid-support-form button"));
+    nextButtons.forEach((button) => { button.disabled = false; });
   }
 }
 
@@ -3268,6 +3291,8 @@ function markQuickBidRowInvalid(rowElement, field) {
 
 async function saveQuickBidRow(rowElement, button) {
   const rowToken = rowElement.dataset.invitationToken || "";
+  const mutationKey = `quick-bid:${rowToken}`;
+  if (quickBidRowMutationKeys.has(mutationKey)) return;
   const draft = quickBidDraftFromRow(rowElement);
   const validation = validateBidDraft(draft);
   rowElement.querySelectorAll("[aria-invalid='true']").forEach((input) => input.removeAttribute("aria-invalid"));
@@ -3280,6 +3305,7 @@ async function saveQuickBidRow(rowElement, button) {
     markQuickBidRowInvalid(rowElement, validation.errors[0].field);
     return;
   }
+  quickBidRowMutationKeys.add(mutationKey);
   button.disabled = true;
   setQuickBidRowStatus(rowElement, dualText("Saving lane offer...", "Guardando oferta de la ruta..."), "neutral");
   try {
@@ -3295,12 +3321,16 @@ async function saveQuickBidRow(rowElement, button) {
   } catch (error) {
     setQuickBidRowStatus(rowElement, humanizeError(error), "error");
     button.disabled = false;
+  } finally {
+    quickBidRowMutationKeys.delete(mutationKey);
   }
 }
 
 async function updateBidParticipation(action, button, options = {}) {
   const rowElement = options.rowElement || null;
   const actionToken = options.token || rowElement?.dataset.invitationToken || tokenFromUrl();
+  const mutationKey = `${action}:${actionToken}`;
+  if (bidParticipationMutationKeys.has(mutationKey)) return;
   const isWithdraw = action === "withdraw_bid";
   const confirmation = isWithdraw
     ? dualText(
@@ -3310,9 +3340,10 @@ async function updateBidParticipation(action, button, options = {}) {
     : dualText(
       "Reject this lane? Procurement will see that you are not participating for now.",
       "Rechazar esta ruta? Procurement vera que no participas por ahora."
-    );
+  );
   if (!window.confirm(confirmation)) return;
 
+  bidParticipationMutationKeys.add(mutationKey);
   const status = rowElement ? null : card.querySelector("#bid-submit-status");
   const progressText = isWithdraw
     ? dualText("Withdrawing offer...", "Retirando oferta...")
@@ -3345,6 +3376,8 @@ async function updateBidParticipation(action, button, options = {}) {
       status.dataset.tone = "error";
     }
     button.disabled = false;
+  } finally {
+    bidParticipationMutationKeys.delete(mutationKey);
   }
 }
 
@@ -3903,7 +3936,9 @@ function renderInvitation(invitation, liveBoard = {}, carrierBook = {}) {
 
   card.querySelector("#bid-form").addEventListener("submit", async (event) => {
     event.preventDefault();
+    if (bidFormSubmitting) return;
     const status = card.querySelector("#bid-submit-status");
+    const submitButton = card.querySelector("[data-bid-submit-button]");
     const draft = collectBidDraft();
     const validation = validateBidDraft(draft);
     clearBidValidationState();
@@ -3925,6 +3960,8 @@ function renderInvitation(invitation, liveBoard = {}, carrierBook = {}) {
     status.textContent = validation.warnings.length ? "Submitting bid with validation warnings..." : "Submitting bid...";
     status.dataset.tone = "neutral";
     const wasUpdate = hasSubmittedOffer();
+    bidFormSubmitting = true;
+    if (submitButton) submitButton.disabled = true;
     try {
       await callBidApi("submit_bid", draft);
       markOwnOfferRevisionPending();
@@ -3937,6 +3974,9 @@ function renderInvitation(invitation, liveBoard = {}, carrierBook = {}) {
     } catch (error) {
       status.textContent = humanizeError(error);
       status.dataset.tone = "error";
+    } finally {
+      bidFormSubmitting = false;
+      if (submitButton) submitButton.disabled = false;
     }
   });
   renderLiveBoard(liveBoard);
@@ -4202,17 +4242,22 @@ card.addEventListener("click", async (event) => {
 
   const button = event.target.closest("[data-request-lane]");
   if (!button) return;
+  const laneId = String(button.dataset.requestLane || "").trim();
+  if (!laneId || laneAccessRequestMutationKeys.has(laneId)) return;
+  laneAccessRequestMutationKeys.add(laneId);
   button.disabled = true;
   const originalText = button.textContent;
   button.textContent = "Requesting...";
   try {
-    const result = await callBidApi("request_lane_access", { lane_id: button.dataset.requestLane });
+    const result = await callBidApi("request_lane_access", { lane_id: laneId });
     button.textContent = result.requested ? "Requested" : "Already in book";
   } catch (error) {
     button.disabled = false;
     button.textContent = originalText;
     setCarrierPortalStatus("#carrier-book-status", humanizeError(error), "error")
       || setCarrierPortalStatus("#carrier-bid-template-status", humanizeError(error), "error");
+  } finally {
+    laneAccessRequestMutationKeys.delete(laneId);
   }
 });
 
@@ -4225,8 +4270,10 @@ card.addEventListener("submit", async (event) => {
     await askBidSupport();
     return;
   }
+  if (carrierChatSubmitting) return;
   const status = card.querySelector("#carrier-chat-status");
   const message = card.querySelector("#carrier-chat-message");
+  const submitButton = chatForm.querySelector("button[type='submit']");
   const body = String(message?.value || "").trim();
   if (!body) {
     if (status) {
@@ -4236,6 +4283,9 @@ card.addEventListener("submit", async (event) => {
     message?.focus();
     return;
   }
+  carrierChatSubmitting = true;
+  if (submitButton) submitButton.disabled = true;
+  if (message) message.disabled = true;
   if (status) {
     status.textContent = "Sending message...";
     status.dataset.tone = "neutral";
@@ -4257,6 +4307,10 @@ card.addEventListener("submit", async (event) => {
       status.textContent = humanizeError(error);
       status.dataset.tone = "error";
     }
+  } finally {
+    carrierChatSubmitting = false;
+    if (submitButton) submitButton.disabled = false;
+    if (message) message.disabled = false;
   }
 });
 

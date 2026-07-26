@@ -95,6 +95,14 @@ let commercialLoadVersion = 0;
 let cadenceLoadVersion = 0;
 let intelligenceLoadVersion = 0;
 let drawerLoadVersion = 0;
+let shipperCreateRunning = false;
+let shipperBulkArchiveRunning = false;
+let shipperDrawerSaveRunning = false;
+const shipperMergeMutationKeys = new Set();
+const shipperPipelineMutationKeys = new Set();
+const shipperCommercialMutationKeys = new Set();
+const shipperDrawerRecordMutationKeys = new Set();
+const shipperProfileLinkMutationKeys = new Set();
 
 const elements = {
   total: document.querySelector("#shipper-total"),
@@ -1097,6 +1105,9 @@ async function loadShipperIntelligence() {
 }
 
 async function promoteCommercialRfi(rfiId) {
+  const mutationKey = `promote-rfi:${rfiId}`;
+  if (shipperCommercialMutationKeys.has(mutationKey)) return;
+  shipperCommercialMutationKeys.add(mutationKey);
   setStatus(elements.commercialStatus, "Creating commercial deal from the RFI...");
   try {
     const result = await promoteShipperRfiToOpportunity(rfiId);
@@ -1108,13 +1119,18 @@ async function promoteCommercialRfi(rfiId) {
     setStatus(elements.commercialStatus, result.created ? "Commercial deal created from the RFI." : "This RFI already has a commercial deal.", "success");
   } catch (error) {
     setStatus(elements.commercialStatus, humanizeError(error), "error");
+  } finally {
+    shipperCommercialMutationKeys.delete(mutationKey);
   }
 }
 
 async function moveCommercialOpportunity(opportunityId, stage) {
+  const mutationKey = `move-opportunity:${opportunityId}`;
+  if (shipperCommercialMutationKeys.has(mutationKey)) return;
   const row = state.commercialOpportunities.find((item) => item.id === opportunityId);
   const previousStage = row?.stage;
   if (!row || previousStage === stage) return;
+  shipperCommercialMutationKeys.add(mutationKey);
   setStatus(elements.commercialStatus, `Moving ${row.opportunity_name} to ${humanLabel(stage)}...`);
   try {
     const updated = await moveShipperOpportunityStage(opportunityId, stage);
@@ -1126,6 +1142,8 @@ async function moveCommercialOpportunity(opportunityId, stage) {
     row.stage = previousStage;
     renderCommercial();
     setStatus(elements.commercialStatus, humanizeError(error), "error");
+  } finally {
+    shipperCommercialMutationKeys.delete(mutationKey);
   }
 }
 
@@ -1146,8 +1164,11 @@ function openRatebookWorkspace(ratebookId = "", projectId = "") {
 
 async function launchCommercialRfx(opportunityId, projectId = "", eventId = "") {
   if (projectId) return openRfxWorkspace(projectId, eventId);
+  const mutationKey = `launch-rfx:${opportunityId}`;
+  if (shipperCommercialMutationKeys.has(mutationKey)) return;
   const row = state.commercialOpportunities.find((item) => item.id === opportunityId);
   if (!row) return;
+  shipperCommercialMutationKeys.add(mutationKey);
   setStatus(elements.commercialStatus, `Creating an RFx workspace for ${row.opportunity_name}...`);
   try {
     const result = await launchShipperOpportunityRfx(opportunityId);
@@ -1156,14 +1177,19 @@ async function launchCommercialRfx(opportunityId, projectId = "", eventId = "") 
     openRfxWorkspace(project.id, project.linked_rfx_event_id);
   } catch (error) {
     setStatus(elements.commercialStatus, humanizeError(error), "error");
+  } finally {
+    shipperCommercialMutationKeys.delete(mutationKey);
   }
 }
 
 async function startCommercialRatebook(opportunityId, projectId = "") {
   if (projectId) return openRatebookWorkspace("", projectId);
+  const mutationKey = `start-ratebook:${opportunityId}`;
+  if (shipperCommercialMutationKeys.has(mutationKey)) return;
   const row = state.commercialOpportunities.find((item) => item.id === opportunityId)
     || (state.detail?.opportunities || []).find((item) => item.id === opportunityId);
   if (!row) return;
+  shipperCommercialMutationKeys.add(mutationKey);
   setStatus(elements.commercialStatus, `Creating a Ratebook from ${row.opportunity_name || "this opportunity"}...`);
   try {
     const result = await launchShipperOpportunityRfx(opportunityId);
@@ -1173,6 +1199,8 @@ async function startCommercialRatebook(opportunityId, projectId = "") {
     openRatebookWorkspace("", project.id);
   } catch (error) {
     setStatus(elements.commercialStatus, humanizeError(error), "error");
+  } finally {
+    shipperCommercialMutationKeys.delete(mutationKey);
   }
 }
 
@@ -1248,12 +1276,15 @@ async function loadShipperDuplicates() {
 }
 
 async function mergeDuplicateShippers(primaryId, duplicateId) {
+  const mutationKey = [primaryId, duplicateId].sort().join(":");
+  if (shipperMergeMutationKeys.has(mutationKey)) return;
   const group = state.duplicateGroups.find((item) => item.shippers?.some((row) => row.id === primaryId) && item.shippers?.some((row) => row.id === duplicateId));
   const primary = group?.shippers?.find((row) => row.id === primaryId) || {};
   const duplicate = group?.shippers?.find((row) => row.id === duplicateId) || {};
   const primaryName = primary.shipper_name || primary.legal_name || "this account";
   const duplicateName = duplicate.shipper_name || duplicate.legal_name || "the duplicate account";
   if (!window.confirm(`Keep ${primaryName} as the account of record? ${duplicateName} will be archived after its contacts, locations, lanes, RFIs, and opportunities are moved.`)) return;
+  shipperMergeMutationKeys.add(mutationKey);
   setStatus(elements.duplicatesStatus, `Consolidating ${duplicateName} into ${primaryName}...`);
   try {
     const result = await mergeShipperAccounts(primaryId, duplicateId);
@@ -1263,6 +1294,8 @@ async function mergeDuplicateShippers(primaryId, duplicateId) {
     setStatus(elements.duplicatesStatus, `${duplicateName} was consolidated into ${primaryName}. The duplicate account is archived.`, "success");
   } catch (error) {
     setStatus(elements.duplicatesStatus, humanizeError(error), "error");
+  } finally {
+    shipperMergeMutationKeys.delete(mutationKey);
   }
 }
 
@@ -1339,9 +1372,11 @@ function syncActiveShipperLocally() {
 }
 
 async function movePipelineShipper(shipperId, relationshipStage) {
+  if (shipperPipelineMutationKeys.has(shipperId)) return;
   const row = state.pipelineRows.find((item) => item.id === shipperId);
   if (!row || row.relationship_stage === relationshipStage) return;
   const previousStage = row.relationship_stage;
+  shipperPipelineMutationKeys.add(shipperId);
   setStatus(elements.pipelineStatus, `Moving ${row.shipper_name} to ${humanLabel(relationshipStage)}...`);
   try {
     const updated = await moveShipperRelationshipStage(shipperId, relationshipStage);
@@ -1353,6 +1388,8 @@ async function movePipelineShipper(shipperId, relationshipStage) {
     row.relationship_stage = previousStage;
     renderPipeline();
     setStatus(elements.pipelineStatus, humanizeError(error), "error");
+  } finally {
+    shipperPipelineMutationKeys.delete(shipperId);
   }
 }
 
@@ -1651,10 +1688,12 @@ function formObject(form) {
 }
 
 async function saveOverview(form) {
+  if (shipperDrawerSaveRunning) return;
   const status = form.querySelector("#shipper-drawer-status");
   const button = form.querySelector('button[type="submit"]');
   const patch = formObject(form);
   patch.tags = String(patch.tags || "").split(",").map((tag) => tag.trim()).filter(Boolean);
+  shipperDrawerSaveRunning = true;
   button.disabled = true;
   setStatus(status, "Saving...");
   try {
@@ -1667,14 +1706,18 @@ async function saveOverview(form) {
   } catch (error) {
     setStatus(status, humanizeError(error), "error");
   } finally {
+    shipperDrawerSaveRunning = false;
     button.disabled = false;
   }
 }
 
 async function saveChild(form) {
   const entity = form.dataset.shipperEntity;
+  const mutationKey = `${entity}:${state.activeShipperId}:${state.editingRecordId || "new"}`;
+  if (shipperDrawerRecordMutationKeys.has(mutationKey)) return;
   const status = form.querySelector("#shipper-drawer-status");
   const button = form.querySelector('button[type="submit"]');
+  shipperDrawerRecordMutationKeys.add(mutationKey);
   button.disabled = true;
   setStatus(status, "Saving...");
   try {
@@ -1687,12 +1730,16 @@ async function saveChild(form) {
   } catch (error) {
     setStatus(status, humanizeError(error), "error");
   } finally {
+    shipperDrawerRecordMutationKeys.delete(mutationKey);
     button.disabled = false;
   }
 }
 
 async function applyActionPlaybook(playbookKey, button) {
+  const mutationKey = `playbook:${state.activeShipperId}:${playbookKey}`;
+  if (shipperDrawerRecordMutationKeys.has(mutationKey)) return;
   const status = elements.drawerContent.querySelector("#shipper-playbook-status");
+  shipperDrawerRecordMutationKeys.add(mutationKey);
   button.disabled = true;
   if (status) setStatus(status, "Creating missing account actions...");
   try {
@@ -1709,12 +1756,16 @@ async function applyActionPlaybook(playbookKey, button) {
   } catch (error) {
     if (status) setStatus(status, humanizeError(error), "error");
   } finally {
+    shipperDrawerRecordMutationKeys.delete(mutationKey);
     button.disabled = false;
   }
 }
 
 async function promoteRfiFromDrawer(rfiId) {
+  const mutationKey = `drawer-promote-rfi:${rfiId}`;
+  if (shipperDrawerRecordMutationKeys.has(mutationKey)) return;
   const status = elements.drawerContent.querySelector("#shipper-drawer-status");
+  shipperDrawerRecordMutationKeys.add(mutationKey);
   if (status) setStatus(status, "Creating commercial deal from the RFI...");
   try {
     const result = await promoteShipperRfiToOpportunity(rfiId);
@@ -1726,11 +1777,16 @@ async function promoteRfiFromDrawer(rfiId) {
     setStatus(elements.commercialStatus, result.created ? "Commercial deal created from the RFI." : "This RFI already has a commercial deal.", "success");
   } catch (error) {
     if (status) setStatus(status, humanizeError(error), "error");
+  } finally {
+    shipperDrawerRecordMutationKeys.delete(mutationKey);
   }
 }
 
 async function startRfiRatebookFromDrawer(rfiId) {
+  const mutationKey = `drawer-start-ratebook:${rfiId}`;
+  if (shipperDrawerRecordMutationKeys.has(mutationKey)) return;
   const status = elements.drawerContent.querySelector("#shipper-drawer-status");
+  shipperDrawerRecordMutationKeys.add(mutationKey);
   if (status) setStatus(status, "Preparing the RFx source for this Ratebook...");
   try {
     let opportunity = (state.detail?.opportunities || []).find((row) => row.rfi_id === rfiId) || null;
@@ -1742,6 +1798,8 @@ async function startRfiRatebookFromDrawer(rfiId) {
     await startCommercialRatebook(opportunity.id, opportunity.rfx_project_id || "");
   } catch (error) {
     if (status) setStatus(status, humanizeError(error), "error");
+  } finally {
+    shipperDrawerRecordMutationKeys.delete(mutationKey);
   }
 }
 
@@ -1756,7 +1814,9 @@ elements.overlay.addEventListener("click", () => {
 
 elements.createForm.addEventListener("submit", async (event) => {
   event.preventDefault();
+  if (shipperCreateRunning) return;
   const button = elements.createForm.querySelector('button[type="submit"]');
+  shipperCreateRunning = true;
   button.disabled = true;
   setStatus(elements.createStatus, "Creating shipper...");
   try {
@@ -1772,6 +1832,7 @@ elements.createForm.addEventListener("submit", async (event) => {
   } catch (error) {
     setStatus(elements.createStatus, humanizeError(error), "error");
   } finally {
+    shipperCreateRunning = false;
     button.disabled = false;
   }
 });
@@ -1804,7 +1865,8 @@ elements.clearSelection.addEventListener("click", () => {
 
 elements.archiveSelected.addEventListener("click", async () => {
   const ids = [...state.selected];
-  if (!ids.length || !window.confirm(`Archive ${ids.length} selected shipper account(s)?`)) return;
+  if (shipperBulkArchiveRunning || !ids.length || !window.confirm(`Archive ${ids.length} selected shipper account(s)?`)) return;
+  shipperBulkArchiveRunning = true;
   elements.archiveSelected.disabled = true;
   try {
     await archiveShippers(ids);
@@ -1813,6 +1875,7 @@ elements.archiveSelected.addEventListener("click", async () => {
   } catch (error) {
     setStatus(elements.directoryStatus, humanizeError(error), "error");
   } finally {
+    shipperBulkArchiveRunning = false;
     elements.archiveSelected.disabled = false;
   }
 });
@@ -2029,7 +2092,10 @@ elements.drawerContent.addEventListener("submit", (event) => {
 elements.drawerContent.addEventListener("click", async (event) => {
   const createProfileLink = event.target.closest("[data-create-shipper-profile-link]");
   if (createProfileLink) {
+    const mutationKey = `create-profile-link:${state.activeShipperId}`;
+    if (shipperProfileLinkMutationKeys.has(mutationKey)) return;
     const status = elements.drawerContent.querySelector("#shipper-drawer-status");
+    shipperProfileLinkMutationKeys.add(mutationKey);
     createProfileLink.disabled = true;
     try {
       const result = await createShipperProfileRequest(state.activeShipperId, { expires_in_days: 30, origin: window.location.origin });
@@ -2040,13 +2106,18 @@ elements.drawerContent.addEventListener("click", async (event) => {
     } catch (error) {
       if (status) setStatus(status, humanizeError(error), "error");
     } finally {
+      shipperProfileLinkMutationKeys.delete(mutationKey);
       createProfileLink.disabled = false;
     }
     return;
   }
   const revokeProfileLink = event.target.closest("[data-revoke-shipper-profile-link]");
   if (revokeProfileLink) {
+    const mutationKey = `revoke-profile-link:${revokeProfileLink.dataset.revokeShipperProfileLink}`;
+    if (shipperProfileLinkMutationKeys.has(mutationKey)) return;
     if (!window.confirm("Revoke this customer profile link?")) return;
+    shipperProfileLinkMutationKeys.add(mutationKey);
+    revokeProfileLink.disabled = true;
     try {
       await revokeShipperProfileRequest(revokeProfileLink.dataset.revokeShipperProfileLink);
       state.detail = await fetchShipper(state.activeShipperId);
@@ -2054,6 +2125,9 @@ elements.drawerContent.addEventListener("click", async (event) => {
     } catch (error) {
       const status = elements.drawerContent.querySelector("#shipper-drawer-status");
       if (status) setStatus(status, humanizeError(error), "error");
+    } finally {
+      shipperProfileLinkMutationKeys.delete(mutationKey);
+      revokeProfileLink.disabled = false;
     }
     return;
   }
@@ -2101,7 +2175,11 @@ elements.drawerContent.addEventListener("click", async (event) => {
     return;
   }
   const remove = event.target.closest("[data-delete-shipper-record]");
-  if (!remove || !window.confirm(`Delete this ${CHILD_CONFIG[state.activeTab].noun}?`)) return;
+  if (!remove) return;
+  const mutationKey = `delete-record:${state.activeTab}:${state.activeShipperId}:${remove.dataset.deleteShipperRecord}`;
+  if (shipperDrawerRecordMutationKeys.has(mutationKey)) return;
+  if (!window.confirm(`Delete this ${CHILD_CONFIG[state.activeTab].noun}?`)) return;
+  shipperDrawerRecordMutationKeys.add(mutationKey);
   remove.disabled = true;
   try {
     await deleteShipperRecord(state.activeTab, state.activeShipperId, remove.dataset.deleteShipperRecord);
@@ -2112,6 +2190,9 @@ elements.drawerContent.addEventListener("click", async (event) => {
   } catch (error) {
     const status = elements.drawerContent.querySelector("#shipper-drawer-status");
     if (status) setStatus(status, humanizeError(error), "error");
+  } finally {
+    shipperDrawerRecordMutationKeys.delete(mutationKey);
+    remove.disabled = false;
   }
 });
 

@@ -21,6 +21,9 @@ const queueMetricSize = document.querySelector("#upload-queue-size");
 const downloadBulkTemplateButton = document.querySelector("[data-download-bulk-template]");
 
 let selectedFiles = [];
+let uploadCenterSubmitting = false;
+let uploadTemplateDownloading = false;
+let vendorOptionsLoadVersion = 0;
 
 function setStatus(message, tone = "neutral") {
   statusMessage.textContent = message;
@@ -81,15 +84,18 @@ function escapeHtml(value) {
 }
 
 async function loadVendorOptions() {
+  const loadVersion = ++vendorOptionsLoadVersion;
   try {
     const vendors = await fetchVendors({ status: "active" });
+    if (loadVersion !== vendorOptionsLoadVersion) return;
     vendorSelect.innerHTML = [
       '<option value="">Auto-detect vendor</option>',
       ...vendors.map((vendor) => `<option value="${escapeHtml(vendor.id)}">${escapeHtml(vendor.vendor_name)}</option>`)
     ].join("");
   } catch (error) {
+    if (loadVersion !== vendorOptionsLoadVersion) return;
     vendorSelect.innerHTML = '<option value="">Auto-detect vendor</option>';
-    vendorSelect.title = error.message;
+    vendorSelect.title = humanizeError(error);
   }
 }
 
@@ -136,6 +142,8 @@ fileInput.addEventListener("change", () => {
 });
 
 downloadBulkTemplateButton?.addEventListener("click", async () => {
+  if (uploadTemplateDownloading) return;
+  uploadTemplateDownloading = true;
   downloadBulkTemplateButton.disabled = true;
   try {
     await downloadBulkImportTemplate();
@@ -143,12 +151,14 @@ downloadBulkTemplateButton?.addEventListener("click", async () => {
   } catch (error) {
     setStatus(humanizeError(error), "error");
   } finally {
+    uploadTemplateDownloading = false;
     downloadBulkTemplateButton.disabled = false;
   }
 });
 
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
+  if (uploadCenterSubmitting) return;
   const uploadableFiles = selectedFiles.filter((file) => isAllowedFile(file));
 
   if (uploadableFiles.length === 0) {
@@ -156,6 +166,7 @@ form.addEventListener("submit", async (event) => {
     return;
   }
 
+  uploadCenterSubmitting = true;
   uploadButton.disabled = true;
   setStatus(`Uploading ${uploadableFiles.length} source file(s)...`);
 
@@ -168,6 +179,7 @@ form.addEventListener("submit", async (event) => {
       throw new Error("Your role does not allow uploads.");
     }
   } catch (error) {
+    uploadCenterSubmitting = false;
     uploadButton.disabled = false;
     setStatus(humanizeError(error), "error");
     return;
@@ -187,6 +199,7 @@ form.addEventListener("submit", async (event) => {
     }
   }
 
+  uploadCenterSubmitting = false;
   uploadButton.disabled = false;
 
   if (failures.length) {

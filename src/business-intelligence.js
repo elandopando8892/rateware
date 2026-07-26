@@ -84,6 +84,12 @@ let recommendationLoadVersion = 0;
 let pivotLoadVersion = 0;
 let drilldownLoadVersion = 0;
 let geoLoadVersion = 0;
+let analystPromptRunning = false;
+let recommendationRunning = false;
+let pivotRunning = false;
+let drilldownRunning = false;
+let geoRunning = false;
+let recommendationPromoteRunning = false;
 
 const PIVOT_DIMENSIONS = [
   ["", "None"],
@@ -597,7 +603,9 @@ function renderPivot(result) {
 }
 
 async function runPivot() {
+  if (pivotRunning) return;
   const loadVersion = ++pivotLoadVersion;
+  pivotRunning = true;
   runPivotButton.disabled = true;
   setPivotStatus("Building pivot...");
 
@@ -609,9 +617,10 @@ async function runPivot() {
     setPivotStatus(`${formatNumber(result.summary?.transactions)} transaction(s), ${formatNumber((result.rows || []).length)} pivot row(s).`, "success");
   } catch (error) {
     if (loadVersion !== pivotLoadVersion) return;
-    setPivotStatus(error.message, "error");
+    setPivotStatus(humanizeError(error), "error");
   } finally {
     if (loadVersion !== pivotLoadVersion) return;
+    pivotRunning = false;
     runPivotButton.disabled = false;
   }
 }
@@ -683,7 +692,9 @@ function renderDrilldown(result) {
 }
 
 async function runDrilldown(rowValues, columnValue) {
+  if (drilldownRunning) return;
   const loadVersion = ++drilldownLoadVersion;
+  drilldownRunning = true;
   setDrilldownStatus("Loading detail...");
   try {
     await requirePrivatePage();
@@ -696,7 +707,10 @@ async function runDrilldown(rowValues, columnValue) {
     setDrilldownStatus(`${formatNumber(result.total || 0)} source rate row(s).`, "success");
   } catch (error) {
     if (loadVersion !== drilldownLoadVersion) return;
-    setDrilldownStatus(error.message, "error");
+    setDrilldownStatus(humanizeError(error), "error");
+  } finally {
+    if (loadVersion !== drilldownLoadVersion) return;
+    drilldownRunning = false;
   }
 }
 
@@ -938,7 +952,9 @@ function renderGeoDensity(result) {
 
 async function runGeoDensity() {
   if (!runGeoButton) return;
+  if (geoRunning) return;
   const loadVersion = ++geoLoadVersion;
+  geoRunning = true;
   runGeoButton.disabled = true;
   setGeoStatus("Building North America density map...");
   try {
@@ -949,9 +965,10 @@ async function runGeoDensity() {
     setGeoStatus(`${formatNumber(result.summary?.transactions || 0)} transaction(s), ${formatNumber(result.summary?.zones || 0)} zone(s).`, "success");
   } catch (error) {
     if (loadVersion !== geoLoadVersion) return;
-    setGeoStatus(error.message, "error");
+    setGeoStatus(humanizeError(error), "error");
   } finally {
     if (loadVersion !== geoLoadVersion) return;
+    geoRunning = false;
     runGeoButton.disabled = false;
   }
 }
@@ -990,7 +1007,7 @@ function updateSelectionState() {
   const selected = selectedRecommendations();
   selectedCount.textContent = `${selected.length} selected`;
   metricSelected.textContent = formatNumber(selected.length);
-  promoteSelectedButton.disabled = selected.length === 0;
+  promoteSelectedButton.disabled = recommendationPromoteRunning || selected.length === 0;
   copyListButton.disabled = currentRecommendations.length === 0;
   if (selectAll) {
     selectAll.checked = selectable.length > 0 && selected.length === selectable.length;
@@ -1217,13 +1234,15 @@ function renderAnswer(result) {
 }
 
 async function runIntelligenceQuery(message) {
-  const loadVersion = ++analystLoadVersion;
   const prompt = String(message || promptInput.value || "").trim();
   if (!prompt) {
     setStatus("Add a carrier intelligence request.", "error");
     return;
   }
+  if (analystPromptRunning) return;
 
+  const loadVersion = ++analystLoadVersion;
+  analystPromptRunning = true;
   submitButton.disabled = true;
   setModelStatus("Thinking", "neutral");
   setStatus("Analyzing carriers, coverage, contacts, and rate signals...");
@@ -1238,9 +1257,10 @@ async function runIntelligenceQuery(message) {
   } catch (error) {
     if (loadVersion !== analystLoadVersion) return;
     setModelStatus("Unavailable", "danger");
-    setStatus(error.message, "error");
+    setStatus(humanizeError(error), "error");
   } finally {
     if (loadVersion !== analystLoadVersion) return;
+    analystPromptRunning = false;
     submitButton.disabled = false;
   }
 }
@@ -1254,7 +1274,9 @@ function renderRecommendationResult(result) {
 }
 
 async function runStructuredRecommendations() {
+  if (recommendationRunning) return;
   const loadVersion = ++recommendationLoadVersion;
+  recommendationRunning = true;
   runRecommendationsButton.disabled = true;
   setRecommendationStatus("Ranking carriers...");
 
@@ -1266,17 +1288,20 @@ async function runStructuredRecommendations() {
     setRecommendationStatus(`${formatNumber((result.recommendations || []).length)} carrier(s) ranked by ${result.filters?.ranking_mode || "fit"}.`, "success");
   } catch (error) {
     if (loadVersion !== recommendationLoadVersion) return;
-    setRecommendationStatus(error.message, "error");
+    setRecommendationStatus(humanizeError(error), "error");
   } finally {
     if (loadVersion !== recommendationLoadVersion) return;
+    recommendationRunning = false;
     runRecommendationsButton.disabled = false;
   }
 }
 
 async function promoteSelected() {
+  if (recommendationPromoteRunning) return;
   const ids = selectedRecommendations().map((row) => row.vendor_id);
   if (!ids.length) return;
 
+  recommendationPromoteRunning = true;
   promoteSelectedButton.disabled = true;
   setStatus("Moving selected carriers to Procurement Base...");
 
@@ -1288,8 +1313,9 @@ async function promoteSelected() {
     selectedVendorIds.clear();
     renderRecommendations(currentRecommendations);
   } catch (error) {
-    setStatus(error.message, "error");
+    setStatus(humanizeError(error), "error");
   } finally {
+    recommendationPromoteRunning = false;
     updateSelectionState();
   }
 }
@@ -1399,7 +1425,7 @@ requirePrivatePage()
     await applyPermissionState("#bi-submit-button, #bi-promote-selected, #bi-copy-list, #bi-run-recommendations, #bi-export-recommendations, #bi-run-pivot, #bi-copy-pivot, #bi-export-pivot, #bi-export-drilldown, #bi-run-geo, #bi-export-geo", "business-intelligence:use");
     await Promise.all([runPivot(), runGeoDensity()]);
   })
-  .catch((error) => setStatus(error.message, "error"));
+  .catch((error) => setStatus(humanizeError(error), "error"));
 
 chatForm?.addEventListener("submit", (event) => {
   event.preventDefault();

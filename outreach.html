@@ -54,7 +54,7 @@
           <div class="page-header-actions">
             <button class="page-primary-action" type="button" data-click-target="#create-campaign-button">Create campaign</button>
             <form id="auth-form" class="auth-strip">
-              <button id="auth-button" type="submit">Sign in with Kinde</button>
+              <button id="auth-button" type="submit">Log in</button>
               <button id="sign-out-button" type="button" class="secondary hidden">Sign out</button>
               <p id="auth-status" role="status"></p>
             </form>
@@ -77,9 +77,6 @@
                 <p id="outreach-ops-subtitle">This supports the Bid Room launch flow; daily RFx work should start from Bid Room.</p>
               </div>
               <div class="action-row">
-                <button class="secondary small-button" type="button" data-outreach-go="campaigns">Campaign</button>
-                <button class="secondary small-button" type="button" data-outreach-go="drafts">Draft Queue</button>
-                <button class="secondary small-button" type="button" data-outreach-go="history">History</button>
                 <button id="edit-campaign-button" class="secondary small-button" type="button" disabled>Edit</button>
                 <button id="duplicate-campaign-button" class="secondary small-button" type="button" disabled>Duplicate</button>
                 <button id="archive-campaign-button" class="secondary small-button" type="button" disabled>Archive</button>
@@ -93,14 +90,13 @@
           </section>
 
           <nav class="module-workbench-nav" role="tablist" aria-label="Invitation admin workbench">
-            <button type="button" role="tab" aria-selected="true" data-workbench-view-button="dashboard">Dashboard</button>
-            <button type="button" role="tab" aria-selected="false" data-workbench-view-button="templates" data-workbench-focus-target="#template-name">Templates</button>
-            <button type="button" role="tab" aria-selected="false" data-workbench-view-button="campaigns" data-workbench-focus-target="#campaign-name">Campaigns</button>
+            <button type="button" role="tab" aria-selected="true" data-workbench-view-button="campaigns" data-workbench-focus-target="#campaign-name">Campaigns</button>
             <button type="button" role="tab" aria-selected="false" data-workbench-view-button="drafts">Draft Queue</button>
+            <button type="button" role="tab" aria-selected="false" data-workbench-view-button="templates" data-workbench-focus-target="#template-name">Templates</button>
             <button type="button" role="tab" aria-selected="false" data-workbench-view-button="history">Contact History</button>
           </nav>
 
-          <section class="workspace-panel outreach-flow-panel" data-workbench-view-panel="dashboard">
+          <section class="workspace-panel outreach-flow-panel" data-workbench-view-panel="dashboard" hidden>
             <div class="split-heading">
               <div>
                 <p class="eyebrow">Bid Room support workflow</p>
@@ -135,12 +131,12 @@
           </section>
 
           <section class="outreach-workspace" data-workbench-view-panel="templates campaigns">
-            <section class="workspace-panel" data-workbench-view-panel="templates">
+            <section class="workspace-panel" data-workbench-view-panel="templates" hidden>
               <div class="section-heading compact">
                 <p class="eyebrow">Templates</p>
                 <h2>Gmail HTML and WhatsApp copy</h2>
               </div>
-              <form id="outreach-template-form" class="outreach-template-form">
+              <form id="outreach-template-form" class="outreach-template-form" data-unsaved-guard>
                 <label>
                   Template name
                   <input id="template-name" required placeholder="RFx cross-border invite" />
@@ -186,7 +182,7 @@
                 </div>
                 <button id="refresh-outreach" class="secondary" type="button">Refresh</button>
               </div>
-              <form id="outreach-campaign-form" class="outreach-campaign-form">
+              <form id="outreach-campaign-form" class="outreach-campaign-form" data-unsaved-guard>
                 <label>
                   Campaign name
                   <input id="campaign-name" required placeholder="RFx-04302602 invitation wave" />
@@ -227,18 +223,26 @@
             </section>
           </section>
 
-          <section class="workspace-panel" data-workbench-view-panel="drafts">
-            <div class="split-heading">
-              <div>
-                <p class="eyebrow">Draft queue</p>
-                <h2 id="outreach-draft-title">Generated messages</h2>
-              </div>
+          <section class="workspace-panel" data-workbench-view-panel="drafts" hidden>
+              <div class="split-heading">
+                <div>
+                  <p class="eyebrow">Draft queue</p>
+                  <h2 id="outreach-draft-title">Generated messages</h2>
+                </div>
               <div class="action-row">
                 <button id="generate-drafts-button" type="button" disabled>Generate drafts</button>
-                <button id="mark-queued-button" class="secondary" type="button" disabled>Mark queued</button>
-                <button id="mark-sent-button" class="secondary" type="button" disabled>Mark sent</button>
-                <button id="mark-replied-button" class="secondary" type="button" disabled>Mark responded</button>
-                <button id="archive-messages-button" class="secondary" type="button" disabled>Archive</button>
+                <details class="outreach-secondary-actions">
+                  <summary>More actions</summary>
+                  <div class="action-row">
+                    <button id="mark-queued-button" class="secondary small-button" type="button" disabled>Mark queued</button>
+                    <button id="mark-sent-button" class="secondary small-button" type="button" disabled>Mark sent</button>
+                    <button id="mark-manual-sent-button" class="secondary small-button" type="button" disabled>Mark manual sent</button>
+                    <button id="mark-failed-button" class="secondary small-button" type="button" disabled>Mark failed</button>
+                    <button id="mark-bounced-button" class="secondary small-button" type="button" disabled>Mark bounced</button>
+                    <button id="mark-replied-button" class="secondary small-button" type="button" disabled>Mark responded</button>
+                    <button id="archive-messages-button" class="secondary small-button" type="button" disabled>Archive</button>
+                  </div>
+                </details>
               </div>
             </div>
             <div class="bulk-action-bar">
@@ -248,12 +252,31 @@
             <div class="outreach-message-toolbar">
               <div class="outreach-status-filters" aria-label="Outreach status filters">
                 <button class="secondary small-button is-active" type="button" data-outreach-filter="all">All</button>
+                <button class="secondary small-button" type="button" data-outreach-filter="needs_action">Needs action</button>
                 <button class="secondary small-button" type="button" data-outreach-filter="drafted">Drafted</button>
                 <button class="secondary small-button" type="button" data-outreach-filter="queued">Queued</button>
+                <button class="secondary small-button" type="button" data-outreach-filter="sending">Sending</button>
                 <button class="secondary small-button" type="button" data-outreach-filter="sent">Sent</button>
+                <button class="secondary small-button" type="button" data-outreach-filter="delivered">Delivered</button>
+                <button class="secondary small-button" type="button" data-outreach-filter="read">Read</button>
+                <button class="secondary small-button" type="button" data-outreach-filter="manual_sent">Manual sent</button>
+                <button class="secondary small-button" type="button" data-outreach-filter="delivery_unknown">Delivery unknown</button>
                 <button class="secondary small-button" type="button" data-outreach-filter="replied">Responded</button>
+                <button class="secondary small-button" type="button" data-outreach-filter="failed">Failed</button>
+                <button class="secondary small-button" type="button" data-outreach-filter="bounced">Bounced</button>
+                <button class="secondary small-button" type="button" data-outreach-filter="suppressed">Suppressed</button>
+                <button class="secondary small-button" type="button" data-outreach-filter="archived">Archived</button>
                 <button class="secondary small-button" type="button" data-outreach-filter="missing_channel">Missing channel</button>
               </div>
+              <label class="outreach-channel-filter">
+                Channel
+                <select id="outreach-channel-filter">
+                  <option value="">All channels</option>
+                  <option value="email">Gmail</option>
+                  <option value="whatsapp">WhatsApp direct</option>
+                  <option value="whatsapp_group">WhatsApp group</option>
+                </select>
+              </label>
               <input id="outreach-message-search" type="search" placeholder="Search vendor, RFx, lane, recipient" />
             </div>
             <div id="outreach-draft-preview" class="outreach-draft-preview">
@@ -284,7 +307,7 @@
             </div>
           </section>
 
-          <section class="workspace-panel" data-workbench-view-panel="history">
+          <section class="workspace-panel" data-workbench-view-panel="history" hidden>
             <div class="split-heading">
               <div>
                 <p class="eyebrow">Contact history</p>

@@ -54,7 +54,7 @@
           <div class="page-header-actions">
             <a class="page-primary-action" href="./upload-center.html">Import files</a>
             <form id="auth-form" class="auth-strip">
-              <button id="auth-button" type="submit">Sign in with Kinde</button>
+              <button id="auth-button" type="submit">Log in</button>
               <button id="sign-out-button" type="button" class="secondary hidden">Sign out</button>
               <p id="auth-status" role="status"></p>
             </form>
@@ -170,7 +170,7 @@
                 </thead>
                 <tbody id="history-body">
                   <tr>
-                    <td colspan="9">Loading uploads...</td>
+                    <td colspan="9"><div class="ui-state ui-state-loading" data-tone="loading"><strong>Loading upload history</strong><p>Reading source files, interpretation status and staged rows.</p><div class="ui-skeleton-list" aria-hidden="true"><i><b></b><b></b><b></b></i></div></div></td>
                   </tr>
                 </tbody>
               </table>
@@ -200,7 +200,7 @@
               </div>
               <button id="close-reprocess-drawer" class="secondary small-button" type="button">Close</button>
             </div>
-            <form id="reprocess-form" class="drawer-edit-form">
+            <form id="reprocess-form" class="drawer-edit-form" data-unsaved-guard>
               <label>
                 Correction note
                 <textarea id="reprocess-note" rows="7" placeholder="Example: Only extract the carrier response. Do not use heymarksman.com template values. Roundtrip only when RT or Round Trip is explicitly shown."></textarea>

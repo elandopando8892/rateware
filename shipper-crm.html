@@ -55,7 +55,7 @@
           <div class="page-header-actions">
             <button id="add-shipper-button" class="page-primary-action" type="button">Add shipper</button>
             <form id="auth-form" class="auth-strip">
-              <button id="auth-button" type="submit">Sign in with Kinde</button>
+              <button id="auth-button" type="submit">Log in</button>
               <button id="sign-out-button" type="button" class="secondary hidden">Sign out</button>
               <p id="auth-status" role="status"></p>
             </form>
@@ -394,7 +394,7 @@
         </div>
         <button id="close-create-shipper" class="secondary" type="button">Close</button>
       </header>
-      <form id="create-shipper-form" class="shipper-form-grid">
+      <form id="create-shipper-form" class="shipper-form-grid" data-unsaved-guard>
         <label class="span-2"><span>Shipper name *</span><input name="shipper_name" required /></label>
         <label><span>Domain</span><input name="domain" placeholder="company.com" /></label>
         <label><span>Industry</span><input name="industry" /></label>

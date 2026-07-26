@@ -17,6 +17,21 @@ function cleanText(value: unknown) {
   return text || null;
 }
 
+function publicErrorMessage(value: unknown, fallback = "Ratebook access failed.") {
+  if (value === null || value === undefined) return fallback;
+  if (value instanceof Error) return cleanText(value.message) || fallback;
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return cleanText(value) || fallback;
+  if (typeof value !== "object") return fallback;
+  const record = value as Record<string, unknown>;
+  for (const key of ["error", "message", "reason", "description", "detail", "details", "hint", "cause"]) {
+    if (record[key] && record[key] !== value) {
+      const message = publicErrorMessage(record[key], "");
+      if (message) return message;
+    }
+  }
+  return fallback;
+}
+
 function objectRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }
@@ -301,6 +316,6 @@ Deno.serve(async (request) => {
     if (action === "withdraw_ratebook_quote") return jsonResponse(await withdrawRatebookQuote(supabase, body));
     return jsonResponse({ error: "Unsupported Ratebook access action." }, 400);
   } catch (error) {
-    return jsonResponse({ error: error instanceof Error ? error.message : "Ratebook access failed." }, 400);
+    return jsonResponse({ error: publicErrorMessage(error) }, 400);
   }
 });

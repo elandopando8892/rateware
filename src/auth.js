@@ -1,12 +1,17 @@
 import createKindeClient from "https://esm.sh/@kinde-oss/kinde-auth-pkce-js";
 import { KINDE_CLIENT_ID, KINDE_DOMAIN } from "./config.js";
 import { humanizeError } from "./error-copy.js";
+import { initGlobalNotifications } from "./ui-notifications.js";
+import { initUnsavedChangesGuard } from "./unsaved-changes.js";
 
 let kindePromise;
 let kindeRefreshPromise;
+let kindeReauthenticationPromise;
 
 const AUTH_RETURN_URL_KEY = "rateware:kinde-return-url";
 const SESSION_RECOVERY_ID = "rateware-session-recovery";
+const SHELL_NAV_COLLAPSED_KEY = "rateware:shell-nav-collapsed";
+const SHELL_FOCUS_MODE_KEY = "rateware:shell-focus-mode";
 
 function getAppUrl() {
   const localHosts = new Set(["localhost", "127.0.0.1"]);
@@ -131,8 +136,8 @@ export async function getKindeToken(options = {}) {
   if (token && tokenExpiresWithin(token, minTtlSeconds)) {
     token = await requestFreshKindeToken(token) || token;
   }
-  if (!token) throw new Error("Sign in with Kinde before using Rateware.");
-  if (tokenExpiresWithin(token, 0)) throw new Error("Sign in with Kinde before using Rateware.");
+  if (!token) throw new Error("Log in before using Rateware.");
+  if (tokenExpiresWithin(token, 0)) throw new Error("Log in before using Rateware.");
   return token;
 }
 
@@ -169,6 +174,7 @@ function showSessionRecovery() {
 }
 
 export async function reauthenticateKinde() {
+  if (kindeReauthenticationPromise) return kindeReauthenticationPromise;
   const returnTo = currentReturnUrl();
   window.sessionStorage.setItem(AUTH_RETURN_URL_KEY, returnTo);
   clearSessionRecovery();
@@ -176,8 +182,15 @@ export async function reauthenticateKinde() {
   // A stale PKCE client can report an old local session as authenticated.
   // Start a clean authorization request so Kinde evaluates its browser session.
   kindePromise = null;
-  const kinde = await getKindeClient();
-  await kinde.login({ app_state: { returnTo } });
+  kindeReauthenticationPromise = (async () => {
+    const kinde = await getKindeClient();
+    await kinde.login({ app_state: { returnTo } });
+  })();
+  try {
+    return await kindeReauthenticationPromise;
+  } finally {
+    kindeReauthenticationPromise = null;
+  }
 }
 
 function withBearerToken(init, token) {
@@ -223,7 +236,7 @@ export async function ensureSignedIn() {
   const signedIn = await kinde.isAuthenticated();
 
   if (!signedIn) {
-    throw new Error("Sign in with Kinde before using Rateware.");
+    throw new Error("Log in before using Rateware.");
   }
 
   return {
@@ -495,6 +508,172 @@ function renderShellCrumbs(crumbs = []) {
     .join("");
 }
 
+function initCommandPalette() {
+  const shell = document.querySelector(".shell-layout");
+  const sideNav = shell?.querySelector(".side-nav");
+  if (!shell || !sideNav || document.querySelector("[data-command-palette]") || document.querySelector("[data-command-palette-trigger]")) return;
+
+  const commands = SHELL_NAV_GROUPS.flatMap((group) =>
+    group.items.map((item) => ({ ...item, group: group.title }))
+  );
+
+  const trigger = document.createElement("button");
+  trigger.type = "button";
+  trigger.className = "shell-quick-open";
+  trigger.dataset.commandPaletteTrigger = "true";
+  trigger.setAttribute("aria-haspopup", "dialog");
+  trigger.innerHTML = '<span>Quick open</span><kbd>Ctrl+K</kbd>';
+  sideNav.insertBefore(trigger, sideNav.querySelector(".nav-groups"));
+
+  const palette = document.createElement("div");
+  palette.className = "command-palette hidden";
+  palette.dataset.commandPalette = "true";
+  palette.setAttribute("aria-hidden", "true");
+  palette.innerHTML = `
+    <div class="command-palette-backdrop" data-command-close></div>
+    <section class="command-palette-dialog" role="dialog" aria-modal="true" aria-labelledby="command-palette-title">
+      <div class="command-palette-header">
+        <div>
+          <p class="eyebrow">Navigate</p>
+          <h2 id="command-palette-title">Quick open</h2>
+        </div>
+        <button type="button" class="secondary small-button" data-command-close aria-label="Close quick open">Esc</button>
+      </div>
+      <label class="command-palette-search">
+        <span class="sr-only">Search Rateware modules</span>
+        <input type="search" data-command-search placeholder="Search modules" autocomplete="off" />
+      </label>
+      <div class="command-palette-results" data-command-results role="listbox" aria-label="Rateware modules"></div>
+      <p class="command-palette-hint">Use arrow keys to move and Enter to open.</p>
+    </section>
+  `;
+  document.body.append(palette);
+
+  const search = palette.querySelector("[data-command-search]");
+  const results = palette.querySelector("[data-command-results]");
+  let visibleCommands = commands;
+  let activeIndex = 0;
+
+  const renderResults = () => {
+    const query = String(search?.value || "").trim().toLowerCase();
+    visibleCommands = commands.filter((command) => `${command.label} ${command.group}`.toLowerCase().includes(query));
+    activeIndex = Math.min(activeIndex, Math.max(visibleCommands.length - 1, 0));
+    if (!results) return;
+    results.innerHTML = visibleCommands.length
+      ? visibleCommands
+          .map(
+            (command, index) => `
+              <a class="command-palette-item${index === activeIndex ? " is-active" : ""}" href="${escapeHtml(command.href)}" role="option" aria-selected="${index === activeIndex}" data-command-index="${index}">
+                <span><strong>${escapeHtml(command.label)}</strong><small>${escapeHtml(command.group)}</small></span>
+                <b>${escapeHtml(command.code)}</b>
+              </a>
+            `
+          )
+          .join("")
+      : '<p class="command-palette-empty">No matching module.</p>';
+  };
+
+  const close = () => {
+    palette.classList.add("hidden");
+    palette.setAttribute("aria-hidden", "true");
+    trigger.setAttribute("aria-expanded", "false");
+  };
+
+  const open = () => {
+    palette.classList.remove("hidden");
+    palette.setAttribute("aria-hidden", "false");
+    trigger.setAttribute("aria-expanded", "true");
+    activeIndex = 0;
+    if (search) search.value = "";
+    renderResults();
+    window.requestAnimationFrame(() => search?.focus());
+  };
+
+  trigger.addEventListener("click", open);
+  search?.addEventListener("input", () => {
+    activeIndex = 0;
+    renderResults();
+  });
+  results?.addEventListener("click", (event) => {
+    const item = event.target.closest("[data-command-index]");
+    if (item) close();
+  });
+  palette.addEventListener("click", (event) => {
+    if (event.target.closest("[data-command-close]")) close();
+  });
+  document.addEventListener("keydown", (event) => {
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+      event.preventDefault();
+      palette.classList.contains("hidden") ? open() : close();
+      return;
+    }
+    if (palette.classList.contains("hidden")) return;
+    if (event.key === "Escape") {
+      event.preventDefault();
+      close();
+    } else if (event.key === "ArrowDown" && visibleCommands.length) {
+      event.preventDefault();
+      activeIndex = (activeIndex + 1) % visibleCommands.length;
+      renderResults();
+    } else if (event.key === "ArrowUp" && visibleCommands.length) {
+      event.preventDefault();
+      activeIndex = (activeIndex - 1 + visibleCommands.length) % visibleCommands.length;
+      renderResults();
+    } else if (event.key === "Enter" && visibleCommands[activeIndex]) {
+      event.preventDefault();
+      window.location.href = visibleCommands[activeIndex].href;
+    }
+  });
+  renderResults();
+}
+
+function initFocusMode() {
+  const shell = document.querySelector(".shell-layout");
+  const actions = document.querySelector(".page-header-actions");
+  if (!shell || !actions || actions.querySelector("[data-shell-focus-toggle]")) return;
+
+  const toggle = document.createElement("button");
+  toggle.type = "button";
+  toggle.className = "shell-focus-toggle secondary";
+  toggle.dataset.shellFocusToggle = "true";
+  toggle.setAttribute("aria-pressed", "false");
+  actions.prepend(toggle);
+
+  const readFocusMode = () => {
+    try {
+      return window.localStorage.getItem(SHELL_FOCUS_MODE_KEY) === "true";
+    } catch {
+      return false;
+    }
+  };
+
+  const writeFocusMode = (enabled) => {
+    try {
+      window.localStorage.setItem(SHELL_FOCUS_MODE_KEY, String(enabled));
+    } catch {
+      // The current page still supports focus mode when storage is blocked.
+    }
+  };
+
+  const applyFocusMode = (enabled, persist = false) => {
+    shell.classList.toggle("shell-focus-mode", enabled);
+    toggle.setAttribute("aria-pressed", String(enabled));
+    toggle.setAttribute("aria-label", enabled ? "Exit focus mode" : "Enter focus mode");
+    toggle.title = enabled ? "Exit focus mode" : "Maximize workspace";
+    toggle.textContent = enabled ? "Exit focus" : "Focus";
+    if (persist) writeFocusMode(enabled);
+  };
+
+  toggle.addEventListener("click", () => applyFocusMode(!shell.classList.contains("shell-focus-mode"), true));
+  document.addEventListener("keydown", (event) => {
+    if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === "f") {
+      event.preventDefault();
+      applyFocusMode(!shell.classList.contains("shell-focus-mode"), true);
+    }
+  });
+  applyFocusMode(readFocusMode());
+}
+
 function initShellNavigation() {
   const nav = document.querySelector(".side-nav .nav-groups");
   if (!nav) return;
@@ -513,6 +692,59 @@ function initShellNavigation() {
       </section>
     `
   ).join("");
+
+  const sideNav = nav.closest(".side-nav");
+  const shell = sideNav?.closest(".shell-layout");
+  if (!sideNav || !shell) return;
+
+  nav.id = nav.id || "rateware-shell-nav";
+  nav.querySelectorAll("a[data-nav-code]").forEach((link) => {
+    if (!link.title) link.title = link.textContent.trim();
+  });
+
+  const activeGroup = nav.querySelector(".nav-group a[aria-current=\"page\"]")?.closest(".nav-group");
+  nav.querySelectorAll(".nav-group").forEach((group) => group.classList.toggle("is-active", group === activeGroup));
+
+  let toggle = sideNav.querySelector("[data-shell-nav-toggle]");
+  if (!toggle) {
+    toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.className = "side-nav-toggle";
+    toggle.dataset.shellNavToggle = "true";
+    toggle.setAttribute("aria-controls", nav.id);
+    sideNav.insertBefore(toggle, nav);
+  }
+
+  const readCollapsed = () => {
+    try {
+      return window.localStorage.getItem(SHELL_NAV_COLLAPSED_KEY) === "true";
+    } catch {
+      return false;
+    }
+  };
+
+  const writeCollapsed = (collapsed) => {
+    try {
+      window.localStorage.setItem(SHELL_NAV_COLLAPSED_KEY, String(collapsed));
+    } catch {
+      // The layout still works for the current session when storage is blocked.
+    }
+  };
+
+  const applyCollapsed = (collapsed, persist = false) => {
+    shell.classList.toggle("shell-nav-collapsed", collapsed);
+    toggle.setAttribute("aria-expanded", String(!collapsed));
+    toggle.setAttribute("aria-label", collapsed ? "Expand navigation" : "Collapse navigation");
+    toggle.title = collapsed ? "Expand navigation" : "Collapse navigation";
+    toggle.textContent = collapsed ? "Expand" : "Collapse";
+    if (persist) writeCollapsed(collapsed);
+  };
+
+  if (toggle.dataset.shellNavReady !== "true") {
+    toggle.dataset.shellNavReady = "true";
+    toggle.addEventListener("click", () => applyCollapsed(!shell.classList.contains("shell-nav-collapsed"), true));
+  }
+  applyCollapsed(readCollapsed());
 }
 
 function initShellHeader() {
@@ -531,8 +763,12 @@ function initShellHeader() {
 }
 
 function initSaasShell() {
+  initGlobalNotifications();
+  initUnsavedChangesGuard();
   initShellNavigation();
   initShellHeader();
+  initCommandPalette();
+  initFocusMode();
 }
 
 if (document.readyState === "loading") {
@@ -629,6 +865,7 @@ export function initAuthControls() {
 
   initProxyActions();
   const userMenu = createUserMenu(form, signOutButton);
+  let authControlActionRunning = false;
 
   function setStatus(message) {
     status.textContent = humanizeError(message);
@@ -667,26 +904,49 @@ export function initAuthControls() {
     })
     .catch((error) => {
       authButton.disabled = true;
-      setStatus(error.message);
+      setStatus(error);
     });
 
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
-    await reauthenticateKinde();
+    if (authControlActionRunning) return;
+    authControlActionRunning = true;
+    authButton.disabled = true;
+    const authButtonLabel = authButton.textContent || "Log in";
+    authButton.textContent = "Opening sign-in...";
+    try {
+      await reauthenticateKinde();
+    } catch (error) {
+      authButton.textContent = authButtonLabel;
+      setStatus(error);
+    } finally {
+      authControlActionRunning = false;
+      authButton.disabled = false;
+    }
   });
 
   signOutButton.addEventListener("click", async () => {
-    if (signOutButton.dataset.openApp !== undefined) {
+    if (authControlActionRunning) return;
+    authControlActionRunning = true;
+    signOutButton.disabled = true;
+    try {
+      if (signOutButton.dataset.openApp !== undefined) {
+        window.location.href = "./app.html";
+        return;
+      }
+
+      const kinde = await getKindeClient();
+      if (await kinde.isAuthenticated()) {
+        await kinde.logout();
+        return;
+      }
+
       window.location.href = "./app.html";
-      return;
+    } catch (error) {
+      setStatus(error);
+    } finally {
+      authControlActionRunning = false;
+      signOutButton.disabled = false;
     }
-
-    const kinde = await getKindeClient();
-    if (await kinde.isAuthenticated()) {
-      await kinde.logout();
-      return;
-    }
-
-    window.location.href = "./app.html";
   });
 }

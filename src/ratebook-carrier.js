@@ -1,4 +1,5 @@
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from "./config.js";
+import { apiErrorMessage, humanizeError } from "./error-copy.js";
 
 const token = new URLSearchParams(window.location.search).get("token") || "";
 const elements = {
@@ -25,6 +26,7 @@ const elements = {
   submitQuote: document.querySelector("#ratebook-carrier-submit-quote")
 };
 const state = { data: null, search: "", segment: "", quoteRouteId: "", submitting: false };
+const ratebookCarrierQuoteMutationKeys = new Set();
 
 function text(value, fallback = "-") { return String(value ?? "").trim() || fallback; }
 function escapeHtml(value) { return text(value, "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char])); }
@@ -41,8 +43,14 @@ async function call(action, body = {}) {
     headers: { "Content-Type": "application/json", apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` },
     body: JSON.stringify({ action, ...body })
   });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(payload.error || "Ratebook access is unavailable.");
+  const responseText = await response.text();
+  let payload = {};
+  try {
+    payload = responseText ? JSON.parse(responseText) : {};
+  } catch {
+    payload = {};
+  }
+  if (!response.ok) throw new Error(apiErrorMessage(payload, responseText, "Ratebook access is unavailable."));
   return payload;
 }
 
@@ -110,10 +118,13 @@ async function refreshAccess(message = "") {
 
 async function submitQuote(event) {
   event.preventDefault();
-  if (state.submitting || !state.quoteRouteId) return;
+  const mutationKey = `submit:${state.quoteRouteId}`;
+  if (state.submitting || !state.quoteRouteId || ratebookCarrierQuoteMutationKeys.has(mutationKey)) return;
   const form = new FormData(elements.quoteForm);
   state.submitting = true;
+  ratebookCarrierQuoteMutationKeys.add(mutationKey);
   elements.submitQuote.disabled = true;
+  elements.withdrawQuote.disabled = true;
   elements.quoteFeedback.textContent = "Saving your offer...";
   try {
     const result = await call("submit_ratebook_quote", {
@@ -130,29 +141,36 @@ async function submitQuote(event) {
     await refreshAccess(result.message || "Your Ratebook offer was saved.");
     elements.quoteDialog.close();
   } catch (error) {
-    elements.quoteFeedback.textContent = error.message || "Your offer could not be saved.";
+    elements.quoteFeedback.textContent = humanizeError(error) || "Your offer could not be saved.";
   } finally {
     state.submitting = false;
+    ratebookCarrierQuoteMutationKeys.delete(mutationKey);
     elements.submitQuote.disabled = false;
+    elements.withdrawQuote.disabled = false;
   }
 }
 
 async function withdrawQuote() {
   const route = getRoute();
-  if (!route || !route.quote || state.submitting) return;
+  const mutationKey = `withdraw:${route?.id || ""}`;
+  if (!route || !route.quote || state.submitting || ratebookCarrierQuoteMutationKeys.has(mutationKey)) return;
   if (!window.confirm(`Withdraw the offer for ${text(route.transaction_id)}?`)) return;
   state.submitting = true;
+  ratebookCarrierQuoteMutationKeys.add(mutationKey);
   elements.withdrawQuote.disabled = true;
+  elements.submitQuote.disabled = true;
   elements.quoteFeedback.textContent = "Withdrawing your offer...";
   try {
     const result = await call("withdraw_ratebook_quote", { token, package_lane_id: route.id });
     await refreshAccess(result.message || "Your Ratebook offer was withdrawn.");
     elements.quoteDialog.close();
   } catch (error) {
-    elements.quoteFeedback.textContent = error.message || "Your offer could not be withdrawn.";
+    elements.quoteFeedback.textContent = humanizeError(error) || "Your offer could not be withdrawn.";
   } finally {
     state.submitting = false;
+    ratebookCarrierQuoteMutationKeys.delete(mutationKey);
     elements.withdrawQuote.disabled = false;
+    elements.submitQuote.disabled = false;
   }
 }
 
@@ -187,5 +205,5 @@ elements.withdrawQuote.addEventListener("click", withdrawQuote);
 if (!token) {
   elements.status.textContent = "This private Ratebook link is incomplete. Ask procurement to resend it.";
 } else {
-  call("get_ratebook_access", { token }).then(render).catch((error) => { elements.status.textContent = error.message; });
+  call("get_ratebook_access", { token }).then(render).catch((error) => { elements.status.textContent = humanizeError(error); });
 }

@@ -140,6 +140,16 @@ function renderRows(rows = supportRows) {
   `).join("");
 }
 
+function setTicketRowBusy(id, busy = false) {
+  if (!id || !supportBody) return;
+  const row = supportBody.querySelector(`[data-support-ticket-id="${CSS.escape(id)}"]`);
+  if (!row) return;
+  row.classList.toggle("is-mutating", busy);
+  row.querySelectorAll("[data-support-action], [data-support-field]").forEach((control) => {
+    control.disabled = busy;
+  });
+}
+
 function readFilters() {
   return {
     status: statusFilter?.value || "all",
@@ -152,6 +162,8 @@ function readFilters() {
 async function loadSupportTickets() {
   const loadVersion = ++supportLoadVersion;
   setStatus("Loading support tickets...");
+  if (refreshButton) refreshButton.disabled = true;
+  supportBody?.setAttribute("aria-busy", "true");
   if (supportBody) supportBody.innerHTML = '<tr><td colspan="8">Loading support tickets...</td></tr>';
   try {
     await requirePrivatePage();
@@ -177,6 +189,10 @@ async function loadSupportTickets() {
       </tr>
     `;
     setStatus(humanizeError(error), "error");
+  } finally {
+    if (loadVersion !== supportLoadVersion) return;
+    if (refreshButton) refreshButton.disabled = false;
+    supportBody?.removeAttribute("aria-busy");
   }
 }
 
@@ -184,6 +200,7 @@ async function updateTicket(id, patch) {
   if (!id) return;
   const mutationVersion = (supportTicketMutationVersions.get(id) || 0) + 1;
   supportTicketMutationVersions.set(id, mutationVersion);
+  setTicketRowBusy(id, true);
   const priorMutation = supportTicketMutationQueues.get(id) || Promise.resolve();
   const mutation = priorMutation.catch(() => {}).then(async () => {
     setStatus("Updating support ticket...");
@@ -209,6 +226,7 @@ async function updateTicket(id, patch) {
     // The latest mutation reports its own user-facing error.
   } finally {
     if (supportTicketMutationQueues.get(id) === mutation) supportTicketMutationQueues.delete(id);
+    if (!supportTicketMutationQueues.has(id)) setTicketRowBusy(id, false);
   }
 }
 

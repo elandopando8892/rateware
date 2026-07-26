@@ -54,7 +54,7 @@
           <div class="page-header-actions">
             <button class="page-primary-action" type="button" data-click-target="#new-memory-title">New rule</button>
             <form id="auth-form" class="auth-strip">
-              <button id="auth-button" type="submit">Sign in with Kinde</button>
+              <button id="auth-button" type="submit">Log in</button>
               <button id="sign-out-button" type="button" class="secondary hidden">Sign out</button>
               <p id="auth-status" role="status"></p>
             </form>
@@ -83,7 +83,7 @@
                 <p class="eyebrow">Create rule</p>
                 <h2>Teach Rateware</h2>
               </div>
-              <form id="memory-form" class="settings-form">
+              <form id="memory-form" class="settings-form" data-unsaved-guard>
                 <label>Title <input id="new-memory-title" placeholder="Roundtrip explicit only" /></label>
                 <label>Scope
                   <select id="new-memory-scope">

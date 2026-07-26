@@ -53,7 +53,7 @@
           <div class="page-header-actions">
             <a class="page-primary-action" href="./business-intelligence.html">Ask AI</a>
             <form id="auth-form" class="auth-strip">
-              <button id="auth-button" type="submit">Sign in with Kinde</button>
+              <button id="auth-button" type="submit">Log in</button>
               <button id="sign-out-button" type="button" class="secondary hidden">Sign out</button>
               <p id="auth-status" role="status"></p>
             </form>
@@ -67,7 +67,65 @@
               <h2 id="next-action-title">Checking today's work...</h2>
               <p id="next-action-detail">Loading the highest-impact action from uploads, staging, AI, and Bid Room.</p>
             </div>
-            <a id="next-action-link" class="page-primary-action" href="./upload-center.html">Open</a>
+            <a id="next-action-link" class="page-primary-action" href="#" aria-disabled="true">Loading</a>
+          </section>
+
+          <section class="workspace-panel dashboard-priority-panel" aria-labelledby="priority-queue-title">
+            <div class="section-heading compact split-heading">
+              <div>
+                <p class="eyebrow">Priority queue</p>
+                <h2 id="priority-queue-title">What needs attention</h2>
+              </div>
+            </div>
+            <div id="priority-queue" class="priority-queue">
+              <article class="ui-state ui-state-loading" data-tone="loading">
+                <strong>Loading priorities</strong>
+                <p>Checking staging, failed uploads, Bid Room, and vendor readiness.</p>
+                <div class="ui-skeleton-list" aria-hidden="true"><i><b></b><b></b><b></b></i></div>
+              </article>
+            </div>
+          </section>
+
+          <section class="workspace-panel dashboard-workflow-panel dashboard-workflow-panel--progress" aria-label="Procurement workflow">
+            <div class="section-heading compact split-heading">
+              <div>
+                <p class="eyebrow">Workflow status</p>
+                <h2>Where work is waiting</h2>
+              </div>
+              <span class="section-caption">A quick path from source files to awarded capacity.</span>
+            </div>
+            <div class="workflow-progress-panel">
+              <a class="workflow-progress-step" href="./upload-center.html">
+                <span>1</span>
+                <strong>Upload</strong>
+                <small id="progress-upload">0 files</small>
+              </a>
+              <a class="workflow-progress-step" href="./upload-history.html">
+                <span>2</span>
+                <strong>Interpret</strong>
+                <small id="progress-interpret">0 failed</small>
+              </a>
+              <a class="workflow-progress-step" href="./staging-review.html">
+                <span>3</span>
+                <strong>Review</strong>
+                <small id="progress-review">0 pending</small>
+              </a>
+              <a class="workflow-progress-step" href="./rateware.html">
+                <span>4</span>
+                <strong>Rateware</strong>
+                <small id="progress-rateware">0 approved</small>
+              </a>
+              <a class="workflow-progress-step" href="./rfx-events.html">
+                <span>5</span>
+                <strong>Bid Room</strong>
+                <small id="progress-rfx">0 events</small>
+              </a>
+              <a class="workflow-progress-step" href="./rfx-events.html?view=responses">
+                <span>6</span>
+                <strong>Live bids</strong>
+                <small id="progress-outreach">0 bids</small>
+              </a>
+            </div>
           </section>
 
           <section id="rate-book-health" class="workspace-panel rate-book-health-panel hidden" aria-label="Rate book health">
@@ -108,43 +166,10 @@
             </div>
           </section>
 
-          <section class="workflow-progress-panel" aria-label="Procurement workflow">
-            <a class="workflow-progress-step" href="./upload-center.html">
-              <span>1</span>
-              <strong>Upload</strong>
-              <small id="progress-upload">0 files</small>
-            </a>
-            <a class="workflow-progress-step" href="./upload-history.html">
-              <span>2</span>
-              <strong>Interpret</strong>
-              <small id="progress-interpret">0 failed</small>
-            </a>
-            <a class="workflow-progress-step" href="./staging-review.html">
-              <span>3</span>
-              <strong>Review</strong>
-              <small id="progress-review">0 pending</small>
-            </a>
-            <a class="workflow-progress-step" href="./rateware.html">
-              <span>4</span>
-              <strong>Rateware</strong>
-              <small id="progress-rateware">0 approved</small>
-            </a>
-            <a class="workflow-progress-step" href="./rfx-events.html">
-              <span>5</span>
-              <strong>Bid Room</strong>
-              <small id="progress-rfx">0 events</small>
-            </a>
-            <a class="workflow-progress-step" href="./rfx-events.html?view=responses">
-              <span>6</span>
-              <strong>Live bids</strong>
-              <small id="progress-outreach">0 bids</small>
-            </a>
-          </section>
-
           <section class="workspace-panel dashboard-metrics-panel" aria-label="Dashboard metrics">
             <div class="section-heading compact">
-              <p class="eyebrow">Metrics</p>
-              <h2>Command center</h2>
+              <p class="eyebrow">Signals</p>
+              <h2>At a glance</h2>
             </div>
             <div class="metric-grid">
               <a class="metric-card" href="./staging-review.html">
@@ -174,25 +199,9 @@
             </div>
           </section>
 
-          <section class="workspace-panel dashboard-priority-panel">
-            <div class="section-heading compact split-heading">
-              <div>
-                <p class="eyebrow">Priority queue</p>
-                <h2>What needs attention</h2>
-              </div>
-              <a class="secondary-link" href="./business-intelligence.html">Ask AI Analyst</a>
-            </div>
-            <div id="priority-queue" class="priority-queue">
-              <article>
-                <strong>Loading priorities...</strong>
-                <span>Checking staging, failed uploads, Bid Room, and vendor readiness.</span>
-              </article>
-            </div>
-          </section>
-
           <section class="workspace-panel dashboard-workflow-panel">
             <div class="section-heading compact">
-              <p class="eyebrow">Core workflow</p>
+              <p class="eyebrow">Shortcuts</p>
               <h2>Workspaces</h2>
             </div>
             <div class="core-workflow-grid" aria-label="Core workflow actions">

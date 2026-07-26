@@ -47,6 +47,9 @@ const formInputs = {
 let loadedRules = [];
 const selectedIds = new Set();
 let currentScopeSuggestion = { scope: "global", rationale: "Write a rule and Rateware will suggest the safest scope before saving." };
+let memoryFormSubmitting = false;
+let memoryBulkArchiveRunning = false;
+const memoryRowMutationKeys = new Set();
 const memoryWorkbench = initWorkbenchTabs({ defaultView: "create" });
 
 function escapeHtml(value) {
@@ -294,7 +297,7 @@ function renderSimulation(result) {
   const impact = result.impact || {};
   const rows = result.rows || [];
   simulationPanel?.classList.remove("hidden");
-  memoryWorkbench?.activate("simulation");
+  memoryWorkbench?.activate("simulation", { syncUrl: true });
   simulationTitle.textContent = result.rule?.title ? `Impact preview: ${result.rule.title}` : "Rule impact preview";
   simulationUploadCount.textContent = String(impact.upload_count || 0);
   simulationStagedRows.textContent = String(impact.staged_rows || 0);
@@ -392,7 +395,7 @@ function updateSelection() {
   const visibleIds = [...memoryBody.querySelectorAll("[data-memory-select]")].map((input) => input.dataset.memorySelect);
   const selectedVisible = visibleIds.filter((id) => selectedIds.has(id));
   selectionCount.textContent = `${selectedVisible.length} selected`;
-  archiveSelectedButton.disabled = selectedVisible.length === 0;
+  archiveSelectedButton.disabled = memoryBulkArchiveRunning || selectedVisible.length === 0;
   if (selectAllMemory) {
     selectAllMemory.checked = selectedVisible.length > 0 && selectedVisible.length === visibleIds.length;
     selectAllMemory.indeterminate = selectedVisible.length > 0 && selectedVisible.length < visibleIds.length;
@@ -483,7 +486,7 @@ scopeFilter?.addEventListener("change", renderRules);
 healthFilter?.addEventListener("change", renderRules);
 recommendationFilter?.addEventListener("change", renderRules);
 searchInput?.addEventListener("input", renderRules);
-closeSimulationButton?.addEventListener("click", () => memoryWorkbench?.activate("create"));
+closeSimulationButton?.addEventListener("click", () => memoryWorkbench?.activate("create", { syncUrl: true }));
 simulateDraftButton?.addEventListener("click", () => runSimulation(simulationInputFromForm(), memoryFormStatus));
 Object.values(formInputs).forEach((input) => input?.addEventListener("input", renderScopeSuggestion));
 Object.values(formInputs).forEach((input) => input?.addEventListener("change", renderScopeSuggestion));
@@ -504,6 +507,10 @@ applyScopeSuggestionButton?.addEventListener("click", () => {
 
 memoryForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
+  if (memoryFormSubmitting) return;
+  memoryFormSubmitting = true;
+  const submitButton = memoryForm.querySelector("button[type='submit']");
+  if (submitButton) submitButton.disabled = true;
   setStatus(memoryFormStatus, "Creating rule...");
   try {
     const scope = formValue("scope") || "global";
@@ -519,6 +526,9 @@ memoryForm?.addEventListener("submit", async (event) => {
     await loadMemory();
   } catch (error) {
     setStatus(memoryFormStatus, humanizeError(error), "error");
+  } finally {
+    memoryFormSubmitting = false;
+    if (submitButton) submitButton.disabled = false;
   }
 });
 
@@ -569,12 +579,25 @@ memoryBody?.addEventListener("click", async (event) => {
   }
 
   if (simulateButton) {
-    await runSimulation({ id }, status);
+    const mutationKey = `simulate:${id}`;
+    if (memoryRowMutationKeys.has(mutationKey)) return;
+    memoryRowMutationKeys.add(mutationKey);
+    simulateButton.disabled = true;
+    try {
+      await runSimulation({ id }, status);
+    } finally {
+      memoryRowMutationKeys.delete(mutationKey);
+      simulateButton.disabled = false;
+    }
     return;
   }
 
+  const actionName = saveButton ? "save" : archiveButton ? "archive" : applyButton?.dataset.recommendationAction || "apply";
+  const mutationKey = `${actionName}:${id}`;
+  if (memoryRowMutationKeys.has(mutationKey)) return;
   try {
     if (saveButton) {
+      memoryRowMutationKeys.add(mutationKey);
       saveButton.disabled = true;
       setStatus(status, "Saving...");
       const patch = {};
@@ -588,6 +611,7 @@ memoryBody?.addEventListener("click", async (event) => {
 
     if (archiveButton) {
       if (!window.confirm("Archive this interpretation rule? New uploads will stop using it.")) return;
+      memoryRowMutationKeys.add(mutationKey);
       archiveButton.disabled = true;
       await archiveMemoryRules([id]);
       setStatus(memoryTableStatus, "Rule archived.", "success");
@@ -595,14 +619,17 @@ memoryBody?.addEventListener("click", async (event) => {
     }
 
     if (applyButton) {
-      applyButton.disabled = true;
       const action = applyButton.dataset.recommendationAction;
       if (action === "archive") {
         if (!window.confirm("Apply this recommendation and archive the interpretation rule?")) return;
+        memoryRowMutationKeys.add(mutationKey);
+        applyButton.disabled = true;
         await archiveMemoryRules([id]);
         setStatus(memoryTableStatus, "Recommendation applied: rule archived.", "success");
       }
       if (action === "promote_global") {
+        memoryRowMutationKeys.add(mutationKey);
+        applyButton.disabled = true;
         if (applyButton.dataset.confirmPromote !== "true") {
           await runSimulation(globalSimulationInputFromRow(row), status);
           applyButton.dataset.confirmPromote = "true";
@@ -622,13 +649,21 @@ memoryBody?.addEventListener("click", async (event) => {
     }
   } catch (error) {
     setStatus(status || memoryTableStatus, humanizeError(error), "error");
+  } finally {
+    memoryRowMutationKeys.delete(mutationKey);
+    if (saveButton) saveButton.disabled = false;
+    if (archiveButton) archiveButton.disabled = false;
+    if (applyButton && applyButton.dataset.confirmPromote !== "true") applyButton.disabled = false;
   }
 });
 
 archiveSelectedButton?.addEventListener("click", async () => {
+  if (memoryBulkArchiveRunning) return;
   const ids = [...selectedIds];
   if (!ids.length) return;
   if (!window.confirm(`Archive ${ids.length} selected interpretation rule(s)? New uploads will stop using them.`)) return;
+  memoryBulkArchiveRunning = true;
+  updateSelection();
   setStatus(memoryTableStatus, `Archiving ${ids.length} rule(s)...`);
   try {
     await archiveMemoryRules(ids);
@@ -637,5 +672,8 @@ archiveSelectedButton?.addEventListener("click", async () => {
     await loadMemory();
   } catch (error) {
     setStatus(memoryTableStatus, humanizeError(error), "error");
+  } finally {
+    memoryBulkArchiveRunning = false;
+    updateSelection();
   }
 });

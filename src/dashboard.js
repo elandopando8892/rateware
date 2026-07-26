@@ -190,11 +190,22 @@ function renderNextBestAction(summary) {
   nextActionDetail.textContent = action.detail;
   nextActionLink.textContent = action.action;
   nextActionLink.href = action.href;
+  nextActionLink.removeAttribute("aria-disabled");
 }
 
 function renderPriorityQueue(summary) {
   if (!priorityQueue) return;
-  const items = buildActionList(summary).slice(0, 5);
+  const items = buildActionList(summary).slice(1, 6);
+
+  if (!items.length) {
+    priorityQueue.innerHTML = stateBlock({
+      tone: "success",
+      eyebrow: "Clear",
+      title: "No additional priorities",
+      detail: "The next best action above is the only item requiring attention right now."
+    });
+    return;
+  }
 
   priorityQueue.innerHTML = items
     .map(
@@ -279,6 +290,7 @@ function renderDashboardLoading() {
   if (nextActionLink) {
     nextActionLink.textContent = "Loading";
     nextActionLink.href = "#";
+    nextActionLink.setAttribute("aria-disabled", "true");
   }
   if (priorityQueue) {
     priorityQueue.innerHTML = loadingState({
@@ -303,6 +315,7 @@ function renderLoadError(error) {
   if (nextActionLink) {
     nextActionLink.textContent = "Retry";
     nextActionLink.href = "#";
+    nextActionLink.removeAttribute("aria-disabled");
     nextActionLink.dataset.retryAction = "load-dashboard";
   }
 

@@ -82,7 +82,8 @@ const rowSaveChains = new Map();
 const rowEditVersions = new Map();
 const FILTERED_BULK_BATCH_SIZE = 5000;
 const STAGING_PAGE_SIZE_STORAGE_KEY = "rateware:staging:page-size:v1";
-const DEFAULT_STAGING_PAGE_SIZE = 200;
+const STAGING_WORKSPACE_CONTEXT_STORAGE_KEY = "rateware:staging:workspace-context:v1";
+const DEFAULT_STAGING_PAGE_SIZE = 100;
 let columnVisibilityController;
 let locationMatchDrawerController;
 let columnFilterController;
@@ -90,7 +91,8 @@ let stagingTotalCount = 0;
 let stagingHasMoreRows = false;
 let stagingIsLoadingMore = false;
 let stagingLoadOffset = 0;
-let stagingPageIndex = 0;
+const storedStagingContext = readStoredWorkspaceContext(STAGING_WORKSPACE_CONTEXT_STORAGE_KEY);
+let stagingPageIndex = Math.max(0, Number(storedStagingContext.pageIndex) || 0);
 let stagingPageSize = readStoredPageSize(STAGING_PAGE_SIZE_STORAGE_KEY, DEFAULT_STAGING_PAGE_SIZE);
 let stagingLoadToken = 0;
 let stagingSearchTimer = null;
@@ -106,6 +108,9 @@ let stagingOptions = {
 let stagingOptionsLoaded = false;
 let stagingOptionsLoad = null;
 let stagingOptionsRequest = 0;
+let stagingBulkMutationRunning = false;
+let stagingDrawerSaveRunning = false;
+const stagingRowActionIds = new Set();
 const STAGING_COLSPAN = 37;
 const SHEET_COLUMNS = [
   { key: "select", label: "Select", locked: true },
@@ -269,6 +274,32 @@ function confirmFilteredDatabaseAction({ actionLabel, matched, scope, keyword = 
     `Filtered database action\n\n${actionLabel} ${countLabel(matched)} staging ${noun} across all pages matching: ${scope}.\n\nThis is not limited to the visible page. ${warning}\n\nType ${keyword} to continue.`
   );
   return typed === keyword;
+}
+
+function readStoredWorkspaceContext(key) {
+  try {
+    const value = JSON.parse(window.localStorage.getItem(key) || "{}");
+    return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeStoredWorkspaceContext(key, value) {
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // The workspace remains usable for the current session when storage is blocked.
+  }
+}
+
+function persistStagingWorkspaceContext() {
+  writeStoredWorkspaceContext(STAGING_WORKSPACE_CONTEXT_STORAGE_KEY, {
+    search: String(stagingSearchInput?.value || ""),
+    status: statusFilter?.value || "pending_review",
+    review: activeReviewFilter,
+    pageIndex: stagingPageIndex
+  });
 }
 
 function readStoredPageSize(key, fallback) {
@@ -627,8 +658,12 @@ function selectOnlyStagingRow(tableRow) {
 }
 
 function setBulkStatus(message, tone = "neutral") {
-  bulkActionStatus.textContent = tone === "error" ? humanizeError(message) : message;
+  const normalized = tone === "error" ? humanizeError(message) : message;
+  bulkActionStatus.textContent = normalized;
   bulkActionStatus.dataset.tone = tone;
+  if (["success", "error", "danger"].includes(tone)) {
+    window.ratewareNotify?.({ tone: tone === "error" ? "danger" : tone, message: normalized });
+  }
 }
 
 function compactNumber(value) {
@@ -654,8 +689,12 @@ function setGridSelectionStatus(info) {
 
 function setBulkEditStatus(message, tone = "neutral") {
   if (!bulkEditStatus) return;
-  bulkEditStatus.textContent = tone === "error" ? humanizeError(message) : message;
+  const normalized = tone === "error" ? humanizeError(message) : message;
+  bulkEditStatus.textContent = normalized;
   bulkEditStatus.dataset.tone = tone;
+  if (["success", "error", "danger"].includes(tone)) {
+    window.ratewareNotify?.({ tone: tone === "error" ? "danger" : tone, message: normalized });
+  }
 }
 
 function fieldOptionValues(config) {
@@ -698,6 +737,7 @@ function updateBulkControls() {
   const totalRows = body.querySelectorAll("[data-row-id]").length;
   const filteredTotal = Number(stagingTotalCount || 0);
   const hasFilteredRows = filteredTotal > 0;
+  const mutationRunning = stagingBulkMutationRunning;
   if (bulkSelectionCount) bulkSelectionCount.textContent = `Selected: ${selectedCount.toLocaleString()}${visibleSelectedCount ? ` | this page: ${visibleSelectedCount.toLocaleString()}` : ""}`;
   if (stagingPageCountLabel) stagingPageCountLabel.textContent = `Page rows: ${totalRows.toLocaleString()}`;
   if (stagingFilteredCountLabel) stagingFilteredCountLabel.textContent = `Database matches: ${filteredTotal.toLocaleString()}`;
@@ -716,30 +756,30 @@ function updateBulkControls() {
   if (clearStagingSelectionButton) clearStagingSelectionButton.disabled = selectedCount === 0;
   if (openSelectedDetailButton) openSelectedDetailButton.disabled = selectedCount !== 1;
   if (openBulkDrawerButton) openBulkDrawerButton.disabled = false;
-  if (applyBulkEditButton) applyBulkEditButton.disabled = selectedCount === 0;
-  if (applyBulkEditFilteredButton) applyBulkEditFilteredButton.disabled = !bulkFieldSelect?.value || !hasFilteredRows;
+  if (applyBulkEditButton) applyBulkEditButton.disabled = mutationRunning || selectedCount === 0;
+  if (applyBulkEditFilteredButton) applyBulkEditFilteredButton.disabled = mutationRunning || !bulkFieldSelect?.value || !hasFilteredRows;
   if (stagingMetricSelected) stagingMetricSelected.textContent = String(selectedCount);
-  bulkSaveButton.disabled = selectedCount === 0;
+  bulkSaveButton.disabled = mutationRunning || selectedCount === 0;
   if (bulkMatchVendorsButton) {
-    bulkMatchVendorsButton.disabled = selectedCount === 0 && !hasFilteredRows;
+    bulkMatchVendorsButton.disabled = mutationRunning || (selectedCount === 0 && !hasFilteredRows);
     setFilteredButtonLabel(
       bulkMatchVendorsButton,
       selectedCount ? "Match selected vendors" : "Match filtered DB vendors",
       selectedCount ? selectedCount : filteredTotal
     );
   }
-  bulkApproveButton.disabled = selectedCount === 0;
-  bulkRejectButton.disabled = selectedCount === 0;
-  if (bulkApproveFilteredButton) bulkApproveFilteredButton.disabled = !hasFilteredRows;
-  if (bulkRejectFilteredButton) bulkRejectFilteredButton.disabled = !hasFilteredRows;
+  bulkApproveButton.disabled = mutationRunning || selectedCount === 0;
+  bulkRejectButton.disabled = mutationRunning || selectedCount === 0;
+  if (bulkApproveFilteredButton) bulkApproveFilteredButton.disabled = mutationRunning || !hasFilteredRows;
+  if (bulkRejectFilteredButton) bulkRejectFilteredButton.disabled = mutationRunning || !hasFilteredRows;
   setFilteredButtonLabel(bulkApproveFilteredButton, "Approve matching DB", filteredTotal);
   setFilteredButtonLabel(bulkRejectFilteredButton, "Reject matching DB", filteredTotal);
-  if (bulkEnrichZipsButton) bulkEnrichZipsButton.disabled = selectedCount === 0;
-  if (bulkRenormalizeButton) bulkRenormalizeButton.disabled = selectedCount === 0;
-  bulkArchiveButton.disabled = selectedCount === 0;
-  bulkRemoveButton.disabled = selectedCount === 0;
-  if (bulkArchiveFilteredButton) bulkArchiveFilteredButton.disabled = !hasFilteredRows;
-  if (bulkRemoveFilteredButton) bulkRemoveFilteredButton.disabled = !hasFilteredRows;
+  if (bulkEnrichZipsButton) bulkEnrichZipsButton.disabled = mutationRunning || selectedCount === 0;
+  if (bulkRenormalizeButton) bulkRenormalizeButton.disabled = mutationRunning || selectedCount === 0;
+  bulkArchiveButton.disabled = mutationRunning || selectedCount === 0;
+  bulkRemoveButton.disabled = mutationRunning || selectedCount === 0;
+  if (bulkArchiveFilteredButton) bulkArchiveFilteredButton.disabled = mutationRunning || !hasFilteredRows;
+  if (bulkRemoveFilteredButton) bulkRemoveFilteredButton.disabled = mutationRunning || !hasFilteredRows;
   setFilteredButtonLabel(bulkArchiveFilteredButton, "Archive matching DB", filteredTotal);
   setFilteredButtonLabel(bulkRemoveFilteredButton, "Remove matching DB", filteredTotal);
   setFilteredButtonLabel(applyBulkEditFilteredButton, "Apply to filtered DB", filteredTotal);
@@ -792,6 +832,7 @@ async function goToStagingPage(index) {
     return;
   }
   stagingPageIndex = nextIndex;
+  persistStagingWorkspaceContext();
   setBulkStatus(selectedRowIds.size ? `${selectedRowIds.size.toLocaleString()} selected row(s) retained across pages.` : "");
   await loadRows({ preservePage: true });
 }
@@ -802,6 +843,7 @@ async function setStagingPageSize(value) {
   stagingPageSize = nextSize;
   writeStoredPageSize(STAGING_PAGE_SIZE_STORAGE_KEY, stagingPageSize);
   stagingPageIndex = 0;
+  persistStagingWorkspaceContext();
   setBulkStatus(selectedRowIds.size ? `${selectedRowIds.size.toLocaleString()} selected row(s) retained after page-size change.` : "");
   await loadRows({ preservePage: true });
 }
@@ -1908,8 +1950,12 @@ function renderRows(rows, { append = false } = {}) {
 }
 
 function setStatus(message, tone = "neutral") {
-  editStatus.textContent = tone === "error" ? humanizeError(message) : message;
+  const normalized = tone === "error" ? humanizeError(message) : message;
+  editStatus.textContent = normalized;
   editStatus.dataset.tone = tone;
+  if (["success", "error", "danger"].includes(tone)) {
+    window.ratewareNotify?.({ tone: tone === "error" ? "danger" : tone, message: normalized });
+  }
 }
 
 function rowById(id) {
@@ -1989,8 +2035,7 @@ function populateEditDrawer(row) {
 }
 
 async function openEditDrawer(id) {
-  const row = rowById(id);
-  if (!row) return;
+  const row = rowById(id) || { id };
 
   activeRowId = id;
   populateEditDrawer(row);
@@ -2010,7 +2055,7 @@ async function openEditDrawer(id) {
   } catch (error) {
     if (activeRowId !== id) return;
     renderRowDetail(row);
-    setStatus(`Detail could not load: ${error.message}`, "error");
+    setStatus(`Detail could not load: ${humanizeError(error)}`, "error");
   }
 }
 
@@ -2110,7 +2155,7 @@ async function performStagingTableRowSave(tableRow, status = null) {
     return updated;
   } catch (error) {
     setDirtyRowCellsState(tableRow, "error");
-    setRowStatus(id, error.message, "error");
+    setRowStatus(id, humanizeError(error), "error");
     throw error;
   } finally {
     if (button) button.disabled = false;
@@ -2148,11 +2193,17 @@ function scheduleStagingAutoSave(tableRow, wait = 1000) {
 }
 
 async function runBulkAction(status = null) {
+  if (stagingBulkMutationRunning) return;
   const rows = selectedRows();
   const ids = selectedStagingIds();
   if (!ids.length) return;
 
   if (status === "approved") {
+    if (rows.length !== ids.length) {
+      setBulkStatus("Approval only runs on loaded selected rows so validation blockers are visible. Open the selected page, or use Approve matching DB after reviewing filters.", "warning");
+      updateBulkControls();
+      return;
+    }
     const blockedRows = rows
       .map((tableRow) => {
         const patch = readInlinePatch(tableRow, status);
@@ -2191,6 +2242,8 @@ async function runBulkAction(status = null) {
     return;
   }
   setBulkStatus(`Processing ${ids.length} rows...`);
+  stagingBulkMutationRunning = true;
+  updateBulkControls();
   bulkSaveButton.disabled = true;
   if (bulkMatchVendorsButton) bulkMatchVendorsButton.disabled = true;
   bulkApproveButton.disabled = true;
@@ -2216,18 +2269,28 @@ async function runBulkAction(status = null) {
     }
     await loadRows({ preservePage: true });
   } catch (error) {
-    setBulkStatus(error.message, "error");
+    setBulkStatus(humanizeError(error), "error");
   } finally {
+    stagingBulkMutationRunning = false;
     updateBulkControls();
   }
 }
 
 async function applySelectedBulkEdit() {
+  if (stagingBulkMutationRunning) return;
   const rows = selectedRows();
   const ids = selectedStagingIds();
   const field = bulkFieldSelect?.value;
   if (!ids.length || !field) return;
   const patch = { [field]: bulkPatchValue(field, bulkValueInput?.value) };
+  if (rows.length !== ids.length) {
+    const hiddenCount = ids.length - rows.length;
+    const proceed = window.confirm(`Apply this bulk edit to ${ids.length} selected staging row(s), including ${hiddenCount} selected row(s) not visible on this page? Inline validation can only be checked for loaded rows.`);
+    if (!proceed) {
+      setBulkEditStatus("Bulk edit cancelled.", "warning");
+      return;
+    }
+  }
   const criticalRows = rowsWithCriticalValidation(rows, (tableRow) => ({ ...readInlinePatch(tableRow), ...patch }));
   if (criticalRows.length) {
     const proceed = window.confirm(`Apply this bulk edit to ${rows.length} row(s) even though ${criticalRows.length} row(s) will still have critical validation issues?`);
@@ -2237,6 +2300,8 @@ async function applySelectedBulkEdit() {
     }
   }
   if (applyBulkEditButton) applyBulkEditButton.disabled = true;
+  stagingBulkMutationRunning = true;
+  updateBulkControls();
   setBulkEditStatus(`Updating ${ids.length} selected row(s)...`);
 
   try {
@@ -2247,16 +2312,21 @@ async function applySelectedBulkEdit() {
     setBulkStatus(`${result.updated || ids.length} selected row(s) updated.`, "success");
     await loadRows({ preservePage: true });
   } catch (error) {
-    setBulkEditStatus(error.message, "error");
+    setBulkEditStatus(humanizeError(error), "error");
+  } finally {
+    stagingBulkMutationRunning = false;
     updateBulkControls();
   }
 }
 
 async function runBulkArchive() {
+  if (stagingBulkMutationRunning) return;
   const ids = selectedStagingIds();
   if (!ids.length) return;
 
   setBulkStatus(`Archiving ${ids.length} rows...`);
+  stagingBulkMutationRunning = true;
+  updateBulkControls();
   bulkArchiveButton.disabled = true;
   bulkRemoveButton.disabled = true;
 
@@ -2267,19 +2337,23 @@ async function runBulkArchive() {
     setBulkStatus(`${result.updated || ids.length} rows archived.`, "success");
     await loadRows({ preservePage: true });
   } catch (error) {
-    setBulkStatus(error.message, "error");
+    setBulkStatus(humanizeError(error), "error");
   } finally {
+    stagingBulkMutationRunning = false;
     updateBulkControls();
   }
 }
 
 async function runBulkRemove() {
+  if (stagingBulkMutationRunning) return;
   const ids = selectedStagingIds();
   if (!ids.length) return;
   const confirmed = window.confirm(`Remove ${ids.length} staging rows? This cannot be undone.`);
   if (!confirmed) return;
 
   setBulkStatus(`Removing ${ids.length} rows...`);
+  stagingBulkMutationRunning = true;
+  updateBulkControls();
   bulkArchiveButton.disabled = true;
   bulkRemoveButton.disabled = true;
 
@@ -2290,12 +2364,15 @@ async function runBulkRemove() {
     setBulkStatus(`${result.removed || ids.length} rows removed.`, "success");
     await loadRows({ preservePage: true });
   } catch (error) {
-    setBulkStatus(error.message, "error");
+    setBulkStatus(humanizeError(error), "error");
+  } finally {
+    stagingBulkMutationRunning = false;
     updateBulkControls();
   }
 }
 
 async function runFilteredStagingAction(targetAction) {
+  if (stagingBulkMutationRunning) return;
   const isRemove = targetAction === "remove";
   const filters = activeStagingBulkFilters();
   const service = isRemove ? removeStagingRowsByFilter : archiveStagingRowsByFilter;
@@ -2303,6 +2380,8 @@ async function runFilteredStagingAction(targetAction) {
 
   try {
     await ensureSignedIn();
+    stagingBulkMutationRunning = true;
+    updateBulkControls();
     if (bulkArchiveFilteredButton) bulkArchiveFilteredButton.disabled = true;
     if (bulkRemoveFilteredButton) bulkRemoveFilteredButton.disabled = true;
     setBulkStatus(`Counting rows for ${label} filtered...`);
@@ -2350,8 +2429,9 @@ async function runFilteredStagingAction(targetAction) {
     }
     await loadRows({ preservePage: true });
   } catch (error) {
-    setBulkStatus(error.message, "error");
+    setBulkStatus(humanizeError(error), "error");
   } finally {
+    stagingBulkMutationRunning = false;
     if (bulkArchiveFilteredButton) bulkArchiveFilteredButton.disabled = false;
     if (bulkRemoveFilteredButton) bulkRemoveFilteredButton.disabled = false;
     updateBulkControls();
@@ -2359,12 +2439,15 @@ async function runFilteredStagingAction(targetAction) {
 }
 
 async function runFilteredStagingUpdate(patch, label) {
+  if (stagingBulkMutationRunning) return;
   const filters = activeStagingBulkFilters();
   const scope = stagingFilterSummaryLabel(filters);
   const normalizedLabel = label || "update";
 
   try {
     await ensureSignedIn();
+    stagingBulkMutationRunning = true;
+    updateBulkControls();
     if (bulkApproveFilteredButton) bulkApproveFilteredButton.disabled = true;
     if (bulkRejectFilteredButton) bulkRejectFilteredButton.disabled = true;
     if (applyBulkEditFilteredButton) applyBulkEditFilteredButton.disabled = true;
@@ -2395,9 +2478,10 @@ async function runFilteredStagingUpdate(patch, label) {
     }
     await loadRows({ preservePage: true });
   } catch (error) {
-    setBulkStatus(error.message, "error");
-    setBulkEditStatus(error.message, "error");
+    setBulkStatus(humanizeError(error), "error");
+    setBulkEditStatus(humanizeError(error), "error");
   } finally {
+    stagingBulkMutationRunning = false;
     if (bulkApproveFilteredButton) bulkApproveFilteredButton.disabled = false;
     if (bulkRejectFilteredButton) bulkRejectFilteredButton.disabled = false;
     if (applyBulkEditFilteredButton) applyBulkEditFilteredButton.disabled = false;
@@ -2406,10 +2490,13 @@ async function runFilteredStagingUpdate(patch, label) {
 }
 
 async function runBulkRenormalize() {
+  if (stagingBulkMutationRunning) return;
   const ids = selectedStagingIds();
   if (!ids.length) return;
 
   setBulkStatus(`Re-normalizing ${ids.length} rows...`);
+  stagingBulkMutationRunning = true;
+  updateBulkControls();
   if (bulkRenormalizeButton) bulkRenormalizeButton.disabled = true;
 
   try {
@@ -2419,14 +2506,19 @@ async function runBulkRenormalize() {
     setBulkStatus(`${result.updated || ids.length} rows re-normalized with the current catalog.`, "success");
     await loadRows({ preservePage: true });
   } catch (error) {
-    setBulkStatus(error.message, "error");
+    setBulkStatus(humanizeError(error), "error");
+  } finally {
+    stagingBulkMutationRunning = false;
     updateBulkControls();
   }
 }
 
 async function runBulkMatchVendors() {
+  if (stagingBulkMutationRunning) return;
   const ids = selectedStagingIds();
 
+  stagingBulkMutationRunning = true;
+  updateBulkControls();
   if (bulkMatchVendorsButton) bulkMatchVendorsButton.disabled = true;
 
   try {
@@ -2470,17 +2562,21 @@ async function runBulkMatchVendors() {
     setBulkStatus(remaining > 0 || result.completed === false ? `${summary} ${remaining.toLocaleString()} matching row(s) remain; refine the filters and retry.` : `${summary} Matched across the full filtered set.`, remaining > 0 || result.completed === false ? "warning" : "success");
     await loadRows({ preservePage: true });
   } catch (error) {
-    setBulkStatus(error.message, "error");
+    setBulkStatus(humanizeError(error), "error");
   } finally {
+    stagingBulkMutationRunning = false;
     updateBulkControls();
   }
 }
 
 async function runBulkEnrichZips() {
+  if (stagingBulkMutationRunning) return;
   const ids = selectedStagingIds();
   if (!ids.length) return;
 
   setBulkStatus(`Finding missing ZIPs for ${ids.length} rows...`);
+  stagingBulkMutationRunning = true;
+  updateBulkControls();
   if (bulkEnrichZipsButton) bulkEnrichZipsButton.disabled = true;
 
   try {
@@ -2490,7 +2586,9 @@ async function runBulkEnrichZips() {
     setBulkStatus(`${result.enriched || 0} location(s) enriched. ${result.updated || ids.length} rows checked.`, "success");
     await loadRows({ preservePage: true });
   } catch (error) {
-    setBulkStatus(error.message, "error");
+    setBulkStatus(humanizeError(error), "error");
+  } finally {
+    stagingBulkMutationRunning = false;
     updateBulkControls();
   }
 }
@@ -2521,7 +2619,7 @@ function readPatch(status = null) {
 }
 
 async function saveActiveRow(status = null) {
-  if (!activeRowId) return;
+  if (!activeRowId || stagingDrawerSaveRunning) return;
   const patch = readPatch(status);
 
   if (status === "approved") {
@@ -2532,6 +2630,7 @@ async function saveActiveRow(status = null) {
     }
   }
 
+  stagingDrawerSaveRunning = true;
   setStatus(status ? `Saving and marking ${status}...` : "Saving changes...");
 
   try {
@@ -2541,7 +2640,9 @@ async function saveActiveRow(status = null) {
     await loadRows({ preservePage: true });
     if (status) drawer.classList.add("hidden");
   } catch (error) {
-    setStatus(error.message, "error");
+    setStatus(humanizeError(error), "error");
+  } finally {
+    stagingDrawerSaveRunning = false;
   }
 }
 
@@ -2597,22 +2698,28 @@ async function loadRows({ preservePage = false, refreshOptions = false } = {}) {
     populateBulkEditControls();
     stagingIsLoadingMore = false;
     applyStagingPage(page);
-    await optionsRequest;
-    if (token !== stagingLoadToken) return;
-    if (optionsError) {
-      setStatus("Staging rows loaded. Dropdown catalogs are temporarily unavailable; refresh to try again.", "warning");
-    } else if (hasRenderedRows) {
-      setBulkStatus("");
-    }
-    if (!refreshRowsAfterOptions) return;
-    renderRows(loadedRows);
-    await applyPermissionState("[data-save-id], [data-approve-id], [data-reject-id], #save-staging-button, #approve-staging-button, #reject-staging-button, #bulk-save-button, #bulk-match-vendors-button, #bulk-approve-button, #bulk-reject-button, #bulk-approve-filtered-button, #bulk-reject-filtered-button, #bulk-enrich-zips-button, #bulk-renormalize-button, #bulk-archive-button, #bulk-remove-button, #bulk-archive-filtered-button, #bulk-remove-filtered-button, #apply-staging-bulk-edit-filtered", "staging:approve");
+    // The row page is the critical path. Catalogs hydrate the editable
+    // controls in the background so the spreadsheet becomes usable sooner.
+    optionsRequest
+      .then(async () => {
+        if (token !== stagingLoadToken) return;
+        if (optionsError) {
+          setStatus("Staging rows loaded. Dropdown catalogs are temporarily unavailable; refresh to try again.", "warning");
+        } else if (refreshRowsAfterOptions) {
+          renderRows(loadedRows);
+        }
+        await applyPermissionState("[data-save-id], [data-approve-id], [data-reject-id], #save-staging-button, #approve-staging-button, #reject-staging-button, #bulk-save-button, #bulk-match-vendors-button, #bulk-approve-button, #bulk-reject-button, #bulk-approve-filtered-button, #bulk-reject-filtered-button, #bulk-enrich-zips-button, #bulk-renormalize-button, #bulk-archive-button, #bulk-remove-button, #bulk-archive-filtered-button, #bulk-remove-filtered-button, #apply-staging-bulk-edit-filtered", "staging:approve");
+      })
+      .catch((error) => {
+        if (token === stagingLoadToken) setStatus(humanizeError(error), "error");
+      });
+    if (hasRenderedRows) setBulkStatus("");
   } catch (error) {
     if (token !== stagingLoadToken) return;
     stagingIsLoadingMore = false;
     if (hasRenderedRows) {
-      setBulkStatus(error.message, "error");
-      setStatus(error.message, "error");
+      setBulkStatus(humanizeError(error), "error");
+      setStatus(humanizeError(error), "error");
     } else {
       body.innerHTML = tableErrorState(STAGING_COLSPAN, error, {
         title: "Staging Review could not load",
@@ -2635,6 +2742,7 @@ async function clearStagingFilters() {
   if (stagingSearchInput) stagingSearchInput.value = "";
   activeReviewFilter = "all";
   columnFilterController?.clear({ silent: true });
+  persistStagingWorkspaceContext();
   selectedRowIds.clear();
   setBulkStatus("");
   drawer.classList.add("hidden");
@@ -2654,6 +2762,7 @@ async function removeStagingFilter(type, field = "") {
   if (type === "status") statusFilter.value = "";
   if (type === "review") activeReviewFilter = "all";
   if (type === "column" && field) columnFilterController?.clearField(field, { silent: true });
+  persistStagingWorkspaceContext();
   selectedRowIds.clear();
   setBulkStatus("");
   await loadRows();
@@ -2678,13 +2787,15 @@ body.addEventListener("click", async (event) => {
     try {
       await saveStagingTableRow(tableRow);
     } catch (error) {
-      setRowStatus(id, error.message, "error");
+      setRowStatus(id, humanizeError(error), "error");
     }
     return;
   }
 
   const id = approve?.dataset.approveId || reject?.dataset.rejectId;
   if (!id) return;
+  const actionKey = `staging-row-action:${id}`;
+  if (stagingRowActionIds.has(actionKey)) return;
 
   const button = approve || reject;
   const tableRow = button.closest("[data-row-id]");
@@ -2697,6 +2808,7 @@ body.addEventListener("click", async (event) => {
       return;
     }
   }
+  stagingRowActionIds.add(actionKey);
   button.disabled = true;
   clearAutoSaveTimer(id);
   setRowStatus(id, approve ? "Approving..." : "Rejecting...");
@@ -2710,7 +2822,9 @@ body.addEventListener("click", async (event) => {
     await loadRows({ preservePage: true });
   } catch (error) {
     button.disabled = false;
-    setRowStatus(id, error.message, "error");
+    setRowStatus(id, humanizeError(error), "error");
+  } finally {
+    stagingRowActionIds.delete(actionKey);
   }
 });
 
@@ -2834,12 +2948,14 @@ activeFiltersStrip?.addEventListener("click", (event) => {
 statusFilter.addEventListener("change", () => {
   selectedRowIds.clear();
   activeReviewFilter = "all";
+  persistStagingWorkspaceContext();
   setBulkStatus("");
   loadRows();
 });
 reviewFilterButtons.forEach((button) => {
   button.addEventListener("click", () => {
-    activeReviewFilter = button.dataset.stagingFilter || "all";
+  activeReviewFilter = button.dataset.stagingFilter || "all";
+    persistStagingWorkspaceContext();
     selectedRowIds.clear();
     setBulkStatus("");
     loadRows();
@@ -2848,6 +2964,7 @@ reviewFilterButtons.forEach((button) => {
 stagingSearchInput?.addEventListener("input", () => {
   selectedRowIds.clear();
   setBulkStatus("");
+  persistStagingWorkspaceContext();
   window.clearTimeout(stagingSearchTimer);
   stagingSearchTimer = window.setTimeout(loadRows, 250);
 });
@@ -2944,6 +3061,7 @@ columnFilterController = initSpreadsheetColumnFilters({
   getValues: columnFilterValues,
   getMenuValues: stagingFilterMenuValues,
   scope: "staging",
+  storageKey: "rateware:staging:column-filters:v1",
   onChange: () => {
     selectedRowIds.clear();
     setBulkStatus("");
@@ -2967,4 +3085,12 @@ rejectDrawerButton.addEventListener("click", () => saveActiveRow("rejected"));
 initAuthControls();
 applyStagingUrlFilters();
 requirePrivatePage().catch(() => {});
-loadRows();
+if (stagingSearchInput) stagingSearchInput.value = String(storedStagingContext.search || "");
+if (storedStagingContext.status && [...statusFilter.options].some((option) => option.value === storedStagingContext.status)) {
+  statusFilter.value = storedStagingContext.status;
+}
+if (storedStagingContext.review && [...reviewFilterButtons].some((button) => button.dataset.stagingFilter === storedStagingContext.review)) {
+  activeReviewFilter = storedStagingContext.review;
+  reviewFilterButtons.forEach((button) => button.classList.toggle("is-active", button.dataset.stagingFilter === activeReviewFilter));
+}
+loadRows({ preservePage: true });

@@ -53,7 +53,7 @@
           <div class="page-header-actions">
             <button class="page-primary-action" type="button" data-vendor-open="wizard">Add vendor</button>
             <form id="auth-form" class="auth-strip">
-              <button id="auth-button" type="submit">Sign in with Kinde</button>
+              <button id="auth-button" type="submit">Log in</button>
               <button id="sign-out-button" type="button" class="secondary hidden">Sign out</button>
               <p id="auth-status" role="status"></p>
             </form>
@@ -90,7 +90,7 @@
               <span>Procurement board</span>
             </button>
             <button class="vendor-tab" type="button" data-vendor-tab="sourcing">
-              <strong>Spreadsheet</strong>
+              <strong>Directory</strong>
               <span>Editable carrier grid</span>
             </button>
             <button class="vendor-tab" type="button" data-vendor-tab="import">
@@ -101,14 +101,17 @@
               <strong>Duplicates</strong>
               <span>Merge review</span>
             </button>
-            <button class="vendor-tab" type="button" data-vendor-tab="matching">
-              <strong>Vendor Match</strong>
-              <span>Link rates to carriers</span>
-            </button>
             <button class="vendor-tab" type="button" data-vendor-tab="intelligence">
               <strong>Intelligence</strong>
               <span>Signals and fit</span>
             </button>
+            <details class="vendor-secondary-tools">
+              <summary>More tools</summary>
+              <button class="vendor-secondary-tool" type="button" data-vendor-tab="matching">
+                <strong>Vendor Match</strong>
+                <span>Link rates to carriers</span>
+              </button>
+            </details>
           </section>
 
           <section class="workspace-panel wide-section" data-tab-panel="funnel">
@@ -325,7 +328,7 @@
                 <button class="wizard-step" type="button" data-wizard-step="2">Coverage</button>
                 <button class="wizard-step" type="button" data-wizard-step="3">Review</button>
               </div>
-              <form id="vendor-wizard-form" class="wizard-form">
+              <form id="vendor-wizard-form" class="wizard-form" data-unsaved-guard>
                 <section class="wizard-panel" data-step-panel="0">
                   <label>
                     Vendor name
@@ -404,7 +407,7 @@
               </div>
               <button class="secondary small-button" type="button" data-vendor-open="import">Back to Import</button>
             </div>
-            <form id="vendor-form" class="vendor-form">
+              <form id="vendor-form" class="vendor-form" data-unsaved-guard>
               <label>
                 Vendor name
                 <input id="vendor-name" required placeholder="Carrier or brokerage name" />
@@ -526,7 +529,7 @@
               <button id="download-vendor-update-template-button" class="secondary" type="button">Download CRM update template</button>
               <label class="import-zone compact" for="vendor-update-import">
                 <span>Choose update file</span>
-                <small>Required: vendor_id. Editable: name, domain, emails, WhatsApp, tags, status, base, funnel, notes, logo.</small>
+                <small>Match by vendor_id, domain, email, legal name, or carrier name. Editable: name, domain, emails, WhatsApp, tags, status, base, funnel, notes, logo.</small>
                 <input id="vendor-update-import" type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
               </label>
               <p id="vendor-update-status" class="status-message" role="status"></p>
@@ -541,7 +544,7 @@
               </div>
               <button class="secondary small-button" type="button" data-vendor-open="import">Back to Import</button>
             </div>
-            <form id="segment-form" class="segment-form">
+              <form id="segment-form" class="segment-form" data-unsaved-guard>
               <label>
                 Segment name
                 <input id="segment-name" required placeholder="Cross-border FTL MX-US" />
@@ -643,6 +646,7 @@
                   <tr>
                     <th>Row</th>
                     <th>Vendor</th>
+                    <th>Matched by</th>
                     <th>Changed fields</th>
                     <th>Errors</th>
                     <th>Warnings</th>
@@ -650,15 +654,15 @@
                 </thead>
                 <tbody id="vendor-update-preview-body">
                   <tr>
-                    <td colspan="5">No update file selected.</td>
+                    <td colspan="6">No update file selected.</td>
                   </tr>
                 </tbody>
               </table>
             </div>
           </section>
 
-          <section class="workspace-panel wide-section hidden" data-tab-panel="sourcing">
-            <div class="directory-heading">
+          <section class="workspace-panel wide-section hidden spreadsheet-workbench vendor-directory-workspace" data-tab-panel="sourcing">
+            <div class="directory-heading workbench-header">
               <div>
                 <p class="eyebrow">Vendor Directory</p>
                 <h2>Carrier master data</h2>
@@ -689,20 +693,10 @@
                 </details>
               </div>
             </div>
-            <div class="toolbar">
+            <div class="toolbar sheet-toolbar vendor-directory-toolbar">
               <label>
                 Search
                 <input id="vendor-search" placeholder="Name, domain, email" />
-              </label>
-              <label>
-                Status
-                <select id="vendor-status-filter">
-                  <option value="">All</option>
-                  <option value="active">Active</option>
-                  <option value="invited">Invited</option>
-                  <option value="blocked">Blocked</option>
-                  <option value="inactive">Inactive</option>
-                </select>
               </label>
               <button id="refresh-vendors-button" class="secondary" type="button">Refresh</button>
               <button id="download-onboarding-gaps-button" class="secondary" type="button">Download gaps</button>
@@ -710,35 +704,53 @@
               <input id="vendor-gaps-import" class="hidden" type="file" accept=".xlsx,.xls,.csv" />
             </div>
             <p id="vendor-onboarding-gaps-status" class="status-message" role="status"></p>
-            <div class="quick-filter-row" aria-label="Saved vendor views">
-              <button class="quick-filter is-active" type="button" data-quick-filter="all">All vendors</button>
-              <button class="quick-filter" type="button" data-quick-filter="missing-contact">Missing contact</button>
-              <button class="quick-filter" type="button" data-quick-filter="cross-border">Cross-border</button>
-              <button class="quick-filter" type="button" data-quick-filter="high-confidence">High confidence</button>
-              <button class="quick-filter" type="button" data-quick-filter="onboarding-gaps">Onboarding gaps</button>
-              <button class="quick-filter" type="button" data-quick-filter="procurement-ready">Procurement ready</button>
-              <button class="quick-filter" type="button" data-quick-filter="duplicates">Duplicates</button>
-            </div>
-            <div class="filter-bar" aria-label="Vendor filters">
-              <label>
-                Channel
-                <select id="vendor-channel-filter">
-                  <option value="">Any</option>
-                  <option value="email">Email</option>
-                  <option value="whatsapp">WhatsApp</option>
-                  <option value="portal">Portal</option>
-                </select>
-              </label>
-              <label>
-                Tag / equipment
-                <input id="vendor-tag-filter" placeholder="reefer, flatbed, hazmat" />
-              </label>
-              <label>
-                Coverage / market
-                <input id="vendor-coverage-filter" placeholder="Monterrey, Laredo, Bajio" />
-              </label>
-              <button id="clear-vendor-filters" class="secondary" type="button">Clear filters</button>
-            </div>
+            <details class="vendor-directory-filter-drawer">
+              <summary>
+                <span>Filters and saved views</span>
+                <small>Search stays visible; secondary filters open here.</small>
+              </summary>
+              <div class="vendor-directory-filter-body">
+                <div class="vendor-directory-filter-grid">
+                  <label>
+                    Status
+                    <select id="vendor-status-filter">
+                      <option value="">All</option>
+                      <option value="active">Active</option>
+                      <option value="invited">Invited</option>
+                      <option value="blocked">Blocked</option>
+                      <option value="inactive">Inactive</option>
+                    </select>
+                  </label>
+                  <label>
+                    Channel
+                    <select id="vendor-channel-filter">
+                      <option value="">Any</option>
+                      <option value="email">Email</option>
+                      <option value="whatsapp">WhatsApp</option>
+                      <option value="portal">Portal</option>
+                    </select>
+                  </label>
+                  <label>
+                    Tag / equipment
+                    <input id="vendor-tag-filter" placeholder="reefer, flatbed, hazmat" />
+                  </label>
+                  <label>
+                    Coverage / market
+                    <input id="vendor-coverage-filter" placeholder="Monterrey, Laredo, Bajio" />
+                  </label>
+                  <button id="clear-vendor-filters" class="secondary small-button" type="button">Clear filters</button>
+                </div>
+                <div class="quick-filter-row" aria-label="Saved vendor views">
+                  <button class="quick-filter is-active" type="button" data-quick-filter="all">All vendors</button>
+                  <button class="quick-filter" type="button" data-quick-filter="missing-contact">Missing contact</button>
+                  <button class="quick-filter" type="button" data-quick-filter="cross-border">Cross-border</button>
+                  <button class="quick-filter" type="button" data-quick-filter="high-confidence">High confidence</button>
+                  <button class="quick-filter" type="button" data-quick-filter="onboarding-gaps">Onboarding gaps</button>
+                  <button class="quick-filter" type="button" data-quick-filter="procurement-ready">Procurement ready</button>
+                  <button class="quick-filter" type="button" data-quick-filter="duplicates">Duplicates</button>
+                </div>
+              </div>
+            </details>
             <div class="pagination-bar" aria-label="Vendor pagination">
               <strong id="vendor-page-status">Showing 0 of 0</strong>
               <span id="vendor-base-context" class="base-context-pill">Sourcing Base</span>
@@ -755,6 +767,13 @@
                 <button id="vendor-prev-page" class="secondary small-button" type="button">Previous</button>
                 <button id="vendor-next-page" class="secondary small-button" type="button">Next</button>
               </div>
+            </div>
+            <div class="sheet-helper-strip vendor-grid-helper" aria-live="polite">
+              <strong id="vendor-grid-selection">Ready</strong>
+              <span>Click cells to edit</span>
+              <span><kbd>Ctrl/⌘ C</kbd> copy</span>
+              <span><kbd>Ctrl/⌘ V</kbd> paste</span>
+              <span id="vendor-grid-status" role="status"></span>
             </div>
             <div id="bulk-toolbar" class="bulk-toolbar hidden">
               <div class="bulk-toolbar-summary">
@@ -795,7 +814,7 @@
             </div>
 
             <div id="vendor-card-grid" class="vendor-card-grid hidden" aria-label="Vendor cards"></div>
-            <div id="vendors-table-wrap" class="table-wrap vendor-sheet-wrap">
+            <div id="vendors-table-wrap" class="table-wrap sheet-table-wrap vendor-sheet-wrap">
               <table class="vendor-sheet-table">
                 <thead>
                   <tr id="vendors-head-row">
@@ -963,7 +982,7 @@
               </div>
               <div id="drawer-ai-suggestions" class="ai-suggestion-list"></div>
             </section>
-            <form id="drawer-edit-form" class="drawer-edit-form vendor-drawer-card">
+              <form id="drawer-edit-form" class="drawer-edit-form vendor-drawer-card" data-unsaved-guard>
               <div class="section-heading compact">
                 <p class="eyebrow">Edit</p>
                 <h2>Vendor details</h2>

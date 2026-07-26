@@ -30,6 +30,29 @@ function cleanText(value: unknown) {
   return text ? text : null;
 }
 
+function uploadErrorMessage(value: unknown, fallback = "Upload request failed.") {
+  if (value === null || value === undefined) return fallback;
+  if (value instanceof Error) return cleanText(value.message) || fallback;
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return cleanText(value) || fallback;
+  }
+  if (typeof value !== "object") return fallback;
+  const record = value as Record<string, unknown>;
+  for (const key of ["error", "message", "reason", "description", "detail", "details", "hint", "cause"]) {
+    if (record[key] && record[key] !== value) {
+      const message = uploadErrorMessage(record[key], "");
+      if (message) return message;
+    }
+  }
+  return fallback;
+}
+
+function uploadErrorStatus(value: unknown) {
+  const message = uploadErrorMessage(value, "").toLowerCase();
+  if (/bearer|jwt|token|auth|unauthorized|sign in|kinde/.test(message)) return 401;
+  return 500;
+}
+
 function normalizeDomain(value: unknown) {
   const text = cleanText(value);
   if (!text) return null;
@@ -117,6 +140,6 @@ Deno.serve(async (request) => {
 
     return jsonResponse({ raw_upload: insert.data });
   } catch (error) {
-    return jsonResponse({ error: error.message }, 401);
+    return jsonResponse({ error: uploadErrorMessage(error) }, uploadErrorStatus(error));
   }
 });

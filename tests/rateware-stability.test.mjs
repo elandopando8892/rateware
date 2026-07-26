@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 
 const apiSource = readFileSync(new URL("../supabase/functions/rateware-api/index.ts", import.meta.url), "utf8");
+const createRawUploadSource = readFileSync(new URL("../supabase/functions/create-raw-upload/index.ts", import.meta.url), "utf8");
 const interpretUploadSource = readFileSync(new URL("../supabase/functions/interpret-upload/index.ts", import.meta.url), "utf8");
 const uploadHistorySource = readFileSync(new URL("../src/upload-history.js", import.meta.url), "utf8");
 const uploadCenterSource = readFileSync(new URL("../src/upload-center.js", import.meta.url), "utf8");
@@ -35,9 +36,11 @@ const shippersSource = readFileSync(new URL("../src/shippers.js", import.meta.ur
 const carrierProfileSource = readFileSync(new URL("../src/carrier-profile.js", import.meta.url), "utf8");
 const carrierProfileHtml = readFileSync(new URL("../carrier-profile.html", import.meta.url), "utf8");
 const catalogWorkbenchHtml = readFileSync(new URL("../catalog-workbench.html", import.meta.url), "utf8");
+const interpretationMemorySource = readFileSync(new URL("../src/interpretation-memory.js", import.meta.url), "utf8");
 const interpretationMemoryHtml = readFileSync(new URL("../interpretation-memory.html", import.meta.url), "utf8");
 const carrierProfileApiSource = readFileSync(new URL("../supabase/functions/carrier-profile-api/index.ts", import.meta.url), "utf8");
 const rfxEventsSource = readFileSync(new URL("../src/rfx-events.js", import.meta.url), "utf8");
+const outreachHtml = readFileSync(new URL("../outreach.html", import.meta.url), "utf8");
 const dashboardSource = readFileSync(new URL("../src/dashboard.js", import.meta.url), "utf8");
 const rfxEventsHtml = readFileSync(new URL("../rfx-events.html", import.meta.url), "utf8");
 const rfxProcessSource = readFileSync(new URL("../src/rfx-process.js", import.meta.url), "utf8");
@@ -49,8 +52,12 @@ const customerRfiHtml = readFileSync(new URL("../customer-rfi.html", import.meta
 const rfxBidSource = readFileSync(new URL("../src/rfx-bid.js", import.meta.url), "utf8");
 const rfxBidApiSource = readFileSync(new URL("../supabase/functions/rfx-bid-api/index.ts", import.meta.url), "utf8");
 const authSource = readFileSync(new URL("../src/auth.js", import.meta.url), "utf8");
+const landingSource = readFileSync(new URL("../src/landing.js", import.meta.url), "utf8");
+const uiNotificationsSource = readFileSync(new URL("../src/ui-notifications.js", import.meta.url), "utf8");
+const unsavedChangesSource = readFileSync(new URL("../src/unsaved-changes.js", import.meta.url), "utf8");
 const ratewareApiClientSource = readFileSync(new URL("../src/rateware-api.js", import.meta.url), "utf8");
 const errorCopySource = readFileSync(new URL("../src/error-copy.js", import.meta.url), "utf8");
+const workbenchTabsSource = readFileSync(new URL("../src/workbench-tabs.js", import.meta.url), "utf8");
 const bidRoomBoardSource = readFileSync(new URL("../src/bid-room-board.js", import.meta.url), "utf8");
 const bidRoomBoardHtml = readFileSync(new URL("../bid-room-board.html", import.meta.url), "utf8");
 const bidRoomE2eSource = readFileSync(new URL("../tools/bid-room-e2e.mjs", import.meta.url), "utf8");
@@ -122,6 +129,7 @@ const outreachControlCenterMigration = readFileSync(new URL("../supabase/migrati
 const whatsappWebhookSource = readFileSync(new URL("../supabase/functions/whatsapp-webhook/index.ts", import.meta.url), "utf8");
 const whatsappWebhookRoutingMigration = readFileSync(new URL("../supabase/migrations/20260723005859_whatsapp_webhook_routing_indexes.sql", import.meta.url), "utf8");
 const vendorWorkspaceSearchMigration = readFileSync(new URL("../supabase/migrations/20260723190000_vendor_workspace_search.sql", import.meta.url), "utf8");
+const vendorWorkspaceSearchHardeningMigration = readFileSync(new URL("../supabase/migrations/20260725160000_vendor_workspace_search_hardening.sql", import.meta.url), "utf8");
 const vendorLifecycleUnificationMigration = readFileSync(new URL("../supabase/migrations/20260723225311_vendor_lifecycle_unification.sql", import.meta.url), "utf8");
 const workspaceRateScopeMigration = readFileSync(new URL("../supabase/migrations/20260722120000_scope_uploads_and_rates_by_workspace.sql", import.meta.url), "utf8");
 const workspaceRateFilterValuesMigration = readFileSync(new URL("../supabase/migrations/20260723235900_scope_rate_filter_values_by_workspace.sql", import.meta.url), "utf8");
@@ -141,11 +149,43 @@ assert.match(vendorsSource, /loadVersion !== vendorDirectoryLoadVersion/, "Carri
 assert.match(vendorsSource, /loadVersion !== vendorFunnelLoadVersion/, "Procurement funnel should ignore stale response rendering");
 assert.match(vendorsSource, /loadVersion !== vendorIntelligenceLoadVersion/, "Vendor intelligence should ignore stale response rendering");
 assert.match(rfxEventsSource, /let rfxEventsLoadVersion = 0/, "Bid Room event list should guard against stale responses");
+assert.match(rfxEventsSource, /let rfxEventsLoadRequest = null;/, "Bid Room should track an in-flight event list request");
+assert.match(rfxEventsSource, /async function loadEvents\(\{ force = false \} = \{\}\)[\s\S]+rfxEventsLoadRequest\)[\s\S]+function loadEventsRequest\(\)/, "Bid Room should reuse identical event list requests");
+assert.match(rfxEventsSource, /refreshButton\?\.addEventListener\("click", \(\) => loadEvents\(\{ force: true \}\)\)/, "Bid Room refresh should bypass the in-flight event request");
 assert.match(rfxEventsSource, /let rfxDetailLoadVersion = 0/, "Bid Room detail should guard against stale event responses");
+assert.match(rfxEventsSource, /const rfxDetailRequests = new Map\(\);/, "Bid Room should track in-flight detail requests by event");
+assert.match(rfxEventsSource, /function requestRfxDetail\(eventId, \{ force = false \} = \{\}\)[\s\S]+rfxDetailRequests\.has\(key\)[\s\S]+fetchRfxDetail/, "Bid Room should reuse identical event detail requests");
+assert.match(rfxEventsSource, /await loadDetail\(eventId, \{ force: true \}\)/, "Bid Room lane edits should force fresh event detail");
+assert.match(rfxEventsSource, /const rfxContactHistoryRequests = new Map\(\);[\s\S]+const rfxOutreachMessageRequests = new Map\(\);[\s\S]+const rfxChatRequests = new Map\(\);/, "Bid Room should track secondary event requests by event");
+assert.match(rfxEventsSource, /function requestRfxEventResource\(requestMap, eventId, loader, \{ force = false \} = \{\}\)[\s\S]+requestMap\.has\(key\)[\s\S]+loader\(\)/, "Bid Room should coalesce in-flight history, outreach, and chat requests");
+assert.match(rfxEventsSource, /requestRfxEventResource\(rfxChatRequests, eventId, \(\) => fetchBidRoomChat\(eventId\), \{ force \}\)/, "Bid Room chat refresh should reuse pending requests unless forced");
+assert.match(rfxEventsSource, /requestRfxEventResource\(rfxContactHistoryRequests, eventId,[\s\S]+\{ force: true \}\)/, "Outreach mutations should force fresh contact history");
+assert.match(rfxEventsSource, /let draftQueueLoadRequest = null;/, "Draft Queue should track an in-flight page request");
+assert.match(rfxEventsSource, /let draftQueueTrackingRequest = null;/, "Draft Queue should track an in-flight tracking summary request");
+assert.match(rfxEventsSource, /let draftQueueTrackingLoadVersion = 0;/, "Draft Queue tracking should guard against stale filter responses");
+assert.match(rfxEventsSource, /function draftQueuePageQuery\(eventId\)[\s\S]+function loadDraftQueuePage\(eventId = selectedEventId, options = \{\}\)[\s\S]+requestKey = JSON\.stringify\(query\)/, "Draft Queue should key requests by event, filters, page, and size");
+assert.match(rfxEventsSource, /function loadDraftQueuePageRequest\(eventId, \{ render, refreshTracking, query \}\)[\s\S]+fetchOutreachMessagesPage\(query\)/, "Draft Queue should fetch the normalized page query");
+assert.match(rfxEventsSource, /return await loadDraftQueuePage\(eventId, \{ render, force: true \}\)/, "Draft Queue should force a valid page after an out-of-range offset");
+assert.match(rfxEventsSource, /async function loadDraftQueueTrackingSummary\(eventId = selectedEventId, \{ force = false \} = \{\}\)[\s\S]+draftQueueTrackingRequest\?\.key === scopeKey[\s\S]+function loadDraftQueueTrackingSummaryRequest\(eventId, scopeKey\)/, "Draft Queue tracking should coalesce requests by event and channel");
+assert.match(rfxEventsSource, /loadVersion !== draftQueueTrackingLoadVersion[\s\S]+draftQueueTrackingSummary =/, "Draft Queue tracking should ignore stale lifecycle responses");
 assert.match(rfxEventsSource, /let bidRoomChatLoadVersion = 0/, "Bid Room chat should guard against stale refreshes");
+assert.match(rfxEventsSource, /const RFX_WORKSPACE_CONTEXT_STORAGE_KEY = "rateware:bid-room:workspace-context:v1"/, "Bid Room should persist one scoped workspace context");
+assert.match(rfxEventsSource, /function persistRfxWorkspaceContext\(\)/, "Bid Room should persist the selected RFx and operational filters");
+assert.match(rfxEventsSource, /let selectedEventId = requestedRfxEventId \|\| String\(storedRfxWorkspaceContext\.eventId \|\| ""\)/, "An explicit RFx URL should take precedence over the saved Bid Room event");
+assert.match(rfxEventsSource, /function syncRfxWorkspaceUrl\(\)/, "Bid Room should expose a shareable URL for its active context");
+assert.match(rfxEventsSource, /setOrRemove\("rfx_event_id", selectedEventId\)/, "Bid Room URL state should include the selected RFx without exposing participant data");
+assert.match(rfxEventsSource, /function applyRfxUrlStateFromBrowser\(\)/, "Bid Room should react to browser history navigation");
+assert.match(rfxEventsSource, /window\.addEventListener\("popstate", applyRfxUrlStateFromBrowser\)/, "Bid Room should keep Back and Forward navigation synchronized");
+assert.match(rfxEventsSource, /const urlEventId = new URLSearchParams\(window\.location\.search\)\.get\("rfx_event_id"\)/, "Bid Room event loading should read the current URL instead of a stale initial parameter");
+assert.match(rfxEventsSource, /laneSearch: String\(laneSearch\?\.value \|\| ""\)/, "Bid Room should restore the lane search");
+assert.match(rfxEventsSource, /draftTracking: draftQueueTrackingStatus/, "Bid Room should restore the Draft Queue lifecycle filter");
+assert.match(rfxEventsSource, /chatFilter: bidRoomChatFilter/, "Bid Room should restore the event chat filter");
+assert.match(rfxEventsSource, /persistRfxWorkspaceContext\(\);\s*return await loadDraftQueuePage\(eventId, \{ render, force: true \}\)/, "Draft Queue should persist a recovered valid page");
 assert.match(rfxEventsSource, /loadVersion !== rfxDetailLoadVersion \|\| selectedEventId !== eventId/, "Bid Room detail should retain the active event context");
 assert.match(rfxEventsSource, /loadVersion !== bidRoomChatLoadVersion \|\| selectedEventId !== eventId/, "Bid Room chat should retain the active event context");
 assert.match(rfxEventsSource, /async function refreshOutreachStateForEvent\(eventId\)/, "Bid Room outreach mutations should share one event-scoped refresh guard");
+assert.match(rfxEventsSource, /fetchContactHistory\(\{ rfx_event_id: eventId, limit: 1000 \}\)/, "Bid Room should load contextual RFx contact history beyond the global startup cap");
+assert.match(rfxEventsSource, /fetchOutreachMessages\(\{ rfx_event_id: eventId, limit: 1000 \}\)/, "Bid Room should load enough RFx outreach rows for dashboard counts while Draft Queue remains paginated");
 assert.match(rfxEventsSource, /if \(selectedEventId !== eventId\) return false;[\s\S]*contactHistoryRows = historyRows \|\| \[\];[\s\S]*outreachMessages = messageRows \|\| \[\];/, "Bid Room outreach refreshes should discard results after the active event changes");
 for (const mutationName of [
   "generateAwardNoticeDrafts",
@@ -204,18 +244,42 @@ for (const laneImportButton of ["importLanesButton", "importManualLanesButton"])
   assert.match(handlerSource, /importRfxLanes\(eventId, rows\)/, `${laneImportButton} should import into its initiating Bid Room`);
   assert.match(handlerSource, /selectedEventId !== eventId/, `${laneImportButton} should ignore stale results after navigation`);
 }
+assert.match(rfxEventsSource, /let eventLifecycleMutationRunning = false;/, "Bid Room lifecycle actions should share a mutation guard");
+assert.match(rfxEventsSource, /button\.disabled = !hasSelection \|\| eventLifecycleMutationRunning/, "Bid Room lifecycle buttons should disable while an event mutation is running");
 for (const lifecycleButton of ["openRfxButton", "closeRfxButton", "duplicateRfxButton", "archiveRfxButton", "deleteRfxButton"]) {
   const start = rfxEventsSource.indexOf(`${lifecycleButton}?.addEventListener`);
   const end = rfxEventsSource.indexOf("\n\n", start + 1);
   const handlerSource = rfxEventsSource.slice(start, end > start ? end : undefined);
   assert.ok(start >= 0, `${lifecycleButton} handler should exist`);
+  assert.match(handlerSource, /if \(eventLifecycleMutationRunning\) return;/, `${lifecycleButton} should ignore duplicate clicks while another lifecycle action is running`);
   assert.match(handlerSource, /const eventId = selectedEventId;/, `${lifecycleButton} should capture its initiating Bid Room`);
+  assert.match(handlerSource, /eventLifecycleMutationRunning = true;[\s\S]+updateEventActionState\(\);/, `${lifecycleButton} should disable lifecycle actions before mutating`);
   assert.match(handlerSource, /selectedEventId === eventId|selectedEventId !== eventId/, `${lifecycleButton} should not hijack a different Bid Room after navigation`);
+  assert.match(handlerSource, /finally \{[\s\S]+eventLifecycleMutationRunning = false;[\s\S]+updateEventActionState\(\);[\s\S]+\}/, `${lifecycleButton} should restore lifecycle controls after finishing`);
 }
+assert.match(rfxEventsSource, /setStatus\(actionStatus, "Opening bid event\.\.\."\);[\s\S]+setStatus\(actionStatus, "Bid event opened\.", "success"\);/, "Opening a Bid Room should show progress and success feedback");
+assert.match(rfxEventsSource, /setStatus\(actionStatus, "Closing bid event\.\.\."\);[\s\S]+setStatus\(actionStatus, "Bid event closed\.", "success"\);/, "Closing a Bid Room should show progress and success feedback");
 assert.match(rfxEventsSource, /async function saveRfxLaneEdits[\s\S]*const eventId = selectedEventId;[\s\S]*selectedEventId !== eventId/, "Lane edits should ignore stale responses after navigation");
 assert.match(rfxEventsSource, /async function autoShortlistLaneIds[\s\S]*const eventId = selectedEventId;[\s\S]*selectedEventId !== eventId/, "Bulk shortlisting should ignore stale responses after navigation");
 assert.match(dashboardSource, /let dashboardLoadVersion = 0/, "Command Center should guard against stale dashboard responses");
 assert.match(dashboardSource, /loadVersion !== dashboardLoadVersion/, "Command Center should ignore stale dashboard responses");
+assert.match(dashboardSource, /const items = buildActionList\(summary\)\.slice\(1, 6\)/, "Command Center should not duplicate the next best action in the priority queue");
+assert.match(dashboardSource, /No additional priorities/, "Command Center should show a clear state when no secondary priorities exist");
+assert.match(appHtml, /id="next-action-link" class="page-primary-action" href="#" aria-disabled="true">Loading/, "Command Center should not expose a stale action while its summary is loading");
+assert.match(dashboardSource, /nextActionLink\.setAttribute\("aria-disabled", "true"\)/, "Command Center should disable the next action while loading");
+assert.match(dashboardSource, /nextActionLink\.removeAttribute\("aria-disabled"\)/, "Command Center should re-enable the next action after loading or on retry");
+assert.match(stylesSource, /\.next-best-action-card a\[aria-disabled="true"\]/, "Command Center loading action should look and behave disabled");
+const nextActionPosition = appHtml.indexOf('id="next-best-action"');
+const priorityQueuePosition = appHtml.indexOf('id="priority-queue-title"');
+const workflowStatusPosition = appHtml.indexOf('aria-label="Procurement workflow"');
+const metricsPosition = appHtml.indexOf('aria-label="Dashboard metrics"');
+assert.ok(nextActionPosition >= 0 && priorityQueuePosition > nextActionPosition, "Command Center should place the priority queue after the next action");
+assert.ok(priorityQueuePosition >= 0 && workflowStatusPosition > priorityQueuePosition, "Command Center should show workflow status after priorities");
+assert.ok(workflowStatusPosition >= 0 && metricsPosition > workflowStatusPosition, "Command Center should keep metrics below operational workflow context");
+assert.match(appHtml, /class="workspace-panel dashboard-priority-panel" aria-labelledby="priority-queue-title"/, "Command Center priority queue should have a stable accessible heading");
+assert.doesNotMatch(appHtml, /class="secondary-link" href="\.\/business-intelligence\.html">Ask AI Analyst<\//, "Command Center should keep the AI action in the global header instead of duplicating it in Priority Queue");
+assert.match(appHtml, /<p class="eyebrow">Signals<\/p>\s+<h2>At a glance<\/h2>/, "Command Center metrics should read as supporting signals");
+assert.match(stylesSource, /\.dashboard-priority-panel \.priority-queue \{[\s\S]*grid-template-columns: repeat\(2/, "Command Center priorities should use a compact two-column layout");
 
 for (const domain of ["gmail.com", "hotmail.com", "yahoo.com", "outlook.com", "yahoo.com.mx"]) {
   assert.match(apiSource, new RegExp(`"${domain.replace(".", "\\.")}"`), `generic domain ${domain} should be blocked`);
@@ -458,6 +522,10 @@ const sendGmailOutreachSource = apiSource.slice(
   apiSource.indexOf("async function sendOutreachMessages("),
   apiSource.indexOf("async function metaSendWhatsappTemplate(")
 );
+const sendWhatsappOutreachSource = apiSource.slice(
+  apiSource.indexOf("async function sendWhatsappOutreachMessages("),
+  apiSource.indexOf("async function sendWhatsappGroupOutreachMessages(")
+);
 const sendWhatsappGroupOutreachSource = apiSource.slice(
   apiSource.indexOf("async function sendWhatsappGroupOutreachMessages("),
   apiSource.indexOf("async function markWhatsappGroupMessageManuallySent(")
@@ -503,6 +571,17 @@ assert.match(apiSource, /\.eq\("id", connection\.row\.id\)/, "WhatsApp connectio
 assert.match(apiSource, /whatsapp_connection_id: connection\.row\.id/, "WhatsApp sends should persist the resolved connection id");
 assert.match(apiSource, /sender_display_phone: senderDisplayPhone/, "WhatsApp contact history should persist the sender display phone");
 assert.match(readFileSync(new URL("../src/outreach.js", import.meta.url), "utf8"), /Sent from .*sender_display_phone/s, "Contact history should show the WhatsApp sender connection");
+assert.match(outreachSource, /function contactHistoryDetailLines/, "Outreach contact history should render provider, sender, and delivery details");
+assert.match(outreachSource, /meta\.delivery_error/, "Outreach contact history should show delivery errors from Gmail and WhatsApp attempts");
+assert.match(outreachSource, /Provider: \$\{meta\.provider\}/, "Outreach contact history should show which provider produced a touchpoint");
+assert.match(outreachSource, /function mergeContactHistoryRows/, "Outreach should merge contextual contact-history reloads without dropping global activity");
+assert.match(outreachSource, /fetchContactHistory\(\{ campaign_id: campaignId, limit: 1000 \}\)/, "Outreach should load selected campaign history beyond the global startup cap");
+assert.match(outreachSource, /fetchOutreachMessagesPage\(\{[\s\S]+campaign_id: campaignId,[\s\S]+limit: 1000,[\s\S]+archivedScope \? \{ status: "archived", include_archived: true \} : \{\}/, "Outreach should preserve backend message totals and has_more metadata while supporting archived campaign queues");
+assert.match(outreachSource, /Showing \$\{formatCount\(messages\.length\)\} of \$\{formatCount\(messagePageInfo\.total\)\} campaign messages/, "Outreach should disclose when the campaign message queue is partially loaded");
+assert.match(outreachSource, /selected\$\{scope\}/, "Outreach bulk selection copy should disclose when only loaded campaign rows are selected");
+assert.match(outreachSource, /from the loaded \$\{formatCount\(messages\.length\)\} of \$\{formatCount\(messagePageInfo\.total\)\} campaign messages/, "Outreach bulk actions should disclose partial campaign scope before mutating rows");
+assert.match(outreachSource, /const rows = selectedOutreachMessageRows\(\);[\s\S]+const ids = rows\.map\(\(row\) => row\.id\)\.filter\(Boolean\);[\s\S]+selectedMessageIds = new Set\(ids\);/, "Outreach bulk actions should discard stale selected ids that are no longer loaded in the active scope");
+assert.match(apiSource, /body\.action === "list_contact_history"[\s\S]*const requestedLimit = Number\(body\.limit\)[\s\S]*Math\.min\(Math\.max\(requestedLimit, 25\), 1000\)[\s\S]*query = query\.range\(offset, offset \+ limit - 1\)/, "Contact history API should support bounded paging for campaign/vendor timelines");
 assert.match(apiSource, /display_phone_number: cleanText\(data\.display_phone_number\)/, "WhatsApp connection test should return display phone number at top level");
 assert.match(apiSource, /quality_rating: cleanText\(data\.quality_rating\)/, "WhatsApp connection test should return quality rating at top level");
 assert.doesNotMatch(apiSource, /provider_response:\s*\{\s*id:\s*data\.id/, "WhatsApp connection test should not expose raw provider phone number id");
@@ -624,6 +703,11 @@ assert.match(rfxProcessSource, /let projectDetailLoadVersion = 0/, "RFx Process 
 assert.match(rfxProcessSource, /loadVersion !== projectLoadVersion/, "RFx Process should ignore stale project list responses");
 assert.match(rfxProcessSource, /loadVersion !== projectDetailLoadVersion \|\| state\.selectedId !== projectId/, "RFx Process should ignore stale project detail responses");
 assert.match(rfxProcessSource, /const projectId = project\.id/, "RFx Process actions should capture the initiating project");
+assert.match(rfxProcessSource, /let projectActionRunning = false;/, "RFx Process project actions should have a mutation guard");
+assert.match(rfxProcessSource, /async function handleProjectAction\(action, target\) \{[\s\S]+if \(projectActionRunning\) return;[\s\S]+const projectId = project\.id;[\s\S]+projectActionRunning = true;[\s\S]+if \(target\) target\.disabled = true;[\s\S]+finally \{[\s\S]+projectActionRunning = false;[\s\S]+if \(target\) target\.disabled = false;[\s\S]+\}/, "RFx Process project actions should reject duplicate clicks and restore the initiating button");
+assert.match(rfxProcessSource, /if \(state\.selectedId === projectId \|\| action === "archive-project"\) await loadProjects\(\);/, "RFx Process actions should not refresh over a different selected project");
+assert.match(rfxProcessSource, /let projectCreateRunning = false;/, "RFx Process project creation should have a submit guard");
+assert.match(rfxProcessSource, /createForm\?\.addEventListener\("submit"[\s\S]+if \(projectCreateRunning\) return;[\s\S]+projectCreateRunning = true;[\s\S]+if \(submitButton\) submitButton\.disabled = true;[\s\S]+finally \{[\s\S]+projectCreateRunning = false;[\s\S]+if \(submitButton\) submitButton\.disabled = false;[\s\S]+\}/, "RFx Process project creation should reject duplicate submits and restore the submit button");
 assert.match(customerRfiServiceSource, /fetchCustomerRfi/, "Customer RFI public service should expose public Customer RFI loading");
 assert.match(customerRfiServiceSource, /get_customer_rfi/, "Customer RFI public service should call the public API without Kinde");
 assert.doesNotMatch(customerRfiSource, /rfx-process-service/, "Customer RFI page should not import the internal authenticated RFx Process service");
@@ -679,6 +763,16 @@ assert.match(customerRfiSource, /submitCustomerRfi/, "Customer RFI UI should cal
 assert.match(customerRfiSource, /Completa salida, llegada, tipo de camion y volumen semanal/, "Customer RFI UI should validate only the essential RFI lane fields before final submission");
 assert.match(customerRfiSource, /validateFinalRfi/, "Customer RFI final validation should keep non-essential RFI fields as warnings");
 assert.match(customerRfiSource, /state\.submitted/, "Customer RFI UI should lock submitted responses");
+assert.match(customerRfiSource, /let rfiSaveRunning = false;/, "Customer RFI draft save should have a running guard");
+assert.match(customerRfiSource, /let rfiSubmitRunning = false;/, "Customer RFI final submit should have a running guard");
+assert.match(customerRfiSource, /let rfiSegmentTemplateRunning = false;/, "Customer RFI segment template actions should have a running guard");
+assert.match(customerRfiSource, /let rfiSegmentActionRunning = false;/, "Customer RFI segment actions should have a running guard");
+assert.match(customerRfiSource, /const busy = rfiSaveRunning \|\| rfiSubmitRunning \|\| rfiSegmentTemplateRunning \|\| rfiSegmentActionRunning;/, "Customer RFI readonly controls should respect in-flight actions");
+assert.match(customerRfiSource, /async function saveDraft\(\) \{[\s\S]+if \(rfiSaveRunning \|\| rfiSubmitRunning\) return;[\s\S]+rfiSaveRunning = true;[\s\S]+finally \{[\s\S]+rfiSaveRunning = false;[\s\S]+setReadonlyMode\(\);[\s\S]+\}/, "Customer RFI draft save should reject duplicate saves and restore controls");
+assert.match(customerRfiSource, /async function submitFinal\(\) \{[\s\S]+if \(rfiSubmitRunning \|\| rfiSaveRunning\) return;[\s\S]+rfiSubmitRunning = true;[\s\S]+finally \{[\s\S]+rfiSubmitRunning = false;[\s\S]+setReadonlyMode\(\);[\s\S]+\}/, "Customer RFI final submit should reject duplicate submits and restore controls");
+assert.match(customerRfiSource, /async function saveActiveSegment\(\{ asNew = false \} = \{\}\) \{[\s\S]+if \(rfiSegmentActionRunning\) return;[\s\S]+rfiSegmentActionRunning = true;[\s\S]+finally \{[\s\S]+rfiSegmentActionRunning = false;[\s\S]+setReadonlyMode\(\);[\s\S]+\}/, "Customer RFI segment save should reject duplicate segment mutations and restore controls");
+assert.match(customerRfiSource, /downloadSegmentTemplate\?\.addEventListener\("click"[\s\S]+if \(rfiSegmentTemplateRunning\) return;[\s\S]+rfiSegmentTemplateRunning = true;[\s\S]+finally \{[\s\S]+rfiSegmentTemplateRunning = false;[\s\S]+setReadonlyMode\(\);[\s\S]+\}/, "Customer RFI segment template download should reject duplicate downloads and restore controls");
+assert.match(customerRfiSource, /importSegmentTemplateFile\?\.addEventListener\("change"[\s\S]+if \(rfiSegmentTemplateRunning\)[\s\S]+rfiSegmentTemplateRunning = true;[\s\S]+finally \{[\s\S]+rfiSegmentTemplateRunning = false;[\s\S]+setReadonlyMode\(\);[\s\S]+event\.target\.value = "";[\s\S]+\}/, "Customer RFI segment template import should reject duplicate imports, clear file input, and restore controls");
 assert.doesNotMatch(apiSource, /frequency_missing/, "RFx Process demand readiness should not require non-template frequency fields as hard blockers");
 assert.doesNotMatch(apiSource, /crossborder_details_missing/, "RFx Process demand readiness should not require narrative crossborder details as hard blockers");
 assert.match(rfxProcessSource, /does not mutate the customer submission/, "RFx Process UI should explain that demand normalization does not mutate the submitted RFI");
@@ -722,13 +816,20 @@ assert.match(apiSource, /vendor\.segment\.create/, "Rateware API should audit pa
 assert.match(apiSource, /vendor\.segment\.update/, "Rateware API should audit participant template updates");
 assert.match(apiSource, /requestedSegmentType === "participant_template"/, "Rateware API should scope reusable participant templates to their owner");
 assert.match(rfxEventsSource, /function confirmBidRoomBulkAction/, "Bid Room should require human confirmation for shortlist and participant bulk actions");
+assert.match(rfxEventsSource, /function selectedVisibleLaneIds\(\)[\s\S]+visibleLanes\(\)[\s\S]+selectedLaneIds\.has\(lane\.id\)/, "Bid Room lane bulk actions should resolve selected lanes from the active visible lane scope");
+assert.match(rfxEventsSource, /function selectedVisibleInvitationIds\(\)[\s\S]+visibleLanes\(\)[\s\S]+selectedInvitationIds\.has\(invite\.id\)/, "Bid Room participant bulk actions should resolve selected vendors from the active visible lane scope");
 assert.match(rfxEventsSource, /confirmBidRoomBulkAction\("auto_shortlist", ids\)/, "Bid Room should confirm before auto-shortlisting selected lanes");
 assert.match(rfxEventsSource, /confirmBidRoomBulkAction\("mark_invited", ids\)/, "Bid Room should confirm before marking selected participants invited");
 assert.match(rfxEventsSource, /confirmBidRoomBulkAction\("archive_participants", ids\)/, "Bid Room should confirm before archiving selected participants");
+assert.match(rfxEventsSource, /autoShortlistButton\?\.addEventListener\("click", async \(\) => \{[\s\S]+const ids = selectedVisibleLaneIds\(\);/, "Bid Room auto-shortlist should ignore hidden stale selected lanes");
+assert.match(rfxEventsSource, /inviteSelectedButton\?\.addEventListener\("click", async \(\) => \{[\s\S]+const ids = selectedVisibleInvitationIds\(\);/, "Bid Room invite bulk action should ignore hidden stale selected participants");
+assert.match(rfxEventsSource, /archiveSelectedButton\?\.addEventListener\("click", async \(\) => \{[\s\S]+const ids = selectedVisibleInvitationIds\(\);/, "Bid Room archive bulk action should ignore hidden stale selected participants");
 assert.match(ratewareApiClientSource, /function apiErrorMessage/, "Rateware API client should normalize object error payloads before throwing");
 assert.doesNotMatch(ratewareApiClientSource, /new Error\(data\.error \|\| data\.message/, "Rateware API client should not throw raw object errors that render as [object Object]");
 assert.match(authSource, /return await kinde\.getAccessToken\?\.\(\)/, "Kinde auth should use the supported access-token API for normal authenticated requests");
 assert.match(authSource, /let kindeRefreshPromise/, "Kinde session restoration should be single-flight across concurrent bulk requests");
+assert.match(authSource, /let kindeReauthenticationPromise;/, "Kinde reauthentication should be single-flight across repeated sign-in clicks");
+assert.match(authSource, /if \(kindeReauthenticationPromise\) return kindeReauthenticationPromise;/, "Kinde reauthentication should reuse an in-flight login restart");
 assert.match(authSource, /kindePromise = null;[\s\S]+await getKindeClient\(\)/, "Kinde session restoration should reinitialize the PKCE client so checkAuth can renew the cached token");
 assert.match(authSource, /export async function authenticatedFetch/, "Authenticated requests should use one shared session-aware fetch executor");
 assert.match(authSource, /response\.status !== 401[\s\S]+forceRefresh: true[\s\S]+fetch\(input, withBearerToken\(init, freshToken\)\)/, "Authenticated fetch should retry one unauthorized request after session restoration");
@@ -737,11 +838,47 @@ assert.match(authSource, /app_state: \{ returnTo \}/, "Kinde reauthentication sh
 assert.match(authSource, /async function hasUsableKindeSession\(\)/, "The shell should distinguish a usable Kinde token from stale local authentication state");
 assert.match(authSource, /locallyAuthenticated && await hasUsableKindeSession\(\)/, "The shell should not render a stale Kinde session as an authenticated user");
 assert.match(authSource, /kindePromise = null;[\s\S]+await kinde\.login\(\{ app_state: \{ returnTo \} \}\)/, "Reauthentication should recreate the Kinde client before restarting OAuth");
+assert.match(authSource, /let authControlActionRunning = false;/, "Auth controls should block duplicate sign-in and sign-out clicks");
+assert.match(authSource, /if \(authControlActionRunning\) return;[\s\S]+authButton\.disabled = true;[\s\S]+await reauthenticateKinde\(\)/, "Sign-in control should serialize reauthentication");
+assert.match(authSource, /authButton\.textContent = "Opening sign-in\.\.\."/, "Sign-in control should show an in-progress state");
+assert.match(landingSource, /heroButton\.textContent = "Opening sign-in\.\.\."/, "Landing sign-in should show an in-progress state");
+assert.match(authSource, /if \(authControlActionRunning\) return;[\s\S]+signOutButton\.disabled = true;[\s\S]+await kinde\.logout\(\)/, "Sign-out control should serialize logout");
+assert.doesNotMatch(authSource, /setStatus\(error\.message\)/, "Auth controls should pass caught errors through shared humanization");
 assert.match(authSource, /showSessionRecovery\(\);\s*throw error;/, "Protected modules should expose session recovery rather than continuing with an expired token");
+assert.doesNotMatch(readFileSync(new URL("../index.html", import.meta.url), "utf8"), /Open SaaS dashboard/, "Landing should not offer a redundant unauthenticated dashboard link");
+for (const page of [
+  "app.html",
+  "business-intelligence.html",
+  "catalog-workbench.html",
+  "interpretation-memory.html",
+  "outreach.html",
+  "rateware.html",
+  "rfx-process.html",
+  "settings.html",
+  "shipper-crm.html",
+  "rfx-events.html",
+  "staging-review.html",
+  "upload-history.html",
+  "upload-center.html",
+  "vendors.html",
+  "vendor-support.html",
+  "vendor-improvement.html"
+]) {
+  assert.doesNotMatch(readFileSync(new URL(`../${page}`, import.meta.url), "utf8"), /Sign in with Kinde/, `${page} should keep provider branding out of the login CTA`);
+}
+for (const [source, label] of [
+  [catalogWorkbenchSource, "Catalog"],
+  [outreachSource, "Outreach"],
+  [rfxEventsSource, "Bid Room"]
+]) {
+  assert.match(source, /requirePrivatePage\(\)\.then\([\s\S]+\.catch\(\(\) => \{\}\);/, `${label} should absorb the expected unauthenticated redirect rejection`);
+}
 assert.match(supabaseConfigSource, /\[functions\.rateware-api\]\s*verify_jwt\s*=\s*false/, "Rateware API must bypass Supabase gateway JWT verification so its Kinde RS256 verifier can authenticate requests");
 assert.match(apiSource, /requireKindeUser\(request\)/, "Rateware API must authenticate every request with the custom Kinde verifier when gateway JWT verification is disabled");
 assert.match(ratewareApiClientSource, /import \{ authenticatedFetch \} from "\.\/auth\.js"/, "Rateware API calls should use the shared authenticated request executor");
 assert.doesNotMatch(ratewareApiClientSource, /getKindeToken|response\.status === 401/, "Rateware API calls should not duplicate token refresh and retry logic");
+assert.doesNotMatch(ratewareApiClientSource, /JSON\.stringify\(value\)/, "Rateware API client should not render opaque backend objects as raw JSON errors");
+assert.match(ratewareApiClientSource, /value\.reason \|\| value\.description \|\| value\.detail/, "Rateware API client should extract readable backend error fields before falling back");
 assert.match(apiSource, /function errorMessage\(value: unknown/, "Rateware API should reduce nested provider errors to readable text");
 assert.doesNotMatch(apiSource, /error instanceof Error \? error\.message : String\(error\)/, "Rateware API should not serialize caught objects as [object Object]");
 assert.match(apiSource, /safeOperationalError\(error\)/, "Rateware API should sanitize caught provider errors before returning or logging them");
@@ -759,8 +896,10 @@ assert.match(errorCopySource, /lower === "bad request"/, "Human error copy shoul
 assert.match(errorCopySource, /export function apiErrorMessage/, "Shared UI modules should use a common API error formatter");
 assert.match(stagingReviewSource, /import \{ humanizeError \} from "\.\/error-copy\.js"/, "Staging should use shared human error copy");
 assert.match(stagingReviewSource, /tone === "error" \? humanizeError\(message\) : message/, "Staging status messages should humanize user-facing errors");
+assert.doesNotMatch(stagingReviewSource, /error\.message/, "Staging should not pass raw caught error messages to visible status UI");
 assert.match(ratewareSource, /import \{ humanizeError \} from "\.\/error-copy\.js"/, "Rateware should use shared human error copy");
 assert.match(ratewareSource, /tone === "error" \? humanizeError\(message\) : message/, "Rateware status messages should humanize user-facing errors");
+assert.doesNotMatch(ratewareSource, /error\.message/, "Rateware should not pass raw caught error messages to visible status UI");
 assert.match(vendorSupportSource, /tone === "error" \? humanizeError\(message\) : message/, "Vendor Support should humanize user-facing errors");
 assert.match(bidRoomBoardSource, /import \{ apiErrorMessage, humanizeError \} from "\.\/error-copy\.js"/, "Public Bid Room board should use shared human error copy");
 assert.doesNotMatch(bidRoomBoardSource, /error\.message \|\| "Could/, "Public Bid Room board should not expose raw caught errors to carriers");
@@ -768,11 +907,42 @@ assert.match(carrierProfileSource, /import \{ apiErrorMessage, humanizeError \} 
 assert.doesNotMatch(carrierProfileSource, /saveStatus\.textContent = error\.message/, "Carrier profile portal should not expose raw save errors");
 assert.match(catalogWorkbenchSource, /import \{ humanizeError \} from "\.\/error-copy\.js"/, "Catalog workbench should use shared human error copy");
 assert.match(catalogWorkbenchSource, /tone === "error" \? humanizeError\(message\) : message/, "Catalog workbench status messages should humanize user-facing errors");
+assert.doesNotMatch(catalogWorkbenchSource, /error\.message/, "Catalog workbench should not pass raw caught error messages to import, operational catalog, or location catalog status UI");
 assert.match(locationMatchDrawerSource, /import \{ humanizeError \} from "\.\/error-copy\.js"/, "Location match drawer should use shared human error copy");
 assert.doesNotMatch(locationMatchDrawerSource, /setMessage\?\.\(error\.message/, "Location match drawer should not expose raw alias-save errors");
+assert.doesNotMatch(uploadCenterSource, /vendorSelect\.title = error\.message/, "Upload Center vendor dropdown tooltip should not expose raw load errors");
+assert.doesNotMatch(vendorsSource, /\.title = error\.message/, "Carrier CRM button tooltips should not expose raw backend errors");
+assert.doesNotMatch(vendorsSource, /error\.message/, "Carrier CRM should not pass raw caught error messages to funnel, import, drawer, intelligence, match, or bulk status UI");
 assert.match(settingsSource, /import \{ humanizeError \} from "\.\/error-copy\.js"/, "Settings should use shared human error copy");
 assert.match(settingsSource, /tone === "error" \? humanizeError\(message\) : message/, "Settings status messages should humanize integration and catalog errors");
+assert.doesNotMatch(settingsSource, /error\.message/, "Settings should not pass raw caught error messages to integration, catalog, profile, or organization status UI");
 assert.doesNotMatch(settingsSource, /button\.textContent = error\.message/, "Settings onboarding actions should not replace button labels with raw errors");
+assert.match(settingsSource, /let gmailIntegrationActionRunning = false;/, "Settings Gmail actions should have a running guard");
+assert.match(settingsSource, /syncGmailBouncesButton\.disabled = gmailIntegrationActionRunning \|\| !connected \|\| !canReadDeliveryFailures/, "Settings Gmail bounce sync should stay disabled while running");
+assert.match(settingsSource, /syncGmailBouncesButton\?\.addEventListener\("click"[\s\S]+if \(gmailIntegrationActionRunning\) return;[\s\S]+gmailIntegrationActionRunning = true;[\s\S]+finally \{[\s\S]+gmailIntegrationActionRunning = false;[\s\S]+renderGmailConnections\(currentSettings\?\.gmail\);[\s\S]+\}/, "Settings Gmail bounce sync should ignore duplicate clicks and restore through renderer");
+assert.match(settingsSource, /let googleChatIntegrationActionRunning = false;/, "Settings Google Chat actions should have a running guard");
+assert.match(settingsSource, /saveGoogleChatSpaceButton\.disabled = googleChatIntegrationActionRunning \|\| !connected \|\| !hasGoogleChatSpaceCandidate\(\)/, "Settings Google Chat Space save should stay disabled while running");
+assert.match(settingsSource, /retryGoogleChatSyncButton\?\.addEventListener\("click"[\s\S]+if \(googleChatIntegrationActionRunning\) return;[\s\S]+googleChatIntegrationActionRunning = true;[\s\S]+finally \{[\s\S]+googleChatIntegrationActionRunning = false;[\s\S]+retryGoogleChatSyncButton\.disabled = false;[\s\S]+\}/, "Settings Google Chat retry should ignore duplicate clicks and restore button state");
+assert.match(settingsSource, /saveGoogleChatSpaceButton\?\.addEventListener\("click"[\s\S]+if \(googleChatIntegrationActionRunning\) return;[\s\S]+googleChatIntegrationActionRunning = true;[\s\S]+finally \{[\s\S]+googleChatIntegrationActionRunning = false;[\s\S]+updateGoogleChatSpaceSaveState\(false\);[\s\S]+\}/, "Settings Google Chat Space save should ignore duplicate clicks and restore save state");
+assert.match(settingsSource, /let whatsappIntegrationActionRunning = false;/, "Settings WhatsApp actions should have a running guard");
+assert.match(settingsSource, /testWhatsappButton\.disabled = whatsappIntegrationActionRunning \|\| !configured/, "Settings WhatsApp test should stay disabled while integration actions run");
+assert.match(settingsSource, /syncWhatsappTemplatesButton\.disabled = whatsappIntegrationActionRunning \|\| !connected/, "Settings WhatsApp template sync should stay disabled while integration actions run");
+assert.match(settingsSource, /verifyWhatsappWebhookButton\.disabled = whatsappIntegrationActionRunning \|\| !configured/, "Settings WhatsApp webhook verification should stay disabled while integration actions run");
+for (const handlerName of [
+  "whatsappManualForm?.addEventListener(\"submit\"",
+  "disconnectWhatsappButton?.addEventListener(\"click\"",
+  "testWhatsappButton?.addEventListener(\"click\"",
+  "syncWhatsappTemplatesButton?.addEventListener(\"click\"",
+  "verifyWhatsappWebhookButton?.addEventListener(\"click\""
+]) {
+  const start = settingsSource.indexOf(handlerName);
+  const end = settingsSource.indexOf("\n\n", start + 1);
+  const handlerSource = settingsSource.slice(start, end > start ? end : undefined);
+  assert.ok(start >= 0, `${handlerName} handler should exist`);
+  assert.match(handlerSource, /if \(whatsappIntegrationActionRunning\) return;/, `${handlerName} should ignore duplicate WhatsApp integration actions`);
+  assert.match(handlerSource, /whatsappIntegrationActionRunning = true;/, `${handlerName} should lock WhatsApp integration actions before mutating`);
+  assert.match(handlerSource, /finally \{[\s\S]+whatsappIntegrationActionRunning = false;/, `${handlerName} should restore WhatsApp integration guard after completion`);
+}
 for (const [label, source] of [
   ["Upload service", uploadServiceSource],
   ["Catalog service", catalogServiceSource],
@@ -789,6 +959,189 @@ assert.match(rfxEventsSource, /Draft queue could not be generated/, "Bid Room St
 assert.match(ratewareApiClientSource, /HTTP \$\{response\.status\}: \$\{apiErrorMessage\(data, text, response\.status\)\}/, "Rateware API client should preserve HTTP status for accurate session error handling");
 assert.match(errorCopySource, /lower\.includes\("invalid bearer token"\)/, "Shared error copy should reserve session messaging for explicit authentication errors");
 assert.doesNotMatch(errorCopySource, /lower\.includes\("unauthorized"\)/, "Shared error copy should not classify arbitrary unauthorized text as a session failure");
+assert.match(ratewareSource, /function displayValue\(value, fallback = "-"\)/, "Rateware drawers should normalize structured values before rendering");
+assert.match(ratewareSource, /function laneEndpointLabel\(row, prefix\)/, "Rateware lane labels should use explicit row locations before normalized fallback values");
+assert.match(ratewareSource, /escapeHtml\(displayValue\(value\)\)/, "Rateware detail fields should not render objects as [object Object]");
+assert.match(vendorsSource, /const tone = score === 0 \? "neutral" : score >= 70 \? "strong" : score >= 35 \? "medium" : "weak";/, "Vendor health should keep zero-state profiles neutral");
+assert.match(vendorsSource, /const health = combinedVendorHealth\(row\);[\s\S]*score-pill \$\{escapeHtml\(health\.tone\)\}/, "Vendor Intelligence should use the shared health tone calculation");
+assert.match(vendorsSource, /import \{ installSpreadsheetGrid \} from "\.\/spreadsheet-grid\.js"/, "Carrier CRM should use the shared spreadsheet interaction engine");
+assert.match(vendorsSource, /querySelectorAll\("\[data-vendor-tab\]"\)/, "Carrier CRM primary and secondary navigation should share one tab controller");
+assert.match(vendorsHtml, /<strong>Directory<\/strong>/, "Carrier CRM should label the primary spreadsheet view as Directory");
+assert.match(vendorsHtml, /class="vendor-secondary-tools"[\s\S]+Vendor Match/, "Carrier CRM should keep Vendor Match under secondary tools instead of the primary navigation");
+assert.match(vendorsHtml, /class="vendor-directory-filter-drawer"[\s\S]+id="vendor-status-filter"[\s\S]+id="vendor-channel-filter"/, "Carrier CRM should keep secondary filters in one collapsible command surface");
+assert.match(stylesSource, /\.vendor-directory-filter-drawer > summary/, "Carrier CRM filter drawer should have a compact summary control");
+assert.match(stylesSource, /\.vendor-directory-filter-grid \{[\s\S]+grid-template-columns: repeat\(4, minmax\(130px, 1fr\)\) auto/, "Carrier CRM filter drawer should keep secondary filters on one compact desktop row");
+assert.doesNotMatch(rfxEventsHtml, /class="bid-room-readiness-disclosure bid-room-side-checklist" open/, "Bid Room diagnostics should stay secondary and collapsed by default");
+assert.match(stylesSource, /\.bid-room-flow-shell \.bid-room-stage-rail \{[\s\S]*?grid-template-columns: repeat\(4, minmax\(0, 1fr\)\)/, "Bid Room stage rail should use all four operating columns");
+assert.match(stylesSource, /\.bid-room-stage-header > div > \.eyebrow \{[\s\S]*?display: none/, "Bid Room panels should not repeat the stage kicker below the main rail");
+assert.match(uploadHistorySource, /function primaryUploadActionKey\(row\)/, "Upload History should define one primary action per source row");
+assert.match(uploadHistorySource, /primaryAction === "bulk-import"|primaryAction === "interpret"|primaryAction === "rows"/, "Upload History secondary actions should avoid repeating the row primary action");
+assert.match(businessIntelligenceHtml, /class="bi-filter-disclosure"[\s\S]+id="bi-filter-crossborder"/, "Analyze advanced filters should be available behind one compact disclosure");
+assert.match(stylesSource, /\.bi-filter-disclosure > summary/, "Analyze advanced filters should use a compact disclosure control");
+assert.match(businessIntelligenceHtml, /data-bi-view-panel="copilot" hidden/, "Analyze should hide non-default Copilot panels before JavaScript initializes");
+assert.match(businessIntelligenceHtml, /data-bi-view-panel="pivots" hidden/, "Analyze should hide the Pivot panel before JavaScript initializes");
+assert.match(businessIntelligenceHtml, /data-bi-view-panel="ranking" hidden/, "Analyze should hide Ranking panels before JavaScript initializes");
+assert.match(catalogWorkbenchHtml, /data-workbench-view-panel="operational" hidden/, "Catalog should hide non-default operational panels before JavaScript initializes");
+assert.match(catalogWorkbenchHtml, /data-workbench-view-panel="locations" hidden/, "Catalog should hide location panels before JavaScript initializes");
+assert.match(catalogWorkbenchHtml, /data-workbench-view-panel="matching" hidden/, "Catalog should hide matching panels before JavaScript initializes");
+assert.match(outreachHtml, /data-workbench-view-panel="dashboard" hidden/, "Outreach should hide the redundant dashboard panel before JavaScript initializes");
+assert.match(outreachHtml, /data-workbench-view-panel="templates" hidden/, "Outreach should hide templates while Campaigns is the default view");
+assert.match(outreachHtml, /data-workbench-view-panel="drafts" hidden/, "Outreach should hide Draft Queue while Campaigns is the default view");
+assert.match(outreachHtml, /data-workbench-view-panel="history" hidden/, "Outreach should hide Contact History while Campaigns is the default view");
+assert.match(catalogWorkbenchHtml, /data-workbench-view-panel="matching"[\s\S]+class="review-insight-grid catalog-match-summary"/, "Catalog match metrics should stay inside Match Review");
+assert.match(stylesSource, /\.catalog-match-summary/, "Catalog match metrics should have local compact spacing");
+assert.match(catalogWorkbenchSource, /import \{ tableErrorState, tableLoadingState, tableState \} from "\.\/ui-state\.js"/, "Catalog Workbench should use shared table state helpers");
+assert.match(catalogWorkbenchSource, /tableLoadingState\(7,/, "Catalog Workbench should show a compact loading state while matching loads");
+assert.match(catalogWorkbenchSource, /tableErrorState\(7, error, \{[\s\S]+retryAction: "load-catalog-workbench"/, "Catalog Workbench should provide a real retry action after matching errors");
+assert.match(catalogWorkbenchSource, /tableState\(6, \{[\s\S]+No catalog values found/, "Operational catalog empty states should explain the next action");
+assert.match(catalogWorkbenchSource, /data-retry-action='load-catalog-workbench'/, "Catalog Workbench should handle its retry action");
+assert.match(catalogWorkbenchSource, /const workbenchTabs = initWorkbenchTabs\(\{ defaultView: "import" \}\)/, "Catalog Workbench should keep the active view available for lazy loading");
+assert.match(catalogWorkbenchSource, /const initialView = workbenchTabs\?\.current\(\) \|\| "import";[\s\S]+if \(initialView === "matching"\) loadWorkbench\(\)/, "Catalog Workbench should only load the heavy match dataset when Match Review is active");
+assert.match(catalogWorkbenchSource, /data-workbench-view-button='matching'[\s\S]+if \(!catalogWorkbenchLoaded\) loadWorkbench/, "Catalog Workbench should load the heavy match dataset when the user opens Match Review");
+assert.match(catalogWorkbenchSource, /if \(catalogWorkbenchLoading\) return;/, "Catalog Workbench should ignore duplicate heavy-load requests");
+assert.match(catalogWorkbenchSource, /async function loadAdminCatalogs\(\{ all = false \} = \{\}\)/, "Catalog admin data should support view-aware loading");
+assert.match(catalogWorkbenchSource, /if \(all \|\| activeView === "operational"\) requests\.push\(loadCatalogValues\(\)\)/, "Operational dropdown values should load only when needed");
+assert.match(catalogWorkbenchSource, /if \(all \|\| activeView === "locations"\) requests\.push\(loadLocationCatalogValues\(\)\)/, "Location catalog values should load only when needed");
+assert.match(catalogWorkbenchSource, /const catalogValuesRequests = new Map\(\)/, "Catalog value loading should coalesce duplicate requests");
+assert.match(catalogWorkbenchSource, /const locationCatalogValuesRequests = new Map\(\)/, "Location catalog loading should coalesce duplicate requests");
+assert.match(catalogWorkbenchSource, /const existingRequest = catalogValuesRequests\.get\(category\)/, "Catalog value loading should reuse an in-flight request for the same category");
+assert.match(catalogWorkbenchSource, /const existingRequest = locationCatalogValuesRequests\.get\(key\)/, "Location catalog loading should reuse an in-flight request for the same filter set");
+assert.match(catalogWorkbenchSource, /const CATALOG_CACHE_TTL_MS = 30_000/, "Catalog cache should have a short freshness window");
+assert.match(catalogWorkbenchSource, /function invalidateCatalogCaches\(\)/, "Catalog mutations should have an explicit cache invalidation path");
+assert.match(catalogWorkbenchSource, /let catalogImportRunning = false;/, "Catalog import should track a shared import mutation guard");
+assert.match(catalogWorkbenchSource, /async function confirmCatalogImport\(\) \{[\s\S]+if \(catalogImportRunning\) return;[\s\S]+catalogImportRunning = true;[\s\S]+finally \{[\s\S]+catalogImportRunning = false;[\s\S]+confirmCatalogImportButton\.disabled = !catalogImportPreviewRows\.some/, "Catalog import should reject duplicate submissions and restore controls deterministically");
+assert.match(catalogWorkbenchSource, /let catalogSyncRunning = false;/, "Catalog sync should track a shared mutation guard");
+assert.match(catalogWorkbenchSource, /async function syncCatalog\(\) \{[\s\S]+if \(catalogSyncRunning\) return;[\s\S]+catalogSyncRunning = true;[\s\S]+finally \{[\s\S]+catalogSyncRunning = false;[\s\S]+syncButton\.disabled = false;/, "Catalog sync should reject duplicate submissions and restore controls deterministically");
+assert.match(catalogWorkbenchSource, /let catalogValueMutationRunning = false;/, "Operational catalog values should have a mutation guard");
+assert.match(catalogWorkbenchSource, /let locationCatalogMutationRunning = false;/, "Location catalog values should have a mutation guard");
+assert.match(catalogWorkbenchSource, /catalogValueForm\?\.addEventListener\("submit", async \(event\) => \{[\s\S]+if \(catalogValueMutationRunning\) return;[\s\S]+catalogValueMutationRunning = true;[\s\S]+finally \{[\s\S]+catalogValueMutationRunning = false;/, "Operational catalog save should reject duplicate submissions and restore controls");
+assert.match(catalogWorkbenchSource, /catalogValuesBody\?\.addEventListener\("click", async \(event\) => \{[\s\S]+if \(catalogValueMutationRunning\) return;[\s\S]+archiveCatalogValue[\s\S]+finally \{[\s\S]+catalogValueMutationRunning = false;/, "Operational catalog archive should reject duplicate submissions and restore controls");
+assert.match(catalogWorkbenchSource, /locationCatalogForm\?\.addEventListener\("submit", async \(event\) => \{[\s\S]+if \(locationCatalogMutationRunning\) return;[\s\S]+locationCatalogMutationRunning = true;[\s\S]+finally \{[\s\S]+locationCatalogMutationRunning = false;/, "Location catalog save should reject duplicate submissions and restore controls");
+assert.match(catalogWorkbenchSource, /locationCatalogBody\?\.addEventListener\("click", async \(event\) => \{[\s\S]+if \(locationCatalogMutationRunning\) return;[\s\S]+archiveLocationCatalogValue[\s\S]+finally \{[\s\S]+locationCatalogMutationRunning = false;/, "Location catalog archive should reject duplicate submissions and restore controls");
+assert.match(catalogWorkbenchSource, /const catalogMatchMutationKeys = new Set\(\);/, "Catalog Workbench match actions should guard duplicate updates per gap");
+assert.match(catalogWorkbenchSource, /async function applyCatalogMatch\(tableRow,[\s\S]+const mutationKey = Number\.isFinite\(index\) \? String\(index\) : "";[\s\S]+catalogMatchMutationKeys\.has\(mutationKey\)/, "Catalog Workbench match actions should ignore duplicate submits for the same gap");
+assert.match(catalogWorkbenchSource, /catalogMatchMutationKeys\.add\(mutationKey\);[\s\S]+querySelectorAll\("\[data-apply-catalog-match\], \[data-apply-catalog-alias\], \[data-catalog-suggestion\]"\)[\s\S]+finally \{[\s\S]+catalogMatchMutationKeys\.delete\(mutationKey\)/, "Catalog Workbench match actions should disable and restore per-gap controls");
+assert.match(catalogWorkbenchHtml, /class="ui-state ui-state-loading"[\s\S]+Loading catalog values/, "Catalog values should start with a compact loading state");
+assert.match(ratewareHtml, /class="ui-state ui-state-loading"[\s\S]+Loading approved rates/, "Rateware should start with a compact loading state");
+assert.match(stagingReviewHtml, /class="ui-state ui-state-loading"[\s\S]+Loading staging rows/, "Staging Review should start with a compact loading state");
+assert.match(stylesSource, /\.ui-state-row > td > \.ui-state/, "Table states should use compact spacing inside operational grids");
+assert.match(uploadHistoryHtml, /class="ui-state ui-state-loading"[\s\S]+Loading upload history/, "Upload History should start with a compact loading state");
+assert.match(rfxEventsHtml, /id="rfx-event-list"[\s\S]+class="ui-state ui-state-loading"[\s\S]+Loading bid events/, "Bid Room event list should start with a clear loading state");
+assert.match(rfxEventsHtml, /id="manual-shortlist-vendor-list"[\s\S]+class="ui-state ui-state-loading"[\s\S]+Loading Carrier CRM/, "Bid Room carrier search should start with a clear loading state");
+assert.match(rfxEventsHtml, /id="rfx-live-offer-manager"[\s\S]+class="ui-state"[\s\S]+No live bids yet/, "Bid Room auction should explain its empty state");
+assert.match(stylesSource, /\.rfx-event-list > \.ui-state/, "Bid Room empty and loading states should stay compact");
+assert.match(appHtml, /id="priority-queue"[\s\S]+class="ui-state ui-state-loading"[\s\S]+Loading priorities/, "Command Center should start with a clear compact loading state");
+assert.match(businessIntelligenceHtml, /No route density yet[\s\S]+Run the geo density view to map/, "Analyze density should explain how to populate an empty map");
+assert.match(businessIntelligenceHtml, /No actions proposed[\s\S]+Ask the analyst a commercial question/, "AI Analyst empty actions should explain the next step");
+assert.match(businessIntelligenceHtml, /Pivot not built[\s\S]+Choose dimensions, filters and a metric/, "Analyze pivot empty state should explain how to build it");
+assert.match(businessIntelligenceHtml, /No carrier ranking yet[\s\S]+Run a recommendation template/, "Analyze ranking empty state should explain how to run it");
+assert.match(rfxEventsHtml, /id="rfx-chat-signal-queue"[\s\S]+No communication signals yet/, "Bid Room signals should explain when they appear");
+assert.match(rfxEventsHtml, /id="rfx-chat-thread-list"[\s\S]+Select a bid event/, "Bid Room threads should explain their required context");
+assert.match(stylesSource, /\.priority-queue > \.ui-state[\s\S]+\.bid-room-chat-thread-list > \.ui-state/, "Command Center and chat states should share compact spacing");
+assert.match(rfxEventsSource, /let carrierWorkspaceLoadPromise = null;/, "Bid Room should track deferred carrier workspace loading");
+assert.match(rfxEventsSource, /function loadCarrierWorkspaceData\(\)[\s\S]+loadVendorOptions\(\)[\s\S]+loadVendorSegments\(\)/, "Bid Room should load CRM carriers and segments as one deferred request");
+assert.match(rfxEventsSource, /const initialView = rfxWorkbench\?\.current\(\) \|\| "setup";[\s\S]+if \(initialView === "carriers"\) loadCarrierWorkspaceData\(\)/, "Bid Room should avoid carrier CRM loading on the default Event view");
+assert.match(rfxEventsSource, /data-workbench-view-button='carriers'[\s\S]+loadCarrierWorkspaceData\(\)/, "Bid Room should load carrier CRM when Participants is opened");
+assert.match(rfxEventsSource, /data-workbench-view-button='outreach'[\s\S]+loadOutreachAssets\(\)[\s\S]+loadWhatsappConnectionReadiness\(\)/, "Bid Room should defer outreach assets and WhatsApp readiness until Outreach is opened");
+assert.match(vendorsSource, /let vendorSegmentsLoaded = false;[\s\S]+let vendorSegmentsLoadPromise = null;/, "Carrier CRM should track deferred segment loading");
+assert.match(vendorsSource, /function ensureVendorSegmentsLoaded\(\)[\s\S]+vendorSegmentsLoadPromise = loadSegments\(\)/, "Carrier CRM should coalesce segment loads when Segments is opened");
+assert.match(vendorsSource, /let vendorDirectoryLoadRequest = null;/, "Carrier CRM should track an in-flight directory request");
+assert.match(vendorsSource, /function vendorDirectoryQuery\(\)[\s\S]+function loadVendors\(\{ force = false \} = \{\}\)[\s\S]+vendorDirectoryLoadRequest\?\.key === requestKey/, "Carrier CRM should reuse identical in-flight directory requests");
+assert.match(vendorsSource, /refreshButton\.addEventListener\("click", \(\) => loadVendors\(\{ force: true \}\)\)/, "Carrier CRM refresh should bypass the in-flight request cache");
+assert.match(vendorsSource, /let vendorFunnelLoadRequest = null;/, "Carrier CRM should track an in-flight funnel request");
+assert.match(vendorsSource, /async function loadVendorFunnel\(\{ force = false \} = \{\}\)[\s\S]+vendorFunnelLoadRequest\)[\s\S]+function loadVendorFunnelRequest\(\)/, "Carrier CRM should reuse identical in-flight funnel requests");
+assert.match(vendorsSource, /refreshVendorFunnelButton\?\.addEventListener\("click", \(\) => loadVendorFunnel\(\{ force: true \}\)\)/, "Carrier CRM funnel refresh should bypass the in-flight request cache");
+assert.match(vendorsSource, /let vendorIntelligenceLoadRequest = null;/, "Carrier CRM should track an in-flight intelligence request");
+assert.match(vendorsSource, /let vendorIntelligenceStale = false;/, "Carrier CRM should track derived intelligence freshness");
+assert.match(vendorsSource, /async function loadVendorIntelligence\(options = \{\}\)[\s\S]+requestKey = JSON\.stringify\(\{ append, offset, search \}\)[\s\S]+function loadVendorIntelligenceRequest\(\{ append, search, offset \}\)/, "Carrier Intelligence should reuse identical in-flight searches without breaking pagination");
+assert.match(vendorsSource, /if \(tabName === "intelligence" && \(!vendorIntelligenceRows\.length \|\| vendorIntelligenceStale\)\) loadVendorIntelligence\(\)/, "Carrier Intelligence should refresh after a vendor mutation when its derived data is stale");
+assert.match(vendorsSource, /refreshVendorIntelligenceButton\?\.addEventListener\("click", \(\) => loadVendorIntelligence\(\{ force: true \}\)\)/, "Carrier Intelligence refresh should bypass the in-flight request cache");
+assert.match(vendorsSource, /let vendorMatchLoadRequest = null;/, "Carrier CRM should track an in-flight vendor match analysis");
+assert.match(vendorsSource, /async function analyzeVendorMatchQueue\(\{ force = false \} = \{\}\)[\s\S]+vendorMatchLoadRequest\)[\s\S]+function analyzeVendorMatchQueueRequest\(\)/, "Vendor matching should reuse identical in-flight scans");
+assert.match(vendorsSource, /refreshVendorMatchButton\?\.addEventListener\("click", \(\) => analyzeVendorMatchQueue\(\{ force: true \}\)\)/, "Vendor matching refresh should bypass the in-flight request cache");
+assert.match(vendorsSource, /vendorIntelligenceStale = true;[\s\S]+vendorMatchLoaded = false;/, "Vendor edits should invalidate derived intelligence and match results");
+assert.match(vendorsSource, /const vendorDrawerSupportRequests = new Map\(\);[\s\S]+const vendorDrawerRelationshipRequests = new Map\(\);/, "Carrier drawer should track per-vendor support and relationship requests");
+assert.match(vendorsSource, /function requestDrawerVendorSupport\(vendorId\)[\s\S]+vendorDrawerSupportRequests\.has\(vendorId\)[\s\S]+fetchVendorSupportTickets/, "Carrier drawer should coalesce support requests for the same vendor");
+assert.match(vendorsSource, /function requestDrawerVendorRelationship\(vendorId\)[\s\S]+vendorDrawerRelationshipRequests\.has\(vendorId\)[\s\S]+fetchVendorRelationshipActivity/, "Carrier drawer should coalesce relationship requests for the same vendor");
+assert.match(vendorsSource, /if \(tabName === "segments"\)[\s\S]+ensureVendorSegmentsLoaded\(\)/, "Carrier CRM should load segments only when the Segments view opens");
+assert.match(vendorsSource, /if \(tabName === "duplicates" && !allVendors\.length\)[\s\S]+loadVendors\(\)\.then\(\(\) => renderDuplicateReview\(\)\)/, "Carrier CRM should load the duplicate source rows on demand");
+assert.match(vendorsSource, /if \(isVendorBaseTab\(tabName\) && \(previousTab !== tabName \|\| !allVendors\.length\)\) loadVendors\(\)/, "Carrier CRM should avoid reloading the same directory tab without a filter change");
+assert.doesNotMatch(vendorsSource, /renderVendorSavedViews\(""\);[\s\S]+activateVendorTab\(activeVendorTab\);[\s\S]+loadSegments\(\);[\s\S]+loadVendors\(\);/, "Carrier CRM should not eagerly load segments and vendors after tab activation");
+assert.match(vendorsSource, /function saveVendorGridRow\(row\)/, "Carrier CRM should persist pasted and filled spreadsheet rows");
+assert.match(vendorsSource, /rowSelector: "\[data-vendor-row-id\]"/, "Carrier CRM spreadsheet should target vendor rows");
+assert.match(vendorsSource, /cellSelector: "\[data-vendor-cell\]"/, "Carrier CRM spreadsheet should target editable vendor cells");
+assert.match(vendorsSource, /function selectedVisibleVendorIds\(\)[\s\S]+selectedVisibleVendorRows\(\)\.map\(\(vendor\) => vendor\.id\)\.filter\(Boolean\)/, "Carrier CRM bulk actions should resolve selected ids from the active visible vendor scope");
+assert.match(vendorsSource, /bulkButton\.addEventListener\("click", async \(\) => \{[\s\S]+const ids = selectedVisibleVendorIds\(\);/, "Carrier CRM generic bulk update should ignore hidden stale selections");
+assert.match(vendorsSource, /async function runBulkBaseAction\(baseStage, label\) \{[\s\S]+const ids = selectedVisibleVendorIds\(\);/, "Carrier CRM base-stage bulk actions should ignore hidden stale selections");
+assert.match(vendorsSource, /bulkRemoveVendorsButton\?\.addEventListener\("click", async \(\) => \{[\s\S]+const ids = selectedVisibleVendorIds\(\);/, "Carrier CRM destructive remove should ignore hidden stale selections");
+assert.match(vendorsSource, /let vendorBulkActionRunning = false;/, "Carrier CRM bulk toolbar should share a mutation guard");
+assert.match(vendorsSource, /const mutationRunning = vendorBulkActionRunning;/, "Carrier CRM bulk toolbar controls should read the shared mutation guard");
+assert.match(vendorsSource, /bulkProcurementButton\.disabled = mutationRunning \|\| visibleSelectedCount === 0/, "Carrier CRM procurement bulk action should disable while a bulk mutation is running");
+assert.match(vendorsSource, /bulkArchiveVendorsButton\.disabled = mutationRunning \|\| visibleSelectedCount === 0 \|\| activeBaseStage === "archived"/, "Carrier CRM archive bulk action should disable while a bulk mutation is running");
+assert.match(vendorsSource, /bulkButton\.addEventListener\("click", async \(\) => \{[\s\S]+if \(vendorBulkActionRunning\) return;[\s\S]+vendorBulkActionRunning = true;[\s\S]+finally \{[\s\S]+vendorBulkActionRunning = false;[\s\S]+updateBulkState\(\);[\s\S]+\}/, "Carrier CRM generic bulk update should reject duplicate submissions and restore toolbar controls");
+assert.match(vendorsSource, /async function runBulkBaseAction\(baseStage, label\) \{[\s\S]+if \(vendorBulkActionRunning\) return;[\s\S]+vendorBulkActionRunning = true;[\s\S]+finally \{[\s\S]+vendorBulkActionRunning = false;[\s\S]+updateBulkState\(\);[\s\S]+\}/, "Carrier CRM base-stage bulk action should reject duplicate submissions and restore toolbar controls");
+assert.match(vendorsSource, /bulkRemoveVendorsButton\?\.addEventListener\("click", async \(\) => \{[\s\S]+if \(vendorBulkActionRunning\) return;[\s\S]+vendorBulkActionRunning = true;[\s\S]+finally \{[\s\S]+vendorBulkActionRunning = false;[\s\S]+updateBulkState\(\);[\s\S]+\}/, "Carrier CRM destructive remove should reject duplicate submissions and restore toolbar controls");
+assert.match(vendorsSource, /let vendorImportActionRunning = false;/, "Carrier CRM imports should share a mutation guard");
+assert.match(vendorsSource, /applyVendorUpdateButton\?\.addEventListener\("click", async \(\) => \{[\s\S]+if \(vendorImportActionRunning\) return;[\s\S]+vendorImportActionRunning = true;[\s\S]+finally \{[\s\S]+vendorImportActionRunning = false;/, "Carrier CRM update template apply should reject duplicate submissions and restore import controls");
+assert.match(vendorsSource, /googleImportButton\?\.addEventListener\("click", async \(\) => \{[\s\S]+if \(vendorImportActionRunning\) return;[\s\S]+vendorImportActionRunning = true;[\s\S]+finally \{[\s\S]+vendorImportActionRunning = false;/, "Carrier CRM Google Sheet import should reject duplicate submissions and restore import controls");
+assert.match(vendorsSource, /confirmImportButton\.addEventListener\("click", async \(\) => \{[\s\S]+if \(vendorImportActionRunning\) return;[\s\S]+if \(!vendors\.length\) \{[\s\S]+No valid vendor rows are ready to import/, "Carrier CRM file import should block duplicate submits and empty imports");
+assert.match(vendorsSource, /confirmImportButton\.addEventListener\("click", async \(\) => \{[\s\S]+vendorImportActionRunning = true;[\s\S]+finally \{[\s\S]+vendorImportActionRunning = false;/, "Carrier CRM file import should release the shared import guard");
+assert.match(vendorsSource, /if \(filterButton\) \{[\s\S]+coverageFilter\.value = segment\.coverage_filter \|\| "";[\s\S]+clearVendorSelection\(\);[\s\S]+renderVendors\(allVendors\.filter\(\(vendor\) => segmentMatches\(segment, vendor\)\)\);/, "Applying a saved vendor segment should clear stale selections before rendering a new filtered CRM scope");
+assert.match(vendorsSource, /function selectedVisibleVendorIntelligenceIds\(\)[\s\S]+currentVendorIntelligenceRows[\s\S]+selectedVendorIntelligenceIds\.has\(row\.vendor_id\)/, "Vendor Intelligence bulk actions should resolve selected ids from the active filtered intelligence rows");
+assert.match(vendorsSource, /async function applySelectedIntelligenceTags\(\) \{[\s\S]+const ids = selectedVisibleVendorIntelligenceIds\(\);/, "Vendor Intelligence tag enrichment should ignore hidden stale selections");
+assert.match(vendorsSource, /async function promoteSelectedIntelligenceVendors\(\) \{[\s\S]+const ids = selectedVisibleVendorIntelligenceIds\(\);/, "Vendor Intelligence promotion should ignore hidden stale selections");
+assert.match(vendorsSource, /async function applySelectedIntelligenceTags\(\) \{[\s\S]+finally \{[\s\S]+updateVendorIntelligenceSelectionState\(\);[\s\S]+\}/, "Vendor Intelligence tag enrichment should restore selection controls after success or failure");
+assert.match(vendorsSource, /async function promoteSelectedIntelligenceVendors\(\) \{[\s\S]+finally \{[\s\S]+updateVendorIntelligenceSelectionState\(\);[\s\S]+\}/, "Vendor Intelligence promotion should restore selection controls after success or failure");
+assert.match(vendorsHtml, /spreadsheet-workbench vendor-directory-workspace/, "Carrier CRM directory should share the spreadsheet workspace shell");
+assert.match(vendorsHtml, /id="vendor-grid-selection"/, "Carrier CRM spreadsheet should expose selection state");
+assert.match(vendorsHtml, /class="table-wrap sheet-table-wrap vendor-sheet-wrap"/, "Carrier CRM should use the shared spreadsheet scroll surface");
+assert.match(stylesSource, /vendor-directory-workspace \.vendor-sheet-table td\.selected-sheet-cell/, "Carrier CRM should show spreadsheet range selection");
+assert.match(authSource, /SHELL_NAV_COLLAPSED_KEY = "rateware:shell-nav-collapsed"/, "SaaS shell should persist the navigation preference");
+assert.match(authSource, /data-shell-nav-toggle/, "SaaS shell should expose one shared navigation toggle");
+assert.match(authSource, /nav\.querySelectorAll\("a\[data-nav-code\]"\)/, "SaaS shell navigation should provide module tooltips");
+assert.match(stylesSource, /\.shell-layout\.shell-nav-collapsed/, "SaaS shell should support a compact navigation layout");
+assert.match(authSource, /SHELL_FOCUS_MODE_KEY = "rateware:shell-focus-mode"/, "SaaS shell should persist focus-mode preference");
+assert.match(authSource, /function initFocusMode\(\)/, "SaaS shell should provide a focus-mode toggle");
+assert.match(authSource, /event\.ctrlKey && event\.shiftKey && event\.key\.toLowerCase\(\) === "f"/, "Focus mode should support the Ctrl+Shift+F shortcut");
+assert.match(stylesSource, /\.shell-layout\.shell-focus-mode/, "Focus mode should expand the workspace to the full shell width");
+assert.match(stylesSource, /\.shell-focus-mode \.side-nav \{\s*display: none/, "Focus mode should hide the sidebar while preserving keyboard navigation");
+assert.match(authSource, /function initCommandPalette\(\)/, "SaaS shell should provide one shared quick-navigation palette");
+assert.match(authSource, /data-command-palette-trigger/, "SaaS shell should expose a visible quick-open trigger");
+assert.match(authSource, /event\.ctrlKey \|\| event\.metaKey.*event\.key\.toLowerCase\(\) === "k"/, "Quick navigation should support the Ctrl+K keyboard shortcut");
+assert.match(authSource, /ArrowDown[\s\S]+ArrowUp/, "Quick navigation should support keyboard result movement");
+assert.match(stylesSource, /\.command-palette-dialog/, "Quick navigation should have a focused dialog presentation");
+assert.match(stylesSource, /\.shell-nav-collapsed \.shell-quick-open/, "Quick navigation should remain available in collapsed navigation mode");
+assert.match(uiNotificationsSource, /export function showNotification/, "SaaS shell should expose a shared notification renderer");
+assert.match(uiNotificationsSource, /window\.ratewareNotify =/, "Operational modules should have a shared notification API");
+assert.match(authSource, /initGlobalNotifications\(\)/, "SaaS shell should initialize global notifications once");
+assert.match(stylesSource, /\.notification-host/, "Global notifications should use a compact fixed host");
+assert.match(landingSource, /let heroAuthRunning = false;/, "Landing login CTA should block duplicate Kinde login starts");
+assert.match(landingSource, /if \(heroAuthRunning\) return;/, "Landing login CTA should ignore duplicate submits");
+assert.match(landingSource, /if \(heroButton\) \{\s+heroButton\.disabled = true;/, "Landing login CTA should be null-safe when disabling");
+assert.match(unsavedChangesSource, /export function initUnsavedChangesGuard/, "SaaS shell should expose a shared unsaved-change guard");
+assert.match(unsavedChangesSource, /beforeunload/, "Unsaved forms should warn before the browser unloads the page");
+assert.match(unsavedChangesSource, /isNavigableSameOriginLink/, "Unsaved forms should guard same-origin navigation");
+assert.match(unsavedChangesSource, /window\.ratewareConfirmUnsavedChanges =/, "Unsaved forms should expose a reusable confirmation for in-app navigation");
+assert.match(authSource, /initUnsavedChangesGuard\(\)/, "SaaS shell should initialize the unsaved-change guard");
+for (const [html, formId] of [
+  [settingsHtml, "profile-form"],
+  [rfxEventsHtml, "rfx-event-form"],
+  [outreachHtml, "outreach-template-form"],
+  [vendorsHtml, "vendor-form"],
+  [stagingReviewHtml, "staging-edit-form"],
+  [vendorImprovementHtml, "ci-create-form"]
+]) {
+  assert.match(html, new RegExp(`id="${formId}"[^>]*data-unsaved-guard`), `${formId} should protect edits from accidental navigation`);
+}
+for (const [source, label] of [
+  [outreachSource, "Outreach"],
+  [vendorsSource, "Carrier CRM"],
+  [rfxEventsSource, "Bid Room"],
+  [stagingReviewSource, "Staging"],
+  [ratewareSource, "Rateware"]
+]) {
+  assert.match(source, /window\.ratewareNotify\?\./, `${label} should publish important success and error states globally`);
+}
 assert.match(rfxEventsSource, /function eventLifecycleRiskSummary/, "Bid Room event lifecycle actions should summarize event risk before changes");
 assert.match(rfxEventsSource, /function confirmEventLifecycleAction/, "Bid Room event lifecycle actions should use a shared confirmation guard");
 assert.match(rfxEventsSource, /confirmEventLifecycleAction\("open"\)/, "Bid Room should confirm before opening an event");
@@ -814,8 +1167,73 @@ assert.match(rfxEventsSource, /const key = `\$\{campaignId\}:\$\{channel\}:\$\{i
 assert.match(rfxEventsSource, /campaignId,[\s\S]+channel: message\.channel \|\| "email",[\s\S]+invitationIds/, "Targeted draft refresh should preserve the original message channel");
 assert.match(outreachServiceSource, /send_outreach_messages/, "Outreach service should expose direct Gmail send for selected draft messages");
 assert.match(outreachServiceSource, /send_outreach_messages[\s\S]+provider: "gmail"[\s\S]+channel: "email"/, "Gmail send requests should explicitly identify the provider and channel");
+assert.match(outreachServiceSource, /mark_outreach_messages[\s\S]+channel: options\.channel \|\| ""/, "Outreach service should pass channel filters into manual status updates");
+assert.match(apiSource, /OUTREACH_MANUAL_STATUSES = new Set\(\[[\s\S]+"manual_sent"[\s\S]+"delivery_unknown"[\s\S]+"replied"[\s\S]+\]\)/, "Backend manual outreach status updates should accept the same delivery states shown in tracking UI");
+assert.match(apiSource, /sent: \["delivered", "read", "replied", "failed", "bounced", "delivery_unknown", "archived"\]/, "Backend outreach transitions should allow sent messages to become delivered, read, failed, bounced, or delivery unknown");
+assert.match(apiSource, /sending: \["sent", "delivered", "read", "failed", "bounced", "delivery_unknown", "archived"\]/, "Backend outreach transitions should let stuck sending attempts be resolved without resending duplicates");
+assert.match(apiSource, /if \(!status \|\| !OUTREACH_MANUAL_STATUSES\.has\(status\)\)/, "Backend manual outreach status validation should use the shared status set instead of a stale hardcoded list");
+assert.match(apiSource, /selectedChannels\.size > 1[\s\S]+Provide a channel filter before changing delivery status/, "Backend should reject mixed-channel manual delivery updates unless a channel filter is provided");
+assert.match(apiSource, /delivery_status: status/, "Manual outreach status updates should keep delivery_status aligned with the selected tracking state");
+assert.match(apiSource, /patch\.next_action = outreachNextAction\(\{ status, delivery_status: status, provider_response_status: status, send_result: patch\.send_result \}\)/, "Manual outreach status updates should refresh the queue next action");
+assert.match(apiSource, /patch\.outcome_reason = outreachOutcomeReason\(\{ status, delivery_status: status, provider_response_status: status, send_result: patch\.send_result \}\)/, "Manual outreach status updates should refresh the visible outcome reason");
+assert.match(apiSource, /next_action: patch\.next_action,[\s\S]+outcome_reason: patch\.outcome_reason/, "Manual outreach history should preserve the recalculated next action and outcome reason");
+assert.match(apiSource, /status === "manual_sent"[\s\S]+patch\.manual_sent_at = now[\s\S]+patch\.manual_sent_by = user\.owner_email/, "Manual sent updates should record who marked the outreach as manually sent");
+assert.match(apiSource, /status === "failed"[\s\S]+patch\.failed_at = now/, "Manual failed updates should record failed_at for delivery traceability");
+assert.match(apiSource, /status === "bounced"[\s\S]+patch\.bounce_detected_at = now[\s\S]+patch\.bounce_status = "manual_bounce"/, "Manual bounced updates should record bounce metadata for cleanup workflows");
+assert.match(outreachServiceSource, /delete_outreach_messages[\s\S]+channel: options\.channel \|\| ""/, "Outreach service should pass channel filters into draft deletion");
+assert.match(rfxEventsSource, /outreachBulkResultSummary/, "Bid Room queue actions should summarize sent, updated, removed, failed, and skipped rows");
+assert.match(rfxEventsSource, /result\.delivery_unknown/, "Bid Room queue send summaries should surface uncertain delivery attempts");
+assert.match(outreachSource, /result\.delivery_unknown/, "Outreach Control Center summaries should surface uncertain delivery attempts");
+assert.match(rfxEventsSource, /markOutreachMessages\(ids, "archived", \{ channel: selectedOutreachChannel\(\) \}\)/, "Bid Room archive should scope selected drafts to the active queue channel");
+assert.match(rfxEventsSource, /deleteOutreachMessages\(ids, \{ channel: selectedOutreachChannel\(\) \}\)/, "Bid Room delete should scope selected drafts to the active queue channel");
+assert.match(outreachSource, /commonSelectedChannel/, "Invitation Admin should pass a channel filter when selected rows share one channel");
+assert.match(outreachHtml, /data-workbench-view-button="campaigns"[\s\S]+data-workbench-view-button="drafts"[\s\S]+data-workbench-view-button="templates"/, "Outreach should lead with campaigns and draft queue instead of a redundant dashboard tab");
+assert.doesNotMatch(outreachHtml, /data-workbench-view-button="dashboard"/, "Outreach should remove the redundant dashboard navigation tab");
+assert.match(outreachHtml, /class="outreach-secondary-actions"[\s\S]+mark-queued-button[\s\S]+archive-messages-button/, "Outreach secondary message actions should stay available in a compact menu");
+assert.match(outreachHtml, /mark-manual-sent-button/, "Outreach should allow selected manual WhatsApp/group sends to be marked from the Control Center");
+assert.match(outreachHtml, /mark-failed-button/, "Outreach should allow selected delivery failures to be marked from the Control Center");
+assert.match(outreachHtml, /mark-bounced-button/, "Outreach should allow selected bounces to be marked from the Control Center");
+assert.match(outreachSource, /markManualSentButton\?\.addEventListener\("click", \(\) => markSelected\("manual_sent"\)\)/, "Outreach manual-sent action should use the shared backend status updater");
+assert.match(outreachSource, /markFailedButton\?\.addEventListener\("click", \(\) => markSelected\("failed"\)\)/, "Outreach failed action should use the shared backend status updater");
+assert.match(outreachSource, /markBouncedButton\?\.addEventListener\("click", \(\) => markSelected\("bounced"\)\)/, "Outreach bounced action should use the shared backend status updater");
+assert.match(outreachSource, /function selectedChannelSummary\(rows = selectedOutreachMessageRows\(\)\)/, "Outreach selected-count copy should disclose when multiple channels are selected");
+assert.match(outreachSource, /Selected messages include multiple channels\. Filter or select one channel before changing delivery status\./, "Outreach should block mixed-channel manual delivery status updates");
+assert.match(outreachSource, /if \(!channel && status !== "archived"\)/, "Outreach should still allow mixed-channel archive while guarding operational delivery status changes");
+assert.match(outreachHtml, /id="outreach-channel-filter"/, "Outreach draft queue should filter by delivery channel");
+assert.match(outreachHtml, /data-outreach-filter="needs_action"/, "Outreach draft queue should expose a direct needs-action filter");
+assert.match(outreachHtml, /data-outreach-filter="sending"/, "Outreach draft queue should expose sending attempts as a recoverable tracking filter");
+assert.match(outreachHtml, /data-outreach-filter="delivery_unknown"/, "Outreach draft queue should expose delivery unknown tracking as a filter");
+assert.match(outreachHtml, /data-outreach-filter="manual_sent"/, "Outreach draft queue should expose manually sent tracking as a filter");
+assert.match(outreachHtml, /data-outreach-filter="bounced"/, "Outreach draft queue should expose bounced tracking as a filter");
+assert.match(outreachHtml, /data-outreach-filter="suppressed"/, "Outreach draft queue should expose suppressed contacts as a filter");
+assert.match(outreachHtml, /data-outreach-filter="archived"/, "Outreach draft queue should expose archived messages as a filter");
+assert.match(outreachSource, /const outreachChannelFilter = document.querySelector\("#outreach-channel-filter"\)/, "Outreach should bind the channel filter");
+assert.match(outreachSource, /"missing_channel"[\s\S]+\]\);/, "Outreach should restore the missing-channel filter from saved workspace context");
+assert.match(outreachSource, /archivedScope \? \{ status: "archived", include_archived: true \} : \{\}/, "Outreach archived filter should explicitly load archived rows from the backend");
+assert.match(outreachSource, /activeMessageFilter === "archived" \|\| priorFilter === "archived"[\s\S]+await loadMessages\(selectedCampaignId\)/, "Outreach should reload the campaign when entering or leaving the archived message scope");
+assert.match(outreachSource, /activeMessageFilter = button\.dataset\.outreachFilter \|\| "all";[\s\S]+selectedMessageIds\.clear\(\);[\s\S]+persistOutreachWorkspaceContext\(\)/, "Outreach status filter changes should clear stale selected rows before mutating another scope");
+assert.match(outreachSource, /messageSearch\?\.addEventListener\("input"[\s\S]+selectedMessageIds\.clear\(\);[\s\S]+renderMessages\(\);/, "Outreach search changes should clear stale selected rows");
+assert.match(outreachSource, /outreachChannelFilter\?\.addEventListener\("change"[\s\S]+selectedMessageIds\.clear\(\);[\s\S]+renderMessages\(\);/, "Outreach channel changes should clear stale selected rows");
+assert.match(outreachSource, /campaignList\?\.addEventListener\("click"[\s\S]+selectedCampaignId = card\.dataset\.campaignId;[\s\S]+selectedMessageIds\.clear\(\);[\s\S]+updateSelection\(\);[\s\S]+await loadMessages\(selectedCampaignId\);/, "Outreach campaign changes should immediately clear stale message selections before loading another queue");
+assert.match(outreachSource, /selectedCampaignId = campaign\.id;[\s\S]+selectedMessageIds\.clear\(\);[\s\S]+resetCampaignForm\(\);/, "Creating or updating an Outreach campaign should reset message selections tied to the previous campaign");
+assert.match(outreachSource, /if \(!campaignId\) \{[\s\S]+messages = \[\];[\s\S]+selectedMessageIds\.clear\(\);[\s\S]+previewMessageId = null;[\s\S]+renderMessages\(\);/, "Outreach should clear selection and preview state when no campaign is active");
+assert.match(outreachSource, /"delivery_unknown"[\s\S]+"bounced"/, "Outreach should support the full delivery tracking filter set");
+assert.match(outreachSource, /function messageTrackingState\(message = \{\}\)/, "Outreach should derive queue tracking state from provider delivery metadata");
+assert.match(outreachSource, /message\.delivery_status,[\s\S]+message\.provider_response_status,[\s\S]+sendResult\.outcome,[\s\S]+meta\.delivery_status/, "Outreach tracking state should inspect delivery_status, provider response, send result, and metadata");
+assert.match(outreachSource, /activeMessageFilter === "needs_action"[\s\S]+\["drafted", "queued", "sending", "failed", "bounced", "suppressed", "delivery_unknown"\]\.includes\(trackingState\)/, "Outreach needs-action filter should include active sends, suppressed contacts, delivery failures and unknown delivery");
+assert.match(outreachSource, /statusChip\(trackingState\)/, "Outreach draft rows should render the derived delivery tracking state");
+assert.match(outreachSource, /function messageOutcomeReason\(message = \{\}\)/, "Outreach should render provider outcome reasons in draft preview");
+assert.match(outreachSource, /function messageNextAction\(message = \{\}\)/, "Outreach should render the backend next action in draft preview and queue rows");
+assert.match(outreachSource, /<dt>Next action<\/dt><dd>\$\{escapeHtml\(messageNextAction\(message\) \|\| "-"\)\}<\/dd>/, "Outreach preview should show the next action for a selected draft");
+assert.match(outreachSource, /<dt>Outcome<\/dt><dd>\$\{escapeHtml\(messageOutcomeReason\(message\) \|\| "-"\)\}<\/dd>/, "Outreach preview should show the provider or manual outcome reason");
+assert.match(outreachSource, /metricDrafts\.textContent = formatCount\(messages\.filter\(\(row\) => \["drafted", "queued", "sending"\]\.includes\(messageTrackingState\(row\)\)\)\.length\)/, "Outreach metrics should keep active sending attempts in the draft operations bucket");
+assert.match(outreachSource, /metricSent\.textContent = formatCount\(messages\.filter\(\(row\) => \["sent", "delivered", "read", "manual_sent"\]\.includes\(messageTrackingState\(row\)\)\)\.length\)/, "Outreach metrics should count accepted delivery states as sent activity");
+assert.match(outreachSource, /activeMessageFilter === "needs_action"/, "Outreach should calculate the needs-action queue locally");
 assert.match(sendGmailOutreachSource, /requestedProvider !== "gmail"/, "Gmail send should reject non-Gmail provider requests");
-assert.match(sendGmailOutreachSource, /\.eq\("channel", "email"\)/, "Gmail send should load only email outreach rows");
+assert.match(sendGmailOutreachSource, /\.in\("id", ids\)/, "Gmail send should load selected message ids for the user workspace");
+assert.match(sendGmailOutreachSource, /if \(cleanText\(message\.channel\) !== "email"\)[\s\S]*expected email/, "Gmail send should skip only non-email rows and continue mixed queue sends");
+assert.match(sendWhatsappOutreachSource, /if \(cleanText\(message\.channel\) !== "whatsapp"\)[\s\S]*expected WhatsApp/, "WhatsApp send should skip only non-WhatsApp rows and continue mixed queue sends");
+assert.match(sendWhatsappOutreachSource, /if \(!ids\.length\) return \{ sent: 0, failed: 0, rows: \[\], failures: \[\] \};/, "WhatsApp send should return a valid empty result before connection checks");
 assert.doesNotMatch(sendGmailOutreachSource, /activeWhatsappConnection|listWhatsappConnections|whatsappGraphFetch/, "Gmail send must not resolve or call WhatsApp providers");
 assert.match(rfxEventsHtml, /rfx-send-selected-email-drafts/, "Bid Room draft queue should include a bulk send selected emails action");
 assert.match(rfxEventsHtml, /rfx-refresh-selected-drafts/, "Bid Room draft queue should support refreshing selected sent or stale drafts without regenerating the full queue");
@@ -859,8 +1277,55 @@ assert.match(rfxEventsSource, /function renderBidRoomLaunchReadiness/, "Bid Room
 assert.match(rfxEventsSource, /function readinessReportLines/, "Bid Room should produce a copyable launch QA report");
 assert.match(rfxEventsSource, /function bidRoomWorkflowProgress/, "Bid Room should calculate a unified RFx to award workflow progress");
 assert.match(rfxEventsSource, /Command center/, "Bid Room should expose one primary command center instead of fragmented RFx and outreach controls");
+assert.match(rfxEventsSource, /<strong>Next: \$\{escapeHtml\(copy\.title\)\}<\/strong>/, "Bid Room command center should use one next-action label instead of a second numbered wizard");
+assert.doesNotMatch(rfxEventsHtml, /<p class="eyebrow">Step [1-6]<\/p>/, "Bid Room panels should use the four-stage rail labels instead of repeating a second six-step wizard");
+assert.match(rfxEventsHtml, /Build \/ Event/, "Bid Room build panels should identify the active four-stage context");
+assert.match(rfxEventsHtml, /<p class="eyebrow">Launch<\/p>/, "Bid Room outreach should use the Launch stage label");
+for (const view of ["lanes", "carriers", "outreach", "responses", "award"]) {
+  assert.match(rfxEventsHtml, new RegExp(`data-workbench-view-panel="${view}" hidden`), `Bid Room ${view} panel should be hidden before the tab controller hydrates`);
+}
 assert.match(rfxEventsHtml, /One workflow: event setup, lane book, participants, outreach, auction, award/, "Bid Room should describe RFx, Outreach, Auction, and Award as one workflow");
 assert.match(stylesSource, /bid-room-workflow-meter/, "Bid Room should render a compact workflow progress meter");
+assert.match(rfxEventsHtml, /data-stage-key="build"/, "Bid Room should group event, book, and CRM setup under Build");
+assert.match(rfxEventsHtml, /data-stage-key="launch"[\s\S]+data-stage-key="operate"[\s\S]+data-stage-key="close"/, "Bid Room should expose compact Launch, Operate, and Close stages");
+assert.match(rfxEventsHtml, /class="bid-room-build-tabs"[\s\S]+Business book[\s\S]+Participants/, "Bid Room Build should retain direct subtabs for event, book, and participants");
+assert.match(rfxEventsSource, /function bidRoomStageState\(\)/, "Bid Room should calculate the four operating stages independently from detailed readiness checks");
+assert.match(rfxEventsSource, /function bidRoomStageProgress\(\)/, "Bid Room should show progress using the compact operating stages");
+assert.match(workbenchTabsSource, /workbenchViewGroup/, "Workbench tabs should support grouped navigation without losing detailed panels");
+assert.match(workbenchTabsSource, /workbenchActivate/, "Workbench tabs should allow a grouped tab to open its first detailed panel");
+assert.match(workbenchTabsSource, /rateware:workbench:/, "Workbench tabs should persist the last active view per page");
+assert.match(workbenchTabsSource, /localStorage\.getItem\(storageKey\)/, "Workbench tabs should restore the last active view safely");
+assert.match(workbenchTabsSource, /explicitView \|\| readStoredView\(\) \|\| defaultView/, "Explicit URL views should override saved workspace context");
+assert.match(workbenchTabsSource, /writeStoredView\(nextView\)/, "Workbench tab changes should persist the resolved active view");
+assert.match(workbenchTabsSource, /const applyBrowserView = \(\) =>/, "Workbench tabs should resolve the active view from browser history");
+assert.match(workbenchTabsSource, /window\.addEventListener\("popstate", applyBrowserView\)/, "Workbench tabs should synchronize Back and Forward navigation");
+assert.match(workbenchTabsSource, /url\.searchParams\.has\(paramName\) \? url\.searchParams\.get\(paramName\) : defaultView/, "A URL without a view should return a workbench to its default tab");
+assert.match(workbenchTabsSource, /if \(activateOptions\.syncUrl\)/, "Programmatic workbench activation should opt into URL synchronization");
+assert.match(workbenchTabsSource, /ratewareConfirmUnsavedChanges && !window\.ratewareConfirmUnsavedChanges\(\)/, "Workbench tab changes should protect dirty forms");
+assert.match(workbenchTabsSource, /let lastKnownUrl = new URL\(window\.location\.href\)/, "Workbench navigation should remember the last valid URL");
+assert.match(workbenchTabsSource, /window\.history\.pushState\(window\.history\.state, "", lastKnownUrl\)/, "Canceled browser navigation should restore the last valid workbench URL");
+assert.match(workbenchTabsSource, /event\.key === "ArrowRight" \|\| event\.key === "ArrowDown"/, "Workbench tabs should support directional keyboard navigation");
+assert.match(workbenchTabsSource, /event\.key === "Home"/, "Workbench tabs should support Home and End navigation");
+assert.match(workbenchTabsSource, /button\.tabIndex = isActive \? 0 : -1/, "Workbench tabs should keep only the active tab in the keyboard focus order");
+assert.match(workbenchTabsSource, /setAttribute\("role", "tabpanel"\)/, "Workbench panels should expose the tabpanel role");
+assert.match(workbenchTabsSource, /setAttribute\("aria-controls", controlledPanelIds\.join\(" "\)\)/, "Workbench tabs should point to their controlled panels");
+assert.match(workbenchTabsSource, /setAttribute\("aria-labelledby", labelTabId\)/, "Workbench panels should identify their owning tab");
+assert.match(workbenchTabsSource, /setAttribute\("aria-hidden", String\(!isVisible\)\)/, "Workbench panels should expose visibility to assistive technology");
+assert.match(stylesSource, /\.shell-layout \.page-frame > \.page-header/, "Internal workspaces should use a compact sticky header");
+assert.match(stylesSource, /\.shell-layout \.module-workbench-nav[\s\S]+border-bottom: 1px solid var\(--line\)/, "Internal workspaces should use flat operational tab navigation");
+assert.match(stylesSource, /\.shell-layout \.vendor-workflow-tabs \.vendor-tab[\s\S]+border-bottom: 2px solid transparent/, "Carrier CRM tabs should share the flat operational tab pattern");
+assert.match(rfxEventsSource, /rfxWorkbench\?\.activate\(view, \{[\s\S]*syncUrl: true/, "Bid Room programmatic view changes should persist their URL");
+assert.match(outreachSource, /outreachWorkbench\?\.activate\(view, \{[\s\S]*syncUrl: true/, "Outreach programmatic view changes should persist their URL");
+assert.match(interpretationMemorySource, /memoryWorkbench\?\.activate\("simulation", \{ syncUrl: true \}\)/, "Interpretation simulation should persist its active tab");
+assert.match(interpretationMemorySource, /let memoryFormSubmitting = false;/, "Interpretation Memory rule creation should have a submit guard");
+assert.match(interpretationMemorySource, /memoryForm\?\.addEventListener\("submit"[\s\S]+if \(memoryFormSubmitting\) return;[\s\S]+memoryFormSubmitting = true;[\s\S]+finally \{[\s\S]+memoryFormSubmitting = false;[\s\S]+if \(submitButton\) submitButton\.disabled = false;[\s\S]+\}/, "Interpretation Memory rule creation should ignore duplicate submits and restore the form button");
+assert.match(interpretationMemorySource, /const memoryRowMutationKeys = new Set\(\);/, "Interpretation Memory row actions should track per-row mutations");
+assert.match(interpretationMemorySource, /const mutationKey = `simulate:\$\{id\}`;[\s\S]+if \(memoryRowMutationKeys\.has\(mutationKey\)\) return;[\s\S]+memoryRowMutationKeys\.add\(mutationKey\);[\s\S]+finally \{[\s\S]+memoryRowMutationKeys\.delete\(mutationKey\);[\s\S]+simulateButton\.disabled = false;[\s\S]+\}/, "Interpretation Memory simulation should ignore duplicate row simulations and restore the button");
+assert.match(interpretationMemorySource, /const mutationKey = `\$\{actionName\}:\$\{id\}`;[\s\S]+if \(memoryRowMutationKeys\.has\(mutationKey\)\) return;[\s\S]+memoryRowMutationKeys\.delete\(mutationKey\);/, "Interpretation Memory save/archive/apply actions should serialize per row");
+assert.match(interpretationMemorySource, /let memoryBulkArchiveRunning = false;/, "Interpretation Memory selected archive should have a bulk guard");
+assert.match(interpretationMemorySource, /archiveSelectedButton\.disabled = memoryBulkArchiveRunning \|\| selectedVisible\.length === 0;/, "Interpretation Memory archive selected button should stay disabled while running");
+assert.match(interpretationMemorySource, /archiveSelectedButton\?\.addEventListener\("click"[\s\S]+if \(memoryBulkArchiveRunning\) return;[\s\S]+memoryBulkArchiveRunning = true;[\s\S]+finally \{[\s\S]+memoryBulkArchiveRunning = false;[\s\S]+updateSelection\(\);[\s\S]+\}/, "Interpretation Memory bulk archive should reject duplicate submissions and restore selection controls");
+assert.match(stylesSource, /grid-template-columns: repeat\(4, minmax\(0, 1fr\)\)/, "Bid Room stage rail should use four compact operating stages");
 assert.match(rfxEventsSource, /data-rfx-readiness-first-issue/, "Bid Room readiness QA should navigate to the first blocker");
 assert.match(rfxEventsSource, /data-rfx-copy-readiness/, "Bid Room readiness QA should copy a report for debugging");
 assert.match(rfxEventsSource, /function launchPreflightIssues/, "Bid Room should classify launch-blocking readiness issues");
@@ -895,6 +1360,13 @@ assert.match(bidRoomBoardHtml, /Find my invitations/, "Public Bid Room board sho
 assert.match(bidRoomBoardSource, /Request invitation/, "Public Bid Room board should require invitation requests instead of direct bidding");
 assert.match(bidRoomBoardSource, /public_bid_room_request_invite/, "Public Bid Room board should call the public invitation request action");
 assert.match(bidRoomBoardSource, /public_bid_room_find_invitations/, "Public Bid Room board should call the public invitation lookup action");
+assert.match(bidRoomBoardSource, /let publicBoardLoading = false;/, "Public Bid Room board should avoid overlapping refresh requests");
+assert.match(bidRoomBoardSource, /if \(publicBoardLoading\) return;/, "Public Bid Room board should ignore refresh while one is running");
+assert.match(bidRoomBoardSource, /let publicSoftLoginSubmitting = false;/, "Public Bid Room soft login should block duplicate lookups");
+assert.match(bidRoomBoardSource, /const publicInviteRequestMutationKeys = new Set\(\);/, "Public Bid Room invite requests should be keyed by opportunity and email");
+assert.match(bidRoomBoardSource, /publicInviteRequestMutationKeys\.has\(requestKey\)/, "Public Bid Room should ignore duplicate invite requests");
+assert.match(bidRoomBoardSource, /const publicPrivateLinkMutationKeys = new Set\(\);/, "Public Bid Room private link recovery should be keyed by opportunity and email");
+assert.match(bidRoomBoardSource, /publicPrivateLinkMutationKeys\.has\(linkKey\)/, "Public Bid Room should ignore duplicate private link recovery requests");
 assert.match(bidRoomBoardSource, /invitedLaneIds/, "Public Bid Room board should remember invited lanes after soft login");
 assert.match(bidRoomBoardSource, /data-public-board-private-link/, "Public Bid Room board should resend private links instead of requesting access for invited lanes");
 assert.match(bidRoomBoardSource, /data-public-board-open-private/, "Public Bid Room board should open verified private bids directly");
@@ -1160,8 +1632,18 @@ assert.match(rfxEventsHtml, /id="rfx-draft-tracking-filters"/, "Bid Room draft q
 assert.match(outreachServiceSource, /fetchOutreachTrackingSummary/, "Outreach service should fetch lifecycle counts separately from paginated rows");
 assert.match(rfxEventsSource, /tracking_status: draftQueueTrackingStatus/, "Draft queue lifecycle filters should be evaluated by the backend");
 assert.match(rfxEventsSource, /function outreachTrackingState/, "Draft queue should render one useful lifecycle state per outreach row");
+assert.match(rfxEventsSource, /DRAFT_TRACKING_STATES = \[[\s\S]*\["queued", "Queued"\][\s\S]*\["sending", "Sending"\][\s\S]*\["manual_sent", "Manual sent"\][\s\S]*\["delivery_unknown", "Delivery unknown"\][\s\S]*\["suppressed", "Suppressed"\][\s\S]*\["archived", "Archived"\]/, "Draft queue should expose queued, sending, manual, unknown delivery, suppressed, and archived tracking filters");
+assert.match(rfxEventsSource, /draftQueueTrackingStatus === "archived" \? \{ status: "archived", include_archived: true \} : \{\}/, "Bid Room archived Draft Queue filter should explicitly load archived rows from the backend");
+assert.match(rfxEventsSource, /fetchOutreachTrackingSummary\(\{[\s\S]+include_archived: true/, "Bid Room lifecycle summary should include archived rows so the Archived filter can show a count");
+assert.match(rfxEventsSource, /\.filter\(\(\[state\]\) => !\["all", "archived"\]\.includes\(state\)\)/, "Bid Room All lifecycle count should not include archived rows");
+assert.match(rfxEventsSource, /if \(\/archived\/\.test\(signal\)\) return "archived";[\s\S]*if \(\/suppressed\|do_not_contact\|do-not-contact\|blocked contact\/\.test\(signal\)\) return "suppressed";[\s\S]*if \(\/manual_sent\/\.test\(signal\)\) return "manual_sent";[\s\S]*if \(\/delivery_unknown\/\.test\(signal\)\) return "delivery_unknown";[\s\S]*if \(\/read\/\.test\(signal\)\) return "read";[\s\S]*if \(\/delivered\/\.test\(signal\)\) return "delivered";[\s\S]*if \(\/sending\/\.test\(signal\)\) return "sending";[\s\S]*if \(\/queued\/\.test\(signal\)\) return "queued";/, "Draft queue tracking should not collapse archived, suppressed, read, manual, unknown delivery, sending, or queued into sent");
 assert.match(apiSource, /body\.action === "get_outreach_tracking_summary"/, "Rateware API should return full-event outreach lifecycle counts");
 assert.match(apiSource, /function outreachMessageTrackingState/, "Rateware API should derive lifecycle states from delivery, reply, and quote signals");
+assert.match(apiSource, /OUTREACH_TRACKING_STATES = \["drafted", "queued", "sending", "sent", "delivered", "read", "manual_sent", "delivery_unknown", "failed", "replied", "quoted", "bounced", "suppressed", "archived"\]/, "Rateware API should expose the same outreach tracking states as the Bid Room UI");
+assert.match(apiSource, /requestedTrackingStatus === "archived"[\s\S]+query = query\.eq\("status", "archived"\)/, "Outreach API should load archived rows when tracking_status is archived");
+assert.match(apiSource, /requestedTrackingStatus !== "archived" && !body\.include_archived[\s\S]+query = query\.neq\("status", "archived"\)/, "Outreach API should not exclude archived rows after explicitly requesting archived tracking");
+assert.match(apiSource, /if \(\/archived\/\.test\(signal\)\) return "archived";[\s\S]*if \(\/suppressed\|do_not_contact\|do-not-contact\|blocked contact\/\.test\(signal\)\) return "suppressed";[\s\S]*if \(\/manual_sent\/\.test\(signal\)\) return "manual_sent";[\s\S]*if \(\/delivery_unknown\/\.test\(signal\)\) return "delivery_unknown";[\s\S]*if \(\/read\/\.test\(signal\)\) return "read";[\s\S]*if \(\/delivered\/\.test\(signal\)\) return "delivered";[\s\S]*if \(\/sending\/\.test\(signal\)\) return "sending";[\s\S]*if \(\/queued\/\.test\(signal\)\) return "queued";/, "Rateware API tracking should not collapse archived, suppressed, read, manual, unknown delivery, sending, or queued into sent");
+assert.match(apiSource, /tracking === "delivery_unknown"\) return "Review delivery status"/, "Rateware API should tell users to review uncertain delivery before another send");
 assert.match(apiSource, /allScopedOutreachMessages/, "Lifecycle filters should evaluate all matching outreach rows, not just the visible page");
 assert.doesNotMatch(rfxEventsHtml, /rfx-touchpoint-summary/, "Bid Room Step 4 should not duplicate drafts in an invitation tracking section");
 assert.match(rfxEventsSource, /async function loadDraftQueuePage/, "Bid Room draft queue should load a page from the backend before rendering");
@@ -1171,6 +1653,18 @@ assert.doesNotMatch(apiSource, /metadata->>bid_link|metadata->>profile_link/, "D
 assert.match(rfxEventsSource, /\.normalize\("NFD"\)/, "Draft queue search should be accent-insensitive");
 assert.match(rfxEventsSource, /addEventListener\("search", applyDraftQueueSearch\)/, "Draft queue search should react when the browser clears a search input");
 assert.match(rfxEventsSource, /addEventListener\("input", scheduleDraftQueueSearch\)/, "Draft queue search should debounce typing before rerendering the table");
+assert.match(rfxEventsSource, /function applyDraftQueueSearch\(\)[\s\S]+clearDraftQueueSelection\(\);[\s\S]+loadDraftQueuePage\(selectedEventId, \{ reset: true \}\)/, "Draft queue search changes should clear stale selected rows before loading the new scope");
+assert.match(rfxEventsSource, /draftTrackingFilters\?\.addEventListener\("click"[\s\S]+draftQueueTrackingStatus = nextStatus;[\s\S]+clearDraftQueueSelection\(\);[\s\S]+loadDraftQueuePage\(selectedEventId, \{ reset: true \}\)/, "Draft queue lifecycle changes should clear stale selected rows");
+assert.match(rfxEventsSource, /draftPageSize\?\.addEventListener\("change"[\s\S]+clearDraftQueueSelection\(\);[\s\S]+loadDraftQueuePage\(selectedEventId, \{ reset: true \}\)/, "Draft queue page-size changes should clear stale selected rows");
+assert.match(rfxEventsSource, /draftPreviousPageButton\?\.addEventListener\("click"[\s\S]+clearDraftQueueSelection\(\);[\s\S]+loadDraftQueuePage\(selectedEventId\)/, "Draft queue previous-page navigation should clear stale selected rows");
+assert.match(rfxEventsSource, /draftNextPageButton\?\.addEventListener\("click"[\s\S]+clearDraftQueueSelection\(\);[\s\S]+loadDraftQueuePage\(selectedEventId\)/, "Draft queue next-page navigation should clear stale selected rows");
+assert.match(rfxEventsSource, /function selectedDraftRows\(rows = null\) \{[\s\S]+const source = rows \|\| draftQueueRows;[\s\S]+selectedDraftMessageIds\.has\(String\(message\.id\)\)/, "Draft Queue bulk actions should resolve selected rows from the active loaded page by default");
+for (const functionName of ["sendSelectedDraftEmails", "sendSelectedDraftWhatsapp", "refreshSelectedOutreachDrafts", "markSelectedWhatsappGroupsManuallySent", "archiveSelectedDrafts", "deleteSelectedDrafts"]) {
+  const start = rfxEventsSource.indexOf(`async function ${functionName}`);
+  const nextFunction = rfxEventsSource.indexOf("\nasync function ", start + functionName.length);
+  const source = rfxEventsSource.slice(start, nextFunction > start ? nextFunction : undefined);
+  assert.match(source, /finally \{[\s\S]*?updateDraftSendControls\(draftQueueRows\);[\s\S]*?\}/, `${functionName} should always restore Bid Room Draft Queue controls after success or failure`);
+}
 assert.match(rfxEventsSource, /const selectable = channel === "whatsapp"[\s\S]+selectable\.forEach\(rememberDraftRow\)/, "Select sendable should add only drafts from the active channel queue without replacing previous selections");
 assert.doesNotMatch(rfxEventsSource, /draftRowsForEvent\(\)\.slice\(0, 200\)/, "Draft queue selection should not be capped to the first 200 unfiltered rows");
 for (const source of [rfxInvitationTableSource, apiInvitationTableSource]) {
@@ -1224,6 +1718,8 @@ assert.match(rfxBidSource, /validatePositiveNumberIssue\(draft\.transit_days, "b
 assert.match(rfxBidSource, /data-download-bid-template/, "Carrier portal should render a bid template download action");
 assert.match(rfxBidSource, /data-submit-bid-template/, "Carrier portal should require confirmation before submitting XLSX bids");
 assert.match(rfxBidSource, /callBidApi\("submit_bid", \{ token: row\.invitation_token, \.\.\.row\.draft \}\)/, "Carrier portal should submit each XLSX row through the normal tokenized bid API");
+assert.match(rfxBidSource, /let bidTemplateSubmitting = false;/, "Carrier portal XLSX submit should have a running guard");
+assert.match(rfxBidSource, /async function submitBidTemplateRows\(\) \{[\s\S]+if \(bidTemplateSubmitting\) return;[\s\S]+bidTemplateSubmitting = true;[\s\S]+finally \{[\s\S]+bidTemplateSubmitting = false;[\s\S]+\}/, "Carrier portal XLSX submit should ignore duplicate submits and always restore its guard");
 assert.match(rfxBidSource, /const BID_PORTAL_COPY = \{/, "Carrier portal should provide English and Spanish UI copy");
 assert.match(rfxBidSource, /data-private-language-toggle="en"/, "Carrier portal should expose an English/Spanish language toggle");
 assert.match(rfxBidSource, /function eventMarketplaceUrl/, "Carrier portal should build a contextual public Bid Room board URL");
@@ -1359,6 +1855,8 @@ assert.match(rfxBidSource, /carrier-bid-history/, "Carrier portal should include
 assert.match(rfxBidSource, /data-edit-current-offer/, "Carrier portal should let carriers edit their submitted live offer row");
 assert.match(rfxBidSource, /function hydrateBidFormFromOffer/, "Carrier portal should preload the bid form from the current submitted offer");
 assert.match(rfxBidSource, /data-bid-submit-button/, "Carrier portal should relabel submit as update when a published offer exists");
+assert.match(rfxBidSource, /let bidFormSubmitting = false;/, "Carrier portal guided bid form should have a submit guard");
+assert.match(rfxBidSource, /if \(bidFormSubmitting\) return;[\s\S]+const submitButton = card\.querySelector\("\[data-bid-submit-button\]"\);[\s\S]+bidFormSubmitting = true;[\s\S]+if \(submitButton\) submitButton\.disabled = true;[\s\S]+finally \{[\s\S]+bidFormSubmitting = false;[\s\S]+if \(submitButton\) submitButton\.disabled = false;[\s\S]+\}/, "Carrier portal guided bid form should disable submit and restore after API completion");
 assert.match(rfxBidSource, /bid-editor-modal/, "Carrier portal should render the advanced offer editor as a modal");
 assert.match(rfxBidSource, /data-open-bid-editor/, "Carrier portal should open the advanced offer editor from a compact launcher");
 assert.match(rfxBidSource, /data-close-bid-editor/, "Carrier portal should close the advanced offer editor without page navigation");
@@ -1367,12 +1865,18 @@ assert.match(rfxBidSource, /carrier-quick-bid-grid/, "Carrier portal should rend
 assert.match(rfxBidSource, /data-save-quick-bid/, "Carrier portal should save or update bids directly from each lane row");
 assert.match(rfxBidSource, /function saveQuickBidRow/, "Carrier portal should submit quick row edits through the tokenized bid API");
 assert.match(rfxBidSource, /callBidApi\("submit_bid", \{ token: rowToken, \.\.\.draft \}\)/, "Carrier quick bid grid should submit the selected row token instead of forcing lane navigation");
+assert.match(rfxBidSource, /const quickBidRowMutationKeys = new Set\(\);/, "Carrier quick bid rows should track row-level save mutations");
+assert.match(rfxBidSource, /const mutationKey = `quick-bid:\$\{rowToken\}`;[\s\S]+if \(quickBidRowMutationKeys\.has\(mutationKey\)\) return;[\s\S]+quickBidRowMutationKeys\.add\(mutationKey\);[\s\S]+finally \{[\s\S]+quickBidRowMutationKeys\.delete\(mutationKey\);[\s\S]+\}/, "Carrier quick bid rows should ignore duplicate saves for the same invitation token");
 assert.match(rfxBidApiSource, /notes: cleanText\(row\.notes\)/, "Carrier business book API should expose notes so quick row edits can preserve existing bid notes");
 assert.match(rfxBidSource, /data-decline-invitation/, "Carrier portal should let carriers reject an invited lane before bidding");
 assert.match(rfxBidSource, /data-withdraw-offer/, "Carrier portal should let carriers withdraw an active published offer");
 assert.match(rfxBidSource, /data-decline-quick-invitation/, "Carrier quick bid grid should expose lane-level rejection");
 assert.match(rfxBidSource, /data-withdraw-quick-bid/, "Carrier quick bid grid should expose lane-level offer withdrawal");
 assert.match(rfxBidSource, /callBidApi\(action, \{ token: actionToken \}\)/, "Carrier reject and withdraw actions should use the selected invitation token");
+assert.match(rfxBidSource, /const bidParticipationMutationKeys = new Set\(\);/, "Carrier reject and withdraw actions should track token-level mutations");
+assert.match(rfxBidSource, /const mutationKey = `\$\{action\}:\$\{actionToken\}`;[\s\S]+if \(bidParticipationMutationKeys\.has\(mutationKey\)\) return;[\s\S]+bidParticipationMutationKeys\.add\(mutationKey\);[\s\S]+finally \{[\s\S]+bidParticipationMutationKeys\.delete\(mutationKey\);[\s\S]+\}/, "Carrier reject and withdraw actions should ignore duplicate clicks for the same token and action");
+assert.match(rfxBidSource, /let segmentConfirmationsSaving = false;/, "Carrier fit checklist should have a save guard");
+assert.match(rfxBidSource, /async function saveSegmentConfirmations\(button\) \{[\s\S]+if \(segmentConfirmationsSaving\) return;[\s\S]+segmentConfirmationsSaving = true;[\s\S]+finally \{[\s\S]+segmentConfirmationsSaving = false;[\s\S]+button\.disabled = false;[\s\S]+\}/, "Carrier fit checklist should ignore duplicate saves and restore the save button");
 assert.match(rfxBidApiSource, /body\.action === "decline_invitation" \|\| body\.action === "withdraw_bid"/, "Carrier portal API should expose separate reject and withdraw actions");
 assert.match(rfxBidApiSource, /invitation_status: "declined"/, "Rejecting an invitation should persist a declined status");
 assert.match(rfxBidApiSource, /invitation_status: "withdrawn"[\s\S]*bid_rate: null/, "Withdrawing an offer should remove the active bid rate while preserving history");
@@ -1450,6 +1954,10 @@ assert.match(rfxEventsSource, /ensureSelectedEventChatThread\(eventId, \{ silent
 assert.match(apiSource, /already_synced: true/, "Google Chat event thread sync should be idempotent once synced");
 assert.match(apiSource, /sendOutreachMessages/, "API should send selected outreach messages through Gmail");
 assert.match(apiSource, /delete_outreach_messages/, "API should delete selected outreach draft rows");
+assert.match(apiSource, /mark_outreach_messages/, "API should allow manual status updates for outreach rows");
+assert.match(apiSource, /normalizeOutreachChannel/, "Outreach channel filters should be validated when performing mixed-channel bulk actions");
+assert.match(apiSource, /skipped_rows/, "Outreach bulk actions should return skipped-row telemetry with reasons");
+assert.match(apiSource, /OUTREACH_MARK_TRANSITIONS/, "Outreach status transitions should be constrained by allowed state graph");
 assert.match(apiSource, /sender_email: senderEmail/, "API should persist sender email on outreach draft rows");
 assert.match(apiSource, /\.from\("outreach_messages"\)[\s\S]*\.limit\(1000\)/, "Outreach draft queue should load up to 1000 rows for large Bid Room waves");
 assert.match(outreachSenderMigration, /add column if not exists sender_email text/, "Outreach schema should store sender identity");
@@ -1492,6 +2000,13 @@ assert.match(bulkImportTemplateSource, /header: "Destination Region"/, "bulk imp
 assert.match(bulkImportTemplateSource, /All-in Rate must be numeric/, "bulk import template should warn about invalid rate placeholders");
 assert.match(uploadHistorySource, /downloadBulkImportTemplate/, "Upload History should expose template download");
 assert.match(uploadCenterSource, /downloadBulkImportTemplate/, "Upload Center should expose template download");
+assert.match(uploadCenterSource, /let uploadCenterSubmitting = false;/, "Upload Center should block duplicate source-file submissions");
+assert.match(uploadCenterSource, /if \(uploadCenterSubmitting\) return;/, "Upload Center should ignore duplicate in-flight uploads");
+assert.match(uploadCenterSource, /uploadCenterSubmitting = false;[\s\S]+uploadButton\.disabled = false;/, "Upload Center should restore upload controls after upload completion");
+assert.match(uploadCenterSource, /let uploadTemplateDownloading = false;/, "Upload Center should block duplicate template downloads");
+assert.match(uploadCenterSource, /if \(uploadTemplateDownloading\) return;/, "Upload Center should ignore duplicate template download clicks");
+assert.match(uploadCenterSource, /let vendorOptionsLoadVersion = 0;/, "Upload Center vendor options should ignore stale loads");
+assert.match(uploadCenterSource, /loadVersion !== vendorOptionsLoadVersion/, "Upload Center should suppress stale vendor dropdown responses");
 assert.match(uploadHistoryHtml, /data-download-bulk-template/, "Upload History should render template download button");
 assert.match(uploadCenterHtml, /data-download-bulk-template/, "Upload Center should render template download button");
 assert.match(uploadHistorySource, /"vendor name"/, "bulk import parser should recognize Vendor Name header");
@@ -1551,13 +2066,22 @@ assert.match(rfxBidApiSource, /supportConversationalAnswer/, "Bid Room support s
 assert.match(rfxBidApiSource, /status: "support_ticket"/, "Bid Room support should escalate unknown questions as support tickets");
 assert.match(rfxBidSource, /id="bid-support-agent"/, "Private Bid Room should render a contextual support agent");
 assert.match(rfxBidSource, /function askBidSupport/, "Private Bid Room should call the support agent");
+assert.match(rfxBidSource, /let bidSupportSubmitting = false;/, "Private Bid Room support should block duplicate assistant and ticket submits");
+assert.match(rfxBidSource, /if \(bidSupportSubmitting\) return;/, "Private Bid Room support should ignore duplicate in-flight submits");
+assert.match(rfxBidSource, /finally \{[\s\S]+bidSupportSubmitting = false;[\s\S]+#bid-support-form button/, "Private Bid Room support should restore controls after submit");
 assert.match(rfxBidSource, /function setBidSupportOpen/, "Private Bid Room support should open as a chat pop-up");
 assert.match(rfxBidSource, /data-bid-support-toggle/, "Private Bid Room support should have a floating chat launcher");
 assert.match(rfxBidSource, /supportAnswer/, "Private Bid Room support should trigger multimedia support replies");
 assert.match(rfxBidSource, /Ask about this opportunity/, "Private support should describe opportunity-level help, not only one bid");
 assert.match(rfxBidSource, /Opportunity summary/, "Private support should include an opportunity summary prompt");
 assert.match(rfxBidSource, /function setCarrierChatOpen/, "Private Bid Room chat should open as a pop-up");
+assert.match(rfxBidSource, /let carrierChatSubmitting = false;/, "Private Bid Room chat should block duplicate message sends");
+assert.match(rfxBidSource, /if \(carrierChatSubmitting\) return;/, "Private Bid Room chat should ignore duplicate in-flight sends");
+assert.match(rfxBidSource, /finally \{[\s\S]+carrierChatSubmitting = false;[\s\S]+message\.disabled = false/, "Private Bid Room chat should restore the composer after send");
 assert.match(rfxBidSource, /data-carrier-chat-toggle/, "Private Bid Room chat should have a floating chat launcher");
+assert.match(rfxBidSource, /const laneAccessRequestMutationKeys = new Set\(\);/, "Private Bid Room marketplace access requests should be keyed per lane");
+assert.match(rfxBidSource, /laneAccessRequestMutationKeys\.has\(laneId\)/, "Private Bid Room should ignore duplicate lane access requests");
+assert.match(rfxBidSource, /finally \{[\s\S]+laneAccessRequestMutationKeys\.delete\(laneId\)/, "Private Bid Room should release lane access request locks");
 assert.match(rfxBidSource, /renderBookFitSummary/, "Private business book should keep lane fit compact in each row");
 assert.match(rfxBidSource, /rateware\.privateBidRoom\.sound"\) !== "off"/, "Private Bid Room should start with sound enabled unless the carrier turns it off");
 assert.match(rfxBidSource, /PRIVATE_BID_SOUND_DEFAULT_VERSION/, "Private Bid Room should reset old sound-off defaults");
@@ -1572,6 +2096,9 @@ assert.match(bidRoomBoardSource, /data-public-support-prompt/, "Public Bid Room 
 assert.match(bidRoomBoardSource, /function setPublicSupportOpen/, "Public Bid Room support should open as a chat pop-up");
 assert.match(bidRoomBoardSource, /supportFollowup\?\.removeAttribute\("hidden"\)/, "Public support should reveal email follow-up only during ticket escalation");
 assert.match(bidRoomBoardSource, /function askPublicSupport/, "Public Bid Room board should call the support agent");
+assert.match(bidRoomBoardSource, /let publicSupportSubmitting = false;/, "Public Bid Room support should block duplicate assistant and ticket submits");
+assert.match(bidRoomBoardSource, /if \(publicSupportSubmitting\) return;/, "Public Bid Room support should ignore duplicate in-flight submits");
+assert.match(bidRoomBoardSource, /finally \{[\s\S]+publicSupportSubmitting = false;[\s\S]+#public-board-support-form button/, "Public Bid Room support should restore controls after submit");
 assert.match(bidRoomBoardSource, /bid-support-thread/, "Public Bid Room support should render conversational turns");
 assert.match(bidRoomBoardSource, /queueSupportAlert/, "Public Bid Room support should trigger multimedia support replies");
 assert.match(bidRoomBoardSource, /PUBLIC_BOARD_SOUND_DEFAULT_VERSION/, "Public Bid Room board should reset old sound-off defaults");
@@ -1589,8 +2116,14 @@ assert.match(vendorSupportSource, /fetchVendorSupportTickets/, "Vendor Support U
 assert.match(vendorSupportSource, /updateVendorSupportTicket/, "Vendor Support UI should update ticket state");
 assert.match(vendorSupportSource, /let supportLoadVersion = 0;/, "Vendor Support filters should version concurrent loads");
 assert.match(vendorSupportSource, /loadVersion !== supportLoadVersion/, "Vendor Support should ignore stale filter responses");
+assert.match(vendorSupportSource, /refreshButton\) refreshButton\.disabled = true;/, "Vendor Support should disable refresh while loading tickets");
+assert.match(vendorSupportSource, /supportBody\?\.setAttribute\("aria-busy", "true"\)/, "Vendor Support should expose loading state to assistive technology");
+assert.match(vendorSupportSource, /finally \{[\s\S]+if \(loadVersion !== supportLoadVersion\) return;[\s\S]+refreshButton\) refreshButton\.disabled = false;[\s\S]+supportBody\?\.removeAttribute\("aria-busy"\)/, "Vendor Support should restore refresh and busy state after the current load finishes");
 assert.match(vendorSupportSource, /const supportTicketMutationQueues = new Map\(\)/, "Vendor Support should serialize updates per ticket");
 assert.match(vendorSupportSource, /supportTicketMutationVersions\.get\(id\) === mutationVersion/, "Vendor Support should suppress stale mutation status updates");
+assert.match(vendorSupportSource, /function setTicketRowBusy\(id, busy = false\)/, "Vendor Support should mark a ticket row busy while updating it");
+assert.match(vendorSupportSource, /row\.querySelectorAll\("\[data-support-action\], \[data-support-field\]"\)[\s\S]+control\.disabled = busy/, "Vendor Support should disable per-ticket controls during a mutation");
+assert.match(vendorSupportSource, /setTicketRowBusy\(id, true\)[\s\S]+finally \{[\s\S]+setTicketRowBusy\(id, false\)/, "Vendor Support should restore per-ticket controls after mutation queues finish");
 assert.match(vendorSupportServiceSource, /list_vendor_support_tickets/, "Vendor Support service should call the ticket listing action");
 assert.match(vendorSupportServiceSource, /update_vendor_support_ticket/, "Vendor Support service should call the ticket update action");
 assert.match(vendorsHtml, /drawer-vendor-support/, "Vendor profile drawer should include a Vendor Support section");
@@ -1657,8 +2190,19 @@ assert.match(vendorImprovementSource, /sequence !== vendorSearchSequence/, "Vend
 assert.match(vendorImprovementSource, /let improvementLoadVersion = 0;/, "Vendor CI case filters should version concurrent loads");
 assert.match(vendorImprovementSource, /loadVersion !== improvementLoadVersion/, "Vendor CI should ignore stale case responses");
 assert.match(vendorImprovementSource, /if \(createCaseRunning\) return;/, "Vendor CI should prevent duplicate case creation");
+assert.match(vendorImprovementSource, /let valueCurveRefreshRunning = false;/, "Vendor CI Value Curve refresh should have a running guard");
+assert.match(vendorImprovementSource, /if \(valueCurveRefreshRunning\) return;/, "Vendor CI Value Curve refresh should ignore duplicate refresh requests");
+assert.match(vendorImprovementSource, /finally \{[\s\S]+valueCurveRefreshRunning = false;[\s\S]+if \(refreshButton\) refreshButton\.disabled = false;/, "Vendor CI Value Curve refresh should restore its guard and button state");
+assert.match(vendorImprovementSource, /let ciReminderRunRunning = false;/, "Vendor CI due reminders should have a running guard");
+assert.match(vendorImprovementSource, /if \(ciReminderRunRunning\) return;/, "Vendor CI due reminders should ignore duplicate reminder runs");
+assert.match(vendorImprovementSource, /finally \{[\s\S]+ciReminderRunRunning = false;[\s\S]+if \(runRemindersButton\) runRemindersButton\.disabled = false;/, "Vendor CI reminders should restore their guard and button state");
 assert.match(vendorImprovementSource, /const improvementCaseMutationQueues = new Map\(\)/, "Vendor CI should serialize updates per case");
 assert.match(vendorImprovementSource, /improvementCaseSubmissionIds\.has\(id\)/, "Vendor CI should prevent duplicate carrier submissions");
+assert.match(vendorImprovementSource, /function setCaseRowBusy\(id, busy = false\)/, "Vendor CI should mark a case row busy while mutating it");
+assert.match(vendorImprovementSource, /row\.querySelectorAll\("\[data-ci-case-action\], \[data-ci-case-field\],[\s\S]+control\.disabled = busy/, "Vendor CI should disable case row controls during mutations");
+assert.match(vendorImprovementSource, /setCaseRowBusy\(id, true\)[\s\S]+finally \{[\s\S]+setCaseRowBusy\(id, false\)/, "Vendor CI update mutations should restore case row controls");
+assert.match(vendorImprovementSource, /async function recordCaseResponse\(rowElement, caseId\) \{[\s\S]+improvementCaseSubmissionIds\.has\(caseId\)[\s\S]+setCaseRowBusy\(caseId, true\)[\s\S]+finally \{[\s\S]+setCaseRowBusy\(caseId, false\)/, "Vendor CI response recording should reject duplicates and restore case row controls");
+assert.match(vendorImprovementSource, /async function closeCase\(rowElement, caseId\) \{[\s\S]+improvementCaseSubmissionIds\.has\(caseId\)[\s\S]+setCaseRowBusy\(caseId, true\)[\s\S]+finally \{[\s\S]+setCaseRowBusy\(caseId, false\)/, "Vendor CI closure should reject duplicates and restore case row controls");
 assert.match(vendorImprovementSource, /scorecardMutationIds\.has\(vendorId\)/, "Vendor CI should prevent duplicate scorecard saves");
 assert.doesNotMatch(vendorImprovementSource, /fetchVendors\(\{ base_stage: "procurement"/, "Vendor CI create-case picker should not be limited to Procurement vendors");
 assert.match(apiSource, /async function buildVendorValueCurve/, "Vendor CI API should compute the carrier value curve from all CRM vendors");
@@ -1683,7 +2227,7 @@ assert.match(apiSource, /const completeInvitationGroups = new Map/, "Outreach dr
 assert.match(apiSource, /requestedGroupKeys\.has\(key\)/, "Outreach draft generation should only expand lane groups for requested event/vendor participants");
 assert.match(apiSource, /\.in\("vendor_id", vendorChunk\)[\s\S]+\.range\(offset, offset \+ 999\)/, "Outreach lane hydration should paginate only the requested carriers instead of scanning the full event");
 assert.match(apiSource, /sortRfxInvitationGroup\(completeInvitationGroups\.get\(groupKey\) \|\| requestedInvitationGroup\)/, "Outreach drafts should render stable complete route tables per carrier");
-assert.match(apiSource, /const protectedStatuses = new Set\(\["queued", "sending", "sent", "delivered", "read", "replied", "delivery_unknown", "bounced", "manual_sent", "archived"\]\)/, "Outreach regeneration must preserve messages that already moved beyond draft state");
+assert.match(apiSource, /const protectedStatuses = new Set\(\["queued", "sending", "sent", "delivered", "read", "replied", "delivery_unknown", "failed", "bounced", "manual_sent", "archived"\]\)/, "Outreach regeneration must preserve messages that already moved beyond draft state, including failed rows awaiting correction");
 assert.match(apiSource, /function outreachEventDedupeKey/, "Outreach queue generation should dedupe historical messages by RFx, channel, and carrier contact");
 assert.match(apiSource, /OUTREACH_DO_NOT_AUTO_REQUEUE_STATUSES/, "Outreach queue generation should not automatically requeue sent, pending, or bounced carrier outreach");
 assert.match(generateOutreachDraftsSource, /\.eq\("rfx_event_id", campaign\.rfx_event_id\)[\s\S]+Outreach history load failed/, "Outreach draft generation should inspect prior RFx outreach history across campaigns");
@@ -1732,6 +2276,9 @@ assert.match(apiSource, /async function updateClaimedOutreachMessage[\s\S]+\.eq\
 assert.match(apiSource, /sendOutreachMessages[\s\S]+claimOutreachMessageForSend\(supabase, user, message, \{/, "Gmail sends should acquire the persistent send claim with its delivery trace before invoking the provider");
 assert.match(apiSource, /sendWhatsappOutreachMessages[\s\S]+claimOutreachMessageForSend\(supabase, user, resolvedMessage, \{/, "WhatsApp sends should acquire the persistent send claim with its delivery trace before invoking Meta");
 assert.match(apiSource, /deliveryUncertain[\s\S]+delivery_unknown/, "Ambiguous provider responses should be held for reconciliation instead of automatic resend");
+assert.match(apiSource, /async function writeOutreachDeliveryIssueHistory/, "Outreach delivery issues should be written to contact history for carrier traceability");
+assert.match(apiSource, /status: uncertain \? "delivery_unknown" : "failed"[\s\S]*provider: "gmail"/, "Gmail delivery issues should record failed or unknown outcomes in carrier history");
+assert.match(apiSource, /status: uncertain \? "delivery_unknown" : "failed"[\s\S]*provider: "meta"/, "WhatsApp delivery issues should record failed or unknown outcomes in carrier history");
 assert.match(apiSource, /response\.status === 408 \|\| response\.status >= 500/, "Timeout and provider server responses should remain blocked as uncertain delivery");
 assert.match(apiSource, /body\.action === "create_outreach_campaign"[\s\S]+normalized\.idempotency_key[\s\S]+reused: true/, "Campaign creation retries should reuse the original outreach wave");
 assert.match(rfxEventsSource, /window\.sessionStorage\.getItem\(storageKey\)/, "Bid Room should retain the current draft request key across a lost response");
@@ -1961,6 +2508,10 @@ assert.match(
 );
 assert.match(ratewareSource, /Database matches:/, "Rateware should label global matches separately from the loaded page");
 assert.match(stagingReviewSource, /Database matches:/, "Staging should label global matches separately from the loaded page");
+assert.match(ratewareSource, /const DEFAULT_RATEWARE_PAGE_SIZE = 100/, "Rateware should default to a lighter first page for faster spreadsheet startup");
+assert.match(stagingReviewSource, /const DEFAULT_STAGING_PAGE_SIZE = 100/, "Staging should default to a lighter first page for faster spreadsheet startup");
+assert.match(stagingReviewSource, /optionsRequest\s*\.then\(async \(\) =>/, "Staging catalog hydration should not block the first row page");
+assert.match(ratewareSource, /The row query is the critical path/, "Rateware should keep row loading ahead of catalog hydration");
 assert.match(ratewareSource, /\[50, 100, 200, 500, 1000\]\.includes\(value\)/, "Rateware should allow the backend-supported 1000-row page size");
 assert.match(stagingReviewSource, /\[50, 100, 200, 500, 1000\]\.includes\(value\)/, "Staging should allow the backend-supported 1000-row page size");
 assert.match(ratewareHtml, /<option value="1000">1,000<\/option>/, "Rateware should expose the 1000-row page size");
@@ -2122,6 +2673,11 @@ assert.match(locationMatchDrawerSource, /function zipPrefixMatchesText/, "locati
 assert.match(locationMatchDrawerSource, /if \(\["MX", "US", "CA"\]\.includes\(explicit\)\) return explicit;/, "location drawer must preserve a confirmed MX, US, or CA country before inferring overlapping state codes");
 assert.match(locationMatchDrawerSource, /optionCountry && optionCountry !== country\) return null;/, "location drawer should hide wrong-country candidates when text is explicit");
 assert.doesNotMatch(locationMatchDrawerSource, /lookup\.includes\(lookupKey\(option\.zip_prefix\)\)/, "location drawer should not score ZIP prefixes by substring");
+assert.match(locationMatchDrawerSource, /const aliasSaveMutationKeys = new Set\(\);/, "location drawer should key alias saves to avoid duplicate catalog aliases");
+assert.match(locationMatchDrawerSource, /aliasSaveMutationKeys\.has\(aliasKey\)/, "location drawer should ignore duplicate alias-save clicks");
+assert.match(locationMatchDrawerSource, /let drawerActionRunning = false;/, "location drawer should serialize find-ZIP and renormalize actions");
+assert.match(locationMatchDrawerSource, /if \(drawerActionRunning\) return;/, "location drawer should ignore duplicate drawer actions while running");
+assert.match(locationMatchDrawerSource, /finally \{[\s\S]+drawerActionRunning = false;/, "location drawer should release drawer action locks after async work");
 assert.match(catalogWorkbenchSource, /function zipPrefixMatchesTokens/, "catalog workbench should score ZIP prefixes by token or leading prefix");
 assert.match(catalogWorkbenchSource, /optionCountry && optionCountry !== inferredCountry\) return null;/, "catalog workbench candidates should respect inferred country");
 assert.match(sheetUiSource, /function zipPrefixMatchesQuery/, "spreadsheet autocomplete should protect ZIP prefix matching");
@@ -2161,6 +2717,12 @@ assert.match(interpretUploadSource, /source_service_marker/, "AI interpretation 
 assert.match(interpretUploadSource, /summary_expected_rate_rows/, "Upload audit should compare summary expected rows with staged rows");
 assert.match(interpretUploadSource, /internal_vendor_domain/, "Upload audit should flag internal Marksman domains as carrier errors");
 assert.match(interpretUploadSource, /Document summary expected/, "Missing-row warnings should explain summary-vs-staged gaps");
+assert.match(createRawUploadSource, /function uploadErrorStatus/, "Raw upload creation should classify authentication failures separately from storage or database failures");
+assert.match(createRawUploadSource, /uploadErrorStatus\(error\)/, "Raw upload creation should not return 401 for every caught failure");
+assert.doesNotMatch(createRawUploadSource, /jsonResponse\(\{ error: error\.message \}, 401\)/, "Raw upload creation should not expose raw errors or mislabel all failures as auth errors");
+assert.match(interpretUploadSource, /function interpretationErrorMessage/, "Interpret upload should sanitize nested provider, storage, and database errors consistently");
+assert.doesNotMatch(interpretUploadSource, /return jsonResponse\(\{ error: error\.message \}/, "Interpret upload should not return raw caught errors to Upload History");
+assert.doesNotMatch(interpretUploadSource, /error_message: error\.message|String\(error\.message/, "Interpret upload should persist sanitized failure reasons in job and raw upload audit fields");
 assert.match(
   apiSource,
   /if \(operation\) columnFilters\.operation = mergeRpcColumnFilterValue/,
@@ -2273,9 +2835,20 @@ assert.match(listVendorsSource, /const lightweight =/, "Carrier CRM vendor list 
 assert.match(listVendorsSource, /contact_name/, "Lightweight Carrier CRM loading should include contact names for Bid Room search");
 assert.match(listVendorsSource, /search_workspace_vendors/, "Carrier CRM search should use the workspace-scoped vendor search RPC");
 assert.match(listVendorsSource, /search_capped/, "Carrier CRM search should disclose when the server search is capped");
+assert.match(listVendorsSource, /shouldPageSearchInMemory/, "Carrier CRM search should preserve RPC relevance ordering before page slicing");
+assert.match(listVendorsSource, /rankById/, "Carrier CRM search should sort returned vendors by search match rank");
+assert.match(listVendorsSource, /\.slice\(offset, offset \+ limit\)/, "Carrier CRM search should page after relevance sorting");
+assert.match(listVendorsSource, /total: vendorSearch \? searchTotal : filteredTotal/, "Carrier CRM search should report the full server-side search total to CRM and Bid Room");
+assert.match(listVendorsSource, /const viewBaseStage = \["sourcing", "procurement", "archived"\]\.includes\(view\) \? view : ""/, "Vendor API should treat sourcing, procurement, and archived as first-class CRM views");
+assert.match(listVendorsSource, /query = query\.eq\("base_stage", effectiveBaseStage\)/, "Vendor API should resolve CRM base-stage filters consistently across modules");
 assert.match(vendorWorkspaceSearchMigration, /secondary_emails/, "Workspace vendor search should include secondary emails");
 assert.match(vendorWorkspaceSearchMigration, /contact_name/, "Workspace vendor search should include contact names");
 assert.match(vendorWorkspaceSearchMigration, /rateware_vendor_search_key/, "Workspace vendor search should normalize accents and punctuation");
+assert.match(vendorWorkspaceSearchHardeningMigration, /add column if not exists name text/, "Vendor search hardening should guarantee commercial name support");
+assert.match(vendorWorkspaceSearchHardeningMigration, /v\.name/, "Workspace vendor search should include commercial name aliases");
+assert.match(vendorWorkspaceSearchHardeningMigration, /profile_data::text/, "Workspace vendor search should include structured profile data");
+assert.match(vendorWorkspaceSearchHardeningMigration, /coalesce\(v\.tags/, "Workspace vendor search should include tags");
+assert.match(vendorWorkspaceSearchHardeningMigration, /secondary_email_keys/, "Workspace vendor search should rank exact secondary email matches");
 assert.match(rfxEventsSource, /rawTerm\.length >= 2\s*\? segmentRows/, "Bid Room should trust server-side vendor search matches");
 assert.match(vendorImprovementSource, /const matchingRows = rows;/, "Vendor CI should trust server-side vendor search matches");
 assert.match(listVendorsSource, /if \(!lightweight && rows\.length\)/, "Bid Room carrier selector should be able to skip heavy CRM metric enrichment");
@@ -2286,6 +2859,12 @@ assert.match(apiSource, /profile_data: typeof vendor\.profile_data/, "Vendor int
 assert.match(vendorsSource, /key: "health"/, "Carrier CRM spreadsheet should include a health column");
 assert.match(vendorsSource, /key: "quotes"/, "Carrier CRM spreadsheet should include a quotes column");
 assert.match(vendorsSource, /key: "coverage_delta"/, "Carrier CRM spreadsheet should include a coverage fit column");
+assert.match(vendorsSource, /const VENDOR_WORKSPACE_CONTEXT_STORAGE_KEY = "rateware:vendors:workspace-context:v1"/, "Carrier CRM should persist a separate workspace context");
+assert.match(vendorsSource, /function persistVendorWorkspaceContext\(\)/, "Carrier CRM should persist directory and funnel context");
+assert.match(vendorsSource, /storedVendorWorkspaceContext/, "Carrier CRM should restore its last workspace context");
+assert.match(vendorsSource, /vendorPageOffset = Math\.max\(0, Math\.floor\(\(vendorTotalCount - 1\) \/ vendorPageSize\) \* vendorPageSize\)/, "Carrier CRM should recover from a stale saved page when the dataset shrinks");
+assert.match(vendorsSource, /funnelHideEmpty: vendorFunnelHideEmptyStages/, "Carrier CRM should remember funnel visibility filters");
+assert.match(vendorsSource, /activateVendorTab\(activeVendorTab\)/, "Carrier CRM should reopen the last active workspace instead of forcing Funnel");
 assert.doesNotMatch(vendorsHtml, /id="(?:wizard-primary-email|primary-email|drawer-edit-email)"[^>]*type="email"/, "Carrier CRM email fields should accept multiple email addresses without native single-email blocking");
 assert.match(vendorsSource, /function splitVendorEmails/, "Carrier CRM should split pasted email lists into primary and secondary emails");
 assert.match(vendorsSource, /secondary_emails: emails\.slice\(1\)/, "Carrier CRM should preserve extra emails as secondary contacts");
@@ -2309,6 +2888,14 @@ assert.doesNotMatch(vendorFunnelMoveSource, /loadVendorFunnel\(/, "Vendor Pipeli
 const vendorDrawerSaveSource = vendorsSource.slice(vendorsSource.indexOf("async function saveDrawerChanges"), vendorsSource.indexOf("drawerArchiveButton.addEventListener"));
 assert.match(vendorDrawerSaveSource, /applyVendorUpdateToFunnel/, "Vendor drawer saves should refresh funnel cards from local state");
 assert.doesNotMatch(vendorDrawerSaveSource, /loadVendors\(/, "Vendor drawer saves should not reload the whole Carrier CRM directory");
+const vendorDrawerLogoSource = vendorsSource.slice(vendorsSource.indexOf("async function handleDrawerLogoUpload"), vendorsSource.indexOf("async function copyVendorProfileLink"));
+assert.match(vendorDrawerLogoSource, /const vendorId = activeDrawerVendorId;[\s\S]+const contextVersion = vendorDrawerContextVersion;/, "Vendor drawer logo upload should capture the open vendor context");
+assert.match(vendorDrawerLogoSource, /activeDrawerVendorId !== vendorId \|\| vendorDrawerContextVersion !== contextVersion/, "Vendor drawer logo upload should ignore stale completions after the drawer changes");
+assert.match(vendorDrawerLogoSource, /uploadVendorLogo\(vendorId,/, "Vendor drawer logo upload should use the captured vendor id");
+const vendorDrawerClickSource = vendorsSource.slice(vendorsSource.indexOf("drawer.addEventListener(\"click\""), vendorsSource.indexOf("function refreshDrawerIdentity"));
+assert.match(vendorDrawerClickSource, /const vendorId = activeDrawerVendorId;[\s\S]+const contextVersion = vendorDrawerContextVersion;[\s\S]+loadDrawerVendorSupport\(vendorId\);[\s\S]+loadDrawerVendorRelationship\(vendorId\);/, "Vendor drawer support ticket updates should stay scoped to the open vendor context");
+assert.match(vendorDrawerClickSource, /replaceBouncedVendorEmail\(vendorId, \{ bouncedEmail, replacementEmail \}\)/, "Vendor bounced email replacement should use the captured vendor id");
+assert.match(vendorDrawerClickSource, /activeDrawerVendorId !== vendorId \|\| vendorDrawerContextVersion !== contextVersion/, "Vendor drawer async click actions should ignore stale completions after the drawer changes");
 assert.match(vendorsSource, /const vendorCellSaveQueues = new Map\(\)/, "Carrier CRM should serialize overlapping saves for the same cell");
 assert.match(vendorsSource, /vendorCellSaveVersions\.get\(saveKey\) !== saveVersion/, "Carrier CRM should ignore stale cell-save completions");
 assert.match(vendorsSource, /loadVersion !== vendorDrawerSupportLoadVersion \|\| activeDrawerVendorId !== vendorId/, "Carrier CRM support should stay scoped to the open vendor drawer");
@@ -2326,6 +2913,10 @@ assert.match(vendorServiceSource, /ids = \[\]/, "Vendor service should support r
 assert.match(listVendorsSource, /const requestedIds = normalizeUuidList\(body\.ids \|\| body\.vendor_ids\)/, "Vendor API should support owner-scoped vendor resolution by ID");
 assert.match(rfxEventsSource, /async function hydrateVendorOptionIds\(ids = \[\]\)/, "Bid Room should hydrate saved participant templates by ID from Carrier CRM");
 assert.match(rfxEventsSource, /ids: requestedIds\.slice\(offset, offset \+ CRM_VENDOR_SEARCH_LIMIT\)/, "Saved participant hydration should use bounded CRM requests");
+assert.match(rfxEventsSource, /async function loadSegmentCandidateRows\(segmentId = selectedSegmentId\(\)\)/, "Bid Room should resolve saved or procurement participants through Carrier CRM before selecting them");
+assert.match(rfxEventsSource, /base_stage: "procurement"[\s\S]*lightweight: true/, "Procurement participant loading should use the server-side CRM procurement filter");
+assert.match(rfxEventsSource, /const rows = await loadSegmentCandidateRows\(segmentId\);/, "Loading a saved participant list should not depend on the currently visible CRM rows");
+assert.match(rfxEventsSource, /loadSegmentCandidateRows\(segmentId\)[\s\S]*selectManualVendorIds\(rows\.map\(\(vendor\) => vendor\.id\)\)/, "Selecting a participant segment should hydrate CRM rows before selecting carrier ids");
 assert.match(rfxEventsSource, /const savedIds = segmentVendorIds\(selectedSegment\);/, "Saved templates should remain loadable even when their vendors are outside the initial CRM page");
 assert.match(rfxEventsSource, /row\.contact_name/, "Bid Room participant search should include CRM contact names");
 assert.match(rfxEventsSource, /\.normalize\("NFD"\)/, "Bid Room participant search should normalize accents for Spanish names");
@@ -2349,6 +2940,11 @@ assert.match(carrierProfileSource, /recommendedMissing/, "Carrier profile should
 assert.doesNotMatch(carrierProfileSource, /required: true/, "Carrier profile fields should be recommended instead of mandatory");
 assert.match(carrierProfileSource, /data-recommended-field/, "Carrier profile should label helpful fields as recommended");
 assert.doesNotMatch(carrierProfileSource, /return;\s*\}\s*button\.disabled = true;/, "Carrier profile should not block save when recommended fields are missing");
+assert.match(carrierProfileSource, /let carrierProfileSubmitting = false;/, "Carrier profile should block duplicate profile saves");
+assert.match(carrierProfileSource, /if \(carrierProfileSubmitting\) return;/, "Carrier profile should ignore duplicate in-flight submits");
+assert.match(carrierProfileSource, /const carrierProfileTicketFollowupKeys = new Set\(\);/, "Carrier profile should key ticket follow-up mutations per ticket");
+assert.match(carrierProfileSource, /carrierProfileTicketFollowupKeys\.has\(ticketId\)/, "Carrier profile should ignore duplicate ticket follow-ups");
+assert.match(carrierProfileSource, /if \(input\) input\.disabled = true;/, "Carrier profile should disable ticket follow-up text while saving");
 assert.match(carrierProfileSource, /response_language: currentLanguage/, "Carrier profile submissions should record the response language");
 assert.match(carrierProfileApiSource, /patch\.vendor_name = patch\.domain \|\| patch\.primary_email \|\| "Carrier profile"/, "Carrier profile API should allow partial profile saves without requiring a vendor name from the carrier");
 assert.match(stylesSource, /carrier-profile-stepper/, "Carrier profile stepper should have dedicated UI styling");
@@ -2357,6 +2953,10 @@ assert.match(carrierProfileApiSource, /Deno\.serve/, "Carrier profile API should
 assert.match(carrierProfileApiSource, /get_profile/, "Carrier profile API should expose token-scoped profile loading");
 assert.match(carrierProfileApiSource, /submit_profile/, "Carrier profile API should expose token-scoped profile submission");
 assert.doesNotMatch(carrierProfileApiSource, /requireKindeUser/, "Carrier profile API should not require Kinde for token-scoped access");
+assert.match(carrierProfileApiSource, /function publicErrorMessage/, "Carrier profile API should sanitize nested public portal errors");
+assert.doesNotMatch(carrierProfileApiSource, /error instanceof Error \? error\.message/, "Carrier profile API should not expose raw caught errors");
+assert.match(rfxBidApiSource, /function publicErrorMessage/, "Public Bid Room API should sanitize nested carrier-facing errors");
+assert.doesNotMatch(rfxBidApiSource, /return jsonResponse\(\{ error: error\.message \}/, "Public Bid Room API should not expose raw caught errors");
 
 for (const functionName of [
   "rateware_bi_dimension_value",
@@ -2434,11 +3034,26 @@ assert.match(vendorOnboardingGapsSource, /vendorOnboardingGapReport/, "vendor on
 assert.match(apiSource, /body\.action === "vendor_onboarding_gaps"/, "rateware API should expose vendor onboarding gaps export");
 assert.match(apiSource, /body\.action === "import_vendor_onboarding_corrections"/, "rateware API should accept onboarding gap correction imports");
 assert.match(apiSource, /async function importVendorOnboardingCorrections/, "onboarding gap corrections should have a dedicated updater");
-const vendorOnboardingCorrectionsSource = apiSource.slice(apiSource.indexOf("async function importVendorOnboardingCorrections"), apiSource.indexOf("function normalizeImportedVendor"));
+const vendorOnboardingCorrectionsSource = apiSource.slice(apiSource.indexOf("async function findVendorForOnboardingCorrection"), apiSource.indexOf("function normalizeImportedVendor"));
 assert.ok(vendorOnboardingCorrectionsSource.length > 100, "vendor onboarding correction helper should be present");
 assert.match(vendorOnboardingCorrectionsSource, /findVendorForOnboardingCorrection/, "gap correction imports should match existing vendors first");
+assert.match(vendorOnboardingCorrectionsSource, /vendorReferenceValues/, "gap correction imports should resolve vendors by domain, email, legal name, or commercial name");
+assert.match(vendorOnboardingCorrectionsSource, /resolveVendorReferencesFromRows/, "gap correction imports should use the shared deterministic vendor matcher");
+assert.match(vendorOnboardingCorrectionsSource, /seenCorrectionVendorIds/, "gap correction imports should reject duplicate corrections for the same carrier");
+assert.match(vendorOnboardingCorrectionsSource, /Duplicate vendor correction row in this file/, "gap correction imports should return a clear duplicate-carrier error");
+assert.match(vendorOnboardingCorrectionsSource, /correctionErrorRow/, "gap correction imports should return structured row-level error diagnostics");
+assert.match(vendorOnboardingCorrectionsSource, /source_row_number/, "gap correction errors should preserve the source row number");
+assert.match(vendorOnboardingCorrectionsSource, /errors_truncated/, "gap correction imports should disclose truncated error exports");
+assert.match(vendorOnboardingCorrectionsSource, /error_count/, "gap correction imports should return the full error count");
 assert.match(vendorOnboardingCorrectionsSource, /\.update\(patch\)/, "gap correction imports should update existing vendors instead of inserting duplicates");
 assert.doesNotMatch(vendorOnboardingCorrectionsSource, /\.insert\(/, "gap correction imports should not insert new vendor records");
+assert.match(vendorsSource, /function downloadVendorOnboardingCorrectionErrors/, "Carrier CRM should export onboarding correction errors after failed gap-fix imports");
+assert.match(vendorsSource, /vendor-onboarding-correction-errors/, "Carrier CRM should name onboarding correction error downloads clearly");
+assert.match(vendorsSource, /\["source_row_number", "vendor_id", "vendor_name", "legal_name", "domain", "primary_email", "error_reason"\]/, "Carrier CRM onboarding correction error CSV should include row and identity columns");
+assert.match(vendorsSource, /Only the first \$\{Number\(result\.error_limit/, "Carrier CRM should warn when onboarding correction error CSV is truncated");
+assert.match(vendorsSource, /row\?\.legal_name/, "Carrier CRM gap-fix import should accept legal_name as a vendor identifier");
+assert.match(vendorsSource, /Keep vendor_id, domain, email, legal_name, or vendor_name/, "Carrier CRM gap-fix import copy should match the supported vendor identifiers");
+assert.match(vendorsHtml, /Match by vendor_id, domain, email, legal name, or carrier name/, "Carrier CRM update copy should not claim vendor_id is the only supported match key");
 const vendorPatchSource = apiSource.slice(apiSource.indexOf("function normalizeVendorPatch"), apiSource.indexOf("function normalizeSegment"));
 assert.ok(vendorPatchSource.length > 100, "vendor patch normalizer should be present");
 assert.match(apiSource, /function normalizeVendorProfileData/, "vendors should support structured onboarding profile data");
@@ -2484,6 +3099,16 @@ assert.doesNotMatch(carrierIntelligenceSource, /\.from\("rate_staging"\)/, "AI A
 assert.doesNotMatch(carrierIntelligenceSource, /\.limit\(1500\)/, "AI Analyst should not rely on a 1500-row rate sample");
 assert.match(stylesSource, /\.bulk-action-bar \{[\s\S]*?overflow-x: auto/, "Spreadsheet bulk actions should scroll inside their own toolbar on narrow laptop layouts");
 assert.match(stylesSource, /\.bulk-action-bar:has\(\.sheet-more-actions\[open\]\)[\s\S]*?overflow: visible/, "The More actions menu should not be clipped by the compact toolbar");
+assert.match(stylesSource, /\.bi-layout > \.workspace-panel[\s\S]*?\.bi-drilldown-panel > \.table-wrap[\s\S]*?min-width: 0/, "Analyze tables should stay inside their panel on narrow laptop layouts");
+assert.match(stylesSource, /\.bi-drilldown-panel > \.table-wrap[\s\S]*?overflow-x: auto/, "Analyze drilldown should scroll internally instead of expanding the page");
+assert.match(stylesSource, /Mobile shell: keep navigation and primary actions in the first viewport/, "The mobile shell should have one compact navigation treatment");
+assert.match(stylesSource, /\.side-nav nav \{[\s\S]*?overflow-x: auto/, "Mobile navigation should scroll horizontally inside the shell");
+assert.match(stylesSource, /\.page-header \{[\s\S]*?flex-direction: row[\s\S]*?align-items: center/, "Mobile page headers should keep title and actions on one compact row");
+assert.match(stylesSource, /\.bi-workbench-nav,[\s\S]*?\.module-workbench-nav \{[\s\S]*?grid-template-columns: repeat\(2/, "Narrow Analyze and workbench navigation should avoid four full-width rows");
+assert.match(stylesSource, /\.dashboard-priority-panel \.priority-queue > \.ui-state[\s\S]*?grid-column: 1 \/ -1/, "Dashboard loading and error states should span the full priority queue");
+assert.match(spreadsheetGridSource, /navigator\.clipboard\?\.writeText/, "Spreadsheet copy should use the modern clipboard API when available");
+assert.match(spreadsheetGridSource, /document\.execCommand\?\.\("copy"\)/, "Spreadsheet copy should keep a browser fallback when clipboard permissions are unavailable");
+assert.match(spreadsheetGridSource, /fallback\.remove\(\)/, "Spreadsheet copy fallback should clean up its temporary textarea");
 assert.match(ratewareSource, /showStarterViews: false/, "Rateware should not surface starter column presets by default");
 assert.match(stagingReviewSource, /showStarterViews: false/, "Staging should not surface starter column presets by default");
 assert.match(sheetUiSource, /Changes auto-save in this browser/, "Column layout storage should be explicit to operators");
@@ -2497,6 +3122,23 @@ assert.match(ratewareSource, /const optionsRequest = loadRatewareOptions/, "Rate
 assert.match(ratewareSource, /let page = await fetchApprovedRatewarePage/, "Rateware should render its page before waiting on option hydration");
 assert.match(ratewareSource, /Rateware rows loaded\. Dropdown catalogs are temporarily unavailable/, "Rateware should retain rendered rows when secondary dropdown hydration fails");
 assert.match(ratewareSource, /const hasRenderedRows = currentRows\.length > 0 \|\| loadedRows\.length > 0/, "Rateware should preserve visible rows while loading another page or filter result");
+assert.match(ratewareSource, /async function openRatewareDrawer\(id\) \{[\s\S]+loadedRows\.find\(\(item\) => item\.id === id\) \|\| \{ id \};[\s\S]+await fetchApprovedRatewareDetail\(id\)/, "Rateware selected detail should hydrate by id even when the selected row is on another page");
+assert.match(ratewareSource, /async function applySelectedBulkEdit\(\) \{[\s\S]+if \(rows\.length !== ids\.length\) \{[\s\S]+not visible on this page[\s\S]+Inline validation can only be checked for loaded rows/, "Rateware selected bulk edits should explicitly confirm when selected rows include hidden pages");
+assert.match(ratewareSource, /let ratewareBulkMutationRunning = false;/, "Rateware bulk actions should share a mutation guard");
+assert.match(ratewareSource, /const mutationRunning = ratewareBulkMutationRunning;/, "Rateware bulk controls should read the shared mutation guard");
+assert.match(ratewareSource, /applyBulkEditButton\.disabled = mutationRunning \|\| selectedCount === 0/, "Rateware selected bulk edit should disable while a bulk mutation is running");
+assert.match(ratewareSource, /applyBulkEditFilteredButton\.disabled = mutationRunning \|\| !bulkFieldSelect\?\.value \|\| !hasFilteredRows/, "Rateware filtered bulk edit should disable while a bulk mutation is running");
+assert.match(ratewareSource, /archiveFilteredButton\.disabled = mutationRunning \|\| !hasFilteredRows/, "Rateware filtered archive should disable while a bulk mutation is running");
+assert.match(ratewareSource, /async function applySelectedBulkEdit\(\) \{[\s\S]+if \(ratewareBulkMutationRunning\) return;[\s\S]+ratewareBulkMutationRunning = true;[\s\S]+finally \{[\s\S]+ratewareBulkMutationRunning = false;[\s\S]+updateBulkControls\(\);[\s\S]+\}/, "Rateware selected bulk edits should reject duplicate submissions and restore controls");
+assert.match(ratewareSource, /async function applyFilteredBulkEdit\(\) \{[\s\S]+if \(ratewareBulkMutationRunning\) return;[\s\S]+ratewareBulkMutationRunning = true;[\s\S]+finally \{[\s\S]+ratewareBulkMutationRunning = false;[\s\S]+updateBulkControls\(\);[\s\S]+\}/, "Rateware filtered bulk edits should reject duplicate submissions and restore controls");
+assert.match(ratewareSource, /async function runFilteredRatewareAction\(targetAction\) \{[\s\S]+if \(ratewareBulkMutationRunning\) return;[\s\S]+ratewareBulkMutationRunning = true;[\s\S]+finally \{[\s\S]+ratewareBulkMutationRunning = false;[\s\S]+updateBulkControls\(\);[\s\S]+\}/, "Rateware filtered archive/remove should reject duplicate submissions and restore controls");
+for (const functionName of ["saveSelectedRatewareRows", "returnSelectedToStaging", "renormalizeSelectedRateware", "matchSelectedRatewareVendors", "enrichSelectedRatewareZips"]) {
+  const source = ratewareSource.slice(ratewareSource.indexOf(`async function ${functionName}`), ratewareSource.indexOf("function debounce"));
+  assert.match(source, /if \(ratewareBulkMutationRunning\) return;/, `${functionName} should reject duplicate Rateware bulk mutations`);
+  assert.match(source, /ratewareBulkMutationRunning = true;[\s\S]+updateBulkControls\(\);/, `${functionName} should disable shared Rateware bulk controls before mutating`);
+  assert.match(source, /finally \{[\s\S]*?ratewareBulkMutationRunning = false;[\s\S]*?updateBulkControls\(\);[\s\S]*?\}/, `${functionName} should release the shared Rateware bulk mutation guard`);
+  assert.match(source, /finally \{[\s\S]*?updateBulkControls\(\);[\s\S]*?\}/, `${functionName} should always restore Rateware bulk controls after success or failure`);
+}
 assert.match(ratewareSource, /if \(hasRenderedRows\) \{\s+setActionStatus\("Updating Rateware rows\.\.\."\);/, "Rateware should show inline loading instead of blanking rendered rows");
 assert.match(ratewareSource, /if \(hasRenderedRows\) setActionStatus\(""\)/, "Rateware should clear temporary inline loading after a successful preserved-row refresh");
 assert.match(ratewareSource, /ratewareTotalCount = Number\(page\.total \?\? rows\.length \?\? 0\)/, "Rateware should treat a zero database count as a real zero");
@@ -2507,6 +3149,21 @@ assert.match(ratewareSource, /searchInput\.addEventListener\("input", debounce\(
 assert.match(ratewareSource, /operationFilter\.addEventListener\("change", \(\) =>/, "Rateware operation filtering should reset selection before loading new results");
 assert.match(ratewareSource, /serviceFilter\.addEventListener\("change", \(\) =>/, "Rateware service filtering should reset selection before loading new results");
 assert.match(ratewareSource, /if \(refreshOptions\) resetRatewareSelectionForFilter\(\)/, "Rateware refresh should clear stale selection before reloading data");
+assert.match(spreadsheetColumnFiltersSource, /storageKey = ""/, "Spreadsheet column filters should accept an optional persistent storage key");
+assert.match(spreadsheetColumnFiltersSource, /function\s*\(\)\s*=>|const readStoredState = \(\) =>/, "Spreadsheet column filters should read persisted state without failing when storage is unavailable");
+assert.match(spreadsheetColumnFiltersSource, /data-sheet-filter-apply-search[\s\S]{0,500}persistState\(\)/, "Spreadsheet text filters should persist after applying a search");
+assert.match(spreadsheetColumnFiltersSource, /aria-haspopup="dialog" aria-expanded="false"/, "Spreadsheet filter triggers should expose dialog state");
+assert.match(spreadsheetColumnFiltersSource, /button\.setAttribute\("aria-controls", popover\.id\)/, "Spreadsheet filter triggers should point to the shared filter dialog");
+assert.match(spreadsheetColumnFiltersSource, /function closeMenu\(\{ restoreFocus = false \} = \{\}\)/, "Spreadsheet filter menus should centralize close and focus restoration");
+assert.match(spreadsheetColumnFiltersSource, /closeMenu\(\{ restoreFocus: true \}\)/, "Spreadsheet filter menus should return focus after keyboard or explicit close");
+assert.match(ratewareSource, /const RATEWARE_WORKSPACE_CONTEXT_STORAGE_KEY = "rateware:approved:workspace-context:v1"/, "Rateware should persist page and primary filter context under its own storage key");
+assert.match(ratewareSource, /function persistRatewareWorkspaceContext\(\)/, "Rateware should persist search, operation, service, quick filter, and page context");
+assert.match(ratewareSource, /storageKey: "rateware:approved:column-filters:v1"/, "Rateware column filters should persist independently from primary workspace context");
+assert.match(ratewareSource, /loadRateware\(\{ preservePage: true \}\);\s*loadRatewareVersions\(\)/, "Rateware should restore the saved page before its initial data load");
+assert.match(stagingReviewSource, /const STAGING_WORKSPACE_CONTEXT_STORAGE_KEY = "rateware:staging:workspace-context:v1"/, "Staging should persist page and primary filter context under its own storage key");
+assert.match(stagingReviewSource, /function persistStagingWorkspaceContext\(\)/, "Staging should persist search, status, review filter, and page context");
+assert.match(stagingReviewSource, /storageKey: "rateware:staging:column-filters:v1"/, "Staging column filters should persist independently from primary workspace context");
+assert.match(stagingReviewSource, /loadRows\(\{ preservePage: true \}\);\s*$/, "Staging should restore the saved page before its initial data load");
 const ratewarePageNavigationSource = ratewareSource.slice(ratewareSource.indexOf("async function goToRatewarePage"), ratewareSource.indexOf("async function setRatewarePageSize"));
 assert.ok(ratewarePageNavigationSource.length > 100, "Rateware page navigation block should be present");
 assert.doesNotMatch(ratewarePageNavigationSource, /selectedRowIds\.clear\(\)/, "Rateware should retain selected ids when changing pages");
@@ -2522,9 +3179,34 @@ assert.match(stagingReviewSource, /const optionsRequest = loadStagingOptions/, "
 assert.match(stagingReviewSource, /let page = await fetchStagingPage/, "Staging should render its page before waiting on option hydration");
 assert.match(stagingReviewSource, /Staging rows loaded\. Dropdown catalogs are temporarily unavailable/, "Staging should retain rendered rows when secondary dropdown hydration fails");
 assert.match(stagingReviewSource, /const hasRenderedRows = currentRows\.length > 0 \|\| loadedRows\.length > 0/, "Staging should preserve visible rows while loading another page or filter result");
+assert.match(stagingReviewSource, /async function openEditDrawer\(id\) \{[\s\S]+const row = rowById\(id\) \|\| \{ id \};[\s\S]+await fetchStagingDetail\(id\)/, "Staging selected detail should hydrate by id even when the selected row is on another page");
+assert.match(stagingReviewSource, /if \(status === "approved"\) \{[\s\S]+if \(rows\.length !== ids\.length\) \{[\s\S]+Approval only runs on loaded selected rows/, "Staging selected approval should not approve off-page rows without visible validation blockers");
+assert.match(stagingReviewSource, /async function applySelectedBulkEdit\(\) \{[\s\S]+if \(rows\.length !== ids\.length\) \{[\s\S]+not visible on this page[\s\S]+Inline validation can only be checked for loaded rows/, "Staging selected bulk edits should explicitly confirm when selected rows include hidden pages");
+assert.match(stagingReviewSource, /let stagingBulkMutationRunning = false;/, "Staging bulk actions should share a mutation guard");
+assert.match(stagingReviewSource, /let stagingDrawerSaveRunning = false;/, "Staging drawer save should have a running guard");
+assert.match(stagingReviewSource, /async function saveActiveRow\(status = null\) \{[\s\S]+if \(!activeRowId \|\| stagingDrawerSaveRunning\) return;[\s\S]+stagingDrawerSaveRunning = true;[\s\S]+finally \{[\s\S]+stagingDrawerSaveRunning = false;[\s\S]+\}/, "Staging drawer save should reject duplicate submits and restore its guard");
+assert.match(stagingReviewSource, /const stagingRowActionIds = new Set\(\);/, "Staging row approve/reject actions should have per-row guards");
+assert.match(stagingReviewSource, /const actionKey = `staging-row-action:\$\{id\}`;[\s\S]+if \(stagingRowActionIds\.has\(actionKey\)\) return;[\s\S]+stagingRowActionIds\.add\(actionKey\);[\s\S]+finally \{[\s\S]+stagingRowActionIds\.delete\(actionKey\);/, "Staging row approve/reject should ignore duplicate clicks and release locks");
+assert.match(stagingReviewSource, /const mutationRunning = stagingBulkMutationRunning;/, "Staging bulk controls should read the shared mutation guard");
+assert.match(stagingReviewSource, /applyBulkEditButton\.disabled = mutationRunning \|\| selectedCount === 0/, "Staging selected bulk edit should disable while a bulk mutation is running");
+assert.match(stagingReviewSource, /bulkApproveFilteredButton\.disabled = mutationRunning \|\| !hasFilteredRows/, "Staging filtered approve should disable while a bulk mutation is running");
+assert.match(stagingReviewSource, /bulkArchiveFilteredButton\.disabled = mutationRunning \|\| !hasFilteredRows/, "Staging filtered archive should disable while a bulk mutation is running");
+for (const functionName of ["runBulkAction", "applySelectedBulkEdit", "runBulkArchive", "runBulkRemove", "runBulkRenormalize", "runBulkMatchVendors", "runBulkEnrichZips"]) {
+  const source = stagingReviewSource.slice(stagingReviewSource.indexOf(`async function ${functionName}`), stagingReviewSource.indexOf("function readPatch"));
+  assert.match(source, /if \(stagingBulkMutationRunning\) return;/, `${functionName} should reject duplicate submissions while a staging bulk mutation is running`);
+  assert.match(source, /stagingBulkMutationRunning = true;[\s\S]+updateBulkControls\(\);/, `${functionName} should disable staging bulk controls before mutating`);
+  assert.match(source, /stagingBulkMutationRunning = false;/, `${functionName} should release the staging bulk mutation guard`);
+  assert.match(source, /finally \{[\s\S]*?updateBulkControls\(\);[\s\S]*?\}/, `${functionName} should always restore Staging bulk controls after success or failure`);
+}
+for (const functionName of ["runFilteredStagingAction", "runFilteredStagingUpdate"]) {
+  const source = stagingReviewSource.slice(stagingReviewSource.indexOf(`async function ${functionName}`), stagingReviewSource.indexOf(`async function runBulkRenormalize`));
+  assert.match(source, /if \(stagingBulkMutationRunning\) return;/, `${functionName} should reject duplicate filtered submissions while a staging bulk mutation is running`);
+  assert.match(source, /stagingBulkMutationRunning = true;[\s\S]+updateBulkControls\(\);/, `${functionName} should disable staging filtered controls before mutating`);
+  assert.match(source, /finally \{[\s\S]+stagingBulkMutationRunning = false;[\s\S]+updateBulkControls\(\);[\s\S]+\}/, `${functionName} should release the staging bulk mutation guard and restore controls`);
+}
 assert.match(stagingReviewSource, /if \(hasRenderedRows\) \{\s+setBulkStatus\("Updating staging rows\.\.\."\);/, "Staging should show inline loading instead of blanking rendered rows");
-assert.match(stagingReviewSource, /else if \(hasRenderedRows\) \{\s+setBulkStatus\(""\);/, "Staging should clear temporary inline loading after a successful preserved-row refresh");
-assert.match(stagingReviewSource, /await optionsRequest;\s+if \(token !== stagingLoadToken\) return;\s+if \(optionsError\)/, "Staging should ignore stale option responses before updating status");
+assert.match(stagingReviewSource, /if \(hasRenderedRows\) setBulkStatus\(""\);/, "Staging should clear temporary inline loading after the row page is rendered");
+assert.match(stagingReviewSource, /optionsRequest\s*\.then\(async \(\) => \{\s+if \(token !== stagingLoadToken\) return;\s+if \(optionsError\)/, "Staging should ignore stale option responses before updating status");
 assert.match(stagingReviewSource, /stagingTotalCount = Number\(page\.total \?\? rows\.length \?\? 0\)/, "Staging should treat a zero database count as a real zero");
 assert.match(stagingReviewSource, /stagingTable\?\.setAttribute\("aria-busy", "true"\)/, "Staging should expose loading state to assistive technology");
 assert.match(stagingReviewSource, /stagingTable\?\.removeAttribute\("aria-busy"\)/, "Staging should clear its loading state after requests finish");
@@ -2548,19 +3230,125 @@ assert.match(shippersSource, /loadVersion !== cadenceLoadVersion/, "Shipper cade
 assert.match(shippersSource, /loadVersion !== intelligenceLoadVersion/, "Shipper intelligence should ignore stale filter responses");
 assert.match(shippersSource, /loadVersion !== drawerLoadVersion \|\| state\.activeShipperId !== id/, "Shipper profile drawer should not render a previously requested account");
 assert.doesNotMatch(shippersSource, /if \(state\.(?:cadence|intelligence)Loading\) return;/, "Shipper filtered views should allow a newer request to supersede an in-flight request");
+assert.match(shippersSource, /let shipperCreateRunning = false;/, "Shipper account creation should have a running guard");
+assert.match(shippersSource, /if \(shipperCreateRunning\) return;/, "Shipper account creation should ignore duplicate submits");
+assert.match(shippersSource, /let shipperBulkArchiveRunning = false;/, "Shipper bulk archive should have a running guard");
+assert.match(shippersSource, /if \(shipperBulkArchiveRunning \|\| !ids\.length/, "Shipper bulk archive should reject duplicate submissions before confirming");
+assert.match(shippersSource, /const shipperMergeMutationKeys = new Set\(\);/, "Shipper duplicate merges should be protected by mutation keys");
+assert.match(shippersSource, /if \(shipperMergeMutationKeys\.has\(mutationKey\)\) return;/, "Shipper duplicate merge should ignore duplicate clicks");
+assert.match(shippersSource, /const shipperPipelineMutationKeys = new Set\(\);/, "Shipper pipeline moves should be protected by per-account mutation keys");
+assert.match(shippersSource, /if \(shipperPipelineMutationKeys\.has\(shipperId\)\) return;/, "Shipper pipeline moves should ignore duplicate move requests");
+assert.match(shippersSource, /const shipperCommercialMutationKeys = new Set\(\);/, "Shipper commercial actions should be protected by mutation keys");
+assert.match(shippersSource, /shipperCommercialMutationKeys\.delete\(mutationKey\);/, "Shipper commercial action locks should be released in finally blocks");
+assert.match(shippersSource, /let shipperDrawerSaveRunning = false;/, "Shipper profile drawer save should have a running guard");
+assert.match(shippersSource, /if \(shipperDrawerSaveRunning\) return;/, "Shipper profile drawer save should ignore duplicate submits");
+assert.match(shippersSource, /const shipperDrawerRecordMutationKeys = new Set\(\);/, "Shipper drawer child record mutations should be protected by keys");
+assert.match(shippersSource, /delete-record:\$\{state\.activeTab\}:\$\{state\.activeShipperId\}/, "Shipper drawer deletes should be guarded before backend mutation");
+assert.match(shippersSource, /const shipperProfileLinkMutationKeys = new Set\(\);/, "Shipper profile link actions should be protected by mutation keys");
+assert.match(shippersSource, /create-profile-link:\$\{state\.activeShipperId\}/, "Shipper profile link creation should ignore duplicate clicks");
 assert.match(businessIntelligenceSource, /let analystLoadVersion = 0;/, "AI Analyst should version concurrent prompts");
 assert.match(businessIntelligenceSource, /loadVersion !== recommendationLoadVersion/, "Carrier recommendations should ignore stale results");
 assert.match(businessIntelligenceSource, /loadVersion !== pivotLoadVersion/, "BI pivots should ignore stale results");
 assert.match(businessIntelligenceSource, /loadVersion !== drilldownLoadVersion/, "BI drilldowns should ignore stale results");
 assert.match(businessIntelligenceSource, /loadVersion !== geoLoadVersion/, "BI geo density should ignore stale results");
+assert.match(businessIntelligenceSource, /let analystPromptRunning = false;/, "AI Analyst prompt submissions should have a running guard");
+assert.match(businessIntelligenceSource, /if \(analystPromptRunning\) return;/, "AI Analyst should ignore duplicate prompt submissions while running");
+assert.match(businessIntelligenceSource, /let recommendationRunning = false;/, "Carrier recommendation refresh should have a running guard");
+assert.match(businessIntelligenceSource, /if \(recommendationRunning\) return;/, "Carrier recommendation refresh should ignore duplicate clicks while running");
+assert.match(businessIntelligenceSource, /let pivotRunning = false;/, "BI pivot refresh should have a running guard");
+assert.match(businessIntelligenceSource, /if \(pivotRunning\) return;/, "BI pivot refresh should ignore duplicate clicks while running");
+assert.match(businessIntelligenceSource, /let geoRunning = false;/, "BI geo density refresh should have a running guard");
+assert.match(businessIntelligenceSource, /if \(geoRunning\) return;/, "BI geo density refresh should ignore duplicate clicks while running");
+assert.match(businessIntelligenceSource, /let recommendationPromoteRunning = false;/, "BI recommendation promotion should have a running guard");
+assert.match(businessIntelligenceSource, /promoteSelectedButton\.disabled = recommendationPromoteRunning \|\| selected\.length === 0;/, "BI recommendation promotion should keep the button disabled during mutation");
+assert.match(businessIntelligenceSource, /async function promoteSelected\(\) \{[\s\S]+if \(recommendationPromoteRunning\) return;[\s\S]+const ids = selectedRecommendations\(\)\.map\(\(row\) => row\.vendor_id\);[\s\S]+recommendationPromoteRunning = true;[\s\S]+finally \{[\s\S]+recommendationPromoteRunning = false;[\s\S]+updateSelectionState\(\);[\s\S]+\}/, "BI recommendation promotion should block duplicates and always restore selection controls");
+assert.doesNotMatch(businessIntelligenceSource, /set[A-Za-z]*Status\(error\.message|setStatus\(error\.message/, "Analyze should humanize user-facing backend errors");
 assert.match(uploadHistorySource, /let uploadHistoryLoadVersion = 0;/, "Upload History should version concurrent list loads");
 assert.match(uploadHistorySource, /loadVersion !== uploadHistoryLoadVersion/, "Upload History should ignore stale list responses");
 assert.match(uploadHistorySource, /activeUploadDetailId !== row\.id/, "Upload source comparison should stay scoped to the open drawer row");
 assert.match(uploadHistorySource, /pendingReprocessIds\[0\] !== rawUploadId/, "Upload interpretation memory should stay scoped to the active reprocess selection");
 assert.match(uploadHistorySource, /if \(uploadBulkActionRunning\) return;/, "Upload bulk actions should reject duplicate submissions while running");
+assert.match(uploadHistorySource, /async function runBulkTemplateImport\(ids = selectedVisibleIds\(\), sourceButton = null\) \{[\s\S]+if \(uploadBulkActionRunning\) return;[\s\S]+uploadBulkActionRunning = true;[\s\S]+finally \{[\s\S]+uploadBulkActionRunning = false;[\s\S]+updateBulkControls\(\);[\s\S]+\}/, "Upload structured bulk import should share the bulk action guard and always restore controls");
+assert.match(uploadHistorySource, /let uploadReprocessRunning = false;/, "Upload reprocess confirmation should have a running guard");
+assert.match(uploadHistorySource, /async function runReprocessWithNote\(event\) \{[\s\S]+if \(uploadReprocessRunning\) return;[\s\S]+uploadReprocessRunning = true;[\s\S]+finally \{[\s\S]+uploadReprocessRunning = false;[\s\S]+updateBulkControls\(\);[\s\S]+\}/, "Upload reprocess confirmation should reject duplicate submits and restore controls");
+assert.match(uploadHistorySource, /const uploadRowMutationIds = new Set\(\);/, "Upload History row actions should have per-upload mutation guards");
+assert.match(uploadHistorySource, /const mutationKey = `row-action:\$\{rowId\}`;[\s\S]+if \(uploadRowMutationIds\.has\(mutationKey\)\) return;[\s\S]+finally \{[\s\S]+uploadRowMutationIds\.delete\(mutationKey\);/, "Upload History row actions should ignore duplicate clicks and release locks");
+assert.match(uploadHistorySource, /const uploadSourceRequestIds = new Set\(\);/, "Upload source link requests should have per-upload guards");
+assert.match(uploadHistorySource, /if \(uploadSourceRequestIds\.has\(rowId\)\) return;[\s\S]+uploadSourceRequestIds\.add\(rowId\);[\s\S]+finally \{[\s\S]+uploadSourceRequestIds\.delete\(rowId\);/, "Upload source link requests should ignore duplicate opens and release locks");
 assert.match(outreachSource, /let outreachLoadVersion = 0;/, "Outreach should version full workspace loads");
 assert.match(outreachSource, /loadVersion !== outreachMessagesLoadVersion \|\| selectedCampaignId !== campaignId/, "Outreach should not render messages from a previously selected campaign");
 assert.match(outreachSource, /if \(outreachMessageMutationRunning\) return;/, "Outreach bulk message updates should reject duplicate submissions while running");
+assert.match(outreachSource, /let outreachCampaignMutationRunning = false;/, "Outreach campaign lifecycle actions should share a mutation guard");
+assert.match(outreachSource, /let outreachTemplateMutationRunning = false;/, "Outreach template lifecycle actions should share a mutation guard");
+assert.doesNotMatch(outreachSource, /error\.message/, "Outreach should not pass raw caught error messages to campaign, template, or draft queue status UI");
+assert.match(outreachSource, /button\.disabled = !hasCampaign \|\| outreachCampaignMutationRunning/, "Outreach campaign buttons should disable while a campaign mutation is running");
+assert.match(outreachSource, /generateDraftsButton\.disabled = !hasCampaign \|\| outreachCampaignMutationRunning/, "Outreach draft generation should disable while a campaign mutation is running");
+assert.match(outreachSource, /templateForm\?\.addEventListener\("submit", async \(event\) => \{[\s\S]+if \(outreachTemplateMutationRunning\) return;[\s\S]+outreachTemplateMutationRunning = true;[\s\S]+finally \{[\s\S]+outreachTemplateMutationRunning = false;[\s\S]+\}/, "Outreach template save should reject duplicate submissions and restore controls");
+assert.match(outreachSource, /outreachPublishWhatsappTemplateButton\?\.addEventListener\("click"[\s\S]+if \(outreachTemplateMutationRunning\) return;[\s\S]+outreachTemplateMutationRunning = true;[\s\S]+finally \{[\s\S]+outreachTemplateMutationRunning = false;[\s\S]+renderOutreachWhatsappTemplateStatus\(templates\.find\(\(template\) => template\.id === editingTemplateId\)\);[\s\S]+\}/, "Outreach WhatsApp template publishing should restore button state through the shared status renderer");
+assert.match(outreachSource, /outreachSyncWhatsappTemplatesButton\?\.addEventListener\("click"[\s\S]+if \(outreachTemplateMutationRunning\) return;[\s\S]+outreachTemplateMutationRunning = true;[\s\S]+finally \{[\s\S]+outreachTemplateMutationRunning = false;[\s\S]+outreachSyncWhatsappTemplatesButton\.disabled = false;[\s\S]+\}/, "Outreach WhatsApp template sync should reject duplicate clicks and restore controls");
+assert.match(outreachSource, /templateList\?\.addEventListener\("click", async \(event\) => \{[\s\S]+if \(outreachTemplateMutationRunning\) return;[\s\S]+const actionButton = duplicateButton \|\| archiveButton \|\| deleteButton;[\s\S]+finally \{[\s\S]+outreachTemplateMutationRunning = false;[\s\S]+if \(actionButton\) actionButton\.disabled = false;[\s\S]+\}/, "Outreach template list actions should guard duplicate mutations and restore the clicked button");
+assert.match(outreachSource, /campaignForm\?\.addEventListener\("submit", async \(event\) => \{[\s\S]+if \(outreachCampaignMutationRunning\) return;[\s\S]+outreachCampaignMutationRunning = true;[\s\S]+updateCampaignActionState\(\);[\s\S]+finally \{[\s\S]+outreachCampaignMutationRunning = false;[\s\S]+updateCampaignActionState\(\);[\s\S]+\}/, "Outreach campaign form should share the campaign mutation guard");
+for (const campaignButton of ["duplicateCampaignButton", "archiveCampaignButton", "deleteCampaignButton", "generateDraftsButton"]) {
+  const start = outreachSource.indexOf(`${campaignButton}?.addEventListener`);
+  const end = outreachSource.indexOf("\n\n", start + 1);
+  const handlerSource = outreachSource.slice(start, end > start ? end : undefined);
+  assert.ok(start >= 0, `${campaignButton} handler should exist`);
+  assert.match(handlerSource, /if \(outreachCampaignMutationRunning\) return;/, `${campaignButton} should ignore duplicate clicks while a campaign mutation is running`);
+  assert.match(handlerSource, /const campaignId = selectedCampaignId;/, `${campaignButton} should capture its initiating campaign`);
+  assert.match(handlerSource, /outreachCampaignMutationRunning = true;[\s\S]+updateCampaignActionState\(\);/, `${campaignButton} should disable campaign actions before mutating`);
+  assert.match(handlerSource, /selectedCampaignId !== campaignId|selectedCampaignId === campaignId/, `${campaignButton} should not overwrite a different campaign after navigation`);
+  assert.match(handlerSource, /finally \{[\s\S]+outreachCampaignMutationRunning = false;[\s\S]+updateCampaignActionState\(\);[\s\S]+\}/, `${campaignButton} should restore campaign controls after finishing`);
+}
+assert.match(outreachSource, /const OUTREACH_WORKSPACE_CONTEXT_STORAGE_KEY = "rateware:outreach:workspace-context:v1"/, "Outreach should persist a separate workspace context");
+assert.match(outreachSource, /function persistOutreachWorkspaceContext\(\)/, "Outreach should persist campaign, draft filter, search, channel, and preview context");
+assert.match(outreachSource, /storedOutreachWorkspaceContext/, "Outreach should restore the last campaign and queue filters");
+assert.match(outreachSource, /data-outreach-filter[\s\S]{0,300}activeMessageFilter/, "Outreach should restore the active draft status filter");
+assert.match(outreachSource, /persistOutreachWorkspaceContext\(\);\s*renderMessages\(\);/, "Outreach filter changes should persist before rerendering the queue");
+assert.doesNotMatch(rfxEventsSource, /error\.message/, "Bid Room should not pass raw caught error messages to RFx, Outreach, Award, Lane, or Chat status UI");
+assert.match(rfxEventsSource, /let awardMutationRunning = false;/, "RFx award actions should share a mutation guard");
+assert.match(rfxEventsSource, /rfxApplyRecommendedAwardsButton\.disabled = awardMutationRunning \|\| !snapshot\.recommendations\.length/, "RFx recommended awards should disable while award mutations are running");
+assert.match(rfxEventsSource, /rfxCloseoutAwardsButton\.disabled = awardMutationRunning \|\| !pendingCloseout/, "RFx Rateware closeout should disable while award mutations are running");
+assert.match(rfxEventsSource, /rfxGenerateAwardNoticesButton\.disabled = awardMutationRunning \|\| !selectedEventId/, "RFx award notice generation should disable while award mutations are running");
+assert.match(rfxEventsSource, /rfxSendAwardNoticesButton\.disabled = awardMutationRunning \|\| !sendableIds\.length/, "RFx award notice sending should disable while award mutations are running");
+for (const functionName of [
+  "applyRecommendedAwardDecisions",
+  "closeoutSelectedAwardsToRateware",
+  "generateAwardNoticeDrafts",
+  "sendAwardNoticeDrafts"
+]) {
+  const start = rfxEventsSource.indexOf(`async function ${functionName}`);
+  const end = rfxEventsSource.indexOf("\n\nasync function", start + 1);
+  const functionSource = rfxEventsSource.slice(start, end > start ? end : undefined);
+  assert.ok(start >= 0, `${functionName} should exist`);
+  assert.match(functionSource, /if \(awardMutationRunning\) return;/, `${functionName} should ignore duplicate award mutations`);
+  assert.match(functionSource, /awardMutationRunning = true;/, `${functionName} should lock award actions before mutating`);
+  assert.match(functionSource, /finally \{[\s\S]+awardMutationRunning = false;[\s\S]+updateAwardNoticeControls\(\);[\s\S]+\}/, `${functionName} should restore award controls after finishing`);
+}
+assert.match(rfxEventsSource, /let draftQueueMutationRunning = false;/, "RFx draft queue actions should share a mutation guard");
+assert.match(rfxEventsSource, /draftSendSelectedButton\.disabled = draftQueueMutationRunning \|\| !sendableSelectedIds\.length/, "RFx email draft send should disable while draft queue mutations are running");
+assert.match(rfxEventsSource, /draftSendSelectedWhatsappButton\.disabled = draftQueueMutationRunning \|\| !sendableWhatsappIds\.length/, "RFx WhatsApp direct send should disable while draft queue mutations are running");
+assert.match(rfxEventsSource, /draftArchiveSelectedButton\) draftArchiveSelectedButton\.disabled = draftQueueMutationRunning \|\| !selectedRows\.length/, "RFx draft archive should disable while draft queue mutations are running");
+assert.match(rfxEventsSource, /draftDeleteSelectedButton\) draftDeleteSelectedButton\.disabled = draftQueueMutationRunning \|\| !selectedRows\.length/, "RFx draft delete should disable while draft queue mutations are running");
+for (const functionName of [
+  "sendSelectedDraftEmails",
+  "sendSingleDraftEmail",
+  "sendSelectedDraftWhatsapp",
+  "sendSingleDraftWhatsapp",
+  "refreshSingleOutreachDraft",
+  "refreshSelectedOutreachDrafts",
+  "markSelectedWhatsappGroupsManuallySent",
+  "markSingleWhatsappGroupManuallySent",
+  "archiveSelectedDrafts",
+  "deleteSelectedDrafts"
+]) {
+  const start = rfxEventsSource.indexOf(`async function ${functionName}`);
+  const end = rfxEventsSource.indexOf("\n\nasync function", start + 1);
+  const functionSource = rfxEventsSource.slice(start, end > start ? end : undefined);
+  assert.ok(start >= 0, `${functionName} should exist`);
+  assert.match(functionSource, /if \(draftQueueMutationRunning\) return;/, `${functionName} should ignore duplicate draft queue mutations`);
+  assert.match(functionSource, /draftQueueMutationRunning = true;/, `${functionName} should lock the draft queue before mutating`);
+  assert.match(functionSource, /finally \{[\s\S]+draftQueueMutationRunning = false;[\s\S]+updateDraftSendControls\(draftQueueRows\);[\s\S]+\}/, `${functionName} should restore draft queue controls after finishing`);
+}
 assert.match(apiSource, /mapWithConcurrency\(chunkValues\(cleanEmails, 75\), 4/, "Outreach suppression checks should batch large recipient lists with bounded concurrency");
 assert.match(apiSource, /\.in\("email", emailBatch\)/, "Outreach suppression checks should query each bounded recipient batch");
 

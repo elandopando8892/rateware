@@ -43,6 +43,21 @@ function cleanText(value: unknown) {
   return text ? text : null;
 }
 
+function publicErrorMessage(value: unknown, fallback = "Bid Room request failed.") {
+  if (value === null || value === undefined) return fallback;
+  if (value instanceof Error) return cleanText(value.message) || fallback;
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return cleanText(value) || fallback;
+  if (typeof value !== "object") return fallback;
+  const record = value as Record<string, unknown>;
+  for (const key of ["error", "message", "reason", "description", "detail", "details", "hint", "cause"]) {
+    if (record[key] && record[key] !== value) {
+      const message = publicErrorMessage(record[key], "");
+      if (message) return message;
+    }
+  }
+  return fallback;
+}
+
 function cleanEmail(value: unknown) {
   const email = cleanText(value)?.toLowerCase() || null;
   if (!email) return null;
@@ -5120,6 +5135,6 @@ Deno.serve(async (request) => {
 
     return jsonResponse({ error: "Unknown action." }, 400);
   } catch (error) {
-    return jsonResponse({ error: error.message }, 400);
+    return jsonResponse({ error: publicErrorMessage(error) }, 400);
   }
 });

@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <base href="http://localhost:4173/">
+    <link rel="stylesheet" href="/src/styles.css">
+    <title>Command Center QA preview</title>
+  </head>
+  <body>
+    <div class="shell-layout">
+      <aside class="side-nav">
+        <a class="brand-mark" href="/">Rateware</a>
+        <nav>
+          <section class="nav-group"><p>Operate</p><a href="#" aria-current="page">Command Center</a><a href="#">Upload Center</a><a href="#">Staging Review</a><a href="#">Rateware</a></section>
+          <section class="nav-group"><p>Analyze</p><a href="#">AI Analyst</a><a href="#">Vendor Intelligence</a></section>
+          <section class="nav-group"><p>Source</p><a href="#">Vendors</a><a href="#">Bid Room</a></section>
+        </nav>
+      </aside>
+      <div class="page-frame">
+        <header class="page-header">
+          <div>
+            <p class="eyebrow">Procurement command center</p>
+            <h1>Command Center</h1>
+            <nav class="module-crumbs" aria-label="Module context"><span>Command</span><span>Today</span></nav>
+          </div>
+          <div class="page-header-actions"><a class="page-primary-action" href="#">Ask AI</a><button class="secondary">Log in</button></div>
+        </header>
+        <main class="dashboard-layout">
+          <section class="next-best-action-card"><div><p class="eyebrow">Next best action</p><h2>Review 42 staged rates</h2><p>Clean up the next 42 rows before publishing the rate book.</p></div><a class="page-primary-action" href="#">Open staging</a></section>
+          <section class="workspace-panel dashboard-priority-panel"><div class="section-heading compact split-heading"><div><p class="eyebrow">Priority queue</p><h2>What needs attention</h2></div></div><div class="priority-queue"><article class="priority-alert warning"><strong>42 rows need review</strong><small>Staging review - Open now</small></article><article class="priority-alert danger"><strong>3 uploads failed</strong><small>Upload history - Fix files</small></article><article class="priority-alert success"><strong>7 Bid Room events live</strong><small>Watch incoming responses</small></article></div></section>
+          <section class="workspace-panel dashboard-workflow-panel dashboard-workflow-panel--progress"><div class="section-heading compact split-heading"><div><p class="eyebrow">Workflow status</p><h2>Where work is waiting</h2></div><span class="section-caption">Source files to awarded capacity.</span></div><div class="workflow-progress-panel"><a class="workflow-progress-step" href="#"><span>1</span><strong>Upload</strong><small>12 files</small></a><a class="workflow-progress-step" href="#"><span>2</span><strong>Interpret</strong><small>3 failed</small></a><a class="workflow-progress-step" href="#"><span>3</span><strong>Review</strong><small>42 pending</small></a><a class="workflow-progress-step" href="#"><span>4</span><strong>Rateware</strong><small>318 approved</small></a><a class="workflow-progress-step" href="#"><span>5</span><strong>Bid Room</strong><small>7 events</small></a><a class="workflow-progress-step" href="#"><span>6</span><strong>Live bids</strong><small>24 bids</small></a></div></section>
+          <section class="workspace-panel dashboard-metrics-panel"><div class="section-heading compact"><p class="eyebrow">Signals</p><h2>At a glance</h2></div><div class="metric-grid"><a class="metric-card" href="#"><span>Pending review</span><strong>42</strong></a><a class="metric-card danger-metric" href="#"><span>Failed uploads</span><strong>3</strong></a><a class="metric-card" href="#"><span>Approved rates</span><strong>318</strong></a><a class="metric-card" href="#"><span>Procurement vendors</span><strong>86</strong></a><a class="metric-card" href="#"><span>Open Bid Room</span><strong>7</strong></a><a class="metric-card" href="#"><span>Bid responses</span><strong>24</strong></a></div></section>
+          <section class="workspace-panel dashboard-workflow-panel"><div class="section-heading compact"><p class="eyebrow">Shortcuts</p><h2>Workspaces</h2></div><div class="core-workflow-grid"><a class="workflow-action" href="#"><span>Review</span><strong>Staging</strong><small>Pending rows</small></a><a class="workflow-action danger-action" href="#"><span>Fix</span><strong>Failed uploads</strong><small>Files to review</small></a><a class="workflow-action primary-action" href="#"><span>Analyze</span><strong>AI Analyst</strong><small>Carrier recommendations</small></a><a class="workflow-action" href="#"><span>Launch</span><strong>Bid Room</strong><small>Spot books and bids</small></a><a class="workflow-action" href="#"><span>Upload</span><strong>Source files</strong><small>Quotes and emails</small></a><a class="workflow-action" href="#"><span>Source</span><strong>Vendors</strong><small>Carrier base</small></a><a class="workflow-action" href="#"><span>Improve</span><strong>Vendor CI</strong><small>Carrier value curve</small></a></div></section>
+        </main>
+      </div>
+    </div>
+  </body>
+</html>

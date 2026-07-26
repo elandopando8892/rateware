@@ -117,8 +117,14 @@ export async function fetchOutreachTrackingSummary(filters = {}) {
   return await callRatewareApi("get_outreach_tracking_summary", filters);
 }
 
-export async function markOutreachMessages(ids = [], status) {
-  return await callRatewareApi("mark_outreach_messages", { ids, status, confirmed: true, confirmation_action: "mark_outreach_messages" });
+export async function markOutreachMessages(ids = [], status, options = {}) {
+  return await callRatewareApi("mark_outreach_messages", {
+    ids,
+    status,
+    channel: options.channel || "",
+    confirmed: true,
+    confirmation_action: "mark_outreach_messages"
+  });
 }
 
 export async function sendOutreachMessages(ids = [], options = {}) {
@@ -135,6 +141,7 @@ export async function sendOutreachMessages(ids = [], options = {}) {
 export async function sendWhatsappOutreachMessages(ids = []) {
   return await callRatewareApi("send_whatsapp_outreach_messages", {
     ids,
+    channel: "whatsapp",
     confirmed: true,
     confirmation_action: "send_whatsapp_outreach_messages"
   });
@@ -143,6 +150,7 @@ export async function sendWhatsappOutreachMessages(ids = []) {
 export async function sendWhatsappGroupOutreachMessages(ids = []) {
   return await callRatewareApi("send_whatsapp_group_outreach_messages", {
     ids,
+    channel: "whatsapp_group",
     confirmed: true,
     confirmation_action: "send_whatsapp_group_outreach_messages"
   });
@@ -156,8 +164,13 @@ export async function markWhatsappGroupMessageManuallySent(ids = []) {
   });
 }
 
-export async function deleteOutreachMessages(ids = []) {
-  return await callRatewareApi("delete_outreach_messages", { ids, confirmed: true, confirmation_action: "delete_outreach_messages" });
+export async function deleteOutreachMessages(ids = [], options = {}) {
+  return await callRatewareApi("delete_outreach_messages", {
+    ids,
+    channel: options.channel || "",
+    confirmed: true,
+    confirmation_action: "delete_outreach_messages"
+  });
 }
 
 export async function fetchContactHistory(filters = {}) {

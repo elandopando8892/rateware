@@ -1,10 +1,12 @@
 import { SUPABASE_URL } from "./config.js";
+import { apiErrorMessage, humanizeError } from "./error-copy.js";
 
 const token = new URLSearchParams(window.location.search).get("token") || "";
 const root = document.querySelector("#shipper-profile-root");
 const languageButton = document.querySelector("#shipper-language");
 let locale = "en";
 let profile = null;
+let shipperProfileSubmitting = false;
 
 const copy = {
   en: {
@@ -24,8 +26,14 @@ async function callProfileApi(action, payload = {}) {
   const response = await fetch(`${SUPABASE_URL}/functions/v1/shipper-profile-api`, {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, token, ...payload })
   });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.error || "Unable to load the profile.");
+  const responseText = await response.text();
+  let data = {};
+  try {
+    data = responseText ? JSON.parse(responseText) : {};
+  } catch {
+    data = {};
+  }
+  if (!response.ok) throw new Error(apiErrorMessage(data, responseText, "Unable to load the profile."));
   return data;
 }
 
@@ -159,15 +167,22 @@ root.addEventListener("click", (event) => {
 
 root.addEventListener("submit", async (event) => {
   event.preventDefault();
+  if (shipperProfileSubmitting) return;
   const form = event.target;
   const message = root.querySelector("#shipper-profile-message");
+  const submitButton = form.querySelector("button[type='submit']");
+  shipperProfileSubmitting = true;
+  if (submitButton) submitButton.disabled = true;
   try {
     const result = await callProfileApi("submit_profile", formPayload(form));
     profile = { ...profile, ...result };
     render();
     root.querySelector("#shipper-profile-message").textContent = copy[locale].submitted;
   } catch (error) {
-    if (message) message.textContent = error.message;
+    if (message) message.textContent = humanizeError(error);
+  } finally {
+    shipperProfileSubmitting = false;
+    if (submitButton) submitButton.disabled = false;
   }
 });
 
@@ -178,5 +193,5 @@ languageButton.addEventListener("click", () => {
 });
 
 callProfileApi("get_profile").then((data) => { profile = data; render(); }).catch((error) => {
-  root.innerHTML = `<h1>Profile unavailable</h1><p>${escapeHtml(error.message)}</p>`;
+  root.innerHTML = `<h1>Profile unavailable</h1><p>${escapeHtml(humanizeError(error))}</p>`;
 });

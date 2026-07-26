@@ -98,6 +98,11 @@ let ratebookRouteLoadVersion = 0;
 let ratebookQuoteReviewLoadVersion = 0;
 let ratebookCarrierLoadVersion = 0;
 let ratebookAuditLoadVersion = 0;
+let ratebookShareRunning = false;
+let ratebookDistributionRunning = false;
+let ratebookRevisionRunning = false;
+const ratebookLifecycleMutationKeys = new Set();
+const ratebookQuoteReviewMutationKeys = new Set();
 
 function text(value, fallback = "-") {
   const normalized = String(value ?? "").trim();
@@ -589,9 +594,12 @@ async function saveRatebookQuoteReview(button) {
   const row = button.closest("[data-ratebook-quote-review-row]");
   const quoteId = row?.dataset.quoteId;
   if (!quoteId || !state.activeRatebookId) return;
+  const mutationKey = `${state.activeRatebookId}:${quoteId}`;
+  if (ratebookQuoteReviewMutationKeys.has(mutationKey)) return;
   const decision = row.querySelector("[data-ratebook-quote-decision]")?.value || "pending";
   const decisionNote = row.querySelector("[data-ratebook-quote-note]")?.value || "";
   const originalText = button.textContent;
+  ratebookQuoteReviewMutationKeys.add(mutationKey);
   button.disabled = true;
   button.textContent = "Saving...";
   try {
@@ -605,6 +613,7 @@ async function saveRatebookQuoteReview(button) {
     button.textContent = humanizeError(error);
     window.setTimeout(() => { button.textContent = originalText; }, 2200);
   } finally {
+    ratebookQuoteReviewMutationKeys.delete(mutationKey);
     button.disabled = false;
     if (button.textContent === "Saving...") button.textContent = originalText;
   }
@@ -745,11 +754,14 @@ async function showRatebookAudit() {
 
 async function applyRatebookLifecycle(action) {
   if (!state.activeRatebookId) return;
+  const mutationKey = `${action}:${state.activeRatebookId}`;
+  if (ratebookLifecycleMutationKeys.has(mutationKey)) return;
   const isPublish = action === "publish-ratebook";
   const confirmation = isPublish
     ? "Publish this Ratebook? Carrier links will become available after it passes its route audit."
     : "Archive this Ratebook? Active private carrier links will no longer be available.";
   if (!window.confirm(confirmation)) return;
+  ratebookLifecycleMutationKeys.add(mutationKey);
   setStatus(elements.status, isPublish ? "Publishing Ratebook..." : "Archiving Ratebook...");
   try {
     const result = isPublish
@@ -761,12 +773,16 @@ async function applyRatebookLifecycle(action) {
     if (result?.ratebook?.id) state.activeRatebookId = result.ratebook.id;
   } catch (error) {
     setStatus(elements.status, humanizeError(error), "error");
+  } finally {
+    ratebookLifecycleMutationKeys.delete(mutationKey);
   }
 }
 
 async function createRatebookRevisionFromPublished() {
   if (!state.activeRatebookId) return;
+  if (ratebookRevisionRunning) return;
   if (!window.confirm("Create a new draft revision from the current RFx/RFI source? The published carrier links will remain on the existing version until this revision is published.")) return;
+  ratebookRevisionRunning = true;
   setStatus(elements.status, "Creating Ratebook revision...");
   try {
     const result = await createRatebookRevision(state.activeRatebookId);
@@ -780,6 +796,8 @@ async function createRatebookRevisionFromPublished() {
       : "Ratebook revision draft created. Review it before publishing.", "success");
   } catch (error) {
     setStatus(elements.status, humanizeError(error), "error");
+  } finally {
+    ratebookRevisionRunning = false;
   }
 }
 
@@ -802,6 +820,8 @@ async function handleRatebookHealthAction(button) {
 
 async function sendRatebookShares() {
   if (!state.activeRatebookId || !state.selectedCarrierIds.size) return;
+  if (ratebookShareRunning) return;
+  ratebookShareRunning = true;
   elements.shareButton.disabled = true;
   setStatus(elements.shareStatus, elements.createEmailDrafts.checked ? "Creating private links and email drafts..." : "Creating private carrier links...");
   try {
@@ -821,13 +841,16 @@ async function sendRatebookShares() {
   } catch (error) {
     setStatus(elements.shareStatus, humanizeError(error), "error");
   } finally {
+    ratebookShareRunning = false;
     elements.shareButton.disabled = !state.selectedCarrierIds.size;
   }
 }
 
 async function sendRatebookDistributionDrafts() {
   if (!state.activeRatebookId || !state.distributionMessageIds.length) return;
+  if (ratebookDistributionRunning) return;
   if (!window.confirm(`Send ${state.distributionMessageIds.length} Ratebook email draft(s) now using the connected Gmail sender?`)) return;
+  ratebookDistributionRunning = true;
   const original = elements.sendDistribution.textContent;
   elements.sendDistribution.disabled = true;
   elements.sendDistribution.textContent = "Sending...";
@@ -841,6 +864,7 @@ async function sendRatebookDistributionDrafts() {
   } catch (error) {
     setStatus(elements.shareStatus, humanizeError(error), "error");
   } finally {
+    ratebookDistributionRunning = false;
     elements.sendDistribution.disabled = false;
     elements.sendDistribution.textContent = original;
   }

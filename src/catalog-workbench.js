@@ -14,6 +14,7 @@ import { fetchApprovedRatewarePage, updateApprovedRatewareRow } from "./rateware
 import { fetchStagingOptions, fetchStagingPage, saveLocationAlias, updateStagingRow } from "./staging-service.js";
 import { humanizeError } from "./error-copy.js";
 import { initWorkbenchTabs } from "./workbench-tabs.js";
+import { tableErrorState, tableLoadingState, tableState } from "./ui-state.js";
 
 const rowsChecked = document.querySelector("#catalog-rows-checked");
 const gapCount = document.querySelector("#catalog-gap-count");
@@ -70,7 +71,7 @@ const locationSearchInput = document.querySelector("#catalog-location-search");
 const clearLocationFiltersButton = document.querySelector("#clear-catalog-location-filters");
 const inspectorTitle = document.querySelector("#catalog-inspector-title");
 const inspectorBody = document.querySelector("#catalog-inspector-body");
-initWorkbenchTabs({ defaultView: "import" });
+const workbenchTabs = initWorkbenchTabs({ defaultView: "import" });
 
 const locationInputs = {
   country: document.querySelector("#location-country"),
@@ -145,6 +146,18 @@ let catalogImportSheetName = "";
 let catalogImportRows = [];
 let catalogImportHeaders = [];
 let catalogImportPreviewRows = [];
+let catalogImportRunning = false;
+let catalogValueMutationRunning = false;
+let locationCatalogMutationRunning = false;
+let catalogSyncRunning = false;
+let catalogWorkbenchLoaded = false;
+let catalogWorkbenchLoading = false;
+const catalogMatchMutationKeys = new Set();
+const CATALOG_CACHE_TTL_MS = 30_000;
+const catalogValuesCache = new Map();
+const locationCatalogValuesCache = new Map();
+const catalogValuesRequests = new Map();
+const locationCatalogValuesRequests = new Map();
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -430,7 +443,11 @@ function renderImportPreview() {
       ${fields.map((field) => `<td>${escapeHtml(row.mapped[field] || "-")}</td>`).join("")}
       <td>${escapeHtml(row.issues.join(", ") || "ok")}</td>
     </tr>
-  `).join("") : '<tr><td colspan="9">No rows to preview.</td></tr>';
+  `).join("") : tableState(fields.length + 2, {
+    eyebrow: "Import preview",
+    title: "No rows to preview",
+    detail: "Choose a sheet and map the required columns before previewing the import."
+  });
   const ready = preview.filter((row) => !row.issues.length).length;
   confirmCatalogImportButton.disabled = ready === 0;
   setElementStatus(catalogImportStatus, `${ready.toLocaleString()} ready row(s). ${preview.length - ready} row(s) need cleanup before import.`, ready ? "success" : "error");
@@ -473,7 +490,13 @@ function renderCatalogValues(rows = currentCatalogValues) {
 
   if (!catalogValuesBody) return;
   if (!visibleRows.length) {
-    catalogValuesBody.innerHTML = `<tr><td colspan="6">No catalog values found.</td></tr>`;
+    catalogValuesBody.innerHTML = tableState(6, {
+      eyebrow: "Operational dropdowns",
+      title: "No catalog values found",
+      detail: category
+        ? "This category is empty. Add a value or import a catalog to populate Staging and Rateware dropdowns."
+        : "Add a value or import a catalog to populate Staging and Rateware dropdowns."
+    });
     setElementStatus(catalogStatus, "No values in this catalog view.", "warning");
     return;
   }
@@ -526,7 +549,11 @@ function renderLocationCatalogRows(rows = currentLocationCatalogRows) {
   currentLocationCatalogRows = rows || [];
   if (!locationCatalogBody) return;
   if (!currentLocationCatalogRows.length) {
-    locationCatalogBody.innerHTML = `<tr><td colspan="7">No location catalog rows found.</td></tr>`;
+    locationCatalogBody.innerHTML = tableState(7, {
+      eyebrow: "Lane catalog",
+      title: "No location catalog rows found",
+      detail: "Clear the location filters or add/import a city, ZIP, market or region."
+    });
     setElementStatus(locationCatalogStatus, "No locations in this view.", "warning");
     return;
   }
@@ -1105,24 +1132,92 @@ async function refreshWorkbenchLocationOptions() {
   renderRows();
 }
 
-async function loadCatalogValues() {
-  setElementStatus(catalogStatus, "Loading catalog values...");
-  try {
-    const values = await fetchCatalogValues(catalogCategoryFilter?.value || "");
-    renderCatalogValues(values);
-  } catch (error) {
-    setElementStatus(catalogStatus, error.message, "error");
-  }
+function invalidateCatalogCaches() {
+  catalogValuesCache.clear();
+  locationCatalogValuesCache.clear();
 }
 
-async function loadLocationCatalogValues() {
-  setElementStatus(locationCatalogStatus, "Loading location catalog...");
-  try {
-    const rows = await fetchLocationCatalogValues(locationCatalogFilters());
-    renderLocationCatalogRows(rows);
-  } catch (error) {
-    setElementStatus(locationCatalogStatus, error.message, "error");
+function isFreshCatalogCache(entry) {
+  return Boolean(entry && Date.now() - entry.savedAt < CATALOG_CACHE_TTL_MS);
+}
+
+async function loadCatalogValues({ force = false } = {}) {
+  const category = catalogCategoryFilter?.value || "";
+  const cached = catalogValuesCache.get(category);
+  if (cached) {
+    renderCatalogValues(cached.rows);
+    if (!force && isFreshCatalogCache(cached)) {
+      setElementStatus(catalogStatus, `${cached.rows.length.toLocaleString()} cached value(s) shown.`, "success");
+      return;
+    }
+    setElementStatus(catalogStatus, "Showing cached values while checking for updates...", "warning");
+  } else {
+    setElementStatus(catalogStatus, "Loading catalog values...");
   }
+
+  const existingRequest = catalogValuesRequests.get(category);
+  if (existingRequest) return existingRequest;
+  const request = fetchCatalogValues(category)
+    .then((values) => {
+      catalogValuesCache.set(category, { rows: values || [], savedAt: Date.now() });
+      if ((catalogCategoryFilter?.value || "") === category) renderCatalogValues(values || []);
+      return values;
+    })
+    .catch((error) => {
+      if (!cached || (catalogCategoryFilter?.value || "") === category && !cached.rows.length) {
+        setElementStatus(catalogStatus, humanizeError(error), "error");
+      } else if ((catalogCategoryFilter?.value || "") === category) {
+        setElementStatus(catalogStatus, "Cached catalog values remain available. Refresh again to retry.", "warning");
+      }
+      return [];
+    })
+    .finally(() => catalogValuesRequests.delete(category));
+  catalogValuesRequests.set(category, request);
+  if (cached && !force && !isFreshCatalogCache(cached)) {
+    void request;
+    return cached.rows;
+  }
+  return request;
+}
+
+async function loadLocationCatalogValues({ force = false } = {}) {
+  const filters = locationCatalogFilters();
+  const key = JSON.stringify(filters);
+  const cached = locationCatalogValuesCache.get(key);
+  if (cached) {
+    renderLocationCatalogRows(cached.rows);
+    if (!force && isFreshCatalogCache(cached)) {
+      setElementStatus(locationCatalogStatus, `${cached.rows.length.toLocaleString()} cached location(s) shown.`, "success");
+      return;
+    }
+    setElementStatus(locationCatalogStatus, "Showing cached locations while checking for updates...", "warning");
+  } else {
+    setElementStatus(locationCatalogStatus, "Loading location catalog...");
+  }
+
+  const existingRequest = locationCatalogValuesRequests.get(key);
+  if (existingRequest) return existingRequest;
+  const request = fetchLocationCatalogValues(filters)
+    .then((rows) => {
+      locationCatalogValuesCache.set(key, { rows: rows || [], savedAt: Date.now() });
+      if (JSON.stringify(locationCatalogFilters()) === key) renderLocationCatalogRows(rows || []);
+      return rows;
+    })
+    .catch((error) => {
+      if (!cached || (JSON.stringify(locationCatalogFilters()) === key && !cached.rows.length)) {
+        setElementStatus(locationCatalogStatus, humanizeError(error), "error");
+      } else if (JSON.stringify(locationCatalogFilters()) === key) {
+        setElementStatus(locationCatalogStatus, "Cached locations remain available. Refresh again to retry.", "warning");
+      }
+      return [];
+    })
+    .finally(() => locationCatalogValuesRequests.delete(key));
+  locationCatalogValuesRequests.set(key, request);
+  if (cached && !force && !isFreshCatalogCache(cached)) {
+    void request;
+    return cached.rows;
+  }
+  return request;
 }
 
 function queueLocationCatalogLoad() {
@@ -1130,11 +1225,12 @@ function queueLocationCatalogLoad() {
   locationCatalogFilterTimer = window.setTimeout(loadLocationCatalogValues, 220);
 }
 
-async function loadAdminCatalogs() {
-  await Promise.all([
-    loadCatalogValues(),
-    loadLocationCatalogValues()
-  ]);
+async function loadAdminCatalogs({ all = false } = {}) {
+  const activeView = workbenchTabs?.current() || "import";
+  const requests = [];
+  if (all || activeView === "operational") requests.push(loadCatalogValues());
+  if (all || activeView === "locations") requests.push(loadLocationCatalogValues());
+  await Promise.all(requests);
 }
 
 function resetCatalogImport() {
@@ -1151,7 +1247,13 @@ function resetCatalogImport() {
     catalogImportSheetSelect.innerHTML = '<option value="">Upload a file first</option>';
   }
   if (catalogImportPreviewHead) catalogImportPreviewHead.innerHTML = '<tr><th>Preview</th></tr>';
-  if (catalogImportPreviewBody) catalogImportPreviewBody.innerHTML = '<tr><td>No import preview yet.</td></tr>';
+  if (catalogImportPreviewBody) {
+    catalogImportPreviewBody.innerHTML = tableState(1, {
+      eyebrow: "Import preview",
+      title: "No import preview yet",
+      detail: "Upload a spreadsheet, choose a sheet and map its columns to preview the rows."
+    });
+  }
   renderImportSummary([]);
   renderImportMapping();
   if (confirmCatalogImportButton) confirmCatalogImportButton.disabled = true;
@@ -1160,11 +1262,13 @@ function resetCatalogImport() {
 }
 
 async function confirmCatalogImport() {
+  if (catalogImportRunning) return;
   const readyRows = catalogImportPreviewRows.filter((row) => !row.issues.length).map((row) => row.mapped);
   if (!readyRows.length) {
     setElementStatus(catalogImportStatus, "Preview the file and resolve required fields before saving.", "error");
     return;
   }
+  catalogImportRunning = true;
   confirmCatalogImportButton.disabled = true;
   previewCatalogImportButton.disabled = true;
   let imported = 0;
@@ -1185,12 +1289,14 @@ async function confirmCatalogImport() {
       warnings.push(...(result.warnings || []));
     }
     setElementStatus(catalogImportStatus, `Imported ${imported.toLocaleString()} row(s). ${skipped.toLocaleString()} skipped.${warnings.length ? ` ${warnings.slice(0, 2).join(" ")}` : ""}`, "success");
-    await loadAdminCatalogs();
+    invalidateCatalogCaches();
+    await loadAdminCatalogs({ all: true });
     await refreshWorkbenchLocationOptions();
   } catch (error) {
-    setElementStatus(catalogImportStatus, error.message, "error");
-    confirmCatalogImportButton.disabled = false;
+    setElementStatus(catalogImportStatus, humanizeError(error), "error");
   } finally {
+    catalogImportRunning = false;
+    confirmCatalogImportButton.disabled = !catalogImportPreviewRows.some((row) => !row.issues.length);
     previewCatalogImportButton.disabled = false;
   }
 }
@@ -1201,6 +1307,8 @@ async function applyCatalogMatch(tableRow, { saveAlias = false, optionOverride =
   const message = tableRow?.querySelector("[data-catalog-status-message]");
   const input = tableRow?.querySelector("[data-catalog-suggestion]");
   const option = optionOverride || selectedLocation(input?.value);
+  const mutationKey = Number.isFinite(index) ? String(index) : "";
+  if (!mutationKey || catalogMatchMutationKeys.has(mutationKey)) return;
   if (!entry || !option) {
     setStatus("Choose a catalog location before applying.", "error");
     return;
@@ -1216,6 +1324,10 @@ async function applyCatalogMatch(tableRow, { saveAlias = false, optionOverride =
 
   const patch = locationPatch(entry.side, option);
   const rows = entry.rows || [];
+  catalogMatchMutationKeys.add(mutationKey);
+  tableRow?.querySelectorAll("[data-apply-catalog-match], [data-apply-catalog-alias], [data-catalog-suggestion]").forEach((control) => {
+    control.disabled = true;
+  });
   if (message) {
     message.textContent = `Saving ${rows.length}...`;
     message.dataset.tone = "warning";
@@ -1242,12 +1354,23 @@ async function applyCatalogMatch(tableRow, { saveAlias = false, optionOverride =
       message.textContent = "Failed";
       message.dataset.tone = "error";
     }
-    setStatus(error.message, "error");
+    setStatus(humanizeError(error), "error");
+  } finally {
+    catalogMatchMutationKeys.delete(mutationKey);
+    tableRow?.querySelectorAll("[data-apply-catalog-match], [data-apply-catalog-alias], [data-catalog-suggestion]").forEach((control) => {
+      control.disabled = false;
+    });
   }
 }
 
 async function loadWorkbench() {
-  body.innerHTML = '<tr><td colspan="7">Loading catalog gaps...</td></tr>';
+  if (catalogWorkbenchLoading) return;
+  catalogWorkbenchLoading = true;
+  body.innerHTML = tableLoadingState(7, {
+    title: "Loading catalog gaps",
+    detail: "Checking location matches against the active lane catalog.",
+    rows: 3
+  });
   setStatus("");
   refreshButton.disabled = true;
   try {
@@ -1262,25 +1385,36 @@ async function loadWorkbench() {
     populateCatalogFilters();
     renderDatalist();
     renderRows();
+    catalogWorkbenchLoaded = true;
     setStatus(`Catalog workbench loaded ${loadedRows.length.toLocaleString()} rate row(s) and ${locationOptions.length.toLocaleString()} catalog location(s).`, "success");
   } catch (error) {
-    body.innerHTML = `<tr><td colspan="7">${escapeHtml(humanizeError(error))}</td></tr>`;
-    setStatus(error.message, "error");
+    catalogWorkbenchLoaded = false;
+    body.innerHTML = tableErrorState(7, error, {
+      title: "Catalog matching could not load",
+      retryAction: "load-catalog-workbench",
+      actionLabel: "Retry matching"
+    });
+    setStatus(humanizeError(error), "error");
   } finally {
+    catalogWorkbenchLoading = false;
     refreshButton.disabled = false;
   }
 }
 
 async function syncCatalog() {
+  if (catalogSyncRunning) return;
+  catalogSyncRunning = true;
   syncButton.disabled = true;
   setStatus("Syncing catalog...");
   try {
     const result = await syncRatewareCatalog("core");
+    invalidateCatalogCaches();
     setStatus(`Catalog synced. ${result.inserted || 0} inserted, ${result.updated || 0} updated.`, "success");
-    await loadWorkbench();
+    if (catalogWorkbenchLoaded) await loadWorkbench();
   } catch (error) {
-    setStatus(error.message, "error");
+    setStatus(humanizeError(error), "error");
   } finally {
+    catalogSyncRunning = false;
     syncButton.disabled = false;
   }
 }
@@ -1289,8 +1423,19 @@ initAuthControls();
 populateCatalogCategoryControls();
 populateImportCategoryControl();
 requirePrivatePage().then(() => {
+  const initialView = workbenchTabs?.current() || "import";
   loadAdminCatalogs();
-  loadWorkbench();
+  if (initialView === "matching") loadWorkbench();
+}).catch(() => {});
+
+document.querySelector("[data-workbench-view-button='matching']")?.addEventListener("click", () => {
+  if (!catalogWorkbenchLoaded) loadWorkbench();
+});
+document.querySelector("[data-workbench-view-button='operational']")?.addEventListener("click", () => {
+  loadCatalogValues();
+});
+document.querySelector("[data-workbench-view-button='locations']")?.addEventListener("click", () => {
+  loadLocationCatalogValues();
 });
 
 refreshButton?.addEventListener("click", loadWorkbench);
@@ -1303,7 +1448,7 @@ catalogImportSheetSelect?.addEventListener("change", () => {
   try {
     loadImportSheet(catalogImportSheetSelect.value);
   } catch (error) {
-    setElementStatus(catalogImportStatus, error.message, "error");
+    setElementStatus(catalogImportStatus, humanizeError(error), "error");
   }
 });
 catalogImportFileInput?.addEventListener("change", async () => {
@@ -1313,7 +1458,7 @@ catalogImportFileInput?.addEventListener("change", async () => {
   try {
     await parseCatalogImportFile(file);
   } catch (error) {
-    setElementStatus(catalogImportStatus, error.message, "error");
+    setElementStatus(catalogImportStatus, humanizeError(error), "error");
   }
 });
 catalogImportMapFields?.addEventListener("change", () => {
@@ -1322,9 +1467,15 @@ catalogImportMapFields?.addEventListener("change", () => {
 previewCatalogImportButton?.addEventListener("click", renderImportPreview);
 confirmCatalogImportButton?.addEventListener("click", confirmCatalogImport);
 resetCatalogImportButton?.addEventListener("click", resetCatalogImport);
-refreshCatalogButton?.addEventListener("click", loadCatalogValues);
+refreshCatalogButton?.addEventListener("click", () => {
+  invalidateCatalogCaches();
+  loadCatalogValues({ force: true });
+});
 catalogCategoryFilter?.addEventListener("change", loadCatalogValues);
-refreshLocationCatalogButton?.addEventListener("click", loadLocationCatalogValues);
+refreshLocationCatalogButton?.addEventListener("click", () => {
+  invalidateCatalogCaches();
+  loadLocationCatalogValues({ force: true });
+});
 sideFilter?.addEventListener("change", renderRows);
 statusFilter?.addEventListener("change", renderRows);
 viewModeSelect?.addEventListener("change", renderRows);
@@ -1357,11 +1508,16 @@ clearAdminLocationFiltersButton?.addEventListener("click", () => {
 });
 catalogValueForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
+  if (catalogValueMutationRunning) return;
   const rawValue = catalogRawValueInput?.value?.trim() || "";
   if (!rawValue) {
     setElementStatus(catalogStatus, "Write a catalog value first.", "error");
     return;
   }
+  catalogValueMutationRunning = true;
+  catalogValueForm.querySelectorAll("button, input, select, textarea").forEach((control) => {
+    control.disabled = true;
+  });
   setElementStatus(catalogStatus, "Saving catalog value...");
   try {
     await saveCatalogValue({
@@ -1375,63 +1531,90 @@ catalogValueForm?.addEventListener("submit", async (event) => {
     catalogNormalizedValueInput.value = "";
     catalogCodeInput.value = "";
     catalogNoteInput.value = "";
+    invalidateCatalogCaches();
     setElementStatus(catalogStatus, "Catalog value saved. It is now available in Staging and Rateware dropdowns.", "success");
-    await loadCatalogValues();
+    await loadCatalogValues({ force: true });
   } catch (error) {
-    setElementStatus(catalogStatus, error.message, "error");
+    setElementStatus(catalogStatus, humanizeError(error), "error");
+  } finally {
+    catalogValueMutationRunning = false;
+    catalogValueForm.querySelectorAll("button, input, select, textarea").forEach((control) => {
+      control.disabled = false;
+    });
   }
 });
 catalogValuesBody?.addEventListener("click", async (event) => {
+  if (catalogValueMutationRunning) return;
   const button = event.target.closest("[data-catalog-archive]");
   if (!button) return;
   const row = currentCatalogValues.find((item) => item.id === button.dataset.catalogArchive);
   const label = row?.normalized_value || row?.raw_value || "this value";
   if (!window.confirm(`Archive manual catalog value "${label}"? It will stop appearing in new dropdown options.`)) return;
+  catalogValueMutationRunning = true;
   button.disabled = true;
   setElementStatus(catalogStatus, "Archiving catalog value...");
   try {
     await archiveCatalogValue(button.dataset.catalogArchive);
+    invalidateCatalogCaches();
     setElementStatus(catalogStatus, "Catalog value archived.", "success");
-    await loadCatalogValues();
+    await loadCatalogValues({ force: true });
   } catch (error) {
+    setElementStatus(catalogStatus, humanizeError(error), "error");
+  } finally {
+    catalogValueMutationRunning = false;
     button.disabled = false;
-    setElementStatus(catalogStatus, error.message, "error");
   }
 });
 locationCatalogForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
+  if (locationCatalogMutationRunning) return;
   const values = locationCatalogFormValues();
   if (!values.raw_value && !values.city && !values.zip_prefix) {
     setElementStatus(locationCatalogStatus, "Add a location value, city, or ZIP first.", "error");
     return;
   }
+  locationCatalogMutationRunning = true;
+  locationCatalogForm.querySelectorAll("button, input, select, textarea").forEach((control) => {
+    control.disabled = true;
+  });
   setElementStatus(locationCatalogStatus, "Saving location...");
   try {
     await saveLocationCatalogValue(values);
     clearLocationCatalogForm();
+    invalidateCatalogCaches();
     setElementStatus(locationCatalogStatus, "Location saved. It is now available for lane matching and autocomplete.", "success");
-    await loadLocationCatalogValues();
+    await loadLocationCatalogValues({ force: true });
     await refreshWorkbenchLocationOptions();
   } catch (error) {
-    setElementStatus(locationCatalogStatus, error.message, "error");
+    setElementStatus(locationCatalogStatus, humanizeError(error), "error");
+  } finally {
+    locationCatalogMutationRunning = false;
+    locationCatalogForm.querySelectorAll("button, input, select, textarea").forEach((control) => {
+      control.disabled = false;
+    });
   }
 });
 locationCatalogBody?.addEventListener("click", async (event) => {
+  if (locationCatalogMutationRunning) return;
   const button = event.target.closest("[data-location-archive]");
   if (!button) return;
   const row = currentLocationCatalogRows.find((item) => item.id === button.dataset.locationArchive);
   const label = row?.raw_value || "this location";
   if (!window.confirm(`Archive manual location "${label}"? It will stop appearing in new location matches.`)) return;
+  locationCatalogMutationRunning = true;
   button.disabled = true;
   setElementStatus(locationCatalogStatus, "Archiving location...");
   try {
     await archiveLocationCatalogValue(button.dataset.locationArchive);
+    invalidateCatalogCaches();
     setElementStatus(locationCatalogStatus, "Location archived.", "success");
-    await loadLocationCatalogValues();
+    await loadLocationCatalogValues({ force: true });
     await refreshWorkbenchLocationOptions();
   } catch (error) {
+    setElementStatus(locationCatalogStatus, humanizeError(error), "error");
+  } finally {
+    locationCatalogMutationRunning = false;
     button.disabled = false;
-    setElementStatus(locationCatalogStatus, error.message, "error");
   }
 });
 body?.addEventListener("click", (event) => {
@@ -1446,6 +1629,14 @@ body?.addEventListener("click", (event) => {
   }
   if (!applyButton && !aliasButton) return;
   applyCatalogMatch((applyButton || aliasButton).closest("[data-catalog-entry-index]"), { saveAlias: Boolean(aliasButton) });
+});
+document.addEventListener("click", (event) => {
+  const retryButton = event.target.closest("[data-retry-action='load-catalog-workbench']");
+  if (!retryButton) return;
+  retryButton.disabled = true;
+  loadWorkbench().finally(() => {
+    retryButton.disabled = false;
+  });
 });
 inspectorBody?.addEventListener("click", (event) => {
   const useButton = event.target.closest("[data-inspector-use-candidate]");

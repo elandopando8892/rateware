@@ -195,9 +195,32 @@ function selectionToTsv(matrix) {
 async function copySelection(matrix) {
   const text = selectionToTsv(matrix);
   if (!text) return false;
-  if (!navigator.clipboard?.writeText) return false;
-  await navigator.clipboard.writeText(text);
-  return true;
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {
+    // Fall through to the legacy browser path when clipboard permissions are blocked.
+  }
+
+  const fallback = document.createElement("textarea");
+  fallback.value = text;
+  fallback.setAttribute("readonly", "");
+  fallback.style.position = "fixed";
+  fallback.style.left = "-9999px";
+  fallback.style.top = "0";
+  document.body.appendChild(fallback);
+  fallback.select();
+  let copied = false;
+  try {
+    copied = document.execCommand?.("copy") === true;
+  } catch {
+    copied = false;
+  } finally {
+    fallback.remove();
+  }
+  return copied;
 }
 
 function changedRowsFromControls(controls) {

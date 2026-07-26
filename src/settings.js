@@ -115,6 +115,9 @@ let currentSettings = null;
 let currentSession = null;
 let currentCatalogValues = [];
 let currentObservability = { summary: {}, events: [] };
+let gmailIntegrationActionRunning = false;
+let googleChatIntegrationActionRunning = false;
+let whatsappIntegrationActionRunning = false;
 initWorkbenchTabs({ defaultView: "access" });
 const GMAIL_ALLOWED_SENDER = "sales@heymarksman.com";
 const GOOGLE_CHAT_ALLOWED_ACCOUNT = "sales@heymarksman.com";
@@ -156,7 +159,7 @@ function hasGoogleChatSpaceCandidate() {
 }
 
 function updateGoogleChatSpaceSaveState(connected = true) {
-  if (saveGoogleChatSpaceButton) saveGoogleChatSpaceButton.disabled = !connected || !hasGoogleChatSpaceCandidate();
+  if (saveGoogleChatSpaceButton) saveGoogleChatSpaceButton.disabled = googleChatIntegrationActionRunning || !connected || !hasGoogleChatSpaceCandidate();
 }
 
 function formValues(inputs) {
@@ -332,7 +335,7 @@ function renderObservability(data = currentObservability) {
 }
 
 function humanGmailMessage(message = "") {
-  const text = String(message || "");
+  const text = humanizeError(message || "Gmail action could not be completed.");
   if (/GOOGLE_CLIENT|GOOGLE_CLIENT_SECRET|GMAIL_TOKEN_ENCRYPTION_KEY|OAuth is not configured|OAuth client is not configured|Google secrets|Supabase secrets/i.test(text)) {
     return "Gmail connector is not enabled for this deployment yet. No user credentials are required.";
   }
@@ -340,7 +343,7 @@ function humanGmailMessage(message = "") {
 }
 
 function humanGoogleChatMessage(message = "") {
-  const text = String(message || "");
+  const text = humanizeError(message || "Google Chat action could not be completed.");
   if (/GOOGLE_CLIENT|GOOGLE_CLIENT_SECRET|GMAIL_TOKEN_ENCRYPTION_KEY|OAuth is not configured|OAuth client is not configured|Google secrets|Supabase secrets/i.test(text)) {
     return "Google Chat connector is not enabled for this deployment yet. No user credentials are required.";
   }
@@ -354,7 +357,7 @@ function humanGoogleChatMessage(message = "") {
 }
 
 function humanWhatsappMessage(message = "") {
-  const text = String(message || "");
+  const text = humanizeError(message || "WhatsApp action could not be completed.");
   if (/Connect your WhatsApp Business account before sending WhatsApp messages/i.test(text)) {
     return "Connect your WhatsApp Business account before sending WhatsApp messages.";
   }
@@ -430,7 +433,7 @@ function renderGmailConnections(data = currentSettings?.gmail) {
     connectGmailButton.textContent = connected ? "Gmail connected" : "Connect Gmail";
   }
   if (disconnectGmailButton) disconnectGmailButton.disabled = !connected && row.status !== "error";
-  if (syncGmailBouncesButton) syncGmailBouncesButton.disabled = !connected || !canReadDeliveryFailures;
+  if (syncGmailBouncesButton) syncGmailBouncesButton.disabled = gmailIntegrationActionRunning || !connected || !canReadDeliveryFailures;
   setStatus(
     gmailConnectionStatus,
     configured
@@ -495,7 +498,7 @@ function renderGoogleChatConnections(data = currentSettings?.google_chat, spaces
         : "Connect Google Chat with Google";
   }
   if (disconnectGoogleChatButton) disconnectGoogleChatButton.disabled = !connected && row.status !== "error";
-  if (retryGoogleChatSyncButton) retryGoogleChatSyncButton.disabled = !connected || !hasSpace;
+  if (retryGoogleChatSyncButton) retryGoogleChatSyncButton.disabled = googleChatIntegrationActionRunning || !connected || !hasSpace;
   if (googleChatSpaceRow) googleChatSpaceRow.classList.toggle("hidden", !connected);
   const spaces = spacesData?.rows || [];
   const spacesError = spacesData?.error ? humanGoogleChatMessage(spacesData.error) : "";
@@ -624,12 +627,12 @@ function renderWhatsappConnections(data = currentSettings?.whatsapp) {
         ? "Replace token or IDs"
         : "Connect your own WhatsApp Business";
   }
-  if (disconnectWhatsappButton) disconnectWhatsappButton.disabled = internalWorkspace || !configured;
-  if (testWhatsappButton) testWhatsappButton.disabled = !configured;
-  if (syncWhatsappTemplatesButton) syncWhatsappTemplatesButton.disabled = !connected;
+  if (disconnectWhatsappButton) disconnectWhatsappButton.disabled = whatsappIntegrationActionRunning || internalWorkspace || !configured;
+  if (testWhatsappButton) testWhatsappButton.disabled = whatsappIntegrationActionRunning || !configured;
+  if (syncWhatsappTemplatesButton) syncWhatsappTemplatesButton.disabled = whatsappIntegrationActionRunning || !connected;
   if (verifyWhatsappWebhookButton) {
     verifyWhatsappWebhookButton.classList.remove("hidden");
-    verifyWhatsappWebhookButton.disabled = !configured;
+    verifyWhatsappWebhookButton.disabled = whatsappIntegrationActionRunning || !configured;
   }
   setStatus(
     whatsappConnectionStatus,
@@ -739,7 +742,7 @@ async function loadCatalogValues() {
     const values = await fetchCatalogValues(catalogCategoryFilter?.value || "");
     renderCatalogValues(values);
   } catch (error) {
-    setStatus(catalogStatus, error.message, "error");
+    setStatus(catalogStatus, humanizeError(error), "error");
   }
 }
 
@@ -751,7 +754,7 @@ async function loadGmailConnections() {
     currentSettings.gmail = data;
     renderGmailConnections(data);
   } catch (error) {
-    setStatus(gmailConnectionStatus, humanGmailMessage(error.message), "error");
+    setStatus(gmailConnectionStatus, humanGmailMessage(error), "error");
   }
 }
 
@@ -767,12 +770,12 @@ async function loadGoogleChatConnections() {
       try {
         spaces = await fetchGoogleChatSpaces();
       } catch (error) {
-        spaces = { connected: true, rows: [], error: error.message };
+        spaces = { connected: true, rows: [], error: humanGoogleChatMessage(error) };
       }
     }
     renderGoogleChatConnections(data, spaces);
   } catch (error) {
-    setStatus(googleChatConnectionStatus, humanGoogleChatMessage(error.message), "error");
+    setStatus(googleChatConnectionStatus, humanGoogleChatMessage(error), "error");
   }
 }
 
@@ -784,7 +787,7 @@ async function loadWhatsappConnections() {
     currentSettings.whatsapp = data;
     renderWhatsappConnections(data);
   } catch (error) {
-    setStatus(whatsappConnectionStatus, humanWhatsappMessage(error.message), "error");
+    setStatus(whatsappConnectionStatus, humanWhatsappMessage(error), "error");
   }
 }
 
@@ -813,7 +816,7 @@ connectGmailButton?.addEventListener("click", async () => {
     if (!result.authorization_url) throw new Error("Google authorization URL was not returned.");
     window.location.href = result.authorization_url;
   } catch (error) {
-    setStatus(gmailConnectionStatus, humanGmailMessage(error.message), "error");
+    setStatus(gmailConnectionStatus, humanGmailMessage(error), "error");
   }
 });
 
@@ -823,11 +826,13 @@ disconnectGmailButton?.addEventListener("click", async () => {
     await disconnectGmailConnection();
     await loadGmailConnections();
   } catch (error) {
-    setStatus(gmailConnectionStatus, humanGmailMessage(error.message), "error");
+    setStatus(gmailConnectionStatus, humanGmailMessage(error), "error");
   }
 });
 
 syncGmailBouncesButton?.addEventListener("click", async () => {
+  if (gmailIntegrationActionRunning) return;
+  gmailIntegrationActionRunning = true;
   syncGmailBouncesButton.disabled = true;
   setStatus(gmailConnectionStatus, "Checking Gmail delivery failures...");
   try {
@@ -839,8 +844,9 @@ syncGmailBouncesButton?.addEventListener("click", async () => {
       "success"
     );
   } catch (error) {
-    setStatus(gmailConnectionStatus, humanGmailMessage(error.message), "error");
+    setStatus(gmailConnectionStatus, humanGmailMessage(error), "error");
   } finally {
+    gmailIntegrationActionRunning = false;
     renderGmailConnections(currentSettings?.gmail);
   }
 });
@@ -852,7 +858,7 @@ connectGoogleChatButton?.addEventListener("click", async () => {
     if (!result.authorization_url) throw new Error("Google authorization URL was not returned.");
     window.location.href = result.authorization_url;
   } catch (error) {
-    setStatus(googleChatConnectionStatus, humanGoogleChatMessage(error.message), "error");
+    setStatus(googleChatConnectionStatus, humanGoogleChatMessage(error), "error");
   }
 });
 
@@ -862,11 +868,14 @@ disconnectGoogleChatButton?.addEventListener("click", async () => {
     await disconnectGoogleChatConnection();
     await loadGoogleChatConnections();
   } catch (error) {
-    setStatus(googleChatConnectionStatus, humanGoogleChatMessage(error.message), "error");
+    setStatus(googleChatConnectionStatus, humanGoogleChatMessage(error), "error");
   }
 });
 
 retryGoogleChatSyncButton?.addEventListener("click", async () => {
+  if (googleChatIntegrationActionRunning) return;
+  googleChatIntegrationActionRunning = true;
+  retryGoogleChatSyncButton.disabled = true;
   setStatus(googleChatConnectionStatus, "Retrying failed Google Chat messages...");
   try {
     const result = await retryGoogleChatSync(50);
@@ -877,7 +886,10 @@ retryGoogleChatSyncButton?.addEventListener("click", async () => {
       result.failed ? "warning" : "success"
     );
   } catch (error) {
-    setStatus(googleChatConnectionStatus, humanGoogleChatMessage(error.message), "error");
+    setStatus(googleChatConnectionStatus, humanGoogleChatMessage(error), "error");
+  } finally {
+    googleChatIntegrationActionRunning = false;
+    retryGoogleChatSyncButton.disabled = false;
   }
 });
 
@@ -890,18 +902,24 @@ googleChatSpaceManualInput?.addEventListener("input", () => {
 });
 
 saveGoogleChatSpaceButton?.addEventListener("click", async () => {
+  if (googleChatIntegrationActionRunning) return;
   const spaceName = googleChatSpaceSelect?.value || "";
   const manualSpaceName = googleChatSpaceManualInput?.value?.trim() || "";
   if (!spaceName && !manualSpaceName) {
     setStatus(googleChatConnectionStatus, "Select a Google Chat space or paste the Space link first.", "error");
     return;
   }
+  googleChatIntegrationActionRunning = true;
+  saveGoogleChatSpaceButton.disabled = true;
   setStatus(googleChatConnectionStatus, "Saving Bid Room Space...");
   try {
     await saveGoogleChatSettings(spaceName, manualSpaceName);
     await loadGoogleChatConnections();
   } catch (error) {
-    setStatus(googleChatConnectionStatus, humanGoogleChatMessage(error.message), "error");
+    setStatus(googleChatConnectionStatus, humanGoogleChatMessage(error), "error");
+  } finally {
+    googleChatIntegrationActionRunning = false;
+    updateGoogleChatSpaceSaveState(false);
   }
 });
 
@@ -926,6 +944,10 @@ cancelWhatsappManualButton?.addEventListener("click", () => {
 
 whatsappManualForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
+  if (whatsappIntegrationActionRunning) return;
+  whatsappIntegrationActionRunning = true;
+  const submitButton = whatsappManualForm.querySelector("button[type='submit']");
+  if (submitButton) submitButton.disabled = true;
   setStatus(whatsappConnectionStatus, "Saving encrypted workspace WhatsApp credentials...");
   try {
     await saveWhatsappBusinessConnection({
@@ -942,8 +964,10 @@ whatsappManualForm?.addEventListener("submit", async (event) => {
     await loadWhatsappConnections();
     setStatus(whatsappConnectionStatus, "Credentials saved securely. Run Test line to activate this workspace connection.", "success");
   } catch (error) {
-    setStatus(whatsappConnectionStatus, humanWhatsappMessage(error.message), "error");
+    setStatus(whatsappConnectionStatus, humanWhatsappMessage(error), "error");
   } finally {
+    whatsappIntegrationActionRunning = false;
+    if (submitButton) submitButton.disabled = false;
     if (whatsappAppSecretInput) whatsappAppSecretInput.value = "";
     if (whatsappAccessTokenInput) whatsappAccessTokenInput.value = "";
     if (whatsappWebhookVerifyTokenInput) whatsappWebhookVerifyTokenInput.value = "";
@@ -951,17 +975,25 @@ whatsappManualForm?.addEventListener("submit", async (event) => {
 });
 
 disconnectWhatsappButton?.addEventListener("click", async () => {
+  if (whatsappIntegrationActionRunning) return;
   if (!window.confirm("Disconnect WhatsApp Business for this workspace? Existing draft rows stay unchanged.")) return;
+  whatsappIntegrationActionRunning = true;
+  disconnectWhatsappButton.disabled = true;
   setStatus(whatsappConnectionStatus, "Disconnecting WhatsApp Business...");
   try {
     await disconnectWhatsappBusinessConnection();
     await loadWhatsappConnections();
   } catch (error) {
-    setStatus(whatsappConnectionStatus, humanWhatsappMessage(error.message), "error");
+    setStatus(whatsappConnectionStatus, humanWhatsappMessage(error), "error");
+  } finally {
+    whatsappIntegrationActionRunning = false;
+    renderWhatsappConnections(currentSettings?.whatsapp);
   }
 });
 
 testWhatsappButton?.addEventListener("click", async () => {
+  if (whatsappIntegrationActionRunning) return;
+  whatsappIntegrationActionRunning = true;
   setStatus(whatsappConnectionStatus, "Testing WhatsApp Business sender...");
   testWhatsappButton.disabled = true;
   try {
@@ -973,13 +1005,16 @@ testWhatsappButton?.addEventListener("click", async () => {
       "success"
     );
   } catch (error) {
-    setStatus(whatsappConnectionStatus, humanWhatsappMessage(error.message), "error");
+    setStatus(whatsappConnectionStatus, humanWhatsappMessage(error), "error");
   } finally {
-    testWhatsappButton.disabled = false;
+    whatsappIntegrationActionRunning = false;
+    renderWhatsappConnections(currentSettings?.whatsapp);
   }
 });
 
 syncWhatsappTemplatesButton?.addEventListener("click", async () => {
+  if (whatsappIntegrationActionRunning) return;
+  whatsappIntegrationActionRunning = true;
   setStatus(whatsappConnectionStatus, "Syncing approved Meta WhatsApp templates...");
   syncWhatsappTemplatesButton.disabled = true;
   try {
@@ -995,14 +1030,17 @@ syncWhatsappTemplatesButton?.addEventListener("click", async () => {
       synced ? "success" : "warning"
     );
   } catch (error) {
-    setStatus(whatsappConnectionStatus, humanWhatsappMessage(error.message), "error");
+    setStatus(whatsappConnectionStatus, humanWhatsappMessage(error), "error");
   } finally {
-    const row = currentSettings?.whatsapp?.rows?.[0] || {};
-    syncWhatsappTemplatesButton.disabled = row.status !== "connected" || row.connection_validated !== true;
+    whatsappIntegrationActionRunning = false;
+    renderWhatsappConnections(currentSettings?.whatsapp);
   }
 });
 
 verifyWhatsappWebhookButton?.addEventListener("click", async () => {
+  if (whatsappIntegrationActionRunning) return;
+  whatsappIntegrationActionRunning = true;
+  verifyWhatsappWebhookButton.disabled = true;
   setStatus(whatsappConnectionStatus, "Checking WhatsApp webhook configuration...");
   try {
     const result = await verifyWhatsappWebhook();
@@ -1013,7 +1051,10 @@ verifyWhatsappWebhookButton?.addEventListener("click", async () => {
       result.verified ? "success" : "warning"
     );
   } catch (error) {
-    setStatus(whatsappConnectionStatus, humanWhatsappMessage(error.message), "error");
+    setStatus(whatsappConnectionStatus, humanWhatsappMessage(error), "error");
+  } finally {
+    whatsappIntegrationActionRunning = false;
+    renderWhatsappConnections(currentSettings?.whatsapp);
   }
 });
 catalogCategoryFilter?.addEventListener("change", loadCatalogValues);
@@ -1041,7 +1082,7 @@ catalogValueForm?.addEventListener("submit", async (event) => {
     setStatus(catalogStatus, "Catalog value saved. It is now available in Staging and Rateware dropdowns.", "success");
     await loadCatalogValues();
   } catch (error) {
-    setStatus(catalogStatus, error.message, "error");
+    setStatus(catalogStatus, humanizeError(error), "error");
   }
 });
 
@@ -1059,7 +1100,7 @@ catalogValuesBody?.addEventListener("click", async (event) => {
     await loadCatalogValues();
   } catch (error) {
     button.disabled = false;
-    setStatus(catalogStatus, error.message, "error");
+    setStatus(catalogStatus, humanizeError(error), "error");
   }
 });
 
@@ -1071,7 +1112,7 @@ profileForm?.addEventListener("submit", async (event) => {
     setStatus(profileStatus, "Profile saved.", "success");
     await loadSettings();
   } catch (error) {
-    setStatus(profileStatus, error.message, "error");
+    setStatus(profileStatus, humanizeError(error), "error");
   }
 });
 
@@ -1083,7 +1124,7 @@ organizationForm?.addEventListener("submit", async (event) => {
     setStatus(organizationStatus, "Organization saved.", "success");
     await loadSettings();
   } catch (error) {
-    setStatus(organizationStatus, error.message, "error");
+    setStatus(organizationStatus, humanizeError(error), "error");
   }
 });
 

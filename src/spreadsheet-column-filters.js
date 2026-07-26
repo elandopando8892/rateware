@@ -54,7 +54,7 @@ function normalizeMenuValuesResponse(response) {
   };
 }
 
-export function initSpreadsheetColumnFilters({ table, columns = [], getRows, getValues, getMenuValues = null, onChange, scope = "sheet" }) {
+export function initSpreadsheetColumnFilters({ table, columns = [], getRows, getValues, getMenuValues = null, onChange, scope = "sheet", storageKey = "" }) {
   if (!table || !columns.length) return null;
 
   const state = new Map();
@@ -64,9 +64,34 @@ export function initSpreadsheetColumnFilters({ table, columns = [], getRows, get
   const filterRow = document.createElement("tr");
   const popover = document.createElement("div");
   let activeMenu = null;
+  let activeTrigger = null;
   let menuRequestId = 0;
   let searchTimer = 0;
   let searchRevision = 0;
+
+  const readStoredState = () => {
+    if (!storageKey) return {};
+    try {
+      const raw = JSON.parse(window.localStorage.getItem(storageKey) || "{}");
+      return raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
+    } catch {
+      return {};
+    }
+  };
+
+  const persistState = () => {
+    if (!storageKey) return;
+    const serializedState = {};
+    state.forEach((values, field) => {
+      if (isTextFilter(values)) serializedState[field] = values.trim();
+      else if (values.size) serializedState[field] = [...values];
+    });
+    try {
+      window.localStorage.setItem(storageKey, JSON.stringify(serializedState));
+    } catch {
+      // Filtering remains available for the current session when storage is blocked.
+    }
+  };
 
   filterRow.className = "sheet-column-filter-row";
   filterRow.innerHTML = columns.map((column) => {
@@ -76,7 +101,7 @@ export function initSpreadsheetColumnFilters({ table, columns = [], getRows, get
     if (column.filterable === false) return `<th data-col="${escapeHtml(column.key)}"></th>`;
     return `
       <th data-col="${escapeHtml(column.key)}">
-        <button class="sheet-filter-button" type="button" data-${scope}-filter-menu="${escapeHtml(column.key)}" title="Filter ${escapeHtml(column.label || column.key)}">
+        <button class="sheet-filter-button" type="button" data-${scope}-filter-menu="${escapeHtml(column.key)}" aria-haspopup="dialog" aria-expanded="false" title="Filter ${escapeHtml(column.label || column.key)}">
           All
         </button>
       </th>
@@ -85,7 +110,16 @@ export function initSpreadsheetColumnFilters({ table, columns = [], getRows, get
 
   labelRow?.after(filterRow);
   popover.className = "sheet-filter-popover hidden";
+  popover.id = `${scope}-sheet-filter-popover`;
+  popover.setAttribute("role", "dialog");
+  popover.setAttribute("aria-modal", "false");
   document.body.appendChild(popover);
+
+  filterRow.querySelectorAll(`[data-${scope}-filter-menu]`).forEach((button) => {
+    const field = button.dataset[`${scope}FilterMenu`];
+    button.id = button.id || `${scope}-filter-${String(field).replace(/[^a-z0-9_-]/gi, "-")}`;
+    button.setAttribute("aria-controls", popover.id);
+  });
 
   function selected(field) {
     return state.get(field) || new Set();
@@ -158,6 +192,20 @@ export function initSpreadsheetColumnFilters({ table, columns = [], getRows, get
     });
   }
 
+  function closeMenu({ restoreFocus = false } = {}) {
+    const trigger = activeTrigger;
+    menuRequestId += 1;
+    searchRevision += 1;
+    popover.classList.add("hidden");
+    popover.removeAttribute("aria-labelledby");
+    activeMenu = null;
+    activeTrigger = null;
+    filterRow.querySelectorAll(`[data-${scope}-filter-menu]`).forEach((button) => {
+      button.setAttribute("aria-expanded", "false");
+    });
+    if (restoreFocus && trigger?.isConnected) trigger.focus();
+  }
+
   function withMenuTimeout(promise) {
     return Promise.race([
       promise,
@@ -177,6 +225,7 @@ export function initSpreadsheetColumnFilters({ table, columns = [], getRows, get
 
   function renderLoadingMenu(field) {
     const column = filterableColumns.find((item) => item.key === field);
+    popover.setAttribute("aria-label", `${column?.label || field} filter`);
     popover.innerHTML = `
       <div class="sheet-filter-popover-header">
         <strong>${escapeHtml(column?.label || field)}</strong>
@@ -288,6 +337,8 @@ export function initSpreadsheetColumnFilters({ table, columns = [], getRows, get
     if (!activeMenu) return;
     activeMenu.search = search;
     const { field, column } = activeMenu;
+    popover.setAttribute("aria-label", `${column?.label || field} filter`);
+    if (activeTrigger?.id) popover.setAttribute("aria-labelledby", activeTrigger.id);
 
     popover.innerHTML = `
       <div class="sheet-filter-popover-header">
@@ -337,6 +388,11 @@ export function initSpreadsheetColumnFilters({ table, columns = [], getRows, get
     const field = button.dataset[`${scope}FilterMenu`];
     const rect = button.getBoundingClientRect();
     const requestId = ++menuRequestId;
+    activeTrigger = button;
+    filterRow.querySelectorAll(`[data-${scope}-filter-menu]`).forEach((item) => {
+      item.setAttribute("aria-expanded", String(item === button));
+    });
+    button.setAttribute("aria-controls", popover.id);
     popover.style.left = `${Math.min(rect.left, window.innerWidth - 340)}px`;
     popover.style.top = `${rect.bottom + 4}px`;
     renderLoadingMenu(field);
@@ -384,12 +440,14 @@ export function initSpreadsheetColumnFilters({ table, columns = [], getRows, get
 
   function clear({ silent = false } = {}) {
     state.clear();
+    persistState();
     updateButtons();
     if (!silent) onChange?.();
   }
 
   function clearField(field, { silent = false } = {}) {
     state.delete(field);
+    persistState();
     updateButtons();
     if (!silent) onChange?.();
   }
@@ -437,10 +495,7 @@ export function initSpreadsheetColumnFilters({ table, columns = [], getRows, get
     if (popover.classList.contains("hidden")) return;
     if (event.key === "Escape") {
       event.preventDefault();
-      menuRequestId += 1;
-      searchRevision += 1;
-      popover.classList.add("hidden");
-      activeMenu = null;
+      closeMenu({ restoreFocus: true });
       return;
     }
     if (event.key === "Enter") {
@@ -459,10 +514,7 @@ export function initSpreadsheetColumnFilters({ table, columns = [], getRows, get
     event.stopPropagation();
 
     if (event.target.closest("[data-sheet-filter-close], [data-sheet-filter-cancel]")) {
-      menuRequestId += 1;
-      searchRevision += 1;
-      popover.classList.add("hidden");
-      activeMenu = null;
+      closeMenu({ restoreFocus: true });
       return;
     }
 
@@ -471,11 +523,9 @@ export function initSpreadsheetColumnFilters({ table, columns = [], getRows, get
 
     if (event.target.closest("[data-sheet-filter-clear-column]")) {
       state.delete(field);
+      persistState();
       updateButtons();
-      menuRequestId += 1;
-      searchRevision += 1;
-      popover.classList.add("hidden");
-      activeMenu = null;
+      closeMenu({ restoreFocus: true });
       onChange?.();
       return;
     }
@@ -514,11 +564,9 @@ export function initSpreadsheetColumnFilters({ table, columns = [], getRows, get
       const query = currentSearchValue().trim();
       if (query) state.set(field, query);
       else state.delete(field);
+      persistState();
       updateButtons();
-      menuRequestId += 1;
-      searchRevision += 1;
-      popover.classList.add("hidden");
-      activeMenu = null;
+      closeMenu({ restoreFocus: true });
       onChange?.();
       return;
     }
@@ -527,11 +575,9 @@ export function initSpreadsheetColumnFilters({ table, columns = [], getRows, get
       const query = currentSearchValue().trim();
       if (activeMenu.remote && query && !activeMenu.dirty) {
         state.set(field, query);
+        persistState();
         updateButtons();
-        menuRequestId += 1;
-        searchRevision += 1;
-        popover.classList.add("hidden");
-        activeMenu = null;
+        closeMenu({ restoreFocus: true });
         onChange?.();
         return;
       }
@@ -541,11 +587,9 @@ export function initSpreadsheetColumnFilters({ table, columns = [], getRows, get
       else if (!activeMenu.remote && allLoadedSelected) state.delete(field);
       else if (activeMenu.draft.size) state.set(field, new Set(activeMenu.draft));
       else state.set(field, new Set(["__none__"]));
+      persistState();
       updateButtons();
-      menuRequestId += 1;
-      searchRevision += 1;
-      popover.classList.add("hidden");
-      activeMenu = null;
+      closeMenu({ restoreFocus: true });
       onChange?.();
       return;
     }
@@ -561,12 +605,15 @@ export function initSpreadsheetColumnFilters({ table, columns = [], getRows, get
   document.addEventListener("click", (event) => {
     if (popover.classList.contains("hidden")) return;
     if (popover.contains(event.target) || filterRow.contains(event.target)) return;
-    menuRequestId += 1;
-    searchRevision += 1;
-    popover.classList.add("hidden");
-    activeMenu = null;
+    closeMenu();
   });
 
+  updateButtons();
+  Object.entries(readStoredState()).forEach(([field, value]) => {
+    if (!filterableColumns.some((column) => column.key === field)) return;
+    if (Array.isArray(value)) state.set(field, new Set(value.map(valueKey)));
+    else if (isTextFilter(value)) state.set(field, String(value).trim());
+  });
   updateButtons();
   return { apply, clear, clearField, serialized, updateButtons, fieldHasFilter };
 }

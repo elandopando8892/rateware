@@ -25,6 +25,8 @@ const state = {
 
 let projectLoadVersion = 0;
 let projectDetailLoadVersion = 0;
+let projectActionRunning = false;
+let projectCreateRunning = false;
 
 const els = {
   list: document.getElementById("rfx-process-project-list"),
@@ -435,9 +437,12 @@ async function loadDetail(projectId) {
 }
 
 async function handleProjectAction(action, target) {
+  if (projectActionRunning) return;
   const project = selectedProject();
   if (!project) return;
   const projectId = project.id;
+  projectActionRunning = true;
+  if (target) target.disabled = true;
   setStatus("Working...");
   try {
     if (action === "create-rfi-link") {
@@ -510,9 +515,12 @@ async function handleProjectAction(action, target) {
       setStatus("Project archived.");
       if (state.selectedId === projectId) state.selectedId = "";
     }
-    await loadProjects();
+    if (state.selectedId === projectId || action === "archive-project") await loadProjects();
   } catch (error) {
     setStatus(error, "error");
+  } finally {
+    projectActionRunning = false;
+    if (target) target.disabled = false;
   }
 }
 
@@ -539,8 +547,12 @@ function initEvents() {
   });
   els.createForm?.addEventListener("submit", async (event) => {
     event.preventDefault();
+    if (projectCreateRunning) return;
     const formData = new FormData(els.createForm);
     const project = Object.fromEntries(formData.entries());
+    const submitButton = els.createForm.querySelector("button[type='submit']");
+    projectCreateRunning = true;
+    if (submitButton) submitButton.disabled = true;
     try {
       const row = await createRfxProcessProject(project);
       els.dialog?.close();
@@ -550,6 +562,9 @@ function initEvents() {
       setStatus("RFx Project created.");
     } catch (error) {
       setStatus(error, "error");
+    } finally {
+      projectCreateRunning = false;
+      if (submitButton) submitButton.disabled = false;
     }
   });
 }

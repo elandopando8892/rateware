@@ -11,7 +11,7 @@ import {
   duplicateOutreachTemplate,
   fetchContactHistory,
   fetchOutreachCampaigns,
-  fetchOutreachMessages,
+  fetchOutreachMessagesPage,
   fetchOutreachTemplates,
   generateOutreachDrafts,
   markOutreachMessages,
@@ -70,6 +70,9 @@ const refreshButton = document.querySelector("#refresh-outreach");
 const generateDraftsButton = document.querySelector("#generate-drafts-button");
 const markQueuedButton = document.querySelector("#mark-queued-button");
 const markSentButton = document.querySelector("#mark-sent-button");
+const markManualSentButton = document.querySelector("#mark-manual-sent-button");
+const markFailedButton = document.querySelector("#mark-failed-button");
+const markBouncedButton = document.querySelector("#mark-bounced-button");
 const markRepliedButton = document.querySelector("#mark-replied-button");
 const archiveMessagesButton = document.querySelector("#archive-messages-button");
 const messageBody = document.querySelector("#outreach-message-body");
@@ -83,6 +86,7 @@ const campaignHealth = document.querySelector("#outreach-campaign-health");
 const campaignDashboard = document.querySelector("#outreach-campaign-dashboard");
 const placeholderBank = document.querySelector("#outreach-placeholder-bank");
 const messageSearch = document.querySelector("#outreach-message-search");
+const outreachChannelFilter = document.querySelector("#outreach-channel-filter");
 const metricCampaigns = document.querySelector("#outreach-metric-campaigns");
 const metricDrafts = document.querySelector("#outreach-metric-drafts");
 const metricSent = document.querySelector("#outreach-metric-sent");
@@ -97,6 +101,7 @@ let templates = [];
 let campaigns = [];
 let messages = [];
 let historyRows = [];
+let messagePageInfo = { total: 0, has_more: false, limit: 1000, offset: 0 };
 const pageParams = new URLSearchParams(window.location.search);
 const requestedRfxEventId = pageParams.get("rfx_event_id");
 let selectedCampaignId = null;
@@ -104,11 +109,80 @@ let editingCampaignId = null;
 let editingTemplateId = null;
 let previewMessageId = null;
 let selectedMessageIds = new Set();
-let activeMessageFilter = "all";
+const OUTREACH_WORKSPACE_CONTEXT_STORAGE_KEY = "rateware:outreach:workspace-context:v1";
+const storedOutreachWorkspaceContext = readOutreachWorkspaceContext(OUTREACH_WORKSPACE_CONTEXT_STORAGE_KEY);
+const OUTREACH_MESSAGE_FILTERS = new Set([
+  "all",
+  "needs_action",
+  "drafted",
+  "queued",
+  "sending",
+  "sent",
+  "delivered",
+  "read",
+  "manual_sent",
+  "delivery_unknown",
+  "replied",
+  "failed",
+  "bounced",
+  "suppressed",
+  "archived",
+  "missing_channel"
+]);
+let activeMessageFilter = OUTREACH_MESSAGE_FILTERS.has(storedOutreachWorkspaceContext.messageFilter) ? storedOutreachWorkspaceContext.messageFilter : "all";
+selectedCampaignId = storedOutreachWorkspaceContext.campaignId || null;
+previewMessageId = storedOutreachWorkspaceContext.previewMessageId || null;
 let outreachLoadVersion = 0;
 let outreachMessagesLoadVersion = 0;
 let outreachMessageMutationRunning = false;
-const outreachWorkbench = initWorkbenchTabs({ defaultView: requestedRfxEventId ? "campaigns" : "dashboard" });
+let outreachCampaignMutationRunning = false;
+let outreachTemplateMutationRunning = false;
+const outreachWorkbench = initWorkbenchTabs({ defaultView: "campaigns" });
+
+function readOutreachWorkspaceContext(key) {
+  try {
+    const value = JSON.parse(window.localStorage.getItem(key) || "{}");
+    return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeOutreachWorkspaceContext(value) {
+  try {
+    window.localStorage.setItem(OUTREACH_WORKSPACE_CONTEXT_STORAGE_KEY, JSON.stringify(value));
+  } catch {
+    // Outreach remains usable for the current session when storage is blocked.
+  }
+}
+
+function persistOutreachWorkspaceContext() {
+  writeOutreachWorkspaceContext({
+    campaignId: selectedCampaignId,
+    previewMessageId,
+    messageFilter: activeMessageFilter,
+    search: String(messageSearch?.value || ""),
+    channel: String(outreachChannelFilter?.value || "")
+  });
+}
+
+if (messageSearch) messageSearch.value = String(storedOutreachWorkspaceContext.search || "");
+if (outreachChannelFilter) outreachChannelFilter.value = String(storedOutreachWorkspaceContext.channel || "");
+document.querySelectorAll("[data-outreach-filter]").forEach((button) => {
+  button.classList.toggle("is-active", button.dataset.outreachFilter === activeMessageFilter);
+});
+
+function mergeContactHistoryRows(existingRows = [], nextRows = []) {
+  const byId = new Map();
+  [...existingRows, ...nextRows].forEach((row) => {
+    const key = row?.id || `${row?.outreach_message_id || ""}:${row?.status || ""}:${row?.occurred_at || row?.created_at || ""}`;
+    if (key) byId.set(String(key), { ...(byId.get(String(key)) || {}), ...row });
+  });
+  return [...byId.values()].sort((left, right) =>
+    new Date(right.occurred_at || right.created_at || 0).getTime()
+    - new Date(left.occurred_at || left.created_at || 0).getTime()
+  );
+}
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -120,8 +194,12 @@ function escapeHtml(value) {
 
 function setStatus(element, message, tone = "neutral") {
   if (!element) return;
-  element.textContent = tone === "error" ? humanizeError(message) : message;
+  const normalized = tone === "error" ? humanizeError(message) : message;
+  element.textContent = normalized;
   element.dataset.tone = tone;
+  if (["success", "error", "danger"].includes(tone)) {
+    window.ratewareNotify?.({ tone: tone === "error" ? "danger" : tone, message: normalized });
+  }
 }
 
 function templatePayload() {
@@ -147,8 +225,9 @@ function updateCampaignActionState() {
   const hasCampaign = Boolean(selectedCampaignId);
   [editCampaignButton, duplicateCampaignButton, archiveCampaignButton, deleteCampaignButton]
     .forEach((button) => {
-      if (button) button.disabled = !hasCampaign;
+      if (button) button.disabled = !hasCampaign || outreachCampaignMutationRunning;
     });
+  if (generateDraftsButton) generateDraftsButton.disabled = !hasCampaign || outreachCampaignMutationRunning;
 }
 
 function resetTemplateForm() {
@@ -248,15 +327,29 @@ function messageRecipient(row) {
 
 function statusTone(status) {
   const value = String(status || "").toLowerCase();
-  if (["sent", "replied", "quoted", "awarded"].includes(value)) return "success";
+  if (["sent", "delivered", "read", "manual_sent", "replied", "quoted", "awarded"].includes(value)) return "success";
   if (["queued", "generated", "invited", "viewed", "responded"].includes(value)) return "neutral";
-  if (["failed", "archived"].includes(value)) return "danger";
+  if (["sending", "delivery_unknown"].includes(value)) return "warning";
+  if (["failed", "bounced", "archived"].includes(value)) return "danger";
+  if (value === "suppressed") return "warning";
   return "muted";
+}
+
+function statusChipLabel(status) {
+  const value = String(status || "drafted").toLowerCase();
+  const labels = {
+    delivery_unknown: "delivery unknown",
+    manual_sent: "manual sent",
+    sending: "sending",
+    suppressed: "suppressed",
+    replied: "responded"
+  };
+  return labels[value] || value;
 }
 
 function statusChip(status) {
   const value = status || "drafted";
-  const label = value === "replied" ? "responded" : value;
+  const label = statusChipLabel(value);
   return `<span class="status-pill" data-tone="${statusTone(value)}">${escapeHtml(label)}</span>`;
 }
 
@@ -290,10 +383,48 @@ function bidLinkForMessage(message) {
   return `${window.location.origin}/rfx-bid.html?token=${encodeURIComponent(invitation.invitation_token)}`;
 }
 
+function messageOutcomeReason(message = {}) {
+  const meta = message.metadata && typeof message.metadata === "object" ? message.metadata : {};
+  return message.outcome_reason || meta.outcome_reason || meta.delivery_error || meta.outcome || "";
+}
+
+function messageNextAction(message = {}) {
+  const meta = message.metadata && typeof message.metadata === "object" ? message.metadata : {};
+  return message.next_action || meta.next_action || "";
+}
+
 function channelReady(message) {
   if (message.channel === "email") return Boolean(message.recipient_email && message.gmail_compose_url);
   if (message.channel === "whatsapp") return Boolean(message.recipient_phone && message.whatsapp_url);
   return false;
+}
+
+function messageTrackingState(message = {}) {
+  const sendResult = message.send_result && typeof message.send_result === "object" ? message.send_result : {};
+  const meta = message.metadata && typeof message.metadata === "object" ? message.metadata : {};
+  const signal = [
+    message.status,
+    message.delivery_status,
+    message.provider_response_status,
+    sendResult.outcome,
+    sendResult.status,
+    meta.outcome,
+    meta.delivery_status,
+    meta.bounce_status
+  ].filter(Boolean).join(" ").toLowerCase();
+  if (/archived/.test(signal)) return "archived";
+  if (/suppressed|do_not_contact|do-not-contact|blocked contact/.test(signal)) return "suppressed";
+  if (/bounc|mailer-daemon|undeliverable/.test(signal)) return "bounced";
+  if (/delivery_unknown/.test(signal)) return "delivery_unknown";
+  if (/manual_sent/.test(signal)) return "manual_sent";
+  if (/failed|error|rejected/.test(signal)) return "failed";
+  if (/read/.test(signal)) return "read";
+  if (/delivered/.test(signal)) return "delivered";
+  if (/replied|responded/.test(signal)) return "replied";
+  if (/sending/.test(signal)) return "sending";
+  if (/queued/.test(signal)) return "queued";
+  if (/sent|accepted/.test(signal)) return "sent";
+  return String(message.status || "drafted").toLowerCase();
 }
 
 function messageSearchText(message) {
@@ -301,7 +432,7 @@ function messageSearchText(message) {
     vendorName(message),
     laneLabel(message),
     message.channel,
-    message.status,
+    messageTrackingState(message),
     messageRecipient(message),
     message.subject,
     message.whatsapp_text,
@@ -312,13 +443,78 @@ function messageSearchText(message) {
 function messageMatchesFilter(message) {
   const term = String(messageSearch?.value || "").trim().toLowerCase();
   if (term && !messageSearchText(message).includes(term)) return false;
+  const channel = String(outreachChannelFilter?.value || "").trim().toLowerCase();
+  if (channel && String(message.channel || "").toLowerCase() !== channel) return false;
   if (activeMessageFilter === "all") return true;
+  const trackingState = messageTrackingState(message);
+  if (activeMessageFilter === "needs_action") return ["drafted", "queued", "sending", "failed", "bounced", "suppressed", "delivery_unknown"].includes(trackingState) || !channelReady(message);
   if (activeMessageFilter === "missing_channel") return !channelReady(message);
-  return message.status === activeMessageFilter;
+  return trackingState === activeMessageFilter;
 }
 
 function visibleMessages() {
   return messages.filter(messageMatchesFilter);
+}
+
+function selectedOutreachMessageRows() {
+  return messages.filter((message) => selectedMessageIds.has(message.id));
+}
+
+function commonSelectedChannel(rows = selectedOutreachMessageRows()) {
+  const channels = [...new Set(rows.map((message) => String(message.channel || "").trim()).filter(Boolean))];
+  return channels.length === 1 ? channels[0] : "";
+}
+
+function selectedChannelSummary(rows = selectedOutreachMessageRows()) {
+  const channels = [...new Set(rows.map((message) => String(message.channel || "").trim()).filter(Boolean))];
+  if (!channels.length) return "";
+  return channels.length === 1 ? channels[0] : "mixed channels";
+}
+
+function outreachBulkSummary(result = {}) {
+  const parts = [];
+  if (Number(result.updated || 0)) parts.push(`${formatCount(result.updated)} updated`);
+  if (Number(result.sent || 0)) parts.push(`${formatCount(result.sent)} sent`);
+  if (Number(result.removed || 0)) parts.push(`${formatCount(result.removed)} removed`);
+  if (Number(result.failed || 0)) parts.push(`${formatCount(result.failed)} failed`);
+  if (Number(result.delivery_unknown || 0)) parts.push(`${formatCount(result.delivery_unknown)} delivery unknown`);
+  if (Number(result.skipped || 0)) parts.push(`${formatCount(result.skipped)} skipped`);
+  if (!parts.length) parts.push("0 processed");
+  return parts.join(" | ");
+}
+
+function contactHistoryMeta(item = {}) {
+  return item.metadata && typeof item.metadata === "object" ? item.metadata : {};
+}
+
+function contactHistoryStatusLine(item = {}) {
+  const meta = contactHistoryMeta(item);
+  return [
+    item.channel,
+    item.status,
+    meta.delivery_status && meta.delivery_status !== item.status ? meta.delivery_status : "",
+    item.occurred_at || item.created_at ? new Date(item.occurred_at || item.created_at).toLocaleString() : ""
+  ].filter(Boolean).join(" | ");
+}
+
+function contactHistoryDetailLines(item = {}) {
+  const meta = contactHistoryMeta(item);
+  const lines = [];
+  if (item.channel === "whatsapp" && meta.sender_display_phone) {
+    lines.push(`Sent from ${meta.sender_display_phone} (${meta.whatsapp_connection_mode || "workspace connection"})`);
+  } else if (meta.sender) {
+    lines.push(`Sender: ${meta.sender}`);
+  }
+  if (meta.provider) lines.push(`Provider: ${meta.provider}`);
+  if (meta.delivery_error) lines.push(`Issue: ${meta.delivery_error}`);
+  if (meta.outcome && meta.outcome !== item.status) lines.push(`Outcome: ${meta.outcome}`);
+  return lines;
+}
+
+function renderContactHistoryDetails(item = {}) {
+  return contactHistoryDetailLines(item)
+    .map((line) => `<small>${escapeHtml(line)}</small>`)
+    .join("");
 }
 
 function selectedTemplate() {
@@ -375,10 +571,7 @@ function renderTemplatePreview() {
 }
 
 function activateOutreachView(view, focusTarget = null) {
-  const activeView = outreachWorkbench?.activate(view, focusTarget ? { focusTarget } : {}) || view;
-  const url = new URL(window.location.href);
-  url.searchParams.set("view", activeView);
-  window.history.replaceState({}, "", url);
+  outreachWorkbench?.activate(view, { ...(focusTarget ? { focusTarget } : {}), syncUrl: true });
 }
 
 function renderDraftPreview(message = null) {
@@ -395,7 +588,7 @@ function renderDraftPreview(message = null) {
   const isEmail = message.channel === "email";
   const body = isEmail ? message.html_body || message.text_body || "" : message.whatsapp_text || message.text_body || "";
   const portalLink = bidLinkForMessage(message);
-  const messageStatusLabel = message.status === "replied" ? "responded" : message.status || "drafted";
+  const messageStatusLabel = statusChipLabel(messageTrackingState(message));
   const vendorHistory = historyRows
     .filter((item) => item.vendor_id === message.vendor_id || item.outreach_message_id === message.id)
     .slice(0, 4);
@@ -417,6 +610,8 @@ function renderDraftPreview(message = null) {
       <div><dt>Subject</dt><dd>${escapeHtml(message.subject || "-")}</dd></div>
       <div><dt>Status</dt><dd>${escapeHtml(messageStatusLabel)}</dd></div>
       <div><dt>Channel ready</dt><dd>${channelReady(message) ? "Yes" : "Needs contact data"}</dd></div>
+      <div><dt>Next action</dt><dd>${escapeHtml(messageNextAction(message) || "-")}</dd></div>
+      <div><dt>Outcome</dt><dd>${escapeHtml(messageOutcomeReason(message) || "-")}</dd></div>
     </dl>
     ${isEmail && message.html_body
       ? `<iframe class="draft-html-preview" sandbox="" srcdoc="${escapeHtml(message.html_body)}"></iframe>`
@@ -425,10 +620,8 @@ function renderDraftPreview(message = null) {
       <strong>Recent vendor touchpoints</strong>
       ${vendorHistory.length ? vendorHistory.map((item) => `
         <article>
-          <span>${escapeHtml([item.channel, item.status, new Date(item.occurred_at || item.created_at).toLocaleString()].filter(Boolean).join(" | "))}</span>
-          ${item.channel === "whatsapp" && item.metadata?.sender_display_phone
-            ? `<small>Sent from ${escapeHtml(item.metadata.sender_display_phone)} (${escapeHtml(item.metadata.whatsapp_connection_mode || "workspace connection")})</small>`
-            : ""}
+          <span>${escapeHtml(contactHistoryStatusLine(item))}</span>
+          ${renderContactHistoryDetails(item)}
           <p>${escapeHtml(item.body_preview || item.subject || "")}</p>
         </article>
       `).join("") : "<article>No previous touchpoints for this vendor.</article>"}
@@ -438,20 +631,20 @@ function renderDraftPreview(message = null) {
 
 function updateMetrics() {
   metricCampaigns.textContent = formatCount(campaigns.length);
-  metricDrafts.textContent = formatCount(messages.filter((row) => row.status === "drafted" || row.status === "queued").length);
-  metricSent.textContent = formatCount(messages.filter((row) => row.status === "sent").length);
+  metricDrafts.textContent = formatCount(messages.filter((row) => ["drafted", "queued", "sending"].includes(messageTrackingState(row))).length);
+  metricSent.textContent = formatCount(messages.filter((row) => ["sent", "delivered", "read", "manual_sent"].includes(messageTrackingState(row))).length);
   metricHistory.textContent = formatCount(historyRows.length);
 }
 
 function campaignMessageStats(rows = messages) {
   return {
     total: rows.length,
-    drafted: rows.filter((row) => row.status === "drafted").length,
-    queued: rows.filter((row) => row.status === "queued").length,
-    sent: rows.filter((row) => row.status === "sent").length,
-    replied: rows.filter((row) => row.status === "replied").length,
-    failed: rows.filter((row) => row.status === "failed").length,
-    archived: rows.filter((row) => row.status === "archived").length,
+    drafted: rows.filter((row) => messageTrackingState(row) === "drafted").length,
+    queued: rows.filter((row) => ["queued", "sending"].includes(messageTrackingState(row))).length,
+    sent: rows.filter((row) => ["sent", "delivered", "read", "manual_sent"].includes(messageTrackingState(row))).length,
+    replied: rows.filter((row) => messageTrackingState(row) === "replied").length,
+    failed: rows.filter((row) => ["failed", "bounced", "suppressed", "delivery_unknown"].includes(messageTrackingState(row))).length,
+    archived: rows.filter((row) => messageTrackingState(row) === "archived").length,
     email: rows.filter((row) => row.channel === "email").length,
     whatsapp: rows.filter((row) => row.channel === "whatsapp").length,
     missing_channel: rows.filter((row) => !channelReady(row)).length
@@ -577,9 +770,14 @@ function renderCampaignDashboard() {
 
 function updateSelection() {
   const count = selectedMessageIds.size;
-  selectionCount.textContent = `${count} selected`;
+  const scope = messagePageInfo.has_more ? ` loaded of ${formatCount(messagePageInfo.total)}` : "";
+  const channelSummary = count ? selectedChannelSummary() : "";
+  selectionCount.textContent = `${count} selected${scope}${channelSummary ? ` | ${channelSummary}` : ""}`;
   markQueuedButton.disabled = outreachMessageMutationRunning || !count;
   markSentButton.disabled = outreachMessageMutationRunning || !count;
+  if (markManualSentButton) markManualSentButton.disabled = outreachMessageMutationRunning || !count;
+  if (markFailedButton) markFailedButton.disabled = outreachMessageMutationRunning || !count;
+  if (markBouncedButton) markBouncedButton.disabled = outreachMessageMutationRunning || !count;
   markRepliedButton.disabled = outreachMessageMutationRunning || !count;
   archiveMessagesButton.disabled = outreachMessageMutationRunning || !count;
 }
@@ -644,7 +842,8 @@ function renderCampaigns() {
     selectedCampaignId = campaigns.find((campaign) => campaign.rfx_event_id === requestedRfxEventId)?.id || null;
   }
   if (!selectedCampaignId && !requestedRfxEventId && campaigns[0]) selectedCampaignId = campaigns[0].id;
-  generateDraftsButton.disabled = !selectedCampaignId;
+  persistOutreachWorkspaceContext();
+  if (generateDraftsButton) generateDraftsButton.disabled = !selectedCampaignId || outreachCampaignMutationRunning;
   renderCampaignDashboard();
   if (!campaigns.length) {
     campaignList.innerHTML = stateBlock({
@@ -694,6 +893,9 @@ function renderMessages() {
     return;
   }
   const rows = visibleMessages();
+  const pageNotice = messagePageInfo.has_more
+    ? `<tr class="table-note-row"><td colspan="8">Showing ${formatCount(messages.length)} of ${formatCount(messagePageInfo.total)} campaign messages. Use Bid Room Draft Queue for paged operational sending, or narrow this campaign view with filters.</td></tr>`
+    : "";
   if (!rows.length) {
     messageBody.innerHTML = tableState(8, {
       tone: "neutral",
@@ -708,8 +910,9 @@ function renderMessages() {
   }
   const previewMessage = rows.find((message) => message.id === previewMessageId) || rows[0];
   previewMessageId = previewMessage?.id || null;
+  persistOutreachWorkspaceContext();
   renderDraftPreview(previewMessage);
-  messageBody.innerHTML = rows.map((message) => {
+  messageBody.innerHTML = pageNotice + rows.map((message) => {
     const draft = message.channel === "email"
       ? `<button class="small-button" type="button" data-open-url="${escapeHtml(message.gmail_compose_url || "")}" ${message.gmail_compose_url ? "" : "disabled"}>Open Gmail</button>`
       : `<button class="small-button" type="button" data-open-url="${escapeHtml(message.whatsapp_url || "")}" ${message.whatsapp_url ? "" : "disabled"}>Open WhatsApp</button>`;
@@ -717,6 +920,7 @@ function renderMessages() {
     const ready = channelReady(message);
     const invitation = linkedInvitation(message);
     const invitationStatus = invitation.invitation_status ? invitationStatusLabel(invitation.invitation_status) : "";
+    const trackingState = messageTrackingState(message);
     return `
       <tr data-message-id="${escapeHtml(message.id)}" class="${message.id === previewMessageId ? "is-focused-row" : ""}">
         <td><input type="checkbox" data-message-select="${escapeHtml(message.id)}" ${selectedMessageIds.has(message.id) ? "checked" : ""} /></td>
@@ -724,8 +928,8 @@ function renderMessages() {
         <td>${escapeHtml(laneLabel(message))}</td>
         <td><span class="status-pill">${escapeHtml(message.channel)}</span></td>
         <td>${escapeHtml(messageRecipient(message))}${ready ? "" : "<small>Missing channel setup</small>"}</td>
-        <td>${statusChip(message.status)}${invitationStatus ? `<small>RFx ${escapeHtml(invitationStatus)}</small>` : ""}</td>
-        <td>${escapeHtml(message.subject || message.whatsapp_text || message.text_body || "-").slice(0, 140)}</td>
+        <td>${statusChip(trackingState)}${invitationStatus ? `<small>RFx ${escapeHtml(invitationStatus)}</small>` : ""}</td>
+        <td>${escapeHtml(message.subject || message.whatsapp_text || message.text_body || "-").slice(0, 140)}${messageNextAction(message) ? `<small>${escapeHtml(messageNextAction(message))}</small>` : ""}</td>
         <td class="compact-actions"><button class="secondary small-button" type="button" data-preview-message="${escapeHtml(message.id)}">Preview</button>${draft}${copyHtml}</td>
       </tr>
     `;
@@ -757,12 +961,10 @@ function renderHistory() {
     <article class="contact-timeline-item" data-channel="${escapeHtml(item.channel || "")}">
       <i aria-hidden="true"></i>
       <div>
-        <span>${escapeHtml(item.channel)} | ${escapeHtml(item.status)} | ${escapeHtml(new Date(item.occurred_at || item.created_at).toLocaleString())}</span>
+        <span>${escapeHtml(contactHistoryStatusLine(item))}</span>
         <strong>${escapeHtml(item.vendors?.vendor_name || item.vendors?.domain || "Vendor")}</strong>
         <small>${escapeHtml(item.outreach_campaigns?.name || "")}${item.rfx_events?.rfx_id ? ` | ${escapeHtml(item.rfx_events.rfx_id)}` : ""}</small>
-        ${item.channel === "whatsapp" && item.metadata?.sender_display_phone
-          ? `<small>Sent from ${escapeHtml(item.metadata.sender_display_phone)} (${escapeHtml(item.metadata.whatsapp_connection_mode || "workspace connection")})</small>`
-          : ""}
+        ${renderContactHistoryDetails(item)}
         <p>${escapeHtml(item.body_preview || item.subject || "")}</p>
       </div>
     </article>
@@ -773,17 +975,37 @@ async function loadMessages(campaignId = selectedCampaignId) {
   const loadVersion = ++outreachMessagesLoadVersion;
   if (!campaignId) {
     messages = [];
+    messagePageInfo = { total: 0, has_more: false, limit: 1000, offset: 0 };
+    selectedMessageIds.clear();
+    previewMessageId = null;
     renderMessages();
     return;
   }
   selectedCampaignId = campaignId;
+  persistOutreachWorkspaceContext();
   const campaign = campaigns.find((item) => item.id === campaignId);
   draftTitle.textContent = campaign ? `${campaign.name} drafts` : "Generated messages";
-  const nextMessages = await fetchOutreachMessages({ campaign_id: campaignId });
+  const archivedScope = activeMessageFilter === "archived";
+  const [messagePage, nextHistoryRows] = await Promise.all([
+    fetchOutreachMessagesPage({
+      campaign_id: campaignId,
+      limit: 1000,
+      ...(archivedScope ? { status: "archived", include_archived: true } : {})
+    }),
+    fetchContactHistory({ campaign_id: campaignId, limit: 1000 })
+  ]);
   if (loadVersion !== outreachMessagesLoadVersion || selectedCampaignId !== campaignId) return;
-  messages = nextMessages;
+  messages = Array.isArray(messagePage.rows) ? messagePage.rows : [];
+  messagePageInfo = {
+    total: Number(messagePage.total || messages.length),
+    has_more: Boolean(messagePage.has_more),
+    limit: Number(messagePage.limit || 1000),
+    offset: Number(messagePage.offset || 0)
+  };
+  historyRows = mergeContactHistoryRows(historyRows, nextHistoryRows);
   selectedMessageIds = new Set([...selectedMessageIds].filter((id) => messages.some((message) => message.id === id)));
   if (!messages.some((message) => message.id === previewMessageId)) previewMessageId = messages[0]?.id || null;
+  persistOutreachWorkspaceContext();
   renderMessages();
 }
 
@@ -813,20 +1035,24 @@ async function loadAll() {
     setStatus(actionStatus, "Invitation admin ready.", "success");
   } catch (error) {
     if (loadVersion !== outreachLoadVersion) return;
-    setStatus(actionStatus, error.message, "error");
+    setStatus(actionStatus, humanizeError(error), "error");
   }
 }
 
 initAuthControls();
 requirePrivatePage().then((session) => {
   if (session?.token) loadAll();
-});
+}).catch(() => {});
 
 refreshButton?.addEventListener("click", loadAll);
 
 templateForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
+  if (outreachTemplateMutationRunning) return;
   const isEditing = Boolean(editingTemplateId);
+  outreachTemplateMutationRunning = true;
+  const submit = templateForm?.querySelector("button[type='submit']");
+  if (submit) submit.disabled = true;
   setStatus(templateStatus, isEditing ? "Saving template changes..." : "Saving template...");
   try {
     const saved = await (isEditing
@@ -838,15 +1064,20 @@ templateForm?.addEventListener("submit", async (event) => {
     fillTemplateForm(refreshed);
     setStatus(templateStatus, `${isEditing ? "Template updated" : "Template saved"}. Create the reusable Meta notifier when direct WhatsApp sending is needed.`, "success");
   } catch (error) {
-    setStatus(templateStatus, error.message, "error");
+    setStatus(templateStatus, humanizeError(error), "error");
+  } finally {
+    outreachTemplateMutationRunning = false;
+    if (submit) submit.disabled = false;
   }
 });
 
 outreachPublishWhatsappTemplateButton?.addEventListener("click", async () => {
+  if (outreachTemplateMutationRunning) return;
   if (!editingTemplateId) {
     setStatus(outreachWhatsappTemplateStatus, "Save or select an Outreach template first.", "error");
     return;
   }
+  outreachTemplateMutationRunning = true;
   outreachPublishWhatsappTemplateButton.disabled = true;
   setStatus(outreachWhatsappTemplateStatus, "Creating the compact Meta notifier from this Outreach template...");
   try {
@@ -857,12 +1088,16 @@ outreachPublishWhatsappTemplateButton?.addEventListener("click", async () => {
     renderOutreachWhatsappTemplateStatus(refreshed);
     setStatus(outreachWhatsappTemplateStatus, result.message || "WhatsApp template submitted to Meta.", result.ready ? "success" : "warning");
   } catch (error) {
-    setStatus(outreachWhatsappTemplateStatus, error.message, "error");
-    outreachPublishWhatsappTemplateButton.disabled = false;
+    setStatus(outreachWhatsappTemplateStatus, humanizeError(error), "error");
+  } finally {
+    outreachTemplateMutationRunning = false;
+    renderOutreachWhatsappTemplateStatus(templates.find((template) => template.id === editingTemplateId));
   }
 });
 
 outreachSyncWhatsappTemplatesButton?.addEventListener("click", async () => {
+  if (outreachTemplateMutationRunning) return;
+  outreachTemplateMutationRunning = true;
   outreachSyncWhatsappTemplatesButton.disabled = true;
   setStatus(outreachWhatsappTemplateStatus, "Syncing WhatsApp template status from Meta...");
   try {
@@ -876,21 +1111,26 @@ outreachSyncWhatsappTemplatesButton?.addEventListener("click", async () => {
       result.approved ? "success" : "warning"
     );
   } catch (error) {
-    setStatus(outreachWhatsappTemplateStatus, error.message, "error");
+    setStatus(outreachWhatsappTemplateStatus, humanizeError(error), "error");
   } finally {
+    outreachTemplateMutationRunning = false;
     outreachSyncWhatsappTemplatesButton.disabled = false;
   }
 });
 
 campaignForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
+  if (outreachCampaignMutationRunning) return;
   const isEditing = Boolean(editingCampaignId);
+  outreachCampaignMutationRunning = true;
+  updateCampaignActionState();
   setStatus(campaignStatus, isEditing ? "Saving campaign..." : "Creating campaign...");
   try {
     const campaign = isEditing
       ? await updateOutreachCampaign(editingCampaignId, campaignPayload())
       : await createOutreachCampaign(campaignPayload());
     selectedCampaignId = campaign.id;
+    selectedMessageIds.clear();
     resetCampaignForm();
     if (requestedRfxEventId && rfxEvents.some((event) => event.id === requestedRfxEventId)) campaignRfxEvent.value = requestedRfxEventId;
     renderTemplatePreview();
@@ -899,11 +1139,15 @@ campaignForm?.addEventListener("submit", async (event) => {
     renderCampaigns();
     await loadMessages(selectedCampaignId);
   } catch (error) {
-    setStatus(campaignStatus, error.message, "error");
+    setStatus(campaignStatus, humanizeError(error), "error");
+  } finally {
+    outreachCampaignMutationRunning = false;
+    updateCampaignActionState();
   }
 });
 
 templateList?.addEventListener("click", async (event) => {
+  if (outreachTemplateMutationRunning) return;
   const editButton = event.target.closest("[data-template-edit]");
   const duplicateButton = event.target.closest("[data-template-duplicate]");
   const archiveButton = event.target.closest("[data-template-archive]");
@@ -914,6 +1158,7 @@ templateList?.addEventListener("click", async (event) => {
     || deleteButton?.dataset.templateDelete;
   if (!templateId) return;
   const template = templates.find((item) => item.id === templateId);
+  const actionButton = duplicateButton || archiveButton || deleteButton;
 
   try {
     if (editButton) {
@@ -921,18 +1166,24 @@ templateList?.addEventListener("click", async (event) => {
       return;
     }
     if (duplicateButton) {
+      outreachTemplateMutationRunning = true;
+      duplicateButton.disabled = true;
       setStatus(templateStatus, "Duplicating template...");
       await duplicateOutreachTemplate(templateId);
       setStatus(templateStatus, "Template duplicated.", "success");
     }
     if (archiveButton) {
       if (!window.confirm("Archive this template? It will be hidden from active template lists.")) return;
+      outreachTemplateMutationRunning = true;
+      archiveButton.disabled = true;
       setStatus(templateStatus, "Archiving template...");
       await archiveOutreachTemplate(templateId);
       setStatus(templateStatus, "Template archived.", "success");
     }
     if (deleteButton) {
       if (!window.confirm(`Delete template ${template?.name || ""}? Campaigns using it will keep their records but lose the template link.`)) return;
+      outreachTemplateMutationRunning = true;
+      deleteButton.disabled = true;
       setStatus(templateStatus, "Deleting template...");
       await deleteOutreachTemplate(templateId);
       setStatus(templateStatus, "Template deleted.", "success");
@@ -941,7 +1192,10 @@ templateList?.addEventListener("click", async (event) => {
     templates = await fetchOutreachTemplates();
     renderTemplates();
   } catch (error) {
-    setStatus(templateStatus, error.message, "error");
+    setStatus(templateStatus, humanizeError(error), "error");
+  } finally {
+    outreachTemplateMutationRunning = false;
+    if (actionButton) actionButton.disabled = false;
   }
 });
 
@@ -949,7 +1203,10 @@ campaignList?.addEventListener("click", async (event) => {
   const card = event.target.closest("[data-campaign-id]");
   if (!card) return;
   selectedCampaignId = card.dataset.campaignId;
+  selectedMessageIds.clear();
+  persistOutreachWorkspaceContext();
   renderCampaigns();
+  updateSelection();
   await loadMessages(selectedCampaignId);
 });
 
@@ -958,32 +1215,42 @@ editCampaignButton?.addEventListener("click", () => {
 });
 
 duplicateCampaignButton?.addEventListener("click", async () => {
+  if (outreachCampaignMutationRunning) return;
   if (!selectedCampaignId) return;
+  const campaignId = selectedCampaignId;
   if (!window.confirm("Duplicate this campaign setup without copying generated drafts?")) return;
-  duplicateCampaignButton.disabled = true;
+  outreachCampaignMutationRunning = true;
+  updateCampaignActionState();
   setStatus(campaignStatus, "Duplicating campaign...");
   try {
-    const campaign = await duplicateOutreachCampaign(selectedCampaignId);
+    const campaign = await duplicateOutreachCampaign(campaignId);
+    if (selectedCampaignId !== campaignId) return;
     selectedCampaignId = campaign.id;
+    selectedMessageIds.clear();
     resetCampaignForm();
     setStatus(campaignStatus, "Campaign duplicated.", "success");
     campaigns = await fetchOutreachCampaigns();
     renderCampaigns();
     await loadMessages(selectedCampaignId);
   } catch (error) {
-    setStatus(campaignStatus, error.message, "error");
+    if (selectedCampaignId === campaignId) setStatus(campaignStatus, humanizeError(error), "error");
   } finally {
+    outreachCampaignMutationRunning = false;
     updateCampaignActionState();
   }
 });
 
 archiveCampaignButton?.addEventListener("click", async () => {
+  if (outreachCampaignMutationRunning) return;
   if (!selectedCampaignId) return;
+  const campaignId = selectedCampaignId;
   if (!window.confirm("Archive this campaign? Drafts and history stay stored but it leaves the active list.")) return;
-  archiveCampaignButton.disabled = true;
+  outreachCampaignMutationRunning = true;
+  updateCampaignActionState();
   setStatus(campaignStatus, "Archiving campaign...");
   try {
-    await archiveOutreachCampaign(selectedCampaignId);
+    await archiveOutreachCampaign(campaignId);
+    if (selectedCampaignId !== campaignId) return;
     selectedCampaignId = null;
     messages = [];
     selectedMessageIds.clear();
@@ -993,20 +1260,25 @@ archiveCampaignButton?.addEventListener("click", async () => {
     renderCampaigns();
     renderMessages();
   } catch (error) {
-    setStatus(campaignStatus, error.message, "error");
+    if (selectedCampaignId === campaignId) setStatus(campaignStatus, humanizeError(error), "error");
   } finally {
+    outreachCampaignMutationRunning = false;
     updateCampaignActionState();
   }
 });
 
 deleteCampaignButton?.addEventListener("click", async () => {
+  if (outreachCampaignMutationRunning) return;
   if (!selectedCampaignId) return;
+  const campaignId = selectedCampaignId;
   const campaign = selectedCampaign();
   if (!window.confirm(`Delete campaign ${campaign?.name || ""}? This removes generated drafts for this campaign.`)) return;
-  deleteCampaignButton.disabled = true;
+  outreachCampaignMutationRunning = true;
+  updateCampaignActionState();
   setStatus(campaignStatus, "Deleting campaign...");
   try {
-    await deleteOutreachCampaign(selectedCampaignId);
+    await deleteOutreachCampaign(campaignId);
+    if (selectedCampaignId !== campaignId) return;
     selectedCampaignId = null;
     messages = [];
     selectedMessageIds.clear();
@@ -1016,28 +1288,34 @@ deleteCampaignButton?.addEventListener("click", async () => {
     renderCampaigns();
     renderMessages();
   } catch (error) {
-    setStatus(campaignStatus, error.message, "error");
+    if (selectedCampaignId === campaignId) setStatus(campaignStatus, humanizeError(error), "error");
   } finally {
+    outreachCampaignMutationRunning = false;
     updateCampaignActionState();
   }
 });
 
 generateDraftsButton?.addEventListener("click", async () => {
+  if (outreachCampaignMutationRunning) return;
   if (!selectedCampaignId) return;
-  generateDraftsButton.disabled = true;
+  const campaignId = selectedCampaignId;
+  outreachCampaignMutationRunning = true;
+  updateCampaignActionState();
   setStatus(actionStatus, "Generating Gmail and WhatsApp drafts...");
   try {
-    const result = await generateOutreachDrafts(selectedCampaignId);
+    const result = await generateOutreachDrafts(campaignId);
+    if (selectedCampaignId !== campaignId) return;
     setStatus(actionStatus, `${result.generated || 0} draft(s) generated. ${result.skipped?.length || 0} skipped.`, "success");
     campaigns = await fetchOutreachCampaigns();
-    historyRows = await fetchContactHistory();
+    historyRows = mergeContactHistoryRows(historyRows, await fetchContactHistory({ campaign_id: campaignId, limit: 1000 }));
     renderCampaigns();
     renderHistory();
-    await loadMessages(selectedCampaignId);
+    await loadMessages(campaignId);
   } catch (error) {
-    setStatus(actionStatus, error.message, "error");
+    if (selectedCampaignId === campaignId) setStatus(actionStatus, humanizeError(error), "error");
   } finally {
-    generateDraftsButton.disabled = !selectedCampaignId;
+    outreachCampaignMutationRunning = false;
+    updateCampaignActionState();
   }
 });
 
@@ -1053,6 +1331,7 @@ messageBody?.addEventListener("click", async (event) => {
   const previewButton = event.target.closest("[data-preview-message]");
   if (previewButton) {
     previewMessageId = previewButton.dataset.previewMessage;
+    persistOutreachWorkspaceContext();
     renderMessages();
     draftPreview?.scrollIntoView({ behavior: "smooth", block: "center" });
     return;
@@ -1072,7 +1351,7 @@ messageBody?.addEventListener("click", async (event) => {
       await navigator.clipboard.writeText(message.html_body);
       setStatus(actionStatus, "HTML copied.", "success");
     } catch (error) {
-      setStatus(actionStatus, error.message, "error");
+      setStatus(actionStatus, humanizeError(error), "error");
     }
   }
 });
@@ -1131,46 +1410,77 @@ placeholderBank?.addEventListener("click", async (event) => {
     await navigator.clipboard.writeText(button.dataset.copyPlaceholder || "");
     setStatus(campaignStatus, "Placeholder copied.", "success");
   } catch (error) {
-    setStatus(campaignStatus, error.message, "error");
+    setStatus(campaignStatus, humanizeError(error), "error");
   }
 });
 
 document.querySelectorAll("[data-outreach-filter]").forEach((button) => {
-  button.addEventListener("click", () => {
+  button.addEventListener("click", async () => {
+    const priorFilter = activeMessageFilter;
     activeMessageFilter = button.dataset.outreachFilter || "all";
+    selectedMessageIds.clear();
+    persistOutreachWorkspaceContext();
     document.querySelectorAll("[data-outreach-filter]").forEach((item) => item.classList.toggle("is-active", item === button));
+    if (selectedCampaignId && (activeMessageFilter === "archived" || priorFilter === "archived")) {
+      await loadMessages(selectedCampaignId);
+      return;
+    }
     if (!visibleMessages().some((message) => message.id === previewMessageId)) previewMessageId = visibleMessages()[0]?.id || messages[0]?.id || null;
     renderMessages();
   });
 });
 
 messageSearch?.addEventListener("input", () => {
+  selectedMessageIds.clear();
   if (!visibleMessages().some((message) => message.id === previewMessageId)) previewMessageId = visibleMessages()[0]?.id || messages[0]?.id || null;
+  persistOutreachWorkspaceContext();
+  renderMessages();
+});
+
+outreachChannelFilter?.addEventListener("change", () => {
+  selectedMessageIds.clear();
+  if (!visibleMessages().some((message) => message.id === previewMessageId)) previewMessageId = visibleMessages()[0]?.id || messages[0]?.id || null;
+  persistOutreachWorkspaceContext();
   renderMessages();
 });
 
 async function markSelected(status) {
   if (outreachMessageMutationRunning) return;
-  const ids = [...selectedMessageIds];
+  const rows = selectedOutreachMessageRows();
+  const ids = rows.map((row) => row.id).filter(Boolean);
+  if (ids.length !== selectedMessageIds.size) {
+    selectedMessageIds = new Set(ids);
+    updateSelection();
+  }
   if (!ids.length) return;
+  const channel = commonSelectedChannel(rows);
+  if (!channel && status !== "archived") {
+    setStatus(actionStatus, "Selected messages include multiple channels. Filter or select one channel before changing delivery status.", "error");
+    return;
+  }
   outreachMessageMutationRunning = true;
   updateSelection();
-  setStatus(actionStatus, `Marking ${ids.length} message(s) ${status}...`);
+  const loadedScope = messagePageInfo.has_more ? ` from the loaded ${formatCount(messages.length)} of ${formatCount(messagePageInfo.total)} campaign messages` : "";
+  setStatus(actionStatus, `Marking ${ids.length} selected message(s)${loadedScope} ${status}...`);
   try {
-    const result = await markOutreachMessages(ids, status);
-    setStatus(actionStatus, `${result.updated || 0} message(s) updated.`, "success");
+    const result = await markOutreachMessages(ids, status, { channel });
+    setStatus(
+      actionStatus,
+      `Status update finished: ${outreachBulkSummary(result)}.`,
+      result.failures?.length || result.skipped ? "warning" : "success"
+    );
     selectedMessageIds.clear();
     const [nextHistoryRows, nextCampaigns] = await Promise.all([
-      fetchContactHistory(),
+      fetchContactHistory({ campaign_id: selectedCampaignId, limit: 1000 }),
       fetchOutreachCampaigns()
     ]);
-    historyRows = nextHistoryRows;
+    historyRows = mergeContactHistoryRows(historyRows, nextHistoryRows);
     campaigns = nextCampaigns;
     renderCampaigns();
     renderHistory();
     await loadMessages(selectedCampaignId);
   } catch (error) {
-    setStatus(actionStatus, error.message, "error");
+    setStatus(actionStatus, humanizeError(error), "error");
   } finally {
     outreachMessageMutationRunning = false;
     updateSelection();
@@ -1179,5 +1489,8 @@ async function markSelected(status) {
 
 markQueuedButton?.addEventListener("click", () => markSelected("queued"));
 markSentButton?.addEventListener("click", () => markSelected("sent"));
+markManualSentButton?.addEventListener("click", () => markSelected("manual_sent"));
+markFailedButton?.addEventListener("click", () => markSelected("failed"));
+markBouncedButton?.addEventListener("click", () => markSelected("bounced"));
 markRepliedButton?.addEventListener("click", () => markSelected("replied"));
 archiveMessagesButton?.addEventListener("click", () => markSelected("archived"));

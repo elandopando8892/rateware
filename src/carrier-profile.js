@@ -273,6 +273,8 @@ let currentSupportTickets = [];
 let currentLanguage = initialLanguage();
 let activeStepIndex = 0;
 let submitterDraft = { name: "", email: "" };
+let carrierProfileSubmitting = false;
+const carrierProfileTicketFollowupKeys = new Set();
 
 function initialLanguage() {
   const queryLanguage = new URLSearchParams(window.location.search).get("lang");
@@ -767,10 +769,12 @@ function setActiveStep(index, { silent = false } = {}) {
 
 async function submitProfile(event) {
   event.preventDefault();
+  if (carrierProfileSubmitting) return;
   const form = event.target;
   const button = form.querySelector("#carrier-profile-submit");
   const saveStatus = form.querySelector("#carrier-profile-save-status");
   const missing = recommendedMissing(form);
+  carrierProfileSubmitting = true;
   button.disabled = true;
   saveStatus.textContent = missing.length
     ? `${t("fixMissingPrefix")} ${missing.length} ${t("fixMissingSuffix")} ${t("saving")}`
@@ -792,11 +796,13 @@ async function submitProfile(event) {
     saveStatus.textContent = humanizeError(error);
     saveStatus.dataset.tone = "error";
   } finally {
+    carrierProfileSubmitting = false;
     button.disabled = false;
   }
 }
 
 async function saveTicketFollowup(ticketId) {
+  if (!ticketId || carrierProfileTicketFollowupKeys.has(ticketId)) return;
   const input = card.querySelector(`[data-ticket-followup-input="${CSS.escape(ticketId)}"]`);
   const message = String(input?.value || "").trim();
   if (!message) {
@@ -804,7 +810,9 @@ async function saveTicketFollowup(ticketId) {
     return;
   }
   const button = card.querySelector(`[data-ticket-followup-save="${CSS.escape(ticketId)}"]`);
+  carrierProfileTicketFollowupKeys.add(ticketId);
   if (button) button.disabled = true;
+  if (input) input.disabled = true;
   try {
     const result = await callProfileApi("add_ticket_followup", { ticket_id: ticketId, message });
     currentSupportTickets = Array.isArray(result.support_tickets) ? result.support_tickets : currentSupportTickets;
@@ -813,7 +821,9 @@ async function saveTicketFollowup(ticketId) {
   } catch (error) {
     setStatus(humanizeError(error) || t("requestFailed"), "error");
   } finally {
+    carrierProfileTicketFollowupKeys.delete(ticketId);
     if (button) button.disabled = false;
+    if (input) input.disabled = false;
   }
 }
 

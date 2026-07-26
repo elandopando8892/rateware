@@ -300,8 +300,18 @@ const rfxSendAwardNoticesButton = document.querySelector("#rfx-send-award-notice
 const rfxAwardNoticeSummary = document.querySelector("#rfx-award-notice-summary");
 const rfxAwardNoticeQueue = document.querySelector("#rfx-award-notice-queue");
 
+const RFX_WORKSPACE_CONTEXT_STORAGE_KEY = "rateware:bid-room:workspace-context:v1";
+const RFX_LANE_FILTER_KEYS = new Set(["all", "needs_shortlist", "needs_invite", "needs_response", "has_bids", "above_benchmark"]);
+const RFX_CHAT_FILTER_KEYS = new Set(["all", "unread", "needs_reply", "carrier", "google", "signals"]);
+const RFX_DRAFT_PAGE_SIZES = [50, 100, 250];
+const rfxPageParams = new URLSearchParams(window.location.search);
+const requestedRfxEventId = rfxPageParams.get("rfx_event_id");
+const requestedRfxLaneFilter = rfxPageParams.get("lane_filter");
+const requestedRfxChatFilter = rfxPageParams.get("chat_filter");
+const requestedRfxDraftPageSize = Number(rfxPageParams.get("draft_page_size"));
+const storedRfxWorkspaceContext = readRfxWorkspaceContext(RFX_WORKSPACE_CONTEXT_STORAGE_KEY);
 let events = [];
-let selectedEventId = null;
+let selectedEventId = requestedRfxEventId || String(storedRfxWorkspaceContext.eventId || "") || null;
 let selectedEvent = null;
 let editingEventId = null;
 let currentLanes = [];
@@ -317,29 +327,52 @@ let rfxTemplateVisualEditing = false;
 let contactHistoryRows = [];
 let outreachMessages = [];
 let bidRoomChatThreads = { rows: [], google_chat_configured: false };
-let bidRoomChatFilter = "all";
+let bidRoomChatFilter = RFX_CHAT_FILTER_KEYS.has(requestedRfxChatFilter)
+  ? requestedRfxChatFilter
+  : RFX_CHAT_FILTER_KEYS.has(storedRfxWorkspaceContext.chatFilter)
+    ? storedRfxWorkspaceContext.chatFilter
+    : "all";
 let bidRoomChatRefreshTimer = null;
 let bidRoomChatLoadVersion = 0;
 let rfxEventsLoadVersion = 0;
+let rfxEventsLoadRequest = null;
 let rfxDetailLoadVersion = 0;
+const rfxDetailRequests = new Map();
+const rfxContactHistoryRequests = new Map();
+const rfxOutreachMessageRequests = new Map();
+const rfxChatRequests = new Map();
 let participantBulkMutationRunning = false;
+let eventLifecycleMutationRunning = false;
+let awardMutationRunning = false;
+let draftQueueMutationRunning = false;
 let pendingChatBidUpdate = null;
 let selectedLaneIds = new Set();
 let selectedInvitationIds = new Set();
 let selectedDraftMessageIds = new Set();
 const selectedDraftMessageRows = new Map();
-let draftQueueSearch = "";
+let draftQueueSearch = rfxPageParams.has("draft_search")
+  ? String(rfxPageParams.get("draft_search") || "")
+  : String(storedRfxWorkspaceContext.draftSearch || "");
 let draftSearchRenderTimer = null;
 let draftQueueRows = [];
 let draftQueueTotal = 0;
-let draftQueueOffset = 0;
-let draftQueuePageSize = 100;
+let draftQueueOffset = rfxPageParams.has("draft_offset")
+  ? Math.max(0, Number(rfxPageParams.get("draft_offset")) || 0)
+  : Math.max(0, Number(storedRfxWorkspaceContext.draftOffset) || 0);
+let draftQueuePageSize = RFX_DRAFT_PAGE_SIZES.includes(requestedRfxDraftPageSize)
+  ? requestedRfxDraftPageSize
+  : RFX_DRAFT_PAGE_SIZES.includes(Number(storedRfxWorkspaceContext.draftPageSize))
+    ? Number(storedRfxWorkspaceContext.draftPageSize)
+    : 100;
 let draftQueueLoading = false;
 let draftQueueLoadVersion = 0;
-let draftQueueTrackingStatus = "all";
+let draftQueueLoadRequest = null;
+let draftQueueTrackingStatus = rfxPageParams.get("draft_tracking") || String(storedRfxWorkspaceContext.draftTracking || "all");
 let draftQueueTrackingSummary = { total: 0, states: {} };
 let draftQueueTrackingScopeKey = "";
 let draftQueueTrackingLoading = false;
+let draftQueueTrackingRequest = null;
+let draftQueueTrackingLoadVersion = 0;
 let outreachAudienceRows = [];
 let outreachAudienceSegments = [];
 let selectedOutreachAudienceVendorIds = new Set();
@@ -347,7 +380,11 @@ let outreachAudienceLoading = false;
 let outreachAudienceLoadVersion = 0;
 let outreachAudienceSearchTimer = null;
 let focusedLaneId = null;
-let activeLaneFilter = "all";
+let activeLaneFilter = RFX_LANE_FILTER_KEYS.has(requestedRfxLaneFilter)
+  ? requestedRfxLaneFilter
+  : RFX_LANE_FILTER_KEYS.has(storedRfxWorkspaceContext.laneFilter)
+    ? storedRfxWorkspaceContext.laneFilter
+    : "all";
 let laneEditMode = false;
 let pendingLaneEdits = new Map();
 let pendingLaneTemplateRows = [];
@@ -359,6 +396,7 @@ let vendorOptionsLoading = true;
 let vendorSearchLoading = false;
 let vendorSearchTimer = null;
 let vendorSearchSequence = 0;
+let carrierWorkspaceLoadPromise = null;
 let rfxCustomerRows = [];
 let rfxCustomerSearchTimer = null;
 let vendorSegmentsLoading = true;
@@ -372,26 +410,130 @@ let whatsappConnectionReadiness = {
   ready: false,
   message: "Validate WhatsApp Business in Settings before sending."
 };
-const rfxPageParams = new URLSearchParams(window.location.search);
-const requestedRfxEventId = rfxPageParams.get("rfx_event_id");
 const rfxWorkbench = initWorkbenchTabs({ defaultView: "setup" });
 const APPROVED_GMAIL_SENDER = "sales@heymarksman.com";
 const OUTREACH_SEND_BATCH_SIZE = 100;
 const DRAFT_TRACKING_STATES = [
   ["all", "All"],
   ["drafted", "Drafted"],
+  ["queued", "Queued"],
+  ["sending", "Sending"],
   ["sent", "Sent"],
   ["delivered", "Delivered"],
   ["read", "Read"],
+  ["manual_sent", "Manual sent"],
+  ["delivery_unknown", "Delivery unknown"],
   ["failed", "Failed"],
   ["replied", "Replied"],
   ["quoted", "Quoted"],
   ["bounced", "Bounced"],
-  ["suppressed", "Suppressed"]
+  ["suppressed", "Suppressed"],
+  ["archived", "Archived"]
 ];
+if (!DRAFT_TRACKING_STATES.some(([status]) => status === draftQueueTrackingStatus)) draftQueueTrackingStatus = "all";
 const BID_ROOM_PARTICIPANT_BATCH_SIZE = 1000;
 const BID_ROOM_PARTICIPANT_SELECTION_STORAGE_PREFIX = "rateware:bid-room:participant-selection:";
 const DRAFT_QUEUE_SEARCH_DEBOUNCE_MS = 120;
+
+function readRfxWorkspaceContext(key) {
+  try {
+    const value = JSON.parse(window.localStorage.getItem(key) || "{}");
+    return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeRfxWorkspaceContext(value) {
+  try {
+    window.localStorage.setItem(RFX_WORKSPACE_CONTEXT_STORAGE_KEY, JSON.stringify(value));
+  } catch {
+    // The Bid Room remains usable for the current session when storage is blocked.
+  }
+}
+
+function syncRfxWorkspaceUrl() {
+  try {
+    const url = new URL(window.location.href);
+    const setOrRemove = (key, value, defaultValue = "") => {
+      if (value === undefined || value === null || value === "" || value === defaultValue) url.searchParams.delete(key);
+      else if (key === "rfx_event_id") url.searchParams.set("rfx_event_id", String(value));
+      else url.searchParams.set(key, String(value));
+    };
+    setOrRemove("rfx_event_id", selectedEventId);
+    setOrRemove("lane_filter", activeLaneFilter, "all");
+    setOrRemove("lane_search", laneSearch?.value || "");
+    setOrRemove("draft_search", draftQueueSearch);
+    setOrRemove("draft_tracking", draftQueueTrackingStatus, "all");
+    setOrRemove("draft_offset", draftQueueOffset, 0);
+    setOrRemove("draft_page_size", draftQueuePageSize === 100 ? "" : draftQueuePageSize);
+    setOrRemove("chat_filter", bidRoomChatFilter, "all");
+    window.history.replaceState(window.history.state, "", url);
+  } catch {
+    // The Bid Room remains usable when URL history is unavailable.
+  }
+}
+
+function applyRfxUrlStateFromBrowser() {
+  const params = new URLSearchParams(window.location.search);
+  const nextEventId = params.get("rfx_event_id");
+  const eventChanged = nextEventId !== selectedEventId;
+  selectedEventId = nextEventId || null;
+  activeLaneFilter = RFX_LANE_FILTER_KEYS.has(params.get("lane_filter")) ? params.get("lane_filter") : "all";
+  bidRoomChatFilter = RFX_CHAT_FILTER_KEYS.has(params.get("chat_filter")) ? params.get("chat_filter") : "all";
+  draftQueueSearch = params.has("draft_search") ? String(params.get("draft_search") || "") : "";
+  draftQueueOffset = params.has("draft_offset") ? Math.max(0, Number(params.get("draft_offset")) || 0) : 0;
+  const nextPageSize = Number(params.get("draft_page_size"));
+  draftQueuePageSize = RFX_DRAFT_PAGE_SIZES.includes(nextPageSize) ? nextPageSize : 100;
+  draftQueueTrackingStatus = params.get("draft_tracking") || "all";
+  if (!DRAFT_TRACKING_STATES.some(([status]) => status === draftQueueTrackingStatus)) draftQueueTrackingStatus = "all";
+  if (laneSearch) laneSearch.value = params.has("lane_search") ? String(params.get("lane_search") || "") : "";
+  if (draftSearchInput) draftSearchInput.value = draftQueueSearch;
+  if (draftPageSize) draftPageSize.value = String(draftQueuePageSize);
+  document.querySelectorAll("[data-rfx-lane-filter]").forEach((button) => {
+    button.classList.toggle("is-active", button.dataset.rfxLaneFilter === activeLaneFilter);
+  });
+  document.querySelectorAll("[data-rfx-chat-filter]").forEach((button) => {
+    button.classList.toggle("is-active", button.dataset.rfxChatFilter === bidRoomChatFilter);
+  });
+  const requestedView = params.get("view");
+  if (requestedView) rfxWorkbench?.activate(requestedView);
+  if (eventChanged) {
+    resetDraftQueue({ clearSelection: true });
+    void loadEvents();
+    return;
+  }
+  renderLanes();
+  renderBidRoomChat();
+  renderDraftQueue();
+  void loadDraftQueuePage(selectedEventId, { refreshTracking: true });
+}
+
+function persistRfxWorkspaceContext() {
+  writeRfxWorkspaceContext({
+    eventId: selectedEventId,
+    laneFilter: activeLaneFilter,
+    laneSearch: String(laneSearch?.value || ""),
+    draftSearch: draftQueueSearch,
+    draftOffset: draftQueueOffset,
+    draftPageSize: draftQueuePageSize,
+    draftTracking: draftQueueTrackingStatus,
+    chatFilter: bidRoomChatFilter
+  });
+  syncRfxWorkspaceUrl();
+}
+
+if (laneSearch) laneSearch.value = rfxPageParams.has("lane_search")
+  ? String(rfxPageParams.get("lane_search") || "")
+  : String(storedRfxWorkspaceContext.laneSearch || "");
+if (draftSearchInput) draftSearchInput.value = draftQueueSearch;
+if (draftPageSize) draftPageSize.value = String(draftQueuePageSize);
+document.querySelectorAll("[data-rfx-lane-filter]").forEach((button) => {
+  button.classList.toggle("is-active", button.dataset.rfxLaneFilter === activeLaneFilter);
+});
+document.querySelectorAll("[data-rfx-chat-filter]").forEach((button) => {
+  button.classList.toggle("is-active", button.dataset.rfxChatFilter === bidRoomChatFilter);
+});
 
 const RFX_LANE_TEMPLATE_COLUMNS = [
   { key: "lane_number", label: "Lane #", example: "1" },
@@ -485,8 +627,12 @@ function escapeHtml(value) {
 
 function setStatus(element, message, tone = "neutral") {
   if (!element) return;
-  element.textContent = tone === "error" ? humanizeError(message) : message;
+  const normalized = tone === "error" ? humanizeError(message) : message;
+  element.textContent = normalized;
   element.dataset.tone = tone;
+  if (["success", "error", "danger"].includes(tone)) {
+    window.ratewareNotify?.({ tone: tone === "error" ? "danger" : tone, message: normalized });
+  }
 }
 
 function shipperCustomerName(row = {}) {
@@ -539,7 +685,7 @@ async function loadRfxCustomerOptions(search = "") {
     renderRfxCustomerOptions(rfxCustomerRows);
   } catch (error) {
     if (rfxCustomerStatus) {
-      rfxCustomerStatus.textContent = `Shipper CRM customer lookup failed: ${humanizeError(error.message)}`;
+      rfxCustomerStatus.textContent = `Shipper CRM customer lookup failed: ${humanizeError(error)}`;
       rfxCustomerStatus.dataset.tone = "error";
     }
   }
@@ -586,7 +732,7 @@ function updateEventActionState() {
   const hasSelection = Boolean(selectedEventId);
   [editRfxButton, duplicateRfxButton, openRfxButton, closeRfxButton, archiveRfxButton, deleteRfxButton]
     .forEach((button) => {
-      if (button) button.disabled = !hasSelection;
+      if (button) button.disabled = !hasSelection || eventLifecycleMutationRunning;
     });
 }
 
@@ -2489,27 +2635,30 @@ function wizardStageCopy(stage) {
 
 function wizardActionButton(stage) {
   const actions = {
+    build: '<button type="button" data-rfx-wizard-go="setup">Open build workspace</button>',
     event: '<button type="button" data-rfx-focus-create>Create bid room</button>',
     lanes: '<button type="button" data-rfx-wizard-go="lanes">Import business book</button>',
     carriers: '<button type="button" data-rfx-wizard-go="carriers">Select participants</button>',
     preview: '<button type="button" data-rfx-wizard-go="outreach">Review invitations</button>',
     launch: '<button type="button" data-rfx-wizard-create-drafts>Generate draft queue</button>',
     offers: '<button type="button" data-rfx-wizard-go="responses">Open auction room</button>',
-    award: '<button type="button" data-rfx-wizard-go="award">Open award board</button>'
+    operate: '<button type="button" data-rfx-wizard-go="responses">Open auction room</button>',
+    award: '<button type="button" data-rfx-wizard-go="award">Open award board</button>',
+    close: '<button type="button" data-rfx-wizard-go="award">Open award board</button>'
   };
   return actions[stage] || actions.event;
 }
 
 function renderOpsStageRail() {
   if (!rfxOpsStageRail) return;
-  const stage = currentWizardStage();
+  const stage = currentBidRoomStage();
   const buttons = [...rfxOpsStageRail.querySelectorAll("[data-stage-key]")];
   if (buttons.length) {
-    rfxWizardStepState().forEach((step, index) => {
+    bidRoomStageState().forEach((step, index) => {
       const button = rfxOpsStageRail.querySelector(`[data-stage-key="${step.key}"]`);
       if (!button) return;
-      const copy = wizardStageCopy(step.key);
-      const view = wizardStageView(step.key);
+      const copy = bidRoomStageCopy(step.key);
+      const view = step.view;
       const stateLabel = step.complete ? "Ready" : step.key === stage ? "Next" : "Pending";
       button.classList.toggle("is-complete", step.complete);
       button.classList.toggle("is-next", step.key === stage);
@@ -2524,8 +2673,8 @@ function renderOpsStageRail() {
     });
     return;
   }
-  rfxOpsStageRail.innerHTML = rfxWizardStepState().map((step, index) => {
-    const copy = wizardStageCopy(step.key);
+  rfxOpsStageRail.innerHTML = bidRoomStageState().map((step, index) => {
+    const copy = bidRoomStageCopy(step.key);
     return `
       <button
         type="button"
@@ -2540,11 +2689,92 @@ function renderOpsStageRail() {
   }).join("");
 }
 
+function bidRoomStageState() {
+  const stats = rfxWizardStats();
+  return [
+    {
+      key: "build",
+      label: "Build",
+      complete: Boolean(selectedEvent && stats.lanes > 0 && stats.invitations.length > 0),
+      view: "setup"
+    },
+    {
+      key: "launch",
+      label: "Launch",
+      complete: stats.invitations.some(hasInvitationStarted),
+      view: "outreach"
+    },
+    {
+      key: "operate",
+      label: "Operate",
+      complete: stats.bids.length > 0,
+      view: "responses"
+    },
+    {
+      key: "close",
+      label: "Close",
+      complete: selectedEvent?.status === "awarded",
+      view: "award"
+    }
+  ];
+}
+
+function currentBidRoomStage() {
+  return bidRoomStageState().find((step) => !step.complete)?.key || "close";
+}
+
+function bidRoomStageProgress() {
+  const steps = bidRoomStageState();
+  const completeCount = steps.filter((step) => step.complete).length;
+  const activeStage = currentBidRoomStage();
+  const activeIndex = Math.max(0, steps.findIndex((step) => step.key === activeStage));
+  const percent = steps.length ? Math.round((completeCount / steps.length) * 100) : 0;
+  const stats = processStats();
+  return {
+    steps,
+    completeCount,
+    activeStage,
+    activeIndex,
+    percent,
+    statusLine: `${formatNumber(completeCount)} / ${formatNumber(steps.length)} operating stage(s) ready`,
+    commercialLine: `${formatNumber(stats.lanes)} lane(s) | ${formatNumber(stats.invitations.length)} participant row(s) | ${formatNumber(stats.bids.length)} live bid(s)`
+  };
+}
+
+function bidRoomStageCopy(stage) {
+  return {
+    build: {
+      title: "Build the bid room",
+      detail: "Set the event, load the business book, and choose participants from Carrier CRM.",
+      note: "Event | Book | CRM"
+    },
+    launch: {
+      title: "Launch carrier outreach",
+      detail: "Review one invitation experience, generate the queue, and send the selected channel.",
+      note: "Invites | Queue"
+    },
+    operate: {
+      title: "Operate the live room",
+      detail: "Monitor bids, capacity, ETAs, chat signals, and ranking from the event context.",
+      note: "Auction | Live"
+    },
+    close: {
+      title: "Close out the award",
+      detail: "Compare bids, award lanes, and move approved costs back to Rateware.",
+      note: "Award | Rateware"
+    }
+  }[stage] || {
+    title: "Open Bid Room",
+    detail: "Continue the procurement workflow.",
+    note: "Bid Room"
+  };
+}
+
 function renderOpsNextAction() {
   if (!rfxOpsNextAction) return;
-  const stage = currentWizardStage();
-  const copy = wizardStageCopy(stage);
-  const progress = bidRoomWorkflowProgress();
+  const stage = currentBidRoomStage();
+  const copy = bidRoomStageCopy(stage);
+  const progress = bidRoomStageProgress();
   const nextStepNumber = progress.activeIndex + 1;
   rfxOpsNextAction.dataset.stage = stage;
   rfxOpsNextAction.dataset.ready = progress.percent >= 100 ? "true" : "false";
@@ -2556,7 +2786,7 @@ function renderOpsNextAction() {
     <div class="bid-room-workflow-meter" aria-label="${escapeHtml(progress.statusLine)}">
       <i style="width: ${progress.percent}%"></i>
     </div>
-    <strong>Step ${formatNumber(nextStepNumber)}: ${escapeHtml(copy.title)}</strong>
+    <strong>Next: ${escapeHtml(copy.title)}</strong>
     <small>${escapeHtml(copy.detail)}</small>
     <div class="bid-room-next-meta">
       <span>${escapeHtml(progress.statusLine)}</span>
@@ -3352,7 +3582,7 @@ function renderAwardReadiness() {
   const closeoutTone = snapshot.pendingCloseout.length ? "warning" : snapshot.primary.length ? "success" : "neutral";
   const noticesTone = snapshot.sendable.length ? "warning" : snapshot.noticeRows.length ? "success" : "neutral";
   if (rfxApplyRecommendedAwardsButton) {
-    rfxApplyRecommendedAwardsButton.disabled = !snapshot.recommendations.length;
+    rfxApplyRecommendedAwardsButton.disabled = awardMutationRunning || !snapshot.recommendations.length;
     rfxApplyRecommendedAwardsButton.textContent = snapshot.recommendations.length
       ? `Award ${formatNumber(snapshot.recommendations.length)} recommended`
       : "Award recommended";
@@ -3376,10 +3606,10 @@ function updateAwardNoticeControls() {
   const primary = currentLanes.flatMap((lane) => activeInvitations(lane)).filter((item) => item.award_role === "primary").length;
   const bidRows = awardLaneRows().reduce((sum, row) => sum + row.bids.length, 0);
   if (rfxGenerateAwardNoticesButton) {
-    rfxGenerateAwardNoticesButton.disabled = !selectedEventId || !bidRows || Boolean(awardPreflightIssues("generate_notices").length);
+    rfxGenerateAwardNoticesButton.disabled = awardMutationRunning || !selectedEventId || !bidRows || Boolean(awardPreflightIssues("generate_notices").length);
   }
   if (rfxSendAwardNoticesButton) {
-    rfxSendAwardNoticesButton.disabled = !sendableIds.length || Boolean(awardPreflightIssues("send_notices").length);
+    rfxSendAwardNoticesButton.disabled = awardMutationRunning || !sendableIds.length || Boolean(awardPreflightIssues("send_notices").length);
     rfxSendAwardNoticesButton.textContent = sendableIds.length
       ? `Send ${formatNumber(sendableIds.length)} notice${sendableIds.length === 1 ? "" : "s"}`
       : "Send notices";
@@ -3411,7 +3641,7 @@ function updateAwardMetrics() {
   }
   if (rfxCloseoutAwardsButton) {
     const pendingCloseout = primary.filter((item) => !item.rate_staging_id).length;
-    rfxCloseoutAwardsButton.disabled = !pendingCloseout || Boolean(awardPreflightIssues("closeout").length);
+    rfxCloseoutAwardsButton.disabled = awardMutationRunning || !pendingCloseout || Boolean(awardPreflightIssues("closeout").length);
     rfxCloseoutAwardsButton.textContent = pendingCloseout
       ? `Create ${formatNumber(pendingCloseout)} Rateware row${pendingCloseout === 1 ? "" : "s"}`
       : "Create Rateware rows";
@@ -3662,6 +3892,21 @@ function laneMatchesFilter(lane) {
 
 function visibleLanes() {
   return currentLanes.filter(laneMatchesFilter);
+}
+
+function selectedVisibleLaneIds() {
+  return visibleLanes()
+    .filter((lane) => selectedLaneIds.has(lane.id))
+    .map((lane) => lane.id)
+    .filter(Boolean);
+}
+
+function selectedVisibleInvitationIds() {
+  return visibleLanes()
+    .flatMap((lane) => lane.invitations || [])
+    .filter((invite) => selectedInvitationIds.has(invite.id))
+    .map((invite) => invite.id)
+    .filter(Boolean);
 }
 
 function eventStepState() {
@@ -4320,7 +4565,17 @@ function renderBidRoomChat() {
   }).join("");
 }
 
-async function loadBidRoomChat() {
+function requestRfxEventResource(requestMap, eventId, loader, { force = false } = {}) {
+  const key = String(eventId || "");
+  if (!force && requestMap.has(key)) return requestMap.get(key);
+  const promise = loader().finally(() => {
+    if (requestMap.get(key) === promise) requestMap.delete(key);
+  });
+  requestMap.set(key, promise);
+  return promise;
+}
+
+async function loadBidRoomChat({ force = false } = {}) {
   const loadVersion = ++bidRoomChatLoadVersion;
   const eventId = selectedEventId;
   if (!eventId) {
@@ -4329,7 +4584,7 @@ async function loadBidRoomChat() {
     return;
   }
   try {
-    const threads = await fetchBidRoomChat(eventId);
+    const threads = await requestRfxEventResource(rfxChatRequests, eventId, () => fetchBidRoomChat(eventId), { force });
     if (loadVersion !== bidRoomChatLoadVersion || selectedEventId !== eventId) return;
     bidRoomChatThreads = threads || emptyBidRoomChatThreads();
     renderBidRoomChat();
@@ -4337,7 +4592,7 @@ async function loadBidRoomChat() {
     if (loadVersion !== bidRoomChatLoadVersion || selectedEventId !== eventId) return;
     bidRoomChatThreads = emptyBidRoomChatThreads();
     renderBidRoomChat();
-    setStatus(rfxChatStatus, error.message, "error");
+    setStatus(rfxChatStatus, humanizeError(error), "error");
   }
 }
 
@@ -4346,7 +4601,7 @@ async function ensureSelectedEventChatThread(eventId, options = {}) {
   try {
     const result = await syncBidRoomEventThread(eventId, { force: options.force === true });
     if (selectedEventId === eventId) {
-      await loadBidRoomChat();
+      await loadBidRoomChat({ force: true });
       if (!options.silent) {
         setStatus(
           rfxChatStatus,
@@ -4359,7 +4614,7 @@ async function ensureSelectedEventChatThread(eventId, options = {}) {
     }
     return result;
   } catch (error) {
-    if (!options.silent) setStatus(rfxChatStatus, error.message, "error");
+    if (!options.silent) setStatus(rfxChatStatus, humanizeError(error), "error");
     return null;
   }
 }
@@ -4804,7 +5059,11 @@ function normalizeDraftTrackingStatus(value = "all") {
 }
 
 function draftTrackingCount(status) {
-  if (status === "all") return Number(draftQueueTrackingSummary.total || 0);
+  if (status === "all") {
+    return DRAFT_TRACKING_STATES
+      .filter(([state]) => !["all", "archived"].includes(state))
+      .reduce((total, [state]) => total + Number(draftQueueTrackingSummary.states?.[state] || 0), 0);
+  }
   return Number(draftQueueTrackingSummary.states?.[status] || 0);
 }
 
@@ -4828,7 +5087,20 @@ async function loadDraftQueueTrackingSummary(eventId = selectedEventId, { force 
     return;
   }
   const scopeKey = draftTrackingScopeKey(eventId);
+  if (draftQueueTrackingRequest?.key === scopeKey) return draftQueueTrackingRequest.promise;
   if (!force && draftQueueTrackingScopeKey === scopeKey && !draftQueueTrackingLoading) return;
+
+  const promise = loadDraftQueueTrackingSummaryRequest(eventId, scopeKey);
+  draftQueueTrackingRequest = { key: scopeKey, promise };
+  try {
+    return await promise;
+  } finally {
+    if (draftQueueTrackingRequest?.promise === promise) draftQueueTrackingRequest = null;
+  }
+}
+
+async function loadDraftQueueTrackingSummaryRequest(eventId, scopeKey) {
+  const loadVersion = ++draftQueueTrackingLoadVersion;
   if (draftQueueTrackingScopeKey !== scopeKey) {
     draftQueueTrackingSummary = { total: 0, states: {} };
   }
@@ -4837,53 +5109,77 @@ async function loadDraftQueueTrackingSummary(eventId = selectedEventId, { force 
   try {
     const result = await fetchOutreachTrackingSummary({
       rfx_event_id: eventId,
-      channels: outreachDraftChannels(selectedOutreachChannel())
+      channels: outreachDraftChannels(selectedOutreachChannel()),
+      include_archived: true
     });
-    if (selectedEventId !== eventId || draftTrackingScopeKey(eventId) !== scopeKey) return;
+    if (loadVersion !== draftQueueTrackingLoadVersion || selectedEventId !== eventId || draftTrackingScopeKey(eventId) !== scopeKey) return;
     draftQueueTrackingSummary = {
       total: Number(result?.total || 0),
       states: result?.states || {}
     };
     draftQueueTrackingScopeKey = scopeKey;
   } catch (error) {
-    if (selectedEventId === eventId && draftTrackingScopeKey(eventId) === scopeKey) {
+    if (loadVersion === draftQueueTrackingLoadVersion && selectedEventId === eventId && draftTrackingScopeKey(eventId) === scopeKey) {
       setStatus(rfxOutreachStatus, `Lifecycle counts could not load. ${humanizeError(error)}`, "warning");
     }
   } finally {
-    if (draftTrackingScopeKey(eventId) === scopeKey || !draftQueueTrackingScopeKey) {
+    if (loadVersion === draftQueueTrackingLoadVersion) {
       draftQueueTrackingLoading = false;
       renderDraftTrackingFilters();
     }
   }
 }
 
-async function loadDraftQueuePage(eventId = selectedEventId, { reset = false, render = true, refreshTracking = false } = {}) {
+function draftQueuePageQuery(eventId) {
+  return {
+    rfx_event_id: eventId,
+    channels: outreachDraftChannels(selectedOutreachChannel()),
+    search: draftQueueSearch,
+    tracking_status: draftQueueTrackingStatus,
+    ...(draftQueueTrackingStatus === "archived" ? { status: "archived", include_archived: true } : {}),
+    offset: draftQueueOffset,
+    limit: draftQueuePageSize
+  };
+}
+
+async function loadDraftQueuePage(eventId = selectedEventId, options = {}) {
+  const { reset = false, render = true, refreshTracking = false, force = false } = options;
   if (!eventId) {
     resetDraftQueue();
     if (render) renderDraftQueue();
     return;
   }
   if (reset) draftQueueOffset = 0;
+  const query = draftQueuePageQuery(eventId);
+  const requestKey = JSON.stringify(query);
+  if (!force && !refreshTracking && draftQueueLoadRequest?.key === requestKey) {
+    return draftQueueLoadRequest.promise;
+  }
+
+  const promise = loadDraftQueuePageRequest(eventId, { render, refreshTracking, query });
+  draftQueueLoadRequest = { key: requestKey, promise };
+  try {
+    return await promise;
+  } finally {
+    if (draftQueueLoadRequest?.promise === promise) draftQueueLoadRequest = null;
+  }
+}
+
+async function loadDraftQueuePageRequest(eventId, { render, refreshTracking, query }) {
   if (refreshTracking) void loadDraftQueueTrackingSummary(eventId, { force: true });
   const loadVersion = ++draftQueueLoadVersion;
   draftQueueLoading = true;
   if (render) renderDraftQueue();
   try {
-    const result = await fetchOutreachMessagesPage({
-      rfx_event_id: eventId,
-      channels: outreachDraftChannels(selectedOutreachChannel()),
-      search: draftQueueSearch,
-      tracking_status: draftQueueTrackingStatus,
-      offset: draftQueueOffset,
-      limit: draftQueuePageSize
-    });
+    const result = await fetchOutreachMessagesPage(query);
     if (loadVersion !== draftQueueLoadVersion || selectedEventId !== eventId) return;
     draftQueueRows = result.rows || [];
     draftQueueTotal = Number(result.total || 0);
     draftQueueOffset = Number(result.offset || 0);
     if (!draftQueueRows.length && draftQueueTotal && draftQueueOffset >= draftQueueTotal) {
       draftQueueOffset = Math.max(0, Math.floor((draftQueueTotal - 1) / draftQueuePageSize) * draftQueuePageSize);
-      return await loadDraftQueuePage(eventId, { render, refreshTracking });
+      persistRfxWorkspaceContext();
+      return await loadDraftQueuePage(eventId, { render, force: true });
     }
   } catch (error) {
     if (loadVersion !== draftQueueLoadVersion || selectedEventId !== eventId) return;
@@ -4921,23 +5217,32 @@ function outreachTrackingState(message = {}) {
     metadata.provider_response_status,
     metadata.last_event
   ].map((value) => String(value || "").toLowerCase()).join(" ");
+  if (/archived/.test(signal)) return "archived";
+  if (/suppressed|do_not_contact|do-not-contact|blocked contact/.test(signal)) return "suppressed";
   if (/bounc|mailer-daemon|undeliverable/.test(signal)) return "bounced";
   if (/failed|error|rejected/.test(signal)) return "failed";
   if (["replied", "responded"].includes(invitationStatus) || invitation.responded_at || /replied|responded/.test(signal)) return "replied";
-  if (/delivered|read/.test(signal)) return "delivered";
-  if (/sent|accepted|manual_sent|delivery_unknown/.test(signal)) return "sent";
+  if (/manual_sent/.test(signal)) return "manual_sent";
+  if (/delivery_unknown/.test(signal)) return "delivery_unknown";
+  if (/read/.test(signal)) return "read";
+  if (/delivered/.test(signal)) return "delivered";
+  if (/sending/.test(signal)) return "sending";
+  if (/queued/.test(signal)) return "queued";
+  if (/sent|accepted/.test(signal)) return "sent";
   return "drafted";
 }
 
 function trackingStatusTone(status) {
-  if (["quoted", "delivered", "sent"].includes(status)) return "success";
+  if (["quoted", "read", "delivered", "sent", "manual_sent"].includes(status)) return "success";
+  if (["sending", "delivery_unknown", "suppressed"].includes(status)) return "warning";
   if (["failed", "bounced"].includes(status)) return "danger";
+  if (status === "archived") return "muted";
   if (status === "replied") return "warning";
   return "neutral";
 }
 
 function selectedDraftRows(rows = null) {
-  const source = rows || [...selectedDraftMessageRows.values()];
+  const source = rows || draftQueueRows;
   return source.filter((message) => selectedDraftMessageIds.has(String(message.id)));
 }
 
@@ -5039,6 +5344,18 @@ function confirmDraftQueueAction(action, ids = []) {
   return true;
 }
 
+function outreachBulkResultSummary(result = {}, noun = "row") {
+  const parts = [];
+  if (Number(result.sent || 0)) parts.push(`${formatNumber(result.sent)} sent`);
+  if (Number(result.updated || 0)) parts.push(`${formatNumber(result.updated)} updated`);
+  if (Number(result.removed || 0)) parts.push(`${formatNumber(result.removed)} removed`);
+  if (Number(result.failed || 0)) parts.push(`${formatNumber(result.failed)} failed`);
+  if (Number(result.delivery_unknown || 0)) parts.push(`${formatNumber(result.delivery_unknown)} delivery unknown`);
+  if (Number(result.skipped || 0)) parts.push(`${formatNumber(result.skipped)} skipped`);
+  if (!parts.length) parts.push(`0 ${noun}${noun.endsWith("s") ? "" : "s"} processed`);
+  return parts.join(" | ");
+}
+
 function updateDraftSendControls(rows = []) {
   const activeChannel = selectedOutreachChannel();
   const selectable = selectableEmailDrafts(rows);
@@ -5071,26 +5388,26 @@ function updateDraftSendControls(rows = []) {
   if (draftSelectAllEmailsButton) draftSelectAllEmailsButton.disabled = !activeSelectable.length;
   if (draftClearSelectionButton) draftClearSelectionButton.disabled = !selectedDraftMessageIds.size;
   if (draftRefreshSelectedButton) {
-    draftRefreshSelectedButton.disabled = !refreshableSelectedRows.length;
+    draftRefreshSelectedButton.disabled = draftQueueMutationRunning || !refreshableSelectedRows.length;
     draftRefreshSelectedButton.textContent = refreshableSelectedRows.length
       ? `Refresh ${formatNumber(refreshableSelectedRows.length)} selected`
       : "Refresh selected";
   }
   if (draftSendSelectedButton) {
-    draftSendSelectedButton.disabled = !sendableSelectedIds.length;
+    draftSendSelectedButton.disabled = draftQueueMutationRunning || !sendableSelectedIds.length;
     draftSendSelectedButton.textContent = sendableSelectedIds.length
       ? `Send ${formatNumber(sendableSelectedIds.length)} email${sendableSelectedIds.length === 1 ? "" : "s"}`
       : "Send selected emails";
   }
   if (draftSendSelectedWhatsappButton) {
-    draftSendSelectedWhatsappButton.disabled = !sendableWhatsappIds.length || !whatsappSendingReady;
+    draftSendSelectedWhatsappButton.disabled = draftQueueMutationRunning || !sendableWhatsappIds.length || !whatsappSendingReady;
     draftSendSelectedWhatsappButton.textContent = sendableWhatsappIds.length
       ? `Send ${formatNumber(sendableWhatsappIds.length)} WhatsApp`
       : "Send WhatsApp direct";
     draftSendSelectedWhatsappButton.title = whatsappSendingReady ? "" : whatsappConnectionReadiness.message;
   }
   if (draftMarkSelectedWhatsappGroupsButton) {
-    draftMarkSelectedWhatsappGroupsButton.disabled = !markableGroupIds.length;
+    draftMarkSelectedWhatsappGroupsButton.disabled = draftQueueMutationRunning || !markableGroupIds.length;
     draftMarkSelectedWhatsappGroupsButton.textContent = markableGroupIds.length
       ? `Mark ${formatNumber(markableGroupIds.length)} group${markableGroupIds.length === 1 ? "" : "s"} sent`
       : "Mark groups sent";
@@ -5105,8 +5422,8 @@ function updateDraftSendControls(rows = []) {
       ? `Select ${label} (${formatNumber(activeSelectable.length)})`
       : `Select ${label}`;
   }
-  if (draftArchiveSelectedButton) draftArchiveSelectedButton.disabled = !selectedRows.length;
-  if (draftDeleteSelectedButton) draftDeleteSelectedButton.disabled = !selectedRows.length;
+  if (draftArchiveSelectedButton) draftArchiveSelectedButton.disabled = draftQueueMutationRunning || !selectedRows.length;
+  if (draftDeleteSelectedButton) draftDeleteSelectedButton.disabled = draftQueueMutationRunning || !selectedRows.length;
 }
 
 function outreachAudienceStatusLabel(status = "") {
@@ -5415,6 +5732,10 @@ function renderDraftQueue() {
             ? "Keep suppressed"
             : ["sent", "delivered", "read"].includes(trackingStatus)
               ? "Await response"
+              : trackingStatus === "sending"
+                ? "Wait for delivery result"
+                : trackingStatus === "queued"
+                  ? "Ready to send"
               : trackingStatus === "replied"
                 ? "Review reply"
                 : trackingStatus === "quoted"
@@ -5451,7 +5772,7 @@ function renderDraftQueue() {
             ${isWhatsapp ? `<button class="small-button" type="button" data-rfx-send-whatsapp-now="${escapeHtml(message.id)}" ${canSendWhatsapp ? "" : "disabled"}>Send WhatsApp</button>` : ""}
             ${isWhatsappGroup ? `<button class="small-button" type="button" data-rfx-mark-whatsapp-group-sent="${escapeHtml(message.id)}" ${canMarkGroup ? "" : "disabled"}>Manual sent</button>` : ""}
             <button class="secondary small-button" type="button" data-rfx-open-draft="${escapeHtml(openUrl || "")}" ${openUrl ? "" : "disabled"}>${escapeHtml(openLabel)}</button>
-            <button class="secondary small-button" type="button" data-rfx-mark-draft="${escapeHtml(message.id)}" data-rfx-draft-status="queued" ${status === "queued" || status === "sent" || status === "archived" ? "disabled" : ""}>Queue</button>
+            <button class="secondary small-button" type="button" data-rfx-mark-draft="${escapeHtml(message.id)}" data-rfx-draft-status="queued" ${status === "queued" || status === "sending" || status === "sent" || status === "archived" ? "disabled" : ""}>Queue</button>
             <button class="secondary small-button" type="button" data-rfx-mark-draft="${escapeHtml(message.id)}" data-rfx-draft-status="archived" ${status === "archived" ? "disabled" : ""}>Archive</button>
           </div>
         </td>
@@ -5516,8 +5837,8 @@ function renderEvents() {
 }
 
 function updateSelectionControls() {
-  const laneCount = selectedLaneIds.size;
-  const inviteCount = selectedInvitationIds.size;
+  const laneCount = selectedVisibleLaneIds().length;
+  const inviteCount = selectedVisibleInvitationIds().length;
   if (selectionCount) selectionCount.textContent = `${laneCount} lanes / ${inviteCount} vendors selected`;
   if (autoShortlistButton) autoShortlistButton.disabled = !laneCount;
   if (inviteSelectedButton) inviteSelectedButton.disabled = participantBulkMutationRunning || !inviteCount;
@@ -5756,7 +6077,7 @@ async function loadVendorSearchOptions() {
     if (sequence !== vendorSearchSequence) return;
     vendorSearchLoading = false;
     renderManualShortlistControls();
-    setStatus(manualShortlistStatus, `CRM search failed: ${humanizeError(error.message)}`, "error");
+    setStatus(manualShortlistStatus, `CRM search failed: ${humanizeError(error)}`, "error");
   }
 }
 
@@ -5791,6 +6112,31 @@ function segmentCandidateRows(segmentId = selectedSegmentId()) {
     : segment
       ? activeRows.filter((vendor) => segmentMatchesVendor(segment, vendor))
       : activeRows;
+}
+
+async function loadSegmentCandidateRows(segmentId = selectedSegmentId()) {
+  const segment = participantTemplates().find((item) => item.id === segmentId);
+  const savedIds = segmentVendorIds(segment);
+  if (savedIds.length) return await hydrateVendorOptionIds(savedIds);
+  if (segmentId === "procurement") {
+    const result = await fetchVendors({
+      limit: CRM_VENDOR_SEARCH_LIMIT,
+      offset: 0,
+      view: "all",
+      base_stage: "procurement",
+      lightweight: true
+    });
+    const rows = result.rows || [];
+    mergeVendorOptionRows(rows);
+    return sortedVendorOptions(rows.filter(isProcurementCarrier));
+  }
+  if (segmentId === "all") {
+    const result = await fetchVendors({ limit: CRM_VENDOR_SEARCH_LIMIT, offset: 0, view: "all", lightweight: true });
+    const rows = result.rows || [];
+    mergeVendorOptionRows(rows);
+    return sortedVendorOptions(rows.filter((vendor) => vendorStageRank(vendor) < 9));
+  }
+  return sortedVendorOptions(segmentCandidateRows(segmentId));
 }
 
 function shortlistCandidateRows() {
@@ -6077,8 +6423,8 @@ function updateParticipantTemplateControls() {
     const segmentId = selectedSegmentId();
     const rows = segmentId === "all" ? [] : segmentCandidateRows(segmentId);
     const savedIds = segmentVendorIds(selectedSegment);
-    const availableCount = savedIds.length || rows.length;
-    loadManualShortlistTemplateButton.disabled = vendorOptionsLoading || vendorSegmentsLoading || !availableCount;
+    const availableCount = savedIds.length || rows.length || (segmentId === "procurement" ? vendorInitialTotal : 0);
+    loadManualShortlistTemplateButton.disabled = vendorSegmentsLoading || participantTemplateMutationRunning || !availableCount;
     loadManualShortlistTemplateButton.textContent = availableCount
       ? `Load ${formatNumber(availableCount)} from saved list`
       : "Load saved list";
@@ -6265,19 +6611,32 @@ function renderLanes() {
   }).join("");
 }
 
-async function loadEvents() {
+async function loadEvents({ force = false } = {}) {
+  if (!force && rfxEventsLoadRequest) return rfxEventsLoadRequest;
+  const promise = loadEventsRequest();
+  rfxEventsLoadRequest = promise;
+  try {
+    return await promise;
+  } finally {
+    if (rfxEventsLoadRequest === promise) rfxEventsLoadRequest = null;
+  }
+}
+
+async function loadEventsRequest() {
   const loadVersion = ++rfxEventsLoadVersion;
   try {
     const loadedEvents = await fetchRfxEvents();
     if (loadVersion !== rfxEventsLoadVersion) return;
     events = loadedEvents;
-    if (!selectedEventId && requestedRfxEventId && events.some((event) => event.id === requestedRfxEventId)) {
-      selectedEventId = requestedRfxEventId;
+    const urlEventId = new URLSearchParams(window.location.search).get("rfx_event_id");
+    if (!selectedEventId && urlEventId && events.some((event) => event.id === urlEventId)) {
+      selectedEventId = urlEventId;
     }
     if (selectedEventId && !events.some((event) => event.id === selectedEventId)) {
       selectedEventId = null;
     }
     if (!selectedEventId && events[0]) selectedEventId = events[0].id;
+    persistRfxWorkspaceContext();
     renderEvents();
     if (selectedEventId) await loadDetail(selectedEventId);
     else {
@@ -6334,8 +6693,8 @@ async function loadVendorOptions() {
     setStatus(
       manualShortlistStatus,
       vendorOptions.length
-        ? `Carrier CRM partially loaded with ${formatNumber(vendorOptions.length)} carrier(s). ${humanizeError(error.message)}`
-        : `Carrier CRM could not load. ${humanizeError(error.message)}`,
+        ? `Carrier CRM partially loaded with ${formatNumber(vendorOptions.length)} carrier(s). ${humanizeError(error)}`
+        : `Carrier CRM could not load. ${humanizeError(error)}`,
       vendorOptions.length ? "warning" : "error"
     );
   }
@@ -6357,12 +6716,25 @@ async function loadVendorSegments() {
     }
   } catch (error) {
     if (loadVersion !== vendorSegmentsLoadVersion) return;
-    setStatus(manualShortlistStatus, `Carrier segments could not load: ${humanizeError(error.message)}`, "error");
+    setStatus(manualShortlistStatus, `Carrier segments could not load: ${humanizeError(error)}`, "error");
   } finally {
     if (loadVersion !== vendorSegmentsLoadVersion) return;
     vendorSegmentsLoading = false;
     renderManualShortlistControls();
   }
+}
+
+function loadCarrierWorkspaceData() {
+  if (!carrierWorkspaceLoadPromise) {
+    carrierWorkspaceLoadPromise = Promise.all([
+      loadVendorOptions(),
+      loadVendorSegments()
+    ]).catch((error) => {
+      carrierWorkspaceLoadPromise = null;
+      throw error;
+    });
+  }
+  return carrierWorkspaceLoadPromise;
 }
 
 async function loadOutreachAssets() {
@@ -6372,7 +6744,7 @@ async function loadOutreachAssets() {
   } catch (error) {
     outreachTemplates = [];
     renderOutreachLaunchpad();
-    setStatus(rfxOutreachStatus, error.message, "error");
+    setStatus(rfxOutreachStatus, humanizeError(error), "error");
   }
 }
 
@@ -6404,17 +6776,27 @@ async function saveRfxLaneEdits(laneIds = []) {
     await Promise.all(ids.map((id) => updateRfxLane(id, laneEditPatch(id))));
     if (!eventId || selectedEventId !== eventId) return;
     ids.forEach((id) => pendingLaneEdits.delete(String(id)));
-    await loadDetail(eventId);
+    await loadDetail(eventId, { force: true });
     setStatus(laneEditStatus, `${ids.length} loaded lane${ids.length === 1 ? "" : "s"} updated.`, "success");
   } catch (error) {
     if (selectedEventId === eventId) {
-      setStatus(laneEditStatus, error.message, "error");
+      setStatus(laneEditStatus, humanizeError(error), "error");
       updateLaneEditControls();
     }
   }
 }
 
-async function loadDetail(eventId) {
+function requestRfxDetail(eventId, { force = false } = {}) {
+  const key = String(eventId || "");
+  if (!force && rfxDetailRequests.has(key)) return rfxDetailRequests.get(key);
+  const promise = fetchRfxDetail(eventId).finally(() => {
+    if (rfxDetailRequests.get(key) === promise) rfxDetailRequests.delete(key);
+  });
+  rfxDetailRequests.set(key, promise);
+  return promise;
+}
+
+async function loadDetail(eventId, options = {}) {
   const loadVersion = ++rfxDetailLoadVersion;
   const previousEventId = selectedEventId;
   const eventChanged = selectedEventId !== eventId;
@@ -6429,6 +6811,7 @@ async function loadDetail(eventId) {
     outreachAudienceRows = [];
   }
   selectedEventId = eventId;
+  persistRfxWorkspaceContext();
   if (unassignedSelection.length) {
     selectedManualVendorIdsState = new Set(unassignedSelection);
     persistManualParticipantSelection(eventId);
@@ -6443,7 +6826,7 @@ async function loadDetail(eventId) {
   if (bidRoomChatRefreshTimer) window.clearInterval(bidRoomChatRefreshTimer);
   setStatus(actionStatus, "Loading RFx detail...");
   try {
-    const detail = await fetchRfxDetail(eventId);
+    const detail = await requestRfxDetail(eventId, { force: options?.force === true });
     if (loadVersion !== rfxDetailLoadVersion || selectedEventId !== eventId) return;
     selectedEvent = detail.event;
     currentLanes = detail.lanes || [];
@@ -6463,10 +6846,11 @@ async function loadDetail(eventId) {
     void loadOutreachAudience({ reloadSegments: eventChanged });
     setStatus(actionStatus, "Bid Room core loaded. Loading outreach and chat context...");
 
+    const forceResources = options?.force === true;
     const [historyResult, messagesResult, chatResult] = await Promise.allSettled([
-      fetchContactHistory({ rfx_event_id: eventId }),
-      fetchOutreachMessages({ rfx_event_id: eventId }),
-      fetchBidRoomChat(eventId)
+      requestRfxEventResource(rfxContactHistoryRequests, eventId, () => fetchContactHistory({ rfx_event_id: eventId, limit: 1000 }), { force: forceResources }),
+      requestRfxEventResource(rfxOutreachMessageRequests, eventId, () => fetchOutreachMessages({ rfx_event_id: eventId, limit: 1000 }), { force: forceResources }),
+      requestRfxEventResource(rfxChatRequests, eventId, () => fetchBidRoomChat(eventId), { force: forceResources })
     ]);
     if (loadVersion !== rfxDetailLoadVersion || selectedEventId !== eventId) return;
     contactHistoryRows = getSettledValue(historyResult, []) || [];
@@ -6497,23 +6881,20 @@ async function loadDetail(eventId) {
     ensureSelectedEventChatThread(eventId, { silent: true });
   } catch (error) {
     if (loadVersion !== rfxDetailLoadVersion || selectedEventId !== eventId) return;
-    setStatus(actionStatus, humanizeError(error.message), "error");
+    setStatus(actionStatus, humanizeError(error), "error");
     updateEventActionState();
   }
 }
 
 function activateWorkbenchView(view, focusTarget = null) {
-  const activeView = rfxWorkbench?.activate(view, focusTarget ? { focusTarget } : {}) || view;
-  const url = new URL(window.location.href);
-  url.searchParams.set("view", activeView);
-  window.history.replaceState({}, "", url);
+  rfxWorkbench?.activate(view, { ...(focusTarget ? { focusTarget } : {}), syncUrl: true });
 }
 
 async function refreshOutreachStateForEvent(eventId) {
   if (!eventId) return false;
   const [historyRows, messageRows] = await Promise.all([
-    fetchContactHistory({ rfx_event_id: eventId }),
-    fetchOutreachMessages({ rfx_event_id: eventId })
+    requestRfxEventResource(rfxContactHistoryRequests, eventId, () => fetchContactHistory({ rfx_event_id: eventId, limit: 1000 }), { force: true }),
+    requestRfxEventResource(rfxOutreachMessageRequests, eventId, () => fetchOutreachMessages({ rfx_event_id: eventId, limit: 1000 }), { force: true })
   ]);
   if (selectedEventId !== eventId) return false;
   contactHistoryRows = historyRows || [];
@@ -6782,7 +7163,7 @@ async function applyRfxAwardDecision(invitationId, role, defaultReason = "") {
     if (selectedEventId !== eventId) return;
     activateWorkbenchView("award");
   } catch (error) {
-    if (selectedEventId === eventId) setStatus(rfxAwardStatus, error.message, "error");
+    if (selectedEventId === eventId) setStatus(rfxAwardStatus, humanizeError(error), "error");
   }
 }
 
@@ -6799,11 +7180,12 @@ async function clearRfxAwardDecision(invitationId) {
     if (selectedEventId !== eventId) return;
     activateWorkbenchView("award");
   } catch (error) {
-    if (selectedEventId === eventId) setStatus(rfxAwardStatus, error.message, "error");
+    if (selectedEventId === eventId) setStatus(rfxAwardStatus, humanizeError(error), "error");
   }
 }
 
 async function applyRecommendedAwardDecisions() {
+  if (awardMutationRunning) return;
   if (!selectedEventId) return;
   const candidates = recommendedAwardCandidates();
   if (!candidates.length) {
@@ -6816,38 +7198,45 @@ async function applyRecommendedAwardDecisions() {
     : `Award ${candidates.length} recommended carrier(s) as primary awards?`;
   if (!window.confirm(copy)) return;
   const eventId = selectedEventId;
+  awardMutationRunning = true;
   if (rfxApplyRecommendedAwardsButton) rfxApplyRecommendedAwardsButton.disabled = true;
   setStatus(rfxAwardStatus, `Applying ${formatNumber(candidates.length)} recommended award(s)...`);
-  let saved = 0;
-  const failed = [];
-  for (const candidate of candidates) {
-    if (selectedEventId !== eventId) return;
-    const row = candidate.recommended;
-    const reason = decisionRecommendation(row, 1, candidate.bids) || awardReasonDefault(row, 1);
-    try {
-      await awardRfxLaneVendor(row.invitation.id, {
-        award_role: "primary",
-        award_reason: reason || "Recommended procurement award"
-      });
-      saved += 1;
-    } catch (error) {
-      failed.push(`${laneRoute(candidate.lane)}: ${error.message}`);
+  try {
+    let saved = 0;
+    const failed = [];
+    for (const candidate of candidates) {
+      if (selectedEventId !== eventId) return;
+      const row = candidate.recommended;
+      const reason = decisionRecommendation(row, 1, candidate.bids) || awardReasonDefault(row, 1);
+      try {
+        await awardRfxLaneVendor(row.invitation.id, {
+          award_role: "primary",
+          award_reason: reason || "Recommended procurement award"
+        });
+        saved += 1;
+      } catch (error) {
+        failed.push(`${laneRoute(candidate.lane)}: ${humanizeError(error)}`);
+      }
     }
+    if (selectedEventId !== eventId) return;
+    await loadDetail(eventId);
+    if (selectedEventId !== eventId) return;
+    activateWorkbenchView("award");
+    setStatus(
+      rfxAwardStatus,
+      failed.length
+        ? `${formatNumber(saved)} award(s) saved. ${formatNumber(failed.length)} failed: ${failed.slice(0, 2).join(" | ")}`
+        : `${formatNumber(saved)} recommended award(s) saved.`,
+      failed.length ? "warning" : "success"
+    );
+  } finally {
+    awardMutationRunning = false;
+    updateAwardNoticeControls();
   }
-  if (selectedEventId !== eventId) return;
-  await loadDetail(eventId);
-  if (selectedEventId !== eventId) return;
-  activateWorkbenchView("award");
-  setStatus(
-    rfxAwardStatus,
-    failed.length
-      ? `${formatNumber(saved)} award(s) saved. ${formatNumber(failed.length)} failed: ${failed.slice(0, 2).join(" | ")}`
-      : `${formatNumber(saved)} recommended award(s) saved.`,
-    failed.length ? "warning" : "success"
-  );
 }
 
 async function closeoutSelectedAwardsToRateware() {
+  if (awardMutationRunning) return;
   if (!selectedEventId) return;
   if (blockIfAwardPreflightFails("closeout")) return;
   const pending = currentLanes
@@ -6859,6 +7248,7 @@ async function closeoutSelectedAwardsToRateware() {
   }
   if (!window.confirm(`Create ${pending.length} approved Rateware row(s) from primary awards?`)) return;
   const eventId = selectedEventId;
+  awardMutationRunning = true;
   if (rfxCloseoutAwardsButton) rfxCloseoutAwardsButton.disabled = true;
   setStatus(rfxAwardStatus, "Creating Rateware rows from awards...");
   try {
@@ -6874,13 +7264,17 @@ async function closeoutSelectedAwardsToRateware() {
     );
   } catch (error) {
     if (selectedEventId === eventId) {
-      setStatus(rfxAwardStatus, error.message, "error");
+      setStatus(rfxAwardStatus, humanizeError(error), "error");
       renderAwardBoard();
     }
+  } finally {
+    awardMutationRunning = false;
+    updateAwardNoticeControls();
   }
 }
 
 async function generateAwardNoticeDrafts() {
+  if (awardMutationRunning) return;
   if (!selectedEventId) {
     setStatus(rfxAwardStatus, "Select a bid event before generating award notices.", "error");
     return;
@@ -6892,6 +7286,7 @@ async function generateAwardNoticeDrafts() {
     return;
   }
   const eventId = selectedEventId;
+  awardMutationRunning = true;
   if (rfxGenerateAwardNoticesButton) rfxGenerateAwardNoticesButton.disabled = true;
   setStatus(rfxAwardStatus, "Generating award, backup, and not-awarded email drafts...");
   try {
@@ -6908,12 +7303,16 @@ async function generateAwardNoticeDrafts() {
       "success"
     );
   } catch (error) {
-    setStatus(rfxAwardStatus, error.message, "error");
+    setStatus(rfxAwardStatus, humanizeError(error), "error");
+    updateAwardNoticeControls();
+  } finally {
+    awardMutationRunning = false;
     updateAwardNoticeControls();
   }
 }
 
 async function sendAwardNoticeDrafts() {
+  if (awardMutationRunning) return;
   if (!selectedEventId) return;
   if (blockIfAwardPreflightFails("send_notices")) return;
   const ids = sendableAwardNoticeIds();
@@ -6923,6 +7322,7 @@ async function sendAwardNoticeDrafts() {
   }
   if (!window.confirm(`Send ${ids.length} individual award notice email(s) from ${APPROVED_GMAIL_SENDER}?`)) return;
   const eventId = selectedEventId;
+  awardMutationRunning = true;
   if (rfxSendAwardNoticesButton) rfxSendAwardNoticesButton.disabled = true;
   setStatus(rfxAwardStatus, `Sending ${formatNumber(ids.length)} award notice email(s)...`);
   try {
@@ -6936,14 +7336,17 @@ async function sendAwardNoticeDrafts() {
       result.failed ? "warning" : "success"
     );
   } catch (error) {
-    setStatus(rfxAwardStatus, error.message, "error");
+    setStatus(rfxAwardStatus, humanizeError(error), "error");
+    updateAwardNoticeControls();
+  } finally {
+    awardMutationRunning = false;
     updateAwardNoticeControls();
   }
 }
 
 async function sendDraftEmailIds(ids = [], statusElement = rfxOutreachStatus) {
   const batches = chunkRows(ids, OUTREACH_SEND_BATCH_SIZE);
-  const totals = { sent: 0, failed: 0, failures: [] };
+  const totals = { sent: 0, failed: 0, skipped: 0, failures: [], skipped_rows: [] };
   for (let index = 0; index < batches.length; index += 1) {
     const batch = batches[index];
     setStatus(
@@ -6953,12 +7356,15 @@ async function sendDraftEmailIds(ids = [], statusElement = rfxOutreachStatus) {
     const result = await sendOutreachMessages(batch, { senderEmail: APPROVED_GMAIL_SENDER });
     totals.sent += Number(result.sent || 0);
     totals.failed += Number(result.failed || 0);
+    totals.skipped += Number(result.skipped || 0);
     if (Array.isArray(result.failures)) totals.failures.push(...result.failures);
+    if (Array.isArray(result.skipped_rows)) totals.skipped_rows.push(...result.skipped_rows);
   }
   return totals;
 }
 
 async function sendSelectedDraftEmails() {
+  if (draftQueueMutationRunning) return;
   const ids = selectedSendableDraftIds();
   if (!ids.length) {
     setStatus(rfxOutreachStatus, "Select one or more email drafts before sending.", "error");
@@ -6966,6 +7372,7 @@ async function sendSelectedDraftEmails() {
   }
   if (!confirmDraftQueueAction("send", ids)) return;
   const eventId = selectedEventId;
+  draftQueueMutationRunning = true;
   if (draftSendSelectedButton) draftSendSelectedButton.disabled = true;
   try {
     const result = await sendDraftEmailIds(ids, rfxOutreachStatus);
@@ -6974,16 +7381,20 @@ async function sendSelectedDraftEmails() {
     renderOutreachLaunchpad();
     setStatus(
       rfxOutreachStatus,
-      `${formatNumber(result.sent || 0)} email(s) sent individually. ${formatNumber(result.failed || 0)} failed.`,
-      result.failed ? "warning" : "success"
+      `Email send finished: ${outreachBulkResultSummary(result, "message")}.`,
+      result.failed || result.skipped || result.delivery_unknown ? "warning" : "success"
     );
   } catch (error) {
-    setStatus(rfxOutreachStatus, error.message, "error");
+    setStatus(rfxOutreachStatus, humanizeError(error), "error");
     renderDraftQueue();
+  } finally {
+    draftQueueMutationRunning = false;
+    updateDraftSendControls(draftQueueRows);
   }
 }
 
 async function sendSingleDraftEmail(id) {
+  if (draftQueueMutationRunning) return;
   if (!id) return;
   const row = findDraftRow(id);
   if (!row) {
@@ -6998,6 +7409,8 @@ async function sendSingleDraftEmail(id) {
   const eventId = selectedEventId;
   const carrier = row.vendors?.vendor_name || row.vendors?.domain || row.recipient_email || "this carrier";
   if (!window.confirm(`Send this invitation now to ${carrier} from ${APPROVED_GMAIL_SENDER}?`)) return;
+  draftQueueMutationRunning = true;
+  updateDraftSendControls(draftQueueRows);
   setStatus(rfxOutreachStatus, `Sending invitation to ${carrier}...`);
   try {
     const result = await sendDraftEmailIds([String(id)], rfxOutreachStatus);
@@ -7010,14 +7423,17 @@ async function sendSingleDraftEmail(id) {
       result.sent ? "success" : "warning"
     );
   } catch (error) {
-    setStatus(rfxOutreachStatus, error.message, "error");
+    setStatus(rfxOutreachStatus, humanizeError(error), "error");
     renderDraftQueue();
+  } finally {
+    draftQueueMutationRunning = false;
+    updateDraftSendControls(draftQueueRows);
   }
 }
 
 async function sendDraftWhatsappIds(ids = [], statusElement = rfxOutreachStatus) {
   const batches = chunkRows(ids, OUTREACH_SEND_BATCH_SIZE);
-  const totals = { sent: 0, failed: 0, failures: [] };
+  const totals = { sent: 0, failed: 0, skipped: 0, failures: [], skipped_rows: [] };
   for (let index = 0; index < batches.length; index += 1) {
     const batch = batches[index];
     setStatus(
@@ -7027,12 +7443,15 @@ async function sendDraftWhatsappIds(ids = [], statusElement = rfxOutreachStatus)
     const result = await sendWhatsappOutreachMessages(batch);
     totals.sent += Number(result.sent || 0);
     totals.failed += Number(result.failed || 0);
+    totals.skipped += Number(result.skipped || 0);
     if (Array.isArray(result.failures)) totals.failures.push(...result.failures);
+    if (Array.isArray(result.skipped_rows)) totals.skipped_rows.push(...result.skipped_rows);
   }
   return totals;
 }
 
 async function sendSelectedDraftWhatsapp() {
+  if (draftQueueMutationRunning) return;
   const ids = selectedWhatsappDraftIds();
   if (!ids.length) {
     setStatus(rfxOutreachStatus, "Select one or more WhatsApp direct drafts before sending.", "error");
@@ -7046,6 +7465,7 @@ async function sendSelectedDraftWhatsapp() {
   }
   if (!confirmDraftQueueAction("send_whatsapp", ids)) return;
   const eventId = selectedEventId;
+  draftQueueMutationRunning = true;
   if (draftSendSelectedWhatsappButton) draftSendSelectedWhatsappButton.disabled = true;
   try {
     const result = await sendDraftWhatsappIds(ids, rfxOutreachStatus);
@@ -7054,16 +7474,20 @@ async function sendSelectedDraftWhatsapp() {
     renderOutreachLaunchpad();
     setStatus(
       rfxOutreachStatus,
-      `${formatNumber(result.sent || 0)} WhatsApp message(s) sent. ${formatNumber(result.failed || 0)} failed.`,
-      result.failed ? "warning" : "success"
+      `WhatsApp send finished: ${outreachBulkResultSummary(result, "message")}.`,
+      result.failed || result.skipped || result.delivery_unknown ? "warning" : "success"
     );
   } catch (error) {
-    setStatus(rfxOutreachStatus, error.message, "error");
+    setStatus(rfxOutreachStatus, humanizeError(error), "error");
     renderDraftQueue();
+  } finally {
+    draftQueueMutationRunning = false;
+    updateDraftSendControls(draftQueueRows);
   }
 }
 
 async function sendSingleDraftWhatsapp(id) {
+  if (draftQueueMutationRunning) return;
   if (!id) return;
   const readiness = await loadWhatsappConnectionReadiness({ render: false });
   if (!readiness.ready) {
@@ -7083,6 +7507,8 @@ async function sendSingleDraftWhatsapp(id) {
   const eventId = selectedEventId;
   const carrier = row.vendors?.vendor_name || row.vendors?.domain || messageRecipient(row) || "this carrier";
   if (!window.confirm(`Send this WhatsApp Business invitation to ${carrier}?`)) return;
+  draftQueueMutationRunning = true;
+  updateDraftSendControls(draftQueueRows);
   setStatus(rfxOutreachStatus, `Sending WhatsApp invitation to ${carrier}...`);
   try {
     const result = await sendDraftWhatsappIds([String(id)], rfxOutreachStatus);
@@ -7095,12 +7521,16 @@ async function sendSingleDraftWhatsapp(id) {
       result.sent ? "success" : "warning"
     );
   } catch (error) {
-    setStatus(rfxOutreachStatus, error.message, "error");
+    setStatus(rfxOutreachStatus, humanizeError(error), "error");
     renderDraftQueue();
+  } finally {
+    draftQueueMutationRunning = false;
+    updateDraftSendControls(draftQueueRows);
   }
 }
 
 async function refreshSingleOutreachDraft(id) {
+  if (draftQueueMutationRunning) return;
   const message = findDraftRow(id);
   if (!message) {
     setStatus(rfxOutreachStatus, "This draft is no longer available. Refresh the Bid Room and try again.", "error");
@@ -7112,7 +7542,14 @@ async function refreshSingleOutreachDraft(id) {
   }
   const carrier = message.vendors?.vendor_name || message.vendors?.domain || messageRecipient(message) || "this carrier";
   if (!window.confirm(`Refresh the invitation draft for ${carrier} with the current Business Book?`)) return;
-  await refreshOutreachDraftRows([message], { statusLabel: `Refreshing invitation draft for ${carrier}...` });
+  draftQueueMutationRunning = true;
+  updateDraftSendControls(draftQueueRows);
+  try {
+    await refreshOutreachDraftRows([message], { statusLabel: `Refreshing invitation draft for ${carrier}...` });
+  } finally {
+    draftQueueMutationRunning = false;
+    updateDraftSendControls(draftQueueRows);
+  }
 }
 
 function groupedOutreachDraftRefreshes(rows = []) {
@@ -7165,14 +7602,21 @@ async function refreshOutreachDraftRows(rows = [], { statusLabel = "Refreshing s
 }
 
 async function refreshSelectedOutreachDrafts() {
+  if (draftQueueMutationRunning) return;
   const rows = selectedRefreshableDraftRows();
   if (!rows.length) {
     setStatus(rfxOutreachStatus, "Select one or more active draft rows before refreshing.", "error");
     return;
   }
   if (!confirmDraftQueueAction("refresh", rows.map((message) => String(message.id)))) return;
+  draftQueueMutationRunning = true;
   if (draftRefreshSelectedButton) draftRefreshSelectedButton.disabled = true;
-  await refreshOutreachDraftRows(rows);
+  try {
+    await refreshOutreachDraftRows(rows);
+  } finally {
+    draftQueueMutationRunning = false;
+    updateDraftSendControls(draftQueueRows);
+  }
 }
 
 async function markWhatsappGroupDraftIds(ids = [], statusElement = rfxOutreachStatus) {
@@ -7191,6 +7635,7 @@ async function markWhatsappGroupDraftIds(ids = [], statusElement = rfxOutreachSt
 }
 
 async function markSelectedWhatsappGroupsManuallySent() {
+  if (draftQueueMutationRunning) return;
   const ids = selectedWhatsappGroupDraftIds();
   if (!ids.length) {
     setStatus(rfxOutreachStatus, "Select one or more WhatsApp group drafts before marking them sent.", "error");
@@ -7198,6 +7643,7 @@ async function markSelectedWhatsappGroupsManuallySent() {
   }
   if (!confirmDraftQueueAction("mark_group_sent", ids)) return;
   const eventId = selectedEventId;
+  draftQueueMutationRunning = true;
   if (draftMarkSelectedWhatsappGroupsButton) draftMarkSelectedWhatsappGroupsButton.disabled = true;
   try {
     const result = await markWhatsappGroupDraftIds(ids, rfxOutreachStatus);
@@ -7206,12 +7652,16 @@ async function markSelectedWhatsappGroupsManuallySent() {
     renderOutreachLaunchpad();
     setStatus(rfxOutreachStatus, `${formatNumber(result.updated || 0)} WhatsApp group draft(s) marked as manually sent.`, "success");
   } catch (error) {
-    setStatus(rfxOutreachStatus, error.message, "error");
+    setStatus(rfxOutreachStatus, humanizeError(error), "error");
     renderDraftQueue();
+  } finally {
+    draftQueueMutationRunning = false;
+    updateDraftSendControls(draftQueueRows);
   }
 }
 
 async function markSingleWhatsappGroupManuallySent(id) {
+  if (draftQueueMutationRunning) return;
   if (!id) return;
   const row = findDraftRow(id);
   if (!row) {
@@ -7225,6 +7675,8 @@ async function markSingleWhatsappGroupManuallySent(id) {
   const eventId = selectedEventId;
   const group = messageRecipient(row);
   if (!window.confirm(`Mark the WhatsApp group invitation for ${group} as manually sent?`)) return;
+  draftQueueMutationRunning = true;
+  updateDraftSendControls(draftQueueRows);
   setStatus(rfxOutreachStatus, `Marking ${group} as manually sent...`);
   try {
     const result = await markWhatsappGroupDraftIds([String(id)], rfxOutreachStatus);
@@ -7233,12 +7685,16 @@ async function markSingleWhatsappGroupManuallySent(id) {
     renderOutreachLaunchpad();
     setStatus(rfxOutreachStatus, `${formatNumber(result.updated || 0)} WhatsApp group draft marked as manually sent.`, "success");
   } catch (error) {
-    setStatus(rfxOutreachStatus, error.message, "error");
+    setStatus(rfxOutreachStatus, humanizeError(error), "error");
     renderDraftQueue();
+  } finally {
+    draftQueueMutationRunning = false;
+    updateDraftSendControls(draftQueueRows);
   }
 }
 
 async function archiveSelectedDrafts() {
+  if (draftQueueMutationRunning) return;
   const ids = [...selectedDraftMessageIds];
   if (!ids.length) {
     setStatus(rfxOutreachStatus, "Select one or more draft rows before archiving.", "error");
@@ -7246,21 +7702,30 @@ async function archiveSelectedDrafts() {
   }
   if (!confirmDraftQueueAction("archive", ids)) return;
   const eventId = selectedEventId;
+  draftQueueMutationRunning = true;
   if (draftArchiveSelectedButton) draftArchiveSelectedButton.disabled = true;
   setStatus(rfxOutreachStatus, `Archiving ${formatNumber(ids.length)} draft row(s)...`);
   try {
-    await markOutreachMessages(ids, "archived");
+    const result = await markOutreachMessages(ids, "archived", { channel: selectedOutreachChannel() });
     clearDraftQueueSelection();
     if (!(await refreshOutreachStateForEvent(eventId))) return;
     renderOutreachLaunchpad();
-    setStatus(rfxOutreachStatus, `${formatNumber(ids.length)} draft row(s) archived.`, "success");
+    setStatus(
+      rfxOutreachStatus,
+      `Archive finished: ${outreachBulkResultSummary(result, "draft")}.`,
+      result.failures?.length || result.skipped ? "warning" : "success"
+    );
   } catch (error) {
-    setStatus(rfxOutreachStatus, error.message, "error");
+    setStatus(rfxOutreachStatus, humanizeError(error), "error");
     renderDraftQueue();
+  } finally {
+    draftQueueMutationRunning = false;
+    updateDraftSendControls(draftQueueRows);
   }
 }
 
 async function deleteSelectedDrafts() {
+  if (draftQueueMutationRunning) return;
   const ids = [...selectedDraftMessageIds];
   if (!ids.length) {
     setStatus(rfxOutreachStatus, "Select one or more draft rows before deleting.", "error");
@@ -7269,17 +7734,25 @@ async function deleteSelectedDrafts() {
   const confirmed = window.confirm(`Delete ${ids.length} selected draft row(s)? This only removes the queue rows, not vendors or RFx lanes.`);
   if (!confirmed) return;
   const eventId = selectedEventId;
+  draftQueueMutationRunning = true;
   if (draftDeleteSelectedButton) draftDeleteSelectedButton.disabled = true;
   setStatus(rfxOutreachStatus, `Deleting ${formatNumber(ids.length)} draft row(s)...`);
   try {
-    const result = await deleteOutreachMessages(ids);
+    const result = await deleteOutreachMessages(ids, { channel: selectedOutreachChannel() });
     clearDraftQueueSelection();
     if (!(await refreshOutreachStateForEvent(eventId))) return;
     renderOutreachLaunchpad();
-    setStatus(rfxOutreachStatus, `${formatNumber(result.removed || 0)} draft row(s) deleted.`, "success");
+    setStatus(
+      rfxOutreachStatus,
+      `Delete finished: ${outreachBulkResultSummary(result, "draft")}.`,
+      result.failures?.length || result.skipped ? "warning" : "success"
+    );
   } catch (error) {
-    setStatus(rfxOutreachStatus, error.message, "error");
+    setStatus(rfxOutreachStatus, humanizeError(error), "error");
     renderDraftQueue();
+  } finally {
+    draftQueueMutationRunning = false;
+    updateDraftSendControls(draftQueueRows);
   }
 }
 
@@ -7314,8 +7787,8 @@ async function saveSelectedRfxTemplate() {
     setStatus(rfxTemplateEditorStatus, "Template saved.", "success");
     setStatus(rfxOutreachStatus, "Email template changes saved. Draft queue is ready to generate.", "success");
   } catch (error) {
-    setStatus(rfxTemplateEditorStatus, error.message, "error");
-    setStatus(rfxOutreachStatus, error.message, "error");
+    setStatus(rfxTemplateEditorStatus, humanizeError(error), "error");
+    setStatus(rfxOutreachStatus, humanizeError(error), "error");
   } finally {
     if (saveRfxTemplateHtmlButton) saveRfxTemplateHtmlButton.disabled = false;
   }
@@ -7350,8 +7823,8 @@ async function restoreSelectedRfxTemplateOriginal() {
     setStatus(rfxTemplateEditorStatus, "Original template restored. You can edit it again and save a new workspace version.", "success");
     setStatus(rfxOutreachStatus, "Original English/Spanish invitation template is active.", "success");
   } catch (error) {
-    setStatus(rfxTemplateEditorStatus, error.message, "error");
-    setStatus(rfxOutreachStatus, error.message, "error");
+    setStatus(rfxTemplateEditorStatus, humanizeError(error), "error");
+    setStatus(rfxOutreachStatus, humanizeError(error), "error");
   } finally {
     if (restoreRfxTemplateOriginalButton) restoreRfxTemplateOriginalButton.disabled = false;
     if (saveRfxTemplateHtmlButton) saveRfxTemplateHtmlButton.disabled = false;
@@ -7375,7 +7848,7 @@ async function publishSelectedWhatsappTemplate() {
     await loadOutreachAssets();
     setStatus(rfxOutreachStatus, result.message || "WhatsApp template submitted to Meta.", result.ready ? "success" : "warning");
   } catch (error) {
-    setStatus(rfxOutreachStatus, humanizeError(error.message), "error");
+    setStatus(rfxOutreachStatus, humanizeError(error), "error");
     if (publishWhatsappTemplateButton) publishWhatsappTemplateButton.disabled = false;
   }
 }
@@ -7392,7 +7865,7 @@ async function syncSelectedWhatsappTemplate() {
       result.approved ? "success" : "warning"
     );
   } catch (error) {
-    setStatus(rfxOutreachStatus, humanizeError(error.message), "error");
+    setStatus(rfxOutreachStatus, humanizeError(error), "error");
   } finally {
     if (syncWhatsappTemplateButton) syncWhatsappTemplateButton.disabled = false;
   }
@@ -7400,15 +7873,26 @@ async function syncSelectedWhatsappTemplate() {
 
 initAuthControls();
 renderManualLaneRows();
+window.addEventListener("popstate", applyRfxUrlStateFromBrowser);
 requirePrivatePage().then((session) => {
   if (session?.token) {
     loadRfxCustomerOptions();
-    loadVendorOptions();
-    loadVendorSegments();
-    loadOutreachAssets();
-    loadWhatsappConnectionReadiness();
+    const initialView = rfxWorkbench?.current() || "setup";
+    if (initialView === "carriers") loadCarrierWorkspaceData();
+    if (initialView === "outreach") {
+      loadOutreachAssets();
+      loadWhatsappConnectionReadiness();
+    }
     loadEvents();
   }
+}).catch(() => {});
+
+document.querySelector("[data-workbench-view-button='carriers']")?.addEventListener("click", () => {
+  loadCarrierWorkspaceData();
+});
+document.querySelector("[data-workbench-view-button='outreach']")?.addEventListener("click", () => {
+  loadOutreachAssets();
+  loadWhatsappConnectionReadiness();
 });
 
 rfxCustomerInput?.addEventListener("focus", () => {
@@ -7431,18 +7915,18 @@ eventForm?.addEventListener("submit", async (event) => {
     setStatus(eventStatus, isEditing ? "Bid event updated." : "Bid event created.", "success");
     await loadEvents();
   } catch (error) {
-    setStatus(eventStatus, error.message, "error");
+    setStatus(eventStatus, humanizeError(error), "error");
   }
 });
 
-refreshButton?.addEventListener("click", loadEvents);
-wizardRefreshButton?.addEventListener("click", loadEvents);
+refreshButton?.addEventListener("click", () => loadEvents({ force: true }));
+wizardRefreshButton?.addEventListener("click", () => loadEvents({ force: true }));
 wizardLiveOffersButton?.addEventListener("click", () => activateWorkbenchView("responses", "#rfx-response-body"));
 
 document.addEventListener("click", (event) => {
   const retryButton = event.target.closest("[data-retry-action]");
   if (retryButton?.dataset.retryAction === "load-rfx-events") {
-    loadEvents();
+    loadEvents({ force: true });
     return;
   }
 
@@ -7485,7 +7969,7 @@ document.addEventListener("click", (event) => {
     rfxTemplateHtml.value = htmlFromVisualEditor(surface);
     rfxTemplateEditorDirty = true;
     rfxTemplateVisualEditing = false;
-    saveSelectedRfxTemplate().catch((error) => setStatus(rfxTemplateEditorStatus, error.message, "error"));
+    saveSelectedRfxTemplate().catch((error) => setStatus(rfxTemplateEditorStatus, humanizeError(error), "error"));
     return;
   }
 
@@ -7525,7 +8009,7 @@ document.addEventListener("click", (event) => {
     if (!selectedEventId || !currentLanes.length) return;
     wizardAutoShortlistButton.disabled = true;
     autoShortlistLaneIds(currentLanes.map((lane) => lane.id), actionStatus)
-      .catch((error) => setStatus(actionStatus, error.message, "error"))
+      .catch((error) => setStatus(actionStatus, humanizeError(error), "error"))
       .finally(() => {
         wizardAutoShortlistButton.disabled = false;
         renderWizard();
@@ -7537,7 +8021,7 @@ document.addEventListener("click", (event) => {
   if (wizardDraftButton) {
     wizardDraftButton.disabled = true;
     createCurrentOutreachDrafts(actionStatus)
-      .catch((error) => setStatus(actionStatus, error.message, "error"))
+      .catch((error) => setStatus(actionStatus, humanizeError(error), "error"))
       .finally(() => {
         wizardDraftButton.disabled = false;
         renderWizard();
@@ -7607,16 +8091,22 @@ draftList?.addEventListener("click", async (event) => {
   const status = statusButton.dataset.rfxDraftStatus;
   if (!id || !status) return;
   const eventId = selectedEventId;
+  const row = findDraftRow(id);
+  const channel = row?.channel || selectedOutreachChannel();
   statusButton.disabled = true;
   setStatus(rfxOutreachStatus, `Marking draft ${status}...`);
   try {
-    await markOutreachMessages([id], status);
+    const result = await markOutreachMessages([id], status, { channel });
     forgetDraftRow(id);
     if (!(await refreshOutreachStateForEvent(eventId))) return;
     renderOutreachLaunchpad();
-    setStatus(rfxOutreachStatus, "Draft updated.", "success");
+    setStatus(
+      rfxOutreachStatus,
+      `Draft update finished: ${outreachBulkResultSummary(result, "draft")}.`,
+      result.failures?.length || result.skipped ? "warning" : "success"
+    );
   } catch (error) {
-    setStatus(rfxOutreachStatus, error.message, "error");
+    setStatus(rfxOutreachStatus, humanizeError(error), "error");
   } finally {
     statusButton.disabled = false;
   }
@@ -7642,6 +8132,8 @@ function applyDraftQueueSearch() {
     draftSearchRenderTimer = null;
   }
   draftQueueSearch = draftSearchInput.value || "";
+  clearDraftQueueSelection();
+  persistRfxWorkspaceContext();
   loadDraftQueuePage(selectedEventId, { reset: true });
 }
 
@@ -7662,6 +8154,8 @@ draftClearSearchButton?.addEventListener("click", () => {
   }
   draftQueueSearch = "";
   if (draftSearchInput) draftSearchInput.value = "";
+  clearDraftQueueSelection();
+  persistRfxWorkspaceContext();
   loadDraftQueuePage(selectedEventId, { reset: true });
 });
 
@@ -7671,6 +8165,8 @@ draftTrackingFilters?.addEventListener("click", (event) => {
   const nextStatus = normalizeDraftTrackingStatus(button.dataset.rfxDraftTracking);
   if (nextStatus === draftQueueTrackingStatus) return;
   draftQueueTrackingStatus = nextStatus;
+  clearDraftQueueSelection();
+  persistRfxWorkspaceContext();
   loadDraftQueuePage(selectedEventId, { reset: true });
 });
 
@@ -7702,19 +8198,25 @@ draftClearSelectionButton?.addEventListener("click", () => {
 });
 
 draftPageSize?.addEventListener("change", () => {
-  draftQueuePageSize = Number(draftPageSize.value || 100);
+  draftQueuePageSize = RFX_DRAFT_PAGE_SIZES.includes(Number(draftPageSize.value)) ? Number(draftPageSize.value) : 100;
+  clearDraftQueueSelection();
+  persistRfxWorkspaceContext();
   loadDraftQueuePage(selectedEventId, { reset: true });
 });
 
 draftPreviousPageButton?.addEventListener("click", () => {
   if (draftQueueOffset <= 0 || draftQueueLoading) return;
   draftQueueOffset = Math.max(0, draftQueueOffset - draftQueuePageSize);
+  clearDraftQueueSelection();
+  persistRfxWorkspaceContext();
   loadDraftQueuePage(selectedEventId);
 });
 
 draftNextPageButton?.addEventListener("click", () => {
   if (draftQueueLoading || draftQueueOffset + draftQueueRows.length >= draftQueueTotal) return;
   draftQueueOffset += draftQueuePageSize;
+  clearDraftQueueSelection();
+  persistRfxWorkspaceContext();
   loadDraftQueuePage(selectedEventId);
 });
 
@@ -7764,6 +8266,7 @@ laneCoverage?.addEventListener("click", (event) => {
 document.querySelectorAll("[data-rfx-lane-filter]").forEach((button) => {
   button.addEventListener("click", () => {
     activeLaneFilter = button.dataset.rfxLaneFilter || "all";
+    persistRfxWorkspaceContext();
     document.querySelectorAll("[data-rfx-lane-filter]").forEach((item) => item.classList.toggle("is-active", item === button));
     if (!visibleLanes().some((lane) => lane.id === focusedLaneId)) focusedLaneId = visibleLanes()[0]?.id || null;
     renderLanes();
@@ -7771,6 +8274,7 @@ document.querySelectorAll("[data-rfx-lane-filter]").forEach((button) => {
 });
 
 laneSearch?.addEventListener("input", () => {
+  persistRfxWorkspaceContext();
   if (!visibleLanes().some((lane) => lane.id === focusedLaneId)) focusedLaneId = visibleLanes()[0]?.id || null;
   renderLanes();
 });
@@ -7813,7 +8317,7 @@ laneTemplateFileInput?.addEventListener("change", async () => {
     pendingLaneTemplateRows = [];
     pendingLaneTemplateIssues = [];
     renderLaneTemplatePreview();
-    setStatus(laneImportStatus, error.message, "error");
+    setStatus(laneImportStatus, humanizeError(error), "error");
   } finally {
     updateLaneImportButton();
   }
@@ -7838,7 +8342,7 @@ importLanesButton?.addEventListener("click", async () => {
     if (selectedEventId !== eventId) return;
     await loadEvents();
   } catch (error) {
-    if (selectedEventId === eventId) setStatus(laneImportStatus, error.message, "error");
+    if (selectedEventId === eventId) setStatus(laneImportStatus, humanizeError(error), "error");
   } finally {
     importLanesButton.disabled = false;
   }
@@ -7916,7 +8420,7 @@ importManualLanesButton?.addEventListener("click", async () => {
     if (selectedEventId !== eventId) return;
     await loadEvents();
   } catch (error) {
-    if (selectedEventId === eventId) setStatus(manualLaneStatus, error.message, "error");
+    if (selectedEventId === eventId) setStatus(manualLaneStatus, humanizeError(error), "error");
   } finally {
     importManualLanesButton.disabled = false;
     updateManualLaneImportButton();
@@ -7924,26 +8428,46 @@ importManualLanesButton?.addEventListener("click", async () => {
 });
 
 openRfxButton?.addEventListener("click", async () => {
+  if (eventLifecycleMutationRunning) return;
   if (!selectedEventId) return;
   const eventId = selectedEventId;
   if (!confirmEventLifecycleAction("open")) return;
+  eventLifecycleMutationRunning = true;
+  updateEventActionState();
+  setStatus(actionStatus, "Opening bid event...");
   try {
     await updateRfxEvent(eventId, { status: "open" });
-    if (selectedEventId === eventId) await loadEvents();
+    if (selectedEventId === eventId) {
+      setStatus(actionStatus, "Bid event opened.", "success");
+      await loadEvents();
+    }
   } catch (error) {
-    if (selectedEventId === eventId) setStatus(actionStatus, error.message, "error");
+    if (selectedEventId === eventId) setStatus(actionStatus, humanizeError(error), "error");
+  } finally {
+    eventLifecycleMutationRunning = false;
+    updateEventActionState();
   }
 });
 
 closeRfxButton?.addEventListener("click", async () => {
+  if (eventLifecycleMutationRunning) return;
   if (!selectedEventId) return;
   const eventId = selectedEventId;
   if (!confirmEventLifecycleAction("close")) return;
+  eventLifecycleMutationRunning = true;
+  updateEventActionState();
+  setStatus(actionStatus, "Closing bid event...");
   try {
     await updateRfxEvent(eventId, { status: "closed" });
-    if (selectedEventId === eventId) await loadEvents();
+    if (selectedEventId === eventId) {
+      setStatus(actionStatus, "Bid event closed.", "success");
+      await loadEvents();
+    }
   } catch (error) {
-    if (selectedEventId === eventId) setStatus(actionStatus, error.message, "error");
+    if (selectedEventId === eventId) setStatus(actionStatus, humanizeError(error), "error");
+  } finally {
+    eventLifecycleMutationRunning = false;
+    updateEventActionState();
   }
 });
 
@@ -7953,10 +8477,12 @@ editRfxButton?.addEventListener("click", () => {
 });
 
 duplicateRfxButton?.addEventListener("click", async () => {
+  if (eventLifecycleMutationRunning) return;
   if (!selectedEventId) return;
   const eventId = selectedEventId;
   if (!confirmEventLifecycleAction("duplicate")) return;
-  duplicateRfxButton.disabled = true;
+  eventLifecycleMutationRunning = true;
+  updateEventActionState();
   setStatus(actionStatus, "Duplicating bid event...");
   try {
     const result = await duplicateRfxEvent(eventId);
@@ -7966,17 +8492,20 @@ duplicateRfxButton?.addEventListener("click", async () => {
     setStatus(actionStatus, `RFx duplicated with ${result.lanes || 0} lane(s).`, "success");
     await loadEvents();
   } catch (error) {
-    if (selectedEventId === eventId) setStatus(actionStatus, error.message, "error");
+    if (selectedEventId === eventId) setStatus(actionStatus, humanizeError(error), "error");
   } finally {
+    eventLifecycleMutationRunning = false;
     updateEventActionState();
   }
 });
 
 archiveRfxButton?.addEventListener("click", async () => {
+  if (eventLifecycleMutationRunning) return;
   if (!selectedEventId) return;
   const eventId = selectedEventId;
   if (!confirmEventLifecycleAction("archive")) return;
-  archiveRfxButton.disabled = true;
+  eventLifecycleMutationRunning = true;
+  updateEventActionState();
   setStatus(actionStatus, "Archiving bid event...");
   try {
     await archiveRfxEvent(eventId);
@@ -7987,17 +8516,20 @@ archiveRfxButton?.addEventListener("click", async () => {
     setStatus(actionStatus, "Bid event archived.", "success");
     await loadEvents();
   } catch (error) {
-    if (selectedEventId === eventId) setStatus(actionStatus, error.message, "error");
+    if (selectedEventId === eventId) setStatus(actionStatus, humanizeError(error), "error");
   } finally {
+    eventLifecycleMutationRunning = false;
     updateEventActionState();
   }
 });
 
 deleteRfxButton?.addEventListener("click", async () => {
+  if (eventLifecycleMutationRunning) return;
   if (!selectedEventId) return;
   const eventId = selectedEventId;
   if (!confirmEventLifecycleAction("delete")) return;
-  deleteRfxButton.disabled = true;
+  eventLifecycleMutationRunning = true;
+  updateEventActionState();
   setStatus(actionStatus, "Deleting bid event...");
   try {
     await deleteRfxEvent(eventId);
@@ -8008,8 +8540,9 @@ deleteRfxButton?.addEventListener("click", async () => {
     setStatus(actionStatus, "Bid event deleted.", "success");
     await loadEvents();
   } catch (error) {
-    if (selectedEventId === eventId) setStatus(actionStatus, error.message, "error");
+    if (selectedEventId === eventId) setStatus(actionStatus, humanizeError(error), "error");
   } finally {
+    eventLifecycleMutationRunning = false;
     updateEventActionState();
   }
 });
@@ -8123,16 +8656,22 @@ rfxAwardNoticeQueue?.addEventListener("click", async (event) => {
   const status = statusButton.dataset.rfxAwardNoticeStatus;
   if (!id || !status) return;
   const eventId = selectedEventId;
+  const row = awardNoticeDraftRows().find((message) => String(message.id) === String(id));
+  const channel = row?.channel || "email";
   statusButton.disabled = true;
   setStatus(rfxAwardStatus, `Marking award notice ${status}...`);
   try {
-    await markOutreachMessages([id], status);
+    const result = await markOutreachMessages([id], status, { channel });
     if (!(await refreshOutreachStateForEvent(eventId))) return;
     renderOutreachLaunchpad();
     renderAwardBoard();
-    setStatus(rfxAwardStatus, "Award notice updated.", "success");
+    setStatus(
+      rfxAwardStatus,
+      `Award notice update finished: ${outreachBulkResultSummary(result, "notice")}.`,
+      result.failures?.length || result.skipped ? "warning" : "success"
+    );
   } catch (error) {
-    setStatus(rfxAwardStatus, error.message, "error");
+    setStatus(rfxAwardStatus, humanizeError(error), "error");
   } finally {
     statusButton.disabled = false;
   }
@@ -8158,14 +8697,14 @@ copyRfxSummaryButton?.addEventListener("click", async () => {
 });
 
 autoShortlistButton?.addEventListener("click", async () => {
-  const ids = [...selectedLaneIds];
+  const ids = selectedVisibleLaneIds();
   if (!ids.length) return;
   if (!confirmBidRoomBulkAction("auto_shortlist", ids)) return;
   autoShortlistButton.disabled = true;
   try {
     await autoShortlistLaneIds(ids, actionStatus);
   } catch (error) {
-    setStatus(actionStatus, error.message, "error");
+    setStatus(actionStatus, humanizeError(error), "error");
   } finally {
     updateSelectionControls();
   }
@@ -8173,7 +8712,7 @@ autoShortlistButton?.addEventListener("click", async () => {
 
 inviteSelectedButton?.addEventListener("click", async () => {
   if (participantBulkMutationRunning) return;
-  const ids = [...selectedInvitationIds];
+  const ids = selectedVisibleInvitationIds();
   if (!ids.length) return;
   if (!confirmBidRoomBulkAction("mark_invited", ids)) return;
   const eventId = selectedEventId;
@@ -8188,7 +8727,7 @@ inviteSelectedButton?.addEventListener("click", async () => {
       await loadDetail(eventId);
     }
   } catch (error) {
-    if (selectedEventId === eventId) setStatus(actionStatus, error.message, "error");
+    if (selectedEventId === eventId) setStatus(actionStatus, humanizeError(error), "error");
   } finally {
     participantBulkMutationRunning = false;
     updateSelectionControls();
@@ -8197,7 +8736,7 @@ inviteSelectedButton?.addEventListener("click", async () => {
 
 archiveSelectedButton?.addEventListener("click", async () => {
   if (participantBulkMutationRunning) return;
-  const ids = [...selectedInvitationIds];
+  const ids = selectedVisibleInvitationIds();
   if (!ids.length) return;
   if (!confirmBidRoomBulkAction("archive_participants", ids)) return;
   const eventId = selectedEventId;
@@ -8212,7 +8751,7 @@ archiveSelectedButton?.addEventListener("click", async () => {
       await loadDetail(eventId);
     }
   } catch (error) {
-    if (selectedEventId === eventId) setStatus(actionStatus, error.message, "error");
+    if (selectedEventId === eventId) setStatus(actionStatus, humanizeError(error), "error");
   } finally {
     participantBulkMutationRunning = false;
     updateSelectionControls();
@@ -8261,9 +8800,24 @@ selectVisibleCarriersButton?.addEventListener("click", () => {
   setStatus(manualShortlistStatus, ids.length ? `${formatNumber(ids.length)} visible carrier(s) selected.` : "No visible carriers to select.", ids.length ? "success" : "neutral");
 });
 selectSegmentCarriersButton?.addEventListener("click", () => {
-  const rows = shortlistCandidateRows();
-  selectManualVendorIds(rows.map((vendor) => vendor.id));
-  setStatus(manualShortlistStatus, rows.length ? `${formatNumber(rows.length)} carrier(s) selected from current list.` : "No carriers match this list.", rows.length ? "success" : "neutral");
+  const segmentId = selectedSegmentId();
+  if (participantTemplateMutationRunning) return;
+  participantTemplateMutationRunning = true;
+  renderManualShortlistControls();
+  setStatus(manualShortlistStatus, "Loading matching carriers from Carrier CRM...");
+  loadSegmentCandidateRows(segmentId)
+    .then((rows) => {
+      rememberSelectedVendorRows(rows);
+      selectManualVendorIds(rows.map((vendor) => vendor.id));
+      setStatus(manualShortlistStatus, rows.length ? `${formatNumber(rows.length)} carrier(s) selected from Carrier CRM.` : "No carriers match this list.", rows.length ? "success" : "neutral");
+    })
+    .catch((error) => {
+      setStatus(manualShortlistStatus, `Carrier CRM selection failed: ${humanizeError(error)}`, "error");
+    })
+    .finally(() => {
+      participantTemplateMutationRunning = false;
+      renderManualShortlistControls();
+    });
 });
 clearCarrierSelectionButton?.addEventListener("click", () => {
   selectedManualVendorIdsState.clear();
@@ -8299,7 +8853,7 @@ saveManualShortlistTemplateButton?.addEventListener("click", async () => {
     renderManualShortlistControls();
     setStatus(manualShortlistStatus, `Template "${row.segment_name || name}" ${existingTemplate ? "updated" : "saved"} with ${formatNumber(vendorIds.length)} carrier(s).`, "success");
   } catch (error) {
-    setStatus(manualShortlistStatus, humanizeError(error.message), "error");
+    setStatus(manualShortlistStatus, humanizeError(error), "error");
   } finally {
     participantTemplateMutationRunning = false;
     renderManualShortlistControls();
@@ -8317,9 +8871,7 @@ loadManualShortlistTemplateButton?.addEventListener("click", async () => {
   loadManualShortlistTemplateButton.disabled = true;
   setStatus(manualShortlistStatus, savedIds.length ? `Loading ${formatNumber(savedIds.length)} saved carrier(s) from Carrier CRM...` : "Loading carriers from Carrier CRM...");
   try {
-    const rows = savedIds.length
-      ? await hydrateVendorOptionIds(savedIds)
-      : sortedVendorOptions(segmentCandidateRows(segmentId));
+    const rows = await loadSegmentCandidateRows(segmentId);
     if (!rows.length) {
       setStatus(manualShortlistStatus, "No active carriers were found for the selected saved list.", "error");
       return;
@@ -8336,7 +8888,7 @@ loadManualShortlistTemplateButton?.addEventListener("click", async () => {
       missingCount ? "warning" : "success"
     );
   } catch (error) {
-    setStatus(manualShortlistStatus, `Saved list could not load from Carrier CRM. ${humanizeError(error.message)}`, "error");
+    setStatus(manualShortlistStatus, `Saved list could not load from Carrier CRM. ${humanizeError(error)}`, "error");
   } finally {
     renderManualShortlistControls();
   }
@@ -8375,7 +8927,7 @@ updateManualShortlistTemplateButton?.addEventListener("click", async () => {
     renderManualShortlistControls();
     setStatus(manualShortlistStatus, `Template "${row.segment_name || name}" updated with ${formatNumber(vendorIds.length)} carrier(s).`, "success");
   } catch (error) {
-    setStatus(manualShortlistStatus, humanizeError(error.message), "error");
+    setStatus(manualShortlistStatus, humanizeError(error), "error");
   } finally {
     participantTemplateMutationRunning = false;
     renderManualShortlistControls();
@@ -8402,7 +8954,7 @@ deleteManualShortlistTemplateButton?.addEventListener("click", async () => {
     renderManualShortlistControls();
     setStatus(manualShortlistStatus, `Template "${label}" deleted. Carriers and bid history were not changed.`, "success");
   } catch (error) {
-    setStatus(manualShortlistStatus, humanizeError(error.message), "error");
+    setStatus(manualShortlistStatus, humanizeError(error), "error");
   } finally {
     participantTemplateMutationRunning = false;
     renderManualShortlistControls();
@@ -8477,7 +9029,7 @@ async function addSelectedManualCarriersToBid(statusElement = manualShortlistSta
     await loadDetail(eventId);
     return inserted;
   } catch (error) {
-    if (selectedEventId === eventId) setStatus(statusElement, error.message, "error");
+    if (selectedEventId === eventId) setStatus(statusElement, humanizeError(error), "error");
     return 0;
   } finally {
     participantAddRunning = false;
@@ -8517,7 +9069,7 @@ carrierTemplateFileInput?.addEventListener("change", async () => {
     pendingCarrierTemplateRows = [];
     pendingCarrierTemplateMatches = [];
     renderCarrierTemplatePreview();
-    setStatus(carrierTemplateStatus, error.message, "error");
+    setStatus(carrierTemplateStatus, humanizeError(error), "error");
   } finally {
     updateCarrierTemplateButton();
   }
@@ -8556,7 +9108,7 @@ importCarrierTemplateButton?.addEventListener("click", async () => {
     if (selectedEventId !== eventId) return;
     await loadEvents();
   } catch (error) {
-    if (selectedEventId === eventId) setStatus(carrierTemplateStatus, error.message, "error");
+    if (selectedEventId === eventId) setStatus(carrierTemplateStatus, humanizeError(error), "error");
   } finally {
     updateCarrierTemplateButton();
   }
@@ -8639,6 +9191,7 @@ rfxChatInboxFilters?.addEventListener("click", (event) => {
   const button = event.target.closest("[data-rfx-chat-filter]");
   if (!button) return;
   bidRoomChatFilter = button.dataset.rfxChatFilter || "all";
+  persistRfxWorkspaceContext();
   renderBidRoomChat();
 });
 async function handleBidRoomChatThreadAction(event) {
@@ -8679,10 +9232,10 @@ async function handleBidRoomChatThreadAction(event) {
   setStatus(rfxChatStatus, "Updating communication thread...");
   try {
     await updateBidRoomChatThread(threadId, payload);
-    await loadBidRoomChat();
+    await loadBidRoomChat({ force: true });
     setStatus(rfxChatStatus, "Communication thread updated.", "success");
   } catch (error) {
-    setStatus(rfxChatStatus, error.message, "error");
+    setStatus(rfxChatStatus, humanizeError(error), "error");
     button.disabled = false;
   }
 }
@@ -8744,7 +9297,7 @@ rfxChatBidUpdateForm?.addEventListener("submit", async (event) => {
     activateWorkbenchView("responses", "#rfx-response-body");
     setStatus(rfxChatStatus, "Bid updated from chat and communication thread resolved.", "success");
   } catch (error) {
-    setStatus(rfxChatBidUpdateStatus, error.message, "error");
+    setStatus(rfxChatBidUpdateStatus, humanizeError(error), "error");
   } finally {
     if (rfxChatBidUpdateApply) rfxChatBidUpdateApply.disabled = false;
   }
@@ -8766,7 +9319,7 @@ rfxChatStartEventThread?.addEventListener("click", async () => {
       result?.google_chat_configured ? "success" : "warning"
     );
   } catch (error) {
-    setStatus(rfxChatStatus, error.message, "error");
+    setStatus(rfxChatStatus, humanizeError(error), "error");
   } finally {
     renderBidRoomChatControls();
   }
@@ -8797,9 +9350,9 @@ rfxChatForm?.addEventListener("submit", async (event) => {
       result.google_chat_configured ? "Message sent and mirrored to Google Chat." : "Message sent. Google Chat mirror is not configured yet.",
       "success"
     );
-    await loadBidRoomChat();
+    await loadBidRoomChat({ force: true });
   } catch (error) {
-    setStatus(rfxChatStatus, error.message, "error");
+    setStatus(rfxChatStatus, humanizeError(error), "error");
   } finally {
     renderBidRoomChatControls();
   }
@@ -8823,7 +9376,7 @@ resetRfxTemplateHtmlButton?.addEventListener("click", () => {
 });
 
 restoreRfxTemplateOriginalButton?.addEventListener("click", () => {
-  restoreSelectedRfxTemplateOriginal().catch((error) => setStatus(rfxTemplateEditorStatus, error.message, "error"));
+  restoreSelectedRfxTemplateOriginal().catch((error) => setStatus(rfxTemplateEditorStatus, humanizeError(error), "error"));
 });
 
 rfxOutreachForm?.addEventListener("submit", async (event) => {

@@ -54,7 +54,7 @@
           <div class="page-header-actions">
             <button id="sync-catalog-button" class="page-primary-action" type="button">Sync catalog</button>
             <form id="auth-form" class="auth-strip">
-              <button id="auth-button" type="submit">Sign in with Kinde</button>
+              <button id="auth-button" type="submit">Log in</button>
               <button id="sign-out-button" type="button" class="secondary hidden">Sign out</button>
               <p id="auth-status" role="status"></p>
             </form>
@@ -62,13 +62,6 @@
         </header>
 
         <main class="settings-layout catalog-workbench-layout">
-          <section class="review-insight-grid" aria-label="Catalog match summary">
-            <article><span>Rows checked</span><strong id="catalog-rows-checked">0</strong></article>
-            <article><span>Location gaps</span><strong id="catalog-gap-count">0</strong></article>
-            <article><span>Pending review</span><strong id="catalog-pending-count">0</strong></article>
-            <article><span>Approved rows</span><strong id="catalog-approved-count">0</strong></article>
-          </section>
-
           <nav class="module-workbench-nav" role="tablist" aria-label="Catalog workbench">
             <button type="button" role="tab" aria-selected="true" data-workbench-view-button="import">Import Wizard</button>
             <button type="button" role="tab" aria-selected="false" data-workbench-view-button="operational" data-workbench-focus-target="#catalog-raw-value">Operational Dropdowns</button>
@@ -160,14 +153,14 @@
                     <tr><th>Preview</th></tr>
                   </thead>
                   <tbody id="catalog-import-preview-body">
-                    <tr><td>No import preview yet.</td></tr>
+                    <tr class="ui-state-row"><td colspan="1"><div class="ui-state" data-tone="neutral"><span>Import preview</span><strong>No import preview yet</strong><p>Upload a spreadsheet, choose a sheet and map its columns to preview the rows.</p></div></td></tr>
                   </tbody>
                 </table>
               </div>
             </div>
           </section>
 
-          <section class="workspace-panel settings-catalog-panel" data-workbench-view-panel="operational">
+          <section class="workspace-panel settings-catalog-panel" data-workbench-view-panel="operational" hidden>
             <div class="split-heading">
               <div>
                 <p class="eyebrow">Operational dropdowns</p>
@@ -175,7 +168,7 @@
               </div>
               <button id="refresh-catalog-values" type="button" class="secondary small-button">Refresh values</button>
             </div>
-            <form id="catalog-value-form" class="settings-form catalog-value-form">
+              <form id="catalog-value-form" class="settings-form catalog-value-form" data-unsaved-guard>
               <label>
                 Category
                 <select id="catalog-category"></select>
@@ -218,13 +211,13 @@
                   </tr>
                 </thead>
                 <tbody id="catalog-values-body">
-                  <tr><td colspan="6">Loading catalog values...</td></tr>
+                  <tr class="ui-state-row"><td colspan="6"><div class="ui-state ui-state-loading" data-tone="loading"><strong>Loading catalog values</strong><p>Reading operational dropdowns for Staging and Rateware.</p><div class="ui-skeleton-list" aria-hidden="true"><i><b></b><b></b><b></b></i><i><b></b><b></b><b></b></i></div></div></td></tr>
                 </tbody>
               </table>
             </div>
           </section>
 
-          <section class="workspace-panel location-catalog-panel" data-workbench-view-panel="locations">
+          <section class="workspace-panel location-catalog-panel" data-workbench-view-panel="locations" hidden>
             <div class="split-heading">
               <div>
                 <p class="eyebrow">Lane catalog</p>
@@ -232,7 +225,7 @@
               </div>
               <button id="refresh-location-catalog" type="button" class="secondary small-button">Refresh locations</button>
             </div>
-            <form id="location-catalog-form" class="settings-form location-catalog-form">
+              <form id="location-catalog-form" class="settings-form location-catalog-form" data-unsaved-guard>
               <label>
                 Country
                 <select id="location-country">
@@ -324,13 +317,13 @@
                   </tr>
                 </thead>
                 <tbody id="location-catalog-body">
-                  <tr><td colspan="7">Loading location catalog...</td></tr>
+                  <tr class="ui-state-row"><td colspan="7"><div class="ui-state ui-state-loading" data-tone="loading"><strong>Loading location catalog</strong><p>Reading cities, ZIPs, markets and regions.</p><div class="ui-skeleton-list" aria-hidden="true"><i><b></b><b></b><b></b></i><i><b></b><b></b><b></b></i></div></div></td></tr>
                 </tbody>
               </table>
             </div>
           </section>
 
-          <section class="workspace-panel" data-workbench-view-panel="matching">
+          <section class="workspace-panel" data-workbench-view-panel="matching" hidden>
             <div class="split-heading">
               <div>
                 <p class="eyebrow">Location matching</p>
@@ -354,6 +347,12 @@
                 <input id="catalog-search" type="search" placeholder="Search lane, vendor, market..." />
                 <button id="refresh-catalog-workbench" type="button" class="secondary small-button">Refresh</button>
               </div>
+            </div>
+            <div class="review-insight-grid catalog-match-summary" aria-label="Catalog match summary">
+              <article><span>Rows checked</span><strong id="catalog-rows-checked">0</strong></article>
+              <article><span>Location gaps</span><strong id="catalog-gap-count">0</strong></article>
+              <article><span>Pending review</span><strong id="catalog-pending-count">0</strong></article>
+              <article><span>Approved rows</span><strong id="catalog-approved-count">0</strong></article>
             </div>
             <div class="catalog-rule-strip" aria-label="Normalization rules">
               <article>

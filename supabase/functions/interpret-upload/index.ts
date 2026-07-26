@@ -165,6 +165,23 @@ function cleanText(value: unknown) {
   return text ? text : null;
 }
 
+function interpretationErrorMessage(value: unknown, fallback = "Interpretation failed.") {
+  if (value === null || value === undefined) return fallback;
+  if (value instanceof Error) return cleanText(value.message) || fallback;
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return cleanText(value) || fallback;
+  }
+  if (typeof value !== "object") return fallback;
+  const record = value as Record<string, unknown>;
+  for (const key of ["error", "message", "reason", "description", "detail", "details", "hint", "cause"]) {
+    if (record[key] && record[key] !== value) {
+      const message = interpretationErrorMessage(record[key], "");
+      if (message) return message;
+    }
+  }
+  return fallback;
+}
+
 function userContext(payload: Record<string, unknown>) {
   const email = cleanText(payload.email || payload.preferred_email || payload["https://kinde.com/email"])?.toLowerCase();
   const id = cleanText(payload.sub || payload.id || email);
@@ -2318,7 +2335,7 @@ Deno.serve(async (request) => {
   try {
     user = userContext(await requireKindeUser(request));
   } catch (error) {
-    return jsonResponse({ error: error.message }, 401);
+    return jsonResponse({ error: interpretationErrorMessage(error, "Authentication required.") }, 401);
   }
 
   const { raw_upload_id, correction_note = "" } = await request.json();
@@ -2332,7 +2349,7 @@ Deno.serve(async (request) => {
     correction_note: correctionNote || null
   }).select().single();
 
-  if (job.error) return jsonResponse({ error: job.error.message }, 500);
+  if (job.error) return jsonResponse({ error: interpretationErrorMessage(job.error, "Could not create interpretation job.") }, 500);
 
   try {
     const uploadResult = await supabase
@@ -2484,25 +2501,26 @@ Deno.serve(async (request) => {
       }
     });
   } catch (error) {
+    const reason = interpretationErrorMessage(error);
     await supabase.from("interpretation_jobs").update({
       status: "failed",
       completed_at: new Date().toISOString(),
-      error_message: error.message
+      error_message: reason
     }).eq("id", job.data.id);
 
     await supabase.from("raw_uploads").update({
       status: "failed",
-      error_message: error.message,
+      error_message: reason,
       audit_status: "failed",
-      audit_warnings: [String(error.message || "Interpretation failed.")],
+      audit_warnings: [reason],
       interpretation_audit: {
         status: "failed",
-        warnings: [String(error.message || "Interpretation failed.")],
+        warnings: [reason],
         interpreted_rate_rows: 0
       },
       interpreted_rate_rows: 0
     }).eq("id", raw_upload_id);
 
-    return jsonResponse({ error: error.message }, 500);
+    return jsonResponse({ error: reason }, 500);
   }
 });

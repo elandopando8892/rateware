@@ -53,7 +53,7 @@
           <div class="page-header-actions">
             <button class="page-primary-action" type="button" data-click-target="#save-profile-button">Save profile</button>
             <form id="auth-form" class="auth-strip">
-              <button id="auth-button" type="submit">Sign in with Kinde</button>
+              <button id="auth-button" type="submit">Log in</button>
               <button id="sign-out-button" type="button" class="secondary hidden">Sign out</button>
               <p id="auth-status" role="status"></p>
             </form>
@@ -101,7 +101,7 @@
                 <p class="eyebrow">User profile</p>
                 <h2>Operator details</h2>
               </div>
-              <form id="profile-form" class="settings-form">
+              <form id="profile-form" class="settings-form" data-unsaved-guard>
                 <label>Full name <input id="profile-full-name" placeholder="Name" /></label>
                 <label>Job title <input id="profile-job-title" placeholder="Procurement lead" /></label>
                 <label>Phone <input id="profile-phone" placeholder="+52..." /></label>
@@ -117,7 +117,7 @@
                 <p class="eyebrow">Organization</p>
                 <h2>Workspace profile</h2>
               </div>
-              <form id="organization-form" class="settings-form">
+              <form id="organization-form" class="settings-form" data-unsaved-guard>
                 <label>Workspace name <input id="org-name" placeholder="Marksman XBF" /></label>
                 <label>Slug <input id="org-slug" placeholder="marksman-xbf" /></label>
                 <label>Website <input id="org-website" placeholder="https://..." /></label>
@@ -189,7 +189,7 @@
                 <strong>Meta WhatsApp Business Platform</strong>
                 <p>Checking WhatsApp Business connection...</p>
               </div>
-              <form id="whatsapp-manual-form" class="settings-form compact-form integration-manual-form hidden" autocomplete="off">
+              <form id="whatsapp-manual-form" class="settings-form compact-form integration-manual-form hidden" autocomplete="off" data-unsaved-guard>
                 <div class="wide-field integration-form-heading">
                   <strong>Manual setup</strong>
                   <span>Credentials are encrypted server-side and are never displayed again.</span>

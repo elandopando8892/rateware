@@ -25,6 +25,11 @@ const state = {
   loading: false
 };
 
+let rfiSaveRunning = false;
+let rfiSubmitRunning = false;
+let rfiSegmentTemplateRunning = false;
+let rfiSegmentActionRunning = false;
+
 const els = {
   title: document.getElementById("customer-rfi-title"),
   subtitle: document.getElementById("customer-rfi-subtitle"),
@@ -2852,21 +2857,22 @@ function clientCompleteness(rfi = null) {
 function setReadonlyMode() {
   const readonly = state.submitted;
   const segmentTemplateReady = hasLoadedActiveRfiSegment();
+  const busy = rfiSaveRunning || rfiSubmitRunning || rfiSegmentTemplateRunning || rfiSegmentActionRunning;
   document.querySelectorAll(".customer-rfi-shell input, .customer-rfi-shell select, .customer-rfi-shell textarea").forEach((element) => {
     element.disabled = readonly;
   });
   document.querySelectorAll("#add-lane-row, #download-rfi-segment-template, #import-rfi-segment-template, #import-rfi-segment-template-new, #rfi-segment-template-name, [data-remove-lane], [data-remove-rfi-segment], [data-rfi-save-segment], [data-rfi-save-segment-new], [data-rfi-delete-segment], [data-suggest-rubrics], [data-rfi-group-required], [data-add-rubric-to-segment], [data-remove-rubric]").forEach((element) => {
-    element.disabled = readonly;
+    element.disabled = readonly || busy;
   });
-  if (els.save) els.save.disabled = readonly;
+  if (els.save) els.save.disabled = readonly || rfiSaveRunning || rfiSubmitRunning || rfiSegmentActionRunning;
   if (els.submit) {
-    els.submit.disabled = readonly;
-    els.submit.textContent = readonly ? "Submitted" : "Submit final RFI";
+    els.submit.disabled = readonly || rfiSaveRunning || rfiSubmitRunning || rfiSegmentActionRunning;
+    els.submit.textContent = readonly ? "Submitted" : rfiSubmitRunning ? "Submitting..." : "Submit final RFI";
   }
-  if (els.downloadSegmentTemplate) els.downloadSegmentTemplate.disabled = readonly || !segmentTemplateReady;
-  if (els.importSegmentTemplate) els.importSegmentTemplate.disabled = readonly || !Boolean(token);
-  if (els.importSegmentTemplateNew) els.importSegmentTemplateNew.disabled = readonly || !Boolean(token);
-  if (els.segmentTemplateName) els.segmentTemplateName.disabled = readonly || !segmentTemplateReady;
+  if (els.downloadSegmentTemplate) els.downloadSegmentTemplate.disabled = readonly || rfiSegmentTemplateRunning || !segmentTemplateReady;
+  if (els.importSegmentTemplate) els.importSegmentTemplate.disabled = readonly || rfiSegmentTemplateRunning || !Boolean(token);
+  if (els.importSegmentTemplateNew) els.importSegmentTemplateNew.disabled = readonly || rfiSegmentTemplateRunning || !Boolean(token);
+  if (els.segmentTemplateName) els.segmentTemplateName.disabled = readonly || rfiSegmentTemplateRunning || !segmentTemplateReady;
   if (els.segmentTemplateState) {
     const copyKey = segmentTemplateReady
       ? "segmentTemplateReady"
@@ -2902,26 +2908,34 @@ function removeRfiSegment(segmentKey) {
 }
 
 async function saveActiveSegment({ asNew = false } = {}) {
+  if (rfiSegmentActionRunning) return;
+  rfiSegmentActionRunning = true;
+  setReadonlyMode();
   syncSegmentTemplateName();
-  collectRfi();
-  const source = state.segmentChecklists.find((segment) => segment.segment_key === state.activeSegmentKey);
-  if (!source) return;
-  if (asNew) {
-    const suffix = state.locale === "es" ? " copia" : " copy";
-    const name = `${segmentDisplayName(source)}${suffix}`;
-    const key = uniqueSegmentKey(name, state.segmentChecklists);
-    const clone = JSON.parse(JSON.stringify({ ...source, segment_key: key, segment_name: name }));
-    const clonedLanes = state.lanes
-      .filter((lane) => segmentFromLane(lane) === source.segment_key)
-      .map((lane, index) => ({ ...lane, operating_segment: key, lane_id: `${cleanText(lane.lane_id) || `L${index + 1}`}-${key}` }));
-    state.segmentChecklists = [...state.segmentChecklists, normalizeSegmentChecklist(clone)];
-    state.lanes = [...state.lanes, ...clonedLanes];
-    state.activeSegmentKey = key;
-    render();
+  try {
+    collectRfi();
+    const source = state.segmentChecklists.find((segment) => segment.segment_key === state.activeSegmentKey);
+    if (!source) return;
+    if (asNew) {
+      const suffix = state.locale === "es" ? " copia" : " copy";
+      const name = `${segmentDisplayName(source)}${suffix}`;
+      const key = uniqueSegmentKey(name, state.segmentChecklists);
+      const clone = JSON.parse(JSON.stringify({ ...source, segment_key: key, segment_name: name }));
+      const clonedLanes = state.lanes
+        .filter((lane) => segmentFromLane(lane) === source.segment_key)
+        .map((lane, index) => ({ ...lane, operating_segment: key, lane_id: `${cleanText(lane.lane_id) || `L${index + 1}`}-${key}` }));
+      state.segmentChecklists = [...state.segmentChecklists, normalizeSegmentChecklist(clone)];
+      state.lanes = [...state.lanes, ...clonedLanes];
+      state.activeSegmentKey = key;
+      render();
+      await saveDraft();
+      return;
+    }
     await saveDraft();
-    return;
+  } finally {
+    rfiSegmentActionRunning = false;
+    setReadonlyMode();
   }
-  await saveDraft();
 }
 
 function renderSummary() {
@@ -3170,6 +3184,9 @@ async function load() {
 }
 
 async function saveDraft() {
+  if (rfiSaveRunning || rfiSubmitRunning) return;
+  rfiSaveRunning = true;
+  setReadonlyMode();
   setStatus("Saving draft...");
   try {
     const result = await saveCustomerRfi(token, collectRfi());
@@ -3177,6 +3194,9 @@ async function saveDraft() {
     await load();
   } catch (error) {
     setStatus(error, "error");
+  } finally {
+    rfiSaveRunning = false;
+    setReadonlyMode();
   }
 }
 
@@ -3198,6 +3218,7 @@ function validateFinalRfi(rfi) {
 }
 
 async function submitFinal() {
+  if (rfiSubmitRunning || rfiSaveRunning) return;
   const rfi = collectRfi();
   const validation = validateFinalRfi(rfi);
   if (!validation.lanes.length) {
@@ -3220,6 +3241,8 @@ async function submitFinal() {
     ? `Enviar este RFI como final? Procurement tendra que reabrirlo antes de permitir nuevas ediciones.${warning}`
     : `Submit this RFI as final? Procurement must reopen it before any edits.${warning}`;
   if (!window.confirm(confirmation)) return;
+  rfiSubmitRunning = true;
+  setReadonlyMode();
   setStatus("Submitting final RFI...");
   try {
     const result = await submitCustomerRfi(token, rfi);
@@ -3227,6 +3250,9 @@ async function submitFinal() {
     await load();
   } catch (error) {
     setStatus(error, "error");
+  } finally {
+    rfiSubmitRunning = false;
+    setReadonlyMode();
   }
 }
 
@@ -3321,6 +3347,9 @@ function initEvents() {
   els.importSegmentTemplate?.addEventListener("click", () => chooseSegmentImport(false));
   els.importSegmentTemplateNew?.addEventListener("click", () => chooseSegmentImport(true));
   els.downloadSegmentTemplate?.addEventListener("click", async () => {
+    if (rfiSegmentTemplateRunning) return;
+    rfiSegmentTemplateRunning = true;
+    setReadonlyMode();
     try {
       if (!hasLoadedActiveRfiSegment()) throw new Error("Open a signed RFI link and select an operating segment before downloading its template.");
       syncSegmentTemplateName();
@@ -3330,17 +3359,29 @@ function initEvents() {
       setStatus(state.locale === "es" ? "Template del segmento descargado con instructivo, catalogo y checklist." : "Segment template downloaded with instructions, catalog, and checklist.");
     } catch (error) {
       setStatus(error, "error");
+    } finally {
+      rfiSegmentTemplateRunning = false;
+      setReadonlyMode();
     }
   });
   els.importSegmentTemplateFile?.addEventListener("change", async (event) => {
+    if (rfiSegmentTemplateRunning) {
+      event.target.value = "";
+      delete event.target.dataset.importAsNew;
+      return;
+    }
     const [file] = Array.from(event.target.files || []);
     if (!file) return;
+    rfiSegmentTemplateRunning = true;
+    setReadonlyMode();
     setStatus(state.locale === "es" ? "Importando template del segmento..." : "Importing segment template...");
     try {
       await importRfiSegmentWorkbook(file, { createNew: event.target.dataset.importAsNew === "true" });
     } catch (error) {
       setStatus(error, "error");
     } finally {
+      rfiSegmentTemplateRunning = false;
+      setReadonlyMode();
       event.target.value = "";
       delete event.target.dataset.importAsNew;
     }
@@ -3381,7 +3422,15 @@ function initEvents() {
     }
     const deleteSegmentButton = event.target.closest("[data-rfi-delete-segment]");
     if (deleteSegmentButton) {
-      removeRfiSegment(state.activeSegmentKey);
+      if (rfiSegmentActionRunning) return;
+      rfiSegmentActionRunning = true;
+      setReadonlyMode();
+      try {
+        removeRfiSegment(state.activeSegmentKey);
+      } finally {
+        rfiSegmentActionRunning = false;
+        setReadonlyMode();
+      }
       return;
     }
     const segmentTab = event.target.closest("[data-rfi-segment-tab]");
