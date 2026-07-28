@@ -123,6 +123,7 @@ Deno.serve(async (request) => {
     const statusParam = stateProvider === "google_chat" ? "chat" : "gmail";
     if (!stateRow) return redirectTo("settings.html", { [statusParam]: "error", reason: "invalid_state" });
     if (oauthError) return redirectTo(cleanText(stateRow.redirect_after) || "settings.html", { [statusParam]: "error", reason: oauthError });
+    if (!code) return redirectTo(cleanText(stateRow.redirect_after) || "settings.html", { [statusParam]: "error", reason: "missing_code" });
     if (stateRow.used_at) return redirectTo(cleanText(stateRow.redirect_after) || "settings.html", { [statusParam]: "error", reason: "state_already_used" });
     if (new Date(String(stateRow.expires_at)).getTime() < Date.now()) {
       return redirectTo(cleanText(stateRow.redirect_after) || "settings.html", { [statusParam]: "error", reason: "state_expired" });
@@ -172,7 +173,7 @@ Deno.serve(async (request) => {
     if (!refreshTokenEncrypted) throw new Error("Google did not return a refresh token. Retry consent or revoke the app in Google and connect again.");
 
     const expiresIn = Number(tokenData.expires_in) || 3600;
-    const connectionRow = stateProvider === "google_chat" ? {
+    const connectionRow: Record<string, unknown> = stateProvider === "google_chat" ? {
         owner_user_id: stateRow.owner_user_id,
         owner_email: stateRow.owner_email,
         account_email: expectedEmail,
@@ -203,7 +204,7 @@ Deno.serve(async (request) => {
       };
     const connectionResult = await supabase
       .from(connectionTable)
-      .upsert(connectionRow, { onConflict: stateProvider === "google_chat" ? "owner_email,account_email" : "owner_email,mailbox_email" });
+      .upsert(connectionRow as never, { onConflict: stateProvider === "google_chat" ? "owner_email,account_email" : "owner_email,mailbox_email" });
     if (connectionResult.error) throw connectionResult.error;
 
     await supabase

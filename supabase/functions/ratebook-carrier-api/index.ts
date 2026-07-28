@@ -11,13 +11,15 @@ function getClient() {
   return createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 }
 
+type RatebookCarrierSupabaseClient = ReturnType<typeof getClient>;
+
 function cleanText(value: unknown) {
   if (value === null || value === undefined) return null;
   const text = String(value).trim();
   return text || null;
 }
 
-function publicErrorMessage(value: unknown, fallback = "Ratebook access failed.") {
+function publicErrorMessage(value: unknown, fallback = "Ratebook access failed."): string {
   if (value === null || value === undefined) return fallback;
   if (value instanceof Error) return cleanText(value.message) || fallback;
   if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return cleanText(value) || fallback;
@@ -25,7 +27,7 @@ function publicErrorMessage(value: unknown, fallback = "Ratebook access failed."
   const record = value as Record<string, unknown>;
   for (const key of ["error", "message", "reason", "description", "detail", "details", "hint", "cause"]) {
     if (record[key] && record[key] !== value) {
-      const message = publicErrorMessage(record[key], "");
+      const message: string | null = publicErrorMessage(record[key], "");
       if (message) return message;
     }
   }
@@ -86,7 +88,7 @@ async function hashAccessToken(token: string) {
   return Array.from(new Uint8Array(hash)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-async function resolveActiveShare(supabase: ReturnType<typeof createClient>, tokenInput: unknown) {
+async function resolveActiveShare(supabase: RatebookCarrierSupabaseClient, tokenInput: unknown) {
   const token = cleanText(tokenInput);
   if (!token || token.length < 32) throw new Error("This private Ratebook link is invalid or incomplete.");
   const tokenHash = await hashAccessToken(token);
@@ -143,7 +145,7 @@ function routeSummary(row: Record<string, unknown>, index: number) {
   };
 }
 
-async function getRatebookAccess(supabase: ReturnType<typeof createClient>, input: Record<string, unknown>) {
+async function getRatebookAccess(supabase: RatebookCarrierSupabaseClient, input: Record<string, unknown>) {
   const { share, ratebook } = await resolveActiveShare(supabase, input.token);
   const lifecycle = "published";
   const packageId = cleanText(ratebook.rfx_package_id);
@@ -202,7 +204,7 @@ async function getRatebookAccess(supabase: ReturnType<typeof createClient>, inpu
   };
 }
 
-async function requireRatebookPackageLane(supabase: ReturnType<typeof createClient>, ratebook: Record<string, unknown>, input: Record<string, unknown>) {
+async function requireRatebookPackageLane(supabase: RatebookCarrierSupabaseClient, ratebook: Record<string, unknown>, input: Record<string, unknown>) {
   const packageLaneId = cleanText(input.package_lane_id || input.route_id);
   if (!packageLaneId) throw new Error("Choose a Ratebook route before submitting an offer.");
   const result = await supabase.from("rfx_package_lanes")
@@ -215,7 +217,7 @@ async function requireRatebookPackageLane(supabase: ReturnType<typeof createClie
   return result.data as Record<string, unknown>;
 }
 
-async function submitRatebookQuote(supabase: ReturnType<typeof createClient>, input: Record<string, unknown>) {
+async function submitRatebookQuote(supabase: RatebookCarrierSupabaseClient, input: Record<string, unknown>) {
   const { share, ratebook } = await resolveActiveShare(supabase, input.token);
   const packageLane = await requireRatebookPackageLane(supabase, ratebook, input);
   const allInRate = requiredPositiveNumber(input.all_in_rate, "All-in rate");
@@ -254,9 +256,17 @@ async function submitRatebookQuote(supabase: ReturnType<typeof createClient>, in
     metadata: { submitted_at: now, channel: "private_ratebook_link" },
     updated_at: now
   };
-  const quoteResult = await supabase.from("rfx_ratebook_carrier_quotes")
-    .upsert(previous ? { ...quotePatch, id: previous.id } : quotePatch, { onConflict: "ratebook_share_id,package_lane_id" })
-    .select("*").single();
+  const previousId = cleanText(previous?.id);
+  const quoteResult = previousId
+    ? await supabase.from("rfx_ratebook_carrier_quotes")
+      .update(quotePatch)
+      .eq("id", previousId)
+      .select("*")
+      .single()
+    : await supabase.from("rfx_ratebook_carrier_quotes")
+      .insert(quotePatch)
+      .select("*")
+      .single();
   if (quoteResult.error) throw quoteResult.error;
   const quote = quoteResult.data as Record<string, unknown>;
   const revisionResult = await supabase.from("rfx_ratebook_carrier_quote_revisions").insert({
@@ -277,7 +287,7 @@ async function submitRatebookQuote(supabase: ReturnType<typeof createClient>, in
   return { quote, message: previous ? "Your Ratebook offer was updated." : "Your Ratebook offer was submitted." };
 }
 
-async function withdrawRatebookQuote(supabase: ReturnType<typeof createClient>, input: Record<string, unknown>) {
+async function withdrawRatebookQuote(supabase: RatebookCarrierSupabaseClient, input: Record<string, unknown>) {
   const { share, ratebook } = await resolveActiveShare(supabase, input.token);
   const packageLane = await requireRatebookPackageLane(supabase, ratebook, input);
   const quoteResult = await supabase.from("rfx_ratebook_carrier_quotes")
@@ -305,7 +315,7 @@ async function withdrawRatebookQuote(supabase: ReturnType<typeof createClient>, 
 }
 
 Deno.serve(async (request) => {
-  if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders() });
   try {
     if (request.method !== "POST") return jsonResponse({ error: "Method not allowed." }, 405);
     const body = await request.json() as Record<string, unknown>;

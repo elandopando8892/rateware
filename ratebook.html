@@ -82,6 +82,17 @@
               <option value="">All segments</option>
             </select>
           </label>
+          <div class="ratebook-filter-view-controls" aria-label="Saved Ratebook filter views">
+            <label class="ratebook-filter-field">
+              <span>Saved view</span>
+              <select id="ratebook-saved-view">
+                <option value="">Unsaved filter</option>
+              </select>
+            </label>
+            <button class="button button-secondary" id="save-ratebook-view" type="button">Save view</button>
+            <button class="button button-secondary" id="delete-ratebook-view" type="button">Delete view</button>
+            <button class="button button-primary" id="export-ratebook-routes" type="button">Export XLSX</button>
+          </div>
           <p class="ratebook-toolbar-status" id="ratebook-status" role="status">Loading route books...</p>
         </section>
 

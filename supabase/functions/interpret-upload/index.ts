@@ -7,6 +7,15 @@ const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("RATEWARE_SUPABASE_SERVICE_ROLE_KEY");
 
+function getClient() {
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+    throw new Error("Missing SUPABASE_URL or RATEWARE_SUPABASE_SERVICE_ROLE_KEY.");
+  }
+  return createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+}
+
+type InterpretationSupabaseClient = ReturnType<typeof getClient>;
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type"
@@ -165,7 +174,7 @@ function cleanText(value: unknown) {
   return text ? text : null;
 }
 
-function interpretationErrorMessage(value: unknown, fallback = "Interpretation failed.") {
+function interpretationErrorMessage(value: unknown, fallback = "Interpretation failed."): string {
   if (value === null || value === undefined) return fallback;
   if (value instanceof Error) return cleanText(value.message) || fallback;
   if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
@@ -175,7 +184,7 @@ function interpretationErrorMessage(value: unknown, fallback = "Interpretation f
   const record = value as Record<string, unknown>;
   for (const key of ["error", "message", "reason", "description", "detail", "details", "hint", "cause"]) {
     if (record[key] && record[key] !== value) {
-      const message = interpretationErrorMessage(record[key], "");
+      const message: string = interpretationErrorMessage(record[key], "");
       if (message) return message;
     }
   }
@@ -762,7 +771,7 @@ function scoreVendorMatch(vendor: Record<string, unknown>, rawUpload: Record<str
 }
 
 async function findBestVendor(
-  supabase: ReturnType<typeof createClient>,
+  supabase: InterpretationSupabaseClient,
   user: { owner_email: string | null },
   rawUpload: Record<string, string>,
   interpretation: Record<string, unknown>
@@ -1589,7 +1598,7 @@ function buildLanePlan(row: Record<string, unknown>, borderPairs: Record<string,
   };
 }
 
-async function persistLanePlans(supabase: ReturnType<typeof createClient>, rows: Record<string, unknown>[], borderPairs: Record<string, unknown>[], mxFuelContext: ReturnType<typeof buildMxFuelContext>) {
+async function persistLanePlans(supabase: InterpretationSupabaseClient, rows: Record<string, unknown>[], borderPairs: Record<string, unknown>[], mxFuelContext: ReturnType<typeof buildMxFuelContext>) {
   const legs: Record<string, unknown>[] = [];
   const updates = rows.map((row) => {
     const plan = buildLanePlan(row, borderPairs, mxFuelContext);
@@ -2271,7 +2280,7 @@ function buildUploadAudit(rawUpload: Record<string, unknown>, interpretation: Re
 }
 
 async function applicableInterpretationMemory(
-  supabase: ReturnType<typeof createClient>,
+  supabase: InterpretationSupabaseClient,
   user: { owner_email: string | null },
   rawUpload: Record<string, unknown>
 ) {
@@ -2342,7 +2351,7 @@ Deno.serve(async (request) => {
   if (!raw_upload_id) return jsonResponse({ error: "raw_upload_id is required." }, 400);
   const correctionNote = cleanText(correction_note) || "";
 
-  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+  const supabase = getClient();
   const job = await supabase.from("interpretation_jobs").insert({
     raw_upload_id,
     model: OPENAI_MODEL,
@@ -2405,7 +2414,8 @@ Deno.serve(async (request) => {
       mxDiesel: mxDieselResult.error ? [] : mxDieselResult.data || [],
       fxRates: fxResult.error ? [] : fxResult.data || []
     });
-    const catalogNormalizedRows = normalizeWithCatalog(interpretation.rows
+    const interpretationRows = Array.isArray(interpretation.rows) ? interpretation.rows as Record<string, unknown>[] : [];
+    const catalogNormalizedRows = normalizeWithCatalog(interpretationRows
       .filter((row: Record<string, unknown>) => isCarrierRateRow(row))
       .map((row: Record<string, unknown>) => normalizeRow(row, rawUpload, job.data.id, vendorId, vendorDomain, forceVendorDomain)), catalogItems, laneMileage, locations, fuelRegions, fscTrend);
     const normalizedRows = (await enrichRowsWithExternalPostalPrefixes(catalogNormalizedRows, locations))

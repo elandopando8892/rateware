@@ -8,6 +8,7 @@ import {
   fetchRatebookRouteQuotes,
   fetchRatebookHealth,
   fetchRatebooks,
+  exportRatebookRoutes,
   archiveRatebook,
   createRatebookRevision,
   publishRatebook,
@@ -18,6 +19,53 @@ import {
 } from "./ratebook-service.js";
 
 const query = new URLSearchParams(window.location.search);
+const RATEBOOK_XLSX_MODULE_URL = "https://esm.sh/xlsx@0.18.5";
+const RATEBOOK_FILTER_VIEW_STORAGE_KEY = "rateware.ratebook.filterViews.v1";
+const RATEBOOK_EXPORT_COLUMNS = [
+  ["Ratebook", "ratebook_name"],
+  ["Lifecycle", "lifecycle_status"],
+  ["Version", "version_number"],
+  ["Shipper", "shipper_name"],
+  ["Source", "source_type"],
+  ["Project", "project_name"],
+  ["Package", "package_name"],
+  ["Event", "event_name"],
+  ["RFx ID", "rfx_id"],
+  ["Transaction ID", "transaction_id"],
+  ["Route Status", "route_status"],
+  ["Segment", "segment_name"],
+  ["Origin", "origin"],
+  ["Origin City", "origin_city"],
+  ["Origin State", "origin_state"],
+  ["Origin Country", "origin_country"],
+  ["Origin ZIP", "origin_postal_code"],
+  ["Origin Market", "origin_market"],
+  ["Origin Region", "origin_region"],
+  ["Destination", "destination"],
+  ["Destination City", "destination_city"],
+  ["Destination State", "destination_state"],
+  ["Destination Country", "destination_country"],
+  ["Destination ZIP", "destination_postal_code"],
+  ["Destination Market", "destination_market"],
+  ["Destination Region", "destination_region"],
+  ["Equipment", "equipment"],
+  ["Trailer", "trailer"],
+  ["Configuration", "configuration"],
+  ["Operation", "operation"],
+  ["Service", "service"],
+  ["Weekly Volume", "weekly_volume"],
+  ["Monthly Volume", "monthly_volume"],
+  ["Frequency", "frequency"],
+  ["Target Rate", "target_rate"],
+  ["Currency", "currency"],
+  ["Carrier Count", "carrier_count"],
+  ["Bid Count", "bid_count"],
+  ["Ratebook ID", "ratebook_id"],
+  ["Route ID", "package_lane_id"],
+  ["Updated At", "updated_at"],
+];
+
+let ratebookXlsxModulePromise;
 
 const state = {
   rows: [],
@@ -29,6 +77,8 @@ const state = {
   shipperId: "",
   sourceType: "",
   segmentKey: "",
+  savedViews: loadRatebookSavedViews(),
+  selectedSavedView: "",
   facets: { shippers: [], sources: [], segments: [] },
   health: null,
   routeSearch: "",
@@ -50,6 +100,10 @@ const elements = {
   shipperFilter: document.querySelector("#ratebook-shipper-filter"),
   sourceFilter: document.querySelector("#ratebook-source-filter"),
   segmentFilter: document.querySelector("#ratebook-segment-filter"),
+  savedView: document.querySelector("#ratebook-saved-view"),
+  saveView: document.querySelector("#save-ratebook-view"),
+  deleteView: document.querySelector("#delete-ratebook-view"),
+  exportRoutes: document.querySelector("#export-ratebook-routes"),
   status: document.querySelector("#ratebook-status"),
   count: document.querySelector("#ratebook-count"),
   overviewBooks: document.querySelector("#ratebook-overview-books"),
@@ -148,6 +202,125 @@ function setStatus(target, message, tone = "") {
   target.dataset.tone = tone;
 }
 
+function loadRatebookSavedViews() {
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(RATEBOOK_FILTER_VIEW_STORAGE_KEY) || "[]");
+    return Array.isArray(parsed)
+      ? parsed.filter((view) => view && typeof view === "object" && text(view.name, "")).slice(0, 50)
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function persistRatebookSavedViews() {
+  try {
+    window.localStorage.setItem(RATEBOOK_FILTER_VIEW_STORAGE_KEY, JSON.stringify(state.savedViews));
+  } catch {
+    setStatus(elements.status, "Saved views could not be stored in this browser.", "error");
+  }
+}
+
+function currentRatebookFilters() {
+  return {
+    search: state.search || undefined,
+    status: state.status || undefined,
+    shipper_id: state.shipperId || undefined,
+    source_type: state.sourceType || undefined,
+    segment_key: state.segmentKey || undefined,
+    project_id: state.projectId || undefined,
+  };
+}
+
+function applyRatebookFilters(filters = {}) {
+  state.search = text(filters.search, "");
+  state.status = text(filters.status, "");
+  state.shipperId = text(filters.shipper_id, "");
+  state.sourceType = text(filters.source_type, "");
+  state.segmentKey = text(filters.segment_key, "");
+  elements.search.value = state.search;
+  elements.statusFilter.value = state.status;
+  elements.shipperFilter.value = state.shipperId;
+  elements.sourceFilter.value = state.sourceType;
+  elements.segmentFilter.value = state.segmentKey;
+}
+
+function renderSavedViews() {
+  if (!elements.savedView) return;
+  elements.savedView.innerHTML = [
+    `<option value="">Unsaved filter</option>`,
+    ...state.savedViews.map((view) => `<option value="${escapeHtml(view.id)}">${escapeHtml(text(view.name, "Saved view"))}</option>`),
+  ].join("");
+  elements.savedView.value = state.savedViews.some((view) => view.id === state.selectedSavedView) ? state.selectedSavedView : "";
+}
+
+function saveCurrentRatebookView() {
+  const active = state.savedViews.find((view) => view.id === state.selectedSavedView);
+  const name = window.prompt("Name this Ratebook filter view", active?.name || "");
+  const normalizedName = text(name, "");
+  if (!normalizedName) return;
+  const id = active?.id || `view-${Date.now()}`;
+  const nextView = {
+    id,
+    name: normalizedName,
+    filters: currentRatebookFilters(),
+    updated_at: new Date().toISOString(),
+  };
+  state.savedViews = [nextView, ...state.savedViews.filter((view) => view.id !== id)].slice(0, 50);
+  state.selectedSavedView = id;
+  persistRatebookSavedViews();
+  renderSavedViews();
+  setStatus(elements.status, `Saved filter view "${normalizedName}".`, "success");
+}
+
+function deleteSelectedRatebookView() {
+  const active = state.savedViews.find((view) => view.id === state.selectedSavedView);
+  if (!active) {
+    setStatus(elements.status, "Choose a saved filter view to delete.", "error");
+    return;
+  }
+  if (!window.confirm(`Delete saved Ratebook view "${active.name}"?`)) return;
+  state.savedViews = state.savedViews.filter((view) => view.id !== active.id);
+  state.selectedSavedView = "";
+  persistRatebookSavedViews();
+  renderSavedViews();
+  setStatus(elements.status, "Saved filter view deleted.", "success");
+}
+
+function exportRowsForXlsx(rows) {
+  return rows.map((row) => Object.fromEntries(RATEBOOK_EXPORT_COLUMNS.map(([heading, key]) => [heading, row[key] ?? ""])));
+}
+
+async function loadRatebookXlsxModule() {
+  if (!ratebookXlsxModulePromise) ratebookXlsxModulePromise = import(RATEBOOK_XLSX_MODULE_URL);
+  return ratebookXlsxModulePromise;
+}
+
+async function exportFilteredRatebookRoutes() {
+  if (!elements.exportRoutes) return;
+  elements.exportRoutes.disabled = true;
+  setStatus(elements.status, "Preparing filtered Ratebook export...");
+  try {
+    const result = await exportRatebookRoutes(currentRatebookFilters());
+    const rows = exportRowsForXlsx(result.rows || []);
+    if (!rows.length) {
+      setStatus(elements.status, "No routes match the current Ratebook filters.", "error");
+      return;
+    }
+    const XLSX = await loadRatebookXlsxModule();
+    const workbook = XLSX.utils.book_new();
+    const worksheet = XLSX.utils.json_to_sheet(rows, { header: RATEBOOK_EXPORT_COLUMNS.map(([heading]) => heading) });
+    worksheet["!autofilter"] = { ref: `A1:${XLSX.utils.encode_col(RATEBOOK_EXPORT_COLUMNS.length - 1)}${Math.max(rows.length + 1, 1)}` };
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Ratebook Routes");
+    XLSX.writeFile(workbook, `rateware-ratebook-routes-${new Date().toISOString().slice(0, 10)}.xlsx`);
+    setStatus(elements.status, `${number(rows.length)} filtered route(s) exported to XLSX.`, "success");
+  } catch (error) {
+    setStatus(elements.status, humanizeError(error), "error");
+  } finally {
+    elements.exportRoutes.disabled = false;
+  }
+}
+
 function activeRatebookRow() {
   return state.rows.find((row) => String(row.id) === String(state.activeRatebookId)) || null;
 }
@@ -177,6 +350,7 @@ function renderBookFilters() {
   renderFilterOptions(elements.shipperFilter, state.facets.shippers, "All shippers", state.shipperId);
   renderFilterOptions(elements.sourceFilter, state.facets.sources, "All sources", state.sourceType);
   renderFilterOptions(elements.segmentFilter, state.facets.segments, "All segments", state.segmentKey);
+  renderSavedViews();
 }
 
 function renderRatebookOverview() {
@@ -234,7 +408,7 @@ function renderBookList() {
     elements.list.innerHTML = `
       <div class="ratebook-list-empty">
         <strong>No Ratebooks found</strong>
-        <span>Adjust the scope filters or create an RFx Process from Shipper CRM to materialize a route book here.</span>
+        <span>Adjust the scope filters or capture routes in Customer RFI, RFx Process, or Bid Room with the shipper selected.</span>
       </div>`;
     return;
   }
@@ -1008,32 +1182,51 @@ elements.quoteReviewContent.addEventListener("click", (event) => {
   if (button) saveRatebookQuoteReview(button);
 });
 elements.refresh.addEventListener("click", loadRatebooks);
+elements.saveView.addEventListener("click", saveCurrentRatebookView);
+elements.deleteView.addEventListener("click", deleteSelectedRatebookView);
+elements.exportRoutes.addEventListener("click", exportFilteredRatebookRoutes);
+
+elements.savedView.addEventListener("change", () => {
+  state.selectedSavedView = elements.savedView.value;
+  const view = state.savedViews.find((item) => item.id === state.selectedSavedView);
+  if (!view) {
+    setStatus(elements.status, "Using unsaved Ratebook filters.");
+    return;
+  }
+  applyRatebookFilters(view.filters || {});
+  loadRatebooks();
+});
 
 elements.search.addEventListener("input", () => {
   window.clearTimeout(searchTimer);
   searchTimer = window.setTimeout(() => {
     state.search = elements.search.value.trim();
+    state.selectedSavedView = "";
     loadRatebooks();
   }, 250);
 });
 
 elements.statusFilter.addEventListener("change", () => {
   state.status = elements.statusFilter.value;
+  state.selectedSavedView = "";
   loadRatebooks();
 });
 
 elements.shipperFilter.addEventListener("change", () => {
   state.shipperId = elements.shipperFilter.value;
+  state.selectedSavedView = "";
   loadRatebooks();
 });
 
 elements.sourceFilter.addEventListener("change", () => {
   state.sourceType = elements.sourceFilter.value;
+  state.selectedSavedView = "";
   loadRatebooks();
 });
 
 elements.segmentFilter.addEventListener("change", () => {
   state.segmentKey = elements.segmentFilter.value;
+  state.selectedSavedView = "";
   loadRatebooks();
 });
 

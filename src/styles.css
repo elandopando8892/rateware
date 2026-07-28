@@ -1566,7 +1566,7 @@ a {
 
 .ratebook-workspace .ratebook-toolbar {
   display: grid;
-  grid-template-columns: minmax(240px, 1.7fr) repeat(4, minmax(112px, .75fr)) minmax(170px, .9fr);
+  grid-template-columns: minmax(220px, 1.45fr) repeat(4, minmax(104px, .62fr)) minmax(360px, 1.4fr) minmax(145px, .58fr);
   align-items: end;
   gap: 6px;
   min-height: 0;
@@ -1596,6 +1596,20 @@ a {
   color: #5c6d7d;
   font-size: 10px;
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ratebook-filter-view-controls {
+  display: grid;
+  grid-template-columns: minmax(118px, 1fr) auto auto auto;
+  align-items: end;
+  gap: 5px;
+  min-width: 0;
+}
+
+.ratebook-filter-view-controls .button {
+  min-height: 27px;
+  padding: 3px 7px;
   white-space: nowrap;
 }
 
@@ -1827,6 +1841,10 @@ a {
     grid-column: 1 / -1;
   }
 
+  .ratebook-workspace .ratebook-filter-view-controls {
+    grid-column: 1 / -1;
+  }
+
   .ratebook-workspace .ratebook-layout {
     grid-template-columns: 1fr;
   }
@@ -1846,8 +1864,13 @@ a {
   }
 
   .ratebook-workspace .ratebook-search-field,
+  .ratebook-workspace .ratebook-filter-view-controls,
   .ratebook-workspace .ratebook-toolbar-status {
     grid-column: 1 / -1;
+  }
+
+  .ratebook-filter-view-controls {
+    grid-template-columns: 1fr 1fr;
   }
 
   .ratebook-workspace .ratebook-overview,

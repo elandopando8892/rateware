@@ -54,6 +54,7 @@ assert.match(distributionMigration, /last_quote_at/);
 
 for (const action of [
   "list_ratebooks",
+  "export_ratebook_routes",
   "get_ratebook",
   "get_ratebook_route_detail",
   "get_ratebook_route_quotes",
@@ -74,6 +75,10 @@ for (const action of [
 
 assert.match(api, /upsertRatebookForPackage/);
 assert.match(api, /materializeRatebooksForProjects/);
+assert.match(api, /ensureRatebookForBidRoomEvent/);
+assert.match(api, /ratebookSourceTypeForEvent/);
+assert.match(api, /source_rfx_lane_id/);
+assert.match(api, /ratebook_sync/);
 assert.match(api, /ratebookRouteSummary/);
 assert.match(api, /ratebookLifecycleStatus/);
 assert.match(api, /evaluateRatebookReadiness/);
@@ -82,6 +87,9 @@ assert.match(api, /ratebookSourceSnapshot/);
 assert.match(api, /ratebookSourceFreshness/);
 assert.match(api, /async function createRatebookRevision/);
 assert.match(api, /async function getRatebookHealth/);
+assert.match(api, /async function exportRatebookRoutes/);
+assert.match(api, /ratebook_count: ratebooks\.length/);
+assert.match(api, /rfx_package_lanes"\)\.select\("package_id,id,demand_lane_id,rfx_demand_lanes\(\*\)"\)/);
 assert.match(api, /routes_without_offers/);
 assert.match(api, /offers_to_review/);
 assert.match(api, /source_outdated/);
@@ -131,6 +139,10 @@ for (const id of [
   "ratebook-shipper-filter",
   "ratebook-source-filter",
   "ratebook-segment-filter",
+  "ratebook-saved-view",
+  "save-ratebook-view",
+  "delete-ratebook-view",
+  "export-ratebook-routes",
   "ratebook-overview-books",
   "ratebook-overview-shippers",
   "ratebook-overview-routes",
@@ -182,6 +194,13 @@ assert.match(client, /row\.project\?\.customer_name/);
 assert.match(client, /state\.selectedCarrierIds\.clear\(\)/);
 assert.match(client, /renderRatebookOverview/);
 assert.match(client, /renderBookFilters/);
+assert.match(service, /exportRatebookRoutes/);
+assert.match(client, /RATEBOOK_FILTER_VIEW_STORAGE_KEY/);
+assert.match(client, /RATEBOOK_XLSX_MODULE_URL/);
+assert.match(client, /saveCurrentRatebookView/);
+assert.match(client, /deleteSelectedRatebookView/);
+assert.match(client, /exportFilteredRatebookRoutes/);
+assert.match(client, /exportRatebookRoutes\(currentRatebookFilters\(\)\)/);
 assert.match(client, /renderRatebookRouteGrid/);
 assert.match(client, /data-ratebook-route-search/);
 assert.match(client, /data-ratebook-route-segment/);
@@ -201,6 +220,8 @@ assert.match(client, /loadVersion !== ratebookAuditLoadVersion \|\| state\.activ
 assert.match(api, /requestedShipperId/);
 assert.match(api, /requestedSourceType/);
 assert.match(api, /requestedSegmentKey/);
+assert.match(api, /laneSearchTextByPackage/);
+assert.match(api, /normalized\.origin_market/);
 assert.match(api, /facets: \{ shippers: \[\], sources: \[\], segments: \[\] \}/);
 assert.match(api, /segment_count/);
 assert.match(api, /total: allRows\.length/);

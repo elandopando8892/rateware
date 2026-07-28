@@ -11,13 +11,15 @@ function getClient() {
   return createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 }
 
+type CarrierProfileSupabaseClient = ReturnType<typeof getClient>;
+
 function cleanText(value: unknown, maxLength = 2000) {
   if (value === null || value === undefined) return null;
   const text = String(value).trim();
   return text ? text.slice(0, maxLength) : null;
 }
 
-function publicErrorMessage(value: unknown, fallback = "Carrier profile request failed.") {
+function publicErrorMessage(value: unknown, fallback = "Carrier profile request failed."): string {
   if (value === null || value === undefined) return fallback;
   if (value instanceof Error) return cleanText(value.message) || fallback;
   if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return cleanText(value) || fallback;
@@ -25,7 +27,7 @@ function publicErrorMessage(value: unknown, fallback = "Carrier profile request 
   const record = value as Record<string, unknown>;
   for (const key of ["error", "message", "reason", "description", "detail", "details", "hint", "cause"]) {
     if (record[key] && record[key] !== value) {
-      const message = publicErrorMessage(record[key], "");
+      const message: string = publicErrorMessage(record[key], "");
       if (message) return message;
     }
   }
@@ -129,7 +131,7 @@ function publicSupportTicket(row: Record<string, unknown>) {
   };
 }
 
-async function loadSupportTickets(supabase: ReturnType<typeof createClient>, request: Record<string, unknown>, vendor: Record<string, unknown>) {
+async function loadSupportTickets(supabase: CarrierProfileSupabaseClient, request: Record<string, unknown>, vendor: Record<string, unknown>) {
   const vendorId = cleanText(vendor.id);
   if (!vendorId) return [];
   const result = await supabase
@@ -144,7 +146,7 @@ async function loadSupportTickets(supabase: ReturnType<typeof createClient>, req
   return (result.data || []).map((row) => publicSupportTicket(row as Record<string, unknown>));
 }
 
-async function loadRequest(supabase: ReturnType<typeof createClient>, token: string) {
+async function loadRequest(supabase: CarrierProfileSupabaseClient, token: string) {
   const result = await supabase
     .from("vendor_profile_requests")
     .select("*, vendors(*)")

@@ -302,6 +302,12 @@ const CHILD_CONFIG = {
   }
 };
 
+const SHIPPER_DRAWER_TABS = new Set(["overview", "contacts", "ratebook", "opportunities", "actions", "activity"]);
+
+function normalizeShipperDrawerTab(tab) {
+  return SHIPPER_DRAWER_TABS.has(tab) ? tab : "overview";
+}
+
 function escapeHtml(value) {
   return String(value ?? "")
     .replace(/&/g, "&amp;")
@@ -1406,14 +1412,14 @@ function overviewField(name, label, value, options = {}) {
 
 function renderOverview() {
   const row = state.detail?.row || {};
-  const rfis = state.detail?.rfis || [];
+  const ratebooks = state.detail?.ratebooks || [];
   const opportunities = state.detail?.opportunities || [];
   const accountActions = state.detail?.actions || [];
   const openStages = new Set(["identified", "discovery", "rfi", "rfx", "proposal", "negotiation"]);
   const openDeals = opportunities.filter((item) => openStages.has(String(item.stage || "").toLowerCase()));
   const wonDeals = opportunities.filter((item) => String(item.stage || "").toLowerCase() === "won");
   const lostDeals = opportunities.filter((item) => String(item.stage || "").toLowerCase() === "lost");
-  const activeRfis = rfis.filter((item) => !["approved", "archived"].includes(String(item.status || "").toLowerCase()));
+  const routeCount = ratebooks.reduce((total, item) => total + Number(item.lane_count || 0), 0);
   const openActions = accountActions
     .filter((item) => ["open", "in_progress"].includes(String(item.status || "").toLowerCase()))
     .sort((left, right) => String(left.due_date || "9999-12-31").localeCompare(String(right.due_date || "9999-12-31")));
@@ -1421,8 +1427,8 @@ function renderOverview() {
   const nextActionDue = cadenceDueState(nextAction?.due_date);
   const readinessChecks = [
     Boolean(row.primary_contact_email || (state.detail?.contacts || []).some((item) => item.email)),
-    Boolean((state.detail?.lanes || []).length),
-    Boolean(activeRfis.length || openDeals.length)
+    Boolean(ratebooks.length || routeCount),
+    Boolean(openDeals.length || wonDeals.length)
   ];
   const readinessScore = Math.round((readinessChecks.filter(Boolean).length / readinessChecks.length) * 100);
   const readinessLabel = readinessScore === 100
@@ -1430,14 +1436,14 @@ function renderOverview() {
     : readinessScore >= 67
       ? "Partially prepared"
       : "Needs account setup";
-  const linkedProject = [...openDeals, ...wonDeals, ...lostDeals].find((item) => item.rfx_project_id);
-  const rfxAction = linkedProject
-    ? `<button class="secondary" type="button" data-open-shipper-rfx-project="${escapeHtml(linkedProject.rfx_project_id)}">Open linked RFx</button>`
-    : `<button class="secondary" type="button" data-open-shipper-tab="opportunities">Open commercial work</button>`;
+  const primaryRatebook = ratebooks[0];
+  const ratebookAction = primaryRatebook
+    ? `<button class="secondary" type="button" data-open-ratebook-id="${escapeHtml(primaryRatebook.id)}">Open shipper Ratebook</button>`
+    : `<button class="secondary" type="button" data-open-shipper-tab="ratebook">Open Ratebook tab</button>`;
   const profileRequest = (state.detail?.profile_requests || []).find((item) => ["active", "viewed", "submitted"].includes(String(item.status || "").toLowerCase()));
   const profileLink = profileRequest
     ? `<section class="shipper-profile-link-panel"><div><p class="eyebrow">Customer self-service</p><h3>Secure profile link</h3><p>Active until ${escapeHtml(String(profileRequest.expires_at || "").slice(0, 10))}. It updates this account, contacts and onboarding record without creating a duplicate profile.</p></div><div class="shipper-profile-link-actions"><button type="button" class="secondary" data-apply-shipper-playbook="profile_refresh">Plan profile follow-up</button><button type="button" class="secondary" data-create-shipper-profile-link>Renew and copy link</button><button type="button" class="danger" data-revoke-shipper-profile-link="${escapeHtml(profileRequest.id)}">Revoke</button></div></section>`
-    : `<section class="shipper-profile-link-panel"><div><p class="eyebrow">Customer self-service</p><h3>Invite the shipper to complete its profile</h3><p>Creates a 30-day magic link for legal identity, billing, contacts, service scope and TMS onboarding. RFIs, lanes and opportunities remain internal.</p></div><button type="button" data-create-shipper-profile-link>Create secure link</button></section>`;
+    : `<section class="shipper-profile-link-panel"><div><p class="eyebrow">Customer self-service</p><h3>Invite the shipper to complete its profile</h3><p>Creates a 30-day magic link for legal identity, billing, contacts, service scope and TMS onboarding. Ratebooks and opportunities remain internal.</p></div><button type="button" data-create-shipper-profile-link>Create secure link</button></section>`;
   const actionSummary = nextAction
     ? `<button type="button" class="shipper-account-next-action" data-open-shipper-tab="actions"><span>Next action</span><strong>${escapeHtml(nextAction.title || "Account follow-up")}</strong><small><span class="shipper-cadence-due" data-tone="${escapeHtml(nextActionDue.tone)}">${escapeHtml(nextActionDue.label)}</span>${nextAction.priority ? ` ${escapeHtml(humanLabel(nextAction.priority))}` : ""}</small></button>`
     : `<button type="button" class="shipper-account-next-action is-empty" data-open-shipper-tab="actions"><span>Next action</span><strong>Plan a follow-up</strong><small>No open account action</small></button>`;
@@ -1445,16 +1451,16 @@ function renderOverview() {
     <section class="shipper-account-command" aria-label="Commercial account summary">
       <div class="shipper-account-command-heading">
         <div><p class="eyebrow">Account 360</p><h3>Commercial readiness</h3></div>
-        ${rfxAction}
+        ${ratebookAction}
       </div>
       <div class="shipper-account-command-stats">
         <div><span>Readiness</span><strong>${readinessScore}%</strong><small>${readinessLabel}</small></div>
-        <div><span>Active RFIs</span><strong>${activeRfis.length}</strong></div>
+        <div><span>Ratebooks</span><strong>${ratebooks.length}</strong><small>${Number(routeCount) ? `${Number(routeCount).toLocaleString()} routes` : "No routes"}</small></div>
         <div><span>Open deals</span><strong>${openDeals.length}</strong></div>
         <div><span>Won / lost</span><strong>${wonDeals.length} / ${lostDeals.length}</strong></div>
       </div>
       ${actionSummary}
-      <p class="shipper-account-command-note">${linkedProject ? "A linked RFx workspace is available for this account." : "Create a deal from an RFI when this account is ready to enter procurement."}</p>
+      <p class="shipper-account-command-note">This profile summarizes business captured from Customer RFI, RFx Process, Bid Room, and Ratebook. Opportunities work as deal records, not source triggers.</p>
     </section>
     ${profileLink}
     <form id="shipper-overview-form" class="shipper-form-grid shipper-drawer-form">
@@ -1540,12 +1546,9 @@ function renderChildTab(entity) {
       }
     }
     if (entity === "opportunities") {
-      const closed = ["won", "lost", "archived"].includes(String(row.stage || "").toLowerCase());
       controls.push(row.rfx_project_id
         ? `<button class="secondary" type="button" data-open-shipper-ratebook="${escapeHtml(row.rfx_project_id)}">Open Ratebook</button>`
-        : closed
-          ? `<span class="shipper-table-muted">Closed outcome</span>`
-          : `<button class="secondary" type="button" data-start-shipper-ratebook="${escapeHtml(row.id)}">Create Ratebook</button>`);
+        : `<span class="shipper-table-muted">Captured from commercial source</span>`);
     }
     controls.push(`<button class="secondary" type="button" data-delete-shipper-record="${escapeHtml(row.id)}">Delete</button>`);
     return controls.join("");
@@ -1588,7 +1591,7 @@ function renderRatebookTab() {
         <div><p class="eyebrow">RFx route books</p><h3>Ratebooks</h3></div>
         <span>${rows.length} book(s)</span>
       </div>
-      <p class="shipper-ratebook-intro">Each book is derived from an RFx package. Open a route to review RFI requirements, then share the book through carrier-specific Bid Room invitations.</p>
+      <p class="shipper-ratebook-intro">Ratebooks are captured from Customer RFI, RFx Process, and direct Bid Room events for this shipper. Open a book to review route coverage, requirements, carrier offers, and distribution history.</p>
       <div class="shipper-ratebook-list">
         ${rows.length ? rows.map((row) => `
           <article class="shipper-ratebook-card">
@@ -1599,7 +1602,7 @@ function renderRatebookTab() {
             </div>
             <button type="button" data-open-ratebook-id="${escapeHtml(row.id)}">Open Ratebook</button>
           </article>`).join("") : `
-          <div class="shipper-empty-activity"><strong>No Ratebook yet</strong><span>Start an RFx from an open commercial opportunity to create the first route book for this shipper.</span></div>`}
+          <div class="shipper-empty-activity"><strong>No Ratebook yet</strong><span>Create or import routes in RFx Process or Bid Room with this customer selected from Shipper CRM.</span></div>`}
       </div>
     </section>`;
 }
@@ -1646,6 +1649,7 @@ async function loadAccountActivity() {
 function renderDrawer() {
   if (!state.detail) return;
   const row = state.detail.row;
+  state.activeTab = normalizeShipperDrawerTab(state.activeTab);
   elements.drawerTitle.textContent = row.shipper_name || "Shipper";
   elements.drawerSubtitle.textContent = [row.domain, humanLabel(row.relationship_stage)].filter(Boolean).join(" | ");
   elements.drawerTabs.querySelectorAll("[data-shipper-tab]").forEach((button) => {
@@ -1662,7 +1666,7 @@ function renderDrawer() {
 async function openDrawer(id, tab = "overview") {
   const loadVersion = ++drawerLoadVersion;
   state.activeShipperId = id;
-  state.activeTab = tab === "overview" || tab === "ratebook" || tab === "activity" || CHILD_CONFIG[tab] ? tab : "overview";
+  state.activeTab = normalizeShipperDrawerTab(tab);
   state.editingRecordId = null;
   state.accountActivity = [];
   state.accountActivityReady = false;
@@ -2078,7 +2082,7 @@ elements.intelligencePanel.addEventListener("click", (event) => {
 elements.drawerTabs.addEventListener("click", (event) => {
   const button = event.target.closest("[data-shipper-tab]");
   if (!button) return;
-  state.activeTab = button.dataset.shipperTab;
+  state.activeTab = normalizeShipperDrawerTab(button.dataset.shipperTab);
   state.editingRecordId = null;
   renderDrawer();
 });
@@ -2151,7 +2155,7 @@ elements.drawerContent.addEventListener("click", async (event) => {
   if (openRfx) return openRfxWorkspace(openRfx.dataset.openShipperRfxProject);
   const openTab = event.target.closest("[data-open-shipper-tab]");
   if (openTab) {
-    state.activeTab = openTab.dataset.openShipperTab;
+    state.activeTab = normalizeShipperDrawerTab(openTab.dataset.openShipperTab);
     state.editingRecordId = null;
     renderDrawer();
     return;

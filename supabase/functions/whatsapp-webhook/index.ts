@@ -14,6 +14,8 @@ function getClient() {
   return createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 }
 
+type WhatsappWebhookSupabaseClient = ReturnType<typeof getClient>;
+
 function cleanText(value: unknown) {
   if (value === null || value === undefined) return "";
   return String(value).trim();
@@ -87,7 +89,7 @@ async function decryptWhatsappSecret(value: unknown) {
 }
 
 async function verifyWebhookToken(
-  supabase: ReturnType<typeof createClient>,
+  supabase: WhatsappWebhookSupabaseClient,
   candidate: string
 ) {
   if (WHATSAPP_WEBHOOK_VERIFY_TOKEN && constantTimeEquals(candidate, WHATSAPP_WEBHOOK_VERIFY_TOKEN)) {
@@ -111,7 +113,7 @@ async function verifyWebhookToken(
 }
 
 async function findWebhookConnection(
-  supabase: ReturnType<typeof createClient>,
+  supabase: WhatsappWebhookSupabaseClient,
   entry: Record<string, unknown>,
   value: Record<string, unknown>
 ) {
@@ -189,7 +191,7 @@ async function signatureValid(request: Request, body: string, appSecret: string)
 }
 
 async function outreachMessageByProviderId(
-  supabase: ReturnType<typeof createClient>,
+  supabase: WhatsappWebhookSupabaseClient,
   providerMessageId: string,
   connection: Record<string, unknown>
 ) {
@@ -223,7 +225,7 @@ async function outreachMessageByProviderId(
 }
 
 async function latestOutboundForInbound(
-  supabase: ReturnType<typeof createClient>,
+  supabase: WhatsappWebhookSupabaseClient,
   fromPhone: string,
   connection: Record<string, unknown>
 ) {
@@ -294,7 +296,7 @@ function statusPatch(statusRow: Record<string, unknown>, now: string) {
 }
 
 async function recordStatusUpdate(
-  supabase: ReturnType<typeof createClient>,
+  supabase: WhatsappWebhookSupabaseClient,
   statusRow: Record<string, unknown>,
   connection: Record<string, unknown>,
   webhookIdentity: { phoneNumberId: string; wabaId: string }
@@ -372,7 +374,7 @@ function inboundText(message: Record<string, unknown>) {
 }
 
 async function recordInboundMessage(
-  supabase: ReturnType<typeof createClient>,
+  supabase: WhatsappWebhookSupabaseClient,
   inbound: Record<string, unknown>,
   connection: Record<string, unknown>,
   webhookIdentity: { phoneNumberId: string; wabaId: string }

@@ -106,6 +106,8 @@ function getClient() {
   return createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 }
 
+type RatewareSupabaseClient = ReturnType<typeof getClient>;
+
 const CARRIER_INTELLIGENCE_SCHEMA = {
   type: "object",
   additionalProperties: false,
@@ -248,13 +250,13 @@ function userContext(payload: Record<string, unknown>): RatewareUser {
   );
   if (!id && !email) throw new Error("Authenticated user is missing an id or email.");
   return {
-    owner_user_id: id || email,
-    owner_email: email || id,
+    owner_user_id: id || email || null,
+    owner_email: email || id || null,
     organization_id: organizationId || null
   };
 }
 
-function withOwner(row: Record<string, unknown>, user: { owner_user_id: string | null; owner_email: string | null }) {
+function withOwner(row: Record<string, unknown>, user: { owner_user_id?: string | null; owner_email: string | null }): Record<string, unknown> {
   return {
     ...row,
     owner_user_id: user.owner_user_id,
@@ -699,7 +701,7 @@ function safeShipperSearch(value: unknown) {
 }
 
 async function requireOwnedShipper(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: RatewareUser,
   shipperId: unknown
 ) {
@@ -710,7 +712,7 @@ async function requireOwnedShipper(
   return result.data as Record<string, unknown>;
 }
 
-async function resolveCanonicalUser(supabase: ReturnType<typeof createClient>, user: RatewareUser): Promise<RatewareUser> {
+async function resolveCanonicalUser(supabase: RatewareSupabaseClient, user: RatewareUser): Promise<RatewareUser> {
   let ownerEmail = user.owner_email;
   if (!ownerEmail?.includes("@") && user.owner_user_id) {
     const result = await supabase
@@ -731,8 +733,8 @@ async function resolveCanonicalUser(supabase: ReturnType<typeof createClient>, u
 }
 
 async function writeAuditLog(
-  supabase: ReturnType<typeof createClient>,
-  user: { owner_user_id: string | null; owner_email: string | null },
+  supabase: RatewareSupabaseClient,
+  user: { owner_user_id?: string | null; owner_email: string | null },
   action: string,
   entityType: string,
   entityId: unknown,
@@ -751,8 +753,8 @@ async function writeAuditLog(
 }
 
 async function tryWriteAuditLog(
-  supabase: ReturnType<typeof createClient>,
-  user: { owner_user_id: string | null; owner_email: string | null },
+  supabase: RatewareSupabaseClient,
+  user: { owner_user_id?: string | null; owner_email: string | null },
   action: string,
   entityType: string,
   entityId: unknown,
@@ -776,6 +778,10 @@ function cleanText(value: unknown) {
   if (value === null || value === undefined) return null;
   const text = String(value).trim();
   return text ? text : null;
+}
+
+function mapLookupKey(value: unknown) {
+  return cleanText(value) || "";
 }
 
 function errorMessage(value: unknown, fallback = "", depth = 0, seen = new Set<unknown>()): string {
@@ -1492,7 +1498,7 @@ function blockedEmailStatuses() {
 }
 
 async function suppressedEmailSet(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_email: string | null },
   emails: string[]
 ) {
@@ -1927,7 +1933,7 @@ function scoreVendorReference(vendor: Record<string, unknown>, reference: unknow
 const VENDOR_REFERENCE_SELECT = "id,vendor_name,legal_name,domain,primary_email,secondary_emails,profile_data,status,base_stage";
 
 async function fetchVendorReferenceRows(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_email: string | null },
   maxRows = 50000
 ) {
@@ -1948,7 +1954,7 @@ async function fetchVendorReferenceRows(
   return rows;
 }
 
-async function resolveVendorReference(supabase: ReturnType<typeof createClient>, user: { owner_email: string | null }, reference: unknown) {
+async function resolveVendorReference(supabase: RatewareSupabaseClient, user: { owner_email: string | null }, reference: unknown) {
   const domain = domainFromVendorReference(reference);
   const email = normalizeEmail(reference);
   if (!domain && !email && !businessNameKey(reference)) return null;
@@ -1979,7 +1985,7 @@ function resolveVendorReferencesFromRows(vendors: Record<string, unknown>[], ref
 }
 
 async function vendorLinkPatch(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_email: string | null },
   input: Record<string, unknown>,
   current: Record<string, unknown>,
@@ -2005,7 +2011,7 @@ async function vendorLinkPatch(
 
   return {
     vendor_id: match.vendor.id,
-    vendor_domain: normalizeDomain(match.vendor.domain) || match.domain || fallbackDomain || cleanText(reference)
+    vendor_domain: normalizeDomain(match.vendor.domain) || match.domain || fallbackDomain || cleanText(references[0])
   };
 }
 
@@ -2751,7 +2757,7 @@ function outreachMessageMatchesSearch(message: Record<string, unknown>, searchTe
 }
 
 function scopedOutreachMessagesQuery(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_email: string | null },
   body: Record<string, unknown>
 ) {
@@ -2776,7 +2782,7 @@ function scopedOutreachMessagesQuery(
 }
 
 async function allScopedOutreachMessages(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_email: string | null },
   body: Record<string, unknown>
 ) {
@@ -2804,7 +2810,7 @@ function outreachSuppressionContactValues(vendor: Record<string, unknown>, chann
 }
 
 async function outreachSuppressionsForVendors(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_email: string | null },
   vendorIds: string[]
 ) {
@@ -3161,7 +3167,7 @@ function applySqlRateFilters(query: any, filters: Record<string, unknown>) {
 }
 
 async function fetchSqlRateFilterValues(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   filters: Record<string, unknown>,
   field: string,
   valueSearch = "",
@@ -3193,7 +3199,7 @@ async function fetchSqlRateFilterValues(
     if (result.error) throw result.error;
     if (offset === 0) databaseCount = result.count || 0;
 
-    const page = (result.data || []) as Record<string, unknown>[];
+    const page = (result.data || []) as unknown as Record<string, unknown>[];
     for (const row of page) {
       let label = cleanText(row[column]) || "(blank)";
       if (column === "hazmat" || column === "temperature_controlled") label = row[column] ? "Yes" : "No";
@@ -3223,7 +3229,7 @@ function matchesBulkRateRow(row: Record<string, unknown>, filters: Record<string
   return matchesBulkReviewFilter(row, filters.review_filter);
 }
 
-async function fetchBulkRateRowsByFilter(supabase: ReturnType<typeof createClient>, filters: Record<string, unknown>, maxMatches = 50000) {
+async function fetchBulkRateRowsByFilter(supabase: RatewareSupabaseClient, filters: Record<string, unknown>, maxMatches = 50000) {
   const pageSize = 1000;
   const hardLimit = 50000;
   const rows: Record<string, unknown>[] = [];
@@ -3243,7 +3249,7 @@ async function fetchBulkRateRowsByFilter(supabase: ReturnType<typeof createClien
     if (result.error) throw result.error;
     if (offset === 0) databaseCount = result.count || 0;
 
-    const page = (result.data || []) as Record<string, unknown>[];
+    const page = (result.data || []) as unknown as Record<string, unknown>[];
     rows.push(...page);
     matches.push(...page.filter((row) => matchesBulkRateRow(row, filters)));
     if (page.length < pageSize) break;
@@ -3287,7 +3293,7 @@ function normalizedRpcRateFilters(filters: Record<string, unknown>) {
 }
 
 async function fetchRateRowIdsByFilter(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   filters: Record<string, unknown>,
   options: { limit?: number; offset?: number; ownerEmail?: string | null } = {}
 ) {
@@ -3348,7 +3354,7 @@ async function fetchRateRowIdsByFilter(
 }
 
 async function collectRateRowIdsByFilter(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   filters: Record<string, unknown>,
   options: { maxRows?: number; pageSize?: number; ownerEmail?: string | null } = {}
 ) {
@@ -3383,7 +3389,7 @@ async function collectRateRowIdsByFilter(
 }
 
 async function fetchRateRowsForIds(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   ids: string[],
   select = RATE_ROW_LIST_SELECT,
   ownerEmail: string | null = null
@@ -3398,14 +3404,14 @@ async function fetchRateRowsForIds(
       .eq("owner_email", scopedOwnerEmail)
       .in("id", chunk);
     if (result.error) throw result.error;
-    rows.push(...(result.data || []));
+    rows.push(...((result.data || []) as unknown as Record<string, unknown>[]));
   }
   const byId = new Map(rows.map((row) => [cleanText(row.id), row]));
   return ids.map((id) => byId.get(id)).filter(Boolean) as Record<string, unknown>[];
 }
 
 async function fetchRatewareRowsBySql(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   filterPayload: Record<string, unknown>,
   limit: number,
   offset: number,
@@ -3439,7 +3445,7 @@ async function fetchRatewareRowsBySql(
 }
 
 async function fetchRateFilterValuesByRpc(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   filters: Record<string, unknown>,
   field: string,
   valueSearch = "",
@@ -3624,7 +3630,7 @@ function normalizeVendorMetricRow(row: Record<string, unknown> | undefined) {
 }
 
 async function fetchVendorRateMetrics(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_email: string | null },
   options: { baseStage?: string | null } = {}
 ) {
@@ -3642,7 +3648,7 @@ async function fetchVendorRateMetrics(
 }
 
 async function fetchVendorRateMetricsSafe(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_email: string | null },
   options: { baseStage?: string | null } = {}
 ) {
@@ -3689,7 +3695,7 @@ function normalizeVendorBidMetrics(row: Record<string, unknown> | undefined) {
 }
 
 async function fetchVendorBidMetrics(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_email: string | null }
 ) {
   const result = await supabase
@@ -3723,7 +3729,7 @@ async function fetchVendorBidMetrics(
 }
 
 async function fetchVendorBidMetricsSafe(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_email: string | null }
 ) {
   try {
@@ -3739,7 +3745,7 @@ async function fetchVendorBidMetricsSafe(
 }
 
 async function fetchBiVendorMetrics(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_email: string | null },
   filters: Record<string, unknown> = {}
 ) {
@@ -3757,7 +3763,7 @@ async function fetchBiVendorMetrics(
 }
 
 async function fetchBiSummary(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_email: string | null },
   filters: Record<string, unknown> = {}
 ) {
@@ -3995,7 +4001,7 @@ function buildVendorIntelligenceRows(
 ) {
   const duplicates = vendorDuplicateMap(vendors);
   const metricsByVendor = metricsSource instanceof Map ? metricsSource : null;
-  const rateGroups = metricsByVendor ? null : buildVendorRateGroups(vendors, metricsSource);
+  const rateGroups = metricsByVendor ? null : buildVendorRateGroups(vendors, metricsSource as Record<string, unknown>[]);
   return vendors.map((vendor) => {
     const vendorId = cleanText(vendor.id) || "";
     const metrics = metricsByVendor
@@ -4078,7 +4084,7 @@ function buildVendorIntelligenceRows(
 }
 
 async function fetchVendorIntelligenceVendors(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_email: string | null },
   options: Record<string, unknown> = {}
 ) {
@@ -4114,7 +4120,7 @@ async function fetchVendorIntelligenceVendors(
 }
 
 async function buildVendorIntelligence(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_email: string | null },
   options: Record<string, unknown> = {}
 ) {
@@ -4162,7 +4168,7 @@ function daysSince(value: unknown) {
   return Math.max(0, Math.floor((Date.now() - date.getTime()) / 86400000));
 }
 
-async function buildVendorFunnel(supabase: ReturnType<typeof createClient>, user: { owner_email: string | null }) {
+async function buildVendorFunnel(supabase: RatewareSupabaseClient, user: { owner_email: string | null }) {
   const vendorsResult = await supabase
     .from("vendors")
     .select("*")
@@ -4171,11 +4177,11 @@ async function buildVendorFunnel(supabase: ReturnType<typeof createClient>, user
     .limit(5000);
   if (vendorsResult.error) throw vendorsResult.error;
 
-  const procurementVendors = vendorsResult.data || [];
+  const procurementVendors = (vendorsResult.data || []) as unknown as Record<string, unknown>[];
   const [metricsResult, bidMetricsResult] = procurementVendors.length
     ? await Promise.all([fetchVendorRateMetricsSafe(supabase, user, { baseStage: "procurement" }), fetchVendorBidMetricsSafe(supabase, user)])
     : [{ metrics: new Map<string, Record<string, unknown>>(), warnings: [] as string[] }, { metrics: new Map<string, Record<string, unknown>>(), warnings: [] as string[] }];
-  const procurementRows = buildVendorIntelligenceRows(procurementVendors, metricsResult.metrics, bidMetricsResult.metrics)
+  const procurementRows: Record<string, unknown>[] = buildVendorIntelligenceRows(procurementVendors, metricsResult.metrics, bidMetricsResult.metrics)
     .map((row: Record<string, unknown>) => {
       const stage = vendorEffectiveFunnelStage(row);
       return {
@@ -4185,7 +4191,7 @@ async function buildVendorFunnel(supabase: ReturnType<typeof createClient>, user
         funnel_stage_label: VENDOR_FUNNEL_STAGE_LABELS[stage],
         stage_days: daysSince(row.funnel_stage_updated_at || row.created_at)
       };
-    });
+    }) as Record<string, unknown>[];
   const counts = Object.fromEntries(VENDOR_FUNNEL_STAGES.map((stage) => [stage, procurementRows.filter((row) => row.effective_funnel_stage === stage).length]));
   const activated = Number(counts.activated || 0) + Number(counts.completed || 0);
   const targeted = procurementRows.length || 1;
@@ -4898,7 +4904,7 @@ async function requestCarrierIntelligence(prompt: string, fallback: Record<strin
   };
 }
 
-async function buildCarrierIntelligence(supabase: ReturnType<typeof createClient>, user: { owner_email: string | null }, prompt: string) {
+async function buildCarrierIntelligence(supabase: RatewareSupabaseClient, user: { owner_email: string | null }, prompt: string) {
   const instruction = cleanText(prompt) || "Recommend the best carriers to add to Procurement Base.";
   const [vendorsResult, metricsByVendor, summary] = await Promise.all([
     supabase
@@ -5015,7 +5021,7 @@ function recommendationSortValue(row: Record<string, unknown>, rankingMode: stri
   return -Number(row.fit_score || 0);
 }
 
-async function buildCarrierRecommendations(supabase: ReturnType<typeof createClient>, user: { owner_email: string | null }, config: Record<string, unknown>) {
+async function buildCarrierRecommendations(supabase: RatewareSupabaseClient, user: { owner_email: string | null }, config: Record<string, unknown>) {
   const filters = typeof config.filters === "object" && config.filters ? config.filters as Record<string, unknown> : {};
   const rankingMode = cleanText(config.ranking_mode) || "fit";
   const limit = Math.min(Math.max(Number(config.limit) || 30, 1), 100);
@@ -5401,7 +5407,7 @@ function buildBusinessIntelligencePivot(rows: Record<string, unknown>[], config:
   };
 }
 
-async function fetchBusinessIntelligenceRows(supabase: ReturnType<typeof createClient>, user: { owner_email: string | null }) {
+async function fetchBusinessIntelligenceRows(supabase: RatewareSupabaseClient, user: { owner_email: string | null }) {
   const result = await supabase
     .from("rate_staging")
     .select(RATE_SIGNAL_SELECT)
@@ -5410,13 +5416,13 @@ async function fetchBusinessIntelligenceRows(supabase: ReturnType<typeof createC
     .order("created_at", { ascending: false })
     .limit(12000);
   if (result.error) throw result.error;
-  return (result.data || []).filter((row) => {
+  return ((result.data || []) as unknown as Record<string, unknown>[]).filter((row) => {
     const vendor = typeof row.vendors === "object" && row.vendors ? row.vendors as Record<string, unknown> : null;
     return !row.vendor_id || !vendor?.owner_email || vendor.owner_email === user.owner_email;
   });
 }
 
-async function buildBusinessIntelligencePivotFromDb(supabase: ReturnType<typeof createClient>, user: { owner_email: string | null }, config: Record<string, unknown>) {
+async function buildBusinessIntelligencePivotFromDb(supabase: RatewareSupabaseClient, user: { owner_email: string | null }, config: Record<string, unknown>) {
   const rowDimensions = sanitizeBiDimensions(config.rows, ["vendor"], 3);
   const columnDimensions = sanitizeBiDimensions(config.columns, ["operation"], 2);
   const metric = sanitizeBiMetric(config.metric);
@@ -5469,7 +5475,7 @@ function drilldownRow(row: Record<string, unknown>) {
   };
 }
 
-async function buildBusinessIntelligenceDrilldown(supabase: ReturnType<typeof createClient>, user: { owner_email: string | null }, config: Record<string, unknown>, cell: Record<string, unknown>) {
+async function buildBusinessIntelligenceDrilldown(supabase: RatewareSupabaseClient, user: { owner_email: string | null }, config: Record<string, unknown>, cell: Record<string, unknown>) {
   const rowDimensions = sanitizeBiDimensions(config.rows, ["vendor"], 3);
   const columnDimensions = sanitizeBiDimensions(config.columns, [], 2);
   const filters = objectRecord(config.filters);
@@ -5753,7 +5759,8 @@ function buildBusinessIntelligenceGeoDensity(rows: Record<string, unknown>[], co
   const metric = cleanText(config.metric) || "transactions";
   const limit = Math.min(Math.max(Number(config.limit) || 80, 10), 250);
   const sides: Array<"origin" | "destination"> = scope === "origin" ? ["origin"] : scope === "destination" ? ["destination"] : ["origin", "destination"];
-  const groups = new Map<string, { point: Record<string, unknown>; rows: Record<string, unknown>[]; carriers: Set<string>; rates: number[]; cpm: number[]; cpk: number[] }>();
+  type GeoDensityGroup = { point: Record<string, unknown>; rows: Record<string, unknown>[]; carriers: Set<string>; rates: number[]; cpm: number[]; cpk: number[] };
+  const groups = new Map<string, GeoDensityGroup>();
   let missingGeo = 0;
 
   for (const row of filteredRows) {
@@ -5764,7 +5771,7 @@ function buildBusinessIntelligenceGeoDensity(rows: Record<string, unknown>[], co
         missingGeo += 1;
         continue;
       }
-      const group = groups.get(point.key) || { point, rows: [], carriers: new Set<string>(), rates: [], cpm: [], cpk: [] };
+      const group = groups.get(point.key) || { point, rows: [] as Record<string, unknown>[], carriers: new Set<string>(), rates: [] as number[], cpm: [] as number[], cpk: [] as number[] };
       group.rows.push(row);
       group.carriers.add(biDimensionValue(row, "vendor"));
       const allIn = numericAmount(row.all_in_rate);
@@ -5819,7 +5826,7 @@ function buildBusinessIntelligenceGeoDensity(rows: Record<string, unknown>[], co
   };
 }
 
-async function buildBusinessIntelligenceGeoDensityFromDb(supabase: ReturnType<typeof createClient>, user: { owner_email: string | null }, config: Record<string, unknown>) {
+async function buildBusinessIntelligenceGeoDensityFromDb(supabase: RatewareSupabaseClient, user: { owner_email: string | null }, config: Record<string, unknown>) {
   const filters = objectRecord(config.filters);
   const scope = ["origin", "destination", "both"].includes(cleanText(config.scope) || "") ? cleanText(config.scope)! : "both";
   const level = ["region", "state", "market", "location"].includes(cleanText(config.level) || "") ? cleanText(config.level)! : "market";
@@ -5838,7 +5845,7 @@ async function buildBusinessIntelligenceGeoDensityFromDb(supabase: ReturnType<ty
   const payload = objectRecord(result.data);
   const rawPoints = Array.isArray(payload.points) ? payload.points as Record<string, unknown>[] : [];
   let missingGeo = 0;
-  const points = rawPoints
+  const points = (rawPoints
     .map((point) => {
       const state = geoStateCode(point.state);
       const rawCountry = cleanText(point.country)?.toUpperCase() || "";
@@ -5875,7 +5882,7 @@ async function buildBusinessIntelligenceGeoDensityFromDb(supabase: ReturnType<ty
         metric_value: geoMetricSortValue(enriched, metric)
       };
     })
-    .filter((point): point is Record<string, unknown> => Boolean(point))
+    .filter(Boolean) as Record<string, unknown>[])
     .sort((a, b) => geoMetricSortValue(b, metric) - geoMetricSortValue(a, metric) || Number(b.transactions || 0) - Number(a.transactions || 0))
     .slice(0, limit);
 
@@ -6199,7 +6206,7 @@ function vendorOnboardingGapReport(row: Record<string, unknown>) {
   };
 }
 
-async function buildVendorOnboardingGaps(supabase: ReturnType<typeof createClient>, user: { owner_email: string | null }) {
+async function buildVendorOnboardingGaps(supabase: RatewareSupabaseClient, user: { owner_email: string | null }) {
   const pageSize = 1000;
   const maxRows = 10000;
   const vendors: Record<string, unknown>[] = [];
@@ -6332,7 +6339,7 @@ function compactVendorCorrectionInput(input: Record<string, unknown>, current: R
 }
 
 async function uniqueVendorMatch(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_email: string | null },
   column: string,
   value: string,
@@ -6352,7 +6359,7 @@ async function uniqueVendorMatch(
 }
 
 async function findVendorForOnboardingCorrection(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_email: string | null },
   input: Record<string, unknown>,
   vendorReferences?: Record<string, unknown>[],
@@ -6395,7 +6402,7 @@ async function findVendorForOnboardingCorrection(
 }
 
 async function importVendorOnboardingCorrections(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_user_id: string | null; owner_email: string | null },
   vendors: unknown[]
 ) {
@@ -6730,7 +6737,7 @@ function normalizeUuidList(value: unknown) {
     : String(value || "").split(/[,\s;|]+/);
   return Array.from(new Set(rawValues
     .map((item) => cleanText(item))
-    .filter((item) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(item))));
+    .filter((item): item is string => typeof item === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(item))));
 }
 
 function normalizeSegment(input: Record<string, unknown>, user?: { owner_user_id: string | null; owner_email: string | null }) {
@@ -6774,7 +6781,7 @@ function participantTemplateNameKey(value: unknown) {
 }
 
 async function findParticipantTemplateNameConflict(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_email: string | null },
   segmentName: string,
   excludeId = ""
@@ -7272,7 +7279,7 @@ function templateLocationScope(templateRows: Record<string, unknown>[]) {
 }
 
 async function fetchScopedTemplateLocations(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   templateRows: Record<string, unknown>[]
 ) {
   const selectColumns = "source,location_key,raw_value,zip_prefix,metro_city,city,state_code,state_name,country,market,region";
@@ -7351,7 +7358,7 @@ function templateMileageKeys(templateRows: Record<string, unknown>[]) {
 }
 
 async function fetchScopedTemplateMileage(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   templateRows: Record<string, unknown>[]
 ) {
   const keys = templateMileageKeys(templateRows);
@@ -7381,7 +7388,7 @@ function rowHasRateSignal(row: Record<string, unknown>) {
 }
 
 async function bulkImportStructuredUpload(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_user_id: string | null; owner_email: string | null },
   rawUploadId: string,
   templateRows: unknown[] = [],
@@ -7999,7 +8006,7 @@ function scoreVendorForLane(vendor: Record<string, unknown>, lane: Record<string
   };
 }
 
-async function fetchApprovedRateRows(supabase: ReturnType<typeof createClient>) {
+async function fetchApprovedRateRows(supabase: RatewareSupabaseClient) {
   const result = await supabase
     .from("rate_staging")
     .select("*, vendors(vendor_name,domain,primary_email,base_stage,status)")
@@ -8009,7 +8016,7 @@ async function fetchApprovedRateRows(supabase: ReturnType<typeof createClient>) 
   return result.data || [];
 }
 
-async function requireOwnedRfxEvent(supabase: ReturnType<typeof createClient>, user: { owner_email: string | null }, eventId: unknown) {
+async function requireOwnedRfxEvent(supabase: RatewareSupabaseClient, user: { owner_email: string | null }, eventId: unknown) {
   const id = cleanText(eventId);
   if (!id) throw new Error("RFx event id is required.");
   const result = await supabase
@@ -8022,7 +8029,7 @@ async function requireOwnedRfxEvent(supabase: ReturnType<typeof createClient>, u
   return result.data;
 }
 
-async function requireOwnedRfxLane(supabase: ReturnType<typeof createClient>, user: { owner_email: string | null }, laneId: unknown) {
+async function requireOwnedRfxLane(supabase: RatewareSupabaseClient, user: { owner_email: string | null }, laneId: unknown) {
   const id = cleanText(laneId);
   if (!id) throw new Error("RFx lane id is required.");
   const laneResult = await supabase
@@ -8035,7 +8042,7 @@ async function requireOwnedRfxLane(supabase: ReturnType<typeof createClient>, us
   return laneResult.data;
 }
 
-async function requireOwnedRfxLaneVendor(supabase: ReturnType<typeof createClient>, user: { owner_email: string | null }, invitationId: unknown) {
+async function requireOwnedRfxLaneVendor(supabase: RatewareSupabaseClient, user: { owner_email: string | null }, invitationId: unknown) {
   const id = cleanText(invitationId);
   if (!id) throw new Error("RFx invitation id is required.");
   const result = await supabase
@@ -8054,7 +8061,7 @@ function normalizeAwardRole(value: unknown) {
 }
 
 async function setRfxBidRateHistoryOutcome(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   invitation: Record<string, unknown>,
   outcome: "submitted" | "awarded" | "backup" | "not_awarded",
   now: string
@@ -8073,7 +8080,7 @@ async function setRfxBidRateHistoryOutcome(
 }
 
 async function awardRfxLaneVendor(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_user_id: string | null; owner_email: string | null },
   input: Record<string, unknown>
 ) {
@@ -8145,7 +8152,7 @@ async function awardRfxLaneVendor(
 }
 
 async function clearRfxAward(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_user_id: string | null; owner_email: string | null },
   input: Record<string, unknown>
 ) {
@@ -8259,7 +8266,7 @@ function rfxAwardRateInput(invitation: Record<string, unknown>, event: Record<st
 }
 
 async function closeoutAwardedRfxToRateware(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_user_id: string | null; owner_email: string | null },
   input: Record<string, unknown>
 ) {
@@ -8508,7 +8515,7 @@ function awardNoticeRowsText(rows: Record<string, unknown>[]) {
 function awardNoticeHtml(event: Record<string, unknown>, vendor: Record<string, unknown>, rows: Record<string, unknown>[], portalLink: string | null) {
   const counts = rows.reduce((acc, row) => {
     const key = cleanText(objectRecord(row.outcome).key) || "not_awarded";
-    acc[key] = (acc[key] || 0) + 1;
+    acc[key] = Number(acc[key] || 0) + 1;
     return acc;
   }, {} as Record<string, number>);
   const headline = counts.awarded
@@ -8530,7 +8537,7 @@ function awardNoticeHtml(event: Record<string, unknown>, vendor: Record<string, 
 }
 
 async function ensureAwardNoticeCampaign(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_user_id: string | null; owner_email: string | null },
   event: Record<string, unknown>,
   senderEmail: string,
@@ -8568,7 +8575,7 @@ async function ensureAwardNoticeCampaign(
 }
 
 async function generateRfxAwardNotices(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_user_id: string | null; owner_email: string | null },
   input: Record<string, unknown>
 ) {
@@ -8748,7 +8755,7 @@ function googleChatThreadTarget(thread: Record<string, unknown>, threadKey: stri
 }
 
 async function syncBidRoomMessageToGoogleChatApi(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   thread: Record<string, unknown>,
   message: Record<string, unknown>,
   event: Record<string, unknown>
@@ -8809,12 +8816,13 @@ async function syncBidRoomMessageToGoogleChatApi(
   } catch (error) {
     await supabase.from("bid_room_chat_messages").update({ google_chat_sync_status: "error" }).eq("id", message.id);
     await supabase.from("bid_room_chat_threads").update({ google_chat_sync_status: "error" }).eq("id", thread.id);
-    return { status: "error", name: null, error: String(error?.message || error) };
+    const errorMessage = safeOperationalError(error);
+    return { status: "error", name: null, error: errorMessage };
   }
 }
 
 async function syncBidRoomMessageToGoogleChat(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   thread: Record<string, unknown>,
   message: Record<string, unknown>,
   event: Record<string, unknown>
@@ -8851,7 +8859,8 @@ async function syncBidRoomMessageToGoogleChat(
   } catch (error) {
     await supabase.from("bid_room_chat_messages").update({ google_chat_sync_status: "error" }).eq("id", message.id);
     await supabase.from("bid_room_chat_threads").update({ google_chat_sync_status: "error" }).eq("id", thread.id);
-    return { status: "error", name: null, error: String(error?.message || error) };
+    const errorMessage = safeOperationalError(error);
+    return { status: "error", name: null, error: errorMessage };
   }
 }
 
@@ -8870,7 +8879,7 @@ function googleChatMessageBody(message: Record<string, unknown>) {
 }
 
 async function syncGoogleChatInboundMessagesForThreads(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   ownerEmail: string | null,
   threads: Record<string, unknown>[],
   input: Record<string, unknown> = {}
@@ -9034,7 +9043,7 @@ async function syncGoogleChatInboundMessagesForThreads(
 }
 
 async function retryGoogleChatSync(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_email: string | null },
   input: Record<string, unknown> = {}
 ) {
@@ -9080,14 +9089,14 @@ async function retryGoogleChatSync(
     if (result.status === "synced") synced += 1;
     else if (result.status === "not_configured") skipped += 1;
     else failed += 1;
-    rows.push({ id: message.id, status: result.status, error: result.error || null });
+    rows.push({ id: message.id, status: result.status, error: cleanText((result as Record<string, unknown>).error) });
   }
 
   return { attempted: messages.length, synced, failed, skipped, rows };
 }
 
 async function findOrCreateBidRoomChatThread(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_user_id: string | null; owner_email: string | null },
   event: Record<string, unknown>,
   input: Record<string, unknown>
@@ -9155,7 +9164,7 @@ async function findOrCreateBidRoomChatThread(
   return created.data;
 }
 
-async function listBidRoomChat(supabase: ReturnType<typeof createClient>, user: { owner_email: string | null }, input: Record<string, unknown>) {
+async function listBidRoomChat(supabase: RatewareSupabaseClient, user: { owner_email: string | null }, input: Record<string, unknown>) {
   const event = await requireOwnedRfxEvent(supabase, user, input.rfx_event_id || input.event_id);
   let query = supabase
     .from("bid_room_chat_threads")
@@ -9211,7 +9220,7 @@ async function listBidRoomChat(supabase: ReturnType<typeof createClient>, user: 
 }
 
 async function updateBidRoomChatThreadAction(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_email: string | null },
   input: Record<string, unknown>
 ) {
@@ -9276,7 +9285,7 @@ async function updateBidRoomChatThreadAction(
 }
 
 async function applyBidUpdateFromChat(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_user_id: string | null; owner_email: string | null },
   input: Record<string, unknown>
 ) {
@@ -9425,7 +9434,7 @@ async function applyBidUpdateFromChat(
 }
 
 async function postBidRoomChatMessage(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_user_id: string | null; owner_email: string | null },
   input: Record<string, unknown>
 ) {
@@ -9463,7 +9472,7 @@ async function postBidRoomChatMessage(
 }
 
 async function syncBidRoomEventThread(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_user_id: string | null; owner_email: string | null },
   input: Record<string, unknown>
 ) {
@@ -9855,12 +9864,12 @@ function sortRfxInvitationGroup(invitations: Record<string, unknown>[]) {
     const leftLane = laneRecordFromInvitation(left);
     const rightLane = laneRecordFromInvitation(right);
     const leftKey = [
-      cleanText(leftLane.lane_number).padStart(8, "0"),
+      (cleanText(leftLane.lane_number) || "").padStart(8, "0"),
       cleanText(leftLane.lane_id || leftLane.id || left.rfx_lane_id),
       cleanText(left.id)
     ].join(":");
     const rightKey = [
-      cleanText(rightLane.lane_number).padStart(8, "0"),
+      (cleanText(rightLane.lane_number) || "").padStart(8, "0"),
       cleanText(rightLane.lane_id || rightLane.id || right.rfx_lane_id),
       cleanText(right.id)
     ].join(":");
@@ -9977,7 +9986,7 @@ function serializeSupportTicket(row: Record<string, unknown>) {
 }
 
 async function listVendorSupportTickets(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_email: string | null },
   input: Record<string, unknown>
 ) {
@@ -9997,15 +10006,16 @@ async function listVendorSupportTickets(
   const statusFilter = cleanText(input.status)?.toLowerCase();
   const priorityFilter = cleanText(input.priority)?.toLowerCase();
   const search = cleanText(input.search)?.toLowerCase() || "";
-  const rows = (result.data || [])
+  const rows: Record<string, unknown>[] = ((result.data || []) as unknown as Record<string, unknown>[])
     .map(serializeSupportTicket)
     .filter((row) => !statusFilter || statusFilter === "all" || row.support_status === statusFilter)
     .filter((row) => !priorityFilter || priorityFilter === "all" || row.priority === priorityFilter)
     .filter((row) => supportTicketMatchesSearch(row, search));
 
-  const summary = rows.reduce((acc, row) => {
+  const summary = rows.reduce((acc: Record<string, number>, row) => {
+    const supportStatus = cleanText(row.support_status) || "open";
     acc.total += 1;
-    acc[row.support_status] = (acc[row.support_status] || 0) + 1;
+    acc[supportStatus] = Number(acc[supportStatus] || 0) + 1;
     if (row.google_chat_sync_status === "synced") acc.google_chat_synced += 1;
     if (row.priority === "urgent" || row.priority === "high") acc.high_priority += 1;
     return acc;
@@ -10015,7 +10025,7 @@ async function listVendorSupportTickets(
 }
 
 async function getVendorRelationshipActivity(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_email: string | null },
   input: Record<string, unknown>
 ) {
@@ -10077,11 +10087,11 @@ async function getVendorRelationshipActivity(
     ...(support.rows || []).map((row) => ({
       type: "support",
       id: row.id,
-      title: row.question || row.subject || "Support ticket",
+      title: cleanText(row.question || row.subject) || "Support ticket",
       detail: [row.rfx_id, row.route].filter(Boolean).join(" | "),
       status: row.support_status,
       severity: row.priority,
-      activity_at: row.occurred_at
+      activity_at: row.occurred_at || row.updated_at || row.created_at
     })),
     ...improvementCases.map((row) => ({
       type: "improvement",
@@ -10108,7 +10118,7 @@ async function getVendorRelationshipActivity(
   return {
     vendor: { id: vendorId, vendor_name: cleanText(vendor.vendor_name || vendor.name || vendor.domain) },
     summary: {
-      open_support_tickets: (support.rows || []).filter((row) => !["resolved", "archived"].includes(row.support_status)).length,
+      open_support_tickets: (support.rows || []).filter((row) => !["resolved", "archived"].includes(cleanText(row.support_status) || "open")).length,
       active_improvement_cases: improvementCases.filter((row) => !["resolved", "archived"].includes(row.status)).length,
       bid_room_threads: chatThreads.length,
       synced_chat_threads: chatThreads.filter((row) => row.google_chat_sync_status === "synced").length
@@ -10121,7 +10131,7 @@ async function getVendorRelationshipActivity(
 }
 
 async function updateVendorSupportTicket(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_user_id: string | null; owner_email: string | null },
   input: Record<string, unknown>
 ) {
@@ -10375,7 +10385,7 @@ function vendorCiPlaybooks() {
 }
 
 async function requireOwnedVendorForCi(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_email: string | null },
   vendorId: unknown
 ) {
@@ -10392,7 +10402,7 @@ async function requireOwnedVendorForCi(
 }
 
 async function ensureVendorValueScorecard(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_user_id: string | null; owner_email: string | null },
   vendor: Record<string, unknown>
 ) {
@@ -10469,7 +10479,7 @@ function vendorCiStatsFor(map: Map<string, ReturnType<typeof vendorCiSignalStats
 }
 
 async function fetchVendorCiVendors(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_email: string | null },
   limit = VENDOR_CI_VALUE_CURVE_LIMIT
 ) {
@@ -10490,7 +10500,7 @@ async function fetchVendorCiVendors(
 }
 
 async function fetchVendorCiManualScorecards(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_email: string | null },
   limit = VENDOR_CI_VALUE_CURVE_LIMIT
 ) {
@@ -10619,7 +10629,7 @@ function vendorCiScoreFromSignals(
 }
 
 async function buildVendorValueCurve(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_email: string | null },
   input: Record<string, unknown> = {}
 ) {
@@ -10786,13 +10796,13 @@ async function buildVendorValueCurve(
 }
 
 async function refreshVendorValueCurve(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_user_id: string | null; owner_email: string | null },
   input: Record<string, unknown>
 ) {
   const curve = await buildVendorValueCurve(supabase, user, input);
   const refreshedAt = new Date().toISOString();
-  const rows = curve.scorecards
+  const rows = (curve.scorecards as Record<string, unknown>[])
     .filter((scorecard) => cleanText(scorecard.vendor_id))
     .map((scorecard) => withOwner({
       vendor_id: cleanText(scorecard.vendor_id),
@@ -10960,7 +10970,7 @@ function summarizeVendorCi(rows: Record<string, unknown>[], scorecards: Record<s
 }
 
 async function listVendorImprovementCases(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_email: string | null },
   input: Record<string, unknown>
 ) {
@@ -11010,7 +11020,7 @@ async function listVendorImprovementCases(
 }
 
 async function createVendorImprovementCase(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_user_id: string | null; owner_email: string | null },
   input: Record<string, unknown>
 ) {
@@ -11041,7 +11051,7 @@ async function createVendorImprovementCase(
     source: cleanText(source.source) || "manual",
     source_ref: cleanText(source.source_ref),
     metadata: objectRecord(source.metadata)
-  }, user);
+  }, user) as Record<string, unknown>;
 
   const result = await supabase
     .from("vendor_improvement_cases")
@@ -11064,7 +11074,7 @@ async function createVendorImprovementCase(
 }
 
 async function updateVendorImprovementCase(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_user_id: string | null; owner_email: string | null },
   input: Record<string, unknown>
 ) {
@@ -11155,7 +11165,7 @@ async function updateVendorImprovementCase(
 }
 
 async function recordVendorImprovementResponse(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_user_id: string | null; owner_email: string | null },
   input: Record<string, unknown>
 ) {
@@ -11173,13 +11183,14 @@ async function recordVendorImprovementResponse(
   if (current.error) throw current.error;
 
   const caseRow = current.data as Record<string, unknown>;
-  if (["resolved", "archived"].includes(cleanText(caseRow.status))) {
+  const currentStatus = cleanText(caseRow.status) || "open";
+  if (["resolved", "archived"].includes(currentStatus)) {
     throw new Error("Archived or resolved Vendor CI cases cannot receive a new response.");
   }
   const nowIso = new Date().toISOString();
   const responseChannel = cleanText(input.response_channel || input.channel)?.toLowerCase() || "email";
   const metadata = objectRecord(caseRow.metadata);
-  const nextStatus = ["open", "define"].includes(cleanText(caseRow.status)) ? "measure" : caseRow.status;
+  const nextStatus = ["open", "define"].includes(currentStatus) ? "measure" : currentStatus;
   const update = await supabase
     .from("vendor_improvement_cases")
     .update({
@@ -11245,7 +11256,7 @@ async function recordVendorImprovementResponse(
 }
 
 async function resolveVendorImprovementCase(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_user_id: string | null; owner_email: string | null },
   input: Record<string, unknown>
 ) {
@@ -11423,7 +11434,7 @@ function vendorCiReminderEmailHtml(row: Record<string, unknown>, vendor: Record<
 }
 
 async function sendVendorCiGmail(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_email: string | null },
   message: Record<string, unknown>
 ) {
@@ -11445,7 +11456,7 @@ async function sendVendorCiGmail(
 }
 
 async function submitVendorImprovementCase(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_user_id: string | null; owner_email: string | null },
   input: Record<string, unknown>
 ) {
@@ -11586,7 +11597,7 @@ async function submitVendorImprovementCase(
 
   return { row: serializeVendorImprovementCase(update.data), sent: true, next_reminder_at: nextReminderAt };}
 async function processVendorImprovementReminders(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_user_id: string | null; owner_email: string | null },
   input: Record<string, unknown>
 ) {
@@ -11702,7 +11713,7 @@ async function processVendorImprovementReminders(
 }
 
 async function upsertVendorValueScorecard(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_user_id: string | null; owner_email: string | null },
   input: Record<string, unknown>
 ) {
@@ -11751,7 +11762,7 @@ function carrierProfileUrl(appOrigin: unknown, token: unknown) {
 }
 
 async function vendorProfileLinksForInvitations(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_user_id: string | null; owner_email: string | null },
   invitations: Record<string, unknown>[],
   appOrigin: string,
@@ -11864,7 +11875,7 @@ function messageChannels(channel: unknown) {
   return ["email"];
 }
 
-async function fetchOutreachTemplate(supabase: ReturnType<typeof createClient>, user: { owner_email: string | null }, id: unknown) {
+async function fetchOutreachTemplate(supabase: RatewareSupabaseClient, user: { owner_email: string | null }, id: unknown) {
   const templateId = cleanText(id);
   if (!templateId) throw new Error("Outreach template id is required.");
   const result = await supabase
@@ -11877,7 +11888,7 @@ async function fetchOutreachTemplate(supabase: ReturnType<typeof createClient>, 
   return result.data;
 }
 
-async function requireOwnedOutreachCampaign(supabase: ReturnType<typeof createClient>, user: { owner_email: string | null }, id: unknown) {
+async function requireOwnedOutreachCampaign(supabase: RatewareSupabaseClient, user: { owner_email: string | null }, id: unknown) {
   const campaignId = cleanText(id);
   if (!campaignId) throw new Error("Outreach campaign id is required.");
   const result = await supabase
@@ -11917,7 +11928,7 @@ function normalizeOrganization(input: Record<string, unknown>) {
   };
 }
 
-async function ensureSaasProfile(supabase: ReturnType<typeof createClient>, user: { owner_user_id: string | null; owner_email: string | null }) {
+async function ensureSaasProfile(supabase: RatewareSupabaseClient, user: { owner_user_id: string | null; owner_email: string | null }) {
   const existing = await supabase
     .from("user_profiles")
     .select("*")
@@ -11939,7 +11950,7 @@ async function ensureSaasProfile(supabase: ReturnType<typeof createClient>, user
   return result.data;
 }
 
-async function ensureOrganization(supabase: ReturnType<typeof createClient>, user: { owner_user_id: string | null; owner_email: string | null }) {
+async function ensureOrganization(supabase: RatewareSupabaseClient, user: { owner_user_id: string | null; owner_email: string | null }) {
   const existing = await supabase
     .from("organizations")
     .select("*")
@@ -11988,7 +11999,7 @@ function publicGmailConnection(row: Record<string, unknown> | null | undefined) 
   };
 }
 
-async function listGmailConnections(supabase: ReturnType<typeof createClient>, user: { owner_email: string | null }) {
+async function listGmailConnections(supabase: RatewareSupabaseClient, user: { owner_email: string | null }) {
   const result = await supabase
     .from("gmail_mailbox_connections")
     .select("mailbox_email,provider,status,scopes,token_expires_at,updated_at,last_error")
@@ -12021,7 +12032,7 @@ function publicGoogleChatConnection(row: Record<string, unknown> | null | undefi
   };
 }
 
-async function listGoogleChatConnections(supabase: ReturnType<typeof createClient>, user: { owner_email: string | null }) {
+async function listGoogleChatConnections(supabase: RatewareSupabaseClient, user: { owner_email: string | null }) {
   const result = await supabase
     .from("google_chat_connections")
     .select("account_email,provider,status,scopes,token_expires_at,updated_at,last_error,default_space_name,default_space_display_name")
@@ -12058,7 +12069,7 @@ function whatsappInternalEnvConfigured() {
 
 function isInternalWhatsappWorkspaceIdentity(user: Pick<RatewareUser, "owner_user_id" | "owner_email" | "organization_id">) {
   const ownerUserId = cleanText(user.owner_user_id);
-  const email = cleanText(user.owner_email).toLowerCase();
+  const email = cleanText(user.owner_email)?.toLowerCase() || "";
   const organizationId = cleanText(user.organization_id);
   return Boolean(
     (ownerUserId && WHATSAPP_INTERNAL_USER_IDS.has(ownerUserId))
@@ -12068,7 +12079,7 @@ function isInternalWhatsappWorkspaceIdentity(user: Pick<RatewareUser, "owner_use
 }
 
 async function isInternalWhatsappWorkspace(
-  _supabase: ReturnType<typeof createClient>,
+  _supabase: RatewareSupabaseClient,
   user: Pick<RatewareUser, "owner_user_id" | "owner_email" | "organization_id">
 ) {
   // Internal sender access is an authorization decision. Only authenticated
@@ -12171,7 +12182,7 @@ function publicWhatsappConnection(
 }
 
 async function ensureInternalWhatsappConnection(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: RatewareUser
 ) {
   if (!await isInternalWhatsappWorkspace(supabase, user)) throw new Error(WHATSAPP_CONNECTION_REQUIRED_MESSAGE);
@@ -12246,7 +12257,7 @@ function scopeWhatsappConnectionQuery(query: any, user: RatewareUser) {
 }
 
 async function findTenantWhatsappConnection(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: RatewareUser
 ) {
   let query = supabase
@@ -12263,7 +12274,7 @@ async function findTenantWhatsappConnection(
 }
 
 async function listWhatsappConnections(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: RatewareUser
 ) {
   const internalWorkspace = await isInternalWhatsappWorkspace(supabase, user);
@@ -12298,7 +12309,7 @@ async function listWhatsappConnections(
 }
 
 async function activeWhatsappConnection(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: RatewareUser,
   options: { requireConnected?: boolean } = {}
 ) {
@@ -12340,7 +12351,7 @@ async function activeWhatsappConnection(
 }
 
 async function startWhatsappBusinessConnection(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: RatewareUser,
   input: Record<string, unknown> = {}
 ) {
@@ -12367,7 +12378,7 @@ async function startWhatsappBusinessConnection(
 }
 
 async function saveTenantWhatsappBusinessConnection(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: RatewareUser,
   input: Record<string, unknown> = {}
 ) {
@@ -12457,7 +12468,7 @@ async function saveTenantWhatsappBusinessConnection(
 }
 
 async function completeWhatsappBusinessConnection(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: RatewareUser,
   input: Record<string, unknown> = {}
 ) {
@@ -12472,7 +12483,7 @@ async function completeWhatsappBusinessConnection(
 }
 
 async function disconnectWhatsappBusinessConnection(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: RatewareUser
 ) {
   if (await isInternalWhatsappWorkspace(supabase, user)) {
@@ -12547,7 +12558,7 @@ async function whatsappGraphFetch(
 }
 
 async function validateWhatsappConnectionAgainstMeta(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   connection: Awaited<ReturnType<typeof activeWhatsappConnection>>
 ) {
   const now = new Date().toISOString();
@@ -12642,7 +12653,7 @@ async function validateWhatsappConnectionAgainstMeta(
 }
 
 async function validatedWhatsappConnection(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: RatewareUser
 ) {
   const connection = await activeWhatsappConnection(supabase, user, { requireConnected: false });
@@ -12701,7 +12712,7 @@ async function discoverWhatsappWabaFromPhone(connection: Awaited<ReturnType<type
 }
 
 async function persistWhatsappResolvedWaba(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   connection: Awaited<ReturnType<typeof activeWhatsappConnection>>,
   candidate: { id: string; source: string }
 ) {
@@ -12735,7 +12746,7 @@ async function persistWhatsappResolvedWaba(
 }
 
 async function whatsappWabaGraphFetch(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   connection: Awaited<ReturnType<typeof activeWhatsappConnection>>,
   suffix: string,
   options: RequestInit = {},
@@ -12788,7 +12799,7 @@ async function whatsappWabaGraphFetch(
 }
 
 async function whatsappTemplateGraphFetch(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   connection: Awaited<ReturnType<typeof activeWhatsappConnection>>,
   suffix: string,
   options: RequestInit = {}
@@ -13185,7 +13196,7 @@ function whatsappTemplateParameters(
 }
 
 async function whatsappTemplateMapping(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   connectionId: unknown,
   outreachTemplateId: unknown
 ) {
@@ -13203,7 +13214,7 @@ async function whatsappTemplateMapping(
 }
 
 async function whatsappTemplateMappingsForConnection(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   connectionId: unknown
 ) {
   const id = cleanText(connectionId);
@@ -13218,7 +13229,7 @@ async function whatsappTemplateMappingsForConnection(
 }
 
 async function publishOutreachTemplateToWhatsapp(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: RatewareUser,
   input: Record<string, unknown>
 ) {
@@ -13359,7 +13370,7 @@ async function publishOutreachTemplateToWhatsapp(
 }
 
 async function testWhatsappBusinessConnection(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: RatewareUser
 ) {
   const connection = await activeWhatsappConnection(supabase, user, { requireConnected: false });
@@ -13377,7 +13388,7 @@ async function testWhatsappBusinessConnection(
 }
 
 async function syncWhatsappTemplates(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: RatewareUser
 ) {
   const connection = await validatedWhatsappConnection(supabase, user);
@@ -13450,7 +13461,7 @@ async function syncWhatsappTemplates(
 }
 
 async function listWhatsappTemplates(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: RatewareUser
 ) {
   const connections = await listWhatsappConnections(supabase, user);
@@ -13462,7 +13473,7 @@ async function listWhatsappTemplates(
 }
 
 async function listWhatsappPhoneNumbers(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: RatewareUser
 ) {
   const connection = await activeWhatsappConnection(supabase, user, { requireConnected: false });
@@ -13481,7 +13492,7 @@ async function listWhatsappPhoneNumbers(
 }
 
 async function selectWhatsappSender(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: RatewareUser,
   input: Record<string, unknown>
 ) {
@@ -13524,7 +13535,7 @@ async function selectWhatsappSender(
 }
 
 async function verifyWhatsappWebhook(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: RatewareUser
 ) {
   const connection = await activeWhatsappConnection(supabase, user, { requireConnected: false });
@@ -13558,7 +13569,7 @@ async function verifyWhatsappWebhook(
 }
 
 async function verifyVendorWhatsappGroup(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_user_id: string | null; owner_email: string | null },
   input: Record<string, unknown>
 ) {
@@ -13611,7 +13622,7 @@ async function verifyVendorWhatsappGroup(
 }
 
 async function startGoogleChatOauth(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_user_id: string | null; owner_email: string | null },
   input: Record<string, unknown> = {}
 ) {
@@ -13667,7 +13678,7 @@ async function startGoogleChatOauth(
   };
 }
 
-async function disconnectGoogleChatConnection(supabase: ReturnType<typeof createClient>, user: { owner_email: string | null }) {
+async function disconnectGoogleChatConnection(supabase: RatewareSupabaseClient, user: { owner_email: string | null }) {
   const result = await supabase
     .from("google_chat_connections")
     .upsert({
@@ -13690,7 +13701,7 @@ async function disconnectGoogleChatConnection(supabase: ReturnType<typeof create
 }
 
 async function startGmailOauth(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_user_id: string | null; owner_email: string | null },
   input: Record<string, unknown> = {}
 ) {
@@ -13746,7 +13757,7 @@ async function startGmailOauth(
   };
 }
 
-async function disconnectGmailConnection(supabase: ReturnType<typeof createClient>, user: { owner_email: string | null }) {
+async function disconnectGmailConnection(supabase: RatewareSupabaseClient, user: { owner_email: string | null }) {
   const result = await supabase
     .from("gmail_mailbox_connections")
     .upsert({
@@ -13909,7 +13920,7 @@ function gmailRawMessage(message: Record<string, unknown>, senderEmail: string) 
   return bytesToBase64Url(new TextEncoder().encode(mime));
 }
 
-async function gmailAccessToken(supabase: ReturnType<typeof createClient>, user: { owner_email: string | null }, senderEmail: string) {
+async function gmailAccessToken(supabase: RatewareSupabaseClient, user: { owner_email: string | null }, senderEmail: string) {
   if (senderEmail.toLowerCase() !== GMAIL_ALLOWED_SENDER) {
     throw new Error(`Only ${GMAIL_ALLOWED_SENDER} can send Bid Room email.`);
   }
@@ -14072,7 +14083,7 @@ function bounceReason(headers: Record<string, string>, bodyText: string) {
 }
 
 async function vendorRowsForEmail(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_email: string | null },
   email: string
 ) {
@@ -14098,7 +14109,7 @@ async function vendorRowsForEmail(
 }
 
 async function quarantineVendorEmail(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_email: string | null },
   email: string,
   reason: string
@@ -14137,7 +14148,7 @@ async function quarantineVendorEmail(
 }
 
 async function syncGmailBounces(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_user_id: string | null; owner_email: string | null },
   input: Record<string, unknown> = {}
 ) {
@@ -14331,7 +14342,7 @@ async function syncGmailBounces(
   };
 }
 
-async function googleChatAccessToken(supabase: ReturnType<typeof createClient>, user: { owner_email: string | null }) {
+async function googleChatAccessToken(supabase: RatewareSupabaseClient, user: { owner_email: string | null }) {
   const result = await supabase
     .from("google_chat_connections")
     .select("*")
@@ -14421,7 +14432,7 @@ function publicGoogleChatSpace(space: Record<string, unknown>, fallbackName: str
 }
 
 async function getGoogleChatSpaceDetails(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_email: string | null },
   spaceReference: unknown
 ) {
@@ -14441,7 +14452,7 @@ async function getGoogleChatSpaceDetails(
   return publicGoogleChatSpace(payload, spaceName);
 }
 
-async function listGoogleChatSpaces(supabase: ReturnType<typeof createClient>, user: { owner_email: string | null }) {
+async function listGoogleChatSpaces(supabase: RatewareSupabaseClient, user: { owner_email: string | null }) {
   const connectionResult = await supabase
     .from("google_chat_connections")
     .select("default_space_name,default_space_display_name,status")
@@ -14490,7 +14501,7 @@ async function listGoogleChatSpaces(supabase: ReturnType<typeof createClient>, u
 }
 
 async function saveGoogleChatSettings(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_email: string | null },
   input: Record<string, unknown>
 ) {
@@ -14539,7 +14550,7 @@ function outreachSendResult(
 }
 
 async function gmailConnectionIdentity(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_email: string | null },
   senderEmail: string
 ) {
@@ -14554,7 +14565,7 @@ async function gmailConnectionIdentity(
 }
 
 async function claimOutreachMessageForSend(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_email: string | null },
   message: Record<string, unknown>,
   trace: Record<string, unknown> = {}
@@ -14591,7 +14602,7 @@ async function claimOutreachMessageForSend(
 }
 
 async function updateClaimedOutreachMessage(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_email: string | null },
   messageId: unknown,
   attemptId: string,
@@ -14611,7 +14622,7 @@ async function updateClaimedOutreachMessage(
 }
 
 async function markClaimedOutreachFailure(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_email: string | null },
   message: Record<string, unknown>,
   attemptId: string,
@@ -14640,7 +14651,7 @@ async function markClaimedOutreachFailure(
 }
 
 async function writeOutreachSentHistory(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   row: Record<string, unknown>
 ) {
   const result = await supabase.from("contact_history").insert(row);
@@ -14648,7 +14659,7 @@ async function writeOutreachSentHistory(
 }
 
 async function writeOutreachDeliveryIssueHistory(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_user_id: string | null; owner_email: string | null },
   message: Record<string, unknown>,
   {
@@ -14694,7 +14705,7 @@ async function writeOutreachDeliveryIssueHistory(
 }
 
 async function sendOutreachMessages(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_user_id: string | null; owner_email: string | null },
   input: Record<string, unknown>
 ) {
@@ -15103,7 +15114,7 @@ async function metaSendWhatsappTemplate(
 }
 
 async function updateWhatsappMessageFailure(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_email: string | null },
   message: Record<string, unknown>,
   reason: string,
@@ -15151,7 +15162,7 @@ async function updateWhatsappMessageFailure(
 }
 
 async function sendWhatsappOutreachMessages(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: RatewareUser,
   input: Record<string, unknown>
 ) {
@@ -15411,7 +15422,7 @@ async function sendWhatsappOutreachMessages(
 }
 
 async function sendWhatsappGroupOutreachMessages(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: RatewareUser,
   input: Record<string, unknown>
 ) {
@@ -15441,7 +15452,7 @@ async function sendWhatsappGroupOutreachMessages(
 }
 
 async function markWhatsappGroupMessageManuallySent(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_user_id: string | null; owner_email: string | null },
   input: Record<string, unknown>
 ) {
@@ -15617,7 +15628,7 @@ async function safeObservabilityQuery(
   source: ObservabilityEvent["source"],
   label: string,
   nextAction: string,
-  query: () => Promise<{ data?: unknown[] | null; error?: { message?: string } | null }>
+  query: () => PromiseLike<{ data?: unknown[] | null; error?: { message?: string } | null }>
 ) {
   try {
     const result = await query();
@@ -15706,7 +15717,7 @@ function observabilitySummary(events: ObservabilityEvent[]) {
 }
 
 async function buildObservabilityEvents(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: RatewareUser,
   input: Record<string, unknown> = {}
 ) {
@@ -15954,7 +15965,7 @@ async function buildObservabilityEvents(
   };
 }
 
-async function buildSaasSettings(supabase: ReturnType<typeof createClient>, user: RatewareUser) {
+async function buildSaasSettings(supabase: RatewareSupabaseClient, user: RatewareUser) {
   const [profile, organization, checklistResult, auditResult, uploads, vendors, pending, approved, rfxEvents, outreachMessages, gmailConnections, googleChatConnections, whatsappConnections] = await Promise.all([
     ensureSaasProfile(supabase, user),
     ensureOrganization(supabase, user),
@@ -16220,7 +16231,7 @@ function patchLookupLocation(prefix: "origin" | "destination", lookup: Record<st
 }
 
 async function enrichMissingLocationZips(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   ownerEmail: string | null,
   ids: string[],
   status: string | null = null
@@ -16287,12 +16298,12 @@ async function enrichMissingLocationZips(
   return { rows: updatedRows, enriched };
 }
 
-async function fetchVendorRowsForRateMatching(supabase: ReturnType<typeof createClient>, user: { owner_email: string | null }) {
+async function fetchVendorRowsForRateMatching(supabase: RatewareSupabaseClient, user: { owner_email: string | null }) {
   return await fetchVendorReferenceRows(supabase, user, 50000);
 }
 
 async function attachUploadVendorHints(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   rows: Record<string, unknown>[]
 ) {
   const uploadIds = [...new Set(rows.map((row) => cleanText(row.raw_upload_id)).filter(Boolean) as string[])];
@@ -16422,7 +16433,7 @@ function planRawUploadVendorMatches(uploads: Record<string, unknown>[], vendors:
     matchable += 1;
 
     const groupKey = `${patch.vendor_id}::${patch.vendor_hint}`;
-    const group = groups.get(groupKey) || { patch, ids: [] };
+    const group = groups.get(groupKey) || { patch, ids: [] as string[] };
     group.ids.push(id);
     groups.set(groupKey, group);
   }
@@ -16431,7 +16442,7 @@ function planRawUploadVendorMatches(uploads: Record<string, unknown>[], vendors:
 }
 
 async function applyPlannedRawUploadVendorMatches(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   plan: ReturnType<typeof planRawUploadVendorMatches>,
   ownerEmail: string | null
 ) {
@@ -16517,7 +16528,7 @@ function planRateVendorMatches(rows: Record<string, unknown>[], vendors: Record<
     matchable += 1;
 
     const groupKey = `${patch.vendor_id}::${patch.vendor_domain}`;
-    const group = groups.get(groupKey) || { patch, ids: [] };
+    const group = groups.get(groupKey) || { patch, ids: [] as string[] };
     group.ids.push(id);
     groups.set(groupKey, group);
   }
@@ -16526,7 +16537,7 @@ function planRateVendorMatches(rows: Record<string, unknown>[], vendors: Record<
 }
 
 async function applyPlannedRateVendorMatches(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   plan: ReturnType<typeof planRateVendorMatches>,
   ownerEmail: string | null
 ) {
@@ -16552,7 +16563,7 @@ async function applyPlannedRateVendorMatches(
   return { updated, rows };
 }
 
-async function matchRateVendorRows(supabase: ReturnType<typeof createClient>, user: { owner_email: string | null }, ids: string[], status: string | null = null) {
+async function matchRateVendorRows(supabase: RatewareSupabaseClient, user: { owner_email: string | null }, ids: string[], status: string | null = null) {
   if (!ids.length) throw new Error("At least one rate row id is required.");
 
   let rowQuery = supabase
@@ -16586,7 +16597,7 @@ async function matchRateVendorRows(supabase: ReturnType<typeof createClient>, us
 }
 
 async function matchRateVendorRowsByFilter(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_email: string | null },
   filters: Record<string, unknown>,
   options: { dryRun?: boolean; maxRows?: number } = {}
@@ -16682,7 +16693,7 @@ async function matchRateVendorRowsByFilter(
 }
 
 async function renormalizeRateRows(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   ownerEmail: string | null,
   ids: string[],
   status: string | null = null
@@ -16735,7 +16746,7 @@ async function renormalizeRateRows(
 }
 
 async function saveRatewareLocationAlias(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_email: string | null },
   body: Record<string, unknown>
 ) {
@@ -16884,7 +16895,7 @@ function normalizeOperationalCatalogImportRow(input: Record<string, unknown>, us
 }
 
 async function bulkImportCatalogValues(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_email: string | null },
   body: Record<string, unknown>
 ) {
@@ -16906,13 +16917,14 @@ async function bulkImportCatalogValues(
         normalizedRows.push(normalizeOperationalCatalogImportRow(input, user, context));
       } else if (importType === "locations") {
         const normalized = normalizeLocationCatalogInput({ ...input, ...context }, user);
-        normalized.row.metadata = {
-          ...(typeof normalized.row.metadata === "object" && normalized.row.metadata ? normalized.row.metadata as Record<string, unknown> : {}),
+        const locationRow = normalized.row as Record<string, unknown>;
+        locationRow.metadata = {
+          ...objectRecord(locationRow.metadata),
           import_file_name: context.file_name,
           import_sheet_name: context.sheet_name,
           created_from: "admin_catalog_import"
         };
-        normalizedRows.push(normalized.row);
+        normalizedRows.push(locationRow);
       } else {
         throw new Error("invalid catalog import type");
       }
@@ -17037,7 +17049,7 @@ function normalizeRfxProjectPatch(input: Record<string, unknown>) {
   return patch;
 }
 
-async function requireOwnedRfxProcessProject(supabase: ReturnType<typeof createClient>, user: { owner_email: string | null }, projectId: unknown) {
+async function requireOwnedRfxProcessProject(supabase: RatewareSupabaseClient, user: { owner_email: string | null }, projectId: unknown) {
   const id = cleanText(projectId);
   if (!id) throw new Error("RFx Project id is required.");
   const result = await supabase
@@ -17051,7 +17063,7 @@ async function requireOwnedRfxProcessProject(supabase: ReturnType<typeof createC
 }
 
 async function writeRfxProcessAudit(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_user_id: string | null; owner_email: string | null },
   projectId: unknown,
   action: string,
@@ -17116,7 +17128,7 @@ function completenessScoreFromIssues(requiredCount: number, issueCount: number) 
   return Math.max(0, Math.min(100, Math.round((requiredCount - issueCount) / requiredCount * 100)));
 }
 
-async function rfxProcessReadiness(supabase: ReturnType<typeof createClient>, projectId: unknown) {
+async function rfxProcessReadiness(supabase: RatewareSupabaseClient, projectId: unknown) {
   const submissionResult = await supabase
     .from("rfx_rfi_submissions")
     .select("*")
@@ -17149,7 +17161,7 @@ async function rfxProcessReadiness(supabase: ReturnType<typeof createClient>, pr
   };
 }
 
-async function validateRfxProjectStatusChange(supabase: ReturnType<typeof createClient>, projectId: unknown, status: unknown) {
+async function validateRfxProjectStatusChange(supabase: RatewareSupabaseClient, projectId: unknown, status: unknown) {
   const nextStatus = cleanText(status);
   if (!nextStatus) return;
   const readiness = await rfxProcessReadiness(supabase, projectId);
@@ -17342,7 +17354,527 @@ function rfxMasterPackagePayload(pack: Record<string, unknown>, project: Record<
   };
 }
 
-async function listRfxProcessProjects(supabase: ReturnType<typeof createClient>, user: { owner_email: string | null }, input: Record<string, unknown>) {
+async function resolveShipperForRfxCustomer(
+  supabase: RatewareSupabaseClient,
+  user: RatewareUser,
+  input: Record<string, unknown>,
+  event: Record<string, unknown> = {}
+) {
+  const requestedId = cleanText(input.customer_id || input.customerId || input.shipper_id || input.shipperId);
+  if (requestedId && UUID_PATTERN.test(requestedId)) {
+    return await requireOwnedShipper(supabase, user, requestedId);
+  }
+
+  const customer = firstCleanText(input.customer, input.customer_name, input.shipper, input.account, event.customer);
+  const term = safeShipperSearch(customer);
+  if (!term) return null;
+
+  const result = await supabase
+    .from("shippers")
+    .select("id,shipper_name,legal_name,domain,primary_contact_email,status")
+    .eq("owner_email", user.owner_email)
+    .neq("status", "archived")
+    .or(`shipper_name.ilike.%${term}%,legal_name.ilike.%${term}%,domain.ilike.%${term}%,primary_contact_email.ilike.%${term}%`)
+    .limit(25);
+  if (result.error) throw result.error;
+
+  const rows = (result.data || []) as Record<string, unknown>[];
+  const needle = catalogKey(customer);
+  return rows.find((row) => [row.shipper_name, row.legal_name, row.domain, row.primary_contact_email]
+    .some((value) => catalogKey(value) === needle))
+    || rows.find((row) => [row.shipper_name, row.legal_name, row.domain, row.primary_contact_email]
+      .some((value) => {
+        const candidate = catalogKey(value);
+        return candidate && (candidate.includes(needle) || needle.includes(candidate));
+      }))
+    || null;
+}
+
+function rfxProjectStatusForEvent(event: Record<string, unknown>) {
+  const status = cleanText(event.status)?.toLowerCase();
+  if (status === "archived") return "archived";
+  if (status === "closed" || status === "awarded") return "bid_room_closed";
+  if (status === "open") return "bid_room_open";
+  return "draft";
+}
+
+function rfxOpportunityTypeForEvent(event: Record<string, unknown>) {
+  return cleanText(event.event_type)?.toLowerCase() === "spot" ? "spot" : "contract";
+}
+
+function ratebookSourceTypeForEvent(event: Record<string, unknown>) {
+  return cleanText(event.event_type)?.toLowerCase() === "spot" ? "spot" : "bid_room";
+}
+
+async function ensureBidRoomEventProject(
+  supabase: RatewareSupabaseClient,
+  user: RatewareUser,
+  event: Record<string, unknown>,
+  input: Record<string, unknown> = {}
+) {
+  const eventId = cleanText(event.id);
+  if (!eventId) throw new Error("RFx event id is required.");
+
+  const sourceProjectId = cleanText(event.source_rfx_process_project_id);
+  if (sourceProjectId && UUID_PATTERN.test(sourceProjectId)) {
+    const project = await requireOwnedRfxProcessProject(supabase, user, sourceProjectId);
+    const shipper = cleanText(project.customer_id) && UUID_PATTERN.test(cleanText(project.customer_id)!)
+      ? await requireOwnedShipper(supabase, user, project.customer_id).catch(() => null)
+      : null;
+    return { event, project, shipper };
+  }
+
+  const existingProjectResult = await supabase
+    .from("rfx_projects")
+    .select("*")
+    .eq("owner_email", user.owner_email)
+    .eq("linked_rfx_event_id", eventId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (existingProjectResult.error) throw existingProjectResult.error;
+  if (existingProjectResult.data) {
+    const project = existingProjectResult.data as Record<string, unknown>;
+    const updateEvent = await supabase
+      .from("rfx_events")
+      .update({ source_rfx_process_project_id: project.id, updated_at: new Date().toISOString() })
+      .eq("id", eventId)
+      .eq("owner_email", user.owner_email)
+      .select()
+      .single();
+    if (updateEvent.error) throw updateEvent.error;
+    const shipper = cleanText(project.customer_id) && UUID_PATTERN.test(cleanText(project.customer_id)!)
+      ? await requireOwnedShipper(supabase, user, project.customer_id).catch(() => null)
+      : null;
+    return { event: updateEvent.data as Record<string, unknown>, project, shipper };
+  }
+
+  const shipper = await resolveShipperForRfxCustomer(supabase, user, input, event);
+  const projectRow = withOwner({
+    title: firstCleanText(event.name, event.rfx_id, "Bid Room event") || "Bid Room event",
+    customer_id: cleanText(shipper?.id) || null,
+    customer_name: firstCleanText(shipper?.shipper_name, shipper?.legal_name, event.customer),
+    customer_contact_email: cleanText(shipper?.primary_contact_email)?.toLowerCase() || null,
+    opportunity_type: rfxOpportunityTypeForEvent(event),
+    operating_segments: [],
+    status: rfxProjectStatusForEvent(event),
+    due_date: cleanDate(event.due_date),
+    notes: firstCleanText(event.notes, `Auto-created from Bid Room event ${firstCleanText(event.rfx_id, event.name, event.id)}.`),
+    linked_rfx_event_id: eventId,
+    updated_at: new Date().toISOString()
+  }, user);
+  const projectInsert = await supabase.from("rfx_projects").insert(projectRow).select().single();
+  if (projectInsert.error) throw projectInsert.error;
+  const updateEvent = await supabase
+    .from("rfx_events")
+    .update({ source_rfx_process_project_id: projectInsert.data.id, updated_at: new Date().toISOString() })
+    .eq("id", eventId)
+    .eq("owner_email", user.owner_email)
+    .select()
+    .single();
+  if (updateEvent.error) throw updateEvent.error;
+
+  await writeRfxProcessAudit(
+    supabase,
+    user,
+    projectInsert.data.id,
+    "bid_room_project_created",
+    "rfx_events",
+    eventId,
+    `Created Ratebook capture workspace for Bid Room event ${firstCleanText(event.rfx_id, event.name, event.id)}.`,
+    { shipper_id: cleanText(shipper?.id), source: "bid_room_event" }
+  );
+
+  return { event: updateEvent.data as Record<string, unknown>, project: projectInsert.data as Record<string, unknown>, shipper };
+}
+
+function bidRoomDemandLaneRow(
+  lane: Record<string, unknown>,
+  event: Record<string, unknown>,
+  project: Record<string, unknown>,
+  snapshotId: unknown,
+  user: { owner_user_id: string | null; owner_email: string | null },
+  index = 0
+) {
+  const annualVolume = cleanNumber(lane.annual_volume);
+  const weeklyVolume = cleanNumber(lane.weekly_volume);
+  const laneKey = firstCleanText(lane.lane_number, lane.id, `L${index + 1}`) || `L${index + 1}`;
+  const normalizedPayload = {
+    ...lane,
+    source: "bid_room_event",
+    source_rfx_event_id: cleanText(event.id),
+    source_rfx_lane_id: cleanText(lane.id),
+    event_rfx_id: cleanText(event.rfx_id),
+    event_name: cleanText(event.name),
+    event_customer: cleanText(event.customer),
+    event_type: cleanText(event.event_type),
+    source_rfx_process_project_id: cleanText(project.id)
+  };
+  const row = withOwner({
+    snapshot_id: cleanText(snapshotId),
+    project_id: cleanText(project.id),
+    source_rfi_lane_id: null,
+    lane_key: laneKey,
+    origin: firstCleanText(lane.origin, [lane.origin_city, lane.origin_state].filter(Boolean).join(", ")),
+    origin_city: cleanText(lane.origin_city),
+    origin_state: cleanText(lane.origin_state),
+    origin_country: cleanText(lane.origin_country),
+    origin_postal_code: firstCleanText(lane.origin_postal_code, objectRecord(lane.normalized_payload).origin_postal_code),
+    destination: firstCleanText(lane.destination, [lane.destination_city, lane.destination_state].filter(Boolean).join(", ")),
+    destination_city: cleanText(lane.destination_city),
+    destination_state: cleanText(lane.destination_state),
+    destination_country: cleanText(lane.destination_country),
+    destination_postal_code: firstCleanText(lane.destination_postal_code, objectRecord(lane.normalized_payload).destination_postal_code),
+    operating_segment: firstCleanText(lane.rfx_segment_name, lane.operation, lane.service),
+    operation_type: cleanText(lane.operation),
+    service_type: cleanText(lane.service),
+    equipment_type: cleanText(lane.equipment),
+    trailer_requirements: cleanText(lane.trailer),
+    weekly_volume: weeklyVolume,
+    monthly_volume: weeklyVolume === null ? (annualVolume === null ? null : annualVolume / 12) : weeklyVolume * 4.33,
+    frequency: cleanText(lane.frequency),
+    currency: cleanText(lane.currency)?.toUpperCase() || "USD",
+    target_rate: cleanNumber(lane.target_rate),
+    current_rate: null,
+    internal_notes: firstCleanText(lane.notes, lane.other_notes),
+    validation_issues: [],
+    normalized_payload: normalizedPayload,
+    updated_at: new Date().toISOString()
+  }, user);
+  const issues = rfxRequiredLaneIssues(row).map((issue) => ({ issue }));
+  row.validation_issues = issues;
+  return row;
+}
+
+async function upsertBidRoomDemandLanes(
+  supabase: RatewareSupabaseClient,
+  user: { owner_user_id: string | null; owner_email: string | null },
+  event: Record<string, unknown>,
+  project: Record<string, unknown>,
+  snapshotId: unknown,
+  lanes: Record<string, unknown>[]
+) {
+  const existingResult = await supabase
+    .from("rfx_demand_lanes")
+    .select("*")
+    .eq("owner_email", user.owner_email)
+    .eq("snapshot_id", snapshotId)
+    .eq("project_id", project.id);
+  if (existingResult.error) throw existingResult.error;
+  const existingBySourceLaneId = new Map<string, Record<string, unknown>>();
+  ((existingResult.data || []) as Record<string, unknown>[]).forEach((row) => {
+    const sourceLaneId = cleanText(objectRecord(row.normalized_payload).source_rfx_lane_id);
+    if (sourceLaneId) existingBySourceLaneId.set(sourceLaneId, row);
+  });
+
+  const demandRows: Record<string, unknown>[] = [];
+  for (const [index, lane] of lanes.entries()) {
+    const row = bidRoomDemandLaneRow(lane, event, project, snapshotId, user, index);
+    const existing = existingBySourceLaneId.get(cleanText(lane.id) || "");
+    if (existing) {
+      const update = await supabase
+        .from("rfx_demand_lanes")
+        .update(row)
+        .eq("id", existing.id)
+        .eq("owner_email", user.owner_email)
+        .select()
+        .single();
+      if (update.error) throw update.error;
+      demandRows.push(update.data as Record<string, unknown>);
+    } else {
+      const insert = await supabase.from("rfx_demand_lanes").insert(row).select().single();
+      if (insert.error) throw insert.error;
+      demandRows.push(insert.data as Record<string, unknown>);
+    }
+  }
+  return demandRows;
+}
+
+async function updateLinkedDemandLanesFromBidRoom(
+  supabase: RatewareSupabaseClient,
+  user: { owner_user_id: string | null; owner_email: string | null },
+  event: Record<string, unknown>,
+  project: Record<string, unknown>,
+  lanes: Record<string, unknown>[]
+) {
+  const updatedIds: string[] = [];
+  for (const [index, lane] of lanes.entries()) {
+    const demandLaneId = cleanText(lane.source_rfx_demand_lane_id);
+    if (!demandLaneId || !UUID_PATTERN.test(demandLaneId)) continue;
+    const row = bidRoomDemandLaneRow(lane, event, project, cleanText(objectRecord(lane.rfx_demand_lanes).snapshot_id), user, index);
+    const { snapshot_id: _snapshotId, project_id: _projectId, source_rfi_lane_id: _sourceRfiLaneId, ...patch } = row as Record<string, unknown>;
+    const update = await supabase
+      .from("rfx_demand_lanes")
+      .update(patch)
+      .eq("id", demandLaneId)
+      .eq("project_id", project.id)
+      .eq("owner_email", user.owner_email)
+      .select("id");
+    if (update.error) throw update.error;
+    if (update.data?.length) updatedIds.push(demandLaneId);
+  }
+  return updatedIds;
+}
+
+async function ensureRatebookForBidRoomEvent(
+  supabase: RatewareSupabaseClient,
+  user: RatewareUser,
+  eventOrId: Record<string, unknown> | string,
+  input: Record<string, unknown> = {}
+) {
+  const baseEvent = typeof eventOrId === "string"
+    ? await requireOwnedRfxEvent(supabase, user, eventOrId)
+    : eventOrId;
+  const context = await ensureBidRoomEventProject(supabase, user, baseEvent, input);
+  let event = context.event;
+  const project = context.project;
+  const shipperContext = context.shipper ? {
+    shipper_id: cleanText(context.shipper.id) || null,
+    shipper_name: firstCleanText(context.shipper.shipper_name, context.shipper.legal_name) || null,
+    opportunity_name: null
+  } : undefined;
+
+  const lanesResult = await supabase
+    .from("rfx_lanes")
+    .select("*")
+    .eq("rfx_event_id", event.id)
+    .order("lane_number", { ascending: true });
+  if (lanesResult.error) throw lanesResult.error;
+  const lanes = (lanesResult.data || []) as Record<string, unknown>[];
+  if (!lanes.length) return { event, project, ratebook: null, lanes: 0, package: null };
+
+  const sourcePackageId = cleanText(event.source_rfx_package_id);
+  if (sourcePackageId && UUID_PATTERN.test(sourcePackageId)) {
+    const initialPackageContext = await getOwnedRatebookPackage(supabase, user, sourcePackageId);
+    await updateLinkedDemandLanesFromBidRoom(supabase, user, event, initialPackageContext.project, lanes);
+    const unlinkedLanes = lanes.filter((lane) => !cleanText(lane.source_rfx_demand_lane_id));
+    if (unlinkedLanes.length) {
+      const extraDemandRows = await upsertBidRoomDemandLanes(
+        supabase,
+        user,
+        event,
+        initialPackageContext.project,
+        initialPackageContext.pack.demand_snapshot_id,
+        unlinkedLanes
+      );
+      const existingPackageLanes = await supabase
+        .from("rfx_package_lanes")
+        .select("id,demand_lane_id")
+        .eq("package_id", initialPackageContext.pack.id);
+      if (existingPackageLanes.error) throw existingPackageLanes.error;
+      const existingDemandIds = new Set(((existingPackageLanes.data || []) as Record<string, unknown>[]).map((row) => cleanText(row.demand_lane_id)).filter(Boolean));
+      const missingPackageLanes = extraDemandRows
+        .filter((row) => !existingDemandIds.has(cleanText(row.id)))
+        .map((row) => withOwner({ package_id: initialPackageContext.pack.id, demand_lane_id: row.id, lot_name: cleanText(event.name || event.rfx_id) }, user));
+      for (const batch of chunkValues(missingPackageLanes, 500)) {
+        const insert = await supabase.from("rfx_package_lanes").insert(batch).select("id");
+        if (insert.error) throw insert.error;
+      }
+      const extraDemandBySourceLaneId = new Map(extraDemandRows.map((row) => [cleanText(objectRecord(row.normalized_payload).source_rfx_lane_id), row]));
+      for (const lane of unlinkedLanes) {
+        const demand = extraDemandBySourceLaneId.get(cleanText(lane.id));
+        if (!demand) continue;
+        const updateLane = await supabase
+          .from("rfx_lanes")
+          .update({ source_rfx_demand_lane_id: demand.id, updated_at: new Date().toISOString() })
+          .eq("id", lane.id)
+          .eq("rfx_event_id", event.id);
+        if (updateLane.error) throw updateLane.error;
+      }
+      const segmentRows = buildRfxPackageSegments(initialPackageContext.pack.id, [...initialPackageContext.package_lanes.map((row) => objectRecord(row.rfx_demand_lanes)), ...extraDemandRows], user);
+      for (const batch of chunkValues(segmentRows, 250)) {
+        const segmentInsert = await supabase.from("rfx_package_segments").upsert(batch, { onConflict: "package_id,segment_key" }).select("id");
+        if (segmentInsert.error) throw segmentInsert.error;
+      }
+    }
+    const packageContext = await getOwnedRatebookPackage(supabase, user, sourcePackageId);
+    const demandRows = packageContext.package_lanes.map((row) => objectRecord(row.rfx_demand_lanes)).filter((row) => cleanText(row.id));
+    const segmentRows = buildRfxPackageSegments(packageContext.pack.id, demandRows, user);
+    for (const batch of chunkValues(segmentRows, 250)) {
+      const segmentInsert = await supabase.from("rfx_package_segments").upsert(batch, { onConflict: "package_id,segment_key" }).select("id");
+      if (segmentInsert.error) throw segmentInsert.error;
+    }
+  const packageProjectId = cleanText(packageContext.project.id) || "";
+  const shipperContexts = await getRatebookShipperContexts(supabase, user, [packageProjectId]);
+    const ratebook = await upsertRatebookForPackage(supabase, user, {
+      ...packageContext,
+      package_segments: segmentRows,
+      shipper: shipperContexts.get(packageProjectId) || shipperContext
+    });
+    return { event, project: packageContext.project, ratebook, lanes: packageContext.package_lanes.length, package: packageContext.pack };
+  }
+
+  const snapshotResult = await supabase
+    .from("rfx_demand_snapshots")
+    .select("*")
+    .eq("owner_email", user.owner_email)
+    .eq("project_id", project.id)
+    .eq("metadata->>source_rfx_event_id", cleanText(event.id))
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (snapshotResult.error) throw snapshotResult.error;
+
+  let snapshot = snapshotResult.data as Record<string, unknown> | null;
+  if (!snapshot) {
+    const insertSnapshot = await supabase.from("rfx_demand_snapshots").insert(withOwner({
+      project_id: project.id,
+      name: `${firstCleanText(event.name, event.rfx_id, "Bid Room")} route capture`,
+      status: "draft",
+      completeness_score: 100,
+      validation_issues: [],
+      frozen_rfi_snapshot: { source: "bid_room_event", rfx_event_id: event.id, rfx_id: event.rfx_id },
+      metadata: {
+        source: "bid_room_event",
+        source_rfx_event_id: cleanText(event.id),
+        event_type: cleanText(event.event_type)
+      }
+    }, user)).select().single();
+    if (insertSnapshot.error) throw insertSnapshot.error;
+    snapshot = insertSnapshot.data as Record<string, unknown>;
+  }
+
+  const demandRows = await upsertBidRoomDemandLanes(supabase, user, event, project, snapshot.id, lanes);
+  const issueCount = demandRows.reduce((sum, row) => sum + (Array.isArray(row.validation_issues) ? row.validation_issues.length : 0), 0);
+  const snapshotUpdate = await supabase
+    .from("rfx_demand_snapshots")
+    .update({
+      completeness_score: completenessScoreFromIssues(Math.max(demandRows.length * 5, 1), issueCount),
+      validation_issues: demandRows.flatMap((row) => Array.isArray(row.validation_issues) ? row.validation_issues : []).slice(0, 100),
+      updated_at: new Date().toISOString()
+    })
+    .eq("id", snapshot.id)
+    .eq("owner_email", user.owner_email);
+  if (snapshotUpdate.error) throw snapshotUpdate.error;
+
+  let packageResult = await supabase
+    .from("rfx_packages")
+    .select("*")
+    .eq("owner_email", user.owner_email)
+    .eq("project_id", project.id)
+    .eq("linked_rfx_event_id", event.id)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (packageResult.error) throw packageResult.error;
+  let pack = packageResult.data as Record<string, unknown> | null;
+  const packageStatus = cleanText(event.status)?.toLowerCase() === "archived"
+    ? "archived"
+    : cleanText(event.status)?.toLowerCase() === "open"
+      ? "launched"
+      : "draft";
+  if (!pack) {
+    const insertPackage = await supabase.from("rfx_packages").insert(withOwner({
+      project_id: project.id,
+      demand_snapshot_id: snapshot.id,
+      linked_rfx_event_id: event.id,
+      name: `${firstCleanText(event.name, event.rfx_id, "Bid Room")} Ratebook package`,
+      status: packageStatus,
+      sourcing_strategy: cleanText(event.bid_visibility_mode) === "open_leaderboard" ? "open_bid" : "closed_bid",
+      pricing_structure: "all_in",
+      bid_due_at: cleanTimestamp(event.due_date ? `${event.due_date}T23:59:59Z` : null),
+      bid_validity_days: null,
+      notes: `Auto-synced from Bid Room event ${firstCleanText(event.rfx_id, event.name, event.id)}.`
+    }, user)).select().single();
+    if (insertPackage.error) throw insertPackage.error;
+    pack = insertPackage.data as Record<string, unknown>;
+  } else {
+    const updatePackage = await supabase
+      .from("rfx_packages")
+      .update({
+        demand_snapshot_id: snapshot.id,
+        status: packageStatus,
+        bid_due_at: cleanTimestamp(event.due_date ? `${event.due_date}T23:59:59Z` : null),
+        updated_at: new Date().toISOString()
+      })
+      .eq("id", pack.id)
+      .eq("owner_email", user.owner_email)
+      .select()
+      .single();
+    if (updatePackage.error) throw updatePackage.error;
+    pack = updatePackage.data as Record<string, unknown>;
+  }
+
+  const existingPackageLanesResult = await supabase
+    .from("rfx_package_lanes")
+    .select("id,demand_lane_id")
+    .eq("package_id", pack.id);
+  if (existingPackageLanesResult.error) throw existingPackageLanesResult.error;
+  const existingDemandIds = new Set(((existingPackageLanesResult.data || []) as Record<string, unknown>[]).map((row) => cleanText(row.demand_lane_id)).filter(Boolean));
+  const missingPackageLanes = demandRows
+    .filter((row) => !existingDemandIds.has(cleanText(row.id)))
+    .map((row) => withOwner({ package_id: pack!.id, demand_lane_id: row.id, lot_name: cleanText(event.name || event.rfx_id) }, user));
+  for (const batch of chunkValues(missingPackageLanes, 500)) {
+    const insert = await supabase.from("rfx_package_lanes").insert(batch).select("id");
+    if (insert.error) throw insert.error;
+  }
+
+  const demandBySourceLaneId = new Map(demandRows.map((row) => [cleanText(objectRecord(row.normalized_payload).source_rfx_lane_id), row]));
+  for (const lane of lanes) {
+    const demand = demandBySourceLaneId.get(cleanText(lane.id));
+    if (!demand || cleanText(lane.source_rfx_demand_lane_id) === cleanText(demand.id)) continue;
+    const updateLane = await supabase
+      .from("rfx_lanes")
+      .update({ source_rfx_demand_lane_id: demand.id, updated_at: new Date().toISOString() })
+      .eq("id", lane.id)
+      .eq("rfx_event_id", event.id);
+    if (updateLane.error) throw updateLane.error;
+  }
+
+  const segmentRows = buildRfxPackageSegments(pack.id, demandRows, user);
+  for (const batch of chunkValues(segmentRows, 250)) {
+    const insert = await supabase.from("rfx_package_segments").upsert(batch, { onConflict: "package_id,segment_key" }).select("id");
+    if (insert.error) throw insert.error;
+  }
+
+  const eventUpdate = await supabase
+    .from("rfx_events")
+    .update({
+      source_rfx_process_project_id: project.id,
+      source_rfx_package_id: pack.id,
+      source_rfx_package_name: cleanText(pack.name),
+      updated_at: new Date().toISOString()
+    })
+    .eq("id", event.id)
+    .eq("owner_email", user.owner_email)
+    .select()
+    .single();
+  if (eventUpdate.error) throw eventUpdate.error;
+  event = eventUpdate.data as Record<string, unknown>;
+
+  const projectUpdate = await supabase
+    .from("rfx_projects")
+    .update({ status: rfxProjectStatusForEvent(event), linked_rfx_event_id: event.id, updated_at: new Date().toISOString() })
+    .eq("id", project.id)
+    .eq("owner_email", user.owner_email);
+  if (projectUpdate.error) throw projectUpdate.error;
+
+  const ratebook = await upsertRatebookForPackage(supabase, user, {
+    pack: { ...pack, source_type: ratebookSourceTypeForEvent(event) },
+    project,
+    package_lanes: demandRows.map((demand) => ({
+      package_id: pack!.id,
+      demand_lane_id: demand.id,
+      rfx_demand_lanes: demand
+    })),
+    package_segments: segmentRows,
+    shipper: shipperContext
+  });
+  await writeRfxProcessAudit(
+    supabase,
+    user,
+    project.id,
+    "bid_room_ratebook_synced",
+    "rfx_ratebooks",
+    ratebook.id,
+    `Synced ${demandRows.length} Bid Room route(s) into Ratebook ${cleanText(ratebook.name) || ratebook.id}.`,
+    { rfx_event_id: cleanText(event.id), rfx_package_id: cleanText(pack.id), source_type: ratebookSourceTypeForEvent(event) }
+  );
+
+  return { event, project, ratebook, lanes: demandRows.length, package: pack };
+}
+
+async function listRfxProcessProjects(supabase: RatewareSupabaseClient, user: { owner_email: string | null }, input: Record<string, unknown>) {
   const limit = Math.min(Math.max(Number(input.limit) || 100, 1), 250);
   const offset = Math.max(Number(input.offset) || 0, 0);
   let query = supabase
@@ -17389,7 +17921,7 @@ async function listRfxProcessProjects(supabase: ReturnType<typeof createClient>,
   };
 }
 
-async function getRfxProcessProjectDetail(supabase: ReturnType<typeof createClient>, user: { owner_email: string | null }, projectId: unknown, appOrigin?: unknown) {
+async function getRfxProcessProjectDetail(supabase: RatewareSupabaseClient, user: { owner_email: string | null }, projectId: unknown, appOrigin?: unknown) {
   const project = await requireOwnedRfxProcessProject(supabase, user, projectId);
   const [
     magicLinks,
@@ -17460,7 +17992,7 @@ async function getRfxProcessProjectDetail(supabase: ReturnType<typeof createClie
   };
 }
 
-async function createRfxRfiMagicLink(supabase: ReturnType<typeof createClient>, user: { owner_user_id: string | null; owner_email: string | null }, input: Record<string, unknown>) {
+async function createRfxRfiMagicLink(supabase: RatewareSupabaseClient, user: { owner_user_id: string | null; owner_email: string | null }, input: Record<string, unknown>) {
   const project = await requireOwnedRfxProcessProject(supabase, user, input.project_id || input.id);
   const now = new Date().toISOString();
   const existing = await supabase
@@ -17510,7 +18042,7 @@ async function createRfxRfiMagicLink(supabase: ReturnType<typeof createClient>, 
   return { row: result.data, token, link };
 }
 
-async function createRfxDemandSnapshot(supabase: ReturnType<typeof createClient>, user: { owner_user_id: string | null; owner_email: string | null }, input: Record<string, unknown>) {
+async function createRfxDemandSnapshot(supabase: RatewareSupabaseClient, user: { owner_user_id: string | null; owner_email: string | null }, input: Record<string, unknown>) {
   const project = await requireOwnedRfxProcessProject(supabase, user, input.project_id || input.id);
   const submissionResult = await supabase
     .from("rfx_rfi_submissions")
@@ -17599,7 +18131,7 @@ async function createRfxDemandSnapshot(supabase: ReturnType<typeof createClient>
   return { row: snapshotInsert.data, lanes: demandRows.length, validation_issues: laneIssues };
 }
 
-async function createRfxProcessPackage(supabase: ReturnType<typeof createClient>, user: { owner_user_id: string | null; owner_email: string | null }, input: Record<string, unknown>) {
+async function createRfxProcessPackage(supabase: RatewareSupabaseClient, user: { owner_user_id: string | null; owner_email: string | null }, input: Record<string, unknown>) {
   const project = await requireOwnedRfxProcessProject(supabase, user, input.project_id || input.id);
   const snapshotId = cleanText(input.demand_snapshot_id || input.snapshot_id);
   if (!snapshotId) throw new Error("Demand Snapshot id is required.");
@@ -17654,19 +18186,20 @@ async function createRfxProcessPackage(supabase: ReturnType<typeof createClient>
     .update({ status: "rfx_design", updated_at: new Date().toISOString() })
     .eq("id", project.id)
     .eq("owner_email", user.owner_email);
-  const shipperContexts = await getRatebookShipperContexts(supabase, user, [cleanText(project.id)]);
+  const projectId = cleanText(project.id) || "";
+  const shipperContexts = await getRatebookShipperContexts(supabase, user, [projectId]);
   const ratebook = await upsertRatebookForPackage(supabase, user, {
     pack: packageInsert.data as Record<string, unknown>,
     project,
     package_lanes: laneRows,
     package_segments: segmentRows,
-    shipper: shipperContexts.get(cleanText(project.id))
+    shipper: shipperContexts.get(projectId)
   });
   await writeRfxProcessAudit(supabase, user, project.id, "rfx_package_created", "rfx_packages", packageInsert.data.id, `Created RFx sourcing package with ${laneRows.length} lane(s) and ${segmentRows.length} segment(s)`, { weights, sourcing_strategy: packageRow.sourcing_strategy, segments: segmentRows.length });
   return { row: { ...packageInsert.data, rfx_package_segments: segmentRows }, ratebook, lanes: laneRows.length, segments: segmentRows.length };
 }
 
-async function launchRfxProcessPackageToBidRoom(supabase: ReturnType<typeof createClient>, user: { owner_user_id: string | null; owner_email: string | null }, input: Record<string, unknown>) {
+async function launchRfxProcessPackageToBidRoom(supabase: RatewareSupabaseClient, user: { owner_user_id: string | null; owner_email: string | null }, input: Record<string, unknown>) {
   const packageId = cleanText(input.package_id || input.id);
   if (!packageId) throw new Error("RFx Package id is required.");
   const packageResult = await supabase
@@ -17759,13 +18292,15 @@ async function launchRfxProcessPackageToBidRoom(supabase: ReturnType<typeof crea
     supabase.from("rfx_packages").update({ linked_rfx_event_id: eventInsert.data.id, status: "launched", updated_at: new Date().toISOString() }).eq("id", pack.id),
     supabase.from("rfx_projects").update({ linked_rfx_event_id: eventInsert.data.id, status: "bid_room_open", updated_at: new Date().toISOString() }).eq("id", project.id)
   ]);
-  const shipperContexts = await getRatebookShipperContexts(supabase, user, [cleanText(project.id)]);
+  const projectId = cleanText(project.id);
+  if (!projectId) throw new Error("The RFx project is missing its identifier.");
+  const shipperContexts = await getRatebookShipperContexts(supabase, user, [projectId]);
   const ratebook = await upsertRatebookForPackage(supabase, user, {
     pack: { ...pack, linked_rfx_event_id: eventInsert.data.id, status: "launched" },
     project,
     package_lanes: packageLanes,
     package_segments: segmentRows,
-    shipper: shipperContexts.get(cleanText(project.id))
+    shipper: shipperContexts.get(projectId)
   });
   await writeRfxProcessAudit(supabase, user, project.id, "bid_room_launched", "rfx_events", eventInsert.data.id, `Launched Bid Room from RFx Package ${pack.name || ""}`.trim(), { package_id: pack.id, lanes: laneRows.length, segments: segmentRows.length });
   return { launched: true, rfx_event_id: eventInsert.data.id, row: eventInsert.data, ratebook, lanes: laneRows.length, segments: segmentRows.length };
@@ -17874,20 +18409,31 @@ type RatebookShipperContext = {
 };
 
 async function getRatebookShipperContexts(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_email: string | null },
   projectIds: string[]
 ) {
-  const ids = Array.from(new Set(projectIds.map((id) => cleanText(id)).filter(Boolean)));
-  const contexts = new Map<string, RatebookShipperContext>();
+  const ids = Array.from(new Set(projectIds.map((id) => cleanText(id)).filter((id): id is string => Boolean(id))));
+  const contexts = new Map<string | null, RatebookShipperContext>();
   if (!ids.length) return contexts;
-  const opportunitiesResult = await supabase.from("shipper_opportunities")
-    .select("rfx_project_id,shipper_id,opportunity_name")
-    .eq("owner_email", user.owner_email)
-    .in("rfx_project_id", ids);
+  const [opportunitiesResult, projectsResult] = await Promise.all([
+    supabase.from("shipper_opportunities")
+      .select("rfx_project_id,shipper_id,opportunity_name")
+      .eq("owner_email", user.owner_email)
+      .in("rfx_project_id", ids),
+    supabase.from("rfx_projects")
+      .select("id,customer_id,customer_name,title")
+      .eq("owner_email", user.owner_email)
+      .in("id", ids)
+  ]);
   if (opportunitiesResult.error) throw opportunitiesResult.error;
+  if (projectsResult.error) throw projectsResult.error;
   const opportunities = (opportunitiesResult.data || []) as Record<string, unknown>[];
-  const shipperIds = Array.from(new Set(opportunities.map((row) => cleanText(row.shipper_id)).filter(Boolean)));
+  const projects = (projectsResult.data || []) as Record<string, unknown>[];
+  const shipperIds = Array.from(new Set([
+    ...opportunities.map((row) => cleanText(row.shipper_id)),
+    ...projects.map((row) => cleanText(row.customer_id))
+  ].filter((id): id is string => Boolean(id))));
   const shipperById = new Map<string, Record<string, unknown>>();
   if (shipperIds.length) {
     const shippersResult = await supabase.from("shippers")
@@ -17895,21 +18441,38 @@ async function getRatebookShipperContexts(
       .eq("owner_email", user.owner_email)
       .in("id", shipperIds);
     if (shippersResult.error) throw shippersResult.error;
-    ((shippersResult.data || []) as Record<string, unknown>[]).forEach((shipper) => shipperById.set(cleanText(shipper.id), shipper));
+    ((shippersResult.data || []) as Record<string, unknown>[]).forEach((shipper) => {
+      const shipperId = cleanText(shipper.id);
+      if (shipperId) shipperById.set(shipperId, shipper);
+    });
   }
   opportunities.forEach((opportunity) => {
-    const shipper = shipperById.get(cleanText(opportunity.shipper_id)) || {};
-    contexts.set(cleanText(opportunity.rfx_project_id), {
-      shipper_id: cleanText(opportunity.shipper_id) || null,
+    const projectId = cleanText(opportunity.rfx_project_id);
+    if (!projectId) return;
+    const shipperId = cleanText(opportunity.shipper_id);
+    const shipper = shipperId ? shipperById.get(shipperId) || {} : {};
+    contexts.set(projectId, {
+      shipper_id: shipperId,
       shipper_name: firstCleanText(shipper.shipper_name, shipper.legal_name) || null,
       opportunity_name: cleanText(opportunity.opportunity_name) || null
+    });
+  });
+  projects.forEach((project) => {
+    const projectId = cleanText(project.id);
+    if (!projectId || contexts.has(projectId)) return;
+    const shipperId = cleanText(project.customer_id);
+    const shipper = shipperId ? shipperById.get(shipperId) || {} : {};
+    contexts.set(projectId, {
+      shipper_id: shipperId,
+      shipper_name: firstCleanText(shipper.shipper_name, shipper.legal_name, project.customer_name) || null,
+      opportunity_name: cleanText(project.title) || null
     });
   });
   return contexts;
 }
 
 async function getOwnedRatebookPackage(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_email: string | null },
   packageId: unknown
 ) {
@@ -17939,7 +18502,7 @@ async function getOwnedRatebookPackage(
 }
 
 async function upsertRatebookForPackage(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_user_id: string | null; owner_email: string | null; organization_id?: string | null },
   packageContext: {
     pack: Record<string, unknown>;
@@ -17953,7 +18516,7 @@ async function upsertRatebookForPackage(
   const sourceType = ratebookSourceType(project, pack);
   const sourceFingerprint = ratebookSourceFingerprint(project, pack, sourceType);
   const sourceSnapshotHash = await hashRatebookSourceSnapshot(ratebookSourceSnapshot(project, pack, packageLanes, packageSegments));
-  const structuralRow = {
+  const structuralRow: Record<string, unknown> = {
     ...withOwner({
       project_id: project.id,
       rfx_package_id: pack.id,
@@ -17967,7 +18530,7 @@ async function upsertRatebookForPackage(
       source_fingerprint: sourceFingerprint,
       source_snapshot_hash: sourceSnapshotHash,
       metadata: {
-        source: "rfx_process_package",
+        source: sourceType === "spot" || sourceType === "bid_room" ? "bid_room_event" : "rfx_process_package",
         source_type: sourceType,
         project_title: cleanText(project.title),
         customer_name: cleanText(project.customer_name),
@@ -18054,7 +18617,7 @@ function fallbackRatebookSegments(packageLanes: Record<string, unknown>[]) {
 }
 
 async function syncRatebookSegments(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_user_id: string | null; owner_email: string | null; organization_id?: string | null },
   ratebook: Record<string, unknown>,
   packageContext: { pack: Record<string, unknown>; project: Record<string, unknown>; package_lanes: Record<string, unknown>[]; package_segments?: Record<string, unknown>[] }
@@ -18065,39 +18628,45 @@ async function syncRatebookSegments(
     : fallbackRatebookSegments(packageContext.package_lanes);
   if (!segments.length) return [];
   const now = new Date().toISOString();
-  const rows = segments.map((segment, index) => ({
+  const rows: Record<string, unknown>[] = segments.map((segment, index) => {
+    const segmentRow = objectRecord(segment);
+    return {
     ...withOwner({
       ratebook_id: ratebook.id,
-      source_package_segment_id: cleanText(segment.id) || null,
-      segment_key: cleanText(segment.segment_key) || `segment_${index + 1}`,
-      segment_name: firstCleanText(segment.segment_name, segment.name, "Operating segment") || "Operating segment",
+      source_package_segment_id: cleanText(segmentRow.id) || null,
+      segment_key: cleanText(segmentRow.segment_key) || `segment_${index + 1}`,
+      segment_name: firstCleanText(segmentRow.segment_name, segmentRow.name, "Operating segment") || "Operating segment",
       source_type: sourceType,
-      operation: cleanText(segment.operation),
-      service: cleanText(segment.service),
-      equipment: cleanText(segment.equipment),
-      trailer: cleanText(segment.trailer),
-      lane_count: Number(segment.lane_count || 0),
+      operation: cleanText(segmentRow.operation),
+      service: cleanText(segmentRow.service),
+      equipment: cleanText(segmentRow.equipment),
+      trailer: cleanText(segmentRow.trailer),
+      lane_count: Number(segmentRow.lane_count || 0),
       valid_from: cleanText(ratebook.valid_from) || null,
       valid_until: cleanText(ratebook.valid_until) || null,
       metadata: {
-        checklist_count: Array.isArray(segment.checklist) ? segment.checklist.length : 0,
+        checklist_count: Array.isArray(segmentRow.checklist) ? segmentRow.checklist.length : 0,
         source_package_id: packageContext.pack.id,
-        sort_order: Number(segment.sort_order || index + 1)
+        sort_order: Number(segmentRow.sort_order || index + 1)
       },
       updated_at: now
     }, user),
     organization_id: user.organization_id || null
-  }));
+    };
+  });
   const existingResult = await supabase.from("rfx_ratebook_segments")
     .select("id,segment_key")
     .eq("ratebook_id", ratebook.id)
     .eq("owner_email", user.owner_email);
   if (existingResult.error) throw existingResult.error;
-  const activeSegmentKeys = new Set(rows.map((row) => cleanText(row.segment_key)));
+  const activeSegmentKeys = new Set(rows.map((row) => cleanText(row.segment_key)).filter((key): key is string => Boolean(key)));
   const staleSegmentIds = ((existingResult.data || []) as Record<string, unknown>[])
-    .filter((segment) => !activeSegmentKeys.has(cleanText(segment.segment_key)))
+    .filter((segment) => {
+      const segmentKey = cleanText(segment.segment_key);
+      return !segmentKey || !activeSegmentKeys.has(segmentKey);
+    })
     .map((segment) => cleanText(segment.id))
-    .filter(Boolean);
+    .filter((id): id is string => Boolean(id));
   for (const batch of chunkValues(staleSegmentIds, 500)) {
     const staleDelete = await supabase.from("rfx_ratebook_segments")
       .delete()
@@ -18113,7 +18682,7 @@ async function syncRatebookSegments(
 }
 
 async function requireOwnedRatebook(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_email: string | null },
   ratebookId: unknown
 ) {
@@ -18126,7 +18695,7 @@ async function requireOwnedRatebook(
 }
 
 async function listRatebooks(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_user_id: string | null; owner_email: string | null; organization_id?: string | null },
   input: Record<string, unknown>
 ) {
@@ -18151,8 +18720,8 @@ async function listRatebooks(
     total: 0,
     facets: { shippers: [], sources: [], segments: [] }
   };
-  const projectIds = Array.from(new Set(packs.map((pack) => cleanText(pack.project_id)).filter(Boolean)));
-  const packageIds = packs.map((pack) => cleanText(pack.id)).filter(Boolean);
+  const projectIds = Array.from(new Set(packs.map((pack) => cleanText(pack.project_id)).filter((id): id is string => Boolean(id))));
+  const packageIds = packs.map((pack) => cleanText(pack.id)).filter((id): id is string => Boolean(id));
   const [projectsResult, packageLanesResult, packageSegmentsResult] = await Promise.all([
     supabase.from("rfx_projects").select("*").eq("owner_email", user.owner_email).in("id", projectIds),
     supabase.from("rfx_package_lanes").select("package_id,id,demand_lane_id,rfx_demand_lanes(*)").in("package_id", packageIds),
@@ -18161,12 +18730,17 @@ async function listRatebooks(
   if (projectsResult.error) throw projectsResult.error;
   if (packageLanesResult.error) throw packageLanesResult.error;
   if (packageSegmentsResult.error) throw packageSegmentsResult.error;
-  const projectById = new Map(((projectsResult.data || []) as Record<string, unknown>[]).map((project) => [cleanText(project.id), project]));
+  const projectById = new Map<string, Record<string, unknown>>();
+  ((projectsResult.data || []) as Record<string, unknown>[]).forEach((project) => {
+    const projectId = cleanText(project.id);
+    if (projectId) projectById.set(projectId, project);
+  });
   const shipperContexts = await getRatebookShipperContexts(supabase, user, projectIds);
   const laneCountByPackage = new Map<string, number>();
   const lanesByPackage = new Map<string, Record<string, unknown>[]>();
   ((packageLanesResult.data || []) as Record<string, unknown>[]).forEach((row) => {
     const key = cleanText(row.package_id);
+    if (!key) return;
     laneCountByPackage.set(key, (laneCountByPackage.get(key) || 0) + 1);
     const lanes = lanesByPackage.get(key) || [];
     lanes.push(row);
@@ -18175,20 +18749,24 @@ async function listRatebooks(
   const segmentsByPackage = new Map<string, Record<string, unknown>[]>();
   ((packageSegmentsResult.data || []) as Record<string, unknown>[]).forEach((segment) => {
     const key = cleanText(segment.package_id);
+    if (!key) return;
     const rows = segmentsByPackage.get(key) || [];
     rows.push(segment);
     segmentsByPackage.set(key, rows);
   });
   const materializedRatebooks: Record<string, unknown>[] = [];
   for (const pack of packs) {
-    const project = projectById.get(cleanText(pack.project_id));
+    const projectId = cleanText(pack.project_id);
+    const packageId = cleanText(pack.id);
+    if (!projectId || !packageId) continue;
+    const project = projectById.get(projectId);
     if (!project) continue;
     materializedRatebooks.push(await upsertRatebookForPackage(supabase, user, {
       pack,
       project,
-      package_lanes: lanesByPackage.get(cleanText(pack.id)) || [],
-      package_segments: segmentsByPackage.get(cleanText(pack.id)) || [],
-      shipper: shipperContexts.get(cleanText(project.id))
+      package_lanes: lanesByPackage.get(packageId) || [],
+      package_segments: segmentsByPackage.get(packageId) || [],
+    shipper: shipperContexts.get(cleanText(project.id))
     }));
   }
   const persistedRatebooksResult = await supabase.from("rfx_ratebooks").select("*")
@@ -18196,7 +18774,7 @@ async function listRatebooks(
     .order("updated_at", { ascending: false });
   if (persistedRatebooksResult.error) throw persistedRatebooksResult.error;
   const ratebooks = (persistedRatebooksResult.data || materializedRatebooks) as Record<string, unknown>[];
-  const ratebookIds = ratebooks.map((row) => cleanText(row.id)).filter(Boolean);
+  const ratebookIds = ratebooks.map((row) => cleanText(row.id)).filter((id): id is string => Boolean(id));
   const shareResult = ratebookIds.length
     ? await supabase.from("rfx_ratebook_shares").select("ratebook_id,status").in("ratebook_id", ratebookIds).eq("status", "active")
     : { data: [], error: null };
@@ -18204,14 +18782,15 @@ async function listRatebooks(
   const shareCountByRatebook = new Map<string, number>();
   ((shareResult.data || []) as Record<string, unknown>[]).forEach((share) => {
     const key = cleanText(share.ratebook_id);
+    if (!key) return;
     shareCountByRatebook.set(key, (shareCountByRatebook.get(key) || 0) + 1);
   });
   const search = cleanText(input.search)?.toLowerCase();
   const requestedStatus = cleanText(input.lifecycle_status || input.status)?.toLowerCase();
-  const allRows = ratebooks.map((ratebook) => {
+  const allRows: Record<string, unknown>[] = ratebooks.map((ratebook) => {
     const pack = packs.find((item) => cleanText(item.id) === cleanText(ratebook.rfx_package_id)) || {};
-    const project = projectById.get(cleanText(ratebook.project_id)) || {};
-    const segments = (segmentsByPackage.get(cleanText(pack.id)) || []).map((segment) => ({
+    const project = projectById.get(mapLookupKey(ratebook.project_id)) || {};
+    const segments = (segmentsByPackage.get(mapLookupKey(pack.id)) || []).map((segment) => ({
       id: segment.id,
       segment_key: cleanText(segment.segment_key),
       segment_name: cleanText(segment.segment_name),
@@ -18223,7 +18802,7 @@ async function listRatebooks(
     return {
       ...ratebook,
       lane_count: Number(ratebook.lane_count || 0),
-      shared_carrier_count: shareCountByRatebook.get(cleanText(ratebook.id)) || 0,
+      shared_carrier_count: shareCountByRatebook.get(mapLookupKey(ratebook.id)) || 0,
       segments,
       segment_count: segments.length,
       project: {
@@ -18248,8 +18827,9 @@ async function listRatebooks(
     segments: new Map<string, { value: string; label: string; count: number }>()
   };
   allRows.forEach((row) => {
+    const project = objectRecord(row.project);
     const shipperId = cleanText(row.shipper_id);
-    const shipperLabel = firstCleanText(row.shipper_name, row.project?.customer_name, row.project?.title, "Unassigned shipper") || "Unassigned shipper";
+    const shipperLabel = firstCleanText(row.shipper_name, project.customer_name, project.title, "Unassigned shipper") || "Unassigned shipper";
     const shipperKey = shipperId || "__unassigned__";
     const shipperFacet = facetCounts.shippers.get(shipperKey) || { value: shipperId || "__unassigned__", label: shipperLabel, count: 0 };
     shipperFacet.count += 1;
@@ -18260,7 +18840,7 @@ async function listRatebooks(
     sourceFacet.count += 1;
     facetCounts.sources.set(sourceValue, sourceFacet);
 
-    (Array.isArray(row.segments) ? row.segments : []).forEach((segment) => {
+    (Array.isArray(row.segments) ? row.segments as Record<string, unknown>[] : []).forEach((segment) => {
       const segmentValue = cleanText(segment.segment_key)?.toLowerCase();
       if (!segmentValue) return;
       const segmentLabel = firstCleanText(segment.segment_name, segment.segment_key) || segmentValue;
@@ -18274,6 +18854,36 @@ async function listRatebooks(
     sources: Array.from(facetCounts.sources.values()).sort((left, right) => left.label.localeCompare(right.label)),
     segments: Array.from(facetCounts.segments.values()).sort((left, right) => left.label.localeCompare(right.label))
   };
+  const laneSearchTextByPackage = new Map<string, string>();
+  lanesByPackage.forEach((lanes, packageId) => {
+    const content = lanes.map((packageLane) => {
+      const demand = objectRecord(packageLane.rfx_demand_lanes);
+      const normalized = objectRecord(demand.normalized_payload);
+      return [
+        demand.lane_key,
+        demand.origin,
+        demand.origin_city,
+        demand.origin_state,
+        demand.origin_country,
+        demand.origin_postal_code,
+        normalized.origin_market,
+        normalized.origin_region,
+        demand.destination,
+        demand.destination_city,
+        demand.destination_state,
+        demand.destination_country,
+        demand.destination_postal_code,
+        normalized.destination_market,
+        normalized.destination_region,
+        demand.equipment_type,
+        demand.trailer_requirements,
+        demand.operation_type,
+        demand.service_type,
+        demand.currency
+      ].map(cleanText).filter(Boolean).join(" ");
+    }).join(" ").toLowerCase();
+    laneSearchTextByPackage.set(packageId, content);
+  });
   const rows = allRows.filter((row) => {
     if (requestedStatus && requestedStatus !== ratebookLifecycleStatus(row.lifecycle_status, cleanText(row.status)?.toLowerCase() || "draft")) return false;
     if (requestedShipperId === "__unassigned__" && cleanText(row.shipper_id)) return false;
@@ -18281,18 +18891,157 @@ async function listRatebooks(
     if (requestedSourceType && cleanText(row.source_type)?.toLowerCase() !== requestedSourceType) return false;
     if (requestedSegmentKey && !(Array.isArray(row.segments) ? row.segments : []).some((segment) => cleanText(segment.segment_key)?.toLowerCase() === requestedSegmentKey)) return false;
     if (!search) return true;
-    return [row.name, row.shipper_name, row.source_type, row.project?.title, row.project?.customer_name, row.package?.name]
+    const project = objectRecord(row.project);
+    const pack = objectRecord(row.package);
+    const packageId = cleanText(row.rfx_package_id) || "";
+    return [row.name, row.shipper_name, row.source_type, project.title, project.customer_name, pack.name, laneSearchTextByPackage.get(packageId)]
       .map(cleanText).filter(Boolean).join(" ").toLowerCase().includes(search);
   });
   return { rows, loaded: rows.length, total: allRows.length, facets };
 }
 
+async function exportRatebookRoutes(
+  supabase: RatewareSupabaseClient,
+  user: { owner_user_id: string | null; owner_email: string | null; organization_id?: string | null },
+  input: Record<string, unknown>
+) {
+  const listed = await listRatebooks(supabase, user, input);
+  const ratebooks = (listed.rows || []) as Record<string, unknown>[];
+  const packageIds = Array.from(new Set(ratebooks.map((row) => cleanText(row.rfx_package_id)).filter((id): id is string => Boolean(id))));
+  if (!packageIds.length) {
+    return { rows: [], total: 0, filters: input };
+  }
+
+  const eventIds = Array.from(new Set(ratebooks.map((row) => {
+    const pack = objectRecord(row.package);
+    return cleanText(row.rfx_event_id || pack.linked_rfx_event_id);
+  }).filter((id): id is string => Boolean(id))));
+  const requestedSegmentKey = cleanText(input.segment_key)?.toLowerCase();
+  const [packageLanesResult, eventsResult, eventLanesResult, participantsResult] = await Promise.all([
+    supabase.from("rfx_package_lanes").select("package_id,id,demand_lane_id,rfx_demand_lanes(*)").in("package_id", packageIds),
+    eventIds.length
+      ? supabase.from("rfx_events").select("id,rfx_id,name,customer,status,due_date").eq("owner_email", user.owner_email).in("id", eventIds)
+      : { data: [], error: null },
+    eventIds.length
+      ? supabase.from("rfx_lanes").select("*").in("rfx_event_id", eventIds).order("lane_number", { ascending: true })
+      : { data: [], error: null },
+    eventIds.length
+      ? supabase.from("rfx_lane_vendors").select("id,rfx_lane_id,vendor_id,invitation_status,bid_rate,currency,weekly_capacity").in("rfx_event_id", eventIds)
+      : { data: [], error: null }
+  ]);
+  for (const result of [packageLanesResult, eventsResult, eventLanesResult, participantsResult]) {
+    if (result.error) throw result.error;
+  }
+
+  const ratebookByPackage = new Map<string, Record<string, unknown>>();
+  ratebooks.forEach((ratebook) => {
+    const packageId = cleanText(ratebook.rfx_package_id);
+    if (packageId) ratebookByPackage.set(packageId, ratebook);
+  });
+  const eventById = new Map<string, Record<string, unknown>>();
+  ((eventsResult.data || []) as Record<string, unknown>[]).forEach((event) => {
+    const eventId = cleanText(event.id);
+    if (eventId) eventById.set(eventId, event);
+  });
+  const eventLaneByDemandId = new Map<string, Record<string, unknown>>();
+  ((eventLanesResult.data || []) as Record<string, unknown>[]).forEach((lane) => {
+    const demandId = cleanText(lane.source_rfx_demand_lane_id);
+    if (demandId) eventLaneByDemandId.set(demandId, lane);
+  });
+  const participantsByLaneId = new Map<string, Record<string, unknown>[]>();
+  ((participantsResult.data || []) as Record<string, unknown>[]).forEach((participant) => {
+    const key = cleanText(participant.rfx_lane_id);
+    if (!key) return;
+    const rows = participantsByLaneId.get(key) || [];
+    rows.push(participant);
+    participantsByLaneId.set(key, rows);
+  });
+
+  const rows = ((packageLanesResult.data || []) as Record<string, unknown>[]).flatMap((packageLane, index) => {
+    const ratebook = ratebookByPackage.get(mapLookupKey(packageLane.package_id));
+    if (!ratebook) return [];
+    const route = ratebookRouteSummary(packageLane, index, eventLaneByDemandId, participantsByLaneId);
+    if (requestedSegmentKey && cleanText(route.segment_key)?.toLowerCase() !== requestedSegmentKey) return [];
+    const demand = objectRecord(packageLane.rfx_demand_lanes);
+    const eventLane = eventLaneByDemandId.get(mapLookupKey(demand.id)) || {};
+    const normalized = objectRecord(demand.normalized_payload);
+    const project = objectRecord(ratebook.project);
+    const pack = objectRecord(ratebook.package);
+    const eventId = cleanText(ratebook.rfx_event_id || pack.linked_rfx_event_id);
+    const event = eventById.get(mapLookupKey(eventId)) || {};
+    return [{
+      ratebook_id: cleanText(ratebook.id),
+      ratebook_name: firstCleanText(ratebook.name, pack.name, "Ratebook") || "Ratebook",
+      lifecycle_status: ratebookLifecycleStatus(ratebook.lifecycle_status, cleanText(ratebook.status)?.toLowerCase() || "draft"),
+      version_number: Number(ratebook.version_number || 1),
+      shipper_id: cleanText(ratebook.shipper_id),
+      shipper_name: firstCleanText(ratebook.shipper_name, project.customer_name, event.customer, "Unassigned shipper") || "Unassigned shipper",
+      source_type: cleanText(ratebook.source_type) || "rfx",
+      project_id: cleanText(ratebook.project_id),
+      project_name: firstCleanText(project.title, project.customer_name),
+      package_id: cleanText(ratebook.rfx_package_id),
+      package_name: firstCleanText(pack.name, ratebook.name),
+      event_id: eventId,
+      event_name: firstCleanText(event.name, pack.name),
+      rfx_id: cleanText(event.rfx_id),
+      transaction_id: cleanText(route.transaction_id),
+      route_status: cleanText(route.status),
+      package_lane_id: cleanText(route.package_lane_id),
+      source_demand_lane_id: cleanText(route.source_demand_lane_id),
+      source_rfi_lane_id: cleanText(route.source_rfi_lane_id),
+      segment_key: cleanText(route.segment_key),
+      segment_name: cleanText(route.segment_name),
+      origin: firstCleanText(route.origin, demand.origin, eventLane.origin),
+      origin_city: firstCleanText(demand.origin_city, normalized.origin_city, eventLane.origin_city),
+      origin_state: firstCleanText(demand.origin_state, normalized.origin_state, eventLane.origin_state),
+      origin_country: firstCleanText(demand.origin_country, normalized.origin_country, eventLane.origin_country),
+      origin_postal_code: firstCleanText(demand.origin_postal_code, demand.origin_zip, normalized.origin_postal_code, normalized.origin_zip, normalized.origin_zip_prefix),
+      origin_market: firstCleanText(normalized.origin_market, eventLane.origin_market),
+      origin_region: firstCleanText(normalized.origin_region, eventLane.origin_region),
+      destination: firstCleanText(route.destination, demand.destination, eventLane.destination),
+      destination_city: firstCleanText(demand.destination_city, normalized.destination_city, eventLane.destination_city),
+      destination_state: firstCleanText(demand.destination_state, normalized.destination_state, eventLane.destination_state),
+      destination_country: firstCleanText(demand.destination_country, normalized.destination_country, eventLane.destination_country),
+      destination_postal_code: firstCleanText(demand.destination_postal_code, demand.destination_zip, normalized.destination_postal_code, normalized.destination_zip, normalized.destination_zip_prefix),
+      destination_market: firstCleanText(normalized.destination_market, eventLane.destination_market),
+      destination_region: firstCleanText(normalized.destination_region, eventLane.destination_region),
+      equipment: firstCleanText(route.equipment, demand.equipment_type, eventLane.equipment),
+      trailer: firstCleanText(route.trailer, demand.trailer_requirements, eventLane.trailer),
+      configuration: firstCleanText(demand.configuration_type, eventLane.config),
+      operation: firstCleanText(route.operation, demand.operation_type, eventLane.operation),
+      service: firstCleanText(route.service, demand.service_type, eventLane.service),
+      weekly_volume: cleanNumber(demand.weekly_volume) ?? cleanNumber(eventLane.weekly_volume),
+      monthly_volume: cleanNumber(demand.monthly_volume),
+      frequency: firstCleanText(route.frequency, demand.frequency),
+      target_rate: cleanNumber(demand.target_rate) ?? cleanNumber(eventLane.target_rate),
+      currency: firstCleanText(route.currency, demand.currency, eventLane.currency) || "USD",
+      carrier_count: Number(route.carrier_count || 0),
+      bid_count: Number(route.bid_count || 0),
+      updated_at: firstCleanText(demand.updated_at, packageLane.updated_at, ratebook.updated_at)
+    }];
+  });
+
+  return {
+    rows,
+    total: rows.length,
+    ratebook_count: ratebooks.length,
+    filters: {
+      search: cleanText(input.search),
+      status: cleanText(input.status || input.lifecycle_status),
+      shipper_id: cleanText(input.shipper_id),
+      source_type: cleanText(input.source_type),
+      segment_key: cleanText(input.segment_key),
+      project_id: cleanText(input.project_id)
+    }
+  };
+}
+
 async function materializeRatebooksForProjects(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_user_id: string | null; owner_email: string | null; organization_id?: string | null },
   projectIds: string[]
 ) {
-  const ids = Array.from(new Set(projectIds.map((id) => cleanText(id)).filter(Boolean)));
+  const ids = Array.from(new Set(projectIds.map((id) => cleanText(id)).filter((id): id is string => Boolean(id))));
   if (!ids.length) return [];
   const [projectsResult, packagesResult] = await Promise.all([
     supabase.from("rfx_projects").select("*")
@@ -18306,19 +19055,24 @@ async function materializeRatebooksForProjects(
   const projects = (projectsResult.data || []) as Record<string, unknown>[];
   const packs = (packagesResult.data || []) as Record<string, unknown>[];
   if (!packs.length) return [];
-  const packageIds = packs.map((pack) => cleanText(pack.id)).filter(Boolean);
+  const packageIds = packs.map((pack) => cleanText(pack.id)).filter((id): id is string => Boolean(id));
   const [packageLanesResult, packageSegmentsResult] = await Promise.all([
     supabase.from("rfx_package_lanes").select("package_id,id,demand_lane_id,rfx_demand_lanes(*)").in("package_id", packageIds),
     supabase.from("rfx_package_segments").select("*").eq("owner_email", user.owner_email).in("package_id", packageIds)
   ]);
   if (packageLanesResult.error) throw packageLanesResult.error;
   if (packageSegmentsResult.error) throw packageSegmentsResult.error;
-  const projectById = new Map(projects.map((project) => [cleanText(project.id), project]));
+  const projectById = new Map<string, Record<string, unknown>>();
+  projects.forEach((project) => {
+    const projectId = cleanText(project.id);
+    if (projectId) projectById.set(projectId, project);
+  });
   const shipperContexts = await getRatebookShipperContexts(supabase, user, ids);
   const laneCountByPackage = new Map<string, number>();
   const lanesByPackage = new Map<string, Record<string, unknown>[]>();
   ((packageLanesResult.data || []) as Record<string, unknown>[]).forEach((row) => {
     const key = cleanText(row.package_id);
+    if (!key) return;
     laneCountByPackage.set(key, (laneCountByPackage.get(key) || 0) + 1);
     const lanes = lanesByPackage.get(key) || [];
     lanes.push(row);
@@ -18327,24 +19081,28 @@ async function materializeRatebooksForProjects(
   const segmentsByPackage = new Map<string, Record<string, unknown>[]>();
   ((packageSegmentsResult.data || []) as Record<string, unknown>[]).forEach((segment) => {
     const key = cleanText(segment.package_id);
+    if (!key) return;
     const rows = segmentsByPackage.get(key) || [];
     rows.push(segment);
     segmentsByPackage.set(key, rows);
   });
   const ratebooks: Record<string, unknown>[] = [];
   for (const pack of packs) {
-    const project = projectById.get(cleanText(pack.project_id));
+    const projectId = cleanText(pack.project_id);
+    const packageId = cleanText(pack.id);
+    if (!projectId || !packageId) continue;
+    const project = projectById.get(projectId);
     if (!project) continue;
     const ratebook = await upsertRatebookForPackage(supabase, user, {
       pack,
       project,
-      package_lanes: lanesByPackage.get(cleanText(pack.id)) || [],
-      package_segments: segmentsByPackage.get(cleanText(pack.id)) || [],
-      shipper: shipperContexts.get(cleanText(project.id))
+      package_lanes: lanesByPackage.get(packageId) || [],
+      package_segments: segmentsByPackage.get(packageId) || [],
+      shipper: shipperContexts.get(projectId)
     });
     ratebooks.push({
       ...ratebook,
-      lane_count: laneCountByPackage.get(cleanText(pack.id)) || 0,
+      lane_count: laneCountByPackage.get(packageId) || 0,
       project: {
         id: project.id,
         title: project.title,
@@ -18371,9 +19129,9 @@ function ratebookRouteSummary(
   participantsByLaneId: Map<string, Record<string, unknown>[]>
 ) {
   const demand = objectRecord(packageLane.rfx_demand_lanes);
-  const eventLane = eventLaneByDemandId.get(cleanText(demand.id)) || {};
+  const eventLane = eventLaneByDemandId.get(mapLookupKey(demand.id)) || {};
   const laneId = cleanText(eventLane.id) || cleanText(demand.id);
-  const participants = participantsByLaneId.get(cleanText(eventLane.id)) || [];
+  const participants = participantsByLaneId.get(mapLookupKey(eventLane.id)) || [];
   const hasBid = participants.some((participant) => cleanText(participant.invitation_status) === "bid_submitted" || cleanNumber(participant.bid_rate) !== null);
   return {
     id: laneId,
@@ -18427,7 +19185,7 @@ function evaluateRatebookReadiness(packageLanes: Record<string, unknown>[]) {
 }
 
 async function createRatebookRevision(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_user_id: string | null; owner_email: string | null; organization_id?: string | null },
   input: Record<string, unknown>
 ) {
@@ -18436,7 +19194,9 @@ async function createRatebookRevision(
     throw new Error("Only a published Ratebook can create a revision.");
   }
   const context = await getOwnedRatebookPackage(supabase, user, previousRatebook.rfx_package_id);
-  const shipperContexts = await getRatebookShipperContexts(supabase, user, [cleanText(context.project.id)]);
+  const projectId = cleanText(context.project.id);
+  if (!projectId) throw new Error("The RFx project is missing its identifier.");
+  const shipperContexts = await getRatebookShipperContexts(supabase, user, [projectId]);
   const sourceType = ratebookSourceType(context.project, context.pack);
   const sourceFingerprint = ratebookSourceFingerprint(context.project, context.pack, sourceType);
   const sourceSnapshotHash = await hashRatebookSourceSnapshot(ratebookSourceSnapshot(
@@ -18455,7 +19215,7 @@ async function createRatebookRevision(
     .order("version_number", { ascending: false }).limit(1).maybeSingle();
   if (versionsResult.error) throw versionsResult.error;
   const nextVersion = Number(versionsResult.data?.version_number || previousRatebook.version_number || 1) + 1;
-  const shipper = shipperContexts.get(cleanText(context.project.id));
+  const shipper = shipperContexts.get(projectId);
   const now = new Date().toISOString();
   const insert = await supabase.from("rfx_ratebooks").insert({
     ...withOwner({
@@ -18504,7 +19264,7 @@ async function createRatebookRevision(
 }
 
 async function getRatebookAudit(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_email: string | null },
   input: Record<string, unknown>
 ) {
@@ -18538,7 +19298,7 @@ async function getRatebookAudit(
 }
 
 async function getRatebookHealth(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_email: string | null },
 ) {
   const ratebooksResult = await supabase.from("rfx_ratebooks")
@@ -18599,7 +19359,10 @@ async function getRatebookHealth(
   const failedDeliveryByRatebook = counter();
   const reviewByQuoteId = new Map<string, Record<string, unknown>>();
 
-  ((reviewsResult.data || []) as Record<string, unknown>[]).forEach((review) => reviewByQuoteId.set(cleanText(review.quote_id), review));
+  ((reviewsResult.data || []) as Record<string, unknown>[]).forEach((review) => {
+    const quoteId = cleanText(review.quote_id);
+    if (quoteId) reviewByQuoteId.set(quoteId, review);
+  });
   ((packageLanesResult.data || []) as Record<string, unknown>[]).forEach((lane) => {
     const ratebookId = packageToRatebook.get(cleanText(lane.package_id));
     if (ratebookId) increment(laneCountByRatebook, ratebookId);
@@ -18617,7 +19380,7 @@ async function getRatebookHealth(
     const quotedLaneIds = quotedLaneIdsByRatebook.get(ratebookId) || new Set<string>();
     quotedLaneIds.add(packageLaneId);
     quotedLaneIdsByRatebook.set(ratebookId, quotedLaneIds);
-    const review = reviewByQuoteId.get(cleanText(quote.id));
+    const review = reviewByQuoteId.get(mapLookupKey(quote.id));
     if (!review || cleanText(review.decision)?.toLowerCase() === "pending") {
       increment(reviewPendingByRatebook, ratebookId);
       if (!firstPendingRouteByRatebook.has(ratebookId)) firstPendingRouteByRatebook.set(ratebookId, packageLaneId);
@@ -18634,7 +19397,7 @@ async function getRatebookHealth(
   const priorityOrder: Record<string, number> = { high: 0, medium: 1, low: 2 };
   const queue: Record<string, unknown>[] = [];
   const rows = ratebooks.map((ratebook) => {
-    const id = cleanText(ratebook.id);
+    const id = mapLookupKey(ratebook.id);
     const lifecycle = ratebookLifecycleStatus(ratebook.lifecycle_status, cleanText(ratebook.status)?.toLowerCase() || "draft");
     const laneCount = laneCountByRatebook.get(id) || Number(ratebook.lane_count || 0);
     const quotedLaneCount = quotedLaneIdsByRatebook.get(id)?.size || 0;
@@ -18688,7 +19451,7 @@ async function getRatebookHealth(
 }
 
 async function updateRatebookLifecycle(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_user_id: string | null; owner_email: string | null },
   input: Record<string, unknown>,
   lifecycle: "published" | "archived" | "superseded"
@@ -18717,7 +19480,7 @@ async function updateRatebookLifecycle(
       .eq("owner_email", user.owner_email).eq("rfx_package_id", ratebook.rfx_package_id)
       .eq("lifecycle_status", "published").neq("id", ratebook.id);
     if (previousPublished.error) throw previousPublished.error;
-    supersededRatebookIds = ((previousPublished.data || []) as Record<string, unknown>[]).map((row) => cleanText(row.id)).filter(Boolean);
+    supersededRatebookIds = ((previousPublished.data || []) as Record<string, unknown>[]).map((row) => cleanText(row.id)).filter((id): id is string => Boolean(id));
     if (supersededRatebookIds.length) {
       const supersede = await supabase.from("rfx_ratebooks").update({
         lifecycle_status: "superseded",
@@ -18747,7 +19510,7 @@ async function updateRatebookLifecycle(
 }
 
 async function getRatebook(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_email: string | null },
   input: Record<string, unknown>
 ) {
@@ -18778,10 +19541,15 @@ async function getRatebook(
   ]);
   for (const result of [eventResult, eventLanesResult, participantsResult, sharesResult, segmentsResult, ratebookQuotesResult, quoteReviewsResult, campaignsResult]) if (result.error) throw result.error;
   const eventLanes = (eventLanesResult.data || []) as Record<string, unknown>[];
-  const eventLaneByDemandId = new Map(eventLanes.map((lane) => [cleanText(lane.source_rfx_demand_lane_id), lane]).filter(([id]) => Boolean(id)));
+  const eventLaneByDemandId = new Map<string, Record<string, unknown>>();
+  eventLanes.forEach((lane) => {
+    const demandId = cleanText(lane.source_rfx_demand_lane_id);
+    if (demandId) eventLaneByDemandId.set(demandId, lane);
+  });
   const participantsByLaneId = new Map<string, Record<string, unknown>[]>();
   ((participantsResult.data || []) as Record<string, unknown>[]).forEach((participant) => {
     const key = cleanText(participant.rfx_lane_id);
+    if (!key) return;
     const rows = participantsByLaneId.get(key) || [];
     rows.push(participant);
     participantsByLaneId.set(key, rows);
@@ -18799,8 +19567,8 @@ async function getRatebook(
   });
   const routes = context.package_lanes.map((packageLane, index) => {
     const route = ratebookRouteSummary(packageLane, index, eventLaneByDemandId, participantsByLaneId);
-    const ratebookQuoteCount = ratebookQuoteCounts.get(cleanText(route.package_lane_id)) || 0;
-    const shortlistedQuoteCount = shortlistedRatebookQuotes.get(cleanText(route.package_lane_id)) || 0;
+    const ratebookQuoteCount = ratebookQuoteCounts.get(mapLookupKey(route.package_lane_id)) || 0;
+    const shortlistedQuoteCount = shortlistedRatebookQuotes.get(mapLookupKey(route.package_lane_id)) || 0;
     return {
       ...route,
       ratebook_quote_count: ratebookQuoteCount,
@@ -18857,7 +19625,7 @@ async function getRatebook(
 }
 
 async function getRatebookRouteQuotes(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_email: string | null },
   input: Record<string, unknown>
 ) {
@@ -18885,8 +19653,16 @@ async function getRatebookRouteQuotes(
     ? await supabase.from("vendors").select("id,vendor_name,domain,primary_email").eq("owner_email", user.owner_email).in("id", vendorIds)
     : { data: [], error: null };
   if (vendorsResult.error) throw vendorsResult.error;
-  const vendorsById = new Map(((vendorsResult.data || []) as Record<string, unknown>[]).map((vendor) => [cleanText(vendor.id), vendor]));
-  const reviewsByQuoteId = new Map(((reviewsResult.data || []) as Record<string, unknown>[]).map((review) => [cleanText(review.quote_id), review]));
+  const vendorsById = new Map<string, Record<string, unknown>>();
+  ((vendorsResult.data || []) as Record<string, unknown>[]).forEach((vendor) => {
+    const vendorId = cleanText(vendor.id);
+    if (vendorId) vendorsById.set(vendorId, vendor);
+  });
+  const reviewsByQuoteId = new Map<string, Record<string, unknown>>();
+  ((reviewsResult.data || []) as Record<string, unknown>[]).forEach((review) => {
+    const quoteId = cleanText(review.quote_id);
+    if (quoteId) reviewsByQuoteId.set(quoteId, review);
+  });
   const demandLane = objectRecord(packageLaneResult.data.rfx_demand_lanes);
   return {
     ratebook_id: ratebook.id,
@@ -18899,14 +19675,14 @@ async function getRatebookRouteQuotes(
     },
     quotes: quotes.map((quote) => ({
       ...quote,
-      vendor: vendorsById.get(cleanText(quote.vendor_id)) || null,
-      review: reviewsByQuoteId.get(cleanText(quote.id)) || { decision: "pending" }
+      vendor: vendorsById.get(mapLookupKey(quote.vendor_id)) || null,
+      review: reviewsByQuoteId.get(mapLookupKey(quote.id)) || { decision: "pending" }
     }))
   };
 }
 
 async function updateRatebookQuoteReview(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_user_id: string | null; owner_email: string | null; organization_id?: string | null },
   input: Record<string, unknown>
 ) {
@@ -18958,7 +19734,7 @@ async function updateRatebookQuoteReview(
 }
 
 async function getRatebookRouteDetail(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_email: string | null },
   input: Record<string, unknown>
 ) {
@@ -18990,7 +19766,7 @@ async function getRatebookRouteDetail(
 }
 
 async function listRatebookCarriers(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_email: string | null },
   input: Record<string, unknown>
 ) {
@@ -19010,7 +19786,7 @@ async function listRatebookCarriers(
 }
 
 async function shareRatebookWithCarriers(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_user_id: string | null; owner_email: string | null; organization_id?: string | null },
   input: Record<string, unknown>
 ) {
@@ -19117,7 +19893,7 @@ function ratebookDistributionCopy(ratebook: Record<string, unknown>, link: Recor
 }
 
 async function queueRatebookDistribution(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_user_id: string | null; owner_email: string | null; organization_id?: string | null },
   input: Record<string, unknown>
 ) {
@@ -19222,7 +19998,7 @@ async function queueRatebookDistribution(
 }
 
 async function sendRatebookDistribution(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_user_id: string | null; owner_email: string | null; organization_id?: string | null },
   input: Record<string, unknown>
 ) {
@@ -19264,7 +20040,7 @@ async function sendRatebookDistribution(
 }
 
 async function syncShipperOpportunityFromImplementationReadyAward(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_user_id: string | null; owner_email: string | null },
   projectId: unknown,
   awardId: unknown
@@ -19297,7 +20073,7 @@ async function syncShipperOpportunityFromImplementationReadyAward(
   return result.data as Record<string, unknown>;
 }
 
-async function createRfxAwardPackage(supabase: ReturnType<typeof createClient>, user: { owner_user_id: string | null; owner_email: string | null }, input: Record<string, unknown>) {
+async function createRfxAwardPackage(supabase: RatewareSupabaseClient, user: { owner_user_id: string | null; owner_email: string | null }, input: Record<string, unknown>) {
   const project = await requireOwnedRfxProcessProject(supabase, user, input.project_id || input.id);
   const scenarioType = cleanText(input.scenario_type || input.scenarioType)?.toLowerCase() || "best_value";
   const status = cleanText(input.status)?.toLowerCase() || "draft";
@@ -19352,7 +20128,7 @@ async function createRfxAwardPackage(supabase: ReturnType<typeof createClient>, 
 }
 
 async function markRfxAwardPackageImplementationReady(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RatewareSupabaseClient,
   user: { owner_user_id: string | null; owner_email: string | null },
   input: Record<string, unknown>
 ) {
@@ -19403,13 +20179,15 @@ async function markRfxAwardPackageImplementationReady(
 Deno.serve(async (request) => {
   if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders() });
 
-  let supabase: ReturnType<typeof createClient> | null = null;
-  let user: RatewareUser | null = null;
+  let auditSupabase: RatewareSupabaseClient | null = null;
+  let auditUser: RatewareUser | null = null;
   let body: Record<string, unknown> = {};
 
   try {
-    supabase = getClient();
-    user = await resolveCanonicalUser(supabase, userContext(await requireKindeUser(request)));
+    const supabase = getClient();
+    auditSupabase = supabase;
+    const user = await resolveCanonicalUser(supabase, userContext(await requireKindeUser(request)));
+    auditUser = user;
     body = await request.json();
 
     if (body.action === "list_rfx_process_projects") {
@@ -19537,6 +20315,10 @@ Deno.serve(async (request) => {
 
     if (body.action === "list_ratebooks") {
       return jsonResponse(await listRatebooks(supabase, user, body));
+    }
+
+    if (body.action === "export_ratebook_routes") {
+      return jsonResponse(await exportRatebookRoutes(supabase, user, body));
     }
 
     if (body.action === "get_ratebook") {
@@ -19750,8 +20532,10 @@ Deno.serve(async (request) => {
 
       const now = new Date().toISOString();
       const firstValue = (...values: unknown[]) => values.map(cleanText).find(Boolean) || null;
-      const existingMergedFrom = Array.isArray(objectRecord(primary.metadata).merged_from_shipper_ids)
-        ? objectRecord(primary.metadata).merged_from_shipper_ids.map(String)
+      const primaryMetadata = objectRecord(primary.metadata);
+      const mergedFromShipperIds = primaryMetadata.merged_from_shipper_ids;
+      const existingMergedFrom = Array.isArray(mergedFromShipperIds)
+        ? mergedFromShipperIds.map(String)
         : [];
       const mergedMetadata = {
         ...objectRecord(duplicate.metadata),
@@ -19991,7 +20775,7 @@ Deno.serve(async (request) => {
             .eq("owner_email", user.owner_email)
             .in("shipper_id", ids);
           if (result.error) throw result.error;
-          rows.push(...((result.data || []) as Record<string, unknown>[]));
+          rows.push(...((result.data || []) as unknown as Record<string, unknown>[]));
         }
         return rows;
       };
@@ -20195,7 +20979,11 @@ Deno.serve(async (request) => {
       ]);
       if (rfiResult.error) throw rfiResult.error;
       if (opportunityResult.error) throw opportunityResult.error;
-      const shipperById = new Map(shippers.map((row) => [cleanText(row.id), row]));
+      const shipperById = new Map<string, Record<string, unknown>>();
+      shippers.forEach((shipper) => {
+        const shipperId = cleanText(shipper.id);
+        if (shipperId) shipperById.set(shipperId, shipper);
+      });
       const rfxProjectIds = Array.from(new Set((opportunityResult.data || [])
         .map((row) => cleanText(row.rfx_project_id))
         .filter((id): id is string => Boolean(id))));
@@ -20206,20 +20994,28 @@ Deno.serve(async (request) => {
           .in("id", rfxProjectIds)
         : { data: [], error: null };
       if (rfxProjectResult.error) throw rfxProjectResult.error;
-      const rfxProjectById = new Map((rfxProjectResult.data || []).map((row) => [cleanText(row.id), row]));
+      const rfxProjectById = new Map<string, Record<string, unknown>>();
+      ((rfxProjectResult.data || []) as Record<string, unknown>[]).forEach((project) => {
+        const projectId = cleanText(project.id);
+        if (projectId) rfxProjectById.set(projectId, project);
+      });
       const allOpportunities = (opportunityResult.data || []).map((row) => ({
         ...row,
-        shipper_name: cleanText(shipperById.get(cleanText(row.shipper_id))?.shipper_name),
-        shipper_domain: cleanText(shipperById.get(cleanText(row.shipper_id))?.domain),
-        relationship_stage: cleanText(shipperById.get(cleanText(row.shipper_id))?.relationship_stage),
-        rfx_project: rfxProjectById.get(cleanText(row.rfx_project_id)) || null
+        shipper_name: cleanText(shipperById.get(mapLookupKey(row.shipper_id))?.shipper_name),
+        shipper_domain: cleanText(shipperById.get(mapLookupKey(row.shipper_id))?.domain),
+        relationship_stage: cleanText(shipperById.get(mapLookupKey(row.shipper_id))?.relationship_stage),
+        rfx_project: rfxProjectById.get(mapLookupKey(row.rfx_project_id)) || null
       }));
-      const opportunityByRfiId = new Map(allOpportunities.map((row) => [cleanText(row.rfi_id), row]).filter(([id]) => Boolean(id)));
+      const opportunityByRfiId = new Map<string, Record<string, unknown>>();
+      allOpportunities.forEach((opportunity) => {
+        const rfiId = cleanText(opportunity.rfi_id);
+        if (rfiId) opportunityByRfiId.set(rfiId, opportunity);
+      });
       const rfis = (rfiResult.data || []).map((row) => ({
         ...row,
-        shipper_name: cleanText(shipperById.get(cleanText(row.shipper_id))?.shipper_name),
-        shipper_domain: cleanText(shipperById.get(cleanText(row.shipper_id))?.domain),
-        linked_opportunity: opportunityByRfiId.get(cleanText(row.id)) || null
+        shipper_name: cleanText(shipperById.get(mapLookupKey(row.shipper_id))?.shipper_name),
+        shipper_domain: cleanText(shipperById.get(mapLookupKey(row.shipper_id))?.domain),
+        linked_opportunity: opportunityByRfiId.get(mapLookupKey(row.id)) || null
       }));
       const matchesSearch = (row: Record<string, unknown>, fields: string[]) => !search || fields.some((field) => String(row[field] || "").toLowerCase().includes(search.toLowerCase()));
       const now = new Date();
@@ -20502,10 +21298,14 @@ Deno.serve(async (request) => {
         if (accountsResult.error) throw accountsResult.error;
         accounts = (accountsResult.data || []) as Record<string, unknown>[];
       }
-      const accountById = new Map(accounts.map((row) => [cleanText(row.id), row]));
+      const accountById = new Map<string, Record<string, unknown>>();
+      accounts.forEach((account) => {
+        const accountId = cleanText(account.id);
+        if (accountId) accountById.set(accountId, account);
+      });
       const search = cleanText(body.search)?.toLowerCase();
-      const rows = actions.map((row) => {
-        const account = accountById.get(cleanText(row.shipper_id)) || {};
+      const rows: Record<string, unknown>[] = actions.map((row) => {
+        const account = accountById.get(mapLookupKey(row.shipper_id)) || {};
         return {
           ...row,
           shipper_name: cleanText(account.shipper_name),
@@ -20514,7 +21314,8 @@ Deno.serve(async (request) => {
         };
       }).filter((row) => {
         if (!search) return true;
-        return [row.shipper_name, row.shipper_domain, row.primary_contact_email, row.title, row.notes, row.owner_email_assignee]
+        const searchable = objectRecord(row);
+        return [searchable.shipper_name, searchable.shipper_domain, searchable.primary_contact_email, searchable.title, searchable.notes, searchable.owner_email_assignee]
           .map(cleanText).filter(Boolean).join(" ").toLowerCase().includes(search);
       });
       const counts = { open: 0, today: 0, overdue: 0, done: 0 };
@@ -20573,17 +21374,42 @@ Deno.serve(async (request) => {
       if (profileRequestsResult.error && profileRequestsResult.error.code !== "42P01") throw profileRequestsResult.error;
       const details = Object.fromEntries(entries.map(([entity], index) => [entity, results[index].data || []]));
       details.profile_requests = profileRequestsResult.data || [];
-      const linkedProjectIds = Array.from(new Set(
-        ((details.opportunities || []) as Record<string, unknown>[])
-          .map((opportunity) => cleanText(opportunity.rfx_project_id))
-          .filter(Boolean)
-      ));
+      const projectResult = await supabase.from("rfx_projects")
+        .select("id")
+        .eq("owner_email", user.owner_email)
+        .eq("customer_id", shipperId);
+      if (projectResult.error && projectResult.error.code !== "42P01") throw projectResult.error;
+      const linkedProjectIds = Array.from(new Set([
+        ...((details.opportunities || []) as Record<string, unknown>[])
+          .map((opportunity) => cleanText(opportunity.rfx_project_id)),
+        ...((projectResult.data || []) as Record<string, unknown>[])
+          .map((project) => cleanText(project.id))
+      ].filter((id): id is string => Boolean(id))));
+      const directRatebookRows: Record<string, unknown>[] = [];
+      const directRatebooksResult = await supabase.from("rfx_ratebooks")
+        .select("*")
+        .eq("owner_email", user.owner_email)
+        .eq("shipper_id", shipperId)
+        .order("updated_at", { ascending: false });
+      if (directRatebooksResult.error && directRatebooksResult.error.code !== "42P01") throw directRatebooksResult.error;
+      directRatebookRows.push(...((directRatebooksResult.data || []) as Record<string, unknown>[]));
+      const ratebookById = new Map<string, Record<string, unknown>>();
+      directRatebookRows.forEach((ratebook) => {
+        const id = cleanText(ratebook.id);
+        if (id) ratebookById.set(id, ratebook);
+      });
       try {
-        details.ratebooks = await materializeRatebooksForProjects(supabase, user, linkedProjectIds);
+        const materialized = await materializeRatebooksForProjects(supabase, user, linkedProjectIds);
+        materialized.forEach((ratebook) => {
+          const id = cleanText(ratebook.id);
+          if (id) ratebookById.set(id, ratebook);
+        });
+        details.ratebooks = Array.from(ratebookById.values())
+          .sort((left, right) => (cleanText(right.updated_at) || "").localeCompare(cleanText(left.updated_at) || ""));
       } catch (error) {
         // Keep the shipper profile usable until the Ratebook migration is present in every deployment.
         if ((error as { code?: string } | null)?.code !== "42P01") throw error;
-        details.ratebooks = [];
+        details.ratebooks = directRatebookRows;
       }
       return jsonResponse({ row: shipper, ...details });
     }
@@ -20694,7 +21520,7 @@ Deno.serve(async (request) => {
       sourceRows.forEach((source, index) => {
         const normalized = normalizeImportedShipper(objectRecord(source));
         if ("error" in normalized) {
-          skippedRows.push({ row: index + 1, reason: normalized.error });
+          skippedRows.push({ row: index + 1, reason: normalized.error || "Invalid Shipper Base row." });
           return;
         }
         const domain = cleanText(normalized.insert.domain)?.toLowerCase();
@@ -20785,15 +21611,16 @@ Deno.serve(async (request) => {
       accountSources.forEach((source, index) => {
         const normalized = normalizeShipperCrmWorkbookAccount(objectRecord(source), externalSource);
         if ("error" in normalized) {
-          skippedRows.push({ entity: "account", row: index + 1, reason: normalized.error });
+          skippedRows.push({ entity: "account", row: index + 1, reason: normalized.error || "Invalid account row." });
           return;
         }
-        if (normalized.externalSourceId && seenAccountIds.has(normalized.externalSourceId)) {
+        const account = normalized as { patch: Record<string, unknown>; insert: Record<string, unknown>; externalSourceId: string | null };
+        if (account.externalSourceId && seenAccountIds.has(account.externalSourceId)) {
           skippedRows.push({ entity: "account", row: index + 1, reason: "Duplicate external account id in this workbook." });
           return;
         }
-        if (normalized.externalSourceId) seenAccountIds.add(normalized.externalSourceId);
-        accounts.push({ sourceIndex: index + 1, ...normalized });
+        if (account.externalSourceId) seenAccountIds.add(account.externalSourceId);
+        accounts.push({ sourceIndex: index + 1, ...account });
       });
 
       const referencedAccountIds = [
@@ -20864,7 +21691,7 @@ Deno.serve(async (request) => {
       contactSources.forEach((source, index) => {
         const normalized = normalizeShipperCrmWorkbookContact(objectRecord(source), externalSource);
         if ("error" in normalized) {
-          skippedRows.push({ entity: "contact", row: index + 1, reason: normalized.error });
+          skippedRows.push({ entity: "contact", row: index + 1, reason: normalized.error || "Invalid contact row." });
           return;
         }
         const shipperId = accountIdByExternalKey.get(`${externalSource}:${normalized.externalAccountId}`);
@@ -20879,7 +21706,7 @@ Deno.serve(async (request) => {
       opportunitySources.forEach((source, index) => {
         const normalized = normalizeShipperCrmWorkbookOpportunity(objectRecord(source), externalSource);
         if ("error" in normalized) {
-          skippedRows.push({ entity: "opportunity", row: index + 1, reason: normalized.error });
+          skippedRows.push({ entity: "opportunity", row: index + 1, reason: normalized.error || "Invalid opportunity row." });
           return;
         }
         const shipperId = accountIdByExternalKey.get(`${externalSource}:${normalized.externalAccountId}`);
@@ -21055,15 +21882,16 @@ Deno.serve(async (request) => {
       const result = await supabase.from(config.table).delete()
         .eq("owner_email", user.owner_email).eq("shipper_id", shipper.id).eq("id", recordId).select(deletedColumns).single();
       if (result.error) throw result.error;
+      const deletedRecord = result.data as unknown as Record<string, unknown>;
       if (entity === "actions") {
-        await tryWriteAuditLog(supabase, user, "shipper_account_action_deleted", "shipper_account_action", result.data.id,
-          `Deleted account action ${cleanText(result.data.title) || result.data.id}.`, { shipper_id: shipper.id });
+        await tryWriteAuditLog(supabase, user, "shipper_account_action_deleted", "shipper_account_action", deletedRecord.id,
+          `Deleted account action ${cleanText(deletedRecord.title) || deletedRecord.id}.`, { shipper_id: shipper.id });
       }
       if (entity !== "actions") {
-        await tryWriteAuditLog(supabase, user, "shipper.record.delete", `shipper_${entity}`, result.data.id,
+        await tryWriteAuditLog(supabase, user, "shipper.record.delete", `shipper_${entity}`, deletedRecord.id,
           `Deleted ${entity} record from shipper account`, { shipper_id: shipper.id, entity });
       }
-      return jsonResponse({ row: result.data });
+      return jsonResponse({ row: deletedRecord });
     }
 
     if (body.action === "list_vendors") {
@@ -21153,7 +21981,7 @@ Deno.serve(async (request) => {
       }
       const result = await query;
       if (result.error) throw result.error;
-      let rows = (result.data || []) as Record<string, unknown>[];
+      let rows = (result.data || []) as unknown as Record<string, unknown>[];
       const filteredTotal = result.count || rows.length;
       if (shouldPageSearchInMemory && searchIds) {
         const rankById = new Map(searchIds.map((id, index) => [id, index]));
@@ -21191,7 +22019,7 @@ Deno.serve(async (request) => {
     }
 
     if (body.action === "vendor_intelligence") {
-      const result = await buildVendorIntelligence(supabase, user, body.options || body);
+      const result = await buildVendorIntelligence(supabase, user, objectRecord(body.options || body));
       return jsonResponse(result);
     }
 
@@ -21248,27 +22076,27 @@ Deno.serve(async (request) => {
     }
 
     if (body.action === "carrier_recommendations") {
-      const result = await buildCarrierRecommendations(supabase, user, body.config || {});
+      const result = await buildCarrierRecommendations(supabase, user, objectRecord(body.config));
       return jsonResponse(result);
     }
 
     if (body.action === "business_intelligence_pivot") {
-      const result = await buildBusinessIntelligencePivotFromDb(supabase, user, body.config || {});
+      const result = await buildBusinessIntelligencePivotFromDb(supabase, user, objectRecord(body.config));
       return jsonResponse(result);
     }
 
     if (body.action === "business_intelligence_drilldown") {
-      const result = await buildBusinessIntelligenceDrilldown(supabase, user, body.config || {}, body.cell || {});
+      const result = await buildBusinessIntelligenceDrilldown(supabase, user, objectRecord(body.config), objectRecord(body.cell));
       return jsonResponse(result);
     }
 
     if (body.action === "business_intelligence_geo_density") {
-      const result = await buildBusinessIntelligenceGeoDensityFromDb(supabase, user, body.config || {});
+      const result = await buildBusinessIntelligenceGeoDensityFromDb(supabase, user, objectRecord(body.config));
       return jsonResponse(result);
     }
 
     if (body.action === "create_vendor") {
-      const row = withOwner(normalizeVendor(body.vendor || {}, "manual"), user);
+      const row = withOwner(normalizeVendor(objectRecord(body.vendor), "manual"), user);
       const result = await supabase.from("vendors").insert(row).select().single();
       if (result.error) throw result.error;
       return jsonResponse({ row: result.data });
@@ -21621,7 +22449,7 @@ Deno.serve(async (request) => {
       if (!body.id) return jsonResponse({ error: "Vendor id is required." }, 400);
       const current = await supabase.from("vendors").select("*").eq("owner_email", user.owner_email).eq("id", body.id).single();
       if (current.error) throw current.error;
-      const patch = normalizeVendorPatch(body.patch || {}, current.data || {});
+      const patch = normalizeVendorPatch(objectRecord(body.patch), objectRecord(current.data));
       if (patch.vendor_name === null) return jsonResponse({ error: "Vendor name is required." }, 400);
       const result = await supabase.from("vendors").update(patch).eq("owner_email", user.owner_email).eq("id", body.id).select().single();
       if (result.error) throw result.error;
@@ -21630,8 +22458,8 @@ Deno.serve(async (request) => {
 
     if (body.action === "replace_bounced_vendor_email") {
       const vendorId = cleanText(body.id || body.vendor_id);
-      const rawBouncedEmail = cleanText(body.bounced_email).toLowerCase();
-      const rawReplacementEmail = cleanText(body.replacement_email).toLowerCase();
+      const rawBouncedEmail = cleanText(body.bounced_email)?.toLowerCase() || "";
+      const rawReplacementEmail = cleanText(body.replacement_email)?.toLowerCase() || "";
       const bouncedEmail = normalizeEmail(rawBouncedEmail);
       const replacementEmail = normalizeEmail(rawReplacementEmail);
       if (!vendorId) return jsonResponse({ error: "Vendor id is required." }, 400);
@@ -21848,7 +22676,7 @@ Deno.serve(async (request) => {
     }
 
     if (body.action === "create_vendor_segment") {
-      const row = normalizeSegment(body.segment || {}, user);
+      const row = normalizeSegment(objectRecord(body.segment), user);
       if (row.segment_type === "participant_template") {
         if (!row.vendor_ids.length) return jsonResponse({ error: "Participant templates must include at least one carrier." }, 400);
         const conflict = await findParticipantTemplateNameConflict(supabase, user, row.segment_name);
@@ -21868,7 +22696,7 @@ Deno.serve(async (request) => {
 
     if (body.action === "update_vendor_segment") {
       if (!body.id) return jsonResponse({ error: "Segment id is required." }, 400);
-      const patch = normalizeSegment(body.segment || body.patch || {}, user);
+      const patch = normalizeSegment(objectRecord(body.segment || body.patch), user);
       if (patch.segment_type === "participant_template") {
         if (!patch.vendor_ids.length) return jsonResponse({ error: "Participant templates must include at least one carrier." }, 400);
         const conflict = await findParticipantTemplateNameConflict(supabase, user, patch.segment_name, String(body.id));
@@ -21947,16 +22775,19 @@ Deno.serve(async (request) => {
     }
 
     if (body.action === "create_rfx_event") {
-      const row = withOwner(normalizeRfxEvent(body.event || body), user);
+      const eventInput = objectRecord(body.event || body);
+      const row = withOwner(normalizeRfxEvent(eventInput), user);
       const result = await supabase.from("rfx_events").insert(row).select().single();
       if (result.error) throw result.error;
-      return jsonResponse({ row: result.data });
+      const sync = await ensureRatebookForBidRoomEvent(supabase, user, result.data as Record<string, unknown>, eventInput);
+      return jsonResponse({ row: sync.event || result.data, ratebook_sync: sync });
     }
 
     if (body.action === "update_rfx_event") {
       const eventId = cleanText(body.id || body.event_id);
       if (!eventId) return jsonResponse({ error: "RFx event id is required." }, 400);
-      const patch = normalizeRfxEventPatch(body.patch || body.event || {});
+      const eventPatch = objectRecord(body.patch || body.event);
+      const patch = normalizeRfxEventPatch(eventPatch);
       const result = await supabase
         .from("rfx_events")
         .update(patch)
@@ -21965,7 +22796,8 @@ Deno.serve(async (request) => {
         .select()
         .single();
       if (result.error) throw result.error;
-      return jsonResponse({ row: result.data });
+      const sync = await ensureRatebookForBidRoomEvent(supabase, user, result.data as Record<string, unknown>, eventPatch);
+      return jsonResponse({ row: sync.event || result.data, ratebook_sync: sync });
     }
 
     if (body.action === "archive_rfx_event") {
@@ -22063,19 +22895,18 @@ Deno.serve(async (request) => {
       }
 
       const vendorRows = (invitationsResult.data || [])
-        .map((invitation) => {
+        .flatMap((invitation) => {
           const nextLaneId = oldToNewLane.get(String(invitation.rfx_lane_id));
-          if (!nextLaneId) return null;
-          return {
+          if (!nextLaneId) return [];
+          return [{
             rfx_event_id: eventInsert.data.id,
             rfx_lane_id: nextLaneId,
             vendor_id: invitation.vendor_id,
             invitation_status: "drafted",
             invitation_token: randomToken(),
             notes: invitation.notes
-          };
-        })
-        .filter(Boolean);
+          }];
+        });
       let insertedVendors = 0;
       if (vendorRows.length) {
         const vendorInsert = await supabase
@@ -22110,13 +22941,14 @@ Deno.serve(async (request) => {
         .select()
         .order("lane_number", { ascending: true });
       if (result.error) throw result.error;
-      return jsonResponse({ inserted: result.data?.length || 0, rows: result.data || [] });
+      const sync = await ensureRatebookForBidRoomEvent(supabase, user, event, body);
+      return jsonResponse({ inserted: result.data?.length || 0, rows: result.data || [], ratebook_sync: sync });
     }
 
     if (body.action === "update_rfx_lane") {
       const laneId = cleanText(body.id || body.lane_id);
       if (!laneId) return jsonResponse({ error: "RFx lane id is required." }, 400);
-      const patch = normalizeRfxLanePatch(body.patch || body.lane || {});
+      const patch = normalizeRfxLanePatch(objectRecord(body.patch || body.lane));
       if (!Object.keys(patch).length) return jsonResponse({ error: "No RFx lane changes were provided." }, 400);
       const laneResult = await supabase
         .from("rfx_lanes")
@@ -22147,7 +22979,8 @@ Deno.serve(async (request) => {
         `Updated RFx lane ${result.data?.lane_number || ""}`.trim(),
         { fields: Object.keys(patch).filter((field) => field !== "updated_at") }
       );
-      return jsonResponse({ row: result.data });
+      const sync = await ensureRatebookForBidRoomEvent(supabase, user, event, body);
+      return jsonResponse({ row: result.data, ratebook_sync: sync });
     }
 
     if (body.action === "list_rfx_detail") {
@@ -22369,7 +23202,7 @@ Deno.serve(async (request) => {
         .eq("rfx_events.owner_email", user.owner_email)
         .single();
       if (ownedResult.error) throw ownedResult.error;
-      const patchInput = body.patch || {};
+      const patchInput = objectRecord(body.patch);
       const bidRate = strictBidNumber(patchInput.bid_rate, "Bid rate");
       const patch: Record<string, unknown> = {
         bid_rate: bidRate,
@@ -22552,7 +23385,7 @@ Deno.serve(async (request) => {
     }
 
     if (body.action === "create_outreach_template") {
-      const row = withOwner(normalizeOutreachTemplate(body.template || {}), user);
+      const row = withOwner(normalizeOutreachTemplate(objectRecord(body.template)), user);
       // Canonical templates are the reusable base by channel and locale. An event
       // renders a snapshot from this base; it must never create another template.
       if (row.template_scope === "canonical" && row.canonical_language) {
@@ -22586,7 +23419,7 @@ Deno.serve(async (request) => {
     if (body.action === "update_outreach_template") {
       const id = cleanText(body.id);
       if (!id) return jsonResponse({ error: "Template id is required." }, 400);
-      const patch = normalizeOutreachTemplate(body.patch || body.template || {});
+      const patch = normalizeOutreachTemplate(objectRecord(body.patch || body.template));
       const result = await supabase
         .from("outreach_templates")
         .update(patch)
@@ -22841,7 +23674,7 @@ Deno.serve(async (request) => {
           recipient_phone: recipientPhone || undefined
         })) : null;
         const hasContact = channel === "email" ? emailCandidates.length > 0 : Boolean(contactValue) || channel === "whatsapp_group";
-        const suppressionReason = outreachSuppressionReason(suppressions, channel, contactValue, vendorId);
+        const suppressionReason = outreachSuppressionReason(suppressions, channel, contactValue || "", vendorId || "");
         let audienceStatus = "ready";
         let reason = "Eligible contact ready for review";
         if (policy.mode !== "all_eligible" && selectedVendorIds.length && !selectedVendorIds.includes(vendorId)) {
@@ -22926,7 +23759,7 @@ Deno.serve(async (request) => {
     }
 
     if (body.action === "create_outreach_campaign") {
-      const normalized = normalizeOutreachCampaign(body.campaign || {});
+      const normalized = normalizeOutreachCampaign(objectRecord(body.campaign));
       if (normalized.rfx_event_id) await requireOwnedRfxEvent(supabase, user, normalized.rfx_event_id);
       if (normalized.template_id) await fetchOutreachTemplate(supabase, user, normalized.template_id);
       if (normalized.idempotency_key) {
@@ -22958,7 +23791,7 @@ Deno.serve(async (request) => {
     if (body.action === "update_outreach_campaign") {
       const campaignId = cleanText(body.id || body.campaign_id);
       if (!campaignId) return jsonResponse({ error: "Campaign id is required." }, 400);
-      const patch = normalizeOutreachCampaign(body.patch || body.campaign || {});
+      const patch = normalizeOutreachCampaign(objectRecord(body.patch || body.campaign));
       if (patch.rfx_event_id) await requireOwnedRfxEvent(supabase, user, patch.rfx_event_id);
       if (patch.template_id) await fetchOutreachTemplate(supabase, user, patch.template_id);
       const result = await supabase
@@ -23557,7 +24390,7 @@ Deno.serve(async (request) => {
                 sender_label: senderLabel,
                 sender_connection_status: senderConnectionStatus,
                 whatsapp_permission_basis: cleanText(groupRow?.permission_basis) || permissionBasis,
-                whatsapp_group_delivery: WHATSAPP_GROUPS_ENABLED && metaGroupId && ["api_ready", "verified"].includes(groupStatus) ? "api_ready" : "manual_only",
+                whatsapp_group_delivery: WHATSAPP_GROUPS_ENABLED && metaGroupId && ["api_ready", "verified"].includes(groupStatus || "") ? "api_ready" : "manual_only",
                 whatsapp_template_mapped: Boolean(whatsappTemplateName),
                 whatsapp_template_status: whatsappTemplateStatus,
                 whatsapp_connection_status: whatsappConnectionRow.status || "not_configured"
@@ -24012,9 +24845,9 @@ Deno.serve(async (request) => {
       });
       const lookup = await supabase
         .from("outreach_messages")
+        .select("id,campaign_id,rfx_event_id,vendor_id,channel,recipient_email,recipient_phone,status")
         .eq("owner_email", user.owner_email)
-        .in("id", ids)
-        .select("id,campaign_id,rfx_event_id,vendor_id,channel,recipient_email,recipient_phone,status");
+        .in("id", ids);
       if (lookup.error) throw lookup.error;
 
       const lookupById = new Map<string, Record<string, unknown>>();
@@ -24393,7 +25226,8 @@ Deno.serve(async (request) => {
 
     if (body.action === "start_whatsapp_business_connection") {
       const result = await startWhatsappBusinessConnection(supabase, user, body);
-      if ("error" in result && !result.authorization_url && !result.connected) return jsonResponse(result, 400);
+      const connectionResult = objectRecord(result);
+      if (cleanText(connectionResult.error) && !cleanText(connectionResult.authorization_url) && !Boolean(connectionResult.connected)) return jsonResponse(result, 400);
       return jsonResponse(result);
     }
 
@@ -24452,7 +25286,7 @@ Deno.serve(async (request) => {
     }
 
     if (body.action === "update_saas_profile") {
-      const patch = normalizeSaasProfile(body.profile || body.patch || {});
+      const patch = normalizeSaasProfile(objectRecord(body.profile || body.patch));
       const current = await ensureSaasProfile(supabase, user);
       const result = await supabase
         .from("user_profiles")
@@ -24466,7 +25300,7 @@ Deno.serve(async (request) => {
     }
 
     if (body.action === "update_saas_organization") {
-      const patch = normalizeOrganization(body.organization || body.patch || {});
+      const patch = normalizeOrganization(objectRecord(body.organization || body.patch));
       const current = await ensureOrganization(supabase, user);
       const result = await supabase
         .from("organizations")
@@ -25194,26 +26028,30 @@ Deno.serve(async (request) => {
           failed_count: matches.filter((upload) => upload.status === "failed" || upload.audit_status === "failed").length,
           current_scope: rule.scope
         },
-        rows: matches.slice(0, 25).map((upload) => ({
-          id: upload.id,
-          filename: upload.original_filename,
-          status: upload.status,
-          vendor: (upload.vendors as Record<string, unknown> | null)?.vendor_name || upload.vendor_hint || "",
-          vendor_domain: (upload.vendors as Record<string, unknown> | null)?.domain || upload.vendor_hint || "",
-          rfx_hint: upload.rfx_hint,
-          document_type: upload.document_type,
-          interpreted_rate_rows: upload.interpreted_rate_rows,
-          expected_rate_rows: upload.expected_rate_rows,
-          audit_status: upload.audit_status,
-          created_at: upload.created_at
-        }))
+        rows: matches.slice(0, 25).map((upload) => {
+          const vendorRelation = Array.isArray(upload.vendors) ? upload.vendors[0] : upload.vendors;
+          const vendor = objectRecord(vendorRelation);
+          return {
+            id: upload.id,
+            filename: upload.original_filename,
+            status: upload.status,
+            vendor: vendor.vendor_name || upload.vendor_hint || "",
+            vendor_domain: vendor.domain || upload.vendor_hint || "",
+            rfx_hint: upload.rfx_hint,
+            document_type: upload.document_type,
+            interpreted_rate_rows: upload.interpreted_rate_rows,
+            expected_rate_rows: upload.expected_rate_rows,
+            audit_status: upload.audit_status,
+            created_at: upload.created_at
+          };
+        })
       });
     }
 
     if (body.action === "update_interpretation_memory") {
       const id = cleanText(body.id);
       if (!id) return jsonResponse({ error: "Memory rule id is required." }, 400);
-      const patchInput = body.patch || {};
+      const patchInput = objectRecord(body.patch);
       const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
       if (patchInput.title !== undefined) patch.title = cleanText(patchInput.title) || "Interpretation rule";
       if (patchInput.instruction !== undefined) {
@@ -25531,11 +26369,10 @@ Deno.serve(async (request) => {
         .from("rate_staging")
         .select(RATE_ROW_RESPONSE_WITH_LEGS_SELECT)
         .eq("id", rateId)
-        .eq("owner_email", user.owner_email)
-        .single();
+        .eq("owner_email", user.owner_email);
       const status = cleanText(body.status);
       if (status) query = query.eq("status", status);
-      const result = await query;
+      const result = await query.single();
       if (result.error) throw result.error;
       return jsonResponse({ row: result.data });
     }
@@ -25561,8 +26398,10 @@ Deno.serve(async (request) => {
 
       const updatedRows: Record<string, unknown>[] = [];
       for (const current of currentRows) {
-        const patch = normalizeStagingPatch(body.patch || {}, current || {});
-        Object.assign(patch, await vendorLinkPatch(supabase, user, body.patch || {}, current || {}));
+        const patchInput = objectRecord(body.patch);
+        const currentRow = objectRecord(current);
+        const patch = normalizeStagingPatch(patchInput, currentRow);
+        Object.assign(patch, await vendorLinkPatch(supabase, user, patchInput, currentRow));
         delete patch.status;
         if (!Object.keys(patch).length) continue;
 
@@ -25770,8 +26609,10 @@ Deno.serve(async (request) => {
         .single();
       if (currentResult.error) throw currentResult.error;
 
-      const patch = normalizeStagingPatch(body.patch || {}, currentResult.data || {});
-      Object.assign(patch, await vendorLinkPatch(supabase, user, body.patch || {}, currentResult.data || {}));
+      const patchInput = objectRecord(body.patch);
+      const currentRow = objectRecord(currentResult.data);
+      const patch = normalizeStagingPatch(patchInput, currentRow);
+      Object.assign(patch, await vendorLinkPatch(supabase, user, patchInput, currentRow));
       delete patch.status;
       if (!Object.keys(patch).length) return jsonResponse({ error: "No approved rate updates provided." }, 400);
 
@@ -26178,8 +27019,10 @@ Deno.serve(async (request) => {
         .single();
       if (currentResult.error) throw currentResult.error;
 
-      const patch = normalizeStagingPatch(body.patch || {}, currentResult.data || {});
-      Object.assign(patch, await vendorLinkPatch(supabase, user, body.patch || {}, currentResult.data || {}));
+      const patchInput = objectRecord(body.patch);
+      const currentRow = objectRecord(currentResult.data);
+      const patch = normalizeStagingPatch(patchInput, currentRow);
+      Object.assign(patch, await vendorLinkPatch(supabase, user, patchInput, currentRow));
       if (!Object.keys(patch).length) return jsonResponse({ error: "No staging updates provided." }, 400);
 
       const result = await supabase
@@ -26274,9 +27117,9 @@ Deno.serve(async (request) => {
       incident_id: incidentId,
       action: failedApiAction,
       status: errorStatus,
-      actor: user ? {
-        owner_email: user.owner_email,
-        organization_id: user.organization_id
+      actor: auditUser ? {
+        owner_email: auditUser.owner_email,
+        organization_id: auditUser.organization_id
       } : null,
       error: {
         message: errorMessage,
@@ -26292,13 +27135,13 @@ Deno.serve(async (request) => {
         stack: safeOperationalValue(errorInfo.stack, 2400)
       }
     }));
-    if (supabase && user) {
+    if (auditSupabase && auditUser) {
       try {
         const failedAction = failedApiAction === "generate_outreach_drafts" ? "outreach_queue.error" : "api.error";
         const failedEntityType = failedAction === "outreach_queue.error" ? "outreach_queue" : "rateware_api";
       await tryWriteAuditLog(
-          supabase,
-          user,
+          auditSupabase,
+          auditUser,
           failedAction,
           failedEntityType,
           failedApiAction,

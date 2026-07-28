@@ -711,6 +711,18 @@ function selectedRfxCustomerName() {
   return shipperCustomerName(matched) || value;
 }
 
+function selectedRfxCustomerId() {
+  const value = String(rfxCustomerInput?.value || "").trim();
+  if (!value) return "";
+  const normalized = normalizeLookupText(value);
+  const matched = rfxCustomerRows.find((row) => {
+    return [row.shipper_name, row.legal_name, row.domain]
+      .filter(Boolean)
+      .some((candidate) => normalizeLookupText(candidate) === normalized);
+  });
+  return matched?.id || "";
+}
+
 function normalizeSelectedRfxCustomer() {
   if (!rfxCustomerInput) return;
   const selectedName = selectedRfxCustomerName();
@@ -722,6 +734,7 @@ function rfxEventPayload() {
     rfx_id: rfxIdInput.value,
     name: rfxNameInput.value,
     customer: selectedRfxCustomerName(),
+    customer_id: selectedRfxCustomerId(),
     event_type: rfxTypeInput.value,
     bid_visibility_mode: rfxBidVisibilityInput?.value || "anonymous_rank",
     due_date: rfxDueDateInput.value

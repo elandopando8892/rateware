@@ -14,6 +14,19 @@ function getClient() {
   return createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 }
 
+type RatewareCatalogSupabaseClient = ReturnType<typeof getClient>;
+type CatalogSyncTable =
+  | "rateware_catalog_items"
+  | "rateware_locations"
+  | "rateware_lane_mileage"
+  | "rateware_fuel_regions"
+  | "rateware_fsc_trend"
+  | "rateware_fsc_index"
+  | "rateware_assumptions"
+  | "rateware_mx_diesel_index"
+  | "rateware_fx_rates"
+  | "rateware_factor_items";
+
 function cleanText(value: unknown) {
   const text = String(value ?? "").trim();
   return text || null;
@@ -662,11 +675,11 @@ function parseFactors(rows: string[][]) {
   }).filter(Boolean) as Record<string, unknown>[];
 }
 
-async function upsertInBatches(supabase: ReturnType<typeof createClient>, table: string, rows: Record<string, unknown>[], onConflict: string) {
+async function upsertInBatches(supabase: RatewareCatalogSupabaseClient, table: CatalogSyncTable, rows: Record<string, unknown>[], onConflict: string) {
   const batchSize = 500;
   for (let index = 0; index < rows.length; index += batchSize) {
     const batch = rows.slice(index, index + batchSize);
-    const result = await supabase.from(table).upsert(batch, { onConflict });
+    const result = await supabase.from(table).upsert(batch as never, { onConflict });
     if (result.error) throw result.error;
   }
 }
@@ -744,6 +757,6 @@ Deno.serve(async (request) => {
       factors: factors.length
     });
   } catch (error) {
-    return jsonResponse({ error: error.message }, 500);
+    return jsonResponse({ error: error instanceof Error ? error.message : "Catalog sync failed." }, 500);
   }
 });

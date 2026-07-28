@@ -9,13 +9,15 @@ function getClient() {
   return createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 }
 
+type ShipperProfileSupabaseClient = ReturnType<typeof getClient>;
+
 function text(value: unknown, maxLength = 2000) {
   if (value === null || value === undefined) return null;
   const result = String(value).trim();
   return result ? result.slice(0, maxLength) : null;
 }
 
-function publicErrorMessage(value: unknown, fallback = "Unable to update profile.") {
+function publicErrorMessage(value: unknown, fallback = "Unable to update profile."): string {
   if (value === null || value === undefined) return fallback;
   if (value instanceof Error) return text(value.message) || fallback;
   if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return text(value) || fallback;
@@ -23,7 +25,7 @@ function publicErrorMessage(value: unknown, fallback = "Unable to update profile
   const source = value as Record<string, unknown>;
   for (const key of ["error", "message", "reason", "description", "detail", "details", "hint", "cause"]) {
     if (source[key] && source[key] !== value) {
-      const message = publicErrorMessage(source[key], "");
+      const message: string | null = publicErrorMessage(source[key], "");
       if (message) return message;
     }
   }
@@ -97,7 +99,7 @@ function publicLocation(row: Record<string, unknown>) {
   };
 }
 
-async function loadRequest(supabase: ReturnType<typeof createClient>, rawToken: string) {
+async function loadRequest(supabase: ShipperProfileSupabaseClient, rawToken: string) {
   const result = await supabase.from("shipper_profile_requests").select("*, shippers(*)")
     .eq("token_hash", await tokenHash(rawToken)).single();
   if (result.error || !result.data) return { error: "This profile link was not found.", status: 404 };
@@ -111,7 +113,7 @@ async function loadRequest(supabase: ReturnType<typeof createClient>, rawToken: 
   return { request, shipper: record(request.shippers), status: 200 };
 }
 
-async function loadPublicProfile(supabase: ReturnType<typeof createClient>, request: Record<string, unknown>, shipper: Record<string, unknown>) {
+async function loadPublicProfile(supabase: ShipperProfileSupabaseClient, request: Record<string, unknown>, shipper: Record<string, unknown>) {
   const [contacts, locations] = await Promise.all([
     supabase.from("shipper_contacts").select("*").eq("owner_email", request.owner_email).eq("shipper_id", shipper.id).order("updated_at", { ascending: false }).limit(50),
     supabase.from("shipper_locations").select("*").eq("owner_email", request.owner_email).eq("shipper_id", shipper.id).order("updated_at", { ascending: false }).limit(50)

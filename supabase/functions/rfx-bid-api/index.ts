@@ -37,13 +37,15 @@ function getClient() {
   return createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 }
 
+type RfxBidSupabaseClient = ReturnType<typeof getClient>;
+
 function cleanText(value: unknown) {
   if (value === null || value === undefined) return null;
   const text = String(value).trim();
   return text ? text : null;
 }
 
-function publicErrorMessage(value: unknown, fallback = "Bid Room request failed.") {
+function publicErrorMessage(value: unknown, fallback = "Bid Room request failed."): string {
   if (value === null || value === undefined) return fallback;
   if (value instanceof Error) return cleanText(value.message) || fallback;
   if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return cleanText(value) || fallback;
@@ -51,7 +53,7 @@ function publicErrorMessage(value: unknown, fallback = "Bid Room request failed.
   const record = value as Record<string, unknown>;
   for (const key of ["error", "message", "reason", "description", "detail", "details", "hint", "cause"]) {
     if (record[key] && record[key] !== value) {
-      const message = publicErrorMessage(record[key], "");
+      const message: string = publicErrorMessage(record[key], "");
       if (message) return message;
     }
   }
@@ -430,7 +432,7 @@ function gmailRawMessage(message: Record<string, unknown>, senderEmail: string) 
   return bytesToBase64Url(new TextEncoder().encode(mime));
 }
 
-async function gmailAccessTokenForOwner(supabase: ReturnType<typeof createClient>, ownerEmail: unknown) {
+async function gmailAccessTokenForOwner(supabase: RfxBidSupabaseClient, ownerEmail: unknown) {
   const owner = cleanEmail(ownerEmail);
   if (!owner) throw new Error("Bid Room owner email is missing.");
   const result = await supabase
@@ -501,7 +503,7 @@ async function gmailAccessTokenForOwner(supabase: ReturnType<typeof createClient
 }
 
 async function sendGmailMessageForOwner(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RfxBidSupabaseClient,
   ownerEmail: unknown,
   message: Record<string, unknown>
 ) {
@@ -673,7 +675,7 @@ function googleChatThreadTarget(thread: Record<string, unknown>, threadKey: stri
   };
 }
 
-async function googleChatAccessToken(supabase: ReturnType<typeof createClient>, ownerEmail: string) {
+async function googleChatAccessToken(supabase: RfxBidSupabaseClient, ownerEmail: string) {
   const result = await supabase
     .from("google_chat_connections")
     .select("*")
@@ -730,7 +732,7 @@ async function googleChatAccessToken(supabase: ReturnType<typeof createClient>, 
 }
 
 async function syncBidRoomMessageToGoogleChatApi(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RfxBidSupabaseClient,
   thread: Record<string, unknown>,
   message: Record<string, unknown>,
   event: Record<string, unknown>
@@ -790,12 +792,12 @@ async function syncBidRoomMessageToGoogleChatApi(
   } catch (error) {
     await supabase.from("bid_room_chat_messages").update({ google_chat_sync_status: "error" }).eq("id", message.id);
     await supabase.from("bid_room_chat_threads").update({ google_chat_sync_status: "error" }).eq("id", thread.id);
-    return { status: "error", name: null, error: String(error?.message || error) };
+    return { status: "error", name: null, error: publicErrorMessage(error) };
   }
 }
 
 async function syncBidRoomMessageToGoogleChat(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RfxBidSupabaseClient,
   thread: Record<string, unknown>,
   message: Record<string, unknown>,
   event: Record<string, unknown>
@@ -832,7 +834,7 @@ async function syncBidRoomMessageToGoogleChat(
   } catch (error) {
     await supabase.from("bid_room_chat_messages").update({ google_chat_sync_status: "error" }).eq("id", message.id);
     await supabase.from("bid_room_chat_threads").update({ google_chat_sync_status: "error" }).eq("id", thread.id);
-    return { status: "error", name: null, error: String(error?.message || error) };
+    return { status: "error", name: null, error: publicErrorMessage(error) };
   }
 }
 
@@ -851,7 +853,7 @@ function googleChatMessageBody(message: Record<string, unknown>) {
 }
 
 async function syncGoogleChatInboundMessagesForThreads(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RfxBidSupabaseClient,
   ownerEmail: string | null,
   threads: Record<string, unknown>[],
   input: Record<string, unknown> = {}
@@ -1014,7 +1016,7 @@ async function syncGoogleChatInboundMessagesForThreads(
   return { status: "synced", imported, skipped, updated_threads: updatedThreads };
 }
 
-async function currentInvitationContext(supabase: ReturnType<typeof createClient>, token: string) {
+async function currentInvitationContext(supabase: RfxBidSupabaseClient, token: string) {
   const result = await supabase
     .from("rfx_lane_vendors")
     .select(`
@@ -1053,7 +1055,7 @@ function normalizeSegmentConfirmationRows(input: unknown) {
     const rubricKey = cleanText(record.rubric_key);
     const answer = cleanText(record.answer)?.toLowerCase() || "pending";
     if (!segmentKey) throw new Error("Segment key is required.");
-    if (!SEGMENT_CONFIRMATION_RUBRICS.has(rubricKey)) throw new Error("Invalid segment rubric.");
+    if (!rubricKey || !SEGMENT_CONFIRMATION_RUBRICS.has(rubricKey)) throw new Error("Invalid segment rubric.");
     if (!SEGMENT_CONFIRMATION_ANSWERS.has(answer)) throw new Error("Invalid segment confirmation answer.");
     return {
       segment_key: segmentKey,
@@ -1067,7 +1069,7 @@ function normalizeSegmentConfirmationRows(input: unknown) {
 }
 
 async function listSegmentConfirmations(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RfxBidSupabaseClient,
   invitationIds: string[]
 ) {
   const ids = [...new Set(invitationIds.map((id) => cleanText(id)).filter(Boolean))];
@@ -1082,7 +1084,7 @@ async function listSegmentConfirmations(
 }
 
 async function saveSegmentConfirmations(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RfxBidSupabaseClient,
   token: string,
   input: Record<string, unknown>
 ) {
@@ -1135,7 +1137,7 @@ async function saveSegmentConfirmations(
 }
 
 async function findOrCreateCarrierChatThread(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RfxBidSupabaseClient,
   invitation: Record<string, unknown>,
   input: Record<string, unknown>
 ) {
@@ -1183,7 +1185,7 @@ async function findOrCreateCarrierChatThread(
   return created.data;
 }
 
-async function listCarrierBidRoomChat(supabase: ReturnType<typeof createClient>, invitation: Record<string, unknown>) {
+async function listCarrierBidRoomChat(supabase: RfxBidSupabaseClient, invitation: Record<string, unknown>) {
   const event = relationRecord(invitation.rfx_events);
   const laneId = cleanText(invitation.rfx_lane_id);
   const vendorId = cleanText(invitation.vendor_id);
@@ -1240,7 +1242,7 @@ async function listCarrierBidRoomChat(supabase: ReturnType<typeof createClient>,
 }
 
 async function postCarrierBidRoomChatMessage(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RfxBidSupabaseClient,
   invitation: Record<string, unknown>,
   input: Record<string, unknown>
 ) {
@@ -1495,7 +1497,9 @@ function liveBoardFromRows(currentInvitation: Record<string, unknown>, peerRows:
   const currentScore = currentIndex >= 0 ? rows[currentIndex].marketplace_score : null;
   const currency = rows[0]?.currency || cleanText(currentInvitation.currency) || "USD";
   const deltaToBest = currentAmount !== null && bestAmount !== null ? currentAmount - bestAmount : null;
-  const deltaPct = currentAmount !== null && bestAmount ? deltaToBest / bestAmount : null;
+  const deltaPct = currentAmount !== null && bestAmount !== null && bestAmount !== 0 && deltaToBest !== null
+    ? deltaToBest / bestAmount
+    : null;
   const scoreGap = currentScore !== null && bestScore !== null ? bestScore - currentScore : null;
   const positionSignal = currentAmount === null
     ? (rows.length ? "Market is active" : "Awaiting first offer")
@@ -1526,7 +1530,7 @@ function liveBoardFromRows(currentInvitation: Record<string, unknown>, peerRows:
   const currentRow = currentIndex >= 0 ? rows[currentIndex] : null;
   const latestCompetitorActivity = rows
     .filter((row) => !row.is_current && row.offer_revision_at)
-    .sort((left, right) => new Date(right.offer_revision_at).getTime() - new Date(left.offer_revision_at).getTime())[0] || null;
+    .sort((left, right) => new Date(right.offer_revision_at || 0).getTime() - new Date(left.offer_revision_at || 0).getTime())[0] || null;
   return {
     updated_at: new Date().toISOString(),
     current_invitation_id: cleanText(currentInvitation.id) || null,
@@ -1789,7 +1793,7 @@ function publicBidBoardSummary(rows: Record<string, unknown>[]) {
   };
 }
 
-async function publicBidRoomBoard(supabase: ReturnType<typeof createClient>, input: Record<string, unknown>) {
+async function publicBidRoomBoard(supabase: RfxBidSupabaseClient, input: Record<string, unknown>) {
   const requestedStatus = String(cleanText(input.status) || "all").toLowerCase();
   const statusFilter = PUBLIC_BOARD_STATUSES.has(requestedStatus) ? requestedStatus : "all";
   const eventId = cleanText(input.event_id || input.rfx_event_id);
@@ -1894,7 +1898,7 @@ async function publicBidRoomBoard(supabase: ReturnType<typeof createClient>, inp
   };
 }
 
-async function publicBidRoomInviteRequest(supabase: ReturnType<typeof createClient>, input: Record<string, unknown>) {
+async function publicBidRoomInviteRequest(supabase: RfxBidSupabaseClient, input: Record<string, unknown>) {
   const eventId = cleanText(input.event_id || input.rfx_event_id);
   const laneId = cleanText(input.lane_id || input.rfx_lane_id);
   const company = cleanText(input.company || input.vendor_name || input.carrier_name);
@@ -1998,7 +2002,7 @@ async function publicBidRoomInviteRequest(supabase: ReturnType<typeof createClie
   };
 }
 
-async function publicInvitationVendorIds(supabase: ReturnType<typeof createClient>, email: string) {
+async function publicInvitationVendorIds(supabase: RfxBidSupabaseClient, email: string) {
   const domain = emailDomain(email);
   const candidates = new Map<string, Record<string, unknown>>();
   const queries = [
@@ -2139,7 +2143,7 @@ function resolvedPublicInvitationEvent(
   };
 }
 
-async function publicBidRoomFindInvitations(supabase: ReturnType<typeof createClient>, input: Record<string, unknown>) {
+async function publicBidRoomFindInvitations(supabase: RfxBidSupabaseClient, input: Record<string, unknown>) {
   const email = cleanEmail(input.email);
   const sendLinks = cleanBoolean(input.send_links) === true;
   const language = ["en", "es"].includes(String(cleanText(input.language) || "").toLowerCase())
@@ -2198,12 +2202,12 @@ async function publicBidRoomFindInvitations(supabase: ReturnType<typeof createCl
     }
   }
 
-  const matchingInvitations = invitationRows
+  const matchingInvitations: Record<string, unknown>[] = invitationRows
     .map((row) => ({
       ...row,
       rfx_events: resolvedPublicInvitationEvent(row, eventOwnerMap, fallbackOwnerEmail)
     }))
-    .filter((row) => cleanText(row.invitation_token))
+    .filter((row) => cleanText(objectRecord(row).invitation_token))
     .filter((row) => ["draft", "open", "closed", "awarded"].includes(String(cleanText(relationRecord(row.rfx_events).status) || "").toLowerCase()));
   const matchedLaneIds = [...new Set(matchingInvitations.map((row) => cleanText(row.rfx_lane_id)).filter(Boolean) as string[])];
   const matchedEventIds = [...new Set(matchingInvitations.map((row) => cleanText(row.rfx_event_id)).filter(Boolean) as string[])];
@@ -2451,7 +2455,7 @@ function supportMissingContextCopy(language: string) {
 }
 
 function supportBriefAnswer(text: string, maxLength = 420) {
-  const cleaned = cleanText(text).replace(/\s+/g, " ").trim();
+  const cleaned = (cleanText(text) || "").replace(/\s+/g, " ").trim();
   if (!cleaned) return "";
   return cleaned.length > maxLength ? `${cleaned.slice(0, maxLength - 1).trim()}...` : cleaned;
 }
@@ -2971,7 +2975,7 @@ async function bidSupportAiAnswer(
   }
 }
 
-async function loadPublicSupportLane(supabase: ReturnType<typeof createClient>, input: Record<string, unknown>) {
+async function loadPublicSupportLane(supabase: RfxBidSupabaseClient, input: Record<string, unknown>) {
   const laneId = cleanText(input.lane_id || input.rfx_lane_id);
   if (!laneId) return null;
   const result = await supabase
@@ -3006,7 +3010,7 @@ async function loadPublicSupportLane(supabase: ReturnType<typeof createClient>, 
   return result.data as Record<string, unknown> | null;
 }
 
-async function loadPrivateSupportContext(supabase: ReturnType<typeof createClient>, token: string) {
+async function loadPrivateSupportContext(supabase: RfxBidSupabaseClient, token: string) {
   const context = await currentInvitationContext(supabase, token);
   const currentResult = await supabase
     .from("rfx_lane_vendors")
@@ -3292,7 +3296,7 @@ function bidSupportAnswerFromOpportunityContext(
 }
 
 async function createBidSupportTicket(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RfxBidSupabaseClient,
   input: Record<string, unknown>,
   support: Record<string, unknown>,
   context: {
@@ -3337,17 +3341,18 @@ async function createBidSupportTicket(
 
   const chatSync = await mirrorSupportTicketToGoogleChat(supabase, result.data, { event, lane, vendor, question, contactEmail }).catch((error) => ({
     status: "error",
-    error: String(error?.message || error)
+    error: publicErrorMessage(error)
   }));
   if (chatSync?.status && chatSync.status !== "skipped") {
+    const chatSyncResult = objectRecord(chatSync);
     await supabase.from("contact_history").update({
       metadata: {
         ...objectRecord(result.data.metadata),
         google_chat_sync_status: chatSync.status,
-        google_chat_thread_id: cleanText(chatSync.thread_id),
-        google_chat_message_id: cleanText(chatSync.message_id),
-        google_chat_message_name: cleanText(chatSync.name),
-        google_chat_error: cleanText(chatSync.error)
+        google_chat_thread_id: cleanText(chatSyncResult.thread_id),
+        google_chat_message_id: cleanText(chatSyncResult.message_id),
+        google_chat_message_name: cleanText(chatSyncResult.name),
+        google_chat_error: cleanText(chatSyncResult.error)
       }
     }).eq("id", result.data.id);
   }
@@ -3356,7 +3361,7 @@ async function createBidSupportTicket(
 }
 
 async function mirrorSupportTicketToGoogleChat(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RfxBidSupabaseClient,
   ticket: Record<string, unknown>,
   context: {
     event: Record<string, unknown>;
@@ -3454,7 +3459,7 @@ async function mirrorSupportTicketToGoogleChat(
   };
 }
 
-async function bidSupportReply(supabase: ReturnType<typeof createClient>, input: Record<string, unknown>) {
+async function bidSupportReply(supabase: RfxBidSupabaseClient, input: Record<string, unknown>) {
   const question = cleanText(input.message || input.question);
   const language = supportLanguage(input);
   if (!question) {
@@ -3499,10 +3504,10 @@ async function bidSupportReply(supabase: ReturnType<typeof createClient>, input:
       ? aiSupport.confidence as "low" | "medium" | "high"
       : "medium";
     support = supportResult({
-      answer: cleanText(aiSupport.answer) || cleanText(support.answer),
+      answer: cleanText(aiSupport.answer) || cleanText(support.answer) || supportMissingContextCopy(language),
       needs_ticket: cleanBoolean(support.needs_ticket) === true || aiSupport.needs_ticket === true,
       confidence: aiConfidence,
-      scope: cleanText(aiSupport.scope) || cleanText(support.scope),
+      scope: cleanText(aiSupport.scope) || cleanText(support.scope) || supportContextScope({ token, event: event || undefined, lane: lane || undefined, vendor: vendor || undefined, lane_count: invitedLanes.length }, language),
       language,
       token,
       question,
@@ -3699,7 +3704,7 @@ function bidRateStagingInput(
 }
 
 async function ensureBidRateStagingRow(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RfxBidSupabaseClient,
   invitation: Record<string, unknown>,
   updatedBid: Record<string, unknown>,
   revisionType: string,
@@ -3821,7 +3826,7 @@ async function ensureBidRateStagingRow(
 }
 
 async function archiveWithdrawnBidRateStaging(
-  supabase: ReturnType<typeof createClient>,
+  supabase: RfxBidSupabaseClient,
   invitation: Record<string, unknown>,
   now: string
 ) {
@@ -4250,7 +4255,7 @@ function normalizeRfiExceptionNote(row: Record<string, unknown>, owner: Record<s
   };
 }
 
-async function currentCustomerRfiContext(supabase: ReturnType<typeof createClient>, token: unknown) {
+async function currentCustomerRfiContext(supabase: RfxBidSupabaseClient, token: unknown) {
   const rawToken = cleanText(token);
   if (!rawToken) throw new Error("Customer RFI token is required.");
   const tokenHash = await hashCustomerRfiToken(rawToken);
@@ -4271,7 +4276,7 @@ async function currentCustomerRfiContext(supabase: ReturnType<typeof createClien
   return { link, project };
 }
 
-async function getCustomerRfi(supabase: ReturnType<typeof createClient>, token: unknown) {
+async function getCustomerRfi(supabase: RfxBidSupabaseClient, token: unknown) {
   const context = await currentCustomerRfiContext(supabase, token);
   await supabase.from("rfx_rfi_magic_links").update({ last_viewed_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("id", context.link.id);
   const [submission, origins, destinations, lanes] = await Promise.all([
@@ -4307,7 +4312,7 @@ async function getCustomerRfi(supabase: ReturnType<typeof createClient>, token: 
   };
 }
 
-async function saveCustomerRfi(supabase: ReturnType<typeof createClient>, input: Record<string, unknown>, submitting = false) {
+async function saveCustomerRfi(supabase: RfxBidSupabaseClient, input: Record<string, unknown>, submitting = false) {
   const context = await currentCustomerRfiContext(supabase, input.token);
   const projectId = cleanText(context.project.id) || "";
   const owner = { owner_user_id: context.project.owner_user_id || null, owner_email: context.project.owner_email || null };
@@ -4684,7 +4689,7 @@ Deno.serve(async (request) => {
         ...(invitedResult.data || [])
           .filter((row) => cleanText(row.rfx_event_id) === cleanText(result.data.rfx_event_id))
           .map((row) => cleanText(row.id))
-      ].filter(Boolean);
+      ].filter((id): id is string => Boolean(id));
       const segmentConfirmations = await listSegmentConfirmations(supabase, invitationIdsForEvent);
 
       return jsonResponse({

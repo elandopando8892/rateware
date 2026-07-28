@@ -30,7 +30,7 @@ function cleanText(value: unknown) {
   return text ? text : null;
 }
 
-function uploadErrorMessage(value: unknown, fallback = "Upload request failed.") {
+function uploadErrorMessage(value: unknown, fallback = "Upload request failed."): string {
   if (value === null || value === undefined) return fallback;
   if (value instanceof Error) return cleanText(value.message) || fallback;
   if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
@@ -40,7 +40,7 @@ function uploadErrorMessage(value: unknown, fallback = "Upload request failed.")
   const record = value as Record<string, unknown>;
   for (const key of ["error", "message", "reason", "description", "detail", "details", "hint", "cause"]) {
     if (record[key] && record[key] !== value) {
-      const message = uploadErrorMessage(record[key], "");
+      const message: string = uploadErrorMessage(record[key], "");
       if (message) return message;
     }
   }

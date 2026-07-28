@@ -4,6 +4,10 @@ export async function fetchRatebooks(options = {}) {
   return callRatewareApi("list_ratebooks", options);
 }
 
+export async function exportRatebookRoutes(options = {}) {
+  return callRatewareApi("export_ratebook_routes", options);
+}
+
 export async function fetchRatebookHealth() {
   return callRatewareApi("get_ratebook_health");
 }
