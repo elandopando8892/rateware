@@ -8,6 +8,10 @@ export async function exportRatebookRoutes(options = {}) {
   return callRatewareApi("export_ratebook_routes", options);
 }
 
+export async function fetchRatebookRouteLedger(options = {}) {
+  return callRatewareApi("export_ratebook_routes", options);
+}
+
 export async function fetchRatebookHealth() {
   return callRatewareApi("get_ratebook_health");
 }

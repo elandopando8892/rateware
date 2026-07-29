@@ -17485,6 +17485,52 @@ async function findBidRoomEventsForShipper(
     .sort((left, right) => (cleanText(right.updated_at) || cleanText(right.created_at) || "").localeCompare(cleanText(left.updated_at) || cleanText(left.created_at) || ""));
 }
 
+async function syncBidRoomEventsForRatebookScope(
+  supabase: RatewareSupabaseClient,
+  user: { owner_user_id: string | null; owner_email: string | null; organization_id?: string | null },
+  input: Record<string, unknown>
+) {
+  if (cleanText(input.package_id || input.rfx_package_id)) return [];
+  const requestedSourceType = cleanText(input.source_type)?.toLowerCase();
+  if (requestedSourceType && !["bid_room", "spot"].includes(requestedSourceType)) return [];
+  const requestedProjectId = cleanText(input.project_id);
+  const requestedShipperId = cleanText(input.shipper_id);
+  if (requestedProjectId && !UUID_PATTERN.test(requestedProjectId)) return [];
+  const scopedUser = { ...user, organization_id: user.organization_id || null };
+  const selectColumns = "id,rfx_id,name,customer,status,due_date,event_type,bid_visibility_mode,source_rfx_process_project_id,source_rfx_package_id,source_rfx_package_name,notes,updated_at,created_at";
+  let query = supabase.from("rfx_events")
+    .select(selectColumns)
+    .eq("owner_email", user.owner_email)
+    .neq("status", "archived")
+    .order("updated_at", { ascending: false })
+    .limit(200);
+  if (requestedProjectId) query = query.eq("source_rfx_process_project_id", requestedProjectId);
+  const result = await query;
+  if (result.error && result.error.code !== "42P01") throw result.error;
+  let events = (result.data || []) as Record<string, unknown>[];
+  if (requestedShipperId && UUID_PATTERN.test(requestedShipperId)) {
+    const shipper = await requireOwnedShipper(supabase, scopedUser, requestedShipperId);
+    const linkedProjects = await supabase.from("rfx_projects")
+      .select("id")
+      .eq("owner_email", user.owner_email)
+      .eq("customer_id", requestedShipperId);
+    if (linkedProjects.error && linkedProjects.error.code !== "42P01") throw linkedProjects.error;
+    const linkedProjectIds = new Set(((linkedProjects.data || []) as Record<string, unknown>[]).map((project) => cleanText(project.id)).filter(Boolean));
+    events = events.filter((event) =>
+      linkedProjectIds.has(cleanText(event.source_rfx_process_project_id) || "") || rfxEventMatchesShipper(event, shipper)
+    );
+  }
+  const synced: Record<string, unknown>[] = [];
+  for (const event of events) {
+    const eventType = cleanText(event.event_type)?.toLowerCase();
+    if (requestedSourceType === "spot" && eventType !== "spot") continue;
+    if (requestedSourceType === "bid_room" && eventType === "spot") continue;
+    const syncedEvent = await ensureRatebookForBidRoomEvent(supabase, scopedUser, event, requestedShipperId && UUID_PATTERN.test(requestedShipperId) ? { customer_id: requestedShipperId } : {});
+    synced.push(syncedEvent);
+  }
+  return synced;
+}
+
 function rfxProjectStatusForEvent(event: Record<string, unknown>) {
   const status = cleanText(event.status)?.toLowerCase();
   if (status === "archived") return "archived";
@@ -18416,6 +18462,9 @@ function ratebookSourceType(project: Record<string, unknown>, pack: Record<strin
   const source = cleanText(pack.source_type || project.source_type || metadata.source_type || metadata.source)?.toLowerCase();
   if (source === "bid" || source === "bidroom" || source === "bid_room") return "bid_room";
   if (source && RATEBOOK_SOURCE_TYPES.has(source)) return source;
+  const linkedEventId = cleanText(pack.linked_rfx_event_id);
+  const projectStatus = cleanText(project.status)?.toLowerCase() || "";
+  if (linkedEventId && (projectStatus.includes("bid_room") || projectStatus.includes("bid"))) return "bid_room";
   return "rfx";
 }
 
@@ -18797,6 +18846,9 @@ async function listRatebooks(
   const requestedSegmentKey = cleanText(input.segment_key)?.toLowerCase();
   if (requestedPackageId && !UUID_PATTERN.test(requestedPackageId)) throw new Error("A valid RFx Package id is required.");
   if (requestedProjectId && !UUID_PATTERN.test(requestedProjectId)) throw new Error("A valid RFx Project id is required.");
+  if (input.skip_bid_room_sync !== true) {
+    await syncBidRoomEventsForRatebookScope(supabase, user, input);
+  }
   let packageQuery = supabase.from("rfx_packages").select("*")
     .eq("owner_email", user.owner_email)
     .order("updated_at", { ascending: false }).limit(1000);

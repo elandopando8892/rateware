@@ -9,6 +9,7 @@ import {
   fetchRatebookHealth,
   fetchRatebooks,
   exportRatebookRoutes,
+  fetchRatebookRouteLedger,
   archiveRatebook,
   createRatebookRevision,
   publishRatebook,
@@ -69,7 +70,10 @@ let ratebookXlsxModulePromise;
 
 const state = {
   rows: [],
+  routeLedgerRows: [],
+  routeLedgerTotal: 0,
   activeRatebookId: query.get("ratebook") || "",
+  activeDetailMode: query.get("ratebook") ? "book" : "ledger",
   projectId: query.get("project") || "",
   detail: null,
   search: "",
@@ -147,6 +151,7 @@ let searchTimer;
 let carrierSearchTimer;
 let routeSearchTimer;
 let ratebookListLoadVersion = 0;
+let ratebookLedgerLoadVersion = 0;
 let ratebookDetailLoadVersion = 0;
 let ratebookRouteLoadVersion = 0;
 let ratebookQuoteReviewLoadVersion = 0;
@@ -230,6 +235,12 @@ function currentRatebookFilters() {
     segment_key: state.segmentKey || undefined,
     project_id: state.projectId || undefined,
   };
+}
+
+function resetRatebookDetailToLedger() {
+  state.activeRatebookId = "";
+  state.activeDetailMode = "ledger";
+  state.detail = null;
 }
 
 function applyRatebookFilters(filters = {}) {
@@ -355,8 +366,9 @@ function renderBookFilters() {
 
 function renderRatebookOverview() {
   const rows = state.rows;
+  const routeRows = state.routeLedgerRows;
   const shippers = new Set(rows.map((row) => text(row.shipper_id || row.shipper_name || row.project?.customer_name, "Unassigned shipper")));
-  const routes = rows.reduce((total, row) => total + (Number(row.lane_count) || 0), 0);
+  const routes = routeRows.length || rows.reduce((total, row) => total + (Number(row.lane_count) || 0), 0);
   const published = rows.filter((row) => String(row.lifecycle_status || row.status).toLowerCase() === "published").length;
   elements.overviewBooks.textContent = number(rows.length);
   elements.overviewShippers.textContent = number(shippers.size);
@@ -404,8 +416,15 @@ async function loadRatebookHealth() {
 function renderBookList() {
   elements.count.textContent = number(state.rows.length);
   renderRatebookOverview();
+  const allRoutesButton = `
+    <button class="ratebook-list-row ratebook-all-routes-row ${state.activeDetailMode === "ledger" ? "is-selected" : ""}" type="button" data-ratebook-ledger-view>
+      <strong>All shipper routes</strong>
+      <span>Consolidated route ledger</span>
+      <small>${number(state.routeLedgerRows.length)} route(s) | ${number(state.rows.length)} book(s) | filtered scope</small>
+    </button>`;
   if (!state.rows.length) {
     elements.list.innerHTML = `
+      ${allRoutesButton}
       <div class="ratebook-list-empty">
         <strong>No Ratebooks found</strong>
         <span>Adjust the scope filters or capture routes in Customer RFI, RFx Process, or Bid Room with the shipper selected.</span>
@@ -420,7 +439,9 @@ function renderBookList() {
     rows.push(row);
     byShipper.set(shipper, rows);
   });
-  elements.list.innerHTML = Array.from(byShipper.entries()).map(([shipper, rows]) => `
+  elements.list.innerHTML = [
+    allRoutesButton,
+    ...Array.from(byShipper.entries()).map(([shipper, rows]) => `
     <section class="ratebook-shipper-group">
       <div class="ratebook-shipper-heading"><span>${escapeHtml(shipper)}</span><span>${number(rows.length)} book${rows.length === 1 ? "" : "s"}</span></div>
       ${rows.map((row) => {
@@ -436,7 +457,8 @@ function renderBookList() {
             <small>${number(row.lane_count)} routes | ${number(row.shared_carrier_count)} carriers | ${escapeHtml(lifecycle)} | v${number(row.version_number || 1)}${sourceChanged ? " | source changed" : ""}</small>
           </button>`;
       }).join("")}
-    </section>`).join("");
+    </section>`),
+  ].join("");
 }
 
 function renderEmptyDetail(message = "Select a Ratebook") {
@@ -445,6 +467,111 @@ function renderEmptyDetail(message = "Select a Ratebook") {
       <h2>${escapeHtml(message)}</h2>
       <p>Choose an RFx route book to review routes, inspect the RFI behind each transaction, and share it with carriers.</p>
     </div>`;
+}
+
+function routeLocationParts(row, side) {
+  const city = text(row[`${side}_city`], "");
+  const state = text(row[`${side}_state`], "");
+  const postal = text(row[`${side}_postal_code`], "");
+  const country = text(row[`${side}_country`], "");
+  const market = text(row[`${side}_market`], "");
+  const region = text(row[`${side}_region`], "");
+  const headline = text(row[side], [city, state].filter(Boolean).join(", "));
+  const meta = [
+    postal ? `ZIP ${postal}` : "",
+    country,
+    market,
+    region,
+  ].filter(Boolean).join(" | ");
+  return { headline, meta };
+}
+
+function opportunityOriginLabel(row) {
+  const source = label(row.source_type || "rfx");
+  const opportunity = text(row.event_name || row.project_name || row.package_name || row.ratebook_name, "Commercial source");
+  const rfx = text(row.rfx_id, "");
+  return {
+    source,
+    opportunity,
+    detail: [rfx, text(row.lifecycle_status, "") ? `Ratebook ${label(row.lifecycle_status)}` : ""].filter(Boolean).join(" | "),
+  };
+}
+
+function consolidatedRouteRow(row) {
+  const origin = routeLocationParts(row, "origin");
+  const destination = routeLocationParts(row, "destination");
+  const opportunity = opportunityOriginLabel(row);
+  const ratebookId = text(row.ratebook_id, "");
+  const sourceDemandLaneId = text(row.source_demand_lane_id || row.package_lane_id, "");
+  const eventId = text(row.event_id, "");
+  const projectId = text(row.project_id, "");
+  return `
+    <tr>
+      <td class="ratebook-ledger-sticky"><strong>${escapeHtml(text(row.shipper_name, "Unassigned shipper"))}</strong></td>
+      <td><span class="ratebook-source-pill">${escapeHtml(opportunity.source)}</span><strong>${escapeHtml(opportunity.opportunity)}</strong><small>${escapeHtml(opportunity.detail || "No source reference")}</small></td>
+      <td><button class="ratebook-transaction-link" type="button" data-ledger-ratebook-id="${escapeHtml(ratebookId)}">${escapeHtml(text(row.ratebook_name, "Ratebook"))}</button><small>v${escapeHtml(number(row.version_number || 1))}</small></td>
+      <td><button class="ratebook-transaction-link" type="button" data-ledger-route-id="${escapeHtml(sourceDemandLaneId)}" data-ledger-route-ratebook-id="${escapeHtml(ratebookId)}">${escapeHtml(text(row.transaction_id, row.package_lane_id))}</button><small>${escapeHtml(label(row.route_status || "ready"))}</small></td>
+      <td><strong>${escapeHtml(origin.headline)}</strong><small>${escapeHtml(origin.meta || "-")}</small></td>
+      <td><strong>${escapeHtml(destination.headline)}</strong><small>${escapeHtml(destination.meta || "-")}</small></td>
+      <td>${escapeHtml(text(row.equipment))}<small>${escapeHtml([row.trailer, row.configuration].map((value) => text(value, "")).filter(Boolean).join(" / ") || "-")}</small></td>
+      <td>${escapeHtml(text(row.operation))}</td>
+      <td>${escapeHtml(text(row.service))}</td>
+      <td>${escapeHtml(text(row.segment_name || row.segment_key, "-"))}</td>
+      <td>${escapeHtml(number(row.weekly_volume))}<small>${escapeHtml(text(row.frequency, ""))}</small></td>
+      <td>${escapeHtml(money(row.target_rate, row.currency))}</td>
+      <td>${escapeHtml(number(row.carrier_count))}</td>
+      <td><button class="ratebook-offer-count" type="button" data-ledger-quote-route="${escapeHtml(row.package_lane_id || "")}" data-ledger-quote-ratebook-id="${escapeHtml(ratebookId)}">${escapeHtml(number(row.bid_count))}</button></td>
+      <td class="ratebook-ledger-actions">
+        ${projectId ? `<button class="button button-secondary" type="button" data-ledger-project-id="${escapeHtml(projectId)}">RFx</button>` : ""}
+        ${eventId ? `<button class="button button-secondary" type="button" data-ledger-event-id="${escapeHtml(eventId)}">Bid Room</button>` : ""}
+      </td>
+    </tr>`;
+}
+
+function renderConsolidatedRouteLedger() {
+  state.activeDetailMode = "ledger";
+  state.detail = null;
+  const rows = state.routeLedgerRows;
+  elements.detail.innerHTML = `
+    <section class="ratebook-ledger-workspace">
+      <div class="ratebook-grid-heading">
+        <div>
+          <p class="eyebrow">Consolidated shipper routes</p>
+          <h3>All Shipper Routes</h3>
+        </div>
+        <p>${number(rows.length)} route(s) across ${number(state.rows.length)} Ratebook(s). Filters and export apply to the same consolidated dataset.</p>
+      </div>
+      <div class="ratebook-ledger-summary">
+        <span>Rows<strong>${number(rows.length)}</strong></span>
+        <span>Shippers<strong>${number(new Set(rows.map((row) => text(row.shipper_id || row.shipper_name, ""))).size)}</strong></span>
+        <span>Sources<strong>${number(new Set(rows.map((row) => text(row.source_type, "rfx"))).size)}</strong></span>
+        <span>Bids<strong>${number(rows.reduce((total, row) => total + (Number(row.bid_count) || 0), 0))}</strong></span>
+      </div>
+      <div class="ratebook-grid-wrap ratebook-ledger-wrap">
+        <table class="ratebook-routes-table ratebook-ledger-table">
+          <thead>
+            <tr>
+              <th>Shipper</th>
+              <th>Opportunity origin</th>
+              <th>Ratebook</th>
+              <th>Route</th>
+              <th>Origin</th>
+              <th>Destination</th>
+              <th>Equipment</th>
+              <th>Operation</th>
+              <th>Service</th>
+              <th>Segment</th>
+              <th>Weekly</th>
+              <th>Target</th>
+              <th>Carriers</th>
+              <th>Bids</th>
+              <th>Source actions</th>
+            </tr>
+          </thead>
+          <tbody>${rows.length ? rows.map(consolidatedRouteRow).join("") : `<tr><td colspan="15" class="ratebook-no-routes">No shipper routes match the current filters.</td></tr>`}</tbody>
+        </table>
+      </div>
+    </section>`;
 }
 
 function routeTableRow(route) {
@@ -669,18 +796,17 @@ function closeRouteDrawer() {
   elements.drawerBackdrop.classList.add("hidden");
 }
 
-async function showRouteDetail(sourceDemandLaneId) {
-  if (!state.activeRatebookId || !sourceDemandLaneId) return;
-  const ratebookId = state.activeRatebookId;
+async function showRouteDetail(sourceDemandLaneId, ratebookId = state.activeRatebookId) {
+  if (!ratebookId || !sourceDemandLaneId) return;
   const loadVersion = ++ratebookRouteLoadVersion;
   openRouteDrawer();
   elements.drawerContent.innerHTML = `<div class="ratebook-drawer-loading">Loading RFI route details...</div>`;
   try {
     const result = await fetchRatebookRouteDetail(ratebookId, sourceDemandLaneId);
-    if (loadVersion !== ratebookRouteLoadVersion || state.activeRatebookId !== ratebookId) return;
+    if (loadVersion !== ratebookRouteLoadVersion) return;
     renderRouteDetail(result);
   } catch (error) {
-    if (loadVersion !== ratebookRouteLoadVersion || state.activeRatebookId !== ratebookId) return;
+    if (loadVersion !== ratebookRouteLoadVersion) return;
     elements.drawerContent.innerHTML = `<div class="ratebook-drawer-error">${escapeHtml(humanizeError(error))}</div>`;
   }
 }
@@ -745,9 +871,9 @@ function closeRatebookQuoteReview() {
   state.quoteReview = null;
 }
 
-async function showRatebookQuoteReview(packageLaneId, open = true) {
-  if (!state.activeRatebookId || !packageLaneId) return;
-  const ratebookId = state.activeRatebookId;
+async function showRatebookQuoteReview(packageLaneId, open = true, ratebookId = state.activeRatebookId) {
+  if (!ratebookId || !packageLaneId) return;
+  state.activeRatebookId = ratebookId;
   const loadVersion = ++ratebookQuoteReviewLoadVersion;
   state.quoteReviewPackageLaneId = packageLaneId;
   if (open && !elements.quoteReviewDialog.open) elements.quoteReviewDialog.showModal();
@@ -755,11 +881,11 @@ async function showRatebookQuoteReview(packageLaneId, open = true) {
   elements.quoteReviewContent.innerHTML = `<div class="ratebook-quote-review-empty">Loading submitted carrier offers...</div>`;
   try {
     const result = await fetchRatebookRouteQuotes(ratebookId, packageLaneId);
-    if (loadVersion !== ratebookQuoteReviewLoadVersion || state.activeRatebookId !== ratebookId || state.quoteReviewPackageLaneId !== packageLaneId) return;
+    if (loadVersion !== ratebookQuoteReviewLoadVersion || state.quoteReviewPackageLaneId !== packageLaneId) return;
     state.quoteReview = result;
     renderRatebookQuoteReview(state.quoteReview);
   } catch (error) {
-    if (loadVersion !== ratebookQuoteReviewLoadVersion || state.activeRatebookId !== ratebookId || state.quoteReviewPackageLaneId !== packageLaneId) return;
+    if (loadVersion !== ratebookQuoteReviewLoadVersion || state.quoteReviewPackageLaneId !== packageLaneId) return;
     elements.quoteReviewContent.innerHTML = `<div class="ratebook-quote-review-empty is-error">${escapeHtml(humanizeError(error))}</div>`;
   }
 }
@@ -1047,6 +1173,7 @@ async function sendRatebookDistributionDrafts() {
 async function selectRatebook(ratebookId, updateList = true) {
   const loadVersion = ++ratebookDetailLoadVersion;
   state.activeRatebookId = ratebookId;
+  state.activeDetailMode = "book";
   state.routeSearch = "";
   state.routeSegmentKey = "";
   state.routeStatus = "";
@@ -1070,30 +1197,43 @@ async function selectRatebook(ratebookId, updateList = true) {
 
 async function loadRatebooks() {
   const loadVersion = ++ratebookListLoadVersion;
+  const ledgerLoadVersion = ++ratebookLedgerLoadVersion;
   setStatus(elements.status, "Loading route books...");
   try {
-    const result = await fetchRatebooks({
+    const filters = {
       search: state.search,
       status: state.status,
       shipper_id: state.shipperId || undefined,
       source_type: state.sourceType || undefined,
       segment_key: state.segmentKey || undefined,
       project_id: state.projectId || undefined,
-    });
+    };
+    const result = await fetchRatebooks(filters);
     if (loadVersion !== ratebookListLoadVersion) return;
     state.rows = result.rows || [];
+    const routeLedger = await fetchRatebookRouteLedger({ ...filters, skip_bid_room_sync: true });
+    if (loadVersion !== ratebookListLoadVersion) return;
+    if (ledgerLoadVersion === ratebookLedgerLoadVersion) {
+      state.routeLedgerRows = routeLedger.rows || [];
+      state.routeLedgerTotal = routeLedger.total || state.routeLedgerRows.length;
+    }
     state.facets = result.facets || { shippers: [], sources: [], segments: [] };
     renderBookFilters();
     const activeExists = state.rows.some((row) => String(row.id) === String(state.activeRatebookId));
-    if (!activeExists) state.activeRatebookId = state.rows[0]?.id || "";
+    if (!activeExists) {
+      state.activeRatebookId = "";
+      state.activeDetailMode = "ledger";
+    }
     renderBookList();
     void loadRatebookHealth();
-    setStatus(elements.status, `${number(state.rows.length)} Ratebook(s) loaded.`, "success");
-    if (state.activeRatebookId) await selectRatebook(state.activeRatebookId, false);
-    else renderEmptyDetail("No Ratebooks found");
+    setStatus(elements.status, `${number(state.routeLedgerRows.length)} consolidated route(s) from ${number(state.rows.length)} Ratebook(s) loaded.`, "success");
+    if (state.activeDetailMode === "book" && state.activeRatebookId) await selectRatebook(state.activeRatebookId, false);
+    else renderConsolidatedRouteLedger();
   } catch (error) {
     if (loadVersion !== ratebookListLoadVersion) return;
     state.rows = [];
+    state.routeLedgerRows = [];
+    state.routeLedgerTotal = 0;
     state.facets = { shippers: [], sources: [], segments: [] };
     renderBookFilters();
     renderBookList();
@@ -1113,6 +1253,17 @@ async function copyText(value) {
 }
 
 elements.list.addEventListener("click", (event) => {
+  const ledgerButton = event.target.closest("[data-ratebook-ledger-view]");
+  if (ledgerButton) {
+    state.activeRatebookId = "";
+    state.activeDetailMode = "ledger";
+    renderBookList();
+    renderConsolidatedRouteLedger();
+    const url = new URL(window.location.href);
+    url.searchParams.delete("ratebook");
+    window.history.replaceState({}, "", url);
+    return;
+  }
   const button = event.target.closest("[data-ratebook-id]");
   if (button) selectRatebook(button.dataset.ratebookId);
 });
@@ -1123,6 +1274,31 @@ elements.decisionQueue.addEventListener("click", (event) => {
 });
 
 elements.detail.addEventListener("click", (event) => {
+  const ledgerRatebook = event.target.closest("[data-ledger-ratebook-id]");
+  if (ledgerRatebook) {
+    selectRatebook(ledgerRatebook.dataset.ledgerRatebookId);
+    return;
+  }
+  const ledgerRoute = event.target.closest("[data-ledger-route-id]");
+  if (ledgerRoute) {
+    showRouteDetail(ledgerRoute.dataset.ledgerRouteId, ledgerRoute.dataset.ledgerRouteRatebookId);
+    return;
+  }
+  const ledgerQuoteRoute = event.target.closest("[data-ledger-quote-route]");
+  if (ledgerQuoteRoute) {
+    showRatebookQuoteReview(ledgerQuoteRoute.dataset.ledgerQuoteRoute, true, ledgerQuoteRoute.dataset.ledgerQuoteRatebookId);
+    return;
+  }
+  const ledgerProject = event.target.closest("[data-ledger-project-id]");
+  if (ledgerProject) {
+    window.location.assign(`./rfx-process.html?project=${encodeURIComponent(ledgerProject.dataset.ledgerProjectId)}`);
+    return;
+  }
+  const ledgerEvent = event.target.closest("[data-ledger-event-id]");
+  if (ledgerEvent) {
+    window.location.assign(`./rfx-events.html?rfx_event_id=${encodeURIComponent(ledgerEvent.dataset.ledgerEventId)}`);
+    return;
+  }
   const quoteReviewButton = event.target.closest("[data-review-ratebook-route]");
   if (quoteReviewButton) {
     showRatebookQuoteReview(quoteReviewButton.dataset.reviewRatebookRoute);
@@ -1194,6 +1370,7 @@ elements.savedView.addEventListener("change", () => {
     return;
   }
   applyRatebookFilters(view.filters || {});
+  resetRatebookDetailToLedger();
   loadRatebooks();
 });
 
@@ -1202,6 +1379,7 @@ elements.search.addEventListener("input", () => {
   searchTimer = window.setTimeout(() => {
     state.search = elements.search.value.trim();
     state.selectedSavedView = "";
+    resetRatebookDetailToLedger();
     loadRatebooks();
   }, 250);
 });
@@ -1209,24 +1387,28 @@ elements.search.addEventListener("input", () => {
 elements.statusFilter.addEventListener("change", () => {
   state.status = elements.statusFilter.value;
   state.selectedSavedView = "";
+  resetRatebookDetailToLedger();
   loadRatebooks();
 });
 
 elements.shipperFilter.addEventListener("change", () => {
   state.shipperId = elements.shipperFilter.value;
   state.selectedSavedView = "";
+  resetRatebookDetailToLedger();
   loadRatebooks();
 });
 
 elements.sourceFilter.addEventListener("change", () => {
   state.sourceType = elements.sourceFilter.value;
   state.selectedSavedView = "";
+  resetRatebookDetailToLedger();
   loadRatebooks();
 });
 
 elements.segmentFilter.addEventListener("change", () => {
   state.segmentKey = elements.segmentFilter.value;
   state.selectedSavedView = "";
+  resetRatebookDetailToLedger();
   loadRatebooks();
 });
 

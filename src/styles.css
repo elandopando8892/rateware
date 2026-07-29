@@ -1832,6 +1832,100 @@ a {
   font-size: 9px;
 }
 
+.ratebook-workspace .ratebook-all-routes-row {
+  margin-bottom: 6px;
+  border-color: rgba(38, 72, 105, 0.35);
+  background: #f7fbff;
+}
+
+.ratebook-workspace .ratebook-ledger-workspace {
+  min-width: 0;
+}
+
+.ratebook-workspace .ratebook-ledger-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  background: #f8fafc;
+}
+
+.ratebook-workspace .ratebook-ledger-summary span {
+  display: grid;
+  gap: 1px;
+  padding: 6px 8px;
+  border-right: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 9px;
+  text-transform: uppercase;
+}
+
+.ratebook-workspace .ratebook-ledger-summary strong {
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.ratebook-workspace .ratebook-ledger-wrap {
+  overflow: auto;
+}
+
+.ratebook-workspace .ratebook-ledger-table {
+  min-width: 1760px;
+}
+
+.ratebook-workspace .ratebook-ledger-table th,
+.ratebook-workspace .ratebook-ledger-table td {
+  vertical-align: top;
+}
+
+.ratebook-workspace .ratebook-ledger-table td {
+  line-height: 1.2;
+}
+
+.ratebook-workspace .ratebook-ledger-table td strong,
+.ratebook-workspace .ratebook-ledger-table td small {
+  display: block;
+}
+
+.ratebook-workspace .ratebook-ledger-table td small {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 9px;
+  max-width: 210px;
+  white-space: normal;
+}
+
+.ratebook-workspace .ratebook-ledger-sticky {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  background: #fff;
+  box-shadow: 1px 0 0 var(--line);
+}
+
+.ratebook-workspace .ratebook-source-pill {
+  display: inline-flex;
+  width: fit-content;
+  margin-bottom: 2px;
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: #e8eef6;
+  color: #20364d;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.ratebook-workspace .ratebook-ledger-actions {
+  white-space: nowrap;
+}
+
+.ratebook-workspace .ratebook-ledger-actions .button {
+  min-height: 22px;
+  padding: 2px 5px;
+  font-size: 9px;
+}
+
 @media (max-width: 1100px) {
   .ratebook-workspace .ratebook-toolbar {
     grid-template-columns: minmax(220px, 1.6fr) repeat(4, minmax(110px, 1fr));
