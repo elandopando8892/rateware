@@ -17390,6 +17390,101 @@ async function resolveShipperForRfxCustomer(
     || null;
 }
 
+function rfxEventMatchesShipper(event: Record<string, unknown>, shipper: Record<string, unknown>) {
+  const shipperKeys = [
+    shipper.shipper_name,
+    shipper.legal_name,
+    shipper.domain,
+    shipper.website
+  ].map(catalogKey).filter(Boolean);
+  if (!shipperKeys.length) return false;
+  const customerKey = catalogKey(event.customer);
+  const eventKeys = [
+    customerKey,
+    customerKey ? "" : catalogKey(event.name)
+  ].filter(Boolean);
+  return eventKeys.some((eventKey) => shipperKeys.some((shipperKey) =>
+    eventKey === shipperKey || eventKey.includes(shipperKey) || shipperKey.includes(eventKey)
+  ));
+}
+
+async function linkRfxProjectToShipper(
+  supabase: RatewareSupabaseClient,
+  user: RatewareUser,
+  project: Record<string, unknown>,
+  event: Record<string, unknown>,
+  input: Record<string, unknown> = {}
+) {
+  let shipper = cleanText(project.customer_id) && UUID_PATTERN.test(cleanText(project.customer_id)!)
+    ? await requireOwnedShipper(supabase, user, project.customer_id).catch(() => null)
+    : null;
+  if (!shipper) shipper = await resolveShipperForRfxCustomer(supabase, user, input, event);
+  if (!shipper) return { project, shipper: null };
+  const shipperId = cleanText(shipper.id);
+  if (!shipperId || cleanText(project.customer_id) === shipperId) return { project, shipper };
+  const updateProject = await supabase
+    .from("rfx_projects")
+    .update({
+      customer_id: shipperId,
+      customer_name: firstCleanText(shipper.shipper_name, shipper.legal_name, project.customer_name, event.customer),
+      customer_contact_email: cleanText(shipper.primary_contact_email)?.toLowerCase() || cleanText(project.customer_contact_email) || null,
+      updated_at: new Date().toISOString()
+    })
+    .eq("id", project.id)
+    .eq("owner_email", user.owner_email)
+    .select()
+    .single();
+  if (updateProject.error) throw updateProject.error;
+  return { project: updateProject.data as Record<string, unknown>, shipper };
+}
+
+async function findBidRoomEventsForShipper(
+  supabase: RatewareSupabaseClient,
+  user: RatewareUser,
+  shipper: Record<string, unknown>,
+  linkedProjectIds: string[]
+) {
+  const eventById = new Map<string, Record<string, unknown>>();
+  const addEvents = (rows: Record<string, unknown>[] = []) => {
+    for (const row of rows) {
+      const id = cleanText(row.id);
+      if (id) eventById.set(id, row);
+    }
+  };
+  const selectColumns = "id,rfx_id,name,customer,status,due_date,event_type,bid_visibility_mode,source_rfx_process_project_id,source_rfx_package_id,source_rfx_package_name,notes,updated_at,created_at";
+  if (linkedProjectIds.length) {
+    const linkedEvents = await supabase
+      .from("rfx_events")
+      .select(selectColumns)
+      .eq("owner_email", user.owner_email)
+      .in("source_rfx_process_project_id", linkedProjectIds)
+      .neq("status", "archived")
+      .order("updated_at", { ascending: false })
+      .limit(100);
+    if (linkedEvents.error && linkedEvents.error.code !== "42P01") throw linkedEvents.error;
+    addEvents((linkedEvents.data || []) as Record<string, unknown>[]);
+  }
+  const terms = Array.from(new Set([
+    shipper.shipper_name,
+    shipper.legal_name,
+    shipper.domain
+  ].map(safeShipperSearch).filter(Boolean))).slice(0, 5);
+  for (const term of terms) {
+    const [customerEvents, namedEvents] = await Promise.all([
+      supabase.from("rfx_events").select(selectColumns).eq("owner_email", user.owner_email).neq("status", "archived").ilike("customer", `%${term}%`).order("updated_at", { ascending: false }).limit(50),
+      supabase.from("rfx_events").select(selectColumns).eq("owner_email", user.owner_email).neq("status", "archived").ilike("name", `%${term}%`).order("updated_at", { ascending: false }).limit(50)
+    ]);
+    for (const result of [customerEvents, namedEvents]) {
+      if (result.error && result.error.code !== "42P01") throw result.error;
+      addEvents((result.data || []) as Record<string, unknown>[]);
+    }
+  }
+  const linkedProjectSet = new Set(linkedProjectIds);
+  return Array.from(eventById.values())
+    .filter((event) => linkedProjectSet.has(cleanText(event.source_rfx_process_project_id) || "") || rfxEventMatchesShipper(event, shipper))
+    .sort((left, right) => (cleanText(right.updated_at) || cleanText(right.created_at) || "").localeCompare(cleanText(left.updated_at) || cleanText(left.created_at) || ""));
+}
+
 function rfxProjectStatusForEvent(event: Record<string, unknown>) {
   const status = cleanText(event.status)?.toLowerCase();
   if (status === "archived") return "archived";
@@ -17418,10 +17513,8 @@ async function ensureBidRoomEventProject(
   const sourceProjectId = cleanText(event.source_rfx_process_project_id);
   if (sourceProjectId && UUID_PATTERN.test(sourceProjectId)) {
     const project = await requireOwnedRfxProcessProject(supabase, user, sourceProjectId);
-    const shipper = cleanText(project.customer_id) && UUID_PATTERN.test(cleanText(project.customer_id)!)
-      ? await requireOwnedShipper(supabase, user, project.customer_id).catch(() => null)
-      : null;
-    return { event, project, shipper };
+    const linked = await linkRfxProjectToShipper(supabase, user, project, event, input);
+    return { event, project: linked.project, shipper: linked.shipper };
   }
 
   const existingProjectResult = await supabase
@@ -17443,10 +17536,8 @@ async function ensureBidRoomEventProject(
       .select()
       .single();
     if (updateEvent.error) throw updateEvent.error;
-    const shipper = cleanText(project.customer_id) && UUID_PATTERN.test(cleanText(project.customer_id)!)
-      ? await requireOwnedShipper(supabase, user, project.customer_id).catch(() => null)
-      : null;
-    return { event: updateEvent.data as Record<string, unknown>, project, shipper };
+    const linked = await linkRfxProjectToShipper(supabase, user, project, updateEvent.data as Record<string, unknown>, input);
+    return { event: updateEvent.data as Record<string, unknown>, project: linked.project, shipper: linked.shipper };
   }
 
   const shipper = await resolveShipperForRfxCustomer(supabase, user, input, event);
@@ -21385,6 +21476,12 @@ Deno.serve(async (request) => {
         ...((projectResult.data || []) as Record<string, unknown>[])
           .map((project) => cleanText(project.id))
       ].filter((id): id is string => Boolean(id))));
+      let bidRoomEvents: Record<string, unknown>[] = [];
+      try {
+        bidRoomEvents = await findBidRoomEventsForShipper(supabase, user, shipper, linkedProjectIds);
+      } catch (error) {
+        if ((error as { code?: string } | null)?.code !== "42P01") throw error;
+      }
       const directRatebookRows: Record<string, unknown>[] = [];
       const directRatebooksResult = await supabase.from("rfx_ratebooks")
         .select("*")
@@ -21398,17 +21495,62 @@ Deno.serve(async (request) => {
         const id = cleanText(ratebook.id);
         if (id) ratebookById.set(id, ratebook);
       });
+      const ratebookProjectIds = new Set(linkedProjectIds);
+      const bidRoomEventSummaries: Record<string, unknown>[] = [];
       try {
-        const materialized = await materializeRatebooksForProjects(supabase, user, linkedProjectIds);
+        for (const event of bidRoomEvents.slice(0, 50)) {
+          const synced = await ensureRatebookForBidRoomEvent(supabase, user, event, {
+            customer_id: shipperId,
+            customer: firstCleanText(shipper.shipper_name, shipper.legal_name)
+          });
+          const syncedProjectId = cleanText(objectRecord(synced.project).id);
+          if (syncedProjectId) ratebookProjectIds.add(syncedProjectId);
+          const ratebook = objectRecord(synced.ratebook);
+          const ratebookId = cleanText(ratebook.id);
+          if (ratebookId) ratebookById.set(ratebookId, {
+            ...ratebook,
+            source_type: cleanText(ratebook.source_type) || ratebookSourceTypeForEvent(event),
+            project: {
+              id: cleanText(objectRecord(synced.project).id),
+              title: cleanText(objectRecord(synced.project).title),
+              customer_name: cleanText(objectRecord(synced.project).customer_name),
+              due_date: cleanText(objectRecord(synced.project).due_date),
+              status: cleanText(objectRecord(synced.project).status)
+            },
+            package: {
+              id: cleanText(objectRecord(synced.package).id),
+              name: cleanText(objectRecord(synced.package).name),
+              status: cleanText(objectRecord(synced.package).status),
+              bid_due_at: cleanText(objectRecord(synced.package).bid_due_at),
+              linked_rfx_event_id: cleanText(event.id)
+            }
+          });
+          bidRoomEventSummaries.push({
+            id: cleanText(event.id),
+            rfx_id: cleanText(event.rfx_id),
+            name: cleanText(event.name),
+            customer: cleanText(event.customer),
+            status: cleanText(event.status),
+            due_date: cleanDate(event.due_date),
+            event_type: cleanText(event.event_type),
+            ratebook_id: ratebookId || null,
+            project_id: syncedProjectId || null,
+            lane_count: cleanNumber(synced.lanes) || 0,
+            updated_at: cleanText(event.updated_at) || cleanText(event.created_at)
+          });
+        }
+        const materialized = await materializeRatebooksForProjects(supabase, user, Array.from(ratebookProjectIds));
         materialized.forEach((ratebook) => {
           const id = cleanText(ratebook.id);
           if (id) ratebookById.set(id, ratebook);
         });
+        details.bid_room_events = bidRoomEventSummaries;
         details.ratebooks = Array.from(ratebookById.values())
           .sort((left, right) => (cleanText(right.updated_at) || "").localeCompare(cleanText(left.updated_at) || ""));
       } catch (error) {
         // Keep the shipper profile usable until the Ratebook migration is present in every deployment.
         if ((error as { code?: string } | null)?.code !== "42P01") throw error;
+        details.bid_room_events = bidRoomEventSummaries;
         details.ratebooks = directRatebookRows;
       }
       return jsonResponse({ row: shipper, ...details });

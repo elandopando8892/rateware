@@ -193,6 +193,10 @@ assert.match(client, /Ratebooks are captured from Customer RFI, RFx Process, and
 assert.match(client, /Opportunities work as deal records, not source triggers/);
 assert.match(api, /ensureRatebookForBidRoomEvent/);
 assert.match(api, /resolveShipperForRfxCustomer/);
+assert.match(api, /findBidRoomEventsForShipper/);
+assert.match(api, /rfxEventMatchesShipper/);
+assert.match(api, /linkRfxProjectToShipper/);
+assert.match(api, /details\.bid_room_events/);
 assert.match(api, /\.eq\("customer_id", shipperId\)/);
 assert.match(api, /bid_room_ratebook_synced/);
 assert.match(client, /This RFI already has a commercial deal/);
