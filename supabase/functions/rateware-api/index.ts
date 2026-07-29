@@ -9859,6 +9859,63 @@ function rfxInvitationVendorGroupKey(invitation: Record<string, unknown>) {
   return eventKey && vendorKey ? `${eventKey}:${vendorKey}` : "";
 }
 
+async function ensureRfxEventVendorCoverage(
+  supabase: RatewareSupabaseClient,
+  eventId: string,
+  vendorIds: string[],
+  eventLanes: Record<string, unknown>[]
+) {
+  const uniqueVendorIds = [...new Set(vendorIds.map(cleanText).filter(Boolean))];
+  const lanes = eventLanes.filter((lane) => cleanText(lane.id));
+  if (!eventId || !uniqueVendorIds.length || !lanes.length) return { inserted: 0, rows: [] as Record<string, unknown>[] };
+
+  const existing = await supabase
+    .from("rfx_lane_vendors")
+    .select("id,rfx_lane_id,vendor_id,invitation_status")
+    .eq("rfx_event_id", eventId)
+    .in("vendor_id", uniqueVendorIds);
+  if (existing.error) throw new Error(`RFx participant coverage load failed: ${existing.error.message}`);
+
+  const existingKeys = new Set((existing.data || []).map((row) => `${cleanText(row.rfx_lane_id)}:${cleanText(row.vendor_id)}`));
+  const insertRows = lanes.flatMap((lane) => uniqueVendorIds
+    .filter((vendorId) => !existingKeys.has(`${cleanText(lane.id)}:${vendorId}`))
+    .map((vendorId) => ({
+      rfx_event_id: eventId,
+      rfx_lane_id: lane.id,
+      vendor_id: vendorId,
+      invitation_status: "drafted",
+      invitation_token: randomToken(),
+      notes: "Added to the full RFx business book during outreach preparation."
+    })));
+  if (!insertRows.length) return { inserted: 0, rows: [] as Record<string, unknown>[] };
+
+  const insertedRows: Record<string, unknown>[] = [];
+  for (const batch of chunkValues(insertRows, 250)) {
+    const inserted = await supabase
+      .from("rfx_lane_vendors")
+      .upsert(batch, { onConflict: "rfx_lane_id,vendor_id", ignoreDuplicates: true })
+      .select("id,rfx_event_id,rfx_lane_id,vendor_id,invitation_status,invitation_token");
+    if (inserted.error) throw new Error(`RFx participant coverage create failed: ${inserted.error.message}`);
+    insertedRows.push(...((inserted.data || []) as Record<string, unknown>[]));
+  }
+  return { inserted: insertedRows.length, rows: insertedRows };
+}
+
+function outreachEventLaneRows(
+  eventLanes: Record<string, unknown>[] = [],
+  invitationGroup: Record<string, unknown>[] = []
+) {
+  if (!eventLanes.length) return invitationGroup;
+  const invitationByLane = new Map(invitationGroup.map((row) => [cleanText(row.rfx_lane_id), row]));
+  const fallback = invitationGroup[0] || {};
+  return eventLanes.map((lane) => ({
+    ...fallback,
+    ...(invitationByLane.get(cleanText(lane.id)) || {}),
+    rfx_lane_id: lane.id,
+    rfx_lanes: lane
+  }));
+}
+
 function sortRfxInvitationGroup(invitations: Record<string, unknown>[]) {
   return [...invitations].sort((left, right) => {
     const leftLane = laneRecordFromInvitation(left);
@@ -11826,12 +11883,14 @@ function outreachContext(
   appOrigin: string,
   invitationGroup: Record<string, unknown>[] = [invitation],
   template: Record<string, unknown> | null | undefined = null,
-  profileLink = ""
+  profileLink = "",
+  eventLaneRows: Record<string, unknown>[] = []
 ) {
   const vendor = typeof invitation.vendors === "object" && invitation.vendors ? invitation.vendors as Record<string, unknown> : {};
   const lane = typeof invitation.rfx_lanes === "object" && invitation.rfx_lanes ? invitation.rfx_lanes as Record<string, unknown> : {};
   const event = typeof invitation.rfx_events === "object" && invitation.rfx_events ? invitation.rfx_events as Record<string, unknown> : {};
-  const bidLink = `${appOrigin.replace(/\/$/, "")}/rfx-bid.html?token=${encodeURIComponent(String(invitation.invitation_token || ""))}${invitationGroup.length > 1 ? "&view=book" : ""}`;
+  const routeRows = eventLaneRows.length ? eventLaneRows : invitationGroup;
+  const bidLink = `${appOrigin.replace(/\/$/, "")}/rfx-bid.html?token=${encodeURIComponent(String(invitation.invitation_token || ""))}${routeRows.length > 1 ? "&view=book" : ""}`;
   const language = outreachTemplateLanguage(template);
   return {
     vendor_name: vendor.vendor_name || vendor.domain || "Carrier",
@@ -11855,10 +11914,10 @@ function outreachContext(
     weekly_volume: lane.weekly_volume || "",
     target_rate: lane.target_rate || "",
     currency: lane.currency || "USD",
-    lane_count: invitationGroup.length,
-    lane_table: outreachLaneTableHtml(invitationGroup, language),
-    lane_rows_text: outreachLaneRowsText(invitationGroup, language),
-    lane_table_signature: outreachLaneTableSignature(invitationGroup),
+    lane_count: routeRows.length,
+    lane_table: outreachLaneTableHtml(routeRows, language),
+    lane_rows_text: outreachLaneRowsText(routeRows, language),
+    lane_table_signature: outreachLaneTableSignature(routeRows),
     bid_link: bidLink,
     profile_link: profileLink || carrierProfileUrl(appOrigin, "")
   };
@@ -23822,6 +23881,12 @@ Deno.serve(async (request) => {
         .neq("invitation_status", "archived");
       if (invitationsResult.error) throw invitationsResult.error;
       const invitations = (invitationsResult.data || []) as Record<string, unknown>[];
+      const eventLanesResult = await supabase
+        .from("rfx_lanes")
+        .select("id")
+        .eq("rfx_event_id", eventId);
+      if (eventLanesResult.error) throw eventLanesResult.error;
+      const eventLaneCount = eventLanesResult.data?.length || 0;
       const vendorIds = [...new Set(invitations.map((row) => cleanText(row.vendor_id)).filter(Boolean))] as string[];
       const [historyRows, suppressions] = await Promise.all([
         allScopedOutreachMessages(supabase, user, { rfx_event_id: eventId, channel, include_archived: false }),
@@ -23896,7 +23961,9 @@ Deno.serve(async (request) => {
           email: recipientEmail || cleanText(vendor.primary_email),
           phone: recipientPhone,
           invitation_ids: group.map((row) => row.id).filter(Boolean),
-          lane_count: group.length,
+          lane_count: eventLaneCount || group.length,
+          shortlisted_lane_count: group.length,
+          event_lane_count: eventLaneCount || group.length,
           lane_preview: lanePreview,
           audience_status: audienceStatus,
           reason,
@@ -24185,6 +24252,16 @@ Deno.serve(async (request) => {
         return batch;
       });
       const invitations = invitationBatches.flat() as Record<string, unknown>[];
+      let eventLaneRows: Record<string, unknown>[] = [];
+      if (campaign.rfx_event_id) {
+        const eventLanesResult = await supabase
+          .from("rfx_lanes")
+          .select("*")
+          .eq("rfx_event_id", campaign.rfx_event_id)
+          .order("lane_number", { ascending: true });
+        if (eventLanesResult.error) throw new Error(`Outreach event lane load failed: ${eventLanesResult.error.message}`);
+        eventLaneRows = (eventLanesResult.data || []) as Record<string, unknown>[];
+      }
 
       // The ledger is keyed by the actual contact, not just the carrier. This lets a
       // bounced primary email fall through to a valid secondary email without ever
@@ -24207,6 +24284,19 @@ Deno.serve(async (request) => {
         const bucket = invitationGroups.get(key) || [];
         bucket.push(invitation);
         invitationGroups.set(key, bucket);
+      }
+
+      // A carrier selected from the event audience is quoting the RFx business
+      // book, not only the first lane on which it was originally shortlisted.
+      // Complete its active lane coverage before hydrating the private link so
+      // the email preview, invitation token, and carrier portal share one scope.
+      if (campaign.rfx_event_id && eventLaneRows.length && invitations.length) {
+        await ensureRfxEventVendorCoverage(
+          supabase,
+          campaign.rfx_event_id,
+          invitations.map((invitation) => cleanText(invitation.vendor_id)).filter(Boolean) as string[],
+          eventLaneRows
+        );
       }
 
       const completeInvitationGroups = new Map<string, Record<string, unknown>[]>();
@@ -24357,7 +24447,14 @@ Deno.serve(async (request) => {
         const invitation = invitationGroup[0];
         const vendor = typeof invitation.vendors === "object" && invitation.vendors ? invitation.vendors as Record<string, unknown> : {};
         const profileLink = profileLinksByVendor.get(cleanText(invitation.vendor_id) || "") || "";
-        const context = outreachContext(invitation, appOrigin, invitationGroup, template, profileLink);
+        const context = outreachContext(
+          invitation,
+          appOrigin,
+          invitationGroup,
+          template,
+          profileLink,
+          outreachEventLaneRows(eventLaneRows, invitationGroup)
+        );
         const subject = renderTemplateText(template.subject || campaign.name, context);
         const htmlBody = renderTemplateText(template.html_body || template.whatsapp_body || "", context);
         const textBody = htmlToText(htmlBody);

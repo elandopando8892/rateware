@@ -1726,7 +1726,7 @@ assert.match(rfxBidSource, /function eventMarketplaceUrl/, "Carrier portal shoul
 assert.match(rfxBidSource, /return "\.\/bid-room-board\.html"/, "Carrier portal should link bid-specific pages to the full public live board");
 assert.match(stylesSource, /\.carrier-bid-template-tools/, "Carrier portal should style the XLSX bid template workflow");
 assert.match(stylesSource, /\.bid-lane-detail-sections[\s\S]*grid-template-columns: minmax\(280px/, "Carrier portal lane detail sections should use a wider readable layout");
-assert.match(apiSource, /invitationGroup\.length > 1 \? "&view=book" : ""/, "RFx outreach links with multiple lanes should open the carrier business book view");
+assert.match(apiSource, /routeRows\.length > 1 \? "&view=book" : ""/, "RFx outreach links with multiple event lanes should open the carrier business book view");
 assert.match(rfxEventsSource, /portalUrl\(invitation\.invitation_token, targetRows\.length\)/, "Bid Room preview should show the same multi-lane business book link behavior");
 assert.match(rfxBidApiSource, /logistics_model,operation_criteria,business_rules,service_specifications,carrier_requirements,other_notes,notes/, "Carrier public board should select RFx lane detail sections");
 assert.match(rfxEventsSource, /rfx-lane-progress-cell/, "Bid Room Step 2 should render compact lane progress");
@@ -2224,6 +2224,9 @@ assert.match(apiSource, /generated: generatedMessages\.length,[\s\S]+rows: \[\]/
 assert.match(apiSource, /function outreachLaneTableSignature/, "Outreach draft generation should fingerprint the current Business Book route table");
 assert.match(apiSource, /lane_table_signature: context\.lane_table_signature/, "Outreach drafts should persist the Business Book route-table signature in metadata");
 assert.match(apiSource, /const completeInvitationGroups = new Map/, "Outreach draft generation should hydrate complete event/vendor lane groups before rendering templates");
+assert.match(apiSource, /async function ensureRfxEventVendorCoverage/, "Outreach draft generation should complete selected carrier coverage across the event business book");
+assert.match(apiSource, /outreachEventLaneRows\(eventLaneRows, invitationGroup\)/, "Outreach drafts should render every active event lane in the carrier business book");
+assert.match(apiSource, /const eventLaneCount = eventLanesResult\.data\?\.length \|\| 0/, "Outreach audience should know the total event lane count");
 assert.match(apiSource, /requestedGroupKeys\.has\(key\)/, "Outreach draft generation should only expand lane groups for requested event/vendor participants");
 assert.match(apiSource, /\.in\("vendor_id", vendorChunk\)[\s\S]+\.range\(offset, offset \+ 999\)/, "Outreach lane hydration should paginate only the requested carriers instead of scanning the full event");
 assert.match(apiSource, /sortRfxInvitationGroup\(completeInvitationGroups\.get\(groupKey\) \|\| requestedInvitationGroup\)/, "Outreach drafts should render stable complete route tables per carrier");
@@ -2285,6 +2288,8 @@ assert.match(rfxEventsSource, /window\.sessionStorage\.getItem\(storageKey\)/, "
 assert.match(rfxEventsSource, /idempotency_key: idempotencyKey/, "Bid Room should send the retry key when creating an outreach wave");
 assert.match(rfxEventsSource, /function laneTableSignatureForTargets/, "Bid Room UI should fingerprint current carrier lane groups");
 assert.match(rfxEventsSource, /function allOutreachTargetInvitations/, "Bid Room preview should be able to render every active event lane for the selected carrier");
+assert.match(rfxEventsSource, /function outreachPreviewLaneRows/, "Bid Room live preview should resolve the complete active event route book");
+assert.match(rfxEventsSource, /const targetRows = outreachPreviewLaneRows\(target\)/, "Bid Room live preview should render all event lanes instead of only the first carrier invitation");
 assert.match(rfxEventsSource, /const sourceTargets = selectedOnly \? outreachTargetInvitations\(\) : allOutreachTargetInvitations\(\)/, "Bid Room preview should default to the full carrier lane package, not only the selected row");
 assert.match(rfxEventsSource, /function draftMatchesCurrentLaneTable/, "Bid Room UI should compare draft route-table signatures against current lanes");
 assert.match(rfxEventsSource, /Business book changed\. Refresh this draft to update its route table\./, "Draft queue should explain how to refresh a stale route table");

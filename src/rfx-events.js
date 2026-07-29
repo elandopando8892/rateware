@@ -2208,6 +2208,23 @@ function outreachTargetsForCarrier(target, { selectedOnly = false } = {}) {
   return sourceTargets.filter((item) => sameVendorInvitation(item.invitation, target.invitation));
 }
 
+function outreachPreviewLaneRows(target) {
+  const scopedLanes = selectedLaneIds.size
+    ? currentLanes.filter((lane) => selectedLaneIds.has(String(lane.id)))
+    : currentLanes;
+  if (!scopedLanes.length) return outreachTargetsForCarrier(target);
+  const carrierTargets = outreachTargetsForCarrier(target);
+  const invitationsByLane = new Map(carrierTargets.map((item) => [String(item.lane?.id || item.invitation?.rfx_lane_id || ""), item.invitation]));
+  const fallbackInvitation = target?.invitation || carrierTargets[0]?.invitation || {};
+  return scopedLanes.map((lane) => ({
+    lane,
+    // A carrier may be shortlisted on only one lane while the RFx book has
+    // several lanes. The invitation queue expands that carrier to the full
+    // event book, so the live preview must show the same route scope.
+    invitation: invitationsByLane.get(String(lane.id)) || fallbackInvitation
+  }));
+}
+
 function laneRowsText(targets = [], language = "en") {
   return targets.map(({ lane }, index) => [
     `${language === "es" ? "Ruta" : "Lane"} ${index + 1}: ${lane.origin || "-"} -> ${lane.destination || "-"}`,
@@ -2296,8 +2313,7 @@ function laneTableSignatureForTargets(targets = []) {
 }
 
 function targetLaneTableSignature(target) {
-  const carrierTargets = outreachTargetsForCarrier(target);
-  const targetRows = carrierTargets.length ? carrierTargets : target ? [target] : [];
+  const targetRows = outreachPreviewLaneRows(target);
   return laneTableSignatureForTargets(targetRows);
 }
 
@@ -2313,7 +2329,7 @@ function sampleOutreachContext(target, template = selectedOutreachTemplateDraft(
   const vendor = invitation.vendors || {};
   const carrierTargets = outreachTargetsForCarrier(target);
   const language = outreachTemplateLanguage(template);
-  const targetRows = carrierTargets.length ? carrierTargets : target ? [target] : [];
+  const targetRows = outreachPreviewLaneRows(target);
   return {
     vendor_name: vendor.vendor_name || vendor.domain || "Carrier",
     contact_name: vendor.contact_name || vendor.vendor_name || "team",
@@ -2336,7 +2352,7 @@ function sampleOutreachContext(target, template = selectedOutreachTemplateDraft(
     weekly_volume: lane.weekly_volume || "",
     target_rate: lane.target_rate || "",
     currency: lane.currency || "USD",
-    lane_count: carrierTargets.length || (target ? 1 : 0),
+    lane_count: targetRows.length || carrierTargets.length || (target ? 1 : 0),
     lane_table: laneTableHtml(targetRows, language),
     lane_rows_text: laneRowsText(targetRows, language),
     lane_table_signature: laneTableSignatureForTargets(targetRows),
@@ -5545,12 +5561,17 @@ function renderOutreachAudience() {
     const selected = selectedOutreachAudienceVendorIds.has(vendorId);
     const status = String(row.audience_status || "needs_review").toLowerCase();
     const lanes = Number(row.lane_count || 0);
+    const shortlistedLanes = Number(row.shortlisted_lane_count || lanes);
+    const eventLanes = Number(row.event_lane_count || 0);
     const contact = row.email || row.phone || "No verified contact";
     const reason = String(row.reason || row.last_message_status || "Eligible contact");
+    const laneLabel = eventLanes > shortlistedLanes
+      ? `${formatNumber(shortlistedLanes)} shortlisted / ${formatNumber(eventLanes)} event lanes`
+      : `${formatNumber(lanes)} lane${lanes === 1 ? "" : "s"}`;
     return `
       <tr class="${selected ? "is-selected-row" : ""}">
         <td><input type="checkbox" data-rfx-audience-select="${escapeHtml(vendorId)}" ${selected ? "checked" : ""} ${vendorId ? "" : "disabled"} /></td>
-        <td><strong>${escapeHtml(row.vendor_name || row.vendor_domain || "Carrier")}</strong><small>${escapeHtml(row.vendor_domain || "")} ${lanes ? `| ${formatNumber(lanes)} lane${lanes === 1 ? "" : "s"}` : ""}</small></td>
+        <td><strong>${escapeHtml(row.vendor_name || row.vendor_domain || "Carrier")}</strong><small>${escapeHtml(row.vendor_domain || "")} ${lanes ? `| ${escapeHtml(laneLabel)}` : ""}</small></td>
         <td>${escapeHtml(contact)}</td>
         <td><span class="status-pill ${outreachAudienceStatusTone(status)}" title="${escapeHtml(reason)}">${escapeHtml(outreachAudienceStatusLabel(status))}</span></td>
         <td><small class="rfx-draft-next-action">${escapeHtml(row.next_action || "Review")}</small></td>
