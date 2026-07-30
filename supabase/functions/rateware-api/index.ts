@@ -8348,8 +8348,68 @@ async function closeoutAwardedRfxToRateware(
   const awards = awardsResult.data || [];
   const pendingAwards = awards.filter((row) => cleanNumber(row.bid_rate) !== null && !row.rate_staging_id);
   const skipped = awards.length - pendingAwards.length;
-  if (!pendingAwards.length) {
-    return { inserted: 0, skipped, rows: [], raw_upload_id: null, job_id: null };
+  const linkedRows: Record<string, unknown>[] = [];
+  const fallbackAwards: Record<string, unknown>[] = [];
+
+  // Carrier bids already created a historical rate_staging row when they were
+  // submitted. Approve and link that row instead of creating a duplicate
+  // closeout row. Only fall back to a new row when the historical link is no
+  // longer resolvable inside this workspace.
+  for (const award of pendingAwards) {
+    const bidStagingId = cleanText(award.bid_rate_staging_id);
+    if (!bidStagingId) {
+      fallbackAwards.push(award);
+      continue;
+    }
+    const existing = await supabase
+      .from("rate_staging")
+      .update({
+        status: targetStatus,
+        source_bid_status: "awarded",
+        rfx_bid_outcome: "awarded",
+        updated_at: now
+      })
+      .eq("id", bidStagingId)
+      .eq("owner_email", user.owner_email)
+      .select("id,row_id,status")
+      .maybeSingle();
+    if (existing.error) throw existing.error;
+    if (!existing.data) {
+      fallbackAwards.push(award);
+      continue;
+    }
+    const link = await supabase
+      .from("rfx_lane_vendors")
+      .update({ rate_staging_id: bidStagingId, rateware_closeout_at: now, updated_at: now })
+      .eq("id", award.id)
+      .eq("rfx_event_id", event.id);
+    if (link.error) throw link.error;
+    linkedRows.push({
+      ...existing.data,
+      rfx_lane_vendor_id: award.id,
+      bid_rate_staging_id: bidStagingId,
+      closeout_mode: "approved_existing_bid_staging"
+    });
+  }
+
+  if (!fallbackAwards.length) {
+    const eventUpdate = await supabase
+      .from("rfx_events")
+      .update({ status: "awarded", updated_at: now })
+      .eq("id", event.id)
+      .eq("owner_email", user.owner_email);
+    if (eventUpdate.error) throw eventUpdate.error;
+    return {
+      inserted: 0,
+      linked: linkedRows.length,
+      approved_existing: linkedRows.length,
+      skipped,
+      rows: [],
+      linked_rows: linkedRows,
+      raw_upload_id: null,
+      job_id: null,
+      target_status: targetStatus
+    };
   }
 
   const storageStamp = now.replace(/[^0-9T]/g, "").slice(0, 15);
@@ -8367,8 +8427,8 @@ async function closeoutAwardedRfxToRateware(
       status: "staged",
       staging_target: "rate_staging",
       interpreted_at: now,
-      interpreted_rate_rows: pendingAwards.length,
-      expected_rate_rows: pendingAwards.length,
+      interpreted_rate_rows: fallbackAwards.length,
+      expected_rate_rows: fallbackAwards.length,
       audit_status: "ok",
       audit_warnings: [],
       interpretation_audit: {
@@ -8377,7 +8437,8 @@ async function closeoutAwardedRfxToRateware(
         rfx_event_id: event.id,
         rfx_id: event.rfx_id,
         target_status: targetStatus,
-        awarded_rows: pendingAwards.length,
+        awarded_rows: fallbackAwards.length,
+        linked_existing_rows: linkedRows.length,
         skipped_rows: skipped
       },
       owner_email: user.owner_email
@@ -8393,14 +8454,14 @@ async function closeoutAwardedRfxToRateware(
       status: "completed",
       completed_at: now,
       model: "rfx-award-closeout",
-      extracted_rows: pendingAwards.length,
+      extracted_rows: fallbackAwards.length,
       error_message: null
     })
     .select("id")
     .single();
   if (job.error) throw job.error;
 
-  const mappedRows = pendingAwards.map((award, index) => ({ mapped: rfxAwardRateInput(award, event, index, targetStatus) }));
+  const mappedRows = fallbackAwards.map((award, index) => ({ mapped: rfxAwardRateInput(award, event, index, targetStatus) }));
   const [catalogResult, scopedLocations, scopedMileage] = await Promise.all([
     supabase
       .from("rateware_catalog_items")
@@ -8417,7 +8478,7 @@ async function closeoutAwardedRfxToRateware(
   const mileage = new Map((scopedMileage || []).map((lane) => [catalogKey(lane.route_key), lane]));
   const insertedRows: Record<string, unknown>[] = [];
 
-  for (const [index, award] of pendingAwards.entries()) {
+  for (const [index, award] of fallbackAwards.entries()) {
     const mapped = mappedRows[index].mapped as Record<string, unknown>;
     const patch = normalizeStagingPatch(mapped, {});
     patch.vendor_id = award.vendor_id;
@@ -8491,8 +8552,11 @@ async function closeoutAwardedRfxToRateware(
 
   return {
     inserted: insertedRows.length,
+    linked: linkedRows.length,
+    approved_existing: linkedRows.length,
     skipped,
     rows: insertedRows,
+    linked_rows: linkedRows,
     raw_upload_id: rawUpload.data.id,
     job_id: job.data.id,
     target_status: targetStatus
@@ -8604,9 +8668,11 @@ async function ensureAwardNoticeCampaign(
   user: { owner_user_id: string | null; owner_email: string | null },
   event: Record<string, unknown>,
   senderEmail: string,
-  senderLabel: string
+  senderLabel: string,
+  channel = "email"
 ) {
-  const name = `${cleanText(event.rfx_id || event.name) || "RFx"} award closeout`;
+  const normalizedChannel = channel === "whatsapp" ? "whatsapp" : "email";
+  const name = `${cleanText(event.rfx_id || event.name) || "RFx"} award closeout${normalizedChannel === "whatsapp" ? " - WhatsApp" : ""}`;
   const existing = await supabase
     .from("outreach_campaigns")
     .select("*")
@@ -8624,7 +8690,7 @@ async function ensureAwardNoticeCampaign(
     .insert(withOwner({
       rfx_event_id: event.id,
       name,
-      channel: "email",
+      channel: normalizedChannel,
       status: "draft",
       sender_email: senderEmail,
       sender_label: senderLabel,
@@ -8646,7 +8712,8 @@ async function generateRfxAwardNotices(
   const appOrigin = cleanText(input.app_origin) || Deno.env.get("RATEWARE_APP_URL") || "https://rateware.vercel.app";
   const senderEmail = (cleanText(input.sender_email) || GMAIL_ALLOWED_SENDER).toLowerCase();
   const senderLabel = cleanText(input.sender_label) || senderEmail;
-  const campaign = await ensureAwardNoticeCampaign(supabase, user, event, senderEmail, senderLabel);
+  const channel = cleanText(input.channel)?.toLowerCase() === "whatsapp" ? "whatsapp" : "email";
+  const campaign = await ensureAwardNoticeCampaign(supabase, user, event, senderEmail, senderLabel, channel);
   const invitationsResult = await supabase
     .from("rfx_lane_vendors")
     .select("*, vendors(id,vendor_name,domain,primary_email,whatsapp_phone,preferred_channel,contact_name), rfx_lanes(*)")
@@ -8663,9 +8730,15 @@ async function generateRfxAwardNotices(
     const hasParticipation = cleanNumber(invitation.bid_rate) !== null || ["invited", "viewed", "responded", "quoted", "bid_submitted", "awarded"].includes(status);
     if (!hasDecision && !hasParticipation) continue;
     const vendor = objectRecord(invitation.vendors);
-    const recipient = cleanText(vendor.primary_email);
+    const recipientEmail = cleanText(vendor.primary_email);
+    const recipientPhone = normalizeWhatsappPhone(vendor.whatsapp_phone);
+    const recipient = channel === "whatsapp" ? recipientPhone : recipientEmail;
     if (!recipient) {
-      skipped.push({ invitation_id: invitation.id, vendor_id: invitation.vendor_id, reason: "Missing vendor email" });
+      skipped.push({
+        invitation_id: invitation.id,
+        vendor_id: invitation.vendor_id,
+        reason: channel === "whatsapp" ? "Missing vendor WhatsApp phone" : "Missing vendor email"
+      });
       continue;
     }
     const key = cleanText(invitation.vendor_id) || recipient || cleanText(invitation.id) || crypto.randomUUID();
@@ -8685,6 +8758,7 @@ async function generateRfxAwardNotices(
     const first = sortedGroup[0];
     const vendor = objectRecord(first.vendors);
     const recipientEmail = cleanText(vendor.primary_email);
+    const recipientPhone = normalizeWhatsappPhone(vendor.whatsapp_phone);
     const laneSummaries = sortedGroup.map(awardNoticeLaneSummary);
     const counts = laneSummaries.reduce((acc, row) => {
       const key = cleanText(objectRecord(row.outcome).key) || "not_awarded";
@@ -8706,6 +8780,13 @@ async function generateRfxAwardNotices(
       "Gracias por participar.",
       "MARKSMAN Procurement"
     ].filter(Boolean).join("\n");
+    const whatsappText = [
+      `Hola ${cleanText(vendor.vendor_name || vendor.domain || "equipo")},`,
+      `Actualizacion de ${cleanText(event.rfx_id || event.name) || "RFx"}.`,
+      awardNoticeRowsText(laneSummaries),
+      portalLink ? `Bid Room: ${portalLink}` : null,
+      "MARKSMAN Procurement"
+    ].filter(Boolean).join("\n");
     const invitationIds = sortedGroup.map((item) => item.id).filter(Boolean);
     const laneIds = sortedGroup.map((item) => item.rfx_lane_id).filter(Boolean);
     messageRows.push(withOwner({
@@ -8715,13 +8796,22 @@ async function generateRfxAwardNotices(
       rfx_lane_id: first.rfx_lane_id,
       rfx_lane_vendor_id: first.id,
       vendor_id: first.vendor_id,
-      channel: "email",
-      recipient_email: recipientEmail,
-      contact_key: outreachDedupeContactKey({ vendor_id: first.vendor_id, recipient_email: recipientEmail }),
+      channel,
+      recipient_email: channel === "email" ? recipientEmail : null,
+      recipient_phone: channel === "whatsapp" ? recipientPhone : null,
+      normalized_recipient_phone: channel === "whatsapp" ? recipientPhone : null,
+      contact_key: outreachDedupeContactKey({
+        vendor_id: first.vendor_id,
+        recipient_email: channel === "email" ? recipientEmail : null,
+        normalized_recipient_phone: channel === "whatsapp" ? recipientPhone : null
+      }),
       subject,
-      html_body: htmlBody,
-      text_body: textBody,
-      gmail_compose_url: gmailComposeUrl(recipientEmail, subject, textBody),
+      html_body: channel === "email" ? htmlBody : null,
+      text_body: channel === "email" ? textBody : whatsappText,
+      whatsapp_text: channel === "whatsapp" ? whatsappText : null,
+      whatsapp_body: channel === "whatsapp" ? whatsappText : null,
+      gmail_compose_url: channel === "email" ? gmailComposeUrl(recipientEmail, subject, textBody) : null,
+      whatsapp_url: channel === "whatsapp" ? whatsappDraftUrl(recipientPhone, whatsappText) : null,
       sender_email: senderEmail,
       sender_label: senderLabel,
       sender_connection_status: "draft_only",
@@ -8730,9 +8820,11 @@ async function generateRfxAwardNotices(
         notice_type: "rfx_award_closeout",
         generated_at: now,
         award_summary: counts,
+        channel,
         rfx_lane_vendor_ids: invitationIds,
         rfx_lane_ids: laneIds,
         bid_link: portalLink,
+        whatsapp_template_status: channel === "whatsapp" ? "NOT_PUBLISHED" : null,
         sender_email: senderEmail,
         sender_label: senderLabel
       }
@@ -8752,14 +8844,15 @@ async function generateRfxAwardNotices(
     campaign_id: campaign.id,
     vendor_id: message.vendor_id,
     rfx_event_id: message.rfx_event_id,
-    channel: "email",
+    channel: cleanText(message.channel) || channel,
     direction: "outbound",
     status: "drafted",
     subject: message.subject,
-    body_preview: contactPreview(message.text_body || message.html_body),
+    body_preview: contactPreview(message.text_body || message.html_body || message.whatsapp_body || message.whatsapp_text),
     metadata: {
       generated_from: "rfx_award_closeout",
       notice_type: "rfx_award_closeout",
+      channel: cleanText(message.channel) || channel,
       award_summary: objectRecord(message.metadata).award_summary || null
     }
   }, user));
@@ -8772,6 +8865,7 @@ async function generateRfxAwardNotices(
     .from("outreach_campaigns")
     .update({
       status: "generated",
+      channel,
       sender_email: senderEmail,
       sender_label: senderLabel,
       sender_connection_status: "draft_only",
@@ -9775,6 +9869,66 @@ function escapeHtmlText(value: unknown) {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+function bidRoomFollowUpLanguage(body: unknown, event: Record<string, unknown>, sourceSubject: unknown) {
+  const source = [body, event.name, event.customer, sourceSubject].map(cleanText).filter(Boolean).join(" ").toLowerCase();
+  return /\b(hola|cotizar|cotizacion|ruta|interesa|favor|gracias|propuesta|fecha limite|por favor)\b/.test(source) ? "es" : "en";
+}
+
+function marksmanSignatureText(language = "en") {
+  const closing = language === "es" ? "Saludos" : "Best regards";
+  return [
+    `${closing},`,
+    "MARKSMAN Procurement",
+    "Linkedin: https://www.linkedin.com/in/andresgzz88/ | Website: https://www.heymarksman.com",
+    "",
+    "Confidentiality & Privacy Notice: This email and any attachments may contain confidential, proprietary, privileged, commercial, operational, financial, legal, or otherwise protected information intended only for the addressed recipient. If received in error, please notify the sender, delete it, and do not copy, disclose, forward, distribute, rely on, or use its contents. The Company may refer, as applicable, to MARKSMAN XBF LLC, XBFREIGHT SYSTEMS LLC, MARKSMAN XBF HOLDING GROUP, S.A.P.I. de C.V., and/or XBF SISTEMAS LOGISTICOS, S. de R.L. de C.V. To exercise privacy rights or opt out of marketing communications, contact sales@heymarksman.com."
+  ].join("\n");
+}
+
+function marksmanSignatureHtml(language = "en") {
+  const closing = language === "es" ? "Saludos" : "Best regards";
+  return `
+    <p style="margin:18px 0 0">${escapeHtmlText(closing)},<br><strong>MARKSMAN Procurement</strong></p>
+    <div style="margin-top:18px;padding-top:12px;border-top:1px solid #d0d7de;font-family:Arial,sans-serif;color:#1f2937">
+      <img src="https://rateware.vercel.app/assets/marksman-email-signature.png" alt="MARKSMAN signature" style="display:block;max-width:720px;width:100%;height:auto;border:0;margin:0 0 10px">
+      <p style="margin:0 0 6px;font-size:13px">
+        <strong>Linkedin:</strong> <a href="https://www.linkedin.com/in/andresgzz88/" style="color:#2563eb">https://www.linkedin.com/in/andresgzz88/</a>
+        | <strong>Website:</strong> <a href="https://www.heymarksman.com/" style="color:#2563eb">https://www.heymarksman.com</a>
+      </p>
+      <p style="margin:0;font-size:11px;line-height:1.35;color:#475569">
+        <strong>Confidentiality &amp; Privacy Notice:</strong>
+        This email and any attachments may contain confidential, proprietary, privileged, commercial, operational, financial, legal, or otherwise protected information intended only for the addressed recipient. If received in error, please notify the sender, delete it, and do not copy, disclose, forward, distribute, rely on, or use its contents. The Company may refer, as applicable, to MARKSMAN XBF LLC, XBFREIGHT SYSTEMS LLC, MARKSMAN XBF HOLDING GROUP, S.A.P.I. de C.V., and/or XBF SISTEMAS LOGISTICOS, S. de R.L. de C.V. To exercise privacy rights or opt out of marketing communications, contact sales@heymarksman.com.
+      </p>
+    </div>
+  `;
+}
+
+function bidRoomFollowUpLaneSummaryHtml(invitation: Record<string, unknown>, language = "en") {
+  const lane = laneRecordFromInvitation(invitation);
+  const labels = language === "es"
+    ? { lane: "Ruta", origin: "Origen", destination: "Destino", equipment: "Equipo", operation: "Operacion", service: "Servicio", volume: "Volumen semanal" }
+    : { lane: "Lane", origin: "Origin", destination: "Destination", equipment: "Equipment", operation: "Operation", service: "Service", volume: "Weekly volume" };
+  const values = [
+    [labels.lane, cleanText(lane.lane_number || lane.lane_id || lane.id) || "-"],
+    [labels.origin, cleanText(lane.origin || lane.origin_city) || "-"],
+    [labels.destination, cleanText(lane.destination || lane.destination_city) || "-"],
+    [labels.equipment, [lane.equipment, lane.trailer, lane.config].map(cleanText).filter(Boolean).join(" / ") || "-"],
+    [labels.operation, cleanText(lane.operation) || "-"],
+    [labels.service, cleanText(lane.service) || "-"],
+    [labels.volume, cleanText(lane.weekly_volume) || "-"]
+  ];
+  return `
+    <table style="border-collapse:collapse;width:100%;max-width:760px;font-family:Arial,sans-serif;font-size:12px;margin:10px 0 16px">
+      <tbody>${values.map(([label, value]) => `
+        <tr>
+          <td style="border:1px solid #d8e0e7;padding:6px;background:#f8fafc;width:160px"><strong>${escapeHtmlText(label)}</strong></td>
+          <td style="border:1px solid #d8e0e7;padding:6px">${escapeHtmlText(value)}</td>
+        </tr>
+      `).join("")}</tbody>
+    </table>
+  `;
 }
 
 function formatOutreachMoney(value: unknown, currency: unknown = "USD") {
@@ -15972,7 +16126,7 @@ async function sendBidRoomCarrierMessage(
 
   const vendorResult = await supabase
     .from("vendors")
-    .select("id,vendor_name,legal_name,domain,primary_email,secondary_emails")
+    .select("id,vendor_name,legal_name,domain,primary_email,secondary_emails,contact_name")
     .eq("id", invitation.vendor_id)
     .maybeSingle();
   if (vendorResult.error) throw vendorResult.error;
@@ -15981,7 +16135,17 @@ async function sendBidRoomCarrierMessage(
 
   const lane = relationRecord(invitation.rfx_lanes);
   const appOrigin = cleanText(input.app_origin) || Deno.env.get("RATEWARE_APP_URL") || "https://rateware.vercel.app";
-  const bidLink = `${appOrigin.replace(/\/$/, "")}/rfx-bid.html?token=${encodeURIComponent(cleanText(invitation.invitation_token) || "")}`;
+  const eventLanesResult = await supabase
+    .from("rfx_lanes")
+    .select("*")
+    .eq("rfx_event_id", event.id)
+    .order("lane_number", { ascending: true });
+  if (eventLanesResult.error) throw new Error(`RFx route book load failed: ${eventLanesResult.error.message}`);
+  const routeBookRows = outreachEventLaneRows(
+    (eventLanesResult.data || []) as Record<string, unknown>[],
+    [invitation]
+  );
+  const bidLink = `${appOrigin.replace(/\/$/, "")}/rfx-bid.html?token=${encodeURIComponent(cleanText(invitation.invitation_token) || "")}${routeBookRows.length > 1 ? "&view=book" : ""}`;
   const route = [cleanText(lane.origin), cleanText(lane.destination)].filter(Boolean).join(" -> ") || "this RFx";
   const vendorName = cleanText(vendor.vendor_name || vendor.legal_name || vendor.domain) || "Carrier";
   const campaign = await ensureBidRoomCarrierFollowUpCampaign(supabase, user, event);
@@ -15992,6 +16156,85 @@ async function sendBidRoomCarrierMessage(
     throw new Error("This carrier has no sendable email. Add or replace a verified contact in Carrier CRM.");
   }
   const emailContext = await resolveBidRoomGmailReplyContext(supabase, user, event, vendor, sendableEmail);
+  const profileLinks = await vendorProfileLinksForInvitations(
+    supabase,
+    user,
+    [invitation],
+    appOrigin,
+    { rfx_event_id: event.id, source: "bid_room_targeted_follow_up" }
+  );
+  const profileLink = profileLinks.get(cleanText(vendor.id) || "") || "";
+  const language = bidRoomFollowUpLanguage(body, event, emailContext.source_subject);
+  const routeBookText = outreachLaneRowsText(routeBookRows, language);
+  const routeBookHtml = outreachLaneTableHtml(routeBookRows, language);
+  const laneSummaryHtml = bidRoomFollowUpLaneSummaryHtml(invitation, language);
+  const contactName = cleanText(vendor.contact_name || vendor.vendor_name || vendor.legal_name || "team");
+  const greeting = language === "es" ? `Hola ${contactName},` : `Hello ${contactName},`;
+  const originalReference = cleanText(emailContext.source_subject);
+  const questionLabel = language === "es" ? "Pregunta sobre esta ruta" : "Question about this lane";
+  const routeSummaryLabel = language === "es" ? "Resumen de la ruta consultada" : "Selected lane summary";
+  const bidLinkLabel = language === "es" ? "Abrir Private Bid Room" : "Open Private Bid Room";
+  const profileLinkLabel = language === "es" ? "Actualizar perfil de carrier" : "Update carrier profile";
+  const routeBookLabel = language === "es"
+    ? "Para referencia: libro de rutas original"
+    : "For reference: original RFx route book";
+  const followUpIntro = language === "es"
+    ? "Dando seguimiento a la invitacion original de este RFx, te hacemos una pregunta puntual sobre la ruta indicada abajo."
+    : "Following up on the original invitation for this RFx, we have one focused question about the lane below.";
+  const originalSubjectLine = originalReference
+    ? (language === "es" ? `Asunto original: ${originalReference}` : `Original subject: ${originalReference}`)
+    : "";
+  const safeQuestionHtml = escapeHtmlText(body).replace(/\r?\n/g, "<br>");
+  const textLane = [
+    `${language === "es" ? "Ruta" : "Lane"}: ${route}`,
+    `${language === "es" ? "Equipo" : "Equipment"}: ${[lane.equipment, lane.trailer, lane.config].map(cleanText).filter(Boolean).join(" / ") || "-"}`,
+    `${language === "es" ? "Operacion" : "Operation"}: ${cleanText(lane.operation) || "-"}`,
+    `${language === "es" ? "Servicio" : "Service"}: ${cleanText(lane.service) || "-"}`,
+    `${language === "es" ? "Volumen semanal" : "Weekly volume"}: ${cleanText(lane.weekly_volume) || "-"}`
+  ].join("\n");
+  const textBody = [
+    greeting,
+    "",
+    followUpIntro,
+    originalSubjectLine,
+    "",
+    `${questionLabel}:`,
+    body,
+    "",
+    `${routeSummaryLabel}:`,
+    textLane,
+    "",
+    `${bidLinkLabel}: ${bidLink}`,
+    `${profileLinkLabel}: ${profileLink}`,
+    "",
+    routeBookLabel,
+    routeBookText,
+    "",
+    marksmanSignatureText(language)
+  ].filter((line) => line !== "").join("\n");
+  const htmlBody = `
+    <div style="font-family:Arial,sans-serif;color:#1f2937;font-size:14px;line-height:1.45">
+      <p>${escapeHtmlText(greeting)}</p>
+      <p>${escapeHtmlText(followUpIntro)}</p>
+      ${originalReference ? `<p style="font-size:12px;color:#64748b"><strong>${language === "es" ? "Asunto original" : "Original subject"}:</strong> ${escapeHtmlText(originalReference)}</p>` : ""}
+      <div style="border:1px solid #cbd5e1;border-left:4px solid #3157d5;border-radius:4px;padding:10px 12px;margin:14px 0;background:#f8fafc">
+        <p style="margin:0 0 6px"><strong>${escapeHtmlText(questionLabel)}</strong></p>
+        <p style="margin:0">${safeQuestionHtml}</p>
+      </div>
+      <p style="margin:14px 0 6px"><strong>${escapeHtmlText(routeSummaryLabel)}</strong></p>
+      ${laneSummaryHtml}
+      <p style="margin:14px 0">
+        <a href="${escapeHtmlText(bidLink)}" style="display:inline-block;background:#3157d5;color:#fff;text-decoration:none;border-radius:4px;padding:9px 13px;margin-right:8px">${escapeHtmlText(bidLinkLabel)}</a>
+        ${profileLink ? `<a href="${escapeHtmlText(profileLink)}" style="display:inline-block;border:1px solid #3157d5;color:#3157d5;text-decoration:none;border-radius:4px;padding:8px 12px">${escapeHtmlText(profileLinkLabel)}</a>` : ""}
+      </p>
+      <div style="border:1px solid #e3b341;border-radius:5px;padding:12px;margin-top:18px;background:#fffdf4">
+        <p style="margin:0 0 8px"><strong>${escapeHtmlText(routeBookLabel)}</strong></p>
+        ${originalReference ? `<p style="margin:0 0 10px;font-size:12px;color:#64748b"><strong>${language === "es" ? "Asunto original" : "Original subject"}:</strong> ${escapeHtmlText(originalReference)}</p>` : ""}
+        ${routeBookHtml}
+      </div>
+      ${marksmanSignatureHtml(language)}
+    </div>
+  `;
   const commonMetadata = {
     source: "bid_room_carrier_ask",
     bid_room_request_key: requestKey,
@@ -16001,6 +16244,11 @@ async function sendBidRoomCarrierMessage(
     vendor_name: vendorName,
     vendor_domain: cleanText(vendor.domain),
     lane_route: route,
+    profile_link: profileLink,
+    route_book_lane_count: routeBookRows.length,
+    route_book_signature: outreachLaneTableSignature(routeBookRows),
+    follow_up_language: language,
+    original_source_subject: emailContext.source_subject,
     created_from: "bid_room_carrier_communications",
     created_at: now
   };
@@ -16011,7 +16259,6 @@ async function sendBidRoomCarrierMessage(
   const subject = emailContext.reply_mode === "thread_reply"
     ? gmailReplySubject(emailContext.source_subject, `${cleanText(event.rfx_id) || "RFx"} | Question about ${route}`)
     : `${cleanText(event.rfx_id) || "RFx"} | Question about ${route}`;
-  const textBody = [body, "", `Reply or update your bid here: ${bidLink}`].join("\n");
   const messageRow = withOwner({
     campaign_id: campaign.id,
     rfx_event_id: event.id,
@@ -16023,7 +16270,7 @@ async function sendBidRoomCarrierMessage(
     contact_key: `ask:${requestKey}`,
     subject,
     text_body: textBody,
-    html_body: `<p>${escapeHtmlText(body).replace(/\n/g, "<br>")}</p><p><a href="${escapeHtmlText(bidLink)}">Reply or update your bid</a></p>`,
+    html_body: htmlBody,
     sender_email: GMAIL_ALLOWED_SENDER,
     sender_label: "Rateware Procurement",
     sender_connection_status: "draft_only",

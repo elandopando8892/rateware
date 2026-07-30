@@ -5389,11 +5389,6 @@ a {
   padding: 4px 6px;
 }
 
-.rfx-response-table .rfx-response-actions {
-  width: 78px;
-  min-width: 78px;
-}
-
 .rfx-response-table td small {
   display: block;
   max-width: 190px;
@@ -5502,10 +5497,81 @@ a {
 }
 
 .rfx-response-table .rfx-response-actions {
+  width: 112px;
+  min-width: 112px;
+  max-width: 112px;
+  padding: 4px 6px;
+  vertical-align: top;
+  white-space: normal;
+}
+
+.rfx-response-table .sheet-inline-filter-row th {
+  padding: 2px 4px;
+  background: #f7f9fa;
+  vertical-align: middle;
+}
+
+.rfx-response-table .sheet-inline-filter-control {
   display: flex;
-  gap: 4px;
-  width: 126px;
-  min-width: 126px;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+
+.rfx-response-table .sheet-inline-filter-control input {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  height: 19px;
+  border: 1px solid #d7e0e6;
+  border-radius: 3px;
+  background: #ffffff;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.66rem;
+  padding: 1px 4px;
+}
+
+.rfx-response-table .sheet-inline-filter-control input::placeholder {
+  color: #83909b;
+  opacity: 1;
+}
+
+.rfx-response-table .sheet-inline-filter-control input.is-active {
+  border-color: var(--accent);
+  background: #f0faf8;
+}
+
+.rfx-response-table .sheet-inline-filter-clear,
+.rfx-response-table .sheet-inline-filter-clear-all {
+  min-width: 18px;
+  height: 19px;
+  padding: 0 3px;
+  border: 1px solid #d7e0e6;
+  border-radius: 3px;
+  background: #ffffff;
+  color: var(--muted);
+  font-size: 0.66rem;
+  line-height: 16px;
+}
+
+.rfx-response-table .sheet-inline-filter-clear-all {
+  width: 100%;
+}
+
+.rfx-response-action-stack {
+  display: grid;
+  gap: 3px;
+  min-width: 100px;
+}
+
+.rfx-response-action-stack .small-button {
+  width: 100%;
+  min-height: 20px;
+  padding: 2px 5px;
+  font-size: 0.67rem;
+  line-height: 1.1;
+  white-space: nowrap;
 }
 
 .live-offer-lane td:last-child {
@@ -5514,6 +5580,10 @@ a {
 
 @media (max-width: 900px) {
   .rfx-operate-workspace-tabs {
+    grid-template-columns: 1fr;
+  }
+
+  .bid-room-page .rfx-close-workspace-tabs {
     grid-template-columns: 1fr;
   }
 
@@ -27044,6 +27114,253 @@ form[data-unsaved-guard][data-unsaved="true"] {
   line-height: 1.25;
 }
 
+/* Carrier communications follows an inbox -> decision -> reply workflow. */
+.bid-room-comm-toolbar-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  min-width: 0;
+}
+
+.bid-room-comm-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1.28fr) minmax(300px, 0.72fr);
+  gap: 8px;
+  align-items: start;
+}
+
+.bid-room-comm-inbox,
+.bid-room-comm-compose {
+  display: grid;
+  min-width: 0;
+  gap: 7px;
+  border: 1px solid #d7e0e7;
+  border-radius: 7px;
+  background: #fbfcfd;
+  padding: 8px;
+}
+
+.bid-room-comm-compose {
+  position: sticky;
+  top: 8px;
+  background: #ffffff;
+}
+
+.bid-room-comm-column-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  padding-bottom: 5px;
+  border-bottom: 1px solid #e3e9ee;
+}
+
+.bid-room-comm-column-heading h4 {
+  margin: 1px 0 0;
+  color: #26323d;
+  font-size: 0.82rem;
+}
+
+.bid-room-comm-column-heading > span {
+  flex: 0 0 auto;
+  color: #697987;
+  font-size: 0.62rem;
+  font-weight: 800;
+  text-align: right;
+}
+
+.bid-room-comm-inbox .bid-room-comm-summary {
+  padding: 6px 8px;
+  font-size: 0.69rem;
+}
+
+.bid-room-comm-inbox .bid-room-signal-queue {
+  max-height: 88px;
+  overflow: auto;
+  padding: 4px;
+}
+
+.bid-room-comm-inbox .bid-room-signal-queue article {
+  padding: 4px 6px;
+}
+
+.bid-room-comm-inbox .bid-room-signal-queue .ui-state {
+  min-height: 36px;
+  padding: 5px 6px;
+}
+
+.bid-room-comm-inbox .bid-room-signal-queue .ui-state p {
+  display: inline;
+  margin-left: 4px;
+}
+
+.bid-room-comm-inbox .bid-room-chat-controls {
+  grid-template-columns: minmax(130px, 0.75fr) auto auto;
+  align-items: center;
+}
+
+.bid-room-chat-thread-list {
+  min-height: 180px;
+  max-height: 480px;
+  background: #f5f8fa;
+}
+
+.bid-room-chat-thread {
+  overflow: hidden;
+  gap: 0;
+  padding: 0;
+}
+
+.bid-room-chat-thread-summary {
+  display: grid;
+  gap: 5px;
+  cursor: pointer;
+  list-style: none;
+  position: relative;
+  padding: 7px 8px;
+}
+
+.bid-room-chat-thread-summary::-webkit-details-marker {
+  display: none;
+}
+
+.bid-room-chat-thread-summary::before {
+  position: absolute;
+  margin-left: -2px;
+  color: #697987;
+  content: "+";
+  font-size: 0.8rem;
+  font-weight: 900;
+}
+
+.bid-room-chat-thread[open] > .bid-room-chat-thread-summary::before {
+  content: "-";
+}
+
+.bid-room-chat-thread-summary-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  padding-left: 12px;
+}
+
+.bid-room-chat-thread-summary-head > div:first-child {
+  min-width: 0;
+}
+
+.bid-room-chat-thread-summary-head strong,
+.bid-room-chat-thread-summary-head span,
+.bid-room-chat-thread-summary .bid-room-chat-latest {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bid-room-chat-thread-summary-head strong {
+  display: block;
+  color: #26323d;
+  font-size: 0.76rem;
+}
+
+.bid-room-chat-thread-summary-head span,
+.bid-room-chat-thread-summary-head small {
+  color: #697987;
+  font-size: 0.64rem;
+  font-weight: 800;
+}
+
+.bid-room-chat-thread-summary-head .bid-room-chat-thread-badges {
+  flex: 0 0 auto;
+}
+
+.bid-room-chat-thread-summary .bid-room-chat-latest {
+  padding-left: 12px;
+}
+
+.bid-room-chat-thread-body {
+  display: grid;
+  gap: 6px;
+  border-top: 1px solid #edf2f6;
+  padding: 7px 8px;
+}
+
+.bid-room-comm-compose-empty {
+  display: grid;
+  gap: 3px;
+  border: 1px dashed #cbd6df;
+  border-radius: 6px;
+  background: #f8fafc;
+  padding: 12px;
+}
+
+.bid-room-comm-compose-empty[hidden] {
+  display: none;
+}
+
+.bid-room-comm-compose-empty strong {
+  color: #26323d;
+  font-size: 0.75rem;
+}
+
+.bid-room-comm-compose-empty span {
+  color: #697987;
+  font-size: 0.68rem;
+  line-height: 1.3;
+}
+
+.bid-room-comm-compose .bid-room-chat-form {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.bid-room-comm-compose .bid-room-chat-form textarea {
+  min-height: 96px;
+}
+
+.bid-room-comm-compose .bid-room-chat-form > button {
+  min-width: 86px;
+  min-height: 32px;
+  align-self: stretch;
+}
+
+.bid-room-comm-compose .rfx-chat-recipient-context {
+  margin: 0;
+}
+
+@media (max-width: 900px) {
+  .bid-room-comm-workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .bid-room-comm-compose {
+    position: static;
+  }
+}
+
+@media (max-width: 620px) {
+  .bid-room-comm-toolbar,
+  .bid-room-comm-toolbar-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .bid-room-comm-toolbar-actions {
+    align-items: flex-start;
+  }
+
+  .bid-room-comm-inbox .bid-room-chat-controls,
+  .bid-room-comm-compose .bid-room-chat-form {
+    grid-template-columns: 1fr;
+  }
+
+  .bid-room-comm-compose .bid-room-chat-form > button {
+    min-height: 30px;
+  }
+}
+
 .bid-room-bid-update-drawer {
   display: grid;
   gap: 8px;
@@ -27276,9 +27593,177 @@ form[data-unsaved-guard][data-unsaved="true"] {
   font-size: 0.68rem;
 }
 
+.rfx-award-notice-toolbar {
+  display: flex;
+  align-items: end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.rfx-award-notice-channel {
+  display: grid;
+  gap: 3px;
+  min-width: 130px;
+}
+
+.rfx-award-notice-channel span {
+  color: var(--muted);
+  font-size: 0.64rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.rfx-award-notice-channel select {
+  min-height: 28px;
+}
+
+.rfx-award-notice-toolbar > p {
+  flex: 1 1 240px;
+  min-width: 220px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+
+.rfx-award-notice-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(300px, 0.85fr);
+  gap: 8px;
+  align-items: start;
+}
+
+.rfx-award-notice-queue tr.is-selected {
+  background: #eef5ff;
+}
+
+.rfx-award-notice-preview {
+  min-width: 0;
+  min-height: 230px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #f8fafc;
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.rfx-award-notice-preview-heading {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.rfx-award-notice-preview-heading strong {
+  display: block;
+  color: var(--ink);
+  font-size: 0.78rem;
+}
+
+.rfx-award-notice-preview-meta {
+  margin: 5px 0 7px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rfx-award-notice-preview-body {
+  min-width: 0;
+}
+
+.rfx-award-notice-preview-body pre {
+  max-height: 300px;
+  margin: 0;
+  padding: 8px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #ffffff;
+  color: var(--ink);
+  font: inherit;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+.rfx-award-notice-email-frame {
+  display: block;
+  width: 100%;
+  min-height: 260px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #ffffff;
+}
+
+@media (max-width: 900px) {
+  .rfx-award-notice-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .rfx-award-board {
   display: grid;
   gap: 10px;
+}
+
+/* Close is a decision flow: keep award work primary and move utilities into focused workspaces. */
+.bid-room-page .rfx-close-workspace-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px;
+  margin: 0;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--soft-panel);
+}
+
+.bid-room-page .rfx-close-workspace-tabs button {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+  min-height: 40px;
+  padding: 6px 9px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  text-align: left;
+  box-shadow: none;
+}
+
+.bid-room-page .rfx-close-workspace-tabs button:hover,
+.bid-room-page .rfx-close-workspace-tabs button.is-active {
+  border-color: var(--accent-border);
+  background: #ffffff;
+  color: var(--text);
+}
+
+.bid-room-page .rfx-close-workspace-tabs button span {
+  overflow: hidden;
+  color: inherit;
+  font-size: 0.66rem;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bid-room-page .rfx-close-workspace-panel[hidden] {
+  display: none !important;
+}
+
+.bid-room-page .rfx-close-workspace-panel {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.bid-room-page .rfx-close-award-summary,
+.bid-room-page .rfx-close-utility-card {
+  min-width: 0;
+}
+
+.bid-room-page .rfx-close-utility-card {
+  max-width: 980px;
 }
 
 .rfx-award-lane {
@@ -34308,4 +34793,166 @@ form[data-unsaved-guard][data-unsaved="true"] {
   margin: 1px;
   padding: 3px 5px;
   font-size: .59rem;
+}
+
+/* Award workspace: summary and lane decisions share the first row; rankings stay below. */
+.bid-room-page .rfx-award-decision-layout {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.28fr) minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+}
+
+.bid-room-page .rfx-close-award-summary {
+  padding: 8px;
+}
+
+.bid-room-page .rfx-close-award-summary h4,
+.bid-room-page .rfx-award-ranking-heading h4 {
+  margin: 1px 0 7px;
+  font-size: 0.84rem;
+}
+
+.bid-room-page .rfx-close-award-summary .rfx-award-metrics {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.bid-room-page .rfx-close-award-summary .rfx-award-metrics span {
+  min-height: 38px;
+  padding: 5px 6px;
+  font-size: 0.62rem;
+}
+
+.bid-room-page .rfx-close-award-summary .rfx-award-metrics b {
+  font-size: 0.88rem;
+}
+
+.bid-room-page .rfx-close-award-summary .rfx-award-readiness {
+  margin-top: 6px;
+  padding: 5px;
+  font-size: 0.63rem;
+}
+
+.bid-room-page .rfx-close-award-summary .action-row {
+  margin-top: 6px;
+}
+
+.bid-room-page .rfx-award-needs-decision,
+.bid-room-page .rfx-award-board {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+.bid-room-page .rfx-award-needs-decision .rfx-award-lane {
+  border-radius: 6px;
+}
+
+.bid-room-page .rfx-award-needs-decision .rfx-award-lane > header,
+.bid-room-page .rfx-award-board .rfx-award-lane > header {
+  gap: 8px;
+  padding: 6px 8px;
+}
+
+.bid-room-page .rfx-award-needs-decision .rfx-award-lane > header strong,
+.bid-room-page .rfx-award-board .rfx-award-lane > header strong {
+  font-size: 0.73rem;
+}
+
+.bid-room-page .rfx-award-needs-decision .rfx-award-lane > header small,
+.bid-room-page .rfx-award-board .rfx-award-lane > header small {
+  max-width: 360px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.62rem;
+}
+
+.bid-room-page .rfx-award-needs-decision .rfx-award-lane-summary,
+.bid-room-page .rfx-award-board .rfx-award-lane-summary {
+  gap: 4px;
+  font-size: 0.61rem;
+}
+
+.bid-room-page .rfx-award-needs-decision .rfx-decision-scorecards {
+  gap: 5px;
+  padding: 5px;
+}
+
+.bid-room-page .rfx-award-needs-decision .rfx-decision-card {
+  gap: 4px;
+  padding: 6px;
+  border-radius: 5px;
+}
+
+.bid-room-page .rfx-award-needs-decision .rfx-decision-card h4 {
+  font-size: 0.72rem;
+}
+
+.bid-room-page .rfx-award-needs-decision .rfx-decision-card header strong {
+  font-size: 0.86rem;
+}
+
+.bid-room-page .rfx-award-needs-decision .rfx-decision-card p,
+.bid-room-page .rfx-award-needs-decision .rfx-decision-card small,
+.bid-room-page .rfx-award-needs-decision .rfx-decision-card em {
+  overflow: hidden;
+  font-size: 0.61rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bid-room-page .rfx-award-needs-decision .rfx-decision-breakdown {
+  gap: 3px;
+}
+
+.bid-room-page .rfx-award-needs-decision .rfx-decision-breakdown span {
+  padding: 2px 4px;
+  font-size: 0.58rem;
+}
+
+.bid-room-page .rfx-award-ranking-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 2px;
+  padding: 5px 1px 0;
+  border-top: 1px solid var(--line);
+}
+
+.bid-room-page .rfx-award-ranking-heading p,
+.bid-room-page .rfx-award-ranking-heading h4 {
+  margin-bottom: 0;
+}
+
+.bid-room-page .rfx-award-ranking-heading > span {
+  color: var(--muted);
+  font-size: 0.62rem;
+  text-align: right;
+}
+
+.bid-room-page .rfx-award-board .rfx-award-table th,
+.bid-room-page .rfx-award-board .rfx-award-table td {
+  padding: 4px 6px;
+}
+
+.bid-room-page .rfx-award-board .rfx-award-table td small {
+  max-width: 190px;
+}
+
+@media (max-width: 900px) {
+  .bid-room-page .rfx-award-decision-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .bid-room-page .rfx-award-ranking-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .bid-room-page .rfx-award-ranking-heading > span {
+    text-align: left;
+  }
 }

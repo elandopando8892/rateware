@@ -930,57 +930,79 @@
                 <div class="bid-room-comm-toolbar">
                   <div id="rfx-chat-inbox-filters" class="bid-room-comm-filters" role="tablist" aria-label="Communication filters">
                     <button type="button" class="is-active" data-rfx-chat-filter="all">All</button>
-                    <button type="button" data-rfx-chat-filter="unread">Unread</button>
                     <button type="button" data-rfx-chat-filter="needs_reply">Needs reply</button>
-                    <button type="button" data-rfx-chat-filter="carrier">Carrier</button>
-                    <button type="button" data-rfx-chat-filter="google">Google Chat</button>
+                    <button type="button" data-rfx-chat-filter="unread">Unread</button>
                     <button type="button" data-rfx-chat-filter="signals">Signals</button>
                   </div>
-                  <button id="rfx-chat-copy-summary" type="button" class="secondary small-button">Copy summary</button>
-                </div>
-                <div id="rfx-chat-recipient-context" class="rfx-chat-recipient-context" hidden>
-                  <div>
-                    <span>Carrier email reply</span>
-                    <strong id="rfx-chat-recipient-name">No carrier selected</strong>
-                    <small id="rfx-chat-recipient-lane">Choose Reply by email from Auction room or Carrier bids.</small>
+                  <div class="bid-room-comm-toolbar-actions">
+                    <button id="rfx-chat-copy-summary" type="button" class="secondary small-button">Copy summary</button>
                   </div>
-                  <button id="rfx-chat-recipient-clear" type="button" class="secondary small-button">Use event group</button>
                 </div>
-                <div id="rfx-chat-ai-summary" class="bid-room-comm-summary">
-                  Select a bid event to load the communication queue.
-                </div>
-                <div id="rfx-chat-signal-queue" class="bid-room-signal-queue">
-                  <div class="ui-state" data-tone="neutral"><strong>No communication signals yet</strong><p>Signals appear when a carrier asks a question, changes a bid or needs a follow-up.</p></div>
-                </div>
-                <div class="bid-room-chat-controls">
-                  <label>
-                    Thread
-                    <select id="rfx-chat-thread-type">
-                      <option value="event_group">Event group</option>
-                      <option value="carrier_private" disabled>Private carrier</option>
-                    </select>
-                  </label>
-                  <button id="rfx-chat-refresh" type="button" class="secondary small-button">Refresh</button>
-                  <button id="rfx-chat-start-event-thread" type="button" class="secondary small-button">Start event thread</button>
-                </div>
-                <div id="rfx-chat-thread-list" class="bid-room-chat-thread-list">
-                  <div class="ui-state" data-tone="neutral"><strong>Select a bid event</strong><p>Event and carrier threads will appear here after an opportunity is selected.</p></div>
-                </div>
-                <form id="rfx-chat-form" class="bid-room-chat-form">
-                  <textarea id="rfx-chat-message" rows="2" placeholder="Write message to carriers or selected carrier..."></textarea>
-                  <p id="rfx-chat-delivery-help" class="bid-room-chat-delivery-help" hidden></p>
-                  <button id="rfx-chat-send" type="submit" disabled>Send</button>
-                </form>
-                <aside id="rfx-chat-bid-update-drawer" class="bid-room-bid-update-drawer" hidden>
-                  <div class="bid-room-drawer-header">
-                    <div>
-                      <p class="eyebrow">AI proposes, user confirms</p>
-                      <h4>Review bid update</h4>
-                      <span id="rfx-chat-bid-update-title">Selected thread</span>
+                <div class="bid-room-comm-workspace">
+                  <section class="bid-room-comm-inbox">
+                    <div class="bid-room-comm-column-heading">
+                      <div>
+                        <p class="eyebrow">Priority inbox</p>
+                        <h4>Conversation queue</h4>
+                      </div>
+                      <span>Event-scoped only</span>
                     </div>
-                    <button id="rfx-chat-bid-update-close" class="secondary small-button" type="button">Close</button>
-                  </div>
-                  <form id="rfx-chat-bid-update-form" class="bid-room-bid-update-form">
+                    <div id="rfx-chat-ai-summary" class="bid-room-comm-summary">
+                      Select a bid event to load the communication queue.
+                    </div>
+                    <div id="rfx-chat-signal-queue" class="bid-room-signal-queue">
+                      <div class="ui-state" data-tone="neutral"><strong>No communication signals yet</strong><p>Signals appear when a carrier asks a question, changes a bid or needs a follow-up.</p></div>
+                    </div>
+                    <div class="bid-room-chat-controls">
+                      <label>
+                        Scope
+                        <select id="rfx-chat-thread-type">
+                          <option value="event_group">Event group</option>
+                          <option value="carrier_private" disabled>Private carrier</option>
+                        </select>
+                      </label>
+                      <button id="rfx-chat-refresh" type="button" class="secondary small-button">Refresh</button>
+                      <button id="rfx-chat-start-event-thread" type="button" class="secondary small-button">Start event thread</button>
+                    </div>
+                    <div id="rfx-chat-thread-list" class="bid-room-chat-thread-list">
+                      <div class="ui-state" data-tone="neutral"><strong>Select a bid event</strong><p>Event and carrier threads will appear here after an opportunity is selected.</p></div>
+                    </div>
+                  </section>
+                  <aside class="bid-room-comm-compose">
+                    <div class="bid-room-comm-column-heading">
+                      <div>
+                        <p class="eyebrow">Reply workspace</p>
+                        <h4>Respond in context</h4>
+                      </div>
+                      <span>Gmail or event thread</span>
+                    </div>
+                    <div id="rfx-chat-recipient-context" class="rfx-chat-recipient-context" hidden>
+                      <div>
+                        <span>Carrier email reply</span>
+                        <strong id="rfx-chat-recipient-name">No carrier selected</strong>
+                        <small id="rfx-chat-recipient-lane">Choose Reply by email from Auction room or Carrier bids.</small>
+                      </div>
+                      <button id="rfx-chat-recipient-clear" type="button" class="secondary small-button">Use event group</button>
+                    </div>
+                    <div class="bid-room-comm-compose-empty" id="rfx-chat-compose-empty">
+                      <strong>Choose a conversation</strong>
+                      <span>Select a carrier reply or use the event group to write a message.</span>
+                    </div>
+                    <form id="rfx-chat-form" class="bid-room-chat-form">
+                      <textarea id="rfx-chat-message" rows="5" placeholder="Write message to carriers or selected carrier..."></textarea>
+                      <p id="rfx-chat-delivery-help" class="bid-room-chat-delivery-help" hidden></p>
+                      <button id="rfx-chat-send" type="submit" disabled>Send</button>
+                    </form>
+                    <aside id="rfx-chat-bid-update-drawer" class="bid-room-bid-update-drawer" hidden>
+                      <div class="bid-room-drawer-header">
+                        <div>
+                          <p class="eyebrow">AI proposes, user confirms</p>
+                          <h4>Review bid update</h4>
+                          <span id="rfx-chat-bid-update-title">Selected thread</span>
+                        </div>
+                        <button id="rfx-chat-bid-update-close" class="secondary small-button" type="button">Close</button>
+                      </div>
+                      <form id="rfx-chat-bid-update-form" class="bid-room-bid-update-form">
                     <label class="wide-field">
                       Lane / carrier
                       <select id="rfx-chat-bid-update-invitation"></select>
@@ -1014,10 +1036,11 @@
                       <button class="secondary" type="button" id="rfx-chat-bid-update-close-secondary">Cancel</button>
                       <span id="rfx-chat-bid-update-status" class="status-message" role="status"></span>
                     </div>
-                  </form>
-                </aside>
-                <p id="rfx-chat-status" class="status-message" role="status"></p>
-              </section>
+                      </form>
+                    </aside>
+                    <p id="rfx-chat-status" class="status-message" role="status"></p>
+                  </aside>
+                </section>
               </section>
 
               <section class="rfx-operate-workspace-panel" data-rfx-operate-workspace-panel="carrier-bids" hidden>
@@ -1162,50 +1185,98 @@
                 </div>
                 <span id="rfx-award-status-pill" class="status-pill muted">Decision room</span>
               </div>
-              <div class="bid-room-award-grid">
-                <article class="bid-room-context-card">
-                  <p class="eyebrow">Award summary</p>
-                  <h4>Lane award control</h4>
-                  <div class="rfx-award-metrics">
-                    <span><b id="rfx-award-lanes">0</b> lanes with bids</span>
-                    <span><b id="rfx-award-primary">0</b> primary awards</span>
-                    <span><b id="rfx-award-backup">0</b> backups</span>
-                    <span><b id="rfx-award-rateware">0</b> Rateware rows</span>
+              <div id="rfx-close-workspace-tabs" class="rfx-close-workspace-tabs" role="tablist" aria-label="Close workspaces">
+                <button type="button" class="is-active" role="tab" aria-selected="true" data-rfx-close-workspace-tab="award">
+                  <strong>Award</strong>
+                  <span>Decide lanes</span>
+                </button>
+                <button type="button" role="tab" aria-selected="false" data-rfx-close-workspace-tab="rateware">
+                  <strong>Rateware closeout</strong>
+                  <span>Write approved rows</span>
+                </button>
+                <button type="button" role="tab" aria-selected="false" data-rfx-close-workspace-tab="notices">
+                  <strong>Notices</strong>
+                  <span>Review and send</span>
+                </button>
+              </div>
+
+              <section class="rfx-close-workspace-panel" data-rfx-close-workspace-panel="award">
+                <div class="rfx-award-decision-layout">
+                  <article class="bid-room-context-card rfx-close-award-summary">
+                    <p class="eyebrow">Award summary</p>
+                    <h4>Lane award control</h4>
+                    <div class="rfx-award-metrics">
+                      <span title="Lanes with at least one carrier bid"><b id="rfx-award-lanes">0</b> lanes with bids</span>
+                      <span title="Primary carrier decisions already assigned"><b id="rfx-award-primary">0</b> primary awards</span>
+                      <span title="Backup carrier decisions already assigned"><b id="rfx-award-backup">0</b> backups</span>
+                      <span title="Approved Rateware rows created from awards"><b id="rfx-award-rateware">0</b> Rateware rows</span>
+                    </div>
+                    <div id="rfx-award-readiness" class="rfx-award-readiness">
+                      Select a bid event to inspect closeout readiness.
+                    </div>
+                    <div class="action-row">
+                      <button id="rfx-apply-recommended-awards" class="secondary" type="button" disabled>Award recommended</button>
+                    </div>
+                  </article>
+                  <div id="rfx-award-needs-decision" class="rfx-award-needs-decision">
+                    Select a bid event to review lane decisions.
                   </div>
-                  <div id="rfx-award-readiness" class="rfx-award-readiness">
-                    Select a bid event to inspect closeout readiness.
+                </div>
+                <div class="rfx-award-ranking-heading">
+                  <div>
+                    <p class="eyebrow">Carrier rankings</p>
+                    <h4>All bids by lane</h4>
                   </div>
-                  <div class="action-row">
-                    <button id="rfx-apply-recommended-awards" class="secondary" type="button" disabled>Award recommended</button>
-                  </div>
-                </article>
-                <article class="bid-room-context-card">
+                  <span>Compare score, price, capacity and operational risk.</span>
+                </div>
+                <div id="rfx-award-board" class="rfx-award-board">
+                  Select a bid event to review carrier rankings.
+                </div>
+              </section>
+
+              <section class="rfx-close-workspace-panel" data-rfx-close-workspace-panel="rateware" hidden>
+                <article class="bid-room-context-card rfx-close-utility-card">
                   <p class="eyebrow">Closeout</p>
-                  <h4>Create Rateware from awards</h4>
-                  <p>Primary awards can be written as approved Rateware rows with RFx audit trail and source preservation.</p>
+                  <h4>Approve awarded rates in Rateware</h4>
+                  <p>Approve the carrier bid already captured in staging. A new row is created only when the original bid staging link is unavailable.</p>
                   <div class="action-row">
-                    <button id="rfx-closeout-awards-to-rateware" type="button">Create Rateware rows</button>
+                    <button id="rfx-closeout-awards-to-rateware" type="button">Approve Rateware rates</button>
                     <button id="rfx-refresh-awards" class="secondary" type="button">Refresh</button>
                   </div>
                   <p id="rfx-award-status" class="status-message" role="status"></p>
                 </article>
-                <article class="bid-room-context-card">
+              </section>
+
+              <section class="rfx-close-workspace-panel" data-rfx-close-workspace-panel="notices" hidden>
+                <article class="bid-room-context-card rfx-close-utility-card">
                   <p class="eyebrow">Award notices</p>
-                  <h4>Email each carrier</h4>
-                  <p>Generate award, backup, and not-awarded drafts from the decision board, then send individual Gmail messages.</p>
-                  <div class="action-row">
-                    <button id="rfx-generate-award-notices" class="secondary" type="button">Generate notices</button>
-                    <button id="rfx-send-award-notices" type="button">Send notices</button>
+                  <h4>Review and send by channel</h4>
+                  <div class="rfx-award-notice-toolbar">
+                    <label class="rfx-award-notice-channel">
+                      <span>Channel</span>
+                      <select id="rfx-award-notice-channel" aria-label="Award notice channel">
+                        <option value="email">Email</option>
+                        <option value="whatsapp">WhatsApp</option>
+                      </select>
+                    </label>
+                    <p id="rfx-award-notice-channel-hint">Email preview uses the Gmail message layout and sender.</p>
+                    <div class="action-row">
+                      <button id="rfx-generate-award-notices" class="secondary" type="button">Generate email notices</button>
+                      <button id="rfx-send-award-notices" type="button">Send email notices</button>
+                    </div>
                   </div>
                   <p id="rfx-award-notice-summary" class="status-message" role="status">No award notices generated yet.</p>
-                  <div id="rfx-award-notice-queue" class="rfx-award-notice-queue">
-                    Generate notices to review carrier closeout messages.
+                  <div class="rfx-award-notice-layout">
+                    <div id="rfx-award-notice-queue" class="rfx-award-notice-queue">
+                      Generate notices to review carrier closeout messages.
+                    </div>
+                    <aside id="rfx-award-notice-preview" class="rfx-award-notice-preview" aria-live="polite">
+                      <p class="eyebrow">Preview</p>
+                      <p>Select a notice to inspect its rendered channel content.</p>
+                    </aside>
                   </div>
                 </article>
-              </div>
-              <div id="rfx-award-board" class="rfx-award-board">
-                Select a bid event to award lanes.
-              </div>
+              </section>
             </section>
           </section>
         </main>

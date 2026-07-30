@@ -54,8 +54,139 @@ function normalizeMenuValuesResponse(response) {
   };
 }
 
-export function initSpreadsheetColumnFilters({ table, columns = [], getRows, getValues, getMenuValues = null, onChange, scope = "sheet", storageKey = "" }) {
+function initInlineColumnFilters({ table, columns = [], getRows, getValues, onChange, scope = "sheet", storageKey = "" }) {
+  const state = new Map();
+  const filterableColumns = columns.filter((column) => column.key !== "select" && column.filterable !== false);
+  const header = table.querySelector("thead");
+  const labelRow = header?.querySelector("tr");
+  const filterRow = document.createElement("tr");
+
+  const readStoredState = () => {
+    if (!storageKey) return {};
+    try {
+      const raw = JSON.parse(window.localStorage.getItem(storageKey) || "{}");
+      return raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
+    } catch {
+      return {};
+    }
+  };
+
+  const persistState = () => {
+    if (!storageKey) return;
+    const serialized = {};
+    state.forEach((value, field) => {
+      if (String(value || "").trim()) serialized[field] = String(value).trim();
+    });
+    try {
+      window.localStorage.setItem(storageKey, JSON.stringify(serialized));
+    } catch {
+      // Filtering remains available for the current session when storage is blocked.
+    }
+  };
+
+  const rowMatches = (row, field) => {
+    const query = String(state.get(field) || "").trim().toLowerCase();
+    if (!query) return true;
+    const values = getValues(row, field);
+    return values.some((value) => String(valueLabel(value)).toLowerCase().includes(query));
+  };
+
+  const apply = (rows) => {
+    const activeFields = [...state.keys()].filter((field) => String(state.get(field) || "").trim());
+    if (!activeFields.length) return rows;
+    return rows.filter((row) => activeFields.every((field) => rowMatches(row, field)));
+  };
+
+  const updateButtons = () => {
+    filterableColumns.forEach((column) => {
+      const input = filterRow.querySelector(`[data-${scope}-inline-filter="${CSS.escape(column.key)}"]`);
+      const clearButton = filterRow.querySelector(`[data-${scope}-inline-filter-clear="${CSS.escape(column.key)}"]`);
+      if (!input) return;
+      const value = String(state.get(column.key) || "");
+      if (input.value !== value) input.value = value;
+      input.classList.toggle("is-active", Boolean(value.trim()));
+      if (clearButton) clearButton.hidden = !value;
+    });
+  };
+
+  filterRow.className = "sheet-inline-filter-row";
+  filterRow.innerHTML = columns.map((column) => {
+    if (column.key === "select") {
+      return `<th data-col="${escapeHtml(column.key)}"><button class="sheet-inline-filter-clear-all" type="button" data-${scope}-inline-filter-clear-all>Clear</button></th>`;
+    }
+    if (column.filterable === false) return `<th data-col="${escapeHtml(column.key)}"></th>`;
+    return `
+      <th data-col="${escapeHtml(column.key)}">
+        <div class="sheet-inline-filter-control">
+          <input type="search" data-${scope}-inline-filter="${escapeHtml(column.key)}" placeholder="Filter..." aria-label="Filter ${escapeHtml(column.label || column.key)}" />
+          <button class="sheet-inline-filter-clear" type="button" data-${scope}-inline-filter-clear="${escapeHtml(column.key)}" aria-label="Clear ${escapeHtml(column.label || column.key)}" hidden>×</button>
+        </div>
+      </th>
+    `;
+  }).join("");
+  labelRow?.after(filterRow);
+
+  filterRow.addEventListener("input", (event) => {
+    const input = event.target.closest(`[data-${scope}-inline-filter]`);
+    if (!input) return;
+    const field = input.dataset[`${scope}InlineFilter`];
+    if (!field) return;
+    const value = String(input.value || "");
+    if (value.trim()) state.set(field, value);
+    else state.delete(field);
+    persistState();
+    updateButtons();
+    onChange?.();
+  });
+
+  filterRow.addEventListener("click", (event) => {
+    if (event.target.closest(`[data-${scope}-inline-filter-clear-all]`)) {
+      state.clear();
+      persistState();
+      updateButtons();
+      onChange?.();
+      return;
+    }
+    const clearButton = event.target.closest(`[data-${scope}-inline-filter-clear]`);
+    if (!clearButton) return;
+    const field = clearButton.dataset[`${scope}InlineFilterClear`];
+    if (!field) return;
+    state.delete(field);
+    persistState();
+    updateButtons();
+    onChange?.();
+    filterRow.querySelector(`[data-${scope}-inline-filter="${CSS.escape(field)}"]`)?.focus();
+  });
+
+  Object.entries(readStoredState()).forEach(([field, value]) => {
+    if (filterableColumns.some((column) => column.key === field) && String(value || "").trim()) {
+      state.set(field, String(value).trim());
+    }
+  });
+  updateButtons();
+  return {
+    apply,
+    clear: () => {
+      state.clear();
+      persistState();
+      updateButtons();
+      onChange?.();
+    },
+    clearField: (field) => {
+      state.delete(field);
+      persistState();
+      updateButtons();
+      onChange?.();
+    },
+    serialized: () => Object.fromEntries([...state.entries()].map(([field, value]) => [field, String(value)])),
+    updateButtons,
+    fieldHasFilter: (field) => Boolean(String(state.get(field) || "").trim())
+  };
+}
+
+export function initSpreadsheetColumnFilters({ table, columns = [], getRows, getValues, getMenuValues = null, onChange, scope = "sheet", storageKey = "", mode = "menu" }) {
   if (!table || !columns.length) return null;
+  if (mode === "inline") return initInlineColumnFilters({ table, columns, getRows, getValues, onChange, scope, storageKey });
 
   const state = new Map();
   const filterableColumns = columns.filter((column) => column.key !== "select" && column.filterable !== false);

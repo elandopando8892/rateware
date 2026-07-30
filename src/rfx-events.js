@@ -53,6 +53,7 @@ import { fetchCarrierRecommendations } from "./business-intelligence-service.js"
 import { createVendorSegment, deleteVendorSegment, fetchVendorSegments, fetchVendors, updateVendorSegment } from "./vendor-service.js";
 import { fetchShippers } from "./shipper-service.js";
 import { fetchWhatsappConnections } from "./settings-service.js";
+import { initSpreadsheetColumnFilters } from "./spreadsheet-column-filters.js";
 import { humanizeError } from "./error-copy.js";
 import { errorState, stateBlock, tableErrorState, tableState } from "./ui-state.js";
 import { initWorkbenchTabs } from "./workbench-tabs.js";
@@ -321,6 +322,7 @@ const rfxChatThreadList = document.querySelector("#rfx-chat-thread-list");
 const rfxChatForm = document.querySelector("#rfx-chat-form");
 const rfxChatMessage = document.querySelector("#rfx-chat-message");
 const rfxChatDeliveryHelp = document.querySelector("#rfx-chat-delivery-help");
+const rfxChatComposeEmpty = document.querySelector("#rfx-chat-compose-empty");
 const rfxChatSend = document.querySelector("#rfx-chat-send");
 const rfxChatStatus = document.querySelector("#rfx-chat-status");
 const rfxChatSyncStatus = document.querySelector("#rfx-chat-sync-status");
@@ -356,6 +358,7 @@ const rfxLaunchReadiness = document.querySelector("#rfx-launch-readiness");
 const rfxManagerFlow = document.querySelector("#rfx-manager-flow");
 const rfxManagerFocus = document.querySelector("#rfx-manager-focus");
 const rfxManagerQueue = document.querySelector("#rfx-manager-queue");
+const rfxAwardNeedsDecision = document.querySelector("#rfx-award-needs-decision");
 const rfxAwardBoard = document.querySelector("#rfx-award-board");
 const rfxAwardStatus = document.querySelector("#rfx-award-status");
 const rfxAwardStatusPill = document.querySelector("#rfx-award-status-pill");
@@ -371,6 +374,11 @@ const rfxGenerateAwardNoticesButton = document.querySelector("#rfx-generate-awar
 const rfxSendAwardNoticesButton = document.querySelector("#rfx-send-award-notices");
 const rfxAwardNoticeSummary = document.querySelector("#rfx-award-notice-summary");
 const rfxAwardNoticeQueue = document.querySelector("#rfx-award-notice-queue");
+const rfxAwardNoticeChannel = document.querySelector("#rfx-award-notice-channel");
+const rfxAwardNoticeChannelHint = document.querySelector("#rfx-award-notice-channel-hint");
+const rfxAwardNoticePreview = document.querySelector("#rfx-award-notice-preview");
+const rfxCloseWorkspaceTabs = document.querySelector("#rfx-close-workspace-tabs");
+const rfxCloseWorkspacePanels = [...document.querySelectorAll("[data-rfx-close-workspace-panel]")];
 
 const RFX_WORKSPACE_CONTEXT_STORAGE_KEY = "rateware:bid-room:workspace-context:v1";
 const RFX_EVENT_VIEWS_STORAGE_KEY = "rateware:bid-room:event-views:v1";
@@ -378,6 +386,7 @@ const RFX_LANE_FILTER_KEYS = new Set(["all", "needs_shortlist", "needs_invite", 
 const RFX_CHAT_FILTER_KEYS = new Set(["all", "unread", "needs_reply", "carrier", "google", "signals"]);
 const RFX_LAUNCH_WORKSPACE_KEYS = new Set(["carrier", "message", "delivery"]);
 const RFX_OPERATE_WORKSPACE_KEYS = new Set(["auction", "communications", "carrier-bids"]);
+const RFX_CLOSE_WORKSPACE_KEYS = new Set(["award", "rateware", "notices"]);
 const RFX_DRAFT_PAGE_SIZES = [50, 100, 250];
 const rfxPageParams = new URLSearchParams(window.location.search);
 const requestedRfxEventId = rfxPageParams.get("rfx_event_id");
@@ -400,6 +409,9 @@ let rfxLaunchWorkspace = RFX_LAUNCH_WORKSPACE_KEYS.has(storedRfxWorkspaceContext
 let rfxOperateWorkspace = RFX_OPERATE_WORKSPACE_KEYS.has(storedRfxWorkspaceContext.operateWorkspace)
   ? storedRfxWorkspaceContext.operateWorkspace
   : "auction";
+let rfxCloseWorkspace = RFX_CLOSE_WORKSPACE_KEYS.has(storedRfxWorkspaceContext.closeWorkspace)
+  ? storedRfxWorkspaceContext.closeWorkspace
+  : "award";
 let editingEventId = null;
 let currentLanes = [];
 let vendorOptions = [];
@@ -431,11 +443,14 @@ const rfxChatRequests = new Map();
 let participantBulkMutationRunning = false;
 let eventLifecycleMutationRunning = false;
 let awardMutationRunning = false;
+let awardNoticePreviewId = "";
 let draftQueueMutationRunning = false;
 let pendingChatBidUpdate = null;
 let pendingManualBid = null;
 let selectedChatRecipient = null;
 let bidRoomCarrierMessageRequestKey = "";
+let responseColumnFilters = null;
+let responseBoardRowsCache = [];
 let selectedLaneIds = new Set();
 let selectedInvitationIds = new Set();
 let selectedDraftMessageIds = new Set();
@@ -684,6 +699,33 @@ function activateRfxOperateWorkspace(workspace, options = {}) {
   }
 }
 
+function normalizeRfxCloseWorkspace(value) {
+  return RFX_CLOSE_WORKSPACE_KEYS.has(value) ? value : "award";
+}
+
+function activateRfxCloseWorkspace(workspace, options = {}) {
+  const { persist = true, focus = false } = options;
+  rfxCloseWorkspace = normalizeRfxCloseWorkspace(workspace);
+  rfxCloseWorkspaceTabs?.querySelectorAll("[data-rfx-close-workspace-tab]").forEach((button) => {
+    const active = button.dataset.rfxCloseWorkspaceTab === rfxCloseWorkspace;
+    button.classList.toggle("is-active", active);
+    button.setAttribute("aria-selected", String(active));
+    button.tabIndex = active ? 0 : -1;
+  });
+  rfxCloseWorkspacePanels.forEach((panel) => {
+    panel.hidden = panel.dataset.rfxCloseWorkspacePanel !== rfxCloseWorkspace;
+  });
+  if (focus) {
+    const focusTarget = rfxCloseWorkspace === "award"
+      ? rfxAwardBoard
+      : rfxCloseWorkspace === "rateware"
+        ? rfxCloseoutAwardsButton
+        : rfxGenerateAwardNoticesButton;
+    window.requestAnimationFrame(() => focusTarget?.focus?.());
+  }
+  if (persist) persistRfxWorkspaceContext();
+}
+
 function persistRfxWorkspaceContext() {
   writeRfxWorkspaceContext({
     eventId: selectedEventId,
@@ -699,7 +741,8 @@ function persistRfxWorkspaceContext() {
     draftTracking: draftQueueTrackingStatus,
     chatFilter: bidRoomChatFilter,
     launchWorkspace: rfxLaunchWorkspace,
-    operateWorkspace: rfxOperateWorkspace
+    operateWorkspace: rfxOperateWorkspace,
+    closeWorkspace: rfxCloseWorkspace
   });
   syncRfxWorkspaceUrl();
 }
@@ -2267,7 +2310,17 @@ function decisionBadgesForBid(row, laneRows = []) {
 }
 
 function decisionBadgeHtml(badge) {
-  return `<span class="rfx-decision-badge" data-tone="${escapeHtml(badge.tone || "neutral")}">${escapeHtml(badge.label)}</span>`;
+  const descriptions = {
+    "Best overall": "Highest combined procurement score for this lane.",
+    Lowest: "Lowest submitted all-in amount among the bids shown.",
+    Available: "Carrier declared the requested equipment available.",
+    "Best capacity": "Highest declared weekly capacity for this lane.",
+    "Fastest transit": "Shortest declared transit time for this lane.",
+    "Alternative offered": "Carrier proposed an alternative operating option.",
+    "Needs validation": "One or more operational or commercial fields need review."
+  };
+  const title = badge.title || descriptions[badge.label] || badge.label;
+  return `<span class="rfx-decision-badge" title="${escapeHtml(title)}" data-tone="${escapeHtml(badge.tone || "neutral")}">${escapeHtml(badge.label)}</span>`;
 }
 
 function decisionRecommendation(row, rank, laneRows = []) {
@@ -3870,11 +3923,29 @@ function awardNoticeDraftRows() {
   });
 }
 
-function sendableAwardNoticeIds(rows = awardNoticeDraftRows()) {
+function awardNoticeChannel() {
+  return rfxAwardNoticeChannel?.value === "whatsapp" ? "whatsapp" : "email";
+}
+
+function awardNoticeChannelLabel(channel = awardNoticeChannel()) {
+  return channel === "whatsapp" ? "WhatsApp" : "email";
+}
+
+function visibleAwardNoticeRows(rows = awardNoticeDraftRows()) {
+  const channel = awardNoticeChannel();
+  return rows.filter((message) => String(message.channel || "email").toLowerCase() === channel);
+}
+
+function sendableAwardNoticeIds(rows = awardNoticeDraftRows(), channel = awardNoticeChannel()) {
   return rows
     .filter((message) => {
       const status = String(message.status || "").toLowerCase();
-      return message.channel === "email" && Boolean(message.recipient_email) && ["drafted", "queued", "failed"].includes(status);
+      const recipientReady = channel === "whatsapp"
+        ? Boolean(message.normalized_recipient_phone || message.recipient_phone || message.vendors?.whatsapp_phone)
+        : Boolean(message.recipient_email);
+      return String(message.channel || "email").toLowerCase() === channel
+        && recipientReady
+        && ["drafted", "queued", "failed"].includes(status);
     })
     .map((message) => String(message.id));
 }
@@ -3902,13 +3973,20 @@ function renderAwardNoticeQueue(rows = awardNoticeDraftRows()) {
   if (!rfxAwardNoticeQueue) return;
   if (!selectedEventId) {
     rfxAwardNoticeQueue.innerHTML = "Select a bid event to review closeout notices.";
+    renderAwardNoticePreview([]);
     return;
   }
-  if (!rows.length) {
-    rfxAwardNoticeQueue.innerHTML = "Generate notices to review carrier closeout messages.";
+  const channel = awardNoticeChannel();
+  const channelRows = visibleAwardNoticeRows(rows);
+  if (!channelRows.length) {
+    rfxAwardNoticeQueue.innerHTML = `No ${escapeHtml(awardNoticeChannelLabel(channel))} notices generated for this event.`;
+    renderAwardNoticePreview([]);
     return;
   }
-  const visibleRows = rows.slice(0, 8);
+  const visibleRows = channelRows.slice(0, 12);
+  if (!visibleRows.some((message) => String(message.id) === awardNoticePreviewId)) {
+    awardNoticePreviewId = String(visibleRows[0]?.id || "");
+  }
   rfxAwardNoticeQueue.innerHTML = `
     <table>
       <thead>
@@ -3917,7 +3995,7 @@ function renderAwardNoticeQueue(rows = awardNoticeDraftRows()) {
           <th>Outcome</th>
           <th>Status</th>
           <th>Recipient</th>
-          <th>Action</th>
+          <th>Review</th>
         </tr>
       </thead>
       <tbody>
@@ -3925,8 +4003,9 @@ function renderAwardNoticeQueue(rows = awardNoticeDraftRows()) {
           const outcome = awardNoticeOutcome(message);
           const status = String(message.status || "drafted").toLowerCase();
           const openUrl = message.channel === "email" ? message.gmail_compose_url : message.whatsapp_url;
+          const selected = String(message.id) === awardNoticePreviewId;
           return `
-            <tr>
+            <tr class="${selected ? "is-selected" : ""}">
               <td>
                 <strong>${escapeHtml(message.vendors?.vendor_name || message.vendors?.domain || "Vendor")}</strong>
                 <small>${escapeHtml(message.subject || message.outreach_campaigns?.name || "Award notice")}</small>
@@ -3936,6 +4015,7 @@ function renderAwardNoticeQueue(rows = awardNoticeDraftRows()) {
               <td>${escapeHtml(messageRecipient(message) || "-")}</td>
               <td>
                 <div class="compact-actions">
+                  <button class="secondary small-button" type="button" data-rfx-preview-award-notice="${escapeHtml(message.id)}">Preview</button>
                   <button class="secondary small-button" type="button" data-rfx-open-award-notice="${escapeHtml(openUrl || "")}" ${openUrl ? "" : "disabled"}>Open</button>
                   <button class="secondary small-button" type="button" data-rfx-mark-award-notice="${escapeHtml(message.id)}" data-rfx-award-notice-status="queued" ${status === "queued" || status === "sent" || status === "archived" ? "disabled" : ""}>Queue</button>
                   <button class="secondary small-button" type="button" data-rfx-mark-award-notice="${escapeHtml(message.id)}" data-rfx-award-notice-status="archived" ${status === "archived" ? "disabled" : ""}>Archive</button>
@@ -3946,8 +4026,52 @@ function renderAwardNoticeQueue(rows = awardNoticeDraftRows()) {
         }).join("")}
       </tbody>
     </table>
-    ${rows.length > visibleRows.length ? `<p>Showing ${formatNumber(visibleRows.length)} of ${formatNumber(rows.length)} closeout notice(s).</p>` : ""}
+    ${channelRows.length > visibleRows.length ? `<p>Showing ${formatNumber(visibleRows.length)} of ${formatNumber(channelRows.length)} ${escapeHtml(awardNoticeChannelLabel(channel))} notice(s).</p>` : ""}
   `;
+  renderAwardNoticePreview(channelRows);
+}
+
+function renderAwardNoticePreview(rows = visibleAwardNoticeRows()) {
+  if (!rfxAwardNoticePreview) return;
+  const message = rows.find((row) => String(row.id) === awardNoticePreviewId) || rows[0];
+  if (!message) {
+    rfxAwardNoticePreview.innerHTML = `
+      <p class="eyebrow">Preview</p>
+      <p>Select a notice to inspect its rendered channel content.</p>
+    `;
+    return;
+  }
+  awardNoticePreviewId = String(message.id || "");
+  const channel = String(message.channel || "email").toLowerCase();
+  const outcome = awardNoticeOutcome(message);
+  const status = String(message.status || "drafted").toLowerCase();
+  const recipient = messageRecipient(message) || "-";
+  rfxAwardNoticePreview.innerHTML = `
+    <div class="rfx-award-notice-preview-heading">
+      <div>
+        <p class="eyebrow">${escapeHtml(awardNoticeChannelLabel(channel))} preview</p>
+        <strong>${escapeHtml(message.vendors?.vendor_name || message.vendors?.domain || "Vendor")}</strong>
+      </div>
+      <span class="status-pill ${awardNoticeOutcomeTone(outcome, status)}">${escapeHtml(status)}</span>
+    </div>
+    <p class="rfx-award-notice-preview-meta">${escapeHtml(recipient)} · ${escapeHtml(outcome)}</p>
+    <div class="rfx-award-notice-preview-body" data-rfx-award-notice-preview-body></div>
+  `;
+  const meta = rfxAwardNoticePreview.querySelector(".rfx-award-notice-preview-meta");
+  if (meta) meta.textContent = recipient + " - " + outcome;
+  const body = rfxAwardNoticePreview.querySelector("[data-rfx-award-notice-preview-body]");
+  if (!body) return;
+  if (channel === "whatsapp") {
+    const text = message.whatsapp_text || message.whatsapp_body || message.text_body || "";
+    body.innerHTML = `<pre>${escapeHtml(text)}</pre>`;
+    return;
+  }
+  const frame = document.createElement("iframe");
+  frame.className = "rfx-award-notice-email-frame";
+  frame.title = "Award email preview";
+  frame.setAttribute("sandbox", "");
+  frame.srcdoc = String(message.html_body || `<p>${escapeHtml(message.text_body || "No email body")}</p>`);
+  body.appendChild(frame);
 }
 
 function recommendedAwardCandidates() {
@@ -3970,7 +4094,7 @@ function awardReadinessSnapshot() {
   const primary = invitations.filter((item) => item.award_role === "primary");
   const pendingCloseout = primary.filter((item) => !item.rate_staging_id);
   const noticeRows = awardNoticeDraftRows();
-  const sendable = sendableAwardNoticeIds(noticeRows);
+  const sendable = sendableAwardNoticeIds(noticeRows, awardNoticeChannel());
   const missingPrimary = lanes.filter(({ bids }) => !bids.some((row) => row.invitation.award_role === "primary"));
   const riskFlags = lanes.reduce((sum, { bids }) => sum + (bids[0]?.decision?.risk_flags?.length || 0), 0);
   const weakRecommended = lanes.filter(({ bids }) => Number(bids[0]?.decision?.score || 0) < 55);
@@ -4011,7 +4135,12 @@ function awardPreflightIssues(action = "closeout") {
     issues.push({ key: "closeout", label: "No Rateware closeout pending", detail: "Primary awards already have Rateware rows or no primary awards are available." });
   }
   if (action === "send_notices" && !snapshot.sendable.length) {
-    issues.push({ key: "notices", label: "No sendable notices", detail: "Generate award notice drafts before sending Gmail messages." });
+    const channel = awardNoticeChannel();
+    issues.push({
+      key: "notices",
+      label: "No sendable notices",
+      detail: `Generate ${awardNoticeChannelLabel(channel)} notice drafts with a valid recipient before sending.`
+    });
   }
   return issues;
 }
@@ -4021,6 +4150,7 @@ function blockIfAwardPreflightFails(action = "closeout", statusElement = rfxAwar
   if (!issues.length) return false;
   const firstIssue = issues[0];
   activateWorkbenchView("award");
+  activateRfxCloseWorkspace(action === "closeout" ? "rateware" : action.includes("notices") ? "notices" : "award");
   setStatus(statusElement, `Award action blocked: ${firstIssue.label}. ${firstIssue.detail}`, "error");
   renderAwardReadiness();
   updateAwardNoticeControls();
@@ -4052,7 +4182,7 @@ function renderAwardReadiness() {
       <span data-tone="${decisionTone}"><b>${formatNumber(awardedCount)} / ${formatNumber(lanesCount)}</b> lanes awarded</span>
       <span data-tone="${riskTone}"><b>${formatNumber(snapshot.riskFlags)}</b> top-choice risk flag(s)</span>
       <span data-tone="${closeoutTone}"><b>${formatNumber(snapshot.pendingCloseout.length)}</b> Rateware closeout pending</span>
-      <span data-tone="${noticesTone}"><b>${formatNumber(snapshot.sendable.length)}</b> notice email(s) ready</span>
+      <span data-tone="${noticesTone}"><b>${formatNumber(snapshot.sendable.length)}</b> ${escapeHtml(awardNoticeChannelLabel(awardNoticeChannel()))} notice(s) ready</span>
     </div>
     ${snapshot.weakRecommended.length ? `<p>${formatNumber(snapshot.weakRecommended.length)} lane(s) have weak recommended scores. Review before applying awards in bulk.</p>` : ""}
   `;
@@ -4060,27 +4190,38 @@ function renderAwardReadiness() {
 
 function updateAwardNoticeControls() {
   const rows = awardNoticeDraftRows();
-  const sendableIds = sendableAwardNoticeIds(rows);
-  const sent = rows.filter((message) => String(message.status || "").toLowerCase() === "sent").length;
-  const failed = rows.filter((message) => String(message.status || "").toLowerCase() === "failed").length;
+  const channel = awardNoticeChannel();
+  const channelLabel = awardNoticeChannelLabel(channel);
+  const channelRows = visibleAwardNoticeRows(rows);
+  const sendableIds = sendableAwardNoticeIds(rows, channel);
+  const sent = channelRows.filter((message) => String(message.status || "").toLowerCase() === "sent").length;
+  const failed = channelRows.filter((message) => String(message.status || "").toLowerCase() === "failed").length;
   const primary = currentLanes.flatMap((lane) => activeInvitations(lane)).filter((item) => item.award_role === "primary").length;
   const bidRows = awardLaneRows().reduce((sum, row) => sum + row.bids.length, 0);
+  if (rfxAwardNoticeChannelHint) {
+    rfxAwardNoticeChannelHint.textContent = channel === "whatsapp"
+      ? "WhatsApp preview uses the carrier phone and short message layout. Sending requires an approved Meta template."
+      : "Email preview uses the Gmail message layout, route table and sender signature.";
+  }
+  if (rfxGenerateAwardNoticesButton) {
+    rfxGenerateAwardNoticesButton.textContent = `Generate ${channelLabel} notices`;
+  }
   if (rfxGenerateAwardNoticesButton) {
     rfxGenerateAwardNoticesButton.disabled = awardMutationRunning || !selectedEventId || !bidRows || Boolean(awardPreflightIssues("generate_notices").length);
   }
   if (rfxSendAwardNoticesButton) {
     rfxSendAwardNoticesButton.disabled = awardMutationRunning || !sendableIds.length || Boolean(awardPreflightIssues("send_notices").length);
     rfxSendAwardNoticesButton.textContent = sendableIds.length
-      ? `Send ${formatNumber(sendableIds.length)} notice${sendableIds.length === 1 ? "" : "s"}`
-      : "Send notices";
+      ? `Send ${formatNumber(sendableIds.length)} ${channelLabel} notice${sendableIds.length === 1 ? "" : "s"}`
+      : `Send ${channelLabel} notices`;
   }
   if (rfxAwardNoticeSummary) {
-    rfxAwardNoticeSummary.textContent = rows.length
-      ? `${formatNumber(rows.length)} notice draft(s). ${formatNumber(sendableIds.length)} ready, ${formatNumber(sent)} sent${failed ? `, ${formatNumber(failed)} failed` : ""}.`
+    rfxAwardNoticeSummary.textContent = channelRows.length
+      ? `${formatNumber(channelRows.length)} ${channelLabel} notice draft(s). ${formatNumber(sendableIds.length)} ready, ${formatNumber(sent)} sent${failed ? `, ${formatNumber(failed)} failed` : ""}.`
       : primary
-        ? "Generate notices when award decisions are ready."
+        ? `Generate ${channelLabel} notices when award decisions are ready.`
         : "Award at least one lane before sending closeout notices.";
-    rfxAwardNoticeSummary.dataset.tone = failed ? "warning" : rows.length ? "success" : "neutral";
+    rfxAwardNoticeSummary.dataset.tone = failed ? "warning" : channelRows.length ? "success" : "neutral";
   }
   renderAwardNoticeQueue(rows);
 }
@@ -4103,8 +4244,8 @@ function updateAwardMetrics() {
     const pendingCloseout = primary.filter((item) => !item.rate_staging_id).length;
     rfxCloseoutAwardsButton.disabled = awardMutationRunning || !pendingCloseout || Boolean(awardPreflightIssues("closeout").length);
     rfxCloseoutAwardsButton.textContent = pendingCloseout
-      ? `Create ${formatNumber(pendingCloseout)} Rateware row${pendingCloseout === 1 ? "" : "s"}`
-      : "Create Rateware rows";
+      ? `Approve ${formatNumber(pendingCloseout)} Rateware rate${pendingCloseout === 1 ? "" : "s"}`
+      : "Approve Rateware rates";
   }
   renderAwardReadiness();
   updateAwardNoticeControls();
@@ -4142,51 +4283,80 @@ function renderDecisionScorecard(row, index, laneRows = []) {
 
 function renderAwardBoard() {
   updateAwardMetrics();
-  if (!rfxAwardBoard) return;
+  if (!rfxAwardBoard && !rfxAwardNeedsDecision) return;
+  const renderEmpty = (state) => {
+    if (rfxAwardNeedsDecision) rfxAwardNeedsDecision.innerHTML = state;
+    if (rfxAwardBoard) rfxAwardBoard.innerHTML = state;
+  };
   if (!selectedEventId) {
-    rfxAwardBoard.innerHTML = stateBlock({
+    renderEmpty(stateBlock({
       tone: "neutral",
       eyebrow: "Award",
       title: "Select a bid event",
       detail: "Create or select a Bid Room event before awarding carrier bids."
-    });
+    }));
     return;
   }
   const lanes = awardLaneRows();
   if (!lanes.length) {
-    rfxAwardBoard.innerHTML = stateBlock({
+    renderEmpty(stateBlock({
       tone: "neutral",
       eyebrow: "Award",
       title: "No live bids to award",
       detail: "Carrier bids submitted through the Private Bid Room will appear here by lane."
-    });
+    }));
     return;
   }
 
+  if (rfxAwardNeedsDecision) {
+    rfxAwardNeedsDecision.innerHTML = lanes.map(({ lane, bids }) => {
+      const primary = bids.find((row) => row.invitation.award_role === "primary");
+      const backups = bids.filter((row) => row.invitation.award_role === "backup");
+      const cheapest = [...bids].sort((a, b) => a.amount - b.amount)[0];
+      const recommended = bids[0];
+      return `
+        <section class="rfx-award-lane rfx-award-lane-decision" data-rfx-award-lane-id="${escapeHtml(lane.id)}">
+          <header>
+            <div>
+              <span class="status-pill ${primary ? "success" : "warning"}">${primary ? "Awarded" : "Needs decision"}</span>
+              <strong>#${escapeHtml(lane.lane_number || "")} ${escapeHtml(laneRoute(lane))}</strong>
+              <small title="${escapeHtml([lane.equipment, lane.trailer, lane.operation, lane.service].filter(Boolean).join(" / ") || "Lane")}">${escapeHtml([lane.equipment, lane.trailer, lane.operation, lane.service].filter(Boolean).join(" / ") || "Lane")}</small>
+            </div>
+            <div class="rfx-award-lane-summary">
+              <span title="Highest procurement score">Recommended ${escapeHtml(vendorLabel(recommended.invitation))} (${recommended.decision.score}/100)</span>
+              <span title="Lowest submitted all-in amount">Lowest ${formatMoney(cheapest.amount, cheapest.currency)}</span>
+              <span title="Number of bids for this lane">${formatNumber(bids.length)} bid(s)</span>
+              <span title="Backup decisions assigned">${formatNumber(backups.length)} backup(s)</span>
+            </div>
+          </header>
+          <div class="rfx-decision-scorecards">
+            ${bids.slice(0, 3).map((row, index) => renderDecisionScorecard(row, index, bids)).join("")}
+          </div>
+        </section>
+      `;
+    }).join("");
+  }
+
+  if (!rfxAwardBoard) return;
   rfxAwardBoard.innerHTML = lanes.map(({ lane, bids }) => {
     const primary = bids.find((row) => row.invitation.award_role === "primary");
     const backups = bids.filter((row) => row.invitation.award_role === "backup");
     const cheapest = [...bids].sort((a, b) => a.amount - b.amount)[0];
-    const recommended = bids[0];
     return `
-      <section class="rfx-award-lane" data-rfx-award-lane-id="${escapeHtml(lane.id)}">
+      <section class="rfx-award-lane rfx-award-lane-ranking" data-rfx-award-lane-id="${escapeHtml(lane.id)}">
         <header>
           <div>
             <span class="status-pill ${primary ? "success" : "warning"}">${primary ? "Awarded" : "Needs decision"}</span>
             <strong>#${escapeHtml(lane.lane_number || "")} ${escapeHtml(laneRoute(lane))}</strong>
-            <small>${escapeHtml([lane.equipment, lane.trailer, lane.operation, lane.service].filter(Boolean).join(" / ") || "Lane")}</small>
+            <small title="${escapeHtml([lane.equipment, lane.trailer, lane.operation, lane.service].filter(Boolean).join(" / ") || "Lane")}">${escapeHtml([lane.equipment, lane.trailer, lane.operation, lane.service].filter(Boolean).join(" / ") || "Lane")}</small>
           </div>
           <div class="rfx-award-lane-summary">
-            <span>Recommended ${escapeHtml(vendorLabel(recommended.invitation))} (${recommended.decision.score}/100)</span>
-            <span>Lowest ${formatMoney(cheapest.amount, cheapest.currency)}</span>
-            <span>Rateware ${lane.benchmark ? formatMoney(lane.benchmark.all_in_rate, lane.benchmark.currency) : "-"}</span>
-            <span>${formatNumber(bids.length)} bid(s)</span>
-            <span>${formatNumber(backups.length)} backup(s)</span>
+            <span title="Highest procurement score">Recommended ${escapeHtml(vendorLabel(bids[0].invitation))} (${bids[0].decision.score}/100)</span>
+            <span title="Lowest submitted all-in amount">Lowest ${formatMoney(cheapest.amount, cheapest.currency)}</span>
+            <span title="Number of carrier bids for this lane">${formatNumber(bids.length)} bid(s)</span>
+            <span title="Backup decisions assigned">${formatNumber(backups.length)} backup(s)</span>
           </div>
         </header>
-        <div class="rfx-decision-scorecards">
-          ${bids.slice(0, 3).map((row, index) => renderDecisionScorecard(row, index, bids)).join("")}
-        </div>
         <div class="table-wrap">
           <table class="rfx-award-table">
             <thead>
@@ -4196,22 +4366,17 @@ function renderAwardBoard() {
                 <th>Score</th>
                 <th>Badges</th>
                 <th>All-in</th>
-                <th>Delta</th>
                 <th>Commercial</th>
                 <th>Availability</th>
                 <th>Capacity</th>
                 <th>Transit</th>
                 <th>Role</th>
                 <th>Reason</th>
-                <th>Rateware</th>
                 <th>Actions</th>
               </tr>
             </thead>
             <tbody>
               ${bids.map((row, index) => {
-                const benchmarkAmount = Number(row.lane.benchmark?.all_in_rate);
-                const delta = Number.isFinite(benchmarkAmount) ? row.amount - benchmarkAmount : Number(row.invitation.bid_delta);
-                const deltaTone = Number.isFinite(delta) && delta <= 0 ? "success" : Number.isFinite(delta) ? "danger" : "neutral";
                 const recommendedReason = decisionRecommendation(row, index + 1, bids);
                 return `
                   <tr data-rfx-award-invitation-id="${escapeHtml(row.invitation.id)}">
@@ -4219,18 +4384,16 @@ function renderAwardBoard() {
                     <td><strong>${escapeHtml(vendorLabel(row.invitation))}</strong><small>${escapeHtml(row.invitation.vendors?.domain || row.invitation.vendors?.primary_email || "")}</small></td>
                     <td>
                       <span class="rfx-decision-score" data-score-tone="${row.decision.score >= 75 ? "strong" : row.decision.score >= 55 ? "medium" : "weak"}">${escapeHtml(row.decision.score)}</span>
-                      <small>${escapeHtml(row.decision.risk_flags.length ? `${row.decision.risk_flags.length} risk flag(s)` : "clean")}</small>
+                      <small title="${escapeHtml(row.decision.risk_flags.join(" | ") || "No major validation gaps")}">${escapeHtml(row.decision.risk_flags.length ? `${row.decision.risk_flags.length} risk flag(s)` : "clean")}</small>
                     </td>
                     <td><div class="rfx-decision-badges">${row.decision_badges.map(decisionBadgeHtml).join("")}</div></td>
                     <td>${formatMoney(row.amount, row.currency)}</td>
-                    <td><span class="rfx-bid-delta" data-tone="${deltaTone}">${Number.isFinite(delta) ? formatMoney(delta, row.currency) : "-"}</span></td>
-                    <td><small>${escapeHtml(offerCommercialSummary(row.invitation))}</small></td>
-                    <td><small>${escapeHtml(offerAvailabilitySummary(row.invitation))}</small></td>
+                    <td><small title="${escapeHtml(offerCommercialSummary(row.invitation))}">${escapeHtml(offerCommercialSummary(row.invitation))}</small></td>
+                    <td><small title="${escapeHtml(offerAvailabilitySummary(row.invitation))}">${escapeHtml(offerAvailabilitySummary(row.invitation))}</small></td>
                     <td>${escapeHtml(row.invitation.weekly_capacity ?? "-")}</td>
                     <td>${escapeHtml(row.invitation.transit_days ?? "-")}</td>
                     <td>${awardRoleChip(row.invitation)}</td>
-                    <td><small>${escapeHtml(row.invitation.award_reason || recommendedReason || row.invitation.notes || awardReasonDefault(row, index + 1))}</small></td>
-                    <td>${row.invitation.rate_staging_id ? '<span class="status-pill success">Created</span>' : '<span class="status-pill muted">Pending</span>'}</td>
+                    <td><small title="${escapeHtml(row.invitation.award_reason || recommendedReason || row.invitation.notes || awardReasonDefault(row, index + 1))}">${escapeHtml(row.invitation.award_reason || recommendedReason || row.invitation.notes || awardReasonDefault(row, index + 1))}</small></td>
                     <td>
                       <div class="compact-actions">
                         <button type="button" class="small-button" data-rfx-award-primary="${escapeHtml(row.invitation.id)}" data-award-default="${escapeHtml(recommendedReason)}" ${row.invitation.award_role === "primary" ? "disabled" : ""}>Award</button>
@@ -4963,6 +5126,7 @@ function renderBidRoomChatControls() {
     rfxChatThreadType.value = privateTarget ? "carrier_private" : BID_ROOM_EVENT_THREAD_TYPE;
   }
   if (rfxChatRecipientContext) rfxChatRecipientContext.hidden = !privateTarget;
+  if (rfxChatComposeEmpty) rfxChatComposeEmpty.hidden = Boolean(privateTarget || selectedEventId);
   if (privateTarget) {
     if (rfxChatRecipientName) rfxChatRecipientName.textContent = privateTarget.carrier;
     if (rfxChatRecipientLane) rfxChatRecipientLane.textContent = privateTarget.lane;
@@ -5050,8 +5214,9 @@ function renderBidRoomChat() {
     const resolved = threadIsResolved(thread);
     const intelligence = analyzeCommunicationThread(thread);
     return `
-      <article class="bid-room-chat-thread${needsReply ? " needs-reply" : ""}${unread ? " is-unread" : ""}${resolved ? " is-resolved" : ""}" data-rfx-chat-thread-id="${escapeHtml(thread.id)}">
-        <header>
+      <details class="bid-room-chat-thread${needsReply ? " needs-reply" : ""}${unread ? " is-unread" : ""}${resolved ? " is-resolved" : ""}" data-rfx-chat-thread-id="${escapeHtml(thread.id)}"${needsReply || unread ? " open" : ""}>
+        <summary class="bid-room-chat-thread-summary">
+        <div class="bid-room-chat-thread-summary-head">
           <div>
             <strong>${escapeHtml(thread.title || thread.thread_type)}</strong>
             <span>${escapeHtml(thread.thread_type || "thread")} | ${escapeHtml(threadLastActivityLabel(thread))}</span>
@@ -5063,7 +5228,10 @@ function renderBidRoomChat() {
             ${hasGoogleActivity ? '<span class="status-pill success">Google</span>' : ""}
             <small>${messages.length} message(s)</small>
           </div>
-        </header>
+        </div>
+        ${latest ? `<p class="bid-room-chat-latest">${escapeHtml(latest.body || "")}</p>` : ""}
+        </summary>
+        <div class="bid-room-chat-thread-body">
         ${intelligence.signals.length ? `
           <div class="bid-room-chat-signals">
             ${intelligence.signals.map((signal) => `
@@ -5077,7 +5245,6 @@ function renderBidRoomChat() {
             ${thread.internal_note ? `<span title="${escapeHtml(thread.internal_note)}">Note: ${escapeHtml(thread.internal_note)}</span>` : ""}
           </div>
         ` : ""}
-        ${latest ? `<p class="bid-room-chat-latest">${escapeHtml(latest.body || "")}</p>` : ""}
         <div class="bid-room-chat-thread-actions">
           <button type="button" class="secondary small-button" data-rfx-chat-thread-action="${unread ? "mark_read" : "mark_unread"}" data-thread-id="${escapeHtml(thread.id)}">${unread ? "Mark read" : "Mark unread"}</button>
           <button type="button" class="secondary small-button" data-rfx-chat-thread-action="mark_needs_reply" data-thread-id="${escapeHtml(thread.id)}">Needs reply</button>
@@ -5096,7 +5263,8 @@ function renderBidRoomChat() {
             </div>
           `).join("")}
         </div>
-      </article>
+        </div>
+      </details>
     `;
   }).join("");
 }
@@ -5343,49 +5511,124 @@ function renderLaneDecision() {
   `;
 }
 
+function responseBoardRows() {
+  return visibleLanes()
+    .flatMap((lane) => activeInvitations(lane).map((invitation) => ({ lane, invitation })))
+    .filter(({ invitation }) => commercialStatus(invitation.invitation_status) !== "drafted" || hasBid(invitation))
+    .map(({ lane, invitation }) => {
+      const laneRows = bidInvitations(lane)
+        .map((bidInvitation) => {
+          const economics = bidCommercialEconomics(bidInvitation);
+          return {
+            lane,
+            invitation: bidInvitation,
+            amount: Number(economics.board_rate),
+            carrier_amount: Number(economics.carrier_rate),
+            currency: bidInvitation.currency || lane.currency || "USD"
+          };
+        })
+        .filter((row) => Number.isFinite(row.amount));
+      const currentRow = laneRows.find((row) => row.invitation.id === invitation.id);
+      const decision = currentRow ? procurementDecisionForBid(currentRow, laneRows) : null;
+      const badges = currentRow ? decisionBadgesForBid(currentRow, laneRows) : [];
+      const eta = [
+        invitation.eta_pickup ? `PU ${formatCompactDateTime(invitation.eta_pickup)}` : null,
+        invitation.eta_delivery ? `DEL ${formatCompactDateTime(invitation.eta_delivery)}` : null
+      ].filter(Boolean).join(" | ");
+      const availability = invitation.equipment_available === true
+        ? "Available"
+        : invitation.equipment_available === false
+          ? "Not available"
+          : "Pending";
+      return {
+        lane,
+        invitation,
+        currentRow,
+        decision,
+        badges,
+        eta,
+        availability,
+        bidSource: manualBidSourceLabel(invitation.response_source),
+        actionLabel: hasBid(invitation) ? "Edit bid" : "Manual bid"
+      };
+    })
+    .sort((left, right) => Number(hasBid(right.invitation)) - Number(hasBid(left.invitation)));
+}
+
+function responseColumnValues(row, field) {
+  const { lane, invitation, currentRow, decision, eta, availability, bidSource } = row;
+  const bid = currentRow
+    ? formatMoney(currentRow.carrier_amount, currentRow.currency)
+    : invitation.bid_rate !== null
+      ? formatMoney(invitation.bid_rate, invitation.currency || lane.currency)
+      : "No bid";
+  const values = {
+    carrier: [vendorLabel(invitation)],
+    lane: [`#${lane.lane_number || ""} ${laneRoute(lane)}`.trim()],
+    status: [invitation.invitation_status || "drafted"],
+    score: [decision ? String(decision.score) : "Unscored"],
+    bid: [bid],
+    commercial: [offerCommercialSummary(invitation)],
+    availability: [availability],
+    capacity: [invitation.weekly_capacity ?? "Unspecified"],
+    eta: [eta || "Not confirmed"],
+    valid_through: [validThroughLabel(invitation.valid_through)],
+    transit: [invitation.transit_days ?? "Unspecified"],
+    source: [bidSource]
+  };
+  return (values[field] || []).filter((value) => value !== null && value !== undefined && String(value).trim() !== "");
+}
+
+function initResponseColumnFilters() {
+  if (responseColumnFilters || !responseBody) return;
+  const responseTable = responseBody.closest("table");
+  responseColumnFilters = initSpreadsheetColumnFilters({
+    table: responseTable,
+    columns: [
+      { key: "action", label: "Action", filterable: false },
+      { key: "carrier", label: "Carrier" },
+      { key: "lane", label: "Lane" },
+      { key: "status", label: "Status" },
+      { key: "score", label: "Score" },
+      { key: "bid", label: "Bid" },
+      { key: "commercial", label: "Commercial" },
+      { key: "availability", label: "Availability" },
+      { key: "capacity", label: "Capacity" },
+      { key: "eta", label: "ETA" },
+      { key: "valid_through", label: "Valid through" },
+      { key: "transit", label: "Transit" },
+      { key: "source", label: "Source" }
+    ],
+    getRows: () => responseBoardRowsCache,
+    getValues: responseColumnValues,
+    scope: "rfxresponse",
+    storageKey: "rateware:bid-room:carrier-bids:column-filters:v3",
+    mode: "inline",
+    onChange: renderResponseBoard
+  });
+}
+
 function renderResponseBoard() {
   if (!responseBody || !responseSummary) return;
-  const rows = visibleLanes()
-    .flatMap((lane) => activeInvitations(lane).map((invitation) => ({ lane, invitation })))
-    .filter(({ invitation }) => commercialStatus(invitation.invitation_status) !== "drafted" || hasBid(invitation));
+  const allRows = responseBoardRows();
+  responseBoardRowsCache = allRows;
+  const rows = responseColumnFilters?.apply(allRows) || allRows;
   const bidRows = rows.filter(({ invitation }) => hasBid(invitation));
-  responseSummary.textContent = `${formatNumber(bidRows.length)} bids / ${formatNumber(rows.length)} active rows`;
+  responseSummary.textContent = rows.length === allRows.length
+    ? `${formatNumber(bidRows.length)} bids / ${formatNumber(rows.length)} active rows`
+    : `${formatNumber(bidRows.length)} bids / ${formatNumber(rows.length)} shown of ${formatNumber(allRows.length)} active rows`;
   if (!rows.length) {
-    responseBody.innerHTML = `<tr><td colspan="13">No carrier bids yet.</td></tr>`;
+    responseBody.innerHTML = `<tr><td colspan="13">No carrier responses match these column filters.</td></tr>`;
     return;
   }
-  responseBody.innerHTML = rows.map(({ lane, invitation }) => {
-    const laneRows = bidInvitations(lane)
-      .map((bidInvitation) => {
-        const economics = bidCommercialEconomics(bidInvitation);
-        return {
-          lane,
-          invitation: bidInvitation,
-          amount: Number(economics.board_rate),
-          carrier_amount: Number(economics.carrier_rate),
-          currency: bidInvitation.currency || lane.currency || "USD"
-        };
-      })
-      .filter((row) => Number.isFinite(row.amount));
-    const currentRow = laneRows.find((row) => row.invitation.id === invitation.id);
-    const decision = currentRow ? procurementDecisionForBid(currentRow, laneRows) : null;
-    const badges = currentRow ? decisionBadgesForBid(currentRow, laneRows) : [];
-    const eta = [
-      invitation.eta_pickup ? `PU ${formatCompactDateTime(invitation.eta_pickup)}` : null,
-      invitation.eta_delivery ? `DEL ${formatCompactDateTime(invitation.eta_delivery)}` : null
-    ].filter(Boolean).join(" | ");
-    const availability = invitation.equipment_available === true
-      ? "Available"
-      : invitation.equipment_available === false
-        ? "Not available"
-        : "Pending";
-    const bidSource = manualBidSourceLabel(invitation.response_source);
-    const actionLabel = hasBid(invitation) ? "Edit bid" : "Manual bid";
+  responseBody.innerHTML = rows.map(({ lane, invitation, currentRow, decision, badges, eta, availability, bidSource, actionLabel }) => {
     return `
       <tr data-rfx-lane-id="${escapeHtml(lane.id)}">
         <td class="rfx-response-actions">
-          <button type="button" class="secondary small-button" data-rfx-manual-bid="${escapeHtml(invitation.id)}" data-rfx-manual-bid-lane="${escapeHtml(lane.id)}" title="Record or correct a quote received outside the Bid Room">${actionLabel}</button>
-          <button type="button" class="secondary small-button" data-rfx-ask-carrier="${escapeHtml(invitation.id)}" data-rfx-ask-carrier-lane="${escapeHtml(lane.id)}" title="Reply in this carrier's latest Gmail thread for this RFx">Reply by email</button>
+          <div class="rfx-response-action-stack">
+            <button type="button" class="secondary small-button" data-rfx-manual-bid="${escapeHtml(invitation.id)}" data-rfx-manual-bid-lane="${escapeHtml(lane.id)}" title="Record or correct a quote received outside the Bid Room">${actionLabel}</button>
+            <button type="button" class="secondary small-button" data-rfx-ask-carrier="${escapeHtml(invitation.id)}" data-rfx-ask-carrier-lane="${escapeHtml(lane.id)}" title="Reply in this carrier's latest Gmail thread for this RFx">Reply by email</button>
+          </div>
         </td>
         <td><strong>${escapeHtml(vendorLabel(invitation))}</strong><small>${escapeHtml(invitation.vendors?.primary_email || invitation.vendors?.domain || "")}</small></td>
         <td>#${escapeHtml(lane.lane_number || "")} ${escapeHtml(laneRoute(lane))}</td>
@@ -8471,14 +8714,14 @@ async function closeoutSelectedAwardsToRateware() {
     .flatMap((lane) => activeInvitations(lane))
     .filter((invitation) => invitation.award_role === "primary" && !invitation.rate_staging_id);
   if (!pending.length) {
-    setStatus(rfxAwardStatus, "There are no primary awards pending Rateware closeout.", "neutral");
+    setStatus(rfxAwardStatus, "There are no primary awards pending Rateware approval.", "neutral");
     return;
   }
-  if (!window.confirm(`Create ${pending.length} approved Rateware row(s) from primary awards?`)) return;
+  if (!window.confirm(`Approve ${pending.length} awarded rate(s) in Rateware? Existing bid staging rows will be approved; only missing rows will be created.`)) return;
   const eventId = selectedEventId;
   awardMutationRunning = true;
   if (rfxCloseoutAwardsButton) rfxCloseoutAwardsButton.disabled = true;
-  setStatus(rfxAwardStatus, "Creating Rateware rows from awards...");
+  setStatus(rfxAwardStatus, "Approving awarded rates in Rateware...");
   try {
     const result = await closeoutAwardedRfxToRateware(eventId, { target_status: "approved" });
     if (selectedEventId !== eventId) return;
@@ -8487,8 +8730,8 @@ async function closeoutSelectedAwardsToRateware() {
     activateWorkbenchView("award");
     setStatus(
       rfxAwardStatus,
-      `${formatNumber(result.inserted || 0)} Rateware row(s) created. ${formatNumber(result.skipped || 0)} skipped.`,
-      result.inserted ? "success" : "neutral"
+      `${formatNumber(result.linked || result.approved_existing || 0)} existing bid row(s) approved, ${formatNumber(result.inserted || 0)} new row(s) created. ${formatNumber(result.skipped || 0)} skipped.`,
+      result.inserted || result.linked || result.approved_existing ? "success" : "neutral"
     );
   } catch (error) {
     if (selectedEventId === eventId) {
@@ -8514,20 +8757,23 @@ async function generateAwardNoticeDrafts() {
     return;
   }
   const eventId = selectedEventId;
+  const channel = awardNoticeChannel();
+  const channelLabel = awardNoticeChannelLabel(channel);
   awardMutationRunning = true;
   if (rfxGenerateAwardNoticesButton) rfxGenerateAwardNoticesButton.disabled = true;
-  setStatus(rfxAwardStatus, "Generating award, backup, and not-awarded email drafts...");
+  setStatus(rfxAwardStatus, `Generating award, backup, and not-awarded ${channelLabel} drafts...`);
   try {
     const result = await generateRfxAwardNotices(eventId, {
       senderEmail: APPROVED_GMAIL_SENDER,
-      senderLabel: APPROVED_GMAIL_SENDER
+      senderLabel: APPROVED_GMAIL_SENDER,
+      channel
     });
     if (!(await refreshOutreachStateForEvent(eventId))) return;
     renderOutreachLaunchpad();
     renderAwardBoard();
     setStatus(
       rfxAwardStatus,
-      `${formatNumber(result.generated || 0)} award notice draft(s) ready. ${formatNumber(result.skipped?.length || 0)} skipped.`,
+      `${formatNumber(result.generated || 0)} ${channelLabel} notice draft(s) ready. ${formatNumber(result.skipped?.length || 0)} skipped.`,
       "success"
     );
   } catch (error) {
@@ -8543,24 +8789,28 @@ async function sendAwardNoticeDrafts() {
   if (awardMutationRunning) return;
   if (!selectedEventId) return;
   if (blockIfAwardPreflightFails("send_notices")) return;
-  const ids = sendableAwardNoticeIds();
+  const channel = awardNoticeChannel();
+  const channelLabel = awardNoticeChannelLabel(channel);
+  const ids = sendableAwardNoticeIds(awardNoticeDraftRows(), channel);
   if (!ids.length) {
-    setStatus(rfxAwardStatus, "There are no unsent award notice emails ready.", "error");
+    setStatus(rfxAwardStatus, `There are no unsent award notice ${channelLabel} messages ready.`, "error");
     return;
   }
-  if (!window.confirm(`Send ${ids.length} individual award notice email(s) from ${APPROVED_GMAIL_SENDER}?`)) return;
+  if (!window.confirm(`Send ${ids.length} individual award notice ${channelLabel} message(s)?`)) return;
   const eventId = selectedEventId;
   awardMutationRunning = true;
   if (rfxSendAwardNoticesButton) rfxSendAwardNoticesButton.disabled = true;
-  setStatus(rfxAwardStatus, `Sending ${formatNumber(ids.length)} award notice email(s)...`);
+  setStatus(rfxAwardStatus, `Sending ${formatNumber(ids.length)} award notice ${channelLabel} message(s)...`);
   try {
-    const result = await sendOutreachMessages(ids, { senderEmail: APPROVED_GMAIL_SENDER });
+    const result = channel === "whatsapp"
+      ? await sendWhatsappOutreachMessages(ids)
+      : await sendOutreachMessages(ids, { senderEmail: APPROVED_GMAIL_SENDER });
     if (!(await refreshOutreachStateForEvent(eventId))) return;
     renderOutreachLaunchpad();
     renderAwardBoard();
     setStatus(
       rfxAwardStatus,
-      `${formatNumber(result.sent || 0)} award notice email(s) sent. ${formatNumber(result.failed || 0)} failed.`,
+      `${formatNumber(result.sent || 0)} award notice ${channelLabel} message(s) sent. ${formatNumber(result.failed || 0)} failed.`,
       result.failed ? "warning" : "success"
     );
   } catch (error) {
@@ -9100,9 +9350,11 @@ async function syncSelectedWhatsappTemplate() {
 }
 
 initAuthControls();
+initResponseColumnFilters();
 renderManualLaneRows();
 activateRfxLaunchWorkspace(rfxLaunchWorkspace, { persist: false });
 activateRfxOperateWorkspace(rfxOperateWorkspace, { persist: false });
+activateRfxCloseWorkspace(rfxCloseWorkspace, { persist: false });
 window.addEventListener("popstate", applyRfxUrlStateFromBrowser);
 requirePrivatePage().then((session) => {
   if (session?.token) {
@@ -9947,6 +10199,12 @@ rfxOperateWorkspaceTabs?.addEventListener("click", (event) => {
   activateRfxOperateWorkspace(button.dataset.rfxOperateWorkspaceTab || "auction");
 });
 
+rfxCloseWorkspaceTabs?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-rfx-close-workspace-tab]");
+  if (!button) return;
+  activateRfxCloseWorkspace(button.dataset.rfxCloseWorkspaceTab || "award", { focus: true });
+});
+
 liveOfferManager?.addEventListener("click", (event) => {
   const askCarrierButton = event.target.closest("[data-rfx-ask-carrier]");
   if (!askCarrierButton) return;
@@ -10014,8 +10272,18 @@ rfxCloseoutAwardsButton?.addEventListener("click", closeoutSelectedAwardsToRatew
 rfxApplyRecommendedAwardsButton?.addEventListener("click", applyRecommendedAwardDecisions);
 rfxGenerateAwardNoticesButton?.addEventListener("click", generateAwardNoticeDrafts);
 rfxSendAwardNoticesButton?.addEventListener("click", sendAwardNoticeDrafts);
+rfxAwardNoticeChannel?.addEventListener("change", () => {
+  awardNoticePreviewId = "";
+  updateAwardNoticeControls();
+});
 
 rfxAwardNoticeQueue?.addEventListener("click", async (event) => {
+  const previewButton = event.target.closest("[data-rfx-preview-award-notice]");
+  if (previewButton) {
+    awardNoticePreviewId = previewButton.dataset.rfxPreviewAwardNotice || "";
+    renderAwardNoticeQueue(awardNoticeDraftRows());
+    return;
+  }
   const openButton = event.target.closest("[data-rfx-open-award-notice]");
   if (openButton) {
     const url = openButton.dataset.rfxOpenAwardNotice;
