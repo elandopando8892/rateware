@@ -6,36 +6,36 @@
     <title>Rateware Bid Room</title>
     <link rel="stylesheet" href="./src/styles.css" />
   </head>
-  <body>
+  <body class="bid-room-page">
     <div class="shell-layout">
       <aside class="side-nav" aria-label="Rateware modules">
         <a class="brand-mark" href="./app.html">Rateware</a>
         <nav class="nav-groups">
           <section class="nav-group">
             <p>Operate</p>
-            <a href="./app.html" data-nav-code="CC">Command Center</a>
-            <a href="./upload-center.html" data-nav-code="IM">Import</a>
-            <a href="./upload-history.html" data-nav-code="SF">Source Files</a>
-            <a href="./staging-review.html" data-nav-code="RQ">Review Queue</a>
-            <a href="./rateware.html" data-nav-code="RW">Rateware</a>
+            <a href="./app.html" data-nav-code="CC" data-nav-tooltip="Priorities, health, and next action">Command Center</a>
+            <a href="./upload-center.html" data-nav-code="IM" data-nav-tooltip="Upload carrier quotes and source files">Import</a>
+            <a href="./upload-history.html" data-nav-code="SF" data-nav-tooltip="Review interpretation history and failures">Source Files</a>
+            <a href="./staging-review.html" data-nav-code="RQ" data-nav-tooltip="Correct and approve staged rates">Review Queue</a>
+            <a href="./rateware.html" data-nav-code="RW" data-nav-tooltip="Search approved rates and exports">Rateware</a>
           </section>
           <section class="nav-group">
             <p>Analyze</p>
-            <a href="./business-intelligence.html" data-nav-code="AN">Analyze</a>
+            <a href="./business-intelligence.html" data-nav-code="AN" data-nav-tooltip="Find carrier, lane, and market signals">Analyze</a>
           </section>
           <section class="nav-group">
             <p>Source</p>
-            <a href="./vendors.html" data-nav-code="CM">Carrier CRM</a>
-            <a href="./rfx-process.html" data-nav-code="RP">RFx Process</a>
-            <a aria-current="page" href="./rfx-events.html" data-nav-code="BR">Bid Room</a>
-            <a href="./vendor-support.html" data-nav-code="VS">Vendor Support</a>
-            <a href="./vendor-improvement.html" data-nav-code="CI">Vendor CI</a>
+            <a href="./vendors.html" data-nav-code="CM" data-nav-tooltip="Source and curate your carrier base">Carrier CRM</a>
+            <a href="./rfx-process.html" data-nav-code="RP" data-nav-tooltip="Build a business book and RFx">RFx Process</a>
+            <a aria-current="page" href="./rfx-events.html" data-nav-code="BR" data-nav-tooltip="Launch, monitor, and close private bids">Bid Room</a>
+            <a href="./vendor-support.html" data-nav-code="VS" data-nav-tooltip="Resolve carrier tickets and questions">Vendor Support</a>
+            <a href="./vendor-improvement.html" data-nav-code="CI" data-nav-tooltip="Run carrier improvement plans">Vendor CI</a>
           </section>
           <section class="nav-group">
             <p>Admin</p>
-            <a href="./settings.html" data-nav-code="ST">Settings</a>
-            <a href="./interpretation-memory.html" data-nav-code="LR">Learning Rules</a>
-            <a href="./catalog-workbench.html" data-nav-code="CT">Catalog</a>
+            <a href="./settings.html" data-nav-code="ST" data-nav-tooltip="Workspace, integrations, and configuration">Settings</a>
+            <a href="./interpretation-memory.html" data-nav-code="LR" data-nav-tooltip="Parser rules, aliases, and corrections">Learning Rules</a>
+            <a href="./catalog-workbench.html" data-nav-code="CT" data-nav-tooltip="Locations, markets, and operational values">Catalog</a>
           </section>
         </nav>
       </aside>
@@ -65,6 +65,44 @@
         <main class="bid-room-product">
           <aside class="bid-room-event-rail" aria-label="Bid events">
             <section class="bid-room-rail-card">
+              <div class="bid-room-event-filter-strip" aria-label="Filter bid events">
+                <label class="bid-room-event-filter-search">
+                  <span class="sr-only">Search bid events</span>
+                  <input id="rfx-event-filter-search" type="search" placeholder="Search RFx, title, customer" autocomplete="off" />
+                </label>
+                <label>
+                  <span class="sr-only">Event status</span>
+                  <select id="rfx-event-status-filter" aria-label="Event status">
+                    <option value="all">All status</option>
+                    <option value="open">Open</option>
+                    <option value="draft">Draft</option>
+                    <option value="closed">Closed</option>
+                    <option value="archived">Archived</option>
+                  </select>
+                </label>
+                <label>
+                  <span class="sr-only">Event type</span>
+                  <select id="rfx-event-type-filter" aria-label="Event type">
+                    <option value="all">All types</option>
+                  </select>
+                </label>
+                <label>
+                  <span class="sr-only">Bid visibility</span>
+                  <select id="rfx-event-visibility-filter" aria-label="Bid visibility">
+                    <option value="all">All visibility</option>
+                  </select>
+                </label>
+                <label class="bid-room-event-view-select">
+                  <span class="sr-only">Saved event view</span>
+                  <select id="rfx-event-view-select" aria-label="Saved event view">
+                    <option value="">Saved views</option>
+                  </select>
+                </label>
+                <input id="rfx-event-view-name" class="bid-room-event-view-name" type="text" placeholder="View name" aria-label="New event view name" />
+                <button id="save-rfx-event-view" class="secondary small-button" type="button" title="Save current event filters">Save view</button>
+                <button id="delete-rfx-event-view" class="secondary small-button" type="button" title="Delete selected event view" disabled>Delete</button>
+                <span id="rfx-event-filter-count" class="bid-room-event-filter-count" role="status"></span>
+              </div>
               <div class="split-heading compact">
                 <div>
                   <p class="eyebrow">Bid rooms</p>
@@ -111,19 +149,19 @@
 
               <div class="bid-room-flow-shell">
                 <nav id="rfx-ops-stage-rail" class="bid-room-stage-rail" role="tablist" aria-label="Bid Room stages">
-                  <button type="button" role="tab" aria-selected="true" data-workbench-view-button="setup" data-workbench-view-group="setup lanes carriers" data-workbench-activate="setup" data-stage-key="build">
+                  <button type="button" role="tab" aria-selected="true" data-workbench-view-button="setup" data-workbench-view-group="setup lanes carriers" data-workbench-activate="setup" data-stage-key="build" data-stage-tooltip="Create the event, load the book, and choose CRM participants">
                     <span class="stage-index">1</span>
                     <span class="stage-copy"><strong>Build</strong><small>Event | Book | CRM</small></span>
                   </button>
-                  <button type="button" role="tab" aria-selected="false" data-workbench-view-button="outreach" data-stage-key="launch">
+                  <button type="button" role="tab" aria-selected="false" data-workbench-view-button="outreach" data-stage-key="launch" data-stage-tooltip="Prepare carrier invitations and delivery queues">
                     <span class="stage-index">2</span>
                     <span class="stage-copy"><strong>Launch</strong><small>Invites | Queue</small></span>
                   </button>
-                  <button type="button" role="tab" aria-selected="false" data-workbench-view-button="responses" data-stage-key="operate">
+                  <button type="button" role="tab" aria-selected="false" data-workbench-view-button="responses" data-stage-key="operate" data-stage-tooltip="Monitor offers, capacity, and event communications">
                     <span class="stage-index">3</span>
                     <span class="stage-copy"><strong>Operate</strong><small>Auction | Live</small></span>
                   </button>
-                  <button type="button" role="tab" aria-selected="false" data-workbench-view-button="award" data-stage-key="close">
+                  <button type="button" role="tab" aria-selected="false" data-workbench-view-button="award" data-stage-key="close" data-stage-tooltip="Award lanes and close out approved costs to Rateware">
                     <span class="stage-index">4</span>
                     <span class="stage-copy"><strong>Close</strong><small>Award | Rateware</small></span>
                   </button>
@@ -152,14 +190,31 @@
               </div>
             </section>
 
-            <section class="bid-room-stage-panel" data-workbench-view-panel="setup">
+            <div class="bid-room-build-column" aria-label="Build workspace">
+            <section class="bid-room-stage-panel" data-workbench-view-panel="setup lanes carriers">
               <div class="bid-room-stage-header">
                 <div>
                   <p class="eyebrow">Build / Event</p>
                   <h3>Event setup</h3>
                 </div>
-                <span class="status-pill muted">Required before lanes</span>
+                <span id="rfx-event-setup-status" class="status-pill muted">Required before lanes</span>
               </div>
+              <section id="rfx-event-published-summary" class="rfx-event-published-summary" hidden aria-live="polite">
+                <div class="rfx-event-published-heading">
+                  <div>
+                    <p class="eyebrow">Published event</p>
+                    <h3 id="rfx-published-event-name">-</h3>
+                  </div>
+                  <span id="rfx-published-event-status" class="status-pill muted">-</span>
+                </div>
+                <dl class="rfx-event-published-grid">
+                  <div><dt>RFx ID</dt><dd id="rfx-published-event-id">-</dd></div>
+                  <div><dt>Customer</dt><dd id="rfx-published-event-customer">-</dd></div>
+                  <div><dt>Type</dt><dd id="rfx-published-event-type">-</dd></div>
+                  <div><dt>Due date</dt><dd id="rfx-published-event-due">-</dd></div>
+                  <div><dt>Bid visibility</dt><dd id="rfx-published-event-visibility">-</dd></div>
+                </dl>
+              </section>
               <nav class="bid-room-build-tabs" role="tablist" aria-label="Build stages">
                 <button type="button" role="tab" aria-selected="true" class="secondary small-button" data-workbench-view-button="setup">Event</button>
                 <button type="button" role="tab" aria-selected="false" class="secondary small-button" data-workbench-view-button="lanes">Business book</button>
@@ -207,7 +262,7 @@
               </div>
             </section>
 
-            <section class="bid-room-stage-panel" data-workbench-view-panel="lanes" hidden>
+            <section class="bid-room-stage-panel" data-workbench-view-panel="setup lanes carriers" hidden>
               <div class="bid-room-stage-header">
                 <div>
                   <p class="eyebrow">Build / Book</p>
@@ -219,16 +274,17 @@
                 <div class="bid-room-book-entry-header">
                   <div>
                     <p class="eyebrow">Business book entry</p>
-                    <h3>Load lanes by template or quick manual entry</h3>
+                    <h3 id="rfx-lane-entry-title">Load lanes by template or quick manual entry</h3>
                   </div>
                   <button id="download-rfx-lane-template" class="secondary" type="button">Download template</button>
                 </div>
                 <div class="bid-room-template-upload">
                   <label>
-                    Filled template for large RFx books
+                    <span id="rfx-lane-template-label">Filled template for large RFx books</span>
                     <input id="rfx-lane-template-file" type="file" accept=".xlsx,.xls,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
                   </label>
                 </div>
+                <p id="rfx-lane-entry-guidance" class="status-message" role="note">Upload a completed lane template to preview rows before import.</p>
                 <div id="rfx-lane-template-preview" class="table-wrap bid-room-template-preview" hidden>
                   <table>
                     <thead>
@@ -249,6 +305,11 @@
                   <button id="clear-rfx-lanes-input" class="secondary" type="button">Clear template</button>
                   <span id="rfx-lane-import-status" class="status-message" role="status"></span>
                 </div>
+                <details class="bid-room-manual-lanes-disclosure">
+                  <summary>
+                    <span>Quick manual entry</span>
+                    <small>Optional for a few lanes</small>
+                  </summary>
                 <section class="bid-room-manual-lanes" aria-labelledby="manual-lanes-title">
                   <div class="bid-room-manual-lanes-header">
                     <div>
@@ -264,6 +325,7 @@
                     <table class="bid-room-manual-lanes-table">
                       <thead>
                         <tr>
+                          <th>Actions</th>
                           <th>Origin</th>
                           <th>Destination</th>
                           <th>Equipment</th>
@@ -273,7 +335,13 @@
                           <th>Weekly</th>
                           <th>Target</th>
                           <th>Currency</th>
-                          <th></th>
+                          <th>Logistics model</th>
+                          <th>Operation criteria</th>
+                          <th>Business rules</th>
+                          <th>Service specifications</th>
+                          <th>Carrier profile</th>
+                          <th>Other notes</th>
+                          <th>Internal notes</th>
                         </tr>
                       </thead>
                       <tbody id="rfx-manual-lanes-body"></tbody>
@@ -284,6 +352,7 @@
                     <span id="rfx-manual-lane-status" class="status-message" role="status"></span>
                   </div>
                 </section>
+                </details>
               </section>
               <div class="rfx-lane-toolbar bid-room-table-toolbar">
                 <div class="rfx-lane-filters" aria-label="Lane filters">
@@ -295,7 +364,7 @@
                   <button class="secondary small-button" type="button" data-rfx-lane-filter="above_benchmark">Above Rateware</button>
                 </div>
                 <div class="action-row compact-actions">
-                  <button id="toggle-rfx-lane-edit" class="secondary small-button" type="button" disabled>Edit loaded lanes</button>
+                  <button id="toggle-rfx-lane-edit" class="secondary small-button" type="button" disabled>Edit lane</button>
                   <button id="save-rfx-lane-edits" class="small-button" type="button" disabled>Save changes</button>
                   <button id="cancel-rfx-lane-edits" class="secondary small-button" type="button" disabled>Revert changes</button>
                   <span id="rfx-lane-edit-status" class="status-message" role="status"></span>
@@ -306,26 +375,40 @@
                 <table class="rfx-table">
                   <thead>
                     <tr>
+                      <th>Actions</th>
                       <th>Select</th>
                       <th>Lane</th>
                       <th>Origin</th>
                       <th>Destination</th>
                       <th>Equipment</th>
-                      <th>Volume</th>
+                      <th>Trailer</th>
+                      <th>Config</th>
+                      <th>Operation</th>
+                      <th>Service</th>
+                      <th>Weekly</th>
+                      <th>Target</th>
+                      <th>Currency</th>
+                      <th>Logistics model</th>
+                      <th>Operation criteria</th>
+                      <th>Business rules</th>
+                      <th>Service specifications</th>
+                      <th>Carrier profile</th>
+                      <th>Other notes</th>
+                      <th>Internal notes</th>
                       <th>Supply depth</th>
                       <th>Progress</th>
                     </tr>
                   </thead>
                   <tbody id="rfx-lanes-body">
                     <tr>
-                      <td colspan="8">Select an event to load lanes.</td>
+                      <td colspan="22">Select an event to load lanes.</td>
                     </tr>
                   </tbody>
                 </table>
               </div>
             </section>
 
-            <section class="bid-room-stage-panel" data-workbench-view-panel="carriers" hidden>
+            <section class="bid-room-stage-panel" data-workbench-view-panel="setup lanes carriers" hidden>
               <div class="bid-room-stage-header">
                 <div>
                   <p class="eyebrow">Build / Participants</p>
@@ -333,6 +416,15 @@
                 </div>
                 <span class="status-pill muted">CRM shortlist</span>
               </div>
+              <section id="rfx-participant-summary" class="rfx-participant-summary" aria-live="polite">
+                <p class="eyebrow">Carrier coverage</p>
+                <h3>Participants already managed for this opportunity</h3>
+                <div id="rfx-participant-summary-content" class="rfx-participant-summary-content">
+                  <span>No participant rows loaded yet.</span>
+                </div>
+              </section>
+              <details id="rfx-participant-manager" class="rfx-participant-manager">
+                <summary>Manage participants in Carrier CRM</summary>
               <div class="bid-room-carrier-grid">
                 <section class="rfx-shortlist-box">
                   <div class="bid-room-participant-heading">
@@ -422,90 +514,149 @@
                   </details>
                 </section>
               </div>
+              </details>
             </section>
+
+            </div>
 
             <section class="bid-room-stage-panel" data-workbench-view-panel="outreach" hidden>
               <div class="bid-room-stage-header">
                 <div>
                   <p class="eyebrow">Launch</p>
-                  <h3>Outreach launchpad</h3>
+                  <h3>Launch invitations</h3>
                 </div>
               </div>
-              <details id="rfx-outreach-carrier-adder" class="rfx-outreach-carrier-adder">
-                <summary>
-                  <span>Add carriers to this wave</span>
-                  <small>Search Carrier CRM and create drafts only for new participants. Existing outreach stays unchanged.</small>
-                </summary>
+              <div id="rfx-launch-workspace-tabs" class="rfx-launch-workspace-tabs" role="tablist" aria-label="Launch workspaces">
+                <button type="button" role="tab" aria-selected="true" aria-controls="rfx-launch-carrier-workspace" data-rfx-launch-workspace="carrier">
+                  <strong>Carrier fit</strong>
+                  <small>Find eligible carriers and review this RFx.</small>
+                </button>
+                <button type="button" role="tab" aria-selected="false" aria-controls="rfx-launch-message-workspace" data-rfx-launch-workspace="message">
+                  <strong>Message</strong>
+                  <small>Configure one channel and preview it.</small>
+                </button>
+                <button type="button" role="tab" aria-selected="false" aria-controls="rfx-launch-delivery-workspace" data-rfx-launch-workspace="delivery">
+                  <strong>Delivery queue</strong>
+                  <small>Re-invite and validate this RFx.</small>
+                </button>
+              </div>
+              <section id="rfx-launch-carrier-workspace" class="rfx-launch-workspace-panel" data-rfx-launch-workspace-panel="carrier" role="tabpanel">
+              <div class="rfx-outreach-launch-grid">
+              <section id="rfx-outreach-carrier-adder" class="rfx-outreach-carrier-adder" aria-labelledby="rfx-outreach-carrier-title">
+                <div class="rfx-outreach-carrier-heading">
+                  <div>
+                    <p class="eyebrow">1. Carrier fit</p>
+                    <h4 id="rfx-outreach-carrier-title">Find carriers for this opportunity</h4>
+                    <small>Uses each carrier's CRM profile, declared coverage, tags, contact readiness, Rateware quote evidence, and prior bid activity. Existing invitations stay unchanged.</small>
+                  </div>
+                  <div class="rfx-outreach-carrier-heading-actions">
+                    <span id="rfx-outreach-carrier-fit-summary" class="status-pill muted">Loading Carrier CRM</span>
+                    <button id="rfx-refresh-outreach-carrier-fit" class="secondary small-button" type="button" title="Refresh Carrier CRM and Rateware fit signals">Refresh fit</button>
+                  </div>
+                </div>
                 <div class="rfx-outreach-carrier-adder-body">
-                  <label>
-                    Search Carrier CRM
-                    <input id="rfx-outreach-carrier-search" type="search" placeholder="Carrier name, domain, or contact..." autocomplete="off" />
-                  </label>
+                  <div class="rfx-outreach-carrier-filter-row">
+                    <label>
+                      Starting set
+                      <select id="rfx-outreach-carrier-scope">
+                        <option value="recommended">Recommended for this RFx</option>
+                        <option value="procurement">Procurement &amp; pipeline</option>
+                        <option value="all_active">All active CRM carriers</option>
+                        <option value="saved_segment">Saved carrier list</option>
+                      </select>
+                    </label>
+                    <label id="rfx-outreach-carrier-segment-field" hidden title="Saved lists are reusable Carrier CRM segments. Carriers already participating in this RFx stay in Delivery queue.">
+                      Saved list
+                      <span class="rfx-outreach-list-control">
+                        <select id="rfx-outreach-carrier-segment">
+                          <option value="">Choose a saved carrier list</option>
+                        </select>
+                        <a class="secondary small-button" href="./vendors.html?tab=segments" title="Create, edit, archive, or delete reusable Carrier CRM lists">Manage</a>
+                      </span>
+                    </label>
+                    <label>
+                      Fit signal
+                      <select id="rfx-outreach-carrier-fit">
+                        <option value="any">Any lane fit</option>
+                        <option value="equipment">Equipment match</option>
+                        <option value="operation">Operation match</option>
+                        <option value="service">Service match</option>
+                        <option value="contactable">Has a delivery contact</option>
+                      </select>
+                    </label>
+                    <label>
+                      Route
+                      <select id="rfx-outreach-carrier-lane">
+                        <option value="all">All event lanes</option>
+                      </select>
+                    </label>
+                    <label class="rfx-outreach-carrier-search-field">
+                      Search CRM
+                      <input id="rfx-outreach-carrier-search" type="search" placeholder="Carrier, domain, contact, tag..." autocomplete="off" />
+                    </label>
+                  </div>
                   <div class="rfx-outreach-carrier-picker-grid">
                     <section>
                       <div class="rfx-outreach-carrier-picker-heading">
-                        <strong>CRM matches</strong>
-                        <span id="rfx-outreach-carrier-match-count">Type 2+ characters to search</span>
+                        <strong>Compatible carriers</strong>
+                        <span id="rfx-outreach-carrier-match-count">Loading CRM</span>
                       </div>
                       <div id="rfx-outreach-carrier-candidates" class="rfx-outreach-carrier-list"></div>
                     </section>
                     <section>
                       <div class="rfx-outreach-carrier-picker-heading">
-                        <strong>Selected carriers</strong>
+                        <strong>Add to this RFx</strong>
                         <span id="rfx-outreach-carrier-selected-count">0 selected</span>
                       </div>
                       <div id="rfx-outreach-carrier-selected" class="rfx-outreach-carrier-list"></div>
                     </section>
                   </div>
                   <div class="action-row">
-                    <button id="rfx-add-outreach-carriers" type="button" disabled>Add selected carriers</button>
-                    <button id="rfx-clear-outreach-carrier-selection" class="secondary" type="button" disabled>Clear selection</button>
+                    <button id="rfx-add-outreach-carriers" type="button" disabled>Add to this Bid Room</button>
+                    <button id="rfx-clear-outreach-carrier-selection" class="secondary" type="button" disabled>Clear candidate selection</button>
                   </div>
                   <p id="rfx-outreach-carrier-status" class="status-message" role="status"></p>
                 </div>
-              </details>
+              </section>
               <section id="rfx-outreach-audience-builder" class="rfx-outreach-control-center" aria-labelledby="rfx-outreach-audience-title">
                 <div class="rfx-outreach-control-heading">
                   <div class="rfx-outreach-control-title">
-                    <p class="eyebrow">Outreach</p>
-                    <h4 id="rfx-outreach-audience-title">Audience</h4>
+                    <p class="eyebrow">2. This RFx</p>
+                    <h4 id="rfx-outreach-audience-title">Invitation status</h4>
+                    <small>Only carriers added to this Bid Room appear here. This follows this RFx only; activity from other events is never mixed in.</small>
                   </div>
                   <div class="rfx-outreach-audience-metrics" aria-live="polite">
-                    <span><strong id="rfx-outreach-audience-ready-count">0</strong> ready</span>
-                    <span><strong id="rfx-outreach-audience-contacted-count">0</strong> contacted</span>
+                    <span><strong id="rfx-outreach-audience-ready-count">0</strong> to invite</span>
+                    <span><strong id="rfx-outreach-audience-contacted-count">0</strong> delivered</span>
+                    <span><strong id="rfx-outreach-audience-response-count">0</strong> response</span>
                     <span><strong id="rfx-outreach-audience-attention-count">0</strong> attention</span>
                   </div>
                   <div class="rfx-outreach-audience-actions">
-                    <button id="rfx-select-ready-outreach-audience" type="button" class="secondary small-button" title="Select all ready carriers currently shown">Select ready</button>
+                    <button id="rfx-select-ready-outreach-audience" type="button" class="secondary small-button" title="Select all carriers ready for a new queue">Select ready to queue</button>
                     <button id="rfx-clear-outreach-audience-selection" type="button" class="secondary small-button" title="Clear selected carriers">Clear</button>
                     <button id="rfx-refresh-outreach-audience" type="button" class="secondary small-button">Refresh</button>
                   </div>
                 </div>
                 <div class="rfx-outreach-audience-controls">
-                  <label class="rfx-outreach-audience-source">
-                    Audience
-                    <select id="rfx-outreach-audience-mode">
-                      <option value="all_eligible">All eligible carriers</option>
-                      <option value="saved_segment">Saved list</option>
-                    </select>
-                  </label>
-                  <label id="rfx-outreach-audience-segment-field" class="rfx-outreach-audience-segment-field">
-                    List
-                    <select id="rfx-outreach-audience-segment">
-                      <option value="">Choose a saved segment</option>
-                    </select>
-                  </label>
                   <label class="rfx-outreach-audience-search-field">
-                    Search
+                    Search this RFx
                     <input id="rfx-outreach-audience-search" type="search" placeholder="Carrier, domain, contact..." autocomplete="off" />
                   </label>
                   <label class="rfx-outreach-audience-outcome-field">
-                    Status
+                    Invitation status
                     <select id="rfx-outreach-audience-status-filter">
-                      <option value="all">All outcomes</option>
-                      <option value="ready">Ready</option>
-                      <option value="already_contacted">Already contacted</option>
+                      <option value="all">All carriers in this RFx</option>
+                      <option value="ready">Ready to queue</option>
+                      <option value="in_delivery">In delivery</option>
+                      <option value="response">Responded / quoted</option>
+                      <option value="attention">Needs attention</option>
+                      <option value="drafted">Drafted</option>
+                      <option value="queued">Queued</option>
+                      <option value="invited">Invited / receipt pending</option>
+                      <option value="sent">Sent</option>
+                      <option value="delivered">Delivered / read</option>
                       <option value="bounced">Bounced</option>
+                      <option value="failed">Failed</option>
                       <option value="suppressed">Suppressed</option>
                       <option value="no_contact">No contact</option>
                       <option value="replied">Replied</option>
@@ -517,8 +668,21 @@
                   <span id="rfx-outreach-audience-summary" class="status-pill muted">No audience loaded</span>
                   <p id="rfx-outreach-audience-status" class="status-message" role="status"></p>
                   <details class="rfx-outreach-audience-list-tools">
-                    <summary>Save or manage a list</summary>
+                    <summary>Advanced: save recipient list</summary>
                     <div class="rfx-outreach-audience-segment-controls">
+                      <label class="rfx-outreach-audience-source">
+                        Recipient source
+                        <select id="rfx-outreach-audience-mode">
+                          <option value="all_eligible">All carriers in this RFx</option>
+                          <option value="saved_segment">Saved recipient list</option>
+                        </select>
+                      </label>
+                      <label id="rfx-outreach-audience-segment-field" class="rfx-outreach-audience-segment-field">
+                        Recipient list
+                        <select id="rfx-outreach-audience-segment">
+                          <option value="">Choose a saved segment</option>
+                        </select>
+                      </label>
                       <input id="rfx-outreach-audience-segment-name" placeholder="List name" autocomplete="off" />
                       <button id="rfx-save-outreach-audience-segment" type="button" class="secondary small-button">Save list</button>
                       <button id="rfx-archive-outreach-audience-segment" type="button" class="secondary small-button">Archive selected list</button>
@@ -530,10 +694,10 @@
                     <thead>
                       <tr>
                         <th>Select</th>
-                        <th>Carrier</th>
+                        <th>Carrier / RFx coverage</th>
                         <th>Contact</th>
-                        <th>Status</th>
-                        <th>Next action</th>
+                        <th>Event status</th>
+                        <th>What to do</th>
                       </tr>
                     </thead>
                     <tbody id="rfx-outreach-audience-list">
@@ -542,15 +706,18 @@
                   </table>
                 </div>
               </section>
+              </div>
+              </section>
+              <section id="rfx-launch-message-workspace" class="rfx-launch-workspace-panel" data-rfx-launch-workspace-panel="message" role="tabpanel" hidden>
               <div class="rfx-outreach-grid bid-room-invite-grid">
                 <div class="rfx-outreach-controls">
                   <div class="rfx-outreach-section-heading">
                     <div>
                       <p class="eyebrow">Message setup</p>
                       <h4>Compose this invitation</h4>
-                      <span>Choose the language, sender, and delivery channel. Preparing a queue never sends a message automatically.</span>
+                      <span>Set one message and one channel for the selected carriers in this RFx. Preparing the queue never sends automatically.</span>
                     </div>
-                    <span class="status-pill muted">Draft first</span>
+                    <span id="rfx-message-setup-state" class="status-pill muted">Queue not prepared</span>
                   </div>
                   <form id="rfx-outreach-form" class="rfx-outreach-form" data-unsaved-guard>
                     <label>
@@ -598,7 +765,7 @@
                     <span>Launch uses sales@heymarksman.com as the only approved sender. Connect it in Settings before direct Gmail sending.</span>
                   </section>
                   <details id="rfx-template-editor" class="rfx-template-editor is-source-admin">
-                    <summary>HTML source fallback</summary>
+                    <summary>Advanced HTML override</summary>
                     <div class="rfx-template-editor-body">
                       <label>
                         Subject
@@ -626,9 +793,10 @@
                   <div class="rfx-outreach-section-heading rfx-outreach-preview-heading">
                     <div>
                       <p class="eyebrow">Live preview</p>
-                      <h4>What the carrier will receive</h4>
+                      <h4>Carrier-facing preview</h4>
+                      <span>Shows only the channel selected for this RFx, before it enters the queue.</span>
                     </div>
-                    <span class="status-pill muted">Preview only</span>
+                    <span id="rfx-outreach-preview-channel" class="status-pill muted">Select a channel</span>
                   </div>
                   <div id="rfx-outreach-preview" class="outreach-template-preview">
                     <strong>No message selected.</strong>
@@ -636,14 +804,17 @@
                   </div>
                 </div>
               </div>
+              </section>
+              <section id="rfx-launch-delivery-workspace" class="rfx-launch-workspace-panel" data-rfx-launch-workspace-panel="delivery" role="tabpanel" hidden>
               <div class="rfx-touchpoint-panel rfx-draft-queue-panel">
                 <div class="rfx-draft-queue-intro">
-                  <p class="eyebrow">Delivery queue</p>
-                  <strong>Review before sending</strong>
+                  <p class="eyebrow">Delivery &amp; participation</p>
+                  <strong>Follow this RFx</strong>
                   <span id="rfx-draft-summary">No drafts generated for this bid event.</span>
-                  <small>One contact record per carrier, message channel, and RFx. Sent history remains preserved.</small>
+                  <small id="rfx-event-delivery-context">Every row is one carrier, one channel, and this RFx only. Re-invite, validate delivery, or follow a reply without changing sent history.</small>
                 </div>
                 <div class="rfx-draft-workbench">
+                  <div id="rfx-event-delivery-overview" class="rfx-event-delivery-overview" aria-live="polite"></div>
                   <div class="rfx-draft-filterbar">
                     <label>
                       <span>Search drafts</span>
@@ -674,7 +845,7 @@
                     <button id="rfx-send-selected-email-drafts" type="button" class="small-button" data-rfx-draft-action-channel="email" disabled>Send selected emails</button>
                     <button id="rfx-send-selected-whatsapp-drafts" type="button" class="secondary small-button" data-rfx-draft-action-channel="whatsapp" disabled>Send WhatsApp direct</button>
                     <button id="rfx-mark-selected-whatsapp-groups" type="button" class="secondary small-button" data-rfx-draft-action-channel="whatsapp_group" disabled>Mark groups sent</button>
-                    <button id="rfx-archive-selected-drafts" type="button" class="secondary small-button" disabled>Archive selected</button>
+                    <button id="rfx-archive-selected-drafts" type="button" class="secondary small-button" title="Hides delivery messages from the active queue. It does not remove carriers, bids, replies, or RFx history." disabled>Archive messages</button>
                     <button id="rfx-delete-selected-drafts" type="button" class="danger small-button" disabled>Delete selected</button>
                   </div>
                   <div class="table-wrap rfx-draft-table-wrap">
@@ -699,19 +870,37 @@
                   </div>
                 </div>
               </div>
+              </section>
             </section>
 
             <section class="bid-room-stage-panel" data-workbench-view-panel="responses" hidden>
               <div class="bid-room-stage-header">
                 <div>
                   <p class="eyebrow">Operate</p>
-                  <h3>Auction room</h3>
+                  <h3>Bid operations</h3>
                 </div>
                 <span id="rfx-response-summary" class="status-pill muted">No bids</span>
               </div>
-              <div id="rfx-live-offer-manager" class="rfx-live-offer-manager">
-                <article class="ui-state" data-tone="neutral"><span>Auction room</span><strong>No live bids yet</strong><p>Offers will appear here after invited carriers submit a bid.</p></article>
+              <div id="rfx-operate-workspace-tabs" class="rfx-operate-workspace-tabs" role="tablist" aria-label="Bid operations workspaces">
+                <button type="button" class="is-active" role="tab" aria-selected="true" data-rfx-operate-workspace-tab="auction">Auction room<span>Compare offers by lane</span></button>
+                <button type="button" role="tab" aria-selected="false" data-rfx-operate-workspace-tab="communications">Carrier communications<span>Event and private threads</span></button>
+                <button type="button" role="tab" aria-selected="false" data-rfx-operate-workspace-tab="carrier-bids">Carrier bids<span>All carrier-lane responses</span></button>
               </div>
+
+              <section class="rfx-operate-workspace-panel" data-rfx-operate-workspace-panel="auction">
+                <div class="bid-room-workspace-heading">
+                  <div>
+                    <p class="eyebrow">Auction room</p>
+                    <h4>Compare offers by route</h4>
+                  </div>
+                  <span>Direct questions open a carrier thread in Communications.</span>
+                </div>
+                <div id="rfx-live-offer-manager" class="rfx-live-offer-manager">
+                  <article class="ui-state" data-tone="neutral"><span>Auction room</span><strong>No live bids yet</strong><p>Offers will appear here after invited carriers submit a bid.</p></article>
+                </div>
+              </section>
+
+              <section class="rfx-operate-workspace-panel" data-rfx-operate-workspace-panel="communications" hidden>
               <section class="bid-room-chat-panel">
                 <div class="bid-room-stage-header compact">
                   <div>
@@ -749,6 +938,14 @@
                   </div>
                   <button id="rfx-chat-copy-summary" type="button" class="secondary small-button">Copy summary</button>
                 </div>
+                <div id="rfx-chat-recipient-context" class="rfx-chat-recipient-context" hidden>
+                  <div>
+                    <span>Carrier email reply</span>
+                    <strong id="rfx-chat-recipient-name">No carrier selected</strong>
+                    <small id="rfx-chat-recipient-lane">Choose Reply by email from Auction room or Carrier bids.</small>
+                  </div>
+                  <button id="rfx-chat-recipient-clear" type="button" class="secondary small-button">Use event group</button>
+                </div>
                 <div id="rfx-chat-ai-summary" class="bid-room-comm-summary">
                   Select a bid event to load the communication queue.
                 </div>
@@ -760,6 +957,7 @@
                     Thread
                     <select id="rfx-chat-thread-type">
                       <option value="event_group">Event group</option>
+                      <option value="carrier_private" disabled>Private carrier</option>
                     </select>
                   </label>
                   <button id="rfx-chat-refresh" type="button" class="secondary small-button">Refresh</button>
@@ -770,6 +968,7 @@
                 </div>
                 <form id="rfx-chat-form" class="bid-room-chat-form">
                   <textarea id="rfx-chat-message" rows="2" placeholder="Write message to carriers or selected carrier..."></textarea>
+                  <p id="rfx-chat-delivery-help" class="bid-room-chat-delivery-help" hidden></p>
                   <button id="rfx-chat-send" type="submit" disabled>Send</button>
                 </form>
                 <aside id="rfx-chat-bid-update-drawer" class="bid-room-bid-update-drawer" hidden>
@@ -819,30 +1018,140 @@
                 </aside>
                 <p id="rfx-chat-status" class="status-message" role="status"></p>
               </section>
+              </section>
+
+              <section class="rfx-operate-workspace-panel" data-rfx-operate-workspace-panel="carrier-bids" hidden>
+                <div class="bid-room-workspace-heading">
+                  <div>
+                    <p class="eyebrow">Carrier bids</p>
+                    <h4>All carrier-lane responses</h4>
+                  </div>
+                  <span>Capture an external quote or ask a targeted question without leaving the event.</span>
+                </div>
+              <aside id="rfx-manual-bid-drawer" class="bid-room-bid-update-drawer" hidden>
+                <div class="bid-room-drawer-header">
+                  <div>
+                    <p class="eyebrow">Operator-assisted capture</p>
+                    <h4>Record manual bid</h4>
+                    <span id="rfx-manual-bid-title">Carrier quote received outside Bid Room</span>
+                  </div>
+                  <button id="rfx-manual-bid-close" class="secondary small-button" type="button">Close</button>
+                </div>
+                <form id="rfx-manual-bid-form" class="bid-room-bid-update-form">
+                  <div class="wide-field bid-room-source-preview">
+                    <span>Lane / carrier</span>
+                    <p id="rfx-manual-bid-context">Select a response row to capture a bid.</p>
+                  </div>
+                  <label>
+                    All-in rate
+                    <input id="rfx-manual-bid-rate" required inputmode="decimal" placeholder="2900" />
+                  </label>
+                  <label>
+                    Currency
+                    <input id="rfx-manual-bid-currency" maxlength="3" placeholder="USD" />
+                  </label>
+                  <label>
+                    Commercial model
+                    <select id="rfx-manual-bid-commercial-model">
+                      <option value="direct_cost_plus">Cost-plus</option>
+                      <option value="carrier_share">Carrier share</option>
+                      <option value="xbf_buy_sell">XBF buy-sell</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span id="rfx-manual-bid-commercial-label">Margin / share %</span>
+                    <input id="rfx-manual-bid-commercial-pct" inputmode="decimal" placeholder="3" />
+                  </label>
+                  <label>
+                    Capacity / wk
+                    <input id="rfx-manual-bid-capacity" inputmode="decimal" placeholder="5" />
+                  </label>
+                  <label>
+                    Transit days
+                    <input id="rfx-manual-bid-transit" inputmode="decimal" placeholder="2" />
+                  </label>
+                  <label>
+                    Availability
+                    <select id="rfx-manual-bid-availability">
+                      <option value="">Not provided</option>
+                      <option value="true">Available</option>
+                      <option value="false">Not available</option>
+                    </select>
+                  </label>
+                  <label>
+                    Valid through
+                    <input id="rfx-manual-bid-valid-through" type="date" />
+                  </label>
+                  <label>
+                    Pickup ETA
+                    <input id="rfx-manual-bid-pickup-eta" type="datetime-local" />
+                  </label>
+                  <label>
+                    Delivery ETA
+                    <input id="rfx-manual-bid-delivery-eta" type="datetime-local" />
+                  </label>
+                  <label>
+                    Current unit location
+                    <input id="rfx-manual-bid-unit-location" placeholder="Laredo, TX" />
+                  </label>
+                  <label>
+                    Deadhead
+                    <input id="rfx-manual-bid-deadhead" inputmode="decimal" placeholder="120" />
+                  </label>
+                  <label>
+                    Deadhead unit
+                    <select id="rfx-manual-bid-deadhead-unit">
+                      <option value="mi">Miles</option>
+                      <option value="km">Kilometers</option>
+                    </select>
+                  </label>
+                  <label>
+                    Quote source
+                    <select id="rfx-manual-bid-source">
+                      <option value="email">Email</option>
+                      <option value="phone">Phone</option>
+                      <option value="whatsapp">WhatsApp</option>
+                      <option value="other">Other</option>
+                    </select>
+                  </label>
+                  <label class="wide-field">
+                    Notes / carrier assumptions
+                    <textarea id="rfx-manual-bid-notes" rows="3" placeholder="Capture the carrier's confirmation, exclusions, accessorials or other assumptions."></textarea>
+                  </label>
+                  <div class="wide-field action-row">
+                    <button id="rfx-manual-bid-save" type="submit">Save manual bid</button>
+                    <button id="rfx-manual-bid-cancel" class="secondary" type="button">Cancel</button>
+                    <span id="rfx-manual-bid-status" class="status-message" role="status"></span>
+                  </div>
+                </form>
+              </aside>
               <div class="table-wrap">
                 <table class="rfx-response-table">
                   <thead>
                     <tr>
+                      <th>Action</th>
                       <th>Carrier</th>
                       <th>Lane</th>
                       <th>Status</th>
                       <th>Score</th>
                       <th>Bid</th>
-                      <th>Rateware</th>
-                      <th>Delta</th>
                       <th>Commercial</th>
                       <th>Availability</th>
                       <th>Capacity</th>
+                      <th>ETA</th>
+                      <th>Valid through</th>
                       <th>Transit</th>
+                      <th>Source</th>
                     </tr>
                   </thead>
                   <tbody id="rfx-response-body">
                     <tr>
-                      <td colspan="11"><div class="ui-state" data-tone="neutral"><span>Responses</span><strong>No carrier bids yet</strong><p>Invited carriers will appear here once they submit or reject an offer.</p></div></td>
+                      <td colspan="13"><div class="ui-state" data-tone="neutral"><span>Responses</span><strong>No carrier bids yet</strong><p>Invited carriers will appear here once they submit or reject an offer.</p></div></td>
                     </tr>
                   </tbody>
                 </table>
               </div>
+              </section>
             </section>
 
             <section class="bid-room-stage-panel" data-workbench-view-panel="award" hidden>
@@ -903,6 +1212,6 @@
       </div>
     </div>
 
-    <script type="module" src="./src/rfx-events.js?v=20260723-draft-queue-pagination-v1"></script>
+    <script type="module" src="./src/rfx-events.js?v=20260730-carrier-fit-v1"></script>
   </body>
 </html>

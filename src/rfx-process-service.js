@@ -19,6 +19,10 @@ export async function updateRfxProcessProject(projectId, patch) {
   return (await callRatewareApi("update_rfx_process_project", { project_id: projectId, patch })).row;
 }
 
+export async function saveRfxProcessRfi(projectId, rfi) {
+  return await callRatewareApi("save_rfx_process_rfi", { project_id: projectId, rfi });
+}
+
 export async function createRfxRfiMagicLink(projectId, options = {}) {
   return await callRatewareApi("create_rfx_rfi_magic_link", {
     project_id: projectId,

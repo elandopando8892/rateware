@@ -3775,6 +3775,40 @@ async function fetchBiSummary(
   return objectRecord(result.data);
 }
 
+async function fetchBiVendorMetricsSafe(
+  supabase: RatewareSupabaseClient,
+  user: { owner_email: string | null },
+  filters: Record<string, unknown> = {}
+) {
+  try {
+    return { metrics: await fetchBiVendorMetrics(supabase, user, filters), warning: "" };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error || "Unknown Rateware metric error");
+    console.warn("Carrier recommendation Rateware metrics unavailable; continuing with Carrier CRM signals.", message);
+    return {
+      metrics: new Map<string, Record<string, unknown>>(),
+      warning: "Rateware quote metrics are temporarily unavailable. Carrier CRM fit remains available."
+    };
+  }
+}
+
+async function fetchBiSummarySafe(
+  supabase: RatewareSupabaseClient,
+  user: { owner_email: string | null },
+  filters: Record<string, unknown> = {}
+) {
+  try {
+    return { summary: await fetchBiSummary(supabase, user, filters), warning: "" };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error || "Unknown Rateware summary error");
+    console.warn("Carrier recommendation Rateware summary unavailable; continuing with Carrier CRM signals.", message);
+    return {
+      summary: {} as Record<string, unknown>,
+      warning: "Rateware summary metrics are temporarily unavailable."
+    };
+  }
+}
+
 function buildVendorRateGroups(vendors: Record<string, unknown>[], rates: Record<string, unknown>[]) {
   const vendorIds = new Set(vendors.map((vendor) => cleanText(vendor.id)).filter(Boolean) as string[]);
   const domainIndex = new Map<string, string[]>();
@@ -4906,18 +4940,20 @@ async function requestCarrierIntelligence(prompt: string, fallback: Record<strin
 
 async function buildCarrierIntelligence(supabase: RatewareSupabaseClient, user: { owner_email: string | null }, prompt: string) {
   const instruction = cleanText(prompt) || "Recommend the best carriers to add to Procurement Base.";
-  const [vendorsResult, metricsByVendor, summary] = await Promise.all([
+  const [vendorsResult, metricResult, summaryResult] = await Promise.all([
     supabase
       .from("vendors")
       .select("id,vendor_name,legal_name,domain,primary_email,secondary_emails,whatsapp_phone,status,base_stage,tags,coverage_notes,notes,preferred_channel,created_at")
       .eq("owner_email", user.owner_email)
       .limit(1000),
-    fetchBiVendorMetrics(supabase, user, {}),
-    fetchBiSummary(supabase, user, {})
+    fetchBiVendorMetricsSafe(supabase, user, {}),
+    fetchBiSummarySafe(supabase, user, {})
   ]);
 
   if (vendorsResult.error) throw vendorsResult.error;
 
+  const metricsByVendor = metricResult.metrics;
+  const summary = summaryResult.summary;
   const fallback = deterministicCarrierRecommendations(instruction, vendorsResult.data || [], metricsByVendor, summary);
   return await requestCarrierIntelligence(instruction, fallback);
 }
@@ -5027,16 +5063,19 @@ async function buildCarrierRecommendations(supabase: RatewareSupabaseClient, use
   const limit = Math.min(Math.max(Number(config.limit) || 30, 1), 100);
   const minTransactions = Math.max(Number(config.min_transactions) || 0, 0);
   const intent = recommendationIntentFromConfig(config);
-  const [vendorsResult, metricsByVendor, summary] = await Promise.all([
+  const [vendorsResult, metricResult, summaryResult] = await Promise.all([
     supabase
       .from("vendors")
       .select("id,vendor_name,legal_name,domain,primary_email,secondary_emails,whatsapp_phone,status,base_stage,tags,coverage_notes,notes,preferred_channel,created_at")
       .eq("owner_email", user.owner_email)
       .limit(1000),
-    fetchBiVendorMetrics(supabase, user, filters),
-    fetchBiSummary(supabase, user, filters)
+    fetchBiVendorMetricsSafe(supabase, user, filters),
+    fetchBiSummarySafe(supabase, user, filters)
   ]);
   if (vendorsResult.error) throw vendorsResult.error;
+  const metricsByVendor = metricResult.metrics;
+  const summary = summaryResult.summary;
+  const warnings = [metricResult.warning, summaryResult.warning].filter(Boolean);
 
   const vendorTerm = cleanText(filters.vendor);
   const candidates = (vendorsResult.data || [])
@@ -5095,7 +5134,9 @@ async function buildCarrierRecommendations(supabase: RatewareSupabaseClient, use
     const { _linked_rates, ...publicRow } = row;
     return { ...publicRow, rank: index + 1 };
   });
-  const dataScope = "Structured recommendation engine over user vendors and filtered staging/Rateware transactions.";
+  const dataScope = warnings.length
+    ? "Carrier CRM recommendation engine. Rateware metrics are temporarily unavailable for this request."
+    : "Structured recommendation engine over user vendors and filtered staging/Rateware transactions.";
   const analystLayer = buildAnalystLayerFromSummary(
     `Structured ${rankingMode} recommendation`,
     recommendations,
@@ -5117,6 +5158,7 @@ async function buildCarrierRecommendations(supabase: RatewareSupabaseClient, use
     },
     ...analystLayer,
     recommendations,
+    warnings,
     next_actions: [
       "Review score breakdown before promoting a carrier.",
       "Use min transactions to avoid over-ranking carriers with one-off quotes.",
@@ -6856,6 +6898,15 @@ function strictCurrencyCode(value: unknown, fallback = "USD") {
   return currency;
 }
 
+function strictDateOnly(value: unknown, label: string) {
+  const text = cleanText(value);
+  if (!text) return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) throw new Error(`${label} must be a valid date.`);
+  const date = new Date(`${text}T00:00:00Z`);
+  if (Number.isNaN(date.getTime())) throw new Error(`${label} must be a valid date.`);
+  return text;
+}
+
 function normalizeCommercialModel(value: unknown) {
   const text = cleanText(value)?.toLowerCase().replace(/[\s-]+/g, "_");
   if (!text) return null;
@@ -7719,6 +7770,18 @@ function normalizeRfxLane(input: Record<string, unknown>, index = 0) {
     notes: cleanText(input.notes || input.lane_notes),
     updated_at: new Date().toISOString()
   };
+}
+
+function rfxLaneAppendKey(row: Record<string, unknown>) {
+  return [
+    row.origin,
+    row.destination,
+    row.equipment,
+    row.trailer,
+    row.config,
+    row.operation,
+    row.service
+  ].map((value) => (cleanText(value) || "").toLowerCase().replace(/\s+/g, " ")).join("|");
 }
 
 function normalizeRfxLanePatch(input: Record<string, unknown>) {
@@ -13035,6 +13098,13 @@ const WHATSAPP_RFX_NOTIFICATION_PLACEHOLDERS = [
   "bid_link"
 ] as const;
 
+const WHATSAPP_BID_ROOM_FOLLOW_UP_PLACEHOLDERS = [
+  "vendor_name",
+  "event_name",
+  "question",
+  "bid_link"
+] as const;
+
 function whatsappStableRfxTemplate(language: string) {
   if (language === "es_MX") {
     return {
@@ -13059,6 +13129,31 @@ function whatsappStableRfxTemplate(language: string) {
       "You are invited to quote {{2}} with {{3}} lane(s). The response deadline is {{4}}.",
       "Review the complete business book and submit your bid: {{5}}",
       "Thank you."
+    ].join("\n")
+  };
+}
+
+function whatsappBidRoomFollowUpTemplate(language: string) {
+  if (language === "es_MX") {
+    return {
+      name: "rateware_bid_room_follow_up_es",
+      language: "es_MX",
+      body: [
+        "Hola {{1}},",
+        "El equipo de procurement tiene una consulta sobre {{2}}:",
+        "{{3}}",
+        "Responde o actualiza tu puja aqui: {{4}}"
+      ].join("\n")
+    };
+  }
+  return {
+    name: "rateware_bid_room_follow_up_en",
+    language: "en",
+    body: [
+      "Hello {{1}},",
+      "The procurement team has a question about {{2}}:",
+      "{{3}}",
+      "Reply or update your bid here: {{4}}"
     ].join("\n")
   };
 }
@@ -13425,6 +13520,61 @@ async function publishOutreachTemplateToWhatsapp(
     row: publicWhatsappTemplateMapping(result.data),
     ready: whatsappMetaStatus(result.data.meta_template_status) === "APPROVED",
     message: whatsappMetaStatusMessage(result.data.meta_template_status)
+  };
+}
+
+async function ensureBidRoomWhatsappFollowUpTemplate(
+  supabase: RatewareSupabaseClient,
+  user: RatewareUser,
+  input: Record<string, unknown>
+) {
+  const connection = await validatedWhatsappConnection(supabase, user);
+  const language = normalizeWhatsappLocale(input.language) || "en_US";
+  const definition = whatsappBidRoomFollowUpTemplate(language === "es_MX" ? "es_MX" : "en_US");
+  const catalog = await whatsappTemplateGraphFetch(
+    supabase,
+    connection,
+    "?fields=id,name,language,status,category,components,quality_score&limit=100"
+  );
+  const templates = Array.isArray(catalog.data.data)
+    ? catalog.data.data as Record<string, unknown>[]
+    : [];
+  let template = selectWhatsappMetaTemplate(templates, definition.name, definition.language).row;
+  if (!template) {
+    const created = await whatsappTemplateGraphFetch(supabase, connection, "", {
+      method: "POST",
+      body: JSON.stringify({
+        name: definition.name,
+        language: definition.language,
+        category: "UTILITY",
+        allow_category_change: true,
+        components: [{
+          type: "BODY",
+          text: definition.body,
+          example: {
+            body_text: [WHATSAPP_BID_ROOM_FOLLOW_UP_PLACEHOLDERS.map(whatsappPlaceholderExample)]
+          }
+        }]
+      })
+    });
+    template = {
+      id: cleanText(created.data.id),
+      name: cleanText(created.data.name) || definition.name,
+      language: cleanText(created.data.language) || definition.language,
+      status: cleanText(created.data.status) || "PENDING",
+      category: cleanText(created.data.category) || "UTILITY",
+      components: created.data.components || []
+    };
+  }
+  return {
+    connection,
+    name: cleanText(template.name) || definition.name,
+    language: cleanText(template.language) || definition.language,
+    status: whatsappTemplateStatusFromRow(template),
+    parameters: WHATSAPP_BID_ROOM_FOLLOW_UP_PLACEHOLDERS.map((key) => ({
+      key,
+      value: cleanText(input[key]) || "-"
+    }))
   };
 }
 
@@ -13949,9 +14099,31 @@ function safeHeader(value: unknown) {
   return String(value || "").replace(/[\r\n]+/g, " ").trim();
 }
 
+function gmailPayloadHeader(message: Record<string, unknown>, headerName: string) {
+  const payload = objectRecord(message.payload);
+  const headers = Array.isArray(payload.headers) ? payload.headers : [];
+  const header = headers.find((item) => cleanText(objectRecord(item).name)?.toLowerCase() === headerName.toLowerCase());
+  return safeHeader(objectRecord(header).value);
+}
+
+function gmailMessageTimestamp(message: Record<string, unknown>) {
+  const internalDate = Number(message.internalDate);
+  if (Number.isFinite(internalDate) && internalDate > 0) return internalDate;
+  const date = Date.parse(gmailPayloadHeader(message, "Date"));
+  return Number.isFinite(date) ? date : 0;
+}
+
+function gmailReplySubject(subject: unknown, fallback: string) {
+  const value = cleanText(subject) || fallback;
+  return /^(re|aw|sv|fw|fwd)\s*:/i.test(value) ? value : `Re: ${value}`;
+}
+
 function gmailRawMessage(message: Record<string, unknown>, senderEmail: string) {
   const to = safeHeader(message.recipient_email);
   const subject = encodedSubject(message.subject);
+  const metadata = objectRecord(message.metadata);
+  const inReplyTo = safeHeader(metadata.gmail_in_reply_to);
+  const references = safeHeader(metadata.gmail_references || inReplyTo);
   const textBody = cleanText(message.text_body) || htmlToText(cleanText(message.html_body) || "");
   const htmlBody = cleanText(message.html_body) || `<pre>${String(textBody || "").replace(/&/g, "&amp;").replace(/</g, "&lt;")}</pre>`;
   const boundary = `rateware_${crypto.randomUUID().replace(/-/g, "")}`;
@@ -13959,6 +14131,7 @@ function gmailRawMessage(message: Record<string, unknown>, senderEmail: string) 
     `To: ${to}`,
     `From: ${safeHeader(senderEmail)}`,
     `Subject: ${subject}`,
+    ...(inReplyTo ? [`In-Reply-To: ${inReplyTo}`, `References: ${references}`] : []),
     "MIME-Version: 1.0",
     `Content-Type: multipart/alternative; boundary="${boundary}"`,
     "",
@@ -14623,6 +14796,126 @@ async function gmailConnectionIdentity(
   return (result.data || null) as Record<string, unknown> | null;
 }
 
+async function gmailApiGet(accessToken: string, path: string) {
+  const response = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me${path}`, {
+    headers: { Authorization: `Bearer ${accessToken}` }
+  });
+  const data = await response.json().catch(() => ({})) as Record<string, unknown>;
+  if (!response.ok) {
+    const reason = cleanText(objectRecord(data.error).message) || `Gmail request failed (${response.status}).`;
+    throw new Error(reason);
+  }
+  return data;
+}
+
+function gmailReplyCandidateFromThread(
+  thread: Record<string, unknown>,
+  vendorEmails: string[]
+) {
+  const emailSet = new Set(vendorEmails.map((email) => email.toLowerCase()));
+  const messages = Array.isArray(thread.messages) ? thread.messages.map(objectRecord) : [];
+  const carrierMessages = messages.filter((message) => emailSet.has(normalizeEmail(gmailPayloadHeader(message, "From")) || ""));
+  const latest = carrierMessages.sort((left, right) => gmailMessageTimestamp(right) - gmailMessageTimestamp(left))[0];
+  if (!latest) return null;
+  const rfcMessageId = gmailPayloadHeader(latest, "Message-ID");
+  const referenceParts = [gmailPayloadHeader(latest, "References"), rfcMessageId].filter(Boolean);
+  return {
+    reply_mode: "thread_reply",
+    gmail_thread_id: cleanText(thread.id) || cleanText(latest.threadId),
+    gmail_source_message_id: cleanText(latest.id),
+    gmail_in_reply_to: rfcMessageId,
+    gmail_references: [...new Set(referenceParts)].join(" "),
+    source_subject: gmailPayloadHeader(latest, "Subject"),
+    source_received_at: gmailMessageTimestamp(latest) ? new Date(gmailMessageTimestamp(latest)).toISOString() : null,
+    recipient_email: normalizeEmail(gmailPayloadHeader(latest, "From")) || ""
+  };
+}
+
+function gmailThreadMatchesRfx(thread: Record<string, unknown>, rfxId: string) {
+  const key = cleanText(rfxId)?.toLowerCase();
+  if (!key) return false;
+  const messages = Array.isArray(thread.messages) ? thread.messages.map(objectRecord) : [];
+  return messages.some((message) => gmailPayloadHeader(message, "Subject").toLowerCase().includes(key));
+}
+
+async function resolveBidRoomGmailReplyContext(
+  supabase: RatewareSupabaseClient,
+  user: { owner_email: string | null },
+  event: Record<string, unknown>,
+  vendor: Record<string, unknown>,
+  recipientEmail: string
+) {
+  const vendorEmails = vendorContactEmailCandidates(vendor);
+  const accessToken = await gmailAccessToken(supabase, user, GMAIL_ALLOWED_SENDER);
+  const knownMessages = await supabase
+    .from("outreach_messages")
+    .select("id,provider_thread_id,provider_message_id,recipient_email,subject,sent_at,updated_at")
+    .eq("owner_email", user.owner_email)
+    .eq("rfx_event_id", event.id)
+    .eq("vendor_id", vendor.id)
+    .eq("channel", "email")
+    .not("provider_thread_id", "is", null)
+    .order("updated_at", { ascending: false })
+    .limit(24);
+  if (knownMessages.error) throw knownMessages.error;
+
+  const knownCandidates: Record<string, unknown>[] = [];
+  const checkedThreadIds = new Set<string>();
+  for (const message of knownMessages.data || []) {
+    const threadId = cleanText(message.provider_thread_id);
+    if (!threadId || checkedThreadIds.has(threadId)) continue;
+    checkedThreadIds.add(threadId);
+    try {
+      const thread = await gmailApiGet(accessToken, `/threads/${encodeURIComponent(threadId)}?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Message-ID&metadataHeaders=References&metadataHeaders=Date`);
+      const candidate = gmailReplyCandidateFromThread(thread, vendorEmails);
+      if (candidate?.gmail_thread_id) knownCandidates.push(candidate);
+    } catch (error) {
+      // A deleted Gmail thread must not prevent a deliberate new email. Other
+      // Gmail failures are detected again by the actual send operation.
+      if (!/\b404\b/.test(safeOperationalError(error))) throw error;
+    }
+  }
+  if (knownCandidates.length) {
+    const latest = knownCandidates.sort((left, right) => Date.parse(String(right.source_received_at || 0)) - Date.parse(String(left.source_received_at || 0)))[0];
+    return { ...latest, recipient_email: cleanText(latest.recipient_email) || recipientEmail };
+  }
+
+  const rfxId = cleanText(event.rfx_id);
+  if (rfxId) {
+    const searchedThreadIds = new Set<string>();
+    const discovered: Record<string, unknown>[] = [];
+    for (const email of vendorEmails) {
+      const query = new URLSearchParams({ q: `from:${email} "${rfxId}"`, maxResults: "12" });
+      const search = await gmailApiGet(accessToken, `/messages?${query.toString()}`);
+      const messages = Array.isArray(search.messages) ? search.messages.map(objectRecord) : [];
+      for (const message of messages) {
+        const threadId = cleanText(message.threadId);
+        if (!threadId || searchedThreadIds.has(threadId)) continue;
+        searchedThreadIds.add(threadId);
+        const thread = await gmailApiGet(accessToken, `/threads/${encodeURIComponent(threadId)}?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Message-ID&metadataHeaders=References&metadataHeaders=Date`);
+        if (!gmailThreadMatchesRfx(thread, rfxId)) continue;
+        const candidate = gmailReplyCandidateFromThread(thread, vendorEmails);
+        if (candidate?.gmail_thread_id) discovered.push(candidate);
+      }
+    }
+    if (discovered.length) {
+      const latest = discovered.sort((left, right) => Date.parse(String(right.source_received_at || 0)) - Date.parse(String(left.source_received_at || 0)))[0];
+      return { ...latest, recipient_email: cleanText(latest.recipient_email) || recipientEmail };
+    }
+  }
+
+  return {
+    reply_mode: "new_email",
+    gmail_thread_id: null,
+    gmail_source_message_id: null,
+    gmail_in_reply_to: null,
+    gmail_references: null,
+    source_subject: null,
+    source_received_at: null,
+    recipient_email: recipientEmail
+  };
+}
+
 async function claimOutreachMessageForSend(
   supabase: RatewareSupabaseClient,
   user: { owner_email: string | null },
@@ -14930,13 +15223,17 @@ async function sendOutreachMessages(
     try {
       let response: Response;
       try {
+        const gmailThreadId = cleanText(objectRecord(message.metadata).gmail_thread_id);
         response = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
           method: "POST",
           headers: {
             Authorization: `Bearer ${accessToken}`,
             "Content-Type": "application/json"
           },
-          body: JSON.stringify({ raw: gmailRawMessage(message, senderEmail) })
+          body: JSON.stringify({
+            raw: gmailRawMessage(message, senderEmail),
+            ...(gmailThreadId ? { threadId: gmailThreadId } : {})
+          })
         });
       } catch (error) {
         const requestError = new Error(error instanceof Error ? error.message : "Gmail did not return a response.");
@@ -15304,6 +15601,26 @@ async function sendWhatsappOutreachMessages(
             whatsapp_template_auto_checked_at: now
           }
         };
+      } else if (cleanText(objectRecord(message.metadata).whatsapp_template_source) === "bid_room_follow_up") {
+        const followUp = await ensureBidRoomWhatsappFollowUpTemplate(supabase, user, {
+          language: cleanText(message.whatsapp_template_language) || "en",
+          vendor_name: cleanText(vendor.vendor_name || vendor.domain) || "Carrier",
+          event_name: cleanText(objectRecord(message.metadata).event_name) || "RFx opportunity",
+          question: cleanText(message.whatsapp_text || message.text_body),
+          bid_link: cleanText(objectRecord(message.metadata).bid_link)
+        });
+        resolvedMessage = {
+          ...message,
+          whatsapp_connection_id: followUp.connection.row.id,
+          whatsapp_template_name: followUp.name,
+          whatsapp_template_language: followUp.language,
+          metadata: {
+            ...objectRecord(message.metadata),
+            whatsapp_template_status: followUp.status,
+            whatsapp_template_parameters: followUp.parameters,
+            whatsapp_template_auto_checked_at: now
+          }
+        };
       }
     } catch (error) {
       const reason = safeOperationalError(error);
@@ -15478,6 +15795,323 @@ async function sendWhatsappOutreachMessages(
     }
   );
   return { sent: rows.length, failed: failures.length, skipped: skipped.length, delivery_unknown: deliveryUnknown, rows, failures, skipped_rows: skipped };
+}
+
+async function ensureBidRoomCarrierFollowUpCampaign(
+  supabase: RatewareSupabaseClient,
+  user: RatewareUser,
+  event: Record<string, unknown>
+) {
+  const key = `bid-room-carrier-follow-up:${event.id}`;
+  const existing = await supabase
+    .from("outreach_campaigns")
+    .select("*")
+    .eq("owner_email", user.owner_email)
+    .eq("idempotency_key", key)
+    .maybeSingle();
+  if (existing.error) throw existing.error;
+  if (existing.data) return existing.data as Record<string, unknown>;
+
+  const created = await supabase
+    .from("outreach_campaigns")
+    .insert(withOwner({
+      rfx_event_id: event.id,
+      name: `${cleanText(event.rfx_id) || "RFx"} | Carrier follow-up`,
+      channel: "multi",
+      status: "generated",
+      sender_email: GMAIL_ALLOWED_SENDER,
+      sender_label: "Rateware Procurement",
+      sender_connection_status: "draft_only",
+      idempotency_key: key,
+      notes: "Targeted carrier questions created from the Bid Room communication workspace."
+    }, user))
+    .select("*")
+    .single();
+  if (!created.error) return created.data as Record<string, unknown>;
+  if (String(created.error.code || "") !== "23505") throw created.error;
+
+  const concurrent = await supabase
+    .from("outreach_campaigns")
+    .select("*")
+    .eq("owner_email", user.owner_email)
+    .eq("idempotency_key", key)
+    .single();
+  if (concurrent.error) throw concurrent.error;
+  return concurrent.data as Record<string, unknown>;
+}
+
+async function mirrorBidRoomCarrierDelivery(
+  supabase: RatewareSupabaseClient,
+  user: RatewareUser,
+  event: Record<string, unknown>,
+  invitation: Record<string, unknown>,
+  payload: Record<string, unknown>
+) {
+  const vendor = relationRecord(invitation.vendors);
+  const lane = relationRecord(invitation.rfx_lanes);
+  const channel = cleanText(payload.channel) || "email";
+  const result = objectRecord(payload.result);
+  const sent = Number(result.sent || 0) > 0;
+  const deliveryUnknown = Number(result.delivery_unknown || 0) > 0;
+  const failure = Array.isArray(result.failures)
+    ? cleanText(objectRecord(result.failures[0]).reason)
+    : "";
+  const outcome = sent
+    ? `${channel === "whatsapp" ? "WhatsApp" : "Email"} sent to ${cleanText(payload.recipient) || "carrier"}.`
+    : deliveryUnknown
+      ? `${channel === "whatsapp" ? "WhatsApp" : "Email"} delivery is unknown. Review the Delivery Queue before retrying.`
+      : `${channel === "whatsapp" ? "WhatsApp" : "Email"} was not sent${failure ? `: ${failure}` : "."}`;
+  const thread = await findOrCreateBidRoomChatThread(supabase, user, event, {
+    thread_type: "carrier_private",
+    vendor_id: invitation.vendor_id,
+    rfx_lane_id: invitation.rfx_lane_id,
+    title: `${cleanText(event.rfx_id) || "RFx"} | Private: ${cleanText(vendor.vendor_name || vendor.domain) || "Carrier"}`
+  });
+  const message = withOwner({
+    thread_id: thread.id,
+    rfx_event_id: event.id,
+    rfx_lane_id: invitation.rfx_lane_id,
+    vendor_id: invitation.vendor_id,
+    sender_role: "procurement",
+    sender_name: user.owner_email || "Procurement",
+    sender_email: user.owner_email,
+    body: `${outcome}\n\n${cleanText(payload.body)}`,
+    google_chat_sync_status: "pending",
+    metadata: {
+      source: "bid_room_external_outreach",
+      outreach_message_id: payload.outreach_message_id || null,
+      channel,
+      delivery_status: sent ? "sent" : deliveryUnknown ? "delivery_unknown" : "failed",
+      recipient: cleanText(payload.recipient),
+      rfx_lane_id: lane.id || invitation.rfx_lane_id || null,
+      request_key: cleanText(payload.request_key)
+    }
+  }, user);
+  const inserted = await supabase
+    .from("bid_room_chat_messages")
+    .insert(message)
+    .select("*, vendors(vendor_name,domain)")
+    .single();
+  if (inserted.error) throw inserted.error;
+  await supabase.from("bid_room_chat_threads").update({
+    updated_at: new Date().toISOString(),
+    communication_status: "open",
+    needs_reply: sent || deliveryUnknown,
+    read_status: "read",
+    last_read_at: new Date().toISOString(),
+    resolved_at: null,
+    resolved_by: null
+  }).eq("id", thread.id);
+  const sync = await syncBidRoomMessageToGoogleChat(supabase, thread, inserted.data, event);
+  return {
+    thread,
+    message: { ...inserted.data, google_chat_sync_status: sync.status },
+    google_chat_configured: sync.status !== "not_configured" || Boolean(GOOGLE_CHAT_WEBHOOK_URL)
+  };
+}
+
+function existingBidRoomCarrierEmailReply(message: Record<string, unknown>, reused = true) {
+  const metadata = objectRecord(message.metadata);
+  const status = cleanText(message.status)?.toLowerCase() || "drafted";
+  return {
+    reused,
+    outreach_message: message,
+    result: {
+      sent: status === "sent" ? 1 : 0,
+      failed: ["failed", "bounced"].includes(status) ? 1 : 0,
+      delivery_unknown: status === "delivery_unknown" ? 1 : 0,
+      failures: ["failed", "bounced"].includes(status)
+        ? [{ id: message.id, reason: cleanText(message.delivery_error) || `Email is ${status}.` }]
+        : []
+    },
+    email_context: {
+      reply_mode: cleanText(metadata.gmail_reply_mode) || "new_email",
+      gmail_thread_id: cleanText(metadata.gmail_thread_id) || null,
+      gmail_source_message_id: cleanText(metadata.gmail_source_message_id) || null,
+      source_subject: cleanText(metadata.gmail_source_subject) || null,
+      source_received_at: cleanText(metadata.gmail_source_received_at) || null
+    }
+  };
+}
+
+async function sendBidRoomCarrierMessage(
+  supabase: RatewareSupabaseClient,
+  user: RatewareUser,
+  input: Record<string, unknown>
+) {
+  const body = cleanText(input.body || input.message);
+  const requestKey = cleanText(input.idempotency_key || input.request_key);
+  if (!body) throw new Error("Message body is required.");
+  if (body.length > 600) throw new Error("Keep a direct carrier question under 600 characters.");
+  if (!requestKey) throw new Error("A message request key is required to prevent duplicate sends.");
+  requireBulkConfirmation(input, {
+    action: "send_bid_room_carrier_message",
+    label: "Carrier message send",
+    count: 1
+  });
+
+  const event = await requireOwnedRfxEvent(supabase, user, input.rfx_event_id || input.event_id);
+  const invitation = await requireOwnedRfxLaneVendor(supabase, user, input.rfx_lane_vendor_id || input.invitation_id);
+  if (cleanText(invitation.rfx_event_id) !== cleanText(event.id)) {
+    throw new Error("That carrier invitation does not belong to the selected RFx.");
+  }
+  if (cleanText(input.rfx_lane_id || input.lane_id) && cleanText(input.rfx_lane_id || input.lane_id) !== cleanText(invitation.rfx_lane_id)) {
+    throw new Error("That carrier invitation does not belong to the selected lane.");
+  }
+
+  const previous = await supabase
+    .from("outreach_messages")
+    .select("*")
+    .eq("owner_email", user.owner_email)
+    .contains("metadata", { bid_room_request_key: requestKey })
+    .maybeSingle();
+  if (previous.error) throw previous.error;
+  if (previous.data) {
+    return existingBidRoomCarrierEmailReply(previous.data);
+  }
+
+  const vendorResult = await supabase
+    .from("vendors")
+    .select("id,vendor_name,legal_name,domain,primary_email,secondary_emails")
+    .eq("id", invitation.vendor_id)
+    .maybeSingle();
+  if (vendorResult.error) throw vendorResult.error;
+  const vendor = relationRecord(vendorResult.data);
+  if (!vendor.id) throw new Error("Carrier CRM profile was not found for this invitation.");
+
+  const lane = relationRecord(invitation.rfx_lanes);
+  const appOrigin = cleanText(input.app_origin) || Deno.env.get("RATEWARE_APP_URL") || "https://rateware.vercel.app";
+  const bidLink = `${appOrigin.replace(/\/$/, "")}/rfx-bid.html?token=${encodeURIComponent(cleanText(invitation.invitation_token) || "")}`;
+  const route = [cleanText(lane.origin), cleanText(lane.destination)].filter(Boolean).join(" -> ") || "this RFx";
+  const vendorName = cleanText(vendor.vendor_name || vendor.legal_name || vendor.domain) || "Carrier";
+  const campaign = await ensureBidRoomCarrierFollowUpCampaign(supabase, user, event);
+  const now = new Date().toISOString();
+  const suppressed = await suppressedEmailSet(supabase, user, vendorContactEmailCandidates(vendor));
+  const sendableEmail = firstSendableVendorEmail(vendor, suppressed);
+  if (!sendableEmail) {
+    throw new Error("This carrier has no sendable email. Add or replace a verified contact in Carrier CRM.");
+  }
+  const emailContext = await resolveBidRoomGmailReplyContext(supabase, user, event, vendor, sendableEmail);
+  const commonMetadata = {
+    source: "bid_room_carrier_ask",
+    bid_room_request_key: requestKey,
+    bid_link: bidLink,
+    event_name: cleanText(event.name || event.rfx_id) || "RFx opportunity",
+    rfx_id: cleanText(event.rfx_id),
+    vendor_name: vendorName,
+    vendor_domain: cleanText(vendor.domain),
+    lane_route: route,
+    created_from: "bid_room_carrier_communications",
+    created_at: now
+  };
+  const recipient = cleanText(emailContext.recipient_email) || sendableEmail;
+  if (suppressed.has(recipient.toLowerCase())) {
+    throw new Error("The most recent Gmail thread uses an email blocked after a delivery failure. Update the carrier contact before replying.");
+  }
+  const subject = emailContext.reply_mode === "thread_reply"
+    ? gmailReplySubject(emailContext.source_subject, `${cleanText(event.rfx_id) || "RFx"} | Question about ${route}`)
+    : `${cleanText(event.rfx_id) || "RFx"} | Question about ${route}`;
+  const textBody = [body, "", `Reply or update your bid here: ${bidLink}`].join("\n");
+  const messageRow = withOwner({
+    campaign_id: campaign.id,
+    rfx_event_id: event.id,
+    rfx_lane_id: invitation.rfx_lane_id,
+    rfx_lane_vendor_id: invitation.id,
+    vendor_id: vendor.id,
+    channel: "email",
+    recipient_email: recipient,
+    contact_key: `ask:${requestKey}`,
+    subject,
+    text_body: textBody,
+    html_body: `<p>${escapeHtmlText(body).replace(/\n/g, "<br>")}</p><p><a href="${escapeHtmlText(bidLink)}">Reply or update your bid</a></p>`,
+    sender_email: GMAIL_ALLOWED_SENDER,
+    sender_label: "Rateware Procurement",
+    sender_connection_status: "draft_only",
+    provider: "gmail",
+    provider_response_status: "drafted",
+    status: "drafted",
+    metadata: {
+      ...commonMetadata,
+      gmail_reply_mode: emailContext.reply_mode,
+      gmail_thread_id: emailContext.gmail_thread_id,
+      gmail_source_message_id: emailContext.gmail_source_message_id,
+      gmail_in_reply_to: emailContext.gmail_in_reply_to,
+      gmail_references: emailContext.gmail_references,
+      gmail_source_subject: emailContext.source_subject,
+      gmail_source_received_at: emailContext.source_received_at
+    }
+  }, user);
+
+  const created = await supabase.from("outreach_messages").insert(messageRow).select("*").single();
+  if (created.error) {
+    if (String(created.error.code || "") === "23505") {
+      const duplicate = await supabase
+        .from("outreach_messages")
+        .select("*")
+        .eq("owner_email", user.owner_email)
+        .contains("metadata", { bid_room_request_key: requestKey })
+        .maybeSingle();
+      if (duplicate.error) throw duplicate.error;
+      if (duplicate.data) return existingBidRoomCarrierEmailReply(duplicate.data);
+    }
+    throw created.error;
+  }
+
+  const sendInput = {
+    ids: [created.data.id],
+    provider: "gmail",
+    channel: "email",
+    sender_email: GMAIL_ALLOWED_SENDER,
+    confirmed: true,
+    confirmation_action: "send_outreach_messages"
+  };
+  let result: Record<string, unknown>;
+  try {
+    result = await sendOutreachMessages(supabase, user, sendInput);
+  } catch (error) {
+    const reason = safeOperationalError(error);
+    result = { sent: 0, failed: 1, skipped: 0, delivery_unknown: false, failures: [{ id: created.data.id, reason }] };
+    const failureUpdate = await supabase
+      .from("outreach_messages")
+      .update({
+        status: "failed",
+        delivery_status: "failed",
+        delivery_error: reason,
+        failed_at: now,
+        provider_response_status: "connection_or_provider_error",
+        updated_at: now,
+        metadata: {
+          ...objectRecord(messageRow.metadata),
+          direct_delivery_error: reason,
+          direct_delivery_error_at: now
+        }
+      })
+      .eq("id", created.data.id)
+      .eq("owner_email", user.owner_email);
+    if (failureUpdate.error) throw failureUpdate.error;
+  }
+  const latest = await supabase
+    .from("outreach_messages")
+    .select("*")
+    .eq("id", created.data.id)
+    .eq("owner_email", user.owner_email)
+    .single();
+  if (latest.error) throw latest.error;
+  await tryWriteAuditLog(
+    supabase,
+    user,
+    "bid_room.carrier_question.send",
+    "outreach_messages",
+    created.data.id,
+    `Sent targeted Gmail carrier reply for ${cleanText(event.rfx_id) || event.id}`,
+    { rfx_event_id: event.id, rfx_lane_vendor_id: invitation.id, vendor_id: vendor.id, channel: "email", request_key: requestKey, reply_mode: emailContext.reply_mode }
+  );
+  return {
+    reused: false,
+    outreach_message: latest.data,
+    result,
+    email_context: emailContext
+  };
 }
 
 async function sendWhatsappGroupOutreachMessages(
@@ -18088,33 +18722,247 @@ async function listRfxProcessProjects(supabase: RatewareSupabaseClient, user: { 
   const result = await query;
   if (result.error) throw result.error;
   const projectIds = (result.data || []).map((row) => row.id);
-  const [lanesResult, packageResult, auditResult] = projectIds.length
+  const [lanesResult, packageResult, auditResult, eventResult] = projectIds.length
     ? await Promise.all([
         supabase.from("rfx_rfi_lanes").select("project_id,id").in("project_id", projectIds),
         supabase.from("rfx_packages").select("project_id,id,status,linked_rfx_event_id").in("project_id", projectIds),
-        supabase.from("rfx_process_audit").select("project_id,id").in("project_id", projectIds)
+        supabase.from("rfx_process_audit").select("project_id,id").in("project_id", projectIds),
+        supabase.from("rfx_events").select("id,rfx_id,status,due_date,source_rfx_process_project_id,updated_at,created_at")
+          .eq("owner_email", user.owner_email)
+          .in("source_rfx_process_project_id", projectIds)
+          .neq("status", "archived")
+          .order("updated_at", { ascending: false })
+          .limit(Math.min(projectIds.length * 5, 250))
       ])
-    : [{ data: [], error: null }, { data: [], error: null }, { data: [], error: null }];
+    : [{ data: [], error: null }, { data: [], error: null }, { data: [], error: null }, { data: [], error: null }];
   if (lanesResult.error) throw lanesResult.error;
   if (packageResult.error) throw packageResult.error;
   if (auditResult.error) throw auditResult.error;
+  if (eventResult.error && eventResult.error.code !== "42P01") throw eventResult.error;
   const laneCounts = new Map<string, number>();
   const packageCounts = new Map<string, number>();
   const auditCounts = new Map<string, number>();
+  const rfiStatuses = new Map<string, string>();
+  const eventsByProject = new Map<string, Record<string, unknown>>();
+  const packageEventIds = new Map<string, string>();
   for (const row of lanesResult.data || []) laneCounts.set(row.project_id, (laneCounts.get(row.project_id) || 0) + 1);
-  for (const row of packageResult.data || []) packageCounts.set(row.project_id, (packageCounts.get(row.project_id) || 0) + 1);
+  for (const row of packageResult.data || []) {
+    packageCounts.set(row.project_id, (packageCounts.get(row.project_id) || 0) + 1);
+    const linkedEventId = cleanText(row.linked_rfx_event_id);
+    if (!packageEventIds.get(row.project_id) && linkedEventId) packageEventIds.set(row.project_id, linkedEventId);
+  }
   for (const row of auditResult.data || []) auditCounts.set(row.project_id, (auditCounts.get(row.project_id) || 0) + 1);
+  const submissions = projectIds.length
+    ? await supabase.from("rfx_rfi_submissions").select("project_id,status").in("project_id", projectIds)
+    : { data: [], error: null };
+  if (submissions.error && submissions.error.code !== "42P01") throw submissions.error;
+  for (const row of submissions.data || []) rfiStatuses.set(row.project_id, cleanText(row.status) || "draft");
+  for (const row of eventResult.data || []) {
+    const projectId = cleanText(row.source_rfx_process_project_id);
+    if (projectId && !eventsByProject.has(projectId)) eventsByProject.set(projectId, row as Record<string, unknown>);
+  }
   return {
     rows: (result.data || []).map((row) => ({
       ...row,
       lane_count: laneCounts.get(row.id) || 0,
       package_count: packageCounts.get(row.id) || 0,
-      audit_count: auditCounts.get(row.id) || 0
+      audit_count: auditCounts.get(row.id) || 0,
+      rfi_status: rfiStatuses.get(row.id) || "not started",
+      bid_room_event_id: eventsByProject.get(row.id)?.id || packageEventIds.get(row.id) || row.linked_rfx_event_id || null,
+      bid_room_rfx_id: eventsByProject.get(row.id)?.rfx_id || null,
+      bid_room_status: eventsByProject.get(row.id)?.status || (packageEventIds.get(row.id) ? "linked" : null),
+      bid_room_due_date: eventsByProject.get(row.id)?.due_date || null
     })),
     total: result.count || 0,
     limit,
     offset
   };
+}
+
+function internalRfxSegment(value: unknown) {
+  const key = (cleanText(value) || "").toLowerCase().replace(/[^a-z0-9]+/g, "_");
+  const aliases: Record<string, string> = {
+    crossborder_ftl: "crossborder",
+    local_ftl: "local",
+    regional_ftl: "regional",
+    national_ftl: "national",
+    expedited_ground: "expedited",
+    time_critical_ground: "time_critical",
+    port_drayage_us: "local",
+    port_drayage_mx: "local"
+  };
+  const normalized = aliases[key] || key;
+  return ["expedited", "time_critical", "crossborder", "local", "regional", "national"].includes(normalized) ? normalized : null;
+}
+
+function internalRfxOperation(value: unknown) {
+  const key = (cleanText(value) || "").toLowerCase().replace(/[^a-z0-9]+/g, "_");
+  const aliases: Record<string, string> = {
+    d2d_export: "crossborder",
+    d2d_import: "crossborder",
+    mx_northbound: "crossborder",
+    mx_southbound: "crossborder",
+    intra_mex: "mx_domestic",
+    mx_domestic: "mx_domestic",
+    us_domestic: "us_domestic"
+  };
+  const normalized = aliases[key] || key;
+  return ["mx_domestic", "us_domestic", "crossborder", "local", "regional", "national"].includes(normalized) ? normalized : null;
+}
+
+function internalRfxService(value: unknown) {
+  const key = (cleanText(value) || "").toLowerCase().replace(/[^a-z0-9]+/g, "_");
+  const aliases: Record<string, string> = { time_critical_ground: "time_critical", expedited_ground: "expedited" };
+  const normalized = aliases[key] || key;
+  return ["standard", "expedited", "time_critical", "dedicated", "spot", "recurring"].includes(normalized) ? normalized : null;
+}
+
+async function saveRfxProcessRfi(supabase: RatewareSupabaseClient, user: { owner_user_id: string | null; owner_email: string | null }, input: Record<string, unknown>) {
+  const project = await requireOwnedRfxProcessProject(supabase, user, input.project_id || input.id);
+  const rfi = objectRecord(input.rfi);
+  const existing = await supabase.from("rfx_rfi_submissions").select("*").eq("project_id", project.id).maybeSingle();
+  if (existing.error) throw existing.error;
+  const now = new Date().toISOString();
+  const lanes = Array.isArray(rfi.lanes) ? rfi.lanes.map((row) => objectRecord(row)).filter((row) => Object.values(row).some((value) => cleanText(value))) : [];
+  const segmentValues = (Array.isArray(rfi.operating_segments) ? rfi.operating_segments : [])
+    .map((item) => cleanText(objectRecord(item).value || objectRecord(item).segment || item))
+    .filter(Boolean)
+    .map((value) => ({ value }));
+  const lanePayloads = lanes.map((lane, index) => {
+    const issueCodes = rfxRequiredLaneIssues(lane);
+    const rawPayload = { ...objectRecord(lane.raw_payload), ...lane };
+    return {
+      lane_id: cleanText(lane.lane_id) || `L${index + 1}`,
+      origin_text: firstCleanText(lane.origin_text, lane.origin, lane.origin_location),
+      destination_text: firstCleanText(lane.destination_text, lane.destination, lane.destination_location),
+      operating_segment: internalRfxSegment(lane.operating_segment),
+      operation_type: internalRfxOperation(lane.operation_type),
+      service_type: internalRfxService(lane.service_type),
+      origin_name: firstCleanText(lane.origin_name, lane.origin_location, lane.origin_text),
+      origin_address: cleanText(lane.origin_address),
+      origin_city: cleanText(lane.origin_city),
+      origin_state: cleanText(lane.origin_state),
+      origin_country: cleanText(lane.origin_country),
+      origin_postal_code: cleanText(lane.origin_postal_code),
+      origin_contact_name: cleanText(lane.origin_shipper || lane.origin_contact_name),
+      origin_contact_phone: cleanText(lane.origin_contact_phone),
+      origin_contact_email: cleanText(lane.origin_contact_email),
+      origin_hours: cleanText(lane.origin_service_window || lane.origin_hours),
+      origin_handling_type: cleanText(lane.origin_load_type || lane.origin_handling_type),
+      origin_appointment_required: lane.origin_appointment_required === true,
+      origin_average_time_hours: cleanNumber(lane.origin_average_time_hours),
+      origin_site_restrictions: cleanText(lane.origin_site_restrictions),
+      destination_name: firstCleanText(lane.destination_name, lane.destination_location, lane.destination_text),
+      destination_address: cleanText(lane.destination_address),
+      destination_city: cleanText(lane.destination_city),
+      destination_state: cleanText(lane.destination_state),
+      destination_country: cleanText(lane.destination_country),
+      destination_postal_code: cleanText(lane.destination_postal_code),
+      destination_contact_name: cleanText(lane.destination_consignee || lane.destination_contact_name),
+      destination_contact_phone: cleanText(lane.destination_contact_phone),
+      destination_contact_email: cleanText(lane.destination_contact_email),
+      destination_hours: cleanText(lane.destination_service_window || lane.destination_hours),
+      destination_handling_type: cleanText(lane.destination_unload_type || lane.destination_handling_type),
+      destination_appointment_required: lane.destination_appointment_required === true,
+      destination_average_time_hours: cleanNumber(lane.destination_average_time_hours),
+      destination_site_restrictions: cleanText(lane.destination_site_restrictions),
+      equipment_type: firstCleanText(lane.equipment_type, lane.truck_type),
+      trailer_requirements: cleanText(lane.trailer_requirements),
+      config: cleanText(lane.config),
+      commodity: cleanText(lane.commodity || lane.product),
+      hazmat: lane.hazmat === true,
+      temperature_controlled: lane.temperature_controlled === true,
+      cargo_value: cleanNumber(lane.cargo_value),
+      cargo_value_currency: cleanText(lane.cargo_value_currency),
+      weight: cleanNumber(lane.weight),
+      pallets: cleanNumber(lane.pallets),
+      dimensions: cleanText(lane.average_cubic_meters || lane.dimensions),
+      weekly_volume: cleanNumber(lane.weekly_volume),
+      monthly_volume: cleanNumber(lane.monthly_volume),
+      annual_volume: cleanNumber(lane.last_annual_volume || lane.annual_volume),
+      frequency: cleanText(lane.frequency),
+      pickup_lead_time_hours: cleanNumber(lane.pickup_lead_time_hours || lane.positioning_lead_time),
+      expected_transit_time_hours: cleanNumber(lane.expected_transit_time_hours),
+      transit_days: cleanNumber(lane.transit_days),
+      target_rate: cleanNumber(lane.target_rate),
+      current_rate: cleanNumber(lane.current_rate),
+      currency: cleanText(lane.currency) || "USD",
+      seasonality_notes: cleanText(lane.seasonality_notes),
+      special_requirements: cleanText(lane.special_requirements || lane.service_specifications),
+      logistics_model: cleanText(lane.logistics_model),
+      operation_criteria: cleanText(lane.operation_criteria),
+      business_rules: cleanText(lane.business_rules),
+      service_specifications: cleanText(lane.service_specifications),
+      carrier_requirements: cleanText(lane.carrier_requirements),
+      other_notes: cleanText(lane.other_notes),
+      attachment_links: cleanText(lane.attachment_links),
+      notes: cleanText(lane.notes),
+      raw_payload: rawPayload,
+      validation_issues: issueCodes.map((issue) => ({ issue })),
+      completeness_score: completenessScoreFromIssues(4, issueCodes.length)
+    };
+  });
+  const issueCount = lanePayloads.reduce((sum, lane) => sum + lane.validation_issues.length, 0);
+  // Internal procurement edits do not invalidate the customer's submitted RFI.
+  // Keeping the submitted state lets the existing Demand Snapshot workflow continue.
+  const submissionStatus = cleanText(existing.data?.status) || "draft";
+  const submissionRow = withOwner({
+    project_id: project.id,
+    magic_link_id: existing.data?.magic_link_id || null,
+    status: submissionStatus,
+    account_overview: objectRecord(rfi.account_overview),
+    operating_segments: segmentValues,
+    segment_checklists: Array.isArray(rfi.segment_checklists) ? rfi.segment_checklists : (existing.data?.segment_checklists || []),
+    logistics_models: objectRecord(rfi.logistics_models || existing.data?.logistics_models),
+    operational_criteria: objectRecord(rfi.operational_criteria || existing.data?.operational_criteria),
+    business_rules: objectRecord(rfi.business_rules || existing.data?.business_rules),
+    service_requirements: objectRecord(rfi.service_requirements || existing.data?.service_requirements),
+    carrier_requirements: objectRecord(rfi.carrier_requirements || existing.data?.carrier_requirements),
+    crossborder_details: objectRecord(rfi.crossborder_details || existing.data?.crossborder_details),
+    notes_exceptions: objectRecord(rfi.notes_exceptions || existing.data?.notes_exceptions),
+    attachments: Array.isArray(rfi.attachments) ? rfi.attachments : (existing.data?.attachments || []),
+    response: existing.data?.response || {},
+    frozen_snapshot: existing.data?.frozen_snapshot || {},
+    completeness_score: completenessScoreFromIssues(Math.max(lanePayloads.length * 4, 1), issueCount),
+    submitted_at: existing.data?.submitted_at || null,
+    reopened_at: existing.data?.reopened_at || null,
+    updated_at: now
+  }, user);
+  const submissionResult = existing.data?.id
+    ? await supabase.from("rfx_rfi_submissions").update(submissionRow).eq("id", existing.data.id).select().single()
+    : await supabase.from("rfx_rfi_submissions").insert(submissionRow).select().single();
+  if (submissionResult.error) throw submissionResult.error;
+  const submissionId = submissionResult.data.id;
+  const deletes = await Promise.all([
+    supabase.from("rfx_rfi_lanes").delete().eq("project_id", project.id).eq("submission_id", submissionId),
+    supabase.from("rfx_rfi_origins").delete().eq("project_id", project.id).eq("submission_id", submissionId),
+    supabase.from("rfx_rfi_destinations").delete().eq("project_id", project.id).eq("submission_id", submissionId)
+  ]);
+  for (const result of deletes) if (result.error) throw result.error;
+  const originRows = lanePayloads.map((lane, index) => withOwner({ project_id: project.id, submission_id: submissionId, origin_key: lane.lane_id || `O${index + 1}`, name: lane.origin_text }, user));
+  const destinationRows = lanePayloads.map((lane, index) => withOwner({ project_id: project.id, submission_id: submissionId, destination_key: lane.lane_id || `D${index + 1}`, name: lane.destination_text }, user));
+  const origins = originRows.length ? await supabase.from("rfx_rfi_origins").insert(originRows).select("id,origin_key") : { data: [], error: null };
+  const destinations = destinationRows.length ? await supabase.from("rfx_rfi_destinations").insert(destinationRows).select("id,destination_key") : { data: [], error: null };
+  if (origins.error) throw origins.error;
+  if (destinations.error) throw destinations.error;
+  const originIds = new Map((origins.data || []).map((row) => [cleanText(row.origin_key), row.id]));
+  const destinationIds = new Map((destinations.data || []).map((row) => [cleanText(row.destination_key), row.id]));
+  const laneRows = lanePayloads.map((lane) => withOwner({
+    ...lane,
+    project_id: project.id,
+    submission_id: submissionId,
+    origin_id: originIds.get(lane.lane_id) || null,
+    destination_id: destinationIds.get(lane.lane_id) || null
+  }, user));
+  if (laneRows.length) {
+    const insert = await supabase.from("rfx_rfi_lanes").insert(laneRows);
+    if (insert.error) throw insert.error;
+  }
+  const currentProjectStatus = cleanText(project.status) || "draft";
+  const nextProjectStatus = ["draft", "rfi_sent", "rfi_in_progress", "rfi_submitted"].includes(currentProjectStatus) ? "rfi_in_progress" : currentProjectStatus;
+  await supabase.from("rfx_projects").update({ status: nextProjectStatus, updated_at: now }).eq("id", project.id).eq("owner_email", user.owner_email);
+  await writeRfxProcessAudit(supabase, user, project.id, "rfi_updated_in_procurement_design", "rfx_rfi_submissions", submissionId, `Updated Customer RFI in Procurement Design`, { lanes: laneRows.length, issue_count: issueCount });
+  return { saved: true, row: submissionResult.data, lanes: laneRows.length, validation_issues: issueCount, completeness_score: submissionResult.data.completeness_score };
 }
 
 async function getRfxProcessProjectDetail(supabase: RatewareSupabaseClient, user: { owner_email: string | null }, projectId: unknown, appOrigin?: unknown) {
@@ -20442,6 +21290,10 @@ Deno.serve(async (request) => {
       return jsonResponse({ row: result.data });
     }
 
+    if (body.action === "save_rfx_process_rfi") {
+      return jsonResponse(await saveRfxProcessRfi(supabase, user, body));
+    }
+
     if (body.action === "create_rfx_rfi_magic_link") {
       return jsonResponse(await createRfxRfiMagicLink(supabase, user, body));
     }
@@ -22188,7 +23040,8 @@ Deno.serve(async (request) => {
         .from("vendors")
         .select(vendorSelect, { count: "exact" })
         .eq("owner_email", user.owner_email)
-        .order("created_at", { ascending: false });
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: false });
 
       const scopedIds = requestedIds.length && searchIds
         ? requestedIds.filter((id) => searchIds?.includes(id))
@@ -22490,11 +23343,11 @@ Deno.serve(async (request) => {
       const clearableFields = new Set(editableFields.filter((field) => !["vendor_name", "base_stage", "funnel_stage", "status"].includes(field)));
       const aliases: Record<string, string[]> = {
         vendor_id: ["vendor_id", "vendor id", "id", "vendorid"],
-        vendor_name: ["vendor_name", "vendor name", "vendor", "carrier", "carrier name", "name", "company", "company name", "nombre", "nombre comercial", "transportista"],
+        vendor_name: ["vendor_name", "vendor name", "vendor", "carrier", "carrier name", "carrier_name", "name", "company", "company name", "nombre", "nombre comercial", "transportista"],
         legal_name: ["legal_name", "legal name", "legal", "razon social", "razon_social", "razón social", "nombre legal"],
         domain: ["domain", "vendor_domain", "vendor domain", "carrier domain", "dominio", "dominio vendor", "dominio carrier"],
         contact_name: ["contact_name", "contact name", "contact", "contacto", "nombre contacto"],
-        primary_email: ["primary_email", "primary email", "email", "main email", "correo", "correo principal", "email principal"],
+        primary_email: ["primary_email", "primary email", "email", "emails", "main email", "correo", "correos", "correo principal", "email principal"],
         secondary_emails: ["secondary_emails", "secondary emails", "additional emails", "extra emails", "correos secundarios", "emails secundarios", "correos adicionales"],
         whatsapp_phone: ["whatsapp_phone", "whatsapp phone", "whatsapp", "phone", "telefono", "teléfono", "celular", "numero whatsapp", "número whatsapp"],
         preferred_channel: ["preferred_channel", "preferred channel", "channel", "canal", "canal preferido"],
@@ -22513,7 +23366,8 @@ Deno.serve(async (request) => {
         whatsapp_group_url: ["whatsapp_group_url", "whatsapp group url", "group url", "link grupo whatsapp", "url grupo whatsapp"],
         whatsapp_group_status: ["whatsapp_group_status", "whatsapp group status", "group status", "estatus grupo whatsapp"],
         whatsapp_notes: ["whatsapp_notes", "whatsapp notes", "notas whatsapp"],
-        clear_fields: ["clear_fields", "clear fields", "fields to clear", "limpiar campos", "campos a limpiar"]
+        clear_fields: ["clear_fields", "clear fields", "fields to clear", "limpiar campos", "campos a limpiar"],
+        update_note: ["update_note", "update note", "comment", "comments", "comentario", "comentarios", "nota actualizacion", "nota actualización"]
       };
       const normalizeTemplateKey = (value: string) => cleanText(value)?.toLowerCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ") || "";
       const templateValue = (row: Record<string, unknown>, field: string) => {
@@ -22543,11 +23397,13 @@ Deno.serve(async (request) => {
         };
       });
       const ids = Array.from(new Set(stagedRows.map((row) => row.vendor_id).filter(Boolean) as string[]));
-      const currentRows = ids.length
-        ? await supabase.from("vendors").select("*").eq("owner_email", user.owner_email).in("id", ids)
-        : { data: [], error: null };
-      if (currentRows.error) throw currentRows.error;
-      const currentById = new Map((currentRows.data || []).map((row) => [String(row.id), row]));
+      const currentRows: Record<string, unknown>[] = [];
+      for (const idBatch of chunkValues(ids, 100)) {
+        const currentBatch = await supabase.from("vendors").select("*").eq("owner_email", user.owner_email).in("id", idBatch);
+        if (currentBatch.error) throw currentBatch.error;
+        currentRows.push(...(currentBatch.data || []));
+      }
+      const currentById = new Map(currentRows.map((row) => [String(row.id), row]));
       const templateCurrentById = new Map(currentById);
       const needsReferenceLookup = stagedRows.some((row) => !row.vendor_id && row.references.length);
       const referenceRows = needsReferenceLookup ? await fetchVendorReferenceRows(supabase, user) : [];
@@ -22601,6 +23457,7 @@ Deno.serve(async (request) => {
         }
 
         const addTags = normalizeTags(templateValue(staged.raw, "add_tags"));
+        const updateNote = cleanText(templateValue(staged.raw, "update_note"));
         const clearFields = splitTemplateList(templateValue(staged.raw, "clear_fields"));
         for (const field of clearFields) {
           const normalizedField = normalizeTemplateKey(field).replace(/\s+/g, "_");
@@ -22615,6 +23472,12 @@ Deno.serve(async (request) => {
         if (current && !errors.length) {
           try {
             patch = normalizeVendorPatch(patchInput, current);
+            if (updateNote) {
+              const existingNotes = cleanText(patch.notes ?? current.notes);
+              patch.notes = existingNotes && !existingNotes.toLowerCase().includes(updateNote.toLowerCase())
+                ? `${existingNotes}\n${updateNote}`
+                : existingNotes || updateNote;
+            }
             if (addTags.length) {
               patch.tags = Array.from(new Set([...normalizeTags(patch.tags ?? current.tags), ...addTags]));
             }
@@ -23179,15 +24042,36 @@ Deno.serve(async (request) => {
 
     if (body.action === "import_rfx_lanes") {
       const event = await requireOwnedRfxEvent(supabase, user, body.event_id);
+      if (["closed", "awarded", "archived"].includes(String(event.status || "").toLowerCase())) {
+        return jsonResponse({ error: "This bid event is closed. New lanes cannot be added." }, 409);
+      }
       const rows = Array.isArray(body.rows) ? body.rows.slice(0, 1000) : [];
       if (!rows.length) return jsonResponse({ inserted: 0, rows: [] });
-      const laneRows = rows
-        .map((row: Record<string, unknown>, index: number) => ({
+      const existingResult = await supabase
+        .from("rfx_lanes")
+        .select("id,origin,destination,equipment,trailer,config,operation,service")
+        .eq("rfx_event_id", event.id);
+      if (existingResult.error) throw existingResult.error;
+      const existingKeys = new Set((existingResult.data || []).map((row) => rfxLaneAppendKey(row)).filter(Boolean));
+      const skippedRows: { row_number: number; lane_number: number }[] = [];
+      const laneRows: Record<string, unknown>[] = [];
+      rows.forEach((row: Record<string, unknown>, index: number) => {
+        const normalized = {
           ...normalizeRfxLane(row, index),
           rfx_event_id: event.id
-        }))
-        .filter((row) => row.origin || row.destination);
-      if (!laneRows.length) return jsonResponse({ inserted: 0, rows: [] });
+        };
+        if (!(normalized.origin || normalized.destination)) return;
+        const appendKey = rfxLaneAppendKey(normalized);
+        if (appendKey && existingKeys.has(appendKey)) {
+          skippedRows.push({ row_number: index + 1, lane_number: Number(normalized.lane_number) || index + 1 });
+          return;
+        }
+        if (appendKey) existingKeys.add(appendKey);
+        laneRows.push(normalized);
+      });
+      if (!laneRows.length) {
+        return jsonResponse({ inserted: 0, skipped: skippedRows.length, skipped_rows: skippedRows, rows: [], mode: "append" });
+      }
       const result = await supabase
         .from("rfx_lanes")
         .insert(laneRows)
@@ -23195,7 +24079,14 @@ Deno.serve(async (request) => {
         .order("lane_number", { ascending: true });
       if (result.error) throw result.error;
       const sync = await ensureRatebookForBidRoomEvent(supabase, user, event, body);
-      return jsonResponse({ inserted: result.data?.length || 0, rows: result.data || [], ratebook_sync: sync });
+      return jsonResponse({
+        inserted: result.data?.length || 0,
+        skipped: skippedRows.length,
+        skipped_rows: skippedRows,
+        rows: result.data || [],
+        mode: "append",
+        ratebook_sync: sync
+      });
     }
 
     if (body.action === "update_rfx_lane") {
@@ -23293,6 +24184,11 @@ Deno.serve(async (request) => {
         `Posted Bid Room chat message to ${result.thread.title || result.thread.thread_type}`,
         { thread_type: result.thread.thread_type, google_chat_sync_status: result.message.google_chat_sync_status }
       );
+      return jsonResponse(result);
+    }
+
+    if (body.action === "send_bid_room_carrier_message") {
+      const result = await sendBidRoomCarrierMessage(supabase, user, body);
       return jsonResponse(result);
     }
 
@@ -23450,13 +24346,16 @@ Deno.serve(async (request) => {
       if (!id) return jsonResponse({ error: "RFx invitation id is required." }, 400);
       const ownedResult = await supabase
         .from("rfx_lane_vendors")
-        .select("id,rfx_events!inner(owner_email)")
+        .select("id,rfx_event_id,rfx_lane_id,vendor_id,rfx_events!inner(owner_email),vendors(vendor_name,domain)")
         .eq("id", id)
         .eq("rfx_events.owner_email", user.owner_email)
         .single();
       if (ownedResult.error) throw ownedResult.error;
       const patchInput = objectRecord(body.patch);
       const bidRate = strictBidNumber(patchInput.bid_rate, "Bid rate");
+      const captureSource = cleanText(patchInput.capture_source);
+      const manualCapture = captureSource === "manual_operator";
+      const sourceNote = cleanText(patchInput.source_note);
       const patch: Record<string, unknown> = {
         bid_rate: bidRate,
         currency: strictCurrencyCode(patchInput.currency),
@@ -23465,9 +24364,11 @@ Deno.serve(async (request) => {
         notes: cleanText(patchInput.notes),
         invitation_status: bidRate !== null ? "quoted" : cleanText(patchInput.invitation_status) || "drafted",
         responded_at: bidRate !== null ? new Date().toISOString() : null,
-        response_source: "rateware_admin",
+        response_source: manualCapture ? "manual_operator" : "rateware_admin",
         updated_at: new Date().toISOString()
       };
+      if ("valid_through" in patchInput) patch.valid_through = strictDateOnly(patchInput.valid_through, "Valid through");
+      if (manualCapture && sourceNote) patch.bid_source_note = sourceNote.slice(0, 2000);
       const mirrorEnabled = cleanOptionalBoolean(patchInput.mirror_account_enabled);
       if (patchInput.commercial_model !== undefined) patch.commercial_model = normalizeCommercialModel(patchInput.commercial_model);
       if (patchInput.marksman_margin_pct !== undefined) patch.marksman_margin_pct = strictPercentNumber(patchInput.marksman_margin_pct, "MARKSMAN margin");
@@ -23481,6 +24382,17 @@ Deno.serve(async (request) => {
       if (patchInput.eta_pickup !== undefined) patch.eta_pickup = cleanTimestamp(patchInput.eta_pickup);
       if (patchInput.eta_delivery !== undefined) patch.eta_delivery = cleanTimestamp(patchInput.eta_delivery);
       if (patchInput.availability_validation_notes !== undefined) patch.availability_validation_notes = cleanText(patchInput.availability_validation_notes);
+      if ("current_unit_location" in patchInput) patch.current_unit_location = cleanText(patchInput.current_unit_location);
+      if ("deadhead_distance" in patchInput) patch.deadhead_distance = strictBidNumber(patchInput.deadhead_distance, "Deadhead distance");
+      if ("deadhead_unit" in patchInput) {
+        const deadheadUnit = cleanText(patchInput.deadhead_unit)?.toLowerCase();
+        if (deadheadUnit && !["mi", "km"].includes(deadheadUnit)) throw new Error("Deadhead unit must be mi or km.");
+        patch.deadhead_unit = deadheadUnit;
+      }
+      if (manualCapture) {
+        if (patchInput.eta_pickup !== undefined) patch.eta_pickup = cleanTimestamp(patchInput.eta_pickup);
+        if (patchInput.eta_delivery !== undefined) patch.eta_delivery = cleanTimestamp(patchInput.eta_delivery);
+      }
       if (mirrorEnabled !== null) {
         patch.mirror_account_enabled = mirrorEnabled;
         patch.availability_validation_status = availabilityValidationStatus(patchInput.availability_validation_status, mirrorEnabled);
@@ -23494,6 +24406,25 @@ Deno.serve(async (request) => {
         .select("*, vendors(id,vendor_name,domain,primary_email,whatsapp_phone,preferred_channel,base_stage,status)")
         .single();
       if (result.error) throw result.error;
+      if (manualCapture) {
+        await tryWriteAuditLog(
+          supabase,
+          user,
+          "rfx.bid.manual_capture",
+          "rfx_lane_vendors",
+          id,
+          `Recorded manual bid for ${result.data?.vendors?.vendor_name || result.data?.vendors?.domain || "carrier"}`,
+          {
+            rfx_event_id: result.data?.rfx_event_id,
+            rfx_lane_id: result.data?.rfx_lane_id,
+            vendor_id: result.data?.vendor_id,
+            source_channel: cleanText(patchInput.manual_source_channel) || "other",
+            bid_rate: result.data?.bid_rate,
+            currency: result.data?.currency,
+            valid_through: result.data?.valid_through
+          }
+        );
+      }
       return jsonResponse({ row: result.data });
     }
 
@@ -23876,7 +24807,7 @@ Deno.serve(async (request) => {
       }
       const invitationsResult = await supabase
         .from("rfx_lane_vendors")
-        .select("id,vendor_id,rfx_lane_id,invitation_status,vendors(id,vendor_name,domain,primary_email,secondary_emails,whatsapp_phone,whatsapp_do_not_contact),rfx_lanes(origin,destination,equipment,operation,service)")
+        .select("id,vendor_id,rfx_lane_id,invitation_status,invited_at,viewed_at,responded_at,bid_rate,vendors(id,vendor_name,domain,primary_email,secondary_emails,whatsapp_phone,whatsapp_do_not_contact),rfx_lanes(origin,destination,equipment,operation,service)")
         .eq("rfx_event_id", eventId)
         .neq("invitation_status", "archived");
       if (invitationsResult.error) throw invitationsResult.error;
@@ -23900,7 +24831,7 @@ Deno.serve(async (request) => {
         bucket.push(invitation);
         groups.set(vendorId, bucket);
       }
-      const rows = [...groups.entries()].map(([vendorId, group]) => {
+      const allRows = [...groups.entries()].map(([vendorId, group]) => {
         const first = group[0];
         const vendor = relationRecord(first.vendors);
         const emailCandidates = vendorContactEmailCandidates(vendor);
@@ -23934,6 +24865,17 @@ Deno.serve(async (request) => {
         })) : null;
         const hasContact = channel === "email" ? emailCandidates.length > 0 : Boolean(contactValue) || channel === "whatsapp_group";
         const suppressionReason = outreachSuppressionReason(suppressions, channel, contactValue || "", vendorId || "");
+        const invitationStatuses = [...new Set(
+          group
+            .map((row) => cleanText(row.invitation_status)?.toLowerCase() || "")
+            .filter((status) => Boolean(status))
+        )] as string[];
+        const invitationStatus = invitationStatuses.find((status) => ["quoted", "bid_submitted", "awarded"].includes(status))
+          || invitationStatuses.find((status) => ["responded", "viewed", "invited"].includes(status))
+          || invitationStatuses.find((status) => status === "drafted")
+          || invitationStatuses[0]
+          || "drafted";
+        const trackingState = history ? outreachMessageTrackingState(history) : "";
         let audienceStatus = "ready";
         let reason = "Eligible contact ready for review";
         if (policy.mode !== "all_eligible" && selectedVendorIds.length && !selectedVendorIds.includes(vendorId)) {
@@ -23950,6 +24892,29 @@ Deno.serve(async (request) => {
           audienceStatus = tracking === "bounced" ? "bounced" : tracking === "quoted" ? "quoted" : tracking === "replied" ? "replied" : "already_contacted";
           reason = outreachAutoDraftSkipReason(history);
         }
+        let eventStatus = trackingState || "";
+        let eventStatusReason = history ? outreachOutcomeReason(history) : "";
+        if (!eventStatus) {
+          if (audienceStatus === "bounced" || audienceStatus === "suppressed" || audienceStatus === "no_contact") {
+            eventStatus = audienceStatus;
+            eventStatusReason = reason;
+          } else if (["quoted", "bid_submitted", "awarded"].includes(invitationStatus) || group.some((row) => row.bid_rate !== null && row.bid_rate !== undefined)) {
+            eventStatus = "quoted";
+            eventStatusReason = "Carrier has submitted a quote for this RFx.";
+          } else if (invitationStatus === "responded") {
+            eventStatus = "replied";
+            eventStatusReason = "Carrier responded to this RFx.";
+          } else if (invitationStatus === "viewed") {
+            eventStatus = "read";
+            eventStatusReason = "Carrier viewed this RFx invitation.";
+          } else if (invitationStatus === "invited") {
+            eventStatus = "invited";
+            eventStatusReason = "This RFx has been invited, but no delivery receipt is available for the selected channel yet.";
+          } else {
+            eventStatus = "not_invited";
+            eventStatusReason = "Carrier is in this RFx but has not received a message for the selected channel.";
+          }
+        }
         const lanePreview = group.slice(0, 2).map((row) => {
           const lane = relationRecord(row.rfx_lanes);
           return `${cleanText(lane.origin) || "-"} -> ${cleanText(lane.destination) || "-"}`;
@@ -23965,21 +24930,35 @@ Deno.serve(async (request) => {
           shortlisted_lane_count: group.length,
           event_lane_count: eventLaneCount || group.length,
           lane_preview: lanePreview,
+          invitation_statuses: invitationStatuses,
+          invitation_status: invitationStatus,
           audience_status: audienceStatus,
           reason,
-          next_action: history ? outreachNextAction(history) : audienceStatus === "ready" ? "Review and send" : audienceStatus === "bounced" ? "Replace contact" : "Review carrier contact",
+          event_status: eventStatus,
+          event_status_reason: eventStatusReason,
+          next_action: history ? outreachNextAction(history) : eventStatus === "not_invited" ? "Prepare this channel" : eventStatus === "invited" ? "Await response" : audienceStatus === "ready" ? "Review and send" : audienceStatus === "bounced" ? "Replace contact" : "Review carrier contact",
           last_contact_at: history?.updated_at || null,
-          last_message_status: history ? outreachMessageTrackingState(history) : null
+          last_message_status: trackingState || null
         };
-      }).filter((row) => {
-        const haystack = `${row.vendor_name} ${row.vendor_domain} ${row.email} ${row.phone} ${row.lane_preview.join(" ")}`.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-        return (!search || haystack.includes(search)) && (statusFilter === "all" || row.audience_status === statusFilter);
       });
-      const counts = rows.reduce((acc, row) => {
-        acc[row.audience_status] = (acc[row.audience_status] || 0) + 1;
+      const rows = allRows.filter((row) => {
+        const haystack = `${row.vendor_name} ${row.vendor_domain} ${row.email} ${row.phone} ${row.lane_preview.join(" ")}`.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+        const eventStatus = cleanText(row.event_status) || "";
+        const statusMatches = statusFilter === "all"
+          || row.audience_status === statusFilter
+          || eventStatus === statusFilter
+          || (statusFilter === "in_delivery" && ["drafted", "queued", "sending"].includes(eventStatus))
+          || (statusFilter === "response" && ["replied", "quoted"].includes(eventStatus))
+          || (statusFilter === "attention" && ["bounced", "failed", "suppressed", "no_contact"].includes(eventStatus))
+          || (statusFilter === "delivered" && ["delivered", "read"].includes(eventStatus));
+        return (!search || haystack.includes(search)) && statusMatches;
+      });
+      const counts = allRows.reduce((acc, row) => {
+        const key = cleanText(row.event_status || row.audience_status) || "needs_review";
+        acc[key] = (acc[key] || 0) + 1;
         return acc;
       }, {} as Record<string, number>);
-      return jsonResponse({ rows, counts, total: rows.length, channel, rfx_event_id: eventId });
+      return jsonResponse({ rows, counts, total: allRows.length, filtered_total: rows.length, channel, rfx_event_id: eventId });
     }
 
     if (body.action === "list_outreach_campaigns") {

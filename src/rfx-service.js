@@ -25,7 +25,7 @@ export async function duplicateRfxEvent(id) {
 }
 
 export async function importRfxLanes(eventId, rows) {
-  return await callRatewareApi("import_rfx_lanes", { event_id: eventId, rows });
+  return await callRatewareApi("import_rfx_lanes", { event_id: eventId, rows, append_only: true });
 }
 
 export async function updateRfxLane(id, patch) {
@@ -87,6 +87,15 @@ export async function fetchBidRoomChat(eventId, filters = {}) {
 
 export async function postBidRoomChatMessage(eventId, message) {
   return await callRatewareApi("post_bid_room_chat_message", { rfx_event_id: eventId, ...message });
+}
+
+export async function sendBidRoomCarrierMessage(eventId, message) {
+  return await callRatewareApi("send_bid_room_carrier_message", {
+    rfx_event_id: eventId,
+    confirmed: true,
+    confirmation_action: "send_bid_room_carrier_message",
+    ...message
+  });
 }
 
 export async function updateBidRoomChatThread(threadId, patch = {}) {
