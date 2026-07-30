@@ -8658,7 +8658,7 @@ function awardNoticeHtml(event: Record<string, unknown>, vendor: Record<string, 
       ${awardNoticeTableHtml(rows)}
       ${portalLink ? `<p>Bid Room: <a href="${escapeHtmlText(portalLink)}">${escapeHtmlText(portalLink)}</a></p>` : ""}
       <p>Gracias por participar. Mantendremos su capacidad y comentarios visibles para siguientes asignaciones.</p>
-      <p>MARKSMAN Procurement</p>
+      ${marksmanSignatureHtml(bidRoomFollowUpLanguage("", event, event.rfx_id))}
     </div>
   `;
 }
@@ -8668,11 +8668,9 @@ async function ensureAwardNoticeCampaign(
   user: { owner_user_id: string | null; owner_email: string | null },
   event: Record<string, unknown>,
   senderEmail: string,
-  senderLabel: string,
-  channel = "email"
+  senderLabel: string
 ) {
-  const normalizedChannel = channel === "whatsapp" ? "whatsapp" : "email";
-  const name = `${cleanText(event.rfx_id || event.name) || "RFx"} award closeout${normalizedChannel === "whatsapp" ? " - WhatsApp" : ""}`;
+  const name = `${cleanText(event.rfx_id || event.name) || "RFx"} award closeout`;
   const existing = await supabase
     .from("outreach_campaigns")
     .select("*")
@@ -8690,7 +8688,7 @@ async function ensureAwardNoticeCampaign(
     .insert(withOwner({
       rfx_event_id: event.id,
       name,
-      channel: normalizedChannel,
+      channel: "email",
       status: "draft",
       sender_email: senderEmail,
       sender_label: senderLabel,
@@ -8712,8 +8710,7 @@ async function generateRfxAwardNotices(
   const appOrigin = cleanText(input.app_origin) || Deno.env.get("RATEWARE_APP_URL") || "https://rateware.vercel.app";
   const senderEmail = (cleanText(input.sender_email) || GMAIL_ALLOWED_SENDER).toLowerCase();
   const senderLabel = cleanText(input.sender_label) || senderEmail;
-  const channel = cleanText(input.channel)?.toLowerCase() === "whatsapp" ? "whatsapp" : "email";
-  const campaign = await ensureAwardNoticeCampaign(supabase, user, event, senderEmail, senderLabel, channel);
+  const campaign = await ensureAwardNoticeCampaign(supabase, user, event, senderEmail, senderLabel);
   const invitationsResult = await supabase
     .from("rfx_lane_vendors")
     .select("*, vendors(id,vendor_name,domain,primary_email,whatsapp_phone,preferred_channel,contact_name), rfx_lanes(*)")
@@ -8731,22 +8728,21 @@ async function generateRfxAwardNotices(
     if (!hasDecision && !hasParticipation) continue;
     const vendor = objectRecord(invitation.vendors);
     const recipientEmail = cleanText(vendor.primary_email);
-    const recipientPhone = normalizeWhatsappPhone(vendor.whatsapp_phone);
-    const recipient = channel === "whatsapp" ? recipientPhone : recipientEmail;
-    if (!recipient) {
+    if (!recipientEmail) {
       skipped.push({
         invitation_id: invitation.id,
         vendor_id: invitation.vendor_id,
-        reason: channel === "whatsapp" ? "Missing vendor WhatsApp phone" : "Missing vendor email"
+        reason: "Missing vendor email"
       });
       continue;
     }
-    const key = cleanText(invitation.vendor_id) || recipient || cleanText(invitation.id) || crypto.randomUUID();
+    const key = cleanText(invitation.vendor_id) || recipientEmail || cleanText(invitation.id) || crypto.randomUUID();
     const bucket = rows.get(key) || [];
     bucket.push(invitation);
     rows.set(key, bucket);
   }
 
+  // Award notice contract: channel: "email" and notice_type: "rfx_award_closeout".
   const messageRows: Record<string, unknown>[] = [];
   const now = new Date().toISOString();
   for (const invitationGroup of rows.values()) {
@@ -8758,7 +8754,6 @@ async function generateRfxAwardNotices(
     const first = sortedGroup[0];
     const vendor = objectRecord(first.vendors);
     const recipientEmail = cleanText(vendor.primary_email);
-    const recipientPhone = normalizeWhatsappPhone(vendor.whatsapp_phone);
     const laneSummaries = sortedGroup.map(awardNoticeLaneSummary);
     const counts = laneSummaries.reduce((acc, row) => {
       const key = cleanText(objectRecord(row.outcome).key) || "not_awarded";
@@ -8780,13 +8775,6 @@ async function generateRfxAwardNotices(
       "Gracias por participar.",
       "MARKSMAN Procurement"
     ].filter(Boolean).join("\n");
-    const whatsappText = [
-      `Hola ${cleanText(vendor.vendor_name || vendor.domain || "equipo")},`,
-      `Actualizacion de ${cleanText(event.rfx_id || event.name) || "RFx"}.`,
-      awardNoticeRowsText(laneSummaries),
-      portalLink ? `Bid Room: ${portalLink}` : null,
-      "MARKSMAN Procurement"
-    ].filter(Boolean).join("\n");
     const invitationIds = sortedGroup.map((item) => item.id).filter(Boolean);
     const laneIds = sortedGroup.map((item) => item.rfx_lane_id).filter(Boolean);
     messageRows.push(withOwner({
@@ -8796,22 +8784,22 @@ async function generateRfxAwardNotices(
       rfx_lane_id: first.rfx_lane_id,
       rfx_lane_vendor_id: first.id,
       vendor_id: first.vendor_id,
-      channel,
-      recipient_email: channel === "email" ? recipientEmail : null,
-      recipient_phone: channel === "whatsapp" ? recipientPhone : null,
-      normalized_recipient_phone: channel === "whatsapp" ? recipientPhone : null,
+      channel: "email",
+      recipient_email: recipientEmail,
+      recipient_phone: null,
+      normalized_recipient_phone: null,
       contact_key: outreachDedupeContactKey({
         vendor_id: first.vendor_id,
-        recipient_email: channel === "email" ? recipientEmail : null,
-        normalized_recipient_phone: channel === "whatsapp" ? recipientPhone : null
+        recipient_email: recipientEmail,
+        normalized_recipient_phone: null
       }),
       subject,
-      html_body: channel === "email" ? htmlBody : null,
-      text_body: channel === "email" ? textBody : whatsappText,
-      whatsapp_text: channel === "whatsapp" ? whatsappText : null,
-      whatsapp_body: channel === "whatsapp" ? whatsappText : null,
-      gmail_compose_url: channel === "email" ? gmailComposeUrl(recipientEmail, subject, textBody) : null,
-      whatsapp_url: channel === "whatsapp" ? whatsappDraftUrl(recipientPhone, whatsappText) : null,
+      html_body: htmlBody,
+      text_body: textBody,
+      whatsapp_text: null,
+      whatsapp_body: null,
+      gmail_compose_url: gmailComposeUrl(recipientEmail, subject, textBody),
+      whatsapp_url: null,
       sender_email: senderEmail,
       sender_label: senderLabel,
       sender_connection_status: "draft_only",
@@ -8820,11 +8808,10 @@ async function generateRfxAwardNotices(
         notice_type: "rfx_award_closeout",
         generated_at: now,
         award_summary: counts,
-        channel,
+        channel: "email",
         rfx_lane_vendor_ids: invitationIds,
         rfx_lane_ids: laneIds,
         bid_link: portalLink,
-        whatsapp_template_status: channel === "whatsapp" ? "NOT_PUBLISHED" : null,
         sender_email: senderEmail,
         sender_label: senderLabel
       }
@@ -8844,7 +8831,7 @@ async function generateRfxAwardNotices(
     campaign_id: campaign.id,
     vendor_id: message.vendor_id,
     rfx_event_id: message.rfx_event_id,
-    channel: cleanText(message.channel) || channel,
+    channel: "email",
     direction: "outbound",
     status: "drafted",
     subject: message.subject,
@@ -8852,7 +8839,7 @@ async function generateRfxAwardNotices(
     metadata: {
       generated_from: "rfx_award_closeout",
       notice_type: "rfx_award_closeout",
-      channel: cleanText(message.channel) || channel,
+      channel: "email",
       award_summary: objectRecord(message.metadata).award_summary || null
     }
   }, user));
@@ -8865,7 +8852,7 @@ async function generateRfxAwardNotices(
     .from("outreach_campaigns")
     .update({
       status: "generated",
-      channel,
+      channel: "email",
       sender_email: senderEmail,
       sender_label: senderLabel,
       sender_connection_status: "draft_only",
@@ -8875,7 +8862,7 @@ async function generateRfxAwardNotices(
     .eq("owner_email", user.owner_email);
   if (campaignUpdate.error) throw campaignUpdate.error;
 
-  return { generated: result.data?.length || 0, rows: result.data || [], skipped, campaign_id: campaign.id };
+  return { generated: result.data?.length || 0, rows: result.data || [], skipped, campaign_id: campaign.id, channel: "email" };
 }
 
 const BID_ROOM_CHAT_THREAD_TYPES = new Set(["event_group", "lane_group", "carrier_private"]);

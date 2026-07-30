@@ -374,8 +374,6 @@ const rfxGenerateAwardNoticesButton = document.querySelector("#rfx-generate-awar
 const rfxSendAwardNoticesButton = document.querySelector("#rfx-send-award-notices");
 const rfxAwardNoticeSummary = document.querySelector("#rfx-award-notice-summary");
 const rfxAwardNoticeQueue = document.querySelector("#rfx-award-notice-queue");
-const rfxAwardNoticeChannel = document.querySelector("#rfx-award-notice-channel");
-const rfxAwardNoticeChannelHint = document.querySelector("#rfx-award-notice-channel-hint");
 const rfxAwardNoticePreview = document.querySelector("#rfx-award-notice-preview");
 const rfxCloseWorkspaceTabs = document.querySelector("#rfx-close-workspace-tabs");
 const rfxCloseWorkspacePanels = [...document.querySelectorAll("[data-rfx-close-workspace-panel]")];
@@ -444,6 +442,7 @@ let participantBulkMutationRunning = false;
 let eventLifecycleMutationRunning = false;
 let awardMutationRunning = false;
 let awardNoticePreviewId = "";
+const awardNoticeSelectedIds = new Set();
 let draftQueueMutationRunning = false;
 let pendingChatBidUpdate = null;
 let pendingManualBid = null;
@@ -3923,31 +3922,27 @@ function awardNoticeDraftRows() {
   });
 }
 
-function awardNoticeChannel() {
-  return rfxAwardNoticeChannel?.value === "whatsapp" ? "whatsapp" : "email";
-}
-
-function awardNoticeChannelLabel(channel = awardNoticeChannel()) {
-  return channel === "whatsapp" ? "WhatsApp" : "email";
-}
-
 function visibleAwardNoticeRows(rows = awardNoticeDraftRows()) {
-  const channel = awardNoticeChannel();
-  return rows.filter((message) => String(message.channel || "email").toLowerCase() === channel);
+  return rows.filter((message) => String(message.channel || "email").toLowerCase() === "email");
 }
 
-function sendableAwardNoticeIds(rows = awardNoticeDraftRows(), channel = awardNoticeChannel()) {
+function sendableAwardNoticeIds(rows = awardNoticeDraftRows()) {
   return rows
     .filter((message) => {
       const status = String(message.status || "").toLowerCase();
-      const recipientReady = channel === "whatsapp"
-        ? Boolean(message.normalized_recipient_phone || message.recipient_phone || message.vendors?.whatsapp_phone)
-        : Boolean(message.recipient_email);
-      return String(message.channel || "email").toLowerCase() === channel
-        && recipientReady
+      return String(message.channel || "email").toLowerCase() === "email"
+        && Boolean(message.recipient_email)
         && ["drafted", "queued", "failed"].includes(status);
     })
     .map((message) => String(message.id));
+}
+
+function selectedAwardNoticeIds(rows = visibleAwardNoticeRows()) {
+  const sendable = new Set(sendableAwardNoticeIds(rows));
+  for (const id of [...awardNoticeSelectedIds]) {
+    if (!sendable.has(String(id))) awardNoticeSelectedIds.delete(String(id));
+  }
+  return [...awardNoticeSelectedIds].filter((id) => sendable.has(String(id)));
 }
 
 function awardNoticeOutcome(message) {
@@ -3976,21 +3971,27 @@ function renderAwardNoticeQueue(rows = awardNoticeDraftRows()) {
     renderAwardNoticePreview([]);
     return;
   }
-  const channel = awardNoticeChannel();
   const channelRows = visibleAwardNoticeRows(rows);
   if (!channelRows.length) {
-    rfxAwardNoticeQueue.innerHTML = `No ${escapeHtml(awardNoticeChannelLabel(channel))} notices generated for this event.`;
+    rfxAwardNoticeQueue.innerHTML = "No email notices generated for this event.";
     renderAwardNoticePreview([]);
     return;
   }
-  const visibleRows = channelRows.slice(0, 12);
+  const visibleRows = channelRows;
+  const selectableIds = selectedAwardNoticeIds(channelRows);
   if (!visibleRows.some((message) => String(message.id) === awardNoticePreviewId)) {
     awardNoticePreviewId = String(visibleRows[0]?.id || "");
   }
   rfxAwardNoticeQueue.innerHTML = `
+    <div class="rfx-award-notice-selection-bar">
+      <label><input type="checkbox" data-rfx-select-all-award-notices ${selectableIds.length === sendableAwardNoticeIds(channelRows).length && selectableIds.length ? "checked" : ""}> Select all ready</label>
+      <span>${formatNumber(selectableIds.length)} selected of ${formatNumber(sendableAwardNoticeIds(channelRows).length)} ready</span>
+      <button class="secondary small-button" type="button" data-rfx-clear-award-notice-selection ${selectableIds.length ? "" : "disabled"}>Clear</button>
+    </div>
     <table>
       <thead>
         <tr>
+          <th>Select</th>
           <th>Carrier</th>
           <th>Outcome</th>
           <th>Status</th>
@@ -4002,10 +4003,13 @@ function renderAwardNoticeQueue(rows = awardNoticeDraftRows()) {
         ${visibleRows.map((message) => {
           const outcome = awardNoticeOutcome(message);
           const status = String(message.status || "drafted").toLowerCase();
-          const openUrl = message.channel === "email" ? message.gmail_compose_url : message.whatsapp_url;
+          const openUrl = message.gmail_compose_url;
           const selected = String(message.id) === awardNoticePreviewId;
+          const sendable = sendableAwardNoticeIds([message]).length > 0;
+          const checked = awardNoticeSelectedIds.has(String(message.id));
           return `
-            <tr class="${selected ? "is-selected" : ""}">
+            <tr class="${selected ? "is-selected" : ""}" data-rfx-award-notice-row="${escapeHtml(message.id)}">
+              <td><input type="checkbox" aria-label="Select email notice for ${escapeHtml(message.vendors?.vendor_name || "carrier")}" data-rfx-select-award-notice="${escapeHtml(message.id)}" ${checked ? "checked" : ""} ${sendable ? "" : "disabled"}></td>
               <td>
                 <strong>${escapeHtml(message.vendors?.vendor_name || message.vendors?.domain || "Vendor")}</strong>
                 <small>${escapeHtml(message.subject || message.outreach_campaigns?.name || "Award notice")}</small>
@@ -4017,6 +4021,7 @@ function renderAwardNoticeQueue(rows = awardNoticeDraftRows()) {
                 <div class="compact-actions">
                   <button class="secondary small-button" type="button" data-rfx-preview-award-notice="${escapeHtml(message.id)}">Preview</button>
                   <button class="secondary small-button" type="button" data-rfx-open-award-notice="${escapeHtml(openUrl || "")}" ${openUrl ? "" : "disabled"}>Open</button>
+                  <button class="small-button" type="button" data-rfx-send-award-notice="${escapeHtml(message.id)}" ${sendable ? "" : "disabled"}>Send</button>
                   <button class="secondary small-button" type="button" data-rfx-mark-award-notice="${escapeHtml(message.id)}" data-rfx-award-notice-status="queued" ${status === "queued" || status === "sent" || status === "archived" ? "disabled" : ""}>Queue</button>
                   <button class="secondary small-button" type="button" data-rfx-mark-award-notice="${escapeHtml(message.id)}" data-rfx-award-notice-status="archived" ${status === "archived" ? "disabled" : ""}>Archive</button>
                 </div>
@@ -4026,7 +4031,6 @@ function renderAwardNoticeQueue(rows = awardNoticeDraftRows()) {
         }).join("")}
       </tbody>
     </table>
-    ${channelRows.length > visibleRows.length ? `<p>Showing ${formatNumber(visibleRows.length)} of ${formatNumber(channelRows.length)} ${escapeHtml(awardNoticeChannelLabel(channel))} notice(s).</p>` : ""}
   `;
   renderAwardNoticePreview(channelRows);
 }
@@ -4037,19 +4041,18 @@ function renderAwardNoticePreview(rows = visibleAwardNoticeRows()) {
   if (!message) {
     rfxAwardNoticePreview.innerHTML = `
       <p class="eyebrow">Preview</p>
-      <p>Select a notice to inspect its rendered channel content.</p>
+      <p>Select a carrier notice to inspect its rendered email.</p>
     `;
     return;
   }
   awardNoticePreviewId = String(message.id || "");
-  const channel = String(message.channel || "email").toLowerCase();
   const outcome = awardNoticeOutcome(message);
   const status = String(message.status || "drafted").toLowerCase();
   const recipient = messageRecipient(message) || "-";
   rfxAwardNoticePreview.innerHTML = `
     <div class="rfx-award-notice-preview-heading">
       <div>
-        <p class="eyebrow">${escapeHtml(awardNoticeChannelLabel(channel))} preview</p>
+        <p class="eyebrow">Email preview</p>
         <strong>${escapeHtml(message.vendors?.vendor_name || message.vendors?.domain || "Vendor")}</strong>
       </div>
       <span class="status-pill ${awardNoticeOutcomeTone(outcome, status)}">${escapeHtml(status)}</span>
@@ -4061,11 +4064,6 @@ function renderAwardNoticePreview(rows = visibleAwardNoticeRows()) {
   if (meta) meta.textContent = recipient + " - " + outcome;
   const body = rfxAwardNoticePreview.querySelector("[data-rfx-award-notice-preview-body]");
   if (!body) return;
-  if (channel === "whatsapp") {
-    const text = message.whatsapp_text || message.whatsapp_body || message.text_body || "";
-    body.innerHTML = `<pre>${escapeHtml(text)}</pre>`;
-    return;
-  }
   const frame = document.createElement("iframe");
   frame.className = "rfx-award-notice-email-frame";
   frame.title = "Award email preview";
@@ -4094,7 +4092,7 @@ function awardReadinessSnapshot() {
   const primary = invitations.filter((item) => item.award_role === "primary");
   const pendingCloseout = primary.filter((item) => !item.rate_staging_id);
   const noticeRows = awardNoticeDraftRows();
-  const sendable = sendableAwardNoticeIds(noticeRows, awardNoticeChannel());
+  const sendable = sendableAwardNoticeIds(noticeRows);
   const missingPrimary = lanes.filter(({ bids }) => !bids.some((row) => row.invitation.award_role === "primary"));
   const riskFlags = lanes.reduce((sum, { bids }) => sum + (bids[0]?.decision?.risk_flags?.length || 0), 0);
   const weakRecommended = lanes.filter(({ bids }) => Number(bids[0]?.decision?.score || 0) < 55);
@@ -4135,11 +4133,10 @@ function awardPreflightIssues(action = "closeout") {
     issues.push({ key: "closeout", label: "No Rateware closeout pending", detail: "Primary awards already have Rateware rows or no primary awards are available." });
   }
   if (action === "send_notices" && !snapshot.sendable.length) {
-    const channel = awardNoticeChannel();
     issues.push({
       key: "notices",
       label: "No sendable notices",
-      detail: `Generate ${awardNoticeChannelLabel(channel)} notice drafts with a valid recipient before sending.`
+      detail: "Generate email notice drafts with a valid recipient before sending."
     });
   }
   return issues;
@@ -4182,7 +4179,7 @@ function renderAwardReadiness() {
       <span data-tone="${decisionTone}"><b>${formatNumber(awardedCount)} / ${formatNumber(lanesCount)}</b> lanes awarded</span>
       <span data-tone="${riskTone}"><b>${formatNumber(snapshot.riskFlags)}</b> top-choice risk flag(s)</span>
       <span data-tone="${closeoutTone}"><b>${formatNumber(snapshot.pendingCloseout.length)}</b> Rateware closeout pending</span>
-      <span data-tone="${noticesTone}"><b>${formatNumber(snapshot.sendable.length)}</b> ${escapeHtml(awardNoticeChannelLabel(awardNoticeChannel()))} notice(s) ready</span>
+      <span data-tone="${noticesTone}"><b>${formatNumber(snapshot.sendable.length)}</b> email notice(s) ready</span>
     </div>
     ${snapshot.weakRecommended.length ? `<p>${formatNumber(snapshot.weakRecommended.length)} lane(s) have weak recommended scores. Review before applying awards in bulk.</p>` : ""}
   `;
@@ -4190,36 +4187,31 @@ function renderAwardReadiness() {
 
 function updateAwardNoticeControls() {
   const rows = awardNoticeDraftRows();
-  const channel = awardNoticeChannel();
-  const channelLabel = awardNoticeChannelLabel(channel);
   const channelRows = visibleAwardNoticeRows(rows);
-  const sendableIds = sendableAwardNoticeIds(rows, channel);
+  const sendableIds = sendableAwardNoticeIds(rows);
+  const selectedIds = selectedAwardNoticeIds(channelRows);
+  const selectedSendableIds = selectedIds.filter((id) => sendableIds.includes(String(id)));
   const sent = channelRows.filter((message) => String(message.status || "").toLowerCase() === "sent").length;
   const failed = channelRows.filter((message) => String(message.status || "").toLowerCase() === "failed").length;
   const primary = currentLanes.flatMap((lane) => activeInvitations(lane)).filter((item) => item.award_role === "primary").length;
   const bidRows = awardLaneRows().reduce((sum, row) => sum + row.bids.length, 0);
-  if (rfxAwardNoticeChannelHint) {
-    rfxAwardNoticeChannelHint.textContent = channel === "whatsapp"
-      ? "WhatsApp preview uses the carrier phone and short message layout. Sending requires an approved Meta template."
-      : "Email preview uses the Gmail message layout, route table and sender signature.";
-  }
   if (rfxGenerateAwardNoticesButton) {
-    rfxGenerateAwardNoticesButton.textContent = `Generate ${channelLabel} notices`;
+    rfxGenerateAwardNoticesButton.textContent = "Generate email notices";
   }
   if (rfxGenerateAwardNoticesButton) {
     rfxGenerateAwardNoticesButton.disabled = awardMutationRunning || !selectedEventId || !bidRows || Boolean(awardPreflightIssues("generate_notices").length);
   }
   if (rfxSendAwardNoticesButton) {
-    rfxSendAwardNoticesButton.disabled = awardMutationRunning || !sendableIds.length || Boolean(awardPreflightIssues("send_notices").length);
-    rfxSendAwardNoticesButton.textContent = sendableIds.length
-      ? `Send ${formatNumber(sendableIds.length)} ${channelLabel} notice${sendableIds.length === 1 ? "" : "s"}`
-      : `Send ${channelLabel} notices`;
+    rfxSendAwardNoticesButton.disabled = awardMutationRunning || !selectedSendableIds.length || Boolean(awardPreflightIssues("send_notices").length);
+    rfxSendAwardNoticesButton.textContent = selectedSendableIds.length
+      ? `Send ${formatNumber(selectedSendableIds.length)} selected email${selectedSendableIds.length === 1 ? "" : "s"}`
+      : "Send selected emails";
   }
   if (rfxAwardNoticeSummary) {
     rfxAwardNoticeSummary.textContent = channelRows.length
-      ? `${formatNumber(channelRows.length)} ${channelLabel} notice draft(s). ${formatNumber(sendableIds.length)} ready, ${formatNumber(sent)} sent${failed ? `, ${formatNumber(failed)} failed` : ""}.`
+      ? `${formatNumber(channelRows.length)} email draft(s). ${formatNumber(selectedSendableIds.length)} selected, ${formatNumber(sendableIds.length)} ready, ${formatNumber(sent)} sent${failed ? `, ${formatNumber(failed)} failed` : ""}.`
       : primary
-        ? `Generate ${channelLabel} notices when award decisions are ready.`
+        ? "Generate email notices when award decisions are ready."
         : "Award at least one lane before sending closeout notices.";
     rfxAwardNoticeSummary.dataset.tone = failed ? "warning" : channelRows.length ? "success" : "neutral";
   }
@@ -8757,23 +8749,20 @@ async function generateAwardNoticeDrafts() {
     return;
   }
   const eventId = selectedEventId;
-  const channel = awardNoticeChannel();
-  const channelLabel = awardNoticeChannelLabel(channel);
   awardMutationRunning = true;
   if (rfxGenerateAwardNoticesButton) rfxGenerateAwardNoticesButton.disabled = true;
-  setStatus(rfxAwardStatus, `Generating award, backup, and not-awarded ${channelLabel} drafts...`);
+  setStatus(rfxAwardStatus, "Generating award, backup, and not-awarded email drafts...");
   try {
     const result = await generateRfxAwardNotices(eventId, {
       senderEmail: APPROVED_GMAIL_SENDER,
-      senderLabel: APPROVED_GMAIL_SENDER,
-      channel
+      senderLabel: APPROVED_GMAIL_SENDER
     });
     if (!(await refreshOutreachStateForEvent(eventId))) return;
     renderOutreachLaunchpad();
     renderAwardBoard();
     setStatus(
       rfxAwardStatus,
-      `${formatNumber(result.generated || 0)} ${channelLabel} notice draft(s) ready. ${formatNumber(result.skipped?.length || 0)} skipped.`,
+      `${formatNumber(result.generated || 0)} email notice draft(s) ready. ${formatNumber(result.skipped?.length || 0)} skipped.`,
       "success"
     );
   } catch (error) {
@@ -8785,32 +8774,32 @@ async function generateAwardNoticeDrafts() {
   }
 }
 
-async function sendAwardNoticeDrafts() {
+async function sendAwardNoticeDrafts(requestedIds = null) {
   if (awardMutationRunning) return;
   if (!selectedEventId) return;
   if (blockIfAwardPreflightFails("send_notices")) return;
-  const channel = awardNoticeChannel();
-  const channelLabel = awardNoticeChannelLabel(channel);
-  const ids = sendableAwardNoticeIds(awardNoticeDraftRows(), channel);
+  const sendableIds = new Set(sendableAwardNoticeIds(awardNoticeDraftRows()));
+  const ids = (Array.isArray(requestedIds) ? requestedIds : selectedAwardNoticeIds())
+    .map((id) => String(id))
+    .filter((id) => sendableIds.has(id));
   if (!ids.length) {
-    setStatus(rfxAwardStatus, `There are no unsent award notice ${channelLabel} messages ready.`, "error");
+    setStatus(rfxAwardStatus, "Select one or more ready email notices before sending.", "error");
     return;
   }
-  if (!window.confirm(`Send ${ids.length} individual award notice ${channelLabel} message(s)?`)) return;
+  if (!window.confirm(`Send ${ids.length} individual award notice email(s)?`)) return;
   const eventId = selectedEventId;
   awardMutationRunning = true;
   if (rfxSendAwardNoticesButton) rfxSendAwardNoticesButton.disabled = true;
-  setStatus(rfxAwardStatus, `Sending ${formatNumber(ids.length)} award notice ${channelLabel} message(s)...`);
+  setStatus(rfxAwardStatus, `Sending ${formatNumber(ids.length)} award notice email(s)...`);
   try {
-    const result = channel === "whatsapp"
-      ? await sendWhatsappOutreachMessages(ids)
-      : await sendOutreachMessages(ids, { senderEmail: APPROVED_GMAIL_SENDER });
+    const result = await sendOutreachMessages(ids, { senderEmail: APPROVED_GMAIL_SENDER });
+    ids.forEach((id) => awardNoticeSelectedIds.delete(id));
     if (!(await refreshOutreachStateForEvent(eventId))) return;
     renderOutreachLaunchpad();
     renderAwardBoard();
     setStatus(
       rfxAwardStatus,
-      `${formatNumber(result.sent || 0)} award notice ${channelLabel} message(s) sent. ${formatNumber(result.failed || 0)} failed.`,
+      `${formatNumber(result.sent || 0)} award notice email(s) sent. ${formatNumber(result.failed || 0)} failed.`,
       result.failed ? "warning" : "success"
     );
   } catch (error) {
@@ -10272,12 +10261,19 @@ rfxCloseoutAwardsButton?.addEventListener("click", closeoutSelectedAwardsToRatew
 rfxApplyRecommendedAwardsButton?.addEventListener("click", applyRecommendedAwardDecisions);
 rfxGenerateAwardNoticesButton?.addEventListener("click", generateAwardNoticeDrafts);
 rfxSendAwardNoticesButton?.addEventListener("click", sendAwardNoticeDrafts);
-rfxAwardNoticeChannel?.addEventListener("change", () => {
-  awardNoticePreviewId = "";
-  updateAwardNoticeControls();
-});
 
 rfxAwardNoticeQueue?.addEventListener("click", async (event) => {
+  const clearSelectionButton = event.target.closest("[data-rfx-clear-award-notice-selection]");
+  if (clearSelectionButton) {
+    awardNoticeSelectedIds.clear();
+    updateAwardNoticeControls();
+    return;
+  }
+  const sendButton = event.target.closest("[data-rfx-send-award-notice]");
+  if (sendButton) {
+    await sendAwardNoticeDrafts([sendButton.dataset.rfxSendAwardNotice]);
+    return;
+  }
   const previewButton = event.target.closest("[data-rfx-preview-award-notice]");
   if (previewButton) {
     awardNoticePreviewId = previewButton.dataset.rfxPreviewAwardNotice || "";
@@ -10288,6 +10284,12 @@ rfxAwardNoticeQueue?.addEventListener("click", async (event) => {
   if (openButton) {
     const url = openButton.dataset.rfxOpenAwardNotice;
     if (url) window.open(url, "_blank", "noopener");
+    return;
+  }
+  const clickedRow = event.target.closest("[data-rfx-award-notice-row]");
+  if (clickedRow && !event.target.closest("button, input")) {
+    awardNoticePreviewId = clickedRow.dataset.rfxAwardNoticeRow || "";
+    renderAwardNoticeQueue(awardNoticeDraftRows());
     return;
   }
   const statusButton = event.target.closest("[data-rfx-mark-award-notice]");
@@ -10315,6 +10317,27 @@ rfxAwardNoticeQueue?.addEventListener("click", async (event) => {
   } finally {
     statusButton.disabled = false;
   }
+});
+
+rfxAwardNoticeQueue?.addEventListener("change", (event) => {
+  const checkbox = event.target.closest("[data-rfx-select-award-notice]");
+  if (checkbox) {
+    const id = String(checkbox.dataset.rfxSelectAwardNotice || "");
+    if (id) {
+      if (checkbox.checked) awardNoticeSelectedIds.add(id);
+      else awardNoticeSelectedIds.delete(id);
+    }
+    updateAwardNoticeControls();
+    return;
+  }
+  const selectAll = event.target.closest("[data-rfx-select-all-award-notices]");
+  if (!selectAll) return;
+  const ids = sendableAwardNoticeIds(visibleAwardNoticeRows());
+  ids.forEach((id) => {
+    if (selectAll.checked) awardNoticeSelectedIds.add(String(id));
+    else awardNoticeSelectedIds.delete(String(id));
+  });
+  updateAwardNoticeControls();
 });
 
 copyRfxSummaryButton?.addEventListener("click", async () => {

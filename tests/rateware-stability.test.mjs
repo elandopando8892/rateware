@@ -1688,18 +1688,21 @@ assert.match(rfxEventsHtml, /rfx-send-award-notices/, "Bid Room Step 6 should se
 assert.match(rfxEventsHtml, /rfx-apply-recommended-awards/, "Bid Room Step 6 should apply recommended awards in bulk");
 assert.match(rfxEventsHtml, /rfx-award-readiness/, "Bid Room Step 6 should show closeout readiness");
 assert.match(rfxEventsHtml, /rfx-award-notice-queue/, "Bid Room Step 6 should show the award notice queue");
-assert.match(rfxEventsHtml, /rfx-award-notice-channel/, "Notices should allow the operator to choose the delivery channel");
-assert.match(rfxEventsHtml, /rfx-award-notice-preview/, "Notices should render a channel-specific preview workspace");
+assert.match(rfxEventsHtml, /Review and send email/, "Notices should make the email-only delivery mode explicit");
+assert.match(rfxEventsHtml, /rfx-award-notice-preview/, "Notices should render an email preview workspace");
+assert.match(rfxEventsSource, /data-rfx-select-award-notice/, "Notices should allow independent carrier selection");
 assert.match(rfxEventsHtml, /rfx-close-workspace-tabs/, "Close should expose focused workspaces");
 for (const workspace of ["award", "rateware", "notices"]) {
   assert.match(rfxEventsHtml, new RegExp(`data-rfx-close-workspace-tab=\"${workspace}\"`), `Close should expose the ${workspace} workspace tab`);
   assert.match(rfxEventsHtml, new RegExp(`data-rfx-close-workspace-panel=\"${workspace}\"`), `Close should expose the ${workspace} workspace panel`);
 }
 assert.match(rfxEventsSource, /activateRfxCloseWorkspace/, "Close workspace tabs should have an activation handler");
-assert.match(rfxEventsSource, /function awardNoticeChannel/, "Notices should keep channel selection in one state resolver");
-assert.match(rfxEventsSource, /renderAwardNoticePreview/, "Notices should render email or WhatsApp content before sending");
-assert.match(rfxEventsSource, /sendWhatsappOutreachMessages\(ids\)/, "Notices should use the WhatsApp delivery path when selected");
-assert.match(rfxServiceSource, /channel: options\.channel/, "RFx notice generation should pass the selected channel to the API");
+assert.match(rfxEventsSource, /function renderAwardNoticePreview/, "Notices should render email content before sending");
+assert.match(rfxEventsSource, /sendAwardNoticeDrafts\(requestedIds = null\)/, "Notices should support individual and bulk email sends");
+assert.match(rfxEventsSource, /data-rfx-send-award-notice/, "Notices should expose an individual send action per carrier");
+assert.doesNotMatch(rfxEventsSource, /sendWhatsappOutreachMessages\(ids\)/, "Notices should not send WhatsApp messages");
+assert.doesNotMatch(rfxServiceSource, /channel: options\.channel/, "RFx notice generation should not accept a WhatsApp channel override");
+assert.match(apiSource, /channel: "email"[^]*notice_type: "rfx_award_closeout"/, "RFx award notices should be persisted as email-only messages");
 assert.match(stylesSource, /rfx-close-workspace-tabs/, "Close workspace tabs should have focused styles");
 assert.match(stylesSource, /rfx-award-notice-layout/, "Notices should use a queue and preview layout");
 assert.match(packageJsonSource, /"e2e:bid-room": "node tools\/bid-room-e2e\.mjs"/, "Package scripts should expose the Bid Room production E2E runner");
@@ -3500,7 +3503,7 @@ assert.match(rfxEventsSource, /let awardMutationRunning = false;/, "RFx award ac
 assert.match(rfxEventsSource, /rfxApplyRecommendedAwardsButton\.disabled = awardMutationRunning \|\| !snapshot\.recommendations\.length/, "RFx recommended awards should disable while award mutations are running");
 assert.match(rfxEventsSource, /rfxCloseoutAwardsButton\.disabled = awardMutationRunning \|\| !pendingCloseout/, "RFx Rateware closeout should disable while award mutations are running");
 assert.match(rfxEventsSource, /rfxGenerateAwardNoticesButton\.disabled = awardMutationRunning \|\| !selectedEventId/, "RFx award notice generation should disable while award mutations are running");
-assert.match(rfxEventsSource, /rfxSendAwardNoticesButton\.disabled = awardMutationRunning \|\| !sendableIds\.length/, "RFx award notice sending should disable while award mutations are running");
+assert.match(rfxEventsSource, /rfxSendAwardNoticesButton\.disabled = awardMutationRunning \|\| !selectedSendableIds\.length/, "RFx award notice sending should disable while award mutations are running");
 for (const functionName of [
   "applyRecommendedAwardDecisions",
   "closeoutSelectedAwardsToRateware",

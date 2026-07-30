@@ -69,8 +69,7 @@ export async function generateRfxAwardNotices(eventId, options = {}) {
     event_id: eventId,
     app_origin: options.appOrigin || window.location.origin,
     sender_email: options.senderEmail || "",
-    sender_label: options.senderLabel || "",
-    channel: options.channel || "email"
+    sender_label: options.senderLabel || ""
   });
 }
 
