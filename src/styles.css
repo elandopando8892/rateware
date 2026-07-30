@@ -27539,7 +27539,8 @@ form[data-unsaved-guard][data-unsaved="true"] {
 }
 
 .rfx-award-notice-queue {
-  max-height: 360px;
+  max-height: 560px;
+  min-width: 0;
   overflow: auto;
   border: 1px solid var(--line);
   border-radius: 7px;
@@ -27629,6 +27630,7 @@ form[data-unsaved-guard][data-unsaved="true"] {
 .rfx-award-notice-toolbar {
   display: flex;
   align-items: end;
+  justify-content: space-between;
   gap: 8px;
   flex-wrap: wrap;
 }
@@ -27643,9 +27645,14 @@ form[data-unsaved-guard][data-unsaved="true"] {
 
 .rfx-award-notice-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1.15fr) minmax(300px, 0.85fr);
-  gap: 8px;
+  grid-template-columns: minmax(420px, 0.95fr) minmax(520px, 1.05fr);
+  gap: 12px;
   align-items: start;
+}
+
+.bid-room-page .rfx-award-notice-card {
+  width: 100%;
+  max-width: none;
 }
 
 .rfx-award-notice-queue tr.is-selected {
@@ -27654,8 +27661,8 @@ form[data-unsaved-guard][data-unsaved="true"] {
 
 .rfx-award-notice-preview {
   min-width: 0;
-  min-height: 420px;
-  padding: 8px;
+  min-height: 560px;
+  padding: 10px;
   border: 1px solid var(--line);
   border-radius: 7px;
   background: #f8fafc;
@@ -27704,13 +27711,14 @@ form[data-unsaved-guard][data-unsaved="true"] {
 .rfx-award-notice-email-frame {
   display: block;
   width: 100%;
-  min-height: 420px;
+  height: 560px;
+  min-height: 560px;
   border: 1px solid var(--line);
   border-radius: 6px;
   background: #ffffff;
 }
 
-@media (max-width: 900px) {
+@media (max-width: 1050px) {
   .rfx-award-notice-layout {
     grid-template-columns: minmax(0, 1fr);
   }
