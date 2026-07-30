@@ -27650,7 +27650,7 @@ form[data-unsaved-guard][data-unsaved="true"] {
   align-items: start;
 }
 
-.bid-room-page .rfx-award-notice-card {
+.bid-room-page .rfx-close-utility-card.rfx-award-notice-card {
   width: 100%;
   max-width: none;
 }
