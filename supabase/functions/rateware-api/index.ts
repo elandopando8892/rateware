@@ -22188,7 +22188,8 @@ Deno.serve(async (request) => {
         .from("vendors")
         .select(vendorSelect, { count: "exact" })
         .eq("owner_email", user.owner_email)
-        .order("created_at", { ascending: false });
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: false });
 
       const scopedIds = requestedIds.length && searchIds
         ? requestedIds.filter((id) => searchIds?.includes(id))
@@ -22490,11 +22491,11 @@ Deno.serve(async (request) => {
       const clearableFields = new Set(editableFields.filter((field) => !["vendor_name", "base_stage", "funnel_stage", "status"].includes(field)));
       const aliases: Record<string, string[]> = {
         vendor_id: ["vendor_id", "vendor id", "id", "vendorid"],
-        vendor_name: ["vendor_name", "vendor name", "vendor", "carrier", "carrier name", "name", "company", "company name", "nombre", "nombre comercial", "transportista"],
+        vendor_name: ["vendor_name", "vendor name", "vendor", "carrier", "carrier name", "carrier_name", "name", "company", "company name", "nombre", "nombre comercial", "transportista"],
         legal_name: ["legal_name", "legal name", "legal", "razon social", "razon_social", "razón social", "nombre legal"],
         domain: ["domain", "vendor_domain", "vendor domain", "carrier domain", "dominio", "dominio vendor", "dominio carrier"],
         contact_name: ["contact_name", "contact name", "contact", "contacto", "nombre contacto"],
-        primary_email: ["primary_email", "primary email", "email", "main email", "correo", "correo principal", "email principal"],
+        primary_email: ["primary_email", "primary email", "email", "emails", "main email", "correo", "correos", "correo principal", "email principal"],
         secondary_emails: ["secondary_emails", "secondary emails", "additional emails", "extra emails", "correos secundarios", "emails secundarios", "correos adicionales"],
         whatsapp_phone: ["whatsapp_phone", "whatsapp phone", "whatsapp", "phone", "telefono", "teléfono", "celular", "numero whatsapp", "número whatsapp"],
         preferred_channel: ["preferred_channel", "preferred channel", "channel", "canal", "canal preferido"],
@@ -22513,7 +22514,8 @@ Deno.serve(async (request) => {
         whatsapp_group_url: ["whatsapp_group_url", "whatsapp group url", "group url", "link grupo whatsapp", "url grupo whatsapp"],
         whatsapp_group_status: ["whatsapp_group_status", "whatsapp group status", "group status", "estatus grupo whatsapp"],
         whatsapp_notes: ["whatsapp_notes", "whatsapp notes", "notas whatsapp"],
-        clear_fields: ["clear_fields", "clear fields", "fields to clear", "limpiar campos", "campos a limpiar"]
+        clear_fields: ["clear_fields", "clear fields", "fields to clear", "limpiar campos", "campos a limpiar"],
+        update_note: ["update_note", "update note", "comment", "comments", "comentario", "comentarios", "nota actualizacion", "nota actualización"]
       };
       const normalizeTemplateKey = (value: string) => cleanText(value)?.toLowerCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ") || "";
       const templateValue = (row: Record<string, unknown>, field: string) => {
@@ -22543,11 +22545,13 @@ Deno.serve(async (request) => {
         };
       });
       const ids = Array.from(new Set(stagedRows.map((row) => row.vendor_id).filter(Boolean) as string[]));
-      const currentRows = ids.length
-        ? await supabase.from("vendors").select("*").eq("owner_email", user.owner_email).in("id", ids)
-        : { data: [], error: null };
-      if (currentRows.error) throw currentRows.error;
-      const currentById = new Map((currentRows.data || []).map((row) => [String(row.id), row]));
+      const currentRows: Record<string, unknown>[] = [];
+      for (const idBatch of chunkValues(ids, 100)) {
+        const currentBatch = await supabase.from("vendors").select("*").eq("owner_email", user.owner_email).in("id", idBatch);
+        if (currentBatch.error) throw currentBatch.error;
+        currentRows.push(...(currentBatch.data || []));
+      }
+      const currentById = new Map(currentRows.map((row) => [String(row.id), row]));
       const templateCurrentById = new Map(currentById);
       const needsReferenceLookup = stagedRows.some((row) => !row.vendor_id && row.references.length);
       const referenceRows = needsReferenceLookup ? await fetchVendorReferenceRows(supabase, user) : [];
@@ -22601,6 +22605,7 @@ Deno.serve(async (request) => {
         }
 
         const addTags = normalizeTags(templateValue(staged.raw, "add_tags"));
+        const updateNote = cleanText(templateValue(staged.raw, "update_note"));
         const clearFields = splitTemplateList(templateValue(staged.raw, "clear_fields"));
         for (const field of clearFields) {
           const normalizedField = normalizeTemplateKey(field).replace(/\s+/g, "_");
@@ -22615,6 +22620,12 @@ Deno.serve(async (request) => {
         if (current && !errors.length) {
           try {
             patch = normalizeVendorPatch(patchInput, current);
+            if (updateNote) {
+              const existingNotes = cleanText(patch.notes ?? current.notes);
+              patch.notes = existingNotes && !existingNotes.toLowerCase().includes(updateNote.toLowerCase())
+                ? `${existingNotes}\n${updateNote}`
+                : existingNotes || updateNote;
+            }
             if (addTags.length) {
               patch.tags = Array.from(new Set([...normalizeTags(patch.tags ?? current.tags), ...addTags]));
             }

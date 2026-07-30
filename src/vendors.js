@@ -1209,11 +1209,11 @@ const VENDOR_UPDATE_TEMPLATE_HEADERS = [
 
 const VENDOR_UPDATE_FIELD_ALIASES = {
   vendor_id: ["vendor_id", "vendor id", "id", "vendorid"],
-  vendor_name: ["vendor_name", "vendor name", "vendor", "carrier", "carrier name", "name", "company", "company name", "nombre", "nombre comercial", "transportista"],
+  vendor_name: ["vendor_name", "vendor name", "vendor", "carrier", "carrier name", "carrier_name", "name", "company", "company name", "nombre", "nombre comercial", "transportista"],
   legal_name: ["legal_name", "legal name", "legal", "razon social", "razon_social", "razón social", "nombre legal"],
   domain: ["domain", "vendor_domain", "vendor domain", "carrier domain", "dominio", "dominio vendor", "dominio carrier"],
   contact_name: ["contact_name", "contact name", "contact", "contacto", "nombre contacto"],
-  primary_email: ["primary_email", "primary email", "email", "main email", "correo", "correo principal", "email principal"],
+  primary_email: ["primary_email", "primary email", "email", "emails", "main email", "correo", "correos", "correo principal", "email principal"],
   secondary_emails: ["secondary_emails", "secondary emails", "additional emails", "extra emails", "correos secundarios", "emails secundarios", "correos adicionales"],
   whatsapp_phone: ["whatsapp_phone", "whatsapp phone", "whatsapp", "phone", "telefono", "teléfono", "celular", "numero whatsapp", "número whatsapp"],
   preferred_channel: ["preferred_channel", "preferred channel", "channel", "canal", "canal preferido"],
@@ -1280,12 +1280,18 @@ function normalizeVendorUpdateRow(row, index = 0) {
 
 async function fetchAllVendorsForUpdateTemplate() {
   const rows = [];
+  const seenVendorIds = new Set();
   const limit = 1000;
   let offset = 0;
   for (let guard = 0; guard < 60; guard += 1) {
     const result = await fetchVendors({ view: "all", lightweight: true, limit, offset });
     const batch = Array.isArray(result.rows) ? result.rows : [];
-    rows.push(...batch);
+    for (const row of batch) {
+      const id = String(row.id || row.vendor_id || "").trim();
+      if (id && seenVendorIds.has(id)) continue;
+      if (id) seenVendorIds.add(id);
+      rows.push(row);
+    }
     if (!batch.length || rows.length >= Number(result.total || 0)) break;
     offset += limit;
   }
@@ -1350,6 +1356,7 @@ function renderVendorUpdatePreview(result = {}) {
   const rows = Array.isArray(result.rows) ? result.rows : [];
   const valid = Number(result.valid || 0);
   const invalid = Number(result.invalid || 0);
+  const applied = Number(result.updated || result.applied || 0);
   const visibleRows = rows.slice(0, 100);
   const hiddenRows = Math.max(rows.length - visibleRows.length, 0);
   vendorUpdatePreviewSummary.innerHTML = `
@@ -1357,6 +1364,7 @@ function renderVendorUpdatePreview(result = {}) {
     <article><strong>${valid}</strong><span>Ready to update</span></article>
     <article><strong>${invalid}</strong><span>Need correction</span></article>
     <article><strong>${rows.reduce((sum, row) => sum + Number(row.change_count || 0), 0)}</strong><span>Field changes</span></article>
+    ${applied ? `<article><strong>${applied}</strong><span>Applied</span></article>` : ""}
     ${hiddenRows ? `<article><strong>${hiddenRows}</strong><span>More rows not shown</span></article>` : ""}
   `;
   vendorUpdatePreviewBody.innerHTML = visibleRows.map((row) => {
@@ -1380,8 +1388,10 @@ function renderVendorUpdatePreview(result = {}) {
       </tr>
     `;
   }
-  if (!rows.length) vendorUpdatePreviewBody.innerHTML = '<tr><td colspan="6">No rows found.</td></tr>';
-  applyVendorUpdateButton.disabled = !valid;
+  if (!rows.length) vendorUpdatePreviewBody.innerHTML = applied
+    ? `<tr><td colspan="6">${applied.toLocaleString()} vendor(s) updated. No preview rows were returned by the API.</td></tr>`
+    : '<tr><td colspan="6">No rows found.</td></tr>';
+  applyVendorUpdateButton.disabled = !valid || Boolean(applied);
   downloadVendorUpdateErrorsButton.disabled = !invalid;
   vendorUpdatePreviewPanel.classList.remove("hidden");
   activateVendorTab("import");
@@ -4775,10 +4785,19 @@ applyVendorUpdateButton?.addEventListener("click", async () => {
   setStatus(applyVendorUpdateStatus, "Applying vendor updates...");
   try {
     await requirePrivatePage();
+    const reviewedUpdatePreview = vendorUpdatePreview;
     const result = await applyVendorTemplateUpdates(pendingVendorUpdateRows, { dryRun: false });
     pendingVendorUpdateRows = [];
-    vendorUpdatePreview = result;
-    renderVendorUpdatePreview(result);
+    renderVendorUpdatePreview({
+      ...(reviewedUpdatePreview || {}),
+      ...result,
+      rows: Array.isArray(result.rows) && result.rows.length
+        ? result.rows
+        : (Array.isArray(reviewedUpdatePreview?.rows) ? reviewedUpdatePreview.rows : []),
+      received: result.received || reviewedUpdatePreview?.received,
+      valid: result.valid || reviewedUpdatePreview?.valid,
+      invalid: result.invalid ?? reviewedUpdatePreview?.invalid
+    });
     setStatus(applyVendorUpdateStatus, `${result.updated || 0} vendor(s) updated. ${result.skipped || 0} row(s) skipped.`, "success");
     await loadVendors();
   } catch (error) {

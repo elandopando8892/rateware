@@ -13,9 +13,15 @@ assert.match(vendorServiceSource, /apply_vendor_template_updates/, "Vendor servi
 
 const actionStart = apiSource.indexOf('if (body.action === "apply_vendor_template_updates")');
 const actionEnd = apiSource.indexOf('if (body.action === "remove_vendors")');
+const listStart = apiSource.indexOf('if (body.action === "list_vendors")');
+const listEnd = apiSource.indexOf('if (body.action === "apply_vendor_intelligence_tags")');
 assert.ok(actionStart > -1, "API should expose apply_vendor_template_updates");
 assert.ok(actionEnd > actionStart, "Template update action should be scoped before vendor removal");
+assert.ok(listStart > -1, "API should expose list_vendors");
+assert.ok(listEnd > listStart, "Vendor list action should be scoped before intelligence tagging");
 const actionSource = apiSource.slice(actionStart, actionEnd);
+const listSource = apiSource.slice(listStart, listEnd);
+assert.match(listSource, /\.order\("created_at", \{ ascending: false \}\)\s*\.order\("id", \{ ascending: false \}\)/, "Vendor list pagination should use a stable secondary id order");
 assert.match(actionSource, /\.eq\("owner_email", user\.owner_email\)/, "Template updates must stay scoped to the current workspace owner");
 assert.match(actionSource, /requireBulkConfirmation/, "Template updates should require confirmation when applying changes");
 assert.match(actionSource, /vendorReferenceValues/, "Template updates should resolve vendors from domain, email, legal name, or vendor name");
@@ -29,14 +35,24 @@ assert.match(actionSource, /seenTemplateVendorIds/, "Template updates should tra
 assert.match(actionSource, /Duplicate vendor update row in this template/, "Template updates should reject duplicate rows targeting the same carrier");
 assert.match(actionSource, /clear_fields/, "Template updates should support explicit clear_fields");
 assert.match(actionSource, /normalizeVendorPatch/, "Template updates should reuse vendor patch normalization");
+assert.match(actionSource, /for \(const idBatch of chunkValues\(ids, 100\)\)/, "Template updates should fetch current vendors in bounded batches");
+assert.match(actionSource, /\.in\("id", idBatch\)/, "Template update vendor lookup should use the bounded id batch");
 assert.match(actionSource, /company name/, "API template parser should accept common English company-name headers");
 assert.match(actionSource, /razón social/, "API template parser should accept Spanish legal-name headers");
 assert.match(actionSource, /correo principal/, "API template parser should accept Spanish primary email headers");
 assert.match(actionSource, /campos a limpiar/, "API template parser should accept Spanish clear-fields headers");
+assert.match(actionSource, /update_note/, "API template parser should accept the official update_note column");
+assert.match(actionSource, /patch\.notes = existingNotes/, "API template updates should persist update_note into vendor notes");
+assert.match(actionSource, /"emails"/, "API template parser should accept a generic emails header");
 
 assert.match(vendorsSource, /downloadVendorUpdateTemplate/, "Vendors UI should download a CRM update template");
+assert.match(vendorsSource, /const seenVendorIds = new Set\(\)/, "Vendor update template download should deduplicate paginated vendor rows");
+assert.match(vendorsSource, /seenVendorIds\.has\(id\)/, "Vendor update template download should skip duplicate vendor ids");
 assert.match(vendorsSource, /parseVendorUpdateFile/, "Vendors UI should parse a CRM update file");
 assert.match(vendorsSource, /renderVendorUpdatePreview/, "Vendors UI should preview updates before applying");
+assert.match(vendorsSource, /const applied = Number\(result\.updated \|\| result\.applied \|\| 0\)/, "Vendor update preview should show applied rows after template updates");
+assert.match(vendorsSource, /const reviewedUpdatePreview = vendorUpdatePreview/, "Vendor update apply should preserve the dry-run preview");
+assert.match(vendorsSource, /reviewedUpdatePreview\?\.rows/, "Vendor update apply should reuse preview rows if the apply response omits them");
 assert.match(vendorsSource, /const visibleRows = rows\.slice\(0, 100\)/, "Vendor update preview should render a bounded number of rows for large uploads");
 assert.match(vendorsSource, /More rows not shown/, "Vendor update preview should disclose hidden preview rows");
 assert.match(vendorsSource, /Error CSV and apply action still use the full reviewed file/, "Vendor update preview should clarify that hidden rows are still included in actions");
@@ -49,6 +65,8 @@ assert.match(vendorsSource, /company name/, "Vendor update parser should accept 
 assert.match(vendorsSource, /razón social/, "Vendor update parser should accept Spanish legal-name headers");
 assert.match(vendorsSource, /correo principal/, "Vendor update parser should accept Spanish primary email headers");
 assert.match(vendorsSource, /campos a limpiar/, "Vendor update parser should accept Spanish clear-fields headers");
+assert.match(vendorsSource, /update_note/, "Vendor update parser should keep the official update_note column");
+assert.match(vendorsSource, /"emails"/, "Vendor update parser should accept a generic emails header");
 
 assert.match(vendorsHtml, /download-vendor-update-template-button/, "Import tab should include CRM update template download");
 assert.match(vendorsHtml, /vendor-update-import/, "Import tab should include CRM update upload");
