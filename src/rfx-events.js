@@ -5584,6 +5584,16 @@ function responseColumnValues(row, field) {
   return (values[field] || []).filter((value) => value !== null && value !== undefined && String(value).trim() !== "");
 }
 
+function carrierPrivateBidLaneCount(invitation) {
+  const vendorId = invitation?.vendor_id || invitation?.vendors?.id;
+  if (!vendorId) return 1;
+  return Math.max(1, selectedEventLanes
+    .flatMap((lane) => activeInvitations(lane))
+    .filter((row) => row.vendor_id === vendorId || row.vendors?.id === vendorId)
+    .filter((row) => row.invitation_token)
+    .length);
+}
+
 function initResponseColumnFilters() {
   if (responseColumnFilters || !responseBody) return;
   const responseTable = responseBody.closest("table");
@@ -5627,10 +5637,14 @@ function renderResponseBoard() {
     return;
   }
   responseBody.innerHTML = rows.map(({ lane, invitation, currentRow, decision, badges, eta, availability, bidSource, actionLabel }) => {
+    const privateBidUrl = invitation.invitation_token
+      ? portalUrl(invitation.invitation_token, carrierPrivateBidLaneCount(invitation))
+      : "";
     return `
       <tr data-rfx-lane-id="${escapeHtml(lane.id)}">
         <td class="rfx-response-actions">
           <div class="rfx-response-action-stack">
+            <button type="button" class="secondary small-button rfx-response-open-room" data-rfx-open-private-bid="${escapeHtml(privateBidUrl)}" ${privateBidUrl ? "" : "disabled"} title="Open this carrier's tokenized Private Bid Room in a new tab">Open room</button>
             <button type="button" class="secondary small-button" data-rfx-manual-bid="${escapeHtml(invitation.id)}" data-rfx-manual-bid-lane="${escapeHtml(lane.id)}" title="Record or correct a quote received outside the Bid Room">${actionLabel}</button>
             <button type="button" class="secondary small-button" data-rfx-ask-carrier="${escapeHtml(invitation.id)}" data-rfx-ask-carrier-lane="${escapeHtml(lane.id)}" title="Reply in this carrier's latest Gmail thread for this RFx">Reply by email</button>
           </div>
@@ -10214,6 +10228,12 @@ liveOfferManager?.addEventListener("click", (event) => {
 });
 
 responseBody?.addEventListener("click", (event) => {
+  const openPrivateBidButton = event.target.closest("[data-rfx-open-private-bid]");
+  if (openPrivateBidButton) {
+    const url = openPrivateBidButton.dataset.rfxOpenPrivateBid;
+    if (url) window.open(url, "_blank", "noopener");
+    return;
+  }
   const manualBidButton = event.target.closest("[data-rfx-manual-bid]");
   if (manualBidButton) {
     openManualBidDrawer(manualBidButton.dataset.rfxManualBid, manualBidButton.dataset.rfxManualBidLane);

@@ -3637,6 +3637,9 @@ assert.match(rfxEventsSource, /carrier: \[vendorLabel\(invitation\)\]/, "Carrier
 assert.match(rfxEventsSource, /lane: \[`#\$\{lane\.lane_number \|\| \"\"\} \$\{laneRoute\(lane\)\}`\.trim\(\)\]/, "Lane filter should use the complete primary lane label");
 assert.match(rfxEventsSource, /responseColumnFilters\?\.apply\(allRows\)/, "Carrier bid filters should apply before the response table renders");
 assert.match(rfxEventsSource, /sort\(\(left, right\) => Number\(hasBid\(right\.invitation\)\) - Number\(hasBid\(left\.invitation\)\)\)/, "Carrier responses with bids should sort before pending invitations");
+assert.match(rfxEventsSource, /data-rfx-open-private-bid/, "Bid Operations should let admins open a carrier-specific Private Bid Room from each response row");
+assert.match(rfxEventsSource, /function carrierPrivateBidLaneCount/, "Private Bid Room row links should open the carrier's full invited lane book when available");
+assert.match(stylesSource, /rfx-response-open-room/, "Bid Operations should visually separate the private room action from bid editing and email reply");
 assert.match(rfxEventsSource, /sendBidRoomCarrierMessage/, "Bid Room reply should use the targeted carrier email action");
 assert.match(rfxEventsSource, /idempotency_key: bidRoomCarrierMessageRequestKey/, "Bid Room email reply should preserve one request key across an in-flight send");
 assert.match(rfxServiceSource, /send_bid_room_carrier_message/, "RFx service should expose the targeted carrier email action");

@@ -5497,9 +5497,9 @@ a {
 }
 
 .rfx-response-table .rfx-response-actions {
-  width: 112px;
-  min-width: 112px;
-  max-width: 112px;
+  width: 142px;
+  min-width: 142px;
+  max-width: 142px;
   padding: 4px 6px;
   vertical-align: top;
   white-space: normal;
@@ -5562,16 +5562,23 @@ a {
 .rfx-response-action-stack {
   display: grid;
   gap: 3px;
-  min-width: 100px;
+  min-width: 128px;
 }
 
 .rfx-response-action-stack .small-button {
   width: 100%;
-  min-height: 20px;
-  padding: 2px 5px;
-  font-size: 0.67rem;
-  line-height: 1.1;
+  justify-content: center;
+  min-height: 21px;
+  padding: 2px 6px;
+  font-size: 0.66rem;
+  line-height: 1.05;
   white-space: nowrap;
+}
+
+.rfx-response-action-stack .rfx-response-open-room {
+  border-color: var(--brand-border);
+  background: var(--brand-tint);
+  color: var(--brand-strong);
 }
 
 .live-offer-lane td:last-child {
