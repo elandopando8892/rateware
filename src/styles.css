@@ -6065,6 +6065,92 @@ a {
   font-weight: 720;
 }
 
+.quick-bid-commercial-effect {
+  max-width: 210px;
+  margin-top: 3px;
+  color: #52626e;
+  cursor: help;
+  white-space: nowrap;
+}
+
+.commercial-model-guide {
+  border: 1px solid #d7e1e6;
+  border-radius: 7px;
+  background: #f8fafb;
+}
+
+.commercial-model-guide summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 30px;
+  padding: 6px 9px;
+  color: #1d3341;
+  cursor: pointer;
+  font-size: 0.74rem;
+  font-weight: 850;
+}
+
+.commercial-model-guide summary small {
+  max-width: none;
+  color: #657580;
+  font-size: 0.66rem;
+  font-weight: 700;
+  text-align: right;
+}
+
+.commercial-model-guide-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  padding: 0 7px 7px;
+}
+
+.commercial-model-guide-grid article {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  border: 1px solid #d8e2e7;
+  border-radius: 6px;
+  background: #ffffff;
+  padding: 7px 8px;
+}
+
+.commercial-model-guide-grid strong {
+  color: #173145;
+  font-size: 0.71rem;
+}
+
+.commercial-model-guide-grid span,
+.commercial-model-guide-grid small {
+  color: #5d6d78;
+  font-size: 0.66rem;
+  font-weight: 680;
+  line-height: 1.32;
+}
+
+.commercial-model-guide-grid small {
+  color: #385d72;
+  font-weight: 820;
+}
+
+@media (max-width: 860px) {
+  .commercial-model-guide summary {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .commercial-model-guide summary small {
+    text-align: left;
+  }
+
+  .commercial-model-guide-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .quick-bid-table input,
 .quick-bid-table select {
   width: 100%;

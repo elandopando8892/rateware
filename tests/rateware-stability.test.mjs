@@ -2047,6 +2047,12 @@ assert.match(rfxBidSource, /Deadhead unit \/ Unidad deadhead/, "Carrier XLSX bid
 assert.match(rfxBidSource, /nonNegativeNumberBlank/, "Carrier XLSX bid template should validate optional deadhead distance");
 assert.match(rfxBidSource, /deadhead_distance: extra\("deadhead_distance", rowElement\.dataset\.deadheadDistance \|\| ""\)/, "Carrier quick bid rows should preserve deadhead details from the inline capacity panel");
 assert.match(rfxBidSource, /function commercialStructureConfig/, "Carrier portal should explain each commercial structure");
+assert.match(rfxBidSource, /function commercialModelGuideHtml/, "Carrier portal should show a concise commercial model guide before quick bids");
+assert.match(rfxBidSource, /How your commercial model works/, "Carrier portal should explain commercial model consequences in the carrier language");
+assert.match(rfxBidSource, /Your quoted price does not change/, "Carrier-share guidance should explicitly preserve the carrier quoted price");
+assert.match(rfxBidSource, /data-quick-bid-commercial-effect/, "Each quick bid row should show the selected commercial model effect");
+assert.match(rfxBidSource, /effect\.textContent = `\$\{config\.tone\}: \$\{copy\}`/, "Quick bid commercial guidance should update when the carrier selects a model");
+assert.match(stylesSource, /commercial-model-guide-grid/, "Carrier commercial model guidance should have compact responsive styling");
 assert.match(rfxBidSource, /syncCommercialStructureFields/, "Carrier portal should show only the applicable commercial percentage input");
 assert.match(rfxBidSource, /validatePercentIssue\(draft\.marksman_margin_pct, "bid-marksman-margin", "Suggested margin to share %", \{ required: false, procurementRange: true \}\)/, "Carrier portal should validate optional suggested margin range for cost-plus");
 assert.match(rfxBidSource, /validatePercentIssue\(draft\.carrier_share_pct, "bid-carrier-share", "Carrier invoice share %", \{ required: false, procurementRange: true \}\)/, "Carrier portal should validate optional invoice share range for carrier-share");

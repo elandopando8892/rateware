@@ -1091,6 +1091,65 @@ function commercialStructureConfig(value) {
   return configs[model] || configs.direct_cost_plus;
 }
 
+function commercialModelEffect(value) {
+  const model = String(value || "direct_cost_plus").toLowerCase();
+  const effects = {
+    direct_cost_plus: dualText(
+      "Your all-in is the carrier cost; the suggested margin is added to the board price. The fee is calculated after customer payment.",
+      "Tu all-in es tu costo como carrier; el margen sugerido se suma al precio del board. La comision se calcula despues del pago del cliente."
+    ),
+    carrier_share: dualText(
+      "Your quoted price does not change. The selected share is calculated as a fee after customer payment.",
+      "Tu tarifa cotizada no cambia. El porcentaje seleccionado se calcula como comision sobre la facturacion despues del pago del cliente."
+    ),
+    xbf_buy_sell: dualText(
+      "Your all-in is your sell rate to XBF. The board price adds the suggested XBF margin, or 12% when blank.",
+      "Tu all-in es tu tarifa de venta a XBF. El precio del board suma el margen XBF sugerido, o 12% si queda vacio."
+    )
+  };
+  return effects[model] || effects.direct_cost_plus;
+}
+
+function commercialModelGuideHtml() {
+  const models = [
+    {
+      key: "direct_cost_plus",
+      title: dualText("Direct / cost-plus", "Directo / cost-plus"),
+      rule: dualText("Suggested margin: 2-5%. Blank = 3%.", "Margen sugerido: 2-5%. Vacio = 3%."),
+      effect: commercialModelEffect("direct_cost_plus")
+    },
+    {
+      key: "carrier_share",
+      title: dualText("Carrier invoice share", "Carrier comparte facturacion"),
+      rule: dualText("Invoice share: 2-5%. Blank = 3%.", "Share de facturacion: 2-5%. Vacio = 3%."),
+      effect: commercialModelEffect("carrier_share")
+    },
+    {
+      key: "xbf_buy_sell",
+      title: dualText("XBF buy-sell", "XBF compra-venta"),
+      rule: dualText("Suggested XBF margin: 7.5-15%. Blank = 12%.", "Margen sugerido XBF: 7.5-15%. Vacio = 12%."),
+      effect: commercialModelEffect("xbf_buy_sell")
+    }
+  ];
+  return `
+    <details class="commercial-model-guide" open>
+      <summary>
+        <span>${escapeHtml(dualText("How your commercial model works", "Como funciona tu modelo comercial"))}</span>
+        <small>${escapeHtml(dualText("Choose one per lane. Your all-in and the board price are not always the same.", "Elige uno por ruta. Tu all-in y el precio del board no siempre son iguales."))}</small>
+      </summary>
+      <div class="commercial-model-guide-grid">
+        ${models.map((model) => `
+          <article data-commercial-model-guide="${escapeAttribute(model.key)}">
+            <strong>${escapeHtml(model.title)}</strong>
+            <span>${escapeHtml(model.effect)}</span>
+            <small>${escapeHtml(model.rule)}</small>
+          </article>
+        `).join("")}
+      </div>
+    </details>
+  `;
+}
+
 function commercialPercentSummary(draft = {}) {
   const config = commercialStructureConfig(draft.commercial_model);
   if (draft.commercial_model === "xbf_buy_sell") return dualText(`${draft.marksman_margin_pct || XBF_BUY_SELL_DEFAULT_MARKUP_PCT}% XBF buy-sell margin`, `${draft.marksman_margin_pct || XBF_BUY_SELL_DEFAULT_MARKUP_PCT}% margen XBF compra-venta`);
@@ -3229,6 +3288,12 @@ function quickBidRowStatus(row = {}) {
   return `<span class="status-message" data-tone="${escapeAttribute(lastQuickBidSaveStatus.tone || "neutral")}">${escapeHtml(lastQuickBidSaveStatus.message || "")}</span>`;
 }
 
+function renderQuickBidCommercialEffect(model) {
+  const config = commercialStructureConfig(model);
+  const effect = commercialModelEffect(model);
+  return `<small class="quick-bid-commercial-effect" data-quick-bid-commercial-effect title="${escapeAttribute(effect)}">${escapeHtml(config.tone)}: ${escapeHtml(effect)}</small>`;
+}
+
 function renderQuickBidDetails(row = {}) {
   const equipmentAvailable = row.equipment_available === true ? "true" : row.equipment_available === false ? "false" : "";
   return `
@@ -3291,6 +3356,7 @@ function renderQuickLaneBidGridShell(carrierBook = {}, invitation = {}) {
         "Update the core offer in-row. Expand Best alternative or Live capacity only when this lane needs more detail.",
         "Actualiza la oferta principal en la fila. Despliega Mejor alternativa o Capacidad en vivo solo cuando esta ruta necesite mas detalle."
       ))}</p>
+      ${commercialModelGuideHtml()}
       <div class="table-wrap">
         <table class="quick-bid-table">
           <thead>
@@ -3354,6 +3420,7 @@ function renderQuickLaneBidGridShell(carrierBook = {}, invitation = {}) {
                       <option value="carrier_share" ${model === "carrier_share" ? "selected" : ""}>Carrier share</option>
                       <option value="xbf_buy_sell" ${model === "xbf_buy_sell" ? "selected" : ""}>XBF buy-sell</option>
                     </select>
+                    ${renderQuickBidCommercialEffect(model)}
                   </td>
                   <td><input data-quick-bid-field="commercial_pct" inputmode="decimal" value="${escapeAttribute(quickBidCommercialPercent(row))}" placeholder="${escapeAttribute(quickBidCommercialPlaceholder(model))}" /></td>
                   <td class="quick-bid-row-status">${quickBidRowStatus(row)}</td>
@@ -4734,10 +4801,17 @@ card.addEventListener("change", async (event) => {
   if (quickCommercialModel) {
     const row = quickCommercialModel.closest("[data-quick-bid-row]");
     const pct = row?.querySelector("[data-quick-bid-field='commercial_pct']");
+    const effect = row?.querySelector("[data-quick-bid-commercial-effect]");
     if (pct) {
       pct.disabled = false;
       pct.value = "";
       pct.placeholder = quickBidCommercialPlaceholder(quickCommercialModel.value);
+    }
+    if (effect) {
+      const config = commercialStructureConfig(quickCommercialModel.value);
+      const copy = commercialModelEffect(quickCommercialModel.value);
+      effect.textContent = `${config.tone}: ${copy}`;
+      effect.title = copy;
     }
   }
 });
