@@ -3641,6 +3641,7 @@ assert.match(rfxEventsSource, /data-rfx-open-private-bid/, "Bid Operations shoul
 assert.match(rfxEventsSource, /function carrierPrivateBidLaneCount/, "Private Bid Room row links should open the carrier's full invited lane book when available");
 assert.match(rfxEventsSource, /function carrierPrivateBidLaneCount[\s\S]+Math\.max\(1, currentLanes/, "Private Bid Room row links should use the currently loaded event lanes");
 assert.doesNotMatch(rfxEventsSource, /selectedEventLanes/, "Bid Room should not reference an undefined event-lane collection");
+assert.match(rfxEventsHtml, /src="\.\/src\/rfx-events\.js\?v=20260730-event-render-fix-v1"/, "Bid Room should bust the client cache after event-rendering fixes");
 assert.match(stylesSource, /rfx-response-open-room/, "Bid Operations should visually separate the private room action from bid editing and email reply");
 assert.match(rfxEventsSource, /sendBidRoomCarrierMessage/, "Bid Room reply should use the targeted carrier email action");
 assert.match(rfxEventsSource, /idempotency_key: bidRoomCarrierMessageRequestKey/, "Bid Room email reply should preserve one request key across an in-flight send");
