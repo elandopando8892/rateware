@@ -1721,7 +1721,6 @@ function publicBidBoardState(event: Record<string, unknown>) {
   const due = dueState(event.due_date);
   if (status === "awarded") return "awarded";
   if (status === "closed") return "expired";
-  if (status === "draft") return "live";
   if (status === "open" && due.status === "closed") return "expired";
   if (status === "open" && due.status === "closing") return "closing";
   if (status === "open") return "live";
@@ -1803,7 +1802,7 @@ async function publicBidRoomBoard(supabase: RfxBidSupabaseClient, input: Record<
   let eventsQuery = supabase
     .from("rfx_events")
     .select("id,rfx_id,name,customer,event_type,status,due_date,bid_visibility_mode,created_at,updated_at")
-    .in("status", ["draft", "open", "closed", "awarded"]);
+    .in("status", ["open", "closed", "awarded"]);
   eventsQuery = eventId
     ? eventsQuery.eq("id", eventId).limit(1)
     : eventsQuery.order("updated_at", { ascending: false }).limit(eventLimit);
@@ -1858,6 +1857,7 @@ async function publicBidRoomBoard(supabase: RfxBidSupabaseClient, input: Record<
         id: lane.id,
         event_id: lane.rfx_event_id,
         board_status: boardStatus,
+        is_bid_available: boardStatus === "live",
         due_state: dueState(event.due_date),
         visibility: {
           mode: visibility.mode,
@@ -1939,7 +1939,7 @@ async function publicBidRoomInviteRequest(supabase: RfxBidSupabaseClient, input:
   const lane = laneResult.data as Record<string, unknown>;
   const event = relationRecord(lane.rfx_events);
   const eventStatus = String(cleanText(event.status) || "").toLowerCase();
-  if (!["draft", "open", "closed", "awarded"].includes(eventStatus)) {
+  if (eventStatus !== "open" || publicBidBoardState(event) !== "live") {
     return { requested: false, error: "This Bid Room is not accepting public invitation requests.", status: 409 };
   }
 

@@ -798,13 +798,48 @@ function invitationActionForRow(row = {}) {
   };
 }
 
+function publicBiddingAvailable(row = {}) {
+  return String(row.board_status || "").toLowerCase() === "live";
+}
+
+function publicBiddingStateLabel(row = {}) {
+  const status = String(row.board_status || "").toLowerCase();
+  if (state.language === "es") {
+    if (status === "closing") return "Cierre proximo";
+    if (status === "expired") return "Puja cerrada";
+    if (status === "awarded") return "Adjudicada";
+    return "Solo resumen";
+  }
+  if (status === "closing") return "Closing soon";
+  if (status === "expired") return "Bidding closed";
+  if (status === "awarded") return "Awarded";
+  return "Summary only";
+}
+
 function renderInvitationAction(row = {}, primary = true) {
+  if (!publicBiddingAvailable(row)) {
+    const label = publicBiddingStateLabel(row);
+    return `<span class="public-board-bidding-state" title="${escapeAttribute(label)}">${escapeHtml(label)}</span>`;
+  }
   const action = invitationActionForRow(row);
   const className = primary ? "page-primary-action" : "secondary";
   return `<button type="button" class="${className}" ${action.attribute}="${escapeHtml(row.id || "")}">${escapeHtml(action.label)}</button>`;
 }
 
 function invitationRuleCopy(row) {
+  if (!publicBiddingAvailable(row)) {
+    const status = String(row.board_status || "").toLowerCase();
+    if (state.language === "es") {
+      if (status === "closing") return "Esta oportunidad esta por cerrar y ya no acepta nuevas solicitudes publicas. Puedes revisar el resumen.";
+      if (status === "expired") return "Esta oportunidad ya vencio. La puja esta cerrada y solo puedes consultar el resumen.";
+      if (status === "awarded") return "Esta oportunidad ya fue adjudicada. La puja esta cerrada y solo puedes consultar el resultado.";
+      return "Esta oportunidad no esta disponible para nuevas pujas publicas.";
+    }
+    if (status === "closing") return "This opportunity is closing and no longer accepts new public access requests. You can review the summary.";
+    if (status === "expired") return "This opportunity has expired. Bidding is closed and the summary remains available.";
+    if (status === "awarded") return "This opportunity has been awarded. Bidding is closed and the outcome remains available.";
+    return "This opportunity is not available for new public bids.";
+  }
   const access = invitationAccessForRow(row);
   if (access === "verified") {
     return state.language === "es"
@@ -835,7 +870,7 @@ function renderDetailDrawer(row, focusRequest = false) {
   const profile = requestProfile();
   const tags = laneTags(row);
   const access = invitationAccessForRow(row);
-  const requestForm = access === "not_invited" ? `
+  const requestForm = access === "not_invited" && publicBiddingAvailable(row) ? `
     <form id="public-invite-request-form" class="public-board-request-form" data-event-id="${escapeHtml(row.event?.id || row.event_id || "")}" data-lane-id="${escapeHtml(row.id)}">
       <h3>Request invitation</h3>
       <div class="public-board-form-grid">
@@ -877,7 +912,7 @@ function renderDetailDrawer(row, focusRequest = false) {
     </section>
     ${renderBusinessDetails(row)}
     <section class="public-board-invite-rule">
-      <strong>Invitation required to bid</strong>
+      <strong>${escapeHtml(publicBiddingAvailable(row) ? "Invitation required to bid" : "Bidding access")}</strong>
       <p>${escapeHtml(invitationRuleCopy(row))}</p>
       ${renderInvitationAction(row, false)}
       <button type="button" class="secondary" data-public-board-support="${escapeHtml(row.id)}">Ask support about this opportunity</button>

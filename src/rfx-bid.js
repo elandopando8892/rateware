@@ -32,6 +32,32 @@ const bookFilters = {
   view: "all",
   query: ""
 };
+const PRIVATE_WORKSPACE_VALUES = new Set(["master", "bids", "award"]);
+let activePrivateWorkspace = "master";
+
+function privateWorkspaceStorageKey() {
+  return `rateware.privateBidWorkspace:${tokenFromUrl() || "default"}`;
+}
+
+function readPrivateWorkspace() {
+  const stored = localStorage.getItem(privateWorkspaceStorageKey());
+  return PRIVATE_WORKSPACE_VALUES.has(stored) ? stored : "master";
+}
+
+function setPrivateWorkspace(value = "master") {
+  const next = PRIVATE_WORKSPACE_VALUES.has(value) ? value : "master";
+  activePrivateWorkspace = next;
+  localStorage.setItem(privateWorkspaceStorageKey(), next);
+  card.querySelectorAll("[data-private-workspace-tab]").forEach((tab) => {
+    const active = tab.dataset.privateWorkspaceTab === next;
+    tab.classList.toggle("is-active", active);
+    tab.setAttribute("aria-selected", active ? "true" : "false");
+    tab.setAttribute("tabindex", active ? "0" : "-1");
+  });
+  card.querySelectorAll("[data-private-workspace-panel]").forEach((panel) => {
+    panel.hidden = panel.dataset.privateWorkspacePanel !== next;
+  });
+}
 const PRIVATE_BID_ANNOUNCEMENTS = {
   en: {
     enabled: "Private Bid Room alerts enabled.",
@@ -3618,6 +3644,7 @@ function renderAwardOutcome(invitation = {}, carrierBook = {}, liveBoard = {}) {
 function renderInvitation(invitation, liveBoard = {}, carrierBook = {}) {
   lastInvitation = invitation;
   pendingBidTemplateRows = [];
+  activePrivateWorkspace = readPrivateWorkspace();
   const event = invitation.rfx_events || {};
   const lane = invitation.rfx_lanes || {};
   const vendor = invitation.vendors || {};
@@ -3680,19 +3707,35 @@ function renderInvitation(invitation, liveBoard = {}, carrierBook = {}) {
       <article><span>${escapeHtml(t("refresh"))}</span><strong>30 sec</strong></article>
     </div>
 
-    ${renderCarrierMasterPackage(carrierBook, invitation)}
-
     <section id="bid-support-agent" class="bid-support-agent bid-support-widget private-bid-support-widget" data-open="false">
       <p class="status-message">${escapeHtml(dualText("Loading contextual support...", "Cargando soporte contextual..."))}</p>
     </section>
 
-    <section id="carrier-award-outcome" class="carrier-award-outcome" hidden></section>
+    <nav class="bid-private-workspace-tabs" aria-label="Private Bid Room workspaces" role="tablist">
+      <button type="button" role="tab" data-private-workspace-tab="master" aria-selected="true">
+        <strong>1. RFX Master Package</strong>
+        <small>Live Bid Room and offer history</small>
+      </button>
+      <button type="button" role="tab" data-private-workspace-tab="bids" aria-selected="false" tabindex="-1">
+        <strong>2. Invited Lane Book</strong>
+        <small>Quick bids, XLSX and offer editor</small>
+      </button>
+      <button type="button" role="tab" data-private-workspace-tab="award" aria-selected="false" tabindex="-1">
+        <strong>3. Award Outcome</strong>
+        <small>Private business book</small>
+      </button>
+    </nav>
 
-    ${renderCarrierLaneSwitcher(carrierBook, invitation)}
+    <section data-private-workspace-panel="master" class="private-workspace-section">
+      ${renderCarrierMasterPackage(carrierBook, invitation)}
+    </section>
 
-    ${renderBidTemplateTools(carrierBook, invitation)}
+    <section data-private-workspace-panel="bids" class="private-workspace-section" hidden>
+      ${renderCarrierLaneSwitcher(carrierBook, invitation)}
 
-    ${renderQuickLaneBidGridShell(carrierBook, invitation)}
+      ${renderBidTemplateTools(carrierBook, invitation)}
+
+      ${renderQuickLaneBidGridShell(carrierBook, invitation)}
 
     <section class="bid-lane-summary is-compact">
       <div class="bid-room-section-heading">
@@ -3726,11 +3769,13 @@ function renderInvitation(invitation, liveBoard = {}, carrierBook = {}) {
       ` : ""}
     </section>
 
-    <section id="bid-live-board" class="bid-live-board">
+    </section>
+
+    <section id="bid-live-board" class="bid-live-board" data-private-workspace-panel="master">
       <p class="status-message">${escapeHtml(t("loadingLiveRoom"))}</p>
     </section>
 
-    <section id="carrier-bid-history" class="carrier-bid-history">
+    <section id="carrier-bid-history" class="carrier-bid-history" data-private-workspace-panel="master">
       <p class="status-message">${escapeHtml(t("loadingHistory"))}</p>
     </section>
 
@@ -3738,7 +3783,7 @@ function renderInvitation(invitation, liveBoard = {}, carrierBook = {}) {
       <p class="status-message">${escapeHtml(t("loadingChat"))}</p>
     </section>
 
-    <section class="bid-offer-launcher">
+    <section class="bid-offer-launcher" data-private-workspace-panel="bids">
       <div>
         <p class="eyebrow">${escapeHtml(t("submitOrUpdate"))}</p>
         <h3>${escapeHtml(dualText("Advanced offer editor", "Editor avanzado de oferta"))}</h3>
@@ -3929,7 +3974,9 @@ function renderInvitation(invitation, liveBoard = {}, carrierBook = {}) {
       </div>
     </div>
 
-    <section id="carrier-business-book" class="carrier-business-book">
+    <section id="carrier-award-outcome" class="carrier-award-outcome" data-private-workspace-panel="award" hidden></section>
+
+    <section id="carrier-business-book" class="carrier-business-book" data-private-workspace-panel="award">
       <p class="status-message">Loading private business book...</p>
     </section>
   `;
@@ -3981,6 +4028,7 @@ function renderInvitation(invitation, liveBoard = {}, carrierBook = {}) {
   });
   renderLiveBoard(liveBoard);
   renderBidSupportAgent();
+  setPrivateWorkspace(activePrivateWorkspace);
   syncCommercialStructureFields();
   updateBidReviewSummary();
   syncBidFormMode();
@@ -4022,6 +4070,12 @@ async function loadInvitation(options = {}) {
 }
 
 card.addEventListener("click", async (event) => {
+  const privateWorkspaceTab = event.target.closest("[data-private-workspace-tab]");
+  if (privateWorkspaceTab) {
+    setPrivateWorkspace(privateWorkspaceTab.dataset.privateWorkspaceTab || "master");
+    return;
+  }
+
   const languageToggleButton = event.target.closest("[data-private-language-toggle]");
   if (languageToggleButton) {
     await setPrivateLanguage(languageToggleButton.dataset.privateLanguageToggle);
