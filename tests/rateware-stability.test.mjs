@@ -2423,6 +2423,8 @@ assert.match(apiSource, /const completeInvitationGroups = new Map/, "Outreach dr
 assert.match(apiSource, /async function ensureRfxEventVendorCoverage/, "Outreach draft generation should complete selected carrier coverage across the event business book");
 assert.match(apiSource, /body\.action === "list_rfx_detail"[\s\S]+ensureRfxEventVendorCoverage/, "Opening an active RFx should repair incomplete carrier lane coverage before rendering the business book");
 assert.match(apiSource, /coverage_sync: \{ inserted: coverageInserted \}/, "RFx detail should report whether lane coverage was repaired");
+assert.match(apiSource, /Query by event instead of sending hundreds of vendor ids/, "RFx detail coverage repair should avoid oversized vendor-id filters");
+assert.doesNotMatch(apiSource, /async function ensureRfxEventVendorCoverage[\s\S]+?\.in\("vendor_id", uniqueVendorIds\)/, "RFx detail coverage repair must not send the full audience as a PostgREST in-filter");
 assert.match(apiSource, /outreachEventLaneRows\(eventLaneRows, invitationGroup\)/, "Outreach drafts should render every active event lane in the carrier business book");
 assert.match(apiSource, /const eventLaneCount = eventLanesResult\.data\?\.length \|\| 0/, "Outreach audience should know the total event lane count");
 assert.match(apiSource, /requestedGroupKeys\.has\(key\)/, "Outreach draft generation should only expand lane groups for requested event/vendor participants");

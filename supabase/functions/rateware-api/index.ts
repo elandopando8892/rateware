@@ -10326,14 +10326,19 @@ async function ensureRfxEventVendorCoverage(
   const lanes = eventLanes.filter((lane) => cleanText(lane.id));
   if (!eventId || !uniqueVendorIds.length || !lanes.length) return { inserted: 0, rows: [] as Record<string, unknown>[] };
 
+  // Query by event instead of sending hundreds of vendor ids in a PostgREST
+  // `in` filter. Large RFx audiences can otherwise exceed request limits
+  // while opening the Bid Room, even when coverage is already complete.
   const existing = await supabase
     .from("rfx_lane_vendors")
     .select("id,rfx_lane_id,vendor_id,invitation_status")
-    .eq("rfx_event_id", eventId)
-    .in("vendor_id", uniqueVendorIds);
+    .eq("rfx_event_id", eventId);
   if (existing.error) throw new Error(`RFx participant coverage load failed: ${existing.error.message}`);
 
-  const existingKeys = new Set((existing.data || []).map((row) => `${cleanText(row.rfx_lane_id)}:${cleanText(row.vendor_id)}`));
+  const uniqueVendorSet = new Set(uniqueVendorIds);
+  const existingKeys = new Set((existing.data || [])
+    .filter((row) => uniqueVendorSet.has(cleanText(row.vendor_id)))
+    .map((row) => `${cleanText(row.rfx_lane_id)}:${cleanText(row.vendor_id)}`));
   const insertRows = lanes.flatMap((lane) => uniqueVendorIds
     .filter((vendorId) => !existingKeys.has(`${cleanText(lane.id)}:${vendorId}`))
     .map((vendorId) => ({
