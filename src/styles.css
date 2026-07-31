@@ -4132,7 +4132,7 @@ a {
 
   .bid-room-page .rfx-outreach-carrier-adder-body {
     min-height: 0;
-    grid-template-rows: auto minmax(0, 1fr) auto auto;
+    grid-template-rows: auto auto minmax(0, 1fr) auto;
   }
 
   .bid-room-page .rfx-outreach-carrier-picker-grid,
@@ -4562,6 +4562,41 @@ a {
   align-items: end;
 }
 
+.rfx-outreach-carrier-wave-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+  padding: 7px 8px;
+  border: 1px solid #c9d8e5;
+  border-radius: 5px;
+  background: #f5f9fc;
+}
+
+.rfx-outreach-carrier-wave-actions > div:first-child {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.rfx-outreach-carrier-wave-actions strong {
+  color: #203c52;
+  font-size: 0.74rem;
+}
+
+.rfx-outreach-carrier-wave-actions small {
+  color: #63717d;
+  font-size: 0.67rem;
+  font-weight: 620;
+}
+
+.rfx-outreach-carrier-wave-actions .action-row {
+  flex: 0 0 auto;
+  margin: 0;
+  white-space: nowrap;
+}
+
 .rfx-outreach-carrier-filter-row label {
   display: grid;
   gap: 3px;
@@ -4703,6 +4738,15 @@ a {
 
   .rfx-outreach-carrier-picker-grid {
     grid-template-columns: 1fr;
+  }
+
+  .rfx-outreach-carrier-wave-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .rfx-outreach-carrier-wave-actions .action-row {
+    width: 100%;
   }
 
   .rfx-outreach-carrier-filter-row {

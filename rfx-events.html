@@ -595,6 +595,16 @@
                       <input id="rfx-outreach-carrier-search" type="search" placeholder="Carrier, domain, contact, tag..." autocomplete="off" />
                     </label>
                   </div>
+                  <div class="rfx-outreach-carrier-wave-actions" aria-live="polite">
+                    <div>
+                      <strong id="rfx-outreach-carrier-wave-summary">Select compatible carriers to start an invitation wave.</strong>
+                      <small>1. Add them to this RFx. 2. Prepare the selected wave from Message.</small>
+                    </div>
+                    <div class="action-row">
+                      <button id="rfx-add-outreach-carriers" type="button" disabled>Add to invitation wave</button>
+                      <button id="rfx-clear-outreach-carrier-selection" class="secondary" type="button" disabled>Clear selection</button>
+                    </div>
+                  </div>
                   <div class="rfx-outreach-carrier-picker-grid">
                     <section>
                       <div class="rfx-outreach-carrier-picker-heading">
@@ -610,10 +620,6 @@
                       </div>
                       <div id="rfx-outreach-carrier-selected" class="rfx-outreach-carrier-list"></div>
                     </section>
-                  </div>
-                  <div class="action-row">
-                    <button id="rfx-add-outreach-carriers" type="button" disabled>Add to this Bid Room</button>
-                    <button id="rfx-clear-outreach-carrier-selection" class="secondary" type="button" disabled>Clear candidate selection</button>
                   </div>
                   <p id="rfx-outreach-carrier-status" class="status-message" role="status"></p>
                 </div>
@@ -633,6 +639,7 @@
                   </div>
                   <div class="rfx-outreach-audience-actions">
                     <button id="rfx-select-ready-outreach-audience" type="button" class="secondary small-button" title="Select all carriers ready for a new queue">Select ready to queue</button>
+                    <button id="rfx-use-outreach-audience-in-message" type="button" class="small-button" disabled title="Use the selected carriers in the next invitation wave">Prepare selected wave</button>
                     <button id="rfx-clear-outreach-audience-selection" type="button" class="secondary small-button" title="Clear selected carriers">Clear</button>
                     <button id="rfx-refresh-outreach-audience" type="button" class="secondary small-button">Refresh</button>
                   </div>

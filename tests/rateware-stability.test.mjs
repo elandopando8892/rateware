@@ -1365,7 +1365,14 @@ assert.match(rfxEventsSource, /const unassignedSelection = !previousEventId/, "P
 assert.match(rfxEventsSource, /selectedManualVendorIdsState\.clear\(\);\s+persistManualParticipantSelection\(eventId\);/, "Persisted participant selections should clear only after confirmed shortlist creation");
 assert.match(rfxEventsSource, /async function shortlistVendorsByLane/, "Bid Room should batch large carrier shortlists by lane");
 assert.match(rfxEventsSource, /async function addSelectedManualCarriersToBid/, "Bid Room should reuse one safe participant add flow from shortlist and outreach");
-assert.match(rfxEventsSource, /selectedInvitationIds\.clear\(\);[\s\S]{0,180}Generate the draft queue to reach only new carriers/, "Adding carriers from Step 4 should clear stale scope and preserve existing outreach history");
+assert.match(rfxEventsSource, /selectedInvitationIds\.clear\(\);[\s\S]{0,700}selectedOutreachAudienceVendorIds = new Set/, "Adding carriers from Carrier Fit should clear stale scope before setting the new invitation-wave audience");
+assert.match(rfxEventsSource, /Generate the draft queue to reach only new carriers; existing outreach stays unchanged/, "Manual shortlist creation should preserve existing outreach history");
+assert.match(rfxEventsHtml, /rfx-outreach-carrier-wave-summary/, "Carrier Fit should expose the next invitation-wave action above the candidate lists");
+assert.match(rfxEventsSource, /selectedOutreachAudienceVendorIds = new Set\(vendorIds\.map\(\(vendorId\) => String\(vendorId\)\)\);/, "Carrier Fit selections should become the active next-wave audience after being added to the RFx");
+assert.match(rfxEventsSource, /await loadOutreachAudience\(\{ reloadSegments: true \}\);[\s\S]{0,180}activateRfxLaunchWorkspace\("message"\)/, "Carrier Fit should take the new wave directly to Message after its RFx invitations are created");
+assert.match(rfxEventsHtml, /id="rfx-use-outreach-audience-in-message"/, "This RFx should expose a visible action to move selected carriers into the invitation message workspace");
+assert.match(rfxEventsSource, /rfxUseOutreachAudienceInMessageButton\?\.addEventListener\("click"[\s\S]{0,700}activateRfxLaunchWorkspace\("message"\)/, "Selected existing RFx carriers should be reusable as the active invitation wave without adding them again");
+assert.match(rfxEventsSource, /draftQueueTrackingStatus = "all";[\s\S]{0,120}activateRfxLaunchWorkspace\("delivery", \{ refresh: true \}\)/, "A prepared invitation wave should reset stale delivery filters before opening Delivery queue");
 assert.match(rfxEventsSource, /chunkRows\(vendorIds, BID_ROOM_PARTICIPANT_BATCH_SIZE\)/, "Bid Room should split selected carriers into 1,000-row shortlist batches");
 assert.match(rfxEventsSource, /async function mutateRfxParticipantsInBatches/, "Bid Room should batch participant invite and archive operations");
 assert.match(rfxEventsSource, /mutateRfxParticipantsInBatches\(ids, "invite", actionStatus\)/, "Bid Room should batch-mark invitations over 1,000 rows");
