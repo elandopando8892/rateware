@@ -2421,6 +2421,8 @@ assert.match(apiSource, /function outreachLaneTableSignature/, "Outreach draft g
 assert.match(apiSource, /lane_table_signature: context\.lane_table_signature/, "Outreach drafts should persist the Business Book route-table signature in metadata");
 assert.match(apiSource, /const completeInvitationGroups = new Map/, "Outreach draft generation should hydrate complete event/vendor lane groups before rendering templates");
 assert.match(apiSource, /async function ensureRfxEventVendorCoverage/, "Outreach draft generation should complete selected carrier coverage across the event business book");
+assert.match(apiSource, /body\.action === "list_rfx_detail"[\s\S]+ensureRfxEventVendorCoverage/, "Opening an active RFx should repair incomplete carrier lane coverage before rendering the business book");
+assert.match(apiSource, /coverage_sync: \{ inserted: coverageInserted \}/, "RFx detail should report whether lane coverage was repaired");
 assert.match(apiSource, /outreachEventLaneRows\(eventLaneRows, invitationGroup\)/, "Outreach drafts should render every active event lane in the carrier business book");
 assert.match(apiSource, /const eventLaneCount = eventLanesResult\.data\?\.length \|\| 0/, "Outreach audience should know the total event lane count");
 assert.match(apiSource, /requestedGroupKeys\.has\(key\)/, "Outreach draft generation should only expand lane groups for requested event/vendor participants");
@@ -2432,6 +2434,8 @@ assert.match(apiSource, /OUTREACH_DO_NOT_AUTO_REQUEUE_STATUSES/, "Outreach queue
 assert.match(generateOutreachDraftsSource, /\.eq\("rfx_event_id", campaign\.rfx_event_id\)[\s\S]+Outreach history load failed/, "Outreach draft generation should inspect prior RFx outreach history across campaigns");
 assert.match(generateOutreachDraftsSource, /preserved_from_history/, "Outreach draft generation should report carrier drafts preserved from previous waves");
 assert.match(rfxEventsSource, /function outreachDraftQueueSummary[\s\S]+already contacted[\s\S]+bounced contact/, "Bid Room should explain already-contacted and bounced carriers after queue generation");
+assert.match(rfxEventsSource, /withdrawn: "Withdrawn"/, "Bid Room should label withdrawn offers explicitly");
+assert.match(rfxEventsSource, /lane bids \/ .*carriers \/ .*active lane rows/, "Bid Room response totals should distinguish lane bids, carriers, and active lane rows");
 assert.match(outreachControlCenterMigration, /contact_key text/, "Outreach Control Center should persist a contact-level ledger key");
 assert.match(outreachControlCenterMigration, /outreach_messages_campaign_lane_contact_channel_unique/, "Outreach Control Center should de-duplicate a carrier contact per lane and channel");
 assert.match(outreachControlCenterMigration, /create table if not exists public\.outreach_audience_segments/, "Outreach Control Center should persist workspace audience segments");

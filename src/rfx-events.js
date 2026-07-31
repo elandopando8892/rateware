@@ -1988,6 +1988,7 @@ function statusLabel(status) {
     responded: "Responded",
     quoted: "Quoted",
     declined: "Declined",
+    withdrawn: "Withdrawn",
     awarded: "Awarded",
     archived: "Archived",
     open: "Open",
@@ -2001,7 +2002,7 @@ function statusTone(status) {
   const value = commercialStatus(status);
   if (["quoted", "awarded", "sent", "open"].includes(value)) return "success";
   if (["invited", "viewed", "responded", "queued"].includes(value)) return "neutral";
-  if (["declined", "archived", "closed"].includes(value)) return "danger";
+  if (["declined", "withdrawn", "archived", "closed"].includes(value)) return "danger";
   return "muted";
 }
 
@@ -2358,7 +2359,19 @@ function hasBid(invitation) {
 }
 
 function hasInvitationStarted(invitation) {
-  return ["invited", "viewed", "responded", "quoted", "bid_submitted", "declined", "awarded"].includes(String(invitation.invitation_status || "").toLowerCase());
+  return ["invited", "viewed", "responded", "quoted", "bid_submitted", "declined", "withdrawn", "awarded"].includes(String(invitation.invitation_status || "").toLowerCase());
+}
+
+function invitationVendorKey(invitation) {
+  return String(
+    invitation?.vendor_id
+      || invitation?.vendors?.id
+      || invitation?.vendors?.domain
+      || invitation?.vendors?.primary_email
+      || vendorLabel(invitation)
+      || invitation?.id
+      || ""
+  ).trim().toLowerCase();
 }
 
 function selectedOutreachTemplate() {
@@ -5629,9 +5642,10 @@ function renderResponseBoard() {
   responseBoardRowsCache = allRows;
   const rows = responseColumnFilters?.apply(allRows) || allRows;
   const bidRows = rows.filter(({ invitation }) => hasBid(invitation));
+  const bidCarrierCount = new Set(bidRows.map(({ invitation }) => invitationVendorKey(invitation)).filter(Boolean)).size;
   responseSummary.textContent = rows.length === allRows.length
-    ? `${formatNumber(bidRows.length)} bids / ${formatNumber(rows.length)} active rows`
-    : `${formatNumber(bidRows.length)} bids / ${formatNumber(rows.length)} shown of ${formatNumber(allRows.length)} active rows`;
+    ? `${formatNumber(bidRows.length)} lane bids / ${formatNumber(bidCarrierCount)} carriers / ${formatNumber(rows.length)} active lane rows`
+    : `${formatNumber(bidRows.length)} lane bids / ${formatNumber(bidCarrierCount)} carriers / ${formatNumber(rows.length)} shown of ${formatNumber(allRows.length)} active lane rows`;
   if (!rows.length) {
     responseBody.innerHTML = `<tr><td colspan="13">No carrier responses match these column filters.</td></tr>`;
     return;

@@ -24672,14 +24672,46 @@ Deno.serve(async (request) => {
       if (lanesResult.error) throw lanesResult.error;
       if (invitationsResult.error) throw invitationsResult.error;
 
+      let invitationRows = invitationsResult.data || [];
+      const eventLanes = lanesResult.data || [];
+      const activeVendorIds = [...new Set(
+        invitationRows
+          .filter((invitation) => (cleanText(invitation.invitation_status) || "").toLowerCase() !== "archived")
+          .map((invitation) => cleanText(invitation.vendor_id))
+          .filter((vendorId): vendorId is string => Boolean(vendorId))
+      )];
+      let coverageInserted = 0;
+
+      // Older active RFx events may have created only the lane that first
+      // generated an invitation. Repair the complete business book before it
+      // is rendered so every active participant sees every event lane.
+      if ((cleanText(event.status) || "").toLowerCase() === "open" && activeVendorIds.length && eventLanes.length) {
+        const coverage = await ensureRfxEventVendorCoverage(
+          supabase,
+          event.id,
+          activeVendorIds,
+          eventLanes
+        );
+        coverageInserted = coverage.inserted;
+        if (coverageInserted) {
+          const refreshedInvitationsResult = await supabase
+            .from("rfx_lane_vendors")
+            .select("*, vendors(id,vendor_name,domain,primary_email,whatsapp_phone,preferred_channel,base_stage,status,tags,coverage_notes)")
+            .eq("rfx_event_id", event.id)
+            .order("created_at", { ascending: true });
+          if (refreshedInvitationsResult.error) throw refreshedInvitationsResult.error;
+          invitationRows = refreshedInvitationsResult.data || [];
+        }
+      }
+
       const invitationsByLane = new Map<string, Record<string, unknown>[]>();
-      for (const invitation of invitationsResult.data || []) {
+      for (const invitation of invitationRows) {
         const bucket = invitationsByLane.get(invitation.rfx_lane_id) || [];
         bucket.push(invitation);
         invitationsByLane.set(invitation.rfx_lane_id, bucket);
       }
 
-      const lanes = (lanesResult.data || []).map((lane) => {
+      const lanes = eventLanes.map((lane) => {
         const benchmark = bestRatewareBenchmark(lane, rates);
         const supplyDepth = supplyDepthForLane(lane, rates);
         const invitations = (invitationsByLane.get(lane.id) || []).map((invitation) => invitationWithComparison(invitation, benchmark));
@@ -24693,7 +24725,7 @@ Deno.serve(async (request) => {
         };
       });
 
-      return jsonResponse({ event, lanes });
+      return jsonResponse({ event, lanes, coverage_sync: { inserted: coverageInserted } });
     }
 
     if (body.action === "list_bid_room_chat") {
