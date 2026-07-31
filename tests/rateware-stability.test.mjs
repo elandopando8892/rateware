@@ -1892,7 +1892,7 @@ assert.match(rfxBidSource, /label class="\$\{answer === value \? "is-selected" :
 assert.match(stylesSource, /\.segment-rubric-controls \{[\s\S]*grid-template-columns: repeat\(4, minmax\(0, 1fr\)\)/, "Carrier fit confirmations should keep all four answers aligned in one desktop row");
 assert.match(rfxBidApiSource, /comment: \(cleanText\(record\.comment\) \|\| ""\)\.slice\(0, 1200\)/, "Carrier fit checklist saves should allow blank exception comments");
 assert.match(rfxBidSource, /sanitizeRichTextNode/, "Carrier portal should sanitize lane detail HTML before inserting it");
-assert.match(rfxBidSource, /bid-lane-detail-disclosure/, "Carrier portal should collapse selected-lane details so they do not duplicate the RFx master package");
+assert.doesNotMatch(rfxBidSource, /bid-lane-detail-disclosure/, "Carrier portal should avoid duplicating selected-lane details in Bid tools");
 assert.doesNotMatch(rfxBidSource, /<p>\$\{escapeHtml\(value\)\}<\/p>/, "Carrier portal should not show pasted lane detail HTML as escaped source");
 assert.match(rfxBidSource, /function renderCarrierLaneSwitcher/, "Carrier portal should expose all invited event lanes before the selected lane bid form");
 assert.match(rfxBidSource, /function laneFitProgress/, "Carrier Bid tools should summarize the selected route fit");
@@ -1905,16 +1905,16 @@ assert.match(rfxBidSource, /data-master-segment-key/, "Operational fit actions s
 assert.match(rfxBidSource, /function segmentConfirmationMap\(invitation = lastInvitation \|\| \{\}\)[\s\S]*rfx_lane_vendor_id[\s\S]*invitationId/, "Carrier fit confirmations should be scoped to the selected lane invitation");
 assert.match(rfxBidSource, /function renderLaneFitChecklist/, "Carrier portal should render the route-level fit checklist in Bid tools");
 assert.match(rfxBidSource, /data-decline-invitation/, "Carrier route fit should allow the carrier to reject an unworkable lane");
-assert.match(rfxBidSource, /disagreements === 0/, "A route fit disagreement should block quoting until it is resolved or rejected");
-assert.match(rfxBidSource, /function bidTemplateRows[\s\S]*rowFitProgress\(row, packagePayload\)\.ready/, "Bid templates should include only route-fit-complete lanes");
-assert.match(rfxBidSource, /function quickBidRows[\s\S]*rowFitProgress\(row, packagePayload\)\.ready/, "Quick bids should include only route-fit-complete lanes");
-assert.match(rfxBidApiSource, /async function assertLaneFitComplete/, "Carrier bid API should validate the selected lane fit before accepting a quote");
-assert.match(rfxBidApiSource, /Resolve every "Not agree" route-fit item as an exception or reject this lane/, "Carrier bid API should reject quotes with unresolved route-fit disagreements");
+assert.match(rfxBidSource, /Fit answers are optional/, "Route fit answers should be advisory before quoting");
+assert.match(rfxBidSource, /function isBidToolsEligibleRow/, "Bid tools should filter only by invitation and route status");
+assert.match(rfxBidSource, /function bidTemplateRows[\s\S]*isBidToolsEligibleRow\(row\)/, "Bid templates should include every eligible invited lane");
+assert.match(rfxBidSource, /function quickBidRows[\s\S]*isBidToolsEligibleRow\(row\)/, "Quick bids should include every eligible invited lane");
+assert.doesNotMatch(rfxBidApiSource, /async function assertLaneFitComplete/, "Carrier bid API should not hard-block quotes on optional fit answers");
 const bidSubmitSource = rfxBidApiSource.slice(
   rfxBidApiSource.indexOf('if (body.action === "submit_bid")'),
   rfxBidApiSource.indexOf('if (body.action === "submit_bid")') + 7000
 );
-assert.match(bidSubmitSource, /await assertLaneFitComplete\(supabase, invitationResult\.data/, "All carrier bid submissions should enforce fit completion server-side");
+assert.doesNotMatch(bidSubmitSource, /assertLaneFitComplete/, "Carrier bid submissions should accept quotes with optional fit answers");
 assert.match(rfxBidSource, /import \* as XLSX from "https:\/\/esm\.sh\/xlsx@0\.18\.5"/, "Carrier portal should load XLSX support for bid templates");
 assert.match(rfxBidSource, /import\("https:\/\/esm\.sh\/exceljs@4\.4\.0\?bundle"\)/, "Carrier portal should use ExcelJS for XLSX dropdown data validations");
 assert.match(rfxBidSource, /const BID_TEMPLATE_COLUMNS = \[/, "Carrier portal should define a prefilled XLSX bid template schema");
@@ -3171,12 +3171,15 @@ assert.match(bidRoomBoardSource, /if \(!publicBiddingAvailable\(row\)\)/, "Publi
 assert.match(rfxBidApiSource, /\.in\("status", \["open", "closed", "awarded"\]\)/, "Public Bid Room should exclude draft events from carrier-facing opportunities");
 assert.match(rfxBidApiSource, /is_bid_available: boardStatus === "live"/, "Public Bid Room API should expose live bidding separately from opportunity status");
 assert.match(rfxBidApiSource, /if \(eventStatus !== "open" \|\| publicBidBoardState\(event\) !== "live"\)/, "Public invitation requests should require an open live event");
-assert.match(rfxBidSource, /const PRIVATE_WORKSPACE_VALUES = new Set\(\["master", "bids", "award"\]\)/, "Private Bid Room should define three carrier workspaces");
+assert.match(rfxBidSource, /const PRIVATE_WORKSPACE_VALUES = new Set\(\["master", "bids", "award", "book"\]\)/, "Private Bid Room should define four carrier workspaces");
 assert.match(rfxBidSource, /data-private-workspace-tab="master"/, "Private Bid Room should expose the RFX Master Package workspace");
 assert.match(rfxBidSource, /data-private-workspace-tab="bids"/, "Private Bid Room should expose the Invited Lane Book workspace");
 assert.match(rfxBidSource, /data-private-workspace-tab="award"/, "Private Bid Room should expose the Award Outcome workspace");
+assert.match(rfxBidSource, /data-private-workspace-tab="book"/, "Private Bid Room should expose the Private Business Book workspace");
+assert.match(rfxBidSource, /data-private-workspace-panel="book"/, "Private Bid Room should render the Private Business Book workspace panel");
+assert.match(rfxBidSource, /data-private-workspace-panel="award"[\s\S]*id="carrier-bid-history"/, "Offer history should live in Award Outcome");
 assert.match(rfxBidSource, /renderBidSupportAgent\(\);[\s\S]+setPrivateWorkspace\(activePrivateWorkspace\)/, "Private Bid Room should initialize workspace visibility after rendering support");
-assert.match(stylesSource, /\.bid-portal-shell \.bid-private-workspace-tabs \{[\s\S]*grid-template-columns: repeat\(3/, "Private Bid Room workspace tabs should use a compact three-column layout");
+assert.match(stylesSource, /\.bid-portal-shell \.bid-private-workspace-tabs \{[\s\S]*grid-template-columns: repeat\(4/, "Private Bid Room workspace tabs should use a compact four-column layout");
 assert.match(stylesSource, /\.bid-portal-header #bid-support-agent\.bid-support-widget \{[\s\S]*position: relative/, "Private Bid Room bid assistant should sit in the upper header flow");
 assert.match(rfxEventsSource, /function rfxCarrierFitTerms/, "Carrier fit should normalize operational and equipment language before filtering CRM candidates");
 assert.match(rfxEventsSource, /data-rfx-outreach-show-all-active/, "Carrier fit empty states should provide a direct active CRM fallback");

@@ -28816,7 +28816,7 @@ form[data-unsaved-guard][data-unsaved="true"] {
 /* Keep the private portal decision-first: one compact tab strip, one workspace at a time. */
 .bid-portal-shell .bid-private-workspace-tabs {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 6px;
   margin: 0 0 8px;
   border: 1px solid var(--line);
@@ -28874,6 +28874,57 @@ form[data-unsaved-guard][data-unsaved="true"] {
 
 .bid-portal-shell [data-private-workspace-panel] {
   min-width: 0;
+}
+
+.bid-portal-shell .bid-tools-lane-switcher {
+  margin: 0 0 8px;
+  border: 1px solid #d8b64b;
+  border-radius: 8px;
+  background: #fffdf3;
+  padding: 8px;
+}
+
+.bid-portal-shell .bid-tools-lane-switcher-list {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.bid-portal-shell .bid-tools-lane-option {
+  flex: 0 0 min(250px, 30vw);
+  min-width: 190px;
+  border: 1px solid #d6dce6;
+  border-radius: 6px;
+  background: #ffffff;
+  color: var(--text);
+  padding: 7px 9px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.bid-portal-shell .bid-tools-lane-option strong,
+.bid-portal-shell .bid-tools-lane-option small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bid-portal-shell .bid-tools-lane-option strong {
+  font-size: 0.76rem;
+}
+
+.bid-portal-shell .bid-tools-lane-option small {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 0.66rem;
+}
+
+.bid-portal-shell .bid-tools-lane-option.is-selected {
+  border-color: var(--accent-dark);
+  background: #edf5f4;
+  box-shadow: inset 3px 0 0 var(--accent-dark);
 }
 
 /* The master package owns lane context. The lane book is the single place to
