@@ -1105,7 +1105,7 @@ async function saveSegmentConfirmations(
     comment: row.comment,
     source: "carrier_portal",
     metadata: {
-      source: "rfx_master_package_fit",
+      source: "rfx_lane_fit",
       invitation_token: cleanText(invitation.invitation_token),
       lane_id: cleanText(invitation.rfx_lane_id)
     },
@@ -1124,16 +1124,61 @@ async function saveSegmentConfirmations(
     channel: "portal",
     direction: "inbound",
     status: "rfx_fit_confirmed",
-    subject: `${cleanText(event.rfx_id) || "RFx"} carrier fit checklist updated`,
-    body_preview: `${rows.length} checklist item(s) updated for RFx master package fit.`,
+    subject: `${cleanText(event.rfx_id) || "RFx"} carrier route fit updated`,
+    body_preview: `${rows.length} checklist item(s) updated for this route.`,
     metadata: {
-      source: "rfx_master_package_fit",
+      source: "rfx_lane_fit",
       rfx_lane_vendor_id: cleanText(invitation.id),
       segment_keys: [...new Set(rows.map((row) => row.segment_key))]
     }
   });
   if (historyResult.error) console.warn("segment confirmation history failed", historyResult.error.message);
   return { rows: result.data || [] };
+}
+
+function laneFitSegmentKey(lane: Record<string, unknown> = {}) {
+  const explicit = cleanText(lane.rfx_segment_key);
+  if (explicit) return explicit;
+  const derived = [lane.operation, lane.service, lane.equipment, lane.trailer]
+    .map((value) => cleanText(value))
+    .filter(Boolean)
+    .join("-")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return derived || "general";
+}
+
+async function assertLaneFitComplete(
+  supabase: RfxBidSupabaseClient,
+  invitation: Record<string, unknown>
+) {
+  const invitationId = cleanText(invitation.id);
+  const lane = relationRecord(invitation.rfx_lanes);
+  const segmentKey = laneFitSegmentKey(lane);
+  if (!invitationId) throw new Error("Bid invitation is unavailable.");
+
+  const confirmationResult = await supabase
+    .from("rfx_segment_confirmations")
+    .select("segment_key,rubric_key,answer")
+    .eq("rfx_lane_vendor_id", invitationId)
+    .eq("segment_key", segmentKey);
+  if (confirmationResult.error) throw confirmationResult.error;
+
+  const confirmationRows = confirmationResult.data || [];
+  const answeredRubrics = new Set(
+    confirmationRows
+      .filter((row) => String(cleanText(row.answer) || "").toLowerCase() !== "pending")
+      .map((row) => String(cleanText(row.rubric_key) || ""))
+      .filter((rubricKey) => SEGMENT_CONFIRMATION_RUBRICS.has(rubricKey))
+  );
+  const missing = [...SEGMENT_CONFIRMATION_RUBRICS].filter((rubricKey) => !answeredRubrics.has(rubricKey));
+  if (missing.length) {
+    throw new Error("Complete and save every route fit item before submitting a quote.");
+  }
+  if (confirmationRows.some((row) => String(cleanText(row.answer) || "").toLowerCase() === "disagree")) {
+    throw new Error('Resolve every "Not agree" route-fit item as an exception or reject this lane before submitting a quote.');
+  }
 }
 
 async function findOrCreateCarrierChatThread(
@@ -4979,6 +5024,7 @@ Deno.serve(async (request) => {
         .eq("invitation_token", token)
         .single();
       if (invitationResult.error) throw invitationResult.error;
+      await assertLaneFitComplete(supabase, invitationResult.data as Record<string, unknown>);
       const previousBidRate = cleanNumber(invitationResult.data.bid_rate);
       const revisionType = bestFinal ? "best_final" : previousBidRate !== null ? "revision" : "initial";
       const commercialModel = normalizeCommercialModel(body.commercial_model) || "direct_cost_plus";

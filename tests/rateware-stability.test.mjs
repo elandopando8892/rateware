@@ -1895,13 +1895,26 @@ assert.match(rfxBidSource, /sanitizeRichTextNode/, "Carrier portal should saniti
 assert.match(rfxBidSource, /bid-lane-detail-disclosure/, "Carrier portal should collapse selected-lane details so they do not duplicate the RFx master package");
 assert.doesNotMatch(rfxBidSource, /<p>\$\{escapeHtml\(value\)\}<\/p>/, "Carrier portal should not show pasted lane detail HTML as escaped source");
 assert.match(rfxBidSource, /function renderCarrierLaneSwitcher/, "Carrier portal should expose all invited event lanes before the selected lane bid form");
-assert.match(rfxBidSource, /function segmentFitProgress/, "Carrier master package should summarize confirmations by segment");
-assert.match(rfxBidSource, /function activeMasterSegmentIndex/, "Carrier master package should open the first segment that still needs action");
+assert.match(rfxBidSource, /function laneFitProgress/, "Carrier Bid tools should summarize the selected route fit");
+assert.match(rfxBidSource, /function focusRouteFit/, "Carrier lane navigation should focus the selected route fit before quoting");
 assert.match(rfxBidSource, /carrier-lane-book-table/, "Carrier route schedule should use one compact actionable lane table");
 assert.match(rfxBidSource, /data-route-fit-token/, "Each invited lane should expose its operational fit details");
 assert.match(rfxBidSource, /data-route-offer-token/, "Each invited lane should submit or update its own offer");
 assert.match(rfxBidSource, /data-route-participation-action/, "Each invited lane should expose reject or withdraw without leaving the route book");
 assert.match(rfxBidSource, /data-master-segment-key/, "Operational fit actions should target the matching segment checklist");
+assert.match(rfxBidSource, /function segmentConfirmationMap\(invitation = lastInvitation \|\| \{\}\)[\s\S]*rfx_lane_vendor_id[\s\S]*invitationId/, "Carrier fit confirmations should be scoped to the selected lane invitation");
+assert.match(rfxBidSource, /function renderLaneFitChecklist/, "Carrier portal should render the route-level fit checklist in Bid tools");
+assert.match(rfxBidSource, /data-decline-invitation/, "Carrier route fit should allow the carrier to reject an unworkable lane");
+assert.match(rfxBidSource, /disagreements === 0/, "A route fit disagreement should block quoting until it is resolved or rejected");
+assert.match(rfxBidSource, /function bidTemplateRows[\s\S]*rowFitProgress\(row, packagePayload\)\.ready/, "Bid templates should include only route-fit-complete lanes");
+assert.match(rfxBidSource, /function quickBidRows[\s\S]*rowFitProgress\(row, packagePayload\)\.ready/, "Quick bids should include only route-fit-complete lanes");
+assert.match(rfxBidApiSource, /async function assertLaneFitComplete/, "Carrier bid API should validate the selected lane fit before accepting a quote");
+assert.match(rfxBidApiSource, /Resolve every "Not agree" route-fit item as an exception or reject this lane/, "Carrier bid API should reject quotes with unresolved route-fit disagreements");
+const bidSubmitSource = rfxBidApiSource.slice(
+  rfxBidApiSource.indexOf('if (body.action === "submit_bid")'),
+  rfxBidApiSource.indexOf('if (body.action === "submit_bid")') + 7000
+);
+assert.match(bidSubmitSource, /await assertLaneFitComplete\(supabase, invitationResult\.data/, "All carrier bid submissions should enforce fit completion server-side");
 assert.match(rfxBidSource, /import \* as XLSX from "https:\/\/esm\.sh\/xlsx@0\.18\.5"/, "Carrier portal should load XLSX support for bid templates");
 assert.match(rfxBidSource, /import\("https:\/\/esm\.sh\/exceljs@4\.4\.0\?bundle"\)/, "Carrier portal should use ExcelJS for XLSX dropdown data validations");
 assert.match(rfxBidSource, /const BID_TEMPLATE_COLUMNS = \[/, "Carrier portal should define a prefilled XLSX bid template schema");
