@@ -6066,6 +6066,45 @@ a {
   gap: 18px;
 }
 
+.bid-portal-header > div {
+  min-width: 0;
+  flex: 1;
+}
+
+.bid-portal-header #bid-support-agent.bid-support-widget {
+  position: relative;
+  inset: auto;
+  z-index: 30;
+  width: min(260px, 28vw);
+  flex: 0 0 min(260px, 28vw);
+  margin: 0;
+}
+
+.bid-portal-header #bid-support-agent .bid-support-launcher {
+  min-height: 42px;
+  border-radius: 8px;
+  padding: 8px 28px 8px 10px;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.16);
+}
+
+.bid-portal-header #bid-support-agent .bid-support-launcher span {
+  font-size: 0.78rem;
+}
+
+.bid-portal-header #bid-support-agent .bid-support-launcher small {
+  overflow: hidden;
+  font-size: 0.61rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bid-portal-header #bid-support-agent .bid-support-popover {
+  top: calc(100% + 8px);
+  right: 0;
+  bottom: auto;
+  left: auto;
+}
+
 .bid-room-hero {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(330px, 410px);
@@ -28829,7 +28868,7 @@ form[data-unsaved-guard][data-unsaved="true"] {
 }
 
 /* The assistant is contextual to the portal, so it sits above the workspaces rather than floating over data. */
-.bid-portal-shell #bid-support-agent.bid-support-widget {
+.bid-portal-shell > #bid-support-agent.bid-support-widget {
   position: relative;
   top: auto;
   right: auto;
@@ -28840,7 +28879,7 @@ form[data-unsaved-guard][data-unsaved="true"] {
   margin: 0 0 6px;
 }
 
-.bid-portal-shell #bid-support-agent .bid-support-popover {
+.bid-portal-shell > #bid-support-agent .bid-support-popover {
   top: calc(100% + 6px);
   right: auto;
   bottom: auto;
@@ -28852,7 +28891,7 @@ form[data-unsaved-guard][data-unsaved="true"] {
     grid-template-columns: 1fr;
   }
 
-  .bid-portal-shell #bid-support-agent.bid-support-widget {
+  .bid-portal-shell > #bid-support-agent.bid-support-widget {
     width: 100%;
   }
 }

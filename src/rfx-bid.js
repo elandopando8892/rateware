@@ -4,6 +4,7 @@ import { apiErrorMessage, humanizeError } from "./error-copy.js";
 
 const title = document.querySelector("#bid-event-title");
 const card = document.querySelector("#bid-invitation-card");
+const bidSupportPanel = document.querySelector("#bid-support-agent");
 
 let boardRefreshTimer = null;
 let bookSearchTimer = null;
@@ -2871,7 +2872,7 @@ function renderBidSupportSuggestions(prompts = []) {
 
 function renderBidSupportAgent(result = lastBidSupportResult) {
   lastBidSupportResult = result || null;
-  const panel = card.querySelector("#bid-support-agent");
+  const panel = bidSupportPanel;
   if (!panel) return;
   const keepOpen = panel.dataset.open === "true" || Boolean(result);
   panel.dataset.open = keepOpen ? "true" : "false";
@@ -2949,7 +2950,7 @@ function renderBidSupportAgent(result = lastBidSupportResult) {
 }
 
 function setBidSupportOpen(open = true) {
-  const panel = card.querySelector("#bid-support-agent");
+  const panel = bidSupportPanel;
   if (!panel) return;
   panel.dataset.open = open ? "true" : "false";
   panel.querySelector("[data-bid-support-toggle]")?.setAttribute("aria-expanded", open ? "true" : "false");
@@ -2958,9 +2959,9 @@ function setBidSupportOpen(open = true) {
 
 async function askBidSupport(options = {}) {
   if (bidSupportSubmitting) return;
-  const status = card.querySelector("#bid-support-status");
-  const input = card.querySelector("#bid-support-message");
-  const buttons = Array.from(card.querySelectorAll("#bid-support-form button"));
+  const status = bidSupportPanel?.querySelector("#bid-support-status");
+  const input = bidSupportPanel?.querySelector("#bid-support-message");
+  const buttons = Array.from(bidSupportPanel?.querySelectorAll("#bid-support-form button") || []);
   const message = String(options.createTicket ? lastBidSupportQuestion : input?.value || "").trim();
   if (!message) {
     if (status) {
@@ -2987,7 +2988,7 @@ async function askBidSupport(options = {}) {
     });
     renderBidSupportAgent(result);
     queuePrivateBidAlert(result.ticket?.id ? "supportTicket" : "supportAnswer", result.intent_label || result.answer || privateAlertPhrase("supportAnswer"));
-    const nextStatus = card.querySelector("#bid-support-status");
+    const nextStatus = bidSupportPanel?.querySelector("#bid-support-status");
     if (nextStatus) {
       nextStatus.textContent = result.ticket?.id
         ? dualText("Ticket created for procurement follow-up.", "Ticket creado para seguimiento de procurement.")
@@ -3003,7 +3004,7 @@ async function askBidSupport(options = {}) {
     }
   } finally {
     bidSupportSubmitting = false;
-    const nextButtons = Array.from(card.querySelectorAll("#bid-support-form button"));
+    const nextButtons = Array.from(bidSupportPanel?.querySelectorAll("#bid-support-form button") || []);
     nextButtons.forEach((button) => { button.disabled = false; });
   }
 }
@@ -3707,10 +3708,6 @@ function renderInvitation(invitation, liveBoard = {}, carrierBook = {}) {
       <article><span>${escapeHtml(t("refresh"))}</span><strong>30 sec</strong></article>
     </div>
 
-    <section id="bid-support-agent" class="bid-support-agent bid-support-widget private-bid-support-widget" data-open="false">
-      <p class="status-message">${escapeHtml(dualText("Loading contextual support...", "Cargando soporte contextual..."))}</p>
-    </section>
-
     <nav class="bid-private-workspace-tabs" aria-label="Private Bid Room workspaces" role="tablist">
       <button type="button" role="tab" data-private-workspace-tab="master" aria-selected="true">
         <strong>1. RFX Master Package</strong>
@@ -4069,7 +4066,7 @@ async function loadInvitation(options = {}) {
   }
 }
 
-card.addEventListener("click", async (event) => {
+document.addEventListener("click", async (event) => {
   const privateWorkspaceTab = event.target.closest("[data-private-workspace-tab]");
   if (privateWorkspaceTab) {
     setPrivateWorkspace(privateWorkspaceTab.dataset.privateWorkspaceTab || "master");
@@ -4235,7 +4232,7 @@ card.addEventListener("click", async (event) => {
 
   const supportToggleButton = event.target.closest("[data-bid-support-toggle]");
   if (supportToggleButton) {
-    const panel = card.querySelector("#bid-support-agent");
+    const panel = bidSupportPanel;
     setBidSupportOpen(panel?.dataset.open !== "true");
     return;
   }
@@ -4249,7 +4246,7 @@ card.addEventListener("click", async (event) => {
   const supportPromptButton = event.target.closest("[data-bid-support-prompt]");
   if (supportPromptButton) {
     setBidSupportOpen(true);
-    const input = card.querySelector("#bid-support-message");
+    const input = bidSupportPanel?.querySelector("#bid-support-message");
     if (input) {
       input.value = supportPromptButton.dataset.bidSupportPrompt || "";
       input.focus();
@@ -4315,7 +4312,7 @@ card.addEventListener("click", async (event) => {
   }
 });
 
-card.addEventListener("submit", async (event) => {
+document.addEventListener("submit", async (event) => {
   const chatForm = event.target.closest("#carrier-chat-form");
   const supportForm = event.target.closest("#bid-support-form");
   if (!chatForm && !supportForm) return;
@@ -4434,7 +4431,7 @@ document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && !card.querySelector("#bid-editor-modal")?.hidden) {
     closeBidEditor();
   }
-  if (event.key === "Escape" && card.querySelector("#bid-support-agent")?.dataset.open === "true") {
+  if (event.key === "Escape" && bidSupportPanel?.dataset.open === "true") {
     setBidSupportOpen(false);
   }
   if (event.key === "Escape" && card.querySelector("#carrier-bid-chat")?.dataset.open === "true") {

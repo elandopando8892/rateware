@@ -50,6 +50,7 @@ const customerRfiSource = readFileSync(new URL("../src/customer-rfi.js", import.
 const customerRfiServiceSource = readFileSync(new URL("../src/customer-rfi-service.js", import.meta.url), "utf8");
 const customerRfiHtml = readFileSync(new URL("../customer-rfi.html", import.meta.url), "utf8");
 const rfxBidSource = readFileSync(new URL("../src/rfx-bid.js", import.meta.url), "utf8");
+const rfxBidHtml = readFileSync(new URL("../rfx-bid.html", import.meta.url), "utf8");
 const rfxBidApiSource = readFileSync(new URL("../supabase/functions/rfx-bid-api/index.ts", import.meta.url), "utf8");
 const authSource = readFileSync(new URL("../src/auth.js", import.meta.url), "utf8");
 const landingSource = readFileSync(new URL("../src/landing.js", import.meta.url), "utf8");
@@ -2253,7 +2254,7 @@ assert.match(rfxBidApiSource, /let support = bidSupportAnswerFromOpportunityCont
 assert.match(rfxBidApiSource, /bidSupportAiAnswer\(question/, "Bid Room support can use AI only after building deterministic context");
 assert.match(rfxBidApiSource, /supportConversationalAnswer/, "Bid Room support should normalize answers for conversational replies");
 assert.match(rfxBidApiSource, /status: "support_ticket"/, "Bid Room support should escalate unknown questions as support tickets");
-assert.match(rfxBidSource, /id="bid-support-agent"/, "Private Bid Room should render a contextual support agent");
+assert.match(rfxBidHtml, /id="bid-support-agent"/, "Private Bid Room should render a contextual support agent in the header");
 assert.match(rfxBidSource, /function askBidSupport/, "Private Bid Room should call the support agent");
 assert.match(rfxBidSource, /let bidSupportSubmitting = false;/, "Private Bid Room support should block duplicate assistant and ticket submits");
 assert.match(rfxBidSource, /if \(bidSupportSubmitting\) return;/, "Private Bid Room support should ignore duplicate in-flight submits");
@@ -3144,7 +3145,7 @@ assert.match(rfxBidSource, /data-private-workspace-tab="bids"/, "Private Bid Roo
 assert.match(rfxBidSource, /data-private-workspace-tab="award"/, "Private Bid Room should expose the Award Outcome workspace");
 assert.match(rfxBidSource, /renderBidSupportAgent\(\);[\s\S]+setPrivateWorkspace\(activePrivateWorkspace\)/, "Private Bid Room should initialize workspace visibility after rendering support");
 assert.match(stylesSource, /\.bid-portal-shell \.bid-private-workspace-tabs \{[\s\S]*grid-template-columns: repeat\(3/, "Private Bid Room workspace tabs should use a compact three-column layout");
-assert.match(stylesSource, /\.bid-portal-shell #bid-support-agent\.bid-support-widget \{[\s\S]*position: relative/, "Private Bid Room bid assistant should sit in the upper-left portal flow");
+assert.match(stylesSource, /\.bid-portal-header #bid-support-agent\.bid-support-widget \{[\s\S]*position: relative/, "Private Bid Room bid assistant should sit in the upper header flow");
 assert.match(rfxEventsSource, /function rfxCarrierFitTerms/, "Carrier fit should normalize operational and equipment language before filtering CRM candidates");
 assert.match(rfxEventsSource, /data-rfx-outreach-show-all-active/, "Carrier fit empty states should provide a direct active CRM fallback");
 assert.match(apiSource, /fetchBiVendorMetricsSafe/, "Carrier recommendations should remain available from CRM when Rateware metric RPCs are unavailable");
