@@ -3639,6 +3639,8 @@ assert.match(rfxEventsSource, /responseColumnFilters\?\.apply\(allRows\)/, "Carr
 assert.match(rfxEventsSource, /sort\(\(left, right\) => Number\(hasBid\(right\.invitation\)\) - Number\(hasBid\(left\.invitation\)\)\)/, "Carrier responses with bids should sort before pending invitations");
 assert.match(rfxEventsSource, /data-rfx-open-private-bid/, "Bid Operations should let admins open a carrier-specific Private Bid Room from each response row");
 assert.match(rfxEventsSource, /function carrierPrivateBidLaneCount/, "Private Bid Room row links should open the carrier's full invited lane book when available");
+assert.match(rfxEventsSource, /function carrierPrivateBidLaneCount[\s\S]+Math\.max\(1, currentLanes/, "Private Bid Room row links should use the currently loaded event lanes");
+assert.doesNotMatch(rfxEventsSource, /selectedEventLanes/, "Bid Room should not reference an undefined event-lane collection");
 assert.match(stylesSource, /rfx-response-open-room/, "Bid Operations should visually separate the private room action from bid editing and email reply");
 assert.match(rfxEventsSource, /sendBidRoomCarrierMessage/, "Bid Room reply should use the targeted carrier email action");
 assert.match(rfxEventsSource, /idempotency_key: bidRoomCarrierMessageRequestKey/, "Bid Room email reply should preserve one request key across an in-flight send");

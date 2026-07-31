@@ -5587,7 +5587,7 @@ function responseColumnValues(row, field) {
 function carrierPrivateBidLaneCount(invitation) {
   const vendorId = invitation?.vendor_id || invitation?.vendors?.id;
   if (!vendorId) return 1;
-  return Math.max(1, selectedEventLanes
+  return Math.max(1, currentLanes
     .flatMap((lane) => activeInvitations(lane))
     .filter((row) => row.vendor_id === vendorId || row.vendors?.id === vendorId)
     .filter((row) => row.invitation_token)
