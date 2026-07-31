@@ -1821,10 +1821,16 @@ assert.match(rfxEventsSource, /function outreachTrackingState/, "Draft queue sho
 assert.match(rfxEventsSource, /DRAFT_TRACKING_STATES = \[[\s\S]*\["queued", "Queued"\][\s\S]*\["sending", "Sending"\][\s\S]*\["manual_sent", "Manual sent"\][\s\S]*\["delivery_unknown", "Delivery unknown"\][\s\S]*\["suppressed", "Suppressed"\][\s\S]*\["archived", "Archived"\]/, "Draft queue should expose queued, sending, manual, unknown delivery, suppressed, and archived tracking filters");
 assert.match(rfxEventsSource, /draftQueueTrackingStatus === "archived" \? \{ status: "archived", include_archived: true \} : \{\}/, "Bid Room archived Draft Queue filter should explicitly load archived rows from the backend");
 assert.match(rfxEventsSource, /fetchOutreachTrackingSummary\(\{[\s\S]+include_archived: true/, "Bid Room lifecycle summary should include archived rows so the Archived filter can show a count");
-assert.match(rfxEventsSource, /\.filter\(\(\[state\]\) => !\["all", "archived"\]\.includes\(state\)\)/, "Bid Room All lifecycle count should not include archived rows");
+assert.match(rfxEventsSource, /Object\.entries\(carrierStates\)[\s\S]+state !== "archived"[\s\S]+reduce\(\(total, \[, value\]\)/, "Bid Room lifecycle counts should use unique carriers and exclude archived carriers from All");
 assert.match(rfxEventsSource, /if \(\/archived\/\.test\(signal\)\) return "archived";[\s\S]*if \(\/suppressed\|do_not_contact\|do-not-contact\|blocked contact\/\.test\(signal\)\) return "suppressed";[\s\S]*if \(\/manual_sent\/\.test\(signal\)\) return "manual_sent";[\s\S]*if \(\/delivery_unknown\/\.test\(signal\)\) return "delivery_unknown";[\s\S]*if \(\/read\/\.test\(signal\)\) return "read";[\s\S]*if \(\/delivered\/\.test\(signal\)\) return "delivered";[\s\S]*if \(\/sending\/\.test\(signal\)\) return "sending";[\s\S]*if \(\/queued\/\.test\(signal\)\) return "queued";/, "Draft queue tracking should not collapse archived, suppressed, read, manual, unknown delivery, sending, or queued into sent");
 assert.match(apiSource, /body\.action === "get_outreach_tracking_summary"/, "Rateware API should return full-event outreach lifecycle counts");
 assert.match(apiSource, /function outreachMessageTrackingState/, "Rateware API should derive lifecycle states from delivery, reply, and quote signals");
+assert.match(apiSource, /const bidRate = cleanNumber\(invitation\.bid_rate\)[\s\S]+bidRate !== null/, "Blank bid rates must not be classified as quoted");
+assert.match(apiSource, /typeof value === "string" && !value\.trim\(\)/, "Whitespace-only numeric fields must not become zero-valued bids");
+assert.match(apiSource, /function uniqueOutreachCarrierStates[\s\S]+carrier_states/, "Outreach lifecycle summary should expose unique carrier counts separately from delivery rows");
+assert.match(apiSource, /group\.some\(\(row\) => cleanNumber\(row\.bid_rate\) !== null\)/, "Audience quote status must require a real numeric bid rate");
+assert.match(rfxEventsSource, /const bidText = invitation\.bid_rate === null/, "Bid Room client tracking must not classify an empty bid field as quoted");
+assert.match(rfxEventsSource, /carrier_states: result\?\.carrier_states/, "Bid Room lifecycle filters should render carrier-level counts from the API");
 assert.match(apiSource, /OUTREACH_TRACKING_STATES = \["drafted", "queued", "sending", "sent", "delivered", "read", "manual_sent", "delivery_unknown", "failed", "replied", "quoted", "bounced", "suppressed", "archived"\]/, "Rateware API should expose the same outreach tracking states as the Bid Room UI");
 assert.match(apiSource, /requestedTrackingStatus === "archived"[\s\S]+query = query\.eq\("status", "archived"\)/, "Outreach API should load archived rows when tracking_status is archived");
 assert.match(apiSource, /requestedTrackingStatus !== "archived" && !body\.include_archived[\s\S]+query = query\.neq\("status", "archived"\)/, "Outreach API should not exclude archived rows after explicitly requesting archived tracking");
@@ -3641,7 +3647,7 @@ assert.match(rfxEventsSource, /data-rfx-open-private-bid/, "Bid Operations shoul
 assert.match(rfxEventsSource, /function carrierPrivateBidLaneCount/, "Private Bid Room row links should open the carrier's full invited lane book when available");
 assert.match(rfxEventsSource, /function carrierPrivateBidLaneCount[\s\S]+Math\.max\(1, currentLanes/, "Private Bid Room row links should use the currently loaded event lanes");
 assert.doesNotMatch(rfxEventsSource, /selectedEventLanes/, "Bid Room should not reference an undefined event-lane collection");
-assert.match(rfxEventsHtml, /src="\.\/src\/rfx-events\.js\?v=20260730-event-render-fix-v1"/, "Bid Room should bust the client cache after event-rendering fixes");
+assert.match(rfxEventsHtml, /src="\.\/src\/rfx-events\.js\?v=20260730-outreach-state-fix-v1"/, "Bid Room should bust the client cache after outreach state fixes");
 assert.match(stylesSource, /rfx-response-open-room/, "Bid Operations should visually separate the private room action from bid editing and email reply");
 assert.match(rfxEventsSource, /sendBidRoomCarrierMessage/, "Bid Room reply should use the targeted carrier email action");
 assert.match(rfxEventsSource, /idempotency_key: bidRoomCarrierMessageRequestKey/, "Bid Room email reply should preserve one request key across an in-flight send");

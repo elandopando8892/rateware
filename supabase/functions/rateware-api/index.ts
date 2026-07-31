@@ -2580,8 +2580,11 @@ function outreachMessageTrackingState(message: Record<string, unknown>): Outreac
   const metadata = objectRecord(message.metadata);
   const invitation = relationRecord(message.rfx_lane_vendors);
   const invitationStatus = cleanText(invitation.invitation_status)?.toLowerCase() || "";
-  const bidRate = Number(invitation.bid_rate);
-  if (["quoted", "bid_submitted", "awarded", "award_pending"].includes(invitationStatus) || Number.isFinite(bidRate)) return "quoted";
+  // An empty numeric field must not become zero and look like a submitted quote.
+  // Supabase commonly returns an unfilled bid as null, but imports and older rows
+  // can contain an empty string.
+  const bidRate = cleanNumber(invitation.bid_rate);
+  if (["quoted", "bid_submitted", "awarded", "award_pending"].includes(invitationStatus) || bidRate !== null) return "quoted";
   const signal = [
     message.status,
     message.provider_response_status,
@@ -2722,6 +2725,50 @@ function enrichOutreachMessage(message: Record<string, unknown>) {
     next_action: outreachNextAction(message),
     outcome_reason: outreachOutcomeReason(message)
   };
+}
+
+function outreachCarrierKey(message: Record<string, unknown>) {
+  const vendorId = cleanText(message.vendor_id);
+  if (vendorId) return `vendor:${vendorId}`;
+  const vendor = relationRecord(message.vendors);
+  const email = cleanText(message.recipient_email || vendor.primary_email)?.toLowerCase();
+  if (email) return `email:${email}`;
+  const phone = phoneForWhatsapp(message.recipient_phone || vendor.whatsapp_phone);
+  if (phone) return `phone:${phone}`;
+  return cleanText(message.id) ? `message:${message.id}` : "";
+}
+
+const OUTREACH_CARRIER_STATE_PRIORITY: Record<OutreachTrackingState, number> = {
+  drafted: 10,
+  queued: 20,
+  sending: 30,
+  sent: 40,
+  delivered: 50,
+  read: 60,
+  manual_sent: 50,
+  delivery_unknown: 35,
+  failed: 70,
+  bounced: 70,
+  suppressed: 65,
+  replied: 80,
+  quoted: 90,
+  archived: 0
+};
+
+function uniqueOutreachCarrierStates(rows: Record<string, unknown>[]) {
+  const carrierStates = new Map<string, OutreachTrackingState>();
+  for (const row of rows) {
+    const key = outreachCarrierKey(row);
+    if (!key) continue;
+    const state = outreachMessageTrackingState(row);
+    const previous = carrierStates.get(key);
+    if (!previous || OUTREACH_CARRIER_STATE_PRIORITY[state] > OUTREACH_CARRIER_STATE_PRIORITY[previous]) {
+      carrierStates.set(key, state);
+    }
+  }
+  const states = Object.fromEntries(OUTREACH_TRACKING_STATES.map((status) => [status, 0])) as Record<OutreachTrackingState, number>;
+  for (const state of carrierStates.values()) states[state] += 1;
+  return { total: carrierStates.size, states };
 }
 
 function outreachMessageMatchesSearch(message: Record<string, unknown>, searchTerms: string[]) {
@@ -7126,7 +7173,9 @@ function shipperActionDueDate(daysFromNow: number) {
 }
 
 function cleanNumber(value: unknown) {
-  if (value === null || value === undefined || value === "") return null;
+  // JavaScript turns whitespace-only strings into zero with Number(value).
+  // Treat every blank numeric cell as missing so empty bids never become quotes.
+  if (value === null || value === undefined || (typeof value === "string" && !value.trim())) return null;
   const rateText = cleanRateText(value);
   if (rateText) return Number(rateText);
   const numberValue = Number(value);
@@ -25380,7 +25429,7 @@ Deno.serve(async (request) => {
           if (audienceStatus === "bounced" || audienceStatus === "suppressed" || audienceStatus === "no_contact") {
             eventStatus = audienceStatus;
             eventStatusReason = reason;
-          } else if (["quoted", "bid_submitted", "awarded"].includes(invitationStatus) || group.some((row) => row.bid_rate !== null && row.bid_rate !== undefined)) {
+          } else if (["quoted", "bid_submitted", "awarded"].includes(invitationStatus) || group.some((row) => cleanNumber(row.bid_rate) !== null)) {
             eventStatus = "quoted";
             eventStatusReason = "Carrier has submitted a quote for this RFx.";
           } else if (invitationStatus === "responded") {
@@ -26474,9 +26523,12 @@ Deno.serve(async (request) => {
         nextActions[nextAction] = (nextActions[nextAction] || 0) + 1;
         outcomes[outcome] = (outcomes[outcome] || 0) + 1;
       }
+      const carrierSummary = uniqueOutreachCarrierStates(rows);
       return jsonResponse({
         total: rows.length,
         states,
+        carrier_total: carrierSummary.total,
+        carrier_states: carrierSummary.states,
         next_actions: nextActions,
         outcomes,
         updated_at: new Date().toISOString()

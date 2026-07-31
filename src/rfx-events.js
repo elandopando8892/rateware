@@ -5869,18 +5869,22 @@ function normalizeDraftTrackingStatus(value = "all") {
 }
 
 function draftTrackingCount(status) {
+  const reportedCarrierStates = draftQueueTrackingSummary.carrier_states || {};
+  const carrierStates = Object.keys(reportedCarrierStates).length
+    ? reportedCarrierStates
+    : draftQueueTrackingSummary.states || {};
   if (status === "all") {
-    return DRAFT_TRACKING_STATES
-      .filter(([state]) => !["all", "archived"].includes(state))
-      .reduce((total, [state]) => total + Number(draftQueueTrackingSummary.states?.[state] || 0), 0);
+    return Number(Object.entries(carrierStates)
+      .filter(([state]) => state !== "archived")
+      .reduce((total, [, value]) => total + Number(value || 0), 0));
   }
-  return Number(draftQueueTrackingSummary.states?.[status] || 0);
+  return Number(carrierStates[status] || 0);
 }
 
 function renderDraftTrackingFilters() {
   if (!draftTrackingFilters) return;
   draftTrackingFilters.innerHTML = `
-    <span class="rfx-draft-tracking-label">Lifecycle</span>
+    <span class="rfx-draft-tracking-label" title="Unique carriers in this RFx. The table below still shows individual delivery rows.">Carrier lifecycle</span>
     ${DRAFT_TRACKING_STATES.map(([status, label]) => `
       <button type="button" data-rfx-draft-tracking="${status}" class="${draftQueueTrackingStatus === status ? "is-active" : ""}" aria-pressed="${draftQueueTrackingStatus === status}">
         ${escapeHtml(label)} <span>${formatNumber(draftTrackingCount(status))}</span>
@@ -5925,7 +5929,9 @@ async function loadDraftQueueTrackingSummaryRequest(eventId, scopeKey) {
     if (loadVersion !== draftQueueTrackingLoadVersion || selectedEventId !== eventId || draftTrackingScopeKey(eventId) !== scopeKey) return;
     draftQueueTrackingSummary = {
       total: Number(result?.total || 0),
-      states: result?.states || {}
+      states: result?.states || {},
+      carrier_total: Number(result?.carrier_total ?? 0),
+      carrier_states: result?.carrier_states || {}
     };
     draftQueueTrackingScopeKey = scopeKey;
   } catch (error) {
@@ -6017,8 +6023,11 @@ function outreachTrackingState(message = {}) {
   const metadata = message.metadata && typeof message.metadata === "object" ? message.metadata : {};
   const invitation = Array.isArray(message.rfx_lane_vendors) ? message.rfx_lane_vendors[0] || {} : message.rfx_lane_vendors || {};
   const invitationStatus = String(invitation.invitation_status || "").toLowerCase();
-  const bidRate = Number(invitation.bid_rate);
-  if (["quoted", "bid_submitted", "awarded", "award_pending"].includes(invitationStatus) || Number.isFinite(bidRate)) return "quoted";
+  const bidText = invitation.bid_rate === null || invitation.bid_rate === undefined
+    ? ""
+    : String(invitation.bid_rate).trim();
+  const bidRate = bidText ? decisionNumber(bidText) : null;
+  if (["quoted", "bid_submitted", "awarded", "award_pending"].includes(invitationStatus) || bidRate !== null) return "quoted";
   const signal = [
     message.status,
     message.provider_response_status,
