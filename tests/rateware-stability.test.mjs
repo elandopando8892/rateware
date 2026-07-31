@@ -2423,6 +2423,9 @@ assert.match(apiSource, /const completeInvitationGroups = new Map/, "Outreach dr
 assert.match(apiSource, /async function ensureRfxEventVendorCoverage/, "Outreach draft generation should complete selected carrier coverage across the event business book");
 assert.match(apiSource, /body\.action === "list_rfx_detail"[\s\S]+ensureRfxEventVendorCoverage/, "Opening an active RFx should repair incomplete carrier lane coverage before rendering the business book");
 assert.match(apiSource, /coverage_sync: \{ inserted: coverageInserted \}/, "RFx detail should report whether lane coverage was repaired");
+assert.match(apiSource, /async function fetchAllRfxLaneVendorRows[\s\S]+\.range\(offset, offset \+ RFX_LANE_VENDOR_PAGE_SIZE - 1\)/, "RFx participant reads should paginate beyond the Supabase 1000-row response limit");
+assert.match(apiSource, /body\.action === "list_rfx_detail"[\s\S]+fetchAllRfxLaneVendorRows\(supabase, event\.id, invitationColumns\)/, "RFx detail should hydrate every carrier-lane row before grouping bids by lane");
+assert.match(apiSource, /async function ensureRfxEventVendorCoverage[\s\S]+fetchAllRfxLaneVendorRows/, "RFx coverage repair should compare against every existing carrier-lane row");
 assert.match(apiSource, /Query by event instead of sending hundreds of vendor ids/, "RFx detail coverage repair should avoid oversized vendor-id filters");
 assert.doesNotMatch(apiSource, /async function ensureRfxEventVendorCoverage[\s\S]+?\.in\("vendor_id", uniqueVendorIds\)/, "RFx detail coverage repair must not send the full audience as a PostgREST in-filter");
 assert.match(apiSource, /outreachEventLaneRows\(eventLaneRows, invitationGroup\)/, "Outreach drafts should render every active event lane in the carrier business book");

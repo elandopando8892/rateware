@@ -10316,6 +10316,32 @@ function rfxInvitationVendorGroupKey(invitation: Record<string, unknown>) {
   return eventKey && vendorKey ? `${eventKey}:${vendorKey}` : "";
 }
 
+const RFX_LANE_VENDOR_PAGE_SIZE = 1000;
+const RFX_LANE_VENDOR_MAX_ROWS = 50000;
+
+async function fetchAllRfxLaneVendorRows(
+  supabase: RatewareSupabaseClient,
+  eventId: string,
+  columns: string
+) {
+  const rows: Record<string, unknown>[] = [];
+  for (let offset = 0; offset < RFX_LANE_VENDOR_MAX_ROWS; offset += RFX_LANE_VENDOR_PAGE_SIZE) {
+    const result = await supabase
+      .from("rfx_lane_vendors")
+      .select(columns)
+      .eq("rfx_event_id", eventId)
+      .order("created_at", { ascending: true })
+      .order("id", { ascending: true })
+      .range(offset, offset + RFX_LANE_VENDOR_PAGE_SIZE - 1);
+    if (result.error) throw new Error(`RFx participant load failed: ${result.error.message}`);
+
+    const page = (result.data || []) as unknown as Record<string, unknown>[];
+    rows.push(...page);
+    if (page.length < RFX_LANE_VENDOR_PAGE_SIZE) return rows;
+  }
+  throw new Error(`RFx participant load exceeded ${RFX_LANE_VENDOR_MAX_ROWS} rows for one event.`);
+}
+
 async function ensureRfxEventVendorCoverage(
   supabase: RatewareSupabaseClient,
   eventId: string,
@@ -10329,14 +10355,14 @@ async function ensureRfxEventVendorCoverage(
   // Query by event instead of sending hundreds of vendor ids in a PostgREST
   // `in` filter. Large RFx audiences can otherwise exceed request limits
   // while opening the Bid Room, even when coverage is already complete.
-  const existing = await supabase
-    .from("rfx_lane_vendors")
-    .select("id,rfx_lane_id,vendor_id,invitation_status")
-    .eq("rfx_event_id", eventId);
-  if (existing.error) throw new Error(`RFx participant coverage load failed: ${existing.error.message}`);
+  const existingRows = await fetchAllRfxLaneVendorRows(
+    supabase,
+    eventId,
+    "id,rfx_lane_id,vendor_id,invitation_status,created_at"
+  );
 
   const uniqueVendorSet = new Set(uniqueVendorIds);
-  const existingKeys = new Set((existing.data || [])
+  const existingKeys = new Set(existingRows
     .filter((row) => uniqueVendorSet.has(cleanText(row.vendor_id)))
     .map((row) => `${cleanText(row.rfx_lane_id)}:${cleanText(row.vendor_id)}`));
   const insertRows = lanes.flatMap((lane) => uniqueVendorIds
@@ -24661,23 +24687,19 @@ Deno.serve(async (request) => {
 
     if (body.action === "list_rfx_detail") {
       const event = await requireOwnedRfxEvent(supabase, user, body.event_id || body.id);
-      const [lanesResult, invitationsResult, rates] = await Promise.all([
+      const invitationColumns = "*, vendors(id,vendor_name,domain,primary_email,whatsapp_phone,preferred_channel,base_stage,status,tags,coverage_notes)";
+      const [lanesResult, loadedInvitationRows, rates] = await Promise.all([
         supabase
           .from("rfx_lanes")
           .select("*")
           .eq("rfx_event_id", event.id)
           .order("lane_number", { ascending: true }),
-        supabase
-          .from("rfx_lane_vendors")
-          .select("*, vendors(id,vendor_name,domain,primary_email,whatsapp_phone,preferred_channel,base_stage,status,tags,coverage_notes)")
-          .eq("rfx_event_id", event.id)
-          .order("created_at", { ascending: true }),
+        fetchAllRfxLaneVendorRows(supabase, event.id, invitationColumns),
         fetchApprovedRateRows(supabase)
       ]);
       if (lanesResult.error) throw lanesResult.error;
-      if (invitationsResult.error) throw invitationsResult.error;
 
-      let invitationRows = invitationsResult.data || [];
+      let invitationRows = loadedInvitationRows;
       const eventLanes = lanesResult.data || [];
       const activeVendorIds = [...new Set(
         invitationRows
@@ -24699,21 +24721,17 @@ Deno.serve(async (request) => {
         );
         coverageInserted = coverage.inserted;
         if (coverageInserted) {
-          const refreshedInvitationsResult = await supabase
-            .from("rfx_lane_vendors")
-            .select("*, vendors(id,vendor_name,domain,primary_email,whatsapp_phone,preferred_channel,base_stage,status,tags,coverage_notes)")
-            .eq("rfx_event_id", event.id)
-            .order("created_at", { ascending: true });
-          if (refreshedInvitationsResult.error) throw refreshedInvitationsResult.error;
-          invitationRows = refreshedInvitationsResult.data || [];
+          invitationRows = await fetchAllRfxLaneVendorRows(supabase, event.id, invitationColumns);
         }
       }
 
       const invitationsByLane = new Map<string, Record<string, unknown>[]>();
       for (const invitation of invitationRows) {
-        const bucket = invitationsByLane.get(invitation.rfx_lane_id) || [];
+        const laneId = cleanText(invitation.rfx_lane_id);
+        if (!laneId) continue;
+        const bucket = invitationsByLane.get(laneId) || [];
         bucket.push(invitation);
-        invitationsByLane.set(invitation.rfx_lane_id, bucket);
+        invitationsByLane.set(laneId, bucket);
       }
 
       const lanes = eventLanes.map((lane) => {
