@@ -8142,6 +8142,127 @@ async function setRfxBidRateHistoryOutcome(
   return result.data || null;
 }
 
+async function archiveOperatorRejectedBidRateStaging(
+  supabase: RatewareSupabaseClient,
+  invitation: Record<string, unknown>,
+  now: string
+) {
+  const stagingId = cleanText(invitation.bid_rate_staging_id);
+  if (!stagingId) return null;
+
+  // The operator is rejecting the active response, not deleting the quote.
+  // Keep the original carrier cost in history so it remains auditable and can
+  // be compared later without leaving it active on the Bid Room board.
+  const result = await supabase
+    .from("rate_staging")
+    .update({
+      status: "archived",
+      source_bid_status: "declined",
+      rfx_bid_outcome: "not_awarded",
+      updated_at: now
+    })
+    .eq("id", stagingId)
+    .select("id,status,rfx_bid_outcome")
+    .maybeSingle();
+  if (result.error) throw result.error;
+  return result.data || null;
+}
+
+async function rejectRfxBid(
+  supabase: RatewareSupabaseClient,
+  user: { owner_user_id: string | null; owner_email: string | null },
+  input: Record<string, unknown>
+) {
+  const invitation = await requireOwnedRfxLaneVendor(supabase, user, input.id || input.rfx_lane_vendor_id || input.invitation_id);
+  const currentStatus = cleanText(invitation.invitation_status)?.toLowerCase() || "";
+  const currentRate = cleanNumber(invitation.bid_rate);
+  if (["primary", "backup"].includes(cleanText(invitation.award_role)?.toLowerCase() || "")) {
+    throw new Error("Awarded and backup bids cannot be rejected. Clear the award decision first.");
+  }
+  if (currentStatus === "declined" && currentRate === null) return { row: invitation, archived_bid_staging: null, idempotent: true };
+
+  const now = new Date().toISOString();
+  const reason = cleanText(input.reason) || "Rejected by procurement operator";
+  const archivedBidStaging = await archiveOperatorRejectedBidRateStaging(supabase, invitation, now);
+  const result = await supabase
+    .from("rfx_lane_vendors")
+    .update({
+      invitation_status: "declined",
+      bid_rate: null,
+      weekly_capacity: null,
+      transit_days: null,
+      valid_through: null,
+      commercial_model: null,
+      marksman_margin_pct: null,
+      carrier_share_pct: null,
+      best_alternative_offered: false,
+      alternative_equipment: null,
+      alternative_units: null,
+      alternative_notes: null,
+      equipment_available: null,
+      current_unit_location: null,
+      deadhead_distance: null,
+      deadhead_unit: null,
+      unit_details: null,
+      eta_pickup: null,
+      eta_delivery: null,
+      mirror_account_enabled: false,
+      availability_validation_status: "not_requested",
+      availability_validation_notes: null,
+      notes: reason,
+      response_source: "manual_operator",
+      responded_at: now,
+      updated_at: now
+    })
+    .eq("id", invitation.id)
+    .select("*")
+    .single();
+  if (result.error) throw result.error;
+
+  const event = objectRecord(invitation.rfx_events);
+  const lane = objectRecord(invitation.rfx_lanes);
+  const vendor = objectRecord(invitation.vendors);
+  const history = await supabase.from("contact_history").insert(withOwner({
+    owner_user_id: event.owner_user_id || user.owner_user_id || null,
+    owner_email: event.owner_email || user.owner_email || null,
+    vendor_id: invitation.vendor_id,
+    rfx_event_id: invitation.rfx_event_id,
+    channel: "other",
+    direction: "internal",
+    status: "declined",
+    subject: `${event.rfx_id || "RFx"} carrier bid rejected by procurement`,
+    body_preview: [
+      vendor.vendor_name || vendor.domain || "Carrier",
+      lane.origin && lane.destination ? `${lane.origin} -> ${lane.destination}` : null,
+      currentRate !== null ? `${currentRate} ${cleanText(invitation.currency) || "USD"}` : null,
+      reason
+    ].filter(Boolean).join(" | "),
+    metadata: {
+      source: "manual_operator",
+      rfx_lane_vendor_id: invitation.id,
+      rfx_lane_id: invitation.rfx_lane_id,
+      previous_status: currentStatus || null,
+      previous_bid_rate: currentRate,
+      rejected_staging_id: cleanText(invitation.bid_rate_staging_id),
+      rate_staging: archivedBidStaging,
+      reason
+    }
+  }, user));
+  if (history.error) throw history.error;
+
+  await tryWriteAuditLog(
+    supabase,
+    user,
+    "rfx.bid.reject",
+    "rfx_lane_vendors",
+    invitation.id,
+    `Rejected bid for ${vendor.vendor_name || vendor.domain || "carrier"}`,
+    { rfx_event_id: invitation.rfx_event_id, rfx_lane_id: invitation.rfx_lane_id, reason, previous_bid_rate: currentRate }
+  );
+
+  return { row: result.data, archived_bid_staging: archivedBidStaging, idempotent: false };
+}
+
 async function awardRfxLaneVendor(
   supabase: RatewareSupabaseClient,
   user: { owner_user_id: string | null; owner_email: string | null },
@@ -8680,6 +8801,8 @@ function awardNoticeHtml(event: Record<string, unknown>, vendor: Record<string, 
     : "This update applies only to this opportunity and summarizes the routes, rates, and capacity recorded in the Bid Room.";
   const nextStep = counts.awarded
     ? (es ? "Gracias por participar. Conservaremos esta informacion para siguientes asignaciones y coordinaremos los siguientes pasos por este medio." : "Thank you for participating. We will retain this information for future assignments and coordinate next steps through this thread.")
+    : counts.not_awarded
+      ? (es ? "Gracias por participar. Le invitamos a seguir cotizando con MARKSMAN. Si desea revisar como mejorar sus posibilidades de ganar mas bids, agende una llamada con nuestro equipo." : "Thank you for participating. We invite you to continue quoting with MARKSMAN. If you would like to review how to improve your chances of winning more bids, schedule a call with our team.")
     : (es ? "Gracias por participar. Mantendremos su capacidad y comentarios visibles para siguientes asignaciones." : "Thank you for participating. We will keep your capacity and comments available for future assignments.");
   const statusLabel = counts.awarded
     ? (es ? "ADJUDICACION" : "AWARD DECISION")
@@ -8688,6 +8811,11 @@ function awardNoticeHtml(event: Record<string, unknown>, vendor: Record<string, 
       : (es ? "CIERRE DE RFx" : "RFx CLOSEOUT");
   const routeLabel = es ? "Resumen de rutas y resultado" : "Route book and decision summary";
   const portalLabel = es ? "Abrir Bid Room" : "Open Bid Room";
+  const followUpSubject = encodeURIComponent(`${rfxId} | ${es ? "Revisar oportunidades de mejora" : "Review opportunities to win more bids"}`);
+  const followUpLink = counts.not_awarded
+    ? `mailto:sales@heymarksman.com?subject=${followUpSubject}`
+    : null;
+  const followUpLabel = es ? "Agendar una llamada" : "Schedule a call";
   const contextLabels = es
     ? { customer: "Cliente", type: "Tipo", due: "Fecha limite", lanes: "Rutas", visibility: "Visibilidad" }
     : { customer: "Customer", type: "Type", due: "Due date", lanes: "Lanes", visibility: "Visibility" };
@@ -8724,6 +8852,7 @@ function awardNoticeHtml(event: Record<string, unknown>, vendor: Record<string, 
             <p style="margin:0 0 8px;font-size:14px;font-weight:700;color:#1f4e79">${escapeHtmlText(routeLabel)}</p>
             ${awardNoticeTableHtml(rows, language)}
             ${portalLink ? `<p style="margin:20px 0 12px"><a href="${escapeHtmlText(portalLink)}" style="display:inline-block;background:#3157d5;color:#ffffff;text-decoration:none;border-radius:5px;padding:11px 17px;font-weight:700;font-size:13px">${escapeHtmlText(portalLabel)}</a></p><p style="margin:0;font-size:11px;color:#647783;word-break:break-all">${escapeHtmlText(portalLink)}</p>` : ""}
+            ${followUpLink ? `<p style="margin:18px 0 8px"><a href="${escapeHtmlText(followUpLink)}" style="display:inline-block;background:#e3b341;color:#233746;text-decoration:none;border-radius:5px;padding:10px 15px;font-weight:700;font-size:13px">${escapeHtmlText(followUpLabel)}</a></p><p style="margin:0;font-size:11px;color:#647783">${escapeHtmlText(es ? "Responda a este correo para coordinar la llamada." : "Reply to this email to coordinate the call." )}</p>` : ""}
             <p style="margin:18px 0 0;font-size:13px">${escapeHtmlText(nextStep)}</p>
           </td>
         </tr>
@@ -8846,7 +8975,8 @@ async function generateRfxAwardNotices(
       awardNoticeRowsText(laneSummaries),
       "",
       portalLink ? `Bid Room: ${portalLink}` : null,
-      "Gracias por participar.",
+      counts.not_awarded ? `Schedule a call: mailto:sales@heymarksman.com?subject=${encodeURIComponent(`${cleanText(event.rfx_id || event.name) || "RFx"} | Review opportunities to win more bids`)}` : null,
+      counts.not_awarded ? "Thank you for participating. We invite you to continue quoting with MARKSMAN." : "Gracias por participar.",
       marksmanSignatureText(bidRoomFollowUpLanguage("", event, event.rfx_id))
     ].filter(Boolean).join("\n");
     const invitationIds = sortedGroup.map((item) => item.id).filter(Boolean);
@@ -24221,7 +24351,47 @@ Deno.serve(async (request) => {
         .single();
       if (result.error) throw result.error;
       const sync = await ensureRatebookForBidRoomEvent(supabase, user, result.data as Record<string, unknown>, eventPatch);
-      return jsonResponse({ row: sync.event || result.data, ratebook_sync: sync });
+      const closed = cleanText(patch.status)?.toLowerCase() === "closed";
+      let closeoutNotices = null;
+      let closeoutNoticeError = null;
+      if (closed) {
+        try {
+          closeoutNotices = await generateRfxAwardNotices(supabase, user, {
+            event_id: result.data.id,
+            app_origin: Deno.env.get("RATEWARE_APP_URL") || "https://rateware.vercel.app",
+            sender_email: GMAIL_ALLOWED_SENDER,
+            sender_label: GMAIL_ALLOWED_SENDER
+          });
+        } catch (error) {
+          closeoutNoticeError = safeOperationalError(error);
+          await tryWriteAuditLog(
+            supabase,
+            user,
+            "rfx.event.closeout_notices.error",
+            "rfx_events",
+            result.data.id,
+            `RFx closed but closeout notice drafts could not be generated: ${closeoutNoticeError}`,
+            { error: closeoutNoticeError }
+          );
+        }
+      }
+      if (closed) {
+        await tryWriteAuditLog(
+          supabase,
+          user,
+          "rfx.event.closeout_notices.generate",
+          "rfx_events",
+          result.data.id,
+          `Generated ${closeoutNotices?.generated || 0} closeout email draft(s) on event close`,
+          { generated: closeoutNotices?.generated || 0, skipped: closeoutNotices?.skipped?.length || 0 }
+        );
+      }
+      return jsonResponse({
+        row: sync.event || result.data,
+        ratebook_sync: sync,
+        closeout_notices: closeoutNotices,
+        closeout_notice_error: closeoutNoticeError
+      });
     }
 
     if (body.action === "archive_rfx_event") {
@@ -24734,6 +24904,10 @@ Deno.serve(async (request) => {
         );
       }
       return jsonResponse({ row: result.data });
+    }
+
+    if (body.action === "reject_rfx_bid") {
+      return jsonResponse(await rejectRfxBid(supabase, user, body));
     }
 
     if (body.action === "award_rfx_lane_vendor") {

@@ -23,7 +23,8 @@ import {
   updateBidRoomChatThread,
   updateRfxEvent,
   updateRfxLane,
-  updateRfxBid
+  updateRfxBid,
+  rejectRfxBid
 } from "./rfx-service.js";
 import {
   createOutreachCampaign,
@@ -191,6 +192,7 @@ const rfxManualBidNotes = document.querySelector("#rfx-manual-bid-notes");
 const rfxManualBidClose = document.querySelector("#rfx-manual-bid-close");
 const rfxManualBidCancel = document.querySelector("#rfx-manual-bid-cancel");
 const rfxManualBidSave = document.querySelector("#rfx-manual-bid-save");
+const rfxManualBidReject = document.querySelector("#rfx-manual-bid-reject");
 const rfxManualBidStatus = document.querySelector("#rfx-manual-bid-status");
 const manualShortlistLane = document.querySelector("#manual-shortlist-lane");
 const manualShortlistSearch = document.querySelector("#manual-shortlist-search");
@@ -2160,6 +2162,9 @@ function openManualBidDrawer(invitationId, laneId) {
   if (!target) return;
   const { lane, invitation } = target;
   pendingManualBid = target;
+  if (rfxManualBidSave) rfxManualBidSave.disabled = false;
+  if (rfxManualBidReject) rfxManualBidReject.disabled = false;
+  if (rfxManualBidCancel) rfxManualBidCancel.disabled = false;
   const vendor = invitation.vendors || {};
   const laneLabel = `#${lane.lane_number || ""} ${laneRoute(lane)}`.trim();
   if (rfxManualBidTitle) rfxManualBidTitle.textContent = `${vendorLabel(invitation)} | ${laneLabel}`;
@@ -2181,6 +2186,14 @@ function openManualBidDrawer(invitationId, laneId) {
   if (rfxManualBidDeadheadUnit) rfxManualBidDeadheadUnit.value = invitation.deadhead_unit || "mi";
   if (rfxManualBidSource) rfxManualBidSource.value = invitation.response_source === "manual_operator" ? "other" : invitation.response_source === "bid_room_chat" ? "whatsapp" : "email";
   if (rfxManualBidNotes) rfxManualBidNotes.value = invitation.notes || "";
+  const terminalDecision = ["primary", "backup"].includes(String(invitation.award_role || "").toLowerCase());
+  if (rfxManualBidReject) {
+    rfxManualBidReject.hidden = terminalDecision;
+    rfxManualBidReject.textContent = hasBid(invitation) ? "Reject bid" : "Mark declined";
+    rfxManualBidReject.title = hasBid(invitation)
+      ? "Reject this operator-captured quote and preserve its cost history"
+      : "Record that this carrier will not participate in this lane";
+  }
   updateManualBidCommercialLabel();
   rfxManualBidDrawer.hidden = false;
   setStatus(rfxManualBidStatus, "Enter only the values confirmed by the carrier. Blank optional fields stay blank.", "neutral");
@@ -11034,6 +11047,35 @@ rfxChatBidUpdateForm?.addEventListener("submit", async (event) => {
 rfxManualBidCommercialModel?.addEventListener("change", updateManualBidCommercialLabel);
 rfxManualBidClose?.addEventListener("click", closeManualBidDrawer);
 rfxManualBidCancel?.addEventListener("click", closeManualBidDrawer);
+rfxManualBidReject?.addEventListener("click", async () => {
+  if (!pendingManualBid || rfxManualBidReject.disabled) return;
+  const invitation = pendingManualBid.invitation;
+  if (["primary", "backup"].includes(String(invitation.award_role || "").toLowerCase())) {
+    setStatus(rfxManualBidStatus, "Awarded and backup bids cannot be rejected. Clear the award decision first.", "error");
+    return;
+  }
+  const vendorName = vendorLabel(invitation);
+  const laneLabel = `#${pendingManualBid.lane.lane_number || ""} ${laneRoute(pendingManualBid.lane)}`.trim();
+  const reason = window.prompt("Optional reason for rejecting this carrier bid:", "Rejected by procurement operator");
+  if (reason === null) return;
+  if (!window.confirm(`Reject ${vendorName}'s bid for ${laneLabel}? The active offer will be removed from the board and preserved in bid history.`)) return;
+  rfxManualBidReject.disabled = true;
+  if (rfxManualBidSave) rfxManualBidSave.disabled = true;
+  if (rfxManualBidCancel) rfxManualBidCancel.disabled = true;
+  setStatus(rfxManualBidStatus, "Rejecting bid and preserving history...");
+  try {
+    await rejectRfxBid(invitation.id, reason.trim());
+    closeManualBidDrawer();
+    await loadDetail(selectedEventId);
+    activateWorkbenchView("responses", "#rfx-response-body");
+    setStatus(rfxChatStatus, `${vendorName} marked declined. The submitted cost remains in RFx history.`, "success");
+  } catch (error) {
+    setStatus(rfxManualBidStatus, humanizeError(error), "error");
+    rfxManualBidReject.disabled = false;
+    if (rfxManualBidSave) rfxManualBidSave.disabled = false;
+    if (rfxManualBidCancel) rfxManualBidCancel.disabled = false;
+  }
+});
 rfxManualBidForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (!pendingManualBid) {

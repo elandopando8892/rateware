@@ -52,6 +52,10 @@ export async function updateRfxBid(id, patch) {
   return (await callRatewareApi("update_rfx_bid", { id, patch })).row;
 }
 
+export async function rejectRfxBid(id, reason = "") {
+  return await callRatewareApi("reject_rfx_bid", { id, reason });
+}
+
 export async function awardRfxLaneVendor(id, payload = {}) {
   return await callRatewareApi("award_rfx_lane_vendor", { id, ...payload });
 }

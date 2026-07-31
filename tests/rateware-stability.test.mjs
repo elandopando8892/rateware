@@ -1592,8 +1592,10 @@ assert.match(rfxEventsSource, /openChatBidUpdateDrawer/, "Bid Room communication
 assert.match(rfxEventsSource, /review_bid_update/, "Bid Room communications should review extracted bid updates before applying");
 assert.match(rfxEventsHtml, /rfx-chat-bid-update-drawer/, "Bid Room communications should render a bid update review drawer");
 assert.match(rfxEventsHtml, /rfx-manual-bid-drawer/, "Operate should allow procurement to record a quote received outside the Bid Room");
+assert.match(rfxEventsHtml, /rfx-manual-bid-reject/, "Manual bid capture should expose an operator reject action");
 assert.match(rfxEventsHtml, /Valid through/, "Manual bid capture should collect offer validity");
 assert.match(rfxEventsSource, /data-rfx-manual-bid/, "Response rows should expose a direct manual bid action");
+assert.match(rfxEventsSource, /rejectRfxBid\(invitation\.id/, "Manual bid rejection should use the server-side RFx rejection action");
 assert.match(rfxEventsSource, /capture_source: "manual_operator"/, "Manual bid capture should identify its source explicitly");
 assert.match(rfxEventsSource, /updateRfxBid\(pendingManualBid\.invitation\.id/, "Manual bid capture should update the existing lane-carrier row");
 assert.match(rfxServiceSource, /apply_bid_update_from_chat/, "RFx service should expose chat-to-bid updates");
@@ -1649,6 +1651,11 @@ assert.doesNotMatch(bidWithdrawalSource, /bid_rate_staged_at:\s*null/, "Carrier 
 assert.match(rfxBidApiSource, /all_in_rate: rateText\(economics\.carrier_rate \?\? updatedBid\.bid_rate\)/, "Rateware staging all-in should store the carrier cost, not the adjusted board rate");
 assert.match(rfxBidApiSource, /customer_board_rate: economics\.board_rate/, "Rateware staging should retain the adjusted board rate separately");
 assert.match(apiSource, /async function setRfxBidRateHistoryOutcome/, "RFx award actions should update historical carrier cost outcomes");
+assert.match(apiSource, /async function archiveOperatorRejectedBidRateStaging/, "Operator bid rejection should preserve the linked staging history");
+assert.match(apiSource, /async function rejectRfxBid/, "Internal API should expose a dedicated operator bid rejection action");
+assert.match(apiSource, /body\.action === "reject_rfx_bid"/, "Internal API should route operator bid rejection separately from bid edits");
+assert.match(apiSource, /source_bid_status: "declined"/, "Operator-rejected bid history should record its source status");
+assert.match(apiSource, /rfx\.bid\.reject/, "Operator bid rejection should be auditable");
 assert.match(apiSource, /rfx_bid_outcome: outcome/, "RFx award actions should persist the selected bid outcome");
 assert.match(apiSource, /setRfxBidRateHistoryOutcome\(supabase, previous, "not_awarded", now\)/, "Replacing a primary award should preserve the former carrier cost as not awarded");
 assert.match(apiSource, /carrier_cost_rate: cleanNumber\(invitation\.bid_rate\)/, "Award closeout should retain the carrier cost alongside the active Rateware row");
@@ -1674,11 +1681,14 @@ assert.match(rfxBidSource, /function bidCommitmentSnapshotHtml/, "Carrier portal
 assert.match(rfxBidSource, /Pickup ETA/, "Carrier portal revision history should surface pickup ETA changes");
 assert.match(apiSource, /rfx\.award\.closeout/, "API should audit RFx award closeout");
 assert.match(apiSource, /async function generateRfxAwardNotices/, "API should generate RFx award, backup, and not-awarded notice drafts");
+assert.match(apiSource, /const closed = cleanText\(patch\.status\)\?\.toLowerCase\(\) === "closed"/, "Closing an RFx should trigger closeout notice generation");
+assert.match(apiSource, /if \(closed\) \{[\s\S]*closeoutNotices = await generateRfxAwardNotices/, "Closing an RFx should automatically prepare closeout email drafts");
 assert.match(apiSource, /notice_type: "rfx_award_closeout"/, "RFx award notices should be identifiable in outreach metadata");
 assert.match(apiSource, /MARKSMAN \| PRIVATE PROCUREMENT ROOM/, "RFx award notices should use the trusted branded email header");
 assert.match(apiSource, /awardNoticeTableHtml\(rows, language\)/, "RFx award notices should render a localized decision table");
 assert.match(apiSource, /marksmanSignatureHtml\(language\)/, "RFx award notices should include the complete MARKSMAN signature");
 assert.match(apiSource, /contextLabels = es/, "RFx award notices should include localized RFx context metadata");
+assert.match(apiSource, /Schedule a call: mailto:sales@heymarksman\.com/, "Not-awarded closeout notices should invite carriers to schedule a follow-up call");
 assert.match(apiSource, /rfx\.award\.notices\.generate/, "API should audit RFx award notice generation");
 assert.match(rfxServiceSource, /award_rfx_lane_vendor/, "RFx service should expose award decisions");
 assert.match(rfxServiceSource, /closeout_awarded_rfx_to_rateware/, "RFx service should expose Rateware closeout");
