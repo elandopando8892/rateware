@@ -2038,7 +2038,7 @@ assert.match(rfxBidSource, /Current unit location \/ Ubicacion unidad/, "Carrier
 assert.match(rfxBidSource, /Deadhead distance \/ Vacio mi-km/, "Carrier XLSX bid template should include deadhead distance");
 assert.match(rfxBidSource, /Deadhead unit \/ Unidad deadhead/, "Carrier XLSX bid template should include deadhead unit");
 assert.match(rfxBidSource, /nonNegativeNumberBlank/, "Carrier XLSX bid template should validate optional deadhead distance");
-assert.match(rfxBidSource, /deadhead_distance: rowElement\.dataset\.deadheadDistance \|\| ""/, "Carrier quick bid rows should preserve deadhead details when saving inline");
+assert.match(rfxBidSource, /deadhead_distance: extra\("deadhead_distance", rowElement\.dataset\.deadheadDistance \|\| ""\)/, "Carrier quick bid rows should preserve deadhead details from the inline capacity panel");
 assert.match(rfxBidSource, /function commercialStructureConfig/, "Carrier portal should explain each commercial structure");
 assert.match(rfxBidSource, /syncCommercialStructureFields/, "Carrier portal should show only the applicable commercial percentage input");
 assert.match(rfxBidSource, /validatePercentIssue\(draft\.marksman_margin_pct, "bid-marksman-margin", "Suggested margin to share %", \{ required: false, procurementRange: true \}\)/, "Carrier portal should validate optional suggested margin range for cost-plus");
@@ -2076,6 +2076,10 @@ assert.match(rfxBidSource, /data-close-bid-editor/, "Carrier portal should close
 assert.match(rfxBidApiSource, /revisionType = bestFinal \? "best_final" : previousBidRate !== null \? "revision" : "initial"/, "Carrier portal API should classify repeated submitted bids as revisions");
 assert.match(rfxBidSource, /carrier-quick-bid-grid/, "Carrier portal should render an inline editable lane bid grid");
 assert.match(rfxBidSource, /data-save-quick-bid/, "Carrier portal should save or update bids directly from each lane row");
+assert.match(rfxBidSource, /data-toggle-quick-bid-panel="alternative"/, "Carrier quick bid rows should expand a best-alternative panel inline");
+assert.match(rfxBidSource, /data-toggle-quick-bid-panel="capacity"/, "Carrier quick bid rows should expand live-capacity details inline");
+assert.match(rfxBidSource, /function toggleQuickBidPanel/, "Carrier quick bid details should expand without replacing the selected route context");
+assert.match(rfxBidSource, /data-quick-bid-extra-field="unit_details"/, "Carrier quick bid rows should capture unit details with live capacity");
 assert.match(rfxBidSource, /function saveQuickBidRow/, "Carrier portal should submit quick row edits through the tokenized bid API");
 assert.match(rfxBidSource, /callBidApi\("submit_bid", \{ token: rowToken, \.\.\.draft \}\)/, "Carrier quick bid grid should submit the selected row token instead of forcing lane navigation");
 assert.match(rfxBidSource, /const quickBidRowMutationKeys = new Set\(\);/, "Carrier quick bid rows should track row-level save mutations");
@@ -2089,7 +2093,12 @@ assert.match(rfxBidSource, /callBidApi\(action, \{ token: actionToken \}\)/, "Ca
 assert.match(rfxBidSource, /const bidParticipationMutationKeys = new Set\(\);/, "Carrier reject and withdraw actions should track token-level mutations");
 assert.match(rfxBidSource, /const mutationKey = `\$\{action\}:\$\{actionToken\}`;[\s\S]+if \(bidParticipationMutationKeys\.has\(mutationKey\)\) return;[\s\S]+bidParticipationMutationKeys\.add\(mutationKey\);[\s\S]+finally \{[\s\S]+bidParticipationMutationKeys\.delete\(mutationKey\);[\s\S]+\}/, "Carrier reject and withdraw actions should ignore duplicate clicks for the same token and action");
 assert.match(rfxBidSource, /let segmentConfirmationsSaving = false;/, "Carrier fit checklist should have a save guard");
-assert.match(rfxBidSource, /async function saveSegmentConfirmations\(button\) \{[\s\S]+if \(segmentConfirmationsSaving\) return;[\s\S]+segmentConfirmationsSaving = true;[\s\S]+finally \{[\s\S]+segmentConfirmationsSaving = false;[\s\S]+button\.disabled = false;[\s\S]+\}/, "Carrier fit checklist should ignore duplicate saves and restore the save button");
+assert.match(rfxBidSource, /let segmentConfirmationSaveTimer = null;/, "Carrier fit checklist should debounce automatic saves");
+assert.match(rfxBidSource, /async function saveSegmentConfirmations\(section\) \{[\s\S]+if \(segmentConfirmationsSaving\) return;[\s\S]+section\.dataset\.saving = "true";[\s\S]+finally \{[\s\S]+segmentConfirmationsSaving = false;[\s\S]+delete section\.dataset\.saving;[\s\S]+\}/, "Carrier fit checklist should ignore duplicate automatic saves and restore its local state");
+assert.match(rfxBidSource, /function queueSegmentConfirmationSave\(section\) \{[\s\S]+window\.setTimeout\(\(\) => saveSegmentConfirmations\(section\), 550\)/, "Carrier fit checklist should save after the carrier stops editing");
+assert.match(rfxBidSource, /laneFitAnswer\.closest\("\[data-lane-fit-checklist\]"\)[\s\S]+queueSegmentConfirmationSave\(section\)/, "Carrier fit selections should trigger autosave without a Save button");
+assert.match(rfxBidSource, /function selectBidToolsLane\(invitationToken, options = \{\}\)/, "Bid Tools should select a route locally");
+assert.doesNotMatch(rfxBidSource.match(/function selectBidToolsLane[\s\S]*?\n\}/)?.[0] || "", /loadInvitation\(/, "Changing the Bid Tools route should not reload the private bid page");
 assert.match(rfxBidApiSource, /body\.action === "decline_invitation" \|\| body\.action === "withdraw_bid"/, "Carrier portal API should expose separate reject and withdraw actions");
 assert.match(rfxBidApiSource, /invitation_status: "declined"/, "Rejecting an invitation should persist a declined status");
 assert.match(rfxBidApiSource, /invitation_status: "withdrawn"[\s\S]*bid_rate: null/, "Withdrawing an offer should remove the active bid rate while preserving history");
@@ -2100,6 +2109,8 @@ assert.match(stylesSource, /bid-offer-launcher/, "Carrier portal should keep the
 assert.match(stylesSource, /\.bid-editor-modal \{[\s\S]*place-items: stretch end/, "Carrier portal should anchor the guided offer editor as a focused right drawer");
 assert.match(stylesSource, /bid-review-summary-grid/, "Carrier portal review summary should have card styling");
 assert.match(stylesSource, /bid-room-alert-feed/, "Carrier portal multimedia alerts should have compact hero styling");
+assert.match(stylesSource, /quick-bid-expand-panel/, "Carrier quick bid extras should use compact inline panels");
+assert.match(stylesSource, /lane-fit-disclosure/, "Carrier route fit should render as a collapsible compact section");
 assert.match(stylesSource, /bid-form \[aria-invalid="true"\]/, "Carrier portal should highlight invalid bid fields inline");
 assert.match(stylesSource, /carrier-bid-history-list/, "Carrier portal offer history should have compact timeline styling");
 assert.match(rfxBidApiSource, /function liveBoardRowScore/, "Carrier portal API should score bids for the live capacity marketplace");

@@ -18,11 +18,13 @@ let lastBidSupportQuestion = "";
 let lastBidSupportResult = null;
 let pendingBidTemplateRows = [];
 let segmentConfirmationsSaving = false;
+let segmentConfirmationSaveTimer = null;
 let bidTemplateSubmitting = false;
 let bidFormSubmitting = false;
 let bidSupportSubmitting = false;
 let carrierChatSubmitting = false;
 let privateLaneSwitching = false;
+let selectedBidToolsToken = "";
 const quickBidRowMutationKeys = new Set();
 const bidParticipationMutationKeys = new Set();
 const laneAccessRequestMutationKeys = new Set();
@@ -694,7 +696,7 @@ function renderMasterPackageRoutes(carrierBook = {}, invitation = {}) {
   const event = invitation.rfx_events || {};
   const packagePayload = masterPackageForCarrier(carrierBook, invitation);
   const rows = currentEventBookRows(carrierBook, event);
-  const currentLaneId = String(invitation.rfx_lane_id || invitation.rfx_lanes?.id || "");
+  const currentToken = selectedBidToolsToken || String(invitation.invitation_token || tokenFromUrl() || "");
   return `
     <section class="carrier-lane-switcher carrier-lane-switcher-master" id="carrier-lane-book-overview">
       <div class="bid-room-section-heading carrier-lane-book-heading">
@@ -711,7 +713,7 @@ function renderMasterPackageRoutes(carrierBook = {}, invitation = {}) {
             ${rows.map((row) => {
               const lane = row.lane || {};
               const invitationToken = String(row.invitation_token || "");
-              const isCurrent = String(lane.id || "") === currentLaneId || String(row.invitation_id || "") === String(invitation.id || "");
+              const isCurrent = invitationToken === currentToken;
               const fit = rowFitProgress(row, packagePayload);
               const status = bookStatus(row);
               return `
@@ -773,31 +775,31 @@ function renderLaneFitChecklist(lane = {}, invitation = {}, packagePayload = {})
   const segment = packageSegmentForLane(lane, packagePayload);
   const progress = laneFitProgress(lane, invitation, packagePayload);
   const checklist = progress.checklist;
+  const statusCopy = progress.ready
+    ? dualText("Fit complete. Procurement can see the route context.", "Fit completo. Procurement puede ver el contexto de la ruta.")
+    : progress.disagreements
+      ? dualText("A disagreement is visible to procurement. You can still quote with conditions or reject this lane.", "El desacuerdo queda visible para procurement. Aun puedes cotizar con condiciones o rechazar esta ruta.")
+      : dualText("Fit answers are optional and save automatically. They improve procurement context without blocking a quote.", "Las respuestas de fit son opcionales y se guardan automaticamente. Mejoran el contexto de procurement sin bloquear una cotizacion.");
   return `
-    <section id="carrier-lane-fit" class="master-package-segment lane-fit-checklist" data-master-segment-key="${escapeAttribute(segment.segment_key || "general")}">
-      <div class="bid-room-section-heading">
+    <details id="carrier-lane-fit" class="master-package-segment lane-fit-checklist lane-fit-disclosure" data-lane-fit-checklist data-invitation-token="${escapeAttribute(invitation.invitation_token || "")}" data-master-segment-key="${escapeAttribute(segment.segment_key || "general")}">
+      <summary>
         <div>
-          <p class="eyebrow">${escapeHtml(dualText("Operational fit by route", "Fit operativo por ruta"))}</p>
-          <h3>${escapeHtml(dualText("Review operational fit before quoting", "Revisa el fit operativo antes de cotizar"))}</h3>
+          <p class="eyebrow">${escapeHtml(dualText("Operational fit", "Fit operativo"))}</p>
+          <strong>${escapeHtml(dualText("Route conditions", "Condiciones de la ruta"))}</strong>
         </div>
-        <span class="master-package-segment-progress ${progress.pending ? "is-pending" : ""}">${escapeHtml(laneFitLabel(progress))}</span>
+        <span class="master-package-segment-progress ${progress.pending ? "is-pending" : ""}" data-lane-fit-progress>${escapeHtml(laneFitLabel(progress))}</span>
+      </summary>
+      <div class="lane-fit-disclosure-body">
+        <p class="bid-board-note">${escapeHtml(dualText("Answer only what helps explain this route. Selections save automatically and never stop you from quoting.", "Responde solo lo necesario para explicar esta ruta. Las selecciones se guardan automaticamente y nunca impiden cotizar."))}</p>
+        <div class="segment-rubric-grid">
+          ${checklist.map((rubric) => renderSegmentRubricControl(segment, rubric, invitation)).join("")}
+        </div>
+        <div class="master-package-actions">
+          <p data-segment-confirmation-status class="status-message" role="status">${escapeHtml(statusCopy)}</p>
+          <button type="button" class="secondary small-button" data-decline-invitation data-invitation-token="${escapeAttribute(invitation.invitation_token || "")}" ${["declined", "awarded", "not_awarded"].includes(String(invitation.invitation_status || "").toLowerCase()) ? "disabled" : ""}>${escapeHtml(dualText("Reject lane", "Rechazar ruta"))}</button>
+        </div>
       </div>
-      <p class="bid-board-note">${escapeHtml(dualText("Use these six answers to explain fit and exceptions. You can quote without saving them; reject the lane if you will not participate.", "Usa estas seis respuestas para explicar el fit y las excepciones. Puedes cotizar sin guardarlas; rechaza la ruta si no participaras."))}</p>
-      <div class="segment-rubric-grid">
-        ${checklist.map((rubric) => renderSegmentRubricControl(segment, rubric, invitation)).join("")}
-      </div>
-      <div class="master-package-actions">
-        <p id="segment-confirmation-status" class="status-message" role="status">${escapeHtml(
-          progress.ready
-            ? dualText("Fit complete. This route is ready to quote.", "Fit completo. Esta ruta esta lista para cotizar.")
-            : progress.disagreements
-              ? dualText("A disagreement is visible to procurement. You can still quote with conditions or reject this lane.", "El desacuerdo queda visible para procurement. Aun puedes cotizar con condiciones o rechazar esta ruta.")
-              : dualText("Fit answers are optional. Save them to improve the fit record before quoting.", "Las respuestas de fit son opcionales. Guardalas para mejorar el registro antes de cotizar.")
-        )}</p>
-        <button type="button" data-save-segment-confirmations>${escapeHtml(dualText("Save route fit", "Guardar fit de ruta"))}</button>
-        <button type="button" class="secondary small-button" data-decline-invitation ${["declined", "awarded", "not_awarded"].includes(String(invitation.invitation_status || "").toLowerCase()) ? "disabled" : ""}>${escapeHtml(dualText("Reject lane", "Rechazar ruta"))}</button>
-      </div>
-    </section>
+    </details>
   `;
 }
 
@@ -825,8 +827,9 @@ function renderCarrierMasterPackage(carrierBook = {}, invitation = {}) {
   `;
 }
 
-function collectSegmentConfirmations() {
-  return Array.from(card.querySelectorAll("[data-segment-confirmation]")).map((row) => {
+function collectSegmentConfirmations(section = card.querySelector("[data-lane-fit-checklist]")) {
+  if (!section) return [];
+  return Array.from(section.querySelectorAll("[data-segment-confirmation]")).map((row) => {
     const checked = row.querySelector("[data-segment-answer]:checked");
     return {
       segment_key: row.dataset.segmentKey || "",
@@ -837,26 +840,69 @@ function collectSegmentConfirmations() {
   });
 }
 
-async function saveSegmentConfirmations(button) {
+function segmentConfirmationRowKey(row = {}) {
+  return `${row.rfx_lane_vendor_id || ""}::${row.segment_key || ""}::${row.rubric_key || ""}`;
+}
+
+function mergeSegmentConfirmations(rows = []) {
+  const next = new Map((Array.isArray(lastSegmentConfirmations) ? lastSegmentConfirmations : []).map((row) => [segmentConfirmationRowKey(row), row]));
+  (Array.isArray(rows) ? rows : []).forEach((row) => next.set(segmentConfirmationRowKey(row), row));
+  lastSegmentConfirmations = [...next.values()];
+}
+
+function fitProgressFromSection(section) {
+  const rows = collectSegmentConfirmations(section);
+  const total = rows.length;
+  const complete = rows.filter((row) => row.answer && row.answer !== "pending").length;
+  const disagreements = rows.filter((row) => row.answer === "disagree").length;
+  return {
+    total,
+    complete,
+    disagreements,
+    pending: Math.max(total - complete, 0),
+    ready: total > 0 && complete === total && disagreements === 0
+  };
+}
+
+function fitStatusCopy(progress = {}) {
+  if (progress.ready) return dualText("Fit complete. Procurement can see the route context.", "Fit completo. Procurement puede ver el contexto de la ruta.");
+  if (progress.disagreements) return dualText("A disagreement is visible to procurement. You can still quote with conditions or reject this lane.", "El desacuerdo queda visible para procurement. Aun puedes cotizar con condiciones o rechazar esta ruta.");
+  return dualText("Fit answers are optional and save automatically. They improve procurement context without blocking a quote.", "Las respuestas de fit son opcionales y se guardan automaticamente. Mejoran el contexto de procurement sin bloquear una cotizacion.");
+}
+
+function refreshLaneFitUi(section, message = "", tone = "neutral") {
+  if (!section) return;
+  const progress = fitProgressFromSection(section);
+  const progressNode = section.querySelector("[data-lane-fit-progress]");
+  const status = section.querySelector("[data-segment-confirmation-status]");
+  if (progressNode) {
+    progressNode.textContent = laneFitLabel(progress);
+    progressNode.classList.toggle("is-pending", Boolean(progress.pending));
+  }
+  if (status) {
+    status.textContent = message || fitStatusCopy(progress);
+    status.dataset.tone = tone;
+  }
+}
+
+async function saveSegmentConfirmations(section) {
   if (segmentConfirmationsSaving) return;
-  const status = card.querySelector("#segment-confirmation-status");
+  if (!section) return;
+  const status = section.querySelector("[data-segment-confirmation-status]");
+  const invitationToken = section.dataset.invitationToken || "";
   segmentConfirmationsSaving = true;
-  button.disabled = true;
+  section.dataset.saving = "true";
   if (status) {
     status.textContent = dualText("Saving fit checklist...", "Guardando checklist de fit...");
     status.dataset.tone = "neutral";
   }
   try {
     const result = await callBidApi("save_segment_confirmations", {
-      confirmations: collectSegmentConfirmations()
+      token: invitationToken,
+      confirmations: collectSegmentConfirmations(section)
     });
-    lastSegmentConfirmations = result.rows || [];
-    if (status) {
-      status.textContent = t("fitSaved");
-      status.dataset.tone = "success";
-    }
-    queuePrivateBidAlert("supportAnswer", dualText("Route fit checklist saved.", "Checklist de fit de ruta guardado."));
-    await loadInvitation();
+    mergeSegmentConfirmations(result.rows || []);
+    refreshLaneFitUi(section, dualText("Fit saved automatically.", "Fit guardado automaticamente."), "success");
   } catch (error) {
     if (status) {
       status.textContent = humanizeError(error);
@@ -864,8 +910,14 @@ async function saveSegmentConfirmations(button) {
     }
   } finally {
     segmentConfirmationsSaving = false;
-    button.disabled = false;
+    delete section.dataset.saving;
   }
+}
+
+function queueSegmentConfirmationSave(section) {
+  if (!section) return;
+  window.clearTimeout(segmentConfirmationSaveTimer);
+  segmentConfirmationSaveTimer = window.setTimeout(() => saveSegmentConfirmations(section), 550);
 }
 
 function formatMoney(value, currency = "USD") {
@@ -2239,8 +2291,8 @@ function renderBidTemplateTools(carrierBook = {}, invitation = {}) {
         <button type="button" data-submit-bid-template disabled>${escapeHtml(t("confirmXlsx"))}</button>
       </div>
       <p id="carrier-bid-template-status" class="status-message" role="status">${escapeHtml(rows.length
-        ? dualText("Only fit-complete lanes are included in this XLSX template.", "Solo las rutas con fit completo se incluyen en este template XLSX.")
-        : dualText("Complete a route fit checklist before an XLSX bid template becomes available.", "Completa el checklist de fit de una ruta antes de que el template XLSX este disponible."))}</p>
+        ? dualText("All active invited lanes are included. Fit answers are optional and never overwrite an existing offer.", "Todas las rutas invitadas activas se incluyen. Las respuestas de fit son opcionales y nunca reemplazan una oferta existente.")
+        : dualText("No active invited lanes are available for this XLSX template.", "No hay rutas invitadas activas disponibles para este template XLSX."))}</p>
       <div id="carrier-bid-template-preview" class="carrier-bid-template-preview"></div>
     </section>
   `;
@@ -3177,6 +3229,52 @@ function quickBidRowStatus(row = {}) {
   return `<span class="status-message" data-tone="${escapeAttribute(lastQuickBidSaveStatus.tone || "neutral")}">${escapeHtml(lastQuickBidSaveStatus.message || "")}</span>`;
 }
 
+function renderQuickBidDetails(row = {}) {
+  const equipmentAvailable = row.equipment_available === true ? "true" : row.equipment_available === false ? "false" : "";
+  return `
+    <tr class="quick-bid-details-row" data-quick-bid-details hidden>
+      <td colspan="11">
+        <div class="quick-bid-expand-panels">
+          <section class="quick-bid-expand-panel" data-quick-bid-panel="alternative" hidden>
+            <header>
+              <div>
+                <strong>${escapeHtml(dualText("Best alternative", "Mejor alternativa"))}</strong>
+                <small>${escapeHtml(dualText("Use only when a substitute equipment or capacity model improves the offer.", "Usa esto solo cuando un equipo o modelo de capacidad alternativo mejora la oferta."))}</small>
+              </div>
+            </header>
+            <div class="quick-bid-extra-grid">
+              <label class="quick-bid-check"><input type="checkbox" data-quick-bid-extra-field="best_alternative_offered" ${row.best_alternative_offered ? "checked" : ""} />${escapeHtml(dualText("Include alternative", "Incluir alternativa"))}</label>
+              <label>${escapeHtml(dualText("Alternative equipment", "Equipo alternativo"))}<input data-quick-bid-extra-field="alternative_equipment" value="${escapeAttribute(row.alternative_equipment || "")}" placeholder="2 x 3.5 ton, 4 vans..." /></label>
+              <label>${escapeHtml(dualText("Alternative units", "Unidades alternativas"))}<input data-quick-bid-extra-field="alternative_units" inputmode="decimal" value="${escapeAttribute(row.alternative_units ?? "")}" placeholder="2" /></label>
+              <label class="quick-bid-extra-notes">${escapeHtml(dualText("Alternative notes", "Notas de alternativa"))}<textarea data-quick-bid-extra-field="alternative_notes" rows="2" placeholder="Capacity, restrictions or assumptions...">${escapeHtml(row.alternative_notes || "")}</textarea></label>
+            </div>
+          </section>
+          <section class="quick-bid-expand-panel" data-quick-bid-panel="capacity" hidden>
+            <header>
+              <div>
+                <strong>${escapeHtml(dualText("Live capacity", "Capacidad en vivo"))}</strong>
+                <small>${escapeHtml(dualText("Add availability, ETAs and unit context only when they are confirmed.", "Agrega disponibilidad, ETAs y contexto de unidad solo cuando esten confirmados."))}</small>
+              </div>
+            </header>
+            <div class="quick-bid-extra-grid">
+              <label>${escapeHtml(dualText("Equipment available", "Equipo disponible"))}<select data-quick-bid-extra-field="equipment_available"><option value="">${escapeHtml(dualText("Not declared", "No declarado"))}</option><option value="true" ${equipmentAvailable === "true" ? "selected" : ""}>${escapeHtml(dualText("Available", "Disponible"))}</option><option value="false" ${equipmentAvailable === "false" ? "selected" : ""}>${escapeHtml(dualText("Not available", "No disponible"))}</option></select></label>
+              <label>${escapeHtml(dualText("Current unit location", "Ubicacion actual"))}<input data-quick-bid-extra-field="current_unit_location" value="${escapeAttribute(row.current_unit_location || "")}" placeholder="Laredo, TX" /></label>
+              <label>${escapeHtml(dualText("Deadhead", "Vacio"))}<input data-quick-bid-extra-field="deadhead_distance" inputmode="decimal" value="${escapeAttribute(row.deadhead_distance ?? "")}" placeholder="80" /></label>
+              <label>${escapeHtml(dualText("Unit", "Unidad"))}<select data-quick-bid-extra-field="deadhead_unit"><option value="mi" ${(row.deadhead_unit || "mi") === "mi" ? "selected" : ""}>mi</option><option value="km" ${row.deadhead_unit === "km" ? "selected" : ""}>km</option></select></label>
+              <label>${escapeHtml(dualText("Pickup ETA", "ETA recoleccion"))}<input data-quick-bid-extra-field="eta_pickup" type="datetime-local" value="${escapeAttribute(dateTimeLocalValue(row.eta_pickup || ""))}" /></label>
+              <label>${escapeHtml(dualText("Delivery ETA", "ETA entrega"))}<input data-quick-bid-extra-field="eta_delivery" type="datetime-local" value="${escapeAttribute(dateTimeLocalValue(row.eta_delivery || ""))}" /></label>
+              <label class="quick-bid-check"><input type="checkbox" data-quick-bid-extra-field="mirror_account_enabled" ${row.mirror_account_enabled ? "checked" : ""} />${escapeHtml(dualText("Mirror account validated", "Cuenta espejo validada"))}</label>
+              <label class="quick-bid-extra-notes">${escapeHtml(dualText("Unit details", "Datos de unidad"))}<textarea data-quick-bid-extra-field="unit_details" rows="2" placeholder="Truck, trailer, driver, plate or tracking details...">${escapeHtml(row.unit_details || "")}</textarea></label>
+              <label class="quick-bid-extra-notes">${escapeHtml(dualText("Unit and availability notes", "Notas de unidad y disponibilidad"))}<textarea data-quick-bid-extra-field="availability_validation_notes" rows="2" placeholder="Truck, trailer, driver or validation details...">${escapeHtml(row.availability_validation_notes || "")}</textarea></label>
+              <label class="quick-bid-extra-notes">${escapeHtml(dualText("Carrier assumptions", "Supuestos del carrier"))}<textarea data-quick-bid-extra-field="notes" rows="2" placeholder="Accessorials, restrictions or conditions...">${escapeHtml(row.notes || "")}</textarea></label>
+            </div>
+          </section>
+        </div>
+      </td>
+    </tr>
+  `;
+}
+
 function renderQuickLaneBidGridShell(carrierBook = {}, invitation = {}) {
   const rows = quickBidRows(carrierBook, invitation);
   if (!rows.length) return "";
@@ -3190,8 +3288,8 @@ function renderQuickLaneBidGridShell(carrierBook = {}, invitation = {}) {
         <span class="status-pill neutral">${escapeHtml(dualText(`${rows.length} editable lane(s)`, `${rows.length} ruta(s) editables`))}</span>
       </div>
       <p class="bid-board-note">${escapeHtml(dualText(
-        "Use this grid for fast price, capacity and transit updates. Open the guided form only when you need alternatives, deadhead, ETA, unit details or full notes.",
-        "Usa esta grilla para actualizar rapido precio, capacidad y transito. Abre el formulario guiado solo si necesitas alternativas, deadhead, ETA, datos de unidad o notas completas."
+        "Update the core offer in-row. Expand Best alternative or Live capacity only when this lane needs more detail.",
+        "Actualiza la oferta principal en la fila. Despliega Mejor alternativa o Capacidad en vivo solo cuando esta ruta necesite mas detalle."
       ))}</p>
       <div class="table-wrap">
         <table class="quick-bid-table">
@@ -3262,12 +3360,15 @@ function renderQuickLaneBidGridShell(carrierBook = {}, invitation = {}) {
                   <td>
                     <div class="quick-bid-actions">
                       <button type="button" class="small-button" data-save-quick-bid>${escapeHtml(row.bid_rate ? dualText("Update", "Actualizar") : dualText("Submit", "Enviar"))}</button>
+                      <button type="button" class="secondary small-button" data-toggle-quick-bid-panel="alternative" title="${escapeAttribute(dualText("Add a compliant equipment or capacity alternative.", "Agrega una alternativa de equipo o capacidad compatible."))}">${escapeHtml(dualText("Alternative", "Alternativa"))}</button>
+                      <button type="button" class="secondary small-button" data-toggle-quick-bid-panel="capacity" title="${escapeAttribute(dualText("Add availability, ETAs and unit details.", "Agrega disponibilidad, ETAs y datos de unidad."))}">${escapeHtml(dualText("Live capacity", "Capacidad"))}</button>
                       ${row.bid_rate
                         ? `<button type="button" class="secondary small-button" data-withdraw-quick-bid>${escapeHtml(t("withdrawOffer"))}</button>`
                         : `<button type="button" class="secondary small-button" data-decline-quick-invitation>${escapeHtml(t("rejectInvitation"))}</button>`}
                     </div>
                   </td>
                 </tr>
+                ${renderQuickBidDetails(row)}
               `;
             }).join("")}
           </tbody>
@@ -3291,9 +3392,20 @@ function quickBidField(rowElement, field) {
   return rowElement.querySelector(`[data-quick-bid-field="${field}"]`)?.value || "";
 }
 
+function quickBidExtraField(rowElement, field, fallback = "") {
+  const details = rowElement?.nextElementSibling?.matches("[data-quick-bid-details]")
+    ? rowElement.nextElementSibling
+    : null;
+  const input = details?.querySelector(`[data-quick-bid-extra-field="${field}"]`);
+  if (!input) return fallback;
+  if (input.type === "checkbox") return input.checked ? "true" : "false";
+  return input.value || "";
+}
+
 function quickBidDraftFromRow(rowElement) {
   const commercialModel = quickBidField(rowElement, "commercial_model") || "direct_cost_plus";
   const commercialPercent = quickBidField(rowElement, "commercial_pct");
+  const extra = (field, fallback = "") => quickBidExtraField(rowElement, field, fallback);
   return {
     bid_rate: quickBidField(rowElement, "bid_rate"),
     currency: quickBidField(rowElement, "currency") || "USD",
@@ -3303,22 +3415,39 @@ function quickBidDraftFromRow(rowElement) {
     commercial_model: commercialModel,
     marksman_margin_pct: ["direct_cost_plus", "xbf_buy_sell"].includes(commercialModel) ? commercialPercent : "",
     carrier_share_pct: commercialModel === "carrier_share" ? commercialPercent : "",
-    best_alternative_offered: rowElement.dataset.bestAlternative === "true",
-    alternative_equipment: rowElement.dataset.alternativeEquipment || "",
-    alternative_units: rowElement.dataset.alternativeUnits || "",
-    alternative_notes: rowElement.dataset.alternativeNotes || "",
-    equipment_available: rowElement.dataset.equipmentAvailable || "",
-    current_unit_location: rowElement.dataset.currentUnitLocation || "",
-    deadhead_distance: rowElement.dataset.deadheadDistance || "",
-    deadhead_unit: rowElement.dataset.deadheadUnit || "mi",
-    unit_details: rowElement.dataset.unitDetails || "",
-    eta_pickup: dateTimeLocalValue(rowElement.dataset.etaPickup || ""),
-    eta_delivery: dateTimeLocalValue(rowElement.dataset.etaDelivery || ""),
-    mirror_account_enabled: rowElement.dataset.mirrorAccountEnabled === "true",
-    availability_validation_notes: rowElement.dataset.availabilityValidationNotes || "",
+    best_alternative_offered: extra("best_alternative_offered", rowElement.dataset.bestAlternative || "") === "true",
+    alternative_equipment: extra("alternative_equipment", rowElement.dataset.alternativeEquipment || ""),
+    alternative_units: extra("alternative_units", rowElement.dataset.alternativeUnits || ""),
+    alternative_notes: extra("alternative_notes", rowElement.dataset.alternativeNotes || ""),
+    equipment_available: extra("equipment_available", rowElement.dataset.equipmentAvailable || ""),
+    current_unit_location: extra("current_unit_location", rowElement.dataset.currentUnitLocation || ""),
+    deadhead_distance: extra("deadhead_distance", rowElement.dataset.deadheadDistance || ""),
+    deadhead_unit: extra("deadhead_unit", rowElement.dataset.deadheadUnit || "mi"),
+    unit_details: extra("unit_details", rowElement.dataset.unitDetails || ""),
+    eta_pickup: dateTimeLocalValue(extra("eta_pickup", rowElement.dataset.etaPickup || "")),
+    eta_delivery: dateTimeLocalValue(extra("eta_delivery", rowElement.dataset.etaDelivery || "")),
+    mirror_account_enabled: extra("mirror_account_enabled", rowElement.dataset.mirrorAccountEnabled || "") === "true",
+    availability_validation_notes: extra("availability_validation_notes", rowElement.dataset.availabilityValidationNotes || ""),
     best_final: false,
-    notes: rowElement.dataset.notes || ""
+    notes: extra("notes", rowElement.dataset.notes || "")
   };
+}
+
+function toggleQuickBidPanel(rowElement, panelName) {
+  const details = rowElement?.nextElementSibling?.matches("[data-quick-bid-details]")
+    ? rowElement.nextElementSibling
+    : null;
+  if (!details) return;
+  const panel = details.querySelector(`[data-quick-bid-panel="${CSS.escape(panelName || "")}"]`);
+  if (!panel) return;
+  const opening = panel.hidden;
+  details.querySelectorAll("[data-quick-bid-panel]").forEach((candidate) => {
+    candidate.hidden = true;
+  });
+  details.hidden = !opening;
+  if (!opening) return;
+  panel.hidden = false;
+  panel.querySelector("input, select, textarea")?.focus({ preventScroll: true });
 }
 
 function setQuickBidRowStatus(rowElement, message, tone = "neutral") {
@@ -3452,16 +3581,14 @@ function focusRouteFit() {
   setPrivateWorkspace("bids");
   const section = card.querySelector("#carrier-lane-fit");
   if (!section) return;
+  section.open = true;
   section.classList.add("is-focused");
   section.scrollIntoView({ behavior: "smooth", block: "start" });
   window.setTimeout(() => section.classList.remove("is-focused"), 1800);
 }
 
 function openSelectedLaneOfferEditor() {
-  const status = String(lastInvitation?.invitation_status || "").toLowerCase();
-  if (["declined", "awarded", "not_awarded"].includes(status)) return;
-  hydrateBidFormFromOffer(currentSubmittedOffer(), lastInvitation || {});
-  openBidEditor({ section: "primary", focusSelector: "#bid-rate" });
+  selectBidToolsLane(selectedBidToolsToken || String(lastInvitation?.invitation_token || tokenFromUrl() || ""), { focusQuickBid: true });
 }
 
 async function selectPrivateLane(invitationToken, options = {}) {
@@ -3497,18 +3624,80 @@ async function selectPrivateLane(invitationToken, options = {}) {
   }
 }
 
+function bidToolsInvitationFromRow(row = {}, fallback = {}) {
+  const lane = row.lane || fallback.rfx_lanes || {};
+  return {
+    ...fallback,
+    ...row,
+    id: row.invitation_id || row.id || fallback.id,
+    invitation_id: row.invitation_id || row.id || fallback.invitation_id,
+    invitation_token: row.invitation_token || fallback.invitation_token,
+    invitation_status: row.invitation_status || fallback.invitation_status,
+    rfx_lane_id: row.rfx_lane_id || lane.id || fallback.rfx_lane_id,
+    rfx_lanes: lane,
+    rfx_events: row.event || fallback.rfx_events || {}
+  };
+}
+
+function selectedBidToolsRow(carrierBook = {}, invitation = {}) {
+  const rows = quickBidRows(carrierBook, invitation);
+  const currentToken = String(selectedBidToolsToken || invitation.invitation_token || tokenFromUrl() || "");
+  const selected = rows.find((row) => String(row.invitation_token || "") === currentToken)
+    || rows.find((row) => String(row.invitation_token || "") === String(invitation.invitation_token || ""))
+    || rows[0]
+    || null;
+  if (selected?.invitation_token) selectedBidToolsToken = String(selected.invitation_token);
+  return selected;
+}
+
+function renderBidToolsWorkspace(carrierBook = {}, invitation = {}) {
+  const selected = selectedBidToolsRow(carrierBook, invitation);
+  const selectedInvitation = selected ? bidToolsInvitationFromRow(selected, invitation) : invitation;
+  return `
+    ${renderBidToolsLaneSwitcher(carrierBook, invitation)}
+    ${renderSelectedLaneWorkspace(selectedInvitation.rfx_lanes || {}, selectedInvitation, [], false, carrierBook)}
+    ${renderQuickLaneBidGridShell(carrierBook, invitation)}
+  `;
+}
+
+function selectBidToolsLane(invitationToken, options = {}) {
+  const nextToken = String(invitationToken || "").trim();
+  const selected = quickBidRows(lastCarrierBook || {}, lastInvitation || {})
+    .find((row) => String(row.invitation_token || "") === nextToken);
+  if (!selected) return;
+  selectedBidToolsToken = nextToken;
+  setPrivateWorkspace("bids");
+  const panel = card.querySelector('[data-private-workspace-panel="bids"]');
+  if (!panel) return;
+  panel.innerHTML = renderBidToolsWorkspace(lastCarrierBook || {}, lastInvitation || {});
+  const fit = panel.querySelector("#carrier-lane-fit");
+  const row = panel.querySelector(`[data-quick-bid-row][data-invitation-token="${CSS.escape(nextToken)}"]`);
+  if (options.openFit && fit) {
+    fit.open = true;
+    fit.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+  if (options.focusQuickBid && row) {
+    row.scrollIntoView({ behavior: "smooth", block: "center" });
+    row.querySelector('[data-quick-bid-field="bid_rate"]')?.focus({ preventScroll: true });
+  }
+  if (options.panel && row) {
+    row.scrollIntoView({ behavior: "smooth", block: "center" });
+    toggleQuickBidPanel(row, options.panel);
+  }
+}
+
 function renderBidToolsLaneSwitcher(carrierBook = {}, invitation = {}) {
   const event = invitation.rfx_events || {};
   const rows = currentEventBookRows(carrierBook, event).filter((row) => isBidToolsEligibleRow(row));
-  const currentToken = String(invitation.invitation_token || tokenFromUrl() || "");
+  const currentToken = String(selectedBidToolsToken || invitation.invitation_token || tokenFromUrl() || "");
   return `
     <section class="bid-tools-lane-switcher" aria-label="${escapeAttribute(dualText("Enabled lanes", "Rutas habilitadas"))}">
       <div class="bid-room-section-heading">
         <div>
-          <p class="eyebrow">${escapeHtml(dualText("Enabled lanes", "Rutas habilitadas"))}</p>
-          <h3>${escapeHtml(dualText("Choose a lane to quote", "Elige una ruta para cotizar"))}</h3>
+          <p class="eyebrow">${escapeHtml(dualText("Quick bids by route", "Pujas rapidas por ruta"))}</p>
+          <h3>${escapeHtml(dualText("Choose the route you want to review or quote", "Elige la ruta que quieres revisar o cotizar"))}</h3>
         </div>
-        <small>${escapeHtml(dualText("Fit answers are advisory; invited lanes can be quoted directly.", "Las respuestas de fit son informativas; las rutas invitadas pueden cotizarse directamente."))}</small>
+        <small>${escapeHtml(dualText("This changes only the route panel below. The package stays in place.", "Esto cambia solo el panel de ruta de abajo. El paquete se mantiene en su lugar."))}</small>
       </div>
       <div class="bid-tools-lane-switcher-list">
         ${rows.map((row) => {
@@ -3532,30 +3721,24 @@ function renderSelectedLaneWorkspace(lane = {}, invitation = {}, _selectedLaneDe
   const packagePayload = masterPackageForCarrier(carrierBook, invitation);
   const fit = laneFitProgress(lane, invitation, packagePayload);
   const status = String(invitation.invitation_status || "").toLowerCase();
-  const blocked = ["declined", "awarded", "not_awarded"].includes(status);
-  const offerLabel = invitation.bid_rate !== null && invitation.bid_rate !== undefined && invitation.bid_rate !== ""
-    ? dualText("Update offer", "Actualizar oferta")
-    : dualText("Submit offer", "Enviar oferta");
   return `
-    ${renderBidToolsLaneSwitcher(carrierBook, invitation)}
-
-    ${renderLaneFitChecklist(lane, invitation, packagePayload)}
-
-    <section class="bid-offer-launcher master-package-offer-launcher">
-      <div>
-        <p class="eyebrow">${escapeHtml(dualText("Bid tools", "Herramientas de puja"))}</p>
-        <h3>${escapeHtml(dualText("Capacity and offer for this route", "Capacidad y oferta para esta ruta"))}</h3>
-        <p>${escapeHtml(dualText(
-          "Manage the primary offer, live capacity commitment, ETAs, deadhead and a best alternative for this selected route. Fit answers improve procurement context but do not block quoting.",
-          "Gestiona la oferta primaria, el compromiso de capacidad en vivo, ETAs, deadhead y una mejor alternativa para esta ruta. Las respuestas de fit mejoran el contexto de procurement, pero no bloquean la cotizacion."
-        ))}</p>
+    <section class="bid-tools-selected-route">
+      <div class="bid-tools-route-summary">
+        <div>
+          <p class="eyebrow">${escapeHtml(dualText("Selected route", "Ruta seleccionada"))}</p>
+          <h3>${escapeHtml(formatLane(lane))}</h3>
+          <p>${escapeHtml(dualText("Fit notes are optional. Quote directly in the row below and add only the details this route needs.", "Las notas de fit son opcionales. Cotiza directamente en la fila de abajo y agrega solo los detalles que esta ruta necesite."))}</p>
+        </div>
+        <dl class="bid-tools-route-facts">
+          <div><dt>${escapeHtml(dualText("Equipment", "Equipo"))}</dt><dd>${escapeHtml([lane.equipment, lane.trailer, lane.config].filter(Boolean).join(" / ") || "-")}</dd></div>
+          <div><dt>${escapeHtml(dualText("Operation", "Operacion"))}</dt><dd>${escapeHtml(lane.operation || "-")}</dd></div>
+          <div><dt>${escapeHtml(dualText("Service", "Servicio"))}</dt><dd>${escapeHtml(lane.service || "-")}</dd></div>
+          <div><dt>${escapeHtml(dualText("Fit", "Fit"))}</dt><dd><span class="status-pill neutral" title="${escapeAttribute(dualText("Optional route context visible to procurement.", "Contexto opcional de ruta visible para procurement."))}">${escapeHtml(`${fit.complete}/${fit.total}`)}</span></dd></div>
+        </dl>
       </div>
-      <div class="bid-tool-actions">
-        <span class="status-pill neutral" title="${escapeAttribute(dualText("Fit is a route-level advisory record.", "El fit es un registro informativo a nivel de ruta."))}">${escapeHtml(`${fit.complete}/${fit.total} fit`)}</span>
-        <button type="button" data-open-bid-editor ${blocked ? "disabled" : ""}>${escapeHtml(offerLabel)}</button>
-        <button type="button" class="secondary small-button" data-open-bid-editor-section="capacity" ${blocked ? "disabled" : ""}>${escapeHtml(dualText("Live capacity", "Capacidad en vivo"))}</button>
-        <button type="button" class="secondary small-button" data-open-bid-editor-section="alternative" ${blocked ? "disabled" : ""}>${escapeHtml(dualText("Best alternative", "Mejor alternativa"))}</button>
-      </div>
+      ${["declined", "awarded", "not_awarded"].includes(status)
+        ? `<p class="bid-board-note">${escapeHtml(dualText("This route is no longer available for a new offer.", "Esta ruta ya no esta disponible para una nueva oferta."))}</p>`
+        : renderLaneFitChecklist(lane, invitation, packagePayload)}
     </section>
   `;
 }
@@ -3759,7 +3942,10 @@ function renderInvitation(invitation, liveBoard = {}, carrierBook = {}) {
   const vendor = invitation.vendors || {};
   const deadline = deadlineCopy(event);
   const multiLaneRows = currentEventBookRows(carrierBook, event);
-  const isBookView = viewModeFromUrl() === "book" && multiLaneRows.length > 1;
+  const bidToolRows = quickBidRows(carrierBook, invitation);
+  if (!bidToolRows.some((row) => String(row.invitation_token || "") === String(selectedBidToolsToken || ""))) {
+    selectedBidToolsToken = String(invitation.invitation_token || bidToolRows[0]?.invitation_token || "");
+  }
   syncPortalLanguageChrome();
   title.textContent = event.name || event.rfx_id || "Private Bid Room";
   card.innerHTML = `
@@ -3837,13 +4023,11 @@ function renderInvitation(invitation, liveBoard = {}, carrierBook = {}) {
     <section data-private-workspace-panel="master" class="private-workspace-section">
       ${renderCarrierMasterPackage(carrierBook, invitation)}
       ${renderCarrierLaneSwitcher(carrierBook, invitation)}
+      ${renderBidTemplateTools(carrierBook, invitation)}
     </section>
 
     <section data-private-workspace-panel="bids" class="private-workspace-section" hidden>
-      ${renderSelectedLaneWorkspace(lane, invitation, [], isBookView, carrierBook)}
-      ${renderBidTemplateTools(carrierBook, invitation)}
-
-      ${renderQuickLaneBidGridShell(carrierBook, invitation)}
+      ${renderBidToolsWorkspace(carrierBook, invitation)}
     </section>
 
     <section id="carrier-bid-chat" class="carrier-bid-chat bid-chat-widget" data-open="false">
@@ -4143,17 +4327,14 @@ document.addEventListener("click", async (event) => {
 
   const routeFitButton = event.target.closest("[data-route-fit-token]");
   if (routeFitButton) {
-    await selectPrivateLane(routeFitButton.dataset.routeFitToken || "", {
-      after: "fit",
-      workspace: "bids"
-    });
+    selectBidToolsLane(routeFitButton.dataset.routeFitToken || "", { openFit: true });
     return;
   }
 
   const routeOfferButton = event.target.closest("[data-route-offer-token]");
   if (routeOfferButton) {
     routeOfferButton.closest(".lane-offer-menu")?.removeAttribute("open");
-    await selectPrivateLane(routeOfferButton.dataset.routeOfferToken || "", { after: "offer", workspace: "bids" });
+    selectBidToolsLane(routeOfferButton.dataset.routeOfferToken || "", { focusQuickBid: true });
     return;
   }
 
@@ -4175,7 +4356,7 @@ document.addEventListener("click", async (event) => {
 
   const bidToolsLaneButton = event.target.closest("[data-bid-tools-lane-token]");
   if (bidToolsLaneButton) {
-    await selectPrivateLane(bidToolsLaneButton.dataset.bidToolsLaneToken || "", { workspace: "bids" });
+    selectBidToolsLane(bidToolsLaneButton.dataset.bidToolsLaneToken || "", { openFit: true });
     return;
   }
 
@@ -4229,19 +4410,10 @@ document.addEventListener("click", async (event) => {
   const openBidEditorSectionButton = event.target.closest("[data-open-bid-editor-section]");
   if (openBidEditorSectionButton) {
     const section = openBidEditorSectionButton.dataset.openBidEditorSection || "primary";
-    const focusSelector = section === "capacity"
-      ? "#bid-equipment-available"
-      : section === "alternative"
-        ? "#bid-best-alternative"
-        : "#bid-rate";
-    const packagePayload = masterPackageForCarrier(lastCarrierBook || {}, lastInvitation || {});
-    const fit = laneFitProgress(lastInvitation?.rfx_lanes || {}, lastInvitation || {}, packagePayload);
-    if (!fit.ready) {
-      focusRouteFit();
-      return;
-    }
-    hydrateBidFormFromOffer(currentSubmittedOffer(), lastInvitation || {});
-    openBidEditor({ section, focusSelector });
+    selectBidToolsLane(selectedBidToolsToken || String(lastInvitation?.invitation_token || ""), {
+      panel: section === "primary" ? "" : section,
+      focusQuickBid: section === "primary"
+    });
     return;
   }
 
@@ -4255,6 +4427,13 @@ document.addEventListener("click", async (event) => {
   if (quickBidSaveButton) {
     const row = quickBidSaveButton.closest("[data-quick-bid-row]");
     if (row) await saveQuickBidRow(row, quickBidSaveButton);
+    return;
+  }
+
+  const quickBidPanelButton = event.target.closest("[data-toggle-quick-bid-panel]");
+  if (quickBidPanelButton) {
+    const row = quickBidPanelButton.closest("[data-quick-bid-row]");
+    if (row) toggleQuickBidPanel(row, quickBidPanelButton.dataset.toggleQuickBidPanel || "");
     return;
   }
 
@@ -4280,13 +4459,9 @@ document.addEventListener("click", async (event) => {
 
   const declineInvitationButton = event.target.closest("[data-decline-invitation]");
   if (declineInvitationButton) {
-    await updateBidParticipation("decline_invitation", declineInvitationButton);
-    return;
-  }
-
-  const saveSegmentConfirmationsButton = event.target.closest("[data-save-segment-confirmations]");
-  if (saveSegmentConfirmationsButton) {
-    await saveSegmentConfirmations(saveSegmentConfirmationsButton);
+    await updateBidParticipation("decline_invitation", declineInvitationButton, {
+      token: declineInvitationButton.dataset.invitationToken || ""
+    });
     return;
   }
 
@@ -4490,6 +4665,14 @@ document.addEventListener("submit", async (event) => {
 });
 
 card.addEventListener("input", (event) => {
+  const laneFitComment = event.target.closest("[data-segment-comment]");
+  if (laneFitComment) {
+    const section = laneFitComment.closest("[data-lane-fit-checklist]");
+    refreshLaneFitUi(section);
+    queueSegmentConfirmationSave(section);
+    return;
+  }
+
   if (event.target.closest("#bid-form")) {
     clearBidValidationState();
     updateBidReviewSummary();
@@ -4508,6 +4691,14 @@ card.addEventListener("input", (event) => {
 });
 
 card.addEventListener("change", async (event) => {
+  const laneFitAnswer = event.target.closest("[data-segment-answer]");
+  if (laneFitAnswer) {
+    const section = laneFitAnswer.closest("[data-lane-fit-checklist]");
+    refreshLaneFitUi(section);
+    queueSegmentConfirmationSave(section);
+    return;
+  }
+
   const templateFileInput = event.target.closest("#carrier-bid-template-file");
   if (templateFileInput) {
     const status = card.querySelector("#carrier-bid-template-status");
