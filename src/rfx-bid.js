@@ -22,6 +22,7 @@ let bidTemplateSubmitting = false;
 let bidFormSubmitting = false;
 let bidSupportSubmitting = false;
 let carrierChatSubmitting = false;
+let privateLaneSwitching = false;
 const quickBidRowMutationKeys = new Set();
 const bidParticipationMutationKeys = new Set();
 const laneAccessRequestMutationKeys = new Set();
@@ -795,6 +796,7 @@ function renderCarrierMasterPackage(carrierBook = {}, invitation = {}) {
           <small>${escapeHtml(`${summary.complete}/${summary.total} ${dualText("rubrics confirmed", "rubros confirmados")}${summary.exceptions ? ` | ${summary.exceptions} ${dualText("exception(s)", "excepcion(es)")}` : ""}`)}</small>
         </aside>
       </div>
+      ${renderCarrierLaneSwitcher(carrierBook, invitation)}
       <div class="master-package-statline">
         <article><span>${escapeHtml(t("routeSchedule"))}</span><strong>${formatNumber(packagePayload.lane_count || currentEventBookRows(carrierBook, invitation.rfx_events || {}).length)}</strong><small>lane(s)</small></article>
         <article><span>${escapeHtml(t("segmentChecklist"))}</span><strong>${formatNumber(segments.length)}</strong><small>segment(s)</small></article>
@@ -3421,7 +3423,7 @@ function renderCarrierLaneSwitcher(carrierBook = {}, invitation = {}) {
   const rows = currentEventBookRows(carrierBook, event);
   if (rows.length <= 1) return "";
   return `
-    <section class="carrier-lane-switcher" id="carrier-lane-book-overview">
+    <section class="carrier-lane-switcher carrier-lane-switcher-master" id="carrier-lane-book-overview">
       <div class="bid-room-section-heading">
         <div>
           <p class="eyebrow">Invited lane book</p>
@@ -3436,18 +3438,90 @@ function renderCarrierLaneSwitcher(carrierBook = {}, invitation = {}) {
           const isCurrent = String(lane.id || "") === currentLaneId || String(row.invitation_id || "") === String(invitation.id || "");
           return `
             <article class="${isCurrent ? "is-current" : ""}">
-              <div>
+              <div class="carrier-lane-switcher-copy">
                 <span class="status-pill ${statusTone(bookStatus(row))}">${escapeHtml(isCurrent ? dualText("Selected lane", "Lane seleccionada") : statusLabel(bookStatus(row)))}</span>
                 <strong>${escapeHtml(laneLabel(lane))}</strong>
                 <small>${escapeHtml([marketLabel(lane), [lane.equipment, lane.trailer, lane.config].filter(Boolean).join(" / "), [lane.operation, lane.service].filter(Boolean).join(" / ")].filter(Boolean).join(" | "))}</small>
               </div>
-              <a class="${isCurrent ? "small-button" : "secondary small-button"}" href="./rfx-bid.html?token=${encodeURIComponent(row.invitation_token || "")}">
+              <button type="button" class="${isCurrent ? "small-button" : "secondary small-button"} lane-select-button" data-select-private-lane="${escapeAttribute(row.invitation_token || "")}" ${isCurrent ? "aria-current=\"page\"" : ""}>
                 ${escapeHtml(isCurrent ? dualText("Current bid", "Puja actual") : dualText("Open lane", "Abrir lane"))}
-              </a>
+              </button>
             </article>
           `;
         }).join("")}
       </div>
+    </section>
+  `;
+}
+
+async function selectPrivateLane(invitationToken) {
+  const nextToken = String(invitationToken || "").trim();
+  if (!nextToken || privateLaneSwitching) return;
+  if (nextToken === tokenFromUrl()) {
+    setPrivateWorkspace("master");
+    card.querySelector("#carrier-lane-book-overview")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    return;
+  }
+  privateLaneSwitching = true;
+  activePrivateWorkspace = "master";
+  localStorage.setItem(privateWorkspaceStorageKey(), "master");
+  const nextUrl = new URL(window.location.href);
+  nextUrl.searchParams.set("token", nextToken);
+  nextUrl.searchParams.delete("view");
+  window.history.pushState({}, "", nextUrl);
+  card.innerHTML = `<p class="status-message">${escapeHtml(dualText("Loading selected lane...", "Cargando la lane seleccionada..."))}</p>`;
+  try {
+    await loadInvitation();
+    card.querySelector("#carrier-lane-book-overview")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  } finally {
+    privateLaneSwitching = false;
+  }
+}
+
+function renderSelectedLaneWorkspace(lane = {}, invitation = {}, selectedLaneDetails = [], isBookView = false) {
+  return `
+    <section class="bid-lane-summary is-compact master-package-selected-lane">
+      <div class="bid-room-section-heading">
+        <div>
+          <p class="eyebrow">${escapeHtml(isBookView ? t("selectedLaneFromBook") : t("currentLane"))}</p>
+          <h2>${escapeHtml(formatLane(lane))}</h2>
+        </div>
+        <span class="status-pill neutral">${escapeHtml(statusLabel(invitation.invitation_status))}</span>
+      </div>
+      <dl>
+        <div><dt>${escapeHtml(t("equipment"))}</dt><dd>${escapeHtml([lane.equipment, lane.trailer, lane.config].filter(Boolean).join(" / ") || "-")}</dd></div>
+        <div><dt>${escapeHtml(t("operation"))}</dt><dd>${escapeHtml(lane.operation || "-")}</dd></div>
+        <div><dt>${escapeHtml(t("service"))}</dt><dd>${escapeHtml(lane.service || "-")}</dd></div>
+        <div><dt>${escapeHtml(t("weeklyVolume"))}</dt><dd>${escapeHtml(lane.weekly_volume ?? "-")}</dd></div>
+      </dl>
+      ${selectedLaneDetails.length ? `
+        <details class="bid-lane-detail-disclosure">
+          <summary>
+            <span>${escapeHtml(dualText("Selected lane details", "Detalles de la ruta seleccionada"))}</span>
+            <small>${escapeHtml(dualText("Open only if you need lane-level notes. The RFx package above is the source of truth.", "Abre solo si necesitas notas por ruta. El paquete RFx superior es la fuente principal."))}</small>
+          </summary>
+          <div class="bid-lane-detail-sections">
+            ${selectedLaneDetails.map(([label, value]) => `
+              <article>
+                <span>${escapeHtml(label)}</span>
+                <div class="bid-lane-rich-text">${renderLaneDetailValue(value)}</div>
+              </article>
+            `).join("")}
+          </div>
+        </details>
+      ` : ""}
+    </section>
+
+    <section class="bid-offer-launcher master-package-offer-launcher">
+      <div>
+        <p class="eyebrow">${escapeHtml(t("submitOrUpdate"))}</p>
+        <h3>${escapeHtml(dualText("Offer for the selected lane", "Oferta para la lane seleccionada"))}</h3>
+        <p>${escapeHtml(dualText(
+          "This editor follows the lane selected above. Your live bid room, offer history and update action use this same lane context.",
+          "Este editor sigue la lane seleccionada arriba. El live bid room, el historial y la actualizacion usan el mismo contexto."
+        ))}</p>
+      </div>
+      <button type="button" data-open-bid-editor>${escapeHtml(dualText("Submit / update offer", "Enviar / actualizar oferta"))}</button>
     </section>
   `;
 }
@@ -3725,47 +3799,13 @@ function renderInvitation(invitation, liveBoard = {}, carrierBook = {}) {
 
     <section data-private-workspace-panel="master" class="private-workspace-section">
       ${renderCarrierMasterPackage(carrierBook, invitation)}
+      ${renderSelectedLaneWorkspace(lane, invitation, selectedLaneDetails, isBookView)}
     </section>
 
     <section data-private-workspace-panel="bids" class="private-workspace-section" hidden>
-      ${renderCarrierLaneSwitcher(carrierBook, invitation)}
-
       ${renderBidTemplateTools(carrierBook, invitation)}
 
       ${renderQuickLaneBidGridShell(carrierBook, invitation)}
-
-    <section class="bid-lane-summary is-compact">
-      <div class="bid-room-section-heading">
-        <div>
-          <p class="eyebrow">${escapeHtml(isBookView ? t("selectedLaneFromBook") : t("currentLane"))}</p>
-          <h2>${escapeHtml(formatLane(lane))}</h2>
-        </div>
-        <span class="status-pill neutral">${escapeHtml(statusLabel(invitation.invitation_status))}</span>
-      </div>
-      <dl>
-        <div><dt>${escapeHtml(t("equipment"))}</dt><dd>${escapeHtml([lane.equipment, lane.trailer, lane.config].filter(Boolean).join(" / ") || "-")}</dd></div>
-        <div><dt>${escapeHtml(t("operation"))}</dt><dd>${escapeHtml(lane.operation || "-")}</dd></div>
-        <div><dt>${escapeHtml(t("service"))}</dt><dd>${escapeHtml(lane.service || "-")}</dd></div>
-        <div><dt>${escapeHtml(t("weeklyVolume"))}</dt><dd>${escapeHtml(lane.weekly_volume ?? "-")}</dd></div>
-      </dl>
-      ${selectedLaneDetails.length ? `
-        <details class="bid-lane-detail-disclosure">
-          <summary>
-            <span>${escapeHtml(dualText("Selected lane details", "Detalles de la ruta seleccionada"))}</span>
-            <small>${escapeHtml(dualText("Open only if you need lane-level notes. The RFx package above is the source of truth.", "Abre solo si necesitas notas por ruta. El paquete RFx superior es la fuente principal."))}</small>
-          </summary>
-          <div class="bid-lane-detail-sections">
-            ${selectedLaneDetails.map(([label, value]) => `
-              <article>
-                <span>${escapeHtml(label)}</span>
-                <div class="bid-lane-rich-text">${renderLaneDetailValue(value)}</div>
-              </article>
-            `).join("")}
-          </div>
-        </details>
-      ` : ""}
-    </section>
-
     </section>
 
     <section id="bid-live-board" class="bid-live-board" data-private-workspace-panel="master">
@@ -3778,18 +3818,6 @@ function renderInvitation(invitation, liveBoard = {}, carrierBook = {}) {
 
     <section id="carrier-bid-chat" class="carrier-bid-chat bid-chat-widget" data-open="false">
       <p class="status-message">${escapeHtml(t("loadingChat"))}</p>
-    </section>
-
-    <section class="bid-offer-launcher" data-private-workspace-panel="bids">
-      <div>
-        <p class="eyebrow">${escapeHtml(t("submitOrUpdate"))}</p>
-        <h3>${escapeHtml(dualText("Advanced offer editor", "Editor avanzado de oferta"))}</h3>
-        <p>${escapeHtml(dualText(
-          "Use the row grid for quick updates. Open this editor for alternatives, ETA, unit details, notes and best-final confirmation.",
-          "Usa la grilla para cambios rapidos. Abre este editor para alternativas, ETA, datos de unidad, notas y confirmacion best-final."
-        ))}</p>
-      </div>
-      <button type="button" data-open-bid-editor>${escapeHtml(dualText("Open offer editor", "Abrir editor de oferta"))}</button>
     </section>
 
     <div id="bid-editor-modal" class="bid-editor-modal" hidden>
@@ -4070,6 +4098,12 @@ document.addEventListener("click", async (event) => {
   const privateWorkspaceTab = event.target.closest("[data-private-workspace-tab]");
   if (privateWorkspaceTab) {
     setPrivateWorkspace(privateWorkspaceTab.dataset.privateWorkspaceTab || "master");
+    return;
+  }
+
+  const privateLaneButton = event.target.closest("[data-select-private-lane]");
+  if (privateLaneButton) {
+    await selectPrivateLane(privateLaneButton.dataset.selectPrivateLane || "");
     return;
   }
 
@@ -4443,6 +4477,12 @@ document.addEventListener("keydown", (event) => {
 document.addEventListener("pointerdown", () => {
   armPrivateBidAudio();
 }, { capture: true });
+
+window.addEventListener("popstate", () => {
+  if (!tokenFromUrl() || privateLaneSwitching) return;
+  activePrivateWorkspace = "master";
+  loadInvitation();
+});
 
 syncPortalLanguageChrome();
 loadInvitation().then(() => {

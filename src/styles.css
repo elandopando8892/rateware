@@ -28874,6 +28874,53 @@ form[data-unsaved-guard][data-unsaved="true"] {
   min-width: 0;
 }
 
+/* The master package owns lane context. Keep the selector compact and make the
+   action switch the current invitation instead of opening a second portal. */
+.bid-portal-shell .carrier-lane-switcher-master {
+  margin: 0 0 10px;
+  padding: 9px;
+  background: #fffef8;
+  border-color: #e3cf85;
+}
+
+.bid-portal-shell .carrier-lane-switcher-master .bid-room-section-heading {
+  align-items: center;
+  margin-bottom: 5px;
+}
+
+.bid-portal-shell .carrier-lane-switcher-master .bid-room-section-heading h3,
+.bid-portal-shell .carrier-lane-switcher-master .bid-room-section-heading p {
+  margin: 0;
+}
+
+.bid-portal-shell .carrier-lane-switcher-master > .bid-board-note {
+  margin: 0 0 7px;
+}
+
+.bid-portal-shell .carrier-lane-switcher-grid article {
+  min-width: 0;
+}
+
+.bid-portal-shell .carrier-lane-switcher-copy {
+  min-width: 0;
+}
+
+.bid-portal-shell .carrier-lane-switcher-grid .lane-select-button {
+  flex: 0 0 auto;
+  min-width: 92px;
+  white-space: nowrap;
+}
+
+.bid-portal-shell .master-package-selected-lane {
+  margin-top: 10px;
+}
+
+.bid-portal-shell .master-package-offer-launcher {
+  margin-bottom: 10px;
+  border-color: #e3cf85;
+  background: #fffef8;
+}
+
 /* The assistant is contextual to the portal, so it sits above the workspaces rather than floating over data. */
 .bid-portal-shell > #bid-support-agent.bid-support-widget {
   position: relative;
