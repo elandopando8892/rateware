@@ -1897,7 +1897,11 @@ assert.doesNotMatch(rfxBidSource, /<p>\$\{escapeHtml\(value\)\}<\/p>/, "Carrier 
 assert.match(rfxBidSource, /function renderCarrierLaneSwitcher/, "Carrier portal should expose all invited event lanes before the selected lane bid form");
 assert.match(rfxBidSource, /function segmentFitProgress/, "Carrier master package should summarize confirmations by segment");
 assert.match(rfxBidSource, /function activeMasterSegmentIndex/, "Carrier master package should open the first segment that still needs action");
-assert.match(rfxBidSource, /master-package-route-disclosure/, "Carrier route schedule should collapse when the RFx package has many lanes");
+assert.match(rfxBidSource, /carrier-lane-book-table/, "Carrier route schedule should use one compact actionable lane table");
+assert.match(rfxBidSource, /data-route-fit-token/, "Each invited lane should expose its operational fit details");
+assert.match(rfxBidSource, /data-route-offer-token/, "Each invited lane should submit or update its own offer");
+assert.match(rfxBidSource, /data-route-participation-action/, "Each invited lane should expose reject or withdraw without leaving the route book");
+assert.match(rfxBidSource, /data-master-segment-key/, "Operational fit actions should target the matching segment checklist");
 assert.match(rfxBidSource, /import \* as XLSX from "https:\/\/esm\.sh\/xlsx@0\.18\.5"/, "Carrier portal should load XLSX support for bid templates");
 assert.match(rfxBidSource, /import\("https:\/\/esm\.sh\/exceljs@4\.4\.0\?bundle"\)/, "Carrier portal should use ExcelJS for XLSX dropdown data validations");
 assert.match(rfxBidSource, /const BID_TEMPLATE_COLUMNS = \[/, "Carrier portal should define a prefilled XLSX bid template schema");
@@ -2053,7 +2057,7 @@ assert.match(rfxBidSource, /function hydrateBidFormFromOffer/, "Carrier portal s
 assert.match(rfxBidSource, /data-bid-submit-button/, "Carrier portal should relabel submit as update when a published offer exists");
 assert.match(rfxBidSource, /let bidFormSubmitting = false;/, "Carrier portal guided bid form should have a submit guard");
 assert.match(rfxBidSource, /if \(bidFormSubmitting\) return;[\s\S]+const submitButton = card\.querySelector\("\[data-bid-submit-button\]"\);[\s\S]+bidFormSubmitting = true;[\s\S]+if \(submitButton\) submitButton\.disabled = true;[\s\S]+finally \{[\s\S]+bidFormSubmitting = false;[\s\S]+if \(submitButton\) submitButton\.disabled = false;[\s\S]+\}/, "Carrier portal guided bid form should disable submit and restore after API completion");
-assert.match(rfxBidSource, /bid-editor-modal/, "Carrier portal should render the advanced offer editor as a modal");
+assert.match(rfxBidSource, /bid-editor-modal/, "Carrier portal should render the guided offer editor in an overlay drawer");
 assert.match(rfxBidSource, /data-open-bid-editor/, "Carrier portal should open the advanced offer editor from a compact launcher");
 assert.match(rfxBidSource, /data-close-bid-editor/, "Carrier portal should close the advanced offer editor without page navigation");
 assert.match(rfxBidApiSource, /revisionType = bestFinal \? "best_final" : previousBidRate !== null \? "revision" : "initial"/, "Carrier portal API should classify repeated submitted bids as revisions");
@@ -2080,7 +2084,7 @@ assert.match(rfxBidApiSource, /status: "withdrawn"/, "Withdrawing an offer shoul
 assert.match(rfxBidWithdrawnStatusMigration, /'withdrawn'/, "Bid Room status constraint should allow withdrawn offers");
 assert.match(stylesSource, /carrier-bid-workflow/, "Carrier portal guided bid flow should have compact navigation styling");
 assert.match(stylesSource, /bid-offer-launcher/, "Carrier portal should keep the advanced bid editor launcher compact");
-assert.match(stylesSource, /bid-editor-panel/, "Carrier portal should style the advanced offer editor as a focused popup panel");
+assert.match(stylesSource, /\.bid-editor-modal \{[\s\S]*place-items: stretch end/, "Carrier portal should anchor the guided offer editor as a focused right drawer");
 assert.match(stylesSource, /bid-review-summary-grid/, "Carrier portal review summary should have card styling");
 assert.match(stylesSource, /bid-room-alert-feed/, "Carrier portal multimedia alerts should have compact hero styling");
 assert.match(stylesSource, /bid-form \[aria-invalid="true"\]/, "Carrier portal should highlight invalid bid fields inline");

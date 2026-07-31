@@ -9220,8 +9220,8 @@ a {
   inset: 0;
   z-index: 1200;
   display: grid;
-  place-items: center;
-  padding: 20px;
+  place-items: stretch end;
+  padding: 0;
 }
 
 .bid-editor-scrim {
@@ -9234,11 +9234,12 @@ a {
 
 .bid-editor-panel {
   position: relative;
-  width: min(1040px, calc(100vw - 32px));
-  max-height: calc(100vh - 40px);
+  width: min(760px, calc(100vw - 24px));
+  height: 100vh;
+  max-height: 100vh;
   overflow: auto;
   border: 1px solid var(--line-strong);
-  border-radius: 12px;
+  border-radius: 12px 0 0 12px;
   background: #fff;
   box-shadow: 0 22px 64px rgba(16, 27, 38, 0.28);
 }
@@ -10379,12 +10380,13 @@ body.bid-editor-open {
 
   .bid-editor-modal {
     align-items: stretch;
-    padding: 10px;
+    padding: 0;
   }
 
   .bid-editor-panel {
     width: 100%;
-    max-height: calc(100vh - 20px);
+    max-height: 100vh;
+    border-radius: 0;
   }
 
   .bid-form-header-actions {
@@ -28874,11 +28876,11 @@ form[data-unsaved-guard][data-unsaved="true"] {
   min-width: 0;
 }
 
-/* The master package owns lane context. Keep the selector compact and make the
-   action switch the current invitation instead of opening a second portal. */
+/* The master package owns lane context. The lane book is the single place to
+   inspect fit, select a route, quote, update, reject, or withdraw. */
 .bid-portal-shell .carrier-lane-switcher-master {
   margin: 0 0 10px;
-  padding: 9px;
+  padding: 8px;
   background: #fffef8;
   border-color: #e3cf85;
 }
@@ -28893,22 +28895,149 @@ form[data-unsaved-guard][data-unsaved="true"] {
   margin: 0;
 }
 
-.bid-portal-shell .carrier-lane-switcher-master > .bid-board-note {
-  margin: 0 0 7px;
+.bid-portal-shell .carrier-lane-book-heading {
+  min-height: 30px;
 }
 
-.bid-portal-shell .carrier-lane-switcher-grid article {
-  min-width: 0;
+.bid-portal-shell .carrier-lane-book-table {
+  min-width: 920px;
+  table-layout: fixed;
 }
 
-.bid-portal-shell .carrier-lane-switcher-copy {
-  min-width: 0;
+.bid-portal-shell .carrier-lane-book-table th,
+.bid-portal-shell .carrier-lane-book-table td {
+  height: 32px;
+  padding: 4px 6px;
+  vertical-align: middle;
 }
 
-.bid-portal-shell .carrier-lane-switcher-grid .lane-select-button {
-  flex: 0 0 auto;
-  min-width: 92px;
+.bid-portal-shell .carrier-lane-book-table th:nth-child(1) { width: 54px; }
+.bid-portal-shell .carrier-lane-book-table th:nth-child(2) { width: 25%; }
+.bid-portal-shell .carrier-lane-book-table th:nth-child(3) { width: 22%; }
+.bid-portal-shell .carrier-lane-book-table th:nth-child(4) { width: 84px; }
+.bid-portal-shell .carrier-lane-book-table th:nth-child(5) { width: 62px; }
+.bid-portal-shell .carrier-lane-book-table th:nth-child(6) { width: 92px; }
+.bid-portal-shell .carrier-lane-book-table th:nth-child(7) { width: 176px; }
+
+.bid-portal-shell .carrier-lane-book-table td strong,
+.bid-portal-shell .carrier-lane-book-table td small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.bid-portal-shell .carrier-lane-book-table td strong {
+  color: var(--text);
+  font-size: 0.72rem;
+}
+
+.bid-portal-shell .carrier-lane-book-table td small {
+  margin-top: 1px;
+  color: var(--muted);
+  font-size: 0.62rem;
+  font-weight: 680;
+}
+
+.bid-portal-shell .carrier-lane-book-table tr.is-current td {
+  background: #eef8f5;
+}
+
+.bid-portal-shell .carrier-lane-book-table tr.is-current td:first-child {
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.bid-portal-shell .lane-fit-indicator {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 42px;
+  min-height: 24px;
+  border: 1px solid #d8bd65;
+  border-radius: 999px;
+  background: #fff8df;
+  color: #76530d;
+  padding: 2px 7px;
+  font-size: 0.66rem;
+  font-weight: 900;
+}
+
+.bid-portal-shell .lane-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.bid-portal-shell .lane-row-actions > button,
+.bid-portal-shell .lane-offer-menu > summary {
+  min-height: 25px;
+  padding: 3px 8px;
+  font-size: 0.65rem;
+}
+
+.bid-portal-shell .lane-offer-menu {
+  position: relative;
+}
+
+.bid-portal-shell .lane-offer-menu > summary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 62px;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+  font-weight: 850;
+  list-style: none;
+}
+
+.bid-portal-shell .lane-offer-menu > summary::-webkit-details-marker {
+  display: none;
+}
+
+.bid-portal-shell .lane-offer-menu > div {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 25;
+  display: grid;
+  min-width: 150px;
+  gap: 3px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: #fff;
+  box-shadow: 0 10px 28px rgba(16, 27, 38, 0.16);
+  padding: 5px;
+}
+
+.bid-portal-shell .lane-offer-menu > div button {
+  justify-content: flex-start;
+  min-height: 28px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  padding: 4px 7px;
+  text-align: left;
+}
+
+.bid-portal-shell .lane-offer-menu > div button:hover {
+  background: var(--soft-panel);
+}
+
+.bid-portal-shell .lane-offer-menu > div button.danger-text {
+  color: var(--danger);
+}
+
+.bid-portal-shell .master-package-segment.is-focused {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(20, 128, 115, 0.14);
+}
+
+.bid-portal-shell .private-master-live-board {
+  margin: 0 0 10px;
 }
 
 .bid-portal-shell .master-package-selected-lane {
