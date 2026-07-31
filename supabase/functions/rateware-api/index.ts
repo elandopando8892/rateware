@@ -8588,33 +8588,49 @@ function awardNoticeLaneSummary(invitation: Record<string, unknown>) {
   };
 }
 
-function awardNoticeTableHtml(rows: Record<string, unknown>[]) {
+function awardNoticeTableHtml(rows: Record<string, unknown>[], language = "en") {
   if (!rows.length) return "";
+  const es = language === "es";
+  const labels = es
+    ? { result: "Resultado", lane: "Ruta", equipment: "Equipo", service: "Servicio", capacity: "Capacidad semanal", transit: "Transito", bid: "Tu tarifa", notes: "Notas" }
+    : { result: "Result", lane: "Lane", equipment: "Equipment", service: "Service", capacity: "Weekly capacity", transit: "Transit", bid: "Your bid", notes: "Notes" };
+  const headerStyle = "border:1px solid #b7c9d9;padding:9px 8px;text-align:left;background:#1f4e79;color:#ffffff;font-size:11px;line-height:1.2;white-space:nowrap";
+  const cellStyle = "border:1px solid #d2dde5;padding:9px 8px;vertical-align:top;font-size:12px;line-height:1.3;color:#233746";
   return `
-    <table style="border-collapse:collapse;width:100%;font-family:Arial,sans-serif;font-size:13px">
+    <table role="presentation" style="border-collapse:collapse;width:100%;font-family:Arial,sans-serif;font-size:12px;margin:16px 0 18px;border:1px solid #b7c9d9">
       <thead>
         <tr>
-          <th style="border:1px solid #cbd7df;padding:7px;text-align:left;background:#f1f5f8">Result</th>
-          <th style="border:1px solid #cbd7df;padding:7px;text-align:left;background:#f1f5f8">Lane</th>
-          <th style="border:1px solid #cbd7df;padding:7px;text-align:left;background:#f1f5f8">Equipment</th>
-          <th style="border:1px solid #cbd7df;padding:7px;text-align:left;background:#f1f5f8">Service</th>
-          <th style="border:1px solid #cbd7df;padding:7px;text-align:right;background:#f1f5f8">Your bid</th>
-          <th style="border:1px solid #cbd7df;padding:7px;text-align:left;background:#f1f5f8">Notes</th>
+          <th style="${headerStyle}">${labels.result}</th>
+          <th style="${headerStyle}">${labels.lane}</th>
+          <th style="${headerStyle}">${labels.equipment}</th>
+          <th style="${headerStyle}">${labels.service}</th>
+          <th style="${headerStyle};text-align:center">${labels.capacity}</th>
+          <th style="${headerStyle};text-align:center">${labels.transit}</th>
+          <th style="${headerStyle};text-align:right">${labels.bid}</th>
+          <th style="${headerStyle}">${labels.notes}</th>
         </tr>
       </thead>
       <tbody>
         ${rows.map((row) => {
           const outcome = objectRecord(row.outcome);
+          const outcomeKey = cleanText(outcome.key);
+          const outcomeStyle = outcomeKey === "awarded"
+            ? "background:#e8f5ee;color:#146c43;border:1px solid #a9dec2"
+            : outcomeKey === "backup"
+              ? "background:#fff8df;color:#8a5a00;border:1px solid #e7c86c"
+              : "background:#f1f5f8;color:#536776;border:1px solid #cbd7df";
           const rate = cleanNumber(row.bid_rate);
           const amount = rate === null ? "-" : `${rate.toLocaleString("en-US", { maximumFractionDigits: 2 })} ${cleanText(row.currency) || "USD"}`;
           return `
             <tr>
-              <td style="border:1px solid #d9e2e8;padding:7px">${escapeHtmlText(outcome.label)}</td>
-              <td style="border:1px solid #d9e2e8;padding:7px">${escapeHtmlText([row.lane_number ? `#${row.lane_number}` : null, `${row.origin || "-"} -> ${row.destination || "-"}`].filter(Boolean).join(" "))}</td>
-              <td style="border:1px solid #d9e2e8;padding:7px">${escapeHtmlText(row.equipment || "-")}</td>
-              <td style="border:1px solid #d9e2e8;padding:7px">${escapeHtmlText(row.service || "-")}</td>
-              <td style="border:1px solid #d9e2e8;padding:7px;text-align:right">${escapeHtmlText(amount)}</td>
-              <td style="border:1px solid #d9e2e8;padding:7px">${escapeHtmlText(row.reason || "")}</td>
+              <td style="${cellStyle};white-space:nowrap"><span style="display:inline-block;border-radius:999px;padding:3px 7px;font-size:10px;font-weight:700;${outcomeStyle}">${escapeHtmlText(es ? (outcomeKey === "awarded" ? "ADJUDICADO" : outcomeKey === "backup" ? "RESPALDO" : "NO ADJUDICADO") : outcome.label)}</span></td>
+              <td style="${cellStyle}"><strong>${escapeHtmlText([row.lane_number ? `#${row.lane_number}` : null, `${row.origin || "-"} -> ${row.destination || "-"}`].filter(Boolean).join(" "))}</strong></td>
+              <td style="${cellStyle}">${escapeHtmlText(row.equipment || "-")}</td>
+              <td style="${cellStyle}">${escapeHtmlText(row.service || "-")}</td>
+              <td style="${cellStyle};text-align:center;white-space:nowrap">${escapeHtmlText(row.capacity ?? "-")}</td>
+              <td style="${cellStyle};text-align:center;white-space:nowrap">${escapeHtmlText(row.transit_days ?? "-")}</td>
+              <td style="${cellStyle};text-align:right;white-space:nowrap;font-weight:700;background:#f2f7fa">${escapeHtmlText(amount)}</td>
+              <td style="${cellStyle};color:#526675">${escapeHtmlText(row.reason || (es ? "Sin observaciones adicionales." : "No additional notes."))}</td>
             </tr>
           `;
         }).join("")}
@@ -8640,25 +8656,81 @@ function awardNoticeRowsText(rows: Record<string, unknown>[]) {
 }
 
 function awardNoticeHtml(event: Record<string, unknown>, vendor: Record<string, unknown>, rows: Record<string, unknown>[], portalLink: string | null) {
+  const language = bidRoomFollowUpLanguage("", event, event.rfx_id);
+  const es = language === "es";
+  const vendorName = cleanText(vendor.vendor_name || vendor.legal_name || vendor.domain || "team");
+  const rfxId = cleanText(event.rfx_id || event.name) || "RFx";
+  const eventName = cleanText(event.name || event.rfx_id) || rfxId;
+  const customer = cleanText(event.customer || event.customer_name || event.shipper_name) || "-";
+  const eventType = cleanText(event.event_type || event.type) || "RFx";
+  const dueDate = cleanText(event.due_date || event.closing_date || event.close_at) || "-";
+  const visibility = cleanText(event.bid_visibility || event.visibility) || "-";
   const counts = rows.reduce((acc, row) => {
     const key = cleanText(objectRecord(row.outcome).key) || "not_awarded";
     acc[key] = Number(acc[key] || 0) + 1;
     return acc;
   }, {} as Record<string, number>);
   const headline = counts.awarded
-    ? "Your award decision is ready."
+    ? (es ? "Tu decision de adjudicacion esta lista." : "Your award decision is ready.")
     : counts.backup
-      ? "You have been selected as backup capacity."
-      : "This RFx has been awarded to another carrier.";
+      ? (es ? "Has sido seleccionado como capacidad de respaldo." : "You have been selected as backup capacity.")
+      : (es ? "Este RFx fue adjudicado a otro transportista." : "This RFx has been awarded to another carrier.");
+  const intro = es
+    ? "Esta actualizacion corresponde exclusivamente a esta oportunidad y resume las rutas, tarifas y capacidad registradas en el Bid Room."
+    : "This update applies only to this opportunity and summarizes the routes, rates, and capacity recorded in the Bid Room.";
+  const nextStep = counts.awarded
+    ? (es ? "Gracias por participar. Conservaremos esta informacion para siguientes asignaciones y coordinaremos los siguientes pasos por este medio." : "Thank you for participating. We will retain this information for future assignments and coordinate next steps through this thread.")
+    : (es ? "Gracias por participar. Mantendremos su capacidad y comentarios visibles para siguientes asignaciones." : "Thank you for participating. We will keep your capacity and comments available for future assignments.");
+  const statusLabel = counts.awarded
+    ? (es ? "ADJUDICACION" : "AWARD DECISION")
+    : counts.backup
+      ? (es ? "CAPACIDAD DE RESPALDO" : "BACKUP CAPACITY")
+      : (es ? "CIERRE DE RFx" : "RFx CLOSEOUT");
+  const routeLabel = es ? "Resumen de rutas y resultado" : "Route book and decision summary";
+  const portalLabel = es ? "Abrir Bid Room" : "Open Bid Room";
+  const contextLabels = es
+    ? { customer: "Cliente", type: "Tipo", due: "Fecha limite", lanes: "Rutas", visibility: "Visibilidad" }
+    : { customer: "Customer", type: "Type", due: "Due date", lanes: "Lanes", visibility: "Visibility" };
   return `
-    <div style="font-family:Arial,sans-serif;color:#1f2d36;line-height:1.45">
-      <p>Estimados ${escapeHtmlText(vendor.vendor_name || vendor.domain || "team")},</p>
-      <p>${escapeHtmlText(headline)}</p>
-      <p>RFx: <strong>${escapeHtmlText(event.rfx_id || event.name || "RFx")}</strong>${event.name ? ` | ${escapeHtmlText(event.name)}` : ""}</p>
-      ${awardNoticeTableHtml(rows)}
-      ${portalLink ? `<p>Bid Room: <a href="${escapeHtmlText(portalLink)}">${escapeHtmlText(portalLink)}</a></p>` : ""}
-      <p>Gracias por participar. Mantendremos su capacidad y comentarios visibles para siguientes asignaciones.</p>
-      ${marksmanSignatureHtml(bidRoomFollowUpLanguage("", event, event.rfx_id))}
+    <div style="margin:0;background:#edf3f7;padding:24px 12px;font-family:Arial,sans-serif;color:#233746;line-height:1.45">
+      <table role="presentation" style="border-collapse:collapse;width:100%;max-width:820px;margin:0 auto;background:#ffffff;border:1px solid #cbd9e2;border-radius:8px;overflow:hidden">
+        <tr>
+          <td style="padding:22px 26px;background:#1f4e79;color:#ffffff;border-bottom:5px solid #e3b341">
+            <div style="font-size:11px;letter-spacing:.08em;font-weight:700;color:#dbe9f3">MARKSMAN | PRIVATE PROCUREMENT ROOM</div>
+            <div style="font-size:22px;line-height:1.2;font-weight:700;margin-top:8px">${escapeHtmlText(eventName)}</div>
+            <div style="font-size:13px;margin-top:6px;color:#eaf3f8">${escapeHtmlText(rfxId)} · ${escapeHtmlText(customer)}</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:18px 26px 8px">
+            <table role="presentation" style="border-collapse:collapse;width:100%;font-size:12px">
+              <tr>
+                <td style="width:20%;padding:10px 9px;background:#f3f7fa;border:1px solid #d6e1e8"><span style="display:block;font-size:10px;color:#647783;font-weight:700;text-transform:uppercase">${contextLabels.customer}</span><strong>${escapeHtmlText(customer)}</strong></td>
+                <td style="width:20%;padding:10px 9px;background:#f3f7fa;border:1px solid #d6e1e8"><span style="display:block;font-size:10px;color:#647783;font-weight:700;text-transform:uppercase">${contextLabels.type}</span><strong>${escapeHtmlText(eventType)}</strong></td>
+                <td style="width:20%;padding:10px 9px;background:#f3f7fa;border:1px solid #d6e1e8"><span style="display:block;font-size:10px;color:#647783;font-weight:700;text-transform:uppercase">${contextLabels.due}</span><strong>${escapeHtmlText(dueDate)}</strong></td>
+                <td style="width:20%;padding:10px 9px;background:#f3f7fa;border:1px solid #d6e1e8"><span style="display:block;font-size:10px;color:#647783;font-weight:700;text-transform:uppercase">${contextLabels.lanes}</span><strong>${escapeHtmlText(rows.length)}</strong></td>
+                <td style="width:20%;padding:10px 9px;background:#f3f7fa;border:1px solid #d6e1e8"><span style="display:block;font-size:10px;color:#647783;font-weight:700;text-transform:uppercase">${contextLabels.visibility}</span><strong>${escapeHtmlText(visibility)}</strong></td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:8px 26px 26px">
+            <div style="border:1px solid #e3b341;border-left:5px solid #e3b341;border-radius:5px;padding:13px 15px;background:#fffaf0;margin:8px 0 16px">
+              <div style="font-size:10px;letter-spacing:.06em;font-weight:700;color:#8a5a00">${escapeHtmlText(statusLabel)}</div>
+              <div style="font-size:18px;font-weight:700;color:#233746;margin-top:4px">${escapeHtmlText(headline)}</div>
+              <p style="margin:8px 0 0;font-size:13px">${escapeHtmlText(intro)}</p>
+            </div>
+            <p style="margin:0 0 8px;font-size:14px;font-weight:700;color:#1f4e79">${escapeHtmlText(routeLabel)}</p>
+            ${awardNoticeTableHtml(rows, language)}
+            ${portalLink ? `<p style="margin:20px 0 12px"><a href="${escapeHtmlText(portalLink)}" style="display:inline-block;background:#3157d5;color:#ffffff;text-decoration:none;border-radius:5px;padding:11px 17px;font-weight:700;font-size:13px">${escapeHtmlText(portalLabel)}</a></p><p style="margin:0;font-size:11px;color:#647783;word-break:break-all">${escapeHtmlText(portalLink)}</p>` : ""}
+            <p style="margin:18px 0 0;font-size:13px">${escapeHtmlText(nextStep)}</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:0 26px 26px">${marksmanSignatureHtml(language)}</td>
+        </tr>
+      </table>
     </div>
   `;
 }
@@ -8763,7 +8835,9 @@ async function generateRfxAwardNotices(
     const subjectPrefix = counts.awarded ? "Award" : counts.backup ? "Backup status" : "RFx closeout";
     const subject = `${subjectPrefix}: ${cleanText(event.rfx_id || event.name) || "Bid Room"}`;
     const token = cleanText(first.invitation_token);
-    const portalLink = token ? `${appOrigin.replace(/\/$/, "")}/rfx-bid.html?token=${encodeURIComponent(token)}` : null;
+    const portalLink = token
+      ? `${appOrigin.replace(/\/$/, "")}/rfx-bid.html?token=${encodeURIComponent(token)}${sortedGroup.length > 1 ? "&view=book" : ""}`
+      : null;
     const htmlBody = awardNoticeHtml(event, vendor, laneSummaries, portalLink);
     const textBody = [
       `Estimados ${cleanText(vendor.vendor_name || vendor.domain || "team")},`,
@@ -8773,7 +8847,7 @@ async function generateRfxAwardNotices(
       "",
       portalLink ? `Bid Room: ${portalLink}` : null,
       "Gracias por participar.",
-      "MARKSMAN Procurement"
+      marksmanSignatureText(bidRoomFollowUpLanguage("", event, event.rfx_id))
     ].filter(Boolean).join("\n");
     const invitationIds = sortedGroup.map((item) => item.id).filter(Boolean);
     const laneIds = sortedGroup.map((item) => item.rfx_lane_id).filter(Boolean);

@@ -1675,6 +1675,10 @@ assert.match(rfxBidSource, /Pickup ETA/, "Carrier portal revision history should
 assert.match(apiSource, /rfx\.award\.closeout/, "API should audit RFx award closeout");
 assert.match(apiSource, /async function generateRfxAwardNotices/, "API should generate RFx award, backup, and not-awarded notice drafts");
 assert.match(apiSource, /notice_type: "rfx_award_closeout"/, "RFx award notices should be identifiable in outreach metadata");
+assert.match(apiSource, /MARKSMAN \| PRIVATE PROCUREMENT ROOM/, "RFx award notices should use the trusted branded email header");
+assert.match(apiSource, /awardNoticeTableHtml\(rows, language\)/, "RFx award notices should render a localized decision table");
+assert.match(apiSource, /marksmanSignatureHtml\(language\)/, "RFx award notices should include the complete MARKSMAN signature");
+assert.match(apiSource, /contextLabels = es/, "RFx award notices should include localized RFx context metadata");
 assert.match(apiSource, /rfx\.award\.notices\.generate/, "API should audit RFx award notice generation");
 assert.match(rfxServiceSource, /award_rfx_lane_vendor/, "RFx service should expose award decisions");
 assert.match(rfxServiceSource, /closeout_awarded_rfx_to_rateware/, "RFx service should expose Rateware closeout");
