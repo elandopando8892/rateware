@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Rateware Growth Hacking</title>
+    <link rel="stylesheet" href="./src/styles.css" />
+    <link rel="stylesheet" href="./src/growth-hacking.css" />
+  </head>
+  <body>
+    <div class="shell-layout">
+      <aside class="side-nav" aria-label="Rateware modules">
+        <a class="brand-mark" href="./app.html">Rateware</a>
+        <nav class="nav-groups"></nav>
+      </aside>
+
+      <div class="page-frame growth-page">
+        <header class="page-header">
+          <div>
+            <p class="eyebrow">Commercial growth workspace</p>
+            <h1>Growth Hacking</h1>
+            <nav class="module-crumbs" aria-label="Module context">
+              <a href="./business-intelligence.html">Analyze</a>
+              <span>Growth Hacking</span>
+            </nav>
+          </div>
+          <div class="page-header-actions">
+            <button id="open-import-button" class="page-primary-action" type="button">Importar CSV</button>
+            <form id="auth-form" class="auth-strip">
+              <button id="auth-button" type="submit">Log in</button>
+              <button id="sign-out-button" type="button" class="secondary hidden">Sign out</button>
+              <p id="auth-status" role="status"></p>
+            </form>
+          </div>
+        </header>
+
+        <main class="growth-workspace">
+          <nav id="growth-tabs" class="growth-tabs" aria-label="Growth Hacking workspaces">
+            <button class="active" type="button" data-growth-view="dashboard">Dashboard</button>
+            <button type="button" data-growth-view="segments">Segmentos</button>
+            <button type="button" data-growth-view="campaigns">Campañas</button>
+            <button type="button" data-growth-view="ai">AI Lab</button>
+            <button type="button" data-growth-view="results">Resultados</button>
+          </nav>
+
+          <div id="growth-global-status" class="growth-status hidden" role="status"></div>
+
+          <section id="growth-dashboard-view" class="growth-view active" data-growth-panel="dashboard">
+            <div class="growth-section-heading">
+              <div>
+                <p class="eyebrow">Today</p>
+                <h2>Pipeline comercial</h2>
+              </div>
+              <p>Importa, segmenta y prepara campañas sin duplicar el Shipper CRM.</p>
+            </div>
+
+            <section class="growth-metric-strip" aria-label="Growth metrics">
+              <button type="button" data-open-view="segments"><span>Shippers</span><strong id="growth-metric-shippers">-</strong></button>
+              <button type="button" data-open-view="segments"><span>Listos</span><strong id="growth-metric-ready">-</strong></button>
+              <button type="button" data-open-view="segments"><span>Segmentos</span><strong id="growth-metric-segments">-</strong></button>
+              <button type="button" data-open-view="campaigns"><span>Campañas</span><strong id="growth-metric-campaigns">-</strong></button>
+              <button type="button" data-open-view="results"><span>Respuestas</span><strong id="growth-metric-responses">-</strong></button>
+              <button type="button" data-open-view="results"><span>RFQs</span><strong id="growth-metric-rfqs">-</strong></button>
+              <button type="button" data-open-view="results"><span>Oportunidades</span><strong id="growth-metric-opportunities">-</strong></button>
+            </section>
+
+            <section class="growth-command-band">
+              <div class="growth-flow" aria-label="Commercial flow">
+                <span>CSV externo</span><i></i><span>Shipper CRM</span><i></i><span>Segmento</span><i></i><span>Campaña</span><i></i><span>Resultados</span>
+              </div>
+              <div class="growth-command-actions">
+                <button id="dashboard-import-button" type="button">Importar CSV</button>
+                <button type="button" class="secondary" data-open-view="segments">Crear segmento</button>
+                <button type="button" class="secondary" data-open-view="campaigns">Crear campaña</button>
+              </div>
+            </section>
+
+            <section id="growth-import-panel" class="growth-import-panel hidden" aria-labelledby="growth-import-title">
+              <header>
+                <div>
+                  <p class="eyebrow">Generic CSV importer</p>
+                  <h2 id="growth-import-title">Cargar cuentas y contactos al Shipper CRM</h2>
+                </div>
+                <button id="close-import-button" class="secondary" type="button">Cerrar</button>
+              </header>
+              <nav class="growth-stepper" aria-label="Import steps">
+                <button class="active" type="button" data-import-step="1"><b>1</b> Archivo</button>
+                <button type="button" data-import-step="2"><b>2</b> Mapear</button>
+                <button type="button" data-import-step="3"><b>3</b> Confirmar</button>
+              </nav>
+
+              <div class="growth-import-step active" data-import-panel="1">
+                <label class="growth-file-drop" for="growth-csv-file">
+                  <strong>Selecciona un CSV</strong>
+                  <span>Se mostrará un preview antes de modificar el CRM.</span>
+                  <input id="growth-csv-file" type="file" accept=".csv,text/csv" />
+                </label>
+                <label><span>Nombre de lista</span><input id="growth-source-list" placeholder="Ej. Expo Logistics 2026" /></label>
+                <div class="growth-inline-actions"><button id="read-growth-csv" type="button">Continuar al mapeo</button></div>
+              </div>
+
+              <div class="growth-import-step" data-import-panel="2">
+                <div class="growth-import-summary">
+                  <span id="growth-import-file-name">Sin archivo</span>
+                  <span id="growth-import-row-count">0 filas</span>
+                  <span id="growth-import-mapped-count">0 columnas mapeadas</span>
+                </div>
+                <div class="growth-table-scroll compact">
+                  <table class="growth-table growth-mapping-table">
+                    <thead><tr><th>Columna CSV</th><th>Campo Rateware</th><th>Muestra</th></tr></thead>
+                    <tbody id="growth-mapping-body"></tbody>
+                  </table>
+                </div>
+                <div class="growth-preview-block">
+                  <h3>Preview de filas</h3>
+                  <div id="growth-csv-preview" class="growth-table-scroll compact"></div>
+                </div>
+                <div class="growth-inline-actions split">
+                  <button class="secondary" type="button" data-import-back="1">Atrás</button>
+                  <button id="review-growth-import" type="button">Revisar importación</button>
+                </div>
+              </div>
+
+              <div class="growth-import-step" data-import-panel="3">
+                <div id="growth-import-review" class="growth-review-grid"></div>
+                <p class="growth-safety-note">Se crearán o vincularán cuentas y contactos en Shipper CRM. No se enviará ningún mensaje.</p>
+                <div class="growth-inline-actions split">
+                  <button class="secondary" type="button" data-import-back="2">Atrás</button>
+                  <button id="confirm-growth-import" type="button">Importar al Shipper CRM</button>
+                </div>
+                <div id="growth-import-result" class="growth-result-banner hidden"></div>
+              </div>
+            </section>
+
+            <section class="growth-priority-list">
+              <header><h3>Siguientes acciones</h3><span>Directas y verificables</span></header>
+              <button type="button" data-open-view="segments"><b>1</b><span><strong>Preparar audiencia</strong>Filtra cuentas listas y contactos válidos.</span><em>Segmentos</em></button>
+              <button type="button" data-open-view="campaigns"><b>2</b><span><strong>Crear campaña</strong>Define objetivo, oferta y mensajes.</span><em>Campañas</em></button>
+              <button type="button" data-open-view="results"><b>3</b><span><strong>Registrar respuesta</strong>Convierte interés en oportunidad o RFQ.</span><em>Resultados</em></button>
+            </section>
+          </section>
+
+          <section id="growth-segments-view" class="growth-view" data-growth-panel="segments">
+            <div class="growth-section-heading">
+              <div><p class="eyebrow">Shipper CRM filters</p><h2>Segmentos</h2></div>
+              <p>Las reglas consultan las cuentas y contactos existentes; no crean una base paralela.</p>
+            </div>
+            <div class="growth-segment-layout">
+              <section class="growth-filter-workbench">
+                <header><h3>Definir audiencia</h3><button id="clear-segment-filters" class="secondary" type="button">Limpiar</button></header>
+                <div class="growth-filter-grid">
+                  <label><span>Tipo de cuenta</span><select id="segment-account-type"><option value="shipper">Shipper</option><option value="unknown">Unknown</option><option value="carrier">Carrier</option><option value="broker_forwarder">Broker / Forwarder</option><option value="vendor">Vendor</option></select></label>
+                  <label><span>Estado de datos</span><select id="segment-data-status"><option value="ready">Ready</option><option value="needs_review">Needs Review</option><option value="duplicate">Duplicate</option><option value="excluded">Excluded</option><option value="not_shipper">Not Shipper</option></select></label>
+                  <label><span>Logistics fit</span><select id="segment-logistics-fit"><option value="">Todos</option><option value="cross_border">Cross-border</option><option value="intra_mexico">Intra-Mexico</option><option value="drayage_port">Drayage / Port</option><option value="time_critical">Time Critical</option><option value="dedicated">Dedicated</option><option value="refrigerated">Refrigerated</option><option value="flatbed_open_deck">Flatbed / Open Deck</option></select></label>
+                  <label><span>País</span><input id="segment-country" placeholder="Mexico, USA..." /></label>
+                  <label><span>Estado</span><input id="segment-state" placeholder="NL, TX..." /></label>
+                  <label><span>Industria</span><input id="segment-industry" placeholder="Automotive..." /></label>
+                  <label><span>Persona</span><input id="segment-persona" placeholder="Logistics leader..." /></label>
+                  <label><span>Título</span><input id="segment-title" placeholder="Director, Manager..." /></label>
+                  <label><span>Fuente / lista</span><input id="segment-source-list" placeholder="Nombre de lista" /></label>
+                  <label class="growth-check-field"><input id="segment-valid-email" type="checkbox" checked /><span>Solo email válido</span></label>
+                </div>
+                <div class="growth-save-row">
+                  <label><span>Nombre del segmento</span><input id="segment-name" placeholder="Ej. Shippers cross-border listos" /></label>
+                  <label><span>Estado</span><select id="segment-status"><option value="draft">Draft</option><option value="ready">Ready</option></select></label>
+                  <button id="preview-segment-button" class="secondary" type="button">Vista previa</button>
+                  <button id="save-segment-button" type="button">Guardar segmento</button>
+                </div>
+              </section>
+
+              <section class="growth-preview-pane">
+                <header><h3>Coincidencias</h3><div><strong id="segment-account-count">0</strong> cuentas · <strong id="segment-contact-count">0</strong> contactos</div></header>
+                <div class="growth-table-scroll">
+                  <table class="growth-table"><thead><tr><th>Cuenta</th><th>Industria</th><th>Fit</th><th>Contacto</th><th>Email</th></tr></thead><tbody id="segment-preview-body"><tr><td colspan="5" class="growth-empty-cell">Configura filtros y solicita una vista previa.</td></tr></tbody></table>
+                </div>
+              </section>
+            </div>
+            <section class="growth-list-section">
+              <header><h3>Segmentos guardados</h3><button id="refresh-segments-button" class="secondary" type="button">Actualizar</button></header>
+              <div class="growth-table-scroll short"><table class="growth-table"><thead><tr><th>Nombre</th><th>Estado</th><th>Cuentas</th><th>Contactos</th><th>Actualizado</th><th>Acción</th></tr></thead><tbody id="segments-table-body"></tbody></table></div>
+            </section>
+          </section>
+
+          <section id="growth-campaigns-view" class="growth-view" data-growth-panel="campaigns">
+            <div class="growth-section-heading">
+              <div><p class="eyebrow">Manual outbound preparation</p><h2>Campañas</h2></div>
+              <button id="new-campaign-button" type="button">Nueva campaña</button>
+            </div>
+            <div class="growth-campaign-layout">
+              <aside class="growth-campaign-list">
+                <header><h3>Campañas</h3><button id="refresh-campaigns-button" class="secondary" type="button">Actualizar</button></header>
+                <div id="campaign-list-body" class="growth-campaign-list-body"></div>
+              </aside>
+              <section class="growth-campaign-wizard">
+                <nav id="campaign-stepper" class="growth-stepper" aria-label="Campaign steps">
+                  <button class="active" data-campaign-step="1" type="button"><b>1</b> Objetivo</button>
+                  <button data-campaign-step="2" type="button"><b>2</b> Segmento</button>
+                  <button data-campaign-step="3" type="button"><b>3</b> Oferta</button>
+                  <button data-campaign-step="4" type="button"><b>4</b> Mensajes</button>
+                  <button data-campaign-step="5" type="button"><b>5</b> Exportar</button>
+                </nav>
+                <div class="growth-campaign-step active" data-campaign-panel="1">
+                  <h3>¿Qué resultado buscas?</h3>
+                  <div class="growth-form-grid two">
+                    <label><span>Nombre</span><input id="campaign-name" placeholder="Ej. Cross-border industrial Q3" /></label>
+                    <label><span>Objetivo</span><select id="campaign-objective"><option value="get_rfqs">Generar RFQs</option><option value="book_meetings">Agendar reuniones</option><option value="validate_contacts">Validar contactos</option><option value="reactivate_accounts">Reactivar cuentas</option></select></label>
+                  </div>
+                </div>
+                <div class="growth-campaign-step" data-campaign-panel="2">
+                  <h3>Selecciona una audiencia guardada</h3>
+                  <label><span>Segmento</span><select id="campaign-segment"><option value="">Selecciona un segmento</option></select></label>
+                  <div id="campaign-segment-summary" class="growth-selection-summary">Selecciona un segmento listo.</div>
+                </div>
+                <div class="growth-campaign-step" data-campaign-panel="3">
+                  <h3>Define una razón clara para responder</h3>
+                  <label><span>Offer / hook</span><select id="campaign-hook"><option value="cross_border_operation_review">Revisión de operación cross-border</option><option value="rate_visibility_review">Revisión de visibilidad tarifaria</option><option value="capacity_gap_review">Validación de gaps de capacidad</option><option value="rfq_readiness_review">Preparación para RFQ</option><option value="custom">Personalizado</option></select></label>
+                  <fieldset class="growth-channel-options"><legend>Canales incluidos en el CSV</legend><label><input type="checkbox" value="email" checked />Email</label><label><input type="checkbox" value="linkedin" checked />LinkedIn</label><label><input type="checkbox" value="call" checked />Call</label><label><input type="checkbox" value="whatsapp" />WhatsApp</label></fieldset>
+                </div>
+                <div class="growth-campaign-step" data-campaign-panel="4">
+                  <div class="growth-message-heading"><div><h3>Mensajes</h3><p>Edita el contenido antes de exportarlo.</p></div><span>Variables: {{first_name}} · {{account_name}} · {{campaign_name}}</span></div>
+                  <div id="campaign-messages" class="growth-message-list"><p class="growth-empty-cell">Guarda primero objetivo, segmento y oferta.</p></div>
+                </div>
+                <div class="growth-campaign-step" data-campaign-panel="5">
+                  <div class="growth-export-heading"><div><h3>Archivo de ejecución</h3><p>Una fila por contacto, con mensajes personalizados y sin envío automático.</p></div><span class="growth-neutral-badge">CSV ONLY</span></div>
+                  <div id="campaign-export-summary" class="growth-review-grid"></div>
+                  <div class="growth-table-scroll short"><table class="growth-table"><thead><tr><th>Cuenta</th><th>Contacto</th><th>Email</th><th>Estado</th></tr></thead><tbody id="campaign-member-preview"></tbody></table></div>
+                  <div class="growth-export-actions">
+                    <button id="download-campaign-messages-button" class="secondary" type="button">Descargar mensajes</button>
+                    <button id="mark-campaign-launched-button" class="secondary" type="button">Marcar como lanzada</button>
+                    <button id="export-campaign-button" type="button">Exportar audiencia CSV</button>
+                  </div>
+                </div>
+                <footer class="growth-wizard-footer">
+                  <button id="campaign-back-button" class="secondary" type="button">Atrás</button>
+                  <span id="campaign-save-status"></span>
+                  <button id="campaign-next-button" type="button">Continuar</button>
+                </footer>
+              </section>
+            </div>
+          </section>
+
+          <section id="growth-ai-view" class="growth-view" data-growth-panel="ai">
+            <div class="growth-section-heading">
+              <div><p class="eyebrow">Review-first assistant</p><h2>AI Lab</h2></div>
+              <p>Las sugerencias son reglas del MVP y requieren confirmación humana.</p>
+            </div>
+            <div class="growth-ai-layout">
+              <nav class="growth-ai-actions" aria-label="AI actions">
+                <button type="button" data-ai-action="recommend_segment"><strong>Recomendar segmento</strong><span>Prioriza registros listos.</span></button>
+                <button type="button" data-ai-action="generate_campaign"><strong>Generar campaña</strong><span>Propone objetivo y hook.</span></button>
+                <button type="button" data-ai-action="pain_hypothesis"><strong>Hipótesis de dolor</strong><span>Usa el logistics fit.</span></button>
+                <button type="button" data-ai-action="improve_message"><strong>Mejorar mensaje</strong><span>Reduce texto y aclara el CTA.</span></button>
+                <button type="button" data-ai-action="classify_response"><strong>Clasificar respuesta</strong><span>Sugiere outcome y acción.</span></button>
+                <button type="button" data-ai-action="next_action"><strong>Siguiente acción</strong><span>Propone un paso verificable.</span></button>
+              </nav>
+              <section class="growth-ai-console">
+                <label><span>Contexto</span><textarea id="growth-ai-input" rows="7" placeholder="Pega una respuesta, mensaje o describe el logistics fit..."></textarea></label>
+                <div id="growth-ai-output" class="growth-ai-output"><p>Selecciona una acción. AI propone; tú confirmas.</p></div>
+              </section>
+            </div>
+          </section>
+
+          <section id="growth-results-view" class="growth-view" data-growth-panel="results">
+            <div class="growth-section-heading">
+              <div><p class="eyebrow">Manual outcome ledger</p><h2>Resultados</h2></div>
+              <button id="refresh-results-button" class="secondary" type="button">Actualizar</button>
+            </div>
+            <section class="growth-metric-strip results" aria-label="Result metrics">
+              <div><span>Exportados</span><strong id="result-metric-exported">-</strong></div>
+              <div><span>Respuestas</span><strong id="result-metric-responses">-</strong></div>
+              <div><span>Interesados</span><strong id="result-metric-interested">-</strong></div>
+              <div><span>Referidos</span><strong id="result-metric-referrals">-</strong></div>
+              <div><span>Reuniones</span><strong id="result-metric-meetings">-</strong></div>
+              <div><span>RFQs</span><strong id="result-metric-rfqs">-</strong></div>
+              <div><span>Oportunidades</span><strong id="result-metric-opportunities">-</strong></div>
+              <div><span>Bajas / rebotes</span><strong id="result-metric-suppressed">-</strong></div>
+            </section>
+            <div class="growth-results-layout">
+              <section class="growth-result-entry">
+                <h3>Registrar respuesta</h3>
+                <label><span>Campaña</span><select id="result-campaign"><option value="">Selecciona una campaña</option></select></label>
+                <label><span>Contacto</span><select id="result-member"><option value="">Selecciona una cuenta o contacto</option></select></label>
+                <label><span>Resultado</span><select id="result-outcome"><option value="replied">Respondió</option><option value="interested">Interesado</option><option value="not_interested">No interesado</option><option value="wrong_person">Persona incorrecta</option><option value="referral">Referido</option><option value="send_info">Enviar información</option><option value="meeting_booked">Reunión agendada</option><option value="rfq_received">RFQ recibido</option><option value="opportunity_created">Oportunidad creada</option><option value="no_response">Sin respuesta</option><option value="unsubscribe">Do not contact</option><option value="bounce">Rebote</option></select></label>
+                <label><span>Notas</span><textarea id="result-notes" rows="4" placeholder="Qué respondió y qué contexto debemos conservar..."></textarea></label>
+                <label><span>Siguiente acción</span><input id="result-next-action" placeholder="Ej. Agendar discovery call" /></label>
+                <label><span>Seguimiento</span><input id="result-follow-up" type="datetime-local" /></label>
+                <button id="save-result-button" type="button">Guardar resultado</button>
+              </section>
+              <section class="growth-results-table">
+                <header><h3>Historial</h3><select id="results-campaign-filter"><option value="">Todas las campañas</option></select></header>
+                <div class="growth-table-scroll"><table class="growth-table"><thead><tr><th>Cuenta / contacto</th><th>Campaña</th><th>Resultado</th><th>Siguiente acción</th><th>Fecha</th><th>Acciones</th></tr></thead><tbody id="results-table-body"></tbody></table></div>
+              </section>
+            </div>
+          </section>
+        </main>
+      </div>
+    </div>
+
+    <script type="module" src="./src/growth-hacking.js"></script>
+  </body>
+</html>

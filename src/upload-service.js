@@ -44,11 +44,33 @@ export async function uploadRawFile(file, { vendorId = "", vendor = "", rfx = ""
 }
 
 export async function fetchUploadHistory({ status = "" } = {}) {
-  return (await callRatewareApi("list_uploads", { status })).rows;
+  const rows = [];
+  const pageSize = 1000;
+  const maxRows = 50000;
+  for (let offset = 0; offset < maxRows; offset += pageSize) {
+    const page = await callRatewareApi("list_uploads", {
+      status,
+      limit: pageSize,
+      offset
+    });
+    rows.push(...(Array.isArray(page.rows) ? page.rows : []));
+    if (!page.has_more) return rows;
+  }
+  throw new Error(`Upload History exceeds the ${maxRows.toLocaleString()} row safety limit. Narrow the status filter before loading it.`);
 }
 
 export async function fetchUploadStagedRows(rawUploadId) {
-  return (await callRatewareApi("list_upload_staged_rows", { raw_upload_id: rawUploadId })).rows;
+  const rows = [];
+  const pageSize = 1000;
+  for (let offset = 0; ; offset += pageSize) {
+    const page = await callRatewareApi("list_upload_staged_rows", {
+      raw_upload_id: rawUploadId,
+      limit: pageSize,
+      offset
+    });
+    rows.push(...(Array.isArray(page.rows) ? page.rows : []));
+    if (!page.has_more) return rows;
+  }
 }
 
 export async function bulkImportUploadTemplate(rawUploadId, {

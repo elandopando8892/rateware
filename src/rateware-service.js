@@ -56,6 +56,10 @@ export async function fetchRatewareOptions() {
   return await callRatewareApi("list_staging_options");
 }
 
+export async function searchRatewareLocations(search, { country = "", limit = 20 } = {}) {
+  return (await callRatewareApi("search_staging_locations", { search, country, limit })).rows || [];
+}
+
 export async function saveLocationAlias(alias) {
   return await callRatewareApi("save_location_alias", alias);
 }

@@ -199,6 +199,18 @@ Test an external tenant connection:
 5. Run `Sync templates`; the request must use the tenant row's `meta_waba_id`.
 6. Disconnect and confirm WhatsApp sends return `Connect your WhatsApp Business account before sending WhatsApp messages.`
 
+### Bid Room private link security
+
+Bid Room invitation links are bearer credentials. New invitations are stored as a SHA-256 digest plus a server-only encrypted recovery value; Rateware never returns the encrypted value to the browser. Existing plaintext links are accepted once and migrated when used.
+
+Set one server-side secret before deploying the invitation-token migration:
+
+```text
+RFX_INVITATION_TOKEN_ENCRYPTION_KEY=<independent random encryption secret>
+```
+
+For a controlled transition only, Rateware can fall back to `RFX_RFI_LINK_ENCRYPTION_KEY` or `GMAIL_TOKEN_ENCRYPTION_KEY` when the dedicated secret is not yet configured. Set the dedicated secret before applying `20260801023832_hash_rfx_bid_invitation_tokens.sql`, then redeploy `rateware-api` and `rfx-bid-api`. Do not commit this value or put it in browser environment variables.
+
 ### Outreach templates and Meta approval
 
 The WhatsApp copy stored in an Outreach template is the editorial source of truth. Meta still requires a separately registered and approved message template for business-initiated WhatsApp sends outside the customer-service window. Rateware deliberately separates those two responsibilities:

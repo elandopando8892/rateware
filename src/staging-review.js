@@ -3,7 +3,7 @@ import { createLocationMatchDrawer } from "./location-match-drawer.js";
 import { initSpreadsheetColumnFilters } from "./spreadsheet-column-filters.js";
 import { installSpreadsheetGrid } from "./spreadsheet-grid.js";
 import { initColumnVisibility, initDrawer, initLocationAutocomplete } from "./sheet-ui.js";
-import { archiveStagingRows, archiveStagingRowsByFilter, bulkUpdateStagingRows, enrichStagingLocationZips, fetchStagingDetail, fetchStagingFilterValues, fetchStagingOptions, fetchStagingPage, matchStagingVendors, matchStagingVendorsByFilter, removeStagingRows, removeStagingRowsByFilter, renormalizeStagingRows, saveLocationAlias, updateStagingRow, updateStagingRowsByFilter } from "./staging-service.js";
+import { archiveStagingRows, archiveStagingRowsByFilter, bulkUpdateStagingRows, enrichStagingLocationZips, fetchStagingDetail, fetchStagingFilterValues, fetchStagingOptions, fetchStagingPage, matchStagingVendors, matchStagingVendorsByFilter, removeStagingRows, removeStagingRowsByFilter, renormalizeStagingRows, saveLocationAlias, searchStagingLocations, updateStagingRow, updateStagingRowsByFilter } from "./staging-service.js";
 import { humanizeError } from "./error-copy.js";
 import { loadingState, tableErrorState, tableLoadingState, tableState } from "./ui-state.js";
 
@@ -2883,6 +2883,7 @@ initLocationAutocomplete({
   container: body,
   inputSelector: "[data-location-field]",
   getOptions: () => stagingOptions.locations || [],
+  searchOptions: (search) => searchStagingLocations(search),
   onSelect: ({ input, option }) => {
     const tableRow = input.closest("[data-row-id]");
     const prefix = input.dataset.locationField;

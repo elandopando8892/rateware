@@ -154,6 +154,13 @@ function formatMoney(value, currency = "USD") {
   return `${numberValue.toLocaleString(undefined, { maximumFractionDigits: 0 })} ${currency || "USD"}`;
 }
 
+function publicMetric(value, row = {}, formatter = formatNumber) {
+  if (row.quote_visibility === "hidden" && value === null) {
+    return state.language === "es" ? "Oculto" : "Hidden";
+  }
+  return formatter(value, row.currency);
+}
+
 function formatDateTime(value) {
   if (!value) return "-";
   const date = new Date(value);
@@ -895,9 +902,9 @@ function renderDetailDrawer(row, focusRequest = false) {
       <p>${escapeHtml(row.event?.customer || "Public marketplace")} | ${escapeHtml(row.event?.event_type || "rfx")}</p>
     </div>
     <div class="public-board-drawer-metrics">
-      <span><b>${formatNumber(row.quote_count)}</b><small>quotes</small></span>
-      <span><b>${formatMoney(row.best_rate, row.currency)}</b><small>best visible</small></span>
-      <span><b>${formatNumber(row.total_weekly_capacity)}</b><small>weekly cap</small></span>
+      <span><b>${publicMetric(row.quote_count, row)}</b><small>quotes</small></span>
+      <span><b>${publicMetric(row.best_rate, row, formatMoney)}</b><small>best visible</small></span>
+      <span><b>${publicMetric(row.total_weekly_capacity, row)}</b><small>weekly cap</small></span>
       <span>${renderCountdown(row, true)}</span>
     </div>
     <section class="public-board-detail-section">
@@ -966,9 +973,9 @@ function renderOpportunityCard(row) {
       <h3>${escapeHtml(row.route_label || "Lane pending")}</h3>
       <p>${escapeHtml(row.event?.customer || "Public marketplace")} | ${escapeHtml(row.event?.event_type || "rfx")}</p>
       <div class="public-opportunity-metrics">
-        <span><b>${formatNumber(row.quote_count)}</b><small>quotes</small></span>
-        <span><b>${formatMoney(row.best_rate, row.currency)}</b><small>best</small></span>
-        <span><b>${formatNumber(row.total_weekly_capacity)}</b><small>weekly cap</small></span>
+        <span><b>${publicMetric(row.quote_count, row)}</b><small>quotes</small></span>
+        <span><b>${publicMetric(row.best_rate, row, formatMoney)}</b><small>best</small></span>
+        <span><b>${publicMetric(row.total_weekly_capacity, row)}</b><small>weekly cap</small></span>
       </div>
       ${renderCountdown(row)}
       <div class="public-opportunity-tags">
@@ -1043,9 +1050,9 @@ function renderSheet(rows) {
               <td>${escapeHtml(row.lane?.destination || "-")}</td>
               <td>${escapeHtml([row.lane?.equipment, row.lane?.trailer].filter(Boolean).join(" / ") || "-")}</td>
               <td>${escapeHtml([row.lane?.operation, row.lane?.service].filter(Boolean).join(" / ") || "-")}</td>
-              <td>${formatNumber(row.quote_count)}</td>
-              <td>${formatMoney(row.best_rate, row.currency)}</td>
-              <td>${formatNumber(row.total_weekly_capacity)}</td>
+              <td>${publicMetric(row.quote_count, row)}</td>
+              <td>${publicMetric(row.best_rate, row, formatMoney)}</td>
+              <td>${publicMetric(row.total_weekly_capacity, row)}</td>
               <td>${publicLaneDetailSections(row).length ? "Available" : "-"}</td>
               <td>${renderCountdown(row, true)}</td>
               <td>${escapeHtml(formatDateTime(row.last_quote_at))}</td>

@@ -1,4 +1,4 @@
-import { corsHeaders, jsonResponse } from "../_shared/kinde.ts";
+import { corsHeaders, jsonResponse as baseJsonResponse } from "../_shared/kinde.ts";
 
 function cleanText(value: unknown) {
   if (value === null || value === undefined) return "";
@@ -6,7 +6,8 @@ function cleanText(value: unknown) {
 }
 
 Deno.serve(async (request) => {
-  if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders() });
+  const jsonResponse = (body: unknown, status = 200) => baseJsonResponse(body, status, request);
+  if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders(request) });
   if (request.method !== "POST") {
     return jsonResponse({ text: "Rateware Bid Room Chat app is online." });
   }

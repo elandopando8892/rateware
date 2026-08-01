@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 
 const apiSource = readFileSync(new URL("../supabase/functions/rateware-api/index.ts", import.meta.url), "utf8");
+const kindeSharedSource = readFileSync(new URL("../supabase/functions/_shared/kinde.ts", import.meta.url), "utf8");
 const createRawUploadSource = readFileSync(new URL("../supabase/functions/create-raw-upload/index.ts", import.meta.url), "utf8");
 const interpretUploadSource = readFileSync(new URL("../supabase/functions/interpret-upload/index.ts", import.meta.url), "utf8");
 const uploadHistorySource = readFileSync(new URL("../src/upload-history.js", import.meta.url), "utf8");
@@ -39,6 +40,7 @@ const catalogWorkbenchHtml = readFileSync(new URL("../catalog-workbench.html", i
 const interpretationMemorySource = readFileSync(new URL("../src/interpretation-memory.js", import.meta.url), "utf8");
 const interpretationMemoryHtml = readFileSync(new URL("../interpretation-memory.html", import.meta.url), "utf8");
 const carrierProfileApiSource = readFileSync(new URL("../supabase/functions/carrier-profile-api/index.ts", import.meta.url), "utf8");
+const shipperProfileApiSource = readFileSync(new URL("../supabase/functions/shipper-profile-api/index.ts", import.meta.url), "utf8");
 const rfxEventsSource = readFileSync(new URL("../src/rfx-events.js", import.meta.url), "utf8");
 const outreachHtml = readFileSync(new URL("../outreach.html", import.meta.url), "utf8");
 const dashboardSource = readFileSync(new URL("../src/dashboard.js", import.meta.url), "utf8");
@@ -112,6 +114,8 @@ const vendorContinuousImprovementMigration = readFileSync(new URL("../supabase/m
 const rfxProcessMigration = readFileSync(new URL("../supabase/migrations/20260710120000_rfx_process.sql", import.meta.url), "utf8");
 const vendorSegmentsCoverageMigration = readFileSync(new URL("../supabase/migrations/20260706143000_vendor_segments_coverage_filter.sql", import.meta.url), "utf8");
 const vendorProfileRequestsMigration = readFileSync(new URL("../supabase/migrations/20260706152000_vendor_profile_requests.sql", import.meta.url), "utf8");
+const vendorProfileTokenMigration = readFileSync(new URL("../supabase/migrations/20260801021411_hash_vendor_profile_request_tokens.sql", import.meta.url), "utf8");
+const rfxInvitationTokenMigration = readFileSync(new URL("../supabase/migrations/20260801023832_hash_rfx_bid_invitation_tokens.sql", import.meta.url), "utf8");
 const rfxLaneDetailSectionsMigration = readFileSync(new URL("../supabase/migrations/20260707170000_rfx_lane_detail_sections.sql", import.meta.url), "utf8");
 const rfxDefaultTemplateMigration = readFileSync(new URL("../supabase/migrations/20260708093000_enrich_rfx_default_invitation_template.sql", import.meta.url), "utf8");
 const rfxBilingualTemplateMigration = readFileSync(new URL("../supabase/migrations/20260708101500_simplify_bilingual_rfx_invitation_templates.sql", import.meta.url), "utf8");
@@ -134,6 +138,7 @@ const vendorWorkspaceSearchHardeningMigration = readFileSync(new URL("../supabas
 const vendorLifecycleUnificationMigration = readFileSync(new URL("../supabase/migrations/20260723225311_vendor_lifecycle_unification.sql", import.meta.url), "utf8");
 const workspaceRateScopeMigration = readFileSync(new URL("../supabase/migrations/20260722120000_scope_uploads_and_rates_by_workspace.sql", import.meta.url), "utf8");
 const workspaceRateFilterValuesMigration = readFileSync(new URL("../supabase/migrations/20260723235900_scope_rate_filter_values_by_workspace.sql", import.meta.url), "utf8");
+const publicApiHardeningMigration = readFileSync(new URL("../supabase/migrations/20260801015155_harden_public_data_api_access.sql", import.meta.url), "utf8");
 const rfxInvitationTableSource = rfxEventsSource.slice(rfxEventsSource.indexOf("function laneTableLabels"), rfxEventsSource.indexOf("function firstOutreachTarget"));
 const apiInvitationTableSource = apiSource.slice(apiSource.indexOf("function outreachLaneTableLabels"), apiSource.indexOf("function phoneForWhatsapp"));
 const marksmanSignatureAsset = new URL("../assets/marksman-email-signature.png", import.meta.url);
@@ -187,6 +192,7 @@ assert.match(rfxEventsSource, /loadVersion !== bidRoomChatLoadVersion \|\| selec
 assert.match(rfxEventsSource, /async function refreshOutreachStateForEvent\(eventId\)/, "Bid Room outreach mutations should share one event-scoped refresh guard");
 assert.match(rfxEventsSource, /fetchContactHistory\(\{ rfx_event_id: eventId, limit: 1000 \}\)/, "Bid Room should load contextual RFx contact history beyond the global startup cap");
 assert.match(rfxEventsSource, /fetchOutreachMessages\(\{ rfx_event_id: eventId, limit: 1000 \}\)/, "Bid Room should load enough RFx outreach rows for dashboard counts while Draft Queue remains paginated");
+assert.match(outreachServiceSource, /export async function fetchOutreachMessages[\s\S]+for \(let offset = 0; offset < maxRows; offset \+= pageSize\)[\s\S]+page\?\.has_more/, "Bid Room event history should accumulate all paginated Outreach rows instead of stopping at the first page");
 assert.match(rfxEventsSource, /if \(selectedEventId !== eventId\) return false;[\s\S]*contactHistoryRows = historyRows \|\| \[\];[\s\S]*outreachMessages = messageRows \|\| \[\];/, "Bid Room outreach refreshes should discard results after the active event changes");
 for (const mutationName of [
   "generateAwardNoticeDrafts",
@@ -389,6 +395,16 @@ for (const table of [
   assert.match(rfxProcessMigration, new RegExp(`create table if not exists public\\.${table}`), `RFx Process migration should create ${table}`);
 }
 assert.match(rfxProcessMigration, /token_hash text not null unique/, "Customer RFI magic links should store only hashed tokens");
+assert.match(rfxInvitationTokenMigration, /invitation_token_hash text/, "Bid Room invitation migration should add a token digest column");
+assert.match(rfxInvitationTokenMigration, /invitation_token_encrypted text/, "Bid Room invitation migration should add server-only encrypted recovery storage");
+assert.match(rfxInvitationTokenMigration, /alter column invitation_token drop not null/, "Bid Room invitation plaintext storage must be nullable for the migration path");
+assert.match(rfxInvitationTokenMigration, /rfx_lane_vendors_invitation_token_hash_unique_idx/, "Bid Room invitation token hashes must be unique");
+assert.match(apiSource, /async function newRfxInvitationTokenFields\(\)[\s\S]*invitation_token: null[\s\S]*invitation_token_hash[\s\S]*invitation_token_encrypted/, "New Bid Room invitations must store a hash and ciphertext instead of plaintext");
+assert.doesNotMatch(apiSource, /invitation_token:\s*randomToken\(\)/, "New Bid Room invitations must never persist a raw random token");
+assert.match(apiSource, /async function hydrateRfxInvitationTokens/, "Internal RFx workflows should recover invitation links only server-side");
+assert.match(rfxBidApiSource, /async function findInvitationByToken[\s\S]*\.eq\("invitation_token_hash", tokenHash\)/, "Carrier portal access should resolve invitation tokens by hash");
+assert.match(rfxBidApiSource, /async function migrateLegacyInvitationToken/, "Legacy Bid Room links should be migrated after successful use");
+assert.doesNotMatch(rfxBidApiSource, /\.eq\("invitation_token", token\)\.single\(\)/, "Carrier portal actions must not depend on plaintext invitation token lookup");
 const rfxRecoverableLinkMigration = readFileSync(new URL("../supabase/migrations/20260713220000_rfx_rfi_recoverable_links.sql", import.meta.url), "utf8");
 assert.match(rfxRecoverableLinkMigration, /token_encrypted text/, "New Customer RFI links should retain an encrypted token for fixed owner-visible URLs.");
 assert.match(rfxProcessMigration, /source_rfx_process_project_id uuid references public\.rfx_projects/, "Bid Room events should link back to RFx Process projects");
@@ -590,7 +606,8 @@ assert.match(outreachSource, /Showing \$\{formatCount\(messages\.length\)\} of \
 assert.match(outreachSource, /selected\$\{scope\}/, "Outreach bulk selection copy should disclose when only loaded campaign rows are selected");
 assert.match(outreachSource, /from the loaded \$\{formatCount\(messages\.length\)\} of \$\{formatCount\(messagePageInfo\.total\)\} campaign messages/, "Outreach bulk actions should disclose partial campaign scope before mutating rows");
 assert.match(outreachSource, /const rows = selectedOutreachMessageRows\(\);[\s\S]+const ids = rows\.map\(\(row\) => row\.id\)\.filter\(Boolean\);[\s\S]+selectedMessageIds = new Set\(ids\);/, "Outreach bulk actions should discard stale selected ids that are no longer loaded in the active scope");
-assert.match(apiSource, /body\.action === "list_contact_history"[\s\S]*const requestedLimit = Number\(body\.limit\)[\s\S]*Math\.min\(Math\.max\(requestedLimit, 25\), 1000\)[\s\S]*query = query\.range\(offset, offset \+ limit - 1\)/, "Contact history API should support bounded paging for campaign/vendor timelines");
+assert.match(apiSource, /body\.action === "list_contact_history"[\s\S]*const requestedLimit = Number\(body\.limit\)[\s\S]*Math\.min\(Math\.max\(requestedLimit, 25\), 1000\)[\s\S]*count: "exact"[\s\S]*\.order\("id", \{ ascending: false \}\)[\s\S]*has_more: offset \+ rows\.length < total/, "Contact history API should provide stable bounded paging metadata for campaign/vendor timelines");
+assert.match(outreachServiceSource, /export async function fetchContactHistory[\s\S]+for \(let offset = 0; offset < maxRows; offset \+= pageSize\)[\s\S]+page\?\.has_more/, "Contact History consumers should load every page for an event timeline");
 assert.match(apiSource, /display_phone_number: cleanText\(data\.display_phone_number\)/, "WhatsApp connection test should return display phone number at top level");
 assert.match(apiSource, /quality_rating: cleanText\(data\.quality_rating\)/, "WhatsApp connection test should return quality rating at top level");
 assert.doesNotMatch(apiSource, /provider_response:\s*\{\s*id:\s*data\.id/, "WhatsApp connection test should not expose raw provider phone number id");
@@ -1553,6 +1570,15 @@ assert.doesNotMatch(rfxBidApiSource, /if \(status === "draft"\) return "live"/, 
 assert.match(publicBidBoardApiSource, /carrier_identity_visible: false/, "Public Bid Room board should hide carrier identity");
 assert.doesNotMatch(publicBidBoardApiSource, /vendors\(/, "Public Bid Room board should not join carrier vendor records");
 assert.doesNotMatch(publicBidBoardApiSource, /invitation_token/, "Public Bid Room board should not expose invitation tokens");
+assert.doesNotMatch(publicBidBoardApiSource, /target_rate/, "Public Bid Room board should not select or expose the shipper target rate");
+assert.match(rfxBidApiSource, /ratesVisible = visibilityMode === "open_leaderboard"/, "Public Bid Room should only expose quote economics in open leaderboard mode");
+assert.match(rfxBidApiSource, /quote_visibility: ratesVisible \? "open" : "hidden"/, "Public Bid Room should label redacted quote economics explicitly");
+assert.match(rfxBidApiSource, /activity_visibility: activityVisible \? "visible" : "hidden"/, "Private Bid Rooms should redact competitor activity");
+assert.match(rfxBidApiSource, /async function fetchAllPublicBoardRows[\s\S]+chunkPublicBoardIds/, "Public Bid Room should page and chunk event child reads");
+assert.match(rfxBidApiSource, /fetchAllPublicBoardRows\(\s*supabase,\s*"rfx_lanes"/, "Public Bid Room should load every lane page");
+assert.match(rfxBidApiSource, /fetchAllPublicBoardRows\(\s*supabase,\s*"rfx_lane_vendors"/, "Public Bid Room should load every quote page");
+assert.doesNotMatch(publicBidBoardApiSource, /\.limit\(10000\)/, "Public Bid Room should not silently cap quote reads at 10,000 rows");
+assert.match(bidRoomBoardSource, /function publicMetric\(value, row = \{\}, formatter = formatNumber\)/, "Public Bid Room UI should label redacted metrics instead of rendering misleading zeros");
 assert.match(publicBidInviteApiSource, /\.from\("contact_history"\)\.insert/, "Public invitation requests should be recorded in contact history");
 assert.match(publicBidInviteApiSource, /status: "requested_invite"/, "Public invitation requests should use requested_invite status");
 assert.match(publicBidInviteApiSource, /source: "public_bid_room_board"/, "Public invitation requests should be traceable to the public marketplace");
@@ -1565,6 +1591,8 @@ assert.match(publicBidFindInviteApiSource, /matched_lane_ids/, "Public invitatio
 assert.match(publicBidFindInviteApiSource, /matched_invitations/, "Public invitation lookup should return safe invitation metadata without exposing private tokens");
 assert.match(publicBidFindInviteApiSource, /const sendLinks = cleanBoolean\(input\.send_links\) === true/, "Public invitation lookup should only send replacement links when explicitly requested");
 assert.match(publicBidFindInviteApiSource, /if \(!sendLinks\)[\s\S]*access_checked: true/, "Public invitation lookup should support a no-email access check for invited carriers");
+assert.match(rfxBidApiSource, /async function publicSoftLoginCooldown[\s\S]+PUBLIC_SOFT_LOGIN_COOLDOWN_MS/, "Private link recovery should have a server-side cooldown");
+assert.match(publicBidFindInviteApiSource, /publicSoftLoginCooldown\(supabase, email\)[\s\S]+status: 429/, "Private link recovery should reject repeated sends instead of spamming email");
 assert.doesNotMatch(publicBidFindInviteApiSource, /matched_invitations:[\s\S]*privateBidLink/, "Public invitation access metadata should not expose private token links");
 assert.match(publicBidFindInviteApiSource, /GMAIL_ALLOWED_SENDER/, "Public invitation lookup should use the approved Gmail sender as a legacy fallback owner");
 assert.match(publicBidFindInviteApiSource, /sendGmailMessageForOwner/, "Public invitation lookup should email private links instead of returning tokens");
@@ -2443,6 +2471,9 @@ assert.match(vendorImprovementSource, /async function closeCase\(rowElement, cas
 assert.match(vendorImprovementSource, /scorecardMutationIds\.has\(vendorId\)/, "Vendor CI should prevent duplicate scorecard saves");
 assert.doesNotMatch(vendorImprovementSource, /fetchVendors\(\{ base_stage: "procurement"/, "Vendor CI create-case picker should not be limited to Procurement vendors");
 assert.match(apiSource, /async function buildVendorValueCurve/, "Vendor CI API should compute the carrier value curve from all CRM vendors");
+assert.match(apiSource, /async function fetchVendorCiSignalRows[\s\S]+for \(let offset = 0; offset < VENDOR_CI_SIGNAL_MAX_ROWS; offset \+= VENDOR_CI_SIGNAL_PAGE_SIZE\)[\s\S]+fetchPage\(offset, VENDOR_CI_SIGNAL_PAGE_SIZE\)/, "Vendor CI signals should page through the full workspace instead of stopping at a fixed sample");
+const vendorValueCurveSource = apiSource.slice(apiSource.indexOf("async function buildVendorValueCurve"), apiSource.indexOf("async function refreshVendorValueCurve"));
+assert.doesNotMatch(vendorValueCurveSource, /\.limit\(10000\)/, "Vendor CI value scoring must not silently cap Bid Room, contact, chat, or CI signals");
 assert.match(apiSource, /fetchVendorRateMetricsSafe\(supabase, user\)/, "Vendor CI value curve should include Rateware quote signals");
 assert.match(apiSource, /\.from\("rfx_lane_vendors"\)/, "Vendor CI value curve should include Bid Room participation and award signals");
 assert.match(apiSource, /\.from\("contact_history"\)/, "Vendor CI value curve should include support and outreach signals");
@@ -2463,6 +2494,29 @@ assert.match(apiSource, /lane_table_signature: context\.lane_table_signature/, "
 assert.match(apiSource, /const completeInvitationGroups = new Map/, "Outreach draft generation should hydrate complete event/vendor lane groups before rendering templates");
 assert.match(apiSource, /async function ensureRfxEventVendorCoverage/, "Outreach draft generation should complete selected carrier coverage across the event business book");
 assert.match(apiSource, /body\.action === "list_rfx_detail"[\s\S]+ensureRfxEventVendorCoverage/, "Opening an active RFx should repair incomplete carrier lane coverage before rendering the business book");
+assert.match(apiSource, /async function fetchAllRfxLaneRows[\s\S]+fetchAllRfxEventRows\(supabase, "rfx_lanes"/, "RFx lane reads should paginate beyond the Supabase response limit");
+assert.match(apiSource, /async function fetchApprovedRateRows[\s\S]+\.eq\("owner_email", user\.owner_email\)[\s\S]+\.range\(offset, offset \+ pageSize - 1\)/, "Bid Room benchmarks must stay tenant-isolated and paginate every approved rate");
+assert.match(apiSource, /function vendorSearchClauses[\s\S]+legal_name\.ilike[\s\S]+secondary_emails\.cs/, "Carrier CRM search should cover legal names and exact secondary email addresses server-side");
+assert.match(apiSource, /async function fetchBusinessIntelligenceRows[\s\S]+\.eq\("owner_email", user\.owner_email\)/, "Analyze must scope Rateware signals to the authenticated workspace");
+const dashboardSummarySource = apiSource.slice(apiSource.indexOf('if (body.action === "dashboard_summary")'), apiSource.indexOf('if (body.action === "book_audit")'));
+assert.match(dashboardSummarySource, /raw_uploads[\s\S]+\.eq\("owner_email", user\.owner_email\)/, "Dashboard upload counts must remain workspace-scoped");
+assert.match(dashboardSummarySource, /rate_staging[\s\S]+\.eq\("owner_email", user\.owner_email\)/, "Dashboard rate counts must remain workspace-scoped");
+const bookAuditSource = apiSource.slice(apiSource.indexOf('if (body.action === "book_audit")'), apiSource.indexOf('if (body.action === "list_vendor_unmatched_ids")'));
+assert.match(bookAuditSource, /const approvedHead = \(\) =>[\s\S]+\.eq\("owner_email", user\.owner_email\)/, "Ratebook audit counts must remain workspace-scoped");
+assert.match(apiSource, /async function fetchAllOwnedRfxEvents[\s\S]+\.range\(offset, offset \+ RFX_EVENT_CHILD_PAGE_SIZE - 1\)/, "RFx event reads should paginate beyond the Supabase response limit");
+assert.match(apiSource, /async function fetchAllOwnedRfxPackages[\s\S]+\.range\(offset, offset \+ RFX_EVENT_CHILD_PAGE_SIZE - 1\)/, "Ratebook package reads should paginate beyond the Supabase response limit");
+assert.match(apiSource, /async function fetchAllOwnedRfxRatebooks[\s\S]+\.range\(offset, offset \+ RFX_EVENT_CHILD_PAGE_SIZE - 1\)/, "Persisted Ratebook reads should paginate instead of using oversized package filters");
+assert.match(apiSource, /async function fetchAllRatebookPackageRows[\s\S]+chunkValues\(ids, RATEBOOK_PACKAGE_QUERY_CHUNK_SIZE\)/, "Ratebook lanes and segments should load in bounded package batches");
+assert.match(apiSource, /async function fetchAllRatebookShares[\s\S]+chunkValues\(ids, RATEBOOK_PACKAGE_QUERY_CHUNK_SIZE\)/, "Ratebook share counts should load in bounded Ratebook batches");
+assert.match(apiSource, /body\.action === "list_rfx_events"[\s\S]+fetchAllOwnedRfxEvents\(supabase, user\.owner_email\)[\s\S]+fetchAllRfxEventRows\(supabase, "rfx_lanes"/, "RFx event counts should use all events and lanes, not only the first response page");
+assert.match(apiSource, /findBidRoomEventsForShipper[\s\S]+fetchAllOwnedRfxEvents\(supabase, user\.owner_email, selectColumns, \{ includeArchived: true \}\)/, "Shipper CRM should associate every matching Bid Room event, including historical events, instead of capped term searches");
+assert.match(apiSource, /async function syncBidRoomEventsForRatebookScope[\s\S]+fetchAllOwnedRfxEvents/, "Ratebook consolidation should inspect all eligible Bid Room events, not a fixed first page");
+assert.match(apiSource, /async function syncBidRoomEventsForRatebookScope[\s\S]+mapWithConcurrency\(eligibleEvents, RATEBOOK_SYNC_CONCURRENCY/, "Ratebook event sync should use bounded concurrency instead of serializing a full workspace");
+assert.match(apiSource, /async function syncBidRoomEventsForRatebookScope[\s\S]+failed,[\s\S]+rows:/, "A failed Bid Room source should be isolated instead of blocking every Ratebook");
+assert.match(apiSource, /async function listRatebooks[\s\S]+fetchAllOwnedRfxPackages/, "Ratebook listing should not truncate consolidated packages at a fixed UI limit");
+assert.match(apiSource, /async function listRatebooks[\s\S]+fetchAllRatebookPackageRows[\s\S]+fetchAllOwnedRfxRatebooks[\s\S]+fetchAllRatebookShares/, "Ratebook consolidation should avoid oversized filters for routes, books, and share counts");
+assert.match(apiSource, /mapWithConcurrency\(bidRoomEvents, RATEBOOK_SYNC_CONCURRENCY/, "Shipper CRM should synchronize every matching Bid Room event with bounded concurrency");
+assert.match(apiSource, /const eventKeys = \[[\s\S]+catalogKey\(event\.customer\),[\s\S]+catalogKey\(event\.name\)/, "Shipper CRM event matching should inspect both customer and event name");
 assert.match(apiSource, /coverage_sync: \{ inserted: coverageInserted \}/, "RFx detail should report whether lane coverage was repaired");
 assert.match(apiSource, /async function fetchAllRfxLaneVendorRows[\s\S]+\.range\(offset, offset \+ RFX_LANE_VENDOR_PAGE_SIZE - 1\)/, "RFx participant reads should paginate beyond the Supabase 1000-row response limit");
 assert.match(apiSource, /body\.action === "list_rfx_detail"[\s\S]+fetchAllRfxLaneVendorRows\(supabase, event\.id, invitationColumns\)/, "RFx detail should hydrate every carrier-lane row before grouping bids by lane");
@@ -2470,7 +2524,8 @@ assert.match(apiSource, /async function ensureRfxEventVendorCoverage[\s\S]+fetch
 assert.match(apiSource, /Query by event instead of sending hundreds of vendor ids/, "RFx detail coverage repair should avoid oversized vendor-id filters");
 assert.doesNotMatch(apiSource, /async function ensureRfxEventVendorCoverage[\s\S]+?\.in\("vendor_id", uniqueVendorIds\)/, "RFx detail coverage repair must not send the full audience as a PostgREST in-filter");
 assert.match(apiSource, /outreachEventLaneRows\(eventLaneRows, invitationGroup\)/, "Outreach drafts should render every active event lane in the carrier business book");
-assert.match(apiSource, /const eventLaneCount = eventLanesResult\.data\?\.length \|\| 0/, "Outreach audience should know the total event lane count");
+assert.match(apiSource, /fetchAllRfxLaneRows\(supabase, cleanText\(event\.id\) \|\| "", "\*"\)[\s\S]+const routeBookRows = outreachEventLaneRows/, "Targeted Bid Room follow-up emails should load the complete paginated Business Book");
+assert.match(apiSource, /const eventLaneCount = eventLaneRows\.length/, "Outreach audience should know the total event lane count");
 assert.match(apiSource, /requestedGroupKeys\.has\(key\)/, "Outreach draft generation should only expand lane groups for requested event/vendor participants");
 assert.match(apiSource, /\.in\("vendor_id", vendorChunk\)[\s\S]+\.range\(offset, offset \+ 999\)/, "Outreach lane hydration should paginate only the requested carriers instead of scanning the full event");
 assert.match(apiSource, /sortRfxInvitationGroup\(completeInvitationGroups\.get\(groupKey\) \|\| requestedInvitationGroup\)/, "Outreach drafts should render stable complete route tables per carrier");
@@ -2535,6 +2590,7 @@ assert.match(rfxEventsSource, /idempotency_key: idempotencyKey/, "Bid Room shoul
 assert.match(rfxEventsSource, /function laneTableSignatureForTargets/, "Bid Room UI should fingerprint current carrier lane groups");
 assert.match(rfxEventsSource, /function allOutreachTargetInvitations/, "Bid Room preview should be able to render every active event lane for the selected carrier");
 assert.match(rfxEventsSource, /function outreachPreviewLaneRows/, "Bid Room live preview should resolve the complete active event route book");
+assert.match(rfxEventsSource, /function outreachPreviewLaneRows[\s\S]+const scopedLanes = currentLanes;/, "Bid Room live preview should ignore lane action checkbox state and show every event lane");
 assert.match(rfxEventsSource, /const targetRows = outreachPreviewLaneRows\(target\)/, "Bid Room live preview should render all event lanes instead of only the first carrier invitation");
 assert.match(rfxEventsSource, /const sourceTargets = selectedOnly \? outreachTargetInvitations\(\) : allOutreachTargetInvitations\(\)/, "Bid Room preview should default to the full carrier lane package, not only the selected row");
 assert.match(rfxEventsSource, /function draftMatchesCurrentLaneTable/, "Bid Room UI should compare draft route-table signatures against current lanes");
@@ -2549,6 +2605,11 @@ assert.doesNotMatch(outreachSignatureSource, /updated_at:/, "Outreach draft fres
 assert.match(rfxEventsSource, /&& !isStaleOutreachDraft\(message\)/, "Stale outreach drafts should not be selectable for email, WhatsApp, or group sends");
 const bulkActionSource = apiSource.slice(apiSource.indexOf('if (body.action === "bulk_rate_rows_by_filter")'));
 assert.ok(bulkActionSource.length > 100, "bulk filtered action block should be present");
+assert.doesNotMatch(
+  apiSource,
+  /async function fetchBulkRateRowsByFilter/,
+  "legacy unscoped Edge Function bulk row scans must not be available for future bulk actions"
+);
 assert.doesNotMatch(
   bulkActionSource,
   /fetchBulkRateRowsByFilter/,
@@ -2887,10 +2948,21 @@ assert.match(uploadHistorySource, /function shouldSplitBulkImportError/, "struct
 assert.match(uploadHistorySource, /async function importBulkBatchAdaptive/, "structured upload import should retry heavy batches as smaller chunks");
 assert.match(apiSource, /async function fetchScopedTemplateLocations/, "structured upload import should scope location catalog reads per batch");
 assert.match(apiSource, /function templateLocationScope/, "structured upload import should derive location scope from source rows");
+const scopedTemplateLocationsSource = apiSource.slice(apiSource.indexOf("async function fetchScopedTemplateLocations"), apiSource.indexOf("function templateMileageKeys"));
+assert.match(scopedTemplateLocationsSource, /const fetchPaged = async/, "scoped location lookups should paginate every matching catalog chunk");
+assert.match(scopedTemplateLocationsSource, /const key = cleanText\(row\.id\) \|\| \[row\.source, row\.country, row\.location_key, row\.raw_value\]/, "scoped location lookups should preserve MX, US, and CA candidates with colliding location keys");
+assert.doesNotMatch(scopedTemplateLocationsSource, /\.limit\(5000\)|\.limit\(8000\)|\.limit\(3000\)/, "scoped location lookups must not truncate high-density states or fallback catalogs");
 assert.match(apiSource, /async function fetchScopedTemplateMileage/, "structured upload import should avoid loading the full mileage catalog");
+const templateMileageKeysSource = apiSource.slice(apiSource.indexOf("function templateMileageKeys"), apiSource.indexOf("async function fetchScopedTemplateMileage"));
+const scopedTemplateMileageSource = apiSource.slice(apiSource.indexOf("async function fetchScopedTemplateMileage"), apiSource.indexOf("function rowHasRateSignal"));
+assert.doesNotMatch(templateMileageKeysSource, /\.slice\(0, 1000\)/, "mileage lookup keys must not drop lanes after 1,000 candidates");
+assert.match(scopedTemplateMileageSource, /\.range\(offset, offset \+ pageSize - 1\)/, "mileage lookups should paginate all matching route keys");
+assert.doesNotMatch(scopedTemplateMileageSource, /\.limit\(1000\)/, "mileage lookups must not truncate a route-key batch after 1,000 rows");
 const bulkImportSource = apiSource.slice(apiSource.indexOf("async function bulkImportStructuredUpload"), apiSource.indexOf("function normalizeOutreachTemplate"));
 assert.ok(bulkImportSource.length > 100, "bulk structured import helper should be present");
 assert.match(bulkImportSource, /const vendorsPromise = inheritedVendorId[\s\S]*Promise\.resolve/, "bulk import should skip full vendor lookup when upload already has a vendor");
+assert.match(bulkImportSource, /fetchAllManagedCatalogRows\(supabase, null\)/, "bulk import should normalize against the complete operational catalog");
+assert.doesNotMatch(bulkImportSource, /rateware_catalog_items"\)[\s\S]*\.limit\(10000\)/, "bulk import must not truncate operational catalog values after 10,000 rows");
 assert.doesNotMatch(bulkImportSource, /rateware_locations"\)[\s\S]*limit\(20000\)/, "bulk import should not load all location rows");
 assert.doesNotMatch(bulkImportSource, /rateware_lane_mileage"\)[\s\S]*limit\(20000\)/, "bulk import should not load all mileage rows");
 assert.match(uploadBulkImportIndexesMigration, /rateware_locations_state_active_idx/, "bulk import should have state lookup index support");
@@ -2906,6 +2978,10 @@ assert.match(apiLocationMatchSource, /for \(const bucket of index\.values\(\)\) 
 assert.match(interpretLocationMatchSource, /for \(const bucket of index\.values\(\)\) \{\s*for \(const location of bucket\)/, "Interpretation matching must score every country candidate in a colliding catalog bucket");
 assert.match(interpretUploadSource, /const originCountryHint = cleanBoolean\(row\.origin_match_manual\) \? row\.origin_country : null;/, "interpretation re-normalization must not preserve an automatic wrong origin country");
 assert.match(interpretUploadSource, /const destinationCountryHint = cleanBoolean\(row\.destination_match_manual\) \? row\.destination_country : null;/, "interpretation re-normalization must not preserve an automatic wrong destination country");
+assert.match(interpretUploadSource, /async function fetchAllActiveReferenceRows/, "Interpretation should page reference catalogs instead of relying on a fixed sample");
+assert.match(interpretUploadSource, /fetchAllActiveReferenceRows\(supabase, "rateware_locations"/, "Interpretation should load the full location catalog for matching");
+assert.doesNotMatch(interpretUploadSource, /rateware_locations"\)\.select\([^\n]+\)\.eq\("active", true\)\.limit\(20000\)/, "Interpretation must not truncate locations after 20,000 rows");
+assert.doesNotMatch(interpretUploadSource, /rateware_catalog_items"\)\.select\([^\n]+\)\.eq\("active", true\)\.limit\(20000\)/, "Interpretation must not truncate operational catalog values after 20,000 rows");
 assert.match(apiSource, /function profileExplicitCountry/, "API location matching should derive one explicit country guard");
 assert.match(interpretUploadSource, /function profileExplicitCountry/, "Interpretation matching should derive one explicit country guard");
 assert.match(apiSource, /if \(explicitCountry\) return country === explicitCountry;/, "API location matching should reject blank or wrong-country candidates when text is explicit");
@@ -2955,11 +3031,35 @@ for (const locationAlias of [
   assert.match(laneLocationCountryZipGuardsMigration, new RegExp(locationAlias.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")), `${locationAlias} should be protected by country/ZIP catalog guards`);
 }
 assert.match(laneLocationCountryZipGuardsMigration, /rateware_locations_country_zip_active_idx/, "lane normalization should have country/ZIP lookup support");
+const listLocationCatalogValuesSource = apiSource.slice(apiSource.indexOf('if (body.action === "list_location_catalog_values")'), apiSource.indexOf('if (body.action === "save_location_catalog_value")'));
+assert.match(apiSource, /async function fetchAllLocationCatalogRows/, "Catalog workbench should page the full location catalog before filtering");
+assert.match(listLocationCatalogValuesSource, /fetchAllLocationCatalogRows\(supabase, \{ country: resolvedCountry, activeOnly \}\)/, "Catalog workbench should filter the complete country-scoped catalog");
+assert.doesNotMatch(listLocationCatalogValuesSource, /\.limit\(10000\)/, "Catalog workbench must not silently omit locations after 10,000 rows");
+const listCatalogValuesSource = apiSource.slice(apiSource.indexOf('if (body.action === "list_catalog_values")'), apiSource.indexOf('if (body.action === "save_catalog_value")'));
+assert.match(apiSource, /async function fetchAllManagedCatalogRows/, "Operational catalog values should page all available values");
+assert.match(listCatalogValuesSource, /fetchAllManagedCatalogRows\(supabase, resolvedCategory\)/, "Operational dropdowns should use the complete requested catalog category");
+assert.doesNotMatch(listCatalogValuesSource, /\.limit\(5000\)/, "Operational dropdowns must not silently omit values after 5,000 rows");
 const renormalizeRowsSource = apiSource.slice(apiSource.indexOf("async function renormalizeRateRows"), apiSource.indexOf("async function saveRatewareLocationAlias"));
 assert.match(renormalizeRowsSource, /fetchScopedTemplateLocations/, "rate row re-normalization should use scoped location lookup");
 assert.match(renormalizeRowsSource, /fetchScopedTemplateMileage/, "rate row re-normalization should use scoped mileage lookup");
+assert.match(renormalizeRowsSource, /fetchAllManagedCatalogRows\(supabase, null\)/, "rate row re-normalization should use the complete operational catalog");
 assert.doesNotMatch(renormalizeRowsSource, /rateware_locations"\)[\s\S]*limit\(20000\)/, "rate row re-normalization should not load all location rows");
 assert.doesNotMatch(renormalizeRowsSource, /rateware_lane_mileage"\)[\s\S]*limit\(20000\)/, "rate row re-normalization should not load all mileage rows");
+const enrichMissingLocationZipsSource = apiSource.slice(apiSource.indexOf("async function enrichMissingLocationZips"), apiSource.indexOf("async function fetchVendorRowsForRateMatching"));
+assert.match(enrichMissingLocationZipsSource, /fetchAllLocationCatalogRows\(supabase, \{ activeOnly: true \}\)/, "missing ZIP enrichment should use the complete active location catalog");
+assert.doesNotMatch(enrichMissingLocationZipsSource, /\.limit\(20000\)/, "missing ZIP enrichment must not truncate locations after 20,000 rows");
+const rfxAwardCloseoutSource = apiSource.slice(apiSource.indexOf("async function closeoutAwardedRfxToRateware"), apiSource.indexOf("function awardNoticeOutcome"));
+assert.match(rfxAwardCloseoutSource, /fetchAllManagedCatalogRows\(supabase, null\)/, "Bid Room closeout should normalize awards against the complete operational catalog");
+assert.doesNotMatch(rfxAwardCloseoutSource, /rateware_catalog_items"\)[\s\S]*\.limit\(10000\)/, "Bid Room closeout must not truncate operational catalog values after 10,000 rows");
+const stagingOptionsSource = apiSource.slice(apiSource.indexOf('if (body.action === "list_staging_options")'), apiSource.indexOf('if (body.action === "update_staging")'));
+assert.match(apiSource, /body\.action === "search_staging_locations"/, "Spreadsheet location autocomplete should support a server-side search action");
+assert.match(apiSource, /raw_value\.ilike/, "Server-side location search should query catalog location text directly");
+assert.match(stagingOptionsSource, /\.limit\(250\)/, "Initial spreadsheet metadata should stay lightweight while typing uses server-side search");
+assert.match(stagingOptionsSource, /fetchAllManagedCatalogRows\(supabase, null\)/, "Spreadsheet operational dropdowns should load the complete managed catalog");
+assert.doesNotMatch(stagingOptionsSource, /rateware_catalog_items"\)[\s\S]*\.limit\(5000\)/, "Spreadsheet operational dropdowns must not truncate catalog values after 5,000 rows");
+assert.match(sheetUiSource, /searchOptions/, "Spreadsheet autocomplete should support asynchronous server-side location results");
+assert.match(stagingReviewSource, /searchOptions: \(search\) => searchStagingLocations\(search\)/, "Staging should query locations server-side while typing");
+assert.match(ratewareSource, /searchOptions: \(search\) => searchRatewareLocations\(search\)/, "Rateware should query locations server-side while typing");
 assert.match(interpretUploadSource, /expected_rate_rows/, "AI interpretation summary should report expected source rows");
 assert.match(interpretUploadSource, /source_table_count/, "AI interpretation summary should report source table count");
 assert.match(interpretUploadSource, /carrier_response_scope/, "AI interpretation audit should document carrier response scope");
@@ -3077,6 +3177,9 @@ assert.match(vendorMetricRpcMigration, /not public\.rateware_is_generic_email_do
 assert.match(apiSource, /async function fetchVendorRateMetrics/, "API should fetch vendor metrics through database RPC");
 assert.match(apiSource, /vendor_rate_metrics_for_owner/, "API should call vendor rate metrics RPC");
 assert.match(apiSource, /async function fetchVendorRateMetricsSafe/, "Vendor metric enrichment should have a safe fallback");
+const vendorBidMetricsSource = apiSource.slice(apiSource.indexOf("async function fetchVendorBidMetrics"), apiSource.indexOf("async function fetchVendorBidMetricsSafe"));
+assert.match(vendorBidMetricsSource, /for \(let offset = 0; offset < maxRows; offset \+= pageSize\)[\s\S]+\.order\("id", \{ ascending: true \}\)[\s\S]+\.range\(offset, offset \+ pageSize - 1\)/, "Bid Room metrics should page all carrier activity with a stable order");
+assert.doesNotMatch(vendorBidMetricsSource, /\.limit\(10000\)/, "Bid Room CRM metrics should not silently truncate after 10,000 invitations");
 assert.match(apiSource, /Quote metrics are temporarily unavailable/, "Vendor metric fallback should explain partial CRM loading");
 const listVendorsSource = apiSource.slice(apiSource.indexOf('if (body.action === "list_vendors")'), apiSource.indexOf('if (body.action === "vendor_intelligence")'));
 assert.ok(listVendorsSource.length > 100, "list vendors block should be present");
@@ -3129,6 +3232,14 @@ assert.match(apiSource, /coverage_filter: coverageFilter/, "Vendor segment API s
 assert.match(vendorsSource, /segment\.coverage_filter/, "Vendor saved lists should apply coverage filters in the UI");
 assert.match(vendorProfileRequestsMigration, /create table if not exists public\.vendor_profile_requests/, "Carrier profile requests should have a token table");
 assert.match(vendorProfileRequestsMigration, /request_token text not null/, "Carrier profile requests should store a secure request token");
+assert.match(vendorProfileTokenMigration, /add column if not exists request_token_hash text/, "Carrier profile requests should add a hashed token column");
+assert.match(vendorProfileTokenMigration, /alter column request_token drop not null/, "Legacy carrier profile tokens should be nullable during migration");
+assert.match(vendorProfileTokenMigration, /vendor_profile_requests_token_hash_unique_idx/, "Carrier profile token hashes should be unique");
+assert.match(carrierProfileApiSource, /async function hashRequestToken/, "Carrier profile API should hash incoming tokens before lookup");
+assert.match(carrierProfileApiSource, /eq\("request_token_hash", tokenHash\)/, "Carrier profile API should resolve new links by token hash");
+assert.match(carrierProfileApiSource, /eq\("request_token", token\)[\s\S]+request_token_hash: tokenHash/, "Carrier profile API should lazily migrate legacy plaintext links");
+assert.doesNotMatch(apiSource.slice(apiSource.indexOf("body.action === \"create_vendor_profile_request\""), apiSource.indexOf("body.action === \"revoke_vendor_profile_request\"")), /request_token: requestToken/, "New carrier profile requests must not persist plaintext tokens");
+assert.match(apiSource, /hashVendorProfileRequestToken\(requestToken\)/, "Rateware API should hash generated carrier profile tokens");
 assert.match(apiSource, /body\.action === "create_vendor_profile_request"/, "Carrier CRM should create carrier profile request tokens");
 assert.match(vendorServiceSource, /createVendorProfileRequest/, "Vendor service should expose profile request creation");
 assert.match(vendorServiceSource, /lightweight = false/, "Vendor service should expose lightweight CRM loading for Bid Room selectors");
@@ -3270,6 +3381,7 @@ assert.ok(vendorIntelligenceSource.length > 100, "vendor intelligence helper sho
 assert.match(vendorIntelligenceSource, /fetchVendorRateMetricsSafe/, "Vendor Intelligence should not fail the full view when quote metrics are unavailable");
 assert.match(vendorIntelligenceSource, /warnings: \[\.\.\.metricsResult\.warnings, \.\.\.bidMetricsResult\.warnings\]/, "Vendor Intelligence should return partial-load warnings from rates and Bid Room activity");
 assert.match(apiSource, /async function fetchVendorIntelligenceVendors/, "Vendor Intelligence should page vendor loading separately from scoring");
+assert.match(apiSource, /async function fetchVendorIntelligenceVendors[\s\S]+\.order\("created_at", \{ ascending: false \}\)[\s\S]+\.order\("id", \{ ascending: false \}\)/, "Vendor Intelligence pagination should use a stable secondary ID order");
 assert.match(vendorIntelligenceSource, /fetchVendorIntelligenceVendors\(supabase, user, options\)/, "Vendor Intelligence should load only the requested vendor page");
 assert.doesNotMatch(vendorIntelligenceSource, /\.limit\(2000\)/, "Vendor Intelligence should not depend on a fixed 2000-vendor Edge Function payload");
 assert.doesNotMatch(
@@ -3284,6 +3396,8 @@ assert.match(applyVendorIntelligenceTagsSource, /buildVendorIntelligence\(supaba
 const vendorFunnelSource = apiSource.slice(apiSource.indexOf("async function buildVendorFunnel"), apiSource.indexOf("function scoreCarrierFit"));
 assert.ok(vendorFunnelSource.length > 100, "vendor funnel helper should be present");
 assert.match(vendorFunnelSource, /fetchVendorRateMetricsSafe/, "Procurement Pipeline should not fail the full funnel when quote metrics are unavailable");
+assert.match(vendorFunnelSource, /fetchAllCarrierIntelligenceVendors\(supabase, user, \{ base_stage: "procurement" \}\)/, "Procurement Funnel should page the complete Procurement Base instead of using a fixed vendor sample");
+assert.doesNotMatch(vendorFunnelSource, /\.limit\(5000\)/, "Procurement Funnel should not truncate carriers after 5,000 records");
 assert.match(vendorFunnelSource, /warnings: \[\.\.\.metricsResult\.warnings, \.\.\.bidMetricsResult\.warnings\]/, "Procurement Pipeline should return partial-load warnings from rates and Bid Room activity");
 assert.doesNotMatch(
   vendorFunnelSource,
@@ -3375,6 +3489,12 @@ for (const [helperName, nextHelperName] of [
 }
 
 const carrierIntelligenceSource = apiSource.slice(apiSource.indexOf("async function buildCarrierIntelligence"), apiSource.indexOf("function recommendationIntentFromConfig"));
+const businessIntelligenceRowsSource = apiSource.slice(apiSource.indexOf("async function fetchBusinessIntelligenceRows"), apiSource.indexOf("async function buildBusinessIntelligencePivotFromDb"));
+assert.match(businessIntelligenceRowsSource, /\.range\(offset, offset \+ pageSize - 1\)/, "Business Intelligence fallback rows should page the complete workspace dataset");
+assert.match(businessIntelligenceRowsSource, /\.order\("id", \{ ascending: false \}\)/, "Business Intelligence fallback rows should use a stable secondary ID order");
+assert.doesNotMatch(businessIntelligenceRowsSource, /\.limit\(12000\)/, "Business Intelligence fallback rows must not truncate after 12,000 rates");
+assert.match(apiSource, /async function fetchAllCarrierIntelligenceVendors[\s\S]+fetchVendorIntelligenceVendors\(supabase, user, \{ \.\.\.options, limit: pageSize, offset \}\)/, "Carrier Intelligence should paginate the complete vendor CRM while preserving scoped filters");
+assert.match(carrierIntelligenceSource, /fetchAllCarrierIntelligenceVendors\(supabase, user\)/, "Carrier Intelligence should use the complete paginated vendor CRM");
 assert.doesNotMatch(carrierIntelligenceSource, /\.from\("rate_staging"\)/, "AI Analyst should not query rate_staging directly");
 assert.doesNotMatch(carrierIntelligenceSource, /\.limit\(1500\)/, "AI Analyst should not rely on a 1500-row rate sample");
 assert.match(stylesSource, /\.bulk-action-bar \{[\s\S]*?overflow-x: auto/, "Spreadsheet bulk actions should scroll inside their own toolbar on narrow laptop layouts");
@@ -3712,7 +3832,7 @@ assert.match(apiSource, /function bidRoomFollowUpLaneSummaryHtml/, "Targeted car
 assert.match(apiSource, /requireBulkConfirmation\(input, \{[\s\S]{0,180}action: "send_bid_room_carrier_message"/, "Targeted carrier email should require an action-bound confirmation");
 assert.match(apiSource, /contains\("metadata", \{ bid_room_request_key: requestKey \}\)/, "Targeted carrier email should be idempotent");
 assert.match(apiSource, /const routeBookRows = outreachEventLaneRows\(/, "Targeted carrier email should reuse the complete RFx route book");
-assert.match(apiSource, /\.from\("rfx_lanes"\)[\s\S]{0,180}\.eq\("rfx_event_id", event\.id\)/, "Targeted carrier email should load all lanes for the selected RFx");
+assert.match(apiSource, /const eventLaneRows = await fetchAllRfxLaneRows\(supabase, cleanText\(event\.id\) \|\| "", "\*"\)/, "Targeted carrier email should load all lanes for the selected RFx");
 assert.match(apiSource, /route_book_lane_count: routeBookRows\.length/, "Targeted carrier email should record the route book scope");
 assert.match(apiSource, /profile_link: profileLink/, "Targeted carrier email should include the carrier profile link");
 assert.match(apiSource, /original_source_subject: emailContext\.source_subject/, "Targeted carrier email should preserve the original outreach subject");
@@ -3723,5 +3843,24 @@ const bidRoomCarrierEmailAction = apiSource.slice(apiSource.indexOf("async funct
 assert.match(bidRoomCarrierEmailAction, /sendOutreachMessages\(supabase, user, sendInput\)/, "Targeted carrier reply should use the normal Gmail delivery path");
 assert.doesNotMatch(bidRoomCarrierEmailAction, /sendWhatsappOutreachMessages/, "Targeted carrier reply must not send WhatsApp");
 assert.doesNotMatch(bidRoomCarrierEmailAction, /mirrorBidRoomCarrierDelivery/, "Targeted carrier reply must not mirror into Google Chat");
+
+assert.match(apiSource, /body\.action === "list_upload_staged_rows"[\s\S]+count: "exact"[\s\S]+has_more/, "Upload staged-row reads should expose pagination metadata instead of silently truncating at 500 rows");
+assert.match(apiSource, /body\.action === "list_uploads"[\s\S]+count: "exact"[\s\S]+has_more/, "Upload History reads should expose pagination metadata instead of silently truncating at 100 rows");
+assert.match(uploadServiceSource, /fetchUploadHistory[\s\S]+page\.has_more[\s\S]+return rows/, "Upload History should consume every paginated source-file page");
+assert.match(uploadServiceSource, /fetchUploadStagedRows[\s\S]+page\.has_more[\s\S]+return rows/, "Upload History should load every staged row page for source comparison");
+assert.match(apiSource, /body\.action === "list_vendor_segments"[\s\S]+count: "exact"[\s\S]+has_more/, "Vendor segment reads should expose pagination metadata instead of silently truncating at 100 rows");
+assert.match(vendorServiceSource, /fetchVendorSegments[\s\S]+page\.has_more[\s\S]+return rows/, "Vendor segment consumers should load every paginated segment page");
+assert.match(interpretUploadSource, /import \{ corsHeaders, jsonResponse as baseJsonResponse, requireKindeUser \} from "\.\.\/_shared\/kinde\.ts"/, "Interpretation should use the shared response hardening contract");
+assert.doesNotMatch(interpretUploadSource, /const corsHeaders = \{/, "Interpretation should not maintain a divergent wildcard CORS response helper");
+assert.match(shipperProfileApiSource, /organization_id[\s\S]+contactsQuery\.eq\("organization_id"/, "Shipper profile links should scope public contacts to their workspace");
+assert.match(shipperProfileApiSource, /organization_id[\s\S]+locationsQuery\.eq\("organization_id"/, "Shipper profile links should scope public locations to their workspace");
+assert.match(shipperProfileApiSource, /shipperOrganization[\s\S]+not valid for the requested workspace/, "Shipper profile links should reject a cross-workspace shipper relation");
+assert.match(publicApiHardeningMigration, /revoke all on all tables in schema public from anon, authenticated/i, "Public Data API roles should not read or write Rateware tables directly");
+assert.match(publicApiHardeningMigration, /alter default privileges in schema public[\s\S]+revoke all on tables from anon, authenticated/i, "New public tables should not become exposed by default");
+assert.match(publicApiHardeningMigration, /alter table %I\.%I enable row level security/i, "Public tables should keep RLS enabled as defense in depth");
+assert.match(kindeSharedSource, /RATEWARE_CORS_ORIGIN/, "CORS origin should be configurable per deployment");
+assert.match(kindeSharedSource, /DEFAULT_CORS_ORIGINS = \[[\s\S]+https:\/\/rateware\.vercel\.app[\s\S]+127\.0\.0\.1:3000/, "Production and local CORS should have stable safe defaults");
+assert.doesNotMatch(kindeSharedSource, /Access-Control-Allow-Origin": "\*"/, "Shared API responses should not allow every browser origin");
+assert.match(kindeSharedSource, /"Vary": "Origin"/, "CORS responses should be cache-safe by origin");
 
 console.log("Rateware stability guards passed.");

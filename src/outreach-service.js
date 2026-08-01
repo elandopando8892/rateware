@@ -106,7 +106,17 @@ export async function suppressOutreachContact({ vendorId, channel = "all", conta
 }
 
 export async function fetchOutreachMessages(filters = {}) {
-  return (await fetchOutreachMessagesPage(filters)).rows;
+  const { offset: _ignoredOffset, limit: _ignoredLimit, ...baseFilters } = filters || {};
+  const rows = [];
+  const pageSize = 250;
+  const maxRows = 100000;
+  for (let offset = 0; offset < maxRows; offset += pageSize) {
+    const page = await fetchOutreachMessagesPage({ ...baseFilters, limit: pageSize, offset });
+    const pageRows = Array.isArray(page?.rows) ? page.rows : [];
+    rows.push(...pageRows);
+    if (!page?.has_more || pageRows.length < pageSize) return rows;
+  }
+  throw new Error(`Outreach history exceeds the ${maxRows} row safety limit.`);
 }
 
 export async function fetchOutreachMessagesPage(filters = {}) {
@@ -174,5 +184,15 @@ export async function deleteOutreachMessages(ids = [], options = {}) {
 }
 
 export async function fetchContactHistory(filters = {}) {
-  return (await callRatewareApi("list_contact_history", filters)).rows;
+  const { offset: _ignoredOffset, limit: _ignoredLimit, ...baseFilters } = filters || {};
+  const rows = [];
+  const pageSize = 1000;
+  const maxRows = 100000;
+  for (let offset = 0; offset < maxRows; offset += pageSize) {
+    const page = await callRatewareApi("list_contact_history", { ...baseFilters, limit: pageSize, offset });
+    const pageRows = Array.isArray(page?.rows) ? page.rows : [];
+    rows.push(...pageRows);
+    if (!page?.has_more || pageRows.length < pageSize) return rows;
+  }
+  throw new Error(`Contact history exceeds the ${maxRows} row safety limit.`);
 }

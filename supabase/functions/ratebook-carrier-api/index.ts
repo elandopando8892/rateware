@@ -1,5 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { corsHeaders, jsonResponse } from "../_shared/kinde.ts";
+import { corsHeaders, jsonResponse as baseJsonResponse } from "../_shared/kinde.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("RATEWARE_SUPABASE_SERVICE_ROLE_KEY");
@@ -315,7 +315,8 @@ async function withdrawRatebookQuote(supabase: RatebookCarrierSupabaseClient, in
 }
 
 Deno.serve(async (request) => {
-  if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders() });
+  const jsonResponse = (body: unknown, status = 200) => baseJsonResponse(body, status, request);
+  if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders(request) });
   try {
     if (request.method !== "POST") return jsonResponse({ error: "Method not allowed." }, 405);
     const body = await request.json() as Record<string, unknown>;

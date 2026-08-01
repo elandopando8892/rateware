@@ -76,6 +76,8 @@ for (const action of [
 assert.match(api, /upsertRatebookForPackage/);
 assert.match(api, /materializeRatebooksForProjects/);
 assert.match(api, /ensureRatebookForBidRoomEvent/);
+assert.match(api, /async function listRatebookCarriers[\s\S]+safeShipperSearch\(input\.search\)[\s\S]+\.range\(offset, offset \+ limit - 1\)/, "Ratebook carrier search should run server-side across the full CRM instead of a truncated local list");
+assert.match(api, /async function listRatebookCarriers[\s\S]+vendorSearchClauses\(search\)/, "Ratebook carrier search should use the same legal-name and secondary-email matching as Carrier CRM");
 assert.match(api, /ratebookSourceTypeForEvent/);
 assert.match(api, /source_rfx_lane_id/);
 assert.match(api, /ratebook_sync/);
@@ -88,8 +90,24 @@ assert.match(api, /ratebookSourceFreshness/);
 assert.match(api, /async function createRatebookRevision/);
 assert.match(api, /async function getRatebookHealth/);
 assert.match(api, /async function exportRatebookRoutes/);
+assert.match(api, /async function fetchAllOwnedRfxEvents[\s\S]+options: \{ includeArchived\?: boolean \}/, "RFx event pagination should explicitly support historical Ratebook synchronization");
+assert.match(api, /async function fetchAllOwnedRfxEvents[\s\S]+\.order\("created_at", \{ ascending: false \}\)[\s\S]+\.order\("id", \{ ascending: false \}\)/, "RFx event pagination should use a stable secondary id order");
+assert.match(api, /function rfxEventColumnsWithoutCustomerId/, "Ratebook should support a safe legacy event-column fallback during schema rollout");
+assert.match(api, /isMissingRfxEventCustomerIdError\(error\)/, "Ratebook should retry historical matching only when customer_id is not yet deployed");
+assert.match(api, /customer_id: null/, "Legacy RFx event fallback should preserve the Ratebook event response shape");
+assert.match(api, /async function fetchAllOwnedRfxPackages[\s\S]+\.order\("updated_at", \{ ascending: false \}\)[\s\S]+\.order\("id", \{ ascending: false \}\)/, "RFx package pagination should use a stable secondary id order");
+assert.match(api, /async function fetchAllOwnedRfxRatebooks[\s\S]+\.order\("updated_at", \{ ascending: false \}\)[\s\S]+\.order\("id", \{ ascending: false \}\)/, "Ratebook pagination should use a stable secondary id order");
+assert.match(api, /syncBidRoomEventsForRatebookScope[\s\S]+customer_id[\s\S]+includeArchived: true/, "Ratebook synchronization should retain archived Bid Room history and use the stable shipper id");
+assert.match(api, /syncBidRoomEventsForRatebookScope[\s\S]+fetchAllRfxProjectIdsForShipper/, "Shipper-scoped Ratebook sync should paginate linked RFx projects");
+const ratebookHealthSource = api.slice(
+  api.indexOf("async function getRatebookHealth"),
+  api.indexOf("async function updateRatebookLifecycle")
+);
+assert.match(ratebookHealthSource, /fetchAllOwnedRfxRatebooks/, "Ratebook health should inspect every owned Ratebook, not a fixed first page");
+assert.match(ratebookHealthSource, /fetchAllRatebookPackageRows[\s\S]+fetchAllRatebookRowsByRatebookIds[\s\S]+fetchAllOutreachMessagesByCampaignIds/, "Ratebook health should paginate lanes, distribution, offers, and outreach history consistently");
+assert.doesNotMatch(ratebookHealthSource, /\.limit\(1000\)/, "Ratebook health should not silently omit older active Ratebooks");
 assert.match(api, /ratebook_count: ratebooks\.length/);
-assert.match(api, /rfx_package_lanes"\)\.select\("package_id,id,demand_lane_id,rfx_demand_lanes\(\*\)"\)/);
+assert.match(api, /fetchAllRatebookPackageRows\(supabase, "rfx_package_lanes", packageIds, "package_id,id,demand_lane_id,rfx_demand_lanes\(\*\)"\)/);
 assert.match(api, /routes_without_offers/);
 assert.match(api, /offers_to_review/);
 assert.match(api, /source_outdated/);
@@ -132,6 +150,7 @@ const materializeRatebooksSource = api.slice(
 );
 assert.doesNotMatch(listRatebooksSource, /neq\("status", "archived"\)/);
 assert.doesNotMatch(materializeRatebooksSource, /neq\("status", "archived"\)/);
+assert.match(listRatebooksSource, /\[\.\.\.materializedRatebooks, \.\.\.persistedRatebooks\][\s\S]+ratebookById\.set/, "Ratebook consolidation should retain freshly materialized books when persisted reads are temporarily incomplete");
 
 for (const id of [
   "ratebook-search",
@@ -206,6 +225,8 @@ assert.match(client, /renderConsolidatedRouteLedger/);
 assert.match(client, /All Shipper Routes/);
 assert.match(client, /Opportunity origin/);
 assert.match(client, /fetchRatebookRouteLedger\(\{ \.\.\.filters, skip_bid_room_sync: true \}\)/);
+assert.match(client, /result\.sync\?\.failed/, "Ratebook UI should keep the usable ledger visible when a source needs a retry");
+assert.match(client, /materialization_failed/, "Ratebook UI should surface a partial Ratebook materialization warning without clearing loaded books");
 assert.match(client, /data-ratebook-ledger-view/);
 assert.match(client, /data-ledger-route-ratebook-id/);
 assert.match(client, /renderRatebookRouteGrid/);

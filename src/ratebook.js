@@ -1226,7 +1226,12 @@ async function loadRatebooks() {
     }
     renderBookList();
     void loadRatebookHealth();
-    setStatus(elements.status, `${number(state.routeLedgerRows.length)} consolidated route(s) from ${number(state.rows.length)} Ratebook(s) loaded.`, "success");
+    const syncIssues = [
+      ...(result.sync?.failed || []),
+      ...(result.sync?.materialization_failed || [])
+    ].filter(Boolean);
+    const statusMessage = `${number(state.routeLedgerRows.length)} consolidated route(s) from ${number(state.rows.length)} Ratebook(s) loaded.${syncIssues.length ? ` ${number(syncIssues.length)} source${syncIssues.length === 1 ? "" : "s"} need${syncIssues.length === 1 ? "s" : ""} a retry.` : ""}`;
+    setStatus(elements.status, statusMessage, syncIssues.length ? "warning" : "success");
     if (state.activeDetailMode === "book" && state.activeRatebookId) await selectRatebook(state.activeRatebookId, false);
     else renderConsolidatedRouteLedger();
   } catch (error) {

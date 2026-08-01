@@ -114,7 +114,19 @@ export async function removeVendors(ids) {
 }
 
 export async function fetchVendorSegments({ segmentType = "" } = {}) {
-  return (await callRatewareApi("list_vendor_segments", { segment_type: segmentType })).rows;
+  const rows = [];
+  const pageSize = 1000;
+  const maxRows = 50000;
+  for (let offset = 0; offset < maxRows; offset += pageSize) {
+    const page = await callRatewareApi("list_vendor_segments", {
+      segment_type: segmentType,
+      limit: pageSize,
+      offset
+    });
+    rows.push(...(Array.isArray(page.rows) ? page.rows : []));
+    if (!page.has_more) return rows;
+  }
+  throw new Error(`Vendor lists exceed the ${maxRows.toLocaleString()} row safety limit.`);
 }
 
 export async function createVendorSegment(segment) {

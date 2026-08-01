@@ -1,11 +1,14 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { corsHeaders, jsonResponse } from "../_shared/kinde.ts";
+import { corsHeaders, jsonResponse as baseJsonResponse } from "../_shared/kinde.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("RATEWARE_SUPABASE_SERVICE_ROLE_KEY");
 const GOOGLE_CLIENT_ID = Deno.env.get("GOOGLE_CLIENT_ID");
 const GOOGLE_CLIENT_SECRET = Deno.env.get("GOOGLE_CLIENT_SECRET");
 const GMAIL_TOKEN_ENCRYPTION_KEY = Deno.env.get("GMAIL_TOKEN_ENCRYPTION_KEY");
+const RFX_INVITATION_TOKEN_ENCRYPTION_KEY = Deno.env.get("RFX_INVITATION_TOKEN_ENCRYPTION_KEY")
+  || Deno.env.get("RFX_RFI_LINK_ENCRYPTION_KEY")
+  || GMAIL_TOKEN_ENCRYPTION_KEY;
 const GMAIL_ALLOWED_SENDER = (Deno.env.get("GMAIL_ALLOWED_SENDER") || "sales@heymarksman.com").trim().toLowerCase();
 const RATEWARE_APP_URL = (Deno.env.get("RATEWARE_APP_URL") || Deno.env.get("RATEWARE_PUBLIC_APP_URL") || "https://rateware.vercel.app").trim();
 const GOOGLE_CHAT_ALLOWED_ACCOUNT = (Deno.env.get("GOOGLE_CHAT_ALLOWED_ACCOUNT") || GMAIL_ALLOWED_SENDER).trim().toLowerCase();
@@ -352,6 +355,111 @@ function bytesToBase64Url(bytes: Uint8Array) {
   return bytesToBase64(bytes).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
+async function rfxInvitationCryptoKey(usages: KeyUsage[]) {
+  if (!RFX_INVITATION_TOKEN_ENCRYPTION_KEY) {
+    throw new Error("Bid Room invitation token encryption is not configured.");
+  }
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(RFX_INVITATION_TOKEN_ENCRYPTION_KEY));
+  return crypto.subtle.importKey("raw", digest, "AES-GCM", false, usages);
+}
+
+async function hashRfxInvitationToken(value: string) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return bytesToBase64(new Uint8Array(digest));
+}
+
+async function encryptRfxInvitationToken(value: string) {
+  const key = await rfxInvitationCryptoKey(["encrypt"]);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ciphertext = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, new TextEncoder().encode(value));
+  return `v1:${bytesToBase64(iv)}:${bytesToBase64(new Uint8Array(ciphertext))}`;
+}
+
+async function decryptRfxInvitationToken(value: unknown) {
+  const text = cleanText(value);
+  if (!text) return null;
+  const [version, ivText, ciphertextText] = text.split(":");
+  if (version !== "v1" || !ivText || !ciphertextText) throw new Error("Bid Room invitation token format is invalid.");
+  const key = await rfxInvitationCryptoKey(["decrypt"]);
+  const plain = await crypto.subtle.decrypt(
+    { name: "AES-GCM", iv: base64ToBytes(ivText) },
+    key,
+    base64ToBytes(ciphertextText)
+  );
+  return new TextDecoder().decode(plain);
+}
+
+function invitationWithToken(row: Record<string, unknown>, token: string): Record<string, unknown> {
+  const { invitation_token_hash: _hash, invitation_token_encrypted: _encrypted, ...publicRow } = row;
+  return { ...publicRow, invitation_token: token };
+}
+
+async function migrateLegacyInvitationToken(
+  supabase: RfxBidSupabaseClient,
+  row: Record<string, unknown>,
+  token: string
+) {
+  if (!cleanText(row.id) || cleanText(row.invitation_token_hash)) return;
+  try {
+    const result = await supabase
+      .from("rfx_lane_vendors")
+      .update({
+        invitation_token_hash: await hashRfxInvitationToken(token),
+        invitation_token_encrypted: await encryptRfxInvitationToken(token),
+        invitation_token: null,
+        updated_at: new Date().toISOString()
+      })
+      .eq("id", row.id)
+      .is("invitation_token_hash", null);
+    if (result.error) console.error("Bid Room legacy invitation token migration failed", result.error.message);
+  } catch (error) {
+    // Existing links must remain usable while a deployment is being migrated.
+    console.error("Bid Room legacy invitation token migration skipped", publicErrorMessage(error));
+  }
+}
+
+async function findInvitationByToken(
+  supabase: RfxBidSupabaseClient,
+  token: string,
+  columns: string
+): Promise<Record<string, unknown> | null> {
+  const selectColumns = `${columns},invitation_token_hash,invitation_token_encrypted`;
+  const tokenHash = await hashRfxInvitationToken(token);
+  const hashed = await supabase
+    .from("rfx_lane_vendors")
+    .select(selectColumns)
+    .eq("invitation_token_hash", tokenHash)
+    .maybeSingle();
+  if (hashed.error) throw hashed.error;
+  if (hashed.data) return invitationWithToken(hashed.data as unknown as Record<string, unknown>, token);
+
+  const legacy = await supabase
+    .from("rfx_lane_vendors")
+    .select(selectColumns)
+    .eq("invitation_token", token)
+    .maybeSingle();
+  if (legacy.error) throw legacy.error;
+  if (!legacy.data) return null;
+  const row = legacy.data as unknown as Record<string, unknown>;
+  await migrateLegacyInvitationToken(supabase, row, token);
+  return invitationWithToken(row, token);
+}
+
+async function hydrateInvitationTokens(
+  supabase: RfxBidSupabaseClient,
+  rows: Record<string, unknown>[]
+) {
+  const hydrated: Record<string, unknown>[] = [];
+  for (const row of rows) {
+    const legacyToken = cleanText(row.invitation_token);
+    const token = legacyToken || await decryptRfxInvitationToken(row.invitation_token_encrypted);
+    if (!token) continue;
+    if (legacyToken) await migrateLegacyInvitationToken(supabase, row, token);
+    hydrated.push(invitationWithToken(row, token));
+  }
+  return hydrated;
+}
+
 async function googleTokenCryptoKey(usages: KeyUsage[]) {
   if (!GMAIL_TOKEN_ENCRYPTION_KEY) throw new Error("Google token encryption is not configured.");
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(GMAIL_TOKEN_ENCRYPTION_KEY));
@@ -544,7 +652,6 @@ function publicLane(row: Record<string, unknown>) {
     operation: row.operation,
     service: row.service,
     weekly_volume: row.weekly_volume,
-    target_rate: row.target_rate,
     currency: row.currency || "USD",
     logistics_model: row.logistics_model,
     operation_criteria: row.operation_criteria,
@@ -1017,9 +1124,7 @@ async function syncGoogleChatInboundMessagesForThreads(
 }
 
 async function currentInvitationContext(supabase: RfxBidSupabaseClient, token: string) {
-  const result = await supabase
-    .from("rfx_lane_vendors")
-    .select(`
+  const invitation = await findInvitationByToken(supabase, token, `
       id,
       rfx_event_id,
       rfx_lane_id,
@@ -1037,11 +1142,9 @@ async function currentInvitationContext(supabase: RfxBidSupabaseClient, token: s
       vendors(id,vendor_name,domain,primary_email),
       rfx_events(id,owner_user_id,owner_email,rfx_id,name,customer,event_type,status,due_date,bid_visibility_mode,source_rfx_process_project_id,source_rfx_package_id,source_rfx_package_name,rfx_master_package),
       rfx_lanes(*)
-    `)
-    .eq("invitation_token", token)
-    .single();
-  if (result.error) throw result.error;
-  return result.data;
+    `);
+  if (!invitation) throw new Error("Invitation link is invalid or has expired.");
+  return invitation;
 }
 
 const SEGMENT_CONFIRMATION_ANSWERS = new Set(["pending", "agree", "exception", "disagree", "not_applicable"]);
@@ -1715,6 +1818,48 @@ function carrierBusinessBook(currentInvitation: Record<string, unknown>, invited
 }
 
 const PUBLIC_BOARD_STATUSES = new Set(["all", "live", "closing", "expired", "awarded"]);
+const PUBLIC_BOARD_PAGE_SIZE = 1000;
+const PUBLIC_BOARD_MAX_ROWS = 100000;
+
+function chunkPublicBoardIds(values: string[], size = 100) {
+  const chunks: string[][] = [];
+  for (let index = 0; index < values.length; index += size) chunks.push(values.slice(index, index + size));
+  return chunks;
+}
+
+async function fetchAllPublicBoardRows(
+  supabase: RfxBidSupabaseClient,
+  table: "rfx_lanes" | "rfx_lane_vendors",
+  eventIds: string[],
+  columns: string,
+  queryModifier: (query: any) => any = (query: any) => query
+) {
+  const ids = [...new Set(eventIds.map(cleanText).filter(Boolean))] as string[];
+  if (!ids.length) return [] as Record<string, unknown>[];
+  const rows: Record<string, unknown>[] = [];
+
+  for (const eventIdChunk of chunkPublicBoardIds(ids)) {
+    for (let offset = 0; offset < PUBLIC_BOARD_MAX_ROWS; offset += PUBLIC_BOARD_PAGE_SIZE) {
+      const query = queryModifier(
+        supabase
+          .from(table)
+          .select(columns)
+          .in("rfx_event_id", eventIdChunk)
+      )
+        .order("id", { ascending: true })
+        .range(offset, offset + PUBLIC_BOARD_PAGE_SIZE - 1);
+      const result = await query;
+      if (result.error) throw new Error(`Public Bid Room ${table} load failed: ${result.error.message}`);
+      const page = (result.data || []) as unknown as Record<string, unknown>[];
+      rows.push(...page);
+      if (page.length < PUBLIC_BOARD_PAGE_SIZE) break;
+      if (offset + page.length >= PUBLIC_BOARD_MAX_ROWS) {
+        throw new Error(`Public Bid Room ${table} load exceeded ${PUBLIC_BOARD_MAX_ROWS} rows.`);
+      }
+    }
+  }
+  return rows;
+}
 
 function publicBidBoardState(event: Record<string, unknown>) {
   const status = String(cleanText(event.status) || "draft").toLowerCase();
@@ -1727,7 +1872,10 @@ function publicBidBoardState(event: Record<string, unknown>) {
   return status;
 }
 
-function publicQuoteStats(rows: Record<string, unknown>[]) {
+function publicQuoteStats(rows: Record<string, unknown>[], visibility: Record<string, unknown> = {}) {
+  const visibilityMode = cleanText(visibility.mode)?.toLowerCase() || "anonymous_rank";
+  const ratesVisible = visibilityMode === "open_leaderboard";
+  const activityVisible = visibilityMode !== "private";
   const validRows = rows
     .filter((row) => String(cleanText(row.invitation_status) || "").toLowerCase() !== "archived")
     .map((row) => {
@@ -1760,21 +1908,23 @@ function publicQuoteStats(rows: Record<string, unknown>[]) {
   const commercialModels = [...new Set(validRows.map((row) => row.commercial_model).filter(Boolean) as string[])];
   const avgRate = amounts.length ? amounts.reduce((sum, value) => sum + value, 0) / amounts.length : null;
   return {
-    quote_count: validRows.length,
-    best_rate: amounts[0] ?? null,
-    best_board_rate: amounts[0] ?? null,
-    average_rate: avgRate === null ? null : Math.round(avgRate * 100) / 100,
-    highest_rate: amounts.at(-1) ?? null,
-    currency: validRows[0]?.currency || "USD",
-    total_weekly_capacity: capacities.length ? capacities.reduce((sum, value) => sum + value, 0) : null,
-    best_transit_days: transitDays.length ? Math.min(...transitDays) : null,
-    alternative_offer_count: validRows.filter((row) => row.best_alternative_offered).length,
-    available_equipment_count: validRows.filter((row) => row.equipment_available === true).length,
-    deadhead_count: validRows.filter((row) => row.deadhead_distance !== null).length,
-    eta_count: validRows.filter((row) => Boolean(row.eta_pickup)).length,
-    commercial_models: commercialModels,
-    awarded_count: validRows.filter((row) => cleanText(row.award_role) === "primary").length,
-    last_quote_at: lastQuoteAt
+    quote_count: activityVisible ? validRows.length : null,
+    best_rate: ratesVisible ? amounts[0] ?? null : null,
+    best_board_rate: ratesVisible ? amounts[0] ?? null : null,
+    average_rate: ratesVisible && avgRate !== null ? Math.round(avgRate * 100) / 100 : null,
+    highest_rate: ratesVisible ? amounts.at(-1) ?? null : null,
+    currency: ratesVisible ? validRows[0]?.currency || null : null,
+    total_weekly_capacity: ratesVisible && capacities.length ? capacities.reduce((sum, value) => sum + value, 0) : null,
+    best_transit_days: ratesVisible && transitDays.length ? Math.min(...transitDays) : null,
+    alternative_offer_count: ratesVisible ? validRows.filter((row) => row.best_alternative_offered).length : null,
+    available_equipment_count: ratesVisible ? validRows.filter((row) => row.equipment_available === true).length : null,
+    deadhead_count: ratesVisible ? validRows.filter((row) => row.deadhead_distance !== null).length : null,
+    eta_count: ratesVisible ? validRows.filter((row) => Boolean(row.eta_pickup)).length : null,
+    commercial_models: ratesVisible ? commercialModels : [],
+    awarded_count: ratesVisible ? validRows.filter((row) => cleanText(row.award_role) === "primary").length : null,
+    last_quote_at: activityVisible ? lastQuoteAt : null,
+    quote_visibility: ratesVisible ? "open" : "hidden",
+    activity_visibility: activityVisible ? "visible" : "hidden"
   };
 }
 
@@ -1820,26 +1970,25 @@ async function publicBidRoomBoard(supabase: RfxBidSupabaseClient, input: Record<
     };
   }
 
-  const [lanesResult, quotesResult] = await Promise.all([
-    supabase
-      .from("rfx_lanes")
-      .select("id,rfx_event_id,lane_number,origin,destination,origin_city,origin_state,origin_market,origin_region,destination_city,destination_state,destination_market,destination_region,equipment,trailer,config,operation,service,weekly_volume,annual_volume,target_rate,currency,logistics_model,operation_criteria,business_rules,service_specifications,carrier_requirements,other_notes,notes,updated_at")
-      .in("rfx_event_id", eventIds)
-      .order("lane_number", { ascending: true }),
-    supabase
-      .from("rfx_lane_vendors")
-      .select("id,rfx_event_id,rfx_lane_id,invitation_status,bid_rate,currency,weekly_capacity,transit_days,commercial_model,marksman_margin_pct,carrier_share_pct,best_alternative_offered,equipment_available,current_unit_location,deadhead_distance,deadhead_unit,eta_pickup,responded_at,updated_at,award_role")
-      .in("rfx_event_id", eventIds)
-      .not("bid_rate", "is", null)
-      .neq("invitation_status", "archived")
-      .limit(10000)
+  const [laneRows, quoteRows] = await Promise.all([
+    fetchAllPublicBoardRows(
+      supabase,
+      "rfx_lanes",
+      eventIds as string[],
+      "id,rfx_event_id,lane_number,origin,destination,origin_city,origin_state,origin_market,origin_region,destination_city,destination_state,destination_market,destination_region,equipment,trailer,config,operation,service,weekly_volume,annual_volume,currency,logistics_model,operation_criteria,business_rules,service_specifications,carrier_requirements,other_notes,notes,updated_at"
+    ),
+    fetchAllPublicBoardRows(
+      supabase,
+      "rfx_lane_vendors",
+      eventIds as string[],
+      "id,rfx_event_id,rfx_lane_id,invitation_status,bid_rate,currency,weekly_capacity,transit_days,commercial_model,marksman_margin_pct,carrier_share_pct,best_alternative_offered,equipment_available,current_unit_location,deadhead_distance,deadhead_unit,eta_pickup,responded_at,updated_at,award_role",
+      (query) => query.not("bid_rate", "is", null).neq("invitation_status", "archived")
+    )
   ]);
-  if (lanesResult.error) throw lanesResult.error;
-  if (quotesResult.error) throw quotesResult.error;
 
   const eventsById = new Map(events.map((event) => [String(event.id), event as Record<string, unknown>]));
   const quotesByLane = new Map<string, Record<string, unknown>[]>();
-  for (const quote of quotesResult.data || []) {
+  for (const quote of quoteRows) {
     const laneId = cleanText(quote.rfx_lane_id);
     if (!laneId) continue;
     const bucket = quotesByLane.get(laneId) || [];
@@ -1847,12 +1996,12 @@ async function publicBidRoomBoard(supabase: RfxBidSupabaseClient, input: Record<
     quotesByLane.set(laneId, bucket);
   }
 
-  const rows = (lanesResult.data || [])
+  const rows = laneRows
     .map((lane) => {
       const event = eventsById.get(String(lane.rfx_event_id)) || {};
       const boardStatus = publicBidBoardState(event);
-      const quoteStats = publicQuoteStats(quotesByLane.get(String(lane.id)) || []);
       const visibility = bidRoomVisibility(event);
+      const quoteStats = publicQuoteStats(quotesByLane.get(String(lane.id)) || [], visibility);
       return {
         id: lane.id,
         event_id: lane.rfx_event_id,
@@ -2037,6 +2186,25 @@ async function publicInvitationVendorIds(supabase: RfxBidSupabaseClient, email: 
   return [...candidates.keys()];
 }
 
+const PUBLIC_SOFT_LOGIN_COOLDOWN_MS = 10 * 60 * 1000;
+
+async function publicSoftLoginCooldown(supabase: RfxBidSupabaseClient, email: string) {
+  const result = await supabase
+    .from("contact_history")
+    .select("id,occurred_at")
+    .eq("channel", "email")
+    .eq("status", "magic_link_sent")
+    .contains("metadata", { source: "public_bid_room_soft_login", recipient_email: email })
+    .order("occurred_at", { ascending: false })
+    .limit(1);
+  if (result.error) throw result.error;
+  const occurredAt = new Date(String(result.data?.[0]?.occurred_at || "")).getTime();
+  if (!Number.isFinite(occurredAt)) return null;
+  const remainingMs = PUBLIC_SOFT_LOGIN_COOLDOWN_MS - (Date.now() - occurredAt);
+  if (remainingMs <= 0) return null;
+  return Math.max(1, Math.ceil(remainingMs / 1000));
+}
+
 function privateBidLink(token: unknown) {
   return `${RATEWARE_APP_URL.replace(/\/$/, "")}/rfx-bid.html?token=${encodeURIComponent(String(token || ""))}`;
 }
@@ -2174,6 +2342,7 @@ async function publicBidRoomFindInvitations(supabase: RfxBidSupabaseClient, inpu
       vendor_id,
       invitation_status,
       invitation_token,
+      invitation_token_encrypted,
       invited_at,
       viewed_at,
       responded_at,
@@ -2186,7 +2355,10 @@ async function publicBidRoomFindInvitations(supabase: RfxBidSupabaseClient, inpu
     .limit(100);
   if (invitationsResult.error) throw invitationsResult.error;
 
-  const invitationRows = (invitationsResult.data || []) as Record<string, unknown>[];
+  const invitationRows = await hydrateInvitationTokens(
+    supabase,
+    (invitationsResult.data || []) as Record<string, unknown>[]
+  );
   const fallbackOwnerEmail = cleanEmail(GMAIL_ALLOWED_SENDER);
   const eventIds = [...new Set(invitationRows.map((row) => cleanText(row.rfx_event_id)).filter(Boolean) as string[])];
   const eventOwnerMap = new Map<string, Record<string, unknown>>();
@@ -2237,6 +2409,19 @@ async function publicBidRoomFindInvitations(supabase: RfxBidSupabaseClient, inpu
       message: language === "es"
         ? `Encontramos ${matchingInvitations.length} invitacion(es) activa(s). Si ya abriste un link privado en este navegador, abre la puja directamente. Recupera un link solo cuando lo necesites.`
         : `We found ${matchingInvitations.length} active invitation(s). If you already opened a private link in this browser, open the bid directly. Recover a link only when you need one.`
+    };
+  }
+
+  const retryAfterSeconds = await publicSoftLoginCooldown(supabase, email);
+  if (retryAfterSeconds) {
+    return {
+      sent: false,
+      rate_limited: true,
+      retry_after_seconds: retryAfterSeconds,
+      error: language === "es"
+        ? "Ya enviamos enlaces recientemente a este correo. Revisa tu bandeja o intenta de nuevo en unos minutos."
+        : "Private links were sent to this email recently. Check the inbox or try again in a few minutes.",
+      status: 429
     };
   }
 
@@ -4451,7 +4636,8 @@ async function saveCustomerRfi(supabase: RfxBidSupabaseClient, input: Record<str
 }
 
 Deno.serve(async (request) => {
-  if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders() });
+  const jsonResponse = (body: unknown, status = 200) => baseJsonResponse(body, status, request);
+  if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders(request) });
 
   try {
     const supabase = getClient();
@@ -4500,9 +4686,7 @@ Deno.serve(async (request) => {
     if (!token) return jsonResponse({ error: "Invitation token is required." }, 400);
 
     if (body.action === "get_invitation") {
-      const result = await supabase
-        .from("rfx_lane_vendors")
-        .select(`
+      const invitation = await findInvitationByToken(supabase, token, `
           id,
           rfx_event_id,
           rfx_lane_id,
@@ -4546,10 +4730,9 @@ Deno.serve(async (request) => {
           vendors(vendor_name,domain,primary_email),
           rfx_events(id,owner_user_id,owner_email,rfx_id,name,customer,event_type,status,due_date,bid_visibility_mode,notes,source_rfx_process_project_id,source_rfx_package_id,source_rfx_package_name,rfx_master_package),
       rfx_lanes(*)
-        `)
-        .eq("invitation_token", token)
-        .single();
-      if (result.error) throw result.error;
+        `);
+      if (!invitation) return jsonResponse({ error: "Invitation link is invalid or has expired." }, 404);
+      const result = { data: invitation };
 
       if (!result.data.viewed_at) {
         await supabase
@@ -4714,12 +4897,13 @@ Deno.serve(async (request) => {
     if (body.action === "request_lane_access") {
       const laneId = cleanText(body.lane_id);
       if (!laneId) return jsonResponse({ error: "Lane id is required." }, 400);
-      const contextResult = await supabase
-        .from("rfx_lane_vendors")
-        .select("id,vendor_id,rfx_events(id,owner_user_id,owner_email,rfx_id,name),vendors(vendor_name,domain,primary_email)")
-        .eq("invitation_token", token)
-        .single();
-      if (contextResult.error) throw contextResult.error;
+      const invitationContext = await findInvitationByToken(
+        supabase,
+        token,
+        "id,vendor_id,rfx_events(id,owner_user_id,owner_email,rfx_id,name),vendors(vendor_name,domain,primary_email)"
+      );
+      if (!invitationContext) return jsonResponse({ error: "Invitation link is invalid or has expired." }, 404);
+      const contextResult = { data: invitationContext };
       const currentEvent = relationRecord(contextResult.data.rfx_events);
       const ownerEmail = cleanText(currentEvent.owner_email);
       const laneResult = await supabase
@@ -4766,9 +4950,7 @@ Deno.serve(async (request) => {
 
     if (body.action === "decline_invitation" || body.action === "withdraw_bid") {
       const now = new Date().toISOString();
-      const invitationResult = await supabase
-        .from("rfx_lane_vendors")
-        .select(`
+      const invitation = await findInvitationByToken(supabase, token, `
           id,
           rfx_event_id,
           rfx_lane_id,
@@ -4788,10 +4970,9 @@ Deno.serve(async (request) => {
           vendors(vendor_name,domain,primary_email),
           rfx_events(id,owner_user_id,owner_email,rfx_id,name,customer),
           rfx_lanes(id,lane_number,origin,destination)
-        `)
-        .eq("invitation_token", token)
-        .single();
-      if (invitationResult.error) throw invitationResult.error;
+        `);
+      if (!invitation) return jsonResponse({ error: "Invitation link is invalid or has expired." }, 404);
+      const invitationResult = { data: invitation };
 
       const currentStatus = String(cleanText(invitationResult.data.invitation_status) || "").toLowerCase();
       const currentRate = cleanNumber(invitationResult.data.bid_rate);
@@ -4940,9 +5121,7 @@ Deno.serve(async (request) => {
       const deadheadDistance = strictNonNegativeBidNumber(body.deadhead_distance, "Deadhead distance");
       const deadheadUnit = deadheadDistance !== null ? normalizeDeadheadUnit(body.deadhead_unit) || "mi" : null;
       const bestFinal = cleanBoolean(body.best_final) === true;
-      const invitationResult = await supabase
-        .from("rfx_lane_vendors")
-        .select(`
+      const invitation = await findInvitationByToken(supabase, token, `
           id,
           rfx_event_id,
           rfx_lane_id,
@@ -4975,10 +5154,9 @@ Deno.serve(async (request) => {
           vendors(vendor_name,domain,primary_email),
           rfx_events(id,owner_user_id,owner_email,rfx_id,name,customer),
           rfx_lanes(*)
-        `)
-        .eq("invitation_token", token)
-        .single();
-      if (invitationResult.error) throw invitationResult.error;
+        `);
+      if (!invitation) return jsonResponse({ error: "Invitation link is invalid or has expired." }, 404);
+      const invitationResult = { data: invitation };
       // Route fit answers are advisory context; invitation access is the quote gate.
       const previousBidRate = cleanNumber(invitationResult.data.bid_rate);
       const revisionType = bestFinal ? "best_final" : previousBidRate !== null ? "revision" : "initial";

@@ -1,5 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { corsHeaders, jsonResponse } from "../_shared/kinde.ts";
+import { corsHeaders, jsonResponse as baseJsonResponse } from "../_shared/kinde.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("RATEWARE_SUPABASE_SERVICE_ROLE_KEY");
@@ -59,6 +59,11 @@ function normalizeChannel(value: unknown) {
 function normalizeArray(value: unknown) {
   const values = Array.isArray(value) ? value : String(value || "").split(/[;\n|]+/);
   return Array.from(new Set(values.map((item) => cleanText(item, 240)).filter(Boolean))) as string[];
+}
+
+async function hashRequestToken(token: string) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token));
+  return Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 function normalizeProfileData(value: unknown) {
@@ -147,14 +152,34 @@ async function loadSupportTickets(supabase: CarrierProfileSupabaseClient, reques
 }
 
 async function loadRequest(supabase: CarrierProfileSupabaseClient, token: string) {
-  const result = await supabase
+  const tokenHash = await hashRequestToken(token);
+  const hashedResult = await supabase
     .from("vendor_profile_requests")
     .select("*, vendors(*)")
-    .eq("request_token", token)
-    .single();
-  if (result.error || !result.data) return { error: "Profile link was not found.", status: 404 };
+    .eq("request_token_hash", tokenHash)
+    .maybeSingle();
 
-  const request = result.data as Record<string, unknown>;
+  if (hashedResult.error && hashedResult.error.code !== "42703") throw hashedResult.error;
+  let requestData = hashedResult.error ? null : hashedResult.data;
+  if (!requestData) {
+    const legacyResult = await supabase
+      .from("vendor_profile_requests")
+      .select("*, vendors(*)")
+      .eq("request_token", token)
+      .maybeSingle();
+    if (legacyResult.error || !legacyResult.data) return { error: "Profile link was not found.", status: 404 };
+    requestData = legacyResult.data;
+    const migrated = await supabase
+      .from("vendor_profile_requests")
+      .update({ request_token_hash: tokenHash, request_token: null, updated_at: new Date().toISOString() })
+      .eq("id", legacyResult.data.id)
+      .eq("request_token", token);
+    if (migrated.error && migrated.error.code !== "42703") throw migrated.error;
+  }
+
+  if (!requestData) return { error: "Profile link was not found.", status: 404 };
+
+  const request = requestData as Record<string, unknown>;
   const expiresAt = new Date(String(request.expires_at || ""));
   if (String(request.status || "").toLowerCase() === "revoked") return { error: "Profile link was revoked.", status: 410 };
   if (String(request.status || "").toLowerCase() === "expired" || Number.isNaN(expiresAt.getTime()) || expiresAt.getTime() < Date.now()) {
@@ -166,7 +191,8 @@ async function loadRequest(supabase: CarrierProfileSupabaseClient, token: string
 }
 
 Deno.serve(async (request) => {
-  if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders() });
+  const jsonResponse = (body: unknown, status = 200) => baseJsonResponse(body, status, request);
+  if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders(request) });
 
   try {
     const supabase = getClient();

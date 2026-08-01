@@ -1,6 +1,6 @@
 import { initAuthControls, requirePrivatePage } from "./auth.js";
 import { createLocationMatchDrawer } from "./location-match-drawer.js";
-import { archiveApprovedRatewareByFilter, bulkUpdateApprovedRatewareRows, createRatewareBookVersion, enrichApprovedRatewareLocationZips, fetchApprovedRatewareDetail, fetchApprovedRatewarePage, fetchRatewareRowsByIds, fetchRatewareAudit, fetchRatewareBookVersion, fetchRatewareBookVersions, fetchRatewareFilterValues, matchApprovedRatewareVendors, matchApprovedRatewareVendorsByFilter, renormalizeApprovedRatewareRows, fetchRatewareOptions, removeApprovedRatewareByFilter, returnApprovedRatesToStaging, saveLocationAlias, updateApprovedRatewareByFilter, updateApprovedRatewareRow } from "./rateware-service.js";
+import { archiveApprovedRatewareByFilter, bulkUpdateApprovedRatewareRows, createRatewareBookVersion, enrichApprovedRatewareLocationZips, fetchApprovedRatewareDetail, fetchApprovedRatewarePage, fetchRatewareRowsByIds, fetchRatewareAudit, fetchRatewareBookVersion, fetchRatewareBookVersions, fetchRatewareFilterValues, matchApprovedRatewareVendors, matchApprovedRatewareVendorsByFilter, renormalizeApprovedRatewareRows, fetchRatewareOptions, removeApprovedRatewareByFilter, returnApprovedRatesToStaging, saveLocationAlias, searchRatewareLocations, updateApprovedRatewareByFilter, updateApprovedRatewareRow } from "./rateware-service.js";
 import { initSpreadsheetColumnFilters } from "./spreadsheet-column-filters.js";
 import { installSpreadsheetGrid } from "./spreadsheet-grid.js";
 import { initColumnVisibility, initDrawer, initLocationAutocomplete } from "./sheet-ui.js";
@@ -3181,6 +3181,7 @@ initLocationAutocomplete({
   container: body,
   inputSelector: "[data-location-field]",
   getOptions: () => ratewareOptions.locations || [],
+  searchOptions: (search) => searchRatewareLocations(search),
   onSelect: ({ input, option }) => {
     const tableRow = input.closest("[data-rateware-id]");
     const prefix = input.dataset.locationField;

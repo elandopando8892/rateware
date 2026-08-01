@@ -1,0 +1,104 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+
+const read = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
+const migration = read("../supabase/migrations/20260801031005_growth_hacking_mvp.sql");
+const api = read("../supabase/functions/rateware-api/growth.ts");
+const apiIndex = read("../supabase/functions/rateware-api/index.ts");
+const service = read("../src/growth-service.js");
+const client = read("../src/growth-hacking.js");
+const page = read("../growth-hacking.html");
+const auth = read("../src/auth.js");
+
+for (const column of [
+  "account_type", "data_status", "logistics_fit", "source_file_name",
+  "source_list_name", "imported_at", "original_row_json"
+]) {
+  assert.match(migration, new RegExp(`add column if not exists ${column}`));
+}
+
+for (const column of ["first_name", "last_name", "persona", "buying_role", "email_quality"]) {
+  assert.match(migration, new RegExp(`add column if not exists ${column}`));
+}
+
+for (const table of [
+  "growth_segments", "growth_campaigns", "growth_campaign_members",
+  "growth_campaign_messages", "growth_results"
+]) {
+  assert.match(migration, new RegExp(`create table if not exists public\\.${table}`));
+  assert.match(migration, new RegExp(`alter table public\\.${table} enable row level security`));
+}
+
+assert.doesNotMatch(migration, /using\s*\(\s*true\s*\)/i);
+assert.match(migration, /account_type in \('shipper', 'carrier', 'broker_forwarder', 'vendor', 'unknown'\)/);
+assert.match(migration, /data_status in \('ready', 'needs_review', 'duplicate', 'excluded', 'not_shipper'\)/);
+
+const actions = [
+  "growth_dashboard", "import_growth_csv", "list_growth_segments",
+  "preview_growth_segment", "save_growth_segment", "archive_growth_segment",
+  "list_growth_campaigns", "get_growth_campaign", "save_growth_campaign",
+  "save_growth_message", "export_growth_campaign", "set_growth_campaign_status",
+  "list_growth_results", "record_growth_result", "convert_growth_result",
+  "growth_ai_action"
+];
+for (const action of actions) {
+  assert.match(api, new RegExp(`"${action}"`));
+  assert.match(service, new RegExp(`"${action}"`));
+}
+
+assert.match(apiIndex, /import \{ handleGrowthAction, isGrowthAction \} from "\.\/growth\.ts"/);
+assert.match(apiIndex, /isGrowthAction\(growthAction\)/);
+assert.match(apiIndex, /handleGrowthAction\(supabase, user, body\)/);
+
+assert.match(api, /rows\.length > 5000/);
+assert.match(api, /external_source_id/);
+assert.match(api, /source_file_name/);
+assert.match(api, /source_list_name/);
+assert.match(api, /original_row_json/);
+assert.match(api, /GENERIC_EMAIL_PREFIXES/);
+assert.match(api, /duplicate_accounts/);
+assert.match(api, /duplicate_contacts/);
+assert.match(api, /sending_enabled: false/g);
+assert.match(api, /GROWTH_NON_EXPORTABLE_MEMBER_STATUSES/);
+assert.match(api, /suppressed_count/);
+assert.match(api, /cleanLower\(row\.data_status\) !== "excluded"/);
+assert.match(api, /cleanLower\(account\.data_status\) !== "excluded"/);
+assert.match(api, /A campaign must use an active saved segment/);
+assert.match(api, /if \(outcome === "bounce"\) contactPatch\.email_quality = "invalid"/);
+assert.match(api, /This result has already been converted/);
+assert.doesNotMatch(api, /\bfetch\s*\(/);
+assert.doesNotMatch(`${api}\n${service}\n${client}`, /send_(?:gmail|whatsapp)|send_outreach_messages|generate_outreach_drafts/);
+
+assert.match(api, /from\("shipper_opportunities"\)/);
+assert.match(api, /from\("shipper_rfis"\)/);
+assert.match(auth, /href: "\.\/growth-hacking\.html"/);
+
+const tabs = [...page.matchAll(/data-growth-view="([^"]+)"/g)].map((match) => match[1]);
+assert.deepEqual(tabs, ["dashboard", "segments", "campaigns", "ai", "results"]);
+assert.match(page, /id="download-campaign-messages-button"/);
+assert.match(page, /id="mark-campaign-launched-button"/);
+assert.match(page, /id="export-campaign-button"/);
+assert.match(page, /id="result-metric-suppressed"/);
+assert.match(client, /setGrowthCampaignStatus\(state\.currentCampaignId, "launched"\)/);
+assert.match(client, /data-create-campaign-segment/);
+assert.match(client, /data-follow-up-result/);
+assert.match(client, /No se enviará ningún mensaje/);
+
+const columnsBlock = client.match(/const EXPORT_COLUMNS = \[([\s\S]*?)\];/);
+assert.ok(columnsBlock, "Growth campaign export columns must be declared.");
+const exportColumns = [...columnsBlock[1].matchAll(/"([^"]+)"/g)].map((match) => match[1]);
+assert.deepEqual(exportColumns, [
+  "campaign_name", "account_name", "domain", "contact_name", "first_name",
+  "last_name", "title", "email", "phone", "linkedin_url", "persona",
+  "logistics_fit", "email_1_subject", "email_1_body", "follow_up_1_subject",
+  "follow_up_1_body", "follow_up_2_subject", "follow_up_2_body", "linkedin_note",
+  "call_script", "whatsapp_message"
+]);
+
+const htmlIds = new Set([...page.matchAll(/id="([^"]+)"/g)].map((match) => match[1]));
+const staticClientIds = new Set([...client.matchAll(/\$\("#([^"]+)"\)/g)].map((match) => match[1]));
+for (const id of staticClientIds) {
+  assert.ok(htmlIds.has(id), `Missing HTML element for #${id}`);
+}
+
+console.log("Growth Hacking MVP contract checks passed.");

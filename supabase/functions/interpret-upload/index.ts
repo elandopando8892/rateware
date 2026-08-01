@@ -1,6 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import * as XLSX from "https://esm.sh/xlsx@0.18.5";
-import { requireKindeUser } from "../_shared/kinde.ts";
+import { corsHeaders, jsonResponse as baseJsonResponse, requireKindeUser } from "../_shared/kinde.ts";
 
 const OPENAI_MODEL = Deno.env.get("OPENAI_MODEL");
 const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
@@ -16,10 +16,36 @@ function getClient() {
 
 type InterpretationSupabaseClient = ReturnType<typeof getClient>;
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type"
-};
+async function fetchAllActiveReferenceRows(
+  supabase: InterpretationSupabaseClient,
+  table: string,
+  columns: string,
+  options: { orderColumn?: string; ascending?: boolean } = {}
+) {
+  const rows: Record<string, unknown>[] = [];
+  const pageSize = 1000;
+  const maxRows = 100000;
+  const orderColumn = options.orderColumn || "id";
+  const ascending = options.ascending ?? true;
+  for (let offset = 0; offset < maxRows; offset += pageSize) {
+    let query = supabase
+      .from(table)
+      .select(columns)
+      .eq("active", true)
+      .order(orderColumn, { ascending })
+      .range(offset, offset + pageSize - 1);
+    if (orderColumn !== "id") query = query.order("id", { ascending: true });
+    const result = await query;
+    if (result.error) {
+      console.warn(`Reference catalog ${table} is unavailable during interpretation.`, result.error.message);
+      return [] as Record<string, unknown>[];
+    }
+    const page = (result.data || []) as unknown as Record<string, unknown>[];
+    rows.push(...page);
+    if (page.length < pageSize) return rows;
+  }
+  throw new Error(`Reference catalog ${table} exceeded the ${maxRows} row safety limit.`);
+}
 
 const RATEWARE_SCHEMA = {
   type: "object",
@@ -116,13 +142,6 @@ const RATEWARE_SCHEMA = {
     }
   }
 };
-
-function jsonResponse(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" }
-  });
-}
 
 async function openAIErrorMessage(response: Response, label: string) {
   const body = await response.text();
@@ -2334,7 +2353,8 @@ async function applicableInterpretationMemory(
 }
 
 Deno.serve(async (request) => {
-  if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  const jsonResponse = (body: unknown, status = 200) => baseJsonResponse(body, status, request);
+  if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders(request) });
 
   if (!OPENAI_MODEL || !OPENAI_API_KEY || !SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
     return jsonResponse({ error: "Missing OPENAI_MODEL, OPENAI_API_KEY, SUPABASE_URL, or RATEWARE_SUPABASE_SERVICE_ROLE_KEY." }, 500);
@@ -2392,21 +2412,19 @@ Deno.serve(async (request) => {
       || domainFromVendorReference(matchedVendor?.primary_email)
       || domainFromVendorReference(rawUpload.vendor_hint);
     const forceVendorDomain = Boolean(manualVendor && vendorDomain);
-    const catalogResult = await supabase.from("rateware_catalog_items").select("category,raw_value,normalized_value,code,metadata").eq("active", true).limit(20000);
-    const mileageResult = await supabase.from("rateware_lane_mileage").select("source,route_key,miles,km").eq("active", true).limit(20000);
-    const locationResult = await supabase.from("rateware_locations").select("source,country,location_key,raw_value,zip_prefix,city,state_code,state_name,metro_city,market,region").eq("active", true).limit(20000);
+    const [catalogItems, laneMileage, locations, fscTrend] = await Promise.all([
+      fetchAllActiveReferenceRows(supabase, "rateware_catalog_items", "category,raw_value,normalized_value,code,metadata"),
+      fetchAllActiveReferenceRows(supabase, "rateware_lane_mileage", "source,route_key,miles,km"),
+      fetchAllActiveReferenceRows(supabase, "rateware_locations", "source,country,location_key,raw_value,zip_prefix,city,state_code,state_name,metro_city,market,region"),
+      fetchAllActiveReferenceRows(supabase, "rateware_fsc_trend", "source,api_fetch,fuel_region,index_date,diesel_per_gallon,fsc_per_mile", { orderColumn: "index_date", ascending: false })
+    ]);
     const fuelRegionResult = await supabase.from("rateware_fuel_regions").select("state_code,fuel_region,diesel_per_gallon,fsc_per_mile").eq("active", true).limit(200);
-    const fscTrendResult = await supabase.from("rateware_fsc_trend").select("source,api_fetch,fuel_region,index_date,diesel_per_gallon,fsc_per_mile").eq("active", true).limit(20000);
     const borderPairResult = await supabase.from("border_crossing_pairs").select("id,mx_city,mx_state,us_city,us_state,crossing_name,default_rank").eq("active", true).limit(200);
     const assumptionsResult = await supabase.from("rateware_assumptions").select("field,recommended_value,raw_value,unit").eq("active", true).limit(500);
     const factorsResult = await supabase.from("rateware_factor_items").select("factor_group,factor_name,recommended_value,lookup_key").eq("active", true).limit(1000);
     const mxDieselResult = await supabase.from("rateware_mx_diesel_index").select("source,period_month,market_key,diesel_mxn_per_liter").eq("active", true).order("period_month", { ascending: false }).limit(50);
     const fxResult = await supabase.from("rateware_fx_rates").select("source,period_month,currency_pair,rate").eq("active", true).eq("currency_pair", "MXN/USD").order("period_month", { ascending: false }).limit(50);
-    const catalogItems = catalogResult.error ? [] : catalogResult.data || [];
-    const laneMileage = mileageResult.error ? [] : mileageResult.data || [];
-    const locations = locationResult.error ? [] : locationResult.data || [];
     const fuelRegions = fuelRegionResult.error ? [] : fuelRegionResult.data || [];
-    const fscTrend = fscTrendResult.error ? [] : fscTrendResult.data || [];
     const borderPairs = borderPairResult.error ? [] : borderPairResult.data || [];
     const mxFuelContext = buildMxFuelContext({
       assumptions: assumptionsResult.error ? [] : assumptionsResult.data || [],

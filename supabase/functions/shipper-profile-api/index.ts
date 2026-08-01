@@ -1,5 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { corsHeaders, jsonResponse } from "../_shared/kinde.ts";
+import { corsHeaders, jsonResponse as baseJsonResponse } from "../_shared/kinde.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SERVICE_ROLE_KEY = Deno.env.get("RATEWARE_SUPABASE_SERVICE_ROLE_KEY");
@@ -104,19 +104,32 @@ async function loadRequest(supabase: ShipperProfileSupabaseClient, rawToken: str
     .eq("token_hash", await tokenHash(rawToken)).single();
   if (result.error || !result.data) return { error: "This profile link was not found.", status: 404 };
   const request = result.data as Record<string, unknown>;
+  const shipper = record(request.shippers);
+  const requestOrganization = text(request.organization_id, 160);
+  const shipperOrganization = text(shipper.organization_id, 160);
+  if (requestOrganization && shipperOrganization && requestOrganization !== shipperOrganization) {
+    return { error: "This profile link is not valid for the requested workspace.", status: 404 };
+  }
   const expired = new Date(String(request.expires_at || "")).getTime() < Date.now();
   if (String(request.status).toLowerCase() === "revoked") return { error: "This profile link was revoked.", status: 410 };
   if (expired || String(request.status).toLowerCase() === "expired") {
     await supabase.from("shipper_profile_requests").update({ status: "expired", updated_at: new Date().toISOString() }).eq("id", request.id);
     return { error: "This profile link has expired.", status: 410 };
   }
-  return { request, shipper: record(request.shippers), status: 200 };
+  return { request, shipper, status: 200 };
 }
 
 async function loadPublicProfile(supabase: ShipperProfileSupabaseClient, request: Record<string, unknown>, shipper: Record<string, unknown>) {
+  const organizationId = text(request.organization_id, 160);
+  let contactsQuery = supabase.from("shipper_contacts").select("*").eq("owner_email", request.owner_email).eq("shipper_id", shipper.id);
+  let locationsQuery = supabase.from("shipper_locations").select("*").eq("owner_email", request.owner_email).eq("shipper_id", shipper.id);
+  if (organizationId) {
+    contactsQuery = contactsQuery.eq("organization_id", organizationId);
+    locationsQuery = locationsQuery.eq("organization_id", organizationId);
+  }
   const [contacts, locations] = await Promise.all([
-    supabase.from("shipper_contacts").select("*").eq("owner_email", request.owner_email).eq("shipper_id", shipper.id).order("updated_at", { ascending: false }).limit(50),
-    supabase.from("shipper_locations").select("*").eq("owner_email", request.owner_email).eq("shipper_id", shipper.id).order("updated_at", { ascending: false }).limit(50)
+    contactsQuery.order("updated_at", { ascending: false }).limit(50),
+    locationsQuery.order("updated_at", { ascending: false }).limit(50)
   ]);
   if (contacts.error) throw contacts.error;
   if (locations.error) throw locations.error;
@@ -124,7 +137,8 @@ async function loadPublicProfile(supabase: ShipperProfileSupabaseClient, request
 }
 
 Deno.serve(async (request) => {
-  if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders() });
+  const jsonResponse = (body: unknown, status = 200) => baseJsonResponse(body, status, request);
+  if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders(request) });
   try {
     const body = await request.json();
     const action = text(body.action, 80);
@@ -150,7 +164,9 @@ Deno.serve(async (request) => {
         if (patchInput[key] !== undefined) patch[key] = text(patchInput[key], key.includes("email") ? 254 : 240);
       }
       if (!patch.shipper_name && !shipper.shipper_name) patch.shipper_name = "Customer profile";
-      const updated = await supabase.from("shippers").update(patch).eq("id", shipper.id).eq("owner_email", requestRow.owner_email).select().single();
+      let shipperUpdate = supabase.from("shippers").update(patch).eq("id", shipper.id).eq("owner_email", requestRow.owner_email);
+      if (text(requestRow.organization_id, 160)) shipperUpdate = shipperUpdate.eq("organization_id", text(requestRow.organization_id, 160));
+      const updated = await shipperUpdate.select().single();
       if (updated.error) throw updated.error;
 
       const submittedContacts = Array.isArray(body.contacts) ? body.contacts : [];
@@ -158,9 +174,14 @@ Deno.serve(async (request) => {
         const item = record(raw);
         const contactPatch = { contact_name: text(item.name, 180) || "Customer contact", title: text(item.title, 160), department: text(item.department, 120), email: text(item.email, 254), phone: text(item.phone, 80), whatsapp_phone: text(item.whatsapp_phone, 80), preferred_channel: text(item.preferred_channel, 40), is_primary: Boolean(item.is_primary), notes: text(item.notes, 1800), updated_at: new Date().toISOString() };
         if (!text(item.name, 180) && !contactPatch.email) continue;
-        const contactResult = text(item.id, 80)
-          ? await supabase.from("shipper_contacts").update(contactPatch).eq("id", item.id).eq("shipper_id", shipper.id).eq("owner_email", requestRow.owner_email)
-          : await supabase.from("shipper_contacts").insert({ ...contactPatch, shipper_id: shipper.id, owner_email: requestRow.owner_email, organization_id: requestRow.organization_id, status: "active" });
+        let contactResult;
+        if (text(item.id, 80)) {
+          let contactUpdate = supabase.from("shipper_contacts").update(contactPatch).eq("id", item.id).eq("shipper_id", shipper.id).eq("owner_email", requestRow.owner_email);
+          if (text(requestRow.organization_id, 160)) contactUpdate = contactUpdate.eq("organization_id", text(requestRow.organization_id, 160));
+          contactResult = await contactUpdate;
+        } else {
+          contactResult = await supabase.from("shipper_contacts").insert({ ...contactPatch, shipper_id: shipper.id, owner_email: requestRow.owner_email, organization_id: requestRow.organization_id, status: "active" });
+        }
         if (contactResult.error) throw contactResult.error;
       }
 
@@ -178,9 +199,14 @@ Deno.serve(async (request) => {
           handling_type: text(item.handling_type, 100), notes: text(item.notes, 1800), updated_at: new Date().toISOString()
         };
         if (!text(item.location_name, 180) && !locationPatch.city && !locationPatch.address_line_1) continue;
-        const locationResult = text(item.id, 80)
-          ? await supabase.from("shipper_locations").update(locationPatch).eq("id", item.id).eq("shipper_id", shipper.id).eq("owner_email", requestRow.owner_email)
-          : await supabase.from("shipper_locations").insert({ ...locationPatch, shipper_id: shipper.id, owner_email: requestRow.owner_email, organization_id: requestRow.organization_id });
+        let locationResult;
+        if (text(item.id, 80)) {
+          let locationUpdate = supabase.from("shipper_locations").update(locationPatch).eq("id", item.id).eq("shipper_id", shipper.id).eq("owner_email", requestRow.owner_email);
+          if (text(requestRow.organization_id, 160)) locationUpdate = locationUpdate.eq("organization_id", text(requestRow.organization_id, 160));
+          locationResult = await locationUpdate;
+        } else {
+          locationResult = await supabase.from("shipper_locations").insert({ ...locationPatch, shipper_id: shipper.id, owner_email: requestRow.owner_email, organization_id: requestRow.organization_id });
+        }
         if (locationResult.error) throw locationResult.error;
       }
 

@@ -1584,6 +1584,10 @@ function renderChildTab(entity) {
 
 function renderRatebookTab() {
   const rows = state.detail?.ratebooks || [];
+  const syncFailures = [
+    ...(state.detail?.bid_room_events || []).filter((event) => event.ratebook_sync_error),
+    ...(state.detail?.ratebook_materialization_failures || [])
+  ];
   const sourceLabel = (row) => [row.project?.customer_name, row.project?.title].filter(Boolean).join(" | ") || "RFx route book";
   elements.drawerContent.innerHTML = `
     <section class="shipper-ratebook-workspace">
@@ -1592,6 +1596,7 @@ function renderRatebookTab() {
         <span>${rows.length} book(s)</span>
       </div>
       <p class="shipper-ratebook-intro">Ratebooks are captured from Customer RFI, RFx Process, and direct Bid Room events for this shipper. Open a book to review route coverage, requirements, carrier offers, and distribution history.</p>
+      ${syncFailures.length ? `<div class="shipper-empty-activity"><strong>${syncFailures.length} Bid Room source${syncFailures.length === 1 ? "" : "s"} need${syncFailures.length === 1 ? "s" : ""} a retry</strong><span>The remaining Ratebooks are available. Refresh this account after correcting the source event.</span></div>` : ""}
       <div class="shipper-ratebook-list">
         ${rows.length ? rows.map((row) => `
           <article class="shipper-ratebook-card">

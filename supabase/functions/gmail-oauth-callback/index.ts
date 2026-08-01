@@ -89,7 +89,7 @@ async function fetchGoogleUserEmail(accessToken: string, idToken?: string) {
 }
 
 Deno.serve(async (request) => {
-  if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders() });
+  if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders(request) });
 
   let stateRow: Record<string, unknown> | null = null;
   let stateProvider = "gmail";

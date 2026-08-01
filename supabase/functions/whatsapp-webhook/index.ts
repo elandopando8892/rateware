@@ -1,5 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { corsHeaders, jsonResponse } from "../_shared/kinde.ts";
+import { corsHeaders, jsonResponse as baseJsonResponse } from "../_shared/kinde.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("RATEWARE_SUPABASE_SERVICE_ROLE_KEY");
@@ -437,7 +437,8 @@ async function recordInboundMessage(
 }
 
 Deno.serve(async (request) => {
-  if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders() });
+  const jsonResponse = (body: unknown, status = 200) => baseJsonResponse(body, status, request);
+  if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders(request) });
   if (request.method === "GET") {
     const url = new URL(request.url);
     const mode = url.searchParams.get("hub.mode");
@@ -452,9 +453,9 @@ Deno.serve(async (request) => {
           .update({ webhook_verified_at: new Date().toISOString(), updated_at: new Date().toISOString() })
           .eq("id", verification.connectionId);
       }
-      return new Response(challenge, { headers: { ...corsHeaders(), "Content-Type": "text/plain" } });
+      return new Response(challenge, { headers: { ...corsHeaders(request), "Content-Type": "text/plain" } });
     }
-    return new Response("Forbidden", { status: 403, headers: corsHeaders() });
+    return new Response("Forbidden", { status: 403, headers: corsHeaders(request) });
   }
   if (request.method !== "POST") return jsonResponse({ error: "Method not allowed." }, 405);
 

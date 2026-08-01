@@ -324,7 +324,10 @@ const SHELL_NAV_GROUPS = [
   },
   {
     title: "Analyze",
-    items: [{ id: "analyze", code: "AN", label: "Analyze", href: "./business-intelligence.html" }]
+    items: [
+      { id: "analyze", code: "AN", label: "Analyze", href: "./business-intelligence.html" },
+      { id: "growth-hacking", code: "GH", label: "Growth Hacking", href: "./growth-hacking.html" }
+    ]
   },
   {
     title: "Source",
@@ -390,6 +393,14 @@ const PAGE_META = {
     title: "Analyze",
     eyebrow: "Commercial intelligence",
     crumbs: [{ label: "Analyze", href: "./app.html" }, { label: "Workbench" }]
+  },
+  "growth-hacking": {
+    title: "Growth Hacking",
+    eyebrow: "Shipper acquisition",
+    crumbs: [
+      { label: "Analyze", href: "./business-intelligence.html" },
+      { label: "Growth Hacking" }
+    ]
   },
   vendors: {
     title: "Carrier CRM",

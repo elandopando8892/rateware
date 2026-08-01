@@ -2615,9 +2615,10 @@ function outreachTargetsForCarrier(target, { selectedOnly = false } = {}) {
 }
 
 function outreachPreviewLaneRows(target) {
-  const scopedLanes = selectedLaneIds.size
-    ? currentLanes.filter((lane) => selectedLaneIds.has(String(lane.id)))
-    : currentLanes;
+  // Lane checkboxes are an operator selection for lane actions. They must not
+  // shrink the carrier's invitation Business Book: the preview and generated
+  // outreach package always represent every active lane in the RFx event.
+  const scopedLanes = currentLanes;
   if (!scopedLanes.length) return outreachTargetsForCarrier(target);
   const carrierTargets = outreachTargetsForCarrier(target);
   const invitationsByLane = new Map(carrierTargets.map((item) => [String(item.lane?.id || item.invitation?.rfx_lane_id || ""), item.invitation]));

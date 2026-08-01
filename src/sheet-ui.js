@@ -709,7 +709,7 @@ function locationOptionLabelRich(option) {
   };
 }
 
-export function initLocationAutocomplete({ container, inputSelector, getOptions, onSelect }) {
+export function initLocationAutocomplete({ container, inputSelector, getOptions, searchOptions, onSelect }) {
   if (!container || !inputSelector || !getOptions) return;
   const panel = document.createElement("div");
   panel.className = "location-autocomplete-panel hidden";
@@ -717,6 +717,7 @@ export function initLocationAutocomplete({ container, inputSelector, getOptions,
   let activeInput = null;
   let activeItems = [];
   let activeIndex = -1;
+  let searchRequest = 0;
 
   function hide() {
     panel.classList.add("hidden");
@@ -753,9 +754,8 @@ export function initLocationAutocomplete({ container, inputSelector, getOptions,
     return true;
   }
 
-  function render(input) {
+  function renderOptions(input, options) {
     const query = input.value || "";
-    const options = getOptions(input) || [];
     activeItems = options
       .map((option) => ({ option, score: scoreLocation(option, query) }))
       .filter((item) => item.score > 0)
@@ -790,6 +790,28 @@ export function initLocationAutocomplete({ container, inputSelector, getOptions,
     positionPanel(input);
     panel.classList.remove("hidden");
     syncActiveOption();
+  }
+
+  async function render(input) {
+    const query = input.value || "";
+    const localOptions = getOptions(input) || [];
+    renderOptions(input, localOptions);
+    if (!searchOptions || query.trim().length < 2) return;
+    const request = ++searchRequest;
+    try {
+      const remoteOptions = await searchOptions(query, input);
+      if (request !== searchRequest || activeInput !== input) return;
+      const merged = new Map();
+      for (const option of [...(remoteOptions || []), ...localOptions]) {
+        const key = typeof option === "string"
+          ? option
+          : [option.id, option.country, option.city, option.state_code, option.zip_prefix, option.market].filter(Boolean).join("|");
+        if (!merged.has(key)) merged.set(key, option);
+      }
+      renderOptions(input, [...merged.values()]);
+    } catch {
+      // Keep local options usable if a server-side search is unavailable.
+    }
   }
 
   container.addEventListener("focusin", (event) => {
